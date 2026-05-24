@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg version="1.1" viewBox="0 0 210 297" xmlns="http://www.w3.org/2000/svg">
+ <g id="agitateur" transform="matrix(1.0566 0 0 1.0566 69.145 271.89)" fill="#d4d4d4" stroke="#000" stroke-width=".501">
+  <path d="M.108-2.897H50.025V17.02H.108z"/>
+  <circle cx="25.027" cy="7.022" r="4.798" fill="#696969"/>
+ </g>
+ <g id="potence" stroke="#000">
+  <path d="m60.265 200.68h42.637v5.1585h-42.637z" fill="#d4d4d4" stroke-width=".314"/>
+  <path d="m80 83s4 13 15 13c0 0 2.4955-1e-6 2.5-2.5.004-2.5-2.5-2.5-2.5-2.5s-7.231 2.26-11.231-8.3829" fill="#d4d4d4" stroke-width=".026"/>
+  <path d="m80 78s4-13 15-13c0 0 2.4955 1e-6 2.5 2.5.0045 2.5-2.5 2.5-2.5 2.5s-7.3545-2.1066-11.354 8.5364" fill="#d4d4d4" stroke-width=".026"/>
+  <path d="m60.267 77.969h21.731v5.302h-21.731z" fill="#d4d4d4" stroke-width=".227"/>
+  <circle cx="95" cy="67.5" r="2.5" fill="#d4d4d4" stroke-width=".529"/>
+  <circle cx="95" cy="93.5" r="2.5" fill="#d4d4d4" stroke-width=".529"/>
+  <circle cx="82.265" cy="80.62" r="2.5" fill="#d4d4d4" stroke-width=".529"/>
+  <path d="m100.42 203.52s3.3662 6.1597 12.623 6.1597c0 0 2.1001 0 2.1039-1.1846.003-1.1846-2.1039-1.1846-2.1039-1.1846s-6.0852 1.0708-9.4514-3.972" fill="#d4d4d4" stroke-width=".016"/>
+  <path d="m55.265 24.735h5v270h-5z" fill="#d4d4d4" stroke-width=".529" style="mix-blend-mode:normal"/>
+  <path d="m49.149 290h75.701v5h-75.701z" fill="#4d4d4d" stroke-width=".265"/>
+  <circle cx="114.16" cy="208.5" r="2.5" fill="#d4d4d4" stroke-width=".529"/>
+  <path d="m100.42 203.16s3.3662-6.1597 12.623-6.1597c0 0 2.1001 0 2.1039 1.1846.003 1.1846-2.1039 1.1846-2.1039 1.1846s-6.0852-1.0708-9.4514 3.972" fill="#d4d4d4" stroke-width=".016"/>
+  <circle transform="scale(1,-1)" cx="114.16" cy="-198.19" r="2.5" fill="#d4d4d4" stroke-width=".529"/>
+  <circle cx="102.92" cy="203.16" r="2.5" fill="#d4d4d4" stroke-width=".529"/>
+ </g>
+ <g id="sonde" transform="translate(17.587 10.554)" stroke="#000">
+  <rect x="88.386" y="247.63" width="1.0619" height="5.5453" style="stroke-width:.062508;stroke:#000"/>
+  <rect x="89.504" y="247.64" width=".54244" height="5.5453" style="fill:#a7a7a7;stroke-width:.05;stroke:#000"/>
+  <rect x="91.54" y="247.64" width=".54244" height="5.5453" style="fill:#a7a7a7;stroke-width:.05;stroke:#000"/>
+  <rect x="92.139" y="247.63" width="1.0619" height="5.5453" style="stroke-width:.062508;stroke:#000"/>
+  <rect transform="matrix(.0033025 -.99999 .99995 .010081 0 0)" x="-249.13" y="89.218" width="1.6059" height="4.7999" style="stroke-width:.071516;stroke:#000"/>
+  <path d="m88.604 221.37v-27.044h4.3789v54.089h-4.3789z" fill="#1a1a1a" stroke-width=".498"/>
+  <path d="m87.834 184.54h5.848v16.128h-5.848z" fill="#1a1a1a" stroke-width=".397"/>
+ </g>
+ <g id="burette-contour" transform="matrix(.25122 0 0 .25122 76.474 -38.084)" stroke="#000">
+  <path d="m36.937 868.01.01283-15.103c-1.9215-1.916-4.0583-1.3387-4.0314-13.429v-664.69c-3.9267-2.8303-4.8829-10.184.07478-9.9498l30.639.32296c4.8121-.557 3.8559 6.7965-.0708 9.6268v664.69c.02692 12.092-2.1099 11.513-4.0314 13.429l-.02941 15.095" fill="none" fill-opacity="0" stroke-width="1.871"/>
+  <path d="m56.551 923.03v47.994c-.22941 4.3734-1.3342 9.8152-4.0509 16.478h-8.0495c-2.7167-6.6624-3.8215-12.104-4.0509-16.478v-47.994" fill="none" fill-opacity="0" stroke-width="1.081"/>
+  <path d="m57.623 916.31h29.154c7.582.305 7.428-5.424 7.35-9.065-.08-3.64-.08-3.282 0-6.923.078-3.641.232-9.37-7.35-9.065h-29.154" fill="#cfd5ee" fill-opacity=".913" stroke-width="1.5"/>
+  <rect x="32.635" y="867.5" width="31.358" height="12.249" rx="5.784" ry="5.784" fill="#cfd5ee" fill-opacity=".913" fill-rule="evenodd" stroke-linecap="round" stroke-width="1.5"/>
+  <path d="m58.383 879.97v26.694c-.189 6.4203-.742 12.548-2.308 17.865h-15.692c-1.566-5.3163-2.119-11.445-2.308-17.865v-26.694" fill="#cfd5ee" fill-opacity=".913" stroke-width="1.342"/>
+  <rect x="70.439" y="864.44" width="14.476" height="80.051" rx="5.784" ry="1.926" fill="#541d1d" fill-opacity=".913" fill-rule="evenodd" stroke-linecap="round" stroke-width="1.5"/>
+  <rect x="72.372" y="869.91" width="10.609" height="69.121" rx="5.784" ry="1.926" fill="#500" fill-opacity=".913" fill-rule="evenodd" stroke-linecap="round" stroke-width="1.5"/>
+  <rect x="15.607" y="896.35" width="19.882" height="15.533" rx="2.056" ry="5.162" fill="#cfd5ee" fill-opacity=".913" fill-rule="evenodd" stroke-linecap="round" stroke-width="1.5"/>
+  <rect x="19.322" y="885.34" width="14.476" height="36.007" rx="5.784" ry="3.533" fill="#cfd5ee" fill-opacity=".913" fill-rule="evenodd" stroke-linecap="round" stroke-width="1.5"/>
+  <rect x="18.299" y="894.49" width="18.846" height="19.261" rx="2.056" ry="2.056" fill="#cfd5ee" fill-opacity=".913" fill-rule="evenodd" stroke-linecap="round" stroke-width="1.5"/>
+  <path d="m33 837.5h30.731" fill-opacity="0"/>
+  <path id="graduations-principales" d="m33.01 237.45h30.731m-30.741 25.053h30.731m-30.721 25h30.731m-30.741 25h30.731m-30.731 24.943h30.731m-30.741 25.142h30.731m-30.721 25h30.731m-30.741 25h30.731m-30.71 24.91h30.731m-30.741 25.005h30.731m-30.721 25h30.731m-30.741 25h30.731m-30.721 24.995h30.731m-30.741 25.005h30.731m-30.731 25h30.731m-30.721 25h30.731m-30.741 25h30.731m-30.721 24.995h30.731m-30.741 25.005h30.731m-30.731 25h30.731m-30.721 25h30.731m-30.741 25h30.731m-30.721 24.995h30.731m-30.741 25.005h30.731" fill-opacity="0"/>
+  <path d="m33 212.45h30.731" fill-opacity="0"/>
+  <path id="graduations-secondaires" d="m33 224.95h17.5m-17.5-10h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 5h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 15h17.5m-17.5-10h10m-10.013 2.5208h10m-10 2.5h10m-10 2.5h10m-9.9872 5.0323h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 15h17.5m-17.5-10h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 5h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 15h17.5m-17.5-10h10m-10.013 2.5208h10m-10 2.5h10m-10 2.5h10m-9.9872 5.0323h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 14.96h17.5m-17.5-9.9872h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 4.9744h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 15h17.5m-17.5-10h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 5h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10.01 15.085h17.5m-17.5-10h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 5h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 15h17.5m-17.5-10h10m-10.013 2.5208h10m-10 2.5h10m-10 2.5h10m-9.9872 5.0323h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 14.96h17.5m-17.5-9.9872h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 4.9744h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10.038 14.915h17.5m-17.452-10h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10.048 5h10m-10 2.5h10m-10 2.5h10m-9.9624 2.5854h10m-9.9895 14.915h17.5m-17.5-10h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 5h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 15h17.5m-17.5-10h10m-10.013 2.5208h10m-10 2.5h10m-10 2.5h10m-9.9872 5.0323h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 14.96h17.5m-17.5-9.9872h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 4.9744h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 15h17.5m-17.5-10h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 5h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 15h17.5m-17.5-10h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 5h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 15h17.5m-17.5-10h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 5h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 15h17.5m-17.5-10h10m-10.013 2.5208h10m-10 2.5h10m-10 2.5h10m-9.9872 5.0323h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 14.96h17.5m-17.5-9.9872h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 4.9744h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 15h17.5m-17.5-10h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 5h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 15h17.5m-17.5-10h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 5h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 15h17.5m-17.5-10h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 5h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 15h17.5m-17.5-10h10m-10.013 2.5208h10m-10 2.5h10m-10 2.5h10m-9.9872 5.0323h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 14.96h17.5m-17.5-9.9872h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 4.9744h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 15h17.5m-17.5-10h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 5h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 15h17.5m-17.5-10h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 5h10m-10 2.5h10m-10 2.5h10m-10 2.5h10" fill-opacity="0" stroke-width=".7"/>
+  <g id="label-graduations" stroke-width=".7">
+   <text x="52.812" y="210.48" xml:space="preserve"><tspan x="52.812" y="210.48">0</tspan></text>
+   <text x="53.064" y="335.48" xml:space="preserve"><tspan x="53.064" y="335.48">5</tspan></text>
+   <text x="45.178" y="460.543" xml:space="preserve"><tspan x="45.178" y="460.543">10</tspan></text>
+   <text x="45.328" y="585.464" xml:space="preserve"><tspan x="45.328" y="585.464">15</tspan></text>
+   <text x="45.427" y="710.464" xml:space="preserve"><tspan x="45.427" y="710.464">20</tspan></text>
+   <text x="45.427" y="835.627" xml:space="preserve"><tspan x="45.427" y="835.627">25</tspan></text>
+  </g>
+ </g>
+ <path id="becher-contour" d="m111.07 215.08h-29.896c-4.8584 0-7.8674 3.7942-7.8674 3.7942 3.9337 0 3.9337 4.1737 3.9337 4.1737v41.737c0 3.7942 3.9337 3.7942 3.9337 3.7942h29.503c4.3271 0 4.3271-3.7942 4.3271-3.7942v-45.91s0-3.7942-3.9337-3.7942z" fill-opacity="0" stroke="#000" stroke-width=".529"/>
+ <g id="conductimetre" stroke="#000">
+  <path d="m108.46 194.94c-.22142-2.0434.11454-4.1444.9621-6.0169.84757-1.8724 2.2045-3.5113 3.8859-4.6934s3.6829-1.9041 5.7317-2.0679c2.0488-.16373 4.1395.23132 5.9874 1.1313 2.0429.99503 3.7634 2.5857 5.086 4.4334 1.3227 1.8477 2.2616 3.9485 2.9569 6.1118 1.6215 5.0449 1.9396 10.415 1.9054 15.714s-.40777 10.602-.11803 15.893c.6423 11.729 4.6208 23.258 11.35 32.887" fill="none"/>
+  <path d="m132.95 242.13h64.503v52.777h-64.503z" fill="#4d4d4d" style="stroke-width:1.1978"/>
+  <circle cx="149.63" cy="284.25" r="3.749" fill="#696969" stroke-width=".37"/>
+  <circle cx="139.63" cy="284.25" r="3.749" fill="#696969" stroke-width=".37"/>
+  <path id="écran" d="m141.87 250.13h46.655v20.634h-46.655z" fill="#fff" stroke-width=".549"/>
+  <text x="155.92902" y="286.40704" fill="#ffffff" font-size="6.581px" stroke-width=".05" style="font-size:4.8px;line-height:0.1" xml:space="preserve"><tspan x="155.92902" y="286.40704" style="font-size:4.8px;line-height:0.1">Conductimètre</tspan></text>
+  <text x="160.42877" y="278.58398" fill="#ffffff" font-size="6.581px" stroke-width=".05" style="font-size:8px;line-height:0.1" xml:space="preserve"><tspan x="160.42877" y="278.58398" style="font-size:8px;line-height:0.1">mS/cm</tspan></text>
+ </g>
+</svg>

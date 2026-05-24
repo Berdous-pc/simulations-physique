@@ -1,0 +1,1743 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   Simulation pédagogique — Physique-Chimie Lycée
+   Auteur  : Mathieu Berdous
+   Licence : CC BY-NC 4.0 — https://creativecommons.org/licenses/by-nc/4.0/
+══════════════════════════════════════════════════════════════════════════ */
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Reset & base
+══════════════════════════════════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #f0ede8;
+  color: #2c3e50;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  font-size: 14px;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Grille principale
+══════════════════════════════════════════════════════════════════════════ */
+main {
+  flex: 1; min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr clamp(200px, 300px, 22vw);
+  overflow: hidden;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Zone centrale
+══════════════════════════════════════════════════════════════════════════ */
+#sim-area {
+  position: relative;
+  grid-column: 1;
+  grid-row: 1;
+  background: #fdf8f0;
+  border-right: 1px solid #c8c0b4;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+}
+
+/* ── Équation ── */
+#equation-zone {
+  flex-shrink: 0;
+  position: relative;
+  padding: 12px 20px 8px;
+  border-bottom: 2px solid #e0dbd4;
+  display: flex; align-items: center; justify-content: center;
+}
+#equation-row {
+  display: flex; align-items: center; flex-wrap: wrap;
+  justify-content: center; gap: 6px;
+}
+.mol-group { display: flex; align-items: center; gap: 5px; }
+.mol-formula        { font-size: clamp(22px, 3.2vw, 44px); font-weight: 700; letter-spacing: 1px; line-height: 1; }
+.mol-formula.titrant { color: #2a6aaa; }
+.mol-formula.titre   { color: #c05820; }
+.mol-formula.produit { color: #2a8a50; }
+.mol-formula.implicit { color: #b0b8c0; font-weight: 400; }
+
+.mol-coeff-fixed { font-size: clamp(22px, 3.2vw, 44px); font-weight: 700; color: #c03010; line-height: 1; }
+
+.eq-plus  { color: #7a8a96; font-size: clamp(20px, 2.8vw, 38px); font-weight: 300; padding: 0 3px; }
+.eq-arrow { color: #7a8a96; font-size: clamp(22px, 3.2vw, 44px); font-weight: 300; padding: 0 10px; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Conteneur tableau + canvas
+══════════════════════════════════════════════════════════════════════════ */
+#canvas-and-table {
+  flex-shrink: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 10px 0 8px;
+  width: 100%;
+  overflow: visible;
+}
+
+#titre-mask {
+  position: absolute;
+  pointer-events: none;
+  z-index: 10;
+  background: rgb(254, 240, 228);
+  border: 2.5px solid #c07830;
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  box-shadow: inset 0 0 0 1.5px rgba(255,255,255,0.6),
+              0 4px 18px rgba(160, 90, 20, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#qty-mask, #cmp-mask {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+  background: rgb(254, 240, 228);
+  border: 2px solid #c07830;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#titre-mask-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+#titre-mask-qmark {
+  font-size: clamp(48px, 8vw, 96px);
+  font-weight: 900;
+  color: #c07830;
+  line-height: 1;
+  text-shadow: 0 2px 8px rgba(160, 90, 20, 0.2);
+}
+
+#titre-mask-inner span:not(#titre-mask-qmark) {
+  font-size: clamp(11px, 1.4vw, 17px);
+  font-weight: 700;
+  color: #a05820;
+  letter-spacing: 0.3px;
+  text-align: center;
+  line-height: 1.3;
+}
+
+
+#mol-canvas {
+  position: absolute;
+  top: 10px; left: 0;
+  width: 100%; height: 100%;
+  display: block;
+  z-index: 0;
+}
+
+#titrage-table {
+  position: relative;
+  z-index: 1;
+  width: clamp(70%, 90%, 98%);
+  border-collapse: collapse;
+  table-layout: fixed;
+  flex-shrink: 1;
+  border: 2px solid #b0a898;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 4px 14px rgba(44,40,32,0.18);
+  margin: 10px 0 8px;
+}
+
+/* ── En-têtes colonnes ── */
+#titrage-table thead th {
+  padding: 5px 4px;
+  font-size: clamp(10px, 1.4vw, 18px); font-weight: 700;
+  text-align: center;
+  border-bottom: 1.5px solid #c8c0b4;
+  border-right: 1px solid #c8c0b4;
+  overflow: hidden; white-space: normal; word-break: break-word; line-height: 1.2;
+}
+#titrage-table thead th:last-child { border-right: none; }
+#titrage-table thead th.col-label   { background: #f5f0e8; color: #7a8a96; width: 180px; }
+#titrage-table thead th.col-titrant { background: #e8f0fb; color: #2a6aaa; }
+#titrage-table thead th.col-titre   { background: #fef0e4; color: #c05820; }
+#titrage-table thead th.col-produit { background: #e8f5ee; color: #2a8a50; }
+#titrage-table thead th.sep-tp      { border-right: 2px solid #b0a898; }
+
+/* ── Ligne molécules (canvas) ── */
+#titrage-table tr.row-canvas td {
+  padding: 0;
+  background: transparent;
+  border-right: none;
+}
+#titrage-table tr.row-canvas td.td-label {
+  background: #f5f0e8;
+  border-right: 1px solid #c8c0b4;
+  font-size: clamp(10px, 1.4vw, 18px); font-weight: 700;
+  color: #7a8a96; text-align: center; vertical-align: middle;
+}
+
+/* ── Pied de tableau ── */
+#titrage-table tfoot td {
+  padding: 8px 6px;
+  font-size: clamp(11px, 1.5vw, 20px); font-weight: 700;
+  text-align: center;
+  border-top: 1.5px solid #c8c0b4;
+  border-right: 1px solid #c8c0b4;
+  vertical-align: middle;
+  line-height: 1.4;
+  white-space: normal; word-break: break-word;
+}
+#titrage-table tfoot td:last-child { border-right: none; }
+#titrage-table tfoot td.td-label   { background: #f5f0e8; color: #7a8a96; border-right: 1px solid #c8c0b4; }
+#titrage-table tfoot td.td-titrant { background: #e8f0fb; color: #2a6aaa; }
+#titrage-table tfoot td.td-titre   { background: #fef0e4; color: #c05820; }
+#titrage-table tfoot td.td-produit { background: #e8f5ee; color: #2a8a50; }
+#titrage-table tfoot td.sep-tp     { border-right: 2px solid #b0a898; }
+
+/* Ligne comparaison dans tfoot */
+#titrage-table tfoot tr.cmp-row td {
+  border-top: 2px solid #c8c0b4;
+  vertical-align: middle;
+  padding: 7px 10px;
+}
+#titrage-table tfoot tr.cmp-row td.cmp-label {
+  background: #f5f0e8; font-size: 13px; font-weight: 700;
+  color: #5a6a78; text-align: center; border-right: 1px solid #c8c0b4;
+  white-space: normal; line-height: 1.4;
+}
+#titrage-table tfoot tr.cmp-row td.cmp-content {
+  background: #fafaf6; font-size: clamp(11px, 1.6vw, 20px); font-weight: 600;
+  color: #2c3e50; text-align: center; letter-spacing: 0.3px;
+}
+.cmp-equiv-exact { color: #c8000a; font-weight: 800; }   /* rouge : exactement à l'équivalence */
+.cmp-equiv-past  { color: #c07000; font-weight: 800; }   /* orange : équivalence dépassée */
+.cmp-nonequiv    { color: #2a6aaa; font-weight: 800; }   /* bleu : avant l'équivalence */
+.cmp-frac {
+  display: inline-flex; flex-direction: column; align-items: center;
+  vertical-align: middle; margin: 0 2px; line-height: 1.1;
+}
+.cmp-frac-num {
+  border-bottom: 2px solid currentColor;
+  padding: 0 3px 1px; font-size: 0.82em; line-height: 1.2;
+}
+.cmp-frac-den { padding: 1px 3px 0; font-size: 0.82em; line-height: 1.2; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Panneau droit
+══════════════════════════════════════════════════════════════════════════ */
+#panel {
+  grid-column: 2;
+  grid-row: 1;
+  background: #e8e4de;
+  display: flex; flex-direction: column;
+  overflow: hidden; min-height: 0;
+  font-size: clamp(13px, 1.32vw, 17px);
+}
+#panel-body {
+  flex: 1; min-height: 0; overflow-y: auto; padding: 14px;
+  display: flex; flex-direction: column; gap: 10px;
+  border: 1.5px solid #b0a898; border-top: none; background: #e8e4de;
+}
+.panel-main-tabs { display: flex; flex-shrink: 0; }
+.panel-main-tab {
+  flex: 1; padding: 9px 4px; font-size: 17px; font-weight: 700; cursor: pointer;
+  border: 1.5px solid transparent; border-bottom: none;
+  background: #d4d0c8; color: #8a9aaa; text-align: center;
+  transition: background 0.12s, color 0.12s;
+  font-family: inherit;
+}
+.panel-main-tab:hover:not(.active) { background: #ccc8c0; color: #5a6a78; }
+.panel-main-tab.active {
+  background: #e8e4de; color: #2a6aaa;
+  border-color: #b0a898; border-bottom: 1.5px solid #e8e4de;
+  position: relative; z-index: 1; margin-bottom: -1.5px;
+}
+.panel-main-section { display: none; flex-direction: column; gap: 10px; }
+.panel-main-section.visible { display: flex; }
+.section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #7a8a96; }
+.sep { border: none; border-top: 1px solid #c8c0b4; margin: 2px 0; }
+
+/* Paramètre générique */
+.param-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+.becher-indicator-row {
+  margin-top: 2px;
+  margin-bottom: 8px;
+}
+.becher-indicator {
+  font-size: clamp(12px, 1.25vw, 15px);
+  font-weight: 600;
+  color: #2c3e50;
+  background: #eef2f7;
+  border: 1px solid #c8d4e0;
+  border-radius: 4px;
+  padding: 2px 8px;
+  display: inline-block;
+}
+.param-row label {
+  font-size: clamp(12px, 1.25vw, 15px);
+  font-weight: 600;
+  color: #2c3e50;
+}
+.input-hint {
+  font-size: clamp(11px, 1.1vw, 13px);
+  color: #7a8a96;
+  font-style: italic;
+}
+
+/* Label solution titrante — encadré beige style panel */
+#titrant-label {
+  font-size: clamp(12px, 1.25vw, 15px);
+  font-weight: 400;
+  font-style: normal;
+  color: #3a3a3a;
+  background: #fdf3e3;
+  border: 1.5px solid #d4b896;
+  border-radius: 6px;
+  padding: 4px 9px;
+  line-height: 1.5;
+}
+#titrant-label b {
+  font-weight: 700;
+  color: #1a1a1a;
+}
+
+.btn {
+  width: 100%; padding: 9px 6px; border: 1px solid transparent;
+  border-radius: 6px; font-size: 18px; font-weight: 700; cursor: pointer;
+  transition: transform 0.1s; text-align: center; display: block;
+  font-family: inherit;
+}
+.btn:active { transform: scale(0.97); }
+.btn-raz         { background: #dedad2; color: #5a6a78; border-color: #b0a898; }
+.btn-raz:hover   { background: #d0ccc4; color: #2c3e50; }
+.btn-primary     { background: #2a6aaa; color: #fff; border-color: #1a5a9a; font-size: 18px; padding: 10px 6px; }
+.btn-primary:hover { background: #1a5a9a; }
+.btn-primary:disabled { background: #a0b8c8; border-color: #8098a8; cursor: not-allowed; }
+.btn-toggle-one:disabled { opacity: 0.45; cursor: not-allowed; pointer-events: none; }
+.btn-toggle-one  { background: #ece8e0; color: #5a6a78; border-color: #b0a898; font-size: 16px; padding: 7px 6px; }
+.btn-toggle-one:hover { background: #dedad2; color: #2c3e50; }
+.btn-toggle-one.active { background: #fde8c8; color: #a04010; border-color: #d08040; font-weight: 700; }
+#btn-comparaison { line-height: 1.3; text-align: center; }
+#btn-comparaison #btn-comparaison-label { font-size: 14px; font-style: italic; font-weight: 700; display: block; margin-top: 2px; }
+
+.reaction-select {
+  width: 100%; padding: 7px 8px; border: 1px solid #c8c0b4; border-radius: 5px;
+  font-size: 17px; background: #fff; color: #2c3e50; font-family: inherit; cursor: pointer;
+}
+
+/* Widget quantité titré dans le panel */
+#qty-titre-wrap {
+  container-type: inline-size;
+  container-name: qty;
+}
+.qty-panel-widget {
+  display: flex; flex-direction: row; align-items: center; gap: clamp(4px, 2cqw, 10px); flex-wrap: nowrap; width: auto;
+}
+.qty-panel-label {
+  font-size: clamp(11px, 7.6cqw, 32px); font-weight: 700; color: #c05820; white-space: nowrap; flex-shrink: 0;
+}
+.qty-panel-row {
+  display: flex; align-items: center; gap: clamp(2px, 1.5cqw, 8px); flex-shrink: 0;
+}
+.qty-cell-btn {
+  width: clamp(22px, 10.8cqw, 45px); height: clamp(22px, 10.8cqw, 45px);
+  border: 1.5px solid #b8cce8; border-radius: 4px;
+  background: #d8e8f8; color: #2a6aaa;
+  font-size: clamp(12px, 8.1cqw, 34px); font-weight: 700;
+  cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1;
+  font-family: inherit; flex-shrink: 0;
+}
+.qty-cell-btn:hover { background: #c0d8f0; }
+.qty-cell-input {
+  font-size: clamp(12px, 8.1cqw, 34px); font-weight: 700; color: #2a5080;
+  width: clamp(32px, 14cqw, 63px); text-align: center;
+  border: 1.5px solid #b8cce8; border-radius: 4px; background: #f0f6ff;
+  font-variant-numeric: tabular-nums; padding: 2px 3px;
+  font-family: inherit; flex-shrink: 0;
+}
+.qty-cell-unit { font-size: clamp(11px, 7.6cqw, 32px); color: #5a6a78; white-space: nowrap; flex-shrink: 0; }
+
+.panel-hint {
+  flex-shrink: 0; color: #5a6a78; line-height: 1.5;
+  background: #fff; border: 1.5px solid #b0a898;
+  overflow: hidden;
+  transition: padding 0.2s;
+}
+.panel-hint-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 10px;
+}
+.panel-hint-title {
+  font-size: 13px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 1px; color: #7a8a96;
+}
+.panel-hint-toggle {
+  background: none; border: none; cursor: pointer;
+  font-size: 13px; color: #7a8a96; padding: 0 2px; line-height: 1;
+  transition: transform 0.2s;
+}
+.panel-hint-toggle:hover { color: #2a6aaa; }
+.panel-hint-body {
+  font-size: 15px; padding: 0 10px 8px;
+  overflow: hidden;
+  transition: max-height 0.25s ease, padding 0.25s ease;
+  max-height: 200px;
+}
+.panel-hint.collapsed .panel-hint-body {
+  max-height: 0; padding-top: 0; padding-bottom: 0;
+}
+.panel-hint.collapsed .panel-hint-header {
+  padding-bottom: 6px;
+}
+.panel-hint:not(.collapsed) .panel-hint-toggle {
+  transform: rotate(180deg);
+}
+
+/* ── Slider vitesse ── */
+.speed-slider-wrap { display: flex; flex-direction: column; gap: 4px; }
+.speed-slider {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 6px; border-radius: 3px;
+  background: linear-gradient(to right, #2a6aaa 0%, #2a6aaa 0%, #c8c0b4 0%);
+  outline: none; cursor: pointer;
+}
+.speed-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: #2a6aaa; border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.25); cursor: pointer;
+}
+.speed-slider::-moz-range-thumb {
+  width: 20px; height: 20px; border-radius: 50%;
+  background: #2a6aaa; border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.25); cursor: pointer;
+}
+.speed-labels {
+  display: flex; justify-content: space-between;
+  font-size: 14px; font-weight: 700; color: #5a6a78;
+}
+.speed-labels span.active { color: #2a6aaa; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Message d'état flottant
+══════════════════════════════════════════════════════════════════════════ */
+#status-msg {
+  display: none;
+  position: fixed;
+  bottom: 24px;
+  left: 0;
+  right: clamp(200px, 300px, 22vw);
+  margin-left: auto; margin-right: auto;
+  width: fit-content;
+  max-width: calc(92% - clamp(200px, 300px, 22vw));
+  padding: 9px 22px; border-radius: 8px;
+  font-size: clamp(14px, 2vw, 26px); font-weight: 700;
+  text-align: center;
+  box-shadow: 0 4px 24px rgba(44,40,32,0.28);
+  z-index: 50;
+}
+#status-msg.ok  { display: block; background: #d0e8d8; color: #1a4a2a; border: 1.5px solid #90c8a0; }
+#status-msg.nok { display: block; background: #f5ddd5; color: #8a3010; border: 1.5px solid #d0a090; }
+
+#popup-spacer {
+  flex-shrink: 0; height: 0;
+  transition: height 0.15s ease;
+  pointer-events: none;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   MODE TEST
+══════════════════════════════════════════════════════════════════════════ */
+
+/* Overlay fond semi-transparent */
+#test-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(44,40,32,0.45);
+  z-index: 100;
+  align-items: center; justify-content: center;
+}
+#test-overlay.visible { display: flex; }
+
+/* Fenêtre modale */
+.test-modal {
+  background: #fdf8f0;
+  border: 2px solid #c8c0b4;
+  border-radius: 14px;
+  padding: 28px 32px;
+  max-width: 480px; width: 90%;
+  box-shadow: 0 8px 32px rgba(44,40,32,0.28);
+  text-align: center;
+  display: flex; flex-direction: column; gap: 18px;
+}
+.test-modal h2 { font-size: 20px; font-weight: 700; color: #2c3e50; margin: 0; }
+.test-modal p  { font-size: 16px; color: #5a6a78; line-height: 1.55; margin: 0; }
+.test-modal-btns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+
+/* Boutons dans la modale */
+.btn-test-confirm {
+  padding: 10px 28px; border-radius: 8px; border: none; cursor: pointer;
+  font-size: 16px; font-weight: 700; font-family: inherit;
+  transition: background 0.12s;
+}
+.btn-test-oui   { background: #2a6aaa; color: #fff; }
+.btn-test-oui:hover  { background: #1a5a9a; }
+.btn-test-non   { background: #dedad2; color: #5a6a78; border: 1px solid #b0a898; }
+.btn-test-non:hover  { background: #ccc8c0; }
+.btn-test-green { background: #2a8a50; color: #fff; }
+.btn-test-green:hover { background: #1a7040; }
+
+/* Barre de progression (dans #equation-zone, position absolute) */
+#test-progress-bar {
+  display: none;
+  position: absolute;
+  left: 14px; top: 50%; transform: translateY(-50%);
+  font-size: 21px; font-weight: 700; color: #4a2a8a;
+  line-height: 1.3;
+  pointer-events: none;
+  z-index: 10;
+  white-space: nowrap;
+}
+#test-progress-bar.visible { display: block; }
+
+/* Pop-up flottant saisie / résultat */
+#test-popup {
+  display: none;
+  position: fixed;
+  bottom: 28px;
+  left: 0;
+  right: clamp(200px, 300px, 22vw);
+  margin-left: auto;
+  margin-right: auto;
+  width: fit-content;
+  max-width: calc(92% - clamp(200px, 300px, 22vw));
+  background: #fdf8f0;
+  border: 2px solid #c8c0b4;
+  border-radius: 12px;
+  padding: 14px 24px;
+  box-shadow: 0 4px 24px rgba(44,40,32,0.32);
+  z-index: 50;
+  text-align: center;
+  flex-direction: column; gap: 10px;
+}
+#test-popup.visible { display: flex; }
+#test-popup-msg { font-size: 22px; font-weight: 700; }
+#test-popup-msg.ok  { color: #1a6a30; }
+#test-popup-msg.nok { color: #a01010; }
+#test-popup-btns { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; align-items: center; }
+
+/* Input de saisie dans le popup */
+#test-input-wrap { display: flex; align-items: center; gap: 8px; justify-content: center; }
+#test-input-qty {
+  font-size: 22px; font-weight: 700; color: #2a5080;
+  width: 70px; text-align: center;
+  border: 2px solid #b8cce8; border-radius: 6px; background: #f0f6ff;
+  font-family: inherit; padding: 4px 6px;
+}
+#test-input-label { font-size: 20px; font-weight: 700; color: #c05820; }
+#test-input-unit  { font-size: 18px; color: #5a6a78; }
+
+/* Bouton dans le panel */
+.btn-test-mode { background: #4a2a8a; color: #fff; border-color: #3a1a7a; font-size: 15px; padding: 10px 6px; width: 100%; border-radius: 6px; font-weight: 700; font-family: inherit; cursor: pointer; }
+.btn-test-mode:hover { background: #3a1a7a; }
+.btn-quitter-test { background: #c03010; color: #fff; border-color: #a02000; font-size: 15px; padding: 10px 6px; width: 100%; border-radius: 6px; font-weight: 700; font-family: inherit; cursor: pointer; }
+.btn-quitter-test:hover { background: #a02000; }
+
+/* Score final */
+#test-score-display { font-size: 42px; font-weight: 700; color: #2a6aaa; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Zone centrale — mode Titrage
+══════════════════════════════════════════════════════════════════════════ */
+#sim-area-titrage {
+  /* occupe la même cellule de grille que #sim-area */
+  grid-column: 1;
+  grid-row: 1;
+  background: #fdf8f0;
+  border-right: 1px solid #c8c0b4;
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+  min-height: 0;
+  height: 100%;
+}
+
+/* Zone schéma dispositif (gauche)
+   `flex-grow: 38` (38vw de référence) vs graph-zone `flex-grow: 62` :
+   la zone schéma occupe ~38 % de la largeur, la zone graphes ~62 %,
+   et elles se réduisent dans les mêmes proportions quand la fenêtre
+   rétrécit. Les bornes min-width / max-width évitent les extrêmes. */
+#titrage-schema-zone {
+  flex: 38 1 0;
+  min-width: 280px;
+  max-width: 780px;
+  height: 100%;
+  border-right: 1px solid #c8c0b4;
+  background: #fdf8f0;
+  overflow: visible;
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-start;
+  container-type: inline-size;
+  container-name: schema-zone;
+}
+
+#svg-dispositif {
+  /* Le SVG prend toute la hauteur disponible ; sa largeur découle de son
+     ratio viewBox (aspect-ratio respecté nativement sur les SVG inline).
+     On force display:block et height:100% pour garantir le ratio. */
+  height: 100%;
+  width: auto;
+  max-width: 100%;
+  display: block;
+  min-width: 0;
+}
+
+/* ═══ Mode pH-métrique : afficher l'électrode pH et le pH-mètre ═══ */
+body.titrage-ph #potence-ph,
+body.titrage-ph #electrode-ph,
+body.titrage-ph #ph-metre {
+  display: inline !important;
+}
+
+/* ═══ Mode conductimétrique : afficher la potence, la sonde conducti et le conductimètre ═══ */
+body.titrage-cond #potence-ph,
+body.titrage-cond #sonde-conducti,
+body.titrage-cond #conductimetre-svg {
+  display: inline !important;
+}
+
+/* Wrapper principal : SVG stage à gauche + burette-box à droite (flex row).
+   La burette-box est désormais un sibling flex (plus de position:absolute). */
+#schema-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: clamp(6px, 1vw, 14px);
+  padding: clamp(6px, 1vw, 14px) clamp(8px, 1.2vw, 18px) clamp(6px, 1vw, 14px) clamp(8px, 1.5vw, 20px);
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+/* Conteneur du SVG + boutons absolus ancrés sur lui. Reprend toute la
+   largeur disponible : la burette-box est superposée par-dessus (absolute)
+   et calée juste à droite du tube de la burette par JS. */
+#svg-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+/* Boutons schéma (superposés) */
+.schema-btn {
+  background: #fff;
+  border: 1px solid #b0b8c4;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: clamp(13.5px, 1.65vw, 19.5px);
+  font-weight: 600;
+  color: #2c3e50;
+  padding: 3px 7px;
+  line-height: 1.3;
+  box-shadow: 0 1px 3px rgba(0,0,0,.12);
+  transition: background .15s, transform .1s;
+  white-space: nowrap;
+  z-index: 2;
+}
+.schema-btn:hover  { background: #eef2f7; }
+.schema-btn:active { transform: scale(.96); }
+
+/* Bouton empois d'amidon — positionné par JS à droite du bécher */
+#btn-amidon {
+  background: #fff;
+  border: 1px solid #b0b8c4;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: clamp(11px, 1.3vw, 15px);
+  font-weight: 600;
+  color: #2c3e50;
+  padding: 4px 8px;
+  line-height: 1.3;
+  box-shadow: 0 1px 3px rgba(0,0,0,.12);
+  transition: background .15s, transform .1s;
+  white-space: normal;
+  word-break: break-word;
+  max-width: 108px;
+  width: 108px;
+  z-index: 2;
+  text-align: center;
+}
+#btn-amidon:hover:not(:disabled)  { background: #eef2f7; }
+#btn-amidon:active:not(:disabled) { transform: scale(.96); }
+#btn-amidon:disabled {
+  background: #1a2a5a;
+  color: #fff;
+  border-color: #1a2a5a;
+  cursor: default;
+  opacity: 1;
+}
+
+
+.schema-btn-reinit {
+  position: absolute;
+  top: 4%;
+  left: 4%;
+  font-size: clamp(14px, 1.6vw, 20px);
+  padding: 2px 8px;
+  color: #555;
+}
+
+#schema-btns-ajout {
+  position: absolute;
+  left: 2%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  /* positionné par JS via top en px */
+}
+
+/* Zone équation + graphiques (droite) */
+#titrage-graph-zone {
+  flex: 62 1 0;
+  min-width: 0;
+  min-height: 0;
+  background: #fdf8f0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative; /* ancre la fenêtre flottante mode test */
+}
+
+/* Équation support du titrage */
+#titrage-equation-zone {
+  flex: 0 0 auto;
+  padding: 12px 20px 10px;
+  border-bottom: 1px solid #e0dcd4;
+  background: #f7f3ec;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  container-type: inline-size;
+}
+#titrage-equation-display {
+  font-size: 20px; /* taille de départ, ajustée dynamiquement par JS */
+  font-weight: 600;
+  color: #2c3e50;
+  text-align: center;
+  line-height: 1.8;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: center;
+  gap: 2px 4px;
+  white-space: nowrap;
+}
+#titrage-equation-display .mol-group   { display: inline-flex; align-items: baseline; gap: 2px; }
+#titrage-equation-display .mol-formula { font-size: inherit; font-weight: 700; letter-spacing: 0; }
+#titrage-equation-display .mol-formula.implicit { color: #b0b8c0; font-weight: 400; }
+#titrage-equation-display .mol-coeff-fixed { font-size: inherit; font-weight: 700; color: #c03010; }
+#titrage-equation-display .eq-arrow   { color: #7a8a96; font-weight: 300; padding: 0 6px; font-size: inherit; }
+#titrage-equation-display .eq-plus    { color: #7a8a96; font-weight: 300; padding: 0 2px; font-size: inherit; }
+
+/* Zone graphique : prend tout l'espace restant */
+/* ── Zone graphiques (sous l'équation, à droite du schéma) ── */
+#titrage-charts-zone {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;    /* scrollable quand le contenu dépasse (canvas min-height) */
+  overflow-x: hidden;
+}
+
+/* Un panneau graphique = canvas + légende */
+.chart-panel {
+  flex: 1;
+  min-height: 380px;        /* force le scroll si la zone est trop petite */
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 12px;
+  gap: 8px;
+  box-sizing: border-box;
+}
+
+/* Séparateur entre deux panneaux quand les deux sont actifs */
+.chart-panel + .chart-panel {
+  border-top: 1px solid #d0c8bc;
+}
+
+/* ── Barre de boutons analytiques pH — overlay dans le cadre graphe ── */
+#titrage-chart-ph-panel {
+  position: relative;   /* ancrage pour les boutons en overlay */
+}
+#ph-analysis-btns {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  display: flex;
+  gap: 6px;
+  z-index: 10;
+  flex-wrap: nowrap;
+}
+.ph-analysis-btn {
+  height: 30px;
+  padding: 0 12px;
+  font-weight: 700;
+  font-size: 13px;
+  line-height: 30px;
+  font-family: inherit;
+  background: #e8e4de;
+  color: #5a6a78;
+  border: 1px solid #b0a898;
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  transition: background 0.1s, color 0.1s;
+}
+.ph-analysis-btn:hover:not(:disabled) { background: #d0ccc4; color: #2c3e50; }
+.ph-analysis-btn.active               { background: #2a6aaa; color: #fff; border-color: #1a5a9a; }
+.ph-analysis-btn.active:hover         { background: #1a5a9a; color: #fff; }
+.ph-analysis-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.ph-analysis-btn:disabled:hover { background: #e8e4de; color: #5a6a78; }
+
+/* Bouton curseur libre : icône + grande, centrée via flex */
+#btn-ph-cursor {
+  font-size: 20px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+/* Bulle tooltip réticule libre graphe pH */
+#ph-reticule-tooltip {
+  display: none;
+  position: fixed;
+  z-index: 50;
+  background: #2c3e50;
+  color: #fff;
+  font-size: 13px;
+  font-family: monospace;
+  padding: 5px 10px;
+  border-radius: 5px;
+  pointer-events: none;
+  white-space: nowrap;
+  line-height: 1.6;
+}
+
+/* Canvas graphique — prend tout l'espace restant après la légende */
+#titrage-chart {
+  display: block;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  background: #fdf8f0;
+  border-radius: 8px;
+  box-shadow: 0 0 0 2px #2a6aaa, 0 2px 10px rgba(0,0,0,.10);
+  box-sizing: border-box;
+}
+
+/* Légende — hauteur naturelle, le panel scroll si nécessaire */
+#titrage-legende {
+  width: 100%;
+  flex-shrink: 0;
+  overflow: visible;
+  display: table;
+  border-collapse: collapse;
+  font-size: clamp(13px, 1.4vw, 18px);
+  background: rgba(255,255,255,0.55);
+  border-radius: 6px;
+  border: 1px solid #e0dcd4;
+}
+
+/* Séparateur entre deux panneaux quand les deux sont actifs */
+.chart-panel + .chart-panel {
+  border-top: 1px solid #d0c8bc;
+}
+
+/* Canvas graphique — prend tout l'espace disponible dans le panneau */
+#titrage-chart,
+#titrage-chart-ph {
+  display: block;
+  flex: 1;
+  min-height: 0;
+  width: 100% !important;   /* override les attributs width/height inline posés par JS */
+  height: 100% !important;
+  background: #fdf8f0;
+  border-radius: 8px;
+  box-shadow: 0 0 0 2px #2a6aaa, 0 2px 10px rgba(0,0,0,.10);
+}
+
+/* ── Légende — tableau 3×2 ── */
+#titrage-legende {
+  width: 100%;
+  flex-shrink: 0;
+  display: table;
+  border-collapse: collapse;
+  font-size: clamp(13px, 1.4vw, 18px);
+  background: rgba(255,255,255,0.55);
+  border-radius: 6px;
+  border: 1px solid #e0dcd4;
+  overflow: hidden;
+}
+
+.chart-legend-row {
+  display: table-row;
+}
+.chart-legend-row:not(:last-child) .chart-legend-cell {
+  border-bottom: 1px solid #e0dcd4;
+}
+
+/* Colonne gauche : label de la section */
+.chart-legend-cell-label {
+  display: table-cell;
+  vertical-align: middle;
+  white-space: nowrap;
+  padding: 6px 12px 6px 8px;
+  font-size: clamp(10px, 1.0vw, 13px);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: #8a8278;
+  width: 1%;
+  border-right: 1px solid #e0dcd4;
+}
+
+/* Colonne droite : items */
+.chart-legend-cell-items {
+  display: table-cell;
+  vertical-align: middle;
+  padding: 5px 6px 5px 10px;
+}
+.chart-legend-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+.chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: inherit;
+  border-radius: 14px;
+  padding: 3px 10px 3px 7px;
+  background: rgba(255,255,255,0.7);
+  border: 1.5px solid #e0dcd4;
+  user-select: none;
+  transition: background .12s, border-color .12s;
+  white-space: nowrap;
+}
+.chart-legend-item:hover { background: #fff; border-color: #b0a898; }
+.chart-legend-item.unchecked { opacity: 0.40; }
+
+.chart-legend-item input[type="checkbox"] {
+  width: clamp(11px, 1.1vw, 15px);
+  height: clamp(11px, 1.1vw, 15px);
+  cursor: pointer;
+  flex-shrink: 0;
+  margin: 0;
+}
+.chart-legend-swatch {
+  width: clamp(16px, 1.6vw, 24px);
+  height: clamp(4px, 0.4vw, 6px);
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.chart-legend-text {
+  font-weight: 700;
+  line-height: 1;
+}
+
+
+/* ── Masque "réactif titré caché" — mode Titrage ── */
+#titrage-conc-mask {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+  background: rgb(254, 240, 228);
+  border: 2px solid #c07830;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#titrage-conc-mask-inner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+#titrage-conc-mask-qmark {
+  font-size: clamp(16px, 2vw, 28px);
+  font-weight: 900;
+  color: #c07830;
+  line-height: 1;
+}
+#titrage-conc-mask-inner span:not(#titrage-conc-mask-qmark) {
+  font-size: clamp(10px, 1.1vw, 13px);
+  font-weight: 700;
+  color: #a05820;
+}
+.titrage-select {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: clamp(12px, 1.25vw, 15px);
+  font-family: inherit;
+  border: 1px solid #c8c0b4;
+  border-radius: 4px;
+  background: #faf9f6;
+  color: #2c3e50;
+  cursor: pointer;
+}
+.titrage-select:focus { outline: none; border-color: #2a6aaa; }
+
+/* ── Ligne de concentration C = X × 10^n mol/L ── */
+.conc-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: nowrap;
+  margin-top: 4px;
+}
+.conc-prefix, .conc-times, .conc-unit {
+  font-size: clamp(12px, 1.25vw, 15px);
+  color: #2c3e50;
+  white-space: nowrap;
+}
+.conc-mantisse {
+  width: 64px;
+  padding: 5px 6px;
+  font-size: clamp(12px, 1.25vw, 15px);
+  border: 1px solid #c8c0b4;
+  border-radius: 4px;
+  text-align: center;
+  font-family: inherit;
+  color: #2a5080;
+  font-weight: 600;
+}
+.conc-exp-sel {
+  padding: 5px 4px;
+  font-size: clamp(12px, 1.25vw, 15px);
+  border: 1px solid #c8c0b4;
+  border-radius: 4px;
+  background: #faf9f6;
+  color: #2a5080;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+/* Marge entre le widget de concentration titrée et le bouton Aléatoire */
+#conc-titre-maskable {
+  margin-bottom: 8px;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Label volume versé — à gauche de la burette
+══════════════════════════════════════════════════════════════════════════ */
+#label-volume-verse {
+  position: absolute;
+  font-size: clamp(13.5px, 1.5vw, 18px);
+  font-weight: 700;
+  color: #2a5080;
+  background: rgba(255,255,255,.85);
+  border: 1px solid #b0c8e0;
+  border-radius: 4px;
+  padding: 2px 5px;
+  pointer-events: none;
+  white-space: nowrap;
+  /* positionné par JS à gauche de la burette */
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Boîte de gestion de la burette — overlay à droite du SVG
+══════════════════════════════════════════════════════════════════════════ */
+#burette-box {
+  /* Position absolue ancrée sur #schema-wrapper : la box peut chevaucher
+     la viewBox du SVG pour se rapprocher au plus près du tube de la burette.
+     `left`, `width`, `bottom` et `max-height` sont pilotés par JS
+     (_updateBuretteBoxPosition). La box est ancrée par le bas (grad 25 mL). */
+  position: absolute;
+  /* top, bottom, max-height : pilotés en inline par JS */
+  overflow-y: auto;
+  background: #f5f2ec;
+  border: 1.5px solid #2a6aaa;
+  border-radius: 8px;
+  padding: clamp(7px, 3.5cqw, 14px) clamp(8px, 5cqw, 16px) clamp(8px, 4cqw, 14px);
+  display: flex;
+  flex-direction: column;
+  gap: clamp(5px, 3cqw, 10px);
+  z-index: 5;
+  box-shadow: 0 2px 10px rgba(42,106,170,0.13);
+  container-type: inline-size;
+  container-name: burette-box;
+}
+
+.burette-box-title {
+  font-size: clamp(10px, 5.5cqw, 15px);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #2a6aaa;
+  text-align: center;
+  border-bottom: 1px solid #b0c8e0;
+  padding-bottom: 6px;
+  margin-bottom: 1px;
+}
+
+.burette-box-btn-raz {
+  background: #dedad2;
+  color: #5a6a78;
+  border: 1px solid #b0a898;
+  border-radius: 5px;
+  padding: 7px 9px;
+  font-size: clamp(11px, 6cqw, 17px);
+  font-weight: 700;
+  cursor: pointer;
+  text-align: center;
+  width: 100%;
+  font-family: inherit;
+  transition: background .15s, transform .1s;
+}
+.burette-box-btn-raz:hover  { background: #d0ccc4; color: #2c3e50; }
+.burette-box-btn-raz:active { transform: scale(.96); }
+
+.burette-box-hint {
+  font-size: clamp(10px, 5cqw, 14px);
+  color: #5a6a78;
+  font-style: italic;
+  text-align: center;
+  line-height: 1.35;
+}
+
+.burette-box-slider-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.burette-box-slider-label {
+  font-size: clamp(10px, 5cqw, 14px);
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+/* Ligne +0.5 / +1 mL */
+.burette-box-ajout-row {
+  display: flex;
+  gap: 7px;
+}
+.burette-box-btn-ajout {
+  flex: 1;
+  background: #fff;
+  border: 1px solid #b0b8c4;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: clamp(10px, 5.5cqw, 16px);
+  font-weight: 700;
+  color: #2c3e50;
+  padding: 7px 4px;
+  text-align: center;
+  font-family: inherit;
+  transition: background .15s, transform .1s;
+  white-space: nowrap;
+}
+.burette-box-btn-ajout:hover  { background: #eef2f7; }
+.burette-box-btn-ajout:active { transform: scale(.96); }
+.burette-box-btn-ajout:disabled {
+  opacity: 0.40;
+  cursor: not-allowed;
+}
+
+/* Bouton vidage automatique */
+.burette-box-btn-auto {
+  background: #2a6aaa;
+  color: #fff;
+  border: 1px solid #1a5a9a;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: clamp(10px, 5.5cqw, 16px);
+  font-weight: 700;
+  padding: 8px 6px;
+  text-align: center;
+  width: 100%;
+  font-family: inherit;
+  transition: background .15s, transform .1s;
+}
+.burette-box-btn-auto:hover  { background: #1a5a9a; }
+.burette-box-btn-auto:active { transform: scale(.96); }
+.burette-box-btn-auto.running {
+  background: #c08020;
+  border-color: #a06010;
+}
+.burette-box-btn-auto.running:hover { background: #a06010; }
+.burette-box-btn-auto:disabled {
+  background: #a0b8c8;
+  border-color: #8098a8;
+  cursor: not-allowed;
+}
+
+/* Désactivation globale boîte burette en mode auto */
+#burette-box.auto-running .burette-box-btn-raz,
+#burette-box.auto-running .burette-box-btn-ajout {
+  opacity: 0.40;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LÉGENDE DES ESPÈCES CHIMIQUES (intégrée à #burette-box quand le mode actif)
+══════════════════════════════════════════════════════════════════════════ */
+#especes-legende-section {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid #b0c8e0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.especes-legende-title {
+  font-size: clamp(10px, 5.5cqw, 14px);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #2a6aaa;
+  text-align: center;
+}
+.especes-legende-body {
+  display: flex;
+  flex-direction: row;
+  gap: 0;
+  align-items: center;
+}
+.especes-legende-zoom-col {
+  flex: 0 0 40%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+}
+#btn-zoom-becher {
+  width: 100%;
+  white-space: normal;
+  line-height: 1.3;
+  display: block;
+  font-size: clamp(9px, 1.1vw, 13px) !important;
+  padding: 4px 3px;
+  text-align: center;
+}
+.especes-legende-list {
+  flex: 0 0 60%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-right: 4px;
+  /* Pas de scroll local : la box burette gère un scroll global unique. */
+}
+.especes-legende-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: clamp(11px, 5.5cqw, 14px);
+  color: #2c3e50;
+  cursor: pointer;
+  padding: 2px 3px;
+  border-radius: 4px;
+  transition: background .12s;
+}
+.especes-legende-row:hover {
+  background: #ece8e0;
+}
+.especes-legende-row input[type="checkbox"] {
+  accent-color: #4a7aaa;
+  cursor: pointer;
+  margin: 0;
+  flex-shrink: 0;
+}
+.especes-pastille {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1.5px solid;
+  flex-shrink: 0;
+  display: inline-block;
+}
+.especes-formule {
+  flex: 1;
+  font-family: inherit;
+  line-height: 1.1;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ZOOM BÉCHER
+══════════════════════════════════════════════════════════════════════════ */
+#zoom-becher-panel {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 2px solid #4a90d9;
+  border-radius: 6px;
+  margin: 8px;
+  box-sizing: border-box;
+  padding: 0;        /* pas de padding : le SVG remplit tout */
+}
+.zoom-becher-titre {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  font-size: 1.1em;
+  font-weight: 700;
+  color: #4a90d9;
+  letter-spacing: 0.5px;
+  pointer-events: none;
+  z-index: 1;
+}
+#zoom-becher-svg {
+  /* viewBox fixe = "68 168 135 110" (ratio 135/110). On force le SVG à
+     conserver ce ratio quelle que soit la fenêtre, en occupant la dimension
+     limitante du panel. Évite les bandes vides et la sensation que la zone
+     visible change avec la fenêtre. */
+  display: block;
+  aspect-ratio: 135 / 110;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  background: transparent;
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   BOUTON INDICATEUR COLORÉ (positionné en absolu sur le schéma SVG)
+══════════════════════════════════════════════════════════════════════════ */
+#btn-indicateur-colore {
+  position: absolute;
+  background: #d0e8d8;
+  color: #1a4a2a;
+  border: 1.5px solid #80b890;
+  border-radius: 6px;
+  cursor: pointer;
+  /* font-size pilotée par JS (proportionnelle à l'échelle SVG, ×1.25 vs base) */
+  font-size: 13px;
+  font-weight: 700;
+  font-family: inherit;
+  padding: 7px 10px;
+  text-align: center;
+  white-space: normal;        /* autorise le retour à la ligne si nom long */
+  word-break: break-word;
+  line-height: 1.25;
+  transition: background .15s, transform .1s;
+  z-index: 10;
+}
+#btn-indicateur-colore:hover  { background: #b0d8bc; }
+#btn-indicateur-colore:active { transform: scale(.97); }
+#btn-indicateur-colore.has-indicateur {
+  background: #f5e0ff;
+  color: #5a1a7a;
+  border-color: #b880e8;
+}
+/* Masquer le bouton indicateur coloré en mode conductimétrique */
+body.titrage-cond #btn-indicateur-colore,
+body.titrage-cond #btn-ph-indicateur {
+  display: none !important;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   MODAL INDICATEUR COLORÉ
+══════════════════════════════════════════════════════════════════════════ */
+#indicateur-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(44, 62, 80, 0.55);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#indicateur-modal {
+  background: #fdf8f0;
+  border: 2px solid #c8c0b4;
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.22);
+  display: flex;
+  flex-direction: column;
+  max-width: 96vw;
+  max-height: 88vh;
+  min-width: 520px;
+  overflow: hidden;
+}
+#indicateur-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px 10px;
+  border-bottom: 1.5px solid #c8c0b4;
+  flex-shrink: 0;
+}
+#indicateur-modal-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #2c3e50;
+}
+#indicateur-modal-close {
+  background: none;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  color: #7a8a96;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background .12s;
+}
+#indicateur-modal-close:hover { background: #e0dbd4; color: #2c3e50; }
+#indicateur-modal-body {
+  overflow-y: auto;
+  flex: 1;
+  padding: 12px 16px;
+}
+#indicateur-modal-footer {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 10px 16px 14px;
+  border-top: 1.5px solid #c8c0b4;
+  flex-shrink: 0;
+}
+#indicateur-modal-footer .btn {
+  width: auto;
+  min-width: 120px;
+}
+
+/* Tableau des indicateurs */
+#indicateur-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: clamp(12px, 1.1vw, 14px);
+}
+#indicateur-table thead tr {
+  background: #e8e4de;
+}
+#indicateur-table th {
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #7a8a96;
+  border-bottom: 1.5px solid #c8c0b4;
+}
+#indicateur-table tbody tr {
+  cursor: pointer;
+  transition: background .12s;
+  border-bottom: 1px solid #e0dbd4;
+}
+#indicateur-table tbody tr:hover {
+  background: #e8f4ec;
+}
+#indicateur-table tbody tr.selected {
+  background: #c8ecd4;
+  outline: 2px solid #2a8a50;
+  outline-offset: -2px;
+}
+#indicateur-table td {
+  padding: 9px 12px;
+  vertical-align: middle;
+  color: #2c3e50;
+}
+#indicateur-table td:first-child {
+  font-weight: 700;
+}
+/* Pastille de couleur dans le tableau */
+.indic-color-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(0,0,0,0.18);
+  vertical-align: middle;
+  margin-right: 5px;
+  flex-shrink: 0;
+}
+.indic-color-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+/* Zone de virage : badge */
+.indic-zone-badge {
+  display: inline-block;
+  background: #e8f0f8;
+  border: 1px solid #b0c8e0;
+  border-radius: 4px;
+  padding: 2px 7px;
+  font-size: clamp(11px, 1vw, 13px);
+  font-weight: 600;
+  color: #2a5080;
+  white-space: nowrap;
+}
+
+/* Indicateur actif affiché en bas du schéma */
+#indicateur-actif-label {
+  position: absolute;
+  background: rgba(253,248,240,0.92);
+  border: 1.5px solid #c8c0b4;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: clamp(10px, 1.1vw, 13px);
+  font-weight: 600;
+  color: #2c3e50;
+  pointer-events: none;
+  z-index: 10;
+  display: none;
+  white-space: nowrap;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   MODE TEST TITRAGE — fenêtre flottante Résultats
+══════════════════════════════════════════════════════════════════════════ */
+
+/* Conteneur principal — positionné en absolu dans #titrage-graph-zone */
+#titrage-test-panel {
+  position: absolute;
+  top: 60px;
+  left: 20px;
+  width: 280px;
+  background: #fdf8f0;
+  border: 2px solid #4a2a8a;
+  border-radius: 10px;
+  box-shadow: 0 4px 18px rgba(74,42,138,0.22);
+  z-index: 200;
+  user-select: none;
+  font-family: inherit;
+}
+
+/* En-tête drag handle */
+#titrage-test-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #4a2a8a;
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 8px 8px 0 0;
+  cursor: grab;
+  font-size: 15px;
+  font-weight: 700;
+}
+#titrage-test-panel-header:active { cursor: grabbing; }
+
+#titrage-test-panel-minimize {
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 2px;
+  border-radius: 3px;
+  transition: background 0.1s;
+  user-select: none;
+}
+#titrage-test-panel-minimize:hover { background: rgba(255,255,255,0.18); }
+
+/* Corps du panel */
+#titrage-test-panel-body {
+  padding: 14px 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Panel réduit */
+#titrage-test-panel.minimized #titrage-test-panel-body {
+  display: none;
+}
+#titrage-test-panel.minimized {
+  border-radius: 10px;
+}
+#titrage-test-panel.minimized #titrage-test-panel-header {
+  border-radius: 8px;
+}
+
+/* Ligne de saisie */
+.titrage-test-row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.titrage-test-row label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #2c3e50;
+}
+.titrage-test-row input[type="number"] {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 16px;
+  font-weight: 700;
+  border: 1.5px solid #b0a898;
+  border-radius: 5px;
+  font-family: inherit;
+  color: #2a5080;
+  background: #f7f3ec;
+  text-align: center;
+}
+.titrage-test-row input[type="number"]:focus {
+  outline: none;
+  border-color: #4a2a8a;
+}
+
+/* Ligne concentration mantisse × 10^n */
+.titrage-test-conc-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: nowrap;
+}
+.titrage-test-c, .titrage-test-times, .titrage-test-unit {
+  font-size: 13px;
+  color: #2c3e50;
+  white-space: nowrap;
+}
+.titrage-test-conc-row input[type="number"] {
+  width: 58px;
+  padding: 5px 5px;
+  font-size: 14px;
+  font-weight: 700;
+  border: 1.5px solid #b0a898;
+  border-radius: 4px;
+  font-family: inherit;
+  color: #2a5080;
+  background: #f7f3ec;
+  text-align: center;
+}
+.titrage-test-conc-row input[type="number"]:focus { outline: none; border-color: #4a2a8a; }
+.titrage-test-conc-row select {
+  padding: 5px 4px;
+  font-size: 13px;
+  border: 1.5px solid #b0a898;
+  border-radius: 4px;
+  background: #faf9f6;
+  color: #2a5080;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+/* Bouton valider */
+.titrage-test-btn-valider {
+  background: #4a2a8a;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 9px 12px;
+  font-size: 15px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  width: 100%;
+  transition: background 0.12s, transform 0.1s;
+}
+.titrage-test-btn-valider:hover { background: #3a1a7a; }
+.titrage-test-btn-valider:active { transform: scale(0.97); }
+
+/* Boutons post-validation (Réessayer / Autre titrage / Sortir) */
+#titrage-test-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.titrage-test-btn-action {
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: inherit;
+  width: 100%;
+  transition: background 0.12s, transform 0.1s;
+}
+.titrage-test-btn-action:active { transform: scale(0.97); }
+.titrage-test-btn-action.btn-test-oui { background: #2a6aaa; color: #fff; }
+.titrage-test-btn-action.btn-test-oui:hover { background: #1a5a9a; }
+.titrage-test-btn-action.btn-test-non { background: #dedad2; color: #5a6a78; border: 1px solid #b0a898; }
+.titrage-test-btn-action.btn-test-non:hover { background: #ccc8c0; }
+
+/* Zone feedback */
+#titrage-test-feedback {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.45;
+  padding: 8px 10px;
+  border-radius: 6px;
+  display: none;
+  text-align: center;
+}
+#titrage-test-feedback.ok  { display: block; background: #d0e8d8; color: #1a4a2a; border: 1.5px solid #90c8a0; }
+#titrage-test-feedback.ok-partial { display: block; background: #fde8c8; color: #7a3800; border: 1.5px solid #d09040; }
+#titrage-test-feedback.nok { display: block; background: #f5ddd5; color: #8a3010; border: 1.5px solid #d0a090; }
+
+/* Contrôles désactivés en mode test (cursor interdit) */
+.titrage-test-locked {
+  opacity: 0.45;
+  cursor: not-allowed !important;
+  pointer-events: none !important;
+}
+
+/* ── Message pH à l'équivalence (mode colorimétrique indicateur coloré) ── */
+#titrage-test-phe-msg {
+  display: block;
+  margin: 6px 0 4px 14px;
+  background: rgba(253,248,240,0.97);
+  border: 2px solid #4a2a8a;
+  border-radius: 7px;
+  padding: 6px 16px;
+  font-size: clamp(13px, 1.4vw, 17px);
+  font-weight: 700;
+  color: #2c3e50;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(74,42,138,0.12);
+  width: fit-content;
+}

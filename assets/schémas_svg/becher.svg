@@ -1,0 +1,8 @@
+<svg version="1.1" viewBox="0 0 60 70" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <clipPath id="becher-interieur">
+    <path id="becher-interieur" d="m6.0162 12.991h48v50s1 5.5-5 5.5h-37.5s-5.5.49998-5.5-5.5z"/>
+  </clipPath>
+</defs>
+ <path id="becher-contour" d="m49.016.49106h-38c-6.1753 0-10 4.8227-10 4.8227 5 0 5 5.305 5 5.305v53.05c0 4.8227 5 4.8227 5 4.8227h37.5c5.5 0 5.5-4.8227 5.5-4.8227v-58.355s0-4.8227-5-4.8227z" style="fill-opacity:0;stroke-width:.98211;stroke:#000"/>
+</svg>

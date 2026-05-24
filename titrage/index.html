@@ -1,0 +1,632 @@
+﻿<!DOCTYPE html>
+<!-- ════════════════════════════════════════════════════
+     Simulation pédagogique — Physique-Chimie Lycée
+     Auteur  : Mathieu Berdous
+     Licence : CC BY-NC 4.0 — https://creativecommons.org/licenses/by-nc/4.0/
+════════════════════════════════════════════════════ -->
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Simulation — Titrage</title>
+  <meta name="author" content="Mathieu Berdous">
+  <meta name="copyright" content="Mathieu Berdous — CC BY-NC 4.0">
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<main id="main-grid">
+
+  <!-- Zone centrale -->
+  <div id="sim-area">
+
+    <!-- Équation de titrage -->
+    <div id="equation-zone">
+      <div id="test-progress-bar"></div>
+      <div id="equation-row"></div>
+    </div>
+
+    <!-- Tableau + canvas superposé -->
+    <div id="canvas-and-table">
+
+      <!-- Canvas plein fond (z-index 0) -->
+      <canvas id="mol-canvas"></canvas>
+
+      <!-- Tableau HTML (z-index 1) -->
+      <table id="titrage-table">
+        <thead id="table-thead"><tr id="thead-row"></tr></thead>
+        <tbody id="table-tbody"></tbody>
+        <tfoot id="table-tfoot" style="display:none;"></tfoot>
+      </table>
+
+    </div>
+
+    <!-- Masque "réactif titré caché" — positionné par JS au-dessus de la colonne titré -->
+    <div id="titre-mask" style="display:none;"></div>
+
+    <div id="popup-spacer"></div>
+
+  </div>
+
+  <!-- ═══ Zone centrale mode Titrage ═══ -->
+  <div id="sim-area-titrage" style="display:none;">
+
+    <!-- Zone schéma dispositif -->
+    <div id="titrage-schema-zone">
+      <div id="schema-wrapper">
+        <!-- Conteneur du SVG + boutons flottants ancrés sur le SVG.
+             Permet à la burette-box (sibling flex) de partager la largeur
+             du wrapper sans recouvrir le SVG. -->
+        <div id="svg-stage">
+        <svg id="svg-dispositif" xmlns="http://www.w3.org/2000/svg" viewBox="42.02 -1.37 89.97 303.5">
+        <defs>
+  <!-- Dégradé vertical barreau aimanté : blanc PTFE avec reflet -->
+  <linearGradient id="barreau-gradient" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%"   stop-color="#f0f0f0"/>
+    <stop offset="35%"  stop-color="#ffffff"/>
+    <stop offset="65%"  stop-color="#d8d8d8"/>
+    <stop offset="100%" stop-color="#b0b0b0"/>
+  </linearGradient>
+  <clipPath id="burette-interieur">
+    <path clip-rule="evenodd" d="m84.744 12.98s.02048 2.3082 3.8807 2.3082c3.8602 0 3.8468-2.2886 3.8468-2.2886l.01333 159.32-.24356 2.8116-.81182 1.059-.28816 6.7989-.01376 7.105-.17717 2.0245-.26931 1.6882v12.057l-.38323 2.2833-.63445 1.8564h-2.0222l-.64138-1.7096-.3763-2.4301-.0042-11.681-.41592-2.1091-.16391-9.0852-.28562-3.3257.0029-3.4731-.94841-1.1866-.04386-2.684z"/>
+  </clipPath>
+  <clipPath id="becher-interieur">
+    <path d="m77.279 225h37.721v40s0 3.4786-4 3.4562c-4-.0222-30 0-30 0s-3.7512.0641-3.7574-3.4197c-.006165-3.4838.036894-40.037.036894-40.037z"/>
+  </clipPath>
+</defs>
+        <!-- Liquide bécher (avant contour) -->
+        <rect id="liquide-becher"
+              x="77.279" y="268.5" width="37.721" height="0"
+              clip-path="url(#becher-interieur)"
+              fill="#f5c842" fill-opacity="0.7"
+              stroke="none"/>
+        <!-- Barreau aimanté (clipé dans le bécher, animé par JS) -->
+        <g id="barreau-aimante" clip-path="url(#becher-interieur)">
+          <!-- Le rect rx=ry donne les bouts arrondis ; largeur et rx animés par JS -->
+          <rect id="barreau-rect"
+                x="83.64" y="263.0" width="25" height="5"
+                rx="2.5" ry="2.5"
+                fill="url(#barreau-gradient)"
+                stroke="#888" stroke-width="0.3"/>
+        </g>
+        <!-- Filet d'écoulement burette → bécher (animé par JS) — placé avant le contour bécher pour passer derrière -->
+        <rect id="filet-rect"
+              x="87.668" y="209.98" width="2" height="0"
+              fill="#b8d4f0" fill-opacity="0.75"
+              stroke="none" style="display:none;"/>
+        <path id="becher-contour" fill-opacity="0" stroke="#000" stroke-width=".529" d="m111.07 215.08h-29.896c-4.8584 0-7.8674 3.7942-7.8674 3.7942 3.9337 0 3.9337 4.1737 3.9337 4.1737v41.737c0 3.7942 3.9337 3.7942 3.9337 3.7942h29.503c4.3271 0 4.3271-3.7942 4.3271-3.7942v-45.91s0-3.7942-3.9337-3.7942z"/>
+                <g id="agitateur" fill="#d4d4d4" stroke="#000" stroke-width=".501" transform="matrix(1.0566 0 0 1.0566 69.145 271.89)">
+            <path d="M.108-2.897H50.025V17.02H.108z"/>
+            <circle cx="25.027" cy="7.022" r="4.798" fill="#696969"/>
+          </g>
+                <g id="potence" stroke="#000">
+            <path fill="#d4d4d4" stroke-width=".026" d="m80 83s4 13 15 13c0 0 2.4955-1e-6 2.5-2.5.004-2.5-2.5-2.5-2.5-2.5s-7.231 2.26-11.231-8.3829"/>
+            <path fill="#d4d4d4" stroke-width=".026" d="m80 78s4-13 15-13c0 0 2.4955 1e-6 2.5 2.5.0045 2.5-2.5 2.5-2.5 2.5s-7.3545-2.1066-11.354 8.5364"/>
+            <path fill="#d4d4d4" stroke-width=".227" d="M60.267 77.969H81.998V83.271H60.267z"/>
+            <circle cx="95" cy="67.5" r="2.5" fill="#d4d4d4" stroke-width=".529"/>
+            <circle cx="95" cy="93.5" r="2.5" fill="#d4d4d4" stroke-width=".529"/>
+            <circle cx="82.265" cy="80.62" r="2.5" fill="#d4d4d4" stroke-width=".529"/>
+            <path fill="#d4d4d4" stroke-width=".529" d="M55.265 24.735H60.265V294.735H55.265z" style="mix-blend-mode:normal"/>
+            <path fill="#4d4d4d" stroke-width=".265" d="M49.149 290H124.85V295H49.149z"/>
+          </g>
+        <!-- ═══ Mode pH-métrique : barre supplémentaire de la potence (crochets + cercles tenant l'électrode) ═══ -->
+        <g id="potence-ph" stroke="#000" style="display:none;">
+          <path fill="#d4d4d4" stroke-width=".314" d="m60.265 200.68h42.637v5.1585h-42.637z"/>
+          <path fill="#d4d4d4" stroke-width=".016" d="m100.42 203.52s3.3662 6.1597 12.623 6.1597c0 0 2.1001 0 2.1039-1.1846.003-1.1846-2.1039-1.1846-2.1039-1.1846s-6.0852 1.0708-9.4514-3.972"/>
+          <path fill="#d4d4d4" stroke-width=".016" d="m100.42 203.16s3.3662-6.1597 12.623-6.1597c0 0 2.1001 0 2.1039 1.1846.003 1.1846-2.1039 1.1846-2.1039 1.1846s-6.0852-1.0708-9.4514 3.972"/>
+          <circle cx="114.16" cy="208.5" r="2.5" fill="#d4d4d4" stroke-width=".529"/>
+          <circle cx="114.16" cy="-198.19" r="2.5" fill="#d4d4d4" stroke-width=".529" transform="scale(1,-1)"/>
+          <circle cx="102.92" cy="203.16" r="2.5" fill="#d4d4d4" stroke-width=".529"/>
+        </g>
+        <!-- ═══ Mode pH-métrique : électrode pH plongée dans le bécher ═══ -->
+        <g id="electrode-ph" stroke="#000" transform="translate(17.587 10.554)" style="display:none;">
+          <circle cx="90.799" cy="250.61" r="2.514" fill="#cfd5ef" fill-opacity=".914" stroke-width=".473"/>
+          <path fill="#1a1a1a" stroke-width=".498" d="m88.604 221.37v-27.044h4.3789v54.089h-4.3789z"/>
+          <path fill="#1a1a1a" stroke-width=".397" d="M87.834 184.54H93.682V200.668H87.834z"/>
+        </g>
+        <!-- ═══ Mode conductimétrique : sonde conductimétrique plongée dans le bécher ═══ -->
+        <g id="sonde-conducti" stroke="#000" transform="translate(17.587 10.554)" style="display:none;">
+          <rect x="88.386" y="247.63" width="1.0619" height="5.5453" style="stroke-width:.062508;stroke:#000"/>
+          <rect x="89.504" y="247.64" width=".54244" height="5.5453" style="fill:#a7a7a7;stroke-width:.05;stroke:#000"/>
+          <rect x="91.54" y="247.64" width=".54244" height="5.5453" style="fill:#a7a7a7;stroke-width:.05;stroke:#000"/>
+          <rect x="92.139" y="247.63" width="1.0619" height="5.5453" style="stroke-width:.062508;stroke:#000"/>
+          <rect transform="matrix(.0033025 -.99999 .99995 .010081 0 0)" x="-249.13" y="89.218" width="1.6059" height="4.7999" style="stroke-width:.071516;stroke:#000"/>
+          <path d="m88.604 221.37v-27.044h4.3789v54.089h-4.3789z" fill="#1a1a1a" stroke-width=".498"/>
+          <path d="m87.834 184.54h5.848v16.128h-5.848z" fill="#1a1a1a" stroke-width=".397"/>
+        </g>
+        <!-- ═══ Mode conductimétrique : boîtier conductimètre + fil de connexion ═══ -->
+        <g id="conductimetre-svg" stroke="#000" style="display:none;">
+          <!-- Fil de connexion entre le conductimètre et la sonde -->
+          <path fill="none" d="m108.46 194.94c-.22142-2.0434.11454-4.1444.9621-6.0169.84757-1.8724 2.2045-3.5113 3.8859-4.6934s3.6829-1.9041 5.7317-2.0679c2.0488-.16373 4.1395.23132 5.9874 1.1313 2.0429.99503 3.7634 2.5857 5.086 4.4334 1.3227 1.8477 2.2616 3.9485 2.9569 6.1118 1.6215 5.0449 1.9396 10.415 1.9054 15.714s-.40777 10.602-.11803 15.893c.6423 11.729 4.6208 23.258 11.35 32.887"/>
+          <!-- Boîtier -->
+          <path fill="#4d4d4d" d="m132.95 242.13h64.503v52.777h-64.503z" style="stroke-width:1.1978"/>
+          <!-- Boutons -->
+          <circle cx="149.63" cy="284.25" r="3.749" fill="#696969" stroke-width=".37"/>
+          <circle cx="139.63" cy="284.25" r="3.749" fill="#696969" stroke-width=".37"/>
+          <!-- Écran blanc -->
+          <path id="ecran-conductimetre" fill="#fff" stroke-width=".549" d="m141.87 250.13h46.655v20.634h-46.655z"/>
+          <!-- Label "Conductimètre" en bas du boîtier -->
+          <text x="155.929" y="286.407" fill="#ffffff" font-size="4.8" stroke="none" stroke-width=".05" xml:space="preserve">Conductimètre</text>
+          <!-- Unité "mS/cm" sous l'écran -->
+          <text x="160.429" y="278.584" fill="#ffffff" font-size="8" stroke="none" stroke-width=".05" xml:space="preserve">mS/cm</text>
+          <!-- Affichage de la conductivité (mis à jour dynamiquement par _updatePhDisplay) -->
+          <text id="conductimetre-display" x="165.2" y="265"
+                text-anchor="middle"
+                font-family="'Consolas', 'Courier New', monospace"
+                font-size="13.5" font-weight="700"
+                fill="#2c3e50" stroke="none">--</text>
+        </g>
+        <!-- ═══ Mode pH-métrique : boîtier pH-mètre + fil de connexion vers l'électrode ═══
+             Boîtier étendu vers le haut (y=249) pour offrir un écran plus grand
+             qui affiche le pH dans une police 1,25× la taille initiale.
+             Boutons circulaires et label "pH-mètre" conservent leur taille
+             et restent alignés en bas du boîtier (rendu inchangé).
+             Le fil de connexion est dessiné AVANT le boîtier pour passer derrière. -->
+        <g id="ph-metre" stroke="#000" style="display:none;">
+          <!-- Fil de connexion entre le pH-mètre et l'électrode (placé en premier
+               pour être recouvert par le boîtier) -->
+          <path fill="none" d="m108.46 194.94c-.22142-2.0434.11454-4.1444.9621-6.0169.84757-1.8724 2.2045-3.5113 3.8859-4.6934 1.6814-1.1821 3.6829-1.9041 5.7317-2.0679 2.0488-.16373 4.1395.23132 5.9874 1.1313 2.0429.99503 3.7634 2.5857 5.086 4.4334 1.3227 1.8477 2.2616 3.9485 2.9569 6.1118 1.6215 5.0449 1.9396 10.415 1.9054 15.714-.0342 5.299-.40777 10.602-.11803 15.893.6423 11.729 4.6208 23.258 11.35 32.887"/>
+          <path fill="#4d4d4d" d="M132.85 249H197.551V295.001H132.85z"/>
+          <circle cx="175.63" cy="286.25" r="3.749" fill="#696969" stroke-width=".37"/>
+          <circle cx="187.63" cy="286.25" r="3.749" fill="#696969" stroke-width=".37"/>
+          <path id="ecran-phmetre" fill="#fff" stroke-width=".549" d="M141.83 256H188.573V276H141.83z"/>
+          <text x="135.872" y="288.414" fill="#fff" stroke="none" stroke-width=".05" font-size="6.581" style="line-height:.1">pH-mètre</text>
+          <!-- Affichage du pH (mis à jour dynamiquement par _updatePhDisplay) -->
+          <text id="ph-metre-display" x="165.2" y="271"
+                text-anchor="middle"
+                font-family="'Consolas', 'Courier New', monospace"
+                font-size="13.5" font-weight="700"
+                fill="#2c3e50" stroke="none">--</text>
+        </g>
+        <!-- ═══ Sphères représentant les espèces chimiques dans le bécher (clipées) ═══
+             Affichées seulement si state.titrageShowEspeces est true (animées par JS).
+             Placé APRÈS le pH-mètre/sonde pour passer par-dessus. -->
+        <g id="especes-becher" clip-path="url(#becher-interieur)" style="display:none;"></g>
+        <!-- Liquide burette : ménisque + rectangle descendant très bas, translaté par JS.
+             Le clipPath burette-interieur coupe tout ce qui déborde. -->
+        <path id="liquide-burette"
+              clip-path="url(#burette-interieur)"
+              fill="#b8d4f0" fill-opacity="0.65" stroke="none"
+              d="M84.744,12.98 s.02048,2.3082 3.8807,2.3082 c3.8602,0 3.8468,-2.2886 3.8468,-2.2886 L92.591,512 L84.744,512 Z"/>
+        <!-- ═══ Sphères représentant les espèces chimiques dans la burette (clipées) ═══
+             Affichées seulement si state.titrageShowEspeces est true (animées par JS). -->
+        <g id="especes-burette" clip-path="url(#burette-interieur)" style="display:none;"></g>
+                <g id="burette-contour" stroke="#000" transform="matrix(.25122 0 0 .25122 76.474 -38.084)">
+            <path fill="none" fill-opacity="0" stroke-width="1.871" d="m36.937 868.01.01283-15.103c-1.9215-1.916-4.0583-1.3387-4.0314-13.429v-664.69c-3.9267-2.8303-4.8829-10.184.07478-9.9498l30.639.32296c4.8121-.557 3.8559 6.7965-.0708 9.6268v664.69c.02692 12.092-2.1099 11.513-4.0314 13.429l-.02941 15.095" color="#000"/>
+            <path fill="none" fill-opacity="0" stroke-width="1.081" d="m56.551 923.03v47.994c-.22941 4.3734-1.3342 9.8152-4.0509 16.478h-8.0495c-2.7167-6.6624-3.8215-12.104-4.0509-16.478v-47.994" color="#000"/>
+            <path fill="#cfd5ee" fill-opacity=".913" stroke-width="1.5" d="m57.623 916.31h29.154c7.582.305 7.428-5.424 7.35-9.065-.08-3.64-.08-3.282 0-6.923.078-3.641.232-9.37-7.35-9.065h-29.154" color="#000"/>
+            <rect width="31.358" height="12.249" x="32.635" y="867.5" fill="#cfd5ee" fill-opacity=".913" fill-rule="evenodd" stroke-linecap="round" stroke-width="1.5" rx="5.784" ry="5.784"/>
+            <g id="robinet-ouvert" style="display:none;">
+              <rect x="73.109" y="859.03" width="10.412" height="90.187" rx="5.6764" ry="2.513" fill="#500" fill-opacity=".913" fill-rule="evenodd" stroke-linecap="round" stroke-width="1.6974"/>
+              <path d="m57.623 916.31h29.154c7.582.305 7.428-5.424 7.35-9.065-.08-3.64-.08-3.282 0-6.923.078-3.641.232-9.37-7.35-9.065h-29.154" fill="#cfd5ee" fill-opacity=".913" stroke-width="1.5" style="fill-opacity:1;fill:#cfd5ee"/>
+              <rect x="15.607" y="896.35" width="19.882" height="15.533" rx="2.056" ry="5.162" fill="#cfd5ee" fill-opacity=".913" fill-rule="evenodd" stroke-linecap="round" stroke-width="1.5"/>
+              <rect x="19.322" y="885.34" width="14.476" height="36.007" rx="5.784" ry="3.533" fill="#cfd5ee" fill-opacity=".913" fill-rule="evenodd" stroke-linecap="round" stroke-width="1.5"/>
+              <rect x="18.299" y="894.49" width="18.846" height="19.261" rx="2.056" ry="2.056" fill="#cfd5ee" fill-opacity=".913" fill-rule="evenodd" stroke-linecap="round" stroke-width="1.5"/>
+            </g>
+            <g id="robinet-fermé" fill-rule="evenodd" stroke-linecap="round">
+              <rect transform="matrix(3.9806 0 0 3.9806 -304.41 151.6)" x="94.197" y="187.29" width="2.8703" height="3.3536" rx="1.5648" ry=".97813" fill="#500" fill-opacity=".913" fill-rule="evenodd" stroke-linecap="round" stroke-width=".17185" style="stroke-width:.377;stroke:#000"/>
+              <rect x="15.607" y="896.35" width="19.882" height="15.533" rx="2.056" ry="5.162" fill="#cfd5ee" fill-opacity=".913" stroke-width="1.5"/>
+              <rect x="18.299" y="894.49" width="18.846" height="19.261" rx="2.056" ry="2.056" fill="#cfd5ee" fill-opacity=".913" stroke-width="1.5"/>
+              <rect x="20.019" y="901.68" width="15.406" height="4.8878" rx="6.1555" ry=".47959" fill="#cfd5ee" fill-opacity=".913" stroke-width=".57013"/>
+            </g>
+            <path fill="#cfd5ee" fill-opacity=".913" stroke-width="1.342" d="m58.383 879.97v26.694c-.189 6.4203-.742 12.548-2.308 17.865h-15.692c-1.566-5.3163-2.119-11.445-2.308-17.865v-26.694" color="#000"/>
+            <path fill-opacity="0" d="m33 837.5h30.731"/>
+            <path id="graduations-principales" fill-opacity="0" d="m33.01 237.45h30.731m-30.741 25.053h30.731m-30.721 25h30.731m-30.741 25h30.731m-30.731 24.943h30.731m-30.741 25.142h30.731m-30.721 25h30.731m-30.741 25h30.731m-30.71 24.91h30.731m-30.741 25.005h30.731m-30.721 25h30.731m-30.741 25h30.731m-30.721 24.995h30.731m-30.741 25.005h30.731m-30.731 25h30.731m-30.721 25h30.731m-30.741 25h30.731m-30.721 24.995h30.731m-30.741 25.005h30.731m-30.731 25h30.731m-30.721 25h30.731m-30.741 25h30.731m-30.721 24.995h30.731m-30.741 25.005h30.731"/>
+            <path fill-opacity="0" d="m33 212.45h30.731"/>
+            <path id="graduations-secondaires" fill-opacity="0" stroke-width=".7" d="m33 224.95h17.5m-17.5-10h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 5h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 15h17.5m-17.5-10h10m-10.013 2.5208h10m-10 2.5h10m-10 2.5h10m-9.9872 5.0323h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 15h17.5m-17.5-10h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 5h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 15h17.5m-17.5-10h10m-10.013 2.5208h10m-10 2.5h10m-10 2.5h10m-9.9872 5.0323h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 14.96h17.5m-17.5-9.9872h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 4.9744h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 15h17.5m-17.5-10h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 5h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10.01 15.085h17.5m-17.5-10h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 5h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 15h17.5m-17.5-10h10m-10.013 2.5208h10m-10 2.5h10m-10 2.5h10m-9.9872 5.0323h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 14.96h17.5m-17.5-9.9872h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 4.9744h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10.038 14.915h17.5m-17.452-10h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10.048 5h10m-10 2.5h10m-10 2.5h10m-9.9624 2.5854h10m-9.9895 14.915h17.5m-17.5-10h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 5h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 15h17.5m-17.5-10h10m-10.013 2.5208h10m-10 2.5h10m-10 2.5h10m-9.9872 5.0323h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 14.96h17.5m-17.5-9.9872h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 4.9744h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 15h17.5m-17.5-10h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 5h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 15h17.5m-17.5-10h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 5h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 15h17.5m-17.5-10h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 5h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 15h17.5m-17.5-10h10m-10.013 2.5208h10m-10 2.5h10m-10 2.5h10m-9.9872 5.0323h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 14.96h17.5m-17.5-9.9872h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 4.9744h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 15h17.5m-17.5-10h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 5h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 15h17.5m-17.5-10h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 5h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 15h17.5m-17.5-10h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 5h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 15h17.5m-17.5-10h10m-10.013 2.5208h10m-10 2.5h10m-10 2.5h10m-9.9872 5.0323h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 14.96h17.5m-17.5-9.9872h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 4.9744h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 15h17.5m-17.5-10h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 5h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 15h17.5m-17.5-10h10m-10 2.5h10m-10 2.5h10m-10 2.5h10m-10 5h10m-10 2.5h10m-10 2.5h10m-10 2.5h10"/>
+            <g id="label-graduations" stroke-width=".7">
+              <text xml:space="preserve" x="52.812" y="210.48"><tspan x="52.812" y="210.48">0</tspan></text>
+              <text xml:space="preserve" x="53.064" y="335.48"><tspan x="53.064" y="335.48">5</tspan></text>
+              <text xml:space="preserve" x="45.178" y="460.543"><tspan x="45.178" y="460.543">10</tspan></text>
+              <text xml:space="preserve" x="45.328" y="585.464"><tspan x="45.328" y="585.464">15</tspan></text>
+              <text xml:space="preserve" x="45.427" y="710.464"><tspan x="45.427" y="710.464">20</tspan></text>
+              <text xml:space="preserve" x="45.427" y="835.627"><tspan x="45.427" y="835.627">25</tspan></text>
+            </g>
+          </g>
+      </svg>
+      <!-- Boutons flottants ancrés sur le SVG (position:absolute) — restent dans #svg-stage -->
+      <div id="robinet-cliquable" title="Maintenir pour ouvrir le robinet" style="position:absolute;cursor:pointer;"></div>
+      <div id="label-volume-verse">0,00 mL versé</div>
+      <button id="btn-amidon" onclick="activerAmidon()" style="display:none;position:absolute;" title="Ajouter de l'empois d'amidon">Ajouter de l'empois d'amidon.</button>
+      <!-- Bouton indicateur coloré — visible uniquement en mode pH-métrique, positionné par JS -->
+      <button id="btn-indicateur-colore" onclick="ouvrirModalIndicateur()" style="display:none;position:absolute;" title="Ajouter un indicateur coloré">Ajouter un indicateur coloré.</button>
+      </div><!-- /#svg-stage -->
+
+      <!-- Boîte de gestion de la burette (sibling flex de #svg-stage, plus en position:absolute) -->
+      <div id="burette-box">
+        <div class="burette-box-title">Burette</div>
+        <button id="btn-reinit-titrage" class="schema-btn burette-box-btn-raz" onclick="reinitialiserTitrage()" title="Réinitialiser">↺ Remise à zéro</button>
+        <p class="burette-box-hint">Appuyer sur le robinet pour vider la burette.</p>
+        <!-- Slider vitesse d'écoulement -->
+        <div class="burette-box-slider-wrap">
+          <label class="burette-box-slider-label">Vitesse d'écoulement</label>
+          <div class="speed-slider-wrap">
+            <input type="range" id="slider-debit" min="1" max="5" step="1" value="1" class="speed-slider debit-slider">
+            <div class="speed-labels" id="debit-labels">
+              <span class="active">×1</span><span>×2</span><span>×3</span><span>×4</span><span>×5</span>
+            </div>
+          </div>
+        </div>
+        <!-- Boutons ajout manuel -->
+        <div class="burette-box-ajout-row">
+          <button class="burette-box-btn-ajout" onclick="_verserVolume(0.5)">+ 0,5 mL</button>
+          <button class="burette-box-btn-ajout" onclick="_verserVolume(1)">+ 1 mL</button>
+        </div>
+        <!-- Vidage automatique -->
+        <button id="btn-vidage-auto" class="burette-box-btn-auto" onclick="toggleVidageAuto()">▶ Vidage automatique</button>
+        <!-- ═══ Légende des espèces chimiques (visible si le mode est actif) ═══ -->
+        <div id="especes-legende-section" style="display:none;">
+          <div class="especes-legende-title">Légende des espèces</div>
+          <div class="especes-legende-body">
+            <div class="especes-legende-list" id="especes-legende-list"></div>
+            <div class="especes-legende-zoom-col">
+              <button id="btn-zoom-becher" class="btn btn-toggle-one" onclick="toggleZoomBecher()" style="display:none;">Zoom<br>bécher</button>
+            </div>
+          </div>
+        </div>
+      </div><!-- /#burette-box -->
+      </div><!-- /#schema-wrapper -->
+    </div><!-- /#titrage-schema-zone -->
+
+    <div id="titrage-graph-zone">
+      <!-- Équation de la réaction support du titrage -->
+      <div id="titrage-equation-zone">
+        <div id="titrage-equation-display"></div>
+      </div>
+      <!-- Message pH à l'équivalence (mode test colorimétrique indicateur coloré) -->
+      <div id="titrage-test-phe-msg" style="display:none;">
+        pH à l'équivalence&nbsp;: pH<sub>E</sub>&nbsp;=&nbsp;<span id="titrage-test-phe-val">—</span>
+      </div>
+      <!-- Zone graphiques (vide par défaut, remplie par les graphes actifs) -->
+      <div id="titrage-charts-zone">
+        <!-- Graphique pH=f(V) — visible uniquement en mode pH-métrique -->
+        <div id="titrage-chart-ph-panel" class="chart-panel" style="display:none;">
+          <!-- Boutons overlay dans le cadre graphique -->
+          <div id="ph-analysis-btns">
+            <button class="ph-analysis-btn" id="btn-ph-cursor"
+                    onclick="togglePhCursor()" title="Réticule libre">+</button>
+            <button class="ph-analysis-btn" id="btn-ph-indicateur"
+                    onclick="togglePhIndicateur()" disabled title="Colorier le graphe selon l'indicateur coloré">Indicateur coloré</button>
+            <button class="ph-analysis-btn" id="btn-modeliser-courbe"
+                    onclick="toggleModelCourbe()" title="Modéliser la courbe">Modéliser la courbe</button>
+            <button class="ph-analysis-btn" id="btn-tracer-droites"
+                    onclick="toggleTracerDroites()" style="display:none;" title="Tracer des droites">Tracer des droites</button>
+            <button class="ph-analysis-btn" id="btn-courbe-derivee"
+                    onclick="toggleCourbeDerivee()" disabled title="Courbe dérivée">Courbe dérivée</button>
+            <button class="ph-analysis-btn" id="btn-methode-tangentes"
+                    onclick="toggleMethodeTangentes()" disabled title="Méthode des tangentes">Méthode des tangentes</button>
+          </div>
+          <div id="ph-reticule-tooltip"></div>
+          <canvas id="titrage-chart-ph"></canvas>
+        </div>
+        <!-- Graphique n=f(V) — masqué par défaut -->
+        <div id="titrage-chart-panel" class="chart-panel" style="display:none;">
+          <canvas id="titrage-chart"></canvas>
+          <div id="titrage-legende"></div>
+        </div>
+        <!-- Zoom bécher — masqué par défaut, actif si mode espèces + bouton zoom -->
+        <div id="zoom-becher-panel" class="chart-panel" style="display:none;">
+          <div class="zoom-becher-titre">Vue bécher en temps réel</div>
+          <svg id="zoom-becher-svg" viewBox="68 169 135 110" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+            <use href="#liquide-becher"/>
+            <use href="#liquide-burette"/>
+            <use href="#filet-rect"/>
+            <use href="#barreau-aimante"/>
+            <g id="zoom-electrode-ph"></g>
+            <g id="zoom-ph-metre"></g>
+            <g id="zoom-sonde-conducti"></g>
+            <g id="zoom-conductimetre-svg"></g>
+            <use href="#agitateur"/>
+            <use href="#especes-burette"/>
+            <use href="#especes-becher"/>
+            <use href="#becher-contour"/>
+            <use href="#burette-contour"/>
+            <!-- Zone cliquable robinet dans le zoom (même logique que #robinet-cliquable) -->
+            <rect id="zoom-robinet-cliquable"
+                  x="78" y="182" width="22" height="16"
+                  fill="transparent" stroke="none"
+                  style="cursor:pointer;"
+                  title="Maintenir pour ouvrir le robinet"/>
+          </svg>
+        </div>
+      </div>
+
+      <!-- ═══ Fenêtre flottante mode test titrage ═══ -->
+      <div id="titrage-test-panel" style="display:none;">
+        <div id="titrage-test-panel-header">
+          <span id="titrage-test-panel-title">&#128203; Résultats</span>
+          <span id="titrage-test-panel-minimize" title="Réduire / Agrandir">&#8722;</span>
+        </div>
+        <div id="titrage-test-panel-body">
+          <div class="titrage-test-row">
+            <label for="test-titrage-veq">Volume équivalent (mL)</label>
+            <input type="number" id="test-titrage-veq" step="0.1" min="0" placeholder="ex : 12,5" />
+          </div>
+          <div class="titrage-test-row">
+            <label>Concentration solution titrée</label>
+            <div class="titrage-test-conc-row">
+              <span class="titrage-test-c">C =</span>
+              <input type="number" id="test-titrage-mantisse" step="0.1" min="0.1" max="9.9" placeholder="1,0" />
+              <span class="titrage-test-times">× 10</span>
+              <select id="test-titrage-exp">
+                <option value="-1">⁻¹</option>
+                <option value="-2" selected>⁻²</option>
+                <option value="-3">⁻³</option>
+                <option value="-4">⁻⁴</option>
+                <option value="-5">⁻⁵</option>
+              </select>
+              <span class="titrage-test-unit">mol/L</span>
+            </div>
+          </div>
+          <button class="titrage-test-btn-valider" onclick="validerReponseTestTitrage()">Valider</button>
+          <div id="titrage-test-feedback"></div>
+          <div id="titrage-test-actions" style="display:none;">
+            <button class="titrage-test-btn-action btn-test-oui"   onclick="reessayerTestTitrage()">&#8635; Réessayer</button>
+            <button class="titrage-test-btn-action btn-test-oui"   onclick="autreTitrageTest()">&#9881; Autre titrage</button>
+            <button class="titrage-test-btn-action btn-test-non"   onclick="quitterModeTestTitrage()">✕ Sortir</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Message d'état -->
+  <div id="status-msg"></div>
+
+  <!-- Pop-up mode test -->
+  <div id="test-popup">
+    <div id="test-popup-msg"></div>
+    <div id="test-popup-btns"></div>
+  </div>
+
+  <!-- Overlay modal mode test -->
+  <div id="test-overlay">
+    <div class="test-modal" id="test-modal-content"></div>
+  </div>
+
+  <!-- ═══ Modal sélection indicateur coloré ═══ -->
+  <div id="indicateur-overlay" style="display:none;">
+    <div id="indicateur-modal">
+      <div id="indicateur-modal-header">
+        <span id="indicateur-modal-title">Choisir un indicateur coloré</span>
+        <button id="indicateur-modal-close" onclick="fermerModalIndicateur()" title="Fermer">✕</button>
+      </div>
+      <div id="indicateur-modal-body">
+        <table id="indicateur-table">
+          <thead>
+            <tr>
+              <th>Indicateur</th>
+              <th>Teinte acide</th>
+              <th>Teinte intermédiaire</th>
+              <th>Teinte basique</th>
+              <th>Zone de virage (pH)</th>
+            </tr>
+          </thead>
+          <tbody id="indicateur-tbody"></tbody>
+        </table>
+      </div>
+      <div id="indicateur-modal-footer">
+        <button class="btn btn-raz" onclick="retirerIndicateur()">Retirer l'indicateur</button>
+        <button class="btn btn-raz" onclick="fermerModalIndicateur()">Annuler</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Panneau droit -->
+  <div id="panel">
+    <div class="panel-main-tabs">
+      <button class="panel-main-tab active" id="tab-principe" onclick="setOnglet('principe')">Principe</button>
+      <button class="panel-main-tab"        id="tab-titrage"  onclick="setOnglet('titrage')">Titrage</button>
+    </div>
+    <div id="panel-body">
+
+      <!-- ═══ Section Principe ═══ -->
+      <div class="panel-main-section visible" id="section-principe">
+
+        <div class="section-title">Réaction de titrage</div>
+        <select class="reaction-select" id="sel-reaction" onchange="onReactionChange(this.value)"></select>
+
+        <hr class="sep">
+
+        <div class="section-title">Vitesse d'animation</div>
+        <div class="speed-slider-wrap">
+          <input type="range" id="speed-slider" min="0" max="3" step="1" value="0" class="speed-slider">
+          <div class="speed-labels" id="speed-labels">
+            <span>×1</span><span>×2</span><span>×3</span><span>Instantané</span>
+          </div>
+        </div>
+
+        <hr class="sep">
+
+        <div class="section-title">Quantité de solution titrée</div>
+        <div id="qty-titre-wrap" style="position:relative; width:100%;">
+          <div class="qty-panel-widget">
+            <span class="qty-panel-label" id="qty-panel-lbl">nᵢ(B) =</span>
+            <div class="qty-panel-row">
+              <button class="qty-cell-btn" id="btn-qty-moins" onclick="changeQteTitre(-1)">−</button>
+              <input type="text" inputmode="numeric" class="qty-cell-input" id="qty-titre-val" value="10">
+              <button class="qty-cell-btn" id="btn-qty-plus" onclick="changeQteTitre(+1)">+</button>
+              <span class="qty-cell-unit">mol</span>
+            </div>
+          </div>
+          <div id="qty-mask" style="display:none;"></div>
+        </div>
+        <button class="btn btn-toggle-one" onclick="randomQteTitre()">Valeur aléatoire</button>
+
+        <hr class="sep">
+
+        <div class="section-title">Actions</div>
+        <button class="btn btn-primary" id="btn-avancer" onclick="avancerStep()">Augmenter l'avancement de 1 mol</button>
+        <button class="btn btn-raz" id="btn-raz" onclick="razPrincipe()">RAZ</button>
+
+        <hr class="sep">
+
+        <div class="section-title">Options</div>
+        <button class="btn btn-toggle-one" id="btn-prediction" onclick="togglePrediction()">Cacher la quantité d'espèce titrée</button>
+        <div id="cmp-btn-wrap" style="position:relative;">
+          <button class="btn btn-toggle-one" id="btn-comparaison" onclick="cycleComparaison()">
+            Comparaison<br><span id="btn-comparaison-label">Non</span>
+          </button>
+          <div id="cmp-mask" style="display:none;"></div>
+        </div>
+        <button class="btn btn-toggle-one" id="btn-show-one" onclick="toggleShowCoeffOne()">Afficher les coefficients 1</button>
+        <button class="btn btn-test-mode" id="btn-test-mode" onclick="ouvrirConfirmTest()">&#9881; Mode Test</button>
+
+      </div>
+
+      <!-- ═══ Section Titrage ═══ -->
+      <div class="panel-main-section" id="section-titrage">
+
+        <!-- ── 1. Choix du titrage ── -->
+        <div class="section-title">Choix du titrage</div>
+
+        <div class="param-row">
+          <label for="sel-type-titrage">Type de titrage</label>
+          <select id="sel-type-titrage" class="titrage-select">
+            <option value="colorimetrique" selected>Colorimétrique</option>
+            <option value="phmetrique">pH-métrique</option>
+            <option value="conductimetrique">Conductimétrique</option>
+          </select>
+        </div>
+
+        <div class="param-row">
+          <label for="sel-rxn-titrage">Solution titrée</label>
+          <select id="sel-rxn-titrage" class="titrage-select" onchange="onTitrageRxnChange(this.value)"></select>
+        </div>
+
+        <div class="param-row">
+          <label>Solution titrante</label>
+          <span id="titrant-label">—</span>
+        </div>
+
+        <hr class="sep">
+
+        <!-- ── 2. Paramètres du titrage ── -->
+        <div class="section-title">Paramètres</div>
+
+        <!-- Concentration titrante -->
+        <div class="param-row">
+          <label>C<sub>titrante</sub> (mol/L)</label>
+          <div class="conc-row">
+            <span class="conc-prefix">C =</span>
+              <input type="number" id="conc-titrante-mantisse" class="conc-mantisse" min="1" max="9.9" step="0.1" value="1.00">
+            <span class="conc-times">× 10</span>
+            <select id="conc-titrante-exp" class="conc-exp-sel">
+              <option value="-1">⁻¹</option>
+              <option value="-2" selected>⁻²</option>
+              <option value="-3">⁻³</option>
+              <option value="-4">⁻⁴</option>
+              <option value="-5">⁻⁵</option>
+            </select>
+            <span class="conc-unit">mol/L</span>
+          </div>
+        </div>
+
+        <!-- Concentration titrée -->
+        <div class="param-row" id="conc-titre-row">
+          <div id="conc-titre-maskable" style="position:relative;">
+            <label>C<sub>titrée</sub> (mol/L)</label>
+            <div class="conc-row">
+              <span class="conc-prefix">C =</span>
+              <input type="number" id="conc-titre-mantisse" class="conc-mantisse" min="1" max="9.9" step="0.1" value="1.00">
+              <span class="conc-times">× 10</span>
+              <select id="conc-titre-exp" class="conc-exp-sel">
+                <option value="-1">⁻¹</option>
+                <option value="-2" selected>⁻²</option>
+                <option value="-3">⁻³</option>
+                <option value="-4">⁻⁴</option>
+                <option value="-5">⁻⁵</option>
+              </select>
+              <span class="conc-unit">mol/L</span>
+            </div>
+            <div id="titrage-conc-mask" style="display:none;"></div>
+          </div>
+          <button class="btn btn-toggle-one" id="btn-alea-titre" onclick="titrageConcAlea()">Valeur aléatoire</button>
+        </div>
+
+        <!-- Volumes -->
+        <div class="param-row">
+          <label for="sel-v1">V<sub>1</sub> — solution titrée</label>
+          <select id="sel-v1" class="titrage-select">
+            <option value="5">5,00 mL</option>
+            <option value="10">10,0 mL</option>
+            <option value="20" selected>20,0 mL</option>
+            <option value="25">25,0 mL</option>
+            <option value="50">50,0 mL</option>
+          </select>
+        </div>
+
+        <div class="param-row">
+          <label for="sel-veau">V<sub>eau</sub> — eau distillée</label>
+          <select id="sel-veau" class="titrage-select">
+            <option value="0" selected>0 mL</option>
+            <option value="10">10 mL</option>
+            <option value="20">20 mL</option>
+            <option value="50">50 mL</option>
+            <option value="100">100 mL</option>
+            <option value="250">250 mL</option>
+          </select>
+        </div>
+        <div class="param-row becher-indicator-row">
+          <span id="becher-indicator" class="becher-indicator">Bécher utilisé : 100 mL</span>
+        </div>
+
+        <hr class="sep">
+
+        <!-- ── 3. Options ── -->
+        <div class="section-title">Options</div>
+        <!-- Pas d'acquisition : visible uniquement en pH-métrique / conductimétrique
+             (géré par JS via #row-pas-acquisition.style.display) -->
+        <div class="param-row" id="row-pas-acquisition" style="display:none;">
+          <label for="sel-pas-acquisition">Pas d'acquisition</label>
+          <select id="sel-pas-acquisition" class="titrage-select" onchange="onPasAcquisitionChange(this.value)">
+            <option value="0.1">0,1 mL</option>
+            <option value="0.5">0,5 mL</option>
+            <option value="1.0" selected>1,0 mL</option>
+            <option value="2.0">2,0 mL</option>
+          </select>
+        </div>
+        <button class="btn btn-toggle-one" id="btn-cacher-titre" onclick="toggleCacherTitreTitrage()">Cacher la concentration de la solution titrée</button>
+        <button class="btn btn-toggle-one active" id="btn-toggle-graph-ph" onclick="toggleGraphPH()" style="display:none;">Afficher l'évolution du pH</button>
+        <button class="btn btn-toggle-one" id="btn-toggle-graph-n" onclick="toggleGraphN()">Afficher les quantités de matière</button>
+        <button class="btn btn-toggle-one" id="btn-toggle-especes" onclick="toggleEspeces()">Représenter les espèces chimiques</button>
+
+        <hr class="sep">
+
+        <button class="btn btn-test-mode" id="btn-test-titrage" onclick="ouvrirModalTestTitrage()">&#9881; Mode Test</button>
+
+      </div>
+
+    </div><!-- /#panel-body -->
+
+    <div class="panel-hint collapsed" id="panel-hint-principe">
+      <div class="panel-hint-header">
+        <span class="panel-hint-title">Instructions</span>
+        <button class="panel-hint-toggle" id="btn-hint-principe" onclick="toggleHint('principe')" title="Masquer les instructions">▲</button>
+      </div>
+      <div class="panel-hint-body" id="panel-hint-principe-body">
+        <strong>Principe :</strong> ajustez la quantité de réactif titré, puis cliquez sur
+        <em>Augmenter l'avancement</em> pour simuler l'ajout progressif de titrant.
+        Lancez le mode Test pour vérifier si le principe d'un titrage est compris.
+      </div>
+    </div>
+    <div class="panel-hint collapsed" id="panel-hint-titrage" style="display:none;">
+      <div class="panel-hint-header">
+        <span class="panel-hint-title">Instructions</span>
+        <button class="panel-hint-toggle" id="btn-hint-titrage" onclick="toggleHint('titrage')" title="Masquer les instructions">▲</button>
+      </div>
+      <div class="panel-hint-body" id="panel-hint-titrage-body">
+        <strong>Titrage :</strong> mode en construction.
+      </div>
+    </div>
+  </div><!-- /#panel -->
+
+</main>
+
+<script src="js/data.js"></script>
+<script src="js/sim.js"></script>
+<script src="js/graph.js"></script>
+<script src="js/ui.js"></script>
+</body>
+</html>
+

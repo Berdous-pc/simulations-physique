@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<!-- ════════════════════════════════════════════════════
+     Simulation pédagogique — Physique-Chimie Lycée
+     Auteur  : Mathieu Berdous
+     Licence : CC BY-NC 4.0 — https://creativecommons.org/licenses/by-nc/4.0/
+════════════════════════════════════════════════════ -->
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Simulation — Lunette astronomique</title>
+  <meta name="author" content="Mathieu Berdous">
+  <meta name="copyright" content="Mathieu Berdous — CC BY-NC 4.0">
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════
+     CORPS PRINCIPAL
+════════════════════════════════════════════════════ -->
+<main>
+
+  <!-- Zone canvas -->
+  <div id="canvas-area">
+    <canvas id="cv"></canvas>
+    <div id="drag-hint">Faites glisser les lentilles sur l'axe optique</div>
+  </div>
+
+  <!-- Panneau droit -->
+  <div id="panel">
+
+    <!-- Mode système : Libre / Lunette -->
+    <div>
+      <div class="section-title">Mode système</div>
+      <div class="mode-row" style="margin-top:8px;">
+        <button class="mode-btn active" id="btn-libre" onclick="setSystemMode('libre')">Libre</button>
+        <button class="mode-btn" id="btn-lunette" onclick="setSystemMode('lunette')">Lunette</button>
+      </div>
+    </div>
+
+    <!-- Mode d'affichage des rayons -->
+    <div>
+      <div class="section-title">Affichage des rayons</div>
+      <div class="mode-row" style="margin-top:8px;">
+        <button class="mode-btn active" id="btn-instant" onclick="setRayMode('instant')">Instantané</button>
+        <button class="mode-btn" id="btn-anim" onclick="setRayMode('anim')">Propagation</button>
+      </div>
+
+      <!-- Contrôles animation (masqués en mode instantané) -->
+      <div id="row-speed" style="margin-top:8px; display:none;">
+        <div style="display:flex;gap:8px;margin-bottom:6px;">
+          <button id="btn-pause-play" class="mode-btn" style="flex:1;" onclick="togglePausePlay()">▶ Play</button>
+          <button id="btn-reset-anim" class="mode-btn" style="flex:1;" onclick="resetAnim()">↺ Reset</button>
+        </div>
+        <div class="ctrl-label" style="display:flex;justify-content:space-between;">
+          <span>Vitesse</span><span id="lbl-speed">×1</span>
+        </div>
+        <div id="speed-wrap" style="display:flex;align-items:center;gap:16px;user-select:none;">
+          <span id="speed-rewind" style="font-size:1em;cursor:pointer;opacity:0.5;flex-shrink:0;">⏪</span>
+          <div id="speed-track" style="position:relative;flex:1;height:6px;background:#c8c0b4;border-radius:3px;cursor:pointer;">
+            <div id="speed-fill"  style="position:absolute;left:0;top:0;height:100%;background:#2a6aaa;border-radius:3px;width:100%;"></div>
+            <div id="speed-thumb" style="position:absolute;top:50%;width:14px;height:14px;background:#2a6aaa;border-radius:50%;transform:translate(-50%,-50%);cursor:grab;box-shadow:0 1px 3px rgba(0,0,0,0.3);left:100%;"></div>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:3px;font-size:0.75em;color:#7a8a96;padding:0 7px;padding-left:34px;">
+          <span>×0.1</span><span>×0.25</span><span>×0.5</span><span>×0.75</span><span>×1</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Paramètres optiques -->
+    <div>
+      <div class="section-title">Paramètres optiques</div>
+      <div class="ctrl-group" style="margin-top:8px;">
+
+        <!-- Angle alpha -->
+        <div class="ctrl-row">
+          <div class="ctrl-label">
+            Angle α (objet à l'infini)
+            <span id="lbl-alpha">0°</span>
+          </div>
+          <input type="range" id="sl-alpha" min="-30" max="30" step="5" value="15"
+                 oninput="onSliderAlpha(this.value)">
+        </div>
+
+        <!-- f'1 -->
+        <div class="ctrl-row">
+          <div class="ctrl-label">
+            <span class="ctrl-label-text">Distance focale f'<sub>1</sub></span>
+            <span id="lbl-f1">+20,0 cm</span>
+          </div>
+          <input type="range" id="sl-f1" min="5" max="100" step="5" value="20"
+                 oninput="onSliderF1(this.value)">
+        </div>
+
+        <!-- f'2 -->
+        <div class="ctrl-row">
+          <div class="ctrl-label">
+            <span class="ctrl-label-text">Distance focale f'<sub>2</sub></span>
+            <span id="lbl-f2">+5,0 cm</span>
+          </div>
+          <input type="range" id="sl-f2" min="5" max="100" step="5" value="15"
+                 oninput="onSliderF2(this.value)">
+        </div>
+
+        <!-- Nombre de rayons -->
+        <div class="ctrl-row">
+          <div class="ctrl-label">
+            Nombre de rayons
+            <span id="lbl-nrays">3</span>
+          </div>
+          <input type="range" id="sl-nrays" min="3" max="10" step="1" value="3"
+                 oninput="onSliderNRays(this.value)">
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Mode Oeil (uniquement en mode lunette) -->
+    <div id="section-oeil" style="display:none;">
+      <div class="section-title">Options</div>
+      <div style="margin-top:8px; display:flex; flex-direction:column; gap:6px;">
+        <button class="toggle-btn" id="btn-oeil" onclick="toggleOeil()">Ajouter un œil : NON</button>
+        <button class="toggle-btn" id="btn-legende" onclick="toggleLegende()">Légende : NON</button>
+      </div>
+    </div>
+
+    <!-- Résultats -->
+    <div>
+      <div class="section-title">Résultats</div>
+      <div class="results-grid" style="margin-top:8px;">
+        <div class="result-box wide">
+          <div class="rb-label"><span style="text-decoration:overline">O₁O₂</span></div>
+          <div class="rb-value" id="res-dist">—</div>
+        </div>
+        <div class="result-box">
+          <div class="rb-label"><span style="text-decoration:overline">O₁A₁</span></div>
+          <div class="rb-value" id="res-O1A1">—</div>
+        </div>
+        <div class="result-box">
+          <div class="rb-label"><span style="text-decoration:overline">A₁B₁</span></div>
+          <div class="rb-value" id="res-h1">—</div>
+        </div>
+        <!-- Mode non afocal : image finale + grandissement -->
+        <div class="result-box" id="res-box-O2A2">
+          <div class="rb-label"><span style="text-decoration:overline">O₂A'</span></div>
+          <div class="rb-value" id="res-O2A2">—</div>
+        </div>
+        <div class="result-box" id="res-box-h2">
+          <div class="rb-label"><span style="text-decoration:overline">A'B'</span></div>
+          <div class="rb-value" id="res-h2">—</div>
+        </div>
+        <div class="result-box wide" id="res-box-gamma">
+          <div class="rb-label">Grandissement γ (A₁B₁ → A₂B₂)</div>
+          <div class="rb-value" id="res-gamma">—</div>
+        </div>
+        <!-- Mode afocal : angle de sortie + O₂A'∞ + Grossissement G -->
+        <div class="result-box" id="res-box-alpha2">
+          <div class="rb-label">Angle α'</div>
+          <div class="rb-value" id="res-alpha2">—</div>
+        </div>
+        <div class="result-box" id="res-box-O2Ainf">
+          <div class="rb-label"><span style="text-decoration:overline">O₂A'</span>∞</div>
+          <div class="rb-value" id="res-O2Ainf">—</div>
+        </div>
+        <div class="result-box wide" id="res-box-gross-afocal">
+          <div class="rb-label">Grossissement G</div>
+          <div class="rb-value" id="res-gross-afocal">—</div>
+        </div>
+        <div class="result-box wide">
+          <div class="rb-label">Système</div>
+          <div class="rb-value" id="res-systeme">—</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Note grossissement -->
+    <div style="font-size:0.8em; color:#7a8a96; line-height:1.5; padding: 4px 2px;">
+      Calcul du grossissement à partir des distances focales. Attention, cela ne correspond donc au rapport entre α' et α que pour des petits angles, ce qui n'est pas le cas dans cette simulation.
+    </div>
+
+  </div><!-- /panel -->
+</main>
+
+<!-- ═══════════════════════════════════════════════════
+     SCRIPTS — ordre de chargement critique
+════════════════════════════════════════════════════ -->
+<script src="js/sim.js"></script>
+<script src="js/draw.js"></script>
+<script src="js/ui.js"></script>
+
+</body>
+</html>

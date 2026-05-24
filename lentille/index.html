@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<!-- ════════════════════════════════════════════════════
+     Simulation pédagogique — Physique-Chimie Lycée
+     Auteur  : Mathieu Berdous
+     Licence : CC BY-NC 4.0 — https://creativecommons.org/licenses/by-nc/4.0/
+════════════════════════════════════════════════════ -->
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Simulation — Lentille mince convergente</title>
+  <meta name="author" content="Mathieu Berdous">
+  <meta name="copyright" content="Mathieu Berdous — CC BY-NC 4.0">
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════
+     CORPS PRINCIPAL
+════════════════════════════════════════════════════ -->
+<main>
+
+  <!-- Zone canvas -->
+  <div id="canvas-area">
+    <canvas id="cv"></canvas>
+    <div id="drag-hint">Faites glisser l'objet, la lentille ou l'écran sur l'axe optique</div>
+
+    <!-- Tableau relation de conjugaison -->
+    <table id="conjugaison-table">
+      <tbody>
+        <tr>
+          <td>Longueurs algébriques (cm)</td>
+          <td class="val-num col-OA" id="cj-OA"><span style="text-decoration:overline">OA</span> = —</td>
+          <td class="val-num col-OA2" id="cj-OA2"><span style="text-decoration:overline">OA'</span> = —</td>
+          <td class="val-num col-OF" id="cj-OF"><span style="text-decoration:overline">OF'</span> = —</td>
+        </tr>
+        <tr>
+          <td>Inverses (cm⁻¹)</td>
+          <td class="val-num col-OA" id="cj-invOA">1/<span style="text-decoration:overline">OA</span> = —</td>
+          <td class="val-num col-OA2" id="cj-invOA2">1/<span style="text-decoration:overline">OA'</span> = —</td>
+          <td class="val-num col-OF" id="cj-invOF">1/<span style="text-decoration:overline">OF'</span> = —</td>
+        </tr>
+        <tr>
+          <td>Relation de conjugaison (cm⁻¹)</td>
+          <td colspan="3" class="td-verif val-num" id="cj-verif">—</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Panneau droit -->
+  <div id="panel">
+
+    <!-- Mode d'affichage des rayons -->
+    <div>
+      <div class="section-title">Mode d'affichage</div>
+      <div class="mode-row" style="margin-top:8px;">
+        <button class="mode-btn active" id="btn-instant" onclick="setMode('instant')">Instantané</button>
+        <button class="mode-btn" id="btn-anim" onclick="setMode('anim')">Propagation</button>
+      </div>
+
+      <!-- Contrôles de propagation (masqués en mode instantané) -->
+      <div class="ctrl-row" id="row-speed" style="margin-top:8px;">
+        <div style="display:flex;gap:8px;margin-bottom:6px;">
+          <button id="btn-pause-play" class="mode-btn" style="flex:1;" onclick="togglePausePlay()">▶ Play</button>
+          <button id="btn-reset-anim" class="mode-btn" style="flex:1;" onclick="resetAnim()">↺ Reset</button>
+        </div>
+        <div class="ctrl-label" style="display:flex;justify-content:space-between;">
+          <span>Vitesse</span><span id="lbl-speed">×1</span>
+        </div>
+        <div id="speed-wrap" style="display:flex;align-items:center;gap:16px;user-select:none;">
+          <span id="speed-rewind" style="font-size:1em;cursor:pointer;opacity:0.5;flex-shrink:0;">⏪</span>
+          <div id="speed-track" style="position:relative;flex:1;height:6px;background:#c8c0b4;border-radius:3px;cursor:pointer;">
+            <div id="speed-fill"  style="position:absolute;left:0;top:0;height:100%;background:#2a6aaa;border-radius:3px;width:100%;"></div>
+            <div id="speed-thumb" style="position:absolute;top:50%;width:14px;height:14px;background:#2a6aaa;border-radius:50%;transform:translate(-50%,-50%);cursor:grab;box-shadow:0 1px 3px rgba(0,0,0,0.3);left:100%;"></div>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:3px;font-size:0.75em;color:#7a8a96;padding:0 7px;padding-left:34px;">
+          <span>×0.1</span>
+          <span>×0.25</span>
+          <span>×0.5</span>
+          <span>×0.75</span>
+          <span>×1</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Choix de la lentille -->
+    <div>
+      <div class="section-title">Choix de la lentille</div>
+      <div class="mode-row" style="margin-top:8px;">
+        <button class="mode-btn active" id="btn-conv" onclick="setLensType('conv')">Convergente</button>
+        <button class="mode-btn" id="btn-div" onclick="setLensType('div')">Divergente</button>
+      </div>
+    </div>
+
+    <!-- Paramètres optiques -->
+    <div>
+      <div class="section-title">Paramètres optiques</div>
+      <div class="ctrl-group" style="margin-top:8px;">
+
+        <!-- Distance focale f' -->
+        <div class="ctrl-row">
+          <div class="ctrl-label">
+            Distance focale f'
+            <span id="lbl-f">+10,0 cm</span>
+          </div>
+          <input type="range" id="sl-f" min="3" max="50" step="0.5" value="10"
+                 oninput="onSliderF(this.value)">
+        </div>
+
+        <!-- Taille algébrique AB -->
+        <div class="ctrl-row" id="row-h">
+          <div class="ctrl-label">
+            Taille objet <span style="text-decoration:overline">AB</span>
+            <span id="lbl-h">+3,0 cm</span>
+          </div>
+          <input type="range" id="sl-h" min="-24" max="24" step="2" value="6"
+                 oninput="onSliderAB(this.value)">
+        </div>
+
+        <!-- Nombre de rayons -->
+        <div class="ctrl-row">
+          <div class="ctrl-label">
+            Nombre de rayons
+            <span id="lbl-nrays">3</span>
+          </div>
+          <input type="range" id="sl-nrays" min="3" max="10" step="1" value="3"
+                 oninput="onSliderNRays(this.value)">
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Objet à l'infini -->
+    <div>
+      <div class="section-title">Objet à l'infini</div>
+      <div style="margin-top:8px; display:flex; flex-direction:column; gap:8px;">
+
+        <button id="btn-infini" onclick="toggleInfini()">Objet à l'infini : NON</button>
+
+        <div class="mode-row" id="row-infini-anim">
+          <button class="mode-btn" id="btn-infini-anim" onclick="toggleInfiniAnim()">▶ Animation</button>
+          <button class="mode-btn" id="btn-infini-play" onclick="toggleInfiniPlay()" disabled>⏸ Pause</button>
+        </div>
+
+        <div class="ctrl-row disabled" id="row-alpha">
+          <div class="ctrl-label">
+            Angle α (rayons incidents)
+            <span id="lbl-alpha">0°</span>
+          </div>
+          <input type="range" id="sl-alpha" min="-45" max="45" step="5" value="0"
+                 oninput="onSliderAlpha(this.value)" disabled>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Options de tracé -->
+    <div>
+      <div class="section-title">Options</div>
+      <div style="margin-top:8px; display:flex; flex-direction:column; gap:8px;">
+        <button id="btn-multipoints" onclick="toggleMultiPoints()">Points sources sur tout l'objet : NON</button>
+        <button id="btn-conjugaison" onclick="toggleConjugaison()">Relation de conjugaison : NON</button>
+      </div>
+    </div>
+
+    <!-- Résultats calculés -->
+    <div>
+      <div class="section-title">Résultats</div>
+      <div class="results-grid" style="margin-top:8px;">
+        <div class="result-box">
+          <div class="rb-label"><span style="text-decoration:overline">OA</span> (objet)</div>
+          <div class="rb-value" id="res-OA">—</div>
+        </div>
+        <div class="result-box">
+          <div class="rb-label"><span style="text-decoration:overline">OA'</span> (image)</div>
+          <div class="rb-value" id="res-OA2">—</div>
+        </div>
+        <div class="result-box">
+          <div class="rb-label">Grandissement <span style="text-decoration:overline">γ</span></div>
+          <div class="rb-value" id="res-gamma">—</div>
+        </div>
+        <div class="result-box">
+          <div class="rb-label">Taille image <span style="text-decoration:overline">A'B'</span></div>
+          <div class="rb-value" id="res-h2">—</div>
+        </div>
+        <div class="result-box wide">
+          <div class="rb-label">Nature de l'image</div>
+          <div class="rb-value" id="res-nature">—</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Légende des rayons -->
+    <div>
+      <div class="section-title">Légende des rayons</div>
+      <div class="legend" style="margin-top:8px;">
+        <div class="legend-row">
+          <div style="width:28px;flex-shrink:0;height:3px;background:#e05c00;border-radius:2px;"></div>
+          Rayon parallèle à l'axe optique
+        </div>
+        <div class="legend-row">
+          <div style="width:28px;flex-shrink:0;height:3px;background:#2a6aaa;border-radius:2px;"></div>
+          Rayon passant par le centre optique O
+        </div>
+        <div class="legend-row">
+          <div style="width:28px;flex-shrink:0;height:3px;background:#2a9a4a;border-radius:2px;"></div>
+          Rayon passant par le foyer objet F
+        </div>
+        <div class="legend-row" style="color:#7a8a96;">
+          <div style="width:28px;flex-shrink:0;height:0;border-top:2px dashed #7a8a96;"></div>
+          Prolongement virtuel
+        </div>
+        <div class="legend-row" style="color:#7a8a96;">
+          <div style="width:28px;flex-shrink:0;height:3px;background:#7a8a96;border-radius:2px;opacity:0.65;"></div>
+          Rayons supplémentaires
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /panel -->
+</main>
+
+<!-- ═══════════════════════════════════════════════════
+     SCRIPTS — ordre de chargement critique
+════════════════════════════════════════════════════ -->
+<script src="js/sim.js"></script>
+<script src="js/draw.js"></script>
+<script src="js/ui.js"></script>
+
+</body>
+</html>

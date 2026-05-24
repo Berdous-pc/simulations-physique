@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<!-- ════════════════════════════════════════════════════
+     Simulation pédagogique — Physique-Chimie Lycée
+     Auteur  : Mathieu Berdous
+     Licence : CC BY-NC 4.0 — https://creativecommons.org/licenses/by-nc/4.0/
+════════════════════════════════════════════════════ -->
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Simulation — Réactions Chimiques</title>
+  <meta name="author" content="Mathieu Berdous">
+  <meta name="copyright" content="Mathieu Berdous — CC BY-NC 4.0">
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<main id="main-grid">
+
+  <!-- Zone centrale -->
+  <div id="sim-area">
+
+    <!-- Équation -->
+    <div id="equation-zone">
+      <!-- Indicateur de progression mode test -->
+      <div id="test-progress-bar"></div>
+      <div id="equation-row"></div>
+    </div>
+
+    <!-- Conteneur canvas + tableau superposé -->
+    <div id="canvas-and-table">
+
+      <!-- Canvas plein fond (z-index 0) -->
+      <canvas id="mol-canvas"></canvas>
+
+      <!-- Tableau HTML (z-index 1, fond transparent sur la ligne canvas) -->
+      <table id="reaction-table">
+        <thead id="table-thead"><tr id="thead-row"></tr></thead>
+        <tbody id="table-tbody"></tbody>
+        <tfoot id="table-tfoot" style="display:none;"></tfoot>
+      </table>
+
+    </div>
+
+    <!-- Espaceur dynamique : s'agrandit quand un popup/message apparaît et que
+         la place sous le contenu est insuffisante pour le voir sans scroller -->
+    <div id="popup-spacer"></div>
+
+  </div>
+
+  <!-- Pop-up résultat mode test — hors de #sim-area pour que position:fixed fonctionne -->
+  <div id="test-popup">
+    <div id="test-popup-msg"></div>
+    <div id="test-popup-btns"></div>
+  </div>
+
+  <!-- Message d'état — hors de #sim-area pour que position:fixed fonctionne -->
+  <div id="status-msg"></div>
+
+  <!-- Overlay modal mode test -->
+  <div id="test-overlay">
+    <div class="test-modal" id="test-modal-content">
+    </div>
+  </div>
+
+  <!-- Panneau droit -->
+  <div id="panel">
+    <div class="panel-main-tabs">
+      <button class="panel-main-tab active" id="tab-equilibrage" onclick="setOnglet('equilibrage')">Équilibrage</button>
+      <button class="panel-main-tab"        id="tab-limitant"    onclick="setOnglet('limitant')">Réactif limitant</button>
+    </div>
+    <div id="panel-body">
+
+      <div class="panel-main-section visible" id="section-equilibrage">
+        <div class="section-title">Réaction</div>
+        <select class="reaction-select" id="sel-reaction-eq" onchange="onReactionChange('eq', this.value)">
+        </select>
+        <hr class="sep">
+        <div class="section-title">Vitesse d'animation</div>
+        <div class="speed-slider-wrap">
+          <input type="range" id="speed-slider-eq" min="0" max="3" step="1" value="0" class="speed-slider">
+          <div class="speed-labels" id="speed-labels-eq">
+            <span>×1</span><span>×2</span><span>×3</span><span>Instantané</span>
+          </div>
+        </div>
+        <hr class="sep">
+        <div class="section-title">Actions</div>
+        <button class="btn btn-primary" id="btn-tester" onclick="testerEquilibrage()">▶ Tester</button>
+        <button class="btn btn-raz"     id="btn-raz-eq" onclick="razEquilibrage()">RAZ</button>
+        <div id="eq-progress" style="font-size:13px;color:#2a6aaa;font-style:italic;text-align:center;min-height:18px;"></div>
+        <hr class="sep">
+        <div class="section-title">Options</div>
+        <button class="btn btn-toggle-one" id="btn-show-products-eq" onclick="toggleShowProductsEq()">Afficher les produits</button>
+        <button class="btn btn-toggle-one" id="btn-show-one-eq" onclick="toggleShowCoeffOneEq()">Afficher les coefficients 1</button>
+        <button class="btn btn-test-mode" id="btn-test-mode-eq" onclick="ouvrirConfirmTest('eq')">&#9881; Mode Test</button>
+      </div>
+
+      <div class="panel-main-section" id="section-limitant">
+        <div class="section-title">Réaction (équilibrée)</div>
+        <select class="reaction-select" id="sel-reaction-lim" onchange="onReactionChange('lim', this.value)">
+        </select>
+        <hr class="sep">
+        <div class="section-title">Vitesse d'animation</div>
+        <div class="speed-slider-wrap">
+          <input type="range" id="speed-slider" min="0" max="3" step="1" value="0" class="speed-slider">
+          <div class="speed-labels" id="speed-labels-lim">
+            <span>×1</span><span>×2</span><span>×3</span><span>Instantané</span>
+          </div>
+        </div>
+        <hr class="sep">
+        <div class="section-title">Actions</div>
+        <button class="btn btn-green"   id="btn-reagir-max"  onclick="lancerReactionMax()">▶ Réagir jusqu'à x<sub>max</sub></button>
+        <button class="btn btn-primary" id="btn-reagir-step" onclick="lancerReactionStep()">Augmenter l'avancement de 1 mol</button>
+        <button class="btn btn-raz"     id="btn-raz-lim"     onclick="razLimitant()">RAZ</button>
+        <div id="lim-progress" style="font-size:13px;color:#2a8a50;font-style:italic;text-align:center;min-height:18px;"></div>
+        <hr class="sep">
+        <div class="section-title">Options</div>
+        <button class="btn btn-toggle-one" id="btn-prediction" onclick="togglePrediction()">Mode prédiction : Désactivé</button>
+        <button class="btn btn-toggle-one" id="btn-comparaison" onclick="cycleComparaison()">
+          Comparaison des quantités initiales<br><span id="btn-comparaison-label">Désactivée</span>
+        </button>
+        <button class="btn btn-toggle-one" id="btn-show-one-lim" onclick="toggleShowCoeffOneLim()">Afficher les coefficients 1</button>
+        <button class="btn btn-test-mode" id="btn-test-mode-lim" onclick="ouvrirConfirmTest('lim')">&#9881; Mode Test</button>
+      </div>
+
+    </div>
+    <div class="panel-hint collapsed" id="panel-hint-eq">
+      <div class="panel-hint-header">
+        <span class="panel-hint-title">Instructions</span>
+        <button class="panel-hint-toggle" id="btn-hint-eq" onclick="toggleHint('eq')" title="Masquer les instructions">▼</button>
+      </div>
+      <div class="panel-hint-body" id="panel-hint-eq-body">
+        <strong>Équilibrage :</strong> complétez les coefficients puis cliquez sur <em>Tester</em> pour lancer la simulation.<br>
+        Lancez le mode Test pour vérifier si le principe de l'équilibrage d'une équation de réaction chimique est compris.
+      </div>
+    </div>
+    <div class="panel-hint collapsed" id="panel-hint-lim" style="display:none;">
+      <div class="panel-hint-header">
+        <span class="panel-hint-title">Instructions</span>
+        <button class="panel-hint-toggle" id="btn-hint-lim" onclick="toggleHint('lim')" title="Masquer les instructions">▼</button>
+      </div>
+      <div class="panel-hint-body" id="panel-hint-lim-body">
+        <strong>Réactif limitant :</strong> ajustez les quantités (1 mol = 1 modèle moléculaire) et augmentez l'avancement de la réaction pour suivre l'évolution des quantités de matière.<br>
+        Lancez le mode Test pour vérifier si le principe de l'avancement d'une réaction chimique est compris.
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script src="js/data.js"></script>
+<script src="js/sim.js"></script>
+<script src="js/ui.js"></script>
+</body>
+</html>

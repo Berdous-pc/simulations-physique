@@ -1,0 +1,175 @@
+/* ════════════════════════════════════════════════════
+   Simulation pédagogique — Physique-Chimie Lycée
+   Auteur  : Mathieu Berdous
+   Licence : CC BY-NC 4.0 — https://creativecommons.org/licenses/by-nc/4.0/
+════════════════════════════════════════════════════ */
+
+/* ════════════════════════════════════════════════════
+   RESET & BASE
+════════════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #f0ede8;
+  color: #2c3e50;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  font-size: 14px;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ════════════════════════════════════════════════════
+   GRILLE PRINCIPALE : canvas | panneau
+════════════════════════════════════════════════════ */
+main {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr clamp(200px, 290px, 22vw);
+  overflow: hidden;
+}
+
+/* ════════════════════════════════════════════════════
+   ZONE CANVAS
+════════════════════════════════════════════════════ */
+#canvas-area {
+  background: #fdf8f0;
+  border-right: 1px solid #c8c0b4;
+  overflow: hidden;
+  position: relative;
+}
+#canvas-area canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: default;
+}
+
+/* ════════════════════════════════════════════════════
+   PANNEAU DROIT
+════════════════════════════════════════════════════ */
+#panel {
+  background: #e8e4de;
+  padding: clamp(8px, 1.2vw, 16px) clamp(6px, 1vw, 14px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  font-size: clamp(13px, 1.2vw, 15px);
+}
+
+/* ════════════════════════════════════════════════════
+   TITRES DE SECTION
+════════════════════════════════════════════════════ */
+.section-title {
+  font-size: 0.78em;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #7a8a96;
+  border-bottom: 1px solid #c8c0b4;
+  padding-bottom: 4px;
+}
+
+/* ════════════════════════════════════════════════════
+   GROUPE DE CONTRÔLE
+════════════════════════════════════════════════════ */
+.ctrl-group { display: flex; flex-direction: column; gap: 8px; }
+.ctrl-row { display: flex; flex-direction: column; gap: 3px; }
+.ctrl-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 1em;
+  color: #2c3e50;
+}
+.ctrl-label span { font-weight: 600; color: #2a6aaa; font-variant-numeric: tabular-nums; }
+input[type=range] { width: 100%; accent-color: #2a6aaa; cursor: pointer; }
+
+/* ════════════════════════════════════════════════════
+   SLIDER DÉSACTIVÉ
+════════════════════════════════════════════════════ */
+.ctrl-row.disabled .ctrl-label { color: #b0b8c0; }
+.ctrl-row.disabled .ctrl-label span { color: #b0b8c0; }
+.ctrl-row.disabled input[type=range] { opacity: 0.38; cursor: not-allowed; pointer-events: none; }
+
+/* ════════════════════════════════════════════════════
+   BOUTONS MODE
+════════════════════════════════════════════════════ */
+.mode-row { display: flex; gap: 6px; }
+.mode-btn {
+  flex: 1;
+  padding: 7px 6px;
+  font-size: 0.87em;
+  font-weight: 600;
+  border: 1px solid #c8c0b4;
+  border-radius: 4px;
+  cursor: pointer;
+  background: #fdf8f0;
+  color: #2c3e50;
+  transition: background 0.15s, color 0.15s;
+}
+.mode-btn.active { background: #2a6aaa; color: #fff; border-color: #2a6aaa; }
+
+/* ════════════════════════════════════════════════════
+   BOUTONS TOGGLE PLEINE LARGEUR
+════════════════════════════════════════════════════ */
+.toggle-btn {
+  width: 100%;
+  padding: 7px 8px;
+  font-size: 0.87em;
+  font-weight: 600;
+  border: 1px solid #c8c0b4;
+  border-radius: 4px;
+  cursor: pointer;
+  background: #fdf8f0;
+  color: #2c3e50;
+  transition: background 0.15s, color 0.15s;
+  text-align: center;
+}
+.toggle-btn.active { background: #b04020; color: #fff; border-color: #b04020; }
+.toggle-btn.active-blue { background: #2a6aaa; color: #fff; border-color: #2a6aaa; }
+
+/* ════════════════════════════════════════════════════
+   BOÎTES DE RÉSULTATS
+════════════════════════════════════════════════════ */
+.results-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.result-box {
+  background: #fdf8f0;
+  border: 1px solid #c8c0b4;
+  border-radius: 4px;
+  padding: 5px 7px;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.result-box .rb-label { font-size: 0.87em; color: #7a8a96; }
+.result-box .rb-value { font-size: 1.2em; font-weight: 700; color: #2c3e50; font-variant-numeric: tabular-nums; }
+.result-box.wide { grid-column: span 2; }
+
+/* ════════════════════════════════════════════════════
+   LÉGENDE
+════════════════════════════════════════════════════ */
+.legend { display: flex; flex-direction: column; gap: 5px; }
+.legend-row { display: flex; align-items: center; gap: 8px; font-size: 0.87em; color: #2c3e50; }
+
+/* ════════════════════════════════════════════════════
+   BULLE D'AIDE AU DRAG
+════════════════════════════════════════════════════ */
+#drag-hint {
+  position: absolute;
+  bottom: 10px; left: 50%;
+  transform: translateX(-50%);
+  background: rgba(44,62,80,0.75);
+  color: #fff;
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 1s;
+}
+#drag-hint.hidden { opacity: 0; }
+
+/* ════════════════════════════════════════════════════
+   SÉPARATEUR
+════════════════════════════════════════════════════ */
+.sep { border: none; border-top: 1px solid #c8c0b4; margin: 2px 0; }

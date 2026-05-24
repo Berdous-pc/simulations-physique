@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<!-- ════════════════════════════════════════════════════
+     Simulation pédagogique — Physique-Chimie Lycée
+     Auteur  : Mathieu Berdous
+     Licence : CC BY-NC 4.0 — https://creativecommons.org/licenses/by-nc/4.0/
+════════════════════════════════════════════════════ -->
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="author" content="Mathieu Berdous">
+  <meta name="copyright" content="Mathieu Berdous — CC BY-NC 4.0">
+  <title>Simulations Physique-Chimie — Lycée</title>
+  <style>
+    /* ══════════════════════════════════════════════════
+       Page d'accueil — Simulations Physique-Chimie Lycée
+       Auteur  : Mathieu Berdous
+       Licence : CC BY-NC 4.0 — https://creativecommons.org/licenses/by-nc/4.0/
+    ══════════════════════════════════════════════════ */
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #e8e4de;
+      color: #2c3e50;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      padding: clamp(16px, 3vw, 40px) clamp(12px, 4vw, 60px);
+    }
+
+    /* ── En-tête ───────────────────────────────────── */
+    .page-header {
+      text-align: center;
+      margin-bottom: clamp(20px, 3vw, 36px);
+    }
+
+    .page-header h1 {
+      font-size: clamp(22px, 3.5vw, 40px);
+      font-weight: 700;
+      color: #2c3e50;
+      letter-spacing: 0.5px;
+      line-height: 1.2;
+    }
+
+    /* ── Layout principal : panel gauche + grille ──── */
+    .page-body {
+      flex: 1;
+      display: flex;
+      align-items: flex-start;
+      gap: clamp(14px, 2vw, 28px);
+    }
+
+    /* ── Panel de filtres ──────────────────────────── */
+    #filter-panel {
+      flex-shrink: 0;
+      width: clamp(160px, 18vw, 220px);
+      background: #fdf8f0;
+      border: 1.5px solid #c8c0b4;
+      border-radius: 10px;
+      padding: clamp(12px, 1.5vw, 18px);
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      position: sticky;
+      top: clamp(12px, 2vw, 24px);
+    }
+
+    .filter-group-title {
+      font-size: clamp(10px, 0.9vw, 12px);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #7a8a96;
+      margin-bottom: 8px;
+      padding-bottom: 5px;
+      border-bottom: 1px solid #d8d0c8;
+    }
+
+    .filter-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .filter-label {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: clamp(12px, 1.1vw, 14px);
+      color: #2c3e50;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .filter-label:hover { color: #2a6aaa; }
+
+    .filter-label input[type="checkbox"] {
+      accent-color: #2a6aaa;
+      width: 15px;
+      height: 15px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    /* Pastille colorée dans le label discipline */
+    .filter-dot {
+      display: inline-block;
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .dot-physique { background: #b04020; }
+    .dot-chimie   { background: #2a6aaa; }
+
+    /* Pastille niveau */
+    .filter-badge {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 1px 6px;
+      border-radius: 7px;
+    }
+    .filter-badge.level-terminale { background: #d8e8f8; color: #1a4a7a; }
+    .filter-badge.level-premiere  { background: #d8f0e4; color: #1a5a30; }
+    .filter-badge.level-seconde   { background: #eee8d8; color: #5a4a18; }
+
+    /* Bouton réinitialiser */
+    #btn-reset-filters {
+      width: 100%;
+      padding: 7px 6px;
+      background: #dedad2;
+      color: #5a6a78;
+      font-size: clamp(12px, 1vw, 13px);
+      font-weight: 700;
+      font-family: inherit;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+    }
+    #btn-reset-filters:hover  { background: #ccc8c0; }
+    #btn-reset-filters:active { transform: scale(0.97); }
+
+    /* Message "aucun résultat" */
+    #no-results {
+      display: none;
+      grid-column: 1 / -1;
+      text-align: center;
+      padding: 32px 0;
+      font-size: clamp(13px, 1.2vw, 15px);
+      color: #7a8a96;
+    }
+
+    /* ── Grille de cartes ──────────────────────────── */
+    main {
+      flex: 1;
+      min-width: 0; /* empêche le débordement flex */
+    }
+
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(clamp(190px, 20vw, 290px), 1fr));
+      gap: clamp(10px, 1.5vw, 20px);
+      align-content: start;
+    }
+
+    /* ── Carte individuelle ────────────────────────── */
+    .card {
+      background: #fdf8f0;
+      border: 1.5px solid #c8c0b4;
+      border-radius: 10px;
+      padding: clamp(14px, 1.8vw, 22px);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      text-decoration: none;
+      color: inherit;
+      transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, opacity 0.2s ease;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+    }
+
+    .card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 6px 18px rgba(0,0,0,0.13);
+      border-color: #a0b0bc;
+    }
+
+    .card:active {
+      transform: translateY(-1px);
+      box-shadow: 0 3px 9px rgba(0,0,0,0.10);
+    }
+
+    /* Carte masquée par le filtre */
+    .card.hidden {
+      display: none;
+    }
+
+    /* Physique : fond terracotta */
+    .card.theme-physique { background: #fdf4ee; border-color: #d4a882; }
+    .card.theme-physique:hover { border-color: #b07850; }
+
+    /* Chimie : fond bleu */
+    .card.theme-chimie { background: #f2f7fd; border-color: #b8cce4; }
+    .card.theme-chimie:hover { border-color: #8aaace; }
+
+    /* ── Contenu carte ─────────────────────────────── */
+    .card-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .card-theme {
+      font-size: clamp(10px, 0.95vw, 12px);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .theme-physique { color: #b04020; }
+    .theme-chimie   { color: #2a6aaa; }
+
+    .card-level {
+      font-size: clamp(10px, 0.9vw, 12px);
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 8px;
+      letter-spacing: 0.3px;
+    }
+
+    .level-terminale { background: #d8e8f8; color: #1a4a7a; }
+    .level-premiere  { background: #d8f0e4; color: #1a5a30; }
+    .level-seconde   { background: #eee8d8; color: #5a4a18; }
+
+    .card-title {
+      font-size: clamp(14px, 1.5vw, 18px);
+      font-weight: 700;
+      color: #2c3e50;
+      line-height: 1.25;
+    }
+
+    .card-desc {
+      font-size: clamp(12px, 1.1vw, 14px);
+      color: #7a8a96;
+      line-height: 1.55;
+      flex: 1;
+    }
+
+    /* ── Image de prévisualisation ─────────────────── */
+    .card-preview {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      border-radius: 6px;
+      overflow: hidden;
+      background: #e8e4de;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .card-preview img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      border-radius: 6px;
+      image-rendering: auto;
+    }
+
+    /* Placeholder quand pas d'image */
+    .card-preview.placeholder {
+      border: 1.5px dashed #c8c0b4;
+    }
+
+    .card-preview.placeholder::after {
+      content: 'Aperçu à venir';
+      font-size: clamp(10px, 0.9vw, 12px);
+      color: #b0b8c0;
+      font-style: italic;
+    }
+
+    /* ── Pied de page ──────────────────────────────── */
+    .page-footer {
+      text-align: center;
+      margin-top: clamp(32px, 5vw, 56px);
+      padding-top: 16px;
+      border-top: 1px solid #c8c0b4;
+      font-size: clamp(11px, 1vw, 13px);
+      color: #a0b0b8;
+      flex-shrink: 0;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ── En-tête ───────────────────────────────────── -->
+  <header class="page-header">
+    <h1>Simulations Physique-Chimie</h1>
+  </header>
+
+  <div class="page-body">
+
+    <!-- ══════════════════════════════════════════════
+         PANEL DE FILTRES
+    ══════════════════════════════════════════════ -->
+    <aside id="filter-panel">
+
+      <!-- Niveau -->
+      <div class="filter-group">
+        <div class="filter-group-title">Niveau</div>
+        <label class="filter-label">
+          <input type="checkbox" data-filter="level" data-value="seconde" checked>
+          <span class="filter-badge level-seconde">Seconde</span>
+        </label>
+        <label class="filter-label">
+          <input type="checkbox" data-filter="level" data-value="premiere" checked>
+          <span class="filter-badge level-premiere">Première</span>
+        </label>
+        <label class="filter-label">
+          <input type="checkbox" data-filter="level" data-value="terminale" checked>
+          <span class="filter-badge level-terminale">Terminale</span>
+        </label>
+      </div>
+
+      <!-- Discipline -->
+      <div class="filter-group">
+        <div class="filter-group-title">Discipline</div>
+        <label class="filter-label">
+          <input type="checkbox" data-filter="discipline" data-value="physique" checked>
+          <span class="filter-dot dot-physique"></span>
+          Physique
+        </label>
+        <label class="filter-label">
+          <input type="checkbox" data-filter="discipline" data-value="chimie" checked>
+          <span class="filter-dot dot-chimie"></span>
+          Chimie
+        </label>
+      </div>
+
+      <!-- Thème -->
+      <div class="filter-group">
+        <div class="filter-group-title">Thème</div>
+        <label class="filter-label">
+          <input type="checkbox" data-filter="theme" data-value="electricite" checked>
+          Électricité
+        </label>
+        <label class="filter-label">
+          <input type="checkbox" data-filter="theme" data-value="optique" checked>
+          Optique
+        </label>
+        <label class="filter-label">
+          <input type="checkbox" data-filter="theme" data-value="radioactivite" checked>
+          Radioactivité
+        </label>
+        <label class="filter-label">
+          <input type="checkbox" data-filter="theme" data-value="reaction" checked>
+          Réaction chimique
+        </label>
+        <label class="filter-label">
+          <input type="checkbox" data-filter="theme" data-value="titrage" checked>
+          Titrage
+        </label>
+      </div>
+
+      <button id="btn-reset-filters">Réinitialiser</button>
+
+    </aside>
+
+    <!-- ══════════════════════════════════════════════
+         GRILLE DE CARTES
+    ══════════════════════════════════════════════ -->
+    <main>
+      <div class="cards-grid">
+
+        <div id="no-results">Aucune simulation ne correspond aux filtres sélectionnés.</div>
+
+        <!-- Électricité — Circuit RC ────────────────── -->
+        <a class="card theme-physique"
+           href="condensateur/index.html"
+           data-discipline="physique"
+           data-theme="electricite"
+           data-levels="terminale">
+          <div class="card-meta">
+            <span class="card-theme theme-physique">Électricité</span>
+            <span class="card-level level-terminale">Terminale</span>
+          </div>
+          <div class="card-title">Circuit RC</div>
+          <div class="card-preview">
+            <img src="assets/previews/condensateur.png" alt="Aperçu Circuit RC">
+          </div>
+          <div class="card-desc">
+            Fonctionnement d'un condensateur plan. Visualisation de la charge et de la décharge d'un condensateur.
+          </div>
+</a>
+
+        <!-- Optique — Lentille mince ─────────────────── -->
+        <a class="card theme-physique"
+           href="lentille/index.html"
+           data-discipline="physique"
+           data-theme="optique"
+           data-levels="seconde premiere">
+          <div class="card-meta">
+            <span class="card-theme theme-physique">Optique</span>
+            <span class="card-level level-seconde">Seconde</span>
+            <span class="card-level level-premiere">Première</span>
+          </div>
+          <div class="card-title">Lentille mince</div>
+          <div class="card-preview">
+            <img src="assets/previews/lentille.png" alt="Aperçu Lentille mince">
+          </div>
+          <div class="card-desc">
+            Construction géométrique des images par une lentille mince.
+          </div>
+</a>
+
+        <!-- Optique — Lunette astronomique ───────────── -->
+        <a class="card theme-physique"
+           href="lunette/index.html"
+           data-discipline="physique"
+           data-theme="optique"
+           data-levels="terminale">
+          <div class="card-meta">
+            <span class="card-theme theme-physique">Optique</span>
+            <span class="card-level level-terminale">Terminale</span>
+          </div>
+          <div class="card-title">Lunette astronomique</div>
+          <div class="card-preview">
+            <img src="assets/previews/lunette.png" alt="Aperçu Lunette astronomique">
+          </div>
+          <div class="card-desc">
+            Construction géométrique des images à travers deux lentilles minces convergentes. Modélisation d'une lunette astronomique.
+          </div>
+</a>
+
+        <!-- Radioactivité — Décroissance radioactive ─── -->
+        <a class="card theme-physique"
+           href="radioactivite/index.html?tab=continu"
+           data-discipline="physique"
+           data-theme="radioactivite"
+           data-levels="terminale">
+          <div class="card-meta">
+            <span class="card-theme theme-physique">Radioactivité</span>
+            <span class="card-level level-terminale">Terminale</span>
+          </div>
+          <div class="card-title">Décroissance radioactive</div>
+          <div class="card-preview">
+            <img src="assets/previews/radioactivite-continu.png" alt="Aperçu Décroissance radioactive">
+          </div>
+          <div class="card-desc">
+            Loi de décroissance radioactive. Étude des courbes N(t) ou A(t).
+          </div>
+</a>
+
+        <!-- Radioactivité — Lancers de dés ───────────── -->
+        <a class="card theme-physique"
+           href="radioactivite/index.html?tab=discret"
+           data-discipline="physique"
+           data-theme="radioactivite"
+           data-levels="terminale">
+          <div class="card-meta">
+            <span class="card-theme theme-physique">Radioactivité</span>
+            <span class="card-level level-terminale">Terminale</span>
+          </div>
+          <div class="card-title">Lancers de dés</div>
+          <div class="card-preview">
+            <img src="assets/previews/radioactivite-discret.png" alt="Aperçu Lancers de dés">
+          </div>
+          <div class="card-desc">
+            Modèle des dés — simulation lancer par lancer pour comprendre la décroissance radioactive via un modèle discret.
+          </div>
+</a>
+
+        <!-- Réaction chimique — Équilibrage ──────────── -->
+        <a class="card theme-chimie"
+           href="reaction/index.html?tab=equilibrage"
+           data-discipline="chimie"
+           data-theme="reaction"
+           data-levels="seconde premiere">
+          <div class="card-meta">
+            <span class="card-theme theme-chimie">Réaction chimique</span>
+            <span class="card-level level-seconde">Seconde</span>
+            <span class="card-level level-premiere">Première</span>
+          </div>
+          <div class="card-title">Équilibrage</div>
+          <div class="card-preview">
+            <img src="assets/previews/reaction-equilibrage.png" alt="Aperçu Équilibrage">
+          </div>
+          <div class="card-desc">
+            Équilibrer des équations de réaction chimique. Modèles moléculaires 2D animés pour comprendre la conservation des éléments.
+          </div>
+</a>
+
+        <!-- Réaction chimique — Réactif limitant ─────── -->
+        <a class="card theme-chimie"
+           href="reaction/index.html?tab=limitant"
+           data-discipline="chimie"
+           data-theme="reaction"
+           data-levels="seconde premiere">
+          <div class="card-meta">
+            <span class="card-theme theme-chimie">Réaction chimique</span>
+            <span class="card-level level-seconde">Seconde</span>
+            <span class="card-level level-premiere">Première</span>
+          </div>
+          <div class="card-title">Réactif limitant</div>
+          <div class="card-preview">
+            <img src="assets/previews/reaction-limitant.png" alt="Aperçu Réactif limitant">
+          </div>
+          <div class="card-desc">
+            Comprendre les notions de réactif limitant et d'avancement d'une transformation chimique.
+          </div>
+</a>
+
+        <!-- Titrage — Principe du titrage ───────────── -->
+        <a class="card theme-chimie"
+           href="titrage/index.html?tab=principe"
+           data-discipline="chimie"
+           data-theme="titrage"
+           data-levels="premiere terminale">
+          <div class="card-meta">
+            <span class="card-theme theme-chimie">Titrage</span>
+            <span class="card-level level-premiere">Première</span>
+            <span class="card-level level-terminale">Terminale</span>
+          </div>
+          <div class="card-title">Principe du titrage</div>
+          <div class="card-preview">
+            <img src="assets/previews/titrage-principe.png" alt="Aperçu Principe du titrage">
+          </div>
+          <div class="card-desc">
+            Comprendre le principe d'un dosage par titrage et la notion d'équivalence.
+          </div>
+</a>
+
+        <!-- Titrage — Titrage ────────────────────────── -->
+        <a class="card theme-chimie"
+           href="titrage/index.html?tab=titrage"
+           data-discipline="chimie"
+           data-theme="titrage"
+           data-levels="premiere terminale">
+          <div class="card-meta">
+            <span class="card-theme theme-chimie">Titrage</span>
+            <span class="card-level level-premiere">Première</span>
+            <span class="card-level level-terminale">Terminale</span>
+          </div>
+          <div class="card-title">Titrage</div>
+          <div class="card-preview">
+            <img src="assets/previews/titrage-titrage.png" alt="Aperçu Titrage">
+          </div>
+          <div class="card-desc">
+            Modélisation de différents titrages (colorimétriques, pH-métriques, conductimétriques). Courbes n=f(V), pH=f(V), σ=f(V). Visualisation des espèces chimiques au cours du titrage.
+          </div>
+</a>
+
+      </div>
+    </main>
+
+  </div><!-- /.page-body -->
+
+  <footer class="page-footer">
+    Mathieu Berdous &nbsp;·&nbsp; CC BY-NC 4.0 &nbsp;·&nbsp; Physique-Chimie Lycée
+  </footer>
+
+  <script>
+  // ═══════════════════════════════════════════════════
+  //  Page d'accueil — filtres
+  //  Auteur  : Mathieu Berdous
+  //  Licence : CC BY-NC 4.0 — https://creativecommons.org/licenses/by-nc/4.0/
+  // ═══════════════════════════════════════════════════
+
+  (function () {
+    const checkboxes   = document.querySelectorAll('#filter-panel input[type="checkbox"]');
+    const cards        = document.querySelectorAll('.cards-grid .card');
+    const noResults    = document.getElementById('no-results');
+    const btnReset     = document.getElementById('btn-reset-filters');
+
+    // ── Lecture de l'état courant des filtres ────────
+    function getActiveValues(filterName) {
+      return Array.from(checkboxes)
+        .filter(cb => cb.dataset.filter === filterName && cb.checked)
+        .map(cb => cb.dataset.value);
+    }
+
+    // ── Application des filtres ──────────────────────
+    // Logique : OU au sein d'une catégorie, ET entre catégories.
+    // Une carte reste visible si elle satisfait AU MOINS UNE valeur cochée
+    // dans CHAQUE catégorie (niveau, discipline, thème).
+    function applyFilters() {
+      const activeLevels      = getActiveValues('level');
+      const activeDisciplines = getActiveValues('discipline');
+      const activeThemes      = getActiveValues('theme');
+
+      let visibleCount = 0;
+
+      cards.forEach(card => {
+        const cardLevels     = card.dataset.levels.split(' ');   // ex: ["premiere","terminale"]
+        const cardDiscipline = card.dataset.discipline;           // ex: "physique"
+        const cardTheme      = card.dataset.theme;                // ex: "optique"
+
+        // Catégorie niveau : au moins un niveau de la carte est coché
+        const levelOk = activeLevels.length === 0
+          || cardLevels.some(l => activeLevels.includes(l));
+
+        // Catégorie discipline : la discipline de la carte est cochée
+        const disciplineOk = activeDisciplines.length === 0
+          || activeDisciplines.includes(cardDiscipline);
+
+        // Catégorie thème : le thème de la carte est coché
+        const themeOk = activeThemes.length === 0
+          || activeThemes.includes(cardTheme);
+
+        const visible = levelOk && disciplineOk && themeOk;
+        card.classList.toggle('hidden', !visible);
+        if (visible) visibleCount++;
+      });
+
+      noResults.style.display = visibleCount === 0 ? 'block' : 'none';
+    }
+
+    // ── Événements ──────────────────────────────────
+    checkboxes.forEach(cb => cb.addEventListener('change', applyFilters));
+
+    btnReset.addEventListener('click', function () {
+      checkboxes.forEach(cb => { cb.checked = true; });
+      applyFilters();
+    });
+
+    // État initial
+    applyFilters();
+  })();
+  </script>
+
+</body>
+</html>

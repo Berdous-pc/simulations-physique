@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<!-- ════════════════════════════════════════════════════
+     Simulation pédagogique — Physique-Chimie Lycée
+     Auteur  : Mathieu Berdous
+     Licence : CC BY-NC 4.0 — https://creativecommons.org/licenses/by-nc/4.0/
+════════════════════════════════════════════════════ -->
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Simulation — Condensateur Plan (Circuit RC)</title>
+  <meta name="author" content="Mathieu Berdous">
+  <meta name="copyright" content="Mathieu Berdous — CC BY-NC 4.0">
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<main>
+  <!-- Colonne gauche : circuit + splitter + graphes -->
+  <div id="left-col">
+
+    <!-- Zone canvas du circuit électrique -->
+    <div id="circuit-area">
+      <canvas id="circuit-canvas"></canvas>
+    </div>
+
+    <!-- Splitter draggable -->
+    <div id="left-splitter"></div>
+
+    <!-- Zone graphes Uc(t)/q(t) et i(t) -->
+    <div id="graph-area">
+      <div id="graph-hover-tooltip"></div>
+      <div id="graph-time-control">
+        <!-- Boutons gauche : Mode Synchronisé/Continu + Affichage Charge/Tension -->
+        <div id="graph-btns-left">
+          <button id="btn-graph-mode" onclick="toggleGraphMode()" class="active">Mode : Synchronisé</button>
+          <button id="btn-graph-mode1" onclick="toggleGraphMode1()" class="active">Affichage : Charge q(t)</button>
+          <span id="lbl-acq-reached" style="display:none;">
+            Durée d'acquisition atteinte. Réinitialiser la simulation.
+          </span>
+        </div>
+        <!-- Boutons droite : Réticule libre, Précédent, Zoom, Adapter -->
+        <div id="graph-btns-right">
+          <button id="btn-graph-cursor" onclick="toggleGraphCursor()" title="Réticule libre">+</button>
+          <button id="btn-graph-prev"   onclick="prevGraphView()" disabled title="Vue précédente">&#8592;</button>
+          <button id="btn-graph-zoom"   onclick="toggleGraphZoom()" title="Mode zoom">&#128269;</button>
+          <button id="btn-graph-auto"   onclick="autoTimeWindow()">&#128269; Adapter</button>
+        </div>
+      </div>
+      <div class="graph-graphs-row">
+        <div class="graph-wrap">
+          <div class="graph-title" id="graph-Uc-title">q(t) — Charge de l'armature positive (µC)</div>
+          <canvas id="graph-Uc"></canvas>
+        </div>
+        <div class="graph-wrap">
+          <div class="graph-title">i(t) — Intensité du courant (mA)</div>
+          <canvas id="graph-i"></canvas>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- fin #left-col -->
+
+  <!-- Panneau de contrôle droit -->
+  <div id="panel">
+
+    <!-- Section : Phase -->
+    <div>
+      <div class="section-title">Phase</div>
+      <div class="btn-group">
+        <button class="btn btn-charge"    id="btn-charge"    onclick="setPhase('charge')">CHARGE</button>
+        <button class="btn btn-discharge" id="btn-discharge" onclick="setPhase('discharge')">DÉCHARGE</button>
+      </div>
+      <button class="btn-reset" onclick="resetSim()">&#9632; Réinitialiser</button>
+    </div>
+
+    <!-- Indicateur d'état de la simulation -->
+    <div id="state-indicator">
+      <span id="state-text" style="color:#4a6a9a">— En attente —</span>
+    </div>
+
+    <!-- Section : Contrôle du temps (pause + vitesse) -->
+    <div id="time-control">
+      <div class="section-title">Contrôle du temps</div>
+      <div class="tc-row">
+        <button id="btn-playpause" onclick="togglePause()">&#9208; Pause</button>
+      </div>
+      <div class="tc-row speed-btns">
+        <button class="btn-speed" onclick="setTimeScale(0.1)">×0.1</button>
+        <button class="btn-speed" onclick="setTimeScale(0.5)">×0.5</button>
+        <button class="btn-speed active" onclick="setTimeScale(1)">×1</button>
+        <button class="btn-speed" onclick="setTimeScale(2)">×2</button>
+        <button class="btn-speed" onclick="setTimeScale(5)">×5</button>
+      </div>
+    </div>
+
+    <!-- Section : Paramètres physiques -->
+    <div>
+      <div class="section-title">Paramètres</div>
+      <div class="param-row">
+        <label>Durée d'acquisition <span><span id="lbl-acqTime">60 s</span></span></label>
+        <input type="range" id="sl-acqTime" min="0" max="10" step="1" value="9"
+               oninput="updateAcqTime(this.value)">
+      </div>
+      <div class="param-row">
+        <label>Tension U <span><span id="lbl-U">5.0</span> V</span></label>
+        <input type="range" id="sl-U" min="1" max="12" step="0.5" value="5"
+               oninput="updateParam('U',this.value)">
+      </div>
+      <div class="param-row">
+        <label>Capacité C <span><span id="lbl-C">300</span> µF</span></label>
+        <input type="range" id="sl-C" min="100" max="500" step="10" value="300"
+               oninput="updateParam('C',this.value)">
+      </div>
+      <div class="param-row">
+        <label>Résistance R₁ <span><span id="lbl-R1">10000</span> Ω</span></label>
+        <input type="range" id="sl-R1" min="100" max="50000" step="100" value="10000"
+               oninput="updateParam('R1',this.value)">
+      </div>
+      <div class="param-row">
+        <label>Résistance R₂ <span><span id="lbl-R2">10000</span> Ω</span></label>
+        <input type="range" id="sl-R2" min="100" max="50000" step="100" value="10000"
+               oninput="updateParam('R2',this.value)">
+      </div>
+    </div>
+
+    <!-- Section : Valeurs instantanées -->
+    <div>
+      <div class="section-title">Valeurs instantanées</div>
+      <div class="readouts">
+        <div class="readout">
+          <div class="ro-label">Tension Uc(t)</div>
+          <div class="ro-value"><span id="ro-Uc">0.000</span> <span class="ro-unit">V</span></div>
+        </div>
+        <div class="readout">
+          <div class="ro-label">Intensité i(t)</div>
+          <div class="ro-value"><span id="ro-i">0.000</span> <span class="ro-unit">mA</span></div>
+        </div>
+        <div class="readout">
+          <div class="ro-label">Constante τ charge</div>
+          <div class="ro-value"><span id="ro-tau-chg">3.00 s</span></div>
+        </div>
+        <div class="readout">
+          <div class="ro-label">Constante τ décharge</div>
+          <div class="ro-value"><span id="ro-tau-dis">3.00 s</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Explication des modes d'affichage -->
+    <div id="mode-help">
+      <div class="section-title">Modes d'affichage</div>
+      <div class="mode-help-block">
+        <span class="mode-help-name">Synchronisé</span>
+        Le tracé du graphe s'adapte à la durée des phases de charge et de décharge demandées. Le tracé est mis en pause une fois la phase considérée terminée (au bout de 6τ).
+      </div>
+      <div class="mode-help-block">
+        <span class="mode-help-name">Continu</span>
+        Le graphe se trace en continu jusqu'à la fin de la durée d'acquisition, sans s'arrêter entre les phases.
+      </div>
+    </div>
+
+  </div><!-- fin #panel -->
+</main>
+
+<!-- Ordre de chargement : sim (état) → circuit → graph → ui (boucle) -->
+<script src="js/sim.js"></script>
+<script src="js/circuit.js"></script>
+<script src="js/graph.js"></script>
+<script src="js/ui.js"></script>
+</body>
+</html>
