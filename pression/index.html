@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<!-- ════════════════════════════════════════════════════
+     Simulation pédagogique — Physique-Chimie Lycée
+     Auteur  : Mathieu Berdous
+     Licence : CC BY-NC 4.0 — https://creativecommons.org/licenses/by-nc/4.0/
+════════════════════════════════════════════════════ -->
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Simulation — Pression d'un gaz parfait</title>
+  <meta name="author" content="Mathieu Berdous">
+  <meta name="copyright" content="Mathieu Berdous — CC BY-NC 4.0">
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<main>
+
+  <!-- ══════════════════════════════════════════════
+       COLONNE GAUCHE : récipient + canvas
+  ══════════════════════════════════════════════ -->
+  <div id="left-col">
+
+    <!-- Tableau d'informations — à gauche du canvas -->
+    <table id="info-table">
+      <tr>
+        <td class="it-lbl">Température</td>
+        <td class="it-val" id="it-T">—</td>
+      </tr>
+      <tr>
+        <td class="it-lbl it-wrap">Quantité de matière</td>
+        <td class="it-val" id="it-n">—</td>
+      </tr>
+      <tr>
+        <td class="it-lbl">Volume</td>
+        <td class="it-val" id="it-V">—</td>
+      </tr>
+      <tr>
+        <td class="it-lbl it-chocs-lbl" rowspan="5">Chocs</td>
+        <td class="it-choc-sub">
+          <table class="it-choc-inner">
+            <tr>
+              <td class="it-choc-lbl">Haut :</td>
+              <td class="it-val it-choc-val" id="it-top">—</td>
+            </tr>
+            <tr>
+              <td class="it-choc-lbl">Bas :</td>
+              <td class="it-val it-choc-val" id="it-bot">—</td>
+            </tr>
+            <tr>
+              <td class="it-choc-lbl">Gauche :</td>
+              <td class="it-val it-choc-val" id="it-lft">—</td>
+            </tr>
+            <tr>
+              <td class="it-choc-lbl">Droite :</td>
+              <td class="it-val it-choc-val" id="it-rgt">—</td>
+            </tr>
+            <tr class="it-mean-row">
+              <td class="it-choc-lbl it-mean-lbl">Moyenne :</td>
+              <td class="it-val it-mean-val" id="it-mean">—</td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+
+    <div id="sim-area">
+      <canvas id="recipient-canvas"></canvas>
+    </div>
+
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       PANNEAU DROIT : contrôles
+  ══════════════════════════════════════════════ -->
+  <div id="panel">
+    <div id="panel-body">
+
+      <!-- ── Titre ─────────────────────────────── -->
+      <div class="panel-title">Pression d'un gaz</div>
+
+      <!-- ── Contrôle du temps ──────────────────── -->
+      <div class="panel-section">
+        <div class="section-title">Contrôle</div>
+        <button id="btn-playpause" class="btn btn-pause" onclick="togglePause()">&#9646;&#9646; Pause</button>
+        <button class="btn btn-raz" onclick="resetSim()" style="margin-top:6px;">&#9632; Réinitialiser</button>
+      </div>
+
+      <div class="sep"></div>
+
+      <!-- ── Paramètres ─────────────────────────── -->
+      <div class="panel-section">
+        <div class="section-title">Paramètres</div>
+
+        <!-- Température -->
+        <div class="param-row">
+          <label>Température
+            <span class="param-value"><span id="lbl-T">300</span> K</span>
+          </label>
+          <input type="range" id="sl-T" min="100" max="1000" step="10" value="300"
+                 oninput="onSliderT(this.value)">
+        </div>
+
+        <!-- Quantité de matière -->
+        <div class="param-row">
+          <label>Quantité de matière
+            <span class="param-value">n = <span id="lbl-n">0,10</span> mol</span>
+          </label>
+          <input type="range" id="sl-n" min="20" max="300" step="10" value="100"
+                 oninput="onSliderN(this.value)">
+          <span class="input-hint" id="lbl-n-molecules">100 molécules dessinées pour 0,10 mol</span>
+        </div>
+
+        <!-- Volume -->
+        <div class="param-row">
+          <label>Volume
+            <span class="param-value">V = <span id="lbl-V">7,0</span> L</span>
+          </label>
+          <input type="range" id="sl-V" min="10" max="100" step="5" value="70"
+                 oninput="onSliderV(this.value)">
+          <span class="input-hint">Agit sur la position du piston</span>        </div>
+
+      </div>
+
+      <div class="sep"></div>
+
+      <!-- ── Options ────────────────────────────── -->
+      <div class="panel-section">
+        <div class="section-title">Options</div>
+        <div class="param-row">
+          <label>Pesanteur (g = 9,81 m/s²)
+            <span class="param-value"><span id="lbl-gravity">0 g</span></span>
+          </label>
+          <input type="range" id="sl-gravity" min="0" max="4" step="1" value="0"
+                 oninput="onSliderGravity(this.value)">
+          <div class="slider-ticks">
+            <span>0</span>
+            <span>0,5g</span>
+            <span>1g</span>
+            <span>2g</span>
+            <span>3g</span>
+          </div>
+        </div>
+
+      </div><!-- fin Options -->
+
+    </div><!-- fin #panel-body -->
+
+    <!-- ── Hint bas de panneau ────────────────── -->
+    <div class="panel-hint">
+      Chaque choc d'une molécule sur une paroi exerce une force.
+      La <strong>pression</strong> macroscopique P résulte de la somme
+      statistique de ces chocs (PV&nbsp;=&nbsp;nRT).
+    </div>
+
+  </div><!-- fin #panel -->
+
+</main>
+
+<!-- Ordre de chargement : sim (état + physique) → recipient (rendu) → ui (boucle) -->
+<script src="js/sim.js"></script>
+<script src="js/recipient.js"></script>
+<script src="js/ui.js"></script>
+</body>
+</html>

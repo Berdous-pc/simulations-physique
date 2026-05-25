@@ -1,0 +1,427 @@
+/* ══════════════════════════════════════════════════
+   Simulation pédagogique — Physique-Chimie Lycée
+   Auteur  : Mathieu Berdous
+   Licence : CC BY-NC 4.0 — https://creativecommons.org/licenses/by-nc/4.0/
+══════════════════════════════════════════════════ */
+
+/* ── Reset & base ────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Segoe UI', Arial, sans-serif;
+  background: #e8e4de;
+  color: #2c3e50;
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* ── Grille principale ───────────────────────────── */
+main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr clamp(200px, 22vw, 300px);
+  min-height: 0;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+/* ── Colonne gauche ──────────────────────────────── */
+#left-col {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  min-height: 0;
+  overflow: hidden;
+  gap: 12px;
+  padding: 12px;
+}
+
+/* ── Zone simulation (canvas) ────────────────────── */
+#sim-area {
+  flex: 1;
+  align-self: stretch;
+  background: #fdf8f0;
+  position: relative;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+
+#recipient-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* ── Tableau d'informations (à gauche du canvas) ─── */
+#info-table {
+  flex-shrink: 1;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  font-size: clamp(10px, 2.7vh, 42px);
+  background: #fdf8f0;
+  border: 1px solid #c8c0b4;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  width: 27vw;
+  max-width: 27vw;
+  table-layout: fixed;
+}
+
+#info-table > tbody > tr > td {
+  border-bottom: 1px solid #b0a898;
+  border-right: 1px solid #b0a898;
+  padding: clamp(3px, 0.6vh, 8px) clamp(5px, 0.8vw, 12px);
+  vertical-align: middle;
+}
+
+/* Pas de bordure droite sur la dernière colonne */
+#info-table > tbody > tr > td:last-child {
+  border-right: none;
+}
+
+/* Pas de bordure basse sur la dernière ligne */
+#info-table > tbody > tr:last-child > td {
+  border-bottom: none;
+}
+
+.it-lbl {
+  color: #2c3e50;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+
+.it-lbl.it-wrap {
+  white-space: normal;
+}
+
+.it-val {
+  color: #2a5080;
+  font-weight: 700;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Cellule qui contient le sous-tableau chocs — pas de padding propre */
+.it-choc-sub {
+  padding: 0 !important;
+}
+
+/* Sous-tableau chocs (interne) */
+.it-choc-inner {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+}
+
+.it-choc-inner td {
+  border-bottom: 1px solid #c8c0b4;
+  padding: 5px 10px;
+  vertical-align: middle;
+}
+
+.it-choc-inner tr:last-child td {
+  border-bottom: none;
+}
+
+/* Ligne Moyenne — pas de border-top séparé, la border-bottom de Droite suffit */
+.it-mean-row td {
+  border-top: none !important;
+}
+
+/* Ligne Droite (avant-dernière) — garde sa border-bottom comme séparateur */
+.it-choc-inner tr:nth-last-child(2) td {
+  border-bottom: 1px solid #c8c0b4;
+}
+
+.it-choc-lbl {
+  color: #5a6a78;
+  white-space: nowrap;
+  font-weight: 400;
+  font-size: 0.95em;
+}
+
+.it-choc-val {
+  color: #2a5080;
+  font-weight: 700;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-align: right;
+}
+
+/* Ligne Moyenne — séparateur visuel au-dessus */
+.it-mean-row td {
+  border-top: 1px solid #c8c0b4 !important;
+}
+
+.it-mean-lbl {
+  font-weight: 600 !important;
+  color: #2c3e50 !important;
+}
+
+.it-mean-val {
+  color: #b04020 !important;
+  font-weight: 700;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  display: block;
+}
+
+/* ── Panneau droit ───────────────────────────────── */
+#panel {
+  background: #e8e4de;
+  border-left: 1.5px solid #c8c0b4;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  font-size: clamp(13px, 1.32vw, 17px);
+  overflow: hidden;
+}
+
+#panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: clamp(10px, 1.2vw, 16px) clamp(10px, 1.2vw, 14px);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* ── Titre du panneau ────────────────────────────── */
+.panel-title {
+  font-size: clamp(14px, 1.4vw, 17px);
+  font-weight: 700;
+  color: #2c3e50;
+  text-align: center;
+  padding-bottom: clamp(8px, 1vw, 12px);
+  border-bottom: 1.5px solid #c8c0b4;
+  margin-bottom: clamp(8px, 1vw, 12px);
+  letter-spacing: 0.3px;
+}
+
+/* ── Section ─────────────────────────────────────── */
+.panel-section {
+  margin-bottom: 8px;
+}
+
+/* ── Titres de section ───────────────────────────── */
+.section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #7a8a96;
+  margin-bottom: 7px;
+}
+
+/* ── Séparateur ──────────────────────────────────── */
+.sep {
+  border: none;
+  border-top: 1px solid #c8c0b4;
+  margin: 8px 0;
+}
+
+/* ── Boutons ─────────────────────────────────────── */
+.btn {
+  width: 100%;
+  border: none;
+  border-radius: 6px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 0.1s, background 0.15s;
+}
+.btn:active { transform: scale(0.97); }
+
+.btn-pause {
+  background: #c08020;
+  color: #fff;
+  font-size: 18px;
+  padding: 10px 6px;
+}
+.btn-pause:hover { background: #a06010; }
+
+.btn-play {
+  background: #2a8a50;
+  color: #fff;
+  font-size: 18px;
+  padding: 10px 6px;
+}
+.btn-play:hover { background: #1a6a38; }
+
+.btn-raz {
+  background: #dedad2;
+  color: #5a6a78;
+  font-size: 18px;
+  padding: 9px 6px;
+}
+.btn-raz:hover { background: #ccc8c0; }
+
+/* Bouton toggle (option on/off) */
+.btn-toggle-one {
+  background: #ece8e0;
+  color: #5a6a78;
+  font-size: 16px;
+  padding: 7px 6px;
+  border: 1.5px solid #c8c0b4;
+  text-align: left;
+}
+.btn-toggle-one:hover { background: #dedad2; }
+.btn-toggle-one.active {
+  background: #fde8c8;
+  color: #7a3a10;
+  border-color: #d0a060;
+}
+
+/* ── Paramètres ──────────────────────────────────── */
+.param-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 10px;
+}
+
+.param-row label {
+  font-size: clamp(12px, 1.25vw, 15px);
+  color: #2c3e50;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.param-value {
+  color: #2a5080;
+  font-weight: 600;
+  white-space: nowrap;
+  font-size: clamp(12px, 1.25vw, 15px);
+}
+
+.param-unit {
+  font-size: 0.85em;
+  color: #7a8a96;
+  font-weight: 400;
+}
+
+.param-row input[type="range"] {
+  width: 100%;
+  accent-color: #4a7aaa;
+  cursor: pointer;
+}
+
+.input-hint, .input-hint-sub {
+  font-size: 14px !important;
+  color: #7a8a96 !important;
+  line-height: 1.4;
+  font-weight: 400;
+}
+
+/* ── Afficheurs valeur ───────────────────────────── */
+.readout {
+  background: #fff;
+  border: 1px solid #c8c0b4;
+  border-radius: 6px;
+  padding: 7px 9px;
+  margin-bottom: 8px;
+}
+
+.ro-label {
+  font-size: clamp(11px, 1vw, 14px);
+  color: #7a8a96;
+  margin-bottom: 2px;
+}
+
+.ro-value {
+  font-size: clamp(15px, 1.6vw, 20px);
+  font-weight: 700;
+  color: #2a5080;
+  font-variant-numeric: tabular-nums;
+}
+
+.ro-unit {
+  font-size: 0.75em;
+  font-weight: 400;
+  color: #7a8a96;
+}
+
+/* ── Grille des chocs/s ──────────────────────────── */
+.ro-chocs-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 8px;
+  margin-top: 5px;
+}
+
+.ro-choc-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.ro-choc-label {
+  font-size: clamp(10px, 0.9vw, 12px);
+  color: #7a8a96;
+}
+
+.ro-choc-val {
+  font-size: clamp(13px, 1.3vw, 17px);
+}
+
+/* État grisé (toggle chocs OFF) */
+#ro-chocs-wrap.disabled .ro-choc-val {
+  color: #b0b8c4;
+}
+
+
+.slider-ticks {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 3px;
+  padding: 0 8px;
+}
+
+.slider-ticks span {
+  font-size: clamp(10px, 1vw, 13px);
+  color: #7a8a96;
+  width: 0;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.slider-ticks span:first-child {
+  width: auto;
+  text-align: left;
+}
+
+.slider-ticks span:last-child {
+  width: auto;
+  text-align: right;
+}
+.panel-hint {
+  flex-shrink: 0;
+  font-size: clamp(11px, 1vw, 14px);
+  color: #5a6a78;
+  background: #fff;
+  border-top: 1.5px solid #b0a898;
+  padding: 8px 12px;
+  line-height: 1.5;
+}
+
+.panel-hint strong {
+  color: #2c3e50;
+}

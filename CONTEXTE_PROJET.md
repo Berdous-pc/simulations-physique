@@ -267,7 +267,7 @@ nom-simulation/
 
 Les anciennes simulations en fichier unique (`reaction.html`) conservent leur format d'origine. Toute **nouvelle** simulation adopte l'arborescence ci-dessus.
 
-> **Simulations déjà migrées en arborescence** : `lentille/`, `lunette/`, `radioactivite/`, `reaction/`, `titrage/`, `condensateur/`.
+> **Simulations déjà migrées en arborescence** : `lentille/`, `lunette/`, `radioactivite/`, `reaction/`, `titrage/`, `condensateur/`, `pression/`.
 
 ### Règles générales
 
@@ -335,6 +335,7 @@ Tout nouveau fichier **HTML**, **CSS** et **JS** doit inclure une signature d'au
 | `reaction.html` | Réactions chimiques — stœchiométrie & réactif limitant | Seconde/Première | Fichier unique | Mode Équilibrage + Mode Réactif limitant, modèles moléculaires 2D animés, mode test avec score, tous les éléments responsifs via `clamp()` |
 | `reaction/` | Idem `reaction.html` — version découpée en arborescence | Seconde/Première | **Arborescence** | Mêmes fonctionnalités, découpée en `css/style.css` + `js/data.js` + `js/sim.js` + `js/ui.js` + `index.html` |
 | `titrage/` | Titrage colorimétrique, pH-métrique, conductimétrique | Première/Terminale | **Arborescence** | Voir `titrage/ARCHITECTURE.md` |
+| `pression/` | Pression d'un gaz parfait — modèle cinétique | Terminale | **Arborescence** | Piston animé, collisions élastiques 2D, PV=nRT, chocs/s sur 4 parois |
 
 ---
 
@@ -378,7 +379,7 @@ Structure d'une carte :
 Trois groupes de checkboxes (toutes cochées par défaut) :
 - **Niveau** : Seconde, Première, Terminale
 - **Discipline** : Physique, Chimie
-- **Thème** : Électricité, Optique, Radioactivité, Réaction chimique, Titrage
+- **Thème** : Électricité, Optique, Radioactivité, Réaction chimique, Titrage, Thermodynamique
 
 Logique : **OU au sein d'une catégorie**, **ET entre catégories**.
 
@@ -399,6 +400,7 @@ Stockées dans `assets/previews/` au format `.png` (800×450 px recommandé) :
 | `reaction-limitant.png` | Réactif limitant |
 | `titrage-principe.png` | Principe du titrage |
 | `titrage-titrage.png` | Titrage |
+| `pression.png` | Pression d'un gaz *(à venir)* |
 
 ### Deep linking (`?tab=`)
 
