@@ -158,8 +158,9 @@ function calcPH(params) {
         return h - oh + Cb0 - Ca0 * Ka / (Ka + h);
       case 'base_forte':
         // NaOH (Cb/Vb = bécher) titré par HCl (Ca/Va = burette)
-        // [Na⁺] = Cb0, [Cl⁻] = Ca0  →  h - oh + Ca0 - Cb0 = 0
-        return h - oh + Ca0 - Cb0;
+        // Électroneutralité : [H⁺] + [Na⁺] = [OH⁻] + [Cl⁻]
+        //   h + Cb0 = oh + Ca0  →  h - oh + Cb0 - Ca0 = 0
+        return h - oh + Cb0 - Ca0;
       case 'base_faible':
         // B (Cb/Vb = bécher) titrée par HCl (Ca/Va = burette)
         // [BH⁺] = Cb0·h/(Ka+h), [Cl⁻] = Ca0
