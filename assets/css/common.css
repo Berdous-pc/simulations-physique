@@ -1,0 +1,155 @@
+/* ══════════════════════════════════════════════════
+   Simulation pédagogique — Physique-Chimie Lycée
+   Auteur  : Mathieu Berdous
+   Licence : CC BY-NC 4.0 — https://creativecommons.org/licenses/by-nc/4.0/
+══════════════════════════════════════════════════ */
+
+/* ── Charte graphique globale — Variables CSS ── */
+:root {
+  /* Couleurs de fond et de structure */
+  --color-bg-simulation: #fdf8f0;       /* Ivoire chaud */
+  --color-bg-panel: #e8e4de;            /* Fond du panneau de contrôle */
+  --color-bg-graph: #faf9f6;            /* Fond des graphiques */
+  --color-border: #c8c0b4;              /* Couleur des bordures */
+  --color-border-hover: #a0b0bc;        /* Bordure au survol */
+  
+  /* Couleurs de texte */
+  --color-text-main: #2c3e50;           /* Texte principal */
+  --color-text-sub: #7a8a96;            /* Texte secondaire / labels */
+  --color-text-value: #2a5080;          /* Valeurs physiques instantanées */
+  --color-text-active-tab: #2a6aaa;     /* Onglet actif */
+  
+  /* Accents et signalétique */
+  --color-accent-blue: #2a6aaa;         /* Bleu (charge, actif) */
+  --color-accent-terracotta: #b04020;   /* Terracotta (décharge, alerte) */
+  --color-accent-terracotta-alt: #c05020;
+  --color-accent-green: #2a8a50;        /* Vert (action positive) */
+  --color-accent-orange: #d26414;       /* Orange (borne +, etc.) */
+  --color-accent-violet: #4a2a8a;       /* Violet (mode test, etc.) */
+  --color-current-arrow: #cc2200;       /* Flèches de courant */
+  
+  /* Typographie */
+  --font-family-ui: 'Segoe UI', Arial, sans-serif;
+  --font-family-mono: monospace;
+}
+
+/* ── Composants UI standardisés ── */
+
+/* Titres de section */
+.section-title {
+  font-family: var(--font-family-ui);
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--color-text-sub);
+  margin-bottom: 4px;
+}
+
+/* Paramètres (Label + Slider/Input) */
+.param-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 6px;
+  font-family: var(--font-family-ui);
+}
+
+.param-row label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 15px;
+  color: var(--color-text-main);
+}
+
+.param-row label span {
+  color: var(--color-text-value);
+  font-weight: 600;
+}
+
+input[type=range] {
+  width: 100%;
+  accent-color: var(--color-accent-blue);
+  cursor: pointer;
+}
+
+/* Boutons d'action */
+.btn {
+  flex: 1;
+  padding: 10px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-family: var(--font-family-ui);
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.1s;
+  letter-spacing: 0.3px;
+}
+
+.btn:active {
+  transform: scale(0.97);
+}
+
+/* Bouton réinitialiser classique (ex: .btn-reset) */
+.btn-reset {
+  width: 100%;
+  padding: 8px;
+  background: #dedad2;
+  color: var(--color-text-sub);
+  border: 1px solid #b0a898;
+  border-radius: 6px;
+  font-family: var(--font-family-ui);
+  font-size: 15px;
+  cursor: pointer;
+  margin-top: 4px;
+  font-weight: 700;
+  transition: background 0.15s, color 0.15s;
+}
+
+.btn-reset:hover {
+  background: #d0ccc4;
+  color: var(--color-text-main);
+}
+
+.btn-reset:active {
+  transform: scale(0.97);
+}
+
+/* Afficheurs de valeurs instantanées */
+.readout {
+  background: #ffffff;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 7px 9px;
+  font-family: var(--font-family-ui);
+}
+
+.readout .ro-label {
+  font-size: 13px;
+  color: var(--color-text-sub);
+  margin-bottom: 2px;
+}
+
+.readout .ro-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--color-text-value);
+  font-variant-numeric: tabular-nums;
+}
+
+.readout .ro-unit {
+  font-size: 12px;
+  color: var(--color-text-sub);
+}
+
+/* Indicateur d'état */
+#state-indicator {
+  text-align: center;
+  font-family: var(--font-family-ui);
+  font-size: 14px;
+  padding: 6px;
+  border-radius: 5px;
+  background: #ffffff;
+  border: 1px solid var(--color-border);
+}

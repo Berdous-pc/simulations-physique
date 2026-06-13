@@ -184,28 +184,8 @@ function initGraphHover() {
   });
 }
 
-// ─────────────────────────────────────────────────────────────────────
-//  Choisit un pas de graduation "joli" (1, 2, 5 × 10^n).
-// ─────────────────────────────────────────────────────────────────────
-function niceStep(range, targetN) {
-  const raw  = range / targetN;
-  const mag  = Math.pow(10, Math.floor(Math.log10(raw)));
-  const norm = raw / mag;
-  const nice = norm < 1.5 ? 1 : norm < 3.5 ? 2 : norm < 7.5 ? 5 : 10;
-  return nice * mag;
-}
-
-// ─────────────────────────────────────────────────────────────────────
-//  Formate une valeur d'axe Y.
-// ─────────────────────────────────────────────────────────────────────
-function fmtAxisY(v) {
-  const a = Math.abs(v);
-  if (a === 0)      return '0';
-  if (a >= 100)     return v.toFixed(0);
-  if (a >= 10)      return v.toFixed(1);
-  if (a >= 0.1)     return v.toFixed(2);
-  return v.toExponential(1);
-}
+// Note : niceStep(range, targetN) et fmtAxisY(v) ont été factorisés et
+// sont désormais chargés de manière centralisée depuis assets/js/graph-renderer.js.
 
 // ─────────────────────────────────────────────────────────────────────
 //  Dessine un graphe sur le canvas identifié par canvasId.
