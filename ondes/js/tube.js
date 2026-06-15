@@ -272,15 +272,17 @@ function drawTube() {
 
 // ── Fond du tube colorié selon la pression ────────────────────────────
 //
-//  Dégradé continu : chaque bande a une couleur pleine interpolée entre
-//  les trois teintes pastels :
-//    dp = 0  → bleu pastel   rgb(200,218,240)  (pression normale)
-//    dp = +1 → rouge pastel  rgb(245,190,180)  (surpression)
-//    dp = -1 → vert pastel   rgb(180,235,195)  (dépression)
-//  Interpolation linéaire RGB → dégradé visuellement continu.
-//  Les particules (couleurs saturées) restent bien visibles par-dessus.
+//  Dégradé continu via createLinearGradient : on calcule N points de ΔP,
+//  on les convertit en couleur, puis on construit un gradient avec autant
+//  de color-stops. Rendu nativement interpolé → parfaitement smooth, sans
+//  bandes visibles même à haute fréquence.
+//
+//  Palette (teintes pastels d'origine) :
+//    dp = 0  → orange pâle  rgb(252,220,180)  (pression normale)
+//    dp = +1 → rose pâle    rgb(250,185,180)  (surpression / compression)
+//    dp = −1 → jaune pâle   rgb(252,245,185)  (dépression / raréfaction)
 
-var N_PRESSURE_BANDS = 200;
+var N_PRESSURE_BANDS = 300;
 
 function _drawTubePressureBg(ctx) {
     var L    = sim.tubeLength;
@@ -292,15 +294,16 @@ function _drawTubePressureBg(ctx) {
     var r0 = 252, g0 = 220, b0 = 180;
     // Compression (dp = +1) : rose pâle
     var rP = 250, gP = 185, bP = 180;
-    // Dépression (dp = -1) : jaune pâle
+    // Dépression (dp = −1) : jaune pâle
     var rN = 252, gN = 245, bN = 185;
 
-    var bw = L / N_PRESSURE_BANDS;
+    // Construire le gradient linéaire horizontal
+    var grad = ctx.createLinearGradient(sim.tubeLeft, 0, sim.tubeLeft + L, 0);
 
-    for (var i = 0; i < N_PRESSURE_BANDS; i++) {
-        var x_px = (i + 0.5) / N_PRESSURE_BANDS * L;
+    for (var i = 0; i <= N_PRESSURE_BANDS; i++) {
+        var frac = i / N_PRESSURE_BANDS;
+        var x_px = frac * L;
         var dp   = Math.max(-1, Math.min(1, waveDeltaP(x_px, sim.simTime)));
-        var xDraw = sim.tubeLeft + i * bw;
 
         var r, g, b;
         if (dp >= 0) {
@@ -314,9 +317,11 @@ function _drawTubePressureBg(ctx) {
             b = Math.round(b0 + t * (bN - b0));
         }
 
-        ctx.fillStyle = 'rgb(' + r + ',' + g + ',' + b + ')';
-        ctx.fillRect(xDraw, yTop, Math.ceil(bw) + 1, h);
+        grad.addColorStop(frac, 'rgb(' + r + ',' + g + ',' + b + ')');
     }
+
+    ctx.fillStyle = grad;
+    ctx.fillRect(sim.tubeLeft, yTop, L, h);
 }
 
 // ── Conversion ΔP → couleur RGB pour les particules ──────────────────

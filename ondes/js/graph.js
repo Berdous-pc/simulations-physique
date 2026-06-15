@@ -161,12 +161,32 @@ function _drawDpxGraph(ctx, W, H) {
     _drawZeroLine(ctx, yMin, yMax, px, py, pW);
 
     // ── Courbe ΔP(x) ─────────────────────────────────────────────────
-    if (data.length > 1) {
+    // On échantillonne directement en espace canvas (1 colonne de pixels = 1 échantillon).
+    // Pour chaque colonne cx on calcule le x_data correspondant, puis ΔP.
+    // Quand λ est petite (K faible / f haute), plusieurs périodes tiennent
+    // dans quelques pixels → on sur-échantillonne à 4 sous-colonnes par pixel
+    // pour capturer les extrema même quand λ < largeur d'un pixel.
+    {
+        var freqEff_g = (sim.sourceMode === 'impulse') ? 1.0 / T_IMPULSE : sim.freq;
+        var lambda_g  = (sim.c_sim > 0) ? sim.c_sim / freqEff_g : L;  // px de tube
+        // ratio : pixels canvas par longueur d'onde
+        var pxPerLambda = (lambda_g > 0) ? pW * lambda_g / L : pW;
+        // sous-pas : si λ couvre < 8 px canvas on sur-échantillonne
+        var subSteps = (pxPerLambda < 8) ? Math.ceil(8 / Math.max(0.5, pxPerLambda)) : 1;
+        subSteps = Math.min(subSteps, 16);   // cap à 16 sous-pas
+
+        var totalSteps = pW * subSteps;
         ctx.save();
         ctx.beginPath();
-        ctx.moveTo(px(data[0].x), py(data[0].dp));
-        for (var j = 1; j < data.length; j++) {
-            ctx.lineTo(px(data[j].x), py(data[j].dp));
+        var firstPt = true;
+        for (var s = 0; s <= totalSteps; s++) {
+            var frac   = s / totalSteps;
+            var x_data = xMin + frac * (xMax - xMin);
+            var dp_val = waveDeltaP(x_data, sim.simTime);
+            var cx     = GM.left + frac * pW;
+            var cy     = py(dp_val);
+            if (firstPt) { ctx.moveTo(cx, cy); firstPt = false; }
+            else          { ctx.lineTo(cx, cy); }
         }
         ctx.strokeStyle = '#2a6aaa';
         ctx.lineWidth   = 2;
@@ -213,9 +233,9 @@ function _drawDptGraph(ctx, W, H) {
         return;
     }
 
-    // ── Fenêtre fixe 0–10 s (cyclique, type oscilloscope) ────────────
+    // ── Fenêtre fixe 0–5 s (cyclique, type oscilloscope) ─────────────
     var xMin = 0;
-    var xMax = 10;
+    var xMax = 5;
     sim.graphView.xMin = xMin;   // mis à jour pour le réticule et le hover snappé
     sim.graphView.xMax = xMax;
     var yMin = -1.12;
@@ -279,7 +299,7 @@ function _drawDptGraph(ctx, W, H) {
 // (fenêtre fixe 0–10 s : t affiché = pt.t % 10, cycle = floor(pt.t / 10))
 
 function _drawSeries(ctx, data, xMin, xMax, px, py, color, lw, cycleTime) {
-    var WINDOW = 10;
+    var WINDOW = 5;
     // Utiliser dptTimeOrigin si disponible, sinon fallback sur cycleTime
     var tOrigin = (sim.dptTimeOrigin !== undefined) ? sim.dptTimeOrigin : 0;
 
@@ -382,10 +402,10 @@ function _drawSnappedHover_dpt(ctx, W, H, mx, my, pW, pH) {
     function px(v) { return GM.left + (v - xMin) / (xMax - xMin) * pW; }
     function py(v) { return GM.top  + (1 - (v - yMin) / (yMax - yMin)) * pH; }
 
-    var WINDOW  = 10;
+    var WINDOW  = 5;
     var tOrigin = sim.dptTimeOrigin || 0;
 
-    // Temps local (0–10) correspondant à la position X du curseur
+    // Temps local (0–5) correspondant à la position X du curseur
     var tCursor = xMin + (mx - GM.left) / pW * (xMax - xMin);
 
     // Candidats pour chaque série active

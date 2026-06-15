@@ -26,7 +26,7 @@ var C_BASE           = 43.0;
 // Valeur réduite (0.6 s) pour un paquet d'onde compact et bien visible
 var T_IMPULSE        = 0.6;   // secondes de temps simulé
 // Nombre max de points enregistrés pour ΔP(t)
-var DP_MAX_POINTS    = 3200;  // 300 pts/s × 10 s + marge → courbes lisses sur la fenêtre entière
+var DP_MAX_POINTS    = 1600;  // 300 pts/s × 5 s + marge → courbes lisses sur la fenêtre entière
 
 // ── État global de la simulation ──────────────────────────────────────
 var sim = {
@@ -92,7 +92,7 @@ var sim = {
     dptTimeOrigin : 0,   // sim.simTime au dernier reset du graphe ΔP(t)
 
     // ── Vue graphe ΔP(t) ─────────────────────────────────────────────
-    graphView        : { xMin: 0, xMax: 30, yMin: -1, yMax: 1 },
+    graphView        : { xMin: 0, xMax: 5, yMin: -1, yMax: 1 },
     graphViewHistory : [],
     graphZoomMode    : false,
     graphCursorMode  : false,
@@ -173,23 +173,32 @@ function waveDisplacement(x_px, t_sim) {
 // ══════════════════════════════════════════════════════════════════════
 
 function waveDeltaP(x_px, t_sim) {
-    var h   = Math.max(1.5, sim.tubeLength / 300);
+    var freqEff = (sim.sourceMode === 'impulse') ? 1.0 / T_IMPULSE : sim.freq;
+    var aEff    = (sim.sourceMode === 'impulse') ? sim.memAmplitude / 2 : sim.memAmplitude;
+    var kEff    = (sim.c_sim > 0) ? 2 * Math.PI * freqEff / sim.c_sim : 0;
+
+    // ── Pas h adaptatif ───────────────────────────────────────────────
+    // h doit être petit devant λ = 2π/k pour que la DFC soit précise.
+    // On cible h = λ/20 = π/(10k), borné par un minimum de 0.5 px
+    // et un maximum de L/100 (pour ne pas être trop grand sur le domaine).
+    var hIdeal = (kEff > 0) ? Math.PI / (10 * kEff) : sim.tubeLength / 100;
+    var h      = Math.max(0.5, Math.min(sim.tubeLength / 100, hIdeal));
+
     var u_m = waveDisplacement(x_px - h, t_sim);
     var u_p = waveDisplacement(x_px + h, t_sim);
     // ΔP = −K × ∂u/∂x  ≈  K × (u_m − u_p) / (2h)
     var dp  = sim.K * (u_m - u_p) / (2 * h);
 
-    // Normalisation : on divise par ΔP_max théorique = K × A_eff × k_eff
-    // pour que la valeur retournée soit dans [-1, +1] à l'amplitude maximale.
-    // k_eff = 2πf_eff / c_sim — en mode impulsion, f_eff = 1/T_IMPULSE
-    // A_eff : amplitude effective du déplacement membranaire
-    //   • sinus     : A_eff = memAmplitude        (sin oscille entre −A et +A)
-    //   • impulsion : A_eff = memAmplitude / 2    ((1−cos)/2 oscille entre 0 et A, demi-amplitude)
-    var freqEff = (sim.sourceMode === 'impulse') ? 1.0 / T_IMPULSE : sim.freq;
-    var aEff   = (sim.sourceMode === 'impulse') ? sim.memAmplitude / 2 : sim.memAmplitude;
-    var kEff   = (sim.c_sim > 0) ? 2 * Math.PI * freqEff / sim.c_sim : 0;
-    var dpMax  = sim.K * aEff * kEff;
-    return (dpMax > 1e-9) ? dp / dpMax : 0;
+    // Normalisation : ΔP_max théorique = K × A_eff × k_eff
+    // Correction du biais DFC : la DFC sous-estime ∂u/∂x d'un facteur sinc(k·h).
+    // On compense en divisant dpMax par sinc(k·h) = sin(k·h)/(k·h).
+    var dpMax = sim.K * aEff * kEff;
+    if (dpMax > 1e-9) {
+        var kh     = kEff * h;
+        var sincKH = (kh > 1e-6) ? Math.sin(kh) / kh : 1.0;
+        return dp / (dpMax * sincKH);
+    }
+    return 0;
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -294,10 +303,23 @@ function rescaleThermalVelocities(K_old, K_new) { /* no-op */ }
 // ══════════════════════════════════════════════════════════════════════
 
 function updateDpxData() {
-    var N  = 600;   // 600 pts pour résoudre λ_min ≈ 12 px sans aliasing
     var L  = sim.tubeLength;
     sim.dpxData = [];
     if (L <= 0) return;
+
+    // ── Échantillonnage adaptatif ─────────────────────────────────────
+    // On veut au moins 20 points par longueur d'onde pour tracer un sinus
+    // correctement sans qu'il paraisse "pointu".
+    // λ (px) = c_sim / f  → points nécessaires = 20 × L / λ = 20 × L × f / c_sim
+    // Minimum absolu : 400 pts (basse fréquence / impulsion)
+    // Maximum : 6000 pts (évite les calculs trop lents)
+    var freqEff = (sim.sourceMode === 'impulse') ? 1.0 / T_IMPULSE : sim.freq;
+    var lambda  = (sim.c_sim > 0) ? sim.c_sim / freqEff : L;  // px
+    var N = 400;
+    if (lambda > 0) {
+        N = Math.min(6000, Math.max(400, Math.ceil(20 * L / lambda)));
+    }
+
     for (var i = 0; i <= N; i++) {
         var x = i / N * L;
         sim.dpxData.push({ x: x, dp: waveDeltaP(x, sim.simTime) });
@@ -359,7 +381,7 @@ function resetAnim() {
     sim.dptData2           = [];
     sim.dptTimeOrigin      = 0;
     sim.dpxData            = [];
-    sim.graphView          = { xMin: 0, xMax: 30, yMin: -1, yMax: 1 };
+    sim.graphView          = { xMin: 0, xMax: 5, yMin: -1, yMax: 1 };
     sim.graphViewHistory   = [];
     sim.graphUserPanned    = false;
     sim.graphAutoScaled    = false;

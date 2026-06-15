@@ -50,14 +50,15 @@ function loop(ts) {
             updateDptData(lastDptUpdate);
         }
 
-        // ── Fenêtre cyclique 0–10 s en mode sinusoïdal ───────────────
+        // ── Fenêtre cyclique 0–5 s en mode sinusoïdal ───────────────
         // En mode impulsion, dptTimeOrigin n'avance pas automatiquement
-        // (la courbe reste figée après 10 s jusqu'à la prochaine impulsion)
+        // (la courbe reste figée après 5 s jusqu'à la prochaine impulsion)
         if (sim.sourceMode === 'sinus' &&
-                sim.simTime - sim.dptTimeOrigin >= 10) {
-            sim.dptTimeOrigin += 10;
-            sim.dptData1 = [];
-            sim.dptData2 = [];
+                sim.simTime - sim.dptTimeOrigin >= 5) {
+            sim.dptTimeOrigin += 5;
+            // On ne vide PAS dptData : les anciens points sont simplement
+            // hors fenêtre (tLocal < 0) et ignorés par _drawSeries.
+            // Vider provoquerait un clignotement + flash "Activer une balise".
         }
     }
 
