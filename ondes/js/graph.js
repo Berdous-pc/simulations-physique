@@ -109,10 +109,6 @@ function drawGraph() {
         _drawDpxGraph(ctx, half, H);
         ctx.restore();
 
-        // Ligne séparatrice verticale
-        ctx.fillStyle = '#c8c0b4';
-        ctx.fillRect(half, 0, sep, H);
-
         // Graphe ΔP(t) — moitié droite
         ctx.save();
         ctx.translate(half + sep, 0);
@@ -122,9 +118,12 @@ function drawGraph() {
         _drawDptGraph(ctx, half, H);
         ctx.restore();
 
+        // Ligne séparatrice verticale — dessinée EN DERNIER pour ne pas
+        // être recouverte par les fonds blancs des zones de tracé
+        ctx.fillStyle = '#c8c0b4';
+        ctx.fillRect(half, 0, sep, H);
+
         // ── Liaisons horizontales balise → point temporel ─────────────
-        // Pour chaque balise active : ΔP instantané → même ordonnée Y
-        // sur les deux graphes → ligne pointillée horizontale parfaite.
         _drawBothLinks(ctx, W, H, half, sep);
 
     } else if (sim.graphMode === 'dpx') {
