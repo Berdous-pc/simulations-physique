@@ -396,8 +396,8 @@ function _drawTubeRuler(ctx) {
     var mant      = rough / mag;
     var step      = mant < 1.5 ? mag : mant < 3.5 ? 2 * mag : mant < 7.5 ? 5 * mag : 10 * mag;
 
-    var fontSize  = Math.max(10, Math.min(13, Math.round(yRoom * 0.55)));
-    var tickMaj   = Math.min(yRoom * 0.45, 7);   // hauteur tick principal
+    var fontSize  = Math.max(13, Math.min(18, Math.round(yRoom * 0.75)));
+    var tickMaj   = Math.min(yRoom * 0.40, 6);   // hauteur tick principal
     var tickMin   = tickMaj * 0.55;               // hauteur tick secondaire
 
     ctx.save();
@@ -448,7 +448,7 @@ function _drawTubeRuler(ctx) {
     // Unité (en cm) à gauche de l'origine, avant la graduation 0
     if (yRoom >= 14) {
         ctx.fillStyle    = '#7a8a96';
-        ctx.font         = Math.max(9, fontSize - 1) + 'px monospace';
+        ctx.font         = Math.max(12, fontSize - 1) + 'px monospace';
         ctx.textAlign    = 'right';
         ctx.textBaseline = 'top';
         ctx.fillText('cm', sim.tubeLeft - 8, yBase + tickMaj + 1);
@@ -654,8 +654,8 @@ function _drawOneBeacon(ctx, x, color, label) {
     var yRoom    = H - y2;
     if (yRoom < 6) return;
 
-    var fontSize  = Math.max(10, Math.min(13, Math.round(yRoom * 0.55)));
-    var tickMaj   = Math.min(yRoom * 0.45, 7);
+    var fontSize  = Math.max(13, Math.min(18, Math.round(yRoom * 0.75)));
+    var tickMaj   = Math.min(yRoom * 0.40, 6);
 
     ctx.save();
     ctx.fillStyle    = color;
