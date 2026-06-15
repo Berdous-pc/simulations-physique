@@ -16,6 +16,10 @@
 var lastDptUpdate = 0;
 var DPT_SAMPLE_DT = 1 / 300;  // 300 enregistrements par seconde simulée (courbes lisses jusqu'à 5 Hz)
 
+// ── Palier de vitesse d'animation ────────────────────────────────────
+// Index 0..3 → facteur appliqué à dtReal avant le pas physique
+var SPEED_STEPS = [0.10, 0.25, 0.50, 1.00];
+
 // ══════════════════════════════════════════════════════════════════════
 //  Boucle d'animation principale
 // ══════════════════════════════════════════════════════════════════════
@@ -28,7 +32,7 @@ function loop(ts) {
     dtReal = Math.min(dtReal, 0.05);   // plafond 50 ms (évite les sauts)
 
     if (!sim.paused) {
-        var dtSim = dtReal;
+        var dtSim = dtReal * (sim.speedFactor !== undefined ? sim.speedFactor : 1.0);
         sim.simTime += dtSim;
 
         // Nettoyer les anciennes impulsions
@@ -41,6 +45,7 @@ function loop(ts) {
             sim.impulsePropagating = false;
             sim.sourceMode         = null;
             _syncSourceButtons();
+            _syncWavePropsBtnState();
         }
 
         // Enregistrer ΔP(t) aux balises — rattrapage de tous les intervalles
@@ -72,6 +77,7 @@ function loop(ts) {
     // Mise à jour de l'afficheur de célérité
     if (!sim.paused) {
         _updateCReadout();
+        _updateWaveProps();
     }
 }
 
@@ -98,6 +104,7 @@ function _clearSourceModes() {
     sim.impulsePropagating = false;
     sim.sourceMode         = null;
     _syncSourceButtons();
+    _syncWavePropsBtnState();
 }
 
 // ── Utilitaire : synchronise l'état visuel des deux boutons source
@@ -126,6 +133,7 @@ function sendImpulse() {
     sim.dptData1      = [];
     sim.dptData2      = [];
     _syncSourceButtons();
+    _syncWavePropsBtnState();
 }
 
 // ── Bouton Sinusoïdale ────────────────────────────────────────────────
@@ -150,6 +158,7 @@ function toggleSinusoidal() {
         sim.dptData1      = [];
         sim.dptData2      = [];
         _syncSourceButtons();
+        _syncWavePropsBtnState();
     }
 }
 
@@ -248,6 +257,78 @@ function onSliderAtten(v) {
     sim.attenuation = parseFloat(v);
     var lbl = document.getElementById('lbl-atten');
     if (lbl) lbl.textContent = sim.attenuation.toFixed(2).replace('.', ',');
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Bouton "Afficher les propriétés de l'onde"
+// ══════════════════════════════════════════════════════════════════════
+
+function toggleWaveProps() {
+    sim.wavePropsVisible = !sim.wavePropsVisible;
+    _applyWavePropsState();
+}
+
+// ── Applique l'état visible/caché du readout étendu ──────────────────
+function _applyWavePropsState() {
+    var btn       = document.getElementById('btn-wave-props');
+    var simple    = document.getElementById('readout-simple');
+    var extended  = document.getElementById('readout-props');
+
+    if (sim.wavePropsVisible) {
+        if (btn)      btn.classList.add('active');
+        if (simple)   simple.style.display = 'none';
+        if (extended) extended.style.display = '';
+        _updateWaveProps();
+    } else {
+        if (btn)      btn.classList.remove('active');
+        if (simple)   simple.style.display = '';
+        if (extended) extended.style.display = 'none';
+    }
+}
+
+// ── Met à jour les valeurs du readout étendu ─────────────────────────
+function _updateWaveProps() {
+    if (!sim.wavePropsVisible) return;
+
+    // Célérité (déjà calculée dans sim)
+    var elC = document.getElementById('ro-c-ext');
+    if (elC) elC.textContent = sim.c_cms.toFixed(1).replace('.', ',');
+
+    // f et T — uniquement pertinents en mode sinus
+    var f = sim.freq;
+    var T = (f > 0) ? 1 / f : 0;
+    var elF = document.getElementById('ro-f');
+    var elT = document.getElementById('ro-T');
+    if (elF) elF.textContent = f.toFixed(2).replace('.', ',');
+    if (elT) elT.textContent = T.toFixed(3).replace('.', ',');
+
+    // λ = c (cm/s) × T (s) = cm
+    var lambda = sim.c_cms * T;
+    var elL = document.getElementById('ro-lambda');
+    if (elL) elL.textContent = lambda.toFixed(1).replace('.', ',');
+}
+
+// ── Grise/dégrise le bouton selon le mode source ─────────────────────
+function _syncWavePropsBtnState() {
+    var btn = document.getElementById('btn-wave-props');
+    if (!btn) return;
+    var isImpulse = (sim.sourceMode === 'impulse');
+    btn.disabled = isImpulse;
+    // Si on bascule en mode impulsion alors que le readout étendu est ouvert,
+    // on le referme automatiquement.
+    if (isImpulse && sim.wavePropsVisible) {
+        sim.wavePropsVisible = false;
+        _applyWavePropsState();
+    }
+}
+
+// ── Vitesse d'animation ───────────────────────────────────────────────
+// Le slider a 4 paliers (index 0‑3) correspondant à SPEED_STEPS.
+function onSliderSpeed(v) {
+    var idx = parseInt(v, 10);
+    sim.speedFactor = SPEED_STEPS[idx];
+    var lbl = document.getElementById('lbl-speed');
+    if (lbl) lbl.textContent = sim.speedFactor.toFixed(2).replace('.', ',');
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -353,6 +434,16 @@ function _syncUIToSim() {
     _setSlider('sl-rho',   sim.rho,         'lbl-rho',   1);
     _setSlider('sl-K',     sim.K,           'lbl-K',     1);
     _setSlider('sl-atten', sim.attenuation, 'lbl-atten', 2);
+    // Vitesse d'animation : initialiser à x1,00 (index 3)
+    sim.speedFactor = 1.00;
+    var slSpeed = document.getElementById('sl-speed');
+    if (slSpeed) slSpeed.value = 3;
+    var lblSpeed = document.getElementById('lbl-speed');
+    if (lblSpeed) lblSpeed.textContent = '1,00';
+    // Propriétés de l'onde : masquées par défaut
+    sim.wavePropsVisible = false;
+    _applyWavePropsState();
+    _syncWavePropsBtnState();
     // Célérité
     updateCelerite();
     _updateCReadout();

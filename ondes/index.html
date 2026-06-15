@@ -148,11 +148,26 @@
 
         <!-- Contrôle de l'animation -->
         <div class="panel-section">
-          <div class="section-title">Contrôle</div>
+          <div class="section-title">Contrôles</div>
           <button id="btn-playpause" class="btn btn-pause"
                   onclick="togglePause()">⏸ Pause</button>
           <button class="btn btn-raz" style="margin-top:6px;"
                   onclick="resetSimAnim()">↺ Remettre à zéro</button>
+          <div class="param-row" style="margin-top:8px;">
+            <label>
+              Vitesse
+              <span class="param-value">×<span id="lbl-speed">1,00</span></span>
+            </label>
+            <input type="range" id="sl-speed"
+                   min="0" max="3" step="1" value="3"
+                   oninput="onSliderSpeed(this.value)">
+            <div class="speed-ticks">
+              <span>×0,10</span>
+              <span>×0,25</span>
+              <span>×0,50</span>
+              <span>×1,00</span>
+            </div>
+          </div>
         </div>
 
         <div class="sep"></div>
@@ -182,16 +197,7 @@
             <input type="range" id="sl-K"
                    min="0.5" max="10.0" step="0.5" value="4.0"
                    oninput="onSliderK(this.value)">
-            <span class="input-hint">K élevé → onde plus rapide, longueur d'onde plus grande</span>
-          </div>
-
-          <!-- Afficheur célérité -->
-          <div class="readout">
-            <div class="ro-label">Célérité c = √(K / ρ)</div>
-            <div class="ro-value">
-              <span id="ro-c">20,0</span>
-              <span class="ro-unit">cm/s</span>
-            </div>
+            <span class="input-hint">Capacité du milieu à résister à la déformation.</span>
           </div>
 
           <!-- Atténuation -->
@@ -205,6 +211,48 @@
                    oninput="onSliderAtten(this.value)">
             <span class="input-hint">0 = aucune atténuation</span>
           </div>
+
+          <!-- Bouton propriétés de l'onde -->
+          <button class="btn btn-toggle-one" id="btn-wave-props"
+                  onclick="toggleWaveProps()">
+            Détailler les propriétés de l'onde
+          </button>
+
+          <!-- Readout célérité simple (mode normal) -->
+          <div class="readout" id="readout-simple" style="margin-top:8px;">
+            <div class="ro-label">Célérité c = √(K / ρ)</div>
+            <div class="ro-value">
+              <span id="ro-c">20,0</span>
+              <span class="ro-unit">cm/s</span>
+            </div>
+          </div>
+
+          <!-- Readout étendu (mode propriétés) -->
+          <div class="readout" id="readout-props" style="display:none; margin-top:8px;">
+
+            <div class="ro-label-section">Imposé par le milieu</div>
+            <div class="ro-value ro-props-row">
+              <span class="ro-props-name">c = √(K/ρ)</span>
+              <span><span id="ro-c-ext">20,0</span> <span class="ro-unit">cm/s</span></span>
+            </div>
+
+            <div class="ro-label-section" style="margin-top:8px;">Imposé par le vibreur</div>
+            <div class="ro-value ro-props-row">
+              <span class="ro-props-name">f</span>
+              <span><span id="ro-f">1,5</span> <span class="ro-unit">Hz</span></span>
+            </div>
+            <div class="ro-value ro-props-row">
+              <span class="ro-props-name">T = 1/f</span>
+              <span><span id="ro-T">0,667</span> <span class="ro-unit">s</span></span>
+            </div>
+
+            <div class="ro-label-section" style="margin-top:8px;">Conséquence sur l'onde</div>
+            <div class="ro-value ro-props-row">
+              <span class="ro-props-name">λ = c·T</span>
+              <span><span id="ro-lambda">13,3</span> <span class="ro-unit">cm</span></span>
+            </div>
+
+          </div><!-- fin #readout-props -->
 
         </div><!-- fin Propriétés du milieu -->
 

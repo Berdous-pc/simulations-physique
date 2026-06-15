@@ -439,6 +439,7 @@ main {
   color: #5a6a78;
   font-size: clamp(12px, 1.2vw, 15px);
   padding: 9px 6px;
+  border: 1.5px solid #c8c0b4;
 }
 .btn-raz:hover { background: #ccc8c0; }
 
@@ -503,6 +504,24 @@ main {
   line-height: 1.4;
 }
 
+/* Labels alignés sur les 4 crans d'un slider pas=1 (0-3) */
+.speed-ticks {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr) 0fr;
+  font-size: clamp(9px, 0.85vw, 11px);
+  color: #7a8a96;
+  padding: 0 7px;   /* compense le padding interne du thumb sur les bords */
+  line-height: 1;
+  margin-top: 1px;
+}
+.speed-ticks span:not(:last-child) {
+  text-align: left;
+}
+.speed-ticks span:last-child {
+  text-align: right;
+  white-space: nowrap;
+}
+
 /* ── Afficheurs valeur ───────────────────────────── */
 .readout {
   background: #fff;
@@ -526,9 +545,32 @@ main {
 }
 
 .ro-unit {
-  font-size: 0.75em;
+  font-size: 1em;
+  font-weight: 700;
+  color: #2a5080;
+}
+
+/* Titre de section dans le readout étendu */
+.ro-label-section {
+  font-size: clamp(12px, 1.15vw, 15px);
+  font-weight: 700;
+  color: #2c3e50;
+  margin-bottom: 4px;
+}
+
+/* Ligne nom = valeur dans le readout étendu */
+.ro-props-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.ro-props-name {
   font-weight: 400;
   color: #7a8a96;
+  font-family: monospace;
+  font-size: 0.85em;
 }
 
 /* ── Placeholder "À venir" ───────────────────────── */
