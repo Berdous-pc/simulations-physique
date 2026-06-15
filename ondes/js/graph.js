@@ -76,6 +76,22 @@ function resizeGraph() {
 
     graphCanvas.width  = w;
     graphCanvas.height = h;
+
+    _updateBothSepCSS(w);
+}
+
+// Met à jour la CSS variable --both-sep-x sur #graph-area pour que
+// le pseudo-élément ::after de #graph-ctrl prolonge le séparateur canvas
+function _updateBothSepCSS(canvasW) {
+    var graphArea = document.getElementById('graph-area');
+    if (!graphArea) return;
+    var sep  = 3;
+    var half = Math.floor((canvasW - sep) / 2);
+    // La ligne CSS doit être positionnée par rapport à #graph-area.
+    // Le canvas commence à x=0 dans #graph-canvas-wrap, lui-même dans #graph-area.
+    // #graph-canvas-wrap et #graph-area ont la même largeur → half est correct.
+    graphArea.style.setProperty('--both-sep-x', half + 'px');
+    graphArea.style.setProperty('--both-sep-w', sep + 'px');
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -925,6 +941,12 @@ function setGraphMode(mode) {
     if (btnDpx)  btnDpx.classList.toggle ('active', mode === 'dpx');
     if (btnDpt)  btnDpt.classList.toggle ('active', mode === 'dpt');
     if (btnBoth) btnBoth.classList.toggle('active', mode === 'both');
+
+    // Classe sur #graph-area pour afficher/masquer la ligne de séparation
+    // dans #graph-ctrl via CSS (prolonge visuellement le séparateur canvas)
+    var graphArea = document.getElementById('graph-area');
+    if (graphArea) graphArea.classList.toggle('mode-both', mode === 'both');
+
     // Masquer tooltip
     var tip = document.getElementById('graph-hover-tooltip');
     if (tip) tip.style.display = 'none';

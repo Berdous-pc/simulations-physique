@@ -305,6 +305,25 @@ main {
   position: relative;
 }
 
+/* Prolongement du séparateur vertical dans #graph-ctrl en mode both */
+#graph-area {
+  --both-sep-x: 50%;
+  --both-sep-w: 3px;
+}
+#graph-area.mode-both #graph-ctrl {
+  position: relative;
+}
+#graph-area.mode-both #graph-ctrl::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--both-sep-x);
+  width: var(--both-sep-w);
+  background: #c8c0b4;
+  pointer-events: none;
+}
+
 #graph-canvas {
   display: block;
   width: 100%;
