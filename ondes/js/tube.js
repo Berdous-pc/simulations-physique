@@ -606,16 +606,16 @@ function _drawBeacons(ctx) {
 }
 
 function _drawOneBeacon(ctx, x, color, label) {
-    var y1   = sim.tubeTop;
-    var y2   = sim.tubeBottom;
+    var y1    = sim.tubeTop;
+    var y2    = sim.tubeBottom;
     var fSize = Math.max(11, Math.round((y2 - y1) * 0.13));
 
     // Ligne verticale en pointillés
     ctx.save();
     ctx.strokeStyle = color;
-    ctx.lineWidth   = 2;
-    ctx.setLineDash([5, 4]);
-    ctx.globalAlpha = 0.85;
+    ctx.lineWidth   = 3;
+    ctx.setLineDash([6, 4]);
+    ctx.globalAlpha = 0.9;
     ctx.beginPath();
     ctx.moveTo(x, y1);
     ctx.lineTo(x, y2);
@@ -624,9 +624,9 @@ function _drawOneBeacon(ctx, x, color, label) {
     ctx.restore();
 
     // Étiquette au-dessus du tube
-    ctx.fillStyle = color;
-    ctx.font      = 'bold ' + fSize + 'px "Segoe UI", Arial, sans-serif';
-    ctx.textAlign = 'center';
+    ctx.fillStyle    = color;
+    ctx.font         = 'bold ' + fSize + 'px "Segoe UI", Arial, sans-serif';
+    ctx.textAlign    = 'center';
     ctx.textBaseline = 'bottom';
     ctx.fillText(label, x, y1 - 2);
 
@@ -641,6 +641,28 @@ function _drawOneBeacon(ctx, x, color, label) {
     ctx.lineTo(x - 6,   y1 + 4);
     ctx.closePath();
     ctx.fill();
+    ctx.restore();
+
+    // ── Label de position sur la règle graduée ────────────────────────
+    // Converti en cm (même échelle que la règle : 40 cm sur tubeLength px)
+    var L = sim.tubeLength;
+    if (L <= 0) return;
+    var cmPerPx  = 40 / L;
+    var xCm      = (x - sim.tubeLeft) * cmPerPx;
+    var W        = tubeCanvas.width;
+    var H        = tubeCanvas.height;
+    var yRoom    = H - y2;
+    if (yRoom < 6) return;
+
+    var fontSize  = Math.max(10, Math.min(13, Math.round(yRoom * 0.55)));
+    var tickMaj   = Math.min(yRoom * 0.45, 7);
+
+    ctx.save();
+    ctx.fillStyle    = color;
+    ctx.font         = 'bold ' + fontSize + 'px monospace';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(xCm.toFixed(1), x, y2 + tickMaj + 1);
     ctx.restore();
 }
 
