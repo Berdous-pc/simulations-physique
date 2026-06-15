@@ -97,29 +97,29 @@ function drawGraph() {
     ctx.fillRect(0, 0, W, H);
 
     if (sim.graphMode === 'both') {
-        // ── Mode simultané : ΔP(x) en haut, ΔP(t) en bas ────────────
-        var sep  = 3;                       // séparateur en px
-        var half = Math.floor((H - sep) / 2);
+        // ── Mode simultané : ΔP(x) à gauche, ΔP(t) à droite ─────────
+        var sep   = 3;                        // séparateur vertical en px
+        var half  = Math.floor((W - sep) / 2);
 
-        // Graphe ΔP(x) — moitié haute
+        // Graphe ΔP(x) — moitié gauche
         ctx.save();
         ctx.beginPath();
-        ctx.rect(0, 0, W, half);
+        ctx.rect(0, 0, half, H);
         ctx.clip();
-        _drawDpxGraph(ctx, W, half);
+        _drawDpxGraph(ctx, half, H);
         ctx.restore();
 
-        // Ligne séparatrice
+        // Ligne séparatrice verticale
         ctx.fillStyle = '#c8c0b4';
-        ctx.fillRect(0, half, W, sep);
+        ctx.fillRect(half, 0, sep, H);
 
-        // Graphe ΔP(t) — moitié basse
+        // Graphe ΔP(t) — moitié droite
         ctx.save();
-        ctx.translate(0, half + sep);
+        ctx.translate(half + sep, 0);
         ctx.beginPath();
-        ctx.rect(0, 0, W, half);
+        ctx.rect(0, 0, half, H);
         ctx.clip();
-        _drawDptGraph(ctx, W, half);
+        _drawDptGraph(ctx, half, H);
         ctx.restore();
 
     } else if (sim.graphMode === 'dpx') {
