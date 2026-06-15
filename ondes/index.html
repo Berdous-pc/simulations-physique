@@ -90,7 +90,7 @@
 
       <!-- Barre de contrôle graphes -->
       <div id="graph-ctrl">
-        <!-- Gauche : bascule DeltaP(x) / DeltaP(t) -->
+        <!-- Gauche : bascule DeltaP(x) / DeltaP(t) / Simultané -->
         <div id="graph-btns-left">
           <button class="graph-mode-btn active"
                   id="btn-graph-dpx" onclick="setGraphMode('dpx')">
@@ -99,6 +99,10 @@
           <button class="graph-mode-btn"
                   id="btn-graph-dpt" onclick="setGraphMode('dpt')">
             ΔP(t) — temporel
+          </button>
+          <button class="graph-mode-btn"
+                  id="btn-graph-both" onclick="setGraphMode('both')">
+            Simultané
           </button>
         </div>
         <!-- Droite : outils graphe -->

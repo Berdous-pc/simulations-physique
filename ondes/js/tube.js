@@ -50,7 +50,7 @@ function resizeTube() {
     tubeCanvas.height = h;
 
     // ── Géométrie interne du tube ─────────────────────────────────────
-    var marginH      = 8;
+    var marginH      = 13;   // 5 px de plus de chaque côté → labels règle non croppés
     var marginTop    = 4;
     var marginBottom = Math.round(h * 0.12);
     sim.tubeLeft   = marginH + MEM_THICKNESS;

@@ -96,20 +96,46 @@ function drawGraph() {
     ctx.fillStyle = '#faf9f6';
     ctx.fillRect(0, 0, W, H);
 
-    if (sim.graphMode === 'dpx') {
+    if (sim.graphMode === 'both') {
+        // ── Mode simultané : ΔP(x) en haut, ΔP(t) en bas ────────────
+        var sep  = 3;                       // séparateur en px
+        var half = Math.floor((H - sep) / 2);
+
+        // Graphe ΔP(x) — moitié haute
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, 0, W, half);
+        ctx.clip();
+        _drawDpxGraph(ctx, W, half);
+        ctx.restore();
+
+        // Ligne séparatrice
+        ctx.fillStyle = '#c8c0b4';
+        ctx.fillRect(0, half, W, sep);
+
+        // Graphe ΔP(t) — moitié basse
+        ctx.save();
+        ctx.translate(0, half + sep);
+        ctx.beginPath();
+        ctx.rect(0, 0, W, half);
+        ctx.clip();
+        _drawDptGraph(ctx, W, half);
+        ctx.restore();
+
+    } else if (sim.graphMode === 'dpx') {
         _drawDpxGraph(ctx, W, H);
     } else {
         _drawDptGraph(ctx, W, H);
     }
 
-    // Hover snappé (point le plus proche) — actif quand le réticule est désactivé
-    if (graphHoverPos && !sim.graphCursorMode) {
-        _drawSnappedHover(ctx, W, H);
-    }
-
-    // Réticule libre
-    if (sim.graphCursorMode && graphHoverPos) {
-        _drawCrosshair(ctx, W, H);
+    // Hover snappé et réticule — désactivés en mode both (trop complexe à gérer sur deux zones)
+    if (sim.graphMode !== 'both') {
+        if (graphHoverPos && !sim.graphCursorMode) {
+            _drawSnappedHover(ctx, W, H);
+        }
+        if (sim.graphCursorMode && graphHoverPos) {
+            _drawCrosshair(ctx, W, H);
+        }
     }
 
     // Rectangle de zoom en cours
@@ -811,10 +837,12 @@ function prevGraphView() {
 
 function setGraphMode(mode) {
     sim.graphMode = mode;
-    var btnDpx = document.getElementById('btn-graph-dpx');
-    var btnDpt = document.getElementById('btn-graph-dpt');
-    if (btnDpx) btnDpx.classList.toggle('active', mode === 'dpx');
-    if (btnDpt) btnDpt.classList.toggle('active', mode === 'dpt');
+    var btnDpx  = document.getElementById('btn-graph-dpx');
+    var btnDpt  = document.getElementById('btn-graph-dpt');
+    var btnBoth = document.getElementById('btn-graph-both');
+    if (btnDpx)  btnDpx.classList.toggle ('active', mode === 'dpx');
+    if (btnDpt)  btnDpt.classList.toggle ('active', mode === 'dpt');
+    if (btnBoth) btnBoth.classList.toggle('active', mode === 'both');
     // Masquer tooltip
     var tip = document.getElementById('graph-hover-tooltip');
     if (tip) tip.style.display = 'none';
