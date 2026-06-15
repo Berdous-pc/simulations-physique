@@ -122,6 +122,11 @@ function drawGraph() {
         _drawDptGraph(ctx, half, H);
         ctx.restore();
 
+        // ── Liaisons horizontales balise → point temporel ─────────────
+        // Pour chaque balise active : ΔP instantané → même ordonnée Y
+        // sur les deux graphes → ligne pointillée horizontale parfaite.
+        _drawBothLinks(ctx, W, H, half, sep);
+
     } else if (sim.graphMode === 'dpx') {
         _drawDpxGraph(ctx, W, H);
     } else {
@@ -145,8 +150,86 @@ function drawGraph() {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-//  Graphe ΔP(x) — snapshot spatial
+//  Mode simultané — liaisons horizontales balise ↔ point temporel
+//
+//  Pour chaque balise active, on trace une ligne pointillée horizontale
+//  à la hauteur canvas correspondant à la valeur ΔP instantanée de la
+//  balise. Les deux graphes partagent les mêmes bornes Y et les mêmes
+//  marges GM → py(dp) est identique dans les deux moitiés → ligne
+//  parfaitement horizontale sur toute la largeur W du canvas.
+//
+//  En plus de la ligne, on dessine :
+//   • un disque sur le point de la courbe ΔP(x) à la position de la balise
+//   • un disque sur le front de la courbe ΔP(t) (point courant)
 // ══════════════════════════════════════════════════════════════════════
+
+function _drawBothLinks(ctx, W, H, half, sep) {
+    var yMin = -1.12;
+    var yMax =  1.12;
+    var pH   = H - GM.top - GM.bottom;
+    if (pH <= 0) return;
+
+    function py(dp) {
+        return GM.top + (1 - (dp - yMin) / (yMax - yMin)) * pH;
+    }
+
+    var tOrigin = sim.dptTimeOrigin || 0;
+    var WINDOW  = 5;
+
+    var beacons = [];
+    if (sim.beacon1.active) beacons.push({ beacon: sim.beacon1, color: '#e07020' });
+    if (sim.beacon2.active) beacons.push({ beacon: sim.beacon2, color: '#2a8a50' });
+
+    for (var b = 0; b < beacons.length; b++) {
+        var bc    = beacons[b];
+        var color = bc.color;
+        var xb    = bc.beacon.x - sim.tubeLeft;
+        var dp    = waveDeltaP(xb, sim.simTime);
+        var yc    = py(dp);
+
+        // Bornes Y clampées à la zone de tracé
+        if (yc < GM.top || yc > GM.top + pH) continue;
+
+        // ── Point sur ΔP(x) : position X de la balise dans la moitié gauche ──
+        var pW_left = half - GM.left - GM.right;
+        if (pW_left <= 0) continue;
+        var L    = sim.tubeLength > 0 ? sim.tubeLength : 1;
+        var xDpx = GM.left + (xb / L) * pW_left;   // coordonnée X dans la moitié gauche
+
+        // ── Point sur ΔP(t) : bord droit de la courbe = t_local actuel ──
+        var tLocal   = sim.simTime - tOrigin;
+        tLocal       = Math.max(0, Math.min(WINDOW, tLocal));
+        var pW_right = half - GM.left - GM.right;
+        var xDpt     = (half + sep) + GM.left + (tLocal / WINDOW) * pW_right;
+
+        // ── Ligne pointillée horizontale sur toute la largeur ────────
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.lineWidth   = 1.5;
+        ctx.setLineDash([5, 4]);
+        ctx.globalAlpha = 0.6;
+        ctx.beginPath();
+        ctx.moveTo(xDpx, yc);
+        ctx.lineTo(xDpt, yc);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // ── Disque sur la courbe ΔP(x) ───────────────────────────────
+        ctx.globalAlpha = 1.0;
+        ctx.fillStyle   = color;
+        ctx.beginPath();
+        ctx.arc(xDpx, yc, 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        // ── Disque sur le front de la courbe ΔP(t) ───────────────────
+        ctx.beginPath();
+        ctx.arc(xDpt, yc, 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+    }
+}
+
 
 function _drawDpxGraph(ctx, W, H) {
     var data = sim.dpxData;
