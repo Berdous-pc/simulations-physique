@@ -1,0 +1,587 @@
+/* ══════════════════════════════════════════════════
+   Simulation pédagogique — Physique-Chimie Lycée
+   Auteur  : Mathieu Berdous
+   Licence : CC BY-NC 4.0 — https://creativecommons.org/licenses/by-nc/4.0/
+══════════════════════════════════════════════════ */
+
+/* ══════════════════════════════════════════════════
+   style.css — Simulation propagation onde sonore
+══════════════════════════════════════════════════ */
+
+/* ── Reset & base ────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Segoe UI', Arial, sans-serif;
+  background: #e8e4de;
+  color: #2c3e50;
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* ── Grille principale ───────────────────────────── */
+main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr clamp(200px, 22vw, 300px);
+  min-height: 0;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+/* ══════════════════════════════════════════════════
+   COLONNE GAUCHE
+══════════════════════════════════════════════════ */
+
+#left-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── Zone animation ─────────────────────────────────────────────────
+   Grid 2 colonnes × 2 lignes :
+     col 1 = largeur de la box source (fixe)
+     col 2 = 1fr (canvas tube)
+     row 1 = 10% de la hauteur → zone boutons balises
+     row 2 = 1fr               → box source + canvas
+   Garantit que les boutons balises sont toujours DANS la row 1,
+   le canvas toujours dans la row 2 : aucune superposition possible.
+──────────────────────────────────────────────────────────────────── */
+#anim-area {
+  flex: 3;
+  display: grid;
+  grid-template-columns: clamp(132px, 14vw, 177px) 1fr;
+  grid-template-rows: minmax(min-content, 10%) minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+  background: #fdf8f0;
+  border-right: 1px solid #c8c0b4;
+}
+
+/* Cellule vide ligne 1 / col 1 (au-dessus de la source) */
+#anim-source-spacer {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+/* Boutons balises : ligne 1 / col 2 — alignés en bas à droite */
+#tube-top-btns {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
+  align-items: flex-end;
+  gap: 5px;
+  padding: 4px 6px 4px;
+}
+
+/* Box source : ligne 2 / col 1 — centrée verticalement */
+#source-box {
+  grid-column: 1;
+  grid-row: 2;
+  align-self: center;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: clamp(7px, 0.8vw, 12px) clamp(7px, 0.8vw, 11px);
+  margin: 0 6px;
+  background: #e8e4de;
+  border: 1px solid #c8c0b4;
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.07);
+}
+
+/* Canvas tube : ligne 2 / col 2 */
+#tube-canvas-wrap {
+  grid-column: 2;
+  grid-row: 2;
+  min-height: 0;   /* le splitter JS impose la borne basse via minAnim */
+  min-width: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+#tube-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.source-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+#freq-row {
+  margin-bottom: 0;
+}
+#freq-row label {
+  font-size: clamp(11px, 1.1vw, 13px);
+}
+#freq-row.disabled label {
+  opacity: 0.5;
+}
+
+/* Bouton de la zone tube */
+.btn-tube-top {
+  width: auto;
+  font-size: clamp(12px, 1.2vw, 15px);
+  padding: 5px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-weight: 600;
+  font-family: inherit;
+  transition: transform 0.1s, background 0.15s;
+  background: #ece8e0;
+  color: #5a6a78;
+  border: 1.5px solid #c8c0b4;
+  white-space: nowrap;
+}
+.btn-tube-top:hover { background: #dedad2; }
+.btn-tube-top:active { transform: scale(0.96); }
+.btn-tube-top.active {
+  background: #fde8c8;
+  color: #7a3a10;
+  border-color: #d0a060;
+}
+
+/* Balise 1 active */
+#btn-beacon1.active {
+  background: rgba(224, 112, 32, 0.18);
+  color: #b05010;
+  border-color: #e07020;
+}
+/* Balise 2 active */
+#btn-beacon2.active {
+  background: rgba(42, 138, 80, 0.18);
+  color: #1a6030;
+  border-color: #2a8a50;
+}
+
+/* ── Splitter draggable ───────────────────────────── */
+#left-splitter {
+  flex: 0 0 6px;
+  background: #c8c0b4;
+  cursor: row-resize;
+  position: relative;
+  z-index: 20;
+  transition: background 0.15s;
+  border-right: 1px solid #c8c0b4;
+}
+#left-splitter:hover,
+#left-splitter.dragging {
+  background: #2a6aaa;
+}
+
+/* ── Zone graphes ─────────────────────────────────── */
+#graph-area {
+  flex: 2;
+  display: flex;
+  flex-direction: column;
+  min-height: 60px;
+  background: #faf9f6;
+  border-top: 1px solid #c8c0b4;
+  border-right: 1px solid #c8c0b4;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Barre de contrôle graphes */
+#graph-ctrl {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 5px 10px 4px;
+  flex-wrap: wrap;
+}
+
+#graph-btns-left {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+#graph-btns-right {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
+/* Boutons gauche graphe */
+.graph-mode-btn {
+  height: 28px;
+  padding: 0 10px;
+  font-weight: 700;
+  font-size: clamp(11px, 1.1vw, 13px);
+  background: #e8e4de;
+  color: #5a6a78;
+  border: 1px solid #b0a898;
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s;
+}
+.graph-mode-btn:hover { background: #d0ccc4; color: #2c3e50; }
+.graph-mode-btn.active {
+  background: #d0dce8;
+  border-color: #5a80a8;
+  color: #1a3a5a;
+}
+
+/* Boutons droite graphe */
+#graph-btns-right button {
+  height: 28px;
+  padding: 0 10px;
+  font-weight: 700;
+  font-size: 13px;
+  background: #e8e4de;
+  color: #5a6a78;
+  border: 1px solid #b0a898;
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+#btn-graph-cursor { font-size: 18px; padding: 0 8px !important; }
+#btn-graph-prev   { font-size: 14px; }
+#btn-graph-zoom   { font-size: 14px; }
+#btn-graph-auto   { font-size: 12px; }
+
+#btn-graph-zoom.active,
+#btn-graph-cursor.active {
+  background: #2a6aaa; color: #fff; border-color: #1a5a9a;
+}
+#graph-btns-right button:hover     { background: #d0ccc4; color: #2c3e50; }
+#btn-graph-zoom.active:hover,
+#btn-graph-cursor.active:hover     { background: #1a5a9a; color: #fff; }
+#btn-graph-prev:disabled           { opacity: 0.35; cursor: not-allowed; }
+#btn-graph-prev:disabled:hover     { background: #e8e4de; color: #5a6a78; }
+
+/* Tooltip hover graphe */
+#graph-hover-tooltip {
+  display: none;
+  position: fixed;
+  z-index: 9999;
+  background: #2c3e50;
+  color: #fff;
+  font-size: 12px;
+  font-family: monospace;
+  padding: 4px 10px;
+  border-radius: 5px;
+  pointer-events: none;
+  white-space: nowrap;
+  top: 0; left: 0;
+}
+
+/* Wrapper canvas graphe */
+#graph-canvas-wrap {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+#graph-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: default;
+}
+
+/* ══════════════════════════════════════════════════
+   PANNEAU DE CONTRÔLE DROIT
+══════════════════════════════════════════════════ */
+
+#panel {
+  background: #e8e4de;
+  border-left: 1.5px solid #c8c0b4;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  font-size: clamp(11px, 1.1vw, 14px);
+  overflow: hidden;
+}
+
+/* ── Onglets principaux ───────────────────────────── */
+.panel-main-tabs {
+  display: flex;
+  flex-shrink: 0;
+  border-bottom: 1.5px solid #b0a898;
+}
+
+.panel-main-tab {
+  flex: 1;
+  padding: 9px 4px;
+  font-size: clamp(12px, 1.2vw, 15px);
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: #d4d0c8;
+  color: #8a9aaa;
+  border-right: 1px solid #b0a898;
+  transition: background 0.12s, color 0.12s;
+}
+.panel-main-tab:last-child { border-right: none; }
+.panel-main-tab:hover { background: #ccc8c0; color: #2c3e50; }
+.panel-main-tab.active {
+  background: #e8e4de;
+  color: #2a6aaa;
+  border-bottom: 1.5px solid #e8e4de;
+  margin-bottom: -1.5px;
+}
+
+/* ── Corps scrollable du panneau ─────────────────── */
+#panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: clamp(8px, 1vw, 14px) clamp(8px, 1vw, 12px);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* ── Section panneau ─────────────────────────────── */
+.panel-section {
+  margin-bottom: 8px;
+}
+
+/* ── Titres de section ───────────────────────────── */
+.section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #7a8a96;
+  margin-bottom: 7px;
+}
+
+/* ── Séparateur ──────────────────────────────────── */
+.sep {
+  border: none;
+  border-top: 1px solid #c8c0b4;
+  margin: 8px 0;
+}
+
+/* ── Boutons ─────────────────────────────────────── */
+.btn {
+  width: 100%;
+  border: none;
+  border-radius: 6px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 0.1s, background 0.15s;
+}
+.btn:active { transform: scale(0.97); }
+
+.btn-pause {
+  background: #c08020;
+  color: #fff;
+  font-size: clamp(14px, 1.4vw, 18px);
+  padding: 10px 6px;
+}
+.btn-pause:hover { background: #a06010; }
+
+.btn-play {
+  background: #2a8a50;
+  color: #fff;
+  font-size: clamp(14px, 1.4vw, 18px);
+  padding: 10px 6px;
+}
+.btn-play:hover { background: #1a6a38; }
+
+.btn-raz {
+  background: #dedad2;
+  color: #5a6a78;
+  font-size: clamp(12px, 1.2vw, 15px);
+  padding: 9px 6px;
+}
+.btn-raz:hover { background: #ccc8c0; }
+
+/* Bouton bascule option */
+.btn-toggle-one {
+  width: 100%;
+  background: #ece8e0;
+  color: #5a6a78;
+  font-size: clamp(12px, 1.2vw, 15px);
+  padding: 8px 6px;
+  border: 1.5px solid #c8c0b4;
+  border-radius: 6px;
+  font-family: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: center;
+  transition: transform 0.1s, background 0.15s;
+}
+.btn-toggle-one:hover { background: #dedad2; }
+.btn-toggle-one:active { transform: scale(0.97); }
+.btn-toggle-one.active {
+  background: #fde8c8;
+  color: #7a3a10;
+  border-color: #d0a060;
+}
+
+/* Flash impulsion — conservé pour usage futur */
+
+/* ── Paramètres ──────────────────────────────────── */
+.param-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 10px;
+}
+
+.param-row label {
+  font-size: clamp(12px, 1.15vw, 15px);
+  color: #2c3e50;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.param-value {
+  color: #2a5080;
+  font-weight: 600;
+  white-space: nowrap;
+  font-size: clamp(12px, 1.15vw, 15px);
+}
+
+.param-row input[type="range"] {
+  width: 100%;
+  accent-color: #4a7aaa;
+  cursor: pointer;
+}
+
+.input-hint {
+  font-size: clamp(10px, 0.9vw, 13px);
+  color: #7a8a96;
+  line-height: 1.4;
+}
+
+/* ── Afficheurs valeur ───────────────────────────── */
+.readout {
+  background: #fff;
+  border: 1px solid #c8c0b4;
+  border-radius: 6px;
+  padding: 7px 9px;
+  margin-bottom: 8px;
+}
+
+.ro-label {
+  font-size: clamp(11px, 1vw, 13px);
+  color: #7a8a96;
+  margin-bottom: 2px;
+}
+
+.ro-value {
+  font-size: clamp(15px, 1.6vw, 20px);
+  font-weight: 700;
+  color: #2a5080;
+  font-variant-numeric: tabular-nums;
+}
+
+.ro-unit {
+  font-size: 0.75em;
+  font-weight: 400;
+  color: #7a8a96;
+}
+
+/* ── Placeholder "À venir" ───────────────────────── */
+.coming-soon {
+  text-align: center;
+  padding: clamp(20px, 3vh, 40px) 10px;
+  color: #7a8a96;
+}
+.coming-soon-icon {
+  font-size: clamp(24px, 3vw, 36px);
+  margin-bottom: 8px;
+}
+.coming-soon-title {
+  font-size: clamp(13px, 1.3vw, 16px);
+  font-weight: 700;
+  color: #5a6a78;
+  margin-bottom: 6px;
+}
+.coming-soon-text {
+  font-size: clamp(11px, 1vw, 13px);
+  font-style: italic;
+}
+
+/* ══════════════════════════════════════════════════
+   BANDEAU INSTRUCTIONS (collapsible)
+   Même pattern que titrage/ et radioactivite/
+══════════════════════════════════════════════════ */
+
+.panel-hint {
+  flex-shrink: 0;
+  color: #5a6a78;
+  line-height: 1.5;
+  background: #fff;
+  border: 1.5px solid #b0a898;
+  overflow: hidden;
+  transition: padding 0.2s;
+}
+
+.panel-hint-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  cursor: default;
+}
+
+.panel-hint-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #7a8a96;
+}
+
+.panel-hint-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: #7a8a96;
+  padding: 0 2px;
+  line-height: 1;
+  transition: transform 0.2s;
+}
+.panel-hint-toggle:hover { color: #2a6aaa; }
+
+.panel-hint-body {
+  font-size: clamp(12px, 1.15vw, 15px);
+  padding: 0 10px 8px;
+  overflow: hidden;
+  transition: max-height 0.25s ease, padding 0.25s ease;
+  max-height: 250px;
+}
+
+/* État replié */
+.panel-hint.collapsed .panel-hint-body {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.panel-hint.collapsed .panel-hint-header {
+  padding-bottom: 6px;
+}
+
+/* Flèche ▲ : tourne à 180° quand déplié (→ ▼) */
+.panel-hint:not(.collapsed) .panel-hint-toggle {
+  transform: rotate(180deg);
+}
