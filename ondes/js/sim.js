@@ -66,8 +66,9 @@ var sim = {
     //                      selected, ry (position y en [0,1], gelée en pause) }
     // N ∝ ρ (linéaire). Domaine [0, tubeLength + 2×memAmplitude].
     // Position affichée : tubeLeft + x0 + waveDisplacement(x0,t) × tubeDispCap
-    cols          : [],
-    selectionMode : false,   // mode sélection par rectangle actif
+    cols              : [],
+    selectionMode     : false,   // mode sélection par proximité actif
+    selectionRadius   : 25,      // px, rayon de sélection (recalculé dans initCols)
 
     // ── Balises (lignes verticales draggables dans le tube) ──────────
     beacon1 : { active: false, x: 0 },   // balise 1 (orange)
@@ -261,6 +262,13 @@ function initCols() {
             ry      : (ryOrder[i] + Math.random()) / N  // jittered en Y aussi
         });
     }
+
+    // ── Recalcul du rayon de sélection adaptatif à la densité ─────────
+    // Le rayon s'adapte à l'espacement moyen des colonnes pour rester cohérent
+    // quelle que soit la résolution et la densité (ρ).
+    // Formule : rayon = 1.5 × dx0, borné entre 20 et 40 px
+    var dx0 = slot;
+    sim.selectionRadius = Math.max(20, Math.min(40, 1.5 * dx0));
 }
 
 // Alias pour compatibilité ascendante
@@ -359,4 +367,49 @@ function resetAnim() {
     sim.graphDpxYMax       =  1;
     initCols();
     updateCelerite();
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Sélection de particules par proximité
+//  Sélectionne toutes les particules dont la position de repos x0 se
+//  trouve dans un rayon selectionRadius autour du clic utilisateur.
+//
+//  Paramètres :
+//    • x0_click : position horizontale cliquée (en px depuis tubeLeft)
+//    • modifiers.ctrl : true si Ctrl est enfoncé (ajouter à la sélection)
+//    • modifiers.shift : true si Maj est enfoncée (retirer de la sélection)
+//
+//  Logique :
+//    • Clic normal : effacer tout, sélectionner proximité
+//    • Ctrl+clic : ajouter à la sélection actuelle
+//    • Maj+clic : retirer de la sélection actuelle
+// ══════════════════════════════════════════════════════════════════════
+
+function selectNearbyParticles(x0_click, modifiers) {
+    if (!sim.cols || sim.cols.length === 0) return;
+
+    var ctrl = modifiers && modifiers.ctrl;
+    var shift = modifiers && modifiers.shift;
+
+    // Mode normal (aucun modifieur) : reset + sélectionner
+    if (!ctrl && !shift) {
+        for (var i = 0; i < sim.cols.length; i++) {
+            sim.cols[i].selected = false;
+        }
+    }
+
+    // Itérer sur toutes les particules et tester la proximité
+    for (var i = 0; i < sim.cols.length; i++) {
+        var distance = Math.abs(sim.cols[i].x0 - x0_click);
+
+        if (distance <= sim.selectionRadius) {
+            if (shift) {
+                // Maj+clic : retirer
+                sim.cols[i].selected = false;
+            } else {
+                // Clic normal ou Ctrl+clic : ajouter/sélectionner
+                sim.cols[i].selected = true;
+            }
+        }
+    }
 }

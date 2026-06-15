@@ -56,7 +56,9 @@ Tout le CSS. Sections principales :
 | `rho`, `K`, `attenuation` | Paramètres du milieu |
 | `c_sim`, `c_cms` | Célérité (px/s et cm/s) |
 | `memAmplitude` | Amplitude de la membrane (px) |
-| `particles[]` | Tableau `{x0,y0,vx,vy,dx,dy,selected}` |
+| `cols[]` | Tableau de colonnes `{x0, selected, ry}` (positions de repos, état sélection, position y jitterée) |
+| `selectionMode` | Mode sélection par proximité activé |
+| `selectionRadius` | Rayon de sélection adaptatif (px), recalculé en fonction de la densité |
 | `beacon1`, `beacon2` | Balises `{active, x}` |
 | `tubeLeft/Right/Top/Bottom/Length` | Géométrie du tube (px, remplie par tube.js) |
 | `graphMode` | `'dpx'` ou `'dpt'` |
@@ -69,13 +71,14 @@ Tout le CSS. Sections principales :
 - `waveDisplacement(x_px, t_sim)` — champ d'onde `u(x,t) = d_mem(t−x/c)·exp(−α·x/L)`
 - `waveDeltaP(x_px, t_sim)` — surpression `ΔP = K·(u(x−h)−u(x+h))/(2h)`
 - `particleRadius()` — rayon adaptatif selon densité
-- `initParticles()` — initialise la grille de particules
-- `stepParticles(dt)` — avance les positions (thermique + onde + rebonds)
-- `rescaleThermalVelocities(K_old, K_new)` — adapte les vitesses quand K change
-- `updateDpxData()` — snapshot 220 points de ΔP(x)
-- `updateDptData()` — enregistrement ΔP(t) aux balises actives
+- `initCols()` — initialise la grille de colonnes (particules) avec densité ∝ ρ
+- `stepParticles(dt)` — no-op (le modèle colonnes n'intègre pas de vitesses)
+- `rescaleThermalVelocities(K_old, K_new)` — no-op (compatibilité ascendante)
+- `updateDpxData()` — snapshot 600 points de ΔP(x)
+- `updateDptData(t)` — enregistrement ΔP(t) aux balises actives
 - `pruneImpulses()` — supprime les impulsions expirées
-- `resetAnim()` — RAZ sans toucher aux paramètres utilisateur
+- `resetAnim()` — RAZ sans toucher aux paramètres utilisateur, reinit colonnes
+- `selectNearbyParticles(x0_click, modifiers)` — sélectionne/ajoute/retire les colonnes dans un rayon (NEW)
 
 ---
 
@@ -87,18 +90,24 @@ Tout le CSS. Sections principales :
 - `tubeCanvas`, `tubeCtx` — références canvas
 
 #### Fonctions exportées
-- `resizeTube()` — redimensionne le canvas, recalibrise `C_BASE`, reinit particules
+- `resizeTube()` — redimensionne le canvas, recalibrise `C_BASE`, reinit colonnes
 - `scheduleResizeTube()` — anti-rebond resize avec `requestAnimationFrame`
-- `drawTube()` — dessine : fond tube, membrane, particules, balises, rectangle sélection
-- `clearSelection()` — désélectionne toutes les particules
+- `drawTube()` — dessine : fond tube, membrane, colonnes, balises
+- `clearSelection()` — désélectionne toutes les colonnes
 
 #### Splitter draggable (IIFE `initSplitter`)
 Ajuste les hauteurs de `#anim-area` et `#graph-area` par `pointerdown/move/up`.
 
-#### Interactions canvas tube (IIFE `initTubeInteractions`)
-- `pointerdown` : priorité balise-drag → sélection rectangulaire
-- `pointermove` : curseur adaptatif, déplacement balise ou rectangle
-- `pointerup` : applique la sélection (`_applySelection`)
+#### Interactions canvas tube (IIFE `initTubeInteractions`) — REFONTE v2 (NEW)
+**Ancien système (v1)** : rectangle de sélection par clic-glissé
+**Nouveau système (v2)** : sélection par proximité avec modifieurs clavier
+- `pointerdown` : priorité balise-drag → appel `selectNearbyParticles()` si mode actif
+- `pointermove` : curseur adaptatif (`grab` balise, `crosshair` sélection, `default` normal)
+- `pointerup` : aucune action (sélection appliquée immédiatement à `pointerdown`)
+- **Modifieurs clavier** :
+  - **Clic normal** : efface tout, sélectionne colonnes dans le rayon
+  - **Ctrl+clic** : ajoute colonnes du rayon à la sélection actuelle
+  - **Maj+clic** : retire colonnes du rayon de la sélection actuelle
 
 #### Calibration `C_BASE`
 Recalculée à chaque resize :
@@ -165,10 +174,11 @@ Garantit que l'onde traverse le tube en ~8 s aux paramètres par défaut.
 index.html
   └── sim.js     expose : sim, C_BASE, K_DEFAULT, RHO_DEFAULT, updateCelerite,
   │               memDisplacement, waveDisplacement, waveDeltaP, particleRadius,
-  │               initParticles, stepParticles, rescaleThermalVelocities,
-  │               updateDpxData, updateDptData, pruneImpulses, resetAnim
+  │               initCols, stepParticles, rescaleThermalVelocities,
+  │               updateDpxData, updateDptData, pruneImpulses, resetAnim,
+  │               selectNearbyParticles (NEW)
   │
-  └── tube.js    dépend de : sim.js
+  └── tube.js    dépend de : sim.js, selectNearbyParticles
   │               expose : tubeCanvas, tubeCtx, resizeTube, scheduleResizeTube,
   │                         drawTube, clearSelection
   │
@@ -186,3 +196,72 @@ index.html
 
 > Tous les fichiers utilisent le scope global (`var`, pas de modules ES).
 > L'ordre de chargement est critique.
+
+---
+
+## Système de sélection de particules (v2 — proximité) [NEW]
+
+### Principes pédagogiques
+
+**Objectif** : L'utilisateur observe que les colonnes oscillent autour d'une position d'équilibre et ne se déplacent **pas macroscopiquement** au passage de l'onde.
+
+**Mécanique** :
+- Chaque colonne possède une position de repos **x0** (fixe en grille).
+- À chaque frame, sa position affichée = `tubeLeft + x0 + u(x0, t)`, où `u()` est le déplacement d'onde (petit).
+- L'agitation thermique randomise les **positions y** (verticales) à chaque frame, mais les **x0** sont déterministes.
+- Le système de sélection capture des groupes cohérents de colonnes (proche x0s voisins) pour que l'utilisateur suive visuellement leur mouvement oscillatoire.
+
+### Rayon adaptatif
+
+Le rayon `sim.selectionRadius` se recalcule automatiquement dans `initCols()` pour rester proportionnel à la densité des colonnes :
+
+```javascript
+var dx0 = slot;  // espacement moyen entre colonnes
+sim.selectionRadius = Math.max(20, Math.min(40, 1.5 * dx0));
+```
+
+**Bornes** :
+- Min 20 px : assure une cible souris confortable
+- Max 40 px : capture ~2-3 colonnes pour isoler un phénomène local
+- Nominal : 1.5× l'espacement spatial moyen
+
+**Adaptation automatique** : Quand `ρ` change, `N` (nombre de colonnes) change, `dx0` change, `selectionRadius` change. Aucun paramètre utilisateur à régler.
+
+### Interface
+
+**Bouton** : `#btn-select` dans `#tube-top-btns` appelle `toggleSelect()` (ui.js:256)
+
+**États** :
+- `sim.selectionMode = false` : bouton inactif, aucune interaction souris
+- `sim.selectionMode = true` : bouton actif (classe `.active`), curseur passe en `crosshair`
+
+**Interaction** :
+- **Clic simple** : applique `selectNearbyParticles(x0_click, {ctrl: false, shift: false})`
+  - Efface l'ancienne sélection
+  - Sélectionne toutes les colonnes dont `|x0 - x0_click| ≤ selectionRadius`
+- **Ctrl+clic** : `selectNearbyParticles(x0_click, {ctrl: true, shift: false})`
+  - Ajoute les colonnes du rayon à la sélection actuelle
+- **Maj+clic** : `selectNearbyParticles(x0_click, {ctrl: false, shift: true})`
+  - Retire les colonnes du rayon de la sélection actuelle
+
+**Retrait** : `toggleSelect()` quand le bouton est actif appelle `clearSelection()`, vidant `sim.cols[].selected`.
+
+### Rendu
+
+Les colonnes sélectionnées sont dessinées en **rouge** (`#b04020`) dans `tube.js:_drawParticles()` (pass 2).
+Les colonnes non-sélectionnées sont en **bleu** (`#2a6aaa`) (pass 1).
+
+En mode pression, les colonnes sont affichées selon leur ΔP (couleurs dégradées), indépendamment de leur état de sélection (pas de contour distinctif pour garder l'interface épurée).
+
+### Interaction avec le mode pression
+
+Les deux modes (sélection et pression) sont **mutuellement exclusifs** :
+- Quand l'utilisateur active "Colorier selon la pression" :
+  - Le bouton "Sélectionner" est désactivé (`disabled`) et grisé (opacity 60%)
+  - La mode sélection est force-désactivé (`sim.selectionMode = false`)
+  - Toute sélection active est annulée
+  - Curseur passe en `not-allowed`
+- Quand l'utilisateur désactive "Colorier selon la pression" :
+  - Le bouton "Sélectionner" est réactivé et peut être utilisé normalement
+
+Cela évite la confusion visuelle entre les deux modes d'affichage des colonnes.

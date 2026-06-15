@@ -152,6 +152,19 @@ main {
   color: #7a3a10;
   border-color: #d0a060;
 }
+.btn-tube-top:disabled {
+  background: #d4d0c8;
+  color: #a0b0bc;
+  border-color: #c8c0b4;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.btn-tube-top:disabled:hover {
+  background: #d4d0c8;
+}
+.btn-tube-top:disabled:active {
+  transform: none;
+}
 
 /* Balise 1 active */
 #btn-beacon1.active {

@@ -27,9 +27,7 @@ var tubeDispCap = 1.0;
 
 // ── État de l'interaction souris sur le canvas tube ───────────────────
 var tubeInter = {
-    mode      : null,   // null | 'select-rect' | 'beacon1-drag' | 'beacon2-drag'
-    rectStart : { x: 0, y: 0 },
-    rectEnd   : { x: 0, y: 0 },
+    mode      : null,   // null | 'beacon1-drag' | 'beacon2-drag'
 };
 
 // ── Anti-rebond resize ────────────────────────────────────────────────
@@ -270,11 +268,6 @@ function drawTube() {
 
     // ── Règle graduée sous le tube ────────────────────────────────────
     _drawTubeRuler(ctx);
-
-    // ── Rectangle de sélection en cours ──────────────────────────────
-    if (tubeInter.mode === 'select-rect') {
-        _drawSelectionRect(ctx);
-    }
 }
 
 // ── Fond du tube colorié selon la pression ────────────────────────────
@@ -553,34 +546,22 @@ function _drawParticles(ctx) {
 
     if (sim.pressureColorMode) {
         // ── Mode pression : chaque particule colorée selon ΔP ────────
-        // Deux sous-passes :
-        //   1) toutes les particules : fill couleur ΔP
-        //   2) particules sélectionnées : contour blanc par-dessus
-        for (var pass = 0; pass < 2; pass++) {
-            for (var i = 0; i < N; i++) {
-                var x0 = sim.cols[i].x0;
-                var u  = waveDisplacement(x0, sim.simTime) * tubeDispCap;
-                var px = sim.tubeLeft + x0 + u;
+        // Une seule passe : affichage couleur ΔP uniquement,
+        // pas de contour blanc pour les sélectionnées (trop visuellement chargé).
+        for (var i = 0; i < N; i++) {
+            var x0 = sim.cols[i].x0;
+            var u  = waveDisplacement(x0, sim.simTime) * tubeDispCap;
+            var px = sim.tubeLeft + x0 + u;
 
-                if (!sim.paused) sim.cols[i].ry = Math.random();
-                var py = sim.tubeTop + sim.cols[i].ry * H;
+            if (!sim.paused) sim.cols[i].ry = Math.random();
+            var py = sim.tubeTop + sim.cols[i].ry * H;
 
-                if (pass === 0) {
-                    // Remplissage couleur ΔP
-                    var dp = waveDeltaP(x0, sim.simTime);
-                    ctx.fillStyle = _dpToColor(dp);
-                    ctx.beginPath();
-                    ctx.arc(px, py, r, 0, Math.PI * 2);
-                    ctx.fill();
-                } else if (sim.cols[i].selected) {
-                    // Contour blanc épais pour les sélectionnées
-                    ctx.strokeStyle = '#ffffff';
-                    ctx.lineWidth   = 2.5;
-                    ctx.beginPath();
-                    ctx.arc(px, py, r + 1, 0, Math.PI * 2);
-                    ctx.stroke();
-                }
-            }
+            // Remplissage couleur ΔP
+            var dp = waveDeltaP(x0, sim.simTime);
+            ctx.fillStyle = _dpToColor(dp);
+            ctx.beginPath();
+            ctx.arc(px, py, r, 0, Math.PI * 2);
+            ctx.fill();
         }
     } else {
         // ── Mode normal : deux passes groupées (bleu / rouge) ────────
@@ -659,23 +640,12 @@ function _drawOneBeacon(ctx, x, color, label) {
 }
 
 // ── Rectangle de sélection ────────────────────────────────────────────
+// [SUPPRIMÉ] Cette fonction n'est plus utilisée avec le système de sélection
+// par proximité.
 
-function _drawSelectionRect(ctx) {
-    var x1 = Math.min(tubeInter.rectStart.x, tubeInter.rectEnd.x);
-    var y1 = Math.min(tubeInter.rectStart.y, tubeInter.rectEnd.y);
-    var x2 = Math.max(tubeInter.rectStart.x, tubeInter.rectEnd.x);
-    var y2 = Math.max(tubeInter.rectStart.y, tubeInter.rectEnd.y);
-
-    ctx.save();
-    ctx.strokeStyle = '#2a6aaa';
-    ctx.lineWidth   = 1.5;
-    ctx.setLineDash([4, 3]);
-    ctx.fillStyle   = 'rgba(42,106,170,0.10)';
-    ctx.fillRect  (x1, y1, x2 - x1, y2 - y1);
-    ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
-    ctx.setLineDash([]);
-    ctx.restore();
-}
+// ── Applique la sélection rectangulaire aux particules ───────────────
+//  [SUPPRIMÉ] Cette fonction n'est plus utilisée avec le système de sélection
+// par proximité.
 
 // ══════════════════════════════════════════════════════════════════════
 //  Interactions souris sur le canvas tube
@@ -704,12 +674,16 @@ function _drawSelectionRect(ctx) {
             return;
         }
 
-        // Sélection rectangulaire (si mode actif)
+        // Sélection par proximité (si mode actif)
         if (sim.selectionMode) {
-            tubeInter.mode         = 'select-rect';
-            tubeInter.rectStart    = { x: mx, y: my };
-            tubeInter.rectEnd      = { x: mx, y: my };
-            tubeCanvas.setPointerCapture(e.pointerId);
+            // Convertir position écran en x0 (unité de grille)
+            var x0_click = mx - sim.tubeLeft;
+            
+            // Appeler la fonction de sélection avec les modifieurs clavier
+            selectNearbyParticles(x0_click, {
+                ctrl  : e.ctrlKey,
+                shift : e.shiftKey
+            });
         }
     }
 
@@ -736,16 +710,10 @@ function _drawSelectionRect(ctx) {
             sim.beacon1.x = Math.max(sim.tubeLeft, Math.min(sim.tubeRight, mx));
         } else if (tubeInter.mode === 'beacon2-drag') {
             sim.beacon2.x = Math.max(sim.tubeLeft, Math.min(sim.tubeRight, mx));
-        } else if (tubeInter.mode === 'select-rect') {
-            tubeInter.rectEnd = { x: mx, y: my };
         }
     }
 
     function onUp() {
-        if (tubeInter.mode === 'select-rect') {
-            // Appliquer la sélection
-            _applySelection();
-        }
         tubeInter.mode = null;
     }
 
@@ -766,32 +734,6 @@ function _drawSelectionRect(ctx) {
         setup();
     }
 })();
-
-// ── Applique la sélection rectangulaire aux particules ───────────────
-//  Une particule est sélectionnée si sa position déplacée par l'onde
-//  se trouve dans le rectangle tracé par l'utilisateur.
-
-function _applySelection() {
-    var x1 = Math.min(tubeInter.rectStart.x, tubeInter.rectEnd.x);
-    var x2 = Math.max(tubeInter.rectStart.x, tubeInter.rectEnd.x);
-    var y1 = Math.min(tubeInter.rectStart.y, tubeInter.rectEnd.y);
-    var y2 = Math.max(tubeInter.rectStart.y, tubeInter.rectEnd.y);
-
-    // Rectangle trop petit → clic accidentel, on ignore
-    if (x2 - x1 < 4 && y2 - y1 < 4) return;
-
-    var N = sim.cols.length;
-    if (N === 0) return;
-    var H = sim.tubeBottom - sim.tubeTop;
-
-    for (var i = 0; i < N; i++) {
-        var x0 = sim.cols[i].x0;
-        var u  = waveDisplacement(x0, sim.simTime) * tubeDispCap;
-        var px = sim.tubeLeft + x0 + u;
-        var py = sim.tubeTop  + sim.cols[i].ry * H;
-        sim.cols[i].selected = (px >= x1 && px <= x2 && py >= y1 && py <= y2);
-    }
-}
 
 // ── Désélectionner toutes les colonnes ───────────────────────────────
 

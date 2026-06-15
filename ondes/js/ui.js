@@ -254,6 +254,9 @@ function onSliderAtten(v) {
 // ══════════════════════════════════════════════════════════════════════
 
 function toggleSelect() {
+    // Ne pas permettre la sélection si le mode pression est actif
+    if (sim.pressureColorMode) return;
+    
     sim.selectionMode = !sim.selectionMode;
     var btn = document.getElementById('btn-select');
     if (btn) btn.classList.toggle('active', sim.selectionMode);
@@ -264,7 +267,22 @@ function toggleSelect() {
 function togglePressureColor() {
     sim.pressureColorMode = !sim.pressureColorMode;
     var btn = document.getElementById('btn-pressure-color');
+    var btnSelect = document.getElementById('btn-select');
+    
     if (btn) btn.classList.toggle('active', sim.pressureColorMode);
+    
+    // Désactiver le bouton "Sélectionner" et annuler la sélection
+    if (sim.pressureColorMode) {
+        sim.selectionMode = false;
+        if (btnSelect) {
+            btnSelect.disabled = true;
+            btnSelect.classList.remove('active');
+        }
+        clearSelection();
+    } else {
+        // Réactiver le bouton "Sélectionner" quand on désactive le mode pression
+        if (btnSelect) btnSelect.disabled = false;
+    }
 }
 
 function toggleBeacon(n) {
