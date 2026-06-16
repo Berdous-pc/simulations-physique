@@ -71,8 +71,11 @@ var sim = {
     selectionRadius   : 25,      // px, rayon de sélection (recalculé dans initCols)
 
     // ── Balises (lignes verticales draggables dans le tube) ──────────
-    beacon1 : { active: false, x: 0 },   // balise 1 (orange)
-    beacon2 : { active: false, x: 0 },   // balise 2 (vert)
+    // frac = position relative (0–1) le long du tube — utilisée pour
+    // recalculer x au resize et garder la balise à distance constante
+    // de la membrane, indépendamment de la largeur du canvas.
+    beacon1 : { active: false, x: 0, frac: 0.30 },   // balise 1 (orange)
+    beacon2 : { active: false, x: 0, frac: 0.65 },   // balise 2 (vert)
 
     // ── Géométrie du tube (renseignée par tube.js resize) ────────────
     tubeLeft   : 0,
@@ -356,8 +359,11 @@ var simCorde = {
     cordeLength : 0,    // = cordeRight − cordeLeft (px)
 
     // ── Balises (lignes verticales draggables) ───────────────────────
-    beacon1 : { active: false, x: 0 },
-    beacon2 : { active: false, x: 0 },
+    // frac = position relative (0–1) le long de la corde — utilisée pour
+    // recalculer x au resize et garder la balise à distance constante
+    // du vibreur, indépendamment de la largeur du canvas.
+    beacon1 : { active: false, x: 0, frac: 0.30 },
+    beacon2 : { active: false, x: 0, frac: 0.65 },
 
     // ── Données graphes ──────────────────────────────────────────────
     graphMode : 'dpx',   // 'dpx' (spatial) | 'dpt' (temporel)

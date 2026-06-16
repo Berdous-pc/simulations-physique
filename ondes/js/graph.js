@@ -60,7 +60,9 @@ function _updateFontSizes(ctx, W, H, yMin, yMax) {
 // On utilise getBoundingClientRect pour comparer les positions viewport
 // des deux canvas, indépendamment de la mise en page autour d'eux.
 function _syncLeftMarginWithTube(ctx, W, yMin, yMax) {
-    var minForLabels = _calcLeftMarginRaw(ctx, yMin, yMax);
+    // + place pour le titre d'axe Y pivoté (cf. _yAxisTitleX), pour qu'il
+    // ne se retrouve jamais collé au bord gauche du canvas, loin des chiffres.
+    var minForLabels = _calcLeftMarginRaw(ctx, yMin, yMax) + _gFontTitle + 8;
 
     if (tubeCanvas && tubeCanvas.width > 0 && sim.tubeLeft > 0 && graphCanvas) {
         var tubeRect  = tubeCanvas.getBoundingClientRect();
@@ -81,13 +83,21 @@ function _syncLeftMarginWithTube(ctx, W, yMin, yMax) {
     }
 }
 
-// Calcule la marge minimale pour afficher les labels Y
+// Calcule la marge minimale pour afficher les labels Y (chiffres seulement)
 // Utilise la taille de police dynamique courante (_gFontTick)
 function _calcLeftMarginRaw(ctx, yMin, yMax) {
     ctx.font = _gFontTick + 'px monospace';
     var wMin = ctx.measureText(_fmtLabel(yMin)).width;
     var wMax = ctx.measureText(_fmtLabel(yMax)).width;
     return Math.round(Math.max(wMin, wMax) + 14);
+}
+
+// Position X (translate) du titre d'axe Y pivoté, juste à gauche de la
+// zone des chiffres — quelle que soit la valeur de GM.left (y compris
+// quand elle est étendue pour aligner l'axe sur la membrane/le pot).
+function _yAxisTitleX(ctx, GM, yMin, yMax) {
+    var numbersZone = _calcLeftMarginRaw(ctx, yMin, yMax);
+    return Math.max(4, GM.left - numbersZone - _gFontTitle - 4);
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -883,7 +893,7 @@ function _drawAxisLabels_dpx(ctx, W, H, GM, pW, pH, xMin, xMax, yMin, yMax, px, 
 
     // Label axe Y (vertical)
     ctx.save();
-    ctx.translate(10, GM.top + pH / 2);
+    ctx.translate(_yAxisTitleX(ctx, GM, yMin, yMax), GM.top + pH / 2);
     ctx.rotate(-Math.PI / 2);
     ctx.font         = _gFontTitle + 'px "Segoe UI", Arial, sans-serif';
     ctx.textAlign    = 'center';
@@ -901,7 +911,7 @@ function _drawAxisLabels_dpt(ctx, W, H, GM, pW, pH, xMin, xMax, yMin, yMax, px, 
     ctx.fillText('Temps (s)', GM.left + pW / 2, H - 2);
 
     ctx.save();
-    ctx.translate(10, GM.top + pH / 2);
+    ctx.translate(_yAxisTitleX(ctx, GM, yMin, yMax), GM.top + pH / 2);
     ctx.rotate(-Math.PI / 2);
     ctx.font         = _gFontTitle + 'px "Segoe UI", Arial, sans-serif';
     ctx.textAlign    = 'center';
@@ -1090,7 +1100,7 @@ function _drawYxGraph(ctx, W, H) {
     ctx.strokeRect(GM.left, GM.top, pW, pH);
 
     // Labels axes
-    _drawAxisLabels_yx(ctx, W, H, GM, pW, pH);
+    _drawAxisLabels_yx(ctx, W, H, GM, pW, pH, yMin, yMax);
 }
 
 // ── Graphe y(t) ───────────────────────────────────────────────────────
@@ -1158,7 +1168,7 @@ function _drawYtGraph(ctx, W, H) {
     ctx.lineWidth   = 1;
     ctx.strokeRect(GM.left, GM.top, pW, pH);
 
-    _drawAxisLabels_yt(ctx, W, H, GM, pW, pH);
+    _drawAxisLabels_yt(ctx, W, H, GM, pW, pH, yMin, yMax);
     _drawLegendCorde(ctx, W, pH);
 }
 
@@ -1215,7 +1225,7 @@ function _drawLegendCorde(ctx, W, pH) {
 
 // ── Labels axes y(x) ──────────────────────────────────────────────────
 
-function _drawAxisLabels_yx(ctx, W, H, GM, pW, pH) {
+function _drawAxisLabels_yx(ctx, W, H, GM, pW, pH, yMin, yMax) {
     ctx.fillStyle    = '#5a6a78';
     ctx.font         = _gFontTitle + 'px "Segoe UI", Arial, sans-serif';
     ctx.textAlign    = 'center';
@@ -1223,7 +1233,7 @@ function _drawAxisLabels_yx(ctx, W, H, GM, pW, pH) {
     var labelX = pW < 260 ? 'Distance (m)' : 'Distance depuis le pot (m)';
     ctx.fillText(labelX, GM.left + pW / 2, H - 2);
     ctx.save();
-    ctx.translate(10, GM.top + pH / 2);
+    ctx.translate(_yAxisTitleX(ctx, GM, yMin, yMax), GM.top + pH / 2);
     ctx.rotate(-Math.PI / 2);
     ctx.font         = _gFontTitle + 'px "Segoe UI", Arial, sans-serif';
     ctx.textAlign    = 'center';
@@ -1234,14 +1244,14 @@ function _drawAxisLabels_yx(ctx, W, H, GM, pW, pH) {
 
 // ── Labels axes y(t) ──────────────────────────────────────────────────
 
-function _drawAxisLabels_yt(ctx, W, H, GM, pW, pH) {
+function _drawAxisLabels_yt(ctx, W, H, GM, pW, pH, yMin, yMax) {
     ctx.fillStyle    = '#5a6a78';
     ctx.font         = _gFontTitle + 'px "Segoe UI", Arial, sans-serif';
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'bottom';
     ctx.fillText('Temps (s)', GM.left + pW / 2, H - 2);
     ctx.save();
-    ctx.translate(10, GM.top + pH / 2);
+    ctx.translate(_yAxisTitleX(ctx, GM, yMin, yMax), GM.top + pH / 2);
     ctx.rotate(-Math.PI / 2);
     ctx.font         = _gFontTitle + 'px "Segoe UI", Arial, sans-serif';
     ctx.textAlign    = 'center';
@@ -1254,7 +1264,8 @@ function _drawAxisLabels_yt(ctx, W, H, GM, pW, pH) {
 //  Analogue à _syncLeftMarginWithTube mais utilise cordeLeft
 
 function _syncLeftMarginWithCorde(ctx, W, yMin, yMax) {
-    var minForLabels = _calcLeftMarginRaw(ctx, yMin, yMax);
+    // + place pour le titre d'axe Y pivoté (cf. _yAxisTitleX)
+    var minForLabels = _calcLeftMarginRaw(ctx, yMin, yMax) + _gFontTitle + 8;
 
     if (tubeCanvas && tubeCanvas.width > 0 && simCorde.cordeLeft > 0 && graphCanvas) {
         var tubeRect  = tubeCanvas.getBoundingClientRect();

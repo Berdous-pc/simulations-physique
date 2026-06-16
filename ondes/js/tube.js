@@ -74,11 +74,11 @@ function resizeTube() {
     var dx0Rho1      = sim.tubeLength / nColsRho1;
     sim.memAmplitude = Math.max(27, Math.min(90, dx0Rho1 * 7.5));
 
-    // ── Positions par défaut des balises ─────────────────────────────
-    if (!sim.beacon1.active)
-        sim.beacon1.x = sim.tubeLeft + sim.tubeLength * 0.30;
-    if (!sim.beacon2.active)
-        sim.beacon2.x = sim.tubeLeft + sim.tubeLength * 0.65;
+    // ── Positions des balises ──────────────────────────────────────────
+    // Recalculées depuis frac (position relative) pour rester à distance
+    // constante de la membrane quelle que soit la largeur du canvas.
+    sim.beacon1.x = sim.tubeLeft + sim.tubeLength * sim.beacon1.frac;
+    sim.beacon2.x = sim.tubeLeft + sim.tubeLength * sim.beacon2.frac;
 
     updateCelerite();
     initCols();
@@ -754,13 +754,16 @@ function _drawOneBeacon(ctx, x, color, label) {
         var isCorde = (typeof activeTab !== 'undefined' && activeTab === 'corde');
         var left    = isCorde ? simCorde.cordeLeft  : sim.tubeLeft;
         var right   = isCorde ? simCorde.cordeRight : sim.tubeRight;
+        var length  = isCorde ? simCorde.cordeLength : sim.tubeLength;
         var b1      = isCorde ? simCorde.beacon1    : sim.beacon1;
         var b2      = isCorde ? simCorde.beacon2    : sim.beacon2;
 
         if (tubeInter.mode === 'beacon1-drag') {
             b1.x = Math.max(left, Math.min(right, mx));
+            if (length > 0) b1.frac = (b1.x - left) / length;
         } else if (tubeInter.mode === 'beacon2-drag') {
             b2.x = Math.max(left, Math.min(right, mx));
+            if (length > 0) b2.frac = (b2.x - left) / length;
         }
     }
 
@@ -872,11 +875,11 @@ function resizeCorde() {
     // (cf. _recalcMemAmplitudeCorde).
     _recalcMemAmplitudeCorde();
 
-    // ── Positions par défaut des balises ─────────────────────────────
-    if (!simCorde.beacon1.active)
-        simCorde.beacon1.x = simCorde.cordeLeft + simCorde.cordeLength * 0.30;
-    if (!simCorde.beacon2.active)
-        simCorde.beacon2.x = simCorde.cordeLeft + simCorde.cordeLength * 0.65;
+    // ── Positions des balises ──────────────────────────────────────────
+    // Recalculées depuis frac (position relative) pour rester à distance
+    // constante du vibreur quelle que soit la largeur du canvas.
+    simCorde.beacon1.x = simCorde.cordeLeft + simCorde.cordeLength * simCorde.beacon1.frac;
+    simCorde.beacon2.x = simCorde.cordeLeft + simCorde.cordeLength * simCorde.beacon2.frac;
 
     updateCeleriteCorde();
 }
@@ -981,9 +984,11 @@ function _drawCordeWire(ctx) {
     if (L <= 0) return;
 
     // Déplacement au point d'accroche (x=0 de la corde = cordeLeft)
+    // Signe inversé (− et non +) pour que y positif soit tracé vers le
+    // haut, comme sur le graphe y(x)/y(t) (convention mathématique standard).
     var disp0 = cordeDisplacement(0, simCorde.simTime) * cordeDispCap;
     var startX = simCorde.cordeLeft;
-    var startY = simCorde.cordeMiddleY + disp0;
+    var startY = simCorde.cordeMiddleY - disp0;
 
     // Épaisseur selon μ : linéaire de 1.5 (μ=0.1) à 5 (μ=4)
     var muRange    = 4.0 - 0.1;
@@ -1009,7 +1014,7 @@ function _drawCordeWire(ctx) {
         var x_px = frac * L;
         var disp = cordeDisplacement(x_px, simCorde.simTime) * cordeDispCap;
         var cx   = simCorde.cordeLeft + x_px;
-        var cy   = simCorde.cordeMiddleY + disp;
+        var cy   = simCorde.cordeMiddleY - disp;
         ctx.lineTo(cx, cy);
     }
 
@@ -1029,7 +1034,7 @@ function _drawCordeWire(ctx) {
 //
 //  Géométrie (vue de face, vertical) :
 //
-//    ┌──────┐   ← sommet du tube animé (y = midY + disp)
+//    ┌──────┐   ← sommet du tube animé (y = midY − disp)
 //    │ tube │     → extrémité de la corde accrochée ici
 //    │      │
 //    │      │
@@ -1040,7 +1045,7 @@ function _drawCordeWire(ctx) {
 //  - Base (fixe) : rectangle gris, centré dans la marge gauche,
 //    ancré juste au-dessus de cordeBottom, hauteur ≈ 18 % de zoneH
 //  - Tube (animé) : rectangle fin centré sur la base,
-//    part du dessus de la base et monte jusqu'à midY + disp
+//    part du dessus de la base et monte jusqu'à midY − disp
 //  - Point d'accroche : petit disque coloré au sommet du tube
 //    → c'est d'ici que part le fil de la corde
 
@@ -1063,8 +1068,9 @@ function _drawShaker(ctx) {
     var tubeW  = Math.max(6, Math.round(baseW * 0.28));    // largeur tube fin
     var tubeX  = Math.round(marginLeft / 2 - tubeW / 2);  // centré
 
-    // Sommet du tube = position animée (midY + disp), plancher = dessus de la base
-    var tubeTop_anim = Math.min(baseY - 1, midY + disp);   // sommet animé (borné)
+    // Sommet du tube = position animée (midY − disp, cf. convention du
+    // fil de la corde : y positif vers le haut), plancher = dessus de la base
+    var tubeTop_anim = Math.min(baseY - 1, midY - disp);   // sommet animé (borné)
     var tubeBot      = baseY;                               // pied du tube = dessus base
 
     // ── Fond : masque la zone du pot (couleur de fond de zone) ────────
@@ -1149,42 +1155,49 @@ function _drawCordeBeacons(ctx) {
 }
 
 function _drawOneCordeBeacon(ctx, x, color, label) {
-    var y1    = simCorde.cordeTop;
-    var y2    = simCorde.cordeBottom;
-    var fSize = Math.max(11, Math.round((y2 - y1) * 0.13));
+    var top    = simCorde.cordeTop;
+    var bottom = simCorde.cordeBottom;
+    var fSize  = Math.max(11, Math.round((bottom - top) * 0.13));
 
-    // Ligne verticale en pointillés
+    // Position verticale actuelle du point d'attache : suit le déplacement
+    // transversal de la corde à cette abscisse (comme un point matériel posé
+    // sur le fil). Signe inversé, cf. _drawCordeWire (y positif vers le haut).
+    var xRel = x - simCorde.cordeLeft;
+    var disp = cordeDisplacement(xRel, simCorde.simTime) * cordeDispCap;
+    var y    = Math.max(top, Math.min(bottom, simCorde.cordeMiddleY - disp));
+
+    // Ligne pointillée vers le bas uniquement, jusqu'à la règle graduée
     ctx.save();
     ctx.strokeStyle = color;
-    ctx.lineWidth   = 3;
-    ctx.setLineDash([6, 4]);
-    ctx.globalAlpha = 0.9;
+    ctx.lineWidth   = 1.5;
+    ctx.setLineDash([5, 4]);
+    ctx.globalAlpha = 0.8;
     ctx.beginPath();
-    ctx.moveTo(x, y1);
-    ctx.lineTo(x, y2);
+    ctx.moveTo(x, y);
+    ctx.lineTo(x, bottom);
     ctx.stroke();
     ctx.setLineDash([]);
     ctx.restore();
 
-    // Étiquette au-dessus
+    // Point matérialisant la balise (toujours dragable horizontalement,
+    // cf. nearBeacon() dans initTubeInteractions — basé uniquement sur x)
+    var dotR = Math.max(2, fSize * 0.16);
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x, y, dotR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth   = 1.5;
+    ctx.stroke();
+    ctx.restore();
+
+    // Étiquette juste au-dessus du point
     ctx.fillStyle    = color;
     ctx.font         = 'bold ' + fSize + 'px "Segoe UI", Arial, sans-serif';
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'bottom';
-    ctx.fillText(label, x, y1 - 2);
-
-    // Poignée de drag (losange)
-    ctx.save();
-    ctx.fillStyle   = color;
-    ctx.globalAlpha = 0.9;
-    ctx.beginPath();
-    ctx.moveTo(x,       y1 - fSize * 0.3);
-    ctx.lineTo(x + 6,   y1 + 4);
-    ctx.lineTo(x,       y1 + 8);
-    ctx.lineTo(x - 6,   y1 + 4);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
+    ctx.fillText(label, x, y - dotR - 3);
 
     // Label de position sur la règle graduée
     var L = simCorde.cordeLength;
@@ -1192,7 +1205,7 @@ function _drawOneCordeBeacon(ctx, x, color, label) {
     var mPerPx   = CORDE_LENGTH_M / L;
     var xM       = (x - simCorde.cordeLeft) * mPerPx;
     var H        = tubeCanvas.height;
-    var yRoom    = H - y2;
+    var yRoom    = H - bottom;
     if (yRoom < 6) return;
 
     var fontSize = Math.max(13, Math.min(18, Math.round(yRoom * 0.75)));
@@ -1203,7 +1216,7 @@ function _drawOneCordeBeacon(ctx, x, color, label) {
     ctx.font         = 'bold ' + fontSize + 'px monospace';
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'top';
-    ctx.fillText(xM.toFixed(2), x, y2 + tickMaj + 1);
+    ctx.fillText(xM.toFixed(2), x, bottom + tickMaj + 1);
     ctx.restore();
 }
 

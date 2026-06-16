@@ -490,8 +490,8 @@ function _toggleBeaconSon(n) {
     var btn    = document.getElementById('btn-beacon' + n);
     beacon.active = !beacon.active;
     if (beacon.active) {
-        if (n === 1) beacon.x = sim.tubeLeft + sim.tubeLength * 0.30;
-        else         beacon.x = sim.tubeLeft + sim.tubeLength * 0.65;
+        beacon.frac = (n === 1) ? 0.30 : 0.65;
+        beacon.x    = sim.tubeLeft + sim.tubeLength * beacon.frac;
         if (btn) btn.classList.add('active');
     } else {
         if (btn) btn.classList.remove('active');
@@ -505,8 +505,8 @@ function _toggleBeaconCorde(n) {
     var btn    = document.getElementById('btn-beacon' + n);
     beacon.active = !beacon.active;
     if (beacon.active) {
-        if (n === 1) beacon.x = simCorde.cordeLeft + simCorde.cordeLength * 0.30;
-        else         beacon.x = simCorde.cordeLeft + simCorde.cordeLength * 0.65;
+        beacon.frac = (n === 1) ? 0.30 : 0.65;
+        beacon.x    = simCorde.cordeLeft + simCorde.cordeLength * beacon.frac;
         if (btn) btn.classList.add('active');
     } else {
         if (btn) btn.classList.remove('active');
