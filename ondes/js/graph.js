@@ -26,6 +26,35 @@ var graphResizeRAF = false;
 // ── Marges internes du graphe ──────────────────────────────────────────
 var GM = { top: 14, right: 16, bottom: 60, left: 62 };
 
+// ── Tailles de police dynamiques ───────────────────────────────────────
+// Calculées depuis la hauteur disponible du canvas (H) et mises à jour
+// au début de chaque appel _drawDpxGraph / _drawDptGraph.
+// FONT_TICK  : graduations des axes (tick labels)
+// FONT_TITLE : titres des axes (ex : "Temps (s)", "ΔP (u.a.)")
+// FONT_HOVER : étiquette du hover snappé
+var _gFontTick  = 14;
+var _gFontTitle = 14;
+var _gFontHover = 14;
+
+// Met à jour les tailles de police dynamiques et les marges GM dépendantes.
+// W = largeur effective du graphe (demi-largeur en mode both)
+// H = hauteur totale du canvas (partagée entre les deux moitiés)
+function _updateFontSizes(ctx, W, H, yMin, yMax) {
+    // Taille tick : 3,5 % de la hauteur, bornes min/max selon usage
+    _gFontTick  = Math.max(10, Math.min(18, Math.round(H * 0.038)));
+    // Taille titre : légèrement plus grand que le tick
+    _gFontTitle = Math.max(11, Math.min(20, Math.round(H * 0.046)));
+    // Taille hover : proche du tick
+    _gFontHover = Math.max(10, Math.min(18, Math.round(H * 0.038)));
+
+    // Marge haute : espace pour éviter que le premier tick Y soit rogné
+    GM.top    = Math.max(10, Math.round(_gFontTick * 0.8));
+    // Marge droite : fixe
+    GM.right  = 16;
+    // Marge basse : espace pour tick X + titre X
+    GM.bottom = Math.max(28, Math.round(_gFontTick * 1.6 + _gFontTitle * 1.5 + 4));
+}
+
 // Calcule GM.left de sorte que l'axe Y (x=0 du graphe) soit aligné
 // avec la position de repos de la membrane dans la fenêtre.
 // On utilise getBoundingClientRect pour comparer les positions viewport
@@ -53,11 +82,12 @@ function _syncLeftMarginWithTube(ctx, W, yMin, yMax) {
 }
 
 // Calcule la marge minimale pour afficher les labels Y
+// Utilise la taille de police dynamique courante (_gFontTick)
 function _calcLeftMarginRaw(ctx, yMin, yMax) {
-    ctx.font = '24px monospace';
+    ctx.font = _gFontTick + 'px monospace';
     var wMin = ctx.measureText(_fmtLabel(yMin)).width;
     var wMax = ctx.measureText(_fmtLabel(yMax)).width;
-    return Math.round(Math.max(wMin, wMax) + 18);
+    return Math.round(Math.max(wMin, wMax) + 14);
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -260,6 +290,9 @@ function _drawDpxGraph(ctx, W, H) {
     sim.graphDpxYMin = yMin;
     sim.graphDpxYMax = yMax;
 
+    // ── Tailles de police et marges dynamiques ────────────────────────
+    _updateFontSizes(ctx, W, H, yMin, yMax);
+
     // Marge gauche synchronisée avec la position de la membrane dans le tube
     _syncLeftMarginWithTube(ctx, W, yMin, yMax);
 
@@ -366,6 +399,9 @@ function _drawDptGraph(ctx, W, H) {
     var yMax =  1.12;
     sim.graphView.yMin = yMin;
     sim.graphView.yMax = yMax;
+
+    // ── Tailles de police et marges dynamiques ────────────────────────
+    _updateFontSizes(ctx, W, H, yMin, yMax);
 
     // Marge gauche synchronisée avec la position de la membrane (même axe Y que ΔP(x))
     _syncLeftMarginWithTube(ctx, W, yMin, yMax);
@@ -580,7 +616,7 @@ function _drawSnappedHover_dpt(ctx, W, H, mx, my, pW, pH) {
     var tLbl  = tLocal.toFixed(2) + ' s';
     var vLbl  = 'ΔP = ' + winner.dp.toFixed(3);
     var label = '(' + tLbl + ', ' + vLbl + ')';
-    ctx.font         = '22px monospace';
+    ctx.font         = _gFontHover + 'px monospace';
     ctx.fillStyle    = winnerColor;
     ctx.textBaseline = 'bottom';
     ctx.textAlign    = 'left';
@@ -641,7 +677,7 @@ function _drawSnappedHover_dpx(ctx, W, H, mx, my, pW, pH) {
     var cmPerPx = (L > 0) ? 40 / L : 1;
     var dCm     = (best.x * cmPerPx).toFixed(1);
     var label   = '(' + dCm + ' cm, ΔP = ' + best.dp.toFixed(3) + ')';
-    ctx.font         = '22px monospace';
+    ctx.font         = _gFontHover + 'px monospace';
     ctx.fillStyle    = '#2a6aaa';
     ctx.textBaseline = 'bottom';
     ctx.textAlign    = 'left';
@@ -681,7 +717,7 @@ function _drawGridY(ctx, yMin, yMax, px, py, pW, pH) {
     var step  = _niceStep(yMax - yMin, 5);
     var start = Math.ceil(yMin / step) * step;
 
-    ctx.font         = '24px monospace';
+    ctx.font         = _gFontTick + 'px monospace';
     ctx.textAlign    = 'right';
     ctx.textBaseline = 'middle';
 
@@ -708,7 +744,7 @@ function _drawGridX_dpx(ctx, xMin, xMax, px, py, pW, pH, L) {
     var step     = _niceStep(xMaxCm, 6);
     var startCm  = Math.ceil(0 / step) * step;
 
-    ctx.font         = '24px monospace';
+    ctx.font         = _gFontTick + 'px monospace';
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'top';
 
@@ -734,7 +770,7 @@ function _drawGridX_dpt(ctx, xMin, xMax, px, py, pW, pH) {
     var step  = _niceStep(xMax - xMin, 6);
     var start = Math.ceil(xMin / step) * step;
 
-    ctx.font         = '24px monospace';
+    ctx.font         = _gFontTick + 'px monospace';
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'top';
 
@@ -792,18 +828,20 @@ function _drawBeaconMarker(ctx, xc, py, yMin, yMax, color, label, pH) {
 
 // Labels des axes pour ΔP(x)
 function _drawAxisLabels_dpx(ctx, W, H, GM, pW, pH, xMin, xMax, yMin, yMax, px, py, L) {
-    // Label axe X
     ctx.fillStyle    = '#5a6a78';
-    ctx.font         = '24px "Segoe UI", Arial, sans-serif';
+    ctx.font         = _gFontTitle + 'px "Segoe UI", Arial, sans-serif';
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'bottom';
-    ctx.fillText('Distance depuis la membrane (cm)', GM.left + pW / 2, H - 2);
+
+    // Titre X : version courte si le canvas est trop étroit pour le texte long
+    var labelX = pW < 260 ? 'Distance (cm)' : 'Distance depuis la membrane (cm)';
+    ctx.fillText(labelX, GM.left + pW / 2, H - 2);
 
     // Label axe Y (vertical)
     ctx.save();
     ctx.translate(10, GM.top + pH / 2);
     ctx.rotate(-Math.PI / 2);
-    ctx.font         = '24px "Segoe UI", Arial, sans-serif';
+    ctx.font         = _gFontTitle + 'px "Segoe UI", Arial, sans-serif';
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'top';
     ctx.fillText('ΔP (u.a.)', 0, 0);
@@ -813,7 +851,7 @@ function _drawAxisLabels_dpx(ctx, W, H, GM, pW, pH, xMin, xMax, yMin, yMax, px, 
 // Labels des axes pour ΔP(t)
 function _drawAxisLabels_dpt(ctx, W, H, GM, pW, pH, xMin, xMax, yMin, yMax, px, py) {
     ctx.fillStyle    = '#5a6a78';
-    ctx.font         = '24px "Segoe UI", Arial, sans-serif';
+    ctx.font         = _gFontTitle + 'px "Segoe UI", Arial, sans-serif';
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'bottom';
     ctx.fillText('Temps (s)', GM.left + pW / 2, H - 2);
@@ -821,7 +859,7 @@ function _drawAxisLabels_dpt(ctx, W, H, GM, pW, pH, xMin, xMax, yMin, yMax, px, 
     ctx.save();
     ctx.translate(10, GM.top + pH / 2);
     ctx.rotate(-Math.PI / 2);
-    ctx.font         = '24px "Segoe UI", Arial, sans-serif';
+    ctx.font         = _gFontTitle + 'px "Segoe UI", Arial, sans-serif';
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'top';
     ctx.fillText('ΔP (u.a.)', 0, 0);

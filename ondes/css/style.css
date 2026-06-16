@@ -213,8 +213,8 @@ main {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
-  padding: 5px 10px 4px;
+  gap: clamp(4px, 0.5vw, 6px);
+  padding: clamp(3px, 0.4vh, 5px) clamp(6px, 0.8vw, 10px) clamp(3px, 0.4vh, 4px);
   flex-wrap: wrap;
 }
 
@@ -233,8 +233,8 @@ main {
 
 /* Boutons gauche graphe */
 .graph-mode-btn {
-  height: 28px;
-  padding: 0 10px;
+  height: clamp(24px, 2.8vh, 30px);
+  padding: 0 clamp(6px, 0.8vw, 10px);
   font-weight: 700;
   font-size: clamp(11px, 1.1vw, 13px);
   background: #e8e4de;
@@ -254,10 +254,10 @@ main {
 
 /* Boutons droite graphe */
 #graph-btns-right button {
-  height: 28px;
-  padding: 0 10px;
+  height: clamp(24px, 2.8vh, 30px);
+  padding: 0 clamp(6px, 0.8vw, 10px);
   font-weight: 700;
-  font-size: 13px;
+  font-size: clamp(11px, 1.1vw, 13px);
   background: #e8e4de;
   color: #5a6a78;
   border: 1px solid #b0a898;
@@ -265,10 +265,10 @@ main {
   cursor: pointer;
   white-space: nowrap;
 }
-#btn-graph-cursor { font-size: 18px; padding: 0 8px !important; }
-#btn-graph-prev   { font-size: 14px; }
-#btn-graph-zoom   { font-size: 14px; }
-#btn-graph-auto   { font-size: 12px; }
+#btn-graph-cursor { font-size: clamp(14px, 1.6vw, 18px); padding: 0 clamp(5px, 0.7vw, 8px) !important; }
+#btn-graph-prev   { font-size: clamp(11px, 1.2vw, 14px); }
+#btn-graph-zoom   { font-size: clamp(11px, 1.2vw, 14px); }
+#btn-graph-auto   { font-size: clamp(10px, 1.05vw, 12px); }
 
 #btn-graph-zoom.active,
 #btn-graph-cursor.active {

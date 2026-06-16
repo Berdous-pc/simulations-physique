@@ -240,16 +240,19 @@ function drawTube() {
                      sim.tubeLength, sim.tubeBottom - sim.tubeTop);
     }
 
-    // ── Parois du tube (haut, bas, droite ouverte) ────────────────────
+    // ── Parois du tube (haut et bas) ─────────────────────────────────
+    // Les bordures partent du bord gauche du canvas (x=0) pour couvrir
+    // toute la plage de recul de la membrane. Le boîtier du haut-parleur
+    // et la membrane sont dessinés par-dessus et masquent la partie gauche.
     ctx.strokeStyle = '#3a4a5a';
     ctx.lineWidth   = 1.8;
     ctx.beginPath();
     // Paroi haute
-    ctx.moveTo(sim.tubeLeft,  sim.tubeTop);
-    ctx.lineTo(sim.tubeRight, sim.tubeTop);
+    ctx.moveTo(0,              sim.tubeTop);
+    ctx.lineTo(sim.tubeRight,  sim.tubeTop);
     // Paroi basse
-    ctx.moveTo(sim.tubeLeft,  sim.tubeBottom);
-    ctx.lineTo(sim.tubeRight, sim.tubeBottom);
+    ctx.moveTo(0,              sim.tubeBottom);
+    ctx.lineTo(sim.tubeRight,  sim.tubeBottom);
     ctx.stroke();
 
     // Extrémité droite : pas de fermeture — le tube est infini à droite.
