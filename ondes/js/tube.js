@@ -256,7 +256,6 @@ function drawTube() {
     ctx.stroke();
 
     // Extrémité droite : pas de fermeture — le tube est infini à droite.
-    // Le fondu est appliqué après les particules (voir ci-dessous).
 
     // ── Particules ────────────────────────────────────────────────────
     // Dessinées AVANT la membrane pour qu'elle les recouvre
@@ -524,13 +523,15 @@ function _drawMembrane(ctx) {
 // ── Particules — modèle lagrangien continu ────────────────────────────
 //
 //  Chaque entrée de sim.cols est une parcelle de fluide avec :
-//    • x0  : position de repos (px depuis tubeLeft), domaine [0, L+extraRight]
+//    • x0  : position de repos (px depuis tubeLeft), domaine [-extraLeft, L+extraRight]
 //    • ry  : position y mémorisée (0..1), gelée en pause
 //  Position affichée : px = tubeLeft + x0 + u(x0, t) × tubeDispCap
 //
 //  Les particules de la zone virtuelle droite (x0 > tubeLength) entrent
 //  naturellement dans le tube quand l'onde crée une raréfaction à droite.
-//  Le clip [tubeLeft, tubeRight] × [tubeTop, tubeBottom] les masque sinon.
+//  extraRight est dimensionné pour couvrir l'amplitude de déplacement max
+//  (y compris le boost basse fréquence) — pas de zone blanche en bout de tube.
+//  Le clip [memFace, tubeRight] × [tubeTop, tubeBottom] les masque sinon.
 //
 //  Deux passes (non-sélectionnées puis sélectionnées) pour minimiser
 //  les changements de fillStyle.

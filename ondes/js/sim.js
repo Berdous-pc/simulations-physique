@@ -219,9 +219,11 @@ function particleRadius() {
 //  position de repos x0 (en px depuis tubeLeft). À chaque frame, sa
 //  position affichée est : tubeLeft + x0 + u(x0, t) × tubeDispCap.
 //
-//  Le domaine s'étend au-delà de tubeRight de extraRight = 2×memAmplitude
+//  Le domaine s'étend au-delà de tubeRight de extraRight = 2×memAmplitude×max(1,cap)
 //  pour que le milieu soit continu : lors d'une raréfaction à l'extrémité
 //  droite, les particules "extérieures" entrent naturellement dans le tube.
+//  extraRight est proportionnel au boost de cap pour éviter les zones blanches
+//  sur grand écran avec petite fréquence / grand K / petit ρ.
 //
 //  N ∝ ρ : doubler ρ double le nombre de particules → densité visuelle
 //  directement proportionnelle à la masse volumique du milieu.
@@ -235,16 +237,19 @@ function initCols() {
     var H = sim.tubeBottom - sim.tubeTop;
     if (L <= 0 || H <= 0) return;
 
-    var extraRight = sim.memAmplitude * 2;          // zone virtuelle droite
-
-    // Zone virtuelle gauche : doit couvrir le déplacement max d'une particule
-    // à x0=0, qui vaut memAmplitude × tubeDispCap. On recalcule tubeDispCap
+    // Zone virtuelle gauche et droite : doivent couvrir le déplacement max d'une
+    // particule, qui vaut memAmplitude × tubeDispCap. On recalcule tubeDispCap
     // ici avec les paramètres courants pour avoir la bonne valeur.
     var freqEff_ic = sim.freq;
     var kEff_ic    = (sim.c_sim > 0) ? 2 * Math.PI * freqEff_ic / sim.c_sim : 0;
     var akEff_ic   = sim.memAmplitude * kEff_ic;
     var cap_ic     = (akEff_ic > 0) ? Math.max(0.55, Math.min(0.90, akEff_ic)) / akEff_ic : 1.0;
-    var extraLeft  = sim.memAmplitude * cap_ic + 4;  // +4 px de marge sécurité
+    var extraLeft  = sim.memAmplitude * cap_ic + 4;   // +4 px de marge sécurité
+    // La zone droite doit être au moins aussi large que le déplacement max
+    // amplifié. Si cap_ic > 1 (boost basse fréquence), les particules virtuelles
+    // droites doivent se trouver assez loin pour que, déplacées vers la gauche,
+    // elles couvrent la zone proche de tubeRight sans laisser de blanc.
+    var extraRight = sim.memAmplitude * Math.max(1.0, cap_ic) * 2 + 4; // zone virtuelle droite
     var domain     = L + extraRight + extraLeft;
     var SLOT       = 113;                           // px² par particule à ρ=1
     var N = Math.min(8000,
