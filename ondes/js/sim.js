@@ -299,12 +299,18 @@ function initParticles() { initCols(); }
 // ══════════════════════════════════════════════════════════════════════
 
 // ── Constantes de calibration corde ───────────────────────────────────
-var MU_DEFAULT        = 1.0;    // masse linéique par défaut (u.s.)
-var T_DEFAULT         = 4.0;    // tension par défaut (u.s.)
-// C_BASE_CORDE : px/s par unité de c_norm_corde — recalibré dans tube.js resize
+// Grandeurs physiques réelles : μ en kg/m, T en N, corde de longueur
+// CORDE_LENGTH_M, célérité c = √(T/μ) en m/s (sans facteur d'échelle).
+var CORDE_LENGTH_M    = 5.0;    // longueur physique de la corde (m)
+var MU_DEFAULT        = 1.0;    // masse linéique par défaut (kg/m)
+var T_DEFAULT         = 4.0;    // tension par défaut (N)
+// C_BASE_CORDE : px/s par unité de célérité (m/s) — recalibré dans tube.js resize
 var C_BASE_CORDE      = 43.0;
-// C_DISPLAY_FACTOR_CORDE : identique au son pour cohérence d'affichage
-var C_DISPLAY_FACTOR_CORDE = 10.0;
+// Bornes du slider Amplitude (cm) — l'amplitude visuelle (memAmplitude, px)
+// est mappée sur ces bornes indépendamment de l'échelle spatiale (x), pour
+// rester lisible quelle que soit la valeur choisie (cf. _recalcMemAmplitudeCorde).
+var CORDE_AMPL_CM_MIN = 1.0;
+var CORDE_AMPL_CM_MAX = 5.0;
 
 // ── État global de la simulation corde ────────────────────────────────
 var simCorde = {
@@ -328,16 +334,18 @@ var simCorde = {
     // ── Paramètres physiques de la corde ────────────────────────────
     freq        : 1.5,          // fréquence de la sinusoïdale (Hz)
     amplitudeCm : 2.0,          // amplitude imposée par le vibreur (cm, affiché)
-    mu          : MU_DEFAULT,   // masse linéique (u.s.)
-    T_tension   : T_DEFAULT,    // tension (u.s.)
+    mu          : MU_DEFAULT,   // masse linéique (kg/m)
+    T_tension   : T_DEFAULT,    // tension (N)
     attenuation : 0.0,          // coefficient d'atténuation
 
     // ── Propriétés dérivées ──────────────────────────────────────────
     c_sim : 0,    // célérité en px/s
-    c_cms : 0,    // célérité en cm/s (affichée)
+    c_cms : 0,    // célérité en m/s (affichée)
 
     // ── Amplitude du pot vibrant (recalibrée dans resize) ────────────
-    memAmplitude : 10,   // px (déplacement transversal maximal)
+    memAmplitude : 10,   // px (déplacement transversal maximal, échelle visuelle)
+    pxPerCmAmpl  : 1,    // px par cm d'amplitude réelle — pour reconvertir
+                          // les déplacements (px) en valeurs physiques (cm)
 
     // ── Géométrie de la zone corde (renseignée par tube.js resize) ────
     cordeLeft   : 0,
@@ -381,9 +389,9 @@ var simCorde = {
 
 function updateCeleriteCorde() {
     if (simCorde.mu <= 0) return;
-    var c_norm     = Math.sqrt(simCorde.T_tension / simCorde.mu);
-    simCorde.c_sim = c_norm * C_BASE_CORDE;
-    simCorde.c_cms = c_norm * C_DISPLAY_FACTOR_CORDE;
+    var c_ms       = Math.sqrt(simCorde.T_tension / simCorde.mu);   // m/s, formule réelle
+    simCorde.c_sim = c_ms * C_BASE_CORDE;   // px/s pour l'animation
+    simCorde.c_cms = c_ms;                  // m/s, valeur affichée
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -431,25 +439,19 @@ function cordeDisplacement(x_px, t_sim) {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-//  Cap visuel du déplacement transversal (analogue à tubeDispCap)
-//  Garantit que l'amplitude visuelle reste lisible (ni trop petite ni
-//  trop grande par rapport à la zone de tracé).
+//  Cap visuel du déplacement transversal
+//  Contrairement au tube (où ak doit rester dans une fenêtre pour éviter
+//  le chevauchement des particules), la corde n'a pas cette contrainte
+//  physique : seule la borne géométrique (memAmplitude ≤ 90% de la
+//  demi-hauteur de la zone, cf. _recalcMemAmplitudeCorde dans tube.js)
+//  est nécessaire pour garder l'onde lisible. Le slider Amplitude doit
+//  donc se répercuter directement, sans compensation.
 // ══════════════════════════════════════════════════════════════════════
 
 var cordeDispCap = 1.0;
 
 function updateCordeDispCap() {
-    var freqEff_ = (simCorde.sourceMode === 'impulse') ? 1.0 / T_IMPULSE : simCorde.freq;
-    var aEff_    = (simCorde.sourceMode === 'impulse')
-                    ? simCorde.memAmplitude / 2
-                    : simCorde.memAmplitude;
-    var kEff_    = (simCorde.c_sim > 0) ? 2 * Math.PI * freqEff_ / simCorde.c_sim : 0;
-    var akEff_   = aEff_ * kEff_;
-    var AK_MIN   = 0.55;
-    var AK_CAP   = 0.90;
-    cordeDispCap = (akEff_ > 0)
-        ? Math.max(AK_MIN, Math.min(AK_CAP, akEff_)) / akEff_
-        : 1.0;
+    cordeDispCap = 1.0;
 }
 
 // ══════════════════════════════════════════════════════════════════════

@@ -805,15 +805,31 @@ function clearSelection() {
 var SHAKER_BASE_W = 28;
 
 // ── Recalcul de memAmplitude depuis amplitudeCm ───────────────────────
-//  amplitudeCm (cm) → px via l'échelle 40 cm sur cordeLength px.
-//  Borné pour ne pas dépasser la demi-hauteur utile de la zone.
+//  L'amplitude visuelle (transversale) est volontairement DÉCOUPLÉE de
+//  l'échelle spatiale réelle (x, en m) : une amplitude réaliste de
+//  quelques cm serait invisible sur une corde de 5 m affichée à l'écran.
+//  On mappe donc amplitudeCm linéairement entre les bornes du slider
+//  [CORDE_AMPL_CM_MIN, CORDE_AMPL_CM_MAX] vers une fraction de la
+//  demi-hauteur disponible — ni trop petite (11 %), ni trop grande (55 %),
+//  soit un ratio max/min de 5, et toujours responsive puisque halfH suit
+//  le redimensionnement.
 
 function _recalcMemAmplitudeCorde() {
-    var pxPerCm = simCorde.cordeLength > 0 ? simCorde.cordeLength / 40 : 10;
-    var halfH   = (simCorde.cordeBottom - simCorde.cordeTop) / 2;
-    var ampPx   = simCorde.amplitudeCm * pxPerCm;
-    // Borner : au minimum 5 px, au maximum 90 % de la demi-hauteur
-    simCorde.memAmplitude = Math.max(5, Math.min(halfH * 0.90, ampPx));
+    var halfH = (simCorde.cordeBottom - simCorde.cordeTop) / 2;
+    var range = CORDE_AMPL_CM_MAX - CORDE_AMPL_CM_MIN;
+    var frac  = range > 0
+        ? (simCorde.amplitudeCm - CORDE_AMPL_CM_MIN) / range
+        : 0;
+    frac = Math.max(0, Math.min(1, frac));
+
+    var pxMax = halfH * 0.55;
+    var pxMin = pxMax / 5;
+    simCorde.memAmplitude = pxMin + frac * (pxMax - pxMin);
+
+    // Facteur de reconversion px → cm pour les graphes (valeurs physiques réelles)
+    simCorde.pxPerCmAmpl = simCorde.amplitudeCm > 0
+        ? simCorde.memAmplitude / simCorde.amplitudeCm
+        : 1;
 }
 
 // ── Resize corde ──────────────────────────────────────────────────────
@@ -833,7 +849,7 @@ function resizeCorde() {
     // ── Géométrie de la zone corde ────────────────────────────────────
     // Même logique que le tube son : marge horizontale + verticale
     var marginH      = 13;
-    var marginTop    = 4;
+    var marginTop    = 10;
     var marginBottom = Math.round(h * 0.12);
 
     simCorde.cordeLeft   = marginH + SHAKER_BASE_W;
@@ -844,12 +860,16 @@ function resizeCorde() {
     simCorde.cordeMiddleY = Math.round((simCorde.cordeTop + simCorde.cordeBottom) / 2);
 
     // ── Calibration C_BASE_CORDE ──────────────────────────────────────
-    var c_norm_default_corde = Math.sqrt(T_DEFAULT / MU_DEFAULT);  // = 2
-    C_BASE_CORDE = simCorde.cordeLength / (2.0 * c_norm_default_corde);
+    // px par mètre réel : c_sim (px/s) = c_norm (m/s) × C_BASE_CORDE doit
+    // représenter fidèlement la célérité réelle sur l'échelle spatiale
+    // CORDE_LENGTH_M affichée (sinon la longueur d'onde tracée ne
+    // correspond plus à λ = c/f réel — cf. bug constaté à l'usage).
+    C_BASE_CORDE = simCorde.cordeLength / CORDE_LENGTH_M;
 
     // ── Amplitude du pot vibrant ──────────────────────────────────────
-    // Convertie depuis amplitudeCm (cm) vers px via l'échelle 40 cm = cordeLength px.
-    // Bornée pour ne pas déborder de la demi-hauteur disponible.
+    // Échelle visuelle dédiée (indépendante de l'échelle spatiale x),
+    // mappée sur une fraction lisible de la demi-hauteur disponible
+    // (cf. _recalcMemAmplitudeCorde).
     _recalcMemAmplitudeCorde();
 
     // ── Positions par défaut des balises ─────────────────────────────
@@ -884,6 +904,9 @@ function drawCorde() {
     ctx.fillStyle = '#f0ece4';
     ctx.fillRect(simCorde.cordeLeft, simCorde.cordeTop, simCorde.cordeLength, zoneH);
 
+    // ── Grille (lignes verticales tous les mètres + ligne du zéro) ────
+    _drawCordeGrid(ctx);
+
     // ── Pot vibrant (à gauche) ────────────────────────────────────────
     // Dessiné EN PREMIER : son masque efface le fond de zone, puis la
     // corde est tracée par-dessus en partant exactement du point d'accroche.
@@ -896,8 +919,51 @@ function drawCorde() {
     // ── Balises ───────────────────────────────────────────────────────
     _drawCordeBeacons(ctx);
 
-    // ── Règle graduée ─────────────────────────────────────────────────
+    // ── Règle graduée (distance en bas) ────────────────────────────────
     _drawCordeRuler(ctx);
+
+    // ── Bordure de la zone (dessinée en dernier pour rester nette) ────
+    ctx.strokeStyle = '#b0a89c';
+    ctx.lineWidth   = 1;
+    ctx.strokeRect(
+        simCorde.cordeLeft + 0.5, simCorde.cordeTop + 0.5,
+        simCorde.cordeLength - 1, zoneH - 1
+    );
+}
+
+// ── Grille de la corde : repères verticaux (mètres) + ligne du zéro ───
+
+function _drawCordeGrid(ctx) {
+    var L = simCorde.cordeLength;
+    if (L <= 0) return;
+    var top    = simCorde.cordeTop;
+    var bottom = simCorde.cordeBottom;
+    var midY   = simCorde.cordeMiddleY;
+
+    ctx.save();
+
+    // Lignes verticales tous les mètres
+    ctx.strokeStyle = 'rgba(140,150,160,0.35)';
+    ctx.lineWidth   = 1;
+    var nMarks = Math.round(CORDE_LENGTH_M);
+    for (var m = 0; m <= nMarks; m++) {
+        var x = simCorde.cordeLeft + (m / CORDE_LENGTH_M) * L;
+        if (x > simCorde.cordeRight + 0.5) break;
+        ctx.beginPath();
+        ctx.moveTo(x, top);
+        ctx.lineTo(x, bottom);
+        ctx.stroke();
+    }
+
+    // Ligne horizontale du zéro (position d'équilibre)
+    ctx.strokeStyle = 'rgba(110,120,130,0.55)';
+    ctx.lineWidth   = 1;
+    ctx.beginPath();
+    ctx.moveTo(simCorde.cordeLeft,  midY);
+    ctx.lineTo(simCorde.cordeRight, midY);
+    ctx.stroke();
+
+    ctx.restore();
 }
 
 // ── Fil de la corde ───────────────────────────────────────────────────
@@ -919,10 +985,10 @@ function _drawCordeWire(ctx) {
     var startX = simCorde.cordeLeft;
     var startY = simCorde.cordeMiddleY + disp0;
 
-    // Épaisseur selon μ : linéaire de 1.5 (μ=0.5) à 5 (μ=4)
-    var muRange    = 4.0 - 0.5;
+    // Épaisseur selon μ : linéaire de 1.5 (μ=0.1) à 5 (μ=4)
+    var muRange    = 4.0 - 0.1;
     var lwRange    = 5.0 - 1.5;
-    var cordeLineW = 1.5 + ((simCorde.mu - 0.5) / muRange) * lwRange;
+    var cordeLineW = 1.5 + ((simCorde.mu - 0.1) / muRange) * lwRange;
 
     // Tracé pixel par pixel — sous-pas si λ < 8 px canvas
     var freqEff_  = (simCorde.sourceMode === 'impulse') ? 1.0 / T_IMPULSE : simCorde.freq;
@@ -1053,7 +1119,7 @@ function _drawShaker(ctx) {
     }
 
     // ── Point d'accroche de la corde (sommet du tube) ─────────────────
-    var attachX = marginLeft;           // extrémité droite = bord de la zone corde
+    var attachX = simCorde.cordeLeft;   // extrémité droite = bord de la zone corde
     var attachY = tubeTop_anim;         // hauteur animée
     var dotR    = Math.max(3, tubeW * 0.45);
 
@@ -1123,8 +1189,8 @@ function _drawOneCordeBeacon(ctx, x, color, label) {
     // Label de position sur la règle graduée
     var L = simCorde.cordeLength;
     if (L <= 0) return;
-    var cmPerPx  = 40 / L;
-    var xCm      = (x - simCorde.cordeLeft) * cmPerPx;
+    var mPerPx   = CORDE_LENGTH_M / L;
+    var xM       = (x - simCorde.cordeLeft) * mPerPx;
     var H        = tubeCanvas.height;
     var yRoom    = H - y2;
     if (yRoom < 6) return;
@@ -1137,7 +1203,7 @@ function _drawOneCordeBeacon(ctx, x, color, label) {
     ctx.font         = 'bold ' + fontSize + 'px monospace';
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'top';
-    ctx.fillText(xCm.toFixed(1), x, y2 + tickMaj + 1);
+    ctx.fillText(xM.toFixed(2), x, y2 + tickMaj + 1);
     ctx.restore();
 }
 
@@ -1152,14 +1218,15 @@ function _drawCordeRuler(ctx) {
     var yRoom    = H - yBase;
     if (yRoom < 6) return;
 
-    var cmPerPx  = 40 / L;
-    var xMaxCm   = 40;
+    var mPerPx   = CORDE_LENGTH_M / L;
+    var xMaxM    = CORDE_LENGTH_M;
 
-    var range    = xMaxCm;
+    var range    = xMaxM;
     var rough    = range / 6;
     var mag      = Math.pow(10, Math.floor(Math.log10(rough)));
     var mant     = rough / mag;
     var step     = mant < 1.5 ? mag : mant < 3.5 ? 2 * mag : mant < 7.5 ? 5 * mag : 10 * mag;
+    var decimals = step < 1 ? 1 : 0;
 
     var fontSize = Math.max(13, Math.min(18, Math.round(yRoom * 0.75)));
     var tickMaj  = Math.min(yRoom * 0.40, 6);
@@ -1183,22 +1250,22 @@ function _drawCordeRuler(ctx) {
     ctx.lineWidth   = 1;
     ctx.fillStyle   = '#5a6a78';
 
-    for (var cm = 0; cm <= xMaxCm + step * 0.01; cm += step) {
-        var xc = simCorde.cordeLeft + cm / cmPerPx;
+    for (var m_ = 0; m_ <= xMaxM + step * 0.01; m_ += step) {
+        var xc = simCorde.cordeLeft + m_ / mPerPx;
         if (xc > simCorde.cordeRight + 0.5) break;
         ctx.beginPath();
         ctx.moveTo(xc, yBase);
         ctx.lineTo(xc, yBase + tickMaj);
         ctx.stroke();
-        ctx.fillText(cm === 0 ? '0' : cm.toFixed(0), xc, yBase + tickMaj + 1);
+        ctx.fillText(m_ === 0 ? '0' : m_.toFixed(decimals), xc, yBase + tickMaj + 1);
     }
 
     // Ticks secondaires
     ctx.strokeStyle = '#a0b0bc';
     ctx.lineWidth   = 0.8;
     var halfStep = step / 2;
-    for (var cm2 = halfStep; cm2 <= xMaxCm + halfStep * 0.01; cm2 += step) {
-        var xc2 = simCorde.cordeLeft + cm2 / cmPerPx;
+    for (var m2 = halfStep; m2 <= xMaxM + halfStep * 0.01; m2 += step) {
+        var xc2 = simCorde.cordeLeft + m2 / mPerPx;
         if (xc2 > simCorde.cordeRight + 0.5) break;
         ctx.beginPath();
         ctx.moveTo(xc2, yBase);
@@ -1211,7 +1278,7 @@ function _drawCordeRuler(ctx) {
         ctx.fillStyle    = '#7a8a96';
         ctx.font         = Math.max(12, fontSize - 1) + 'px monospace';
         ctx.textAlign    = 'right';
-        ctx.fillText('cm', simCorde.cordeLeft - 8, yBase + tickMaj + 1);
+        ctx.fillText('m', simCorde.cordeLeft - 8, yBase + tickMaj + 1);
     }
 
     ctx.restore();

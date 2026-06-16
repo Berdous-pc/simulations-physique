@@ -457,9 +457,9 @@ function _updateWavePropsCorde() {
     var elT = document.getElementById('ro-T-corde');
     if (elF) elF.textContent = f.toFixed(2).replace('.', ',');
     if (elT) elT.textContent = T.toFixed(3).replace('.', ',');
-    var lambda = simCorde.c_cms * T;
+    var lambda = simCorde.c_cms * T;   // m (c en m/s × T en s)
     var elL    = document.getElementById('ro-lambda-corde');
-    if (elL) elL.textContent = lambda.toFixed(1).replace('.', ',');
+    if (elL) elL.textContent = lambda.toFixed(2).replace('.', ',');
 }
 
 function _syncWavePropsBtnStateCorde() {

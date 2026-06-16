@@ -334,10 +334,10 @@
           <div class="param-row">
             <label>
               Masse linéique μ
-              <span class="param-value"><span id="lbl-mu">1,0</span></span>
+              <span class="param-value"><span id="lbl-mu">1,0</span> kg/m</span>
             </label>
             <input type="range" id="sl-mu"
-                   min="0.5" max="4.0" step="0.1" value="1.0"
+                   min="0.1" max="4.0" step="0.1" value="1.0"
                    oninput="onSliderMu(this.value)">
             <span class="input-hint">Masse par unité de longueur (épaisseur visuelle)</span>
           </div>
@@ -346,7 +346,7 @@
           <div class="param-row">
             <label>
               Tension T
-              <span class="param-value"><span id="lbl-T-tension">4,0</span></span>
+              <span class="param-value"><span id="lbl-T-tension">4,0</span> N</span>
             </label>
             <input type="range" id="sl-T-tension"
                    min="0.5" max="10.0" step="0.5" value="4.0"
@@ -376,8 +376,8 @@
           <div class="readout" id="readout-simple-corde" style="margin-top:8px;">
             <div class="ro-label">Célérité c = √(T / μ)</div>
             <div class="ro-value">
-              <span id="ro-c-corde">20,0</span>
-              <span class="ro-unit">cm/s</span>
+              <span id="ro-c-corde">2,0</span>
+              <span class="ro-unit">m/s</span>
             </div>
           </div>
 
@@ -387,7 +387,7 @@
             <div class="ro-label-section">Imposé par la corde</div>
             <div class="ro-value ro-props-row">
               <span class="ro-props-name">c = √(T/μ)</span>
-              <span><span id="ro-c-ext-corde">20,0</span> <span class="ro-unit">cm/s</span></span>
+              <span><span id="ro-c-ext-corde">2,0</span> <span class="ro-unit">m/s</span></span>
             </div>
 
             <div class="ro-label-section" style="margin-top:8px;">Imposé par le vibreur</div>
@@ -403,7 +403,7 @@
             <div class="ro-label-section" style="margin-top:8px;">Conséquence sur l'onde</div>
             <div class="ro-value ro-props-row">
               <span class="ro-props-name">λ = c·T</span>
-              <span><span id="ro-lambda-corde">13,3</span> <span class="ro-unit">cm</span></span>
+              <span><span id="ro-lambda-corde">1,33</span> <span class="ro-unit">m</span></span>
             </div>
 
           </div><!-- fin #readout-props-corde -->
