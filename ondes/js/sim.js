@@ -289,6 +289,248 @@ function initCols() {
 function initParticles() { initCols(); }
 
 // ══════════════════════════════════════════════════════════════════════
+//  ██████╗ ██████╗ ██████╗ ██████╗ ███████╗
+//  ██╔════╝██╔═══██╗██╔══██╗██╔══██╗██╔════╝
+//  ██║     ██║   ██║██████╔╝██║  ██║█████╗
+//  ██║     ██║   ██║██╔══██╗██║  ██║██╔══╝
+//  ╚██████╗╚██████╔╝██║  ██║██████╔╝███████╗
+//   ╚═════╝ ╚═════╝ ╚═╝  ╚═╝╚═════╝ ╚══════╝
+//  Simulation — onde transversale sur une corde
+// ══════════════════════════════════════════════════════════════════════
+
+// ── Constantes de calibration corde ───────────────────────────────────
+var MU_DEFAULT        = 1.0;    // masse linéique par défaut (u.s.)
+var T_DEFAULT         = 4.0;    // tension par défaut (u.s.)
+// C_BASE_CORDE : px/s par unité de c_norm_corde — recalibré dans tube.js resize
+var C_BASE_CORDE      = 43.0;
+// C_DISPLAY_FACTOR_CORDE : identique au son pour cohérence d'affichage
+var C_DISPLAY_FACTOR_CORDE = 10.0;
+
+// ── État global de la simulation corde ────────────────────────────────
+var simCorde = {
+
+    // ── Contrôle de l'animation ─────────────────────────────────────
+    paused      : false,
+    simTime     : 0,
+
+    // ── Mode source : null | 'impulse' | 'sinus' ────────────────────
+    sourceMode        : null,
+    impulsePropagating: false,
+
+    // ── Source — composante sinusoïdale ─────────────────────────────
+    sinusoidalActive : false,
+    sinStartTime     : 0,
+    sinStopTime      : -1,
+
+    // ── Source — impulsions (superposables) ─────────────────────────
+    impulses : [],
+
+    // ── Paramètres physiques de la corde ────────────────────────────
+    freq        : 1.5,          // fréquence de la sinusoïdale (Hz)
+    amplitudeCm : 2.0,          // amplitude imposée par le vibreur (cm, affiché)
+    mu          : MU_DEFAULT,   // masse linéique (u.s.)
+    T_tension   : T_DEFAULT,    // tension (u.s.)
+    attenuation : 0.0,          // coefficient d'atténuation
+
+    // ── Propriétés dérivées ──────────────────────────────────────────
+    c_sim : 0,    // célérité en px/s
+    c_cms : 0,    // célérité en cm/s (affichée)
+
+    // ── Amplitude du pot vibrant (recalibrée dans resize) ────────────
+    memAmplitude : 10,   // px (déplacement transversal maximal)
+
+    // ── Géométrie de la zone corde (renseignée par tube.js resize) ────
+    cordeLeft   : 0,
+    cordeRight  : 0,
+    cordeMiddleY: 0,    // y de la corde au repos (centre vertical)
+    cordeTop    : 0,
+    cordeBottom : 0,
+    cordeLength : 0,    // = cordeRight − cordeLeft (px)
+
+    // ── Balises (lignes verticales draggables) ───────────────────────
+    beacon1 : { active: false, x: 0 },
+    beacon2 : { active: false, x: 0 },
+
+    // ── Données graphes ──────────────────────────────────────────────
+    graphMode : 'dpx',   // 'dpx' (spatial) | 'dpt' (temporel)
+    yxData    : [],      // [{x, y}] snapshot courant de y(x)
+    ytData1   : [],      // [{t, y}] série temporelle balise 1
+    ytData2   : [],      // [{t, y}] série temporelle balise 2
+    ytTimeOrigin : 0,    // simTime au dernier reset du graphe y(t)
+
+    // ── Vue graphe y(t) ──────────────────────────────────────────────
+    graphView        : { xMin: 0, xMax: 5, yMin: -1, yMax: 1 },
+    graphViewHistory : [],
+    graphZoomMode    : false,
+    graphCursorMode  : false,
+    graphUserPanned  : false,
+
+    // ── Vue graphe y(x) ──────────────────────────────────────────────
+    graphYxYMin : -1,
+    graphYxYMax :  1,
+
+    // ── Propriétés de l'onde (readout étendu) ─────────────────────────
+    wavePropsVisible : false,
+    speedFactor      : 1.0,
+};
+
+// ══════════════════════════════════════════════════════════════════════
+//  Calcul de la célérité de la corde
+//  c = √(T / μ)  analogue à c = √(K / ρ)
+// ══════════════════════════════════════════════════════════════════════
+
+function updateCeleriteCorde() {
+    if (simCorde.mu <= 0) return;
+    var c_norm     = Math.sqrt(simCorde.T_tension / simCorde.mu);
+    simCorde.c_sim = c_norm * C_BASE_CORDE;
+    simCorde.c_cms = c_norm * C_DISPLAY_FACTOR_CORDE;
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Déplacement du pot vibrant au temps retardé t_ret
+//  Analogue à memDisplacement() mais utilise les paramètres de simCorde
+// ══════════════════════════════════════════════════════════════════════
+
+function memDisplacementCorde(t_ret) {
+    var d = 0;
+
+    // ── Composante sinusoïdale ────────────────────────────────────────
+    if (simCorde.sinStopTime !== -1 || simCorde.sinusoidalActive) {
+        var sinStop2 = simCorde.sinusoidalActive ? 1e15 : simCorde.sinStopTime;
+        if (t_ret >= simCorde.sinStartTime && t_ret <= sinStop2) {
+            var tau = t_ret - simCorde.sinStartTime;
+            d += simCorde.memAmplitude * Math.sin(2 * Math.PI * simCorde.freq * tau);
+        }
+    }
+
+    // ── Composantes impulsions ────────────────────────────────────────
+    for (var i = 0; i < simCorde.impulses.length; i++) {
+        var imp     = simCorde.impulses[i];
+        var tau_imp = t_ret - imp.startTime;
+        if (tau_imp >= 0 && tau_imp <= T_IMPULSE) {
+            d += simCorde.memAmplitude * (1 - Math.cos(2 * Math.PI * tau_imp / T_IMPULSE)) / 2;
+        }
+    }
+
+    return d;
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Déplacement transversal de la corde au point x_px au temps t_sim
+//  Modèle : onde progressive amortie, corde infinie à droite (pas de réflexion)
+//  y(x, t) = d_pot(t − x/c) × exp(−α × x/L)
+// ══════════════════════════════════════════════════════════════════════
+
+function cordeDisplacement(x_px, t_sim) {
+    if (simCorde.c_sim <= 0 || simCorde.cordeLength <= 0) return 0;
+    var delay = x_px / simCorde.c_sim;
+    var t_ret = t_sim - delay;
+    var alpha = simCorde.attenuation * 5;
+    var atten = Math.exp(-alpha * x_px / simCorde.cordeLength);
+    return memDisplacementCorde(t_ret) * atten;
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Cap visuel du déplacement transversal (analogue à tubeDispCap)
+//  Garantit que l'amplitude visuelle reste lisible (ni trop petite ni
+//  trop grande par rapport à la zone de tracé).
+// ══════════════════════════════════════════════════════════════════════
+
+var cordeDispCap = 1.0;
+
+function updateCordeDispCap() {
+    var freqEff_ = (simCorde.sourceMode === 'impulse') ? 1.0 / T_IMPULSE : simCorde.freq;
+    var aEff_    = (simCorde.sourceMode === 'impulse')
+                    ? simCorde.memAmplitude / 2
+                    : simCorde.memAmplitude;
+    var kEff_    = (simCorde.c_sim > 0) ? 2 * Math.PI * freqEff_ / simCorde.c_sim : 0;
+    var akEff_   = aEff_ * kEff_;
+    var AK_MIN   = 0.55;
+    var AK_CAP   = 0.90;
+    cordeDispCap = (akEff_ > 0)
+        ? Math.max(AK_MIN, Math.min(AK_CAP, akEff_)) / akEff_
+        : 1.0;
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Mise à jour du snapshot y(x)
+//  Analogue à updateDpxData() mais pour le déplacement transversal
+// ══════════════════════════════════════════════════════════════════════
+
+function updateYxData() {
+    var L = simCorde.cordeLength;
+    simCorde.yxData = [];
+    if (L <= 0) return;
+
+    var freqEff = (simCorde.sourceMode === 'impulse') ? 1.0 / T_IMPULSE : simCorde.freq;
+    var lambda  = (simCorde.c_sim > 0) ? simCorde.c_sim / freqEff : L;
+    var N = 400;
+    if (lambda > 0) {
+        N = Math.min(6000, Math.max(400, Math.ceil(20 * L / lambda)));
+    }
+
+    for (var i = 0; i <= N; i++) {
+        var x = i / N * L;
+        var y = cordeDisplacement(x, simCorde.simTime);
+        simCorde.yxData.push({ x: x, y: y });
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Enregistrement y(t) aux positions des balises actives
+// ══════════════════════════════════════════════════════════════════════
+
+function updateYtData(t) {
+    if (simCorde.beacon1.active) {
+        var y1 = cordeDisplacement(simCorde.beacon1.x - simCorde.cordeLeft, t);
+        simCorde.ytData1.push({ t: t, y: y1 });
+        if (simCorde.ytData1.length > DP_MAX_POINTS) simCorde.ytData1.shift();
+    }
+    if (simCorde.beacon2.active) {
+        var y2 = cordeDisplacement(simCorde.beacon2.x - simCorde.cordeLeft, t);
+        simCorde.ytData2.push({ t: t, y: y2 });
+        if (simCorde.ytData2.length > DP_MAX_POINTS) simCorde.ytData2.shift();
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Nettoyage des anciennes impulsions corde
+// ══════════════════════════════════════════════════════════════════════
+
+function pruneImpulsesCorde() {
+    if (simCorde.c_sim <= 0) return;
+    var cutoff = simCorde.simTime - T_IMPULSE - simCorde.cordeLength / simCorde.c_sim - 0.5;
+    simCorde.impulses = simCorde.impulses.filter(function(imp) {
+        return imp.startTime > cutoff;
+    });
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Remise à zéro de l'animation corde
+// ══════════════════════════════════════════════════════════════════════
+
+function resetAnimCorde() {
+    simCorde.simTime            = 0;
+    simCorde.paused             = false;
+    simCorde.sourceMode         = null;
+    simCorde.sinusoidalActive   = false;
+    simCorde.sinStartTime       = 0;
+    simCorde.sinStopTime        = -1;
+    simCorde.impulses           = [];
+    simCorde.impulsePropagating = false;
+    simCorde.ytData1            = [];
+    simCorde.ytData2            = [];
+    simCorde.ytTimeOrigin       = 0;
+    simCorde.yxData             = [];
+    simCorde.graphView          = { xMin: 0, xMax: 5, yMin: -1, yMax: 1 };
+    simCorde.graphViewHistory   = [];
+    simCorde.graphUserPanned    = false;
+    simCorde.graphYxYMin        = -1;
+    simCorde.graphYxYMax        =  1;
+    updateCeleriteCorde();
+}
+
+// ══════════════════════════════════════════════════════════════════════
 //  stepParticles : no-op — le modèle colonnes n'a pas besoin d'intégrer
 //  des vitesses. Le repositionnement aléatoire est fait dans drawTube.
 //  Conservé pour compatibilité avec ui.js.

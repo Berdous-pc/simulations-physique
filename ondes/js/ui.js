@@ -12,12 +12,16 @@
 
 'use strict';
 
-// ── Compteur de temps pour l'enregistrement DeltaP(t) ─────────────────
-var lastDptUpdate = 0;
-var DPT_SAMPLE_DT = 1 / 300;  // 300 enregistrements par seconde simulée (courbes lisses jusqu'à 5 Hz)
+// ── Tab actif : 'son' | 'corde' ───────────────────────────────────────
+// Utilisé par tube.js et graph.js pour brancher sur la bonne simulation.
+var activeTab = 'son';
 
-// ── Palier de vitesse d'animation ────────────────────────────────────
-// Index 0..3 → facteur appliqué à dtReal avant le pas physique
+// ── Compteurs de temps pour l'enregistrement ─────────────────────────
+var lastDptUpdate   = 0;   // Son
+var lastYtUpdate    = 0;   // Corde
+var DPT_SAMPLE_DT   = 1 / 300;   // 300 enregistrements/s simulée
+
+// ── Paliers de vitesse ────────────────────────────────────────────────
 var SPEED_STEPS = [0.10, 0.25, 0.50, 1.00];
 
 // ══════════════════════════════════════════════════════════════════════
@@ -27,79 +31,97 @@ var SPEED_STEPS = [0.10, 0.25, 0.50, 1.00];
 function loop(ts) {
     requestAnimationFrame(loop);
 
-    var dtReal = (ts - (loop.lastTs || ts)) / 1000;   // s
+    var dtReal = (ts - (loop.lastTs || ts)) / 1000;
     loop.lastTs = ts;
-    dtReal = Math.min(dtReal, 0.05);   // plafond 50 ms (évite les sauts)
+    dtReal = Math.min(dtReal, 0.05);
 
-    if (!sim.paused) {
-        var dtSim = dtReal * (sim.speedFactor !== undefined ? sim.speedFactor : 1.0);
-        sim.simTime += dtSim;
+    if (activeTab === 'son') {
+        // ── Avancement temps Son ──────────────────────────────────────
+        if (!sim.paused) {
+            var dtSim = dtReal * (sim.speedFactor !== undefined ? sim.speedFactor : 1.0);
+            sim.simTime += dtSim;
 
-        // Nettoyer les anciennes impulsions
-        pruneImpulses();
+            pruneImpulses();
 
-        // ── Détection fin d'impulsion ─────────────────────────────────
-        // Quand toutes les impulsions ont quitté le tube : désactiver le
-        // bouton Impulsion, mais la simulation CONTINUE de tourner.
-        if (sim.impulsePropagating && sim.impulses.length === 0) {
-            sim.impulsePropagating = false;
-            sim.sourceMode         = null;
-            _syncSourceButtons();
-            _syncWavePropsBtnState();
+            if (sim.impulsePropagating && sim.impulses.length === 0) {
+                sim.impulsePropagating = false;
+                sim.sourceMode         = null;
+                _syncSourceButtons();
+                _syncWavePropsBtnState();
+            }
+
+            while (sim.simTime - lastDptUpdate >= DPT_SAMPLE_DT) {
+                lastDptUpdate += DPT_SAMPLE_DT;
+                updateDptData(lastDptUpdate);
+            }
+
+            if (sim.sourceMode === 'sinus' && sim.simTime - sim.dptTimeOrigin >= 5) {
+                sim.dptTimeOrigin += 5;
+            }
         }
 
-        // Enregistrer ΔP(t) aux balises — rattrapage de tous les intervalles
-        // manqués depuis la dernière frame, avec le timestamp interpolé exact
-        while (sim.simTime - lastDptUpdate >= DPT_SAMPLE_DT) {
-            lastDptUpdate += DPT_SAMPLE_DT;
-            updateDptData(lastDptUpdate);
+        updateDpxData();
+        drawTube();
+        drawGraph();
+
+        if (!sim.paused) {
+            _updateCReadout();
+            _updateWaveProps();
         }
 
-        // ── Fenêtre cyclique 0–5 s en mode sinusoïdal ───────────────
-        // En mode impulsion, dptTimeOrigin n'avance pas automatiquement
-        // (la courbe reste figée après 5 s jusqu'à la prochaine impulsion)
-        if (sim.sourceMode === 'sinus' &&
-                sim.simTime - sim.dptTimeOrigin >= 5) {
-            sim.dptTimeOrigin += 5;
-            // On ne vide PAS dptData : les anciens points sont simplement
-            // hors fenêtre (tLocal < 0) et ignorés par _drawSeries.
-            // Vider provoquerait un clignotement + flash "Activer une balise".
+    } else {
+        // ── Avancement temps Corde ────────────────────────────────────
+        if (!simCorde.paused) {
+            var dtSimC = dtReal * (simCorde.speedFactor !== undefined ? simCorde.speedFactor : 1.0);
+            simCorde.simTime += dtSimC;
+
+            pruneImpulsesCorde();
+
+            if (simCorde.impulsePropagating && simCorde.impulses.length === 0) {
+                simCorde.impulsePropagating = false;
+                simCorde.sourceMode         = null;
+                _syncSourceButtonsCorde();
+                _syncWavePropsBtnStateCorde();
+            }
+
+            while (simCorde.simTime - lastYtUpdate >= DPT_SAMPLE_DT) {
+                lastYtUpdate += DPT_SAMPLE_DT;
+                updateYtData(lastYtUpdate);
+            }
+
+            if (simCorde.sourceMode === 'sinus' &&
+                    simCorde.simTime - simCorde.ytTimeOrigin >= 5) {
+                simCorde.ytTimeOrigin += 5;
+            }
         }
-    }
 
-    // Snapshot ΔP(x) (toujours mis à jour pour le graphe live)
-    updateDpxData();
+        updateYxData();
+        drawCorde();
+        drawGraph();
 
-    // Rendu
-    drawTube();
-    drawGraph();
-
-    // Mise à jour de l'afficheur de célérité
-    if (!sim.paused) {
-        _updateCReadout();
-        _updateWaveProps();
+        if (!simCorde.paused) {
+            _updateCReadoutCorde();
+            _updateWavePropsCorde();
+        }
     }
 }
 
-// ── Afficheur c en temps réel ─────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════
+//  ─────────────── TAB SON ───────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════
 
+// ── Afficheur c (Son) ─────────────────────────────────────────────────
 function _updateCReadout() {
     var el = document.getElementById('ro-c');
     if (el) el.textContent = sim.c_cms.toFixed(1).replace('.', ',');
 }
 
-// ══════════════════════════════════════════════════════════════════════
-//  Actions source (boutons de la box source)
-// ══════════════════════════════════════════════════════════════════════
-
-// ── Utilitaire : arrête tous les modes source et met les boutons à l'état neutre
+// ── Utilitaires source Son ────────────────────────────────────────────
 function _clearSourceModes() {
-    // Arrêter la sinusoïdale
     if (sim.sinusoidalActive) {
         sim.sinusoidalActive = false;
         sim.sinStopTime      = sim.simTime;
     }
-    // Annuler les impulsions en cours
     sim.impulses           = [];
     sim.impulsePropagating = false;
     sim.sourceMode         = null;
@@ -107,28 +129,19 @@ function _clearSourceModes() {
     _syncWavePropsBtnState();
 }
 
-// ── Utilitaire : synchronise l'état visuel des deux boutons source
 function _syncSourceButtons() {
     var btnImp = document.getElementById('btn-mode-impulse');
     var btnSin = document.getElementById('btn-mode-sinus');
-
     if (btnImp) btnImp.classList.toggle('active', sim.sourceMode === 'impulse');
     if (btnSin) btnSin.classList.toggle('active', sim.sourceMode === 'sinus');
 }
 
-// ── Bouton Impulsion ──────────────────────────────────────────────────
 function sendImpulse() {
-    // S'assurer que la sim tourne (reprendre si en pause)
     if (sim.paused) _setPaused(false);
-
-    // Reset des modes en cours (sinusoïdale, impulsion précédente)
     _clearSourceModes();
-
-    // Lancer l'impulsion
     sim.impulses.push({ startTime: sim.simTime });
     sim.impulsePropagating = true;
     sim.sourceMode         = 'impulse';
-    // Reset du graphe ΔP(t) : nouvelle impulsion → nouvelle fenêtre 0–10 s
     sim.dptTimeOrigin = sim.simTime;
     sim.dptData1      = [];
     sim.dptData2      = [];
@@ -136,24 +149,16 @@ function sendImpulse() {
     _syncWavePropsBtnState();
 }
 
-// ── Bouton Sinusoïdale ────────────────────────────────────────────────
 function toggleSinusoidal() {
     if (sim.sinusoidalActive) {
-        // Déjà active → l'arrêter
         _clearSourceModes();
     } else {
-        // S'assurer que la sim tourne
         if (sim.paused) _setPaused(false);
-
-        // Reset des modes en cours
         _clearSourceModes();
-
-        // Démarrer la sinusoïdale
         sim.sinusoidalActive = true;
         sim.sinStartTime     = sim.simTime;
         sim.sinStopTime      = -1;
         sim.sourceMode       = 'sinus';
-        // Reset du graphe ΔP(t) : nouvelle sinusoïdale → nouvelle fenêtre 0–10 s
         sim.dptTimeOrigin = sim.simTime;
         sim.dptData1      = [];
         sim.dptData2      = [];
@@ -162,95 +167,51 @@ function toggleSinusoidal() {
     }
 }
 
-// ══════════════════════════════════════════════════════════════════════
-//  Contrôles du panneau droit
-// ══════════════════════════════════════════════════════════════════════
-
-// ── Utilitaire : applique l'état paused et met à jour le bouton Play/Pause
+// ── Pause / Reset Son ─────────────────────────────────────────────────
 function _setPaused(paused) {
     sim.paused = paused;
     var btn = document.getElementById('btn-playpause');
     if (!btn) return;
-    if (paused) {
-        btn.textContent = '▶ Reprendre';
-        btn.className   = 'btn btn-play';
-    } else {
-        btn.textContent = '⏸ Pause';
-        btn.className   = 'btn btn-pause';
-    }
+    if (paused) { btn.textContent = '▶ Reprendre'; btn.className = 'btn btn-play'; }
+    else        { btn.textContent = '⏸ Pause';     btn.className = 'btn btn-pause'; }
 }
 
-// ── Bouton Play/Pause : fige ou reprend l'animation globale ──────────
-function togglePause() {
-    _setPaused(!sim.paused);
-}
+function togglePause() { _setPaused(!sim.paused); }
 
-// ── Remise à zéro ────────────────────────────────────────────────────
 function resetSimAnim() {
-    resetAnim();          // remet sim à l'état initial (sourceMode=null, paused=false)
+    resetAnim();
     lastDptUpdate = 0;
-    _syncSourceButtons(); // aucun mode actif
-    // Bouton Play/Pause : simulation qui tourne → afficher Pause
+    _syncSourceButtons();
     var btn = document.getElementById('btn-playpause');
     if (btn) { btn.textContent = '⏸ Pause'; btn.className = 'btn btn-pause'; }
-    // Réinitialiser le mode pression
     sim.pressureColorMode = false;
     var btnPc = document.getElementById('btn-pressure-color');
     if (btnPc) btnPc.classList.remove('active');
 }
 
-// ══════════════════════════════════════════════════════════════════════
-//  Onglets principaux (Corde | Son | Vagues)
-// ══════════════════════════════════════════════════════════════════════
-
-function setMainTab(tab) {
-    var tabs     = ['corde', 'son', 'vagues'];
-    var sections = tabs.map(function(t) { return document.getElementById('section-' + t); });
-    var buttons  = tabs.map(function(t) { return document.getElementById('tab-' + t); });
-
-    tabs.forEach(function(t, idx) {
-        if (sections[idx]) sections[idx].style.display = (t === tab) ? '' : 'none';
-        if (buttons[idx])  buttons[idx].classList.toggle('active', t === tab);
-    });
-
-    // Mettre à jour le bandeau Instructions
-    var allHints = document.querySelectorAll('.panel-hint');
-    allHints.forEach(function(h) { h.style.display = 'none'; });
-    var hint = document.getElementById('panel-hint-' + tab);
-    if (hint) hint.style.display = '';
-}
-
-// ══════════════════════════════════════════════════════════════════════
-//  Sliders du panneau
-// ══════════════════════════════════════════════════════════════════════
-
+// ── Sliders Son ───────────────────────────────────────────────────────
 function onSliderFreq(v) {
     sim.freq = parseFloat(v);
     var lbl = document.getElementById('lbl-freq');
     if (lbl) lbl.textContent = sim.freq.toFixed(1).replace('.', ',');
-    // Recalculer extraLeft (zone spawn gauche dépend du boost tubeDispCap ∝ 1/f)
     initCols();
 }
 
 function onSliderRho(v) {
-    var newRho = parseFloat(v);
-    sim.rho = newRho;
+    sim.rho = parseFloat(v);
     var lbl = document.getElementById('lbl-rho');
-    if (lbl) lbl.textContent = newRho.toFixed(1).replace('.', ',');
+    if (lbl) lbl.textContent = sim.rho.toFixed(1).replace('.', ',');
     updateCelerite();
     _updateCReadout();
-    // Réinitialiser les particules avec la nouvelle densité (N ∝ ρ linéaire)
     initCols();
 }
 
 function onSliderK(v) {
-    var newK   = parseFloat(v);
-    sim.K      = newK;
+    sim.K = parseFloat(v);
     var lbl = document.getElementById('lbl-K');
-    if (lbl) lbl.textContent = newK.toFixed(1).replace('.', ',');
+    if (lbl) lbl.textContent = sim.K.toFixed(1).replace('.', ',');
     updateCelerite();
     _updateCReadout();
-    // Avec le modèle colonnes, K n'affecte que la célérité (pas l'agitation thermique)
 }
 
 function onSliderAtten(v) {
@@ -259,21 +220,23 @@ function onSliderAtten(v) {
     if (lbl) lbl.textContent = sim.attenuation.toFixed(2).replace('.', ',');
 }
 
-// ══════════════════════════════════════════════════════════════════════
-//  Bouton "Afficher les propriétés de l'onde"
-// ══════════════════════════════════════════════════════════════════════
+function onSliderSpeed(v) {
+    var idx = parseInt(v, 10);
+    sim.speedFactor = SPEED_STEPS[idx];
+    var lbl = document.getElementById('lbl-speed');
+    if (lbl) lbl.textContent = sim.speedFactor.toFixed(2).replace('.', ',');
+}
 
+// ── Propriétés de l'onde Son ──────────────────────────────────────────
 function toggleWaveProps() {
     sim.wavePropsVisible = !sim.wavePropsVisible;
     _applyWavePropsState();
 }
 
-// ── Applique l'état visible/caché du readout étendu ──────────────────
 function _applyWavePropsState() {
-    var btn       = document.getElementById('btn-wave-props');
-    var simple    = document.getElementById('readout-simple');
-    var extended  = document.getElementById('readout-props');
-
+    var btn      = document.getElementById('btn-wave-props');
+    var simple   = document.getElementById('readout-simple');
+    var extended = document.getElementById('readout-props');
     if (sim.wavePropsVisible) {
         if (btn)      btn.classList.add('active');
         if (simple)   simple.style.display = 'none';
@@ -286,103 +249,333 @@ function _applyWavePropsState() {
     }
 }
 
-// ── Met à jour les valeurs du readout étendu ─────────────────────────
 function _updateWaveProps() {
     if (!sim.wavePropsVisible) return;
-
-    // Célérité (déjà calculée dans sim)
     var elC = document.getElementById('ro-c-ext');
     if (elC) elC.textContent = sim.c_cms.toFixed(1).replace('.', ',');
-
-    // f et T — uniquement pertinents en mode sinus
-    var f = sim.freq;
-    var T = (f > 0) ? 1 / f : 0;
+    var f   = sim.freq;
+    var T   = (f > 0) ? 1 / f : 0;
     var elF = document.getElementById('ro-f');
     var elT = document.getElementById('ro-T');
     if (elF) elF.textContent = f.toFixed(2).replace('.', ',');
     if (elT) elT.textContent = T.toFixed(3).replace('.', ',');
-
-    // λ = c (cm/s) × T (s) = cm
     var lambda = sim.c_cms * T;
-    var elL = document.getElementById('ro-lambda');
+    var elL    = document.getElementById('ro-lambda');
     if (elL) elL.textContent = lambda.toFixed(1).replace('.', ',');
 }
 
-// ── Grise/dégrise le bouton selon le mode source ─────────────────────
 function _syncWavePropsBtnState() {
     var btn = document.getElementById('btn-wave-props');
     if (!btn) return;
     var isImpulse = (sim.sourceMode === 'impulse');
     btn.disabled = isImpulse;
-    // Si on bascule en mode impulsion alors que le readout étendu est ouvert,
-    // on le referme automatiquement.
     if (isImpulse && sim.wavePropsVisible) {
         sim.wavePropsVisible = false;
         _applyWavePropsState();
     }
 }
 
-// ── Vitesse d'animation ───────────────────────────────────────────────
-// Le slider a 4 paliers (index 0‑3) correspondant à SPEED_STEPS.
-function onSliderSpeed(v) {
-    var idx = parseInt(v, 10);
-    sim.speedFactor = SPEED_STEPS[idx];
-    var lbl = document.getElementById('lbl-speed');
-    if (lbl) lbl.textContent = sim.speedFactor.toFixed(2).replace('.', ',');
-}
-
-// ══════════════════════════════════════════════════════════════════════
-//  Boutons au-dessus du tube
-// ══════════════════════════════════════════════════════════════════════
-
+// ── Boutons au-dessus du tube — Son ───────────────────────────────────
 function toggleSelect() {
-    // Ne pas permettre la sélection si le mode pression est actif
     if (sim.pressureColorMode) return;
-    
     sim.selectionMode = !sim.selectionMode;
     var btn = document.getElementById('btn-select');
     if (btn) btn.classList.toggle('active', sim.selectionMode);
     if (!sim.selectionMode) clearSelection();
 }
 
-// ── Bouton Colorier selon la pression ────────────────────────────────
 function togglePressureColor() {
     sim.pressureColorMode = !sim.pressureColorMode;
-    var btn = document.getElementById('btn-pressure-color');
+    var btn       = document.getElementById('btn-pressure-color');
     var btnSelect = document.getElementById('btn-select');
-    
     if (btn) btn.classList.toggle('active', sim.pressureColorMode);
-    
-    // Désactiver le bouton "Sélectionner" et annuler la sélection
     if (sim.pressureColorMode) {
         sim.selectionMode = false;
-        if (btnSelect) {
-            btnSelect.disabled = true;
-            btnSelect.classList.remove('active');
-        }
+        if (btnSelect) { btnSelect.disabled = true; btnSelect.classList.remove('active'); }
         clearSelection();
     } else {
-        // Réactiver le bouton "Sélectionner" quand on désactive le mode pression
         if (btnSelect) btnSelect.disabled = false;
     }
 }
 
-function toggleBeacon(n) {
+// ══════════════════════════════════════════════════════════════════════
+//  ─────────────── TAB CORDE ─────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════
+
+// ── Afficheur c (Corde) ───────────────────────────────────────────────
+function _updateCReadoutCorde() {
+    var el = document.getElementById('ro-c-corde');
+    if (el) el.textContent = simCorde.c_cms.toFixed(1).replace('.', ',');
+}
+
+// ── Utilitaires source Corde ──────────────────────────────────────────
+function _clearSourceModesCorde() {
+    if (simCorde.sinusoidalActive) {
+        simCorde.sinusoidalActive = false;
+        simCorde.sinStopTime      = simCorde.simTime;
+    }
+    simCorde.impulses           = [];
+    simCorde.impulsePropagating = false;
+    simCorde.sourceMode         = null;
+    _syncSourceButtonsCorde();
+    _syncWavePropsBtnStateCorde();
+}
+
+function _syncSourceButtonsCorde() {
+    var btnImp = document.getElementById('btn-mode-impulse-corde');
+    var btnSin = document.getElementById('btn-mode-sinus-corde');
+    if (btnImp) btnImp.classList.toggle('active', simCorde.sourceMode === 'impulse');
+    if (btnSin) btnSin.classList.toggle('active', simCorde.sourceMode === 'sinus');
+}
+
+function sendImpulseCorde() {
+    if (simCorde.paused) _setPausedCorde(false);
+    _clearSourceModesCorde();
+    simCorde.impulses.push({ startTime: simCorde.simTime });
+    simCorde.impulsePropagating = true;
+    simCorde.sourceMode         = 'impulse';
+    simCorde.ytTimeOrigin = simCorde.simTime;
+    simCorde.ytData1      = [];
+    simCorde.ytData2      = [];
+    lastYtUpdate = 0;
+    _syncSourceButtonsCorde();
+    _syncWavePropsBtnStateCorde();
+}
+
+function toggleSinusoidalCorde() {
+    if (simCorde.sinusoidalActive) {
+        _clearSourceModesCorde();
+    } else {
+        if (simCorde.paused) _setPausedCorde(false);
+        _clearSourceModesCorde();
+        simCorde.sinusoidalActive = true;
+        simCorde.sinStartTime     = simCorde.simTime;
+        simCorde.sinStopTime      = -1;
+        simCorde.sourceMode       = 'sinus';
+        simCorde.ytTimeOrigin = simCorde.simTime;
+        simCorde.ytData1      = [];
+        simCorde.ytData2      = [];
+        lastYtUpdate = 0;
+        _syncSourceButtonsCorde();
+        _syncWavePropsBtnStateCorde();
+    }
+}
+
+// ── Pause / Reset Corde ───────────────────────────────────────────────
+function _setPausedCorde(paused) {
+    simCorde.paused = paused;
+    var btn = document.getElementById('btn-playpause-corde');
+    if (!btn) return;
+    if (paused) { btn.textContent = '▶ Reprendre'; btn.className = 'btn btn-play'; }
+    else        { btn.textContent = '⏸ Pause';     btn.className = 'btn btn-pause'; }
+}
+
+function togglePauseCorde() { _setPausedCorde(!simCorde.paused); }
+
+function resetSimAnimCorde() {
+    resetAnimCorde();
+    lastYtUpdate = 0;
+    _syncSourceButtonsCorde();
+    var btn = document.getElementById('btn-playpause-corde');
+    if (btn) { btn.textContent = '⏸ Pause'; btn.className = 'btn btn-pause'; }
+}
+
+// ── Sliders Corde ─────────────────────────────────────────────────────
+function onSliderFreqCorde(v) {
+    simCorde.freq = parseFloat(v);
+    var lbl = document.getElementById('lbl-freq-corde');
+    if (lbl) lbl.textContent = simCorde.freq.toFixed(1).replace('.', ',');
+}
+
+function onSliderAmplCorde(v) {
+    simCorde.amplitudeCm = parseFloat(v);
+    var lbl = document.getElementById('lbl-ampl-corde');
+    if (lbl) lbl.textContent = simCorde.amplitudeCm.toFixed(1).replace('.', ',');
+    // Recalculer memAmplitude en px depuis la nouvelle valeur cm
+    _recalcMemAmplitudeCorde();
+}
+
+function onSliderMu(v) {
+    simCorde.mu = parseFloat(v);
+    var lbl = document.getElementById('lbl-mu');
+    if (lbl) lbl.textContent = simCorde.mu.toFixed(1).replace('.', ',');
+    updateCeleriteCorde();
+    _updateCReadoutCorde();
+}
+
+function onSliderTension(v) {
+    simCorde.T_tension = parseFloat(v);
+    var lbl = document.getElementById('lbl-T-tension');
+    if (lbl) lbl.textContent = simCorde.T_tension.toFixed(1).replace('.', ',');
+    updateCeleriteCorde();
+    _updateCReadoutCorde();
+}
+
+function onSliderAttenCorde(v) {
+    simCorde.attenuation = parseFloat(v);
+    var lbl = document.getElementById('lbl-atten-corde');
+    if (lbl) lbl.textContent = simCorde.attenuation.toFixed(2).replace('.', ',');
+}
+
+function onSliderSpeedCorde(v) {
+    var idx = parseInt(v, 10);
+    simCorde.speedFactor = SPEED_STEPS[idx];
+    var lbl = document.getElementById('lbl-speed-corde');
+    if (lbl) lbl.textContent = simCorde.speedFactor.toFixed(2).replace('.', ',');
+}
+
+// ── Propriétés de l'onde Corde ────────────────────────────────────────
+function toggleWavePropsCorde() {
+    simCorde.wavePropsVisible = !simCorde.wavePropsVisible;
+    _applyWavePropsCorde();
+}
+
+function _applyWavePropsCorde() {
+    var btn      = document.getElementById('btn-wave-props-corde');
+    var simple   = document.getElementById('readout-simple-corde');
+    var extended = document.getElementById('readout-props-corde');
+    if (simCorde.wavePropsVisible) {
+        if (btn)      btn.classList.add('active');
+        if (simple)   simple.style.display = 'none';
+        if (extended) extended.style.display = '';
+        _updateWavePropsCorde();
+    } else {
+        if (btn)      btn.classList.remove('active');
+        if (simple)   simple.style.display = '';
+        if (extended) extended.style.display = 'none';
+    }
+}
+
+function _updateWavePropsCorde() {
+    if (!simCorde.wavePropsVisible) return;
+    var elC = document.getElementById('ro-c-ext-corde');
+    if (elC) elC.textContent = simCorde.c_cms.toFixed(1).replace('.', ',');
+    var f   = simCorde.freq;
+    var T   = (f > 0) ? 1 / f : 0;
+    var elF = document.getElementById('ro-f-corde');
+    var elT = document.getElementById('ro-T-corde');
+    if (elF) elF.textContent = f.toFixed(2).replace('.', ',');
+    if (elT) elT.textContent = T.toFixed(3).replace('.', ',');
+    var lambda = simCorde.c_cms * T;
+    var elL    = document.getElementById('ro-lambda-corde');
+    if (elL) elL.textContent = lambda.toFixed(1).replace('.', ',');
+}
+
+function _syncWavePropsBtnStateCorde() {
+    var btn = document.getElementById('btn-wave-props-corde');
+    if (!btn) return;
+    var isImpulse = (simCorde.sourceMode === 'impulse');
+    btn.disabled = isImpulse;
+    if (isImpulse && simCorde.wavePropsVisible) {
+        simCorde.wavePropsVisible = false;
+        _applyWavePropsCorde();
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Balises — communes (routées selon activeTab)
+// ══════════════════════════════════════════════════════════════════════
+
+function toggleBeaconActive(n) {
+    if (activeTab === 'corde') {
+        _toggleBeaconCorde(n);
+    } else {
+        _toggleBeaconSon(n);
+    }
+}
+
+function _toggleBeaconSon(n) {
     var beacon = (n === 1) ? sim.beacon1 : sim.beacon2;
     var btn    = document.getElementById('btn-beacon' + n);
     beacon.active = !beacon.active;
-
     if (beacon.active) {
-        // Positionner par défaut au centre du tube si première activation
         if (n === 1) beacon.x = sim.tubeLeft + sim.tubeLength * 0.30;
         else         beacon.x = sim.tubeLeft + sim.tubeLength * 0.65;
         if (btn) btn.classList.add('active');
     } else {
         if (btn) btn.classList.remove('active');
-        // Vider les données si la balise est désactivée
         if (n === 1) sim.dptData1 = [];
         else         sim.dptData2 = [];
     }
+}
+
+function _toggleBeaconCorde(n) {
+    var beacon = (n === 1) ? simCorde.beacon1 : simCorde.beacon2;
+    var btn    = document.getElementById('btn-beacon' + n);
+    beacon.active = !beacon.active;
+    if (beacon.active) {
+        if (n === 1) beacon.x = simCorde.cordeLeft + simCorde.cordeLength * 0.30;
+        else         beacon.x = simCorde.cordeLeft + simCorde.cordeLength * 0.65;
+        if (btn) btn.classList.add('active');
+    } else {
+        if (btn) btn.classList.remove('active');
+        if (n === 1) simCorde.ytData1 = [];
+        else         simCorde.ytData2 = [];
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Onglets principaux (Corde | Son | Vagues)
+// ══════════════════════════════════════════════════════════════════════
+
+function setMainTab(tab) {
+    activeTab = tab;
+
+    var tabs     = ['corde', 'son', 'vagues'];
+    var sections = tabs.map(function(t) { return document.getElementById('section-' + t); });
+    var buttons  = tabs.map(function(t) { return document.getElementById('tab-' + t); });
+
+    tabs.forEach(function(t, idx) {
+        if (sections[idx]) sections[idx].style.display = (t === tab) ? '' : 'none';
+        if (buttons[idx])  buttons[idx].classList.toggle('active', t === tab);
+    });
+
+    // ── Bandeau Instructions ──────────────────────────────────────────
+    var allHints = document.querySelectorAll('.panel-hint');
+    allHints.forEach(function(h) { h.style.display = 'none'; });
+    var hint = document.getElementById('panel-hint-' + tab);
+    if (hint) hint.style.display = '';
+
+    // ── Box source : afficher la bonne version ────────────────────────
+    var srcSon   = document.getElementById('source-son');
+    var srcCorde = document.getElementById('source-corde');
+    if (srcSon)   srcSon.style.display   = (tab === 'son')   ? '' : 'none';
+    if (srcCorde) srcCorde.style.display = (tab === 'corde') ? '' : 'none';
+
+    // ── Boutons son-only au-dessus du canvas ──────────────────────────
+    var sonOnlyBtns = document.querySelectorAll('.son-only');
+    sonOnlyBtns.forEach(function(b) {
+        b.style.display = (tab === 'son') ? '' : 'none';
+    });
+
+    // ── Remise à zéro des états de balises dans les boutons ───────────
+    // Resynchronise l'état visuel des boutons Balise selon le tab
+    var b1 = (tab === 'corde') ? simCorde.beacon1 : sim.beacon1;
+    var b2 = (tab === 'corde') ? simCorde.beacon2 : sim.beacon2;
+    var btnB1 = document.getElementById('btn-beacon1');
+    var btnB2 = document.getElementById('btn-beacon2');
+    if (btnB1) btnB1.classList.toggle('active', b1.active);
+    if (btnB2) btnB2.classList.toggle('active', b2.active);
+
+    // ── Labels des boutons graphe ─────────────────────────────────────
+    _updateGraphBtnLabels(tab);
+
+    // ── Mode graphe actif : resynchroniser les boutons ────────────────
+    var mode = (tab === 'corde') ? simCorde.graphMode : sim.graphMode;
+    var btnDpx  = document.getElementById('btn-graph-dpx');
+    var btnDpt  = document.getElementById('btn-graph-dpt');
+    var btnBoth = document.getElementById('btn-graph-both');
+    if (btnDpx)  btnDpx.classList.toggle ('active', mode === 'dpx');
+    if (btnDpt)  btnDpt.classList.toggle ('active', mode === 'dpt');
+    if (btnBoth) btnBoth.classList.toggle('active', mode === 'both');
+
+    // ── Resize pour adapter les canvas au tab ─────────────────────────
+    if (tab === 'corde') {
+        resizeCorde();
+    } else if (tab === 'son') {
+        resizeTube();
+    }
+    resizeGraph();
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -406,12 +599,10 @@ function toggleHint(id) {
 // ══════════════════════════════════════════════════════════════════════
 
 function init() {
-    // Resize initial
     resizeTube();
+    resizeCorde();
     resizeGraph();
 
-    // Écouteur resize fenêtre — efface les hauteurs absolues du splitter
-    // pour que le flex CSS reprenne la main, puis recalibre les canvas
     window.addEventListener('resize', function() {
         var animArea  = document.getElementById('anim-area');
         var graphArea = document.getElementById('graph-area');
@@ -420,39 +611,52 @@ function init() {
         scheduleResizeTube();
     });
 
-    // Démarrage de la boucle d'animation
     requestAnimationFrame(loop);
-
-    // État initial de l'UI
     _syncUIToSim();
 }
 
-// Synchronise les valeurs de l'UI avec l'état initial de sim
+// Synchronise les valeurs initiales de l'UI avec les états de sim et simCorde
 function _syncUIToSim() {
-    // Sliders
+    // ── Son ────────────────────────────────────────────────────────────
     _setSlider('sl-freq',  sim.freq,        'lbl-freq',  1);
     _setSlider('sl-rho',   sim.rho,         'lbl-rho',   1);
     _setSlider('sl-K',     sim.K,           'lbl-K',     1);
     _setSlider('sl-atten', sim.attenuation, 'lbl-atten', 2);
-    // Vitesse d'animation : initialiser à x1,00 (index 3)
     sim.speedFactor = 1.00;
     var slSpeed = document.getElementById('sl-speed');
     if (slSpeed) slSpeed.value = 3;
     var lblSpeed = document.getElementById('lbl-speed');
     if (lblSpeed) lblSpeed.textContent = '1,00';
-    // Propriétés de l'onde : masquées par défaut
     sim.wavePropsVisible = false;
     _applyWavePropsState();
     _syncWavePropsBtnState();
-    // Célérité
     updateCelerite();
     _updateCReadout();
-    // Aucun mode source actif au départ — boutons neutres, slider freq désactivé
     _syncSourceButtons();
-    // Bouton Play/Pause : simulation qui tourne dès le départ → afficher Pause
     var btn = document.getElementById('btn-playpause');
     if (btn) { btn.textContent = '⏸ Pause'; btn.className = 'btn btn-pause'; }
-    // Onglet Son actif au départ
+
+    // ── Corde ──────────────────────────────────────────────────────────
+    _setSlider('sl-freq-corde',  simCorde.freq,        'lbl-freq-corde',  1);
+    _setSlider('sl-ampl-corde',  simCorde.amplitudeCm, 'lbl-ampl-corde',  1);
+    _setSlider('sl-mu',          simCorde.mu,          'lbl-mu',          1);
+    _setSlider('sl-T-tension',   simCorde.T_tension,   'lbl-T-tension',   1);
+    _setSlider('sl-atten-corde', simCorde.attenuation, 'lbl-atten-corde', 2);
+    simCorde.speedFactor = 1.00;
+    var slSpeedC = document.getElementById('sl-speed-corde');
+    if (slSpeedC) slSpeedC.value = 3;
+    var lblSpeedC = document.getElementById('lbl-speed-corde');
+    if (lblSpeedC) lblSpeedC.textContent = '1,00';
+    simCorde.wavePropsVisible = false;
+    _applyWavePropsCorde();
+    _syncWavePropsBtnStateCorde();
+    updateCeleriteCorde();
+    _updateCReadoutCorde();
+    _syncSourceButtonsCorde();
+    var btnC = document.getElementById('btn-playpause-corde');
+    if (btnC) { btnC.textContent = '⏸ Pause'; btnC.className = 'btn btn-pause'; }
+
+    // ── Onglet Son actif au départ ─────────────────────────────────────
     setMainTab('son');
 }
 
@@ -463,5 +667,5 @@ function _setSlider(sliderId, value, lblId, decimals) {
     if (lbl) lbl.textContent = value.toFixed(decimals).replace('.', ',');
 }
 
-// ── Démarrage ─────────────────────────────────────────────────────────
+// ── Démarrage ──────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', init);

@@ -30,46 +30,85 @@
 
       <!-- Ligne 1 col 2 : boutons balises/sélection, alignés à droite -->
       <div id="tube-top-btns">
-        <button class="btn-tube-top"
+        <!-- Boutons Son uniquement -->
+        <button class="btn-tube-top son-only"
                 id="btn-pressure-color" onclick="togglePressureColor()">
           Colorier selon la pression
         </button>
-        <button class="btn-tube-top"
+        <button class="btn-tube-top son-only"
                 id="btn-select" onclick="toggleSelect()">
           Sélectionner des particules
         </button>
+        <!-- Boutons communs Son + Corde -->
         <button class="btn-tube-top beacon1-btn"
-                id="btn-beacon1" onclick="toggleBeacon(1)">
+                id="btn-beacon1" onclick="toggleBeaconActive(1)">
           Balise 1
         </button>
         <button class="btn-tube-top beacon2-btn"
-                id="btn-beacon2" onclick="toggleBeacon(2)">
+                id="btn-beacon2" onclick="toggleBeaconActive(2)">
           Balise 2
         </button>
       </div>
 
       <!-- Ligne 2 col 1 : box source, centrée verticalement -->
       <div id="source-box">
-        <div class="section-title">Source</div>
-        <div class="source-btns">
-          <button class="btn btn-toggle-one" id="btn-mode-impulse"
-                  onclick="sendImpulse()">
-            Impulsion
-          </button>
-          <button class="btn btn-toggle-one" id="btn-mode-sinus"
-                  onclick="toggleSinusoidal()">
-            Sinusoïdale
-          </button>
-        </div>
-        <div class="param-row" id="freq-row">
-          <label>
-            Fréquence
-            <span class="param-value"><span id="lbl-freq">1,5</span> Hz</span>
-          </label>
-          <input type="range" id="sl-freq"
-                 min="0.5" max="5" step="0.1" value="1.5"
-                 oninput="onSliderFreq(this.value)">
-        </div>
+        <!-- Source Son (visible quand tab Son actif) -->
+        <div id="source-son">
+          <div class="section-title">Source</div>
+          <div class="source-btns">
+            <button class="btn btn-toggle-one" id="btn-mode-impulse"
+                    onclick="sendImpulse()">
+              Impulsion
+            </button>
+            <button class="btn btn-toggle-one" id="btn-mode-sinus"
+                    onclick="toggleSinusoidal()">
+              Sinusoïdale
+            </button>
+          </div>
+          <div class="param-row" id="freq-row">
+            <label>
+              Fréquence
+              <span class="param-value"><span id="lbl-freq">1,5</span> Hz</span>
+            </label>
+            <input type="range" id="sl-freq"
+                   min="0.5" max="5" step="0.1" value="1.5"
+                   oninput="onSliderFreq(this.value)">
+          </div>
+        </div><!-- fin #source-son -->
+
+        <!-- Source Corde (visible quand tab Corde actif) -->
+        <div id="source-corde" style="display:none;">
+          <div class="section-title">Source</div>
+          <div class="source-btns">
+            <button class="btn btn-toggle-one" id="btn-mode-impulse-corde"
+                    onclick="sendImpulseCorde()">
+              Impulsion
+            </button>
+            <button class="btn btn-toggle-one" id="btn-mode-sinus-corde"
+                    onclick="toggleSinusoidalCorde()">
+              Sinusoïdale
+            </button>
+          </div>
+          <div class="param-row" id="freq-row-corde">
+            <label>
+              Fréquence
+              <span class="param-value"><span id="lbl-freq-corde">1,5</span> Hz</span>
+            </label>
+            <input type="range" id="sl-freq-corde"
+                   min="0.5" max="5" step="0.1" value="1.5"
+                   oninput="onSliderFreqCorde(this.value)">
+          </div>
+          <div class="param-row" id="ampl-row-corde">
+            <label>
+              Amplitude
+              <span class="param-value"><span id="lbl-ampl-corde">2,0</span> cm</span>
+            </label>
+            <input type="range" id="sl-ampl-corde"
+                   min="1" max="5" step="0.1" value="2"
+                   oninput="onSliderAmplCorde(this.value)">
+          </div>
+        </div><!-- fin #source-corde -->
+
       </div><!-- fin #source-box -->
 
       <!-- Ligne 2 col 2 : canvas tube -->
@@ -258,14 +297,120 @@
 
       </div><!-- fin #section-son -->
 
-      <!-- ═══ Section CORDE (placeholder) ═══ -->
+      <!-- ═══ Section CORDE ═══ -->
       <div class="panel-main-section" id="section-corde" style="display:none;">
-        <div class="coming-soon">
-          <div class="coming-soon-icon">🎻</div>
-          <div class="coming-soon-title">Simulation Corde</div>
-          <div class="coming-soon-text">À venir dans une prochaine version.</div>
+
+        <!-- Contrôle de l'animation -->
+        <div class="panel-section">
+          <div class="section-title">Contrôles</div>
+          <button id="btn-playpause-corde" class="btn btn-pause"
+                  onclick="togglePauseCorde()">⏸ Pause</button>
+          <button class="btn btn-raz" style="margin-top:6px;"
+                  onclick="resetSimAnimCorde()">↺ Remettre à zéro</button>
+          <div class="param-row" style="margin-top:8px;">
+            <label>
+              Vitesse
+              <span class="param-value">×<span id="lbl-speed-corde">1,00</span></span>
+            </label>
+            <input type="range" id="sl-speed-corde"
+                   min="0" max="3" step="1" value="3"
+                   oninput="onSliderSpeedCorde(this.value)">
+            <div class="speed-ticks">
+              <span>×0,10</span>
+              <span>×0,25</span>
+              <span>×0,50</span>
+              <span>×1,00</span>
+            </div>
+          </div>
         </div>
-      </div>
+
+        <div class="sep"></div>
+
+        <!-- Propriétés de la corde -->
+        <div class="panel-section">
+          <div class="section-title">Propriétés de la corde</div>
+
+          <!-- Masse linéique μ -->
+          <div class="param-row">
+            <label>
+              Masse linéique μ
+              <span class="param-value"><span id="lbl-mu">1,0</span></span>
+            </label>
+            <input type="range" id="sl-mu"
+                   min="0.5" max="4.0" step="0.1" value="1.0"
+                   oninput="onSliderMu(this.value)">
+            <span class="input-hint">Masse par unité de longueur (épaisseur visuelle)</span>
+          </div>
+
+          <!-- Tension T -->
+          <div class="param-row">
+            <label>
+              Tension T
+              <span class="param-value"><span id="lbl-T-tension">4,0</span></span>
+            </label>
+            <input type="range" id="sl-T-tension"
+                   min="0.5" max="10.0" step="0.5" value="4.0"
+                   oninput="onSliderTension(this.value)">
+            <span class="input-hint">Raideur de la corde — détermine la célérité.</span>
+          </div>
+
+          <!-- Atténuation -->
+          <div class="param-row" style="margin-top:8px;">
+            <label>
+              Atténuation
+              <span class="param-value"><span id="lbl-atten-corde">0,00</span></span>
+            </label>
+            <input type="range" id="sl-atten-corde"
+                   min="0" max="1.0" step="0.05" value="0"
+                   oninput="onSliderAttenCorde(this.value)">
+            <span class="input-hint">0 = aucune atténuation</span>
+          </div>
+
+          <!-- Bouton propriétés de l'onde -->
+          <button class="btn btn-toggle-one" id="btn-wave-props-corde"
+                  onclick="toggleWavePropsCorde()">
+            Détailler les propriétés de l'onde
+          </button>
+
+          <!-- Readout célérité simple -->
+          <div class="readout" id="readout-simple-corde" style="margin-top:8px;">
+            <div class="ro-label">Célérité c = √(T / μ)</div>
+            <div class="ro-value">
+              <span id="ro-c-corde">20,0</span>
+              <span class="ro-unit">cm/s</span>
+            </div>
+          </div>
+
+          <!-- Readout étendu -->
+          <div class="readout" id="readout-props-corde" style="display:none; margin-top:8px;">
+
+            <div class="ro-label-section">Imposé par la corde</div>
+            <div class="ro-value ro-props-row">
+              <span class="ro-props-name">c = √(T/μ)</span>
+              <span><span id="ro-c-ext-corde">20,0</span> <span class="ro-unit">cm/s</span></span>
+            </div>
+
+            <div class="ro-label-section" style="margin-top:8px;">Imposé par le vibreur</div>
+            <div class="ro-value ro-props-row">
+              <span class="ro-props-name">f</span>
+              <span><span id="ro-f-corde">1,5</span> <span class="ro-unit">Hz</span></span>
+            </div>
+            <div class="ro-value ro-props-row">
+              <span class="ro-props-name">T = 1/f</span>
+              <span><span id="ro-T-corde">0,667</span> <span class="ro-unit">s</span></span>
+            </div>
+
+            <div class="ro-label-section" style="margin-top:8px;">Conséquence sur l'onde</div>
+            <div class="ro-value ro-props-row">
+              <span class="ro-props-name">λ = c·T</span>
+              <span><span id="ro-lambda-corde">13,3</span> <span class="ro-unit">cm</span></span>
+            </div>
+
+          </div><!-- fin #readout-props-corde -->
+
+        </div><!-- fin Propriétés de la corde -->
+
+      </div><!-- fin #section-corde -->
 
       <!-- ═══ Section VAGUES (placeholder) ═══ -->
       <div class="panel-main-section" id="section-vagues" style="display:none;">
@@ -304,8 +449,13 @@
                 onclick="toggleHint('corde')"
                 title="Afficher les instructions">▲</button>
       </div>
-      <div class="panel-hint-body">
-        Cette simulation n'est pas encore disponible.
+      <div class="panel-hint-body" id="panel-hint-corde-body">
+        <strong>Corde :</strong> choisissez le mode <em>Impulsion</em> ou <em>Sinusoïdale</em> dans la box Source.
+        Le pot vibrant (à gauche) met l'extrémité de la corde en mouvement vertical.
+        La corde est infinie à droite — il n'y a aucune réflexion.
+        Ajustez μ (masse) et T (tension) pour modifier la vitesse de l'onde.
+        Activez les <strong>balises</strong> (Balise 1/2) puis basculez en mode
+        <em>y(t)</em> pour observer le déplacement transversal au fil du temps.
       </div>
     </div>
 

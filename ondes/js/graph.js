@@ -142,49 +142,90 @@ function drawGraph() {
     ctx.fillStyle = '#faf9f6';
     ctx.fillRect(0, 0, W, H);
 
-    if (sim.graphMode === 'both') {
-        // ── Mode simultané : ΔP(x) à gauche, ΔP(t) à droite ─────────
-        var sep   = 3;                        // séparateur vertical en px
-        var half  = Math.floor((W - sep) / 2);
+    // ── Branchement selon le tab actif ────────────────────────────────
+    var isCorde = (typeof activeTab !== 'undefined' && activeTab === 'corde');
 
-        // Graphe ΔP(x) — moitié gauche
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(0, 0, half, H);
-        ctx.clip();
-        _drawDpxGraph(ctx, half, H);
-        ctx.restore();
+    if (isCorde) {
+        // ── Mode corde ─────────────────────────────────────────────
+        var mode = simCorde.graphMode;
+        if (mode === 'both') {
+            var sep   = 3;
+            var half  = Math.floor((W - sep) / 2);
 
-        // Graphe ΔP(t) — moitié droite
-        ctx.save();
-        ctx.translate(half + sep, 0);
-        ctx.beginPath();
-        ctx.rect(0, 0, half, H);
-        ctx.clip();
-        _drawDptGraph(ctx, half, H);
-        ctx.restore();
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(0, 0, half, H);
+            ctx.clip();
+            _drawYxGraph(ctx, half, H);
+            ctx.restore();
 
-        // Ligne séparatrice verticale — dessinée EN DERNIER pour ne pas
-        // être recouverte par les fonds blancs des zones de tracé
-        ctx.fillStyle = '#c8c0b4';
-        ctx.fillRect(half, 0, sep, H);
+            ctx.save();
+            ctx.translate(half + sep, 0);
+            ctx.beginPath();
+            ctx.rect(0, 0, half, H);
+            ctx.clip();
+            _drawYtGraph(ctx, half, H);
+            ctx.restore();
 
-        // ── Liaisons horizontales balise → point temporel ─────────────
-        _drawBothLinks(ctx, W, H, half, sep);
+            ctx.fillStyle = '#c8c0b4';
+            ctx.fillRect(half, 0, sep, H);
 
-    } else if (sim.graphMode === 'dpx') {
-        _drawDpxGraph(ctx, W, H);
-    } else {
-        _drawDptGraph(ctx, W, H);
-    }
+            _drawBothLinksYt(ctx, W, H, half, sep);
 
-    // Hover snappé et réticule — désactivés en mode both (trop complexe à gérer sur deux zones)
-    if (sim.graphMode !== 'both') {
-        if (graphHoverPos && !sim.graphCursorMode) {
-            _drawSnappedHover(ctx, W, H);
+        } else if (mode === 'dpx') {
+            _drawYxGraph(ctx, W, H);
+        } else {
+            _drawYtGraph(ctx, W, H);
         }
-        if (sim.graphCursorMode && graphHoverPos) {
-            _drawCrosshair(ctx, W, H);
+
+        if (mode !== 'both') {
+            if (graphHoverPos && !simCorde.graphCursorMode) {
+                _drawSnappedHoverCorde(ctx, W, H);
+            }
+            if (simCorde.graphCursorMode && graphHoverPos) {
+                _drawCrosshairCorde(ctx, W, H);
+            }
+        }
+
+    } else {
+        // ── Mode son (comportement original) ──────────────────────
+        if (sim.graphMode === 'both') {
+            var sep   = 3;
+            var half  = Math.floor((W - sep) / 2);
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(0, 0, half, H);
+            ctx.clip();
+            _drawDpxGraph(ctx, half, H);
+            ctx.restore();
+
+            ctx.save();
+            ctx.translate(half + sep, 0);
+            ctx.beginPath();
+            ctx.rect(0, 0, half, H);
+            ctx.clip();
+            _drawDptGraph(ctx, half, H);
+            ctx.restore();
+
+            ctx.fillStyle = '#c8c0b4';
+            ctx.fillRect(half, 0, sep, H);
+
+            _drawBothLinks(ctx, W, H, half, sep);
+
+        } else if (sim.graphMode === 'dpx') {
+            _drawDpxGraph(ctx, W, H);
+        } else {
+            _drawDptGraph(ctx, W, H);
+        }
+
+        if (sim.graphMode !== 'both') {
+            if (graphHoverPos && !sim.graphCursorMode) {
+                _drawSnappedHover(ctx, W, H);
+            }
+            if (sim.graphCursorMode && graphHoverPos) {
+                _drawCrosshair(ctx, W, H);
+            }
         }
     }
 
@@ -948,23 +989,556 @@ function _drawZoomRect(ctx) {
 // ══════════════════════════════════════════════════════════════════════
 
 function pushGraphView() {
+    var isCorde = (typeof activeTab !== 'undefined' && activeTab === 'corde');
+    var sv = isCorde ? simCorde : sim;
     var v = {
-        xMin: sim.graphView.xMin, xMax: sim.graphView.xMax,
-        yMin: sim.graphView.yMin, yMax: sim.graphView.yMax
+        xMin: sv.graphView.xMin, xMax: sv.graphView.xMax,
+        yMin: sv.graphView.yMin, yMax: sv.graphView.yMax
     };
-    sim.graphViewHistory.push(v);
+    sv.graphViewHistory.push(v);
     var btn = document.getElementById('btn-graph-prev');
     if (btn) btn.disabled = false;
 }
 
+// ══════════════════════════════════════════════════════════════════════
+//  ██████╗ ██████╗ ██████╗ ██████╗ ███████╗
+//  Graphes — mode CORDE  (y(x) et y(t))
+// ══════════════════════════════════════════════════════════════════════
+
+// ── Graphe y(x) ───────────────────────────────────────────────────────
+//  Analogue à _drawDpxGraph mais :
+//    • données : simCorde.yxData  [{x, y}]
+//    • courbe tracée pixel par pixel depuis cordeDisplacement
+//    • axe Y : y (cm), normalisé ±1 avec marge 12 %
+//    • axe X : Distance depuis le pot (cm), 0–40 cm
+
+function _drawYxGraph(ctx, W, H) {
+    var L    = simCorde.cordeLength;
+    var xMin = 0;
+    var xMax = L > 0 ? L : 1;
+    var yMin = -1.12;
+    var yMax =  1.12;
+    simCorde.graphYxYMin = yMin;
+    simCorde.graphYxYMax = yMax;
+
+    _updateFontSizes(ctx, W, H, yMin, yMax);
+    _syncLeftMarginWithCorde(ctx, W, yMin, yMax);
+
+    var pW = W - GM.left - GM.right;
+    var pH = H - GM.top  - GM.bottom;
+    if (pW < 20 || pH < 20) return;
+
+    function px(x_data) { return GM.left + (x_data - xMin) / (xMax - xMin) * pW; }
+    function py(y_data) { return GM.top  + (1 - (y_data - yMin) / (yMax - yMin)) * pH; }
+
+    // Fond zone tracé
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(GM.left, GM.top, pW, pH);
+
+    // Grilles
+    _drawGridY(ctx, yMin, yMax, px, py, pW, pH);
+    _drawGridX_dpx(ctx, xMin, xMax, px, py, pW, pH, L);
+    _drawZeroLine(ctx, yMin, yMax, px, py, pW);
+
+    // ── Courbe y(x) ───────────────────────────────────────────────────
+    // Normalisation : amplitude physique max = simCorde.memAmplitude (px)
+    // On normalise par memAmplitude pour obtenir des valeurs dans [-1, +1]
+    var amp = simCorde.memAmplitude > 0 ? simCorde.memAmplitude : 1;
+    {
+        var freqEff_g = (simCorde.sourceMode === 'impulse') ? 1.0 / T_IMPULSE : simCorde.freq;
+        var lambda_g  = (simCorde.c_sim > 0) ? simCorde.c_sim / freqEff_g : L;
+        var pxPerLambda = (lambda_g > 0) ? pW * lambda_g / L : pW;
+        var subSteps = (pxPerLambda < 8) ? Math.ceil(8 / Math.max(0.5, pxPerLambda)) : 1;
+        subSteps = Math.min(subSteps, 16);
+
+        var totalSteps = pW * subSteps;
+        ctx.save();
+        ctx.beginPath();
+        var firstPt = true;
+        for (var s = 0; s <= totalSteps; s++) {
+            var frac   = s / totalSteps;
+            var x_data = xMin + frac * (xMax - xMin);
+            var y_raw  = cordeDisplacement(x_data, simCorde.simTime);
+            var y_norm = y_raw / amp;   // normaliser dans [-1, +1]
+            var cx     = GM.left + frac * pW;
+            var cy     = py(y_norm);
+            if (firstPt) { ctx.moveTo(cx, cy); firstPt = false; }
+            else          { ctx.lineTo(cx, cy); }
+        }
+        ctx.strokeStyle = '#7a2510';
+        ctx.lineWidth   = 2;
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    // Marqueurs de balises
+    if (simCorde.beacon1.active) {
+        var xb1 = simCorde.beacon1.x - simCorde.cordeLeft;
+        _drawBeaconMarker(ctx, px(xb1), py, yMin, yMax, '#e07020', 'B1', pH);
+    }
+    if (simCorde.beacon2.active) {
+        var xb2 = simCorde.beacon2.x - simCorde.cordeLeft;
+        _drawBeaconMarker(ctx, px(xb2), py, yMin, yMax, '#2a8a50', 'B2', pH);
+    }
+
+    // Bordure
+    ctx.strokeStyle = '#c8c0b4';
+    ctx.lineWidth   = 1;
+    ctx.strokeRect(GM.left, GM.top, pW, pH);
+
+    // Labels axes
+    _drawAxisLabels_yx(ctx, W, H, GM, pW, pH);
+}
+
+// ── Graphe y(t) ───────────────────────────────────────────────────────
+
+function _drawYtGraph(ctx, W, H) {
+    var d1 = simCorde.ytData1;
+    var d2 = simCorde.ytData2;
+    var hasData = (simCorde.beacon1.active && d1.length > 1) ||
+                  (simCorde.beacon2.active && d2.length > 1);
+
+    if (!hasData) {
+        ctx.fillStyle = '#7a8a96';
+        ctx.font      = 'italic ' + Math.round(W * 0.025 + 10) + 'px "Segoe UI", Arial, sans-serif';
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('Activez une balise pour afficher le graphe', W / 2, H / 2);
+        return;
+    }
+
+    var xMin = 0;
+    var xMax = 5;
+    simCorde.graphView.xMin = xMin;
+    simCorde.graphView.xMax = xMax;
+    var yMin = -1.12;
+    var yMax =  1.12;
+    simCorde.graphView.yMin = yMin;
+    simCorde.graphView.yMax = yMax;
+
+    _updateFontSizes(ctx, W, H, yMin, yMax);
+    _syncLeftMarginWithCorde(ctx, W, yMin, yMax);
+
+    var pW = W - GM.left - GM.right;
+    var pH = H - GM.top  - GM.bottom;
+    if (pW < 20 || pH < 20) return;
+
+    function px(x_data) { return GM.left + (x_data - xMin) / (xMax - xMin) * pW; }
+    function py(y_data) { return GM.top  + (1 - (y_data - yMin) / (yMax - yMin)) * pH; }
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(GM.left, GM.top, pW, pH);
+
+    _drawGridY(ctx, yMin, yMax, px, py, pW, pH);
+    _drawGridX_dpt(ctx, xMin, xMax, px, py, pW, pH);
+    _drawZeroLine(ctx, yMin, yMax, px, py, pW);
+
+    // Clip
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(GM.left, GM.top, pW, pH);
+    ctx.clip();
+
+    var amp = simCorde.memAmplitude > 0 ? simCorde.memAmplitude : 1;
+
+    if (simCorde.beacon1.active && d1.length > 1) {
+        _drawSeriesCorde(ctx, d1, xMin, xMax, px, py, '#e07020', 2, simCorde.simTime, amp);
+    }
+    if (simCorde.beacon2.active && d2.length > 1) {
+        _drawSeriesCorde(ctx, d2, xMin, xMax, px, py, '#2a8a50', 2, simCorde.simTime, amp);
+    }
+
+    ctx.restore();
+
+    ctx.strokeStyle = '#c8c0b4';
+    ctx.lineWidth   = 1;
+    ctx.strokeRect(GM.left, GM.top, pW, pH);
+
+    _drawAxisLabels_yt(ctx, W, H, GM, pW, pH);
+    _drawLegendCorde(ctx, W, pH);
+}
+
+// ── Tracé d'une série y(t) ────────────────────────────────────────────
+
+function _drawSeriesCorde(ctx, data, xMin, xMax, px, py, color, lw, cycleTime, amp) {
+    var WINDOW  = 5;
+    var tOrigin = simCorde.ytTimeOrigin || 0;
+
+    ctx.beginPath();
+    var started = false;
+    for (var i = 0; i < data.length; i++) {
+        var pt     = data[i];
+        var tLocal = pt.t - tOrigin;
+        if (tLocal < 0 || tLocal > WINDOW) { started = false; continue; }
+        if (i > 0) {
+            var prevLocal = data[i - 1].t - tOrigin;
+            if (prevLocal < 0 || prevLocal > WINDOW) started = false;
+        }
+        var y_norm = pt.y / amp;
+        var cx = px(tLocal);
+        var cy = py(y_norm);
+        if (!started) { ctx.moveTo(cx, cy); started = true; }
+        else           { ctx.lineTo(cx, cy); }
+    }
+    ctx.strokeStyle = color;
+    ctx.lineWidth   = lw;
+    ctx.stroke();
+}
+
+// ── Légende y(t) ──────────────────────────────────────────────────────
+
+function _drawLegendCorde(ctx, W, pH) {
+    var x  = GM.left + 8;
+    var y  = GM.top  + 10;
+    var fs = 12;
+    ctx.font         = 'bold ' + fs + 'px monospace';
+    ctx.textAlign    = 'left';
+    ctx.textBaseline = 'middle';
+    if (simCorde.beacon1.active) {
+        ctx.fillStyle = '#e07020';
+        ctx.fillRect(x, y - fs * 0.4, 16, 3);
+        ctx.fillStyle = '#e07020';
+        ctx.fillText('Balise 1', x + 20, y);
+        y += fs + 6;
+    }
+    if (simCorde.beacon2.active) {
+        ctx.fillStyle = '#2a8a50';
+        ctx.fillRect(x, y - fs * 0.4, 16, 3);
+        ctx.fillStyle = '#2a8a50';
+        ctx.fillText('Balise 2', x + 20, y);
+    }
+}
+
+// ── Labels axes y(x) ──────────────────────────────────────────────────
+
+function _drawAxisLabels_yx(ctx, W, H, GM, pW, pH) {
+    ctx.fillStyle    = '#5a6a78';
+    ctx.font         = _gFontTitle + 'px "Segoe UI", Arial, sans-serif';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'bottom';
+    var labelX = pW < 260 ? 'Distance (cm)' : 'Distance depuis le pot (cm)';
+    ctx.fillText(labelX, GM.left + pW / 2, H - 2);
+    ctx.save();
+    ctx.translate(10, GM.top + pH / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.font         = _gFontTitle + 'px "Segoe UI", Arial, sans-serif';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText('y (u.a.)', 0, 0);
+    ctx.restore();
+}
+
+// ── Labels axes y(t) ──────────────────────────────────────────────────
+
+function _drawAxisLabels_yt(ctx, W, H, GM, pW, pH) {
+    ctx.fillStyle    = '#5a6a78';
+    ctx.font         = _gFontTitle + 'px "Segoe UI", Arial, sans-serif';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('Temps (s)', GM.left + pW / 2, H - 2);
+    ctx.save();
+    ctx.translate(10, GM.top + pH / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.font         = _gFontTitle + 'px "Segoe UI", Arial, sans-serif';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText('y (u.a.)', 0, 0);
+    ctx.restore();
+}
+
+// ── Synchronisation marge gauche avec la position du pot (corde) ──────
+//  Analogue à _syncLeftMarginWithTube mais utilise cordeLeft
+
+function _syncLeftMarginWithCorde(ctx, W, yMin, yMax) {
+    var minForLabels = _calcLeftMarginRaw(ctx, yMin, yMax);
+
+    if (tubeCanvas && tubeCanvas.width > 0 && simCorde.cordeLeft > 0 && graphCanvas) {
+        var tubeRect  = tubeCanvas.getBoundingClientRect();
+        var graphRect = graphCanvas.getBoundingClientRect();
+        var potViewportX    = tubeRect.left + (simCorde.cordeLeft / tubeCanvas.width) * tubeRect.width;
+        var marginFromVp    = potViewportX - graphRect.left;
+        var marginCanvas    = Math.round(marginFromVp * (W / graphRect.width));
+        GM.left = Math.max(minForLabels, marginCanvas);
+    } else {
+        GM.left = minForLabels;
+    }
+}
+
+// ── Mode both corde : liaisons balise → point temporel ────────────────
+
+function _drawBothLinksYt(ctx, W, H, half, sep) {
+    var yMin = -1.12;
+    var yMax =  1.12;
+    var pH   = H - GM.top - GM.bottom;
+    if (pH <= 0) return;
+
+    var amp = simCorde.memAmplitude > 0 ? simCorde.memAmplitude : 1;
+
+    function py(y_norm) {
+        return GM.top + (1 - (y_norm - yMin) / (yMax - yMin)) * pH;
+    }
+
+    var tOrigin = simCorde.ytTimeOrigin || 0;
+    var WINDOW  = 5;
+
+    var beacons = [];
+    if (simCorde.beacon1.active) beacons.push({ beacon: simCorde.beacon1, color: '#e07020' });
+    if (simCorde.beacon2.active) beacons.push({ beacon: simCorde.beacon2, color: '#2a8a50' });
+
+    for (var b = 0; b < beacons.length; b++) {
+        var bc    = beacons[b];
+        var color = bc.color;
+        var xb    = bc.beacon.x - simCorde.cordeLeft;
+        var y_raw = cordeDisplacement(xb, simCorde.simTime);
+        var y_n   = y_raw / amp;
+        var yc    = py(y_n);
+
+        if (yc < GM.top || yc > GM.top + pH) continue;
+
+        var pW_left = half - GM.left - GM.right;
+        if (pW_left <= 0) continue;
+        var L    = simCorde.cordeLength > 0 ? simCorde.cordeLength : 1;
+        var xDpx = GM.left + (xb / L) * pW_left;
+
+        var tLocal   = simCorde.simTime - tOrigin;
+        tLocal       = Math.max(0, Math.min(WINDOW, tLocal));
+        var pW_right = half - GM.left - GM.right;
+        var xDpt     = (half + sep) + GM.left + (tLocal / WINDOW) * pW_right;
+
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.lineWidth   = 1.5;
+        ctx.setLineDash([5, 4]);
+        ctx.globalAlpha = 0.6;
+        ctx.beginPath();
+        ctx.moveTo(xDpx, yc);
+        ctx.lineTo(xDpt, yc);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.globalAlpha = 1.0;
+        ctx.fillStyle   = color;
+        ctx.beginPath();
+        ctx.arc(xDpx, yc, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(xDpt, yc, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+}
+
+// ── Hover snappé corde ────────────────────────────────────────────────
+
+function _drawSnappedHoverCorde(ctx, W, H) {
+    if (!graphHoverPos) return;
+    var mx = graphHoverPos.x;
+    var my = graphHoverPos.y;
+    var pW = W - GM.left - GM.right;
+    var pH = H - GM.top  - GM.bottom;
+    if (pW < 10 || pH < 10) return;
+
+    ctx.save();
+    if (simCorde.graphMode === 'dpt') {
+        _drawSnappedHoverCorde_yt(ctx, W, H, mx, my, pW, pH);
+    } else {
+        _drawSnappedHoverCorde_yx(ctx, W, H, mx, my, pW, pH);
+    }
+    ctx.restore();
+}
+
+function _drawSnappedHoverCorde_yt(ctx, W, H, mx, my, pW, pH) {
+    var xMin    = simCorde.graphView.xMin;
+    var xMax    = simCorde.graphView.xMax;
+    var yMin    = simCorde.graphView.yMin;
+    var yMax    = simCorde.graphView.yMax;
+    var WINDOW  = 5;
+    var tOrigin = simCorde.ytTimeOrigin || 0;
+    var amp     = simCorde.memAmplitude > 0 ? simCorde.memAmplitude : 1;
+
+    function px(v) { return GM.left + (v - xMin) / (xMax - xMin) * pW; }
+    function py(v) { return GM.top  + (1 - (v - yMin) / (yMax - yMin)) * pH; }
+
+    var series = [];
+    if (simCorde.beacon1.active && simCorde.ytData1.length > 1)
+        series.push({ data: simCorde.ytData1, color: '#e07020' });
+    if (simCorde.beacon2.active && simCorde.ytData2.length > 1)
+        series.push({ data: simCorde.ytData2, color: '#2a8a50' });
+
+    var winner = null, winnerColor = null, winnerDist = Infinity;
+    for (var s = 0; s < series.length; s++) {
+        var sr = series[s];
+        for (var i = 0; i < sr.data.length; i++) {
+            var pt     = sr.data[i];
+            var tLocal = pt.t - tOrigin;
+            if (tLocal < 0 || tLocal > WINDOW) continue;
+            var y_n  = pt.y / amp;
+            var bx   = px(tLocal);
+            var by   = py(y_n);
+            var byc  = Math.max(GM.top, Math.min(GM.top + pH, by));
+            var dist = Math.sqrt((bx - mx) * (bx - mx) + (byc - my) * (byc - my));
+            if (dist < winnerDist) { winnerDist = dist; winner = pt; winnerColor = sr.color; }
+        }
+    }
+    if (!winner) return;
+
+    var tLocal = winner.t - tOrigin;
+    var y_n    = winner.y / amp;
+    var bx  = px(tLocal);
+    var by  = py(y_n);
+    var byc = Math.max(GM.top, Math.min(GM.top + pH, by));
+
+    ctx.setLineDash([4, 4]);
+    ctx.strokeStyle = 'rgba(60,60,60,0.45)';
+    ctx.lineWidth   = 1;
+    ctx.beginPath(); ctx.moveTo(bx, byc); ctx.lineTo(bx, GM.top + pH); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(bx, byc); ctx.lineTo(GM.left, byc);    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = winnerColor;
+    ctx.beginPath();
+    ctx.arc(bx, byc, 5, 0, Math.PI * 2);
+    ctx.fill();
+
+    var tLbl  = tLocal.toFixed(2) + ' s';
+    var vLbl  = 'y = ' + y_n.toFixed(3);
+    var label = '(' + tLbl + ', ' + vLbl + ')';
+    ctx.font         = _gFontHover + 'px monospace';
+    ctx.fillStyle    = winnerColor;
+    ctx.textBaseline = 'bottom';
+    ctx.textAlign    = 'left';
+    var lw2 = ctx.measureText(label).width;
+    var lx  = (bx + 10 + lw2 > GM.left + pW) ? bx - 10 - lw2 : bx + 10;
+    var ly  = (byc - 8 < GM.top + 28)         ? byc + 32       : byc - 8;
+    ctx.fillText(label, lx, ly);
+}
+
+function _drawSnappedHoverCorde_yx(ctx, W, H, mx, my, pW, pH) {
+    var data = simCorde.yxData;
+    if (!data || data.length < 2) return;
+
+    var L    = simCorde.cordeLength;
+    var xMin = 0;
+    var xMax = L > 0 ? L : 1;
+    var yMin = simCorde.graphYxYMin;
+    var yMax = simCorde.graphYxYMax;
+    var amp  = simCorde.memAmplitude > 0 ? simCorde.memAmplitude : 1;
+
+    function px(v) { return GM.left + (v - xMin) / (xMax - xMin) * pW; }
+    function py(v) { return GM.top  + (1 - (v - yMin) / (yMax - yMin)) * pH; }
+
+    var best = null, bestDist = Infinity;
+    for (var i = 0; i < data.length; i++) {
+        var pt   = data[i];
+        var y_n  = pt.y / amp;
+        var bx_  = px(pt.x);
+        var by_  = py(y_n);
+        var byc_ = Math.max(GM.top, Math.min(GM.top + pH, by_));
+        var d    = Math.sqrt((bx_ - mx) * (bx_ - mx) + (byc_ - my) * (byc_ - my));
+        if (d < bestDist) { bestDist = d; best = pt; }
+    }
+    if (!best) return;
+
+    var y_n = best.y / amp;
+    var bx  = px(best.x);
+    var by  = py(y_n);
+    var byc = Math.max(GM.top, Math.min(GM.top + pH, by));
+
+    ctx.setLineDash([4, 4]);
+    ctx.strokeStyle = 'rgba(60,60,60,0.45)';
+    ctx.lineWidth   = 1;
+    ctx.beginPath(); ctx.moveTo(bx, byc); ctx.lineTo(bx, GM.top + pH); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(bx, byc); ctx.lineTo(GM.left, byc);    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = '#7a2510';
+    ctx.beginPath();
+    ctx.arc(bx, byc, 5, 0, Math.PI * 2);
+    ctx.fill();
+
+    var cmPerPx = (L > 0) ? 40 / L : 1;
+    var dCm     = (best.x * cmPerPx).toFixed(1);
+    var label   = '(' + dCm + ' cm, y = ' + y_n.toFixed(3) + ')';
+    ctx.font         = _gFontHover + 'px monospace';
+    ctx.fillStyle    = '#7a2510';
+    ctx.textBaseline = 'bottom';
+    ctx.textAlign    = 'left';
+    var lw2 = ctx.measureText(label).width;
+    var lx  = (bx + 10 + lw2 > GM.left + pW) ? bx - 10 - lw2 : bx + 10;
+    var ly  = (byc - 8 < GM.top + 28)         ? byc + 32       : byc - 8;
+    ctx.fillText(label, lx, ly);
+}
+
+// ── Réticule corde ────────────────────────────────────────────────────
+
+function _drawCrosshairCorde(ctx, W, H) {
+    if (!graphHoverPos) return;
+    var mx = graphHoverPos.x;
+    var my = graphHoverPos.y;
+    var pW = W - GM.left - GM.right;
+    var pH = H - GM.top  - GM.bottom;
+
+    ctx.save();
+    ctx.strokeStyle = '#7a2510';
+    ctx.lineWidth   = 1;
+    ctx.setLineDash([4, 3]);
+    ctx.globalAlpha = 0.7;
+    ctx.beginPath();
+    ctx.moveTo(mx, GM.top);
+    ctx.lineTo(mx, GM.top + pH);
+    ctx.moveTo(GM.left, my);
+    ctx.lineTo(GM.left + pW, my);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+
+    var xVal, yVal;
+    var amp = simCorde.memAmplitude > 0 ? simCorde.memAmplitude : 1;
+    if (pW > 0 && pH > 0) {
+        if (simCorde.graphMode === 'dpx') {
+            var xData   = (mx - GM.left) / pW * simCorde.cordeLength;
+            var cmPerPx = simCorde.cordeLength > 0 ? 40 / simCorde.cordeLength : 1;
+            xVal = (xData * cmPerPx).toFixed(1) + ' cm';
+        } else {
+            var tData = simCorde.graphView.xMin +
+                (mx - GM.left) / pW * (simCorde.graphView.xMax - simCorde.graphView.xMin);
+            xVal = tData.toFixed(2) + ' s';
+        }
+        var yRange = simCorde.graphMode === 'dpx'
+            ? (simCorde.graphYxYMax - simCorde.graphYxYMin)
+            : (simCorde.graphView.yMax - simCorde.graphView.yMin);
+        var yMinV  = simCorde.graphMode === 'dpx' ? simCorde.graphYxYMin : simCorde.graphView.yMin;
+        yVal = (yMinV + (1 - (my - GM.top) / pH) * yRange).toFixed(3);
+    }
+
+    var tip = document.getElementById('graph-hover-tooltip');
+    if (tip && xVal !== undefined) {
+        tip.textContent = xVal + '  |  y = ' + yVal;
+        tip.style.display = 'block';
+        var gRect  = graphCanvas.getBoundingClientRect();
+        var scaleX = graphCanvas.width  / gRect.width;
+        var scaleY = graphCanvas.height / gRect.height;
+        var vpX    = gRect.left + mx / scaleX;
+        var vpY    = gRect.top  + my / scaleY;
+        var offX   = vpX + 12;
+        var offY   = vpY - 10;
+        if (offX + 190 > window.innerWidth) offX = vpX - 190;
+        if (offY < 4) offY = vpY + 14;
+        tip.style.left = offX + 'px';
+        tip.style.top  = offY + 'px';
+    }
+}
+
 function prevGraphView() {
-    if (sim.graphViewHistory.length === 0) return;
-    var v = sim.graphViewHistory.pop();
-    sim.graphView.xMin = v.xMin; sim.graphView.xMax = v.xMax;
-    sim.graphView.yMin = v.yMin; sim.graphView.yMax = v.yMax;
-    sim.graphUserPanned = true;
+    var isCorde = (typeof activeTab !== 'undefined' && activeTab === 'corde');
+    var sv = isCorde ? simCorde : sim;
+    if (sv.graphViewHistory.length === 0) return;
+    var v = sv.graphViewHistory.pop();
+    sv.graphView.xMin = v.xMin; sv.graphView.xMax = v.xMax;
+    sv.graphView.yMin = v.yMin; sv.graphView.yMax = v.yMax;
+    sv.graphUserPanned = true;
     var btn = document.getElementById('btn-graph-prev');
-    if (btn) btn.disabled = sim.graphViewHistory.length === 0;
+    if (btn) btn.disabled = sv.graphViewHistory.length === 0;
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -972,7 +1546,15 @@ function prevGraphView() {
 // ══════════════════════════════════════════════════════════════════════
 
 function setGraphMode(mode) {
-    sim.graphMode = mode;
+    var isCorde = (typeof activeTab !== 'undefined' && activeTab === 'corde');
+
+    // Mettre à jour le graphMode dans l'objet approprié
+    if (isCorde) {
+        simCorde.graphMode = mode;
+    } else {
+        sim.graphMode = mode;
+    }
+
     var btnDpx  = document.getElementById('btn-graph-dpx');
     var btnDpt  = document.getElementById('btn-graph-dpt');
     var btnBoth = document.getElementById('btn-graph-both');
@@ -981,47 +1563,88 @@ function setGraphMode(mode) {
     if (btnBoth) btnBoth.classList.toggle('active', mode === 'both');
 
     // Classe sur #graph-area pour afficher/masquer la ligne de séparation
-    // dans #graph-ctrl via CSS (prolonge visuellement le séparateur canvas)
     var graphArea = document.getElementById('graph-area');
     if (graphArea) graphArea.classList.toggle('mode-both', mode === 'both');
 
     // Masquer tooltip
     var tip = document.getElementById('graph-hover-tooltip');
     if (tip) tip.style.display = 'none';
-    // Masquer les boutons zoom/adapter/précédent (inutiles dans les deux modes)
+    // Masquer les boutons zoom/adapter/précédent
     ['btn-graph-prev', 'btn-graph-zoom', 'btn-graph-auto'].forEach(function(id) {
         var btn = document.getElementById(id);
         if (btn) btn.style.display = 'none';
     });
 }
 
+// Met à jour les labels des boutons graphe selon le tab actif
+function _updateGraphBtnLabels(tab) {
+    var btnDpx  = document.getElementById('btn-graph-dpx');
+    var btnDpt  = document.getElementById('btn-graph-dpt');
+    if (tab === 'corde') {
+        if (btnDpx) btnDpx.textContent = 'y(x) — spatial';
+        if (btnDpt) btnDpt.textContent = 'y(t) — temporel';
+    } else {
+        if (btnDpx) btnDpx.textContent = 'ΔP(x) — spatial';
+        if (btnDpt) btnDpt.textContent = 'ΔP(t) — temporel';
+    }
+}
+
 function toggleGraphZoom() {
-    sim.graphZoomMode = !sim.graphZoomMode;
-    graphZoomRect = null;
-    if (sim.graphZoomMode) sim.graphCursorMode = false;
-    var z = document.getElementById('btn-graph-zoom');
-    var c = document.getElementById('btn-graph-cursor');
-    if (z) z.classList.toggle('active', sim.graphZoomMode);
-    if (c) c.classList.toggle('active', sim.graphCursorMode);
+    var isCorde = (typeof activeTab !== 'undefined' && activeTab === 'corde');
+    if (isCorde) {
+        simCorde.graphZoomMode = !simCorde.graphZoomMode;
+        graphZoomRect = null;
+        if (simCorde.graphZoomMode) simCorde.graphCursorMode = false;
+        var z = document.getElementById('btn-graph-zoom');
+        var c = document.getElementById('btn-graph-cursor');
+        if (z) z.classList.toggle('active', simCorde.graphZoomMode);
+        if (c) c.classList.toggle('active', simCorde.graphCursorMode);
+    } else {
+        sim.graphZoomMode = !sim.graphZoomMode;
+        graphZoomRect = null;
+        if (sim.graphZoomMode) sim.graphCursorMode = false;
+        var z = document.getElementById('btn-graph-zoom');
+        var c = document.getElementById('btn-graph-cursor');
+        if (z) z.classList.toggle('active', sim.graphZoomMode);
+        if (c) c.classList.toggle('active', sim.graphCursorMode);
+    }
 }
 
 function toggleGraphCursor() {
-    sim.graphCursorMode = !sim.graphCursorMode;
-    if (sim.graphCursorMode) sim.graphZoomMode = false;
+    var isCorde = (typeof activeTab !== 'undefined' && activeTab === 'corde');
     var tip = document.getElementById('graph-hover-tooltip');
-    if (!sim.graphCursorMode && tip) tip.style.display = 'none';
-    var z = document.getElementById('btn-graph-zoom');
-    var c = document.getElementById('btn-graph-cursor');
-    if (z) z.classList.toggle('active', sim.graphZoomMode);
-    if (c) c.classList.toggle('active', sim.graphCursorMode);
+    if (isCorde) {
+        simCorde.graphCursorMode = !simCorde.graphCursorMode;
+        if (simCorde.graphCursorMode) simCorde.graphZoomMode = false;
+        if (!simCorde.graphCursorMode && tip) tip.style.display = 'none';
+        var z = document.getElementById('btn-graph-zoom');
+        var c = document.getElementById('btn-graph-cursor');
+        if (z) z.classList.toggle('active', simCorde.graphZoomMode);
+        if (c) c.classList.toggle('active', simCorde.graphCursorMode);
+    } else {
+        sim.graphCursorMode = !sim.graphCursorMode;
+        if (sim.graphCursorMode) sim.graphZoomMode = false;
+        if (!sim.graphCursorMode && tip) tip.style.display = 'none';
+        var z = document.getElementById('btn-graph-zoom');
+        var c = document.getElementById('btn-graph-cursor');
+        if (z) z.classList.toggle('active', sim.graphZoomMode);
+        if (c) c.classList.toggle('active', sim.graphCursorMode);
+    }
 }
 
 function autoScaleGraph() {
-    sim.graphUserPanned  = false;
-    sim.graphViewHistory = [];
-    // L'axe Y est normalisé [-1, +1] : on remet la vue Y par défaut
-    sim.graphView.yMin = -1.12;
-    sim.graphView.yMax =  1.12;
+    var isCorde = (typeof activeTab !== 'undefined' && activeTab === 'corde');
+    if (isCorde) {
+        simCorde.graphUserPanned  = false;
+        simCorde.graphViewHistory = [];
+        simCorde.graphView.yMin   = -1.12;
+        simCorde.graphView.yMax   =  1.12;
+    } else {
+        sim.graphUserPanned  = false;
+        sim.graphViewHistory = [];
+        sim.graphView.yMin   = -1.12;
+        sim.graphView.yMax   =  1.12;
+    }
     var btn = document.getElementById('btn-graph-prev');
     if (btn) btn.disabled = true;
 }
@@ -1039,22 +1662,27 @@ function autoScaleGraph() {
             var rect = graphCanvas.getBoundingClientRect();
             var mx   = (e.clientX - rect.left) * (graphCanvas.width  / rect.width);
             var my   = (e.clientY - rect.top)  * (graphCanvas.height / rect.height);
-            graphHoverPos = { x: mx, y: my, free: !!sim.graphCursorMode };
+
+            var isCorde  = (typeof activeTab !== 'undefined' && activeTab === 'corde');
+            var cursorMd = isCorde ? simCorde.graphCursorMode : sim.graphCursorMode;
+            graphHoverPos = { x: mx, y: my, free: !!cursorMd };
 
             if (graphPan.dragging) {
-                // Pan — uniquement en mode DeltaP(t) et hors zoom
-                if (sim.graphMode === 'dpt') {
+                var mode = isCorde ? simCorde.graphMode : sim.graphMode;
+                if (mode === 'dpt') {
+                    var sv = isCorde ? simCorde : sim;
                     var W  = graphCanvas.width;
                     var pW = W - GM.left - GM.right;
                     var dx = mx - graphPan.startX;
                     var dataDx = dx / pW * (graphPan.startView.xMax - graphPan.startView.xMin);
-                    sim.graphView.xMin = graphPan.startView.xMin - dataDx;
-                    sim.graphView.xMax = graphPan.startView.xMax - dataDx;
-                    sim.graphUserPanned = true;
+                    sv.graphView.xMin = graphPan.startView.xMin - dataDx;
+                    sv.graphView.xMax = graphPan.startView.xMax - dataDx;
+                    sv.graphUserPanned = true;
                 }
             }
 
-            if (sim.graphZoomMode && graphZoomRect) {
+            var zoomMode = isCorde ? simCorde.graphZoomMode : sim.graphZoomMode;
+            if (zoomMode && graphZoomRect) {
                 graphZoomRect.x2 = mx;
                 graphZoomRect.y2 = my;
             }
@@ -1065,7 +1693,11 @@ function autoScaleGraph() {
             var mx   = (e.clientX - rect.left) * (graphCanvas.width  / rect.width);
             var my   = (e.clientY - rect.top)  * (graphCanvas.height / rect.height);
 
-            if (sim.graphZoomMode) {
+            var isCorde  = (typeof activeTab !== 'undefined' && activeTab === 'corde');
+            var sv       = isCorde ? simCorde : sim;
+            var zoomMode = isCorde ? simCorde.graphZoomMode : sim.graphZoomMode;
+
+            if (zoomMode) {
                 graphZoomRect = { x1: mx, y1: my, x2: mx, y2: my };
                 graphCanvas.setPointerCapture(e.pointerId);
                 return;
@@ -1075,20 +1707,22 @@ function autoScaleGraph() {
             graphPan.startX    = mx;
             graphPan.startY    = my;
             graphPan.startView = {
-                xMin: sim.graphView.xMin, xMax: sim.graphView.xMax,
-                yMin: sim.graphView.yMin, yMax: sim.graphView.yMax
+                xMin: sv.graphView.xMin, xMax: sv.graphView.xMax,
+                yMin: sv.graphView.yMin, yMax: sv.graphView.yMax
             };
             graphCanvas.setPointerCapture(e.pointerId);
             graphCanvas.style.cursor = 'default';
         });
 
         graphCanvas.addEventListener('pointerup', function() {
-            if (sim.graphZoomMode && graphZoomRect) {
+            var isCorde  = (typeof activeTab !== 'undefined' && activeTab === 'corde');
+            var zoomMode = isCorde ? simCorde.graphZoomMode : sim.graphZoomMode;
+            if (zoomMode && graphZoomRect) {
                 _applyZoom();
                 graphZoomRect = null;
             }
             graphPan.dragging = false;
-            graphCanvas.style.cursor = sim.graphZoomMode ? 'crosshair' : 'default';
+            graphCanvas.style.cursor = zoomMode ? 'crosshair' : 'default';
         });
 
         graphCanvas.addEventListener('pointerleave', function() {
@@ -1098,21 +1732,24 @@ function autoScaleGraph() {
             if (tip) tip.style.display = 'none';
         });
 
-        // Zoom molette (DeltaP(t) uniquement)
+        // Zoom molette (ΔP(t) / y(t) uniquement)
         graphCanvas.addEventListener('wheel', function(e) {
-            if (sim.graphMode !== 'dpt') return;
+            var isCorde = (typeof activeTab !== 'undefined' && activeTab === 'corde');
+            var mode    = isCorde ? simCorde.graphMode : sim.graphMode;
+            if (mode !== 'dpt') return;
             e.preventDefault();
             var rect = graphCanvas.getBoundingClientRect();
             var mx   = (e.clientX - rect.left) * (graphCanvas.width  / rect.width);
             var W    = graphCanvas.width;
             var pW   = W - GM.left - GM.right;
-            var tCur = sim.graphView.xMin +
-                (mx - GM.left) / pW * (sim.graphView.xMax - sim.graphView.xMin);
+            var sv   = isCorde ? simCorde : sim;
+            var tCur = sv.graphView.xMin +
+                (mx - GM.left) / pW * (sv.graphView.xMax - sv.graphView.xMin);
             var factor = e.deltaY > 0 ? 1.2 : 0.8;
             pushGraphView();
-            sim.graphView.xMin = tCur + (sim.graphView.xMin - tCur) * factor;
-            sim.graphView.xMax = tCur + (sim.graphView.xMax - tCur) * factor;
-            sim.graphUserPanned = true;
+            sv.graphView.xMin = tCur + (sv.graphView.xMin - tCur) * factor;
+            sv.graphView.xMax = tCur + (sv.graphView.xMax - tCur) * factor;
+            sv.graphUserPanned = true;
         }, { passive: false });
     }
 
@@ -1149,13 +1786,17 @@ function _applyZoom() {
     var pW = W - GM.left - GM.right;
     var pH = H - GM.top  - GM.bottom;
 
+    var isCorde = (typeof activeTab !== 'undefined' && activeTab === 'corde');
+    var sv      = isCorde ? simCorde : sim;
+
     function canvasToDataX(cx) {
-        if (sim.graphMode === 'dpx') return 0;  // X fixe
-        return sim.graphView.xMin + (cx - GM.left) / pW * (sim.graphView.xMax - sim.graphView.xMin);
+        var mode = isCorde ? simCorde.graphMode : sim.graphMode;
+        if (mode === 'dpx') return 0;  // X fixe
+        return sv.graphView.xMin + (cx - GM.left) / pW * (sv.graphView.xMax - sv.graphView.xMin);
     }
     function canvasToDataY(cy) {
-        var yMin = sim.graphMode === 'dpx' ? sim.graphDpxYMin : sim.graphView.yMin;
-        var yMax = sim.graphMode === 'dpx' ? sim.graphDpxYMax : sim.graphView.yMax;
+        var yMin = isCorde ? simCorde.graphYxYMin : (sim.graphMode === 'dpx' ? sim.graphDpxYMin : sim.graphView.yMin);
+        var yMax = isCorde ? simCorde.graphYxYMax : (sim.graphMode === 'dpx' ? sim.graphDpxYMax : sim.graphView.yMax);
         return yMin + (1 - (cy - GM.top) / pH) * (yMax - yMin);
     }
 
@@ -1166,13 +1807,14 @@ function _applyZoom() {
     var y1 = Math.min(r.y1, r.y2);
     var y2 = Math.max(r.y1, r.y2);
 
-    if (sim.graphMode === 'dpt') {
-        sim.graphView.xMin = canvasToDataX(x1);
-        sim.graphView.xMax = canvasToDataX(x2);
+    var mode = isCorde ? simCorde.graphMode : sim.graphMode;
+    if (mode === 'dpt') {
+        sv.graphView.xMin = canvasToDataX(x1);
+        sv.graphView.xMax = canvasToDataX(x2);
     }
-    sim.graphView.yMin = canvasToDataY(y2);
-    sim.graphView.yMax = canvasToDataY(y1);
-    sim.graphUserPanned = true;
+    sv.graphView.yMin = canvasToDataY(y2);
+    sv.graphView.yMax = canvasToDataY(y1);
+    sv.graphUserPanned = true;
 
     var btn = document.getElementById('btn-graph-prev');
     if (btn) btn.disabled = false;

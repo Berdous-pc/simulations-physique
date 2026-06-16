@@ -90,6 +90,7 @@ function scheduleResizeTube() {
     requestAnimationFrame(function() {
         tubeResizeRAF = false;
         resizeTube();
+        resizeCorde();
         resizeGraph();
     });
 }
@@ -693,24 +694,27 @@ function _drawOneBeacon(ctx, x, color, label) {
         var mx   = (e.clientX - rect.left) * (tubeCanvas.width  / rect.width);
         var my   = (e.clientY - rect.top)  * (tubeCanvas.height / rect.height);
 
+        // Choisir les balises selon le tab actif
+        var b1 = (typeof activeTab !== 'undefined' && activeTab === 'corde')
+                    ? simCorde.beacon1 : sim.beacon1;
+        var b2 = (typeof activeTab !== 'undefined' && activeTab === 'corde')
+                    ? simCorde.beacon2 : sim.beacon2;
+
         // Priorité : drag d'une balise
-        if (nearBeacon(mx, sim.beacon1)) {
+        if (nearBeacon(mx, b1)) {
             tubeInter.mode = 'beacon1-drag';
             tubeCanvas.setPointerCapture(e.pointerId);
             return;
         }
-        if (nearBeacon(mx, sim.beacon2)) {
+        if (nearBeacon(mx, b2)) {
             tubeInter.mode = 'beacon2-drag';
             tubeCanvas.setPointerCapture(e.pointerId);
             return;
         }
 
-        // Sélection par proximité (si mode actif)
-        if (sim.selectionMode) {
-            // Convertir position écran en x0 (unité de grille)
+        // Sélection par proximité (si mode actif — Son uniquement)
+        if (sim.selectionMode && !(typeof activeTab !== 'undefined' && activeTab === 'corde')) {
             var x0_click = mx - sim.tubeLeft;
-            
-            // Appeler la fonction de sélection avec les modifieurs clavier
             selectNearbyParticles(x0_click, {
                 ctrl  : e.ctrlKey,
                 shift : e.shiftKey
@@ -723,9 +727,15 @@ function _drawOneBeacon(ctx, x, color, label) {
             // Curseur adaptatif
             var rect = tubeCanvas.getBoundingClientRect();
             var mx   = (e.clientX - rect.left) * (tubeCanvas.width  / rect.width);
-            if (nearBeacon(mx, sim.beacon1) || nearBeacon(mx, sim.beacon2)) {
+
+            var b1 = (typeof activeTab !== 'undefined' && activeTab === 'corde')
+                        ? simCorde.beacon1 : sim.beacon1;
+            var b2 = (typeof activeTab !== 'undefined' && activeTab === 'corde')
+                        ? simCorde.beacon2 : sim.beacon2;
+
+            if (nearBeacon(mx, b1) || nearBeacon(mx, b2)) {
                 tubeCanvas.style.cursor = 'ew-resize';
-            } else if (sim.selectionMode) {
+            } else if (sim.selectionMode && !(typeof activeTab !== 'undefined' && activeTab === 'corde')) {
                 tubeCanvas.style.cursor = 'crosshair';
             } else {
                 tubeCanvas.style.cursor = 'default';
@@ -737,10 +747,17 @@ function _drawOneBeacon(ctx, x, color, label) {
         var mx   = (e.clientX - rect.left) * (tubeCanvas.width  / rect.width);
         var my   = (e.clientY - rect.top)  * (tubeCanvas.height / rect.height);
 
+        // Bornes de déplacement selon le tab
+        var isCorde = (typeof activeTab !== 'undefined' && activeTab === 'corde');
+        var left    = isCorde ? simCorde.cordeLeft  : sim.tubeLeft;
+        var right   = isCorde ? simCorde.cordeRight : sim.tubeRight;
+        var b1      = isCorde ? simCorde.beacon1    : sim.beacon1;
+        var b2      = isCorde ? simCorde.beacon2    : sim.beacon2;
+
         if (tubeInter.mode === 'beacon1-drag') {
-            sim.beacon1.x = Math.max(sim.tubeLeft, Math.min(sim.tubeRight, mx));
+            b1.x = Math.max(left, Math.min(right, mx));
         } else if (tubeInter.mode === 'beacon2-drag') {
-            sim.beacon2.x = Math.max(sim.tubeLeft, Math.min(sim.tubeRight, mx));
+            b2.x = Math.max(left, Math.min(right, mx));
         }
     }
 
@@ -772,4 +789,434 @@ function clearSelection() {
     for (var i = 0; i < sim.cols.length; i++) {
         sim.cols[i].selected = false;
     }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  ██████╗ ██████╗ ██████╗ ██████╗ ███████╗
+//  Rendu du canvas — mode CORDE
+//  Fonctions : resizeCorde, drawCorde, _drawShaker, _drawCordeWire,
+//              _drawCordeBeacons, _drawCordeRuler
+// ══════════════════════════════════════════════════════════════════════
+
+// Épaisseur visuelle du corps du pot vibrant (px)
+var SHAKER_BASE_W = 28;
+
+// ── Recalcul de memAmplitude depuis amplitudeCm ───────────────────────
+//  amplitudeCm (cm) → px via l'échelle 40 cm sur cordeLength px.
+//  Borné pour ne pas dépasser la demi-hauteur utile de la zone.
+
+function _recalcMemAmplitudeCorde() {
+    var pxPerCm = simCorde.cordeLength > 0 ? simCorde.cordeLength / 40 : 10;
+    var halfH   = (simCorde.cordeBottom - simCorde.cordeTop) / 2;
+    var ampPx   = simCorde.amplitudeCm * pxPerCm;
+    // Borner : au minimum 5 px, au maximum 90 % de la demi-hauteur
+    simCorde.memAmplitude = Math.max(5, Math.min(halfH * 0.90, ampPx));
+}
+
+// ── Resize corde ──────────────────────────────────────────────────────
+
+function resizeCorde() {
+    tubeCanvas = tubeCanvas || document.getElementById('tube-canvas');
+    tubeCtx    = tubeCtx    || tubeCanvas.getContext('2d');
+
+    var wrap = document.getElementById('tube-canvas-wrap');
+    var w    = wrap.clientWidth;
+    var h    = wrap.clientHeight;
+    if (w < 10 || h < 28) return;
+
+    tubeCanvas.width  = w;
+    tubeCanvas.height = h;
+
+    // ── Géométrie de la zone corde ────────────────────────────────────
+    // Même logique que le tube son : marge horizontale + verticale
+    var marginH      = 13;
+    var marginTop    = 4;
+    var marginBottom = Math.round(h * 0.12);
+
+    simCorde.cordeLeft   = marginH + SHAKER_BASE_W;
+    simCorde.cordeRight  = w - marginH;
+    simCorde.cordeLength = simCorde.cordeRight - simCorde.cordeLeft;
+    simCorde.cordeTop    = marginTop;
+    simCorde.cordeBottom = Math.max(marginTop + 20, h - marginBottom);
+    simCorde.cordeMiddleY = Math.round((simCorde.cordeTop + simCorde.cordeBottom) / 2);
+
+    // ── Calibration C_BASE_CORDE ──────────────────────────────────────
+    var c_norm_default_corde = Math.sqrt(T_DEFAULT / MU_DEFAULT);  // = 2
+    C_BASE_CORDE = simCorde.cordeLength / (2.0 * c_norm_default_corde);
+
+    // ── Amplitude du pot vibrant ──────────────────────────────────────
+    // Convertie depuis amplitudeCm (cm) vers px via l'échelle 40 cm = cordeLength px.
+    // Bornée pour ne pas déborder de la demi-hauteur disponible.
+    _recalcMemAmplitudeCorde();
+
+    // ── Positions par défaut des balises ─────────────────────────────
+    if (!simCorde.beacon1.active)
+        simCorde.beacon1.x = simCorde.cordeLeft + simCorde.cordeLength * 0.30;
+    if (!simCorde.beacon2.active)
+        simCorde.beacon2.x = simCorde.cordeLeft + simCorde.cordeLength * 0.65;
+
+    updateCeleriteCorde();
+}
+
+// ── Dessin de la scène corde ──────────────────────────────────────────
+
+function drawCorde() {
+    tubeCanvas = tubeCanvas || document.getElementById('tube-canvas');
+    tubeCtx    = tubeCtx    || tubeCanvas.getContext('2d');
+    var ctx    = tubeCtx;
+    var W      = tubeCanvas.width;
+    var H      = tubeCanvas.height;
+    if (!W || !H) return;
+
+    // Recalculer le cap de déplacement visuel
+    updateCordeDispCap();
+
+    // ── Fond général ──────────────────────────────────────────────────
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#fdf8f0';
+    ctx.fillRect(0, 0, W, H);
+
+    // ── Zone de la corde (fond légèrement teinté) ─────────────────────
+    var zoneH   = simCorde.cordeBottom - simCorde.cordeTop;
+    ctx.fillStyle = '#f0ece4';
+    ctx.fillRect(simCorde.cordeLeft, simCorde.cordeTop, simCorde.cordeLength, zoneH);
+
+    // ── Pot vibrant (à gauche) ────────────────────────────────────────
+    // Dessiné EN PREMIER : son masque efface le fond de zone, puis la
+    // corde est tracée par-dessus en partant exactement du point d'accroche.
+    _drawShaker(ctx);
+
+    // ── Fil de la corde ───────────────────────────────────────────────
+    // Dessiné APRÈS le shaker pour partir visuellement du sommet du tube.
+    _drawCordeWire(ctx);
+
+    // ── Balises ───────────────────────────────────────────────────────
+    _drawCordeBeacons(ctx);
+
+    // ── Règle graduée ─────────────────────────────────────────────────
+    _drawCordeRuler(ctx);
+}
+
+// ── Fil de la corde ───────────────────────────────────────────────────
+//
+//  La corde est tracée comme un chemin sinueux depuis x=cordeLeft jusqu'à
+//  x=cordeRight. Pour chaque colonne x (pixels), le déplacement vertical
+//  y(x,t) = cordeDisplacement(x − cordeLeft, simTime) × cordeDispCap
+//  est calculé et ajouté à cordeMiddleY.
+//
+//  Épaisseur du trait = f(μ) : de 1.5 px (μ=0.5) à 5 px (μ=4)
+//  Couleur : bordeaux #7a2510
+
+function _drawCordeWire(ctx) {
+    var L  = simCorde.cordeLength;
+    if (L <= 0) return;
+
+    // Déplacement au point d'accroche (x=0 de la corde = cordeLeft)
+    var disp0 = cordeDisplacement(0, simCorde.simTime) * cordeDispCap;
+    var startX = simCorde.cordeLeft;
+    var startY = simCorde.cordeMiddleY + disp0;
+
+    // Épaisseur selon μ : linéaire de 1.5 (μ=0.5) à 5 (μ=4)
+    var muRange    = 4.0 - 0.5;
+    var lwRange    = 5.0 - 1.5;
+    var cordeLineW = 1.5 + ((simCorde.mu - 0.5) / muRange) * lwRange;
+
+    // Tracé pixel par pixel — sous-pas si λ < 8 px canvas
+    var freqEff_  = (simCorde.sourceMode === 'impulse') ? 1.0 / T_IMPULSE : simCorde.freq;
+    var lambda_px = (simCorde.c_sim > 0) ? simCorde.c_sim / freqEff_ : L;
+    var subSteps  = (lambda_px < L / 50) ? Math.ceil(8 * L / Math.max(0.5, lambda_px)) : Math.ceil(L / 1);
+    subSteps      = Math.max(200, Math.min(6000, subSteps));
+
+    // Clipping dans la zone corde uniquement
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(simCorde.cordeLeft, simCorde.cordeTop, L, simCorde.cordeBottom - simCorde.cordeTop);
+    ctx.clip();
+
+    ctx.beginPath();
+    ctx.moveTo(startX, startY);   // premier point = point d'accroche
+    for (var s = 1; s <= subSteps; s++) {
+        var frac = s / subSteps;
+        var x_px = frac * L;
+        var disp = cordeDisplacement(x_px, simCorde.simTime) * cordeDispCap;
+        var cx   = simCorde.cordeLeft + x_px;
+        var cy   = simCorde.cordeMiddleY + disp;
+        ctx.lineTo(cx, cy);
+    }
+
+    ctx.shadowColor = 'rgba(80,20,0,0.25)';
+    ctx.shadowBlur  = cordeLineW;
+    ctx.strokeStyle = '#7a2510';
+    ctx.lineWidth   = cordeLineW;
+    ctx.lineJoin    = 'round';
+    ctx.lineCap     = 'round';
+    ctx.stroke();
+    ctx.shadowBlur  = 0;
+
+    ctx.restore();
+}
+
+// ── Pot vibrant ───────────────────────────────────────────────────────
+//
+//  Géométrie (vue de face, vertical) :
+//
+//    ┌──────┐   ← sommet du tube animé (y = midY + disp)
+//    │ tube │     → extrémité de la corde accrochée ici
+//    │      │
+//    │      │
+//    └──────┘
+//    ┌──────────┐  ← base fixe (rectangle centré, en bas de zone)
+//    └──────────┘
+//
+//  - Base (fixe) : rectangle gris, centré dans la marge gauche,
+//    ancré juste au-dessus de cordeBottom, hauteur ≈ 18 % de zoneH
+//  - Tube (animé) : rectangle fin centré sur la base,
+//    part du dessus de la base et monte jusqu'à midY + disp
+//  - Point d'accroche : petit disque coloré au sommet du tube
+//    → c'est d'ici que part le fil de la corde
+
+function _drawShaker(ctx) {
+    var cordeTop    = simCorde.cordeTop;
+    var cordeBottom = simCorde.cordeBottom;
+    var midY        = simCorde.cordeMiddleY;
+    var zoneH       = cordeBottom - cordeTop;
+    var marginLeft  = simCorde.cordeLeft;   // largeur totale de la zone pot
+
+    // Déplacement actuel de l'extrémité gauche de la corde (x=0)
+    var disp = cordeDisplacement(0, simCorde.simTime) * Math.min(1.0, cordeDispCap);
+
+    // ── Dimensions ────────────────────────────────────────────────────
+    var baseH  = Math.max(12, Math.round(zoneH * 0.18));   // hauteur base fixe
+    var baseW  = Math.max(18, Math.round(marginLeft * 0.80)); // largeur base
+    var baseX  = Math.round((marginLeft - baseW) / 2);     // centré horizontalement
+    var baseY  = cordeBottom - baseH;                       // ancré en bas de zone
+
+    var tubeW  = Math.max(6, Math.round(baseW * 0.28));    // largeur tube fin
+    var tubeX  = Math.round(marginLeft / 2 - tubeW / 2);  // centré
+
+    // Sommet du tube = position animée (midY + disp), plancher = dessus de la base
+    var tubeTop_anim = Math.min(baseY - 1, midY + disp);   // sommet animé (borné)
+    var tubeBot      = baseY;                               // pied du tube = dessus base
+
+    // ── Fond : masque la zone du pot (couleur de fond de zone) ────────
+    ctx.fillStyle = '#f0ece4';
+    ctx.fillRect(0, cordeTop, marginLeft, zoneH);
+
+    // ── Tube animé ────────────────────────────────────────────────────
+    var tubeH = tubeBot - tubeTop_anim;
+    if (tubeH > 0) {
+        var tGrd = ctx.createLinearGradient(tubeX, 0, tubeX + tubeW, 0);
+        tGrd.addColorStop(0,   '#9aabb8');
+        tGrd.addColorStop(0.5, '#c0d0da');
+        tGrd.addColorStop(1,   '#7a8a98');
+        ctx.fillStyle = tGrd;
+        ctx.fillRect(tubeX, tubeTop_anim, tubeW, tubeH);
+
+        // Contour tube
+        ctx.strokeStyle = '#6a7a88';
+        ctx.lineWidth   = 1;
+        ctx.strokeRect(tubeX, tubeTop_anim, tubeW, tubeH);
+    }
+
+    // ── Base fixe ─────────────────────────────────────────────────────
+    var bGrd = ctx.createLinearGradient(baseX, baseY, baseX, baseY + baseH);
+    bGrd.addColorStop(0,   '#8a9aaa');
+    bGrd.addColorStop(0.4, '#6a7a8a');
+    bGrd.addColorStop(1,   '#4a5a6a');
+    ctx.fillStyle = bGrd;
+    if (ctx.roundRect) {
+        ctx.beginPath();
+        ctx.roundRect(baseX, baseY, baseW, baseH, 3);
+        ctx.fill();
+    } else {
+        ctx.fillRect(baseX, baseY, baseW, baseH);
+    }
+
+    // Contour base
+    ctx.strokeStyle = '#3a4a58';
+    ctx.lineWidth   = 1.2;
+    ctx.strokeRect(baseX, baseY, baseW, baseH);
+
+    // Traits horizontaux décoratifs sur la base (effet métal)
+    ctx.strokeStyle = 'rgba(180,200,210,0.4)';
+    ctx.lineWidth   = 0.8;
+    var nLines = 2;
+    for (var li = 1; li <= nLines; li++) {
+        var ly = baseY + Math.round(baseH * li / (nLines + 1));
+        ctx.beginPath();
+        ctx.moveTo(baseX + 3, ly);
+        ctx.lineTo(baseX + baseW - 3, ly);
+        ctx.stroke();
+    }
+
+    // ── Point d'accroche de la corde (sommet du tube) ─────────────────
+    var attachX = marginLeft;           // extrémité droite = bord de la zone corde
+    var attachY = tubeTop_anim;         // hauteur animée
+    var dotR    = Math.max(3, tubeW * 0.45);
+
+    // Petite encoche : trait horizontal reliant sommet tube au bord de zone
+    ctx.strokeStyle = '#5a3a20';
+    ctx.lineWidth   = Math.max(1.5, tubeW * 0.3);
+    ctx.beginPath();
+    ctx.moveTo(tubeX + tubeW, attachY);
+    ctx.lineTo(attachX, attachY);
+    ctx.stroke();
+
+    // Disque d'accroche
+    ctx.fillStyle   = '#7a2510';
+    ctx.beginPath();
+    ctx.arc(tubeX + tubeW / 2, attachY, dotR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#4a1008';
+    ctx.lineWidth   = 1;
+    ctx.stroke();
+}
+
+// ── Balises corde ─────────────────────────────────────────────────────
+
+function _drawCordeBeacons(ctx) {
+    if (simCorde.beacon1.active) _drawOneCordeBeacon(ctx, simCorde.beacon1.x, '#e07020', 'B1');
+    if (simCorde.beacon2.active) _drawOneCordeBeacon(ctx, simCorde.beacon2.x, '#2a8a50', 'B2');
+}
+
+function _drawOneCordeBeacon(ctx, x, color, label) {
+    var y1    = simCorde.cordeTop;
+    var y2    = simCorde.cordeBottom;
+    var fSize = Math.max(11, Math.round((y2 - y1) * 0.13));
+
+    // Ligne verticale en pointillés
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth   = 3;
+    ctx.setLineDash([6, 4]);
+    ctx.globalAlpha = 0.9;
+    ctx.beginPath();
+    ctx.moveTo(x, y1);
+    ctx.lineTo(x, y2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+
+    // Étiquette au-dessus
+    ctx.fillStyle    = color;
+    ctx.font         = 'bold ' + fSize + 'px "Segoe UI", Arial, sans-serif';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(label, x, y1 - 2);
+
+    // Poignée de drag (losange)
+    ctx.save();
+    ctx.fillStyle   = color;
+    ctx.globalAlpha = 0.9;
+    ctx.beginPath();
+    ctx.moveTo(x,       y1 - fSize * 0.3);
+    ctx.lineTo(x + 6,   y1 + 4);
+    ctx.lineTo(x,       y1 + 8);
+    ctx.lineTo(x - 6,   y1 + 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    // Label de position sur la règle graduée
+    var L = simCorde.cordeLength;
+    if (L <= 0) return;
+    var cmPerPx  = 40 / L;
+    var xCm      = (x - simCorde.cordeLeft) * cmPerPx;
+    var H        = tubeCanvas.height;
+    var yRoom    = H - y2;
+    if (yRoom < 6) return;
+
+    var fontSize = Math.max(13, Math.min(18, Math.round(yRoom * 0.75)));
+    var tickMaj  = Math.min(yRoom * 0.40, 6);
+
+    ctx.save();
+    ctx.fillStyle    = color;
+    ctx.font         = 'bold ' + fontSize + 'px monospace';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(xCm.toFixed(1), x, y2 + tickMaj + 1);
+    ctx.restore();
+}
+
+// ── Règle graduée corde ───────────────────────────────────────────────
+
+function _drawCordeRuler(ctx) {
+    var L = simCorde.cordeLength;
+    if (L <= 0) return;
+
+    var H        = tubeCanvas.height;
+    var yBase    = simCorde.cordeBottom;
+    var yRoom    = H - yBase;
+    if (yRoom < 6) return;
+
+    var cmPerPx  = 40 / L;
+    var xMaxCm   = 40;
+
+    var range    = xMaxCm;
+    var rough    = range / 6;
+    var mag      = Math.pow(10, Math.floor(Math.log10(rough)));
+    var mant     = rough / mag;
+    var step     = mant < 1.5 ? mag : mant < 3.5 ? 2 * mag : mant < 7.5 ? 5 * mag : 10 * mag;
+
+    var fontSize = Math.max(13, Math.min(18, Math.round(yRoom * 0.75)));
+    var tickMaj  = Math.min(yRoom * 0.40, 6);
+    var tickMin  = tickMaj * 0.55;
+
+    ctx.save();
+    ctx.font         = fontSize + 'px monospace';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'top';
+
+    // Ligne de base
+    ctx.strokeStyle = '#8a9aaa';
+    ctx.lineWidth   = 1;
+    ctx.beginPath();
+    ctx.moveTo(simCorde.cordeLeft, yBase);
+    ctx.lineTo(simCorde.cordeRight, yBase);
+    ctx.stroke();
+
+    // Ticks principaux
+    ctx.strokeStyle = '#5a6a78';
+    ctx.lineWidth   = 1;
+    ctx.fillStyle   = '#5a6a78';
+
+    for (var cm = 0; cm <= xMaxCm + step * 0.01; cm += step) {
+        var xc = simCorde.cordeLeft + cm / cmPerPx;
+        if (xc > simCorde.cordeRight + 0.5) break;
+        ctx.beginPath();
+        ctx.moveTo(xc, yBase);
+        ctx.lineTo(xc, yBase + tickMaj);
+        ctx.stroke();
+        ctx.fillText(cm === 0 ? '0' : cm.toFixed(0), xc, yBase + tickMaj + 1);
+    }
+
+    // Ticks secondaires
+    ctx.strokeStyle = '#a0b0bc';
+    ctx.lineWidth   = 0.8;
+    var halfStep = step / 2;
+    for (var cm2 = halfStep; cm2 <= xMaxCm + halfStep * 0.01; cm2 += step) {
+        var xc2 = simCorde.cordeLeft + cm2 / cmPerPx;
+        if (xc2 > simCorde.cordeRight + 0.5) break;
+        ctx.beginPath();
+        ctx.moveTo(xc2, yBase);
+        ctx.lineTo(xc2, yBase + tickMin);
+        ctx.stroke();
+    }
+
+    // Unité
+    if (yRoom >= 14) {
+        ctx.fillStyle    = '#7a8a96';
+        ctx.font         = Math.max(12, fontSize - 1) + 'px monospace';
+        ctx.textAlign    = 'right';
+        ctx.fillText('cm', simCorde.cordeLeft - 8, yBase + tickMaj + 1);
+    }
+
+    ctx.restore();
+}
+
+// ── Interactions souris pour les balises corde ────────────────────────
+// Injecté dans initTubeInteractions via le flag activeTab défini dans ui.js
+
+function _nearCordeBeacon(x, beacon) {
+    return beacon.active && Math.abs(x - beacon.x) < 10;
 }
