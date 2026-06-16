@@ -466,6 +466,9 @@ function _drawMembrane(ctx) {
     // Déplacement visuel de la membrane : même cap que les colonnes mais plafonné à 1.0.
     // → La membrane bénéficie de la réduction du cap à haute fréquence (évite le chevauchement),
     //   mais n'est jamais "boostée" au-delà de l'amplitude physique réelle à basse fréquence.
+    //   Aucun trou ne résulte de ce plafonnement : extraLeft (memAmplitude × tubeDispCap)
+    //   couvre largement la marge nécessaire (memAmplitude × (tubeDispCap − 1)) grâce au
+    //   réservoir de particules virtuelles à x0 < 0 qui glissent vers la zone visible.
     var memCap = Math.min(1.0, tubeDispCap);
     var disp = waveDisplacement(0, sim.simTime) * memCap;
 

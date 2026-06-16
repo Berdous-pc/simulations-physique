@@ -212,6 +212,7 @@ function onSliderK(v) {
     if (lbl) lbl.textContent = sim.K.toFixed(1).replace('.', ',');
     updateCelerite();
     _updateCReadout();
+    initCols();
 }
 
 function onSliderAtten(v) {
