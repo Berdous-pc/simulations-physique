@@ -394,7 +394,10 @@ function updateYxDataVagues() {
     var N_PTS    = 400;
     var sx       = simVagues.sourceX;
     var sy       = simVagues.sourceY;
-    var max_r_px = simVagues.canvasW - sx;
+    // En vue coupe, générer des données jusqu'au bord droit visible (plage plus large)
+    var max_r_px = (simVagues.viewMode === 'coupe')
+        ? simVagues.canvasW - COUPE_LEFT_MARGIN
+        : simVagues.canvasW - sx;
     if (max_r_px <= 0) max_r_px = simVagues.canvasW;
 
     var peakCm = 0;
@@ -436,7 +439,6 @@ function updateYtDataVagues(t) {
 function drawGraphVagues(ctx, W, H) {
     ctx.fillStyle = '#faf9f6';
     ctx.fillRect(0, 0, W, H);
-
     var mode = simVagues.graphMode;
 
     if (mode === 'both') {
@@ -476,10 +478,14 @@ function _drawYxGraphVagues(ctx, W, H) {
     var max_r_px = simVagues.canvasW - simVagues.sourceX;
     if (max_r_px <= 0) max_r_px = simVagues.canvasW;
 
+    // Plage x : distance visible depuis la source selon la vue
+    var max_r_px = (simVagues.viewMode === 'coupe')
+        ? simVagues.canvasW - COUPE_LEFT_MARGIN
+        : simVagues.canvasW - simVagues.sourceX;
+    if (max_r_px <= 0) max_r_px = simVagues.canvasW;
     var xMin = 0;
-    var xMax = max_r_px > 0 ? max_r_px : 1;
-    var peak = Math.max(0.1, simVagues.peakAmpCm);
-    var yMax = peak * 1.15;
+    var xMax = max_r_px;
+    var yMax = 3 * 1.12;  // échelle fixe : amplitude max slider × marge
     var yMin = -yMax;
     simVagues.graphYxYMin = yMin;
     simVagues.graphYxYMax = yMax;
@@ -498,12 +504,12 @@ function _drawYxGraphVagues(ctx, W, H) {
     ctx.fillRect(GM.left, GM.top, pW, pH);
 
     _drawGridY(ctx, yMin, yMax, px, py, pW, pH);
-    // Grille X en mètres
-    _drawGridX_vagues(ctx, xMin, xMax, px, py, pW, pH, max_r_px);
+    // Grille X en mètres — max_r_px = xMax pour que les labels correspondent à la plage affichée
+    _drawGridX_vagues(ctx, xMin, xMax, px, py, pW, pH, xMax);
     _drawZeroLine(ctx, yMin, yMax, px, py, pW);
 
-    // Courbe y(x)
-    if (data && data.length > 1) {
+    // Courbe y(x) — masquée pendant la transition
+    if (data && data.length > 1 && !simVagues.transAnim) {
         ctx.save();
         ctx.beginPath();
         var firstPt = true;
@@ -610,8 +616,7 @@ function _drawYtGraphVagues(ctx, W, H) {
     var xMin = 0, xMax = 5;
     simVagues.graphView.xMin = xMin;
     simVagues.graphView.xMax = xMax;
-    var peak = Math.max(0.1, simVagues.peakAmpCm);
-    var yMax = peak * 1.15;
+    var yMax = 3 * 1.12;  // échelle fixe : amplitude max slider × marge
     var yMin = -yMax;
     simVagues.graphView.yMin = yMin;
     simVagues.graphView.yMax = yMax;
@@ -1076,7 +1081,10 @@ function toggleViewVagues() {
         wasPaused : wasPaused
     };
     var btn = document.getElementById('btn-view-coupe-vagues');
-    if (btn) btn.classList.toggle('active', toCoupe);
+    if (btn) {
+        btn.classList.toggle('active', toCoupe);
+        btn.textContent = toCoupe ? 'Vue du dessus' : 'Vue en coupe';
+    }
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -1097,7 +1105,9 @@ function toggleViewVagues() {
 
 function _drawVaguesTransition(ctx, W, H) {
     var tr      = simVagues.transAnim;
-    var elapsed = (performance.now() - tr.startT) / 1000;
+    var elapsed = tr._pausedAt
+        ? (tr._pausedAt - tr.startT) / 1000
+        : (performance.now() - tr.startT) / 1000;
 
     var DUR_ROT   = 0.60;
     var DUR_SLIDE = 0.60;

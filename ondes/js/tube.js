@@ -122,6 +122,10 @@ function scheduleResizeTube() {
             dragging  = true;
             startY    = e.clientY;
             startAnim = animArea.getBoundingClientRect().height;
+            // Pause la transition vagues si elle est en cours
+            if (typeof simVagues !== 'undefined' && simVagues.transAnim && !simVagues.transAnim._pausedAt) {
+                simVagues.transAnim._pausedAt = performance.now();
+            }
 
             var totalH    = leftCol.getBoundingClientRect().height;
             var splitterH = 6;
@@ -183,6 +187,11 @@ function scheduleResizeTube() {
             if (!dragging) return;
             dragging = false;
             splitter.classList.remove('dragging');
+            // Reprend la transition vagues en décalant startT de la durée de pause
+            if (typeof simVagues !== 'undefined' && simVagues.transAnim && simVagues.transAnim._pausedAt) {
+                simVagues.transAnim.startT += performance.now() - simVagues.transAnim._pausedAt;
+                simVagues.transAnim._pausedAt = 0;
+            }
         });
     }
 
