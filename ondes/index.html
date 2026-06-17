@@ -219,19 +219,19 @@
           <div class="param-row">
             <label>
               Masse volumique ρ
-              <span class="param-value"><span id="lbl-rho">1,0</span></span>
+              <span class="param-value"><span id="lbl-rho">1,0</span> kg/m³</span>
             </label>
             <input type="range" id="sl-rho"
                    min="0.5" max="4.0" step="0.1" value="1.0"
                    oninput="onSliderRho(this.value)">
-            <span class="input-hint">Densité de particules dans le tube</span>
+            <span class="input-hint">Densité de particules dans le tube.</span>
           </div>
 
           <!-- Compressibilité -->
           <div class="param-row">
             <label>
               Compressibilité K
-              <span class="param-value"><span id="lbl-K">4,0</span></span>
+              <span class="param-value"><span id="lbl-K">4,0</span> Pa</span>
             </label>
             <input type="range" id="sl-K"
                    min="0.5" max="10.0" step="0.5" value="4.0"
@@ -248,7 +248,7 @@
             <input type="range" id="sl-atten"
                    min="0" max="1.0" step="0.05" value="0"
                    oninput="onSliderAtten(this.value)">
-            <span class="input-hint">0 = aucune atténuation</span>
+            <span class="input-hint">0 = aucune atténuation.</span>
           </div>
 
           <!-- Bouton propriétés de l'onde -->
@@ -339,7 +339,7 @@
             <input type="range" id="sl-mu"
                    min="0.1" max="4.0" step="0.1" value="1.0"
                    oninput="onSliderMu(this.value)">
-            <span class="input-hint">Masse par unité de longueur (épaisseur visuelle)</span>
+            <span class="input-hint">Masse par unité de longueur.</span>
           </div>
 
           <!-- Tension T -->
@@ -351,7 +351,7 @@
             <input type="range" id="sl-T-tension"
                    min="0.5" max="10.0" step="0.5" value="4.0"
                    oninput="onSliderTension(this.value)">
-            <span class="input-hint">Raideur de la corde — détermine la célérité.</span>
+            <span class="input-hint">Raideur de la corde.</span>
           </div>
 
           <!-- Atténuation -->
@@ -363,7 +363,7 @@
             <input type="range" id="sl-atten-corde"
                    min="0" max="1.0" step="0.05" value="0"
                    oninput="onSliderAttenCorde(this.value)">
-            <span class="input-hint">0 = aucune atténuation</span>
+            <span class="input-hint">0 = aucune atténuation.</span>
           </div>
 
           <!-- Bouton propriétés de l'onde -->
