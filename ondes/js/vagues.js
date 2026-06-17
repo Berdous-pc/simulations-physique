@@ -394,16 +394,28 @@ function updateYxDataVagues() {
     var N_PTS    = 400;
     var sx       = simVagues.sourceX;
     var sy       = simVagues.sourceY;
-    // En vue coupe, générer des données jusqu'au bord droit visible (plage plus large)
-    var max_r_px = (simVagues.viewMode === 'coupe')
-        ? simVagues.canvasW - COUPE_LEFT_MARGIN
-        : simVagues.canvasW - sx;
-    if (max_r_px <= 0) max_r_px = simVagues.canvasW;
+    var max_r_top   = simVagues.canvasW - sx;
+    var max_r_coupe = simVagues.canvasW - COUPE_LEFT_MARGIN;
+    if (max_r_top   <= 0) max_r_top   = simVagues.canvasW;
+    if (max_r_coupe <= 0) max_r_coupe = simVagues.canvasW;
+
+    // Plage de données selon l'état :
+    //  - transition : couvre la totalité du parcours (-max_r_top → +max_r_coupe)
+    //  - top stable : symétrique (-max_r_top → +max_r_top)
+    //  - coupe stable : 0 → max_r_coupe
+    var xStart, xEnd;
+    if (simVagues.transAnim) {
+        xStart = -max_r_top;   xEnd = max_r_coupe;
+    } else if (simVagues.viewMode === 'coupe') {
+        xStart = 0;            xEnd = max_r_coupe;
+    } else {
+        xStart = -max_r_top;   xEnd = max_r_top;
+    }
 
     var peakCm = 0;
     for (var i = 0; i <= N_PTS; i++) {
-        var x_px  = (i / N_PTS) * max_r_px;
-        var yCm   = _waveFieldRaw(sx + x_px, sy) * VAGUES_AMP_CM;
+        var x_px = xStart + (i / N_PTS) * (xEnd - xStart);
+        var yCm  = _waveFieldRaw(sx + x_px, sy) * VAGUES_AMP_CM;
         simVagues.yxData.push({ x: x_px, y: yCm });
         var a = yCm < 0 ? -yCm : yCm;
         if (a > peakCm) peakCm = a;
@@ -474,17 +486,49 @@ function drawGraphVagues(ctx, W, H) {
 // ── y(x) ──────────────────────────────────────────────────────────────
 
 function _drawYxGraphVagues(ctx, W, H) {
-    var data    = simVagues.yxData;
-    var max_r_px = simVagues.canvasW - simVagues.sourceX;
-    if (max_r_px <= 0) max_r_px = simVagues.canvasW;
+    var data = simVagues.yxData;
 
-    // Plage x : distance visible depuis la source selon la vue
-    var max_r_px = (simVagues.viewMode === 'coupe')
-        ? simVagues.canvasW - COUPE_LEFT_MARGIN
-        : simVagues.canvasW - simVagues.sourceX;
-    if (max_r_px <= 0) max_r_px = simVagues.canvasW;
-    var xMin = 0;
-    var xMax = max_r_px;
+    var max_r_top   = simVagues.canvasW - simVagues.sourceX;
+    var max_r_coupe = simVagues.canvasW - COUPE_LEFT_MARGIN;
+    if (max_r_top   <= 0) max_r_top   = simVagues.canvasW;
+    if (max_r_coupe <= 0) max_r_coupe = simVagues.canvasW;
+
+    var xMin, xMax;
+    var tr = simVagues.transAnim;
+    if (tr) {
+        // Pendant la transition : anime xMin/xMax selon la progression du panoramique
+        var elapsed = tr._pausedAt
+            ? (tr._pausedAt - tr.startT) / 1000
+            : (performance.now() - tr.startT) / 1000;
+        var DUR_ROT = 0.90, DUR_SLIDE = 0.90, DUR_BLEND = 0.90;
+        var panFrac;
+        if (tr.direction === 'toCoupe') {
+            if (elapsed < DUR_ROT) {
+                panFrac = 0;
+            } else if (elapsed < DUR_ROT + DUR_SLIDE) {
+                var t01 = (elapsed - DUR_ROT) / DUR_SLIDE;
+                panFrac = t01 < 0.5 ? 2*t01*t01 : -1+(4-2*t01)*t01;
+            } else {
+                panFrac = 1;
+            }
+        } else { // toTop
+            if (elapsed < DUR_BLEND) {
+                panFrac = 1;
+            } else if (elapsed < DUR_BLEND + DUR_SLIDE) {
+                var t01 = (elapsed - DUR_BLEND) / DUR_SLIDE;
+                var ep  = t01 < 0.5 ? 2*t01*t01 : -1+(4-2*t01)*t01;
+                panFrac = 1 - ep;
+            } else {
+                panFrac = 0;
+            }
+        }
+        xMin = -max_r_top * (1 - panFrac);
+        xMax = max_r_top + (max_r_coupe - max_r_top) * panFrac;
+    } else {
+        var max_r_px = (simVagues.viewMode === 'coupe') ? max_r_coupe : max_r_top;
+        xMin = (simVagues.viewMode !== 'coupe') ? -max_r_px : 0;
+        xMax = max_r_px;
+    }
     var yMax = 3 * 1.12;  // échelle fixe : amplitude max slider × marge
     var yMin = -yMax;
     simVagues.graphYxYMin = yMin;
@@ -508,8 +552,8 @@ function _drawYxGraphVagues(ctx, W, H) {
     _drawGridX_vagues(ctx, xMin, xMax, px, py, pW, pH, xMax);
     _drawZeroLine(ctx, yMin, yMax, px, py, pW);
 
-    // Courbe y(x) — masquée pendant la transition
-    if (data && data.length > 1 && !simVagues.transAnim) {
+    // Courbe y(x)
+    if (data && data.length > 1) {
         ctx.save();
         ctx.beginPath();
         var firstPt = true;
@@ -551,9 +595,10 @@ function _drawYxGraphVagues(ctx, W, H) {
 }
 
 // Grille X pour vagues : distance en mètres
-function _drawGridX_vagues(ctx, xMin, xMax, px, py, pW, pH, max_r_px) {
+function _drawGridX_vagues(ctx, xMin_px, xMax_px, px, py, pW, pH, max_r_px) {
     if (C_BASE_VAGUES <= 0 || max_r_px <= 0) return;
     var m_per_px  = 1 / C_BASE_VAGUES;
+    var xMin_m    = xMin_px * m_per_px;   // peut être négatif
     var xMax_m    = max_r_px * m_per_px;
     var step      = _niceStep(xMax_m, 6);
     var decimals  = step < 0.1 ? 2 : (step < 1 ? 1 : 0);
@@ -562,7 +607,8 @@ function _drawGridX_vagues(ctx, xMin, xMax, px, py, pW, pH, max_r_px) {
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'top';
 
-    for (var u = 0; u <= xMax_m + step * 0.01; u += step) {
+    var uStart = xMin_m < 0 ? Math.ceil(xMin_m / step - 0.01) * step : 0;
+    for (var u = uStart; u <= xMax_m + step * 0.01; u += step) {
         var xData = u / m_per_px;
         var xc    = px(xData);
         if (xc < GM.left - 2 || xc > GM.left + pW + 2) continue;
@@ -591,8 +637,11 @@ function _drawBeaconMarkerVagues(ctx, px, py, pW, pH, yMin, yMax) {
         if (!s.b.active) continue;
         // distance du beacon à la source projetée sur l'axe horizontal
         var bx_dist = s.b.x - sx; // peut être négatif
-        if (bx_dist < 0) continue; // ne pas afficher si à gauche de la source
-        _drawBeaconMarker(ctx, px(bx_dist), py, yMin, yMax, s.color, s.label, pH);
+        // En vue du dessus, les balises à gauche de la source sont valides
+        if (bx_dist < 0 && simVagues.viewMode !== 'top') continue;
+        var xBeacon = px(bx_dist);
+        if (xBeacon < GM.left - 1 || xBeacon > GM.left + pW + 1) continue;
+        _drawBeaconMarker(ctx, xBeacon, py, yMin, yMax, s.color, s.label, pH);
     }
 }
 
@@ -1109,9 +1158,9 @@ function _drawVaguesTransition(ctx, W, H) {
         ? (tr._pausedAt - tr.startT) / 1000
         : (performance.now() - tr.startT) / 1000;
 
-    var DUR_ROT   = 0.60;
-    var DUR_SLIDE = 0.60;
-    var DUR_BLEND = 0.60;
+    var DUR_ROT   = 0.90;
+    var DUR_SLIDE = 0.90;
+    var DUR_BLEND = 0.90;
     var MAX_PAN   = simVagues.sourceX - COUPE_LEFT_MARGIN;
 
     var TOTAL = (tr.direction === 'toCoupe')
