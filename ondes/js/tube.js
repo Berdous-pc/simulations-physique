@@ -1005,11 +1005,9 @@ function _drawCordeWire(ctx) {
     var lwRange    = 5.0 - 1.5;
     var cordeLineW = 1.5 + ((simCorde.mu - 0.1) / muRange) * lwRange;
 
-    // Tracé pixel par pixel — sous-pas si λ < 8 px canvas
     var freqEff_  = (simCorde.sourceMode === 'impulse') ? 1.0 / T_IMPULSE : simCorde.freq;
     var lambda_px = (simCorde.c_sim > 0) ? simCorde.c_sim / freqEff_ : L;
-    var subSteps  = (lambda_px < L / 50) ? Math.ceil(8 * L / Math.max(0.5, lambda_px)) : Math.ceil(L / 1);
-    subSteps      = Math.max(200, Math.min(6000, subSteps));
+    var subSteps  = Math.max(400, Math.min(6000, Math.ceil(50 * L / Math.max(0.5, lambda_px))));
 
     // Clipping dans la zone corde uniquement
     ctx.save();

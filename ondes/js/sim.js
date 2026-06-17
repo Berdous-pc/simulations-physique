@@ -474,7 +474,7 @@ function updateYxData() {
     var lambda  = (simCorde.c_sim > 0) ? simCorde.c_sim / freqEff : L;
     var N = 400;
     if (lambda > 0) {
-        N = Math.min(6000, Math.max(400, Math.ceil(20 * L / lambda)));
+        N = Math.min(6000, Math.max(400, Math.ceil(50 * L / lambda)));
     }
 
     for (var i = 0; i <= N; i++) {
@@ -572,7 +572,7 @@ function updateDpxData() {
     var lambda  = (sim.c_sim > 0) ? sim.c_sim / freqEff : L;  // px
     var N = 400;
     if (lambda > 0) {
-        N = Math.min(6000, Math.max(400, Math.ceil(20 * L / lambda)));
+        N = Math.min(6000, Math.max(400, Math.ceil(50 * L / lambda)));
     }
 
     for (var i = 0; i <= N; i++) {

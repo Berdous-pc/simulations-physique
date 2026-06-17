@@ -16,6 +16,7 @@
 // ── Constantes ────────────────────────────────────────────────────────
 var BLOCK_V               = 2;     // taille des blocs de rendu (px) — 2 pour meilleure résolution
 var VAGUES_AMP_GAIN       = 1.6;   // gain visuel appliqué au champ calculé
+var VAGUES_VIS_AMP_SCALE  = 5/6;   // réduit l'amplitude visuelle animation (3→équivalent 2.5)
 var C_BASE_VAGUES         = 150;   // px/s par m/s — recalibré au resize
 var COUPE_LEFT_MARGIN     = 70;    // px réservés à gauche pour la source en vue coupe
 
@@ -55,8 +56,8 @@ var simVagues = {
     sourceResetTime : 0,
 
     // ── Balises (points draggables dans le canvas 2D) ────────────────
-    beacon1 : { active: false, x: 0, y: 0 },
-    beacon2 : { active: false, x: 0, y: 0 },
+    beacon1 : { active: false, x: 0, y: 0, snapped: false },
+    beacon2 : { active: false, x: 0, y: 0, snapped: false },
 
     // ── Données graphes ──────────────────────────────────────────────
     graphMode     : 'dpx',   // 'dpx' (y(x)) | 'dpt' (y(t)) | 'both'
@@ -373,7 +374,7 @@ function _drawBeaconsVagues(ctx) {
         ctx.beginPath();
         ctx.arc(s.b.x, s.b.y, 3, 0, Math.PI * 2);
         ctx.fill();
-        ctx.font         = 'bold 11px monospace';
+        ctx.font         = 'bold 22px monospace';
         ctx.textAlign    = 'center';
         ctx.textBaseline = 'bottom';
         ctx.fillText(s.label, s.b.x, s.b.y - 10);
@@ -391,7 +392,8 @@ function updateYxDataVagues() {
     simVagues.yxData = [];
     if (simVagues.c_sim <= 0 || simVagues.canvasW <= 0) return;
 
-    var N_PTS    = 400;
+    var lambda_px = (simVagues.freq > 0 && simVagues.c_sim > 0)
+        ? simVagues.c_sim / simVagues.freq : 100;
     var sx       = simVagues.sourceX;
     var sy       = simVagues.sourceY;
     var max_r_top   = simVagues.canvasW - sx;
@@ -412,6 +414,9 @@ function updateYxDataVagues() {
         xStart = -max_r_top;   xEnd = max_r_top;
     }
 
+    var range_px = xEnd - xStart;
+    var N_PTS    = Math.min(6000, Math.max(400, Math.ceil(50 * range_px / lambda_px)));
+
     var peakCm = 0;
     for (var i = 0; i <= N_PTS; i++) {
         var x_px = xStart + (i / N_PTS) * (xEnd - xStart);
@@ -428,20 +433,27 @@ function updateYxDataVagues() {
 // ══════════════════════════════════════════════════════════════════════
 
 function updateYtDataVagues(t) {
-    if (simVagues.beacon1.active) {
+    var b1 = simVagues.beacon1.active && simVagues.beacon1.snapped;
+    var b2 = simVagues.beacon2.active && simVagues.beacon2.snapped;
+    if (!b1 && !b2) return;
+
+    // _waveFieldRaw lit simVagues.simTime en interne : on l'évalue au temps
+    // d'échantillonnage t (identique à cordeDisplacement(x, t) dans sim.js).
+    var savedT = simVagues.simTime;
+    simVagues.simTime = t;
+
+    if (b1) {
         var y1 = _waveFieldRaw(simVagues.beacon1.x, simVagues.beacon1.y) * VAGUES_AMP_CM;
         simVagues.ytData1.push({ t: t, y: y1 });
         if (simVagues.ytData1.length > DP_MAX_POINTS) simVagues.ytData1.shift();
-        var a1 = y1 < 0 ? -y1 : y1;
-        if (a1 > simVagues.peakAmpCm) simVagues.peakAmpCm = a1;
     }
-    if (simVagues.beacon2.active) {
+    if (b2) {
         var y2 = _waveFieldRaw(simVagues.beacon2.x, simVagues.beacon2.y) * VAGUES_AMP_CM;
         simVagues.ytData2.push({ t: t, y: y2 });
         if (simVagues.ytData2.length > DP_MAX_POINTS) simVagues.ytData2.shift();
-        var a2 = y2 < 0 ? -y2 : y2;
-        if (a2 > simVagues.peakAmpCm) simVagues.peakAmpCm = a2;
     }
+
+    simVagues.simTime = savedT;
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -533,6 +545,8 @@ function _drawYxGraphVagues(ctx, W, H) {
     var yMin = -yMax;
     simVagues.graphYxYMin = yMin;
     simVagues.graphYxYMax = yMax;
+    simVagues.graphYxXMin = xMin;
+    simVagues.graphYxXMax = xMax;
 
     _updateFontSizes(ctx, W, H, yMin, yMax);
     GM.left = _calcLeftMarginRaw(ctx, yMin, yMax) + _gFontTitle + 8;
@@ -552,17 +566,14 @@ function _drawYxGraphVagues(ctx, W, H) {
     _drawGridX_vagues(ctx, xMin, xMax, px, py, pW, pH, xMax);
     _drawZeroLine(ctx, yMin, yMax, px, py, pW);
 
-    // Courbe y(x)
+    // Courbe y(x) — clippée sur la zone de tracé pour éviter les débordements
     if (data && data.length > 1) {
         ctx.save();
+        ctx.beginPath(); ctx.rect(GM.left, GM.top, pW, pH); ctx.clip();
         ctx.beginPath();
-        var firstPt = true;
-        for (var i = 0; i < data.length; i++) {
-            var pt = data[i];
-            var cx = px(pt.x);
-            var cy = py(pt.y);
-            if (firstPt) { ctx.moveTo(cx, cy); firstPt = false; }
-            else          { ctx.lineTo(cx, cy); }
+        ctx.moveTo(px(data[0].x), py(data[0].y));
+        for (var i = 1; i < data.length; i++) {
+            ctx.lineTo(px(data[i].x), py(data[i].y));
         }
         ctx.strokeStyle = '#1a6abf';
         ctx.lineWidth   = 2;
@@ -634,7 +645,7 @@ function _drawBeaconMarkerVagues(ctx, px, py, pW, pH, yMin, yMax) {
     ];
     for (var i = 0; i < specs.length; i++) {
         var s = specs[i];
-        if (!s.b.active) continue;
+        if (!s.b.active || !s.b.snapped) continue;
         // distance du beacon à la source projetée sur l'axe horizontal
         var bx_dist = s.b.x - sx; // peut être négatif
         // En vue du dessus, les balises à gauche de la source sont valides
@@ -648,24 +659,43 @@ function _drawBeaconMarkerVagues(ctx, px, py, pW, pH, yMin, yMax) {
 // ── y(t) ──────────────────────────────────────────────────────────────
 
 function _drawYtGraphVagues(ctx, W, H) {
-    var d1 = simVagues.ytData1;
-    var d2 = simVagues.ytData2;
-    var hasData = (simVagues.beacon1.active && d1.length > 1) ||
-                  (simVagues.beacon2.active && d2.length > 1);
+    var d1   = simVagues.ytData1;
+    var d2   = simVagues.ytData2;
+    var b1ok = simVagues.beacon1.active && simVagues.beacon1.snapped;
+    var b2ok = simVagues.beacon2.active && simVagues.beacon2.snapped;
+    var hasData = (b1ok && d1.length > 1) || (b2ok && d2.length > 1);
 
     if (!hasData) {
+        var msg    = 'Activer une balise et la positionner sur l\'axe x pour visualiser le graphe';
+        var fSize  = Math.round(W * 0.025 + 10);
         ctx.fillStyle    = '#7a8a96';
-        ctx.font         = 'italic ' + Math.round(W * 0.025 + 10) + 'px "Segoe UI", Arial, sans-serif';
+        ctx.font         = 'italic ' + fSize + 'px "Segoe UI", Arial, sans-serif';
         ctx.textAlign    = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText('Activez une balise pour afficher le graphe', W / 2, H / 2);
+        if (ctx.measureText(msg).width <= W - 16) {
+            ctx.fillText(msg, W / 2, H / 2);
+        } else {
+            // Coupe au mot le plus proche du milieu pour tenir sur 2 lignes
+            var words  = msg.split(' ');
+            var line1  = '', line2  = '', mid = Math.floor(words.length / 2);
+            // Cherche la coupure qui équilibre les deux lignes
+            for (var cut = mid; cut < words.length; cut++) {
+                var l1 = words.slice(0, cut).join(' ');
+                var l2 = words.slice(cut).join(' ');
+                if (ctx.measureText(l1).width <= W - 16) { line1 = l1; line2 = l2; break; }
+            }
+            if (!line1) { line1 = words.slice(0, mid).join(' '); line2 = words.slice(mid).join(' '); }
+            var gap = fSize * 1.4;
+            ctx.fillText(line1, W / 2, H / 2 - gap / 2);
+            ctx.fillText(line2, W / 2, H / 2 + gap / 2);
+        }
         return;
     }
 
     var xMin = 0, xMax = 5;
     simVagues.graphView.xMin = xMin;
     simVagues.graphView.xMax = xMax;
-    var yMax = 3 * 1.12;  // échelle fixe : amplitude max slider × marge
+    var yMax = 3 * 1.12;
     var yMin = -yMax;
     simVagues.graphView.yMin = yMin;
     simVagues.graphView.yMax = yMax;
@@ -692,10 +722,10 @@ function _drawYtGraphVagues(ctx, W, H) {
     ctx.rect(GM.left, GM.top, pW, pH);
     ctx.clip();
 
-    var tOrigin = simVagues.ytTimeOrigin;
-    if (simVagues.beacon1.active && d1.length > 1)
+    var tOrigin = simVagues.ytTimeOrigin || 0;
+    if (b1ok && d1.length > 1)
         _drawSeriesVagues(ctx, d1, xMin, xMax, px, py, '#e07020', 2, tOrigin);
-    if (simVagues.beacon2.active && d2.length > 1)
+    if (b2ok && d2.length > 1)
         _drawSeriesVagues(ctx, d2, xMin, xMax, px, py, '#2a8a50', 2, tOrigin);
 
     ctx.restore();
@@ -704,7 +734,6 @@ function _drawYtGraphVagues(ctx, W, H) {
     ctx.lineWidth   = 1;
     ctx.strokeRect(GM.left, GM.top, pW, pH);
 
-    // Labels axes
     ctx.fillStyle    = '#5a6a78';
     ctx.font         = _gFontTitle + 'px "Segoe UI", Arial, sans-serif';
     ctx.textAlign    = 'center';
@@ -750,13 +779,13 @@ function _drawLegendVagues(ctx, W, pH) {
     ctx.font         = 'bold ' + fs + 'px monospace';
     ctx.textAlign    = 'left';
     ctx.textBaseline = 'middle';
-    if (simVagues.beacon1.active) {
+    if (simVagues.beacon1.active && simVagues.beacon1.snapped) {
         ctx.fillStyle = '#e07020';
         ctx.fillRect(x, y - fs * 0.4, 16, 3);
         ctx.fillText('Balise 1', x + 20, y);
         y += fs + 6;
     }
-    if (simVagues.beacon2.active) {
+    if (simVagues.beacon2.active && simVagues.beacon2.snapped) {
         ctx.fillStyle = '#2a8a50';
         ctx.fillRect(x, y - fs * 0.4, 16, 3);
         ctx.fillText('Balise 2', x + 20, y);
@@ -766,16 +795,26 @@ function _drawLegendVagues(ctx, W, pH) {
 // ── Mode simultané — liaisons ─────────────────────────────────────────
 
 function _drawBothLinksVagues(ctx, W, H, half, sep) {
-    var yMin = -1.12, yMax = 1.12;
+    // Échelle Y identique aux deux graphes
+    var yMax = 3 * 1.12, yMin = -yMax;
     var pH   = H - GM.top - GM.bottom;
-    if (pH <= 0) return;
+    var pW_l = half - GM.left - GM.right;
+    var pW_r = half - GM.left - GM.right;
+    if (pH <= 0 || pW_l <= 0 || pW_r <= 0) return;
 
     function py(v) { return GM.top + (1 - (v - yMin) / (yMax - yMin)) * pH; }
 
-    var tOrigin = simVagues.ytTimeOrigin || 0;
-    var WINDOW  = 5;
-    var max_r_px = simVagues.canvasW - simVagues.sourceX;
-    if (max_r_px <= 0) max_r_px = 1;
+    // Plage X du graphe y(x) — même logique que _drawYxGraphVagues
+    var max_r_top   = simVagues.canvasW - simVagues.sourceX;
+    var max_r_coupe = simVagues.canvasW - COUPE_LEFT_MARGIN;
+    if (max_r_top   <= 0) max_r_top   = simVagues.canvasW;
+    if (max_r_coupe <= 0) max_r_coupe = simVagues.canvasW;
+    var xMin_yx, xMax_yx;
+    if (simVagues.viewMode === 'coupe') {
+        xMin_yx = 0; xMax_yx = max_r_coupe;
+    } else {
+        xMin_yx = -max_r_top; xMax_yx = max_r_top;
+    }
 
     var specs = [
         { b: simVagues.beacon1, color: '#e07020' },
@@ -783,20 +822,22 @@ function _drawBothLinksVagues(ctx, W, H, half, sep) {
     ];
     for (var i = 0; i < specs.length; i++) {
         var s = specs[i];
-        if (!s.b.active) continue;
-        var yVal = _waveFieldAt(s.b.x, s.b.y);
+        if (!s.b.active || !s.b.snapped) continue;
+
+        // Valeur y courante — même formule que les courbes des deux graphes
+        var yVal = _waveFieldRaw(s.b.x, s.b.y) * VAGUES_AMP_CM;
         var yc   = py(yVal);
         if (yc < GM.top || yc > GM.top + pH) continue;
 
-        var pW_l = half - GM.left - GM.right;
-        if (pW_l <= 0) continue;
+        // Point sur y(x) : position de la balise le long de l'axe x
         var bx_dist = s.b.x - simVagues.sourceX;
-        if (bx_dist < 0) bx_dist = 0;
-        var xDpx = GM.left + (bx_dist / max_r_px) * pW_l;
+        var xDpx = GM.left + (bx_dist - xMin_yx) / (xMax_yx - xMin_yx) * pW_l;
+        if (xDpx < GM.left || xDpx > GM.left + pW_l) continue;
 
-        var tLocal   = simVagues.simTime - tOrigin;
-        tLocal       = Math.max(0, Math.min(WINDOW, tLocal));
-        var pW_r     = half - GM.left - GM.right;
+        // Point sur y(t) : position du curseur temporel dans la fenêtre 0–5 s
+        var WINDOW   = 5;
+        var tOrigin  = simVagues.ytTimeOrigin || 0;
+        var tLocal   = Math.max(0, Math.min(WINDOW, simVagues.simTime - tOrigin));
         var xDpt     = (half + sep) + GM.left + (tLocal / WINDOW) * pW_r;
 
         ctx.save();
@@ -828,9 +869,6 @@ function _drawSnappedHoverVagues_yx(ctx, W, H) {
     var data = simVagues.yxData;
     if (!data || data.length < 2) return;
 
-    var max_r_px = simVagues.canvasW - simVagues.sourceX;
-    if (max_r_px <= 0) max_r_px = 1;
-
     ctx.save();
     _updateFontSizes(ctx, W, H, simVagues.graphYxYMin, simVagues.graphYxYMax);
     GM.left = _calcLeftMarginRaw(ctx, simVagues.graphYxYMin, simVagues.graphYxYMax) + _gFontTitle + 8;
@@ -838,7 +876,8 @@ function _drawSnappedHoverVagues_yx(ctx, W, H) {
     if (pW < 10 || pH < 10) { ctx.restore(); return; }
 
     var yMin = simVagues.graphYxYMin, yMax = simVagues.graphYxYMax;
-    function px(v) { return GM.left + v / max_r_px * pW; }
+    var xMin = simVagues.graphYxXMin || 0, xMax = simVagues.graphYxXMax || 1;
+    function px(v) { return GM.left + (v - xMin) / (xMax - xMin) * pW; }
     function py(v) { return GM.top  + (1 - (v - yMin) / (yMax - yMin)) * pH; }
 
     var mx = graphHoverPos.x, my = graphHoverPos.y;
@@ -884,7 +923,9 @@ function _drawSnappedHoverVagues_yx(ctx, W, H) {
 function _drawSnappedHoverVagues_yt(ctx, W, H) {
     if (!graphHoverPos) return;
     ctx.save();
-    var yMin = -1.12, yMax = 1.12;
+    var WINDOW  = 5;
+    var tOrigin = simVagues.ytTimeOrigin || 0;
+    var yMax = 3 * 1.12, yMin = -yMax;
     _updateFontSizes(ctx, W, H, yMin, yMax);
     GM.left = _calcLeftMarginRaw(ctx, yMin, yMax) + _gFontTitle + 8;
     var pW = W - GM.left - GM.right, pH = H - GM.top - GM.bottom;
@@ -895,12 +936,10 @@ function _drawSnappedHoverVagues_yt(ctx, W, H) {
     function py(v) { return GM.top  + (1 - (v - yMin) / (yMax - yMin)) * pH; }
 
     var mx = graphHoverPos.x, my = graphHoverPos.y;
-    var tOrigin = simVagues.ytTimeOrigin || 0;
-    var WINDOW  = 5;
-    var series  = [];
-    if (simVagues.beacon1.active && simVagues.ytData1.length > 1)
+    var series = [];
+    if (simVagues.beacon1.active && simVagues.beacon1.snapped && simVagues.ytData1.length > 1)
         series.push({ data: simVagues.ytData1, color: '#e07020' });
-    if (simVagues.beacon2.active && simVagues.ytData2.length > 1)
+    if (simVagues.beacon2.active && simVagues.beacon2.snapped && simVagues.ytData2.length > 1)
         series.push({ data: simVagues.ytData2, color: '#2a8a50' });
 
     var winner = null, winnerColor = null, winnerDist = Infinity;
@@ -912,32 +951,32 @@ function _drawSnappedHoverVagues_yt(ctx, W, H) {
             if (tLocal < 0 || tLocal > WINDOW) continue;
             var bx  = px(tLocal), by = py(pt.y);
             var byc = Math.max(GM.top, Math.min(GM.top + pH, by));
-            var dist = Math.sqrt((bx - mx) * (bx - mx) + (byc - my) * (byc - my));
-            if (dist < winnerDist) { winnerDist = dist; winner = pt; winnerColor = sr.color; }
+            var d   = Math.sqrt((bx - mx) * (bx - mx) + (byc - my) * (byc - my));
+            if (d < winnerDist) { winnerDist = d; winner = { tLocal: tLocal, y: pt.y }; winnerColor = sr.color; }
         }
     }
     if (!winner) { ctx.restore(); return; }
 
-    var tL = winner.t - tOrigin;
-    var bx = px(tL), byc2 = Math.max(GM.top, Math.min(GM.top + pH, py(winner.y)));
+    var bx2  = px(winner.tLocal);
+    var byc2 = Math.max(GM.top, Math.min(GM.top + pH, py(winner.y)));
     ctx.setLineDash([4, 4]);
     ctx.strokeStyle = 'rgba(60,60,60,0.45)';
     ctx.lineWidth   = 1;
-    ctx.beginPath(); ctx.moveTo(bx, byc2); ctx.lineTo(bx, GM.top + pH); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(bx, byc2); ctx.lineTo(GM.left, byc2);    ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(bx2, byc2); ctx.lineTo(bx2, GM.top + pH); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(bx2, byc2); ctx.lineTo(GM.left, byc2);    ctx.stroke();
     ctx.setLineDash([]);
     ctx.fillStyle = winnerColor;
     ctx.beginPath();
-    ctx.arc(bx, byc2, 5, 0, Math.PI * 2);
+    ctx.arc(bx2, byc2, 5, 0, Math.PI * 2);
     ctx.fill();
-    var label = '(' + tL.toFixed(2) + ' s, y = ' + winner.y.toFixed(3) + ')';
+    var label = '(' + winner.tLocal.toFixed(2) + ' s, y = ' + winner.y.toFixed(3) + ')';
     ctx.font         = _gFontHover + 'px monospace';
     ctx.fillStyle    = winnerColor;
     ctx.textBaseline = 'bottom';
     ctx.textAlign    = 'left';
-    var lw = ctx.measureText(label).width;
-    var lx = (bx + 10 + lw > GM.left + pW) ? bx - 10 - lw : bx + 10;
-    var ly = (byc2 - 8 < GM.top + 28)       ? byc2 + 32     : byc2 - 8;
+    var lw2 = ctx.measureText(label).width;
+    var lx  = (bx2 + 10 + lw2 > GM.left + pW) ? bx2 - 10 - lw2 : bx2 + 10;
+    var ly  = (byc2 - 8 < GM.top + 28) ? byc2 + 32 : byc2 - 8;
     ctx.fillText(label, lx, ly);
     ctx.restore();
 }
@@ -999,8 +1038,10 @@ function _toggleBeaconVagues(n) {
         beacon.y = sy;
         beacon.rx = beacon.x / W;
         beacon.ry = beacon.y / simVagues.canvasH;
+        beacon.snapped = true;
         if (btn) btn.classList.add('active');
     } else {
+        beacon.snapped = false;
         if (btn) btn.classList.remove('active');
         if (n === 1) simVagues.ytData1 = [];
         else         simVagues.ytData2 = [];
@@ -1121,7 +1162,26 @@ function _updateWavePropsVagues() {
 function toggleViewVagues() {
     if (simVagues.transAnim) return;
     var toCoupe   = (simVagues.viewMode === 'top');
-    if (toCoupe) simVagues.coupeSrcX = simVagues.canvasW / 2;
+    if (toCoupe) {
+        simVagues.coupeSrcX = simVagues.canvasW / 2;
+        // Désactiver les balises qui ne seront pas visibles en vue coupe (hors axe x>0)
+        var sx = simVagues.sourceX;
+        var bSpecs = [
+            { b: simVagues.beacon1, n: 1 },
+            { b: simVagues.beacon2, n: 2 }
+        ];
+        for (var bi = 0; bi < bSpecs.length; bi++) {
+            var bs = bSpecs[bi];
+            if (bs.b.active && !(bs.b.snapped && bs.b.x > sx)) {
+                bs.b.active  = false;
+                bs.b.snapped = false;
+                var bBtn = document.getElementById('btn-beacon' + bs.n);
+                if (bBtn) bBtn.classList.remove('active');
+                if (bs.n === 1) { simVagues.ytData1 = []; }
+                else            { simVagues.ytData2 = []; }
+                    }
+        }
+    }
     var wasPaused = simVagues.paused;
     simVagues.paused = true; // gel de la simulation pendant la transition
     simVagues.transAnim = {
@@ -1266,7 +1326,7 @@ function _render3DWaveView(ctx, W, H, theta, panOffset) {
     var c        = simVagues.c_sim;
     var t        = simVagues.simTime;
     var f        = simVagues.freq;
-    var ampPx    = Math.min(H * 0.18, 55);
+    var ampPx    = Math.min(H * 0.18, 55) * VAGUES_VIS_AMP_SCALE;
     var TWO_PI_F = 2 * Math.PI * f;
     var maxR     = Math.sqrt(W * W + H * H);
     var a5       = simVagues.attenuation * 5;
@@ -1450,7 +1510,7 @@ function _waveFieldCoupeAt(x_canvas, srcX) {
     if (c <= 0) return 0;
     if (r_px > c * (simVagues.simTime - simVagues.sourceResetTime)) return 0;
     var field = Math.sin(2 * Math.PI * simVagues.freq * (simVagues.simTime - r_px / c));
-    if (simVagues.geoAttenuation) field *= Math.sqrt(50 / Math.max(1, r_px));
+    if (simVagues.geoAttenuation) field *= Math.sqrt(40 / (40 + r_px));
     if (simVagues.attenuation > 0)
         field *= Math.exp(-simVagues.attenuation * 5 * r_px / simVagues.canvasW);
     return field * simVagues.amplitude;
@@ -1459,7 +1519,7 @@ function _waveFieldCoupeAt(x_canvas, srcX) {
 function _drawVaguesCoupe(ctx, W, H) {
     var srcX   = simVagues.coupeSrcX;
     var yLevel = Math.round(H / 2);
-    var ampPx  = Math.min(H * 0.18, 55);
+    var ampPx  = Math.min(H * 0.18, 55) * VAGUES_VIS_AMP_SCALE;
 
     // ── 1. Fond ciel (air) ────────────────────────────────────────────
     var skyGrad = ctx.createLinearGradient(0, 0, 0, H);
@@ -1515,6 +1575,9 @@ function _drawVaguesCoupe(ctx, W, H) {
 
     // ── 6. Axe x et graduations ───────────────────────────────────────
     _drawAxisCoupeVagues(ctx, W, H, srcX, yLevel);
+
+    // ── 7. Balises (bouées flottantes) ────────────────────────────────
+    _drawBeaconsCoupeVagues(ctx, W, H, srcX, yLevel, ampPx);
 }
 
 function _drawSourceCoupeVagues(ctx, W, H, srcX, yLevel, ampPx) {
@@ -1625,6 +1688,61 @@ function _drawAxisCoupeVagues(ctx, W, H, srcX, yLevel) {
     ctx.restore();
 }
 
+// Balises en vue coupe — même style que le tab corde :
+// point coloré sur la surface + pointillé vertical vers l'axe d'équilibre + label
+function _drawBeaconsCoupeVagues(ctx, W, H, srcX, yLevel, ampPx) {
+    var specs = [
+        { b: simVagues.beacon1, color: '#e07020', label: 'B1' },
+        { b: simVagues.beacon2, color: '#2a8a50', label: 'B2' }
+    ];
+    for (var i = 0; i < specs.length; i++) {
+        var s = specs[i];
+        if (!s.b.active || !s.b.snapped) continue;
+        var dist = s.b.x - simVagues.sourceX;
+        if (dist <= 0) continue;
+        var bx = srcX + dist;
+        if (bx < srcX || bx > W) continue;
+
+        var surfY = yLevel - _waveFieldCoupeAt(bx, srcX) * ampPx;
+        var dotR  = 10;
+
+        // Pointillé vertical du point jusqu'à l'axe d'équilibre
+        ctx.save();
+        ctx.strokeStyle = s.color;
+        ctx.lineWidth   = 1.5;
+        ctx.setLineDash([5, 4]);
+        ctx.globalAlpha = 0.8;
+        ctx.beginPath();
+        ctx.moveTo(bx, surfY);
+        ctx.lineTo(bx, yLevel);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 1;
+        ctx.restore();
+
+        // Point sur la surface
+        ctx.save();
+        ctx.fillStyle   = s.color;
+        ctx.beginPath();
+        ctx.arc(bx, surfY, dotR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth   = 1.5;
+        ctx.stroke();
+        ctx.restore();
+
+        // Label au-dessus du point
+        ctx.fillStyle    = s.color;
+        ctx.font         = 'bold 24px "Segoe UI", Arial, sans-serif';
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.shadowColor  = 'rgba(0,0,0,0.6)';
+        ctx.shadowBlur   = 3;
+        ctx.fillText(s.label, bx, surfY - dotR - 3);
+        ctx.shadowBlur   = 0;
+    }
+}
+
 // ══════════════════════════════════════════════════════════════════════
 //  Interactions souris sur le canvas tube (drag source + balises)
 // ══════════════════════════════════════════════════════════════════════
@@ -1684,16 +1802,29 @@ function _drawAxisCoupeVagues(ctx, W, H, srcX, yLevel) {
             var mx  = Math.max(0, Math.min(simVagues.canvasW, pos.x));
             var my  = Math.max(0, Math.min(simVagues.canvasH, pos.y));
 
+            // Snap à l'axe x avec hystérésis :
+            //   entrée : ≤12 px de l'axe   |   sortie : >25 px de l'axe
+            var axisY    = simVagues.sourceY;
+            var SNAP_IN  = 12, SNAP_OUT = 25;
+            var beacon   = (dragTarget === 'beacon1') ? simVagues.beacon1 : simVagues.beacon2;
+            var dist2ax  = Math.abs(my - axisY);
+            var snapped  = beacon.snapped ? (dist2ax <= SNAP_OUT) : (dist2ax <= SNAP_IN);
+            if (snapped) my = axisY;
+
             if (dragTarget === 'beacon1') {
                 simVagues.beacon1.x = mx;
                 simVagues.beacon1.y = my;
                 simVagues.beacon1.rx = mx / simVagues.canvasW;
                 simVagues.beacon1.ry = my / simVagues.canvasH;
+                simVagues.beacon1.snapped = snapped;
+                if (!snapped) { simVagues.ytData1 = []; }
             } else if (dragTarget === 'beacon2') {
                 simVagues.beacon2.x = mx;
                 simVagues.beacon2.y = my;
                 simVagues.beacon2.rx = mx / simVagues.canvasW;
                 simVagues.beacon2.ry = my / simVagues.canvasH;
+                simVagues.beacon2.snapped = snapped;
+                if (!snapped) { simVagues.ytData2 = []; }
             }
         });
 

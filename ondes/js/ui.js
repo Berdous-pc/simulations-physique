@@ -111,7 +111,7 @@ function loop(ts) {
             simVagues.simTime += dtSimV;
             addSourceSampleVagues(simVagues.simTime);
 
-            var DPT_SAMPLE_DT_V = 1 / 60;
+            var DPT_SAMPLE_DT_V = DPT_SAMPLE_DT;
             while (simVagues.simTime - lastYtUpdateV >= DPT_SAMPLE_DT_V) {
                 lastYtUpdateV += DPT_SAMPLE_DT_V;
                 updateYtDataVagues(lastYtUpdateV);
@@ -604,6 +604,8 @@ function setMainTab(tab) {
     if (btnDpx)  btnDpx.classList.toggle ('active', mode === 'dpx');
     if (btnDpt)  btnDpt.classList.toggle ('active', mode === 'dpt');
     if (btnBoth) btnBoth.classList.toggle('active', mode === 'both');
+    var graphArea = document.getElementById('graph-area');
+    if (graphArea) graphArea.classList.toggle('mode-both', mode === 'both');
 
     // ── Layout vagues : canvas plein espace ──────────────────────────
     var animArea = document.getElementById('anim-area');
