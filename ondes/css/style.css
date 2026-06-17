@@ -108,6 +108,45 @@ main {
   position: relative;
 }
 
+/* ── Mode vagues : canvas plein espace, boutons en overlay ─────────── */
+#anim-area.vagues-layout {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+  position: relative;
+}
+#anim-area.vagues-layout #anim-source-spacer { display: none; }
+#anim-area.vagues-layout #source-box         { display: none; }
+#anim-area.vagues-layout #tube-canvas-wrap {
+  grid-column: 1;
+  grid-row: 1;
+}
+#anim-area.vagues-layout #tube-top-btns {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  grid-column: unset;
+  grid-row: unset;
+  padding: 3px 4px;
+  background: rgba(0,0,0,0.18);
+  border-radius: 7px;
+  z-index: 10;
+}
+#anim-area.vagues-layout #tube-top-btns .btn-tube-top {
+  background: rgba(255,255,255,0.18);
+  color: #fff;
+  border-color: rgba(255,255,255,0.35);
+}
+#anim-area.vagues-layout #tube-top-btns #btn-beacon1.active {
+  background: rgba(224, 112, 32, 0.90);
+  color: #fff;
+  border-color: #e07020;
+}
+#anim-area.vagues-layout #tube-top-btns #btn-beacon2.active {
+  background: rgba(42, 138, 80, 0.90);
+  color: #fff;
+  border-color: #2a8a50;
+}
+
 #tube-canvas {
   display: block;
   width: 100%;

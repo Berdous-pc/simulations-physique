@@ -153,7 +153,14 @@ function drawGraph() {
     ctx.fillRect(0, 0, W, H);
 
     // ── Branchement selon le tab actif ────────────────────────────────
-    var isCorde = (typeof activeTab !== 'undefined' && activeTab === 'corde');
+    var isCorde  = (typeof activeTab !== 'undefined' && activeTab === 'corde');
+    var isVagues = (typeof activeTab !== 'undefined' && activeTab === 'vagues');
+
+    if (isVagues) {
+        drawGraphVagues(ctx, W, H);
+        if (simVagues.graphZoomMode && graphZoomRect) _drawZoomRect(ctx);
+        return;
+    }
 
     if (isCorde) {
         // ── Mode corde ─────────────────────────────────────────────
@@ -240,7 +247,8 @@ function drawGraph() {
     }
 
     // Rectangle de zoom en cours
-    if (sim.graphZoomMode && graphZoomRect) {
+    var _activeZoom = isCorde ? simCorde.graphZoomMode : sim.graphZoomMode;
+    if (_activeZoom && graphZoomRect) {
         _drawZoomRect(ctx);
     }
 }
@@ -1002,8 +1010,7 @@ function _drawZoomRect(ctx) {
 // ══════════════════════════════════════════════════════════════════════
 
 function pushGraphView() {
-    var isCorde = (typeof activeTab !== 'undefined' && activeTab === 'corde');
-    var sv = isCorde ? simCorde : sim;
+    var sv = _activeSv();
     var v = {
         xMin: sv.graphView.xMin, xMax: sv.graphView.xMax,
         yMin: sv.graphView.yMin, yMax: sv.graphView.yMax
@@ -1545,8 +1552,7 @@ function _drawCrosshairCorde(ctx, W, H) {
 }
 
 function prevGraphView() {
-    var isCorde = (typeof activeTab !== 'undefined' && activeTab === 'corde');
-    var sv = isCorde ? simCorde : sim;
+    var sv = _activeSv();
     if (sv.graphViewHistory.length === 0) return;
     var v = sv.graphViewHistory.pop();
     sv.graphView.xMin = v.xMin; sv.graphView.xMax = v.xMax;
@@ -1561,11 +1567,14 @@ function prevGraphView() {
 // ══════════════════════════════════════════════════════════════════════
 
 function setGraphMode(mode) {
-    var isCorde = (typeof activeTab !== 'undefined' && activeTab === 'corde');
+    var isCorde  = (typeof activeTab !== 'undefined' && activeTab === 'corde');
+    var isVagues = (typeof activeTab !== 'undefined' && activeTab === 'vagues');
 
     // Mettre à jour le graphMode dans l'objet approprié
     if (isCorde) {
         simCorde.graphMode = mode;
+    } else if (isVagues) {
+        simVagues.graphMode = mode;
     } else {
         sim.graphMode = mode;
     }
@@ -1595,7 +1604,7 @@ function setGraphMode(mode) {
 function _updateGraphBtnLabels(tab) {
     var btnDpx  = document.getElementById('btn-graph-dpx');
     var btnDpt  = document.getElementById('btn-graph-dpt');
-    if (tab === 'corde') {
+    if (tab === 'corde' || tab === 'vagues') {
         if (btnDpx) btnDpx.textContent = 'y(x) — spatial';
         if (btnDpt) btnDpt.textContent = 'y(t) — temporel';
     } else {
@@ -1604,62 +1613,47 @@ function _updateGraphBtnLabels(tab) {
     }
 }
 
+function _activeSv() {
+    if (typeof activeTab === 'undefined') return sim;
+    if (activeTab === 'corde')  return simCorde;
+    if (activeTab === 'vagues') return simVagues;
+    return sim;
+}
+
 function toggleGraphZoom() {
-    var isCorde = (typeof activeTab !== 'undefined' && activeTab === 'corde');
-    if (isCorde) {
-        simCorde.graphZoomMode = !simCorde.graphZoomMode;
-        graphZoomRect = null;
-        if (simCorde.graphZoomMode) simCorde.graphCursorMode = false;
-        var z = document.getElementById('btn-graph-zoom');
-        var c = document.getElementById('btn-graph-cursor');
-        if (z) z.classList.toggle('active', simCorde.graphZoomMode);
-        if (c) c.classList.toggle('active', simCorde.graphCursorMode);
-    } else {
-        sim.graphZoomMode = !sim.graphZoomMode;
-        graphZoomRect = null;
-        if (sim.graphZoomMode) sim.graphCursorMode = false;
-        var z = document.getElementById('btn-graph-zoom');
-        var c = document.getElementById('btn-graph-cursor');
-        if (z) z.classList.toggle('active', sim.graphZoomMode);
-        if (c) c.classList.toggle('active', sim.graphCursorMode);
-    }
+    var sv = _activeSv();
+    sv.graphZoomMode = !sv.graphZoomMode;
+    graphZoomRect = null;
+    if (sv.graphZoomMode) sv.graphCursorMode = false;
+    var z = document.getElementById('btn-graph-zoom');
+    var c = document.getElementById('btn-graph-cursor');
+    if (z) z.classList.toggle('active', sv.graphZoomMode);
+    if (c) c.classList.toggle('active', sv.graphCursorMode);
 }
 
 function toggleGraphCursor() {
-    var isCorde = (typeof activeTab !== 'undefined' && activeTab === 'corde');
+    var sv  = _activeSv();
     var tip = document.getElementById('graph-hover-tooltip');
-    if (isCorde) {
-        simCorde.graphCursorMode = !simCorde.graphCursorMode;
-        if (simCorde.graphCursorMode) simCorde.graphZoomMode = false;
-        if (!simCorde.graphCursorMode && tip) tip.style.display = 'none';
-        var z = document.getElementById('btn-graph-zoom');
-        var c = document.getElementById('btn-graph-cursor');
-        if (z) z.classList.toggle('active', simCorde.graphZoomMode);
-        if (c) c.classList.toggle('active', simCorde.graphCursorMode);
-    } else {
-        sim.graphCursorMode = !sim.graphCursorMode;
-        if (sim.graphCursorMode) sim.graphZoomMode = false;
-        if (!sim.graphCursorMode && tip) tip.style.display = 'none';
-        var z = document.getElementById('btn-graph-zoom');
-        var c = document.getElementById('btn-graph-cursor');
-        if (z) z.classList.toggle('active', sim.graphZoomMode);
-        if (c) c.classList.toggle('active', sim.graphCursorMode);
-    }
+    sv.graphCursorMode = !sv.graphCursorMode;
+    if (sv.graphCursorMode) sv.graphZoomMode = false;
+    if (!sv.graphCursorMode && tip) tip.style.display = 'none';
+    var z = document.getElementById('btn-graph-zoom');
+    var c = document.getElementById('btn-graph-cursor');
+    if (z) z.classList.toggle('active', sv.graphZoomMode);
+    if (c) c.classList.toggle('active', sv.graphCursorMode);
 }
 
 function autoScaleGraph() {
-    var isCorde = (typeof activeTab !== 'undefined' && activeTab === 'corde');
-    if (isCorde) {
+    var sv = _activeSv();
+    sv.graphUserPanned  = false;
+    sv.graphViewHistory = [];
+    if (activeTab === 'corde') {
         var ampCm = simCorde.amplitudeCm > 0 ? simCorde.amplitudeCm : 1;
-        simCorde.graphUserPanned  = false;
-        simCorde.graphViewHistory = [];
-        simCorde.graphView.yMin   = -1.12 * ampCm;
-        simCorde.graphView.yMax   =  1.12 * ampCm;
+        sv.graphView.yMin = -1.12 * ampCm;
+        sv.graphView.yMax =  1.12 * ampCm;
     } else {
-        sim.graphUserPanned  = false;
-        sim.graphViewHistory = [];
-        sim.graphView.yMin   = -1.12;
-        sim.graphView.yMax   =  1.12;
+        sv.graphView.yMin = -1.12;
+        sv.graphView.yMax =  1.12;
     }
     var btn = document.getElementById('btn-graph-prev');
     if (btn) btn.disabled = true;
@@ -1680,13 +1674,13 @@ function autoScaleGraph() {
             var my   = (e.clientY - rect.top)  * (graphCanvas.height / rect.height);
 
             var isCorde  = (typeof activeTab !== 'undefined' && activeTab === 'corde');
-            var cursorMd = isCorde ? simCorde.graphCursorMode : sim.graphCursorMode;
+            var cursorMd = _activeSv().graphCursorMode;
             graphHoverPos = { x: mx, y: my, free: !!cursorMd };
 
             if (graphPan.dragging) {
-                var mode = isCorde ? simCorde.graphMode : sim.graphMode;
+                var sv   = _activeSv();
+                var mode = sv.graphMode;
                 if (mode === 'dpt') {
-                    var sv = isCorde ? simCorde : sim;
                     var W  = graphCanvas.width;
                     var pW = W - GM.left - GM.right;
                     var dx = mx - graphPan.startX;
@@ -1697,7 +1691,7 @@ function autoScaleGraph() {
                 }
             }
 
-            var zoomMode = isCorde ? simCorde.graphZoomMode : sim.graphZoomMode;
+            var zoomMode = _activeSv().graphZoomMode;
             if (zoomMode && graphZoomRect) {
                 graphZoomRect.x2 = mx;
                 graphZoomRect.y2 = my;
@@ -1709,9 +1703,8 @@ function autoScaleGraph() {
             var mx   = (e.clientX - rect.left) * (graphCanvas.width  / rect.width);
             var my   = (e.clientY - rect.top)  * (graphCanvas.height / rect.height);
 
-            var isCorde  = (typeof activeTab !== 'undefined' && activeTab === 'corde');
-            var sv       = isCorde ? simCorde : sim;
-            var zoomMode = isCorde ? simCorde.graphZoomMode : sim.graphZoomMode;
+            var sv       = _activeSv();
+            var zoomMode = sv.graphZoomMode;
 
             if (zoomMode) {
                 graphZoomRect = { x1: mx, y1: my, x2: mx, y2: my };
@@ -1731,8 +1724,7 @@ function autoScaleGraph() {
         });
 
         graphCanvas.addEventListener('pointerup', function() {
-            var isCorde  = (typeof activeTab !== 'undefined' && activeTab === 'corde');
-            var zoomMode = isCorde ? simCorde.graphZoomMode : sim.graphZoomMode;
+            var zoomMode = _activeSv().graphZoomMode;
             if (zoomMode && graphZoomRect) {
                 _applyZoom();
                 graphZoomRect = null;
@@ -1750,15 +1742,14 @@ function autoScaleGraph() {
 
         // Zoom molette (ΔP(t) / y(t) uniquement)
         graphCanvas.addEventListener('wheel', function(e) {
-            var isCorde = (typeof activeTab !== 'undefined' && activeTab === 'corde');
-            var mode    = isCorde ? simCorde.graphMode : sim.graphMode;
+            var sv   = _activeSv();
+            var mode = sv.graphMode;
             if (mode !== 'dpt') return;
             e.preventDefault();
             var rect = graphCanvas.getBoundingClientRect();
             var mx   = (e.clientX - rect.left) * (graphCanvas.width  / rect.width);
             var W    = graphCanvas.width;
             var pW   = W - GM.left - GM.right;
-            var sv   = isCorde ? simCorde : sim;
             var tCur = sv.graphView.xMin +
                 (mx - GM.left) / pW * (sv.graphView.xMax - sv.graphView.xMin);
             var factor = e.deltaY > 0 ? 1.2 : 0.8;
@@ -1802,17 +1793,16 @@ function _applyZoom() {
     var pW = W - GM.left - GM.right;
     var pH = H - GM.top  - GM.bottom;
 
-    var isCorde = (typeof activeTab !== 'undefined' && activeTab === 'corde');
-    var sv      = isCorde ? simCorde : sim;
+    var sv = _activeSv();
 
     function canvasToDataX(cx) {
-        var mode = isCorde ? simCorde.graphMode : sim.graphMode;
+        var mode = sv.graphMode;
         if (mode === 'dpx') return 0;  // X fixe
         return sv.graphView.xMin + (cx - GM.left) / pW * (sv.graphView.xMax - sv.graphView.xMin);
     }
     function canvasToDataY(cy) {
-        var yMin = isCorde ? simCorde.graphYxYMin : (sim.graphMode === 'dpx' ? sim.graphDpxYMin : sim.graphView.yMin);
-        var yMax = isCorde ? simCorde.graphYxYMax : (sim.graphMode === 'dpx' ? sim.graphDpxYMax : sim.graphView.yMax);
+        var yMin = sv.graphYxYMin !== undefined ? sv.graphYxYMin : sv.graphView.yMin;
+        var yMax = sv.graphYxYMax !== undefined ? sv.graphYxYMax : sv.graphView.yMax;
         return yMin + (1 - (cy - GM.top) / pH) * (yMax - yMin);
     }
 
@@ -1823,7 +1813,7 @@ function _applyZoom() {
     var y1 = Math.min(r.y1, r.y2);
     var y2 = Math.max(r.y1, r.y2);
 
-    var mode = isCorde ? simCorde.graphMode : sim.graphMode;
+    var mode = sv.graphMode;
     if (mode === 'dpt') {
         sv.graphView.xMin = canvasToDataX(x1);
         sv.graphView.xMax = canvasToDataX(x2);

@@ -91,6 +91,7 @@ function scheduleResizeTube() {
         tubeResizeRAF = false;
         resizeTube();
         resizeCorde();
+        if (typeof resizeVagues === 'function') resizeVagues();
         resizeGraph();
     });
 }

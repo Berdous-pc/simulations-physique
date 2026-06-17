@@ -12,14 +12,15 @@
 
 'use strict';
 
-// ── Tab actif : 'son' | 'corde' ───────────────────────────────────────
+// ── Tab actif : 'son' | 'corde' | 'vagues' ───────────────────────────
 // Utilisé par tube.js et graph.js pour brancher sur la bonne simulation.
 var activeTab = 'son';
 
 // ── Compteurs de temps pour l'enregistrement ─────────────────────────
-var lastDptUpdate   = 0;   // Son
-var lastYtUpdate    = 0;   // Corde
-var DPT_SAMPLE_DT   = 1 / 300;   // 300 enregistrements/s simulée
+var lastDptUpdate    = 0;          // Son
+var lastYtUpdate     = 0;          // Corde
+var lastYtUpdateV    = 0;          // Vagues
+var DPT_SAMPLE_DT    = 1 / 300;   // 300 enregistrements/s simulée
 
 // ── Paliers de vitesse ────────────────────────────────────────────────
 var SPEED_STEPS = [0.10, 0.25, 0.50, 1.00];
@@ -69,7 +70,7 @@ function loop(ts) {
             _updateWaveProps();
         }
 
-    } else {
+    } else if (activeTab === 'corde') {
         // ── Avancement temps Corde ────────────────────────────────────
         if (!simCorde.paused) {
             var dtSimC = dtReal * (simCorde.speedFactor !== undefined ? simCorde.speedFactor : 1.0);
@@ -102,6 +103,32 @@ function loop(ts) {
         if (!simCorde.paused) {
             _updateCReadoutCorde();
             _updateWavePropsCorde();
+        }
+    } else {
+        // ── Avancement temps Vagues ───────────────────────────────────
+        if (!simVagues.paused) {
+            var dtSimV = dtReal * (simVagues.speedFactor || 1.0);
+            simVagues.simTime += dtSimV;
+            addSourceSampleVagues(simVagues.simTime);
+
+            var DPT_SAMPLE_DT_V = 1 / 60;
+            while (simVagues.simTime - lastYtUpdateV >= DPT_SAMPLE_DT_V) {
+                lastYtUpdateV += DPT_SAMPLE_DT_V;
+                updateYtDataVagues(lastYtUpdateV);
+            }
+
+            if (simVagues.simTime - simVagues.ytTimeOrigin >= 5) {
+                simVagues.ytTimeOrigin += 5;
+            }
+        }
+
+        updateYxDataVagues();
+        drawVagues();
+        drawGraph();
+
+        if (!simVagues.paused) {
+            _updateCReadoutVagues();
+            _updateWavePropsVagues();
         }
     }
 }
@@ -480,6 +507,8 @@ function _syncWavePropsBtnStateCorde() {
 function toggleBeaconActive(n) {
     if (activeTab === 'corde') {
         _toggleBeaconCorde(n);
+    } else if (activeTab === 'vagues') {
+        _toggleBeaconVagues(n);
     } else {
         _toggleBeaconSon(n);
     }
@@ -538,10 +567,12 @@ function setMainTab(tab) {
     if (hint) hint.style.display = '';
 
     // ── Box source : afficher la bonne version ────────────────────────
-    var srcSon   = document.getElementById('source-son');
-    var srcCorde = document.getElementById('source-corde');
-    if (srcSon)   srcSon.style.display   = (tab === 'son')   ? '' : 'none';
-    if (srcCorde) srcCorde.style.display = (tab === 'corde') ? '' : 'none';
+    var srcSon    = document.getElementById('source-son');
+    var srcCorde  = document.getElementById('source-corde');
+    var srcVagues = document.getElementById('source-vagues');
+    if (srcSon)    srcSon.style.display    = (tab === 'son')   ? '' : 'none';
+    if (srcCorde)  srcCorde.style.display  = (tab === 'corde') ? '' : 'none';
+    if (srcVagues) srcVagues.style.display = (tab === 'vagues') ? '' : 'none';
 
     // ── Boutons son-only au-dessus du canvas ──────────────────────────
     var sonOnlyBtns = document.querySelectorAll('.son-only');
@@ -551,8 +582,8 @@ function setMainTab(tab) {
 
     // ── Remise à zéro des états de balises dans les boutons ───────────
     // Resynchronise l'état visuel des boutons Balise selon le tab
-    var b1 = (tab === 'corde') ? simCorde.beacon1 : sim.beacon1;
-    var b2 = (tab === 'corde') ? simCorde.beacon2 : sim.beacon2;
+    var b1 = (tab === 'corde') ? simCorde.beacon1 : (tab === 'vagues') ? simVagues.beacon1 : sim.beacon1;
+    var b2 = (tab === 'corde') ? simCorde.beacon2 : (tab === 'vagues') ? simVagues.beacon2 : sim.beacon2;
     var btnB1 = document.getElementById('btn-beacon1');
     var btnB2 = document.getElementById('btn-beacon2');
     if (btnB1) btnB1.classList.toggle('active', b1.active);
@@ -562,7 +593,7 @@ function setMainTab(tab) {
     _updateGraphBtnLabels(tab);
 
     // ── Mode graphe actif : resynchroniser les boutons ────────────────
-    var mode = (tab === 'corde') ? simCorde.graphMode : sim.graphMode;
+    var mode = (tab === 'corde') ? simCorde.graphMode : (tab === 'vagues') ? simVagues.graphMode : sim.graphMode;
     var btnDpx  = document.getElementById('btn-graph-dpx');
     var btnDpt  = document.getElementById('btn-graph-dpt');
     var btnBoth = document.getElementById('btn-graph-both');
@@ -570,11 +601,17 @@ function setMainTab(tab) {
     if (btnDpt)  btnDpt.classList.toggle ('active', mode === 'dpt');
     if (btnBoth) btnBoth.classList.toggle('active', mode === 'both');
 
+    // ── Layout vagues : canvas plein espace ──────────────────────────
+    var animArea = document.getElementById('anim-area');
+    if (animArea) animArea.classList.toggle('vagues-layout', tab === 'vagues');
+
     // ── Resize pour adapter les canvas au tab ─────────────────────────
     if (tab === 'corde') {
         resizeCorde();
     } else if (tab === 'son') {
         resizeTube();
+    } else if (tab === 'vagues') {
+        resizeVagues();
     }
     resizeGraph();
 }
@@ -602,6 +639,7 @@ function toggleHint(id) {
 function init() {
     resizeTube();
     resizeCorde();
+    resizeVagues();
     resizeGraph();
 
     window.addEventListener('resize', function() {
@@ -656,6 +694,26 @@ function _syncUIToSim() {
     _syncSourceButtonsCorde();
     var btnC = document.getElementById('btn-playpause-corde');
     if (btnC) { btnC.textContent = '⏸ Pause'; btnC.className = 'btn btn-pause'; }
+
+    // ── Vagues ─────────────────────────────────────────────────────────
+    _setSlider('sl-freq-vagues',  simVagues.freq,        'lbl-freq-vagues',  1);
+    _setSlider('sl-ampl-vagues',  simVagues.amplitude,   'lbl-ampl-vagues',  1);
+    _setSlider('sl-h-vagues',     simVagues.h,           'lbl-h-vagues',     3);
+    var lblHV = document.getElementById('lbl-h-vagues');
+    if (lblHV) lblHV.textContent = (simVagues.h * 1000).toFixed(1).replace('.', ',');
+    _setSlider('sl-g-vagues',     simVagues.g,           'lbl-g-vagues',     2);
+    _setSlider('sl-atten-vagues', simVagues.attenuation, 'lbl-atten-vagues', 2);
+    simVagues.speedFactor = 1.00;
+    var slSpeedV = document.getElementById('sl-speed-vagues');
+    if (slSpeedV) slSpeedV.value = 3;
+    var lblSpeedV = document.getElementById('lbl-speed-vagues');
+    if (lblSpeedV) lblSpeedV.textContent = '1,00';
+    simVagues.wavePropsVisible = false;
+    _applyWavePropsVagues();
+    updateCeleriteVagues();
+    _updateCReadoutVagues();
+    var btnV = document.getElementById('btn-playpause-vagues');
+    if (btnV) { btnV.textContent = '⏸ Pause'; btnV.className = 'btn btn-pause'; }
 
     // ── Onglet Son actif au départ ─────────────────────────────────────
     setMainTab('son');
