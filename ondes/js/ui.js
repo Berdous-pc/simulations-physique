@@ -574,10 +574,14 @@ function setMainTab(tab) {
     if (srcCorde)  srcCorde.style.display  = (tab === 'corde') ? '' : 'none';
     if (srcVagues) srcVagues.style.display = (tab === 'vagues') ? '' : 'none';
 
-    // ── Boutons son-only au-dessus du canvas ──────────────────────────
+    // ── Boutons son-only / vagues-only au-dessus du canvas ───────────
     var sonOnlyBtns = document.querySelectorAll('.son-only');
     sonOnlyBtns.forEach(function(b) {
         b.style.display = (tab === 'son') ? '' : 'none';
+    });
+    var vaguesOnlyBtns = document.querySelectorAll('.vagues-only');
+    vaguesOnlyBtns.forEach(function(b) {
+        b.style.display = (tab === 'vagues') ? '' : 'none';
     });
 
     // ── Remise à zéro des états de balises dans les boutons ───────────

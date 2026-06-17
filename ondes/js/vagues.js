@@ -17,6 +17,7 @@
 var BLOCK_V               = 2;     // taille des blocs de rendu (px) — 2 pour meilleure résolution
 var VAGUES_AMP_GAIN       = 1.6;   // gain visuel appliqué au champ calculé
 var C_BASE_VAGUES         = 150;   // px/s par m/s — recalibré au resize
+var COUPE_LEFT_MARGIN     = 70;    // px réservés à gauche pour la source en vue coupe
 
 // Couleurs de l'onde (crêtes ↔ creux)
 var COL_CREST_R = 200, COL_CREST_G = 240, COL_CREST_B = 255; // bleu très clair
@@ -81,7 +82,13 @@ var simVagues = {
     canvasW     : 0,
     canvasH     : 0,
     firstResize : true,
+
+    // ── Vue en coupe ─────────────────────────────────────────────────
+    viewMode  : 'top',   // 'top' | 'coupe'
+    transAnim : null,    // null | { startT, direction }  (transition en cours)
+    coupeSrcX : 0,       // x canvas de la source en vue coupe (px)
 };
+
 
 // ══════════════════════════════════════════════════════════════════════
 //  Physique : c = √(g × h)
@@ -131,6 +138,10 @@ function resizeVagues() {
     simVagues.beacon1.y = Math.round(simVagues.beacon1.ry * h);
     simVagues.beacon2.x = Math.round(simVagues.beacon2.rx * w);
     simVagues.beacon2.y = Math.round(simVagues.beacon2.ry * h);
+
+    if (simVagues.viewMode === 'coupe') {
+        simVagues.coupeSrcX = COUPE_LEFT_MARGIN;
+    }
 
     updateCeleriteVagues();
 }
@@ -182,6 +193,9 @@ function drawVagues() {
     var ctx = canvas.getContext('2d');
     var W = canvas.width, H = canvas.height;
     if (!W || !H) return;
+
+    if (simVagues.transAnim) { _drawVaguesTransition(ctx, W, H); return; }
+    if (simVagues.viewMode === 'coupe') { _drawVaguesCoupe(ctx, W, H); return; }
 
     if (simVagues.c_sim <= 0) {
         ctx.fillStyle = 'rgb(' + COL_BG_R + ',' + COL_BG_G + ',' + COL_BG_B + ')';
@@ -341,6 +355,7 @@ function _drawSourceVagues(ctx) {
 // ── Balises ───────────────────────────────────────────────────────────
 
 function _drawBeaconsVagues(ctx) {
+    if (simVagues.viewMode === 'coupe') return;
     var specs = [
         { b: simVagues.beacon1, color: '#e07020', label: 'B1' },
         { b: simVagues.beacon2, color: '#2a8a50', label: 'B2' }
@@ -900,6 +915,7 @@ function resetVagues() {
     simVagues.simTime         = 0;
     simVagues.paused          = false;
     simVagues.sourceResetTime = 0;
+    simVagues.transAnim       = null;
     simVagues.ytData1        = [];
     simVagues.ytData2        = [];
     simVagues.ytTimeOrigin   = 0;
@@ -1042,6 +1058,512 @@ function _updateWavePropsVagues() {
     var lambda = simVagues.c_ms * T;
     var elL    = document.getElementById('ro-lambda-vagues');
     if (elL) elL.textContent = lambda.toFixed(2).replace('.', ',');
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Toggle vue en coupe
+// ══════════════════════════════════════════════════════════════════════
+
+function toggleViewVagues() {
+    if (simVagues.transAnim) return;
+    var toCoupe   = (simVagues.viewMode === 'top');
+    if (toCoupe) simVagues.coupeSrcX = simVagues.canvasW / 2;
+    var wasPaused = simVagues.paused;
+    simVagues.paused = true; // gel de la simulation pendant la transition
+    simVagues.transAnim = {
+        startT    : performance.now(),
+        direction : toCoupe ? 'toCoupe' : 'toTop',
+        wasPaused : wasPaused
+    };
+    var btn = document.getElementById('btn-view-coupe-vagues');
+    if (btn) btn.classList.toggle('active', toCoupe);
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Animation de transition — 3 phases
+//
+//  toCoupe (total = DUR_ROT + DUR_SLIDE + DUR_BLEND) :
+//    Phase 1 — Rotation 3D (theta 0 → π/2), panOffset = 0
+//    Phase 2 — Panoramique horizontal (theta = π/2, pan 0 → MAX_PAN)
+//              Toute la scène glisse vers la gauche ; les vagues à gauche
+//              de la source sortent progressivement de l'écran.
+//    Phase 3 — Fondu croisé 3D → coupe finale (opacité 0 → 1)
+//
+//  toTop (total = DUR_BLEND + DUR_SLIDE + DUR_ROT) :
+//    Phase 1 — Fondu croisé coupe → 3D (opacité 1 → 0)
+//    Phase 2 — Panoramique inverse (pan MAX_PAN → 0)
+//    Phase 3 — Rotation 3D inverse (theta π/2 → 0)
+// ══════════════════════════════════════════════════════════════════════
+
+function _drawVaguesTransition(ctx, W, H) {
+    var tr      = simVagues.transAnim;
+    var elapsed = (performance.now() - tr.startT) / 1000;
+
+    var DUR_ROT   = 0.60;
+    var DUR_SLIDE = 0.60;
+    var DUR_BLEND = 0.60;
+    var MAX_PAN   = simVagues.sourceX - COUPE_LEFT_MARGIN;
+
+    var TOTAL = (tr.direction === 'toCoupe')
+                ? DUR_ROT + DUR_SLIDE + DUR_BLEND
+                : DUR_BLEND + DUR_SLIDE + DUR_ROT;
+
+    // Nettoyage CSS résiduel
+    var canvas = document.getElementById('tube-canvas');
+    var wrap   = document.getElementById('tube-canvas-wrap');
+    canvas.style.transform       = '';
+    canvas.style.transformOrigin = '';
+    wrap.style.perspective       = '';
+    wrap.style.background        = '';
+
+    if (elapsed >= TOTAL) {
+        simVagues.transAnim = null;
+        simVagues.viewMode  = (tr.direction === 'toCoupe') ? 'coupe' : 'top';
+        if (simVagues.viewMode === 'coupe') simVagues.coupeSrcX = COUPE_LEFT_MARGIN;
+        if (!tr.wasPaused) simVagues.paused = false;
+        return;
+    }
+
+    if (tr.direction === 'toCoupe') {
+
+        if (elapsed < DUR_ROT) {
+            // ── Phase 1 : rotation 3D (top → vue de profil) ──────────
+            var t01  = elapsed / DUR_ROT;
+            var ease = (1 - Math.cos(t01 * Math.PI)) / 2;
+            _render3DWaveView(ctx, W, H, ease * Math.PI / 2, 0);
+
+        } else if (elapsed < DUR_ROT + DUR_SLIDE) {
+            // ── Phase 2 : panoramique horizontal (caméra → droite) ───
+            var t01   = (elapsed - DUR_ROT) / DUR_SLIDE;
+            var easeP = t01 < 0.5 ? 2*t01*t01 : -1+(4-2*t01)*t01;
+            _render3DWaveView(ctx, W, H, Math.PI / 2, MAX_PAN * easeP);
+
+        } else {
+            // ── Phase 3 : fondu croisé 3D → coupe ────────────────────
+            var alpha = (elapsed - DUR_ROT - DUR_SLIDE) / DUR_BLEND;
+            simVagues.coupeSrcX = COUPE_LEFT_MARGIN;
+            _render3DWaveView(ctx, W, H, Math.PI / 2, MAX_PAN);
+            _overlayViewCoupe(ctx, W, H, tr, Math.min(1, alpha));
+        }
+
+    } else { // toTop
+
+        if (elapsed < DUR_BLEND) {
+            // ── Phase 1 : fondu croisé coupe → 3D ────────────────────
+            var alpha = 1 - elapsed / DUR_BLEND;
+            simVagues.coupeSrcX = COUPE_LEFT_MARGIN;
+            _render3DWaveView(ctx, W, H, Math.PI / 2, MAX_PAN);
+            _overlayViewCoupe(ctx, W, H, tr, Math.max(0, alpha));
+
+        } else if (elapsed < DUR_BLEND + DUR_SLIDE) {
+            // ── Phase 2 : panoramique inverse ────────────────────────
+            var t01   = (elapsed - DUR_BLEND) / DUR_SLIDE;
+            var easeP = t01 < 0.5 ? 2*t01*t01 : -1+(4-2*t01)*t01;
+            _render3DWaveView(ctx, W, H, Math.PI / 2, MAX_PAN * (1 - easeP));
+
+        } else {
+            // ── Phase 3 : rotation 3D inverse (profil → top) ─────────
+            var t01  = (elapsed - DUR_BLEND - DUR_SLIDE) / DUR_ROT;
+            var ease = (1 - Math.cos(t01 * Math.PI)) / 2;
+            _render3DWaveView(ctx, W, H, (1 - ease) * Math.PI / 2, 0);
+        }
+    }
+}
+
+// Superpose la vue en coupe sur ctx avec opacité alpha (0 = transparent, 1 = opaque).
+// Utilise un canvas offscreen stocké dans tr pour éviter une allocation à chaque frame.
+function _overlayViewCoupe(ctx, W, H, tr, alpha) {
+    if (!tr._offscreen) {
+        tr._offscreen        = document.createElement('canvas');
+        tr._offscreen.width  = W;
+        tr._offscreen.height = H;
+    } else if (tr._offscreen.width !== W || tr._offscreen.height !== H) {
+        tr._offscreen.width  = W;
+        tr._offscreen.height = H;
+    }
+    var offCtx = tr._offscreen.getContext('2d');
+    _drawVaguesCoupe(offCtx, W, H);
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+    ctx.drawImage(tr._offscreen, 0, 0);
+    ctx.restore();
+}
+
+// ── Rendu perspectif orthographique de la surface d'eau ───────────────
+//   theta = 0   → vue de dessus (identique au rendu normal)
+//   theta = π/2 → vue de profil (côté) : équivalent à la coupe
+//
+// Algorithme du peintre : on itère les bandes z de l'arrière vers l'avant.
+// Projection : screen_y = H/2 + (wz − srcY)·cos(θ) − wy·sin(θ)
+//   À θ=0 : screen_y = wz  (la profondeur z devient la coordonnée y écran)
+//   À θ=π/2 : screen_y = H/2 − wy  (la hauteur de l'onde devient y écran)
+function _render3DWaveView(ctx, W, H, theta, panOffset) {
+    panOffset = (panOffset | 0) || 0;
+    var cosT = Math.cos(theta);
+    var sinT = Math.sin(theta);
+
+    var srcX     = simVagues.sourceX;
+    var srcY     = simVagues.sourceY;  // ≈ H/2
+    var c        = simVagues.c_sim;
+    var t        = simVagues.simTime;
+    var f        = simVagues.freq;
+    var ampPx    = Math.min(H * 0.18, 55);
+    var TWO_PI_F = 2 * Math.PI * f;
+    var maxR     = Math.sqrt(W * W + H * H);
+    var a5       = simVagues.attenuation * 5;
+    var geo      = simVagues.geoAttenuation;
+    var r_front  = (c > 0) ? c * (t - simVagues.sourceResetTime) : 0;
+    var rfSq     = r_front * r_front;
+
+    var imgData = ctx.createImageData(W, H);
+    var data    = imgData.data;
+
+    // Fond : interpolé entre COL_BG (vue dessus) et ciel clair (vue coupe)
+    var bgR = (COL_BG_R + (176 - COL_BG_R) * sinT) | 0;
+    var bgG = (COL_BG_G + (216 - COL_BG_G) * sinT) | 0;
+    var bgB = (COL_BG_B + (240 - COL_BG_B) * sinT) | 0;
+    for (var i = 0; i < data.length; i += 4) {
+        data[i] = bgR; data[i + 1] = bgG; data[i + 2] = bgB; data[i + 3] = 255;
+    }
+
+    if (c <= 0) { ctx.putImageData(imgData, 0, 0); return; }
+
+    // Position écran de la première bande (wz = 0, wy = 0)
+    var sy0 = ((H / 2 + (0 - srcY) * cosT) | 0);
+
+    var prevSyArr = new Int16Array(W);
+    for (var wx = 0; wx < W; wx++) prevSyArr[wx] = sy0;
+
+    var N_Z = 110; // bandes z — ~27 échantillons par longueur d'onde à λ≈100 px
+
+    for (var zi = 0; zi < N_Z; zi++) {
+        var wz = (zi / (N_Z - 1)) * H;
+        var dz = wz - srcY;
+        var screenYbase = H / 2 + dz * cosT; // y écran sans hauteur d'onde
+
+        for (var wx = 0; wx < W; wx++) {
+            var dx          = (wx + panOffset) - srcX;
+            var effectiveDz = dz * cosT;
+            var rSq         = dx * dx + effectiveDz * effectiveDz;
+            var raw = 0, env = 1.0;
+
+            if (rfSq > 0 && rSq <= rfSq) {
+                var r  = Math.sqrt(rSq);
+                raw    = Math.sin(TWO_PI_F * (t - r / c));
+                if (geo) env = Math.min(1, Math.sqrt(50 / Math.max(1, r)));
+                if (a5 > 0) env *= Math.exp(-a5 * r / maxR);
+            } else {
+                env = 0;
+            }
+
+            // Déplacement vertical de la surface (en pixels)
+            var wy  = raw * env * simVagues.amplitude * ampPx;
+            var sy  = (screenYbase - wy * sinT) | 0;
+            var syP = prevSyArr[wx];
+
+            // Couleur de l'eau — même formule que la vue de dessus
+            var envC = Math.min(1, env * VAGUES_AMP_GAIN);
+            var t01  = (raw * envC + 1) * 0.5;
+            var wr   = (COL_TROUGH_R + t01 * (COL_CREST_R - COL_TROUGH_R)) | 0;
+            var wg   = (COL_TROUGH_G + t01 * (COL_CREST_G - COL_TROUGH_G)) | 0;
+            var wb   = (COL_TROUGH_B + t01 * (COL_CREST_B - COL_TROUGH_B)) | 0;
+
+            // Remplir la bande entre syP et sy (back-to-front overwrite)
+            var yLo = (syP < sy ? syP : sy);
+            var yHi = (syP < sy ? sy  : syP);
+            if (yLo < 0)  yLo = 0;
+            if (yHi >= H) yHi = H - 1;
+            for (var py = yLo; py <= yHi; py++) {
+                var idx = (py * W + wx) * 4;
+                data[idx]     = wr;
+                data[idx + 1] = wg;
+                data[idx + 2] = wb;
+                data[idx + 3] = 255;
+            }
+
+            prevSyArr[wx] = sy;
+        }
+    }
+
+    // Fond marin : remplir en dessous de la dernière bande avec un dégradé profond
+    for (var wx = 0; wx < W; wx++) {
+        var syLast = prevSyArr[wx];
+        var yStart = syLast < 0 ? 0 : syLast;
+        for (var py = yStart; py < H; py++) {
+            var depth = (py - syLast) / Math.max(1, H - syLast);
+            var idx   = (py * W + wx) * 4;
+            data[idx]     = (COL_TROUGH_R * (1 - depth * 0.6)) | 0;
+            data[idx + 1] = (COL_TROUGH_G * (1 - depth * 0.3)) | 0;
+            data[idx + 2] = (COL_TROUGH_B + (90 - COL_TROUGH_B) * depth * 0.25) | 0;
+            data[idx + 3] = 255;
+        }
+    }
+
+    ctx.putImageData(imgData, 0, 0);
+
+    // Source projetée en 3D — position écran décalée du pan
+    var osc_raw = Math.sin(TWO_PI_F * t) * simVagues.amplitude;
+    var sy_src  = Math.round(H / 2 - osc_raw * ampPx * sinT);
+    var sx_src  = Math.round(srcX - panOffset);
+
+    if (sx_src >= -10 && sx_src <= W + 10) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+        ctx.lineWidth   = 2;
+        ctx.beginPath(); ctx.arc(sx_src, sy_src, 7, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = '#ffdd44';
+        ctx.beginPath(); ctx.arc(sx_src, sy_src, 4, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle    = '#ffffff';
+        ctx.font         = 'bold 13px monospace';
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.shadowColor  = 'rgba(0,0,0,0.7)';
+        ctx.shadowBlur   = 3;
+        ctx.fillText('S', sx_src, sy_src - 10);
+        ctx.restore();
+    }
+}
+
+// Rendu top-down dans un contexte 2D (ctx du canvas principal ou offscreen)
+function _renderTopDown(ctx, W, H) {
+    if (simVagues.c_sim <= 0) {
+        ctx.fillStyle = 'rgb(' + COL_BG_R + ',' + COL_BG_G + ',' + COL_BG_B + ')';
+        ctx.fillRect(0, 0, W, H);
+        _drawAxisVagues(ctx, W, H);
+        _drawBeaconsVagues(ctx);
+        _drawSourceVagues(ctx);
+        return;
+    }
+    var imgData = ctx.createImageData(W, H);
+    var data    = imgData.data;
+    var B = BLOCK_V, BH = B >> 1;
+    var t = simVagues.simTime, c = simVagues.c_sim, f = simVagues.freq;
+    var TWO_PI_F = 2 * Math.PI * f;
+    var maxR = Math.sqrt(W * W + H * H);
+    var a5   = simVagues.attenuation * 5;
+    var geo  = simVagues.geoAttenuation;
+    var sx   = simVagues.sourceX, sy = simVagues.sourceY;
+    var r_front = c * (t - simVagues.sourceResetTime);
+
+    for (var bj = 0; bj < H; bj += B) {
+        var cy = bj + BH;
+        for (var bi = 0; bi < W; bi += B) {
+            var cx = bi + BH;
+            var rc, gc, bc;
+            var dx = cx - sx, dy = cy - sy;
+            var r  = Math.sqrt(dx * dx + dy * dy);
+            if (r > r_front) {
+                rc = COL_BG_R; gc = COL_BG_G; bc = COL_BG_B;
+            } else {
+                var raw = Math.sin(TWO_PI_F * (t - r / c));
+                var env = 1.0;
+                if (geo) env = Math.min(1, Math.sqrt(50 / Math.max(1, r)));
+                if (a5 > 0) env *= Math.exp(-a5 * r / maxR);
+                env = Math.min(1, env * VAGUES_AMP_GAIN);
+                var t01 = (raw * env + 1) * 0.5;
+                rc = Math.round(COL_TROUGH_R + t01 * (COL_CREST_R - COL_TROUGH_R));
+                gc = Math.round(COL_TROUGH_G + t01 * (COL_CREST_G - COL_TROUGH_G));
+                bc = Math.round(COL_TROUGH_B + t01 * (COL_CREST_B - COL_TROUGH_B));
+            }
+            for (var dj = 0; dj < B && bj + dj < H; dj++) {
+                for (var di = 0; di < B && bi + di < W; di++) {
+                    var idx = ((bj + dj) * W + (bi + di)) * 4;
+                    data[idx] = rc; data[idx+1] = gc; data[idx+2] = bc; data[idx+3] = 255;
+                }
+            }
+        }
+    }
+    ctx.putImageData(imgData, 0, 0);
+    _drawAxisVagues(ctx, W, H);
+    _drawBeaconsVagues(ctx);
+    _drawSourceVagues(ctx);
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Vue en coupe (plan Sxy)
+// ══════════════════════════════════════════════════════════════════════
+
+// Champ d'onde 1D le long de l'axe x, depuis la source en srcX
+function _waveFieldCoupeAt(x_canvas, srcX) {
+    var r_px = x_canvas - srcX;
+    if (r_px < 0) return 0;
+    var c = simVagues.c_sim;
+    if (c <= 0) return 0;
+    if (r_px > c * (simVagues.simTime - simVagues.sourceResetTime)) return 0;
+    var field = Math.sin(2 * Math.PI * simVagues.freq * (simVagues.simTime - r_px / c));
+    if (simVagues.geoAttenuation) field *= Math.sqrt(50 / Math.max(1, r_px));
+    if (simVagues.attenuation > 0)
+        field *= Math.exp(-simVagues.attenuation * 5 * r_px / simVagues.canvasW);
+    return field * simVagues.amplitude;
+}
+
+function _drawVaguesCoupe(ctx, W, H) {
+    var srcX   = simVagues.coupeSrcX;
+    var yLevel = Math.round(H / 2);
+    var ampPx  = Math.min(H * 0.18, 55);
+
+    // ── 1. Fond ciel (air) ────────────────────────────────────────────
+    var skyGrad = ctx.createLinearGradient(0, 0, 0, H);
+    skyGrad.addColorStop(0, '#b0d8f0');
+    skyGrad.addColorStop(0.5, '#d4ecf8');
+    skyGrad.addColorStop(1, '#d4ecf8');
+    ctx.fillStyle = skyGrad;
+    ctx.fillRect(0, 0, W, H);
+
+    // ── 2. Polygone eau (surface ondulée + fond) ──────────────────────
+    var srcField = _waveFieldCoupeAt(srcX, srcX);
+    ctx.beginPath();
+    ctx.moveTo(srcX, yLevel - srcField * ampPx);
+    for (var x = srcX + 1; x <= W; x++) {
+        ctx.lineTo(x, yLevel - _waveFieldCoupeAt(x, srcX) * ampPx);
+    }
+    ctx.lineTo(W, H);
+    ctx.lineTo(srcX, H);
+    ctx.closePath();
+
+    var waterGrad = ctx.createLinearGradient(0, yLevel - ampPx, 0, H);
+    waterGrad.addColorStop(0,   'rgb(10, 110, 200)');
+    waterGrad.addColorStop(0.3, 'rgb(0, 60, 140)');
+    waterGrad.addColorStop(1,   'rgb(0, 15, 65)');
+    ctx.fillStyle = waterGrad;
+    ctx.fill();
+
+    // ── 3. Ligne de surface (écume) ───────────────────────────────────
+    ctx.beginPath();
+    for (var x = srcX; x <= W; x++) {
+        var sy = yLevel - _waveFieldCoupeAt(x, srcX) * ampPx;
+        if (x === srcX) ctx.moveTo(x, sy);
+        else             ctx.lineTo(x, sy);
+    }
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.lineWidth   = 2;
+    ctx.stroke();
+
+    // ── 4. Zone source ────────────────────────────────────────────────
+    _drawSourceCoupeVagues(ctx, W, H, srcX, yLevel, ampPx);
+
+    // ── 5. Labels Air / Eau ───────────────────────────────────────────
+    ctx.save();
+    ctx.font      = 'italic 12px "Segoe UI", Arial, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = 'rgba(30, 80, 130, 0.65)';
+    ctx.textBaseline = 'top';
+    ctx.fillText('Air', srcX + 10, 8);
+    ctx.fillStyle = 'rgba(200, 235, 255, 0.70)';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('Eau', srcX + 10, H - 8);
+    ctx.restore();
+
+    // ── 6. Axe x et graduations ───────────────────────────────────────
+    _drawAxisCoupeVagues(ctx, W, H, srcX, yLevel);
+}
+
+function _drawSourceCoupeVagues(ctx, W, H, srcX, yLevel, ampPx) {
+    var t    = simVagues.simTime;
+    var osc  = Math.sin(2 * Math.PI * simVagues.freq * t) * simVagues.amplitude;
+    var dotY = yLevel - osc * ampPx;
+
+    ctx.save();
+
+    // ── Fond sombre de la zone source (toute la hauteur) ─────────────
+    var grd = ctx.createLinearGradient(0, 0, srcX, 0);
+    grd.addColorStop(0, 'rgba(30, 35, 50, 0.95)');
+    grd.addColorStop(1, 'rgba(50, 55, 75, 0.90)');
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, 0, srcX, H);
+
+    // Séparation verticale légère à droite de la zone source
+    ctx.strokeStyle = 'rgba(140, 180, 220, 0.40)';
+    ctx.lineWidth   = 1;
+    ctx.beginPath(); ctx.moveTo(srcX, 0); ctx.lineTo(srcX, H); ctx.stroke();
+
+    // ── Tige du vibreur ───────────────────────────────────────────────
+    ctx.fillStyle = '#8aa4c0';
+    ctx.fillRect(srcX - 3, 0, 6, H);
+
+    // ── Petite flèche indiquant le sens d'oscillation ─────────────────
+    var arrowDir = osc >= 0 ? -1 : 1;
+    var ax = srcX - 22, ay1 = dotY, ay2 = dotY + arrowDir * 14;
+    ctx.strokeStyle = 'rgba(255, 215, 80, 0.80)';
+    ctx.lineWidth   = 1.5;
+    ctx.beginPath(); ctx.moveTo(ax, ay1); ctx.lineTo(ax, ay2); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(ax - 4, ay2 - arrowDir * 6);
+    ctx.lineTo(ax,     ay2);
+    ctx.lineTo(ax + 4, ay2 - arrowDir * 6);
+    ctx.stroke();
+
+    ctx.restore();
+
+    // ── Point oscillant S sur la surface ─────────────────────────────
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    ctx.lineWidth   = 2;
+    ctx.beginPath(); ctx.arc(srcX, dotY, 7, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = '#ffdd44';
+    ctx.beginPath(); ctx.arc(srcX, dotY, 4, 0, Math.PI * 2); ctx.fill();
+
+    ctx.fillStyle    = '#ffffff';
+    ctx.font         = 'bold 13px monospace';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.shadowColor  = 'rgba(0,0,0,0.7)';
+    ctx.shadowBlur   = 3;
+    ctx.fillText('S', srcX, dotY - 10);
+    ctx.restore();
+}
+
+function _drawAxisCoupeVagues(ctx, W, H, srcX, yLevel) {
+    ctx.save();
+
+    // Ligne pointillée à l'équilibre (y=0)
+    ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+    ctx.lineWidth   = 1.2;
+    ctx.setLineDash([8, 6]);
+    ctx.beginPath();
+    ctx.moveTo(srcX, yLevel);
+    ctx.lineTo(W, yLevel);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Graduations en mètres depuis la source
+    if (C_BASE_VAGUES > 0) {
+        var m_per_px = 1.0 / C_BASE_VAGUES;
+        var total_m  = (W - srcX) * m_per_px;
+        var step_raw = total_m / 6;
+        var mag      = Math.pow(10, Math.floor(Math.log10(Math.max(step_raw, 1e-9))));
+        var step;
+        if      (step_raw / mag < 2) step = mag;
+        else if (step_raw / mag < 5) step = 2 * mag;
+        else                         step = 5 * mag;
+        var decimals = Math.max(0, -Math.floor(Math.log10(step)));
+
+        ctx.lineWidth   = 1;
+        ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+        ctx.fillStyle   = 'rgba(255,255,255,0.85)';
+        ctx.font        = '10px sans-serif';
+        ctx.shadowColor = 'rgba(0,0,0,0.6)';
+        ctx.shadowBlur  = 3;
+        var TICK = 5;
+
+        for (var d = step; srcX + d * C_BASE_VAGUES < W + 1; d += step) {
+            var px = Math.round(srcX + d * C_BASE_VAGUES);
+            ctx.beginPath(); ctx.moveTo(px, yLevel - TICK); ctx.lineTo(px, yLevel + TICK); ctx.stroke();
+            ctx.textAlign    = 'center';
+            ctx.textBaseline = 'top';
+            ctx.fillText(d.toFixed(decimals).replace('.', ','), px, yLevel + TICK + 2);
+        }
+        ctx.shadowBlur = 0;
+    }
+
+    // Label axe x
+    ctx.fillStyle    = 'rgba(255,255,255,0.6)';
+    ctx.font         = '11px sans-serif';
+    ctx.textAlign    = 'right';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('x (m) →', W - 4, yLevel - 3);
+
+    ctx.restore();
 }
 
 // ══════════════════════════════════════════════════════════════════════
