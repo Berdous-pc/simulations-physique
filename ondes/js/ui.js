@@ -721,8 +721,10 @@ function _syncUIToSim() {
     var btnV = document.getElementById('btn-playpause-vagues');
     if (btnV) { btnV.textContent = '⏸ Pause'; btnV.className = 'btn btn-pause'; }
 
-    // ── Onglet Son actif au départ ─────────────────────────────────────
-    setMainTab('son');
+    // ── Onglet actif : depuis le hash URL ou Son par défaut ───────────
+    var hash = window.location.hash.replace('#', '');
+    var validTabs = ['corde', 'son', 'vagues'];
+    setMainTab(validTabs.indexOf(hash) !== -1 ? hash : 'son');
 }
 
 function _setSlider(sliderId, value, lblId, decimals) {
