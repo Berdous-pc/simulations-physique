@@ -101,10 +101,10 @@ function drawAnim() {
     for (var _sri = 0; _sri < savedRuns.length; _sri++) {
         var _sr = savedRuns[_sri];
         if (_sr.hidden) continue;
-        if (_sr.displayMode === 'trajectory' || _sr.displayMode === 'both') {
+        if (sim.displayMode === 'trajectory' || sim.displayMode === 'both') {
             _drawSavedTrajectory(ctx, _sr);
         }
-        if (_sr.displayMode === 'chrono' || _sr.displayMode === 'both') {
+        if (sim.displayMode === 'chrono' || sim.displayMode === 'both') {
             _drawSavedChronoSnaps(ctx, _sr);
         }
         if (_replayPlaying) {
@@ -445,7 +445,7 @@ function _drawSavedBall(ctx, run) {
 function _drawTrajectory(ctx) {
     if (sim.trajPoints.length < 2) return;
     ctx.save();
-    ctx.strokeStyle = 'rgba(255,255,100,0.75)';
+    ctx.strokeStyle = _currentRunColor || 'rgba(255,255,100,0.75)';
     ctx.lineWidth = 2;
     ctx.lineJoin = 'round';
     ctx.beginPath();
@@ -472,8 +472,8 @@ function _drawChronoSnaps(ctx) {
 
         /* Disque de position */
         ctx.save();
-        ctx.fillStyle = 'rgba(255,255,255,0.85)';
-        ctx.strokeStyle = '#2c3e50';
+        ctx.fillStyle = _currentRunColor || 'rgba(255,255,255,0.85)';
+        ctx.strokeStyle = 'rgba(255,255,255,0.8)';
         ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.arc(p.cx, p.cy, 5, 0, 2 * Math.PI);

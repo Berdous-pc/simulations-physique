@@ -105,6 +105,7 @@ function resetSimAnim() {
     sim.paused = true;
     resetSim();
     computeScale(_animW, _animH);
+    _updateCurrentRunColor();
     _updatePlayBtn();
     _updateReadouts();
 }
@@ -143,7 +144,23 @@ function setDisplayMode(mode) {
     });
     var dtRow = document.getElementById('deltat-row');
     if (dtRow) dtRow.style.display = (mode === 'chrono' || mode === 'both') ? '' : 'none';
-    resetSimAnim();
+    if (mode === 'chrono' || mode === 'both') {
+        _regenerateChronoSnaps();
+    }
+}
+
+/* Régénère les chronoSnaps de la run courante depuis graphData */
+function _regenerateChronoSnaps() {
+    sim.chronoSnaps = [];
+    var nextT = 0;
+    for (var i = 0; i < sim.graphData.length; i++) {
+        var d = sim.graphData[i];
+        if (d.t >= nextT) {
+            sim.chronoSnaps.push({ x: d.x, y: d.y, vx: d.vx, vy: d.vy, ax: d.ax, ay: d.ay, t: d.t });
+            nextT += sim.deltaT;
+        }
+    }
+    sim.nextChronoTime = nextT;
 }
 
 /* ─────────────────────────────────────────────────
@@ -236,7 +253,9 @@ function _updateWindTrack(v) {
 function onSliderDeltaT(v) {
     sim.deltaT = parseFloat(v);
     document.getElementById('lbl-deltat').textContent = fmt(sim.deltaT, 2);
-    resetSimAnim();
+    if (sim.displayMode === 'chrono' || sim.displayMode === 'both') {
+        _regenerateChronoSnaps();
+    }
 }
 
 /* ─────────────────────────────────────────────────
@@ -429,12 +448,16 @@ function adapterVue() {
    Sauvegarde de runs
 ───────────────────────────────────────────────── */
 var _savedRunsMinimized = false;
+var _currentRunColor = SAVE_COLORS[0];
+
+function _updateCurrentRunColor() {
+    var used = savedRuns.map(function(r) { return r.color; });
+    _currentRunColor = SAVE_COLORS.find(function(c) { return used.indexOf(c) === -1; }) || null;
+}
 
 function sauvegarderRun() {
     if (!sim.ended || savedRuns.length >= MAX_SAVED_RUNS) return;
-    var usedColors = savedRuns.map(function(r) { return r.color; });
-    var color = SAVE_COLORS.find(function(c) { return usedColors.indexOf(c) === -1; });
-    if (!color) color = SAVE_COLORS[0];
+    var color = _currentRunColor || SAVE_COLORS[0];
     savedRuns.push({
         id: _nextSaveId++,
         color: color,
@@ -452,10 +475,12 @@ function sauvegarderRun() {
         hidden: false
     });
     renderSavedRuns();
+    resetSimAnim();   /* efface la run courante — elle est désormais affichée via la couche sauvegardée */
 }
 
 function supprimerSauvegardeRun(id) {
     savedRuns = savedRuns.filter(function(r) { return r.id !== id; });
+    _updateCurrentRunColor();
     renderSavedRuns();
 }
 

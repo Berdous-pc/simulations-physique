@@ -378,7 +378,7 @@ function _drawOneGraph(ctx, x0, y0, W, H, tabKey, hoverPos) {
         ctx.beginPath();
         ctx.rect(x0 + ml, y0 + mt, plotW, plotH);
         ctx.clip();
-        ctx.strokeStyle = '#2a5080';
+        ctx.strokeStyle = _currentRunColor || '#2a5080';
         ctx.lineWidth   = 2;
         ctx.lineJoin    = 'round';
         var yRange = yMax - yMin;
@@ -426,7 +426,7 @@ function _drawOneGraph(ctx, x0, y0, W, H, tabKey, hoverPos) {
                 ctx.beginPath(); ctx.moveTo(hbx, hbyc); ctx.lineTo(x0 + ml, hbyc);        ctx.stroke();
                 ctx.setLineDash([]);
 
-                ctx.fillStyle = '#2a5080';
+                ctx.fillStyle = _currentRunColor || '#2a5080';
                 ctx.beginPath();
                 ctx.arc(hbx, hbyc, 5, 0, Math.PI * 2);
                 ctx.fill();
@@ -458,7 +458,7 @@ function _drawOneGraph(ctx, x0, y0, W, H, tabKey, hoverPos) {
                 ctx.fillStyle = 'rgba(255,255,255,0.88)';
                 ctx.fillRect(lx - PAD, ly - 2, lblW + PAD * 2, lblH + 6);
 
-                ctx.fillStyle    = '#2a5080';
+                ctx.fillStyle    = _currentRunColor || '#2a5080';
                 ctx.textBaseline = 'top';
                 ctx.textAlign    = 'left';
                 ctx.fillText(lbl, lx, ly + 1);
