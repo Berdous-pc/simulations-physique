@@ -19,6 +19,7 @@ var COL_VEC_ACC = '#2a8a50';
 var _animCanvas = null;
 var _animCtx    = null;
 var _animW = 0, _animH = 0;
+var _animHoverSnap = null;
 
 /* ── Géométrie des axes (recalculée à chaque frame) ─────────────
    Centralisé ici pour que _drawGrid et _drawAxes soient cohérents.
@@ -37,6 +38,16 @@ function initAnimCanvas() {
     _animCanvas = document.getElementById('anim-canvas');
     _animCtx    = _animCanvas.getContext('2d');
     resizeAnimCanvas();
+
+    _animCanvas.addEventListener('pointermove', function(e) {
+        var rect = _animCanvas.getBoundingClientRect();
+        var cx = (e.clientX - rect.left) * (_animW / rect.width);
+        var cy = (e.clientY - rect.top)  * (_animH / rect.height);
+        _updateAnimHover(cx, cy);
+    });
+    _animCanvas.addEventListener('pointerleave', function() {
+        _animHoverSnap = null;
+    });
 }
 
 function resizeAnimCanvas() {
@@ -121,6 +132,7 @@ function drawAnim() {
 
     _drawBall(ctx);
     _drawVectorLegend(ctx);
+    if (_animHoverSnap) _drawAnimHover(ctx, _animHoverSnap);
 }
 
 /* ─────────────────────────────────────────────────
@@ -548,14 +560,12 @@ function _drawBall(ctx) {
 }
 
 /* ── Vecteur position (de O vers la balle) ── */
-function _drawVectorPos(ctx, px, py, alpha) {
+function _drawVectorPos(ctx, px, py, alpha, noLabel) {
     var origin = toCanvas(0, 0);
     var p      = toCanvas(px, py);
-    var dx = (p.cx - origin.cx) * VEC_SCALE_POS;
-    var dy = (p.cy - origin.cy) * VEC_SCALE_POS;
-    var ex = origin.cx + dx;
-    var ey = origin.cy + dy;
-    _drawVecArrow(ctx, origin.cx, origin.cy, dx, dy, COL_VEC_POS, 'OM', alpha);
+    var dx = p.cx - origin.cx;
+    var dy = p.cy - origin.cy;
+    _drawVecArrow(ctx, origin.cx, origin.cy, dx, dy, COL_VEC_POS, noLabel ? '' : 'OM', alpha);
 }
 
 /* ─────────────────────────────────────────────────
@@ -606,6 +616,292 @@ function _drawVecArrow(ctx, cx, cy, dx, dy, color, label, opacity) {
 }
 
 /* ─────────────────────────────────────────────────
+   Hover animation canvas
+───────────────────────────────────────────────── */
+function _updateAnimHover(mouseX, mouseY) {
+    var datasets = [];
+    if (sim.graphData.length >= 2) {
+        datasets.push({ data: sim.graphData, color: _currentRunColor || '#2a5080' });
+    }
+    for (var i = 0; i < savedRuns.length; i++) {
+        if (!savedRuns[i].hidden) datasets.push({ data: savedRuns[i].graphData, color: savedRuns[i].color });
+    }
+
+    var bestDist = Infinity, bestSnap = null;
+    for (var di = 0; di < datasets.length; di++) {
+        var pts = datasets[di].data;
+        for (var k = 0; k < pts.length; k++) {
+            var p = toCanvas(pts[k].x, pts[k].y);
+            /* ignorer les points sous le sol (hors zone visible) */
+            if (p.cy > groundY() + 10) continue;
+            var d = Math.hypot(p.cx - mouseX, p.cy - mouseY);
+            if (d < bestDist) {
+                bestDist = d;
+                bestSnap = { x: pts[k].x, y: pts[k].y,
+                             vx: pts[k].vx, vy: pts[k].vy,
+                             ax: pts[k].ax, ay: pts[k].ay,
+                             t: pts[k].t, color: datasets[di].color };
+            }
+        }
+    }
+    _animHoverSnap = bestSnap;
+}
+
+/* Affiche les coordonnées d'un vecteur en notation mathématique :
+   grande parenthèse avec deux lignes (ligne1 / ligne2)  */
+/* Calcule les dimensions d'un label coordonnées (sans dessiner). */
+function _measureVecLabel(ctx, vecName, line1, line2) {
+    var fontSize = Math.max(15, Math.min(22, _animH * 0.045));
+    var nameSize = Math.max(14, Math.min(20, _animH * 0.042));
+
+    ctx.font = 'bold ' + fontSize + 'px "Segoe UI", Arial';
+    var w1    = ctx.measureText(line1).width;
+    var w2    = ctx.measureText(line2).width;
+    var textW = Math.max(w1, w2);
+    var lineH = fontSize * 1.45;
+    var parenH = lineH * 2;
+    var parenW = Math.max(7, fontSize * 0.38);
+    var iPad   = 7;
+    var blockW = parenW * 2 + iPad * 2 + textW;
+
+    ctx.font = 'bold ' + nameSize + 'px "Segoe UI", Arial';
+    var nameW      = ctx.measureText(vecName).width;
+    var arrowExtra = Math.max(5, nameSize * 0.55);
+    var nameColW   = nameW + 10;
+    var nameColH   = arrowExtra + nameSize;
+
+    return {
+        fontSize: fontSize, nameSize: nameSize,
+        textW: textW, lineH: lineH, parenH: parenH, parenW: parenW, iPad: iPad, blockW: blockW,
+        nameW: nameW, arrowExtra: arrowExtra, nameColW: nameColW, nameColH: nameColH,
+        totalW: nameColW + blockW,
+        totalH: Math.max(parenH, nameColH)
+    };
+}
+
+/* Retourne {lx, ly} : première position dans preferOrder qui :
+   - tient dans le canvas (marge M),
+   - est au-dessus du sol,
+   - ne chevauche aucun rect dans placedRects [{lx,ly,w,h}]. */
+function _bestLabelPos(anchorX, anchorY, totalW, totalH, preferOrder, placedRects) {
+    var GAP  = 14;
+    var M    = 5;
+    var maxY = toCanvas(0, 0).cy - M;
+    var maxX = _animW - M;
+
+    var slots = {
+        'right':       { lx: anchorX + GAP,           ly: anchorY - totalH / 2 },
+        'left':        { lx: anchorX - totalW - GAP,  ly: anchorY - totalH / 2 },
+        'above':       { lx: anchorX - totalW / 2,    ly: anchorY - totalH - GAP },
+        'below':       { lx: anchorX - totalW / 2,    ly: anchorY + GAP },
+        'upper-right': { lx: anchorX + GAP,           ly: anchorY - totalH - GAP },
+        'upper-left':  { lx: anchorX - totalW - GAP,  ly: anchorY - totalH - GAP },
+        'lower-right': { lx: anchorX + GAP,           ly: anchorY + GAP },
+        'lower-left':  { lx: anchorX - totalW - GAP,  ly: anchorY + GAP }
+    };
+
+    function overlaps(lx, ly) {
+        for (var j = 0; j < placedRects.length; j++) {
+            var r = placedRects[j];
+            if (lx < r.lx + r.w && lx + totalW > r.lx &&
+                ly < r.ly + r.h && ly + totalH > r.ly) return true;
+        }
+        return false;
+    }
+
+    function fits(s) {
+        return s.lx >= M && s.ly >= M &&
+               s.lx + totalW <= maxX &&
+               s.ly + totalH <= maxY &&
+               !overlaps(s.lx, s.ly);
+    }
+
+    for (var i = 0; i < preferOrder.length; i++) {
+        var s = slots[preferOrder[i]];
+        if (s && fits(s)) return { lx: s.lx, ly: s.ly };
+    }
+
+    /* Repli : empilage vertical ancré sur la position du vecteur courant.
+       On essaie d'abord à droite de l'ancre, puis à gauche.
+       Pour chaque colonne x, on collecte les y candidats (au-dessus/en-dessous
+       de chaque rect déjà placé qui chevauche cette colonne) et on prend le plus
+       proche de l'ancre qui ne chevauche rien et reste dans les bornes. */
+    var STACK_GAP  = 5;
+    var xTries     = [anchorX + GAP, anchorX - totalW - GAP];
+
+    for (var xi = 0; xi < xTries.length; xi++) {
+        var stackLx = Math.max(M, Math.min(maxX - totalW, xTries[xi]));
+
+        /* Positions y candidates : centrée sur l'ancre + au-dessus/en-dessous
+           de chaque rect existant qui chevauche cette colonne x */
+        var yTries = [anchorY - totalH / 2, anchorY - totalH - GAP, anchorY + GAP];
+        for (var j = 0; j < placedRects.length; j++) {
+            var r = placedRects[j];
+            if (r.lx < stackLx + totalW && r.lx + r.w > stackLx) {
+                yTries.push(r.ly + r.h + STACK_GAP);
+                yTries.push(r.ly - totalH - STACK_GAP);
+            }
+        }
+        /* Trier par proximité au centre de l'ancre */
+        yTries.sort(function(a, b) {
+            return Math.abs(a + totalH / 2 - anchorY) - Math.abs(b + totalH / 2 - anchorY);
+        });
+
+        for (var yi = 0; yi < yTries.length; yi++) {
+            var stackLy = yTries[yi];
+            if (stackLy >= M && stackLy + totalH <= maxY && !overlaps(stackLx, stackLy)) {
+                return { lx: stackLx, ly: stackLy };
+            }
+        }
+    }
+
+    /* Dernier recours : clamp dur sans vérification de collision */
+    var fb = slots[preferOrder[0]];
+    return {
+        lx: Math.max(M, Math.min(maxX - totalW, fb.lx)),
+        ly: Math.max(M, Math.min(maxY - totalH, fb.ly))
+    };
+}
+
+/* Dessine le label à la position (lx, ly) déjà calculée. */
+function _renderVecLabel(ctx, lx, ly, m, vecName, line1, line2, color) {
+    var nameCenterY = ly + m.totalH / 2;
+    var nameTopY    = nameCenterY - m.nameColH / 2;
+    var arrowMidY   = nameTopY + m.arrowExtra * 0.5;
+
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth   = 1.8;
+    ctx.lineCap     = 'round';
+    ctx.lineJoin    = 'round';
+
+    /* Flèche au-dessus du nom */
+    ctx.beginPath();
+    ctx.moveTo(lx,               arrowMidY);
+    ctx.lineTo(lx + m.nameW,     arrowMidY);
+    ctx.moveTo(lx + m.nameW - 5, arrowMidY - 3);
+    ctx.lineTo(lx + m.nameW,     arrowMidY);
+    ctx.lineTo(lx + m.nameW - 5, arrowMidY + 3);
+    ctx.stroke();
+
+    /* Nom */
+    ctx.fillStyle    = color;
+    ctx.font         = 'bold ' + m.nameSize + 'px "Segoe UI", Arial';
+    ctx.textAlign    = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(vecName, lx, nameTopY + m.arrowExtra);
+
+    /* Parenthèses */
+    var bx  = lx + m.nameColW;
+    var bly = ly + (m.totalH - m.parenH) / 2;
+
+    ctx.lineWidth   = 2.5;
+    ctx.strokeStyle = color;
+
+    var lPx = bx + m.parenW;
+    ctx.beginPath();
+    ctx.moveTo(lPx, bly);
+    ctx.bezierCurveTo(lPx - m.parenW * 1.3, bly + m.parenH * 0.18,
+                      lPx - m.parenW * 1.3, bly + m.parenH * 0.82,
+                      lPx, bly + m.parenH);
+    ctx.stroke();
+
+    var rPx = bx + m.parenW + m.iPad + m.textW + m.iPad;
+    ctx.beginPath();
+    ctx.moveTo(rPx, bly);
+    ctx.bezierCurveTo(rPx + m.parenW * 1.3, bly + m.parenH * 0.18,
+                      rPx + m.parenW * 1.3, bly + m.parenH * 0.82,
+                      rPx, bly + m.parenH);
+    ctx.stroke();
+
+    /* Texte */
+    ctx.fillStyle    = color;
+    ctx.font         = 'bold ' + m.fontSize + 'px "Segoe UI", Arial';
+    ctx.textAlign    = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(line1, bx + m.parenW + m.iPad, bly + m.lineH * 0.5);
+    ctx.fillText(line2, bx + m.parenW + m.iPad, bly + m.lineH * 1.5);
+
+    ctx.restore();
+}
+
+function _drawAnimHover(ctx, snap) {
+    var p = toCanvas(snap.x, snap.y);
+
+    /* ── Point survolé ── */
+    ctx.save();
+    ctx.fillStyle   = snap.color;
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    ctx.lineWidth   = 2;
+    ctx.shadowColor = 'rgba(0,0,0,0.4)';
+    ctx.shadowBlur  = 5;
+    ctx.beginPath();
+    ctx.arc(p.cx, p.cy, 7, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.stroke();
+    ctx.restore();
+
+    /* ── Prépare les labels à placer ── */
+    var toPlace  = [];   /* { anchorX, anchorY, vecName, line1, line2, color, prefer } */
+    var origin   = toCanvas(0, 0);
+
+    if (sim.showVecPos) {
+        _drawVectorPos(ctx, snap.x, snap.y, 1.0, true);
+        toPlace.push({
+            anchorX: (origin.cx + p.cx) / 2,
+            anchorY: (origin.cy + p.cy) / 2,
+            vecName: 'OM',
+            line1: 'x = ' + fmt(snap.x, 2) + ' m',
+            line2: 'y = ' + fmt(snap.y, 2) + ' m',
+            color:  COL_VEC_POS,
+            prefer: ['lower-right', 'right', 'upper-right', 'lower-left', 'left', 'upper-left', 'above', 'below']
+        });
+    }
+    if (sim.showVecVit) {
+        var dvx = snap.vx * VEC_SCALE_VIT;
+        var dvy = -snap.vy * VEC_SCALE_VIT;
+        _drawVecArrow(ctx, p.cx, p.cy, dvx, dvy, COL_VEC_VIT, '', 1.0);
+        var vPrefer = dvy <= 0
+            ? ['above', 'upper-right', 'upper-left', 'right', 'left', 'lower-right', 'lower-left', 'below']
+            : ['upper-right', 'upper-left', 'above', 'right', 'left', 'lower-right', 'lower-left', 'below'];
+        toPlace.push({
+            anchorX: p.cx + dvx / 2,
+            anchorY: p.cy + dvy / 2,
+            vecName: 'v',
+            line1: 'vx = ' + fmt(snap.vx, 2) + ' m/s',
+            line2: 'vy = ' + fmt(snap.vy, 2) + ' m/s',
+            color:  COL_VEC_VIT,
+            prefer: vPrefer
+        });
+    }
+    if (sim.showVecAcc) {
+        var dax = snap.ax * VEC_SCALE_ACC;
+        var day = -snap.ay * VEC_SCALE_ACC;
+        _drawVecArrow(ctx, p.cx, p.cy, dax, day, COL_VEC_ACC, '', 1.0);
+        toPlace.push({
+            anchorX: p.cx + dax / 2,
+            anchorY: p.cy + day / 2,
+            vecName: 'a',
+            line1: 'ax = ' + fmt(snap.ax, 2) + ' m/s²',
+            line2: 'ay = ' + fmt(snap.ay, 2) + ' m/s²',
+            color:  COL_VEC_ACC,
+            prefer: ['right', 'upper-right', 'left', 'upper-left', 'above', 'lower-right', 'lower-left', 'below']
+        });
+    }
+
+    /* ── Place et dessine chaque label en évitant les collisions ── */
+    var placedRects = [];
+    for (var i = 0; i < toPlace.length; i++) {
+        var lbl = toPlace[i];
+        var m   = _measureVecLabel(ctx, lbl.vecName, lbl.line1, lbl.line2);
+        var pos = _bestLabelPos(lbl.anchorX, lbl.anchorY, m.totalW, m.totalH, lbl.prefer, placedRects);
+        placedRects.push({ lx: pos.lx, ly: pos.ly, w: m.totalW, h: m.totalH });
+        _renderVecLabel(ctx, pos.lx, pos.ly, m, lbl.vecName, lbl.line1, lbl.line2, lbl.color);
+    }
+}
+
+/* ─────────────────────────────────────────────────
    Légende des échelles vecteurs (coin bas-droite du ciel)
 ───────────────────────────────────────────────── */
 function _drawVectorLegend(ctx) {
@@ -618,7 +914,7 @@ function _drawVectorLegend(ctx) {
     var lineH = fontSize + 8;
     var items = [];
 
-    if (sim.showVecPos) items.push({color: COL_VEC_POS, label: 'Position (×' + fmt(VEC_SCALE_POS, 2) + ')'});
+    if (sim.showVecPos) items.push({color: COL_VEC_POS, label: 'Position OM'});
     if (sim.showVecVit) items.push({color: COL_VEC_VIT, label: 'Vitesse (1 m/s = ' + VEC_SCALE_VIT + ' px)'});
     if (sim.showVecAcc) items.push({color: COL_VEC_ACC, label: 'Accel. (1 m/s² = ' + VEC_SCALE_ACC + ' px)'});
 

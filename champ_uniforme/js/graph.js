@@ -395,75 +395,114 @@ function _drawOneGraph(ctx, x0, y0, W, H, tabKey, hoverPos) {
         ctx.restore();
     }
 
-    /* ── Hover point le plus proche ── */
-    if (hoverPos && data.length >= 2) {
+    /* ── Hover point le plus proche (toutes courbes visibles) ── */
+    if (hoverPos) {
         var mx = hoverPos.x;
         var my = hoverPos.y;
         if (mx >= x0 + ml && mx <= x0 + ml + plotW &&
             my >= y0 + mt && my <= y0 + mt + plotH) {
 
-            var hxVals = data.map(info.xFn);
-            var hyVals = data.map(info.col);
-            var best = -1, bestDist = Infinity;
-            for (var k = 0; k < hxVals.length; k++) {
-                var bx  = toGX(hxVals[k]);
-                var by  = toGY(hyVals[k]);
-                var byc = Math.max(y0 + mt, Math.min(y0 + mt + plotH, by));
-                var d   = Math.sqrt((bx - mx) * (bx - mx) + (byc - my) * (byc - my));
-                if (d < bestDist) { bestDist = d; best = k; }
+            /* Construire la liste de tous les datasets visibles */
+            var _candidates = [];
+            if (data.length >= 2) {
+                _candidates.push({ pts: data, color: _currentRunColor || '#2a5080' });
+            }
+            for (var _hi = 0; _hi < savedRuns.length; _hi++) {
+                var _hsr = savedRuns[_hi];
+                if (!_hsr.hidden && _hsr.graphData.length >= 2) {
+                    _candidates.push({ pts: _hsr.graphData, color: _hsr.color });
+                }
             }
 
-            if (best >= 0) {
-                var hbx  = toGX(hxVals[best]);
-                var hby  = toGY(hyVals[best]);
-                var hbyc = Math.max(y0 + mt, Math.min(y0 + mt + plotH, hby));
+            var bestX = 0, bestY = 0, bestColor = '#2a5080', bestDist = Infinity;
+            var xl = _parseAxisLabel(info.xlabel);
+            var yl = _parseAxisLabel(info.ylabel);
+            var bestXVal = 0, bestYVal = 0;
 
+            for (var _ci = 0; _ci < _candidates.length; _ci++) {
+                var _cpts  = _candidates[_ci].pts;
+                var _cXV   = _cpts.map(info.xFn);
+                var _cYV   = _cpts.map(info.col);
+                for (var k = 0; k < _cXV.length; k++) {
+                    var bx  = toGX(_cXV[k]);
+                    var by  = toGY(_cYV[k]);
+                    var byc = Math.max(y0 + mt, Math.min(y0 + mt + plotH, by));
+                    var dd  = Math.sqrt((bx - mx) * (bx - mx) + (byc - my) * (byc - my));
+                    if (dd < bestDist) {
+                        bestDist  = dd;
+                        bestX     = bx;
+                        bestY     = byc;
+                        bestColor = _candidates[_ci].color;
+                        bestXVal  = _cXV[k];
+                        bestYVal  = _cYV[k];
+                    }
+                }
+            }
+
+            if (bestDist < Infinity) {
                 ctx.save();
                 ctx.setLineDash([4, 4]);
                 ctx.strokeStyle = 'rgba(60,60,60,0.45)';
                 ctx.lineWidth   = 1;
-                ctx.beginPath(); ctx.moveTo(hbx, hbyc); ctx.lineTo(hbx, y0 + mt + plotH); ctx.stroke();
-                ctx.beginPath(); ctx.moveTo(hbx, hbyc); ctx.lineTo(x0 + ml, hbyc);        ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(bestX, bestY); ctx.lineTo(bestX, y0 + mt + plotH); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(bestX, bestY); ctx.lineTo(x0 + ml, bestY);         ctx.stroke();
                 ctx.setLineDash([]);
 
-                ctx.fillStyle = _currentRunColor || '#2a5080';
+                ctx.fillStyle = bestColor;
                 ctx.beginPath();
-                ctx.arc(hbx, hbyc, 5, 0, Math.PI * 2);
+                ctx.arc(bestX, bestY, 5, 0, Math.PI * 2);
                 ctx.fill();
 
-                /* ── Étiquette avec unités ── */
-                var xl   = _parseAxisLabel(info.xlabel);
-                var yl   = _parseAxisLabel(info.ylabel);
-                var lbl  = xl.name + ' = ' + _fmtLabel(hxVals[best]) + (xl.unit ? ' ' + xl.unit : '') +
+                var lbl  = xl.name + ' = ' + _fmtLabel(bestXVal) + (xl.unit ? ' ' + xl.unit : '') +
                            '    ' +
-                           yl.name + ' = ' + _fmtLabel(hyVals[best]) + (yl.unit ? ' ' + yl.unit : '');
+                           yl.name + ' = ' + _fmtLabel(bestYVal) + (yl.unit ? ' ' + yl.unit : '');
 
                 ctx.font = _gFontTick + 'px monospace';
                 var lblW  = ctx.measureText(lbl).width;
                 var lblH  = _gFontTick;
                 var PAD   = 5;
-                var HPAD  = 8;
 
-                /* Position horizontale : droite en priorité, sinon gauche, puis clamp */
-                var lx = hbx + 12;
-                if (lx + lblW + HPAD > x0 + W) lx = hbx - 12 - lblW;
+                var lx = bestX + 12;
+                if (lx + lblW + 8 > x0 + W) lx = bestX - 12 - lblW;
                 lx = Math.max(x0 + PAD, Math.min(x0 + W - lblW - PAD, lx));
 
-                /* Position verticale : au-dessus en priorité, sinon en dessous, puis clamp */
-                var ly = hbyc - lblH - 12;
-                if (ly < y0 + PAD) ly = hbyc + 10;
+                var ly = bestY - lblH - 12;
+                if (ly < y0 + PAD) ly = bestY + 10;
                 ly = Math.max(y0 + PAD, Math.min(y0 + H - lblH - PAD, ly));
 
-                /* Fond semi-transparent pour lisibilité */
                 ctx.fillStyle = 'rgba(255,255,255,0.88)';
                 ctx.fillRect(lx - PAD, ly - 2, lblW + PAD * 2, lblH + 6);
 
-                ctx.fillStyle    = _currentRunColor || '#2a5080';
+                ctx.fillStyle    = bestColor;
                 ctx.textBaseline = 'top';
                 ctx.textAlign    = 'left';
                 ctx.fillText(lbl, lx, ly + 1);
                 ctx.restore();
             }
+        }
+    }
+
+    /* ── Point correspondant au hover animation ── */
+    if (_animHoverSnap) {
+        var snapGX  = toGX(info.xFn(_animHoverSnap));
+        var snapGY  = toGY(info.col(_animHoverSnap));
+        var snapGYc = Math.max(y0 + mt, Math.min(y0 + mt + plotH, snapGY));
+        if (snapGX >= x0 + ml && snapGX <= x0 + ml + plotW) {
+            ctx.save();
+            ctx.setLineDash([4, 4]);
+            ctx.strokeStyle = 'rgba(60,60,60,0.35)';
+            ctx.lineWidth   = 1;
+            ctx.beginPath(); ctx.moveTo(snapGX, snapGYc); ctx.lineTo(snapGX, y0 + mt + plotH); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(snapGX, snapGYc); ctx.lineTo(x0 + ml, snapGYc);        ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.fillStyle   = _animHoverSnap.color;
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth   = 2;
+            ctx.beginPath();
+            ctx.arc(snapGX, snapGYc, 5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.restore();
         }
     }
 
