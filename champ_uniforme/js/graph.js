@@ -338,6 +338,38 @@ function _drawOneGraph(ctx, x0, y0, W, H, tabKey, hoverPos) {
     ctx.lineWidth   = 1;
     ctx.strokeRect(x0 + ml, y0 + mt, plotW, plotH);
 
+    /* ── Courbes des runs sauvegardées ── */
+    for (var _si = 0; _si < savedRuns.length; _si++) {
+        var _sr = savedRuns[_si];
+        if (_sr.hidden || _sr.graphData.length < 2) continue;
+        var _srData = _replayPlaying
+            ? _sr.graphData.filter(function(d) { return d.t <= _replayT; })
+            : _sr.graphData;
+        if (_srData.length < 2) continue;
+        var _srX = _srData.map(info.xFn);
+        var _srY = _srData.map(info.col);
+        var _yRange = yMax - yMin;
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(x0 + ml, y0 + mt, plotW, plotH);
+        ctx.clip();
+        ctx.strokeStyle = _sr.color;
+        ctx.lineWidth   = 2;
+        ctx.lineJoin    = 'round';
+        ctx.globalAlpha = 0.85;
+        ctx.beginPath();
+        ctx.moveTo(toGX(_srX[0]), toGY(_srY[0]));
+        for (var _sj = 1; _sj < _srX.length; _sj++) {
+            if (Math.abs(_srY[_sj] - _srY[_sj - 1]) > _yRange * 0.25) {
+                ctx.moveTo(toGX(_srX[_sj]), toGY(_srY[_sj]));
+            } else {
+                ctx.lineTo(toGX(_srX[_sj]), toGY(_srY[_sj]));
+            }
+        }
+        ctx.stroke();
+        ctx.restore();
+    }
+
     /* ── Courbe ── */
     if (data.length >= 2) {
         var xVals = data.map(info.xFn);

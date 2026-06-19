@@ -97,6 +97,21 @@ function drawAnim() {
     _drawGrid(ctx);
     _drawAxes(ctx);
 
+    /* Runs sauvegardées (en dessous de la run courante) */
+    for (var _sri = 0; _sri < savedRuns.length; _sri++) {
+        var _sr = savedRuns[_sri];
+        if (_sr.hidden) continue;
+        if (_sr.displayMode === 'trajectory' || _sr.displayMode === 'both') {
+            _drawSavedTrajectory(ctx, _sr);
+        }
+        if (_sr.displayMode === 'chrono' || _sr.displayMode === 'both') {
+            _drawSavedChronoSnaps(ctx, _sr);
+        }
+        if (_replayPlaying) {
+            _drawSavedBall(ctx, _sr);
+        }
+    }
+
     if (sim.displayMode === 'trajectory' || sim.displayMode === 'both') {
         _drawTrajectory(ctx);
     }
@@ -299,6 +314,127 @@ function _drawAxes(ctx) {
     ctx.textAlign    = 'right';
     ctx.textBaseline = 'top';
     ctx.fillText('y (m)', origin.cx - 6, yEnd + aLen + 3);
+
+    ctx.restore();
+}
+
+/* ─────────────────────────────────────────────────
+   Trajectoire & chronophotographie — runs sauvegardées
+───────────────────────────────────────────────── */
+function _drawSavedTrajectory(ctx, run) {
+    ctx.save();
+    ctx.strokeStyle = run.color;
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+    ctx.globalAlpha = 0.82;
+    ctx.beginPath();
+
+    if (_replayPlaying) {
+        /* En mode replay : utilise graphData filtré par _replayT */
+        var pts = run.graphData;
+        var cutIdx = pts.length;
+        for (var k = 0; k < pts.length; k++) {
+            if (pts[k].t > _replayT) { cutIdx = k; break; }
+        }
+        if (cutIdx < 2) { ctx.restore(); return; }
+        var p0 = toCanvas(pts[0].x, pts[0].y);
+        ctx.moveTo(p0.cx, p0.cy);
+        for (var i = 1; i < cutIdx; i++) {
+            var p = toCanvas(pts[i].x, pts[i].y);
+            ctx.lineTo(p.cx, p.cy);
+        }
+    } else {
+        if (run.trajPoints.length < 2) { ctx.restore(); return; }
+        var p0 = toCanvas(run.trajPoints[0].x, run.trajPoints[0].y);
+        ctx.moveTo(p0.cx, p0.cy);
+        for (var i = 1; i < run.trajPoints.length; i++) {
+            var p = toCanvas(run.trajPoints[i].x, run.trajPoints[i].y);
+            ctx.lineTo(p.cx, p.cy);
+        }
+    }
+
+    ctx.stroke();
+    ctx.restore();
+}
+
+function _drawSavedChronoSnaps(ctx, run) {
+    var snaps = run.chronoSnaps;
+    if (snaps.length === 0) return;
+    for (var i = 0; i < snaps.length; i++) {
+        var s = snaps[i];
+        if (_replayPlaying && s.t > _replayT) break;
+        var p = toCanvas(s.x, s.y);
+        ctx.save();
+        ctx.globalAlpha = 0.85;
+        ctx.fillStyle = run.color;
+        ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(p.cx, p.cy, 5, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+    }
+}
+
+/* ─────────────────────────────────────────────────
+   Ballon pour une run sauvegardée (replay)
+───────────────────────────────────────────────── */
+function _drawSavedBall(ctx, run) {
+    var pts = run.graphData;
+    if (pts.length === 0) return;
+
+    /* Interpolation linéaire de la position à _replayT */
+    var idx = pts.length - 1;
+    for (var k = 0; k < pts.length - 1; k++) {
+        if (pts[k + 1].t > _replayT) { idx = k; break; }
+    }
+    var d0 = pts[idx];
+    var x, y;
+    if (idx < pts.length - 1 && pts[idx + 1].t > pts[idx].t) {
+        var d1 = pts[idx + 1];
+        var alpha = (_replayT - d0.t) / (d1.t - d0.t);
+        x = d0.x + alpha * (d1.x - d0.x);
+        y = d0.y + alpha * (d1.y - d0.y);
+    } else {
+        x = d0.x; y = d0.y;
+    }
+
+    var p = toCanvas(x, y);
+    var r = Math.max(7, Math.min(13, Math.min(sim.scaleX, sim.scaleY) * 0.55));
+
+    ctx.save();
+
+    /* Halo coloré */
+    ctx.beginPath();
+    ctx.arc(p.cx, p.cy, r + 3, 0, 2 * Math.PI);
+    ctx.strokeStyle = run.color;
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+
+    /* Corps blanc */
+    ctx.beginPath();
+    ctx.arc(p.cx, p.cy, r, 0, 2 * Math.PI);
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = 'rgba(0,0,0,0.35)';
+    ctx.shadowBlur  = 5;
+    ctx.fill();
+    ctx.shadowBlur  = 0;
+    ctx.strokeStyle = run.color;
+    ctx.lineWidth   = 1.5;
+    ctx.stroke();
+
+    /* Pentagone central simplifié */
+    ctx.fillStyle = '#333';
+    ctx.beginPath();
+    for (var i = 0; i < 5; i++) {
+        var angle = (i / 5) * 2 * Math.PI - Math.PI / 2;
+        var rx = p.cx + Math.cos(angle) * r * 0.38;
+        var ry = p.cy + Math.sin(angle) * r * 0.38;
+        if (i === 0) ctx.moveTo(rx, ry); else ctx.lineTo(rx, ry);
+    }
+    ctx.closePath();
+    ctx.fill();
 
     ctx.restore();
 }

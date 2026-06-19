@@ -22,7 +22,20 @@ function loop(ts) {
     _lastTs = ts;
 
     if (activeTab === 'champ-pesanteur') {
+        var _wasEnded = sim.ended;
         advanceSim(dtReal);
+        if (!_wasEnded && sim.ended) _updatePlayBtn();
+
+        if (_replayPlaying) {
+            _replayT += dtReal * sim.speedFactor;
+            if (_replayT >= _replayMaxT) {
+                _replayT = _replayMaxT;
+                _replayPlaying = false;
+                var btnR = document.getElementById('btn-tout-rejouer');
+                if (btnR) btnR.classList.remove('active');
+            }
+        }
+
         drawAnim();
         drawGraph();
         _updateReadouts();
@@ -42,6 +55,7 @@ function init() {
     initGraphCanvas();
     resetSim();
     _syncAllUI();
+    renderSavedRuns();
     requestAnimationFrame(loop);
 }
 
@@ -105,6 +119,8 @@ function _updatePlayBtn() {
         btn.textContent = '⏸ Pause';
         btn.className = 'btn btn-pause';
     }
+    var btnSave = document.getElementById('btn-save');
+    if (btnSave) btnSave.disabled = !sim.ended;
 }
 
 /* ─────────────────────────────────────────────────
@@ -294,4 +310,249 @@ function toggleAxisMode() {
 function toggleHint(tab) {
     var hint = document.getElementById('panel-hint-' + tab);
     if (hint) hint.classList.toggle('collapsed');
+}
+
+/* ─────────────────────────────────────────────────
+   Replay & adapter
+───────────────────────────────────────────────── */
+var _replayPlaying = false;
+var _replayT       = 0;
+var _replayMaxT    = 0;
+
+function toutRejouer() {
+    if (savedRuns.length === 0) return;
+    _replayMaxT = 0;
+    for (var i = 0; i < savedRuns.length; i++) {
+        var data = savedRuns[i].graphData;
+        if (data.length > 0) {
+            var last = data[data.length - 1].t;
+            if (last > _replayMaxT) _replayMaxT = last;
+        }
+    }
+    _replayT = 0;
+    _replayPlaying = true;
+    sim.paused = true;
+    resetSim();
+    _updatePlayBtn();
+    var btn = document.getElementById('btn-tout-rejouer');
+    if (btn) btn.classList.add('active');
+}
+
+function adapterVueRun(id) {
+    var run = savedRuns.find(function(r) { return r.id === id; });
+    if (!run) return;
+
+    /* ── Animation ── */
+    var xMax = 1, yMax = 1;
+    for (var j = 0; j < run.trajPoints.length; j++) {
+        if (run.trajPoints[j].x > xMax) xMax = run.trajPoints[j].x;
+        if (run.trajPoints[j].y > yMax) yMax = run.trajPoints[j].y;
+    }
+    sim.xMax = Math.max(xMax, 5);
+    sim.yMax = Math.max(yMax, run.h + 1, 1);
+    computeScale(_animW, _animH);
+
+    /* ── Graphes : recalcul des bornes depuis les données de cette run ── */
+    var data = run.graphData;
+    if (data.length === 0) return;
+    var d0 = data[0];
+    var gb = {
+        t:  { min: 0, max: 0 },
+        x:  { min: 0, max: Math.max(d0.x, 0.01) },
+        y:  { min: 0, max: Math.max(d0.y, 0.01) },
+        vx: { min: d0.vx, max: d0.vx },
+        vy: { min: d0.vy, max: d0.vy },
+        ax: { min: d0.ax, max: d0.ax },
+        ay: { min: d0.ay, max: d0.ay }
+    };
+    for (var j = 1; j < data.length; j++) {
+        var d = data[j];
+        if (d.t  > gb.t.max)  gb.t.max  = d.t;
+        if (d.x  > gb.x.max)  gb.x.max  = d.x;
+        if (d.vx > gb.vx.max) gb.vx.max = d.vx;
+        if (d.vx < gb.vx.min) gb.vx.min = d.vx;
+        if (d.vy > gb.vy.max) gb.vy.max = d.vy;
+        if (d.vy < gb.vy.min) gb.vy.min = d.vy;
+        if (d.ax > gb.ax.max) gb.ax.max = d.ax;
+        if (d.ax < gb.ax.min) gb.ax.min = d.ax;
+        if (d.ay > gb.ay.max) gb.ay.max = d.ay;
+        if (d.ay < gb.ay.min) gb.ay.min = d.ay;
+        if (d.y  > gb.y.max)  gb.y.max  = d.y;
+    }
+    gb.x.max = Math.max(gb.x.max, 1);
+    gb.y.max = Math.max(gb.y.max, run.h + 1, 1);
+    gb.y.min = 0;
+    sim.graphBounds = gb;
+}
+
+function adapterVue() {
+    if (savedRuns.length === 0) return;
+
+    /* ── Animation : étendre xMax / yMax ── */
+    var xMax = sim.xMax || 1;
+    var yMax = sim.yMax || 1;
+    for (var i = 0; i < savedRuns.length; i++) {
+        var pts = savedRuns[i].trajPoints;
+        for (var j = 0; j < pts.length; j++) {
+            if (pts[j].x > xMax) xMax = pts[j].x;
+            if (pts[j].y > yMax) yMax = pts[j].y;
+        }
+    }
+    sim.xMax = xMax;
+    sim.yMax = yMax;
+    computeScale(_animW, _animH);
+
+    /* ── Graphes : étendre graphBounds ── */
+    if (!sim.graphBounds) return;
+    var gb = sim.graphBounds;
+    for (var i = 0; i < savedRuns.length; i++) {
+        var data = savedRuns[i].graphData;
+        for (var j = 0; j < data.length; j++) {
+            var d = data[j];
+            if (d.t  > gb.t.max)  gb.t.max  = d.t;
+            if (d.x  > gb.x.max)  gb.x.max  = d.x;
+            if (d.y  > gb.y.max)  gb.y.max  = d.y;
+            if (d.y  < gb.y.min)  gb.y.min  = d.y;
+            if (d.vx > gb.vx.max) gb.vx.max = d.vx;
+            if (d.vx < gb.vx.min) gb.vx.min = d.vx;
+            if (d.vy > gb.vy.max) gb.vy.max = d.vy;
+            if (d.vy < gb.vy.min) gb.vy.min = d.vy;
+            if (d.ax > gb.ax.max) gb.ax.max = d.ax;
+            if (d.ax < gb.ax.min) gb.ax.min = d.ax;
+            if (d.ay > gb.ay.max) gb.ay.max = d.ay;
+            if (d.ay < gb.ay.min) gb.ay.min = d.ay;
+        }
+    }
+}
+
+/* ─────────────────────────────────────────────────
+   Sauvegarde de runs
+───────────────────────────────────────────────── */
+var _savedRunsMinimized = false;
+
+function sauvegarderRun() {
+    if (!sim.ended || savedRuns.length >= MAX_SAVED_RUNS) return;
+    var usedColors = savedRuns.map(function(r) { return r.color; });
+    var color = SAVE_COLORS.find(function(c) { return usedColors.indexOf(c) === -1; });
+    if (!color) color = SAVE_COLORS[0];
+    savedRuns.push({
+        id: _nextSaveId++,
+        color: color,
+        mass: sim.mass,
+        h: sim.h,
+        v0: sim.v0,
+        alpha: sim.alpha,
+        g: sim.g,
+        useFriction: sim.useFriction,
+        windForce: sim.windForce,
+        displayMode: sim.displayMode,
+        trajPoints:  sim.trajPoints.slice(),
+        chronoSnaps: sim.chronoSnaps.map(function(s) { return Object.assign({}, s); }),
+        graphData:   sim.graphData.map(function(d) { return Object.assign({}, d); }),
+        hidden: false
+    });
+    renderSavedRuns();
+}
+
+function supprimerSauvegardeRun(id) {
+    savedRuns = savedRuns.filter(function(r) { return r.id !== id; });
+    renderSavedRuns();
+}
+
+function masquerSauvegardeRun(id) {
+    var run = savedRuns.find(function(r) { return r.id === id; });
+    if (run) run.hidden = !run.hidden;
+    renderSavedRuns();
+}
+
+function toggleSavedRunsMinimized() {
+    _savedRunsMinimized = !_savedRunsMinimized;
+    var content = document.getElementById('saved-runs-content');
+    var btn = document.querySelector('.btn-saved-minimize');
+    if (content) content.style.display = _savedRunsMinimized ? 'none' : '';
+    if (btn) btn.textContent = _savedRunsMinimized ? '+' : '−';
+}
+
+function renderSavedRuns() {
+    var rows = document.getElementById('saved-runs-rows');
+    if (!rows) return;
+    rows.innerHTML = '';
+    if (savedRuns.length === 0) {
+        var empty = document.createElement('span');
+        empty.className = 'saved-run-empty';
+        empty.textContent = 'Appuyer sur sauvegarder à la fin d\'une simulation pour la garder en mémoire.';
+        rows.appendChild(empty);
+        return;
+    }
+    for (var i = 0; i < savedRuns.length; i++) {
+        var run = savedRuns[i];
+        var row = document.createElement('div');
+        row.className = 'saved-run-row';
+
+        /* ── Pastille couleur (centrée sur la séparation des deux sous-lignes) ── */
+        var swatch = document.createElement('div');
+        swatch.className = 'saved-run-swatch';
+        swatch.style.background = run.color;
+        swatch.style.opacity = run.hidden ? '0.3' : '1';
+        row.appendChild(swatch);
+
+        /* ── Bloc paramètres : 2 sous-lignes ── */
+        var params = document.createElement('div');
+        params.className = 'saved-run-params';
+        params.style.opacity = run.hidden ? '0.5' : '1';
+
+        var line1 = document.createElement('div');
+        line1.className = 'saved-run-line';
+        ['m = ' + fmt(run.mass, 2) + ' kg',
+         'h = ' + fmt(run.h, 0) + ' m',
+         'v₀ = ' + fmt(run.v0, 0) + ' m/s',
+         'α = ' + fmt(run.alpha, 0) + '°'
+        ].forEach(function(txt) {
+            var s = document.createElement('span');
+            s.className = 'saved-run-item';
+            s.textContent = txt;
+            line1.appendChild(s);
+        });
+
+        var line2 = document.createElement('div');
+        line2.className = 'saved-run-line';
+        ['g = ' + fmt(run.g, 2) + ' m/s²',
+         run.useFriction ? 'Frottements' : 'Sans frott.',
+         'Vent : ' + fmt(run.windForce, 1) + ' N'
+        ].forEach(function(txt) {
+            var s = document.createElement('span');
+            s.className = 'saved-run-item';
+            s.textContent = txt;
+            line2.appendChild(s);
+        });
+
+        params.appendChild(line1);
+        params.appendChild(line2);
+        row.appendChild(params);
+
+        /* ── Boutons (centrés sur la séparation des deux sous-lignes) ── */
+        (function(runId, hidden) {
+            /* Clic sur la row → adapter la vue à cette run */
+            row.onclick = function() { adapterVueRun(runId); };
+
+            var actions = document.createElement('div');
+            actions.className = 'saved-run-actions';
+
+            var btnHide = document.createElement('button');
+            btnHide.className = 'saved-run-hide' + (hidden ? ' masque' : '');
+            btnHide.textContent = hidden ? 'Afficher' : 'Masquer';
+            btnHide.onclick = function(e) { e.stopPropagation(); masquerSauvegardeRun(runId); };
+            actions.appendChild(btnHide);
+
+            var btnDel = document.createElement('button');
+            btnDel.className = 'saved-run-del';
+            btnDel.textContent = '✕';
+            btnDel.onclick = function(e) { e.stopPropagation(); supprimerSauvegardeRun(runId); };
+            actions.appendChild(btnDel);
+
+            row.appendChild(actions);
+        })(run.id, run.hidden);
+
+        rows.appendChild(row);
+    }
 }

@@ -293,3 +293,9 @@ function computeScale(canvasW, canvasH) {
 function fmt(v, dec) {
     return v.toFixed(dec).replace('.', ',');
 }
+
+/* ── Runs sauvegardées ── */
+var savedRuns     = [];
+var _nextSaveId   = 1;
+var MAX_SAVED_RUNS = 5;
+var SAVE_COLORS   = ['#e67e22', '#c0392b', '#27ae60', '#8e44ad', '#16a085'];

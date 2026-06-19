@@ -26,6 +26,21 @@
     <div id="anim-area">
       <canvas id="anim-canvas"></canvas>
       <button id="btn-axis-mode" class="btn-axis-mode" onclick="toggleAxisMode()">Repère : Orthonormé</button>
+
+      <!-- ── Box simulations sauvegardées ─────── -->
+      <div id="saved-runs-box">
+        <div id="saved-runs-header">
+          <span class="saved-runs-title">Simulations sauvegardées</span>
+          <div class="saved-runs-header-btns">
+            <button class="btn-saved-action" id="btn-adapter" onclick="adapterVue()">Adapter</button>
+            <button class="btn-saved-action" id="btn-tout-rejouer" onclick="toutRejouer()">Tout rejouer</button>
+            <button class="btn-saved-minimize" onclick="toggleSavedRunsMinimized()">−</button>
+          </div>
+        </div>
+        <div id="saved-runs-content">
+          <div id="saved-runs-rows"></div>
+        </div>
+      </div>
     </div>
 
     <!-- ── Splitter ───────────────────────────── -->
@@ -86,6 +101,8 @@
                   onclick="togglePause()">▶ Lancer</button>
           <button class="btn btn-raz" style="margin-top:6px;"
                   onclick="resetSimAnim()">↺ Remettre à zéro</button>
+          <button id="btn-save" class="btn btn-save" style="margin-top:6px;"
+                  onclick="sauvegarderRun()" disabled>✦ Sauvegarder</button>
           <div class="param-row" style="margin-top:8px;">
             <label>
               Vitesse

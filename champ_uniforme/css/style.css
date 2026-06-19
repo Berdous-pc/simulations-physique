@@ -534,3 +534,208 @@ main {
   padding-bottom: 0;
 }
 .panel-hint:not(.collapsed) .panel-hint-toggle { transform: rotate(180deg); }
+
+/* ══════════════════════════════════════════════════
+   BOUTON SAUVEGARDER
+══════════════════════════════════════════════════ */
+
+#btn-save {
+  background: #1a5c3a;
+  color: #fff;
+  font-size: clamp(11px, 1.1vw, 14px);
+  padding: 8px 6px;
+  border: none;
+  transition: background 0.15s, opacity 0.15s;
+}
+#btn-save:not(:disabled):hover { background: #134a2e; }
+#btn-save:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+/* ══════════════════════════════════════════════════
+   BOX SIMULATIONS SAUVEGARDÉES (overlay animation)
+══════════════════════════════════════════════════ */
+
+#saved-runs-box {
+  position: absolute;
+  top: clamp(6px, 1vh, 10px);
+  right: clamp(6px, 1vw, 10px);
+  z-index: 10;
+  background: rgba(255,255,255,0.93);
+  border: 1px solid rgba(100,130,160,0.4);
+  border-radius: 7px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+  max-width: clamp(260px, 38vw, 500px);
+  min-width: clamp(200px, 25vw, 340px);
+  font-family: 'Segoe UI', Arial, sans-serif;
+}
+
+#saved-runs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 8px 5px 10px;
+  border-bottom: 1px solid rgba(100,130,160,0.25);
+  gap: 8px;
+}
+
+.saved-runs-header-btns {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.btn-saved-action {
+  background: #e8e4de;
+  border: 1px solid #c8c0b4;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: clamp(10px, 0.9vw, 12px);
+  font-family: inherit;
+  font-weight: 600;
+  color: #5a6a78;
+  padding: 2px 7px;
+  height: 22px;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s;
+}
+.btn-saved-action:hover { background: #d0ccc4; color: #2c3e50; }
+.btn-saved-action.active {
+  background: #2a6aaa;
+  color: #fff;
+  border-color: #1a4a8a;
+}
+
+.saved-runs-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #5a6a78;
+  white-space: nowrap;
+}
+
+.btn-saved-minimize {
+  background: none;
+  border: 1px solid #c8c0b4;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  color: #7a8a96;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+  transition: background 0.12s, color 0.12s;
+}
+.btn-saved-minimize:hover { background: #e8e4de; color: #2c3e50; }
+
+#saved-runs-content {
+  padding: 7px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+#saved-runs-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.saved-run-empty {
+  font-size: 11px;
+  color: #7a8a96;
+  font-style: italic;
+  line-height: 1.4;
+  padding: 2px 0;
+}
+
+.saved-run-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 8px;
+  background: #fff;
+  border: 1px solid #c8c0b4;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.saved-run-row:hover { background: #f0ede8; }
+
+.saved-run-swatch {
+  width: 10px;
+  align-self: stretch;
+  border-radius: 3px;
+  flex-shrink: 0;
+  border: 1px solid rgba(0,0,0,0.12);
+}
+
+.saved-run-params {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.saved-run-line {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.saved-run-item {
+  font-size: clamp(10px, 0.95vw, 12px);
+  color: #2c3e50;
+  white-space: nowrap;
+}
+
+.saved-run-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.saved-run-hide {
+  padding: 2px 7px;
+  font-size: clamp(10px, 0.95vw, 12px);
+  border: 1px solid #c8c0b4;
+  border-radius: 4px;
+  cursor: pointer;
+  background: #e8e4de;
+  color: #5a6a78;
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-family: inherit;
+  transition: background 0.12s;
+}
+.saved-run-hide:hover { background: #d0ccc4; color: #2c3e50; }
+.saved-run-hide.masque {
+  background: #2c3e50;
+  color: #fff;
+  border-color: #1a2a38;
+}
+.saved-run-hide.masque:hover { background: #1a2a38; }
+
+.saved-run-del {
+  padding: 2px 7px;
+  font-size: clamp(10px, 0.95vw, 12px);
+  border: 1px solid #c8b8b0;
+  border-radius: 4px;
+  cursor: pointer;
+  background: #ead8d0;
+  color: #8a3010;
+  flex-shrink: 0;
+  font-family: inherit;
+  transition: background 0.12s;
+}
+.saved-run-del:hover { background: #c05020; color: #fff; border-color: #8a3010; }
