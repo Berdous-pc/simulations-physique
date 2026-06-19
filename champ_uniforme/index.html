@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<!-- ════════════════════════════════════════════════════
+     Simulation pédagogique — Physique-Chimie Lycée
+     Auteur  : Mathieu Berdous
+     Licence : CC BY-NC 4.0 — https://creativecommons.org/licenses/by-nc/4.0/
+════════════════════════════════════════════════════ -->
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Simulation — Mécanique : vecteurs cinématiques</title>
+  <meta name="author" content="Mathieu Berdous">
+  <meta name="copyright" content="Mathieu Berdous — CC BY-NC 4.0">
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<main>
+
+  <!-- ══════════════════════════════════════════════
+       COLONNE GAUCHE : animation + splitter + graphes
+  ══════════════════════════════════════════════ -->
+  <div id="left-col">
+
+    <!-- ── Zone animation ─────────────────────── -->
+    <div id="anim-area">
+      <canvas id="anim-canvas"></canvas>
+    </div>
+
+    <!-- ── Splitter ───────────────────────────── -->
+    <div id="left-splitter"></div>
+
+    <!-- ── Zone graphes ───────────────────────── -->
+    <div id="graph-area">
+      <div id="graph-ctrl">
+        <!-- construit dynamiquement par graph.js -->
+      </div>
+      <div id="graph-canvas-wrap">
+        <canvas id="graph-canvas"></canvas>
+      </div>
+    </div>
+
+  </div><!-- fin #left-col -->
+
+  <!-- ══════════════════════════════════════════════
+       PANNEAU DROIT
+  ══════════════════════════════════════════════ -->
+  <div id="panel">
+
+    <!-- ── Onglets principaux ─────────────────── -->
+    <div class="panel-main-tabs">
+      <button class="panel-main-tab active" id="tab-champ-pesanteur"
+              onclick="setMainTab('champ-pesanteur')">
+        Champ de pesanteur
+      </button>
+      <button class="panel-main-tab" id="tab-champ-electrique"
+              onclick="setMainTab('champ-electrique')">
+        Champ électrique
+      </button>
+    </div>
+
+    <!-- ── Corps du panneau ───────────────────── -->
+    <div id="panel-body">
+
+      <!-- ═══ Section CHAMP ÉLECTRIQUE (placeholder) ═══ -->
+      <div class="panel-main-section" id="section-champ-electrique" style="display:none;">
+        <div class="coming-soon">
+          <div class="coming-soon-icon">🚧</div>
+          <div class="coming-soon-title">En cours de développement</div>
+          <div class="coming-soon-text">
+            Ce tab sera bientôt disponible.
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ Section CHAMP DE PESANTEUR ═══ -->
+      <div class="panel-main-section" id="section-champ-pesanteur">
+
+        <!-- CONTRÔLES -->
+        <div class="panel-section">
+          <div class="section-title">Contrôles</div>
+          <button id="btn-playpause" class="btn btn-play"
+                  onclick="togglePause()">▶ Lancer</button>
+          <button class="btn btn-raz" style="margin-top:6px;"
+                  onclick="resetSimAnim()">↺ Remettre à zéro</button>
+          <div class="param-row" style="margin-top:8px;">
+            <label>
+              Vitesse
+              <span class="param-value">×<span id="lbl-speed">1,00</span></span>
+            </label>
+            <input type="range" id="sl-speed"
+                   min="0" max="3" step="1" value="3"
+                   oninput="onSliderSpeed(this.value)">
+            <div class="speed-ticks">
+              <span>×0,10</span>
+              <span>×0,25</span>
+              <span>×0,50</span>
+              <span>×1,00</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <!-- TRAJECTOIRE -->
+        <div class="panel-section">
+          <div class="section-title">Trajectoire</div>
+          <div class="btn-group">
+            <button class="btn-toggle-one active" id="btn-disp-trajectory"
+                    onclick="setDisplayMode('trajectory')">Trajectoire</button>
+            <button class="btn-toggle-one" id="btn-disp-chrono"
+                    onclick="setDisplayMode('chrono')">Chronophoto.</button>
+            <button class="btn-toggle-one" id="btn-disp-both"
+                    onclick="setDisplayMode('both')">Les deux</button>
+          </div>
+          <div class="param-row" id="deltat-row" style="display:none;">
+            <label>
+              Δt
+              <span class="param-value"><span id="lbl-deltat">0,30</span> s</span>
+            </label>
+            <input type="range" id="sl-deltat"
+                   min="0.05" max="1.0" step="0.05" value="0.3"
+                   oninput="onSliderDeltaT(this.value)">
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <!-- VECTEURS -->
+        <div class="panel-section">
+          <div class="section-title">Vecteurs</div>
+          <button class="btn-vec" id="btn-vec-pos" onclick="toggleVecPos()">
+            <span class="btn-vec-dot" style="background:#2a6aaa;"></span>
+            Vecteur position
+          </button>
+          <button class="btn-vec" id="btn-vec-vit" onclick="toggleVecVit()">
+            <span class="btn-vec-dot" style="background:#c03030;"></span>
+            Vecteur vitesse
+          </button>
+          <button class="btn-vec" id="btn-vec-acc" onclick="toggleVecAcc()">
+            <span class="btn-vec-dot" style="background:#2a8a50;"></span>
+            Vecteur accélération
+          </button>
+        </div>
+
+        <div class="sep"></div>
+
+        <!-- CONDITIONS INITIALES -->
+        <div class="panel-section">
+          <div class="section-title">Conditions initiales</div>
+
+          <div class="param-row">
+            <label>
+              Hauteur h
+              <span class="param-value"><span id="lbl-h">0</span> m</span>
+            </label>
+            <input type="range" id="sl-h"
+                   min="0" max="20" step="1" value="0"
+                   oninput="onSliderH(this.value)">
+          </div>
+
+          <div class="param-row">
+            <label>
+              Vitesse initiale v₀
+              <span class="param-value"><span id="lbl-v0">15</span> m/s</span>
+            </label>
+            <input type="range" id="sl-v0"
+                   min="0" max="40" step="1" value="15"
+                   oninput="onSliderV0(this.value)">
+          </div>
+
+          <div class="param-row">
+            <label>
+              Angle α
+              <span class="param-value"><span id="lbl-alpha">45</span>°</span>
+            </label>
+            <input type="range" id="sl-alpha"
+                   min="0" max="90" step="1" value="45"
+                   oninput="onSliderAlpha(this.value)">
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <!-- PESANTEUR -->
+        <div class="panel-section">
+          <div class="section-title">Pesanteur</div>
+          <div class="param-row">
+            <label>
+              g
+              <span class="param-value"><span id="lbl-g">9,81</span> m/s²</span>
+            </label>
+            <input type="range" id="sl-g"
+                   min="1" max="20" step="0.1" value="9.81"
+                   oninput="onSliderG(this.value)">
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <!-- FROTTEMENTS -->
+        <div class="panel-section">
+          <div class="section-title">Frottements</div>
+          <button class="btn-toggle-one" id="btn-friction"
+                  onclick="toggleFriction()">
+            Activer les frottements (f = −kv)
+          </button>
+          <div style="font-size:clamp(9px,0.85vw,11px);color:#7a8a96;margin-top:4px;line-height:1.4;">
+            Modèle linéaire, k = 0,15 N·s/m<br>(balle de foot ~0,43 kg)
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <!-- VENT -->
+        <div class="panel-section">
+          <div class="section-title">Vent</div>
+          <div class="param-row">
+            <label>
+              Force horizontale
+              <span class="param-value" id="lbl-wind">0,0 N</span>
+            </label>
+            <input type="range" id="sl-wind"
+                   min="-5" max="5" step="0.1" value="0"
+                   oninput="onSliderWind(this.value)">
+            <div class="wind-labels">
+              <span>← gauche</span>
+              <span>droite →</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <!-- GRANDEURS COURANTES -->
+        <div class="panel-section">
+          <div class="section-title">Grandeurs en cours</div>
+          <div class="readout">
+            <div class="ro-grid">
+              <div class="ro-item">
+                <span class="ro-item-label">t</span>
+                <span class="ro-item-value"><span id="ro-t">0,00</span> <span class="ro-unit">s</span></span>
+              </div>
+              <div class="ro-item">
+                <span class="ro-item-label">‖v‖</span>
+                <span class="ro-item-value"><span id="ro-v">0,00</span> <span class="ro-unit">m/s</span></span>
+              </div>
+              <div class="ro-item">
+                <span class="ro-item-label">x</span>
+                <span class="ro-item-value"><span id="ro-x">0,00</span> <span class="ro-unit">m</span></span>
+              </div>
+              <div class="ro-item">
+                <span class="ro-item-label">y</span>
+                <span class="ro-item-value"><span id="ro-y">0,00</span> <span class="ro-unit">m</span></span>
+              </div>
+              <div class="ro-item">
+                <span class="ro-item-label">vx</span>
+                <span class="ro-item-value"><span id="ro-vx">0,00</span> <span class="ro-unit">m/s</span></span>
+              </div>
+              <div class="ro-item">
+                <span class="ro-item-label">vy</span>
+                <span class="ro-item-value"><span id="ro-vy">0,00</span> <span class="ro-unit">m/s</span></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- fin #section-champ-pesanteur -->
+
+    </div><!-- fin #panel-body -->
+
+    <!-- ── Bandeau Instructions ────────────────── -->
+    <div class="panel-hint collapsed" id="panel-hint-champ-pesanteur">
+      <div class="panel-hint-header">
+        <span class="panel-hint-title">Instructions</span>
+        <button class="panel-hint-toggle"
+                onclick="toggleHint('champ-pesanteur')"
+                title="Afficher les instructions">▲</button>
+      </div>
+      <div class="panel-hint-body">
+        Réglez les <strong>conditions initiales</strong> (hauteur, vitesse, angle),
+        puis cliquez sur <em>▶ Lancer</em>. Le ballon suit une trajectoire parabolique
+        dans le champ de pesanteur. Activez les <strong>vecteurs</strong> pour visualiser
+        position, vitesse et accélération en temps réel. En mode
+        <em>Chronophotographie</em>, des instants figés sont capturés à intervalles Δt
+        réguliers — les vecteurs y restent affichés si l'option est active.
+      </div>
+    </div>
+
+  </div><!-- fin #panel -->
+
+</main>
+
+<!-- ════════════════════════════════════════════════
+     Ordre de chargement : sim → draw → graph → ui
+════════════════════════════════════════════════ -->
+<script src="js/sim.js"></script>
+<script src="js/draw.js"></script>
+<script src="js/graph.js"></script>
+<script src="js/ui.js"></script>
+
+</body>
+</html>
