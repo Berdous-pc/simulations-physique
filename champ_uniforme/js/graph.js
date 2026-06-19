@@ -6,12 +6,12 @@
 
 /* graph.js — rendu canvas graphes */
 
-var _gCanvas = null;
-var _gCtx    = null;
+var _gCanvas   = null;
+var _gCtx      = null;
 var _gW = 0, _gH = 0;
+var _gHoverPos = null;   // {x, y} en coordonnées canvas
 
-/* Marge intérieure des graphes */
-var GM = {t: 28, b: 36, l: 52, r: 16};
+/* Marge intérieure des graphes — calculée dynamiquement dans _drawOneGraph */
 
 /* Informations par onglet : clé → {label, unit, accessor} */
 var GRAPH_TABS = [
@@ -39,6 +39,17 @@ function initGraphCanvas() {
     _gCtx    = _gCanvas.getContext('2d');
     resizeGraphCanvas();
     _buildGraphCtrl();
+
+    _gCanvas.addEventListener('pointermove', function(e) {
+        var rect = _gCanvas.getBoundingClientRect();
+        _gHoverPos = {
+            x: (e.clientX - rect.left) * (_gCanvas.width  / rect.width),
+            y: (e.clientY - rect.top)  * (_gCanvas.height / rect.height)
+        };
+    });
+    _gCanvas.addEventListener('pointerleave', function() {
+        _gHoverPos = null;
+    });
 }
 
 function resizeGraphCanvas() {
@@ -55,69 +66,67 @@ function resizeGraphCanvas() {
 ───────────────────────────────────────────────── */
 function _buildGraphCtrl() {
     var ctrl = document.getElementById('graph-ctrl');
+    var sep  = document.getElementById('graph-dual-sep');
     if (!ctrl) return;
     ctrl.innerHTML = '';
 
-    /* Bouton 1/2 graphes */
-    var btnDual = document.createElement('button');
-    btnDual.className = 'graph-mode-btn' + (sim.graphMode === 'dual' ? ' active' : '');
-    btnDual.id = 'btn-graph-dual';
-    btnDual.textContent = sim.graphMode === 'dual' ? '2 graphes' : '1 graphe';
-    btnDual.onclick = function () { toggleDualGraph(); };
-    ctrl.appendChild(btnDual);
-
-    /* Séparateur */
-    var sep = document.createElement('div');
-    sep.style.cssText = 'flex:1';
-    ctrl.appendChild(sep);
-
     if (sim.graphMode === 'single') {
-        /* Rangée unique d'onglets */
-        var row = _makeTabRow('tab1', sim.graphTab1, function(key){
+        ctrl.style.cssText = '';
+        if (sep) sep.style.display = 'none';
+
+        ctrl.appendChild(_makeDualBtn());
+        ctrl.appendChild(_makeSelect('sel-tab1', sim.graphTab1, function(key) {
             sim.graphTab1 = key;
-            _buildGraphCtrl();
-        });
-        ctrl.appendChild(row);
+        }));
+
     } else {
-        /* Deux rangées */
-        var sep1 = document.createElement('div');
-        sep1.style.cssText = 'display:flex;flex-direction:column;gap:2px;align-items:flex-end';
+        /* Mode dual : le séparateur DOM (#graph-dual-sep) couvre toute la hauteur.
+           Les deux moitiés du ctrl s'alignent sur 50% sans border CSS. */
+        ctrl.style.cssText = 'display:flex;align-items:stretch;padding:0;gap:0';
+        if (sep) sep.style.display = 'block';
 
-        var lbl1 = document.createElement('span');
-        lbl1.style.cssText = 'font-size:10px;color:#7a8a96;font-weight:700;letter-spacing:0.5px;margin-right:4px';
-        lbl1.textContent = 'GAUCHE';
-        sep1.appendChild(lbl1);
-        sep1.appendChild(_makeTabRow('tab1', sim.graphTab1, function(key){
+        var leftHalf = document.createElement('div');
+        leftHalf.style.cssText = 'flex:1;display:flex;align-items:center;gap:6px;' +
+            'padding:3px 8px;min-width:0';
+        leftHalf.appendChild(_makeDualBtn());
+        leftHalf.appendChild(_makeSelect('sel-tab1', sim.graphTab1, function(key) {
             sim.graphTab1 = key;
-            _buildGraphCtrl();
         }));
+        ctrl.appendChild(leftHalf);
 
-        var lbl2 = document.createElement('span');
-        lbl2.style.cssText = 'font-size:10px;color:#7a8a96;font-weight:700;letter-spacing:0.5px;margin-right:4px';
-        lbl2.textContent = 'DROITE';
-        sep1.appendChild(lbl2);
-        sep1.appendChild(_makeTabRow('tab2', sim.graphTab2, function(key){
+        var rightHalf = document.createElement('div');
+        rightHalf.style.cssText = 'flex:1;display:flex;align-items:center;gap:6px;' +
+            'padding:3px 8px;min-width:0';
+        rightHalf.appendChild(_makeSelect('sel-tab2', sim.graphTab2, function(key) {
             sim.graphTab2 = key;
-            _buildGraphCtrl();
         }));
-
-        ctrl.appendChild(sep1);
+        ctrl.appendChild(rightHalf);
     }
 }
 
-function _makeTabRow(rowId, activeKey, onSelect) {
-    var row = document.createElement('div');
-    row.style.cssText = 'display:flex;gap:3px;flex-wrap:wrap;justify-content:flex-end';
+function _makeDualBtn() {
+    var btn = document.createElement('button');
+    btn.className = 'graph-mode-btn' + (sim.graphMode === 'dual' ? ' active' : '');
+    btn.id = 'btn-graph-dual';
+    btn.textContent = sim.graphMode === 'dual' ? '2 graphes' : '1 graphe';
+    btn.style.cssText = 'flex-shrink:0';
+    btn.onclick = function () { toggleDualGraph(); };
+    return btn;
+}
 
+function _makeSelect(id, activeKey, onChange) {
+    var sel = document.createElement('select');
+    sel.id = id;
+    sel.className = 'graph-select';
     GRAPH_TABS.forEach(function(tab) {
-        var btn = document.createElement('button');
-        btn.className = 'graph-mode-btn' + (tab.key === activeKey ? ' active' : '');
-        btn.textContent = tab.key;
-        btn.onclick = function () { onSelect(tab.key); };
-        row.appendChild(btn);
+        var opt = document.createElement('option');
+        opt.value = tab.key;
+        opt.textContent = tab.key;
+        if (tab.key === activeKey) opt.selected = true;
+        sel.appendChild(opt);
     });
-
-    return row;
+    sel.onchange = function() { onChange(sel.value); };
+    return sel;
 }
 
 function toggleDualGraph() {
@@ -138,200 +147,327 @@ function drawGraph() {
     ctx.fillRect(0, 0, _gW, _gH);
 
     if (sim.graphMode === 'dual') {
-        var halfW = Math.floor(_gW / 2);
-        /* Panneau gauche */
+        var halfW  = Math.floor(_gW / 2);
+        var leftW  = halfW - 1;
+        var rightW = _gW - halfW - 1;
+        var hoverRight = _gHoverPos
+            ? { x: _gHoverPos.x - (halfW + 1), y: _gHoverPos.y }
+            : null;
+
         ctx.save();
-        ctx.beginPath();
-        ctx.rect(0, 0, halfW - 1, _gH);
-        ctx.clip();
-        _drawOneGraph(ctx, 0, 0, halfW - 1, _gH, sim.graphTab1);
+        ctx.beginPath(); ctx.rect(0, 0, leftW, _gH); ctx.clip();
+        _drawOneGraph(ctx, 0, 0, leftW, _gH, sim.graphTab1, _gHoverPos);
         ctx.restore();
 
-        /* Séparateur */
-        ctx.fillStyle = '#c8c0b4';
-        ctx.fillRect(halfW - 1, 0, 2, _gH);
-
-        /* Panneau droit */
         ctx.save();
         ctx.translate(halfW + 1, 0);
-        ctx.beginPath();
-        ctx.rect(0, 0, _gW - halfW - 1, _gH);
-        ctx.clip();
-        _drawOneGraph(ctx, 0, 0, _gW - halfW - 1, _gH, sim.graphTab2);
+        ctx.beginPath(); ctx.rect(0, 0, rightW, _gH); ctx.clip();
+        _drawOneGraph(ctx, 0, 0, rightW, _gH, sim.graphTab2, hoverRight);
         ctx.restore();
     } else {
-        _drawOneGraph(ctx, 0, 0, _gW, _gH, sim.graphTab1);
+        _drawOneGraph(ctx, 0, 0, _gW, _gH, sim.graphTab1, _gHoverPos);
     }
+}
+
+/* ─────────────────────────────────────────────────
+   Helpers ticks / formatage
+───────────────────────────────────────────────── */
+
+/* Pas "joli" pour les graduations */
+function _niceStep(range, targetTicks) {
+    var rough = range / targetTicks;
+    var mag   = Math.pow(10, Math.floor(Math.log10(rough)));
+    var mant  = rough / mag;
+    if (mant < 1.5) return mag;
+    if (mant < 3.5) return 2 * mag;
+    if (mant < 7.5) return 5 * mag;
+    return 10 * mag;
+}
+
+function _fmtLabel(v) {
+    if (v === 0) return '0';
+    var av = Math.abs(v);
+    if (av >= 1000) return v.toFixed(0);
+    if (av >= 100)  return v.toFixed(0);
+    if (av >= 10)   return v.toFixed(1);
+    return v.toFixed(2);
+}
+
+/* Tailles de police dynamiques (recalculées par frame) */
+var _gFontTick  = 12;
+var _gFontTitle = 13;
+
+function _updateGraphFontSizes(H) {
+    _gFontTick  = Math.max(10, Math.min(18, Math.round(H * 0.038)));
+    _gFontTitle = Math.max(11, Math.min(20, Math.round(H * 0.046)));
+}
+
+/* Marge gauche minimale mesurée depuis la largeur réelle des labels Y */
+function _calcGraphLeftMarginRaw(ctx, yMin, yMax) {
+    ctx.font = _gFontTick + 'px monospace';
+    var step  = _niceStep(yMax - yMin, 5);
+    var start = Math.ceil(yMin / step) * step;
+    var wMax  = 0;
+    for (var v = start; v <= yMax + step * 0.01; v += step) {
+        var w = ctx.measureText(_fmtLabel(Math.round(v / step) * step)).width;
+        if (w > wMax) wMax = w;
+    }
+    return Math.round(wMax + 14);
+}
+
+/* Extrait nom et unité depuis un label d'axe du type "vx (m/s)" */
+function _parseAxisLabel(label) {
+    var m = label.match(/^(\S+)\s*\(([^)]+)\)/);
+    if (m) return { name: m[1], unit: m[2] };
+    return { name: label, unit: '' };
 }
 
 /* ─────────────────────────────────────────────────
    _drawOneGraph — dessine un graphe dans (x0,y0,W,H)
 ───────────────────────────────────────────────── */
-function _drawOneGraph(ctx, x0, y0, W, H, tabKey) {
+function _drawOneGraph(ctx, x0, y0, W, H, tabKey, hoverPos) {
     var info = _tabInfo(tabKey);
     var data = sim.graphData;
 
-    if (data.length < 2) {
-        /* Message vide */
-        ctx.fillStyle = '#b0a898';
-        ctx.font = 'italic ' + Math.max(11, Math.min(14, H * 0.06)) + 'px Segoe UI, Arial';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('Lancez la simulation pour afficher le graphe', x0 + W/2, y0 + H/2);
-        return;
+    /* ── Bornes fixes pré-calculées depuis les conditions initiales ── */
+    var xMin, xMax, yMin, yMax;
+    var gb = sim.graphBounds;
+    var keyMap = {
+        'x(t)':  { xb: gb && gb.t,  yb: gb && gb.x  },
+        'y(t)':  { xb: gb && gb.t,  yb: gb && gb.y  },
+        'vx(t)': { xb: gb && gb.t,  yb: gb && gb.vx },
+        'vy(t)': { xb: gb && gb.t,  yb: gb && gb.vy },
+        'ax(t)': { xb: gb && gb.t,  yb: gb && gb.ax },
+        'ay(t)': { xb: gb && gb.t,  yb: gb && gb.ay },
+        'y(x)':  { xb: gb && gb.x,  yb: gb && gb.y  }
+    };
+    var bnd = keyMap[tabKey];
+    if (gb && bnd && bnd.xb && bnd.yb) {
+        xMin = bnd.xb.min; xMax = bnd.xb.max;
+        yMin = bnd.yb.min; yMax = bnd.yb.max;
+        if (xMin === xMax) { xMin -= 0.5; xMax += 0.5; }
+        if (yMin === yMax) { yMin -= 1;   yMax += 1;   }
+        var yPad = (yMax - yMin) * 0.12;
+        yMin -= yPad; yMax += yPad;
+        var xPad = (xMax - xMin) * 0.04;
+        xMax += xPad;
+    } else {
+        xMin = 0; xMax = 10; yMin = -1; yMax = 10;
     }
 
-    /* Extraction des données */
-    var xVals = data.map(info.xFn);
-    var yVals = data.map(info.col);
+    /* ── Polices et marges dynamiques ── */
+    _updateGraphFontSizes(H);
+    var mlRaw = _calcGraphLeftMarginRaw(ctx, yMin, yMax);
+    var ml    = mlRaw + _gFontTitle + 8;
+    var mr    = Math.max(10, Math.min(20, W * 0.04));
+    var mt    = Math.max(10, Math.round(_gFontTick * 0.8));
+    var mb    = Math.max(28, Math.round(_gFontTick * 1.6 + _gFontTitle * 1.5 + 4));
 
-    /* Bornes */
-    var xMin = xVals[0], xMax = xVals[xVals.length - 1];
-    if (xMin === xMax) xMax = xMin + 1;
-
-    var yMin = Infinity, yMax = -Infinity;
-    for (var i = 0; i < yVals.length; i++) {
-        if (yVals[i] < yMin) yMin = yVals[i];
-        if (yVals[i] > yMax) yMax = yVals[i];
-    }
-    if (yMin === yMax) { yMin -= 1; yMax += 1; }
-
-    var yPad = (yMax - yMin) * 0.12;
-    yMin -= yPad; yMax += yPad;
-
-    var ml = GM.l, mr = GM.r, mt = GM.t, mb = GM.b;
     var plotW = W - ml - mr;
     var plotH = H - mt - mb;
+    if (plotW < 20 || plotH < 20) return;
 
     function toGX(v) { return x0 + ml + (v - xMin) / (xMax - xMin) * plotW; }
     function toGY(v) { return y0 + mt + plotH - (v - yMin) / (yMax - yMin) * plotH; }
 
-    /* Grille Y */
-    var ticksY = _niceTicks(yMin, yMax, Math.max(3, Math.floor(plotH / 35)));
-    ctx.strokeStyle = '#e0dcd8';
-    ctx.lineWidth = 1;
-    var fTick = Math.max(9, Math.min(12, H * 0.05));
-    ctx.font = fTick + 'px Segoe UI, Arial';
-    ctx.fillStyle = '#7a8a96';
-    ctx.textAlign = 'right';
+    /* ── Fond zone de tracé ── */
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(x0 + ml, y0 + mt, plotW, plotH);
+
+    /* ── Grille Y ── */
+    var stepY  = _niceStep(yMax - yMin, Math.max(3, Math.floor(plotH / 55)));
+    var startY = Math.ceil(yMin / stepY) * stepY;
+
+    ctx.font         = _gFontTick + 'px monospace';
+    ctx.fillStyle    = '#7a8a96';
+    ctx.textAlign    = 'right';
     ctx.textBaseline = 'middle';
-    ticksY.forEach(function(v) {
-        var gy = toGY(v);
-        if (gy < y0 + mt - 2 || gy > y0 + mt + plotH + 2) return;
+
+    for (var vy = startY; vy <= yMax + stepY * 0.01; vy += stepY) {
+        var vyr = Math.round(vy / stepY) * stepY;
+        var gy  = toGY(vyr);
+        if (gy < y0 + mt - 2 || gy > y0 + mt + plotH + 2) continue;
+
+        ctx.strokeStyle = (vyr === 0) ? 'rgba(44,62,80,0.20)' : 'rgba(200,192,180,0.55)';
+        ctx.lineWidth   = (vyr === 0) ? 1.2 : 0.8;
         ctx.beginPath();
         ctx.moveTo(x0 + ml, gy);
         ctx.lineTo(x0 + ml + plotW, gy);
         ctx.stroke();
-        ctx.fillText(_fmtTick(v), x0 + ml - 4, gy);
-    });
 
-    /* Grille X */
-    var ticksX = _niceTicks(xMin, xMax, Math.max(3, Math.floor(plotW / 50)));
-    ctx.textAlign = 'center';
+        ctx.fillText(_fmtLabel(vyr), x0 + ml - 6, gy);
+    }
+
+    /* ── Grille X ── */
+    var stepX  = _niceStep(xMax - xMin, Math.max(3, Math.floor(plotW / 80)));
+    var startX = Math.ceil(xMin / stepX) * stepX;
+
+    ctx.textAlign    = 'center';
     ctx.textBaseline = 'top';
-    ticksX.forEach(function(v) {
-        var gx = toGX(v);
-        if (gx < x0 + ml - 2 || gx > x0 + ml + plotW + 2) return;
-        ctx.strokeStyle = '#e0dcd8';
+
+    for (var vx = startX; vx <= xMax + stepX * 0.01; vx += stepX) {
+        var vxr = Math.round(vx / stepX) * stepX;
+        var gx  = toGX(vxr);
+        if (gx < x0 + ml - 2 || gx > x0 + ml + plotW + 2) continue;
+
+        ctx.strokeStyle = 'rgba(200,192,180,0.55)';
+        ctx.lineWidth   = 0.8;
         ctx.beginPath();
         ctx.moveTo(gx, y0 + mt);
         ctx.lineTo(gx, y0 + mt + plotH);
         ctx.stroke();
-        ctx.fillStyle = '#7a8a96';
-        ctx.fillText(_fmtTick(v), gx, y0 + mt + plotH + 4);
-    });
 
-    /* Ligne zéro */
+        ctx.fillText(_fmtLabel(vxr), gx, y0 + mt + plotH + 4);
+    }
+
+    /* ── Ligne zéro Y ── */
     if (yMin < 0 && yMax > 0) {
         var zy = toGY(0);
-        ctx.strokeStyle = '#b0a898';
-        ctx.lineWidth = 1.5;
-        ctx.setLineDash([4, 3]);
+        ctx.save();
+        ctx.strokeStyle = 'rgba(44,62,80,0.30)';
+        ctx.lineWidth   = 1.2;
         ctx.beginPath();
         ctx.moveTo(x0 + ml, zy);
         ctx.lineTo(x0 + ml + plotW, zy);
         ctx.stroke();
-        ctx.setLineDash([]);
+        ctx.restore();
     }
 
-    /* Bordure zone de tracé */
+    /* ── Bordure zone de tracé ── */
     ctx.strokeStyle = '#c8c0b4';
-    ctx.lineWidth = 1;
+    ctx.lineWidth   = 1;
     ctx.strokeRect(x0 + ml, y0 + mt, plotW, plotH);
 
-    /* Courbe */
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(x0 + ml, y0 + mt, plotW, plotH);
-    ctx.clip();
-    ctx.strokeStyle = '#2a5080';
-    ctx.lineWidth = 2;
-    ctx.lineJoin = 'round';
-    ctx.beginPath();
-    ctx.moveTo(toGX(xVals[0]), toGY(yVals[0]));
-    for (var j = 1; j < xVals.length; j++) {
-        ctx.lineTo(toGX(xVals[j]), toGY(yVals[j]));
+    /* ── Courbe ── */
+    if (data.length >= 2) {
+        var xVals = data.map(info.xFn);
+        var yVals = data.map(info.col);
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(x0 + ml, y0 + mt, plotW, plotH);
+        ctx.clip();
+        ctx.strokeStyle = '#2a5080';
+        ctx.lineWidth   = 2;
+        ctx.lineJoin    = 'round';
+        var yRange = yMax - yMin;
+        ctx.beginPath();
+        ctx.moveTo(toGX(xVals[0]), toGY(yVals[0]));
+        for (var j = 1; j < xVals.length; j++) {
+            if (Math.abs(yVals[j] - yVals[j - 1]) > yRange * 0.25) {
+                ctx.moveTo(toGX(xVals[j]), toGY(yVals[j]));
+            } else {
+                ctx.lineTo(toGX(xVals[j]), toGY(yVals[j]));
+            }
+        }
+        ctx.stroke();
+        ctx.restore();
     }
-    ctx.stroke();
-    ctx.restore();
 
-    /* Curseur temporel (uniquement graphes en t) */
+    /* ── Hover point le plus proche ── */
+    if (hoverPos && data.length >= 2) {
+        var mx = hoverPos.x;
+        var my = hoverPos.y;
+        if (mx >= x0 + ml && mx <= x0 + ml + plotW &&
+            my >= y0 + mt && my <= y0 + mt + plotH) {
+
+            var hxVals = data.map(info.xFn);
+            var hyVals = data.map(info.col);
+            var best = -1, bestDist = Infinity;
+            for (var k = 0; k < hxVals.length; k++) {
+                var bx  = toGX(hxVals[k]);
+                var by  = toGY(hyVals[k]);
+                var byc = Math.max(y0 + mt, Math.min(y0 + mt + plotH, by));
+                var d   = Math.sqrt((bx - mx) * (bx - mx) + (byc - my) * (byc - my));
+                if (d < bestDist) { bestDist = d; best = k; }
+            }
+
+            if (best >= 0) {
+                var hbx  = toGX(hxVals[best]);
+                var hby  = toGY(hyVals[best]);
+                var hbyc = Math.max(y0 + mt, Math.min(y0 + mt + plotH, hby));
+
+                ctx.save();
+                ctx.setLineDash([4, 4]);
+                ctx.strokeStyle = 'rgba(60,60,60,0.45)';
+                ctx.lineWidth   = 1;
+                ctx.beginPath(); ctx.moveTo(hbx, hbyc); ctx.lineTo(hbx, y0 + mt + plotH); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(hbx, hbyc); ctx.lineTo(x0 + ml, hbyc);        ctx.stroke();
+                ctx.setLineDash([]);
+
+                ctx.fillStyle = '#2a5080';
+                ctx.beginPath();
+                ctx.arc(hbx, hbyc, 5, 0, Math.PI * 2);
+                ctx.fill();
+
+                /* ── Étiquette avec unités ── */
+                var xl   = _parseAxisLabel(info.xlabel);
+                var yl   = _parseAxisLabel(info.ylabel);
+                var lbl  = xl.name + ' = ' + _fmtLabel(hxVals[best]) + (xl.unit ? ' ' + xl.unit : '') +
+                           '    ' +
+                           yl.name + ' = ' + _fmtLabel(hyVals[best]) + (yl.unit ? ' ' + yl.unit : '');
+
+                ctx.font = _gFontTick + 'px monospace';
+                var lblW  = ctx.measureText(lbl).width;
+                var lblH  = _gFontTick;
+                var PAD   = 5;
+                var HPAD  = 8;
+
+                /* Position horizontale : droite en priorité, sinon gauche, puis clamp */
+                var lx = hbx + 12;
+                if (lx + lblW + HPAD > x0 + W) lx = hbx - 12 - lblW;
+                lx = Math.max(x0 + PAD, Math.min(x0 + W - lblW - PAD, lx));
+
+                /* Position verticale : au-dessus en priorité, sinon en dessous, puis clamp */
+                var ly = hbyc - lblH - 12;
+                if (ly < y0 + PAD) ly = hbyc + 10;
+                ly = Math.max(y0 + PAD, Math.min(y0 + H - lblH - PAD, ly));
+
+                /* Fond semi-transparent pour lisibilité */
+                ctx.fillStyle = 'rgba(255,255,255,0.88)';
+                ctx.fillRect(lx - PAD, ly - 2, lblW + PAD * 2, lblH + 6);
+
+                ctx.fillStyle    = '#2a5080';
+                ctx.textBaseline = 'top';
+                ctx.textAlign    = 'left';
+                ctx.fillText(lbl, lx, ly + 1);
+                ctx.restore();
+            }
+        }
+    }
+
+    /* ── Curseur temporel ── */
     if (tabKey !== 'y(x)' && !sim.ended && !sim.paused) {
         var cx = toGX(sim.t);
         if (cx >= x0 + ml && cx <= x0 + ml + plotW) {
+            ctx.save();
             ctx.strokeStyle = 'rgba(180,80,20,0.6)';
-            ctx.lineWidth = 1.5;
+            ctx.lineWidth   = 1.5;
             ctx.setLineDash([4, 3]);
             ctx.beginPath();
             ctx.moveTo(cx, y0 + mt);
             ctx.lineTo(cx, y0 + mt + plotH);
             ctx.stroke();
             ctx.setLineDash([]);
+            ctx.restore();
         }
     }
 
-    /* Labels axes */
-    var fLabel = Math.max(10, Math.min(13, H * 0.055));
-    ctx.font = 'bold ' + fLabel + 'px Segoe UI, Arial';
+    /* ── Labels axes ── */
     ctx.fillStyle = '#5a6a78';
+    ctx.font      = _gFontTitle + 'px "Segoe UI", Arial, sans-serif';
 
-    /* Axe x */
-    ctx.textAlign = 'center';
+    /* Axe X (centré sous la zone de tracé) */
+    ctx.textAlign    = 'center';
     ctx.textBaseline = 'bottom';
     ctx.fillText(info.xlabel, x0 + ml + plotW / 2, y0 + H - 2);
 
-    /* Axe y (rotation) */
+    /* Axe Y (pivoté, placé à gauche des chiffres) */
     ctx.save();
-    ctx.translate(x0 + 11, y0 + mt + plotH / 2);
+    ctx.translate(x0 + Math.max(4, ml - mlRaw - _gFontTitle - 4), y0 + mt + plotH / 2);
     ctx.rotate(-Math.PI / 2);
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
+    ctx.font         = _gFontTitle + 'px "Segoe UI", Arial, sans-serif';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'top';
     ctx.fillText(info.ylabel, 0, 0);
     ctx.restore();
-}
-
-/* ─────────────────────────────────────────────────
-   Helpers ticks
-───────────────────────────────────────────────── */
-function _niceTicks(min, max, count) {
-    var range = max - min;
-    var rawStep = range / count;
-    var mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
-    var norm = rawStep / mag;
-    var step = norm < 1.5 ? mag : norm < 3.5 ? 2 * mag : norm < 7 ? 5 * mag : 10 * mag;
-    var start = Math.ceil(min / step) * step;
-    var ticks = [];
-    for (var v = start; v <= max + step * 0.01; v += step) {
-        ticks.push(Math.round(v / step) * step);
-        if (ticks.length > 20) break;
-    }
-    return ticks;
-}
-
-function _fmtTick(v) {
-    if (Math.abs(v) >= 1000 || (Math.abs(v) < 0.01 && v !== 0)) {
-        return v.toExponential(1).replace('.', ',');
-    }
-    var dec = Math.abs(v) < 10 ? 2 : Math.abs(v) < 100 ? 1 : 0;
-    return v.toFixed(dec).replace('.', ',');
 }

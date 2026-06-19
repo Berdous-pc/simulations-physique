@@ -48,6 +48,12 @@ function init() {
 window.addEventListener('DOMContentLoaded', init);
 
 window.addEventListener('resize', function () {
+    /* Si le splitter avait fixé des hauteurs px, on les réinitialise
+       pour que le flex CSS reprenne le contrôle au nouveau viewport. */
+    var animArea  = document.getElementById('anim-area');
+    var graphArea = document.getElementById('graph-area');
+    if (animArea)  { animArea.style.flex  = ''; animArea.style.height  = ''; }
+    if (graphArea) { graphArea.style.flex = ''; graphArea.style.height = ''; }
     resizeAnimCanvas();
     resizeGraphCanvas();
     computeScale(_animW, _animH);
@@ -267,6 +273,19 @@ function _syncAllUI() {
 function _setSl(id, val) {
     var el = document.getElementById(id);
     if (el) el.value = val;
+}
+
+/* ─────────────────────────────────────────────────
+   Mode repère (orthonormé / adapté)
+───────────────────────────────────────────────── */
+function toggleAxisMode() {
+    sim.axisMode = (sim.axisMode === 'ortho') ? 'adapted' : 'ortho';
+    computeScale(_animW, _animH);
+    var btn = document.getElementById('btn-axis-mode');
+    if (btn) {
+        btn.textContent = 'Repère : ' + (sim.axisMode === 'ortho' ? 'Orthonormé' : 'Adapté');
+        btn.classList.toggle('active', sim.axisMode === 'adapted');
+    }
 }
 
 /* ─────────────────────────────────────────────────

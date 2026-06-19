@@ -20,6 +20,16 @@ var _animCanvas = null;
 var _animCtx    = null;
 var _animW = 0, _animH = 0;
 
+/* ── Géométrie des axes (recalculée à chaque frame) ─────────────
+   Centralisé ici pour que _drawGrid et _drawAxes soient cohérents.
+─────────────────────────────────────────────────────────────── */
+function _axisGeom() {
+    var aLen = Math.max(8,  Math.min(14, _animH * 0.030));
+    var yEnd = Math.max(16, Math.min(28, _animH * 0.050));
+    var xEnd = _animW - Math.max(18, _animW * 0.030);
+    return { aLen: aLen, yEnd: yEnd, xEnd: xEnd };
+}
+
 /* ─────────────────────────────────────────────────
    initAnimCanvas — lie le canvas et redimensionne
 ───────────────────────────────────────────────── */
@@ -42,9 +52,32 @@ function resizeAnimCanvas() {
 /* ── Conversion coordonnées physiques → canvas ── */
 function toCanvas(px, py) {
     return {
-        cx: sim.originX + px * sim.scale,
-        cy: _animH - sim.originY - py * sim.scale
+        cx: sim.originX + px * sim.scaleX,
+        cy: _animH - sim.originY - py * sim.scaleY
     };
+}
+
+/* ── Pas de grille "joli" pour une plage et un nombre cible de graduations ── */
+function _niceGridStep(range, targetMajor) {
+    var rough = range / targetMajor;
+    var mag   = Math.pow(10, Math.floor(Math.log10(Math.max(rough, 1e-9))));
+    var mant  = rough / mag;
+    var major;
+    if      (mant < 1.5) major = mag;
+    else if (mant < 3.5) major = 2 * mag;
+    else if (mant < 7.5) major = 5 * mag;
+    else                  major = 10 * mag;
+    var minor = major / 5;
+    if (minor < 0.1) minor = major;  // éviter trop de micro-marques
+    return { major: major, minor: minor };
+}
+
+/* Nombre de décimales à afficher pour un pas donné */
+function _gridDec(step) {
+    if (step >= 10)  return 0;
+    if (step >= 1)   return 0;
+    if (step >= 0.1) return 1;
+    return 2;
 }
 
 /* ── Position sol en pixels canvas ── */
@@ -107,112 +140,165 @@ function _drawBackground(ctx) {
 }
 
 /* ─────────────────────────────────────────────────
-   Grille légère
+   Grille légère + graduations sur les axes
+   • Grandes lignes + labels tous les 5 m
+   • Petites marques sans label tous les 1 m
 ───────────────────────────────────────────────── */
 function _drawGrid(ctx) {
-    if (sim.scale < 8) return;  // grille invisible si trop petite
+    if (sim.scaleX < 2 && sim.scaleY < 2) return;
 
-    /* Choisir un pas de grille "propre" en mètres */
-    var rawStep = 50 / sim.scale;  // viser ~50px entre les lignes
-    var mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
-    var norm = rawStep / mag;
-    var gridStep = norm < 1.5 ? mag : norm < 3.5 ? 2 * mag : norm < 7 ? 5 * mag : 10 * mag;
+    var xMaxPhy  = (_animW - sim.originX) / sim.scaleX;
+    var yMaxPhy  = (_animH - sim.originY) / sim.scaleY;
+    var gy0      = groundY();
+    var fontSize = Math.max(11, Math.min(16, _animH * 0.032));
+
+    /* Pas adaptatifs pour chaque axe */
+    var xGrid    = _niceGridStep(xMaxPhy, 6);
+    var yGrid    = _niceGridStep(yMaxPhy, 5);
+    var xMajor   = xGrid.major,  xMinor = xGrid.minor;
+    var yMajor   = yGrid.major,  yMinor = yGrid.minor;
+    var xDec     = _gridDec(xMajor);
+    var yDec     = _gridDec(yMajor);
 
     ctx.save();
-    ctx.strokeStyle = 'rgba(255,255,255,0.20)';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([3, 4]);
 
-    /* Lignes verticales */
-    var startX = Math.ceil(0 / gridStep) * gridStep;
-    var xMaxPx = (_animW - sim.originX) / sim.scale;
-    for (var gx = startX; gx <= xMaxPx + gridStep; gx += gridStep) {
-        var p = toCanvas(gx, 0);
-        ctx.beginPath();
-        ctx.moveTo(p.cx, 0);
-        ctx.lineTo(p.cx, groundY());
-        ctx.stroke();
-        /* Label */
-        if (gx > 0) {
-            ctx.fillStyle = 'rgba(255,255,255,0.55)';
-            ctx.font = Math.max(9, Math.min(12, _animH * 0.025)) + 'px Segoe UI, Arial';
+    /* ── Bornes de non-superposition ── */
+    var _ag        = _axisGeom();
+    var tickMajor  = Math.max(6, _animH * 0.014);
+    var tickMinor  = Math.max(3, _animH * 0.007);
+    var axesFontSz = Math.max(14, Math.min(20, _animH * 0.041));
+    var yAxisEnd   = _ag.yEnd + _ag.aLen + axesFontSz + 12;
+    var xAxisCutoff = _ag.xEnd - axesFontSz * 3 - 20;
+
+    /* Tolérance pour distinguer major vs minor (floating point) */
+    function isMultiple(v, step) {
+        return Math.abs(v / step - Math.round(v / step)) < 0.001;
+    }
+
+    /* ── Grandes lignes de grille ── */
+    ctx.strokeStyle = 'rgba(255,255,255,0.38)';
+    ctx.lineWidth   = 1;
+    ctx.setLineDash([4, 4]);
+
+    for (var ix = 1; ix * xMinor <= xMaxPhy * 1.05; ix++) {
+        var gxv = ix * xMinor;
+        if (!isMultiple(gxv, xMajor)) continue;
+        var p = toCanvas(gxv, 0);
+        if (p.cx > xAxisCutoff) break;
+        ctx.beginPath(); ctx.moveTo(p.cx, 0); ctx.lineTo(p.cx, gy0); ctx.stroke();
+    }
+    for (var iy = 1; iy * yMinor <= yMaxPhy * 1.05; iy++) {
+        var gyv = iy * yMinor;
+        if (!isMultiple(gyv, yMajor)) continue;
+        var p2 = toCanvas(0, gyv);
+        if (p2.cy < yAxisEnd) break;
+        ctx.beginPath(); ctx.moveTo(0, p2.cy); ctx.lineTo(_animW, p2.cy); ctx.stroke();
+    }
+    ctx.setLineDash([]);
+
+    /* ── Marques sur l'axe X ── */
+    for (var jx = 1; jx * xMinor <= xMaxPhy * 1.05; jx++) {
+        var xv     = jx * xMinor;
+        var isMajX = isMultiple(xv, xMajor);
+        var pcx    = toCanvas(xv, 0);
+        if (pcx.cx > xAxisCutoff) break;
+        var tLen   = isMajX ? tickMajor : tickMinor;
+
+        ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+        ctx.strokeStyle = 'rgba(255,255,255,' + (isMajX ? '0.95' : '0.75') + ')';
+        ctx.lineWidth   = isMajX ? 2 : 1.5;
+        ctx.beginPath(); ctx.moveTo(pcx.cx, gy0 - tLen); ctx.lineTo(pcx.cx, gy0); ctx.stroke();
+
+        if (isMajX) {
+            ctx.font = 'bold ' + fontSize + 'px Segoe UI, Arial';
             ctx.textAlign = 'center';
-            ctx.fillText(fmt(gx, 0) + ' m', p.cx, groundY() + 14);
+            ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = 4;
+            ctx.shadowOffsetX = 1; ctx.shadowOffsetY = 1;
+            ctx.fillStyle = 'rgba(255,255,255,0.95)';
+            ctx.fillText(fmt(xv, xDec), pcx.cx, gy0 + tickMajor + fontSize * 0.9);
+            ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
         }
     }
 
-    /* Lignes horizontales */
-    var yMaxPx = (_animH - sim.originY) / sim.scale;
-    for (var gy = gridStep; gy <= yMaxPx + gridStep; gy += gridStep) {
-        var p2 = toCanvas(0, gy);
-        if (p2.cy < 0) break;
-        ctx.beginPath();
-        ctx.moveTo(sim.originX, p2.cy);
-        ctx.lineTo(_animW, p2.cy);
-        ctx.stroke();
-        /* Label */
-        ctx.fillStyle = 'rgba(255,255,255,0.55)';
-        ctx.font = Math.max(9, Math.min(12, _animH * 0.025)) + 'px Segoe UI, Arial';
-        ctx.textAlign = 'right';
-        ctx.fillText(fmt(gy, 0) + ' m', sim.originX - 4, p2.cy + 3);
+    /* ── Marques sur l'axe Y ── */
+    for (var jy = 1; jy * yMinor <= yMaxPhy * 1.05; jy++) {
+        var yv     = jy * yMinor;
+        var isMajY = isMultiple(yv, yMajor);
+        var pcy    = toCanvas(0, yv);
+        if (pcy.cy < yAxisEnd) break;
+        var tLenY  = isMajY ? tickMajor : tickMinor;
+
+        ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+        ctx.strokeStyle = 'rgba(255,255,255,' + (isMajY ? '0.95' : '0.75') + ')';
+        ctx.lineWidth   = isMajY ? 2 : 1.5;
+        ctx.beginPath(); ctx.moveTo(sim.originX, pcy.cy); ctx.lineTo(sim.originX + tLenY, pcy.cy); ctx.stroke();
+
+        if (isMajY) {
+            ctx.font = 'bold ' + fontSize + 'px Segoe UI, Arial';
+            ctx.textAlign = 'right';
+            ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = 4;
+            ctx.shadowOffsetX = 1; ctx.shadowOffsetY = 1;
+            ctx.fillStyle = 'rgba(255,255,255,0.95)';
+            ctx.fillText(fmt(yv, yDec), sim.originX - tickMajor - 3, pcy.cy + fontSize * 0.35);
+            ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+        }
     }
 
-    ctx.setLineDash([]);
     ctx.restore();
 }
 
 /* ─────────────────────────────────────────────────
-   Axes x et y avec flèches
+   Axes x et y avec flèches + contour noir
 ───────────────────────────────────────────────── */
 function _drawAxes(ctx) {
-    var origin = toCanvas(0, 0);
-    var fontSize = Math.max(11, Math.min(14, _animH * 0.03));
-    var aLen = 10;  // longueur pointe de flèche
+    var origin  = toCanvas(0, 0);
+    var fontSize = Math.max(14, Math.min(20, _animH * 0.041));
+    var ag   = _axisGeom();
+    var aLen = ag.aLen;
+    var xEnd = ag.xEnd;
+    var yEnd = ag.yEnd;
 
     ctx.save();
-    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-    ctx.fillStyle   = 'rgba(255,255,255,0.85)';
-    ctx.lineWidth = 2;
 
-    /* Axe x */
-    var xEnd = _animW - 14;
-    ctx.beginPath();
-    ctx.moveTo(sim.originX - 5, origin.cy);
-    ctx.lineTo(xEnd, origin.cy);
-    ctx.stroke();
-    /* Flèche x */
-    ctx.beginPath();
-    ctx.moveTo(xEnd, origin.cy);
-    ctx.lineTo(xEnd - aLen, origin.cy - 4);
-    ctx.lineTo(xEnd - aLen, origin.cy + 4);
-    ctx.closePath();
-    ctx.fill();
+    /* ── Axes avec ombre douce ── */
+    ctx.shadowColor  = 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur   = 3;
+    ctx.shadowOffsetX = 1;
+    ctx.shadowOffsetY = 1;
+    ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+    ctx.fillStyle   = 'rgba(255,255,255,0.92)';
+    ctx.lineWidth   = 2;
 
-    /* Axe y */
-    var yEnd = 14;
-    ctx.beginPath();
-    ctx.moveTo(origin.cx, groundY() + 5);
-    ctx.lineTo(origin.cx, yEnd);
-    ctx.stroke();
-    /* Flèche y */
-    ctx.beginPath();
-    ctx.moveTo(origin.cx, yEnd);
-    ctx.lineTo(origin.cx - 4, yEnd + aLen);
-    ctx.lineTo(origin.cx + 4, yEnd + aLen);
-    ctx.closePath();
-    ctx.fill();
+    ctx.beginPath(); ctx.moveTo(sim.originX - 5, origin.cy); ctx.lineTo(xEnd, origin.cy); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(xEnd, origin.cy); ctx.lineTo(xEnd - aLen, origin.cy - 4); ctx.lineTo(xEnd - aLen, origin.cy + 4); ctx.closePath(); ctx.fill();
 
-    /* Labels */
-    ctx.font = 'bold ' + fontSize + 'px Segoe UI, Arial';
-    ctx.textAlign = 'left';
-    ctx.fillText('x (m)', xEnd - aLen - 2, origin.cy - 7);
-    ctx.textAlign = 'center';
-    ctx.fillText('y (m)', origin.cx, yEnd - 4);
+    ctx.beginPath(); ctx.moveTo(origin.cx, groundY() + 5); ctx.lineTo(origin.cx, yEnd); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(origin.cx, yEnd); ctx.lineTo(origin.cx - 4, yEnd + aLen); ctx.lineTo(origin.cx + 4, yEnd + aLen); ctx.closePath(); ctx.fill();
 
-    /* Origine O */
-    ctx.font = 'bold ' + fontSize + 'px Segoe UI, Arial';
-    ctx.textAlign = 'right';
-    ctx.fillText('O', origin.cx - 5, origin.cy + fontSize + 2);
+    /* ── Labels avec ombre douce ── */
+    ctx.font          = 'bold ' + fontSize + 'px Segoe UI, Arial';
+    ctx.fillStyle     = 'rgba(255,255,255,0.95)';
+    ctx.shadowColor   = 'rgba(0,0,0,0.55)';
+    ctx.shadowBlur    = 4;
+    ctx.shadowOffsetX = 1;
+    ctx.shadowOffsetY = 1;
+
+    /* x (m) — aligné avec les labels de graduation, à droite de l'axe */
+    var tickMajorRef  = Math.max(6,  _animH * 0.014);
+    var fontSizeGrid  = Math.max(11, Math.min(16, _animH * 0.032));
+    ctx.textAlign     = 'right';
+    ctx.textBaseline  = 'alphabetic';
+    ctx.fillText('x (m)', xEnd, origin.cy + tickMajorRef + fontSizeGrid * 0.9);
+
+    /* O */
+    ctx.textAlign    = 'right';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText('O', origin.cx - 6, origin.cy + fontSize + 2);
+
+    /* y (m) — horizontal, à gauche de l'axe, juste sous la pointe de flèche */
+    ctx.textAlign    = 'right';
+    ctx.textBaseline = 'top';
+    ctx.fillText('y (m)', origin.cx - 6, yEnd + aLen + 3);
 
     ctx.restore();
 }
@@ -281,7 +367,7 @@ function _drawChronoSnaps(ctx) {
 ───────────────────────────────────────────────── */
 function _drawBall(ctx) {
     var p = toCanvas(sim.x, sim.y);
-    var r = Math.max(7, Math.min(13, sim.scale * 0.55));
+    var r = Math.max(7, Math.min(13, Math.min(sim.scaleX, sim.scaleY) * 0.55));
 
     ctx.save();
 
@@ -447,9 +533,13 @@ function _drawVectorLegend(ctx) {
 
         splitter.addEventListener('pointermove', function (e) {
             if (!dragging) return;
-            var dy     = e.clientY - startY;
-            var newAH  = Math.max(60,  startAnimH  + dy);
-            var newGH  = Math.max(60,  startGraphH - dy);
+            var minAH = 80, minGH = 80;
+            var dy = e.clientY - startY;
+            /* Clamp dy pour que ni l'animation ni le graphe ne descende sous son minimum */
+            dy = Math.max(dy, -(startAnimH - minAH));
+            dy = Math.min(dy,   startGraphH - minGH);
+            var newAH = startAnimH + dy;
+            var newGH = startGraphH - dy;
             animArea.style.flex  = 'none';
             graphArea.style.flex = 'none';
             animArea.style.height  = newAH + 'px';
@@ -462,6 +552,7 @@ function _drawVectorLegend(ctx) {
             splitter.classList.remove('dragging');
             resizeAnimCanvas();
             resizeGraphCanvas();
+            computeScale(_animW, _animH);
         }
 
         splitter.addEventListener('pointerup', endDrag);

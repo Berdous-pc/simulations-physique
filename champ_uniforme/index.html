@@ -25,6 +25,7 @@
     <!-- ── Zone animation ─────────────────────── -->
     <div id="anim-area">
       <canvas id="anim-canvas"></canvas>
+      <button id="btn-axis-mode" class="btn-axis-mode" onclick="toggleAxisMode()">Repère : Orthonormé</button>
     </div>
 
     <!-- ── Splitter ───────────────────────────── -->
@@ -38,6 +39,8 @@
       <div id="graph-canvas-wrap">
         <canvas id="graph-canvas"></canvas>
       </div>
+      <!-- Séparateur dual — positionné en absolu sur toute la hauteur -->
+      <div id="graph-dual-sep"></div>
     </div>
 
   </div><!-- fin #left-col -->

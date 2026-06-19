@@ -55,6 +55,29 @@ main {
   height: 100%;
 }
 
+.btn-axis-mode {
+  position: absolute;
+  top: 7px;
+  left: clamp(78px, 7vw, 95px);
+  z-index: 5;
+  height: clamp(26px, 3.2vh, 34px);
+  padding: 0 clamp(6px, 0.7vw, 10px);
+  font-family: inherit;
+  font-size: clamp(11px, 1.15vw, 14px);
+  font-weight: 700;
+  color: rgba(255,255,255,0.92);
+  background: rgba(0,0,0,0.28);
+  border: 1px solid rgba(255,255,255,0.45);
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  width: clamp(140px, 13vw, 175px);
+  text-align: left;
+  transition: background 0.15s;
+}
+.btn-axis-mode:hover  { background: rgba(0,0,0,0.45); }
+.btn-axis-mode.active { background: rgba(42,106,170,0.65); border-color: rgba(150,200,255,0.7); }
+
 /* ── Splitter ────────────────────────────────── */
 #left-splitter {
   flex: 0 0 6px;
@@ -80,6 +103,19 @@ main {
   border-top: 1px solid #c8c0b4;
   border-right: 1px solid #c8c0b4;
   overflow: hidden;
+  position: relative;
+}
+
+#graph-dual-sep {
+  display: none;
+  position: absolute;
+  top: 0; bottom: 0;
+  left: 50%;
+  width: 2px;
+  margin-left: -1px;
+  background: #c8c0b4;
+  pointer-events: none;
+  z-index: 10;
 }
 
 /* Barre contrôle graphes */
@@ -92,6 +128,25 @@ main {
   flex-wrap: wrap;
   border-bottom: 1px solid #c8c0b4;
   background: #f0ede8;
+}
+
+.graph-select {
+  height: clamp(22px, 2.6vh, 28px);
+  padding: 0 clamp(4px, 0.5vw, 7px);
+  font-family: inherit;
+  font-size: clamp(10px, 1vw, 12px);
+  font-weight: 600;
+  color: #2c3e50;
+  background: #e8e4de;
+  border: 1px solid #b0a898;
+  border-radius: 5px;
+  cursor: pointer;
+  min-width: 0;
+  flex: 1;
+  max-width: 120px;
+}
+.graph-select:focus {
+  outline: none;
 }
 
 .graph-mode-btn {

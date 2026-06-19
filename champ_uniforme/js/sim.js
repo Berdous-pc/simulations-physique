@@ -43,13 +43,19 @@ var sim = {
     xMax: 0,
     yMax: 0,
 
+    /* ── Bornes pré-calculées pour les graphes ── */
+    graphBounds: null,
+
     /* ── Graphe ── */
     graphMode: 'single',  // 'single' | 'dual'
     graphTab1: 'y(x)',
     graphTab2: 'vy(t)',
 
     /* ── Vue canvas animation ── */
-    scale:   20,   // px/m (recalculé par computeScale)
+    scale:   20,   // px/m (recalculé par computeScale, = scaleX en mode ortho)
+    scaleX:  20,   // px/m axe horizontal
+    scaleY:  20,   // px/m axe vertical
+    axisMode: 'ortho',  // 'ortho' | 'adapted'
     originX: 65,   // marge gauche (px)
     originY: 50,   // marge basse  (px)
 };
@@ -58,7 +64,7 @@ var sim = {
 var SPEED_VALUES = [0.10, 0.25, 0.50, 1.00];
 
 /* ── Constante d'intégration ── */
-var PHYS_DT = 1 / 120;  // pas de temps simulation (s)
+var PHYS_DT = 1 / 300;  // pas de temps simulation (s)
 
 /* ─────────────────────────────────────────────────
    resetSim — réinitialise l'état au début du lancer
@@ -81,6 +87,7 @@ function resetSim() {
         sim.nextChronoTime = sim.deltaT;
     }
     computeTrajectoryBounds();
+    computeGraphBounds();
 }
 
 /* ── Calcul accélération en fonction de l'état courant ── */
@@ -199,8 +206,68 @@ function computeTrajectoryBounds() {
 
     /* Durée totale approximative */
     sim.maxT  = i * dt;
-    sim.xMax  = Math.max(xMax, 1);
+    sim.xMax  = Math.max(xMax, 5);
     sim.yMax  = Math.max(yMax, sim.h + 1, 1);
+}
+
+/* ─────────────────────────────────────────────────
+   computeGraphBounds
+   Simule la trajectoire complète et collecte les
+   bornes min/max de toutes les grandeurs graphables.
+───────────────────────────────────────────────── */
+function computeGraphBounds() {
+    var alphaRad = sim.alpha * Math.PI / 180;
+    var tx = 0, ty = sim.h;
+    var tvx = sim.v0 * Math.cos(alphaRad);
+    var tvy = sim.v0 * Math.sin(alphaRad);
+    var dt = PHYS_DT * 4;
+
+    /* Accélération initiale */
+    var Fx0 = sim.windForce - (sim.useFriction ? sim.k * tvx : 0);
+    var Fy0 = -sim.g * sim.mass - (sim.useFriction ? sim.k * tvy : 0);
+    var tax0 = Fx0 / sim.mass, tay0 = Fy0 / sim.mass;
+
+    var b = {
+        t:  { min: 0, max: 0 },
+        x:  { min: 0, max: Math.max(tx, 0.01) },
+        y:  { min: 0, max: Math.max(ty, 0.01) },
+        vx: { min: tvx, max: tvx },
+        vy: { min: tvy, max: tvy },
+        ax: { min: tax0, max: tax0 },
+        ay: { min: tay0, max: tay0 }
+    };
+
+    for (var i = 0; i < 20000; i++) {
+        var Fx = sim.windForce - (sim.useFriction ? sim.k * tvx : 0);
+        var Fy = -sim.g * sim.mass - (sim.useFriction ? sim.k * tvy : 0);
+        var tax = Fx / sim.mass, tay = Fy / sim.mass;
+        tvx += tax * dt;
+        tvy += tay * dt;
+        tx  += tvx * dt;
+        ty  += tvy * dt;
+        var tt = (i + 1) * dt;
+
+        if (tx  > b.x.max)  b.x.max  = tx;
+        if (tvx > b.vx.max) b.vx.max = tvx;
+        if (tvx < b.vx.min) b.vx.min = tvx;
+        if (tvy > b.vy.max) b.vy.max = tvy;
+        if (tvy < b.vy.min) b.vy.min = tvy;
+        if (tax > b.ax.max) b.ax.max = tax;
+        if (tax < b.ax.min) b.ax.min = tax;
+        if (tay > b.ay.max) b.ay.max = tay;
+        if (tay < b.ay.min) b.ay.min = tay;
+        if (ty  > b.y.max)  b.y.max  = ty;
+        b.t.max = tt;
+
+        if (ty <= 0 && i > 2) break;
+    }
+
+    /* Garanties minimales */
+    b.x.max  = Math.max(b.x.max,  1);
+    b.y.max  = Math.max(b.y.max,  sim.h + 1, 1);
+    b.y.min  = 0;  /* jamais sous le sol */
+
+    sim.graphBounds = b;
 }
 
 /* ─────────────────────────────────────────────────
@@ -211,9 +278,15 @@ function computeTrajectoryBounds() {
 function computeScale(canvasW, canvasH) {
     var availW = canvasW - sim.originX - 20;
     var availH = canvasH - sim.originY - 30;
-    var scaleX = availW / (sim.xMax * 1.18);
-    var scaleY = availH / (sim.yMax * 1.18);
-    sim.scale = Math.max(2, Math.min(scaleX, scaleY));
+    var sx = availW / (sim.xMax * 1.05);
+    var sy = availH / (sim.yMax * 1.05);
+    if (sim.axisMode === 'adapted') {
+        sim.scaleX = Math.max(2, sx);
+        sim.scaleY = Math.max(2, sy);
+    } else {
+        sim.scaleX = sim.scaleY = Math.max(2, Math.min(sx, sy));
+    }
+    sim.scale = sim.scaleX;
 }
 
 /* ── Formatage nombre français ── */
