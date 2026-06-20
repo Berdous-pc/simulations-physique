@@ -27,9 +27,11 @@ var sim = {
 
     /* ── Options d'affichage ── */
     displayMode: 'chrono',  // 'trajectory' | 'chrono' | 'both'
-    showVecPos:  false,
-    showVecVit:  false,
-    showVecAcc:  false,
+    showVecPos:    false,
+    showVecVit:    true,
+    showVecAcc:    false,
+    showVecForces: false,
+    showVecSumF:   false,
     deltaT:      0.3,           // pas chronophotographie (s)
 
     /* ── Données run courant ── */
@@ -49,8 +51,8 @@ var sim = {
 
     /* ── Graphe ── */
     graphMode: 'single',  // 'single' | 'dual'
-    graphTab1: 'y(x)',
-    graphTab2: 'vy(t)',
+    graphTab1: 'x(t)',
+    graphTab2: 'y(t)',
 
     /* ── Vue canvas animation ── */
     scale:   20,   // px/m (recalculé par computeScale, = scaleX en mode ortho)
@@ -210,6 +212,10 @@ function computeTrajectoryBounds() {
     sim.maxT  = i * dt;
     sim.xMax  = Math.max(xMax, 5);
     sim.yMax  = Math.max(yMax, sim.h + 1, 1);
+    /* Bornes propres à ce run (avant fusion avec les runs sauvegardées) */
+    sim._ownMaxT = sim.maxT;
+    sim._ownXMax = sim.xMax;
+    sim._ownYMax = sim.yMax;
 }
 
 /* ─────────────────────────────────────────────────
@@ -270,6 +276,7 @@ function computeGraphBounds() {
     b.y.min  = 0;  /* jamais sous le sol */
 
     sim.graphBounds = b;
+    sim._ownGraphBounds = JSON.parse(JSON.stringify(b));
 }
 
 /* ─────────────────────────────────────────────────

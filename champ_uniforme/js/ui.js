@@ -38,7 +38,6 @@ function loop(ts) {
 
         drawAnim();
         drawGraph();
-        _updateReadouts();
     }
 }
 
@@ -150,13 +149,38 @@ function togglePause() {
     _updatePlayBtn();
 }
 
+function expandBoundsGlobal() {
+    sim.xMax        = sim._ownXMax || sim.xMax;
+    sim.yMax        = sim._ownYMax || sim.yMax;
+    sim.maxT        = sim._ownMaxT || sim.maxT;
+    var gb = JSON.parse(JSON.stringify(sim._ownGraphBounds || sim.graphBounds));
+    for (var i = 0; i < savedRuns.length; i++) {
+        var r = savedRuns[i];
+        if (r.hidden) continue;
+        if (r.xMax > sim.xMax) sim.xMax = r.xMax;
+        if (r.yMax > sim.yMax) sim.yMax = r.yMax;
+        if (r.maxT > sim.maxT) sim.maxT = r.maxT;
+        if (r.graphBounds && gb) {
+            var keys = Object.keys(gb);
+            for (var k = 0; k < keys.length; k++) {
+                var key = keys[k];
+                if (r.graphBounds[key]) {
+                    if (r.graphBounds[key].min < gb[key].min) gb[key].min = r.graphBounds[key].min;
+                    if (r.graphBounds[key].max > gb[key].max) gb[key].max = r.graphBounds[key].max;
+                }
+            }
+        }
+    }
+    sim.graphBounds = gb;
+    computeScale(_animW, _animH);
+}
+
 function resetSimAnim() {
     sim.paused = true;
     resetSim();
-    computeScale(_animW, _animH);
+    expandBoundsGlobal();
     _updateCurrentRunColor();
     _updatePlayBtn();
-    _updateReadouts();
 }
 
 function _updatePlayBtn() {
@@ -227,11 +251,24 @@ function toggleVecAcc() {
     sim.showVecAcc = !sim.showVecAcc;
     document.getElementById('btn-vec-acc').classList.toggle('active', sim.showVecAcc);
 }
+function toggleVecForces() {
+    sim.showVecForces = !sim.showVecForces;
+    document.getElementById('btn-vec-forces').classList.toggle('active', sim.showVecForces);
+}
+function toggleVecSumF() {
+    sim.showVecSumF = !sim.showVecSumF;
+    document.getElementById('btn-vec-sumf').classList.toggle('active', sim.showVecSumF);
+}
 
 
 /* ─────────────────────────────────────────────────
    Conditions initiales
 ───────────────────────────────────────────────── */
+function onSliderMass(v) {
+    sim.mass = parseFloat(v);
+    document.getElementById('lbl-mass').textContent = fmt(sim.mass, 2);
+    resetSimAnim();
+}
 function onSliderH(v) {
     sim.h = parseFloat(v);
     document.getElementById('lbl-h').textContent = fmt(sim.h, 0);
@@ -252,7 +289,9 @@ function onSliderAlpha(v) {
    Pesanteur
 ───────────────────────────────────────────────── */
 function onSliderG(v) {
-    sim.g = parseFloat(v);
+    var val = parseFloat(v);
+    if (Math.abs(val - 9.81) < 0.2) { val = 9.81; document.getElementById('sl-g').value = 9.81; }
+    sim.g = val;
     document.getElementById('lbl-g').textContent = fmt(sim.g, 2);
     resetSimAnim();
 }
@@ -271,13 +310,15 @@ function toggleFriction() {
    Vent
 ───────────────────────────────────────────────── */
 function onSliderWind(v) {
-    sim.windForce = parseFloat(v);
+    var val = parseFloat(v);
+    if (Math.abs(val) < 0.15) { val = 0; document.getElementById('sl-wind').value = 0; }
+    sim.windForce = val;
     var lbl = document.getElementById('lbl-wind');
     if (lbl) {
-        var sign = sim.windForce > 0 ? '+' : '';
-        lbl.textContent = sign + fmt(sim.windForce, 1) + ' N';
+        var sign = val > 0 ? '+' : '';
+        lbl.textContent = sign + fmt(val, 1);
     }
-    _updateWindTrack(parseFloat(v));
+    _updateWindTrack(val);
     resetSimAnim();
 }
 
@@ -309,23 +350,6 @@ function onSliderDeltaT(v) {
 }
 
 /* ─────────────────────────────────────────────────
-   Afficheurs valeurs en bas du panel
-───────────────────────────────────────────────── */
-function _updateReadouts() {
-    _setTxt('ro-t',  fmt(sim.t, 2));
-    _setTxt('ro-x',  fmt(sim.x, 2));
-    _setTxt('ro-y',  fmt(sim.y, 2));
-    _setTxt('ro-vx', fmt(sim.vx, 2));
-    _setTxt('ro-vy', fmt(sim.vy, 2));
-    _setTxt('ro-v',  fmt(Math.hypot(sim.vx, sim.vy), 2));
-}
-
-function _setTxt(id, v) {
-    var el = document.getElementById(id);
-    if (el) el.textContent = v;
-}
-
-/* ─────────────────────────────────────────────────
    Synchronisation complète de l'UI sur sim.*
 ───────────────────────────────────────────────── */
 function _syncAllUI() {
@@ -338,6 +362,7 @@ function _syncAllUI() {
         '×' + sim.speedFactor.toFixed(2).replace('.', ',');
 
     /* Conditions initiales */
+    _setSl('sl-mass',  sim.mass);    _setTxt('lbl-mass',  fmt(sim.mass, 2));
     _setSl('sl-h',     sim.h);       _setTxt('lbl-h',     fmt(sim.h, 0));
     _setSl('sl-v0',    sim.v0);      _setTxt('lbl-v0',    fmt(sim.v0, 0));
     _setSl('sl-alpha', sim.alpha);   _setTxt('lbl-alpha', fmt(sim.alpha, 0));
@@ -351,8 +376,15 @@ function _syncAllUI() {
     document.getElementById('btn-vec-pos').classList.toggle('active', sim.showVecPos);
     document.getElementById('btn-vec-vit').classList.toggle('active', sim.showVecVit);
     document.getElementById('btn-vec-acc').classList.toggle('active', sim.showVecAcc);
+    document.getElementById('btn-vec-forces').classList.toggle('active', sim.showVecForces);
+    document.getElementById('btn-vec-sumf').classList.toggle('active', sim.showVecSumF);
 
     _updatePlayBtn();
+}
+
+function _setTxt(id, v) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = v;
 }
 
 function _setSl(id, val) {
@@ -511,7 +543,39 @@ function adapterVue() {
 ───────────────────────────────────────────────── */
 var _currentRunColor = SAVE_COLORS[0];
 var _pinModeActive   = false;
-var _openDropdownId  = null;   // id de la run dont le dropdown est ouvert
+var _openDropdownId  = null;
+
+/* ── Options d'affichage des points épinglés ── */
+var pinShowVecPos    = false;
+var pinShowVecVit    = true;
+var pinShowVecAcc    = false;
+var pinShowVecForces = false;
+var pinShowVecSumF   = false;
+var pinShowCoords    = true;
+
+function togglePinVec(key) {
+    switch(key) {
+        case 'pos':    pinShowVecPos    = !pinShowVecPos;    break;
+        case 'vit':    pinShowVecVit    = !pinShowVecVit;    break;
+        case 'acc':    pinShowVecAcc    = !pinShowVecAcc;    break;
+        case 'forces': pinShowVecForces = !pinShowVecForces; break;
+        case 'sumf':   pinShowVecSumF   = !pinShowVecSumF;  break;
+    }
+    document.getElementById('pin-vec-btn-' + key).classList.toggle('active',
+        key === 'pos'    ? pinShowVecPos    :
+        key === 'vit'    ? pinShowVecVit    :
+        key === 'acc'    ? pinShowVecAcc    :
+        key === 'forces' ? pinShowVecForces : pinShowVecSumF);
+}
+
+function setPinShowCoords(val) {
+    pinShowCoords = val;
+}
+
+var hoverShowCoords = false;
+function setHoverShowCoords(val) {
+    hoverShowCoords = val;
+}
 
 function _updateCurrentRunColor() {
     var used = savedRuns.map(function(r) { return r.color; });
@@ -536,9 +600,15 @@ function sauvegarderRun() {
         chronoSnaps:    sim.chronoSnaps.map(function(s) { return Object.assign({}, s); }),
         graphData:      sim.graphData.map(function(d) { return Object.assign({}, d); }),
         analysisPoints: sim.analysisPoints.map(function(p) { return Object.assign({}, p); }),
-        showVecPos: sim.showVecPos,
-        showVecVit: sim.showVecVit,
-        showVecAcc: sim.showVecAcc,
+        xMax:         sim._ownXMax,
+        yMax:         sim._ownYMax,
+        maxT:         sim._ownMaxT,
+        graphBounds:  JSON.parse(JSON.stringify(sim._ownGraphBounds || sim.graphBounds)),
+        showVecPos:    sim.showVecPos,
+        showVecVit:    sim.showVecVit,
+        showVecAcc:    sim.showVecAcc,
+        showVecForces: sim.showVecForces,
+        showVecSumF:   sim.showVecSumF,
         hidden: false
     });
     renderSavedRuns();
@@ -549,12 +619,14 @@ function supprimerSauvegardeRun(id) {
     if (_openDropdownId === id) closeRunDropdown();
     savedRuns = savedRuns.filter(function(r) { return r.id !== id; });
     _updateCurrentRunColor();
+    expandBoundsGlobal();
     renderSavedRuns();
 }
 
 function masquerSauvegardeRun(id) {
     var run = savedRuns.find(function(r) { return r.id === id; });
     if (run) run.hidden = !run.hidden;
+    expandBoundsGlobal();
     renderSavedRuns();
 }
 
@@ -713,14 +785,16 @@ function _renderDropdown(run) {
     vecsDiv.className = 'run-drop-vecs';
 
     [
-        { key: 'showVecPos', label: 'OM', color: '#2a6aaa' },
-        { key: 'showVecVit', label: 'v',  color: '#c03030' },
-        { key: 'showVecAcc', label: 'a',  color: '#2a8a50' }
+        { key: 'showVecPos',    html: '<math><mover><mi>OM</mi><mo>&#x2192;</mo></mover></math>',                                                        color: '#2a6aaa' },
+        { key: 'showVecVit',    html: '<math><mover><mi>v</mi><mo>&#x2192;</mo></mover></math>',                                                          color: '#c03030' },
+        { key: 'showVecAcc',    html: '<math><mover><mi>a</mi><mo>&#x2192;</mo></mover></math>',                                                          color: '#2a8a50' },
+        { key: 'showVecForces', html: '<math><mover><mi>F</mi><mo>&#x2192;</mo></mover></math>',                                                          color: '#8e44ad' },
+        { key: 'showVecSumF',   html: '<math><mover><mrow><mi mathvariant="normal">&#x3A3;</mi><mi>F</mi></mrow><mo>&#x2192;</mo></mover></math>',        color: '#8d4e20' }
     ].forEach(function(def) {
         var b = document.createElement('button');
         b.className = 'run-drop-vec-btn' + (run[def.key] ? ' active' : '');
         b.style.color = def.color;
-        b.innerHTML = '<math><mover><mi>' + def.label + '</mi><mo>&#x2192;</mo></mover></math>';
+        b.innerHTML = def.html;
         b.onclick = function(e) { e.stopPropagation(); toggleSavedVec(run.id, def.key); };
         vecsDiv.appendChild(b);
     });

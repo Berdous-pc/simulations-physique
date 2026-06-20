@@ -27,6 +27,14 @@
       <div class="toolbar-left">
         <button id="btn-axis-mode" class="toolbar-btn" onclick="toggleAxisMode()">Repère : Orthonormé</button>
         <div class="toolbar-dropdown-wrap">
+          <button class="toolbar-btn toolbar-dropdown-btn" onclick="toggleToolbarDropdown('vue')">Vue ▾</button>
+          <div class="toolbar-dropdown" id="toolbar-drop-vue">
+            <button class="toolbar-drop-item" onclick="setViewMode('oxy')">Plan Oxy</button>
+            <button class="toolbar-drop-item" onclick="setViewMode('proj-x')">Projection sur l'axe x</button>
+            <button class="toolbar-drop-item" onclick="setViewMode('proj-y')">Projection sur l'axe y</button>
+          </div>
+        </div>
+        <div class="toolbar-dropdown-wrap">
           <button class="toolbar-btn toolbar-dropdown-btn" onclick="toggleToolbarDropdown('vecteurs')">Vecteurs ▾</button>
           <div class="toolbar-dropdown" id="toolbar-drop-vecteurs">
             <button class="toolbar-drop-item selected" data-mode="vecteur" onclick="setVecDisplayMode('vecteur')">Vecteur</button>
@@ -35,14 +43,40 @@
           </div>
         </div>
         <div class="toolbar-dropdown-wrap">
-          <button class="toolbar-btn toolbar-dropdown-btn" onclick="toggleToolbarDropdown('vue')">Vue ▾</button>
-          <div class="toolbar-dropdown" id="toolbar-drop-vue">
-            <button class="toolbar-drop-item" onclick="setViewMode('oxy')">Plan Oxy</button>
-            <button class="toolbar-drop-item" onclick="setViewMode('proj-x')">Projection sur l'axe x</button>
-            <button class="toolbar-drop-item" onclick="setViewMode('proj-y')">Projection sur l'axe y</button>
+          <div class="toolbar-btn-split">
+            <button id="btn-pin-mode" class="toolbar-btn pin-main-btn" onclick="togglePinMode()">Épingler 📍</button>
+            <button class="toolbar-btn pin-arrow-btn" onclick="toggleToolbarDropdown('pin')" title="Options d'affichage">▾</button>
+          </div>
+          <div class="toolbar-dropdown pin-dropdown" id="toolbar-drop-pin">
+            <div class="pin-drop-title">Options d'affichage</div>
+            <div class="vec-btn-row pin-vec-row">
+              <button class="btn-vec-compact" id="pin-vec-btn-pos" onclick="togglePinVec('pos')" title="Vecteur position">
+                <span class="btn-vec-compact-dot" style="background:#2a6aaa;"></span>
+                <span class="vec-label" style="color:#2a6aaa;"><math><mover><mi>OM</mi><mo>&#x2192;</mo></mover></math></span>
+              </button>
+              <button class="btn-vec-compact active" id="pin-vec-btn-vit" onclick="togglePinVec('vit')" title="Vecteur vitesse">
+                <span class="btn-vec-compact-dot" style="background:#c03030;"></span>
+                <span class="vec-label" style="color:#c03030;"><math><mover><mi>v</mi><mo>&#x2192;</mo></mover></math></span>
+              </button>
+              <button class="btn-vec-compact" id="pin-vec-btn-acc" onclick="togglePinVec('acc')" title="Vecteur accélération">
+                <span class="btn-vec-compact-dot" style="background:#2a8a50;"></span>
+                <span class="vec-label" style="color:#2a8a50;"><math><mover><mi>a</mi><mo>&#x2192;</mo></mover></math></span>
+              </button>
+              <button class="btn-vec-compact" id="pin-vec-btn-forces" onclick="togglePinVec('forces')" title="Vecteurs des forces">
+                <span class="btn-vec-compact-dot" style="background:#8e44ad;"></span>
+                <span class="vec-label" style="color:#8e44ad;"><math><mover><mi>F</mi><mo>&#x2192;</mo></mover></math></span>
+              </button>
+              <button class="btn-vec-compact" id="pin-vec-btn-sumf" onclick="togglePinVec('sumf')" title="Somme des forces">
+                <span class="btn-vec-compact-dot" style="background:#8d4e20;"></span>
+                <span class="vec-label" style="color:#8d4e20;"><math><mover><mrow><mi mathvariant="normal">&#x3A3;</mi><mi>F</mi></mrow><mo>&#x2192;</mo></mover></math></span>
+              </button>
+            </div>
+            <label class="pin-coords-label">
+              <input type="checkbox" id="chk-pin-coords" checked onchange="setPinShowCoords(this.checked)">
+              Afficher les coordonnées des vecteurs cinématiques
+            </label>
           </div>
         </div>
-        <button id="btn-pin-mode" class="toolbar-btn" onclick="togglePinMode()">Épingler 📍</button>
       </div>
       <div class="toolbar-spacer"></div>
       <div class="toolbar-sep"></div>
@@ -168,28 +202,19 @@
 
         <div class="sep"></div>
 
-        <!-- VECTEURS -->
-        <div class="panel-section">
-          <div class="section-title">Vecteurs</div>
-          <button class="btn-vec" id="btn-vec-pos" onclick="toggleVecPos()">
-            <span class="btn-vec-dot" style="background:#2a6aaa;"></span>
-            Vecteur position
-          </button>
-          <button class="btn-vec" id="btn-vec-vit" onclick="toggleVecVit()">
-            <span class="btn-vec-dot" style="background:#c03030;"></span>
-            Vecteur vitesse
-          </button>
-          <button class="btn-vec" id="btn-vec-acc" onclick="toggleVecAcc()">
-            <span class="btn-vec-dot" style="background:#2a8a50;"></span>
-            Vecteur accélération
-          </button>
-        </div>
-
-        <div class="sep"></div>
-
         <!-- CONDITIONS INITIALES -->
         <div class="panel-section">
           <div class="section-title">Conditions initiales</div>
+
+          <div class="param-row">
+            <label>
+              Masse m
+              <span class="param-value"><span id="lbl-mass">0,43</span> kg</span>
+            </label>
+            <input type="range" id="sl-mass"
+                   min="0.1" max="2" step="0.1" value="0.43"
+                   oninput="onSliderMass(this.value)">
+          </div>
 
           <div class="param-row">
             <label>
@@ -220,51 +245,44 @@
                    min="0" max="90" step="1" value="45"
                    oninput="onSliderAlpha(this.value)">
           </div>
-        </div>
 
-        <div class="sep"></div>
-
-        <!-- PESANTEUR -->
-        <div class="panel-section">
-          <div class="section-title">Pesanteur</div>
           <div class="param-row">
             <label>
               g
               <span class="param-value"><span id="lbl-g">9,81</span> m/s²</span>
             </label>
-            <input type="range" id="sl-g"
-                   min="1" max="20" step="0.1" value="9.81"
-                   oninput="onSliderG(this.value)">
+            <div class="slider-tick-wrap">
+              <input type="range" id="sl-g"
+                     min="1" max="20" step="0.1" value="9.81"
+                     oninput="onSliderG(this.value)">
+              <span class="slider-tick" style="left:46.4%"></span>
+            </div>
           </div>
         </div>
 
         <div class="sep"></div>
 
-        <!-- FROTTEMENTS -->
+        <!-- FORCES EXTÉRIEURES -->
         <div class="panel-section">
-          <div class="section-title">Frottements</div>
+          <div class="section-title">Forces extérieures</div>
           <button class="btn-toggle-one" id="btn-friction"
                   onclick="toggleFriction()">
             Activer les frottements (f = −kv)
           </button>
           <div style="font-size:clamp(9px,0.85vw,11px);color:#7a8a96;margin-top:4px;line-height:1.4;">
-            Modèle linéaire, k = 0,15 N·s/m<br>(balle de foot ~0,43 kg)
+            Modèle linéaire, k = 0,15 N·s/m
           </div>
-        </div>
-
-        <div class="sep"></div>
-
-        <!-- VENT -->
-        <div class="panel-section">
-          <div class="section-title">Vent</div>
-          <div class="param-row">
+          <div class="param-row" style="margin-top:8px;">
             <label>
-              Force horizontale
-              <span class="param-value" id="lbl-wind">0,0 N</span>
+              Vent horizontal
+              <span class="param-value"><span id="lbl-wind">0,0</span> N</span>
             </label>
-            <input type="range" id="sl-wind"
-                   min="-5" max="5" step="0.1" value="0"
-                   oninput="onSliderWind(this.value)">
+            <div class="slider-tick-wrap">
+              <input type="range" id="sl-wind"
+                     min="-5" max="5" step="0.1" value="0"
+                     oninput="onSliderWind(this.value)">
+              <span class="slider-tick" style="left:50%"></span>
+            </div>
             <div class="wind-labels">
               <span>← gauche</span>
               <span>droite →</span>
@@ -274,37 +292,35 @@
 
         <div class="sep"></div>
 
-        <!-- GRANDEURS COURANTES -->
+        <!-- VECTEURS -->
         <div class="panel-section">
-          <div class="section-title">Grandeurs en cours</div>
-          <div class="readout">
-            <div class="ro-grid">
-              <div class="ro-item">
-                <span class="ro-item-label">t</span>
-                <span class="ro-item-value"><span id="ro-t">0,00</span> <span class="ro-unit">s</span></span>
-              </div>
-              <div class="ro-item">
-                <span class="ro-item-label">‖v‖</span>
-                <span class="ro-item-value"><span id="ro-v">0,00</span> <span class="ro-unit">m/s</span></span>
-              </div>
-              <div class="ro-item">
-                <span class="ro-item-label">x</span>
-                <span class="ro-item-value"><span id="ro-x">0,00</span> <span class="ro-unit">m</span></span>
-              </div>
-              <div class="ro-item">
-                <span class="ro-item-label">y</span>
-                <span class="ro-item-value"><span id="ro-y">0,00</span> <span class="ro-unit">m</span></span>
-              </div>
-              <div class="ro-item">
-                <span class="ro-item-label">vx</span>
-                <span class="ro-item-value"><span id="ro-vx">0,00</span> <span class="ro-unit">m/s</span></span>
-              </div>
-              <div class="ro-item">
-                <span class="ro-item-label">vy</span>
-                <span class="ro-item-value"><span id="ro-vy">0,00</span> <span class="ro-unit">m/s</span></span>
-              </div>
-            </div>
+          <div class="section-title">Vecteurs</div>
+          <div class="vec-btn-row">
+            <button class="btn-vec-compact" id="btn-vec-pos" onclick="toggleVecPos()" title="Vecteur position">
+              <span class="btn-vec-compact-dot" style="background:#2a6aaa;"></span>
+              <span class="vec-label" style="color:#2a6aaa;"><math><mover><mi>OM</mi><mo>&#x2192;</mo></mover></math></span>
+            </button>
+            <button class="btn-vec-compact" id="btn-vec-vit" onclick="toggleVecVit()" title="Vecteur vitesse">
+              <span class="btn-vec-compact-dot" style="background:#c03030;"></span>
+              <span class="vec-label" style="color:#c03030;"><math><mover><mi>v</mi><mo>&#x2192;</mo></mover></math></span>
+            </button>
+            <button class="btn-vec-compact" id="btn-vec-acc" onclick="toggleVecAcc()" title="Vecteur accélération">
+              <span class="btn-vec-compact-dot" style="background:#2a8a50;"></span>
+              <span class="vec-label" style="color:#2a8a50;"><math><mover><mi>a</mi><mo>&#x2192;</mo></mover></math></span>
+            </button>
+            <button class="btn-vec-compact" id="btn-vec-forces" onclick="toggleVecForces()" title="Vecteurs des forces">
+              <span class="btn-vec-compact-dot" style="background:#8e44ad;"></span>
+              <span class="vec-label" style="color:#8e44ad;"><math><mover><mi>F</mi><mo>&#x2192;</mo></mover></math></span>
+            </button>
+            <button class="btn-vec-compact" id="btn-vec-sumf" onclick="toggleVecSumF()" title="Somme des forces">
+              <span class="btn-vec-compact-dot" style="background:#8d4e20;"></span>
+              <span class="vec-label" style="color:#8d4e20;"><math><mover><mrow><mi mathvariant="normal">&#x3A3;</mi><mi>F</mi></mrow><mo>&#x2192;</mo></mover></math></span>
+            </button>
           </div>
+          <label class="pin-coords-label" style="margin-top:7px;">
+            <input type="checkbox" id="chk-hover-coords" onchange="setHoverShowCoords(this.checked)">
+            Afficher les coordonnées des vecteurs cinématiques
+          </label>
         </div>
 
       </div><!-- fin #section-champ-pesanteur -->

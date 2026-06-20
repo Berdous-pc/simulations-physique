@@ -8,13 +8,21 @@
 
 /* ── Échelles visuelles des vecteurs ── */
 var VEC_SCALE_POS = 0.22;   // fraction de l'échelle physique
-var VEC_SCALE_VIT = 5;      // px par m/s
+var VEC_SCALE_VIT = 7.5;    // px par m/s
 var VEC_SCALE_ACC = 10;     // px par m/s²
 
 /* Couleurs vecteurs */
-var COL_VEC_POS = '#2a6aaa';
-var COL_VEC_VIT = '#c03030';
-var COL_VEC_ACC = '#2a8a50';
+var COL_VEC_POS    = '#2a6aaa';
+var COL_VEC_VIT    = '#c03030';
+var COL_VEC_ACC    = '#2a8a50';
+var COL_VEC_FORCES = '#8e44ad';
+var COL_VEC_SUMF   = '#8d4e20';
+
+/* Échelle forces : px par Newton */
+var VEC_SCALE_FORCE = 12;
+
+/* Mode d'affichage des vecteurs : 'vecteur' | 'composantes' | 'vecteur-composantes' */
+var vecDisplayMode = 'vecteur';
 
 var _animCanvas = null;
 var _animCtx    = null;
@@ -63,14 +71,18 @@ function initAnimCanvas() {
                 return;
             }
         }
-        if (targetList.length >= 3) return;
+        if (targetList.length >= 10) return;
 
+        var physCtx = (snap.runId === null)
+            ? { mass: sim.mass, g: sim.g, windForce: sim.windForce, useFriction: sim.useFriction, k: sim.k }
+            : (function(r){ return { mass: r.mass, g: r.g, windForce: r.windForce, useFriction: r.useFriction, k: 0.15 }; })(savedRuns[snap.runId]);
         targetList.push({
             x: snap.x, y: snap.y,
             vx: snap.vx, vy: snap.vy,
             ax: snap.ax, ay: snap.ay,
             t: snap.t,
-            color: snap.color
+            color: snap.color,
+            phys: physCtx
         });
     });
 }
@@ -414,10 +426,16 @@ function _drawSavedChronoSnaps(ctx, run) {
         ctx.restore();
 
         if (run.showVecPos) _drawVectorPos(ctx, s.x, s.y, 0.42);
-        if (run.showVecVit) _drawVecArrow(ctx, p.cx, p.cy,
+        if (run.showVecVit) _drawVecDispVA(ctx, p.cx, p.cy,
             s.vx * VEC_SCALE_VIT, -s.vy * VEC_SCALE_VIT, COL_VEC_VIT, null, 0.42);
-        if (run.showVecAcc) _drawVecArrow(ctx, p.cx, p.cy,
+        if (run.showVecAcc) _drawVecDispVA(ctx, p.cx, p.cy,
             s.ax * VEC_SCALE_ACC, -s.ay * VEC_SCALE_ACC, COL_VEC_ACC, null, 0.42);
+        if (run.showVecForces || run.showVecSumF) {
+            var _rp = { mass: run.mass, g: run.g, windForce: run.windForce, useFriction: run.useFriction, k: 0.15 };
+            var _rr = [];
+            if (run.showVecForces) _drawForcesAt(ctx, p.cx, p.cy, s.vx, s.vy, 0.42, _rp, _rr);
+            if (run.showVecSumF)   _drawSumFAt(ctx,   p.cx, p.cy, s.vx, s.vy, 0.42, _rp, _rr);
+        }
     }
 }
 
@@ -530,14 +548,20 @@ function _drawChronoSnaps(ctx) {
             _drawVectorPos(ctx, s.x, s.y, 0.6);
         }
         if (sim.showVecVit) {
-            _drawVecArrow(ctx, p.cx, p.cy,
+            _drawVecDispVA(ctx, p.cx, p.cy,
                 s.vx * VEC_SCALE_VIT, -s.vy * VEC_SCALE_VIT,
                 COL_VEC_VIT, null, 0.6);
         }
         if (sim.showVecAcc) {
-            _drawVecArrow(ctx, p.cx, p.cy,
+            _drawVecDispVA(ctx, p.cx, p.cy,
                 s.ax * VEC_SCALE_ACC, -s.ay * VEC_SCALE_ACC,
                 COL_VEC_ACC, null, 0.6);
+        }
+        if (sim.showVecForces || sim.showVecSumF) {
+            var _sp = { mass: sim.mass, g: sim.g, windForce: sim.windForce, useFriction: sim.useFriction, k: sim.k };
+            var _sr = [];
+            if (sim.showVecForces) _drawForcesAt(ctx, p.cx, p.cy, s.vx, s.vy, 0.6, _sp, _sr);
+            if (sim.showVecSumF)   _drawSumFAt(ctx,   p.cx, p.cy, s.vx, s.vy, 0.6, _sp, _sr);
         }
     }
 }
@@ -580,14 +604,20 @@ function _drawBall(ctx) {
     /* Vecteurs sur la balle courante */
     if (sim.showVecPos) _drawVectorPos(ctx, sim.x, sim.y, 1.0);
     if (sim.showVecVit) {
-        _drawVecArrow(ctx, p.cx, p.cy,
+        _drawVecDispVA(ctx, p.cx, p.cy,
             sim.vx * VEC_SCALE_VIT, -sim.vy * VEC_SCALE_VIT,
-            COL_VEC_VIT, 'v', 1.0);
+            COL_VEC_VIT, null, 1.0);
     }
     if (sim.showVecAcc) {
-        _drawVecArrow(ctx, p.cx, p.cy,
+        _drawVecDispVA(ctx, p.cx, p.cy,
             sim.ax * VEC_SCALE_ACC, -sim.ay * VEC_SCALE_ACC,
-            COL_VEC_ACC, 'a', 1.0);
+            COL_VEC_ACC, null, 1.0);
+    }
+    if (sim.showVecForces || sim.showVecSumF) {
+        var _bp = { mass: sim.mass, g: sim.g, windForce: sim.windForce, useFriction: sim.useFriction, k: sim.k };
+        var _br = [];
+        if (sim.showVecForces) _drawForcesAt(ctx, p.cx, p.cy, sim.vx, sim.vy, 1.0, _bp, _br);
+        if (sim.showVecSumF)   _drawSumFAt(ctx,   p.cx, p.cy, sim.vx, sim.vy, 1.0, _bp, _br);
     }
 }
 
@@ -597,22 +627,77 @@ function _drawVectorPos(ctx, px, py, alpha) {
     var p      = toCanvas(px, py);
     var dx = p.cx - origin.cx;
     var dy = p.cy - origin.cy;
-    _drawVecArrow(ctx, origin.cx, origin.cy, dx, dy, COL_VEC_POS, '', alpha);
+    var showVec  = (vecDisplayMode === 'vecteur'     || vecDisplayMode === 'vecteur-composantes');
+    var showComp = (vecDisplayMode === 'composantes' || vecDisplayMode === 'vecteur-composantes');
+    var showBoth = (vecDisplayMode === 'vecteur-composantes');
+    /* Ordre : composantes → pointillés → vecteur (le vecteur est toujours au premier plan) */
+    /* Composantes de OM plus épaisses (lw=3.5) pour rester visibles par-dessus axes et sol */
+    if (showComp) _drawVecComponents(ctx, origin.cx, origin.cy, dx, dy, COL_VEC_POS, alpha, 3.5);
+    if (showBoth) _drawCompDashes(ctx, origin.cx, origin.cy, dx, dy, COL_VEC_POS, alpha);
+    if (showVec)  _drawVecArrow(ctx, origin.cx, origin.cy, dx, dy, COL_VEC_POS, '', alpha);
 }
 
 /* ─────────────────────────────────────────────────
    _drawVecArrow — flèche générique
    (cx,cy) = base, (dx,dy) = composantes en pixels
 ───────────────────────────────────────────────── */
-function _drawVecArrow(ctx, cx, cy, dx, dy, color, label, opacity) {
+/* ─────────────────────────────────────────────────
+   Composantes d'un vecteur : deux flèches orthogonales
+   (une horizontale, une verticale) partant du même point.
+   lw = épaisseur du trait (défaut 2, plus épais pour OM qui chevauche les axes)
+───────────────────────────────────────────────── */
+/* Composantes visuellement atténuées (opacité réduite + trait fin) pour se distinguer du vecteur. */
+function _drawVecComponents(ctx, cx, cy, dxPx, dyPx, color, opacity, lw) {
+    lw = lw || 2;
+    var compOpacity = opacity * 0.55;
+    var compLw      = Math.max(1.2, lw * 0.72);
+    if (Math.abs(dxPx) > 2) _drawVecArrow(ctx, cx, cy, dxPx, 0, color, null, compOpacity, compLw);
+    if (Math.abs(dyPx) > 2) _drawVecArrow(ctx, cx, cy, 0, dyPx, color, null, compOpacity, compLw);
+}
+
+/* Pointillés reliant les pointes des composantes à la pointe du vecteur (rectangle de décomposition). */
+function _drawCompDashes(ctx, cx, cy, dxPx, dyPx, color, opacity) {
+    if (Math.abs(dxPx) < 3 || Math.abs(dyPx) < 3) return;
+    ctx.save();
+    ctx.globalAlpha  = opacity * 0.40;
+    ctx.strokeStyle  = color;
+    ctx.lineWidth    = 1.2;
+    ctx.setLineDash([4, 5]);
+    ctx.lineCap      = 'round';
+    /* Pointe x-comp → pointe vecteur (vertical) */
+    ctx.beginPath();
+    ctx.moveTo(cx + dxPx, cy);
+    ctx.lineTo(cx + dxPx, cy + dyPx);
+    ctx.stroke();
+    /* Pointe y-comp → pointe vecteur (horizontal) */
+    ctx.beginPath();
+    ctx.moveTo(cx, cy + dyPx);
+    ctx.lineTo(cx + dxPx, cy + dyPx);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+}
+
+/* Dessine vecteur et/ou composantes selon vecDisplayMode pour v et a (base = point M). */
+function _drawVecDispVA(ctx, cx, cy, dxPx, dyPx, color, label, opacity) {
+    var showVec  = (vecDisplayMode === 'vecteur'     || vecDisplayMode === 'vecteur-composantes');
+    var showComp = (vecDisplayMode === 'composantes' || vecDisplayMode === 'vecteur-composantes');
+    var showBoth = (vecDisplayMode === 'vecteur-composantes');
+    if (showComp) _drawVecComponents(ctx, cx, cy, dxPx, dyPx, color, opacity);
+    if (showBoth) _drawCompDashes(ctx, cx, cy, dxPx, dyPx, color, opacity);
+    if (showVec)  _drawVecArrow(ctx, cx, cy, dxPx, dyPx, color, label, opacity);
+}
+
+function _drawVecArrow(ctx, cx, cy, dx, dy, color, label, opacity, lw) {
     var len = Math.hypot(dx, dy);
     if (len < 3) return;
+    lw = lw || 2;
 
     ctx.save();
     ctx.globalAlpha = opacity;
     ctx.strokeStyle = color;
     ctx.fillStyle   = color;
-    ctx.lineWidth   = 2;
+    ctx.lineWidth   = lw;
 
     var ex = cx + dx, ey = cy + dy;
 
@@ -658,7 +743,7 @@ function _drawAnalysisPoints(ctx) {
         }
     }
     for (var pi = 0; pi < allPins.length; pi++) {
-        _drawAnimHover(ctx, allPins[pi]);
+        _drawAnimHover(ctx, allPins[pi], true);
     }
 }
 
@@ -887,7 +972,13 @@ function _renderVecLabel(ctx, lx, ly, m, vecName, line1, line2, color) {
     ctx.restore();
 }
 
-function _drawAnimHover(ctx, snap) {
+function _drawAnimHover(ctx, snap, isPinned) {
+    var showPos    = isPinned ? pinShowVecPos    : sim.showVecPos;
+    var showVit    = isPinned ? pinShowVecVit    : sim.showVecVit;
+    var showAcc    = isPinned ? pinShowVecAcc    : sim.showVecAcc;
+    var showForces = isPinned ? pinShowVecForces : sim.showVecForces;
+    var showSumF   = isPinned ? pinShowVecSumF   : sim.showVecSumF;
+    var showCoords = isPinned ? pinShowCoords    : hoverShowCoords;
     var p = toCanvas(snap.x, snap.y);
 
     /* ── Point survolé ── */
@@ -908,7 +999,7 @@ function _drawAnimHover(ctx, snap) {
     var toPlace  = [];   /* { anchorX, anchorY, vecName, line1, line2, color, prefer } */
     var origin   = toCanvas(0, 0);
 
-    if (sim.showVecPos) {
+    if (showPos) {
         _drawVectorPos(ctx, snap.x, snap.y, 1.0);
         toPlace.push({
             anchorX: (origin.cx + p.cx) / 2,
@@ -917,13 +1008,14 @@ function _drawAnimHover(ctx, snap) {
             line1: 'x = ' + fmt(snap.x, 2) + ' m',
             line2: 'y = ' + fmt(snap.y, 2) + ' m',
             color:  COL_VEC_POS,
-            prefer: ['lower-right', 'right', 'upper-right', 'lower-left', 'left', 'upper-left', 'above', 'below']
+            prefer: ['lower-right', 'right', 'upper-right', 'lower-left', 'left', 'upper-left', 'above', 'below'],
+            showCoords: showCoords
         });
     }
-    if (sim.showVecVit) {
+    if (showVit) {
         var dvx = snap.vx * VEC_SCALE_VIT;
         var dvy = -snap.vy * VEC_SCALE_VIT;
-        _drawVecArrow(ctx, p.cx, p.cy, dvx, dvy, COL_VEC_VIT, '', 1.0);
+        _drawVecDispVA(ctx, p.cx, p.cy, dvx, dvy, COL_VEC_VIT, '', 1.0);
         var vPrefer = dvy <= 0
             ? ['above', 'upper-right', 'upper-left', 'right', 'left', 'lower-right', 'lower-left', 'below']
             : ['upper-right', 'upper-left', 'above', 'right', 'left', 'lower-right', 'lower-left', 'below'];
@@ -934,13 +1026,14 @@ function _drawAnimHover(ctx, snap) {
             line1: 'vx = ' + fmt(snap.vx, 2) + ' m/s',
             line2: 'vy = ' + fmt(snap.vy, 2) + ' m/s',
             color:  COL_VEC_VIT,
-            prefer: vPrefer
+            prefer: vPrefer,
+            showCoords: showCoords
         });
     }
-    if (sim.showVecAcc) {
+    if (showAcc) {
         var dax = snap.ax * VEC_SCALE_ACC;
         var day = -snap.ay * VEC_SCALE_ACC;
-        _drawVecArrow(ctx, p.cx, p.cy, dax, day, COL_VEC_ACC, '', 1.0);
+        _drawVecDispVA(ctx, p.cx, p.cy, dax, day, COL_VEC_ACC, '', 1.0);
         toPlace.push({
             anchorX: p.cx + dax / 2,
             anchorY: p.cy + day / 2,
@@ -948,26 +1041,135 @@ function _drawAnimHover(ctx, snap) {
             line1: 'ax = ' + fmt(snap.ax, 2) + ' m/s²',
             line2: 'ay = ' + fmt(snap.ay, 2) + ' m/s²',
             color:  COL_VEC_ACC,
-            prefer: ['right', 'upper-right', 'left', 'upper-left', 'above', 'lower-right', 'lower-left', 'below']
+            prefer: ['right', 'upper-right', 'left', 'upper-left', 'above', 'lower-right', 'lower-left', 'below'],
+            showCoords: showCoords
         });
     }
 
-    /* ── Place et dessine chaque label en évitant les collisions ── */
+    /* ── Place et dessine chaque label cinématique en évitant les collisions ── */
     var placedRects = [];
     for (var i = 0; i < toPlace.length; i++) {
         var lbl = toPlace[i];
-        var m   = _measureVecLabel(ctx, lbl.vecName, lbl.line1, lbl.line2);
-        var pos = _bestLabelPos(lbl.anchorX, lbl.anchorY, m.totalW, m.totalH, lbl.prefer, placedRects);
-        placedRects.push({ lx: pos.lx, ly: pos.ly, w: m.totalW, h: m.totalH });
-        _renderVecLabel(ctx, pos.lx, pos.ly, m, lbl.vecName, lbl.line1, lbl.line2, lbl.color);
+        if (lbl.showCoords === false) {
+            /* Juste la flèche + nom, sans bloc coordonnées */
+            var fm = _measureForceName(ctx, lbl.vecName);
+            var fpos = _bestLabelPos(lbl.anchorX, lbl.anchorY, fm.w, fm.h,
+                lbl.prefer, placedRects);
+            placedRects.push({ lx: fpos.lx, ly: fpos.ly, w: fm.w, h: fm.h });
+            _renderForceName(ctx, fpos.lx, fpos.ly, lbl.vecName, lbl.color, 1.0, fm);
+        } else {
+            var m   = _measureVecLabel(ctx, lbl.vecName, lbl.line1, lbl.line2);
+            var pos = _bestLabelPos(lbl.anchorX, lbl.anchorY, m.totalW, m.totalH, lbl.prefer, placedRects);
+            placedRects.push({ lx: pos.lx, ly: pos.ly, w: m.totalW, h: m.totalH });
+            _renderVecLabel(ctx, pos.lx, pos.ly, m, lbl.vecName, lbl.line1, lbl.line2, lbl.color);
+        }
     }
+
+    /* ── Forces (utilisent le contexte physique du point épinglé) ── */
+    if (showForces || showSumF) {
+        var ph = snap.phys || { mass: sim.mass, g: sim.g, windForce: sim.windForce, useFriction: sim.useFriction, k: sim.k };
+        if (showForces) _drawForcesAt(ctx, p.cx, p.cy, snap.vx, snap.vy, 1.0, ph, placedRects);
+        if (showSumF)   _drawSumFAt(ctx,   p.cx, p.cy, snap.vx, snap.vy, 1.0, ph, placedRects);
+    }
+}
+
+/* ─────────────────────────────────────────────────
+   Label nom de vecteur avec flèche au-dessus
+   (version allégée sans bloc coordonnées)
+───────────────────────────────────────────────── */
+function _measureForceName(ctx, name) {
+    var sz = Math.max(11, Math.min(14, _animH * 0.028));
+    ctx.font = 'bold ' + sz + 'px "Segoe UI", Arial';
+    var tw = ctx.measureText(name).width;
+    var arrowH = Math.max(5, sz * 0.48);
+    return { sz: sz, tw: tw, arrowH: arrowH, w: tw + 6, h: arrowH + 3 + sz };
+}
+
+function _renderForceName(ctx, lx, ly, name, color, opacity, m) {
+    ctx.save();
+    ctx.globalAlpha  = opacity * 0.92;
+    ctx.strokeStyle  = color;
+    ctx.fillStyle    = color;
+    ctx.lineWidth    = 1.6;
+    ctx.lineCap      = 'round';
+    ctx.lineJoin     = 'round';
+
+    var arrowY = ly + m.arrowH * 0.5;
+    /* Flèche au-dessus */
+    ctx.beginPath();
+    ctx.moveTo(lx,           arrowY);
+    ctx.lineTo(lx + m.tw,    arrowY);
+    ctx.moveTo(lx + m.tw - 5, arrowY - 3);
+    ctx.lineTo(lx + m.tw,    arrowY);
+    ctx.lineTo(lx + m.tw - 5, arrowY + 3);
+    ctx.stroke();
+
+    /* Nom */
+    ctx.font = 'bold ' + m.sz + 'px "Segoe UI", Arial';
+    ctx.textAlign    = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(name, lx, ly + m.arrowH + 3);
+    ctx.restore();
+}
+
+/* ─────────────────────────────────────────────────
+   Forces : poids, vent, frottement, ΣF
+   phys = {mass, g, windForce, useFriction, k}
+   placedRects : tableau partagé anti-chevauchement
+───────────────────────────────────────────────── */
+function _drawForcesAt(ctx, cx, cy, vx, vy, opacity, phys, placedRects) {
+    var forces = [];
+
+    forces.push({ dx: 0, dy: phys.mass * phys.g * VEC_SCALE_FORCE, name: 'P' });
+
+    if (Math.abs(phys.windForce) > 0.01) {
+        forces.push({ dx: phys.windForce * VEC_SCALE_FORCE, dy: 0, name: 'Fv' });
+    }
+
+    if (phys.useFriction && (Math.abs(vx) > 0.01 || Math.abs(vy) > 0.01)) {
+        forces.push({
+            dx:  -phys.k * vx * VEC_SCALE_FORCE,
+            dy:   phys.k * vy * VEC_SCALE_FORCE,
+            name: 'f'
+        });
+    }
+
+    /* Flèches d'abord */
+    for (var i = 0; i < forces.length; i++) {
+        _drawVecArrow(ctx, cx, cy, forces[i].dx, forces[i].dy, COL_VEC_FORCES, null, opacity);
+    }
+
+    /* Labels avec anti-chevauchement */
+    var pref = ['right', 'upper-right', 'lower-right', 'left', 'upper-left', 'lower-left', 'above', 'below'];
+    for (var i = 0; i < forces.length; i++) {
+        var f = forces[i];
+        var lm = _measureForceName(ctx, f.name);
+        var pos = _bestLabelPos(cx + f.dx, cy + f.dy, lm.w, lm.h, pref, placedRects);
+        placedRects.push({ lx: pos.lx, ly: pos.ly, w: lm.w, h: lm.h });
+        _renderForceName(ctx, pos.lx, pos.ly, f.name, COL_VEC_FORCES, opacity, lm);
+    }
+}
+
+function _drawSumFAt(ctx, cx, cy, vx, vy, opacity, phys, placedRects) {
+    var SFx = phys.windForce - (phys.useFriction ? phys.k * vx : 0);
+    var SFy = -phys.mass * phys.g - (phys.useFriction ? phys.k * vy : 0);
+    var dxPx = SFx * VEC_SCALE_FORCE;
+    var dyPx = -SFy * VEC_SCALE_FORCE;
+
+    _drawVecArrow(ctx, cx, cy, dxPx, dyPx, COL_VEC_SUMF, null, opacity);
+
+    var lm  = _measureForceName(ctx, 'ΣF');
+    var pref = ['right', 'upper-right', 'lower-right', 'left', 'upper-left', 'lower-left', 'above', 'below'];
+    var pos = _bestLabelPos(cx + dxPx, cy + dyPx, lm.w, lm.h, pref, placedRects);
+    placedRects.push({ lx: pos.lx, ly: pos.ly, w: lm.w, h: lm.h });
+    _renderForceName(ctx, pos.lx, pos.ly, 'ΣF', COL_VEC_SUMF, opacity, lm);
 }
 
 /* ─────────────────────────────────────────────────
    Légende des échelles vecteurs (coin bas-droite du ciel)
 ───────────────────────────────────────────────── */
 function _drawVectorLegend(ctx) {
-    var anyVec = sim.showVecPos || sim.showVecVit || sim.showVecAcc;
+    var anyVec = sim.showVecPos || sim.showVecVit || sim.showVecAcc || sim.showVecForces || sim.showVecSumF;
     if (!anyVec) return;
 
     var fontSize = Math.max(9, Math.min(11, _animH * 0.024));
@@ -976,9 +1178,11 @@ function _drawVectorLegend(ctx) {
     var lineH = fontSize + 8;
     var items = [];
 
-    if (sim.showVecPos) items.push({color: COL_VEC_POS, label: 'Position OM'});
-    if (sim.showVecVit) items.push({color: COL_VEC_VIT, label: 'Vitesse (1 m/s = ' + VEC_SCALE_VIT + ' px)'});
-    if (sim.showVecAcc) items.push({color: COL_VEC_ACC, label: 'Accel. (1 m/s² = ' + VEC_SCALE_ACC + ' px)'});
+    if (sim.showVecPos)    items.push({color: COL_VEC_POS,    label: 'Position OM'});
+    if (sim.showVecVit)    items.push({color: COL_VEC_VIT,    label: 'Vitesse (1 m/s = ' + VEC_SCALE_VIT + ' px)'});
+    if (sim.showVecAcc)    items.push({color: COL_VEC_ACC,    label: 'Accel. (1 m/s² = ' + VEC_SCALE_ACC + ' px)'});
+    if (sim.showVecForces) items.push({color: COL_VEC_FORCES, label: 'Forces (1 N = ' + VEC_SCALE_FORCE + ' px)'});
+    if (sim.showVecSumF)   items.push({color: COL_VEC_SUMF,   label: 'ΣF (1 N = ' + VEC_SCALE_FORCE + ' px)'});
 
     ctx.save();
     ctx.font = fontSize + 'px Segoe UI, Arial';

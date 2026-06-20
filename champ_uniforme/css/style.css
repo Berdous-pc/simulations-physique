@@ -261,6 +261,54 @@ main {
 }
 .toolbar-dropdown.open { display: flex; }
 
+/* ── Split button Épingler ── */
+.toolbar-btn-split {
+  display: flex;
+}
+.toolbar-btn-split .pin-main-btn {
+  border-radius: 4px 0 0 4px;
+  border-right: none;
+}
+.toolbar-btn-split .pin-arrow-btn {
+  border-radius: 0 4px 4px 0;
+  padding: 0 6px;
+  font-size: 10px;
+  min-width: unset;
+}
+
+/* ── Dropdown pin ── */
+.pin-dropdown {
+  min-width: 320px;
+  padding: 8px;
+  gap: 0;
+}
+.pin-drop-title {
+  font-size: clamp(10px, 0.9vw, 12px);
+  font-weight: 600;
+  color: #4a5a68;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.pin-vec-row {
+  margin-bottom: 8px;
+  flex-wrap: nowrap;
+}
+.pin-coords-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: clamp(10px, 0.9vw, 12px);
+  color: #4a5a68;
+  cursor: pointer;
+  line-height: 1.3;
+}
+.pin-coords-label input[type="checkbox"] {
+  margin: 0;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
 .toolbar-drop-item {
   padding: 7px 14px;
   font-family: inherit;
@@ -592,7 +640,51 @@ main {
   font-size: clamp(10px, 1vw, 13px);
 }
 
-/* Vecteurs : bouton avec pastille de couleur */
+/* Vecteurs : ligne de boutons compacts */
+.vec-btn-row {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.btn-vec-compact {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 7px;
+  background: #ece8e0;
+  border: 1.5px solid #c8c0b4;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: clamp(10px, 1vw, 12px);
+  font-weight: 700;
+  color: #4a5a68;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+  flex: 1;
+  justify-content: center;
+}
+.btn-vec-compact:hover { background: #dedad2; }
+.btn-vec-compact.active { background: #fde8c8; border-color: #e8a060; border-width: 2px; }
+.btn-vec-compact.active .vec-label { opacity: 1; }
+
+.btn-vec-compact-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.vec-label {
+  font-size: clamp(11px, 1.05vw, 13px);
+  font-weight: 700;
+  opacity: 0.75;
+  transition: opacity 0.12s;
+}
+.btn-vec-compact:hover .vec-label { opacity: 1; }
+
+/* Vecteurs : bouton avec pastille de couleur (legacy, conservé pour compatibilité) */
 .btn-vec {
   display: flex;
   align-items: center;
@@ -674,6 +766,25 @@ main {
   background: #4a7aaa;
   cursor: pointer;
   border: 2px solid #fff;
+}
+
+
+.slider-tick-wrap {
+  position: relative;
+}
+.slider-tick-wrap input[type="range"] {
+  display: block;
+  width: 100%;
+}
+.slider-tick {
+  position: absolute;
+  bottom: 0;
+  width: 2px;
+  height: 5px;
+  background: #8a9ab0;
+  transform: translateX(-50%);
+  pointer-events: none;
+  border-radius: 1px;
 }
 
 .wind-labels {
