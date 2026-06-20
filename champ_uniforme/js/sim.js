@@ -26,16 +26,17 @@ var sim = {
     speedFactor: 1.0,
 
     /* ── Options d'affichage ── */
-    displayMode: 'trajectory',  // 'trajectory' | 'chrono' | 'both'
+    displayMode: 'chrono',  // 'trajectory' | 'chrono' | 'both'
     showVecPos:  false,
     showVecVit:  false,
     showVecAcc:  false,
     deltaT:      0.3,           // pas chronophotographie (s)
 
     /* ── Données run courant ── */
-    trajPoints:    [],  // [{x,y}]
-    chronoSnaps:   [],  // [{x,y,vx,vy,ax,ay,t}]
-    graphData:     [],  // [{t,x,y,vx,vy,ax,ay}]
+    trajPoints:      [],  // [{x,y}]
+    chronoSnaps:     [],  // [{x,y,vx,vy,ax,ay,t}]
+    graphData:       [],  // [{t,x,y,vx,vy,ax,ay}]
+    analysisPoints:  [],  // [{x,y,vx,vy,ax,ay,t,color}]
     nextChronoTime: 0,
 
     /* ── Durée totale pré-calculée ── */
@@ -77,9 +78,10 @@ function resetSim() {
     sim.vx = sim.v0 * Math.cos(alphaRad);
     sim.vy = sim.v0 * Math.sin(alphaRad);
     computeAcceleration();
-    sim.trajPoints    = [{x: sim.x, y: sim.y}];
-    sim.chronoSnaps   = [];
-    sim.graphData     = [{t:0, x:sim.x, y:sim.y, vx:sim.vx, vy:sim.vy, ax:sim.ax, ay:sim.ay}];
+    sim.trajPoints     = [{x: sim.x, y: sim.y}];
+    sim.chronoSnaps    = [];
+    sim.graphData      = [{t:0, x:sim.x, y:sim.y, vx:sim.vx, vy:sim.vy, ax:sim.ax, ay:sim.ay}];
+    sim.analysisPoints = [];
     sim.nextChronoTime = 0;
     sim.ended = false;
     if (sim.displayMode === 'chrono' || sim.displayMode === 'both') {

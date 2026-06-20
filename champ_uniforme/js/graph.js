@@ -338,40 +338,75 @@ function _drawOneGraph(ctx, x0, y0, W, H, tabKey, hoverPos) {
     ctx.lineWidth   = 1;
     ctx.strokeRect(x0 + ml, y0 + mt, plotW, plotH);
 
-    /* ── Courbes des runs sauvegardées ── */
-    for (var _si = 0; _si < savedRuns.length; _si++) {
-        var _sr = savedRuns[_si];
-        if (_sr.hidden || _sr.graphData.length < 2) continue;
-        var _srData = _replayPlaying
-            ? _sr.graphData.filter(function(d) { return d.t <= _replayT; })
-            : _sr.graphData;
-        if (_srData.length < 2) continue;
-        var _srX = _srData.map(info.xFn);
-        var _srY = _srData.map(info.col);
-        var _yRange = yMax - yMin;
+    var _isChrono = (sim.displayMode === 'chrono');
+    var _isBoth   = (sim.displayMode === 'both');
+
+    /* ── Helper : dessine des croix discrètes pour un dataset ── */
+    function _drawCrosses(pts, color, alpha) {
+        if (pts.length === 0) return;
         ctx.save();
         ctx.beginPath();
         ctx.rect(x0 + ml, y0 + mt, plotW, plotH);
         ctx.clip();
-        ctx.strokeStyle = _sr.color;
+        ctx.strokeStyle = color;
         ctx.lineWidth   = 2;
-        ctx.lineJoin    = 'round';
-        ctx.globalAlpha = 0.85;
-        ctx.beginPath();
-        ctx.moveTo(toGX(_srX[0]), toGY(_srY[0]));
-        for (var _sj = 1; _sj < _srX.length; _sj++) {
-            if (Math.abs(_srY[_sj] - _srY[_sj - 1]) > _yRange * 0.25) {
-                ctx.moveTo(toGX(_srX[_sj]), toGY(_srY[_sj]));
-            } else {
-                ctx.lineTo(toGX(_srX[_sj]), toGY(_srY[_sj]));
-            }
+        ctx.globalAlpha = alpha || 0.85;
+        var S = 5; /* demi-taille de la croix */
+        for (var _ci2 = 0; _ci2 < pts.length; _ci2++) {
+            var _gx = toGX(info.xFn(pts[_ci2]));
+            var _gy = toGY(info.col(pts[_ci2]));
+            ctx.beginPath();
+            ctx.moveTo(_gx - S, _gy - S); ctx.lineTo(_gx + S, _gy + S);
+            ctx.moveTo(_gx + S, _gy - S); ctx.lineTo(_gx - S, _gy + S);
+            ctx.stroke();
         }
-        ctx.stroke();
         ctx.restore();
     }
 
-    /* ── Courbe ── */
-    if (data.length >= 2) {
+    /* ── Courbes des runs sauvegardées ── */
+    for (var _si = 0; _si < savedRuns.length; _si++) {
+        var _sr = savedRuns[_si];
+        if (_sr.hidden) continue;
+
+        if (_sr.graphData.length >= 2 && !_isChrono) {
+            var _srData = _replayPlaying
+                ? _sr.graphData.filter(function(d) { return d.t <= _replayT; })
+                : _sr.graphData;
+            if (_srData.length >= 2) {
+                var _srX = _srData.map(info.xFn);
+                var _srY = _srData.map(info.col);
+                var _yRange = yMax - yMin;
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(x0 + ml, y0 + mt, plotW, plotH);
+                ctx.clip();
+                ctx.strokeStyle = _sr.color;
+                ctx.lineWidth   = 2;
+                ctx.lineJoin    = 'round';
+                ctx.globalAlpha = 0.85;
+                ctx.beginPath();
+                ctx.moveTo(toGX(_srX[0]), toGY(_srY[0]));
+                for (var _sj = 1; _sj < _srX.length; _sj++) {
+                    if (Math.abs(_srY[_sj] - _srY[_sj - 1]) > _yRange * 0.25) {
+                        ctx.moveTo(toGX(_srX[_sj]), toGY(_srY[_sj]));
+                    } else {
+                        ctx.lineTo(toGX(_srX[_sj]), toGY(_srY[_sj]));
+                    }
+                }
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+        if (_isChrono || _isBoth) {
+            var _srSnaps = _replayPlaying
+                ? _sr.chronoSnaps.filter(function(d) { return d.t <= _replayT; })
+                : _sr.chronoSnaps;
+            _drawCrosses(_srSnaps, _sr.color, 0.85);
+        }
+    }
+
+    /* ── Courbe (et/ou croix chrono) courante ── */
+    if (!_isChrono && data.length >= 2) {
         var xVals = data.map(info.xFn);
         var yVals = data.map(info.col);
         ctx.save();
@@ -394,6 +429,9 @@ function _drawOneGraph(ctx, x0, y0, W, H, tabKey, hoverPos) {
         ctx.stroke();
         ctx.restore();
     }
+    if (_isChrono || _isBoth) {
+        _drawCrosses(sim.chronoSnaps, _currentRunColor || '#2a5080', 1.0);
+    }
 
     /* ── Hover point le plus proche (toutes courbes visibles) ── */
     if (hoverPos) {
@@ -404,13 +442,25 @@ function _drawOneGraph(ctx, x0, y0, W, H, tabKey, hoverPos) {
 
             /* Construire la liste de tous les datasets visibles */
             var _candidates = [];
-            if (data.length >= 2) {
-                _candidates.push({ pts: data, color: _currentRunColor || '#2a5080' });
-            }
-            for (var _hi = 0; _hi < savedRuns.length; _hi++) {
-                var _hsr = savedRuns[_hi];
-                if (!_hsr.hidden && _hsr.graphData.length >= 2) {
-                    _candidates.push({ pts: _hsr.graphData, color: _hsr.color });
+            if (_isChrono) {
+                if (sim.chronoSnaps.length > 0) {
+                    _candidates.push({ pts: sim.chronoSnaps, color: _currentRunColor || '#2a5080' });
+                }
+                for (var _hi = 0; _hi < savedRuns.length; _hi++) {
+                    var _hsr = savedRuns[_hi];
+                    if (!_hsr.hidden && _hsr.chronoSnaps.length > 0) {
+                        _candidates.push({ pts: _hsr.chronoSnaps, color: _hsr.color });
+                    }
+                }
+            } else {
+                if (data.length >= 2) {
+                    _candidates.push({ pts: data, color: _currentRunColor || '#2a5080' });
+                }
+                for (var _hi = 0; _hi < savedRuns.length; _hi++) {
+                    var _hsr = savedRuns[_hi];
+                    if (!_hsr.hidden && _hsr.graphData.length >= 2) {
+                        _candidates.push({ pts: _hsr.graphData, color: _hsr.color });
+                    }
                 }
             }
 

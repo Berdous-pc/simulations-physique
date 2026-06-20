@@ -57,9 +57,54 @@ function init() {
     _syncAllUI();
     renderSavedRuns();
     requestAnimationFrame(loop);
+
+    var tabsEl = document.getElementById('saved-runs-tabs');
+    if (tabsEl) tabsEl.addEventListener('scroll', _updateTabsScrollBtns);
+    _lockAxisBtnWidth();
 }
 
 window.addEventListener('DOMContentLoaded', init);
+
+/* ─────────────────────────────────────────────────
+   Dropdowns toolbar (Vue, Vecteurs…)
+───────────────────────────────────────────────── */
+var _openToolbarDropdown = null;
+
+function toggleToolbarDropdown(name) {
+    var opening = _openToolbarDropdown !== name;
+    _closeAllToolbarDropdowns();
+    if (opening) {
+        var dd = document.getElementById('toolbar-drop-' + name);
+        var btn = dd && dd.previousElementSibling;
+        if (dd) dd.classList.add('open');
+        if (btn) btn.classList.add('active');
+        _openToolbarDropdown = name;
+    }
+}
+
+function _closeAllToolbarDropdowns() {
+    document.querySelectorAll('.toolbar-dropdown.open').forEach(function(d) { d.classList.remove('open'); });
+    document.querySelectorAll('.toolbar-dropdown-btn.active').forEach(function(b) { b.classList.remove('active'); });
+    _openToolbarDropdown = null;
+}
+
+/* Stubs — fonctionnalité à implémenter */
+function setVecDisplayMode(mode) { _closeAllToolbarDropdowns(); }
+function setViewMode(mode)        { _closeAllToolbarDropdowns(); }
+
+/* Ferme les dropdowns toolbar si on clique en dehors */
+document.addEventListener('click', function(e) {
+    if (_openToolbarDropdown && !e.target.closest('.toolbar-dropdown-wrap')) {
+        _closeAllToolbarDropdowns();
+    }
+    /* Ferme le dropdown run si on clique en dehors */
+    if (_openDropdownId === null) return;
+    var dd = document.getElementById('run-tab-dropdown');
+    var tabs = document.getElementById('saved-runs-tabs');
+    if (dd && !dd.contains(e.target) && tabs && !tabs.contains(e.target)) {
+        closeRunDropdown();
+    }
+});
 
 window.addEventListener('resize', function () {
     /* Si le splitter avait fixé des hauteurs px, on les réinitialise
@@ -70,6 +115,7 @@ window.addEventListener('resize', function () {
     if (graphArea) { graphArea.style.flex = ''; graphArea.style.height = ''; }
     resizeAnimCanvas();
     resizeGraphCanvas();
+    _updateTabsScrollBtns();
     computeScale(_animW, _animH);
 });
 
@@ -178,6 +224,7 @@ function toggleVecAcc() {
     sim.showVecAcc = !sim.showVecAcc;
     document.getElementById('btn-vec-acc').classList.toggle('active', sim.showVecAcc);
 }
+
 
 /* ─────────────────────────────────────────────────
    Conditions initiales
@@ -323,6 +370,18 @@ function toggleAxisMode() {
     }
 }
 
+function _lockAxisBtnWidth() {
+    var btn = document.getElementById('btn-axis-mode');
+    if (btn && !btn.style.width) btn.style.width = btn.offsetWidth + 'px';
+}
+
+function togglePinMode() {
+    _pinModeActive = !_pinModeActive;
+    var btn = document.getElementById('btn-pin-mode');
+    if (btn) btn.classList.toggle('active', _pinModeActive);
+    if (_animCanvas) _animCanvas.style.cursor = _pinModeActive ? 'crosshair' : '';
+}
+
 /* ─────────────────────────────────────────────────
    Bandeau instructions
 ───────────────────────────────────────────────── */
@@ -447,8 +506,9 @@ function adapterVue() {
 /* ─────────────────────────────────────────────────
    Sauvegarde de runs
 ───────────────────────────────────────────────── */
-var _savedRunsMinimized = false;
 var _currentRunColor = SAVE_COLORS[0];
+var _pinModeActive   = false;
+var _openDropdownId  = null;   // id de la run dont le dropdown est ouvert
 
 function _updateCurrentRunColor() {
     var used = savedRuns.map(function(r) { return r.color; });
@@ -469,9 +529,13 @@ function sauvegarderRun() {
         useFriction: sim.useFriction,
         windForce: sim.windForce,
         displayMode: sim.displayMode,
-        trajPoints:  sim.trajPoints.slice(),
-        chronoSnaps: sim.chronoSnaps.map(function(s) { return Object.assign({}, s); }),
-        graphData:   sim.graphData.map(function(d) { return Object.assign({}, d); }),
+        trajPoints:     sim.trajPoints.slice(),
+        chronoSnaps:    sim.chronoSnaps.map(function(s) { return Object.assign({}, s); }),
+        graphData:      sim.graphData.map(function(d) { return Object.assign({}, d); }),
+        analysisPoints: sim.analysisPoints.map(function(p) { return Object.assign({}, p); }),
+        showVecPos: sim.showVecPos,
+        showVecVit: sim.showVecVit,
+        showVecAcc: sim.showVecAcc,
         hidden: false
     });
     renderSavedRuns();
@@ -479,6 +543,7 @@ function sauvegarderRun() {
 }
 
 function supprimerSauvegardeRun(id) {
+    if (_openDropdownId === id) closeRunDropdown();
     savedRuns = savedRuns.filter(function(r) { return r.id !== id; });
     _updateCurrentRunColor();
     renderSavedRuns();
@@ -490,94 +555,182 @@ function masquerSauvegardeRun(id) {
     renderSavedRuns();
 }
 
-function toggleSavedRunsMinimized() {
-    _savedRunsMinimized = !_savedRunsMinimized;
-    var content = document.getElementById('saved-runs-content');
-    var btn = document.querySelector('.btn-saved-minimize');
-    if (content) content.style.display = _savedRunsMinimized ? 'none' : '';
-    if (btn) btn.textContent = _savedRunsMinimized ? '+' : '−';
-}
-
+/* ─────────────────────────────────────────────────
+   Onglets runs sauvegardées dans la toolbar
+───────────────────────────────────────────────── */
 function renderSavedRuns() {
-    var rows = document.getElementById('saved-runs-rows');
-    if (!rows) return;
-    rows.innerHTML = '';
+    var tabs = document.getElementById('saved-runs-tabs');
+    if (!tabs) return;
+    tabs.innerHTML = '';
+
     if (savedRuns.length === 0) {
         var empty = document.createElement('span');
-        empty.className = 'saved-run-empty';
-        empty.textContent = 'Appuyer sur sauvegarder à la fin d\'une simulation pour la garder en mémoire.';
-        rows.appendChild(empty);
+        empty.className = 'toolbar-empty';
+        empty.textContent = 'Appuyer sur Sauvegarder à la fin d\'une simulation pour la conserver.';
+        tabs.appendChild(empty);
         return;
     }
+
     for (var i = 0; i < savedRuns.length; i++) {
-        var run = savedRuns[i];
-        var row = document.createElement('div');
-        row.className = 'saved-run-row';
+        (function(run, idx) {
+            var tab = document.createElement('div');
+            tab.className = 'run-tab' + (run.hidden ? ' masque' : '') + (_openDropdownId === run.id ? ' expanded' : '');
+            tab.dataset.id = run.id;
 
-        /* ── Pastille couleur (centrée sur la séparation des deux sous-lignes) ── */
-        var swatch = document.createElement('div');
-        swatch.className = 'saved-run-swatch';
-        swatch.style.background = run.color;
-        swatch.style.opacity = run.hidden ? '0.3' : '1';
-        row.appendChild(swatch);
+            var swatch = document.createElement('span');
+            swatch.className = 'run-tab-swatch';
+            swatch.style.background = run.color;
+            tab.appendChild(swatch);
 
-        /* ── Bloc paramètres : 2 sous-lignes ── */
-        var params = document.createElement('div');
-        params.className = 'saved-run-params';
-        params.style.opacity = run.hidden ? '0.5' : '1';
-
-        var line1 = document.createElement('div');
-        line1.className = 'saved-run-line';
-        ['m = ' + fmt(run.mass, 2) + ' kg',
-         'h = ' + fmt(run.h, 0) + ' m',
-         'v₀ = ' + fmt(run.v0, 0) + ' m/s',
-         'α = ' + fmt(run.alpha, 0) + '°'
-        ].forEach(function(txt) {
-            var s = document.createElement('span');
-            s.className = 'saved-run-item';
-            s.textContent = txt;
-            line1.appendChild(s);
-        });
-
-        var line2 = document.createElement('div');
-        line2.className = 'saved-run-line';
-        ['g = ' + fmt(run.g, 2) + ' m/s²',
-         run.useFriction ? 'Frottements' : 'Sans frott.',
-         'Vent : ' + fmt(run.windForce, 1) + ' N'
-        ].forEach(function(txt) {
-            var s = document.createElement('span');
-            s.className = 'saved-run-item';
-            s.textContent = txt;
-            line2.appendChild(s);
-        });
-
-        params.appendChild(line1);
-        params.appendChild(line2);
-        row.appendChild(params);
-
-        /* ── Boutons (centrés sur la séparation des deux sous-lignes) ── */
-        (function(runId, hidden) {
-            /* Clic sur la row → adapter la vue à cette run */
-            row.onclick = function() { adapterVueRun(runId); };
-
-            var actions = document.createElement('div');
-            actions.className = 'saved-run-actions';
+            var num = document.createElement('span');
+            num.className = 'run-tab-num';
+            num.textContent = 'n°' + (idx + 1);
+            tab.appendChild(num);
 
             var btnHide = document.createElement('button');
-            btnHide.className = 'saved-run-hide' + (hidden ? ' masque' : '');
-            btnHide.textContent = hidden ? 'Afficher' : 'Masquer';
-            btnHide.onclick = function(e) { e.stopPropagation(); masquerSauvegardeRun(runId); };
-            actions.appendChild(btnHide);
+            btnHide.className = 'run-tab-btn';
+            btnHide.title = run.hidden ? 'Afficher' : 'Masquer';
+            btnHide.textContent = '👁';
+            btnHide.onclick = function(e) { e.stopPropagation(); masquerSauvegardeRun(run.id); };
+            tab.appendChild(btnHide);
+
+            var btnAdapt = document.createElement('button');
+            btnAdapt.className = 'run-tab-btn';
+            btnAdapt.title = 'Adapter la vue à cette simulation';
+            btnAdapt.textContent = '🔍';
+            btnAdapt.onclick = function(e) { e.stopPropagation(); adapterVueRun(run.id); };
+            tab.appendChild(btnAdapt);
+
+            var btnExp = document.createElement('button');
+            btnExp.className = 'run-tab-btn';
+            btnExp.title = 'Détails';
+            btnExp.textContent = _openDropdownId === run.id ? '▴' : '▾';
+            btnExp.onclick = function(e) { e.stopPropagation(); toggleRunDropdown(run.id); };
+            tab.appendChild(btnExp);
 
             var btnDel = document.createElement('button');
-            btnDel.className = 'saved-run-del';
+            btnDel.className = 'run-tab-btn run-tab-del';
+            btnDel.title = 'Supprimer';
             btnDel.textContent = '✕';
-            btnDel.onclick = function(e) { e.stopPropagation(); supprimerSauvegardeRun(runId); };
-            actions.appendChild(btnDel);
+            btnDel.onclick = function(e) { e.stopPropagation(); supprimerSauvegardeRun(run.id); };
+            tab.appendChild(btnDel);
 
-            row.appendChild(actions);
-        })(run.id, run.hidden);
-
-        rows.appendChild(row);
+            tabs.appendChild(tab);
+        })(savedRuns[i], i);
     }
+
+    if (_openDropdownId !== null) {
+        var openRun = savedRuns.find(function(r) { return r.id === _openDropdownId; });
+        if (openRun) _renderDropdown(openRun);
+        else closeRunDropdown();
+    }
+
+    /* Flèches de défilement — après que le DOM soit rendu */
+    setTimeout(_updateTabsScrollBtns, 0);
+}
+
+function _updateTabsScrollBtns() {
+    var el   = document.getElementById('saved-runs-tabs');
+    var btnL = document.getElementById('tabs-scroll-left');
+    var btnR = document.getElementById('tabs-scroll-right');
+    if (!el || !btnL || !btnR) return;
+    var overflows = el.scrollWidth > el.clientWidth + 2;
+    var atLeft    = el.scrollLeft <= 2;
+    var atRight   = el.scrollLeft >= el.scrollWidth - el.clientWidth - 2;
+    btnL.classList.toggle('visible', overflows && !atLeft);
+    btnR.classList.toggle('visible', overflows && !atRight);
+}
+
+function scrollRunTabs(dir) {
+    var el = document.getElementById('saved-runs-tabs');
+    if (!el) return;
+    el.scrollLeft += dir * 120;
+    setTimeout(_updateTabsScrollBtns, 200);
+}
+
+function toggleRunDropdown(id) {
+    if (_openDropdownId === id) {
+        closeRunDropdown();
+    } else {
+        _openDropdownId = id;
+        var run = savedRuns.find(function(r) { return r.id === id; });
+        if (!run) return;
+        _renderDropdown(run);
+        renderSavedRuns();
+    }
+}
+
+function closeRunDropdown() {
+    _openDropdownId = null;
+    var dd = document.getElementById('run-tab-dropdown');
+    if (dd) dd.style.display = 'none';
+    renderSavedRuns();
+}
+
+function _renderDropdown(run) {
+    var dd = document.getElementById('run-tab-dropdown');
+    if (!dd) return;
+
+    var tab = document.querySelector('.run-tab[data-id="' + run.id + '"]');
+    if (tab) {
+        var toolbar = document.getElementById('anim-toolbar');
+        var tabRect = tab.getBoundingClientRect();
+        var tbRect  = toolbar.getBoundingClientRect();
+        var left = tabRect.left - tbRect.left;
+        left = Math.max(0, Math.min(left, tbRect.width - 220));
+        dd.style.left = left + 'px';
+    }
+    dd.style.display = 'block';
+    dd.innerHTML = '';
+
+    var paramsDiv = document.createElement('div');
+    paramsDiv.className = 'run-drop-params';
+    var l1 = document.createElement('div'); l1.className = 'run-drop-line';
+    var l2 = document.createElement('div'); l2.className = 'run-drop-line';
+    ['m = ' + fmt(run.mass, 2) + ' kg',
+     'h = ' + fmt(run.h, 0) + ' m',
+     'v₀ = ' + fmt(run.v0, 0) + ' m/s',
+     'α = ' + fmt(run.alpha, 0) + '°'
+    ].forEach(function(txt) {
+        var s = document.createElement('span'); s.className = 'run-drop-item';
+        s.textContent = txt; l1.appendChild(s);
+    });
+    ['g = ' + fmt(run.g, 2) + ' m/s²',
+     run.useFriction ? 'Frottements' : 'Sans frott.',
+     'Vent : ' + fmt(run.windForce, 1) + ' N'
+    ].forEach(function(txt) {
+        var s = document.createElement('span'); s.className = 'run-drop-item';
+        s.textContent = txt; l2.appendChild(s);
+    });
+    paramsDiv.appendChild(l1);
+    paramsDiv.appendChild(l2);
+    dd.appendChild(paramsDiv);
+
+    var vecsDiv = document.createElement('div');
+    vecsDiv.className = 'run-drop-vecs';
+    var lbl = document.createElement('span');
+    lbl.className = 'run-drop-vecs-label';
+    lbl.textContent = 'Vecteurs :';
+    vecsDiv.appendChild(lbl);
+
+    [
+        { key: 'showVecPos', label: 'OM', color: '#2a6aaa' },
+        { key: 'showVecVit', label: 'v',  color: '#c03030' },
+        { key: 'showVecAcc', label: 'a',  color: '#2a8a50' }
+    ].forEach(function(def) {
+        var b = document.createElement('button');
+        b.className = 'run-drop-vec-btn' + (run[def.key] ? ' active' : '');
+        b.textContent = def.label;
+        b.style.color = def.color;
+        b.onclick = function() { toggleSavedVec(run.id, def.key); };
+        vecsDiv.appendChild(b);
+    });
+    dd.appendChild(vecsDiv);
+}
+
+function toggleSavedVec(id, key) {
+    var run = savedRuns.find(function(r) { return r.id === id; });
+    if (!run) return;
+    run[key] = !run[key];
+    _renderDropdown(run);
 }

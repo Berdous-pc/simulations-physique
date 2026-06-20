@@ -48,6 +48,31 @@ function initAnimCanvas() {
     _animCanvas.addEventListener('pointerleave', function() {
         _animHoverSnap = null;
     });
+
+    _animCanvas.addEventListener('click', function() {
+        if (!_pinModeActive || !_animHoverSnap) return;
+        var snap = _animHoverSnap;
+        var targetList = (snap.runId === null) ? sim.analysisPoints
+                         : savedRuns[snap.runId].analysisPoints;
+
+        /* Supprime si clic sur un pin existant (tolérance 12 px) */
+        for (var i = 0; i < targetList.length; i++) {
+            var pp = toCanvas(targetList[i].x, targetList[i].y);
+            if (Math.hypot(pp.cx - snap._cx, pp.cy - snap._cy) < 12) {
+                targetList.splice(i, 1);
+                return;
+            }
+        }
+        if (targetList.length >= 3) return;
+
+        targetList.push({
+            x: snap.x, y: snap.y,
+            vx: snap.vx, vy: snap.vy,
+            ax: snap.ax, ay: snap.ay,
+            t: snap.t,
+            color: snap.color
+        });
+    });
 }
 
 function resizeAnimCanvas() {
@@ -132,6 +157,7 @@ function drawAnim() {
 
     _drawBall(ctx);
     _drawVectorLegend(ctx);
+    _drawAnalysisPoints(ctx);
     if (_animHoverSnap) _drawAnimHover(ctx, _animHoverSnap);
 }
 
@@ -386,6 +412,12 @@ function _drawSavedChronoSnaps(ctx, run) {
         ctx.fill();
         ctx.stroke();
         ctx.restore();
+
+        if (run.showVecPos) _drawVectorPos(ctx, s.x, s.y, 0.42);
+        if (run.showVecVit) _drawVecArrow(ctx, p.cx, p.cy,
+            s.vx * VEC_SCALE_VIT, -s.vy * VEC_SCALE_VIT, COL_VEC_VIT, null, 0.42);
+        if (run.showVecAcc) _drawVecArrow(ctx, p.cx, p.cy,
+            s.ax * VEC_SCALE_ACC, -s.ay * VEC_SCALE_ACC, COL_VEC_ACC, null, 0.42);
     }
 }
 
@@ -560,12 +592,12 @@ function _drawBall(ctx) {
 }
 
 /* ── Vecteur position (de O vers la balle) ── */
-function _drawVectorPos(ctx, px, py, alpha, noLabel) {
+function _drawVectorPos(ctx, px, py, alpha) {
     var origin = toCanvas(0, 0);
     var p      = toCanvas(px, py);
     var dx = p.cx - origin.cx;
     var dy = p.cy - origin.cy;
-    _drawVecArrow(ctx, origin.cx, origin.cy, dx, dy, COL_VEC_POS, noLabel ? '' : 'OM', alpha);
+    _drawVecArrow(ctx, origin.cx, origin.cy, dx, dy, COL_VEC_POS, '', alpha);
 }
 
 /* ─────────────────────────────────────────────────
@@ -616,15 +648,43 @@ function _drawVecArrow(ctx, cx, cy, dx, dy, color, label, opacity) {
 }
 
 /* ─────────────────────────────────────────────────
+   Points d'analyse épinglés — hover figé
+───────────────────────────────────────────────── */
+function _drawAnalysisPoints(ctx) {
+    var allPins = sim.analysisPoints.slice();
+    for (var ri = 0; ri < savedRuns.length; ri++) {
+        if (!savedRuns[ri].hidden) {
+            allPins = allPins.concat(savedRuns[ri].analysisPoints);
+        }
+    }
+    for (var pi = 0; pi < allPins.length; pi++) {
+        _drawAnimHover(ctx, allPins[pi]);
+    }
+}
+
+/* ─────────────────────────────────────────────────
    Hover animation canvas
 ───────────────────────────────────────────────── */
 function _updateAnimHover(mouseX, mouseY) {
+    var isChrono = (sim.displayMode === 'chrono');
     var datasets = [];
-    if (sim.graphData.length >= 2) {
-        datasets.push({ data: sim.graphData, color: _currentRunColor || '#2a5080' });
-    }
-    for (var i = 0; i < savedRuns.length; i++) {
-        if (!savedRuns[i].hidden) datasets.push({ data: savedRuns[i].graphData, color: savedRuns[i].color });
+
+    if (isChrono) {
+        if (sim.chronoSnaps.length > 0) {
+            datasets.push({ data: sim.chronoSnaps, color: _currentRunColor || '#2a5080', runId: null });
+        }
+        for (var i = 0; i < savedRuns.length; i++) {
+            if (!savedRuns[i].hidden && savedRuns[i].chronoSnaps.length > 0) {
+                datasets.push({ data: savedRuns[i].chronoSnaps, color: savedRuns[i].color, runId: i });
+            }
+        }
+    } else {
+        if (sim.graphData.length >= 2) {
+            datasets.push({ data: sim.graphData, color: _currentRunColor || '#2a5080', runId: null });
+        }
+        for (var i = 0; i < savedRuns.length; i++) {
+            if (!savedRuns[i].hidden) datasets.push({ data: savedRuns[i].graphData, color: savedRuns[i].color, runId: i });
+        }
     }
 
     var bestDist = Infinity, bestSnap = null;
@@ -640,7 +700,9 @@ function _updateAnimHover(mouseX, mouseY) {
                 bestSnap = { x: pts[k].x, y: pts[k].y,
                              vx: pts[k].vx, vy: pts[k].vy,
                              ax: pts[k].ax, ay: pts[k].ay,
-                             t: pts[k].t, color: datasets[di].color };
+                             t: pts[k].t, color: datasets[di].color,
+                             runId: datasets[di].runId,
+                             _cx: p.cx, _cy: p.cy };
             }
         }
     }
@@ -847,7 +909,7 @@ function _drawAnimHover(ctx, snap) {
     var origin   = toCanvas(0, 0);
 
     if (sim.showVecPos) {
-        _drawVectorPos(ctx, snap.x, snap.y, 1.0, true);
+        _drawVectorPos(ctx, snap.x, snap.y, 1.0);
         toPlace.push({
             anchorX: (origin.cx + p.cx) / 2,
             anchorY: (origin.cy + p.cy) / 2,

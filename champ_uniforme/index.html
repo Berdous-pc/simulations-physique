@@ -22,25 +22,47 @@
   ══════════════════════════════════════════════ -->
   <div id="left-col">
 
+    <!-- ── Barre d'outils animation ─────────────── -->
+    <div id="anim-toolbar">
+      <div class="toolbar-left">
+        <button id="btn-axis-mode" class="toolbar-btn" onclick="toggleAxisMode()">Repère : Orthonormé</button>
+        <div class="toolbar-dropdown-wrap">
+          <button class="toolbar-btn toolbar-dropdown-btn" onclick="toggleToolbarDropdown('vecteurs')">Vecteurs ▾</button>
+          <div class="toolbar-dropdown" id="toolbar-drop-vecteurs">
+            <button class="toolbar-drop-item" onclick="setVecDisplayMode('vecteur')">Vecteur</button>
+            <button class="toolbar-drop-item" onclick="setVecDisplayMode('composantes')">Composantes</button>
+            <button class="toolbar-drop-item" onclick="setVecDisplayMode('vecteur-composantes')">Vecteur et composantes</button>
+          </div>
+        </div>
+        <div class="toolbar-dropdown-wrap">
+          <button class="toolbar-btn toolbar-dropdown-btn" onclick="toggleToolbarDropdown('vue')">Vue ▾</button>
+          <div class="toolbar-dropdown" id="toolbar-drop-vue">
+            <button class="toolbar-drop-item" onclick="setViewMode('oxy')">Plan Oxy</button>
+            <button class="toolbar-drop-item" onclick="setViewMode('proj-x')">Projection sur l'axe x</button>
+            <button class="toolbar-drop-item" onclick="setViewMode('proj-y')">Projection sur l'axe y</button>
+          </div>
+        </div>
+        <button id="btn-pin-mode" class="toolbar-btn" onclick="togglePinMode()">Épingler 📍</button>
+      </div>
+      <div class="toolbar-spacer"></div>
+      <div class="toolbar-sep"></div>
+      <div class="toolbar-right">
+        <span id="saved-runs-label">Simulations sauvegardées :</span>
+        <div id="saved-runs-tabs-wrap">
+          <button id="tabs-scroll-left"  class="tabs-scroll-btn" onclick="scrollRunTabs(-1)"><</button>
+          <div id="saved-runs-tabs"></div>
+          <button id="tabs-scroll-right" class="tabs-scroll-btn" onclick="scrollRunTabs(1)">></button>
+        </div>
+        <button class="toolbar-action-btn" id="btn-adapter" onclick="adapterVue()">Adapter</button>
+        <button class="toolbar-action-btn" id="btn-tout-rejouer" onclick="toutRejouer()">Tout rejouer</button>
+      </div>
+      <!-- Dropdown unique pour les détails d'une run -->
+      <div id="run-tab-dropdown" style="display:none;"></div>
+    </div>
+
     <!-- ── Zone animation ─────────────────────── -->
     <div id="anim-area">
       <canvas id="anim-canvas"></canvas>
-      <button id="btn-axis-mode" class="btn-axis-mode" onclick="toggleAxisMode()">Repère : Orthonormé</button>
-
-      <!-- ── Box simulations sauvegardées ─────── -->
-      <div id="saved-runs-box">
-        <div id="saved-runs-header">
-          <span class="saved-runs-title">Simulations sauvegardées</span>
-          <div class="saved-runs-header-btns">
-            <button class="btn-saved-action" id="btn-adapter" onclick="adapterVue()">Adapter</button>
-            <button class="btn-saved-action" id="btn-tout-rejouer" onclick="toutRejouer()">Tout rejouer</button>
-            <button class="btn-saved-minimize" onclick="toggleSavedRunsMinimized()">−</button>
-          </div>
-        </div>
-        <div id="saved-runs-content">
-          <div id="saved-runs-rows"></div>
-        </div>
-      </div>
     </div>
 
     <!-- ── Splitter ───────────────────────────── -->
@@ -126,12 +148,12 @@
         <div class="panel-section">
           <div class="section-title">Trajectoire</div>
           <div class="btn-group">
-            <button class="btn-toggle-one active" id="btn-disp-trajectory"
-                    onclick="setDisplayMode('trajectory')">Trajectoire</button>
-            <button class="btn-toggle-one" id="btn-disp-chrono"
+            <button class="btn-toggle-one active" id="btn-disp-chrono"
                     onclick="setDisplayMode('chrono')">Chronophoto.</button>
             <button class="btn-toggle-one" id="btn-disp-both"
                     onclick="setDisplayMode('both')">Les deux</button>
+            <button class="btn-toggle-one" id="btn-disp-trajectory"
+                    onclick="setDisplayMode('trajectory')">Trajectoire</button>
           </div>
           <div class="param-row" id="deltat-row" style="display:none;">
             <label>
