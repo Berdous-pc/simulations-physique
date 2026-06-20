@@ -24,6 +24,9 @@ var VEC_SCALE_FORCE = 12;
 /* Mode d'affichage des vecteurs : 'vecteur' | 'composantes' | 'vecteur-composantes' */
 var vecDisplayMode = 'vecteur';
 
+/* ── Cache des angles de vue + origine animée (mis à jour une fois par frame dans drawAnim) ── */
+var _viewAngles = { tx: 0, ty: 0, ox: 65, oy: 50 };
+
 var _animCanvas = null;
 var _animCtx    = null;
 var _animW = 0, _animH = 0;
@@ -97,11 +100,61 @@ function resizeAnimCanvas() {
     computeScale(_animW, _animH);
 }
 
+/* ── Angles de vue : interpolation ease-in-out entre les modes ── */
+var _VIEW_TARGETS = {
+    'oxy':    { tx: 0,             ty: 0 },
+    'proj-x': { tx: Math.PI / 2,  ty: 0 },
+    'proj-y': { tx: 0,             ty: Math.PI / 2 }
+};
+var _DUR_VIEW = 0.7; // secondes
+
+/* Origine canvas cible pour chaque mode (dépend de la taille du canvas) */
+function _targetOrigin(mode) {
+    switch (mode) {
+        case 'proj-x': return { ox: sim.originX,    oy: _animH / 2   };
+        case 'proj-y': return { ox: _animW  / 2,    oy: sim.originY  };
+        default:       return { ox: sim.originX,    oy: sim.originY  };
+    }
+}
+
+function _updateViewAngles() {
+    var tr = sim.viewTrans;
+    if (!tr) {
+        var tgt = _VIEW_TARGETS[sim.viewMode] || _VIEW_TARGETS['oxy'];
+        var org = _targetOrigin(sim.viewMode);
+        _viewAngles.tx = tgt.tx;
+        _viewAngles.ty = tgt.ty;
+        _viewAngles.ox = org.ox;
+        _viewAngles.oy = org.oy;
+        return;
+    }
+    var elapsed = Date.now() / 1000 - tr.startT;
+    var t01 = Math.min(elapsed / _DUR_VIEW, 1);
+    var ease = t01 < 0.5 ? 2 * t01 * t01 : -1 + (4 - 2 * t01) * t01;
+    var from    = _VIEW_TARGETS[tr.fromMode] || _VIEW_TARGETS['oxy'];
+    var to      = _VIEW_TARGETS[tr.toMode]   || _VIEW_TARGETS['oxy'];
+    var fromOrg = _targetOrigin(tr.fromMode);
+    var toOrg   = _targetOrigin(tr.toMode);
+    _viewAngles.tx = from.tx + (to.tx - from.tx) * ease;
+    _viewAngles.ty = from.ty + (to.ty - from.ty) * ease;
+    _viewAngles.ox = fromOrg.ox + (toOrg.ox - fromOrg.ox) * ease;
+    _viewAngles.oy = fromOrg.oy + (toOrg.oy - fromOrg.oy) * ease;
+    if (t01 >= 1) {
+        sim.viewTrans = null;
+        sim.viewMode  = tr.toMode;
+    }
+}
+
+/* Facteurs de projection pour les composantes de vecteurs en pixels */
+function _viewProjFactors() {
+    return { cx: Math.cos(_viewAngles.ty), cy: Math.cos(_viewAngles.tx) };
+}
+
 /* ── Conversion coordonnées physiques → canvas ── */
 function toCanvas(px, py) {
     return {
-        cx: sim.originX + px * sim.scaleX,
-        cy: _animH - sim.originY - py * sim.scaleY
+        cx: _viewAngles.ox + px * Math.cos(_viewAngles.ty) * sim.scaleX,
+        cy: _animH - _viewAngles.oy - py * Math.cos(_viewAngles.tx) * sim.scaleY
     };
 }
 
@@ -128,9 +181,9 @@ function _gridDec(step) {
     return 2;
 }
 
-/* ── Position sol en pixels canvas ── */
+/* ── Position sol en pixels canvas (animée avec l'origine de vue) ── */
 function groundY() {
-    return _animH - sim.originY;
+    return _animH - _viewAngles.oy;
 }
 
 /* ─────────────────────────────────────────────────
@@ -139,6 +192,7 @@ function groundY() {
 function drawAnim() {
     if (!_animCtx) return;
     var ctx = _animCtx;
+    _updateViewAngles();
     ctx.clearRect(0, 0, _animW, _animH);
 
     _drawBackground(ctx);
@@ -169,39 +223,100 @@ function drawAnim() {
 
     _drawBall(ctx);
     _drawVectorLegend(ctx);
+    _drawViewLabel(ctx);
     _drawAnalysisPoints(ctx);
     if (_animHoverSnap) _drawAnimHover(ctx, _animHoverSnap);
 }
 
 /* ─────────────────────────────────────────────────
-   Fond : ciel + sol
+   Fond : ciel + sol, avec horizon mobile pour la
+   rotation caméra (proj-x = vue du dessus).
+   L'horizon monte de groundY() vers 0 quand tx
+   passe de 0 à π/2, révélant un sol en perspective.
 ───────────────────────────────────────────────── */
 function _drawBackground(ctx) {
     var gy = groundY();
+    var tx = _viewAngles.tx;
 
-    /* Ciel */
-    var skyGrad = ctx.createLinearGradient(0, 0, 0, gy);
-    skyGrad.addColorStop(0,   '#6aaad8');
-    skyGrad.addColorStop(0.5, '#a8ccea');
-    skyGrad.addColorStop(1,   '#cce0f4');
-    ctx.fillStyle = skyGrad;
-    ctx.fillRect(0, 0, _animW, gy);
+    /* Ligne d'horizon réelle (monte quand la caméra se penche en avant) */
+    var horizon_y = gy * Math.cos(tx);
 
-    /* Sol */
-    var groundGrad = ctx.createLinearGradient(0, gy, 0, _animH);
-    groundGrad.addColorStop(0,   '#5a8a3a');
-    groundGrad.addColorStop(0.4, '#4a7a2a');
-    groundGrad.addColorStop(1,   '#3a5a1a');
-    ctx.fillStyle = groundGrad;
-    ctx.fillRect(0, gy, _animW, _animH - gy);
+    /* ── Sol (du haut du sol jusqu'en bas du canvas) ── */
+    var floorTop = Math.min(horizon_y, gy);
+    var floorGrad = ctx.createLinearGradient(0, floorTop, 0, _animH);
+    floorGrad.addColorStop(0,   '#7aaa50');  // clair près de l'horizon (brume de sol)
+    floorGrad.addColorStop(0.3, '#5a8a3a');
+    floorGrad.addColorStop(1,   '#3a5a1a');
+    ctx.fillStyle = floorGrad;
+    ctx.fillRect(0, floorTop, _animW, _animH - floorTop);
 
-    /* Ligne de sol (épaisseur) */
+    /* ── Ciel (de 0 à l'horizon) — disparaît quand tx → π/2 ── */
+    if (horizon_y > 2) {
+        var skyGrad = ctx.createLinearGradient(0, 0, 0, horizon_y);
+        skyGrad.addColorStop(0,   '#6aaad8');
+        skyGrad.addColorStop(0.5, '#a8ccea');
+        skyGrad.addColorStop(1,   '#cce0f4');
+        ctx.fillStyle = skyGrad;
+        ctx.fillRect(0, 0, _animW, horizon_y);
+    }
+
+    /* ── Ligne d'horizon / sol ── */
     ctx.strokeStyle = '#3a6a20';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(0, gy);
-    ctx.lineTo(_animW, gy);
+    ctx.moveTo(0, horizon_y);
+    ctx.lineTo(_animW, horizon_y);
     ctx.stroke();
+
+    /* ── Grille perspective sur le sol (pendant la rotation proj-x) ── */
+    if (tx > 0.04) {
+        _drawPerspectiveFloor(ctx, horizon_y, tx);
+    }
+}
+
+/* Grille perspective convergeant vers le point de fuite à l'horizon */
+function _drawPerspectiveFloor(ctx, horizon_y, tx) {
+    var intensity = Math.sin(tx);          // 0→1 quand tx: 0→π/2
+    var floor_h   = _animH - horizon_y;
+    if (floor_h < 4) return;
+
+    /* Point de fuite : centre de la zone de rendu, à l'horizon */
+    var vp_x = _viewAngles.ox + (_animW - _viewAngles.ox) * 0.5;
+    var vp_y = horizon_y;
+
+    ctx.save();
+    ctx.setLineDash([3, 7]);
+
+    /* Lignes de profondeur (rayonnent depuis le point de fuite) */
+    var nDepth = 14;
+    for (var i = 0; i <= nDepth; i++) {
+        var xBot = (i / nDepth) * _animW;
+        ctx.globalAlpha = 0.28 * intensity;
+        ctx.strokeStyle = '#4a7030';
+        ctx.lineWidth   = 1;
+        ctx.beginPath();
+        ctx.moveTo(vp_x, vp_y);
+        ctx.lineTo(xBot, _animH);
+        ctx.stroke();
+    }
+
+    /* Lignes de largeur (horizontales, espacement en perspective) */
+    var nWidth = 8;
+    for (var j = 1; j <= nWidth; j++) {
+        /* Espacement exponentiel : plus serré près de l'horizon */
+        var t = 1 - Math.pow(1 - j / nWidth, 1.8);
+        var y = vp_y + floor_h * t;
+        ctx.globalAlpha = 0.22 * intensity;
+        ctx.strokeStyle = '#4a7030';
+        ctx.lineWidth   = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(_animW, y);
+        ctx.stroke();
+    }
+
+    ctx.setLineDash([]);
+    ctx.restore();
 }
 
 /* ─────────────────────────────────────────────────
@@ -227,6 +342,11 @@ function _drawGrid(ctx) {
 
     ctx.save();
 
+    /* ── Facteurs de projection (grille comprimée pendant les transitions) ── */
+    var _gcos_tx = Math.cos(_viewAngles.tx);  // comprime y
+    var _gcos_ty = Math.cos(_viewAngles.ty);  // comprime x
+    var _PROJ_THRESH = 0.08;
+
     /* ── Bornes de non-superposition ── */
     var _ag        = _axisGeom();
     var tickMajor  = Math.max(6, _animH * 0.014);
@@ -241,71 +361,112 @@ function _drawGrid(ctx) {
     }
 
     /* ── Grandes lignes de grille ── */
-    ctx.strokeStyle = 'rgba(255,255,255,0.38)';
     ctx.lineWidth   = 1;
     ctx.setLineDash([4, 4]);
 
-    for (var ix = 1; ix * xMinor <= xMaxPhy * 1.05; ix++) {
-        var gxv = ix * xMinor;
-        if (!isMultiple(gxv, xMajor)) continue;
-        var p = toCanvas(gxv, 0);
-        if (p.cx > xAxisCutoff) break;
-        ctx.beginPath(); ctx.moveTo(p.cx, 0); ctx.lineTo(p.cx, gy0); ctx.stroke();
+    /* Lignes verticales (axe x) — masquées si x comprimé */
+    if (_gcos_ty >= _PROJ_THRESH) {
+        /* En proj-x, les lignes passent en dessous de l'axe avec une coupure autour des labels */
+        var _sinTx    = Math.sin(_viewAngles.tx);
+        var _labelMid = gy0 + tickMajor + fontSize * 0.9;   // baseline du label
+        var _gapTop   = _labelMid - fontSize * 0.85;         // début de la coupure
+        var _gapBot   = _labelMid + fontSize * 0.25;         // fin de la coupure
+        ctx.strokeStyle = 'rgba(255,255,255,' + (0.38 * _gcos_ty).toFixed(2) + ')';
+        for (var ix = 1; ix * xMinor <= xMaxPhy * 1.05; ix++) {
+            var gxv = ix * xMinor;
+            if (!isMultiple(gxv, xMajor)) continue;
+            var p = toCanvas(gxv, 0);
+            if (p.cx > xAxisCutoff) break;
+            /* Segment principal : du haut jusqu'avant le label */
+            var _lineBot = _sinTx > 0.02 ? _gapTop : gy0;
+            ctx.beginPath(); ctx.moveTo(p.cx, 0); ctx.lineTo(p.cx, _lineBot); ctx.stroke();
+            /* Segment inférieur : après le label jusqu'au bas du canvas */
+            if (_sinTx > 0.02) {
+                ctx.beginPath(); ctx.moveTo(p.cx, _gapBot); ctx.lineTo(p.cx, _animH); ctx.stroke();
+            }
+        }
     }
-    for (var iy = 1; iy * yMinor <= yMaxPhy * 1.05; iy++) {
-        var gyv = iy * yMinor;
-        if (!isMultiple(gyv, yMajor)) continue;
-        var p2 = toCanvas(0, gyv);
-        if (p2.cy < yAxisEnd) break;
-        ctx.beginPath(); ctx.moveTo(0, p2.cy); ctx.lineTo(_animW, p2.cy); ctx.stroke();
+    /* Lignes horizontales (axe y) — masquées si y comprimé */
+    if (_gcos_tx >= _PROJ_THRESH) {
+        ctx.strokeStyle = 'rgba(255,255,255,' + (0.38 * _gcos_tx).toFixed(2) + ')';
+        for (var iy = 1; iy * yMinor <= yMaxPhy * 1.05; iy++) {
+            var gyv = iy * yMinor;
+            if (!isMultiple(gyv, yMajor)) continue;
+            var p2 = toCanvas(0, gyv);
+            if (p2.cy < yAxisEnd) break;
+            ctx.beginPath(); ctx.moveTo(0, p2.cy); ctx.lineTo(_animW, p2.cy); ctx.stroke();
+        }
     }
     ctx.setLineDash([]);
 
-    /* ── Marques sur l'axe X ── */
-    for (var jx = 1; jx * xMinor <= xMaxPhy * 1.05; jx++) {
-        var xv     = jx * xMinor;
-        var isMajX = isMultiple(xv, xMajor);
-        var pcx    = toCanvas(xv, 0);
-        if (pcx.cx > xAxisCutoff) break;
-        var tLen   = isMajX ? tickMajor : tickMinor;
+    /* ── Marques sur l'axe X (masquées si x comprimé) ── */
+    if (_gcos_ty >= _PROJ_THRESH) {
+        var _opX = Math.min(_gcos_ty, 1);
+        for (var jx = 1; jx * xMinor <= xMaxPhy * 1.05; jx++) {
+            var xv     = jx * xMinor;
+            var isMajX = isMultiple(xv, xMajor);
+            var pcx    = toCanvas(xv, 0);
+            if (pcx.cx > xAxisCutoff) break;
+            var tLen   = isMajX ? tickMajor : tickMinor;
 
-        ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
-        ctx.strokeStyle = 'rgba(255,255,255,' + (isMajX ? '0.95' : '0.75') + ')';
-        ctx.lineWidth   = isMajX ? 2 : 1.5;
-        ctx.beginPath(); ctx.moveTo(pcx.cx, gy0 - tLen); ctx.lineTo(pcx.cx, gy0); ctx.stroke();
-
-        if (isMajX) {
-            ctx.font = 'bold ' + fontSize + 'px Segoe UI, Arial';
-            ctx.textAlign = 'center';
-            ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = 4;
-            ctx.shadowOffsetX = 1; ctx.shadowOffsetY = 1;
-            ctx.fillStyle = 'rgba(255,255,255,0.95)';
-            ctx.fillText(fmt(xv, xDec), pcx.cx, gy0 + tickMajor + fontSize * 0.9);
             ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+            ctx.strokeStyle = 'rgba(255,255,255,' + ((isMajX ? 0.95 : 0.75) * _opX).toFixed(2) + ')';
+            ctx.lineWidth   = isMajX ? 2 : 1.5;
+            ctx.beginPath(); ctx.moveTo(pcx.cx, gy0 - tLen); ctx.lineTo(pcx.cx, gy0); ctx.stroke();
+
+            if (isMajX) {
+                ctx.font = 'bold ' + fontSize + 'px Segoe UI, Arial';
+                ctx.textAlign = 'center';
+                ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = 4;
+                ctx.shadowOffsetX = 1; ctx.shadowOffsetY = 1;
+                ctx.fillStyle = 'rgba(255,255,255,' + (0.95 * _opX).toFixed(2) + ')';
+                ctx.fillText(fmt(xv, xDec), pcx.cx, gy0 + tickMajor + fontSize * 0.9);
+                ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+            }
         }
     }
 
-    /* ── Marques sur l'axe Y ── */
-    for (var jy = 1; jy * yMinor <= yMaxPhy * 1.05; jy++) {
-        var yv     = jy * yMinor;
-        var isMajY = isMultiple(yv, yMajor);
-        var pcy    = toCanvas(0, yv);
-        if (pcy.cy < yAxisEnd) break;
-        var tLenY  = isMajY ? tickMajor : tickMinor;
+    /* ── Marques sur l'axe Y (masquées si y comprimé) ── */
+    if (_gcos_tx >= _PROJ_THRESH) {
+        var _opY = Math.min(_gcos_tx, 1);
+        var _yAxes = _splitActive()
+            ? [{ ox: _phaseOx(1), side: 1 }, { ox: _phaseOx(-1), side: -1 }]
+            : [{ ox: _viewAngles.ox, side: 1 }];
 
-        ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
-        ctx.strokeStyle = 'rgba(255,255,255,' + (isMajY ? '0.95' : '0.75') + ')';
-        ctx.lineWidth   = isMajY ? 2 : 1.5;
-        ctx.beginPath(); ctx.moveTo(sim.originX, pcy.cy); ctx.lineTo(sim.originX + tLenY, pcy.cy); ctx.stroke();
+        for (var jy = 1; jy * yMinor <= yMaxPhy * 1.05; jy++) {
+            var yv     = jy * yMinor;
+            var isMajY = isMultiple(yv, yMajor);
+            var pcy    = toCanvas(0, yv);
+            if (pcy.cy < yAxisEnd) break;
+            var tLenY  = isMajY ? tickMajor : tickMinor;
 
-        if (isMajY) {
-            ctx.font = 'bold ' + fontSize + 'px Segoe UI, Arial';
-            ctx.textAlign = 'right';
-            ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = 4;
-            ctx.shadowOffsetX = 1; ctx.shadowOffsetY = 1;
-            ctx.fillStyle = 'rgba(255,255,255,0.95)';
-            ctx.fillText(fmt(yv, yDec), sim.originX - tickMajor - 3, pcy.cy + fontSize * 0.35);
             ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+            ctx.strokeStyle = 'rgba(255,255,255,' + ((isMajY ? 0.95 : 0.75) * _opY).toFixed(2) + ')';
+            ctx.lineWidth   = isMajY ? 2 : 1.5;
+
+            for (var _ai = 0; _ai < _yAxes.length; _ai++) {
+                var _ax = _yAxes[_ai];
+                /* Tick : vers l'intérieur du graphe (droite pour axe gauche, gauche pour axe droit) */
+                var _tDir = _ax.side; // +1 → tick vers la droite, -1 → tick vers la gauche
+                ctx.beginPath();
+                ctx.moveTo(_ax.ox, pcy.cy);
+                ctx.lineTo(_ax.ox + tLenY * _tDir, pcy.cy);
+                ctx.stroke();
+
+                if (isMajY) {
+                    ctx.font = 'bold ' + fontSize + 'px Segoe UI, Arial';
+                    /* Label : à l'extérieur de l'axe (opposé au tick) */
+                    ctx.textAlign = _tDir > 0 ? 'right' : 'left';
+                    ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = 4;
+                    ctx.shadowOffsetX = 1; ctx.shadowOffsetY = 1;
+                    ctx.fillStyle = 'rgba(255,255,255,' + (0.95 * _opY).toFixed(2) + ')';
+                    var _labelX = _tDir > 0
+                        ? _ax.ox - tickMajor - 3
+                        : _ax.ox + tickMajor + 3;
+                    ctx.fillText(fmt(yv, yDec), _labelX, pcy.cy + fontSize * 0.35);
+                    ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+                }
+            }
         }
     }
 
@@ -315,55 +476,99 @@ function _drawGrid(ctx) {
 /* ─────────────────────────────────────────────────
    Axes x et y avec flèches + contour noir
 ───────────────────────────────────────────────── */
+
 function _drawAxes(ctx) {
-    var origin  = toCanvas(0, 0);
+    var origin   = toCanvas(0, 0);
     var fontSize = Math.max(14, Math.min(20, _animH * 0.041));
     var ag   = _axisGeom();
     var aLen = ag.aLen;
     var xEnd = ag.xEnd;
     var yEnd = ag.yEnd;
 
+    var cos_tx = Math.cos(_viewAngles.tx);  // 1 = y visible, 0 = y dans l'écran
+    var cos_ty = Math.cos(_viewAngles.ty);  // 1 = x visible, 0 = x dans l'écran
+    var THRESH = 0.08;
+
     ctx.save();
 
-    /* ── Axes avec ombre douce ── */
-    ctx.shadowColor  = 'rgba(0,0,0,0.5)';
-    ctx.shadowBlur   = 3;
+    ctx.shadowColor   = 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur    = 3;
     ctx.shadowOffsetX = 1;
     ctx.shadowOffsetY = 1;
-    ctx.strokeStyle = 'rgba(255,255,255,0.92)';
-    ctx.fillStyle   = 'rgba(255,255,255,0.92)';
-    ctx.lineWidth   = 2;
+    ctx.lineWidth     = 2;
 
-    ctx.beginPath(); ctx.moveTo(sim.originX - 5, origin.cy); ctx.lineTo(xEnd, origin.cy); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(xEnd, origin.cy); ctx.lineTo(xEnd - aLen, origin.cy - 4); ctx.lineTo(xEnd - aLen, origin.cy + 4); ctx.closePath(); ctx.fill();
+    /* ── Axe X (visible tant que cos_ty > THRESH) ── */
+    if (cos_ty >= THRESH) {
+        var opX = Math.min(cos_ty, 1);
+        ctx.strokeStyle = 'rgba(255,255,255,' + (0.92 * opX).toFixed(2) + ')';
+        ctx.fillStyle   = 'rgba(255,255,255,' + (0.92 * opX).toFixed(2) + ')';
+        ctx.beginPath(); ctx.moveTo(_viewAngles.ox - 5, origin.cy); ctx.lineTo(xEnd, origin.cy); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(xEnd, origin.cy); ctx.lineTo(xEnd - aLen, origin.cy - 4); ctx.lineTo(xEnd - aLen, origin.cy + 4); ctx.closePath(); ctx.fill();
+    }
 
-    ctx.beginPath(); ctx.moveTo(origin.cx, groundY() + 5); ctx.lineTo(origin.cx, yEnd); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(origin.cx, yEnd); ctx.lineTo(origin.cx - 4, yEnd + aLen); ctx.lineTo(origin.cx + 4, yEnd + aLen); ctx.closePath(); ctx.fill();
+    /* ── Axe Y (visible tant que cos_tx > THRESH) ── */
+    if (cos_tx >= THRESH) {
+        var opY = Math.min(cos_tx, 1);
+        ctx.strokeStyle = 'rgba(255,255,255,' + (0.92 * opY).toFixed(2) + ')';
+        ctx.fillStyle   = 'rgba(255,255,255,' + (0.92 * opY).toFixed(2) + ')';
+        if (_splitActive()) {
+            /* Deux axes Y : montée (gauche) + descente (droite) */
+            var oxL = _phaseOx(1), oxR = _phaseOx(-1);
+            var gy  = groundY();
+            [oxL, oxR].forEach(function(ox) {
+                ctx.beginPath(); ctx.moveTo(ox, gy + 5); ctx.lineTo(ox, yEnd); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(ox, yEnd); ctx.lineTo(ox - 4, yEnd + aLen); ctx.lineTo(ox + 4, yEnd + aLen); ctx.closePath(); ctx.fill();
+            });
+        } else {
+            ctx.beginPath(); ctx.moveTo(origin.cx, groundY() + 5); ctx.lineTo(origin.cx, yEnd); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(origin.cx, yEnd); ctx.lineTo(origin.cx - 4, yEnd + aLen); ctx.lineTo(origin.cx + 4, yEnd + aLen); ctx.closePath(); ctx.fill();
+        }
+    }
 
-    /* ── Labels avec ombre douce ── */
+    /* ── Labels ── */
+    var tickMajorRef = Math.max(6,  _animH * 0.014);
+    var fontSizeGrid = Math.max(11, Math.min(16, _animH * 0.032));
     ctx.font          = 'bold ' + fontSize + 'px Segoe UI, Arial';
-    ctx.fillStyle     = 'rgba(255,255,255,0.95)';
     ctx.shadowColor   = 'rgba(0,0,0,0.55)';
     ctx.shadowBlur    = 4;
     ctx.shadowOffsetX = 1;
     ctx.shadowOffsetY = 1;
 
-    /* x (m) — aligné avec les labels de graduation, à droite de l'axe */
-    var tickMajorRef  = Math.max(6,  _animH * 0.014);
-    var fontSizeGrid  = Math.max(11, Math.min(16, _animH * 0.032));
-    ctx.textAlign     = 'right';
-    ctx.textBaseline  = 'alphabetic';
-    ctx.fillText('x (m)', xEnd, origin.cy + tickMajorRef + fontSizeGrid * 0.9);
+    /* Label x */
+    if (cos_ty >= THRESH) {
+        ctx.fillStyle    = 'rgba(255,255,255,' + (0.95 * Math.min(cos_ty, 1)).toFixed(2) + ')';
+        ctx.textAlign    = 'right';
+        ctx.textBaseline = 'alphabetic';
+        ctx.fillText('x (m)', xEnd, origin.cy + tickMajorRef + fontSizeGrid * 0.9);
+    }
 
-    /* O */
-    ctx.textAlign    = 'right';
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillText('O', origin.cx - 6, origin.cy + fontSize + 2);
+    /* Label O */
+    ctx.fillStyle    = 'rgba(255,255,255,0.95)';
+    if (_splitActive()) {
+        ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+        ctx.fillText('O', _phaseOx(1),  origin.cy + fontSize + 2);
+        ctx.fillText('O', _phaseOx(-1), origin.cy + fontSize + 2);
+    } else {
+        ctx.textAlign    = 'right';
+        ctx.textBaseline = 'alphabetic';
+        ctx.fillText('O', origin.cx - 6, origin.cy + fontSize + 2);
+    }
 
-    /* y (m) — horizontal, à gauche de l'axe, juste sous la pointe de flèche */
-    ctx.textAlign    = 'right';
-    ctx.textBaseline = 'top';
-    ctx.fillText('y (m)', origin.cx - 6, yEnd + aLen + 3);
+    /* Label y / labels "Montée" "Descente" */
+    if (cos_tx >= THRESH) {
+        ctx.fillStyle    = 'rgba(255,255,255,' + (0.95 * Math.min(cos_tx, 1)).toFixed(2) + ')';
+        ctx.textBaseline = 'top';
+        if (_splitActive()) {
+            var smallFs = Math.max(10, Math.min(13, _animH * 0.027));
+            ctx.font      = 'bold ' + smallFs + 'px Segoe UI, Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('↑ Montée',   _phaseOx(1),  yEnd + aLen + 3);
+            ctx.fillText('↓ Descente', _phaseOx(-1), yEnd + aLen + 3);
+        } else {
+            ctx.textAlign = 'right';
+            ctx.fillText('y (m)', origin.cx - 6, yEnd + aLen + 3);
+        }
+    }
 
     ctx.restore();
 }
@@ -377,33 +582,60 @@ function _drawSavedTrajectory(ctx, run) {
     ctx.lineWidth = 2;
     ctx.lineJoin = 'round';
     ctx.globalAlpha = 0.82;
-    ctx.beginPath();
 
-    if (_replayPlaying) {
-        /* En mode replay : utilise graphData filtré par _replayT */
-        var pts = run.graphData;
-        var cutIdx = pts.length;
-        for (var k = 0; k < pts.length; k++) {
-            if (pts[k].t > _replayT) { cutIdx = k; break; }
-        }
+    /* Points à parcourir (graphData en replay, trajPoints sinon) */
+    var usePts   = _replayPlaying || _splitActive();
+    var pts      = usePts ? run.graphData : null;
+    var cutIdx   = pts ? pts.length : 0;
+    if (_replayPlaying && pts) {
+        for (var k = 0; k < pts.length; k++) { if (pts[k].t > _replayT) { cutIdx = k; break; } }
         if (cutIdx < 2) { ctx.restore(); return; }
-        var p0 = toCanvas(pts[0].x, pts[0].y);
-        ctx.moveTo(p0.cx, p0.cy);
-        for (var i = 1; i < cutIdx; i++) {
-            var p = toCanvas(pts[i].x, pts[i].y);
-            ctx.lineTo(p.cx, p.cy);
-        }
-    } else {
-        if (run.trajPoints.length < 2) { ctx.restore(); return; }
-        var p0 = toCanvas(run.trajPoints[0].x, run.trajPoints[0].y);
-        ctx.moveTo(p0.cx, p0.cy);
-        for (var i = 1; i < run.trajPoints.length; i++) {
-            var p = toCanvas(run.trajPoints[i].x, run.trajPoints[i].y);
-            ctx.lineTo(p.cx, p.cy);
-        }
     }
 
-    ctx.stroke();
+    if (_splitActive() && pts) {
+        /* Trouver le sommet dans graphData */
+        var peakIdx = 0;
+        var lim = _replayPlaying ? cutIdx : pts.length;
+        for (var k = 1; k < lim; k++) { if (pts[k].y > pts[peakIdx].y) peakIdx = k; }
+        /* Montée */
+        var oxUp = _phaseOx(1);
+        ctx.beginPath();
+        for (var i = 0; i <= peakIdx; i++) {
+            var q = toCanvas(pts[i].x, pts[i].y);
+            i === 0 ? ctx.moveTo(oxUp, q.cy) : ctx.lineTo(oxUp, q.cy);
+        }
+        ctx.stroke();
+        /* Descente */
+        if (peakIdx < lim - 1) {
+            var oxDn = _phaseOx(-1);
+            ctx.beginPath();
+            for (var j = peakIdx; j < lim; j++) {
+                var q2 = toCanvas(pts[j].x, pts[j].y);
+                j === peakIdx ? ctx.moveTo(oxDn, q2.cy) : ctx.lineTo(oxDn, q2.cy);
+            }
+            ctx.stroke();
+        }
+    } else {
+        ctx.beginPath();
+        if (_replayPlaying) {
+            var p0 = toCanvas(pts[0].x, pts[0].y);
+            ctx.moveTo(p0.cx, p0.cy);
+            for (var i = 1; i < cutIdx; i++) {
+                var p = toCanvas(pts[i].x, pts[i].y);
+                ctx.lineTo(p.cx, p.cy);
+            }
+        } else {
+            if (run.trajPoints.length < 2) { ctx.restore(); return; }
+            var p0 = toCanvas(run.trajPoints[0].x, run.trajPoints[0].y);
+            ctx.moveTo(p0.cx, p0.cy);
+            for (var i = 1; i < run.trajPoints.length; i++) {
+                var p = toCanvas(run.trajPoints[i].x, run.trajPoints[i].y);
+                ctx.lineTo(p.cx, p.cy);
+            }
+        }
+        ctx.stroke();
+    }
+
     ctx.restore();
 }
 
@@ -413,7 +645,7 @@ function _drawSavedChronoSnaps(ctx, run) {
     for (var i = 0; i < snaps.length; i++) {
         var s = snaps[i];
         if (_replayPlaying && s.t > _replayT) break;
-        var p = toCanvas(s.x, s.y);
+        var p = _toCanvasSplit(s.x, s.y, s.vy);
         ctx.save();
         ctx.globalAlpha = 0.85;
         ctx.fillStyle = run.color;
@@ -426,10 +658,11 @@ function _drawSavedChronoSnaps(ctx, run) {
         ctx.restore();
 
         if (run.showVecPos) _drawVectorPos(ctx, s.x, s.y, 0.42);
+        var _svp = _viewProjFactors();
         if (run.showVecVit) _drawVecDispVA(ctx, p.cx, p.cy,
-            s.vx * VEC_SCALE_VIT, -s.vy * VEC_SCALE_VIT, COL_VEC_VIT, null, 0.42);
+            s.vx * VEC_SCALE_VIT * _svp.cx, -s.vy * VEC_SCALE_VIT * _svp.cy, COL_VEC_VIT, null, 0.42);
         if (run.showVecAcc) _drawVecDispVA(ctx, p.cx, p.cy,
-            s.ax * VEC_SCALE_ACC, -s.ay * VEC_SCALE_ACC, COL_VEC_ACC, null, 0.42);
+            s.ax * VEC_SCALE_ACC * _svp.cx, -s.ay * VEC_SCALE_ACC * _svp.cy, COL_VEC_ACC, null, 0.42);
         if (run.showVecForces || run.showVecSumF) {
             var _rp = { mass: run.mass, g: run.g, windForce: run.windForce, useFriction: run.useFriction, k: 0.15 };
             var _rr = [];
@@ -458,11 +691,13 @@ function _drawSavedBall(ctx, run) {
         var alpha = (_replayT - d0.t) / (d1.t - d0.t);
         x = d0.x + alpha * (d1.x - d0.x);
         y = d0.y + alpha * (d1.y - d0.y);
+        var vyInterp = d0.vy + alpha * (d1.vy - d0.vy);
     } else {
         x = d0.x; y = d0.y;
+        var vyInterp = d0.vy;
     }
 
-    var p = toCanvas(x, y);
+    var p = _toCanvasSplit(x, y, vyInterp);
     var r = Math.max(7, Math.min(13, Math.min(sim.scaleX, sim.scaleY) * 0.55));
 
     ctx.save();
@@ -510,14 +745,41 @@ function _drawTrajectory(ctx) {
     ctx.strokeStyle = _currentRunColor || 'rgba(255,255,100,0.75)';
     ctx.lineWidth = 2;
     ctx.lineJoin = 'round';
-    ctx.beginPath();
-    var p0 = toCanvas(sim.trajPoints[0].x, sim.trajPoints[0].y);
-    ctx.moveTo(p0.cx, p0.cy);
-    for (var i = 1; i < sim.trajPoints.length; i++) {
-        var p = toCanvas(sim.trajPoints[i].x, sim.trajPoints[i].y);
-        ctx.lineTo(p.cx, p.cy);
+
+    if (_splitActive()) {
+        /* Trouver l'index du sommet (y max) */
+        var peakIdx = 0;
+        for (var k = 1; k < sim.trajPoints.length; k++) {
+            if (sim.trajPoints[k].y > sim.trajPoints[peakIdx].y) peakIdx = k;
+        }
+        /* Segment montée */
+        var oxUp = _phaseOx(1);
+        ctx.beginPath();
+        for (var i = 0; i <= peakIdx; i++) {
+            var q = toCanvas(sim.trajPoints[i].x, sim.trajPoints[i].y);
+            i === 0 ? ctx.moveTo(oxUp, q.cy) : ctx.lineTo(oxUp, q.cy);
+        }
+        ctx.stroke();
+        /* Segment descente */
+        if (peakIdx < sim.trajPoints.length - 1) {
+            var oxDn = _phaseOx(-1);
+            ctx.beginPath();
+            for (var j = peakIdx; j < sim.trajPoints.length; j++) {
+                var q2 = toCanvas(sim.trajPoints[j].x, sim.trajPoints[j].y);
+                j === peakIdx ? ctx.moveTo(oxDn, q2.cy) : ctx.lineTo(oxDn, q2.cy);
+            }
+            ctx.stroke();
+        }
+    } else {
+        ctx.beginPath();
+        var p0 = toCanvas(sim.trajPoints[0].x, sim.trajPoints[0].y);
+        ctx.moveTo(p0.cx, p0.cy);
+        for (var i = 1; i < sim.trajPoints.length; i++) {
+            var p = toCanvas(sim.trajPoints[i].x, sim.trajPoints[i].y);
+            ctx.lineTo(p.cx, p.cy);
+        }
+        ctx.stroke();
     }
-    ctx.stroke();
     ctx.restore();
 }
 
@@ -530,7 +792,7 @@ function _drawChronoSnaps(ctx) {
 
     for (var i = 0; i < snaps.length; i++) {
         var s = snaps[i];
-        var p = toCanvas(s.x, s.y);
+        var p = _toCanvasSplit(s.x, s.y, s.vy);
 
         /* Disque de position */
         ctx.save();
@@ -547,14 +809,15 @@ function _drawChronoSnaps(ctx) {
         if (sim.showVecPos) {
             _drawVectorPos(ctx, s.x, s.y, 0.6);
         }
+        var _cvp = _viewProjFactors();
         if (sim.showVecVit) {
             _drawVecDispVA(ctx, p.cx, p.cy,
-                s.vx * VEC_SCALE_VIT, -s.vy * VEC_SCALE_VIT,
+                s.vx * VEC_SCALE_VIT * _cvp.cx, -s.vy * VEC_SCALE_VIT * _cvp.cy,
                 COL_VEC_VIT, null, 0.6);
         }
         if (sim.showVecAcc) {
             _drawVecDispVA(ctx, p.cx, p.cy,
-                s.ax * VEC_SCALE_ACC, -s.ay * VEC_SCALE_ACC,
+                s.ax * VEC_SCALE_ACC * _cvp.cx, -s.ay * VEC_SCALE_ACC * _cvp.cy,
                 COL_VEC_ACC, null, 0.6);
         }
         if (sim.showVecForces || sim.showVecSumF) {
@@ -570,7 +833,7 @@ function _drawChronoSnaps(ctx) {
    Ballon de foot
 ───────────────────────────────────────────────── */
 function _drawBall(ctx) {
-    var p = toCanvas(sim.x, sim.y);
+    var p = _toCanvasSplit(sim.x, sim.y, sim.vy);
     var r = Math.max(7, Math.min(13, Math.min(sim.scaleX, sim.scaleY) * 0.55));
 
     ctx.save();
@@ -603,14 +866,15 @@ function _drawBall(ctx) {
 
     /* Vecteurs sur la balle courante */
     if (sim.showVecPos) _drawVectorPos(ctx, sim.x, sim.y, 1.0);
+    var _bvp = _viewProjFactors();
     if (sim.showVecVit) {
         _drawVecDispVA(ctx, p.cx, p.cy,
-            sim.vx * VEC_SCALE_VIT, -sim.vy * VEC_SCALE_VIT,
+            sim.vx * VEC_SCALE_VIT * _bvp.cx, -sim.vy * VEC_SCALE_VIT * _bvp.cy,
             COL_VEC_VIT, null, 1.0);
     }
     if (sim.showVecAcc) {
         _drawVecDispVA(ctx, p.cx, p.cy,
-            sim.ax * VEC_SCALE_ACC, -sim.ay * VEC_SCALE_ACC,
+            sim.ax * VEC_SCALE_ACC * _bvp.cx, -sim.ay * VEC_SCALE_ACC * _bvp.cy,
             COL_VEC_ACC, null, 1.0);
     }
     if (sim.showVecForces || sim.showVecSumF) {
@@ -776,7 +1040,7 @@ function _updateAnimHover(mouseX, mouseY) {
     for (var di = 0; di < datasets.length; di++) {
         var pts = datasets[di].data;
         for (var k = 0; k < pts.length; k++) {
-            var p = toCanvas(pts[k].x, pts[k].y);
+            var p = _toCanvasSplit(pts[k].x, pts[k].y, pts[k].vy || 0);
             /* ignorer les points sous le sol (hors zone visible) */
             if (p.cy > groundY() + 10) continue;
             var d = Math.hypot(p.cx - mouseX, p.cy - mouseY);
@@ -979,7 +1243,7 @@ function _drawAnimHover(ctx, snap, isPinned) {
     var showForces = isPinned ? pinShowVecForces : sim.showVecForces;
     var showSumF   = isPinned ? pinShowVecSumF   : sim.showVecSumF;
     var showCoords = isPinned ? pinShowCoords    : hoverShowCoords;
-    var p = toCanvas(snap.x, snap.y);
+    var p = _toCanvasSplit(snap.x, snap.y, snap.vy || 0);
 
     /* ── Point survolé ── */
     ctx.save();
@@ -1013,8 +1277,9 @@ function _drawAnimHover(ctx, snap, isPinned) {
         });
     }
     if (showVit) {
-        var dvx = snap.vx * VEC_SCALE_VIT;
-        var dvy = -snap.vy * VEC_SCALE_VIT;
+        var _hvp = _viewProjFactors();
+        var dvx = snap.vx * VEC_SCALE_VIT * _hvp.cx;
+        var dvy = -snap.vy * VEC_SCALE_VIT * _hvp.cy;
         _drawVecDispVA(ctx, p.cx, p.cy, dvx, dvy, COL_VEC_VIT, '', 1.0);
         var vPrefer = dvy <= 0
             ? ['above', 'upper-right', 'upper-left', 'right', 'left', 'lower-right', 'lower-left', 'below']
@@ -1031,8 +1296,9 @@ function _drawAnimHover(ctx, snap, isPinned) {
         });
     }
     if (showAcc) {
-        var dax = snap.ax * VEC_SCALE_ACC;
-        var day = -snap.ay * VEC_SCALE_ACC;
+        var _havp = _viewProjFactors();
+        var dax = snap.ax * VEC_SCALE_ACC * _havp.cx;
+        var day = -snap.ay * VEC_SCALE_ACC * _havp.cy;
         _drawVecDispVA(ctx, p.cx, p.cy, dax, day, COL_VEC_ACC, '', 1.0);
         toPlace.push({
             anchorX: p.cx + dax / 2,
@@ -1120,16 +1386,17 @@ function _renderForceName(ctx, lx, ly, name, color, opacity, m) {
 function _drawForcesAt(ctx, cx, cy, vx, vy, opacity, phys, placedRects) {
     var forces = [];
 
-    forces.push({ dx: 0, dy: phys.mass * phys.g * VEC_SCALE_FORCE, name: 'P' });
+    var _fvp = _viewProjFactors();
+    forces.push({ dx: 0, dy: phys.mass * phys.g * VEC_SCALE_FORCE * _fvp.cy, name: 'P' });
 
     if (Math.abs(phys.windForce) > 0.01) {
-        forces.push({ dx: phys.windForce * VEC_SCALE_FORCE, dy: 0, name: 'Fv' });
+        forces.push({ dx: phys.windForce * VEC_SCALE_FORCE * _fvp.cx, dy: 0, name: 'Fv' });
     }
 
     if (phys.useFriction && (Math.abs(vx) > 0.01 || Math.abs(vy) > 0.01)) {
         forces.push({
-            dx:  -phys.k * vx * VEC_SCALE_FORCE,
-            dy:   phys.k * vy * VEC_SCALE_FORCE,
+            dx:  -phys.k * vx * VEC_SCALE_FORCE * _fvp.cx,
+            dy:   phys.k * vy * VEC_SCALE_FORCE * _fvp.cy,
             name: 'f'
         });
     }
@@ -1151,10 +1418,11 @@ function _drawForcesAt(ctx, cx, cy, vx, vy, opacity, phys, placedRects) {
 }
 
 function _drawSumFAt(ctx, cx, cy, vx, vy, opacity, phys, placedRects) {
+    var _sfvp = _viewProjFactors();
     var SFx = phys.windForce - (phys.useFriction ? phys.k * vx : 0);
     var SFy = -phys.mass * phys.g - (phys.useFriction ? phys.k * vy : 0);
-    var dxPx = SFx * VEC_SCALE_FORCE;
-    var dyPx = -SFy * VEC_SCALE_FORCE;
+    var dxPx = SFx * VEC_SCALE_FORCE * _sfvp.cx;
+    var dyPx = -SFy * VEC_SCALE_FORCE * _sfvp.cy;
 
     _drawVecArrow(ctx, cx, cy, dxPx, dyPx, COL_VEC_SUMF, null, opacity);
 
@@ -1168,6 +1436,72 @@ function _drawSumFAt(ctx, cx, cy, vx, vy, opacity, phys, placedRects) {
 /* ─────────────────────────────────────────────────
    Légende des échelles vecteurs (coin bas-droite du ciel)
 ───────────────────────────────────────────────── */
+/* ── Helpers split montée/descente (proj-y) ── */
+function _splitActive() {
+    return sim.splitPhase && _viewAngles.ty > Math.PI / 2 - 0.15;
+}
+function _splitOffset() {
+    return Math.min(110, (_animW - sim.originX) * 0.35);
+}
+/* cx selon la phase : vy >= 0 → montée (gauche), vy < 0 → descente (droite) */
+function _phaseOx(vy) {
+    if (!_splitActive()) return _viewAngles.ox;
+    var off = _splitOffset();
+    return vy >= 0 ? _viewAngles.ox - off : _viewAngles.ox + off;
+}
+/* toCanvas adapté phase */
+function _toCanvasSplit(px, py, vy) {
+    var p = toCanvas(px, py);
+    if (_splitActive()) p.cx = _phaseOx(vy);
+    return p;
+}
+
+/* ── Label de vue projection (haut-gauche du canvas) ── */
+function _drawViewLabel(ctx) {
+    var tx = _viewAngles.tx, ty = _viewAngles.ty;
+    var maxAngle = Math.max(tx, ty);
+    if (maxAngle < 0.01) {
+        var btn0 = document.getElementById('btn-split-phase');
+        if (btn0) btn0.style.display = 'none';
+        return;
+    }
+    var opacity   = maxAngle / (Math.PI / 2);
+    var isProj_y  = ty > tx;
+    var label     = isProj_y ? 'Vue de face' : 'Vue du dessus';
+    var fontSize  = Math.max(12, Math.min(16, _animH * 0.033));
+
+    ctx.save();
+    ctx.globalAlpha   = opacity * 0.9;
+    ctx.font          = 'bold ' + fontSize + 'px Segoe UI, Arial';
+    ctx.textAlign     = 'left';
+    ctx.textBaseline  = 'top';
+    ctx.shadowColor   = 'rgba(0,0,0,0.6)';
+    ctx.shadowBlur    = 4;
+    ctx.shadowOffsetX = 1;
+    ctx.shadowOffsetY = 1;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(label, _viewAngles.ox + 4, 6);
+
+    /* Mesure la largeur du label ICI (avant restore) pour positionner le bouton */
+    var labelW = ctx.measureText(label).width;
+    ctx.restore();
+
+    /* Bouton "Séparer la phase de descente" — uniquement en proj-y */
+    var btn = document.getElementById('btn-split-phase');
+    if (btn) {
+        if (isProj_y && ty > Math.PI / 4) {
+            var canvas = document.getElementById('anim-canvas');
+            var scaleX = canvas ? (canvas.offsetWidth / _animW) : 1;
+            var leftPx = (_viewAngles.ox + 4 + labelW + 10) * scaleX;
+            btn.style.display = 'block';
+            btn.style.opacity = Math.min(1, (ty - Math.PI / 4) / (Math.PI / 4)).toFixed(2);
+            btn.style.left    = Math.round(leftPx) + 'px';
+        } else {
+            btn.style.display = 'none';
+        }
+    }
+}
+
 function _drawVectorLegend(ctx) {
     var anyVec = sim.showVecPos || sim.showVecVit || sim.showVecAcc || sim.showVecForces || sim.showVecSumF;
     if (!anyVec) return;

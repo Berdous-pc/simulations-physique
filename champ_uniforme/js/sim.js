@@ -61,6 +61,11 @@ var sim = {
     axisMode: 'ortho',  // 'ortho' | 'adapted'
     originX: 65,   // marge gauche (px)
     originY: 50,   // marge basse  (px)
+
+    /* ── Vue projection ── */
+    viewMode:   'oxy',   // 'oxy' | 'proj-x' | 'proj-y'
+    viewTrans:  null,    // null | { startT, fromMode, toMode }
+    splitPhase: false,   // séparer montée/descente (proj-y)
 };
 
 /* ── Facteurs de vitesse selon le cran du slider ── */

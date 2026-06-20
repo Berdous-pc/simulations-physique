@@ -94,7 +94,22 @@ function setVecDisplayMode(mode) {
     });
     _closeAllToolbarDropdowns();
 }
-function setViewMode(mode) { _closeAllToolbarDropdowns(); }
+function toggleSplitPhase() {
+    sim.splitPhase = !sim.splitPhase;
+    var btn = document.getElementById('btn-split-phase');
+    if (btn) btn.classList.toggle('active', sim.splitPhase);
+}
+
+function setViewMode(mode) {
+    var fromMode = sim.viewTrans ? sim.viewTrans.toMode : sim.viewMode;
+    if (mode !== fromMode) {
+        sim.viewTrans = { startT: Date.now() / 1000, fromMode: fromMode, toMode: mode };
+    }
+    document.querySelectorAll('#toolbar-drop-vue .toolbar-drop-item').forEach(function(btn) {
+        btn.classList.toggle('selected', btn.dataset.mode === mode);
+    });
+    _closeAllToolbarDropdowns();
+}
 
 /* Ferme les dropdowns toolbar si on clique en dehors */
 document.addEventListener('click', function(e) {

@@ -55,6 +55,27 @@ main {
   height: 100%;
 }
 
+/* ── Bouton overlay "Séparer la phase de descente" ── */
+.anim-phase-btn {
+  position: absolute;
+  display: none;
+  pointer-events: auto;
+  top: 4px;
+  left: 8px;
+  padding: 2px 8px;
+  font: bold clamp(10px, 1.2vw, 13px) 'Segoe UI', Arial, sans-serif;
+  color: #fff;
+  background: rgba(60,80,60,0.55);
+  border: 1px solid rgba(255,255,255,0.35);
+  border-radius: 4px;
+  cursor: pointer;
+  backdrop-filter: blur(2px);
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+.anim-phase-btn:hover  { background: rgba(80,110,80,0.75); }
+.anim-phase-btn.active { background: rgba(40,100,60,0.85); border-color: rgba(100,220,120,0.6); }
+
 /* ── Barre d'outils animation ──────────────────── */
 #anim-toolbar {
   flex: 0 0 auto;

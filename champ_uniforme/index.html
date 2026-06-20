@@ -29,9 +29,9 @@
         <div class="toolbar-dropdown-wrap">
           <button class="toolbar-btn toolbar-dropdown-btn" onclick="toggleToolbarDropdown('vue')">Vue ▾</button>
           <div class="toolbar-dropdown" id="toolbar-drop-vue">
-            <button class="toolbar-drop-item" onclick="setViewMode('oxy')">Plan Oxy</button>
-            <button class="toolbar-drop-item" onclick="setViewMode('proj-x')">Projection sur l'axe x</button>
-            <button class="toolbar-drop-item" onclick="setViewMode('proj-y')">Projection sur l'axe y</button>
+            <button class="toolbar-drop-item selected" data-mode="oxy"    onclick="setViewMode('oxy')">Plan Oxy</button>
+            <button class="toolbar-drop-item"          data-mode="proj-x" onclick="setViewMode('proj-x')">Projection sur l'axe x</button>
+            <button class="toolbar-drop-item"          data-mode="proj-y" onclick="setViewMode('proj-y')">Projection sur l'axe y</button>
           </div>
         </div>
         <div class="toolbar-dropdown-wrap">
@@ -97,6 +97,7 @@
     <!-- ── Zone animation ─────────────────────── -->
     <div id="anim-area">
       <canvas id="anim-canvas"></canvas>
+      <button id="btn-split-phase" class="anim-phase-btn" onclick="toggleSplitPhase()">Séparer la phase de descente</button>
     </div>
 
     <!-- ── Splitter ───────────────────────────── -->
