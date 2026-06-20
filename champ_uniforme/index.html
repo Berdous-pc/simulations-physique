@@ -29,9 +29,9 @@
         <div class="toolbar-dropdown-wrap">
           <button class="toolbar-btn toolbar-dropdown-btn" onclick="toggleToolbarDropdown('vecteurs')">Vecteurs ▾</button>
           <div class="toolbar-dropdown" id="toolbar-drop-vecteurs">
-            <button class="toolbar-drop-item" onclick="setVecDisplayMode('vecteur')">Vecteur</button>
-            <button class="toolbar-drop-item" onclick="setVecDisplayMode('composantes')">Composantes</button>
-            <button class="toolbar-drop-item" onclick="setVecDisplayMode('vecteur-composantes')">Vecteur et composantes</button>
+            <button class="toolbar-drop-item selected" data-mode="vecteur" onclick="setVecDisplayMode('vecteur')">Vecteur</button>
+            <button class="toolbar-drop-item" data-mode="composantes" onclick="setVecDisplayMode('composantes')">Composantes</button>
+            <button class="toolbar-drop-item" data-mode="vecteur-composantes" onclick="setVecDisplayMode('vecteur-composantes')">Vecteur et composantes</button>
           </div>
         </div>
         <div class="toolbar-dropdown-wrap">

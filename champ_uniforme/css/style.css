@@ -230,8 +230,8 @@ main {
   background: none;
   border: none;
   cursor: pointer;
-  color: #9aabba;
-  font-size: 11px;
+  color: #4a5a68;
+  font-size: 13px;
   padding: 0 1px;
   line-height: 1;
   transition: color 0.12s;
@@ -276,6 +276,8 @@ main {
 }
 .toolbar-drop-item:hover { background: #f0ede8; }
 .toolbar-drop-item.active { font-weight: 700; color: #2a6aaa; }
+.toolbar-drop-item.selected { font-weight: 700; color: #2a6aaa; }
+.toolbar-drop-item.selected::after { content: ' •'; }
 
 /* ── Dropdown détails d'une run ── */
 #run-tab-dropdown {
@@ -319,32 +321,27 @@ main {
   align-items: center;
 }
 
-.run-drop-vecs-label {
-  font-size: 10px;
-  font-weight: 700;
-  color: #7a8a96;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-right: 2px;
-}
-
 .run-drop-vec-btn {
-  padding: 2px 8px;
-  font-size: 11px;
-  font-weight: 700;
+  padding: 0 8px;
+  height: 32px;
   font-family: inherit;
   border-radius: 3px;
   cursor: pointer;
   border: 1px solid currentColor;
   background: transparent;
-  opacity: 0.5;
+  opacity: 0.45;
   transition: opacity 0.12s, background 0.12s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
-.run-drop-vec-btn:hover { opacity: 0.85; }
+.run-drop-vec-btn:hover { opacity: 0.8; }
 .run-drop-vec-btn.active {
   opacity: 1;
-  background: color-mix(in srgb, currentColor 15%, transparent);
+  background: color-mix(in srgb, currentColor 12%, transparent);
 }
+
+
 
 /* ── Splitter ────────────────────────────────── */
 #left-splitter {

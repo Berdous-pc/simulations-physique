@@ -88,9 +88,14 @@ function _closeAllToolbarDropdowns() {
     _openToolbarDropdown = null;
 }
 
-/* Stubs — fonctionnalité à implémenter */
-function setVecDisplayMode(mode) { _closeAllToolbarDropdowns(); }
-function setViewMode(mode)        { _closeAllToolbarDropdowns(); }
+function setVecDisplayMode(mode) {
+    vecDisplayMode = mode;
+    document.querySelectorAll('#toolbar-drop-vecteurs .toolbar-drop-item').forEach(function(btn) {
+        btn.classList.toggle('selected', btn.dataset.mode === mode);
+    });
+    _closeAllToolbarDropdowns();
+}
+function setViewMode(mode) { _closeAllToolbarDropdowns(); }
 
 /* Ferme les dropdowns toolbar si on clique en dehors */
 document.addEventListener('click', function(e) {
@@ -99,9 +104,7 @@ document.addEventListener('click', function(e) {
     }
     /* Ferme le dropdown run si on clique en dehors */
     if (_openDropdownId === null) return;
-    var dd = document.getElementById('run-tab-dropdown');
-    var tabs = document.getElementById('saved-runs-tabs');
-    if (dd && !dd.contains(e.target) && tabs && !tabs.contains(e.target)) {
+    if (!e.target.closest('#run-tab-dropdown') && !e.target.closest('#saved-runs-tabs')) {
         closeRunDropdown();
     }
 });
@@ -708,10 +711,6 @@ function _renderDropdown(run) {
 
     var vecsDiv = document.createElement('div');
     vecsDiv.className = 'run-drop-vecs';
-    var lbl = document.createElement('span');
-    lbl.className = 'run-drop-vecs-label';
-    lbl.textContent = 'Vecteurs :';
-    vecsDiv.appendChild(lbl);
 
     [
         { key: 'showVecPos', label: 'OM', color: '#2a6aaa' },
@@ -720,9 +719,9 @@ function _renderDropdown(run) {
     ].forEach(function(def) {
         var b = document.createElement('button');
         b.className = 'run-drop-vec-btn' + (run[def.key] ? ' active' : '');
-        b.textContent = def.label;
         b.style.color = def.color;
-        b.onclick = function() { toggleSavedVec(run.id, def.key); };
+        b.innerHTML = '<math><mover><mi>' + def.label + '</mi><mo>&#x2192;</mo></mover></math>';
+        b.onclick = function(e) { e.stopPropagation(); toggleSavedVec(run.id, def.key); };
         vecsDiv.appendChild(b);
     });
     dd.appendChild(vecsDiv);
