@@ -285,13 +285,126 @@
     /* ── Pied de page ──────────────────────────────── */
     .page-footer {
       text-align: center;
-      margin-top: clamp(32px, 5vw, 56px);
+      margin-top: clamp(14px, 2vw, 20px);
       padding-top: 16px;
       border-top: 1px solid #c8c0b4;
       font-size: clamp(11px, 1vw, 13px);
       color: #a0b0b8;
       flex-shrink: 0;
     }
+
+    /* ── Lien "À propos / Contact" dans le footer ──── */
+    #btn-about {
+      background: none;
+      border: none;
+      font: inherit;
+      font-size: clamp(11px, 1vw, 13px);
+      font-weight: 700;
+      color: #a0b0b8;
+      text-decoration: underline;
+      cursor: pointer;
+      padding: 0;
+    }
+    #btn-about:hover { color: #7a8a96; }
+
+    /* ── Modale À propos / Contact ──────────────────── */
+    #about-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(44, 62, 80, 0.45);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      padding: clamp(12px, 4vw, 24px);
+    }
+
+    #about-overlay.open { display: flex; }
+
+    #about-section {
+      position: relative;
+      max-width: 640px;
+      width: 100%;
+      max-height: 85vh;
+      overflow-y: auto;
+      background: #fdf8f0;
+      border: 1.5px solid #c8c0b4;
+      border-radius: 10px;
+      padding: clamp(18px, 2.5vw, 30px);
+      display: flex;
+      flex-wrap: wrap;
+      gap: clamp(18px, 3vw, 36px);
+      align-items: stretch;
+      box-shadow: 0 10px 32px rgba(0,0,0,0.25);
+    }
+
+    #about-close {
+      position: absolute;
+      top: 10px;
+      right: 12px;
+      background: none;
+      border: none;
+      font-size: 22px;
+      line-height: 1;
+      color: #a0b0b8;
+      cursor: pointer;
+      padding: 4px;
+    }
+    #about-close:hover { color: #2c3e50; }
+
+    #about-section .about-text {
+      flex: 2 1 320px;
+      min-width: 240px;
+    }
+
+    #about-section .about-contact {
+      flex: 1 1 220px;
+      min-width: 200px;
+      border-left: 1px solid #d8d0c8;
+      padding-left: clamp(16px, 2.5vw, 28px);
+    }
+
+    @media (max-width: 640px) {
+      #about-section .about-contact {
+        border-left: none;
+        border-top: 1px solid #d8d0c8;
+        padding-left: 0;
+        padding-top: 16px;
+      }
+    }
+
+    #about-section h2 {
+      font-size: clamp(15px, 1.4vw, 18px);
+      font-weight: 700;
+      color: #2c3e50;
+      margin-bottom: 10px;
+    }
+
+    #about-section p {
+      font-size: clamp(12px, 1.1vw, 14px);
+      color: #5a6a78;
+      line-height: 1.6;
+    }
+
+    #about-section .about-text-secondary {
+      margin-top: 12px;
+    }
+
+    .btn-contact {
+      display: inline-block;
+      margin-top: 12px;
+      padding: 9px 18px;
+      background: #2a6aaa;
+      color: #fff;
+      font-size: clamp(12px, 1.05vw, 14px);
+      font-weight: 700;
+      text-decoration: none;
+      border-radius: 7px;
+      transition: background 0.15s, transform 0.1s;
+    }
+
+    .btn-contact:hover  { background: #1f5486; }
+    .btn-contact:active { transform: scale(0.97); }
   </style>
 </head>
 <body>
@@ -666,8 +779,50 @@
 
   </div><!-- /.page-body -->
 
+  <!-- ══════════════════════════════════════════════
+       À PROPOS / CONTACT (modale)
+  ══════════════════════════════════════════════ -->
+  <div id="about-overlay">
+    <section id="about-section">
+      <button id="about-close" aria-label="Fermer">&times;</button>
+      <div class="about-text">
+        <h2>À propos</h2>
+        <p>
+          Ce site rassemble des simulations interactives de physique-chimie pour le lycée
+          (Seconde, Première, Terminale). L'objectif est de proposer aux professeurs quelques outils pour
+          illustrer les concepts étudiés en cours avec les élèves. Le site est encore en construction,
+          d'autres simulations viendront s'ajouter avec le temps.
+        </p>
+        <p class="about-text-secondary">
+          Les simulations sont optimisées pour fonctionner sur Chrome et Firefox, ne pas utiliser sur
+          Internet Explorer.
+        </p>
+        <p class="about-text-secondary">
+          Je suis professeur de physique-chimie au lycée Joliot-Curie de Nanterre. Je développe ce site sur
+          mon temps libre, seul, avec l'aide de l'IA (Claude).
+        </p>
+        <p class="about-text-secondary">
+          Je suis preneur de toute remarque, idée de nouvelle simulation ou fonctionnalité, ou signalement
+          de bug.
+        </p>
+      </div>
+      <div class="about-contact">
+        <h2>Contact</h2>
+        <p>
+          Un bug, une remarque, une suggestion ? N'hésitez pas à m'envoyer un mail à l'adresse suivante :<br>
+          berdous-pc@hotmail.com
+        </p>
+        <a class="btn-contact" href="mailto:berdous-pc@hotmail.com?subject=Simulations%20Physique-Chimie%20-%20Contact">
+          Envoyer un message
+        </a>
+      </div>
+    </section>
+  </div>
+
   <footer class="page-footer">
     Mathieu Berdous &nbsp;·&nbsp; CC BY-NC 4.0 &nbsp;·&nbsp; Physique-Chimie Lycée
+    &nbsp;·&nbsp;
+    <button id="btn-about">À propos · Contact</button>
   </footer>
 
   <script>
@@ -736,6 +891,29 @@
 
     // État initial
     applyFilters();
+  })();
+  </script>
+
+  <script>
+  // ═══════════════════════════════════════════════════
+  //  Modale À propos / Contact
+  // ═══════════════════════════════════════════════════
+  (function () {
+    const overlay  = document.getElementById('about-overlay');
+    const btnOpen  = document.getElementById('btn-about');
+    const btnClose = document.getElementById('about-close');
+
+    function openModal()  { overlay.classList.add('open'); }
+    function closeModal() { overlay.classList.remove('open'); }
+
+    btnOpen.addEventListener('click', openModal);
+    btnClose.addEventListener('click', closeModal);
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) closeModal();
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') closeModal();
+    });
   })();
   </script>
 
