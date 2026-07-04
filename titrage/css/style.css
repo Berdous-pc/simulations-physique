@@ -775,6 +775,7 @@ body.titrage-cond #conductimetre-svg {
 /* Zone graphique : prend tout l'espace restant */
 /* ── Zone graphiques (sous l'équation, à droite du schéma) ── */
 #titrage-charts-zone {
+  position: relative;  /* ancrage pour l'overlay #zoom-becher-panel */
   flex: 1;
   min-height: 0;
   display: flex;
@@ -1253,25 +1254,8 @@ body.titrage-cond #conductimetre-svg {
   gap: 0;
   align-items: center;
 }
-.especes-legende-zoom-col {
-  flex: 0 0 40%;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  justify-content: center;
-}
-#btn-zoom-becher {
-  width: 100%;
-  white-space: normal;
-  line-height: 1.3;
-  display: block;
-  font-size: clamp(9px, 1.1vw, 13px) !important;
-  padding: 4px 3px;
-  text-align: center;
-}
 .especes-legende-list {
-  flex: 0 0 60%;
+  flex: 1 1 100%;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -1317,11 +1301,13 @@ body.titrage-cond #conductimetre-svg {
    ZOOM BÉCHER
 ══════════════════════════════════════════════════════════════════════════ */
 #zoom-becher-panel {
-  position: relative;
+  position: absolute;
+  inset: 0;
+  z-index: 20;       /* au premier plan, par-dessus les graphes éventuellement affichés */
   display: flex;
   align-items: center;
   justify-content: center;
-  background: transparent;
+  background: #f5f1ea;
   border: 2px solid #4a90d9;
   border-radius: 6px;
   margin: 8px;

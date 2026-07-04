@@ -259,9 +259,6 @@
           <div class="especes-legende-title">Légende des espèces</div>
           <div class="especes-legende-body">
             <div class="especes-legende-list" id="especes-legende-list"></div>
-            <div class="especes-legende-zoom-col">
-              <button id="btn-zoom-becher" class="btn btn-toggle-one" onclick="toggleZoomBecher()" style="display:none;">Zoom<br>bécher</button>
-            </div>
           </div>
         </div>
       </div><!-- /#burette-box -->
@@ -509,7 +506,7 @@
           <label>C<sub>titrante</sub> (mol/L)</label>
           <div class="conc-row">
             <span class="conc-prefix">C =</span>
-              <input type="number" id="conc-titrante-mantisse" class="conc-mantisse" min="1" max="9.9" step="0.1" value="1.00">
+              <input type="number" id="conc-titrante-mantisse" class="conc-mantisse" min="1" max="9.9" step="0.1" value="2.00">
             <span class="conc-times">× 10</span>
             <select id="conc-titrante-exp" class="conc-exp-sel">
               <option value="-1">⁻¹</option>
@@ -586,10 +583,11 @@
             <option value="2.0">2,0 mL</option>
           </select>
         </div>
-        <button class="btn btn-toggle-one" id="btn-cacher-titre" onclick="toggleCacherTitreTitrage()">Cacher la concentration de la solution titrée</button>
-        <button class="btn btn-toggle-one active" id="btn-toggle-graph-ph" onclick="toggleGraphPH()" style="display:none;">Afficher l'évolution du pH</button>
         <button class="btn btn-toggle-one" id="btn-toggle-graph-n" onclick="toggleGraphN()">Afficher les quantités de matière</button>
+        <button class="btn btn-toggle-one active" id="btn-toggle-graph-ph" onclick="toggleGraphPH()" style="display:none;">Afficher l'évolution du pH</button>
+        <button class="btn btn-toggle-one" id="btn-zoom-becher" onclick="toggleZoomBecher()">Zoom bécher</button>
         <button class="btn btn-toggle-one" id="btn-toggle-especes" onclick="toggleEspeces()">Représenter les espèces chimiques</button>
+        <button class="btn btn-toggle-one" id="btn-cacher-titre" onclick="toggleCacherTitreTitrage()">Cacher la concentration de la solution titrée</button>
 
         <hr class="sep">
 
