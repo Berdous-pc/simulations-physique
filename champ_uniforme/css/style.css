@@ -939,6 +939,8 @@ main {
   text-transform: uppercase;
   letter-spacing: 1px;
   color: #7a8a96;
+  margin-left: auto;
+  margin-right: 10px;
 }
 
 .panel-hint-toggle {
@@ -952,6 +954,21 @@ main {
   transition: transform 0.2s;
 }
 .panel-hint-toggle:hover { color: #2a6aaa; }
+
+.panel-hint-menu-btn {
+  background: #f0f4f7;
+  border: 1px solid #c8d4dc;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  color: #4a5a68;
+  padding: 4px 9px;
+  line-height: 1.2;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.panel-hint-menu-btn:hover { background: #dde6ec; color: #2a6aaa; }
 
 .panel-hint-body {
   font-size: clamp(11px, 1.1vw, 14px);

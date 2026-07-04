@@ -50,6 +50,7 @@
 
   <!-- Panneau droit -->
   <div id="panel">
+   <div id="panel-body">
 
     <!-- Mode d'affichage des rayons -->
     <div>
@@ -219,6 +220,23 @@
       </div>
     </div>
 
+   </div><!-- fin #panel-body -->
+
+    <!-- ── Bandeau Instructions ────────────────── -->
+    <div class="panel-hint collapsed" id="panel-hint">
+      <div class="panel-hint-header">
+        <button class="panel-hint-menu-btn" onclick="location.href='../index.html'" title="Retour au menu principal">☰ Menu</button>
+        <span class="panel-hint-title">Instructions</span>
+        <button class="panel-hint-toggle" onclick="toggleHint()" title="Afficher les instructions">▲</button>
+      </div>
+      <div class="panel-hint-body">
+        Faites glisser l'objet, la lentille ou l'écran sur l'axe optique, ou réglez la distance focale f'
+        et la taille de l'objet AB avec les curseurs. Choisissez une lentille <strong>convergente</strong>
+        ou <strong>divergente</strong>. Activez la <em>Relation de conjugaison</em> pour vérifier
+        les calculs, ou passez en mode <em>Propagation</em> pour visualiser les rayons se déplacer en temps réel.
+      </div>
+    </div>
+
   </div><!-- /panel -->
 </main>
 
@@ -230,6 +248,6 @@
 <script src="js/ui.js"></script>
 
 <script data-goatcounter="https://berdous-pc.goatcounter.com/count"
-        async src="//gc.zgo.at/count.js"></script>
+        async src="https://gc.zgo.at/count.js"></script>
 </body>
 </html>

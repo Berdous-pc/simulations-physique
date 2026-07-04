@@ -28,6 +28,7 @@
 
   <!-- Panneau droit -->
   <div id="panel">
+   <div id="panel-body">
 
     <!-- Mode système : Libre / Lunette -->
     <div>
@@ -179,6 +180,23 @@
       Calcul du grossissement à partir des distances focales. Attention, cela ne correspond donc au rapport entre α' et α que pour des petits angles, ce qui n'est pas le cas dans cette simulation.
     </div>
 
+   </div><!-- fin #panel-body -->
+
+    <!-- ── Bandeau Instructions ────────────────── -->
+    <div class="panel-hint collapsed" id="panel-hint">
+      <div class="panel-hint-header">
+        <button class="panel-hint-menu-btn" onclick="location.href='../index.html'" title="Retour au menu principal">☰ Menu</button>
+        <span class="panel-hint-title">Instructions</span>
+        <button class="panel-hint-toggle" onclick="toggleHint()" title="Afficher les instructions">▲</button>
+      </div>
+      <div class="panel-hint-body">
+        En mode <strong>Libre</strong>, déplacez les deux lentilles indépendamment sur l'axe optique.
+        En mode <strong>Lunette</strong>, réglez les distances focales f'₁ et f'₂ de l'objectif et de
+        l'oculaire pour former une lunette afocale. Ajustez l'angle α de l'objet à l'infini et activez
+        l'<em>œil</em> pour visualiser l'image finale observée.
+      </div>
+    </div>
+
   </div><!-- /panel -->
 </main>
 
@@ -190,6 +208,6 @@
 <script src="js/ui.js"></script>
 
 <script data-goatcounter="https://berdous-pc.goatcounter.com/count"
-        async src="//gc.zgo.at/count.js"></script>
+        async src="https://gc.zgo.at/count.js"></script>
 </body>
 </html>

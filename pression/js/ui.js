@@ -26,6 +26,12 @@ var RATE_PERIOD    = 100; // ms (10 Hz)
 //  Boucle d'animation (RAF)
 // ══════════════════════════════════════════════════════════════════════
 
+// ── Bandeau instructions ───────────────────────────────────────────────
+function toggleHint() {
+  var hint = document.getElementById('panel-hint');
+  if (hint) hint.classList.toggle('collapsed');
+}
+
 function loop(ts) {
   requestAnimationFrame(loop);
 

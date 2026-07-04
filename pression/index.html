@@ -147,10 +147,17 @@
 
     </div><!-- fin #panel-body -->
 
-    <!-- ── Hint bas de panneau ────────────────── -->
-    <div class="panel-hint">
-      Chaque choc d'une molécule sur une paroi exerce une force.
-      La <strong>pression</strong> macroscopique P résulte de la somme statistique de ces chocs.
+    <!-- ── Bandeau Instructions ────────────────── -->
+    <div class="panel-hint collapsed" id="panel-hint">
+      <div class="panel-hint-header">
+        <button class="panel-hint-menu-btn" onclick="location.href='../index.html'" title="Retour au menu principal">☰ Menu</button>
+        <span class="panel-hint-title">Instructions</span>
+        <button class="panel-hint-toggle" onclick="toggleHint()" title="Afficher les instructions">▲</button>
+      </div>
+      <div class="panel-hint-body">
+        Chaque choc d'une molécule sur une paroi exerce une force.
+        La <strong>pression</strong> macroscopique P résulte de la somme statistique de ces chocs.
+      </div>
     </div>
 
   </div><!-- fin #panel -->
@@ -162,6 +169,6 @@
 <script src="js/recipient.js"></script>
 <script src="js/ui.js"></script>
 <script data-goatcounter="https://berdous-pc.goatcounter.com/count"
-        async src="//gc.zgo.at/count.js"></script>
+        async src="https://gc.zgo.at/count.js"></script>
 </body>
 </html>

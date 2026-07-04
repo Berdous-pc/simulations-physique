@@ -219,4 +219,9 @@ function init() {
   requestAnimationFrame(loop);
 }
 
+function toggleHint() {
+  var hint = document.getElementById('panel-hint');
+  if (hint) hint.classList.toggle('collapsed');
+}
+
 init();

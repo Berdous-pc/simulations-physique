@@ -467,3 +467,8 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 setTimeout(() => { document.getElementById('drag-hint').classList.add('hidden'); }, 5000);
+
+function toggleHint() {
+  var hint = document.getElementById('panel-hint');
+  if (hint) hint.classList.toggle('collapsed');
+}
