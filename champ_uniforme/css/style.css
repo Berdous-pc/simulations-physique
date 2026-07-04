@@ -761,6 +761,42 @@ main {
   cursor: pointer;
 }
 
+/* ── Saisie scientifique (mantisse × 10^n) ─── */
+.sci-input-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: nowrap;
+  margin-top: 4px;
+}
+.sci-prefix, .sci-times, .sci-unit {
+  font-size: clamp(12px, 1.1vw, 14px);
+  color: #2c3e50;
+  white-space: nowrap;
+}
+.sci-mantisse {
+  width: 58px;
+  padding: 5px 4px;
+  font-size: clamp(12px, 1.1vw, 14px);
+  border: 1px solid #c8c0b4;
+  border-radius: 4px;
+  text-align: center;
+  font-family: inherit;
+  color: #2a5080;
+  font-weight: 600;
+}
+.sci-exp-sel {
+  padding: 5px 4px;
+  font-size: clamp(12px, 1.1vw, 14px);
+  border: 1px solid #c8c0b4;
+  border-radius: 4px;
+  background: #faf9f6;
+  color: #2a5080;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+
 /* ── Slider vent (bicolore via JS) ─────────── */
 #sl-wind {
   -webkit-appearance: none;
@@ -936,7 +972,7 @@ main {
    BOUTON SAUVEGARDER
 ══════════════════════════════════════════════════ */
 
-#btn-save {
+#btn-save, #btn-e-save {
   background: #1a5c3a;
   color: #fff;
   font-size: clamp(11px, 1.1vw, 14px);
@@ -944,8 +980,8 @@ main {
   border: none;
   transition: background 0.15s, opacity 0.15s;
 }
-#btn-save:not(:disabled):hover { background: #134a2e; }
-#btn-save:disabled {
+#btn-save:not(:disabled):hover, #btn-e-save:not(:disabled):hover { background: #134a2e; }
+#btn-save:disabled, #btn-e-save:disabled {
   opacity: 0.38;
   cursor: not-allowed;
 }

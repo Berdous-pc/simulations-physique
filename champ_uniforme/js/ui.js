@@ -38,6 +38,24 @@ function loop(ts) {
 
         drawAnim();
         drawGraph();
+
+    } else if (activeTab === 'champ-electrique') {
+        var _wasEndedE = simE.ended;
+        advanceSimE(dtReal);
+        if (!_wasEndedE && simE.ended) _updatePlayBtnE();
+
+        if (_replayPlayingE) {
+            _replayTE += dtReal * simE.speedFactor;
+            if (_replayTE >= _replayMaxTE) {
+                _replayTE = _replayMaxTE;
+                _replayPlayingE = false;
+                var btnRE = document.getElementById('btn-tout-rejouer');
+                if (btnRE) btnRE.classList.remove('active');
+            }
+        }
+
+        drawAnimE();
+        drawGraphE();
     }
 }
 
@@ -55,6 +73,9 @@ function init() {
     resetSim();
     _syncAllUI();
     renderSavedRuns();
+    resetSimE();
+    _updateCurrentRunColorE();
+    _syncAllUIE();
     requestAnimationFrame(loop);
 
     var tabsEl = document.getElementById('saved-runs-tabs');
@@ -134,6 +155,7 @@ window.addEventListener('resize', function () {
     resizeGraphCanvas();
     _updateTabsScrollBtns();
     computeScale(_animW, _animH);
+    computeScaleE(_animW, _animH);
 });
 
 /* ─────────────────────────────────────────────────
@@ -147,6 +169,20 @@ function setMainTab(tab) {
         if (sec) sec.style.display = (t === tab) ? '' : 'none';
         if (btn) btn.classList.toggle('active', t === tab);
     });
+    /* Bandeau instructions */
+    var hints = document.querySelectorAll('.panel-hint');
+    hints.forEach(function(h) { h.style.display = 'none'; });
+    var activeHint = document.getElementById('panel-hint-' + tab);
+    if (activeHint) activeHint.style.display = '';
+
+    /* Runs sauvegardées */
+    if (tab === 'champ-electrique') {
+        renderSavedRunsE();
+        _buildGraphCtrl();
+    } else {
+        renderSavedRuns();
+        _buildGraphCtrl();
+    }
     window.location.hash = '#' + tab;
 }
 
@@ -254,6 +290,10 @@ function _regenerateChronoSnaps() {
 /* ─────────────────────────────────────────────────
    Vecteurs
 ───────────────────────────────────────────────── */
+function toggleFieldG(val) {
+    sim.showFieldG = val;
+}
+
 function toggleVecPos() {
     sim.showVecPos = !sim.showVecPos;
     document.getElementById('btn-vec-pos').classList.toggle('active', sim.showVecPos);
@@ -448,6 +488,7 @@ var _replayT       = 0;
 var _replayMaxT    = 0;
 
 function toutRejouer() {
+    if (activeTab === 'champ-electrique') { toutRejouerE(); return; }
     if (savedRuns.length === 0) return;
     _replayMaxT = 0;
     for (var i = 0; i < savedRuns.length; i++) {
@@ -462,6 +503,25 @@ function toutRejouer() {
     sim.paused = true;
     resetSim();
     _updatePlayBtn();
+    var btn = document.getElementById('btn-tout-rejouer');
+    if (btn) btn.classList.add('active');
+}
+
+function toutRejouerE() {
+    if (savedRunsE.length === 0) return;
+    _replayMaxTE = 0;
+    for (var i = 0; i < savedRunsE.length; i++) {
+        var data = savedRunsE[i].graphData;
+        if (data.length > 0) {
+            var last = data[data.length - 1].t;
+            if (last > _replayMaxTE) _replayMaxTE = last;
+        }
+    }
+    _replayTE = 0;
+    _replayPlayingE = true;
+    simE.paused = true;
+    resetSimE();
+    _updatePlayBtnE();
     var btn = document.getElementById('btn-tout-rejouer');
     if (btn) btn.classList.add('active');
 }
@@ -514,6 +574,7 @@ function adapterVueRun(id) {
 }
 
 function adapterVue() {
+    if (activeTab === 'champ-electrique') { expandBoundsGlobalE(); return; }
     if (savedRuns.length === 0) return;
 
     /* ── Animation : étendre xMax / yMax ── */
@@ -821,4 +882,446 @@ function toggleSavedVec(id, key) {
     if (!run) return;
     run[key] = !run[key];
     _renderDropdown(run);
+}
+
+/* ══════════════════════════════════════════════════
+   CHAMP ÉLECTRIQUE — handlers UI
+══════════════════════════════════════════════════ */
+
+function togglePauseE() {
+    if (simE.ended) {
+        resetSimAnimE();
+        simE.paused = false;
+    } else {
+        simE.paused = !simE.paused;
+    }
+    _updatePlayBtnE();
+}
+
+function _updatePlayBtnE() {
+    var btn = document.getElementById('btn-e-playpause');
+    if (!btn) return;
+    if (simE.paused || simE.ended) {
+        btn.textContent = '▶ Lancer';
+        btn.className   = 'btn btn-play';
+    } else {
+        btn.textContent = '⏸ Pause';
+        btn.className   = 'btn btn-pause';
+    }
+    var btnSave = document.getElementById('btn-e-save');
+    if (btnSave) btnSave.disabled = !simE.ended;
+}
+
+function resetSimAnimE() {
+    _replayPlayingE = false;
+    simE.paused = true;
+    resetSimE();
+    expandBoundsGlobalE();
+    _updateCurrentRunColorE();
+    _updatePlayBtnE();
+}
+
+function _regenerateChronoSnapsE() {
+    simE.chronoSnaps = [];
+    var nextT = 0;
+    for (var i = 0; i < simE.graphData.length; i++) {
+        var d = simE.graphData[i];
+        if (d.t >= nextT) {
+            simE.chronoSnaps.push({x: d.x, y: d.y, vx: d.vx, vy: d.vy, ax: d.ax, ay: d.ay, t: d.t});
+            nextT += simE.deltaT;
+        }
+    }
+    simE.nextChronoTime = nextT;
+}
+
+function setDisplayModeE(mode) {
+    simE.displayMode = mode;
+    ['chrono','both','trajectory'].forEach(function(m) {
+        var btn = document.getElementById('btn-e-disp-' + m);
+        if (btn) btn.classList.toggle('active', m === mode);
+    });
+    var row = document.getElementById('e-deltat-row');
+    if (row) row.style.display = (mode === 'trajectory') ? 'none' : '';
+    if (mode === 'chrono' || mode === 'both') {
+        _regenerateChronoSnapsE();
+    }
+}
+
+var _SPEED_LABELS_E = ['2 ns/s', '8 ns/s', '30 ns/s', '100 ns/s'];
+
+function onSliderSpeedE(v) {
+    var idx = parseInt(v);
+    simE.speedFactor = SPEED_VALUES_E[idx] || SPEED_VALUES_E[0];
+    _setTxt('lbl-e-speed', _SPEED_LABELS_E[idx] || '0,02');
+}
+
+function onSliderDeltaTE(v) {
+    simE.deltaT = parseFloat(v) * 1e-9;
+    _setTxt('lbl-e-deltat', parseFloat(v).toFixed(1).replace('.', ','));
+    if (simE.displayMode === 'chrono' || simE.displayMode === 'both') {
+        _regenerateChronoSnapsE();
+    }
+}
+
+function setArmatureModeE(mode) {
+    simE.armatureMode = mode;
+    document.getElementById('btn-e-arm-parallel').classList.toggle('active', mode === 'parallel-x');
+    document.getElementById('btn-e-arm-perp').classList.toggle('active',     mode === 'perp-x');
+    document.getElementById('e-row-L').style.display   = (mode === 'parallel-x') ? '' : 'none';
+    document.getElementById('e-row-gap').style.display = (mode === 'perp-x')     ? '' : 'none';
+    resetSimAnimE();
+}
+
+function onSelectParticleE(v) {
+    simE.particleIdx = parseInt(v);
+    resetSimAnimE();
+}
+
+function onSliderEV0(v) {
+    simE.v0 = parseFloat(v) * 1e6;
+    _setTxt('lbl-e-v0', parseFloat(v).toFixed(1).replace('.', ','));
+    resetSimAnimE();
+}
+
+function onSliderEAlpha(v) {
+    simE.alpha = parseFloat(v);
+    _setTxt('lbl-e-alpha', parseInt(v));
+    resetSimAnimE();
+}
+
+function onEFieldChange() {
+    var mant = parseFloat(document.getElementById('e-field-mantisse').value);
+    var exp  = parseInt(document.getElementById('e-field-exp').value);
+    if (isNaN(mant)) mant = 1.0;
+    mant = Math.round(mant * 10) / 10;
+    simE.E = mant * Math.pow(10, exp);
+    resetSimAnimE();
+}
+
+function _updateETrack(v) {
+    var sl = document.getElementById('sl-e-field');
+    if (!sl) return;
+    var min = parseFloat(sl.min), max = parseFloat(sl.max);
+    var pct = (v - min) / (max - min) * 100;
+    var pct0 = (0 - min) / (max - min) * 100;
+    var left = Math.min(pct, pct0), right = 100 - Math.max(pct, pct0);
+    var col = v >= 0 ? '#e06060' : '#4a90d9';
+    sl.style.background =
+        'linear-gradient(to right,' +
+        '#dde3e8 0%, #dde3e8 ' + left + '%,' +
+        col + ' ' + left + '%,' +
+        col + ' ' + (100 - right) + '%,' +
+        '#dde3e8 ' + (100 - right) + '%, #dde3e8 100%)';
+}
+
+function _restoreEFieldWidget(E) {
+    var absE = Math.abs(E);
+    var exp  = absE > 0 ? Math.floor(Math.log10(absE)) : 4;
+    exp = Math.max(3, Math.min(5, exp));
+    var mant = E / Math.pow(10, exp);   // conserve le signe
+    mant = Math.round(mant * 10) / 10;
+    var mantEl = document.getElementById('e-field-mantisse');
+    var expEl  = document.getElementById('e-field-exp');
+    if (mantEl) mantEl.value = mant.toFixed(1);
+    if (expEl)  expEl.value  = exp;
+}
+
+function onSliderEL(v) {
+    simE.L = parseFloat(v);
+    _setTxt('lbl-e-L', parseFloat(v).toFixed(2).replace('.', ','));
+    resetSimAnimE();
+}
+
+function onSliderEGap(v) {
+    simE.e = parseFloat(v);
+    _setTxt('lbl-e-gap', parseFloat(v).toFixed(2).replace('.', ','));
+    resetSimAnimE();
+}
+
+function toggleFieldECb(val) {
+    simE.showFieldE = val;
+}
+
+function toggleVecPosE()    { simE.showVecPos    = !simE.showVecPos;    document.getElementById('btn-e-vec-pos').classList.toggle('active',    simE.showVecPos); }
+function toggleVecVitE()    { simE.showVecVit    = !simE.showVecVit;    document.getElementById('btn-e-vec-vit').classList.toggle('active',    simE.showVecVit); }
+function toggleVecAccE()    { simE.showVecAcc    = !simE.showVecAcc;    document.getElementById('btn-e-vec-acc').classList.toggle('active',    simE.showVecAcc); }
+function toggleVecForcesE() { simE.showVecForces = !simE.showVecForces; document.getElementById('btn-e-vec-forces').classList.toggle('active', simE.showVecForces); }
+function toggleVecSumFE()   { simE.showVecSumF   = !simE.showVecSumF;   document.getElementById('btn-e-vec-sumf').classList.toggle('active',   simE.showVecSumF); }
+
+function sauvegarderRunE() {
+    if (!simE.ended || savedRunsE.length >= MAX_SAVED_RUNS || !_currentRunColorE) return;
+    var color = _currentRunColorE;
+    savedRunsE.push({
+        id: _nextSaveIdE++,
+        color: color,
+        particleIdx: simE.particleIdx,
+        q: simE.q, mass: simE.mass,
+        v0: simE.v0, alpha: simE.alpha,
+        E: simE.E,
+        armatureMode: simE.armatureMode,
+        L: simE.L, e: simE.e,
+        displayMode: simE.displayMode,
+        trajPoints:     simE.trajPoints.slice(),
+        chronoSnaps:    simE.chronoSnaps.map(function(s) { return Object.assign({}, s); }),
+        graphData:      simE.graphData.map(function(d) { return Object.assign({}, d); }),
+        analysisPoints: simE.analysisPoints.map(function(p) { return Object.assign({}, p); }),
+        xMax:         simE._ownXMax,
+        yMax:         simE._ownYMax,
+        maxT:         simE._ownMaxT,
+        graphBounds:  JSON.parse(JSON.stringify(simE._ownGraphBounds || simE.graphBounds)),
+        vecScaleVit:   simE.vecScaleVit,
+        vecScaleAcc:   simE.vecScaleAcc,
+        vecScaleForce: simE.vecScaleForce,
+        showVecPos:    simE.showVecPos,
+        showVecVit:    simE.showVecVit,
+        showVecAcc:    simE.showVecAcc,
+        showVecForces: simE.showVecForces,
+        showVecSumF:   simE.showVecSumF,
+        /* Compatibilité draw.js chrono snaps */
+        g: 0, windForce: 0, useFriction: false, k: 0,
+        hidden: false
+    });
+    _updateCurrentRunColorE();
+    renderSavedRunsE();
+    resetSimAnimE();
+}
+
+var _openDropdownIdE = null;
+
+function supprimerSauvegardeRunE(id) {
+    if (_openDropdownIdE === id) closeRunDropdownE();
+    savedRunsE = savedRunsE.filter(function(r) { return r.id !== id; });
+    _updateCurrentRunColorE();
+    expandBoundsGlobalE();
+    renderSavedRunsE();
+}
+
+function masquerSauvegardeRunE(id) {
+    var run = savedRunsE.find(function(r) { return r.id === id; });
+    if (run) run.hidden = !run.hidden;
+    expandBoundsGlobalE();
+    renderSavedRunsE();
+}
+
+function expandBoundsGlobalE() {
+    simE.xMax = simE._ownXMax || simE.xMax;
+    simE.yMax = simE._ownYMax || simE.yMax;
+    simE.maxT = simE._ownMaxT || simE.maxT;
+    var gb = JSON.parse(JSON.stringify(simE._ownGraphBounds || simE.graphBounds || {}));
+    for (var i = 0; i < savedRunsE.length; i++) {
+        var r = savedRunsE[i];
+        if (r.hidden) continue;
+        if (r.xMax > simE.xMax) simE.xMax = r.xMax;
+        if (r.yMax > simE.yMax) simE.yMax = r.yMax;
+        if (r.maxT > simE.maxT) simE.maxT = r.maxT;
+        if (r.graphBounds && gb && Object.keys(gb).length > 0) {
+            Object.keys(gb).forEach(function(key) {
+                if (r.graphBounds[key]) {
+                    if (r.graphBounds[key].min < gb[key].min) gb[key].min = r.graphBounds[key].min;
+                    if (r.graphBounds[key].max > gb[key].max) gb[key].max = r.graphBounds[key].max;
+                }
+            });
+        }
+    }
+    simE.graphBounds = gb;
+    computeScaleE(_animW, _animH);
+}
+
+function renderSavedRunsE() {
+    var tabs = document.getElementById('saved-runs-tabs');
+    if (!tabs) return;
+    tabs.innerHTML = '';
+
+    if (savedRunsE.length === 0) {
+        var empty = document.createElement('span');
+        empty.className = 'toolbar-empty';
+        empty.textContent = 'Appuyer sur Sauvegarder à la fin d\'une simulation pour la conserver.';
+        tabs.appendChild(empty);
+        return;
+    }
+
+    for (var i = 0; i < savedRunsE.length; i++) {
+        (function(run, idx) {
+            var tab = document.createElement('div');
+            tab.className = 'run-tab' + (run.hidden ? ' masque' : '') + (_openDropdownIdE === run.id ? ' expanded' : '');
+            tab.dataset.id = run.id;
+
+            var swatch = document.createElement('span');
+            swatch.className = 'run-tab-swatch';
+            swatch.style.background = run.color;
+            tab.appendChild(swatch);
+
+            var num = document.createElement('span');
+            num.className = 'run-tab-num';
+            num.textContent = 'n°' + (idx + 1);
+            tab.appendChild(num);
+
+            var btnHide = document.createElement('button');
+            btnHide.className = 'run-tab-btn';
+            btnHide.title = run.hidden ? 'Afficher' : 'Masquer';
+            btnHide.textContent = '👁';
+            btnHide.onclick = function(e) { e.stopPropagation(); masquerSauvegardeRunE(run.id); };
+            tab.appendChild(btnHide);
+
+            var btnAdapt = document.createElement('button');
+            btnAdapt.className = 'run-tab-btn';
+            btnAdapt.title = 'Adapter la vue à cette simulation';
+            btnAdapt.textContent = '🔍';
+            btnAdapt.onclick = function(e) { e.stopPropagation(); adapterVueRunE(run.id); };
+            tab.appendChild(btnAdapt);
+
+            var btnExp = document.createElement('button');
+            btnExp.className = 'run-tab-btn';
+            btnExp.title = 'Détails';
+            btnExp.textContent = _openDropdownIdE === run.id ? '▴' : '▾';
+            btnExp.onclick = function(e) { e.stopPropagation(); toggleRunDropdownE(run.id); };
+            tab.appendChild(btnExp);
+
+            var btnDel = document.createElement('button');
+            btnDel.className = 'run-tab-btn run-tab-del';
+            btnDel.title = 'Supprimer';
+            btnDel.textContent = '✕';
+            btnDel.onclick = function(e) { e.stopPropagation(); supprimerSauvegardeRunE(run.id); };
+            tab.appendChild(btnDel);
+
+            tabs.appendChild(tab);
+        })(savedRunsE[i], i);
+    }
+
+    if (_openDropdownIdE !== null) {
+        var openRun = savedRunsE.find(function(r) { return r.id === _openDropdownIdE; });
+        if (openRun) _renderDropdownE(openRun);
+        else closeRunDropdownE();
+    }
+    setTimeout(_updateTabsScrollBtns, 0);
+}
+
+function toggleRunDropdownE(id) {
+    if (_openDropdownIdE === id) {
+        closeRunDropdownE();
+    } else {
+        _openDropdownIdE = id;
+        var run = savedRunsE.find(function(r) { return r.id === id; });
+        if (!run) return;
+        _renderDropdownE(run);
+        renderSavedRunsE();
+    }
+}
+
+function closeRunDropdownE() {
+    _openDropdownIdE = null;
+    var dd = document.getElementById('run-tab-dropdown');
+    if (dd) dd.style.display = 'none';
+    renderSavedRunsE();
+}
+
+function _renderDropdownE(run) {
+    var dd = document.getElementById('run-tab-dropdown');
+    if (!dd) return;
+    var tab = document.querySelector('.run-tab[data-id="' + run.id + '"]');
+    if (tab) {
+        var toolbar = document.getElementById('anim-toolbar');
+        var tabRect = tab.getBoundingClientRect();
+        var tbRect  = toolbar.getBoundingClientRect();
+        var left = tabRect.left - tbRect.left;
+        left = Math.max(0, Math.min(left, tbRect.width - 220));
+        dd.style.left = left + 'px';
+    }
+    dd.style.display = 'block';
+    dd.innerHTML = '';
+
+    var pName = PARTICLES[run.particleIdx] ? PARTICLES[run.particleIdx].name : 'Particule';
+    var paramsDiv = document.createElement('div');
+    paramsDiv.className = 'run-drop-params';
+    var l1 = document.createElement('div'); l1.className = 'run-drop-line';
+    var l2 = document.createElement('div'); l2.className = 'run-drop-line';
+    [pName,
+     'v₀ = ' + (run.v0 / 1e6).toFixed(1) + ' ×10⁶ m/s',
+     'α = ' + run.alpha + '°',
+     'E = ' + run.E + ' V/m'
+    ].forEach(function(txt) {
+        var s = document.createElement('span'); s.className = 'run-drop-item';
+        s.textContent = txt; l1.appendChild(s);
+    });
+    var modeLabel = run.armatureMode === 'parallel-x' ? 'Parallèles x' : 'Perp. x';
+    var dimLabel  = run.armatureMode === 'parallel-x' ? 'L = ' + run.L.toFixed(2) + ' m' : 'e = ' + run.e.toFixed(2) + ' m';
+    [modeLabel, dimLabel].forEach(function(txt) {
+        var s = document.createElement('span'); s.className = 'run-drop-item';
+        s.textContent = txt; l2.appendChild(s);
+    });
+    paramsDiv.appendChild(l1);
+    paramsDiv.appendChild(l2);
+    dd.appendChild(paramsDiv);
+
+    var vecsDiv = document.createElement('div');
+    vecsDiv.className = 'run-drop-vecs';
+    [
+        { key: 'showVecPos',    html: '<math><mover><mi>OM</mi><mo>&#x2192;</mo></mover></math>',                                                       color: '#2a6aaa' },
+        { key: 'showVecVit',    html: '<math><mover><mi>v</mi><mo>&#x2192;</mo></mover></math>',                                                         color: '#c03030' },
+        { key: 'showVecAcc',    html: '<math><mover><mi>a</mi><mo>&#x2192;</mo></mover></math>',                                                         color: '#2a8a50' },
+        { key: 'showVecForces', html: '<math><mover><msub><mi>F</mi><mi>E</mi></msub><mo>&#x2192;</mo></mover></math>',                                  color: '#8e44ad' },
+        { key: 'showVecSumF',   html: '<math><mover><mrow><mi mathvariant="normal">&#x3A3;</mi><mi>F</mi></mrow><mo>&#x2192;</mo></mover></math>',       color: '#8d4e20' }
+    ].forEach(function(def) {
+        var b = document.createElement('button');
+        b.className = 'run-drop-vec-btn' + (run[def.key] ? ' active' : '');
+        b.style.color = def.color;
+        b.innerHTML = def.html;
+        b.onclick = function(e) { e.stopPropagation(); toggleSavedVecE(run.id, def.key); };
+        vecsDiv.appendChild(b);
+    });
+    dd.appendChild(vecsDiv);
+}
+
+function toggleSavedVecE(id, key) {
+    var run = savedRunsE.find(function(r) { return r.id === id; });
+    if (!run) return;
+    run[key] = !run[key];
+    _renderDropdownE(run);
+}
+
+function adapterVueRunE(id) {
+    var run = savedRunsE.find(function(r) { return r.id === id; });
+    if (!run) return;
+    simE.xMax = Math.max(run.xMax || simE._ownXMax || 0.5, 0.01);
+    simE.yMax = Math.max(run.yMax || simE._ownYMax || 0.02, 0.001);
+    simE.graphBounds = JSON.parse(JSON.stringify(run.graphBounds || simE._ownGraphBounds || {}));
+    computeScaleE(_animW, _animH);
+}
+
+function _syncAllUIE() {
+    /* Vitesse */
+    var spIdx = SPEED_VALUES_E.indexOf(simE.speedFactor);
+    if (spIdx === -1) spIdx = 0;
+    _setSl('sl-e-speed', spIdx);
+    _setTxt('lbl-e-speed', _SPEED_LABELS_E[spIdx] || '0,02');
+
+    /* Conditions initiales */
+    _setSl('sel-e-particle', simE.particleIdx);
+    _setSl('sl-e-v0',    simE.v0 / 1e6);
+    _setTxt('lbl-e-v0', (simE.v0 / 1e6).toFixed(1).replace('.', ','));
+    _setSl('sl-e-alpha', simE.alpha);
+    _setTxt('lbl-e-alpha', simE.alpha);
+    _restoreEFieldWidget(simE.E);
+    _setSl('sl-e-L', simE.L);
+    _setTxt('lbl-e-L', simE.L.toFixed(2).replace('.', ','));
+    _setSl('sl-e-gap', simE.e);
+    _setTxt('lbl-e-gap', simE.e.toFixed(2).replace('.', ','));
+    _setSl('sl-e-deltat', simE.deltaT / 1e-9);
+    _setTxt('lbl-e-deltat', (simE.deltaT / 1e-9).toFixed(1).replace('.', ','));
+
+    /* Armatures */
+    setArmatureModeE(simE.armatureMode);
+
+    /* Mode affichage */
+    setDisplayModeE(simE.displayMode);
+
+    /* Vecteurs */
+    var vecMap = {pos: simE.showVecPos, vit: simE.showVecVit, acc: simE.showVecAcc,
+                  forces: simE.showVecForces, sumf: simE.showVecSumF};
+    Object.keys(vecMap).forEach(function(k) {
+        var btn = document.getElementById('btn-e-vec-' + k);
+        if (btn) btn.classList.toggle('active', vecMap[k]);
+    });
+
+    _updatePlayBtnE();
 }

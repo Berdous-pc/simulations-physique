@@ -11,6 +11,9 @@ var _gCtx      = null;
 var _gW = 0, _gH = 0;
 var _gHoverPos = null;   // {x, y} en coordonnées canvas
 
+/* Quand true, l'axe du temps est affiché en nanosecondes (mode champ électrique) */
+var _graphTimeNs = false;
+
 /* Marge intérieure des graphes — calculée dynamiquement dans _drawOneGraph */
 
 /* Informations par onglet : clé → {label, unit, accessor} */
@@ -69,14 +72,15 @@ function _buildGraphCtrl() {
     var sep  = document.getElementById('graph-dual-sep');
     if (!ctrl) return;
     ctrl.innerHTML = '';
+    var _s = (typeof activeTab !== 'undefined' && activeTab === 'champ-electrique') ? simE : sim;
 
-    if (sim.graphMode === 'single') {
+    if (_s.graphMode === 'single') {
         ctrl.style.cssText = '';
         if (sep) sep.style.display = 'none';
 
-        ctrl.appendChild(_makeDualBtn());
-        ctrl.appendChild(_makeSelect('sel-tab1', sim.graphTab1, function(key) {
-            sim.graphTab1 = key;
+        ctrl.appendChild(_makeDualBtn(_s));
+        ctrl.appendChild(_makeSelect('sel-tab1', _s.graphTab1, function(key) {
+            _s.graphTab1 = key;
         }));
 
     } else {
@@ -88,27 +92,28 @@ function _buildGraphCtrl() {
         var leftHalf = document.createElement('div');
         leftHalf.style.cssText = 'flex:1;display:flex;align-items:center;gap:6px;' +
             'padding:3px 8px;min-width:0';
-        leftHalf.appendChild(_makeDualBtn());
-        leftHalf.appendChild(_makeSelect('sel-tab1', sim.graphTab1, function(key) {
-            sim.graphTab1 = key;
+        leftHalf.appendChild(_makeDualBtn(_s));
+        leftHalf.appendChild(_makeSelect('sel-tab1', _s.graphTab1, function(key) {
+            _s.graphTab1 = key;
         }));
         ctrl.appendChild(leftHalf);
 
         var rightHalf = document.createElement('div');
         rightHalf.style.cssText = 'flex:1;display:flex;align-items:center;gap:6px;' +
             'padding:3px 8px;min-width:0';
-        rightHalf.appendChild(_makeSelect('sel-tab2', sim.graphTab2, function(key) {
-            sim.graphTab2 = key;
+        rightHalf.appendChild(_makeSelect('sel-tab2', _s.graphTab2, function(key) {
+            _s.graphTab2 = key;
         }));
         ctrl.appendChild(rightHalf);
     }
 }
 
-function _makeDualBtn() {
+function _makeDualBtn(_s) {
+    if (!_s) _s = sim;
     var btn = document.createElement('button');
-    btn.className = 'graph-mode-btn' + (sim.graphMode === 'dual' ? ' active' : '');
+    btn.className = 'graph-mode-btn' + (_s.graphMode === 'dual' ? ' active' : '');
     btn.id = 'btn-graph-dual';
-    btn.textContent = sim.graphMode === 'dual' ? '2 graphes' : '1 graphe';
+    btn.textContent = _s.graphMode === 'dual' ? '2 graphes' : '1 graphe';
     btn.style.cssText = 'flex-shrink:0';
     btn.onclick = function () { toggleDualGraph(); };
     return btn;
@@ -130,7 +135,8 @@ function _makeSelect(id, activeKey, onChange) {
 }
 
 function toggleDualGraph() {
-    sim.graphMode = (sim.graphMode === 'dual') ? 'single' : 'dual';
+    var _s = (typeof activeTab !== 'undefined' && activeTab === 'champ-electrique') ? simE : sim;
+    _s.graphMode = (_s.graphMode === 'dual') ? 'single' : 'dual';
     _buildGraphCtrl();
 }
 
@@ -229,6 +235,12 @@ function _drawOneGraph(ctx, x0, y0, W, H, tabKey, hoverPos) {
     var info = _tabInfo(tabKey);
     var data = sim.graphData;
 
+    /* Mode nanoseconde : scale temporel pour x quand tabKey ≠ 'y(x)' */
+    var _isTimeTab = (tabKey !== 'y(x)');
+    var _xScale    = (_graphTimeNs && _isTimeTab) ? 1e9 : 1;
+    var _xFn       = _xScale === 1 ? info.xFn : function(d) { return info.xFn(d) * 1e9; };
+    var _xlabel    = (_graphTimeNs && _isTimeTab) ? info.xlabel.replace('(s)', '(ns)') : info.xlabel;
+
     /* ── Bornes fixes pré-calculées depuis les conditions initiales ── */
     var xMin, xMax, yMin, yMax;
     var gb = sim.graphBounds;
@@ -243,7 +255,7 @@ function _drawOneGraph(ctx, x0, y0, W, H, tabKey, hoverPos) {
     };
     var bnd = keyMap[tabKey];
     if (gb && bnd && bnd.xb && bnd.yb) {
-        xMin = bnd.xb.min; xMax = bnd.xb.max;
+        xMin = bnd.xb.min * _xScale; xMax = bnd.xb.max * _xScale;
         yMin = bnd.yb.min; yMax = bnd.yb.max;
         if (xMin === xMax) { xMin -= 0.5; xMax += 0.5; }
         if (yMin === yMax) { yMin -= 1;   yMax += 1;   }
@@ -353,7 +365,7 @@ function _drawOneGraph(ctx, x0, y0, W, H, tabKey, hoverPos) {
         ctx.globalAlpha = alpha || 0.85;
         var S = 5; /* demi-taille de la croix */
         for (var _ci2 = 0; _ci2 < pts.length; _ci2++) {
-            var _gx = toGX(info.xFn(pts[_ci2]));
+            var _gx = toGX(_xFn(pts[_ci2]));
             var _gy = toGY(info.col(pts[_ci2]));
             ctx.beginPath();
             ctx.moveTo(_gx - S, _gy - S); ctx.lineTo(_gx + S, _gy + S);
@@ -373,7 +385,7 @@ function _drawOneGraph(ctx, x0, y0, W, H, tabKey, hoverPos) {
                 ? _sr.graphData.filter(function(d) { return d.t <= _replayT; })
                 : _sr.graphData;
             if (_srData.length >= 2) {
-                var _srX = _srData.map(info.xFn);
+                var _srX = _srData.map(_xFn);
                 var _srY = _srData.map(info.col);
                 var _yRange = yMax - yMin;
                 ctx.save();
@@ -407,7 +419,7 @@ function _drawOneGraph(ctx, x0, y0, W, H, tabKey, hoverPos) {
 
     /* ── Courbe (et/ou croix chrono) courante ── */
     if (!_isChrono && data.length >= 2) {
-        var xVals = data.map(info.xFn);
+        var xVals = data.map(_xFn);
         var yVals = data.map(info.col);
         ctx.save();
         ctx.beginPath();
@@ -465,13 +477,13 @@ function _drawOneGraph(ctx, x0, y0, W, H, tabKey, hoverPos) {
             }
 
             var bestX = 0, bestY = 0, bestColor = '#2a5080', bestDist = Infinity;
-            var xl = _parseAxisLabel(info.xlabel);
+            var xl = _parseAxisLabel(_xlabel);
             var yl = _parseAxisLabel(info.ylabel);
             var bestXVal = 0, bestYVal = 0;
 
             for (var _ci = 0; _ci < _candidates.length; _ci++) {
                 var _cpts  = _candidates[_ci].pts;
-                var _cXV   = _cpts.map(info.xFn);
+                var _cXV   = _cpts.map(_xFn);
                 var _cYV   = _cpts.map(info.col);
                 for (var k = 0; k < _cXV.length; k++) {
                     var bx  = toGX(_cXV[k]);
@@ -534,7 +546,7 @@ function _drawOneGraph(ctx, x0, y0, W, H, tabKey, hoverPos) {
 
     /* ── Point correspondant au hover animation ── */
     if (_animHoverSnap) {
-        var snapGX  = toGX(info.xFn(_animHoverSnap));
+        var snapGX  = toGX(_xFn(_animHoverSnap));
         var snapGY  = toGY(info.col(_animHoverSnap));
         var snapGYc = Math.max(y0 + mt, Math.min(y0 + mt + plotH, snapGY));
         if (snapGX >= x0 + ml && snapGX <= x0 + ml + plotW) {
@@ -558,7 +570,7 @@ function _drawOneGraph(ctx, x0, y0, W, H, tabKey, hoverPos) {
 
     /* ── Curseur temporel ── */
     if (tabKey !== 'y(x)' && !sim.ended && !sim.paused) {
-        var cx = toGX(sim.t);
+        var cx = toGX(sim.t * _xScale);
         if (cx >= x0 + ml && cx <= x0 + ml + plotW) {
             ctx.save();
             ctx.strokeStyle = 'rgba(180,80,20,0.6)';
@@ -580,7 +592,7 @@ function _drawOneGraph(ctx, x0, y0, W, H, tabKey, hoverPos) {
     /* Axe X (centré sous la zone de tracé) */
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'bottom';
-    ctx.fillText(info.xlabel, x0 + ml + plotW / 2, y0 + H - 2);
+    ctx.fillText(_xlabel, x0 + ml + plotW / 2, y0 + H - 2);
 
     /* Axe Y (pivoté, placé à gauche des chiffres) */
     ctx.save();
@@ -591,4 +603,28 @@ function _drawOneGraph(ctx, x0, y0, W, H, tabKey, hoverPos) {
     ctx.textBaseline = 'top';
     ctx.fillText(info.ylabel, 0, 0);
     ctx.restore();
+}
+
+/* ══════════════════════════════════════════════════
+   CHAMP ÉLECTRIQUE — graphe (sim-swap)
+══════════════════════════════════════════════════ */
+function drawGraphE() {
+    if (!_gCtx) return;
+    var _simOrig   = sim;
+    var _runsOrig  = savedRuns;
+    var _colOrig   = _currentRunColor;
+    var _hOrig     = _animHoverSnap;
+    sim              = simE;
+    savedRuns        = savedRunsE;
+    _currentRunColor = _currentRunColorE;
+    _animHoverSnap   = _animHoverSnapE;
+    _graphTimeNs     = true;
+
+    drawGraph();
+
+    _graphTimeNs     = false;
+    sim              = _simOrig;
+    savedRuns        = _runsOrig;
+    _currentRunColor = _colOrig;
+    _animHoverSnap   = _hOrig;
 }

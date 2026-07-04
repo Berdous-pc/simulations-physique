@@ -137,16 +137,193 @@
     <!-- ── Corps du panneau ───────────────────── -->
     <div id="panel-body">
 
-      <!-- ═══ Section CHAMP ÉLECTRIQUE (placeholder) ═══ -->
+      <!-- ═══ Section CHAMP ÉLECTRIQUE ═══ -->
       <div class="panel-main-section" id="section-champ-electrique" style="display:none;">
-        <div class="coming-soon">
-          <div class="coming-soon-icon">🚧</div>
-          <div class="coming-soon-title">En cours de développement</div>
-          <div class="coming-soon-text">
-            Ce tab sera bientôt disponible.
+
+        <!-- CONTRÔLES -->
+        <div class="panel-section">
+          <div class="section-title">Contrôles</div>
+          <button id="btn-e-playpause" class="btn btn-play"
+                  onclick="togglePauseE()">▶ Lancer</button>
+          <button class="btn btn-raz" style="margin-top:6px;"
+                  onclick="resetSimAnimE()">↺ Remettre à zéro</button>
+          <button id="btn-e-save" class="btn btn-save" style="margin-top:6px;"
+                  onclick="sauvegarderRunE()" disabled>✦ Sauvegarder</button>
+          <div class="param-row" style="margin-top:8px;">
+            <label>
+              Vitesse
+              <span class="param-value"><span id="lbl-e-speed">2 ns/s</span></span>
+            </label>
+            <input type="range" id="sl-e-speed"
+                   min="0" max="3" step="1" value="0"
+                   oninput="onSliderSpeedE(this.value)">
+            <div class="speed-ticks">
+              <span>2 ns/s</span>
+              <span>8 ns/s</span>
+              <span>30 ns/s</span>
+              <span>100 ns/s</span>
+            </div>
           </div>
         </div>
-      </div>
+
+        <div class="sep"></div>
+
+        <!-- TRAJECTOIRE -->
+        <div class="panel-section">
+          <div class="section-title">Trajectoire</div>
+          <div class="btn-group">
+            <button class="btn-toggle-one active" id="btn-e-disp-chrono"
+                    onclick="setDisplayModeE('chrono')">Chronophoto.</button>
+            <button class="btn-toggle-one" id="btn-e-disp-both"
+                    onclick="setDisplayModeE('both')">Les deux</button>
+            <button class="btn-toggle-one" id="btn-e-disp-trajectory"
+                    onclick="setDisplayModeE('trajectory')">Trajectoire</button>
+          </div>
+          <div class="param-row" id="e-deltat-row" style="display:none;">
+            <label>
+              Δt
+              <span class="param-value"><span id="lbl-e-deltat">1,0</span> ns</span>
+            </label>
+            <input type="range" id="sl-e-deltat"
+                   min="0.5" max="10" step="0.5" value="1"
+                   oninput="onSliderDeltaTE(this.value)">
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <!-- ARMATURES -->
+        <div class="panel-section">
+          <div class="section-title">Armatures</div>
+          <div class="btn-group">
+            <button class="btn-toggle-one active" id="btn-e-arm-parallel"
+                    onclick="setArmatureModeE('parallel-x')">Parallèles à l'axe x</button>
+            <button class="btn-toggle-one" id="btn-e-arm-perp"
+                    onclick="setArmatureModeE('perp-x')">Perpendiculaires à l'axe x</button>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <!-- CONDITIONS INITIALES -->
+        <div class="panel-section">
+          <div class="section-title">Conditions initiales</div>
+
+          <div class="param-row">
+            <label>Particule</label>
+            <select id="sel-e-particle" onchange="onSelectParticleE(this.value)"
+                    style="width:100%;margin-top:4px;padding:4px 6px;border-radius:6px;
+                           border:1px solid #c8d4dc;background:#f8fbfd;font-size:clamp(10px,1vw,13px);">
+              <option value="0">Électron  (q = −e, m = 9,11×10⁻³¹ kg)</option>
+              <option value="1">Positon   (q = +e, m = 9,11×10⁻³¹ kg)</option>
+              <option value="2">Proton    (q = +e, m = 1,67×10⁻²⁷ kg)</option>
+              <option value="3">Noyau He²⁺ (q = +2e, m = 6,64×10⁻²⁷ kg)</option>
+              <option value="4">Ion H₂⁺  (q = +e, m = 3,35×10⁻²⁷ kg)</option>
+              <option value="5">Ion Na⁺  (q = +e, m = 3,82×10⁻²⁶ kg)</option>
+              <option value="6">Ion H⁻   (q = −e, m = 1,67×10⁻²⁷ kg)</option>
+              <option value="7">Ion Cl⁻  (q = −e, m = 5,89×10⁻²⁶ kg)</option>
+            </select>
+          </div>
+
+          <div class="param-row" style="margin-top:8px;">
+            <label>
+              Vitesse initiale v₀
+              <span class="param-value"><span id="lbl-e-v0">10,0</span> × 10⁶ m/s</span>
+            </label>
+            <input type="range" id="sl-e-v0"
+                   min="0.1" max="100" step="0.1" value="10"
+                   oninput="onSliderEV0(this.value)">
+          </div>
+
+          <div class="param-row">
+            <label>
+              Angle α
+              <span class="param-value"><span id="lbl-e-alpha">0</span>°</span>
+            </label>
+            <input type="range" id="sl-e-alpha"
+                   min="-45" max="45" step="1" value="0"
+                   oninput="onSliderEAlpha(this.value)">
+          </div>
+
+          <div class="param-row">
+            <label>Champ <i>E</i></label>
+            <div class="sci-input-row">
+              <input type="number" id="e-field-mantisse" class="sci-mantisse"
+                     min="-9.9" max="9.9" step="0.1" value="4.5"
+                     oninput="onEFieldChange()">
+              <span class="sci-times">× 10</span>
+              <select id="e-field-exp" class="sci-exp-sel" onchange="onEFieldChange()">
+                <option value="3">³</option>
+                <option value="4" selected>⁴</option>
+                <option value="5">⁵</option>
+              </select>
+              <span class="sci-unit">V/m</span>
+            </div>
+          </div>
+
+          <!-- Slider L (mode parallel-x) -->
+          <div class="param-row" id="e-row-L">
+            <label>
+              Longueur L
+              <span class="param-value"><span id="lbl-e-L">0,10</span> m</span>
+            </label>
+            <input type="range" id="sl-e-L"
+                   min="0.05" max="0.50" step="0.01" value="0.10"
+                   oninput="onSliderEL(this.value)">
+          </div>
+
+          <!-- Slider e (mode perp-x) -->
+          <div class="param-row" id="e-row-gap" style="display:none;">
+            <label>
+              Écartement e
+              <span class="param-value"><span id="lbl-e-gap">0,04</span> m</span>
+            </label>
+            <input type="range" id="sl-e-gap"
+                   min="0.02" max="0.20" step="0.01" value="0.04"
+                   oninput="onSliderEGap(this.value)">
+          </div>
+
+          <label class="pin-coords-label" style="margin-top:5px;">
+            <input type="checkbox" id="chk-e-field" onchange="toggleFieldECb(this.checked)">
+            Représenter le champ
+            <span style="color:#2980b9;font-style:italic;margin-left:2px;">E</span>
+          </label>
+        </div>
+
+        <div class="sep"></div>
+
+        <!-- VECTEURS -->
+        <div class="panel-section">
+          <div class="section-title">Vecteurs</div>
+          <div class="vec-btn-row">
+            <button class="btn-vec-compact" id="btn-e-vec-pos" onclick="toggleVecPosE()" title="Vecteur position">
+              <span class="btn-vec-compact-dot" style="background:#2a6aaa;"></span>
+              <span class="vec-label" style="color:#2a6aaa;"><math><mover><mi>OM</mi><mo>&#x2192;</mo></mover></math></span>
+            </button>
+            <button class="btn-vec-compact active" id="btn-e-vec-vit" onclick="toggleVecVitE()" title="Vecteur vitesse">
+              <span class="btn-vec-compact-dot" style="background:#c03030;"></span>
+              <span class="vec-label" style="color:#c03030;"><math><mover><mi>v</mi><mo>&#x2192;</mo></mover></math></span>
+            </button>
+            <button class="btn-vec-compact" id="btn-e-vec-acc" onclick="toggleVecAccE()" title="Vecteur accélération">
+              <span class="btn-vec-compact-dot" style="background:#2a8a50;"></span>
+              <span class="vec-label" style="color:#2a8a50;"><math><mover><mi>a</mi><mo>&#x2192;</mo></mover></math></span>
+            </button>
+            <button class="btn-vec-compact" id="btn-e-vec-forces" onclick="toggleVecForcesE()" title="Force électrique">
+              <span class="btn-vec-compact-dot" style="background:#8e44ad;"></span>
+              <span class="vec-label" style="color:#8e44ad;"><math><mover><msub><mi>F</mi><mi>E</mi></msub><mo>&#x2192;</mo></mover></math></span>
+            </button>
+            <button class="btn-vec-compact" id="btn-e-vec-sumf" onclick="toggleVecSumFE()" title="Somme des forces">
+              <span class="btn-vec-compact-dot" style="background:#8d4e20;"></span>
+              <span class="vec-label" style="color:#8d4e20;"><math><mover><mrow><mi mathvariant="normal">&#x3A3;</mi><mi>F</mi></mrow><mo>&#x2192;</mo></mover></math></span>
+            </button>
+          </div>
+          <label class="pin-coords-label" style="margin-top:7px;">
+            <input type="checkbox" id="chk-e-hover-coords" onchange="setHoverShowCoords(this.checked)">
+            Afficher les coordonnées des vecteurs cinématiques
+          </label>
+        </div>
+
+      </div><!-- fin #section-champ-electrique -->
 
       <!-- ═══ Section CHAMP DE PESANTEUR ═══ -->
       <div class="panel-main-section" id="section-champ-pesanteur">
@@ -259,6 +436,13 @@
               <span class="slider-tick" style="left:46.4%"></span>
             </div>
           </div>
+          <label class="pin-coords-label" style="margin-top:5px;">
+            <input type="checkbox" id="chk-field-g" onchange="toggleFieldG(this.checked)">
+            Représenter le champ
+            <span style="color:#e67e22;font-style:normal;margin-left:2px;">
+              <math><mover><mi>g</mi><mo>&#x2192;</mo></mover></math>
+            </span>
+          </label>
         </div>
 
         <div class="sep"></div>
@@ -346,6 +530,24 @@
       </div>
     </div>
 
+    <!-- ── Bandeau électrique ────────────────── -->
+    <div class="panel-hint collapsed" id="panel-hint-champ-electrique" style="display:none;">
+      <div class="panel-hint-header">
+        <span class="panel-hint-title">Instructions</span>
+        <button class="panel-hint-toggle"
+                onclick="toggleHint('champ-electrique')"
+                title="Afficher les instructions">▲</button>
+      </div>
+      <div class="panel-hint-body">
+        Choisissez une <strong>particule chargée</strong>, réglez la
+        <strong>vitesse initiale</strong> et le <strong>champ E</strong>, puis cliquez
+        sur <em>▶ Lancer</em>. En mode <em>parallèles à x</em>, la particule est déviée
+        verticalement entre deux plaques horizontales. En mode <em>perpendiculaires à x</em>,
+        elle est accélérée ou freinée horizontalement. Activez les <strong>vecteurs</strong>
+        pour visualiser la force électrique <strong>F</strong><sub>E</sub> = qE en temps réel.
+      </div>
+    </div>
+
   </div><!-- fin #panel -->
 
 </main>
@@ -358,5 +560,7 @@
 <script src="js/graph.js"></script>
 <script src="js/ui.js"></script>
 
+<script data-goatcounter="https://berdous-pc.goatcounter.com/count"
+        async src="//gc.zgo.at/count.js"></script>
 </body>
 </html>

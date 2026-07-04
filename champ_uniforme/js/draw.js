@@ -58,9 +58,11 @@ function initAnimCanvas() {
     });
     _animCanvas.addEventListener('pointerleave', function() {
         _animHoverSnap = null;
+        _animHoverSnapE = null;
     });
 
     _animCanvas.addEventListener('click', function() {
+        if (activeTab === 'champ-electrique') { _handleClickE(); return; }
         if (!_pinModeActive || !_animHoverSnap) return;
         var snap = _animHoverSnap;
         var targetList = (snap.runId === null) ? sim.analysisPoints
@@ -198,6 +200,7 @@ function drawAnim() {
     _drawBackground(ctx);
     _drawGrid(ctx);
     _drawAxes(ctx);
+    if (sim.showFieldG) _drawFieldG(ctx);
 
     /* Runs sauvegardées (en dessous de la run courante) */
     for (var _sri = 0; _sri < savedRuns.length; _sri++) {
@@ -234,6 +237,54 @@ function drawAnim() {
    L'horizon monte de groundY() vers 0 quand tx
    passe de 0 à π/2, révélant un sol en perspective.
 ───────────────────────────────────────────────── */
+/* ─────────────────────────────────────────────────
+   Champ de pesanteur g — grille de vecteurs orange
+───────────────────────────────────────────────── */
+function _drawFieldG(ctx) {
+    var gndY   = groundY();
+    var topY   = 20;
+    var vecLen = Math.min(60, Math.max(20, (gndY - topY) * 0.18));
+    var safeGndY = gndY - vecLen - 8;
+    if (safeGndY <= topY) return;
+
+    var rows = 2;
+    var xLeft  = sim.originX + 15;
+    var xRight = _animW - 15;
+    var cols   = Math.max(3, Math.round((xRight - xLeft) / 75));
+    var xStep  = (xRight - xLeft) / (cols - 1);
+
+    var rowFracs = [0.28, 0.68];
+    var COL = '#e67e22';
+    var OPACITY = 0.55;
+
+    ctx.save();
+    ctx.globalAlpha = OPACITY;
+    ctx.strokeStyle = COL;
+    ctx.fillStyle   = COL;
+    ctx.lineWidth   = 1.8;
+    ctx.lineCap     = 'round';
+
+    for (var r = 0; r < rows; r++) {
+        var cy = topY + (safeGndY - topY) * rowFracs[r];
+        for (var c = 0; c < cols; c++) {
+            var cx = xLeft + c * xStep;
+            /* Tige */
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(cx, cy + vecLen);
+            ctx.stroke();
+            /* Pointe de flèche */
+            var ah = Math.max(6, vecLen * 0.22);
+            ctx.beginPath();
+            ctx.moveTo(cx - ah * 0.45, cy + vecLen - ah);
+            ctx.lineTo(cx,             cy + vecLen);
+            ctx.lineTo(cx + ah * 0.45, cy + vecLen - ah);
+            ctx.stroke();
+        }
+    }
+    ctx.restore();
+}
+
 function _drawBackground(ctx) {
     var gy = groundY();
     var tx = _viewAngles.tx;
@@ -1015,6 +1066,7 @@ function _drawAnalysisPoints(ctx) {
    Hover animation canvas
 ───────────────────────────────────────────────── */
 function _updateAnimHover(mouseX, mouseY) {
+    if (activeTab === 'champ-electrique') { _updateAnimHoverE(mouseX, mouseY); return; }
     var isChrono = (sim.displayMode === 'chrono');
     var datasets = [];
 
@@ -1094,10 +1146,12 @@ function _measureVecLabel(ctx, vecName, line1, line2) {
    - tient dans le canvas (marge M),
    - est au-dessus du sol,
    - ne chevauche aucun rect dans placedRects [{lx,ly,w,h}]. */
+var _labelMaxY = null; // null = auto (ground), number = override
+
 function _bestLabelPos(anchorX, anchorY, totalW, totalH, preferOrder, placedRects) {
     var GAP  = 14;
     var M    = 5;
-    var maxY = toCanvas(0, 0).cy - M;
+    var maxY = (_labelMaxY !== null) ? _labelMaxY : toCanvas(0, 0).cy - M;
     var maxX = _animW - M;
 
     var slots = {
@@ -1277,9 +1331,19 @@ function _drawAnimHover(ctx, snap, isPinned) {
         });
     }
     if (showVit) {
-        var _hvp = _viewProjFactors();
-        var dvx = snap.vx * VEC_SCALE_VIT * _hvp.cx;
-        var dvy = -snap.vy * VEC_SCALE_VIT * _hvp.cy;
+        var _vscV = _vecScaleVitOverride !== null ? _vecScaleVitOverride : VEC_SCALE_VIT;
+        var dvx, dvy;
+        if (_vecScaleVitOverride !== null) {
+            /* Mode électrique : direction alignée sur le canvas pour la tangence */
+            var _cvxV = snap.vx * sim.scaleX, _cvyV = -snap.vy * sim.scaleY;
+            var _cmV = Math.hypot(_cvxV, _cvyV) || 1;
+            var _lenV = Math.hypot(snap.vx, snap.vy) * _vscV;
+            dvx = _cvxV * _lenV / _cmV; dvy = _cvyV * _lenV / _cmV;
+        } else {
+            var _hvp = _viewProjFactors();
+            dvx = snap.vx * _vscV * _hvp.cx;
+            dvy = -snap.vy * _vscV * _hvp.cy;
+        }
         _drawVecDispVA(ctx, p.cx, p.cy, dvx, dvy, COL_VEC_VIT, '', 1.0);
         var vPrefer = dvy <= 0
             ? ['above', 'upper-right', 'upper-left', 'right', 'left', 'lower-right', 'lower-left', 'below']
@@ -1296,9 +1360,18 @@ function _drawAnimHover(ctx, snap, isPinned) {
         });
     }
     if (showAcc) {
-        var _havp = _viewProjFactors();
-        var dax = snap.ax * VEC_SCALE_ACC * _havp.cx;
-        var day = -snap.ay * VEC_SCALE_ACC * _havp.cy;
+        var _vscA = _vecScaleAccOverride !== null ? _vecScaleAccOverride : VEC_SCALE_ACC;
+        var dax, day;
+        if (_vecScaleAccOverride !== null) {
+            var _cvxA = snap.ax * sim.scaleX, _cvyA = -snap.ay * sim.scaleY;
+            var _cmA = Math.hypot(_cvxA, _cvyA) || 1;
+            var _lenA = Math.hypot(snap.ax, snap.ay) * _vscA;
+            dax = _cvxA * _lenA / _cmA; day = _cvyA * _lenA / _cmA;
+        } else {
+            var _havp = _viewProjFactors();
+            dax = snap.ax * _vscA * _havp.cx;
+            day = -snap.ay * _vscA * _havp.cy;
+        }
         _drawVecDispVA(ctx, p.cx, p.cy, dax, day, COL_VEC_ACC, '', 1.0);
         toPlace.push({
             anchorX: p.cx + dax / 2,
@@ -1591,3 +1664,534 @@ function _drawVectorLegend(ctx) {
         splitter.addEventListener('pointercancel', endDrag);
     });
 })();
+
+/* ══════════════════════════════════════════════════
+   CHAMP ÉLECTRIQUE — fonctions de rendu
+══════════════════════════════════════════════════ */
+
+var _animHoverSnapE = null;
+var _replayPlayingE = false;
+var _replayTE       = 0;
+var _replayMaxTE    = 0;
+
+/* Overrides d'échelle pour le mode électrique (null = utiliser constantes globales) */
+var _vecScaleVitOverride = null;
+var _vecScaleAccOverride = null;
+
+function _drawBackgroundE(ctx) {
+    var grad = ctx.createLinearGradient(0, 0, 0, _animH);
+    grad.addColorStop(0,   '#eef2f7');
+    grad.addColorStop(0.5, '#e4eaf2');
+    grad.addColorStop(1,   '#eef2f7');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, _animW, _animH);
+}
+
+function _drawGridE(ctx) {
+    if (sim.scaleX < 1 && sim.scaleY < 1) return;
+    var xMaxPhy = (_animW - sim.originX) / sim.scaleX;
+    var yMaxPhy = sim.originY / sim.scaleY;
+    var xGrid = _niceGridStep(xMaxPhy, 6);
+    var yGrid = _niceGridStep(yMaxPhy, 4);
+    var fontSize = Math.max(11, Math.min(15, _animH * 0.030));
+    var tickLen = Math.max(5, _animH * 0.012);
+    var orig = toCanvas(0, 0);
+
+    ctx.save();
+    ctx.strokeStyle = 'rgba(0,0,0,0.10)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+
+    for (var ix = 1; ix * xGrid.minor <= xMaxPhy * 1.05; ix++) {
+        var gx = toCanvas(ix * xGrid.minor, 0).cx;
+        if (gx > _animW - 5) break;
+        ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, _animH); ctx.stroke();
+    }
+    for (var iy = 1; iy * yGrid.minor <= yMaxPhy * 1.05; iy++) {
+        var gyP = toCanvas(0,  iy * yGrid.minor).cy;
+        var gyN = toCanvas(0, -iy * yGrid.minor).cy;
+        if (gyP >= 5)          { ctx.beginPath(); ctx.moveTo(0, gyP); ctx.lineTo(_animW, gyP); ctx.stroke(); }
+        if (gyN <= _animH - 5) { ctx.beginPath(); ctx.moveTo(0, gyN); ctx.lineTo(_animW, gyN); ctx.stroke(); }
+    }
+
+    ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(60,60,60,0.72)';
+    ctx.font = fontSize + 'px Segoe UI, Arial';
+
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    for (var jx = 1; jx * xGrid.minor <= xMaxPhy * 1.05; jx++) {
+        var xv = jx * xGrid.minor;
+        var isMaj = Math.abs(xv / xGrid.major - Math.round(xv / xGrid.major)) < 0.001;
+        var gx2 = toCanvas(xv, 0).cx;
+        if (gx2 > _animW - 5) break;
+        ctx.strokeStyle = 'rgba(60,60,60,' + (isMaj ? '0.45' : '0.22') + ')';
+        ctx.lineWidth = isMaj ? 1.4 : 0.8;
+        ctx.beginPath(); ctx.moveTo(gx2, orig.cy - tickLen); ctx.lineTo(gx2, orig.cy + tickLen); ctx.stroke();
+        if (isMaj) ctx.fillText(_fmtSI(xv), gx2, orig.cy + tickLen + 2);
+    }
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    for (var jy = 1; jy * yGrid.minor <= yMaxPhy * 1.05; jy++) {
+        var yv = jy * yGrid.minor;
+        var isMaj2 = Math.abs(yv / yGrid.major - Math.round(yv / yGrid.major)) < 0.001;
+        var pcyP = toCanvas(0,  yv).cy;
+        var pcyN = toCanvas(0, -yv).cy;
+        var ck = 'rgba(60,60,60,' + (isMaj2 ? '0.45' : '0.22') + ')';
+        ctx.strokeStyle = ck; ctx.lineWidth = isMaj2 ? 1.4 : 0.8;
+        if (pcyP >= 5)          { ctx.beginPath(); ctx.moveTo(orig.cx - tickLen, pcyP); ctx.lineTo(orig.cx + tickLen, pcyP); ctx.stroke(); if (isMaj2) ctx.fillText(_fmtSI(yv), orig.cx - tickLen - 4, pcyP); }
+        if (pcyN <= _animH - 5) { ctx.beginPath(); ctx.moveTo(orig.cx - tickLen, pcyN); ctx.lineTo(orig.cx + tickLen, pcyN); ctx.stroke(); if (isMaj2) ctx.fillText(_fmtSI(-yv), orig.cx - tickLen - 4, pcyN); }
+    }
+    ctx.restore();
+}
+
+function _fmtSI(v) {
+    if (Math.abs(v) === 0) return '0';
+    if (Math.abs(v) < 0.001 || Math.abs(v) >= 1e6) {
+        var e = Math.floor(Math.log10(Math.abs(v)));
+        var m = v / Math.pow(10, e);
+        return (Math.abs(m - Math.round(m)) < 0.05 ? Math.round(m) : m.toFixed(1)) + '×10' + e;
+    }
+    if (Math.abs(v) >= 10) return Math.round(v).toString();
+    return parseFloat(v.toPrecision(2)).toString();
+}
+
+function _drawAxesE(ctx) {
+    var orig = toCanvas(0, 0);
+    var ag   = _axisGeom();
+    var fontSize = Math.max(13, Math.min(18, _animH * 0.038));
+    ctx.save();
+    ctx.strokeStyle = 'rgba(40,40,40,0.70)';
+    ctx.fillStyle   = 'rgba(40,40,40,0.70)';
+    ctx.lineWidth   = 2;
+
+    /* Axe X */
+    ctx.beginPath(); ctx.moveTo(orig.cx - 5, orig.cy); ctx.lineTo(ag.xEnd, orig.cy); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(ag.xEnd, orig.cy);
+    ctx.lineTo(ag.xEnd - ag.aLen, orig.cy - 4); ctx.lineTo(ag.xEnd - ag.aLen, orig.cy + 4);
+    ctx.closePath(); ctx.fill();
+
+    /* Axe Y symétrique */
+    ctx.beginPath(); ctx.moveTo(orig.cx, _animH - ag.yEnd); ctx.lineTo(orig.cx, ag.yEnd); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(orig.cx, ag.yEnd);
+    ctx.lineTo(orig.cx - 4, ag.yEnd + ag.aLen); ctx.lineTo(orig.cx + 4, ag.yEnd + ag.aLen);
+    ctx.closePath(); ctx.fill();
+
+    ctx.font = 'bold ' + fontSize + 'px Segoe UI, Arial';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.fillText('x (m)', ag.xEnd - ag.aLen - 2, orig.cy + fontSize + 4);
+    ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+    ctx.fillText('y (m)', orig.cx - 6, ag.yEnd + ag.aLen + 2);
+    ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+    ctx.fillText('O', orig.cx - 4, orig.cy + 2);
+    ctx.restore();
+}
+
+function _drawArmatures(ctx) {
+    var isPos = sim.E >= 0;
+    ctx.save();
+    if (sim.armatureMode === 'parallel-x') {
+        var halfE  = sim.e / 2;
+        var topPt  = toCanvas(0, halfE);
+        var botPt  = toCanvas(0, -halfE);
+        var exitPt = toCanvas(sim.L, 0);
+        var scrPt  = toCanvas(sim.xMax, 0);
+        var platH  = Math.max(7, Math.min(18, Math.abs(toCanvas(0, halfE).cy - toCanvas(0, halfE * 0.8).cy)));
+        var platW  = exitPt.cx - topPt.cx;
+        var topColor  = isPos ? '#4a90d9' : '#e06060';
+        var botColor  = isPos ? '#e06060' : '#4a90d9';
+        var topCharge = isPos ? '−' : '+';
+        var botCharge = isPos ? '+' : '−';
+        var topY = topPt.cy - platH;
+        var botY = botPt.cy;
+
+        /* Zone champ */
+        ctx.globalAlpha = 0.06;
+        ctx.fillStyle = isPos ? '#3060cc' : '#cc3030';
+        ctx.fillRect(topPt.cx, topY + platH, platW, botY - topY - platH);
+        ctx.globalAlpha = 1;
+
+        function _drawPlate(y, color, charge, strokeCol) {
+            ctx.fillStyle = color; ctx.globalAlpha = 0.82;
+            ctx.fillRect(topPt.cx, y, platW, platH);
+            ctx.globalAlpha = 1;
+            ctx.strokeStyle = strokeCol; ctx.lineWidth = 1.5;
+            ctx.strokeRect(topPt.cx, y, platW, platH);
+            var nSigns = Math.max(3, Math.floor(platW / 22));
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold ' + Math.max(9, Math.min(14, platH * 0.85)) + 'px Arial';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            for (var si = 0; si < nSigns; si++) {
+                ctx.fillText(charge, topPt.cx + (si + 0.5) * platW / nSigns, y + platH / 2);
+            }
+        }
+        _drawPlate(topY, topColor, topCharge, isPos ? '#2a6aaa' : '#aa3030');
+        _drawPlate(botY, botColor, botCharge, isPos ? '#aa3030' : '#2a6aaa');
+
+        /* Écran droit */
+        ctx.strokeStyle = 'rgba(80,80,80,0.45)'; ctx.lineWidth = 1.8;
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath(); ctx.moveTo(scrPt.cx, 10); ctx.lineTo(scrPt.cx, _animH - 10); ctx.stroke();
+        ctx.setLineDash([]);
+
+    } else {
+        /* perp-x */
+        var halfE2   = sim.e / 2;
+        var topL  = toCanvas(0,      halfE2);
+        var botL  = toCanvas(0,     -halfE2);
+        var topR  = toCanvas(sim.e,  halfE2);
+        var botR  = toCanvas(sim.e, -halfE2);
+        var scrP2 = toCanvas(sim.xMax, 0);
+        var platW2  = Math.max(6, Math.min(14, sim.scaleX * sim.e * 0.06));
+        var platH2  = botL.cy - topL.cy;
+        var holeSz  = Math.max(6, Math.min(16, platH2 * 0.18));
+        var holeCy  = topL.cy + platH2 / 2;
+        var leftColor  = isPos ? '#e06060' : '#4a90d9';
+        var rightColor = isPos ? '#4a90d9' : '#e06060';
+        var leftCharge  = isPos ? '+' : '−';
+        var rightCharge = isPos ? '−' : '+';
+
+        /* Zone champ */
+        ctx.globalAlpha = 0.06;
+        ctx.fillStyle = isPos ? '#3060cc' : '#cc3030';
+        ctx.fillRect(topL.cx, topL.cy, topR.cx - topL.cx, platH2);
+        ctx.globalAlpha = 1;
+
+        function _drawVPlate(bx, color, charge) {
+            ctx.fillStyle = color; ctx.globalAlpha = 0.82;
+            ctx.fillRect(bx - platW2 / 2, topL.cy, platW2, holeCy - holeSz - topL.cy);
+            ctx.fillRect(bx - platW2 / 2, holeCy + holeSz, platW2, botL.cy - holeCy - holeSz);
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            var mT = topL.cy + (holeCy - holeSz - topL.cy) / 2;
+            var mB = holeCy + holeSz + (botL.cy - holeCy - holeSz) / 2;
+            if (mT > topL.cy + 4)  ctx.fillText(charge, bx, mT);
+            if (mB < botL.cy - 4)  ctx.fillText(charge, bx, mB);
+        }
+        _drawVPlate(topL.cx, leftColor,  leftCharge);
+        _drawVPlate(topR.cx, rightColor, rightCharge);
+
+        /* Écran droit */
+        ctx.strokeStyle = 'rgba(80,80,80,0.45)'; ctx.lineWidth = 1.8;
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath(); ctx.moveTo(scrP2.cx, 10); ctx.lineTo(scrP2.cx, _animH - 10); ctx.stroke();
+        ctx.setLineDash([]);
+    }
+    ctx.restore();
+}
+
+function _drawFieldE(ctx) {
+    var COL = '#2980b9';
+    var E   = sim.E;
+    var dir = E >= 0 ? -1 : 1;   /* -1 = flèche vers le haut (cy décroît) */
+    ctx.save();
+    ctx.strokeStyle = COL; ctx.fillStyle = COL;
+    ctx.globalAlpha = 0.50; ctx.lineWidth = 1.8; ctx.lineCap = 'round';
+
+    if (sim.armatureMode === 'parallel-x') {
+        var xL   = sim.originX + 12;
+        var xR   = toCanvas(sim.L, 0).cx - 12;
+        var cols = Math.max(3, Math.floor((xR - xL) / 50));
+        var vecLen = Math.max(18, Math.min(45, Math.abs(toCanvas(0, sim.e / 2).cy - toCanvas(0, 0).cy) * 0.55));
+        var midCy = toCanvas(0, 0).cy;
+        for (var c = 0; c < cols; c++) {
+            var fx = xL + c * (xR - xL) / Math.max(1, cols - 1);
+            var fy1 = midCy - dir * vecLen / 2;
+            var fy2 = midCy + dir * vecLen / 2;
+            ctx.beginPath(); ctx.moveTo(fx, fy1); ctx.lineTo(fx, fy2); ctx.stroke();
+            var ah = vecLen * 0.22;
+            ctx.beginPath();
+            ctx.moveTo(fx - ah * 0.45, fy2 - dir * ah);
+            ctx.lineTo(fx, fy2);
+            ctx.lineTo(fx + ah * 0.45, fy2 - dir * ah);
+            ctx.stroke();
+        }
+    } else {
+        var xIn  = toCanvas(0, 0).cx + 5;
+        var xOut = toCanvas(sim.e, 0).cx - 5;
+        var rows = 3;
+        var dxd  = E >= 0 ? 1 : -1;
+        var vecLenH = Math.max(15, xOut - xIn - 10);
+        for (var r = 0; r < rows; r++) {
+            var py  = sim.e / 2 * (1 - 2 * (r + 1) / (rows + 1));
+            var rcy = toCanvas(0, py).cy;
+            ctx.beginPath(); ctx.moveTo(xIn, rcy); ctx.lineTo(xIn + vecLenH * dxd, rcy); ctx.stroke();
+            var tipX = xIn + vecLenH * dxd;
+            var ah2  = vecLenH * 0.18;
+            ctx.beginPath();
+            ctx.moveTo(tipX - dxd * ah2, rcy - ah2 * 0.45);
+            ctx.lineTo(tipX, rcy);
+            ctx.lineTo(tipX - dxd * ah2, rcy + ah2 * 0.45);
+            ctx.stroke();
+        }
+    }
+    ctx.restore();
+}
+
+function _getEPhys() {
+    return {
+        FEx:  sim.armatureMode === 'perp-x' ? sim.q * sim.E : 0,
+        FEy:  sim.armatureMode === 'parallel-x' ? sim.q * sim.E : 0,
+        mass: sim.mass
+    };
+}
+
+function _drawForcesAtE(ctx, cx, cy, vx, vy, opacity, phys, placedRects) {
+    var _vp = _viewProjFactors();
+    var _sf = sim.vecScaleForce || VEC_SCALE_FORCE;
+    var dxPx =  phys.FEx * _sf * _vp.cx;
+    var dyPx = -phys.FEy * _sf * _vp.cy;
+    _drawVecArrow(ctx, cx, cy, dxPx, dyPx, COL_VEC_FORCES, null, opacity);
+    var lm  = _measureForceName(ctx, 'FE');
+    var pos = _bestLabelPos(cx + dxPx, cy + dyPx, lm.w, lm.h,
+                            ['right','upper-right','lower-right','left','above','below'], placedRects);
+    placedRects.push({lx: pos.lx, ly: pos.ly, w: lm.w, h: lm.h});
+    _renderForceName(ctx, pos.lx, pos.ly, 'FE', COL_VEC_FORCES, opacity, lm);
+}
+
+function _drawSumFAtE(ctx, cx, cy, vx, vy, opacity, phys, placedRects) {
+    var _vp = _viewProjFactors();
+    var _sf = sim.vecScaleForce || VEC_SCALE_FORCE;
+    var dxPx =  phys.FEx * _sf * _vp.cx;
+    var dyPx = -phys.FEy * _sf * _vp.cy;
+    _drawVecArrow(ctx, cx, cy, dxPx, dyPx, COL_VEC_SUMF, null, opacity);
+    var lm  = _measureForceName(ctx, 'ΣF');
+    var pos = _bestLabelPos(cx + dxPx, cy + dyPx, lm.w, lm.h,
+                            ['right','upper-right','lower-right','left','above','below'], placedRects);
+    placedRects.push({lx: pos.lx, ly: pos.ly, w: lm.w, h: lm.h});
+    _renderForceName(ctx, pos.lx, pos.ly, 'ΣF', COL_VEC_SUMF, opacity, lm);
+}
+
+function _drawChronoSnapsE(ctx) {
+    var snaps = sim.chronoSnaps;
+    if (!snaps.length) return;
+    var ep = _getEPhys();
+    var _vp = _viewProjFactors();
+    for (var i = 0; i < snaps.length; i++) {
+        var s = snaps[i];
+        var p = toCanvas(s.x, s.y);
+        ctx.save();
+        ctx.fillStyle = _currentRunColor || 'rgba(50,80,180,0.85)';
+        ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(p.cx, p.cy, 5, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+        ctx.restore();
+        if (sim.showVecPos)    _drawVectorPos(ctx, s.x, s.y, 0.6);
+        if (sim.showVecVit) {
+            var _cvxS = s.vx * sim.scaleX, _cvyS = -s.vy * sim.scaleY;
+            var _cmS = Math.hypot(_cvxS, _cvyS) || 1, _lS = Math.hypot(s.vx, s.vy) * sim.vecScaleVit;
+            _drawVecDispVA(ctx, p.cx, p.cy, _cvxS * _lS / _cmS, _cvyS * _lS / _cmS, COL_VEC_VIT, null, 0.6);
+        }
+        if (sim.showVecAcc) {
+            var _caxS = s.ax * sim.scaleX, _cayS = -s.ay * sim.scaleY;
+            var _caS = Math.hypot(_caxS, _cayS) || 1, _laS = Math.hypot(s.ax, s.ay) * sim.vecScaleAcc;
+            _drawVecDispVA(ctx, p.cx, p.cy, _caxS * _laS / _caS, _cayS * _laS / _caS, COL_VEC_ACC, null, 0.6);
+        }
+        if (sim.showVecForces || sim.showVecSumF) {
+            var er = [];
+            if (sim.showVecForces) _drawForcesAtE(ctx, p.cx, p.cy, s.vx, s.vy, 0.6, ep, er);
+            if (sim.showVecSumF)   _drawSumFAtE  (ctx, p.cx, p.cy, s.vx, s.vy, 0.6, ep, er);
+        }
+    }
+}
+
+function _drawSavedChronoSnapsE(ctx, run) {
+    var snaps = run.chronoSnaps;
+    if (!snaps.length) return;
+    var ep = { FEx: run.armatureMode === 'perp-x' ? run.q * run.E : 0,
+               FEy: run.armatureMode === 'parallel-x' ? run.q * run.E : 0,
+               mass: run.mass };
+    var _vp = _viewProjFactors();
+    var vsv = run.vecScaleVit   || sim.vecScaleVit;
+    var vsa = run.vecScaleAcc   || sim.vecScaleAcc;
+    for (var i = 0; i < snaps.length; i++) {
+        var s = snaps[i];
+        if (_replayPlaying && s.t > _replayT) break;
+        var p = toCanvas(s.x, s.y);
+        ctx.save();
+        ctx.globalAlpha = 0.82;
+        ctx.fillStyle = run.color; ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(p.cx, p.cy, 5, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+        ctx.restore();
+        if (run.showVecPos)    _drawVectorPos(ctx, s.x, s.y, 0.42);
+        if (run.showVecVit) {
+            var _cvxR = s.vx * sim.scaleX, _cvyR = -s.vy * sim.scaleY;
+            var _cmR = Math.hypot(_cvxR, _cvyR) || 1, _lR = Math.hypot(s.vx, s.vy) * vsv;
+            _drawVecDispVA(ctx, p.cx, p.cy, _cvxR * _lR / _cmR, _cvyR * _lR / _cmR, COL_VEC_VIT, null, 0.42);
+        }
+        if (run.showVecAcc) {
+            var _caxR = s.ax * sim.scaleX, _cayR = -s.ay * sim.scaleY;
+            var _caR = Math.hypot(_caxR, _cayR) || 1, _laR = Math.hypot(s.ax, s.ay) * vsa;
+            _drawVecDispVA(ctx, p.cx, p.cy, _caxR * _laR / _caR, _cayR * _laR / _caR, COL_VEC_ACC, null, 0.42);
+        }
+        if (run.showVecForces || run.showVecSumF) {
+            var er2 = [];
+            if (run.showVecForces) _drawForcesAtE(ctx, p.cx, p.cy, s.vx, s.vy, 0.42, ep, er2);
+            if (run.showVecSumF)   _drawSumFAtE  (ctx, p.cx, p.cy, s.vx, s.vy, 0.42, ep, er2);
+        }
+    }
+}
+
+function _drawParticleE(ctx) {
+    if (sim.ended && sim.trajPoints.length > 0) return;
+    var p = toCanvas(sim.x, sim.y);
+    var r = Math.max(5, Math.min(10, 6));
+    var charge = sim.q < 0 ? '−' : '+';
+    var color  = sim.q < 0 ? '#4a90d9' : '#e06060';
+    ctx.save();
+    ctx.beginPath(); ctx.arc(p.cx, p.cy, r, 0, 2 * Math.PI);
+    ctx.fillStyle = color;
+    ctx.shadowColor = 'rgba(0,0,0,0.30)'; ctx.shadowBlur = 5;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold ' + Math.max(10, r * 1.3) + 'px Arial';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(charge, p.cx, p.cy);
+    ctx.restore();
+
+    var _vp = _viewProjFactors();
+    if (sim.showVecPos)    _drawVectorPos(ctx, sim.x, sim.y, 1.0);
+    if (sim.showVecVit) {
+        var _cvxP = sim.vx * sim.scaleX, _cvyP = -sim.vy * sim.scaleY;
+        var _cmP = Math.hypot(_cvxP, _cvyP) || 1, _lP = Math.hypot(sim.vx, sim.vy) * sim.vecScaleVit;
+        _drawVecDispVA(ctx, p.cx, p.cy, _cvxP * _lP / _cmP, _cvyP * _lP / _cmP, COL_VEC_VIT, null, 1.0);
+    }
+    if (sim.showVecAcc) {
+        var _caxP = sim.ax * sim.scaleX, _cayP = -sim.ay * sim.scaleY;
+        var _caP = Math.hypot(_caxP, _cayP) || 1, _laP = Math.hypot(sim.ax, sim.ay) * sim.vecScaleAcc;
+        _drawVecDispVA(ctx, p.cx, p.cy, _caxP * _laP / _caP, _cayP * _laP / _caP, COL_VEC_ACC, null, 1.0);
+    }
+    if (sim.showVecForces || sim.showVecSumF) {
+        var ep = _getEPhys(); var er = [];
+        if (sim.showVecForces) _drawForcesAtE(ctx, p.cx, p.cy, sim.vx, sim.vy, 1.0, ep, er);
+        if (sim.showVecSumF)   _drawSumFAtE  (ctx, p.cx, p.cy, sim.vx, sim.vy, 1.0, ep, er);
+    }
+}
+
+function _updateAnimHoverE(mouseX, mouseY) {
+    var isChrono = (simE.displayMode === 'chrono');
+    var datasets = [];
+    if (isChrono) {
+        if (simE.chronoSnaps.length > 0) datasets.push({data: simE.chronoSnaps, color: _currentRunColorE || '#2050a0', runId: null});
+        for (var i = 0; i < savedRunsE.length; i++) {
+            if (!savedRunsE[i].hidden && savedRunsE[i].chronoSnaps.length > 0)
+                datasets.push({data: savedRunsE[i].chronoSnaps, color: savedRunsE[i].color, runId: i});
+        }
+    } else {
+        if (simE.graphData.length >= 2) datasets.push({data: simE.graphData, color: _currentRunColorE || '#2050a0', runId: null});
+        for (var i = 0; i < savedRunsE.length; i++) {
+            if (!savedRunsE[i].hidden) datasets.push({data: savedRunsE[i].graphData, color: savedRunsE[i].color, runId: i});
+        }
+    }
+    var bestDist = Infinity, bestSnap = null;
+    /* sim is swapped to simE during drawAnimE but not here; use simE directly for toCanvas */
+    var _simBak = sim; sim = simE;
+    for (var di = 0; di < datasets.length; di++) {
+        var pts = datasets[di].data;
+        for (var k = 0; k < pts.length; k++) {
+            var p = toCanvas(pts[k].x, pts[k].y);
+            var d = Math.hypot(p.cx - mouseX, p.cy - mouseY);
+            if (d < bestDist) {
+                bestDist = d;
+                bestSnap = {x: pts[k].x, y: pts[k].y,
+                            vx: pts[k].vx, vy: pts[k].vy,
+                            ax: pts[k].ax, ay: pts[k].ay,
+                            t: pts[k].t, color: datasets[di].color,
+                            runId: datasets[di].runId, _cx: p.cx, _cy: p.cy};
+            }
+        }
+    }
+    sim = _simBak;
+    _animHoverSnapE = bestSnap;
+}
+
+function _handleClickE() {
+    if (!_pinModeActive || !_animHoverSnapE) return;
+    var snap = _animHoverSnapE;
+    var targetList = (snap.runId === null) ? simE.analysisPoints : savedRunsE[snap.runId].analysisPoints;
+    var _simBak = sim; sim = simE;
+    for (var i = 0; i < targetList.length; i++) {
+        var pp = toCanvas(targetList[i].x, targetList[i].y);
+        if (Math.hypot(pp.cx - snap._cx, pp.cy - snap._cy) < 12) {
+            sim = _simBak; targetList.splice(i, 1); return;
+        }
+    }
+    sim = _simBak;
+    if (targetList.length >= 10) return;
+    var ep = snap.runId === null
+        ? {FEx: simE.armatureMode === 'perp-x' ? simE.q * simE.E : 0,
+           FEy: simE.armatureMode === 'parallel-x' ? simE.q * simE.E : 0,
+           mass: simE.mass, g: 0, windForce: 0, useFriction: false, k: 0}
+        : {FEx: savedRunsE[snap.runId].armatureMode === 'perp-x' ? savedRunsE[snap.runId].q * savedRunsE[snap.runId].E : 0,
+           FEy: savedRunsE[snap.runId].armatureMode === 'parallel-x' ? savedRunsE[snap.runId].q * savedRunsE[snap.runId].E : 0,
+           mass: savedRunsE[snap.runId].mass, g: 0, windForce: 0, useFriction: false, k: 0};
+    targetList.push({x: snap.x, y: snap.y, vx: snap.vx, vy: snap.vy,
+                     ax: snap.ax, ay: snap.ay, t: snap.t,
+                     color: snap.color, phys: ep});
+}
+
+function drawAnimE() {
+    if (!_animCtx) return;
+    var ctx = _animCtx;
+
+    /* Swap temporaire sim → simE */
+    var _simOrig    = sim;
+    var _runsOrig   = savedRuns;
+    var _colorOrig  = _currentRunColor;
+    var _repOrig    = _replayPlaying;
+    var _repTOrig   = _replayT;
+    var _hoverOrig  = _animHoverSnap;
+    sim              = simE;
+    savedRuns        = savedRunsE;
+    _currentRunColor = _currentRunColorE;
+    _replayPlaying   = _replayPlayingE;
+    _replayT         = _replayTE;
+    _animHoverSnap   = _animHoverSnapE;
+    _labelMaxY       = _animH - 5;
+
+    _updateViewAngles();
+    ctx.clearRect(0, 0, _animW, _animH);
+
+    _drawBackgroundE(ctx);
+    _drawGridE(ctx);
+    _drawAxesE(ctx);
+    _drawArmatures(ctx);
+    if (simE.showFieldE) _drawFieldE(ctx);
+
+    for (var _sri = 0; _sri < savedRuns.length; _sri++) {
+        var _sr = savedRuns[_sri];
+        if (_sr.hidden) continue;
+        if (simE.displayMode === 'trajectory' || simE.displayMode === 'both') _drawSavedTrajectory(ctx, _sr);
+        if (simE.displayMode === 'chrono'     || simE.displayMode === 'both') _drawSavedChronoSnapsE(ctx, _sr);
+        if (_replayPlaying) _drawSavedBall(ctx, _sr);
+    }
+
+    if (simE.displayMode === 'trajectory' || simE.displayMode === 'both') _drawTrajectory(ctx);
+    if (simE.displayMode === 'chrono'     || simE.displayMode === 'both') _drawChronoSnapsE(ctx);
+
+    _drawParticleE(ctx);
+    _drawAnalysisPoints(ctx);
+    _drawViewLabel(ctx);
+    _drawVectorLegend(ctx);
+    if (_animHoverSnapE) _drawAnimHoverE(ctx, _animHoverSnapE);
+
+    /* Restore */
+    sim              = _simOrig;
+    savedRuns        = _runsOrig;
+    _currentRunColor = _colorOrig;
+    _replayPlaying   = _repOrig;
+    _replayT         = _repTOrig;
+    _animHoverSnap   = _hoverOrig;
+    _labelMaxY       = null;
+}
+
+function _drawAnimHoverE(ctx, snap) {
+    var _simBak = sim; var _runsBak = savedRuns; var _colBak = _currentRunColor;
+    sim = simE; savedRuns = savedRunsE; _currentRunColor = _currentRunColorE;
+    _vecScaleVitOverride = simE.vecScaleVit;
+    _vecScaleAccOverride = simE.vecScaleAcc;
+    _drawAnimHover(ctx, snap);
+    _vecScaleVitOverride = null;
+    _vecScaleAccOverride = null;
+    sim = _simBak; savedRuns = _runsBak; _currentRunColor = _colBak;
+}
