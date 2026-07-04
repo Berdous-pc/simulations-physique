@@ -4607,22 +4607,17 @@ function lancerModeTitrageTest(type) {
   // 8. Stocker la concentration titrée correcte
   titrageTestState.concTitreeCorrecte = state.titrageConcTitree;
 
-  // 9. Désactiver le mode "représentation des espèces" s'il était actif
-  if (state.titrageShowEspeces) {
-    toggleEspeces();  // remet titrageShowEspeces à false et stoppe la boucle RAF
-  }
-
-  // 10. Activer l'état test
+  // 9. Activer l'état test
   titrageTestState.actif = true;
   titrageTestState.lastType = type;
 
-  // 11. Verrouiller l'UI
+  // 10. Verrouiller l'UI
   setTitrageTestUI(true);
 
-  // 12. Afficher le panel flottant
+  // 11. Afficher le panel flottant
   _afficherPanelTestTitrage();
 
-  // 13. Pour colorimetrique-ac : afficher le pH à l'équivalence
+  // 12. Pour colorimetrique-ac : afficher le pH à l'équivalence
   if (type === 'colorimetrique-ac') {
     _afficherPheMsg();
   } else {
