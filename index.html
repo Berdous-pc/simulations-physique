@@ -68,6 +68,10 @@
     }
 
     .filter-group-title {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
       font-size: clamp(10px, 0.9vw, 12px);
       font-weight: 700;
       text-transform: uppercase;
@@ -142,6 +146,22 @@
     }
     #btn-reset-filters:hover  { background: #ccc8c0; }
     #btn-reset-filters:active { transform: scale(0.97); }
+
+    .link-uncheck {
+      background: none;
+      border: none;
+      font-family: inherit;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: none;
+      letter-spacing: normal;
+      color: #2a6aaa;
+      text-decoration: underline;
+      cursor: pointer;
+      padding: 0;
+      white-space: nowrap;
+    }
+    .link-uncheck:hover { color: #1f5486; }
 
     /* Message "aucun résultat" */
     #no-results {
@@ -455,7 +475,10 @@
 
       <!-- Thème -->
       <div class="filter-group">
-        <div class="filter-group-title">Thème</div>
+        <div class="filter-group-title">
+          Thème
+          <button id="btn-uncheck-themes" class="link-uncheck">Décocher tous les thèmes</button>
+        </div>
         <label class="filter-label">
           <input type="checkbox" data-filter="theme" data-value="electricite" checked>
           Électricité
@@ -837,6 +860,7 @@
     const cards        = document.querySelectorAll('.cards-grid .card');
     const noResults    = document.getElementById('no-results');
     const btnReset     = document.getElementById('btn-reset-filters');
+    const btnUncheckThemes = document.getElementById('btn-uncheck-themes');
 
     // ── Lecture de l'état courant des filtres ────────
     function getActiveValues(filterName) {
@@ -869,9 +893,10 @@
         const disciplineOk = activeDisciplines.length === 0
           || activeDisciplines.includes(cardDiscipline);
 
-        // Catégorie thème : le thème de la carte est coché
-        const themeOk = activeThemes.length === 0
-          || activeThemes.includes(cardTheme);
+        // Catégorie thème : le thème de la carte doit être coché
+        // (contrairement aux autres catégories, ici "aucun thème coché" masque tout,
+        // pour que le bouton "Décocher tous les thèmes" vide bien la grille)
+        const themeOk = activeThemes.includes(cardTheme);
 
         const visible = levelOk && disciplineOk && themeOk;
         card.classList.toggle('hidden', !visible);
@@ -886,6 +911,13 @@
 
     btnReset.addEventListener('click', function () {
       checkboxes.forEach(cb => { cb.checked = true; });
+      applyFilters();
+    });
+
+    btnUncheckThemes.addEventListener('click', function () {
+      checkboxes.forEach(cb => {
+        if (cb.dataset.filter === 'theme') cb.checked = false;
+      });
       applyFilters();
     });
 
