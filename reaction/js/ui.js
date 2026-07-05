@@ -440,6 +440,21 @@ function teq_remonte()     { return T_EQ(T_REMONTE); }
 function teq_pauseInter()  { return T_EQ(T_PAUSE_INTER); }
 function teq_hold()        { return T_EQ(T_HOLD); }
 
+// Plus grande échelle qui permet de caser `count` cercles de rayon `maxR` (à cette échelle)
+// dans une grille tenant dans availW x availH, en testant chaque nombre de colonnes possible.
+function bestGridScale(count, maxR, availW, availH, gap) {
+  if (count<=0 || maxR<=0) return 1;
+  let best=MIN_MOL_SC;
+  for (let cols=1; cols<=count; cols++) {
+    const rows=Math.ceil(count/cols);
+    const scByW=(availW/cols-gap)/(2*maxR);
+    const scByH=(availH/rows-gap)/(2*maxR);
+    const sc=Math.min(scByW,scByH);
+    if (sc>best) best=sc;
+  }
+  return best;
+}
+
 function lancerAnimEquilibrage(coeffsR, coeffsP) {
   const rxn = REACTIONS[state.reactionEqIdx];
   const coeffs4Init = [coeffsR[0]||0, coeffsR[1]||0, 0, 0];
@@ -447,6 +462,7 @@ function lancerAnimEquilibrage(coeffsR, coeffsP) {
   if (!layoutInit) return;
   const {midX,midY,midW,midH} = layoutInit;
   const midCY = midY+midH/2, PAD_ATOM = 20;
+  const centeredRand = () => (Math.random()+Math.random())/2; // biais vers 0.5 (centre)
 
   const atoms = [];
   layoutInit.cols.filter(c=>c.type==='reactif').forEach(col => {
@@ -460,8 +476,8 @@ function lancerAnimEquilibrage(coeffsR, coeffsP) {
         const dy=a.x===0&&a.y===0?Math.sin(Math.random()*Math.PI*2):a.y/len;
         const baseR=(a.el==='C'?model.radius:model.radius*0.75);
         const r=baseR*col.sc, pad=r+PAD_ATOM;
-        const rawX=midX+pad+Math.random()*(Math.max(0,midW-pad*2));
-        const rawY=midCY+(Math.random()-0.5)*(Math.max(0,midH-pad*2));
+        const rawX=midX+pad+centeredRand()*(Math.max(0,midW-pad*2));
+        const rawY=midCY+(centeredRand()-0.5)*(Math.max(0,midH-pad*2));
         const ex=Math.max(midX+pad,Math.min(midX+midW-pad,rawX+dx*dist));
         const ey=Math.max(midY+pad,Math.min(midY+midH-pad,rawY+dy*dist));
         const ex_rel=(ex-midX)/midW, ey_rel=(ey-midY)/midH;
@@ -469,6 +485,17 @@ function lancerAnimEquilibrage(coeffsR, coeffsP) {
       });
     });
   });
+
+  // Taille des atomes tant qu'ils flottent librement dans la zone (phases "decons"/"scatter"),
+  // calculée séparément de la taille qu'ils auront une fois regroupés en molécules (scMid
+  // ci-dessous) : à ce stade ce sont des cercles individuels, pas des molécules compactes,
+  // donc la zone peut en accueillir de bien plus gros sans qu'ils se chevauchent.
+  const scScatter = atoms.length===0 ? 1 : bestGridScale(
+    atoms.length, Math.max(...atoms.map(a=>a.baseR)),
+    Math.max(1,midW-16), Math.max(1,midH-32), 6
+  );
+  // Ne jamais agrandir un atome au-delà de la taille qu'il avait dans sa colonne réactif d'origine.
+  atoms.forEach(a => { a.rScatter=Math.min(a.baseR*scScatter, a.r); });
 
   const pool = {};
   atoms.forEach((a,i) => { (pool[a.el]=pool[a.el]||[]).push(i); });
@@ -492,38 +519,81 @@ function lancerAnimEquilibrage(coeffsR, coeffsP) {
   }
   const allAssignedIndices=new Set(queue.flatMap(q=>q.atomIndices));
 
-  let scMid = (() => {
-    if (queue.length===0) return 1;
-    const items=rxn.produits.map((mol,j)=>({formula:mol.formula,count:countsPossible[j]})).filter(m=>m.count>0);
-    return scaleForMulti(items,midW-16,midH-32,10);
-  })();
-  if (scMid>0&&queue.length>0) {
-    let totalH=22;
-    rxn.produits.forEach((mol,j) => {
-      const cnt=countsPossible[j]; if (!cnt) return;
-      const r=getBoundingRadius(mol.formula)*scMid, cell=r*2+10;
-      const cols2=Math.max(1,Math.floor((midW-16)/cell));
-      totalH+=Math.ceil(cnt/cols2)*cell+14;
-    });
-    const available=midH-32;
-    if (totalH>available&&totalH>0) scMid=Math.max(MIN_MOL_SC, scMid*(available/totalH));
-  }
+  // scMid est la plus grande échelle qui permet de caser TOUTES les molécules produits
+  // (comptées ensemble, indépendamment de leur formule) dans une grille unique tenant dans
+  // la zone de transition. On teste chaque nombre de colonnes possible et on prend l'échelle
+  // maximale (limitée par la largeur ou la hauteur) qu'il permet : pas de plafond arbitraire,
+  // on ne réduit donc jamais la taille si la zone a la place d'accueillir tout le monde.
+  const totalCount=countsPossible.reduce((s,c)=>s+c,0);
+  let scMid = totalCount===0 ? 1 : bestGridScale(
+    totalCount, Math.max(...rxn.produits.filter((_,j)=>countsPossible[j]>0).map(mol=>getBoundingRadius(mol.formula))),
+    Math.max(1,midW-16), Math.max(1,midH-32), 10
+  );
   atoms.forEach(a => { a.rTarget=a.baseR*scMid; });
 
-  const midPosByProd=rxn.produits.map(()=>[]);
-  { let pMidIdx=0;
-    rxn.produits.forEach((mol,j) => {
-      const cnt=countsPossible[j]; if (!cnt) return;
-      const r=getBoundingRadius(mol.formula)*scMid, cell=r*2+10;
-      const cols2=Math.max(1,Math.floor(Math.max(1,midW-16)/cell));
-      const gw=Math.min(cols2,cnt)*cell, x0=midX+(midW-gw)/2+cell/2;
-      const startY=midY+22+pMidIdx*(r*2+14)+r;
-      for (let k=0;k<cnt;k++) {
-        const rawCy=startY+Math.floor(k/cols2)*cell;
-        const cy=Math.min(midY+midH-r-4,Math.max(midY+r+4,rawCy));
-        midPosByProd[j].push({formula:mol.formula,sc:scMid,prodIdx:j,cx:x0+(k%cols2)*cell,cy});
+  // Sépare les atomes qui se chevauchent dans la zone de transition
+  const SEP_ITER=6, SEP_MARGIN=4;
+  for (let iter=0; iter<SEP_ITER; iter++) {
+    for (let i=0; i<atoms.length; i++) {
+      for (let j=i+1; j<atoms.length; j++) {
+        const A=atoms[i], B=atoms[j];
+        let dx=B.ex-A.ex, dy=B.ey-A.ey;
+        let dist=Math.sqrt(dx*dx+dy*dy);
+        const minDist=A.rScatter+B.rScatter+SEP_MARGIN;
+        if (dist<minDist) {
+          if (dist<1e-6) { dx=Math.random()-0.5; dy=Math.random()-0.5; dist=Math.sqrt(dx*dx+dy*dy)||1e-6; }
+          const push=(minDist-dist)/2, nx=dx/dist, ny=dy/dist;
+          A.ex-=nx*push; A.ey-=ny*push;
+          B.ex+=nx*push; B.ey+=ny*push;
+        }
       }
-      pMidIdx+=Math.ceil(cnt/cols2);
+    }
+    atoms.forEach(a => {
+      const pad=a.rScatter+PAD_ATOM;
+      a.ex=Math.max(midX+pad, Math.min(midX+midW-pad, a.ex));
+      a.ey=Math.max(midY+pad, Math.min(midY+midH-pad, a.ey));
+    });
+  }
+  atoms.forEach(a => { a.ex_rel=(a.ex-midX)/midW; a.ey_rel=(a.ey-midY)/midH; });
+
+  // Colonne produit finale (et échelle associée) de chaque molécule, déterminée en amont :
+  // la molécule doit déjà avoir sa taille définitive (celle de sa colonne produit) quand
+  // elle s'assemble dans la zone de transition, pour ne plus changer de taille pendant
+  // qu'elle en sort (elle ne fera plus alors que se déplacer).
+  const coeffs4Final=[coeffsR[0]||0,coeffsR[1]||0,countsPossible[0]||0,countsPossible[1]||0];
+  const layoutFinal=computeLayout(rxn,coeffs4Final);
+  if (!layoutFinal) return;
+  const ghostCounts=state.showProductsEq ? rxn.produits.map((_,j)=>getCoeffEq(rxn.reactifs.length+j)) : rxn.produits.map(()=>0);
+  const coeffs4Ghost=[coeffsR[0]||0,coeffsR[1]||0,ghostCounts[0]||0,ghostCounts[1]||0];
+  const layoutGhost=state.showProductsEq ? computeLayout(rxn,coeffs4Ghost) : null;
+  queue.forEach(entry => {
+    const colDest=(layoutGhost&&layoutGhost.cols.find(c=>c.type==='produit'&&c.idx===entry.prodIdx))||layoutFinal.cols.find(c=>c.type==='produit'&&c.idx===entry.prodIdx);
+    entry.colDest=colDest; entry.destSc=colDest?colDest.sc:scMid;
+  });
+
+  // Grille unique et continue (partagée entre toutes les formules produits), cohérente
+  // avec le calcul de scMid ci-dessus : les molécules de formules différentes se partagent
+  // les lignes au lieu de démarrer un nouveau bloc de lignes à chaque formule, ce qui évite
+  // de gaspiller de la hauteur (et donc de forcer un scMid plus petit que nécessaire). Cette
+  // grille ne sert qu'à répartir les emplacements d'assemblage dans la zone (scMid) ; la
+  // molécule y est ensuite dessinée à sa taille finale (destSc), pas à scMid.
+  const midPosByProd=rxn.produits.map(()=>[]);
+  if (queue.length>0) {
+    const prodList=[];
+    rxn.produits.forEach((mol,j) => { const cnt=countsPossible[j]; for(let k=0;k<cnt;k++) prodList.push({formula:mol.formula,prodIdx:j}); });
+    const maxR0=Math.max(...prodList.map(p=>getBoundingRadius(p.formula)));
+    const cell=maxR0*scMid*2+10;
+    const cols=Math.max(1,Math.floor(Math.max(1,midW-16)/cell));
+    const rows=Math.ceil(prodList.length/cols);
+    const gw=Math.min(cols,prodList.length)*cell, gh=rows*cell;
+    const x0=midX+(midW-gw)/2+cell/2;
+    const y0=Math.max(midY+cell/2+4, midY+(midH-gh)/2+cell/2);
+    prodList.forEach((p,k) => {
+      const r=getBoundingRadius(p.formula)*scMid;
+      const cx=x0+(k%cols)*cell;
+      const rawCy=y0+Math.floor(k/cols)*cell;
+      const cy=Math.min(midY+midH-r-4,Math.max(midY+r+4,rawCy));
+      midPosByProd[p.prodIdx].push({formula:p.formula,sc:scMid,prodIdx:p.prodIdx,cx,cy});
     });
   }
 
@@ -531,8 +601,9 @@ function lancerAnimEquilibrage(coeffsR, coeffsP) {
   queue.forEach(entry => {
     const j=entry.prodIdx, mp=midPosByProd[j][cursors[j]++];
     entry.midPos=mp; if (!mp) return;
+    const destSc=entry.destSc; mp.sc=destSc;
     const model=MOL_MODELS[entry.formula], elGroups={};
-    model.atoms.forEach((a,ai) => { if (!elGroups[a.el]) elGroups[a.el]={targets:[],indices:[]}; elGroups[a.el].targets.push({tx:mp.cx+a.x*mp.sc,ty:mp.cy+a.y*mp.sc,ai}); });
+    model.atoms.forEach((a,ai) => { if (!elGroups[a.el]) elGroups[a.el]={targets:[],indices:[]}; elGroups[a.el].targets.push({tx:mp.cx+a.x*destSc,ty:mp.cy+a.y*destSc,ai}); });
     entry.atomIndices.forEach(idx => { const el=atoms[idx].el; if (elGroups[el]) elGroups[el].indices.push(idx); });
     Object.values(elGroups).forEach(grp => {
       const used=new Set();
@@ -544,21 +615,15 @@ function lancerAnimEquilibrage(coeffsR, coeffsP) {
         atoms[bestIdx].midTx=tgt.tx; atoms[bestIdx].midTy=tgt.ty;
         atoms[bestIdx].midTx_rel=(tgt.tx-midX)/midW; atoms[bestIdx].midTy_rel=(tgt.ty-midY)/midH;
         atoms[bestIdx].modelAtomIdx=tgt.ai; atoms[bestIdx].midPosRef=mp;
+        atoms[bestIdx].rFinal=atoms[bestIdx].baseR*destSc;
       });
     });
   });
 
-  const coeffs4Final=[coeffsR[0]||0,coeffsR[1]||0,countsPossible[0]||0,countsPossible[1]||0];
-  const layoutFinal=computeLayout(rxn,coeffs4Final);
-  if (!layoutFinal) return;
-  const ghostCounts=state.showProductsEq ? rxn.produits.map((_,j)=>getCoeffEq(rxn.reactifs.length+j)) : rxn.produits.map(()=>0);
-  const coeffs4Ghost=[coeffsR[0]||0,coeffsR[1]||0,ghostCounts[0]||0,ghostCounts[1]||0];
-  const layoutGhost=state.showProductsEq ? computeLayout(rxn,coeffs4Ghost) : null;
-
   const colCounters=rxn.produits.map(()=>0);
   queue.forEach(entry => {
     const j=entry.prodIdx;
-    const colDest=(layoutGhost&&layoutGhost.cols.find(c=>c.type==='produit'&&c.idx===j))||layoutFinal.cols.find(c=>c.type==='produit'&&c.idx===j);
+    const colDest=entry.colDest;
     if (!colDest||!entry.midPos) return;
     const colPos=colDest.positions[colCounters[j]++]; if (!colPos) return;
     const model=MOL_MODELS[entry.formula];
@@ -617,55 +682,55 @@ function tickAnimEq(ts) {
   }
   if (anim.phase===1&&anim.subPhase==='atoms') {
     const ease=easeInOut(Math.min(dt/teq_deconsAtoms(),1));
-    atoms.forEach(a=>drawAtom(molCtx,a.el,lerp(a.ix,a.ex,ease),lerp(a.iy,a.ey,ease),lerp(a.r,a.rTarget,ease),1));
+    atoms.forEach(a=>drawAtom(molCtx,a.el,lerp(a.ix,a.ex,ease),lerp(a.iy,a.ey,ease),lerp(a.r,a.rScatter,ease),1));
     drawGhosts();
     if (ease>=1) { anim.phase=2;anim.subPhase=null;anim.t0=ts; }
     anim.rafId=requestAnimationFrame(t=>tickAnimEq(t)); return;
   }
   if (anim.phase===2) {
-    atoms.forEach(a=>drawAtom(molCtx,a.el,a.ex,a.ey,a.rTarget,1));
+    atoms.forEach(a=>drawAtom(molCtx,a.el,a.ex,a.ey,a.rScatter,1));
     drawGhosts();
     if (dt>=teq_scatter()) { anim.phase=queue.length===0?7:3;anim.t0=ts; }
     anim.rafId=requestAnimationFrame(t=>tickAnimEq(t)); return;
   }
   const qi=anim.queueIdx, entry=queue[qi];
   drawDoneMols(); drawGhosts();
-  atoms.filter(a=>!a.assigned).forEach(a=>drawAtom(molCtx,a.el,a.ex,a.ey,a.rTarget,1));
+  atoms.filter(a=>!a.assigned).forEach(a=>drawAtom(molCtx,a.el,a.ex,a.ey,a.rScatter,1));
   if (anim.phase===3) {
     const ease=easeInOut(Math.min(dt/teq_travel(),1));
-    for(let k=qi+1;k<queue.length;k++) queue[k].atomIndices.forEach(idx=>drawAtom(molCtx,atoms[idx].el,atoms[idx].ex,atoms[idx].ey,atoms[idx].rTarget,1));
-    entry.atomIndices.forEach(idx=>{const a=atoms[idx];drawAtom(molCtx,a.el,lerp(a.ex,a.midTx,ease),lerp(a.ey,a.midTy,ease),a.rTarget,1);});
+    for(let k=qi+1;k<queue.length;k++) queue[k].atomIndices.forEach(idx=>drawAtom(molCtx,atoms[idx].el,atoms[idx].ex,atoms[idx].ey,atoms[idx].rScatter,1));
+    entry.atomIndices.forEach(idx=>{const a=atoms[idx];drawAtom(molCtx,a.el,lerp(a.ex,a.midTx,ease),lerp(a.ey,a.midTy,ease),lerp(a.rScatter,a.rFinal??a.rTarget,ease),1);});
     if (ease>=1) { anim.phase=4;anim.t0=ts; }
     anim.rafId=requestAnimationFrame(t=>tickAnimEq(t)); return;
   }
   if (anim.phase===4) {
     const alpha=easeInOut(Math.min(dt/teq_bonds(),1));
-    for(let k=qi+1;k<queue.length;k++) queue[k].atomIndices.forEach(idx=>drawAtom(molCtx,atoms[idx].el,atoms[idx].ex,atoms[idx].ey,atoms[idx].rTarget,1));
+    for(let k=qi+1;k<queue.length;k++) queue[k].atomIndices.forEach(idx=>drawAtom(molCtx,atoms[idx].el,atoms[idx].ex,atoms[idx].ey,atoms[idx].rScatter,1));
     if (entry.midPos) drawBonds(molCtx,entry.formula,entry.midPos.cx,entry.midPos.cy,entry.midPos.sc,alpha);
-    entry.atomIndices.forEach(idx=>drawAtom(molCtx,atoms[idx].el,atoms[idx].midTx,atoms[idx].midTy,atoms[idx].rTarget,1));
+    entry.atomIndices.forEach(idx=>drawAtom(molCtx,atoms[idx].el,atoms[idx].midTx,atoms[idx].midTy,atoms[idx].rFinal??atoms[idx].rTarget,1));
     if (alpha>=1) { anim.phase=5;anim.t0=ts; }
     anim.rafId=requestAnimationFrame(t=>tickAnimEq(t)); return;
   }
   if (anim.phase===5) {
     const ease=easeInOut(Math.min(dt/teq_remonte(),1));
-    for(let k=qi+1;k<queue.length;k++) queue[k].atomIndices.forEach(idx=>drawAtom(molCtx,atoms[idx].el,atoms[idx].ex,atoms[idx].ey,atoms[idx].rTarget,1));
+    for(let k=qi+1;k<queue.length;k++) queue[k].atomIndices.forEach(idx=>drawAtom(molCtx,atoms[idx].el,atoms[idx].ex,atoms[idx].ey,atoms[idx].rScatter,1));
     const mp=entry.midPos, model=MOL_MODELS[entry.formula];
     const refIdx=entry.atomIndices.find(idx=>atoms[idx].modelAtomIdx!==undefined);
     if (refIdx!==undefined) {
       const ref=atoms[refIdx],ma=model.atoms[ref.modelAtomIdx];
-      const destSc=anim.layoutGhost?(anim.layoutGhost.cols.find(c=>c.type==='produit'&&c.idx===entry.prodIdx)?.sc??mp.sc):mp.sc;
+      const destSc=entry.destSc??mp.sc;
       const destCx=ref.fx-ma.x*destSc, destCy=ref.fy-ma.y*destSc;
-      const cx=lerp(mp.cx,destCx,ease), cy=lerp(mp.cy,destCy,ease), sc=lerp(mp.sc,destSc,ease);
-      drawBonds(molCtx,entry.formula,cx,cy,sc,1);
+      const cx=lerp(mp.cx,destCx,ease), cy=lerp(mp.cy,destCy,ease);
+      drawBonds(molCtx,entry.formula,cx,cy,destSc,1);
     }
-    entry.atomIndices.forEach(idx=>{const a=atoms[idx];drawAtom(molCtx,a.el,lerp(a.midTx,a.fx,ease),lerp(a.midTy,a.fy,ease),a.rTarget,1);});
+    entry.atomIndices.forEach(idx=>{const a=atoms[idx];drawAtom(molCtx,a.el,lerp(a.midTx,a.fx,ease),lerp(a.midTy,a.fy,ease),a.rFinal??a.rTarget,1);});
     if (ease>=1) { anim.doneCount[entry.prodIdx]++;anim.phase=6;anim.t0=ts; }
     anim.rafId=requestAnimationFrame(t=>tickAnimEq(t)); return;
   }
   if (anim.phase===6) {
     drawDoneMols(); drawGhosts();
-    atoms.filter(a=>!a.assigned).forEach(a=>drawAtom(molCtx,a.el,a.ex,a.ey,a.rTarget,1));
-    for(let k=qi+1;k<queue.length;k++) queue[k].atomIndices.forEach(idx=>drawAtom(molCtx,atoms[idx].el,atoms[idx].ex,atoms[idx].ey,atoms[idx].rTarget,1));
+    atoms.filter(a=>!a.assigned).forEach(a=>drawAtom(molCtx,a.el,a.ex,a.ey,a.rScatter,1));
+    for(let k=qi+1;k<queue.length;k++) queue[k].atomIndices.forEach(idx=>drawAtom(molCtx,atoms[idx].el,atoms[idx].ex,atoms[idx].ey,atoms[idx].rScatter,1));
     if (dt>=teq_pauseInter()) {
       anim.queueIdx++;
       if (state._needRelayoutAfterAnim && anim.queueIdx < queue.length) { state._needRelayoutAfterAnim=false; relayoutAnimEq(); }
@@ -679,7 +744,7 @@ function tickAnimEq(ts) {
     layoutDraw.cols.filter(c=>c.type==='produit').forEach(col=>{
       for(let k=0;k<anim.doneCount[col.idx];k++){const p=col.positions[k];if(!p)continue;drawMolecule(molCtx,col.formula,p.cx,p.cy,col.sc,1);}
     });
-    atoms.filter(a=>!a.assigned).forEach(a=>drawAtom(molCtx,a.el,a.ex,a.ey,a.rTarget,1));
+    atoms.filter(a=>!a.assigned).forEach(a=>drawAtom(molCtx,a.el,a.ex,a.ey,a.rScatter,1));
     if (dt>=teq_hold()) { finirAnimEq(); return; }
     anim.rafId=requestAnimationFrame(t=>tickAnimEq(t)); return;
   }
@@ -699,6 +764,22 @@ function relayoutAnimEq() {
   });
   const remainingCounts=rxn.produits.map((_,j)=>queue.slice(queueIdx).filter(e=>e.prodIdx===j).length);
   const scMid=anim.scMid;
+
+  // Recalcule la colonne produit finale (et son échelle) de chaque molécule restante, avant
+  // de reconstruire la grille d'assemblage, pour que les molécules gardent leur taille finale
+  // (destSc) même après un redimensionnement — voir lancerAnimEquilibrage.
+  const coeffs4Final=[coeffsR[0]||0,coeffsR[1]||0,countsPossible[0]||0,countsPossible[1]||0];
+  const newLayoutFinal=computeLayout(rxn,coeffs4Final);
+  const ghostCounts=anim.ghostSlots||rxn.produits.map(()=>0);
+  const coeffs4Ghost=[coeffsR[0]||0,coeffsR[1]||0,ghostCounts[0]||0,ghostCounts[1]||0];
+  const newLayoutGhost=(anim.layoutGhost&&newLayoutFinal)?computeLayout(rxn,coeffs4Ghost):null;
+  if (newLayoutFinal) {
+    queue.slice(queueIdx).forEach(entry => {
+      const colDest=(newLayoutGhost&&newLayoutGhost.cols.find(c=>c.type==='produit'&&c.idx===entry.prodIdx))||newLayoutFinal.cols.find(c=>c.type==='produit'&&c.idx===entry.prodIdx);
+      if (colDest) { entry.colDest=colDest; entry.destSc=colDest.sc; }
+    });
+  }
+
   const newMidPosByProd=rxn.produits.map(()=>[]);
   let pMidIdx=0;
   rxn.produits.forEach((mol,j) => {
@@ -719,26 +800,23 @@ function relayoutAnimEq() {
     const j=entry.prodIdx;
     const mp=newMidPosByProd[j][cursors[j]++]; if (!mp) return;
     entry.midPos=mp;
+    const destSc=entry.destSc??mp.sc; mp.sc=destSc;
     const model=MOL_MODELS[entry.formula];
     entry.atomIndices.forEach(idx => {
       const a=atoms[idx]; if (a.modelAtomIdx===undefined) return;
       const ma=model.atoms[a.modelAtomIdx];
-      a.midTx=mp.cx+ma.x*mp.sc; a.midTy=mp.cy+ma.y*mp.sc;
+      a.midTx=mp.cx+ma.x*destSc; a.midTy=mp.cy+ma.y*destSc;
       a.midTx_rel=(a.midTx-midX)/midW; a.midTy_rel=(a.midTy-midY)/midH;
+      a.rFinal=a.baseR*destSc;
     });
   });
-  const coeffs4Final=[coeffsR[0]||0,coeffsR[1]||0,countsPossible[0]||0,countsPossible[1]||0];
-  const newLayoutFinal=computeLayout(rxn,coeffs4Final);
   if (newLayoutFinal) {
     anim.layoutFinal=newLayoutFinal;
-    const ghostCounts=anim.ghostSlots||rxn.produits.map(()=>0);
-    const coeffs4Ghost=[coeffsR[0]||0,coeffsR[1]||0,ghostCounts[0]||0,ghostCounts[1]||0];
-    const newLayoutGhost=anim.layoutGhost?computeLayout(rxn,coeffs4Ghost):null;
     if (newLayoutGhost) anim.layoutGhost=newLayoutGhost;
     const colCountersStart=[...anim.doneCount];
     queue.slice(queueIdx).forEach(entry => {
       const j=entry.prodIdx;
-      const colDest=(newLayoutGhost&&newLayoutGhost.cols.find(c=>c.type==='produit'&&c.idx===j))||newLayoutFinal.cols.find(c=>c.type==='produit'&&c.idx===j);
+      const colDest=entry.colDest;
       if (!colDest) return;
       const colPos=colDest.positions[colCountersStart[j]++]; if (!colPos) return;
       const model=MOL_MODELS[entry.formula];
