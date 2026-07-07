@@ -6,6 +6,10 @@
 
 /* draw.js — rendu canvas animation (champ de pesanteur) */
 
+/* ── Image du ballon ── */
+var _ballonImg = new Image();
+_ballonImg.src = 'ballon.png';
+
 /* ── Échelles visuelles des vecteurs ── */
 var VEC_SCALE_POS = 0.22;   // fraction de l'échelle physique
 var VEC_SCALE_VIT = 7.5;    // px par m/s
@@ -212,7 +216,7 @@ function drawAnim() {
         if (sim.displayMode === 'chrono' || sim.displayMode === 'both') {
             _drawSavedChronoSnaps(ctx, _sr);
         }
-        if (_replayPlaying) {
+        if (_replaySessionActive) {
             _drawSavedBall(ctx, _sr);
         }
     }
@@ -243,7 +247,9 @@ function drawAnim() {
 function _drawFieldG(ctx) {
     var gndY   = groundY();
     var topY   = 20;
-    var vecLen = Math.min(60, Math.max(20, (gndY - topY) * 0.18));
+    /* Même échelle que les vecteurs accélération (VEC_SCALE_ACC px par m/s²) */
+    var vecLen = Math.max(8, sim.g * VEC_SCALE_ACC * _viewProjFactors().cy);
+    vecLen = Math.min(vecLen, (gndY - topY - 28) * 0.45);
     var safeGndY = gndY - vecLen - 8;
     if (safeGndY <= topY) return;
 
@@ -635,10 +641,10 @@ function _drawSavedTrajectory(ctx, run) {
     ctx.globalAlpha = 0.82;
 
     /* Points à parcourir (graphData en replay, trajPoints sinon) */
-    var usePts   = _replayPlaying || _splitActive();
+    var usePts   = _replaySessionActive || _splitActive();
     var pts      = usePts ? run.graphData : null;
     var cutIdx   = pts ? pts.length : 0;
-    if (_replayPlaying && pts) {
+    if (_replaySessionActive && pts) {
         for (var k = 0; k < pts.length; k++) { if (pts[k].t > _replayT) { cutIdx = k; break; } }
         if (cutIdx < 2) { ctx.restore(); return; }
     }
@@ -646,7 +652,7 @@ function _drawSavedTrajectory(ctx, run) {
     if (_splitActive() && pts) {
         /* Trouver le sommet dans graphData */
         var peakIdx = 0;
-        var lim = _replayPlaying ? cutIdx : pts.length;
+        var lim = _replaySessionActive ? cutIdx : pts.length;
         for (var k = 1; k < lim; k++) { if (pts[k].y > pts[peakIdx].y) peakIdx = k; }
         /* Montée */
         var oxUp = _phaseOx(1);
@@ -668,7 +674,7 @@ function _drawSavedTrajectory(ctx, run) {
         }
     } else {
         ctx.beginPath();
-        if (_replayPlaying) {
+        if (_replaySessionActive) {
             var p0 = toCanvas(pts[0].x, pts[0].y);
             ctx.moveTo(p0.cx, p0.cy);
             for (var i = 1; i < cutIdx; i++) {
@@ -695,7 +701,7 @@ function _drawSavedChronoSnaps(ctx, run) {
     if (snaps.length === 0) return;
     for (var i = 0; i < snaps.length; i++) {
         var s = snaps[i];
-        if (_replayPlaying && s.t > _replayT) break;
+        if (_replaySessionActive && s.t > _replayT) break;
         var p = _toCanvasSplit(s.x, s.y, s.vy);
         ctx.save();
         ctx.globalAlpha = 0.85;
@@ -753,36 +759,30 @@ function _drawSavedBall(ctx, run) {
 
     ctx.save();
 
-    /* Halo coloré */
-    ctx.beginPath();
-    ctx.arc(p.cx, p.cy, r + 3, 0, 2 * Math.PI);
-    ctx.strokeStyle = run.color;
-    ctx.lineWidth = 2.5;
-    ctx.stroke();
-
-    /* Corps blanc */
-    ctx.beginPath();
-    ctx.arc(p.cx, p.cy, r, 0, 2 * Math.PI);
-    ctx.fillStyle = '#ffffff';
-    ctx.shadowColor = 'rgba(0,0,0,0.35)';
-    ctx.shadowBlur  = 5;
-    ctx.fill();
-    ctx.shadowBlur  = 0;
-    ctx.strokeStyle = run.color;
-    ctx.lineWidth   = 1.5;
-    ctx.stroke();
-
-    /* Pentagone central simplifié */
-    ctx.fillStyle = '#333';
-    ctx.beginPath();
-    for (var i = 0; i < 5; i++) {
-        var angle = (i / 5) * 2 * Math.PI - Math.PI / 2;
-        var rx = p.cx + Math.cos(angle) * r * 0.38;
-        var ry = p.cy + Math.sin(angle) * r * 0.38;
-        if (i === 0) ctx.moveTo(rx, ry); else ctx.lineTo(rx, ry);
+    if (_ballonImg.complete && _ballonImg.naturalWidth > 0) {
+        var d = r * 2;
+        ctx.shadowColor = 'rgba(0,0,0,0.35)';
+        ctx.shadowBlur  = 5;
+        ctx.drawImage(_ballonImg, p.cx - r, p.cy - r, d, d);
+        ctx.shadowBlur  = 0;
+        ctx.beginPath();
+        ctx.arc(p.cx, p.cy, r, 0, 2 * Math.PI);
+        ctx.strokeStyle = run.color;
+        ctx.lineWidth   = 1.8;
+        ctx.stroke();
+    } else {
+        /* Corps blanc (repli tant que l'image charge) */
+        ctx.beginPath();
+        ctx.arc(p.cx, p.cy, r, 0, 2 * Math.PI);
+        ctx.fillStyle = '#ffffff';
+        ctx.shadowColor = 'rgba(0,0,0,0.35)';
+        ctx.shadowBlur  = 5;
+        ctx.fill();
+        ctx.shadowBlur  = 0;
+        ctx.strokeStyle = run.color;
+        ctx.lineWidth   = 1.8;
+        ctx.stroke();
     }
-    ctx.closePath();
-    ctx.fill();
 
     ctx.restore();
 }
@@ -889,29 +889,30 @@ function _drawBall(ctx) {
 
     ctx.save();
 
-    /* Corps blanc */
-    ctx.beginPath();
-    ctx.arc(p.cx, p.cy, r, 0, 2 * Math.PI);
-    ctx.fillStyle = '#ffffff';
-    ctx.shadowColor = 'rgba(0,0,0,0.35)';
-    ctx.shadowBlur  = 5;
-    ctx.fill();
-    ctx.shadowBlur  = 0;
-    ctx.strokeStyle = '#333';
-    ctx.lineWidth   = 1.2;
-    ctx.stroke();
-
-    /* Pentagone central simplifié */
-    ctx.fillStyle = '#222';
-    ctx.beginPath();
-    for (var i = 0; i < 5; i++) {
-        var angle = (i / 5) * 2 * Math.PI - Math.PI / 2;
-        var rx = p.cx + Math.cos(angle) * r * 0.38;
-        var ry = p.cy + Math.sin(angle) * r * 0.38;
-        if (i === 0) ctx.moveTo(rx, ry); else ctx.lineTo(rx, ry);
+    if (_ballonImg.complete && _ballonImg.naturalWidth > 0) {
+        var d = r * 2;
+        ctx.shadowColor = 'rgba(0,0,0,0.35)';
+        ctx.shadowBlur  = 5;
+        ctx.drawImage(_ballonImg, p.cx - r, p.cy - r, d, d);
+        ctx.shadowBlur  = 0;
+        ctx.beginPath();
+        ctx.arc(p.cx, p.cy, r, 0, 2 * Math.PI);
+        ctx.strokeStyle = _currentRunColor || '#000';
+        ctx.lineWidth   = 1.8;
+        ctx.stroke();
+    } else {
+        /* Corps blanc (repli tant que l'image charge) */
+        ctx.beginPath();
+        ctx.arc(p.cx, p.cy, r, 0, 2 * Math.PI);
+        ctx.fillStyle = '#ffffff';
+        ctx.shadowColor = 'rgba(0,0,0,0.35)';
+        ctx.shadowBlur  = 5;
+        ctx.fill();
+        ctx.shadowBlur  = 0;
+        ctx.strokeStyle = _currentRunColor || '#333';
+        ctx.lineWidth   = 1.8;
+        ctx.stroke();
     }
-    ctx.closePath();
-    ctx.fill();
 
     ctx.restore();
 
@@ -1670,7 +1671,8 @@ function _drawVectorLegend(ctx) {
 ══════════════════════════════════════════════════ */
 
 var _animHoverSnapE = null;
-var _replayPlayingE = false;
+var _replayPlayingE       = false;
+var _replaySessionActiveE = false;
 var _replayTE       = 0;
 var _replayMaxTE    = 0;
 
@@ -2004,7 +2006,7 @@ function _drawSavedChronoSnapsE(ctx, run) {
     var vsa = run.vecScaleAcc   || sim.vecScaleAcc;
     for (var i = 0; i < snaps.length; i++) {
         var s = snaps[i];
-        if (_replayPlaying && s.t > _replayT) break;
+        if (_replaySessionActive && s.t > _replayT) break;
         var p = toCanvas(s.x, s.y);
         ctx.save();
         ctx.globalAlpha = 0.82;
@@ -2139,12 +2141,14 @@ function drawAnimE() {
     var _runsOrig   = savedRuns;
     var _colorOrig  = _currentRunColor;
     var _repOrig    = _replayPlaying;
+    var _repActiveOrig = _replaySessionActive;
     var _repTOrig   = _replayT;
     var _hoverOrig  = _animHoverSnap;
     sim              = simE;
     savedRuns        = savedRunsE;
     _currentRunColor = _currentRunColorE;
     _replayPlaying   = _replayPlayingE;
+    _replaySessionActive = _replaySessionActiveE;
     _replayT         = _replayTE;
     _animHoverSnap   = _animHoverSnapE;
     _labelMaxY       = _animH - 5;
@@ -2163,7 +2167,7 @@ function drawAnimE() {
         if (_sr.hidden) continue;
         if (simE.displayMode === 'trajectory' || simE.displayMode === 'both') _drawSavedTrajectory(ctx, _sr);
         if (simE.displayMode === 'chrono'     || simE.displayMode === 'both') _drawSavedChronoSnapsE(ctx, _sr);
-        if (_replayPlaying) _drawSavedBall(ctx, _sr);
+        if (_replaySessionActive) _drawSavedBall(ctx, _sr);
     }
 
     if (simE.displayMode === 'trajectory' || simE.displayMode === 'both') _drawTrajectory(ctx);
@@ -2180,6 +2184,7 @@ function drawAnimE() {
     savedRuns        = _runsOrig;
     _currentRunColor = _colorOrig;
     _replayPlaying   = _repOrig;
+    _replaySessionActive = _repActiveOrig;
     _replayT         = _repTOrig;
     _animHoverSnap   = _hoverOrig;
     _labelMaxY       = null;

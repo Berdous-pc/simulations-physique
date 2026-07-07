@@ -31,8 +31,10 @@ function loop(ts) {
             if (_replayT >= _replayMaxT) {
                 _replayT = _replayMaxT;
                 _replayPlaying = false;
+                _replaySessionActive = false;
                 var btnR = document.getElementById('btn-tout-rejouer');
                 if (btnR) btnR.classList.remove('active');
+                _updatePlayBtn();
             }
         }
 
@@ -49,8 +51,10 @@ function loop(ts) {
             if (_replayTE >= _replayMaxTE) {
                 _replayTE = _replayMaxTE;
                 _replayPlayingE = false;
+                _replaySessionActiveE = false;
                 var btnRE = document.getElementById('btn-tout-rejouer');
                 if (btnRE) btnRE.classList.remove('active');
+                _updatePlayBtnE();
             }
         }
 
@@ -190,6 +194,14 @@ function setMainTab(tab) {
    Contrôles play / pause / reset
 ───────────────────────────────────────────────── */
 function togglePause() {
+    if (_replaySessionActive) {
+        /* L'animation "tout rejouer" est en cours : le bouton pilote sa pause/reprise */
+        _replayPlaying = !_replayPlaying;
+        var btnR = document.getElementById('btn-tout-rejouer');
+        if (btnR) btnR.classList.toggle('active', _replayPlaying);
+        _updatePlayBtn();
+        return;
+    }
     if (sim.ended) {
         /* Remettre à zéro automatiquement si la simulation est terminée */
         resetSimAnim();
@@ -237,6 +249,16 @@ function resetSimAnim() {
 function _updatePlayBtn() {
     var btn = document.getElementById('btn-playpause');
     if (!btn) return;
+    if (_replaySessionActive) {
+        if (_replayPlaying) {
+            btn.textContent = '⏸ Pause';
+            btn.className = 'btn btn-pause';
+        } else {
+            btn.textContent = '▶ Reprendre';
+            btn.className = 'btn btn-play';
+        }
+        return;
+    }
     if (sim.paused || sim.ended) {
         btn.textContent = '▶ Lancer';
         btn.className = 'btn btn-play';
@@ -483,7 +505,8 @@ function toggleHint(tab) {
 /* ─────────────────────────────────────────────────
    Replay & adapter
 ───────────────────────────────────────────────── */
-var _replayPlaying = false;
+var _replayPlaying       = false;
+var _replaySessionActive = false;
 var _replayT       = 0;
 var _replayMaxT    = 0;
 
@@ -500,6 +523,7 @@ function toutRejouer() {
     }
     _replayT = 0;
     _replayPlaying = true;
+    _replaySessionActive = true;
     sim.paused = true;
     resetSim();
     _updatePlayBtn();
@@ -519,6 +543,7 @@ function toutRejouerE() {
     }
     _replayTE = 0;
     _replayPlayingE = true;
+    _replaySessionActiveE = true;
     simE.paused = true;
     resetSimE();
     _updatePlayBtnE();
@@ -889,6 +914,14 @@ function toggleSavedVec(id, key) {
 ══════════════════════════════════════════════════ */
 
 function togglePauseE() {
+    if (_replaySessionActiveE) {
+        /* L'animation "tout rejouer" est en cours : le bouton pilote sa pause/reprise */
+        _replayPlayingE = !_replayPlayingE;
+        var btnRE = document.getElementById('btn-tout-rejouer');
+        if (btnRE) btnRE.classList.toggle('active', _replayPlayingE);
+        _updatePlayBtnE();
+        return;
+    }
     if (simE.ended) {
         resetSimAnimE();
         simE.paused = false;
@@ -901,6 +934,16 @@ function togglePauseE() {
 function _updatePlayBtnE() {
     var btn = document.getElementById('btn-e-playpause');
     if (!btn) return;
+    if (_replaySessionActiveE) {
+        if (_replayPlayingE) {
+            btn.textContent = '⏸ Pause';
+            btn.className   = 'btn btn-pause';
+        } else {
+            btn.textContent = '▶ Reprendre';
+            btn.className   = 'btn btn-play';
+        }
+        return;
+    }
     if (simE.paused || simE.ended) {
         btn.textContent = '▶ Lancer';
         btn.className   = 'btn btn-play';
