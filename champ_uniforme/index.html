@@ -77,6 +77,12 @@
             </label>
           </div>
         </div>
+        <div class="toolbar-zoom-group">
+          <span class="toolbar-zoom-label">Zoom</span>
+          <button id="btn-zoom-out" class="toolbar-btn toolbar-zoom-btn" onclick="zoomOutE()" title="Dézoomer">−</button>
+          <button id="btn-zoom-in"  class="toolbar-btn toolbar-zoom-btn" onclick="zoomInE()"  title="Zoomer">+</button>
+          <button id="btn-zoom-default" class="toolbar-btn" onclick="zoomDefaultE()" title="Revenir à l'affichage par défaut">Défaut</button>
+        </div>
       </div>
       <div class="toolbar-spacer"></div>
       <div class="toolbar-sep"></div>
@@ -87,7 +93,6 @@
           <div id="saved-runs-tabs"></div>
           <button id="tabs-scroll-right" class="tabs-scroll-btn" onclick="scrollRunTabs(1)">></button>
         </div>
-        <button class="toolbar-action-btn" id="btn-adapter" onclick="adapterVue()">Adapter</button>
         <button class="toolbar-action-btn" id="btn-tout-rejouer" onclick="toutRejouer()">Tout rejouer</button>
       </div>
       <!-- Dropdown unique pour les détails d'une run -->
@@ -151,17 +156,17 @@
                   onclick="sauvegarderRunE()" disabled>✦ Sauvegarder</button>
           <div class="param-row" style="margin-top:8px;">
             <label>
-              Vitesse
-              <span class="param-value"><span id="lbl-e-speed">2 ns/s</span></span>
+              Vitesse d'animation
+              <span class="param-value"><span id="lbl-e-speed">6 ns/s</span></span>
             </label>
             <input type="range" id="sl-e-speed"
-                   min="0" max="3" step="1" value="0"
+                   min="0" max="3" step="1" value="3"
                    oninput="onSliderSpeedE(this.value)">
             <div class="speed-ticks">
-              <span>2 ns/s</span>
-              <span>8 ns/s</span>
-              <span>30 ns/s</span>
-              <span>100 ns/s</span>
+              <span>0,6 ns/s</span>
+              <span>1,5 ns/s</span>
+              <span>3 ns/s</span>
+              <span>6 ns/s</span>
             </div>
           </div>
         </div>
@@ -185,7 +190,7 @@
               <span class="param-value"><span id="lbl-e-deltat">1,0</span> ns</span>
             </label>
             <input type="range" id="sl-e-deltat"
-                   min="0.5" max="10" step="0.5" value="1"
+                   min="0.1" max="3.0" step="0.1" value="1"
                    oninput="onSliderDeltaTE(this.value)">
           </div>
         </div>
@@ -228,11 +233,14 @@
           <div class="param-row" style="margin-top:8px;">
             <label>
               Vitesse initiale v₀
-              <span class="param-value"><span id="lbl-e-v0">10,0</span> × 10⁶ m/s</span>
+              <span class="param-value"><span id="lbl-e-v0">2,27</span> × 10⁷ m/s</span>
             </label>
-            <input type="range" id="sl-e-v0"
-                   min="0.1" max="100" step="0.1" value="10"
-                   oninput="onSliderEV0(this.value)">
+            <div class="slider-tick-wrap">
+              <input type="range" id="sl-e-v0"
+                     min="10" max="99.9" step="0.1" value="22.7"
+                     oninput="onSliderEV0(this.value)">
+              <span class="slider-tick" style="left:14.1%"></span>
+            </div>
           </div>
 
           <div class="param-row">
@@ -249,7 +257,7 @@
             <label>Champ <i>E</i></label>
             <div class="sci-input-row">
               <input type="number" id="e-field-mantisse" class="sci-mantisse"
-                     min="-9.9" max="9.9" step="0.1" value="4.5"
+                     min="-9.9" max="9.9" step="0.1" value="1.5"
                      oninput="onEFieldChange()">
               <span class="sci-times">× 10</span>
               <select id="e-field-exp" class="sci-exp-sel" onchange="onEFieldChange()">
@@ -265,10 +273,10 @@
           <div class="param-row" id="e-row-L">
             <label>
               Longueur L
-              <span class="param-value"><span id="lbl-e-L">0,10</span> m</span>
+              <span class="param-value"><span id="lbl-e-L">8,5</span> cm</span>
             </label>
             <input type="range" id="sl-e-L"
-                   min="0.05" max="0.50" step="0.01" value="0.10"
+                   min="5" max="50" step="0.5" value="8.5"
                    oninput="onSliderEL(this.value)">
           </div>
 
@@ -276,10 +284,10 @@
           <div class="param-row" id="e-row-gap" style="display:none;">
             <label>
               Écartement e
-              <span class="param-value"><span id="lbl-e-gap">0,04</span> m</span>
+              <span class="param-value"><span id="lbl-e-gap">0,20</span> m</span>
             </label>
             <input type="range" id="sl-e-gap"
-                   min="0.02" max="0.20" step="0.01" value="0.04"
+                   min="0.02" max="0.20" step="0.01" value="0.20"
                    oninput="onSliderEGap(this.value)">
           </div>
 
@@ -339,8 +347,8 @@
                   onclick="sauvegarderRun()" disabled>✦ Sauvegarder</button>
           <div class="param-row" style="margin-top:8px;">
             <label>
-              Vitesse
-              <span class="param-value">×<span id="lbl-speed">1,00</span></span>
+              Vitesse d'animation
+              <span class="param-value"><span id="lbl-speed">1,00</span></span>
             </label>
             <input type="range" id="sl-speed"
                    min="0" max="3" step="1" value="3"

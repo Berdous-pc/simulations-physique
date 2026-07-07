@@ -1691,10 +1691,14 @@ function _drawBackgroundE(ctx) {
 
 function _drawGridE(ctx) {
     if (sim.scaleX < 1 && sim.scaleY < 1) return;
-    var xMaxPhy = (_animW - sim.originX) / sim.scaleX;
-    var yMaxPhy = sim.originY / sim.scaleY;
-    var xGrid = _niceGridStep(xMaxPhy, 6);
-    var yGrid = _niceGridStep(yMaxPhy, 4);
+    /* Bornes des graduations x/y fixées sur la plage logique (écran de détection / ±yMax),
+       pas sur la marge visuelle du canvas */
+    var xGridMax = _effXMaxE(sim);
+    var yGridMax = _effYMaxE(sim);
+    var xGrid = _niceGridStep(xGridMax, 6);
+    var yGrid = _niceGridStep(yGridMax, 4);
+    var xDec  = _gridDec(xGrid.major);
+    var yDec  = _gridDec(yGrid.major);
     var fontSize = Math.max(11, Math.min(15, _animH * 0.030));
     var tickLen = Math.max(5, _animH * 0.012);
     var orig = toCanvas(0, 0);
@@ -1704,12 +1708,12 @@ function _drawGridE(ctx) {
     ctx.lineWidth = 1;
     ctx.setLineDash([4, 4]);
 
-    for (var ix = 1; ix * xGrid.minor <= xMaxPhy * 1.05; ix++) {
+    for (var ix = 1; ix * xGrid.minor <= xGridMax * 1.001; ix++) {
         var gx = toCanvas(ix * xGrid.minor, 0).cx;
         if (gx > _animW - 5) break;
         ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, _animH); ctx.stroke();
     }
-    for (var iy = 1; iy * yGrid.minor <= yMaxPhy * 1.05; iy++) {
+    for (var iy = 1; iy * yGrid.minor <= yGridMax * 1.001; iy++) {
         var gyP = toCanvas(0,  iy * yGrid.minor).cy;
         var gyN = toCanvas(0, -iy * yGrid.minor).cy;
         if (gyP >= 5)          { ctx.beginPath(); ctx.moveTo(0, gyP); ctx.lineTo(_animW, gyP); ctx.stroke(); }
@@ -1721,7 +1725,7 @@ function _drawGridE(ctx) {
     ctx.font = fontSize + 'px Segoe UI, Arial';
 
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    for (var jx = 1; jx * xGrid.minor <= xMaxPhy * 1.05; jx++) {
+    for (var jx = 1; jx * xGrid.minor <= xGridMax * 1.001; jx++) {
         var xv = jx * xGrid.minor;
         var isMaj = Math.abs(xv / xGrid.major - Math.round(xv / xGrid.major)) < 0.001;
         var gx2 = toCanvas(xv, 0).cx;
@@ -1729,31 +1733,20 @@ function _drawGridE(ctx) {
         ctx.strokeStyle = 'rgba(60,60,60,' + (isMaj ? '0.45' : '0.22') + ')';
         ctx.lineWidth = isMaj ? 1.4 : 0.8;
         ctx.beginPath(); ctx.moveTo(gx2, orig.cy - tickLen); ctx.lineTo(gx2, orig.cy + tickLen); ctx.stroke();
-        if (isMaj) ctx.fillText(_fmtSI(xv), gx2, orig.cy + tickLen + 2);
+        if (isMaj) ctx.fillText(fmt(xv, xDec), gx2, orig.cy + tickLen + 2);
     }
     ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-    for (var jy = 1; jy * yGrid.minor <= yMaxPhy * 1.05; jy++) {
+    for (var jy = 1; jy * yGrid.minor <= yGridMax * 1.001; jy++) {
         var yv = jy * yGrid.minor;
         var isMaj2 = Math.abs(yv / yGrid.major - Math.round(yv / yGrid.major)) < 0.001;
         var pcyP = toCanvas(0,  yv).cy;
         var pcyN = toCanvas(0, -yv).cy;
         var ck = 'rgba(60,60,60,' + (isMaj2 ? '0.45' : '0.22') + ')';
         ctx.strokeStyle = ck; ctx.lineWidth = isMaj2 ? 1.4 : 0.8;
-        if (pcyP >= 5)          { ctx.beginPath(); ctx.moveTo(orig.cx - tickLen, pcyP); ctx.lineTo(orig.cx + tickLen, pcyP); ctx.stroke(); if (isMaj2) ctx.fillText(_fmtSI(yv), orig.cx - tickLen - 4, pcyP); }
-        if (pcyN <= _animH - 5) { ctx.beginPath(); ctx.moveTo(orig.cx - tickLen, pcyN); ctx.lineTo(orig.cx + tickLen, pcyN); ctx.stroke(); if (isMaj2) ctx.fillText(_fmtSI(-yv), orig.cx - tickLen - 4, pcyN); }
+        if (pcyP >= 5)          { ctx.beginPath(); ctx.moveTo(orig.cx - tickLen, pcyP); ctx.lineTo(orig.cx + tickLen, pcyP); ctx.stroke(); if (isMaj2) ctx.fillText(fmt(yv, yDec), orig.cx - tickLen - 4, pcyP); }
+        if (pcyN <= _animH - 5) { ctx.beginPath(); ctx.moveTo(orig.cx - tickLen, pcyN); ctx.lineTo(orig.cx + tickLen, pcyN); ctx.stroke(); if (isMaj2) ctx.fillText(fmt(-yv, yDec), orig.cx - tickLen - 4, pcyN); }
     }
     ctx.restore();
-}
-
-function _fmtSI(v) {
-    if (Math.abs(v) === 0) return '0';
-    if (Math.abs(v) < 0.001 || Math.abs(v) >= 1e6) {
-        var e = Math.floor(Math.log10(Math.abs(v)));
-        var m = v / Math.pow(10, e);
-        return (Math.abs(m - Math.round(m)) < 0.05 ? Math.round(m) : m.toFixed(1)) + '×10' + e;
-    }
-    if (Math.abs(v) >= 10) return Math.round(v).toString();
-    return parseFloat(v.toPrecision(2)).toString();
 }
 
 function _drawAxesE(ctx) {

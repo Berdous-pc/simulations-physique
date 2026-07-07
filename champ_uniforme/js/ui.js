@@ -75,10 +75,12 @@ function init() {
     initAnimCanvas();
     initGraphCanvas();
     resetSim();
+    commitGraphBounds();
     _syncAllUI();
     renderSavedRuns();
     resetSimE();
     _updateCurrentRunColorE();
+    commitGraphBoundsE();
     _syncAllUIE();
     requestAnimationFrame(loop);
 
@@ -187,6 +189,7 @@ function setMainTab(tab) {
         renderSavedRuns();
         _buildGraphCtrl();
     }
+    _updateZoomButtonsE();
     window.location.hash = '#' + tab;
 }
 
@@ -205,24 +208,41 @@ function togglePause() {
     if (sim.ended) {
         /* Remettre à zéro automatiquement si la simulation est terminée */
         resetSimAnim();
+        commitGraphBounds();
         sim.paused = false;
     } else {
+        /* Lancement (t=0) : on fige les bornes du graphe sur cette run.
+           Reprise après pause en cours de vol (t>0) : le graphe reste inchangé. */
+        if (sim.paused && sim.t === 0) commitGraphBounds();
         sim.paused = !sim.paused;
     }
     _updatePlayBtn();
 }
 
+/* Bornes de l'animation (xMax/yMax/maxT) : suivent les paramètres en temps réel,
+   indépendamment du graphe (voir commitGraphBounds ci-dessous). */
 function expandBoundsGlobal() {
     sim.xMax        = sim._ownXMax || sim.xMax;
     sim.yMax        = sim._ownYMax || sim.yMax;
     sim.maxT        = sim._ownMaxT || sim.maxT;
-    var gb = JSON.parse(JSON.stringify(sim._ownGraphBounds || sim.graphBounds));
     for (var i = 0; i < savedRuns.length; i++) {
         var r = savedRuns[i];
         if (r.hidden) continue;
         if (r.xMax > sim.xMax) sim.xMax = r.xMax;
         if (r.yMax > sim.yMax) sim.yMax = r.yMax;
         if (r.maxT > sim.maxT) sim.maxT = r.maxT;
+    }
+    computeScale(_animW, _animH);
+}
+
+/* Bornes du graphe : ne se mettent à jour qu'au lancement d'une run (bouton "Lancer"),
+   pas à chaque changement de paramètre — voir togglePause. On s'adapte à la run la
+   plus grande (courante + runs sauvegardées visibles), pour que tout soit visible. */
+function commitGraphBounds() {
+    var gb = JSON.parse(JSON.stringify(sim._ownGraphBounds || sim.graphBounds || {}));
+    for (var i = 0; i < savedRuns.length; i++) {
+        var r = savedRuns[i];
+        if (r.hidden) continue;
         if (r.graphBounds && gb) {
             var keys = Object.keys(gb);
             for (var k = 0; k < keys.length; k++) {
@@ -235,7 +255,6 @@ function expandBoundsGlobal() {
         }
     }
     sim.graphBounds = gb;
-    computeScale(_animW, _animH);
 }
 
 function resetSimAnim() {
@@ -598,47 +617,6 @@ function adapterVueRun(id) {
     sim.graphBounds = gb;
 }
 
-function adapterVue() {
-    if (activeTab === 'champ-electrique') { expandBoundsGlobalE(); return; }
-    if (savedRuns.length === 0) return;
-
-    /* ── Animation : étendre xMax / yMax ── */
-    var xMax = sim.xMax || 1;
-    var yMax = sim.yMax || 1;
-    for (var i = 0; i < savedRuns.length; i++) {
-        var pts = savedRuns[i].trajPoints;
-        for (var j = 0; j < pts.length; j++) {
-            if (pts[j].x > xMax) xMax = pts[j].x;
-            if (pts[j].y > yMax) yMax = pts[j].y;
-        }
-    }
-    sim.xMax = xMax;
-    sim.yMax = yMax;
-    computeScale(_animW, _animH);
-
-    /* ── Graphes : étendre graphBounds ── */
-    if (!sim.graphBounds) return;
-    var gb = sim.graphBounds;
-    for (var i = 0; i < savedRuns.length; i++) {
-        var data = savedRuns[i].graphData;
-        for (var j = 0; j < data.length; j++) {
-            var d = data[j];
-            if (d.t  > gb.t.max)  gb.t.max  = d.t;
-            if (d.x  > gb.x.max)  gb.x.max  = d.x;
-            if (d.y  > gb.y.max)  gb.y.max  = d.y;
-            if (d.y  < gb.y.min)  gb.y.min  = d.y;
-            if (d.vx > gb.vx.max) gb.vx.max = d.vx;
-            if (d.vx < gb.vx.min) gb.vx.min = d.vx;
-            if (d.vy > gb.vy.max) gb.vy.max = d.vy;
-            if (d.vy < gb.vy.min) gb.vy.min = d.vy;
-            if (d.ax > gb.ax.max) gb.ax.max = d.ax;
-            if (d.ax < gb.ax.min) gb.ax.min = d.ax;
-            if (d.ay > gb.ay.max) gb.ay.max = d.ay;
-            if (d.ay < gb.ay.min) gb.ay.min = d.ay;
-        }
-    }
-}
-
 /* ─────────────────────────────────────────────────
    Sauvegarde de runs
 ───────────────────────────────────────────────── */
@@ -924,8 +902,12 @@ function togglePauseE() {
     }
     if (simE.ended) {
         resetSimAnimE();
+        commitGraphBoundsE();
         simE.paused = false;
     } else {
+        /* Lancement (t=0) : on fige les bornes du graphe sur cette run.
+           Reprise après pause en cours de vol (t>0) : le graphe reste inchangé. */
+        if (simE.paused && simE.t === 0) commitGraphBoundsE();
         simE.paused = !simE.paused;
     }
     _updatePlayBtnE();
@@ -990,12 +972,12 @@ function setDisplayModeE(mode) {
     }
 }
 
-var _SPEED_LABELS_E = ['2 ns/s', '8 ns/s', '30 ns/s', '100 ns/s'];
+var _SPEED_LABELS_E = ['0,6 ns/s', '1,5 ns/s', '3 ns/s', '6 ns/s'];
 
 function onSliderSpeedE(v) {
     var idx = parseInt(v);
     simE.speedFactor = SPEED_VALUES_E[idx] || SPEED_VALUES_E[0];
-    _setTxt('lbl-e-speed', _SPEED_LABELS_E[idx] || '0,02');
+    _setTxt('lbl-e-speed', _SPEED_LABELS_E[idx] || '6 ns/s');
 }
 
 function onSliderDeltaTE(v) {
@@ -1013,6 +995,46 @@ function setArmatureModeE(mode) {
     document.getElementById('e-row-L').style.display   = (mode === 'parallel-x') ? '' : 'none';
     document.getElementById('e-row-gap').style.display = (mode === 'perp-x')     ? '' : 'none';
     resetSimAnimE();
+    _updateZoomButtonsE();
+}
+
+/* ─────────────────────────────────────────────────
+   Zoom (mode "Armatures parallèles à l'axe x" uniquement)
+───────────────────────────────────────────────── */
+function _zoomEnabledE() {
+    return activeTab === 'champ-electrique' && simE.armatureMode === 'parallel-x';
+}
+
+function _updateZoomButtonsE() {
+    var btnOut = document.getElementById('btn-zoom-out');
+    var btnIn  = document.getElementById('btn-zoom-in');
+    var btnDef = document.getElementById('btn-zoom-default');
+    if (!btnOut || !btnIn || !btnDef) return;
+    var enabled = _zoomEnabledE();
+    btnOut.disabled = !enabled || simE.zoomLevel <= ZOOM_MIN_LEVEL;
+    btnIn.disabled  = !enabled || simE.zoomLevel >= ZOOM_MAX_LEVEL;
+    btnDef.disabled = !enabled || simE.zoomLevel === 0;
+}
+
+function zoomOutE() {
+    if (!_zoomEnabledE() || simE.zoomLevel <= ZOOM_MIN_LEVEL) return;
+    simE.zoomLevel--;
+    computeScaleE(_animW, _animH);
+    _updateZoomButtonsE();
+}
+
+function zoomInE() {
+    if (!_zoomEnabledE() || simE.zoomLevel >= ZOOM_MAX_LEVEL) return;
+    simE.zoomLevel++;
+    computeScaleE(_animW, _animH);
+    _updateZoomButtonsE();
+}
+
+function zoomDefaultE() {
+    if (!_zoomEnabledE() || simE.zoomLevel === 0) return;
+    simE.zoomLevel = 0;
+    computeScaleE(_animW, _animH);
+    _updateZoomButtonsE();
 }
 
 function onSelectParticleE(v) {
@@ -1021,8 +1043,10 @@ function onSelectParticleE(v) {
 }
 
 function onSliderEV0(v) {
-    simE.v0 = parseFloat(v) * 1e6;
-    _setTxt('lbl-e-v0', parseFloat(v).toFixed(1).replace('.', ','));
+    var val = parseFloat(v);
+    if (Math.abs(val - 22.7) < 1.0) { val = 22.7; document.getElementById('sl-e-v0').value = 22.7; }
+    simE.v0 = val * 1e6;
+    _setTxt('lbl-e-v0', (val / 10).toFixed(2).replace('.', ','));
     resetSimAnimE();
 }
 
@@ -1070,8 +1094,8 @@ function _restoreEFieldWidget(E) {
 }
 
 function onSliderEL(v) {
-    simE.L = parseFloat(v);
-    _setTxt('lbl-e-L', parseFloat(v).toFixed(2).replace('.', ','));
+    simE.L = parseFloat(v) / 100;
+    _setTxt('lbl-e-L', parseFloat(v).toFixed(1).replace('.', ','));
     resetSimAnimE();
 }
 
@@ -1146,17 +1170,30 @@ function masquerSauvegardeRunE(id) {
     renderSavedRunsE();
 }
 
+/* Bornes de l'animation (xMax/yMax/maxT) : suivent les paramètres en temps réel,
+   indépendamment du graphe (voir commitGraphBoundsE ci-dessous). */
 function expandBoundsGlobalE() {
     simE.xMax = simE._ownXMax || simE.xMax;
     simE.yMax = simE._ownYMax || simE.yMax;
     simE.maxT = simE._ownMaxT || simE.maxT;
-    var gb = JSON.parse(JSON.stringify(simE._ownGraphBounds || simE.graphBounds || {}));
     for (var i = 0; i < savedRunsE.length; i++) {
         var r = savedRunsE[i];
         if (r.hidden) continue;
         if (r.xMax > simE.xMax) simE.xMax = r.xMax;
         if (r.yMax > simE.yMax) simE.yMax = r.yMax;
         if (r.maxT > simE.maxT) simE.maxT = r.maxT;
+    }
+    computeScaleE(_animW, _animH);
+}
+
+/* Bornes du graphe : ne se mettent à jour qu'au lancement d'une run (bouton "Lancer"),
+   pas à chaque changement de paramètre — voir togglePauseE. On s'adapte à la run la
+   plus grande (courante + runs sauvegardées visibles), pour que tout soit visible. */
+function commitGraphBoundsE() {
+    var gb = JSON.parse(JSON.stringify(simE._ownGraphBounds || simE.graphBounds || {}));
+    for (var i = 0; i < savedRunsE.length; i++) {
+        var r = savedRunsE[i];
+        if (r.hidden) continue;
         if (r.graphBounds && gb && Object.keys(gb).length > 0) {
             Object.keys(gb).forEach(function(key) {
                 if (r.graphBounds[key]) {
@@ -1167,7 +1204,6 @@ function expandBoundsGlobalE() {
         }
     }
     simE.graphBounds = gb;
-    computeScaleE(_animW, _animH);
 }
 
 function renderSavedRunsE() {
@@ -1336,17 +1372,17 @@ function _syncAllUIE() {
     var spIdx = SPEED_VALUES_E.indexOf(simE.speedFactor);
     if (spIdx === -1) spIdx = 0;
     _setSl('sl-e-speed', spIdx);
-    _setTxt('lbl-e-speed', _SPEED_LABELS_E[spIdx] || '0,02');
+    _setTxt('lbl-e-speed', _SPEED_LABELS_E[spIdx] || '6 ns/s');
 
     /* Conditions initiales */
     _setSl('sel-e-particle', simE.particleIdx);
     _setSl('sl-e-v0',    simE.v0 / 1e6);
-    _setTxt('lbl-e-v0', (simE.v0 / 1e6).toFixed(1).replace('.', ','));
+    _setTxt('lbl-e-v0', (simE.v0 / 1e7).toFixed(2).replace('.', ','));
     _setSl('sl-e-alpha', simE.alpha);
     _setTxt('lbl-e-alpha', simE.alpha);
     _restoreEFieldWidget(simE.E);
-    _setSl('sl-e-L', simE.L);
-    _setTxt('lbl-e-L', simE.L.toFixed(2).replace('.', ','));
+    _setSl('sl-e-L', simE.L * 100);
+    _setTxt('lbl-e-L', (simE.L * 100).toFixed(1).replace('.', ','));
     _setSl('sl-e-gap', simE.e);
     _setTxt('lbl-e-gap', simE.e.toFixed(2).replace('.', ','));
     _setSl('sl-e-deltat', simE.deltaT / 1e-9);

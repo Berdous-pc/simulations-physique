@@ -281,7 +281,8 @@ function computeGraphBounds() {
     b.y.max  = Math.max(b.y.max,  sim.h + 1, 1);
     b.y.min  = 0;  /* jamais sous le sol */
 
-    sim.graphBounds = b;
+    /* Ces bornes ne sont "en attente" que jusqu'au prochain Lancer : le graphe affiché
+       (sim.graphBounds) n'est mis à jour qu'au lancement d'une run (voir commitGraphBounds). */
     sim._ownGraphBounds = JSON.parse(JSON.stringify(b));
 }
 
@@ -331,19 +332,22 @@ var PARTICLES = [
 ];
 
 var PHYS_DT_E      = 5e-12;
-var SPEED_VALUES_E = [2e-9, 8e-9, 3e-8, 1e-7];
+/* speedFactor = secondes simulées par seconde réelle (ex: 6e-9 = "6 ns/s").
+   Cran par défaut (6 ns/s) calibré pour qu'un mouvement de ~12,6 ns (paramètres
+   par défaut) se déroule en ~2 s réelles. */
+var SPEED_VALUES_E = [6e-10, 1.5e-9, 3e-9, 6e-9];
 
 var simE = {
     /* ── Paramètres physiques ── */
     particleIdx: 0,
     q:    -1.602e-19,
     mass:  9.109e-31,
-    v0:    1e7,           // norme vitesse initiale (m/s)
+    v0:    22.7e6,        // norme vitesse initiale (m/s)
     alpha: 0,             // angle (degrés)
-    E:     4.5e4,         // champ électrique (V/m)
+    E:     1.5e4,         // champ électrique (V/m)
     armatureMode: 'parallel-x',
-    L:    0.10,           // longueur armatures parallèles (m)
-    e:    0.04,           // écartement / distance entre plaques (m)
+    L:    0.085,          // longueur armatures parallèles (m)
+    e:    0.20,           // écartement / distance entre plaques (m)
     /* ── Compatibilité draw.js (forces pesanteur = 0) ── */
     g: 0, windForce: 0, useFriction: false, k: 0,
     /* ── État courant ── */
@@ -351,7 +355,7 @@ var simE = {
     vx: 0, vy: 0,
     ax: 0, ay: 0,
     paused: true, ended: false,
-    speedFactor: 2e-9,
+    speedFactor: 6e-9,
     /* ── Options d'affichage ── */
     displayMode:   'chrono',
     showFieldE:    false,
@@ -370,7 +374,7 @@ var simE = {
     graphBounds: null,
     _ownMaxT: 0, _ownXMax: 0, _ownYMax: 0, _ownGraphBounds: null,
     /* ── Graphe ── */
-    graphMode: 'single', graphTab1: 'y(x)', graphTab2: 'vy(t)',
+    graphMode: 'single', graphTab1: 'x(t)', graphTab2: 'y(t)',
     /* ── Vue canvas ── */
     scale: 1000, scaleX: 1000, scaleY: 5000,
     axisMode: 'adapted',
@@ -378,7 +382,33 @@ var simE = {
     viewMode: 'oxy', viewTrans: null, splitPhase: false,
     /* ── Échelles vecteurs (calculées dans resetSimE) ── */
     vecScaleVit: 6e-6, vecScaleAcc: 1e-14, vecScaleForce: 2e17,
+    /* ── Zoom (mode parallel-x uniquement) ── */
+    zoomLevel: 0,     // 0 = affichage par défaut, <0 = dézoom, >0 = zoom sur les armatures
 };
+
+/* ── Constantes de zoom (mode parallel-x) ── */
+var ZOOM_STEP      = 0.05;  // 5 cm par cran (dézoom, sur l'axe y)
+var ZOOM_MIN_LEVEL = -6;    // dézoom max : +30 cm de chaque côté sur y
+var ZOOM_MAX_LEVEL =  3;    // zoom max (3 crans depuis le mode par défaut) : yMax = 0.10, xMax = L
+var ZOOM_IN_MIN_YMAX = 0.10; // yMax au zoom maximal (inchangé quel que soit ZOOM_MAX_LEVEL)
+
+/* ── yMax / xMax effectifs, en tenant compte du zoom ──
+   (s = simE, ou l'alias "sim" pointant vers simE pendant le rendu) ── */
+function _effYMaxE(s) {
+    s = s || simE;
+    if (s.armatureMode !== 'parallel-x') return s.yMax;
+    if (s.zoomLevel <= 0) return 0.20 - s.zoomLevel * ZOOM_STEP;
+    var frac = s.zoomLevel / ZOOM_MAX_LEVEL;
+    return 0.20 - (0.20 - ZOOM_IN_MIN_YMAX) * frac;
+}
+
+function _effXMaxE(s) {
+    s = s || simE;
+    if (s.armatureMode !== 'parallel-x' || s.zoomLevel <= 0) return s.xMax;
+    /* Au zoom max (ZOOM_MAX_LEVEL), l'affichage se resserre sur [0, L] */
+    var frac = s.zoomLevel / ZOOM_MAX_LEVEL;
+    return s.xMax - 0.20 * frac;
+}
 
 var savedRunsE       = [];
 var _nextSaveIdE     = 1;
@@ -393,8 +423,12 @@ function computeScaleE(canvasW, canvasH) {
     simE.originY = Math.round(canvasH / 2);
     var availW = canvasW - simE.originX - 20;
     var availH = canvasH - 60;
-    var sx = simE.xMax > 0 ? availW / (simE.xMax * 1.05) : 1000;
-    var sy = simE.yMax > 0 ? availH / (simE.yMax * 2 * 1.05) : 5000;
+    /* xMax/yMax effectifs : prennent en compte le zoom (mode parallel-x uniquement) */
+    var effXMax = _effXMaxE(simE);
+    var effYMax = _effYMaxE(simE);
+    var sx = effXMax > 0 ? availW / (effXMax * 1.05) : 1000;
+    /* Marge de 3 cm au-dessus/en-dessous de la dernière graduation (±20 cm → ±23 cm affichés) */
+    var sy = effYMax > 0 ? availH / (effYMax * 2 * 1.15) : 5000;
     simE.scaleX = Math.max(1, sx);
     simE.scaleY = Math.max(1, sy);
     simE.scale  = simE.scaleX;
@@ -511,15 +545,14 @@ function computeTrajectoryBoundsE() {
     var halfE = simE.e / 2;
 
     if (simE.armatureMode === 'parallel-x') {
-        /* Écran de détection fixe à 70 cm de l'origine */
-        simE.xMax = 0.70;
+        /* Écran de détection toujours à 20 cm de la sortie des plaques */
+        simE.xMax = simE.L + 0.20;
         /* Simuler la déviation y au bout des plaques pour calibrer yMax */
         var alphaRad = simE.alpha * Math.PI / 180;
         var tx = 0, ty = 0;
         var tvx = simE.v0 * Math.cos(alphaRad);
         var tvy = simE.v0 * Math.sin(alphaRad);
         var dt = PHYS_DT_E * 20;
-        var yExitMax = halfE;
         var maxT_est = 0;
         for (var i = 0; i < 300000; i++) {
             var inF = (tx >= 0 && tx <= simE.L && Math.abs(ty) < halfE);
@@ -527,11 +560,11 @@ function computeTrajectoryBoundsE() {
             tvx += 0; tvy += ay_t * dt;
             tx  += tvx * dt; ty  += tvy * dt;
             maxT_est = (i + 1) * dt;
-            if (tx <= simE.L && Math.abs(ty) > yExitMax) yExitMax = Math.abs(ty);
             if (tx > 0 && tx <= simE.L && Math.abs(ty) >= halfE) break;
             if (tx >= simE.xMax) { maxT_est = (i + 1) * dt; break; }
         }
-        simE.yMax = Math.max(yExitMax * 1.6, halfE * 1.4, 0.005);
+        /* Axe y toujours affiché entre -20 cm et +20 cm, quels que soient les paramètres */
+        simE.yMax = 0.20;
         simE.maxT = maxT_est;
     } else {
         /* Écran à e×3 — visible après les deux armatures */
@@ -619,6 +652,7 @@ function computeGraphBoundsE() {
     if (b.y.min === b.y.max) { b.y.min -= simE.e / 4; b.y.max += simE.e / 4; }
     if (b.ax.min === b.ax.max) { b.ax.min -= 1e12; b.ax.max += 1e12; }
     if (b.ay.min === b.ay.max) { b.ay.min -= 1e12; b.ay.max += 1e12; }
-    simE.graphBounds = b;
+    /* Ces bornes ne sont "en attente" que jusqu'au prochain Lancer : le graphe affiché
+       (simE.graphBounds) n'est mis à jour qu'au lancement d'une run (voir commitGraphBoundsE). */
     simE._ownGraphBounds = JSON.parse(JSON.stringify(b));
 }
