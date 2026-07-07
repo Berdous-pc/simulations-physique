@@ -392,6 +392,8 @@ main {
 .btn-primary:disabled { background: #a0b8c8; border-color: #8098a8; cursor: not-allowed; }
 .btn-green     { background: #2a8a50; color: #fff; border-color: #1a6a38; font-size: 16px; padding: 11px 6px; }
 .btn-green:hover { background: #1a7040; }
+.btn-orange    { background: #c05820; color: #fff; border-color: #a04010; font-size: 16px; padding: 11px 6px; }
+.btn-orange:hover { background: #a04010; }
 .btn-green:disabled { background: #90b8a0; border-color: #70a080; cursor: not-allowed; }
 .btn-toggle-one { background: #ece8e0; color: #5a6a78; border-color: #b0a898; font-size: 15px; padding: 10px 6px; }
 .btn-toggle-one:hover { background: #dedad2; color: #2c3e50; }

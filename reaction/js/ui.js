@@ -355,13 +355,40 @@ function stepCoeff(idx, delta, inp) {
 /* ══════════════════════════════════════════════════════════════════════════
    MODE ÉQUILIBRAGE — TESTER
 ══════════════════════════════════════════════════════════════════════════ */
+function setBtnTesterState(text, colorClass) {
+  const btn = document.getElementById('btn-tester');
+  btn.textContent = text;
+  btn.classList.remove('btn-primary','btn-orange','btn-green');
+  btn.classList.add(colorClass);
+}
+
 function testerEquilibrage() {
+  const anim = state.animEq;
+  if (anim && !anim.done) {
+    if (anim.paused) resumeAnimEq(); else pauseAnimEq();
+    return;
+  }
   stopAnimations(); clearStatus();
   const rxn = REACTIONS[state.reactionEqIdx];
   const coeffsR = rxn.reactifs.map((_,i) => getCoeffEq(i));
   const coeffsP = rxn.produits.map((_,j) => getCoeffEq(rxn.reactifs.length+j));
   if (getSpeedMultEq() === Infinity) { testerEquilibrageInstantane(rxn, coeffsR, coeffsP); return; }
   lancerAnimEquilibrage(coeffsR, coeffsP);
+}
+
+function pauseAnimEq() {
+  const anim = state.animEq; if (!anim||anim.paused||anim.done) return;
+  cancelAnimationFrame(anim.rafId); anim.rafId=null;
+  anim.paused=true; anim.pausedAt=performance.now();
+  setBtnTesterState('▶ Reprendre','btn-green');
+}
+
+function resumeAnimEq() {
+  const anim = state.animEq; if (!anim||!anim.paused) return;
+  if (anim.t0!==null) anim.t0 += performance.now()-anim.pausedAt;
+  anim.paused=false;
+  setBtnTesterState('⏸ Pause','btn-orange');
+  anim.rafId=requestAnimationFrame(t=>tickAnimEq(t));
 }
 
 function testerEquilibrageInstantane(rxn, coeffsR, coeffsP) {
@@ -635,9 +662,9 @@ function lancerAnimEquilibrage(coeffsR, coeffsP) {
   });
   allAssignedIndices.forEach(idx => { atoms[idx].assigned=true; });
 
-  const anim={phase:0,subPhase:null,t0:null,atoms,layoutInit,layoutFinal,layoutGhost,queue,queueIdx:0,countsPossible,coeffsP,parfait:atoms.every(a=>a.assigned),doneCount:rxn.produits.map(()=>0),ghostSlots:ghostCounts,rafId:null,done:false,rxn,coeffsR,scMid};
+  const anim={phase:0,subPhase:null,t0:null,atoms,layoutInit,layoutFinal,layoutGhost,queue,queueIdx:0,countsPossible,coeffsP,parfait:atoms.every(a=>a.assigned),doneCount:rxn.produits.map(()=>0),ghostSlots:ghostCounts,rafId:null,done:false,rxn,coeffsR,scMid,paused:false,pausedAt:null};
   state.animEq=anim;
-  document.getElementById('btn-tester').disabled=true;
+  setBtnTesterState('⏸ Pause','btn-orange');
   if (testState.actif) document.getElementById('btn-raz-eq').disabled=true;
   anim.rafId=requestAnimationFrame(t=>tickAnimEq(t));
 }
@@ -1096,7 +1123,7 @@ function setStatus(msg,cls) { const el=document.getElementById('status-msg'); el
 function clearStatus()      { const el=document.getElementById('status-msg'); el.className=''; el.textContent=''; updatePopupSpacer(); }
 
 function stopAnimations() {
-  if (state.animEq) { cancelAnimationFrame(state.animEq.rafId); state.animEq=null; document.getElementById('btn-tester').disabled=false; }
+  if (state.animEq) { cancelAnimationFrame(state.animEq.rafId); state.animEq=null; document.getElementById('btn-tester').disabled=false; setBtnTesterState('▶ Tester','btn-primary'); }
   if (state.animLim) { cancelAnimationFrame(state.animLim.rafId); state.animLim=null; document.getElementById('btn-reagir-max').disabled=false; document.getElementById('btn-reagir-step').disabled=false; }
 }
 function clearSnapshots() { state.lastFrameEq=null; state.lastFrameLim=null; state.stepCache=null; }
@@ -1357,6 +1384,7 @@ function finirAnimEq() {
   const anim=state.animEq; if (!anim) return;
   anim.done=true; state.animEq=null;
   document.getElementById('btn-tester').disabled=false;
+  setBtnTesterState('▶ Tester','btn-primary');
   document.getElementById('btn-raz-eq').disabled=false;
   state.lastFrameEq={
     coeffsR:anim.coeffsR.slice(),
