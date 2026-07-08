@@ -460,8 +460,9 @@ function _effYMaxE(s) {
 
 function _effXMaxE(s) {
     s = s || simE;
-    if (s.armatureMode !== 'parallel-x' || s.zoomLevel <= 0) return s.xMax;
-    /* Au zoom max (ZOOM_MAX_LEVEL), l'affichage se resserre sur [0, L] */
+    if (s.zoomLevel <= 0) return s.xMax;
+    /* Au zoom max (ZOOM_MAX_LEVEL), l'affichage se resserre sur les armatures
+       (marge de 0,20 m retirée), en parallel-x comme en perp-x. */
     var frac = s.zoomLevel / ZOOM_MAX_LEVEL;
     return s.xMax - 0.20 * frac;
 }

@@ -1077,6 +1077,7 @@ function onSliderDeltaTE(v) {
 
 function setArmatureModeE(mode) {
     simE.armatureMode = mode;
+    simE.zoomLevel = 0;
     document.getElementById('btn-e-arm-parallel').classList.toggle('active', mode === 'parallel-x');
     document.getElementById('btn-e-arm-perp').classList.toggle('active',     mode === 'perp-x');
     document.getElementById('e-row-L').style.display   = (mode === 'parallel-x') ? '' : 'none';
@@ -1096,10 +1097,17 @@ function setArmatureModeE(mode) {
 }
 
 /* ─────────────────────────────────────────────────
-   Zoom (mode "Armatures parallèles à l'axe x" uniquement)
+   Zoom (champ électrique, parallel-x et perp-x)
+   En perp-x : pas de dézoom sous l'affichage par défaut
+   (seul l'axe x est resserré sur le condensateur, l'axe y
+   n'est jamais modifié — voir _effYMaxE).
 ───────────────────────────────────────────────── */
 function _zoomEnabledE() {
-    return activeTab === 'champ-electrique' && simE.armatureMode === 'parallel-x';
+    return activeTab === 'champ-electrique';
+}
+
+function _zoomMinLevelE() {
+    return simE.armatureMode === 'parallel-x' ? ZOOM_MIN_LEVEL : 0;
 }
 
 function _updateZoomButtonsE() {
@@ -1108,13 +1116,13 @@ function _updateZoomButtonsE() {
     var btnDef = document.getElementById('btn-zoom-default');
     if (!btnOut || !btnIn || !btnDef) return;
     var enabled = _zoomEnabledE();
-    btnOut.disabled = !enabled || simE.zoomLevel <= ZOOM_MIN_LEVEL;
+    btnOut.disabled = !enabled || simE.zoomLevel <= _zoomMinLevelE();
     btnIn.disabled  = !enabled || simE.zoomLevel >= ZOOM_MAX_LEVEL;
     btnDef.disabled = !enabled || simE.zoomLevel === 0;
 }
 
 function zoomOutE() {
-    if (!_zoomEnabledE() || simE.zoomLevel <= ZOOM_MIN_LEVEL) return;
+    if (!_zoomEnabledE() || simE.zoomLevel <= _zoomMinLevelE()) return;
     simE.zoomLevel--;
     computeScaleE(_animW, _animH);
     _updateZoomButtonsE();

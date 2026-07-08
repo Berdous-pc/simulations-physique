@@ -168,6 +168,19 @@ function _viewProjFactors() {
     return { cx: Math.cos(_viewAngles.ty), cy: Math.cos(_viewAngles.tx) };
 }
 
+/* Déplacement canvas (px) d'un vecteur physique (vx, vy) pour le champ de
+   pesanteur : la direction tient compte de la déformation des axes (repère
+   "Adapté", sim.scaleX ≠ sim.scaleY) et de la vue courante (_viewProjFactors),
+   pour rester tangent à la trajectoire ; la longueur reste schématique
+   (indépendante de sim.scale), fixée par vecScale px par unité physique. */
+function _vecCanvasDelta(vx, vy, vecScale) {
+    var p = _viewProjFactors();
+    var cvx = vx * p.cx * sim.scaleX, cvy = -vy * p.cy * sim.scaleY;
+    var cm  = Math.hypot(cvx, cvy) || 1;
+    var len = Math.hypot(vx, vy) * vecScale;
+    return { dx: cvx * len / cm, dy: cvy * len / cm };
+}
+
 /* ── Conversion coordonnées physiques → canvas ── */
 function toCanvas(px, py) {
     return {
@@ -726,11 +739,14 @@ function _drawSavedChronoSnaps(ctx, run) {
         ctx.restore();
 
         if (run.showVecPos) _drawVectorPos(ctx, s.x, s.y, 0.42);
-        var _svp = _viewProjFactors();
-        if (run.showVecVit) _drawVecDispVA(ctx, p.cx, p.cy,
-            s.vx * VEC_SCALE_VIT * _svp.cx, -s.vy * VEC_SCALE_VIT * _svp.cy, COL_VEC_VIT, null, 0.42);
-        if (run.showVecAcc) _drawVecDispVA(ctx, p.cx, p.cy,
-            s.ax * VEC_SCALE_ACC * _svp.cx, -s.ay * VEC_SCALE_ACC * _svp.cy, COL_VEC_ACC, null, 0.42);
+        if (run.showVecVit) {
+            var _dV = _vecCanvasDelta(s.vx, s.vy, VEC_SCALE_VIT);
+            _drawVecDispVA(ctx, p.cx, p.cy, _dV.dx, _dV.dy, COL_VEC_VIT, null, 0.42);
+        }
+        if (run.showVecAcc) {
+            var _dA = _vecCanvasDelta(s.ax, s.ay, VEC_SCALE_ACC);
+            _drawVecDispVA(ctx, p.cx, p.cy, _dA.dx, _dA.dy, COL_VEC_ACC, null, 0.42);
+        }
         if (run.showVecForces || run.showVecSumF) {
             var _rp = { mass: run.mass, g: run.g, windForce: run.windForce, useFriction: run.useFriction, k: 0.15 };
             var _rr = [];
@@ -910,16 +926,13 @@ function _drawChronoSnaps(ctx) {
         if (sim.showVecPos) {
             _drawVectorPos(ctx, s.x, s.y, 0.6);
         }
-        var _cvp = _viewProjFactors();
         if (sim.showVecVit) {
-            _drawVecDispVA(ctx, p.cx, p.cy,
-                s.vx * VEC_SCALE_VIT * _cvp.cx, -s.vy * VEC_SCALE_VIT * _cvp.cy,
-                COL_VEC_VIT, null, 0.6);
+            var _dV = _vecCanvasDelta(s.vx, s.vy, VEC_SCALE_VIT);
+            _drawVecDispVA(ctx, p.cx, p.cy, _dV.dx, _dV.dy, COL_VEC_VIT, null, 0.6);
         }
         if (sim.showVecAcc) {
-            _drawVecDispVA(ctx, p.cx, p.cy,
-                s.ax * VEC_SCALE_ACC * _cvp.cx, -s.ay * VEC_SCALE_ACC * _cvp.cy,
-                COL_VEC_ACC, null, 0.6);
+            var _dA = _vecCanvasDelta(s.ax, s.ay, VEC_SCALE_ACC);
+            _drawVecDispVA(ctx, p.cx, p.cy, _dA.dx, _dA.dy, COL_VEC_ACC, null, 0.6);
         }
         if (sim.showVecForces || sim.showVecSumF) {
             var _sp = { mass: sim.mass, g: sim.g, windForce: sim.windForce, useFriction: sim.useFriction, k: sim.k };
@@ -968,16 +981,13 @@ function _drawBall(ctx) {
 
     /* Vecteurs sur la balle courante */
     if (sim.showVecPos) _drawVectorPos(ctx, sim.x, sim.y, 1.0);
-    var _bvp = _viewProjFactors();
     if (sim.showVecVit) {
-        _drawVecDispVA(ctx, p.cx, p.cy,
-            sim.vx * VEC_SCALE_VIT * _bvp.cx, -sim.vy * VEC_SCALE_VIT * _bvp.cy,
-            COL_VEC_VIT, null, 1.0);
+        var _dV = _vecCanvasDelta(sim.vx, sim.vy, VEC_SCALE_VIT);
+        _drawVecDispVA(ctx, p.cx, p.cy, _dV.dx, _dV.dy, COL_VEC_VIT, null, 1.0);
     }
     if (sim.showVecAcc) {
-        _drawVecDispVA(ctx, p.cx, p.cy,
-            sim.ax * VEC_SCALE_ACC * _bvp.cx, -sim.ay * VEC_SCALE_ACC * _bvp.cy,
-            COL_VEC_ACC, null, 1.0);
+        var _dA = _vecCanvasDelta(sim.ax, sim.ay, VEC_SCALE_ACC);
+        _drawVecDispVA(ctx, p.cx, p.cy, _dA.dx, _dA.dy, COL_VEC_ACC, null, 1.0);
     }
     if (sim.showVecForces || sim.showVecSumF) {
         var _bp = { mass: sim.mass, g: sim.g, windForce: sim.windForce, useFriction: sim.useFriction, k: sim.k };
@@ -1400,9 +1410,8 @@ function _drawAnimHover(ctx, snap, isPinned) {
             var _lenV = Math.hypot(snap.vx, snap.vy) * _vscV;
             dvx = _cvxV * _lenV / _cmV; dvy = _cvyV * _lenV / _cmV;
         } else {
-            var _hvp = _viewProjFactors();
-            dvx = snap.vx * _vscV * _hvp.cx;
-            dvy = -snap.vy * _vscV * _hvp.cy;
+            var _dV = _vecCanvasDelta(snap.vx, snap.vy, _vscV);
+            dvx = _dV.dx; dvy = _dV.dy;
         }
         var _vitPerp = _vecScaleVitOverride !== null && sim.armatureMode === 'perp-x';
         var _colVit  = _vitPerp ? COL_VEC_VIT_PERP : COL_VEC_VIT;
@@ -1430,9 +1439,8 @@ function _drawAnimHover(ctx, snap, isPinned) {
             var _lenA = Math.hypot(snap.ax, snap.ay) * _vscA;
             dax = _cvxA * _lenA / _cmA; day = _cvyA * _lenA / _cmA;
         } else {
-            var _havp = _viewProjFactors();
-            dax = snap.ax * _vscA * _havp.cx;
-            day = -snap.ay * _vscA * _havp.cy;
+            var _dA = _vecCanvasDelta(snap.ax, snap.ay, _vscA);
+            dax = _dA.dx; day = _dA.dy;
         }
         var _accPerp = _vecScaleAccOverride !== null && sim.armatureMode === 'perp-x';
         var _colAcc  = _accPerp ? COL_VEC_ACC_PERP : COL_VEC_ACC;
@@ -1952,24 +1960,31 @@ function _drawFieldE(ctx) {
             }
         });
     } else {
-        var xIn  = toCanvas(0, 0).cx + 5;
-        var xOut = toCanvas(sim.e, 0).cx - 5;
-        var rows = 3;
-        var dxd  = E >= 0 ? 1 : -1;
-        var availW  = Math.max(15, xOut - xIn - 10);
-        var vecLenH = Math.min(availW * eScale, availW);
-        for (var r = 0; r < rows; r++) {
-            var py  = PLATE_HALF_HEIGHT_PERP * (1 - 2 * (r + 1) / (rows + 1));
-            var rcy = toCanvas(0, py).cy;
-            var tipX = xIn + vecLenH * dxd;
-            ctx.beginPath(); ctx.moveTo(xIn, rcy); ctx.lineTo(tipX, rcy); ctx.stroke();
-            var ah2  = vecLenH * 0.18;
-            ctx.beginPath();
-            ctx.moveTo(tipX - dxd * ah2, rcy - ah2 * 0.45);
-            ctx.lineTo(tipX, rcy);
-            ctx.lineTo(tipX - dxd * ah2, rcy + ah2 * 0.45);
-            ctx.stroke();
-        }
+        /* perp-x : miroir du mode parallel-x (colonnes ↔ rangées, x ↔ y) */
+        var yT   = toCanvas(0, PLATE_HALF_HEIGHT_PERP).cy + 12;
+        var yB   = toCanvas(0, -PLATE_HALF_HEIGHT_PERP).cy - 12;
+        var rows = Math.max(3, Math.floor((yB - yT) / 50));
+        var halfPxH = Math.abs(toCanvas(sim.e, 0).cx - toCanvas(sim.e / 2, 0).cx);
+        var vecLenH = Math.min(Math.max(14, Math.min(36, halfPxH * 0.75)) * eScale, halfPxH * 0.9);
+        var midCx   = toCanvas(sim.e / 2, 0).cx;
+        var colOffset = halfPxH * 0.5;
+        var dxd = E >= 0 ? 1 : -1;
+
+        [-1, 1].forEach(function(side) {
+            var colCx = midCx - side * colOffset;
+            for (var r = 0; r < rows; r++) {
+                var fy  = yT + r * (yB - yT) / Math.max(1, rows - 1);
+                var fx1 = colCx - dxd * vecLenH / 2;
+                var fx2 = colCx + dxd * vecLenH / 2;
+                ctx.beginPath(); ctx.moveTo(fx1, fy); ctx.lineTo(fx2, fy); ctx.stroke();
+                var ah2 = vecLenH * 0.22;
+                ctx.beginPath();
+                ctx.moveTo(fx2 - dxd * ah2, fy - ah2 * 0.45);
+                ctx.lineTo(fx2, fy);
+                ctx.lineTo(fx2 - dxd * ah2, fy + ah2 * 0.45);
+                ctx.stroke();
+            }
+        });
     }
     ctx.restore();
 }
