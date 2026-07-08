@@ -229,7 +229,6 @@ function drawAnim() {
     }
 
     _drawBall(ctx);
-    _drawVectorLegend(ctx);
     _drawViewLabel(ctx);
     _drawAnalysisPoints(ctx);
     if (_animHoverSnap) _drawAnimHover(ctx, _animHoverSnap);
@@ -1583,47 +1582,6 @@ function _drawViewLabel(ctx) {
     }
 }
 
-function _drawVectorLegend(ctx) {
-    var anyVec = sim.showVecPos || sim.showVecVit || sim.showVecAcc || sim.showVecForces || sim.showVecSumF;
-    if (!anyVec) return;
-
-    var fontSize = Math.max(9, Math.min(11, _animH * 0.024));
-    var x0 = _animW - 12;
-    var y0 = 20;
-    var lineH = fontSize + 8;
-    var items = [];
-
-    if (sim.showVecPos)    items.push({color: COL_VEC_POS,    label: 'Position OM'});
-    if (sim.showVecVit)    items.push({color: COL_VEC_VIT,    label: 'Vitesse (1 m/s = ' + VEC_SCALE_VIT + ' px)'});
-    if (sim.showVecAcc)    items.push({color: COL_VEC_ACC,    label: 'Accel. (1 m/s² = ' + VEC_SCALE_ACC + ' px)'});
-    if (sim.showVecForces) items.push({color: COL_VEC_FORCES, label: 'Forces (1 N = ' + VEC_SCALE_FORCE + ' px)'});
-    if (sim.showVecSumF)   items.push({color: COL_VEC_SUMF,   label: 'ΣF (1 N = ' + VEC_SCALE_FORCE + ' px)'});
-
-    ctx.save();
-    ctx.font = fontSize + 'px Segoe UI, Arial';
-
-    for (var i = 0; i < items.length; i++) {
-        var it = items[i];
-        var ty = y0 + i * lineH;
-
-        /* Trait couleur */
-        ctx.strokeStyle = it.color;
-        ctx.lineWidth = 2.5;
-        ctx.beginPath();
-        ctx.moveTo(x0 - 22, ty);
-        ctx.lineTo(x0 - 5, ty);
-        ctx.stroke();
-
-        /* Texte */
-        ctx.fillStyle = 'rgba(255,255,255,0.85)';
-        ctx.textAlign = 'right';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(it.label, x0 - 26, ty);
-    }
-
-    ctx.restore();
-}
-
 /* ── Splitter draggable ── */
 (function initSplitter() {
     document.addEventListener('DOMContentLoaded', function () {
@@ -2185,7 +2143,6 @@ function drawAnimE() {
     _drawParticleE(ctx);
     _drawAnalysisPoints(ctx);
     _drawViewLabel(ctx);
-    _drawVectorLegend(ctx);
     if (_animHoverSnapE) _drawAnimHoverE(ctx, _animHoverSnapE);
 
     /* Restore */

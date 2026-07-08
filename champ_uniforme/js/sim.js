@@ -459,12 +459,14 @@ function resetSimE() {
     simE.vy = simE.v0 * Math.sin(alphaRad);
     _nextGraphRecordE = 0;
     computeAccelerationE();
-    /* Échelles vecteurs : target ~55 px pour la valeur initiale */
+    /* Échelles vecteurs : target ~55 px pour la valeur initiale.
+       La force est calibrée à moitié moins longue que l'accélération (F = ma),
+       pour qu'elles ne se confondent jamais visuellement (comme en pesanteur). */
     var _tpx = 55;
     simE.vecScaleVit   = simE.v0 > 0 ? _tpx / simE.v0 : 6e-6;
     var _maxA = Math.abs(simE.q * simE.E) / simE.mass;
     simE.vecScaleAcc   = _maxA > 0 ? _tpx / _maxA : 1e-14;
-    simE.vecScaleForce = Math.abs(simE.q * simE.E) > 0 ? _tpx / Math.abs(simE.q * simE.E) : 2e17;
+    simE.vecScaleForce = simE.vecScaleAcc / simE.mass * 0.5;
 
     simE.trajPoints     = [{x: 0, y: 0}];
     simE.chronoSnaps    = [];
