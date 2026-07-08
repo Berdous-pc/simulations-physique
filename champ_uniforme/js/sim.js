@@ -54,6 +54,10 @@ var sim = {
     graphMode: 'single',  // 'single' | 'dual'
     graphTab1: 'x(t)',
     graphTab2: 'y(t)',
+    /* Graphe "Energies" : run affichée (null = courante, sinon id d'une run
+       sauvegardée) + quelles courbes tracer, par emplacement de graphe (1/2) */
+    energyCfg1: { runId: null, ec: true, epp: true, em: true },
+    energyCfg2: { runId: null, ec: true, epp: true, em: true },
 
     /* ── Vue canvas animation ── */
     scale:   20,   // px/m (recalculé par computeScale, = scaleX en mode ortho)
@@ -241,6 +245,9 @@ function computeGraphBounds() {
     var Fy0 = -sim.g * sim.mass - (sim.useFriction ? sim.k * tvy : 0);
     var tax0 = Fx0 / sim.mass, tay0 = Fy0 / sim.mass;
 
+    var ec0  = 0.5 * sim.mass * (tvx * tvx + tvy * tvy);
+    var epp0 = sim.mass * sim.g * ty;
+    var em0  = ec0 + epp0;
     var b = {
         t:  { min: 0, max: 0 },
         x:  { min: 0, max: Math.max(tx, 0.01) },
@@ -248,7 +255,8 @@ function computeGraphBounds() {
         vx: { min: tvx, max: tvx },
         vy: { min: tvy, max: tvy },
         ax: { min: tax0, max: tax0 },
-        ay: { min: tay0, max: tay0 }
+        ay: { min: tay0, max: tay0 },
+        energy: { min: Math.min(ec0, epp0, em0, 0), max: Math.max(ec0, epp0, em0) }
     };
 
     for (var i = 0; i < 20000; i++) {
@@ -271,6 +279,13 @@ function computeGraphBounds() {
         if (tay > b.ay.max) b.ay.max = tay;
         if (tay < b.ay.min) b.ay.min = tay;
         if (ty  > b.y.max)  b.y.max  = ty;
+        var ect  = 0.5 * sim.mass * (tvx * tvx + tvy * tvy);
+        var eppt = sim.mass * sim.g * ty;
+        var emt  = ect + eppt;
+        if (ect  > b.energy.max) b.energy.max = ect;
+        if (eppt > b.energy.max) b.energy.max = eppt;
+        if (emt  > b.energy.max) b.energy.max = emt;
+        if (eppt < b.energy.min) b.energy.min = eppt;
         b.t.max = tt;
 
         if (ty <= 0 && i > 2) break;
@@ -280,6 +295,7 @@ function computeGraphBounds() {
     b.x.max  = Math.max(b.x.max,  1);
     b.y.max  = Math.max(b.y.max,  sim.h + 1, 1);
     b.y.min  = 0;  /* jamais sous le sol */
+    if (b.energy.min === b.energy.max) { b.energy.max += 1; }
 
     /* Ces bornes ne sont "en attente" que jusqu'au prochain Lancer : le graphe affiché
        (sim.graphBounds) n'est mis à jour qu'au lancement d'une run (voir commitGraphBounds). */
@@ -508,7 +524,7 @@ function resetSimE() {
 
     simE.trajPoints     = [{x: 0, y: 0}];
     simE.chronoSnaps    = [];
-    simE.graphData      = [{t:0, x:0, y:0, vx:simE.vx, vy:simE.vy, ax:simE.ax, ay:simE.ay}];
+    simE.graphData      = [{t:0, x:0, y:0, vx:simE.vx, vy:simE.vy, ax:simE.ax, ay:simE.ay, mass:simE.mass}];
     simE.analysisPoints = [];
     simE.nextChronoTime = 0;
     simE.ended = false;
@@ -559,7 +575,7 @@ function _pushChronoSnapE() {
         x: simE.x, y: simE.y,
         vx: simE.vx, vy: simE.vy,
         ax: simE.ax, ay: simE.ay,
-        t: simE.t
+        t: simE.t, mass: simE.mass
     });
 }
 
@@ -598,7 +614,7 @@ function advanceSimE(dtReal) {
         }
         if (simE.t >= _nextGraphRecordE) {
             simE.graphData.push({t:simE.t, x:simE.x, y:simE.y,
-                vx:simE.vx, vy:simE.vy, ax:simE.ax, ay:simE.ay});
+                vx:simE.vx, vy:simE.vy, ax:simE.ax, ay:simE.ay, mass:simE.mass});
             _nextGraphRecordE += PHYS_DT_E * 10;
         }
         if ((simE.displayMode === 'chrono' || simE.displayMode === 'both') &&
@@ -610,7 +626,7 @@ function advanceSimE(dtReal) {
             simE.ended = true;
             simE.trajPoints.push({x: simE.x, y: simE.y});
             simE.graphData.push({t:simE.t, x:simE.x, y:simE.y,
-                vx:simE.vx, vy:simE.vy, ax:0, ay:0});
+                vx:simE.vx, vy:simE.vy, ax:0, ay:0, mass:simE.mass});
             break;
         }
     }
@@ -678,6 +694,7 @@ function computeGraphBoundsE() {
     var halfE = simE.e / 2;
     var ax0 = simE.armatureMode === 'perp-x' ? (p.q * simE.E) / p.m : 0;
     var ay0 = simE.armatureMode === 'parallel-x' ? (p.q * simE.E) / p.m : 0;
+    var ec0 = 0.5 * p.m * (tvx * tvx + tvy * tvy);
     var b = {
         t:  { min: 0, max: 0 },
         x:  { min: 0, max: 0.001 },
@@ -685,7 +702,8 @@ function computeGraphBoundsE() {
         vx: { min: tvx, max: tvx },
         vy: { min: tvy, max: tvy },
         ax: { min: ax0, max: ax0 },
-        ay: { min: ay0, max: ay0 }
+        ay: { min: ay0, max: ay0 },
+        ec: { min: ec0, max: ec0 }
     };
     var dt = PHYS_DT_E * 20;
     for (var i = 0; i < 200000; i++) {
@@ -708,6 +726,9 @@ function computeGraphBoundsE() {
         if (tvx < b.vx.min) b.vx.min = tvx;
         if (tvy > b.vy.max) b.vy.max = tvy;
         if (tvy < b.vy.min) b.vy.min = tvy;
+        var ect = 0.5 * p.m * (tvx * tvx + tvy * tvy);
+        if (ect > b.ec.max) b.ec.max = ect;
+        if (ect < b.ec.min) b.ec.min = ect;
         if (axt > b.ax.max) b.ax.max = axt;
         if (axt < b.ax.min) b.ax.min = axt;
         if (ayt > b.ay.max) b.ay.max = ayt;
@@ -727,6 +748,7 @@ function computeGraphBoundsE() {
     if (b.y.min === b.y.max) { b.y.min -= simE.e / 4; b.y.max += simE.e / 4; }
     if (b.ax.min === b.ax.max) { b.ax.min -= 1e12; b.ax.max += 1e12; }
     if (b.ay.min === b.ay.max) { b.ay.min -= 1e12; b.ay.max += 1e12; }
+    if (b.ec.min === b.ec.max) { b.ec.max += Math.max(b.ec.max * 0.1, 1e-25); }
     /* Ces bornes ne sont "en attente" que jusqu'au prochain Lancer : le graphe affiché
        (simE.graphBounds) n'est mis à jour qu'au lancement d'une run (voir commitGraphBoundsE). */
     simE._ownGraphBounds = JSON.parse(JSON.stringify(b));

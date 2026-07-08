@@ -276,6 +276,10 @@ function expandBoundsGlobal() {
    plus grande (courante + runs sauvegardées visibles), pour que tout soit visible. */
 function commitGraphBounds() {
     var gb = JSON.parse(JSON.stringify(sim._ownGraphBounds || sim.graphBounds || {}));
+    /* Copie figée, propre à la run courante seule (ni fusionnée avec les autres
+       runs, ni modifiable par "Adapter" sur une autre run) : utilisée par le
+       graphe "Energies" quand "Simulation actuelle" est sélectionnée. */
+    sim.committedOwnGraphBounds = JSON.parse(JSON.stringify(gb));
     for (var i = 0; i < savedRuns.length; i++) {
         var r = savedRuns[i];
         if (r.hidden) continue;
@@ -760,6 +764,7 @@ function sauvegarderRun() {
         hidden: false
     });
     renderSavedRuns();
+    _buildGraphCtrl();
     resetSimAnim();   /* efface la run courante — elle est désormais affichée via la couche sauvegardée */
 }
 
@@ -767,8 +772,11 @@ function supprimerSauvegardeRun(id) {
     if (_openDropdownId === id) closeRunDropdown();
     savedRuns = savedRuns.filter(function(r) { return r.id !== id; });
     _updateCurrentRunColor();
+    if (sim.energyCfg1.runId === id) sim.energyCfg1.runId = null;
+    if (sim.energyCfg2.runId === id) sim.energyCfg2.runId = null;
     expandBoundsGlobal();
     renderSavedRuns();
+    _buildGraphCtrl();
     _updatePlayBtn();
 }
 
