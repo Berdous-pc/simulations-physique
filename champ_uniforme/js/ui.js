@@ -330,7 +330,15 @@ function _updatePlayBtn() {
         btn.className = 'btn btn-pause';
     }
     var btnSave = document.getElementById('btn-save');
-    if (btnSave) btnSave.disabled = !sim.ended;
+    if (btnSave) {
+        if (savedRuns.length >= MAX_SAVED_RUNS) {
+            btnSave.disabled = true;
+            btnSave.textContent = 'Nombre max de sauvegardes atteint.';
+        } else {
+            btnSave.disabled = !sim.ended;
+            btnSave.textContent = '✦ Sauvegarder';
+        }
+    }
 }
 
 /* ─────────────────────────────────────────────────
@@ -607,10 +615,11 @@ function toutRejouer() {
 }
 
 function toutRejouerE() {
-    if (savedRunsE.length === 0) return;
+    var visible = _visibleSavedRunsE();
+    if (visible.length === 0) return;
     _replayMaxTE = 0;
-    for (var i = 0; i < savedRunsE.length; i++) {
-        var data = savedRunsE[i].graphData;
+    for (var i = 0; i < visible.length; i++) {
+        var data = visible[i].graphData;
         if (data.length > 0) {
             var last = data[data.length - 1].t;
             if (last > _replayMaxTE) _replayMaxTE = last;
@@ -714,6 +723,10 @@ function setHoverShowCoords(val) {
 
 function _updateCurrentRunColor() {
     var used = savedRuns.map(function(r) { return r.color; });
+    /* Ne change la couleur de la run en cours que si elle n'est plus disponible
+       (ex: vient d'être sauvegardée) — supprimer une autre run sauvegardée ne
+       doit jamais réattribuer une couleur déjà en cours d'utilisation. */
+    if (_currentRunColor && used.indexOf(_currentRunColor) === -1) return;
     _currentRunColor = SAVE_COLORS.find(function(c) { return used.indexOf(c) === -1; }) || null;
 }
 
@@ -756,6 +769,7 @@ function supprimerSauvegardeRun(id) {
     _updateCurrentRunColor();
     expandBoundsGlobal();
     renderSavedRuns();
+    _updatePlayBtn();
 }
 
 function masquerSauvegardeRun(id) {
@@ -990,7 +1004,15 @@ function _updatePlayBtnE() {
         btn.className   = 'btn btn-pause';
     }
     var btnSave = document.getElementById('btn-e-save');
-    if (btnSave) btnSave.disabled = !simE.ended;
+    if (btnSave) {
+        if (_visibleSavedRunsE().length >= MAX_SAVED_RUNS) {
+            btnSave.disabled = true;
+            btnSave.textContent = 'Nombre max de sauvegardes atteint.';
+        } else {
+            btnSave.disabled = !simE.ended;
+            btnSave.textContent = '✦ Sauvegarder';
+        }
+    }
 }
 
 function resetSimAnimE() {
@@ -1061,6 +1083,7 @@ function setArmatureModeE(mode) {
     _syncModeParamWidgetsE();
     if (simE.displayMode === 'chrono' || simE.displayMode === 'both') _regenerateChronoSnapsE();
     resetSimAnimE();
+    renderSavedRunsE();   /* les runs sauvegardées sont propres à chaque mode d'armatures */
     _updateZoomButtonsE();
 }
 
@@ -1187,7 +1210,7 @@ function toggleVecForcesE() { simE.showVecForces = !simE.showVecForces; document
 function toggleVecSumFE()   { simE.showVecSumF   = !simE.showVecSumF;   document.getElementById('btn-e-vec-sumf').classList.toggle('active',   simE.showVecSumF); }
 
 function sauvegarderRunE() {
-    if (!simE.ended || savedRunsE.length >= MAX_SAVED_RUNS || !_currentRunColorE) return;
+    if (!simE.ended || _visibleSavedRunsE().length >= MAX_SAVED_RUNS || !_currentRunColorE) return;
     var color = _currentRunColorE;
     savedRunsE.push({
         id: _nextSaveIdE++,
@@ -1232,6 +1255,7 @@ function supprimerSauvegardeRunE(id) {
     _updateCurrentRunColorE();
     expandBoundsGlobalE();
     renderSavedRunsE();
+    _updatePlayBtnE();
 }
 
 function masquerSauvegardeRunE(id) {
@@ -1247,8 +1271,9 @@ function expandBoundsGlobalE() {
     simE.xMax = simE._ownXMax || simE.xMax;
     simE.yMax = simE._ownYMax || simE.yMax;
     simE.maxT = simE._ownMaxT || simE.maxT;
-    for (var i = 0; i < savedRunsE.length; i++) {
-        var r = savedRunsE[i];
+    var visibleAB = _visibleSavedRunsE();
+    for (var i = 0; i < visibleAB.length; i++) {
+        var r = visibleAB[i];
         if (r.hidden) continue;
         if (r.xMax > simE.xMax) simE.xMax = r.xMax;
         if (r.yMax > simE.yMax) simE.yMax = r.yMax;
@@ -1262,8 +1287,9 @@ function expandBoundsGlobalE() {
    plus grande (courante + runs sauvegardées visibles), pour que tout soit visible. */
 function commitGraphBoundsE() {
     var gb = JSON.parse(JSON.stringify(simE._ownGraphBounds || simE.graphBounds || {}));
-    for (var i = 0; i < savedRunsE.length; i++) {
-        var r = savedRunsE[i];
+    var visibleGB = _visibleSavedRunsE();
+    for (var i = 0; i < visibleGB.length; i++) {
+        var r = visibleGB[i];
         if (r.hidden) continue;
         if (r.graphBounds && gb && Object.keys(gb).length > 0) {
             Object.keys(gb).forEach(function(key) {
@@ -1282,7 +1308,8 @@ function renderSavedRunsE() {
     if (!tabs) return;
     tabs.innerHTML = '';
 
-    if (savedRunsE.length === 0) {
+    var visible = _visibleSavedRunsE();
+    if (visible.length === 0) {
         var empty = document.createElement('span');
         empty.className = 'toolbar-empty';
         empty.textContent = 'Appuyer sur Sauvegarder à la fin d\'une simulation pour la conserver.';
@@ -1290,7 +1317,7 @@ function renderSavedRunsE() {
         return;
     }
 
-    for (var i = 0; i < savedRunsE.length; i++) {
+    for (var i = 0; i < visible.length; i++) {
         (function(run, idx) {
             var tab = document.createElement('div');
             tab.className = 'run-tab' + (run.hidden ? ' masque' : '') + (_openDropdownIdE === run.id ? ' expanded' : '');
@@ -1313,13 +1340,6 @@ function renderSavedRunsE() {
             btnHide.onclick = function(e) { e.stopPropagation(); masquerSauvegardeRunE(run.id); };
             tab.appendChild(btnHide);
 
-            var btnAdapt = document.createElement('button');
-            btnAdapt.className = 'run-tab-btn';
-            btnAdapt.title = 'Adapter la vue à cette simulation';
-            btnAdapt.textContent = '🔍';
-            btnAdapt.onclick = function(e) { e.stopPropagation(); adapterVueRunE(run.id); };
-            tab.appendChild(btnAdapt);
-
             var btnExp = document.createElement('button');
             btnExp.className = 'run-tab-btn';
             btnExp.title = 'Détails';
@@ -1335,11 +1355,11 @@ function renderSavedRunsE() {
             tab.appendChild(btnDel);
 
             tabs.appendChild(tab);
-        })(savedRunsE[i], i);
+        })(visible[i], i);
     }
 
     if (_openDropdownIdE !== null) {
-        var openRun = savedRunsE.find(function(r) { return r.id === _openDropdownIdE; });
+        var openRun = visible.find(function(r) { return r.id === _openDropdownIdE; });
         if (openRun) _renderDropdownE(openRun);
         else closeRunDropdownE();
     }
@@ -1427,15 +1447,6 @@ function toggleSavedVecE(id, key) {
     if (!run) return;
     run[key] = !run[key];
     _renderDropdownE(run);
-}
-
-function adapterVueRunE(id) {
-    var run = savedRunsE.find(function(r) { return r.id === id; });
-    if (!run) return;
-    simE.xMax = Math.max(run.xMax || simE._ownXMax || 0.5, 0.01);
-    simE.yMax = Math.max(run.yMax || simE._ownYMax || 0.02, 0.001);
-    simE.graphBounds = JSON.parse(JSON.stringify(run.graphBounds || simE._ownGraphBounds || {}));
-    computeScaleE(_animW, _animH);
 }
 
 /* Synchronise les widgets des paramètres communs aux deux modes d'armatures

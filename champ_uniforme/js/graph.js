@@ -639,7 +639,7 @@ function drawGraphE() {
     var _colOrig   = _currentRunColor;
     var _hOrig     = _animHoverSnap;
     sim              = simE;
-    savedRuns        = savedRunsE;
+    savedRuns        = _visibleSavedRunsE();
     _currentRunColor = _currentRunColorE;
     _animHoverSnap   = _animHoverSnapE;
     _graphTimeNs     = true;

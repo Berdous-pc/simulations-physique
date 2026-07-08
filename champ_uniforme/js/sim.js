@@ -454,8 +454,19 @@ var savedRunsE       = [];
 var _nextSaveIdE     = 1;
 var _currentRunColorE = SAVE_COLORS[0];
 
+/* Runs sauvegardées propres au mode d'armatures courant : les runs sauvegardées
+   en parallel-x et en perp-x sont indépendantes, ne s'affichent/ne comptent
+   jamais l'une pour l'autre. */
+function _visibleSavedRunsE() {
+    return savedRunsE.filter(function(r) { return r.armatureMode === simE.armatureMode; });
+}
+
 function _updateCurrentRunColorE() {
-    var used = savedRunsE.map(function(r) { return r.color; });
+    var used = _visibleSavedRunsE().map(function(r) { return r.color; });
+    /* Ne change la couleur de la run en cours que si elle n'est plus disponible
+       (ex: vient d'être sauvegardée) — supprimer une autre run sauvegardée ne
+       doit jamais réattribuer une couleur déjà en cours d'utilisation. */
+    if (_currentRunColorE && used.indexOf(_currentRunColorE) === -1) return;
     _currentRunColorE = SAVE_COLORS.find(function(c) { return used.indexOf(c) === -1; }) || null;
 }
 

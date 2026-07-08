@@ -798,6 +798,45 @@ function _drawSavedBall(ctx, run) {
     ctx.restore();
 }
 
+/* Rejoue une particule (pas le ballon de pesanteur) pour une run électrique sauvegardée */
+function _drawSavedBallE(ctx, run) {
+    var pts = run.graphData;
+    if (pts.length === 0) return;
+
+    var idx = pts.length - 1;
+    for (var k = 0; k < pts.length - 1; k++) {
+        if (pts[k + 1].t > _replayT) { idx = k; break; }
+    }
+    var d0 = pts[idx];
+    var x, y;
+    if (idx < pts.length - 1 && pts[idx + 1].t > pts[idx].t) {
+        var d1 = pts[idx + 1];
+        var alpha = (_replayT - d0.t) / (d1.t - d0.t);
+        x = d0.x + alpha * (d1.x - d0.x);
+        y = d0.y + alpha * (d1.y - d0.y);
+    } else {
+        x = d0.x; y = d0.y;
+    }
+
+    var p = toCanvas(x, y);
+    var r = Math.max(5, Math.min(10, 6));
+    var charge = run.q < 0 ? '−' : '+';
+    var color  = run.q < 0 ? '#4a90d9' : '#e06060';
+
+    ctx.save();
+    ctx.beginPath(); ctx.arc(p.cx, p.cy, r, 0, 2 * Math.PI);
+    ctx.fillStyle = color;
+    ctx.shadowColor = 'rgba(0,0,0,0.30)'; ctx.shadowBlur = 5;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold ' + Math.max(10, r * 1.3) + 'px Arial';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(charge, p.cx, p.cy);
+    ctx.restore();
+}
+
 /* ─────────────────────────────────────────────────
    Trajectoire courante
 ───────────────────────────────────────────────── */
@@ -2099,17 +2138,18 @@ function _drawParticleE(ctx) {
 
 function _updateAnimHoverE(mouseX, mouseY) {
     var isChrono = (simE.displayMode === 'chrono');
+    var visible = _visibleSavedRunsE();
     var datasets = [];
     if (isChrono) {
         if (simE.chronoSnaps.length > 0) datasets.push({data: simE.chronoSnaps, color: _currentRunColorE || '#2050a0', runId: null});
-        for (var i = 0; i < savedRunsE.length; i++) {
-            if (!savedRunsE[i].hidden && savedRunsE[i].chronoSnaps.length > 0)
-                datasets.push({data: savedRunsE[i].chronoSnaps, color: savedRunsE[i].color, runId: i});
+        for (var i = 0; i < visible.length; i++) {
+            if (!visible[i].hidden && visible[i].chronoSnaps.length > 0)
+                datasets.push({data: visible[i].chronoSnaps, color: visible[i].color, runId: visible[i].id});
         }
     } else {
         if (simE.graphData.length >= 2) datasets.push({data: simE.graphData, color: _currentRunColorE || '#2050a0', runId: null});
-        for (var i = 0; i < savedRunsE.length; i++) {
-            if (!savedRunsE[i].hidden) datasets.push({data: savedRunsE[i].graphData, color: savedRunsE[i].color, runId: i});
+        for (var i = 0; i < visible.length; i++) {
+            if (!visible[i].hidden) datasets.push({data: visible[i].graphData, color: visible[i].color, runId: visible[i].id});
         }
     }
     var bestDist = Infinity, bestSnap = null;
@@ -2137,7 +2177,9 @@ function _updateAnimHoverE(mouseX, mouseY) {
 function _handleClickE() {
     if (!_pinModeActive || !_animHoverSnapE) return;
     var snap = _animHoverSnapE;
-    var targetList = (snap.runId === null) ? simE.analysisPoints : savedRunsE[snap.runId].analysisPoints;
+    var runRef = snap.runId === null ? null : savedRunsE.find(function(r) { return r.id === snap.runId; });
+    if (snap.runId !== null && !runRef) return; /* run supprimée entre-temps */
+    var targetList = runRef ? runRef.analysisPoints : simE.analysisPoints;
     var _simBak = sim; sim = simE;
     for (var i = 0; i < targetList.length; i++) {
         var pp = toCanvas(targetList[i].x, targetList[i].y);
@@ -2147,9 +2189,9 @@ function _handleClickE() {
     }
     sim = _simBak;
     if (targetList.length >= 10) return;
-    var ep = snap.runId === null
-        ? _fieldForceAt(simE, snap.x, snap.y)
-        : _fieldForceAt(savedRunsE[snap.runId], snap.x, snap.y);
+    var ep = runRef
+        ? _fieldForceAt(runRef, snap.x, snap.y)
+        : _fieldForceAt(simE, snap.x, snap.y);
     targetList.push({x: snap.x, y: snap.y, vx: snap.vx, vy: snap.vy,
                      ax: snap.ax, ay: snap.ay, t: snap.t,
                      color: snap.color, phys: ep});
@@ -2168,7 +2210,8 @@ function drawAnimE() {
     var _repTOrig   = _replayT;
     var _hoverOrig  = _animHoverSnap;
     sim              = simE;
-    savedRuns        = savedRunsE;
+    /* Runs sauvegardées indépendantes entre parallel-x et perp-x */
+    savedRuns        = _visibleSavedRunsE();
     _currentRunColor = _currentRunColorE;
     _replayPlaying   = _replayPlayingE;
     _replaySessionActive = _replaySessionActiveE;
@@ -2194,7 +2237,7 @@ function drawAnimE() {
         if (_sr.hidden) continue;
         if (simE.displayMode === 'trajectory' || simE.displayMode === 'both') _drawSavedTrajectory(ctx, _sr);
         if (simE.displayMode === 'chrono'     || simE.displayMode === 'both') _drawSavedChronoSnapsE(ctx, _sr);
-        if (_replaySessionActive) _drawSavedBall(ctx, _sr);
+        if (_replaySessionActive) _drawSavedBallE(ctx, _sr);
     }
 
     if (simE.displayMode === 'trajectory' || simE.displayMode === 'both') _drawTrajectory(ctx);
@@ -2220,7 +2263,7 @@ function drawAnimE() {
 
 function _drawAnimHoverE(ctx, snap) {
     var _simBak = sim; var _runsBak = savedRuns; var _colBak = _currentRunColor;
-    sim = simE; savedRuns = savedRunsE; _currentRunColor = _currentRunColorE;
+    sim = simE; savedRuns = _visibleSavedRunsE(); _currentRunColor = _currentRunColorE;
     _vecScaleVitOverride = simE.vecScaleVit;
     _vecScaleAccOverride = simE.vecScaleAcc;
     _drawAnimHover(ctx, snap);
