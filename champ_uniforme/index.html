@@ -27,7 +27,7 @@
       <div class="toolbar-left">
         <button id="btn-axis-mode" class="toolbar-btn" onclick="toggleAxisMode()">Repère : Orthonormé</button>
         <div class="toolbar-dropdown-wrap">
-          <button class="toolbar-btn toolbar-dropdown-btn" onclick="toggleToolbarDropdown('vue')">Vue ▾</button>
+          <button id="btn-vue-dropdown" class="toolbar-btn toolbar-dropdown-btn" onclick="toggleToolbarDropdown('vue')">Vue ▾</button>
           <div class="toolbar-dropdown" id="toolbar-drop-vue">
             <button class="toolbar-drop-item selected" data-mode="oxy"    onclick="setViewMode('oxy')">Plan Oxy</button>
             <button class="toolbar-drop-item"          data-mode="proj-x" onclick="setViewMode('proj-x')">Projection sur l'axe x</button>
@@ -77,8 +77,8 @@
             </label>
           </div>
         </div>
-        <div class="toolbar-zoom-group">
-          <span class="toolbar-zoom-label">Zoom</span>
+        <div class="toolbar-zoom-group" id="toolbar-zoom-group">
+          <span class="toolbar-zoom-label">Zoom :</span>
           <button id="btn-zoom-out" class="toolbar-btn toolbar-zoom-btn" onclick="zoomOutE()" title="Dézoomer">−</button>
           <button id="btn-zoom-in"  class="toolbar-btn toolbar-zoom-btn" onclick="zoomInE()"  title="Zoomer">+</button>
           <button id="btn-zoom-default" class="toolbar-btn" onclick="zoomDefaultE()" title="Revenir à l'affichage par défaut">Défaut</button>
@@ -93,6 +93,7 @@
           <div id="saved-runs-tabs"></div>
           <button id="tabs-scroll-right" class="tabs-scroll-btn" onclick="scrollRunTabs(1)">></button>
         </div>
+        <button class="toolbar-action-btn" id="btn-adapter" onclick="adapterVue()">Adapter</button>
         <button class="toolbar-action-btn" id="btn-tout-rejouer" onclick="toutRejouer()">Tout rejouer</button>
       </div>
       <!-- Dropdown unique pour les détails d'une run -->
@@ -223,10 +224,7 @@
               <option value="1">Positon   (q = +e, m = 9,11×10⁻³¹ kg)</option>
               <option value="2">Proton    (q = +e, m = 1,67×10⁻²⁷ kg)</option>
               <option value="3">Noyau He²⁺ (q = +2e, m = 6,64×10⁻²⁷ kg)</option>
-              <option value="4">Ion H₂⁺  (q = +e, m = 3,35×10⁻²⁷ kg)</option>
-              <option value="5">Ion Na⁺  (q = +e, m = 3,82×10⁻²⁶ kg)</option>
-              <option value="6">Ion H⁻   (q = −e, m = 1,67×10⁻²⁷ kg)</option>
-              <option value="7">Ion Cl⁻  (q = −e, m = 5,89×10⁻²⁶ kg)</option>
+              <option value="4">Ion H⁻   (q = −e, m = 1,67×10⁻²⁷ kg)</option>
             </select>
           </div>
 
@@ -254,7 +252,7 @@
           </div>
 
           <div class="param-row">
-            <label>Champ <i>E</i></label>
+            <label>Champ&nbsp;<i>E</i></label>
             <div class="sci-input-row">
               <input type="number" id="e-field-mantisse" class="sci-mantisse"
                      min="-9.9" max="9.9" step="0.1" value="1.5"
@@ -266,6 +264,9 @@
                 <option value="5">⁵</option>
               </select>
               <span class="sci-unit">V/m</span>
+            </div>
+            <div style="font-size:clamp(9px,0.85vw,11px);color:#7a8a96;font-style:italic;margin-top:4px;line-height:1.4;">
+              Mettre un signe - pour inverser le sens du champ.
             </div>
           </div>
 
@@ -294,7 +295,9 @@
           <label class="pin-coords-label" style="margin-top:5px;">
             <input type="checkbox" id="chk-e-field" onchange="toggleFieldECb(this.checked)">
             Représenter le champ
-            <span style="color:#2980b9;font-style:italic;margin-left:2px;">E</span>
+            <span style="color:#e67e22;font-style:normal;margin-left:2px;">
+              <math><mover><mi>E</mi><mo>&#x2192;</mo></mover></math>
+            </span>
           </label>
         </div>
 

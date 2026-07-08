@@ -1353,8 +1353,8 @@ function _drawAnimHover(ctx, snap, isPinned) {
             anchorX: p.cx + dvx / 2,
             anchorY: p.cy + dvy / 2,
             vecName: 'v',
-            line1: 'vx = ' + fmt(snap.vx, 2) + ' m/s',
-            line2: 'vy = ' + fmt(snap.vy, 2) + ' m/s',
+            line1: 'vx = ' + (_vecScaleVitOverride !== null ? fmtSci(snap.vx, 3) : fmt(snap.vx, 2)) + ' m/s',
+            line2: 'vy = ' + (_vecScaleVitOverride !== null ? fmtSci(snap.vy, 3) : fmt(snap.vy, 2)) + ' m/s',
             color:  COL_VEC_VIT,
             prefer: vPrefer,
             showCoords: showCoords
@@ -1378,8 +1378,8 @@ function _drawAnimHover(ctx, snap, isPinned) {
             anchorX: p.cx + dax / 2,
             anchorY: p.cy + day / 2,
             vecName: 'a',
-            line1: 'ax = ' + fmt(snap.ax, 2) + ' m/s²',
-            line2: 'ay = ' + fmt(snap.ay, 2) + ' m/s²',
+            line1: 'ax = ' + (_vecScaleAccOverride !== null ? fmtSci(snap.ax, 3) : fmt(snap.ax, 2)) + ' m/s²',
+            line2: 'ay = ' + (_vecScaleAccOverride !== null ? fmtSci(snap.ay, 3) : fmt(snap.ay, 2)) + ' m/s²',
             color:  COL_VEC_ACC,
             prefer: ['right', 'upper-right', 'left', 'upper-left', 'above', 'lower-right', 'lower-left', 'below'],
             showCoords: showCoords
@@ -1407,9 +1407,16 @@ function _drawAnimHover(ctx, snap, isPinned) {
 
     /* ── Forces (utilisent le contexte physique du point épinglé) ── */
     if (showForces || showSumF) {
-        var ph = snap.phys || { mass: sim.mass, g: sim.g, windForce: sim.windForce, useFriction: sim.useFriction, k: sim.k };
-        if (showForces) _drawForcesAt(ctx, p.cx, p.cy, snap.vx, snap.vy, 1.0, ph, placedRects);
-        if (showSumF)   _drawSumFAt(ctx,   p.cx, p.cy, snap.vx, snap.vy, 1.0, ph, placedRects);
+        if (_vecScaleVitOverride !== null) {
+            /* Mode électrique : force électrique FE, pas le poids */
+            var phE = snap.phys || _getEPhys(snap.x, snap.y);
+            if (showForces) _drawForcesAtE(ctx, p.cx, p.cy, snap.vx, snap.vy, 1.0, phE, placedRects);
+            if (showSumF)   _drawSumFAtE(ctx,   p.cx, p.cy, snap.vx, snap.vy, 1.0, phE, placedRects);
+        } else {
+            var ph = snap.phys || { mass: sim.mass, g: sim.g, windForce: sim.windForce, useFriction: sim.useFriction, k: sim.k };
+            if (showForces) _drawForcesAt(ctx, p.cx, p.cy, snap.vx, snap.vy, 1.0, ph, placedRects);
+            if (showSumF)   _drawSumFAt(ctx,   p.cx, p.cy, snap.vx, snap.vy, 1.0, ph, placedRects);
+        }
     }
 }
 
@@ -1659,6 +1666,7 @@ function _drawVectorLegend(ctx) {
             resizeAnimCanvas();
             resizeGraphCanvas();
             computeScale(_animW, _animH);
+            computeScaleE(_animW, _animH);
         }
 
         splitter.addEventListener('pointerup', endDrag);
@@ -1875,42 +1883,55 @@ function _drawArmatures(ctx) {
 }
 
 function _drawFieldE(ctx) {
-    var COL = '#2980b9';
+    var COL = '#e67e22';
     var E   = sim.E;
     var dir = E >= 0 ? -1 : 1;   /* -1 = flèche vers le haut (cy décroît) */
     ctx.save();
     ctx.strokeStyle = COL; ctx.fillStyle = COL;
     ctx.globalAlpha = 0.50; ctx.lineWidth = 1.8; ctx.lineCap = 'round';
 
+    /* Échelle des flèches en fonction de l'intensité du champ (log, bornée) */
+    var E_REF = 1.5e4;
+    var eScale = 1 + 0.65 * Math.log10(Math.max(Math.abs(E), 1) / E_REF);
+    eScale = Math.max(0.4, Math.min(2.2, eScale));
+
     if (sim.armatureMode === 'parallel-x') {
         var xL   = sim.originX + 12;
         var xR   = toCanvas(sim.L, 0).cx - 12;
         var cols = Math.max(3, Math.floor((xR - xL) / 50));
-        var vecLen = Math.max(18, Math.min(45, Math.abs(toCanvas(0, sim.e / 2).cy - toCanvas(0, 0).cy) * 0.55));
-        var midCy = toCanvas(0, 0).cy;
-        for (var c = 0; c < cols; c++) {
-            var fx = xL + c * (xR - xL) / Math.max(1, cols - 1);
-            var fy1 = midCy - dir * vecLen / 2;
-            var fy2 = midCy + dir * vecLen / 2;
-            ctx.beginPath(); ctx.moveTo(fx, fy1); ctx.lineTo(fx, fy2); ctx.stroke();
-            var ah = vecLen * 0.22;
-            ctx.beginPath();
-            ctx.moveTo(fx - ah * 0.45, fy2 - dir * ah);
-            ctx.lineTo(fx, fy2);
-            ctx.lineTo(fx + ah * 0.45, fy2 - dir * ah);
-            ctx.stroke();
-        }
+        var halfE  = sim.e / 2;
+        var halfPx = Math.abs(toCanvas(0, halfE).cy - toCanvas(0, 0).cy);
+        var vecLen = Math.min(Math.max(14, Math.min(36, halfPx * 0.75)) * eScale, halfPx * 0.9);
+        var midCy  = toCanvas(0, 0).cy;
+        var rowOffset = halfPx * 0.5; /* décale chaque rangée à mi-chemin entre l'axe x et une plaque */
+
+        [-1, 1].forEach(function(side) {
+            var rowCy = midCy - side * rowOffset;
+            for (var c = 0; c < cols; c++) {
+                var fx = xL + c * (xR - xL) / Math.max(1, cols - 1);
+                var fy1 = rowCy - dir * vecLen / 2;
+                var fy2 = rowCy + dir * vecLen / 2;
+                ctx.beginPath(); ctx.moveTo(fx, fy1); ctx.lineTo(fx, fy2); ctx.stroke();
+                var ah = vecLen * 0.22;
+                ctx.beginPath();
+                ctx.moveTo(fx - ah * 0.45, fy2 - dir * ah);
+                ctx.lineTo(fx, fy2);
+                ctx.lineTo(fx + ah * 0.45, fy2 - dir * ah);
+                ctx.stroke();
+            }
+        });
     } else {
         var xIn  = toCanvas(0, 0).cx + 5;
         var xOut = toCanvas(sim.e, 0).cx - 5;
         var rows = 3;
         var dxd  = E >= 0 ? 1 : -1;
-        var vecLenH = Math.max(15, xOut - xIn - 10);
+        var availW  = Math.max(15, xOut - xIn - 10);
+        var vecLenH = Math.min(availW * eScale, availW);
         for (var r = 0; r < rows; r++) {
             var py  = sim.e / 2 * (1 - 2 * (r + 1) / (rows + 1));
             var rcy = toCanvas(0, py).cy;
-            ctx.beginPath(); ctx.moveTo(xIn, rcy); ctx.lineTo(xIn + vecLenH * dxd, rcy); ctx.stroke();
             var tipX = xIn + vecLenH * dxd;
+            ctx.beginPath(); ctx.moveTo(xIn, rcy); ctx.lineTo(tipX, rcy); ctx.stroke();
             var ah2  = vecLenH * 0.18;
             ctx.beginPath();
             ctx.moveTo(tipX - dxd * ah2, rcy - ah2 * 0.45);
@@ -1922,15 +1943,15 @@ function _drawFieldE(ctx) {
     ctx.restore();
 }
 
-function _getEPhys() {
-    return {
-        FEx:  sim.armatureMode === 'perp-x' ? sim.q * sim.E : 0,
-        FEy:  sim.armatureMode === 'parallel-x' ? sim.q * sim.E : 0,
-        mass: sim.mass
-    };
+/* Force électrique au point (x,y) — nulle hors du condensateur.
+   Sans arguments, utilise la position courante de la particule (sim = simE ici). */
+function _getEPhys(x, y) {
+    if (x === undefined) { x = sim.x; y = sim.y; }
+    return _fieldForceAt(sim, x, y);
 }
 
 function _drawForcesAtE(ctx, cx, cy, vx, vy, opacity, phys, placedRects) {
+    if (phys.FEx === 0 && phys.FEy === 0) return; /* hors du condensateur : rien à afficher */
     var _vp = _viewProjFactors();
     var _sf = sim.vecScaleForce || VEC_SCALE_FORCE;
     var dxPx =  phys.FEx * _sf * _vp.cx;
@@ -1944,6 +1965,7 @@ function _drawForcesAtE(ctx, cx, cy, vx, vy, opacity, phys, placedRects) {
 }
 
 function _drawSumFAtE(ctx, cx, cy, vx, vy, opacity, phys, placedRects) {
+    if (phys.FEx === 0 && phys.FEy === 0) return; /* hors du condensateur : rien à afficher */
     var _vp = _viewProjFactors();
     var _sf = sim.vecScaleForce || VEC_SCALE_FORCE;
     var dxPx =  phys.FEx * _sf * _vp.cx;
@@ -1959,10 +1981,10 @@ function _drawSumFAtE(ctx, cx, cy, vx, vy, opacity, phys, placedRects) {
 function _drawChronoSnapsE(ctx) {
     var snaps = sim.chronoSnaps;
     if (!snaps.length) return;
-    var ep = _getEPhys();
     var _vp = _viewProjFactors();
     for (var i = 0; i < snaps.length; i++) {
         var s = snaps[i];
+        var ep = _getEPhys(s.x, s.y);
         var p = toCanvas(s.x, s.y);
         ctx.save();
         ctx.fillStyle = _currentRunColor || 'rgba(50,80,180,0.85)';
@@ -1991,15 +2013,13 @@ function _drawChronoSnapsE(ctx) {
 function _drawSavedChronoSnapsE(ctx, run) {
     var snaps = run.chronoSnaps;
     if (!snaps.length) return;
-    var ep = { FEx: run.armatureMode === 'perp-x' ? run.q * run.E : 0,
-               FEy: run.armatureMode === 'parallel-x' ? run.q * run.E : 0,
-               mass: run.mass };
     var _vp = _viewProjFactors();
     var vsv = run.vecScaleVit   || sim.vecScaleVit;
     var vsa = run.vecScaleAcc   || sim.vecScaleAcc;
     for (var i = 0; i < snaps.length; i++) {
         var s = snaps[i];
         if (_replaySessionActive && s.t > _replayT) break;
+        var ep = _fieldForceAt(run, s.x, s.y);
         var p = toCanvas(s.x, s.y);
         ctx.save();
         ctx.globalAlpha = 0.82;
@@ -2114,12 +2134,8 @@ function _handleClickE() {
     sim = _simBak;
     if (targetList.length >= 10) return;
     var ep = snap.runId === null
-        ? {FEx: simE.armatureMode === 'perp-x' ? simE.q * simE.E : 0,
-           FEy: simE.armatureMode === 'parallel-x' ? simE.q * simE.E : 0,
-           mass: simE.mass, g: 0, windForce: 0, useFriction: false, k: 0}
-        : {FEx: savedRunsE[snap.runId].armatureMode === 'perp-x' ? savedRunsE[snap.runId].q * savedRunsE[snap.runId].E : 0,
-           FEy: savedRunsE[snap.runId].armatureMode === 'parallel-x' ? savedRunsE[snap.runId].q * savedRunsE[snap.runId].E : 0,
-           mass: savedRunsE[snap.runId].mass, g: 0, windForce: 0, useFriction: false, k: 0};
+        ? _fieldForceAt(simE, snap.x, snap.y)
+        : _fieldForceAt(savedRunsE[snap.runId], snap.x, snap.y);
     targetList.push({x: snap.x, y: snap.y, vx: snap.vx, vy: snap.vy,
                      ax: snap.ax, ay: snap.ay, t: snap.t,
                      color: snap.color, phys: ep});

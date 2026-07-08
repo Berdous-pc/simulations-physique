@@ -310,6 +310,24 @@ function fmt(v, dec) {
     return v.toFixed(dec).replace('.', ',');
 }
 
+/* ── Écriture scientifique française, sig chiffres significatifs (défaut 3) ── */
+var _SUP_DIGITS = {'0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹','-':'⁻'};
+function _toSup(n) {
+    return String(n).split('').map(function(ch) { return _SUP_DIGITS[ch] || ch; }).join('');
+}
+function fmtSci(v, sig) {
+    sig = sig || 3;
+    if (v === 0) return '0';
+    var sign = v < 0 ? '-' : '';
+    var av   = Math.abs(v);
+    var exp  = Math.floor(Math.log10(av));
+    var dec  = sig - 1;
+    var mant = av / Math.pow(10, exp);
+    mant = parseFloat(mant.toFixed(dec));
+    if (mant >= 10) { mant /= 10; exp += 1; }
+    return sign + mant.toFixed(dec).replace('.', ',') + '×10' + _toSup(exp);
+}
+
 /* ── Runs sauvegardées ── */
 var savedRuns     = [];
 var _nextSaveId   = 1;
@@ -325,10 +343,7 @@ var PARTICLES = [
     { name: 'Positon',     q:  1.602e-19, m: 9.109e-31  },
     { name: 'Proton',      q:  1.602e-19, m: 1.673e-27  },
     { name: 'Noyau He²⁺', q:  3.204e-19, m: 6.644e-27  },
-    { name: 'Ion H₂⁺',    q:  1.602e-19, m: 3.346e-27  },
-    { name: 'Ion Na⁺',    q:  1.602e-19, m: 3.818e-26  },
     { name: 'Ion H⁻',     q: -1.602e-19, m: 1.674e-27  },
-    { name: 'Ion Cl⁻',    q: -1.602e-19, m: 5.887e-26  },
 ];
 
 var PHYS_DT_E      = 5e-12;
@@ -475,6 +490,19 @@ function computeAccelerationE() {
         simE.ax = 0;
         simE.ay = inField2 ? (simE.q * simE.E) / simE.mass : 0;
     }
+}
+
+/* ── Force électrique en un point (x,y) donné : nulle hors du condensateur ──
+   cfg = {armatureMode, q, E, mass, L, e} (mêmes conditions que computeAccelerationE) */
+function _fieldForceAt(cfg, x, y) {
+    var inField = cfg.armatureMode === 'perp-x'
+        ? (x >= 0 && x <= cfg.e)
+        : (x >= 0 && x <= cfg.L && Math.abs(y) < cfg.e / 2);
+    return {
+        FEx:  (cfg.armatureMode === 'perp-x'     && inField) ? cfg.q * cfg.E : 0,
+        FEy:  (cfg.armatureMode === 'parallel-x' && inField) ? cfg.q * cfg.E : 0,
+        mass: cfg.mass
+    };
 }
 
 function stepPhysicsE(dt) {

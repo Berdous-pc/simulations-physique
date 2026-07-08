@@ -9,6 +9,10 @@
 var activeTab = 'champ-pesanteur';
 var validTabs = ['champ-pesanteur', 'champ-electrique'];
 
+/* Mémorise sim.axisMode d'avant le passage forcé en "Adapté" sur l'onglet
+   champ électrique, pour le restaurer au retour sur champ de pesanteur. */
+var _savedAxisModeBeforeE = null;
+
 /* ─────────────────────────────────────────────────
    Boucle d'animation
 ───────────────────────────────────────────────── */
@@ -75,6 +79,7 @@ function init() {
     initAnimCanvas();
     initGraphCanvas();
     resetSim();
+    expandBoundsGlobal();
     commitGraphBounds();
     _syncAllUI();
     renderSavedRuns();
@@ -190,6 +195,34 @@ function setMainTab(tab) {
         _buildGraphCtrl();
     }
     _updateZoomButtonsE();
+
+    /* Repère / Vue : sans objet en champ électrique (armatures fixes, pas de projection).
+       On force le mode "Adapté" en entrant sur cet onglet, et on restaure l'état
+       précédent (Orthonormé/Adapté) au retour sur champ de pesanteur. */
+    var disableViewToolbar = (tab === 'champ-electrique');
+    if (disableViewToolbar) {
+        if (_savedAxisModeBeforeE === null) _savedAxisModeBeforeE = sim.axisMode;
+        sim.axisMode = 'adapted';
+        computeScale(_animW, _animH);
+        _updateAxisModeBtn();
+        _closeAllToolbarDropdowns();
+    } else if (_savedAxisModeBeforeE !== null) {
+        sim.axisMode = _savedAxisModeBeforeE;
+        _savedAxisModeBeforeE = null;
+        computeScale(_animW, _animH);
+        _updateAxisModeBtn();
+    }
+    var btnAxisMode = document.getElementById('btn-axis-mode');
+    var btnVueDrop  = document.getElementById('btn-vue-dropdown');
+    if (btnAxisMode) btnAxisMode.disabled = disableViewToolbar;
+    if (btnVueDrop)  btnVueDrop.disabled  = disableViewToolbar;
+
+    /* "Adapter" : champ de pesanteur uniquement. Zoom : champ électrique uniquement. */
+    var btnAdapter  = document.getElementById('btn-adapter');
+    var zoomGroup   = document.getElementById('toolbar-zoom-group');
+    if (btnAdapter) btnAdapter.style.display = disableViewToolbar ? 'none' : '';
+    if (zoomGroup)  zoomGroup.style.display  = disableViewToolbar ? '' : 'none';
+
     window.location.hash = '#' + tab;
 }
 
@@ -208,19 +241,22 @@ function togglePause() {
     if (sim.ended) {
         /* Remettre à zéro automatiquement si la simulation est terminée */
         resetSimAnim();
+        expandBoundsGlobal();
         commitGraphBounds();
         sim.paused = false;
     } else {
-        /* Lancement (t=0) : on fige les bornes du graphe sur cette run.
-           Reprise après pause en cours de vol (t>0) : le graphe reste inchangé. */
-        if (sim.paused && sim.t === 0) commitGraphBounds();
+        /* Lancement (t=0) : on fige la vue (animation + graphe) sur cette run.
+           Reprise après pause en cours de vol (t>0) : rien ne change. */
+        if (sim.paused && sim.t === 0) { expandBoundsGlobal(); commitGraphBounds(); }
         sim.paused = !sim.paused;
     }
     _updatePlayBtn();
 }
 
-/* Bornes de l'animation (xMax/yMax/maxT) : suivent les paramètres en temps réel,
-   indépendamment du graphe (voir commitGraphBounds ci-dessous). */
+/* Bornes de l'animation (xMax/yMax/maxT) : ne se mettent à jour qu'au lancement
+   d'une run (bouton "Lancer"), pas à chaque changement de paramètre — voir
+   togglePause. On s'adapte à la run la plus grande (courante + runs sauvegardées
+   visibles), comme pour commitGraphBounds ci-dessous. */
 function expandBoundsGlobal() {
     sim.xMax        = sim._ownXMax || sim.xMax;
     sim.yMax        = sim._ownYMax || sim.yMax;
@@ -257,10 +293,18 @@ function commitGraphBounds() {
     sim.graphBounds = gb;
 }
 
+/* Bouton "Adapter" (champ de pesanteur uniquement) : recadre la vue et le graphe
+   sur la run la plus grande (courante + runs sauvegardées visibles) — utile après
+   avoir adapté le graphe à une seule run sauvegardée (bouton "Adapter" d'un onglet
+   de run), pour revenir au cadrage combiné par défaut. */
+function adapterVue() {
+    expandBoundsGlobal();
+    commitGraphBounds();
+}
+
 function resetSimAnim() {
     sim.paused = true;
     resetSim();
-    expandBoundsGlobal();
     _updateCurrentRunColor();
     _updatePlayBtn();
 }
@@ -491,9 +535,7 @@ function _setSl(id, val) {
 /* ─────────────────────────────────────────────────
    Mode repère (orthonormé / adapté)
 ───────────────────────────────────────────────── */
-function toggleAxisMode() {
-    sim.axisMode = (sim.axisMode === 'ortho') ? 'adapted' : 'ortho';
-    computeScale(_animW, _animH);
+function _updateAxisModeBtn() {
     var btn = document.getElementById('btn-axis-mode');
     if (btn) {
         btn.textContent = 'Repère : ' + (sim.axisMode === 'ortho' ? 'Orthonormé' : 'Adapté');
@@ -501,9 +543,23 @@ function toggleAxisMode() {
     }
 }
 
+function toggleAxisMode() {
+    sim.axisMode = (sim.axisMode === 'ortho') ? 'adapted' : 'ortho';
+    computeScale(_animW, _animH);
+    _updateAxisModeBtn();
+}
+
 function _lockAxisBtnWidth() {
     var btn = document.getElementById('btn-axis-mode');
-    if (btn && !btn.style.width) btn.style.width = btn.offsetWidth + 'px';
+    if (!btn || btn.style.width) return;
+    /* Mesure sur le texte le plus long des deux états (Orthonormé/Adapté),
+       quel que soit celui affiché au moment de l'appel (ex: onglet initial
+       champ électrique via le hash), pour ne jamais tronquer l'autre. */
+    var current = btn.textContent;
+    btn.textContent = 'Repère : Orthonormé';
+    var w = btn.offsetWidth;
+    btn.textContent = current;
+    btn.style.width = w + 'px';
 }
 
 function togglePinMode() {

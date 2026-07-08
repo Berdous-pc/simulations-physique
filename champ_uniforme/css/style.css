@@ -125,6 +125,11 @@ main {
 }
 .toolbar-btn:hover  { background: #ccc8c0; color: #2c3e50; }
 .toolbar-btn.active { background: #fde8c8; color: #7a3a10; border-color: #e8a060; }
+.toolbar-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
+}
 
 .toolbar-action-btn {
   flex-shrink: 0;
@@ -312,11 +317,6 @@ main {
 .toolbar-zoom-btn {
   min-width: 22px;
   padding: 0 6px;
-}
-.toolbar-zoom-group .toolbar-btn:disabled {
-  opacity: 0.4;
-  cursor: default;
-  pointer-events: none;
 }
 
 /* ── Dropdown pin ── */

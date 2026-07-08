@@ -209,13 +209,14 @@ function _updateGraphFontSizes(H) {
 }
 
 /* Marge gauche minimale mesurée depuis la largeur réelle des labels Y */
-function _calcGraphLeftMarginRaw(ctx, yMin, yMax) {
+function _calcGraphLeftMarginRaw(ctx, yMin, yMax, fmtFn) {
+    fmtFn = fmtFn || _fmtLabel;
     ctx.font = _gFontTick + 'px monospace';
     var step  = _niceStep(yMax - yMin, 5);
     var start = Math.ceil(yMin / step) * step;
     var wMax  = 0;
     for (var v = start; v <= yMax + step * 0.01; v += step) {
-        var w = ctx.measureText(_fmtLabel(Math.round(v / step) * step)).width;
+        var w = ctx.measureText(fmtFn(Math.round(v / step) * step)).width;
         if (w > wMax) wMax = w;
     }
     return Math.round(wMax + 14);
@@ -267,9 +268,32 @@ function _drawOneGraph(ctx, x0, y0, W, H, tabKey, hoverPos) {
         xMin = 0; xMax = 10; yMin = -1; yMax = 10;
     }
 
+    /* Zoom (armatures parallèles à l'axe x, champ électrique) : tous les graphes
+       suivent la même fenêtre que l'animation zoomée — position, vitesse et
+       accélération inclus. */
+    if (typeof activeTab !== 'undefined' && activeTab === 'champ-electrique' &&
+        sim.armatureMode === 'parallel-x' && sim.zoomLevel !== 0) {
+        var _effX = _effXMaxE(sim);
+        var _effY = _effYMaxE(sim);
+        /* vx constante en mode parallel-x (le champ ne dévie que selon y) :
+           le temps pour atteindre _effX se déduit directement de v0·cos(alpha). */
+        var _vxConst = sim.v0 * Math.cos(sim.alpha * Math.PI / 180);
+        var _effT    = Math.abs(_vxConst) > 1e-9 ? _effX / Math.abs(_vxConst) * _xScale : xMax;
+
+        if (tabKey === 'x(t)') { xMax = _effT; yMax = _effX; yMin = Math.max(yMin, 0); }
+        else if (tabKey === 'y(t)') { xMax = _effT; yMax = _effY; yMin = -_effY; }
+        else if (tabKey === 'y(x)') { xMax = _effX; yMax = _effY; yMin = -_effY; }
+        else if (_isTimeTab) { xMax = _effT; } /* vx(t), vy(t), ax(t), ay(t) */
+    }
+
+    /* Vitesses/accélérations en champ électrique : écriture scientifique (3 c.s.) */
+    var _isVelAccTab = (tabKey === 'vx(t)' || tabKey === 'vy(t)' || tabKey === 'ax(t)' || tabKey === 'ay(t)');
+    var _useSciY = _isVelAccTab && typeof activeTab !== 'undefined' && activeTab === 'champ-electrique';
+    var _yFmtFn  = _useSciY ? function(v) { return fmtSci(v, 3); } : _fmtLabel;
+
     /* ── Polices et marges dynamiques ── */
     _updateGraphFontSizes(H);
-    var mlRaw = _calcGraphLeftMarginRaw(ctx, yMin, yMax);
+    var mlRaw = _calcGraphLeftMarginRaw(ctx, yMin, yMax, _yFmtFn);
     var ml    = mlRaw + _gFontTitle + 8;
     var mr    = Math.max(10, Math.min(20, W * 0.04));
     var mt    = Math.max(10, Math.round(_gFontTick * 0.8));
@@ -307,7 +331,7 @@ function _drawOneGraph(ctx, x0, y0, W, H, tabKey, hoverPos) {
         ctx.lineTo(x0 + ml + plotW, gy);
         ctx.stroke();
 
-        ctx.fillText(_fmtLabel(vyr), x0 + ml - 6, gy);
+        ctx.fillText(_yFmtFn(vyr), x0 + ml - 6, gy);
     }
 
     /* ── Grille X ── */
@@ -517,7 +541,7 @@ function _drawOneGraph(ctx, x0, y0, W, H, tabKey, hoverPos) {
 
                 var lbl  = xl.name + ' = ' + _fmtLabel(bestXVal) + (xl.unit ? ' ' + xl.unit : '') +
                            '    ' +
-                           yl.name + ' = ' + _fmtLabel(bestYVal) + (yl.unit ? ' ' + yl.unit : '');
+                           yl.name + ' = ' + _yFmtFn(bestYVal) + (yl.unit ? ' ' + yl.unit : '');
 
                 ctx.font = _gFontTick + 'px monospace';
                 var lblW  = ctx.measureText(lbl).width;
