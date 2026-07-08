@@ -727,32 +727,6 @@ main {
 }
 .btn-vec-compact:hover .vec-label { opacity: 1; }
 
-/* Vecteurs : bouton avec pastille de couleur (legacy, conservé pour compatibilité) */
-.btn-vec {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  background: #ece8e0;
-  color: #5a6a78;
-  font-size: clamp(11px, 1.1vw, 14px);
-  padding: 7px 10px;
-  border: 1.5px solid #c8c0b4;
-  border-radius: 6px;
-  font-family: inherit;
-  font-weight: 600;
-  cursor: pointer;
-  margin-bottom: 5px;
-  transition: background 0.12s;
-}
-.btn-vec:hover { background: #dedad2; }
-.btn-vec.active { background: #fde8c8; color: #7a3a10; border-color: #e8a060; border-width: 2px; }
-.btn-vec-dot {
-  width: 10px; height: 10px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
 /* ── Paramètres ─────────────────────────────── */
 .param-row {
   display: flex;
@@ -927,16 +901,6 @@ main {
 }
 
 .ro-unit { font-size: 0.8em; font-weight: 400; color: #7a8a96; }
-
-/* ── Placeholder À venir ────────────────────── */
-.coming-soon {
-  text-align: center;
-  padding: clamp(20px, 3vh, 40px) 10px;
-  color: #7a8a96;
-}
-.coming-soon-icon  { font-size: clamp(24px, 3vw, 36px); margin-bottom: 8px; }
-.coming-soon-title { font-size: clamp(13px, 1.3vw, 16px); font-weight: 700; color: #5a6a78; margin-bottom: 6px; }
-.coming-soon-text  { font-size: clamp(11px, 1vw, 13px); font-style: italic; }
 
 /* ── Bandeau instructions ───────────────────── */
 .panel-hint {

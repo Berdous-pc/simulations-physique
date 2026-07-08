@@ -1178,22 +1178,6 @@ function onEFieldChange() {
     resetSimAnimE();
 }
 
-function _updateETrack(v) {
-    var sl = document.getElementById('sl-e-field');
-    if (!sl) return;
-    var min = parseFloat(sl.min), max = parseFloat(sl.max);
-    var pct = (v - min) / (max - min) * 100;
-    var pct0 = (0 - min) / (max - min) * 100;
-    var left = Math.min(pct, pct0), right = 100 - Math.max(pct, pct0);
-    var col = v >= 0 ? '#e06060' : '#4a90d9';
-    sl.style.background =
-        'linear-gradient(to right,' +
-        '#dde3e8 0%, #dde3e8 ' + left + '%,' +
-        col + ' ' + left + '%,' +
-        col + ' ' + (100 - right) + '%,' +
-        '#dde3e8 ' + (100 - right) + '%, #dde3e8 100%)';
-}
-
 function _restoreEFieldWidget(E) {
     var absE = Math.abs(E);
     var exp  = absE > 0 ? Math.floor(Math.log10(absE)) : 4;
