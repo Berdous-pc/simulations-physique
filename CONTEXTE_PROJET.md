@@ -178,9 +178,9 @@ Tous les boutons partagent : `width: 100%`, `border-radius: 6px`, `font-weight: 
 
 ---
 
-## 6. Options graphiques avancées (condensateur & radioactivité)
+## 6. Options graphiques avancées (ondes, champ_uniforme & radioactivité)
 
-Les pages `condensateur.html` et `radioactivite.html` implémentent un ensemble d'outils interactifs sur les graphes tracés sur `<canvas>`. Ces fonctionnalités constituent la **référence** pour toute nouvelle page comportant un graphe.
+Les pages `ondes/`, `champ_uniforme/` et `radioactivite/` implémentent un ensemble d'outils interactifs sur les graphes tracés sur `<canvas>`. Ces fonctionnalités constituent la **référence** pour toute nouvelle page comportant un graphe.
 
 ### Zoom par sélection rectangulaire
 
@@ -263,7 +263,7 @@ nom-simulation/
     └── ui.js        ← contrôles UI + boucle d'animation (chargé en dernier)
 ```
 
-> **Référence d'architecture** : le dossier `condensateur/` est la référence pour toute nouvelle simulation. Consulter son `ARCHITECTURE.md` avant de créer une nouvelle page.
+> **Référence d'architecture** : les dossiers `ondes/` et `champ_uniforme/` sont la référence pour toute nouvelle simulation (patterns les plus à jour : deep-linking par `#hash`, graphes interactifs, splitters). Consulter `ondes/ARCHITECTURE.md` avant de créer une nouvelle page.
 
 Les anciennes simulations en fichier unique (`reaction.html`) conservent leur format d'origine. Toute **nouvelle** simulation adopte l'arborescence ci-dessus.
 
@@ -328,15 +328,15 @@ Tout nouveau fichier **HTML**, **CSS** et **JS** doit inclure une signature d'au
 
 | Dossier / Fichier | Sujet | Niveau | Format | Particularités |
 |---|---|---|---|---|
-| `condensateur/` | Circuit RC — charge/décharge condensateur plan | Terminale | **Arborescence** | Référence d'architecture ; splitter draggable, zoom/pan/réticule sur graphes, animation courant et électrons |
+| `condensateur/` | Circuit RC — charge/décharge condensateur plan | Terminale | **Arborescence** | Splitter draggable, zoom/pan/réticule sur graphes, animation courant et électrons |
 | `lentille/` | Lentille mince convergente/divergente — construction géométrique | Seconde/Première | **Arborescence** | `sim.js` + `draw.js` + `ui.js` ; drag objet/lentille/écran, mode infini avec animation, multi-points, tableau conjugaison, cadres viewfinder avec `drawGlowLetter` |
 | `lunette/` | Lunette astronomique — deux lentilles, mode afocal | Terminale | **Arborescence** | `sim.js` + `draw.js` + `ui.js` ; drag/pan/zoom molette, animation propagation, réglage oculaire interactif |
 | `radioactivite/` | Décroissance radioactive — modèle des dés | Terminale | **Arborescence** | `sim.js` + `draw.js` + `ui.js` ; Mode Discret (Libre + Auto) et Mode Continu, zoom/pan/réticule/tangente/autoscale sur graphes, splitter draggable, overlay récipient agrandi, multi-séries avec légende |
 | `reaction/` | Réactions chimiques — stœchiométrie & réactif limitant | Seconde/Première | **Arborescence** | Mode Équilibrage + Mode Réactif limitant, modèles moléculaires 2D animés, mode test avec score, découpée en `css/style.css` + `js/data.js` + `js/sim.js` + `js/ui.js` + `index.html` |
 | `titrage/` | Titrage colorimétrique, pH-métrique, conductimétrique | Première/Terminale | **Arborescence** | Voir `titrage/ARCHITECTURE.md` |
 | `pression/` | Pression d'un gaz parfait — modèle cinétique | Terminale | **Arborescence** | Piston animé, collisions élastiques 2D, PV=nRT, chocs/s sur 4 parois |
-| `champ_uniforme/` | Mécanique : vecteurs cinématiques — champ de pesanteur & champ électrique uniforme | Terminale | **Arborescence** | `sim.js` + `draw.js` + `ui.js` ; onglets Champ de pesanteur / Champ électrique, repères Orthonormé/Adapté, modes vue (Oxy, projections x/y), vecteurs vitesse/accélération, mode perpendiculaire (champ E), graphes d'énergie, deep-linking via `#champ-pesanteur` / `#champ-electrique` |
-| `ondes/` | Propagation d'ondes — corde, onde sonore (tube), ondes de surface | Première/Terminale | **Arborescence** | `sim.js` + `tube.js` + `graph.js` + `ui.js` ; onglets Corde/Son/Vagues, sélection de particules par proximité (Ctrl/Maj+clic), mode pression colorée, graphes ΔP(x)/ΔP(t) avec zoom/pan/tangente, deep-linking via `#corde` / `#son` / `#vagues` — voir `ondes/ARCHITECTURE.md` |
+| `champ_uniforme/` | Mécanique : vecteurs cinématiques — champ de pesanteur & champ électrique uniforme | Terminale | **Arborescence** | Référence d'architecture ; `sim.js` + `draw.js` + `ui.js` ; onglets Champ de pesanteur / Champ électrique, repères Orthonormé/Adapté, modes vue (Oxy, projections x/y), vecteurs vitesse/accélération, mode perpendiculaire (champ E), graphes d'énergie, deep-linking via `#champ-pesanteur` / `#champ-electrique` |
+| `ondes/` | Propagation d'ondes — corde, onde sonore (tube), ondes de surface | Première/Terminale | **Arborescence** | Référence d'architecture ; `sim.js` + `tube.js` + `graph.js` + `ui.js` ; onglets Corde/Son/Vagues, sélection de particules par proximité (Ctrl/Maj+clic), mode pression colorée, graphes ΔP(x)/ΔP(t) avec zoom/pan/tangente, deep-linking via `#corde` / `#son` / `#vagues` — voir `ondes/ARCHITECTURE.md` |
 
 ---
 
