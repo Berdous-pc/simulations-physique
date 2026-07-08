@@ -425,6 +425,10 @@ function onSliderH(v) {
     sim.h = parseFloat(v);
     document.getElementById('lbl-h').textContent = fmt(sim.h, 0);
     resetSimAnim();
+    /* Exception : la hauteur redimensionne la zone d'animation (sol/échelle)
+       immédiatement, sans attendre "Lancer" — contrairement aux autres
+       paramètres. Le graphe, lui, reste figé (pas de commitGraphBounds). */
+    expandBoundsGlobal();
 }
 function onSliderV0(v) {
     sim.v0 = parseFloat(v);
