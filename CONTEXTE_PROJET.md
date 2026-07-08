@@ -267,7 +267,7 @@ nom-simulation/
 
 Les anciennes simulations en fichier unique (`reaction.html`) conservent leur format d'origine. Toute **nouvelle** simulation adopte l'arborescence ci-dessus.
 
-> **Simulations déjà migrées en arborescence** : `lentille/`, `lunette/`, `radioactivite/`, `reaction/`, `titrage/`, `condensateur/`, `pression/`.
+> **Simulations déjà migrées en arborescence** : `lentille/`, `lunette/`, `radioactivite/`, `reaction/`, `titrage/`, `condensateur/`, `pression/`, `champ_uniforme/`, `ondes/`.
 
 ### Règles générales
 
@@ -332,10 +332,11 @@ Tout nouveau fichier **HTML**, **CSS** et **JS** doit inclure une signature d'au
 | `lentille/` | Lentille mince convergente/divergente — construction géométrique | Seconde/Première | **Arborescence** | `sim.js` + `draw.js` + `ui.js` ; drag objet/lentille/écran, mode infini avec animation, multi-points, tableau conjugaison, cadres viewfinder avec `drawGlowLetter` |
 | `lunette/` | Lunette astronomique — deux lentilles, mode afocal | Terminale | **Arborescence** | `sim.js` + `draw.js` + `ui.js` ; drag/pan/zoom molette, animation propagation, réglage oculaire interactif |
 | `radioactivite/` | Décroissance radioactive — modèle des dés | Terminale | **Arborescence** | `sim.js` + `draw.js` + `ui.js` ; Mode Discret (Libre + Auto) et Mode Continu, zoom/pan/réticule/tangente/autoscale sur graphes, splitter draggable, overlay récipient agrandi, multi-séries avec légende |
-| `reaction.html` | Réactions chimiques — stœchiométrie & réactif limitant | Seconde/Première | Fichier unique | Mode Équilibrage + Mode Réactif limitant, modèles moléculaires 2D animés, mode test avec score, tous les éléments responsifs via `clamp()` |
-| `reaction/` | Idem `reaction.html` — version découpée en arborescence | Seconde/Première | **Arborescence** | Mêmes fonctionnalités, découpée en `css/style.css` + `js/data.js` + `js/sim.js` + `js/ui.js` + `index.html` |
+| `reaction/` | Réactions chimiques — stœchiométrie & réactif limitant | Seconde/Première | **Arborescence** | Mode Équilibrage + Mode Réactif limitant, modèles moléculaires 2D animés, mode test avec score, découpée en `css/style.css` + `js/data.js` + `js/sim.js` + `js/ui.js` + `index.html` |
 | `titrage/` | Titrage colorimétrique, pH-métrique, conductimétrique | Première/Terminale | **Arborescence** | Voir `titrage/ARCHITECTURE.md` |
 | `pression/` | Pression d'un gaz parfait — modèle cinétique | Terminale | **Arborescence** | Piston animé, collisions élastiques 2D, PV=nRT, chocs/s sur 4 parois |
+| `champ_uniforme/` | Mécanique : vecteurs cinématiques — champ de pesanteur & champ électrique uniforme | Terminale | **Arborescence** | `sim.js` + `draw.js` + `ui.js` ; onglets Champ de pesanteur / Champ électrique, repères Orthonormé/Adapté, modes vue (Oxy, projections x/y), vecteurs vitesse/accélération, mode perpendiculaire (champ E), graphes d'énergie, deep-linking via `#champ-pesanteur` / `#champ-electrique` |
+| `ondes/` | Propagation d'ondes — corde, onde sonore (tube), ondes de surface | Première/Terminale | **Arborescence** | `sim.js` + `tube.js` + `graph.js` + `ui.js` ; onglets Corde/Son/Vagues, sélection de particules par proximité (Ctrl/Maj+clic), mode pression colorée, graphes ΔP(x)/ΔP(t) avec zoom/pan/tangente, deep-linking via `#corde` / `#son` / `#vagues` — voir `ondes/ARCHITECTURE.md` |
 
 ---
 
@@ -379,7 +380,7 @@ Structure d'une carte :
 Trois groupes de checkboxes (toutes cochées par défaut) :
 - **Niveau** : Seconde, Première, Terminale
 - **Discipline** : Physique, Chimie
-- **Thème** : Électricité, Optique, Radioactivité, Réaction chimique, Titrage, Thermodynamique
+- **Thème** : Électricité, Optique, Radioactivité, Réaction chimique, Titrage, Thermodynamique, Ondes, Mécanique
 
 Logique : **OU au sein d'une catégorie**, **ET entre catégories**.
 
@@ -400,17 +401,24 @@ Stockées dans `assets/previews/` au format `.png` (800×450 px recommandé) :
 | `reaction-limitant.png` | Réactif limitant |
 | `titrage-principe.png` | Principe du titrage |
 | `titrage-titrage.png` | Titrage |
-| `pression.png` | Pression d'un gaz *(à venir)* |
+| `pression.png` | Pression d'un gaz |
+| `mecanique_pesanteur.png` | Champ de pesanteur |
+| `champ_electrique.png` | Champ électrique |
+| `onde_corde.PNG` | Onde dans une corde |
+| `onde_sonore.PNG` | Propagation d'une onde sonore |
+| `onde_vagues.PNG` | Ondes de surface |
 
-### Deep linking (`?tab=`)
+### Deep linking (`?tab=` ou `#hash`)
 
-Les simulations avec plusieurs onglets lisent le paramètre `?tab=` au chargement pour ouvrir directement le bon onglet. Implémenté dans :
+Les simulations avec plusieurs onglets lisent un paramètre au chargement pour ouvrir directement le bon onglet. Deux conventions coexistent : les pages les plus anciennes utilisent le paramètre de requête `?tab=`, les plus récentes (`champ_uniforme`, `ondes`) utilisent le fragment d'URL `#hash` (lu via `window.location.hash`). Implémenté dans :
 
 | Fichier | Paramètre | Valeurs |
 |---|---|---|
 | `radioactivite/js/ui.js` | `?tab=` | `discret` · `continu` |
 | `reaction/js/ui.js` | `?tab=` | `equilibrage` · `limitant` |
 | `titrage/js/ui.js` | `?tab=` | `principe` · `titrage` |
+| `champ_uniforme/js/ui.js` | `#hash` | `champ-pesanteur` · `champ-electrique` |
+| `ondes/js/ui.js` | `#hash` | `corde` · `son` · `vagues` |
 
 ### Ajouter une nouvelle simulation
 
