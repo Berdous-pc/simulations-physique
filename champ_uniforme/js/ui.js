@@ -1038,6 +1038,7 @@ function onSliderSpeedE(v) {
 
 function onSliderDeltaTE(v) {
     simE.deltaT = parseFloat(v) * 1e-9;
+    simE._modeParams[simE.armatureMode].deltaT = simE.deltaT;
     _setTxt('lbl-e-deltat', parseFloat(v).toFixed(1).replace('.', ','));
     if (simE.displayMode === 'chrono' || simE.displayMode === 'both') {
         _regenerateChronoSnapsE();
@@ -1050,6 +1051,15 @@ function setArmatureModeE(mode) {
     document.getElementById('btn-e-arm-perp').classList.toggle('active',     mode === 'perp-x');
     document.getElementById('e-row-L').style.display   = (mode === 'parallel-x') ? '' : 'none';
     document.getElementById('e-row-gap').style.display = (mode === 'perp-x')     ? '' : 'none';
+    var p = simE._modeParams[mode];
+    simE.particleIdx = p.particleIdx;
+    simE.v0     = p.v0;
+    simE.alpha  = p.alpha;
+    simE.E      = p.E;
+    simE.e      = p.e;
+    simE.deltaT = p.deltaT;
+    _syncModeParamWidgetsE();
+    if (simE.displayMode === 'chrono' || simE.displayMode === 'both') _regenerateChronoSnapsE();
     resetSimAnimE();
     _updateZoomButtonsE();
 }
@@ -1095,6 +1105,7 @@ function zoomDefaultE() {
 
 function onSelectParticleE(v) {
     simE.particleIdx = parseInt(v);
+    simE._modeParams[simE.armatureMode].particleIdx = simE.particleIdx;
     resetSimAnimE();
 }
 
@@ -1102,12 +1113,14 @@ function onSliderEV0(v) {
     var val = parseFloat(v);
     if (Math.abs(val - 22.7) < 1.0) { val = 22.7; document.getElementById('sl-e-v0').value = 22.7; }
     simE.v0 = val * 1e6;
+    simE._modeParams[simE.armatureMode].v0 = simE.v0;
     _setTxt('lbl-e-v0', (val / 10).toFixed(2).replace('.', ','));
     resetSimAnimE();
 }
 
 function onSliderEAlpha(v) {
     simE.alpha = parseFloat(v);
+    simE._modeParams[simE.armatureMode].alpha = simE.alpha;
     _setTxt('lbl-e-alpha', parseInt(v));
     resetSimAnimE();
 }
@@ -1118,6 +1131,7 @@ function onEFieldChange() {
     if (isNaN(mant)) mant = 1.0;
     mant = Math.round(mant * 10) / 10;
     simE.E = mant * Math.pow(10, exp);
+    simE._modeParams[simE.armatureMode].E = simE.E;
     resetSimAnimE();
 }
 
@@ -1157,6 +1171,7 @@ function onSliderEL(v) {
 
 function onSliderEGap(v) {
     simE.e = parseFloat(v);
+    simE._modeParams[simE.armatureMode].e = simE.e;
     _setTxt('lbl-e-gap', parseFloat(v).toFixed(2).replace('.', ','));
     resetSimAnimE();
 }
@@ -1423,6 +1438,21 @@ function adapterVueRunE(id) {
     computeScaleE(_animW, _animH);
 }
 
+/* Synchronise les widgets des paramètres communs aux deux modes d'armatures
+   (particule, v0, alpha, E, écartement, deltaT) sur l'état courant de simE. */
+function _syncModeParamWidgetsE() {
+    _setSl('sel-e-particle', simE.particleIdx);
+    _setSl('sl-e-v0',    simE.v0 / 1e6);
+    _setTxt('lbl-e-v0', (simE.v0 / 1e7).toFixed(2).replace('.', ','));
+    _setSl('sl-e-alpha', simE.alpha);
+    _setTxt('lbl-e-alpha', simE.alpha);
+    _restoreEFieldWidget(simE.E);
+    _setSl('sl-e-gap', simE.e);
+    _setTxt('lbl-e-gap', simE.e.toFixed(2).replace('.', ','));
+    _setSl('sl-e-deltat', simE.deltaT / 1e-9);
+    _setTxt('lbl-e-deltat', (simE.deltaT / 1e-9).toFixed(1).replace('.', ','));
+}
+
 function _syncAllUIE() {
     /* Vitesse */
     var spIdx = SPEED_VALUES_E.indexOf(simE.speedFactor);
@@ -1431,18 +1461,9 @@ function _syncAllUIE() {
     _setTxt('lbl-e-speed', _SPEED_LABELS_E[spIdx] || '6 ns/s');
 
     /* Conditions initiales */
-    _setSl('sel-e-particle', simE.particleIdx);
-    _setSl('sl-e-v0',    simE.v0 / 1e6);
-    _setTxt('lbl-e-v0', (simE.v0 / 1e7).toFixed(2).replace('.', ','));
-    _setSl('sl-e-alpha', simE.alpha);
-    _setTxt('lbl-e-alpha', simE.alpha);
-    _restoreEFieldWidget(simE.E);
+    _syncModeParamWidgetsE();
     _setSl('sl-e-L', simE.L * 100);
     _setTxt('lbl-e-L', (simE.L * 100).toFixed(1).replace('.', ','));
-    _setSl('sl-e-gap', simE.e);
-    _setTxt('lbl-e-gap', simE.e.toFixed(2).replace('.', ','));
-    _setSl('sl-e-deltat', simE.deltaT / 1e-9);
-    _setTxt('lbl-e-deltat', (simE.deltaT / 1e-9).toFixed(1).replace('.', ','));
 
     /* Armatures */
     setArmatureModeE(simE.armatureMode);

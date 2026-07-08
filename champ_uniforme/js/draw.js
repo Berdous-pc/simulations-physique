@@ -22,6 +22,17 @@ var COL_VEC_ACC    = '#2a8a50';
 var COL_VEC_FORCES = '#8e44ad';
 var COL_VEC_SUMF   = '#8d4e20';
 
+/* Vecteurs plus visibles en mode armatures perpendiculaires à l'axe x
+   (trait plus épais, opacité 1 — couleur et longueur inchangées).
+   Seule la vitesse change aussi de couleur (rouge plus vif). */
+var COL_VEC_POS_PERP    = COL_VEC_POS;
+var COL_VEC_VIT_PERP    = '#ff1a1a';
+var COL_VEC_ACC_PERP    = COL_VEC_ACC;
+var COL_VEC_FORCES_PERP = COL_VEC_FORCES;
+var COL_VEC_SUMF_PERP   = COL_VEC_SUMF;
+var VEC_LW_PERP         = 3.5;
+var VEC_VIT_LW_PERP     = VEC_LW_PERP;
+
 /* Échelle forces : px par Newton */
 var VEC_SCALE_FORCE = 12;
 
@@ -58,7 +69,8 @@ function initAnimCanvas() {
         var rect = _animCanvas.getBoundingClientRect();
         var cx = (e.clientX - rect.left) * (_animW / rect.width);
         var cy = (e.clientY - rect.top)  * (_animH / rect.height);
-        _updateAnimHover(cx, cy);
+        if (activeTab === 'champ-electrique') { _updateAnimHoverE(cx, cy); }
+        else { _updateAnimHover(cx, cy); }
     });
     _animCanvas.addEventListener('pointerleave', function() {
         _animHoverSnap = null;
@@ -945,11 +957,15 @@ function _drawVectorPos(ctx, px, py, alpha) {
     var showVec  = (vecDisplayMode === 'vecteur'     || vecDisplayMode === 'vecteur-composantes');
     var showComp = (vecDisplayMode === 'composantes' || vecDisplayMode === 'vecteur-composantes');
     var showBoth = (vecDisplayMode === 'vecteur-composantes');
+    var _posPerp = sim.armatureMode === 'perp-x';
+    var _col     = _posPerp ? COL_VEC_POS_PERP : COL_VEC_POS;
+    var _a       = _posPerp ? 1.0 : alpha;
+    var _lw      = _posPerp ? VEC_LW_PERP : 3.5;
     /* Ordre : composantes → pointillés → vecteur (le vecteur est toujours au premier plan) */
-    /* Composantes de OM plus épaisses (lw=3.5) pour rester visibles par-dessus axes et sol */
-    if (showComp) _drawVecComponents(ctx, origin.cx, origin.cy, dx, dy, COL_VEC_POS, alpha, 3.5);
-    if (showBoth) _drawCompDashes(ctx, origin.cx, origin.cy, dx, dy, COL_VEC_POS, alpha);
-    if (showVec)  _drawVecArrow(ctx, origin.cx, origin.cy, dx, dy, COL_VEC_POS, '', alpha);
+    /* Composantes de OM plus épaisses (lw=3.5, plus en mode perp-x) pour rester visibles */
+    if (showComp) _drawVecComponents(ctx, origin.cx, origin.cy, dx, dy, _col, _a, _lw);
+    if (showBoth) _drawCompDashes(ctx, origin.cx, origin.cy, dx, dy, _col, _a);
+    if (showVec)  _drawVecArrow(ctx, origin.cx, origin.cy, dx, dy, _col, '', _a, _posPerp ? VEC_LW_PERP : undefined);
 }
 
 /* ─────────────────────────────────────────────────
@@ -994,13 +1010,13 @@ function _drawCompDashes(ctx, cx, cy, dxPx, dyPx, color, opacity) {
 }
 
 /* Dessine vecteur et/ou composantes selon vecDisplayMode pour v et a (base = point M). */
-function _drawVecDispVA(ctx, cx, cy, dxPx, dyPx, color, label, opacity) {
+function _drawVecDispVA(ctx, cx, cy, dxPx, dyPx, color, label, opacity, lw) {
     var showVec  = (vecDisplayMode === 'vecteur'     || vecDisplayMode === 'vecteur-composantes');
     var showComp = (vecDisplayMode === 'composantes' || vecDisplayMode === 'vecteur-composantes');
     var showBoth = (vecDisplayMode === 'vecteur-composantes');
     if (showComp) _drawVecComponents(ctx, cx, cy, dxPx, dyPx, color, opacity);
     if (showBoth) _drawCompDashes(ctx, cx, cy, dxPx, dyPx, color, opacity);
-    if (showVec)  _drawVecArrow(ctx, cx, cy, dxPx, dyPx, color, label, opacity);
+    if (showVec)  _drawVecArrow(ctx, cx, cy, dxPx, dyPx, color, label, opacity, lw);
 }
 
 function _drawVecArrow(ctx, cx, cy, dx, dy, color, label, opacity, lw) {
@@ -1015,16 +1031,17 @@ function _drawVecArrow(ctx, cx, cy, dx, dy, color, label, opacity, lw) {
     ctx.lineWidth   = lw;
 
     var ex = cx + dx, ey = cy + dy;
+    var aLen  = Math.min(12, len * 0.4);
+    var angle = Math.atan2(dy, dx);
 
-    /* Corps */
+    /* Corps : s'arrête à la base de la pointe pour que le bout épais du trait
+       ne dépasse pas de la pointe (visible surtout avec un lineWidth élevé) */
     ctx.beginPath();
     ctx.moveTo(cx, cy);
-    ctx.lineTo(ex, ey);
+    ctx.lineTo(ex - aLen * 0.85 * Math.cos(angle), ey - aLen * 0.85 * Math.sin(angle));
     ctx.stroke();
 
     /* Pointe */
-    var aLen  = Math.min(12, len * 0.4);
-    var angle = Math.atan2(dy, dx);
     ctx.beginPath();
     ctx.moveTo(ex, ey);
     ctx.lineTo(ex - aLen * Math.cos(angle - 0.38),
@@ -1291,13 +1308,17 @@ function _renderVecLabel(ctx, lx, ly, m, vecName, line1, line2, color) {
 }
 
 function _drawAnimHover(ctx, snap, isPinned) {
+    var p = _toCanvasSplit(snap.x, snap.y, snap.vy || 0);
+    /* Un point épinglé qui sort du cadre (zoom) ne doit plus être affiché,
+       ni lui ni ses étiquettes. */
+    if (isPinned && (p.cx < 0 || p.cx > _animW || p.cy < 0 || p.cy > _animH)) return;
+
     var showPos    = isPinned ? pinShowVecPos    : sim.showVecPos;
     var showVit    = isPinned ? pinShowVecVit    : sim.showVecVit;
     var showAcc    = isPinned ? pinShowVecAcc    : sim.showVecAcc;
     var showForces = isPinned ? pinShowVecForces : sim.showVecForces;
     var showSumF   = isPinned ? pinShowVecSumF   : sim.showVecSumF;
     var showCoords = isPinned ? pinShowCoords    : hoverShowCoords;
-    var p = _toCanvasSplit(snap.x, snap.y, snap.vy || 0);
 
     /* ── Point survolé ── */
     ctx.save();
@@ -1325,7 +1346,7 @@ function _drawAnimHover(ctx, snap, isPinned) {
             vecName: 'OM',
             line1: 'x = ' + fmt(snap.x, 2) + ' m',
             line2: 'y = ' + fmt(snap.y, 2) + ' m',
-            color:  COL_VEC_POS,
+            color:  sim.armatureMode === 'perp-x' ? COL_VEC_POS_PERP : COL_VEC_POS,
             prefer: ['lower-right', 'right', 'upper-right', 'lower-left', 'left', 'upper-left', 'above', 'below'],
             showCoords: showCoords
         });
@@ -1344,7 +1365,9 @@ function _drawAnimHover(ctx, snap, isPinned) {
             dvx = snap.vx * _vscV * _hvp.cx;
             dvy = -snap.vy * _vscV * _hvp.cy;
         }
-        _drawVecDispVA(ctx, p.cx, p.cy, dvx, dvy, COL_VEC_VIT, '', 1.0);
+        var _vitPerp = _vecScaleVitOverride !== null && sim.armatureMode === 'perp-x';
+        var _colVit  = _vitPerp ? COL_VEC_VIT_PERP : COL_VEC_VIT;
+        _drawVecDispVA(ctx, p.cx, p.cy, dvx, dvy, _colVit, '', 1.0, _vitPerp ? VEC_VIT_LW_PERP : undefined);
         var vPrefer = dvy <= 0
             ? ['above', 'upper-right', 'upper-left', 'right', 'left', 'lower-right', 'lower-left', 'below']
             : ['upper-right', 'upper-left', 'above', 'right', 'left', 'lower-right', 'lower-left', 'below'];
@@ -1354,7 +1377,7 @@ function _drawAnimHover(ctx, snap, isPinned) {
             vecName: 'v',
             line1: 'vx = ' + (_vecScaleVitOverride !== null ? fmtSci(snap.vx, 3) : fmt(snap.vx, 2)) + ' m/s',
             line2: 'vy = ' + (_vecScaleVitOverride !== null ? fmtSci(snap.vy, 3) : fmt(snap.vy, 2)) + ' m/s',
-            color:  COL_VEC_VIT,
+            color:  _colVit,
             prefer: vPrefer,
             showCoords: showCoords
         });
@@ -1372,17 +1395,21 @@ function _drawAnimHover(ctx, snap, isPinned) {
             dax = snap.ax * _vscA * _havp.cx;
             day = -snap.ay * _vscA * _havp.cy;
         }
-        _drawVecDispVA(ctx, p.cx, p.cy, dax, day, COL_VEC_ACC, '', 1.0);
-        toPlace.push({
-            anchorX: p.cx + dax / 2,
-            anchorY: p.cy + day / 2,
-            vecName: 'a',
-            line1: 'ax = ' + (_vecScaleAccOverride !== null ? fmtSci(snap.ax, 3) : fmt(snap.ax, 2)) + ' m/s²',
-            line2: 'ay = ' + (_vecScaleAccOverride !== null ? fmtSci(snap.ay, 3) : fmt(snap.ay, 2)) + ' m/s²',
-            color:  COL_VEC_ACC,
-            prefer: ['right', 'upper-right', 'left', 'upper-left', 'above', 'lower-right', 'lower-left', 'below'],
-            showCoords: showCoords
-        });
+        var _accPerp = _vecScaleAccOverride !== null && sim.armatureMode === 'perp-x';
+        var _colAcc  = _accPerp ? COL_VEC_ACC_PERP : COL_VEC_ACC;
+        if (snap.ax !== 0 || snap.ay !== 0) {
+            _drawVecDispVA(ctx, p.cx, p.cy, dax, day, _colAcc, '', 1.0, _accPerp ? VEC_LW_PERP : undefined);
+            toPlace.push({
+                anchorX: p.cx + dax / 2,
+                anchorY: p.cy + day / 2,
+                vecName: 'a',
+                line1: 'ax = ' + (_vecScaleAccOverride !== null ? fmtSci(snap.ax, 3) : fmt(snap.ax, 2)) + ' m/s²',
+                line2: 'ay = ' + (_vecScaleAccOverride !== null ? fmtSci(snap.ay, 3) : fmt(snap.ay, 2)) + ' m/s²',
+                color:  _colAcc,
+                prefer: ['right', 'upper-right', 'left', 'upper-left', 'above', 'lower-right', 'lower-left', 'below'],
+                showCoords: showCoords
+            });
+        }
     }
 
     /* ── Place et dessine chaque label cinématique en évitant les collisions ── */
@@ -1795,7 +1822,7 @@ function _drawArmatures(ctx) {
 
     } else {
         /* perp-x */
-        var halfE2   = sim.e / 2;
+        var halfE2   = PLATE_HALF_HEIGHT_PERP;
         var topL  = toCanvas(0,      halfE2);
         var botL  = toCanvas(0,     -halfE2);
         var topR  = toCanvas(sim.e,  halfE2);
@@ -1816,6 +1843,15 @@ function _drawArmatures(ctx) {
         ctx.fillRect(topL.cx, topL.cy, topR.cx - topL.cx, platH2);
         ctx.globalAlpha = 1;
 
+        function _drawSignsInSegment(bx, charge, yTop, yBot) {
+            var segH = yBot - yTop;
+            if (segH < 8) return;
+            var nSigns = Math.max(1, Math.floor(segH / 22));
+            for (var si = 0; si < nSigns; si++) {
+                var sy = yTop + (si + 0.5) * segH / nSigns;
+                ctx.fillText(charge, bx, sy);
+            }
+        }
         function _drawVPlate(bx, color, charge) {
             ctx.fillStyle = color; ctx.globalAlpha = 0.82;
             ctx.fillRect(bx - platW2 / 2, topL.cy, platW2, holeCy - holeSz - topL.cy);
@@ -1823,10 +1859,8 @@ function _drawArmatures(ctx) {
             ctx.globalAlpha = 1;
             ctx.fillStyle = '#fff';
             ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            var mT = topL.cy + (holeCy - holeSz - topL.cy) / 2;
-            var mB = holeCy + holeSz + (botL.cy - holeCy - holeSz) / 2;
-            if (mT > topL.cy + 4)  ctx.fillText(charge, bx, mT);
-            if (mB < botL.cy - 4)  ctx.fillText(charge, bx, mB);
+            _drawSignsInSegment(bx, charge, topL.cy, holeCy - holeSz);
+            _drawSignsInSegment(bx, charge, holeCy + holeSz, botL.cy);
         }
         _drawVPlate(topL.cx, leftColor,  leftCharge);
         _drawVPlate(topR.cx, rightColor, rightCharge);
@@ -1886,7 +1920,7 @@ function _drawFieldE(ctx) {
         var availW  = Math.max(15, xOut - xIn - 10);
         var vecLenH = Math.min(availW * eScale, availW);
         for (var r = 0; r < rows; r++) {
-            var py  = sim.e / 2 * (1 - 2 * (r + 1) / (rows + 1));
+            var py  = PLATE_HALF_HEIGHT_PERP * (1 - 2 * (r + 1) / (rows + 1));
             var rcy = toCanvas(0, py).cy;
             var tipX = xIn + vecLenH * dxd;
             ctx.beginPath(); ctx.moveTo(xIn, rcy); ctx.lineTo(tipX, rcy); ctx.stroke();
@@ -1910,30 +1944,36 @@ function _getEPhys(x, y) {
 
 function _drawForcesAtE(ctx, cx, cy, vx, vy, opacity, phys, placedRects) {
     if (phys.FEx === 0 && phys.FEy === 0) return; /* hors du condensateur : rien à afficher */
+    var _perp = sim.armatureMode === 'perp-x';
+    var _col  = _perp ? COL_VEC_FORCES_PERP : COL_VEC_FORCES;
+    var _op   = _perp ? 1.0 : opacity;
     var _vp = _viewProjFactors();
     var _sf = sim.vecScaleForce || VEC_SCALE_FORCE;
     var dxPx =  phys.FEx * _sf * _vp.cx;
     var dyPx = -phys.FEy * _sf * _vp.cy;
-    _drawVecArrow(ctx, cx, cy, dxPx, dyPx, COL_VEC_FORCES, null, opacity);
+    _drawVecArrow(ctx, cx, cy, dxPx, dyPx, _col, null, _op, _perp ? VEC_LW_PERP : undefined);
     var lm  = _measureForceName(ctx, 'FE');
     var pos = _bestLabelPos(cx + dxPx, cy + dyPx, lm.w, lm.h,
                             ['right','upper-right','lower-right','left','above','below'], placedRects);
     placedRects.push({lx: pos.lx, ly: pos.ly, w: lm.w, h: lm.h});
-    _renderForceName(ctx, pos.lx, pos.ly, 'FE', COL_VEC_FORCES, opacity, lm);
+    _renderForceName(ctx, pos.lx, pos.ly, 'FE', _col, _op, lm);
 }
 
 function _drawSumFAtE(ctx, cx, cy, vx, vy, opacity, phys, placedRects) {
     if (phys.FEx === 0 && phys.FEy === 0) return; /* hors du condensateur : rien à afficher */
+    var _perp = sim.armatureMode === 'perp-x';
+    var _col  = _perp ? COL_VEC_SUMF_PERP : COL_VEC_SUMF;
+    var _op   = _perp ? 1.0 : opacity;
     var _vp = _viewProjFactors();
     var _sf = sim.vecScaleForce || VEC_SCALE_FORCE;
     var dxPx =  phys.FEx * _sf * _vp.cx;
     var dyPx = -phys.FEy * _sf * _vp.cy;
-    _drawVecArrow(ctx, cx, cy, dxPx, dyPx, COL_VEC_SUMF, null, opacity);
+    _drawVecArrow(ctx, cx, cy, dxPx, dyPx, _col, null, _op, _perp ? VEC_LW_PERP : undefined);
     var lm  = _measureForceName(ctx, 'ΣF');
     var pos = _bestLabelPos(cx + dxPx, cy + dyPx, lm.w, lm.h,
                             ['right','upper-right','lower-right','left','above','below'], placedRects);
     placedRects.push({lx: pos.lx, ly: pos.ly, w: lm.w, h: lm.h});
-    _renderForceName(ctx, pos.lx, pos.ly, 'ΣF', COL_VEC_SUMF, opacity, lm);
+    _renderForceName(ctx, pos.lx, pos.ly, 'ΣF', _col, _op, lm);
 }
 
 function _drawChronoSnapsE(ctx) {
@@ -1953,12 +1993,18 @@ function _drawChronoSnapsE(ctx) {
         if (sim.showVecVit) {
             var _cvxS = s.vx * sim.scaleX, _cvyS = -s.vy * sim.scaleY;
             var _cmS = Math.hypot(_cvxS, _cvyS) || 1, _lS = Math.hypot(s.vx, s.vy) * sim.vecScaleVit;
-            _drawVecDispVA(ctx, p.cx, p.cy, _cvxS * _lS / _cmS, _cvyS * _lS / _cmS, COL_VEC_VIT, null, 0.6);
+            var _vitPerpS = sim.armatureMode === 'perp-x';
+            _drawVecDispVA(ctx, p.cx, p.cy, _cvxS * _lS / _cmS, _cvyS * _lS / _cmS,
+                _vitPerpS ? COL_VEC_VIT_PERP : COL_VEC_VIT, null, _vitPerpS ? 1.0 : 0.6,
+                _vitPerpS ? VEC_VIT_LW_PERP : undefined);
         }
         if (sim.showVecAcc) {
             var _caxS = s.ax * sim.scaleX, _cayS = -s.ay * sim.scaleY;
             var _caS = Math.hypot(_caxS, _cayS) || 1, _laS = Math.hypot(s.ax, s.ay) * sim.vecScaleAcc;
-            _drawVecDispVA(ctx, p.cx, p.cy, _caxS * _laS / _caS, _cayS * _laS / _caS, COL_VEC_ACC, null, 0.6);
+            var _accPerpS = sim.armatureMode === 'perp-x';
+            _drawVecDispVA(ctx, p.cx, p.cy, _caxS * _laS / _caS, _cayS * _laS / _caS,
+                _accPerpS ? COL_VEC_ACC_PERP : COL_VEC_ACC, null, _accPerpS ? 1.0 : 0.6,
+                _accPerpS ? VEC_LW_PERP : undefined);
         }
         if (sim.showVecForces || sim.showVecSumF) {
             var er = [];
@@ -1988,12 +2034,18 @@ function _drawSavedChronoSnapsE(ctx, run) {
         if (run.showVecVit) {
             var _cvxR = s.vx * sim.scaleX, _cvyR = -s.vy * sim.scaleY;
             var _cmR = Math.hypot(_cvxR, _cvyR) || 1, _lR = Math.hypot(s.vx, s.vy) * vsv;
-            _drawVecDispVA(ctx, p.cx, p.cy, _cvxR * _lR / _cmR, _cvyR * _lR / _cmR, COL_VEC_VIT, null, 0.42);
+            var _vitPerpR = run.armatureMode === 'perp-x';
+            _drawVecDispVA(ctx, p.cx, p.cy, _cvxR * _lR / _cmR, _cvyR * _lR / _cmR,
+                _vitPerpR ? COL_VEC_VIT_PERP : COL_VEC_VIT, null, _vitPerpR ? 1.0 : 0.42,
+                _vitPerpR ? VEC_VIT_LW_PERP : undefined);
         }
         if (run.showVecAcc) {
             var _caxR = s.ax * sim.scaleX, _cayR = -s.ay * sim.scaleY;
             var _caR = Math.hypot(_caxR, _cayR) || 1, _laR = Math.hypot(s.ax, s.ay) * vsa;
-            _drawVecDispVA(ctx, p.cx, p.cy, _caxR * _laR / _caR, _cayR * _laR / _caR, COL_VEC_ACC, null, 0.42);
+            var _accPerpR = run.armatureMode === 'perp-x';
+            _drawVecDispVA(ctx, p.cx, p.cy, _caxR * _laR / _caR, _cayR * _laR / _caR,
+                _accPerpR ? COL_VEC_ACC_PERP : COL_VEC_ACC, null, _accPerpR ? 1.0 : 0.42,
+                _accPerpR ? VEC_LW_PERP : undefined);
         }
         if (run.showVecForces || run.showVecSumF) {
             var er2 = [];
@@ -2027,12 +2079,16 @@ function _drawParticleE(ctx) {
     if (sim.showVecVit) {
         var _cvxP = sim.vx * sim.scaleX, _cvyP = -sim.vy * sim.scaleY;
         var _cmP = Math.hypot(_cvxP, _cvyP) || 1, _lP = Math.hypot(sim.vx, sim.vy) * sim.vecScaleVit;
-        _drawVecDispVA(ctx, p.cx, p.cy, _cvxP * _lP / _cmP, _cvyP * _lP / _cmP, COL_VEC_VIT, null, 1.0);
+        var _vitPerpP = sim.armatureMode === 'perp-x';
+        _drawVecDispVA(ctx, p.cx, p.cy, _cvxP * _lP / _cmP, _cvyP * _lP / _cmP,
+            _vitPerpP ? COL_VEC_VIT_PERP : COL_VEC_VIT, null, 1.0, _vitPerpP ? VEC_VIT_LW_PERP : undefined);
     }
     if (sim.showVecAcc) {
         var _caxP = sim.ax * sim.scaleX, _cayP = -sim.ay * sim.scaleY;
         var _caP = Math.hypot(_caxP, _cayP) || 1, _laP = Math.hypot(sim.ax, sim.ay) * sim.vecScaleAcc;
-        _drawVecDispVA(ctx, p.cx, p.cy, _caxP * _laP / _caP, _cayP * _laP / _caP, COL_VEC_ACC, null, 1.0);
+        var _accPerpP = sim.armatureMode === 'perp-x';
+        _drawVecDispVA(ctx, p.cx, p.cy, _caxP * _laP / _caP, _cayP * _laP / _caP,
+            _accPerpP ? COL_VEC_ACC_PERP : COL_VEC_ACC, null, 1.0, _accPerpP ? VEC_LW_PERP : undefined);
     }
     if (sim.showVecForces || sim.showVecSumF) {
         var ep = _getEPhys(); var er = [];
@@ -2119,6 +2175,10 @@ function drawAnimE() {
     _replayT         = _replayTE;
     _animHoverSnap   = _animHoverSnapE;
     _labelMaxY       = _animH - 5;
+    /* Nécessaire pour que les points épinglés (_drawAnalysisPoints) utilisent les
+       échelles vitesse/accélération électriques, pas celles du champ de pesanteur */
+    _vecScaleVitOverride = simE.vecScaleVit;
+    _vecScaleAccOverride = simE.vecScaleAcc;
 
     _updateViewAngles();
     ctx.clearRect(0, 0, _animW, _animH);
@@ -2154,6 +2214,8 @@ function drawAnimE() {
     _replayT         = _repTOrig;
     _animHoverSnap   = _hoverOrig;
     _labelMaxY       = null;
+    _vecScaleVitOverride = null;
+    _vecScaleAccOverride = null;
 }
 
 function _drawAnimHoverE(ctx, snap) {

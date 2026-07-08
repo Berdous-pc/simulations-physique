@@ -338,6 +338,23 @@ var SAVE_COLORS   = ['#e67e22', '#c0392b', '#27ae60', '#8e44ad', '#16a085'];
    CHAMP ÉLECTRIQUE — particules + état + physique
 ══════════════════════════════════════════════════ */
 
+/* Demi-hauteur fixe des armatures en mode perpendiculaire à l'axe x (m),
+   indépendante de l'écartement "e" : axe y toujours affiché entre -15 et +15 cm. */
+var PLATE_HALF_HEIGHT_PERP = 0.15;
+
+/* Demi-hauteur physique du trou de passage dans les armatures perpendiculaires
+   (même proportion que le trou dessiné dans draw.js, holeSz = platH2 * 0.18) */
+var HOLE_HALF_HEIGHT_PERP = PLATE_HALF_HEIGHT_PERP * 0.18;
+
+/* Champ E, écartement et pas de chronophotographie par défaut, propres à chaque
+   mode d'armatures */
+var E_DEFAULT_PARALLEL      = 1.5e4;
+var E_DEFAULT_PERP          = -5.0e4;
+var GAP_DEFAULT_PARALLEL    = 0.20;
+var GAP_DEFAULT_PERP        = 0.10;
+var DELTAT_DEFAULT_PARALLEL = 1e-9;
+var DELTAT_DEFAULT_PERP     = 0.6e-9;
+
 var PARTICLES = [
     { name: 'Électron',    q: -1.602e-19, m: 9.109e-31  },
     { name: 'Positon',     q:  1.602e-19, m: 9.109e-31  },
@@ -399,6 +416,14 @@ var simE = {
     vecScaleVit: 6e-6, vecScaleAcc: 1e-14, vecScaleForce: 2e17,
     /* ── Zoom (mode parallel-x uniquement) ── */
     zoomLevel: 0,     // 0 = affichage par défaut, <0 = dézoom, >0 = zoom sur les armatures
+    /* ── Mémorise les paramètres communs propres à chaque mode d'armatures
+       (particule, v0, alpha, E, écartement, deltaT), restaurés dans setArmatureModeE ── */
+    _modeParams: {
+        'parallel-x': { particleIdx: 0, v0: 22.7e6, alpha: 0, E: E_DEFAULT_PARALLEL,
+                         e: GAP_DEFAULT_PARALLEL, deltaT: DELTAT_DEFAULT_PARALLEL },
+        'perp-x':     { particleIdx: 0, v0: 22.7e6, alpha: 0, E: E_DEFAULT_PERP,
+                         e: GAP_DEFAULT_PERP, deltaT: DELTAT_DEFAULT_PERP }
+    },
 };
 
 /* ── Constantes de zoom (mode parallel-x) ── */
@@ -464,6 +489,8 @@ function resetSimE() {
        pour qu'elles ne se confondent jamais visuellement (comme en pesanteur). */
     var _tpx = 55;
     simE.vecScaleVit   = simE.v0 > 0 ? _tpx / simE.v0 : 6e-6;
+    /* Flèches vitesse 25% plus courtes en mode armatures parallèles à l'axe x */
+    if (simE.armatureMode === 'parallel-x') simE.vecScaleVit *= 0.75;
     var _maxA = Math.abs(simE.q * simE.E) / simE.mass;
     simE.vecScaleAcc   = _maxA > 0 ? _tpx / _maxA : 1e-14;
     simE.vecScaleForce = simE.vecScaleAcc / simE.mass * 0.5;
@@ -525,11 +552,18 @@ function _pushChronoSnapE() {
     });
 }
 
-function _hitsBoundaryE() {
+function _hitsBoundaryE(prevX) {
     if (simE.armatureMode === 'parallel-x') {
         if (simE.x > 0 && simE.x <= simE.L && Math.abs(simE.y) >= simE.e / 2) return true;
         if (simE.x >= simE.xMax) return true;
     } else {
+        /* Collision avec une armature si la particule ne passe pas par le trou
+           au moment où elle franchit le plan d'une des deux plaques (x=0 ou x=e) */
+        if (prevX !== undefined && Math.abs(simE.y) >= HOLE_HALF_HEIGHT_PERP) {
+            var crossedLeft  = (prevX < 0 && simE.x >= 0) || (prevX >= 0 && simE.x < 0);
+            var crossedRight = (prevX < simE.e && simE.x >= simE.e) || (prevX >= simE.e && simE.x < simE.e);
+            if (crossedLeft || crossedRight) return true;
+        }
         if (simE.x < 0) return true;
         if (simE.x >= simE.xMax) return true;
     }
@@ -544,6 +578,7 @@ function advanceSimE(dtReal) {
     var elapsed = 0;
     while (elapsed < dtSim) {
         var step = Math.min(PHYS_DT_E, dtSim - elapsed);
+        var prevX = simE.x;
         stepPhysicsE(step);
         elapsed += step;
         var last = simE.trajPoints[simE.trajPoints.length - 1];
@@ -560,7 +595,7 @@ function advanceSimE(dtReal) {
             _pushChronoSnapE();
             simE.nextChronoTime += simE.deltaT;
         }
-        if (_hitsBoundaryE()) {
+        if (_hitsBoundaryE(prevX)) {
             simE.ended = true;
             simE.trajPoints.push({x: simE.x, y: simE.y});
             simE.graphData.push({t:simE.t, x:simE.x, y:simE.y,
@@ -597,15 +632,14 @@ function computeTrajectoryBoundsE() {
         simE.yMax = 0.20;
         simE.maxT = maxT_est;
     } else {
-        /* Écran à e×3 — visible après les deux armatures */
-        simE.xMax = simE.e * 3.0;
+        /* Écran de détection toujours à 20 cm de la sortie du condensateur */
+        simE.xMax = simE.e + 0.20;
         /* Simuler la déviation dans la direction x */
         var alphaRad2 = simE.alpha * Math.PI / 180;
         var tx2 = 0, ty2 = 0;
         var tvx2 = simE.v0 * Math.cos(alphaRad2);
         var tvy2 = simE.v0 * Math.sin(alphaRad2);
         var dt2 = PHYS_DT_E * 20;
-        var yMaxS = halfE;
         var maxT2 = 0;
         for (var j = 0; j < 300000; j++) {
             var inF2 = (tx2 >= 0 && tx2 <= simE.e);
@@ -613,10 +647,10 @@ function computeTrajectoryBoundsE() {
             tvx2 += ax_t2 * dt2;
             tx2  += tvx2  * dt2; ty2  += tvy2  * dt2;
             maxT2 = (j + 1) * dt2;
-            if (Math.abs(ty2) > yMaxS) yMaxS = Math.abs(ty2);
             if (tx2 < 0 || tx2 >= simE.xMax) break;
         }
-        simE.yMax = Math.max(yMaxS * 1.6, halfE * 1.4, 0.005);
+        /* Axe y toujours affiché entre -15 cm et +15 cm, quel que soit l'écartement */
+        simE.yMax = PLATE_HALF_HEIGHT_PERP;
         simE.maxT = maxT2;
     }
     simE._ownMaxT = simE.maxT;
