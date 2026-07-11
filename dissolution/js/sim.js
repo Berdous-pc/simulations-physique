@@ -10,19 +10,68 @@
    Constantes de la maille cristalline
 ══════════════════════════════════════════════════ */
 const NCOLS = 24;  // volontairement surdimensionné : déborde de la largeur du canvas, rogné aux bords
-const NROWS = 3;
+const NROWS = 3;      // lignes garanties (présentes sur toutes les colonnes)
+const NROWS_MAX = NROWS + 1;   // + 1 ligne du dessus, présente une colonne sur deux environ (surface irrégulière)
 
 /* ══════════════════════════════════════════════════
    Constantes temporelles de l'animation
 ══════════════════════════════════════════════════ */
-const DURATION_MS = 20000;
-const MAX_CONCURRENT = 4;
-const MAX_DISSOLVED = Math.floor(NCOLS * NROWS * 0.35);   // 17 — filet de sécurité (dissolution partielle garantie)
+let DURATION_MS = 40000;   // réglable via le panneau dev
+const MAX_DISSOLVED = Math.floor(NCOLS * NROWS_MAX * 0.35);   // filet de sécurité (dissolution partielle garantie)
 
-const PHASE_DUR = { approche: 1100, dissociation: 900, solvatation: 1300, dispersion: 3200, disparition: 500 };
-const PROCESS_TOTAL = PHASE_DUR.approche + PHASE_DUR.dissociation + PHASE_DUR.solvatation
-                     + PHASE_DUR.dispersion + PHASE_DUR.disparition;         // 7000 ms
-const SPAWN_HARD_STOP = DURATION_MS - PROCESS_TOTAL;                        // 13000 ms
+/* Cycle de déplacement — entièrement déterministe (aucun Math.random) :
+   approche (depuis la gauche, par le dessus) → dissociation (détachement vers
+   le haut) → migration continue vers le haut, avec cage de solvatation qui se
+   referme peu après le détachement, jusqu'à sortie complète par le haut —
+   l'ion et ses molécules sont alors définitivement perdus. Tout est ralenti
+   par rapport à la version précédente (quitte à allonger DURATION_MS). */
+/* `let` (pas `const`) pour ces constantes : le panneau de réglage temporaire
+   (devpanel.js) les modifie en direct. */
+const PHASE_DUR = { approche: 3000, dissociation: 1600 };   // objet : ses propriétés restent mutables même déclaré en const
+let MIGRATION_SPEED = 100;          // px/s, montée rectiligne et constante
+let WATER_TRAVEL_SPEED = 100;        // px/s, vitesse constante des molécules d'eau (au lieu d'une durée fixe) — évite les vitesses incohérentes selon la distance à parcourir
+let WATER_TRAVEL_MIN_DUR = 800;     // ms, plancher pour éviter un trajet instantané si la molécule est déjà très proche
+let FADE_IN_DURATION = 2000;        // ms, fondu d'apparition d'une molécule nouvellement créée (renouvellement du stock)
+
+/* Scénario fixe (pas de choix runtime) : on scripte la vidéo. Chaque entrée
+   cible un site précis (row, col) — modifiable via le panneau de réglage
+   (mode « Scénario » : clic sur un ion pour l'ajouter à l'instant courant du
+   curseur "Temps"). Le tableau reste un `const` mais son contenu est modifié
+   en place (push/splice) par devpanel.js ; chaque entrée reçoit un drapeau
+   `fired` remis à zéro par resetSimAnim(). */
+const DISSOLUTION_SCRIPT = [
+  { atMs: 200,   row: 0, col: 12 },
+  { atMs: 1000,  row: 0, col: 17 },
+  { atMs: 11100, row: 0, col: 8  },
+  { atMs: 12600, row: 0, col: 13 },
+  { atMs: 14000, row: 0, col: 16 },
+  { atMs: 16700, row: 1, col: 11 },
+  { atMs: 17100, row: 1, col: 18 },
+  { atMs: 20000, row: 0, col: 7  },
+  { atMs: 20400, row: 0, col: 3  },
+  { atMs: 21000, row: 1, col: 14 },
+  { atMs: 21700, row: 1, col: 9  },
+  { atMs: 26300, row: 0, col: 6  },
+  { atMs: 29000, row: 1, col: 8  },
+  { atMs: 29400, row: 1, col: 16 },
+  { atMs: 29900, row: 1, col: 13 },
+  { atMs: 32000, row: 1, col: 3  },
+  { atMs: 33200, row: 1, col: 17 },
+  { atMs: 33900, row: 1, col: 12 },
+  { atMs: 36000, row: 1, col: 7  },
+  { atMs: 37600, row: 1, col: 4  },
+  { atMs: 38000, row: 2, col: 14 },
+];
+
+/* Dérogations à l'occupation par défaut du cristal (TOP_ROW_PATTERN, cf.
+   cristal.js), au format { "row,col": true|false }. Modifiable via le panneau
+   de réglage (mode « Cristal » : clic sur une case pour basculer sa présence). */
+let CRYSTAL_OVERRIDES = {
+  "0,15": false, "1,16": true,  "1,15": false, "0,10": false,
+  "1,10": false, "1,4": true,   "0,12": true,  "0,20": false,
+  "0,17": true,  "0,16": true,  "0,19": false, "0,18": false,
+  "1,20": true,  "1,21": false,
+};
 
 /* ══════════════════════════════════════════════════
    Couleurs des ions et des atomes d'eau (charte du site)
@@ -53,8 +102,8 @@ const state = {
   paused: true,
   ended: false,
   animT: 0,
-  nextSpawnAt: 300,
   nextProcessId: 0,
+  spawnCounter: 0,
   crystal: { cellSize: 0, x0: 0, y0: 0, rNa: 0, rCl: 0, sites: [], nDissolved: 0 },
   freeWater: [],
   processes: [],

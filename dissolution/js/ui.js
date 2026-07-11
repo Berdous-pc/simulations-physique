@@ -15,13 +15,6 @@ function resize() {
   canvas.width = wrap.clientWidth || 600;
   canvas.height = wrap.clientHeight || 400;
   computeCrystalGeometry();
-  /* Repositionne immédiatement les molécules libres sur la nouvelle zone
-     solution, même en pause : sans cet appel, updateFreeWater() (qui lit la
-     zone solution courante à chaque frame) n'est jamais invoqué tant que
-     l'animation ne tourne pas, et les molécules restent figées à leurs
-     anciennes positions (calculées pour l'ancienne taille de fenêtre) —
-     ce qui les fait apparaître mal placées, voire superposées au cristal. */
-  updateFreeWater(0);
   drawScene();
 }
 window.addEventListener('resize', resize);
@@ -34,8 +27,9 @@ function drawScene() {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   drawCristal(ctx);
-  drawFreeWater(ctx);
   drawProcesses(ctx);
+  const timer = document.getElementById('sim-timer');
+  if (timer) timer.textContent = Math.round(state.animT) + ' ms';
 }
 
 /* ══════════════════════════════════════════════════
@@ -54,9 +48,9 @@ function loop(ts) {
       state.ended = true;
       _updatePlayBtn();
     }
-    updateFreeWater(dt);
+    advanceFadeIns(dt);
     updateProcesses(dt);
-    if (!state.ended && state.animT >= state.nextSpawnAt) tryStartNewProcess();
+    if (!state.ended) runScript();
   }
 
   drawScene();
@@ -76,9 +70,10 @@ function resetSimAnim() {
   state.paused = true;
   state.ended = false;
   state.animT = 0;
-  state.nextSpawnAt = 300;
   state.nextProcessId = 0;
+  state.spawnCounter = 0;
   state.processes = [];
+  DISSOLUTION_SCRIPT.forEach(e => { e.fired = false; });
   buildCristal();
   initFreeWater();
   _updatePlayBtn();
@@ -126,6 +121,24 @@ function onVerreError() {
 }
 
 /* ══════════════════════════════════════════════════
+   Tooltip de coordonnées (TEMPORAIRE — aide au positionnement pendant le
+   développement ; à retirer avec #coord-tooltip une fois le calage terminé).
+══════════════════════════════════════════════════ */
+function initCoordTooltip() {
+  const canvas = document.getElementById('anim-canvas');
+  const tooltip = document.getElementById('coord-tooltip');
+  if (!canvas || !tooltip) return;
+  canvas.addEventListener('mousemove', e => {
+    const x = Math.round(e.offsetX), y = Math.round(e.offsetY);
+    tooltip.textContent = x + ', ' + y;
+    tooltip.style.left = (e.offsetX + 14) + 'px';
+    tooltip.style.top = (e.offsetY + 14) + 'px';
+    tooltip.style.display = 'block';
+  });
+  canvas.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+}
+
+/* ══════════════════════════════════════════════════
    Initialisation
 ══════════════════════════════════════════════════ */
 function init() {
@@ -133,6 +146,7 @@ function init() {
   buildCristal();
   initFreeWater();
   _updatePlayBtn();
+  initCoordTooltip();
   requestAnimationFrame(loop);
 }
 window.addEventListener('DOMContentLoaded', init);

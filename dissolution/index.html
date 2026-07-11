@@ -37,6 +37,20 @@
       <!-- Canvas de l'animation microscopique -->
       <div id="anim-canvas-wrap">
         <canvas id="anim-canvas"></canvas>
+        <!-- Tooltip de coordonnées (temporaire — aide au positionnement pendant le dev) -->
+        <div id="coord-tooltip"></div>
+
+        <!-- Chronomètre de la simulation (temporaire) -->
+        <div id="sim-timer">0 ms</div>
+
+        <!-- Panneau de réglage (temporaire — retiré une fois le calage terminé) -->
+        <div id="dev-panel" class="collapsed">
+          <div id="dev-panel-header">
+            <span>Réglages (dev)</span>
+            <button id="dev-panel-toggle" onclick="toggleDevPanel()">▾</button>
+          </div>
+          <div id="dev-panel-body"></div>
+        </div>
       </div>
 
     </div><!-- fin #anim-area -->
@@ -118,6 +132,7 @@
 <script src="js/cristal.js"></script>
 <script src="js/eau.js"></script>
 <script src="js/ui.js"></script>
+<script src="js/devpanel.js"></script>
 
 <script data-goatcounter="https://berdous-pc.goatcounter.com/count"
         async src="https://gc.zgo.at/count.js"></script>

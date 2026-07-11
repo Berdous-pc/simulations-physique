@@ -4,20 +4,10 @@
 //  Licence : CC BY-NC 4.0 — https://creativecommons.org/licenses/by-nc/4.0/
 // ═══════════════════════════════════════════════════
 
-/* eau.js — pool de molécules d'eau libres (agitation idle, recrutement,
-   orientation électrostatique). Chargé après cristal.js, avant ui.js. */
-
-/* Zone solution : les deux tiers hauts de la zone d'animation, au-dessus du cristal. */
-function computeSolutionRect() {
-  const canvas = document.getElementById('anim-canvas');
-  const margin = 6;
-  return {
-    x: margin,
-    y: margin,
-    w: canvas.width - margin * 2,
-    h: Math.max(10, state.crystal.y0 - margin * 2),
-  };
-}
+/* eau.js — molécules d'eau : apparition en fondu au plus près de l'endroit où
+   elles sont nécessaires (aucune eau ambiante affichée avant d'être utile),
+   orientation électrostatique, disparition définitive. Chargé après
+   cristal.js, avant ui.js. */
 
 function waterScale() {
   /* Rayon de l'oxygène nettement inférieur à celui des ions (rNa ≈ cellSize×0,42,
@@ -27,78 +17,35 @@ function waterScale() {
   return waterR / WATER_MODEL.radius;
 }
 
-/* Chaque molécule libre occupe une case fixe (fx,fy) d'une grille lâche et oscille
-   autour, avec une amplitude bornée à 70% du demi-côté de case : aucun chevauchement
-   possible entre molécules idle, sans avoir besoin de détection de collision. */
+/* Remet le registre des molécules d'eau actives à zéro (aucune molécule
+   affichée tant qu'aucune dissolution n'a démarré). */
 function initFreeWater() {
-  const rect = computeSolutionRect();
-  const n = Math.max(18, Math.min(32, Math.round((rect.w * rect.h) / 24000)));
-  const cols = Math.max(1, Math.ceil(Math.sqrt(n * rect.w / rect.h)));
-  const rows = Math.max(1, Math.ceil(n / cols));
-
   state.freeWater = [];
-  let count = 0;
-  for (let r = 0; r < rows && count < n; r++) {
-    for (let c = 0; c < cols && count < n; c++) {
-      const fx = (c + 0.5) / cols;
-      const fy = (r + 0.5) / rows;
-      state.freeWater.push({
-        fx, fy,
-        x: rect.x + fx * rect.w, y: rect.y + fy * rect.h,
-        role: 'idle', alpha: 1, fadeIn: false,
-        ampFx: 0.35 / cols, ampFy: 0.35 / rows,
-        idleFreqX: 0.15 + Math.random() * 0.2,
-        idleFreqY: 0.15 + Math.random() * 0.2,
-        idlePhase: Math.random() * Math.PI * 2,
-        orient: Math.random() * Math.PI * 2,
-      });
-      count++;
-    }
-  }
 }
 
-function updateFreeWater(dt) {
-  const rect = computeSolutionRect();
-  const tS = state.animT / 1000;
+/* Fait progresser le fondu d'apparition d'une molécule tout juste créée. */
+function advanceFadeIns(dt) {
   state.freeWater.forEach(w => {
-    if (w.role !== 'idle') return;
-    const baseX = rect.x + w.fx * rect.w;
-    const baseY = rect.y + w.fy * rect.h;
-    w.x = baseX + Math.sin(tS * w.idleFreqX + w.idlePhase) * (w.ampFx * rect.w);
-    w.y = baseY + Math.cos(tS * w.idleFreqY + w.idlePhase * 1.3) * (w.ampFy * rect.h);
-    if (w.fadeIn) {
-      w.alpha = Math.min(1, w.alpha + dt / 400);
-      if (w.alpha >= 1) w.fadeIn = false;
-    }
+    if (!w.fadeIn) return;
+    w.alpha = Math.min(1, w.alpha + dt / FADE_IN_DURATION);
+    if (w.alpha >= 1) w.fadeIn = false;
   });
 }
 
-function drawFreeWater(ctx) {
-  const sc = waterScale();
-  state.freeWater.forEach(w => {
-    if (w.role !== 'idle' || w.alpha <= 0) return;
-    drawWaterMolecule(ctx, w.x, w.y, w.orient, sc, w.alpha);
-  });
-}
-
-/* ══════════════════════════════════════════════════
-   Recrutement / recyclage
-══════════════════════════════════════════════════ */
-function recruitFreeWaterMolecule() {
-  const idleList = state.freeWater.filter(w => w.role === 'idle');
-  if (!idleList.length) return null;
-  const w = idleList[Math.floor(Math.random() * idleList.length)];
-  w.role = 'engaged';
-  w.alpha = 1;
+/* Crée une molécule directement à la position donnée (aucune position idle,
+   aucun tirage dans un bassin) : elle apparaît en fondu à cet endroit précis,
+   choisi par l'appelant (cristal.js) au plus près de l'ion concerné. */
+function spawnWaterMolecule(x, y, orient) {
+  const w = { x, y, orient, alpha: 0, fadeIn: true };
+  state.freeWater.push(w);
   return w;
 }
 
-/* Recyclée : la molécule revient en fondu à sa position d'origine (fx,fy) — pas de
-   téléportation visible puisque alpha=0 pendant le "saut". */
-function releaseAndRecycleMolecule(w) {
-  w.role = 'idle';
-  w.alpha = 0;
-  w.fadeIn = true;
+/* Perdue pour de bon : retirée définitivement du registre (aucun fondu de
+   sortie — l'ion et ses molécules ont déjà quitté l'écran à ce moment-là). */
+function removeWaterMolecule(w) {
+  const idx = state.freeWater.indexOf(w);
+  if (idx !== -1) state.freeWater.splice(idx, 1);
 }
 
 /* ══════════════════════════════════════════════════
