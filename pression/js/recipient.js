@@ -52,8 +52,10 @@ function _doResize() {
   var area = canvas.parentElement;
   _cw = area.clientWidth;
   _ch = area.clientHeight;
-  canvas.width  = _cw;
-  canvas.height = _ch;
+  var dpr = window.devicePixelRatio || 1;
+  canvas.width  = Math.round(_cw * dpr);
+  canvas.height = Math.round(_ch * dpr);
+  canvas.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
 
   // ── Récipient carré : plus grand carré tenant dans la zone utile ──
   // Zone utile = canvas moins les marges (pour les étiquettes chocs/s)

@@ -46,8 +46,10 @@ function resizeTube() {
     var h    = wrap.clientHeight;
     if (w < 10 || h < 28) return;  // tubeH = h*0.88-4 ≥ 20 requiert h ≥ 28
 
-    tubeCanvas.width  = w;
-    tubeCanvas.height = h;
+    var dpr = window.devicePixelRatio || 1;
+    tubeCanvas.width  = Math.round(w * dpr);
+    tubeCanvas.height = Math.round(h * dpr);
+    tubeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     // ── Géométrie interne du tube ─────────────────────────────────────
     var marginH      = 13;   // 5 px de plus de chaque côté → labels règle non croppés
@@ -210,8 +212,8 @@ function drawTube() {
     tubeCanvas = tubeCanvas || document.getElementById('tube-canvas');
     tubeCtx    = tubeCtx    || tubeCanvas.getContext('2d');
     var ctx    = tubeCtx;
-    var W      = tubeCanvas.width;
-    var H      = tubeCanvas.height;
+    var W      = tubeCanvas.clientWidth;
+    var H      = tubeCanvas.clientHeight;
 
     if (!W || !H) return;
 
@@ -393,8 +395,8 @@ function _drawTubeRuler(ctx) {
     var L = sim.tubeLength;
     if (L <= 0) return;
 
-    var W        = tubeCanvas.width;
-    var H        = tubeCanvas.height;
+    var W        = tubeCanvas.clientWidth;
+    var H        = tubeCanvas.clientHeight;
     var yBase    = sim.tubeBottom;           // ligne de base de la règle
     var yRoom    = H - yBase;               // hauteur disponible sous le tube
     if (yRoom < 6) return;
@@ -667,8 +669,8 @@ function _drawOneBeacon(ctx, x, color, label) {
     if (L <= 0) return;
     var cmPerPx  = 40 / L;
     var xCm      = (x - sim.tubeLeft) * cmPerPx;
-    var W        = tubeCanvas.width;
-    var H        = tubeCanvas.height;
+    var W        = tubeCanvas.clientWidth;
+    var H        = tubeCanvas.clientHeight;
     var yRoom    = H - y2;
     if (yRoom < 6) return;
 
@@ -704,8 +706,8 @@ function _drawOneBeacon(ctx, x, color, label) {
 
     function onDown(e) {
         var rect = tubeCanvas.getBoundingClientRect();
-        var mx   = (e.clientX - rect.left) * (tubeCanvas.width  / rect.width);
-        var my   = (e.clientY - rect.top)  * (tubeCanvas.height / rect.height);
+        var mx   = (e.clientX - rect.left) * (tubeCanvas.clientWidth  / rect.width);
+        var my   = (e.clientY - rect.top)  * (tubeCanvas.clientHeight / rect.height);
 
         // Choisir les balises selon le tab actif
         var b1 = (typeof activeTab !== 'undefined' && activeTab === 'corde')
@@ -739,7 +741,7 @@ function _drawOneBeacon(ctx, x, color, label) {
         if (!tubeInter.mode) {
             // Curseur adaptatif
             var rect = tubeCanvas.getBoundingClientRect();
-            var mx   = (e.clientX - rect.left) * (tubeCanvas.width  / rect.width);
+            var mx   = (e.clientX - rect.left) * (tubeCanvas.clientWidth  / rect.width);
 
             var b1 = (typeof activeTab !== 'undefined' && activeTab === 'corde')
                         ? simCorde.beacon1 : sim.beacon1;
@@ -757,8 +759,8 @@ function _drawOneBeacon(ctx, x, color, label) {
         }
 
         var rect = tubeCanvas.getBoundingClientRect();
-        var mx   = (e.clientX - rect.left) * (tubeCanvas.width  / rect.width);
-        var my   = (e.clientY - rect.top)  * (tubeCanvas.height / rect.height);
+        var mx   = (e.clientX - rect.left) * (tubeCanvas.clientWidth  / rect.width);
+        var my   = (e.clientY - rect.top)  * (tubeCanvas.clientHeight / rect.height);
 
         // Bornes de déplacement selon le tab
         var isCorde = (typeof activeTab !== 'undefined' && activeTab === 'corde');
@@ -856,8 +858,10 @@ function resizeCorde() {
     var h    = wrap.clientHeight;
     if (w < 10 || h < 28) return;
 
-    tubeCanvas.width  = w;
-    tubeCanvas.height = h;
+    var dpr = window.devicePixelRatio || 1;
+    tubeCanvas.width  = Math.round(w * dpr);
+    tubeCanvas.height = Math.round(h * dpr);
+    tubeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     // ── Géométrie de la zone corde ────────────────────────────────────
     // Même logique que le tube son : marge horizontale + verticale
@@ -900,8 +904,8 @@ function drawCorde() {
     tubeCanvas = tubeCanvas || document.getElementById('tube-canvas');
     tubeCtx    = tubeCtx    || tubeCanvas.getContext('2d');
     var ctx    = tubeCtx;
-    var W      = tubeCanvas.width;
-    var H      = tubeCanvas.height;
+    var W      = tubeCanvas.clientWidth;
+    var H      = tubeCanvas.clientHeight;
     if (!W || !H) return;
 
     // Recalculer le cap de déplacement visuel
@@ -1212,7 +1216,7 @@ function _drawOneCordeBeacon(ctx, x, color, label) {
     if (L <= 0) return;
     var mPerPx   = CORDE_LENGTH_M / L;
     var xM       = (x - simCorde.cordeLeft) * mPerPx;
-    var H        = tubeCanvas.height;
+    var H        = tubeCanvas.clientHeight;
     var yRoom    = H - bottom;
     if (yRoom < 6) return;
 
@@ -1234,7 +1238,7 @@ function _drawCordeRuler(ctx) {
     var L = simCorde.cordeLength;
     if (L <= 0) return;
 
-    var H        = tubeCanvas.height;
+    var H        = tubeCanvas.clientHeight;
     var yBase    = simCorde.cordeBottom;
     var yRoom    = H - yBase;
     if (yRoom < 6) return;

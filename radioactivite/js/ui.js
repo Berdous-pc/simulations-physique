@@ -151,8 +151,8 @@ function initGraphHoverDiscret() {
   graphCanvas.addEventListener('mousemove', e => {
     const r = graphCanvas.getBoundingClientRect();
     graphHoverLibre = {
-      x: (e.clientX - r.left) * (graphCanvas.width  / r.width),
-      y: (e.clientY - r.top)  * (graphCanvas.height / r.height),
+      x: (e.clientX - r.left) * (graphCanvas.clientWidth  / r.width),
+      y: (e.clientY - r.top)  * (graphCanvas.clientHeight / r.height),
     };
     drawGraphLibre();
   });
@@ -162,8 +162,8 @@ function initGraphHoverDiscret() {
   autoGraphCanvas.addEventListener('mousemove', e => {
     const r = autoGraphCanvas.getBoundingClientRect();
     graphHoverAuto = {
-      x: (e.clientX - r.left) * (autoGraphCanvas.width  / r.width),
-      y: (e.clientY - r.top)  * (autoGraphCanvas.height / r.height),
+      x: (e.clientX - r.left) * (autoGraphCanvas.clientWidth  / r.width),
+      y: (e.clientY - r.top)  * (autoGraphCanvas.clientHeight / r.height),
     };
     const prevHover = hoverCrossIdxAuto;
     hoverCrossIdxAuto = -1;
@@ -176,7 +176,7 @@ function initGraphHoverDiscret() {
     autoGraphCanvas.style.cursor = hoverCrossIdxAuto >= 0 ? 'pointer' : (autoPan.dragging ? 'grabbing' : 'crosshair');
     if (!state.zoomModeAuto && autoPan.dragging && autoPan.startView) {
       const v  = autoPan.startView;
-      const ax = getAxDims(autoGraphCanvas.width, autoGraphCanvas.height);
+      const ax = getAxDims(autoGraphCanvas.clientWidth, autoGraphCanvas.clientHeight);
       const dx = (graphHoverAuto.x - autoPan.startX) / ax.gW * (v.xMax - v.xMin);
       const dy = (graphHoverAuto.y - autoPan.startY) / ax.gH * (v.yMax - v.yMin);
       state.view = { xMin: v.xMin - dx, xMax: v.xMax - dx, yMin: v.yMin + dy, yMax: v.yMax + dy };
@@ -196,8 +196,8 @@ function initGraphHoverDiscret() {
   autoGraphCanvas.addEventListener('mousedown', e => {
     if (state.zoomModeAuto) {
       const r  = autoGraphCanvas.getBoundingClientRect();
-      const cx = (e.clientX - r.left) * (autoGraphCanvas.width  / r.width);
-      const cy = (e.clientY - r.top)  * (autoGraphCanvas.height / r.height);
+      const cx = (e.clientX - r.left) * (autoGraphCanvas.clientWidth  / r.width);
+      const cy = (e.clientY - r.top)  * (autoGraphCanvas.clientHeight / r.height);
       state.zoomRectAuto = { x0: cx, y0: cy, x1: cx, y1: cy };
       e.preventDefault();
     } else {
@@ -212,7 +212,7 @@ function initGraphHoverDiscret() {
   });
   autoGraphCanvas.addEventListener('mouseup', e => {
     if (state.zoomModeAuto && state.zoomRectAuto) {
-      const ax   = getAxDims(autoGraphCanvas.width, autoGraphCanvas.height);
+      const ax   = getAxDims(autoGraphCanvas.clientWidth, autoGraphCanvas.clientHeight);
       const view = state.view || computeFullView();
       const { ml, mt, gW, gH } = ax;
       const rx0 = Math.min(state.zoomRectAuto.x0, state.zoomRectAuto.x1);
@@ -238,7 +238,7 @@ function initGraphHoverDiscret() {
   autoGraphCanvas.addEventListener('wheel', e => {
     e.preventDefault();
     if (state.zoomModeAuto || state.series.length === 0 || !graphHoverAuto) return;
-    const ax    = getAxDims(autoGraphCanvas.width, autoGraphCanvas.height);
+    const ax    = getAxDims(autoGraphCanvas.clientWidth, autoGraphCanvas.clientHeight);
     const view  = state.view || computeFullView();
     const mx = view.xMin + (graphHoverAuto.x - ax.ml) / ax.gW * (view.xMax - view.xMin);
     const my = view.yMin + (1 - (graphHoverAuto.y - ax.mt) / ax.gH) * (view.yMax - view.yMin);
@@ -252,8 +252,8 @@ function initGraphHoverDiscret() {
 
   autoGraphCanvas.addEventListener('click', e => {
     const r2 = autoGraphCanvas.getBoundingClientRect();
-    const cx = (e.clientX - r2.left) * (autoGraphCanvas.width  / r2.width);
-    const cy = (e.clientY - r2.top)  * (autoGraphCanvas.height / r2.height);
+    const cx = (e.clientX - r2.left) * (autoGraphCanvas.clientWidth  / r2.width);
+    const cy = (e.clientY - r2.top)  * (autoGraphCanvas.clientHeight / r2.height);
     for (const cz of tangenteCrossZonesAuto) {
       if (Math.hypot(cx - cz.x, cy - cz.y) < cz.r) {
         state.tangentesFigAuto.splice(cz.idx, 1);
@@ -264,7 +264,7 @@ function initGraphHoverDiscret() {
     }
     if (!state.tangenteAuto || state.series.length === 0 || !graphHoverAuto) return;
     const v  = state.view || computeFullView();
-    const ax = getAxDims(autoGraphCanvas.width, autoGraphCanvas.height);
+    const ax = getAxDims(autoGraphCanvas.clientWidth, autoGraphCanvas.clientHeight);
     const { ml, mt, gW, gH } = ax;
     const toX = i  => ml + (i  - v.xMin) / (v.xMax - v.xMin) * gW;
     const toY = vv => mt + gH - (vv - v.yMin) / (v.yMax - v.yMin) * gH;
@@ -296,8 +296,8 @@ function initGraphHoverContinu() {
   continugraphCanvas.addEventListener('mousemove', e => {
     const r = continugraphCanvas.getBoundingClientRect();
     graphHoverContinu = {
-      x: (e.clientX - r.left) * (continugraphCanvas.width  / r.width),
-      y: (e.clientY - r.top)  * (continugraphCanvas.height / r.height),
+      x: (e.clientX - r.left) * (continugraphCanvas.clientWidth  / r.width),
+      y: (e.clientY - r.top)  * (continugraphCanvas.clientHeight / r.height),
     };
     hoverCrossIdxContinu = -1;
     for (let i = 0; i < tangenteCrossZonesContinu.length; i++) {
@@ -309,7 +309,7 @@ function initGraphHoverContinu() {
     continugraphCanvas.style.cursor = hoverCrossIdxContinu >= 0 ? 'pointer' : (continupan.dragging ? 'grabbing' : 'crosshair');
     if (!state.zoomModeContinu && continupan.dragging && continupan.startView) {
       const v  = continupan.startView;
-      const ax = getAxDims(continugraphCanvas.width, continugraphCanvas.height);
+      const ax = getAxDims(continugraphCanvas.clientWidth, continugraphCanvas.clientHeight);
       const dx = (graphHoverContinu.x - continupan.startX) / ax.gW * (v.xMax - v.xMin);
       const dy = (graphHoverContinu.y - continupan.startY) / ax.gH * (v.yMax - v.yMin);
       state.viewContinu = { xMin: v.xMin - dx, xMax: v.xMax - dx, yMin: v.yMin + dy, yMax: v.yMax + dy };
@@ -330,8 +330,8 @@ function initGraphHoverContinu() {
     const allSeries = getAllContinuSeries();
     if (state.zoomModeContinu) {
       const r  = continugraphCanvas.getBoundingClientRect();
-      const cx = (e.clientX - r.left) * (continugraphCanvas.width  / r.width);
-      const cy = (e.clientY - r.top)  * (continugraphCanvas.height / r.height);
+      const cx = (e.clientX - r.left) * (continugraphCanvas.clientWidth  / r.width);
+      const cy = (e.clientY - r.top)  * (continugraphCanvas.clientHeight / r.height);
       state.zoomRect = { x0: cx, y0: cy, x1: cx, y1: cy };
       e.preventDefault();
     } else {
@@ -346,7 +346,7 @@ function initGraphHoverContinu() {
   });
   continugraphCanvas.addEventListener('mouseup', e => {
     if (state.zoomModeContinu && state.zoomRect) {
-      const ax   = getAxDims(continugraphCanvas.width, continugraphCanvas.height);
+      const ax   = getAxDims(continugraphCanvas.clientWidth, continugraphCanvas.clientHeight);
       const view = state.viewContinu || computeFullViewContinu();
       const { factor: tFactor } = pickTimeUnit(view.xMax);
       const xMinU = view.xMin / tFactor, xMaxU = view.xMax / tFactor;
@@ -378,7 +378,7 @@ function initGraphHoverContinu() {
     if (state.zoomModeContinu) return;
     const allSeries = getAllContinuSeries();
     if (allSeries.length === 0 || !graphHoverContinu) return;
-    const ax   = getAxDims(continugraphCanvas.width, continugraphCanvas.height);
+    const ax   = getAxDims(continugraphCanvas.clientWidth, continugraphCanvas.clientHeight);
     const view = state.viewContinu || computeFullViewContinu();
     const { factor: tFactor } = pickTimeUnit(view.xMax);
     const xMinU = view.xMin / tFactor, xMaxU = view.xMax / tFactor;
@@ -395,8 +395,8 @@ function initGraphHoverContinu() {
 
   continugraphCanvas.addEventListener('click', e => {
     const r2 = continugraphCanvas.getBoundingClientRect();
-    const cx = (e.clientX - r2.left) * (continugraphCanvas.width  / r2.width);
-    const cy = (e.clientY - r2.top)  * (continugraphCanvas.height / r2.height);
+    const cx = (e.clientX - r2.left) * (continugraphCanvas.clientWidth  / r2.width);
+    const cy = (e.clientY - r2.top)  * (continugraphCanvas.clientHeight / r2.height);
     for (const cz of tangenteCrossZonesContinu) {
       if (Math.hypot(cx - cz.x, cy - cz.y) < cz.r) {
         state.tangentesFigContinu.splice(cz.idx, 1);
@@ -411,7 +411,7 @@ function initGraphHoverContinu() {
     const view = state.viewContinu || computeFullViewContinu();
     const { factor: tFactor } = pickTimeUnit(view.xMax);
     const xMinU = view.xMin / tFactor, xMaxU = view.xMax / tFactor;
-    const W  = continugraphCanvas.width, H = continugraphCanvas.height;
+    const W  = continugraphCanvas.clientWidth, H = continugraphCanvas.clientHeight;
     const ax = getAxDims(W, H);
     const { ml, mt, gW, gH } = ax;
     let yFactor = 1e23;
@@ -1079,8 +1079,12 @@ function expandRecipient() {
   recipientExpanded = true;
   const overlay = document.getElementById('recipient-overlay');
   overlay.classList.add('visible');
-  recipientCanvasBig.width  = overlay.clientWidth  - 24;
-  recipientCanvasBig.height = overlay.clientHeight - 64;
+  const dpr = window.devicePixelRatio || 1;
+  const rbCssW = overlay.clientWidth  - 24;
+  const rbCssH = overlay.clientHeight - 64;
+  recipientCanvasBig.width  = Math.round(rbCssW * dpr);
+  recipientCanvasBig.height = Math.round(rbCssH * dpr);
+  recipientCtxBig.setTransform(dpr, 0, 0, dpr, 0, 0);
   drawRecipient();
 }
 

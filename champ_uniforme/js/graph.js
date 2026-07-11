@@ -58,8 +58,8 @@ function initGraphCanvas() {
     _gCanvas.addEventListener('pointermove', function(e) {
         var rect = _gCanvas.getBoundingClientRect();
         _gHoverPos = {
-            x: (e.clientX - rect.left) * (_gCanvas.width  / rect.width),
-            y: (e.clientY - rect.top)  * (_gCanvas.height / rect.height)
+            x: (e.clientX - rect.left) * (_gCanvas.clientWidth  / rect.width),
+            y: (e.clientY - rect.top)  * (_gCanvas.clientHeight / rect.height)
         };
     });
     _gCanvas.addEventListener('pointerleave', function() {
@@ -72,8 +72,10 @@ function resizeGraphCanvas() {
     var wrap = _gCanvas.parentElement;
     _gW = wrap.clientWidth  || 600;
     _gH = wrap.clientHeight || 200;
-    _gCanvas.width  = _gW;
-    _gCanvas.height = _gH;
+    var dpr = window.devicePixelRatio || 1;
+    _gCanvas.width  = Math.round(_gW * dpr);
+    _gCanvas.height = Math.round(_gH * dpr);
+    _gCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
 /* ─────────────────────────────────────────────────

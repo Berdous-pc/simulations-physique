@@ -481,9 +481,11 @@ function resizeCanvas() {
   const newW = wrap.clientWidth;
   const h    = parseInt(wrap.style.height, 10);
   const newH = (h > 0 ? h : wrap.offsetHeight) || wrap.clientHeight;
+  const dpr  = window.devicePixelRatio || 1;
   let changed = false;
-  if (molCanvas.width  !== newW) { molCanvas.width  = newW; changed = true; }
-  if (molCanvas.height !== newH) { molCanvas.height = newH; changed = true; }
+  if (molCanvas.width  !== Math.round(newW * dpr)) { molCanvas.width  = Math.round(newW * dpr); changed = true; }
+  if (molCanvas.height !== Math.round(newH * dpr)) { molCanvas.height = Math.round(newH * dpr); changed = true; }
+  if (changed) molCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
   if (changed) invalidateGeomCache();
   if (changed && !state.anim && !state._skipAutoRedraw) redraw();
 }
@@ -493,8 +495,11 @@ function resizeCanvasDuringAnim() {
   const newW = wrap.clientWidth;
   const h    = parseInt(wrap.style.height, 10);
   const newH = (h > 0 ? h : wrap.offsetHeight) || wrap.clientHeight;
-  if (molCanvas.width  !== newW) molCanvas.width  = newW;
-  if (molCanvas.height !== newH) molCanvas.height = newH;
+  const dpr  = window.devicePixelRatio || 1;
+  let changed = false;
+  if (molCanvas.width  !== Math.round(newW * dpr)) { molCanvas.width  = Math.round(newW * dpr); changed = true; }
+  if (molCanvas.height !== Math.round(newH * dpr)) { molCanvas.height = Math.round(newH * dpr); changed = true; }
+  if (changed) molCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
 function fixAndRedraw() {
@@ -587,12 +592,12 @@ function _computeGeomCache() {
     };
   }
 
-  return { rects, cellRect, canvasW: molCanvas.width, canvasH: molCanvas.height };
+  return { rects, cellRect, canvasW: molCanvas.clientWidth, canvasH: molCanvas.clientHeight };
 }
 
 function _ensureGeomCache() {
-  if (_geomCache && _geomCache.canvasW === molCanvas.width
-                 && _geomCache.canvasH === molCanvas.height) return _geomCache;
+  if (_geomCache && _geomCache.canvasW === molCanvas.clientWidth
+                 && _geomCache.canvasH === molCanvas.clientHeight) return _geomCache;
   _geomCache = _computeGeomCache();
   return _geomCache;
 }
@@ -932,7 +937,7 @@ function drawMolCircle(ctx, formula, cx, cy, r, alpha) {
    DESSIN STATIQUE (état courant)
 ══════════════════════════════════════════════════════════════════════════ */
 function drawStatic() {
-  const W = molCanvas.width, H = molCanvas.height;
+  const W = molCanvas.clientWidth, H = molCanvas.clientHeight;
   molCtx.clearRect(0, 0, W, H);
 
   const layout = computeLayout();

@@ -68,21 +68,32 @@ function initCanvases() {
 ══════════════════════════════════════════════════ */
 
 function resizeCanvases() {
+  const dpr = window.devicePixelRatio || 1;
+
   const simArea = document.getElementById('sim-area');
   diceCanvas.width  = simArea.clientWidth;
   diceCanvas.height = simArea.clientHeight;
 
   const gw = document.getElementById('graph-wrap');
-  graphCanvas.width  = gw.clientWidth  - 16;
-  graphCanvas.height = gw.clientHeight - 30;
+  const gCssW = gw.clientWidth  - 16;
+  const gCssH = gw.clientHeight - 30;
+  graphCanvas.width  = Math.round(gCssW * dpr);
+  graphCanvas.height = Math.round(gCssH * dpr);
+  graphCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   const agArea = document.getElementById('auto-graph-area');
-  autoGraphCanvas.width  = agArea.clientWidth  - 16;
-  autoGraphCanvas.height = agArea.clientHeight - 16;
+  const agCssW = agArea.clientWidth  - 16;
+  const agCssH = agArea.clientHeight - 16;
+  autoGraphCanvas.width  = Math.round(agCssW * dpr);
+  autoGraphCanvas.height = Math.round(agCssH * dpr);
+  autoGraphCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   const cgArea = document.getElementById('continu-graph-area');
-  continugraphCanvas.width  = cgArea.clientWidth  - 16;
-  continugraphCanvas.height = cgArea.clientHeight - 16;
+  const cgCssW = cgArea.clientWidth  - 16;
+  const cgCssH = cgArea.clientHeight - 16;
+  continugraphCanvas.width  = Math.round(cgCssW * dpr);
+  continugraphCanvas.height = Math.round(cgCssH * dpr);
+  continugraphCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   const rw       = document.getElementById('recipient-wrap');
   const rlabel   = document.getElementById('recipient-label');
@@ -100,8 +111,11 @@ function resizeCanvases() {
     const ovOtherH  = (ovLabel   ? ovLabel.offsetHeight   : 0)
                     + (ovInfoRow ? ovInfoRow.offsetHeight  : 0)
                     + 56;
-    recipientCanvasBig.width  = ov.clientWidth  - 24;
-    recipientCanvasBig.height = Math.max(40, ov.clientHeight - ovOtherH);
+    const rbCssW = ov.clientWidth  - 24;
+    const rbCssH = Math.max(40, ov.clientHeight - ovOtherH);
+    recipientCanvasBig.width  = Math.round(rbCssW * dpr);
+    recipientCanvasBig.height = Math.round(rbCssH * dpr);
+    recipientCtxBig.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 }
 
@@ -412,7 +426,7 @@ function drawHoverInfo(ctx, hover, pts, maxI, maxN, ax, color, yLabelPrefix) {
 }
 
 function drawGraphLibre() {
-  const W = graphCanvas.width, H = graphCanvas.height;
+  const W = graphCanvas.clientWidth, H = graphCanvas.clientHeight;
   const ctx = graphCtx;
   ctx.clearRect(0, 0, W, H);
   if (state.tableRows.length === 0) return;
@@ -550,7 +564,7 @@ function drawTangenteContinu(ctx, fig, toX, toY, xMinV, xMaxV, ml, mt, gW, gH, i
 }
 
 function drawGraphAuto() {
-  const W = autoGraphCanvas.width, H = autoGraphCanvas.height;
+  const W = autoGraphCanvas.clientWidth, H = autoGraphCanvas.clientHeight;
   const ctx = autoGraphCtx;
   ctx.clearRect(0, 0, W, H);
 
@@ -689,8 +703,8 @@ function drawGraphAuto() {
       ctx.beginPath(); ctx.arc(hx, hy, 3, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
       const canvasRect = autoGraphCanvas.getBoundingClientRect();
-      const scaleX = canvasRect.width / autoGraphCanvas.width;
-      const scaleY = canvasRect.height / autoGraphCanvas.height;
+      const scaleX = canvasRect.width / autoGraphCanvas.clientWidth;
+      const scaleY = canvasRect.height / autoGraphCanvas.clientHeight;
       const tooltip = document.getElementById('reticule-tooltip-auto');
       tooltip.innerHTML = `i = ${xVal.toFixed(1)}<br>N = ${yVal.toFixed(1)}`;
       tooltip.style.display = 'block';
@@ -738,7 +752,7 @@ function computeFullViewContinu() {
 }
 
 function drawGraphContinu() {
-  const W = continugraphCanvas.width, H = continugraphCanvas.height;
+  const W = continugraphCanvas.clientWidth, H = continugraphCanvas.clientHeight;
   const ctx = continugraphCtx;
   ctx.clearRect(0, 0, W, H);
 

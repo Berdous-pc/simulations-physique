@@ -653,7 +653,7 @@ function adapterVueRun(id) {
         if (run.trajPoints[j].x > xMax) xMax = run.trajPoints[j].x;
         if (run.trajPoints[j].y > yMax) yMax = run.trajPoints[j].y;
     }
-    sim.xMax = Math.max(xMax, 5);
+    sim.xMax = Math.max(xMax, 2);
     sim.yMax = Math.max(yMax, run.h + 1, 1);
     computeScale(_animW, _animH);
 

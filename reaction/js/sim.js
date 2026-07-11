@@ -52,24 +52,29 @@ const molCanvas = document.getElementById('mol-canvas');
 const molCtx    = molCanvas.getContext('2d');
 
 function resizeCanvas() {
+  const dpr  = window.devicePixelRatio || 1;
   const wrap = document.getElementById('canvas-and-table');
   const newW = wrap.clientWidth;
   const h    = parseInt(wrap.style.height, 10);
   const newH = (h > 0 ? h : wrap.offsetHeight) || wrap.clientHeight;
   let changed = false;
-  if (molCanvas.width  !== newW) { molCanvas.width  = newW; changed = true; }
-  if (molCanvas.height !== newH) { molCanvas.height = newH; changed = true; }
+  if (molCanvas.width  !== Math.round(newW * dpr)) { molCanvas.width  = Math.round(newW * dpr); changed = true; }
+  if (molCanvas.height !== Math.round(newH * dpr)) { molCanvas.height = Math.round(newH * dpr); changed = true; }
+  if (changed) molCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
   if (changed) invalidateGeomCache();
   if (changed && !state.animEq && !state.animLim && !state._skipAutoRedraw) redraw();
 }
 
 function resizeCanvasDuringAnim() {
+  const dpr  = window.devicePixelRatio || 1;
   const wrap = document.getElementById('canvas-and-table');
   const newW = wrap.clientWidth;
   const h    = parseInt(wrap.style.height, 10);
   const newH = (h > 0 ? h : wrap.offsetHeight) || wrap.clientHeight;
-  if (molCanvas.width  !== newW) molCanvas.width  = newW;
-  if (molCanvas.height !== newH) molCanvas.height = newH;
+  let changed = false;
+  if (molCanvas.width  !== Math.round(newW * dpr)) { molCanvas.width  = Math.round(newW * dpr); changed = true; }
+  if (molCanvas.height !== Math.round(newH * dpr)) { molCanvas.height = Math.round(newH * dpr); changed = true; }
+  if (changed) molCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
 function fixAndRedraw(mode) {
@@ -181,13 +186,13 @@ function _computeGeomCache() {
 
   return {
     colRects, colRectsSkip, cellRect, tableBottomY, sepX,
-    canvasW: molCanvas.width, canvasH: molCanvas.height,
+    canvasW: molCanvas.clientWidth, canvasH: molCanvas.clientHeight,
   };
 }
 
 function _ensureGeomCache() {
-  if (_geomCache && _geomCache.canvasW === molCanvas.width
-                 && _geomCache.canvasH === molCanvas.height) return _geomCache;
+  if (_geomCache && _geomCache.canvasW === molCanvas.clientWidth
+                 && _geomCache.canvasH === molCanvas.clientHeight) return _geomCache;
   _geomCache = _computeGeomCache();
   return _geomCache;
 }
@@ -289,8 +294,8 @@ function fixCanvasRowHeight(mode) {
    CALCUL DU LAYOUT depuis le DOM
 ══════════════════════════════════════════════════════════════════════════ */
 function computeLayoutFromDOM(rxn, coeffs4, skipFirst) {
-  const W = molCanvas.width;
-  const H = molCanvas.height;
+  const W = molCanvas.clientWidth;
+  const H = molCanvas.clientHeight;
   const colRects = getColRects(skipFirst);
   const cellRect = getCanvasCellRect();
   if (!cellRect || colRects.length < N_COLS) return null;
@@ -357,8 +362,8 @@ function computeLayoutLim(qtesR, qtesP) {
 
 function computeLayoutLimFixed(qtesR, qtesP, scalesFixed) {
   const rxn = REACTIONS[state.reactionLimIdx];
-  const W = molCanvas.width;
-  const H = molCanvas.height;
+  const W = molCanvas.clientWidth;
+  const H = molCanvas.clientHeight;
   const colRects = getColRects(true);
   const cellRect = getCanvasCellRect();
   if (!cellRect || colRects.length < N_COLS) return null;
@@ -595,7 +600,7 @@ function gridPositions(formula, count, x0, y0, w, h, sc, pad) {
    DESSIN STATIQUE
 ══════════════════════════════════════════════════════════════════════════ */
 function drawStatic() {
-  const W=molCanvas.width, H=molCanvas.height;
+  const W=molCanvas.clientWidth, H=molCanvas.clientHeight;
   molCtx.clearRect(0,0,W,H);
 
   if (state.onglet==='equilibrage') {
@@ -684,8 +689,8 @@ function drawLastFrameEq(frame) {
   }
 
   if (frame.orphans && frame.orphans.length > 0) {
-    const sx = molCanvas.width  / frame.canvasW;
-    const sy = molCanvas.height / frame.canvasH;
+    const sx = molCanvas.clientWidth  / frame.canvasW;
+    const sy = molCanvas.clientHeight / frame.canvasH;
     frame.orphans.forEach(a => drawAtom(molCtx, a.el, (a.ex??a.tx)*sx, (a.ey??a.ty)*sy, a.r, 1));
   }
 }

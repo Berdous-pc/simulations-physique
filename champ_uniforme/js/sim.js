@@ -220,7 +220,7 @@ function computeTrajectoryBounds() {
 
     /* Durée totale approximative */
     sim.maxT  = i * dt;
-    sim.xMax  = Math.max(xMax, 5);
+    sim.xMax  = Math.max(xMax, 2);
     sim.yMax  = Math.max(yMax, sim.h + 1, 1);
     /* Bornes propres à ce run (avant fusion avec les runs sauvegardées) */
     sim._ownMaxT = sim.maxT;

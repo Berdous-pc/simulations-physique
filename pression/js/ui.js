@@ -221,8 +221,10 @@ function init() {
   var area = canvas.parentElement;
   _cw = area.clientWidth;
   _ch = area.clientHeight;
-  canvas.width  = _cw;
-  canvas.height = _ch;
+  var dpr = window.devicePixelRatio || 1;
+  canvas.width  = Math.round(_cw * dpr);
+  canvas.height = Math.round(_ch * dpr);
+  canvas.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
 
   // Recalculer géométrie — doit rester synchronisée avec _doResize() de recipient.js
   var MARGIN_TOP_L    = 60;

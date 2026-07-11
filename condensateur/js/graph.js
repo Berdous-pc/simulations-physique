@@ -102,8 +102,8 @@ function initGraphHover() {
 
     cv.addEventListener('mousemove', e => {
       const r  = cv.getBoundingClientRect();
-      const mx = (e.clientX - r.left) * (cv.width  / r.width);
-      const my = (e.clientY - r.top)  * (cv.height / r.height);
+      const mx = (e.clientX - r.left) * (cv.clientWidth  / r.width);
+      const my = (e.clientY - r.top)  * (cv.clientHeight / r.height);
 
       graphHover[id] = { x: mx, y: my, free: graphCursorActive };
 
@@ -113,8 +113,8 @@ function initGraphHover() {
       }
 
       if (!graphZoomMode && graphPan.dragging) {
-        const gw  = cv.width - 82 - 12;
-        const dx  = (e.clientX - graphPan.startX) * (cv.width / r.width);
+        const gw  = cv.clientWidth - 82 - 12;
+        const dx  = (e.clientX - graphPan.startX) * (cv.clientWidth / r.width);
         const dMs = -(dx / gw) * sim.graphWindowMs;
         const maxOffset = Math.max(0, sim.tAcq - sim.graphWindowMs);
         sim.viewOffsetMs = Math.max(0, Math.min(maxOffset, graphPan.startOffset + dMs));
@@ -131,8 +131,8 @@ function initGraphHover() {
     cv.addEventListener('mousedown', e => {
       if (graphZoomMode) {
         const r  = cv.getBoundingClientRect();
-        const mx = (e.clientX - r.left) * (cv.width  / r.width);
-        const my = (e.clientY - r.top)  * (cv.height / r.height);
+        const mx = (e.clientX - r.left) * (cv.clientWidth  / r.width);
+        const my = (e.clientY - r.top)  * (cv.clientHeight / r.height);
         graphZoomRect = { x0: mx, y0: my, x1: mx, y1: my };
       } else {
         graphPan.dragging    = true;
@@ -145,7 +145,7 @@ function initGraphHover() {
     cv.addEventListener('mouseup', e => {
       if (graphZoomMode && graphZoomRect) {
         const pad = { l: 52, r: 10 };
-        const gw  = cv.width - pad.l - pad.r;
+        const gw  = cv.clientWidth - pad.l - pad.r;
         const x0c = Math.min(graphZoomRect.x0, graphZoomRect.x1);
         const x1c = Math.max(graphZoomRect.x0, graphZoomRect.x1);
         if (x1c - x0c > 5) {
@@ -168,8 +168,8 @@ function initGraphHover() {
       e.preventDefault();
       const r   = cv.getBoundingClientRect();
       const pad = { l: 82, r: 12 };
-      const gw  = cv.width - pad.l - pad.r;
-      const mx  = (e.clientX - r.left) * (cv.width / r.width);
+      const gw  = cv.clientWidth - pad.l - pad.r;
+      const mx  = (e.clientX - r.left) * (cv.clientWidth / r.width);
       const frac = Math.max(0, Math.min(1, (mx - pad.l) / gw));
       const tUnderCursor = sim.viewOffsetMs + frac * sim.graphWindowMs;
       const factor = e.deltaY > 0 ? 1.25 : 0.8;
@@ -213,7 +213,7 @@ function fmtAxisY(v) {
 function drawGraph(canvasId, data, color, yMin, yMax, yUnit) {
   const cv  = document.getElementById(canvasId);
   const gc  = cv.getContext('2d');
-  const w   = cv.width, h = cv.height;
+  const w   = cv.clientWidth, h = cv.clientHeight;
 
   // Marge gauche dynamique selon largeur des labels Y
   gc.font = '22px monospace';

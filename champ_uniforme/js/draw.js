@@ -113,8 +113,10 @@ function resizeAnimCanvas() {
     var wrap = _animCanvas.parentElement;
     _animW = wrap.clientWidth  || 600;
     _animH = wrap.clientHeight || 400;
-    _animCanvas.width  = _animW;
-    _animCanvas.height = _animH;
+    var dpr = window.devicePixelRatio || 1;
+    _animCanvas.width  = Math.round(_animW * dpr);
+    _animCanvas.height = Math.round(_animH * dpr);
+    _animCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
     computeScale(_animW, _animH);
 }
 

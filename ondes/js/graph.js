@@ -64,12 +64,12 @@ function _syncLeftMarginWithTube(ctx, W, yMin, yMax) {
     // ne se retrouve jamais collé au bord gauche du canvas, loin des chiffres.
     var minForLabels = _calcLeftMarginRaw(ctx, yMin, yMax) + _gFontTitle + 8;
 
-    if (tubeCanvas && tubeCanvas.width > 0 && sim.tubeLeft > 0 && graphCanvas) {
+    if (tubeCanvas && tubeCanvas.clientWidth > 0 && sim.tubeLeft > 0 && graphCanvas) {
         var tubeRect  = tubeCanvas.getBoundingClientRect();
         var graphRect = graphCanvas.getBoundingClientRect();
 
         // Position viewport de la membrane (bord gauche du tube dans le canvas tube)
-        var memViewportX = tubeRect.left + (sim.tubeLeft / tubeCanvas.width) * tubeRect.width;
+        var memViewportX = tubeRect.left + (sim.tubeLeft / tubeCanvas.clientWidth) * tubeRect.width;
 
         // Distance depuis le bord gauche du canvas graphe
         var marginFromViewport = memViewportX - graphRect.left;
@@ -114,8 +114,10 @@ function resizeGraph() {
     var h    = wrap.clientHeight;
     if (w < 10 || h < 10) return;
 
-    graphCanvas.width  = w;
-    graphCanvas.height = h;
+    var dpr = window.devicePixelRatio || 1;
+    graphCanvas.width  = Math.round(w * dpr);
+    graphCanvas.height = Math.round(h * dpr);
+    graphCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     _updateBothSepCSS(w);
 }
@@ -144,8 +146,8 @@ function drawGraph() {
     graphCtx = graphCtx || graphCanvas.getContext('2d');
 
     var ctx = graphCtx;
-    var W   = graphCanvas.width;
-    var H   = graphCanvas.height;
+    var W   = graphCanvas.clientWidth;
+    var H   = graphCanvas.clientHeight;
     if (!W || !H) return;
 
     // Fond
@@ -975,8 +977,8 @@ function _drawCrosshair(ctx, W, H) {
         tip.style.display = 'block';
         // Coordonnées viewport (tooltip en position:fixed)
         var gRect  = graphCanvas.getBoundingClientRect();
-        var scaleX = graphCanvas.width  / gRect.width;
-        var scaleY = graphCanvas.height / gRect.height;
+        var scaleX = graphCanvas.clientWidth  / gRect.width;
+        var scaleY = graphCanvas.clientHeight / gRect.height;
         var vpX    = gRect.left + mx / scaleX;
         var vpY    = gRect.top  + my / scaleY;
         var offX   = vpX + 12;
@@ -1274,10 +1276,10 @@ function _syncLeftMarginWithCorde(ctx, W, yMin, yMax) {
     // + place pour le titre d'axe Y pivoté (cf. _yAxisTitleX)
     var minForLabels = _calcLeftMarginRaw(ctx, yMin, yMax) + _gFontTitle + 8;
 
-    if (tubeCanvas && tubeCanvas.width > 0 && simCorde.cordeLeft > 0 && graphCanvas) {
+    if (tubeCanvas && tubeCanvas.clientWidth > 0 && simCorde.cordeLeft > 0 && graphCanvas) {
         var tubeRect  = tubeCanvas.getBoundingClientRect();
         var graphRect = graphCanvas.getBoundingClientRect();
-        var potViewportX    = tubeRect.left + (simCorde.cordeLeft / tubeCanvas.width) * tubeRect.width;
+        var potViewportX    = tubeRect.left + (simCorde.cordeLeft / tubeCanvas.clientWidth) * tubeRect.width;
         var marginFromVp    = potViewportX - graphRect.left;
         var marginCanvas    = Math.round(marginFromVp * (W / graphRect.width));
         GM.left = Math.max(minForLabels, marginCanvas);
@@ -1538,8 +1540,8 @@ function _drawCrosshairCorde(ctx, W, H) {
         tip.textContent = xVal + '  |  y = ' + yVal;
         tip.style.display = 'block';
         var gRect  = graphCanvas.getBoundingClientRect();
-        var scaleX = graphCanvas.width  / gRect.width;
-        var scaleY = graphCanvas.height / gRect.height;
+        var scaleX = graphCanvas.clientWidth  / gRect.width;
+        var scaleY = graphCanvas.clientHeight / gRect.height;
         var vpX    = gRect.left + mx / scaleX;
         var vpY    = gRect.top  + my / scaleY;
         var offX   = vpX + 12;
@@ -1670,8 +1672,8 @@ function autoScaleGraph() {
 
         graphCanvas.addEventListener('pointermove', function(e) {
             var rect = graphCanvas.getBoundingClientRect();
-            var mx   = (e.clientX - rect.left) * (graphCanvas.width  / rect.width);
-            var my   = (e.clientY - rect.top)  * (graphCanvas.height / rect.height);
+            var mx   = (e.clientX - rect.left) * (graphCanvas.clientWidth  / rect.width);
+            var my   = (e.clientY - rect.top)  * (graphCanvas.clientHeight / rect.height);
 
             var isCorde  = (typeof activeTab !== 'undefined' && activeTab === 'corde');
             var cursorMd = _activeSv().graphCursorMode;
@@ -1681,7 +1683,7 @@ function autoScaleGraph() {
                 var sv   = _activeSv();
                 var mode = sv.graphMode;
                 if (mode === 'dpt') {
-                    var W  = graphCanvas.width;
+                    var W  = graphCanvas.clientWidth;
                     var pW = W - GM.left - GM.right;
                     var dx = mx - graphPan.startX;
                     var dataDx = dx / pW * (graphPan.startView.xMax - graphPan.startView.xMin);
@@ -1700,8 +1702,8 @@ function autoScaleGraph() {
 
         graphCanvas.addEventListener('pointerdown', function(e) {
             var rect = graphCanvas.getBoundingClientRect();
-            var mx   = (e.clientX - rect.left) * (graphCanvas.width  / rect.width);
-            var my   = (e.clientY - rect.top)  * (graphCanvas.height / rect.height);
+            var mx   = (e.clientX - rect.left) * (graphCanvas.clientWidth  / rect.width);
+            var my   = (e.clientY - rect.top)  * (graphCanvas.clientHeight / rect.height);
 
             var sv       = _activeSv();
             var zoomMode = sv.graphZoomMode;
@@ -1747,8 +1749,8 @@ function autoScaleGraph() {
             if (mode !== 'dpt') return;
             e.preventDefault();
             var rect = graphCanvas.getBoundingClientRect();
-            var mx   = (e.clientX - rect.left) * (graphCanvas.width  / rect.width);
-            var W    = graphCanvas.width;
+            var mx   = (e.clientX - rect.left) * (graphCanvas.clientWidth  / rect.width);
+            var W    = graphCanvas.clientWidth;
             var pW   = W - GM.left - GM.right;
             var tCur = sv.graphView.xMin +
                 (mx - GM.left) / pW * (sv.graphView.xMax - sv.graphView.xMin);
@@ -1788,8 +1790,8 @@ function _applyZoom() {
     var dy = Math.abs(r.y2 - r.y1);
     if (dx < 6 || dy < 6) return;
 
-    var W  = graphCanvas.width;
-    var H  = graphCanvas.height;
+    var W  = graphCanvas.clientWidth;
+    var H  = graphCanvas.clientHeight;
     var pW = W - GM.left - GM.right;
     var pH = H - GM.top  - GM.bottom;
 

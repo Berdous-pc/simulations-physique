@@ -113,8 +113,10 @@ function resizeVagues() {
     var h = wrap ? wrap.clientHeight : canvas.clientHeight;
     if (w < 10 || h < 10) return;
 
-    canvas.width  = w;
-    canvas.height = h;
+    var dpr = window.devicePixelRatio || 1;
+    canvas.width  = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    canvas.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
     simVagues.canvasW = w;
     simVagues.canvasH = h;
 
@@ -192,10 +194,12 @@ function drawVagues() {
     var canvas = document.getElementById('tube-canvas');
     if (!canvas) return;
     var ctx = canvas.getContext('2d');
-    var W = canvas.width, H = canvas.height;
+    var W = canvas.clientWidth, H = canvas.clientHeight;   // pixels CSS — repère de sourceX/Y, dessin vectoriel
     if (!W || !H) return;
+    var dpr = window.devicePixelRatio || 1;
+    var PW  = canvas.width, PH = canvas.height;            // pixels physiques — repère de putImageData
 
-    if (simVagues.transAnim) { _drawVaguesTransition(ctx, W, H); return; }
+    if (simVagues.transAnim) { _drawVaguesTransition(ctx, W, H, PW, PH, dpr); return; }
     if (simVagues.viewMode === 'coupe') { _drawVaguesCoupe(ctx, W, H); return; }
 
     if (simVagues.c_sim <= 0) {
@@ -207,8 +211,8 @@ function drawVagues() {
         return;
     }
 
-    // ── Rendu par blocs ──────────────────────────────────────────────
-    var imgData = ctx.createImageData(W, H);
+    // ── Rendu par blocs (grille en pixels physiques, sur-échantillonnée selon le dpr) ──
+    var imgData = ctx.createImageData(PW, PH);
     var data    = imgData.data;
     var B       = BLOCK_V;
     var BH      = B >> 1;
@@ -217,17 +221,17 @@ function drawVagues() {
     var c        = simVagues.c_sim;
     var f        = simVagues.freq;
     var TWO_PI_F = 2 * Math.PI * f;
-    var maxR     = Math.sqrt(W * W + H * H);
+    var maxR     = Math.sqrt(W * W + H * H);   // pixels CSS, comme _waveFieldRaw
     var a5       = simVagues.attenuation * 5;
     var geo      = simVagues.geoAttenuation;
-    var sx       = simVagues.sourceX;
+    var sx       = simVagues.sourceX;          // pixels CSS
     var sy       = simVagues.sourceY;
     var r_front  = c * (t - simVagues.sourceResetTime); // enveloppe causale
 
-    for (var bj = 0; bj < H; bj += B) {
-        var cy = bj + BH;
-        for (var bi = 0; bi < W; bi += B) {
-            var cx = bi + BH;
+    for (var bj = 0; bj < PH; bj += B) {
+        var cy = (bj + BH) / dpr;   // position physique → repère CSS pour la physique
+        for (var bi = 0; bi < PW; bi += B) {
+            var cx = (bi + BH) / dpr;
             var rc, gc, bc;
 
             var dx = cx - sx, dy = cy - sy;
@@ -249,10 +253,10 @@ function drawVagues() {
                 bc = Math.round(COL_TROUGH_B + t01 * (COL_CREST_B - COL_TROUGH_B));
             }
 
-            // Remplissage du bloc
-            for (var dj = 0; dj < B && bj + dj < H; dj++) {
-                for (var di = 0; di < B && bi + di < W; di++) {
-                    var idx = ((bj + dj) * W + (bi + di)) * 4;
+            // Remplissage du bloc (indices en pixels physiques)
+            for (var dj = 0; dj < B && bj + dj < PH; dj++) {
+                for (var di = 0; di < B && bi + di < PW; di++) {
+                    var idx = ((bj + dj) * PW + (bi + di)) * 4;
                     data[idx]     = rc;
                     data[idx + 1] = gc;
                     data[idx + 2] = bc;
@@ -1212,7 +1216,7 @@ function toggleViewVagues() {
 //    Phase 3 — Rotation 3D inverse (theta π/2 → 0)
 // ══════════════════════════════════════════════════════════════════════
 
-function _drawVaguesTransition(ctx, W, H) {
+function _drawVaguesTransition(ctx, W, H, PW, PH, dpr) {
     var tr      = simVagues.transAnim;
     var elapsed = tr._pausedAt
         ? (tr._pausedAt - tr.startT) / 1000
@@ -1249,20 +1253,20 @@ function _drawVaguesTransition(ctx, W, H) {
             // ── Phase 1 : rotation 3D (top → vue de profil) ──────────
             var t01  = elapsed / DUR_ROT;
             var ease = (1 - Math.cos(t01 * Math.PI)) / 2;
-            _render3DWaveView(ctx, W, H, ease * Math.PI / 2, 0);
+            _render3DWaveView(ctx, W, H, ease * Math.PI / 2, 0, PW, PH, dpr);
 
         } else if (elapsed < DUR_ROT + DUR_SLIDE) {
             // ── Phase 2 : panoramique horizontal (caméra → droite) ───
             var t01   = (elapsed - DUR_ROT) / DUR_SLIDE;
             var easeP = t01 < 0.5 ? 2*t01*t01 : -1+(4-2*t01)*t01;
-            _render3DWaveView(ctx, W, H, Math.PI / 2, MAX_PAN * easeP);
+            _render3DWaveView(ctx, W, H, Math.PI / 2, MAX_PAN * easeP, PW, PH, dpr);
 
         } else {
             // ── Phase 3 : fondu croisé 3D → coupe ────────────────────
             var alpha = (elapsed - DUR_ROT - DUR_SLIDE) / DUR_BLEND;
             simVagues.coupeSrcX = COUPE_LEFT_MARGIN;
-            _render3DWaveView(ctx, W, H, Math.PI / 2, MAX_PAN);
-            _overlayViewCoupe(ctx, W, H, tr, Math.min(1, alpha));
+            _render3DWaveView(ctx, W, H, Math.PI / 2, MAX_PAN, PW, PH, dpr);
+            _overlayViewCoupe(ctx, W, H, tr, Math.min(1, alpha), PW, PH, dpr);
         }
 
     } else { // toTop
@@ -1271,38 +1275,40 @@ function _drawVaguesTransition(ctx, W, H) {
             // ── Phase 1 : fondu croisé coupe → 3D ────────────────────
             var alpha = 1 - elapsed / DUR_BLEND;
             simVagues.coupeSrcX = COUPE_LEFT_MARGIN;
-            _render3DWaveView(ctx, W, H, Math.PI / 2, MAX_PAN);
-            _overlayViewCoupe(ctx, W, H, tr, Math.max(0, alpha));
+            _render3DWaveView(ctx, W, H, Math.PI / 2, MAX_PAN, PW, PH, dpr);
+            _overlayViewCoupe(ctx, W, H, tr, Math.max(0, alpha), PW, PH, dpr);
 
         } else if (elapsed < DUR_BLEND + DUR_SLIDE) {
             // ── Phase 2 : panoramique inverse ────────────────────────
             var t01   = (elapsed - DUR_BLEND) / DUR_SLIDE;
             var easeP = t01 < 0.5 ? 2*t01*t01 : -1+(4-2*t01)*t01;
-            _render3DWaveView(ctx, W, H, Math.PI / 2, MAX_PAN * (1 - easeP));
+            _render3DWaveView(ctx, W, H, Math.PI / 2, MAX_PAN * (1 - easeP), PW, PH, dpr);
 
         } else {
             // ── Phase 3 : rotation 3D inverse (profil → top) ─────────
             var t01  = (elapsed - DUR_BLEND - DUR_SLIDE) / DUR_ROT;
             var ease = (1 - Math.cos(t01 * Math.PI)) / 2;
-            _render3DWaveView(ctx, W, H, (1 - ease) * Math.PI / 2, 0);
+            _render3DWaveView(ctx, W, H, (1 - ease) * Math.PI / 2, 0, PW, PH, dpr);
         }
     }
 }
 
 // Superpose la vue en coupe sur ctx avec opacité alpha (0 = transparent, 1 = opaque).
 // Utilise un canvas offscreen stocké dans tr pour éviter une allocation à chaque frame.
-function _overlayViewCoupe(ctx, W, H, tr, alpha) {
+function _overlayViewCoupe(ctx, W, H, tr, alpha, PW, PH, dpr) {
     if (!tr._offscreen) {
         tr._offscreen        = document.createElement('canvas');
-        tr._offscreen.width  = W;
-        tr._offscreen.height = H;
-    } else if (tr._offscreen.width !== W || tr._offscreen.height !== H) {
-        tr._offscreen.width  = W;
-        tr._offscreen.height = H;
+        tr._offscreen.width  = PW;
+        tr._offscreen.height = PH;
+    } else if (tr._offscreen.width !== PW || tr._offscreen.height !== PH) {
+        tr._offscreen.width  = PW;
+        tr._offscreen.height = PH;
     }
     var offCtx = tr._offscreen.getContext('2d');
+    offCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
     _drawVaguesCoupe(offCtx, W, H);
     ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);   // l'offscreen est déjà en pixels physiques
     ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
     ctx.drawImage(tr._offscreen, 0, 0);
     ctx.restore();
@@ -1316,7 +1322,7 @@ function _overlayViewCoupe(ctx, W, H, tr, alpha) {
 // Projection : screen_y = H/2 + (wz − srcY)·cos(θ) − wy·sin(θ)
 //   À θ=0 : screen_y = wz  (la profondeur z devient la coordonnée y écran)
 //   À θ=π/2 : screen_y = H/2 − wy  (la hauteur de l'onde devient y écran)
-function _render3DWaveView(ctx, W, H, theta, panOffset) {
+function _render3DWaveView(ctx, W, H, theta, panOffset, PW, PH, dpr) {
     panOffset = (panOffset | 0) || 0;
     var cosT = Math.cos(theta);
     var sinT = Math.sin(theta);
@@ -1334,7 +1340,7 @@ function _render3DWaveView(ctx, W, H, theta, panOffset) {
     var r_front  = (c > 0) ? c * (t - simVagues.sourceResetTime) : 0;
     var rfSq     = r_front * r_front;
 
-    var imgData = ctx.createImageData(W, H);
+    var imgData = ctx.createImageData(PW, PH);
     var data    = imgData.data;
 
     // Fond : interpolé entre COL_BG (vue dessus) et ciel clair (vue coupe)
@@ -1347,20 +1353,21 @@ function _render3DWaveView(ctx, W, H, theta, panOffset) {
 
     if (c <= 0) { ctx.putImageData(imgData, 0, 0); return; }
 
-    // Position écran de la première bande (wz = 0, wy = 0)
-    var sy0 = ((H / 2 + (0 - srcY) * cosT) | 0);
+    // Position écran (physique) de la première bande (wz = 0, wy = 0)
+    var sy0 = Math.round((H / 2 + (0 - srcY) * cosT) * dpr);
 
-    var prevSyArr = new Int16Array(W);
-    for (var wx = 0; wx < W; wx++) prevSyArr[wx] = sy0;
+    var prevSyArr = new Int16Array(PW);
+    for (var px = 0; px < PW; px++) prevSyArr[px] = sy0;
 
     var N_Z = 110; // bandes z — ~27 échantillons par longueur d'onde à λ≈100 px
 
     for (var zi = 0; zi < N_Z; zi++) {
         var wz = (zi / (N_Z - 1)) * H;
         var dz = wz - srcY;
-        var screenYbase = H / 2 + dz * cosT; // y écran sans hauteur d'onde
+        var screenYbase = H / 2 + dz * cosT; // y écran (CSS) sans hauteur d'onde
 
-        for (var wx = 0; wx < W; wx++) {
+        for (var px = 0; px < PW; px++) {
+            var wx          = px / dpr;   // colonne physique → position CSS pour la physique
             var dx          = (wx + panOffset) - srcX;
             var effectiveDz = dz * cosT;
             var rSq         = dx * dx + effectiveDz * effectiveDz;
@@ -1375,10 +1382,10 @@ function _render3DWaveView(ctx, W, H, theta, panOffset) {
                 env = 0;
             }
 
-            // Déplacement vertical de la surface (en pixels)
+            // Déplacement vertical de la surface (en pixels CSS), converti en pixels physiques
             var wy  = raw * env * simVagues.amplitude * ampPx;
-            var sy  = (screenYbase - wy * sinT) | 0;
-            var syP = prevSyArr[wx];
+            var sy  = Math.round((screenYbase - wy * sinT) * dpr);
+            var syP = prevSyArr[px];
 
             // Couleur de l'eau — même formule que la vue de dessus
             var envC = Math.min(1, env * VAGUES_AMP_GAIN);
@@ -1391,26 +1398,26 @@ function _render3DWaveView(ctx, W, H, theta, panOffset) {
             var yLo = (syP < sy ? syP : sy);
             var yHi = (syP < sy ? sy  : syP);
             if (yLo < 0)  yLo = 0;
-            if (yHi >= H) yHi = H - 1;
+            if (yHi >= PH) yHi = PH - 1;
             for (var py = yLo; py <= yHi; py++) {
-                var idx = (py * W + wx) * 4;
+                var idx = (py * PW + px) * 4;
                 data[idx]     = wr;
                 data[idx + 1] = wg;
                 data[idx + 2] = wb;
                 data[idx + 3] = 255;
             }
 
-            prevSyArr[wx] = sy;
+            prevSyArr[px] = sy;
         }
     }
 
     // Fond marin : remplir en dessous de la dernière bande avec un dégradé profond
-    for (var wx = 0; wx < W; wx++) {
-        var syLast = prevSyArr[wx];
+    for (var px2 = 0; px2 < PW; px2++) {
+        var syLast = prevSyArr[px2];
         var yStart = syLast < 0 ? 0 : syLast;
-        for (var py = yStart; py < H; py++) {
-            var depth = (py - syLast) / Math.max(1, H - syLast);
-            var idx   = (py * W + wx) * 4;
+        for (var py = yStart; py < PH; py++) {
+            var depth = (py - syLast) / Math.max(1, PH - syLast);
+            var idx   = (py * PW + px2) * 4;
             data[idx]     = (COL_TROUGH_R * (1 - depth * 0.6)) | 0;
             data[idx + 1] = (COL_TROUGH_G * (1 - depth * 0.3)) | 0;
             data[idx + 2] = (COL_TROUGH_B + (90 - COL_TROUGH_B) * depth * 0.25) | 0;
@@ -1420,7 +1427,7 @@ function _render3DWaveView(ctx, W, H, theta, panOffset) {
 
     ctx.putImageData(imgData, 0, 0);
 
-    // Source projetée en 3D — position écran décalée du pan
+    // Source projetée en 3D — position écran décalée du pan (pixels CSS, dessin vectoriel)
     var osc_raw = Math.sin(TWO_PI_F * t) * simVagues.amplitude;
     var sy_src  = Math.round(H / 2 - osc_raw * ampPx * sinT);
     var sx_src  = Math.round(srcX - panOffset);
@@ -1753,8 +1760,8 @@ function _drawBeaconsCoupeVagues(ctx, W, H, srcX, yLevel, ampPx) {
 
     function canvasCoords(e, canvas) {
         var rect   = canvas.getBoundingClientRect();
-        var scaleX = canvas.width  / rect.width;
-        var scaleY = canvas.height / rect.height;
+        var scaleX = canvas.clientWidth  / rect.width;
+        var scaleY = canvas.clientHeight / rect.height;
         return {
             x : (e.clientX - rect.left) * scaleX,
             y : (e.clientY - rect.top)  * scaleY

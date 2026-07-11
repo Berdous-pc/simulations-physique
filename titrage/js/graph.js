@@ -236,10 +236,10 @@ function _niceYRange(yMax) {
 function drawTitrageSigmaGraph() {
   const canvas = document.getElementById('titrage-chart-ph'); // canvas réutilisé
   if (!canvas) return;
-  if (canvas.width === 0 || canvas.height === 0) return;
+  if (canvas.clientWidth === 0 || canvas.clientHeight === 0) return;
   const ctx = canvas.getContext('2d');
-  const W   = canvas.width;
-  const H   = canvas.height;
+  const W   = canvas.clientWidth;
+  const H   = canvas.clientHeight;
 
   // ── Court-circuit : électrode non immergée ──
   if (typeof _electrodeImmergee === 'function' && !_electrodeImmergee()) {
@@ -787,8 +787,8 @@ function _condLinesDragMove(e) {
   const canvas = document.getElementById('titrage-chart-ph');
   if (!canvas) return;
   const r   = canvas.getBoundingClientRect();
-  const scX = canvas.width  / r.width;
-  const scY = canvas.height / r.height;
+  const scX = canvas.clientWidth  / r.width;
+  const scY = canvas.clientHeight / r.height;
   const mx  = (e.clientX - r.left) * scX;
   const my  = (e.clientY - r.top)  * scY;
   const l   = _sigmaLayout;
@@ -1094,8 +1094,8 @@ function _drawReticule(ctx, pad, gw, gh, xMax, yMin, yMax, W, H, unitLabel) {
       tooltip.style.display = 'block';
       const canvas   = document.getElementById('titrage-chart-ph');
       const canvRect = canvas.getBoundingClientRect();
-      const scX = canvRect.width  / canvas.width;
-      const scY = canvRect.height / canvas.height;
+      const scX = canvRect.width  / canvas.clientWidth;
+      const scY = canvRect.height / canvas.clientHeight;
       tooltip.style.left = (canvRect.left + mx * scX + 14) + 'px';
       tooltip.style.top  = (canvRect.top  + my * scY - 10) + 'px';
     } else {
@@ -1171,10 +1171,10 @@ function _updateGraphBtnsSize() {
 function drawTitragePhGraph() {
   const canvas = document.getElementById('titrage-chart-ph');
   if (!canvas) return;
-  if (canvas.width === 0 || canvas.height === 0) return;
+  if (canvas.clientWidth === 0 || canvas.clientHeight === 0) return;
   const ctx = canvas.getContext('2d');
-  const W   = canvas.width;
-  const H   = canvas.height;
+  const W   = canvas.clientWidth;
+  const H   = canvas.clientHeight;
 
   // ── Court-circuit : électrode non immergée ──
   // Le pH-mètre affiche `--` (cf. _updatePhDisplay) ; le graphe affiche un
@@ -1543,9 +1543,11 @@ function _syncPhCanvasSize() {
   const w = Math.round(canvas.clientWidth);
   const h = Math.round(canvas.clientHeight);
   if (w < 1 || h < 1) return;
-  if (canvas.width !== w || canvas.height !== h) {
-    canvas.width  = w;
-    canvas.height = h;
+  const dpr = window.devicePixelRatio || 1;
+  if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+    canvas.width  = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    canvas.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
   }
   _drawMainGraph();
 }
@@ -1581,8 +1583,8 @@ function initPhChartCanvas() {
 
   canvas.addEventListener('mousemove', e => {
     const r   = canvas.getBoundingClientRect();
-    const scX = canvas.width  / r.width;
-    const scY = canvas.height / r.height;
+    const scX = canvas.clientWidth  / r.width;
+    const scY = canvas.clientHeight / r.height;
     const mx  = (e.clientX - r.left) * scX;
     const my  = (e.clientY - r.top)  * scY;
     _phChartHover = { mx, my };
@@ -1602,8 +1604,8 @@ function initPhChartCanvas() {
     if (state.titrageType !== 'conductimetrique') return;
     if (!_condLinesActive || !_sigmaLayout) return;
     const r   = canvas.getBoundingClientRect();
-    const scX = canvas.width  / r.width;
-    const scY = canvas.height / r.height;
+    const scX = canvas.clientWidth  / r.width;
+    const scY = canvas.clientHeight / r.height;
     const mx  = (e.clientX - r.left) * scX;
     const my  = (e.clientY - r.top)  * scY;
     const l   = _sigmaLayout;
@@ -1621,8 +1623,8 @@ function initPhChartCanvas() {
 
   canvas.addEventListener('click', e => {
     const r   = canvas.getBoundingClientRect();
-    const scX = canvas.width  / r.width;
-    const scY = canvas.height / r.height;
+    const scX = canvas.clientWidth  / r.width;
+    const scY = canvas.clientHeight / r.height;
     const mx  = (e.clientX - r.left) * scX;
     const my  = (e.clientY - r.top)  * scY;
 
@@ -1657,7 +1659,7 @@ function initPhChartCanvas() {
 function _phPxToVPh(mx, my) {
   const canvas = document.getElementById('titrage-chart-ph');
   if (!canvas) return null;
-  const W = canvas.width, H = canvas.height;
+  const W = canvas.clientWidth, H = canvas.clientHeight;
   const dim   = Math.min(W, H);
   const pad   = { l: Math.round(dim * 0.10), r: Math.round(dim * 0.04),
                   t: Math.round(dim * 0.08), b: Math.round(dim * 0.12) };
@@ -1715,10 +1717,10 @@ function _phHandleTangenteClick(mx, my) {
 
 function drawTitrageGraph() {
   const canvas = document.getElementById('titrage-chart');
-  if (!canvas || canvas.width === 0 || canvas.height === 0) return;
+  if (!canvas || canvas.clientWidth === 0 || canvas.clientHeight === 0) return;
   const ctx = canvas.getContext('2d');
-  const W   = canvas.width;
-  const H   = canvas.height;
+  const W   = canvas.clientWidth;
+  const H   = canvas.clientHeight;
 
   // ── Plages ──
   let xMax = BURETTE.MAX_ML; // 25 mL fixe par défaut
@@ -2078,9 +2080,11 @@ function _syncCanvasSize() {
   const w = Math.round(canvas.clientWidth);
   const h = Math.round(canvas.clientHeight);
   if (w < 1 || h < 1) return;
-  if (canvas.width !== w || canvas.height !== h) {
-    canvas.width  = w;
-    canvas.height = h;
+  const dpr = window.devicePixelRatio || 1;
+  if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+    canvas.width  = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    canvas.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
   }
   drawTitrageGraph();
 }
@@ -2102,8 +2106,8 @@ function initChartCanvas() {
   // ── Hover souris ──
   canvas.addEventListener('mousemove', e => {
     const r   = canvas.getBoundingClientRect();
-    const scX = canvas.width  / r.width;
-    const scY = canvas.height / r.height;
+    const scX = canvas.clientWidth  / r.width;
+    const scY = canvas.clientHeight / r.height;
     _chartHover = { mx: (e.clientX - r.left) * scX, my: (e.clientY - r.top) * scY };
     drawTitrageGraph();
   });

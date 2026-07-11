@@ -1392,8 +1392,8 @@ function finirAnimEq() {
     ghostCounts:anim.ghostSlots&&anim.ghostSlots.some(v=>v>0)?anim.ghostSlots.slice():null,
     doneCount:anim.doneCount.slice(),
     orphans:anim.atoms.filter(a=>!a.assigned),
-    canvasW:molCanvas.width,
-    canvasH:molCanvas.height,
+    canvasW:molCanvas.clientWidth,
+    canvasH:molCanvas.clientHeight,
     hideReactifs:true,
   };
   const coeffsCorrectes=anim.countsPossible.every((c,j)=>c===anim.coeffsP[j]);
@@ -1453,7 +1453,7 @@ function finirAnimLim() {
     rxn,
   };
   const wrap=document.getElementById('canvas-and-table');
-  const widthChanged=wrap&&wrap.clientWidth!==molCanvas.width;
+  const widthChanged=wrap&&wrap.clientWidth!==molCanvas.clientWidth;
   if (widthChanged||state._needRelayoutAfterAnim) {
     state._needRelayoutAfterAnim=false;
     fixCanvasRowHeight('lim'); resizeCanvas(); relayoutLimAfterResize();

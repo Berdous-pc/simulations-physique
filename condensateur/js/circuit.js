@@ -28,10 +28,16 @@ function resize() {
   requestAnimationFrame(() => {
     resizePending = false;
 
+    const dpr  = window.devicePixelRatio || 1;
     const area = document.getElementById('circuit-area');
     const ar   = area.getBoundingClientRect();
-    canvas.width  = Math.floor(ar.width);
-    canvas.height = Math.floor(ar.height);
+    const cssW = Math.floor(ar.width);
+    const cssH = Math.floor(ar.height);
+    canvas.style.width  = cssW + 'px';
+    canvas.style.height = cssH + 'px';
+    canvas.width  = Math.round(cssW * dpr);
+    canvas.height = Math.round(cssH * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     buildPoints();
     if (sim.phase === 'idle') initElectrons();
 
@@ -40,8 +46,13 @@ function resize() {
       const wrap   = c.parentElement;
       const wr     = wrap.getBoundingClientRect();
       const titleH = wrap.querySelector('.graph-title').offsetHeight + 3;
-      c.width  = Math.floor(wr.width);
-      c.height = Math.max(Math.floor(wr.height) - titleH, 20);
+      const cCssW  = Math.floor(wr.width);
+      const cCssH  = Math.max(Math.floor(wr.height) - titleH, 20);
+      c.style.width  = cCssW + 'px';
+      c.style.height = cCssH + 'px';
+      c.width  = Math.round(cCssW * dpr);
+      c.height = Math.round(cCssH * dpr);
+      c.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
     }
   });
 }
@@ -57,7 +68,7 @@ function resize() {
 //    D ────R2────── C_
 // ─────────────────────────────────────────────────────────────────────
 function buildPoints() {
-  const W = canvas.width, H = canvas.height;
+  const W = canvas.clientWidth, H = canvas.clientHeight;
   const ml = W * 0.15, mr = W * 0.15;
   const mt = H * 0.15, mb = H * 0.15;
   const x0 = ml, x1 = W - mr;
@@ -441,7 +452,7 @@ function initElectrons() {
 // ─────────────────────────────────────────────────────────────────────
 function circuitScale() {
   const REF_W = 1200, REF_H = 700;
-  const raw = Math.min(canvas.width / REF_W, canvas.height / REF_H);
+  const raw = Math.min(canvas.clientWidth / REF_W, canvas.clientHeight / REF_H);
   return Math.pow(raw, 0.5);
 }
 
