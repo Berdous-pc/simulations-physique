@@ -276,6 +276,7 @@ Les anciennes simulations en fichier unique (`reaction.html`) conservent leur fo
 - **`requestAnimationFrame`** pour la boucle d'animation (~60 fps).
 - Objet **`sim`** (ou `state`) central pour tout l'état de la simulation.
 - **Redimensionnement** : fonction `resize()` appelée sur l'événement `resize` avec anti-rebond `requestAnimationFrame`.
+- **Canvas et écrans haute densité (`devicePixelRatio`)** : dans toute fonction `resize()` qui pose `canvas.width`/`canvas.height`, multiplier ces deux valeurs par `window.devicePixelRatio || 1` (`canvas.width = Math.round(cssW * dpr)`) puis réappliquer `ctx.setTransform(dpr, 0, 0, dpr, 0, 0)` juste après — sinon le rendu est flou sur écran Retina/haute densité. Attention : l'attribut `canvas.width/height` devient alors des pixels **physiques**, donc toute lecture ailleurs dans le code qui l'utilisait comme taille logique (axes de graphe, conversion de coordonnées souris, `getAxDims(canvas.width, ...)`, etc.) doit être remplacée par `canvas.clientWidth`/`canvas.clientHeight` (toujours en pixels CSS, insensibles au dpr). Cas particulier : si le rendu manipule des pixels bruts (`createImageData`/`putImageData`, cf. `ondes/js/vagues.js`), cette API ignore `ctx.setTransform` et travaille toujours en pixels physiques — il faut alors dimensionner le buffer sur `canvas.width/height` (physique) tout en reconvertissant les coordonnées de la boucle en pixels CSS (`/ dpr`) pour les calculs physiques, et garder l'overlay vectoriel (source, balises, axes) en pixels CSS.
 - Code entièrement **commenté en français** avec bandeaux de section `══════`.
 - **Responsivité** : utiliser `clamp()` pour toutes les tailles qui doivent s'adapter, ne jamais fixer une dimension critique en `px` sans prévoir une valeur fluide.
 - **Signature obligatoire** : tout fichier créé ou modifié doit porter la signature de l'auteur (voir ci-dessous).
@@ -321,6 +322,20 @@ Tout nouveau fichier **HTML**, **CSS** et **JS** doit inclure une signature d'au
 //  Licence : CC BY-NC 4.0 — https://creativecommons.org/licenses/by-nc/4.0/
 // ═══════════════════════════════════════════════════
 ```
+
+### Suivi d'audience (GoatCounter)
+
+Toute page **HTML autonome** destinée à être publiée (page d'accueil `index.html` et chaque `index.html` de simulation) doit intégrer le script de tracking **GoatCounter**, juste avant la fermeture de `</body>` (après tous les `<script>` métier) :
+
+```html
+<script data-goatcounter="https://berdous-pc.goatcounter.com/count"
+        async src="https://gc.zgo.at/count.js"></script>
+</body>
+</html>
+```
+
+- Ne pas modifier l'URL (`berdous-pc.goatcounter.com`) ni ajouter d'attributs supplémentaires.
+- Doit être présent sur **toute nouvelle page créée**, en plus des pages existantes qui l'ont déjà (voir section 8).
 
 ---
 
