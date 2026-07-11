@@ -124,7 +124,7 @@ main {
 #sim-timer {
   position: absolute;
   top: 8px;
-  left: 8px;
+  right: 8px;
   z-index: 20;
   background: rgba(44, 62, 80, 0.85);
   color: #fff;
@@ -139,14 +139,15 @@ main {
 
 /* ── Panneau de réglage (temporaire — aide au calage de l'animation) ── */
 #dev-panel {
-  position: absolute;
+  /* position: fixed (et non absolute dans #anim-canvas-wrap) : le panneau
+     sort ainsi de la zone recadrée par l'overflow:hidden du canvas. Aligné en
+     largeur et en abscisse sur #panel (colonne de droite, cf. grid-template-
+     columns de main dans ce fichier) pour s'afficher juste au-dessus de lui. */
+  position: fixed;
   top: 8px;
   right: 8px;
-  /* % de la largeur de #anim-canvas-wrap (son bloc englobant positionné),
-     pas du viewport global (vw) : sur canvas étroit, un panneau dimensionné
-     en vw pouvait couvrir la totalité de l'animation. */
-  width: clamp(160px, 70%, 280px);
-  max-height: calc(100% - 16px);
+  width: clamp(200px, 22vw, 300px);
+  max-height: calc(100dvh - 16px);
   overflow-y: auto;
   background: rgba(255, 255, 255, 0.94);
   border: 1.5px solid #b0a898;
@@ -198,6 +199,26 @@ main {
   background: #ece8e0; color: #5a6a78; border: 1px solid #c8c0b4; border-radius: 3px; cursor: pointer;
 }
 .dev-script-btn:hover { background: #dedad2; }
+
+#dev-textbox-list { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.dev-textbox-row {
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 5px; border: 1px solid #c8c0b4; border-radius: 4px; background: #fbf9f5;
+}
+.dev-textbox-grid { display: flex; flex-wrap: wrap; gap: 4px; }
+.dev-textbox-field {
+  display: flex; flex-direction: column; gap: 1px; font-size: 9px; color: #5a6a78;
+  flex: 1 1 60px;
+}
+.dev-textbox-field input, .dev-textbox-field select {
+  font-size: 10px; padding: 1px 3px; border: 1px solid #c8c0b4; border-radius: 3px;
+}
+.dev-textbox-checkbox { flex-direction: row; align-items: center; gap: 4px; flex: 0 0 auto; }
+.dev-textbox-del { margin-left: auto; }
+.dev-textbox-text {
+  width: 100%; font-size: 10px; font-family: inherit; padding: 3px 4px;
+  border: 1px solid #c8c0b4; border-radius: 3px; resize: vertical;
+}
 
 /* ══════════════════════════════════════════════════
    PANNEAU DE CONTRÔLE DROIT

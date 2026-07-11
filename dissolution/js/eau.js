@@ -11,7 +11,7 @@
 
 /* `let` (pas `const`) : modifiable en direct par le panneau de réglage
    temporaire (devpanel.js). */
-let WATER_SIZE_FACTOR = 0.22;
+let WATER_SIZE_FACTOR = 0.2;
 
 function waterScale() {
   /* Rayon de l'oxygène purement proportionnel à cellSize (fixe, cf.

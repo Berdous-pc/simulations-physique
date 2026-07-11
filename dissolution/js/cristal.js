@@ -101,20 +101,17 @@ function isExposed(site) {
 /* Écart angulaire (rad) des 2 molécules d'approche par rapport à la verticale
    (-π/2) : toujours au-dessus de l'ion, jamais au même niveau ou en dessous,
    pour ne pas traverser le cristal par le côté. */
-let APPROACH_ANGLE_SPREAD = 0.45;
+let APPROACH_ANGLE_SPREAD = 0.5;
 /* Distance d'accostage et rayon de cage indépendants par type d'ion : Na+ et
    Cl- n'ont pas le même rayon affiché (cf. crystal.rNa/rCl), donc pas
    forcément la même distance d'interaction avec l'eau. */
 let APPROACH_DIST_FACTOR = { Na: 0.75, Cl: 0.9 };
-let DETACH_DIST_FACTOR = 0.75;
+let DETACH_DIST_FACTOR = 1;
 let CAGE_RADIUS_FACTOR = { Na: 0.75, Cl: 0.9 };
 /* Marge de dégagement (au-delà du rayon de la cage) avant de la refermer :
    assez pour que le point le plus bas ne chevauche jamais plus les ions du
    cristal. */
-let CAGE_CLEARANCE_EXTRA = 0.5;
-/* Marge (au-delà du rayon de la cage) définissant la ligne d'attente près du
-   haut de l'écran, pour que la cage y reste entièrement visible. */
-let WAIT_Y_EXTRA = 0;
+let CAGE_CLEARANCE_EXTRA = 1;
 /* Aucune eau ambiante : chaque molécule apparaît en fondu un peu au-delà de sa
    position finale (accostage ou emplacement dans la cage), puis migre vers
    celle-ci — assez proche pour ne pas traverser tout l'écran, assez loin pour
@@ -151,7 +148,6 @@ function startDissolutionProcess(site) {
     waters: [],
     detached: false,
     solvated: false, solvT: 0, solvDur: 0,
-    waiting: false, hasWaited: false,
   };
 
   [-Math.PI / 2 - APPROACH_ANGLE_SPREAD, -Math.PI / 2 + APPROACH_ANGLE_SPREAD].forEach(ang => {
@@ -189,7 +185,6 @@ function updateProcesses(dt) {
        réglages change. */
     const cageRadiusFactor = CAGE_RADIUS_FACTOR[p.ionType];
     const cageClearY = state.crystal.y0 - state.crystal.cellSize * (cageRadiusFactor + CAGE_CLEARANCE_EXTRA);
-    const waitY = state.crystal.cellSize * (cageRadiusFactor + WAIT_Y_EXTRA);
 
     if (p.phase === 'approche') {
       p.waters.forEach(w => {
@@ -207,9 +202,19 @@ function updateProcesses(dt) {
     } else if (p.phase === 'dissociation') {
       const dur = PHASE_DUR.dissociation;
       if (!p.detached) { state.crystal.nDissolved++; p.site.occupied = false; p.detached = true; }
-      const t = easeInOut(clamp01(p.phaseT / dur));
+      const t = clamp01(p.phaseT / dur);
+      /* Courbe de Hermite (et non un ease-in-out symétrique) : part à vitesse
+         nulle (l'ion quitte le repos du réseau) et se termine exactement à la
+         vitesse constante de la phase de migration qui suit. Un ease-in-out
+         revenait à vitesse nulle en fin de dissociation, puis la migration
+         démarrait d'un coup à pleine vitesse : la saccade venait de cette
+         discontinuité de vitesse au changement de phase, pas d'une des deux
+         phases prise isolément. */
+      const dy = p.detachedY - p.latticeY;
+      const migVy = -(MIGRATION_SPEED * state.crystal.cellSize / 1000) * dur;   // dérivée (par unité de t) en fin de courbe
+      const tt = t * t, ttt = tt * t;
       p.ionX = lerp(p.latticeX, p.detachedX, t);
-      p.ionY = lerp(p.latticeY, p.detachedY, t);
+      p.ionY = p.latticeY + dy * (3 * tt - 2 * ttt) + migVy * (ttt - tt);
       p.waters.forEach(w => {
         w.x = p.ionX + w._relTargetX; w.y = p.ionY + w._relTargetY;
         w.orient = computeWaterOrientation(w.x, w.y, p.ionX, p.ionY, p.ionType);
@@ -217,7 +222,7 @@ function updateProcesses(dt) {
       if (p.phaseT >= dur) { p.phaseT = 0; p.phase = 'migration'; }
 
     } else if (p.phase === 'migration') {
-      if (!p.waiting) p.ionY -= MIGRATION_SPEED * state.crystal.cellSize * dt / 1000;
+      p.ionY -= MIGRATION_SPEED * state.crystal.cellSize * dt / 1000;
 
       /* La cage de solvatation se complète (CAGE_SIZE molécules au total,
          anneau à 360°) dès que l'ion s'est assez éloigné du cristal pour que
@@ -269,33 +274,16 @@ function updateProcesses(dt) {
         });
       }
 
-      /* File d'attente : une cage complète s'immobilise juste avant de sortir
-         et n'est libérée (pour de bon, hors de l'écran) que lorsque la cage
-         suivante du scénario arrive à son tour à cette ligne — cf. passe de
-         libération après la boucle ci-dessous. */
-      if (!p.hasWaited && p.ionY <= waitY) {
-        p.ionY = waitY;
-        p.waiting = true;
-      }
-
       /* Pas de fondu : l'ion et sa cage sortent simplement par le haut de la
-         fenêtre et sont alors définitivement perdus (retirés du bassin). */
-      if (!p.waiting && p.ionY < -exitMargin) {
+         fenêtre dès qu'ils la dépassent, et sont alors définitivement perdus
+         (retirés du bassin) — aucune mise en attente. */
+      if (p.ionY < -exitMargin) {
         p.waters.forEach(removeWaterMolecule);
         return false;
       }
     }
     return true;
   });
-
-  /* Dès qu'une nouvelle cage rejoint la ligne d'attente, celle(s) déjà en
-     attente (plus ancienne(s)) sont libérées et reprennent leur montée
-     jusqu'à sortir définitivement de l'écran. */
-  const waitingList = state.processes.filter(p => p.phase === 'migration' && p.waiting);
-  for (let i = 0; i < waitingList.length - 1; i++) {
-    waitingList[i].waiting = false;
-    waitingList[i].hasWaited = true;
-  }
 }
 
 /* Déroule le scénario fixe : dès que animT atteint l'instant prévu d'une

@@ -58,8 +58,11 @@ function drawScene() {
   ctx.clearRect(0, 0, STAGE_W, STAGE_H);
   drawCristal(ctx);
   drawProcesses(ctx);
+  drawTextBoxes(ctx);
   const timer = document.getElementById('sim-timer');
-  if (timer) timer.textContent = Math.round(state.animT) + ' ms';
+  if (timer) {
+    timer.textContent = Math.round(state.animT) + ' ms' + (state.pauseHoldRemaining > 0 ? ' ⏸' : '');
+  }
 }
 
 /* ══════════════════════════════════════════════════
@@ -72,15 +75,28 @@ function loop(ts) {
   _lastTs = ts;
 
   if (dt > 0) {
-    state.animT += dt;
-    if (state.animT >= DURATION_MS) {
-      state.animT = DURATION_MS;
-      state.ended = true;
-      _updatePlayBtn();
+    if (state.pauseHoldRemaining > 0) {
+      /* Point de pause en cours : le temps réel s'écoule mais rien ne
+         progresse dans le scénario (animT figé) — l'animation est visuellement
+         à l'arrêt le temps que les élèves lisent l'explication affichée. */
+      state.pauseHoldRemaining = Math.max(0, state.pauseHoldRemaining - dt);
+    } else {
+      const pp = PAUSE_POINTS.find(p => !p.fired && state.animT >= p.atMs);
+      if (pp) {
+        pp.fired = true;
+        state.pauseHoldRemaining = pp.holdMs;
+      } else {
+        state.animT += dt;
+        if (state.animT >= DURATION_MS) {
+          state.animT = DURATION_MS;
+          state.ended = true;
+          _updatePlayBtn();
+        }
+        advanceFadeIns(dt);
+        updateProcesses(dt);
+        if (!state.ended) runScript();
+      }
     }
-    advanceFadeIns(dt);
-    updateProcesses(dt);
-    if (!state.ended) runScript();
   }
 
   drawScene();
@@ -100,10 +116,12 @@ function resetSimAnim() {
   state.paused = true;
   state.ended = false;
   state.animT = 0;
+  state.pauseHoldRemaining = 0;
   state.nextProcessId = 0;
   state.spawnCounter = 0;
   state.processes = [];
   DISSOLUTION_SCRIPT.forEach(e => { e.fired = false; });
+  PAUSE_POINTS.forEach(p => { p.fired = false; });
   buildCristal();
   initFreeWater();
   _updatePlayBtn();
