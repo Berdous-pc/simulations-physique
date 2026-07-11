@@ -9,15 +9,45 @@
 /* ══════════════════════════════════════════════════
    Redimensionnement
 ══════════════════════════════════════════════════ */
+
+/* Toute la géométrie (cristal, positions, tailles) raisonne en unités de
+   scène fixes (STAGE_W/STAGE_H, cf. sim.js), jamais en pixels réels du
+   conteneur DOM : resize() adapte cette scène fixe à l'écran par une simple
+   mise à l'échelle uniforme en mode « cover » (remplit l'espace disponible,
+   rogne l'excédent si les proportions ne correspondent pas), comme une vidéo
+   dans un lecteur — la composition ne change donc jamais selon la
+   machine/fenêtre, seule l'échelle d'affichage varie. devicePixelRatio
+   sur-échantillonne en plus la surface mémoire du canvas pour un rendu net
+   sur écrans haute densité, sans influencer la géométrie. */
 function resize() {
   const canvas = document.getElementById('anim-canvas');
   const wrap = canvas.parentElement;
-  canvas.width = wrap.clientWidth || 600;
-  canvas.height = wrap.clientHeight || 400;
+  const wrapW = wrap.clientWidth || STAGE_W, wrapH = wrap.clientHeight || STAGE_H;
+  const scale = Math.max(wrapW / STAGE_W, wrapH / STAGE_H);   // « cover » : remplit, rogne l'excédent
+  const cssW = STAGE_W * scale, cssH = STAGE_H * scale;
+  canvas.style.width = cssW + 'px';
+  canvas.style.height = cssH + 'px';
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.round(cssW * dpr);
+  canvas.height = Math.round(cssH * dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(cssW * dpr / STAGE_W, 0, 0, cssH * dpr / STAGE_H, 0, 0);   // dessin exprimé en unités de scène fixes
   computeCrystalGeometry();
   drawScene();
 }
 window.addEventListener('resize', resize);
+
+/* Convertit un événement souris sur le canvas (e.offsetX/offsetY, en pixels
+   CSS réellement affichés) en unités de scène (0..STAGE_W / 0..STAGE_H) —
+   utilisé par le tooltip de coordonnées et le panneau de réglage (édition du
+   cristal/scénario par clic). offsetX/Y sont déjà relatifs à la boîte du
+   canvas lui-même (pas au conteneur), donc aucun décalage supplémentaire à
+   gérer même quand le canvas déborde visuellement du conteneur (mode « cover »). */
+function toStageXY(e) {
+  const canvas = document.getElementById('anim-canvas');
+  const scale = canvas.clientWidth / STAGE_W;
+  return { x: e.offsetX / scale, y: e.offsetY / scale };
+}
 
 /* ══════════════════════════════════════════════════
    Rendu de la scène
@@ -25,7 +55,7 @@ window.addEventListener('resize', resize);
 function drawScene() {
   const canvas = document.getElementById('anim-canvas');
   const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0, 0, STAGE_W, STAGE_H);
   drawCristal(ctx);
   drawProcesses(ctx);
   const timer = document.getElementById('sim-timer');
@@ -129,7 +159,8 @@ function initCoordTooltip() {
   const tooltip = document.getElementById('coord-tooltip');
   if (!canvas || !tooltip) return;
   canvas.addEventListener('mousemove', e => {
-    const x = Math.round(e.offsetX), y = Math.round(e.offsetY);
+    const { x: sx, y: sy } = toStageXY(e);
+    const x = Math.round(sx), y = Math.round(sy);
     tooltip.textContent = x + ', ' + y;
     tooltip.style.left = (e.offsetX + 14) + 'px';
     tooltip.style.top = (e.offsetY + 14) + 'px';

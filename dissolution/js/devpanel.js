@@ -7,9 +7,11 @@
 /* Constantes exposées au panneau : chacune expose un getter/setter vers la
    variable réelle (déclarée en `let` dans sim.js/cristal.js). */
 const DEV_CONTROLS = [
-  { key: 'migrationSpeed',  label: 'Vitesse migration (px/s)',        min: 20,  max: 200,  step: 5,
+  { key: 'migrationSpeed',  label: 'Vitesse migration (×cellule/s)',  min: 0.5, max: 5,    step: 0.1,
     get: () => MIGRATION_SPEED,      set: v => { MIGRATION_SPEED = v; } },
-  { key: 'waterSpeed',      label: 'Vitesse eau (px/s)',              min: 40,  max: 300,  step: 5,
+  { key: 'waterSize',       label: "Taille eau — rayon O (×cellule)", min: 0.1, max: 0.5,  step: 0.01,
+    get: () => WATER_SIZE_FACTOR,    set: v => { WATER_SIZE_FACTOR = v; } },
+  { key: 'waterSpeed',      label: 'Vitesse eau (×cellule/s)',        min: 0.5, max: 6,    step: 0.1,
     get: () => WATER_TRAVEL_SPEED,   set: v => { WATER_TRAVEL_SPEED = v; } },
   { key: 'waterMinDur',     label: 'Durée min. trajet eau (ms)',      min: 100, max: 800,  step: 50,
     get: () => WATER_TRAVEL_MIN_DUR, set: v => { WATER_TRAVEL_MIN_DUR = v; } },
@@ -93,7 +95,8 @@ function setEditMode(mode) {
 
 function onEditorCanvasClick(e) {
   if (EDIT_MODE === 'none') return;
-  const { row, col } = pixelToCell(e.offsetX, e.offsetY);
+  const { x, y } = toStageXY(e);
+  const { row, col } = pixelToCell(x, y);
   if (row < 0 || row >= NROWS_MAX || col < 0 || col >= NCOLS) return;
 
   if (EDIT_MODE === 'crystal') {

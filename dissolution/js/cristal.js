@@ -11,24 +11,25 @@
    Géométrie de la grille
 ══════════════════════════════════════════════════ */
 function computeCrystalGeometry() {
-  const canvas = document.getElementById('anim-canvas');
-  const W = canvas.width, H = canvas.height;
-  /* La taille des cellules est pilotée uniquement par la hauteur (tiers
-     inférieur de la zone d'animation) : NCOLS est volontairement surdimensionné
-     pour que la grille déborde toujours de la largeur du canvas, des deux
-     côtés, plutôt que de risquer de ne pas la remplir sur un écran large. Le
-     débordement est simplement rogné par le canvas (et #anim-canvas-wrap). */
-  const cellSize = (H / 3) / NROWS_MAX;
+  /* Unités de scène fixes (STAGE_W/STAGE_H, cf. sim.js) — jamais la taille
+     réelle du conteneur DOM : resize() (ui.js) adapte ensuite cette scène à
+     l'écran par une simple mise à l'échelle, la géométrie interne ne change
+     donc jamais selon la machine/fenêtre. STAGE_W/STAGE_H ont été choisies
+     pour que la grille (NCOLS colonnes) déborde toujours un peu de la
+     largeur de la scène — débordement simplement rogné par le canvas (et
+     #anim-canvas-wrap) — tout en laissant le tiers inférieur de la hauteur
+     piloter la taille des cellules. */
+  const W = STAGE_W, H = STAGE_H;
   const c = state.crystal;
-  c.cellSize = cellSize;
-  c.x0 = (W - NCOLS * cellSize) / 2;
-  c.y0 = H - Math.max(6, H * 0.02) - NROWS_MAX * cellSize;
+  c.cellSize = (H / 3) / NROWS_MAX;
+  c.x0 = (W - NCOLS * c.cellSize) / 2;
+  c.y0 = H - H * 0.02 - NROWS_MAX * c.cellSize;
   /* rNa + rCl = cellSize donnerait un contact géométrique exact entre plus
      proches voisins (toujours de charge opposée sur cette grille) ; on retire
      5% pour laisser un léger espace visuel, le trait de contour (lineWidth)
      faisant sinon paraître les bords superposés. */
-  c.rNa = cellSize * 4 / 9 * 0.95;
-  c.rCl = cellSize * 5 / 9 * 0.95;
+  c.rNa = c.cellSize * 4 / 9 * 0.95;
+  c.rCl = c.cellSize * 5 / 9 * 0.95;
 }
 
 function getSiteXY(row, col) {
@@ -129,7 +130,8 @@ let CAGE_SIZE = 6;
    qu'une molécule proche. */
 function travelDuration(fromX, fromY, toX, toY) {
   const dist = Math.hypot(toX - fromX, toY - fromY);
-  return Math.max(WATER_TRAVEL_MIN_DUR, (dist / WATER_TRAVEL_SPEED) * 1000);
+  const speedPxPerS = WATER_TRAVEL_SPEED * state.crystal.cellSize;
+  return Math.max(WATER_TRAVEL_MIN_DUR, (dist / speedPxPerS) * 1000);
 }
 
 function startDissolutionProcess(site) {
@@ -180,7 +182,11 @@ function updateProcesses(dt) {
   state.processes = state.processes.filter(p => {
     p.phaseT += dt;
     /* Rayon de cage propre au type d'ion de ce processus (Na+ et Cl- n'ont
-       pas le même rayon affiché) — marges de dégagement/attente dérivées. */
+       pas le même rayon affiché) — marges de dégagement/attente dérivées.
+       CAGE_RADIUS_FACTOR est réglé à la main (panneau dev) pour éviter tout
+       chevauchement des molécules de la cage selon CAGE_SIZE : pas de
+       recalcul automatique, à ajuster visuellement si l'un de ces deux
+       réglages change. */
     const cageRadiusFactor = CAGE_RADIUS_FACTOR[p.ionType];
     const cageClearY = state.crystal.y0 - state.crystal.cellSize * (cageRadiusFactor + CAGE_CLEARANCE_EXTRA);
     const waitY = state.crystal.cellSize * (cageRadiusFactor + WAIT_Y_EXTRA);
@@ -211,7 +217,7 @@ function updateProcesses(dt) {
       if (p.phaseT >= dur) { p.phaseT = 0; p.phase = 'migration'; }
 
     } else if (p.phase === 'migration') {
-      if (!p.waiting) p.ionY -= MIGRATION_SPEED * dt / 1000;
+      if (!p.waiting) p.ionY -= MIGRATION_SPEED * state.crystal.cellSize * dt / 1000;
 
       /* La cage de solvatation se complète (CAGE_SIZE molécules au total,
          anneau à 360°) dès que l'ion s'est assez éloigné du cristal pour que
@@ -220,9 +226,9 @@ function updateProcesses(dt) {
       if (!p.solvated && p.ionY <= cageClearY) {
         p.solvated = true;
         p.solvT = 0;
+        const n = CAGE_SIZE;
         const radius = state.crystal.cellSize * cageRadiusFactor;
         const spawnDist = radius + state.crystal.cellSize * SPAWN_EXTRA_FACTOR;
-        const n = CAGE_SIZE;
 
         /* Les molécules déjà présentes (approche) repartent de leur position actuelle. */
         p.waters.forEach(w => { w._relStartX = w.x - p.ionX; w._relStartY = w.y - p.ionY; });

@@ -15,8 +15,13 @@ body {
   font-family: 'Segoe UI', Arial, sans-serif;
   background: #e8e4de;
   color: #2c3e50;
+  /* dvh tient compte de la barre d'adresse dynamique mobile (100vh déborde
+     sous la zone visible réelle sur téléphone) ; vh reste le repli pour les
+     navigateurs qui ne supportent pas dvh. */
   height: 100vh;
   max-height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -89,10 +94,15 @@ main {
   background: linear-gradient(to bottom, #7dd3f7 0%, #29b6e8 100%);
 }
 
+/* Taille pilotée par JS (resize() dans ui.js) : la scène a une résolution
+   logique fixe, mise à l'échelle et centrée en mode « cover » (remplit
+   #anim-canvas-wrap, l'excédent est rogné par son overflow:hidden). */
 #anim-canvas {
   display: block;
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
 }
 
 /* ── Tooltip de coordonnées (temporaire — aide au positionnement) ── */
@@ -132,7 +142,10 @@ main {
   position: absolute;
   top: 8px;
   right: 8px;
-  width: clamp(200px, 24vw, 280px);
+  /* % de la largeur de #anim-canvas-wrap (son bloc englobant positionné),
+     pas du viewport global (vw) : sur canvas étroit, un panneau dimensionné
+     en vw pouvait couvrir la totalité de l'animation. */
+  width: clamp(160px, 70%, 280px);
   max-height: calc(100% - 16px);
   overflow-y: auto;
   background: rgba(255, 255, 255, 0.94);
@@ -369,4 +382,5 @@ main {
 
 .panel-hint.collapsed .panel-hint-body { max-height: 0; padding-top: 0; padding-bottom: 0; }
 .panel-hint.collapsed .panel-hint-header { padding-bottom: 6px; }
+
 .panel-hint:not(.collapsed) .panel-hint-toggle { transform: rotate(180deg); }

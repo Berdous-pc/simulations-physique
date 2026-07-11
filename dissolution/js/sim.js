@@ -7,6 +7,21 @@
 /* sim.js — état global, constantes, modèle géométrique de l'eau, utilitaires */
 
 /* ══════════════════════════════════════════════════
+   Scène de rendu — résolution logique fixe
+══════════════════════════════════════════════════ */
+/* Toute la géométrie du cristal (cellSize, positions, tailles des ions/eau)
+   est calculée à partir de cette résolution fixe, jamais depuis la taille
+   réelle du conteneur DOM : la composition de l'animation (un scénario
+   entièrement scripté, DISSOLUTION_SCRIPT) doit être rigoureusement la même
+   quelle que soit la machine/fenêtre — comme une vidéo. resize() (ui.js)
+   adapte ensuite cette scène fixe à l'écran par une simple mise à l'échelle
+   uniforme en mode « cover » (remplit l'espace, rogne l'excédent). Ratio
+   ≈ 1,833, proche de la fenêtre « typique » sur laquelle l'animation a été
+   calée visuellement à l'origine. */
+const STAGE_W = 1320;
+const STAGE_H = 720;
+
+/* ══════════════════════════════════════════════════
    Constantes de la maille cristalline
 ══════════════════════════════════════════════════ */
 const NCOLS = 24;  // volontairement surdimensionné : déborde de la largeur du canvas, rogné aux bords
@@ -28,8 +43,13 @@ const MAX_DISSOLVED = Math.floor(NCOLS * NROWS_MAX * 0.35);   // filet de sécur
 /* `let` (pas `const`) pour ces constantes : le panneau de réglage temporaire
    (devpanel.js) les modifie en direct. */
 const PHASE_DUR = { approche: 3000, dissociation: 1600 };   // objet : ses propriétés restent mutables même déclaré en const
-let MIGRATION_SPEED = 100;          // px/s, montée rectiligne et constante
-let WATER_TRAVEL_SPEED = 100;        // px/s, vitesse constante des molécules d'eau (au lieu d'une durée fixe) — évite les vitesses incohérentes selon la distance à parcourir
+/* Exprimées en ×cellule/s (et non en px/s absolus) : le scénario est
+   chronométré en ms fixes (DISSOLUTION_SCRIPT), donc le rythme perçu (nombre
+   de mailles parcourues par seconde) doit rester identique quelle que soit la
+   taille de la fenêtre — une vitesse en px/s fixe ferait paraître l'animation
+   beaucoup plus lente sur un grand écran (cellSize grand) que sur un petit. */
+let MIGRATION_SPEED = 2;            // ×cellule/s, montée rectiligne et constante
+let WATER_TRAVEL_SPEED = 2;         // ×cellule/s, vitesse constante des molécules d'eau (au lieu d'une durée fixe) — évite les vitesses incohérentes selon la distance à parcourir
 let WATER_TRAVEL_MIN_DUR = 800;     // ms, plancher pour éviter un trajet instantané si la molécule est déjà très proche
 let FADE_IN_DURATION = 2000;        // ms, fondu d'apparition d'une molécule nouvellement créée (renouvellement du stock)
 

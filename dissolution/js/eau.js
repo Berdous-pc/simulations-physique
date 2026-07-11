@@ -9,11 +9,15 @@
    orientation électrostatique, disparition définitive. Chargé après
    cristal.js, avant ui.js. */
 
+/* `let` (pas `const`) : modifiable en direct par le panneau de réglage
+   temporaire (devpanel.js). */
+let WATER_SIZE_FACTOR = 0.22;
+
 function waterScale() {
-  /* Rayon de l'oxygène nettement inférieur à celui des ions (rNa ≈ cellSize×0,42,
-     rCl ≈ cellSize×0,53) et sans plancher élevé, pour bien rétrécir sur petite
-     fenêtre au lieu de rester figé et finir plus gros que les ions du cristal. */
-  const waterR = Math.max(4, Math.min(20, state.crystal.cellSize * 0.32));
+  /* Rayon de l'oxygène purement proportionnel à cellSize (fixe, cf.
+     computeCrystalGeometry dans cristal.js) : pas besoin de plancher/plafond,
+     cellSize ne varie plus selon la machine/fenêtre. */
+  const waterR = state.crystal.cellSize * WATER_SIZE_FACTOR;
   return waterR / WATER_MODEL.radius;
 }
 
