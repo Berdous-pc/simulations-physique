@@ -328,6 +328,24 @@ main {
 }
 .btn-raz:hover { background: #ccc8c0; }
 
+/* ── Barre de progression + vitesse de lecture ────── */
+.progress-row {
+  display: flex; align-items: center; gap: 8px; margin-top: 10px;
+}
+#progress-bar { flex: 1; accent-color: #2a6aaa; }
+#progress-time {
+  font-family: monospace; font-size: 11px; color: #5a6a78; white-space: nowrap;
+}
+
+.speed-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 8px; }
+.speed-row-label { font-size: clamp(13px, 1.4vw, 16px); color: #5a6a78; white-space: nowrap; }
+#speed-select {
+  width: auto; padding: 6px 8px; border: 1px solid #c8c0b4; border-radius: 4px;
+  font-size: clamp(12px, 1.25vw, 15px); font-family: inherit;
+  background: #faf9f6; color: #2c3e50; cursor: pointer;
+}
+#speed-select:focus { outline: none; border-color: #2a6aaa; }
+
 /* ── Placeholder "À venir" (2e onglet) ────────────── */
 .coming-soon {
   text-align: center;

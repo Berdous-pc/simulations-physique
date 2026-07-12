@@ -85,6 +85,25 @@
                   onclick="togglePause()">▶ Lancer</button>
           <button class="btn btn-raz" style="margin-top:6px;"
                   onclick="resetSimAnim()">↺ Remettre à zéro</button>
+
+          <!-- Barre de progression + temps courant / durée totale -->
+          <div class="progress-row">
+            <input type="range" id="progress-bar" min="0" max="10000" step="10" value="0"
+                   oninput="onProgressBarInput(this.value)">
+            <span id="progress-time">0 s / 0 s</span>
+          </div>
+
+          <!-- Vitesse de lecture -->
+          <div class="speed-row">
+            <span class="speed-row-label">Vitesse de lecture :</span>
+            <select id="speed-select" onchange="setPlaybackSpeed(this.value)">
+              <option value="0.5">×0.5</option>
+              <option value="0.75">×0.75</option>
+              <option value="1" selected>×1</option>
+              <option value="1.5">×1.5</option>
+              <option value="2">×2</option>
+            </select>
+          </div>
         </div>
       </div><!-- fin #section-mecanisme -->
 
@@ -116,8 +135,8 @@
         l'ion visé (l'oxygène vers Na⁺, les hydrogènes vers Cl⁻), dissocient
         l'ion de la maille, puis l'entourent (solvatation) avant de l'emporter
         vers le haut de la solution.<br>
-        L'animation dure 20 secondes et s'arrête avant que le cristal ne soit
-        entièrement dissous.
+        L'animation dure environ 38 secondes et s'arrête avant que le cristal ne
+        soit entièrement dissous.
       </div>
     </div>
 

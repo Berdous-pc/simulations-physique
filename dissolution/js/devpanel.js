@@ -47,35 +47,9 @@ const DEV_CONTROLS = [
     get: () => FADE_IN_DURATION,     set: v => { FADE_IN_DURATION = v; } },
 ];
 
-/* Reconstruit déterministiquement l'état de la simulation à l'instant
-   `targetMs` : repart de zéro (resetSimAnim) puis rejoue toutes les étapes
-   par petits pas de temps fixes, sans dessiner ni attendre — la simulation
-   étant entièrement déterministe, le résultat est identique à une lecture
-   en temps réel jusqu'à cet instant. Permet un curseur de navigation
-   instantané, y compris après avoir changé un réglage. */
-function seekTo(targetMs) {
-  resetSimAnim();
-  const STEP = 16;
-  let t = 0;
-  while (t < targetMs) {
-    const dt = Math.min(STEP, targetMs - t);
-    t += dt;
-    state.animT = t;
-    if (state.animT >= DURATION_MS) { state.animT = DURATION_MS; state.ended = true; }
-    /* Même règle de gel qu'en lecture temps réel (loop(), ui.js) : animT
-       avance normalement, seule la simulation est gelée dans la fenêtre d'un
-       point de pause. */
-    if (!isPauseActive(state.animT)) {
-      advanceFadeIns(dt);
-      updateProcesses(dt);
-      if (!state.ended) runScript();
-    }
-    if (state.ended) break;
-  }
-  state.paused = true;
-  _updatePlayBtn();
-  drawScene();
-}
+/* seekTo() a déménagé dans ui.js (fonctionnalité désormais aussi utilisée par
+   la barre de progression destinée aux élèves, cf. onProgressBarInput) — ce
+   panneau se contente de l'appeler. */
 
 function toggleDevPanel() {
   const panel = document.getElementById('dev-panel');
@@ -372,6 +346,8 @@ function buildDevPanel() {
     document.getElementById('dev-val-duration').textContent = DURATION_MS;
     const scrub = document.getElementById('dev-scrub');
     scrub.max = DURATION_MS;
+    const bar = document.getElementById('progress-bar');
+    if (bar) bar.max = DURATION_MS;
     if (Number(scrub.value) > DURATION_MS) {
       scrub.value = DURATION_MS;
       document.getElementById('dev-scrub-val').textContent = DURATION_MS + ' ms';
