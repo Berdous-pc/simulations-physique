@@ -64,7 +64,7 @@ const DISSOLUTION_SCRIPT = [
   { atMs: 800, row: 0, col: 17, speed: 0.5 },
   { atMs: 19800, row: 0, col: 7 },
   { atMs: 20000, row: 0, col: 16 },
-  { atMs: 20900, row: 0, col: 6 },
+  { atMs: 22200, row: 0, col: 6 },
   { atMs: 23300, row: 1, col: 5 },
   { atMs: 24400, row: 1, col: 8 },
   { atMs: 24800, row: 1, col: 11 },
@@ -118,10 +118,10 @@ let CRYSTAL_OVERRIDES = {
    dans ui.js). Modifiable via le panneau de réglage (mode « Texte » : clic sur
    le canvas pour ajouter une boîte à l'instant courant du curseur "Temps"). */
 let TEXT_BOXES = [
-  { atMs: 2000, durationMs: 5800, x: 180, y: 70, w: 400, h: 340, fontSize: 35, bold: false, align: "left", text: "Etape 1 : Dissociation\nLes molécules d'eau exercent des forces d'attraction électrique sur les ions du solide, ce qui les arrache du cristal. " },
-  { atMs: 8500, durationMs: 5300, x: 180, y: 70, w: 400, h: 290, fontSize: 35, bold: false, align: "left", text: "Etape 2 : Solvatation\nLes ions libérés s'entourent de molécules d'eau qui les isolent des autres ions : ils se solvatent. " },
-  { atMs: 14500, durationMs: 5200, x: 180, y: 70, w: 400, h: 335, fontSize: 35, bold: false, align: "left", text: "Etape 3 : Dispersion\nSous l'effet de l'agitation thermique, les ions solvatés se dispersent dans l'ensemble de la solution. " },
-  { atMs: 21000, durationMs: 20000, x: 180, y: 70, w: 440, h: 260, fontSize: 30, bold: false, align: "left", text: "Les trois étapes du mécanisme de dissolution se répètent simultanément, en continue : \n1) Dissociation \n2) Solvatation \n3) Dispersion" },
+  { atMs: 2000, durationMs: 5800, x: 160, y: 70, w: 420, h: 285, fontSize: 32, bold: false, align: "left", title: "Etape 1 : Dissociation", text: "Les molécules d'eau exercent des forces d'attraction électrique sur les ions du solide, ce qui les arrache du cristal. " },
+  { atMs: 8500, durationMs: 5300, x: 160, y: 70, w: 420, h: 245, fontSize: 32, bold: false, align: "left", title: "Etape 2 : Solvatation", text: "Les ions libérés s'entourent de molécules d'eau qui les isolent des autres ions : ils se solvatent. " },
+  { atMs: 14500, durationMs: 5200, x: 160, y: 70, w: 420, h: 245, fontSize: 32, bold: false, align: "left", title: "Etape 3 : Dispersion", text: "Sous l'effet de l'agitation thermique, les ions solvatés se dispersent dans l'ensemble de la solution. " },
+  { atMs: 21000, durationMs: 20000, x: 160, y: 70, w: 440, h: 260, fontSize: 30, bold: false, align: "left", text: "Les trois étapes du mécanisme de dissolution se répètent simultanément, en continue : \n1) Dissociation \n2) Solvatation \n3) Dispersion" },
 ];
 
 /* Points de pause du scénario : dès que animT atteint atMs, la simulation se

@@ -59,8 +59,11 @@ function drawScene() {
   drawCristal(ctx);
   drawProcesses(ctx);
   drawTextBoxes(ctx);
+  /* Chrono lié au panneau dev (DEV_PANEL_ENABLED, devpanel.js) : masqué et
+     non mis à jour quand le panneau est désactivé, comme le veut le fait que
+     ce n'est qu'un outil de calage, pas un élément destiné aux élèves. */
   const timer = document.getElementById('sim-timer');
-  if (timer) {
+  if (timer && DEV_PANEL_ENABLED) {
     timer.textContent = Math.round(state.animT) + ' ms' + (isPauseActive(state.animT) ? ' ⏸' : '');
   }
 }

@@ -4,6 +4,12 @@
 //  fichier une fois le calage terminé. Chargé en tout dernier.
 // ═══════════════════════════════════════════════════
 
+/* Désactivé pour la mise en ligne : repasser à `true` pour réactiver le
+   panneau (aucun autre changement nécessaire — rien n'est supprimé). Quand
+   c'est `false`, buildDevPanel() masque #dev-panel et n'attache ni contrôles
+   ni écouteur de clic sur le canvas : le panneau reste totalement inaccessible. */
+const DEV_PANEL_ENABLED = false;
+
 /* Constantes exposées au panneau : chacune expose un getter/setter vers la
    variable réelle (déclarée en `let` dans sim.js/cristal.js). */
 const DEV_CONTROLS = [
@@ -181,7 +187,7 @@ function addTextBox(x, y) {
     atMs, durationMs: 3000,
     x: Math.round(x), y: Math.round(y), w: 400, h: 150,
     fontSize: 22, bold: false, align: 'left',
-    text: 'Nouveau texte',
+    title: '', text: 'Nouveau texte',
   });
   renderTextBoxList();
   drawScene();
@@ -222,6 +228,7 @@ function renderTextBoxList() {
       '<label class="dev-textbox-field dev-textbox-checkbox"><input type="checkbox" data-key="bold"' + (box.bold ? ' checked' : '') + '> Gras</label>' +
       '<button class="dev-script-btn dev-textbox-del" title="Supprimer">✕</button>' +
       '</div>' +
+      '<input type="text" class="dev-textbox-title" placeholder="Titre (optionnel — mis en gras, plus grand)" value="' + (box.title || '') + '">' +
       '<textarea class="dev-textbox-text" rows="3">' + box.text + '</textarea>';
 
     row.querySelectorAll('input[type="number"], select').forEach(input => {
@@ -233,6 +240,10 @@ function renderTextBoxList() {
     });
     row.querySelector('input[type="checkbox"]').addEventListener('change', e => {
       box.bold = e.target.checked;
+      drawScene();
+    });
+    row.querySelector('.dev-textbox-title').addEventListener('input', e => {
+      box.title = e.target.value;
       drawScene();
     });
     row.querySelector('.dev-textbox-text').addEventListener('input', e => {
@@ -310,6 +321,7 @@ function exportConfig() {
       '  { atMs: ' + b.atMs + ', durationMs: ' + b.durationMs +
       ', x: ' + b.x + ', y: ' + b.y + ', w: ' + b.w + ', h: ' + b.h +
       ', fontSize: ' + b.fontSize + ', bold: ' + b.bold + ', align: ' + JSON.stringify(b.align) +
+      (b.title ? ', title: ' + JSON.stringify(b.title) : '') +
       ', text: ' + JSON.stringify(b.text) + ' },'
     ).join('\n') +
     '\n];';
@@ -324,6 +336,20 @@ function exportConfig() {
 }
 
 function buildDevPanel() {
+  if (!DEV_PANEL_ENABLED) {
+    /* Masque et neutralise entièrement le panneau : aucun contrôle n'est
+       construit, aucun écouteur de clic n'est attaché au canvas (le mode
+       édition ne peut donc pas non plus être activé au clavier/JS externe).
+       Le chrono (#sim-timer) fait partie du même outil de calage : il se
+       masque avec lui (drawScene() dans ui.js arrête aussi de le mettre à
+       jour, cf. sa garde sur DEV_PANEL_ENABLED). */
+    const panel = document.getElementById('dev-panel');
+    if (panel) panel.style.display = 'none';
+    const timer = document.getElementById('sim-timer');
+    if (timer) timer.style.display = 'none';
+    return;
+  }
+
   const body = document.getElementById('dev-panel-body');
   if (!body) return;
 

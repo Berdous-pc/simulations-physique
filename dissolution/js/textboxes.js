@@ -13,6 +13,8 @@
 
 const TEXT_BOX_FADE_MS = 200;   // fondu d'entrée/sortie
 const TEXT_BOX_PADDING = 16;    // unités de scène
+const TEXT_BOX_TITLE_SCALE = 1.2;   // taille du titre par rapport à fontSize
+const TEXT_BOX_TITLE_GAP = 10;      // espace (unités de scène) entre titre et corps
 
 /* Découpe un texte en lignes tenant dans maxW (unités de scène), en
    respectant les retours à la ligne explicites (\n) du texte source. */
@@ -67,20 +69,37 @@ function drawTextBoxes(ctx) {
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    /* Texte, découpé pour tenir dans la largeur utile de la boîte. */
+    /* Texte, découpé pour tenir dans la largeur utile de la boîte. Titre
+       (optionnel, box.title) mis en avant — gras et légèrement plus grand —
+       par rapport au corps (box.text), pour bien distinguer nom de l'étape
+       et explication sans dupliquer la logique de mise en page. */
     ctx.fillStyle = '#ffffff';
-    ctx.font = (box.bold ? 'bold ' : '') + box.fontSize + "px 'Segoe UI', Arial, sans-serif";
     ctx.textBaseline = 'top';
     ctx.textAlign = box.align || 'left';
 
     const innerW = box.w - TEXT_BOX_PADDING * 2;
-    const lineH = box.fontSize * 1.3;
     let tx = box.x + TEXT_BOX_PADDING;
     if (box.align === 'center') tx = box.x + box.w / 2;
     else if (box.align === 'right') tx = box.x + box.w - TEXT_BOX_PADDING;
 
-    wrapTextBoxLines(ctx, box.text, innerW).forEach((line, i) => {
-      ctx.fillText(line, tx, box.y + TEXT_BOX_PADDING + i * lineH);
+    let cy = box.y + TEXT_BOX_PADDING;
+
+    if (box.title) {
+      const titleSize = box.fontSize * TEXT_BOX_TITLE_SCALE;
+      const titleLineH = titleSize * 1.25;
+      ctx.font = 'bold ' + titleSize + "px 'Segoe UI', Arial, sans-serif";
+      wrapTextBoxLines(ctx, box.title, innerW).forEach(line => {
+        ctx.fillText(line, tx, cy);
+        cy += titleLineH;
+      });
+      cy += TEXT_BOX_TITLE_GAP;
+    }
+
+    const bodyLineH = box.fontSize * 1.3;
+    ctx.font = (box.bold ? 'bold ' : '') + box.fontSize + "px 'Segoe UI', Arial, sans-serif";
+    wrapTextBoxLines(ctx, box.text, innerW).forEach(line => {
+      ctx.fillText(line, tx, cy);
+      cy += bodyLineH;
     });
 
     ctx.restore();
