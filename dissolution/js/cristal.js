@@ -131,7 +131,7 @@ function travelDuration(fromX, fromY, toX, toY) {
   return Math.max(WATER_TRAVEL_MIN_DUR, (dist / speedPxPerS) * 1000);
 }
 
-function startDissolutionProcess(site) {
+function startDissolutionProcess(site, speed) {
   if (state.crystal.nDissolved >= MAX_DISSOLVED) return false;
   const pos = getSiteXY(site.row, site.col);
   site.engaged = true;
@@ -141,6 +141,13 @@ function startDissolutionProcess(site) {
 
   const proc = {
     id: state.nextProcessId++, site, ionType: site.type,
+    /* Multiplicateur de vitesse propre à cet ion (réglé par le panneau dev,
+       DISSOLUTION_SCRIPT[i].speed) : x0.5 = deux fois plus lent, x2 = deux
+       fois plus rapide. Appliqué en réduisant le dt local de ce processus
+       (cf. updateProcesses) — toutes ses étapes (approche, dissociation,
+       migration, solvatation) en héritent uniformément, sans toucher aux
+       autres processus ni aux constantes globales. */
+    speed: speed || 1,
     phase: 'approche', phaseT: 0, approcheDur: WATER_TRAVEL_MIN_DUR,
     latticeX: pos.x, latticeY: pos.y,
     ionX: pos.x, ionY: pos.y,
@@ -176,7 +183,12 @@ function updateProcesses(dt) {
   const exitMargin = state.crystal.cellSize * 0.5;
 
   state.processes = state.processes.filter(p => {
-    p.phaseT += dt;
+    /* dt local à ce processus, mis à l'échelle par son multiplicateur de
+       vitesse individuel (p.speed) : x0.5 ralentit uniquement cet ion (deux
+       fois plus de temps réel pour la même progression), sans affecter le dt
+       global ni les autres processus. */
+    const pdt = dt * p.speed;
+    p.phaseT += pdt;
     /* Rayon de cage propre au type d'ion de ce processus (Na+ et Cl- n'ont
        pas le même rayon affiché) — marges de dégagement/attente dérivées.
        CAGE_RADIUS_FACTOR est réglé à la main (panneau dev) pour éviter tout
@@ -222,7 +234,7 @@ function updateProcesses(dt) {
       if (p.phaseT >= dur) { p.phaseT = 0; p.phase = 'migration'; }
 
     } else if (p.phase === 'migration') {
-      p.ionY -= MIGRATION_SPEED * state.crystal.cellSize * dt / 1000;
+      p.ionY -= MIGRATION_SPEED * state.crystal.cellSize * pdt / 1000;
 
       /* La cage de solvatation se complète (CAGE_SIZE molécules au total,
          anneau à 360°) dès que l'ion s'est assez éloigné du cristal pour que
@@ -260,7 +272,7 @@ function updateProcesses(dt) {
       }
 
       if (p.solvated && p.solvT < p.solvDur) {
-        p.solvT += dt;
+        p.solvT += pdt;
         p.waters.forEach(w => {
           const t = easeInOut(clamp01(p.solvT / w._travelDur));
           w.x = p.ionX + lerp(w._relStartX, w._relTargetX, t);
@@ -298,7 +310,7 @@ function runScript() {
     if (entry.fired || state.animT < entry.atMs) return;
     entry.fired = true;
     const site = state.crystal.sites[entry.row * NCOLS + entry.col];
-    if (site && site.occupied && !site.engaged && isExposed(site)) startDissolutionProcess(site);
+    if (site && site.occupied && !site.engaged && isExposed(site)) startDissolutionProcess(site, entry.speed);
   });
 }
 

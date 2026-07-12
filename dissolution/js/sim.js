@@ -31,7 +31,7 @@ const NROWS_MAX = NROWS + 1;   // + 1 ligne du dessus, présente une colonne sur
 /* ══════════════════════════════════════════════════
    Constantes temporelles de l'animation
 ══════════════════════════════════════════════════ */
-let DURATION_MS = 25000;   // réglable via le panneau dev
+let DURATION_MS = 38100;   // réglable via le panneau dev — inclut les 3 pauses de PAUSE_POINTS
 const MAX_DISSOLVED = Math.floor(NCOLS * NROWS_MAX * 0.35);   // filet de sécurité (dissolution partielle garantie)
 
 /* Cycle de déplacement — entièrement déterministe (aucun Math.random) :
@@ -60,42 +60,45 @@ let FADE_IN_DURATION = 1000;        // ms, fondu d'apparition d'une molécule no
    en place (push/splice) par devpanel.js ; chaque entrée reçoit un drapeau
    `fired` remis à zéro par resetSimAnim(). */
 const DISSOLUTION_SCRIPT = [
-  { atMs: 200, row: 0, col: 12 },
-  { atMs: 800, row: 0, col: 17 },
-  { atMs: 5600, row: 0, col: 7 },
-  { atMs: 6000, row: 0, col: 16 },
-  { atMs: 7800, row: 0, col: 6 },
-  { atMs: 10200, row: 1, col: 5 },
-  { atMs: 11300, row: 1, col: 8 },
-  { atMs: 11700, row: 1, col: 11 },
-  { atMs: 12500, row: 1, col: 14 },
-  { atMs: 12900, row: 1, col: 17 },
-  { atMs: 13400, row: 0, col: 3 },
-  { atMs: 13600, row: 1, col: 6 },
-  { atMs: 14600, row: 2, col: 9 },
-  { atMs: 15300, row: 1, col: 13 },
-  { atMs: 16000, row: 1, col: 16 },
-  { atMs: 16700, row: 1, col: 18 },
-  { atMs: 16700, row: 1, col: 7 },
-  { atMs: 18400, row: 2, col: 14 },
-  { atMs: 19400, row: 1, col: 19 },
-  { atMs: 19700, row: 1, col: 19 },
-  { atMs: 20000, row: 1, col: 4 },
-  { atMs: 19600, row: 2, col: 16 },
-  { atMs: 20200, row: 2, col: 13 },
-  { atMs: 20700, row: 2, col: 10 },
-  { atMs: 22000, row: 2, col: 8 },
-  { atMs: 21000, row: 2, col: 17 },
-  { atMs: 22500, row: 2, col: 12 },
-  { atMs: 24500, row: 2, col: 6 },
-  { atMs: 8200, row: 0, col: 13 },
-  { atMs: 8400, row: 1, col: 18 },
-  { atMs: 11200, row: 0, col: 8 },
-  { atMs: 18400, row: 1, col: 12 },
-  { atMs: 14700, row: 1, col: 9 },
-  { atMs: 19300, row: 1, col: 8 },
-  { atMs: 24500, row: 2, col: 15 },
-  { atMs: 23700, row: 2, col: 9 },
+  { atMs: 200, row: 0, col: 12, speed: 0.5 },
+  { atMs: 800, row: 0, col: 17, speed: 0.5 },
+  { atMs: 19800, row: 0, col: 7 },
+  { atMs: 20000, row: 0, col: 16 },
+  { atMs: 20900, row: 0, col: 6 },
+  { atMs: 23300, row: 1, col: 5 },
+  { atMs: 24400, row: 1, col: 8 },
+  { atMs: 24800, row: 1, col: 11 },
+  { atMs: 25600, row: 1, col: 14 },
+  { atMs: 26000, row: 1, col: 17 },
+  { atMs: 26500, row: 0, col: 3 },
+  { atMs: 26700, row: 1, col: 6 },
+  { atMs: 27700, row: 2, col: 9 },
+  { atMs: 28400, row: 1, col: 13 },
+  { atMs: 29100, row: 1, col: 16 },
+  { atMs: 29800, row: 1, col: 18 },
+  { atMs: 29800, row: 1, col: 7 },
+  { atMs: 31500, row: 2, col: 14 },
+  { atMs: 32500, row: 1, col: 19 },
+  { atMs: 32800, row: 1, col: 19 },
+  { atMs: 33100, row: 1, col: 4 },
+  { atMs: 32700, row: 2, col: 16 },
+  { atMs: 33300, row: 2, col: 13 },
+  { atMs: 33800, row: 2, col: 10 },
+  { atMs: 35100, row: 2, col: 8 },
+  { atMs: 34100, row: 2, col: 17 },
+  { atMs: 35600, row: 2, col: 12 },
+  { atMs: 37600, row: 2, col: 6 },
+  { atMs: 21300, row: 0, col: 13 },
+  { atMs: 21500, row: 1, col: 18 },
+  { atMs: 24300, row: 0, col: 8 },
+  { atMs: 31500, row: 1, col: 12 },
+  { atMs: 27800, row: 1, col: 9 },
+  { atMs: 32400, row: 1, col: 8 },
+  { atMs: 37600, row: 2, col: 15 },
+  { atMs: 36800, row: 2, col: 9 },
+  { atMs: 31400, row: 1, col: 4 },
+  { atMs: 31400, row: 1, col: 19 },
+  { atMs: 35000, row: 1, col: 3 },
 ];
 
 /* Dérogations à l'occupation par défaut du cristal (TOP_ROW_PATTERN, cf.
@@ -115,23 +118,26 @@ let CRYSTAL_OVERRIDES = {
    dans ui.js). Modifiable via le panneau de réglage (mode « Texte » : clic sur
    le canvas pour ajouter une boîte à l'instant courant du curseur "Temps"). */
 let TEXT_BOXES = [
-  { atMs: 500, durationMs: 1800, x: 180, y: 70, w: 400, h: 340, fontSize: 35, bold: false, align: "left", text: "Etape 1 : Dissociation\nLes molécules d'eau exercent des forces d'attraction électrique sur les ions du solide, ce qui les arrache du cristal. " },
-  { atMs: 2800, durationMs: 1500, x: 180, y: 70, w: 400, h: 290, fontSize: 35, bold: false, align: "left", text: "Etape 2 : Solvatation\nLes ions libérés s'entourent de molécules d'eau qui les isolent des autres ions : ils se solvatent. " },
-  { atMs: 4500, durationMs: 1500, x: 180, y: 70, w: 400, h: 335, fontSize: 35, bold: false, align: "left", text: "Etape 3 : Dispersion\nSous l'effet de l'agitation thermique, les ions solvatés se dispersent dans l'ensemble de la solution. " },
+  { atMs: 2000, durationMs: 5800, x: 180, y: 70, w: 400, h: 340, fontSize: 35, bold: false, align: "left", text: "Etape 1 : Dissociation\nLes molécules d'eau exercent des forces d'attraction électrique sur les ions du solide, ce qui les arrache du cristal. " },
+  { atMs: 8500, durationMs: 5300, x: 180, y: 70, w: 400, h: 290, fontSize: 35, bold: false, align: "left", text: "Etape 2 : Solvatation\nLes ions libérés s'entourent de molécules d'eau qui les isolent des autres ions : ils se solvatent. " },
+  { atMs: 14500, durationMs: 5200, x: 180, y: 70, w: 400, h: 335, fontSize: 35, bold: false, align: "left", text: "Etape 3 : Dispersion\nSous l'effet de l'agitation thermique, les ions solvatés se dispersent dans l'ensemble de la solution. " },
+  { atMs: 21000, durationMs: 20000, x: 180, y: 70, w: 440, h: 260, fontSize: 30, bold: false, align: "left", text: "Les trois étapes du mécanisme de dissolution se répètent simultanément, en continue : \n1) Dissociation \n2) Solvatation \n3) Dispersion" },
 ];
 
-/* Points de pause du scénario : dès que animT atteint atMs, l'animation se
-   fige (plus aucune progression : ni animT, ni processus, ni scénario) pendant
-   holdMs de temps réel, puis reprend son cours normalement — le temps de
-   lecture pour les élèves d'une explication affichée (TEXT_BOXES) sans que le
-   mécanisme continue en arrière-plan. Chaque entrée reçoit un drapeau `fired`
-   remis à zéro par resetSimAnim(), comme DISSOLUTION_SCRIPT. Modifiable via le
-   panneau de réglage (bouton dédié : ajoute une pause à l'instant courant du
-   curseur "Temps"). */
+/* Points de pause du scénario : dès que animT atteint atMs, la simulation se
+   fige (plus aucune progression : ni processus, ni scénario) pendant holdMs —
+   le temps de lecture pour les élèves d'une explication affichée (TEXT_BOXES)
+   sans que le mécanisme continue en arrière-plan. animT, lui, continue de
+   s'écouler normalement pendant la pause : elle fait partie intégrante de la
+   timeline (cf. loop() dans ui.js), donc son atMs et sa durée comptent dans
+   DURATION_MS et dans les instants de tous les événements qui la suivent (pas
+   de décalage caché comme lorsque le temps de pause était mis à part).
+   Modifiable via le panneau de réglage (bouton dédié : ajoute une pause à
+   l'instant courant du curseur "Temps"). */
 let PAUSE_POINTS = [
-  { atMs: 2100, holdMs: 2000 },
-  { atMs: 4100, holdMs: 2000 },
-  { atMs: 5800, holdMs: 2000 },
+  { atMs: 4800, holdMs: 3000 },
+  { atMs: 10800, holdMs: 3000 },
+  { atMs: 17400, holdMs: 3000 },
 ];
 
 /* ══════════════════════════════════════════════════
@@ -163,7 +169,6 @@ const state = {
   paused: true,
   ended: false,
   animT: 0,
-  pauseHoldRemaining: 0,   // ms de temps réel restant à figer (point de pause en cours, cf. PAUSE_POINTS)
   nextProcessId: 0,
   spawnCounter: 0,
   crystal: { cellSize: 0, x0: 0, y0: 0, rNa: 0, rCl: 0, sites: [], nDissolved: 0 },
@@ -177,6 +182,14 @@ const state = {
 function lerp(a, b, t) { return a + (b - a) * t; }
 function clamp01(t) { return Math.max(0, Math.min(1, t)); }
 function easeInOut(t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
+
+/* Vrai si `t` (unités animT) tombe dans la fenêtre [atMs, atMs+holdMs[ d'un
+   point de pause — utilisé aussi bien par la boucle temps réel (ui.js) que
+   par le rejeu déterministe du panneau dev (seekTo, devpanel.js) pour geler
+   la simulation exactement de la même façon dans les deux cas. */
+function isPauseActive(t) {
+  return PAUSE_POINTS.some(p => t >= p.atMs && t < p.atMs + p.holdMs);
+}
 
 /* Sphère générique (ion ou atome d'eau) — l'appelant gère save/restore/alpha */
 function drawSphere(ctx, x, y, r, fill, border, label, labelColor) {

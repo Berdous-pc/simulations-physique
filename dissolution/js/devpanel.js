@@ -56,14 +56,16 @@ function seekTo(targetMs) {
     t += dt;
     state.animT = t;
     if (state.animT >= DURATION_MS) { state.animT = DURATION_MS; state.ended = true; }
-    advanceFadeIns(dt);
-    updateProcesses(dt);
-    if (!state.ended) runScript();
+    /* Même règle de gel qu'en lecture temps réel (loop(), ui.js) : animT
+       avance normalement, seule la simulation est gelée dans la fenêtre d'un
+       point de pause. */
+    if (!isPauseActive(state.animT)) {
+      advanceFadeIns(dt);
+      updateProcesses(dt);
+      if (!state.ended) runScript();
+    }
     if (state.ended) break;
   }
-  /* Empêche un point de pause déjà dépassé par le scrub de se redéclencher
-     (et de figer l'animation) au moment où l'utilisateur relance la lecture. */
-  PAUSE_POINTS.forEach(p => { if (p.atMs <= targetMs) p.fired = true; });
   state.paused = true;
   _updatePlayBtn();
   drawScene();
@@ -116,7 +118,7 @@ function onEditorCanvasClick(e) {
     const site = state.crystal.sites[row * NCOLS + col];
     if (!site || !site.occupied) return;   // rien à ajouter sur une case vide
     const atMs = Number(document.getElementById('dev-scrub').value) || 0;
-    DISSOLUTION_SCRIPT.push({ atMs, row, col });
+    DISSOLUTION_SCRIPT.push({ atMs, row, col, speed: 1 });
     renderScriptList();
     seekTo(atMs);
   }
@@ -135,14 +137,19 @@ function renderScriptList() {
     row.className = 'dev-script-row';
     row.innerHTML =
       '<span class="dev-script-cell">' + ionLabel + ' L' + (entry.row + 1) + ' C' + entry.col + '</span>' +
-      '<input type="number" step="100" value="' + entry.atMs + '" class="dev-script-time">' +
+      '<input type="number" step="100" value="' + entry.atMs + '" class="dev-script-time" title="Instant (ms)">' +
+      '<input type="number" step="0.1" min="0.1" max="3" value="' + (entry.speed || 1) + '" class="dev-script-speed" title="Vitesse (×)">' +
       '<button class="dev-script-btn" title="Monter">↑</button>' +
       '<button class="dev-script-btn" title="Descendre">↓</button>' +
       '<button class="dev-script-btn" title="Supprimer">✕</button>';
-    const [, timeInput, upBtn, downBtn, delBtn] = row.children;
+    const [, timeInput, speedInput, upBtn, downBtn, delBtn] = row.children;
 
     timeInput.addEventListener('change', () => {
       entry.atMs = Number(timeInput.value) || 0;
+      seekTo(Number(document.getElementById('dev-scrub').value));
+    });
+    speedInput.addEventListener('change', () => {
+      entry.speed = Number(speedInput.value) || 1;
       seekTo(Number(document.getElementById('dev-scrub').value));
     });
     upBtn.addEventListener('click', () => {
@@ -246,7 +253,7 @@ function renderTextBoxList() {
    figeage par défaut) et garde la liste triée par instant croissant. */
 function addPausePoint() {
   const atMs = Number(document.getElementById('dev-scrub').value) || 0;
-  PAUSE_POINTS.push({ atMs, holdMs: 2000, fired: false });
+  PAUSE_POINTS.push({ atMs, holdMs: 2000 });
   PAUSE_POINTS.sort((a, b) => a.atMs - b.atMs);
   renderPauseList();
 }
@@ -292,7 +299,10 @@ function renderPauseList() {
    dans sim.js. */
 function exportConfig() {
   const scriptText = 'const DISSOLUTION_SCRIPT = [\n' +
-    DISSOLUTION_SCRIPT.map(e => '  { atMs: ' + e.atMs + ', row: ' + e.row + ', col: ' + e.col + ' },').join('\n') +
+    DISSOLUTION_SCRIPT.map(e =>
+      '  { atMs: ' + e.atMs + ', row: ' + e.row + ', col: ' + e.col +
+      (e.speed && e.speed !== 1 ? ', speed: ' + e.speed : '') + ' },'
+    ).join('\n') +
     '\n];';
   const overridesText = 'let CRYSTAL_OVERRIDES = ' + JSON.stringify(CRYSTAL_OVERRIDES) + ';';
   const textBoxesText = 'let TEXT_BOXES = [\n' +

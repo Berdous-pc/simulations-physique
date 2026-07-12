@@ -61,7 +61,7 @@ function drawScene() {
   drawTextBoxes(ctx);
   const timer = document.getElementById('sim-timer');
   if (timer) {
-    timer.textContent = Math.round(state.animT) + ' ms' + (state.pauseHoldRemaining > 0 ? ' ⏸' : '');
+    timer.textContent = Math.round(state.animT) + ' ms' + (isPauseActive(state.animT) ? ' ⏸' : '');
   }
 }
 
@@ -75,27 +75,21 @@ function loop(ts) {
   _lastTs = ts;
 
   if (dt > 0) {
-    if (state.pauseHoldRemaining > 0) {
-      /* Point de pause en cours : le temps réel s'écoule mais rien ne
-         progresse dans le scénario (animT figé) — l'animation est visuellement
-         à l'arrêt le temps que les élèves lisent l'explication affichée. */
-      state.pauseHoldRemaining = Math.max(0, state.pauseHoldRemaining - dt);
-    } else {
-      const pp = PAUSE_POINTS.find(p => !p.fired && state.animT >= p.atMs);
-      if (pp) {
-        pp.fired = true;
-        state.pauseHoldRemaining = pp.holdMs;
-      } else {
-        state.animT += dt;
-        if (state.animT >= DURATION_MS) {
-          state.animT = DURATION_MS;
-          state.ended = true;
-          _updatePlayBtn();
-        }
-        advanceFadeIns(dt);
-        updateProcesses(dt);
-        if (!state.ended) runScript();
-      }
+    /* animT est l'horloge unique de la timeline (temps réel écoulé depuis le
+       début) : les points de pause en font partie intégrante, ils ne sont pas
+       mis à part. Seule la simulation (fondus, processus, scénario) est gelée
+       tant qu'on est dans la fenêtre d'un point de pause — l'animation reste
+       visuellement figée pour laisser le temps de lire l'explication affichée. */
+    state.animT += dt;
+    if (state.animT >= DURATION_MS) {
+      state.animT = DURATION_MS;
+      state.ended = true;
+      _updatePlayBtn();
+    }
+    if (!isPauseActive(state.animT)) {
+      advanceFadeIns(dt);
+      updateProcesses(dt);
+      if (!state.ended) runScript();
     }
   }
 
@@ -116,12 +110,10 @@ function resetSimAnim() {
   state.paused = true;
   state.ended = false;
   state.animT = 0;
-  state.pauseHoldRemaining = 0;
   state.nextProcessId = 0;
   state.spawnCounter = 0;
   state.processes = [];
   DISSOLUTION_SCRIPT.forEach(e => { e.fired = false; });
-  PAUSE_POINTS.forEach(p => { p.fired = false; });
   buildCristal();
   initFreeWater();
   _updatePlayBtn();
