@@ -265,6 +265,8 @@ function init() {
   if (DEV_PANEL_ENABLED) initCoordTooltip();
   const bar = document.getElementById('progress-bar');
   if (bar) bar.max = DURATION_MS;
+  const fsBar = document.getElementById('fs-progress-bar');
+  if (fsBar) fsBar.max = DURATION_MS;
   requestAnimationFrame(loop);
 }
 window.addEventListener('DOMContentLoaded', init);

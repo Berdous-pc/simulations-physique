@@ -31,7 +31,7 @@ const NROWS_MAX = NROWS + 1;   // + 1 ligne du dessus, présente une colonne sur
 /* ══════════════════════════════════════════════════
    Constantes temporelles de l'animation
 ══════════════════════════════════════════════════ */
-let DURATION_MS = 38100;   // réglable via le panneau dev — inclut les 3 pauses de PAUSE_POINTS
+let DURATION_MS = 41100;   // réglable via le panneau dev — inclut les 3 pauses de PAUSE_POINTS
 const MAX_DISSOLVED = Math.floor(NCOLS * NROWS_MAX * 0.35);   // filet de sécurité (dissolution partielle garantie)
 
 /* Cycle de déplacement — entièrement déterministe (aucun Math.random) :
@@ -62,43 +62,43 @@ let FADE_IN_DURATION = 1000;        // ms, fondu d'apparition d'une molécule no
 const DISSOLUTION_SCRIPT = [
   { atMs: 200, row: 0, col: 12, speed: 0.5 },
   { atMs: 800, row: 0, col: 17, speed: 0.5 },
-  { atMs: 19800, row: 0, col: 7 },
-  { atMs: 20000, row: 0, col: 16 },
-  { atMs: 22200, row: 0, col: 6 },
-  { atMs: 23300, row: 1, col: 5 },
-  { atMs: 24400, row: 1, col: 8 },
-  { atMs: 24800, row: 1, col: 11 },
-  { atMs: 25600, row: 1, col: 14 },
-  { atMs: 26000, row: 1, col: 17 },
-  { atMs: 26500, row: 0, col: 3 },
-  { atMs: 26700, row: 1, col: 6 },
-  { atMs: 27700, row: 2, col: 9 },
-  { atMs: 28400, row: 1, col: 13 },
-  { atMs: 29100, row: 1, col: 16 },
-  { atMs: 29800, row: 1, col: 18 },
-  { atMs: 29800, row: 1, col: 7 },
-  { atMs: 31500, row: 2, col: 14 },
-  { atMs: 32500, row: 1, col: 19 },
-  { atMs: 32800, row: 1, col: 19 },
-  { atMs: 33100, row: 1, col: 4 },
-  { atMs: 32700, row: 2, col: 16 },
-  { atMs: 33300, row: 2, col: 13 },
-  { atMs: 33800, row: 2, col: 10 },
-  { atMs: 35100, row: 2, col: 8 },
-  { atMs: 34100, row: 2, col: 17 },
-  { atMs: 35600, row: 2, col: 12 },
-  { atMs: 37600, row: 2, col: 6 },
-  { atMs: 21300, row: 0, col: 13 },
-  { atMs: 21500, row: 1, col: 18 },
-  { atMs: 24300, row: 0, col: 8 },
-  { atMs: 31500, row: 1, col: 12 },
-  { atMs: 27800, row: 1, col: 9 },
-  { atMs: 32400, row: 1, col: 8 },
-  { atMs: 37600, row: 2, col: 15 },
-  { atMs: 36800, row: 2, col: 9 },
-  { atMs: 31400, row: 1, col: 4 },
-  { atMs: 31400, row: 1, col: 19 },
-  { atMs: 35000, row: 1, col: 3 },
+  { atMs: 22800, row: 0, col: 7 },
+  { atMs: 23000, row: 0, col: 16 },
+  { atMs: 25200, row: 0, col: 6 },
+  { atMs: 26300, row: 1, col: 5 },
+  { atMs: 27400, row: 1, col: 8 },
+  { atMs: 27800, row: 1, col: 11 },
+  { atMs: 28600, row: 1, col: 14 },
+  { atMs: 29000, row: 1, col: 17 },
+  { atMs: 29500, row: 0, col: 3 },
+  { atMs: 29700, row: 1, col: 6 },
+  { atMs: 30700, row: 2, col: 9 },
+  { atMs: 31400, row: 1, col: 13 },
+  { atMs: 32100, row: 1, col: 16 },
+  { atMs: 32800, row: 1, col: 18 },
+  { atMs: 32800, row: 1, col: 7 },
+  { atMs: 34500, row: 2, col: 14 },
+  { atMs: 35500, row: 1, col: 19 },
+  { atMs: 35800, row: 1, col: 19 },
+  { atMs: 36100, row: 1, col: 4 },
+  { atMs: 35700, row: 2, col: 16 },
+  { atMs: 36300, row: 2, col: 13 },
+  { atMs: 36800, row: 2, col: 10 },
+  { atMs: 38100, row: 2, col: 8 },
+  { atMs: 37100, row: 2, col: 17 },
+  { atMs: 38600, row: 2, col: 12 },
+  { atMs: 40600, row: 2, col: 6 },
+  { atMs: 24300, row: 0, col: 13 },
+  { atMs: 24500, row: 1, col: 18 },
+  { atMs: 27300, row: 0, col: 8 },
+  { atMs: 34500, row: 1, col: 12 },
+  { atMs: 30800, row: 1, col: 9 },
+  { atMs: 35400, row: 1, col: 8 },
+  { atMs: 40600, row: 2, col: 15 },
+  { atMs: 39800, row: 2, col: 9 },
+  { atMs: 34400, row: 1, col: 4 },
+  { atMs: 34400, row: 1, col: 19 },
+  { atMs: 38000, row: 1, col: 3 },
 ];
 
 /* Dérogations à l'occupation par défaut du cristal (TOP_ROW_PATTERN, cf.
@@ -118,10 +118,10 @@ let CRYSTAL_OVERRIDES = {
    dans ui.js). Modifiable via le panneau de réglage (mode « Texte » : clic sur
    le canvas pour ajouter une boîte à l'instant courant du curseur "Temps"). */
 let TEXT_BOXES = [
-  { atMs: 2000, durationMs: 5800, x: 160, y: 70, w: 420, h: 285, fontSize: 32, bold: false, align: "left", title: "Etape 1 : Dissociation", text: "Les molécules d'eau exercent des forces d'attraction électrique sur les ions du solide, ce qui les arrache du cristal. " },
-  { atMs: 8500, durationMs: 5300, x: 160, y: 70, w: 420, h: 245, fontSize: 32, bold: false, align: "left", title: "Etape 2 : Solvatation", text: "Les ions libérés s'entourent de molécules d'eau qui les isolent des autres ions : ils se solvatent. " },
-  { atMs: 14500, durationMs: 5200, x: 160, y: 70, w: 420, h: 245, fontSize: 32, bold: false, align: "left", title: "Etape 3 : Dispersion", text: "Sous l'effet de l'agitation thermique, les ions solvatés se dispersent dans l'ensemble de la solution. " },
-  { atMs: 21000, durationMs: 20000, x: 160, y: 70, w: 440, h: 260, fontSize: 30, bold: false, align: "left", text: "Les trois étapes du mécanisme de dissolution se répètent simultanément, en continue : \n1) Dissociation \n2) Solvatation \n3) Dispersion" },
+  { atMs: 2000, durationMs: 6800, x: 160, y: 70, w: 420, h: 285, fontSize: 32, bold: false, align: "left", title: "Etape 1 : Dissociation", text: "Les molécules d'eau exercent des forces d'attraction électrique sur les ions du solide, ce qui les arrache du cristal. " },
+  { atMs: 9500, durationMs: 6300, x: 160, y: 70, w: 420, h: 245, fontSize: 32, bold: false, align: "left", title: "Etape 2 : Solvatation", text: "Les ions libérés s'entourent de molécules d'eau qui les isolent des autres ions : ils se solvatent. " },
+  { atMs: 16500, durationMs: 6200, x: 160, y: 70, w: 420, h: 245, fontSize: 32, bold: false, align: "left", title: "Etape 3 : Dispersion", text: "Sous l'effet de l'agitation thermique, les ions solvatés se dispersent dans l'ensemble de la solution. " },
+  { atMs: 24000, durationMs: 20000, x: 160, y: 70, w: 440, h: 260, fontSize: 30, bold: false, align: "left", text: "Les trois étapes du mécanisme de dissolution se répètent simultanément, en continue : \n1) Dissociation \n2) Solvatation \n3) Dispersion" },
 ];
 
 /* Points de pause du scénario : dès que animT atteint atMs, la simulation se
@@ -135,9 +135,9 @@ let TEXT_BOXES = [
    Modifiable via le panneau de réglage (bouton dédié : ajoute une pause à
    l'instant courant du curseur "Temps"). */
 let PAUSE_POINTS = [
-  { atMs: 4800, holdMs: 3000 },
-  { atMs: 10800, holdMs: 3000 },
-  { atMs: 17400, holdMs: 3000 },
+  { atMs: 4800, holdMs: 4000 },
+  { atMs: 11800, holdMs: 4000 },
+  { atMs: 19400, holdMs: 4000 },
 ];
 
 /* ══════════════════════════════════════════════════

@@ -379,6 +379,39 @@ main {
 }
 #anim-canvas-wrap.is-fullscreen.fs-controls-hidden { cursor: none; }
 
+/* ── Symbole play/pause central (flash bref au clic) ── */
+#fs-center-icon {
+  display: none;
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%) scale(0.8);
+  z-index: 40;
+  width: 84px;
+  height: 84px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 38px;
+  line-height: 1;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+/* Les glyphes ▶/⏸ ont un empattement (bas, et pour ▶ aussi à gauche) dans la
+   plupart des polices système : décalage visuel spécifique à chaque symbole
+   pour le recentrer réellement dans le cercle (cf. classes posées par
+   _fsFlashCenterIcon() dans fullscreen.js). */
+#fs-center-icon.icon-pause { padding-bottom: 6px; }
+#fs-center-icon.icon-play { padding-bottom: 6px; padding-left: 8px; }
+#anim-canvas-wrap.is-fullscreen #fs-center-icon { display: flex; }
+#anim-canvas-wrap.is-fullscreen #fs-center-icon.show {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+  transition: opacity 0.05s ease, transform 0.05s ease;
+}
+
 .fs-btn {
   flex: 0 0 auto;
   width: 34px;

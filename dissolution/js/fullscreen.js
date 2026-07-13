@@ -30,7 +30,7 @@ function _fsArmFadeTimer() {
   clearTimeout(_fsFadeTimer);
   _fsFadeTimer = setTimeout(() => {
     document.getElementById('anim-canvas-wrap').classList.add('fs-controls-hidden');
-  }, 2500);
+  }, 1000);
 }
 
 document.addEventListener('fullscreenchange', () => {
@@ -52,9 +52,43 @@ document.addEventListener('fullscreenchange', () => {
 
 window.addEventListener('DOMContentLoaded', () => {
   const wrap = document.getElementById('anim-canvas-wrap');
+  const controls = document.getElementById('fs-controls');
+  const canvas = document.getElementById('anim-canvas');
+
   wrap.addEventListener('mousemove', () => {
     if (document.fullscreenElement !== wrap) return;
     _fsShowControls();
     _fsArmFadeTimer();
   });
+
+  /* Tant que la souris survole la barre elle-même, elle reste affichée —
+     seul le déplacement hors de la barre relance le compte à rebours. */
+  controls.addEventListener('mouseenter', () => clearTimeout(_fsFadeTimer));
+  controls.addEventListener('mouseleave', () => {
+    if (document.fullscreenElement === wrap) _fsArmFadeTimer();
+  });
+
+  /* Clic dans la zone d'animation (hors barre de contrôle) : joue/pause,
+     comme la plupart des lecteurs vidéo en plein écran. */
+  canvas.addEventListener('click', () => {
+    if (document.fullscreenElement !== wrap) return;
+    togglePause();
+    _fsFlashCenterIcon(state.paused ? '⏸' : '▶');
+  });
 });
+
+/* Symbole play/pause affiché brièvement au centre de l'écran au clic — même
+   principe que YouTube/lecteurs média : icône de l'action qui vient d'être
+   effectuée, apparition instantanée puis fondu. */
+let _fsIconFadeTimer = null;
+function _fsFlashCenterIcon(symbol) {
+  const icon = document.getElementById('fs-center-icon');
+  if (!icon) return;
+  icon.textContent = symbol;
+  icon.classList.remove('show', 'icon-play', 'icon-pause');
+  icon.classList.add(symbol === '▶' ? 'icon-play' : 'icon-pause');
+  void icon.offsetWidth;   // force le redémarrage de la transition CSS
+  icon.classList.add('show');
+  clearTimeout(_fsIconFadeTimer);
+  _fsIconFadeTimer = setTimeout(() => icon.classList.remove('show'), 500);
+}
