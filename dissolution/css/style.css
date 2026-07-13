@@ -346,6 +346,62 @@ main {
 }
 #speed-select:focus { outline: none; border-color: #2a6aaa; }
 
+.btn-fullscreen {
+  background: #dedad2;
+  color: #5a6a78;
+  font-size: clamp(12px, 1.2vw, 15px);
+  padding: 9px 6px;
+  border: 1.5px solid #c8c0b4;
+}
+.btn-fullscreen:hover { background: #ccc8c0; }
+
+/* ── Barre de contrôle du mode plein écran ─────────
+   Enfant de #anim-canvas-wrap (seul élément mis en plein écran) : n'affiche
+   donc jamais l'image du verre ni le panneau de droite. Masquée hors plein
+   écran ; s'estompe (opacity) après quelques secondes d'inactivité de la
+   souris une fois en plein écran, comme les lecteurs vidéo type YouTube. */
+#fs-controls {
+  display: none;
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  z-index: 40;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.72), rgba(0, 0, 0, 0));
+  transition: opacity 0.3s ease;
+  opacity: 1;
+}
+#anim-canvas-wrap.is-fullscreen #fs-controls { display: flex; }
+#anim-canvas-wrap.is-fullscreen.fs-controls-hidden #fs-controls {
+  opacity: 0;
+  pointer-events: none;
+}
+#anim-canvas-wrap.is-fullscreen.fs-controls-hidden { cursor: none; }
+
+.fs-btn {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.fs-btn:hover { background: rgba(255, 255, 255, 0.3); }
+
+#fs-progress-bar { flex: 1; accent-color: #2a9ae0; }
+#fs-progress-time {
+  flex: 0 0 auto;
+  font-family: monospace;
+  font-size: 12px;
+  color: #fff;
+  white-space: nowrap;
+}
+
 /* ── Placeholder "À venir" (2e onglet) ────────────── */
 .coming-soon {
   text-align: center;

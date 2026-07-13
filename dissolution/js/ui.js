@@ -76,6 +76,15 @@ function drawScene() {
   if (timeLabel) {
     timeLabel.textContent = Math.round(state.animT / 1000) + ' s / ' + Math.round(DURATION_MS / 1000) + ' s';
   }
+
+  /* Doublons de la barre de progression, affichés dans la barre de contrôle
+     du mode plein écran (cf. fullscreen.js) — tenus synchronisés ici. */
+  const fsBar = document.getElementById('fs-progress-bar');
+  if (fsBar) fsBar.value = state.animT;
+  const fsTimeLabel = document.getElementById('fs-progress-time');
+  if (fsTimeLabel) {
+    fsTimeLabel.textContent = Math.round(state.animT / 1000) + ' s / ' + Math.round(DURATION_MS / 1000) + ' s';
+  }
 }
 
 /* Vitesse de lecture globale (sélecteur « Vitesse » du panneau de commande) :
@@ -182,14 +191,18 @@ function resetSimAnim() {
 
 function _updatePlayBtn() {
   const btn = document.getElementById('btn-playpause');
-  if (!btn) return;
-  if (state.paused || state.ended) {
-    btn.textContent = '▶ Lancer';
-    btn.className = 'btn btn-play';
-  } else {
-    btn.textContent = '⏸ Pause';
-    btn.className = 'btn btn-pause';
+  if (btn) {
+    if (state.paused || state.ended) {
+      btn.textContent = '▶ Lancer';
+      btn.className = 'btn btn-play';
+    } else {
+      btn.textContent = '⏸ Pause';
+      btn.className = 'btn btn-pause';
+    }
   }
+  /* Bouton lecture/pause de la barre de contrôle plein écran (fullscreen.js) */
+  const fsBtn = document.getElementById('fs-playpause');
+  if (fsBtn) fsBtn.textContent = (state.paused || state.ended) ? '▶' : '⏸';
 }
 
 /* ══════════════════════════════════════════════════

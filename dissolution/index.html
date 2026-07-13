@@ -51,6 +51,16 @@
           </div>
           <div id="dev-panel-body"></div>
         </div>
+
+        <!-- Barre de contrôle du mode plein écran (masquée hors plein écran,
+             s'estompe si la souris est inactive — cf. resize()/fullscreen.js) -->
+        <div id="fs-controls">
+          <button id="fs-playpause" class="fs-btn" onclick="togglePause()" title="Lecture / Pause">▶</button>
+          <input type="range" id="fs-progress-bar" min="0" max="10000" step="10" value="0"
+                 oninput="onProgressBarInput(this.value)">
+          <span id="fs-progress-time">0 s / 0 s</span>
+          <button id="fs-exit" class="fs-btn" onclick="exitFullscreenAnim()" title="Quitter le plein écran">⤢</button>
+        </div>
       </div>
 
     </div><!-- fin #anim-area -->
@@ -104,6 +114,9 @@
               <option value="2">×2</option>
             </select>
           </div>
+
+          <button class="btn btn-fullscreen" style="margin-top:8px;"
+                  onclick="toggleFullscreen()">⛶ Plein écran</button>
         </div>
       </div><!-- fin #section-mecanisme -->
 
@@ -152,6 +165,7 @@
 <script src="js/eau.js"></script>
 <script src="js/textboxes.js"></script>
 <script src="js/ui.js"></script>
+<script src="js/fullscreen.js"></script>
 <script src="js/devpanel.js"></script>
 
 <script data-goatcounter="https://berdous-pc.goatcounter.com/count"
