@@ -30,9 +30,23 @@
           <span id="verre-placeholder-icon">🥛</span>
           Image à venir
         </div>
-        <img id="img-verre" src="verre-eau-sel.png" alt="Verre d'eau avec du sel au fond"
-             onload="onVerreLoad()" onerror="onVerreError()">
+        <!-- #verre-img-wrap se dimensionne exactement sur l'image affichée
+             (cf. CSS) : le cadre de zoom, positionné en % à l'intérieur,
+             reste ainsi calé sur l'image quelle que soit sa taille rendue. -->
+        <div id="verre-img-wrap">
+          <img id="img-verre" src="images/eau_sel.png" alt="Verre d'eau avec du sel au fond">
+          <!-- Cadre de zoom (outil dev — cf. devpanel.js / ZOOM_FRAME) -->
+          <div id="zoom-frame">
+            <div id="zoom-frame-handle" title="Redimensionner"></div>
+          </div>
+        </div>
       </div>
+
+      <!-- Traits de rappel (géométrie calculée — cf. renderReminderLines()
+           dans devpanel.js). Superposés à toute la zone d'animation ;
+           coordonnées en % (0-100) via viewBox, recalculées à chaque
+           redimensionnement. -->
+      <svg id="lines-overlay" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
 
       <!-- Canvas de l'animation microscopique -->
       <div id="anim-canvas-wrap">

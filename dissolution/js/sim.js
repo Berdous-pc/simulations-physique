@@ -140,6 +140,13 @@ let PAUSE_POINTS = [
   { atMs: 19400, holdMs: 4000 },
 ];
 
+/* Cadre de zoom sur l'image du verre (fractions 0-1 de l'image affichée) —
+   calé visuellement via le panneau de réglage (mode « Cadre », cf.
+   devpanel.js) puis figé ici. Les traits de rappel qui le relient à la zone
+   d'animation sont entièrement calculés (pas de coordonnées à figer, cf.
+   renderReminderLines() dans devpanel.js). */
+let ZOOM_FRAME = { x: 0.33268964795701833, y: 0.614513559523761, w: 0.3758988544229236, h: 0.10485358628575159 };
+
 /* ══════════════════════════════════════════════════
    Couleurs des ions et des atomes d'eau (charte du site)
 ══════════════════════════════════════════════════ */

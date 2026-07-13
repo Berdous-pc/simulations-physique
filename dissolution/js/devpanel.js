@@ -59,8 +59,144 @@ function toggleDevPanel() {
 /* ══════════════════════════════════════════════════
    Édition du cristal et du scénario
 ══════════════════════════════════════════════════ */
-let EDIT_MODE = 'none';   // 'none' | 'crystal' | 'script' | 'text'
+let EDIT_MODE = 'none';   // 'none' | 'crystal' | 'script' | 'text' | 'frame'
 let nextTextBoxId = 0;
+
+/* ══════════════════════════════════════════════════
+   Cadre de zoom sur l'image + traits de rappel — TEMPORAIRE
+   (outil dev pour caler visuellement la zone d'animation par rapport à
+   l'image du verre ; à retirer avec ce fichier une fois le calage terminé)
+══════════════════════════════════════════════════ */
+
+/* ZOOM_FRAME (fractions 0-1 de l'image affichée) est déclaré dans sim.js —
+   figé après calage via le panneau. Ce fichier ne fait que le lire/modifier
+   en place. */
+
+function renderZoomFrame() {
+  const el = document.getElementById('zoom-frame');
+  if (!el) return;
+  el.style.left = (ZOOM_FRAME.x * 100) + '%';
+  el.style.top = (ZOOM_FRAME.y * 100) + '%';
+  el.style.width = (ZOOM_FRAME.w * 100) + '%';
+  el.style.height = (ZOOM_FRAME.h * 100) + '%';
+}
+
+function renderFrameFields() {
+  const box = document.getElementById('dev-frame-fields');
+  if (!box) return;
+  const f = ZOOM_FRAME;
+  const field = (label, key, val) =>
+    '<label class="dev-textbox-field">' + label +
+    '<input type="number" step="1" min="0" max="100" value="' + Math.round(val * 100) + '" data-key="' + key + '"></label>';
+  box.innerHTML =
+    '<div class="dev-textbox-grid">' +
+    field('X (%)', 'x', f.x) + field('Y (%)', 'y', f.y) +
+    field('Largeur (%)', 'w', f.w) + field('Hauteur (%)', 'h', f.h) +
+    '</div>';
+  box.querySelectorAll('input').forEach(input => {
+    input.addEventListener('change', () => {
+      ZOOM_FRAME[input.dataset.key] = Number(input.value) / 100;
+      renderZoomFrame();
+    });
+  });
+}
+
+/* Coin cliqué sur la poignée : redimensionne (x,y fixes, w/h suivent la
+   souris). Coin cliqué ailleurs sur le cadre : déplace le cadre entier
+   (dimensions fixes), en le maintenant dans les limites de l'image. */
+function initZoomFrameDrag() {
+  const wrap = document.getElementById('verre-img-wrap');
+  const frame = document.getElementById('zoom-frame');
+  const handle = document.getElementById('zoom-frame-handle');
+  if (!wrap || !frame || !handle) return;
+
+  function startDrag(mode, e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = wrap.getBoundingClientRect();
+    const start = { x: e.clientX, y: e.clientY };
+    const orig = { ...ZOOM_FRAME };
+
+    function onMove(ev) {
+      const dxFrac = (ev.clientX - start.x) / rect.width;
+      const dyFrac = (ev.clientY - start.y) / rect.height;
+      if (mode === 'resize') {
+        ZOOM_FRAME.w = Math.min(Math.max(orig.w + dxFrac, 0.02), 1 - orig.x);
+        ZOOM_FRAME.h = Math.min(Math.max(orig.h + dyFrac, 0.02), 1 - orig.y);
+      } else {
+        ZOOM_FRAME.x = Math.min(Math.max(orig.x + dxFrac, 0), 1 - orig.w);
+        ZOOM_FRAME.y = Math.min(Math.max(orig.y + dyFrac, 0), 1 - orig.h);
+      }
+      renderZoomFrame();
+      renderFrameFields();
+      renderReminderLines();
+    }
+    function onUp() {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }
+
+  handle.addEventListener('mousedown', e => startDrag('resize', e));
+  frame.addEventListener('mousedown', e => {
+    if (e.target === handle) return;
+    if (EDIT_MODE === 'frame') startDrag('move', e);
+  });
+}
+
+/* Traits de rappel : géométrie entièrement dérivée (pas de coordonnées
+   éditables) — relient toujours le coin supérieur droit et le coin inférieur
+   droit du cadre de zoom (sur l'image) aux coins supérieur/inférieur gauche
+   de la zone d'animation (#anim-canvas-wrap). Recalculée à chaque
+   redimensionnement (resize() dans ui.js) et à chaque déplacement/
+   redimensionnement du cadre, donc toujours exacte quelle que soit la taille
+   de la fenêtre. */
+function renderReminderLines() {
+  const wrap = document.getElementById('verre-img-wrap');
+  const area = document.getElementById('anim-area');
+  const canvasWrap = document.getElementById('anim-canvas-wrap');
+  const svg = document.getElementById('lines-overlay');
+  if (!wrap || !area || !canvasWrap || !svg) return;
+
+  const wrapRect = wrap.getBoundingClientRect();
+  const areaRect = area.getBoundingClientRect();
+  const canvasRect = canvasWrap.getBoundingClientRect();
+  if (!areaRect.width || !areaRect.height) return;
+
+  const toPct = (absX, absY) => ({
+    x: ((absX - areaRect.left) / areaRect.width) * 100,
+    y: ((absY - areaRect.top) / areaRect.height) * 100,
+  });
+
+  /* Les rects DOM donnent le bord EXTÉRIEUR des contours (2px, cf. style.css
+     #zoom-frame et #anim-canvas-wrap) : on rentre de la moitié de cette
+     épaisseur pour viser le milieu du trait du contour, ni l'extérieur ni
+     l'intérieur. */
+  const BORDER_HALF = 1;
+  const frameRightX = wrapRect.left + (ZOOM_FRAME.x + ZOOM_FRAME.w) * wrapRect.width - BORDER_HALF;
+  const frameTopY = wrapRect.top + ZOOM_FRAME.y * wrapRect.height + BORDER_HALF;
+  const frameBottomY = wrapRect.top + (ZOOM_FRAME.y + ZOOM_FRAME.h) * wrapRect.height - BORDER_HALF;
+
+  const canvasLeftX = canvasRect.left + BORDER_HALF;
+  const canvasTopY = canvasRect.top + BORDER_HALF;
+  const canvasBottomY = canvasRect.bottom - BORDER_HALF;
+
+  const pairs = [
+    [toPct(frameRightX, frameTopY), toPct(canvasLeftX, canvasTopY)],
+    [toPct(frameRightX, frameBottomY), toPct(canvasLeftX, canvasBottomY)],
+  ];
+
+  svg.innerHTML = '';
+  pairs.forEach(([a, b]) => {
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('x1', a.x); line.setAttribute('y1', a.y);
+    line.setAttribute('x2', b.x); line.setAttribute('y2', b.y);
+    line.setAttribute('class', 'dev-line');
+    svg.appendChild(line);
+  });
+}
 
 function pixelToCell(x, y) {
   const c = state.crystal;
@@ -69,12 +205,13 @@ function pixelToCell(x, y) {
 
 function setEditMode(mode) {
   EDIT_MODE = mode;
-  ['none', 'crystal', 'script', 'text'].forEach(m => {
+  ['none', 'crystal', 'script', 'text', 'frame'].forEach(m => {
     const btn = document.getElementById('dev-mode-' + m);
     if (btn) btn.classList.toggle('active', m === mode);
   });
   const canvas = document.getElementById('anim-canvas');
-  if (canvas) canvas.style.cursor = mode === 'none' ? 'default' : 'crosshair';
+  if (canvas) canvas.style.cursor = (mode === 'none' || mode === 'frame') ? 'default' : 'crosshair';
+  document.body.classList.toggle('dev-frame-edit', mode === 'frame');
 }
 
 function onEditorCanvasClick(e) {
@@ -302,8 +439,10 @@ function exportConfig() {
   const pausePointsText = 'let PAUSE_POINTS = [\n' +
     PAUSE_POINTS.map(p => '  { atMs: ' + p.atMs + ', holdMs: ' + p.holdMs + ' },').join('\n') +
     '\n];';
+  const zoomFrameText = 'let ZOOM_FRAME = ' + JSON.stringify(ZOOM_FRAME) + ';';
   const out = document.getElementById('dev-export-output');
-  out.value = scriptText + '\n\n' + overridesText + '\n\n' + textBoxesText + '\n\n' + pausePointsText;
+  out.value = scriptText + '\n\n' + overridesText + '\n\n' + textBoxesText + '\n\n' + pausePointsText +
+    '\n\n' + zoomFrameText;
   out.style.display = 'block';
   out.focus();
   out.select();
@@ -326,6 +465,8 @@ function buildDevPanel() {
 
   const body = document.getElementById('dev-panel-body');
   if (!body) return;
+
+  document.body.classList.add('dev-tools-active');
 
   const durationRow = document.createElement('div');
   durationRow.className = 'dev-row';
@@ -364,16 +505,19 @@ function buildDevPanel() {
     '<button id="dev-mode-crystal" class="dev-mode-btn">Cristal</button>' +
     '<button id="dev-mode-script" class="dev-mode-btn">Scénario</button>' +
     '<button id="dev-mode-text" class="dev-mode-btn">Texte</button>' +
+    '<button id="dev-mode-frame" class="dev-mode-btn">Cadre</button>' +
     '</div>' +
     '<div id="dev-script-list"></div>' +
     '<div id="dev-textbox-list"></div>' +
+    '<div class="dev-row-label" style="margin-top:6px;">Cadre de zoom (glisser le cadre/sa poignée sur l\'image — les traits de rappel suivent automatiquement)</div>' +
+    '<div id="dev-frame-fields"></div>' +
     '<div class="dev-row-label" style="margin-top:6px;">Pauses (figent l\'animation)</div>' +
     '<button id="dev-pause-add-btn" class="dev-mode-btn" style="width:100%;">+ Pause à ce temps</button>' +
     '<div id="dev-pause-list"></div>' +
     '<button id="dev-export-btn" class="dev-mode-btn" style="width:100%;margin-top:4px;">Exporter</button>' +
     '<textarea id="dev-export-output" readonly rows="6" style="display:none;width:100%;margin-top:4px;font-family:monospace;font-size:10px;"></textarea>';
   body.appendChild(editRow);
-  ['none', 'crystal', 'script', 'text'].forEach(m => {
+  ['none', 'crystal', 'script', 'text', 'frame'].forEach(m => {
     document.getElementById('dev-mode-' + m).addEventListener('click', () => setEditMode(m));
   });
   document.getElementById('dev-export-btn').addEventListener('click', exportConfig);
@@ -413,6 +557,24 @@ function buildDevPanel() {
   renderScriptList();
   renderTextBoxList();
   renderPauseList();
+
+  renderZoomFrame();
+  renderFrameFields();
+  initZoomFrameDrag();
+  renderReminderLines();
 }
 
-window.addEventListener('DOMContentLoaded', buildDevPanel);
+/* Affichage du cadre de zoom et des traits : élément visuel permanent de la
+   page (pas seulement un outil dev), donc rendu que le panneau soit activé
+   ou non. L'édition du cadre (glisser, poignée, champs) reste, elle,
+   réservée à buildDevPanel() ci-dessus quand DEV_PANEL_ENABLED est vrai. */
+function initPermanentOverlays() {
+  renderZoomFrame();
+  renderReminderLines();
+  window.addEventListener('resize', renderReminderLines);
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  initPermanentOverlays();
+  buildDevPanel();
+});

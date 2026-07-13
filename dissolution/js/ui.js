@@ -225,13 +225,27 @@ function toggleHint(tab) {
 /* ══════════════════════════════════════════════════
    Image décorative (verre d'eau + sel) — fournie plus tard
 ══════════════════════════════════════════════════ */
-function onVerreLoad() {
-  document.getElementById('img-verre').style.display = 'block';
-  document.getElementById('verre-placeholder').style.display = 'none';
-}
-function onVerreError() {
-  document.getElementById('img-verre').style.display = 'none';
-}
+(function initVerreImage() {
+  const img = document.getElementById('img-verre');
+  const placeholder = document.getElementById('verre-placeholder');
+  function showImage() {
+    img.style.display = 'block';
+    placeholder.style.display = 'none';
+    /* La taille de #verre-img-wrap (et donc la position du cadre de zoom
+       calé dessus) n'est connue qu'une fois l'image effectivement rendue :
+       recalcule les traits de rappel (devpanel.js, chargé après ui.js). */
+    if (typeof renderReminderLines === 'function') renderReminderLines();
+  }
+  function showPlaceholder() {
+    img.style.display = 'none';
+  }
+  img.addEventListener('load', showImage);
+  img.addEventListener('error', showPlaceholder);
+  // L'image peut avoir fini de charger avant que ce script ne s'exécute
+  // (chargement quasi instantané en local) : les listeners ci-dessus
+  // n'auraient alors jamais reçu l'événement.
+  if (img.complete && img.naturalWidth > 0) showImage();
+})();
 
 /* ══════════════════════════════════════════════════
    Tooltip de coordonnées (TEMPORAIRE — aide au positionnement pendant le

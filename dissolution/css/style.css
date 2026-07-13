@@ -55,6 +55,7 @@ main {
 ──────────────────────────────────────────────────── */
 #anim-area {
   flex: 1;
+  position: relative;
   display: grid;
   grid-template-columns: clamp(110px, 12vw, 170px) 1fr;
   min-height: 0;
@@ -74,7 +75,60 @@ main {
   text-align: center;
 }
 
-#img-verre { display: none; width: 100%; height: auto; }
+/* #verre-img-wrap : max-width (et non width) + display:inline-block, pour que
+   le conteneur se dimensionne exactement sur l'image affichée (nécessaire
+   pour que #zoom-frame, positionné en %, colle pile à l'image). */
+#verre-img-wrap { position: relative; display: inline-block; max-width: 100%; }
+#img-verre { display: none; max-width: 100%; height: auto; }
+
+/* ── Cadre de zoom (élément visuel permanent de la page, calé une fois via
+   le panneau dev — cf. devpanel.js). Position/dimensions en % : toujours fixe
+   par rapport à l'image, quelle que soit sa taille rendue. Affiché en
+   permanence ; seule l'interactivité (déplacer/redimensionner) est réservée
+   au mode "Cadre" du panneau dev (dev-frame-edit), pour ne pas gêner les
+   autres modes (ex. clics sur le cristal en mode "Scénario"). */
+#zoom-frame {
+  display: block;
+  position: absolute;
+  border: 2px solid #1a2744;
+  box-sizing: border-box;
+  background: rgba(26, 39, 68, 0.08);
+  pointer-events: none;
+}
+body.dev-frame-edit #zoom-frame { cursor: move; pointer-events: auto; }
+/* Poignée de redimensionnement : outil d'édition, visible uniquement dans
+   le panneau dev (mode "Cadre"). */
+#zoom-frame-handle {
+  display: none;
+  position: absolute;
+  right: -6px; bottom: -6px;
+  width: 12px; height: 12px;
+  background: #1a2744;
+  border: 1.5px solid #fff;
+  border-radius: 50%;
+  cursor: nwse-resize;
+  pointer-events: none;
+}
+body.dev-frame-edit #zoom-frame-handle { display: block; pointer-events: auto; }
+
+/* ── Traits de rappel — élément visuel permanent de la page ───────
+   Relient les coins droits du cadre de zoom aux coins gauches de la zone
+   d'animation ; géométrie entièrement calculée et recalculée au
+   redimensionnement (renderReminderLines(), devpanel.js), donc purement
+   décoratif côté CSS/HTML (jamais interactif). */
+#lines-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 15;
+}
+#lines-overlay .dev-line {
+  stroke: #1a2744;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
 
 #verre-placeholder {
   color: #7a8a96;
@@ -92,6 +146,8 @@ main {
   overflow: hidden;
   position: relative;
   background: linear-gradient(to bottom, #7dd3f7 0%, #29b6e8 100%);
+  border: 2px solid #1a2744;
+  box-sizing: border-box;
 }
 
 /* Taille pilotée par JS (resize() dans ui.js) : la scène a une résolution
