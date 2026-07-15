@@ -82,6 +82,45 @@
 
     </div><!-- fin #anim-area -->
 
+    <!-- ══════════════════════════════════════════════
+         Zone Dissolution — coupelle de soluté solide (haut) + verre d'eau,
+         équation et tableau d'avancement (bas). Sœur de #anim-area,
+         affichage basculé par setMainTab() (js/ui.js). Masquée par défaut
+         (onglet Mécanisme actif au chargement).
+    ══════════════════════════════════════════════ -->
+    <div id="dissolution-area" style="display:none;">
+
+      <!-- Colonne photo (placeholder — même traitement visuel que #verre-col) -->
+      <div id="diss-photo-col">
+        <div class="diss-photo-placeholder">
+          <span class="diss-photo-placeholder-icon">🧪</span>
+          Image à venir
+        </div>
+      </div>
+
+      <div id="diss-content-col">
+
+        <!-- Deux tiers supérieurs : coupelle + verre (canvas interactif) -->
+        <div id="diss-scene-wrap">
+          <canvas id="diss-canvas"></canvas>
+        </div>
+
+        <!-- Tiers inférieur : équation de dissolution + tableau d'avancement -->
+        <div id="diss-bottom-zone">
+          <div id="diss-equation"></div>
+          <table id="diss-table">
+            <thead><tr id="diss-thead-row"></tr></thead>
+            <tbody>
+              <tr id="diss-tbody-initial"></tr>
+              <tr id="diss-tbody-final"></tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div><!-- fin #diss-content-col -->
+
+    </div><!-- fin #dissolution-area -->
+
   </div><!-- fin #left-col -->
 
   <!-- ══════════════════════════════════════════════
@@ -137,12 +176,42 @@
         </div>
       </div><!-- fin #section-mecanisme -->
 
-      <!-- ═══ Section DISSOLUTION (à venir) ═══ -->
+      <!-- ═══ Section DISSOLUTION ═══ -->
       <div class="panel-main-section" id="section-dissolution" style="display:none;">
-        <div class="coming-soon">
-          <div class="coming-soon-icon">🧪</div>
-          <div class="coming-soon-title">Bientôt disponible</div>
-          <div class="coming-soon-text">Cet onglet est en cours de développement.</div>
+        <div class="panel-section">
+          <div class="section-title">Soluté</div>
+          <select id="diss-select-solute" class="diss-select" onchange="onDissSoluteChange(this.value)">
+            <option value="nacl" selected>Chlorure de sodium — NaCl</option>
+            <option value="mgcl2">Chlorure de magnésium — MgCl₂</option>
+            <option value="i2">Diiode — I₂</option>
+          </select>
+        </div>
+
+        <hr class="sep">
+
+        <div class="panel-section">
+          <div class="section-title">Volume de la solution</div>
+          <div class="param-row">
+            <label>Volume <span class="param-value">V = <span id="diss-lbl-vol">1,00</span> L</span></label>
+            <input type="range" id="diss-sl-vol" min="100" max="2000" step="50" value="1000"
+                   oninput="onDissVolumeInput(this.value)">
+          </div>
+        </div>
+
+        <hr class="sep">
+
+        <div class="panel-section">
+          <div class="section-title">Unité d'affichage</div>
+          <div class="diss-unit-toggle">
+            <button class="diss-unit-btn active" id="diss-unit-btn-mol" onclick="setDissUnit('mol')">n (mol)</button>
+            <button class="diss-unit-btn" id="diss-unit-btn-molL" onclick="setDissUnit('molL')">c (mol·L⁻¹)</button>
+          </div>
+        </div>
+
+        <hr class="sep">
+
+        <div class="panel-section">
+          <button class="btn btn-raz" onclick="dissReset()">↺ Remise à zéro</button>
         </div>
       </div><!-- fin #section-dissolution -->
 
@@ -165,17 +234,37 @@
       </div>
     </div>
 
+    <!-- ── Bandeau Instructions — onglet Dissolution ───── -->
+    <div class="panel-hint collapsed" id="panel-hint-dissolution" style="display:none;">
+      <div class="panel-hint-header">
+        <button class="panel-hint-menu-btn"
+                onclick="location.href='../index.html'"
+                title="Retour au menu principal">☰ Menu</button>
+        <span class="panel-hint-title">Instructions</span>
+        <button class="panel-hint-toggle"
+                onclick="toggleHint('dissolution')"
+                title="Afficher les instructions">▲</button>
+      </div>
+      <div class="panel-hint-body">
+        Cliquez sur un groupement d'ions dans la coupelle, puis faites-le glisser jusque dans le
+        verre d'eau : au contact de l'eau, les ions se séparent et se dispersent. Le tableau
+        indique la quantité de soluté apporté et la quantité effective de chaque ion en solution.
+      </div>
+    </div>
+
   </div><!-- fin #panel -->
 
 </main>
 
 <!-- ════════════════════════════════════════════════
-     Ordre de chargement : sim → cristal → eau → textboxes → ui
+     Ordre de chargement : sim → cristal → eau → textboxes → diss-data → diss → ui
 ════════════════════════════════════════════════ -->
 <script src="js/sim.js"></script>
 <script src="js/cristal.js"></script>
 <script src="js/eau.js"></script>
 <script src="js/textboxes.js"></script>
+<script src="js/diss-data.js"></script>
+<script src="js/diss.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/fullscreen.js"></script>
 <script src="js/devpanel.js"></script>

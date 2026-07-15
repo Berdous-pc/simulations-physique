@@ -34,6 +34,7 @@ function resize() {
   ctx.setTransform(cssW * dpr / STAGE_W, 0, 0, cssH * dpr / STAGE_H, 0, 0);   // dessin exprimé en unités de scène fixes
   computeCrystalGeometry();
   drawScene();
+  if (state.onglet === 'dissolution') dissResize();
 }
 window.addEventListener('resize', resize);
 
@@ -138,31 +139,44 @@ function onProgressBarInput(v) {
    Boucle d'animation
 ══════════════════════════════════════════════════ */
 let _lastTs = null;
+/* Boucle rAF unique pour toute la page : ne fait progresser/dessiner que la
+   simulation de l'onglet actif (state.onglet), pour ne pas faire avancer le
+   scénario du Mécanisme « en arrière-plan » pendant qu'on est sur l'onglet
+   Dissolution, et inversement. */
 function loop(ts) {
   if (_lastTs == null) _lastTs = ts;
-  const dt = (state.paused || state.ended) ? 0 : Math.min(50, ts - _lastTs) * PLAYBACK_SPEED;
+  const rawDt = Math.min(50, ts - _lastTs);
   _lastTs = ts;
 
-  if (dt > 0) {
-    /* animT est l'horloge unique de la timeline (temps réel écoulé depuis le
-       début) : les points de pause en font partie intégrante, ils ne sont pas
-       mis à part. Seule la simulation (fondus, processus, scénario) est gelée
-       tant qu'on est dans la fenêtre d'un point de pause — l'animation reste
-       visuellement figée pour laisser le temps de lire l'explication affichée. */
-    state.animT += dt;
-    if (state.animT >= DURATION_MS) {
-      state.animT = DURATION_MS;
-      state.ended = true;
-      _updatePlayBtn();
+  if (state.onglet === 'mecanisme') {
+    const dt = (state.paused || state.ended) ? 0 : rawDt * PLAYBACK_SPEED;
+    if (dt > 0) {
+      /* animT est l'horloge unique de la timeline (temps réel écoulé depuis le
+         début) : les points de pause en font partie intégrante, ils ne sont pas
+         mis à part. Seule la simulation (fondus, processus, scénario) est gelée
+         tant qu'on est dans la fenêtre d'un point de pause — l'animation reste
+         visuellement figée pour laisser le temps de lire l'explication affichée. */
+      state.animT += dt;
+      if (state.animT >= DURATION_MS) {
+        state.animT = DURATION_MS;
+        state.ended = true;
+        _updatePlayBtn();
+      }
+      if (!isPauseActive(state.animT)) {
+        advanceFadeIns(dt);
+        updateProcesses(dt);
+        if (!state.ended) runScript();
+      }
     }
-    if (!isPauseActive(state.animT)) {
-      advanceFadeIns(dt);
-      updateProcesses(dt);
-      if (!state.ended) runScript();
-    }
+    drawScene();
+  } else if (state.onglet === 'dissolution') {
+    /* Mouvement brownien des ions/molécules dissous — dt attendu en secondes
+       (cf. dissBrownianStep(), calqué sur titrage/js/ui.js). */
+    const dtS = rawDt / 1000;
+    dissState.freeSpecies.forEach(s => dissBrownianStep(s, dtS));
+    dissDrawScene();
   }
 
-  drawScene();
   requestAnimationFrame(loop);
 }
 
@@ -214,7 +228,16 @@ function setMainTab(tab) {
     document.getElementById('tab-' + t).classList.toggle('active', t === tab);
     document.getElementById('section-' + t).style.display = (t === tab) ? '' : 'none';
   });
+  document.getElementById('anim-area').style.display = (tab === 'mecanisme') ? '' : 'none';
+  document.getElementById('dissolution-area').style.display = (tab === 'dissolution') ? '' : 'none';
   document.getElementById('panel-hint-mecanisme').style.display = (tab === 'mecanisme') ? '' : 'none';
+  document.getElementById('panel-hint-dissolution').style.display = (tab === 'dissolution') ? '' : 'none';
+
+  /* Les deux zones (#anim-area / #dissolution-area) sont display:none tour à
+     tour : leur clientWidth/Height ne sont fiables qu'une fois réaffichées —
+     on relance donc le resize approprié ici, pas seulement une fois à init(). */
+  if (tab === 'mecanisme') resize();
+  else dissResize();
 }
 
 function toggleHint(tab) {
@@ -281,6 +304,17 @@ function init() {
   if (bar) bar.max = DURATION_MS;
   const fsBar = document.getElementById('fs-progress-bar');
   if (fsBar) fsBar.max = DURATION_MS;
+
+  /* Onglet Dissolution : géométrie initiale (la zone est masquée au
+     chargement — display:none — donc son resize « cover » complet sera
+     rejoué par setMainTab() dès qu'on y bascule, cf. dissResize()) et
+     écouteurs d'interaction. */
+  computeDissSceneLayout();
+  computeDissGlassGeometry();
+  buildDissPile();
+  initDissInteraction();
+  renderDissTable();
+
   requestAnimationFrame(loop);
 }
 window.addEventListener('DOMContentLoaded', init);

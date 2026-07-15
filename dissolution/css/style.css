@@ -573,3 +573,142 @@ body.dev-frame-edit #zoom-frame-handle { display: block; pointer-events: auto; }
 .panel-hint.collapsed .panel-hint-header { padding-bottom: 6px; }
 
 .panel-hint:not(.collapsed) .panel-hint-toggle { transform: rotate(180deg); }
+
+/* ══════════════════════════════════════════════════
+   ONGLET DISSOLUTION
+══════════════════════════════════════════════════ */
+
+/* ── Zone gauche : coupelle + verre (canvas) + tableau ─── */
+#dissolution-area {
+  flex: 1;
+  display: grid;
+  grid-template-columns: clamp(110px, 12vw, 170px) 1fr;
+  min-height: 0;
+  overflow: hidden;
+  background: #fdf8f0;
+  border-right: 1px solid #c8c0b4;
+}
+
+/* ── Colonne photo (placeholder — même traitement que #verre-col) ── */
+#diss-photo-col {
+  grid-column: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(6px, 1vw, 12px);
+  border-right: 1px solid #c8c0b4;
+  text-align: center;
+}
+.diss-photo-placeholder {
+  color: #7a8a96;
+  font-size: clamp(10px, 1vw, 13px);
+  line-height: 1.5;
+}
+.diss-photo-placeholder-icon { font-size: clamp(22px, 3vw, 34px); display: block; margin-bottom: 4px; }
+
+/* ── Colonne contenu : scène (2/3) + tableau (1/3) ── */
+#diss-content-col {
+  grid-column: 2;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#diss-scene-wrap {
+  flex: 2 1 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+  background: #fdf8f0;
+  box-sizing: border-box;
+}
+#diss-canvas {
+  display: block;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+}
+
+#diss-bottom-zone {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  background: #fdf8f0;
+  border-top: 1px solid #c8c0b4;
+  padding: clamp(8px, 1.2vh, 16px) clamp(10px, 1.5vw, 20px);
+}
+
+#diss-equation {
+  text-align: center;
+  font-size: clamp(15px, 1.8vw, 22px);
+  font-weight: 700;
+  color: #2c3e50;
+  margin-bottom: clamp(6px, 1vh, 12px);
+}
+
+/* ── Tableau d'avancement (valeurs reprises de reaction/css/style.css,
+   redéfinies localement — pas de CSS partagé entre dossiers dans ce dépôt) ── */
+#diss-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: clamp(11px, 1.1vw, 14px);
+  text-align: center;
+}
+#diss-table th, #diss-table td {
+  border: 1px solid #c8c0b4;
+  padding: clamp(4px, 0.8vh, 8px) 6px;
+}
+#diss-table .diss-label { text-align: left; color: #5a6a78; font-weight: 600; white-space: nowrap; }
+#diss-table .diss-col-solute, #diss-table .diss-td-solute { background: #e8f0fb; color: #2a6aaa; }
+#diss-table .diss-col-ion,    #diss-table .diss-td-ion    { background: #e8f5ee; color: #2a8a50; }
+#diss-table thead th { font-weight: 700; }
+#diss-table .sep-rp { border-right: 2px solid #b0a898; }
+
+/* ── Sélecteur de soluté (repris de .titrage-select/.reaction-select) ── */
+.diss-select {
+  width: 100%;
+  padding: 7px 8px;
+  border: 1px solid #c8c0b4;
+  border-radius: 5px;
+  background: #fff;
+  color: #2c3e50;
+  font-size: clamp(12px, 1.25vw, 15px);
+  font-family: inherit;
+  cursor: pointer;
+}
+.diss-select:focus { outline: none; border-color: #2a6aaa; }
+
+/* ── Slider de volume (charte CONTEXTE_PROJET.md §5, cf. pression/) ── */
+.param-row { display: flex; flex-direction: column; gap: 3px; margin-bottom: 6px; }
+.param-row label { display: flex; justify-content: space-between; align-items: baseline; font-size: 15px; color: #2c3e50; }
+.param-value { color: #2a5080; font-weight: 600; }
+.param-row input[type="range"] { width: 100%; accent-color: #4a7aaa; cursor: pointer; }
+
+/* ── Bascule d'unité mol / mol·L⁻¹ (façon .mode-tabs/.mode-tab) ── */
+.diss-unit-toggle {
+  display: flex;
+  border: 1px solid #c8c0b4;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.diss-unit-btn {
+  flex: 1;
+  padding: 8px 4px;
+  font-size: clamp(12px, 1.2vw, 15px);
+  font-weight: 700;
+  font-family: inherit;
+  border: none;
+  background: #dedad2;
+  color: #5a6a78;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.diss-unit-btn:not(:last-child) { border-right: 1px solid #c8c0b4; }
+.diss-unit-btn:hover { background: #ccc8c0; }
+.diss-unit-btn.active { background: #2a6aaa; color: #fff; }
