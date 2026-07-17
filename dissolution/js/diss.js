@@ -52,7 +52,7 @@ const dissState = {
   nApporte: 0,                 // nb de groupements largués dans l'eau depuis le dernier reset (mol)
   tableY: 0,                   // ligne de table sur laquelle reposent la coupelle et le verre (vue de profil)
   baseY: 0,                    // fond réel des récipients (légèrement au-dessus de tableY, cf. DISS_BASE_LIFT)
-  dish: { pileBack: [], pileFront: [], x0: 0, y0: 0, w: 0, h: 0, flare: 0 },
+  dish: { pile: [], x0: 0, y0: 0, w: 0, h: 0, flare: 0 },
   glass: { x0: 0, y0: 0, w: 0, h: 0, wallInset: 10, waterTopY: 0, bottomY: 0 },
   heldGrain: null,              // { x, y, solute } pendant le clic-glisser
   freeSpecies: [],              // ions/molécules dispersés dans l'eau : { x, y, vx, vy, especeIdx, el, fill, border }
@@ -77,44 +77,40 @@ function computeDissSceneLayout() {
   g.x0 = 620; g.y0 = dissState.baseY - g.h;
 }
 
-/* Distance visée (en unités de rayon r) entre deux atomes tangents / très
-   légèrement chevauchants, pour des sphères dessinées à r*0.85 (cf.
-   dissDrawGrain()) — sert à la fois à calibrer les offsets `dx/dy` de
-   chaque `grain` (diss-data.js, atomes d'un même groupement) et l'espacement
-   entre groupements voisins du pavage ci-dessous (même logique de contact
-   appliquée aux deux échelles). */
-const DISS_TOUCH_GAP = 1.6;
+/* Rayon des petits grains formant le tas de soluté solide dans la coupelle —
+   VOLONTAIREMENT DISTINCT de DISS_ION_R (rayon des ions dissous dans le
+   verre et du groupement saisi pendant le clic-glisser, tous deux inchangés)
+   : le tas doit évoquer un tas de sel/de sable fait de grains minuscules,
+   pas un empilement de sphères de la même taille que les ions individuels
+   qu'on manipule. */
+const DISS_PILE_GRAIN_R = 3.2;
 
-/* Empan (en unités de rayon r) du gabarit `grain` sur un axe donné. */
-function dissGrainSpan(solute, axis) {
-  const values = solute.grain.map(p => (axis === 'x' ? p.dx : p.dy));
-  return Math.max(...values) - Math.min(...values);
-}
+/* Épaisseur du trait de la coupelle (cf. drawDissDish()) — extraite ici pour
+   être réutilisée par buildDissPile() : la marge de sécurité du tas doit
+   connaître cette épaisseur pour garantir qu'aucun grain ne chevauche le
+   trait, pas seulement qu'il reste dans le rectangle intérieur. */
+const DISS_DISH_WALL_LW = 4;
 
-/* Débord maximal (en px) d'un atome par rapport à l'ancre (centre) de son
-   groupement, dans chaque direction — c'est-à-dire l'offset `dx`/`dy` le
-   plus extrême du gabarit `grain`, converti en px, PLUS le rayon de la
-   sphère elle-même (r*0.85, cf. dissDrawGrain()). Sert à border le pavage
-   (buildDissPile()) pour qu'aucun atome, même le plus excentré de son
-   groupement, ne déborde jamais des parois/du fond de la coupelle — la
-   marge d'ancien calcul (juste DISS_ION_R) ignorait cet excentrement et
-   laissait déborder les groupements en bord de tas. */
-function dissGrainMargins(solute) {
-  const r = DISS_ION_R;
-  const atomR = r * 0.85;
-  let maxDx = 0, maxUp = 0, maxDown = 0;
-  solute.grain.forEach(part => {
-    maxDx = Math.max(maxDx, Math.abs(part.dx));
-    if (part.dy < 0) maxUp = Math.max(maxUp, -part.dy);
-    if (part.dy > 0) maxDown = Math.max(maxDown, part.dy);
-  });
-  return { x: maxDx * r + atomR, up: maxUp * r + atomR, down: maxDown * r + atomR };
-}
+/* Tolérance de recouvrement volontaire, en px, entre le bord d'un grain et
+   le trait de la coupelle (cf. son usage dans buildDissPile()) : au lieu de
+   s'arrêter strictement à l'intérieur du trait, chaque grain peut mordre
+   dessus de ce tout petit débord, pour qu'il ait l'air de reposer contre la
+   paroi plutôt que de laisser un liseré vide bien net avant le trait. */
+const DISS_PILE_BORDER_OVERLAP = 0.1;
+
+/* Pas de la grille de génération du tas (cf. buildDissPile()) — NETTEMENT
+   inférieur au diamètre moyen d'un grain (2×DISS_PILE_GRAIN_R), de sorte que
+   deux grains voisins se chevauchent déjà franchement sur la grille de base,
+   AVANT même dispersion aléatoire. Cette marge de chevauchement est ce qui
+   garantit l'absence de trou une fois le jitter appliqué (cf. buildDissPile) :
+   un pas trop proche du diamètre (chevauchement quasi nul sur la grille) ne
+   laisse aucune marge, et le jitter suffit alors à écarter des grains voisins
+   au point de laisser voir le fond de la coupelle entre eux. */
+const DISS_PILE_SPACING = DISS_PILE_GRAIN_R * 1.15;
 
 /* Profil du monticule de soluté : parabole centrée sur la coupelle, plus
    haute au centre, nulle sur les bords — hauteur disponible à l'abscisse x
-   (en px, au-dessus de baseY). Partagé par les deux couches du pavage
-   (buildDissPile()) pour qu'elles décrivent exactement la même silhouette. */
+   (en px, au-dessus de baseY). */
 function dissMoundHeightAt(d, x) {
   const cx = d.x0 + d.w / 2;
   const halfW = d.w / 2;
@@ -124,52 +120,98 @@ function dissMoundHeightAt(d, x) {
   return moundH * t;
 }
 
-/* Une couche du pavage réseau, décalée de (shiftX, shiftY) par rapport à
-   l'origine de la grille — factorisé pour être appelé deux fois par
-   buildDissPile() avec un décalage d'un demi-pas, cf. plus bas. `margin`
-   (cf. dissGrainMargins()) borde la grille pour que même l'atome le plus
-   excentré d'un groupement ne déborde jamais des parois/du fond réels de la
-   coupelle : la rangée la plus basse est calée pour que le bas de ses
-   atomes soit tangent au fond (baseY), pas simplement son ancre. */
-function dissBuildLatticeLayer(d, spacingX, spacingY, shiftX, shiftY, margin) {
-  const layer = [];
-  const yBottom = dissState.baseY - margin.down;
-  const yTop = d.y0 + margin.up;
-  let row = 0;
-  for (let y = yBottom - shiftY; y >= yTop; y -= spacingY, row++) {
-    const rowLift = dissState.baseY - y;
-    const offsetX = (row % 2) * (spacingX / 2) + shiftX;
-    for (let x = d.x0 + margin.x + offsetX; x <= d.x0 + d.w - margin.x; x += spacingX) {
-      if (rowLift > dissMoundHeightAt(d, x)) continue;   // hors du profil du monticule à cette abscisse
-      layer.push({ x, y });
-    }
-  }
-  return layer;
+/* Choisit l'espèce du prochain grain posé le long du balayage du tas
+   (buildDissPile(), ligne par ligne) en répartissant les tirages de façon
+   ÉQUILIBRÉE DANS L'ESPACE, plutôt que par un tirage indépendant à chaque
+   grain : un tirage aléatoire pur, même pondéré correctement en moyenne sur
+   tout le tas, laisse par pur hasard des paquets locaux d'une même espèce
+   assez grands pour être perçus comme des « zones » — artefact classique du
+   bruit blanc (le tirage indépendant précédent en souffrait).
+
+   Ici, chaque espèce accumule à chaque grain un « crédit » proportionnel à
+   son coefficient stœchiométrique (credit[i] += coeff[i]/total) ; l'espèce
+   choisie est celle au crédit le plus élevé (± une petite perturbation
+   aléatoire, pour ne pas figer un motif parfaitement mécanique), puis son
+   crédit est décrémenté d'une unité. Ce mécanisme (apparenté à l'algorithme
+   de tracé de segment de Bresenham, aussi utilisé en ordonnancement réseau
+   pondéré) garantit que, sur n'importe quelle fenêtre de grains consécutifs,
+   la proportion de chaque espèce colle de très près à son coefficient — d'où
+   une répartition homogène partout dans le tas plutôt que des plaques. */
+function dissPickBalancedEspece(especes, credit, totalCoeff) {
+  let bestIdx = 0, bestScore = -Infinity;
+  especes.forEach((esp, i) => {
+    credit[i] += esp.coeff / totalCoeff;
+    const score = credit[i] + (Math.random() - 0.5) * 0.35;
+    if (score > bestScore) { bestScore = score; bestIdx = i; }
+  });
+  credit[bestIdx] -= 1;
+  return especes[bestIdx];
 }
 
-/* Construit le pavage en DEUX couches superposées du même motif — une couche
-   « arrière » décalée d'un demi-pas (en x comme en y) par rapport à la
-   couche « avant » — plutôt qu'une seule couche + un fond de couleur plate.
-   Les groupements de la couche arrière tombent exactement dans les
-   interstices laissés par la couche avant (et réciproquement), comblant les
-   trous avec le MÊME motif d'ions plutôt qu'avec un aplat qui jurerait avec
-   le reste. La couche avant est redessinée par-dessus (cf. drawDissDish) :
-   c'est elle qui porte le motif « propre » et lisible, la couche arrière ne
-   sert qu'à boucher visuellement les espaces entre ses groupements. */
+/* Construit le tas comme une multitude de petits grains colorés selon
+   l'espèce choisie de façon équilibrée (dissPickBalancedEspece()), plutôt
+   qu'un pavage de groupements formulaires assemblés bout à bout : plus
+   proche visuellement d'un tas de sel/de sable réel, où la stœchiométrie se
+   lit dans les proportions de couleurs — homogènes partout, pas juste en
+   moyenne — plutôt que dans un motif géométrique répété.
+
+   Grille resserrée (DISS_PILE_SPACING, chevauchement franc par défaut) +
+   léger décalage aléatoire par grain (jitter, petit devant ce chevauchement
+   pour ne jamais l'annuler) + rayon légèrement variable : le chevauchement
+   de base assure qu'aucune zone du monticule ne reste vide (pas de trou),
+   le jitter casse juste l'alignement trop régulier pour donner un aspect
+   naturel de grains versés en vrac. */
 function buildDissPile() {
   const solute = SOLUTES.find(s => s.id === dissState.soluteId);
   const d = dissState.dish;
-  /* Espacement calé sur l'empan du groupement + DISS_TOUCH_GAP, de sorte que
-     deux groupements voisins se touchent/chevauchent légèrement. Pour NaCl
-     (grain linéaire à 2 atomes), cela fait coïncider exactement le contact
-     Cl⁻-Na⁺ inter-groupements avec le contact Na⁺-Cl⁻ intra-groupement : le
-     pavage devient une chaîne alternée continue Na-Cl-Na-Cl, qui évoque la
-     structure réelle du réseau NaCl. */
-  const spacingX = (dissGrainSpan(solute, 'x') + DISS_TOUCH_GAP) * DISS_ION_R;
-  const spacingY = (dissGrainSpan(solute, 'y') + DISS_TOUCH_GAP) * DISS_ION_R;
-  const margin = dissGrainMargins(solute);
-  d.pileBack = dissBuildLatticeLayer(d, spacingX, spacingY, spacingX / 2, spacingY / 2, margin);
-  d.pileFront = dissBuildLatticeLayer(d, spacingX, spacingY, 0, 0, margin);
+  const r = DISS_PILE_GRAIN_R;
+  const spacing = DISS_PILE_SPACING;
+  const jitter = spacing * 0.3;
+
+  /* Distance à respecter entre le CENTRE d'un grain et la ligne géométrique
+     du trait de la coupelle, pour que le BORD de ce grain (son propre rayon,
+     pas un rayon "pire cas" commun à tous) s'arrête tout juste sur cette
+     ligne — avec une tolérance volontaire de DISS_PILE_BORDER_OVERLAP : le
+     bord du grain peut légèrement mordre sur le trait plutôt que de rester
+     strictement à l'intérieur, pour que le tas ait l'air de vraiment
+     reposer contre la paroi plutôt que de s'arrêter net avec un liseré vide.
+     Appliquée à chaque grain individuellement (une fois son propre rayon
+     `gr` tiré) plutôt qu'à toute la grille avec un rayon maximal commun :
+     une marge commune calée sur le pire cas laissait les grains de taille
+     moyenne (la majorité) flotter loin du bord réel. */
+  const wallClear = DISS_DISH_WALL_LW / 2 - DISS_PILE_BORDER_OVERLAP;
+  /* Marge de génération de la grille elle-même : juste assez pour couvrir le
+     cas typique (rayon moyen), le clamp par grain ci-dessous rattrape les
+     grains plus gros que la moyenne sans qu'il soit nécessaire de reculer
+     toute la grille pour eux. */
+  const gridMargin = r + wallClear;
+
+  const totalCoeff = solute.especes.reduce((s, e) => s + e.coeff, 0);
+  const credit = solute.especes.map(() => 0);   // état de dissPickBalancedEspece(), maintenu tout au long du balayage
+
+  const pile = [];
+  const yBottom = dissState.baseY - gridMargin;
+  const yTop = d.y0 + gridMargin;
+  let row = 0;
+  for (let y = yBottom; y >= yTop; y -= spacing, row++) {
+    const offsetX = (row % 2) * (spacing / 2);
+    const rowLift = dissState.baseY - y;
+    for (let x = d.x0 + gridMargin + offsetX; x <= d.x0 + d.w - gridMargin; x += spacing) {
+      if (rowLift > dissMoundHeightAt(d, x)) continue;   // hors du profil du monticule à cette abscisse
+      const esp = dissPickBalancedEspece(solute.especes, credit, totalCoeff);
+      const gr = r * (0.75 + Math.random() * 0.5);
+      let gx = x + (Math.random() - 0.5) * jitter;
+      let gy = y + (Math.random() - 0.5) * jitter;
+      /* Clamp final : ramène le CENTRE du grain à l'intérieur de la zone où
+         son propre bord (gr, son rayon réel) reste à wallClear du trait —
+         nécessaire aussi bien pour le jitter (qui peut le pousser vers le
+         bord) que pour les grains tirés plus gros que la moyenne. */
+      gx = Math.min(Math.max(gx, d.x0 + gr + wallClear), d.x0 + d.w - gr - wallClear);
+      gy = Math.min(Math.max(gy, d.y0 + gr + wallClear), dissState.baseY - gr - wallClear);
+      pile.push({ x: gx, y: gy, r: gr, fill: esp.fill, border: esp.border });
+    }
+  }
+  d.pile = pile;
 }
 
 /* Test d'appartenance grossier (boîte englobante) à la silhouette évasée de
@@ -334,19 +376,42 @@ function dissDrawLabel(ctx, text, cx, tableY) {
   ctx.restore();
 }
 
+/* Atomes du gabarit `grain`, triés par coefficient stœchiométrique
+   DÉCROISSANT — l'espèce la plus rare (ex. Mg²⁺, coeff 1, face à 2 Cl⁻) est
+   ainsi toujours dessinée EN DERNIER, par-dessus les espèces plus
+   nombreuses, aussi bien au sein d'un même groupement qu'entre groupements
+   voisins du pavage (cf. dissDrawPile()) : elle ne se retrouve jamais
+   noyée/masquée sous l'espèce majoritaire, ce qui rendait la stœchiométrie
+   difficile à percevoir. */
+function dissOrderedGrainParts(solute) {
+  return [...solute.grain].sort((a, b) => {
+    const ca = (solute.especes.find(e => e.el === a.el) || {}).coeff || 1;
+    const cb = (solute.especes.find(e => e.el === b.el) || {}).coeff || 1;
+    return cb - ca;
+  });
+}
+
 /* `rot` (radians, optionnel) fait tourner le gabarit du groupement autour de
    (gx, gy) — utilisé pour varier l'orientation des groupements du tas
    (buildDissPile()) sans dupliquer la logique de dessin. */
 function dissDrawGrain(ctx, gx, gy, solute, r, rot) {
   const angle = rot || 0;
   const cos = Math.cos(angle), sin = Math.sin(angle);
-  solute.grain.forEach(part => {
+  dissOrderedGrainParts(solute).forEach(part => {
     const esp = solute.especes.find(e => e.el === part.el) || solute.especes[0];
     const lx = part.dx * r, ly = part.dy * r;
     const rx = gx + lx * cos - ly * sin;
     const ry = gy + lx * sin + ly * cos;
     drawSphere(ctx, rx, ry, r * 0.85, esp.fill, esp.border, null, null);
   });
+}
+
+/* Dessine le tas grain par grain (cf. buildDissPile()) : chaque grain porte
+   déjà sa couleur (espèce tirée au sort à la construction), donc un simple
+   passage suffit — pas de tri par espèce nécessaire, chaque grain est une
+   sphère indépendante plutôt qu'un groupement formulaire à composer. */
+function dissDrawPile(ctx, d) {
+  d.pile.forEach(g => drawSphere(ctx, g.x, g.y, g.r, g.fill, g.border, null, null));
 }
 
 /* Fond neutre (mur) au-dessus de la table — donne une scène « posée », pas
@@ -376,18 +441,16 @@ function drawDissTable(ctx) {
 }
 
 /* Coupelle vue de profil, posée sur la table : silhouette peu profonde et
-   évasée (parois + fond, ouverture non fermée en haut), remplie par le
-   pavage de groupements solides — deux couches du même motif (cf.
-   buildDissPile()), la couche arrière comblant les interstices de la couche
-   avant, dessinées dans cet ordre pour que le motif propre reste au premier
-   plan. */
+   évasée (parois + fond, ouverture non fermée en haut), remplie par un tas
+   de petits grains colorés (cf. buildDissPile()) évoquant du sel/du sable
+   plutôt qu'un empilement de groupements formulaires. */
 function drawDissDish(ctx) {
   const d = dissState.dish;
   const baseY = dissState.baseY;
 
   ctx.save();
   ctx.strokeStyle = '#8a9aaa';
-  ctx.lineWidth = 4;
+  ctx.lineWidth = DISS_DISH_WALL_LW;
   ctx.lineJoin = 'round';
   ctx.beginPath();
   ctx.moveTo(d.x0 - d.flare, d.y0);
@@ -399,9 +462,7 @@ function drawDissDish(ctx) {
 
   dissDrawLabel(ctx, 'Coupelle — soluté solide', d.x0 + d.w / 2, dissState.tableY);
 
-  const solute = SOLUTES.find(s => s.id === dissState.soluteId);
-  d.pileBack.forEach(p => dissDrawGrain(ctx, p.x, p.y, solute, DISS_ION_R));
-  d.pileFront.forEach(p => dissDrawGrain(ctx, p.x, p.y, solute, DISS_ION_R));
+  dissDrawPile(ctx, d);
 }
 
 /* Verre vu de profil, posé sur la même table que la coupelle — hauteur

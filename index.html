@@ -159,7 +159,9 @@
       text-decoration: underline;
       cursor: pointer;
       padding: 0;
-      white-space: nowrap;
+      white-space: normal;
+      text-align: left;
+      line-height: 1.3;
     }
     .link-uncheck:hover { color: #1f5486; }
 
@@ -705,9 +707,9 @@
           </div>
 </a>
 
-        <!-- Dissolution — Dissolution d'un solide ionique ── -->
+        <!-- Dissolution — Mécanisme de dissolution ─────── -->
         <a class="card theme-chimie"
-           href="dissolution/index.html"
+           href="dissolution/index.html?tab=mecanisme"
            data-discipline="chimie"
            data-theme="dissolution"
            data-levels="premiere">
@@ -721,6 +723,23 @@
           </div>
           <div class="card-desc">
             Animation du mécanisme de dissolution d'un solide ionique dans l'eau à l'échelle microscopique.
+          </div>
+</a>
+
+        <!-- Dissolution — Quantités de matière lors d'une dissolution ─── -->
+        <a class="card theme-chimie"
+           href="dissolution/index.html?tab=dissolution"
+           data-discipline="chimie"
+           data-theme="dissolution"
+           data-levels="premiere">
+          <div class="card-meta">
+            <span class="card-theme theme-chimie">Solutions aqueuses</span>
+            <span class="card-level level-premiere">Première</span>
+          </div>
+          <div class="card-title">Dissolution</div>
+          <div class="card-preview placeholder"></div>
+          <div class="card-desc">
+            Dissolution d'un solide en solution aqueuse. Concentration en soluté apporté et concentrations effectives.
           </div>
 </a>
 

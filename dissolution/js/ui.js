@@ -316,5 +316,9 @@ function init() {
   renderDissTable();
 
   requestAnimationFrame(loop);
+
+  // ── Deep link depuis la page d'accueil (?tab=mecanisme|dissolution) ─────
+  const _tab = new URLSearchParams(location.search).get('tab');
+  if (_tab === 'mecanisme' || _tab === 'dissolution') setMainTab(_tab);
 }
 window.addEventListener('DOMContentLoaded', init);
