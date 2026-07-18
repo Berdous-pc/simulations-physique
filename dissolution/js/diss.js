@@ -625,7 +625,26 @@ function dissRimBounce(f, prevY, nx, ny, wallX, rimY, r) {
   return rimY - r;
 }
 
+/* Durée maximale (s) d'un sous-pas de la boucle physique — cf.
+   dissStepPhysics() : les collisions (parois, rebord) sont résolues une fois
+   par sous-pas, à la position atteinte à la fin de ce sous-pas. Avec un seul
+   grand pas couvrant tout le dt réel d'une image (qui varie d'une image à
+   l'autre selon la fréquence de rafraîchissement et la charge du navigateur),
+   un groupement rapide peut parcourir une bien plus grande distance avant
+   qu'une collision proche d'une paroi ne soit détectée et corrigée — visible
+   comme un petit à-coup/saut précisément aux abords des récipients. Découper
+   le dt réel en sous-pas de taille fixe rend la trajectoire (et la détection
+   des rebonds) indépendante des irrégularités de dt d'une image à l'autre. */
+const DISS_PHYS_SUBSTEP = 1 / 120;
+
 function dissStepPhysics(dt) {
+  if (dissState.flying.length === 0) return;
+  const steps = Math.max(1, Math.ceil(dt / DISS_PHYS_SUBSTEP));
+  const subDt = dt / steps;
+  for (let i = 0; i < steps; i++) dissStepPhysicsSub(subDt);
+}
+
+function dissStepPhysicsSub(dt) {
   if (dissState.flying.length === 0) return;
   const r = DISS_ION_R * DISS_LOOSE_SCALE;
   const d = dissState.dish, g = dissState.glass, baseY = dissState.baseY;
