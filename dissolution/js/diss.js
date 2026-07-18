@@ -706,9 +706,14 @@ function dissStepPhysicsSub(dt) {
     const inDish = dissPointInDish(nx, ny);
     const inGlass = nx >= g.x0 && nx <= g.x0 + g.w;
 
-    if (inDish) return;   // retombé dans la coupelle : disparaît
-
-    if (inGlass) {
+    if (inDish) {
+      /* Ne disparaît qu'au contact du TAS lui-même (son profil de monticule,
+         cf. dissMoundHeightAt()), pas dès l'entrée dans la coupelle : sinon
+         un groupement lâché juste sous le rebord disparaissait alors qu'il
+         était visiblement encore en train de tomber au-dessus du tas. */
+      const pileTopY = baseY - dissMoundHeightAt(d, nx);
+      if (ny >= pileTopY - r) return;   // touche le tas : disparaît
+    } else if (inGlass) {
       if (ny >= g.waterTopY) {          // contact avec l'eau par le dessus
         dissDropGrainInWater({ x: Math.min(Math.max(nx, g.x0 + r), g.x0 + g.w - r), y: ny, solute: f.solute });
         return;
