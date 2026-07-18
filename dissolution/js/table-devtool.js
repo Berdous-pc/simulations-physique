@@ -10,6 +10,12 @@
 //  calage terminé.
 // ═══════════════════════════════════════════════════
 
+/* Désactivé pour la mise en ligne (même principe que DEV_PANEL_ENABLED dans
+   devpanel.js) : repasser à `true` pour réactiver l'outil, aucun autre
+   changement nécessaire. Masque et neutralise entièrement le bouton et le
+   panneau — rien n'est supprimé. */
+const DISS_TABLE_DEV_ENABLED = false;
+
 let DISS_TABLE_DEV_ACTIVE = false;
 
 /* Consultée par renderDissTable() (diss.js) : tant que l'éditeur est actif,
@@ -20,6 +26,7 @@ function isDissTableDevActive() {
 }
 
 function toggleDissTableDevMode() {
+  if (!DISS_TABLE_DEV_ENABLED) return;
   DISS_TABLE_DEV_ACTIVE = !DISS_TABLE_DEV_ACTIVE;
   document.getElementById('diss-table-dev-panel').classList.toggle('collapsed', !DISS_TABLE_DEV_ACTIVE);
   document.getElementById('diss-table').classList.toggle('diss-table-dev-mode', DISS_TABLE_DEV_ACTIVE);
@@ -332,3 +339,14 @@ function exportDissTableDesign() {
   out.focus();
   out.select();
 }
+
+/* Le bouton est masqué par défaut en dur dans index.html (style="display:
+   none"), pas seulement en JS ici : DOMContentLoaded ne se déclenche
+   qu'après le premier rendu, donc le cacher seulement depuis ce script
+   laissait l'icône apparaître brièvement au chargement avant de disparaître.
+   Ici, on ne fait que la RÉVÉLER si l'outil est activé — jamais l'inverse. */
+window.addEventListener('DOMContentLoaded', () => {
+  if (!DISS_TABLE_DEV_ENABLED) return;
+  const toggle = document.getElementById('diss-table-dev-toggle');
+  if (toggle) toggle.style.display = '';
+});

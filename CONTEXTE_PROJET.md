@@ -194,6 +194,7 @@ Tous les boutons partagent : `width: 100%`, `border-radius: 6px`, `font-weight: 
 - Hors scroll, collé en bas de `#panel`
 - `.panel-hint-body` : `font-size: clamp(12px, 1.15vw, 15px); color: #5a6a78; background: #fff; border: 1.5px solid #b0a898`
 - `.panel-hint-title` : `11px`, uppercase, `letter-spacing: 1px`, et **doit pouvoir rétrécir** : `min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 6px` (sinon le bouton ▲ déborde du panneau sur petite fenêtre)
+- **Si `#panel` a sa propre `border-left`** (cas de `dissolution/`, `champ_uniforme/`, `ondes/`, `pression/` — `#panel-body`, lui, n'a pas de bordure) : mettre `border-left: none` sur `.panel-hint`. Sinon les deux bordures gauches (celle de `#panel` et celle de `.panel-hint`) se superposent sur une largeur fractionnaire (`clamp()`), et l'arrondi sous-pixel du navigateur les désaligne d'~1px — visible uniquement sur `.panel-hint` car c'est le seul élément à porter sa propre bordure à cet endroit.
 
 ---
 
