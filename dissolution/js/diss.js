@@ -32,9 +32,19 @@ const DISS_VOL_MIN = 100, DISS_VOL_MAX = 2000;      // mL, bornes du slider volu
    seule la fraction remplie varie avec le volume choisi. */
 const DISS_FILL_MIN = 0.15, DISS_FILL_MAX = 0.92;
 
-/* Mouvement brownien — mêmes ordres de grandeur que ESPECES.V_BROWN/DAMPING
-   dans titrage/js/ui.js (dt attendu en secondes, comme là-bas). */
-const DISS_V_BROWN = 10.0, DISS_DAMPING = 0.85;
+/* Mouvement brownien — inspiré d'ESPECES.V_BROWN/DAMPING dans
+   titrage/js/ui.js (dt attendu en secondes, comme là-bas), mais les deux
+   constantes s'en écartent nettement :
+   - DISS_V_BROWN relevé bien au-delà de sa valeur d'origine (10.0), où
+     l'écart type du déplacement cumulé après une seconde n'était que
+     d'environ 1px, invisible face à la largeur du verre (~200px) ;
+   - DISS_DAMPING relevé aussi (0.85 → 0.95) : la vitesse persiste alors sur
+     un temps de corrélation ~3× plus long (~1/(1-damping) images), donc des
+     changements de direction bien moins fréquents pour une dispersion
+     globale comparable — un damping plus faible aurait exigé un bruit plus
+     fort à chaque image pour la même dispersion, d'où des à-coups de
+     direction visibles à chaque image. */
+const DISS_V_BROWN = 10.0, DISS_DAMPING = 0.95;
 
 /* Décollement visuel des récipients par rapport à la ligne de table : leur
    propre fond est dessiné DISS_BASE_LIFT px au-dessus de tableY, pour qu'ils
@@ -54,9 +64,26 @@ const dissState = {
   baseY: 0,                    // fond réel des récipients (légèrement au-dessus de tableY, cf. DISS_BASE_LIFT)
   dish: { pile: [], x0: 0, y0: 0, w: 0, h: 0, flare: 0 },
   glass: { x0: 0, y0: 0, w: 0, h: 0, wallInset: 10, waterTopY: 0, bottomY: 0 },
-  heldGrain: null,              // { x, y, solute } pendant le clic-glisser
+  heldGrain: null,              // { x, y, vx, vy, solute, _t } pendant le clic-glisser
+  flying: [],                   // groupements lâchés/lancés, en vol balistique : { x, y, vx, vy, solute }
+  restingGrains: [],            // groupements immobilisés sur la table : { x, y, solute }
   freeSpecies: [],              // ions/molécules dispersés dans l'eau : { x, y, vx, vy, especeIdx, el, fill, border }
 };
+
+/* Nombre max de groupements tolérés sur la table avant blocage du
+   prélèvement dans la coupelle (cf. dissUpdateTableFullState()). */
+const DISS_TABLE_LIMIT = 10;
+
+/* Accélération de la pesanteur appliquée aux groupements lâchés/lancés
+   (dissStepPhysics()), en px/s² — ordre de grandeur choisi pour une chute
+   perceptible mais pas instantanée à l'échelle de la scène (DISS_STAGE_H). */
+const DISS_GRAVITY = 1500;
+
+/* Taille des groupements en vol ou posés sur la table — légèrement plus
+   grande que DISS_ION_R (rayon des ions dissous) pour rester bien visible,
+   mais nettement moins que DISS_HELD_SCALE (le groupement saisi, encore
+   agrandi pour se détacher du curseur). */
+const DISS_LOOSE_SCALE = 1.05;
 
 /* ══════════════════════════════════════════════════
    Géométrie — coupelle et verre vus de profil, posés sur une même ligne de
@@ -214,11 +241,30 @@ function buildDissPile() {
   d.pile = pile;
 }
 
-/* Test d'appartenance grossier (boîte englobante) à la silhouette évasée de
-   la coupelle — suffisant pour une zone de clic schématique. */
+/* Abscisse de la paroi (gauche ou droite) de la coupelle À LA HAUTEUR y —
+   la coupelle est évasée (silhouette en trapèze : plus large au rebord y0,
+   plus étroite au fond baseY, cf. drawDissDish()), donc contrairement au
+   verre (parois verticales), une seule paire de constantes x0/x0+w ne
+   décrit correctement la paroi qu'au fond ; ailleurs, et surtout vers les
+   pointes évasées du rebord, elle serait bien trop à l'intérieur. Toute
+   détection (clic, glisser, vol balistique) portant sur la coupelle doit
+   donc interroger cette fonction plutôt qu'utiliser d.x0/d.x0+d.w tels
+   quels. */
+function dissDishWallX(y, isLeft) {
+  const d = dissState.dish;
+  const t = clamp01((y - d.y0) / (dissState.baseY - d.y0));
+  return isLeft ? lerp(d.x0 - d.flare, d.x0, t) : lerp(d.x0 + d.w + d.flare, d.x0 + d.w, t);
+}
+
+/* Test d'appartenance à la silhouette évasée de la coupelle, fidèle au
+   trapèze réellement dessiné (via dissDishWallX()) plutôt qu'à sa boîte
+   englobante — une boîte englobante prise sur toute la hauteur (comme
+   c'était le cas auparavant) surestime la zone valide près du fond (plus
+   étroit que le rebord) et la reste correcte seulement au rebord. */
 function dissPointInDish(x, y) {
   const d = dissState.dish;
-  return x >= d.x0 - d.flare && x <= d.x0 + d.w + d.flare && y >= d.y0 && y <= dissState.baseY;
+  if (y < d.y0 || y > dissState.baseY) return false;
+  return x >= dissDishWallX(y, true) && x <= dissDishWallX(y, false);
 }
 
 /* Niveau d'eau : interpolation linéaire du volume choisi entre les bornes
@@ -249,7 +295,10 @@ function dissWaterZone() {
 }
 
 /* ══════════════════════════════════════════════════
-   Interaction : clic pour saisir un groupement, glisser jusqu'au verre
+   Interaction : clic pour saisir un groupement, glisser puis lâcher/lancer —
+   le relâchement transmet la vitesse du geste au groupement, qui devient
+   ensuite un projectile balistique (cf. dissStepPhysics()) plutôt que de se
+   téléporter instantanément dans l'eau.
 ══════════════════════════════════════════════════ */
 function dissToStageXY(e) {
   const canvas = document.getElementById('diss-canvas');
@@ -257,40 +306,212 @@ function dissToStageXY(e) {
   return { x: e.offsetX / scale, y: e.offsetY / scale };
 }
 
+/* Bloque le franchissement d'UNE paroi verticale (à l'abscisse wallX) par un
+   point qui se déplace de prevX à nx, DANS LES DEUX SENS : aussi bien de
+   l'extérieur vers l'intérieur (ne pas entrer par le côté) que de
+   l'intérieur vers l'extérieur (ne pas sortir par le côté — cas d'un
+   groupement déjà tombé dans le verre, au-dessus de l'eau, qu'un lancer ou
+   un grab ne doit pas pouvoir extraire en le poussant latéralement à travers
+   la paroi). `insideIsRight` indique de quel côté de wallX se trouve
+   l'intérieur du récipient (true pour la paroi gauche d'un caisson, false
+   pour sa paroi droite). Renvoie {x, blocked} : xéventuellement bridé contre
+   la paroi (à r de distance, du côté d'où le point venait), blocked=true si
+   un rebond doit annuler la composante de vitesse correspondante. */
+function dissBlockWallCrossing(prevX, nx, wallX, insideIsRight, r) {
+  const wasInside = insideIsRight ? prevX > wallX : prevX < wallX;
+  const nowInside = insideIsRight ? nx > wallX : nx < wallX;
+  if (wasInside === nowInside) return { x: nx, blocked: false };
+  const x = wasInside
+    ? (insideIsRight ? wallX + r : wallX - r)   // reste à l'intérieur
+    : (insideIsRight ? wallX - r : wallX + r);  // reste à l'extérieur
+  return { x, blocked: true };
+}
+
+/* dissBlockWallCrossing() n'empêche qu'un FRANCHISSEMENT (passer d'un côté à
+   l'autre) ; il n'impose aucune distance minimale tant qu'on reste du même
+   côté. Un point qui APPROCHE la paroi sans jamais la franchir (glisser en
+   rasant le trait, notamment près du rebord où la marge visuelle est fine)
+   peut donc s'arrêter pile dessus, voire empiéter dessus — visuellement
+   « enfoncé dans la bordure ». Cette fonction complète l'autre en imposant
+   systématiquement un écart minimal r à l'abscisse wallX, quel que soit le
+   côté courant (déterminé par le signe de x - wallX, pas par un paramètre
+   « intérieur » : elle repousse toujours x du côté où il se trouve déjà). */
+function dissClampWallClearance(x, wallX, r) {
+  return x >= wallX ? Math.max(x, wallX + r) : Math.min(x, wallX - r);
+}
+
+/* Empêche tout franchissement des parois solides (coupelle, verre, table)
+   par un point déplacé d'une position PRÉCÉDENTE connue (prevX, prevY) vers
+   une position CANDIDATE (x, y) — utilisé pendant le glisser
+   (onDissPointerMove) pour qu'un grab ne puisse pas traverser une paroi,
+   même en un seul geste rapide, ni de l'extérieur vers l'intérieur ni de
+   l'intérieur vers l'extérieur (cf. dissBlockWallCrossing()). Le rebord haut
+   des récipients reste ouvert (aucune paroi n'existe au-dessus de leur y0) :
+   on ne bride que les parois latérales (à hauteur de paroi) et le sol
+   (table, ou fond du récipient si on est déjà au-dessus).
+
+   Le test de hauteur porte sur tout le SEGMENT parcouru pendant ce pas
+   (min/max de prevY et y), pas seulement sur la position d'arrivée y : un
+   geste rapide qui, en un seul événement pointermove, ferait passer le point
+   de l'intérieur (sous le rebord) à une position finale au-dessus du rebord
+   franchirait sinon la paroi sans jamais être détecté (seule l'arrivée,
+   « hors zone de paroi », étant testée) — c'est ce qui permettait de faire
+   glisser une entité au travers d'une paroi du verre en la faisant sortir
+   « par le haut » d'un seul geste.
+
+   La coupelle, évasée, utilise sa largeur réelle à la hauteur courante
+   (dissDishWallX()) plutôt que sa largeur au fond — sans quoi ses parois
+   seraient détectées bien trop à l'intérieur près du rebord (les « pointes »
+   évasées), cf. dissDishWallX(). Le verre, à parois verticales, garde une
+   largeur constante. */
+function dissClampAgainstSolids(prevX, prevY, x, y, r) {
+  const baseY = dissState.baseY;
+  const segTop = Math.min(prevY, y), segBot = Math.max(prevY, y);
+
+  const g = dissState.glass;
+  if (segBot >= g.y0 && segTop <= baseY) {
+    x = dissBlockWallCrossing(prevX, x, g.x0, true, r).x;
+    x = dissBlockWallCrossing(prevX, x, g.x0 + g.w, false, r).x;
+    x = dissClampWallClearance(x, g.x0, r);
+    x = dissClampWallClearance(x, g.x0 + g.w, r);
+  }
+
+  const d = dissState.dish;
+  if (segBot >= d.y0 && segTop <= baseY) {
+    const wallY = Math.min(Math.max(y, d.y0), baseY);
+    const dishLeft = dissDishWallX(wallY, true), dishRight = dissDishWallX(wallY, false);
+    x = dissBlockWallCrossing(prevX, x, dishLeft, true, r).x;
+    x = dissBlockWallCrossing(prevX, x, dishRight, false, r).x;
+    x = dissClampWallClearance(x, dishLeft, r);
+    x = dissClampWallClearance(x, dishRight, r);
+  }
+
+  const inDish = dissPointInDish(x, y);
+  const inGlass = x >= g.x0 && x <= g.x0 + g.w;
+  const floorY = (inDish || inGlass) ? baseY : dissState.tableY;
+  if (y > floorY - r) y = floorY - r;
+  x = Math.min(Math.max(x, r), DISS_STAGE_W - r);   // bords gauche/droit de la scène
+  return { x, y };
+}
+
+/* Marge de tolérance du clic pour reprendre un groupement posé sur la table
+   (dissGrabRestingGrainAt()) — nettement plus généreuse que son rayon
+   affiché (DISS_ION_R * DISS_LOOSE_SCALE) : viser pile le petit disque à
+   l'écran est peu confortable, alors qu'aucune autre entité ne se dispute
+   cette zone de clic (contrairement au tas de la coupelle, dense). */
+const DISS_RESTING_GRAB_R = DISS_ION_R * DISS_LOOSE_SCALE * 2.5;
+
+/* Reprend un groupement déjà posé sur la table le plus proche du clic, s'il
+   est à portée (DISS_RESTING_GRAB_R) — le retire de dissState.restingGrains
+   pour en faire à nouveau un heldGrain manipulable, exactement comme un
+   prélèvement dans la coupelle. Renvoie null si aucun groupement posé n'est
+   à portée du clic. */
+function dissGrabRestingGrainAt(x, y) {
+  const r = DISS_RESTING_GRAB_R;
+  let bestIdx = -1, bestDist = r * r;
+  dissState.restingGrains.forEach((rg, i) => {
+    const dx = rg.x - x, dy = rg.y - y;
+    const dist = dx * dx + dy * dy;
+    if (dist <= bestDist) { bestDist = dist; bestIdx = i; }
+  });
+  if (bestIdx === -1) return null;
+  return dissState.restingGrains.splice(bestIdx, 1)[0];
+}
+
 /* Le tas est un réservoir de fait infini (cf. buildDissPile()) : cliquer
    n'importe où dedans prélève un nouveau groupement (formule du soluté
-   courant), sans retirer de sphère précise du tas affiché. */
+   courant), sans retirer de sphère précise du tas affiché. Prélèvement
+   bloqué si la table est déjà encombrée (cf. DISS_TABLE_LIMIT) — mais un
+   groupement DÉJÀ posé sur la table reste toujours saisissable (repris via
+   dissGrabRestingGrainAt()), sans quoi il n'y aurait aucun moyen de
+   débarrasser la table une fois pleine. */
 function onDissPointerDown(e) {
   const { x, y } = dissToStageXY(e);
-  if (!dissPointInDish(x, y)) return;
-  const solute = SOLUTES.find(s => s.id === dissState.soluteId);
-  dissState.heldGrain = { x, y, solute };
   const canvas = document.getElementById('diss-canvas');
+
+  const resting = dissGrabRestingGrainAt(x, y);
+  if (resting) {
+    dissState.heldGrain = { x, y, solute: resting.solute, rot: resting.rot, history: [{ x, y, t: performance.now() }] };
+    canvas.setPointerCapture(e.pointerId);
+    canvas.style.cursor = 'grabbing';
+    dissDrawScene();
+    return;
+  }
+
+  if (!dissPointInDish(x, y)) return;
+  if (dissState.restingGrains.length >= DISS_TABLE_LIMIT) return;
+  const solute = SOLUTES.find(s => s.id === dissState.soluteId);
+  dissState.heldGrain = { x, y, solute, rot: 0, history: [{ x, y, t: performance.now() }] };
   canvas.setPointerCapture(e.pointerId);
   canvas.style.cursor = 'grabbing';
   dissDrawScene();
 }
 
+/* Fenêtre de temps sur laquelle la vitesse du geste est moyennée pour estimer
+   la vitesse de lancer au relâchement (cf. onDissPointerUp()) — moyenner sur
+   une fenêtre courte plutôt que sur le seul dernier événement pointermove
+   évite qu'un delta de temps ponctuellement minuscule ou énorme entre deux
+   événements (jitter normal du pilote souris/tactile) ne produise une
+   vitesse instantanée aberrante, tantôt beaucoup trop grande tantôt quasi
+   nulle. */
+const DISS_THROW_WINDOW_MS = 50;
+
+/* Norme maximale (px/s) de la vitesse transmise au projectile au relâchement
+   — au-delà, un geste anormalement violent (ou un pic de mesure résiduel)
+   produirait un lancer disproportionné par rapport à l'échelle de la scène
+   (DISS_STAGE_W/H) ; la direction du geste est conservée, seule sa norme est
+   plafonnée. */
+const DISS_THROW_SPEED_MAX = 800;
+
 function onDissPointerMove(e) {
   const hg = dissState.heldGrain;
   if (!hg) return;
   const { x, y } = dissToStageXY(e);
-  hg.x = x; hg.y = y;
+  const r = DISS_ION_R * DISS_HELD_SCALE;
+  const clamped = dissClampAgainstSolids(hg.x, hg.y, x, y, r);
+  hg.x = clamped.x; hg.y = clamped.y;
+
+  const now = performance.now();
+  hg.history.push({ x: hg.x, y: hg.y, t: now });
+  const cutoff = now - DISS_THROW_WINDOW_MS;
+  while (hg.history.length > 1 && hg.history[0].t < cutoff) hg.history.shift();
+
   dissDrawScene();
 }
 
-/* Simplification assumée : tout relâchement à l'intérieur du contour du
-   verre est traité comme un contact immédiat avec l'eau (pas d'animation de
-   chute) — la position de dépôt est simplement bridée dans la zone d'eau
-   courante (dissWaterZone()). En dehors du verre, le groupement est
-   simplement abandonné (annulation) — le tas de la coupelle, réservoir de
-   fait infini, n'a jamais été modifié par le prélèvement. */
+/* Le relâchement ne décide plus lui-même du sort du groupement : il devient
+   un projectile balistique (vitesse du geste + pesanteur), et c'est
+   dissStepPhysics() qui, image par image, tranche entre chute sur la table
+   (reste), retombée dans la coupelle (disparaît), contact avec l'eau par le
+   dessus (dissolution) ou blocage par une paroi. La vitesse de lancer est le
+   déplacement moyen sur DISS_THROW_WINDOW_MS (cf. onDissPointerMove()), pas
+   le dernier delta instantané — un geste immobilisé juste avant de relâcher
+   (fin de lancer volontairement freinée) donne alors bien une vitesse quasi
+   nulle, et un grand geste rapide une vitesse représentative de l'ensemble
+   du mouvement plutôt que du seul dernier micro-pas. */
+/* Vitesse angulaire transmise au relâchement, purement cosmétique (aucun
+   moment d'inertie réel n'est simulé) : proportionnelle à la composante
+   horizontale du lancer, un peu comme un objet réel lancé tend à tourner
+   d'autant plus qu'il est lancé "à plat" avec de l'élan — plafonnée pour
+   qu'un lancer très rapide ne fasse pas tourbillonner le groupement de façon
+   illisible. */
+const DISS_ANGVEL_PER_VX = 0.012;
+const DISS_ANGVEL_MAX = 14;
+
 function onDissPointerUp(e) {
   const hg = dissState.heldGrain;
   if (!hg) return;
-  const g = dissState.glass;
-  const inGlass = hg.x >= g.x0 && hg.x <= g.x0 + g.w && hg.y >= g.y0 && hg.y <= g.y0 + g.h;
-  if (inGlass) dissDropGrainInWater(hg);
+  const first = hg.history[0];
+  const dt = Math.max((performance.now() - first.t) / 1000, 1 / 60);
+  let vx = (hg.x - first.x) / dt;
+  let vy = (hg.y - first.y) / dt;
+  const speed = Math.hypot(vx, vy);
+  if (speed > DISS_THROW_SPEED_MAX) {
+    const k = DISS_THROW_SPEED_MAX / speed;
+    vx *= k; vy *= k;
+  }
+  const angVel = Math.min(Math.max(vx * DISS_ANGVEL_PER_VX, -DISS_ANGVEL_MAX), DISS_ANGVEL_MAX);
+  dissState.flying.push({ x: hg.x, y: hg.y, vx, vy, rot: hg.rot || 0, angVel, solute: hg.solute });
   dissState.heldGrain = null;
   document.getElementById('diss-canvas').style.cursor = 'pointer';
   dissDrawScene();
@@ -355,6 +576,134 @@ function dissBrownianStep(s, dt) {
   if (s.x > zone.xMax) { s.x = zone.xMax; s.vx = -Math.abs(s.vx) * 0.6; }
   if (s.y < zone.yMin) { s.y = zone.yMin; s.vy = Math.abs(s.vy) * 0.6; }
   if (s.y > zone.yMax) { s.y = zone.yMax; s.vy = -Math.abs(s.vy) * 0.6; }
+}
+
+/* ══════════════════════════════════════════════════
+   Vol balistique des groupements lâchés/lancés (dissState.flying) — pesanteur
+   + parois solides infranchissables (coupelle, verre, table), résolues
+   chacune leur tour à chaque image :
+   - le sommet de chaque paroi (rebord) est un petit rebord solide : un
+     groupement qui tombe pile dessus y rebondit (rebond amorti + léger
+     coup de coude pour l'écarter de l'aplomb exact de la paroi) au lieu de
+     traverser tout droit vers l'intérieur ou l'extérieur (cf.
+     dissRimBounce()) ;
+   - une paroi latérale (à hauteur de paroi) bloque tout franchissement
+     horizontal, aussi bien venu de l'extérieur que de l'intérieur (rebond
+     amorti — cf. dissBlockWallCrossing()) ;
+   - un groupement qui atteint l'intérieur de la coupelle par le dessus
+     disparaît (retombé dans le réservoir de fait infini du tas) ;
+   - un groupement qui atteint l'intérieur du verre ET touche l'eau par le
+     dessus se dissout (dissDropGrainInWater) — toujours vrai en pratique
+     puisque DISS_FILL_MIN garantit un niveau d'eau minimal ;
+   - hors de tout récipient, atteindre la table immobilise le groupement
+     définitivement (dissState.restingGrains).
+══════════════════════════════════════════════════ */
+/* Demi-largeur du rebord solide au sommet d'une paroi (cf. dissRimBounce()) —
+   calée sur l'épaisseur du trait dessiné (DISS_DISH_WALL_LW pour la coupelle,
+   4px pour le verre, cf. drawDissGlass()) : un impact tombant hors de cette
+   bande mince est considéré comme franchement à côté de la paroi (pas un
+   impact sur son sommet), pas comme un cas limite à départager. */
+const DISS_RIM_HALF_W = 5;
+
+/* Rebond sur le sommet plat d'UNE paroi (à l'abscisse wallX, hauteur rimY) :
+   si le groupement vient de FRANCHIR rimY par le dessus (prevY en dessous du
+   rebord, ny au-dessus après le pas de temps) alors que son abscisse nx est
+   dans la bande étroite du rebord, il rebondit dessus plutôt que de
+   continuer sa chute — sans quoi il traverserait le rebord tout droit,
+   aussi bien vers l'intérieur du récipient que vers l'extérieur, selon
+   l'abscisse exacte du point d'impact (une paroi n'a, sinon, aucune
+   épaisseur dans ce modèle). Un petit coup de coude latéral, proportionnel à
+   l'écart à l'aplomb de la paroi, l'écarte progressivement de l'équilibre
+   instable pile sur le rebord. Renvoie la nouvelle valeur de ny (inchangée
+   si aucun impact). */
+function dissRimBounce(f, prevY, nx, ny, wallX, rimY, r) {
+  const capHalf = DISS_RIM_HALF_W + r;
+  if (Math.abs(nx - wallX) > capHalf) return ny;
+  if (prevY >= rimY - r || ny < rimY - r) return ny;
+  f.vy = -Math.abs(f.vy) * 0.35;
+  f.vx += (nx - wallX) * 6;
+  return rimY - r;
+}
+
+function dissStepPhysics(dt) {
+  if (dissState.flying.length === 0) return;
+  const r = DISS_ION_R * DISS_LOOSE_SCALE;
+  const d = dissState.dish, g = dissState.glass, baseY = dissState.baseY;
+  const keep = [];
+
+  dissState.flying.forEach(f => {
+    f.vy += DISS_GRAVITY * dt;
+    const prevX = f.x, prevY = f.y;
+    let nx = f.x + f.vx * dt;
+    let ny = f.y + f.vy * dt;
+    f.angVel = f.angVel || 0;
+    f.rot = (f.rot || 0) + f.angVel * dt;
+
+    /* Rebond sur le rebord (dissRimBounce()) : pour la coupelle évasée, le
+       vrai sommet de chaque paroi est la POINTE du trapèze (dissDishWallX à
+       y0 = d.x0 ± d.flare), pas la largeur du fond — utiliser cette dernière
+       ferait rebondir bien trop tôt, avant même d'atteindre le rebord réel. */
+    [
+      { xMin: dissDishWallX(d.y0, true), xMax: dissDishWallX(d.y0, false), yTop: d.y0 },
+      { xMin: g.x0, xMax: g.x0 + g.w, yTop: g.y0 },
+    ].forEach(box => {
+      const beforeNy = ny;
+      ny = dissRimBounce(f, prevY, nx, ny, box.xMin, box.yTop, r);
+      ny = dissRimBounce(f, prevY, nx, ny, box.xMax, box.yTop, r);
+      if (ny !== beforeNy) f.angVel *= 0.6;
+    });
+
+    /* Parois latérales : la coupelle est évasée (largeur dépendant de la
+       hauteur, cf. dissDishWallX()), le verre a des parois verticales
+       (largeur constante). Le test de hauteur porte sur tout le segment
+       parcouru ce pas-ci (prevY..ny), pas seulement sur ny — un lancer très
+       rapide qui, en un seul pas, passerait du dessus du rebord au-dessous du
+       fond franchirait sinon une paroi sans jamais être détecté. */
+    if (Math.min(prevY, ny) <= baseY && Math.max(prevY, ny) >= g.y0) {
+      const left = dissBlockWallCrossing(prevX, nx, g.x0, true, r);
+      nx = left.x; if (left.blocked) { f.vx *= -0.3; f.angVel *= -0.5; }
+      const right = dissBlockWallCrossing(prevX, nx, g.x0 + g.w, false, r);
+      nx = right.x; if (right.blocked) { f.vx *= -0.3; f.angVel *= -0.5; }
+      nx = dissClampWallClearance(nx, g.x0, r);
+      nx = dissClampWallClearance(nx, g.x0 + g.w, r);
+    }
+    if (Math.min(prevY, ny) <= baseY && Math.max(prevY, ny) >= d.y0) {
+      const wallY = Math.min(Math.max(ny, d.y0), baseY);
+      const dishLeft = dissDishWallX(wallY, true), dishRight = dissDishWallX(wallY, false);
+      const left = dissBlockWallCrossing(prevX, nx, dishLeft, true, r);
+      nx = left.x; if (left.blocked) { f.vx *= -0.3; f.angVel *= -0.5; }
+      const right = dissBlockWallCrossing(prevX, nx, dishRight, false, r);
+      nx = right.x; if (right.blocked) { f.vx *= -0.3; f.angVel *= -0.5; }
+      nx = dissClampWallClearance(nx, dishLeft, r);
+      nx = dissClampWallClearance(nx, dishRight, r);
+    }
+
+    /* Bords gauche/droit de la scène (0..DISS_STAGE_W) : infranchissables,
+       comme les parois des récipients — un lancer trop appuyé rebondit
+       dessus plutôt que de sortir de la zone d'animation. */
+    if (nx < r) { nx = r; f.vx = Math.abs(f.vx) * 0.3; f.angVel *= -0.5; }
+    else if (nx > DISS_STAGE_W - r) { nx = DISS_STAGE_W - r; f.vx = -Math.abs(f.vx) * 0.3; f.angVel *= -0.5; }
+
+    const inDish = dissPointInDish(nx, ny);
+    const inGlass = nx >= g.x0 && nx <= g.x0 + g.w;
+
+    if (inDish) return;   // retombé dans la coupelle : disparaît
+
+    if (inGlass) {
+      if (ny >= g.waterTopY) {          // contact avec l'eau par le dessus
+        dissDropGrainInWater({ x: Math.min(Math.max(nx, g.x0 + r), g.x0 + g.w - r), y: ny, solute: f.solute });
+        return;
+      }
+    } else if (ny >= dissState.tableY - r) {
+      dissState.restingGrains.push({ x: nx, y: dissState.tableY - r, solute: f.solute, rot: f.rot });
+      return;
+    }
+
+    f.x = nx; f.y = ny;
+    keep.push(f);
+  });
+
+  dissState.flying = keep;
 }
 
 /* ══════════════════════════════════════════════════
@@ -530,6 +879,33 @@ function drawDissFreeSpecies(ctx) {
   dissState.freeSpecies.forEach(s => drawSphere(ctx, s.x, s.y, DISS_ION_R, s.fill, s.border, null, null));
 }
 
+/* Groupements en vol (dissState.flying) ou immobilisés sur la table/le fond
+   sec du verre (dissState.restingGrains) — même gabarit complet que le
+   groupement saisi (dissDrawGrain), à une échelle intermédiaire. */
+function drawDissLooseGrains(ctx, list) {
+  list.forEach(loose => dissDrawGrain(ctx, loose.x, loose.y, loose.solute, DISS_ION_R * DISS_LOOSE_SCALE, loose.rot));
+}
+
+/* Avertissement affiché par-dessus la coupelle quand la table est encombrée
+   (DISS_TABLE_LIMIT atteint) : le prélèvement est bloqué (cf.
+   onDissPointerDown) tant que la table n'a pas été débarrassée — dissReset()
+   étant le seul moyen actuel de vider dissState.restingGrains. */
+function drawDissTableFullWarning(ctx) {
+  const d = dissState.dish;
+  const cx = d.x0 + d.w / 2, cy = d.y0 + d.h / 2;
+  const boxW = d.w + d.flare * 2 + 20, boxH = 70;
+  ctx.save();
+  ctx.fillStyle = 'rgba(120, 20, 20, 0.88)';
+  ctx.fillRect(cx - boxW / 2, cy - boxH / 2, boxW, boxH);
+  ctx.strokeStyle = '#ffd7d7'; ctx.lineWidth = 2;
+  ctx.strokeRect(cx - boxW / 2, cy - boxH / 2, boxW, boxH);
+  ctx.fillStyle = '#fff';
+  ctx.font = `bold ${Math.round(DISS_STAGE_H * 0.036)}px 'Segoe UI', Arial, sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('Nettoyer la paillasse !', cx, cy);
+  ctx.restore();
+}
+
 /* Groupement saisi dessiné ~35% plus grand que dans le tas, pour se détacher
    visuellement du curseur natif du système qui le recouvre partiellement
    (centré exactement sur le point cliqué). */
@@ -537,7 +913,7 @@ const DISS_HELD_SCALE = 1.35;
 
 function drawDissHeldGrain(ctx) {
   const hg = dissState.heldGrain;
-  dissDrawGrain(ctx, hg.x, hg.y, hg.solute, DISS_ION_R * DISS_HELD_SCALE);
+  dissDrawGrain(ctx, hg.x, hg.y, hg.solute, DISS_ION_R * DISS_HELD_SCALE, hg.rot);
 }
 
 function dissDrawScene() {
@@ -549,7 +925,10 @@ function dissDrawScene() {
   drawDissDish(ctx);
   drawDissGlass(ctx);
   drawDissFreeSpecies(ctx);
+  drawDissLooseGrains(ctx, dissState.restingGrains);
+  drawDissLooseGrains(ctx, dissState.flying);
   if (dissState.heldGrain) drawDissHeldGrain(ctx);
+  if (dissState.restingGrains.length >= DISS_TABLE_LIMIT) drawDissTableFullWarning(ctx);
 }
 
 /* ══════════════════════════════════════════════════
@@ -652,6 +1031,8 @@ function setDissUnit(u) {
 
 function dissReset() {
   dissState.freeSpecies = [];
+  dissState.flying = [];
+  dissState.restingGrains = [];
   dissState.nApporte = 0;
   dissState.heldGrain = null;
   buildDissPile();

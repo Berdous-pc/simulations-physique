@@ -122,6 +122,23 @@
 
     </div><!-- fin #dissolution-area -->
 
+    <!-- Bascule d'affichage synchrone (avant chargement des scripts externes) :
+         évite un flash de #anim-area (fond bleu de #anim-canvas-wrap, canvas
+         pas encore dessiné) quand la page est chargée/rafraîchie directement
+         sur l'onglet Dissolution (lien profond #dissolution) — sans ce
+         script, #anim-area reste affiché (son état HTML par défaut) le temps
+         que init() (js/ui.js) s'exécute et appelle setMainTab('dissolution'). -->
+    <script>
+      (function () {
+        var hash = (location.hash || '').replace('#', '');
+        var tab = hash || new URLSearchParams(location.search).get('tab');
+        if (tab === 'dissolution') {
+          document.getElementById('anim-area').style.display = 'none';
+          document.getElementById('dissolution-area').style.display = '';
+        }
+      })();
+    </script>
+
   </div><!-- fin #left-col -->
 
   <!-- ══════════════════════════════════════════════

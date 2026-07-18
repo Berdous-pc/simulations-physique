@@ -171,9 +171,11 @@ function loop(ts) {
     drawScene();
   } else if (state.onglet === 'dissolution') {
     /* Mouvement brownien des ions/molécules dissous — dt attendu en secondes
-       (cf. dissBrownianStep(), calqué sur titrage/js/ui.js). */
+       (cf. dissBrownianStep(), calqué sur titrage/js/ui.js) — et vol
+       balistique des groupements lâchés/lancés (cf. dissStepPhysics()). */
     const dtS = rawDt / 1000;
     dissState.freeSpecies.forEach(s => dissBrownianStep(s, dtS));
+    dissStepPhysics(dtS);
     dissDrawScene();
   }
 
