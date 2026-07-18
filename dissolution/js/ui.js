@@ -236,8 +236,16 @@ function setMainTab(tab) {
   /* Les deux zones (#anim-area / #dissolution-area) sont display:none tour à
      tour : leur clientWidth/Height ne sont fiables qu'une fois réaffichées —
      on relance donc le resize approprié ici, pas seulement une fois à init(). */
-  if (tab === 'mecanisme') resize();
-  else dissResize();
+  if (tab === 'mecanisme') {
+    resize();
+    /* #anim-area était masqué jusqu'ici : si la page a chargé sur l'onglet
+       Dissolution, renderReminderLines() (devpanel.js) s'est arrêtée faute
+       de dimensions exploitables et n'a jamais été rappelée depuis — on la
+       relance ici pour ne pas laisser les traits de rappel vides. */
+    if (typeof renderReminderLines === 'function') renderReminderLines();
+  } else {
+    dissResize();
+  }
 }
 
 function toggleHint(tab) {

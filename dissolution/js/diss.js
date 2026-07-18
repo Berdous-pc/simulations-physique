@@ -46,7 +46,7 @@ const DISS_BASE_LIFT = 2;
    État
 ══════════════════════════════════════════════════ */
 const dissState = {
-  soluteId: 'nacl',
+  soluteId: 'glucose',
   volumeML: 1000,
   unit: 'mol',                 // 'mol' | 'molL'
   nApporte: 0,                 // nb de groupements largués dans l'eau depuis le dernier reset (mol)

@@ -182,9 +182,33 @@
         <div class="panel-section">
           <div class="section-title">Soluté</div>
           <select id="diss-select-solute" class="diss-select" onchange="onDissSoluteChange(this.value)">
-            <option value="nacl" selected>Chlorure de sodium — NaCl</option>
-            <option value="mgcl2">Chlorure de magnésium — MgCl₂</option>
-            <option value="i2">Diiode — I₂</option>
+            <optgroup label="Solides moléculaires">
+              <option value="glucose" selected>Glucose — C₆H₁₂O₆</option>
+              <option value="ascorbique">Acide ascorbique — C₆H₈O₆</option>
+              <option value="i2">Diiode — I₂</option>
+            </optgroup>
+            <optgroup label="Halogénures">
+              <option value="nacl">Chlorure de sodium — NaCl</option>
+              <option value="nabr">Bromure de sodium — NaBr</option>
+              <option value="ki">Iodure de potassium — KI</option>
+              <option value="kcl">Chlorure de potassium — KCl</option>
+              <option value="mgcl2">Chlorure de magnésium — MgCl₂</option>
+              <option value="cacl2">Chlorure de calcium — CaCl₂</option>
+              <option value="bacl2">Chlorure de baryum — BaCl₂</option>
+            </optgroup>
+            <optgroup label="Sulfates">
+              <option value="cuso4">Sulfate de cuivre — CuSO₄</option>
+              <option value="na2so4">Sulfate de sodium — Na₂SO₄</option>
+              <option value="al2so43">Sulfate d'aluminium — Al₂(SO₄)₃</option>
+              <option value="fe2so43">Sulfate de fer (III) — Fe₂(SO₄)₃</option>
+            </optgroup>
+            <optgroup label="Autres composés ioniques">
+              <option value="naoh">Hydroxyde de sodium — NaOH</option>
+              <option value="na2co3">Carbonate de sodium — Na₂CO₃</option>
+              <option value="kmno4">Permanganate de potassium — KMnO₄</option>
+              <option value="k2cr2o7">Dichromate de potassium — K₂Cr₂O₇</option>
+              <option value="agno3">Nitrate d'argent — AgNO₃</option>
+            </optgroup>
           </select>
         </div>
 
