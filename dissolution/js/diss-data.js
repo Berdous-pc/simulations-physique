@@ -33,12 +33,23 @@ const DISS_ION_COLORS = {
   // Cations métalliques restants, chacun sa propre couleur (pas de famille commune ici)
   Ag:     { fill: '#adadb5', border: '#6e6e78', label: '#303030' },   // gris argenté, clin d'œil à « argent »
   Al:     { fill: '#c85888', border: '#8a3058', label: '#ffffff' },   // rose-mauve, incolore en réalité
-  // Espèces à couleur réelle marquée en solution : la couleur DOIT correspondre
-  Cu:     { fill: '#0ab0e8', border: '#0880ac', label: '#ffffff' },   // bleu cyan vif — solution de Cu²⁺ (sulfate de cuivre)
-  Fe:     { fill: '#a8480f', border: '#6e2e08', label: '#ffffff' },   // brun-rouille — Fe³⁺, assombri pour rester distinct de I₂/Cr₂O₇²⁻
-  MnO4:   { fill: '#9a1090', border: '#64085e', label: '#ffffff' },   // violet-magenta permanganate
-  Cr2O7:  { fill: '#f0921a', border: '#a8620c', label: '#ffffff' },   // orange vif dichromate
-  I:      { fill: '#c87820', border: '#8a5010', label: '#ffffff' },   // orange — idem onglet Titrage (I₂ molécule)
+  // Espèces à couleur réelle marquée en solution : la couleur DOIT correspondre.
+  // `colorStops` (facultatif) : progression de LA SOLUTION, de la plus
+  // diluée (1er stop) à la saturation (dernier stop), quand elle diffère
+  // nettement de la couleur de la sphère d'ion elle-même (cf.
+  // dissWaterTint(), diss.js). Chaque stop est une couleur RÉELLE à ce
+  // niveau de concentration, PAS une version éclaircie de la couleur de
+  // saturation vers du blanc : un simple mélange vers du blanc désature la
+  // teinte au lieu de suivre le vrai virage de couleur (ex. le diiode passe
+  // par le jaune pâle puis l'orange avant le marron, pas par un brun délavé
+  // grisâtre). Deux stops suffisent quand la teinte ne change pas
+  // fondamentalement en s'intensifiant ; au-delà, un stop intermédiaire par
+  // virage de teinte notable (cf. I ci-dessous).
+  Cu:     { fill: '#1c3fa0', border: '#122868', label: '#ffffff', colorStops: ['#cfe4f9', '#0ab0d0'] },                     // sphère bleu foncé / solution bleu pâle → cyan (sulfate de cuivre)
+  Fe3:    { fill: '#a8480f', border: '#6e2e08', label: '#ffffff', colorStops: ['#f5e6a0', '#a04808'] },                     // Fe³⁺ (pas Fe²⁺, vert pâle en solution — couleur différente) — sphère brun-rouille foncé / solution jaune pâle → rouille accentuée (chlorure de fer III)
+  MnO4:   { fill: '#9a1090', border: '#64085e', label: '#ffffff', colorStops: ['#f5c8e8', '#5a0868'] },                     // sphère violet / solution rose pâle → violet foncé (permanganate)
+  Cr2O7:  { fill: '#f0921a', border: '#a8620c', label: '#ffffff', colorStops: ['#f7ecb0', '#f07000'] },                     // sphère orange vif / solution jaune pâle → orange vif et saturé (dichromate)
+  I:      { fill: '#c87820', border: '#8a5010', label: '#ffffff', colorStops: ['#f7f0b0', '#e08020', '#6a3008'] },          // sphère orange / solution jaune pâle → orange → brun-rouge foncé type teinture d'iode (diiode aqueux)
   Iod:    { fill: '#c87820', border: '#8a5010', label: '#ffffff' },   // I⁻ = I₂ (même élément, même couleur)
   Glc:    { fill: '#e8e4d8', border: '#a8a290', label: '#4a4638' },   // blanc cassé — glucose incolore, contraste avec I₂
   AscA:   { fill: '#f0e6a0', border: '#c8ba60', label: '#5c4c10' },   // jaune pâle — acide ascorbique, distinct du jaune vif Na⁺/K⁺
@@ -142,7 +153,7 @@ const SOLUTES = [
     ],
     especes: [
       { formule: 'K⁺',    coeff: 1, el: 'K',    label: 'K⁺',    fill: DISS_ION_COLORS.K.fill,    border: DISS_ION_COLORS.K.border,    labelColor: DISS_ION_COLORS.K.label },
-      { formule: 'MnO₄⁻', coeff: 1, el: 'MnO4', label: 'MnO₄⁻', fill: DISS_ION_COLORS.MnO4.fill, border: DISS_ION_COLORS.MnO4.border, labelColor: DISS_ION_COLORS.MnO4.label, tint: true },
+      { formule: 'MnO₄⁻', coeff: 1, el: 'MnO4', label: 'MnO₄⁻', fill: DISS_ION_COLORS.MnO4.fill, border: DISS_ION_COLORS.MnO4.border, labelColor: DISS_ION_COLORS.MnO4.label, tint: true, colorStops: DISS_ION_COLORS.MnO4.colorStops },
     ],
   },
   {
@@ -153,7 +164,7 @@ const SOLUTES = [
       { el: 'SO4', dx:  0.8, dy: 0 },
     ],
     especes: [
-      { formule: 'Cu²⁺', coeff: 1, el: 'Cu',  label: 'Cu²⁺', fill: DISS_ION_COLORS.Cu.fill,  border: DISS_ION_COLORS.Cu.border,  labelColor: DISS_ION_COLORS.Cu.label, tint: true },
+      { formule: 'Cu²⁺', coeff: 1, el: 'Cu',  label: 'Cu²⁺', fill: DISS_ION_COLORS.Cu.fill,  border: DISS_ION_COLORS.Cu.border,  labelColor: DISS_ION_COLORS.Cu.label, tint: true, colorStops: DISS_ION_COLORS.Cu.colorStops },
       { formule: 'SO₄²⁻', coeff: 1, el: 'SO4', label: 'SO₄²⁻', fill: DISS_ION_COLORS.SO4.fill, border: DISS_ION_COLORS.SO4.border, labelColor: DISS_ION_COLORS.SO4.label },
     ],
   },
@@ -232,7 +243,7 @@ const SOLUTES = [
     ],
     especes: [
       { formule: 'K⁺',      coeff: 2, el: 'K',     label: 'K⁺',      fill: DISS_ION_COLORS.K.fill,     border: DISS_ION_COLORS.K.border,     labelColor: DISS_ION_COLORS.K.label },
-      { formule: 'Cr₂O₇²⁻', coeff: 1, el: 'Cr2O7', label: 'Cr₂O₇²⁻', fill: DISS_ION_COLORS.Cr2O7.fill, border: DISS_ION_COLORS.Cr2O7.border, labelColor: DISS_ION_COLORS.Cr2O7.label, tint: true },
+      { formule: 'Cr₂O₇²⁻', coeff: 1, el: 'Cr2O7', label: 'Cr₂O₇²⁻', fill: DISS_ION_COLORS.Cr2O7.fill, border: DISS_ION_COLORS.Cr2O7.border, labelColor: DISS_ION_COLORS.Cr2O7.label, tint: true, colorStops: DISS_ION_COLORS.Cr2O7.colorStops },
     ],
   },
   // ── Stœchiométrie 1:3 ────────────────────────────────────────────────
@@ -240,13 +251,13 @@ const SOLUTES = [
     id: 'fecl3', formule: 'FeCl₃', nom: 'Chlorure de fer (III)',
     dissocie: true,
     grain: [
-      { el: 'Fe', dx: 0,    dy: -0.75 },
+      { el: 'Fe3', dx: 0,    dy: -0.75 },
       { el: 'Cl', dx: -0.9, dy: 0.5 },
       { el: 'Cl', dx: 0,    dy: 0.85 },
       { el: 'Cl', dx: 0.9,  dy: 0.5 },
     ],
     especes: [
-      { formule: 'Fe³⁺', coeff: 1, el: 'Fe', label: 'Fe³⁺', fill: DISS_ION_COLORS.Fe.fill, border: DISS_ION_COLORS.Fe.border, labelColor: DISS_ION_COLORS.Fe.label, tint: true },
+      { formule: 'Fe³⁺', coeff: 1, el: 'Fe3', label: 'Fe³⁺', fill: DISS_ION_COLORS.Fe3.fill, border: DISS_ION_COLORS.Fe3.border, labelColor: DISS_ION_COLORS.Fe3.label, tint: true, colorStops: DISS_ION_COLORS.Fe3.colorStops },
       { formule: 'Cl⁻',  coeff: 3, el: 'Cl', label: 'Cl⁻',  fill: ATOM_COLORS.Cl, border: ATOM_BORDER.Cl, labelColor: ATOM_LABEL_COLOR.Cl },
     ],
   },
@@ -270,14 +281,14 @@ const SOLUTES = [
     id: 'fe2so43', formule: 'Fe₂(SO₄)₃', nom: 'Sulfate de fer (III)',
     dissocie: true,
     grain: [
-      { el: 'Fe',  dx: -0.4, dy: -0.7 },
-      { el: 'Fe',  dx:  0.4, dy: -0.7 },
+      { el: 'Fe3',  dx: -0.4, dy: -0.7 },
+      { el: 'Fe3',  dx:  0.4, dy: -0.7 },
       { el: 'SO4', dx: -0.9, dy: 0.4 },
       { el: 'SO4', dx:  0,   dy: 0.75 },
       { el: 'SO4', dx:  0.9, dy: 0.4 },
     ],
     especes: [
-      { formule: 'Fe³⁺',  coeff: 2, el: 'Fe',  label: 'Fe³⁺',  fill: DISS_ION_COLORS.Fe.fill,  border: DISS_ION_COLORS.Fe.border,  labelColor: DISS_ION_COLORS.Fe.label, tint: true },
+      { formule: 'Fe³⁺',  coeff: 2, el: 'Fe3',  label: 'Fe³⁺',  fill: DISS_ION_COLORS.Fe3.fill,  border: DISS_ION_COLORS.Fe3.border,  labelColor: DISS_ION_COLORS.Fe3.label, tint: true, colorStops: DISS_ION_COLORS.Fe3.colorStops },
       { formule: 'SO₄²⁻', coeff: 3, el: 'SO4', label: 'SO₄²⁻', fill: DISS_ION_COLORS.SO4.fill, border: DISS_ION_COLORS.SO4.border, labelColor: DISS_ION_COLORS.SO4.label },
     ],
   },
@@ -290,7 +301,7 @@ const SOLUTES = [
       { el: 'I', dx:  0.8, dy: 0 },
     ],
     especes: [
-      { formule: 'I₂', coeff: 1, el: 'I', label: null, fill: DISS_ION_COLORS.I.fill, border: DISS_ION_COLORS.I.border, labelColor: DISS_ION_COLORS.I.label, tint: true },
+      { formule: 'I₂', coeff: 1, el: 'I', label: null, fill: DISS_ION_COLORS.I.fill, border: DISS_ION_COLORS.I.border, labelColor: DISS_ION_COLORS.I.label, tint: true, colorStops: DISS_ION_COLORS.I.colorStops },
     ],
   },
   {

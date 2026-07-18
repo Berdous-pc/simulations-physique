@@ -850,22 +850,41 @@ function _hexToRgb(hex) {
   const n = parseInt(hex.slice(1), 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
+/* Retourne un hex #rrggbb (pas rgb(...)) : dissWaterTint() rechaîne deux
+   appels (couleur pâle → couleur pleine), et _hexToRgb() ne sait lire que
+   ce format — un rgb(...) réinjecté en entrée y donnerait un parseInt('16)
+   invalide (NaN, silencieusement ramené à 0 par les décalages de bits), et
+   donc une couleur noire au lieu de la couleur pâle attendue. */
 function _lerpRgbHex(hexA, hexB, t) {
   const a = _hexToRgb(hexA), b = _hexToRgb(hexB);
   const c = a.map((v, i) => Math.round(lerp(v, b[i], t)));
-  return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
+  return '#' + c.map(v => v.toString(16).padStart(2, '0')).join('');
 }
 
-/* Teinte de l'eau du verre, interpolée linéairement entre la couleur
-   neutre et la couleur de l'espèce colorante du soluté courant
-   (`especes[i].tint` dans SOLUTES, diss-data.js — seules les espèces à
-   couleur réelle marquée en solution, ex. Cu²⁺, MnO₄⁻, en portent une ; la
-   plupart des solutés n'en ont aucune et l'eau reste neutre). La
-   progression suit la concentration EFFECTIVE de cette espèce (n apporté ×
-   son coefficient stœchiométrique / volume), rapportée à
-   DISS_SOLUTION_COLOR_SAT_MOLL (diss-data.js) : c'est cette concentration-là
-   qui donne sa couleur à une vraie solution, pas la concentration apportée
-   du soluté lui-même. */
+/* Interpole une couleur le long d'une suite de teintes réelles (2 stops ou
+   plus, cf. `especes[i].colorStops` dans SOLUTES, diss-data.js), t ∈ [0,1]
+   couvrant l'ensemble de la suite à parts égales. Chaque segment est un
+   lerp RGB direct entre deux couleurs FRANCHES déclarées, pas un mélange
+   vers du blanc : une solution qui vire de teinte en s'intensifiant (ex. le
+   diiode : jaune pâle → orange → brun) suit ainsi son vrai chemin de
+   couleur au lieu de traverser une zone grisâtre/délavée au milieu. */
+function _multiLerpHex(stops, t) {
+  if (stops.length === 1) return stops[0];
+  const seg = clamp01(t) * (stops.length - 1);
+  const i = Math.min(Math.floor(seg), stops.length - 2);
+  return _lerpRgbHex(stops[i], stops[i + 1], seg - i);
+}
+
+/* Teinte de l'eau du verre. Sans espèce colorante (la plupart des
+   solutés) : bleu neutre inchangé. Avec une espèce colorante
+   (`especes[i].tint` + `especes[i].colorStops` dans SOLUTES, diss-data.js —
+   ex. Cu²⁺ : sphère bleu foncé, solution bleu pâle → cyan, la vraie
+   progression d'une solution de sulfate de cuivre de diluée à concentrée) :
+   dès qu'il y en a, l'eau suit cette progression en fonction de la
+   concentration EFFECTIVE de cette espèce (n apporté × son coefficient
+   stœchiométrique / volume) rapportée à DISS_SOLUTION_COLOR_SAT_MOLL
+   (diss-data.js) — c'est cette concentration-là qui donne sa couleur à une
+   vraie solution, pas la concentration apportée du soluté lui-même. */
 function dissWaterTint() {
   const solute = SOLUTES.find(s => s.id === dissState.soluteId);
   const esp = solute.especes.find(e => e.tint);
@@ -873,9 +892,10 @@ function dissWaterTint() {
 
   const volumeL = dissState.volumeML / 1000;
   const conc = (dissState.nApporte * esp.coeff) / volumeL;
-  const t = clamp01(conc / DISS_SOLUTION_COLOR_SAT_MOLL);
+  if (conc <= 0) return DISS_WATER_NEUTRAL;
 
-  return _lerpRgbHex(DISS_WATER_NEUTRAL, esp.fill, t);
+  const t = clamp01(conc / DISS_SOLUTION_COLOR_SAT_MOLL);
+  return _multiLerpHex(esp.colorStops, t);
 }
 
 /* Verre vu de profil, posé sur la même table que la coupelle — hauteur
