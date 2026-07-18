@@ -34,7 +34,7 @@ const DISS_ION_COLORS = {
   Ag:     { fill: '#adadb5', border: '#6e6e78', label: '#303030' },   // gris argenté, clin d'œil à « argent »
   Al:     { fill: '#c85888', border: '#8a3058', label: '#ffffff' },   // rose-mauve, incolore en réalité
   // Espèces à couleur réelle marquée en solution : la couleur DOIT correspondre
-  Cu:     { fill: '#1c6fd6', border: '#0f4a94', label: '#ffffff' },   // bleu vif — solution de Cu²⁺ (sulfate de cuivre)
+  Cu:     { fill: '#0ab0e8', border: '#0880ac', label: '#ffffff' },   // bleu cyan vif — solution de Cu²⁺ (sulfate de cuivre)
   Fe:     { fill: '#a8480f', border: '#6e2e08', label: '#ffffff' },   // brun-rouille — Fe³⁺, assombri pour rester distinct de I₂/Cr₂O₇²⁻
   MnO4:   { fill: '#9a1090', border: '#64085e', label: '#ffffff' },   // violet-magenta permanganate
   Cr2O7:  { fill: '#f0921a', border: '#a8620c', label: '#ffffff' },   // orange vif dichromate
@@ -43,6 +43,11 @@ const DISS_ION_COLORS = {
   Glc:    { fill: '#e8e4d8', border: '#a8a290', label: '#4a4638' },   // blanc cassé — glucose incolore, contraste avec I₂
   AscA:   { fill: '#f0e6a0', border: '#c8ba60', label: '#5c4c10' },   // jaune pâle — acide ascorbique, distinct du jaune vif Na⁺/K⁺
 };
+
+/* Concentration effective (mol·L⁻¹) de l'espèce colorante à partir de
+   laquelle l'eau du verre affiche la teinte de saturation (cf. `tint: true`
+   sur les especes ci-dessous, et son usage dans dissWaterTint(), diss.js). */
+const DISS_SOLUTION_COLOR_SAT_MOLL = 20;
 
 /* Chaque soluté définit :
    - `grain` : géométrie du groupement formulaire saisi dans la coupelle
@@ -137,7 +142,7 @@ const SOLUTES = [
     ],
     especes: [
       { formule: 'K⁺',    coeff: 1, el: 'K',    label: 'K⁺',    fill: DISS_ION_COLORS.K.fill,    border: DISS_ION_COLORS.K.border,    labelColor: DISS_ION_COLORS.K.label },
-      { formule: 'MnO₄⁻', coeff: 1, el: 'MnO4', label: 'MnO₄⁻', fill: DISS_ION_COLORS.MnO4.fill, border: DISS_ION_COLORS.MnO4.border, labelColor: DISS_ION_COLORS.MnO4.label },
+      { formule: 'MnO₄⁻', coeff: 1, el: 'MnO4', label: 'MnO₄⁻', fill: DISS_ION_COLORS.MnO4.fill, border: DISS_ION_COLORS.MnO4.border, labelColor: DISS_ION_COLORS.MnO4.label, tint: true },
     ],
   },
   {
@@ -148,7 +153,7 @@ const SOLUTES = [
       { el: 'SO4', dx:  0.8, dy: 0 },
     ],
     especes: [
-      { formule: 'Cu²⁺', coeff: 1, el: 'Cu',  label: 'Cu²⁺', fill: DISS_ION_COLORS.Cu.fill,  border: DISS_ION_COLORS.Cu.border,  labelColor: DISS_ION_COLORS.Cu.label },
+      { formule: 'Cu²⁺', coeff: 1, el: 'Cu',  label: 'Cu²⁺', fill: DISS_ION_COLORS.Cu.fill,  border: DISS_ION_COLORS.Cu.border,  labelColor: DISS_ION_COLORS.Cu.label, tint: true },
       { formule: 'SO₄²⁻', coeff: 1, el: 'SO4', label: 'SO₄²⁻', fill: DISS_ION_COLORS.SO4.fill, border: DISS_ION_COLORS.SO4.border, labelColor: DISS_ION_COLORS.SO4.label },
     ],
   },
@@ -227,7 +232,7 @@ const SOLUTES = [
     ],
     especes: [
       { formule: 'K⁺',      coeff: 2, el: 'K',     label: 'K⁺',      fill: DISS_ION_COLORS.K.fill,     border: DISS_ION_COLORS.K.border,     labelColor: DISS_ION_COLORS.K.label },
-      { formule: 'Cr₂O₇²⁻', coeff: 1, el: 'Cr2O7', label: 'Cr₂O₇²⁻', fill: DISS_ION_COLORS.Cr2O7.fill, border: DISS_ION_COLORS.Cr2O7.border, labelColor: DISS_ION_COLORS.Cr2O7.label },
+      { formule: 'Cr₂O₇²⁻', coeff: 1, el: 'Cr2O7', label: 'Cr₂O₇²⁻', fill: DISS_ION_COLORS.Cr2O7.fill, border: DISS_ION_COLORS.Cr2O7.border, labelColor: DISS_ION_COLORS.Cr2O7.label, tint: true },
     ],
   },
   // ── Stœchiométrie 2:3 ────────────────────────────────────────────────
@@ -257,7 +262,7 @@ const SOLUTES = [
       { el: 'SO4', dx:  0.9, dy: 0.4 },
     ],
     especes: [
-      { formule: 'Fe³⁺',  coeff: 2, el: 'Fe',  label: 'Fe³⁺',  fill: DISS_ION_COLORS.Fe.fill,  border: DISS_ION_COLORS.Fe.border,  labelColor: DISS_ION_COLORS.Fe.label },
+      { formule: 'Fe³⁺',  coeff: 2, el: 'Fe',  label: 'Fe³⁺',  fill: DISS_ION_COLORS.Fe.fill,  border: DISS_ION_COLORS.Fe.border,  labelColor: DISS_ION_COLORS.Fe.label, tint: true },
       { formule: 'SO₄²⁻', coeff: 3, el: 'SO4', label: 'SO₄²⁻', fill: DISS_ION_COLORS.SO4.fill, border: DISS_ION_COLORS.SO4.border, labelColor: DISS_ION_COLORS.SO4.label },
     ],
   },
@@ -270,7 +275,7 @@ const SOLUTES = [
       { el: 'I', dx:  0.8, dy: 0 },
     ],
     especes: [
-      { formule: 'I₂', coeff: 1, el: 'I', label: null, fill: DISS_ION_COLORS.I.fill, border: DISS_ION_COLORS.I.border, labelColor: DISS_ION_COLORS.I.label },
+      { formule: 'I₂', coeff: 1, el: 'I', label: null, fill: DISS_ION_COLORS.I.fill, border: DISS_ION_COLORS.I.border, labelColor: DISS_ION_COLORS.I.label, tint: true },
     ],
   },
   {

@@ -465,6 +465,46 @@ function drawDissDish(ctx) {
   dissDrawPile(ctx, d);
 }
 
+/* Couleur « neutre » de l'eau (sans espèce colorante) — même bleu pâle
+   #b8d4f0 que la couleur neutre de l'onglet Titrage (cf. couleurDiiode(),
+   couleurPermanganate_burette()... dans titrage/js/ui.js), pour rester
+   cohérent avec la charte du site. Couleur plate (pas de fondu de
+   profondeur haut/bas) : un dégradé vers une teinte plus foncée en bas
+   assombrissait trop la solution une fois teintée. */
+const DISS_WATER_NEUTRAL = '#b8d4f0';
+
+function _hexToRgb(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+function _lerpRgbHex(hexA, hexB, t) {
+  const a = _hexToRgb(hexA), b = _hexToRgb(hexB);
+  const c = a.map((v, i) => Math.round(lerp(v, b[i], t)));
+  return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
+}
+
+/* Teinte de l'eau du verre, interpolée linéairement entre la couleur
+   neutre et la couleur de l'espèce colorante du soluté courant
+   (`especes[i].tint` dans SOLUTES, diss-data.js — seules les espèces à
+   couleur réelle marquée en solution, ex. Cu²⁺, MnO₄⁻, en portent une ; la
+   plupart des solutés n'en ont aucune et l'eau reste neutre). La
+   progression suit la concentration EFFECTIVE de cette espèce (n apporté ×
+   son coefficient stœchiométrique / volume), rapportée à
+   DISS_SOLUTION_COLOR_SAT_MOLL (diss-data.js) : c'est cette concentration-là
+   qui donne sa couleur à une vraie solution, pas la concentration apportée
+   du soluté lui-même. */
+function dissWaterTint() {
+  const solute = SOLUTES.find(s => s.id === dissState.soluteId);
+  const esp = solute.especes.find(e => e.tint);
+  if (!esp) return DISS_WATER_NEUTRAL;
+
+  const volumeL = dissState.volumeML / 1000;
+  const conc = (dissState.nApporte * esp.coeff) / volumeL;
+  const t = clamp01(conc / DISS_SOLUTION_COLOR_SAT_MOLL);
+
+  return _lerpRgbHex(DISS_WATER_NEUTRAL, esp.fill, t);
+}
+
 /* Verre vu de profil, posé sur la même table que la coupelle — hauteur
    proportionnée à la scène (ne remplit pas toute la fenêtre). */
 function drawDissGlass(ctx) {
@@ -472,9 +512,7 @@ function drawDissGlass(ctx) {
   const baseY = dissState.baseY;
 
   ctx.save();
-  const grad = ctx.createLinearGradient(0, g.waterTopY, 0, g.bottomY);
-  grad.addColorStop(0, '#7dd3f7'); grad.addColorStop(1, '#29b6e8');
-  ctx.fillStyle = grad;
+  ctx.fillStyle = dissWaterTint();
   ctx.fillRect(g.x0, g.waterTopY, g.w, Math.max(0, g.bottomY - g.waterTopY));
   ctx.strokeStyle = '#1a2744'; ctx.lineWidth = 4; ctx.lineJoin = 'round';
   ctx.beginPath();
