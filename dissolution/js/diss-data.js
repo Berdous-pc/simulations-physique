@@ -235,6 +235,21 @@ const SOLUTES = [
       { formule: 'Cr₂O₇²⁻', coeff: 1, el: 'Cr2O7', label: 'Cr₂O₇²⁻', fill: DISS_ION_COLORS.Cr2O7.fill, border: DISS_ION_COLORS.Cr2O7.border, labelColor: DISS_ION_COLORS.Cr2O7.label, tint: true },
     ],
   },
+  // ── Stœchiométrie 1:3 ────────────────────────────────────────────────
+  {
+    id: 'fecl3', formule: 'FeCl₃', nom: 'Chlorure de fer (III)',
+    dissocie: true,
+    grain: [
+      { el: 'Fe', dx: 0,    dy: -0.75 },
+      { el: 'Cl', dx: -0.9, dy: 0.5 },
+      { el: 'Cl', dx: 0,    dy: 0.85 },
+      { el: 'Cl', dx: 0.9,  dy: 0.5 },
+    ],
+    especes: [
+      { formule: 'Fe³⁺', coeff: 1, el: 'Fe', label: 'Fe³⁺', fill: DISS_ION_COLORS.Fe.fill, border: DISS_ION_COLORS.Fe.border, labelColor: DISS_ION_COLORS.Fe.label, tint: true },
+      { formule: 'Cl⁻',  coeff: 3, el: 'Cl', label: 'Cl⁻',  fill: ATOM_COLORS.Cl, border: ATOM_BORDER.Cl, labelColor: ATOM_LABEL_COLOR.Cl },
+    ],
+  },
   // ── Stœchiométrie 2:3 ────────────────────────────────────────────────
   {
     id: 'al2so43', formule: 'Al₂(SO₄)₃', nom: "Sulfate d'aluminium",
