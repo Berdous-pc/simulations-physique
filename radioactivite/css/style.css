@@ -10,11 +10,16 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { height: 100%; }
 body {
-  background: #f0ede8;
+  background: #e8e4de;
   color: #2c3e50;
   font-family: 'Segoe UI', Arial, sans-serif;
   font-size: 14px;
-  height: 100%;
+  /* dvh : suit la hauteur réellement visible (barres dynamiques du navigateur) ;
+     vh reste le repli pour les navigateurs sans support dvh. */
+  height: 100vh;
+  max-height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -27,7 +32,7 @@ main {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 1fr clamp(200px, 280px, 22vw);
+  grid-template-columns: 1fr clamp(200px, 22vw, 300px);
   grid-template-rows: 1fr;
   overflow: hidden;
   position: relative;
@@ -40,11 +45,11 @@ main {
   min-height: 0; overflow: hidden;
 }
 #left-top {
-  flex: 3; min-height: 80px; overflow: hidden;
+  flex: 3; min-height: clamp(80px, 18vh, 160px); overflow: hidden;
   position: relative; display: flex; flex-direction: column;
 }
 #left-bottom {
-  flex: 2; min-height: 60px; overflow: hidden;
+  flex: 2; min-height: clamp(60px, 14vh, 120px); overflow: hidden;
   position: relative; display: flex; flex-direction: column;
 }
 
@@ -64,7 +69,7 @@ main {
   display: flex; flex-direction: column;
   overflow: hidden; min-height: 0;
   grid-row: 1; grid-column: 2;
-  font-size: clamp(13px, 1.32vw, 17px);
+  font-size: clamp(11px, 1.1vw, 14px);
 }
 #panel-body {
   flex: 1; min-height: 0; overflow-y: auto;
@@ -200,7 +205,7 @@ main {
 
 /* ── Récipient ── */
 #recipient-wrap {
-  flex: 0 0 auto; width: 340px; min-width: 240px;
+  flex: 0 0 auto; width: clamp(240px, 30vw, 340px);
   display: flex; flex-direction: column; align-items: center;
   justify-content: flex-start;
   padding: 8px 10px; border-right: 1px solid #c8c0b4; gap: 4px; overflow: hidden;
@@ -239,19 +244,22 @@ main {
   text-transform: uppercase; letter-spacing: 1px; flex-shrink: 0;
 }
 #recipient-overlay #recipient-overlay-time {
-  font-size: 64px; color: #2a5080; font-variant-numeric: tabular-nums;
+  font-size: clamp(28px, 5vw, 64px); color: #2a5080; font-variant-numeric: tabular-nums;
   font-weight: 700; white-space: nowrap; text-align: center;
-  width: 540px; height: 90px; line-height: 90px;
+  width: auto; max-width: 100%; padding: 0 clamp(14px, 2vw, 40px);
+  height: auto; line-height: 1.4;
   background: #fff; border: 1px solid #c8c0b4; border-radius: 6px;
   flex-shrink: 0; overflow: hidden;
 }
 #recipient-overlay-stats .recipient-stat {
-  font-size: 56px; width: 620px; height: 90px; line-height: 90px;
-  padding: 0; border-radius: 6px;
+  font-size: clamp(24px, 4.5vw, 56px); width: auto; max-width: 100%; height: auto; line-height: 1.4;
+  padding: 0 clamp(12px, 1.5vw, 30px); border-radius: 6px;
 }
 #recipient-overlay-info-row {
   display: flex; flex-direction: row; gap: 16px; flex-shrink: 0;
   align-items: center; justify-content: center;
+  /* les blocs temps + compteurs passent à la ligne plutôt que de déborder */
+  flex-wrap: wrap; max-width: 100%;
 }
 
 /* ── Légende continu ── */
@@ -350,7 +358,7 @@ main {
 ══════════════════════════════════════════════════ */
 .panel-main-tabs { display: flex; gap: 0; flex-shrink: 0; }
 .panel-main-tab {
-  flex: 1; padding: 9px 4px; font-size: 15px; font-weight: 700; cursor: pointer;
+  flex: 1; padding: 9px 4px; font-size: clamp(12px, 1.2vw, 15px); font-weight: 700; cursor: pointer;
   border: 1.5px solid transparent; border-bottom: none;
   background: #d4d0c8; color: #8a9aaa; text-align: center;
   transition: background 0.12s, color 0.12s;
@@ -364,16 +372,16 @@ main {
 .panel-main-tab-bar-wrapper { flex-shrink: 0; }
 
 .section-title {
-  font-size: 14px; font-weight: 700; text-transform: uppercase;
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
   letter-spacing: 1px; color: #7a8a96; margin-bottom: 4px;
 }
 .param-row { display: flex; flex-direction: column; gap: 3px; margin-bottom: 6px; }
-.param-row label { display: flex; justify-content: space-between; font-size: 15px; color: #2c3e50; }
+.param-row label { display: flex; justify-content: space-between; font-size: clamp(12px, 1.15vw, 15px); color: #2c3e50; }
 .param-row label span { color: #2a5080; font-weight: 600; }
 input[type=range] { width: 100%; accent-color: #4a7aaa; cursor: pointer; }
 input[type=number], input[type=text] {
   width: 100%; padding: 5px 8px; border: 1px solid #c8c0b4;
-  border-radius: 4px; font-size: 16px; background: #fff; color: #2c3e50; font-family: inherit;
+  border-radius: 4px; font-size: clamp(13px, 1.3vw, 16px); background: #fff; color: #2c3e50; font-family: inherit;
 }
 input[type=number]:focus, input[type=text]:focus { outline: none; border-color: #4a7aaa; }
 
@@ -381,7 +389,7 @@ input[type=number]:focus, input[type=text]:focus { outline: none; border-color: 
   display: flex; gap: 0; border: 1px solid #c8c0b4; border-radius: 6px; overflow: hidden;
 }
 .mode-tab {
-  flex: 1; padding: 8px 4px; font-size: 15px; font-weight: 700; cursor: pointer;
+  flex: 1; padding: 8px 4px; font-size: clamp(12px, 1.2vw, 15px); font-weight: 700; cursor: pointer;
   border: none; background: #dedad2; color: #5a6a78; text-align: center;
   transition: background 0.15s, color 0.15s;
 }
@@ -391,7 +399,7 @@ input[type=number]:focus, input[type=text]:focus { outline: none; border-color: 
 
 .btn {
   width: 100%; padding: 9px 6px; border: 1px solid transparent;
-  border-radius: 6px; font-size: 16px; font-weight: 700; cursor: pointer;
+  border-radius: 6px; font-size: clamp(13px, 1.3vw, 16px); font-weight: 700; cursor: pointer;
   transition: opacity 0.2s, transform 0.1s; letter-spacing: 0.3px;
   text-align: center; display: block;
 }
@@ -400,22 +408,22 @@ input[type=number]:focus, input[type=text]:focus { outline: none; border-color: 
 .btn-raz:hover { background: #d0ccc4; color: #2c3e50; }
 .btn-lancer-tous { background: #d0dce8; color: #1a3a5a; border-color: #a0b8d0; }
 .btn-lancer-tous:hover { background: #b8ccde; }
-.btn-lancer-gris { background: #2a6aaa; color: #fff; border-color: #1a5a9a; font-size: 18px; padding: 12px 6px; }
+.btn-lancer-gris { background: #2a6aaa; color: #fff; border-color: #1a5a9a; font-size: clamp(14px, 1.4vw, 18px); padding: 12px 6px; }
 .btn-lancer-gris:hover { background: #1a5a9a; }
 .btn-lancer-gris:disabled { background: #a0b8c8; border-color: #8098a8; cursor: not-allowed; }
-.btn-ajouter { background: #d0e8d8; color: #1a4a2a; border-color: #90b8a0; font-size: 16px; padding: 9px 6px; }
+.btn-ajouter { background: #d0e8d8; color: #1a4a2a; border-color: #90b8a0; font-size: clamp(13px, 1.3vw, 16px); padding: 9px 6px; }
 .btn-ajouter:hover { background: #b0d8b8; }
 .btn-ajouter:disabled { background: #c8d8cc; border-color: #a0b8a8; color: #6a8a76; cursor: not-allowed; }
-.btn-auto-run { background: #2a6aaa; color: #fff; border-color: #1a5a9a; font-size: 18px; padding: 12px 6px; }
+.btn-auto-run { background: #2a6aaa; color: #fff; border-color: #1a5a9a; font-size: clamp(14px, 1.4vw, 18px); padding: 12px 6px; }
 .btn-auto-run:hover { background: #1a5a9a; }
-.btn-play { background: #2a8a50; color: #fff; border-color: #1a6a38; font-size: 18px; padding: 12px 6px; }
+.btn-play { background: #2a8a50; color: #fff; border-color: #1a6a38; font-size: clamp(14px, 1.4vw, 18px); padding: 12px 6px; }
 .btn-play:hover { background: #1a7040; }
-.btn-pause { background: #c08020; color: #fff; border-color: #a06010; font-size: 18px; padding: 12px 6px; }
+.btn-pause { background: #c08020; color: #fff; border-color: #a06010; font-size: clamp(14px, 1.4vw, 18px); padding: 12px 6px; }
 .btn-pause:hover { background: #a06010; }
 .btn-pause:disabled { background: #c8c4bc; border-color: #a8a09a; color: #8a8a8a; cursor: not-allowed; }
 .btn-reset-continu { background: #dedad2; color: #5a6a78; border-color: #b0a898; }
 .btn-reset-continu:hover { background: #d0ccc4; color: #2c3e50; }
-.btn-toggle-graph { background: #e8e4de; color: #2c3e50; border-color: #b0a898; font-size: 15px; padding: 7px 6px; }
+.btn-toggle-graph { background: #e8e4de; color: #2c3e50; border-color: #b0a898; font-size: clamp(12px, 1.2vw, 15px); padding: 7px 6px; }
 .btn-toggle-graph.active { background: #d0dce8; color: #1a3a5a; border-color: #a0b8d0; }
 .btn-toggle-graph:hover { background: #d0ccc4; }
 
@@ -428,15 +436,15 @@ input[type=number]:focus, input[type=text]:focus { outline: none; border-color: 
   background: #fff; border: 1px solid #c8c0b4; border-radius: 6px;
   padding: 7px 9px; display: flex; justify-content: space-between; align-items: center;
 }
-.readout .ro-label { font-size: 14px; color: #7a8a96; }
-.readout .ro-value { font-size: 20px; font-weight: 700; color: #2a5080; font-variant-numeric: tabular-nums; }
+.readout .ro-label { font-size: clamp(11px, 1vw, 13px); color: #7a8a96; }
+.readout .ro-value { font-size: clamp(15px, 1.6vw, 20px); font-weight: 700; color: #2a5080; font-variant-numeric: tabular-nums; }
 
 .panel-hint {
   flex-shrink: 0; color: #5a6a78; line-height: 1.5;
   background: #fff; border: 1.5px solid #b0a898; overflow: hidden; transition: padding 0.2s;
 }
 .panel-hint-header { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; }
-.panel-hint-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #7a8a96; margin-left: auto; margin-right: 10px; }
+.panel-hint-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #7a8a96; margin-left: auto; margin-right: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .panel-hint-menu-btn {
   background: #f0f4f7; border: 1px solid #c8d4dc; border-radius: 6px; cursor: pointer;
   font-size: 11px; font-weight: 600; color: #4a5a68; padding: 4px 9px; line-height: 1.2;
@@ -448,12 +456,12 @@ input[type=number]:focus, input[type=text]:focus { outline: none; border-color: 
   font-size: 13px; color: #7a8a96; padding: 0 2px; line-height: 1; transition: transform 0.2s;
 }
 .panel-hint-toggle:hover { color: #2a6aaa; }
-.panel-hint-body { font-size: 15px; padding: 0 10px 8px; overflow: hidden; transition: max-height 0.25s ease, padding 0.25s ease; max-height: 200px; }
+.panel-hint-body { font-size: clamp(12px, 1.15vw, 15px); padding: 0 10px 8px; overflow: hidden; transition: max-height 0.25s ease, padding 0.25s ease; max-height: 200px; }
 .panel-hint.collapsed .panel-hint-body { max-height: 0; padding-top: 0; padding-bottom: 0; }
 .panel-hint.collapsed .panel-hint-header { padding-bottom: 6px; }
 .panel-hint:not(.collapsed) .panel-hint-toggle { transform: rotate(180deg); }
 
-.input-hint { font-size: 14px; color: #7a8a96; margin-top: 2px; }
+.input-hint { font-size: clamp(10px, 0.9vw, 13px); color: #7a8a96; margin-top: 2px; }
 .sep { border: none; border-top: 1px solid #c8c0b4; margin: 2px 0; }
 
 /* Étiquettes tangentes figées */
@@ -493,7 +501,8 @@ input[type=number]:focus, input[type=text]:focus { outline: none; border-color: 
 /* ── Overlay récipient agrandi ── */
 #recipient-overlay {
   display: none; position: absolute; top: 0; left: 0;
-  right: 280px; bottom: 0; z-index: 30;
+  /* même formule que la colonne panneau de la grille : l'overlay colle au panneau */
+  right: clamp(200px, 22vw, 300px); bottom: 0; z-index: 30;
   background: #faf9f6; border: 2px solid #2a6aaa;
   flex-direction: column; align-items: center; justify-content: center;
   gap: 6px; padding: 12px;
@@ -515,5 +524,32 @@ input[type=number]:focus, input[type=text]:focus { outline: none; border-color: 
   text-transform: uppercase; letter-spacing: 1px; flex-shrink: 0;
 }
 #recipient-overlay-stats {
-  display: flex; gap: 10px; flex-shrink: 0; flex-wrap: nowrap; justify-content: center;
+  display: flex; gap: 10px; flex-shrink: 0; flex-wrap: wrap; justify-content: center;
+  max-width: 100%;
+}
+
+/* ══════════════════════════════════════════════════
+   TÉLÉPHONE EN PORTRAIT
+   Simulation trop dense pour un écran étroit : on invite
+   à passer en mode paysage (overlay plein écran).
+══════════════════════════════════════════════════ */
+#rotate-overlay { display: none; }
+@media (max-width: 700px) and (orientation: portrait) {
+  #rotate-overlay {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: #e8e4de;
+    color: #2c3e50;
+    font-size: 17px;
+    line-height: 1.6;
+    text-align: center;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 12px;
+    padding: 24px;
+  }
+  #rotate-overlay .rotate-icon { font-size: 44px; }
 }

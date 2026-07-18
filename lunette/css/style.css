@@ -9,11 +9,16 @@
 ════════════════════════════════════════════════════ */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body {
-  background: #f0ede8;
+  background: #e8e4de;
   color: #2c3e50;
   font-family: 'Segoe UI', Arial, sans-serif;
   font-size: 14px;
+  /* dvh : suit la hauteur réellement visible (barres dynamiques du navigateur) ;
+     vh reste le repli pour les navigateurs sans support dvh. */
   height: 100vh;
+  max-height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -26,7 +31,7 @@ main {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 1fr clamp(200px, 290px, 22vw);
+  grid-template-columns: 1fr clamp(200px, 22vw, 300px);
   overflow: hidden;
 }
 
@@ -44,6 +49,8 @@ main {
   width: 100%;
   height: 100%;
   cursor: default;
+  /* évite que le drag des lentilles ne déclenche le scroll tactile */
+  touch-action: none;
 }
 
 /* ════════════════════════════════════════════════════
@@ -55,7 +62,7 @@ main {
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
-  font-size: clamp(13px, 1.2vw, 15px);
+  font-size: clamp(11px, 1.1vw, 14px);
 }
 
 #panel-body {
@@ -72,7 +79,7 @@ main {
    TITRES DE SECTION
 ════════════════════════════════════════════════════ */
 .section-title {
-  font-size: 0.78em;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 1px;
@@ -82,34 +89,58 @@ main {
 }
 
 /* ════════════════════════════════════════════════════
-   GROUPE DE CONTRÔLE
+   PARAMÈTRES (charte : .param-row)
 ════════════════════════════════════════════════════ */
-.ctrl-group { display: flex; flex-direction: column; gap: 8px; }
-.ctrl-row { display: flex; flex-direction: column; gap: 3px; }
-.ctrl-label {
+.param-group { display: flex; flex-direction: column; gap: 8px; }
+.param-row { display: flex; flex-direction: column; gap: 3px; }
+.param-label {
   display: flex;
   justify-content: space-between;
-  font-size: 1em;
+  font-size: clamp(12px, 1.15vw, 15px);
   color: #2c3e50;
 }
-.ctrl-label span { font-weight: 600; color: #2a6aaa; font-variant-numeric: tabular-nums; }
-input[type=range] { width: 100%; accent-color: #2a6aaa; cursor: pointer; }
+.param-label span { font-weight: 600; color: #2a5080; font-variant-numeric: tabular-nums; }
+input[type=range] { width: 100%; accent-color: #4a7aaa; cursor: pointer; }
 
 /* ════════════════════════════════════════════════════
    SLIDER DÉSACTIVÉ
 ════════════════════════════════════════════════════ */
-.ctrl-row.disabled .ctrl-label { color: #b0b8c0; }
-.ctrl-row.disabled .ctrl-label span { color: #b0b8c0; }
-.ctrl-row.disabled input[type=range] { opacity: 0.38; cursor: not-allowed; pointer-events: none; }
+.param-row.disabled .param-label { color: #b0b8c0; }
+.param-row.disabled .param-label span { color: #b0b8c0; }
+.param-row.disabled input[type=range] { opacity: 0.38; cursor: not-allowed; pointer-events: none; }
 
 /* ════════════════════════════════════════════════════
-   BOUTONS MODE
+   ONGLETS DE MODE (charte : .mode-tabs / .mode-tab)
 ════════════════════════════════════════════════════ */
+.mode-tabs {
+  display: flex;
+  gap: 0;
+  border: 1px solid #c8c0b4;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.mode-tab {
+  flex: 1;
+  padding: 8px 4px;
+  font-size: clamp(12px, 1.2vw, 15px);
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: #dedad2;
+  color: #5a6a78;
+  text-align: center;
+  transition: background 0.15s, color 0.15s;
+}
+.mode-tab.active { background: #2a6aaa; color: #fff; }
+.mode-tab:disabled { opacity: 0.4; cursor: default; }
+
+/* ── Boutons d'action appariés (Play/Reset) ── */
 .mode-row { display: flex; gap: 6px; }
 .mode-btn {
   flex: 1;
   padding: 7px 6px;
-  font-size: 0.87em;
+  font-size: clamp(11px, 1.1vw, 13px);
   font-weight: 600;
   border: 1px solid #c8c0b4;
   border-radius: 4px;
@@ -119,40 +150,52 @@ input[type=range] { width: 100%; accent-color: #2a6aaa; cursor: pointer; }
   transition: background 0.15s, color 0.15s;
 }
 .mode-btn.active { background: #2a6aaa; color: #fff; border-color: #2a6aaa; }
+.mode-btn:disabled { opacity: 0.4; cursor: default; }
 
 /* ════════════════════════════════════════════════════
-   BOUTONS TOGGLE PLEINE LARGEUR
+   BOUTONS BASCULE (charte : .btn-toggle-one)
 ════════════════════════════════════════════════════ */
-.toggle-btn {
+.btn-toggle-one {
   width: 100%;
-  padding: 7px 8px;
-  font-size: 0.87em;
-  font-weight: 600;
-  border: 1px solid #c8c0b4;
-  border-radius: 4px;
+  background: #ece8e0;
+  color: #5a6a78;
+  font-size: clamp(12px, 1.2vw, 15px);
+  padding: 8px 6px;
+  border: 1.5px solid #c8c0b4;
+  border-radius: 6px;
+  font-family: inherit;
+  font-weight: 700;
   cursor: pointer;
-  background: #fdf8f0;
-  color: #2c3e50;
-  transition: background 0.15s, color 0.15s;
   text-align: center;
+  transition: transform 0.1s, background 0.15s;
 }
-.toggle-btn.active { background: #b04020; color: #fff; border-color: #b04020; }
-.toggle-btn.active-blue { background: #2a6aaa; color: #fff; border-color: #2a6aaa; }
+.btn-toggle-one:hover { background: #dedad2; }
+.btn-toggle-one:active { transform: scale(0.97); }
+.btn-toggle-one.active {
+  background: #fde8c8;
+  color: #7a3a10;
+  border-color: #d0a060;
+}
 
 /* ════════════════════════════════════════════════════
-   BOÎTES DE RÉSULTATS
+   AFFICHEURS VALEUR (charte : .readout)
 ════════════════════════════════════════════════════ */
 .results-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.result-box {
-  background: #fdf8f0;
+.readout {
+  background: #fff;
   border: 1px solid #c8c0b4;
-  border-radius: 4px;
-  padding: 5px 7px;
+  border-radius: 6px;
+  padding: 7px 9px;
   display: flex; flex-direction: column; gap: 2px;
 }
-.result-box .rb-label { font-size: 0.87em; color: #7a8a96; }
-.result-box .rb-value { font-size: 1.2em; font-weight: 700; color: #2c3e50; font-variant-numeric: tabular-nums; }
-.result-box.wide { grid-column: span 2; }
+.readout .ro-label { font-size: clamp(11px, 1vw, 13px); color: #7a8a96; }
+.readout .ro-value {
+  font-size: clamp(13px, 1.35vw, 17px);
+  font-weight: 700;
+  color: #2a5080;
+  font-variant-numeric: tabular-nums;
+}
+.readout.wide { grid-column: span 2; }
 
 /* ════════════════════════════════════════════════════
    LÉGENDE
@@ -210,7 +253,11 @@ input[type=range] { width: 100%; accent-color: #2a6aaa; cursor: pointer; }
   letter-spacing: 1px;
   color: #7a8a96;
   margin-left: auto;
-  margin-right: 10px;
+  margin-right: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .panel-hint-menu-btn {
@@ -241,7 +288,7 @@ input[type=range] { width: 100%; accent-color: #2a6aaa; cursor: pointer; }
 .panel-hint-toggle:hover { color: #2a6aaa; }
 
 .panel-hint-body {
-  font-size: clamp(11px, 1.1vw, 14px);
+  font-size: clamp(12px, 1.15vw, 15px);
   padding: 0 10px 8px;
   overflow: hidden;
   transition: max-height 0.25s ease, padding 0.25s ease;
@@ -254,3 +301,26 @@ input[type=range] { width: 100%; accent-color: #2a6aaa; cursor: pointer; }
   padding-bottom: 0;
 }
 .panel-hint:not(.collapsed) .panel-hint-toggle { transform: rotate(180deg); }
+
+/* ══════════════════════════════════════════════════
+   TÉLÉPHONE EN PORTRAIT
+   On empile : simulation en haut (60dvh), panneau en
+   dessous ; le scroll de page redevient possible.
+══════════════════════════════════════════════════ */
+@media (max-width: 700px) and (orientation: portrait) {
+  body {
+    height: auto;
+    max-height: none;
+    min-height: 100dvh;
+    overflow-y: auto;
+  }
+  main {
+    grid-template-columns: 1fr;
+    grid-template-rows: 60dvh auto;
+  }
+  #canvas-area {
+    border-right: none;
+    border-bottom: 1px solid #c8c0b4;
+  }
+  #panel-body { overflow-y: visible; }
+}

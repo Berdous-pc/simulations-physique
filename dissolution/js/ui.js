@@ -317,8 +317,12 @@ function init() {
 
   requestAnimationFrame(loop);
 
-  // ── Deep link depuis la page d'accueil (?tab=mecanisme|dissolution) ─────
-  const _tab = new URLSearchParams(location.search).get('tab');
+  // ── Deep link depuis la page d'accueil ─────────────────────────────────
+  // Convention charte : fragment #mecanisme / #dissolution (comme ondes/ et
+  // champ_uniforme/). L'ancien paramètre ?tab= reste accepté en repli pour
+  // ne pas casser les liens déjà partagés.
+  const _hash = (location.hash || '').replace('#', '');
+  const _tab  = _hash || new URLSearchParams(location.search).get('tab');
   if (_tab === 'mecanisme' || _tab === 'dissolution') setMainTab(_tab);
 }
 window.addEventListener('DOMContentLoaded', init);

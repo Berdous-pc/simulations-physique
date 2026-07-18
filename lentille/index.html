@@ -11,6 +11,7 @@
   <title>Simulation — Lentille mince convergente</title>
   <meta name="author" content="Mathieu Berdous">
   <meta name="copyright" content="Mathieu Berdous — CC BY-NC 4.0">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>⚛️</text></svg>">
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
@@ -55,18 +56,18 @@
     <!-- Mode d'affichage des rayons -->
     <div>
       <div class="section-title">Mode d'affichage</div>
-      <div class="mode-row" style="margin-top:8px;">
-        <button class="mode-btn active" id="btn-instant" onclick="setMode('instant')">Instantané</button>
-        <button class="mode-btn" id="btn-anim" onclick="setMode('anim')">Propagation</button>
+      <div class="mode-tabs" style="margin-top:8px;">
+        <button class="mode-tab active" id="btn-instant" onclick="setMode('instant')">Instantané</button>
+        <button class="mode-tab" id="btn-anim" onclick="setMode('anim')">Propagation</button>
       </div>
 
       <!-- Contrôles de propagation (masqués en mode instantané) -->
-      <div class="ctrl-row" id="row-speed" style="margin-top:8px;">
+      <div class="param-row" id="row-speed" style="margin-top:8px;">
         <div style="display:flex;gap:8px;margin-bottom:6px;">
           <button id="btn-pause-play" class="mode-btn" style="flex:1;" onclick="togglePausePlay()">▶ Play</button>
           <button id="btn-reset-anim" class="mode-btn" style="flex:1;" onclick="resetAnim()">↺ Reset</button>
         </div>
-        <div class="ctrl-label" style="display:flex;justify-content:space-between;">
+        <div class="param-label" style="display:flex;justify-content:space-between;">
           <span>Vitesse</span><span id="lbl-speed">×1</span>
         </div>
         <div id="speed-wrap" style="display:flex;align-items:center;gap:16px;user-select:none;">
@@ -89,20 +90,20 @@
     <!-- Choix de la lentille -->
     <div>
       <div class="section-title">Choix de la lentille</div>
-      <div class="mode-row" style="margin-top:8px;">
-        <button class="mode-btn active" id="btn-conv" onclick="setLensType('conv')">Convergente</button>
-        <button class="mode-btn" id="btn-div" onclick="setLensType('div')">Divergente</button>
+      <div class="mode-tabs" style="margin-top:8px;">
+        <button class="mode-tab active" id="btn-conv" onclick="setLensType('conv')">Convergente</button>
+        <button class="mode-tab" id="btn-div" onclick="setLensType('div')">Divergente</button>
       </div>
     </div>
 
     <!-- Paramètres optiques -->
     <div>
       <div class="section-title">Paramètres optiques</div>
-      <div class="ctrl-group" style="margin-top:8px;">
+      <div class="param-group" style="margin-top:8px;">
 
         <!-- Distance focale f' -->
-        <div class="ctrl-row">
-          <div class="ctrl-label">
+        <div class="param-row">
+          <div class="param-label">
             Distance focale f'
             <span id="lbl-f">+10,0 cm</span>
           </div>
@@ -111,8 +112,8 @@
         </div>
 
         <!-- Taille algébrique AB -->
-        <div class="ctrl-row" id="row-h">
-          <div class="ctrl-label">
+        <div class="param-row" id="row-h">
+          <div class="param-label">
             Taille objet <span style="text-decoration:overline">AB</span>
             <span id="lbl-h">+3,0 cm</span>
           </div>
@@ -121,8 +122,8 @@
         </div>
 
         <!-- Nombre de rayons -->
-        <div class="ctrl-row">
-          <div class="ctrl-label">
+        <div class="param-row">
+          <div class="param-label">
             Nombre de rayons
             <span id="lbl-nrays">3</span>
           </div>
@@ -138,15 +139,15 @@
       <div class="section-title">Objet à l'infini</div>
       <div style="margin-top:8px; display:flex; flex-direction:column; gap:8px;">
 
-        <button id="btn-infini" onclick="toggleInfini()">Objet à l'infini : NON</button>
+        <button id="btn-infini" class="btn-toggle-one" onclick="toggleInfini()">Objet à l'infini : NON</button>
 
         <div class="mode-row" id="row-infini-anim">
           <button class="mode-btn" id="btn-infini-anim" onclick="toggleInfiniAnim()">▶ Animation</button>
           <button class="mode-btn" id="btn-infini-play" onclick="toggleInfiniPlay()" disabled>⏸ Pause</button>
         </div>
 
-        <div class="ctrl-row disabled" id="row-alpha">
-          <div class="ctrl-label">
+        <div class="param-row disabled" id="row-alpha">
+          <div class="param-label">
             Angle α (rayons incidents)
             <span id="lbl-alpha">0°</span>
           </div>
@@ -161,8 +162,8 @@
     <div>
       <div class="section-title">Options</div>
       <div style="margin-top:8px; display:flex; flex-direction:column; gap:8px;">
-        <button id="btn-multipoints" onclick="toggleMultiPoints()">Points sources sur tout l'objet : NON</button>
-        <button id="btn-conjugaison" onclick="toggleConjugaison()">Relation de conjugaison : NON</button>
+        <button id="btn-multipoints" class="btn-toggle-one" onclick="toggleMultiPoints()">Points sources sur tout l'objet : NON</button>
+        <button id="btn-conjugaison" class="btn-toggle-one" onclick="toggleConjugaison()">Relation de conjugaison : NON</button>
       </div>
     </div>
 
@@ -170,25 +171,25 @@
     <div>
       <div class="section-title">Résultats</div>
       <div class="results-grid" style="margin-top:8px;">
-        <div class="result-box">
-          <div class="rb-label"><span style="text-decoration:overline">OA</span> (objet)</div>
-          <div class="rb-value" id="res-OA">—</div>
+        <div class="readout">
+          <div class="ro-label"><span style="text-decoration:overline">OA</span> (objet)</div>
+          <div class="ro-value" id="res-OA">—</div>
         </div>
-        <div class="result-box">
-          <div class="rb-label"><span style="text-decoration:overline">OA'</span> (image)</div>
-          <div class="rb-value" id="res-OA2">—</div>
+        <div class="readout">
+          <div class="ro-label"><span style="text-decoration:overline">OA'</span> (image)</div>
+          <div class="ro-value" id="res-OA2">—</div>
         </div>
-        <div class="result-box">
-          <div class="rb-label">Grandissement <span style="text-decoration:overline">γ</span></div>
-          <div class="rb-value" id="res-gamma">—</div>
+        <div class="readout">
+          <div class="ro-label">Grandissement <span style="text-decoration:overline">γ</span></div>
+          <div class="ro-value" id="res-gamma">—</div>
         </div>
-        <div class="result-box">
-          <div class="rb-label">Taille image <span style="text-decoration:overline">A'B'</span></div>
-          <div class="rb-value" id="res-h2">—</div>
+        <div class="readout">
+          <div class="ro-label">Taille image <span style="text-decoration:overline">A'B'</span></div>
+          <div class="ro-value" id="res-h2">—</div>
         </div>
-        <div class="result-box wide">
-          <div class="rb-label">Nature de l'image</div>
-          <div class="rb-value" id="res-nature">—</div>
+        <div class="readout wide">
+          <div class="ro-label">Nature de l'image</div>
+          <div class="ro-value" id="res-nature">—</div>
         </div>
       </div>
     </div>

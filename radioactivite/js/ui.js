@@ -1077,14 +1077,11 @@ function updateContinuReadouts() {
 
 function expandRecipient() {
   recipientExpanded = true;
-  const overlay = document.getElementById('recipient-overlay');
-  overlay.classList.add('visible');
-  const dpr = window.devicePixelRatio || 1;
-  const rbCssW = overlay.clientWidth  - 24;
-  const rbCssH = overlay.clientHeight - 64;
-  recipientCanvasBig.width  = Math.round(rbCssW * dpr);
-  recipientCanvasBig.height = Math.round(rbCssH * dpr);
-  recipientCtxBig.setTransform(dpr, 0, 0, dpr, 0, 0);
+  document.getElementById('recipient-overlay').classList.add('visible');
+  // classList.add() ci-dessus force déjà un reflow synchrone dès que la
+  // taille du canvas est lue plus bas (dans resizeRecipientCanvasBig) : le
+  // layout flex (label + compteurs + canvas) est donc à jour à ce moment.
+  resizeRecipientCanvasBig();
   drawRecipient();
 }
 

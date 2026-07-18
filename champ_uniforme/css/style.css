@@ -11,8 +11,12 @@ body {
   font-family: 'Segoe UI', Arial, sans-serif;
   background: #e8e4de;
   color: #2c3e50;
+  /* dvh : suit la hauteur réellement visible (barres dynamiques du navigateur) ;
+     vh reste le repli pour les navigateurs sans support dvh. */
   height: 100vh;
   max-height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -926,7 +930,11 @@ main {
   letter-spacing: 1px;
   color: #7a8a96;
   margin-left: auto;
-  margin-right: 10px;
+  margin-right: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .panel-hint-toggle {
@@ -990,3 +998,29 @@ main {
 }
 
 
+
+/* ══════════════════════════════════════════════════
+   TÉLÉPHONE EN PORTRAIT
+   Simulation trop dense pour un écran étroit : on invite
+   à passer en mode paysage (overlay plein écran).
+══════════════════════════════════════════════════ */
+#rotate-overlay { display: none; }
+@media (max-width: 700px) and (orientation: portrait) {
+  #rotate-overlay {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: #e8e4de;
+    color: #2c3e50;
+    font-size: 17px;
+    line-height: 1.6;
+    text-align: center;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 12px;
+    padding: 24px;
+  }
+  #rotate-overlay .rotate-icon { font-size: 44px; }
+}

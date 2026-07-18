@@ -30,9 +30,17 @@ Collection de **simulations interactives** de physique-chimie. Chaque simulation
 
 ### Principes appliqués dans toutes les pages
 
-- **Pas de `<header>`** : aucune page ne comporte de balise `<header>`. Le `<body>` contient directement le `<main>`, qui occupe 100 % de la hauteur disponible.
-- **`height: 100vh` + `overflow: hidden` sur `body`** : l'interface tient dans la fenêtre sans scroll de page.
-- **Grille CSS fluide** : `grid-template-columns: 1fr clamp(200px, 280–300px, 22vw)` — le panneau droit se rétrécit sur petite fenêtre.
+- **Pas de `<header>`** : aucune page de **simulation** ne comporte de balise `<header>`. Le `<body>` contient directement le `<main>`, qui occupe 100 % de la hauteur disponible. (Exception assumée : la page d'accueil a un `<header class="page-header">` pour son titre.)
+- **`height: 100vh` + repli `100dvh` + `overflow: hidden` sur `body`** : l'interface tient dans la fenêtre sans scroll de page. Le pattern complet (à recopier tel quel) :
+  ```css
+  /* dvh : suit la hauteur réellement visible (barres dynamiques du navigateur) ;
+     vh reste le repli pour les navigateurs sans support dvh. */
+  height: 100vh;
+  max-height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
+  ```
+- **Grille CSS fluide** : `grid-template-columns: 1fr clamp(200px, 22vw, 300px)` — écriture unique sur tout le site (min, **valeur préférée fluide**, max) ; le panneau droit se rétrécit sur petite fenêtre. Toute valeur qui doit « coller » au panneau (overlay en `position: absolute/fixed`, `right:` …) réutilise la même formule `clamp(200px, 22vw, 300px)`.
 - **`clamp()` systématique** pour les tailles de police, paddings et dimensions : garantit un minimum lisible sur petit écran et un maximum raisonnable sur grand écran.
   - Exemple panneau : `font-size: clamp(11px, 1.1vw, 14px)`
   - Exemple formules chimiques (`reaction.html`) : `font-size: clamp(28px, 4vw, 52px)`
@@ -41,16 +49,26 @@ Collection de **simulations interactives** de physique-chimie. Chaque simulation
 - **Panneau droit scrollable** (`overflow-y: auto`) quand le contenu est plus long que la fenêtre (petits écrans).
 - **Textes des zones de simulation** (canvas) dessinés proportionnellement à la taille du canvas, pas en px fixes.
 
+### Téléphone (hors cible principale, mais géré)
+
+Deux stratégies selon la densité de la page, via `@media (max-width: 700px) and (orientation: portrait)` :
+
+- **Pages « simples »** (dissolution, pression, lentille, lunette, reaction) : **layout empilé** — `body` repasse en `height: auto; overflow-y: auto`, `main` en une colonne `grid-template-rows: 60dvh auto` (simulation en haut, panneau en dessous). Les canvas interactifs portent `touch-action: none` pour que le drag ne déclenche pas le scroll de page.
+- **Pages « denses »** (titrage, champ_uniforme, radioactivite, ondes, condensateur) : **overlay `#rotate-overlay`** plein écran invitant à passer en paysage (bloc HTML + CSS identiques d'une page à l'autre, à recopier).
+- **Accueil** : pas de media query mobile spécifique — layout desktop conservé tel quel à toutes les tailles.
+
 ---
 
 ## 4. Charte graphique
+
+> **Référence graphique : les pages les plus récentes** — `dissolution/`, `champ_uniforme/`, `ondes/` (et `pression/`). En cas de doute ou de contradiction entre ce document et une page, ce sont ces pages qui font foi ; les anciennes pages ont été alignées sur elles.
 
 ### Couleurs
 
 | Rôle | Valeur |
 |---|---|
 | Fond simulation | `#fdf8f0` (ivoire chaud) |
-| Fond page / panneau | `#e8e4de` |
+| Fond page (`body`) / panneau | `#e8e4de` (partout, comme fond de `body` et de `#panel` — l'ancien `#f0ede8` ne subsiste plus qu'en accent ponctuel dans certaines pages, ex. ligne alternée de tableau) |
 | Fond graphes | `#faf9f6` |
 | Bordures | `#c8c0b4` |
 | Texte principal | `#2c3e50` |
@@ -69,7 +87,7 @@ Les tailles sont **volontairement grandes** pour la lisibilité en projection. L
 
 | Rôle | Police | Taille / règle |
 |---|---|---|
-| Corps UI | `'Segoe UI', Arial, sans-serif` | `clamp(11px, 1.1vw, 14px)` dans le panneau |
+| Corps UI | `'Segoe UI', Arial, sans-serif` | `clamp(11px, 1.1vw, 14px)` sur `#panel` (toutes pages) |
 | Labels composants (circuit, canvas) | `bold monospace` | `28–36px` (calculé en JS selon taille canvas) |
 | Valeurs instantanées | `bold tabular-nums` | `14–20px` |
 | Labels / graduations graphes | `monospace` | `12–13px` |
@@ -80,7 +98,7 @@ Les tailles sont **volontairement grandes** pour la lisibilité en projection. L
 
 ### Layout
 
-- **Grille principale** : `grid-template-columns: 1fr clamp(200px, 280–300px, 22vw)`
+- **Grille principale** : `grid-template-columns: 1fr clamp(200px, 22vw, 300px)` (écriture unique)
   - Colonne gauche : simulation + graphes (flex column avec splitter draggable si applicable)
   - Colonne droite : panneau de contrôle, scrollable, hauteur 100 %
 - `overflow: hidden` sur `body` et `main` — pas de scroll page, conçu pour `100vh`
@@ -89,9 +107,9 @@ Les tailles sont **volontairement grandes** pour la lisibilité en projection. L
 
 ---
 
-## 5. Panneau de contrôle — charte (référence : radioactivité & reaction)
+## 5. Panneau de contrôle — charte (référence : ondes, champ_uniforme & dissolution)
 
-Les deux dernières pages conçues (`radioactivite.html` et `reaction.html`) font référence pour le panneau droit.
+Les pages les plus récentes (`ondes/`, `champ_uniforme/`, `dissolution/`) font référence pour le panneau droit. Toutes les tailles de police du panneau utilisent `clamp()` (jamais de px fixe pour un texte du panneau).
 
 ### Structure du panneau
 
@@ -114,7 +132,7 @@ Les deux dernières pages conçues (`radioactivite.html` et `reaction.html`) fon
 
 | Propriété | Valeur |
 |---|---|
-| `font-size` | `14–15px`, `font-weight: 700` |
+| `font-size` | `clamp(12px, 1.2vw, 15px)`, `font-weight: 700` |
 | `padding` | `9px 4px` |
 | Fond inactif | `#d4d0c8`, couleur `#8a9aaa` |
 | Fond actif | `#e8e4de`, couleur `#2a6aaa` |
@@ -124,7 +142,7 @@ Les deux dernières pages conçues (`radioactivite.html` et `reaction.html`) fon
 
 | Propriété | Valeur |
 |---|---|
-| `font-size` | `15px`, `font-weight: 700` |
+| `font-size` | `clamp(12px, 1.2vw, 15px)`, `font-weight: 700` |
 | `padding` | `8px 4px` |
 | Fond inactif | `#dedad2`, couleur `#5a6a78` |
 | Fond actif | `#2a6aaa`, couleur `#fff` |
@@ -146,35 +164,36 @@ Tous les boutons partagent : `width: 100%`, `border-radius: 6px`, `font-weight: 
 
 | Variante | Fond | Couleur texte | `font-size` | `padding` | Usage |
 |---|---|---|---|---|---|
-| `.btn-raz` | `#dedad2` | `#5a6a78` | `15px` | `9px 6px` | Remise à zéro |
-| `.btn-primary` | `#2a6aaa` | `#fff` | `16px` | `11px 6px` | Action principale (bleu) |
-| `.btn-green` | `#2a8a50` | `#fff` | `16px` | `11px 6px` | Action positive (vert) |
-| `.btn-auto-run` / `.btn-lancer-gris` | `#2a6aaa` | `#fff` | `18px` | `12px 6px` | Lancer simulation (bleu, grand) |
-| `.btn-play` | `#2a8a50` | `#fff` | `18px` | `12px 6px` | Play animation |
-| `.btn-pause` | `#c08020` | `#fff` | `18px` | `12px 6px` | Pause animation |
-| `.btn-ajouter` | `#d0e8d8` | `#1a4a2a` | `16px` | `9px 6px` | Ajouter une série |
-| `.btn-toggle-one` | `#ece8e0` | `#5a6a78` | `13–15px` | `7–9px 6px` | Bascule option (actif : fond orangé `#fde8c8`) |
+| `.btn-raz` | `#dedad2` | `#5a6a78` | `clamp(12px, 1.2vw, 15px)` | `9px 6px` | Remise à zéro |
+| `.btn-primary` | `#2a6aaa` | `#fff` | `clamp(13px, 1.3vw, 16px)` | `11px 6px` | Action principale (bleu) |
+| `.btn-green` | `#2a8a50` | `#fff` | `clamp(13px, 1.3vw, 16px)` | `11px 6px` | Action positive (vert) |
+| `.btn-auto-run` / `.btn-lancer-gris` | `#2a6aaa` | `#fff` | `clamp(14px, 1.4vw, 18px)` | `12px 6px` | Lancer simulation (bleu, grand) |
+| `.btn-play` | `#2a8a50` | `#fff` | `clamp(14px, 1.4vw, 18px)` | `10–12px 6px` | Play animation |
+| `.btn-pause` | `#c08020` | `#fff` | `clamp(14px, 1.4vw, 18px)` | `10–12px 6px` | Pause animation |
+| `.btn-ajouter` | `#d0e8d8` | `#1a4a2a` | `clamp(13px, 1.3vw, 16px)` | `9px 6px` | Ajouter une série |
+| `.btn-toggle-one` | `#ece8e0` | `#5a6a78` | `clamp(12px, 1.2vw, 15px)` | `7–9px 6px` | Bascule option (actif : fond orangé `#fde8c8`, texte `#7a3a10`, bordure `#d0a060`) |
 | `.btn-test-mode` | `#4a2a8a` | `#fff` | `15px` | `10px 6px` | Mode test (violet) |
 | Désactivé (`:disabled`) | `#a0b8c8` | — | — | — | `cursor: not-allowed` |
 
 ### Paramètres (`.param-row`)
 
 - `display: flex; flex-direction: column; gap: 3px; margin-bottom: 6px`
-- `label` : `font-size: 15px`, `color: #2c3e50` ; valeur actuelle en `span` : `color: #2a5080; font-weight: 600`
+- `label` : `font-size: clamp(12px, 1.15vw, 15px)`, `color: #2c3e50` ; valeur actuelle en `span` : `color: #2a5080; font-weight: 600`
 - `input[type=range]` : `width: 100%; accent-color: #4a7aaa`
-- `input[type=number/text]` : `width: 100%; padding: 5px 8px; font-size: 16px; border: 1px solid #c8c0b4; border-radius: 4px`
-- `.input-hint` : `font-size: 14px; color: #7a8a96`
+- `input[type=number/text]` : `width: 100%; padding: 5px 8px; font-size: clamp(13px, 1.3vw, 16px); border: 1px solid #c8c0b4; border-radius: 4px`
+- `.input-hint` : `font-size: clamp(10px, 0.9vw, 13px); color: #7a8a96`
 
 ### Afficheurs valeur (`.readout`)
 
 - Fond blanc, bordure `#c8c0b4`, `border-radius: 6px`, `padding: 7px 9px`
-- `.ro-label` : `font-size: 14px; color: #7a8a96`
-- `.ro-value` : `font-size: 20px; font-weight: 700; color: #2a5080; font-variant-numeric: tabular-nums`
+- `.ro-label` : `font-size: clamp(11px, 1vw, 13px); color: #7a8a96`
+- `.ro-value` : `font-size: clamp(15px, 1.6vw, 20px); font-weight: 700; color: #2a5080; font-variant-numeric: tabular-nums`
 
 ### Hint bas de panneau (`.panel-hint`)
 
 - Hors scroll, collé en bas de `#panel`
-- `font-size: 14–16px; color: #5a6a78; background: #fff; border: 1.5px solid #b0a898; padding: 8px 10px`
+- `.panel-hint-body` : `font-size: clamp(12px, 1.15vw, 15px); color: #5a6a78; background: #fff; border: 1.5px solid #b0a898`
+- `.panel-hint-title` : `11px`, uppercase, `letter-spacing: 1px`, et **doit pouvoir rétrécir** : `min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 6px` (sinon le bouton ▲ déborde du panneau sur petite fenêtre)
 
 ---
 
@@ -278,7 +297,11 @@ Les anciennes simulations en fichier unique (`reaction.html`) conservent leur fo
 - **Redimensionnement** : fonction `resize()` appelée sur l'événement `resize` avec anti-rebond `requestAnimationFrame`.
 - **Canvas et écrans haute densité (`devicePixelRatio`)** : dans toute fonction `resize()` qui pose `canvas.width`/`canvas.height`, multiplier ces deux valeurs par `window.devicePixelRatio || 1` (`canvas.width = Math.round(cssW * dpr)`) puis réappliquer `ctx.setTransform(dpr, 0, 0, dpr, 0, 0)` juste après — sinon le rendu est flou sur écran Retina/haute densité. Attention : l'attribut `canvas.width/height` devient alors des pixels **physiques**, donc toute lecture ailleurs dans le code qui l'utilisait comme taille logique (axes de graphe, conversion de coordonnées souris, `getAxDims(canvas.width, ...)`, etc.) doit être remplacée par `canvas.clientWidth`/`canvas.clientHeight` (toujours en pixels CSS, insensibles au dpr). Cas particulier : si le rendu manipule des pixels bruts (`createImageData`/`putImageData`, cf. `ondes/js/vagues.js`), cette API ignore `ctx.setTransform` et travaille toujours en pixels physiques — il faut alors dimensionner le buffer sur `canvas.width/height` (physique) tout en reconvertissant les coordonnées de la boucle en pixels CSS (`/ dpr`) pour les calculs physiques, et garder l'overlay vectoriel (source, balises, axes) en pixels CSS.
 - Code entièrement **commenté en français** avec bandeaux de section `══════`.
-- **Responsivité** : utiliser `clamp()` pour toutes les tailles qui doivent s'adapter, ne jamais fixer une dimension critique en `px` sans prévoir une valeur fluide.
+- **Responsivité** : utiliser `clamp()` pour toutes les tailles qui doivent s'adapter, ne jamais fixer une dimension critique en `px` sans prévoir une valeur fluide. Hauteur de page : pattern `100vh` + repli `100dvh` (cf. §3).
+- **Favicon commun** : toute page HTML inclut dans le `<head>` le favicon ⚛️ inline (aucun fichier externe) :
+  ```html
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>⚛️</text></svg>">
+  ```
 - **Signature obligatoire** : tout fichier créé ou modifié doit porter la signature de l'auteur (voir ci-dessous).
 
 ### Signature des fichiers
@@ -352,6 +375,7 @@ Toute page **HTML autonome** destinée à être publiée (page d'accueil `index.
 | `pression/` | Pression d'un gaz parfait — modèle cinétique | Terminale | **Arborescence** | Piston animé, collisions élastiques 2D, PV=nRT, chocs/s sur 4 parois |
 | `champ_uniforme/` | Mécanique : vecteurs cinématiques — champ de pesanteur & champ électrique uniforme | Terminale | **Arborescence** | Référence d'architecture ; `sim.js` + `draw.js` + `ui.js` ; onglets Champ de pesanteur / Champ électrique, repères Orthonormé/Adapté, modes vue (Oxy, projections x/y), vecteurs vitesse/accélération, mode perpendiculaire (champ E), graphes d'énergie, deep-linking via `#champ-pesanteur` / `#champ-electrique` |
 | `ondes/` | Propagation d'ondes — corde, onde sonore (tube), ondes de surface | Première/Terminale | **Arborescence** | Référence d'architecture ; `sim.js` + `tube.js` + `graph.js` + `ui.js` ; onglets Corde/Son/Vagues, sélection de particules par proximité (Ctrl/Maj+clic), mode pression colorée, graphes ΔP(x)/ΔP(t) avec zoom/pan/tangente, deep-linking via `#corde` / `#son` / `#vagues` — voir `ondes/ARCHITECTURE.md` |
+| `dissolution/` | Solutions aqueuses — mécanisme de dissolution (NaCl) & quantités de matière | Première | **Arborescence** | Onglets Mécanisme/Dissolution ; animation microscopique scriptée (coupelle, verre, zoom), plein écran type lecteur vidéo, tableau d'avancement ; deep-linking via `#mecanisme` / `#dissolution` |
 
 ---
 
@@ -361,7 +385,7 @@ Le fichier `site/index.html` est la **page d'accueil** du site. C'est un fichier
 
 ### Structure
 
-- **Layout** : `flex-column` sur `body` (`min-height: 100vh`) — scroll autorisé (contrairement aux simulations).
+- **Layout** : `flex-column` sur `body` (`min-height: 100vh`, repli `min-height: 100dvh`) — scroll autorisé (contrairement aux simulations).
 - **Deux zones** côte à côte : panel de filtres à gauche (`<aside>`) + grille de cartes à droite (`<main>`).
 - **Footer fixe en bas** de page (Mathieu Berdous · CC BY-NC 4.0).
 
@@ -387,7 +411,7 @@ Structure d'une carte :
 
 **Attributs `data-*`** sur chaque `.card` pour le filtrage JS :
 - `data-discipline` : `"physique"` ou `"chimie"`
-- `data-theme` : `"electricite"` | `"optique"` | `"radioactivite"` | `"reaction"` | `"titrage"`
+- `data-theme` : `"electricite"` | `"optique"` | `"radioactivite"` | `"reaction"` | `"titrage"` | `"dissolution"` | `"thermodynamique"` | `"ondes"` | `"mecanique"`
 - `data-levels` : niveaux séparés par espace, ex: `"seconde premiere"`
 
 ### Panel de filtres
@@ -395,7 +419,7 @@ Structure d'une carte :
 Trois groupes de checkboxes (toutes cochées par défaut) :
 - **Niveau** : Seconde, Première, Terminale
 - **Discipline** : Physique, Chimie
-- **Thème** : Électricité, Optique, Radioactivité, Réaction chimique, Titrage, Thermodynamique, Ondes, Mécanique
+- **Thème** : Électricité, Optique, Radioactivité, Réaction chimique, Titrage, Solutions aqueuses (`data-value="dissolution"`), Thermodynamique, Ondes, Mécanique
 
 Logique : **OU au sein d'une catégorie**, **ET entre catégories**.
 
@@ -422,10 +446,12 @@ Stockées dans `assets/previews/` au format `.png` (800×450 px recommandé) :
 | `onde_corde.PNG` | Onde dans une corde |
 | `onde_sonore.PNG` | Propagation d'une onde sonore |
 | `onde_vagues.PNG` | Ondes de surface |
+| `mecanisme_dissolution.png` | Mécanisme de dissolution |
+| *(à faire)* | Dissolution — carte encore en placeholder |
 
 ### Deep linking (`?tab=` ou `#hash`)
 
-Les simulations avec plusieurs onglets lisent un paramètre au chargement pour ouvrir directement le bon onglet. Deux conventions coexistent : les pages les plus anciennes utilisent le paramètre de requête `?tab=`, les plus récentes (`champ_uniforme`, `ondes`) utilisent le fragment d'URL `#hash` (lu via `window.location.hash`). Implémenté dans :
+Les simulations avec plusieurs onglets lisent un paramètre au chargement pour ouvrir directement le bon onglet. Deux conventions coexistent : les pages les plus anciennes utilisent le paramètre de requête `?tab=`, les plus récentes (`champ_uniforme`, `ondes`, `dissolution`) utilisent le fragment d'URL `#hash` (lu via `window.location.hash`). Implémenté dans :
 
 | Fichier | Paramètre | Valeurs |
 |---|---|---|
@@ -434,6 +460,9 @@ Les simulations avec plusieurs onglets lisent un paramètre au chargement pour o
 | `titrage/js/ui.js` | `?tab=` | `principe` · `titrage` |
 | `champ_uniforme/js/ui.js` | `#hash` | `champ-pesanteur` · `champ-electrique` |
 | `ondes/js/ui.js` | `#hash` | `corde` · `son` · `vagues` |
+| `dissolution/js/ui.js` | `#hash` (repli `?tab=`) | `mecanisme` · `dissolution` |
+
+Toute **nouvelle** page à onglets utilise la convention `#hash`.
 
 ### Ajouter une nouvelle simulation
 

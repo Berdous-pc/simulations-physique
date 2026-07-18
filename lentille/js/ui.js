@@ -223,7 +223,10 @@ function setLensType(type) {
   sim.lensType = type;
   document.getElementById('btn-conv').classList.toggle('active', type === 'conv');
   document.getElementById('btn-div').classList.toggle('active',  type === 'div');
-  document.getElementById('header-title').textContent =
+  // Vestige de l'ancien bandeau <header> (supprimé, cf. charte) : l'élément
+  // peut ne pas exister, on protège pour ne pas interrompre la fonction.
+  const headerTitle = document.getElementById('header-title');
+  if (headerTitle) headerTitle.textContent =
     type === 'conv' ? 'Lentille mince convergente' : 'Lentille mince divergente';
   const sign = type === 'conv' ? '+' : '−';
   document.getElementById('lbl-f').textContent = sign + sim.f.toFixed(1) + ' cm';

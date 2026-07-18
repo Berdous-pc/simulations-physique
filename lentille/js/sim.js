@@ -159,7 +159,7 @@ function updatePanel() {
   }
   const el = document.getElementById('res-nature');
   el.textContent = nature;
-  el.className = 'rb-value ' + cls;
+  el.className = 'ro-value ' + cls;
 
   updateConjugaison();
 }

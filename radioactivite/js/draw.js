@@ -104,19 +104,21 @@ function resizeCanvases() {
   recipientCanvas.width  = rw.clientWidth  - 20;
   recipientCanvas.height = Math.max(40, rw.clientHeight - otherH);
 
-  const ov = document.getElementById('recipient-overlay');
-  if (recipientExpanded) {
-    const ovLabel   = document.getElementById('recipient-overlay-label');
-    const ovInfoRow = document.getElementById('recipient-overlay-info-row');
-    const ovOtherH  = (ovLabel   ? ovLabel.offsetHeight   : 0)
-                    + (ovInfoRow ? ovInfoRow.offsetHeight  : 0)
-                    + 56;
-    const rbCssW = ov.clientWidth  - 24;
-    const rbCssH = Math.max(40, ov.clientHeight - ovOtherH);
-    recipientCanvasBig.width  = Math.round(rbCssW * dpr);
-    recipientCanvasBig.height = Math.round(rbCssH * dpr);
-    recipientCtxBig.setTransform(dpr, 0, 0, dpr, 0, 0);
-  }
+  if (recipientExpanded) resizeRecipientCanvasBig();
+}
+
+/* Dimensionne le canvas agrandi (overlay récipient) sur sa taille CSS RÉELLE
+   (flex:1 dans #recipient-overlay, cf. style.css), lue via getBoundingClientRect()
+   une fois le layout posé — plutôt que de la deviner en soustrayant les hauteurs
+   des éléments voisins (source de désynchronisation buffer/CSS → cercles ovales
+   et rognage si ces voisins changent de hauteur, ex. compteurs qui repassent
+   à la ligne sur petite fenêtre). */
+function resizeRecipientCanvasBig() {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = recipientCanvasBig.getBoundingClientRect();
+  recipientCanvasBig.width  = Math.round(rect.width  * dpr);
+  recipientCanvasBig.height = Math.round(rect.height * dpr);
+  recipientCtxBig.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
 /* ══════════════════════════════════════════════════
@@ -283,7 +285,11 @@ function drawRecipient() {
 }
 
 function _drawRecipientOnCanvas(canvas, ctx) {
-  const W = canvas.width, H = canvas.height;
+  // clientWidth/clientHeight : taille CSS (logique), pas les pixels physiques
+  // de canvas.width/height — nécessaire car ctx a déjà setTransform(dpr,...)
+  // appliqué pour recipientCanvasBig (sinon tout est dessiné dpr× trop grand
+  // et rogné par l'overflow du canvas).
+  const W = canvas.clientWidth, H = canvas.clientHeight;
   ctx.clearRect(0, 0, W, H);
   if (W <= 0 || H <= 0) return;
 

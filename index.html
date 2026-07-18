@@ -10,6 +10,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="author" content="Mathieu Berdous">
   <meta name="copyright" content="Mathieu Berdous — CC BY-NC 4.0">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>⚛️</text></svg>">
   <title>Simulations Physique-Chimie — Lycée</title>
   <style>
     /* ══════════════════════════════════════════════════
@@ -24,7 +25,10 @@
       font-family: 'Segoe UI', Arial, sans-serif;
       background: #e8e4de;
       color: #2c3e50;
+      /* dvh : suit la hauteur réellement visible (barres dynamiques du navigateur) ;
+         vh reste le repli pour les navigateurs sans support dvh. */
       min-height: 100vh;
+      min-height: 100dvh;
       display: flex;
       flex-direction: column;
       padding: clamp(16px, 3vw, 40px) clamp(12px, 4vw, 60px);
@@ -709,7 +713,7 @@
 
         <!-- Dissolution — Mécanisme de dissolution ─────── -->
         <a class="card theme-chimie"
-           href="dissolution/index.html?tab=mecanisme"
+           href="dissolution/index.html#mecanisme"
            data-discipline="chimie"
            data-theme="dissolution"
            data-levels="premiere">
@@ -728,7 +732,7 @@
 
         <!-- Dissolution — Quantités de matière lors d'une dissolution ─── -->
         <a class="card theme-chimie"
-           href="dissolution/index.html?tab=dissolution"
+           href="dissolution/index.html#dissolution"
            data-discipline="chimie"
            data-theme="dissolution"
            data-levels="premiere">

@@ -531,7 +531,11 @@ body.dev-frame-edit #zoom-frame-handle { display: block; pointer-events: auto; }
   letter-spacing: 1px;
   color: #7a8a96;
   margin-left: auto;
-  margin-right: 10px;
+  margin-right: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .panel-hint-menu-btn {
@@ -712,3 +716,22 @@ body.dev-frame-edit #zoom-frame-handle { display: block; pointer-events: auto; }
 .diss-unit-btn:not(:last-child) { border-right: 1px solid #c8c0b4; }
 .diss-unit-btn:hover { background: #ccc8c0; }
 .diss-unit-btn.active { background: #2a6aaa; color: #fff; }
+
+/* ══════════════════════════════════════════════════
+   TÉLÉPHONE EN PORTRAIT
+   On empile : simulation en haut (60dvh), panneau en
+   dessous ; le scroll de page redevient possible.
+══════════════════════════════════════════════════ */
+@media (max-width: 700px) and (orientation: portrait) {
+  body {
+    height: auto;
+    max-height: none;
+    min-height: 100dvh;
+    overflow-y: auto;
+  }
+  main {
+    grid-template-columns: 1fr;
+    grid-template-rows: 60dvh auto;
+  }
+  #panel-body { overflow-y: visible; }
+}

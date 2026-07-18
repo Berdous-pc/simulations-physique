@@ -11,8 +11,12 @@ body {
   font-family: 'Segoe UI', Arial, sans-serif;
   background: #e8e4de;
   color: #2c3e50;
+  /* dvh : suit la hauteur réellement visible (barres dynamiques du navigateur) ;
+     vh reste le repli pour les navigateurs sans support dvh. */
   height: 100vh;
   max-height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -57,6 +61,8 @@ main {
   display: block;
   width: 100%;
   height: 100%;
+  /* évite que le drag du piston ne déclenche le scroll tactile */
+  touch-action: none;
 }
 
 /* ── Tableau d'informations (à gauche du canvas) ─── */
@@ -189,7 +195,7 @@ main {
   display: flex;
   flex-direction: column;
   height: 100%;
-  font-size: clamp(13px, 1.32vw, 17px);
+  font-size: clamp(11px, 1.1vw, 14px);
   overflow: hidden;
 }
 
@@ -251,7 +257,7 @@ main {
 .btn-pause {
   background: #c08020;
   color: #fff;
-  font-size: 18px;
+  font-size: clamp(14px, 1.4vw, 18px);
   padding: 10px 6px;
 }
 .btn-pause:hover { background: #a06010; }
@@ -259,7 +265,7 @@ main {
 .btn-play {
   background: #2a8a50;
   color: #fff;
-  font-size: 18px;
+  font-size: clamp(14px, 1.4vw, 18px);
   padding: 10px 6px;
 }
 .btn-play:hover { background: #1a6a38; }
@@ -267,7 +273,7 @@ main {
 .btn-raz {
   background: #dedad2;
   color: #5a6a78;
-  font-size: 18px;
+  font-size: clamp(12px, 1.2vw, 15px);
   padding: 9px 6px;
 }
 .btn-raz:hover { background: #ccc8c0; }
@@ -276,7 +282,7 @@ main {
 .btn-toggle-one {
   background: #ece8e0;
   color: #5a6a78;
-  font-size: 16px;
+  font-size: clamp(12px, 1.2vw, 15px);
   padding: 7px 6px;
   border: 1.5px solid #c8c0b4;
   text-align: left;
@@ -440,7 +446,11 @@ main {
   letter-spacing: 1px;
   color: #7a8a96;
   margin-left: auto;
-  margin-right: 10px;
+  margin-right: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .panel-hint-menu-btn {
@@ -484,3 +494,25 @@ main {
   padding-bottom: 0;
 }
 .panel-hint:not(.collapsed) .panel-hint-toggle { transform: rotate(180deg); }
+
+/* ══════════════════════════════════════════════════
+   TÉLÉPHONE EN PORTRAIT
+   On empile : tableau + simulation en haut (60dvh),
+   panneau en dessous ; le scroll de page redevient possible.
+══════════════════════════════════════════════════ */
+@media (max-width: 700px) and (orientation: portrait) {
+  body {
+    height: auto;
+    max-height: none;
+    min-height: 100dvh;
+    overflow-y: auto;
+  }
+  main {
+    grid-template-columns: 1fr;
+    grid-template-rows: 60dvh auto;
+  }
+  /* tableau au-dessus du récipient, en pleine largeur */
+  #left-col { flex-direction: column; }
+  #info-table { width: 100%; max-width: 100%; }
+  #panel-body { overflow-y: visible; }
+}
