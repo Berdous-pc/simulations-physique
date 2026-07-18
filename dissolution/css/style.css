@@ -622,7 +622,7 @@ body.dev-frame-edit #zoom-frame-handle { display: block; pointer-events: auto; }
 }
 
 #diss-scene-wrap {
-  flex: 2 1 0;
+  flex: 60 1 0;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -633,14 +633,14 @@ body.dev-frame-edit #zoom-frame-handle { display: block; pointer-events: auto; }
 #diss-canvas {
   display: block;
   position: absolute;
-  top: 50%;
+  bottom: 0;
   left: 50%;
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, 0);
   cursor: pointer;
 }
 
 #diss-bottom-zone {
-  flex: 1 1 0;
+  flex: 40 1 0;
   min-height: 0;
   overflow-y: auto;
   background: #fdf8f0;
@@ -666,7 +666,7 @@ body.dev-frame-edit #zoom-frame-handle { display: block; pointer-events: auto; }
 }
 #diss-table th, #diss-table td {
   border: 1px solid #c8c0b4;
-  padding: clamp(4px, 0.8vh, 8px) 6px;
+  padding: clamp(2px, 0.4vh, 4px) 6px;
 }
 #diss-table .diss-label { text-align: left; color: #5a6a78; font-weight: 600; white-space: nowrap; }
 #diss-table .diss-col-solute, #diss-table .diss-td-solute { background: #e8f0fb; color: #2a6aaa; }

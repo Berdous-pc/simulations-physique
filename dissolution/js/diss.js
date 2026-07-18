@@ -92,7 +92,7 @@ const DISS_LOOSE_SCALE = 1.05;
    (dissResize()) en tient compte.
 ══════════════════════════════════════════════════ */
 function computeDissSceneLayout() {
-  dissState.tableY = 460;
+  dissState.tableY = 510;
   dissState.baseY = dissState.tableY - DISS_BASE_LIFT;   // fond des récipients, posés sur la table
 
   const d = dissState.dish;
@@ -100,7 +100,7 @@ function computeDissSceneLayout() {
   d.x0 = 150; d.y0 = dissState.baseY - d.h;
 
   const g = dissState.glass;
-  g.w = 225; g.h = 264;
+  g.w = 225; g.h = 264 * 0.9;
   g.x0 = 620; g.y0 = dissState.baseY - g.h;
 }
 
