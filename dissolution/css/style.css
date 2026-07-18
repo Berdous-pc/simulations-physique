@@ -674,6 +674,102 @@ body.dev-frame-edit #zoom-frame-handle { display: block; pointer-events: auto; }
 #diss-table thead th { font-weight: 700; }
 #diss-table .sep-rp { border-right: 2px solid #b0a898; }
 
+/* ══════════════════════════════════════════════════
+   Éditeur du tableau (dev) — TEMPORAIRE, cf. js/table-devtool.js.
+   Distinct de #dev-panel (onglet Mécanisme).
+══════════════════════════════════════════════════ */
+#diss-table-wrap { position: relative; }
+#diss-table.diss-table-dev-mode th,
+#diss-table.diss-table-dev-mode td {
+  outline: 1px dashed transparent;
+  cursor: text;
+}
+#diss-table.diss-table-dev-mode th:hover,
+#diss-table.diss-table-dev-mode td:hover {
+  outline-color: #2a6aaa;
+}
+#diss-table.diss-table-dev-mode th:focus,
+#diss-table.diss-table-dev-mode td:focus {
+  outline: 2px solid #2a6aaa;
+  outline-offset: -2px;
+  background: #fffbe8;
+}
+
+#diss-table-resize-overlay { position: absolute; inset: 0; pointer-events: none; }
+.diss-col-handle {
+  position: absolute;
+  width: 7px;
+  background: rgba(42, 106, 170, 0.15);
+  border-left: 1px dashed #2a6aaa;
+  cursor: col-resize;
+  pointer-events: auto;
+  z-index: 5;
+}
+.diss-col-handle:hover { background: rgba(42, 106, 170, 0.35); }
+.diss-row-handle {
+  position: absolute;
+  height: 7px;
+  background: rgba(42, 106, 170, 0.15);
+  border-top: 1px dashed #2a6aaa;
+  cursor: row-resize;
+  pointer-events: auto;
+  z-index: 5;
+}
+.diss-row-handle:hover { background: rgba(42, 106, 170, 0.35); }
+.diss-outer-handle {
+  background: rgba(170, 60, 42, 0.18);
+  border-color: #aa3c2a;
+}
+.diss-outer-handle:hover { background: rgba(170, 60, 42, 0.4); }
+
+#diss-table-dev-toggle {
+  position: fixed;
+  top: 8px;
+  right: 8px;
+  width: 30px;
+  height: 30px;
+  font-size: 15px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1.5px solid #b0a898;
+  border-radius: 8px;
+  cursor: pointer;
+  z-index: 31;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+}
+#diss-table-dev-panel {
+  position: fixed;
+  top: 44px;
+  right: 8px;
+  width: clamp(200px, 22vw, 300px);
+  max-height: calc(100dvh - 52px);
+  overflow-y: auto;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1.5px solid #b0a898;
+  border-radius: 8px;
+  font-size: 11px;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  color: #2c3e50;
+  z-index: 30;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+}
+#diss-table-dev-panel.collapsed { display: none; }
+#diss-table-dev-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 8px;
+  font-weight: 700;
+  background: #e8e4de;
+  border-bottom: 1px solid #c8c0b4;
+  border-radius: 7px 7px 0 0;
+}
+#diss-table-dev-close {
+  background: none; border: none; cursor: pointer; font-size: 13px; color: #5a6a78;
+}
+#diss-table-dev-body { padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+#diss-table-dev-actions { display: flex; gap: 4px; }
+#diss-table-dev-actions .dev-mode-btn { flex: 1; }
+
 /* ── Sélecteur de soluté (repris de .titrage-select/.reaction-select) ── */
 .diss-select {
   width: 100%;

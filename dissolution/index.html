@@ -109,16 +109,51 @@
         <!-- Tiers inférieur : équation de dissolution + tableau d'avancement -->
         <div id="diss-bottom-zone">
           <div id="diss-equation"></div>
-          <table id="diss-table">
-            <thead><tr id="diss-thead-row"></tr></thead>
-            <tbody>
-              <tr id="diss-tbody-initial"></tr>
-              <tr id="diss-tbody-final"></tr>
-            </tbody>
-          </table>
+          <div id="diss-table-wrap">
+            <table id="diss-table">
+              <thead><tr id="diss-thead-row"></tr></thead>
+              <tbody>
+                <tr id="diss-tbody-initial"></tr>
+                <tr id="diss-tbody-final"></tr>
+              </tbody>
+            </table>
+            <!-- Poignées de redimensionnement (colonnes/lignes), générées par
+                 table-devtool.js uniquement quand l'éditeur est actif. -->
+            <div id="diss-table-resize-overlay"></div>
+          </div>
         </div>
 
       </div><!-- fin #diss-content-col -->
+
+      <!-- ══════════════════════════════════════════════
+           Éditeur du tableau (dev) — DISTINCT du panneau de réglage de
+           l'onglet Mécanisme (#dev-panel/devpanel.js) : celui-ci édite en
+           direct la mise en page du #diss-table (largeur des colonnes,
+           hauteur des lignes, ajout de lignes/colonnes, texte des cellules),
+           puis exporte cette mise en page pour la figer en dur dans le code
+           (cf. js/table-devtool.js). Sœur de #diss-content-col, positionnée
+           en fixed donc son emplacement dans le flux importe peu.
+      ══════════════════════════════════════════════ -->
+      <button id="diss-table-dev-toggle" title="Éditeur du tableau (dev)"
+              onclick="toggleDissTableDevMode()">🛠</button>
+      <div id="diss-table-dev-panel" class="collapsed">
+        <div id="diss-table-dev-header">
+          <span>Éditeur du tableau (dev)</span>
+          <button id="diss-table-dev-close" onclick="toggleDissTableDevMode()">✕</button>
+        </div>
+        <div id="diss-table-dev-body">
+          <div class="dev-row-label">Glisser les bords des colonnes/lignes pour les redimensionner. Cliquer dans une cellule pour éditer son texte.</div>
+          <div id="diss-table-dev-actions">
+            <button id="diss-table-add-row" class="dev-mode-btn" onclick="addDissTableRow()">+ Ligne</button>
+            <button id="diss-table-add-col" class="dev-mode-btn" onclick="addDissTableColumn()">+ Colonne</button>
+            <button id="diss-table-reset" class="dev-mode-btn" onclick="resetDissTableDesign()">↺ Réinit.</button>
+          </div>
+          <button id="diss-table-export-btn" class="dev-mode-btn" style="width:100%;margin-top:4px;"
+                  onclick="exportDissTableDesign()">Exporter</button>
+          <textarea id="diss-table-export-output" readonly rows="10"
+                    style="display:none;width:100%;margin-top:4px;font-family:monospace;font-size:10px;"></textarea>
+        </div>
+      </div>
 
     </div><!-- fin #dissolution-area -->
 
@@ -312,6 +347,7 @@
 <script src="js/ui.js"></script>
 <script src="js/fullscreen.js"></script>
 <script src="js/devpanel.js"></script>
+<script src="js/table-devtool.js"></script>
 
 <script data-goatcounter="https://berdous-pc.goatcounter.com/count"
         async src="https://gc.zgo.at/count.js"></script>

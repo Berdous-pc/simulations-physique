@@ -1118,6 +1118,11 @@ function dissFormatQty(nMol) {
 }
 
 function renderDissTable() {
+  /* L'éditeur de tableau (js/table-devtool.js) fige la mise en page en
+     cours d'édition : le rendu dynamique ne doit pas l'écraser tant qu'il
+     est actif (cf. isDissTableDevActive()/enterDissTableDesignMode()). */
+  if (typeof isDissTableDevActive === 'function' && isDissTableDevActive()) return;
+
   const solute = SOLUTES.find(s => s.id === dissState.soluteId);
   document.getElementById('diss-equation').textContent = dissEquationText(solute);
 
@@ -1126,15 +1131,15 @@ function renderDissTable() {
   const tbFinal = document.getElementById('diss-tbody-final');
   thead.innerHTML = ''; tbInit.innerHTML = ''; tbFinal.innerHTML = '';
 
-  thead.appendChild(dissTh('État du système', 'diss-label'));
+  thead.appendChild(dissTh('Espèces chimiques', 'diss-label'));
   thead.appendChild(dissTh(solute.formule + ' (s)', 'diss-col-solute sep-rp'));
   solute.especes.forEach(esp => thead.appendChild(dissTh(esp.formule + ' (aq)', 'diss-col-ion')));
 
-  tbInit.appendChild(dissTd('État initial (x = 0)', 'diss-label'));
+  tbInit.appendChild(dissTd('Quantités apportées', 'diss-label'));
   tbInit.appendChild(dissTd(dissFormatQty(dissState.nApporte), 'diss-td-solute sep-rp'));
   solute.especes.forEach(() => tbInit.appendChild(dissTd(dissFormatQty(0), 'diss-td-ion')));
 
-  tbFinal.appendChild(dissTd('État final (dissolution totale)', 'diss-label'));
+  tbFinal.appendChild(dissTd('Quantités effectives', 'diss-label'));
   tbFinal.appendChild(dissTd(dissFormatQty(0), 'diss-td-solute sep-rp'));
   solute.especes.forEach(esp => tbFinal.appendChild(dissTd(dissFormatQty(dissState.nApporte * esp.coeff), 'diss-td-ion')));
 }
