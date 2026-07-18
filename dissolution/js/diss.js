@@ -638,6 +638,7 @@ function dissRimBounce(f, prevY, nx, ny, wallX, rimY, r) {
 const DISS_PHYS_SUBSTEP = 1 / 120;
 
 function dissStepPhysics(dt) {
+  dissSettleRestingGrains(dt);
   if (dissState.flying.length === 0) return;
   const steps = Math.max(1, Math.ceil(dt / DISS_PHYS_SUBSTEP));
   const subDt = dt / steps;
@@ -719,7 +720,7 @@ function dissStepPhysicsSub(dt) {
         return;
       }
     } else if (ny >= dissState.tableY - r) {
-      dissState.restingGrains.push({ x: nx, y: dissState.tableY - r, solute: f.solute, rot: f.rot });
+      dissState.restingGrains.push({ x: nx, y: dissState.tableY - r, solute: f.solute, rot: f.rot, angVel: f.angVel });
       return;
     }
 
@@ -728,6 +729,99 @@ function dissStepPhysicsSub(dt) {
   });
 
   dissState.flying = keep;
+}
+
+/* Position (monde) des atomes d'un groupement posé, étant donné son centre
+   (g.x, g.y) et sa rotation (g.rot) — même géométrie que dissDrawGrain(), pour
+   que la stabilité soit jugée sur la silhouette réellement affichée. */
+function dissGrainAtomPositions(g, r) {
+  const cos = Math.cos(g.rot || 0), sin = Math.sin(g.rot || 0);
+  return g.solute.grain.map(part => {
+    const lx = part.dx * r, ly = part.dy * r;
+    return { x: g.x + lx * cos - ly * sin, y: g.y + lx * sin + ly * cos };
+  });
+}
+
+/* Tolérance (px) sur la ligne de table : un atome est considéré « en contact »
+   si son point le plus bas (centre + rayon) est à moins de DISS_SETTLE_EPS de
+   la table, et la projection du barycentre est jugée « dans » l'appui avec la
+   même marge — évite un basculement perpétuel dû aux seuls arrondis
+   flottants. */
+const DISS_SETTLE_EPS = 0.6;
+
+/* Vitesse angulaire (rad/s²  par px d'écart bras/pivot) du basculement autour
+   du point d'appui — cf. dissSettleGrain(). */
+const DISS_SETTLE_TORQUE = 40;
+const DISS_SETTLE_DAMPING = 6;
+
+/* Fait basculer un groupement posé sur la table jusqu'à sa position
+   d'équilibre stable : on projette le barycentre de ses atomes sur la table
+   et on le compare à la surface de contact réelle (l'étendue des atomes qui
+   touchent la table à la rotation courante), plutôt que de viser une
+   orientation arbitraire (rot = 0) — un groupement dissymétrique peut très
+   bien être stable penché. Si le barycentre tombe dans cette surface,
+   l'entité est à l'équilibre et s'immobilise ; sinon elle pivote autour du
+   bord d'appui du côté où elle penche (comme un objet qui bascule sur son
+   arête), jusqu'à ce qu'un nouvel atome touche la table et élargisse l'appui,
+   ou que le barycentre revienne au-dessus de celui-ci. */
+function dissSettleGrain(g, r, atomR, dt) {
+  if (g.settled) return;
+  if (g.angVel == null) g.angVel = 0;
+
+  let positions = dissGrainAtomPositions(g, r);
+  const maxBottom = Math.max(...positions.map(p => p.y + atomR));
+  g.y += dissState.tableY - maxBottom;   // colle l'atome le plus bas à la table
+  positions = positions.map(p => ({ x: p.x, y: p.y + (dissState.tableY - maxBottom) }));
+
+  const contact = positions.filter(p => p.y + atomR >= dissState.tableY - DISS_SETTLE_EPS);
+  const xs = contact.map(p => p.x);
+  const xMin = Math.min(...xs), xMax = Math.max(...xs);
+  const comX = positions.reduce((s, p) => s + p.x, 0) / positions.length;
+  const comY = positions.reduce((s, p) => s + p.y, 0) / positions.length;
+
+  /* Pour un groupement pluriatomique, un seul point de contact ne peut
+     jamais être stable — même si le barycentre s'y projette exactement, ce
+     n'est qu'un équilibre instable (crayon en équilibre sur la pointe), pas
+     un appui réel. Il faut au moins deux points de contact pour définir une
+     surface d'appui sur laquelle le barycentre puisse reposer. */
+  const canBeStable = positions.length === 1 || contact.length >= 2;
+
+  if (canBeStable && comX >= xMin - DISS_SETTLE_EPS && comX <= xMax + DISS_SETTLE_EPS) {
+    g.angVel = 0;
+    g.settled = true;
+    return;
+  }
+
+  const pivot = contact.length === 1
+    ? contact[0]
+    : (comX < xMin
+      ? contact.find(p => p.x === xMin)
+      : contact.find(p => p.x === xMax));
+
+  /* Basculement autour du pivot : le barycentre est au-dessus de l'appui
+     (pivot), comme un crayon en équilibre sur la pointe — un écart à
+     l'aplomb du pivot (armX ≠ 0) s'amplifie sous l'effet de la gravité au
+     lieu de se résorber, jusqu'à ce qu'un nouvel atome touche la table et
+     élargisse l'appui (l'amortissement borne juste la vitesse de bascule,
+     il ne l'arrête pas). */
+  const armX = comX - pivot.x;
+  g.angVel += DISS_SETTLE_TORQUE * armX * dt;
+  g.angVel *= Math.max(0, 1 - DISS_SETTLE_DAMPING * dt);
+  const dTheta = g.angVel * dt;
+
+  const cx = g.x - pivot.x, cy = g.y - pivot.y;
+  const cos = Math.cos(dTheta), sin = Math.sin(dTheta);
+  g.x = pivot.x + cx * cos - cy * sin;
+  g.y = pivot.y + cx * sin + cy * cos;
+  g.rot = (g.rot || 0) + dTheta;
+}
+
+function dissSettleRestingGrains(dt) {
+  const r = DISS_ION_R * DISS_LOOSE_SCALE, atomR = r * 0.85;
+  dissState.restingGrains.forEach(g => {
+    if (g.rot == null) g.rot = 0;
+    dissSettleGrain(g, r, atomR, dt);
+  });
 }
 
 /* ══════════════════════════════════════════════════
