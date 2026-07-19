@@ -243,6 +243,7 @@ function _applyOngletUI(o) {
 
 function setOnglet(o) {
   state.onglet = o;
+  history.replaceState(null, '', location.pathname + '?tab=' + o);
   _applyOngletUI(o);
   stopAnimations(); clearSnapshots(); clearStatus();
   if (o==='equilibrage') { buildEquationUI('eq'); buildThead('eq'); buildTbody('eq'); }

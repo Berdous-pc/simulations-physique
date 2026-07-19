@@ -550,6 +550,7 @@ function _toggleBeaconCorde(n) {
 
 function setMainTab(tab) {
     activeTab = tab;
+    history.replaceState(null, '', location.pathname + '#' + tab);
 
     var tabs     = ['corde', 'son', 'vagues'];
     var sections = tabs.map(function(t) { return document.getElementById('section-' + t); });

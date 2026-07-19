@@ -271,6 +271,7 @@ function buildEquationUI() {
 ══════════════════════════════════════════════════════════════════════════ */
 function setOnglet(o) {
   state.onglet = o;
+  history.replaceState(null, '', location.pathname + '?tab=' + o);
   ['principe', 'titrage'].forEach(id => {
     document.getElementById('tab-' + id).classList.toggle('active', id === o);
     document.getElementById('section-' + id).classList.toggle('visible', id === o);

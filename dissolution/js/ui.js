@@ -229,6 +229,7 @@ function _updatePlayBtn() {
 ══════════════════════════════════════════════════ */
 function setMainTab(tab) {
   state.onglet = tab;
+  history.replaceState(null, '', location.pathname + '#' + tab);
   ['mecanisme', 'dissolution'].forEach(t => {
     document.getElementById('tab-' + t).classList.toggle('active', t === tab);
     document.getElementById('section-' + t).style.display = (t === tab) ? '' : 'none';

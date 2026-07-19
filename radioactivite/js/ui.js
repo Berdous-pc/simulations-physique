@@ -935,6 +935,7 @@ function setMode(mode) {
 
 function setModePrincipal(mode) {
   state.modePrincipal = mode;
+  history.replaceState(null, '', location.pathname + '?tab=' + mode);
   document.getElementById('tab-discret').classList.toggle('active', mode === 'discret');
   document.getElementById('tab-continu').classList.toggle('active', mode === 'continu');
   document.getElementById('section-discret').classList.toggle('visible', mode === 'discret');

@@ -223,7 +223,7 @@ function setMainTab(tab) {
     if (btnAdapter) btnAdapter.style.display = disableViewToolbar ? 'none' : '';
     if (zoomGroup)  zoomGroup.style.display  = disableViewToolbar ? '' : 'none';
 
-    window.location.hash = '#' + tab;
+    history.replaceState(null, '', location.pathname + '#' + tab);
 }
 
 /* ─────────────────────────────────────────────────
