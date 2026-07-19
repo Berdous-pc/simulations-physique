@@ -574,28 +574,3 @@ main {
 #test-score-display {
   font-size: 42px; font-weight: 700; color: #2a6aaa;
 }
-
-/* ══════════════════════════════════════════════════
-   TÉLÉPHONE EN PORTRAIT
-   On empile : simulation en haut (60dvh), panneau en
-   dessous ; le scroll de page redevient possible.
-══════════════════════════════════════════════════ */
-@media (max-width: 700px) and (orientation: portrait) {
-  body {
-    height: auto;
-    max-height: none;
-    min-height: 100dvh;
-    overflow-y: auto;
-  }
-  main {
-    grid-template-columns: 1fr;
-    grid-template-rows: 60dvh auto;
-  }
-  #sim-area {
-    border-right: none;
-    border-bottom: 1px solid #c8c0b4;
-  }
-  #panel-body { overflow-y: visible; }
-  /* la popup test n'est plus décalée par le panneau latéral */
-  #test-popup { right: 0; max-width: 92%; }
-}

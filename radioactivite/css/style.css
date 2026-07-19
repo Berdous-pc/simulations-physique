@@ -527,29 +527,3 @@ input[type=number]:focus, input[type=text]:focus { outline: none; border-color: 
   display: flex; gap: 10px; flex-shrink: 0; flex-wrap: wrap; justify-content: center;
   max-width: 100%;
 }
-
-/* ══════════════════════════════════════════════════
-   TÉLÉPHONE EN PORTRAIT
-   Simulation trop dense pour un écran étroit : on invite
-   à passer en mode paysage (overlay plein écran).
-══════════════════════════════════════════════════ */
-#rotate-overlay { display: none; }
-@media (max-width: 700px) and (orientation: portrait) {
-  #rotate-overlay {
-    display: flex;
-    position: fixed;
-    inset: 0;
-    z-index: 9999;
-    background: #e8e4de;
-    color: #2c3e50;
-    font-size: 17px;
-    line-height: 1.6;
-    text-align: center;
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
-    gap: 12px;
-    padding: 24px;
-  }
-  #rotate-overlay .rotate-icon { font-size: 44px; }
-}

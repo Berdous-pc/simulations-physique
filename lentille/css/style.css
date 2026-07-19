@@ -389,26 +389,3 @@ input[type=range] {
   padding-bottom: 0;
 }
 .panel-hint:not(.collapsed) .panel-hint-toggle { transform: rotate(180deg); }
-
-/* ══════════════════════════════════════════════════
-   TÉLÉPHONE EN PORTRAIT
-   On empile : simulation en haut (60dvh), panneau en
-   dessous ; le scroll de page redevient possible.
-══════════════════════════════════════════════════ */
-@media (max-width: 700px) and (orientation: portrait) {
-  body {
-    height: auto;
-    max-height: none;
-    min-height: 100dvh;
-    overflow-y: auto;
-  }
-  main {
-    grid-template-columns: 1fr;
-    grid-template-rows: 60dvh auto;
-  }
-  #canvas-area {
-    border-right: none;
-    border-bottom: 1px solid #c8c0b4;
-  }
-  #panel-body { overflow-y: visible; }
-}
