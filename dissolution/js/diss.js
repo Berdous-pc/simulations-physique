@@ -1073,6 +1073,14 @@ function _multiLerpHex(stops, t) {
   return _lerpRgbHex(stops[i], stops[i + 1], seg - i);
 }
 
+/* Minuscule sur le premier caractère uniquement (cf. son usage dans
+   drawDissGlass()) — insérer un nom de soluté en milieu de phrase sans
+   toucher aux majuscules internes significatives (numéraux romains type
+   « (III) »), contrairement à .toLowerCase() appliqué à toute la chaîne. */
+function _dissLowerFirst(s) {
+  return s.charAt(0).toLowerCase() + s.slice(1);
+}
+
 /* Teinte de l'eau du verre. Sans espèce colorante (la plupart des
    solutés) : bleu neutre inchangé. Avec une espèce colorante
    (`especes[i].tint` + `especes[i].colorStops` dans SOLUTES, diss-data.js —
@@ -1120,7 +1128,11 @@ function drawDissGlass(ctx) {
      le libellé nomme la solution obtenue. */
   const label = dissState.freeSpecies.length === 0
     ? 'Eau distillée'
-    : `Solution aqueuse de ${SOLUTES.find(s => s.id === dissState.soluteId).nom.toLowerCase()}`;
+    /* Minuscule sur la première lettre SEULEMENT (pas .toLowerCase() sur
+       toute la chaîne) : des noms comme « Chlorure de fer (III) » ont un
+       numéral romain à préserver tel quel — un .toLowerCase() global
+       l'aurait transformé en « (iii) ». */
+    : `Solution aqueuse de ${_dissLowerFirst(SOLUTES.find(s => s.id === dissState.soluteId).nom)}`;
   dissDrawLabel(ctx, label, g.x0 + g.w / 2, dissState.tableY, g.w);
 }
 
