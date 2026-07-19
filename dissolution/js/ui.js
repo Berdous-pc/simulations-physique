@@ -327,6 +327,7 @@ function init() {
   buildDissPile();
   initDissInteraction();
   renderDissTable();
+  dissRenderLegendDOM();
 
   requestAnimationFrame(loop);
 

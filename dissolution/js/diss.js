@@ -1126,6 +1126,93 @@ function drawDissHeldGrain(ctx) {
   dissDrawGrain(ctx, hg.x, hg.y, hg.solute, DISS_ION_R * DISS_HELD_SCALE, hg.rot);
 }
 
+/* ══════════════════════════════════════════════════
+   Légende — overlay HTML (pas dessinée dans le canvas) : #diss-canvas est
+   affiché en mode « cover » et recentré (cf. dissResize(), #diss-canvas
+   dans style.css), donc tout élément dessiné près d'un bord de la scène
+   logique (DISS_STAGE_W/H) peut se retrouver hors du cadre visible une fois
+   la mise à l'échelle/le recadrage appliqués. Un vrai élément DOM positionné
+   en absolu dans #diss-scene-wrap (jamais recadré, lui) reste toujours
+   visible dans le coin voulu, quelle que soit la taille de la fenêtre. */
+/* Rayon (unités du gabarit `grain`, cf. dissDrawGrain) utilisé pour toutes
+   les sphères de la légende — ions isolés comme groupement complet — de
+   sorte que le décalage horizontal calculé par dissLegendAvgDx() corresponde
+   exactement à la même échelle des deux côtés. */
+const DISS_LEGEND_GRAIN_R = 13;
+/* Mini-canvas d'une ligne de légende : mêmes dimensions pour toutes les
+   lignes (ions comme composé), afin que leur centre (colonne de référence
+   pour les décalages ci-dessus) tombe systématiquement au même x. */
+const DISS_LEGEND_CANVAS_W = 60, DISS_LEGEND_CANVAS_H = 46;
+
+/* Décalage horizontal (dx, unités de rayon) du barycentre GLOBAL du
+   groupement — moyenne sur TOUS les atomes du gabarit `grain`, toutes
+   espèces confondues — auquel chaque sphère de légende doit s'aligner.
+   Volontairement PAS le barycentre propre à chaque espèce (ex. les deux
+   Cl⁻ de MgCl₂ à dx ±0.8, ou même Na⁺ seul à dx -0.8 dans NaCl) : pour un
+   groupement à seulement 2 espèces différentes de dx opposés (ex. NaCl :
+   Na⁺ à -0.8, Cl⁻ à +0.8), le barycentre PAR ESPÈCE ne vaut alors PAS 0,
+   contrairement au barycentre global du groupement (toujours 0 par
+   construction des gabarits ci-dessus) — utiliser le barycentre par espèce
+   décalait donc chaque sphère loin du centre réel du groupement complet,
+   au lieu de l'y aligner, dès qu'il n'y avait que deux atomes en tout. */
+function dissLegendCentroidDx(solute) {
+  const parts = solute.grain;
+  if (!parts.length) return 0;
+  return parts.reduce((sum, p) => sum + p.dx, 0) / parts.length;
+}
+
+/* Nom affiché en légende, TOUJOURS avant le symbole (cf. demande : nom
+   d'abord, symbole/formule ensuite entre parenthèses) : le nom français de
+   l'ion pour une espèce dissociée (DISS_ION_NAMES, diss-data.js), ou le nom
+   du solide moléculaire lui-même quand il ne s'agit pas d'un composé
+   ionique (une seule espèce, non dissociée — ex. glucose). */
+function dissLegendName(solute, esp) {
+  if (!solute.dissocie) return solute.nom;
+  return DISS_ION_NAMES[esp.el] || esp.label || esp.formule;
+}
+
+function dissRenderLegendDOM() {
+  const solute = SOLUTES.find(s => s.id === dissState.soluteId);
+  const wrap = document.getElementById('diss-legend');
+  if (!solute || !wrap) return;
+
+  const W = DISS_LEGEND_CANVAS_W, H = DISS_LEGEND_CANVAS_H;
+  let html = '<div class="diss-legend-title">Légende</div>'
+    + '<div class="diss-legend-sub">Chaque entité représente une mole.</div>';
+
+  solute.especes.forEach((esp, i) => {
+    const symbol = esp.label || esp.formule;
+    html += `<div class="diss-legend-row">`
+      + `<canvas class="diss-legend-ion" width="${W}" height="${H}" data-idx="${i}"></canvas>`
+      + `<span>${dissLegendName(solute, esp)} (${symbol})</span></div>`;
+  });
+  if (solute.dissocie) {
+    html += `<div class="diss-legend-row diss-legend-compound">`
+      + `<canvas class="diss-legend-grain" width="${W}" height="${H}"></canvas>`
+      + `<span>${solute.nom} (${solute.formule})</span></div>`;
+  }
+  wrap.innerHTML = html;
+
+  /* Chaque ion isolé : une sphère unique, alignée sur le barycentre GLOBAL
+     du groupement (dissLegendCentroidDx), pas sur son propre barycentre —
+     cf. commentaire de dissLegendCentroidDx(). */
+  const centroidDx = dissLegendCentroidDx(solute);
+  wrap.querySelectorAll('.diss-legend-ion').forEach(cv => {
+    const esp = solute.especes[Number(cv.dataset.idx)];
+    const ctx = cv.getContext('2d');
+    drawSphere(ctx, W / 2 + centroidDx * DISS_LEGEND_GRAIN_R, H / 2, DISS_LEGEND_GRAIN_R * 0.85, esp.fill, esp.border, null, null);
+  });
+
+  /* Groupement complet (dernière ligne, composé ionique) : même rendu que
+     le groupement saisi (dissDrawGrain), centré sur la même colonne de
+     référence (W/2) que les sphères d'ions isolés ci-dessus. */
+  if (solute.dissocie) {
+    const grainCanvas = wrap.querySelector('.diss-legend-grain');
+    const gctx = grainCanvas.getContext('2d');
+    dissDrawGrain(gctx, W / 2, H / 2, solute, DISS_LEGEND_GRAIN_R, 0);
+  }
+}
+
 function dissDrawScene() {
   const canvas = document.getElementById('diss-canvas');
   const ctx = canvas.getContext('2d');
@@ -1354,6 +1441,7 @@ function alignDissEquation() {
 function onDissSoluteChange(id) {
   dissState.soluteId = id;
   dissReset();
+  dissRenderLegendDOM();
 }
 
 function dissFormatVolumeLabel(mL) {

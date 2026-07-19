@@ -648,6 +648,15 @@ body.dev-frame-edit #zoom-frame-handle { display: block; pointer-events: auto; }
   position: relative;
   background: #fdf8f0;
   box-sizing: border-box;
+  /* Container query : la légende (#diss-legend) se dimensionne en cqmin
+     (le plus petit des deux), càd par rapport à LA TAILLE RÉELLE de ce
+     wrapper — pas celle de la fenêtre (vw), qui ne suivait ni un wrapper
+     plus étroit que la fenêtre (colonne photo, grille de l'onglet) ni un
+     wrapper aplati en hauteur (le vw ignore totalement la hauteur, d'où un
+     scale qui suivait la largeur mais jamais la réduction en hauteur).
+     `size` (et pas seulement `inline-size`) est nécessaire pour que les
+     unités cqb/cqmin captent aussi la hauteur du conteneur. */
+  container-type: size;
 }
 #diss-canvas {
   display: block;
@@ -656,6 +665,57 @@ body.dev-frame-edit #zoom-frame-handle { display: block; pointer-events: auto; }
   left: 50%;
   transform: translate(-50%, 0);
   cursor: pointer;
+}
+
+/* Légende — overlay HTML plutôt que dessinée dans #diss-canvas : celui-ci
+   est affiché en mode « cover » recentré (cf. #diss-canvas ci-dessus), donc
+   tout contenu dessiné près d'un bord de la scène logique peut se retrouver
+   hors cadre selon la fenêtre. Un vrai élément DOM ancré au wrapper (jamais
+   recadré) reste toujours dans le coin voulu. */
+#diss-legend {
+  position: absolute;
+  top: 2cqmin;
+  left: 2cqmin;
+  z-index: 2;
+  pointer-events: none;
+  background: rgba(255, 255, 255, 0.92);
+  border: max(1px, 0.4cqmin) solid #c8ccd4;
+  border-radius: 1.6cqmin;
+  padding: 2.2cqmin 2.8cqmin;
+  font-size: clamp(9px, 2.6cqmin, 18px);
+  color: #1c2430;
+  /* cqw, pas cqmin : la largeur max de la boîte suit la largeur RÉELLE du
+     wrapper, pas le plus petit des deux axes — sinon une réduction en
+     hauteur seule resserre aussi la boîte horizontalement sans raison
+     (rien ne la contraint dans cet axe-là), au lieu de la laisser
+     s'aplatir et utiliser l'espace horizontal encore disponible. */
+  max-width: 46cqw;
+}
+.diss-legend-title {
+  font-weight: 700;
+  font-size: 1.25em;
+  margin-bottom: 0.3em;
+}
+.diss-legend-sub {
+  color: #4a5568;
+  margin-bottom: 0.45em;
+  line-height: 1.15;
+}
+.diss-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.05em 0;
+}
+.diss-legend-compound {
+  margin-top: 0.15em;
+  border-top: 1px solid #d8dce2;
+  padding-top: 0.2em;
+}
+.diss-legend-ion, .diss-legend-grain {
+  flex: 0 0 auto;
+  width: clamp(20px, 9.3cqmin, 60px);
+  height: clamp(15px, 7.2cqmin, 46px);
 }
 
 #diss-bottom-zone {

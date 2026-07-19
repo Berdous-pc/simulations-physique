@@ -56,6 +56,21 @@ const DISS_ION_COLORS = {
   AscA:   { fill: '#f0e6a0', border: '#c8ba60', label: '#5c4c10' },   // jaune pâle — acide ascorbique, distinct du jaune vif Na⁺/K⁺
 };
 
+/* Nom français de chaque ion, indexé par le même code `el` que les especes
+   ci-dessous — utilisé par la légende (dissRenderLegendDOM(), diss.js), qui
+   affiche le nom avant le symbole. Les solides moléculaires (I₂, glucose,
+   acide ascorbique) n'ont pas d'entrée ici : leur unique espèce reprend
+   directement `solute.nom` (cf. dissLegendName()). */
+const DISS_ION_NAMES = {
+  Na: 'Ion sodium', Cl: 'Ion chlorure', K: 'Ion potassium',
+  Mg: 'Ion magnésium', Ca: 'Ion calcium', Ba: 'Ion baryum',
+  Br: 'Ion bromure', OH: 'Ion hydroxyde', SO4: 'Ion sulfate',
+  CO3: 'Ion carbonate', NO3: 'Ion nitrate', Ag: 'Ion argent',
+  Al: 'Ion aluminium', Cu: 'Ion cuivre (II)', Fe3: 'Ion fer (III)',
+  Fe2: 'Ion fer (II)', MnO4: 'Ion permanganate', Cr2O7: 'Ion dichromate',
+  Iod: 'Ion iodure',
+};
+
 /* Concentration effective (mol·L⁻¹) de l'espèce colorante à partir de
    laquelle l'eau du verre affiche la teinte de saturation (cf. `tint: true`
    sur les especes ci-dessous, et son usage dans dissWaterTint(), diss.js). */
@@ -309,9 +324,14 @@ const SOLUTES = [
   {
     id: 'i2', formule: 'I₂', nom: 'Diiode',
     dissocie: false,
+    /* Un seul point de gabarit (comme Glc/AscA ci-dessous), pas deux atomes
+       d'iode séparés : dissocie:false signifie que I₂ reste une entité
+       UNIQUE en solution (une espèce dans `especes`, une seule sphère dans
+       freeSpecies) — le groupement saisi/tas doit donc afficher une seule
+       sphère, cohérent avec ce qu'on voit une fois dissous, pas deux
+       cercles séparés qui suggéreraient deux entités indépendantes. */
     grain: [
-      { el: 'I', dx: -0.8, dy: 0 },
-      { el: 'I', dx:  0.8, dy: 0 },
+      { el: 'I', dx: 0, dy: 0 },
     ],
     especes: [
       { formule: 'I₂', coeff: 1, el: 'I', label: null, fill: DISS_ION_COLORS.I.fill, border: DISS_ION_COLORS.I.border, labelColor: DISS_ION_COLORS.I.label, tint: true, colorStops: DISS_ION_COLORS.I.colorStops },
