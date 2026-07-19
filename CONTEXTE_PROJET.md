@@ -45,6 +45,7 @@ Collection de **simulations interactives** de physique-chimie. Chaque simulation
   - Exemple panneau : `font-size: clamp(11px, 1.1vw, 14px)`
   - Exemple formules chimiques (`reaction.html`) : `font-size: clamp(28px, 4vw, 52px)`
 - **Canvas redimensionné dynamiquement** via `resizeCanvases()` appelé à chaque `resize` (avec anti-rebond `requestAnimationFrame`), pour que la zone de simulation occupe toujours tout l'espace disponible.
+- **Container queries (`cqmin`/`cqw`) pour un overlay HTML posé sur un conteneur qui n'a pas la taille de la fenêtre** (ex. légende de `dissolution/`, posée sur `#diss-scene-wrap`, plus petit que le viewport à cause de la grille de l'onglet) : un `clamp(…, Nvw, …)` classique suit la largeur de la FENÊTRE, pas celle du conteneur réel, et ignore totalement sa hauteur. Poser `container-type: size` sur le conteneur, puis dimensionner l'overlay en `cqmin` (le plus petit des deux axes du conteneur) fait suivre les DEUX dimensions réelles. Distinguer largeur/hauteur si besoin : une propriété qui ne doit être contrainte que par la largeur disponible (ex. `max-width` d'une boîte qui doit s'aplatir plutôt que se resserrer quand seule la hauteur diminue) doit rester en `cqw`, pas `cqmin`.
 - **Splitter draggable** (condensateur, radioactivité) : l'élève peut ajuster la proportion simulation / graphe selon la taille de son écran.
 - **Panneau droit scrollable** (`overflow-y: auto`) quand le contenu est plus long que la fenêtre (petits écrans).
 - **Textes des zones de simulation** (canvas) dessinés proportionnellement à la taille du canvas, pas en px fixes.
@@ -376,7 +377,7 @@ Toute page **HTML autonome** destinée à être publiée (page d'accueil `index.
 | `pression/` | Pression d'un gaz parfait — modèle cinétique | Terminale | **Arborescence** | Piston animé, collisions élastiques 2D, PV=nRT, chocs/s sur 4 parois |
 | `champ_uniforme/` | Mécanique : vecteurs cinématiques — champ de pesanteur & champ électrique uniforme | Terminale | **Arborescence** | Référence d'architecture ; `sim.js` + `draw.js` + `ui.js` ; onglets Champ de pesanteur / Champ électrique, repères Orthonormé/Adapté, modes vue (Oxy, projections x/y), vecteurs vitesse/accélération, mode perpendiculaire (champ E), graphes d'énergie, deep-linking via `#champ-pesanteur` / `#champ-electrique` |
 | `ondes/` | Propagation d'ondes — corde, onde sonore (tube), ondes de surface | Première/Terminale | **Arborescence** | Référence d'architecture ; `sim.js` + `tube.js` + `graph.js` + `ui.js` ; onglets Corde/Son/Vagues, sélection de particules par proximité (Ctrl/Maj+clic), mode pression colorée, graphes ΔP(x)/ΔP(t) avec zoom/pan/tangente, deep-linking via `#corde` / `#son` / `#vagues` — voir `ondes/ARCHITECTURE.md` |
-| `dissolution/` | Solutions aqueuses — mécanisme de dissolution (NaCl) & quantités de matière | Première | **Arborescence** | Onglets Mécanisme/Dissolution ; animation microscopique scriptée (coupelle, verre, zoom), plein écran type lecteur vidéo, tableau d'avancement ; deep-linking via `#mecanisme` / `#dissolution` |
+| `dissolution/` | Solutions aqueuses — mécanisme de dissolution (NaCl) & quantités de matière | Première | **Arborescence** | Onglets Mécanisme/Dissolution ; animation microscopique scriptée (coupelle, verre, zoom), plein écran type lecteur vidéo, tableau d'avancement ; deep-linking via `#mecanisme` / `#dissolution`. Onglet Dissolution : mouvement brownien + répulsion locale entre espèces dissoutes, légende overlay HTML, libellés coupelle/verre dynamiques selon le soluté |
 
 ---
 
@@ -448,7 +449,7 @@ Stockées dans `assets/previews/` au format `.png` (800×450 px recommandé) :
 | `onde_sonore.PNG` | Propagation d'une onde sonore |
 | `onde_vagues.PNG` | Ondes de surface |
 | `mecanisme_dissolution.png` | Mécanisme de dissolution |
-| *(à faire)* | Dissolution — carte encore en placeholder |
+| `dissolution-dissolution.PNG` | Dissolution |
 
 ### Deep linking (`?tab=` ou `#hash`)
 
