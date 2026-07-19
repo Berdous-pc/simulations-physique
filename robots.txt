@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://berdous-pc.github.io/simulations-physique/sitemap.xml
