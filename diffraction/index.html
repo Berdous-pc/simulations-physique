@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<!-- ════════════════════════════════════════════════════
+     Simulation pédagogique — Physique-Chimie Lycée
+     Auteur  : Mathieu Berdous
+     Licence : CC BY-NC 4.0 — https://creativecommons.org/licenses/by-nc/4.0/
+════════════════════════════════════════════════════ -->
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Simulation — Diffraction de la lumière par une fente</title>
+  <meta name="author" content="Mathieu Berdous">
+  <meta name="copyright" content="Mathieu Berdous — CC BY-NC 4.0">
+  <meta name="description" content="Simulation interactive 3D (Terminale) : diffraction d'un faisceau laser par une fente simple, montage optique en 3D avec écart angulaire θ = λ/a et graphe d'intensité I(x).">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>⚛️</text></svg>">
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<h1 class="sr-only">Simulation 3D de la diffraction de la lumière par une fente simple</h1>
+
+<!-- Invitation à passer en paysage (téléphone, page dense) -->
+<div id="rotate-overlay">
+  <div id="rotate-overlay-icon">📱</div>
+  <p>Cette simulation nécessite plus d'espace : passez votre téléphone en orientation paysage.</p>
+</div>
+
+<main>
+  <!-- Colonne gauche : scène 3D + splitter + graphe -->
+  <div id="left-col">
+
+    <!-- Zone de la scène 3D (Three.js) -->
+    <div id="scene-area">
+      <canvas id="scene-canvas"></canvas>
+      <div id="view-buttons">
+        <button class="btn-view active" data-view="3d"     onclick="setView('3d')">Vue 3D</button>
+        <button class="btn-view"        data-view="top"    onclick="setView('top')">Dessus</button>
+        <button class="btn-view"        data-view="side"   onclick="setView('side')">Profil</button>
+        <button class="btn-view"        data-view="screen" onclick="setView('screen')">Écran</button>
+      </div>
+    </div>
+
+    <!-- Splitter draggable -->
+    <div id="left-splitter"></div>
+
+    <!-- Zone graphe I(x) -->
+    <div id="graph-area">
+      <div id="graph-time-control">
+        <div id="graph-btns-left">
+          <span class="graph-title">I(x) — Intensité lumineuse sur l'écran</span>
+        </div>
+        <div id="graph-btns-right">
+          <button id="btn-graph-cursor"   onclick="toggleGraphCursor()"   title="Réticule libre">+</button>
+          <button id="btn-graph-tangente" onclick="toggleGraphTangente()" title="Tangente">Tangente</button>
+          <button id="btn-graph-prev"     onclick="prevGraphView()" disabled title="Vue précédente">&#8592;</button>
+          <button id="btn-graph-zoom"     onclick="toggleGraphZoom()"     title="Mode zoom">&#128269;</button>
+          <button id="btn-graph-auto"     onclick="autoScaleGraph()">&#128269; Adapter</button>
+        </div>
+      </div>
+      <div class="graph-wrap">
+        <canvas id="graph-intensity"></canvas>
+      </div>
+    </div>
+
+  </div><!-- fin #left-col -->
+
+  <!-- Panneau de contrôle droit -->
+  <div id="panel">
+   <div id="panel-body">
+
+    <!-- Section : Source laser -->
+    <div>
+      <div class="section-title">Source laser</div>
+      <div class="param-row">
+        <label><span><span id="lambda-swatch"></span>Longueur d'onde λ</span> <span><span id="lbl-lambda">633</span> nm</span></label>
+        <input type="range" id="sl-lambda" min="400" max="700" step="1" value="633"
+               oninput="updateParam('lambda', this.value)">
+      </div>
+    </div>
+
+    <!-- Section : Fente -->
+    <div>
+      <div class="section-title">Fente</div>
+      <div class="param-row">
+        <label>Largeur de la fente a <span><span id="lbl-a">100</span> µm</span></label>
+        <input type="range" id="sl-a" min="20" max="500" step="1" value="100"
+               oninput="updateParam('a', this.value)">
+      </div>
+      <div class="input-hint">Une fente plus étroite élargit la figure de diffraction.</div>
+    </div>
+
+    <!-- Section : Écran -->
+    <div>
+      <div class="section-title">Écran</div>
+      <div class="param-row">
+        <label>Distance fente-écran D <span><span id="lbl-D">2.0</span> m</span></label>
+        <input type="range" id="sl-D" min="0.5" max="3" step="0.1" value="2.0"
+               oninput="updateParam('D', this.value)">
+      </div>
+    </div>
+
+    <!-- Section : Options -->
+    <div>
+      <div class="section-title">Options</div>
+      <button class="btn btn-toggle-one active" id="btn-rays" onclick="toggleRays()">Rayons vers les minima</button>
+    </div>
+
+    <!-- Section : Valeurs -->
+    <div>
+      <div class="section-title">Valeurs</div>
+      <div class="readouts">
+        <div class="readout">
+          <div class="ro-label">Écart angulaire θ</div>
+          <div class="ro-value"><span id="ro-theta">0.00</span> <span class="ro-unit">°</span></div>
+        </div>
+        <div class="readout">
+          <div class="ro-label">Largeur tache centrale</div>
+          <div class="ro-value"><span id="ro-largeur">0.0</span> <span class="ro-unit">cm</span></div>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn btn-reset" onclick="resetSim()">&#9632; Réinitialiser</button>
+
+   </div><!-- fin #panel-body -->
+
+    <!-- ── Bandeau Instructions ────────────────── -->
+    <div class="panel-hint collapsed" id="panel-hint">
+      <div class="panel-hint-header">
+        <button class="panel-hint-menu-btn" onclick="location.href='../index.html'" title="Retour au menu principal">☰ Menu</button>
+        <span class="panel-hint-title">Instructions</span>
+        <button class="panel-hint-toggle" onclick="toggleHint()" title="Afficher les instructions">▲</button>
+      </div>
+      <div class="panel-hint-body">
+        Réglez la longueur d'onde λ, la largeur de la fente a et la distance à l'écran D pour observer
+        la figure de diffraction. La souris permet de faire pivoter la vue 3D (clic-glissé) et de zoomer
+        (molette) ; les boutons <strong>Dessus / Profil / Écran</strong> basculent sur des vues fixes
+        précises. Le graphe I(x) en bas se lit directement en vis-à-vis de l'écran en vue <strong>Écran</strong>.
+      </div>
+    </div>
+
+  </div><!-- fin #panel -->
+</main>
+
+<!-- Ordre de chargement : Three.js (vendé) → sim (état/physique) → scene (3D) → graph (2D) → ui (contrôles) -->
+<script src="../libs/three.min.js"></script>
+<script src="../libs/OrbitControls.js"></script>
+<script src="js/sim.js"></script>
+<script src="js/scene.js"></script>
+<script src="js/graph.js"></script>
+<script src="js/ui.js"></script>
+<script data-goatcounter="https://berdous-pc.goatcounter.com/count"
+        async src="https://gc.zgo.at/count.js"></script>
+</body>
+</html>
