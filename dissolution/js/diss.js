@@ -46,6 +46,15 @@ const DISS_FILL_MIN = 0.15, DISS_FILL_MAX = 0.92;
      direction visibles à chaque image. */
 const DISS_V_BROWN = 10.0, DISS_DAMPING = 0.95;
 
+/* Répulsion de courte portée entre espèces dissoutes proches (volume exclu
+   approché) : accélère l'étalement dans la solution sans biais directionnel
+   global, contrairement à un poids basé sur une densité de zone. Portée et
+   intensité choisies empiriquement — à ajuster visuellement selon le rendu :
+   DISS_REPEL_RADIUS en px (rayon d'action autour de chaque ion),
+   DISS_REPEL_STRENGTH en px/s² par unité de recouvrement (0 à distance R,
+   max au contact). */
+const DISS_REPEL_RADIUS = DISS_ION_R * 4, DISS_REPEL_STRENGTH = 180;
+
 /* Décollement visuel des récipients par rapport à la ligne de table : leur
    propre fond est dessiné DISS_BASE_LIFT px au-dessus de tableY, pour qu'ils
    aient l'air posés dessus plutôt qu'encastrés dedans (sinon leur trait de
@@ -68,6 +77,7 @@ const dissState = {
   flying: [],                   // groupements lâchés/lancés, en vol balistique : { x, y, vx, vy, solute }
   restingGrains: [],            // groupements immobilisés sur la table : { x, y, solute }
   freeSpecies: [],              // ions/molécules dispersés dans l'eau : { x, y, vx, vy, especeIdx, el, fill, border }
+  paused: false,                // gèle le mouvement brownien/la physique (bouton Pause) pour faciliter le comptage
 };
 
 /* Nombre max de groupements tolérés sur la table avant blocage du
@@ -576,6 +586,68 @@ function dissBrownianStep(s, dt) {
   if (s.x > zone.xMax) { s.x = zone.xMax; s.vx = -Math.abs(s.vx) * 0.6; }
   if (s.y < zone.yMin) { s.y = zone.yMin; s.vy = Math.abs(s.vy) * 0.6; }
   if (s.y > zone.yMax) { s.y = zone.yMax; s.vy = -Math.abs(s.vy) * 0.6; }
+}
+
+/* Plafond de la poussée totale (accumulée sur tous les voisins) appliquée à
+   une espèce en une frame — sans ça, à forte concentration une particule
+   cernée par de nombreux voisins peut accumuler une somme de poussées
+   énorme d'un coup, ce qui la fait rebondir violemment sur ses voisines et
+   les parois, qui la repoussent à leur tour aussi fort : un blocage
+   "rigide" en cascade, comme un empilement de sphères dures trop compressé. */
+const DISS_REPEL_MAX_PUSH = DISS_REPEL_STRENGTH * 1.5;
+
+/* Au-delà de cette fraction de la surface de la zone d'eau réellement
+   occupée par les sphères elles-mêmes (aire cumulée des disques de rayon
+   DISS_ION_R — leur emprise visuelle, pas leur portée d'action qui est bien
+   plus large et se chevaucherait de toute façon même à faible densité), la
+   répulsion est désactivée d'un coup plutôt que plafonnée indéfiniment : à
+   forte concentration on a de toute façon trop de voisins pour qu'un
+   évitement deux-à-deux ait un sens visuel, autant repasser en brownien pur
+   (plus proche, à cette densité, du comportement réel où l'agitation
+   domine sur l'exclusion de volume). */
+const DISS_REPEL_DENSITY_CUTOFF = 0.65;
+
+/* Répulsion mutuelle des espèces dissoutes trop rapprochées (cf. constantes
+   DISS_REPEL_* ci-dessus) — parcours en O(n²) volontairement simple, le
+   nombre d'espèces affichées restant faible (dizaines, pas milliers). Les
+   contributions de tous les voisins sont d'abord accumulées par particule,
+   puis plafonnées (DISS_REPEL_MAX_PUSH) avant d'être appliquées à la
+   vitesse, pour éviter l'emballement en zone dense — et au-delà de
+   DISS_REPEL_DENSITY_CUTOFF la répulsion est simplement coupée. */
+function dissApplyRepulsion(species, dt) {
+  const n = species.length;
+  if (n < 2) return;
+  const zone = dissWaterZone();
+  const area = Math.max(1, (zone.xMax - zone.xMin) * (zone.yMax - zone.yMin));
+  const density = (n * Math.PI * DISS_ION_R * DISS_ION_R) / area;
+  if (density > DISS_REPEL_DENSITY_CUTOFF) return;
+  const R = DISS_REPEL_RADIUS, R2 = R * R;
+  const pushX = new Float64Array(n), pushY = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const a = species[i];
+    for (let j = i + 1; j < n; j++) {
+      const b = species[j];
+      const dx = a.x - b.x, dy = a.y - b.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 > R2 || d2 < 1e-6) continue;
+      const d = Math.sqrt(d2);
+      const push = (1 - d / R) * DISS_REPEL_STRENGTH;
+      const fx = (dx / d) * push, fy = (dy / d) * push;
+      pushX[i] += fx; pushY[i] += fy;
+      pushX[j] -= fx; pushY[j] -= fy;
+    }
+  }
+  const maxPush2 = DISS_REPEL_MAX_PUSH * DISS_REPEL_MAX_PUSH;
+  for (let i = 0; i < n; i++) {
+    let fx = pushX[i], fy = pushY[i];
+    const m2 = fx * fx + fy * fy;
+    if (m2 > maxPush2) {
+      const scale = DISS_REPEL_MAX_PUSH / Math.sqrt(m2);
+      fx *= scale; fy *= scale;
+    }
+    species[i].vx += fx * dt;
+    species[i].vy += fy * dt;
+  }
 }
 
 /* ══════════════════════════════════════════════════
@@ -1304,12 +1376,55 @@ function setDissUnit(u) {
   renderDissTable();
 }
 
+/* Distance (px, unités de scène) au-dessus du rebord du verre (g.y0) d'où
+   un groupement "ajouté" est lâché — juste assez pour qu'on perçoive une
+   petite chute avant l'entrée dans le verre, sans traverser toute la
+   hauteur de la scène comme un lancer depuis la coupelle. */
+const DISS_ADD_DROP_CLEARANCE = 40;
+
+/* Bouton "+ Ajouter 1 mol de soluté" : lâche un groupement du soluté
+   courant à la verticale du centre du verre, en chute libre (vitesse
+   initiale nulle) — rejoint ensuite dissState.flying, dont la physique déjà
+   en place (dissStepPhysicsSub) le fait tomber puis se dissoudre au contact
+   de l'eau (dissDropGrainInWater), exactement comme un groupement lâché à la
+   main. */
+function dissAddMole() {
+  const solute = SOLUTES.find(s => s.id === dissState.soluteId);
+  const g = dissState.glass;
+  dissState.flying.push({
+    x: g.x0 + g.w / 2, y: g.y0 - DISS_ADD_DROP_CLEARANCE, vx: 0, vy: 0, rot: 0, angVel: 0, solute,
+  });
+  dissDrawScene();
+}
+
+function _updateDissPlayBtn() {
+  const btn = document.getElementById('diss-btn-playpause');
+  if (!btn) return;
+  if (dissState.paused) {
+    btn.textContent = '▶ Reprendre';
+    btn.className = 'btn btn-play';
+  } else {
+    btn.textContent = '⏸ Pause';
+    btn.className = 'btn btn-pause';
+  }
+}
+
+/* Met en pause/reprend le mouvement brownien des entités dissoutes (et la
+   physique de vol des groupements lâchés) — pour faciliter le comptage des
+   entités dans le verre sans qu'elles continuent de s'agiter. */
+function dissTogglePause() {
+  dissState.paused = !dissState.paused;
+  _updateDissPlayBtn();
+}
+
 function dissReset() {
   dissState.freeSpecies = [];
   dissState.flying = [];
   dissState.restingGrains = [];
   dissState.nApporte = 0;
   dissState.heldGrain = null;
+  dissState.paused = false;
+  _updateDissPlayBtn();
   buildDissPile();
   renderDissTable();
   dissDrawScene();

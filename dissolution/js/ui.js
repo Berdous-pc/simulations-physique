@@ -174,8 +174,11 @@ function loop(ts) {
        (cf. dissBrownianStep(), calqué sur titrage/js/ui.js) — et vol
        balistique des groupements lâchés/lancés (cf. dissStepPhysics()). */
     const dtS = rawDt / 1000;
-    dissState.freeSpecies.forEach(s => dissBrownianStep(s, dtS));
-    dissStepPhysics(dtS);
+    if (!dissState.paused) {
+      dissState.freeSpecies.forEach(s => dissBrownianStep(s, dtS));
+      dissApplyRepulsion(dissState.freeSpecies, dtS);
+      dissStepPhysics(dtS);
+    }
     dissDrawScene();
   }
 

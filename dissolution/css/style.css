@@ -384,6 +384,18 @@ body.dev-frame-edit #zoom-frame-handle { display: block; pointer-events: auto; }
 }
 .btn-raz:hover { background: #ccc8c0; }
 
+/* Bouton d'action principale (ex. "+ Ajouter 1 mol de soluté") — même bleu
+   d'accent que .btn-primary de titrage/css/style.css, taille de police
+   inchangée (clamp actuel de .btn-raz) plutôt que le 18px fixe de titrage. */
+.btn-primary {
+  background: #2a6aaa;
+  color: #fff;
+  font-size: clamp(12px, 1.2vw, 15px);
+  padding: 9px 6px;
+  border: 1.5px solid #1a5a9a;
+}
+.btn-primary:hover { background: #1a5a9a; }
+
 /* ── Barre de progression + vitesse de lecture ────── */
 .progress-row {
   display: flex; align-items: center; gap: 8px; margin-top: 10px;

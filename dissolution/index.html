@@ -231,6 +231,16 @@
       <!-- ═══ Section DISSOLUTION ═══ -->
       <div class="panel-main-section" id="section-dissolution" style="display:none;">
         <div class="panel-section">
+          <div class="section-title">Contrôles</div>
+          <button id="diss-btn-add" class="btn btn-primary" onclick="dissAddMole()">+ Ajouter 1 mol de soluté</button>
+          <button id="diss-btn-playpause" class="btn btn-pause" style="margin-top:6px;"
+                  onclick="dissTogglePause()">⏸ Pause</button>
+          <button class="btn btn-raz" style="margin-top:6px;" onclick="dissReset()">↺ Remettre à zéro</button>
+        </div>
+
+        <hr class="sep">
+
+        <div class="panel-section">
           <div class="section-title">Soluté</div>
           <select id="diss-select-solute" class="diss-select" onchange="onDissSoluteChange(this.value)">
             <optgroup label="Solides moléculaires">
@@ -286,11 +296,6 @@
           </div>
         </div>
 
-        <hr class="sep">
-
-        <div class="panel-section">
-          <button class="btn btn-raz" onclick="dissReset()">↺ Remise à zéro</button>
-        </div>
       </div><!-- fin #section-dissolution -->
 
     </div><!-- fin #panel-body -->
