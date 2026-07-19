@@ -465,6 +465,8 @@ Les simulations avec plusieurs onglets lisent un paramètre au chargement pour o
 
 Toute **nouvelle** page à onglets utilise la convention `#hash`.
 
+Chaque fonction de bascule d'onglet (`setOnglet`/`setMainTab`/`setModePrincipal`) met aussi à jour l'URL via `history.replaceState(null, '', ...)` dès qu'on change d'onglet — pas seulement à la lecture initiale. Sans ça, un reload après un changement de tab ramènerait l'utilisateur à l'onglet d'entrée (celui de la card d'accueil) au lieu de rester sur l'onglet affiché. `replaceState` est utilisé plutôt que `pushState`/`location.hash=` pour ne pas empiler d'entrées d'historique ni provoquer de saut de scroll. Toute **nouvelle** fonction de bascule d'onglet doit faire de même.
+
 ### Ajouter une nouvelle simulation
 
 1. Créer la(les) carte(s) dans `index.html` avec les bons attributs `data-*`
