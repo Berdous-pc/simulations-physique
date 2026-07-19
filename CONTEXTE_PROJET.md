@@ -348,6 +348,34 @@ Tout nouveau fichier **HTML**, **CSS** et **JS** doit inclure une signature d'au
 // ═══════════════════════════════════════════════════
 ```
 
+### Référencement (SEO)
+
+Toute page **HTML autonome** destinée à être publiée (page d'accueil et chaque `index.html` de simulation) doit inclure, en plus du `<title>` :
+
+- **Une `<meta name="description">`** dans le `<head>`, juste après `<meta name="copyright">` : une phrase courte et spécifique au contenu réel de la page (sujet + niveau), pas une reformulation générique du titre.
+  ```html
+  <meta name="description" content="Simulation interactive (Terminale) : ...">
+  ```
+- **Un `<h1>` juste après `<body>`**, reprenant le sujet de la page en une phrase. Comme les pages de simulation n'ont pas de `<header>` visible (cf. §3), ce `<h1>` est **masqué visuellement** via la classe `.sr-only` (reste lisible par les moteurs de recherche et les lecteurs d'écran, sans impact sur le layout) :
+  ```html
+  <body>
+  <h1 class="sr-only">Simulation de ... — sujet complet de la page</h1>
+
+  <main>
+  ```
+  La classe `.sr-only` doit être présente dans le `css/style.css` de la page (juste après la règle de reset) :
+  ```css
+  .sr-only {
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden;
+    clip: rect(0,0,0,0);
+    white-space: nowrap;
+    border: 0;
+  }
+  ```
+
 ### Suivi d'audience (GoatCounter)
 
 Toute page **HTML autonome** destinée à être publiée (page d'accueil `index.html` et chaque `index.html` de simulation) doit intégrer le script de tracking **GoatCounter**, juste avant la fermeture de `</body>` (après tous les `<script>` métier) :
@@ -474,6 +502,7 @@ Chaque fonction de bascule d'onglet (`setOnglet`/`setMainTab`/`setModePrincipal`
 2. Ajouter le screenshot dans `assets/previews/<nom>.png`
 3. Si la simulation a des onglets : ajouter le deep linking dans son `ui.js`
 4. Mettre à jour le panel de filtres si un nouveau thème ou niveau apparaît
+5. Ajouter la `<meta name="description">`, le `<h1 class="sr-only">` et la règle CSS `.sr-only` (voir §7 « Référencement (SEO) »)
 
 ---
 
