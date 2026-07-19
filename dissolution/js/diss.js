@@ -903,15 +903,46 @@ function dissLabelFont() {
   return `bold ${Math.round(DISS_STAGE_H * 0.032)}px 'Segoe UI', Arial, sans-serif`;
 }
 
+/* Découpe `text` en lignes (retour à la ligne par mot entier) ne dépassant
+   pas `maxWidth`, avec la police déjà appliquée sur `ctx` (cf. dissDrawLabel).
+   Glouton : ajoute des mots à la ligne courante tant qu'elle tient, sinon
+   ouvre une nouvelle ligne — suffisant ici, les libellés font au plus
+   quelques mots (pas de mot isolé plus large que maxWidth à gérer). */
+function dissWrapLabel(ctx, text, maxWidth) {
+  const words = text.split(' ');
+  const lines = [];
+  let current = '';
+  words.forEach(w => {
+    const test = current ? current + ' ' + w : w;
+    if (current && ctx.measureText(test).width > maxWidth) {
+      lines.push(current);
+      current = w;
+    } else {
+      current = test;
+    }
+  });
+  if (current) lines.push(current);
+  return lines;
+}
+
 /* Légende inscrite dans le plan de table, sous le récipient concerné (plutôt
    qu'au-dessus, pour ne pas empiéter sur l'espace utile de la scène). Couleur
-   claire pour rester lisible sur le fond bois. */
-function dissDrawLabel(ctx, text, cx, tableY) {
+   claire pour rester lisible sur le fond bois. `maxWidth` (optionnel) fait
+   passer le texte sur plusieurs lignes plutôt que de déborder du récipient
+   (ex. « Solution aqueuse de sulfate de fer (III) », plus long que la
+   largeur du verre) — la première ligne reste TOUJOURS à la même position
+   qu'en l'absence de wrap (seules les lignes suivantes s'ajoutent en
+   dessous), pour ne pas décaler tout le libellé au passage à deux lignes. */
+function dissDrawLabel(ctx, text, cx, tableY, maxWidth) {
   ctx.save();
   ctx.fillStyle = '#fff8ec';
   ctx.font = dissLabelFont();
   ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
-  ctx.fillText(text, cx, tableY + 20);
+  const lines = (maxWidth && ctx.measureText(text).width > maxWidth)
+    ? dissWrapLabel(ctx, text, maxWidth) : [text];
+  const lineH = Math.round(DISS_STAGE_H * 0.038);
+  const y0 = tableY + 20;
+  lines.forEach((line, i) => ctx.fillText(line, cx, y0 + i * lineH));
   ctx.restore();
 }
 
@@ -999,7 +1030,8 @@ function drawDissDish(ctx) {
   ctx.stroke();
   ctx.restore();
 
-  dissDrawLabel(ctx, 'Coupelle — soluté solide', d.x0 + d.w / 2, dissState.tableY);
+  const solute = SOLUTES.find(s => s.id === dissState.soluteId);
+  dissDrawLabel(ctx, `${solute.nom} solide`, d.x0 + d.w / 2, dissState.tableY, d.w + d.flare * 2);
 
   dissDrawPile(ctx, d);
 }
@@ -1082,7 +1114,14 @@ function drawDissGlass(ctx) {
   ctx.stroke();
   ctx.restore();
 
-  dissDrawLabel(ctx, 'Verre — eau', g.x0 + g.w / 2, dissState.tableY);
+  /* Tant qu'aucune espèce n'est encore dissoute (dissState.freeSpecies vide
+     — nApporte ne reflète que ce qui a été LARGUÉ, pas encore forcément
+     dissous), l'eau est encore distillée ; dès la première espèce dissoute,
+     le libellé nomme la solution obtenue. */
+  const label = dissState.freeSpecies.length === 0
+    ? 'Eau distillée'
+    : `Solution aqueuse de ${SOLUTES.find(s => s.id === dissState.soluteId).nom.toLowerCase()}`;
+  dissDrawLabel(ctx, label, g.x0 + g.w / 2, dissState.tableY, g.w);
 }
 
 function drawDissFreeSpecies(ctx) {
