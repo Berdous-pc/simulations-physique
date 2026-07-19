@@ -629,7 +629,7 @@ body.dev-frame-edit #zoom-frame-handle { display: block; pointer-events: auto; }
 }
 
 #diss-scene-wrap {
-  flex: 60 1 0;
+  flex: 2 1 0;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -647,38 +647,92 @@ body.dev-frame-edit #zoom-frame-handle { display: block; pointer-events: auto; }
 }
 
 #diss-bottom-zone {
-  flex: 40 1 0;
+  flex: 1 1 0;
   min-height: 0;
   overflow-y: auto;
   background: #fdf8f0;
   border-top: 1px solid #c8c0b4;
   padding: clamp(8px, 1.2vh, 16px) clamp(10px, 1.5vw, 20px);
+  container-type: inline-size;
 }
 
+/* Chaque terme (réactif, flèche, produits) est positionné individuellement
+   en absolu, calé sur le centre (ou la bordure séparatrice, pour la flèche)
+   de la colonne correspondante du tableau — calcul JS dans
+   alignDissEquation() (diss.js), à rappeler à chaque rendu du tableau et à
+   chaque redimensionnement puisque les largeurs de colonnes sont
+   responsives. #diss-equation sert seulement de repère de coordonnées
+   (position: relative) ; sa hauteur est fixée en em pour que les enfants
+   absolus (centrés verticalement via top:50%) restent dans le flux normal. */
 #diss-equation {
-  text-align: center;
-  font-size: clamp(15px, 1.8vw, 22px);
+  position: relative;
+  height: 1.3em;
+  font-size: clamp(30px, 7.2cqw, 44px);
   font-weight: 700;
   color: #2c3e50;
   margin-bottom: clamp(6px, 1vh, 12px);
 }
+.diss-eq-term, .diss-eq-op {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+}
 
 /* ── Tableau d'avancement (valeurs reprises de reaction/css/style.css,
    redéfinies localement — pas de CSS partagé entre dossiers dans ce dépôt) ── */
+#diss-table-wrap {
+  margin: 0 clamp(4px, 3cqw, 32px);
+}
 #diss-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: clamp(11px, 1.1vw, 14px);
+  font-size: clamp(24px, 4cqw, 34px);
   text-align: center;
 }
 #diss-table th, #diss-table td {
   border: 1px solid #c8c0b4;
-  padding: clamp(2px, 0.4vh, 4px) 6px;
+  /* Padding en em (et non px/vh/cqw) : il suit directement le font-size, y
+     compris quand celui-ci est réduit dynamiquement par fitDissTable()
+     (diss.js) pour éviter tout débordement horizontal du tableau.
+     white-space: nowrap — sans quoi le texte passerait simplement à la
+     ligne au lieu de forcer le tableau à dépasser sa largeur disponible, ce
+     qui empêchait fitDissTable() de détecter le débordement et de réduire
+     la police en conséquence. */
+  padding: 0.35em 0.45em;
+  white-space: nowrap;
 }
-#diss-table .diss-label { text-align: left; color: #5a6a78; font-weight: 600; white-space: nowrap; }
-#diss-table .diss-col-solute, #diss-table .diss-td-solute { background: #e8f0fb; color: #2a6aaa; }
-#diss-table .diss-col-ion,    #diss-table .diss-td-ion    { background: #e8f5ee; color: #2a8a50; }
-#diss-table thead th { font-weight: 700; }
+#diss-table .diss-label {
+  /* white-space: normal (contrairement aux autres cellules) : sans ça,
+     nowrap forcerait la colonne à s'élargir pour loger tout le texte sur une
+     ligne, ignorant purement et simplement la largeur ci-dessous.
+     Largeur en ch, dimensionnée pour le mot le plus long parmi les deux
+     modes d'affichage (« Concentrations », 14 caractères, contre
+     « Quantités », 9) : en table-layout auto, un mot sans espace ne peut de
+     toute façon pas être coupé sous sa largeur intrinsèque, donc la colonne
+     s'élargirait à ce mot quoi qu'on mette ici — autant fixer d'emblée cette
+     largeur-là, qui devient alors la même dans les deux modes. Le ch suit le
+     font-size de la cellule, y compris quand fitDissTable() le réduit. */
+  white-space: normal;
+  text-align: left;
+  color: #5a6a78;
+  font-weight: 600;
+  /* max-width en plus de width : en table-layout auto, une largeur "width"
+     seule reste indicative et le navigateur peut reporter ici l'espace
+     laissé libre par les autres colonnes (constaté en fixant celles des
+     valeurs ci-dessous) ; max-width empêche ce report et garde cette
+     colonne à sa taille voulue. */
+  width: 15ch;
+  max-width: 15ch;
+}
+/* Largeur minimale en ch (assez large pour « 999,99 mol·L⁻¹ ») : sans ça, la
+   colonne suit la longueur du nombre affiché (ex. « 0 mol » vs
+   « 12,50 mol·L⁻¹ »), donc le tableau change de taille à chaque ajout de
+   soluté — gênant visuellement, alors qu'il y a largement la place pour
+   réserver une largeur stable dès le départ. min-width (et non width) pour
+   qu'elles absorbent l'espace laissé libre plutôt que la colonne label. */
+#diss-table .diss-col-solute, #diss-table .diss-td-solute { background: #e8f0fb; color: #2a6aaa; min-width: 13ch; }
+#diss-table .diss-col-ion,    #diss-table .diss-td-ion    { background: #e8f5ee; color: #2a8a50; min-width: 13ch; }
 #diss-table .sep-rp { border-right: 2px solid #b0a898; }
 
 /* ══════════════════════════════════════════════════

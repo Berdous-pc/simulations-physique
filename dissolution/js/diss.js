@@ -1088,6 +1088,8 @@ function dissResize() {
   computeDissSceneLayout();
   computeDissGlassGeometry();
   dissDrawScene();
+  fitDissTable();
+  alignDissEquation();
 }
 
 /* ══════════════════════════════════════════════════
@@ -1098,12 +1100,6 @@ function dissResize() {
    c'est précisément la comparaison recherchée avec la concentration
    effective de chaque ion.
 ══════════════════════════════════════════════════ */
-function dissTh(text, className) {
-  const th = document.createElement('th');
-  if (className) th.className = className;
-  th.textContent = text;
-  return th;
-}
 function dissTd(text, className) {
   const td = document.createElement('td');
   if (className) td.className = className;
@@ -1124,24 +1120,160 @@ function renderDissTable() {
   if (typeof isDissTableDevActive === 'function' && isDissTableDevActive()) return;
 
   const solute = SOLUTES.find(s => s.id === dissState.soluteId);
-  document.getElementById('diss-equation').textContent = dissEquationText(solute);
 
-  const thead = document.getElementById('diss-thead-row');
+  const eq = document.getElementById('diss-equation');
+  eq.innerHTML = '';
+  const eqSolute = document.createElement('span');
+  eqSolute.className = 'diss-eq-term';
+  eqSolute.id = 'diss-eq-solute';
+  eqSolute.textContent = solute.formule + ' (s)';
+  eq.appendChild(eqSolute);
+  const eqArrow = document.createElement('span');
+  eqArrow.className = 'diss-eq-op';
+  eqArrow.id = 'diss-eq-arrow';
+  eqArrow.textContent = '→';
+  eq.appendChild(eqArrow);
+  solute.especes.forEach((esp, i) => {
+    if (i > 0) {
+      const eqPlus = document.createElement('span');
+      eqPlus.className = 'diss-eq-op diss-eq-plus';
+      eqPlus.textContent = '+';
+      eq.appendChild(eqPlus);
+    }
+    const eqIon = document.createElement('span');
+    eqIon.className = 'diss-eq-term diss-eq-ion-term';
+    eqIon.textContent = (esp.coeff > 1 ? esp.coeff + ' ' : '') + esp.formule + ' (aq)';
+    eq.appendChild(eqIon);
+  });
+
   const tbInit = document.getElementById('diss-tbody-initial');
   const tbFinal = document.getElementById('diss-tbody-final');
-  thead.innerHTML = ''; tbInit.innerHTML = ''; tbFinal.innerHTML = '';
+  tbInit.innerHTML = ''; tbFinal.innerHTML = '';
 
-  thead.appendChild(dissTh('Espèces chimiques', 'diss-label'));
-  thead.appendChild(dissTh(solute.formule + ' (s)', 'diss-col-solute sep-rp'));
-  solute.especes.forEach(esp => thead.appendChild(dissTh(esp.formule + ' (aq)', 'diss-col-ion')));
-
-  tbInit.appendChild(dissTd('Quantités apportées', 'diss-label'));
+  const labelWord = dissState.unit === 'mol' ? 'Quantités' : 'Concentrations';
+  tbInit.appendChild(dissTd(labelWord + ' apportées', 'diss-label'));
   tbInit.appendChild(dissTd(dissFormatQty(dissState.nApporte), 'diss-td-solute sep-rp'));
   solute.especes.forEach(() => tbInit.appendChild(dissTd(dissFormatQty(0), 'diss-td-ion')));
 
-  tbFinal.appendChild(dissTd('Quantités effectives', 'diss-label'));
+  tbFinal.appendChild(dissTd(labelWord + ' effectives', 'diss-label'));
   tbFinal.appendChild(dissTd(dissFormatQty(0), 'diss-td-solute sep-rp'));
   solute.especes.forEach(esp => tbFinal.appendChild(dissTd(dissFormatQty(dissState.nApporte * esp.coeff), 'diss-td-ion')));
+
+  fitDissTable();
+  alignDissEquation();
+}
+
+/* Réduit la police du tableau (padding suit en em, cf. CSS) si son contenu
+   dépasse la largeur OU la hauteur disponibles : on préfère un tableau plus
+   petit mais entièrement visible à l'apparition d'une scrollbar (la colonne
+   des labels passe à la ligne — cf. .diss-label en white-space:normal — donc
+   peut faire déborder verticalement #diss-bottom-zone, pas seulement
+   horizontalement). Repart de la taille CSS (clamp/cqw) à chaque appel pour
+   pouvoir aussi bien rétrécir que réagrandir selon la taille de fenêtre.
+   La colonne des labels reçoit en plus une réduction accentuée (exposant > 1
+   sur le facteur d'échelle) : elle est purement indicative et peut rétrécir
+   plus vite que les colonnes de valeurs.
+   En dessous de DISS_TABLE_MIN_FONT_PX, on arrête de rétrécir : le texte
+   devient illisible avant ça, donc on laisse #diss-bottom-zone déborder et
+   afficher sa scrollbar (overflow-y: auto, cf. CSS) plutôt que de continuer
+   à réduire la police indéfiniment. */
+const DISS_TABLE_MIN_FONT_PX = 20;
+function fitDissTable() {
+  const zone = document.getElementById('diss-bottom-zone');
+  const wrap = document.getElementById('diss-table-wrap');
+  const table = document.getElementById('diss-table');
+  if (!zone || !wrap || !table) return;
+  table.style.fontSize = '';
+  const labels = table.querySelectorAll('.diss-label');
+  labels.forEach(el => { el.style.fontSize = ''; });
+
+  const widthScale = wrap.clientWidth / table.scrollWidth;
+  const availH = zone.clientHeight - zone.scrollHeight + table.scrollHeight;
+  const heightScale = availH / table.scrollHeight;
+  const scale = Math.min(widthScale, heightScale);
+
+  if (scale < 1 && isFinite(scale) && scale > 0) {
+    const basePx = parseFloat(getComputedStyle(table).fontSize);
+    const targetPx = Math.max(DISS_TABLE_MIN_FONT_PX, basePx * scale);
+    table.style.fontSize = targetPx + 'px';
+    const clampedScale = targetPx / basePx;
+    const labelScale = Math.max(DISS_TABLE_MIN_FONT_PX / basePx, Math.pow(clampedScale, 1.6));
+    labels.forEach(el => { el.style.fontSize = (basePx * labelScale) + 'px'; });
+  }
+}
+
+/* Cale chaque terme de l'équation sur la colonne du tableau qu'il désigne :
+   - le réactif (#diss-eq-solute) au centre de la colonne solute (sep-rp) ;
+   - la flèche (#diss-eq-arrow) sur la bordure séparant colonne réactif et
+     colonne(s) produits (même bordure que .sep-rp) ;
+   - chaque produit (.diss-eq-ion-term) au centre de sa colonne d'ion ;
+   - les « + » (.diss-eq-plus) sur la bordure entre deux colonnes d'ions
+     consécutives.
+   Chaque terme est positionné en absolu (left en px, cf. CSS) d'après la
+   position réelle des <td> de la ligne « Quantités apportées » (le tableau
+   n'a plus de ligne d'en-tête — l'équation en tient lieu), mesurée via
+   getBoundingClientRect — donc valable quelle que soit la largeur réelle des
+   colonnes (responsive), et indépendant de tout alignement entre
+   #diss-equation et #diss-table-wrap.
+   Si un terme est plus large que sa colonne (fenêtre réduite), les termes
+   voisins se chevauchent : on réduit alors uniformément la taille de police
+   de l'équation pour que chaque terme retienne dans sa colonne.
+   À rappeler après tout changement de mise en page (redimensionnement,
+   changement de soluté). */
+function alignDissEquation() {
+  const eq = document.getElementById('diss-equation');
+  const refRow = document.getElementById('diss-tbody-initial');
+  if (!eq || !refRow) return;
+  const cells = Array.from(refRow.children);
+  const soluteCell = cells[1];
+  const ionCells = cells.slice(2);
+  const soluteSpan = document.getElementById('diss-eq-solute');
+  const arrow = document.getElementById('diss-eq-arrow');
+  const ionSpans = Array.from(eq.querySelectorAll('.diss-eq-ion-term'));
+  const plusSpans = Array.from(eq.querySelectorAll('.diss-eq-plus'));
+  if (!soluteCell || !soluteSpan || !arrow || ionCells.length !== ionSpans.length) return;
+
+  eq.style.fontSize = '';   // repart de la taille CSS (clamp/cqw) avant de mesurer
+
+  const eqRect = eq.getBoundingClientRect();
+  const soluteRect = soluteCell.getBoundingClientRect();
+  soluteSpan.style.left = ((soluteRect.left + soluteRect.right) / 2 - eqRect.left) + 'px';
+  arrow.style.left = (soluteRect.right - eqRect.left) + 'px';
+
+  const ionRects = ionCells.map(c => c.getBoundingClientRect());
+  ionSpans.forEach((span, i) => {
+    const r = ionRects[i];
+    span.style.left = ((r.left + r.right) / 2 - eqRect.left) + 'px';
+  });
+  plusSpans.forEach((plus, i) => {
+    const r = ionRects[i];
+    plus.style.left = (r.right - eqRect.left) + 'px';
+  });
+
+  /* Chaque terme ne doit pas dépasser la largeur de sa propre colonne, marge
+     comprise — et un opérateur (flèche ou « + ») est centré sur chaque
+     bordure de colonne, donc empiète pour moitié sur les deux colonnes
+     voisines : il faut aussi lui réserver cette moitié pour éviter tout
+     chevauchement texte/opérateur. On cherche le facteur d'échelle le plus
+     restrictif puis on l'applique à toute l'équation, pour garder une
+     taille uniforme. */
+  const margin = 12;
+  const halfOp = el => el.getBoundingClientRect().width / 2;
+  let scale = 1;
+  const fits = (colWidth, span, leftOp, rightOp) => {
+    const reserved = margin + (leftOp ? halfOp(leftOp) : 0) + (rightOp ? halfOp(rightOp) : 0);
+    scale = Math.min(scale, (colWidth - reserved) / span.getBoundingClientRect().width);
+  };
+  fits(soluteRect.width, soluteSpan, null, arrow);
+  ionSpans.forEach((span, i) => {
+    const leftOp = i === 0 ? arrow : plusSpans[i - 1];
+    const rightOp = plusSpans[i] || null;
+    fits(ionRects[i].width, span, leftOp, rightOp);
+  });
+  if (scale < 1 && isFinite(scale) && scale > 0) {
+    const basePx = parseFloat(getComputedStyle(eq).fontSize);
+    eq.style.fontSize = (basePx * scale) + 'px';
+  }
 }
 
 /* ══════════════════════════════════════════════════
