@@ -493,26 +493,30 @@ function dessinerLienFigure() {
   for (const p of minima) tracerLien(p.x, COULEUR_LIEN_MINIMA);
   for (const p of maxima) tracerLien(p.x, COULEUR_LIEN_MAXIMA);
 
-  // ── Légende (coin haut-droit du graphe) ──
-  const boxW = 96, boxH = 40;
-  const lx = graphRect.right - hostRect.left - boxW - 8;
-  const ly = graphRect.top - hostRect.top + layout.pad.t + 6;
+  // ── Légende — À L'INTÉRIEUR du cadre de tracé (coin haut-droit), en retrait de ses bords
+  // (marge `retrait`) pour ne jamais chevaucher le cadre lui-même. Superposée à la courbe
+  // (comme toute légende de graphique classique), pas dans la marge des axes : élargir
+  // cette marge pour l'y loger avait été essayé puis rejeté (rétrécit le cadre de tracé,
+  // jugé inesthétique par l'utilisateur).
+  const boxW = 108, boxH = 64, retrait = 8;
+  const lx = graphRect.left - hostRect.left + layout.pad.l + layout.gw - retrait - boxW;
+  const ly = graphRect.top - hostRect.top + layout.pad.t + retrait;
   gc.save();
-  gc.fillStyle = 'rgba(255,255,255,0.92)';
+  gc.fillStyle = 'rgba(255,255,255,0.95)';
   gc.strokeStyle = '#c8c0b4';
   gc.lineWidth = 1;
   gc.fillRect(lx, ly, boxW, boxH);
   gc.strokeRect(lx, ly, boxW, boxH);
-  gc.font = '11px sans-serif';
+  gc.font = 'bold 14px sans-serif';
   gc.textBaseline = 'middle';
   gc.textAlign = 'left';
-  gc.fillStyle = COULEUR_LIEN_MAXIMA;
-  gc.fillRect(lx + 8, ly + 11, 14, 3);
-  gc.fillStyle = '#2c3e50';
-  gc.fillText('Maxima', lx + 28, ly + 13);
-  gc.fillStyle = COULEUR_LIEN_MINIMA;
-  gc.fillRect(lx + 8, ly + 29, 14, 3);
-  gc.fillStyle = '#2c3e50';
-  gc.fillText('Minima', lx + 28, ly + 31);
+  const ligne = (y, couleur, texte) => {
+    gc.fillStyle = couleur;
+    gc.fillRect(lx + 8, y - 3, 16, 5);
+    gc.fillStyle = '#2c3e50';
+    gc.fillText(texte, lx + 30, y);
+  };
+  ligne(ly + boxH * 0.32, COULEUR_LIEN_MAXIMA, 'Maxima');
+  ligne(ly + boxH * 0.72, COULEUR_LIEN_MINIMA, 'Minima');
   gc.restore();
 }
