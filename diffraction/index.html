@@ -35,6 +35,10 @@
           <button class="btn-view"        data-view="side"   onclick="setView('side')">Profil</button>
           <button class="btn-view"        data-view="screen" onclick="setView('screen')">Écran</button>
         </div>
+        <!-- Vue Écran + Lumière blanche uniquement, cf. scene.js → syncBoutonDecompose -->
+        <div id="decompose-buttons">
+          <button class="btn-view" id="btn-decompose" onclick="toggleDecompose()">Décomposer la figure de diffraction</button>
+        </div>
       </div>
 
       <!-- Splitter draggable -->
@@ -54,6 +58,17 @@
         </div>
         <div class="graph-wrap">
           <canvas id="graph-intensity"></canvas>
+          <!-- Légende à cases à cocher (mode Lumière blanche uniquement, cf. graph.js →
+               initLegendeBlanche/syncGraphModeBlanche) : une courbe de référence par
+               couleur nommée (cf. sim.js → BLANCHE_COULEURS). -->
+          <div id="graph-legend-blanche" class="graph-legend-blanche">
+            <label><input type="checkbox" data-couleur="Violet" checked><span class="legend-swatch" data-couleur="Violet"></span>Violet</label>
+            <label><input type="checkbox" data-couleur="Bleu" checked><span class="legend-swatch" data-couleur="Bleu"></span>Bleu</label>
+            <label><input type="checkbox" data-couleur="Vert" checked><span class="legend-swatch" data-couleur="Vert"></span>Vert</label>
+            <label><input type="checkbox" data-couleur="Jaune" checked><span class="legend-swatch" data-couleur="Jaune"></span>Jaune</label>
+            <label><input type="checkbox" data-couleur="Orange" checked><span class="legend-swatch" data-couleur="Orange"></span>Orange</label>
+            <label><input type="checkbox" data-couleur="Rouge" checked><span class="legend-swatch" data-couleur="Rouge"></span>Rouge</label>
+          </div>
         </div>
       </div>
 
@@ -108,34 +123,31 @@
     <!-- ═══ Section ONDES LUMINEUSES ═══ -->
     <div class="panel-main-section" id="section-lumineuses">
 
-    <!-- Section : Source laser -->
+    <!-- Section : Paramètres expérimentaux -->
     <div>
-      <div class="section-title">Source laser</div>
-      <div class="param-row">
+      <div class="section-title">Paramètres expérimentaux</div>
+      <div class="param-row" style="margin-bottom:8px;">
+        <button class="btn btn-toggle-one" id="btn-light-source" onclick="cycleLightSource()">Source lumineuse :<br>Monochromatique</button>
+      </div>
+      <div class="param-row" id="row-lambda">
         <label><span><span id="lambda-swatch"></span>Longueur d'onde λ</span> <span><span id="lbl-lambda">633</span> nm</span></label>
         <input type="range" id="sl-lambda" min="400" max="700" step="1" value="633"
                oninput="updateParam('lambda', this.value)">
       </div>
-    </div>
-
-    <!-- Section : Fente -->
-    <div>
-      <div class="section-title">Fente</div>
       <div class="param-row">
         <label>Largeur de la fente a <span><span id="lbl-a">100</span> µm</span></label>
         <input type="range" id="sl-a" min="20" max="500" step="1" value="100"
                oninput="updateParam('a', this.value)">
       </div>
-      <div class="input-hint">Une fente plus étroite élargit la figure de diffraction.</div>
-    </div>
-
-    <!-- Section : Écran -->
-    <div>
-      <div class="section-title">Écran</div>
       <div class="param-row">
-        <label>Distance fente-écran D <span><span id="lbl-D">2.0</span> m</span></label>
-        <input type="range" id="sl-D" min="0.5" max="3" step="0.1" value="2.0"
+        <label>Distance fente-écran D <span><span id="lbl-D">1,0</span> m</span></label>
+        <input type="range" id="sl-D" min="0.5" max="3" step="0.1" value="1.0"
                oninput="updateParam('D', this.value)">
+      </div>
+      <div class="param-row">
+        <label>Distance laser-fente d <span><span id="lbl-d">0,50</span> m</span></label>
+        <input type="range" id="sl-d" min="0.15" max="2.5" step="0.01" value="0.50"
+               oninput="updateParam('d', this.value)">
       </div>
     </div>
 
@@ -149,8 +161,9 @@
       </div>
     </div>
 
-    <!-- Section : Valeurs -->
-    <div>
+    <!-- Section : Valeurs (masquée en mode Lumière blanche, cf. ui.js → syncModeBlancheUI :
+         écart angulaire/largeur n'ont de sens que pour une seule λ) -->
+    <div id="section-valeurs">
       <div class="section-title">Valeurs</div>
       <div class="readouts">
         <div class="readout">

@@ -142,6 +142,18 @@ main {
 .btn-view:hover { background: rgba(255,255,255,0.18); color: #fff; }
 .btn-view.active { background: #2a6aaa; border-color: #1a5a9a; color: #fff; }
 
+/* Bouton "Décomposer la figure de diffraction" (overlay sous #view-buttons, vue Écran +
+   lumière blanche uniquement, cf. scene.js → syncBoutonDecompose) */
+#decompose-buttons {
+  position: absolute;
+  top: calc(clamp(6px, 1vw, 12px) + 42px);
+  right: clamp(6px, 1vw, 12px);
+  z-index: 10;
+  display: none;
+  padding-right: 5px; /* aligne la bordure droite du bouton sur celle de #view-buttons (padding:5px) */
+}
+#decompose-buttons.visible { display: flex; }
+
 /* ── Splitter draggable ── */
 #left-splitter {
   flex: 0 0 6px;
@@ -213,6 +225,31 @@ main {
   gap: 3px;
   overflow: hidden;
   padding: 0 10px 8px;
+  position: relative; /* référentiel de .graph-legend-blanche */
+}
+
+/* Légende à cases à cocher du graphe en mode Lumière blanche (cf. graph.js) */
+.graph-legend-blanche {
+  display: none;
+  position: absolute;
+  top: 16px; right: 40px;
+  background: rgba(255,255,255,0.95);
+  border: 1px solid #c8c0b4;
+  border-radius: 5px;
+  padding: 5px 8px;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  max-height: calc(100% - 12px);
+  overflow-y: auto;
+  z-index: 5;
+}
+.graph-legend-blanche.visible { display: flex; }
+.graph-legend-blanche label { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+.graph-legend-blanche input[type=checkbox] { margin: 0; cursor: pointer; }
+.legend-swatch {
+  display: inline-block; width: 11px; height: 11px; border-radius: 50%;
+  border: 1px solid rgba(0,0,0,0.25);
 }
 .graph-wrap canvas {
   background: #ffffff;
@@ -290,6 +327,9 @@ main {
 .param-row label { display: flex; justify-content: space-between; font-size: clamp(12px, 1.15vw, 15px); color: #2c3e50; }
 .param-row label span { color: #2a5080; font-weight: 600; }
 input[type=range] { width: 100%; accent-color: #4a7aaa; cursor: pointer; }
+input[type=range]:disabled { accent-color: #b0aca4; cursor: not-allowed; }
+.param-row.disabled label { color: #a8a49c; }
+.param-row.disabled label span { color: #a8a49c; }
 .input-hint { font-size: clamp(10px, 0.9vw, 13px); color: #7a8a96; }
 
 /* Pastille de couleur du laser à côté du réglage λ */

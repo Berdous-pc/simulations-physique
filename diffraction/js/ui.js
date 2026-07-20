@@ -17,9 +17,25 @@ function updateParam(name, val) {
   const v = parseFloat(val);
   if (name === 'lambda') { sim.lambda = v; document.getElementById('lbl-lambda').textContent = v.toFixed(0); }
   if (name === 'a')      { sim.a      = v; document.getElementById('lbl-a').textContent      = v.toFixed(0); }
-  if (name === 'D')      { sim.D      = v; document.getElementById('lbl-D').textContent      = v.toFixed(1); }
+  if (name === 'D')      { sim.D      = v; document.getElementById('lbl-D').textContent      = formatFr(v, 1); }
+  if (name === 'd')      { sim.d      = v; document.getElementById('lbl-d').textContent      = formatFr(v, 2); appliquerBorneD(); }
   updateSceneParams();
   updateReadouts();
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Recalcule la borne max de D (dépend de d, cf. sim.js → dMaxPourPetitD)
+//  et l'applique au slider D ; si D dépasse la nouvelle borne, le cappe.
+// ─────────────────────────────────────────────────────────────────────
+function appliquerBorneD() {
+  const dMax = dMaxPourPetitD(sim.d);
+  const slD = document.getElementById('sl-D');
+  slD.max = dMax;
+  if (sim.D > dMax) {
+    sim.D = dMax;
+    slD.value = sim.D;
+    document.getElementById('lbl-D').textContent = formatFr(sim.D, 1);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -38,6 +54,57 @@ function toggleLengths() {
   sim.showLengths = !sim.showLengths;
   document.getElementById('btn-lengths').classList.toggle('active', sim.showLengths);
   updateSceneParams();
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Bascule entre source monochromatique (réglable via λ) et lumière blanche : la texture
+//  d'écran devient une somme de 6 couleurs de référence (cf. sim.js → intensiteBlancheRGB),
+//  le graphe trace une courbe par couleur cochée dans sa légende (cf. graph.js →
+//  syncGraphModeBlanche). Le slider λ, l'angle de diffraction et les encarts θ/largeur
+//  n'ont de sens que pour une seule longueur d'onde : désactivés/masqués en mode blanc
+//  (cf. syncModeBlancheUI ci-dessous).
+// ─────────────────────────────────────────────────────────────────────
+const LIGHT_SOURCE_LABELS = { mono: 'Monochromatique', blanche: 'Lumière blanche' };
+function renderLightSourceLabel() {
+  const btn = document.getElementById('btn-light-source');
+  btn.innerHTML = 'Source lumineuse :<br>' + LIGHT_SOURCE_LABELS[sim.lightSource];
+  btn.classList.toggle('active', sim.lightSource === 'blanche');
+  const rowLambda = document.getElementById('row-lambda');
+  const slLambda = document.getElementById('sl-lambda');
+  const estMono = sim.lightSource === 'mono';
+  rowLambda.classList.toggle('disabled', !estMono);
+  slLambda.disabled = !estMono;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  (Dés)active tout ce qui n'a de sens que pour une seule longueur d'onde : bouton "Tracer
+//  l'angle de diffraction" et encarts θ/largeur tache centrale (section Valeurs), masqués en
+//  lumière blanche — coupe aussi sim.showRays s'il était actif, pour ne pas laisser les rayons
+//  affichés dans la scène 3D une fois le bouton qui les pilote masqué. Appelée par
+//  cycleLightSource(), resetSim() et init().
+// ─────────────────────────────────────────────────────────────────────
+function syncModeBlancheUI() {
+  const estBlanche = sim.lightSource === 'blanche';
+  document.getElementById('btn-rays').style.display = estBlanche ? 'none' : '';
+  document.getElementById('section-valeurs').style.display = estBlanche ? 'none' : '';
+  if (estBlanche && sim.showRays) {
+    sim.showRays = false;
+    document.getElementById('btn-rays').classList.remove('active');
+  }
+  // Le bouton "Décomposer" n'a de sens qu'en lumière blanche (+ vue Écran, cf.
+  // syncBoutonDecompose) : revenir en monochromatique annule toute décomposition en cours,
+  // instantanément (pas d'animation), cf. sa docstring.
+  if (!estBlanche) annulerDecompose();
+  syncBoutonDecompose();
+  syncGraphModeBlanche();
+}
+
+function cycleLightSource() {
+  sim.lightSource = (sim.lightSource === 'mono') ? 'blanche' : 'mono';
+  renderLightSourceLabel();
+  syncModeBlancheUI();
+  updateSceneParams();
+  updateReadouts();
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -78,8 +145,8 @@ function setView(view) {
 function updateReadouts() {
   const theta = thetaPremierMinimum(sim.lambda, sim.a);
   const x1 = xPremierMinimum(sim.lambda, sim.a, sim.D);
-  document.getElementById('ro-theta').textContent = (theta * 180 / Math.PI).toFixed(2);
-  document.getElementById('ro-largeur').textContent = (2 * x1 * 100).toFixed(2);
+  document.getElementById('ro-theta').textContent = formatFr(theta * 180 / Math.PI, 2);
+  document.getElementById('ro-largeur').textContent = formatFr(2 * x1 * 100, 2);
   document.getElementById('lambda-swatch').style.background = longueurOndeVersCss(sim.lambda);
 }
 
@@ -88,15 +155,20 @@ function updateReadouts() {
 // ─────────────────────────────────────────────────────────────────────
 function resetSim() {
   resetParams();
+  appliquerBorneD();
   document.getElementById('sl-lambda').value = sim.lambda;
   document.getElementById('sl-a').value = sim.a;
   document.getElementById('sl-D').value = sim.D;
+  document.getElementById('sl-d').value = sim.d;
   document.getElementById('lbl-lambda').textContent = sim.lambda.toFixed(0);
   document.getElementById('lbl-a').textContent = sim.a.toFixed(0);
-  document.getElementById('lbl-D').textContent = sim.D.toFixed(1);
+  document.getElementById('lbl-D').textContent = formatFr(sim.D, 1);
+  document.getElementById('lbl-d').textContent = formatFr(sim.d, 2);
   document.getElementById('btn-rays').classList.remove('active');
   document.getElementById('btn-lengths').classList.remove('active');
   renderBeamModeLabel();
+  renderLightSourceLabel();
+  syncModeBlancheUI();
 
   gview.xMin = -sim.screenHalfWidth;
   gview.xMax = sim.screenHalfWidth;
@@ -220,6 +292,7 @@ document.addEventListener('webkitfullscreenchange', resize);
 // ═══════════════════════════════════════════════════
 function loop() {
   renderScene();
+  tickDecompose();
   drawIntensityGraph();
   dessinerLienFigure();
   requestAnimationFrame(loop);
@@ -235,7 +308,11 @@ function init() {
 
   initScene();
   initGraphInteractions();
+  initLegendeBlanche();
+  appliquerBorneD();
   renderBeamModeLabel();
+  renderLightSourceLabel();
+  syncModeBlancheUI();
   resize();
   updateReadouts();
   requestAnimationFrame(loop);

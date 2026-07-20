@@ -97,7 +97,7 @@ function toggleGraphPin() {
 }
 
 function toggleGraphLien() {
-  if (sim.view !== 'screen') return; // bouton normalement désactivé dans ce cas
+  if (sim.view !== 'screen' || sim.lightSource === 'blanche') return; // bouton normalement désactivé dans ce cas
   graphLienMode = !graphLienMode;
   const btn = document.getElementById('btn-graph-lien');
   btn.classList.toggle('active', graphLienMode);
@@ -105,11 +105,13 @@ function toggleGraphLien() {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-//  (Dés)active le bouton « Lien figure » selon la vue courante, et coupe le mode si l'on
-//  quitte la vue Écran (appelée par scene.js → setSceneView()).
+//  (Dés)active le bouton « Lien figure » selon la vue courante ET le mode lumineux (pas de
+//  sens en lumière blanche, plusieurs courbes superposées, cf. syncGraphModeBlanche), et
+//  coupe le mode si l'une des deux conditions cesse d'être remplie. Appelée par
+//  scene.js → setSceneView() et par syncGraphModeBlanche() ci-dessous.
 // ─────────────────────────────────────────────────────────────────────
 function syncGraphLienDisponibilite() {
-  const actif = sim.view === 'screen';
+  const actif = sim.view === 'screen' && sim.lightSource !== 'blanche';
   const btn = document.getElementById('btn-graph-lien');
   if (btn) btn.disabled = !actif;
   if (!actif && graphLienMode) {
@@ -122,6 +124,47 @@ function syncGraphLienDisponibilite() {
 function effacerOverlayLien() {
   const cv = document.getElementById('graph-lien-overlay');
   if (cv && cv.width && cv.height) cv.getContext('2d').clearRect(0, 0, cv.width, cv.height);
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Légende à cases à cocher du graphe (mode Lumière blanche, cf. sim.js → BLANCHE_COULEURS) :
+//  une entrée par couleur de référence, pastille teintée selon sa λ, case à cocher liée à
+//  sim.blancheVisibles. Appelée une seule fois au démarrage (ui.js → init()).
+// ─────────────────────────────────────────────────────────────────────
+function initLegendeBlanche() {
+  const legende = document.getElementById('graph-legend-blanche');
+  if (!legende) return;
+  for (const c of BLANCHE_COULEURS) {
+    const swatch = legende.querySelector(`.legend-swatch[data-couleur="${c.nom}"]`);
+    if (swatch) swatch.style.background = longueurOndeVersCss(c.lambda);
+    const checkbox = legende.querySelector(`input[data-couleur="${c.nom}"]`);
+    if (checkbox) {
+      checkbox.addEventListener('change', () => {
+        sim.blancheVisibles[c.nom] = checkbox.checked;
+        drawIntensityGraph();
+      });
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  (Dés)active tout ce qui dépend du mode lumineux dans la zone graphe : légende à cases à
+//  cocher (visible seulement en lumière blanche) et bouton "Lien figure" (sans sens dans ce
+//  mode, cf. son commentaire — l'épinglage/survol, eux, restent actifs, cf.
+//  dessinerInfoMultiCourbes). Appelée par ui.js → cycleLightSource()/resetSim()/init().
+// ─────────────────────────────────────────────────────────────────────
+function syncGraphModeBlanche() {
+  const estBlanche = sim.lightSource === 'blanche';
+  const legende = document.getElementById('graph-legend-blanche');
+  if (legende) {
+    legende.classList.toggle('visible', estBlanche);
+    for (const c of BLANCHE_COULEURS) {
+      const checkbox = legende.querySelector(`input[data-couleur="${c.nom}"]`);
+      if (checkbox) checkbox.checked = sim.blancheVisibles[c.nom];
+    }
+  }
+  syncGraphLienDisponibilite();
+  drawIntensityGraph();
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -266,20 +309,78 @@ function dessinerMarqueurPoint(gc, layout, x, I, couleur) {
   gc.lineWidth = 1.2;
   gc.stroke();
 
-  const label = `(${(x * 100).toFixed(2)} cm, ${I.toFixed(3)})`;
-  gc.font = '12px monospace';
+  const label = `(${formatFr(x * 100, 2)} cm, ${formatFr(I, 3)})`;
+  gc.font = '18px monospace'; // ×1,5 (demande explicite de l'utilisateur)
   const lw = gc.measureText(label).width;
-  let lx = px + 10;
-  if (lx + lw > pad.l + gw) lx = px - 10 - lw;
-  let ly = py - 20;
-  if (ly < pad.t) ly = py + 12;
+  let lx = px + 15;
+  if (lx + lw > pad.l + gw) lx = px - 15 - lw;
+  let ly = py - 30;
+  if (ly < pad.t) ly = py + 18;
 
   gc.fillStyle = 'rgba(44,62,80,0.85)';
-  gc.fillRect(lx - 4, ly - 4, lw + 8, 18);
+  gc.fillRect(lx - 6, ly - 6, lw + 12, 27);
   gc.fillStyle = '#fff';
   gc.textAlign = 'left';
   gc.textBaseline = 'middle';
-  gc.fillText(label, lx, ly + 5);
+  gc.fillText(label, lx, ly + 7);
+  gc.restore();
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Marqueurs + encart d'infos à une abscisse x, EN MODE BLANC : un point par couleur
+//  actuellement cochée dans la légende (pas "le" point le plus proche comme en mono, qui
+//  n'aurait pas de sens univoque avec plusieurs courbes superposées), plus un seul encart
+//  listant toutes leurs valeurs — utilisée à la fois pour le survol et pour chaque épingle.
+// ─────────────────────────────────────────────────────────────────────
+function dessinerInfoMultiCourbes(gc, layout, x) {
+  const { toX, toY, pad, gw } = layout;
+  const px = toX(x);
+  const lignes = [];
+  for (const c of BLANCHE_COULEURS) {
+    if (!sim.blancheVisibles[c.nom]) continue;
+    const I = intensiteFente(x, c.lambda, sim.a, sim.D);
+    const py = toY(I);
+    const couleurC = longueurOndeVersCss(c.lambda);
+    gc.save();
+    gc.fillStyle = couleurC;
+    gc.beginPath(); gc.arc(px, py, 4.5, 0, Math.PI * 2); gc.fill();
+    gc.strokeStyle = '#fff';
+    gc.lineWidth = 1.2;
+    gc.stroke();
+    gc.restore();
+    lignes.push({ couleur: couleurC, texte: `${c.nom} : ${formatFr(I, 3)}` });
+  }
+  if (lignes.length === 0) return;
+
+  gc.save();
+  gc.font = 'bold 18px monospace'; // ×1,5 (demande explicite de l'utilisateur)
+  const titre = `x = ${formatFr(x * 100, 2)} cm`;
+  let boxW = gc.measureText(titre).width;
+  gc.font = '18px monospace';
+  for (const l of lignes) boxW = Math.max(boxW, 30 + gc.measureText(l.texte).width);
+  boxW += 18;
+  const ligneH = 23;
+  const boxH = 27 + lignes.length * ligneH + 9;
+
+  let bx = px + 18;
+  if (bx + boxW > pad.l + gw) bx = px - 18 - boxW;
+  const by = pad.t + 9;
+
+  gc.fillStyle = 'rgba(44,62,80,0.92)';
+  gc.fillRect(bx, by, boxW, boxH);
+  gc.textAlign = 'left';
+  gc.textBaseline = 'top';
+  gc.fillStyle = '#fff';
+  gc.font = 'bold 18px monospace';
+  gc.fillText(titre, bx + 9, by + 8);
+  gc.font = '18px monospace';
+  lignes.forEach((l, i) => {
+    const ly = by + 33 + i * ligneH;
+    gc.fillStyle = l.couleur;
+    gc.fillRect(bx + 9, ly + 4, 18, 8);
+    gc.fillStyle = '#fff';
+    gc.fillText(l.texte, bx + 33, ly);
+  });
   gc.restore();
 }
 
@@ -322,7 +423,7 @@ function drawIntensityGraph() {
     const px = toX(x);
     if (px < pad.l - 1 || px > pad.l + gw + 1) continue;
     gc.beginPath(); gc.moveTo(px, pad.t); gc.lineTo(px, pad.t + gh); gc.stroke();
-    gc.fillText((x * 100).toFixed(1) + ' cm', px, pad.t + gh + 4);
+    gc.fillText(formatFr(x * 100, 1) + ' cm', px, pad.t + gh + 4);
   }
 
   // ── Grille + graduations Y (intensité normalisée) ──
@@ -334,41 +435,74 @@ function drawIntensityGraph() {
     const py = toY(v);
     if (py < pad.t - 1 || py > pad.t + gh + 1) continue;
     gc.beginPath(); gc.moveTo(pad.l, py); gc.lineTo(pad.l + gw, py); gc.stroke();
-    gc.fillText(v.toFixed(2), pad.l - 5, py);
+    gc.fillText(formatFr(v, 2), pad.l - 5, py);
   }
 
   // ── Cadre ──
   gc.strokeStyle = '#c8c0b4';
   gc.strokeRect(pad.l, pad.t, gw, gh);
 
-  // ── Courbe I(x) ──
+  // ── Courbe(s) I(x) ──
+  // Mode blanc : une courbe par couleur de référence cochée dans la légende (cf. sim.js →
+  // BLANCHE_COULEURS), au lieu de la seule courbe de sim.lambda. Pas de survol/épingles dans
+  // ce mode (cf. syncGraphModeBlanche) : avec plusieurs courbes superposées, "le" point le
+  // plus proche du curseur n'aurait pas de sens univoque.
   gc.save();
   gc.beginPath();
   gc.rect(pad.l, pad.t, gw, gh);
   gc.clip();
-  const couleur = longueurOndeVersCss(sim.lambda);
-  gc.strokeStyle = couleur;
-  gc.lineWidth = 2;
-  gc.shadowColor = couleur;
-  gc.shadowBlur = 4;
-  gc.beginPath();
-  let first = true;
-  for (const p of pts) {
-    const px = toX(p.x), py = toY(p.I);
-    if (first) { gc.moveTo(px, py); first = false; }
-    else gc.lineTo(px, py);
+  if (sim.lightSource === 'blanche') {
+    for (const c of BLANCHE_COULEURS) {
+      if (!sim.blancheVisibles[c.nom]) continue;
+      const ptsC = echantillonnerIntensite(N_ECHANTILLONS, xMin, xMax, c.lambda);
+      const couleurC = longueurOndeVersCss(c.lambda);
+      gc.strokeStyle = couleurC;
+      gc.lineWidth = 2;
+      gc.shadowColor = couleurC;
+      gc.shadowBlur = 4;
+      gc.beginPath();
+      let firstC = true;
+      for (const p of ptsC) {
+        const px = toX(p.x), py = toY(p.I);
+        if (firstC) { gc.moveTo(px, py); firstC = false; }
+        else gc.lineTo(px, py);
+      }
+      gc.stroke();
+    }
+  } else {
+    const couleur = longueurOndeVersCss(sim.lambda);
+    gc.strokeStyle = couleur;
+    gc.lineWidth = 2;
+    gc.shadowColor = couleur;
+    gc.shadowBlur = 4;
+    gc.beginPath();
+    let first = true;
+    for (const p of pts) {
+      const px = toX(p.x), py = toY(p.I);
+      if (first) { gc.moveTo(px, py); first = false; }
+      else gc.lineTo(px, py);
+    }
+    gc.stroke();
   }
-  gc.stroke();
   gc.restore();
 
-  // ── Points épinglés (persistants) ──
-  for (const p of graphPins) dessinerMarqueurPoint(gc, layout, p.x, p.I, '#b04020');
+  if (sim.lightSource === 'blanche') {
+    // ── Épingles + survol, mode blanc : toutes les couleurs cochées à cette abscisse ──
+    for (const p of graphPins) dessinerInfoMultiCourbes(gc, layout, p.x);
+    if (graphHover) {
+      const xHover = Math.max(xMin, Math.min(xMax, xMin + ((graphHover.x - pad.l) / gw) * (xMax - xMin)));
+      dessinerInfoMultiCourbes(gc, layout, xHover);
+    }
+  } else {
+    // ── Points épinglés (persistants) ──
+    for (const p of graphPins) dessinerMarqueurPoint(gc, layout, p.x, p.I, '#b04020');
 
-  // ── Point le plus proche du curseur (survol en direct, toujours actif) ──
-  if (graphHover) {
-    const xHover = Math.max(xMin, Math.min(xMax, xMin + ((graphHover.x - pad.l) / gw) * (xMax - xMin)));
-    const p = pointLePlusProche(pts, xHover);
-    dessinerMarqueurPoint(gc, layout, p.x, p.I, '#2a6aaa');
+    // ── Point le plus proche du curseur (survol en direct, toujours actif) ──
+    if (graphHover) {
+      const xHover = Math.max(xMin, Math.min(xMax, xMin + ((graphHover.x - pad.l) / gw) * (xMax - xMin)));
+      const p = pointLePlusProche(pts, xHover);
+      dessinerMarqueurPoint(gc, layout, p.x, p.I, '#2a6aaa');
+    }
   }
 }
 
@@ -398,11 +532,17 @@ function initGraphInteractions() {
     const my = (e.clientY - r.top) * (cv.clientHeight / r.height);
     const layout = graphLayout(cv);
 
-    // Reclic sur une épingle existante (proximité en PIXELS, pas en x physique — un
-    // point serré horizontalement mais loin verticalement ne doit pas se faire
-    // supprimer par erreur) : on la retire. Sinon on épingle le point de la courbe le
-    // plus proche de l'abscisse cliquée.
-    const idx = graphPins.findIndex(p => Math.hypot(layout.toX(p.x) - mx, layout.toY(p.I) - my) <= 8);
+    const estBlanche = sim.lightSource === 'blanche';
+
+    // Reclic sur une épingle existante : on la retire. En mode blanc, une épingle porte
+    // plusieurs points (un par couleur cochée, cf. dessinerInfoMultiCourbes) empilés à la
+    // même abscisse — la proximité HORIZONTALE seule suffit à l'identifier (comparer aussi
+    // en y n'aurait pas de sens univoque, il n'y a plus un seul point). En mono, proximité en
+    // PIXELS sur les 2 axes (un point serré horizontalement mais loin verticalement ne doit
+    // pas se faire supprimer par erreur).
+    const idx = graphPins.findIndex(p => estBlanche
+      ? Math.abs(layout.toX(p.x) - mx) <= 8
+      : Math.hypot(layout.toX(p.x) - mx, layout.toY(p.I) - my) <= 8);
     if (idx !== -1) {
       graphPins.splice(idx, 1);
     } else {
@@ -410,7 +550,7 @@ function initGraphInteractions() {
         layout.xMin + ((mx - layout.pad.l) / layout.gw) * (layout.xMax - layout.xMin)));
       const pts = echantillonnerIntensite(N_ECHANTILLONS, layout.xMin, layout.xMax);
       const p = pointLePlusProche(pts, xClick);
-      graphPins.push({ x: p.x, I: p.I });
+      graphPins.push(estBlanche ? { x: p.x } : { x: p.x, I: p.I });
     }
     drawIntensityGraph();
     e.preventDefault();

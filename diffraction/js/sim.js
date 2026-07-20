@@ -13,7 +13,10 @@
 const sim = {
   lambda: 633,     // longueur d'onde du laser (nm)
   a: 100,          // largeur de la fente (µm)
-  D: 2.0,          // distance fente-écran (m)
+  d: 0.50,         // distance laser-fente (m)
+  D: 1.0,          // distance fente-écran (m)
+  lightSource: 'mono', // 'mono' (monochromatique, réglable via λ) | 'blanche' (lumière blanche)
+  blancheVisibles: {}, // { [nom de couleur]: bool } — courbes cochées dans la légende du graphe (blanche), rempli plus bas (cf. BLANCHE_COULEURS)
   showRays: false, // afficher les rayons pointillés vers les 1ers minima + l'axe optique
   beamMode: 'off', // 'off' (aucun faisceau) | 'laserOnly' (laser→fente) | 'visible' (laser + diffracté)
   showLengths: false, // afficher les doubles flèches de mesure d, D, L
@@ -28,6 +31,15 @@ const sim = {
 //    Les autres bornes (λ, D) ne vivent que dans les attributs min/max
 //    des <input type=range> du panneau, pas dupliquées ici.
 const A_MIN = 20, A_MAX = 500;
+
+// ── Bornes du réglage de distance laser-fente d (m) et longueur totale du banc ──
+// La borne max de D suit d en temps réel pour que d+D ne dépasse jamais la
+// longueur de la table (banc de TP réel, cf. scene.js) : Dmax(d) = BANC_LONGUEUR_M - d.
+const PETIT_D_MIN_M = 0.15, PETIT_D_MAX_M = 2.50;
+const BANC_LONGUEUR_M = 3.15;
+function dMaxPourPetitD(d_m) {
+  return BANC_LONGUEUR_M - d_m;
+}
 
 // ─────────────────────────────────────────────────────────────────────
 //  Écart angulaire du m-ième minimum de diffraction : sin θ ≈ m·λ/a.
@@ -80,7 +92,7 @@ const FAISCEAU_DIAMETRE_MM = 1;
 //  restreint que x (cf. §Périmètre physique). Formule standard d'optique
 //  laser : w(D) = w0·√(1+(D/zR)²), zR = π·w0²/λ (portée de Rayleigh).
 //  Renvoie le rayon en mètres. Approximation : le col du faisceau (w0) est
-//  supposé situé au niveau de la fente (l'écart réel de 15 cm laser-fente,
+//  supposé situé au niveau de la fente (l'écart réel laser-fente, sim.d,
 //  cf. scene.js, est négligeable devant D).
 // ─────────────────────────────────────────────────────────────────────
 function largeurFaisceauGaussien(lambda_nm, D_m) {
@@ -315,13 +327,16 @@ function echantillonnerChamp(champ, x_m, y_m) {
 //  largeur de l'écran : sans cela, une tache très petite (D et/ou λ faibles) n'était couverte
 //  que par une poignée des n points répartis sur toute la largeur de l'écran, donnant une
 //  courbe visiblement anguleuse une fois zoomée sur cette tache (constaté par l'utilisateur).
+//  `lambda_nm` optionnel (défaut sim.lambda) : permet au graphe de tracer une courbe de
+//  référence à une AUTRE longueur d'onde que celle du slider (mode Lumière blanche, cf.
+//  graph.js → BLANCHE_COULEURS), sans dupliquer cette fonction.
 // ─────────────────────────────────────────────────────────────────────
-function echantillonnerIntensite(n, xMin, xMax) {
+function echantillonnerIntensite(n, xMin, xMax, lambda_nm = sim.lambda) {
   const pts = new Array(n);
   const lo = xMin ?? -sim.screenHalfWidth, hi = xMax ?? sim.screenHalfWidth;
   for (let i = 0; i < n; i++) {
     const x = lo + ((hi - lo) * i) / (n - 1);
-    pts[i] = { x, I: intensiteFente(x, sim.lambda, sim.a, sim.D) };
+    pts[i] = { x, I: intensiteFente(x, lambda_nm, sim.a, sim.D) };
   }
   return pts;
 }
@@ -363,13 +378,108 @@ function longueurOndeVersCss(nm) {
   return `rgb(${r},${g},${b})`;
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+//  Mode "Lumière blanche" — six longueurs d'onde de référence (une par couleur
+//  nommée), utilisées à la fois par le graphe (une courbe par couleur, cf. graph.js)
+//  et par la texture d'écran (sommées, cf. scene.js → updateSceneParams). Pas une
+//  vraie décomposition spectrale continue (ce serait plus juste avec des dizaines
+//  d'échantillons), mais un compromis pédagogique délibéré : chaque couleur du
+//  graphe correspond exactement à une composante visible dans la figure sur l'écran.
+// ═══════════════════════════════════════════════════════════════════════
+const BLANCHE_COULEURS = [
+  { nom: 'Violet', lambda: 420 },
+  { nom: 'Bleu',   lambda: 460 },
+  { nom: 'Vert',   lambda: 520 },
+  { nom: 'Jaune',  lambda: 580 },
+  { nom: 'Orange', lambda: 610 },
+  { nom: 'Rouge',  lambda: 660 }
+];
+for (const c of BLANCHE_COULEURS) sim.blancheVisibles[c.nom] = true;
+
+// Référence de « balance des blancs » : somme des RGB des 6 couleurs ci-dessus à pleine
+// intensité (I=1, comme au centre de la figure, où toutes les λ valent 1). L'approximation
+// RGB de longueurOndeVersRGB (pensée pour une SEULE couleur à la fois, cf. sa docstring)
+// n'a aucune raison de sommer à du blanc pur sur ces 6 teintes précises (choisies pour être
+// des noms de couleur reconnaissables, pas pour un équilibre spectral) : sans cette
+// référence, le centre de la tache en lumière blanche ressortirait teinté (plutôt brun-
+// orangé, ces 6 couleurs penchant côté chaud) au lieu de blanc. Diviser par cette référence
+// force le centre (I=1 partout) à retomber exactement sur blanc, cf. intensiteBlancheRGB.
+const BLANCHE_REF = (() => {
+  let r = 0, g = 0, b = 0;
+  for (const c of BLANCHE_COULEURS) {
+    const rgb = longueurOndeVersRGB(c.lambda);
+    r += rgb.r; g += rgb.g; b += rgb.b;
+  }
+  return { r: Math.max(r, 1), g: Math.max(g, 1), b: Math.max(b, 1) };
+})();
+
+// Longueur d'onde « moyenne » des 6 couleurs ci-dessus, utilisée uniquement pour la largeur
+// verticale (gaussienne) du faisceau affiché à l'écran en mode blanc (cf. scene.js) : cette
+// largeur varie très peu avec λ, un seul réglage représentatif suffit, pas la peine de la
+// sommer sur les 6 couleurs comme l'intensité horizontale.
+const BLANCHE_LAMBDA_MOYENNE = BLANCHE_COULEURS.reduce((s, c) => s + c.lambda, 0) / BLANCHE_COULEURS.length;
+
+// Décalage vertical CIBLE (cm) de chaque couleur en vue « Décomposer la figure de
+// diffraction » (bouton disponible en vue Écran + lumière blanche, cf. scene.js →
+// dessinerTextureEcranBlanche) — un décalage par entrée de BLANCHE_COULEURS, même ordre :
+// violet tout en haut, rouge tout en bas, les 4 autres également réparties entre les deux
+// (demande explicite de l'utilisateur : -3 cm à +3 cm, pas de raison de couvrir toute la
+// hauteur réelle de l'écran, SCREEN_HEIGHT=15 cm cf. scene.js — on reste compact). Le signe
+// est celui qui affiche VISUELLEMENT en haut de l'écran, PAS le signe physique intuitif :
+// la texture (canvas 2D, py=0 = première ligne écrite) est appliquée avec l'orientation par
+// défaut de Three.js (CanvasTexture.flipY=true) sur un plan non retourné, ce qui fait qu'un
+// y_cm POSITIF (cf. la même formule dans le code de rendu) apparaît en BAS de l'écran, pas
+// en haut — d'où le violet (en haut voulu) sur la valeur la plus NÉGATIVE.
+const DECOMPOSE_Y_CM = [-3, -1.8, -0.6, 0.6, 1.8, 3];
+
+// ─────────────────────────────────────────────────────────────────────
+//  Composantes RGB (0-255, PAS normalisées) de chacune des 6 couleurs de référence à
+//  l'abscisse x_m, ainsi que leur somme normalisée (« couleur composite », cf.
+//  intensiteBlancheRGB ci-dessous). Racine carrée sur chaque intensité AVANT pondération
+//  (même compression que IxAffichage en mode mono, cf. scene.js) : sans elle, les franges
+//  secondaires (colorées) seraient quasi invisibles. Les composantes NON normalisées sont
+//  réutilisées telles quelles par la vue « Décomposer » (chaque couleur y garde sa PROPRE
+//  figure de diffraction, pas de raison de la renormaliser comme le composite).
+// ─────────────────────────────────────────────────────────────────────
+function intensiteBlancheComposantes(x_m, a_um, D_m) {
+  const composantes = new Array(BLANCHE_COULEURS.length);
+  let r = 0, g = 0, b = 0;
+  for (let i = 0; i < BLANCHE_COULEURS.length; i++) {
+    const c = BLANCHE_COULEURS[i];
+    const I = Math.sqrt(intensiteFente(x_m, c.lambda, a_um, D_m));
+    const rgb = longueurOndeVersRGB(c.lambda);
+    const cr = I * rgb.r, cg = I * rgb.g, cb = I * rgb.b;
+    composantes[i] = { r: cr, g: cg, b: cb };
+    r += cr; g += cg; b += cb;
+  }
+  return {
+    composantes,
+    merged: {
+      r: Math.min(255, Math.round(255 * r / BLANCHE_REF.r)),
+      g: Math.min(255, Math.round(255 * g / BLANCHE_REF.g)),
+      b: Math.min(255, Math.round(255 * b / BLANCHE_REF.b))
+    }
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Couleur composite (0-255 par canal) de la figure de diffraction en lumière blanche, au
+//  point d'abscisse x_m de l'écran — cf. intensiteBlancheComposantes ci-dessus.
+// ─────────────────────────────────────────────────────────────────────
+function intensiteBlancheRGB(x_m, a_um, D_m) {
+  return intensiteBlancheComposantes(x_m, a_um, D_m).merged;
+}
+
 // ─────────────────────────────────────────────────────────────────────
 //  Remet les paramètres à leurs valeurs par défaut.
 // ─────────────────────────────────────────────────────────────────────
 function resetParams() {
   sim.lambda = 633;
   sim.a = 100;
-  sim.D = 2.0;
+  sim.d = 0.50;
+  sim.D = 1.0;
+  sim.lightSource = 'mono';
+  for (const c of BLANCHE_COULEURS) sim.blancheVisibles[c.nom] = true;
   sim.showRays = false;
   sim.beamMode = 'off';
   sim.showLengths = false;

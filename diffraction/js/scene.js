@@ -15,8 +15,12 @@
 // assumée de la largeur de la fente (cf. largeurFenteVisuelle ci-dessous et ARCHITECTURE.md).
 const LASER_DIAMETER = 1.5;    // cm — module laser diode de TP
 const LASER_LENGTH = 5;        // cm
-const SOURCE_Z = -15;          // cm — laser monté proche de la fente, comme sur un vrai banc
-const SLIT_Z = 0;
+const SOURCE_Z = -15;           // cm — position FIXE du laser sur le banc (jamais réglée directement)
+// Position de la fente : réglable via sim.d (distance laser-fente). Quand d augmente, la
+// fente (et l'écran avec elle, pour garder D constant) se décale vers l'avant ; si l'écran
+// atteindrait ainsi la fin de la table, D est réduit à la place (cf. sim.js → dMaxPourPetitD,
+// appliquerBorneD dans ui.js). Mise à jour dans updateSceneParams().
+let SLIT_Z = 0;
 // Distance fente-écran (cm) en dessous de laquelle le cadrage des vues Dessus/Profil
 // (updateOrthoCamera) cesse de se resserrer : au-delà, réduire D ne fait que rapprocher
 // l'écran dans un cadre fixe, plutôt que de zoomer sur tout le banc — cf. commentaire à
@@ -31,6 +35,74 @@ const D_CADRAGE_MIN_CM = 140;
 // toujours avec les taches affichées sur l'écran.
 let screenViewZoom = 1;
 const SCREEN_VIEW_ZOOM_MIN = 1, SCREEN_VIEW_ZOOM_MAX = 15;
+
+// ── Bouton "Décomposer la figure de diffraction" (vue Écran + lumière blanche uniquement) ──
+// decomposeActive : état CIBLE (bouton appuyé ou non). decomposeT : degré de transition
+// réellement atteint (0 = figure fusionnée, 1 = 6 figures séparées), animé progressivement
+// vers decomposeActive à chaque frame par tickDecompose() — cf. sa docstring pour le détail
+// du rendu. Séparer les deux (plutôt qu'un simple booléen) permet l'animation fluide dans
+// les deux sens, demandée explicitement par l'utilisateur.
+let decomposeActive = false;
+let decomposeT = 0;
+const DECOMPOSE_DUREE_S = 2; // durée totale (s) d'une transition complète (demande explicite)
+const DECOMPOSE_VITESSE = 1 / (DECOMPOSE_DUREE_S * 60); // pas par frame, en supposant ~60 fps
+
+// ─────────────────────────────────────────────────────────────────────
+//  Bascule la cible de décomposition (bouton, appelé depuis ui.js). L'animation elle-même
+//  est pilotée par tickDecompose(), appelée à chaque frame par la boucle de rendu.
+// ─────────────────────────────────────────────────────────────────────
+function toggleDecompose() {
+  decomposeActive = !decomposeActive;
+  const btn = document.getElementById('btn-decompose');
+  if (btn) btn.classList.toggle('active', decomposeActive);
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Annule INSTANTANÉMENT (pas d'animation) la décomposition et revient à la figure fusionnée
+//  normale — appelée quand une des deux conditions qui rendent le bouton pertinent cesse
+//  d'être vraie (changement de vue, cf. setSceneView ; retour en mode monochromatique, cf.
+//  ui.js → cycleLightSource), PAS quand l'utilisateur clique lui-même sur le bouton (qui,
+//  lui, anime toujours en douceur, cf. toggleDecompose).
+// ─────────────────────────────────────────────────────────────────────
+function annulerDecompose() {
+  if (!decomposeActive && decomposeT === 0) return;
+  decomposeActive = false;
+  decomposeT = 0;
+  const btn = document.getElementById('btn-decompose');
+  if (btn) btn.classList.remove('active');
+  // Réaffiche immédiatement la figure fusionnée normale (sinon la texture resterait figée
+  // dans son dernier état décomposé/intermédiaire jusqu'au prochain changement de a/D/d/λ) —
+  // seulement utile en lumière blanche, seul mode où cette texture dédiée est utilisée.
+  if (sim.lightSource === 'blanche') dessinerTextureEcranBlanche(0);
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  (Dés)affiche le bouton "Décomposer" selon les 2 conditions requises (vue Écran + lumière
+//  blanche) — appelée par setSceneView() et par ui.js → cycleLightSource()/resetSim()/init().
+//  N'annule PAS elle-même la décomposition en cours : c'est aux appelants concernés de le
+//  faire explicitement (cf. annulerDecompose), pour garder une seule responsabilité par
+//  fonction.
+// ─────────────────────────────────────────────────────────────────────
+function syncBoutonDecompose() {
+  const conteneur = document.getElementById('decompose-buttons');
+  if (conteneur) conteneur.classList.toggle('visible', sim.view === 'screen' && sim.lightSource === 'blanche');
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Avance decomposeT d'un pas vers sa cible (decomposeActive) et redessine la texture d'écran
+//  en conséquence — appelée à chaque frame par ui.js → loop(), tant que sim.view==='screen'
+//  ET sim.lightSource==='blanche' (seul cas où la texture peut différer de son état fusionné
+//  normal). PAS de repassage par updateSceneParams() (qui referait inutilement la FFT de
+//  l'enveloppe 3D à chaque frame, coûteux) : seule la texture d'écran est concernée ici.
+// ─────────────────────────────────────────────────────────────────────
+function tickDecompose() {
+  if (sim.view !== 'screen' || sim.lightSource !== 'blanche') return;
+  const cible = decomposeActive ? 1 : 0;
+  if (decomposeT === cible) return;
+  const pas = Math.sign(cible - decomposeT) * DECOMPOSE_VITESSE;
+  decomposeT = Math.abs(cible - decomposeT) < DECOMPOSE_VITESSE ? cible : decomposeT + pas;
+  dessinerTextureEcranBlanche(decomposeT);
+}
 const BEAM_DIAMETER = FAISCEAU_DIAMETRE_MM / 10; // cm — même constante que la physique de divergence (sim.js)
 const SLIDE_SIZE = 7;          // cm — lame porte-fente réelle, 7×7 cm
 const SLIDE_THICK = 0.2;       // cm — épaisseur réelle d'une lame
@@ -44,8 +116,9 @@ const TABLE_Y = -18;            // cm — hauteur du dessus des plateaux de supp
 const PLATEAU_EPAISSEUR = 0.8;  // cm — épaisseur des plateaux de support, cf. creerSupport()
 const TABLE_THICK = 2;          // cm — épaisseur de la table
 const TABLE_WIDTH = 40;         // cm — largeur de la table (dépasse la largeur de l'écran, 25 cm)
-// Longueur de la table calée sur la borne max du slider D (index.html, sl-D max="3") : doit
-// être mise à jour si cette borne change, pour que la table s'étende toujours sous l'écran.
+// Capacité max de la table (position d'écran la plus éloignée admissible, fente en butée
+// contre le laser, d minimal) : doit rester cohérente avec sim.js → BANC_LONGUEUR_M et
+// PETIT_D_MIN_M (D_MAX_CM = 100·(BANC_LONGUEUR_M) - 15, avec SOURCE_Z=-15 fixe).
 const D_MAX_CM = 300;
 const LEG_LENGTH = 75;          // cm — hauteur de table classique (pieds table/paillasse)
 const LEG_SECTION = 3;          // cm — section carrée des pieds
@@ -715,8 +788,8 @@ function initZoomVersCurseur() {
       // extrémité (ex. la fente), le pivot de rotation restait figé là-bas même une fois
       // dézoomé — contre-intuitif : on s'attend à retrouver un pivot proche du centre de la
       // scène en dézoomant suffisamment (constaté à l'usage).
-      const D_cm = sim.D * 100;
-      const centreZ = (SOURCE_Z + D_cm) / 2;
+      const screenZ = SLIT_Z + sim.D * 100;
+      const centreZ = (SOURCE_Z + screenZ) / 2;
       const oldTarget = controls.target.clone();
       const dir = camPersp.position.clone().sub(oldTarget).multiplyScalar(1.15);
 
@@ -995,12 +1068,92 @@ function construireObjets() {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-//  Met à jour tous les objets 3D suite à un changement de λ, a, D ou
+//  Remplit screenTexCanvas pour le mode Lumière blanche, à un degré de décomposition t (0 =
+//  figure fusionnée normale, 1 = 6 figures monochromatiques séparées verticalement à
+//  DECOMPOSE_Y_CM, valeurs intermédiaires = transition animée, cf. sim.js →
+//  DECOMPOSE_Y_CM/intensiteBlancheComposantes et scene.js → tickDecompose/toggleDecompose).
+//
+//  PAS de fondu (essayé en simultané puis en 2 phases séquentielles, les deux jugés peu
+//  convaincants par l'utilisateur) : un seul morphing continu. Chacune des 6 couleurs
+//  contribue TOUJOURS à l'image (jamais d'opacité qui varie), seules sa POSITION verticale
+//  et sa LARGEUR gaussienne interpolent, de (0, wCmFusion — partagées par les 6) à (sa
+//  position/largeur propre cible). Pour que la somme des 6 reproduise EXACTEMENT la figure
+//  fusionnée normale à t=0 (pas seulement une approximation visuelle), chaque composante est
+//  normalisée INDIVIDUELLEMENT par BLANCHE_REF (au lieu de sommer d'abord puis normaliser la
+//  somme, cf. intensiteBlancheRGB) : à t=0, les 6 largeurs/positions étant identiques, leur
+//  Iy commun se factorise et la somme des composantes normalisées redonne exactement
+//  merged.{r,g,b} — la transition n'est donc qu'un étirement/déplacement progressif de la
+//  même image, jamais un fondu entre deux rendus différents.
+//
+//  Profils verticaux (Iy) précalculés PAR LIGNE, en dehors de la boucle sur les colonnes :
+//  ils ne dépendent que de y (et de t), jamais de x — les calculer une fois par ligne plutôt
+//  que largeur×hauteur fois évite ~500× plus d'appels à Math.exp(), notable puisque cette
+//  fonction tourne en continu pendant l'animation (tickDecompose, à chaque frame).
+// ─────────────────────────────────────────────────────────────────────
+function dessinerTextureEcranBlanche(t) {
+  const w = screenTexCanvas.width, h = screenTexCanvas.height;
+  const img = screenTexCtx.createImageData(w, h);
+  const te = t * t * (3 - 2 * t); // smoothstep unique, pilote position ET largeur
+
+  const wCmFusion = Math.max(RENDU_W_MIN_CM, largeurFaisceauGaussien(BLANCHE_LAMBDA_MOYENNE, sim.D) * 100);
+  const n = BLANCHE_COULEURS.length;
+  const wCmCiblesCouleurs = BLANCHE_COULEURS.map(c => Math.max(RENDU_W_MIN_CM, largeurFaisceauGaussien(c.lambda, sim.D) * 100));
+  const wCourantCouleurs = wCmCiblesCouleurs.map(wc => wCmFusion + (wc - wCmFusion) * te);
+  const yCourantCouleurs = DECOMPOSE_Y_CM.map(yCible => yCible * te);
+
+  const iyCouleurs = Array.from({ length: n }, () => new Float64Array(h));
+  for (let py = 0; py < h; py++) {
+    const y_cm = -SCREEN_HEIGHT / 2 + (SCREEN_HEIGHT * py) / (h - 1);
+    for (let k = 0; k < n; k++) {
+      const dy = y_cm - yCourantCouleurs[k];
+      const wk = wCourantCouleurs[k];
+      iyCouleurs[k][py] = Math.exp(-2 * dy * dy / (wk * wk));
+    }
+  }
+
+  for (let px = 0; px < w; px++) {
+    const x = -sim.screenHalfWidth + (2 * sim.screenHalfWidth * px) / (w - 1);
+    const { composantes } = intensiteBlancheComposantes(x, sim.a, sim.D);
+    for (let py = 0; py < h; py++) {
+      let r = 0, g = 0, b = 0;
+      for (let k = 0; k < n; k++) {
+        const iy = iyCouleurs[k][py];
+        if (iy < 1e-4) continue; // hors gaussienne de cette bande : rien à ajouter
+        const comp = composantes[k];
+        r += (255 * comp.r / BLANCHE_REF.r) * iy;
+        g += (255 * comp.g / BLANCHE_REF.g) * iy;
+        b += (255 * comp.b / BLANCHE_REF.b) * iy;
+      }
+      const idx = (py * w + px) * 4;
+      img.data[idx] = Math.min(255, Math.round(r));
+      img.data[idx + 1] = Math.min(255, Math.round(g));
+      img.data[idx + 2] = Math.min(255, Math.round(b));
+      img.data[idx + 3] = 255;
+    }
+  }
+  screenTexCtx.putImageData(img, 0, 0);
+  screenTexture.needsUpdate = true;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Met à jour tous les objets 3D suite à un changement de λ, a, D, d ou
 //  de l'option "rayons". Appelée par ui.js → updateParam()/toggleRays().
 // ─────────────────────────────────────────────────────────────────────
 function updateSceneParams() {
   const D_cm = sim.D * 100;
   const couleurHex = longueurOndeVersHex(sim.lambda);
+
+  // Position de la fente selon d (distance laser-fente, réglable) : le laser reste fixe
+  // (SOURCE_Z), la fente se décale vers l'avant quand d augmente. L'écran suit (cf.
+  // screenZ plus bas) pour garder D inchangé, sauf si sa borne max (appliquée en amont
+  // dans ui.js → appliquerBorneD) a déjà réduit D. Le faisceau laser→fente est reconstruit
+  // (sa longueur dépend de d), comme l'enveloppe diffractée plus bas.
+  SLIT_Z = SOURCE_Z + sim.d * 100;
+  const screenZ = SLIT_Z + D_cm; // position absolue de l'écran (fente + D)
+  beamMesh.geometry.dispose();
+  beamMesh.geometry = new THREE.CylinderGeometry(BEAM_DIAMETER / 2, BEAM_DIAMETER / 2, SLIT_Z - SOURCE_Z, 12);
+  beamMesh.geometry.rotateX(Math.PI / 2);
+  beamMesh.position.set(0, 0, (SOURCE_Z + SLIT_Z) / 2);
 
   // Faisceau : couleur selon λ
   beamMesh.material.color.setHex(couleurHex);
@@ -1008,18 +1161,21 @@ function updateSceneParams() {
   beamDot.material.color.setHex(couleurHex);
 
   // Fente : écartement des murs selon a (largeur visuelle schématique), confinés à la
-  // bande centrale de la lame (cf. construireObjets)
+  // bande centrale de la lame (cf. construireObjets) ; lame et support suivent SLIT_Z.
   const gap = largeurFenteVisuelle(sim.a);
   const wallW = (SLIDE_SIZE - gap) / 2;
   wallLeft.scale.set(wallW, SLIT_BAND_HEIGHT, SLIDE_THICK);
   wallLeft.position.set(-(gap / 2 + wallW / 2), 0, SLIT_Z);
   wallRight.scale.set(wallW, SLIT_BAND_HEIGHT, SLIDE_THICK);
   wallRight.position.set(gap / 2 + wallW / 2, 0, SLIT_Z);
+  topBand.position.z = SLIT_Z;
+  bottomBand.position.z = SLIT_Z;
+  supportSlide.position.z = SLIT_Z;
 
-  // Écran : position selon D (le support suit en z uniquement — x/y jamais touchés,
-  // pour ne pas casser l'alignement optique vertical)
-  screenMesh.position.set(0, 0, D_cm);
-  supportScreen.position.z = D_cm;
+  // Écran : position selon D à partir de la fente (le support suit en z uniquement — x/y
+  // jamais touchés, pour ne pas casser l'alignement optique vertical)
+  screenMesh.position.set(0, 0, screenZ);
+  supportScreen.position.z = screenZ;
 
   // Texture d'intensité. I(x) (horizontal) vient du champ FFT (construireChampOuverture, cf.
   // sim.js et commentaire à sa déclaration ci-dessous) — PAS de echantillonnerIntensite/
@@ -1033,7 +1189,7 @@ function updateSceneParams() {
   // de diffraction : sans lui, la figure ressemble à des bandes verticales infinies au lieu
   // de taches.
   const w = screenTexCanvas.width, h = screenTexCanvas.height;
-  const img = screenTexCtx.createImageData(w, h);
+  const estBlanche = sim.lightSource === 'blanche';
   const { r: r0, g: g0, b: b0 } = longueurOndeVersRGB(sim.lambda);
   const x1_cm = xPremierMinimum(sim.lambda, sim.a, sim.D) * 100;
 
@@ -1056,41 +1212,49 @@ function updateSceneParams() {
   x1CmCourant = x1_cm;
   updateEnvelopeXLimite();
   beamEnvelopeMesh.geometry.dispose();
-  beamEnvelopeMesh.geometry = construireGeometrieEnveloppe(SLIT_Z, D_cm, BEAM_DIAMETER, w_cm, champ);
-  for (let px = 0; px < w; px++) {
-    const x = -sim.screenHalfWidth + (2 * sim.screenHalfWidth * px) / (w - 1);
-    const Ix = echantillonnerChamp(champ, x, 0); // y=0 : le champ est normalisé (pic=1) comme intensiteFente(), et le profil vertical (Iy ci-dessous) reste appliqué séparément
-    // Les ordres secondaires sont physiquement très faibles (1er ≈ 4,5 % du maximum central,
-    // cf. sinc²) : en couleur linéaire ils sont quasi invisibles à l'écran. On applique une
-    // racine carrée uniquement ici (affichage), jamais dans intensiteFente() ni dans le
-    // graphe I(x) qui doivent rester l'intensité physique exacte, sans quoi une lecture
-    // quantitative sur le graphe serait faussée.
-    const IxAffichage = Math.sqrt(Ix);
-    for (let py = 0; py < h; py++) {
-      const y_cm = -SCREEN_HEIGHT / 2 + (SCREEN_HEIGHT * py) / (h - 1); // position physique verticale (cm)
-      const Iy = Math.exp(-2 * y_cm * y_cm / (w_cm * w_cm)); // profil gaussien standard (convention laser : I(r)=I0·exp(-2r²/w²))
-      const I = IxAffichage * Iy;
-      const r = Math.round(r0 * I), g = Math.round(g0 * I), b = Math.round(b0 * I);
-      const idx = (py * w + px) * 4;
-      img.data[idx] = r; img.data[idx + 1] = g; img.data[idx + 2] = b; img.data[idx + 3] = 255;
+  beamEnvelopeMesh.geometry = construireGeometrieEnveloppe(SLIT_Z, screenZ, BEAM_DIAMETER, w_cm, champ);
+
+  if (estBlanche) {
+    // Texture entièrement déléguée (fusionnée / décomposée / transition, cf. sa docstring) —
+    // remplace le double-boucle générique ci-dessous, propre au mode mono.
+    dessinerTextureEcranBlanche(decomposeT);
+  } else {
+    const img = screenTexCtx.createImageData(w, h);
+    for (let px = 0; px < w; px++) {
+      const x = -sim.screenHalfWidth + (2 * sim.screenHalfWidth * px) / (w - 1);
+      const Ix = echantillonnerChamp(champ, x, 0); // y=0 : le champ est normalisé (pic=1) comme intensiteFente(), et le profil vertical (Iy ci-dessous) reste appliqué séparément
+      // Les ordres secondaires sont physiquement très faibles (1er ≈ 4,5 % du maximum central,
+      // cf. sinc²) : en couleur linéaire ils sont quasi invisibles à l'écran. On applique une
+      // racine carrée uniquement ici (affichage), jamais dans intensiteFente() ni dans le
+      // graphe I(x) qui doivent rester l'intensité physique exacte, sans quoi une lecture
+      // quantitative sur le graphe serait faussée.
+      const IxAffichage = Math.sqrt(Ix);
+      const rx = r0 * IxAffichage, gx = g0 * IxAffichage, bx = b0 * IxAffichage;
+      for (let py = 0; py < h; py++) {
+        const y_cm = -SCREEN_HEIGHT / 2 + (SCREEN_HEIGHT * py) / (h - 1); // position physique verticale (cm)
+        const Iy = Math.exp(-2 * y_cm * y_cm / (w_cm * w_cm)); // profil gaussien standard (convention laser : I(r)=I0·exp(-2r²/w²))
+        const r = Math.round(rx * Iy), g = Math.round(gx * Iy), b = Math.round(bx * Iy);
+        const idx = (py * w + px) * 4;
+        img.data[idx] = r; img.data[idx + 1] = g; img.data[idx + 2] = b; img.data[idx + 3] = 255;
+      }
     }
+    screenTexCtx.putImageData(img, 0, 0);
+    screenTexture.needsUpdate = true;
   }
-  screenTexCtx.putImageData(img, 0, 0);
-  screenTexture.needsUpdate = true;
 
   // Rayons vers les 1ers minima — masqués en vue Écran : une caméra orthographique de face
   // ne représente pas la profondeur, donc les deux rayons s'y aplatissent en un simple trait
   // horizontal (start et fin à même x,y projetés) qui n'apporte rien dans cette vue précise.
   raysLine.visible = sim.showRays && sim.view !== 'screen';
   raysLine.geometry.setAttribute('position', new THREE.Float32BufferAttribute([
-    0, 0, SLIT_Z,  x1_cm, 0, D_cm,
-    0, 0, SLIT_Z, -x1_cm, 0, D_cm
+    0, 0, SLIT_Z,  x1_cm, 0, screenZ,
+    0, 0, SLIT_Z, -x1_cm, 0, screenZ
   ], 3));
   // computeLineDistances() cumule la distance sur TOUS les sommets sans la
   // remettre à zéro à chaque paire (bug connu de Three.js pour LineSegments) :
   // le 2ème rayon héritait de la longueur du 1er, d'où des pointillés décalés
   // entre les deux rayons. On calcule donc la distance manuellement, par paire.
-  const rayLen = Math.hypot(x1_cm, D_cm - SLIT_Z);
+  const rayLen = Math.hypot(x1_cm, D_cm);
   raysLine.geometry.setAttribute('lineDistance', new THREE.Float32BufferAttribute([
     0, rayLen,
     0, rayLen
@@ -1098,7 +1262,7 @@ function updateSceneParams() {
 
   axisLine.visible = sim.showRays && sim.view !== 'screen';
   axisLine.geometry.setAttribute('position', new THREE.Float32BufferAttribute([
-    0, 0, SLIT_Z, 0, 0, D_cm
+    0, 0, SLIT_Z, 0, 0, screenZ
   ], 3));
   axisLine.computeLineDistances();
 
@@ -1118,7 +1282,8 @@ function updateLengthsGroup(x1_cm, w_cm) {
   lengthsGroup.visible = true;
 
   const D_cm = sim.D * 100;
-  const d_cm = SLIT_Z - SOURCE_Z; // fixe (position du laser non réglable)
+  const screenZ = SLIT_Z + D_cm; // position absolue de l'écran (fente + D)
+  const d_cm = SLIT_Z - SOURCE_Z; // dépend de sim.d, mis à jour dans updateSceneParams()
   const view = sim.view;
 
   // Vues Dessus/Profil : la caméra ortho recule à mesure que D grandit au-delà de
@@ -1141,12 +1306,12 @@ function updateLengthsGroup(x1_cm, w_cm) {
       // Vue Profil : flèches dans la tranche de la table (x=0, invisibles autrement de
       // cette vue), labels sous la table.
       placerMesureTable(mesurePetitD, 0, LEN_SIDE_Y, LEN_SIDE_LABEL_Y, SOURCE_Z, SLIT_Z, true);
-      placerMesureTable(mesureGrandD, 0, LEN_SIDE_Y, LEN_SIDE_LABEL_Y, SLIT_Z, D_cm, true);
+      placerMesureTable(mesureGrandD, 0, LEN_SIDE_Y, LEN_SIDE_LABEL_Y, SLIT_Z, screenZ, true);
     } else {
       // Vue 3D / Dessus : flèches décalées latéralement pour ne pas être gênées par les
       // supports, sur le plateau de la table.
       placerMesureTable(mesurePetitD, LEN_OFFSET_X, LEN_ARROW_Y_TABLE, LEN_LABEL_Y_TABLE, SOURCE_Z, SLIT_Z, false);
-      placerMesureTable(mesureGrandD, LEN_OFFSET_X, LEN_ARROW_Y_TABLE, LEN_LABEL_Y_TABLE, SLIT_Z, D_cm, false);
+      placerMesureTable(mesureGrandD, LEN_OFFSET_X, LEN_ARROW_Y_TABLE, LEN_LABEL_Y_TABLE, SLIT_Z, screenZ, false);
     }
     mesurePetitD.label.scale.set(zoomCompense, zoomCompense, 1);
     mesureGrandD.label.scale.set(zoomCompense, zoomCompense, 1);
@@ -1165,12 +1330,12 @@ function updateLengthsGroup(x1_cm, w_cm) {
     if (view === 'top') {
       // Vue Dessus : la flèche « au-dessus de la tache » (axe Y) est aplatie par cette vue ;
       // on la reporte légèrement derrière l'écran, label encore un peu plus à droite.
-      const zArrow = D_cm + LEN_TOP_L_DECALAGE_Z;
+      const zArrow = screenZ + LEN_TOP_L_DECALAGE_Z;
       setFlecheDoubleLongueur(mesureL.fleche, 2 * x1_cm);
       mesureL.fleche.rotation.set(0, 0, 0);
       mesureL.fleche.position.set(0, 0, zArrow);
-      placerPointilleSegment(mesureL.dash1, [-x1_cm, 0, zArrow], [-x1_cm, 0, D_cm], 'y');
-      placerPointilleSegment(mesureL.dash2, [x1_cm, 0, zArrow], [x1_cm, 0, D_cm], 'y');
+      placerPointilleSegment(mesureL.dash1, [-x1_cm, 0, zArrow], [-x1_cm, 0, screenZ], 'y');
+      placerPointilleSegment(mesureL.dash2, [x1_cm, 0, zArrow], [x1_cm, 0, screenZ], 'y');
       // Sens de lecture aligné sur la flèche (axe X, comme celle-ci), normale vers le haut —
       // cf. orienterDecalque et placerMesureTable pour le même principe appliqué à d/D.
       // Vue Dessus : l'axe X du monde correspond à la verticale de l'écran (camOrtho.up=
@@ -1184,22 +1349,22 @@ function updateLengthsGroup(x1_cm, w_cm) {
       // en x — un décalage en x le désaxerait par rapport à l'axe optique.
       mesureL.label.position.set(0, 0.02, zArrow + LEN_TOP_L_LABEL_DECALAGE_Z);
     } else {
-      // Vue 3D / Écran : décalque STRICTEMENT plat, à même le plan de l'écran (z = D_cm,
+      // Vue 3D / Écran : décalque STRICTEMENT plat, à même le plan de l'écran (z = screenZ,
       // aucun recul) — flèche plate dédiée (creerFlecheDoublePlate) plutôt que la variante à
-      // cônes 3D, et pointillés dont les deux extrémités restent à z = D_cm (jamais un
+      // cônes 3D, et pointillés dont les deux extrémités restent à z = screenZ (jamais un
       // segment qui sortirait du plan de l'écran).
       const yArrow = Math.min(SCREEN_HEIGHT / 2 - 1.4, w_cm + 1.8);
       setFlecheDoublePlateLongueur(mesureL.flechePlate, 2 * x1_cm);
       mesureL.flechePlate.rotation.set(0, 0, 0);
-      mesureL.flechePlate.position.set(0, yArrow, D_cm);
-      placerPointilleSegment(mesureL.dash1, [-x1_cm, yArrow, D_cm], [-x1_cm, 0, D_cm], 'z', LEN_DASH_THICK_L_ECRAN);
-      placerPointilleSegment(mesureL.dash2, [x1_cm, yArrow, D_cm], [x1_cm, 0, D_cm], 'z', LEN_DASH_THICK_L_ECRAN);
+      mesureL.flechePlate.position.set(0, yArrow, screenZ);
+      placerPointilleSegment(mesureL.dash1, [-x1_cm, yArrow, screenZ], [-x1_cm, 0, screenZ], 'z', LEN_DASH_THICK_L_ECRAN);
+      placerPointilleSegment(mesureL.dash2, [x1_cm, yArrow, screenZ], [x1_cm, 0, screenZ], 'z', LEN_DASH_THICK_L_ECRAN);
       // Décalque contre l'écran : la normale doit faire face à la source/caméra (côté -Z),
       // pas s'en éloigner, sinon le texte se lit à l'envers (bug initial, cf. écran lui-même
       // vu depuis le laser et non depuis l'extérieur).
       orienterDecalque(mesureL.label, [-1, 0, 0], [0, 1, 0]);
       mesureL.label.scale.set(1, 1, 1); // taille de base (jugée parfaite), ne pas tripler ici
-      mesureL.label.position.set(0, yArrow + 1.3, D_cm);
+      mesureL.label.position.set(0, yArrow + 1.3, screenZ);
     }
     setLabelTexte(mesureL.label, 'L = ' + formatFr(2 * x1_cm, 2) + ' cm');
   }
@@ -1279,7 +1444,12 @@ function updateBeamVisibility() {
 //  Bascule la vue caméra active. Appelée par ui.js → setView().
 // ─────────────────────────────────────────────────────────────────────
 function setSceneView(view) {
+  // Changer réellement de vue annule la décomposition en cours (instantanément, pas
+  // d'animation, cf. annulerDecompose) — un simple re-clic sur la vue déjà active ne doit
+  // pas couper une décomposition en cours (rien n'a changé).
+  if (view !== sim.view) annulerDecompose();
   sim.view = view;
+  syncBoutonDecompose();
   controls.enabled = (view === '3d');
   const cacherBanc = (view === 'screen');
   laserBody.visible = !cacherBanc;
@@ -1305,7 +1475,8 @@ function setSceneView(view) {
 // ─────────────────────────────────────────────────────────────────────
 function reset3DCamera() {
   const D_cm = sim.D * 100;
-  const zTarget = D_cm * 0.25;
+  const slitZ = SOURCE_Z + sim.d * 100;
+  const zTarget = slitZ + D_cm * 0.25;
   camPersp.position.set(40, 28, SOURCE_Z - 30);
   controls.target.set(0, 1, zTarget);
   controls.update();
@@ -1318,13 +1489,15 @@ function reset3DCamera() {
 // ─────────────────────────────────────────────────────────────────────
 function updateOrthoCamera(aspect) {
   const D_cm = sim.D * 100;
+  const screenZ = SLIT_Z + D_cm;
   // Cadrage figé en dessous de D_CADRAGE_MIN_CM : sous ce seuil, réduire D ne fait plus
   // « zoomer » les vues Dessus/Profil (recentrage + rétrécissement du cadre à chaque
   // frame, gênant pour observer l'écran se rapprocher) — seul D_cadrage reste borné, la
   // position réelle de l'écran (updateSceneParams, D_cm non modifié) continue de suivre D.
   const D_cadrage = Math.max(D_cm, D_CADRAGE_MIN_CM);
-  const zCenter = (SOURCE_Z + D_cadrage) / 2;
-  const halfSpanZ = (D_cadrage - SOURCE_Z) / 2 * 1.15;
+  const screenZCadrage = SLIT_Z + D_cadrage;
+  const zCenter = (SOURCE_Z + screenZCadrage) / 2;
+  const halfSpanZ = (screenZCadrage - SOURCE_Z) / 2 * 1.15;
 
   if (sim.view === 'top') {
     camOrtho.position.set(0, 500, zCenter);
@@ -1339,7 +1512,7 @@ function updateOrthoCamera(aspect) {
   } else if (sim.view === 'screen') {
     camOrtho.position.set(0, 0, SOURCE_Z - 300);
     camOrtho.up.set(0, 1, 0);
-    camOrtho.lookAt(0, 0, D_cm);
+    camOrtho.lookAt(0, 0, screenZ);
     fitOrtho(camOrtho, SCREEN_WIDTH / 2 * 1.08 / screenViewZoom, SCREEN_HEIGHT / 2 * 1.08 / screenViewZoom, aspect);
   }
 }
