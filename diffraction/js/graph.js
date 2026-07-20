@@ -5,96 +5,123 @@
 // ═══════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════
-//  graph.js — Graphe I(x) interactif (zoom/pan/réticule/tangente)
+//  graph.js — Graphe I(x) interactif (survol/points épinglés)
 //  Dépend de : sim.js (sim, echantillonnerIntensite)
 //  Chargé après scene.js.
 // ═══════════════════════════════════════════════════
 
-const N_ECHANTILLONS = 600;
+// Nombre de points échantillonnés sur la fenêtre COURANTE (gview.xMin..xMax), pas sur
+// toute la largeur de l'écran : la fenêtre se resserre automatiquement en vue Écran
+// (cf. scene.js → syncGraphAvecVueEcran) quand la tache est petite (D et/ou λ faibles),
+// et la résolution doit suivre pour que la courbe reste lisse (constaté par l'utilisateur —
+// une tache très petite avec un échantillonnage fixe sur toute la largeur de l'écran
+// donnait une courbe visiblement anguleuse une fois affichée à cette échelle).
+const N_ECHANTILLONS = 1200;
 
-// Fenêtre de vue courante (en mètres, sur x) et sur y (intensité normalisée)
+// Fenêtre de vue courante (en mètres, sur x) et sur y (intensité normalisée) — modifiée
+// uniquement par syncGraphPixelParfait() (appelée par scene.js → syncGraphAvecVueEcran)
+// quand la vue Écran zoome/dézoome ou change.
 const gview = {
   xMin: -sim.screenHalfWidth,
   xMax:  sim.screenHalfWidth,
   yMin: 0,
   yMax: 1.05
 };
-const graphViewHistory = [];
 
-// Survol souris (position canvas)
+// Marge fixe autour de la zone de tracé, partagée par le dessin et les interactions
+// souris (évite deux définitions divergentes du même repère).
+const GRAPH_PAD = { t: 10, r: 14, b: 30, l: 34 };
+
+// Survol souris (position canvas, coordonnées CSS) — null quand le curseur est hors du
+// canvas. Pilote la mise en évidence du point le plus proche sous la souris, TOUJOURS
+// active (plus de mode à activer, contrairement à l'ancien réticule libre).
 let graphHover = null;
 
-// Mode zoom (sélection rectangulaire)
-let graphZoomMode = false;
-let graphZoomRect = null;
+// Mode « Épingler » : un clic ajoute le point du curseur à graphPins (retiré si l'on
+// clique à nouveau dessus), indépendamment du survol qui continue d'afficher son propre
+// point en direct.
+let graphPinMode = false;
+const graphPins = []; // { x, I } — persistent jusqu'à suppression ou reset (cf. ui.js)
 
-// Mode réticule libre
-let graphCursorActive = false;
+// Mode « Lien figure » : n'a de sens qu'en vue Écran (seule vue où la figure 3D et le
+// graphe représentent la même chose, au même endroit physique) — cf. syncGraphLienDisponibilite,
+// appelée par scene.js → setSceneView() à chaque bascule de vue.
+let graphLienMode = false;
 
-// Mode tangente
-let graphTangenteMode = false;
-const tangentesFig = [];      // { x0, I0, slope }
-let tangenteCrossZones = [];  // zones de clic (×) pour supprimer, recalculées à chaque dessin
-
-// Pan (clic-glissé)
-const graphPan = { dragging: false, startX: 0, startXMin: 0, startXMax: 0 };
+// Couleurs des pointillés minima/maxima (cf. dessinerLienFigure) — distinctes du bleu du
+// survol (#2a6aaa) et de l'orange des épingles (#b04020) pour ne pas les confondre.
+const COULEUR_LIEN_MAXIMA = '#2a9d4a';
+const COULEUR_LIEN_MINIMA = '#8a4fc9';
 
 // ─────────────────────────────────────────────────────────────────────
-function pushGraphView() {
-  graphViewHistory.push({ xMin: gview.xMin, xMax: gview.xMax, yMin: gview.yMin, yMax: gview.yMax });
-  document.getElementById('btn-graph-prev').disabled = false;
-}
-function prevGraphView() {
-  if (graphViewHistory.length === 0) return;
-  const v = graphViewHistory.pop();
-  Object.assign(gview, v);
-  document.getElementById('btn-graph-prev').disabled = graphViewHistory.length === 0;
-  drawIntensityGraph();
-}
+//  Aligne la fenêtre horizontale du graphe sur la vue Écran de façon PIXEL-PARFAITE (pas
+//  juste « même plage physique ») : même échelle px/m ET même pixel de page pour x=0 que
+//  la scène 3D — appelée par scene.js → syncGraphAvecVueEcran (zoom molette, redimensionnement,
+//  bascule de vue, dont camOrtho vient d'être recalculé). Sans ça, les deux canvas ont beau
+//  montrer la même plage physique, ils n'ont pas la même échelle (le graphe réserve une
+//  marge interne pour ses axes, GRAPH_PAD, que la scène — plein cadre — n'a pas) ni le même
+//  centre de page (marge asymétrique 34px/14px, + padding CSS différent autour de chaque
+//  canvas) : les pointillés de dessinerLienFigure() n'étaient donc verticaux qu'à peu près.
+//  Résout xMin/xMax (pas nécessairement symétriques autour de 0) pour que :
+//   - l'écart xMax-xMin corresponde exactement à la largeur de la zone de tracé (gw px) à
+//     la même échelle px/m que la scène ;
+//   - le pixel de PAGE correspondant à x=0 dans le graphe (pad.l + f·gw, f la position de 0
+//     dans la fenêtre) tombe exactement sur le pixel de page du centre de la vue Écran
+//     (toujours le centre du canvas scène, cf. fracXVueEcran(0) = 0.5 par construction de
+//     fitOrtho, toujours symétrique).
 // ─────────────────────────────────────────────────────────────────────
-//  Aligne la fenêtre horizontale du graphe sur la plage physique visible dans la vue
-//  Écran (appelée par scene.js → syncGraphAvecVueEcran, sur zoom molette/redimensionnement/
-//  bascule de vue) : garde xMin/xMax en phase avec le cadrage 3D, sans toucher yMin/yMax
-//  (l'échelle d'intensité n'a pas de raison de bouger avec un zoom spatial) ni l'historique
-//  de zoom du graphe (ce n'est pas un zoom manuel de l'utilisateur sur le graphe lui-même).
-// ─────────────────────────────────────────────────────────────────────
-function setGraphScreenRange(halfWidth_m) {
-  gview.xMin = -halfWidth_m;
-  gview.xMax = halfWidth_m;
+function syncGraphPixelParfait() {
+  const sceneCanvas = document.getElementById('scene-canvas');
+  const graphCanvas = document.getElementById('graph-intensity');
+  if (!sceneCanvas || !graphCanvas) return;
+  const sceneRect = sceneCanvas.getBoundingClientRect();
+  const { pad, gw } = graphLayout(graphCanvas);
+  if (sceneRect.width === 0 || gw <= 0) return;
+
+  const scenePxParM = sceneRect.width / (2 * (camOrtho.right / 100)); // camOrtho symétrique
+  const spanGraph_m = gw / scenePxParM;
+
+  const pxScene0 = sceneRect.left + sceneRect.width / 2; // x=0 = toujours le centre en vue Écran
+  const graphRect = graphCanvas.getBoundingClientRect();
+  const localPx0 = pxScene0 - graphRect.left;
+  const f = (localPx0 - pad.l) / gw; // position de x=0 dans la fenêtre, en fraction 0..1
+
+  gview.xMin = -f * spanGraph_m;
+  gview.xMax = (1 - f) * spanGraph_m;
   drawIntensityGraph();
 }
 
-function autoScaleGraph() {
-  pushGraphView();
-  gview.xMin = -sim.screenHalfWidth;
-  gview.xMax =  sim.screenHalfWidth;
-  gview.yMin = 0;
-  gview.yMax = 1.05;
-  drawIntensityGraph();
+function toggleGraphPin() {
+  graphPinMode = !graphPinMode;
+  document.getElementById('btn-graph-pin').classList.toggle('active', graphPinMode);
 }
 
-function toggleGraphZoom() {
-  graphZoomMode = !graphZoomMode;
-  graphZoomRect = null;
-  if (graphZoomMode) { graphCursorActive = false; graphTangenteMode = false; }
-  syncGraphButtons();
+function toggleGraphLien() {
+  if (sim.view !== 'screen') return; // bouton normalement désactivé dans ce cas
+  graphLienMode = !graphLienMode;
+  const btn = document.getElementById('btn-graph-lien');
+  btn.classList.toggle('active', graphLienMode);
+  if (!graphLienMode) effacerOverlayLien();
 }
-function toggleGraphCursor() {
-  graphCursorActive = !graphCursorActive;
-  if (graphCursorActive) { graphZoomMode = false; graphTangenteMode = false; }
-  if (!graphCursorActive) graphHover = null;
-  syncGraphButtons();
+
+// ─────────────────────────────────────────────────────────────────────
+//  (Dés)active le bouton « Lien figure » selon la vue courante, et coupe le mode si l'on
+//  quitte la vue Écran (appelée par scene.js → setSceneView()).
+// ─────────────────────────────────────────────────────────────────────
+function syncGraphLienDisponibilite() {
+  const actif = sim.view === 'screen';
+  const btn = document.getElementById('btn-graph-lien');
+  if (btn) btn.disabled = !actif;
+  if (!actif && graphLienMode) {
+    graphLienMode = false;
+    if (btn) btn.classList.remove('active');
+    effacerOverlayLien();
+  }
 }
-function toggleGraphTangente() {
-  graphTangenteMode = !graphTangenteMode;
-  if (graphTangenteMode) { graphZoomMode = false; graphCursorActive = false; }
-  syncGraphButtons();
-  drawIntensityGraph();
-}
-function syncGraphButtons() {
-  document.getElementById('btn-graph-zoom').classList.toggle('active', graphZoomMode);
-  document.getElementById('btn-graph-cursor').classList.toggle('active', graphCursorActive);
-  document.getElementById('btn-graph-tangente').classList.toggle('active', graphTangenteMode);
+
+function effacerOverlayLien() {
+  const cv = document.getElementById('graph-lien-overlay');
+  if (cv && cv.width && cv.height) cv.getContext('2d').clearRect(0, 0, cv.width, cv.height);
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -121,11 +148,139 @@ function pointLePlusProche(pts, x) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-//  Pente locale de I(x) au point d'indice i (différences finies centrées).
+//  Extrema locaux (minima ET maxima, y compris les secondaires) d'une série de points déjà
+//  échantillonnée. Comparaison sur une fenêtre de K voisins de chaque côté (pas juste le
+//  voisin immédiat) avec inégalités LARGES (>=, pas de comparaison stricte) : au sommet
+//  d'un maximum, la courbe est quasi plate sur plusieurs échantillons consécutifs (dérivée
+//  nulle), et une comparaison stricte au seul voisin immédiat ratait le maximum dès que
+//  deux échantillons adjacents tombaient à une intensité identique au bit près — constaté
+//  par l'utilisateur sur la tache centrale, la plus large et donc la plus sujette à ce
+//  plateau. Les inégalités larges font qualifier TOUS les points du plateau ; dedupePlateau()
+//  les fusionne ensuite en un seul point représentatif (le milieu du plateau). Pas de
+//  formule fermée pour les maxima secondaires (racines transcendantes de tan β = β), la
+//  détection numérique évite d'en avoir besoin et reste valable si intensiteFente() change
+//  un jour de forme.
 // ─────────────────────────────────────────────────────────────────────
-function penteLocale(pts, i) {
-  const i0 = Math.max(0, i - 1), i1 = Math.min(pts.length - 1, i + 1);
-  return (pts[i1].I - pts[i0].I) / (pts[i1].x - pts[i0].x);
+const EXTREMA_FENETRE = 2;
+
+function calculerExtrema(pts) {
+  const maxima = [], minima = [];
+  const n = pts.length;
+  for (let i = EXTREMA_FENETRE; i < n - EXTREMA_FENETRE; i++) {
+    const b = pts[i].I;
+    let estMax = true, estMin = true;
+    for (let k = 1; k <= EXTREMA_FENETRE && (estMax || estMin); k++) {
+      const g = pts[i - k].I, d = pts[i + k].I;
+      if (b < g || b < d) estMax = false;
+      if (b > g || b > d) estMin = false;
+    }
+    if (estMax) maxima.push(pts[i]);
+    else if (estMin) minima.push(pts[i]);
+  }
+  const pas = pts.length > 1 ? pts[1].x - pts[0].x : 0;
+  return {
+    maxima: dedupePlateau(maxima, pas, (a, b) => (b.I > a.I ? b : a)),
+    minima: dedupePlateau(minima, pas, (a, b) => (b.I < a.I ? b : a))
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Fusionne les points consécutifs (en x) d'une liste d'extrema candidats — cf.
+//  calculerExtrema : sur un plateau (ou un creux large et peu profond), plusieurs
+//  échantillons voisins qualifient tous comme extremum. `pts` est déjà trié par x
+//  croissant, donc les points d'un même plateau sont forcément consécutifs dans `liste`.
+//  Tolérance = quelques pas d'échantillonnage (assez large pour couvrir un plateau, bien
+//  plus petit que l'écart entre deux extrema DISTINCTS de la figure — le premier minimum
+//  et la tache centrale ne sont jamais aussi rapprochés).
+//
+//  `meilleur(a, b)` choisit le représentant du groupe : le point d'intensité la PLUS
+//  BASSE pour un creux, la plus HAUTE pour une bosse — PAS le milieu géométrique du
+//  groupe (essayé initialement, mais un creux large n'est pas forcément symétrique en x
+//  autour de son point le plus bas ; le milieu géométrique retombe alors visiblement à
+//  côté du vrai minimum, constaté par l'utilisateur sur un minimum secondaire large et
+//  peu profond). Choisir par valeur d'intensité retombe toujours exactement sur le point
+//  le plus sombre/lumineux réellement échantillonné, quelle que soit la forme du groupe.
+// ─────────────────────────────────────────────────────────────────────
+function dedupePlateau(liste, pas, meilleur) {
+  if (liste.length === 0) return liste;
+  const tolerance = pas * 6;
+  const out = [];
+  let run = [liste[0]];
+  for (let i = 1; i < liste.length; i++) {
+    if (liste[i].x - run[run.length - 1].x <= tolerance) {
+      run.push(liste[i]);
+    } else {
+      out.push(run.reduce(meilleur));
+      run = [liste[i]];
+    }
+  }
+  out.push(run.reduce(meilleur));
+  return out;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Restreint les extrema affichés au 2e minimum inclus de part et d'autre du centre (pas
+//  besoin d'aller plus loin, demande explicite de l'utilisateur) : maximum central, 1er
+//  minimum, 1ère tache secondaire, 2e minimum — rien au-delà, même si la fenêtre visible
+//  s'étend plus loin. `minima` est trié par x croissant (ordre de calculerExtrema).
+// ─────────────────────────────────────────────────────────────────────
+function limiterAuDeuxiemeMinimum(maxima, minima) {
+  const neg = minima.filter(p => p.x < 0).sort((a, b) => b.x - a.x); // du plus proche du centre au plus loin
+  const pos = minima.filter(p => p.x > 0).sort((a, b) => a.x - b.x);
+  const limNeg = neg.length >= 2 ? neg[1].x : -Infinity;
+  const limPos = pos.length >= 2 ? pos[1].x : Infinity;
+  return {
+    maxima: maxima.filter(p => p.x >= limNeg && p.x <= limPos),
+    minima: minima.filter(p => p.x >= limNeg && p.x <= limPos)
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Repère de tracé courant (échelle x/y ↔ pixels canvas) pour le canvas donné.
+// ─────────────────────────────────────────────────────────────────────
+function graphLayout(cv) {
+  const pad = GRAPH_PAD;
+  const gw = cv.clientWidth - pad.l - pad.r;
+  const gh = cv.clientHeight - pad.t - pad.b;
+  const { xMin, xMax, yMin, yMax } = gview;
+  return {
+    pad, gw, gh, xMin, xMax, yMin, yMax,
+    toX: x => pad.l + ((x - xMin) / (xMax - xMin)) * gw,
+    toY: I => pad.t + gh - ((I - yMin) / (yMax - yMin)) * gh
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Marqueur (point + étiquette coordonnées) à une position (x, I) du graphe — utilisé à
+//  la fois pour le survol en direct et pour les points épinglés (cf. drawIntensityGraph).
+//  L'étiquette bascule à gauche/en dessous si elle déborderait du cadre.
+// ─────────────────────────────────────────────────────────────────────
+function dessinerMarqueurPoint(gc, layout, x, I, couleur) {
+  const { pad, gw, toX, toY } = layout;
+  const px = toX(x), py = toY(I);
+
+  gc.save();
+  gc.fillStyle = couleur;
+  gc.beginPath(); gc.arc(px, py, 4.5, 0, Math.PI * 2); gc.fill();
+  gc.strokeStyle = '#fff';
+  gc.lineWidth = 1.2;
+  gc.stroke();
+
+  const label = `(${(x * 100).toFixed(2)} cm, ${I.toFixed(3)})`;
+  gc.font = '12px monospace';
+  const lw = gc.measureText(label).width;
+  let lx = px + 10;
+  if (lx + lw > pad.l + gw) lx = px - 10 - lw;
+  let ly = py - 20;
+  if (ly < pad.t) ly = py + 12;
+
+  gc.fillStyle = 'rgba(44,62,80,0.85)';
+  gc.fillRect(lx - 4, ly - 4, lw + 8, 18);
+  gc.fillStyle = '#fff';
+  gc.textAlign = 'left';
+  gc.textBaseline = 'middle';
+  gc.fillText(label, lx, ly + 5);
+  gc.restore();
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -145,20 +300,14 @@ function drawIntensityGraph() {
   }
   gc.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-  const pts = echantillonnerIntensite(N_ECHANTILLONS);
+  const layout = graphLayout(cv);
+  const { pad, gw, gh, xMin, xMax, yMin, yMax, toX, toY } = layout;
+  const pts = echantillonnerIntensite(N_ECHANTILLONS, xMin, xMax);
 
   gc.font = '13px monospace';
-  const pad = { t: 10, r: 14, b: 30, l: 34 };
-  const gw = w - pad.l - pad.r;
-  const gh = h - pad.t - pad.b;
-
   gc.clearRect(0, 0, w, h);
   gc.fillStyle = '#ffffff';
   gc.fillRect(0, 0, w, h);
-
-  const { xMin, xMax, yMin, yMax } = gview;
-  const toX = x => pad.l + ((x - xMin) / (xMax - xMin)) * gw;
-  const toY = I => pad.t + gh - ((I - yMin) / (yMax - yMin)) * gh;
 
   // ── Grille + graduations X (cm) ──
   const xStepM = niceStep((xMax - xMin) * 100, 6) / 100;
@@ -212,124 +361,19 @@ function drawIntensityGraph() {
   gc.stroke();
   gc.restore();
 
-  // ── Tangentes figées ──
-  tangenteCrossZones = [];
-  for (let i = 0; i < tangentesFig.length; i++) {
-    const t = tangentesFig[i];
-    const cz = dessinerTangente(gc, pad, gw, gh, toX, toY, xMin, xMax, t, i);
-    if (cz) tangenteCrossZones.push(cz);
-  }
+  // ── Points épinglés (persistants) ──
+  for (const p of graphPins) dessinerMarqueurPoint(gc, layout, p.x, p.I, '#b04020');
 
-  // ── Aperçu hover de la tangente (mode actif, avant clic) ──
-  if (graphTangenteMode && graphHover) {
-    const xHover = xMin + ((graphHover.x - pad.l) / gw) * (xMax - xMin);
-    if (xHover >= xMin && xHover <= xMax) {
-      const idx = pts.findIndex(p => p.x >= xHover);
-      const i = idx === -1 ? pts.length - 1 : idx;
-      const slope = penteLocale(pts, i);
-      dessinerTangente(gc, pad, gw, gh, toX, toY, xMin, xMax,
-        { x0: pts[i].x, I0: pts[i].I, slope }, -1, true);
-    }
-  }
-
-  // ── Rectangle de zoom en cours ──
-  if (graphZoomMode && graphZoomRect) {
-    const zr = graphZoomRect;
-    const x0 = Math.min(zr.x0, zr.x1), x1 = Math.max(zr.x0, zr.x1);
-    const y0 = Math.min(zr.y0, zr.y1), y1 = Math.max(zr.y0, zr.y1);
-    gc.save();
-    gc.fillStyle = 'rgba(42,106,170,0.12)';
-    gc.strokeStyle = '#2a6aaa';
-    gc.lineWidth = 1.5;
-    gc.fillRect(x0, y0, x1 - x0, y1 - y0);
-    gc.strokeRect(x0, y0, x1 - x0, y1 - y0);
-    gc.restore();
-  }
-
-  // ── Réticule libre ──
-  if (graphCursorActive && graphHover) {
-    const hx = graphHover.x, hy = graphHover.y;
-    gc.save();
-    gc.strokeStyle = 'rgba(42,106,170,0.75)';
-    gc.lineWidth = 1;
-    gc.setLineDash([4, 4]);
-    gc.beginPath(); gc.moveTo(hx, pad.t); gc.lineTo(hx, pad.t + gh); gc.stroke();
-    gc.beginPath(); gc.moveTo(pad.l, hy); gc.lineTo(pad.l + gw, hy); gc.stroke();
-    gc.setLineDash([]);
-    gc.fillStyle = 'rgba(42,106,170,0.9)';
-    gc.fillRect(hx - 3, hy - 3, 6, 6);
-
-    const xVal = xMin + ((hx - pad.l) / gw) * (xMax - xMin);
-    const yVal = yMin + (1 - (hy - pad.t) / gh) * (yMax - yMin);
-    const label = `(${(xVal * 100).toFixed(2)} cm, ${yVal.toFixed(3)})`;
-    gc.font = '13px monospace';
-    gc.fillStyle = '#2c3e50';
-    gc.textBaseline = 'bottom';
-    gc.textAlign = 'left';
-    const lw = gc.measureText(label).width;
-    const lx = hx + 10 + lw > pad.l + gw ? hx - 10 - lw : hx + 10;
-    const ly = hy - 8 < pad.t + 16 ? hy + 24 : hy - 8;
-    gc.fillText(label, lx, ly);
-    gc.restore();
+  // ── Point le plus proche du curseur (survol en direct, toujours actif) ──
+  if (graphHover) {
+    const xHover = Math.max(xMin, Math.min(xMax, xMin + ((graphHover.x - pad.l) / gw) * (xMax - xMin)));
+    const p = pointLePlusProche(pts, xHover);
+    dessinerMarqueurPoint(gc, layout, p.x, p.I, '#2a6aaa');
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────
-//  Dessine une tangente (droite + étiquette pente, + croix de suppression
-//  si figée). Renvoie la zone de clic de la croix (ou null si aperçu hover).
-// ─────────────────────────────────────────────────────────────────────
-function dessinerTangente(gc, pad, gw, gh, toX, toY, xMin, xMax, t, idx, isPreview) {
-  const { x0, I0, slope } = t;
-  const y0v = I0 - slope * x0;
-  const px0 = toX(xMin), py0 = toY(yMinClip(slope * xMin + y0v));
-  const px1 = toX(xMax), py1 = toY(yMinClip(slope * xMax + y0v));
-
-  gc.save();
-  gc.beginPath();
-  gc.rect(pad.l, pad.t, gw, gh);
-  gc.clip();
-  gc.strokeStyle = isPreview ? 'rgba(180,64,32,0.55)' : '#b04020';
-  gc.lineWidth = isPreview ? 1.3 : 1.8;
-  gc.setLineDash(isPreview ? [3, 4] : [6, 4]);
-  gc.beginPath(); gc.moveTo(px0, py0); gc.lineTo(px1, py1); gc.stroke();
-  gc.setLineDash([]);
-
-  // Point d'ancrage
-  gc.fillStyle = isPreview ? 'rgba(180,64,32,0.6)' : '#b04020';
-  gc.beginPath(); gc.arc(toX(x0), toY(I0), isPreview ? 3.5 : 4.5, 0, Math.PI * 2); gc.fill();
-  gc.restore();
-
-  if (isPreview) return null;
-
-  // Étiquette pente + croix de suppression
-  const lx = toX(x0), ly = toY(I0);
-  const label = `pente ${slope.toExponential(2)} /m`;
-  gc.font = '12px monospace';
-  const lw = gc.measureText(label).width;
-  const boxX = Math.min(Math.max(lx + 8, pad.l), pad.l + gw - lw - 26);
-  const boxY = Math.max(ly - 22, pad.t + 2);
-
-  gc.fillStyle = 'rgba(44,62,80,0.85)';
-  gc.fillRect(boxX - 4, boxY - 2, lw + 26, 18);
-  gc.fillStyle = '#fff';
-  gc.textAlign = 'left';
-  gc.textBaseline = 'middle';
-  gc.fillText(label, boxX, boxY + 7);
-
-  const crossX = boxX + lw + 10, crossY = boxY + 7;
-  gc.strokeStyle = '#fff';
-  gc.lineWidth = 1.3;
-  gc.beginPath();
-  gc.moveTo(crossX - 4, crossY - 4); gc.lineTo(crossX + 4, crossY + 4);
-  gc.moveTo(crossX + 4, crossY - 4); gc.lineTo(crossX - 4, crossY + 4);
-  gc.stroke();
-
-  return { idx, x: crossX, y: crossY, r: 8 };
-}
-function yMinClip(v) { return Math.max(-0.3, Math.min(1.3, v)); }
-
-// ─────────────────────────────────────────────────────────────────────
-//  Écouteurs souris du canvas graphe.
+//  Écouteurs souris du canvas graphe (survol, épinglage).
 // ─────────────────────────────────────────────────────────────────────
 function initGraphInteractions() {
   const cv = document.getElementById('graph-intensity');
@@ -339,109 +383,38 @@ function initGraphInteractions() {
     const mx = (e.clientX - r.left) * (cv.clientWidth / r.width);
     const my = (e.clientY - r.top) * (cv.clientHeight / r.height);
     graphHover = { x: mx, y: my };
-
-    if (graphZoomMode && graphZoomRect) {
-      graphZoomRect.x1 = mx; graphZoomRect.y1 = my;
-    }
-    if (!graphZoomMode && graphPan.dragging) {
-      const pad = { l: 34, r: 14 };
-      const gw = cv.clientWidth - pad.l - pad.r;
-      const dxPx = (e.clientX - graphPan.startX) * (cv.clientWidth / r.width);
-      const span = graphPan.startXMax - graphPan.startXMin;
-      const dx = -(dxPx / gw) * span;
-      gview.xMin = graphPan.startXMin + dx;
-      gview.xMax = graphPan.startXMax + dx;
-    }
     drawIntensityGraph();
   });
 
   cv.addEventListener('mouseleave', () => {
     graphHover = null;
-    graphPan.dragging = false;
-    if (graphZoomMode && graphZoomRect) graphZoomRect = null;
     drawIntensityGraph();
   });
 
   cv.addEventListener('mousedown', e => {
+    if (!graphPinMode) return;
     const r = cv.getBoundingClientRect();
     const mx = (e.clientX - r.left) * (cv.clientWidth / r.width);
     const my = (e.clientY - r.top) * (cv.clientHeight / r.height);
+    const layout = graphLayout(cv);
 
-    // Clic sur une croix de suppression de tangente ?
-    for (const cz of tangenteCrossZones) {
-      if (Math.hypot(mx - cz.x, my - cz.y) <= cz.r + 3) {
-        tangentesFig.splice(cz.idx, 1);
-        drawIntensityGraph();
-        return;
-      }
-    }
-
-    if (graphTangenteMode) {
-      const pad = { l: 34, r: 14 };
-      const gw = cv.clientWidth - pad.l - pad.r;
-      const xClick = gview.xMin + ((mx - pad.l) / gw) * (gview.xMax - gview.xMin);
-      const pts = echantillonnerIntensite(N_ECHANTILLONS);
-      const idx = pts.findIndex(p => p.x >= xClick);
-      const i = idx === -1 ? pts.length - 1 : idx;
-      tangentesFig.push({ x0: pts[i].x, I0: pts[i].I, slope: penteLocale(pts, i) });
-      drawIntensityGraph();
-      return;
-    }
-
-    if (graphZoomMode) {
-      graphZoomRect = { x0: mx, y0: my, x1: mx, y1: my };
+    // Reclic sur une épingle existante (proximité en PIXELS, pas en x physique — un
+    // point serré horizontalement mais loin verticalement ne doit pas se faire
+    // supprimer par erreur) : on la retire. Sinon on épingle le point de la courbe le
+    // plus proche de l'abscisse cliquée.
+    const idx = graphPins.findIndex(p => Math.hypot(layout.toX(p.x) - mx, layout.toY(p.I) - my) <= 8);
+    if (idx !== -1) {
+      graphPins.splice(idx, 1);
     } else {
-      graphPan.dragging = true;
-      graphPan.startX = e.clientX;
-      graphPan.startXMin = gview.xMin;
-      graphPan.startXMax = gview.xMax;
-    }
-    e.preventDefault();
-  });
-
-  cv.addEventListener('mouseup', () => {
-    if (graphZoomMode && graphZoomRect) {
-      const pad = { l: 34, r: 14, t: 10, b: 30 };
-      const gw = cv.clientWidth - pad.l - pad.r;
-      const gh = cv.clientHeight - pad.t - pad.b;
-      const x0c = Math.min(graphZoomRect.x0, graphZoomRect.x1);
-      const x1c = Math.max(graphZoomRect.x0, graphZoomRect.x1);
-      const y0c = Math.min(graphZoomRect.y0, graphZoomRect.y1);
-      const y1c = Math.max(graphZoomRect.y0, graphZoomRect.y1);
-      if (x1c - x0c > 5 && y1c - y0c > 5) {
-        const span = gview.xMax - gview.xMin;
-        const ySpan = gview.yMax - gview.yMin;
-        const nx0 = gview.xMin + ((x0c - pad.l) / gw) * span;
-        const nx1 = gview.xMin + ((x1c - pad.l) / gw) * span;
-        const ny1 = gview.yMax - ((y0c - pad.t) / gh) * ySpan;
-        const ny0 = gview.yMax - ((y1c - pad.t) / gh) * ySpan;
-        pushGraphView();
-        gview.xMin = nx0; gview.xMax = nx1;
-        gview.yMin = ny0; gview.yMax = ny1;
-      }
-      graphZoomRect = null;
-    } else {
-      graphPan.dragging = false;
+      const xClick = Math.max(layout.xMin, Math.min(layout.xMax,
+        layout.xMin + ((mx - layout.pad.l) / layout.gw) * (layout.xMax - layout.xMin)));
+      const pts = echantillonnerIntensite(N_ECHANTILLONS, layout.xMin, layout.xMax);
+      const p = pointLePlusProche(pts, xClick);
+      graphPins.push({ x: p.x, I: p.I });
     }
     drawIntensityGraph();
-  });
-
-  cv.addEventListener('wheel', e => {
     e.preventDefault();
-    const r = cv.getBoundingClientRect();
-    const pad = { l: 34, r: 14 };
-    const gw = cv.clientWidth - pad.l - pad.r;
-    const mx = (e.clientX - r.left) * (cv.clientWidth / r.width);
-    const frac = Math.max(0, Math.min(1, (mx - pad.l) / gw));
-    const span = gview.xMax - gview.xMin;
-    const xUnderCursor = gview.xMin + frac * span;
-    const factor = e.deltaY > 0 ? 1.2 : 0.83;
-    const newSpan = Math.max(0.005, Math.min(sim.screenHalfWidth * 4, span * factor));
-    pushGraphView();
-    gview.xMin = xUnderCursor - frac * newSpan;
-    gview.xMax = gview.xMin + newSpan;
-    drawIntensityGraph();
-  }, { passive: false });
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -449,4 +422,97 @@ function initGraphInteractions() {
 // ─────────────────────────────────────────────────────────────────────
 function resizeGraphCanvas() {
   drawIntensityGraph();
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Dessine, sur l'overlay #graph-lien-overlay (qui recouvre scène 3D + splitter + graphe,
+//  cf. index.html/style.css), les pointillés reliant chaque minimum/maximum du graphe à sa
+//  position sur la figure affichée en vue Écran. Appelée à chaque frame depuis ui.js →
+//  loop() (comme drawIntensityGraph()) : la position/taille des deux canvas (scène,
+//  graphe) peut changer à tout moment (redimensionnement, glissement du splitter) sans
+//  qu'aucun autre événement ne le signale explicitement, donc pas d'anti-rebond ici — juste
+//  un no-op immédiat si le mode est inactif.
+//
+//  Chaque pointillé est une polyligne en 3 segments dans le repère de l'overlay (partagé
+//  par la scène ET le graphe, cf. #lumineuses-area → position:relative) : vertical dans la
+//  scène (toute sa hauteur, à l'abscisse-écran du point), diagonal à travers le splitter
+//  (les deux canvas n'ont pas forcément la même échelle px/m, cf. GRAPH_PAD qui mange une
+//  partie de la largeur du graphe), puis vertical dans le graphe (toute la hauteur du
+//  tracé, à l'abscisse du point sur la courbe).
+// ─────────────────────────────────────────────────────────────────────
+function dessinerLienFigure() {
+  if (!graphLienMode) return;
+
+  const overlay = document.getElementById('graph-lien-overlay');
+  const sceneCanvas = document.getElementById('scene-canvas');
+  const graphCanvas = document.getElementById('graph-intensity');
+  if (!overlay || !sceneCanvas || !graphCanvas) return;
+
+  const hostRect = overlay.getBoundingClientRect();
+  const w = overlay.clientWidth, h = overlay.clientHeight;
+  if (w === 0 || h === 0) return;
+  const dpr = window.devicePixelRatio || 1;
+  if (overlay.width !== Math.round(w * dpr) || overlay.height !== Math.round(h * dpr)) {
+    overlay.width = Math.round(w * dpr);
+    overlay.height = Math.round(h * dpr);
+  }
+  const gc = overlay.getContext('2d');
+  gc.setTransform(dpr, 0, 0, dpr, 0, 0);
+  gc.clearRect(0, 0, w, h);
+
+  const sceneRect = sceneCanvas.getBoundingClientRect();
+  const graphRect = graphCanvas.getBoundingClientRect();
+  const layout = graphLayout(graphCanvas);
+  const pts = echantillonnerIntensite(N_ECHANTILLONS, layout.xMin, layout.xMax);
+  const extremaBruts = calculerExtrema(pts);
+  const { maxima, minima } = limiterAuDeuxiemeMinimum(extremaBruts.maxima, extremaBruts.minima);
+
+  const ySceneTop = sceneRect.top - hostRect.top;
+  const ySceneBot = sceneRect.bottom - hostRect.top;
+  const yGraphTop = graphRect.top - hostRect.top + layout.pad.t;
+  const yGraphBot = yGraphTop + layout.gh;
+
+  function tracerLien(x_m, couleur) {
+    const fracScene = fracXVueEcran(x_m);
+    if (fracScene < 0 || fracScene > 1) return; // hors cadre de la vue Écran (zoom, bord)
+    const pxScene = sceneRect.left - hostRect.left + fracScene * sceneRect.width;
+    const pxGraph = graphRect.left - hostRect.left + layout.toX(x_m);
+    gc.save();
+    gc.strokeStyle = couleur;
+    gc.lineWidth = 1.5;
+    gc.setLineDash([5, 4]);
+    gc.beginPath();
+    gc.moveTo(pxScene, ySceneTop);
+    gc.lineTo(pxScene, ySceneBot);
+    gc.lineTo(pxGraph, yGraphTop);
+    gc.lineTo(pxGraph, yGraphBot);
+    gc.stroke();
+    gc.restore();
+  }
+
+  for (const p of minima) tracerLien(p.x, COULEUR_LIEN_MINIMA);
+  for (const p of maxima) tracerLien(p.x, COULEUR_LIEN_MAXIMA);
+
+  // ── Légende (coin haut-droit du graphe) ──
+  const boxW = 96, boxH = 40;
+  const lx = graphRect.right - hostRect.left - boxW - 8;
+  const ly = graphRect.top - hostRect.top + layout.pad.t + 6;
+  gc.save();
+  gc.fillStyle = 'rgba(255,255,255,0.92)';
+  gc.strokeStyle = '#c8c0b4';
+  gc.lineWidth = 1;
+  gc.fillRect(lx, ly, boxW, boxH);
+  gc.strokeRect(lx, ly, boxW, boxH);
+  gc.font = '11px sans-serif';
+  gc.textBaseline = 'middle';
+  gc.textAlign = 'left';
+  gc.fillStyle = COULEUR_LIEN_MAXIMA;
+  gc.fillRect(lx + 8, ly + 11, 14, 3);
+  gc.fillStyle = '#2c3e50';
+  gc.fillText('Maxima', lx + 28, ly + 13);
+  gc.fillStyle = COULEUR_LIEN_MINIMA;
+  gc.fillRect(lx + 8, ly + 29, 14, 3);
+  gc.fillStyle = '#2c3e50';
+  gc.fillText('Minima', lx + 28, ly + 31);
+  gc.restore();
 }

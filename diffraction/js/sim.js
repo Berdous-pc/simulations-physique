@@ -296,16 +296,18 @@ function echantillonnerChamp(champ, x_m, y_m) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-//  Échantillonne I(x) sur toute la largeur de l'écran (n points, de
-//  -screenHalfWidth à +screenHalfWidth). Utilisée à la fois par le graphe
-//  (graph.js) et par la texture projetée sur l'écran 3D (scene.js) :
-//  source physique unique, pas de duplication du calcul.
+//  Échantillonne I(x) (n points), par défaut sur toute la largeur de l'écran
+//  (-screenHalfWidth à +screenHalfWidth). Utilisée par le graphe (graph.js), qui passe
+//  xMin/xMax explicitement — la fenêtre RÉELLEMENT visible (gview), pas toujours la pleine
+//  largeur de l'écran : sans cela, une tache très petite (D et/ou λ faibles) n'était couverte
+//  que par une poignée des n points répartis sur toute la largeur de l'écran, donnant une
+//  courbe visiblement anguleuse une fois zoomée sur cette tache (constaté par l'utilisateur).
 // ─────────────────────────────────────────────────────────────────────
-function echantillonnerIntensite(n) {
+function echantillonnerIntensite(n, xMin, xMax) {
   const pts = new Array(n);
-  const w = sim.screenHalfWidth;
+  const lo = xMin ?? -sim.screenHalfWidth, hi = xMax ?? sim.screenHalfWidth;
   for (let i = 0; i < n; i++) {
-    const x = -w + (2 * w * i) / (n - 1);
+    const x = lo + ((hi - lo) * i) / (n - 1);
     pts[i] = { x, I: intensiteFente(x, sim.lambda, sim.a, sim.D) };
   }
   return pts;

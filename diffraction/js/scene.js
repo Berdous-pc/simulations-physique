@@ -867,6 +867,7 @@ function setSceneView(view) {
   updateEnvelopeXLimite();
   updateBeamVisibility();
   syncGraphAvecVueEcran();
+  if (typeof syncGraphLienDisponibilite === 'function') syncGraphLienDisponibilite();
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -930,22 +931,34 @@ function fitOrtho(cam, worldHalfW, worldHalfH, aspect) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-//  Recale la fenêtre du graphe I(x) (graph.js → gview) sur la plage physique horizontale
-//  RÉELLEMENT visible dans la vue Écran (camOrtho.left/right, déjà calculés par
-//  updateOrthoCamera pour l'aspect et le zoom courants — pas juste SCREEN_WIDTH/zoom, qui
-//  ignorerait la marge ajoutée par fitOrtho quand c'est la hauteur qui contraint le
-//  cadrage) : ainsi la courbe reste toujours alignée avec les taches affichées sur
-//  l'écran. Appelée après tout changement affectant ce cadrage : zoom molette
-//  (initZoomVersCurseur), bascule vers la vue Écran (setSceneView), redimensionnement
-//  (resizeScene) — sans quoi le graphe resterait basé sur l'ancien cadrage.
+//  Recale la fenêtre du graphe I(x) (graph.js → gview) sur le cadrage RÉEL de la vue Écran
+//  (camOrtho.left/right, déjà recalculés par updateOrthoCamera pour l'aspect et le zoom
+//  courants), de façon pixel-parfaite (cf. graph.js → syncGraphPixelParfait — même échelle
+//  px/m ET même centre de page que la scène, pas juste la même plage physique) : ainsi les
+//  pointillés de dessinerLienFigure() restent rigoureusement verticaux. Appelée après tout
+//  changement affectant ce cadrage : zoom molette (initZoomVersCurseur), bascule vers la
+//  vue Écran (setSceneView), redimensionnement (resizeScene) — sans quoi le graphe
+//  resterait basé sur l'ancien cadrage.
 // ─────────────────────────────────────────────────────────────────────
 function syncGraphAvecVueEcran() {
   if (sim.view !== 'screen') return;
   const aspect = canvasEl.clientWidth / canvasEl.clientHeight;
   updateOrthoCamera(aspect);
-  if (typeof setGraphScreenRange === 'function') {
-    setGraphScreenRange(camOrtho.right / 100); // cm → m
-  }
+  if (typeof syncGraphPixelParfait === 'function') syncGraphPixelParfait();
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Position horizontale d'un point physique de l'écran (x_m, mètres) dans le canvas 3D
+//  courant, en fraction 0..1 de sa largeur — utilisée par graph.js → dessinerLienFigure()
+//  pour aligner les pointillés reliant graphe et figure. Valide uniquement en vue Écran
+//  (camOrtho.left/right y sont recalculés en continu par updateOrthoCamera, cf.
+//  renderScene) : une caméra orthographique remplit TOUJOURS tout le canvas entre
+//  left et right, sans letterboxing — contrairement à une caméra perspective, la
+//  conversion est donc une simple règle de trois, aucune projection à faire.
+// ─────────────────────────────────────────────────────────────────────
+function fracXVueEcran(x_m) {
+  const xCm = x_m * 100;
+  return (xCm - camOrtho.left) / (camOrtho.right - camOrtho.left);
 }
 
 // ─────────────────────────────────────────────────────────────────────

@@ -83,13 +83,12 @@ function resetSim() {
   document.getElementById('btn-rays').classList.add('active');
   document.getElementById('btn-beam-mode').textContent = BEAM_MODE_LABELS.visible;
 
-  tangentesFig.length = 0;
-  graphViewHistory.length = 0;
-  document.getElementById('btn-graph-prev').disabled = true;
   gview.xMin = -sim.screenHalfWidth;
   gview.xMax = sim.screenHalfWidth;
   gview.yMin = 0;
   gview.yMax = 1.05;
+  graphPins.length = 0;
+  if (graphPinMode) toggleGraphPin();
 
   setView('3d');
   reset3DCamera();
@@ -207,6 +206,7 @@ document.addEventListener('webkitfullscreenchange', resize);
 function loop() {
   renderScene();
   drawIntensityGraph();
+  dessinerLienFigure();
   requestAnimationFrame(loop);
 }
 

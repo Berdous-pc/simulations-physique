@@ -47,17 +47,20 @@
             <span class="graph-title">I(x) — Intensité lumineuse sur l'écran</span>
           </div>
           <div id="graph-btns-right">
-            <button id="btn-graph-cursor"   onclick="toggleGraphCursor()"   title="Réticule libre">+</button>
-            <button id="btn-graph-tangente" onclick="toggleGraphTangente()" title="Tangente">Tangente</button>
-            <button id="btn-graph-prev"     onclick="prevGraphView()" disabled title="Vue précédente">&#8592;</button>
-            <button id="btn-graph-zoom"     onclick="toggleGraphZoom()"     title="Mode zoom">&#128269;</button>
-            <button id="btn-graph-auto"     onclick="autoScaleGraph()">&#128269; Adapter</button>
+            <button id="btn-graph-pin" onclick="toggleGraphPin()" title="Épingler un point">Épingler 📍</button>
+            <button id="btn-graph-lien" onclick="toggleGraphLien()" disabled
+                    title="Relie les maxima/minima du graphe à ceux de la figure (vue Écran uniquement)">Lien figure</button>
           </div>
         </div>
         <div class="graph-wrap">
           <canvas id="graph-intensity"></canvas>
         </div>
       </div>
+
+      <!-- Pointillés reliant les extrema du graphe à ceux de la figure sur l'écran
+           (scene.js + graph.js → dessinerLienFigure) : recouvre scène 3D + splitter +
+           graphe, pointer-events désactivés (décoratif, ne doit jamais intercepter de clic). -->
+      <canvas id="graph-lien-overlay"></canvas>
 
     </div><!-- fin #lumineuses-area -->
 

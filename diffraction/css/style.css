@@ -64,6 +64,18 @@ main {
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  position: relative; /* référentiel de #graph-lien-overlay, cf. plus bas */
+}
+
+/* Overlay pointillés reliant graphe ↔ figure (vue Écran, cf. graph.js → dessinerLienFigure) :
+   recouvre exactement scène 3D + splitter + graphe, jamais interactif. */
+#graph-lien-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 15;
 }
 
 /* ── Onglet Ondes de surfaces — à venir ── */
@@ -179,19 +191,17 @@ main {
   border: 1px solid #b0a898; border-radius: 5px;
   cursor: pointer; box-sizing: border-box; white-space: nowrap;
 }
-#btn-graph-cursor   { font-size: 20px; padding: 0 10px !important; }
-#btn-graph-prev     { font-size: 16px; }
-#btn-graph-zoom     { font-size: 16px; }
-#btn-graph-auto     { font-size: 13px; }
-#btn-graph-tangente { font-size: 13px; }
+#btn-graph-pin  { font-size: 13px; }
+#btn-graph-lien { font-size: 13px; }
 
 #graph-btns-right button:hover, #graph-btns-left button:hover { background: #d0ccc4; color: #2c3e50; }
 #graph-btns-right button.active, #graph-btns-left button.active {
   background: #2a6aaa; color: #fff; border-color: #1a5a9a;
 }
 #graph-btns-right button.active:hover { background: #1a5a9a; }
-#btn-graph-prev:disabled { opacity: 0.35; cursor: not-allowed; }
-#btn-graph-prev:disabled:hover { background: #e8e4de; color: #5a6a78; }
+#graph-btns-right button:disabled {
+  opacity: 0.4; cursor: not-allowed; background: #e8e4de; color: #5a6a78;
+}
 
 /* Zone du canvas de graphe */
 .graph-wrap {

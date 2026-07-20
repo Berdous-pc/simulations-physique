@@ -54,7 +54,7 @@ détaillé de ce qui s'adapterait facilement et de ce qui demanderait un vrai tr
 | `FAISCEAU_DIAMETRE_MM` | Diamètre réel du faisceau laser (1 mm) — source unique pour le rendu et la physique |
 | `largeurFaisceauGaussien(λ,D)` | Rayon du faisceau (m) à distance D par divergence gaussienne naturelle (w0·√(1+(D/zR)²)) — utilisé pour le profil vertical de la texture d'écran et de l'enveloppe 3D, cf. `scene.js` |
 | `intensiteFente(x,λ,a,D)` | I(x) normalisée, formule sinc² de Fraunhofer (sinθ exact, pas d'approximation petit angle). **Réservée au graphe I(x) et aux encarts de valeurs** — jamais utilisée pour le rendu visuel 3D (texture, enveloppe), cf. §Pipeline FFT |
-| `echantillonnerIntensite(n)` | Échantillonne I(x) sur toute la largeur de l'écran via `intensiteFente` — utilisée par `graph.js` (courbe I(x)) |
+| `echantillonnerIntensite(n, xMin?, xMax?)` | Échantillonne I(x) sur `[xMin,xMax]` (par défaut toute la largeur de l'écran) via `intensiteFente` — utilisée par `graph.js`, qui passe la fenêtre RÉELLEMENT visible (`gview`) plutôt que toujours toute la largeur de l'écran : la résolution suit ainsi le zoom, indispensable pour qu'une tache très petite (D et/ou λ faibles) reste lisse une fois affichée zoomée |
 | `longueurOndeVersRGB/Hex/Css(nm)` | Conversion λ → couleur (algorithme de Dan Bruton) |
 | `resetParams()` | Remet λ/a/D/showRays/beamMode aux valeurs par défaut |
 
@@ -84,8 +84,8 @@ rajoutée à la main.
 | `FFT_FENETRE_M` | Fenêtre physique carrée échantillonnée dans le plan de la fente (2.5 mm) — dimensionnée par le faisceau/l'ouverture, **pas** par la largeur d'écran à couvrir (cf. piège ci-dessous) |
 | `fft1D(re,im,invert)` | FFT radix-2 Cooley-Tukey, en place, itérative |
 | `fft2D(re,im,N,invert)` | FFT 2D par décomposition lignes puis colonnes (exact, pas une approximation) |
-| `construireChampOuverture(λ,a,D)` | Construit masque×gaussien incident, propage par FFT2D, renvoie `{ grille, pasEcran_m, N }` (intensité normalisée, pic=1) — appelée **une fois** par changement de paramètre (`scene.js` → `updateSceneParams`), partagée par texture et enveloppe |
-| `echantillonnerChamp(champ,x,y)` | Lit l'intensité à une position physique (m), plus proche voisin (résolution FFT très supérieure aux échantillonnages appelants), renvoie 0 hors de la zone couverte |
+| `construireChampOuverture(λ,a,D)` | Construit masque×gaussien incident, propage par FFT2D, renvoie `{ grille, N, lambda_m, D_m }` (intensité normalisée, pic=1) — appelée **une fois** par changement de paramètre (`scene.js` → `updateSceneParams`), partagée par texture et enveloppe |
+| `echantillonnerChamp(champ,x,y)` | Lit l'intensité à une position physique (m), plus proche voisin (résolution FFT très supérieure aux échantillonnages appelants), renvoie 0 hors de la zone couverte. Conversion position→indice de grille par la relation géométrique **exacte** `sinθ = x/√(x²+D²)` (même relation que `intensiteFente()`) — **pas** l'approximation paraxiale `x ≈ λ·D·fx` utilisée jusqu'ici, qui décalait les minima de la texture d'écran par rapport à ceux du graphe dès que D devient petit devant l'étendue de l'écran (constaté par l'utilisateur) |
 
 **Piège de dimensionnement (constaté à l'usage, pas juste un cas limite théorique)** : le rapport
 entre la portée couverte par la FFT à l'écran et la position du 1er minimum x₁ vaut
@@ -269,15 +269,32 @@ l'orientation de la caméra.
   et recadrée à **chaque frame** par `updateOrthoCamera()` tant que l'une de ces vues est active
   (reste donc juste si `D` change pendant qu'on est sur une vue fixe). `OrbitControls` désactivé
   (`controls.enabled = false`) sur ces 3 vues.
+  - **Dessus** : laser à **gauche**, écran à **droite** (`camOrtho.up = (1,0,0)`, rotation à 90° par
+    rapport à l'ancienne convention haut/bas). L'évasement du faisceau diffracté n'est exagéré
+    visuellement (`TOP_VIEW_PLANCHER_GAIN`, ×6) que sur les tout premiers `TOP_VIEW_FLARE_LONGUEUR_CM`
+    (= `SLIDE_SIZE`, ≈ taille du support de la fente) après la fente — fondu shader (`uXLimiteExagere`
+    → `uXLimiteReel` selon `vZ`, cf. §Enveloppe 3D ci-dessous) — au-delà, largeur réelle inchangée :
+    une exagération sur toute la longueur avait été essayée puis rejetée (demande explicite).
+  - **Dessus / Profil — cadrage figé sous `D_CADRAGE_MIN_CM`** (140 cm) : `updateOrthoCamera` borne
+    la distance utilisée pour le cadrage (`D_cadrage = max(D_cm, D_CADRAGE_MIN_CM)`), pas `D_cm`
+    lui-même (l'écran continue de se rapprocher réellement) — sous ce seuil, réduire `D` ne fait plus
+    « zoomer » toute la scène, seul l'écran se rapproche dans un cadre fixe.
   - **Écran** : caméra du côté de la fente, regardant vers `+z`, alignée avec l'axe du graphe I(x)
     en bas (mêmes unités physiques, même sens). Note : la figure de diffraction et le montage sont
     **symétriques par rapport à x = 0** (sinc² est une fonction paire) — un éventuel miroir gauche-droite
     de la caméra serait donc invisible dans cette simulation précise ; à surveiller si une future
     simulation 3D asymétrique réutilise ce pattern de caméra.
+  - **Écran — zoom molette** (`screenViewZoom`, 1 à `SCREEN_VIEW_ZOOM_MAX`=15) : centré sur (0,0),
+    jamais sur le curseur (demande explicite, différent du zoom-vers-curseur de la vue 3D). Le
+    graphe se recale automatiquement sur la plage réellement visible, cf. §graph.js.
   - En vue **Écran**, le banc (source, faisceau, plaque de la fente) est masqué (`.visible = false`)
     pour ne pas cacher l'écran — c'est une vue analytique, pas une vue « photo-réaliste ».
   - `fitOrtho(cam, halfW, halfH, aspect)` : ajuste `left/right/top/bottom` en mode « contain »
     (aucune des deux dimensions n'est jamais coupée, quel que soit le ratio du canvas).
+  - `fracXVueEcran(x_m)` : position horizontale d'un point physique dans le canvas 3D courant, en
+    fraction 0..1 de sa largeur — une caméra orthographique remplit toujours tout le canvas entre
+    `left`/`right`, sans letterboxing, donc simple règle de trois. Utilisée par `graph.js` →
+    `dessinerLienFigure()` pour aligner les pointillés reliant graphe et figure (cf. ci-dessous).
 
 #### Texture de l'écran
 
@@ -372,6 +389,12 @@ constante peint d'un dégradé), reconstruit entièrement à chaque changement d
   seulement pour les rayons dont l'abscisse **à l'écran** (attribut `aXFar`, constant le long du
   rayon — **pas** `position.x`, qui tend vers 0 pour tous les rayons près de la fente) tombe dans
   `[-x1, x1]`. Reproduit exactement le triangle tracé par les pointillés `raysLine`.
+- **Largeur du plancher exagérée près de la fente, en vue de dessus uniquement** : `uXLimiteReel`
+  (valeur physique, toutes vues) et `uXLimiteExagere` (agrandie ×`TOP_VIEW_PLANCHER_GAIN`, vue de
+  dessus seulement) sont mélangées dans le fragment shader selon la position `z` du fragment
+  (`mix(uXLimiteExagere, uXLimiteReel, clamp((vZ-uZNear)/uFlareLongueur,0,1))`) — visible seulement
+  sur `TOP_VIEW_FLARE_LONGUEUR_CM` après la fente, cf. §Caméras. `updateEnvelopeXLimite()` recalcule
+  ces uniforms à chaque changement de paramètre **et** de vue.
 
 Historique complet des versions intermédiaires (cône de révolution rejeté, plancher de hauteur
 géométrique rejeté...) : cf. les commentaires détaillés dans `scene.js` autour de
@@ -388,19 +411,65 @@ approches en cas de copier-coller vers une autre page.
 
 ### `js/graph.js` — Graphe I(x) interactif
 
-**Chargé après scene.js.** Dépend de `sim.js` uniquement (canvas 2D classique, aucune dépendance à Three.js).
+**Chargé après scene.js.** Dépend de `sim.js` (canvas 2D classique, aucune dépendance à Three.js) et,
+pour le mode Lien figure, de quelques éléments exposés par `scene.js` (`camOrtho`, `fracXVueEcran`).
 
 - Pas de dimension temporelle : I(x) est recalculée intégralement à chaque frame à partir des
   paramètres courants (`echantillonnerIntensite`), pas d'accumulation de points dans le temps
   (contrairement à `condensateur/` ou `radioactivite/`).
-- Outils interactifs : zoom rectangulaire (`graphZoomMode`), pan clic-glissé, molette, réticule
-  libre (`graphCursorActive`), **tangente** (`graphTangenteMode`) — version simplifiée du pattern
-  générique (clic pour figer une tangente avec étiquette pente + croix de suppression individuelle,
-  plusieurs tangentes peuvent coexister dans `tangentesFig[]`), différente de la « méthode des
-  tangentes » multi-phases spécifique à `titrage/`.
-- Vue courante : `gview = { xMin, xMax, yMin, yMax }` (mètres en x, intensité normalisée en y),
-  historique dans `graphViewHistory[]` pour le bouton « ← ».
+- **Interactions volontairement réduites au minimum** (zoom rectangulaire, pan clic-glissé, molette,
+  tangente, historique de vues — retirés à la demande de l'utilisateur, jugés superflus) :
+  - **Survol toujours actif** (pas de mode à activer) : le point de la courbe le plus proche de
+    l'abscisse survolée est mis en évidence (marqueur + étiquette coordonnées), via
+    `pointLePlusProche()`.
+  - **Épingler** (`graphPinMode`, bouton 📍) : en mode actif, cliquer épingle le point le plus
+    proche dans `graphPins[]` (marqueur permanent) ; recliquer sur une épingle existante (tolérance
+    8 px) la retire. RAZ par `resetSim()`.
+  - Plus de pan/zoom manuel sur le graphe lui-même — la seule façon de changer la fenêtre affichée
+    est le zoom molette de la vue Écran (`scene.js` → `screenViewZoom`), qui la pilote via
+    `syncGraphPixelParfait()`.
+- Vue courante : `gview = { xMin, xMax, yMin, yMax }` (mètres en x, intensité normalisée en y).
+  `GRAPH_PAD` (marge interne fixe autour du tracé) est partagé entre le dessin et les interactions
+  souris, via `graphLayout(cv)` qui centralise le repère x/y ↔ pixels.
 - Axe X affiché en cm.
+
+#### Lien Figure (`graphLienMode`, bouton « Lien figure »)
+
+N'a de sens qu'en **vue Écran** (seule vue où la figure 3D et le graphe représentent la même chose,
+au même endroit physique) : bouton désactivé/grisé hors de cette vue, mode automatiquement coupé si
+l'on en sort (`syncGraphLienDisponibilite()`, appelée par `scene.js` → `setSceneView()`).
+
+Dessine, sur un overlay dédié (`#graph-lien-overlay`, `<canvas>` en `position:absolute` recouvrant
+scène 3D + splitter + graphe, `pointer-events:none`, cf. `index.html`/`style.css`), des pointillés
+reliant chaque extremum du graphe à sa position sur la figure affichée en vue Écran — une couleur
+pour les maxima (`COULEUR_LIEN_MAXIMA`), une pour les minima (`COULEUR_LIEN_MINIMA`), légende en
+haut à droite du graphe. Redessiné à **chaque frame** (`dessinerLienFigure()`, appelée depuis
+`ui.js` → `loop()`, comme `drawIntensityGraph()`) : la géométrie des deux canvas peut changer à tout
+moment (redimensionnement, glissement du splitter) sans qu'aucun événement dédié ne le signale — pas
+d'anti-rebond ici, juste un no-op immédiat si le mode est inactif.
+
+- **Détection des extrema** (`calculerExtrema(pts)`) : comparaison de chaque point à une fenêtre de
+  `EXTREMA_FENETRE` (2) voisins de chaque côté, avec des inégalités **larges** (pas strictes) — au
+  sommet d'un maximum (ou au creux d'un minimum), la courbe est quasi plate sur plusieurs
+  échantillons consécutifs, et une comparaison stricte au seul voisin immédiat ratait l'extremum dès
+  que deux échantillons adjacents tombaient à une intensité identique au bit près (constaté sur la
+  tache centrale). Les inégalités larges font qualifier tous les points d'un même plateau/creux ;
+  `dedupePlateau()` fusionne ensuite les points consécutifs (en x) d'un même groupe en un seul point
+  représentatif — **celui d'intensité réellement la plus haute/basse du groupe**, pas son milieu
+  géométrique (essayé initialement, mais un creux large n'est pas forcément symétrique en x autour
+  de son point le plus bas ; le milieu géométrique retombe alors visiblement à côté du vrai minimum,
+  constaté par l'utilisateur). Pas de formule fermée pour les maxima secondaires (racines
+  transcendantes de `tan β = β`) : la détection numérique évite d'en avoir besoin.
+- **Coupure au 2e minimum** (`limiterAuDeuxiemeMinimum()`) : n'affiche que le maximum central, le
+  1er minimum, la 1ère tache secondaire et le 2e minimum de chaque côté — rien au-delà, même si la
+  fenêtre visible s'étend plus loin (demande explicite, pas besoin d'aller plus loin).
+- **Alignement pixel-parfait** (`syncGraphPixelParfait()`, appelée par `scene.js` →
+  `syncGraphAvecVueEcran()` sur zoom molette/redimensionnement/bascule de vue) : calcule `gview`
+  (pas nécessairement symétrique autour de 0) pour que le graphe ait exactement la **même échelle
+  px/m** et le **même pixel de page pour x=0** que la vue Écran — sans quoi les deux canvas
+  montreraient la même plage physique mais à des échelles différentes (le graphe réserve une marge
+  interne asymétrique, `GRAPH_PAD`, que la scène — plein cadre — n'a pas), et les pointillés du lien
+  figure n'étaient verticaux qu'à peu près.
 
 ---
 
@@ -413,13 +482,14 @@ approches en cas de copier-coller vers une autre page.
 - `cycleBeamMode()` : fait cycler `sim.beamMode` entre `'visible'`/`'laserOnly'`/`'off'`, met à
   jour le libellé du bouton « Faisceau lumineux » et appelle `updateSceneParams()`.
 - `setView(view)` : appelle `setSceneView(view)` (scene.js) + met à jour les boutons `.btn-view`.
-- `resetSim()` : `resetParams()` + RAZ sliders/tangentes/vue graphe/caméra 3D/libellé du bouton
-  Faisceau lumineux.
+- `resetSim()` : `resetParams()` + RAZ sliders/épingles du graphe/vue graphe/caméra 3D/libellé du
+  bouton Faisceau lumineux. Le mode Lien figure se coupe automatiquement via `setView('3d')` →
+  `setSceneView()` → `syncGraphLienDisponibilite()`, pas besoin de RAZ explicite ici.
 - Splitter draggable entre `#scene-area` et `#graph-area` (pattern identique à `condensateur/js/circuit.js`).
 - `resize()` anti-rebond (`requestAnimationFrame`) → `resizeScene()` + `resizeGraphCanvas()`.
 - `loop()` : boucle continue (`requestAnimationFrame`) qui appelle `renderScene()` (nécessaire en
-  continu même sans animation physique, pour l'amortissement `OrbitControls.enableDamping`) et
-  `drawIntensityGraph()` à chaque frame.
+  continu même sans animation physique, pour l'amortissement `OrbitControls.enableDamping`),
+  `drawIntensityGraph()` et `dessinerLienFigure()` à chaque frame.
 
 ---
 
@@ -438,12 +508,13 @@ index.html
   │
   └── js/scene.js     dépend de : sim.js, THREE, THREE.OrbitControls
   │                   expose : initScene, updateSceneParams, setSceneView, reset3DCamera,
-  │                             resizeScene, renderScene
+  │                             resizeScene, renderScene, camOrtho, fracXVueEcran,
+  │                             syncGraphAvecVueEcran (appelle en retour des fonctions de graph.js)
   │
-  └── js/graph.js     dépend de : sim.js
-  │                   expose : gview, tangentesFig, graphViewHistory, drawIntensityGraph,
-  │                             initGraphInteractions, resizeGraphCanvas, toggleGraphZoom,
-  │                             toggleGraphCursor, toggleGraphTangente, prevGraphView, autoScaleGraph
+  └── js/graph.js     dépend de : sim.js, et de scene.js pour le mode Lien figure (camOrtho, fracXVueEcran)
+  │                   expose : gview, graphPins, drawIntensityGraph, dessinerLienFigure,
+  │                             initGraphInteractions, resizeGraphCanvas, toggleGraphPin,
+  │                             toggleGraphLien, syncGraphLienDisponibilite, syncGraphPixelParfait
   │
   └── js/ui.js        dépend de : tous les fichiers précédents
                        expose : updateParam, toggleRays, cycleBeamMode, setView, updateReadouts,
