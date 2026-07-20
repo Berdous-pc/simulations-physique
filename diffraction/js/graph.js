@@ -51,6 +51,19 @@ function prevGraphView() {
   document.getElementById('btn-graph-prev').disabled = graphViewHistory.length === 0;
   drawIntensityGraph();
 }
+// ─────────────────────────────────────────────────────────────────────
+//  Aligne la fenêtre horizontale du graphe sur la plage physique visible dans la vue
+//  Écran (appelée par scene.js → syncGraphAvecVueEcran, sur zoom molette/redimensionnement/
+//  bascule de vue) : garde xMin/xMax en phase avec le cadrage 3D, sans toucher yMin/yMax
+//  (l'échelle d'intensité n'a pas de raison de bouger avec un zoom spatial) ni l'historique
+//  de zoom du graphe (ce n'est pas un zoom manuel de l'utilisateur sur le graphe lui-même).
+// ─────────────────────────────────────────────────────────────────────
+function setGraphScreenRange(halfWidth_m) {
+  gview.xMin = -halfWidth_m;
+  gview.xMax = halfWidth_m;
+  drawIntensityGraph();
+}
+
 function autoScaleGraph() {
   pushGraphView();
   gview.xMin = -sim.screenHalfWidth;

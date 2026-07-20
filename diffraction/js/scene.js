@@ -17,6 +17,20 @@ const LASER_DIAMETER = 1.5;    // cm — module laser diode de TP
 const LASER_LENGTH = 5;        // cm
 const SOURCE_Z = -15;          // cm — laser monté proche de la fente, comme sur un vrai banc
 const SLIT_Z = 0;
+// Distance fente-écran (cm) en dessous de laquelle le cadrage des vues Dessus/Profil
+// (updateOrthoCamera) cesse de se resserrer : au-delà, réduire D ne fait que rapprocher
+// l'écran dans un cadre fixe, plutôt que de zoomer sur tout le banc — cf. commentaire à
+// updateOrthoCamera.
+const D_CADRAGE_MIN_CM = 140;
+
+// Zoom (molette) de la vue Écran, centré sur le centre de l'écran (0,0) — jamais sur le
+// curseur, demande explicite de l'utilisateur (contrairement au zoom-vers-curseur de la
+// vue 3D, cf. initZoomVersCurseur). 1 = cadrage par défaut (écran entier + marge), plus
+// grand = zoom avant. Le graphe I(x) (graph.js) se recale sur la même plage physique
+// visible à chaque changement (cf. syncGraphAvecVueEcran), pour que la courbe coïncide
+// toujours avec les taches affichées sur l'écran.
+let screenViewZoom = 1;
+const SCREEN_VIEW_ZOOM_MIN = 1, SCREEN_VIEW_ZOOM_MAX = 15;
 const BEAM_DIAMETER = FAISCEAU_DIAMETRE_MM / 10; // cm — même constante que la physique de divergence (sim.js)
 const SLIDE_SIZE = 7;          // cm — lame porte-fente réelle, 7×7 cm
 const SLIDE_THICK = 0.2;       // cm — épaisseur réelle d'une lame
@@ -43,6 +57,22 @@ const FLOOR_THICK = 3;          // cm
 // compromis que pour la fente elle-même : le rayon RÉEL (largeurFaisceauGaussien) est
 // utilisé dès qu'il dépasse ce plancher, donc la divergence avec D reste visible.
 const RENDU_W_MIN_CM = 0.2;
+
+// Facteur d'exagération du plancher d'opacité (cf. uXLimiteExagere/envMat) EN VUE DE DESSUS
+// uniquement : cette vue doit englober tout le banc (jusqu'à ~2 m), ce qui écrase la
+// largeur physique réelle de la tache (souvent <2 cm) à 1-2 px — invisible. Comme pour
+// RENDU_W_MIN_CM, la vraie valeur physique (x1_cm) reste utilisée pour la géométrie et
+// pour les autres vues (profil/écran/3D) ; seule la LARGEUR DU PLANCHER affichée en vue
+// de dessus est agrandie, plafonnée pour ne jamais dépasser l'écran lui-même — ET
+// seulement sur les tous premiers cm après la fente (cf. TOP_VIEW_FLARE_LONGUEUR_CM),
+// pas sur toute la longueur fente→écran : demande explicite de l'utilisateur, qui ne
+// voulait pas d'un faisceau élargi sur tout le banc, seulement un « éclatement » visible
+// juste à la sortie de la fente (l'échelle de son support), le reste du trajet gardant
+// la largeur réelle (fine, cf. discussion de conception initiale sur uPlancherAlpha).
+const TOP_VIEW_PLANCHER_GAIN = 6;
+const TOP_VIEW_FLARE_LONGUEUR_CM = SLIDE_SIZE; // ≈ taille de la lame porte-fente/son support
+
+let x1CmCourant = 0; // dernière valeur physique (cf. updateSceneParams), réutilisée par updateEnvelopeXLimite() sur simple changement de vue
 
 // Correspondance a (µm, physique) → largeur visuelle de la fente (cm, schématique).
 // Cf. ARCHITECTURE.md : la fente réelle (dixièmes de mm) est invisible à l'échelle
@@ -381,6 +411,13 @@ const SEUIL_MODE_AXIAL = 0.95; // |forward·axeZ| au-delà duquel on bascule (~1
 
 function initZoomVersCurseur() {
   canvasEl.addEventListener('wheel', e => {
+    if (sim.view === 'screen') {
+      e.preventDefault();
+      const facteur = e.deltaY > 0 ? 1 / 1.2 : 1.2; // bas = dézoome, haut = zoome
+      screenViewZoom = Math.max(SCREEN_VIEW_ZOOM_MIN, Math.min(SCREEN_VIEW_ZOOM_MAX, screenViewZoom * facteur));
+      syncGraphAvecVueEcran();
+      return;
+    }
     if (sim.view !== '3d') return;
     e.preventDefault();
 
@@ -560,16 +597,21 @@ function construireObjets() {
       uColor: { value: new THREE.Color(0xff0000) },
       uOpacite: { value: 0.6 },
       uPlancherAlpha: { value: 0.15 },
-      uXLimite: { value: 1 }
+      uXLimiteReel: { value: 1 },
+      uXLimiteExagere: { value: 1 },
+      uZNear: { value: 0 },
+      uFlareLongueur: { value: 0 }
     },
     vertexShader: `
       attribute vec3 color;
       attribute float aXFar;
       varying float vIntensite;
       varying float vXFar;
+      varying float vZ;
       void main() {
         vIntensite = color.r;
         vXFar = aXFar;
+        vZ = position.z;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
       }
     `,
@@ -577,11 +619,19 @@ function construireObjets() {
       uniform vec3 uColor;
       uniform float uOpacite;
       uniform float uPlancherAlpha;
-      uniform float uXLimite;
+      uniform float uXLimiteReel;
+      uniform float uXLimiteExagere;
+      uniform float uZNear;
+      uniform float uFlareLongueur;
       varying float vIntensite;
       varying float vXFar;
+      varying float vZ;
       void main() {
-        float poidsX = 1.0 - smoothstep(uXLimite * 0.85, uXLimite, abs(vXFar));
+        // Fondu de la limite du plancher entre uXLimiteExagere (juste après la fente, sur
+        // uFlareLongueur) et uXLimiteReel (au-delà) — cf. commentaire à uFlareLongueur.
+        float tFlare = uFlareLongueur > 0.0 ? clamp((vZ - uZNear) / uFlareLongueur, 0.0, 1.0) : 1.0;
+        float xLimite = mix(uXLimiteExagere, uXLimiteReel, tFlare);
+        float poidsX = 1.0 - smoothstep(xLimite * 0.85, xLimite, abs(vXFar));
         float alpha = max(vIntensite * uOpacite, uPlancherAlpha * poidsX);
         gl_FragColor = vec4(uColor, alpha);
       }
@@ -726,7 +776,8 @@ function updateSceneParams() {
   // entièrement à chaque appel, la silhouette et le profil de luminosité changent avec a/D/λ.
   // uXLimite (position du 1er minimum, même x1_cm que raysLine plus bas) borne le plancher
   // d'opacité du shader (cf. construireObjets) à la seule zone de la tache centrale.
-  beamEnvelopeMesh.material.uniforms.uXLimite.value = x1_cm;
+  x1CmCourant = x1_cm;
+  updateEnvelopeXLimite();
   beamEnvelopeMesh.geometry.dispose();
   beamEnvelopeMesh.geometry = construireGeometrieEnveloppe(SLIT_Z, D_cm, BEAM_DIAMETER, w_cm, champ);
   for (let px = 0; px < w; px++) {
@@ -764,6 +815,27 @@ function updateSceneParams() {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+//  Largeur du plancher d'opacité (uXLimite, cf. envMat) : valeur physique réelle
+//  (x1CmCourant) partout, sauf en vue de dessus où elle est agrandie (cf.
+//  TOP_VIEW_PLANCHER_GAIN) pour rester lisible à l'échelle du banc entier. Appelée à la
+//  fois par updateSceneParams() (λ/a/D changent) et setSceneView() (juste un changement
+//  de vue, x1CmCourant inchangé) — mêmes déclencheurs que raysLine.visible/
+//  updateBeamVisibility (cf. ARCHITECTURE.md).
+// ─────────────────────────────────────────────────────────────────────
+function updateEnvelopeXLimite() {
+  const u = beamEnvelopeMesh.material.uniforms;
+  u.uXLimiteReel.value = x1CmCourant;
+  if (sim.view === 'top') {
+    u.uXLimiteExagere.value = Math.min(x1CmCourant * TOP_VIEW_PLANCHER_GAIN, SCREEN_WIDTH / 2 * 0.5);
+    u.uZNear.value = SLIT_Z;
+    u.uFlareLongueur.value = TOP_VIEW_FLARE_LONGUEUR_CM;
+  } else {
+    u.uXLimiteExagere.value = x1CmCourant;
+    u.uFlareLongueur.value = 0;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
 //  Visibilité des trois représentations du faisceau (laser→fente,
 //  fente→écran, point de couleur), croisant sim.beamMode et la vue
 //  active. Appelée depuis updateSceneParams() (changement de mode/
@@ -792,7 +864,9 @@ function setSceneView(view) {
   supportLaser.visible = !cacherBanc;
   supportSlide.visible = !cacherBanc;
   raysLine.visible = sim.showRays && view !== 'screen';
+  updateEnvelopeXLimite();
   updateBeamVisibility();
+  syncGraphAvecVueEcran();
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -813,14 +887,19 @@ function reset3DCamera() {
 // ─────────────────────────────────────────────────────────────────────
 function updateOrthoCamera(aspect) {
   const D_cm = sim.D * 100;
-  const zCenter = (SOURCE_Z + D_cm) / 2;
-  const halfSpanZ = (D_cm - SOURCE_Z) / 2 * 1.15;
+  // Cadrage figé en dessous de D_CADRAGE_MIN_CM : sous ce seuil, réduire D ne fait plus
+  // « zoomer » les vues Dessus/Profil (recentrage + rétrécissement du cadre à chaque
+  // frame, gênant pour observer l'écran se rapprocher) — seul D_cadrage reste borné, la
+  // position réelle de l'écran (updateSceneParams, D_cm non modifié) continue de suivre D.
+  const D_cadrage = Math.max(D_cm, D_CADRAGE_MIN_CM);
+  const zCenter = (SOURCE_Z + D_cadrage) / 2;
+  const halfSpanZ = (D_cadrage - SOURCE_Z) / 2 * 1.15;
 
   if (sim.view === 'top') {
     camOrtho.position.set(0, 500, zCenter);
-    camOrtho.up.set(0, 0, -1);
+    camOrtho.up.set(1, 0, 0);
     camOrtho.lookAt(0, 0, zCenter);
-    fitOrtho(camOrtho, SCREEN_WIDTH / 2 * 1.3, halfSpanZ, aspect);
+    fitOrtho(camOrtho, halfSpanZ, SCREEN_WIDTH / 2 * 1.3, aspect);
   } else if (sim.view === 'side') {
     camOrtho.position.set(-500, 0, zCenter);
     camOrtho.up.set(0, 1, 0);
@@ -830,7 +909,7 @@ function updateOrthoCamera(aspect) {
     camOrtho.position.set(0, 0, SOURCE_Z - 300);
     camOrtho.up.set(0, 1, 0);
     camOrtho.lookAt(0, 0, D_cm);
-    fitOrtho(camOrtho, SCREEN_WIDTH / 2 * 1.08, SCREEN_HEIGHT / 2 * 1.08, aspect);
+    fitOrtho(camOrtho, SCREEN_WIDTH / 2 * 1.08 / screenViewZoom, SCREEN_HEIGHT / 2 * 1.08 / screenViewZoom, aspect);
   }
 }
 
@@ -851,6 +930,25 @@ function fitOrtho(cam, worldHalfW, worldHalfH, aspect) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+//  Recale la fenêtre du graphe I(x) (graph.js → gview) sur la plage physique horizontale
+//  RÉELLEMENT visible dans la vue Écran (camOrtho.left/right, déjà calculés par
+//  updateOrthoCamera pour l'aspect et le zoom courants — pas juste SCREEN_WIDTH/zoom, qui
+//  ignorerait la marge ajoutée par fitOrtho quand c'est la hauteur qui contraint le
+//  cadrage) : ainsi la courbe reste toujours alignée avec les taches affichées sur
+//  l'écran. Appelée après tout changement affectant ce cadrage : zoom molette
+//  (initZoomVersCurseur), bascule vers la vue Écran (setSceneView), redimensionnement
+//  (resizeScene) — sans quoi le graphe resterait basé sur l'ancien cadrage.
+// ─────────────────────────────────────────────────────────────────────
+function syncGraphAvecVueEcran() {
+  if (sim.view !== 'screen') return;
+  const aspect = canvasEl.clientWidth / canvasEl.clientHeight;
+  updateOrthoCamera(aspect);
+  if (typeof setGraphScreenRange === 'function') {
+    setGraphScreenRange(camOrtho.right / 100); // cm → m
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
 //  Redimensionnement (appelé par ui.js sur resize, avec anti-rebond).
 // ─────────────────────────────────────────────────────────────────────
 function resizeScene() {
@@ -863,6 +961,7 @@ function resizeScene() {
   camPersp.aspect = w / h;
   camPersp.updateProjectionMatrix();
   updateOrthoCamera(w / h);
+  syncGraphAvecVueEcran();
 }
 
 // ─────────────────────────────────────────────────────────────────────

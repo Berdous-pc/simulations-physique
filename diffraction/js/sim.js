@@ -214,8 +214,9 @@ function fft2D(re, im, N, invert) {
 //  Construit le champ diffracté par la fente (masque rectangulaire a × FENTE_HAUTEUR_CM,
 //  éclairé par le profil gaussien du faisceau incident, cf. discussion de conception),
 //  propagé en champ lointain par FFT2D. Renvoie une grille d'intensité normalisée (pic
-//  central = 1, même convention que intensiteFente()) et le pas physique correspondant côté
-//  écran (dépend de λ et D — relation de Fraunhofer x_écran = λ·D·fx, cf. échantillonnerChamp).
+//  central = 1, même convention que intensiteFente()) ainsi que λ et D, réutilisés par
+//  échantillonnerChamp() pour convertir position écran → indice de grille (relation
+//  géométrique EXACTE, cf. sa docstring — pas une simple mise à l'échelle par λ·D).
 //  Appelée une seule fois par changement de paramètre (scene.js → updateSceneParams), le
 //  résultat est ensuite échantillonné en de nombreux points (texture, enveloppe 3D) sans
 //  recalcul — la FFT elle-même est le seul poste coûteux.
@@ -263,8 +264,7 @@ function construireChampOuverture(lambda_nm, a_um, D_m) {
     for (let k = 0; k < grille.length; k++) grille[k] /= pic;
   }
 
-  const pasEcran_m = lambda_m * D_m / FFT_FENETRE_M; // x_écran = λ·D·fx, pas en fx = 1/fenêtre
-  return { grille, pasEcran_m, N };
+  return { grille, N, lambda_m, D_m };
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -273,11 +273,24 @@ function construireChampOuverture(lambda_nm, a_um, D_m) {
 //  écran de l'ordre du dixième de mm dans les réglages courants) est très supérieure à celle
 //  des échantillonnages appelants (texture, enveloppe 3D), l'interpolation n'apporterait rien
 //  de visible. Renvoie 0 hors de la zone couverte par la grille (cf. commentaire FFT_FENETRE_M).
+//
+//  Conversion position → indice de grille EXACTE (sinθ = x/√(x²+D²), même relation
+//  géométrique que intensiteFente() — cf. sa docstring), PAS l'approximation paraxiale
+//  x_écran ≈ λ·D·fx utilisée jusqu'ici : les deux coïncident pour un petit angle (D grand
+//  devant x), mais divergent nettement quand x devient comparable à D (D réglable jusqu'à
+//  un minimum bien inférieur à screenHalfWidth) — ce qui décalait les minima de la texture
+//  d'écran par rapport à ceux du graphe I(x) (constaté par l'utilisateur, cf. discussion de
+//  conception). La relation EXACTE entre angle et fréquence spatiale de Fraunhofer,
+//  sinθ = λ·fx, reste inchangée (ce n'est pas une approximation, contrairement à x≈D·sinθ) —
+//  seule la façon de relier x physique à fx change ici, la grille elle-même (calculée par
+//  construireChampOuverture) n'est pas touchée.
 // ─────────────────────────────────────────────────────────────────────
 function echantillonnerChamp(champ, x_m, y_m) {
-  const { grille, pasEcran_m, N } = champ;
-  const i = Math.round(x_m / pasEcran_m) + N / 2;
-  const j = Math.round(y_m / pasEcran_m) + N / 2;
+  const { grille, N, lambda_m, D_m } = champ;
+  const sinThetaX = x_m / Math.sqrt(x_m * x_m + D_m * D_m);
+  const sinThetaY = y_m / Math.sqrt(y_m * y_m + D_m * D_m);
+  const i = Math.round((sinThetaX / lambda_m) * FFT_FENETRE_M) + N / 2;
+  const j = Math.round((sinThetaY / lambda_m) * FFT_FENETRE_M) + N / 2;
   if (i < 0 || i >= N || j < 0 || j >= N) return 0;
   return grille[j * N + i];
 }
