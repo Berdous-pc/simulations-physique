@@ -82,8 +82,8 @@ const LEN_COLOR = 0x8fd6ff; // bleu clair, distinct du jaune (rayons) et du blan
 const LEN_RENDER_ORDER = 500;
 const LEN_OFFSET_X = 13;        // cm — décalage latéral des flèches d/D sur la table (3D/Dessus), pour éviter les supports (les plus larges, supportScreen, font ~10 cm)
 const LEN_ARROW_Y_TABLE = TABLE_Y + 0.4;   // cm — flèches légèrement au-dessus du plateau (3D/Dessus)
-const LEN_LABEL_Y_TABLE = LEN_ARROW_Y_TABLE + 2.6; // marge accrue : labels agrandis ×3
-const LEN_LABEL_X_EXTRA_TABLE = 5; // cm — décale le label d/D encore plus vers l'extérieur de la table que la flèche (utile en vue Dessus, où le décalage Y ci-dessus est aplati)
+const LEN_LABEL_Y_TABLE = TABLE_Y + 0.05; // cm — posé à même la surface de la table (pas flottant à hauteur de la flèche)
+const LEN_LABEL_X_EXTRA_TABLE = 4; // cm — décale le label d/D encore plus vers l'extérieur de la table que la flèche (utile en vue Dessus, où le décalage Y ci-dessus est aplati)
 const LEN_SIDE_Y = TABLE_Y - PLATEAU_EPAISSEUR - TABLE_THICK / 2; // cm — milieu de la tranche de la table (vue Profil)
 const LEN_SIDE_LABEL_Y = TABLE_Y - PLATEAU_EPAISSEUR - TABLE_THICK - 1.6; // cm — sous la table (vue Profil)
 const LEN_TOP_L_DECALAGE_Z = 3;   // cm — recul de la flèche L derrière l'écran (vue Dessus)
@@ -482,6 +482,7 @@ function orienterDecalque(mesh, right, up) {
 // ─────────────────────────────────────────────────────────────────────
 const LEN_DASH_SIZE = 0.8, LEN_GAP_SIZE = 0.6;
 const LEN_DASH_THICK = 0.18; // cm — épaisseur visible, dans le plan de la surface
+const LEN_DASH_THICK_L_ECRAN = 0.06; // cm — épaisseur réduite, uniquement pour les pointillés de L en vue 3D/Écran
 const LEN_DASH_PLAT = 0.02;  // cm — épaisseur quasi nulle, perpendiculaire à la surface (décalque)
 const LEN_DASH_MAX_TICKS = 12; // assez pour les plus longs segments utilisés (cf. placerMesureTable)
 function creerPointilleSegment(color) {
@@ -498,13 +499,13 @@ function creerPointilleSegment(color) {
   group.userData.ticks = ticks;
   return group;
 }
-function placerPointilleSegment(group, p1, p2, axePlat) {
+function placerPointilleSegment(group, p1, p2, axePlat, epaisseurVisible = LEN_DASH_THICK) {
   const dx = p2[0] - p1[0], dy = p2[1] - p1[1], dz = p2[2] - p1[2];
   const longueur = Math.hypot(dx, dy, dz);
   const ticks = group.userData.ticks;
   if (longueur < 1e-6) { ticks.forEach(t => t.visible = false); return; }
   const ux = dx / longueur, uy = dy / longueur, uz = dz / longueur;
-  const epaisseur = { x: LEN_DASH_THICK, y: LEN_DASH_THICK, z: LEN_DASH_THICK };
+  const epaisseur = { x: epaisseurVisible, y: epaisseurVisible, z: epaisseurVisible };
   epaisseur[axePlat] = LEN_DASH_PLAT;
   const cycle = LEN_DASH_SIZE + LEN_GAP_SIZE;
   let d = 0, i = 0;
@@ -1191,8 +1192,8 @@ function updateLengthsGroup(x1_cm, w_cm) {
       setFlecheDoublePlateLongueur(mesureL.flechePlate, 2 * x1_cm);
       mesureL.flechePlate.rotation.set(0, 0, 0);
       mesureL.flechePlate.position.set(0, yArrow, D_cm);
-      placerPointilleSegment(mesureL.dash1, [-x1_cm, yArrow, D_cm], [-x1_cm, 0, D_cm], 'z');
-      placerPointilleSegment(mesureL.dash2, [x1_cm, yArrow, D_cm], [x1_cm, 0, D_cm], 'z');
+      placerPointilleSegment(mesureL.dash1, [-x1_cm, yArrow, D_cm], [-x1_cm, 0, D_cm], 'z', LEN_DASH_THICK_L_ECRAN);
+      placerPointilleSegment(mesureL.dash2, [x1_cm, yArrow, D_cm], [x1_cm, 0, D_cm], 'z', LEN_DASH_THICK_L_ECRAN);
       // Décalque contre l'écran : la normale doit faire face à la source/caméra (côté -Z),
       // pas s'en éloigner, sinon le texte se lit à l'envers (bug initial, cf. écran lui-même
       // vu depuis le laser et non depuis l'extérieur).
