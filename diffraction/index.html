@@ -139,7 +139,10 @@
     <!-- Section : Options -->
     <div>
       <div class="section-title">Options</div>
-      <button class="btn btn-toggle-one active" id="btn-rays" onclick="toggleRays()">Rayons vers les minima</button>
+      <div style="margin-top:8px; display:flex; flex-direction:column; gap:8px;">
+        <button class="btn btn-toggle-one active" id="btn-rays" onclick="toggleRays()">Rayons vers les minima</button>
+        <button class="btn btn-toggle-one active" id="btn-beam-mode" onclick="cycleBeamMode()">Faisceau lumineux : Visible</button>
+      </div>
     </div>
 
     <!-- Section : Valeurs -->

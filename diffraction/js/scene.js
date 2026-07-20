@@ -20,7 +20,10 @@ const SLIT_Z = 0;
 const BEAM_DIAMETER = FAISCEAU_DIAMETRE_MM / 10; // cm — même constante que la physique de divergence (sim.js)
 const SLIDE_SIZE = 7;          // cm — lame porte-fente réelle, 7×7 cm
 const SLIDE_THICK = 0.2;       // cm — épaisseur réelle d'une lame
-const SLIT_BAND_HEIGHT = SLIDE_SIZE * 0.8; // cm — la fente occupe 80% de la hauteur de la lame
+// cm — hauteur réelle de la fente : reprend FENTE_HAUTEUR_CM (sim.js), source unique désormais
+// utilisée aussi par la physique (construireChampOuverture) — plus une simple proportion
+// esthétique de SLIDE_SIZE, une vraie grandeur physique partagée entre rendu et calcul.
+const SLIT_BAND_HEIGHT = FENTE_HAUTEUR_CM;
 const SCREEN_WIDTH = sim.screenHalfWidth * 2 * 100; // = 25 cm, cohérent avec sim.screenHalfWidth
 const SCREEN_HEIGHT = 15;      // cm — écran réel de TP, 25×15 cm
 const TABLE_Y = -18;            // cm — hauteur du dessus des plateaux de support (sommet de la table)
@@ -79,8 +82,218 @@ function creerSupport(largeurPlateau, profondeurPlateau, longueurTige) {
   return group;
 }
 
+// Résolution de l'enveloppe, dans ses 3 directions :
+//  - N : échantillons de I(x) le long de l'écran — c'est la direction où sinc² oscille,
+//    besoin de finesse pour résoudre les franges les plus étroites.
+//  - M : échantillons du profil gaussien vertical Iy — une seule bosse lisse, besoin de
+//    bien moins de points.
+//  - K : couches intermédiaires en profondeur (z, de la fente à l'écran) des nappes
+//    dessus/dessous, cf. construireGeometrieEnveloppe — sans elles l'enveloppe n'a de
+//    matière qu'à ses deux extrémités et paraît creuse vue de biais (constaté en vue
+//    Profil, cf. discussion de conception : deux traits fins avec du vide entre les deux,
+//    au lieu d'un faisceau qui paraît plein).
+// Sommets reliés par des triangles à couleur ET position interpolées.
+const ENVELOPPE_N_TRANCHES = 240;
+const ENVELOPPE_M_TRANCHES = 12;
+const ENVELOPPE_K_COUCHES = 6;
+
+// Exposant de compression de la LUMINOSITÉ affichée de l'enveloppe 3D (distinct de la
+// racine carrée — exposant 0.5 — utilisée pour la texture d'écran et pour la géométrie de
+// l'enveloppe elle-même, cf. ixGeomCol/ixLumCol dans construireGeometrieEnveloppe) : plus
+// grand que 0.5, pour que les taches secondaires restent visibles en silhouette (géométrie
+// inchangée) mais paraissent beaucoup moins lumineuses que la tache centrale — demande
+// explicite de l'utilisateur, qui ne voulait PAS ce changement sur la texture d'écran.
+const ENVELOPPE_GAMMA_LUMINOSITE = 1.6;
+
+// ─────────────────────────────────────────────────────────────────────
+//  Géométrie complète de l'enveloppe du faisceau diffracté : UN seul maillage continu
+//  (pas de « coins » indépendants par tache, pas de parois internes) formé de :
+//   - une nappe « côté écran » (grille (x,y) complète à z=zFar, cf. grilleFar ci-dessous) —
+//     porte tout le détail de la figure de diffraction (silhouette + dégradé, cf. ci-dessous) ;
+//   - un « ruban » en profondeur (loft, cf. rubans ci-dessous) POUR CHAQUE rangée y (j=0..M),
+//     pas seulement les deux bords haut/bas — cf. discussion de conception : une première
+//     version ne rubanait que j=0 et j=M ; en vue Profil (qui aplatit x, la seule direction
+//     où la nappe écran a une épaisseur), tout l'intérieur de la grille — y compris son
+//     centre, le plus lumineux — restait plat à z=zFar et donc invisible par la tranche,
+//     laissant un creux exactement là où on attend le plus de matière. Un ruban par rangée
+//     élimine ce creux : à chaque hauteur y, il y a désormais une vraie surface qui va de la
+//     fente à l'écran, pas seulement un point qui saute directement à un plan.
+//
+//  Sommets PARTAGÉS entre triangles adjacents (géométrie indexée) plutôt qu'un solide
+//  dupliqué par échantillon (version antérieure) : évite toute paroi latérale interne —
+//  cause du rendu « en tuyaux d'orgue » constaté (deux parois quasi coïncidentes à chaque
+//  frontière s'additionnaient en opacité, cf. discussion de conception).
+//
+//  Double codage de l'intensité, x ET y (un vrai cône dont la base épouse la silhouette de
+//  la tache, pas un volume à section constante peint d'un dégradé) :
+//   - GÉOMÉTRIE : à l'écran, la demi-hauteur de la grille à l'abscisse x est proportionnelle
+//     à √I(x) — elle pince à une largeur nulle exactement aux minima (I=0 : zéro physique
+//     exact, pas une approximation visuelle) et se renfle à chaque maximum, y compris les
+//     secondaires, sans énumérer les ordres un par un. Chaque ruban interpole linéairement
+//     x et y entre le sommet-arête propre à sa rangée (côté fente, x=0) et sa position réelle
+//     côté écran, comme un vrai tronc de cône.
+//   - COULEUR de sommet (lue comme alpha par le shader, cf. updateSceneParams) : à
+//     l'intérieur de cette silhouette, dégradé bidimensionnel √I(x)·Iy(y) — Iy = même
+//     profil gaussien réel que la texture d'écran (largeurFaisceauGaussien, cf. sim.js),
+//     évalué à la position y physique réelle. Les deux se renforcent : le faisceau devient
+//     à la fois plus fin ET plus terne vers un minimum, plus large ET plus lumineux à un
+//     maximum. Le long de z, la couleur de chaque ruban interpole aussi entre le sommet-arête
+//     (couleur max, schématique — le faisceau encore non « étalé » juste à la sortie de la
+//     fente) et l'intensité réelle côté écran : la figure se dessine progressivement vers
+//     l'écran.
+//
+//  Reconstruite à chaque changement de paramètre (cf. updateSceneParams) : la forme dépend
+//  de λ/a/D dans son ensemble, pas de simple mise à l'échelle possible d'une géométrie
+//  unitaire.
+//
+//  I(x) ci-dessus vient de `champ` (paramètre, cf. appelant), construit par
+//  construireChampOuverture() → FFT — PAS de intensiteFente() directement (celle-ci reste
+//  réservée au graphe et aux encarts, cf. discussion de conception). Les deux sources
+//  coïncident pour une fente (mêmes minima/maxima), mais seule celle-ci (le champ FFT) sera
+//  concernée le jour où la forme de l'ouverture changera.
+// ─────────────────────────────────────────────────────────────────────
+function construireGeometrieEnveloppe(zNear, zFar, hNear, wMax, champ) {
+  const n = ENVELOPPE_N_TRANCHES, m = ENVELOPPE_M_TRANCHES, kMax = ENVELOPPE_K_COUCHES;
+  const halfW = sim.screenHalfWidth; // m — même étendue physique que la texture d'écran
+  // xFars[k] = abscisse à l'écran (fixe, non tapée) du rayon auquel appartient le sommet
+  // d'indice k — sert au shader (cf. construireObjets) à savoir si CE rayon appartient à la
+  // tache centrale, indépendamment de sa position tapée courante (qui, elle, tend vers 0 pour
+  // TOUS les rayons près de la fente — cf. discussion de conception).
+  const positions = [], colors = [], xFars = [], indices = [];
+
+  // Par colonne (x) : position, facteur géométrique (racine carrée, cf. commentaire plus bas),
+  // facteur de LUMINOSITÉ (plus compressif, cf. ENVELOPPE_GAMMA_LUMINOSITE) et demi-hauteur
+  // cible côté écran — calculés une fois, réutilisés à la fois par la grille écran et par les
+  // rubans de chaque rangée.
+  const xCm = new Array(n + 1), ixGeomCol = new Array(n + 1), ixLumCol = new Array(n + 1), halfHFar = new Array(n + 1);
+  for (let i = 0; i <= n; i++) {
+    const x_m = -halfW + (2 * halfW * i) / n;
+    xCm[i] = x_m * 100;
+    const Ix = echantillonnerChamp(champ, x_m, 0); // y=0 : cf. commentaire à l'appel dans updateSceneParams
+    // Racine carrée, même compression que la texture d'écran (cf. updateSceneParams) — sert
+    // ICI uniquement à la GÉOMÉTRIE (largeur de la silhouette, cf. halfHFar) : sans elle les
+    // taches secondaires seraient géométriquement invisibles (silhouette collée à l'axe).
+    ixGeomCol[i] = Math.sqrt(Ix);
+    halfHFar[i] = wMax * ixGeomCol[i]; // pince à 0 aux minima, max=wMax au centre (Ix=1)
+    // Luminosité affichée de l'ENVELOPPE (pas la texture d'écran, cf. discussion de
+    // conception) : exposant plus dur que la racine carrée — la silhouette reste visible
+    // (ci-dessus) mais l'éclat retombe beaucoup plus vite en s'éloignant du centre, pour ne
+    // pas donner l'impression que les taches secondaires sont presque aussi lumineuses que la
+    // tache centrale.
+    ixLumCol[i] = Math.pow(Ix, ENVELOPPE_GAMMA_LUMINOSITE);
+  }
+
+  // Grille complète côté écran (z=zFar) : dégradé vertical Iy réel en plus du dégradé
+  // horizontal (double codage, cf. commentaire à la construction) — Iy s'applique à la
+  // luminosité (ixLumCol), pas à la géométrie (déjà fixée par halfHFar/ixGeomCol ci-dessus).
+  const grilleFar = [];
+  for (let i = 0; i <= n; i++) {
+    const halfH = halfHFar[i];
+    const col = new Array(m + 1);
+    for (let j = 0; j <= m; j++) {
+      const y_cm = halfH === 0 ? 0 : -halfH + (2 * halfH * j) / m;
+      // Profil gaussien réel (même formule que le profil vertical de la texture d'écran,
+      // cf. updateSceneParams), évalué à la position y physique réelle — indépendant du
+      // fait que la plage y explorée ici soit compressée par ixGeomCol[i].
+      const Iy = Math.exp(-2 * y_cm * y_cm / (wMax * wMax));
+      const intensite = ixLumCol[i] * Iy;
+      col[j] = positions.length / 3;
+      positions.push(xCm[i], y_cm, zFar);
+      colors.push(intensite, intensite, intensite);
+      xFars.push(xCm[i]);
+    }
+    grilleFar.push(col);
+  }
+
+  // Nappe côté écran : grille n×m, chaque quad (2 triangles) entre colonnes/rangées
+  // adjacentes — couleur ET position interpolées par le GPU dans les deux directions.
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < m; j++) {
+      const a = grilleFar[i][j], b = grilleFar[i + 1][j], c = grilleFar[i + 1][j + 1], d = grilleFar[i][j + 1];
+      indices.push(a, b, c);
+      indices.push(a, c, d);
+    }
+  }
+
+  // Un ruban en profondeur PAR RANGÉE (j=0..m, pas seulement j=0 et j=m — cf. commentaire à
+  // la construction) : couche 0 côté fente (x=0, y=yNear(j)), couche kMax = contour de la
+  // grille écran à cette rangée (réutilise directement ses sommets, aucune couture). La
+  // POSITION interpole linéairement entre les deux (taper géométrique, tronc de cône) ; la
+  // COULEUR de chaque rayon (i,j) reste en revanche CONSTANTE sur toute sa longueur, égale à
+  // sa valeur réelle côté écran — PAS un fondu depuis un blanc plein à la fente. Une première
+  // version démarrait à luminosité max près de la fente (schématique, « pas encore diffracté »)
+  // puis s'éteignait progressivement vers l'écran : à géométrie partagée entre colonnes, ce
+  // fondu maintenait TOUTES les colonnes (y compris les rayons de taches secondaires, censés
+  // être ternes) proches du blanc sur une grande partie de la longueur — d'où un faisceau bien
+  // trop lumineux à sa base (cf. discussion de conception). Couleur constante = chaque rayon
+  // affiche sa vraie luminosité dès le départ, pas seulement une fois arrivé à l'écran.
+  // couchesParRangee[j] est conservé (pas juste utilisé puis jeté) : la passe de connectivité Y
+  // ci-dessous en a besoin pour relier les rangées entre elles (cf. commentaire à cette passe).
+  const couchesParRangee = [];
+  for (let j = 0; j <= m; j++) {
+    const yNear = -hNear / 2 + (hNear * j) / m;
+    const couches = [];
+    for (let couche = 0; couche < kMax; couche++) {
+      const t = couche / kMax;
+      const z = zNear + (zFar - zNear) * t;
+      const ligne = new Array(n + 1);
+      for (let i = 0; i <= n; i++) {
+        const idxFar = grilleFar[i][j];
+        const yFar = positions[idxFar * 3 + 1];
+        const intensiteFarIJ = colors[idxFar * 3];
+        ligne[i] = positions.length / 3;
+        positions.push(xCm[i] * t, yNear + (yFar - yNear) * t, z);
+        colors.push(intensiteFarIJ, intensiteFarIJ, intensiteFarIJ);
+        xFars.push(xCm[i]);
+      }
+      couches.push(ligne);
+    }
+    couches.push(grilleFar.map(col => col[j]));
+    couchesParRangee.push(couches);
+
+    // Connectivité X : le long d'un même rayon (rangée j fixée), entre colonnes adjacentes.
+    for (let couche = 0; couche < kMax; couche++) {
+      for (let i = 0; i < n; i++) {
+        const a = couches[couche][i], b = couches[couche][i + 1];
+        const c = couches[couche + 1][i + 1], d = couches[couche + 1][i];
+        indices.push(a, b, c);
+        indices.push(a, c, d);
+      }
+    }
+  }
+
+  // Connectivité Y : entre rangées adjacentes (j et j+1), à chaque colonne ET chaque couche de
+  // profondeur (sauf la dernière, déjà couverte par la nappe côté écran) — sans cette passe,
+  // seule la nappe écran (plate, à z=zFar) reliait les rangées entre elles : le long du reste du
+  // trajet fente→écran, les rangées n'étaient que des rubans indépendants avec du vide entre eux
+  // — visible en vue Profil comme des traits fins séparés plutôt qu'un faisceau plein (cf.
+  // discussion de conception). Combiné au plancher d'opacité désormais restreint à un petit
+  // nombre de colonnes centrales (cf. construireObjets → uXLimite), cette connectivité est ce qui
+  // permet à cette zone étroite de rester visible comme une petite surface continue plutôt que de
+  // se disperser en fils déconnectés. Aucun nouveau sommet nécessaire : ne référence que ceux déjà
+  // construits ci-dessus (couchesParRangee).
+  for (let j = 0; j < m; j++) {
+    const couchesJ = couchesParRangee[j], couchesJ1 = couchesParRangee[j + 1];
+    for (let couche = 0; couche < kMax; couche++) {
+      for (let i = 0; i <= n; i++) {
+        const a = couchesJ[couche][i], b = couchesJ1[couche][i];
+        const c = couchesJ1[couche + 1][i], d = couchesJ[couche + 1][i];
+        indices.push(a, b, c);
+        indices.push(a, c, d);
+      }
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geo.setAttribute('aXFar', new THREE.Float32BufferAttribute(xFars, 1));
+  geo.setIndex(indices);
+  return geo;
+}
+
 let renderer, sceneObj, camPersp, camOrtho, controls, canvasEl;
-let laserBody, beamMesh, topBand, bottomBand, wallLeft, wallRight, screenMesh, screenTexture, screenTexCanvas, screenTexCtx;
+let laserBody, beamMesh, beamEnvelopeMesh, beamDot, topBand, bottomBand, wallLeft, wallRight, screenMesh, screenTexture, screenTexCanvas, screenTexCtx;
 let raysLine, supportLaser, supportSlide, supportScreen;
 
 // ─────────────────────────────────────────────────────────────────────
@@ -306,6 +519,92 @@ function construireObjets() {
   beamMesh.position.set(0, 0, (SOURCE_Z + SLIT_Z) / 2);
   sceneObj.add(beamMesh);
 
+  // Enveloppe pleine du faisceau diffracté (fente → écran), affichée en mode "Visible"
+  // uniquement. Maillage fin en grille (x,y) (cf. ENVELOPPE_N/M_TRANCHES et
+  // construireGeometrieEnveloppe) dont la silhouette ET la couleur suivent I(x,y) réelle
+  // (champ FFT × profil gaussien vertical, même source physique que la texture d'écran — cf.
+  // sim.js → construireChampOuverture/echantillonnerChamp, discussion de conception) — un vrai
+  // cône dont la base épouse la forme de la tache projetée, pas un volume à section constante
+  // peint d'un dégradé. Largeur en x = toute la largeur de l'écran (même étendue que la
+  // texture) : correspond par construction à la projection réelle.
+  //
+  // ShaderMaterial plutôt que MeshBasicMaterial+vertexColors : le shader intégré de
+  // MeshBasicMaterial ne module que le RGB par la couleur de sommet, jamais l'alpha (qui reste
+  // fixé par material.opacity) — l'absence de lumière (intensité≈0) rendait donc des bandes
+  // NOIRES OPAQUES (à material.opacity constant) plutôt que transparentes, très visibles en se
+  // baladant sur un fond de scène qui n'est pas un noir pur (0x14181d, cf. discussion de
+  // conception). Un shader minimal réutilise l'attribut `color` (intensité stockée en niveau
+  // de gris, cf. construireGeometrieEnveloppe) directement comme alpha du fragment : absence de
+  // lumière → alpha≈0 → vraiment transparent, pas juste sombre.
+  //
+  // Plancher d'opacité restreint À LA TACHE CENTRALE UNIQUEMENT (uPlancherAlpha, borné par
+  // uXLimite = position du 1er minimum, cf. sim.js → xPremierMinimum, mise à jour dans
+  // updateSceneParams) : la largeur réelle de l'enveloppe (diamètre du faisceau, ~1 mm) est
+  // physiquement correcte mais quasi invisible une fois rendue en alpha — contrairement à
+  // beamMesh, opaque, qui reste visible à cette même finesse (cf. discussion de conception).
+  // Plutôt que d'agrandir la géométrie pour compenser (essayé, mais ça crée un faux élargissement
+  // brutal à la jonction avec beamMesh), le plancher relève seulement l'ALPHA minimum. Actif sur
+  // TOUTE la longueur du faisceau (fente → écran, demande explicite de l'utilisateur — une
+  // version antérieure ne l'activait que près de la fente), mais seulement pour les rayons dont
+  // l'abscisse À L'ÉCRAN (attribut `aXFar`, cf. construireGeometrieEnveloppe) tombe dans
+  // [-x1, x1] — PAS la position tapée courante du sommet (`position.x`), qui tend vers 0 pour
+  // TOUS les rayons près de la fente, y compris ceux des taches secondaires : comparer à cette
+  // position aurait fait déborder le plancher sur toute la largeur près de la fente. En utilisant
+  // l'abscisse fixe de destination, la zone où le plancher s'applique reproduit exactement le
+  // triangle tracé par les pointillés « Rayons vers les minima » (raysLine, cf. plus bas) — un
+  // sommet-arête commun à la fente, qui s'évase jusqu'à ±x1 à l'écran, pas une bande de largeur
+  // constante (demande explicite de l'utilisateur). poidsX retombe à 0 par un fondu doux
+  // (smoothstep) au voisinage de ±x1, pas une coupure brutale.
+  const envMat = new THREE.ShaderMaterial({
+    uniforms: {
+      uColor: { value: new THREE.Color(0xff0000) },
+      uOpacite: { value: 0.6 },
+      uPlancherAlpha: { value: 0.15 },
+      uXLimite: { value: 1 }
+    },
+    vertexShader: `
+      attribute vec3 color;
+      attribute float aXFar;
+      varying float vIntensite;
+      varying float vXFar;
+      void main() {
+        vIntensite = color.r;
+        vXFar = aXFar;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uColor;
+      uniform float uOpacite;
+      uniform float uPlancherAlpha;
+      uniform float uXLimite;
+      varying float vIntensite;
+      varying float vXFar;
+      void main() {
+        float poidsX = 1.0 - smoothstep(uXLimite * 0.85, uXLimite, abs(vXFar));
+        float alpha = max(vIntensite * uOpacite, uPlancherAlpha * poidsX);
+        gl_FragColor = vec4(uColor, alpha);
+      }
+    `,
+    transparent: true,
+    side: THREE.DoubleSide,
+    depthWrite: false
+  });
+  // Géométrie entièrement reconstruite à chaque changement de paramètre (placeholder vide ici,
+  // remplacé dès le premier appel à updateSceneParams juste après construireObjets).
+  beamEnvelopeMesh = new THREE.Mesh(new THREE.BufferGeometry(), envMat);
+  sceneObj.add(beamEnvelopeMesh);
+
+  // Point de couleur en sortie du laser, affiché en mode "Non visibles" uniquement :
+  // permet d'identifier la couleur λ en regardant droit dans l'axe du laser, sans
+  // dessiner aucun faisceau (cf. discussion de conception avec l'utilisateur).
+  beamDot = new THREE.Mesh(
+    new THREE.SphereGeometry(BEAM_DIAMETER * 1.5, 12, 12),
+    new THREE.MeshBasicMaterial({ color: 0xff0000 })
+  );
+  beamDot.position.set(0, 0, SOURCE_Z);
+  sceneObj.add(beamDot);
+
   // Lame porte-fente (7×7 cm réels) : 3 bandes pleines (haut/bas) + 2 murs latéraux
   // encadrant la fente, tous confinés à une bande centrale de hauteur SLIT_BAND_HEIGHT
   // (la fente n'occupe pas toute la hauteur de la lame). Pas de CSG : la "fente" est
@@ -378,6 +677,8 @@ function updateSceneParams() {
 
   // Faisceau : couleur selon λ
   beamMesh.material.color.setHex(couleurHex);
+  beamEnvelopeMesh.material.uniforms.uColor.value.setHex(couleurHex);
+  beamDot.material.color.setHex(couleurHex);
 
   // Fente : écartement des murs selon a (largeur visuelle schématique), confinés à la
   // bande centrale de la lame (cf. construireObjets)
@@ -393,29 +694,44 @@ function updateSceneParams() {
   screenMesh.position.set(0, 0, D_cm);
   supportScreen.position.z = D_cm;
 
-  // Texture d'intensité (source physique unique : echantillonnerIntensite, cf. sim.js).
-  // I(x) (horizontal) vient de la vraie diffraction par la fente. La fente n'a pas de
-  // hauteur réglable dans ce modèle (approximation "fente infinie" en y, cf. sim.js) ;
-  // le profil VERTICAL affiché n'est donc pas calculé — c'est un profil gaussien fixe,
-  // représentant la hauteur du faisceau laser d'origine (non affectée par la fente, qui
-  // ne diffracte qu'horizontalement). Identique pour l'ordre central et les ordres
-  // secondaires, comme sur une vraie photo de diffraction (cf. discussion de conception) :
-  // sans lui, la figure ressemble à des bandes verticales infinies au lieu de taches.
+  // Texture d'intensité. I(x) (horizontal) vient du champ FFT (construireChampOuverture, cf.
+  // sim.js et commentaire à sa déclaration ci-dessous) — PAS de echantillonnerIntensite/
+  // intensiteFente, réservées au graphe et aux encarts (cf. discussion de conception). Le
+  // profil VERTICAL affiché ici, lui, reste le profil gaussien du faisceau calculé séparément
+  // (largeurFaisceauGaussien) plutôt que lu dans le champ FFT à un y quelconque : la fente
+  // (beaucoup plus haute que le faisceau, cf. FENTE_HAUTEUR_CM) ne le contraint pas, et
+  // conserver ce facteur séparé évite de changer la compression d'affichage habituelle
+  // (racine carrée) appliquée uniquement à la composante horizontale, cf. IxAffichage plus
+  // bas. Identique pour l'ordre central et les ordres secondaires, comme sur une vraie photo
+  // de diffraction : sans lui, la figure ressemble à des bandes verticales infinies au lieu
+  // de taches.
   const w = screenTexCanvas.width, h = screenTexCanvas.height;
   const img = screenTexCtx.createImageData(w, h);
   const { r: r0, g: g0, b: b0 } = longueurOndeVersRGB(sim.lambda);
   const x1_cm = xPremierMinimum(sim.lambda, sim.a, sim.D) * 100;
 
-  // Profil vertical = divergence réelle du faisceau gaussien (largeurFaisceauGaussien,
-  // cf. sim.js — même physique que la diffraction par la fente, appliquée cette fois au
-  // faisceau lui-même). w = rayon à distance D, en cm ; plancher RENDU_W_MIN_CM car la
-  // texture (résolution finie) ne peut pas résoudre un faisceau de l'ordre du mm sans
-  // buffer démesurément grand — la divergence avec D reste visible dès que w dépasse ce
-  // plancher (cf. commentaire de RENDU_W_MIN_CM ci-dessus).
+  // Rayon gaussien du faisceau à l'écran (largeurFaisceauGaussien, cf. sim.js) — utilisé à la
+  // fois comme demi-hauteur max de l'enveloppe ci-dessous et pour le profil vertical de la
+  // texture d'écran plus bas (RENDU_W_MIN_CM : cf. commentaire à sa définition).
   const w_cm = Math.max(RENDU_W_MIN_CM, largeurFaisceauGaussien(sim.lambda, sim.D) * 100);
+
+  // Champ diffracté (masque de la fente × faisceau incident, propagé par FFT, cf. sim.js) —
+  // calculé UNE FOIS ici, partagé par la texture d'écran ci-dessous et l'enveloppe 3D
+  // (construireGeometrieEnveloppe) : source physique unique pour tout ce qui est affiché en x,
+  // à la place d'intensiteFente() (qui reste, elle, la source du graphe I(x) et des encarts —
+  // cf. discussion de conception, aucune des deux ne doit dépendre de l'autre).
+  const champ = construireChampOuverture(sim.lambda, sim.a, sim.D);
+
+  // Enveloppe pleine du faisceau diffracté (cf. commentaire à la construction) : reconstruite
+  // entièrement à chaque appel, la silhouette et le profil de luminosité changent avec a/D/λ.
+  // uXLimite (position du 1er minimum, même x1_cm que raysLine plus bas) borne le plancher
+  // d'opacité du shader (cf. construireObjets) à la seule zone de la tache centrale.
+  beamEnvelopeMesh.material.uniforms.uXLimite.value = x1_cm;
+  beamEnvelopeMesh.geometry.dispose();
+  beamEnvelopeMesh.geometry = construireGeometrieEnveloppe(SLIT_Z, D_cm, BEAM_DIAMETER, w_cm, champ);
   for (let px = 0; px < w; px++) {
     const x = -sim.screenHalfWidth + (2 * sim.screenHalfWidth * px) / (w - 1);
-    const Ix = intensiteFente(x, sim.lambda, sim.a, sim.D);
+    const Ix = echantillonnerChamp(champ, x, 0); // y=0 : le champ est normalisé (pic=1) comme intensiteFente(), et le profil vertical (Iy ci-dessous) reste appliqué séparément
     // Les ordres secondaires sont physiquement très faibles (1er ≈ 4,5 % du maximum central,
     // cf. sinc²) : en couleur linéaire ils sont quasi invisibles à l'écran. On applique une
     // racine carrée uniquement ici (affichage), jamais dans intensiteFente() ni dans le
@@ -443,6 +759,22 @@ function updateSceneParams() {
     0, 0, SLIT_Z, -x1_cm, 0, D_cm
   ], 3));
   raysLine.computeLineDistances();
+
+  updateBeamVisibility();
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Visibilité des trois représentations du faisceau (laser→fente,
+//  fente→écran, point de couleur), croisant sim.beamMode et la vue
+//  active. Appelée depuis updateSceneParams() (changement de mode/
+//  paramètre) et setSceneView() (changement de vue) — les deux sont des
+//  déclencheurs valides, comme pour raysLine.visible (cf. ARCHITECTURE.md).
+// ─────────────────────────────────────────────────────────────────────
+function updateBeamVisibility() {
+  const cacherBanc = (sim.view === 'screen');
+  beamMesh.visible = !cacherBanc && sim.beamMode !== 'off';
+  beamEnvelopeMesh.visible = !cacherBanc && sim.beamMode === 'visible';
+  beamDot.visible = !cacherBanc && sim.beamMode === 'off';
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -453,7 +785,6 @@ function setSceneView(view) {
   controls.enabled = (view === '3d');
   const cacherBanc = (view === 'screen');
   laserBody.visible = !cacherBanc;
-  beamMesh.visible = !cacherBanc;
   topBand.visible = !cacherBanc;
   bottomBand.visible = !cacherBanc;
   wallLeft.visible = !cacherBanc;
@@ -461,6 +792,7 @@ function setSceneView(view) {
   supportLaser.visible = !cacherBanc;
   supportSlide.visible = !cacherBanc;
   raysLine.visible = sim.showRays && view !== 'screen';
+  updateBeamVisibility();
 }
 
 // ─────────────────────────────────────────────────────────────────────

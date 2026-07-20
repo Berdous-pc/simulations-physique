@@ -15,6 +15,7 @@ const sim = {
   a: 100,          // largeur de la fente (µm)
   D: 2.0,          // distance fente-écran (m)
   showRays: true,  // afficher les rayons pointillés vers les 1ers minima
+  beamMode: 'visible', // 'visible' (laser + diffracté) | 'laserOnly' (laser→fente) | 'off' (aucun faisceau)
   view: '3d',      // '3d' | 'top' | 'side' | 'screen'
 
   // Demi-largeur physique de l'écran simulé (m) — fixe, écran réel de TP 25×15 cm, cf. ARCHITECTURE.md
@@ -28,20 +29,28 @@ const sim = {
 const A_MIN = 20, A_MAX = 500;
 
 // ─────────────────────────────────────────────────────────────────────
-//  Écart angulaire du premier minimum de diffraction : sin θ ≈ λ/a.
+//  Écart angulaire du m-ième minimum de diffraction : sin θ ≈ m·λ/a.
 //  Renvoie θ en radians (petit angle, valide dans tout le domaine réglable).
+//  m=1 → 1er minimum (limite de la tache centrale), m=2 → limite de la
+//  1ère tache secondaire, etc.
 // ─────────────────────────────────────────────────────────────────────
-function thetaPremierMinimum(lambda_nm, a_um) {
+function thetaMinimum(lambda_nm, a_um, m) {
   const lambda = lambda_nm * 1e-9;
   const a = a_um * 1e-6;
-  return lambda / a;
+  return m * lambda / a;
+}
+function thetaPremierMinimum(lambda_nm, a_um) {
+  return thetaMinimum(lambda_nm, a_um, 1);
 }
 
 // ─────────────────────────────────────────────────────────────────────
-//  Position du premier minimum sur l'écran (m), à distance D (m).
+//  Position du m-ième minimum sur l'écran (m), à distance D (m).
 // ─────────────────────────────────────────────────────────────────────
+function xMinimum(lambda_nm, a_um, D_m, m) {
+  return Math.tan(thetaMinimum(lambda_nm, a_um, m)) * D_m;
+}
 function xPremierMinimum(lambda_nm, a_um, D_m) {
-  return Math.tan(thetaPremierMinimum(lambda_nm, a_um)) * D_m;
+  return xMinimum(lambda_nm, a_um, D_m, 1);
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -78,6 +87,199 @@ function largeurFaisceauGaussien(lambda_nm, D_m) {
   const w0 = FAISCEAU_DIAMETRE_MM / 2 / 1000; // rayon au col, mm → m
   const zR = Math.PI * w0 * w0 / lambda;      // portée de Rayleigh (m)
   return w0 * Math.sqrt(1 + (D_m / zR) * (D_m / zR));
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Diffraction par FFT — infrastructure généralisable (cf. discussion de conception)
+//
+//  intensiteFente() ci-dessus (formule fermée, exacte) reste la SEULE source pour le graphe
+//  I(x) et les encarts de valeurs (θ, position des minima) — elle n'est pas touchée par ce
+//  qui suit. L'infrastructure ci-dessous est une source ALTERNATIVE, utilisée uniquement par
+//  scene.js pour la texture d'écran et l'enveloppe 3D du faisceau, pensée pour rester valable
+//  quand la forme de l'ouverture changera plus tard (carré, cercle...) — seule la fonction qui
+//  dessine le masque changera alors, pas le reste du pipeline (FFT, échantillonnage, mise à
+//  l'échelle écran).
+//
+//  Principe (optique de Fourier) : le champ juste après une ouverture éclairée par un faisceau
+//  réel (pas une onde plane infinie) est masque(x,y) · champ_incident(x,y). La figure de
+//  diffraction de Fraunhofer est |FFT2D(ce champ)|². Pour une fente, masque = rectangle
+//  (largeur a réglable, hauteur FENTE_HAUTEUR_CM réelle) et champ_incident = profil gaussien du
+//  faisceau laser (même approximation qu'ailleurs dans ce fichier : col du faisceau au niveau
+//  de la fente). Avantage par rapport à deux facteurs séparés (l'ancien `Iy` gaussien multiplié
+//  après coup) : la divergence naturelle du faisceau sort de la MÊME FFT que la diffraction,
+//  au lieu d'être rajoutée à la main — et généralise sans changement à une ouverture qui
+//  diffracte aussi verticalement (carré, cercle), ce qu'un facteur `Iy` figé ne pourrait pas
+//  faire.
+// ═══════════════════════════════════════════════════════════════════════
+
+// Hauteur réelle de la fente (cm), à l'échelle — cf. scene.js → SLIT_BAND_HEIGHT, qui reprend
+// cette même valeur pour le rendu 3D (source unique). Très supérieure à la fenêtre FFT ci-
+// dessous (FFT_FENETRE_M, quelques mm) : dans cette fenêtre, la fente n'est donc jamais
+// limitante en y — seul le profil du faisceau incident l'est. C'est exactement la même
+// approximation physique que l'ancien `largeurFaisceauGaussien` (une fente réelle est bien
+// plus haute que le faisceau qui la traverse), mais elle ressort maintenant de la géométrie du
+// masque plutôt que d'être supposée a priori.
+const FENTE_HAUTEUR_CM = 5.6;
+
+// Résolution (N, puissance de 2) et fenêtre physique (FFT_FENETRE_M, mètres, carrée) de la
+// grille FFT dans le plan de la fente. Choix guidés par le faisceau et l'ouverture, PAS par la
+// largeur de l'écran à couvrir — le champ incident est nul en dehors du faisceau (rayon ~0,5
+// mm), inutile de mailler au-delà, quelle que soit la taille réelle de la fente (5,6 cm de haut).
+//
+// Portée couverte à l'écran, en unités du 1er minimum x1 (constaté à l'usage, corrige une
+// première estimation trop optimiste) : ratio = Coverage/x1 = N·a/(2·FFT_FENETRE_M) —
+// remarquablement INDÉPENDANT de λ et D (les deux s'annulent ; x1 et la portée de la FFT sont
+// tous deux proportionnels à λ·D). Ce ratio ne dépend donc que de `a` : à a minimal (20 µm,
+// cf. A_MIN), il vaut la même chose quels que soient λ/D. Avec une première fenêtre à 6 mm, ce
+// ratio ne valait qu'environ 1,7 à a=20 µm — la FFT ne couvrait donc qu'à peine plus loin que
+// le 1er minimum lui-même, tronquant la 1ère tache secondaire en plein milieu, quels que soient
+// λ et D (constaté par l'utilisateur — pas un cas limite rare comme supposé initialement).
+// FFT_FENETRE_M resserrée à 2,5 mm (N inchangé) porte ce ratio à ~4,1 à a=20 µm — couvre
+// largement la 1ère tache secondaire et une bonne partie de la 2e avant de s'arrêter — tout en
+// restant très confortable pour le faisceau (demi-fenêtre 1,25 mm ≈ 2,5×w0, reste négligeable :
+// exp(-2·2,5²)≈4·10⁻⁶) et en affinant au passage le pas dans le plan de la fente (~2,4 µm à
+// N=1024, contre ~5,9 µm avant). Au-delà de la portée couverte, échantillonnerChamp() renvoie 0
+// (hypothèse sûre : l'intensité y est de toute façon négligeable dans l'immense majorité des
+// réglages) — seuls les tout derniers ordres, très loin dans les réglages les plus extrêmes,
+// peuvent encore être concernés.
+const FFT_N = 1024;
+const FFT_FENETRE_M = 0.0025;
+
+// Buffers réutilisés d'un appel à l'autre (évite de réallouer ~1 million de flottants à
+// chaque changement de paramètre — coûteux en pression mémoire/GC dans une boucle interactive).
+const _fftRe = new Float64Array(FFT_N * FFT_N);
+const _fftIm = new Float64Array(FFT_N * FFT_N);
+const _fftGrille = new Float64Array(FFT_N * FFT_N);
+
+// ─────────────────────────────────────────────────────────────────────
+//  FFT 1D radix-2 (Cooley-Tukey), en place, itérative. re/im : Float64Array de longueur N
+//  (puissance de 2). invert=true calcule la FFT inverse (normalisée par 1/N). Algorithme
+//  standard (permutation par inversion de bits puis papillons), sans dépendance externe.
+// ─────────────────────────────────────────────────────────────────────
+function fft1D(re, im, invert) {
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) {
+      let t = re[i]; re[i] = re[j]; re[j] = t;
+      t = im[i]; im[i] = im[j]; im[j] = t;
+    }
+  }
+  for (let len = 2; len <= n; len <<= 1) {
+    const ang = (invert ? 1 : -1) * 2 * Math.PI / len;
+    const wr = Math.cos(ang), wi = Math.sin(ang);
+    for (let i = 0; i < n; i += len) {
+      let curWr = 1, curWi = 0;
+      const half = len / 2;
+      for (let j = 0; j < half; j++) {
+        const ur = re[i + j], ui = im[i + j];
+        const vr = re[i + j + half] * curWr - im[i + j + half] * curWi;
+        const vi = re[i + j + half] * curWi + im[i + j + half] * curWr;
+        re[i + j] = ur + vr; im[i + j] = ui + vi;
+        re[i + j + half] = ur - vr; im[i + j + half] = ui - vi;
+        const nextWr = curWr * wr - curWi * wi;
+        const nextWi = curWr * wi + curWi * wr;
+        curWr = nextWr; curWi = nextWi;
+      }
+    }
+  }
+  if (invert) {
+    for (let i = 0; i < n; i++) { re[i] /= n; im[i] /= n; }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  FFT 2D par décomposition lignes puis colonnes (algorithme standard, exact — pas une
+//  approximation) : une FFT 1D sur chaque ligne, puis une FFT 1D sur chaque colonne du
+//  résultat. re/im : Float64Array de longueur N×N, grille aplatie indexée [j*N+i].
+// ─────────────────────────────────────────────────────────────────────
+function fft2D(re, im, N, invert) {
+  const tmpRe = new Float64Array(N), tmpIm = new Float64Array(N);
+  for (let j = 0; j < N; j++) {
+    const base = j * N;
+    for (let i = 0; i < N; i++) { tmpRe[i] = re[base + i]; tmpIm[i] = im[base + i]; }
+    fft1D(tmpRe, tmpIm, invert);
+    for (let i = 0; i < N; i++) { re[base + i] = tmpRe[i]; im[base + i] = tmpIm[i]; }
+  }
+  for (let i = 0; i < N; i++) {
+    for (let j = 0; j < N; j++) { tmpRe[j] = re[j * N + i]; tmpIm[j] = im[j * N + i]; }
+    fft1D(tmpRe, tmpIm, invert);
+    for (let j = 0; j < N; j++) { re[j * N + i] = tmpRe[j]; im[j * N + i] = tmpIm[j]; }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Construit le champ diffracté par la fente (masque rectangulaire a × FENTE_HAUTEUR_CM,
+//  éclairé par le profil gaussien du faisceau incident, cf. discussion de conception),
+//  propagé en champ lointain par FFT2D. Renvoie une grille d'intensité normalisée (pic
+//  central = 1, même convention que intensiteFente()) et le pas physique correspondant côté
+//  écran (dépend de λ et D — relation de Fraunhofer x_écran = λ·D·fx, cf. échantillonnerChamp).
+//  Appelée une seule fois par changement de paramètre (scene.js → updateSceneParams), le
+//  résultat est ensuite échantillonné en de nombreux points (texture, enveloppe 3D) sans
+//  recalcul — la FFT elle-même est le seul poste coûteux.
+// ─────────────────────────────────────────────────────────────────────
+function construireChampOuverture(lambda_nm, a_um, D_m) {
+  const N = FFT_N, pas = FFT_FENETRE_M / N;
+  const lambda_m = lambda_nm * 1e-9;
+  const a_m = a_um * 1e-6;
+  const h_m = FENTE_HAUTEUR_CM / 100;
+  const w0 = FAISCEAU_DIAMETRE_MM / 2 / 1000; // rayon du faisceau au col (m) — même valeur que largeurFaisceauGaussien
+
+  const re = _fftRe, im = _fftIm;
+  re.fill(0); im.fill(0); // champ incident réel (pas de courbure de phase au col, cf. approximation ci-dessus) : im reste nul
+
+  for (let j = 0; j < N; j++) {
+    const y = (j - N / 2) * pas;
+    if (Math.abs(y) >= h_m / 2) continue; // hors fente en y (n'arrive jamais en pratique, cf. commentaire FENTE_HAUTEUR_CM)
+    const base = j * N;
+    for (let i = 0; i < N; i++) {
+      const x = (i - N / 2) * pas;
+      if (Math.abs(x) >= a_m / 2) continue; // hors fente en x
+      // Profil gaussien du faisceau incident, en AMPLITUDE (exp(-r²/w0²)) — son carré, obtenu
+      // plus loin par |FFT|², redonne la convention d'intensité laser standard I∝exp(-2r²/w0²).
+      re[base + i] = Math.exp(-(x * x + y * y) / (w0 * w0));
+    }
+  }
+
+  fft2D(re, im, N, false);
+
+  // Décalage (fftshift) + intensité + normalisation (pic central = 1) en une passe.
+  const grille = _fftGrille;
+  let pic = 0;
+  for (let j = 0; j < N; j++) {
+    const js = (j + N / 2) % N;
+    const baseDst = j * N, baseSrc = js * N;
+    for (let i = 0; i < N; i++) {
+      const is = (i + N / 2) % N;
+      const idx = baseSrc + is;
+      const v = re[idx] * re[idx] + im[idx] * im[idx];
+      grille[baseDst + i] = v;
+      if (v > pic) pic = v;
+    }
+  }
+  if (pic > 0) {
+    for (let k = 0; k < grille.length; k++) grille[k] /= pic;
+  }
+
+  const pasEcran_m = lambda_m * D_m / FFT_FENETRE_M; // x_écran = λ·D·fx, pas en fx = 1/fenêtre
+  return { grille, pasEcran_m, N };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Lit l'intensité du champ construit par construireChampOuverture() à une position physique
+//  (x,y) du plan écran (mètres). Plus proche voisin — la résolution de la grille FFT (pas
+//  écran de l'ordre du dixième de mm dans les réglages courants) est très supérieure à celle
+//  des échantillonnages appelants (texture, enveloppe 3D), l'interpolation n'apporterait rien
+//  de visible. Renvoie 0 hors de la zone couverte par la grille (cf. commentaire FFT_FENETRE_M).
+// ─────────────────────────────────────────────────────────────────────
+function echantillonnerChamp(champ, x_m, y_m) {
+  const { grille, pasEcran_m, N } = champ;
+  const i = Math.round(x_m / pasEcran_m) + N / 2;
+  const j = Math.round(y_m / pasEcran_m) + N / 2;
+  if (i < 0 || i >= N || j < 0 || j >= N) return 0;
+  return grille[j * N + i];
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -141,4 +343,5 @@ function resetParams() {
   sim.a = 100;
   sim.D = 2.0;
   sim.showRays = true;
+  sim.beamMode = 'visible';
 }

@@ -32,6 +32,25 @@ function toggleRays() {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+//  Bascule cyclique du mode de représentation du faisceau lumineux :
+//  visible (laser + faisceau diffracté) → laser uniquement (comme avant
+//  la fente) → non visible (seule la tache sur l'écran, avec un point de
+//  couleur en sortie du laser pour identifier λ sans dessiner de faisceau).
+// ─────────────────────────────────────────────────────────────────────
+const BEAM_MODES = ['visible', 'laserOnly', 'off'];
+const BEAM_MODE_LABELS = {
+  visible: 'Faisceau lumineux : Visible',
+  laserOnly: 'Faisceau lumineux : Laser uniquement',
+  off: 'Faisceau lumineux : Non visibles'
+};
+function cycleBeamMode() {
+  const i = BEAM_MODES.indexOf(sim.beamMode);
+  sim.beamMode = BEAM_MODES[(i + 1) % BEAM_MODES.length];
+  document.getElementById('btn-beam-mode').textContent = BEAM_MODE_LABELS[sim.beamMode];
+  updateSceneParams();
+}
+
+// ─────────────────────────────────────────────────────────────────────
 //  Bascule la vue caméra (3D / Dessus / Profil / Écran).
 // ─────────────────────────────────────────────────────────────────────
 function setView(view) {
@@ -62,6 +81,7 @@ function resetSim() {
   document.getElementById('lbl-a').textContent = sim.a.toFixed(0);
   document.getElementById('lbl-D').textContent = sim.D.toFixed(1);
   document.getElementById('btn-rays').classList.add('active');
+  document.getElementById('btn-beam-mode').textContent = BEAM_MODE_LABELS.visible;
 
   tangentesFig.length = 0;
   graphViewHistory.length = 0;
