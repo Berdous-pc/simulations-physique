@@ -217,6 +217,7 @@ main {
 /* ── Panneau droit : styles communs ── */
 #panel {
   background: #e8e4de;
+  border-left: 1.5px solid #c8c0b4;
   display: flex;
   flex-direction: column;
   grid-row: 1;
@@ -330,6 +331,10 @@ input[type=range] { width: 100%; accent-color: #4a7aaa; cursor: pointer; }
   line-height: 1.5;
   background: #fff;
   border: 1.5px solid #b0a898;
+  /* Pas de bordure gauche propre : #panel a déjà la sienne (border-left,
+     cf. ci-dessus) — sinon les deux bordures se superposent avec un léger
+     décalage sous-pixel, visible uniquement ici. */
+  border-left: none;
   overflow: hidden;
   transition: padding 0.2s;
 }
