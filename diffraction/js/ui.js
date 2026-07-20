@@ -32,21 +32,35 @@ function toggleRays() {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+//  Bascule l'affichage des doubles flèches de mesure (d, D, L).
+// ─────────────────────────────────────────────────────────────────────
+function toggleLengths() {
+  sim.showLengths = !sim.showLengths;
+  document.getElementById('btn-lengths').classList.toggle('active', sim.showLengths);
+  updateSceneParams();
+}
+
+// ─────────────────────────────────────────────────────────────────────
 //  Bascule cyclique du mode de représentation du faisceau lumineux :
 //  visible (laser + faisceau diffracté) → laser uniquement (comme avant
 //  la fente) → non visible (seule la tache sur l'écran, avec un point de
 //  couleur en sortie du laser pour identifier λ sans dessiner de faisceau).
 // ─────────────────────────────────────────────────────────────────────
-const BEAM_MODES = ['visible', 'laserOnly', 'off'];
+const BEAM_MODES = ['off', 'laserOnly', 'visible'];
 const BEAM_MODE_LABELS = {
-  visible: 'Faisceau lumineux : Visible',
-  laserOnly: 'Faisceau lumineux : Laser uniquement',
-  off: 'Faisceau lumineux : Non visibles'
+  off: 'Non visible',
+  laserOnly: 'Laser uniquement',
+  visible: 'Visible'
 };
+function renderBeamModeLabel() {
+  const btn = document.getElementById('btn-beam-mode');
+  btn.innerHTML = 'Faisceau lumineux :<br>' + BEAM_MODE_LABELS[sim.beamMode];
+  btn.classList.toggle('active', sim.beamMode !== 'off');
+}
 function cycleBeamMode() {
   const i = BEAM_MODES.indexOf(sim.beamMode);
   sim.beamMode = BEAM_MODES[(i + 1) % BEAM_MODES.length];
-  document.getElementById('btn-beam-mode').textContent = BEAM_MODE_LABELS[sim.beamMode];
+  renderBeamModeLabel();
   updateSceneParams();
 }
 
@@ -80,8 +94,9 @@ function resetSim() {
   document.getElementById('lbl-lambda').textContent = sim.lambda.toFixed(0);
   document.getElementById('lbl-a').textContent = sim.a.toFixed(0);
   document.getElementById('lbl-D').textContent = sim.D.toFixed(1);
-  document.getElementById('btn-rays').classList.add('active');
-  document.getElementById('btn-beam-mode').textContent = BEAM_MODE_LABELS.visible;
+  document.getElementById('btn-rays').classList.remove('active');
+  document.getElementById('btn-lengths').classList.remove('active');
+  renderBeamModeLabel();
 
   gview.xMin = -sim.screenHalfWidth;
   gview.xMax = sim.screenHalfWidth;
@@ -220,6 +235,7 @@ function init() {
 
   initScene();
   initGraphInteractions();
+  renderBeamModeLabel();
   resize();
   updateReadouts();
   requestAnimationFrame(loop);

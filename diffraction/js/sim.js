@@ -14,8 +14,9 @@ const sim = {
   lambda: 633,     // longueur d'onde du laser (nm)
   a: 100,          // largeur de la fente (µm)
   D: 2.0,          // distance fente-écran (m)
-  showRays: true,  // afficher les rayons pointillés vers les 1ers minima
-  beamMode: 'visible', // 'visible' (laser + diffracté) | 'laserOnly' (laser→fente) | 'off' (aucun faisceau)
+  showRays: false, // afficher les rayons pointillés vers les 1ers minima + l'axe optique
+  beamMode: 'off', // 'off' (aucun faisceau) | 'laserOnly' (laser→fente) | 'visible' (laser + diffracté)
+  showLengths: false, // afficher les doubles flèches de mesure d, D, L
   view: '3d',      // '3d' | 'top' | 'side' | 'screen'
 
   // Demi-largeur physique de l'écran simulé (m) — fixe, écran réel de TP 25×15 cm, cf. ARCHITECTURE.md
@@ -357,6 +358,7 @@ function resetParams() {
   sim.lambda = 633;
   sim.a = 100;
   sim.D = 2.0;
-  sim.showRays = true;
-  sim.beamMode = 'visible';
+  sim.showRays = false;
+  sim.beamMode = 'off';
+  sim.showLengths = false;
 }

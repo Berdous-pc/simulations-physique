@@ -72,6 +72,23 @@ const RENDU_W_MIN_CM = 0.2;
 const TOP_VIEW_PLANCHER_GAIN = 6;
 const TOP_VIEW_FLARE_LONGUEUR_CM = SLIDE_SIZE; // ≈ taille de la lame porte-fente/son support
 
+// ── Doubles flèches de mesure (d, D, L) — bouton "Afficher les longueurs" ──
+const LEN_COLOR = 0x8fd6ff; // bleu clair, distinct du jaune (rayons) et du blanc (axe optique)
+// renderOrder très élevé (largement au-dessus de tout le reste de la scène, dont le
+// support d'écran opaque dont le plateau chevauche géométriquement la zone où sont
+// dessinés les pointillés de L en vue Dessus) : garantit, combiné à depthTest:false sur
+// tous les matériaux de ce module, que flèches/pointillés/labels de mesure restent
+// TOUJOURS dessinés par-dessus, quelle que soit la géométrie 3D sous-jacente à cet endroit.
+const LEN_RENDER_ORDER = 500;
+const LEN_OFFSET_X = 13;        // cm — décalage latéral des flèches d/D sur la table (3D/Dessus), pour éviter les supports (les plus larges, supportScreen, font ~10 cm)
+const LEN_ARROW_Y_TABLE = TABLE_Y + 0.4;   // cm — flèches légèrement au-dessus du plateau (3D/Dessus)
+const LEN_LABEL_Y_TABLE = LEN_ARROW_Y_TABLE + 2.6; // marge accrue : labels agrandis ×3
+const LEN_LABEL_X_EXTRA_TABLE = 5; // cm — décale le label d/D encore plus vers l'extérieur de la table que la flèche (utile en vue Dessus, où le décalage Y ci-dessus est aplati)
+const LEN_SIDE_Y = TABLE_Y - PLATEAU_EPAISSEUR - TABLE_THICK / 2; // cm — milieu de la tranche de la table (vue Profil)
+const LEN_SIDE_LABEL_Y = TABLE_Y - PLATEAU_EPAISSEUR - TABLE_THICK - 1.6; // cm — sous la table (vue Profil)
+const LEN_TOP_L_DECALAGE_Z = 3;   // cm — recul de la flèche L derrière l'écran (vue Dessus)
+const LEN_TOP_L_LABEL_DECALAGE_Z = 3; // cm — décalage supplémentaire du label L « à droite » (vue Dessus : le côté « droit » de l'écran correspond à l'axe Z du monde, cf. camOrtho.up=(1,0,0) dans updateOrthoCamera)
+
 let x1CmCourant = 0; // dernière valeur physique (cf. updateSceneParams), réutilisée par updateEnvelopeXLimite() sur simple changement de vue
 
 // Correspondance a (µm, physique) → largeur visuelle de la fente (cm, schématique).
@@ -324,7 +341,231 @@ function construireGeometrieEnveloppe(zNear, zFar, hNear, wMax, champ) {
 
 let renderer, sceneObj, camPersp, camOrtho, controls, canvasEl;
 let laserBody, beamMesh, beamEnvelopeMesh, beamDot, topBand, bottomBand, wallLeft, wallRight, screenMesh, screenTexture, screenTexCanvas, screenTexCtx;
-let raysLine, supportLaser, supportSlide, supportScreen;
+let raysLine, axisLine, supportLaser, supportSlide, supportScreen;
+let lengthsGroup, mesurePetitD, mesureGrandD, mesureL;
+
+// ─────────────────────────────────────────────────────────────────────
+//  Formate un nombre en notation française (virgule décimale).
+// ─────────────────────────────────────────────────────────────────────
+function formatFr(valeur, decimales) {
+  return valeur.toFixed(decimales).replace('.', ',');
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Double flèche 3D générique : segment central + une pointe (cône) à
+//  chaque extrémité. Construite le long de l'axe LOCAL X, centrée en 0 ;
+//  on la positionne/oriente ensuite en plaçant le groupe retourné.
+// ─────────────────────────────────────────────────────────────────────
+function creerFlecheDouble(color) {
+  const group = new THREE.Group();
+  const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.95, depthTest: false, depthWrite: false });
+  const shaftGeo = new THREE.BufferGeometry();
+  shaftGeo.setAttribute('position', new THREE.Float32BufferAttribute(new Array(6).fill(0), 3));
+  const shaft = new THREE.Line(shaftGeo, mat);
+  shaft.renderOrder = LEN_RENDER_ORDER;
+  const coneMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95, depthTest: false, depthWrite: false });
+  const head1 = new THREE.Mesh(new THREE.ConeGeometry(0.3, 1, 10), coneMat);
+  const head2 = new THREE.Mesh(new THREE.ConeGeometry(0.3, 1, 10), coneMat);
+  head1.renderOrder = LEN_RENDER_ORDER; head2.renderOrder = LEN_RENDER_ORDER;
+  group.add(shaft, head1, head2);
+  group.userData.shaft = shaft;
+  group.userData.head1 = head1;
+  group.userData.head2 = head2;
+  return group;
+}
+
+// Redéfinit la longueur (cm) d'une flèche double créée par creerFlecheDouble.
+function setFlecheDoubleLongueur(grp, longueur) {
+  const len = Math.max(0.01, longueur);
+  const headLen = Math.min(1.4, Math.max(0.4, len * 0.12));
+  const headRad = headLen * 0.32;
+  const demi = len / 2;
+  grp.userData.shaft.geometry.setAttribute('position', new THREE.Float32BufferAttribute(
+    [-demi, 0, 0, demi, 0, 0], 3
+  ));
+  const h1 = grp.userData.head1, h2 = grp.userData.head2;
+  h1.geometry.dispose(); h1.geometry = new THREE.ConeGeometry(headRad, headLen, 10);
+  h2.geometry.dispose(); h2.geometry = new THREE.ConeGeometry(headRad, headLen, 10);
+  // THREE.ConeGeometry pointe vers +Y par défaut ; on l'oriente vers +X et -X.
+  h1.rotation.z = -Math.PI / 2;
+  h1.position.x = demi - headLen / 2;
+  h2.rotation.z = Math.PI / 2;
+  h2.position.x = -(demi - headLen / 2);
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Double flèche STRICTEMENT PLATE (aucune épaisseur locale en Z, pointes
+//  en triangles plats et non en cônes 3D) : utilisée pour la flèche L
+//  posée à même le plan de l'écran, qui doit rester un simple décalque 2D
+//  et non un objet 3D visible en volume depuis la vue 3D perspective.
+// ─────────────────────────────────────────────────────────────────────
+function creerFlecheDoublePlate(color) {
+  const group = new THREE.Group();
+  const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.95, depthTest: false, depthWrite: false });
+  const shaftGeo = new THREE.BufferGeometry();
+  shaftGeo.setAttribute('position', new THREE.Float32BufferAttribute(new Array(6).fill(0), 3));
+  const shaft = new THREE.Line(shaftGeo, mat);
+  shaft.renderOrder = LEN_RENDER_ORDER;
+
+  const headMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95, depthTest: false, depthWrite: false, side: THREE.DoubleSide });
+  const head1Geo = new THREE.BufferGeometry();
+  head1Geo.setAttribute('position', new THREE.Float32BufferAttribute(new Array(9).fill(0), 3));
+  head1Geo.setIndex([0, 1, 2]);
+  const head1 = new THREE.Mesh(head1Geo, headMat);
+  const head2Geo = new THREE.BufferGeometry();
+  head2Geo.setAttribute('position', new THREE.Float32BufferAttribute(new Array(9).fill(0), 3));
+  head2Geo.setIndex([0, 1, 2]);
+  const head2 = new THREE.Mesh(head2Geo, headMat);
+  head1.renderOrder = LEN_RENDER_ORDER; head2.renderOrder = LEN_RENDER_ORDER;
+  group.add(shaft, head1, head2);
+  group.userData.shaft = shaft;
+  group.userData.head1 = head1;
+  group.userData.head2 = head2;
+  return group;
+}
+function setFlecheDoublePlateLongueur(grp, longueur) {
+  const len = Math.max(0.01, longueur);
+  const headLen = Math.min(1.4, Math.max(0.4, len * 0.12));
+  const headDemiLargeur = headLen * 0.36;
+  const demi = len / 2;
+  grp.userData.shaft.geometry.setAttribute('position', new THREE.Float32BufferAttribute(
+    [-demi, 0, 0, demi, 0, 0], 3
+  ));
+  const setHead = (mesh, tipX, sens) => {
+    const baseX = tipX - sens * headLen;
+    mesh.geometry.setAttribute('position', new THREE.Float32BufferAttribute([
+      tipX, 0, 0,
+      baseX, headDemiLargeur, 0,
+      baseX, -headDemiLargeur, 0
+    ], 3));
+  };
+  setHead(grp.userData.head1, demi, 1);
+  setHead(grp.userData.head2, -demi, -1);
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Oriente un décalque (label ou flèche plate) via une base orthonormée
+//  explicite (right = axe local X = sens de lecture du texte, up = axe
+//  local Y approximatif) plutôt qu'une rotation Euler à un seul axe : on
+//  a besoin de fixer SIMULTANÉMENT la normale (quel côté est visible,
+//  pour ne pas rendre le texte en miroir) ET le sens de lecture (aligné
+//  sur la flèche correspondante), ce qu'une seule rotation d'axe ne
+//  permet pas. `up` n'a besoin d'être qu'approximatif : il est
+//  ré-orthogonalisé ci-dessous pour garantir une base propre (rotation,
+//  jamais une réflexion qui inverserait le texte).
+// ─────────────────────────────────────────────────────────────────────
+function orienterDecalque(mesh, right, up) {
+  const R = new THREE.Vector3(...right).normalize();
+  const Uapprox = new THREE.Vector3(...up).normalize();
+  const N = new THREE.Vector3().crossVectors(R, Uapprox).normalize();
+  const U = new THREE.Vector3().crossVectors(N, R).normalize();
+  const m = new THREE.Matrix4().makeBasis(R, U, N);
+  mesh.quaternion.setFromRotationMatrix(m);
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Segment pointillé générique (relie une extrémité de flèche au point
+//  physique dont elle indique l'éloignement). Construit à partir de petits
+//  pavés (Mesh) pleins, PAS d'une THREE.Line + LineDashedMaterial : l'épaisseur
+//  réelle à l'écran d'une ligne GL native n'est pas garantie (souvent
+//  clampée/arrondie à 0-1 px selon le pilote/GPU, notamment sur ANGLE/Windows),
+//  ce qui la rendait invisible à certains niveaux de zoom (bug observé en vue
+//  Dessus pour la double flèche L, non résolu par depthTest/depthWrite/ordre de
+//  rendu — cf. discussion). Des pavés pleins ont une épaisseur RÉELLE (en cm),
+//  donc toujours au moins quelques pixels, quel que soit le zoom.
+//  Chaque segment est aligné sur UN axe (X, Y ou Z) et vit sur une surface
+//  plane (table, tranche de table, écran) : `axePlat` désigne, PARMI LES DEUX
+//  AUTRES axes, celui perpendiculaire à cette surface — il reste quasi nul
+//  (LEN_DASH_PLAT), pour un pavé plat/décalque plutôt qu'un pavé 3D épais dans
+//  les deux directions. Le troisième axe (dans le plan) garde l'épaisseur
+//  visible normale (LEN_DASH_THICK).
+// ─────────────────────────────────────────────────────────────────────
+const LEN_DASH_SIZE = 0.8, LEN_GAP_SIZE = 0.6;
+const LEN_DASH_THICK = 0.18; // cm — épaisseur visible, dans le plan de la surface
+const LEN_DASH_PLAT = 0.02;  // cm — épaisseur quasi nulle, perpendiculaire à la surface (décalque)
+const LEN_DASH_MAX_TICKS = 12; // assez pour les plus longs segments utilisés (cf. placerMesureTable)
+function creerPointilleSegment(color) {
+  const group = new THREE.Group();
+  const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, depthTest: false, depthWrite: false });
+  const ticks = [];
+  for (let i = 0; i < LEN_DASH_MAX_TICKS; i++) {
+    const tick = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), mat);
+    tick.renderOrder = LEN_RENDER_ORDER;
+    tick.visible = false;
+    group.add(tick);
+    ticks.push(tick);
+  }
+  group.userData.ticks = ticks;
+  return group;
+}
+function placerPointilleSegment(group, p1, p2, axePlat) {
+  const dx = p2[0] - p1[0], dy = p2[1] - p1[1], dz = p2[2] - p1[2];
+  const longueur = Math.hypot(dx, dy, dz);
+  const ticks = group.userData.ticks;
+  if (longueur < 1e-6) { ticks.forEach(t => t.visible = false); return; }
+  const ux = dx / longueur, uy = dy / longueur, uz = dz / longueur;
+  const epaisseur = { x: LEN_DASH_THICK, y: LEN_DASH_THICK, z: LEN_DASH_THICK };
+  epaisseur[axePlat] = LEN_DASH_PLAT;
+  const cycle = LEN_DASH_SIZE + LEN_GAP_SIZE;
+  let d = 0, i = 0;
+  for (; i < ticks.length && d < longueur; i++) {
+    const dashLen = Math.min(LEN_DASH_SIZE, longueur - d);
+    const centre = d + dashLen / 2;
+    const tick = ticks[i];
+    tick.visible = true;
+    tick.position.set(p1[0] + ux * centre, p1[1] + uy * centre, p1[2] + uz * centre);
+    // Segment aligné sur un seul axe (toujours le cas actuellement) : ce pavé s'étire le
+    // long de cet axe (dashLen) ; des deux autres, un garde l'épaisseur visible normale,
+    // l'autre (axePlat) reste quasi nul pour rester un décalque plat sur sa surface.
+    tick.scale.set(
+      Math.abs(ux) > 0.5 ? dashLen : epaisseur.x,
+      Math.abs(uy) > 0.5 ? dashLen : epaisseur.y,
+      Math.abs(uz) > 0.5 ? dashLen : epaisseur.z
+    );
+    d += cycle;
+  }
+  for (; i < ticks.length; i++) ticks[i].visible = false;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Label texte (canvas → texture) pour une mesure. Rendu comme un décalque
+//  plat (PlaneGeometry de taille fixe en cm), pas un sprite billboard : il
+//  s'oriente avec la surface sur laquelle il est posé (table ou écran),
+//  cf. updateLengthsGroup().
+// ─────────────────────────────────────────────────────────────────────
+function creerLabelMesure(largeurCm, hauteurCm) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256; canvas.height = 96;
+  const ctx = canvas.getContext('2d');
+  const tex = new THREE.CanvasTexture(canvas);
+  const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false, side: THREE.DoubleSide });
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(largeurCm, hauteurCm), mat);
+  mesh.renderOrder = LEN_RENDER_ORDER + 1;
+  mesh.userData.canvas = canvas;
+  mesh.userData.ctx = ctx;
+  mesh.userData.tex = tex;
+  return mesh;
+}
+function setLabelTexte(mesh, texte) {
+  const canvas = mesh.userData.canvas, ctx = mesh.userData.ctx;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  let fontSize = 46;
+  ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+  const maxW = canvas.width - 16;
+  while (ctx.measureText(texte).width > maxW && fontSize > 18) {
+    fontSize -= 2;
+    ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+  }
+  ctx.fillStyle = '#f2fbff';
+  ctx.strokeStyle = 'rgba(8,16,24,0.85)';
+  ctx.lineWidth = Math.max(4, fontSize * 0.14);
+  ctx.lineJoin = 'round';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.strokeText(texte, canvas.width / 2, canvas.height / 2);
+  ctx.fillText(texte, canvas.width / 2, canvas.height / 2);
+  mesh.userData.tex.needsUpdate = true;
+}
 
 // ─────────────────────────────────────────────────────────────────────
 //  Initialisation de la scène (appelée une fois par ui.js → init()).
@@ -645,7 +886,7 @@ function construireObjets() {
   beamEnvelopeMesh = new THREE.Mesh(new THREE.BufferGeometry(), envMat);
   sceneObj.add(beamEnvelopeMesh);
 
-  // Point de couleur en sortie du laser, affiché en mode "Non visibles" uniquement :
+  // Point de couleur en sortie du laser, affiché en mode "Non visible" uniquement :
   // permet d'identifier la couleur λ en regardant droit dans l'axe du laser, sans
   // dessiner aucun faisceau (cf. discussion de conception avec l'utilisateur).
   beamDot = new THREE.Mesh(
@@ -715,6 +956,41 @@ function construireObjets() {
   const rayMat = new THREE.LineDashedMaterial({ color: 0xffcc66, dashSize: 2.2, gapSize: 1.4, transparent: true, opacity: 0.85 });
   raysLine = new THREE.LineSegments(rayGeo, rayMat);
   sceneObj.add(raysLine);
+
+  // Axe optique pointillé blanc (rappel visuel de la direction de propagation),
+  // affiché conjointement aux rayons vers les 1ers minima.
+  const axisGeo = new THREE.BufferGeometry();
+  axisGeo.setAttribute('position', new THREE.Float32BufferAttribute(new Array(6).fill(0), 3));
+  const axisMat = new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: 2.2, gapSize: 1.4, transparent: true, opacity: 0.85 });
+  axisLine = new THREE.Line(axisGeo, axisMat);
+  sceneObj.add(axisLine);
+
+  // Doubles flèches de mesure d, D, L (bouton "Afficher les longueurs")
+  lengthsGroup = new THREE.Group();
+  sceneObj.add(lengthsGroup);
+  mesurePetitD = {
+    fleche: creerFlecheDouble(LEN_COLOR),
+    dash1: creerPointilleSegment(LEN_COLOR),
+    dash2: creerPointilleSegment(LEN_COLOR),
+    label: creerLabelMesure(18, 6.6) // taille ×3 (demande explicite)
+  };
+  mesureGrandD = {
+    fleche: creerFlecheDouble(LEN_COLOR),
+    dash1: creerPointilleSegment(LEN_COLOR),
+    dash2: creerPointilleSegment(LEN_COLOR),
+    label: creerLabelMesure(21, 7.8) // taille ×3 (demande explicite)
+  };
+  mesureL = {
+    fleche: creerFlecheDouble(LEN_COLOR),        // variante volumique (cônes), utilisée en vue Dessus
+    flechePlate: creerFlecheDoublePlate(LEN_COLOR), // variante plate (décalque écran), utilisée en 3D/Écran
+    dash1: creerPointilleSegment(LEN_COLOR),
+    dash2: creerPointilleSegment(LEN_COLOR),
+    label: creerLabelMesure(5, 1.9) // taille laissée telle quelle en vue Écran (jugée parfaite) ; agrandie via .scale en vue Dessus
+  };
+  [mesurePetitD, mesureGrandD].forEach(m => {
+    lengthsGroup.add(m.fleche, m.dash1, m.dash2, m.label);
+  });
+  lengthsGroup.add(mesureL.fleche, mesureL.flechePlate, mesureL.dash1, mesureL.dash2, mesureL.label);
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -809,9 +1085,158 @@ function updateSceneParams() {
     0, 0, SLIT_Z,  x1_cm, 0, D_cm,
     0, 0, SLIT_Z, -x1_cm, 0, D_cm
   ], 3));
-  raysLine.computeLineDistances();
+  // computeLineDistances() cumule la distance sur TOUS les sommets sans la
+  // remettre à zéro à chaque paire (bug connu de Three.js pour LineSegments) :
+  // le 2ème rayon héritait de la longueur du 1er, d'où des pointillés décalés
+  // entre les deux rayons. On calcule donc la distance manuellement, par paire.
+  const rayLen = Math.hypot(x1_cm, D_cm - SLIT_Z);
+  raysLine.geometry.setAttribute('lineDistance', new THREE.Float32BufferAttribute([
+    0, rayLen,
+    0, rayLen
+  ], 1));
 
+  axisLine.visible = sim.showRays && sim.view !== 'screen';
+  axisLine.geometry.setAttribute('position', new THREE.Float32BufferAttribute([
+    0, 0, SLIT_Z, 0, 0, D_cm
+  ], 3));
+  axisLine.computeLineDistances();
+
+  updateLengthsGroup(x1_cm, w_cm);
   updateBeamVisibility();
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Doubles flèches de mesure d (laser→fente), D (fente→écran) et L
+//  (largeur de la tache centrale), affichées si sim.showLengths.
+//  Repositionnées entièrement selon la vue courante (cf. commentaires
+//  ci-dessous) : appelée depuis updateSceneParams() (λ/a/D changent) et
+//  setSceneView() (juste un changement de vue, mêmes calculs).
+// ─────────────────────────────────────────────────────────────────────
+function updateLengthsGroup(x1_cm, w_cm) {
+  if (!sim.showLengths) { lengthsGroup.visible = false; return; }
+  lengthsGroup.visible = true;
+
+  const D_cm = sim.D * 100;
+  const d_cm = SLIT_Z - SOURCE_Z; // fixe (position du laser non réglable)
+  const view = sim.view;
+
+  // Vues Dessus/Profil : la caméra ortho recule à mesure que D grandit au-delà de
+  // D_CADRAGE_MIN_CM (cf. updateOrthoCamera → D_cadrage), ce qui réduit d'autant la taille
+  // apparente à l'écran de tout ce qui a une taille fixe en cm — dont nos labels. On
+  // compense en agrandissant leur géométrie dans les mêmes proportions, pour qu'ils gardent
+  // toujours leur taille apparente MAXIMALE (celle qu'ils ont pour D ≤ D_CADRAGE_MIN_CM),
+  // jamais plus petits quel que soit D. Vue 3D et vue Écran : pas concernées (pas de ce
+  // mécanisme de cadrage), donc facteur neutre (1).
+  const D_cadrage = Math.max(D_cm, D_CADRAGE_MIN_CM);
+  const zoomCompense = (view === 'top' || view === 'side') ? (D_cadrage / D_CADRAGE_MIN_CM) : 1;
+
+  // d, D : masquées en vue Écran (profondeur nulle de face, cf. raysLine).
+  const showTableArrows = (view !== 'screen');
+  mesurePetitD.fleche.visible = mesurePetitD.dash1.visible = mesurePetitD.dash2.visible = mesurePetitD.label.visible = showTableArrows;
+  mesureGrandD.fleche.visible = mesureGrandD.dash1.visible = mesureGrandD.dash2.visible = mesureGrandD.label.visible = showTableArrows;
+
+  if (showTableArrows) {
+    if (view === 'side') {
+      // Vue Profil : flèches dans la tranche de la table (x=0, invisibles autrement de
+      // cette vue), labels sous la table.
+      placerMesureTable(mesurePetitD, 0, LEN_SIDE_Y, LEN_SIDE_LABEL_Y, SOURCE_Z, SLIT_Z, true);
+      placerMesureTable(mesureGrandD, 0, LEN_SIDE_Y, LEN_SIDE_LABEL_Y, SLIT_Z, D_cm, true);
+    } else {
+      // Vue 3D / Dessus : flèches décalées latéralement pour ne pas être gênées par les
+      // supports, sur le plateau de la table.
+      placerMesureTable(mesurePetitD, LEN_OFFSET_X, LEN_ARROW_Y_TABLE, LEN_LABEL_Y_TABLE, SOURCE_Z, SLIT_Z, false);
+      placerMesureTable(mesureGrandD, LEN_OFFSET_X, LEN_ARROW_Y_TABLE, LEN_LABEL_Y_TABLE, SLIT_Z, D_cm, false);
+    }
+    mesurePetitD.label.scale.set(zoomCompense, zoomCompense, 1);
+    mesureGrandD.label.scale.set(zoomCompense, zoomCompense, 1);
+    setLabelTexte(mesurePetitD.label, 'd = ' + formatFr(d_cm, 1) + ' cm');
+    setLabelTexte(mesureGrandD.label, 'D = ' + formatFr(sim.D, 2) + ' m');
+  }
+
+  // L : masquée en vue Profil (une ligne horizontale sur l'écran, vu de côté, n'apporte rien).
+  const showL = (view !== 'side');
+  const showLTop = showL && view === 'top';
+  const showLEcran = showL && view !== 'top';
+  mesureL.fleche.visible = showLTop;       // variante volumique (cônes) : vue Dessus seulement
+  mesureL.flechePlate.visible = showLEcran; // variante plate : 3D/Écran, à même le plan de l'écran
+  mesureL.dash1.visible = mesureL.dash2.visible = mesureL.label.visible = showL;
+  if (showL) {
+    if (view === 'top') {
+      // Vue Dessus : la flèche « au-dessus de la tache » (axe Y) est aplatie par cette vue ;
+      // on la reporte légèrement derrière l'écran, label encore un peu plus à droite.
+      const zArrow = D_cm + LEN_TOP_L_DECALAGE_Z;
+      setFlecheDoubleLongueur(mesureL.fleche, 2 * x1_cm);
+      mesureL.fleche.rotation.set(0, 0, 0);
+      mesureL.fleche.position.set(0, 0, zArrow);
+      placerPointilleSegment(mesureL.dash1, [-x1_cm, 0, zArrow], [-x1_cm, 0, D_cm], 'y');
+      placerPointilleSegment(mesureL.dash2, [x1_cm, 0, zArrow], [x1_cm, 0, D_cm], 'y');
+      // Sens de lecture aligné sur la flèche (axe X, comme celle-ci), normale vers le haut —
+      // cf. orienterDecalque et placerMesureTable pour le même principe appliqué à d/D.
+      // Vue Dessus : l'axe X du monde correspond à la verticale de l'écran (camOrtho.up=
+      // (1,0,0), cf. updateOrthoCamera) ; le sens de lecture est inversé par rapport au cas
+      // « naturel » ci-dessus pour que le début du label soit en haut et la fin en bas.
+      orienterDecalque(mesureL.label, [-1, 0, 0], [0, 0, 1]);
+      const echelleL = 3 * zoomCompense; // agrandi ×3 comme d/D, + compensation du zoom Dessus/Profil
+      mesureL.label.scale.set(echelleL, echelleL, 1);
+      // Centré sur l'axe optique (x=0, comme le milieu de la flèche elle-même) : décalé
+      // seulement en z (« à droite » sur cette vue, cf. LEN_TOP_L_LABEL_DECALAGE_Z), jamais
+      // en x — un décalage en x le désaxerait par rapport à l'axe optique.
+      mesureL.label.position.set(0, 0.02, zArrow + LEN_TOP_L_LABEL_DECALAGE_Z);
+    } else {
+      // Vue 3D / Écran : décalque STRICTEMENT plat, à même le plan de l'écran (z = D_cm,
+      // aucun recul) — flèche plate dédiée (creerFlecheDoublePlate) plutôt que la variante à
+      // cônes 3D, et pointillés dont les deux extrémités restent à z = D_cm (jamais un
+      // segment qui sortirait du plan de l'écran).
+      const yArrow = Math.min(SCREEN_HEIGHT / 2 - 1.4, w_cm + 1.8);
+      setFlecheDoublePlateLongueur(mesureL.flechePlate, 2 * x1_cm);
+      mesureL.flechePlate.rotation.set(0, 0, 0);
+      mesureL.flechePlate.position.set(0, yArrow, D_cm);
+      placerPointilleSegment(mesureL.dash1, [-x1_cm, yArrow, D_cm], [-x1_cm, 0, D_cm], 'z');
+      placerPointilleSegment(mesureL.dash2, [x1_cm, yArrow, D_cm], [x1_cm, 0, D_cm], 'z');
+      // Décalque contre l'écran : la normale doit faire face à la source/caméra (côté -Z),
+      // pas s'en éloigner, sinon le texte se lit à l'envers (bug initial, cf. écran lui-même
+      // vu depuis le laser et non depuis l'extérieur).
+      orienterDecalque(mesureL.label, [-1, 0, 0], [0, 1, 0]);
+      mesureL.label.scale.set(1, 1, 1); // taille de base (jugée parfaite), ne pas tripler ici
+      mesureL.label.position.set(0, yArrow + 1.3, D_cm);
+    }
+    setLabelTexte(mesureL.label, 'L = ' + formatFr(2 * x1_cm, 2) + ' cm');
+  }
+}
+
+// Place une flèche "table" (d ou D) le long de l'axe optique (Z), avec ses 2 pointillés
+// de rappel. En vue Profil (dansLaTranche=true), les flèches restent à x=0 (déjà dans
+// l'épaisseur de la table) : les pointillés relient alors verticalement la flèche au
+// dessus du plateau plutôt qu'horizontalement vers l'axe.
+//
+// Orientation du label : sens de lecture toujours le long de l'axe optique (Z), comme la
+// flèche elle-même (jamais perpendiculaire). La normale visible change selon la vue :
+// - 3D/Dessus : normale vers le haut (+Y), lu depuis au-dessus — cf. orienterDecalque.
+// - Profil : normale vers -X (côté caméra Profil, positionnée en x=-500), sinon le
+//   décalque serait vu par la tranche (donc invisible), cf. bug initial.
+//
+// Le label est décalé plus loin que la flèche vers l'extérieur de la table (x plus grand,
+// hors tranche) : en vue Dessus, où l'écart Y avec la flèche est aplati (donc invisible),
+// c'est cet écart en X — qui correspond à « vers le haut » de cette vue, cf.
+// camOrtho.up=(1,0,0) dans updateOrthoCamera — qui les sépare visuellement.
+function placerMesureTable(mesure, x, y, yLabel, z0, z1, dansLaTranche) {
+  const longueur = Math.abs(z1 - z0);
+  const zCentre = (z0 + z1) / 2;
+  setFlecheDoubleLongueur(mesure.fleche, longueur);
+  mesure.fleche.rotation.set(0, -Math.PI / 2, 0); // aligne l'axe local X sur l'axe monde Z
+  mesure.fleche.position.set(x, y, zCentre);
+
+  if (dansLaTranche) {
+    placerPointilleSegment(mesure.dash1, [x, y, z0], [x, TABLE_Y, z0], 'x');
+    placerPointilleSegment(mesure.dash2, [x, y, z1], [x, TABLE_Y, z1], 'x');
+    orienterDecalque(mesure.label, [0, 0, 1], [0, 1, 0]);
+    mesure.label.position.set(x, yLabel, zCentre);
+  } else {
+    placerPointilleSegment(mesure.dash1, [x, y, z0], [0, y, z0], 'y');
+    placerPointilleSegment(mesure.dash2, [x, y, z1], [0, y, z1], 'y');
+    orienterDecalque(mesure.label, [0, 0, 1], [1, 0, 0]);
+    mesure.label.position.set(x + LEN_LABEL_X_EXTRA_TABLE, yLabel, zCentre);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -864,6 +1289,10 @@ function setSceneView(view) {
   supportLaser.visible = !cacherBanc;
   supportSlide.visible = !cacherBanc;
   raysLine.visible = sim.showRays && view !== 'screen';
+  axisLine.visible = sim.showRays && view !== 'screen';
+  const x1_cm = xPremierMinimum(sim.lambda, sim.a, sim.D) * 100;
+  const w_cm = Math.max(RENDU_W_MIN_CM, largeurFaisceauGaussien(sim.lambda, sim.D) * 100);
+  updateLengthsGroup(x1_cm, w_cm);
   updateEnvelopeXLimite();
   updateBeamVisibility();
   syncGraphAvecVueEcran();
