@@ -27,6 +27,11 @@ ouvrables en double-clic (`file://`), comme toutes les autres pages du site.
 Diffraction de Fraunhofer par une **fente simple** uniquement (pas de fentes d'Young, pas de
 réseau). Laser monochromatique, λ réglable. Cf. CONTEXTE_PROJET.md pour l'historique des choix.
 
+Le calcul du rendu visuel (texture d'écran, enveloppe 3D — cf. §Pipeline FFT ci-dessous) est
+volontairement conçu pour rester valable si le périmètre s'élargit un jour à d'autres formes
+d'ouverture (carré, cercle) ou à une fente inclinée — cf. `PISTES_EVOLUTION.md` pour le plan
+détaillé de ce qui s'adapterait facilement et de ce qui demanderait un vrai travail.
+
 ---
 
 ## Fichiers et responsabilités
@@ -41,16 +46,55 @@ réseau). Laser monochromatique, λ réglable. Cf. CONTEXTE_PROJET.md pour l'his
 | `sim.a` | Largeur de la fente (µm, 20–500) |
 | `sim.D` | Distance fente-écran (m, 0.5–3) |
 | `sim.showRays` | Affichage des rayons pointillés vers les 1ers minima |
+| `sim.beamMode` | Mode d'affichage du faisceau : `'visible'` (laser + enveloppe diffractée) \| `'laserOnly'` (laser→fente uniquement) \| `'off'` (aucun faisceau, seulement la tache à l'écran + point de couleur en sortie du laser) — cf. `scene.js` §Objets de la scène |
 | `sim.view` | Vue caméra active : `'3d'` \| `'top'` \| `'side'` \| `'screen'` |
 | `sim.screenHalfWidth` | Demi-largeur physique fixe de l'écran simulé (0.125 m — écran réel de TP 25×15 cm) |
-| `thetaPremierMinimum(λ,a)` | sin θ ≈ λ/a |
-| `xPremierMinimum(λ,a,D)` | Position du 1er minimum sur l'écran (m) |
+| `thetaMinimum(λ,a,m)` / `thetaPremierMinimum(λ,a)` | sin θ ≈ m·λ/a — généralisée au m-ième minimum (m=1 → tache centrale, m=2 → 1ère secondaire...), `thetaPremierMinimum` est le cas m=1 |
+| `xMinimum(λ,a,D,m)` / `xPremierMinimum(λ,a,D)` | Position du m-ième minimum sur l'écran (m), idem |
 | `FAISCEAU_DIAMETRE_MM` | Diamètre réel du faisceau laser (1 mm) — source unique pour le rendu et la physique |
-| `largeurFaisceauGaussien(λ,D)` | Rayon du faisceau (m) à distance D par divergence gaussienne naturelle (w0·√(1+(D/zR)²)) — utilisé pour le profil vertical de la texture d'écran, cf. `scene.js` |
-| `intensiteFente(x,λ,a,D)` | I(x) normalisée, formule sinc² de Fraunhofer (sinθ exact, pas d'approximation petit angle) |
-| `echantillonnerIntensite(n)` | Échantillonne I(x) sur toute la largeur de l'écran — **source physique unique**, utilisée à la fois par `graph.js` (courbe) et `scene.js` (texture de l'écran 3D) |
+| `largeurFaisceauGaussien(λ,D)` | Rayon du faisceau (m) à distance D par divergence gaussienne naturelle (w0·√(1+(D/zR)²)) — utilisé pour le profil vertical de la texture d'écran et de l'enveloppe 3D, cf. `scene.js` |
+| `intensiteFente(x,λ,a,D)` | I(x) normalisée, formule sinc² de Fraunhofer (sinθ exact, pas d'approximation petit angle). **Réservée au graphe I(x) et aux encarts de valeurs** — jamais utilisée pour le rendu visuel 3D (texture, enveloppe), cf. §Pipeline FFT |
+| `echantillonnerIntensite(n)` | Échantillonne I(x) sur toute la largeur de l'écran via `intensiteFente` — utilisée par `graph.js` (courbe I(x)) |
 | `longueurOndeVersRGB/Hex/Css(nm)` | Conversion λ → couleur (algorithme de Dan Bruton) |
-| `resetParams()` | Remet λ/a/D/showRays aux valeurs par défaut |
+| `resetParams()` | Remet λ/a/D/showRays/beamMode aux valeurs par défaut |
+
+#### Pipeline FFT de diffraction (texture d'écran + enveloppe 3D)
+
+**Deux sources d'intensité volontairement indépendantes** — ne jamais faire dépendre l'une de
+l'autre : `intensiteFente()` (formule fermée exacte) reste l'unique source du graphe I(x) et des
+encarts de valeurs ; tout le rendu visuel 3D (texture d'écran, enveloppe du faisceau, cf.
+`scene.js`) passe par le pipeline FFT ci-dessous. Motivation : rendre la partie visuelle
+généralisable à d'autres formes d'ouverture plus tard, sans jamais risquer de fausser une valeur
+affichée à l'élève (cf. `PISTES_EVOLUTION.md`).
+
+Principe (optique de Fourier) : le champ juste après une ouverture éclairée par un faisceau réel
+(pas une onde plane infinie) est `masque(x,y) · champ_incident(x,y)`. La figure de diffraction de
+Fraunhofer est `|FFT2D(ce champ)|²`. Pour la fente, `masque` = rectangle (largeur `a` réglable,
+hauteur `FENTE_HAUTEUR_CM` réelle, à l'échelle comme le reste du modèle 3D — cf. `scene.js` →
+`SLIT_BAND_HEIGHT`, qui reprend cette même valeur) et `champ_incident` = profil gaussien du
+faisceau laser (même approximation que `largeurFaisceauGaussien` : col du faisceau au niveau de
+la fente). Avantage par rapport à un facteur `Iy` gaussien multiplié après coup (ancienne
+approche) : la divergence naturelle du faisceau sort de la **même** FFT que la diffraction, pas
+rajoutée à la main.
+
+| Élément | Rôle |
+|---|---|
+| `FENTE_HAUTEUR_CM` | Hauteur réelle de la fente (5.6 cm), à l'échelle — source unique, reprise par `scene.js` |
+| `FFT_N` | Résolution de la grille FFT (1024, puissance de 2) |
+| `FFT_FENETRE_M` | Fenêtre physique carrée échantillonnée dans le plan de la fente (2.5 mm) — dimensionnée par le faisceau/l'ouverture, **pas** par la largeur d'écran à couvrir (cf. piège ci-dessous) |
+| `fft1D(re,im,invert)` | FFT radix-2 Cooley-Tukey, en place, itérative |
+| `fft2D(re,im,N,invert)` | FFT 2D par décomposition lignes puis colonnes (exact, pas une approximation) |
+| `construireChampOuverture(λ,a,D)` | Construit masque×gaussien incident, propage par FFT2D, renvoie `{ grille, pasEcran_m, N }` (intensité normalisée, pic=1) — appelée **une fois** par changement de paramètre (`scene.js` → `updateSceneParams`), partagée par texture et enveloppe |
+| `echantillonnerChamp(champ,x,y)` | Lit l'intensité à une position physique (m), plus proche voisin (résolution FFT très supérieure aux échantillonnages appelants), renvoie 0 hors de la zone couverte |
+
+**Piège de dimensionnement (constaté à l'usage, pas juste un cas limite théorique)** : le rapport
+entre la portée couverte par la FFT à l'écran et la position du 1er minimum x₁ vaut
+`N·a / (2·FFT_FENETRE_M)` — **indépendant de λ et D** (les deux s'annulent, x₁ et cette portée
+étant tous deux proportionnels à λ·D). Ce rapport ne dépend donc que de `a` : une première fenêtre
+à 6 mm donnait un rapport d'à peine 1.7 à `a` minimal (20 µm), tronquant systématiquement la 1ère
+tache secondaire en plein milieu, **quels que soient λ et D** — pas un cas limite rare comme
+supposé initialement. Toujours vérifier ce rapport au réglage le plus exigeant de chaque
+dimension d'ouverture (le `a` le plus petit), pas seulement aux valeurs par défaut.
 
 ---
 
@@ -72,7 +116,7 @@ explicite de l'utilisateur, cf. discussion de conception) :
 | Écran (`SCREEN_WIDTH` × `SCREEN_HEIGHT`) | 25 × 15 cm |
 | Distance fente-écran max (slider `sl-D`) | 3.0 m (borne HTML, pas dans `sim.js` — cf. §Règles générales) |
 | Lame porte-fente (`SLIDE_SIZE`) | 7 × 7 cm |
-| Bande où la fente est gravée (`SLIT_BAND_HEIGHT`) | 80% de la hauteur de la lame (5.6 cm) — ne couvre pas toute la hauteur |
+| Bande où la fente est gravée (`SLIT_BAND_HEIGHT`) | 5.6 cm — reprend directement `FENTE_HAUTEUR_CM` (`sim.js`, source unique, désormais aussi utilisée par la physique FFT) plutôt que d'être dérivée de `SLIDE_SIZE`. Ne couvre pas toute la hauteur de la lame |
 | Diamètre du faisceau laser (`BEAM_DIAMETER`) | 1 mm |
 | Module laser (`LASER_DIAMETER` × `LASER_LENGTH`) | Ø 1,5 cm × 5 cm — dimensions choisies cohérentes avec un module de TP réel, non spécifiées par l'utilisateur |
 | Distance laser-fente (`SOURCE_Z`) | 15 cm — laser monté proche de la fente, comme sur un vrai banc |
@@ -87,15 +131,20 @@ physiquement juste ; seule la largeur *dessinée* de la fente elle-même est exa
 | Objet | Description |
 |---|---|
 | `laserBody` | Cylindre représentant le module laser (Ø 1,5 cm × 5 cm), en `z = SOURCE_Z - LASER_LENGTH/2` |
-| `beamMesh` | Cylindre fin (Ø 1 mm réel) `MeshBasicMaterial` (auto-éclairé) de la source à la fente, coloré selon λ |
+| `beamMesh` | Cylindre fin (Ø 1 mm réel) `MeshBasicMaterial` (auto-éclairé, opaque) de la source à la fente, coloré selon λ — visible en mode `sim.beamMode` `'visible'` ou `'laserOnly'` |
+| `beamEnvelopeMesh` | Enveloppe pleine et translucide du faisceau diffracté (fente → écran) — cf. §Enveloppe 3D du faisceau ci-dessous. Visible en mode `'visible'` uniquement |
+| `beamDot` | Petite sphère colorée selon λ, en sortie du laser — seul indice de couleur visible en mode `'off'` (aucun faisceau dessiné) |
 | `topBand` / `bottomBand` | Bandes pleines (haut/bas) de la lame porte-fente, hauteur fixe, ne dépendent pas de `a` |
 | `wallLeft` / `wallRight` | Murs latéraux de la fente (géométrie unitaire mise à l'échelle via `.scale`), confinés à la bande centrale `SLIT_BAND_HEIGHT`, écartés de `largeurFenteVisuelle(a)` — avec `topBand`/`bottomBand`, forment la lame 7×7 cm sans CSG (la fente est l'espace vide entre les deux murs) |
 | `screenMesh` | Plan `PlaneGeometry(SCREEN_WIDTH, SCREEN_HEIGHT)` avec `CanvasTexture` recalculée à chaque changement de paramètre |
 | `raysLine` | `LineSegments` en pointillés (`LineDashedMaterial`) de la fente vers les deux 1ers minima (±x₁), masquable via `sim.showRays` |
 | `supportLaser` / `supportSlide` / `supportScreen` | Groupes `creerSupport()` (tige + plateau), un par élément — purement décoratifs |
 
-**Pas de rendu volumétrique du faisceau diffracté** (choix assumé, cf. discussion de conception) :
-seule la texture projetée sur l'écran représente la figure de diffraction.
+`updateBeamVisibility()` centralise la visibilité de `beamMesh`/`beamEnvelopeMesh`/`beamDot`
+d'après `sim.beamMode` croisé avec la vue active (masqués en vue Écran, comme le reste du banc) —
+appelée depuis `updateSceneParams()` (changement de paramètre/mode) et `setSceneView()` (changement
+de vue). Le bouton « Faisceau lumineux » du panneau (`ui.js` → `cycleBeamMode()`) fait cycler
+`sim.beamMode` entre les 3 valeurs.
 
 #### Table et supports (`creerSupport()`)
 
@@ -232,20 +281,26 @@ l'orientation de la caméra.
 
 #### Texture de l'écran
 
-`updateSceneParams()` reconstruit un `ImageData` (512×64) à partir de `intensiteFente()` (même
-fonction que le graphe, cf. `sim.js`), module la couleur de base (`longueurOndeVersRGB(λ)`) par
-l'intensité, et marque `screenTexture.needsUpdate = true`.
+`updateSceneParams()` calcule d'abord `champ = construireChampOuverture(λ,a,D)` (cf. `sim.js`
+§Pipeline FFT) **une seule fois**, puis reconstruit un `ImageData` (512×64) en lisant
+`echantillonnerChamp(champ, x, 0)` pour la composante horizontale — **pas** `intensiteFente()`,
+réservée au graphe et aux encarts (cf. `sim.js`). Module la couleur de base
+(`longueurOndeVersRGB(λ)`) par l'intensité, et marque `screenTexture.needsUpdate = true`. Le même
+`champ` est aussi passé à `construireGeometrieEnveloppe()` (cf. ci-dessous) : un seul calcul FFT
+par changement de paramètre, partagé.
 
-**Profil vertical (divergence du faisceau gaussien)** : le modèle physique de la diffraction est 1D
-(fente « infinie » en y, cf. §Périmètre physique de `sim.js`) — il n'y a donc aucune vraie
-diffraction verticale *par la fente* à calculer. Mais rien n'empêche de modéliser la vraie
-divergence du faisceau laser lui-même (mode gaussien TEM00), indépendante de la fente : c'est
-`largeurFaisceauGaussien(λ,D)` (cf. `sim.js`) qui la calcule, avec la formule standard d'optique
-laser `w(D) = w0·√(1+(D/zR)²)` (zR = portée de Rayleigh), à partir du diamètre réel du faisceau
-(`FAISCEAU_DIAMETRE_MM = 1`). La texture applique ce rayon `w` comme profil gaussien en y
-(convention laser `I(r) = I0·exp(-2r²/w²)`), indépendant de x — identique pour l'ordre central et
-les ordres secondaires, comme sur une vraie photo de diffraction. Sans lui, `I(x)` peinte identique
-sur toute la hauteur donnerait des **bandes verticales infinies** au lieu de taches.
+**Profil vertical (divergence du faisceau gaussien)** : `largeurFaisceauGaussien(λ,D)` (cf.
+`sim.js`) reste calculée séparément et appliquée après coup en y (formule standard d'optique
+laser `w(D) = w0·√(1+(D/zR)²)`, convention `I(r) = I0·exp(-2r²/w²)`), plutôt que d'échantillonner
+`champ` à un y quelconque — la fente (`FENTE_HAUTEUR_CM`, bien plus haute que le faisceau) ne
+contraint jamais verticalement à l'échelle de la fenêtre FFT (cf. `sim.js`), donc le champ FFT à
+y≠0 reproduirait de toute façon la même gaussienne ; garder le facteur séparé préserve aussi
+l'asymétrie voulue de la compression d'affichage (racine carrée appliquée seulement à la
+composante horizontale, cf. `IxAffichage` dans `updateSceneParams()`, pas à la composante
+verticale — un `sqrt` sur la gaussienne l'élargirait visiblement, cf. `PISTES_EVOLUTION.md`).
+Identique pour l'ordre central et les ordres secondaires, comme sur une vraie photo de
+diffraction. Sans lui, `I(x)` peinte identique sur toute la hauteur donnerait des **bandes
+verticales infinies** au lieu de taches.
 
 **Piège #1 (aspect du buffer)** : le buffer de la texture (`screenTexCanvas`) doit garder le **même
 ratio largeur/hauteur que le plan physique** (`SCREEN_WIDTH`/`SCREEN_HEIGHT`, cf. `construireObjets()`).
@@ -268,6 +323,59 @@ visible — seul le très petit reste artificiellement gonflé, par nécessité 
 de paramètre) **et** dans `setSceneView()` (change de vue), les deux étant des déclencheurs valides.
 Une caméra orthographique de face ne représente pas la profondeur : les deux rayons vers ±x₁
 s'y aplatissent en un simple trait horizontal qui n'apporte rien dans cette vue précise.
+
+#### Enveloppe 3D du faisceau (`beamEnvelopeMesh`, `construireGeometrieEnveloppe()`)
+
+Un vrai cône dont la base épouse la silhouette de la tache projetée (pas un volume à section
+constante peint d'un dégradé), reconstruit entièrement à chaque changement de paramètre :
+
+- **Un seul maillage continu**, formé d'une nappe « côté écran » (grille (x,y) complète à
+  `z=D_cm`, portant tout le détail de la figure) et d'un « ruban » en profondeur (loft, de la
+  fente à l'écran) **pour chaque rangée y**, pas seulement les deux bords haut/bas — une rangée
+  n'allant que du sommet-arête commun côté fente au contour de la grille écran laisserait la
+  vue Profil creuse en son centre (le plus lumineux), la nappe écran étant plate donc invisible
+  par la tranche dans cette vue.
+- **Sommets partagés** entre triangles adjacents (géométrie indexée), jamais de solide dupliqué
+  par échantillon : un solide dupliqué par colonne crée des parois latérales internes quasi
+  coïncidentes à chaque frontière, qui s'additionnent en opacité (rendu « en tuyaux d'orgue »).
+- **Connectivité X et Y** : chaque rangée est reliée en profondeur à ses voisines en x (le long
+  d'un même rayon) **et** ses rangées voisines sont reliées entre elles à chaque profondeur — sans
+  cette seconde passe, les rangées restent des rubans indépendants avec du vide entre eux, visible
+  en vue Profil comme des traits fins séparés plutôt qu'un faisceau plein.
+- **Double codage de l'intensité, x ET y** : la demi-hauteur de la silhouette à l'écran est
+  proportionnelle à `√I(x)` (pince à une largeur nulle exactement aux minima — zéro physique
+  exact, pas une approximation visuelle) ; la couleur de sommet (lue comme alpha par le shader)
+  suit un dégradé bidimensionnel `√I(x)·Iy(y)`. `I(x)` vient de `champ` (le même calculé pour la
+  texture, cf. ci-dessus), **pas** de `intensiteFente()` directement.
+- **Luminosité de l'enveloppe compressée plus fort que la texture** (`ENVELOPPE_GAMMA_LUMINOSITE`,
+  exposant 1.6 au lieu de la racine carrée 0.5) : la géométrie (silhouette) reste visible aux
+  taches secondaires, mais leur éclat retombe plus vite — sinon elles paraissaient presque aussi
+  lumineuses que la tache centrale une fois en volume 3D.
+- **Couleur constante le long de chaque rayon** (pas un fondu depuis un blanc plein à la fente) :
+  chaque rayon affiche sa vraie luminosité dès le départ. Une première version démarrait à
+  luminosité max près de la fente (schématique) puis s'éteignait vers l'écran — mais à géométrie
+  partagée entre colonnes, ce fondu maintenait aussi les rayons de taches secondaires (censés être
+  ternes) proches du blanc sur une grande partie de la longueur : le faisceau paraissait bien trop
+  lumineux à sa base.
+- **`ShaderMaterial` sur mesure** plutôt que `MeshBasicMaterial`+vertexColors : le shader intégré
+  ne module que le RGB par la couleur de sommet, jamais l'alpha (fixé par `material.opacity`) —
+  l'absence de lumière rendait des bandes **noires opaques** plutôt que transparentes, visibles sur
+  le fond de scène non parfaitement noir. Le shader maison réutilise directement l'attribut
+  `color` comme alpha du fragment.
+- **Plancher d'opacité restreint à la tache centrale** (`uPlancherAlpha`, borné par `uXLimite` =
+  position du 1er minimum) : la largeur réelle de l'enveloppe près de la fente (~1 mm) est
+  physiquement correcte mais quasi invisible une fois rendue en alpha (contrairement à `beamMesh`,
+  opaque, qui reste visible à cette même finesse). Plutôt que d'agrandir la géométrie pour
+  compenser (essayé, mais crée un faux élargissement brutal à la jonction avec `beamMesh` — la
+  diffraction est un phénomène de champ lointain, l'élargissement réel doit rester progressif), le
+  plancher relève seulement l'alpha minimum, actif sur toute la longueur du faisceau mais
+  seulement pour les rayons dont l'abscisse **à l'écran** (attribut `aXFar`, constant le long du
+  rayon — **pas** `position.x`, qui tend vers 0 pour tous les rayons près de la fente) tombe dans
+  `[-x1, x1]`. Reproduit exactement le triangle tracé par les pointillés `raysLine`.
+
+Historique complet des versions intermédiaires (cône de révolution rejeté, plancher de hauteur
+géométrique rejeté...) : cf. les commentaires détaillés dans `scene.js` autour de
+`construireGeometrieEnveloppe()` et `PISTES_EVOLUTION.md`.
 
 #### DPI
 
@@ -302,8 +410,11 @@ approches en cas de copier-coller vers une autre page.
 
 - `updateParam(name, val)` : met à jour `sim`, les labels, appelle `updateSceneParams()` +
   `updateReadouts()`.
+- `cycleBeamMode()` : fait cycler `sim.beamMode` entre `'visible'`/`'laserOnly'`/`'off'`, met à
+  jour le libellé du bouton « Faisceau lumineux » et appelle `updateSceneParams()`.
 - `setView(view)` : appelle `setSceneView(view)` (scene.js) + met à jour les boutons `.btn-view`.
-- `resetSim()` : `resetParams()` + RAZ sliders/tangentes/vue graphe/caméra 3D.
+- `resetSim()` : `resetParams()` + RAZ sliders/tangentes/vue graphe/caméra 3D/libellé du bouton
+  Faisceau lumineux.
 - Splitter draggable entre `#scene-area` et `#graph-area` (pattern identique à `condensateur/js/circuit.js`).
 - `resize()` anti-rebond (`requestAnimationFrame`) → `resizeScene()` + `resizeGraphCanvas()`.
 - `loop()` : boucle continue (`requestAnimationFrame`) qui appelle `renderScene()` (nécessaire en
@@ -319,8 +430,10 @@ index.html
   └── ../libs/three.min.js       expose : THREE (global)
   └── ../libs/OrbitControls.js   expose : THREE.OrbitControls
   └── js/sim.js       expose : sim, A_MIN/MAX, FAISCEAU_DIAMETRE_MM,
-  │                             thetaPremierMinimum, xPremierMinimum, intensiteFente,
-  │                             largeurFaisceauGaussien, echantillonnerIntensite,
+  │                             thetaMinimum/thetaPremierMinimum, xMinimum/xPremierMinimum,
+  │                             intensiteFente, largeurFaisceauGaussien, echantillonnerIntensite,
+  │                             FENTE_HAUTEUR_CM, FFT_N, FFT_FENETRE_M, fft1D, fft2D,
+  │                             construireChampOuverture, echantillonnerChamp,
   │                             longueurOndeVersRGB/Hex/Css, resetParams
   │
   └── js/scene.js     dépend de : sim.js, THREE, THREE.OrbitControls
@@ -333,8 +446,8 @@ index.html
   │                             toggleGraphCursor, toggleGraphTangente, prevGraphView, autoScaleGraph
   │
   └── js/ui.js        dépend de : tous les fichiers précédents
-                       expose : updateParam, toggleRays, setView, updateReadouts, resetSim,
-                                 toggleHint, resize, init
+                       expose : updateParam, toggleRays, cycleBeamMode, setView, updateReadouts,
+                                 resetSim, toggleHint, resize, init
                        démarre : init() → requestAnimationFrame(loop)
 ```
 
