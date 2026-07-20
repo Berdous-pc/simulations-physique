@@ -50,14 +50,6 @@ Collection de **simulations interactives** de physique-chimie. Chaque simulation
 - **Panneau droit scrollable** (`overflow-y: auto`) quand le contenu est plus long que la fenêtre (petits écrans).
 - **Textes des zones de simulation** (canvas) dessinés proportionnellement à la taille du canvas, pas en px fixes.
 
-### Téléphone (hors cible principale, mais géré)
-
-Deux stratégies selon la densité de la page, via `@media (max-width: 700px) and (orientation: portrait)` :
-
-- **Pages « simples »** (dissolution, pression, lentille, lunette, reaction) : **layout empilé** — `body` repasse en `height: auto; overflow-y: auto`, `main` en une colonne `grid-template-rows: 60dvh auto` (simulation en haut, panneau en dessous). Les canvas interactifs portent `touch-action: none` pour que le drag ne déclenche pas le scroll de page.
-- **Pages « denses »** (titrage, champ_uniforme, radioactivite, ondes, condensateur) : **overlay `#rotate-overlay`** plein écran invitant à passer en paysage (bloc HTML + CSS identiques d'une page à l'autre, à recopier).
-- **Accueil** : pas de media query mobile spécifique — layout desktop conservé tel quel à toutes les tailles.
-
 ---
 
 ## 4. Charte graphique
