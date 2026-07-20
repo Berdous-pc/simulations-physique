@@ -77,9 +77,28 @@ function resetSim() {
   updateReadouts();
 }
 
-function toggleHint() {
-  const hint = document.getElementById('panel-hint');
+function toggleHint(tab) {
+  const hint = document.getElementById('panel-hint-' + tab);
   if (hint) hint.classList.toggle('collapsed');
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Onglets principaux du panneau : Ondes de surfaces / Ondes lumineuses.
+// ─────────────────────────────────────────────────────────────────────
+function setMainTab(tab) {
+  history.replaceState(null, '', location.pathname + '#' + tab);
+  ['surfaces', 'lumineuses'].forEach(t => {
+    document.getElementById('tab-' + t).classList.toggle('active', t === tab);
+    document.getElementById('section-' + t).style.display = (t === tab) ? '' : 'none';
+    document.getElementById('panel-hint-' + t).style.display = (t === tab) ? '' : 'none';
+  });
+  document.getElementById('lumineuses-area').style.display = (tab === 'lumineuses') ? '' : 'none';
+  document.getElementById('surfaces-area').style.display = (tab === 'surfaces') ? '' : 'none';
+
+  // #lumineuses-area est display:none pendant l'onglet Surfaces : la scène 3D
+  // et le canvas du graphe n'ont des dimensions exploitables qu'une fois
+  // réaffichés — on relance donc le resize ici, pas seulement une fois à init().
+  if (tab === 'lumineuses') resize();
 }
 
 // ═══════════════════════════════════════════════════
@@ -175,6 +194,10 @@ function loop() {
 //  INITIALISATION
 // ═══════════════════════════════════════════════════
 function init() {
+  const hash = (location.hash || '').replace('#', '');
+  const tab = (hash === 'surfaces' || hash === 'lumineuses') ? hash : 'lumineuses';
+  setMainTab(tab);
+
   initScene();
   initGraphInteractions();
   resize();

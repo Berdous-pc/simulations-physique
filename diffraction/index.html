@@ -25,47 +25,91 @@
 </div>
 
 <main>
-  <!-- Colonne gauche : scène 3D + splitter + graphe -->
+  <!-- Colonne gauche : scène 3D + splitter + graphe (onglet Ondes lumineuses)
+       ou placeholder (onglet Ondes de surfaces) -->
   <div id="left-col">
 
-    <!-- Zone de la scène 3D (Three.js) -->
-    <div id="scene-area">
-      <canvas id="scene-canvas"></canvas>
-      <div id="view-buttons">
-        <button class="btn-view active" data-view="3d"     onclick="setView('3d')">Vue 3D</button>
-        <button class="btn-view"        data-view="top"    onclick="setView('top')">Dessus</button>
-        <button class="btn-view"        data-view="side"   onclick="setView('side')">Profil</button>
-        <button class="btn-view"        data-view="screen" onclick="setView('screen')">Écran</button>
+    <!-- ═══ Zone ONDES LUMINEUSES (diffraction par une fente, déjà implémentée) ═══ -->
+    <div id="lumineuses-area">
+
+      <!-- Zone de la scène 3D (Three.js) -->
+      <div id="scene-area">
+        <canvas id="scene-canvas"></canvas>
+        <div id="view-buttons">
+          <button class="btn-view active" data-view="3d"     onclick="setView('3d')">Vue 3D</button>
+          <button class="btn-view"        data-view="top"    onclick="setView('top')">Dessus</button>
+          <button class="btn-view"        data-view="side"   onclick="setView('side')">Profil</button>
+          <button class="btn-view"        data-view="screen" onclick="setView('screen')">Écran</button>
+        </div>
+      </div>
+
+      <!-- Splitter draggable -->
+      <div id="left-splitter"></div>
+
+      <!-- Zone graphe I(x) -->
+      <div id="graph-area">
+        <div id="graph-time-control">
+          <div id="graph-btns-left">
+            <span class="graph-title">I(x) — Intensité lumineuse sur l'écran</span>
+          </div>
+          <div id="graph-btns-right">
+            <button id="btn-graph-cursor"   onclick="toggleGraphCursor()"   title="Réticule libre">+</button>
+            <button id="btn-graph-tangente" onclick="toggleGraphTangente()" title="Tangente">Tangente</button>
+            <button id="btn-graph-prev"     onclick="prevGraphView()" disabled title="Vue précédente">&#8592;</button>
+            <button id="btn-graph-zoom"     onclick="toggleGraphZoom()"     title="Mode zoom">&#128269;</button>
+            <button id="btn-graph-auto"     onclick="autoScaleGraph()">&#128269; Adapter</button>
+          </div>
+        </div>
+        <div class="graph-wrap">
+          <canvas id="graph-intensity"></canvas>
+        </div>
+      </div>
+
+    </div><!-- fin #lumineuses-area -->
+
+    <!-- ═══ Zone ONDES DE SURFACES — à venir ═══ -->
+    <div id="surfaces-area" style="display:none;">
+      <div id="surfaces-placeholder">
+        <span id="surfaces-placeholder-icon">🌊</span>
+        <p>Simulation à venir</p>
       </div>
     </div>
 
-    <!-- Splitter draggable -->
-    <div id="left-splitter"></div>
-
-    <!-- Zone graphe I(x) -->
-    <div id="graph-area">
-      <div id="graph-time-control">
-        <div id="graph-btns-left">
-          <span class="graph-title">I(x) — Intensité lumineuse sur l'écran</span>
-        </div>
-        <div id="graph-btns-right">
-          <button id="btn-graph-cursor"   onclick="toggleGraphCursor()"   title="Réticule libre">+</button>
-          <button id="btn-graph-tangente" onclick="toggleGraphTangente()" title="Tangente">Tangente</button>
-          <button id="btn-graph-prev"     onclick="prevGraphView()" disabled title="Vue précédente">&#8592;</button>
-          <button id="btn-graph-zoom"     onclick="toggleGraphZoom()"     title="Mode zoom">&#128269;</button>
-          <button id="btn-graph-auto"     onclick="autoScaleGraph()">&#128269; Adapter</button>
-        </div>
-      </div>
-      <div class="graph-wrap">
-        <canvas id="graph-intensity"></canvas>
-      </div>
-    </div>
+    <!-- Bascule d'affichage synchrone (avant chargement des scripts externes) :
+         évite un flash de #lumineuses-area quand la page charge/rafraîchit
+         directement sur l'onglet Ondes de surfaces (lien profond #surfaces). -->
+    <script>
+      (function () {
+        var hash = (location.hash || '').replace('#', '');
+        var tab = hash || new URLSearchParams(location.search).get('tab');
+        if (tab === 'surfaces') {
+          document.getElementById('lumineuses-area').style.display = 'none';
+          document.getElementById('surfaces-area').style.display = '';
+        }
+      })();
+    </script>
 
   </div><!-- fin #left-col -->
 
   <!-- Panneau de contrôle droit -->
   <div id="panel">
+
+    <!-- ── Onglets principaux ─────────────────── -->
+    <div class="panel-main-tabs">
+      <button class="panel-main-tab" id="tab-surfaces"
+              onclick="setMainTab('surfaces')">
+        Ondes de surfaces
+      </button>
+      <button class="panel-main-tab active" id="tab-lumineuses"
+              onclick="setMainTab('lumineuses')">
+        Ondes lumineuses
+      </button>
+    </div>
+
    <div id="panel-body">
+
+    <!-- ═══ Section ONDES LUMINEUSES ═══ -->
+    <div class="panel-main-section" id="section-lumineuses">
 
     <!-- Section : Source laser -->
     <div>
@@ -121,20 +165,40 @@
 
     <button class="btn btn-reset" onclick="resetSim()">&#9632; Réinitialiser</button>
 
+    </div><!-- fin #section-lumineuses -->
+
+    <!-- ═══ Section ONDES DE SURFACES — à venir ═══ -->
+    <div class="panel-main-section" id="section-surfaces" style="display:none;">
+      <div class="section-title">Ondes de surfaces</div>
+      <div class="input-hint">Cet onglet sera développé prochainement.</div>
+    </div>
+
    </div><!-- fin #panel-body -->
 
-    <!-- ── Bandeau Instructions ────────────────── -->
-    <div class="panel-hint collapsed" id="panel-hint">
+    <!-- ── Bandeau Instructions — onglet Ondes lumineuses ── -->
+    <div class="panel-hint collapsed" id="panel-hint-lumineuses">
       <div class="panel-hint-header">
         <button class="panel-hint-menu-btn" onclick="location.href='../index.html'" title="Retour au menu principal">☰ Menu</button>
         <span class="panel-hint-title">Instructions</span>
-        <button class="panel-hint-toggle" onclick="toggleHint()" title="Afficher les instructions">▲</button>
+        <button class="panel-hint-toggle" onclick="toggleHint('lumineuses')" title="Afficher les instructions">▲</button>
       </div>
       <div class="panel-hint-body">
         Réglez la longueur d'onde λ, la largeur de la fente a et la distance à l'écran D pour observer
         la figure de diffraction. La souris permet de faire pivoter la vue 3D (clic-glissé) et de zoomer
         (molette) ; les boutons <strong>Dessus / Profil / Écran</strong> basculent sur des vues fixes
         précises. Le graphe I(x) en bas se lit directement en vis-à-vis de l'écran en vue <strong>Écran</strong>.
+      </div>
+    </div>
+
+    <!-- ── Bandeau Instructions — onglet Ondes de surfaces ── -->
+    <div class="panel-hint collapsed" id="panel-hint-surfaces" style="display:none;">
+      <div class="panel-hint-header">
+        <button class="panel-hint-menu-btn" onclick="location.href='../index.html'" title="Retour au menu principal">☰ Menu</button>
+        <span class="panel-hint-title">Instructions</span>
+        <button class="panel-hint-toggle" onclick="toggleHint('surfaces')" title="Afficher les instructions">▲</button>
+      </div>
+      <div class="panel-hint-body">
+        Cette simulation sera disponible prochainement.
       </div>
     </div>
 
