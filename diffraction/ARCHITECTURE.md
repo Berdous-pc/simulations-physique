@@ -335,8 +335,5 @@ index.html
 
 ## Écarts connus par rapport à CONTEXTE_PROJET.md
 
-- Le bloc mobile `#rotate-overlay` (§3) était documenté comme existant sur plusieurs pages
-  (`condensateur`, `champ_uniforme`, `radioactivite`, `ondes`, `titrage`) mais n'a été retrouvé
-  dans **aucune** d'entre elles lors de la construction de cette page. `diffraction/` en contient
-  donc la **première implémentation réelle** ; la documentation et/ou les autres pages restent à
-  corriger séparément.
+- Aucune fonctionnalité de détection téléphone/orientation (pas d'overlay de rotation, pas de
+  media query dédiée) : choix assumé pour cette page, à la demande de l'utilisateur.
