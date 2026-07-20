@@ -433,12 +433,15 @@ function resizeGraphCanvas() {
 //  qu'aucun autre événement ne le signale explicitement, donc pas d'anti-rebond ici — juste
 //  un no-op immédiat si le mode est inactif.
 //
-//  Chaque pointillé est une polyligne en 3 segments dans le repère de l'overlay (partagé
-//  par la scène ET le graphe, cf. #lumineuses-area → position:relative) : vertical dans la
-//  scène (toute sa hauteur, à l'abscisse-écran du point), diagonal à travers le splitter
-//  (les deux canvas n'ont pas forcément la même échelle px/m, cf. GRAPH_PAD qui mange une
-//  partie de la largeur du graphe), puis vertical dans le graphe (toute la hauteur du
-//  tracé, à l'abscisse du point sur la courbe).
+//  Chaque pointillé est une polyligne en 2 segments dans le repère de l'overlay (partagé
+//  par la scène ET le graphe, cf. #lumineuses-area → position:relative) : part de l'axe
+//  horizontal y=0 de la vue Écran (hauteur des minima/maxima sur l'écran — pas plus haut,
+//  inutile de traverser le fond noir au-dessus/en-dessous de la figure), diagonal à travers
+//  le splitter (les deux canvas n'ont pas forcément la même échelle px/m, cf. GRAPH_PAD qui
+//  mange une partie de la largeur du graphe), puis vertical dans le graphe (toute la
+//  hauteur du tracé, à l'abscisse du point sur la courbe). Un extremum physiquement hors de
+//  l'écran (`|x| > sim.screenHalfWidth`) n'est pas tracé, même s'il reste dans le cadre de
+//  la caméra (qui peut montrer plus que l'écran lui-même selon le zoom).
 // ─────────────────────────────────────────────────────────────────────
 function dessinerLienFigure() {
   if (!graphLienMode) return;
@@ -467,12 +470,17 @@ function dessinerLienFigure() {
   const extremaBruts = calculerExtrema(pts);
   const { maxima, minima } = limiterAuDeuxiemeMinimum(extremaBruts.maxima, extremaBruts.minima);
 
-  const ySceneTop = sceneRect.top - hostRect.top;
-  const ySceneBot = sceneRect.bottom - hostRect.top;
+  // Axe horizontal (y=0) de la vue Écran, en repère overlay — toujours le centre vertical
+  // exact du canvas scène (caméra ortho symétrique, comme fracXVueEcran pour x=0). Les
+  // pointillés s'arrêtent à cette hauteur côté scène (ligne des minima/maxima sur l'écran),
+  // au lieu de traverser toute la hauteur du canvas comme avant : inutile de les prolonger
+  // dans le fond noir au-dessus/en-dessous de la figure.
+  const yAxeScene = sceneRect.top - hostRect.top + sceneRect.height / 2;
   const yGraphTop = graphRect.top - hostRect.top + layout.pad.t;
   const yGraphBot = yGraphTop + layout.gh;
 
   function tracerLien(x_m, couleur) {
+    if (Math.abs(x_m) > sim.screenHalfWidth) return; // extremum physiquement hors de l'écran
     const fracScene = fracXVueEcran(x_m);
     if (fracScene < 0 || fracScene > 1) return; // hors cadre de la vue Écran (zoom, bord)
     const pxScene = sceneRect.left - hostRect.left + fracScene * sceneRect.width;
@@ -482,8 +490,7 @@ function dessinerLienFigure() {
     gc.lineWidth = 1.5;
     gc.setLineDash([5, 4]);
     gc.beginPath();
-    gc.moveTo(pxScene, ySceneTop);
-    gc.lineTo(pxScene, ySceneBot);
+    gc.moveTo(pxScene, yAxeScene);
     gc.lineTo(pxGraph, yGraphTop);
     gc.lineTo(pxGraph, yGraphBot);
     gc.stroke();

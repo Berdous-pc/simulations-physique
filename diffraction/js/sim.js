@@ -115,36 +115,46 @@ function largeurFaisceauGaussien(lambda_nm, D_m) {
 
 // Hauteur réelle de la fente (cm), à l'échelle — cf. scene.js → SLIT_BAND_HEIGHT, qui reprend
 // cette même valeur pour le rendu 3D (source unique). Très supérieure à la fenêtre FFT ci-
-// dessous (FFT_FENETRE_M, quelques mm) : dans cette fenêtre, la fente n'est donc jamais
-// limitante en y — seul le profil du faisceau incident l'est. C'est exactement la même
+// dessous (FFT_FENETRE_FACTEUR × a, de l'ordre du mm — cf. sa docstring) : dans cette fenêtre,
+// la fente n'est donc jamais limitante en y — seul le profil du faisceau incident l'est. C'est exactement la même
 // approximation physique que l'ancien `largeurFaisceauGaussien` (une fente réelle est bien
 // plus haute que le faisceau qui la traverse), mais elle ressort maintenant de la géométrie du
 // masque plutôt que d'être supposée a priori.
 const FENTE_HAUTEUR_CM = 5.6;
 
-// Résolution (N, puissance de 2) et fenêtre physique (FFT_FENETRE_M, mètres, carrée) de la
-// grille FFT dans le plan de la fente. Choix guidés par le faisceau et l'ouverture, PAS par la
-// largeur de l'écran à couvrir — le champ incident est nul en dehors du faisceau (rayon ~0,5
-// mm), inutile de mailler au-delà, quelle que soit la taille réelle de la fente (5,6 cm de haut).
+// Résolution (N, puissance de 2) de la grille FFT dans le plan de la fente, et facteur de sa
+// fenêtre physique (FFT_FENETRE_FACTEUR × a, PAS une largeur fixe — cf. discussion de conception
+// ci-dessous). Choix guidés par l'ouverture, PAS par la largeur de l'écran à couvrir — le champ
+// incident est nul hors de la fente (masque), inutile de mailler au-delà, quelle que soit la
+// taille réelle de la fente (5,6 cm de haut, cf. FENTE_HAUTEUR_CM).
 //
-// Portée couverte à l'écran, en unités du 1er minimum x1 (constaté à l'usage, corrige une
-// première estimation trop optimiste) : ratio = Coverage/x1 = N·a/(2·FFT_FENETRE_M) —
-// remarquablement INDÉPENDANT de λ et D (les deux s'annulent ; x1 et la portée de la FFT sont
-// tous deux proportionnels à λ·D). Ce ratio ne dépend donc que de `a` : à a minimal (20 µm,
-// cf. A_MIN), il vaut la même chose quels que soient λ/D. Avec une première fenêtre à 6 mm, ce
-// ratio ne valait qu'environ 1,7 à a=20 µm — la FFT ne couvrait donc qu'à peine plus loin que
-// le 1er minimum lui-même, tronquant la 1ère tache secondaire en plein milieu, quels que soient
-// λ et D (constaté par l'utilisateur — pas un cas limite rare comme supposé initialement).
-// FFT_FENETRE_M resserrée à 2,5 mm (N inchangé) porte ce ratio à ~4,1 à a=20 µm — couvre
-// largement la 1ère tache secondaire et une bonne partie de la 2e avant de s'arrêter — tout en
-// restant très confortable pour le faisceau (demi-fenêtre 1,25 mm ≈ 2,5×w0, reste négligeable :
-// exp(-2·2,5²)≈4·10⁻⁶) et en affinant au passage le pas dans le plan de la fente (~2,4 µm à
-// N=1024, contre ~5,9 µm avant). Au-delà de la portée couverte, échantillonnerChamp() renvoie 0
-// (hypothèse sûre : l'intensité y est de toute façon négligeable dans l'immense majorité des
-// réglages) — seuls les tout derniers ordres, très loin dans les réglages les plus extrêmes,
-// peuvent encore être concernés.
+// **Fenêtre proportionnelle à `a`, pas fixe** : une première version utilisait une fenêtre fixe
+// (2,5 mm, N inchangé) — correcte à a par défaut (100 µm, pas dans la fente ≈2,4 µm, ~41
+// échantillons DANS la fente), mais à a minimal (20 µm, cf. A_MIN) la fente ne tient plus que
+// sur ~8 échantillons : bien trop grossier pour représenter proprement un rectangle transformé
+// par FFT — le sinc² obtenu numériquement s'écarte visiblement du sinc² théorique près de ses
+// zéros (minima décalés/adoucis), constaté par l'utilisateur précisément aux réglages donnant la
+// plus large tache centrale (justement ceux où a est petit). Le champ incident (profil gaussien
+// du faisceau, cf. construireChampOuverture) n'a, lui, pas besoin d'une fenêtre bien plus grande
+// que l'ouverture : il est de toute façon masqué à zéro hors de la fente, donc SEULE la finesse
+// du pas À L'INTÉRIEUR de la fente compte pour la qualité du résultat — la marge au-delà de la
+// fente ne sert qu'à fixer la résolution angulaire côté écran (cf. ratio ci-dessous), pas à
+// « contenir » le faisceau.
+//
+// FFT_FENETRE_FACTEUR = 25 reproduit exactement le comportement (déjà jugé correct) de l'ancien
+// réglage fixe AU RÉGLAGE PAR DÉFAUT (2,5 mm / 100 µm = 25) et le généralise à toute valeur de
+// `a` : le nombre d'échantillons DANS la fente (N/FFT_FENETRE_FACTEUR = 1024/25 ≈ 41) et le
+// nombre de pas angulaires entre le centre et le 1er minimum (toujours exactement
+// FFT_FENETRE_FACTEUR, cf. calcul ci-dessous) restent désormais CONSTANTS quels que soient
+// a/λ/D — au lieu de dégénérer à a minimal.
+//
+// Portée couverte à l'écran, en unités du 1er minimum x1 : ratio = Coverage/x1 =
+// N/(2·FFT_FENETRE_FACTEUR) = 1024/50 ≈ 20,5 — désormais INDÉPENDANT de `a` (pas seulement de λ
+// et D comme avec la fenêtre fixe) : couvre largement plusieurs taches secondaires, quel que
+// soit le réglage. Au-delà de la portée couverte, échantillonnerChamp() renvoie 0 (l'intensité y
+// est de toute façon négligeable en pratique).
 const FFT_N = 1024;
-const FFT_FENETRE_M = 0.0025;
+const FFT_FENETRE_FACTEUR = 25;
 
 // Buffers réutilisés d'un appel à l'autre (évite de réallouer ~1 million de flottants à
 // chaque changement de paramètre — coûteux en pression mémoire/GC dans une boucle interactive).
@@ -223,9 +233,11 @@ function fft2D(re, im, N, invert) {
 //  recalcul — la FFT elle-même est le seul poste coûteux.
 // ─────────────────────────────────────────────────────────────────────
 function construireChampOuverture(lambda_nm, a_um, D_m) {
-  const N = FFT_N, pas = FFT_FENETRE_M / N;
+  const N = FFT_N;
   const lambda_m = lambda_nm * 1e-9;
   const a_m = a_um * 1e-6;
+  const FFT_FENETRE_M = FFT_FENETRE_FACTEUR * a_m; // cf. discussion de conception ci-dessus
+  const pas = FFT_FENETRE_M / N;
   const h_m = FENTE_HAUTEUR_CM / 100;
   const w0 = FAISCEAU_DIAMETRE_MM / 2 / 1000; // rayon du faisceau au col (m) — même valeur que largeurFaisceauGaussien
 
@@ -265,7 +277,7 @@ function construireChampOuverture(lambda_nm, a_um, D_m) {
     for (let k = 0; k < grille.length; k++) grille[k] /= pic;
   }
 
-  return { grille, N, lambda_m, D_m };
+  return { grille, N, lambda_m, D_m, FFT_FENETRE_M };
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -287,7 +299,7 @@ function construireChampOuverture(lambda_nm, a_um, D_m) {
 //  construireChampOuverture) n'est pas touchée.
 // ─────────────────────────────────────────────────────────────────────
 function echantillonnerChamp(champ, x_m, y_m) {
-  const { grille, N, lambda_m, D_m } = champ;
+  const { grille, N, lambda_m, D_m, FFT_FENETRE_M } = champ;
   const sinThetaX = x_m / Math.sqrt(x_m * x_m + D_m * D_m);
   const sinThetaY = y_m / Math.sqrt(y_m * y_m + D_m * D_m);
   const i = Math.round((sinThetaX / lambda_m) * FFT_FENETRE_M) + N / 2;

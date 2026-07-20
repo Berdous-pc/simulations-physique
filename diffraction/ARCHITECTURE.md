@@ -81,20 +81,34 @@ rajoutée à la main.
 |---|---|
 | `FENTE_HAUTEUR_CM` | Hauteur réelle de la fente (5.6 cm), à l'échelle — source unique, reprise par `scene.js` |
 | `FFT_N` | Résolution de la grille FFT (1024, puissance de 2) |
-| `FFT_FENETRE_M` | Fenêtre physique carrée échantillonnée dans le plan de la fente (2.5 mm) — dimensionnée par le faisceau/l'ouverture, **pas** par la largeur d'écran à couvrir (cf. piège ci-dessous) |
+| `FFT_FENETRE_FACTEUR` | Facteur (25) de la fenêtre physique échantillonnée dans le plan de la fente, **proportionnelle à `a`** (`FFT_FENETRE_M = FFT_FENETRE_FACTEUR × a`, calculée par `construireChampOuverture`) — pas une largeur fixe (cf. piège ci-dessous) |
 | `fft1D(re,im,invert)` | FFT radix-2 Cooley-Tukey, en place, itérative |
 | `fft2D(re,im,N,invert)` | FFT 2D par décomposition lignes puis colonnes (exact, pas une approximation) |
-| `construireChampOuverture(λ,a,D)` | Construit masque×gaussien incident, propage par FFT2D, renvoie `{ grille, N, lambda_m, D_m }` (intensité normalisée, pic=1) — appelée **une fois** par changement de paramètre (`scene.js` → `updateSceneParams`), partagée par texture et enveloppe |
+| `construireChampOuverture(λ,a,D)` | Construit masque×gaussien incident, propage par FFT2D, renvoie `{ grille, N, lambda_m, D_m, FFT_FENETRE_M }` (intensité normalisée, pic=1) — appelée **une fois** par changement de paramètre (`scene.js` → `updateSceneParams`), partagée par texture et enveloppe |
 | `echantillonnerChamp(champ,x,y)` | Lit l'intensité à une position physique (m), plus proche voisin (résolution FFT très supérieure aux échantillonnages appelants), renvoie 0 hors de la zone couverte. Conversion position→indice de grille par la relation géométrique **exacte** `sinθ = x/√(x²+D²)` (même relation que `intensiteFente()`) — **pas** l'approximation paraxiale `x ≈ λ·D·fx` utilisée jusqu'ici, qui décalait les minima de la texture d'écran par rapport à ceux du graphe dès que D devient petit devant l'étendue de l'écran (constaté par l'utilisateur) |
 
-**Piège de dimensionnement (constaté à l'usage, pas juste un cas limite théorique)** : le rapport
-entre la portée couverte par la FFT à l'écran et la position du 1er minimum x₁ vaut
-`N·a / (2·FFT_FENETRE_M)` — **indépendant de λ et D** (les deux s'annulent, x₁ et cette portée
-étant tous deux proportionnels à λ·D). Ce rapport ne dépend donc que de `a` : une première fenêtre
-à 6 mm donnait un rapport d'à peine 1.7 à `a` minimal (20 µm), tronquant systématiquement la 1ère
-tache secondaire en plein milieu, **quels que soient λ et D** — pas un cas limite rare comme
-supposé initialement. Toujours vérifier ce rapport au réglage le plus exigeant de chaque
-dimension d'ouverture (le `a` le plus petit), pas seulement aux valeurs par défaut.
+**Piège de dimensionnement (constaté à l'usage, deux fois de suite)** : le rapport entre la
+portée couverte par la FFT à l'écran et la position du 1er minimum x₁ vaut
+`N / (2·FFT_FENETRE_FACTEUR)` avec une fenêtre proportionnelle à `a` — **indépendant de λ, D ET
+`a`** désormais (avec une fenêtre fixe, ce rapport ne dépendait que de `a`, cf. version
+précédente ci-dessous). Avec `FFT_FENETRE_FACTEUR = 25`, ce rapport vaut ≈20,5, quel que soit le
+réglage.
+
+**Fenêtre fixe → proportionnelle à `a`** : une première version (fenêtre fixe, 2,5 mm) donnait un
+pas d'échantillonnage constant dans le plan de la fente — correct à `a` par défaut (100 µm,
+~41 échantillons DANS la fente) mais bien trop grossier à `a` minimal (20 µm, ~8 échantillons
+seulement) : un rectangle représenté par si peu de points, une fois transformé par FFT, donne un
+sinc² numériquement dégradé (minima décalés/adoucis par rapport au sinc² théorique) —
+**particulièrement visible aux réglages donnant la plus large tache centrale**, justement ceux où
+`a` est petit (constaté par l'utilisateur). Rendre la fenêtre proportionnelle à `a`
+(`FFT_FENETRE_FACTEUR × a`) maintient CONSTANT, quel que soit `a`, à la fois le nombre
+d'échantillons dans la fente (`N / FFT_FENETRE_FACTEUR`) et le nombre de pas angulaires entre le
+centre et le 1er minimum (toujours exactement `FFT_FENETRE_FACTEUR`) — `FFT_FENETRE_FACTEUR = 25`
+reproduit exactement les caractéristiques de l'ancien réglage fixe, mais AU réglage par défaut, et
+les généralise à toute la plage de `a`. Le champ incident (gaussien) n'a pas besoin d'une fenêtre
+bien plus grande que l'ouverture pour être correct : il est de toute façon masqué à zéro hors de
+la fente (cf. `construireChampOuverture`), donc seule la finesse du pas DANS la fente compte —
+la marge au-delà ne sert qu'à fixer la résolution angulaire côté écran (le rapport ci-dessus).
 
 ---
 
@@ -502,7 +516,7 @@ index.html
   └── js/sim.js       expose : sim, A_MIN/MAX, FAISCEAU_DIAMETRE_MM,
   │                             thetaMinimum/thetaPremierMinimum, xMinimum/xPremierMinimum,
   │                             intensiteFente, largeurFaisceauGaussien, echantillonnerIntensite,
-  │                             FENTE_HAUTEUR_CM, FFT_N, FFT_FENETRE_M, fft1D, fft2D,
+  │                             FENTE_HAUTEUR_CM, FFT_N, FFT_FENETRE_FACTEUR, fft1D, fft2D,
   │                             construireChampOuverture, echantillonnerChamp,
   │                             longueurOndeVersRGB/Hex/Css, resetParams
   │

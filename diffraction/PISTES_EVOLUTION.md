@@ -19,9 +19,10 @@ l'autre :
 
 Le pipeline FFT calcule `|FFT2D(masque(x,y) × champ_incident_gaussien(x,y))|²` — le masque
 d'ouverture est multiplié par le **profil réel du faisceau incident** (pas une onde plane
-infinie), ce qui permet de ne mailler qu'une petite fenêtre autour du faisceau (quelques mm),
-indépendamment de la taille réelle de la fente. Voir les commentaires de `construireChampOuverture`
-et `FFT_FENETRE_M` dans `sim.js` pour le détail des compromis de résolution.
+infinie), ce qui permet de ne mailler qu'une petite fenêtre autour de l'ouverture (proportionnelle
+à `a`, cf. `FFT_FENETRE_FACTEUR`), indépendamment de la taille réelle de la fente. Voir les
+commentaires de `construireChampOuverture` et `FFT_FENETRE_FACTEUR` dans `sim.js` pour le détail
+des compromis de résolution.
 
 La fente est aujourd'hui un simple test rectangulaire dans la boucle de remplissage du masque
 (`Math.abs(x) < a_m/2 && Math.abs(y) < h_m/2`, cf. `construireChampOuverture`).
