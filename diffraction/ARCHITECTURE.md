@@ -194,10 +194,19 @@ rien ne peut buter contre `minDistance`/`maxDistance`.
 le vecteur `forward` complet (mis à l'échelle de `PAS_COULISSEMENT_CM`, 10 cm/cran) — mais même dans
 le cône du mode axial (< 18° de l'axe), `forward` garde une petite composante x/y qui s'accumule à
 chaque cran de molette et fait dériver la cible hors de l'axe optique (constaté à l'usage — le
-coulissement partait vers le sol). Le delta ne porte donc que sur `z` (signe aligné sur le sens de
-visée de la caméra, `forward.z > 0`), x et y ne sont jamais touchés. Seul un garde-fou très large
-(`SOURCE_Z - 300` à `D_MAX_CM + 300`) borne `z`, pour rester dans la zone utile de la scène sans
-jamais se faire sentir comme une limite de zoom pendant l'exploration normale.
+coulissement partait vers le sol). Le delta ne porte donc que sur `z`, x et y ne sont jamais
+touchés. Seul un garde-fou très large (`SOURCE_Z - 300` à `D_MAX_CM + 300`) borne `z`, pour rester
+dans la zone utile de la scène sans jamais se faire sentir comme une limite de zoom pendant
+l'exploration normale.
+
+**Signe de la translation : relation caméra→cible, pas `forward.z`** : une version intermédiaire
+dérivait le signe de `forward.z > 0` (direction de visée de la caméra, via
+`camPersp.getWorldDirection()`) — indirect (passe par le quaternion de la caméra) et pouvait donner
+un signe incohérent près du seuil de bascule, avec un symptôme déroutant : « molette haut » reculait
+parfois au lieu d'avancer (constaté à l'usage). Remplacé par
+`Math.sign(controls.target.z - camPersp.position.z)` : la même relation caméra→cible déjà utilisée
+juste après pour le clamp de distance — cohérente par construction, aucune dépendance à
+l'orientation de la caméra.
 
 #### Caméras — 2 objets pour 4 vues
 

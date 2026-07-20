@@ -184,10 +184,15 @@ function initZoomVersCurseur() {
       // Translation selon z UNIQUEMENT (jamais selon `forward` complet) : même dans le cône du
       // mode axial, `forward` garde une petite composante x/y qui s'accumulerait à chaque cran
       // de molette et ferait dériver la cible hors de l'axe optique (constaté à l'usage — le
-      // coulissement partait vers le sol). Le signe suit le sens de visée de la caméra le long
-      // de z, pour que "molette haut" avance toujours dans le sens du regard.
+      // coulissement partait vers le sol). Le signe utilise la relation caméra→cible actuelle
+      // (Math.sign(target.z - position.z)), pas forward.z : cette dernière vient du quaternion
+      // de la caméra, une source indirecte qui pouvait donner un signe incohérent près du seuil
+      // de bascule (constaté à l'usage — "molette haut" reculait parfois au lieu d'avancer). La
+      // relation caméra→cible est la même que celle déjà utilisée pour le clamp de distance
+      // juste après : cohérente par construction.
       const PAS_COULISSEMENT_CM = 10;
-      const dz = pas * PAS_COULISSEMENT_CM * (forward.z > 0 ? 1 : -1);
+      const sensAxial = Math.sign(controls.target.z - camPersp.position.z) || 1;
+      const dz = pas * PAS_COULISSEMENT_CM * sensAxial;
       camPersp.position.z += dz;
       controls.target.z += dz;
       // Garde-fou très large (pas une limite de "zoom", juste éviter de sortir de la scène) :
