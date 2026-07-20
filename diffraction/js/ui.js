@@ -93,8 +93,12 @@ function syncModeBlancheUI() {
   }
   // Le bouton "Décomposer" n'a de sens qu'en lumière blanche (+ vue Écran, cf.
   // syncBoutonDecompose) : revenir en monochromatique annule toute décomposition en cours,
-  // instantanément (pas d'animation), cf. sa docstring.
-  if (!estBlanche) annulerDecompose();
+  // instantanément (pas d'animation), cf. sa docstring. Idem pour une reconstruction des 6
+  // enveloppes couleur qui serait en attente (anti-rebond), inutile en quittant ce mode.
+  if (!estBlanche) {
+    annulerDecompose();
+    annulerEnveloppesBlancheEnAttente();
+  }
   syncBoutonDecompose();
   syncGraphModeBlanche();
 }

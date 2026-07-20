@@ -47,6 +47,31 @@ let decomposeT = 0;
 const DECOMPOSE_DUREE_S = 2; // durée totale (s) d'une transition complète (demande explicite)
 const DECOMPOSE_VITESSE = 1 / (DECOMPOSE_DUREE_S * 60); // pas par frame, en supposant ~60 fps
 
+// Anti-rebond de la reconstruction des 6 enveloppes couleur (mode Lumière blanche) : chacune
+// nécessite sa PROPRE FFT complète (construireChampOuverture par couleur, cf. discussion de
+// conception — pas de raccourci analytique, pour rester généralisable à d'autres formes de
+// fente), soit 6× le coût de l'enveloppe mono. Recalculer ça à CHAQUE frappe d'un slider
+// (oninput se déclenche en continu pendant un glissement) serait perceptiblement saccadé —
+// on attend un court silence (ENVELOPPES_BLANCHE_DEBOUNCE_MS) après le dernier changement
+// avant de relancer les 6 FFT. Rien d'autre (texture d'écran, graphe, mono) n'est concerné :
+// ces calculs restent analytiques (intensiteFente) ou déjà bon marché.
+let enveloppesBlancheTimer = null;
+const ENVELOPPES_BLANCHE_DEBOUNCE_MS = 50;
+
+// TEST : n'utiliser que Rouge/Vert/Bleu (au lieu des 6 couleurs de BLANCHE_COULEURS) pour les
+// enveloppes 3D, pour voir si une synthèse additive à 3 couleurs suffit à redonner du blanc
+// (moitié moins de FFT que 6, donc moins de lag) — référence de normalisation dédiée (propre
+// à ce sous-ensemble, pas BLANCHE_REF qui suppose les 6).
+const ENVELOPPE_COULEURS_TEST = BLANCHE_COULEURS.filter(c => ['Rouge', 'Vert', 'Bleu'].includes(c.nom));
+const ENVELOPPE_REF_TEST = (() => {
+  let r = 0, g = 0, b = 0;
+  for (const c of ENVELOPPE_COULEURS_TEST) {
+    const rgb = longueurOndeVersRGB(c.lambda);
+    r += rgb.r; g += rgb.g; b += rgb.b;
+  }
+  return { r: Math.max(r, 1), g: Math.max(g, 1), b: Math.max(b, 1) };
+})();
+
 // ─────────────────────────────────────────────────────────────────────
 //  Bascule la cible de décomposition (bouton, appelé depuis ui.js). L'animation elle-même
 //  est pilotée par tickDecompose(), appelée à chaque frame par la boucle de rendu.
@@ -416,6 +441,13 @@ let renderer, sceneObj, camPersp, camOrtho, controls, canvasEl;
 let laserBody, beamMesh, beamEnvelopeMesh, beamDot, topBand, bottomBand, wallLeft, wallRight, screenMesh, screenTexture, screenTexCanvas, screenTexCtx;
 let raysLine, axisLine, supportLaser, supportSlide, supportScreen;
 let lengthsGroup, mesurePetitD, mesureGrandD, mesureL;
+
+// 6 enveloppes couleur du faisceau diffracté (mode Lumière blanche), une par BLANCHE_COULEURS
+// (cf. sim.js) — cf. construireObjets() pour leur construction et updateSceneParams()/
+// reconstruireEnveloppesBlanche() pour leur mise à jour. x1CmCourantCouleurs : 1er minimum
+// (cm) de CHAQUE couleur, parallèle à x1CmCourant (mono) — cf. updateEnvelopeXLimite().
+let beamEnvelopeMeshesBlanche = [];
+let x1CmCourantCouleurs = [];
 
 // ─────────────────────────────────────────────────────────────────────
 //  Formate un nombre en notation française (virgule décimale).
@@ -960,6 +992,32 @@ function construireObjets() {
   beamEnvelopeMesh = new THREE.Mesh(new THREE.BufferGeometry(), envMat);
   sceneObj.add(beamEnvelopeMesh);
 
+  // 6 enveloppes couleur (mode Lumière blanche), une par BLANCHE_COULEURS (cf. sim.js) : même
+  // matériau que ci-dessus, CLONÉ (uniforms indépendants, cf. THREE.ShaderMaterial.copy) pour
+  // que chaque couleur ait sa propre teinte ET son propre jeu d'uniforms uXLimite* (chaque λ a
+  // son propre 1er minimum, cf. updateEnvelopeXLimite). Géométrie reconstruite (une FFT par
+  // couleur) dans reconstruireEnveloppesBlanche(), appelée avec anti-rebond depuis
+  // updateSceneParams() (cf. planifierEnveloppesBlanche).
+  //
+  // Blending ADDITIF (THREE.AdditiveBlending, PAS le blending normal de envMat ci-dessus,
+  // conservé tel quel pour l'enveloppe mono) : la lumière réelle qui se superpose s'ADDITIONNE
+  // (rouge+vert+bleu → blanc), contrairement à des calques de peinture semi-transparente (le
+  // blending normal, lui, donnerait un mélange terne au lieu de blanc). uColor de chaque clone
+  // est en plus normalisée par BLANCHE_REF (cf. sim.js — même normalisation que la texture
+  // d'écran, intensiteBlancheRGB) : sans elle, même en additif, la somme des 6 teintes penche
+  // côté chaud (violet/bleu moins représentés que jaune/orange/rouge dans ces 6 couleurs
+  // précises) au lieu de redonner du blanc pur là où les 6 se superposent à pleine intensité.
+  beamEnvelopeMeshesBlanche = ENVELOPPE_COULEURS_TEST.map(c => {
+    const mat = envMat.clone();
+    mat.blending = THREE.AdditiveBlending;
+    const rgb = longueurOndeVersRGB(c.lambda);
+    mat.uniforms.uColor.value.setRGB(rgb.r / ENVELOPPE_REF_TEST.r, rgb.g / ENVELOPPE_REF_TEST.g, rgb.b / ENVELOPPE_REF_TEST.b);
+    const mesh = new THREE.Mesh(new THREE.BufferGeometry(), mat);
+    mesh.visible = false;
+    sceneObj.add(mesh);
+    return mesh;
+  });
+
   // Point de couleur en sortie du laser, affiché en mode "Non visible" uniquement :
   // permet d'identifier la couleur λ en regardant droit dans l'axe du laser, sans
   // dessiner aucun faisceau (cf. discussion de conception avec l'utilisateur).
@@ -1136,12 +1194,55 @@ function dessinerTextureEcranBlanche(t) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+//  Reconstruit les 6 enveloppes couleur (une FFT complète par couleur — construireChampOuverture
+//  — cf. discussion de conception : pas de raccourci analytique, pour rester généralisable à
+//  d'autres formes de fente) : 6× le coût de l'enveloppe mono, d'où l'anti-rebond
+//  (planifierEnveloppesBlanche ci-dessous), jamais appelée directement en dehors de ce fichier.
+// ─────────────────────────────────────────────────────────────────────
+function reconstruireEnveloppesBlanche() {
+  const screenZ = SLIT_Z + sim.D * 100;
+  x1CmCourantCouleurs = ENVELOPPE_COULEURS_TEST.map((c, k) => {
+    const champC = construireChampOuverture(c.lambda, sim.a, sim.D);
+    const wCmC = Math.max(RENDU_W_MIN_CM, largeurFaisceauGaussien(c.lambda, sim.D) * 100);
+    const mesh = beamEnvelopeMeshesBlanche[k];
+    mesh.geometry.dispose();
+    mesh.geometry = construireGeometrieEnveloppe(SLIT_Z, screenZ, BEAM_DIAMETER, wCmC, champC);
+    return xPremierMinimum(c.lambda, sim.a, sim.D) * 100;
+  });
+  updateEnvelopeXLimite();
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Planifie (avec anti-rebond, cf. ENVELOPPES_BLANCHE_DEBOUNCE_MS) la reconstruction des 6
+//  enveloppes couleur. Chaque appel annule le délai précédent : seul le DERNIER changement
+//  dans une rafale (glissement de slider) déclenche effectivement les 6 FFT, ~100 ms après
+//  que l'utilisateur s'est arrêté. Appelée par updateSceneParams() (λ/a/D changent, en mode
+//  blanc) et updateBeamVisibility() (le faisceau devient visible sans que a/D/λ aient changé).
+// ─────────────────────────────────────────────────────────────────────
+function planifierEnveloppesBlanche() {
+  clearTimeout(enveloppesBlancheTimer);
+  enveloppesBlancheTimer = setTimeout(reconstruireEnveloppesBlanche, ENVELOPPES_BLANCHE_DEBOUNCE_MS);
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Annule une reconstruction des 6 enveloppes couleur en attente (anti-rebond) — appelée en
+//  quittant le mode blanc (ui.js → syncModeBlancheUI), pour ne pas relancer 6 FFT inutiles
+//  ~100 ms plus tard pour un mode qu'on vient de quitter.
+// ─────────────────────────────────────────────────────────────────────
+function annulerEnveloppesBlancheEnAttente() {
+  clearTimeout(enveloppesBlancheTimer);
+}
+
+// ─────────────────────────────────────────────────────────────────────
 //  Met à jour tous les objets 3D suite à un changement de λ, a, D, d ou
 //  de l'option "rayons". Appelée par ui.js → updateParam()/toggleRays().
 // ─────────────────────────────────────────────────────────────────────
 function updateSceneParams() {
   const D_cm = sim.D * 100;
-  const couleurHex = longueurOndeVersHex(sim.lambda);
+  const estBlanche = sim.lightSource === 'blanche';
+  // Faisceau avant la fente : blanc en lumière blanche (les λ ne sont pas encore séparées à
+  // ce stade, cf. discussion de conception), sinon couleur de λ.
+  const couleurHex = estBlanche ? 0xffffff : longueurOndeVersHex(sim.lambda);
 
   // Position de la fente selon d (distance laser-fente, réglable) : le laser reste fixe
   // (SOURCE_Z), la fente se décale vers l'avant quand d augmente. L'écran suit (cf.
@@ -1155,9 +1256,7 @@ function updateSceneParams() {
   beamMesh.geometry.rotateX(Math.PI / 2);
   beamMesh.position.set(0, 0, (SOURCE_Z + SLIT_Z) / 2);
 
-  // Faisceau : couleur selon λ
   beamMesh.material.color.setHex(couleurHex);
-  beamEnvelopeMesh.material.uniforms.uColor.value.setHex(couleurHex);
   beamDot.material.color.setHex(couleurHex);
 
   // Fente : écartement des murs selon a (largeur visuelle schématique), confinés à la
@@ -1189,7 +1288,6 @@ function updateSceneParams() {
   // de diffraction : sans lui, la figure ressemble à des bandes verticales infinies au lieu
   // de taches.
   const w = screenTexCanvas.width, h = screenTexCanvas.height;
-  const estBlanche = sim.lightSource === 'blanche';
   const { r: r0, g: g0, b: b0 } = longueurOndeVersRGB(sim.lambda);
   const x1_cm = xPremierMinimum(sim.lambda, sim.a, sim.D) * 100;
 
@@ -1197,28 +1295,37 @@ function updateSceneParams() {
   // fois comme demi-hauteur max de l'enveloppe ci-dessous et pour le profil vertical de la
   // texture d'écran plus bas (RENDU_W_MIN_CM : cf. commentaire à sa définition).
   const w_cm = Math.max(RENDU_W_MIN_CM, largeurFaisceauGaussien(sim.lambda, sim.D) * 100);
-
-  // Champ diffracté (masque de la fente × faisceau incident, propagé par FFT, cf. sim.js) —
-  // calculé UNE FOIS ici, partagé par la texture d'écran ci-dessous et l'enveloppe 3D
-  // (construireGeometrieEnveloppe) : source physique unique pour tout ce qui est affiché en x,
-  // à la place d'intensiteFente() (qui reste, elle, la source du graphe I(x) et des encarts —
-  // cf. discussion de conception, aucune des deux ne doit dépendre de l'autre).
-  const champ = construireChampOuverture(sim.lambda, sim.a, sim.D);
-
-  // Enveloppe pleine du faisceau diffracté (cf. commentaire à la construction) : reconstruite
-  // entièrement à chaque appel, la silhouette et le profil de luminosité changent avec a/D/λ.
-  // uXLimite (position du 1er minimum, même x1_cm que raysLine plus bas) borne le plancher
-  // d'opacité du shader (cf. construireObjets) à la seule zone de la tache centrale.
-  x1CmCourant = x1_cm;
-  updateEnvelopeXLimite();
-  beamEnvelopeMesh.geometry.dispose();
-  beamEnvelopeMesh.geometry = construireGeometrieEnveloppe(SLIT_Z, screenZ, BEAM_DIAMETER, w_cm, champ);
+  x1CmCourant = x1_cm; // toujours à jour (rayons/longueurs plus bas), même en mode blanc
 
   if (estBlanche) {
-    // Texture entièrement déléguée (fusionnée / décomposée / transition, cf. sa docstring) —
-    // remplace le double-boucle générique ci-dessous, propre au mode mono.
+    // Enveloppe(s) : 6 FFT complètes (une par couleur), coûteuses — reconstruites avec
+    // anti-rebond plutôt qu'ici (cf. planifierEnveloppesBlanche), pour ne pas saccader le
+    // glissement des sliders, et seulement si elles seraient effectivement visibles (inutile
+    // de les calculer tant que sim.beamMode !== 'visible' ou qu'on est en vue Écran, cf.
+    // updateBeamVisibility — qui se charge aussi de planifier la reconstruction si l'une de
+    // ces deux conditions change sans que a/D/λ n'aient bougé). L'enveloppe mono
+    // (beamEnvelopeMesh) n'est pas touchée : cachée tant que le mode blanc est actif.
+    if (sim.beamMode === 'visible' && sim.view !== 'screen') planifierEnveloppesBlanche();
+    // Texture d'écran entièrement déléguée (fusionnée / décomposée / transition, cf. sa
+    // docstring) — remplace le double-boucle générique ci-dessous, propre au mode mono.
     dessinerTextureEcranBlanche(decomposeT);
   } else {
+    // Champ diffracté (masque de la fente × faisceau incident, propagé par FFT, cf. sim.js) —
+    // calculé UNE FOIS ici, partagé par la texture d'écran ci-dessous et l'enveloppe 3D
+    // (construireGeometrieEnveloppe) : source physique unique pour tout ce qui est affiché en
+    // x, à la place d'intensiteFente() (qui reste, elle, la source du graphe I(x) et des
+    // encarts — cf. discussion de conception, aucune des deux ne doit dépendre de l'autre).
+    const champ = construireChampOuverture(sim.lambda, sim.a, sim.D);
+
+    // Enveloppe pleine du faisceau diffracté (cf. commentaire à la construction) : reconstruite
+    // entièrement à chaque appel, la silhouette et le profil de luminosité changent avec a/D/λ.
+    // uXLimite (position du 1er minimum, même x1_cm que raysLine plus bas) borne le plancher
+    // d'opacité du shader (cf. construireObjets) à la seule zone de la tache centrale.
+    updateEnvelopeXLimite();
+    beamEnvelopeMesh.material.uniforms.uColor.value.setHex(couleurHex);
+    beamEnvelopeMesh.geometry.dispose();
+    beamEnvelopeMesh.geometry = construireGeometrieEnveloppe(SLIT_Z, screenZ, BEAM_DIAMETER, w_cm, champ);
+
     const img = screenTexCtx.createImageData(w, h);
     for (let px = 0; px < w; px++) {
       const x = -sim.screenHalfWidth + (2 * sim.screenHalfWidth * px) / (w - 1);
@@ -1406,23 +1513,36 @@ function placerMesureTable(mesure, x, y, yLabel, z0, z1, dansLaTranche) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-//  Largeur du plancher d'opacité (uXLimite, cf. envMat) : valeur physique réelle
-//  (x1CmCourant) partout, sauf en vue de dessus où elle est agrandie (cf.
-//  TOP_VIEW_PLANCHER_GAIN) pour rester lisible à l'échelle du banc entier. Appelée à la
-//  fois par updateSceneParams() (λ/a/D changent) et setSceneView() (juste un changement
-//  de vue, x1CmCourant inchangé) — mêmes déclencheurs que raysLine.visible/
-//  updateBeamVisibility (cf. ARCHITECTURE.md).
+//  Applique la largeur du plancher d'opacité (uXLimite, cf. envMat) à un jeu d'uniforms
+//  donné, pour la valeur x1Cm fournie (1er minimum, en cm) : valeur physique réelle partout,
+//  sauf en vue de dessus où elle est agrandie (cf. TOP_VIEW_PLANCHER_GAIN) pour rester
+//  lisible à l'échelle du banc entier. Factorisé pour être appliqué à la fois à l'enveloppe
+//  mono (x1CmCourant) et à chacune des 6 enveloppes couleur (x1CmCourantCouleurs, cf.
+//  updateEnvelopeXLimite ci-dessous), qui partagent la même logique de vue mais pas la même
+//  valeur de x1.
 // ─────────────────────────────────────────────────────────────────────
-function updateEnvelopeXLimite() {
-  const u = beamEnvelopeMesh.material.uniforms;
-  u.uXLimiteReel.value = x1CmCourant;
+function appliquerXLimiteUniforms(u, x1Cm) {
+  u.uXLimiteReel.value = x1Cm;
   if (sim.view === 'top') {
-    u.uXLimiteExagere.value = Math.min(x1CmCourant * TOP_VIEW_PLANCHER_GAIN, SCREEN_WIDTH / 2 * 0.5);
+    u.uXLimiteExagere.value = Math.min(x1Cm * TOP_VIEW_PLANCHER_GAIN, SCREEN_WIDTH / 2 * 0.5);
     u.uZNear.value = SLIT_Z;
     u.uFlareLongueur.value = TOP_VIEW_FLARE_LONGUEUR_CM;
   } else {
-    u.uXLimiteExagere.value = x1CmCourant;
+    u.uXLimiteExagere.value = x1Cm;
     u.uFlareLongueur.value = 0;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Met à jour uXLimite* sur l'enveloppe mono ET les 6 enveloppes couleur (mode blanc) — cf.
+//  appliquerXLimiteUniforms. Appelée par updateSceneParams()/reconstruireEnveloppesBlanche()
+//  (λ/a/D changent) et setSceneView() (juste un changement de vue, x1Cm* inchangés) — mêmes
+//  déclencheurs que raysLine.visible/updateBeamVisibility (cf. ARCHITECTURE.md).
+// ─────────────────────────────────────────────────────────────────────
+function updateEnvelopeXLimite() {
+  appliquerXLimiteUniforms(beamEnvelopeMesh.material.uniforms, x1CmCourant);
+  for (let k = 0; k < beamEnvelopeMeshesBlanche.length; k++) {
+    appliquerXLimiteUniforms(beamEnvelopeMeshesBlanche[k].material.uniforms, x1CmCourantCouleurs[k] || 0);
   }
 }
 
@@ -1435,8 +1555,16 @@ function updateEnvelopeXLimite() {
 // ─────────────────────────────────────────────────────────────────────
 function updateBeamVisibility() {
   const cacherBanc = (sim.view === 'screen');
+  const estBlanche = sim.lightSource === 'blanche';
   beamMesh.visible = !cacherBanc && sim.beamMode !== 'off';
-  beamEnvelopeMesh.visible = !cacherBanc && sim.beamMode === 'visible';
+  beamEnvelopeMesh.visible = !cacherBanc && sim.beamMode === 'visible' && !estBlanche;
+  const enveloppesBlancheVisibles = !cacherBanc && sim.beamMode === 'visible' && estBlanche;
+  for (const m of beamEnvelopeMeshesBlanche) m.visible = enveloppesBlancheVisibles;
+  // Les 6 enveloppes n'étant reconstruites qu'avec anti-rebond (cf. planifierEnveloppesBlanche),
+  // on déclenche/rafraîchit la reconstruction dès qu'elles deviennent effectivement visibles
+  // (sinon, en entrant dans ce mode sans changer a/D/λ juste après, la géométrie resterait
+  // celle — potentiellement vide ou périmée — du dernier calcul).
+  if (enveloppesBlancheVisibles) planifierEnveloppesBlanche();
   beamDot.visible = !cacherBanc && sim.beamMode === 'off';
 }
 
