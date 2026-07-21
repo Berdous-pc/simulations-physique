@@ -99,7 +99,7 @@ function toggleDecompose() {
 //  Annule INSTANTANÉMENT (pas d'animation) la décomposition et revient à la figure fusionnée
 //  normale — appelée quand une des deux conditions qui rendent le bouton pertinent cesse
 //  d'être vraie (changement de vue, cf. setSceneView ; retour en mode monochromatique, cf.
-//  ui.js → cycleLightSource), PAS quand l'utilisateur clique lui-même sur le bouton (qui,
+//  ui.js → setLightSource), PAS quand l'utilisateur clique lui-même sur le bouton (qui,
 //  lui, anime toujours en douceur, cf. toggleDecompose).
 // ─────────────────────────────────────────────────────────────────────
 function annulerDecompose() {
@@ -116,7 +116,7 @@ function annulerDecompose() {
 
 // ─────────────────────────────────────────────────────────────────────
 //  (Dés)affiche le bouton "Décomposer" selon les 2 conditions requises (vue Écran + lumière
-//  blanche) — appelée par setSceneView() et par ui.js → cycleLightSource()/resetSim()/init().
+//  blanche) — appelée par setSceneView() et par ui.js → setLightSource()/resetSim()/init().
 //  N'annule PAS elle-même la décomposition en cours : c'est aux appelants concernés de le
 //  faire explicitement (cf. annulerDecompose), pour garder une seule responsabilité par
 //  fonction.

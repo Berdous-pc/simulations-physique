@@ -22,6 +22,8 @@ const sim = {
   showLengths: false, // afficher les doubles flèches de mesure d, D, L
   view: '3d',      // '3d' | 'top' | 'side' | 'screen'
   maskShape: 'fente', // 'fente' | 'carre' | 'cercle' | 'fil' — forme de l'ouverture de la diapositive
+  showGraphIntensite: false, // afficher le graphe I(x) sous la scène 3D (avec splitter) — désactivé par défaut
+  showValeursExp: false, // afficher les cadres de valeurs expérimentales (angle, tache centrale) — désactivé par défaut
 
   // Demi-largeur physique de l'écran simulé (m) — fixe, écran réel de TP 25×15 cm, cf. ARCHITECTURE.md
   screenHalfWidth: 0.125
@@ -609,4 +611,6 @@ function resetParams() {
   sim.beamMode = 'off';
   sim.showLengths = false;
   sim.maskShape = 'fente';
+  sim.showGraphIntensite = false;
+  sim.showValeursExp = false;
 }

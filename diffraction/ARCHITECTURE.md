@@ -61,6 +61,8 @@ généralisation et ce qui reste hors périmètre (fente inclinée, réseau...).
 | `sim.showLengths` | Affichage des doubles flèches de mesure d, D, L (cf. `scene.js` §Doubles flèches de mesure) |
 | `sim.beamMode` | Mode d'affichage du faisceau : `'visible'` (laser + enveloppe diffractée) \| `'laserOnly'` (laser→fente uniquement) \| `'off'` (aucun faisceau, seulement la tache à l'écran + point de couleur en sortie du laser) — cf. `scene.js` §Objets de la scène |
 | `sim.view` | Vue caméra active : `'3d'` \| `'top'` \| `'side'` \| `'screen'` |
+| `sim.showGraphIntensite` | Affichage du graphe I(x) sous la scène 3D (avec splitter draggable) — désactivé par défaut, la scène 3D occupe alors toute la zone centrale (cf. `ui.js` → `toggleGraphIntensite`) |
+| `sim.showValeursExp` | Affichage des cadres de valeurs expérimentales (angle de diffraction, largeur de la tache centrale) dans la section Valeurs — désactivé par défaut (cf. `ui.js` → `toggleValeursExp`) |
 | `sim.screenHalfWidth` | Demi-largeur physique fixe de l'écran simulé (0.125 m — écran réel de TP 25×15 cm) |
 | `MASK_SHAPES` | Table des 4 formes : `label` (option du `<select>`), `aLabel` (texte du `<label>` du slider `a`, dépend de la forme). Toutes les formes partagent les mêmes bornes `A_MIN`/`A_MAX` — la diapo 3D reste de toute façon schématique (cf. `scene.js` → `largeurFenteVisuelle`), pas à l'échelle réelle |
 | `PETIT_D_MIN_M` / `PETIT_D_MAX_M` | Bornes HTML du slider `d` |
@@ -75,7 +77,7 @@ généralisation et ce qui reste hors périmètre (fente inclinée, réseau...).
 | `intensiteOuverture(x,λ,a,D,shape?)` | Dispatch par forme (`intensiteAiry` pour `'cercle'`, `intensiteSinc` sinon) — **SEULE source** pour le graphe I(x) et les encarts de valeurs (θ, position des minima). Jamais utilisée pour le rendu visuel 3D (texture, enveloppe), cf. §Pipeline FFT |
 | `echantillonnerIntensite(n, xMin?, xMax?, lambda_nm?)` | Échantillonne I(x) sur `[xMin,xMax]` (par défaut toute la largeur de l'écran) via `intensiteOuverture` — utilisée par `graph.js`, qui passe la fenêtre RÉELLEMENT visible (`gview`). `lambda_nm` optionnel permet de tracer une courbe à une AUTRE longueur d'onde que `sim.lambda` (mode Lumière blanche, une courbe par couleur) |
 | `longueurOndeVersRGB/Hex/Css(nm)` | Conversion λ → couleur (algorithme de Dan Bruton) |
-| `resetParams()` | Remet λ/a/d/D/lightSource/blancheVisibles/showRays/beamMode/showLengths/maskShape aux valeurs par défaut |
+| `resetParams()` | Remet λ/a/d/D/lightSource/blancheVisibles/showRays/beamMode/showLengths/maskShape/showGraphIntensite/showValeursExp aux valeurs par défaut |
 
 #### Lumière blanche (`BLANCHE_COULEURS`, `intensiteBlancheRGB`)
 
@@ -209,7 +211,7 @@ sont deux dispatches indépendants sur `sim.maskShape`, mais cohérents.
 `beamEnvelopeMeshesBlanche`/`beamDot` d'après `sim.beamMode` × `sim.lightSource` croisés avec la
 vue active (masqués en vue Écran) — appelée depuis `updateSceneParams()` et `setSceneView()`. Le
 bouton « Faisceau lumineux » du panneau (`ui.js` → `cycleBeamMode()`) fait cycler `sim.beamMode`
-entre les 3 valeurs ; le bouton « Source lumineuse » (`ui.js` → `cycleLightSource()`) bascule
+entre les 3 valeurs ; la bascule « Source lumineuse » (`ui.js` → `setLightSource()`) fixe
 `sim.lightSource`.
 
 #### Lumière blanche (rendu 3D)
@@ -522,12 +524,25 @@ deux canvas peut changer à tout moment sans qu'aucun événement dédié ne le 
 - `appliquerBorneD()` : recalcule la borne `max` du slider `D` (`dMaxPourPetitD(sim.d)`,
   `sim.js`) et cappe `sim.D`/le slider si nécessaire — appelée à chaque changement de `d`, à
   `resetSim()` et à `init()`.
-- `cycleLightSource()` : bascule `sim.lightSource` entre `'mono'`/`'blanche'`, met à jour le
-  libellé du bouton « Source lumineuse », appelle `syncModeBlancheUI()` (désactive slider λ,
-  bouton rayons et encarts θ/largeur — sans sens en lumière blanche — coupe la décomposition en
-  cours) puis `updateSceneParams()` + `updateReadouts()`.
+- `setLightSource(source)` : fixe `sim.lightSource` à `'mono'`/`'blanche'` (ne fait rien si déjà
+  actif), met à jour l'état actif des deux boutons de la bascule « Source lumineuse », appelle
+  `syncModeBlancheUI()` (désactive slider λ, bouton rayons et encarts θ/largeur — sans sens en
+  lumière blanche — coupe la décomposition en cours) puis `updateSceneParams()` +
+  `updateReadouts()`.
 - `toggleRays()` / `toggleLengths()` : basculent `sim.showRays`/`sim.showLengths`.
 - `cycleBeamMode()` : fait cycler `sim.beamMode` entre `'off'`/`'laserOnly'`/`'visible'`.
+- `toggleGraphIntensite()` / `syncGraphIntensiteUI()` : basculent `sim.showGraphIntensite`
+  (bouton « Graphe Intensité », désactivé par défaut) et synchronisent l'affichage :
+  masquent `#left-splitter`/`#graph-area` et font passer `#scene-area` en `flex:1` (pleine
+  zone centrale) quand désactivé ; les réaffichent avec le partage par défaut (`flex:3`/
+  `flex:2` CSS, sans reprendre un éventuel ratio glissé manuellement avant la désactivation)
+  quand réactivé. Appelée par `resetSim()` et `init()` en plus du clic utilisateur.
+- `toggleValeursExp()` / `syncValeursExpUI()` : basculent `sim.showValeursExp` (bouton
+  « Afficher les valeurs expérimentales », désactivé par défaut) et l'affichage de
+  `#readouts-exp` (cadres angle de diffraction + largeur tache centrale, cf.
+  `updateReadouts()` qui remplit leur contenu — le label du cadre angle dépend de
+  `sim.maskShape` via `THETA_LABEL_FORMULE`). Appelée par `resetSim()` et `init()` en plus du
+  clic utilisateur.
 - `setView(view)` : appelle `setSceneView(view)` (scene.js) + met à jour les boutons `.btn-view`.
 - `setMainTab(tab)` : bascule entre les deux onglets principaux du panneau (`'lumineuses'` /
   `'surfaces'`, cf. §Écarts connus) — met à jour l'URL (`history.replaceState`, lien profond
@@ -579,9 +594,10 @@ index.html
   │                             syncGraphLienDisponibilite, syncGraphPixelParfait
   │
   └── js/ui.js        dépend de : tous les fichiers précédents
-                       expose : updateParam, updateMaskShape, appliquerBorneD, cycleLightSource,
-                                 toggleRays, toggleLengths, cycleBeamMode, setView, setMainTab,
-                                 updateReadouts, resetSim, toggleHint, resize, init
+                       expose : updateParam, updateMaskShape, appliquerBorneD, setLightSource,
+                                 toggleRays, toggleLengths, cycleBeamMode, toggleGraphIntensite,
+                                 toggleValeursExp, setView, setMainTab, updateReadouts, resetSim,
+                                 toggleHint, resize, init
                        démarre : init() → requestAnimationFrame(loop)
 ```
 

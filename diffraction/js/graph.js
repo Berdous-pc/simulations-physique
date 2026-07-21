@@ -151,7 +151,7 @@ function initLegendeBlanche() {
 //  (Dés)active tout ce qui dépend du mode lumineux dans la zone graphe : légende à cases à
 //  cocher (visible seulement en lumière blanche) et bouton "Lien figure" (sans sens dans ce
 //  mode, cf. son commentaire — l'épinglage/survol, eux, restent actifs, cf.
-//  dessinerInfoMultiCourbes). Appelée par ui.js → cycleLightSource()/resetSim()/init().
+//  dessinerInfoMultiCourbes). Appelée par ui.js → setLightSource()/resetSim()/init().
 // ─────────────────────────────────────────────────────────────────────
 function syncGraphModeBlanche() {
   const estBlanche = sim.lightSource === 'blanche';

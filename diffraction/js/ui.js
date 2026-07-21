@@ -85,11 +85,9 @@ function toggleLengths() {
 //  n'ont de sens que pour une seule longueur d'onde : désactivés/masqués en mode blanc
 //  (cf. syncModeBlancheUI ci-dessous).
 // ─────────────────────────────────────────────────────────────────────
-const LIGHT_SOURCE_LABELS = { mono: 'Monochromatique', blanche: 'Lumière blanche' };
 function renderLightSourceLabel() {
-  const btn = document.getElementById('btn-light-source');
-  btn.innerHTML = 'Source lumineuse :<br>' + LIGHT_SOURCE_LABELS[sim.lightSource];
-  btn.classList.toggle('active', sim.lightSource === 'blanche');
+  document.getElementById('btn-light-mono').classList.toggle('active', sim.lightSource === 'mono');
+  document.getElementById('btn-light-blanche').classList.toggle('active', sim.lightSource === 'blanche');
   const rowLambda = document.getElementById('row-lambda');
   const slLambda = document.getElementById('sl-lambda');
   const estMono = sim.lightSource === 'mono';
@@ -102,7 +100,7 @@ function renderLightSourceLabel() {
 //  l'angle de diffraction" et encarts θ/largeur tache centrale (section Valeurs), masqués en
 //  lumière blanche — coupe aussi sim.showRays s'il était actif, pour ne pas laisser les rayons
 //  affichés dans la scène 3D une fois le bouton qui les pilote masqué. Appelée par
-//  cycleLightSource(), resetSim() et init().
+//  setLightSource(), resetSim() et init().
 // ─────────────────────────────────────────────────────────────────────
 function syncModeBlancheUI() {
   const estBlanche = sim.lightSource === 'blanche';
@@ -125,8 +123,9 @@ function syncModeBlancheUI() {
   syncGraphModeBlanche();
 }
 
-function cycleLightSource() {
-  sim.lightSource = (sim.lightSource === 'mono') ? 'blanche' : 'mono';
+function setLightSource(source) {
+  if (sim.lightSource === source) return;
+  sim.lightSource = source;
   renderLightSourceLabel();
   syncModeBlancheUI();
   updateSceneParams();
@@ -158,6 +157,46 @@ function cycleBeamMode() {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+//  (Dés)active l'affichage du graphe I(x) sous la scène 3D. Désactivé : le splitter et le
+//  graphe sont masqués, la scène 3D occupe toute la zone centrale. Activé : comportement
+//  d'origine (scène + splitter draggable + graphe), sans reprendre un éventuel ratio de
+//  partage glissé manuellement avant la désactivation (repart du partage par défaut,
+//  cf. flex:3/flex:2 en CSS).
+// ─────────────────────────────────────────────────────────────────────
+function syncGraphIntensiteUI() {
+  const visible = sim.showGraphIntensite;
+  const splitter = document.getElementById('left-splitter');
+  const graphEl = document.getElementById('graph-area');
+  const sceneEl = document.getElementById('scene-area');
+  splitter.style.display = visible ? '' : 'none';
+  graphEl.style.display = visible ? '' : 'none';
+  sceneEl.style.flex = visible ? '' : '1';
+  sceneEl.style.height = '';
+  graphEl.style.flex = '';
+  graphEl.style.height = '';
+  document.getElementById('btn-graph-intensite').classList.toggle('active', visible);
+  resize();
+}
+function toggleGraphIntensite() {
+  sim.showGraphIntensite = !sim.showGraphIntensite;
+  syncGraphIntensiteUI();
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  (Dés)active l'affichage des cadres de valeurs expérimentales (angle de diffraction,
+//  largeur de la tache centrale) sous la section Valeurs — désactivé par défaut.
+// ─────────────────────────────────────────────────────────────────────
+function syncValeursExpUI() {
+  const visible = sim.showValeursExp;
+  document.getElementById('readouts-exp').style.display = visible ? '' : 'none';
+  document.getElementById('btn-toggle-valeurs-exp').classList.toggle('active', visible);
+}
+function toggleValeursExp() {
+  sim.showValeursExp = !sim.showValeursExp;
+  syncValeursExpUI();
+}
+
+// ─────────────────────────────────────────────────────────────────────
 //  Bascule la vue caméra (3D / Dessus / Profil / Écran).
 // ─────────────────────────────────────────────────────────────────────
 function setView(view) {
@@ -168,10 +207,18 @@ function setView(view) {
 // ─────────────────────────────────────────────────────────────────────
 //  Met à jour les encarts de valeurs instantanées.
 // ─────────────────────────────────────────────────────────────────────
+const THETA_LABEL_FORMULE = {
+  fente:  'Angle de diffraction<br>sin θ ≈ θ = λ / a :',
+  carre:  'Angle de diffraction<br>sin θ ≈ θ = λ / a :',
+  fil:    'Angle de diffraction<br>sin θ ≈ θ = λ / a :',
+  cercle: 'Angle de diffraction<br>sin θ ≈ θ = 1,22 · λ / 2a :'
+};
 function updateReadouts() {
   const theta = thetaPremierMinimum(sim.lambda, sim.a);
   const x1 = xPremierMinimum(sim.lambda, sim.a, sim.D);
-  document.getElementById('ro-theta').textContent = formatFr(theta * 180 / Math.PI, 2);
+  document.getElementById('ro-theta-label').innerHTML = THETA_LABEL_FORMULE[sim.maskShape];
+  document.getElementById('ro-theta-rad').textContent = formatFr(theta, 4);
+  document.getElementById('ro-theta-deg').textContent = formatFr(theta * 180 / Math.PI, 2);
   document.getElementById('ro-largeur').textContent = formatFr(2 * x1 * 100, 2);
   document.getElementById('lambda-swatch').style.background = longueurOndeVersCss(sim.lambda);
 }
@@ -196,6 +243,8 @@ function resetSim() {
   renderLightSourceLabel();
   syncModeBlancheUI();
   syncMaskShapeUI();
+  syncGraphIntensiteUI();
+  syncValeursExpUI();
 
   gview.xMin = -sim.screenHalfWidth;
   gview.xMax = sim.screenHalfWidth;
@@ -341,6 +390,8 @@ function init() {
   renderLightSourceLabel();
   syncModeBlancheUI();
   syncMaskShapeUI();
+  syncGraphIntensiteUI();
+  syncValeursExpUI();
   resize();
   updateReadouts();
   requestAnimationFrame(loop);
