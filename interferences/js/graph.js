@@ -304,20 +304,20 @@ function dedupePlateau(liste, pas, meilleur) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-//  Restreint les extrema affichés à un NOMBRE de franges de part et d'autre du centre (pas
-//  une histoire de "2e minimum de l'enveloppe" comme en diffraction pure : avec des franges
-//  d'interférence, il peut y en avoir des dizaines dans la même fenêtre — dépend fortement
-//  du rapport b/a, cf. sim.js). `minima` est trié par x croissant (ordre de calculerExtrema).
+//  Restreint les extrema affichés à la TACHE CENTRALE DE DIFFRACTION, c-à-d à |x| < premier
+//  zéro de l'enveloppe (xPremierMinimum, cf. sim.js) : au-delà, l'enveloppe de diffraction
+//  écrase tellement les franges d'interférence qu'elles ne sont plus visibles à l'œil sur la
+//  figure projetée à l'écran, donc les relier au graphe n'a plus de sens pédagogique. Borne
+//  physique (dépend de λ, a, D), pas un nombre de franges fixe : avec des franges
+//  d'interférence, il peut y en avoir des dizaines dans la tache centrale ou une seule selon
+//  le rapport b/a (cf. sim.js).
 // ─────────────────────────────────────────────────────────────────────
-const LIEN_MINIMA_MAX_PAR_COTE = 8; // nombre de franges affichées de chaque côté du centre
+const LIEN_FRACTION_TACHE_CENTRALE = 0.8; // fraction du rayon de la tache centrale au-delà de laquelle on arrête de tracer les liens (franges trop écrasées par l'enveloppe pour rester lisibles)
 function limiterExtremaCentraux(maxima, minima) {
-  const neg = minima.filter(p => p.x < 0).sort((a, b) => b.x - a.x); // du plus proche du centre au plus loin
-  const pos = minima.filter(p => p.x > 0).sort((a, b) => a.x - b.x);
-  const limNeg = neg.length >= LIEN_MINIMA_MAX_PAR_COTE ? neg[LIEN_MINIMA_MAX_PAR_COTE - 1].x : -Infinity;
-  const limPos = pos.length >= LIEN_MINIMA_MAX_PAR_COTE ? pos[LIEN_MINIMA_MAX_PAR_COTE - 1].x : Infinity;
+  const lim = LIEN_FRACTION_TACHE_CENTRALE * Math.abs(xPremierMinimum(sim.lambda, sim.a, sim.D, sim.maskShape));
   return {
-    maxima: maxima.filter(p => p.x >= limNeg && p.x <= limPos),
-    minima: minima.filter(p => p.x >= limNeg && p.x <= limPos)
+    maxima: maxima.filter(p => Math.abs(p.x) <= lim),
+    minima: minima.filter(p => Math.abs(p.x) <= lim)
   };
 }
 
