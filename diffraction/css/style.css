@@ -427,6 +427,7 @@ input[type=range]:disabled { accent-color: #b0aca4; cursor: not-allowed; }
 .ro-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 3px 0; }
 .ro-row:not(:last-child) { border-bottom: 1px solid #ece8e0; }
 .ro-row .ro-row-nom { font-size: clamp(11px, 1vw, 13px); color: #45505a; display: flex; align-items: center; }
+.ro-row .ro-row-nom.ro-row-nom-theta { font-size: clamp(10px, 0.85vw, 12px); }
 .ro-row .ro-row-value { font-size: clamp(13px, 1.4vw, 17px); font-weight: 700; color: #2a5080; font-variant-numeric: tabular-nums; display: flex; gap: 10px; }
 
 /* ════════════════════════════════════════════════════

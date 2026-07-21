@@ -263,7 +263,7 @@ function updateReadoutsBlanche() {
     const css = longueurOndeVersCss(c.lambda);
     const nom = `<span class="swatch-blanche" style="background:${css}"></span>${c.nom} (${formatFr(c.lambda, 0)} nm)`;
     rowsTheta += `<div class="ro-row">
-      <span class="ro-row-nom">${nom}</span>
+      <span class="ro-row-nom ro-row-nom-theta">${nom}</span>
       <span class="ro-row-value">
         <span>${formatFr(theta, 4)} <span class="ro-unit">rad</span></span>
         <span>${formatFr(theta * 180 / Math.PI, 2)} <span class="ro-unit">°</span></span>
