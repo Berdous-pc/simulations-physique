@@ -422,8 +422,8 @@ Structure d'une carte :
     .card-theme               ← thème en majuscules (ex: "Électricité")
     .card-level               ← badge(s) de niveau (Seconde / Première / Terminale)
   .card-title                 ← titre de la carte (ex: "Circuit RC")
-  .card-preview               ← image de prévisualisation (screenshot 800×450 px recommandé)
-    img                       ← src dans assets/previews/<nom>.png
+  .card-preview               ← image de prévisualisation (screenshot 800 px de large max recommandé)
+    img                       ← src dans assets/previews/<nom>.jpg, avec width/height et loading="lazy"
   .card-desc                  ← description courte
 ```
 
@@ -449,27 +449,34 @@ Bouton "Réinitialiser" remet toutes les cases à coché.
 
 ### Images de prévisualisation
 
-Stockées dans `assets/previews/` au format `.png` (800×450 px recommandé) :
+Stockées dans `assets/previews/` au format **`.jpg`** (converties depuis les screenshots PNG d'origine — redimensionnées à 800 px de large max, qualité JPEG ~82) :
 
 | Fichier | Carte |
 |---|---|
-| `condensateur.png` | Circuit RC |
-| `lentille.png` | Lentille mince |
-| `lunette.png` | Lunette astronomique |
-| `radioactivite-continu.png` | Décroissance radioactive |
-| `radioactivite-discret.png` | Lancers de dés |
-| `reaction-equilibrage.png` | Équilibrage |
-| `reaction-limitant.png` | Réactif limitant |
-| `titrage-principe.png` | Principe du titrage |
-| `titrage-titrage.png` | Titrage |
-| `pression.png` | Pression d'un gaz |
-| `mecanique_pesanteur.png` | Champ de pesanteur |
-| `champ_electrique.png` | Champ électrique |
-| `onde_corde.PNG` | Onde dans une corde |
-| `onde_sonore.PNG` | Propagation d'une onde sonore |
-| `onde_vagues.PNG` | Ondes de surface |
-| `mecanisme_dissolution.png` | Mécanisme de dissolution |
-| `dissolution-dissolution.PNG` | Dissolution |
+| `condensateur.jpg` | Circuit RC |
+| `lentille.jpg` | Lentille mince |
+| `lunette.jpg` | Lunette astronomique |
+| `radioactivite-continu.jpg` | Décroissance radioactive |
+| `radioactivite-discret.jpg` | Lancers de dés |
+| `reaction-equilibrage.jpg` | Équilibrage |
+| `reaction-limitant.jpg` | Réactif limitant |
+| `titrage-principe.jpg` | Principe du titrage |
+| `titrage-titrage.jpg` | Titrage |
+| `pression.jpg` | Pression d'un gaz |
+| `mecanique_pesanteur.jpg` | Champ de pesanteur |
+| `champ_electrique.jpg` | Champ électrique |
+| `onde_corde.jpg` | Onde dans une corde |
+| `onde_sonore.jpg` | Propagation d'une onde sonore |
+| `onde_vagues.jpg` | Ondes de surface |
+| `mecanisme_dissolution.jpg` | Mécanisme de dissolution |
+| `dissolution-dissolution.jpg` | Dissolution |
+| `diffraction-lumiere.jpg` | Diffraction de la lumière |
+
+**Optimisation poids/performance (juillet 2026)** : les screenshots d'origine (PNG plein format, jusqu'à 2273×1268 px et 300+ Ko chacun) alourdissaient inutilement le chargement de la page d'accueil et pénalisaient les Core Web Vitals (LCP, CLS), donc le référencement. Conversion en `.jpg` redimensionné (800 px de large max, qualité ~82) : dossier `assets/previews/` passé de ~1,4 Mo à ~630 Ko. Toute **nouvelle** image de preview doit suivre ce format (JPEG, 800 px de large max) plutôt que déposer un screenshot PNG brut.
+
+Sur chaque `<img>` de preview dans `index.html` :
+- `width` et `height` (dimensions réelles du fichier) pour éviter le layout shift (CLS) au chargement.
+- `loading="lazy"` pour ne charger l'image qu'à l'approche du scroll (aucune preview n'est au-dessus de la ligne de flottaison sur cette page).
 
 ### Deep linking (`?tab=` ou `#hash`)
 
@@ -491,7 +498,7 @@ Chaque fonction de bascule d'onglet (`setOnglet`/`setMainTab`/`setModePrincipal`
 ### Ajouter une nouvelle simulation
 
 1. Créer la(les) carte(s) dans `index.html` avec les bons attributs `data-*`
-2. Ajouter le screenshot dans `assets/previews/<nom>.png`
+2. Ajouter le screenshot dans `assets/previews/<nom>.jpg` (redimensionné à 800 px de large max, qualité JPEG ~82 — pas de PNG plein format), et sur la balise `<img>` : `width`/`height` réels + `loading="lazy"`
 3. Si la simulation a des onglets : ajouter le deep linking dans son `ui.js`
 4. Mettre à jour le panel de filtres si un nouveau thème ou niveau apparaît
 5. Ajouter la `<meta name="description">`, le `<h1 class="sr-only">` et la règle CSS `.sr-only` (voir §7 « Référencement (SEO) »)
