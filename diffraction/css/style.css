@@ -154,6 +154,18 @@ main {
 }
 #decompose-buttons.visible { display: flex; }
 
+/* Bouton "Adapter l'échelle à l'angle de diffraction" (overlay sous #view-buttons, vue
+   Dessus uniquement, cf. scene.js → syncBoutonEchelleAngle) */
+#echelle-angle-buttons {
+  position: absolute;
+  top: calc(clamp(6px, 1vw, 12px) + 42px);
+  right: clamp(6px, 1vw, 12px);
+  z-index: 10;
+  display: none;
+  padding-right: 5px; /* aligne la bordure droite du bouton sur celle de #view-buttons (padding:5px) */
+}
+#echelle-angle-buttons.visible { display: flex; }
+
 /* ── Splitter draggable ── */
 #left-splitter {
   flex: 0 0 6px;

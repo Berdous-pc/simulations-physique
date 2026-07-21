@@ -21,6 +21,7 @@ const sim = {
   beamMode: 'off', // 'off' (aucun faisceau) | 'laserOnly' (laser→fente) | 'visible' (laser + diffracté)
   showLengths: false, // afficher les doubles flèches de mesure d, D, L
   view: '3d',      // '3d' | 'top' | 'side' | 'screen'
+  echelleAngleTop: false, // vue Dessus uniquement : grossit l'angle de diffraction affiché (cf. scene.js → updateOrthoCamera)
   maskShape: 'fente', // 'fente' | 'carre' | 'cercle' | 'fil' — forme de l'ouverture de la diapositive
   showGraphIntensite: false, // afficher le graphe I(x) sous la scène 3D (avec splitter) — désactivé par défaut
   showValeursExp: false, // afficher les cadres de valeurs expérimentales (angle, tache centrale) — désactivé par défaut

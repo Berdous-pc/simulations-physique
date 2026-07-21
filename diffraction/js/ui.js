@@ -205,6 +205,20 @@ function setView(view) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+//  Bascule le grossissement de l'angle de diffraction (vue Dessus uniquement). La caméra se
+//  recale toute seule dès la prochaine frame (renderScene() → updateOrthoCamera()), mais
+//  l'écran/l'enveloppe/les rayons (cf. scene.js → zEcranAffiche) doivent, eux, être
+//  repositionnés explicitement (updateSceneParams() n'est pas rappelée à chaque frame).
+//  Se désactive automatiquement en cas de changement de vue, cf. scene.js →
+//  syncBoutonEchelleAngle.
+// ─────────────────────────────────────────────────────────────────────
+function toggleEchelleAngle() {
+  sim.echelleAngleTop = !sim.echelleAngleTop;
+  document.getElementById('btn-echelle-angle').classList.toggle('active', sim.echelleAngleTop);
+  updateSceneParams();
+}
+
+// ─────────────────────────────────────────────────────────────────────
 //  Met à jour les encarts de valeurs instantanées.
 // ─────────────────────────────────────────────────────────────────────
 const THETA_LABEL_FORMULE = {

@@ -27,6 +27,55 @@ let SLIT_Z = 0;
 // updateOrthoCamera.
 const D_CADRAGE_MIN_CM = 140;
 
+// Bouton "Adapter l'échelle à l'angle de diffraction" (vue Dessus uniquement, cf.
+// sim.echelleAngleTop, syncBoutonEchelleAngle) : PAS un effet caméra (cf. discussions de
+// conception précédentes, abandonnées — déformaient ou rognaient l'écran réel). Principe
+// du schéma "pas à l'échelle" que trace un professeur au tableau : on RAPPROCHE réellement
+// l'écran de la fente dans la scène 3D (cf. zEcranAffiche ci-dessous, utilisée à la place de
+// SLIT_Z + D_cm partout où l'écran est positionné/le banc est cadré en vue Dessus), sans
+// changer la taille d'aucun objet — seule sa position le long de l'axe optique change. En
+// vue Dessus, la texture de l'écran (la figure de diffraction) n'est de toute façon jamais
+// visible (écran vu par la tranche), donc aucun impact sur elle. La double flèche de mesure
+// L (largeur de la tache centrale), elle, est en plus dilatée par son propre facteur — cf.
+// ECHELLE_ANGLE_FACTEUR_L dans updateLengthsGroup — SANS changer x1 ailleurs (rayons,
+// enveloppe) ni la valeur numérique affichée dans son label (toujours la vraie valeur de L).
+const ECHELLE_ANGLE_FACTEUR_D = 3;  // D affiché = D réel / ce facteur
+const ECHELLE_ANGLE_FACTEUR_L = 3;  // dilatation purement visuelle de la flèche L (vue Dessus) — l'écran (cf. updateSceneParams) est élargi du même facteur, pour que la tache garde la même place relative sur l'écran
+
+// ─────────────────────────────────────────────────────────────────────
+//  Position Z de l'écran à utiliser pour le POSITIONNEMENT (jamais pour la physique/texture,
+//  toujours calculée séparément à partir de sim.D réel) : comprimée en vue Dessus quand le
+//  bouton "Adapter l'échelle" est actif (cf. ECHELLE_ANGLE_FACTEUR_D ci-dessus), sinon la
+//  vraie position fente+D. Centralisé ici car réutilisé par updateSceneParams(),
+//  updateLengthsGroup(), reconstruireEnveloppesBlanche() et updateOrthoCamera().
+// ─────────────────────────────────────────────────────────────────────
+function zEcranAffiche(D_cm) {
+  const D_affiche = (sim.view === 'top' && sim.echelleAngleTop) ? D_cm / ECHELLE_ANGLE_FACTEUR_D : D_cm;
+  return SLIT_Z + D_affiche;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Écart transverse (x1, cm) à utiliser pour tout ce qui doit visuellement pointer vers la
+//  tache centrale dilatée (rayons vers les 1ers minima, flèche de mesure L) — dilaté en vue
+//  Dessus quand le bouton "Adapter l'échelle" est actif, sinon la vraie valeur. x1_cm reste
+//  la vraie valeur physique partout ailleurs (texte des labels, enveloppe, graphe, encarts).
+// ─────────────────────────────────────────────────────────────────────
+function x1Affiche(x1_cm) {
+  return (sim.view === 'top' && sim.echelleAngleTop) ? x1_cm * ECHELLE_ANGLE_FACTEUR_L : x1_cm;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Facteur d'élargissement (scale.x) à appliquer aux objets dont la LARGEUR peut être
+//  changée (écran, enveloppe(s) 3D du faisceau diffracté — jamais leur géométrie interne,
+//  seulement leur scale.x, cf. discussion de conception) pour qu'ils restent visuellement
+//  cohérents avec x1Affiche : sans ça, l'enveloppe (dont la silhouette vient du champ FFT
+//  réel) continuerait de pointer vers les vraies premières extinctions au lieu de la tache
+//  dilatée que la scène montre partout ailleurs (rayons, flèche L, écran élargi).
+// ─────────────────────────────────────────────────────────────────────
+function facteurLargeurEchelle() {
+  return (sim.view === 'top' && sim.echelleAngleTop) ? ECHELLE_ANGLE_FACTEUR_L : 1;
+}
+
 // Zoom (molette) de la vue Écran, centré sur le centre de l'écran (0,0) — jamais sur le
 // curseur, demande explicite de l'utilisateur (contrairement au zoom-vers-curseur de la
 // vue 3D, cf. initZoomVersCurseur). 1 = cadrage par défaut (écran entier + marge), plus
@@ -127,6 +176,23 @@ function syncBoutonDecompose() {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+//  (Dés)affiche le bouton "Adapter l'échelle à l'angle de diffraction" (vue Dessus
+//  uniquement) et désactive l'effet si on quitte cette vue — appelée par setSceneView().
+//  Contrairement à syncBoutonDecompose/annulerDecompose, un simple changement de vue suffit
+//  à couper l'effet (pas d'animation en cours à interrompre proprement) : demande explicite
+//  de l'utilisateur, cf. discussion de conception (le bouton se désactive automatiquement).
+// ─────────────────────────────────────────────────────────────────────
+function syncBoutonEchelleAngle() {
+  const conteneur = document.getElementById('echelle-angle-buttons');
+  if (conteneur) conteneur.classList.toggle('visible', sim.view === 'top');
+  if (sim.view !== 'top' && sim.echelleAngleTop) {
+    sim.echelleAngleTop = false;
+    const btn = document.getElementById('btn-echelle-angle');
+    if (btn) btn.classList.remove('active');
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
 //  Avance decomposeT d'un pas vers sa cible (decomposeActive) et redessine la texture d'écran
 //  en conséquence — appelée à chaque frame par ui.js → loop(), tant que sim.view==='screen'
 //  ET sim.lightSource==='blanche' (seul cas où la texture peut différer de son état fusionné
@@ -182,6 +248,25 @@ const RENDU_W_MIN_CM = 0.2;
 // la largeur réelle (fine, cf. discussion de conception initiale sur uPlancherAlpha).
 const TOP_VIEW_PLANCHER_GAIN = 6;
 const TOP_VIEW_FLARE_LONGUEUR_CM = SLIDE_SIZE; // ≈ taille de la lame porte-fente/son support
+// Fraction MAX de la distance fente→écran réellement affichée que le flare peut occuper (cf.
+// appliquerXLimiteUniforms) : sans ce plafond relatif, TOP_VIEW_FLARE_LONGUEUR_CM (fixe)
+// occupe une fraction disproportionnée du faisceau quand D est petit (D réel <~1,6 m, ou D
+// comprimé par le bouton "Adapter l'échelle"), et le plancher élargi (×TOP_VIEW_PLANCHER_GAIN)
+// ne redescend jamais à sa largeur réelle avant l'écran — un « bulbe » élargi se superpose
+// alors en permanence au cône réel (bug observé par l'utilisateur).
+const TOP_VIEW_FLARE_FRACTION_MAX = 0.15;
+
+// Rapport x2/x1 (limite de la 1ère tache secondaire / limite de la tache centrale) : le
+// plancher d'opacité (cf. appliquerXLimiteUniforms) doit couvrir les DEUX taches, pas
+// seulement la centrale, sinon les pointillés "Afficher l'angle de diffraction" (qui pointent
+// exactement vers x1) semblent pointer vers le bord d'un unique blob près de la fente, pas
+// vers le milieu d'une vraie zone sombre entre deux taches visibles (constaté par
+// l'utilisateur). Exactement 2 pour les formes séparables (zéros de sinc régulièrement
+// espacés, cf. thetaMinimum m=2 dans sim.js) ; ≈1,83 pour le cercle (zéros de la fonction
+// d'Airy J1, non régulièrement espacés : 2ème zéro à 2,233λ/D contre 1,22λ/D pour le 1er).
+// Approximation petit angle comme x1Cm lui-même (cf. xPremierMinimum) — purement cosmétique,
+// pas une valeur physique affichée.
+const RATIO_X2_SUR_X1 = { fente: 2, carre: 2, fil: 2, cercle: 2.233 / 1.22 };
 
 // ── Doubles flèches de mesure (d, D, L) — bouton "Afficher les longueurs" ──
 const LEN_COLOR = 0x8fd6ff; // bleu clair, distinct du jaune (rayons) et du blanc (axe optique)
@@ -352,8 +437,9 @@ const ENVELOPPE_GAMMA_LUMINOSITE = 1.6;
 //  coïncident pour une fente (mêmes minima/maxima), mais seule celle-ci (le champ FFT) sera
 //  concernée le jour où la forme de l'ouverture changera.
 // ─────────────────────────────────────────────────────────────────────
-function construireGeometrieEnveloppe(zNear, zFar, hNear, wMax, champ, shape = sim.maskShape) {
-  const n = ENVELOPPE_N_TRANCHES, m = ENVELOPPE_M_TRANCHES, kMax = ENVELOPPE_K_COUCHES;
+function construireGeometrieEnveloppe(zNear, zFar, hNear, wMax, champ, x1Cm, shape = sim.maskShape) {
+  let n = ENVELOPPE_N_TRANCHES;
+  const m = ENVELOPPE_M_TRANCHES, kMax = ENVELOPPE_K_COUCHES;
   const halfW = sim.screenHalfWidth; // m — même étendue physique que la texture d'écran
   // xFars[k]/yFars[k] = position à l'écran (fixe, non tapée) du rayon auquel appartient le
   // sommet d'indice k — sert au shader (cf. construireObjets) à savoir si CE rayon appartient
@@ -384,15 +470,35 @@ function construireGeometrieEnveloppe(zNear, zFar, hNear, wMax, champ, shape = s
     yBalayageMax_m = Math.min(halfW, champ.D_m * sinThetaMax / Math.sqrt(1 - sinThetaMax * sinThetaMax));
   }
 
-  // Par colonne (x) : position, facteur géométrique (racine carrée, cf. commentaire plus bas),
-  // facteur de LUMINOSITÉ (plus compressif, cf. ENVELOPPE_GAMMA_LUMINOSITE — fente/fil
-  // seulement, cf. ci-dessous) et demi-hauteur cible côté écran — calculés une fois, réutilisés
-  // à la fois par la grille écran et par les rubans de chaque rangée.
-  const xCm = new Array(n + 1), ixLumCol = new Array(n + 1), halfHFar = new Array(n + 1);
+  // Grille en X non-uniforme : n+1 points uniformément répartis (résolution générale), PLUS
+  // les positions milestones (0, ±x1Cm, ±x2Cm, cf. RATIO_X2_SUR_X1) insérées comme colonnes
+  // EXACTES. Sans elles, avec une grille purement uniforme, la vraie extinction (Ix=0 pile à
+  // x1) tombe souvent ENTRE deux colonnes échantillonnées : le creux interpolé par le GPU ne
+  // descend jamais tout à fait à zéro et son minimum visuel n'est pas exactement à x1 — ce qui
+  // désaligne visiblement le pointillé "Afficher l'angle de diffraction" (tracé, lui, EXACTEMENT
+  // à x1, cf. raysLine) du milieu de la vraie zone sombre (constaté par l'utilisateur, capture
+  // à l'appui). `n` est réajusté à la taille réelle de la grille fusionnée : tout le code plus
+  // bas continue de s'appuyer sur `n`/xCm sans autre changement.
+  const xCmUniforme = [];
+  for (let i = 0; i <= n; i++) xCmUniforme.push(-halfW * 100 + (2 * halfW * 100 * i) / n);
+  const ratioX2 = RATIO_X2_SUR_X1[shape] || 2;
+  const x2Cm = x1Cm * ratioX2;
+  const jalonsCm = [0, x1Cm, -x1Cm, x2Cm, -x2Cm].filter(x => Math.abs(x) <= halfW * 100);
+  const xCm = Array.from(new Set([...xCmUniforme, ...jalonsCm])).sort((a, b) => a - b);
+  n = xCm.length - 1;
+
+  // Par colonne (x) : facteur géométrique (racine carrée, cf. commentaire plus bas), facteur de
+  // LUMINOSITÉ (plus compressif, cf. ENVELOPPE_GAMMA_LUMINOSITE — fente/fil seulement, cf.
+  // ci-dessous) et demi-hauteur cible côté écran — calculés une fois, réutilisés à la fois par
+  // la grille écran et par les rubans de chaque rangée.
+  // ixColReel : intensité RÉELLE (pas gamma-compressée, cf. ixLumCol) à y=0 pour cette colonne —
+  // gardée à part pour le plancher léger uPlancherMinRayon (cf. shader), qui doit comparer à un
+  // seuil physique (1 % du pic RÉEL) et non à la valeur affichée (déjà assombrie par le gamma).
+  const ixLumCol = new Array(n + 1), ixColReel = new Array(n + 1), halfHFar = new Array(n + 1);
   for (let i = 0; i <= n; i++) {
-    const x_m = -halfW + (2 * halfW * i) / n;
-    xCm[i] = x_m * 100;
+    const x_m = xCm[i] / 100;
     const Ix = echantillonnerChamp(champ, x_m, 0); // y=0 : cf. commentaire à l'appel dans updateSceneParams
+    ixColReel[i] = Ix;
     if (balayage2D) {
       // Cherche le plus grand y où le champ reste non négligeable À CETTE ABSCISSE (balayage
       // du bord vers le centre : robuste même si l'intensité n'est pas monotone en y, ce qui
@@ -429,19 +535,23 @@ function construireGeometrieEnveloppe(zNear, zFar, hNear, wMax, champ, shape = s
     const col = new Array(m + 1);
     for (let j = 0; j <= m; j++) {
       const y_cm = halfH === 0 ? 0 : -halfH + (2 * halfH * j) / m;
-      let intensite;
+      let intensite, intensiteReelle;
       if (balayage2D) {
-        intensite = Math.pow(echantillonnerChamp(champ, x_m, y_cm / 100), ENVELOPPE_GAMMA_LUMINOSITE);
+        intensiteReelle = echantillonnerChamp(champ, x_m, y_cm / 100);
+        intensite = Math.pow(intensiteReelle, ENVELOPPE_GAMMA_LUMINOSITE);
       } else {
         // Profil gaussien réel (même formule que le profil vertical de la texture d'écran,
         // cf. updateSceneParams), évalué à la position y physique réelle — indépendant du
         // fait que la plage y explorée ici soit compressée par halfHFar.
         const Iy = Math.exp(-2 * y_cm * y_cm / (wMax * wMax));
         intensite = ixLumCol[i] * Iy;
+        intensiteReelle = ixColReel[i] * Iy;
       }
       col[j] = positions.length / 3;
       positions.push(xCm[i], y_cm, zFar);
-      colors.push(intensite, intensite, intensite);
+      // G porte l'intensité RÉELLE (pas affichée/gamma), cf. commentaire à ixColReel — lue par
+      // le vertex shader (vIntensiteReelle) pour le plancher uPlancherMinRayon uniquement.
+      colors.push(intensite, intensiteReelle, intensite);
       xFars.push(xCm[i]);
       yFars.push(y_cm);
     }
@@ -484,9 +594,10 @@ function construireGeometrieEnveloppe(zNear, zFar, hNear, wMax, champ, shape = s
         const idxFar = grilleFar[i][j];
         const yFar = positions[idxFar * 3 + 1];
         const intensiteFarIJ = colors[idxFar * 3];
+        const intensiteReelleFarIJ = colors[idxFar * 3 + 1]; // cf. commentaire à ixColReel
         ligne[i] = positions.length / 3;
         positions.push(xCm[i] * t, yNear + (yFar - yNear) * t, z);
-        colors.push(intensiteFarIJ, intensiteFarIJ, intensiteFarIJ);
+        colors.push(intensiteFarIJ, intensiteReelleFarIJ, intensiteFarIJ);
         xFars.push(xCm[i]);
         yFars.push(yFar);
       }
@@ -539,7 +650,7 @@ function construireGeometrieEnveloppe(zNear, zFar, hNear, wMax, champ, shape = s
 
 let renderer, sceneObj, camPersp, camOrtho, controls, canvasEl;
 let laserBody, beamMesh, beamEnvelopeMesh, beamDot, topBand, bottomBand, wallLeft, wallRight, wallCenter, slideCercleMesh, screenMesh, screenTexture, screenTexCanvas, screenTexCtx;
-let raysLine, axisLine, supportLaser, supportSlide, supportScreen;
+let raysLine, axisLine, supportLaser, supportSlide, supportScreen, tableMesh;
 let lengthsGroup, mesurePetitD, mesureGrandD, mesureL;
 
 // 6 enveloppes couleur du faisceau diffracté (mode Lumière blanche), une par BLANCHE_COULEURS
@@ -950,12 +1061,12 @@ function construireObjets() {
   // courant (la table ne rétrécit pas quand on rapproche l'écran, comme une vraie table).
   const tableZStart = SOURCE_Z - LASER_LENGTH - 5;
   const tableZEnd = D_MAX_CM + 10;
-  const table = new THREE.Mesh(
+  tableMesh = new THREE.Mesh(
     new THREE.BoxGeometry(TABLE_WIDTH, TABLE_THICK, tableZEnd - tableZStart),
     new THREE.MeshStandardMaterial({ color: 0x5a4632 })
   );
-  table.position.set(0, TABLE_Y - PLATEAU_EPAISSEUR - TABLE_THICK / 2, (tableZStart + tableZEnd) / 2);
-  sceneObj.add(table);
+  tableMesh.position.set(0, TABLE_Y - PLATEAU_EPAISSEUR - TABLE_THICK / 2, (tableZStart + tableZEnd) / 2);
+  sceneObj.add(tableMesh);
 
   // Pieds de table : 3 paires (début / milieu / fin), du dessous de la table jusqu'au sol.
   // Insertion légèrement en retrait des bords (esthétique, comme une vraie table).
@@ -1044,6 +1155,13 @@ function construireObjets() {
       uColor: { value: new THREE.Color(0xff0000) },
       uOpacite: { value: 0.6 },
       uPlancherAlpha: { value: 0.15 },
+      // Léger plancher, restreint à la tache centrale + 1ère tache secondaire (multiplié par
+      // poidsForme dans le shader, cf. plus bas — PAS au-delà, demande explicite de
+      // l'utilisateur : les 2èmes taches secondaires et au-delà ne doivent recevoir aucun
+      // plancher) : garde un rayon faiblement visible tant que son intensité réelle (cf.
+      // vIntensiteReelle) ne descend pas sous 1 % du pic central — en dessous (vrais zéros de
+      // la figure), aucun plancher : les minima restent bien noirs.
+      uPlancherMinRayon: { value: 0.01 },
       uXLimiteReel: { value: 1 },
       uXLimiteExagere: { value: 1 },
       // uYLimite* : pendant vertical de uXLimite* (cf. commentaire ci-dessus), ajouté pour le
@@ -1067,11 +1185,16 @@ function construireObjets() {
       attribute float aXFar;
       attribute float aYFar;
       varying float vIntensite;
+      varying float vIntensiteReelle;
       varying float vXFar;
       varying float vYFar;
       varying float vZ;
       void main() {
         vIntensite = color.r;
+        // G porte l'intensité RÉELLE (avant compression gamma, cf. construireGeometrieEnveloppe
+        // → ixColReel) : le plancher uPlancherMinRayon doit comparer à un seuil physique, pas à
+        // la valeur affichée déjà assombrie par ENVELOPPE_GAMMA_LUMINOSITE.
+        vIntensiteReelle = color.g;
         vXFar = aXFar;
         vYFar = aYFar;
         vZ = position.z;
@@ -1082,6 +1205,7 @@ function construireObjets() {
       uniform vec3 uColor;
       uniform float uOpacite;
       uniform float uPlancherAlpha;
+      uniform float uPlancherMinRayon;
       uniform float uXLimiteReel;
       uniform float uXLimiteExagere;
       uniform float uYLimiteReel;
@@ -1090,6 +1214,7 @@ function construireObjets() {
       uniform float uZNear;
       uniform float uFlareLongueur;
       varying float vIntensite;
+      varying float vIntensiteReelle;
       varying float vXFar;
       varying float vYFar;
       varying float vZ;
@@ -1113,7 +1238,23 @@ function construireObjets() {
           float poidsY = 1.0 - smoothstep(yLimite * 0.85, yLimite, abs(vYFar));
           poidsForme = poidsX * poidsY;
         }
-        float alpha = max(vIntensite * uOpacite, uPlancherAlpha * poidsForme);
+        // uPlancherAlpha*poidsForme délimite SEULEMENT où le plancher peut s'appliquer (tache
+        // centrale, cf. commentaire ci-dessus) ; sa BRILLANCE, elle, doit suivre la vraie forme
+        // de la figure de diffraction — pas un plateau plat uniforme (constaté par l'utilisateur :
+        // impression fausse d'intensité égale au centre et près des bords). vIntensite porte déjà
+        // cette forme réelle (sinc²/Airy, cf. construireGeometrieEnveloppe → couleur par rayon),
+        // donc on la réutilise ici plutôt que d'inventer un fondu synthétique séparé.
+        float alpha = max(vIntensite * uOpacite, uPlancherAlpha * poidsForme * vIntensite);
+        // Léger plancher (cf. uPlancherMinRayon) : garde un rayon faiblement visible tant que
+        // son intensité RÉELLE (vIntensiteReelle, pas vIntensite qui est déjà assombrie par
+        // ENVELOPPE_GAMMA_LUMINOSITE — sinon le pic d'une tache secondaire, ~4,5% en réel,
+        // tombait sous ce seuil une fois compressé et n'affichait jamais ce plancher) reste
+        // au-dessus de 1 % du pic central — en dessous (vrais zéros de la figure), aucun
+        // plancher, ils restent bien noirs. Multiplié par poidsForme (déjà borné à la tache
+        // centrale + 1ère tache secondaire, cf. xLimite/yLimite=x2/y2) : les 2èmes taches
+        // secondaires et au-delà ne reçoivent explicitement AUCUN plancher (demande explicite
+        // de l'utilisateur), seule leur intensité réelle (vIntensite*uOpacite) reste visible.
+        alpha = max(alpha, step(0.010, vIntensiteReelle) * uPlancherMinRayon * poidsForme);
         gl_FragColor = vec4(uColor, alpha);
       }
     `,
@@ -1371,14 +1512,17 @@ function dessinerTextureEcranBlanche(t) {
 //  (planifierEnveloppesBlanche ci-dessous), jamais appelée directement en dehors de ce fichier.
 // ─────────────────────────────────────────────────────────────────────
 function reconstruireEnveloppesBlanche() {
-  const screenZ = SLIT_Z + sim.D * 100;
+  const screenZ = zEcranAffiche(sim.D * 100);
+  const facteurLargeur = facteurLargeurEchelle();
   x1CmCourantCouleurs = ENVELOPPE_COULEURS_TEST.map((c, k) => {
     const champC = construireChampOuverture(c.lambda, sim.a, sim.D);
     const wCmC = Math.max(RENDU_W_MIN_CM, largeurFaisceauGaussien(c.lambda, sim.D) * 100);
+    const x1CmC = xPremierMinimum(c.lambda, sim.a, sim.D) * 100;
     const mesh = beamEnvelopeMeshesBlanche[k];
     mesh.geometry.dispose();
-    mesh.geometry = construireGeometrieEnveloppe(SLIT_Z, screenZ, BEAM_DIAMETER, wCmC, champC);
-    return xPremierMinimum(c.lambda, sim.a, sim.D) * 100;
+    mesh.geometry = construireGeometrieEnveloppe(SLIT_Z, screenZ, BEAM_DIAMETER, wCmC, champC, x1CmC);
+    mesh.scale.x = facteurLargeur; // cf. commentaire à facteurLargeurEchelle (mono, updateSceneParams)
+    return x1CmC;
   });
   updateEnvelopeXLimite();
 }
@@ -1464,7 +1608,7 @@ function updateSceneParams() {
   // dans ui.js → appliquerBorneD) a déjà réduit D. Le faisceau laser→fente est reconstruit
   // (sa longueur dépend de d), comme l'enveloppe diffractée plus bas.
   SLIT_Z = SOURCE_Z + sim.d * 100;
-  const screenZ = SLIT_Z + D_cm; // position absolue de l'écran (fente + D)
+  const screenZ = zEcranAffiche(D_cm); // position d'affichage de l'écran (fente + D, comprimée en vue Dessus si le bouton "Adapter l'échelle" est actif, cf. zEcranAffiche)
   beamMesh.geometry.dispose();
   beamMesh.geometry = new THREE.CylinderGeometry(BEAM_DIAMETER / 2, BEAM_DIAMETER / 2, SLIT_Z - SOURCE_Z, 12);
   beamMesh.geometry.rotateX(Math.PI / 2);
@@ -1514,6 +1658,15 @@ function updateSceneParams() {
   // jamais touchés, pour ne pas casser l'alignement optique vertical)
   screenMesh.position.set(0, 0, screenZ);
   supportScreen.position.z = screenZ;
+  // Largeur de l'écran (scale X uniquement — jamais sa hauteur ni sa position, ni le support,
+  // cf. discussion de conception) élargie du même facteur que la tache (x1Affiche) en vue
+  // Dessus quand le bouton "Adapter l'échelle" est actif, pour que la tache garde toujours la
+  // même place relative sur l'écran qu'à l'échelle réelle. Le cadre (frame) est un enfant de
+  // screenMesh (cf. construction) : il s'élargit automatiquement avec elle.
+  screenMesh.scale.x = facteurLargeurEchelle();
+  // Largeur de la table (scale X — sa "partie verticale" en vue Dessus, cf. camOrtho.up=
+  // (1,0,0)) élargie du même facteur, pour rester cohérente avec l'écran élargi posé dessus.
+  tableMesh.scale.x = facteurLargeurEchelle();
 
   // Texture d'intensité. I(x) (horizontal) vient du champ FFT (construireChampOuverture, cf.
   // sim.js et commentaire à sa déclaration ci-dessous) — PAS de echantillonnerIntensite/
@@ -1567,7 +1720,11 @@ function updateSceneParams() {
     updateEnvelopeXLimite();
     beamEnvelopeMesh.material.uniforms.uColor.value.setHex(couleurHex);
     beamEnvelopeMesh.geometry.dispose();
-    beamEnvelopeMesh.geometry = construireGeometrieEnveloppe(SLIT_Z, screenZ, BEAM_DIAMETER, w_cm, champ);
+    beamEnvelopeMesh.geometry = construireGeometrieEnveloppe(SLIT_Z, screenZ, BEAM_DIAMETER, w_cm, champ, x1_cm);
+    // Élargie du même facteur que l'écran/la tache (cf. facteurLargeurEchelle) : sans ça,
+    // l'enveloppe (silhouette FFT réelle) continuerait de pointer vers les vraies premières
+    // extinctions au lieu de la tache dilatée montrée partout ailleurs dans ce mode.
+    beamEnvelopeMesh.scale.x = facteurLargeurEchelle();
 
     // Carré/cercle diffractent réellement en y : leur profil vertical vient directement d'un
     // échantillonnage 2D du champ FFT (comme x), pas du profil gaussien du faisceau INCIDENT
@@ -1606,16 +1763,20 @@ function updateSceneParams() {
   // Rayons vers les 1ers minima — masqués en vue Écran : une caméra orthographique de face
   // ne représente pas la profondeur, donc les deux rayons s'y aplatissent en un simple trait
   // horizontal (start et fin à même x,y projetés) qui n'apporte rien dans cette vue précise.
+  // x1Affiche (pas x1_cm brut) : en vue Dessus avec le bouton "Adapter l'échelle" actif, les
+  // rayons doivent pointer vers la même tache dilatée que la flèche L (cf. x1Affiche),
+  // sinon rayons et flèche L désignent deux positions différentes — incohérent visuellement.
+  const x1Aff = x1Affiche(x1_cm);
   raysLine.visible = sim.showRays && sim.view !== 'screen';
   raysLine.geometry.setAttribute('position', new THREE.Float32BufferAttribute([
-    0, 0, SLIT_Z,  x1_cm, 0, screenZ,
-    0, 0, SLIT_Z, -x1_cm, 0, screenZ
+    0, 0, SLIT_Z,  x1Aff, 0, screenZ,
+    0, 0, SLIT_Z, -x1Aff, 0, screenZ
   ], 3));
   // computeLineDistances() cumule la distance sur TOUS les sommets sans la
   // remettre à zéro à chaque paire (bug connu de Three.js pour LineSegments) :
   // le 2ème rayon héritait de la longueur du 1er, d'où des pointillés décalés
   // entre les deux rayons. On calcule donc la distance manuellement, par paire.
-  const rayLen = Math.hypot(x1_cm, D_cm);
+  const rayLen = Math.hypot(x1Aff, screenZ - SLIT_Z); // distance réellement dessinée (x1Aff/screenZ déjà comprimés si applicable), pas les valeurs réelles — sinon le motif pointillé ne correspondrait plus à la longueur affichée
   raysLine.geometry.setAttribute('lineDistance', new THREE.Float32BufferAttribute([
     0, rayLen,
     0, rayLen
@@ -1643,9 +1804,14 @@ function updateLengthsGroup(x1_cm, w_cm) {
   lengthsGroup.visible = true;
 
   const D_cm = sim.D * 100;
-  const screenZ = SLIT_Z + D_cm; // position absolue de l'écran (fente + D)
+  const screenZ = zEcranAffiche(D_cm); // position d'affichage de l'écran (comprimée en vue Dessus si le bouton "Adapter l'échelle" est actif, cf. zEcranAffiche)
   const d_cm = SLIT_Z - SOURCE_Z; // dépend de sim.d, mis à jour dans updateSceneParams()
   const view = sim.view;
+  // Dilatation purement visuelle de la flèche L (vue Dessus, bouton "Adapter l'échelle") —
+  // cf. x1Affiche : même dilatation que les rayons (updateSceneParams), pour qu'ils désignent
+  // tous la même tache. x1_cm lui-même reste la vraie valeur physique partout ailleurs
+  // (enveloppe, graphe, encarts, texte du label ci-dessous).
+  const x1AfficheL = x1Affiche(x1_cm);
 
   // Vues Dessus/Profil : la caméra ortho recule à mesure que D grandit au-delà de
   // D_CADRAGE_MIN_CM (cf. updateOrthoCamera → D_cadrage), ce qui réduit d'autant la taille
@@ -1655,7 +1821,11 @@ function updateLengthsGroup(x1_cm, w_cm) {
   // jamais plus petits quel que soit D. Vue 3D et vue Écran : pas concernées (pas de ce
   // mécanisme de cadrage), donc facteur neutre (1).
   const D_cadrage = Math.max(D_cm, D_CADRAGE_MIN_CM);
-  const zoomCompense = (view === 'top' || view === 'side') ? (D_cadrage / D_CADRAGE_MIN_CM) : 1;
+  // Le bouton "Adapter l'échelle" cadre la vue Dessus tout autrement (cf. updateOrthoCamera),
+  // sans rapport avec le plancher D_CADRAGE_MIN_CM ci-dessus (pensé pour un D réel) : pas de
+  // compensation ici dans ce mode, facteur neutre.
+  const zoomCompense = (view === 'top' && sim.echelleAngleTop) ? 1
+    : (view === 'top' || view === 'side') ? (D_cadrage / D_CADRAGE_MIN_CM) : 1;
 
   // d, D : masquées en vue Écran (profondeur nulle de face, cf. raysLine).
   const showTableArrows = (view !== 'screen');
@@ -1670,9 +1840,15 @@ function updateLengthsGroup(x1_cm, w_cm) {
       placerMesureTable(mesureGrandD, 0, LEN_SIDE_Y, LEN_SIDE_LABEL_Y, SLIT_Z, screenZ, true);
     } else {
       // Vue 3D / Dessus : flèches décalées latéralement pour ne pas être gênées par les
-      // supports, sur le plateau de la table.
-      placerMesureTable(mesurePetitD, LEN_OFFSET_X, LEN_ARROW_Y_TABLE, LEN_LABEL_Y_TABLE, SOURCE_Z, SLIT_Z, false);
-      placerMesureTable(mesureGrandD, LEN_OFFSET_X, LEN_ARROW_Y_TABLE, LEN_LABEL_Y_TABLE, SLIT_Z, screenZ, false);
+      // supports, sur le plateau de la table. En vue Dessus avec "Adapter l'échelle" actif,
+      // le décalage (position uniquement, jamais leur taille — flèches/pointillés/labels
+      // gardent leur géométrie normale, cf. setFlecheDoubleLongueur plus bas dans
+      // placerMesureTable) est élargi du même facteur que la table/l'écran (cf.
+      // facteurLargeurEchelle), sinon elles resteraient à leur place habituelle alors que la
+      // table/l'écran, eux, se sont élargis sous elles.
+      const offsetXArrows = LEN_OFFSET_X * facteurLargeurEchelle();
+      placerMesureTable(mesurePetitD, offsetXArrows, LEN_ARROW_Y_TABLE, LEN_LABEL_Y_TABLE, SOURCE_Z, SLIT_Z, false);
+      placerMesureTable(mesureGrandD, offsetXArrows, LEN_ARROW_Y_TABLE, LEN_LABEL_Y_TABLE, SLIT_Z, screenZ, false);
     }
     mesurePetitD.label.scale.set(zoomCompense, zoomCompense, 1);
     mesureGrandD.label.scale.set(zoomCompense, zoomCompense, 1);
@@ -1692,11 +1868,11 @@ function updateLengthsGroup(x1_cm, w_cm) {
       // Vue Dessus : la flèche « au-dessus de la tache » (axe Y) est aplatie par cette vue ;
       // on la reporte légèrement derrière l'écran, label encore un peu plus à droite.
       const zArrow = screenZ + LEN_TOP_L_DECALAGE_Z;
-      setFlecheDoubleLongueur(mesureL.fleche, 2 * x1_cm);
+      setFlecheDoubleLongueur(mesureL.fleche, 2 * x1AfficheL);
       mesureL.fleche.rotation.set(0, 0, 0);
       mesureL.fleche.position.set(0, 0, zArrow);
-      placerPointilleSegment(mesureL.dash1, [-x1_cm, 0, zArrow], [-x1_cm, 0, screenZ], 'y');
-      placerPointilleSegment(mesureL.dash2, [x1_cm, 0, zArrow], [x1_cm, 0, screenZ], 'y');
+      placerPointilleSegment(mesureL.dash1, [-x1AfficheL, 0, zArrow], [-x1AfficheL, 0, screenZ], 'y');
+      placerPointilleSegment(mesureL.dash2, [x1AfficheL, 0, zArrow], [x1AfficheL, 0, screenZ], 'y');
       // Sens de lecture aligné sur la flèche (axe X, comme celle-ci), normale vers le haut —
       // cf. orienterDecalque et placerMesureTable pour le même principe appliqué à d/D.
       // Vue Dessus : l'axe X du monde correspond à la verticale de l'écran (camOrtho.up=
@@ -1788,10 +1964,25 @@ function appliquerXLimiteUniforms(u, x1Cm) {
   u.uYLimiteReel.value = y1Cm;
   u.uPlancherRadial.value = (sim.maskShape === 'cercle') ? 1 : 0;
   if (sim.view === 'top') {
-    u.uXLimiteExagere.value = Math.min(x1Cm * TOP_VIEW_PLANCHER_GAIN, SCREEN_WIDTH / 2 * 0.5);
-    u.uYLimiteExagere.value = symetrique ? Math.min(y1Cm * TOP_VIEW_PLANCHER_GAIN, SCREEN_WIDTH / 2 * 0.5) : y1Cm;
+    // Étend la couverture du plancher jusqu'à x2 (limite de la 1ère tache secondaire, cf.
+    // RATIO_X2_SUR_X1), PAS seulement x1 — y compris pour uXLimiteReel/uYLimiteReel (écrasant
+    // la valeur x1Cm posée juste au-dessus) : sinon la couverture reviendrait brutalement à x1
+    // seul à la fin du fondu du flare, coupant net la tache secondaire tout juste rendue
+    // visible près de la fente. vIntensite (déjà réelle, cf. couleur par rayon dans
+    // construireGeometrieEnveloppe) creuse naturellement le vrai zéro à x1 entre les deux
+    // taches — aucun fondu synthétique à ajouter ici.
+    const ratioX2 = RATIO_X2_SUR_X1[sim.maskShape] || 2;
+    const x2Cm = x1Cm * ratioX2;
+    const y2Cm = symetrique ? y1Cm * ratioX2 : y1Cm;
+    u.uXLimiteReel.value = x2Cm;
+    u.uYLimiteReel.value = y2Cm;
+    u.uXLimiteExagere.value = Math.min(x2Cm * TOP_VIEW_PLANCHER_GAIN, SCREEN_WIDTH / 2 * 0.5);
+    u.uYLimiteExagere.value = symetrique ? Math.min(y2Cm * TOP_VIEW_PLANCHER_GAIN, SCREEN_WIDTH / 2 * 0.5) : y1Cm;
     u.uZNear.value = SLIT_Z;
-    u.uFlareLongueur.value = TOP_VIEW_FLARE_LONGUEUR_CM;
+    // Plafonné à une fraction de la distance fente→écran réellement affichée (D_affiche, cf.
+    // zEcranAffiche) — cf. TOP_VIEW_FLARE_FRACTION_MAX pour le bug que ce plafond évite.
+    const D_affiche = Math.max(zEcranAffiche(sim.D * 100) - SLIT_Z, 1);
+    u.uFlareLongueur.value = Math.min(TOP_VIEW_FLARE_LONGUEUR_CM, D_affiche * TOP_VIEW_FLARE_FRACTION_MAX);
   } else {
     u.uXLimiteExagere.value = x1Cm;
     u.uYLimiteExagere.value = y1Cm;
@@ -1844,6 +2035,11 @@ function setSceneView(view) {
   if (view !== sim.view) annulerDecompose();
   sim.view = view;
   syncBoutonDecompose();
+  syncBoutonEchelleAngle();
+  // Repositionne écran/enveloppe/rayons (cf. zEcranAffiche) : leur position dépend maintenant
+  // de sim.view (bouton "Adapter l'échelle", vue Dessus), contrairement à avant ce bouton où
+  // rien ne dépendait de la vue — nécessaire ici en plus des recalculs habituels plus bas.
+  updateSceneParams();
   controls.enabled = (view === '3d');
   const cacherBanc = (view === 'screen');
   laserBody.visible = !cacherBanc;
@@ -1891,10 +2087,31 @@ function updateOrthoCamera(aspect) {
   const halfSpanZ = (screenZCadrage - SOURCE_Z) / 2 * 1.15;
 
   if (sim.view === 'top') {
-    camOrtho.position.set(0, 500, zCenter);
-    camOrtho.up.set(1, 0, 0);
-    camOrtho.lookAt(0, 0, zCenter);
-    fitOrtho(camOrtho, halfSpanZ, SCREEN_WIDTH / 2 * 1.3, aspect);
+    if (sim.echelleAngleTop) {
+      // Cadrage dédié au schéma "pas à l'échelle" (cf. zEcranAffiche/ECHELLE_ANGLE_FACTEUR_D) :
+      // ne cadre QUE fente↔écran comprimé (le laser sort volontairement du champ, sa distance
+      // d n'étant elle pas comprimée) — le plancher D_CADRAGE_MIN_CM ci-dessus ne s'applique
+      // pas ici (pensé pour un D réel, il resterait quasi toujours au plancher une fois D
+      // comprimé, empêchant la caméra de suivre le banc resserré). fitOrtho normal (pas de
+      // déformation anisotrope) : l'écran garde toujours sa taille réelle, jamais rogné ni
+      // étiré, cf. discussions de conception précédentes.
+      const screenZAff = zEcranAffiche(D_cm);
+      const zCenterAff = (SLIT_Z + screenZAff) / 2;
+      // Marge ×2 (pas ×1.15/1.3 comme ailleurs) : réglée à l'usage, le schéma comprimé
+      // paraissait trop serré dans le cadre avec une marge plus faible.
+      const halfSpanZAff = Math.max((screenZAff - SLIT_Z) / 2 * 2, 1);
+      camOrtho.position.set(0, 500, zCenterAff);
+      camOrtho.up.set(1, 0, 0);
+      camOrtho.lookAt(0, 0, zCenterAff);
+      // Demi-largeur transverse élargie du même facteur que l'écran (cf. updateSceneParams →
+      // screenMesh.scale.x), sinon l'écran élargi déborderait de ce cadre.
+      fitOrtho(camOrtho, halfSpanZAff, SCREEN_WIDTH / 2 * 1.3 * ECHELLE_ANGLE_FACTEUR_L, aspect);
+    } else {
+      camOrtho.position.set(0, 500, zCenter);
+      camOrtho.up.set(1, 0, 0);
+      camOrtho.lookAt(0, 0, zCenter);
+      fitOrtho(camOrtho, halfSpanZ, SCREEN_WIDTH / 2 * 1.3, aspect);
+    }
   } else if (sim.view === 'side') {
     camOrtho.position.set(-500, 0, zCenter);
     camOrtho.up.set(0, 1, 0);
