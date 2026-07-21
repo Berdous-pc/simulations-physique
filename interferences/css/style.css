@@ -1,0 +1,506 @@
+/* ══════════════════════════════════════════════════════════════════════
+   Simulation pédagogique — Physique-Chimie Lycée
+   Auteur  : Mathieu Berdous
+   Licence : CC BY-NC 4.0 — https://creativecommons.org/licenses/by-nc/4.0/
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ══════════════════════════════════════════════════════════════════════
+   style.css — Interférences (fentes et trous d'Young)
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── Reset & base ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  white-space: nowrap;
+  border: 0;
+}
+
+html { height: 100%; }
+body {
+  background: #e8e4de;
+  color: #2c3e50;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  font-size: 14px;
+  /* dvh : suit la hauteur réellement visible (barres dynamiques du navigateur) ;
+     vh reste le repli pour les navigateurs sans support dvh. */
+  height: 100vh;
+  max-height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Grille principale : colonne gauche + panneau droit ── */
+main {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr clamp(200px, 22vw, 300px);
+  grid-template-rows: 1fr;
+  overflow: hidden;
+}
+
+/* ── Colonne gauche : scène 3D + splitter + graphe ── */
+#left-col {
+  grid-row: 1;
+  grid-column: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── Onglet Ondes lumineuses : conteneur scène 3D + splitter + graphe ── */
+#lumineuses-area {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  position: relative; /* référentiel de #graph-lien-overlay, cf. plus bas */
+}
+
+/* Overlay pointillés reliant graphe ↔ figure (vue Écran, cf. graph.js → dessinerLienFigure) :
+   recouvre exactement scène 3D + splitter + graphe, jamais interactif. */
+#graph-lien-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 15;
+}
+
+/* ── Onglets Principe / Ondes de surface — à venir ── */
+#principe-area, #surfaces-area {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #14181d;
+}
+.tab-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  color: #7a8a96;
+  font-size: clamp(14px, 1.6vw, 20px);
+  font-weight: 600;
+}
+.tab-placeholder-icon { font-size: clamp(36px, 5vw, 56px); }
+
+/* Zone de la scène 3D */
+#scene-area {
+  background: #14181d;
+  border-right: 1px solid #c8c0b4;
+  overflow: hidden;
+  flex: 3;
+  min-height: clamp(80px, 18vh, 160px);
+  position: relative;
+}
+#scene-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+}
+#scene-canvas:active { cursor: grabbing; }
+
+/* Boutons de vue (overlay coin haut-droit de la scène) */
+#view-buttons {
+  position: absolute;
+  top: clamp(6px, 1vw, 12px);
+  right: clamp(6px, 1vw, 12px);
+  z-index: 10;
+  display: flex;
+  gap: 5px;
+  background: rgba(20,24,29,0.55);
+  padding: 5px;
+  border-radius: 7px;
+}
+.btn-view {
+  padding: 6px 10px;
+  font-size: clamp(11px, 1.05vw, 13px);
+  font-weight: 700;
+  border: 1px solid #4a5560;
+  border-radius: 5px;
+  background: rgba(255,255,255,0.08);
+  color: #cfd8df;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.btn-view:hover { background: rgba(255,255,255,0.18); color: #fff; }
+.btn-view.active { background: #2a6aaa; border-color: #1a5a9a; color: #fff; }
+
+/* Bouton "Décomposer la figure de diffraction" (overlay sous #view-buttons, vue Écran +
+   lumière blanche uniquement, cf. scene.js → syncBoutonDecompose) */
+#decompose-buttons {
+  position: absolute;
+  top: calc(clamp(6px, 1vw, 12px) + 42px);
+  right: clamp(6px, 1vw, 12px);
+  z-index: 10;
+  display: none;
+  padding-right: 5px; /* aligne la bordure droite du bouton sur celle de #view-buttons (padding:5px) */
+}
+#decompose-buttons.visible { display: flex; }
+
+/* Bouton "Adapter l'échelle à l'angle de diffraction" (overlay sous #view-buttons, vue
+   Dessus uniquement, cf. scene.js → syncBoutonEchelleAngle) */
+#echelle-angle-buttons {
+  position: absolute;
+  top: calc(clamp(6px, 1vw, 12px) + 42px);
+  right: clamp(6px, 1vw, 12px);
+  z-index: 10;
+  display: none;
+  padding-right: 5px; /* aligne la bordure droite du bouton sur celle de #view-buttons (padding:5px) */
+}
+#echelle-angle-buttons.visible { display: flex; }
+
+/* ── Splitter draggable ── */
+#left-splitter {
+  flex: 0 0 6px;
+  background: #c8c0b4;
+  cursor: row-resize;
+  position: relative;
+  z-index: 20;
+  transition: background 0.15s;
+  border-right: 1px solid #c8c0b4;
+}
+#left-splitter:hover, #left-splitter.dragging {
+  background: #2a6aaa;
+}
+
+/* Zone graphe I(x) */
+#graph-area {
+  flex: 2;
+  background: #faf9f6;
+  border-top: 1px solid #c8c0b4;
+  border-right: 1px solid #c8c0b4;
+  display: flex;
+  flex-direction: column;
+  min-height: clamp(80px, 14vh, 140px);
+  overflow: hidden;
+  position: relative;
+}
+
+/* Barre de contrôle du graphe */
+#graph-time-control {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 6px 10px 4px;
+}
+#graph-btns-left { display: flex; gap: 6px; align-items: center; }
+#graph-btns-right { display: flex; gap: 6px; align-items: center; }
+
+.graph-title {
+  font-size: 15px; color: #2c3e50; font-weight: 700;
+}
+
+#graph-btns-right button, #graph-btns-left button {
+  height: 30px; padding: 0 12px; font-weight: 700; line-height: 30px;
+  background: #e8e4de; color: #5a6a78;
+  border: 1px solid #b0a898; border-radius: 5px;
+  cursor: pointer; box-sizing: border-box; white-space: nowrap;
+}
+#btn-graph-pin  { font-size: 13px; }
+#btn-graph-lien { font-size: 13px; }
+
+#graph-btns-right button:hover, #graph-btns-left button:hover { background: #d0ccc4; color: #2c3e50; }
+#graph-btns-right button.active, #graph-btns-left button.active {
+  background: #2a6aaa; color: #fff; border-color: #1a5a9a;
+}
+#graph-btns-right button.active:hover { background: #1a5a9a; }
+#graph-btns-right button:disabled {
+  opacity: 0.4; cursor: not-allowed; background: #e8e4de; color: #5a6a78;
+}
+
+/* Zone du canvas de graphe */
+.graph-wrap {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow: hidden;
+  padding: 0 10px 8px;
+  position: relative; /* référentiel de .graph-legend-blanche */
+}
+
+/* Légende à cases à cocher du graphe en mode Lumière blanche (cf. graph.js) */
+.graph-legend-blanche {
+  display: none;
+  position: absolute;
+  top: 16px; right: 40px;
+  background: rgba(255,255,255,0.95);
+  border: 1px solid #c8c0b4;
+  border-radius: 5px;
+  padding: 5px 8px;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  max-height: calc(100% - 12px);
+  overflow-y: auto;
+  z-index: 5;
+}
+.graph-legend-blanche.visible { display: flex; }
+.graph-legend-blanche label { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+.graph-legend-blanche input[type=checkbox] { margin: 0; cursor: pointer; }
+.legend-swatch {
+  display: inline-block; width: 11px; height: 11px; border-radius: 50%;
+  border: 1px solid rgba(0,0,0,0.25);
+}
+.graph-wrap canvas {
+  background: #ffffff;
+  border: 1px solid #c8c0b4;
+  border-radius: 3px;
+  display: block;
+  flex: 1;
+  min-height: 0;
+  cursor: pointer;
+}
+
+/* ── Panneau droit : styles communs ── */
+#panel {
+  background: #e8e4de;
+  border-left: 1.5px solid #c8c0b4;
+  display: flex;
+  flex-direction: column;
+  grid-row: 1;
+  grid-column: 2;
+  min-height: 0;
+  overflow: hidden;
+  font-size: clamp(11px, 1.1vw, 14px);
+}
+/* ── Onglets principaux ──────────────────────────── */
+.panel-main-tabs {
+  display: flex;
+  flex-shrink: 0;
+  border-bottom: 1.5px solid #b0a898;
+}
+.panel-main-tab {
+  flex: 1;
+  padding: 9px 4px;
+  font-size: clamp(12px, 1.2vw, 15px);
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: #d4d0c8;
+  color: #8a9aaa;
+  border-right: 1px solid #b0a898;
+  transition: background 0.12s, color 0.12s;
+}
+.panel-main-tab:last-child { border-right: none; }
+.panel-main-tab:hover { background: #ccc8c0; color: #2c3e50; }
+.panel-main-tab.active {
+  background: #e8e4de;
+  color: #2a6aaa;
+  border-bottom: 1.5px solid #e8e4de;
+  margin-bottom: -1.5px;
+}
+
+#panel-body {
+  flex: 1;
+  min-height: 0;
+  padding: clamp(8px, 1.2vw, 16px) clamp(6px, 1vw, 14px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+}
+
+.panel-main-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.section-title {
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 1px; color: #7a8a96; margin-bottom: 4px;
+}
+
+/* Paramètres (label + slider) */
+.param-row { display: flex; flex-direction: column; gap: 3px; margin-bottom: 6px; }
+.param-row label { display: flex; justify-content: space-between; font-size: clamp(12px, 1.15vw, 15px); color: #2c3e50; }
+.param-row label span { color: #2a5080; font-weight: 600; }
+input[type=range] { width: 100%; accent-color: #4a7aaa; cursor: pointer; }
+input[type=range]:disabled { accent-color: #b0aca4; cursor: not-allowed; }
+/* Sélecteur de forme (repris de .diss-select de dissolution/) */
+#sl-mask-shape {
+  width: 100%; padding: 7px 8px; border: 1px solid #c8c0b4; border-radius: 5px;
+  background: #fff; color: #2c3e50; font-family: inherit;
+  font-size: clamp(12px, 1.25vw, 15px); cursor: pointer;
+}
+#sl-mask-shape:focus { outline: none; border-color: #2a6aaa; }
+
+/* Sélecteur Source lumineuse — bascule à 2 options de même poids visuel (mono/blanche),
+   PAS un on/off (repris de .diss-unit-toggle de dissolution/) : contrairement à
+   .btn-toggle-one (état actif/inactif d'une fonctionnalité), les deux boutons sont
+   toujours présents et seule l'option choisie est mise en évidence. */
+.light-source-toggle {
+  display: flex;
+  border: 1px solid #c8c0b4;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.light-source-btn {
+  flex: 1;
+  padding: 8px 4px;
+  font-size: clamp(12px, 1.1vw, 14px);
+  font-weight: 700;
+  font-family: inherit;
+  border: none;
+  background: #ece8e0;
+  color: #5a6a78;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.light-source-btn:not(:last-child) { border-right: 1px solid #c8c0b4; }
+.light-source-btn:hover { background: #ddd8ce; }
+.light-source-btn.active { background: #2a6aaa; color: #fff; }
+
+.param-row.disabled label { color: #a8a49c; }
+.param-row.disabled label span { color: #a8a49c; }
+.input-hint { font-size: clamp(10px, 0.9vw, 13px); color: #7a8a96; }
+
+/* Pastille de couleur du laser à côté du réglage λ */
+#lambda-swatch {
+  display: inline-block;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  border: 1px solid rgba(0,0,0,0.25);
+  vertical-align: -1px;
+  margin-right: 5px;
+}
+
+/* Boutons génériques */
+.btn {
+  width: 100%; padding: 9px 6px; border: 1px solid transparent; border-radius: 6px;
+  font-size: clamp(12px, 1.2vw, 15px); font-weight: 700; cursor: pointer;
+  font-family: inherit; transition: transform 0.1s, background 0.15s; letter-spacing: 0.3px;
+}
+.btn:active { transform: scale(0.97); }
+
+.btn-toggle-one {
+  background: #ece8e0; color: #5a6a78; border: 1px solid #c8c0b4;
+}
+.btn-toggle-one.active {
+  background: #fde8c8; color: #7a3a10; border-color: #d0a060;
+}
+.btn-toggle-one:hover { background: #ddd8ce; }
+.btn-toggle-one.active:hover { background: #f8dcb0; }
+
+.btn-reset {
+  background: #dedad2; color: #5a6a78; border: 1px solid #b0a898;
+}
+.btn-reset:hover { background: #d0ccc4; color: #2c3e50; }
+
+/* Encarts de valeurs instantanées */
+.readouts { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.readout { background: #fff; border: 1px solid #c8c0b4; border-radius: 6px; padding: 7px 9px; }
+.readout.full-width { grid-column: 1 / -1; }
+.readout .ro-label { font-size: clamp(11px, 1vw, 13px); color: #7a8a96; margin-bottom: 2px; }
+.readout .ro-value { font-size: clamp(14px, 1.5vw, 18px); font-weight: 700; color: #2a5080; font-variant-numeric: tabular-nums; }
+.readout .ro-value.ro-value-split { display: flex; justify-content: space-between; align-items: baseline; }
+.readout .ro-unit  { font-size: 12px; color: #7a8a96; }
+
+/* Point de couleur identifiant une longueur d'onde dans les cadres de valeurs (lumière blanche) */
+.swatch-blanche { display: inline-block; width: 9px; height: 9px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.15); margin-right: 4px; vertical-align: middle; flex: none; }
+
+/* Cadre θ / largeur en lumière blanche : une ligne par couleur de référence à l'intérieur
+   d'un seul cadre (au lieu d'un cadre par couleur), même famille visuelle que .readout. */
+.ro-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 3px 0; }
+.ro-row:not(:last-child) { border-bottom: 1px solid #ece8e0; }
+.ro-row .ro-row-nom { font-size: clamp(11px, 1vw, 13px); color: #45505a; display: flex; align-items: center; }
+.ro-row .ro-row-nom.ro-row-nom-theta { font-size: clamp(10px, 0.85vw, 12px); }
+.ro-row .ro-row-value { font-size: clamp(13px, 1.4vw, 17px); font-weight: 700; color: #2a5080; font-variant-numeric: tabular-nums; display: flex; gap: 10px; }
+
+/* ════════════════════════════════════════════════════
+   BANDEAU INSTRUCTIONS
+════════════════════════════════════════════════════ */
+.panel-hint {
+  flex-shrink: 0;
+  color: #5a6a78;
+  line-height: 1.5;
+  background: #fff;
+  border: 1.5px solid #b0a898;
+  /* Pas de bordure gauche propre : #panel a déjà la sienne (border-left,
+     cf. ci-dessus) — sinon les deux bordures se superposent avec un léger
+     décalage sous-pixel, visible uniquement ici. */
+  border-left: none;
+  overflow: hidden;
+  transition: padding 0.2s;
+}
+.panel-hint-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+}
+.panel-hint-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #7a8a96;
+  margin-left: auto;
+  margin-right: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.panel-hint-menu-btn {
+  background: #f0f4f7;
+  border: 1px solid #c8d4dc;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  color: #4a5a68;
+  padding: 4px 9px;
+  line-height: 1.2;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.panel-hint-menu-btn:hover { background: #dde6ec; color: #2a6aaa; }
+.panel-hint-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: #7a8a96;
+  padding: 0 2px;
+  line-height: 1;
+  transition: transform 0.2s;
+}
+.panel-hint-toggle:hover { color: #2a6aaa; }
+.panel-hint-body {
+  font-size: clamp(11px, 1.1vw, 14px);
+  padding: 0 10px 8px;
+  overflow: hidden;
+  transition: max-height 0.25s ease, padding 0.25s ease;
+  max-height: 250px;
+}
+.panel-hint.collapsed .panel-hint-body {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.panel-hint:not(.collapsed) .panel-hint-toggle { transform: rotate(180deg); }
+

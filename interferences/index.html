@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<!-- ════════════════════════════════════════════════════
+     Simulation pédagogique — Physique-Chimie Lycée
+     Auteur  : Mathieu Berdous
+     Licence : CC BY-NC 4.0 — https://creativecommons.org/licenses/by-nc/4.0/
+════════════════════════════════════════════════════ -->
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Simulation — Interférences (fentes et trous d'Young)</title>
+  <meta name="author" content="Mathieu Berdous">
+  <meta name="copyright" content="Mathieu Berdous — CC BY-NC 4.0">
+  <meta name="description" content="Simulation interactive 3D (Terminale) : interférences lumineuses par des fentes ou des trous d'Young, montage optique en 3D avec écartement b, interfrange i = λD/b et graphe d'intensité I(x).">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>⚛️</text></svg>">
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<h1 class="sr-only">Simulation 3D des interférences lumineuses par des fentes ou des trous d'Young</h1>
+
+<main>
+  <!-- Colonne gauche : scène 3D + splitter + graphe (onglet Ondes lumineuses)
+       ou placeholder (onglets Principe / Ondes de surface) -->
+  <div id="left-col">
+
+    <!-- ═══ Zone PRINCIPE — à venir ═══ -->
+    <div id="principe-area" style="display:none;">
+      <div id="principe-placeholder" class="tab-placeholder">
+        <span class="tab-placeholder-icon">📐</span>
+        <p>Simulation à venir</p>
+      </div>
+    </div>
+
+    <!-- ═══ Zone ONDES DE SURFACE — à venir ═══ -->
+    <div id="surfaces-area" style="display:none;">
+      <div id="surfaces-placeholder" class="tab-placeholder">
+        <span class="tab-placeholder-icon">🌊</span>
+        <p>Simulation à venir</p>
+      </div>
+    </div>
+
+    <!-- ═══ Zone ONDES LUMINEUSES (fentes/trous d'Young, déjà implémentée) ═══ -->
+    <div id="lumineuses-area">
+
+      <!-- Zone de la scène 3D (Three.js) -->
+      <div id="scene-area">
+        <canvas id="scene-canvas"></canvas>
+        <div id="view-buttons">
+          <button class="btn-view active" data-view="3d"     onclick="setView('3d')">Vue 3D</button>
+          <button class="btn-view"        data-view="top"    onclick="setView('top')">Dessus</button>
+          <button class="btn-view"        data-view="side"   onclick="setView('side')">Profil</button>
+          <button class="btn-view"        data-view="screen" onclick="setView('screen')">Écran</button>
+        </div>
+        <!-- Vue Écran + Lumière blanche uniquement, cf. scene.js → syncBoutonDecompose -->
+        <div id="decompose-buttons">
+          <button class="btn-view" id="btn-decompose" onclick="toggleDecompose()">Décomposer la figure d'interférence</button>
+        </div>
+        <!-- Vue Dessus uniquement, cf. scene.js → syncBoutonEchelleAngle -->
+        <div id="echelle-angle-buttons">
+          <button class="btn-view" id="btn-echelle-angle" onclick="toggleEchelleAngle()">Adapter l'échelle à l'angle de diffraction</button>
+        </div>
+      </div>
+
+      <!-- Splitter draggable -->
+      <div id="left-splitter"></div>
+
+      <!-- Zone graphe I(x) -->
+      <div id="graph-area">
+        <div id="graph-time-control">
+          <div id="graph-btns-left">
+            <span class="graph-title">I(x) — Intensité lumineuse sur l'écran</span>
+          </div>
+          <div id="graph-btns-right">
+            <button id="btn-graph-pin" onclick="toggleGraphPin()" title="Épingler un point">Épingler 📍</button>
+            <button id="btn-graph-lien" onclick="toggleGraphLien()" disabled
+                    title="Relie les maxima/minima du graphe à ceux de la figure (vue Écran uniquement)">Lien figure</button>
+          </div>
+        </div>
+        <div class="graph-wrap">
+          <canvas id="graph-intensity"></canvas>
+          <!-- Légende à cases à cocher (mode Lumière blanche uniquement, cf. graph.js →
+               initLegendeBlanche/syncGraphModeBlanche) : une courbe de référence par
+               couleur nommée (cf. sim.js → BLANCHE_COULEURS). -->
+          <div id="graph-legend-blanche" class="graph-legend-blanche">
+            <label><input type="checkbox" data-couleur="Violet" checked><span class="legend-swatch" data-couleur="Violet"></span>Violet</label>
+            <label><input type="checkbox" data-couleur="Bleu" checked><span class="legend-swatch" data-couleur="Bleu"></span>Bleu</label>
+            <label><input type="checkbox" data-couleur="Vert" checked><span class="legend-swatch" data-couleur="Vert"></span>Vert</label>
+            <label><input type="checkbox" data-couleur="Jaune" checked><span class="legend-swatch" data-couleur="Jaune"></span>Jaune</label>
+            <label><input type="checkbox" data-couleur="Orange" checked><span class="legend-swatch" data-couleur="Orange"></span>Orange</label>
+            <label><input type="checkbox" data-couleur="Rouge" checked><span class="legend-swatch" data-couleur="Rouge"></span>Rouge</label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pointillés reliant les extrema du graphe à ceux de la figure sur l'écran
+           (scene.js + graph.js → dessinerLienFigure) : recouvre scène 3D + splitter +
+           graphe, pointer-events désactivés (décoratif, ne doit jamais intercepter de clic). -->
+      <canvas id="graph-lien-overlay"></canvas>
+
+    </div><!-- fin #lumineuses-area -->
+
+    <!-- Bascule d'affichage synchrone (avant chargement des scripts externes) :
+         évite un flash de #lumineuses-area quand la page charge/rafraîchit
+         directement sur l'onglet Principe/Ondes de surface (lien profond
+         #principe/#surfaces). -->
+    <script>
+      (function () {
+        var hash = (location.hash || '').replace('#', '');
+        var tab = hash || new URLSearchParams(location.search).get('tab');
+        if (tab === 'principe' || tab === 'surfaces') {
+          document.getElementById('lumineuses-area').style.display = 'none';
+          document.getElementById(tab + '-area').style.display = '';
+        }
+      })();
+    </script>
+
+  </div><!-- fin #left-col -->
+
+  <!-- Panneau de contrôle droit -->
+  <div id="panel">
+
+    <!-- ── Onglets principaux ─────────────────── -->
+    <div class="panel-main-tabs">
+      <button class="panel-main-tab" id="tab-principe"
+              onclick="setMainTab('principe')">
+        Principe
+      </button>
+      <button class="panel-main-tab" id="tab-surfaces"
+              onclick="setMainTab('surfaces')">
+        Ondes de surface
+      </button>
+      <button class="panel-main-tab active" id="tab-lumineuses"
+              onclick="setMainTab('lumineuses')">
+        Ondes lumineuses
+      </button>
+    </div>
+
+   <div id="panel-body">
+
+    <!-- ═══ Section PRINCIPE — à venir ═══ -->
+    <div class="panel-main-section" id="section-principe" style="display:none;">
+      <div class="section-title">Principe</div>
+      <div class="input-hint">Cet onglet sera développé prochainement.</div>
+    </div>
+
+    <!-- ═══ Section ONDES DE SURFACE — à venir ═══ -->
+    <div class="panel-main-section" id="section-surfaces" style="display:none;">
+      <div class="section-title">Ondes de surface</div>
+      <div class="input-hint">Cet onglet sera développé prochainement.</div>
+    </div>
+
+    <!-- ═══ Section ONDES LUMINEUSES ═══ -->
+    <div class="panel-main-section" id="section-lumineuses">
+
+    <!-- Section : Paramètres expérimentaux -->
+    <div>
+      <div class="section-title">Paramètres expérimentaux</div>
+      <div class="param-row" style="margin-bottom:8px;">
+        <label>Source lumineuse</label>
+        <div class="light-source-toggle">
+          <button class="light-source-btn active" id="btn-light-mono" onclick="setLightSource('mono')">Monochromatique</button>
+          <button class="light-source-btn" id="btn-light-blanche" onclick="setLightSource('blanche')">Lumière blanche</button>
+        </div>
+      </div>
+      <div class="param-row" id="row-lambda">
+        <label><span><span id="lambda-swatch"></span>Longueur d'onde λ</span> <span><span id="lbl-lambda">633</span> nm</span></label>
+        <input type="range" id="sl-lambda" min="400" max="700" step="1" value="633"
+               oninput="updateParam('lambda', this.value)">
+      </div>
+      <div class="param-row" id="row-mask-shape">
+        <label>Forme des ouvertures</label>
+        <select id="sl-mask-shape" onchange="updateMaskShape(this.value)">
+          <option value="fente">Fentes d'Young (verticales)</option>
+          <option value="cercle">Trous d'Young</option>
+        </select>
+      </div>
+      <div class="param-row">
+        <label><span id="lbl-a-titre">Largeur de chaque fente a</span> <span><span id="lbl-a">100</span> µm</span></label>
+        <input type="range" id="sl-a" min="20" max="500" step="1" value="100"
+               oninput="updateParam('a', this.value)">
+      </div>
+      <div class="param-row">
+        <label>Écartement des centres b <span><span id="lbl-b">0,50</span> mm</span></label>
+        <input type="range" id="sl-b" min="0.10" max="1.00" step="0.01" value="0.50"
+               oninput="updateParam('b', this.value)">
+      </div>
+      <div class="param-row">
+        <label>Distance fentes-écran D <span><span id="lbl-D">1,0</span> m</span></label>
+        <input type="range" id="sl-D" min="0.5" max="3" step="0.1" value="1.0"
+               oninput="updateParam('D', this.value)">
+      </div>
+      <div class="param-row">
+        <label>Distance laser-fentes d <span><span id="lbl-d">0,50</span> m</span></label>
+        <input type="range" id="sl-d" min="0.15" max="2.5" step="0.01" value="0.50"
+               oninput="updateParam('d', this.value)">
+      </div>
+      <button class="btn btn-reset" style="margin-top:4px;" onclick="resetSim()">Par défaut</button>
+    </div>
+
+    <!-- Section : Options -->
+    <div>
+      <div class="section-title">Options</div>
+      <div style="margin-top:8px; display:flex; flex-direction:column; gap:8px;">
+        <button class="btn btn-toggle-one" id="btn-beam-mode" onclick="cycleBeamMode()">Faisceau lumineux :<br>Non visible</button>
+        <button class="btn btn-toggle-one" id="btn-rays" onclick="toggleRays()">Tracer l'angle de diffraction</button>
+        <button class="btn btn-toggle-one" id="btn-lengths" onclick="toggleLengths()">Afficher les longueurs</button>
+        <button class="btn btn-toggle-one" id="btn-graph-intensite" onclick="toggleGraphIntensite()">Graphe Intensité</button>
+      </div>
+    </div>
+
+    <!-- Section : Valeurs — encarts angle/largeur (enveloppe de diffraction, dépend de a) +
+         interfrange (dépend de b) en monochromatique ; un tableau à 6 lignes (une par couleur
+         de référence) en lumière blanche, cf. ui.js → updateReadouts / syncValeursExpUI -->
+    <div id="section-valeurs">
+      <div class="section-title">Valeurs</div>
+      <button class="btn btn-toggle-one" id="btn-toggle-valeurs-exp" onclick="toggleValeursExp()">Afficher les valeurs expérimentales</button>
+      <div class="readouts" id="readouts-exp" style="display:none; margin-top:8px;">
+        <div class="readout full-width">
+          <div class="ro-label">Interfrange<br>i = λ·D / b :</div>
+          <div class="ro-value"><span id="ro-interfrange">0,00</span> <span class="ro-unit">mm</span></div>
+        </div>
+        <div class="readout full-width">
+          <div class="ro-label" id="ro-theta-label">Angle de l'enveloppe de diffraction<br>sin θ ≈ θ = λ / a :</div>
+          <div class="ro-value ro-value-split">
+            <span><span id="ro-theta-rad">0,0000</span> <span class="ro-unit">rad</span></span>
+            <span><span id="ro-theta-deg">0,00</span> <span class="ro-unit">°</span></span>
+          </div>
+        </div>
+        <div class="readout full-width">
+          <div class="ro-label">Largeur de l'enveloppe centrale</div>
+          <div class="ro-value"><span id="ro-largeur">0.0</span> <span class="ro-unit">cm</span></div>
+        </div>
+      </div>
+      <div class="readouts" id="readouts-exp-blanche" style="display:none; margin-top:8px;"></div>
+    </div>
+
+    </div><!-- fin #section-lumineuses -->
+
+   </div><!-- fin #panel-body -->
+
+    <!-- ── Bandeau Instructions — onglet Principe ── -->
+    <div class="panel-hint collapsed" id="panel-hint-principe" style="display:none;">
+      <div class="panel-hint-header">
+        <button class="panel-hint-menu-btn" onclick="location.href='../index.html'" title="Retour au menu principal">☰ Menu</button>
+        <span class="panel-hint-title">Instructions</span>
+        <button class="panel-hint-toggle" onclick="toggleHint('principe')" title="Afficher les instructions">▲</button>
+      </div>
+      <div class="panel-hint-body">
+        Cette simulation sera disponible prochainement.
+      </div>
+    </div>
+
+    <!-- ── Bandeau Instructions — onglet Ondes de surface ── -->
+    <div class="panel-hint collapsed" id="panel-hint-surfaces" style="display:none;">
+      <div class="panel-hint-header">
+        <button class="panel-hint-menu-btn" onclick="location.href='../index.html'" title="Retour au menu principal">☰ Menu</button>
+        <span class="panel-hint-title">Instructions</span>
+        <button class="panel-hint-toggle" onclick="toggleHint('surfaces')" title="Afficher les instructions">▲</button>
+      </div>
+      <div class="panel-hint-body">
+        Cette simulation sera disponible prochainement.
+      </div>
+    </div>
+
+    <!-- ── Bandeau Instructions — onglet Ondes lumineuses ── -->
+    <div class="panel-hint collapsed" id="panel-hint-lumineuses">
+      <div class="panel-hint-header">
+        <button class="panel-hint-menu-btn" onclick="location.href='../index.html'" title="Retour au menu principal">☰ Menu</button>
+        <span class="panel-hint-title">Instructions</span>
+        <button class="panel-hint-toggle" onclick="toggleHint('lumineuses')" title="Afficher les instructions">▲</button>
+      </div>
+      <div class="panel-hint-body">
+        Réglez la longueur d'onde λ, la largeur des fentes a et leur écartement b pour observer
+        la figure d'interférence. La souris permet de faire pivoter la vue 3D (clic-glissé) et de zoomer
+        (molette) ; les boutons <strong>Dessus / Profil / Écran</strong> basculent sur des vues fixes
+        précises. Le graphe I(x) en bas se lit directement en vis-à-vis de l'écran en vue <strong>Écran</strong>.
+      </div>
+    </div>
+
+  </div><!-- fin #panel -->
+</main>
+
+<!-- Ordre de chargement : Three.js (vendé) → sim (état/physique) → scene (3D) → graph (2D) → ui (contrôles) -->
+<script src="../libs/three.min.js"></script>
+<script src="../libs/OrbitControls.js"></script>
+<script src="js/sim.js"></script>
+<script src="js/scene.js"></script>
+<script src="js/graph.js"></script>
+<script src="js/ui.js"></script>
+<script data-goatcounter="https://berdous-pc.goatcounter.com/count"
+        async src="https://gc.zgo.at/count.js"></script>
+</body>
+</html>
