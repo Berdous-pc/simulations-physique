@@ -280,7 +280,7 @@ nom-simulation/
 
 Les anciennes simulations en fichier unique (`reaction.html`) conservent leur format d'origine. Toute **nouvelle** simulation adopte l'arborescence ci-dessus.
 
-> **Simulations déjà migrées en arborescence** : `lentille/`, `lunette/`, `radioactivite/`, `reaction/`, `titrage/`, `condensateur/`, `pression/`, `champ_uniforme/`, `ondes/`.
+> **Simulations déjà migrées en arborescence** : `lentille/`, `lunette/`, `radioactivite/`, `reaction/`, `titrage/`, `condensateur/`, `pression/`, `champ_uniforme/`, `ondes/`, `dissolution/`, `diffraction/`.
 
 ### Règles générales
 
@@ -398,6 +398,7 @@ Toute page **HTML autonome** destinée à être publiée (page d'accueil `index.
 | `champ_uniforme/` | Mécanique : vecteurs cinématiques — champ de pesanteur & champ électrique uniforme | Terminale | **Arborescence** | Référence d'architecture ; `sim.js` + `draw.js` + `ui.js` ; onglets Champ de pesanteur / Champ électrique, repères Orthonormé/Adapté, modes vue (Oxy, projections x/y), vecteurs vitesse/accélération, mode perpendiculaire (champ E), graphes d'énergie, deep-linking via `#champ-pesanteur` / `#champ-electrique` |
 | `ondes/` | Propagation d'ondes — corde, onde sonore (tube), ondes de surface | Première/Terminale | **Arborescence** | Référence d'architecture ; `sim.js` + `tube.js` + `graph.js` + `ui.js` ; onglets Corde/Son/Vagues, sélection de particules par proximité (Ctrl/Maj+clic), mode pression colorée, graphes ΔP(x)/ΔP(t) avec zoom/pan/tangente, deep-linking via `#corde` / `#son` / `#vagues` — voir `ondes/ARCHITECTURE.md` |
 | `dissolution/` | Solutions aqueuses — mécanisme de dissolution (NaCl) & quantités de matière | Première | **Arborescence** | Onglets Mécanisme/Dissolution ; animation microscopique scriptée (coupelle, verre, zoom), plein écran type lecteur vidéo, tableau d'avancement ; deep-linking via `#mecanisme` / `#dissolution`. Onglet Dissolution : mouvement brownien + répulsion locale entre espèces dissoutes, légende overlay HTML, libellés coupelle/verre dynamiques selon le soluté |
+| `diffraction/` | Diffraction de la lumière — modélisation 3D par une ouverture (fente/carré/cercle/fil) | Terminale | **Arborescence** | `sim.js` + `scene.js` (rendu 3D Three.js) + `graph.js` + `ui.js` ; onglets Ondes de surface / Ondes lumineuses, calcul de la figure de diffraction via FFT, enveloppe 3D du faisceau, mode lumière blanche avec décomposition spectrale, formes d'ouverture multiples, mesures d/D/L, graphe I(x) lié à la vue Écran, deep-linking via `#lumineuses` — voir `diffraction/ARCHITECTURE.md` et `diffraction/PISTES_EVOLUTION.md` |
 
 ---
 
@@ -490,6 +491,7 @@ Les simulations avec plusieurs onglets lisent un paramètre au chargement pour o
 | `champ_uniforme/js/ui.js` | `#hash` | `champ-pesanteur` · `champ-electrique` |
 | `ondes/js/ui.js` | `#hash` | `corde` · `son` · `vagues` |
 | `dissolution/js/ui.js` | `#hash` (repli `?tab=`) | `mecanisme` · `dissolution` |
+| `diffraction/js/ui.js` | `#hash` | `surfaces` · `lumineuses` |
 
 Toute **nouvelle** page à onglets utilise la convention `#hash`.
 
