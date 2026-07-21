@@ -97,15 +97,16 @@ function renderLightSourceLabel() {
 
 // ─────────────────────────────────────────────────────────────────────
 //  (Dés)active tout ce qui n'a de sens que pour une seule longueur d'onde : bouton "Tracer
-//  l'angle de diffraction" et encarts θ/largeur tache centrale (section Valeurs), masqués en
-//  lumière blanche — coupe aussi sim.showRays s'il était actif, pour ne pas laisser les rayons
-//  affichés dans la scène 3D une fois le bouton qui les pilote masqué. Appelée par
-//  setLightSource(), resetSim() et init().
+//  l'angle de diffraction", masqué en lumière blanche — coupe aussi sim.showRays s'il était
+//  actif, pour ne pas laisser les rayons affichés dans la scène 3D une fois le bouton qui les
+//  pilote masqué. La section Valeurs reste affichée dans les deux modes : cadre θ/largeur
+//  unique en monochromatique, tableau à 6 lignes (une par couleur de référence, cf. sim.js →
+//  BLANCHE_COULEURS) en lumière blanche, cf. updateReadouts(). Appelée par setLightSource(),
+//  resetSim() et init().
 // ─────────────────────────────────────────────────────────────────────
 function syncModeBlancheUI() {
   const estBlanche = sim.lightSource === 'blanche';
   document.getElementById('btn-rays').style.display = estBlanche ? 'none' : '';
-  document.getElementById('section-valeurs').style.display = estBlanche ? 'none' : '';
   if (estBlanche && sim.showRays) {
     sim.showRays = false;
     document.getElementById('btn-rays').classList.remove('active');
@@ -128,6 +129,7 @@ function setLightSource(source) {
   sim.lightSource = source;
   renderLightSourceLabel();
   syncModeBlancheUI();
+  syncValeursExpUI();
   updateSceneParams();
   updateReadouts();
 }
@@ -183,12 +185,16 @@ function toggleGraphIntensite() {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-//  (Dés)active l'affichage des cadres de valeurs expérimentales (angle de diffraction,
-//  largeur de la tache centrale) sous la section Valeurs — désactivé par défaut.
+//  (Dés)active l'affichage des valeurs expérimentales (angle de diffraction, largeur de la
+//  tache centrale) sous la section Valeurs — désactivé par défaut. Bascule aussi entre le
+//  cadre unique (monochromatique) et le tableau à 6 lignes (lumière blanche), cf.
+//  updateReadouts().
 // ─────────────────────────────────────────────────────────────────────
 function syncValeursExpUI() {
   const visible = sim.showValeursExp;
-  document.getElementById('readouts-exp').style.display = visible ? '' : 'none';
+  const estBlanche = sim.lightSource === 'blanche';
+  document.getElementById('readouts-exp').style.display = (visible && !estBlanche) ? '' : 'none';
+  document.getElementById('readouts-exp-blanche').style.display = (visible && estBlanche) ? '' : 'none';
   document.getElementById('btn-toggle-valeurs-exp').classList.toggle('active', visible);
 }
 function toggleValeursExp() {
@@ -228,6 +234,10 @@ const THETA_LABEL_FORMULE = {
   cercle: 'Angle de diffraction<br>sin θ ≈ θ = 1,22 · λ / 2a :'
 };
 function updateReadouts() {
+  if (sim.lightSource === 'blanche') {
+    updateReadoutsBlanche();
+    return;
+  }
   const theta = thetaPremierMinimum(sim.lambda, sim.a);
   const x1 = xPremierMinimum(sim.lambda, sim.a, sim.D);
   document.getElementById('ro-theta-label').innerHTML = THETA_LABEL_FORMULE[sim.maskShape];
@@ -235,6 +245,44 @@ function updateReadouts() {
   document.getElementById('ro-theta-deg').textContent = formatFr(theta * 180 / Math.PI, 2);
   document.getElementById('ro-largeur').textContent = formatFr(2 * x1 * 100, 2);
   document.getElementById('lambda-swatch').style.background = longueurOndeVersCss(sim.lambda);
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Remplit la section Valeurs en lumière blanche : DEUX cadres au total (comme en
+//  monochromatique — un pour θ, un pour la largeur), chacun contenant une ligne par couleur
+//  de référence (cf. sim.js → BLANCHE_COULEURS : point de couleur + λ en regard de la valeur),
+//  plutôt qu'un cadre par couleur. a et D restent ceux du panneau (communs aux 6 λ), seule λ
+//  change d'une ligne à l'autre.
+// ─────────────────────────────────────────────────────────────────────
+function updateReadoutsBlanche() {
+  const cont = document.getElementById('readouts-exp-blanche');
+  let rowsTheta = '', rowsLargeur = '';
+  for (const c of BLANCHE_COULEURS) {
+    const theta = thetaPremierMinimum(c.lambda, sim.a);
+    const x1 = xPremierMinimum(c.lambda, sim.a, sim.D);
+    const css = longueurOndeVersCss(c.lambda);
+    const nom = `<span class="swatch-blanche" style="background:${css}"></span>${c.nom} (${formatFr(c.lambda, 0)} nm)`;
+    rowsTheta += `<div class="ro-row">
+      <span class="ro-row-nom">${nom}</span>
+      <span class="ro-row-value">
+        <span>${formatFr(theta, 4)} <span class="ro-unit">rad</span></span>
+        <span>${formatFr(theta * 180 / Math.PI, 2)} <span class="ro-unit">°</span></span>
+      </span>
+    </div>`;
+    rowsLargeur += `<div class="ro-row">
+      <span class="ro-row-nom">${nom}</span>
+      <span class="ro-row-value">${formatFr(2 * x1 * 100, 2)} <span class="ro-unit">cm</span></span>
+    </div>`;
+  }
+  cont.innerHTML = `
+    <div class="readout full-width">
+      <div class="ro-label">Angle de diffraction<br>sin θ ≈ θ = λ / a :</div>
+      ${rowsTheta}
+    </div>
+    <div class="readout full-width">
+      <div class="ro-label">Largeur tache centrale</div>
+      ${rowsLargeur}
+    </div>`;
 }
 
 // ─────────────────────────────────────────────────────────────────────

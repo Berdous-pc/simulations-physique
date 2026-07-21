@@ -180,8 +180,9 @@
       </div>
     </div>
 
-    <!-- Section : Valeurs (masquée en mode Lumière blanche, cf. ui.js → syncModeBlancheUI :
-         écart angulaire/largeur n'ont de sens que pour une seule λ) -->
+    <!-- Section : Valeurs — un cadre θ/largeur en monochromatique, un tableau à 6 lignes
+         (une par couleur de référence) en lumière blanche, cf. ui.js → updateReadouts /
+         syncValeursExpUI -->
     <div id="section-valeurs">
       <div class="section-title">Valeurs</div>
       <button class="btn btn-toggle-one" id="btn-toggle-valeurs-exp" onclick="toggleValeursExp()">Afficher les valeurs expérimentales</button>
@@ -198,6 +199,7 @@
           <div class="ro-value"><span id="ro-largeur">0.0</span> <span class="ro-unit">cm</span></div>
         </div>
       </div>
+      <div class="readouts" id="readouts-exp-blanche" style="display:none; margin-top:8px;"></div>
     </div>
 
     </div><!-- fin #section-lumineuses -->
