@@ -119,6 +119,7 @@ function syncModeBlancheUI() {
   if (!estBlanche) {
     annulerDecompose();
     annulerEnveloppesBlancheEnAttente();
+    annulerChampsTextureBlancheEnAttente();
   }
   syncBoutonDecompose();
   syncGraphModeBlanche();

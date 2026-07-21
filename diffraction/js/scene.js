@@ -58,6 +58,19 @@ const DECOMPOSE_VITESSE = 1 / (DECOMPOSE_DUREE_S * 60); // pas par frame, en sup
 let enveloppesBlancheTimer = null;
 const ENVELOPPES_BLANCHE_DEBOUNCE_MS = 50;
 
+// Cache des 6 champs FFT (un par BLANCHE_COULEURS) utilisé par la texture d'écran en lumière
+// blanche pour carré/cercle (cf. dessinerTextureEcranBlanche) — même anti-rebond que les
+// enveloppes couleur ci-dessus (reconstruireChampsTextureBlanche/planifierChampsTextureBlanche
+// plus bas), pour ne pas relancer 6 FFT à chaque frappe d'un slider NI à chaque frame de
+// l'animation Décomposer (qui, elle, redessine la texture en continu). champsTextureBlancheShape
+// mémorise la forme pour laquelle le cache a été construit : la texture retombe sur
+// l'approximation par profil gaussien (cf. sa docstring) tant qu'un cache à jour n'est pas
+// disponible (changement de forme, ou tout juste après le débounce), plutôt que d'échantillonner
+// un champ construit pour une AUTRE forme.
+let champsTextureBlanche = null;
+let champsTextureBlancheShape = null;
+let champsTextureBlancheTimer = null;
+
 // TEST : n'utiliser que Rouge/Vert/Bleu (au lieu des 6 couleurs de BLANCHE_COULEURS) pour les
 // enveloppes 3D, pour voir si une synthèse additive à 3 couleurs suffit à redonner du blanc
 // (moitié moins de FFT que 6, donc moins de lag) — référence de normalisation dédiée (propre
@@ -1255,8 +1268,8 @@ function construireObjets() {
 // ─────────────────────────────────────────────────────────────────────
 //  Remplit screenTexCanvas pour le mode Lumière blanche, à un degré de décomposition t (0 =
 //  figure fusionnée normale, 1 = 6 figures monochromatiques séparées verticalement à
-//  DECOMPOSE_Y_CM, valeurs intermédiaires = transition animée, cf. sim.js →
-//  DECOMPOSE_Y_CM/intensiteBlancheComposantes et scene.js → tickDecompose/toggleDecompose).
+//  decomposeYCm(shape), valeurs intermédiaires = transition animée, cf. sim.js →
+//  decomposeYCm/intensiteBlancheComposantes et scene.js → tickDecompose/toggleDecompose).
 //
 //  PAS de fondu (essayé en simultané puis en 2 phases séquentielles, les deux jugés peu
 //  convaincants par l'utilisateur) : un seul morphing continu. Chacune des 6 couleurs
@@ -1273,49 +1286,72 @@ function construireObjets() {
 //  Profils verticaux (Iy) précalculés PAR LIGNE, en dehors de la boucle sur les colonnes :
 //  ils ne dépendent que de y (et de t), jamais de x — les calculer une fois par ligne plutôt
 //  que largeur×hauteur fois évite ~500× plus d'appels à Math.exp(), notable puisque cette
-//  fonction tourne en continu pendant l'animation (tickDecompose, à chaque frame).
+//  fonction tourne en continu pendant l'animation (tickDecompose, à chaque frame). Fente/fil
+//  uniquement (cf. ci-dessous) : leur hauteur n'est pas contrainte par le masque à cette
+//  échelle (même distinction que le rendu mono, cf. construireGeometrieEnveloppe), le profil
+//  du faisceau INCIDENT reste donc une base légitime, pas juste une approximation par défaut.
 //
-//  Simplification assumée pour carré/cercle (diffraction verticale réelle, cf. mono ci-dessous
-//  et construireGeometrieEnveloppe) : Iy reste ici le profil gaussien du faisceau INCIDENT,
-//  jamais la vraie diffraction verticale de l'ouverture — reproduire celle-ci PAR COULEUR ET
-//  PAR COLONNE casserait justement la factorisation « par ligne » ci-dessus, sur une fonction
-//  qui tourne en continu pendant l'animation (déjà un point sensible en performance, cf.
-//  ci-dessus). La texture mono (voir plus bas), qui n'a pas cette contrainte de fréquence
-//  d'appel, reste elle exacte pour les 4 formes.
+//  Carré/cercle : diffraction verticale RÉELLE, dépendant de x — un simple Iy(y) commun à
+//  toute la ligne ne suffit plus (cf. mono ci-dessous). Échantillonnage 2D direct du champ FFT
+//  PAR COULEUR (cf. champsTextureBlanche/planifierChampsTextureBlanche), mis en cache et
+//  reconstruit avec anti-rebond — PAS à chaque frame de l'animation Décomposer, seulement au
+//  repos après un changement de paramètre — pour ne pas relancer 6 FFT en continu. Le
+//  décalage vertical de la décomposition (yCourantCouleurs) s'applique alors par un simple
+//  DÉCALAGE de l'échantillon (x, y-décalage) : pas d'interpolation de largeur séparée
+//  (contrairement à fente/fil ci-dessous) — la largeur verticale réelle est déjà dans
+//  l'échantillon 2D, rien à réinterpréter. Tant que le cache n'est pas encore prêt pour la
+//  forme courante (juste après un changement de forme, avant la fin du débounce), on retombe
+//  sur l'approximation par profil gaussien ci-dessous, comme pour fente/fil.
 // ─────────────────────────────────────────────────────────────────────
 function dessinerTextureEcranBlanche(t) {
   const w = screenTexCanvas.width, h = screenTexCanvas.height;
   const img = screenTexCtx.createImageData(w, h);
   const te = t * t * (3 - 2 * t); // smoothstep unique, pilote position ET largeur
 
-  const wCmFusion = Math.max(RENDU_W_MIN_CM, largeurFaisceauGaussien(BLANCHE_LAMBDA_MOYENNE, sim.D) * 100);
   const n = BLANCHE_COULEURS.length;
-  const wCmCiblesCouleurs = BLANCHE_COULEURS.map(c => Math.max(RENDU_W_MIN_CM, largeurFaisceauGaussien(c.lambda, sim.D) * 100));
-  const wCourantCouleurs = wCmCiblesCouleurs.map(wc => wCmFusion + (wc - wCmFusion) * te);
-  const yCourantCouleurs = DECOMPOSE_Y_CM.map(yCible => yCible * te);
+  const yCourantCouleurs = decomposeYCm(sim.maskShape).map(yCible => yCible * te);
+  const balayage2D = (sim.maskShape === 'carre' || sim.maskShape === 'cercle')
+    && champsTextureBlanche && champsTextureBlancheShape === sim.maskShape;
 
-  const iyCouleurs = Array.from({ length: n }, () => new Float64Array(h));
-  for (let py = 0; py < h; py++) {
-    const y_cm = -SCREEN_HEIGHT / 2 + (SCREEN_HEIGHT * py) / (h - 1);
-    for (let k = 0; k < n; k++) {
-      const dy = y_cm - yCourantCouleurs[k];
-      const wk = wCourantCouleurs[k];
-      iyCouleurs[k][py] = Math.exp(-2 * dy * dy / (wk * wk));
+  let iyCouleurs = null;
+  if (!balayage2D) {
+    const wCmFusion = Math.max(RENDU_W_MIN_CM, largeurFaisceauGaussien(BLANCHE_LAMBDA_MOYENNE, sim.D) * 100);
+    const wCmCiblesCouleurs = BLANCHE_COULEURS.map(c => Math.max(RENDU_W_MIN_CM, largeurFaisceauGaussien(c.lambda, sim.D) * 100));
+    const wCourantCouleurs = wCmCiblesCouleurs.map(wc => wCmFusion + (wc - wCmFusion) * te);
+    iyCouleurs = Array.from({ length: n }, () => new Float64Array(h));
+    for (let py = 0; py < h; py++) {
+      const y_cm = -SCREEN_HEIGHT / 2 + (SCREEN_HEIGHT * py) / (h - 1);
+      for (let k = 0; k < n; k++) {
+        const dy = y_cm - yCourantCouleurs[k];
+        const wk = wCourantCouleurs[k];
+        iyCouleurs[k][py] = Math.exp(-2 * dy * dy / (wk * wk));
+      }
     }
   }
+  const rgbCouleurs = BLANCHE_COULEURS.map(c => longueurOndeVersRGB(c.lambda));
 
   for (let px = 0; px < w; px++) {
     const x = -sim.screenHalfWidth + (2 * sim.screenHalfWidth * px) / (w - 1);
-    const { composantes } = intensiteBlancheComposantes(x, sim.a, sim.D);
+    const composantes = balayage2D ? null : intensiteBlancheComposantes(x, sim.a, sim.D).composantes;
     for (let py = 0; py < h; py++) {
+      const y_cm = -SCREEN_HEIGHT / 2 + (SCREEN_HEIGHT * py) / (h - 1);
       let r = 0, g = 0, b = 0;
       for (let k = 0; k < n; k++) {
-        const iy = iyCouleurs[k][py];
-        if (iy < 1e-4) continue; // hors gaussienne de cette bande : rien à ajouter
-        const comp = composantes[k];
-        r += (255 * comp.r / BLANCHE_REF.r) * iy;
-        g += (255 * comp.g / BLANCHE_REF.g) * iy;
-        b += (255 * comp.b / BLANCHE_REF.b) * iy;
+        if (balayage2D) {
+          const I2 = Math.sqrt(echantillonnerChamp(champsTextureBlanche[k], x, (y_cm - yCourantCouleurs[k]) / 100));
+          if (I2 < 1e-3) continue; // négligeable à cette position : rien à ajouter
+          const rgb = rgbCouleurs[k];
+          r += (255 * I2 * rgb.r) / BLANCHE_REF.r;
+          g += (255 * I2 * rgb.g) / BLANCHE_REF.g;
+          b += (255 * I2 * rgb.b) / BLANCHE_REF.b;
+        } else {
+          const iy = iyCouleurs[k][py];
+          if (iy < 1e-4) continue; // hors gaussienne de cette bande : rien à ajouter
+          const comp = composantes[k];
+          r += (255 * comp.r / BLANCHE_REF.r) * iy;
+          g += (255 * comp.g / BLANCHE_REF.g) * iy;
+          b += (255 * comp.b / BLANCHE_REF.b) * iy;
+        }
       }
       const idx = (py * w + px) * 4;
       img.data[idx] = Math.min(255, Math.round(r));
@@ -1366,6 +1402,49 @@ function planifierEnveloppesBlanche() {
 // ─────────────────────────────────────────────────────────────────────
 function annulerEnveloppesBlancheEnAttente() {
   clearTimeout(enveloppesBlancheTimer);
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Reconstruit le cache des 6 champs FFT couleur pour la texture d'écran (carré/cercle en
+//  lumière blanche, cf. champsTextureBlanche) et redessine immédiatement la texture avec le
+//  résultat — sinon elle resterait sur l'approximation par profil gaussien jusqu'au prochain
+//  appel de dessinerTextureEcranBlanche (prochaine frame de l'animation Décomposer, ou jamais
+//  si celle-ci est à l'arrêt).
+// ─────────────────────────────────────────────────────────────────────
+function reconstruireChampsTextureBlanche() {
+  // construireChampOuverture() réutilise un buffer PARTAGÉ pour sa grille (cf. sim.js →
+  // _fftGrille, écrasé à chaque appel — optimisation valable tant que chaque champ est
+  // consommé avant le suivant, cf. reconstruireEnveloppesBlanche). Ici, les 6 champs doivent au
+  // contraire rester valides SIMULTANÉMENT (échantillonnés ensemble, pixel par pixel, dans
+  // dessinerTextureEcranBlanche) : sans copie explicite de la grille, les 6 entrées du tableau
+  // pointeraient toutes vers le MÊME buffer, écrasé par la dernière couleur calculée.
+  champsTextureBlanche = BLANCHE_COULEURS.map(c => {
+    const champ = construireChampOuverture(c.lambda, sim.a, sim.D);
+    return { ...champ, grille: champ.grille.slice() };
+  });
+  champsTextureBlancheShape = sim.maskShape;
+  dessinerTextureEcranBlanche(decomposeT);
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Planifie (avec anti-rebond, même principe que planifierEnveloppesBlanche) la reconstruction
+//  du cache ci-dessus. Appelée par updateSceneParams() dès que sim.lightSource==='blanche' ET
+//  sim.maskShape est carré/cercle — INDÉPENDAMMENT de sim.beamMode/sim.view (contrairement aux
+//  enveloppes couleur, qui ne servent qu'en mode "Visible" hors vue Écran) : la texture d'écran,
+//  elle, est TOUJOURS affichée en lumière blanche, quelle que soit la vue.
+// ─────────────────────────────────────────────────────────────────────
+function planifierChampsTextureBlanche() {
+  clearTimeout(champsTextureBlancheTimer);
+  champsTextureBlancheTimer = setTimeout(reconstruireChampsTextureBlanche, ENVELOPPES_BLANCHE_DEBOUNCE_MS);
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Annule une reconstruction du cache ci-dessus en attente — appelée en quittant le mode blanc
+//  ou en passant à une forme fente/fil (le cache ne serait plus utile), même principe que
+//  annulerEnveloppesBlancheEnAttente.
+// ─────────────────────────────────────────────────────────────────────
+function annulerChampsTextureBlancheEnAttente() {
+  clearTimeout(champsTextureBlancheTimer);
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -1466,6 +1545,10 @@ function updateSceneParams() {
     // ces deux conditions change sans que a/D/λ n'aient bougé). L'enveloppe mono
     // (beamEnvelopeMesh) n'est pas touchée : cachée tant que le mode blanc est actif.
     if (sim.beamMode === 'visible' && sim.view !== 'screen') planifierEnveloppesBlanche();
+    // Cache des champs FFT couleur pour la texture (carré/cercle uniquement, cf.
+    // champsTextureBlanche) — indépendant de beamMode/view, contrairement aux enveloppes
+    // ci-dessus (la texture est toujours affichée en lumière blanche).
+    if (sim.maskShape === 'carre' || sim.maskShape === 'cercle') planifierChampsTextureBlanche();
     // Texture d'écran entièrement déléguée (fusionnée / décomposée / transition, cf. sa
     // docstring) — remplace le double-boucle générique ci-dessous, propre au mode mono.
     dessinerTextureEcranBlanche(decomposeT);

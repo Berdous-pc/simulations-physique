@@ -539,14 +539,23 @@ const BLANCHE_LAMBDA_MOYENNE = BLANCHE_COULEURS.reduce((s, c) => s + c.lambda, 0
 // diffraction » (bouton disponible en vue Écran + lumière blanche, cf. scene.js →
 // dessinerTextureEcranBlanche) — un décalage par entrée de BLANCHE_COULEURS, même ordre :
 // violet tout en haut, rouge tout en bas, les 4 autres également réparties entre les deux
-// (demande explicite de l'utilisateur : -3 cm à +3 cm, pas de raison de couvrir toute la
-// hauteur réelle de l'écran, SCREEN_HEIGHT=15 cm cf. scene.js — on reste compact). Le signe
-// est celui qui affiche VISUELLEMENT en haut de l'écran, PAS le signe physique intuitif :
-// la texture (canvas 2D, py=0 = première ligne écrite) est appliquée avec l'orientation par
-// défaut de Three.js (CanvasTexture.flipY=true) sur un plan non retourné, ce qui fait qu'un
-// y_cm POSITIF (cf. la même formule dans le code de rendu) apparaît en BAS de l'écran, pas
-// en haut — d'où le violet (en haut voulu) sur la valeur la plus NÉGATIVE.
-const DECOMPOSE_Y_CM = [-3, -1.8, -0.6, 0.6, 1.8, 3];
+// (demande explicite de l'utilisateur : -3 cm à +3 cm pour la fente/le fil, pas de raison de
+// couvrir toute la hauteur réelle de l'écran, SCREEN_HEIGHT=15 cm cf. scene.js — on reste
+// compact). Le signe est celui qui affiche VISUELLEMENT en haut de l'écran, PAS le signe
+// physique intuitif : la texture (canvas 2D, py=0 = première ligne écrite) est appliquée avec
+// l'orientation par défaut de Three.js (CanvasTexture.flipY=true) sur un plan non retourné, ce
+// qui fait qu'un y_cm POSITIF (cf. la même formule dans le code de rendu) apparaît en BAS de
+// l'écran, pas en haut — d'où le violet (en haut voulu) sur la valeur la plus NÉGATIVE.
+//
+// Étendue PAR FORME (demande explicite de l'utilisateur) : -5 cm à +5 cm pour carré/cercle,
+// au lieu de -3/+3 pour fente/fil — leurs 6 figures, plus étalées verticalement (diffraction
+// réelle en y, cf. construireChampOuverture), se chevauchaient trop à l'étendue standard une
+// fois décomposées.
+const DECOMPOSE_Y_CM_STANDARD = [-3, -1.8, -0.6, 0.6, 1.8, 3];
+const DECOMPOSE_Y_CM_LARGE = [-5, -3, -1, 1, 3, 5];
+function decomposeYCm(shape = sim.maskShape) {
+  return (shape === 'carre' || shape === 'cercle') ? DECOMPOSE_Y_CM_LARGE : DECOMPOSE_Y_CM_STANDARD;
+}
 
 // ─────────────────────────────────────────────────────────────────────
 //  Composantes RGB (0-255, PAS normalisées) de chacune des 6 couleurs de référence à
