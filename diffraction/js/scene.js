@@ -276,6 +276,12 @@ const LEN_COLOR = 0x8fd6ff; // bleu clair, distinct du jaune (rayons) et du blan
 // tous les matériaux de ce module, que flèches/pointillés/labels de mesure restent
 // TOUJOURS dessinés par-dessus, quelle que soit la géométrie 3D sous-jacente à cet endroit.
 const LEN_RENDER_ORDER = 500;
+// ── Rayons pointillés vers les 1ers minima + axe optique — bouton "Afficher l'angle theta" ──
+const RAY_COLOR = 0xffcc66;   // jaune, reprend la couleur de l'ancien LineDashedMaterial
+const AXIS_COLOR = 0xffffff;  // blanc, reprend la couleur de l'ancien axisLine
+const RAY_DASH_SIZE = 2.2, RAY_GAP_SIZE = 1.4; // reprend dashSize/gapSize de l'ancien LineDashedMaterial
+const RAY_DASH_THICK = 0.06; // cm — épaisseur visible des pavés (dans les 2 axes perpendiculaires au rayon)
+const RAY_DASH_MAX_TICKS = 90; // assez pour D_MAX_CM=300 (longueur max d'un rayon) au cycle RAY_DASH_SIZE+RAY_GAP_SIZE
 const LEN_OFFSET_X = 13;        // cm — décalage latéral des flèches d/D sur la table (3D/Dessus), pour éviter les supports (les plus larges, supportScreen, font ~10 cm)
 const LEN_ARROW_Y_TABLE = TABLE_Y + 0.4;   // cm — flèches légèrement au-dessus du plateau (3D/Dessus)
 const LEN_LABEL_Y_TABLE = TABLE_Y + 0.05; // cm — posé à même la surface de la table (pas flottant à hauteur de la flèche)
@@ -650,7 +656,7 @@ function construireGeometrieEnveloppe(zNear, zFar, hNear, wMax, champ, x1Cm, sha
 
 let renderer, sceneObj, camPersp, camOrtho, controls, canvasEl;
 let laserBody, beamMesh, beamEnvelopeMesh, beamDot, topBand, bottomBand, wallLeft, wallRight, wallCenter, slideCercleMesh, screenMesh, screenTexture, screenTexCanvas, screenTexCtx;
-let raysLine, axisLine, supportLaser, supportSlide, supportScreen, tableMesh;
+let rayDash1, rayDash2, axisDash, supportLaser, supportSlide, supportScreen, tableMesh;
 let lengthsGroup, mesurePetitD, mesureGrandD, mesureL;
 
 // 6 enveloppes couleur du faisceau diffracté (mode Lumière blanche), une par BLANCHE_COULEURS
@@ -801,11 +807,11 @@ const LEN_DASH_THICK = 0.18; // cm — épaisseur visible, dans le plan de la su
 const LEN_DASH_THICK_L_ECRAN = 0.06; // cm — épaisseur réduite, uniquement pour les pointillés de L en vue 3D/Écran
 const LEN_DASH_PLAT = 0.02;  // cm — épaisseur quasi nulle, perpendiculaire à la surface (décalque)
 const LEN_DASH_MAX_TICKS = 12; // assez pour les plus longs segments utilisés (cf. placerMesureTable)
-function creerPointilleSegment(color) {
+function creerPointilleSegment(color, maxTicks = LEN_DASH_MAX_TICKS) {
   const group = new THREE.Group();
   const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, depthTest: false, depthWrite: false });
   const ticks = [];
-  for (let i = 0; i < LEN_DASH_MAX_TICKS; i++) {
+  for (let i = 0; i < maxTicks; i++) {
     const tick = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), mat);
     tick.renderOrder = LEN_RENDER_ORDER;
     tick.visible = false;
@@ -814,6 +820,36 @@ function creerPointilleSegment(color) {
   }
   group.userData.ticks = ticks;
   return group;
+}
+// Variante de placerPointilleSegment pour un segment de direction QUELCONQUE (pas
+// forcément aligné sur un axe, cf. rayons vers les 1ers minima qui partent en biais de
+// la fente vers l'écran) : chaque pavé est tourné (quaternion) pour s'aligner sur la
+// direction du segment plutôt que de rester aligné sur les axes du monde. Mêmes pavés
+// pleins que placerPointilleSegment (même correctif que pour la double flèche L, cf.
+// commentaire de creerPointilleSegment ci-dessus) : remplace les anciens raysLine/
+// axisLine (THREE.Line + LineDashedMaterial), invisibles sous certains angles de caméra.
+function placerPointilleSegmentLibre(group, p1, p2, dashSize, gapSize, epaisseur) {
+  const dx = p2[0] - p1[0], dy = p2[1] - p1[1], dz = p2[2] - p1[2];
+  const longueur = Math.hypot(dx, dy, dz);
+  const ticks = group.userData.ticks;
+  if (longueur < 1e-6) { ticks.forEach(t => t.visible = false); return; }
+  const ux = dx / longueur, uy = dy / longueur, uz = dz / longueur;
+  const quat = new THREE.Quaternion().setFromUnitVectors(
+    new THREE.Vector3(1, 0, 0), new THREE.Vector3(ux, uy, uz)
+  );
+  const cycle = dashSize + gapSize;
+  let d = 0, i = 0;
+  for (; i < ticks.length && d < longueur; i++) {
+    const dashLen = Math.min(dashSize, longueur - d);
+    const centre = d + dashLen / 2;
+    const tick = ticks[i];
+    tick.visible = true;
+    tick.position.set(p1[0] + ux * centre, p1[1] + uy * centre, p1[2] + uz * centre);
+    tick.quaternion.copy(quat);
+    tick.scale.set(dashLen, epaisseur, epaisseur);
+    d += cycle;
+  }
+  for (; i < ticks.length; i++) ticks[i].visible = false;
 }
 function placerPointilleSegment(group, p1, p2, axePlat, epaisseurVisible = LEN_DASH_THICK) {
   const dx = p2[0] - p1[0], dy = p2[1] - p1[1], dz = p2[2] - p1[2];
@@ -1363,20 +1399,14 @@ function construireObjets() {
   supportScreen.position.set(0, -SCREEN_HEIGHT / 2, 0);
   sceneObj.add(supportScreen);
 
-  // Rayons pointillés vers les 1ers minima
-  const rayGeo = new THREE.BufferGeometry();
-  rayGeo.setAttribute('position', new THREE.Float32BufferAttribute(new Array(12).fill(0), 3));
-  const rayMat = new THREE.LineDashedMaterial({ color: 0xffcc66, dashSize: 2.2, gapSize: 1.4, transparent: true, opacity: 0.85 });
-  raysLine = new THREE.LineSegments(rayGeo, rayMat);
-  sceneObj.add(raysLine);
-
-  // Axe optique pointillé blanc (rappel visuel de la direction de propagation),
-  // affiché conjointement aux rayons vers les 1ers minima.
-  const axisGeo = new THREE.BufferGeometry();
-  axisGeo.setAttribute('position', new THREE.Float32BufferAttribute(new Array(6).fill(0), 3));
-  const axisMat = new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: 2.2, gapSize: 1.4, transparent: true, opacity: 0.85 });
-  axisLine = new THREE.Line(axisGeo, axisMat);
-  sceneObj.add(axisLine);
+  // Rayons pointillés vers les 1ers minima + axe optique — pavés pleins (Mesh), pas des
+  // THREE.Line + LineDashedMaterial (même correctif que pour les pointillés de L, cf.
+  // commentaire de creerPointilleSegment : une ligne GL native peut devenir invisible sous
+  // certains angles de caméra selon le pilote/GPU).
+  rayDash1 = creerPointilleSegment(RAY_COLOR, RAY_DASH_MAX_TICKS);
+  rayDash2 = creerPointilleSegment(RAY_COLOR, RAY_DASH_MAX_TICKS);
+  axisDash = creerPointilleSegment(AXIS_COLOR, RAY_DASH_MAX_TICKS);
+  sceneObj.add(rayDash1, rayDash2, axisDash);
 
   // Doubles flèches de mesure d, D, L (bouton "Afficher les longueurs")
   lengthsGroup = new THREE.Group();
@@ -1767,26 +1797,15 @@ function updateSceneParams() {
   // rayons doivent pointer vers la même tache dilatée que la flèche L (cf. x1Affiche),
   // sinon rayons et flèche L désignent deux positions différentes — incohérent visuellement.
   const x1Aff = x1Affiche(x1_cm);
-  raysLine.visible = sim.showRays && sim.view !== 'screen';
-  raysLine.geometry.setAttribute('position', new THREE.Float32BufferAttribute([
-    0, 0, SLIT_Z,  x1Aff, 0, screenZ,
-    0, 0, SLIT_Z, -x1Aff, 0, screenZ
-  ], 3));
-  // computeLineDistances() cumule la distance sur TOUS les sommets sans la
-  // remettre à zéro à chaque paire (bug connu de Three.js pour LineSegments) :
-  // le 2ème rayon héritait de la longueur du 1er, d'où des pointillés décalés
-  // entre les deux rayons. On calcule donc la distance manuellement, par paire.
-  const rayLen = Math.hypot(x1Aff, screenZ - SLIT_Z); // distance réellement dessinée (x1Aff/screenZ déjà comprimés si applicable), pas les valeurs réelles — sinon le motif pointillé ne correspondrait plus à la longueur affichée
-  raysLine.geometry.setAttribute('lineDistance', new THREE.Float32BufferAttribute([
-    0, rayLen,
-    0, rayLen
-  ], 1));
-
-  axisLine.visible = sim.showRays && sim.view !== 'screen';
-  axisLine.geometry.setAttribute('position', new THREE.Float32BufferAttribute([
-    0, 0, SLIT_Z, 0, 0, screenZ
-  ], 3));
-  axisLine.computeLineDistances();
+  const showRaysNow = sim.showRays && sim.view !== 'screen';
+  rayDash1.visible = showRaysNow;
+  rayDash2.visible = showRaysNow;
+  axisDash.visible = showRaysNow;
+  if (showRaysNow) {
+    placerPointilleSegmentLibre(rayDash1, [0, 0, SLIT_Z], [x1Aff, 0, screenZ], RAY_DASH_SIZE, RAY_GAP_SIZE, RAY_DASH_THICK);
+    placerPointilleSegmentLibre(rayDash2, [0, 0, SLIT_Z], [-x1Aff, 0, screenZ], RAY_DASH_SIZE, RAY_GAP_SIZE, RAY_DASH_THICK);
+    placerPointilleSegmentLibre(axisDash, [0, 0, SLIT_Z], [0, 0, screenZ], RAY_DASH_SIZE, RAY_GAP_SIZE, RAY_DASH_THICK);
+  }
 
   updateLengthsGroup(x1_cm, w_cm);
   updateBeamVisibility();
@@ -2046,8 +2065,9 @@ function setSceneView(view) {
   refreshSlideVisibility();
   supportLaser.visible = !cacherBanc;
   supportSlide.visible = !cacherBanc;
-  raysLine.visible = sim.showRays && view !== 'screen';
-  axisLine.visible = sim.showRays && view !== 'screen';
+  rayDash1.visible = sim.showRays && view !== 'screen';
+  rayDash2.visible = sim.showRays && view !== 'screen';
+  axisDash.visible = sim.showRays && view !== 'screen';
   const x1_cm = xPremierMinimum(sim.lambda, sim.a, sim.D) * 100;
   const w_cm = Math.max(RENDU_W_MIN_CM, largeurFaisceauGaussien(sim.lambda, sim.D) * 100);
   updateLengthsGroup(x1_cm, w_cm);
