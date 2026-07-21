@@ -11,6 +11,31 @@
 // ═══════════════════════════════════════════════════
 
 // ─────────────────────────────────────────────────────────────────────
+//  Regroupe les reconstructions coûteuses (texture d'écran + enveloppe 3D via
+//  updateSceneParams, encarts via updateReadouts, graphe via drawIntensityGraph) déclenchées
+//  par un glissement de slider : l'évènement `oninput` peut se déclencher plus vite que
+//  l'affichage (plusieurs fois entre deux frames réellement rendues par le navigateur) — sans
+//  ce regroupement, chaque frappe relançait sa propre reconstruction complète alors que seul
+//  le DERNIER état compte visuellement, empilant du travail pour rien pendant un glissement
+//  rapide. Même principe que resize()/resizeScheduled plus bas : au plus un rebuild par frame,
+//  quel que soit le nombre d'évènements oninput reçus entre-temps. sim.a/D/λ/d sont déjà à
+//  jour (affectés de façon synchrone dans updateParam, AVANT l'appel à scheduleSceneUpdate)
+//  au moment où le rebuild planifié s'exécute : aucune valeur intermédiaire n'est perdue,
+//  seule sa reconstruction visuelle est coalescée.
+// ─────────────────────────────────────────────────────────────────────
+let sceneUpdateScheduled = false;
+function scheduleSceneUpdate() {
+  if (sceneUpdateScheduled) return;
+  sceneUpdateScheduled = true;
+  requestAnimationFrame(() => {
+    sceneUpdateScheduled = false;
+    updateSceneParams();
+    updateReadouts();
+    drawIntensityGraph();
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────
 //  Met à jour un paramètre physique depuis un slider.
 // ─────────────────────────────────────────────────────────────────────
 function updateParam(name, val) {
@@ -19,8 +44,12 @@ function updateParam(name, val) {
   if (name === 'a')      { sim.a      = v; document.getElementById('lbl-a').textContent      = v.toFixed(0); }
   if (name === 'D')      { sim.D      = v; document.getElementById('lbl-D').textContent      = formatFr(v, 1); }
   if (name === 'd')      { sim.d      = v; document.getElementById('lbl-d').textContent      = formatFr(v, 2); appliquerBorneD(); }
-  updateSceneParams();
-  updateReadouts();
+  // Invalide le cache du graphe (cf. graph.js → invaliderCourbe) : λ/a/D affectent I(x)
+  // directement ; `d` seul n'y intervient pas, MAIS appliquerBorneD() ci-dessus peut, en
+  // cascade, capper sim.D (banc trop court) — donc invalider dans tous les cas plutôt que de
+  // supposer que seuls certains noms de paramètre comptent.
+  invaliderCourbe();
+  scheduleSceneUpdate();
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -31,8 +60,10 @@ function updateParam(name, val) {
 function updateMaskShape(shape) {
   sim.maskShape = shape;
   syncMaskShapeUI();
+  invaliderCourbe(); // la forme change intensiteOuverture (cf. sim.js), donc I(x)
   updateSceneParams();
   updateReadouts();
+  drawIntensityGraph();
   // Fente horizontale : le bouton "Lien figure" n'a pas de sens (graphe non adapté à une
   // figure verticale, cf. graph.js → syncGraphLienDisponibilite) — se (dés)active aussi en
   // changeant de forme, pas seulement de vue/mode lumineux.
@@ -295,6 +326,7 @@ function updateReadoutsBlanche() {
 // ─────────────────────────────────────────────────────────────────────
 function resetSim() {
   resetParams();
+  invaliderCourbe(); // tous les paramètres dont dépend I(x) sont remis à zéro
   appliquerBorneD();
   document.getElementById('sl-lambda').value = sim.lambda;
   document.getElementById('sl-a').value = sim.a;
@@ -324,6 +356,7 @@ function resetSim() {
   reset3DCamera();
   updateSceneParams();
   updateReadouts();
+  drawIntensityGraph();
 }
 
 function toggleHint(tab) {
@@ -436,7 +469,12 @@ document.addEventListener('webkitfullscreenchange', resize);
 function loop() {
   renderScene();
   tickDecompose();
-  drawIntensityGraph();
+  // drawIntensityGraph() n'est plus appelée ici : chaque déclencheur qui affecte réellement le
+  // graphe (slider, forme, mode lumineux, reset, zoom, survol, épinglage, redimensionnement)
+  // l'appelle désormais explicitement (cf. ui.js → updateParam/updateMaskShape/resetSim,
+  // graph.js → syncGraphPixelParfait/syncGraphModeBlanche/la légende/les écouteurs souris,
+  // resizeGraphCanvas). Redessiner 60×/s sans raison coûtait un tracé complet de la courbe
+  // pour rien la plupart du temps.
   dessinerLienFigure();
   requestAnimationFrame(loop);
 }

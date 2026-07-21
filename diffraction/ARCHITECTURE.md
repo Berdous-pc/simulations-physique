@@ -503,8 +503,21 @@ cas de copier-coller vers une autre page.
 et, pour le mode Lien figure, de quelques éléments exposés par `scene.js` (`camOrtho`,
 `fracXVueEcran`).
 
-- Pas de dimension temporelle : I(x) est recalculée intégralement à chaque frame à partir des
-  paramètres courants (`echantillonnerIntensite`), pas d'accumulation de points dans le temps.
+- **Cache des points échantillonnés** (`cachedPtsMono`/`cachedPtsCouleurs`,
+  `invaliderCourbe()`/`assurerCourbeCalculee()`) : `echantillonnerIntensite()` (coûteuse — sinc/
+  Airy par point) n'est rappelée QUE quand la courbe change réellement (paramètre λ/a/D, forme,
+  mode lumineux, couleur cochée/décochée, ou fenêtre visible/zoom — cf. `invaliderCourbe()`
+  appelée depuis `ui.js` → `updateParam`/`updateMaskShape`/`resetSim` et depuis `graph.js` →
+  `syncGraphModeBlanche`/la case à cocher légende/`syncGraphPixelParfait` au zoom), jamais au
+  survol/épinglage (qui ne font qu'une RECHERCHE dans le cache via `pointLePlusProche`, aucune
+  trigonométrie). `drawIntensityGraph()` n'est plus non plus appelée en continu depuis `ui.js` →
+  `loop()` : chaque déclencheur ci-dessus l'appelle désormais explicitement, à la suite de
+  `invaliderCourbe()`. `dessinerLienFigure()` reste appelée à chaque frame (position des 2
+  canvas à surveiller en continu, pas les données) mais lit désormais aussi le cache. Avant ce
+  changement, un redessin systématique à 60 fps — y compris au repos, sans survol ni
+  interaction — recalculait `echantillonnerIntensite` pour rien la plupart du temps ; utile
+  surtout sur machine peu puissante (constaté par l'utilisateur sur `interferences/`, où le
+  coût par point est plus élevé, puis reporté ici par précaution).
 - **Interactions volontairement réduites au minimum** (zoom rectangulaire, pan clic-glissé,
   molette, tangente, historique de vues — retirés, jugés superflus) :
   - **Survol toujours actif** — mode mono uniquement (cf. ci-dessous) : le point de la courbe le
@@ -569,10 +582,25 @@ deux canvas peut changer à tout moment sans qu'aucun événement dédié ne le 
 
 **Chargé en dernier.**
 
+- **`scheduleSceneUpdate()`/`sceneUpdateScheduled`** : regroupe `updateSceneParams()` (texture
+  d'écran + enveloppe 3D) + `updateReadouts()` + `drawIntensityGraph()` en un seul rebuild PAR
+  FRAME RÉELLEMENT RENDUE, même principe que `resize()`/`resizeScheduled` plus bas (drapeau +
+  `requestAnimationFrame`). Nécessaire : l'évènement `oninput` d'un `<input type=range>` peut se
+  déclencher plus vite que l'affichage pendant un glissement rapide — sans ce regroupement,
+  chaque frappe relançait sa propre reconstruction complète alors que seul le DERNIER état
+  compte visuellement. `updateParam()` affecte `sim.a`/`sim.D`/etc. de façon SYNCHRONE (avant
+  d'appeler `scheduleSceneUpdate()`), donc le rebuild différé lit toujours l'état le plus
+  récent — aucune valeur intermédiaire n'est perdue, seule sa reconstruction visuelle est
+  coalescée. `updateMaskShape()` (un `<select>`, pas de glissement continu) et `resetSim()`
+  (action ponctuelle) appellent, eux, `updateSceneParams()`/`updateReadouts()`/
+  `drawIntensityGraph()` directement, sans passer par ce regroupement.
 - `updateParam(name, val)` : met à jour `sim` (`lambda`/`a`/`D`/`d`), les labels, appelle
-  `appliquerBorneD()` (si `d` a changé), `updateSceneParams()` + `updateReadouts()`.
+  `appliquerBorneD()` (si `d` a changé), invalide le cache du graphe (`invaliderCourbe()`, cf.
+  `graph.js` — dans tous les cas, y compris pour `d` seul, car `appliquerBorneD()` peut en
+  cascade capper `sim.D`), puis planifie le rebuild via `scheduleSceneUpdate()`.
 - `updateMaskShape(shape)` : change `sim.maskShape`, resynchronise le `<select>` et le label du
-  slider `a` (`syncMaskShapeUI()`), appelle `updateSceneParams()` + `updateReadouts()`.
+  slider `a` (`syncMaskShapeUI()`), invalide le cache du graphe, appelle `updateSceneParams()` +
+  `updateReadouts()` + `drawIntensityGraph()`.
 - `appliquerBorneD()` : recalcule la borne `max` du slider `D` (`dMaxPourPetitD(sim.d)`,
   `sim.js`) et cappe `sim.D`/le slider si nécessaire — appelée à chaque changement de `d`, à
   `resetSim()` et à `init()`.
@@ -608,8 +636,9 @@ deux canvas peut changer à tout moment sans qu'aucun événement dédié ne le 
   `condensateur/js/circuit.js`).
 - `resize()` anti-rebond (`requestAnimationFrame`) → `resizeScene()` + `resizeGraphCanvas()`.
 - `loop()` : boucle continue (`requestAnimationFrame`) qui appelle `renderScene()`,
-  `tickDecompose()` (animation Décomposer, no-op hors mode blanc/vue Écran),
-  `drawIntensityGraph()` et `dessinerLienFigure()` à chaque frame.
+  `tickDecompose()` (animation Décomposer, no-op hors mode blanc/vue Écran) et
+  `dessinerLienFigure()` à chaque frame. `drawIntensityGraph()` n'y est PLUS appelée (cf.
+  §Graphe I(x) plus haut) — chaque déclencheur pertinent l'appelle explicitement.
 
 ---
 

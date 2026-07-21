@@ -32,6 +32,41 @@ const gview = {
 // souris (évite deux définitions divergentes du même repère).
 const GRAPH_PAD = { t: 10, r: 14, b: 30, l: 34 };
 
+// ═══════════════════════════════════════════════════════════════════════
+//  Cache des points échantillonnés (mono + par couleur en lumière blanche) — le calcul
+//  (echantillonnerIntensite, coûteux : sinc/Airy par point) ne doit se refaire QUE quand la
+//  courbe physique change réellement (paramètre a/D/λ, forme, mode lumineux, couleurs
+//  cochées) ou que la fenêtre visible change (zoom/pan, cf. gview). Le survol souris,
+//  l'épinglage et le simple redessin ne font qu'une RECHERCHE dans ce cache
+//  (pointLePlusProche, un balayage de comparaisons — aucune trigonométrie) : ils ne doivent
+//  jamais déclencher un rééchantillonnage. `invaliderCourbe()` est appelée à chaque
+//  déclencheur légitime (ui.js → updateParam/updateMaskShape/resetSim, la légende ci-dessous,
+//  syncGraphPixelParfait au zoom) ; assurerCourbeCalculee() ne recalcule que si nécessaire,
+//  sinon c'est un no-op quasi gratuit.
+// ═══════════════════════════════════════════════════════════════════════
+let courbeDirty = true;
+let cachedPtsMono = null;
+let cachedPtsCouleurs = null; // { [nom de couleur]: pts[] }, une entrée par couleur cochée
+
+function invaliderCourbe() {
+  courbeDirty = true;
+}
+
+function assurerCourbeCalculee() {
+  if (!courbeDirty) return;
+  cachedPtsMono = echantillonnerIntensite(N_ECHANTILLONS, gview.xMin, gview.xMax);
+  if (sim.lightSource === 'blanche') {
+    cachedPtsCouleurs = {};
+    for (const c of BLANCHE_COULEURS) {
+      if (!sim.blancheVisibles[c.nom]) continue;
+      cachedPtsCouleurs[c.nom] = echantillonnerIntensite(N_ECHANTILLONS, gview.xMin, gview.xMax, c.lambda);
+    }
+  } else {
+    cachedPtsCouleurs = null;
+  }
+  courbeDirty = false;
+}
+
 // Survol souris (position canvas, coordonnées CSS) — null quand le curseur est hors du
 // canvas. Pilote la mise en évidence du point le plus proche sous la souris, TOUJOURS
 // active (plus de mode à activer, contrairement à l'ancien réticule libre).
@@ -88,6 +123,7 @@ function syncGraphPixelParfait() {
 
   gview.xMin = -f * spanGraph_m;
   gview.xMax = (1 - f) * spanGraph_m;
+  invaliderCourbe(); // fenêtre échantillonnée différente : la courbe en cache ne correspond plus
   drawIntensityGraph();
 }
 
@@ -145,6 +181,7 @@ function initLegendeBlanche() {
     if (checkbox) {
       checkbox.addEventListener('change', () => {
         sim.blancheVisibles[c.nom] = checkbox.checked;
+        invaliderCourbe(); // couleur ajoutée/retirée de cachedPtsCouleurs
         drawIntensityGraph();
       });
     }
@@ -168,6 +205,7 @@ function syncGraphModeBlanche() {
     }
   }
   syncGraphLienDisponibilite();
+  invaliderCourbe(); // bascule mono/blanche : la courbe en cache ne correspond plus au mode actif
   drawIntensityGraph();
 }
 
@@ -407,7 +445,8 @@ function drawIntensityGraph() {
 
   const layout = graphLayout(cv);
   const { pad, gw, gh, xMin, xMax, yMin, yMax, toX, toY } = layout;
-  const pts = echantillonnerIntensite(N_ECHANTILLONS, xMin, xMax);
+  assurerCourbeCalculee();
+  const pts = cachedPtsMono;
 
   gc.font = '13px monospace';
   gc.clearRect(0, 0, w, h);
@@ -457,8 +496,8 @@ function drawIntensityGraph() {
   gc.clip();
   if (sim.lightSource === 'blanche') {
     for (const c of BLANCHE_COULEURS) {
-      if (!sim.blancheVisibles[c.nom]) continue;
-      const ptsC = echantillonnerIntensite(N_ECHANTILLONS, xMin, xMax, c.lambda);
+      const ptsC = cachedPtsCouleurs[c.nom];
+      if (!ptsC) continue;
       const couleurC = longueurOndeVersCss(c.lambda);
       gc.strokeStyle = couleurC;
       gc.lineWidth = 2;
@@ -504,7 +543,7 @@ function drawIntensityGraph() {
     // ── Point le plus proche du curseur (survol en direct, toujours actif) ──
     if (graphHover) {
       const xHover = Math.max(xMin, Math.min(xMax, xMin + ((graphHover.x - pad.l) / gw) * (xMax - xMin)));
-      const p = pointLePlusProche(pts, xHover);
+      const p = pointLePlusProche(pts, xHover); // recherche dans le cache, pas de rééchantillonnage
       dessinerMarqueurPoint(gc, layout, p.x, p.I, '#2a6aaa');
     }
   }
@@ -552,8 +591,12 @@ function initGraphInteractions() {
     } else {
       const xClick = Math.max(layout.xMin, Math.min(layout.xMax,
         layout.xMin + ((mx - layout.pad.l) / layout.gw) * (layout.xMax - layout.xMin)));
-      const pts = echantillonnerIntensite(N_ECHANTILLONS, layout.xMin, layout.xMax);
-      const p = pointLePlusProche(pts, xClick);
+      // Recherche dans le cache (cf. assurerCourbeCalculee) : aucun rééchantillonnage ici,
+      // juste une lecture — la courbe mono en cache suffit à retrouver un x sur la grille
+      // d'échantillonnage (les positions x sont identiques pour toutes les couleurs/mono à
+      // fenêtre donnée, seule l'intensité I diffère).
+      assurerCourbeCalculee();
+      const p = pointLePlusProche(cachedPtsMono, xClick);
       graphPins.push(estBlanche ? { x: p.x } : { x: p.x, I: p.I });
     }
     drawIntensityGraph();
@@ -610,8 +653,8 @@ function dessinerLienFigure() {
   const sceneRect = sceneCanvas.getBoundingClientRect();
   const graphRect = graphCanvas.getBoundingClientRect();
   const layout = graphLayout(graphCanvas);
-  const pts = echantillonnerIntensite(N_ECHANTILLONS, layout.xMin, layout.xMax);
-  const extremaBruts = calculerExtrema(pts);
+  assurerCourbeCalculee(); // lecture du cache : cette fonction tourne à chaque frame, jamais de rééchantillonnage tant que rien n'a changé
+  const extremaBruts = calculerExtrema(cachedPtsMono);
   const { maxima, minima } = limiterAuDeuxiemeMinimum(extremaBruts.maxima, extremaBruts.minima);
 
   // Axe horizontal (y=0) de la vue Écran, en repère overlay — toujours le centre vertical

@@ -218,11 +218,36 @@ FFT. À affiner encore si nécessaire (cf. §Points de calibration).
 
 ### `js/graph.js` — Graphe I(x) interactif
 
-**Chargé après scene.js.** Repris de `diffraction/` avec 3 changements :
+**Chargé après scene.js.** Repris de `diffraction/` avec 5 changements :
 
 - `N_ECHANTILLONS` porté à **6000** (vs 1200) : les franges (période ~λD/b) sont beaucoup plus
   fines que l'enveloppe de diffraction seule — à affiner visuellement si encore insuffisant à
   b maximal sur la largeur complète de l'écran (cf. §Points de calibration).
+- **Cache des points échantillonnés** (`cachedPtsMono`/`cachedPtsCouleurs`,
+  `invaliderCourbe()`/`assurerCourbeCalculee()`) : `echantillonnerIntensite()` (coûteuse — sinc/
+  Airy × cos² par point, cf. §Clé physique de sim.js) n'est rappelée QUE quand la courbe change
+  réellement (paramètre λ/a/b/D, forme, mode lumineux, couleur cochée/décochée, ou fenêtre
+  visible/zoom — cf. `invaliderCourbe()` appelée depuis `ui.js` → `updateParam`/
+  `updateMaskShape`/`resetSim` et depuis `graph.js` → `syncGraphModeBlanche`/la case à cocher
+  légende/`syncGraphPixelParfait` au zoom), jamais au survol/épinglage (qui ne font qu'une
+  RECHERCHE dans le cache via `pointLePlusProche`, aucune trigonométrie). `updateParam`
+  invalide dans TOUS les cas, y compris pour `d` : `d` seul n'entre pour rien dans
+  `intensiteInterference`, mais `appliquerBorneD()` (appelée pour tout changement de `d`) peut
+  en cascade capper `sim.D` (banc trop court) — invalider uniquement si le nom du paramètre
+  n'est pas `d` aurait raté ce cas.
+- **`drawIntensityGraph()` n'est plus appelée en continu depuis `ui.js` → `loop()`** : chaque
+  déclencheur qui affecte réellement le graphe l'appelle désormais explicitement (à la suite de
+  `invaliderCourbe()`, cf. les mêmes points d'appel ci-dessus, + les écouteurs souris
+  `mousemove`/`mouseleave`/`mousedown` de `initGraphInteractions`, + `resizeGraphCanvas`, déjà
+  explicites). Avant ce changement, `N_ECHANTILLONS` bien plus élevé qu'en diffraction (+ le
+  facteur d'interférence, un `cos()` de plus par point) rendait un redessin systématique à 60
+  fps — y compris au repos, sans survol ni interaction — nettement plus coûteux qu'en
+  diffraction (constaté par l'utilisateur, surtout en lumière blanche où le coût est multiplié
+  par le nombre de couleurs cochées). `dessinerLienFigure()`, elle, reste appelée à chaque frame
+  (cf. sa docstring — position des 2 canvas à surveiller en continu, pas seulement les données) ;
+  elle lit désormais aussi le cache (`assurerCourbeCalculee()` + `cachedPtsMono`), donc son coût
+  résiduel par frame est celui, faible, de `calculerExtrema`/du tracé des pointillés — plus de
+  rééchantillonnage caché dedans.
 - `dessinerInfoMultiCourbes()` (survol/épingles en lumière blanche) lit désormais
   `intensiteInterference(x,λ,a,b,D)` au lieu de `intensiteOuverture(...)` — sinon les valeurs
   affichées auraient été celles de l'enveloppe seule, pas de la figure réellement tracée.
@@ -241,6 +266,19 @@ figure », mode Lumière blanche) est inchangé.
 
 **Chargé en dernier.** Repris de `diffraction/` avec :
 
+- **`scheduleSceneUpdate()`/`sceneUpdateScheduled`** : regroupe `updateSceneParams()` (texture
+  d'écran + enveloppe 3D — la reconstruction la plus coûteuse) + `updateReadouts()` +
+  `drawIntensityGraph()` en un seul rebuild PAR FRAME RÉELLEMENT RENDUE, même principe que
+  `resize()`/`resizeScheduled` plus bas (drapeau + `requestAnimationFrame`). Nécessaire ici :
+  l'évènement `oninput` d'un `<input type=range>` peut se déclencher plus vite que l'affichage
+  pendant un glissement rapide — sans ce regroupement, chaque frappe relançait sa propre
+  reconstruction complète alors que seul le DERNIER état compte visuellement. `updateParam()`
+  affecte `sim.a`/`sim.b`/etc. de façon SYNCHRONE (avant d'appeler `scheduleSceneUpdate()`),
+  donc le rebuild différé lit toujours l'état le plus récent au moment où il s'exécute —
+  aucune valeur intermédiaire n'est perdue, seule sa reconstruction visuelle est coalescée.
+  `updateMaskShape()` (un `<select>`, pas de glissement continu) et `resetSim()` (action
+  ponctuelle) appellent, eux, `updateSceneParams()`/`updateReadouts()`/`drawIntensityGraph()`
+  directement, sans passer par ce regroupement — inutile pour des déclenchements isolés.
 - `updateParam()` : nouveau cas `'b'` — le slider HTML est en **mm** (0,10–1,00, précision utile
   à ce réglage), converti en µm dans `sim.b` (`×1000`) pour rester cohérent avec `sim.a` dans les
   formules physiques ; le label affiché reste en mm.
