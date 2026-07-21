@@ -33,6 +33,10 @@ function updateMaskShape(shape) {
   syncMaskShapeUI();
   updateSceneParams();
   updateReadouts();
+  // Fente horizontale : le bouton "Lien figure" n'a pas de sens (graphe non adapté à une
+  // figure verticale, cf. graph.js → syncGraphLienDisponibilite) — se (dés)active aussi en
+  // changeant de forme, pas seulement de vue/mode lumineux.
+  if (typeof syncGraphLienDisponibilite === 'function') syncGraphLienDisponibilite();
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -228,10 +232,11 @@ function toggleEchelleAngle() {
 //  Met à jour les encarts de valeurs instantanées.
 // ─────────────────────────────────────────────────────────────────────
 const THETA_LABEL_FORMULE = {
-  fente:  'Angle de diffraction<br>sin θ ≈ θ = λ / a :',
-  carre:  'Angle de diffraction<br>sin θ ≈ θ = λ / a :',
-  fil:    'Angle de diffraction<br>sin θ ≈ θ = λ / a :',
-  cercle: 'Angle de diffraction<br>sin θ ≈ θ = 1,22 · λ / 2a :'
+  fente:    'Angle de diffraction<br>sin θ ≈ θ = λ / a :',
+  fente_h:  'Angle de diffraction<br>sin θ ≈ θ = λ / a :',
+  carre:    'Angle de diffraction<br>sin θ ≈ θ = λ / a :',
+  fil:      'Angle de diffraction<br>sin θ ≈ θ = λ / a :',
+  cercle:   'Angle de diffraction<br>sin θ ≈ θ = 1,22 · λ / 2a :'
 };
 function updateReadouts() {
   if (sim.lightSource === 'blanche') {

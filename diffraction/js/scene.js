@@ -266,7 +266,7 @@ const TOP_VIEW_FLARE_FRACTION_MAX = 0.15;
 // d'Airy J1, non régulièrement espacés : 2ème zéro à 2,233λ/D contre 1,22λ/D pour le 1er).
 // Approximation petit angle comme x1Cm lui-même (cf. xPremierMinimum) — purement cosmétique,
 // pas une valeur physique affichée.
-const RATIO_X2_SUR_X1 = { fente: 2, carre: 2, fil: 2, cercle: 2.233 / 1.22 };
+const RATIO_X2_SUR_X1 = { fente: 2, fente_h: 2, carre: 2, fil: 2, cercle: 2.233 / 1.22 };
 
 // ── Doubles flèches de mesure (d, D, L) — bouton "Afficher les longueurs" ──
 const LEN_COLOR = 0x8fd6ff; // bleu clair, distinct du jaune (rayons) et du blanc (axe optique)
@@ -341,10 +341,10 @@ function reconstruireSlideCercle(rayon_cm) {
 function refreshSlideVisibility() {
   const cacherBanc = (sim.view === 'screen');
   const shape = sim.maskShape;
-  const cadreVisible = !cacherBanc && (shape === 'fente' || shape === 'carre' || shape === 'fil');
+  const cadreVisible = !cacherBanc && (shape === 'fente' || shape === 'fente_h' || shape === 'carre' || shape === 'fil');
   topBand.visible = cadreVisible;
   bottomBand.visible = cadreVisible;
-  wallLeft.visible = !cacherBanc && (shape === 'fente' || shape === 'carre');
+  wallLeft.visible = !cacherBanc && (shape === 'fente' || shape === 'fente_h' || shape === 'carre' || shape === 'fil');
   wallRight.visible = wallLeft.visible;
   wallCenter.visible = !cacherBanc && shape === 'fil';
   slideCercleMesh.visible = !cacherBanc && shape === 'cercle';
@@ -459,6 +459,11 @@ function construireGeometrieEnveloppe(zNear, zFar, hNear, wMax, champ, x1Cm, sha
   // seulement pour fente/fil (hauteur non contrainte par le masque à cette échelle pour ces
   // deux formes, cf. FENTE_HAUTEUR_CM) — cf. §3 de PISTES_EVOLUTION.md.
   const balayage2D = (shape === 'carre' || shape === 'cercle');
+  // Fente horizontale : la figure se propage selon Y (vertical), pas X — jamais en balayage2D
+  // (formes séparables). `horizontal` pilote l'échange x/y à chaque endroit où ce module
+  // suppose normalement que l'axe de diffraction est X (échantillonnage du champ, position
+  // finale des sommets) — cf. les points d'usage ci-dessous.
+  const horizontal = (shape === 'fente_h');
   const SEUIL_ENVELOPPE_NEGLIGEABLE = 1e-3; // relatif au pic central (champ normalisé à 1, cf. construireChampOuverture)
   const PAS_BALAYAGE_Y = 96;
   // Borne du balayage vertical : PAS sim.screenHalfWidth (12,5 cm, beaucoup trop grossier — la
@@ -485,11 +490,15 @@ function construireGeometrieEnveloppe(zNear, zFar, hNear, wMax, champ, x1Cm, sha
   // à x1, cf. raysLine) du milieu de la vraie zone sombre (constaté par l'utilisateur, capture
   // à l'appui). `n` est réajusté à la taille réelle de la grille fusionnée : tout le code plus
   // bas continue de s'appuyer sur `n`/xCm sans autre changement.
+  // Borne de la grille le long de l'axe de diffraction : demi-largeur de l'écran (12,5 cm)
+  // normalement, mais demi-HAUTEUR de l'écran (7,5 cm) pour la fente horizontale — la figure
+  // s'y propage verticalement, contrainte par SCREEN_HEIGHT et non SCREEN_WIDTH.
+  const spreadHalfCm = horizontal ? SCREEN_HEIGHT / 2 : halfW * 100;
   const xCmUniforme = [];
-  for (let i = 0; i <= n; i++) xCmUniforme.push(-halfW * 100 + (2 * halfW * 100 * i) / n);
+  for (let i = 0; i <= n; i++) xCmUniforme.push(-spreadHalfCm + (2 * spreadHalfCm * i) / n);
   const ratioX2 = RATIO_X2_SUR_X1[shape] || 2;
   const x2Cm = x1Cm * ratioX2;
-  const jalonsCm = [0, x1Cm, -x1Cm, x2Cm, -x2Cm].filter(x => Math.abs(x) <= halfW * 100);
+  const jalonsCm = [0, x1Cm, -x1Cm, x2Cm, -x2Cm].filter(x => Math.abs(x) <= spreadHalfCm);
   const xCm = Array.from(new Set([...xCmUniforme, ...jalonsCm])).sort((a, b) => a - b);
   n = xCm.length - 1;
 
@@ -503,7 +512,9 @@ function construireGeometrieEnveloppe(zNear, zFar, hNear, wMax, champ, x1Cm, sha
   const ixLumCol = new Array(n + 1), ixColReel = new Array(n + 1), halfHFar = new Array(n + 1);
   for (let i = 0; i <= n; i++) {
     const x_m = xCm[i] / 100;
-    const Ix = echantillonnerChamp(champ, x_m, 0); // y=0 : cf. commentaire à l'appel dans updateSceneParams
+    // xCm[i] est la coordonnée le long de l'axe de DIFFRACTION (échangée en (0, x_m) pour la
+    // fente horizontale, où cet axe est Y dans le champ FFT — cf. sim.js → construireChampOuverture).
+    const Ix = horizontal ? echantillonnerChamp(champ, 0, x_m) : echantillonnerChamp(champ, x_m, 0);
     ixColReel[i] = Ix;
     if (balayage2D) {
       // Cherche le plus grand y où le champ reste non négligeable À CETTE ABSCISSE (balayage
@@ -535,12 +546,19 @@ function construireGeometrieEnveloppe(zNear, zFar, hNear, wMax, champ, x1Cm, sha
   // le champ 2D réel à la position (x,y) de chaque sommet — la silhouette (halfHFar) est déjà
   // le vrai contour du champ, calculée ci-dessus.
   const grilleFar = [];
+  // pFarGrid[i][j] = position (cm) le long de l'axe GAUSSIEN (perpendiculaire à la diffraction)
+  // du sommet (i,j) côté écran — valeur "canonique", jamais échangée x/y contrairement à
+  // positions[] : la passe de rubans plus bas en a besoin telle quelle pour interpoler entre le
+  // sommet-arête (près de la fente) et le contour côté écran, quelle que soit l'orientation.
+  const pFarGrid = [];
   for (let i = 0; i <= n; i++) {
     const x_m = xCm[i] / 100;
     const halfH = halfHFar[i];
     const col = new Array(m + 1);
+    const pCol = new Array(m + 1);
     for (let j = 0; j <= m; j++) {
       const y_cm = halfH === 0 ? 0 : -halfH + (2 * halfH * j) / m;
+      pCol[j] = y_cm;
       let intensite, intensiteReelle;
       if (balayage2D) {
         intensiteReelle = echantillonnerChamp(champ, x_m, y_cm / 100);
@@ -554,14 +572,20 @@ function construireGeometrieEnveloppe(zNear, zFar, hNear, wMax, champ, x1Cm, sha
         intensiteReelle = ixColReel[i] * Iy;
       }
       col[j] = positions.length / 3;
-      positions.push(xCm[i], y_cm, zFar);
+      // xCm[i] = position le long de l'axe de diffraction, y_cm = position le long de l'axe
+      // gaussien (non diffractant) — placés en (x,y) monde normalement, échangés pour la
+      // fente horizontale (diffraction verticale, cf. `horizontal` plus haut).
+      const worldX = horizontal ? y_cm : xCm[i];
+      const worldY = horizontal ? xCm[i] : y_cm;
+      positions.push(worldX, worldY, zFar);
       // G porte l'intensité RÉELLE (pas affichée/gamma), cf. commentaire à ixColReel — lue par
       // le vertex shader (vIntensiteReelle) pour le plancher uPlancherMinRayon uniquement.
       colors.push(intensite, intensiteReelle, intensite);
-      xFars.push(xCm[i]);
-      yFars.push(y_cm);
+      xFars.push(worldX);
+      yFars.push(worldY);
     }
     grilleFar.push(col);
+    pFarGrid.push(pCol);
   }
 
   // Nappe côté écran : grille n×m, chaque quad (2 triangles) entre colonnes/rangées
@@ -598,14 +622,21 @@ function construireGeometrieEnveloppe(zNear, zFar, hNear, wMax, champ, x1Cm, sha
       const ligne = new Array(n + 1);
       for (let i = 0; i <= n; i++) {
         const idxFar = grilleFar[i][j];
-        const yFar = positions[idxFar * 3 + 1];
+        // pFar = position perpendiculaire (canonique, jamais échangée) du sommet écran — cf.
+        // pFarGrid ci-dessus, PAS positions[idxFar*3+1] (qui contient la coordonnée MONDE,
+        // déjà échangée x/y pour la fente horizontale et donc inexploitable ici telle quelle).
+        const pFar = pFarGrid[i][j];
         const intensiteFarIJ = colors[idxFar * 3];
         const intensiteReelleFarIJ = colors[idxFar * 3 + 1]; // cf. commentaire à ixColReel
         ligne[i] = positions.length / 3;
-        positions.push(xCm[i] * t, yNear + (yFar - yNear) * t, z);
+        const sVal = xCm[i] * t;                    // le long de l'axe de diffraction (tape vers 0 à la fente)
+        const pVal = yNear + (pFar - yNear) * t;     // le long de l'axe gaussien (tape de yNear à pFar)
+        const worldX = horizontal ? pVal : sVal;
+        const worldY = horizontal ? sVal : pVal;
+        positions.push(worldX, worldY, z);
         colors.push(intensiteFarIJ, intensiteReelleFarIJ, intensiteFarIJ);
-        xFars.push(xCm[i]);
-        yFars.push(yFar);
+        xFars.push(horizontal ? pFar : xCm[i]);
+        yFars.push(horizontal ? xCm[i] : pFar);
       }
       couches.push(ligne);
     }
@@ -1480,9 +1511,55 @@ function dessinerTextureEcranBlanche(t) {
   const te = t * t * (3 - 2 * t); // smoothstep unique, pilote position ET largeur
 
   const n = BLANCHE_COULEURS.length;
-  const yCourantCouleurs = decomposeYCm(sim.maskShape).map(yCible => yCible * te);
+  const decomposeCm = decomposeYCm(sim.maskShape).map(cible => cible * te);
   const balayage2D = (sim.maskShape === 'carre' || sim.maskShape === 'cercle')
     && champsTextureBlanche && champsTextureBlancheShape === sim.maskShape;
+  // Fente horizontale : la figure se propage verticalement — la décomposition (répartition des
+  // 6 couleurs, cf. decomposeCm ci-dessus) doit donc se faire HORIZONTALEMENT (colonnes) plutôt
+  // que verticalement (lignes), et les composantes RGB par couleur (intensiteBlancheComposantes)
+  // se calculent maintenant à partir de la position verticale (y), pas horizontale (x) — mêmes
+  // rôles x/y échangés que partout ailleurs dans ce module pour cette forme. Jamais en
+  // balayage2D (formes séparables uniquement).
+  const horizontal = (sim.maskShape === 'fente_h');
+  const rgbCouleurs = BLANCHE_COULEURS.map(c => longueurOndeVersRGB(c.lambda));
+
+  if (horizontal) {
+    const wCmFusion = Math.max(RENDU_W_MIN_CM, largeurFaisceauGaussien(BLANCHE_LAMBDA_MOYENNE, sim.D) * 100);
+    const wCmCiblesCouleurs = BLANCHE_COULEURS.map(c => Math.max(RENDU_W_MIN_CM, largeurFaisceauGaussien(c.lambda, sim.D) * 100));
+    const wCourantCouleurs = wCmCiblesCouleurs.map(wc => wCmFusion + (wc - wCmFusion) * te);
+    const ixCouleurs = Array.from({ length: n }, () => new Float64Array(w));
+    for (let px = 0; px < w; px++) {
+      const x_cm = -SCREEN_WIDTH / 2 + (SCREEN_WIDTH * px) / (w - 1);
+      for (let k = 0; k < n; k++) {
+        const dx = x_cm - decomposeCm[k];
+        const wk = wCourantCouleurs[k];
+        ixCouleurs[k][px] = Math.exp(-2 * dx * dx / (wk * wk));
+      }
+    }
+    for (let py = 0; py < h; py++) {
+      const y_cm = -SCREEN_HEIGHT / 2 + (SCREEN_HEIGHT * py) / (h - 1);
+      const composantes = intensiteBlancheComposantes(y_cm / 100, sim.a, sim.D).composantes;
+      for (let px = 0; px < w; px++) {
+        let r = 0, g = 0, b = 0;
+        for (let k = 0; k < n; k++) {
+          const ix = ixCouleurs[k][px];
+          if (ix < 1e-4) continue;
+          const comp = composantes[k];
+          r += (255 * comp.r / BLANCHE_REF.r) * ix;
+          g += (255 * comp.g / BLANCHE_REF.g) * ix;
+          b += (255 * comp.b / BLANCHE_REF.b) * ix;
+        }
+        const idx = (py * w + px) * 4;
+        img.data[idx] = Math.min(255, Math.round(r));
+        img.data[idx + 1] = Math.min(255, Math.round(g));
+        img.data[idx + 2] = Math.min(255, Math.round(b));
+        img.data[idx + 3] = 255;
+      }
+    }
+    screenTexCtx.putImageData(img, 0, 0);
+    screenTexture.needsUpdate = true;
+    return;
+  }
 
   let iyCouleurs = null;
   if (!balayage2D) {
@@ -1493,13 +1570,12 @@ function dessinerTextureEcranBlanche(t) {
     for (let py = 0; py < h; py++) {
       const y_cm = -SCREEN_HEIGHT / 2 + (SCREEN_HEIGHT * py) / (h - 1);
       for (let k = 0; k < n; k++) {
-        const dy = y_cm - yCourantCouleurs[k];
+        const dy = y_cm - decomposeCm[k];
         const wk = wCourantCouleurs[k];
         iyCouleurs[k][py] = Math.exp(-2 * dy * dy / (wk * wk));
       }
     }
   }
-  const rgbCouleurs = BLANCHE_COULEURS.map(c => longueurOndeVersRGB(c.lambda));
 
   for (let px = 0; px < w; px++) {
     const x = -sim.screenHalfWidth + (2 * sim.screenHalfWidth * px) / (w - 1);
@@ -1509,7 +1585,7 @@ function dessinerTextureEcranBlanche(t) {
       let r = 0, g = 0, b = 0;
       for (let k = 0; k < n; k++) {
         if (balayage2D) {
-          const I2 = Math.sqrt(echantillonnerChamp(champsTextureBlanche[k], x, (y_cm - yCourantCouleurs[k]) / 100));
+          const I2 = Math.sqrt(echantillonnerChamp(champsTextureBlanche[k], x, (y_cm - decomposeCm[k]) / 100));
           if (I2 < 1e-3) continue; // négligeable à cette position : rien à ajouter
           const rgb = rgbCouleurs[k];
           r += (255 * I2 * rgb.r) / BLANCHE_REF.r;
@@ -1656,20 +1732,54 @@ function updateSceneParams() {
   const wallW = (SLIDE_SIZE - gap) / 2;
   const maskShape = sim.maskShape;
 
-  wallLeft.scale.set(wallW, SLIT_BAND_HEIGHT, SLIDE_THICK);
-  wallLeft.position.set(-(gap / 2 + wallW / 2), 0, SLIT_Z);
-  wallRight.scale.set(wallW, SLIT_BAND_HEIGHT, SLIDE_THICK);
-  wallRight.position.set(gap / 2 + wallW / 2, 0, SLIT_Z);
+  if (maskShape === 'fente_h') {
+    // Fente horizontale : même 4 objets que la fente verticale, mais rôles de x/y échangés —
+    // wallLeft/wallRight deviennent les bords HAUT/BAS (resserrent l'ouverture à `gap` en
+    // hauteur), topBand/bottomBand deviennent les bords GAUCHE/DROITE (largeur fixe
+    // SLIT_BAND_HEIGHT, cadre schématique commun aux fentes/fil, cf. sim.js).
+    wallLeft.scale.set(SLIDE_SIZE, wallW, SLIDE_THICK);
+    wallLeft.position.set(0, gap / 2 + wallW / 2, SLIT_Z);
+    wallRight.scale.set(SLIDE_SIZE, wallW, SLIDE_THICK);
+    wallRight.position.set(0, -(gap / 2 + wallW / 2), SLIT_Z);
 
-  // Bandes haut/bas : ouverture verticale = SLIT_BAND_HEIGHT (fente/fil, cadre fixe) ou `gap`
-  // (carré — même écartement horizontal ET vertical, ouverture carrée). Sans effet visible
-  // pour le cercle (bandes cachées par refreshSlideVisibility).
-  const bandOuvertureH = (maskShape === 'carre') ? gap : SLIT_BAND_HEIGHT;
-  const marginBandH = (SLIDE_SIZE - bandOuvertureH) / 2;
-  topBand.scale.set(SLIDE_SIZE, marginBandH, SLIDE_THICK);
-  topBand.position.set(0, bandOuvertureH / 2 + marginBandH / 2, SLIT_Z);
-  bottomBand.scale.set(SLIDE_SIZE, marginBandH, SLIDE_THICK);
-  bottomBand.position.set(0, -(bandOuvertureH / 2 + marginBandH / 2), SLIT_Z);
+    const bandOuvertureW = SLIT_BAND_HEIGHT;
+    const marginBandW = (SLIDE_SIZE - bandOuvertureW) / 2;
+    topBand.scale.set(marginBandW, SLIDE_SIZE, SLIDE_THICK);
+    topBand.position.set(bandOuvertureW / 2 + marginBandW / 2, 0, SLIT_Z);
+    bottomBand.scale.set(marginBandW, SLIDE_SIZE, SLIDE_THICK);
+    bottomBand.position.set(-(bandOuvertureW / 2 + marginBandW / 2), 0, SLIT_Z);
+  } else if (maskShape === 'fil') {
+    // Fil : wallLeft/wallRight ne sont PAS les mâchoires resserrant l'ouverture à `gap` (elles
+    // toucheraient le fil et boucheraient toute l'ouverture, puisque wallCenter fait déjà
+    // exactement `gap` de large — constaté par l'utilisateur, diapo entièrement pleine). Ce sont
+    // ici juste les côtés GAUCHE/DROITE du cadre extérieur de la lame, même épaisseur que les
+    // bords haut/bas (marginBandH) — le fil reste suspendu dans une vraie ouverture carrée
+    // SLIT_BAND_HEIGHT × SLIT_BAND_HEIGHT, avec de l'espace ouvert de chaque côté de lui.
+    const marginBandH = (SLIDE_SIZE - SLIT_BAND_HEIGHT) / 2;
+    wallLeft.scale.set(marginBandH, SLIDE_SIZE, SLIDE_THICK);
+    wallLeft.position.set(-(SLIDE_SIZE / 2 - marginBandH / 2), 0, SLIT_Z);
+    wallRight.scale.set(marginBandH, SLIDE_SIZE, SLIDE_THICK);
+    wallRight.position.set(SLIDE_SIZE / 2 - marginBandH / 2, 0, SLIT_Z);
+
+    topBand.scale.set(SLIDE_SIZE, marginBandH, SLIDE_THICK);
+    topBand.position.set(0, SLIT_BAND_HEIGHT / 2 + marginBandH / 2, SLIT_Z);
+    bottomBand.scale.set(SLIDE_SIZE, marginBandH, SLIDE_THICK);
+    bottomBand.position.set(0, -(SLIT_BAND_HEIGHT / 2 + marginBandH / 2), SLIT_Z);
+  } else {
+    wallLeft.scale.set(wallW, SLIT_BAND_HEIGHT, SLIDE_THICK);
+    wallLeft.position.set(-(gap / 2 + wallW / 2), 0, SLIT_Z);
+    wallRight.scale.set(wallW, SLIT_BAND_HEIGHT, SLIDE_THICK);
+    wallRight.position.set(gap / 2 + wallW / 2, 0, SLIT_Z);
+
+    // Bandes haut/bas : ouverture verticale = SLIT_BAND_HEIGHT (fente, cadre fixe) ou `gap`
+    // (carré — même écartement horizontal ET vertical, ouverture carrée).
+    const bandOuvertureH = (maskShape === 'carre') ? gap : SLIT_BAND_HEIGHT;
+    const marginBandH = (SLIDE_SIZE - bandOuvertureH) / 2;
+    topBand.scale.set(SLIDE_SIZE, marginBandH, SLIDE_THICK);
+    topBand.position.set(0, bandOuvertureH / 2 + marginBandH / 2, SLIT_Z);
+    bottomBand.scale.set(SLIDE_SIZE, marginBandH, SLIDE_THICK);
+    bottomBand.position.set(0, -(bandOuvertureH / 2 + marginBandH / 2), SLIT_Z);
+  }
 
   // Fil : barre centrale (le fil), même largeur visuelle `gap` que l'écartement des murs des
   // autres formes, hauteur du cadre SLIT_BAND_HEIGHT.
@@ -1761,29 +1871,51 @@ function updateSceneParams() {
     // (Iy ci-dessous) — valable seulement pour fente/fil, cf. même distinction que
     // construireGeometrieEnveloppe.
     const balayage2D = (sim.maskShape === 'carre' || sim.maskShape === 'cercle');
+    const horizontal = (sim.maskShape === 'fente_h');
     const img = screenTexCtx.createImageData(w, h);
-    for (let px = 0; px < w; px++) {
-      const x = -sim.screenHalfWidth + (2 * sim.screenHalfWidth * px) / (w - 1);
-      const Ix = echantillonnerChamp(champ, x, 0); // y=0 : le champ est normalisé (pic=1) comme intensiteOuverture(), et le profil vertical (Iy ci-dessous) reste appliqué séparément (fente/fil uniquement)
-      // Les ordres secondaires sont physiquement très faibles (1er ≈ 4,5 % du maximum central,
-      // cf. sinc²) : en couleur linéaire ils sont quasi invisibles à l'écran. On applique une
-      // racine carrée uniquement ici (affichage), jamais dans intensiteOuverture() ni dans le
-      // graphe I(x) qui doivent rester l'intensité physique exacte, sans quoi une lecture
-      // quantitative sur le graphe serait faussée.
-      const IxAffichage = Math.sqrt(Ix);
-      const rx = r0 * IxAffichage, gx = g0 * IxAffichage, bx = b0 * IxAffichage;
+    if (horizontal) {
+      // Fente horizontale : diffraction verticale (I lue dans le champ FFT selon y, x=0) —
+      // rôles de x/y échangés par rapport à la fente verticale ci-dessous : le profil
+      // gaussien (non diffractant) s'applique maintenant en x, la figure (sinc²) en y.
       for (let py = 0; py < h; py++) {
-        const y_cm = -SCREEN_HEIGHT / 2 + (SCREEN_HEIGHT * py) / (h - 1); // position physique verticale (cm)
-        let r, g, b;
-        if (balayage2D) {
-          const I2 = Math.sqrt(echantillonnerChamp(champ, x, y_cm / 100));
-          r = Math.round(r0 * I2); g = Math.round(g0 * I2); b = Math.round(b0 * I2);
-        } else {
-          const Iy = Math.exp(-2 * y_cm * y_cm / (w_cm * w_cm)); // profil gaussien standard (convention laser : I(r)=I0·exp(-2r²/w²))
-          r = Math.round(rx * Iy); g = Math.round(gx * Iy); b = Math.round(bx * Iy);
+        const y_cm = -SCREEN_HEIGHT / 2 + (SCREEN_HEIGHT * py) / (h - 1);
+        const Iy = echantillonnerChamp(champ, 0, y_cm / 100);
+        const IyAffichage = Math.sqrt(Iy); // même compression que le cas vertical, cf. commentaire ci-dessous
+        const ry = r0 * IyAffichage, gy = g0 * IyAffichage, by = b0 * IyAffichage;
+        for (let px = 0; px < w; px++) {
+          const x_cm = -SCREEN_WIDTH / 2 + (SCREEN_WIDTH * px) / (w - 1);
+          const Ix = Math.exp(-2 * x_cm * x_cm / (w_cm * w_cm));
+          const idx = (py * w + px) * 4;
+          img.data[idx] = Math.round(ry * Ix);
+          img.data[idx + 1] = Math.round(gy * Ix);
+          img.data[idx + 2] = Math.round(by * Ix);
+          img.data[idx + 3] = 255;
         }
-        const idx = (py * w + px) * 4;
-        img.data[idx] = r; img.data[idx + 1] = g; img.data[idx + 2] = b; img.data[idx + 3] = 255;
+      }
+    } else {
+      for (let px = 0; px < w; px++) {
+        const x = -sim.screenHalfWidth + (2 * sim.screenHalfWidth * px) / (w - 1);
+        const Ix = echantillonnerChamp(champ, x, 0); // y=0 : le champ est normalisé (pic=1) comme intensiteOuverture(), et le profil vertical (Iy ci-dessous) reste appliqué séparément (fente/fil uniquement)
+        // Les ordres secondaires sont physiquement très faibles (1er ≈ 4,5 % du maximum central,
+        // cf. sinc²) : en couleur linéaire ils sont quasi invisibles à l'écran. On applique une
+        // racine carrée uniquement ici (affichage), jamais dans intensiteOuverture() ni dans le
+        // graphe I(x) qui doivent rester l'intensité physique exacte, sans quoi une lecture
+        // quantitative sur le graphe serait faussée.
+        const IxAffichage = Math.sqrt(Ix);
+        const rx = r0 * IxAffichage, gx = g0 * IxAffichage, bx = b0 * IxAffichage;
+        for (let py = 0; py < h; py++) {
+          const y_cm = -SCREEN_HEIGHT / 2 + (SCREEN_HEIGHT * py) / (h - 1); // position physique verticale (cm)
+          let r, g, b;
+          if (balayage2D) {
+            const I2 = Math.sqrt(echantillonnerChamp(champ, x, y_cm / 100));
+            r = Math.round(r0 * I2); g = Math.round(g0 * I2); b = Math.round(b0 * I2);
+          } else {
+            const Iy = Math.exp(-2 * y_cm * y_cm / (w_cm * w_cm)); // profil gaussien standard (convention laser : I(r)=I0·exp(-2r²/w²))
+            r = Math.round(rx * Iy); g = Math.round(gx * Iy); b = Math.round(bx * Iy);
+          }
+          const idx = (py * w + px) * 4;
+          img.data[idx] = r; img.data[idx + 1] = g; img.data[idx + 2] = b; img.data[idx + 3] = 255;
+        }
       }
     }
     screenTexCtx.putImageData(img, 0, 0);
@@ -1802,8 +1934,12 @@ function updateSceneParams() {
   rayDash2.visible = showRaysNow;
   axisDash.visible = showRaysNow;
   if (showRaysNow) {
-    placerPointilleSegmentLibre(rayDash1, [0, 0, SLIT_Z], [x1Aff, 0, screenZ], RAY_DASH_SIZE, RAY_GAP_SIZE, RAY_DASH_THICK);
-    placerPointilleSegmentLibre(rayDash2, [0, 0, SLIT_Z], [-x1Aff, 0, screenZ], RAY_DASH_SIZE, RAY_GAP_SIZE, RAY_DASH_THICK);
+    // Fente horizontale : la tache se propage verticalement, les rayons vers les 1ers minima
+    // pointent donc vers (0, ±x1Aff) plutôt que (±x1Aff, 0).
+    const versMinima1 = (maskShape === 'fente_h') ? [0, x1Aff, screenZ] : [x1Aff, 0, screenZ];
+    const versMinima2 = (maskShape === 'fente_h') ? [0, -x1Aff, screenZ] : [-x1Aff, 0, screenZ];
+    placerPointilleSegmentLibre(rayDash1, [0, 0, SLIT_Z], versMinima1, RAY_DASH_SIZE, RAY_GAP_SIZE, RAY_DASH_THICK);
+    placerPointilleSegmentLibre(rayDash2, [0, 0, SLIT_Z], versMinima2, RAY_DASH_SIZE, RAY_GAP_SIZE, RAY_DASH_THICK);
     placerPointilleSegmentLibre(axisDash, [0, 0, SLIT_Z], [0, 0, screenZ], RAY_DASH_SIZE, RAY_GAP_SIZE, RAY_DASH_THICK);
   }
 
@@ -1875,17 +2011,24 @@ function updateLengthsGroup(x1_cm, w_cm) {
     setLabelTexte(mesureGrandD.label, 'D = ' + formatFr(sim.D, 2) + ' m');
   }
 
-  // L : masquée en vue Profil (une ligne horizontale sur l'écran, vu de côté, n'apporte rien).
-  const showL = (view !== 'side');
-  const showLTop = showL && view === 'top';
-  const showLEcran = showL && view !== 'top';
-  mesureL.fleche.visible = showLTop;       // variante volumique (cônes) : vue Dessus seulement
-  mesureL.flechePlate.visible = showLEcran; // variante plate : 3D/Écran, à même le plan de l'écran
+  // L : masquée dans la vue qui aplatit l'axe de propagation de la tache — Profil (aplatit X)
+  // pour la fente verticale (spread horizontal), Dessus (aplatit Y) pour la fente horizontale
+  // (spread vertical) : dans cette vue, une flèche L collée à l'axe aplati n'apporterait rien.
+  // La "vue volumique" (flèche à cônes, décalée en profondeur de l'écran) suit le même échange.
+  const horizontal = (sim.maskShape === 'fente_h');
+  const vueMasqueeL = horizontal ? 'top' : 'side';
+  const vueVolumiqueL = horizontal ? 'side' : 'top';
+  const showL = (view !== vueMasqueeL);
+  const showLTop = showL && view === vueVolumiqueL;
+  const showLEcran = showL && view !== vueVolumiqueL;
+  mesureL.fleche.visible = showLTop;       // variante volumique (cônes) : vue "évasement" seulement
+  mesureL.flechePlate.visible = showLEcran; // variante plate : autres vues, à même le plan de l'écran
   mesureL.dash1.visible = mesureL.dash2.visible = mesureL.label.visible = showL;
   if (showL) {
-    if (view === 'top') {
-      // Vue Dessus : la flèche « au-dessus de la tache » (axe Y) est aplatie par cette vue ;
-      // on la reporte légèrement derrière l'écran, label encore un peu plus à droite.
+    if (view === vueVolumiqueL && !horizontal) {
+      // Vue Dessus (fente verticale) : la flèche « au-dessus de la tache » (axe Y) est aplatie
+      // par cette vue ; on la reporte légèrement derrière l'écran, label encore un peu plus à
+      // droite.
       const zArrow = screenZ + LEN_TOP_L_DECALAGE_Z;
       setFlecheDoubleLongueur(mesureL.fleche, 2 * x1AfficheL);
       mesureL.fleche.rotation.set(0, 0, 0);
@@ -1904,11 +2047,30 @@ function updateLengthsGroup(x1_cm, w_cm) {
       // seulement en z (« à droite » sur cette vue, cf. LEN_TOP_L_LABEL_DECALAGE_Z), jamais
       // en x — un décalage en x le désaxerait par rapport à l'axe optique.
       mesureL.label.position.set(0, 0.02, zArrow + LEN_TOP_L_LABEL_DECALAGE_Z);
-    } else {
-      // Vue 3D / Écran : décalque STRICTEMENT plat, à même le plan de l'écran (z = screenZ,
-      // aucun recul) — flèche plate dédiée (creerFlecheDoublePlate) plutôt que la variante à
-      // cônes 3D, et pointillés dont les deux extrémités restent à z = screenZ (jamais un
-      // segment qui sortirait du plan de l'écran).
+    } else if (view === vueVolumiqueL && horizontal) {
+      // Vue Profil (fente horizontale) : même principe que la vue Dessus ci-dessus (flèche
+      // reportée en Z pour se séparer visuellement de l'écran), PAS en X — X est justement
+      // l'axe aplati PAR CETTE VUE (la caméra Profil regarde le long de X, cf.
+      // placerMesureTable), un décalage là ne produit donc AUCUN déplacement visible et
+      // superposait la flèche à l'écran (constaté par l'utilisateur). Z, lui, reste l'axe
+      // horizontal visible dans les deux vues Dessus ET Profil (seul l'axe aplati change,
+      // Y en Dessus / X en Profil) — d'où le même décalage qu'en vue Dessus, juste la
+      // flèche elle-même tournée pour s'aligner sur Y (spread vertical) au lieu de X.
+      const zArrow = screenZ + LEN_TOP_L_DECALAGE_Z;
+      setFlecheDoubleLongueur(mesureL.fleche, 2 * x1AfficheL);
+      mesureL.fleche.rotation.set(0, 0, Math.PI / 2); // aligne l'axe local X sur l'axe monde Y (spread vertical)
+      mesureL.fleche.position.set(0, 0, zArrow);
+      placerPointilleSegment(mesureL.dash1, [0, -x1AfficheL, zArrow], [0, -x1AfficheL, screenZ], 'x');
+      placerPointilleSegment(mesureL.dash2, [0, x1AfficheL, zArrow], [0, x1AfficheL, screenZ], 'x');
+      orienterDecalque(mesureL.label, [0, -1, 0], [0, 0, 1]);
+      const echelleL = 3 * zoomCompense;
+      mesureL.label.scale.set(echelleL, echelleL, 1);
+      mesureL.label.position.set(0.02, 0, zArrow + LEN_TOP_L_LABEL_DECALAGE_Z);
+    } else if (!horizontal) {
+      // Vue 3D / Écran (fente verticale) : décalque STRICTEMENT plat, à même le plan de l'écran
+      // (z = screenZ, aucun recul) — flèche plate dédiée (creerFlecheDoublePlate) plutôt que la
+      // variante à cônes 3D, et pointillés dont les deux extrémités restent à z = screenZ (jamais
+      // un segment qui sortirait du plan de l'écran).
       const yArrow = Math.min(SCREEN_HEIGHT / 2 - 1.4, w_cm + 1.8);
       setFlecheDoublePlateLongueur(mesureL.flechePlate, 2 * x1_cm);
       mesureL.flechePlate.rotation.set(0, 0, 0);
@@ -1921,6 +2083,18 @@ function updateLengthsGroup(x1_cm, w_cm) {
       orienterDecalque(mesureL.label, [-1, 0, 0], [0, 1, 0]);
       mesureL.label.scale.set(1, 1, 1); // taille de base (jugée parfaite), ne pas tripler ici
       mesureL.label.position.set(0, yArrow + 1.3, screenZ);
+    } else {
+      // Vue 3D / Écran (fente horizontale) : même principe, mais la flèche plate passe du côté
+      // de la tache (X) plutôt qu'au-dessus (tache maintenant verticale) — rôles x/y échangés.
+      const xArrow = Math.min(SCREEN_WIDTH / 2 - 1.4, w_cm + 1.8);
+      setFlecheDoublePlateLongueur(mesureL.flechePlate, 2 * x1_cm);
+      mesureL.flechePlate.rotation.set(0, 0, Math.PI / 2);
+      mesureL.flechePlate.position.set(xArrow, 0, screenZ);
+      placerPointilleSegment(mesureL.dash1, [xArrow, -x1_cm, screenZ], [0, -x1_cm, screenZ], 'z', LEN_DASH_THICK_L_ECRAN);
+      placerPointilleSegment(mesureL.dash2, [xArrow, x1_cm, screenZ], [0, x1_cm, screenZ], 'z', LEN_DASH_THICK_L_ECRAN);
+      orienterDecalque(mesureL.label, [0, 1, 0], [1, 0, 0]);
+      mesureL.label.scale.set(1, 1, 1);
+      mesureL.label.position.set(xArrow + 1.3, 0, screenZ);
     }
     setLabelTexte(mesureL.label, 'L = ' + formatFr(2 * x1_cm, 2) + ' cm');
   }
@@ -1978,11 +2152,19 @@ function appliquerXLimiteUniforms(u, x1Cm) {
   // reste toujours dans les dimensions de l'écran), pour ne pas réduire la sentinelle sous une
   // valeur réellement atteinte par des rayons.
   const symetrique = (sim.maskShape === 'carre' || sim.maskShape === 'cercle');
-  const y1Cm = symetrique ? x1Cm : 1e6;
-  u.uXLimiteReel.value = x1Cm;
-  u.uYLimiteReel.value = y1Cm;
+  // Fente horizontale : la contrainte réelle porte sur Y (diffraction verticale), X reçoit la
+  // sentinelle — l'inverse de toutes les autres formes. La vue où le flare (cf. plus bas) a du
+  // sens change en conséquence : Dessus (aplatit Y) devient sans intérêt, c'est désormais la
+  // vue Profil (aplatit X) qui a besoin de l'exagération pour rendre la divergence visible.
+  const horizontal = (sim.maskShape === 'fente_h');
+  const vueEvasement = horizontal ? 'side' : 'top';
+  let x1Reel, y1Reel;
+  if (horizontal) { x1Reel = 1e6; y1Reel = x1Cm; }
+  else { x1Reel = x1Cm; y1Reel = symetrique ? x1Cm : 1e6; }
+  u.uXLimiteReel.value = x1Reel;
+  u.uYLimiteReel.value = y1Reel;
   u.uPlancherRadial.value = (sim.maskShape === 'cercle') ? 1 : 0;
-  if (sim.view === 'top') {
+  if (sim.view === vueEvasement) {
     // Étend la couverture du plancher jusqu'à x2 (limite de la 1ère tache secondaire, cf.
     // RATIO_X2_SUR_X1), PAS seulement x1 — y compris pour uXLimiteReel/uYLimiteReel (écrasant
     // la valeur x1Cm posée juste au-dessus) : sinon la couverture reviendrait brutalement à x1
@@ -1991,20 +2173,23 @@ function appliquerXLimiteUniforms(u, x1Cm) {
     // construireGeometrieEnveloppe) creuse naturellement le vrai zéro à x1 entre les deux
     // taches — aucun fondu synthétique à ajouter ici.
     const ratioX2 = RATIO_X2_SUR_X1[sim.maskShape] || 2;
-    const x2Cm = x1Cm * ratioX2;
-    const y2Cm = symetrique ? y1Cm * ratioX2 : y1Cm;
+    const x2Cm = horizontal ? x1Reel : x1Cm * ratioX2;
+    const y2Cm = horizontal ? x1Cm * ratioX2 : (symetrique ? y1Reel * ratioX2 : y1Reel);
     u.uXLimiteReel.value = x2Cm;
     u.uYLimiteReel.value = y2Cm;
-    u.uXLimiteExagere.value = Math.min(x2Cm * TOP_VIEW_PLANCHER_GAIN, SCREEN_WIDTH / 2 * 0.5);
-    u.uYLimiteExagere.value = symetrique ? Math.min(y2Cm * TOP_VIEW_PLANCHER_GAIN, SCREEN_WIDTH / 2 * 0.5) : y1Cm;
+    u.uXLimiteExagere.value = horizontal ? x1Reel : Math.min(x2Cm * TOP_VIEW_PLANCHER_GAIN, SCREEN_WIDTH / 2 * 0.5);
+    // Fente horizontale : Y est borné par la HAUTEUR de l'écran (la figure s'y propage), pas sa
+    // largeur — plafond cohérent avec spreadHalfCm dans construireGeometrieEnveloppe.
+    u.uYLimiteExagere.value = horizontal ? Math.min(y2Cm * TOP_VIEW_PLANCHER_GAIN, SCREEN_HEIGHT / 2 * 0.5)
+      : (symetrique ? Math.min(y2Cm * TOP_VIEW_PLANCHER_GAIN, SCREEN_WIDTH / 2 * 0.5) : y1Reel);
     u.uZNear.value = SLIT_Z;
     // Plafonné à une fraction de la distance fente→écran réellement affichée (D_affiche, cf.
     // zEcranAffiche) — cf. TOP_VIEW_FLARE_FRACTION_MAX pour le bug que ce plafond évite.
     const D_affiche = Math.max(zEcranAffiche(sim.D * 100) - SLIT_Z, 1);
     u.uFlareLongueur.value = Math.min(TOP_VIEW_FLARE_LONGUEUR_CM, D_affiche * TOP_VIEW_FLARE_FRACTION_MAX);
   } else {
-    u.uXLimiteExagere.value = x1Cm;
-    u.uYLimiteExagere.value = y1Cm;
+    u.uXLimiteExagere.value = x1Reel;
+    u.uYLimiteExagere.value = y1Reel;
     u.uFlareLongueur.value = 0;
   }
 }

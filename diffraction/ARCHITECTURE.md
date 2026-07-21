@@ -25,9 +25,10 @@ ouvrables en double-clic (`file://`), comme toutes les autres pages du site.
 
 ## Périmètre physique
 
-Diffraction de Fraunhofer par une ouverture réglable, **4 formes** (`sim.maskShape`, cf.
-`sim.js` → `MASK_SHAPES`) : fente simple, trou carré, trou circulaire, fil (fente
-complémentaire, via le principe de Babinet). Pas de fentes d'Young, pas de réseau. Source
+Diffraction de Fraunhofer par une ouverture réglable, **5 formes** (`sim.maskShape`, cf.
+`sim.js` → `MASK_SHAPES`) : fente verticale, fente horizontale (même fente tournée de 90°, cf.
+§Fente horizontale plus bas), trou carré, trou circulaire, fil (fente complémentaire, via le
+principe de Babinet). Pas de fentes d'Young, pas de réseau. Source
 laser réglable en `λ` (monochromatique) **ou** lumière blanche (6 couleurs de référence, cf.
 §Lumière blanche ci-dessous).
 
@@ -36,7 +37,7 @@ laser réglable en `λ` (monochromatique) **ou** lumière blanche (6 couleurs de
 cf. §Écarts connus).
 
 Le calcul du rendu visuel (texture d'écran, enveloppe 3D — cf. §Pipeline FFT ci-dessous) est
-généralisé aux 4 formes d'ouverture ci-dessus via un unique pipeline FFT 2D, plutôt que
+généralisé aux 5 formes d'ouverture ci-dessus via un unique pipeline FFT 2D, plutôt que
 spécifique à la fente — cf. §Pipeline FFT et `PISTES_EVOLUTION.md` pour l'historique de cette
 généralisation et ce qui reste hors périmètre (fente inclinée, réseau...).
 
@@ -56,7 +57,7 @@ généralisation et ce qui reste hors périmètre (fente inclinée, réseau...).
 | `sim.D` | Distance fente-écran (m). Borne max **dynamique**, dépendante de `sim.d` (cf. `dMaxPourPetitD`) — le banc a une longueur fixe |
 | `sim.lightSource` | `'mono'` (longueur d'onde réglable via `sim.lambda`) \| `'blanche'` (lumière blanche, cf. §Lumière blanche) |
 | `sim.blancheVisibles` | `{ [nom de couleur]: bool }` — courbes cochées dans la légende du graphe en mode blanc, une entrée par `BLANCHE_COULEURS` |
-| `sim.maskShape` | `'fente'` \| `'carre'` \| `'cercle'` \| `'fil'` — forme de l'ouverture de la diapositive, cf. `MASK_SHAPES` |
+| `sim.maskShape` | `'fente'` \| `'fente_h'` \| `'carre'` \| `'cercle'` \| `'fil'` — forme de l'ouverture de la diapositive, cf. `MASK_SHAPES` |
 | `sim.showRays` | Affichage des rayons pointillés vers les 1ers minima + l'axe optique |
 | `sim.showLengths` | Affichage des doubles flèches de mesure d, D, L (cf. `scene.js` §Doubles flèches de mesure) |
 | `sim.beamMode` | Mode d'affichage du faisceau : `'visible'` (laser + enveloppe diffractée) \| `'laserOnly'` (laser→fente uniquement) \| `'off'` (aucun faisceau, seulement la tache à l'écran + point de couleur en sortie du laser) — cf. `scene.js` §Objets de la scène |
@@ -64,7 +65,7 @@ généralisation et ce qui reste hors périmètre (fente inclinée, réseau...).
 | `sim.showGraphIntensite` | Affichage du graphe I(x) sous la scène 3D (avec splitter draggable) — désactivé par défaut, la scène 3D occupe alors toute la zone centrale (cf. `ui.js` → `toggleGraphIntensite`) |
 | `sim.showValeursExp` | Affichage des cadres de valeurs expérimentales (angle de diffraction, largeur de la tache centrale) dans la section Valeurs — désactivé par défaut (cf. `ui.js` → `toggleValeursExp`) |
 | `sim.screenHalfWidth` | Demi-largeur physique fixe de l'écran simulé (0.125 m — écran réel de TP 25×15 cm) |
-| `MASK_SHAPES` | Table des 4 formes : `label` (option du `<select>`), `aLabel` (texte du `<label>` du slider `a`, dépend de la forme). Toutes les formes partagent les mêmes bornes `A_MIN`/`A_MAX` — la diapo 3D reste de toute façon schématique (cf. `scene.js` → `largeurFenteVisuelle`), pas à l'échelle réelle |
+| `MASK_SHAPES` | Table des 5 formes : `label` (option du `<select>`), `aLabel` (texte du `<label>` du slider `a`, dépend de la forme). Toutes les formes partagent les mêmes bornes `A_MIN`/`A_MAX` — la diapo 3D reste de toute façon schématique (cf. `scene.js` → `largeurFenteVisuelle`), pas à l'échelle réelle |
 | `PETIT_D_MIN_M` / `PETIT_D_MAX_M` | Bornes HTML du slider `d` |
 | `BANC_LONGUEUR_M` / `dMaxPourPetitD(d)` | Longueur fixe du banc de TP virtuel ; `Dmax(d) = BANC_LONGUEUR_M - d` — la borne max de `D` suit `d` en temps réel pour que `d+D` ne dépasse jamais la table (cf. `ui.js` → `appliquerBorneD`) |
 | `thetaMinimum(λ,a,m)` / `thetaPremierMinimum(λ,a,shape?)` | sin θ ≈ m·λ/a pour une ouverture séparable (fente/carré/fil, zéros de sinc), généralisée au m-ième minimum. `thetaPremierMinimum` (m=1) est dispatché par forme : cas particulier `'cercle'` = 1,22·λ/diamètre (1er zéro de la fonction de Bessel J1, anneau d'Airy — `diamètre = 2·a_um`, car `a_um` est le RAYON pour le cercle, cf. `MASK_SHAPES`) |
@@ -129,7 +130,7 @@ portée couverte par la FFT à l'écran et la position du 1er minimum x₁ vaut
 `N / (2·FFT_FENETRE_FACTEUR)` avec une fenêtre proportionnelle à la dimension de l'ouverture —
 indépendant de λ, D **et** `a`. Avec `FFT_FENETRE_FACTEUR = 25`, ce rapport vaut ≈20,5, quel que
 soit le réglage (fenêtre fixe → proportionnelle à `a`/à l'ouverture : cf. `PISTES_EVOLUTION.md`
-pour l'historique complet de ce piège et de sa généralisation aux 4 formes).
+pour l'historique complet de ce piège et de sa généralisation aux 5 formes).
 
 ---
 
@@ -154,7 +155,7 @@ vertical, `z` = axe de propagation (source → écran, `z` croissant).
 | Diamètre du faisceau laser (`BEAM_DIAMETER`) | 1 mm |
 | Module laser (`LASER_DIAMETER` × `LASER_LENGTH`) | Ø 1,5 cm × 5 cm — dimensions choisies cohérentes avec un module de TP réel |
 | Distance laser-fente (`sim.d`, position `SLIT_Z`) | 0.15–2.5 m, réglable — cf. §Réglage d ci-dessous |
-| Dimension de l'ouverture (`a`, via `largeurFenteVisuelle`) | **Pas à l'échelle** — mappée sur `LARGEUR_FENTE_MIN_CM`–`LARGEUR_FENTE_MAX_CM` (≈0.064–0.4 cm), commune aux 4 formes (schématique). **La valeur réelle `sim.a` reste seule utilisée dans tous les calculs physiques** |
+| Dimension de l'ouverture (`a`, via `largeurFenteVisuelle`) | **Pas à l'échelle** — mappée sur `LARGEUR_FENTE_MIN_CM`–`LARGEUR_FENTE_MAX_CM` (≈0.064–0.4 cm), commune aux 5 formes (schématique). **La valeur réelle `sim.a` reste seule utilisée dans tous les calculs physiques** |
 | Supports (tige + plateau) | Décoratifs, sous laser/lame/écran, posés sur une table virtuelle `TABLE_Y` commune — aucune taille réelle de référence |
 
 Conséquence pédagogique : ce qu'un élève *mesure* (θ, D, position/largeur de la figure) est
@@ -180,14 +181,65 @@ appelée par `updateSceneParams()` et `setSceneView()`) :
 | Forme | Objets visibles | Construction |
 |---|---|---|
 | `fente` | `topBand`/`bottomBand` (cadre) + `wallLeft`/`wallRight` | 2 bandes pleines + 2 murs latéraux, géométrie unitaire mise à l'échelle (`.scale`) — pas de CSG, l'ouverture est l'espace vide entre les murs |
+| `fente_h` | idem `fente`, mêmes 4 objets | `wallLeft`/`wallRight` deviennent les bords HAUT/BAS (resserrent `gap` en hauteur) et `topBand`/`bottomBand` les bords GAUCHE/DROITE (largeur fixe `SLIT_BAND_HEIGHT`) — rôles x/y échangés par rapport à `fente`, cf. §Fente horizontale ci-dessous |
 | `carre` | idem `fente` | Même 4 objets, mais écartement horizontal **et** vertical égal à `gap` (bandes devenues dynamiques, plus fixées à `SLIT_BAND_HEIGHT`) |
-| `fil` | `topBand`/`bottomBand` (cadre inchangé) + `wallCenter` | Murs latéraux cachés, remplacés par une fine barre centrale (le fil) |
+| `fil` | `topBand`/`bottomBand` + `wallLeft`/`wallRight` (cadre extérieur, épaisseur `marginBandH`) + `wallCenter` | **Pas** les mêmes mâchoires resserrant à `gap` que `fente`/`carre` (elles toucheraient le fil, qui fait déjà `gap` de large — diapo entièrement pleine, bug constaté) : ici les 4 côtés forment un cadre fin à l'épaisseur des bords haut/bas, ouverture carrée `SLIT_BAND_HEIGHT²`, le fil suspendu au centre avec un vrai espace ouvert de chaque côté |
 | `cercle` | `slideCercleMesh` uniquement | Vrai trou circulaire découpé dans le carré `SLIDE_SIZE` via `THREE.Shape` + un trou (`THREE.Path.absarc`), extrudé (`reconstruireSlideCercle`) — la seule forme qui ne peut pas s'obtenir avec des boîtes assemblées, sans CSG |
 
-`largeurFenteVisuelle(a_um)` (écartement schématique `gap`) reste commune aux 4 formes. Côté
+`largeurFenteVisuelle(a_um)` (écartement schématique `gap`) reste commune aux 5 formes. Côté
 physique (FFT, `intensiteOuverture`), le masque correspondant est construit par
 `construireChampOuverture(...,shape)` (`sim.js`) — la représentation 3D et le calcul physique
 sont deux dispatches indépendants sur `sim.maskShape`, mais cohérents.
+
+#### Fente horizontale (`sim.maskShape === 'fente_h'`)
+
+Fente tournée de 90° : même masque rectangulaire `a × FENTE_HAUTEUR_CM` que `fente`
+(`construireChampOuverture`, `sim.js`), mais x et y échangés dans le masque — l'ouverture est
+étroite en y (largeur réglable `a`), large en x. La figure de diffraction qui en résulte se
+propage donc VERTICALEMENT sur l'écran plutôt qu'horizontalement. `intensiteOuverture`/
+`xPremierMinimum`/`thetaPremierMinimum` (`sim.js`) restent des formules SCALAIRES génériques
+(distance au centre le long de l'axe de propagation, quel qu'il soit) : aucun changement n'y est
+nécessaire, seul `scene.js` interprète différemment ce scalaire selon l'orientation.
+
+Un booléen local `horizontal` (`sim.maskShape === 'fente_h'`), recalculé à chaque endroit
+concerné plutôt que centralisé, pilote l'échange x/y dans `scene.js` :
+- **Texture d'écran** (`updateSceneParams`, mono et `dessinerTextureEcranBlanche`) : la figure
+  (échantillonnée dans le champ FFT) est lue selon y, le profil gaussien du faisceau (non
+  diffractant) appliqué selon x — l'inverse de `fente`/`fil`.
+- **Enveloppe 3D** (`construireGeometrieEnveloppe`) : la grille reste construite en interne selon
+  un axe "diffraction" (`xCm[]`, borné par `SCREEN_HEIGHT/2` plutôt que `SCREEN_WIDTH/2` pour
+  cette forme, cf. `spreadHalfCm`) et un axe "gaussien" (`y_cm`) génériques, puis les coordonnées
+  MONDE finales (`positions`, `xFars`/`yFars`) sont échangées au moment de les pousser dans les
+  buffers — `pFarGrid` conserve la valeur "gaussien" canonique (jamais échangée) pour que la
+  passe de rubans (taper fente→écran) puisse interpoler correctement sans avoir à décoder une
+  coordonnée déjà échangée depuis `positions[]`.
+- **Rayons vers les 1ers minima** (`updateSceneParams`) : pointent vers `(0, ±x1)` plutôt que
+  `(±x1, 0)`.
+- **Plancher d'opacité du shader** (`appliquerXLimiteUniforms`) : la contrainte réelle porte sur
+  Y (X reçoit la sentinelle `1e6`) — l'inverse des formes séparables usuelles. L'exagération
+  visuelle de la divergence près de la fente (`TOP_VIEW_PLANCHER_GAIN`, normalement active en
+  vue Dessus, qui aplatit Y) s'active en vue **Profil** pour cette forme (qui aplatit X) —
+  `vueEvasement` généralise le `sim.view === 'top'` d'origine.
+- **Flèche de mesure L** (`updateLengthsGroup`) : affichée en vue **Profil** (aplatit X, sans
+  intérêt pour une tache qui se propage en Y) plutôt qu'en vue Dessus, masquée en vue Dessus
+  plutôt qu'en vue Profil — `vueMasqueeL`/`vueVolumiqueL` généralisent les vues `'side'`/`'top'`
+  d'origine. Décalques et flèches tournés (`rotation.z = π/2`) pour s'aligner sur l'axe Y.
+- **Décomposition (`dessinerTextureEcranBlanche`)** : répartit les 6 couleurs HORIZONTALEMENT
+  (`decomposeYCm`, toujours ±3 cm) au lieu de verticalement — chemin de code dédié (branche
+  `horizontal`, `return` anticipé), les composantes RGB par couleur étant calculées à partir de
+  la position VERTICALE (y) plutôt qu'horizontale (x).
+
+**Non généralisé à cette forme (limitation connue)** : le bouton « Adapter l'échelle à l'angle
+de diffraction » (`sim.echelleAngleTop`) reste strictement lié à la vue Dessus (`zEcranAffiche`,
+`x1Affiche`, `facteurLargeurEchelle`) — pour la fente horizontale, cet effet reste donc sans
+utilité visible en vue Dessus (l'écran/le graphe ne sont, eux, jamais concernés).
+
+Le bouton « Lien figure » (`graph.js`), lui, est explicitement DÉSACTIVÉ pour cette forme (
+`syncGraphLienDisponibilite()`, appelée aussi par `ui.js` → `updateMaskShape()` en plus de ses
+déclencheurs habituels) plutôt que laissé incohérent : le graphe I(x) reste tracé selon l'axe de
+diffraction générique (`echantillonnerIntensite`/`intensiteOuverture`), qui correspond à une
+position VERTICALE à l'écran pour `fente_h` — le lien graphique (`fracXVueEcran`, qui mappe
+toujours sur l'axe HORIZONTAL de la vue Écran) n'aurait pas de sens, comme en lumière blanche.
 
 #### Objets de la scène (construits une fois par `construireObjets()`)
 
@@ -363,7 +415,7 @@ descendre sous 1 mm de rayon, en dessous de ce que la texture peut représenter 
 #### Enveloppe 3D du faisceau (`beamEnvelopeMesh`, `construireGeometrieEnveloppe()`)
 
 Un vrai cône dont la base épouse la silhouette de la tache projetée, reconstruit entièrement à
-chaque changement de paramètre, généralisé aux 4 formes via un paramètre `shape` :
+chaque changement de paramètre, généralisé aux 5 formes via un paramètre `shape` :
 
 - **Un seul maillage continu**, formé d'une nappe « côté écran » (grille (x,y) complète à
   `z=zFar`) et d'un « ruban » en profondeur pour **chaque** rangée y — une rangée n'allant que du

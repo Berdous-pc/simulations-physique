@@ -42,10 +42,11 @@ const A_MIN = 20, A_MAX = 500;
 // représentation 3D de la diapo étant de toute façon schématique, cf. largeurFenteVisuelle dans
 // scene.js, pas à l'échelle réelle).
 const MASK_SHAPES = {
-  fente:  { label: 'Fente simple',               aLabel: "Largeur de la fente a" },
-  carre:  { label: 'Trou carré',                 aLabel: "Côté du trou carré a" },
-  cercle: { label: 'Trou circulaire',             aLabel: "Rayon du trou circulaire a" },
-  fil:    { label: 'Fil (fente complémentaire)',  aLabel: "Diamètre du fil a" }
+  fente:    { label: 'Fente verticale',            aLabel: "Largeur de la fente a" },
+  fente_h:  { label: 'Fente horizontale',          aLabel: "Hauteur de la fente a" },
+  carre:    { label: 'Trou carré',                 aLabel: "Côté du trou carré a" },
+  cercle:   { label: 'Trou circulaire',            aLabel: "Rayon du trou circulaire a" },
+  fil:      { label: 'Fil (fente complémentaire)', aLabel: "Diamètre du fil a" }
 };
 
 // ── Bornes du réglage de distance laser-fente d (m) et longueur totale du banc ──
@@ -368,6 +369,11 @@ function construireChampOuverture(lambda_nm, a_um, D_m, shape = sim.maskShape) {
   //    la même hors du centre (Babinet), et c'est cette figure-là (pas le pic non diffracté)
   //    qu'on veut montrer sur la texture d'écran/l'enveloppe 3D — seule la représentation 3D de
   //    la diapositive (le fil, cf. scene.js) reste visuellement complémentaire de la fente.
+  //  - fente_h : fente tournée de 90° — même rectangle a × FENTE_HAUTEUR_CM que 'fente', mais
+  //    x et y échangés (ouverture étroite en y, large en x) : la diffraction qui en résulte se
+  //    propage verticalement plutôt qu'horizontalement. Tout le reste du pipeline FFT
+  //    (fft2D, échantillonnage) reste inchangé — seule la géométrie du masque tourne ; c'est
+  //    scene.js qui interprète ensuite ce champ (x,y) selon la bonne orientation à l'écran.
   for (let j = 0; j < N; j++) {
     const y = (j - N / 2) * pas;
     const base = j * N;
@@ -378,6 +384,8 @@ function construireChampOuverture(lambda_nm, a_um, D_m, shape = sim.maskShape) {
         ouvert = Math.abs(x) < a_m / 2 && Math.abs(y) < a_m / 2;
       } else if (shape === 'cercle') {
         ouvert = (x * x + y * y) < a_m * a_m;
+      } else if (shape === 'fente_h') {
+        ouvert = Math.abs(y) < a_m / 2 && Math.abs(x) < h_m / 2;
       } else { // fente / fil (cf. commentaire ci-dessus)
         ouvert = Math.abs(x) < a_m / 2 && Math.abs(y) < h_m / 2;
       }

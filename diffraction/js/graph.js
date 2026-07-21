@@ -97,7 +97,7 @@ function toggleGraphPin() {
 }
 
 function toggleGraphLien() {
-  if (sim.view !== 'screen' || sim.lightSource === 'blanche') return; // bouton normalement désactivé dans ce cas
+  if (sim.view !== 'screen' || sim.lightSource === 'blanche' || sim.maskShape === 'fente_h') return; // bouton normalement désactivé dans ce cas
   graphLienMode = !graphLienMode;
   const btn = document.getElementById('btn-graph-lien');
   btn.classList.toggle('active', graphLienMode);
@@ -105,13 +105,17 @@ function toggleGraphLien() {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-//  (Dés)active le bouton « Lien figure » selon la vue courante ET le mode lumineux (pas de
-//  sens en lumière blanche, plusieurs courbes superposées, cf. syncGraphModeBlanche), et
-//  coupe le mode si l'une des deux conditions cesse d'être remplie. Appelée par
-//  scene.js → setSceneView() et par syncGraphModeBlanche() ci-dessous.
+//  (Dés)active le bouton « Lien figure » selon la vue courante, le mode lumineux (pas de
+//  sens en lumière blanche, plusieurs courbes superposées, cf. syncGraphModeBlanche) ET la
+//  forme de l'ouverture : sans sens non plus pour la fente horizontale, où le graphe I(x) —
+//  toujours tracé selon l'axe de diffraction, ici vertical à l'écran — ne correspond plus à
+//  l'axe HORIZONTAL que fracXVueEcran (scene.js) mappe sur la vue Écran (cf. ARCHITECTURE.md
+//  §Fente horizontale, limitation connue). Coupe le mode si l'une des conditions cesse d'être
+//  remplie. Appelée par scene.js → setSceneView(), ui.js → updateMaskShape() et par
+//  syncGraphModeBlanche() ci-dessous.
 // ─────────────────────────────────────────────────────────────────────
 function syncGraphLienDisponibilite() {
-  const actif = sim.view === 'screen' && sim.lightSource !== 'blanche';
+  const actif = sim.view === 'screen' && sim.lightSource !== 'blanche' && sim.maskShape !== 'fente_h';
   const btn = document.getElementById('btn-graph-lien');
   if (btn) btn.disabled = !actif;
   if (!actif && graphLienMode) {
