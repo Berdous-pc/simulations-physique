@@ -21,6 +21,7 @@ const sim = {
   beamMode: 'off', // 'off' (aucun faisceau) | 'laserOnly' (laser→fente) | 'visible' (laser + diffracté)
   showLengths: false, // afficher les doubles flèches de mesure d, D, L
   view: '3d',      // '3d' | 'top' | 'side' | 'screen'
+  maskShape: 'fente', // 'fente' | 'carre' | 'cercle' | 'fil' — forme de l'ouverture de la diapositive
 
   // Demi-largeur physique de l'écran simulé (m) — fixe, écran réel de TP 25×15 cm, cf. ARCHITECTURE.md
   screenHalfWidth: 0.125
@@ -32,6 +33,18 @@ const sim = {
 //    des <input type=range> du panneau, pas dupliquées ici.
 const A_MIN = 20, A_MAX = 500;
 
+// ── Formes d'ouverture disponibles pour la diapositive ──
+// `aLabel` : texte du <label> du slider `a` (son sens physique change selon la forme — rayon,
+// côté, largeur ou diamètre du fil — mais garde les mêmes bornes A_MIN/A_MAX ci-dessus, la
+// représentation 3D de la diapo étant de toute façon schématique, cf. largeurFenteVisuelle dans
+// scene.js, pas à l'échelle réelle).
+const MASK_SHAPES = {
+  fente:  { label: 'Fente simple',               aLabel: "Largeur de la fente a" },
+  carre:  { label: 'Trou carré',                 aLabel: "Côté du trou carré a" },
+  cercle: { label: 'Trou circulaire',             aLabel: "Rayon du trou circulaire a" },
+  fil:    { label: 'Fil (fente complémentaire)',  aLabel: "Diamètre du fil a" }
+};
+
 // ── Bornes du réglage de distance laser-fente d (m) et longueur totale du banc ──
 // La borne max de D suit d en temps réel pour que d+D ne dépasse jamais la
 // longueur de la table (banc de TP réel, cf. scene.js) : Dmax(d) = BANC_LONGUEUR_M - d.
@@ -42,36 +55,63 @@ function dMaxPourPetitD(d_m) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-//  Écart angulaire du m-ième minimum de diffraction : sin θ ≈ m·λ/a.
-//  Renvoie θ en radians (petit angle, valide dans tout le domaine réglable).
-//  m=1 → 1er minimum (limite de la tache centrale), m=2 → limite de la
-//  1ère tache secondaire, etc.
+//  Écart angulaire du m-ième minimum de diffraction pour une ouverture séparable
+//  (fente/carré/fil, zéros de sinc) : sin θ ≈ m·λ/a. Renvoie θ en radians (petit angle,
+//  valide dans tout le domaine réglable). m=1 → 1er minimum (limite de la tache centrale),
+//  m=2 → limite de la 1ère tache secondaire, etc. Non utilisée pour le cercle (zéros de la
+//  fonction de Bessel J1, pas des multiples entiers du 1er — cf. thetaPremierMinimum
+//  ci-dessous, seule m=1 est utile ailleurs dans le code).
 // ─────────────────────────────────────────────────────────────────────
 function thetaMinimum(lambda_nm, a_um, m) {
   const lambda = lambda_nm * 1e-9;
   const a = a_um * 1e-6;
   return m * lambda / a;
 }
-function thetaPremierMinimum(lambda_nm, a_um) {
+
+// ─────────────────────────────────────────────────────────────────────
+//  Écart angulaire du 1er minimum (limite de la tache centrale), généralisé par forme
+//  d'ouverture : sin θ1 = facteur·λ/D_car, où D_car est la dimension caractéristique de
+//  l'ouverture dans le sens de propagation de la mesure (largeur/côté/diamètre-du-fil pour
+//  les formes séparables ; DIAMÈTRE, soit 2×a_um puisque a_um est le RAYON pour le cercle,
+//  cf. MASK_SHAPES) et facteur=1 (zéro de sinc) sauf pour le cercle où facteur=1,22 (1er
+//  zéro de J1, anneau d'Airy).
+// ─────────────────────────────────────────────────────────────────────
+function thetaPremierMinimum(lambda_nm, a_um, shape = sim.maskShape) {
+  if (shape === 'cercle') {
+    const lambda = lambda_nm * 1e-9;
+    const diametre = 2 * a_um * 1e-6;
+    return 1.22 * lambda / diametre;
+  }
   return thetaMinimum(lambda_nm, a_um, 1);
 }
 
 // ─────────────────────────────────────────────────────────────────────
-//  Position du m-ième minimum sur l'écran (m), à distance D (m).
+//  Position du m-ième minimum sur l'écran (m), à distance D (m). Cf. thetaMinimum — formes
+//  séparables uniquement (pas le cercle, cf. thetaPremierMinimum).
 // ─────────────────────────────────────────────────────────────────────
 function xMinimum(lambda_nm, a_um, D_m, m) {
   return Math.tan(thetaMinimum(lambda_nm, a_um, m)) * D_m;
 }
-function xPremierMinimum(lambda_nm, a_um, D_m) {
-  return xMinimum(lambda_nm, a_um, D_m, 1);
+function xPremierMinimum(lambda_nm, a_um, D_m, shape = sim.maskShape) {
+  return Math.tan(thetaPremierMinimum(lambda_nm, a_um, shape)) * D_m;
 }
 
 // ─────────────────────────────────────────────────────────────────────
-//  Intensité diffractée normalisée en un point d'abscisse x (m) de l'écran.
-//  Formule de Fraunhofer pour une fente simple : I(θ) = I0 · sinc²(π·a·sinθ/λ).
+//  Intensité diffractée normalisée en un point d'abscisse x (m) de l'écran, pour une
+//  ouverture séparable (fente, carré, fil) — formule de Fraunhofer : I(θ) = I0 · sinc²(π·a·sinθ/λ).
 //  sinθ = x / √(x²+D²) (exacte, pas d'approximation petit angle sur θ lui-même).
+//  Carré : la coupe horizontale (y=0) d'une ouverture carrée séparable (I(x,y)=Ix(x)·Iy(y))
+//  suit EXACTEMENT la même formule que la fente, avec `a` = côté — aucune formule différente
+//  nécessaire.
+//  Fil : par le principe de Babinet, un fil opaque de largeur `a` (complémentaire d'une fente
+//  de même largeur) donne, PARTOUT SAUF au centre exact (θ=0, où le faisceau non diffracté
+//  domine), EXACTEMENT la même figure d'interférence que la fente complémentaire — même
+//  amplitude au signe près, donc même intensité. Réutiliser cette même formule ici est donc
+//  physiquement correct hors du centre ; au centre, elle renvoie 1 comme un maximum central
+//  ordinaire (simplification pédagogique assumée, plutôt que le pic non diffracté réel,
+//  beaucoup plus intense et non représentatif d'une diffraction).
 // ─────────────────────────────────────────────────────────────────────
-function intensiteFente(x_m, lambda_nm, a_um, D_m) {
+function intensiteSinc(x_m, lambda_nm, a_um, D_m) {
   const lambda = lambda_nm * 1e-9;
   const a = a_um * 1e-6;
   const sinTheta = x_m / Math.sqrt(x_m * x_m + D_m * D_m);
@@ -79,6 +119,57 @@ function intensiteFente(x_m, lambda_nm, a_um, D_m) {
   if (Math.abs(beta) < 1e-6) return 1;
   const s = Math.sin(beta) / beta;
   return s * s;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Approximation rationnelle standard de la fonction de Bessel J1 (Abramowitz & Stegun,
+//  9.4.5/9.4.6 — deux branches, x≤3 et x>3), précision ~1e-8. Aucune dépendance externe,
+//  cohérent avec le choix déjà fait pour la FFT (implémentation maison, cf. fft1D/fft2D).
+// ─────────────────────────────────────────────────────────────────────
+function besselJ1(x) {
+  const ax = Math.abs(x);
+  let resultat;
+  if (ax < 3) {
+    const y = (x / 3) * (x / 3);
+    resultat = x * (0.5 + y * (-0.56249985 + y * (0.21093573 + y * (-0.03954289 +
+      y * (0.00443319 + y * (-0.00031761 + y * 0.00001109))))));
+  } else {
+    const y = 3 / ax;
+    const f1 = 0.79788456 + y * (0.00000156 + y * (0.01659667 + y * (0.00017105 +
+      y * (-0.00249511 + y * (0.00113653 - y * 0.00020033)))));
+    const theta1 = ax - 2.35619449 + y * (0.12499612 + y * (0.00005650 + y * (-0.00637879 +
+      y * (0.00074348 + y * (0.00079824 - y * 0.00029166)))));
+    resultat = f1 * Math.cos(theta1) / Math.sqrt(ax);
+    if (x < 0) resultat = -resultat;
+  }
+  return resultat;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Intensité diffractée normalisée (tache d'Airy) pour un trou circulaire de rayon a_um.
+//  I(v) = [2·J1(v)/v]², v = π·D·sinθ/λ, D = diamètre = 2·a_um (a_um est le RAYON, cf.
+//  MASK_SHAPES). Non séparable, mais fonction fermée exacte malgré tout (pas d'approximation
+//  petit angle sur θ, même construction que intensiteSinc).
+// ─────────────────────────────────────────────────────────────────────
+function intensiteAiry(x_m, lambda_nm, a_um, D_m) {
+  const lambda = lambda_nm * 1e-9;
+  const diametre = 2 * a_um * 1e-6;
+  const sinTheta = x_m / Math.sqrt(x_m * x_m + D_m * D_m);
+  const v = Math.PI * diametre * sinTheta / lambda;
+  if (Math.abs(v) < 1e-6) return 1;
+  const s = 2 * besselJ1(v) / v;
+  return s * s;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Intensité diffractée normalisée en un point d'abscisse x (m) de l'écran — dispatch par
+//  forme d'ouverture (cf. sim.maskShape/MASK_SHAPES). SEULE source pour le graphe I(x) et les
+//  encarts de valeurs (θ, position des minima) — jamais le pipeline FFT (texture d'écran,
+//  enveloppe 3D), cf. discussion de conception plus bas.
+// ─────────────────────────────────────────────────────────────────────
+function intensiteOuverture(x_m, lambda_nm, a_um, D_m, shape = sim.maskShape) {
+  if (shape === 'cercle') return intensiteAiry(x_m, lambda_nm, a_um, D_m);
+  return intensiteSinc(x_m, lambda_nm, a_um, D_m);
 }
 
 // Diamètre réel du faisceau laser au niveau de la fente (mm) — sert à la fois au
@@ -105,7 +196,7 @@ function largeurFaisceauGaussien(lambda_nm, D_m) {
 // ═══════════════════════════════════════════════════════════════════════
 //  Diffraction par FFT — infrastructure généralisable (cf. discussion de conception)
 //
-//  intensiteFente() ci-dessus (formule fermée, exacte) reste la SEULE source pour le graphe
+//  intensiteOuverture() ci-dessus (formule fermée, exacte) reste la SEULE source pour le graphe
 //  I(x) et les encarts de valeurs (θ, position des minima) — elle n'est pas touchée par ce
 //  qui suit. L'infrastructure ci-dessous est une source ALTERNATIVE, utilisée uniquement par
 //  scene.js pour la texture d'écran et l'enveloppe 3D du faisceau, pensée pour rester valable
@@ -237,18 +328,24 @@ function fft2D(re, im, N, invert) {
 //  Construit le champ diffracté par la fente (masque rectangulaire a × FENTE_HAUTEUR_CM,
 //  éclairé par le profil gaussien du faisceau incident, cf. discussion de conception),
 //  propagé en champ lointain par FFT2D. Renvoie une grille d'intensité normalisée (pic
-//  central = 1, même convention que intensiteFente()) ainsi que λ et D, réutilisés par
+//  central = 1, même convention que intensiteOuverture()) ainsi que λ et D, réutilisés par
 //  échantillonnerChamp() pour convertir position écran → indice de grille (relation
 //  géométrique EXACTE, cf. sa docstring — pas une simple mise à l'échelle par λ·D).
 //  Appelée une seule fois par changement de paramètre (scene.js → updateSceneParams), le
 //  résultat est ensuite échantillonné en de nombreux points (texture, enveloppe 3D) sans
 //  recalcul — la FFT elle-même est le seul poste coûteux.
 // ─────────────────────────────────────────────────────────────────────
-function construireChampOuverture(lambda_nm, a_um, D_m) {
+function construireChampOuverture(lambda_nm, a_um, D_m, shape = sim.maskShape) {
   const N = FFT_N;
   const lambda_m = lambda_nm * 1e-9;
   const a_m = a_um * 1e-6;
-  const FFT_FENETRE_M = FFT_FENETRE_FACTEUR * a_m; // cf. discussion de conception ci-dessus
+  // Dimension caractéristique PLEINE de l'ouverture, utilisée pour dimensionner la fenêtre FFT
+  // (cf. discussion de conception ci-dessus) : diamètre (2·a_m) pour le cercle, puisque a_um en
+  // est le RAYON (cf. MASK_SHAPES) — sinon la fenêtre serait deux fois trop étroite par rapport
+  // aux autres formes (où a_um est déjà une dimension pleine), cassant le ratio couverture/1er-
+  // minimum vérifié à l'origine pour FFT_FENETRE_FACTEUR (cf. piège §4 de PISTES_EVOLUTION.md).
+  const extent_m = shape === 'cercle' ? 2 * a_m : a_m;
+  const FFT_FENETRE_M = FFT_FENETRE_FACTEUR * extent_m;
   const pas = FFT_FENETRE_M / N;
   const h_m = FENTE_HAUTEUR_CM / 100;
   const w0 = FAISCEAU_DIAMETRE_MM / 2 / 1000; // rayon du faisceau au col (m) — même valeur que largeurFaisceauGaussien
@@ -256,13 +353,32 @@ function construireChampOuverture(lambda_nm, a_um, D_m) {
   const re = _fftRe, im = _fftIm;
   re.fill(0); im.fill(0); // champ incident réel (pas de courbure de phase au col, cf. approximation ci-dessus) : im reste nul
 
+  // Masque de l'ouverture, par forme (cf. sim.maskShape/MASK_SHAPES) :
+  //  - fente  : rectangle a × FENTE_HAUTEUR_CM (comportement historique, inchangé)
+  //  - carre  : rectangle a × a (côté réglable dans les deux sens, cf. §2 de PISTES_EVOLUTION.md)
+  //  - cercle : disque de rayon a (a_um = rayon, cf. MASK_SHAPES)
+  //  - fil    : PAS un masque complémentaire de la fente ici (essayé, mais le champ juste après
+  //    un fil est dominé par le faisceau non diffracté qui passe presque intégralement à côté —
+  //    une fois la grille FFT normalisée par CE pic géant, les franges de Babinet, ~1000× plus
+  //    faibles, deviennent numériquement invisibles). Comme intensiteSinc() ci-dessus, on
+  //    réutilise directement le masque de la fente : la figure de diffraction EST rigoureusement
+  //    la même hors du centre (Babinet), et c'est cette figure-là (pas le pic non diffracté)
+  //    qu'on veut montrer sur la texture d'écran/l'enveloppe 3D — seule la représentation 3D de
+  //    la diapositive (le fil, cf. scene.js) reste visuellement complémentaire de la fente.
   for (let j = 0; j < N; j++) {
     const y = (j - N / 2) * pas;
-    if (Math.abs(y) >= h_m / 2) continue; // hors fente en y (n'arrive jamais en pratique, cf. commentaire FENTE_HAUTEUR_CM)
     const base = j * N;
     for (let i = 0; i < N; i++) {
       const x = (i - N / 2) * pas;
-      if (Math.abs(x) >= a_m / 2) continue; // hors fente en x
+      let ouvert;
+      if (shape === 'carre') {
+        ouvert = Math.abs(x) < a_m / 2 && Math.abs(y) < a_m / 2;
+      } else if (shape === 'cercle') {
+        ouvert = (x * x + y * y) < a_m * a_m;
+      } else { // fente / fil (cf. commentaire ci-dessus)
+        ouvert = Math.abs(x) < a_m / 2 && Math.abs(y) < h_m / 2;
+      }
+      if (!ouvert) continue;
       // Profil gaussien du faisceau incident, en AMPLITUDE (exp(-r²/w0²)) — son carré, obtenu
       // plus loin par |FFT|², redonne la convention d'intensité laser standard I∝exp(-2r²/w0²).
       re[base + i] = Math.exp(-(x * x + y * y) / (w0 * w0));
@@ -300,7 +416,7 @@ function construireChampOuverture(lambda_nm, a_um, D_m) {
 //  de visible. Renvoie 0 hors de la zone couverte par la grille (cf. commentaire FFT_FENETRE_M).
 //
 //  Conversion position → indice de grille EXACTE (sinθ = x/√(x²+D²), même relation
-//  géométrique que intensiteFente() — cf. sa docstring), PAS l'approximation paraxiale
+//  géométrique que intensiteOuverture() — cf. sa docstring), PAS l'approximation paraxiale
 //  x_écran ≈ λ·D·fx utilisée jusqu'ici : les deux coïncident pour un petit angle (D grand
 //  devant x), mais divergent nettement quand x devient comparable à D (D réglable jusqu'à
 //  un minimum bien inférieur à screenHalfWidth) — ce qui décalait les minima de la texture
@@ -336,7 +452,7 @@ function echantillonnerIntensite(n, xMin, xMax, lambda_nm = sim.lambda) {
   const lo = xMin ?? -sim.screenHalfWidth, hi = xMax ?? sim.screenHalfWidth;
   for (let i = 0; i < n; i++) {
     const x = lo + ((hi - lo) * i) / (n - 1);
-    pts[i] = { x, I: intensiteFente(x, lambda_nm, sim.a, sim.D) };
+    pts[i] = { x, I: intensiteOuverture(x, lambda_nm, sim.a, sim.D) };
   }
   return pts;
 }
@@ -446,7 +562,7 @@ function intensiteBlancheComposantes(x_m, a_um, D_m) {
   let r = 0, g = 0, b = 0;
   for (let i = 0; i < BLANCHE_COULEURS.length; i++) {
     const c = BLANCHE_COULEURS[i];
-    const I = Math.sqrt(intensiteFente(x_m, c.lambda, a_um, D_m));
+    const I = Math.sqrt(intensiteOuverture(x_m, c.lambda, a_um, D_m));
     const rgb = longueurOndeVersRGB(c.lambda);
     const cr = I * rgb.r, cg = I * rgb.g, cb = I * rgb.b;
     composantes[i] = { r: cr, g: cg, b: cb };
@@ -483,4 +599,5 @@ function resetParams() {
   sim.showRays = false;
   sim.beamMode = 'off';
   sim.showLengths = false;
+  sim.maskShape = 'fente';
 }

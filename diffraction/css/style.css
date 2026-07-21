@@ -328,6 +328,12 @@ main {
 .param-row label span { color: #2a5080; font-weight: 600; }
 input[type=range] { width: 100%; accent-color: #4a7aaa; cursor: pointer; }
 input[type=range]:disabled { accent-color: #b0aca4; cursor: not-allowed; }
+#sl-mask-shape {
+  width: 100%; padding: 6px 8px; border: 1px solid #c8c0b4; border-radius: 6px;
+  background: #ece8e0; color: #2c3e50; font-family: inherit;
+  font-size: clamp(12px, 1.1vw, 14px); font-weight: 600; cursor: pointer;
+}
+#sl-mask-shape:hover { background: #ddd8ce; }
 .param-row.disabled label { color: #a8a49c; }
 .param-row.disabled label span { color: #a8a49c; }
 .input-hint { font-size: clamp(10px, 0.9vw, 13px); color: #7a8a96; }

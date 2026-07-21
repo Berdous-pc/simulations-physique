@@ -24,6 +24,27 @@ function updateParam(name, val) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+//  Change la forme de l'ouverture de la diapositive (cf. sim.js → MASK_SHAPES). Le sens
+//  physique du slider `a` change avec la forme (rayon/côté/largeur/diamètre du fil) — son
+//  label est mis à jour en conséquence, pas ses bornes (schématiques, cf. MASK_SHAPES).
+// ─────────────────────────────────────────────────────────────────────
+function updateMaskShape(shape) {
+  sim.maskShape = shape;
+  syncMaskShapeUI();
+  updateSceneParams();
+  updateReadouts();
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Resynchronise le sélecteur de forme et le label du slider `a` sur sim.maskShape — appelée
+//  après un changement de forme, un reset ou à l'initialisation.
+// ─────────────────────────────────────────────────────────────────────
+function syncMaskShapeUI() {
+  document.getElementById('sl-mask-shape').value = sim.maskShape;
+  document.getElementById('lbl-a-titre').textContent = MASK_SHAPES[sim.maskShape].aLabel;
+}
+
+// ─────────────────────────────────────────────────────────────────────
 //  Recalcule la borne max de D (dépend de d, cf. sim.js → dMaxPourPetitD)
 //  et l'applique au slider D ; si D dépasse la nouvelle borne, le cappe.
 // ─────────────────────────────────────────────────────────────────────
@@ -173,6 +194,7 @@ function resetSim() {
   renderBeamModeLabel();
   renderLightSourceLabel();
   syncModeBlancheUI();
+  syncMaskShapeUI();
 
   gview.xMin = -sim.screenHalfWidth;
   gview.xMax = sim.screenHalfWidth;
@@ -317,6 +339,7 @@ function init() {
   renderBeamModeLabel();
   renderLightSourceLabel();
   syncModeBlancheUI();
+  syncMaskShapeUI();
   resize();
   updateReadouts();
   requestAnimationFrame(loop);

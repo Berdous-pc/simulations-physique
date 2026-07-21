@@ -134,8 +134,17 @@
         <input type="range" id="sl-lambda" min="400" max="700" step="1" value="633"
                oninput="updateParam('lambda', this.value)">
       </div>
+      <div class="param-row" id="row-mask-shape">
+        <label>Forme de l'ouverture</label>
+        <select id="sl-mask-shape" onchange="updateMaskShape(this.value)">
+          <option value="fente">Fente simple</option>
+          <option value="carre">Trou carré</option>
+          <option value="cercle">Trou circulaire</option>
+          <option value="fil">Fil (fente complémentaire)</option>
+        </select>
+      </div>
       <div class="param-row">
-        <label>Largeur de la fente a <span><span id="lbl-a">100</span> µm</span></label>
+        <label><span id="lbl-a-titre">Largeur de la fente a</span> <span><span id="lbl-a">100</span> µm</span></label>
         <input type="range" id="sl-a" min="20" max="500" step="1" value="100"
                oninput="updateParam('a', this.value)">
       </div>

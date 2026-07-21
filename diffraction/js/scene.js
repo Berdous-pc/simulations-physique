@@ -54,7 +54,7 @@ const DECOMPOSE_VITESSE = 1 / (DECOMPOSE_DUREE_S * 60); // pas par frame, en sup
 // (oninput se déclenche en continu pendant un glissement) serait perceptiblement saccadé —
 // on attend un court silence (ENVELOPPES_BLANCHE_DEBOUNCE_MS) après le dernier changement
 // avant de relancer les 6 FFT. Rien d'autre (texture d'écran, graphe, mono) n'est concerné :
-// ces calculs restent analytiques (intensiteFente) ou déjà bon marché.
+// ces calculs restent analytiques (intensiteOuverture) ou déjà bon marché.
 let enveloppesBlancheTimer = null;
 const ENVELOPPES_BLANCHE_DEBOUNCE_MS = 50;
 
@@ -192,7 +192,7 @@ let x1CmCourant = 0; // dernière valeur physique (cf. updateSceneParams), réut
 // Correspondance a (µm, physique) → largeur visuelle de la fente (cm, schématique).
 // Cf. ARCHITECTURE.md : la fente réelle (dixièmes de mm) est invisible à l'échelle
 // du banc (mètres) ; elle est donc dessinée agrandie, mais sa valeur RÉELLE
-// (sim.a) reste seule utilisée dans les calculs physiques (intensiteFente, etc.).
+// (sim.a) reste seule utilisée dans les calculs physiques (intensiteOuverture, etc.).
 // Plage resserrée : le maximum correspond à l'ancien minimum (0.4 cm), et le reste de la
 // plage est compressé dans la même proportion (facteur 0.4/2.5) pour garder la même forme
 // de gradation sur tout le slider. Nécessaire depuis que SLIT_BAND_HEIGHT est passé à 80%
@@ -202,6 +202,48 @@ const LARGEUR_FENTE_MAX_CM = 0.4, LARGEUR_FENTE_MIN_CM = 0.4 * (0.4 / 2.5);
 function largeurFenteVisuelle(a_um) {
   const t = (a_um - A_MIN) / (A_MAX - A_MIN);
   return LARGEUR_FENTE_MIN_CM + t * (LARGEUR_FENTE_MAX_CM - LARGEUR_FENTE_MIN_CM);
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Reconstruit slideCercleMesh : un vrai trou circulaire de rayon rayon_cm, découpé dans le
+//  carré SLIDE_SIZE de la lame via THREE.Shape + un trou (THREE.Path via absarc) — la seule
+//  des 4 formes qui ne peut pas s'obtenir avec des boîtes assemblées (cf. construireObjets),
+//  sans recourir à du CSG. Extrudée sur SLIDE_THICK puis recentrée en z (ExtrudeGeometry
+//  extrude par défaut de 0 à depth, pas symétriquement autour de 0 comme BoxGeometry).
+// ─────────────────────────────────────────────────────────────────────
+function reconstruireSlideCercle(rayon_cm) {
+  const half = SLIDE_SIZE / 2;
+  const contour = new THREE.Shape();
+  contour.moveTo(-half, -half);
+  contour.lineTo(half, -half);
+  contour.lineTo(half, half);
+  contour.lineTo(-half, half);
+  contour.closePath();
+  const trou = new THREE.Path();
+  trou.absarc(0, 0, rayon_cm, 0, Math.PI * 2, false);
+  contour.holes.push(trou);
+  slideCercleMesh.geometry.dispose();
+  slideCercleMesh.geometry = new THREE.ExtrudeGeometry(contour, { depth: SLIDE_THICK, bevelEnabled: false });
+  slideCercleMesh.geometry.translate(0, 0, -SLIDE_THICK / 2);
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Visibilité des objets de la lame porte-fente : croise la forme active (sim.maskShape, cf.
+//  construireObjets pour le détail de chaque cas) et la vue Écran (qui masque tout le banc,
+//  comme laserBody/supportSlide, cf. setSceneView). Appelée depuis updateSceneParams()
+//  (changement de forme/paramètre) et setSceneView() (changement de vue) — mêmes déclencheurs
+//  que updateBeamVisibility (cf. ARCHITECTURE.md).
+// ─────────────────────────────────────────────────────────────────────
+function refreshSlideVisibility() {
+  const cacherBanc = (sim.view === 'screen');
+  const shape = sim.maskShape;
+  const cadreVisible = !cacherBanc && (shape === 'fente' || shape === 'carre' || shape === 'fil');
+  topBand.visible = cadreVisible;
+  bottomBand.visible = cadreVisible;
+  wallLeft.visible = !cacherBanc && (shape === 'fente' || shape === 'carre');
+  wallRight.visible = wallLeft.visible;
+  wallCenter.visible = !cacherBanc && shape === 'fil';
+  slideCercleMesh.visible = !cacherBanc && shape === 'cercle';
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -292,60 +334,103 @@ const ENVELOPPE_GAMMA_LUMINOSITE = 1.6;
 //  unitaire.
 //
 //  I(x) ci-dessus vient de `champ` (paramètre, cf. appelant), construit par
-//  construireChampOuverture() → FFT — PAS de intensiteFente() directement (celle-ci reste
+//  construireChampOuverture() → FFT — PAS de intensiteOuverture() directement (celle-ci reste
 //  réservée au graphe et aux encarts, cf. discussion de conception). Les deux sources
 //  coïncident pour une fente (mêmes minima/maxima), mais seule celle-ci (le champ FFT) sera
 //  concernée le jour où la forme de l'ouverture changera.
 // ─────────────────────────────────────────────────────────────────────
-function construireGeometrieEnveloppe(zNear, zFar, hNear, wMax, champ) {
+function construireGeometrieEnveloppe(zNear, zFar, hNear, wMax, champ, shape = sim.maskShape) {
   const n = ENVELOPPE_N_TRANCHES, m = ENVELOPPE_M_TRANCHES, kMax = ENVELOPPE_K_COUCHES;
   const halfW = sim.screenHalfWidth; // m — même étendue physique que la texture d'écran
-  // xFars[k] = abscisse à l'écran (fixe, non tapée) du rayon auquel appartient le sommet
-  // d'indice k — sert au shader (cf. construireObjets) à savoir si CE rayon appartient à la
-  // tache centrale, indépendamment de sa position tapée courante (qui, elle, tend vers 0 pour
-  // TOUS les rayons près de la fente — cf. discussion de conception).
-  const positions = [], colors = [], xFars = [], indices = [];
+  // xFars[k]/yFars[k] = position à l'écran (fixe, non tapée) du rayon auquel appartient le
+  // sommet d'indice k — sert au shader (cf. construireObjets) à savoir si CE rayon appartient
+  // à la tache centrale, indépendamment de sa position tapée courante (qui, elle, tend vers 0
+  // pour TOUS les rayons près de la fente — cf. discussion de conception).
+  const positions = [], colors = [], xFars = [], yFars = [], indices = [];
+
+  // Carré/cercle diffractent RÉELLEMENT en y (pas seulement le faisceau incident qui les
+  // traverse) : leur enveloppe a besoin d'un vrai balayage 2D du champ FFT (silhouette ET
+  // luminosité), au lieu de la factorisation hauteur(x) = wMax × facteur_horizontal, valable
+  // seulement pour fente/fil (hauteur non contrainte par le masque à cette échelle pour ces
+  // deux formes, cf. FENTE_HAUTEUR_CM) — cf. §3 de PISTES_EVOLUTION.md.
+  const balayage2D = (shape === 'carre' || shape === 'cercle');
+  const SEUIL_ENVELOPPE_NEGLIGEABLE = 1e-3; // relatif au pic central (champ normalisé à 1, cf. construireChampOuverture)
+  const PAS_BALAYAGE_Y = 96;
+  // Borne du balayage vertical : PAS sim.screenHalfWidth (12,5 cm, beaucoup trop grossier — la
+  // figure réelle tient souvent sur quelques mm, cf. FFT_FENETRE_FACTEUR dans sim.js) mais la
+  // portée MAXIMALE que la grille FFT peut effectivement représenter (au-delà,
+  // echantillonnerChamp renvoie 0 quel que soit y, cf. sa docstring) — même principe que le
+  // ratio couverture/1er-minimum déjà utilisé pour dimensionner la fenêtre FFT elle-même
+  // (indépendant de a/λ/D, cf. sim.js). Sans cette borne, le pas du balayage (halfW/PAS) était
+  // ~1000× plus grossier que la portée réelle de la figure à petit a, donnant une silhouette
+  // quantifiée/artefactée au lieu d'un contour lisse (constaté par l'utilisateur — cercle pas
+  // du tout circulaire).
+  let yBalayageMax_m = halfW;
+  if (balayage2D) {
+    const sinThetaMax = Math.min((champ.N / 2) * champ.lambda_m / champ.FFT_FENETRE_M, 0.999);
+    yBalayageMax_m = Math.min(halfW, champ.D_m * sinThetaMax / Math.sqrt(1 - sinThetaMax * sinThetaMax));
+  }
 
   // Par colonne (x) : position, facteur géométrique (racine carrée, cf. commentaire plus bas),
-  // facteur de LUMINOSITÉ (plus compressif, cf. ENVELOPPE_GAMMA_LUMINOSITE) et demi-hauteur
-  // cible côté écran — calculés une fois, réutilisés à la fois par la grille écran et par les
-  // rubans de chaque rangée.
-  const xCm = new Array(n + 1), ixGeomCol = new Array(n + 1), ixLumCol = new Array(n + 1), halfHFar = new Array(n + 1);
+  // facteur de LUMINOSITÉ (plus compressif, cf. ENVELOPPE_GAMMA_LUMINOSITE — fente/fil
+  // seulement, cf. ci-dessous) et demi-hauteur cible côté écran — calculés une fois, réutilisés
+  // à la fois par la grille écran et par les rubans de chaque rangée.
+  const xCm = new Array(n + 1), ixLumCol = new Array(n + 1), halfHFar = new Array(n + 1);
   for (let i = 0; i <= n; i++) {
     const x_m = -halfW + (2 * halfW * i) / n;
     xCm[i] = x_m * 100;
     const Ix = echantillonnerChamp(champ, x_m, 0); // y=0 : cf. commentaire à l'appel dans updateSceneParams
-    // Racine carrée, même compression que la texture d'écran (cf. updateSceneParams) — sert
-    // ICI uniquement à la GÉOMÉTRIE (largeur de la silhouette, cf. halfHFar) : sans elle les
-    // taches secondaires seraient géométriquement invisibles (silhouette collée à l'axe).
-    ixGeomCol[i] = Math.sqrt(Ix);
-    halfHFar[i] = wMax * ixGeomCol[i]; // pince à 0 aux minima, max=wMax au centre (Ix=1)
-    // Luminosité affichée de l'ENVELOPPE (pas la texture d'écran, cf. discussion de
-    // conception) : exposant plus dur que la racine carrée — la silhouette reste visible
-    // (ci-dessus) mais l'éclat retombe beaucoup plus vite en s'éloignant du centre, pour ne
-    // pas donner l'impression que les taches secondaires sont presque aussi lumineuses que la
-    // tache centrale.
-    ixLumCol[i] = Math.pow(Ix, ENVELOPPE_GAMMA_LUMINOSITE);
+    if (balayage2D) {
+      // Cherche le plus grand y où le champ reste non négligeable À CETTE ABSCISSE (balayage
+      // du bord vers le centre : robuste même si l'intensité n'est pas monotone en y, ce qui
+      // exclut une simple bissection — cas des anneaux d'Airy du cercle).
+      let yLimite_m = 0;
+      for (let s = PAS_BALAYAGE_Y; s >= 1; s--) {
+        const y_scan = (yBalayageMax_m * s) / PAS_BALAYAGE_Y;
+        if (echantillonnerChamp(champ, x_m, y_scan) > SEUIL_ENVELOPPE_NEGLIGEABLE) { yLimite_m = y_scan; break; }
+      }
+      halfHFar[i] = yLimite_m * 100;
+    } else {
+      // Racine carrée, même compression que la texture d'écran (cf. updateSceneParams) — sert
+      // ICI uniquement à la GÉOMÉTRIE (largeur de la silhouette) : sans elle les taches
+      // secondaires seraient géométriquement invisibles (silhouette collée à l'axe).
+      halfHFar[i] = wMax * Math.sqrt(Ix); // pince à 0 aux minima, max=wMax au centre (Ix=1)
+      // Luminosité affichée de l'ENVELOPPE (pas la texture d'écran, cf. discussion de
+      // conception) : exposant plus dur que la racine carrée — la silhouette reste visible
+      // (ci-dessus) mais l'éclat retombe beaucoup plus vite en s'éloignant du centre, pour ne
+      // pas donner l'impression que les taches secondaires sont presque aussi lumineuses que
+      // la tache centrale.
+      ixLumCol[i] = Math.pow(Ix, ENVELOPPE_GAMMA_LUMINOSITE);
+    }
   }
 
-  // Grille complète côté écran (z=zFar) : dégradé vertical Iy réel en plus du dégradé
-  // horizontal (double codage, cf. commentaire à la construction) — Iy s'applique à la
-  // luminosité (ixLumCol), pas à la géométrie (déjà fixée par halfHFar/ixGeomCol ci-dessus).
+  // Grille complète côté écran (z=zFar). Fente/fil : dégradé vertical Iy réel (profil gaussien
+  // du faisceau incident, indépendant de x) en plus du dégradé horizontal (double codage, cf.
+  // commentaire à la construction). Carré/cercle : luminosité échantillonnée DIRECTEMENT dans
+  // le champ 2D réel à la position (x,y) de chaque sommet — la silhouette (halfHFar) est déjà
+  // le vrai contour du champ, calculée ci-dessus.
   const grilleFar = [];
   for (let i = 0; i <= n; i++) {
+    const x_m = xCm[i] / 100;
     const halfH = halfHFar[i];
     const col = new Array(m + 1);
     for (let j = 0; j <= m; j++) {
       const y_cm = halfH === 0 ? 0 : -halfH + (2 * halfH * j) / m;
-      // Profil gaussien réel (même formule que le profil vertical de la texture d'écran,
-      // cf. updateSceneParams), évalué à la position y physique réelle — indépendant du
-      // fait que la plage y explorée ici soit compressée par ixGeomCol[i].
-      const Iy = Math.exp(-2 * y_cm * y_cm / (wMax * wMax));
-      const intensite = ixLumCol[i] * Iy;
+      let intensite;
+      if (balayage2D) {
+        intensite = Math.pow(echantillonnerChamp(champ, x_m, y_cm / 100), ENVELOPPE_GAMMA_LUMINOSITE);
+      } else {
+        // Profil gaussien réel (même formule que le profil vertical de la texture d'écran,
+        // cf. updateSceneParams), évalué à la position y physique réelle — indépendant du
+        // fait que la plage y explorée ici soit compressée par halfHFar.
+        const Iy = Math.exp(-2 * y_cm * y_cm / (wMax * wMax));
+        intensite = ixLumCol[i] * Iy;
+      }
       col[j] = positions.length / 3;
       positions.push(xCm[i], y_cm, zFar);
       colors.push(intensite, intensite, intensite);
       xFars.push(xCm[i]);
+      yFars.push(y_cm);
     }
     grilleFar.push(col);
   }
@@ -390,6 +475,7 @@ function construireGeometrieEnveloppe(zNear, zFar, hNear, wMax, champ) {
         positions.push(xCm[i] * t, yNear + (yFar - yNear) * t, z);
         colors.push(intensiteFarIJ, intensiteFarIJ, intensiteFarIJ);
         xFars.push(xCm[i]);
+        yFars.push(yFar);
       }
       couches.push(ligne);
     }
@@ -433,12 +519,13 @@ function construireGeometrieEnveloppe(zNear, zFar, hNear, wMax, champ) {
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   geo.setAttribute('aXFar', new THREE.Float32BufferAttribute(xFars, 1));
+  geo.setAttribute('aYFar', new THREE.Float32BufferAttribute(yFars, 1));
   geo.setIndex(indices);
   return geo;
 }
 
 let renderer, sceneObj, camPersp, camOrtho, controls, canvasEl;
-let laserBody, beamMesh, beamEnvelopeMesh, beamDot, topBand, bottomBand, wallLeft, wallRight, screenMesh, screenTexture, screenTexCanvas, screenTexCtx;
+let laserBody, beamMesh, beamEnvelopeMesh, beamDot, topBand, bottomBand, wallLeft, wallRight, wallCenter, slideCercleMesh, screenMesh, screenTexture, screenTexCanvas, screenTexCtx;
 let raysLine, axisLine, supportLaser, supportSlide, supportScreen;
 let lengthsGroup, mesurePetitD, mesureGrandD, mesureL;
 
@@ -946,18 +1033,34 @@ function construireObjets() {
       uPlancherAlpha: { value: 0.15 },
       uXLimiteReel: { value: 1 },
       uXLimiteExagere: { value: 1 },
+      // uYLimite* : pendant vertical de uXLimite* (cf. commentaire ci-dessus), ajouté pour le
+      // trou carré/circulaire — leur 1er minimum contraint aussi y, pas seulement x (cf.
+      // appliquerXLimiteUniforms). Pour fente/fil (contrainte verticale non pertinente à cette
+      // échelle), une sentinelle très grande y est appliquée : poidsY reste alors ≈1 partout,
+      // reproduisant exactement l'ancien test 1D (uniquement sur x).
+      uYLimiteReel: { value: 1e6 },
+      uYLimiteExagere: { value: 1e6 },
+      // uPlancherRadial : 0 = test RECTANGULAIRE (produit de deux smoothstep 1D, forme exacte
+      // du 1er minimum d'un carré séparable, cf. ci-dessous) ; 1 = test RADIAL/elliptique
+      // (forme exacte du 1er anneau d'Airy — un test rectangulaire y donnait un plancher en
+      // croix/carré arrondi, visiblement pas circulaire, cf. discussion avec l'utilisateur).
+      // Fente/fil : rectangulaire aussi, sans effet (uYLimite* déjà en sentinelle).
+      uPlancherRadial: { value: 0 },
       uZNear: { value: 0 },
       uFlareLongueur: { value: 0 }
     },
     vertexShader: `
       attribute vec3 color;
       attribute float aXFar;
+      attribute float aYFar;
       varying float vIntensite;
       varying float vXFar;
+      varying float vYFar;
       varying float vZ;
       void main() {
         vIntensite = color.r;
         vXFar = aXFar;
+        vYFar = aYFar;
         vZ = position.z;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
       }
@@ -968,18 +1071,36 @@ function construireObjets() {
       uniform float uPlancherAlpha;
       uniform float uXLimiteReel;
       uniform float uXLimiteExagere;
+      uniform float uYLimiteReel;
+      uniform float uYLimiteExagere;
+      uniform float uPlancherRadial;
       uniform float uZNear;
       uniform float uFlareLongueur;
       varying float vIntensite;
       varying float vXFar;
+      varying float vYFar;
       varying float vZ;
       void main() {
-        // Fondu de la limite du plancher entre uXLimiteExagere (juste après la fente, sur
-        // uFlareLongueur) et uXLimiteReel (au-delà) — cf. commentaire à uFlareLongueur.
+        // Fondu de la limite du plancher entre uXLimiteExagere/uYLimiteExagere (juste après la
+        // fente, sur uFlareLongueur) et uXLimiteReel/uYLimiteReel (au-delà) — cf. commentaire à
+        // uFlareLongueur. Ce plancher n'est qu'une aide visuelle (pas la silhouette réelle, déjà
+        // correcte via halfHFar/luminosité, cf. construireGeometrieEnveloppe) mais sa FORME doit
+        // rester fidèle : rectangulaire (produit de deux smoothstep 1D) pour un carré séparable,
+        // radiale (cf. uPlancherRadial) pour un cercle — un test rectangulaire y donnait un
+        // plancher en croix/carré arrondi, visiblement pas circulaire.
         float tFlare = uFlareLongueur > 0.0 ? clamp((vZ - uZNear) / uFlareLongueur, 0.0, 1.0) : 1.0;
         float xLimite = mix(uXLimiteExagere, uXLimiteReel, tFlare);
-        float poidsX = 1.0 - smoothstep(xLimite * 0.85, xLimite, abs(vXFar));
-        float alpha = max(vIntensite * uOpacite, uPlancherAlpha * poidsX);
+        float yLimite = mix(uYLimiteExagere, uYLimiteReel, tFlare);
+        float poidsForme;
+        if (uPlancherRadial > 0.5) {
+          float r = length(vec2(vXFar / xLimite, vYFar / yLimite));
+          poidsForme = 1.0 - smoothstep(0.85, 1.0, r);
+        } else {
+          float poidsX = 1.0 - smoothstep(xLimite * 0.85, xLimite, abs(vXFar));
+          float poidsY = 1.0 - smoothstep(yLimite * 0.85, yLimite, abs(vYFar));
+          poidsForme = poidsX * poidsY;
+        }
+        float alpha = max(vIntensite * uOpacite, uPlancherAlpha * poidsForme);
         gl_FragColor = vec4(uColor, alpha);
       }
     `,
@@ -1028,26 +1149,32 @@ function construireObjets() {
   beamDot.position.set(0, 0, SOURCE_Z);
   sceneObj.add(beamDot);
 
-  // Lame porte-fente (7×7 cm réels) : 3 bandes pleines (haut/bas) + 2 murs latéraux
-  // encadrant la fente, tous confinés à une bande centrale de hauteur SLIT_BAND_HEIGHT
-  // (la fente n'occupe pas toute la hauteur de la lame). Pas de CSG : la "fente" est
-  // simplement l'espace laissé vide entre les deux murs latéraux.
+  // Lame porte-fente (7×7 cm réels) — géométrie dépend de la forme d'ouverture choisie
+  // (sim.maskShape, cf. sim.js → MASK_SHAPES), branchée dans updateSceneParams() :
+  //  - fente/carré : 2 bandes pleines (haut/bas) + 2 murs latéraux, tous en géométrie
+  //    UNITAIRE mise à l'échelle (pas de CSG — l'ouverture est l'espace laissé vide entre
+  //    eux) ; carré = même écartement horizontal ET vertical (bandes devenues dynamiques,
+  //    plus fixées à SLIT_BAND_HEIGHT comme avant).
+  //  - fil : bandes haut/bas comme la fente (cadre inchangé), murs latéraux cachés, remplacés
+  //    par wallCenter (fine barre centrale — le fil).
+  //  - cercle : les 4 objets ci-dessus cachés, remplacés par slideCercleMesh (vrai trou
+  //    circulaire découpé via THREE.Shape + trou, cf. reconstruireSlideCercle) : pas possible
+  //    à obtenir avec des boîtes, contrairement aux 3 autres formes.
   const slideMat = new THREE.MeshStandardMaterial({ color: 0x555a60 });
-  const marginBandH = (SLIDE_SIZE - SLIT_BAND_HEIGHT) / 2;
+  const bandGeo = new THREE.BoxGeometry(1, 1, 1);
+  topBand = new THREE.Mesh(bandGeo, slideMat);
+  bottomBand = new THREE.Mesh(bandGeo, slideMat);
+  sceneObj.add(topBand, bottomBand);
 
-  topBand = new THREE.Mesh(new THREE.BoxGeometry(SLIDE_SIZE, marginBandH, SLIDE_THICK), slideMat);
-  topBand.position.set(0, SLIT_BAND_HEIGHT / 2 + marginBandH / 2, SLIT_Z);
-  sceneObj.add(topBand);
-
-  bottomBand = new THREE.Mesh(new THREE.BoxGeometry(SLIDE_SIZE, marginBandH, SLIDE_THICK), slideMat);
-  bottomBand.position.set(0, -(SLIT_BAND_HEIGHT / 2 + marginBandH / 2), SLIT_Z);
-  sceneObj.add(bottomBand);
-
-  // Murs latéraux de la fente (géométrie unitaire mise à l'échelle, cf. updateSceneParams)
   const wallGeo = new THREE.BoxGeometry(1, 1, 1);
   wallLeft = new THREE.Mesh(wallGeo, slideMat);
   wallRight = new THREE.Mesh(wallGeo, slideMat);
-  sceneObj.add(wallLeft, wallRight);
+  wallCenter = new THREE.Mesh(wallGeo, slideMat);
+  sceneObj.add(wallLeft, wallRight, wallCenter);
+
+  // Géométrie remplacée à la demande par reconstruireSlideCercle() (placeholder vide ici).
+  slideCercleMesh = new THREE.Mesh(new THREE.BufferGeometry(), slideMat);
+  sceneObj.add(slideCercleMesh);
 
   supportSlide = creerSupport(SLIDE_SIZE + 2, 3, -SLIDE_SIZE / 2 - TABLE_Y);
   supportSlide.position.set(0, -SLIDE_SIZE / 2, SLIT_Z);
@@ -1147,6 +1274,14 @@ function construireObjets() {
 //  ils ne dépendent que de y (et de t), jamais de x — les calculer une fois par ligne plutôt
 //  que largeur×hauteur fois évite ~500× plus d'appels à Math.exp(), notable puisque cette
 //  fonction tourne en continu pendant l'animation (tickDecompose, à chaque frame).
+//
+//  Simplification assumée pour carré/cercle (diffraction verticale réelle, cf. mono ci-dessous
+//  et construireGeometrieEnveloppe) : Iy reste ici le profil gaussien du faisceau INCIDENT,
+//  jamais la vraie diffraction verticale de l'ouverture — reproduire celle-ci PAR COULEUR ET
+//  PAR COLONNE casserait justement la factorisation « par ligne » ci-dessus, sur une fonction
+//  qui tourne en continu pendant l'animation (déjà un point sensible en performance, cf.
+//  ci-dessus). La texture mono (voir plus bas), qui n'a pas cette contrainte de fréquence
+//  d'appel, reste elle exacte pour les 4 formes.
 // ─────────────────────────────────────────────────────────────────────
 function dessinerTextureEcranBlanche(t) {
   const w = screenTexCanvas.width, h = screenTexCanvas.height;
@@ -1259,16 +1394,41 @@ function updateSceneParams() {
   beamMesh.material.color.setHex(couleurHex);
   beamDot.material.color.setHex(couleurHex);
 
-  // Fente : écartement des murs selon a (largeur visuelle schématique), confinés à la
-  // bande centrale de la lame (cf. construireObjets) ; lame et support suivent SLIT_Z.
+  // Lame porte-fente : dimensionnement de tous les objets candidats selon la forme
+  // d'ouverture (sim.maskShape, cf. la docstring de construireObjets pour le détail de
+  // chaque cas) — la visibilité, elle, est tranchée séparément par refreshSlideVisibility()
+  // ci-dessous. Écartement visuel schématique (gap), commun aux 4 formes (cf. sim.js →
+  // MASK_SHAPES) ; lame et support suivent SLIT_Z dans tous les cas.
   const gap = largeurFenteVisuelle(sim.a);
   const wallW = (SLIDE_SIZE - gap) / 2;
+  const maskShape = sim.maskShape;
+
   wallLeft.scale.set(wallW, SLIT_BAND_HEIGHT, SLIDE_THICK);
   wallLeft.position.set(-(gap / 2 + wallW / 2), 0, SLIT_Z);
   wallRight.scale.set(wallW, SLIT_BAND_HEIGHT, SLIDE_THICK);
   wallRight.position.set(gap / 2 + wallW / 2, 0, SLIT_Z);
-  topBand.position.z = SLIT_Z;
-  bottomBand.position.z = SLIT_Z;
+
+  // Bandes haut/bas : ouverture verticale = SLIT_BAND_HEIGHT (fente/fil, cadre fixe) ou `gap`
+  // (carré — même écartement horizontal ET vertical, ouverture carrée). Sans effet visible
+  // pour le cercle (bandes cachées par refreshSlideVisibility).
+  const bandOuvertureH = (maskShape === 'carre') ? gap : SLIT_BAND_HEIGHT;
+  const marginBandH = (SLIDE_SIZE - bandOuvertureH) / 2;
+  topBand.scale.set(SLIDE_SIZE, marginBandH, SLIDE_THICK);
+  topBand.position.set(0, bandOuvertureH / 2 + marginBandH / 2, SLIT_Z);
+  bottomBand.scale.set(SLIDE_SIZE, marginBandH, SLIDE_THICK);
+  bottomBand.position.set(0, -(bandOuvertureH / 2 + marginBandH / 2), SLIT_Z);
+
+  // Fil : barre centrale (le fil), même largeur visuelle `gap` que l'écartement des murs des
+  // autres formes, hauteur du cadre SLIT_BAND_HEIGHT.
+  wallCenter.scale.set(gap, SLIT_BAND_HEIGHT, SLIDE_THICK);
+  wallCenter.position.set(0, 0, SLIT_Z);
+
+  // Cercle : vrai trou circulaire (rayon = gap/2), géométrie reconstruite uniquement pour
+  // cette forme (coûteuse — nouvelle géométrie à chaque appel — inutile pour les 3 autres).
+  if (maskShape === 'cercle') reconstruireSlideCercle(gap / 2);
+  slideCercleMesh.position.set(0, 0, SLIT_Z);
+
+  refreshSlideVisibility();
   supportSlide.position.z = SLIT_Z;
 
   // Écran : position selon D à partir de la fente (le support suit en z uniquement — x/y
@@ -1278,7 +1438,7 @@ function updateSceneParams() {
 
   // Texture d'intensité. I(x) (horizontal) vient du champ FFT (construireChampOuverture, cf.
   // sim.js et commentaire à sa déclaration ci-dessous) — PAS de echantillonnerIntensite/
-  // intensiteFente, réservées au graphe et aux encarts (cf. discussion de conception). Le
+  // intensiteOuverture, réservées au graphe et aux encarts (cf. discussion de conception). Le
   // profil VERTICAL affiché ici, lui, reste le profil gaussien du faisceau calculé séparément
   // (largeurFaisceauGaussien) plutôt que lu dans le champ FFT à un y quelconque : la fente
   // (beaucoup plus haute que le faisceau, cf. FENTE_HAUTEUR_CM) ne le contraint pas, et
@@ -1313,7 +1473,7 @@ function updateSceneParams() {
     // Champ diffracté (masque de la fente × faisceau incident, propagé par FFT, cf. sim.js) —
     // calculé UNE FOIS ici, partagé par la texture d'écran ci-dessous et l'enveloppe 3D
     // (construireGeometrieEnveloppe) : source physique unique pour tout ce qui est affiché en
-    // x, à la place d'intensiteFente() (qui reste, elle, la source du graphe I(x) et des
+    // x, à la place d'intensiteOuverture() (qui reste, elle, la source du graphe I(x) et des
     // encarts — cf. discussion de conception, aucune des deux ne doit dépendre de l'autre).
     const champ = construireChampOuverture(sim.lambda, sim.a, sim.D);
 
@@ -1326,21 +1486,32 @@ function updateSceneParams() {
     beamEnvelopeMesh.geometry.dispose();
     beamEnvelopeMesh.geometry = construireGeometrieEnveloppe(SLIT_Z, screenZ, BEAM_DIAMETER, w_cm, champ);
 
+    // Carré/cercle diffractent réellement en y : leur profil vertical vient directement d'un
+    // échantillonnage 2D du champ FFT (comme x), pas du profil gaussien du faisceau INCIDENT
+    // (Iy ci-dessous) — valable seulement pour fente/fil, cf. même distinction que
+    // construireGeometrieEnveloppe.
+    const balayage2D = (sim.maskShape === 'carre' || sim.maskShape === 'cercle');
     const img = screenTexCtx.createImageData(w, h);
     for (let px = 0; px < w; px++) {
       const x = -sim.screenHalfWidth + (2 * sim.screenHalfWidth * px) / (w - 1);
-      const Ix = echantillonnerChamp(champ, x, 0); // y=0 : le champ est normalisé (pic=1) comme intensiteFente(), et le profil vertical (Iy ci-dessous) reste appliqué séparément
+      const Ix = echantillonnerChamp(champ, x, 0); // y=0 : le champ est normalisé (pic=1) comme intensiteOuverture(), et le profil vertical (Iy ci-dessous) reste appliqué séparément (fente/fil uniquement)
       // Les ordres secondaires sont physiquement très faibles (1er ≈ 4,5 % du maximum central,
       // cf. sinc²) : en couleur linéaire ils sont quasi invisibles à l'écran. On applique une
-      // racine carrée uniquement ici (affichage), jamais dans intensiteFente() ni dans le
+      // racine carrée uniquement ici (affichage), jamais dans intensiteOuverture() ni dans le
       // graphe I(x) qui doivent rester l'intensité physique exacte, sans quoi une lecture
       // quantitative sur le graphe serait faussée.
       const IxAffichage = Math.sqrt(Ix);
       const rx = r0 * IxAffichage, gx = g0 * IxAffichage, bx = b0 * IxAffichage;
       for (let py = 0; py < h; py++) {
         const y_cm = -SCREEN_HEIGHT / 2 + (SCREEN_HEIGHT * py) / (h - 1); // position physique verticale (cm)
-        const Iy = Math.exp(-2 * y_cm * y_cm / (w_cm * w_cm)); // profil gaussien standard (convention laser : I(r)=I0·exp(-2r²/w²))
-        const r = Math.round(rx * Iy), g = Math.round(gx * Iy), b = Math.round(bx * Iy);
+        let r, g, b;
+        if (balayage2D) {
+          const I2 = Math.sqrt(echantillonnerChamp(champ, x, y_cm / 100));
+          r = Math.round(r0 * I2); g = Math.round(g0 * I2); b = Math.round(b0 * I2);
+        } else {
+          const Iy = Math.exp(-2 * y_cm * y_cm / (w_cm * w_cm)); // profil gaussien standard (convention laser : I(r)=I0·exp(-2r²/w²))
+          r = Math.round(rx * Iy); g = Math.round(gx * Iy); b = Math.round(bx * Iy);
+        }
         const idx = (py * w + px) * 4;
         img.data[idx] = r; img.data[idx + 1] = g; img.data[idx + 2] = b; img.data[idx + 3] = 255;
       }
@@ -1522,13 +1693,25 @@ function placerMesureTable(mesure, x, y, yLabel, z0, z1, dansLaTranche) {
 //  valeur de x1.
 // ─────────────────────────────────────────────────────────────────────
 function appliquerXLimiteUniforms(u, x1Cm) {
+  // Pendant vertical (cf. uYLimite* dans construireObjets) : même valeur que x1Cm pour une
+  // ouverture symétrique (carré/cercle, même écart angulaire dans les deux directions), sinon
+  // une sentinelle très grande (fente/fil — pas de contrainte verticale réelle à cette échelle,
+  // cf. FENTE_HAUTEUR_CM) — NON soumise au plafond SCREEN_WIDTH/2 ci-dessous (réservé à x, qui
+  // reste toujours dans les dimensions de l'écran), pour ne pas réduire la sentinelle sous une
+  // valeur réellement atteinte par des rayons.
+  const symetrique = (sim.maskShape === 'carre' || sim.maskShape === 'cercle');
+  const y1Cm = symetrique ? x1Cm : 1e6;
   u.uXLimiteReel.value = x1Cm;
+  u.uYLimiteReel.value = y1Cm;
+  u.uPlancherRadial.value = (sim.maskShape === 'cercle') ? 1 : 0;
   if (sim.view === 'top') {
     u.uXLimiteExagere.value = Math.min(x1Cm * TOP_VIEW_PLANCHER_GAIN, SCREEN_WIDTH / 2 * 0.5);
+    u.uYLimiteExagere.value = symetrique ? Math.min(y1Cm * TOP_VIEW_PLANCHER_GAIN, SCREEN_WIDTH / 2 * 0.5) : y1Cm;
     u.uZNear.value = SLIT_Z;
     u.uFlareLongueur.value = TOP_VIEW_FLARE_LONGUEUR_CM;
   } else {
     u.uXLimiteExagere.value = x1Cm;
+    u.uYLimiteExagere.value = y1Cm;
     u.uFlareLongueur.value = 0;
   }
 }
@@ -1581,10 +1764,7 @@ function setSceneView(view) {
   controls.enabled = (view === '3d');
   const cacherBanc = (view === 'screen');
   laserBody.visible = !cacherBanc;
-  topBand.visible = !cacherBanc;
-  bottomBand.visible = !cacherBanc;
-  wallLeft.visible = !cacherBanc;
-  wallRight.visible = !cacherBanc;
+  refreshSlideVisibility();
   supportLaser.visible = !cacherBanc;
   supportSlide.visible = !cacherBanc;
   raysLine.visible = sim.showRays && view !== 'screen';

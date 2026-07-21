@@ -201,7 +201,7 @@ function pointLePlusProche(pts, x) {
 //  plateau. Les inégalités larges font qualifier TOUS les points du plateau ; dedupePlateau()
 //  les fusionne ensuite en un seul point représentatif (le milieu du plateau). Pas de
 //  formule fermée pour les maxima secondaires (racines transcendantes de tan β = β), la
-//  détection numérique évite d'en avoir besoin et reste valable si intensiteFente() change
+//  détection numérique évite d'en avoir besoin et reste valable si intensiteOuverture() change
 //  un jour de forme.
 // ─────────────────────────────────────────────────────────────────────
 const EXTREMA_FENETRE = 2;
@@ -338,7 +338,7 @@ function dessinerInfoMultiCourbes(gc, layout, x) {
   const lignes = [];
   for (const c of BLANCHE_COULEURS) {
     if (!sim.blancheVisibles[c.nom]) continue;
-    const I = intensiteFente(x, c.lambda, sim.a, sim.D);
+    const I = intensiteOuverture(x, c.lambda, sim.a, sim.D);
     const py = toY(I);
     const couleurC = longueurOndeVersCss(c.lambda);
     gc.save();
