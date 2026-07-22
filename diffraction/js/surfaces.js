@@ -597,7 +597,7 @@ function drawSurfGraph() {
     var tMin = tMax - SURF_GRAPH_WINDOW;
     var yMax = 1.25, yMin = -1.25;
 
-    var GL = 42, GR = 10, GT = 10, GB = 26;
+    var GL = 60, GR = 12, GT = 14, GB = 34;
     var pW = W - GL - GR, pH = H - GT - GB;
     if (pW < 20 || pH < 20) return;
 
@@ -611,13 +611,13 @@ function drawSurfGraph() {
     ctx.strokeStyle = 'rgba(200,192,180,0.55)';
     ctx.lineWidth = 0.8;
     ctx.fillStyle = '#7a8a96';
-    ctx.font = '10px monospace';
+    ctx.font = 'bold 14px monospace';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
     for (var v = -1; v <= 1; v += 0.5) {
         var yc = py(v);
         ctx.beginPath(); ctx.moveTo(GL, yc); ctx.lineTo(GL + pW, yc); ctx.stroke();
-        ctx.fillText(v.toFixed(1).replace('.', ','), GL - 4, yc);
+        ctx.fillText(v.toFixed(1).replace('.', ','), GL - 6, yc);
     }
     ctx.strokeStyle = '#b0a898';
     ctx.lineWidth = 1;
@@ -634,7 +634,8 @@ function drawSurfGraph() {
         ctx.strokeStyle = 'rgba(200,192,180,0.4)';
         ctx.beginPath(); ctx.moveTo(xc, GT); ctx.lineTo(xc, GT + pH); ctx.stroke();
         ctx.fillStyle = '#7a8a96';
-        ctx.fillText(tt.toFixed(0), xc, GT + pH + 3);
+        ctx.font = 'bold 14px monospace';
+        ctx.fillText(tt.toFixed(0), xc, GT + pH + 4);
     }
 
     // Courbe élongation(t)
@@ -662,13 +663,13 @@ function drawSurfGraph() {
     ctx.strokeRect(GL, GT, pW, pH);
 
     ctx.fillStyle = '#5a6a78';
-    ctx.font = '11px "Segoe UI", Arial, sans-serif';
+    ctx.font = 'bold 15px "Segoe UI", Arial, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
     ctx.fillText('Temps (s)', GL + pW / 2, H - 2);
 
     ctx.save();
-    ctx.translate(12, GT + pH / 2);
+    ctx.translate(14, GT + pH / 2);
     ctx.rotate(-Math.PI / 2);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
