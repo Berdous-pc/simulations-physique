@@ -383,6 +383,47 @@ function _rebuildSurfFieldCache() {
     s._offCanvas.width  = gw;
     s._offCanvas.height = gh;
     s._offCtx = s._offCanvas.getContext('2d');
+    // Buffer de pixels réutilisé à chaque frame (cf. drawSurfaces) — évite de réallouer un
+    // nouvel ImageData 60 fois par seconde (pression sur le ramasse-miettes).
+    s._imgData = s._offCtx.createImageData(gw, gh);
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Échantillonnage interpolé de la grille P/Q déjà cachée (cf.
+//  _rebuildSurfFieldCache) en un point (z, y) quelconque, relatif à
+//  l'obstacle/l'axe de l'ouverture — utilisé par _surfFieldRaw et
+//  _surfFieldEnvelope pour éviter de refaire la somme de Huygens complète
+//  (jusqu'à SURF_HUYGENS_N_MAX sources) à chaque point interrogé (point M,
+//  axe de coupe) : on réutilise le résultat déjà sommé sur la grille, avec
+//  une interpolation bilinéaire (résolution grille suffisante puisqu'elle
+//  respecte déjà SURF_GRID_CELLS_PER_LAMBDA). Retourne null si le cache
+//  n'est pas encore prêt (rebuild anti-rebond en attente) — l'appelant se
+//  rabat alors sur le calcul exact.
+// ══════════════════════════════════════════════════════════════════════
+
+function _surfSampleGridPQ(s, z, y) {
+    var gw = s.gridW, gh = s.gridH;
+    if (!s.rightP || gw * gh !== s.rightP.length) return null;
+
+    var px = s.barrierX + z, py = s.barrierCY + y;
+    var gxf = px / s.canvasW * gw - 0.5;
+    var gyf = py / s.canvasH * gh - 0.5;
+    var gx0 = Math.floor(gxf), gy0 = Math.floor(gyf);
+    var fx  = gxf - gx0,       fy  = gyf - gy0;
+    var gx1 = gx0 + 1,         gy1 = gy0 + 1;
+    if (gx0 < 0) gx0 = 0; else if (gx0 > gw - 1) gx0 = gw - 1;
+    if (gx1 < 0) gx1 = 0; else if (gx1 > gw - 1) gx1 = gw - 1;
+    if (gy0 < 0) gy0 = 0; else if (gy0 > gh - 1) gy0 = gh - 1;
+    if (gy1 < 0) gy1 = 0; else if (gy1 > gh - 1) gy1 = gh - 1;
+
+    var i00 = gy0 * gw + gx0, i10 = gy0 * gw + gx1;
+    var i01 = gy1 * gw + gx0, i11 = gy1 * gw + gx1;
+    var rightP = s.rightP, rightQ = s.rightQ;
+    var P = (rightP[i00] * (1 - fx) + rightP[i10] * fx) * (1 - fy) +
+            (rightP[i01] * (1 - fx) + rightP[i11] * fx) * fy;
+    var Q = (rightQ[i00] * (1 - fx) + rightQ[i10] * fx) * (1 - fy) +
+            (rightQ[i01] * (1 - fx) + rightQ[i11] * fx) * fy;
+    return { P: P, Q: Q };
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -415,8 +456,11 @@ function _surfFieldRaw(px, py, tOverride) {
     var rmin = _surfRmin(w, z, y);
     if (c_px * t < s.barrierX + rmin) return 0;
 
-    var sources = _surfHuygensSources(w, lambda_px);
-    var pq = _surfHuygensPQAtCell(sources, lambda_px, s.barrierX, z, y);
+    var pq = _surfSampleGridPQ(s, z, y);
+    if (!pq) {
+        var sources = _surfHuygensSources(w, lambda_px);
+        pq = _surfHuygensPQAtCell(sources, lambda_px, s.barrierX, z, y);
+    }
     return pq.P * Math.cos(omega * t) + pq.Q * Math.sin(omega * t);
 }
 
@@ -446,8 +490,11 @@ function _surfFieldEnvelope(px, py, tOverride) {
     var rmin = _surfRmin(w, z, y);
     if (c_px * t < s.barrierX + rmin) return 0;
 
-    var sources = _surfHuygensSources(w, lambda_px);
-    var pq = _surfHuygensPQAtCell(sources, lambda_px, s.barrierX, z, y);
+    var pq = _surfSampleGridPQ(s, z, y);
+    if (!pq) {
+        var sources = _surfHuygensSources(w, lambda_px);
+        pq = _surfHuygensPQAtCell(sources, lambda_px, s.barrierX, z, y);
+    }
     return Math.sqrt(pq.P * pq.P + pq.Q * pq.Q);
 }
 
@@ -480,7 +527,7 @@ function drawSurfaces() {
     var front     = s.c_px * t; // distance parcourue depuis l'origine (front causal, gauche ET droite)
 
     var gw = s.gridW, gh = s.gridH;
-    var img  = s._offCtx.createImageData(gw, gh);
+    var img  = s._imgData; // buffer réutilisé (cf. _rebuildSurfFieldCache), pas de réallocation par frame
     var data = img.data;
 
     for (var gy = 0; gy < gh; gy++) {
