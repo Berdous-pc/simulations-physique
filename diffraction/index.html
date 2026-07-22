@@ -226,6 +226,11 @@
       <div>
         <div class="section-title">Animation</div>
         <button class="btn btn-pause" id="btn-playpause-surf" onclick="togglePauseSurfaces()">⏸ Pause</button>
+        <div class="param-row" style="margin-top:8px;">
+          <label>Zoom <span>×<span id="lbl-zoom-surf">1</span></span></label>
+          <input type="range" id="sl-zoom-surf" min="1" max="3" step="1" value="1"
+                 oninput="onSliderZoomSurf(this.value)">
+        </div>
       </div>
 
       <div>
@@ -244,27 +249,27 @@
       </div>
 
       <div>
-        <div class="section-title">Vue</div>
-        <div class="param-row">
-          <label>Zoom <span>×<span id="lbl-zoom-surf">1</span></span></label>
-          <input type="range" id="sl-zoom-surf" min="1" max="3" step="1" value="1"
-                 oninput="onSliderZoomSurf(this.value)">
-        </div>
+        <div class="section-title">Options</div>
+        <button class="btn btn-toggle-one" id="btn-angle-surf" onclick="toggleSurfAngle()">Tracer l'angle de diffraction</button>
+        <button class="btn btn-toggle-one" id="btn-graph-surf" onclick="toggleGraphSurf()" style="margin-top:8px;">Afficher le graphe Amplitude(t)</button>
       </div>
 
-      <div>
+      <div id="section-valeurs-surf">
         <div class="section-title">Valeurs</div>
-        <div class="readouts">
+        <button class="btn btn-toggle-one" id="btn-toggle-valeurs-surf" onclick="toggleValeursSurf()">Afficher les valeurs</button>
+        <div class="readouts" id="readouts-surf" style="display:none; margin-top:8px;">
           <div class="readout full-width">
-            <div class="ro-label">Rapport a / λ</div>
-            <div class="ro-value"><span id="ro-a-lambda-surf">1,25</span></div>
+            <div class="ro-label">Rapport λ / a</div>
+            <div class="ro-value"><span id="ro-a-lambda-surf">0,80</span></div>
+          </div>
+          <div class="readout full-width">
+            <div class="ro-label" id="ro-theta-label-surf">Angle de diffraction<br>(1ᵉʳ minimum d'intensité) :</div>
+            <div class="ro-value ro-value-split">
+              <span><span id="ro-theta-rad-surf">0,0000</span> <span class="ro-unit">rad</span></span>
+              <span><span id="ro-theta-deg-surf">0,00</span> <span class="ro-unit">°</span></span>
+            </div>
           </div>
         </div>
-      </div>
-
-      <div>
-        <div class="section-title">Options</div>
-        <button class="btn btn-toggle-one" id="btn-graph-surf" onclick="toggleGraphSurf()">Afficher le graphe élongation(t)</button>
       </div>
 
     </div>

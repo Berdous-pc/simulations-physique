@@ -67,8 +67,15 @@ var SURF_GRID_CELLS_PER_LAMBDA = 5;
 // (>2) n'y change quasiment rien — c'est la plage des sliders (a/λ atteignable) qu'il faut
 // ajuster si le grain reste gênant, pas ce facteur.
 var SURF_HUYGENS_SPACING_DIV = 3;
-var SURF_HUYGENS_N_MAX  = 220;      // garde-fou (coût du rebuild ∝ grille × N, cf. _rebuildSurfFieldCache) —
-                                     // couvre le pire cas des sliders (a=30cm, λ=1cm)
+var SURF_HUYGENS_N_MAX  = 110;      // garde-fou (coût du rebuild ∝ grille × N, cf. _rebuildSurfFieldCache) —
+                                     // pire cas des sliders (a=30cm, λ=1cm) : divisé par 2 (était 220)
+                                     // pour désengorger ce cas, qui faisait lagger le rebuild
+// Plancher du nombre de sources : en dessous d'une douzaine, la somme discrète cesse d'approximer
+// une fente continue et dégénère en motif de réseau à N fentes (minima décalés par rapport au
+// sinc² attendu) — sensible surtout pour a≲λ, où (2w)/espacement+1 tombe sous ce seuil. Le coût
+// induit (grille × 16 dans le pire cas) reste très en dessous du plafond SURF_HUYGENS_N_MAX déjà
+// toléré (grille × 110), donc sans impact perceptible sur les autres réglages.
+var SURF_HUYGENS_N_MIN  = 4;
 var SURF_GEO_R_FLOOR    = 0.25;     // plancher de r (× λ) dans la décroissance 1/√r, cf. _surfHuygensPQAtCell
 
 // ── Zoom (slider à crans) ────────────────────────────────────────────
@@ -117,6 +124,10 @@ var simSurf = {
     // ── Point de mesure draggable ─────────────────────────────────────
     point       : { x: 0, y: 0 },
     dragging    : false,
+
+    // ── Affichage des valeurs (rapport λ/a, angle de diffraction) ─────
+    showValeurs  : false,
+    showAngle    : false,
 
     // ── Graphe y(t) ────────────────────────────────────────────────────
     showGraph    : false,
@@ -171,8 +182,32 @@ function resizeSurfaces() {
     resizeSurfGraphCanvas();
 }
 
+// Nombre de sources qu'utiliserait _surfHuygensSources pour les réglages courants (sans générer
+// le tableau) — sert uniquement à décider du délai d'anti-rebond ci-dessous.
+var SURF_REBUILD_DEBOUNCE_N = 48;
+function _surfEstimateSourceCount() {
+    var s = simSurf;
+    var lambda_px = s.lambda * s.pxPerCm;
+    var w_px = (s.a / 2) * s.pxPerCm;
+    var targetSpacing = Math.max(0.5, lambda_px / SURF_HUYGENS_SPACING_DIV);
+    return Math.max(SURF_HUYGENS_N_MIN, Math.min(SURF_HUYGENS_N_MAX, Math.round((2 * w_px) / targetSpacing)));
+}
+
 var _surfRebuildScheduled = false;
+var _surfRebuildTimer = null;
 function _scheduleSurfRebuild() {
+    // Au-delà de SURF_REBUILD_DEBOUNCE_N sources, un rebuild par frame (rAF) pendant un drag de
+    // slider devient trop coûteux (cf. discussion : lag sur a max / λ min) — on bascule sur un
+    // anti-rebond à 100 ms (un seul rebuild après une pause dans le glissement) au lieu d'un par
+    // frame. En dessous de ce seuil, rAF reste réactif sans souci de perf.
+    if (_surfEstimateSourceCount() > SURF_REBUILD_DEBOUNCE_N) {
+        if (_surfRebuildTimer) clearTimeout(_surfRebuildTimer);
+        _surfRebuildTimer = setTimeout(function () {
+            _surfRebuildTimer = null;
+            _rebuildSurfFieldCache();
+        }, 100);
+        return;
+    }
     if (_surfRebuildScheduled) return;
     _surfRebuildScheduled = true;
     requestAnimationFrame(function () {
@@ -192,18 +227,23 @@ function _scheduleSurfRebuild() {
 
 function _surfHuygensSources(w, lambda_px) {
     var targetSpacing = Math.max(0.5, lambda_px / SURF_HUYGENS_SPACING_DIV);
-    var N = Math.max(4, Math.min(SURF_HUYGENS_N_MAX, Math.round((2 * w) / targetSpacing) + 1));
+    var N = Math.max(SURF_HUYGENS_N_MIN, Math.min(SURF_HUYGENS_N_MAX, Math.round((2 * w) / targetSpacing)));
+    // Règle du POINT MILIEU (centres de N intervalles égaux), pas des bords inclus (i/(N-1)) :
+    // avec les bords inclus, N sources ne couvrent que N-1 intervalles pour la largeur 2w, donc
+    // un espacement réel 2w/(N-1) — ce qui décale le premier zéro du réseau discret d'un facteur
+    // parasite (N-1)/N par rapport au sinc² continu (cf. discussion avec l'auteur). Au point
+    // milieu, l'espacement est exactement 2w/N, ce qui fait coïncider EXACTEMENT le premier zéro
+    // du réseau discret avec celui de la fente continue (sin θ₁ = λ/a), quel que soit N.
+    var spacing0 = (2 * w) / N;
     var ys = [];
     for (var i = 0; i < N; i++) {
-        var frac = (N === 1) ? 0.5 : i / (N - 1); // 0 → 1 sur toute l'ouverture
-        ys.push(-w + frac * 2 * w);
+        ys.push(-w + (i + 0.5) * spacing0);
     }
     // Espacement RÉEL entre sources (peut différer légèrement de targetSpacing à cause de
     // l'arrondi de N) — c'est lui qu'il faut utiliser comme poids de Riemann dans
     // _surfHuygensPQAtCell, pas targetSpacing, pour que la somme discrète approxime
     // fidèlement l'intégrale continue quel que soit N.
-    var spacing = (N > 1) ? (2 * w) / (N - 1) : 2 * w;
-    return { ys: ys, spacing: spacing };
+    return { ys: ys, spacing: spacing0 };
 }
 
 // Distance la plus courte d'un point (z, y déjà relatifs à l'obstacle/l'axe de l'ouverture)
@@ -372,6 +412,7 @@ function drawSurfaces() {
         ctx.fillStyle = 'rgb(' + SURF_COL_BG.join(',') + ')';
         ctx.fillRect(0, 0, W, H);
         _drawBarrierSurf(ctx, W, H);
+        if (s.showAngle) _drawSurfAngle(ctx, W, H);
         if (s.showGraph) _drawSurfPoint(ctx);
         return;
     }
@@ -417,7 +458,39 @@ function drawSurfaces() {
     ctx.filter = 'none';
 
     _drawBarrierSurf(ctx, W, H);
+    if (s.showAngle) _drawSurfAngle(ctx, W, H);
     if (simSurf.showGraph) _drawSurfPoint(ctx);
+}
+
+// ── Angle de diffraction (axe blanc + bissectrices jaunes du 1er minimum) ────
+
+function _drawSurfAngle(ctx, W, H) {
+    var s = simSurf;
+    var theta = _surfFindFirstMinTheta(s.lambda, s.a);
+    var ox = s.barrierX, oy = s.barrierCY;
+    var len = Math.max(W, H) * 1.5; // assez long pour traverser tout le canvas quel que soit l'angle
+
+    ctx.save();
+    ctx.lineWidth = 3;
+    ctx.setLineDash([16, 10]);
+
+    // Axe initial de propagation (θ = 0), centré sur l'ouverture.
+    ctx.strokeStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(ox, oy);
+    ctx.lineTo(ox + len, oy);
+    ctx.stroke();
+
+    // Bissectrices ±θ délimitant le lobe central.
+    ctx.strokeStyle = '#ffe14d';
+    ctx.beginPath();
+    ctx.moveTo(ox, oy);
+    ctx.lineTo(ox + len * Math.cos(theta), oy - len * Math.sin(theta));
+    ctx.moveTo(ox, oy);
+    ctx.lineTo(ox + len * Math.cos(theta), oy + len * Math.sin(theta));
+    ctx.stroke();
+
+    ctx.restore();
 }
 
 // ── Obstacle percé de l'ouverture ────────────────────────────────────
@@ -763,11 +836,45 @@ function onSliderASurf(v) {
     _updateSurfRatioReadout();
 }
 
+// ══════════════════════════════════════════════════════════════════════
+//  Premier minimum d'intensité depuis le centre (θ=0) : sin θ₁ = λ/a, la solution fermée de
+//  l'intégrale de Fraunhofer d'une fente continue. Depuis le passage à la répartition point
+//  milieu des sources de Huygens (cf. _surfHuygensSources), le premier zéro du réseau discret
+//  qu'on affiche coïncide EXACTEMENT avec cette formule, quel que soit N — plus besoin de
+//  balayer/affiner numériquement le facteur de réseau, la formule fermée donne déjà la valeur
+//  cohérente avec la figure rendue, sans boucle ni coût.
+//  Si λ/a > 1 (aperture plus petite qu'une longueur d'onde), il n'y a plus de minimum réel
+//  (l'intensité décroît sans jamais s'annuler) — on plafonne à 90°, simplification niveau
+//  terminale, cf. discussion avec l'auteur.
+// ══════════════════════════════════════════════════════════════════════
+function _surfFindFirstMinTheta(lambda, a) {
+    return Math.asin(Math.min(lambda / a, 1));
+}
+
 function _updateSurfRatioReadout() {
     var el = document.getElementById('ro-a-lambda-surf');
-    if (!el) return;
-    var ratio = simSurf.a / simSurf.lambda;
-    el.textContent = ratio.toFixed(2).replace('.', ',');
+    if (el) {
+        var ratio = simSurf.lambda / simSurf.a;
+        el.textContent = ratio.toFixed(2).replace('.', ',');
+    }
+    var elRad = document.getElementById('ro-theta-rad-surf');
+    var elDeg = document.getElementById('ro-theta-deg-surf');
+    var theta = _surfFindFirstMinTheta(simSurf.lambda, simSurf.a);
+    if (elRad) elRad.textContent = theta.toFixed(4).replace('.', ',');
+    if (elDeg) elDeg.textContent = (theta * 180 / Math.PI).toFixed(2).replace('.', ',');
+}
+
+function syncValeursSurfUI() {
+    var visible = simSurf.showValeurs;
+    var el = document.getElementById('readouts-surf');
+    if (el) el.style.display = visible ? '' : 'none';
+    var btn = document.getElementById('btn-toggle-valeurs-surf');
+    if (btn) btn.classList.toggle('active', visible);
+}
+
+function toggleValeursSurf() {
+    simSurf.showValeurs = !simSurf.showValeurs;
+    syncValeursSurfUI();
 }
 
 function syncSurfGraphUI() {
@@ -791,6 +898,12 @@ function syncSurfGraphUI() {
 function toggleGraphSurf() {
     simSurf.showGraph = !simSurf.showGraph;
     syncSurfGraphUI();
+}
+
+function toggleSurfAngle() {
+    simSurf.showAngle = !simSurf.showAngle;
+    var btn = document.getElementById('btn-angle-surf');
+    if (btn) btn.classList.toggle('active', simSurf.showAngle);
 }
 
 function resetSurfaces() {
@@ -817,6 +930,13 @@ function resetSurfaces() {
     simSurf.showGraph = false;
     syncSurfGraphUI();
 
+    simSurf.showValeurs = false;
+    syncValeursSurfUI();
+
+    simSurf.showAngle = false;
+    var btnAngle = document.getElementById('btn-angle-surf');
+    if (btnAngle) btnAngle.classList.remove('active');
+
     var slZoom = document.getElementById('sl-zoom-surf');
     if (slZoom) slZoom.value = 1;
     var lblZoom = document.getElementById('lbl-zoom-surf');
@@ -833,4 +953,5 @@ function resetSurfaces() {
 function initSurfaces() {
     initSurfDrag();
     _updateSurfRatioReadout();
+    syncValeursSurfUI();
 }
