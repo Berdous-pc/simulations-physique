@@ -94,10 +94,10 @@
       <!-- Splitter draggable (masqué tant que le graphe n'est pas affiché) -->
       <div id="surf-splitter"></div>
 
-      <!-- Zone graphe élongation(t) au point M -->
+      <!-- Zone graphe amplitude(t) au point M -->
       <div id="surf-graph-area">
         <div id="surf-graph-time-control">
-          <span class="graph-title">Élongation au point M en fonction du temps</span>
+          <span class="graph-title">Amplitude au point M en fonction du temps</span>
         </div>
         <div id="surf-graph-wrap">
           <canvas id="surf-graph-canvas"></canvas>
@@ -270,6 +270,9 @@
             </div>
           </div>
         </div>
+        <div id="surf-angle-warning" style="display:none; margin-top:8px; font-size:clamp(11px, 1vw, 13px); color:#a05a10;">
+          Angle trop petit pour être visible à cette échelle (bassin trop petit).
+        </div>
       </div>
 
     </div>
@@ -303,7 +306,7 @@
         (barre jaune) : on observe la figure de diffraction qui se forme de l'autre côté. Réglez
         la longueur d'onde λ et la largeur a de l'ouverture, mettez l'animation en pause à tout
         moment, et faites glisser le point <strong>M</strong> dans le bassin pour tracer son
-        élongation au cours du temps dans le graphe en bas (bouton <strong>Afficher le
+        amplitude au cours du temps dans le graphe en bas (bouton <strong>Afficher le
         graphe</strong>).
       </div>
     </div>

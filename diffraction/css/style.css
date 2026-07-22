@@ -104,7 +104,6 @@ main {
   z-index: 20;
   transition: background 0.15s;
   border-right: 1px solid #c8c0b4;
-  display: none;
 }
 #surf-splitter:hover, #surf-splitter.dragging { background: #2a6aaa; }
 

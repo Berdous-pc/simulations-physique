@@ -121,8 +121,11 @@ var simSurf = {
     gapHalf     : 0,
     firstResize : true,
 
-    // ── Point de mesure draggable ─────────────────────────────────────
-    point       : { x: 0, y: 0 },
+    // ── Point de mesure draggable — position physique (cm), indépendante du
+    //    zoom : x/y (px écran) sont recalculés à partir de cmX/cmY à chaque
+    //    changement de pxPerCm (cf. updateSurfGeometry), pour que M reste sur
+    //    le même point du bassin quel que soit le cran de zoom.
+    point       : { x: 0, y: 0, cmX: null, cmY: null },
     dragging    : false,
 
     // ── Affichage des valeurs (rapport λ/a, angle de diffraction) ─────
@@ -150,6 +153,11 @@ function updateSurfGeometry() {
     s.barrierCY = cy;
     s.gapHalf   = a_px / 2;
 
+    if (s.point.cmX !== null) {
+        s.point.x = Math.max(0, Math.min(s.canvasW, s.point.cmX * s.pxPerCm));
+        s.point.y = Math.max(0, Math.min(s.canvasH, s.point.cmY * s.pxPerCm));
+    }
+
     _scheduleSurfRebuild();
 }
 
@@ -171,12 +179,10 @@ function resizeSurfaces() {
     simSurf.barrierX = Math.round(w * 0.30);
 
     if (simSurf.firstResize) {
-        simSurf.point.rx = 0.62;
-        simSurf.point.ry = 0.42;
+        simSurf.point.cmX = (0.62 * w) / simSurf.pxPerCm;
+        simSurf.point.cmY = (0.42 * h) / simSurf.pxPerCm;
         simSurf.firstResize = false;
     }
-    simSurf.point.x = Math.round(simSurf.point.rx * w);
-    simSurf.point.y = Math.round(simSurf.point.ry * h);
 
     updateSurfGeometry();
     resizeSurfGraphCanvas();
@@ -362,7 +368,7 @@ function _rebuildSurfFieldCache() {
 // ══════════════════════════════════════════════════════════════════════
 //  Champ d'onde exact (non grillé) en un point (px, py) du bassin, à
 //  l'instant t (simTime par défaut) — utilisé pour le point de mesure M
-//  (position arbitraire) et son graphe élongation(t). Même modèle que la
+//  (position arbitraire) et son graphe amplitude(t). Même modèle que la
 //  grille (cf. _surfHuygensPQAtCell), pour rester cohérent avec elle.
 // ══════════════════════════════════════════════════════════════════════
 
@@ -521,19 +527,22 @@ function _drawSurfPoint(ctx) {
     var p = simSurf.point;
     ctx.save();
     ctx.strokeStyle = '#e07020';
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = 3.5;
     ctx.beginPath();
-    ctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
+    ctx.arc(p.x, p.y, 11, 0, Math.PI * 2);
     ctx.stroke();
     ctx.fillStyle = '#e07020';
     ctx.beginPath();
-    ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+    ctx.arc(p.x, p.y, 4.5, 0, Math.PI * 2);
     ctx.fill();
-    ctx.font = 'bold 13px monospace';
+    ctx.font = 'bold 20px monospace';
     ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#00000080';
+    ctx.lineWidth = 3;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
-    ctx.fillText('M', p.x, p.y - 10);
+    ctx.strokeText('M', p.x, p.y - 14);
+    ctx.fillText('M', p.x, p.y - 14);
     ctx.restore();
 }
 
@@ -551,24 +560,38 @@ function tickSurfaces() {
     if (dt > 0.1) dt = 0.1; // évite un saut après un changement d'onglet/minimisation
 
     if (!simSurf.paused) {
+        var tPrev = simSurf.simTime;
         simSurf.simTime += dt;
-        if (simSurf.showGraph) _updateSurfPointData(simSurf.simTime);
+        if (simSurf.showGraph) _updateSurfPointData(tPrev, simSurf.simTime);
     }
     drawSurfaces();
     if (simSurf.showGraph) drawSurfGraph();
 }
 
-function _updateSurfPointData(t) {
-    var p = simSurf.point;
-    var y = _surfFieldRaw(p.x, p.y, t);
-    simSurf.ptData.push({ t: t, y: y });
+// Un seul échantillon par frame (~60 Hz) sous-échantillonne largement les petites longueurs
+// d'onde : à λ = 1 cm, la période T = λ/c ≈ 0,10 s n'est couverte que par ~6 points/période,
+// ce qui aliase visiblement la courbe. On subdivise donc le pas de temps en sous-pas d'au plus
+// T/20 pour garder une courbe lisse quel que soit λ, sans dépendre du taux de rafraîchissement.
+function _updateSurfPointData(tFrom, tTo) {
+    var s = simSurf;
+    var p = s.point;
+    var lambda_px = s.lambda * s.pxPerCm;
+    var c_px = SURF_C_CM * s.pxPerCm;
+    var period = (lambda_px > 0 && c_px > 0) ? lambda_px / c_px : (tTo - tFrom);
+    var dtMax = Math.max(period / 20, 0.0005);
+    var span = tTo - tFrom;
+    var steps = Math.max(1, Math.ceil(span / dtMax));
+    for (var i = 1; i <= steps; i++) {
+        var t = tFrom + span * i / steps;
+        s.ptData.push({ t: t, y: _surfFieldRaw(p.x, p.y, t) });
+    }
     // Purge des points hors fenêtre glissante (garde une petite marge)
-    var tMin = t - SURF_GRAPH_WINDOW - 0.5;
-    while (simSurf.ptData.length && simSurf.ptData[0].t < tMin) simSurf.ptData.shift();
+    var tMin = tTo - SURF_GRAPH_WINDOW - 0.5;
+    while (s.ptData.length && s.ptData[0].t < tMin) s.ptData.shift();
 }
 
 // ══════════════════════════════════════════════════════════════════════
-//  Graphe élongation(t) au point M
+//  Graphe amplitude(t) au point M
 // ══════════════════════════════════════════════════════════════════════
 
 function resizeSurfGraphCanvas() {
@@ -607,7 +630,7 @@ function drawSurfGraph() {
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(GL, GT, pW, pH);
 
-    // Grille horizontale (élongation) + axe zéro
+    // Grille horizontale (amplitude) + axe zéro
     ctx.strokeStyle = 'rgba(200,192,180,0.55)';
     ctx.lineWidth = 0.8;
     ctx.fillStyle = '#7a8a96';
@@ -638,7 +661,7 @@ function drawSurfGraph() {
         ctx.fillText(tt.toFixed(0), xc, GT + pH + 4);
     }
 
-    // Courbe élongation(t)
+    // Courbe amplitude(t)
     var data = simSurf.ptData;
     if (data && data.length > 1) {
         ctx.save();
@@ -673,7 +696,7 @@ function drawSurfGraph() {
     ctx.rotate(-Math.PI / 2);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    ctx.fillText('Élongation', 0, 0);
+    ctx.fillText('Amplitude', 0, 0);
     ctx.restore();
 }
 
@@ -696,7 +719,7 @@ function initSurfDrag() {
         var pos = _surfPointerPos(canvas, evt);
         var p = simSurf.point;
         var d = Math.hypot(pos.x - p.x, pos.y - p.y);
-        if (d <= 14) {
+        if (d <= 18) {
             simSurf.dragging = true;
             canvas.style.cursor = 'grabbing';
             evt.preventDefault();
@@ -708,8 +731,8 @@ function initSurfDrag() {
         var p = simSurf.point;
         p.x = Math.max(0, Math.min(simSurf.canvasW, pos.x));
         p.y = Math.max(0, Math.min(simSurf.canvasH, pos.y));
-        p.rx = p.x / simSurf.canvasW;
-        p.ry = p.y / simSurf.canvasH;
+        p.cmX = p.x / simSurf.pxPerCm;
+        p.cmY = p.y / simSurf.pxPerCm;
         evt.preventDefault();
     }
     function up() {
@@ -751,6 +774,7 @@ function onSliderZoomSurf(v) {
     var lbl = document.getElementById('lbl-zoom-surf');
     if (lbl) lbl.textContent = stage;
     _surfApplyZoom();
+    _syncSurfAngleWarning();
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -863,6 +887,23 @@ function _updateSurfRatioReadout() {
     var theta = _surfFindFirstMinTheta(simSurf.lambda, simSurf.a);
     if (elRad) elRad.textContent = theta.toFixed(4).replace('.', ',');
     if (elDeg) elDeg.textContent = (theta * 180 / Math.PI).toFixed(2).replace('.', ',');
+    _syncSurfAngleWarning();
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Avertissement : l'ouverture angulaire théorique (sin θ₁ = λ/a) ne devient visible qu'à
+//  partir de la distance de Fraunhofer a²/λ (au-delà, le faisceau a eu la place de s'ouvrir ;
+//  en-deçà, il reste quasi collimaté — régime de Fresnel proche, cf. discussion avec l'auteur).
+//  Le bassin affiché ne couvre que ~0,70·SURF_VIEW_WIDTH_CM·zoom cm derrière l'obstacle (30% de
+//  la largeur est occupée par l'obstacle) : si cette profondeur est trop courte devant a²/λ,
+//  l'angle ne peut pas se voir sur la figure, quel que soit le zoom raisonnable choisi.
+// ══════════════════════════════════════════════════════════════════════
+function _syncSurfAngleWarning() {
+    var warn = document.getElementById('surf-angle-warning');
+    if (!warn) return;
+    var fraunhoferDist = (simSurf.a * simSurf.a) / simSurf.lambda;
+    var visibleDepth = 0.70 * SURF_VIEW_WIDTH_CM * simSurf.zoom;
+    warn.style.display = (fraunhoferDist > visibleDepth) ? '' : 'none';
 }
 
 function syncValeursSurfUI() {
@@ -955,4 +996,5 @@ function initSurfaces() {
     initSurfDrag();
     _updateSurfRatioReadout();
     syncValeursSurfUI();
+    syncSurfGraphUI();
 }
