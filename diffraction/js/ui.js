@@ -377,10 +377,11 @@ function setMainTab(tab) {
   document.getElementById('lumineuses-area').style.display = (tab === 'lumineuses') ? '' : 'none';
   document.getElementById('surfaces-area').style.display = (tab === 'surfaces') ? '' : 'none';
 
-  // #lumineuses-area est display:none pendant l'onglet Surfaces : la scène 3D
-  // et le canvas du graphe n'ont des dimensions exploitables qu'une fois
-  // réaffichés — on relance donc le resize ici, pas seulement une fois à init().
+  // Les deux zones sont display:none l'une pendant que l'autre est active : leurs canvas
+  // n'ont des dimensions exploitables qu'une fois réaffichés — on relance donc le resize
+  // ici à chaque bascule, pas seulement une fois à init().
   if (tab === 'lumineuses') resize();
+  if (tab === 'surfaces') resize();
 }
 
 // ═══════════════════════════════════════════════════
@@ -457,6 +458,7 @@ function resize() {
     resizeScheduled = false;
     resizeScene();
     resizeGraphCanvas();
+    resizeSurfaces();
   });
 }
 window.addEventListener('resize', resize);
@@ -467,6 +469,11 @@ document.addEventListener('webkitfullscreenchange', resize);
 //  BOUCLE D'ANIMATION (~60 fps) — rendu 3D en continu (damping caméra)
 // ═══════════════════════════════════════════════════
 function loop() {
+  // L'onglet Ondes de surfaces a sa propre boucle de rendu (tickSurfaces, cf. surfaces.js) —
+  // ne tourne que si l'onglet est actif, pour ne pas payer la sommation de Huygens pour rien
+  // pendant que l'utilisateur regarde l'onglet Ondes lumineuses.
+  if (document.getElementById('surfaces-area').style.display !== 'none') tickSurfaces();
+
   renderScene();
   tickDecompose();
   // drawIntensityGraph() n'est plus appelée ici : chaque déclencheur qui affecte réellement le
@@ -490,6 +497,7 @@ function init() {
   initScene();
   initGraphInteractions();
   initLegendeBlanche();
+  initSurfaces();
   appliquerBorneD();
   renderBeamModeLabel();
   renderLightSourceLabel();

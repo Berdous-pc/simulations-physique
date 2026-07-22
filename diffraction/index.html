@@ -83,12 +83,27 @@
 
     </div><!-- fin #lumineuses-area -->
 
-    <!-- ═══ Zone ONDES DE SURFACES — à venir ═══ -->
+    <!-- ═══ Zone ONDES DE SURFACES (onde plane diffractée par une ouverture) ═══ -->
     <div id="surfaces-area" style="display:none;">
-      <div id="surfaces-placeholder">
-        <span id="surfaces-placeholder-icon">🌊</span>
-        <p>Simulation à venir</p>
+
+      <!-- Bassin vu de dessus -->
+      <div id="surf-scene-area">
+        <canvas id="surf-canvas"></canvas>
       </div>
+
+      <!-- Splitter draggable (masqué tant que le graphe n'est pas affiché) -->
+      <div id="surf-splitter"></div>
+
+      <!-- Zone graphe élongation(t) au point M -->
+      <div id="surf-graph-area">
+        <div id="surf-graph-time-control">
+          <span class="graph-title">Élongation au point M en fonction du temps</span>
+        </div>
+        <div id="surf-graph-wrap">
+          <canvas id="surf-graph-canvas"></canvas>
+        </div>
+      </div>
+
     </div>
 
     <!-- Bascule d'affichage synchrone (avant chargement des scripts externes) :
@@ -114,7 +129,7 @@
     <div class="panel-main-tabs">
       <button class="panel-main-tab" id="tab-surfaces"
               onclick="setMainTab('surfaces')">
-        Ondes de surfaces
+        Ondes de surface
       </button>
       <button class="panel-main-tab active" id="tab-lumineuses"
               onclick="setMainTab('lumineuses')">
@@ -205,10 +220,44 @@
 
     </div><!-- fin #section-lumineuses -->
 
-    <!-- ═══ Section ONDES DE SURFACES — à venir ═══ -->
+    <!-- ═══ Section ONDES DE SURFACES ═══ -->
     <div class="panel-main-section" id="section-surfaces" style="display:none;">
-      <div class="section-title">Ondes de surfaces</div>
-      <div class="input-hint">Cet onglet sera développé prochainement.</div>
+
+      <div>
+        <div class="section-title">Animation</div>
+        <button class="btn btn-pause" id="btn-playpause-surf" onclick="togglePauseSurfaces()">⏸ Pause</button>
+      </div>
+
+      <div>
+        <div class="section-title">Paramètres</div>
+        <div class="param-row">
+          <label>Longueur d'onde λ <span><span id="lbl-lambda-surf">4,0</span> cm</span></label>
+          <input type="range" id="sl-lambda-surf" min="1" max="10" step="0.1" value="4"
+                 oninput="onSliderLambdaSurf(this.value)">
+        </div>
+        <div class="param-row">
+          <label>Largeur de l'ouverture a <span><span id="lbl-a-surf">5,0</span> cm</span></label>
+          <input type="range" id="sl-a-surf" min="1" max="30" step="0.1" value="5"
+                 oninput="onSliderASurf(this.value)">
+        </div>
+        <button class="btn btn-reset" style="margin-top:4px;" onclick="resetSurfaces()">Par défaut</button>
+      </div>
+
+      <div>
+        <div class="section-title">Valeurs</div>
+        <div class="readouts">
+          <div class="readout full-width">
+            <div class="ro-label">Rapport a / λ</div>
+            <div class="ro-value"><span id="ro-a-lambda-surf">1,25</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-title">Options</div>
+        <button class="btn btn-toggle-one" id="btn-graph-surf" onclick="toggleGraphSurf()">Afficher le graphe élongation(t)</button>
+      </div>
+
     </div>
 
    </div><!-- fin #panel-body -->
@@ -236,19 +285,26 @@
         <button class="panel-hint-toggle" onclick="toggleHint('surfaces')" title="Afficher les instructions">▲</button>
       </div>
       <div class="panel-hint-body">
-        Cette simulation sera disponible prochainement.
+        Une onde plane arrive depuis la gauche et traverse une ouverture percée dans l'obstacle
+        (barre jaune) : on observe la figure de diffraction qui se forme de l'autre côté. Réglez
+        la longueur d'onde λ et la largeur a de l'ouverture, mettez l'animation en pause à tout
+        moment, et faites glisser le point <strong>M</strong> dans le bassin pour tracer son
+        élongation au cours du temps dans le graphe en bas (bouton <strong>Afficher le
+        graphe</strong>).
       </div>
     </div>
 
   </div><!-- fin #panel -->
 </main>
 
-<!-- Ordre de chargement : Three.js (vendé) → sim (état/physique) → scene (3D) → graph (2D) → ui (contrôles) -->
+<!-- Ordre de chargement : Three.js (vendé) → sim (état/physique) → scene (3D) → graph (2D)
+     → surfaces (onglet Ondes de surfaces, indépendant) → ui (contrôles, chargé en dernier) -->
 <script src="../libs/three.min.js"></script>
 <script src="../libs/OrbitControls.js"></script>
 <script src="js/sim.js"></script>
 <script src="js/scene.js"></script>
 <script src="js/graph.js"></script>
+<script src="js/surfaces.js"></script>
 <script src="js/ui.js"></script>
 <script data-goatcounter="https://berdous-pc.goatcounter.com/count"
         async src="https://gc.zgo.at/count.js"></script>
