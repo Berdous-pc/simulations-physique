@@ -71,21 +71,19 @@ var SURF_HUYGENS_N_MAX  = 220;      // garde-fou (coût du rebuild ∝ grille ×
                                      // couvre le pire cas des sliders (a=30cm, λ=1cm)
 var SURF_GEO_R_FLOOR    = 0.25;     // plancher de r (× λ) dans la décroissance 1/√r, cf. _surfHuygensPQAtCell
 
-// ── Zoom (molette) ────────────────────────────────────────────────────
+// ── Zoom (slider à crans) ────────────────────────────────────────────
 // zoom = 1 → vue par défaut (SURF_VIEW_WIDTH_CM affichés) ; zoom = SURF_ZOOM_MAX → champ de
 // vision SURF_ZOOM_MAX fois plus large (dézoom, utile pour les grands λ dont le champ proche
 // dépasse la fenêtre par défaut). N'affecte QUE pxPerCm (le rapport a/λ et le nombre de sources
 // de Huygens restent inchangés par le zoom) — MAIS un zoom plus large peut, à λ fixe, exiger une
 // grille plus fine pour rester au-dessus de SURF_GRID_CELLS_PER_LAMBDA (cf.
-// _rebuildSurfFieldCache), donc un rebuild coûteux. Un geste de molette (trackpad surtout)
-// enchaîne des dizaines d'évènements par seconde : reconstruire la grille à CHAQUE évènement
-// (même juste re-coalescé par frame via requestAnimationFrame) resaturait le rebuild en continu
-// pendant tout le geste. Le rebuild est donc anti-rebondi par un vrai délai (cf.
-// _surfZoomDebounceMs dans initSurfZoom) : on ne recalcule qu'une fois le geste terminé.
+// _rebuildSurfFieldCache), donc un rebuild coûteux. Un slider continu (ou la molette) génère
+// des dizaines d'évènements par geste, ce qui saturait le rebuild ; on utilise donc un slider à
+// 4 crans DISCRETS (×1 à ×4, cf. onSliderZoomSurf) : chaque cran ne déclenche qu'un seul rebuild,
+// donc plus besoin d'anti-rebond (setTimeout) ici.
 var SURF_ZOOM_MIN  = 1;
-var SURF_ZOOM_MAX  = 4;
-var SURF_ZOOM_STEP = 1.12; // facteur multiplicatif appliqué par cran de molette
-var SURF_ZOOM_DEBOUNCE_MS = 150; // délai d'inactivité molette avant de reconstruire la grille
+var SURF_ZOOM_MAX  = 3;
+var SURF_ZOOM_STAGES = 3; // nombre de crans du slider de zoom (×1 à ×3)
 
 // Couleurs de l'onde (crêtes ↔ creux) — identiques à ondes/js/vagues.js pour
 // une cohérence visuelle entre les pages du site.
@@ -110,7 +108,7 @@ var simSurf = {
     canvasW     : 0,
     canvasH     : 0,
     pxPerCm     : 10,
-    zoom        : 1,   // 1 = vue par défaut, SURF_ZOOM_MAX = dézoomé au max (cf. constantes ci-dessus)
+    zoom        : SURF_ZOOM_MAX,   // SURF_ZOOM_MAX = vue par défaut (dézoomée au max, cran ×1 du slider), SURF_ZOOM_MIN = zoom le plus net (cf. constantes ci-dessus)
     barrierX    : 0,
     barrierCY   : 0,
     gapHalf     : 0,
@@ -424,11 +422,17 @@ function drawSurfaces() {
 
 // ── Obstacle percé de l'ouverture ────────────────────────────────────
 
+var SURF_OBSTACLE_WIDTH_PX = 27; // épaisseur (px écran) au zoom le plus net (SURF_ZOOM_MIN) ; ×3 par rapport aux 9px précédents
+
 function _drawBarrierSurf(ctx, W, H) {
     var s = simSurf;
     ctx.save();
-    ctx.strokeStyle = '#f0c020';
-    ctx.lineWidth = 6;
+    // Couleur complémentaire de SURF_COL_BG (= milieu crête/creux, couleur moyenne des vagues) :
+    // 255 - [100,125,155] = [155,130,100] = #9b8264.
+    ctx.strokeStyle = '#9b8264';
+    // Épaisseur exprimée en cm (fixée au zoom le plus net) plutôt qu'en px écran, pour que
+    // l'obstacle garde une taille physique cohérente quel que soit le cran de zoom choisi.
+    ctx.lineWidth = SURF_OBSTACLE_WIDTH_PX * SURF_ZOOM_MIN / s.zoom;
     ctx.beginPath();
     ctx.moveTo(s.barrierX, 0);
     ctx.lineTo(s.barrierX, Math.max(0, s.barrierCY - s.gapHalf));
@@ -649,16 +653,13 @@ function initSurfDrag() {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-//  Zoom (molette) — champ de vision de SURF_VIEW_WIDTH_CM (zoom=1, par défaut) à
-//  SURF_ZOOM_MAX·SURF_VIEW_WIDTH_CM (dézoomé), pour pouvoir dézoomer le champ proche des
-//  grandes longueurs d'onde. Un geste de molette (trackpad surtout) enchaîne des dizaines
-//  d'évènements par seconde ; recalculer pxPerCm + la géométrie + reconstruire toute la grille
-//  du champ à CHAQUE évènement (même re-coalescé une fois par frame) sature le rebuild en
-//  continu pendant tout le geste — d'où le vrai anti-rebond temporisé ci-dessous (setTimeout,
-//  pas juste requestAnimationFrame) : `simSurf.zoom` est mis à jour immédiatement (c'est un
-//  simple nombre, gratuit), mais _surfApplyZoom() — qui déclenche le rebuild coûteux — n'est
-//  appelé qu'une fois le défilement réellement arrêté (SURF_ZOOM_DEBOUNCE_MS d'inactivité).
-//  Le rendu reste donc figé pendant le geste, puis "saute" au nouveau zoom une fois relâché.
+//  Zoom (slider à SURF_ZOOM_STAGES crans) — champ de vision de SURF_VIEW_WIDTH_CM
+//  (zoom=SURF_ZOOM_MIN, cran ×SURF_ZOOM_STAGES, le plus net) à SURF_ZOOM_MAX·SURF_VIEW_WIDTH_CM
+//  (zoom=SURF_ZOOM_MAX, cran ×1, vue par défaut, dézoomée au max — utile pour les grandes
+//  longueurs d'onde dont le champ proche dépasse la fenêtre la plus zoomée). Le cran de slider
+//  (1 à SURF_ZOOM_STAGES) est INVERSEMENT proportionnel au zoom interne — cf. onSliderZoomSurf.
+//  Chaque cran ne déclenche qu'un seul rebuild de la grille (pas de geste continu comme à la
+//  molette), donc pas besoin d'anti-rebond ici.
 // ══════════════════════════════════════════════════════════════════════
 
 function _surfApplyZoom() {
@@ -668,26 +669,14 @@ function _surfApplyZoom() {
     updateSurfGeometry();
 }
 
-var _surfZoomDebounceTimer = null;
-
-function initSurfZoom() {
-    var canvas = document.getElementById('surf-canvas');
-    if (!canvas) return;
-
-    canvas.addEventListener('wheel', function (evt) {
-        evt.preventDefault();
-        var factor = evt.deltaY > 0 ? SURF_ZOOM_STEP : (1 / SURF_ZOOM_STEP);
-        var z = simSurf.zoom * factor;
-        if (z < SURF_ZOOM_MIN) z = SURF_ZOOM_MIN;
-        if (z > SURF_ZOOM_MAX) z = SURF_ZOOM_MAX;
-        simSurf.zoom = z;
-
-        if (_surfZoomDebounceTimer) clearTimeout(_surfZoomDebounceTimer);
-        _surfZoomDebounceTimer = setTimeout(function () {
-            _surfZoomDebounceTimer = null;
-            _surfApplyZoom();
-        }, SURF_ZOOM_DEBOUNCE_MS);
-    }, { passive: false });
+function onSliderZoomSurf(v) {
+    var stage = parseInt(v, 10);
+    // Cran ×SURF_ZOOM_STAGES → zoom = SURF_ZOOM_MIN (le plus net) ;
+    // cran ×1 (défaut) → zoom = SURF_ZOOM_MAX (le plus dézoomé).
+    simSurf.zoom = SURF_ZOOM_MAX + SURF_ZOOM_MIN - stage;
+    var lbl = document.getElementById('lbl-zoom-surf');
+    if (lbl) lbl.textContent = stage;
+    _surfApplyZoom();
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -809,7 +798,7 @@ function resetSurfaces() {
     simSurf.simTime = 0;
     simSurf.lambda  = 4;
     simSurf.a       = 5;
-    simSurf.zoom    = 1;
+    simSurf.zoom    = SURF_ZOOM_MAX; // cran ×1, vue par défaut (dézoomée au max)
     simSurf.ptData  = [];
     _surfLastFrameT = null;
 
@@ -828,6 +817,11 @@ function resetSurfaces() {
     simSurf.showGraph = false;
     syncSurfGraphUI();
 
+    var slZoom = document.getElementById('sl-zoom-surf');
+    if (slZoom) slZoom.value = 1;
+    var lblZoom = document.getElementById('lbl-zoom-surf');
+    if (lblZoom) lblZoom.textContent = 1;
+
     _surfApplyZoom(); // recalcule pxPerCm (zoom remis à 1) + géométrie + programme le rebuild
     _updateSurfRatioReadout();
 }
@@ -838,6 +832,5 @@ function resetSurfaces() {
 
 function initSurfaces() {
     initSurfDrag();
-    initSurfZoom();
     _updateSurfRatioReadout();
 }
