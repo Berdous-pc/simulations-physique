@@ -472,6 +472,7 @@ Stockées dans `assets/previews/` au format **`.jpg`** (converties depuis les sc
 | `mecanisme_dissolution.jpg` | Mécanisme de dissolution |
 | `dissolution-dissolution.jpg` | Dissolution |
 | `diffraction-lumiere.jpg` | Diffraction de la lumière |
+| `diffraction-vagues.jpg` | Diffraction d'ondes de surface |
 | `interferences-lumiere.jpg` | Interférences lumineuses |
 
 **Optimisation poids/performance (juillet 2026)** : les screenshots d'origine (PNG plein format, jusqu'à 2273×1268 px et 300+ Ko chacun) alourdissaient inutilement le chargement de la page d'accueil et pénalisaient les Core Web Vitals (LCP, CLS), donc le référencement. Conversion en `.jpg` redimensionné (800 px de large max, qualité ~82) : dossier `assets/previews/` passé de ~1,4 Mo à ~630 Ko. Toute **nouvelle** image de preview doit suivre ce format (JPEG, 800 px de large max) plutôt que déposer un screenshot PNG brut.
