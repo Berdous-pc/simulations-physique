@@ -118,11 +118,16 @@ main {
   overflow: hidden;
   position: relative;
 }
-#surf-graph-time-control {
+/* Barre contrôle graphe(s) — même structure que #graph-ctrl (champ_uniforme) */
+#surf-graph-ctrl {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
-  flex-shrink: 0;
-  padding: 6px 10px 4px;
+  gap: clamp(4px, 0.5vw, 6px);
+  padding: clamp(3px, 0.4vh, 5px) clamp(6px, 0.8vw, 10px);
+  flex-wrap: wrap;
+  border-bottom: 1px solid #c8c0b4;
+  background: #f0ede8;
 }
 #surf-graph-canvas {
   background: #ffffff;
@@ -141,6 +146,57 @@ main {
   flex-direction: column;
   overflow: hidden;
   padding: 0 10px 8px;
+}
+
+/* Séparateur mode dual (2 graphes) — overlay sur toute la hauteur de #surf-graph-area */
+#surf-graph-dual-sep {
+  display: none;
+  position: absolute;
+  top: 0; bottom: 0;
+  left: 50%;
+  width: 2px;
+  margin-left: -1px;
+  background: #c8c0b4;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.graph-select {
+  height: clamp(22px, 2.6vh, 28px);
+  padding: 0 clamp(4px, 0.5vw, 7px);
+  font-family: inherit;
+  font-size: clamp(10px, 1vw, 12px);
+  font-weight: 600;
+  color: #2c3e50;
+  background: #e8e4de;
+  border: 1px solid #b0a898;
+  border-radius: 5px;
+  cursor: pointer;
+  min-width: 0;
+  flex: 0 0 auto;
+  width: clamp(90px, 9vw, 110px);
+}
+.graph-select:focus { outline: none; }
+
+.graph-mode-btn {
+  height: clamp(22px, 2.6vh, 28px);
+  padding: 0 clamp(5px, 0.7vw, 9px);
+  font-weight: 700;
+  font-size: clamp(10px, 1vw, 12px);
+  background: #e8e4de;
+  color: #5a6a78;
+  border: 1px solid #b0a898;
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: inherit;
+  transition: background 0.12s, color 0.12s;
+}
+.graph-mode-btn:hover { background: #d0ccc4; color: #2c3e50; }
+.graph-mode-btn.active {
+  background: #d0dce8;
+  border-color: #5a80a8;
+  color: #1a3a5a;
 }
 
 /* Zone de la scène 3D */

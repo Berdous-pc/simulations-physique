@@ -128,15 +128,31 @@ var simSurf = {
     point       : { x: 0, y: 0, cmX: null, cmY: null },
     dragging    : false,
 
+    // ── Axe de coupe vertical draggable (graphe "Amplitude(y)") — même principe
+    //    que le point M : position physique (cmX) indépendante du zoom, x (px
+    //    écran) recalculé à chaque changement de pxPerCm (cf. updateSurfGeometry).
+    //    Ne se déplace qu'horizontalement (l'axe reste vertical, sur toute la
+    //    hauteur du bassin).
+    cut         : { x: 0, cmX: null, dragging: false },
+
     // ── Affichage des valeurs (rapport λ/a, angle de diffraction) ─────
     showValeurs  : false,
     showAngle    : false,
 
-    // ── Graphe y(t) ────────────────────────────────────────────────────
+    // ── Graphe(s) — mode 1 ou 2 graphes, cf. _buildSurfGraphCtrl ──────────
     showGraph    : false,
-    ptData       : [],   // [{t, y}]
+    graphMode    : 'single',  // 'single' | 'dual'
+    graphTab1    : 'amp-t',   // Hauteur(t) au point M (par défaut)
+    graphTab2    : 'amp-y',   // Amplitude(y) selon l'axe de coupe
+    ptData       : [],   // [{t, y}] — échantillons pour Hauteur(t)
     ptTimeOrigin : 0,
 };
+
+// Options de graphe disponibles pour l'onglet Ondes de surfaces
+var SURF_GRAPH_TABS = [
+    { key: 'amp-t', label: 'Hauteur(t)', title: 'Hauteur de l\'eau au point M en fonction du temps' },
+    { key: 'amp-y', label: 'Amplitude(y)', title: 'Amplitude des vagues le long de l\'axe y' }
+];
 
 // ══════════════════════════════════════════════════════════════════════
 //  Géométrie — recalculée au resize et à chaque changement de λ/a. Reste
@@ -156,6 +172,9 @@ function updateSurfGeometry() {
     if (s.point.cmX !== null) {
         s.point.x = Math.max(0, Math.min(s.canvasW, s.point.cmX * s.pxPerCm));
         s.point.y = Math.max(0, Math.min(s.canvasH, s.point.cmY * s.pxPerCm));
+    }
+    if (s.cut.cmX !== null) {
+        s.cut.x = Math.max(0, Math.min(s.canvasW, s.cut.cmX * s.pxPerCm));
     }
 
     _scheduleSurfRebuild();
@@ -181,6 +200,7 @@ function resizeSurfaces() {
     if (simSurf.firstResize) {
         simSurf.point.cmX = (0.62 * w) / simSurf.pxPerCm;
         simSurf.point.cmY = (0.42 * h) / simSurf.pxPerCm;
+        simSurf.cut.cmX   = (0.55 * w) / simSurf.pxPerCm;
         simSurf.firstResize = false;
     }
 
@@ -368,7 +388,7 @@ function _rebuildSurfFieldCache() {
 // ══════════════════════════════════════════════════════════════════════
 //  Champ d'onde exact (non grillé) en un point (px, py) du bassin, à
 //  l'instant t (simTime par défaut) — utilisé pour le point de mesure M
-//  (position arbitraire) et son graphe amplitude(t). Même modèle que la
+//  (position arbitraire) et son graphe Hauteur(t). Même modèle que la
 //  grille (cf. _surfHuygensPQAtCell), pour rester cohérent avec elle.
 // ══════════════════════════════════════════════════════════════════════
 
@@ -401,6 +421,37 @@ function _surfFieldRaw(px, py, tOverride) {
 }
 
 // ══════════════════════════════════════════════════════════════════════
+//  Enveloppe (amplitude MAXIMALE) en un point (px, py) — le facteur devant
+//  cos(ωt)/sin(ωt), soit √(P²+Q²) : ne dépend pas de t (hormis le front
+//  causal, qui détermine si l'onde a déjà atteint le point). Utilisé par le
+//  graphe "Amplitude(y)" : contrairement à Hauteur(t), on ne veut pas
+//  l'oscillation instantanée mais l'enveloppe figée le long de l'axe de coupe.
+// ══════════════════════════════════════════════════════════════════════
+
+function _surfFieldEnvelope(px, py, tOverride) {
+    var s = simSurf;
+    var lambda_px = s.lambda * s.pxPerCm;
+    if (lambda_px <= 0 || s.pxPerCm <= 0) return 0;
+    var c_px = SURF_C_CM * s.pxPerCm;
+    var t    = (tOverride !== undefined) ? tOverride : s.simTime;
+
+    if (px <= s.barrierX) {
+        var front = c_px * t;
+        return (px > front) ? 0 : 1; // onde plane incidente, amplitude unité
+    }
+
+    var w = s.gapHalf, cy0 = s.barrierCY;
+    var z = px - s.barrierX;
+    var y = py - cy0;
+    var rmin = _surfRmin(w, z, y);
+    if (c_px * t < s.barrierX + rmin) return 0;
+
+    var sources = _surfHuygensSources(w, lambda_px);
+    var pq = _surfHuygensPQAtCell(sources, lambda_px, s.barrierX, z, y);
+    return Math.sqrt(pq.P * pq.P + pq.Q * pq.Q);
+}
+
+// ══════════════════════════════════════════════════════════════════════
 //  Rendu principal du bassin (vue de dessus)
 // ══════════════════════════════════════════════════════════════════════
 
@@ -420,6 +471,7 @@ function drawSurfaces() {
         _drawBarrierSurf(ctx, W, H);
         if (s.showAngle) _drawSurfAngle(ctx, W, H);
         if (s.showGraph) _drawSurfPoint(ctx);
+        if (s.showGraph && _surfAmpYActive()) _drawSurfCutAxis(ctx, H);
         return;
     }
 
@@ -466,6 +518,14 @@ function drawSurfaces() {
     _drawBarrierSurf(ctx, W, H);
     if (s.showAngle) _drawSurfAngle(ctx, W, H);
     if (simSurf.showGraph) _drawSurfPoint(ctx);
+    if (simSurf.showGraph && _surfAmpYActive()) _drawSurfCutAxis(ctx, H);
+}
+
+// L'axe de coupe (graphe "Amplitude(y)") n'est affiché/actif que si ce graphe
+// est sélectionné dans l'un des deux emplacements (simple ou dual).
+function _surfAmpYActive() {
+    return simSurf.graphTab1 === 'amp-y' ||
+           (simSurf.graphMode === 'dual' && simSurf.graphTab2 === 'amp-y');
 }
 
 // ── Angle de diffraction (axe blanc + bissectrices jaunes du 1er minimum) ────
@@ -546,6 +606,33 @@ function _drawSurfPoint(ctx) {
     ctx.restore();
 }
 
+// ── Axe de coupe vertical draggable (graphe "Amplitude(y)") ───────────
+// Trait vertical orienté vers le haut, sur toute la hauteur du bassin — sa
+// position x définit le plan de coupe pour le graphe Amplitude(y) (0 = centre
+// de la figure = barrierCY).
+
+var SURF_COL_CUT = '#d21f1f';
+
+function _drawSurfCutAxis(ctx, H) {
+    var x = simSurf.cut.x;
+    ctx.save();
+    ctx.strokeStyle = SURF_COL_CUT;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(x, H);
+    ctx.lineTo(x, 10);
+    ctx.stroke();
+    // Pointe de flèche vers le haut
+    ctx.fillStyle = SURF_COL_CUT;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x - 7, 14);
+    ctx.lineTo(x + 7, 14);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+}
+
 // ══════════════════════════════════════════════════════════════════════
 //  Boucle d'animation — avancement du temps + échantillonnage du point M
 // ══════════════════════════════════════════════════════════════════════
@@ -591,7 +678,7 @@ function _updateSurfPointData(tFrom, tTo) {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-//  Graphe amplitude(t) au point M
+//  Graphe Hauteur(t) au point M
 // ══════════════════════════════════════════════════════════════════════
 
 function resizeSurfGraphCanvas() {
@@ -605,6 +692,7 @@ function resizeSurfGraphCanvas() {
     canvas.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
+// ── drawSurfGraph — point d'entrée (1 ou 2 graphes, cf. simSurf.graphMode) ──
 function drawSurfGraph() {
     var canvas = document.getElementById('surf-graph-canvas');
     if (!canvas) return;
@@ -612,23 +700,53 @@ function drawSurfGraph() {
     var W = canvas.clientWidth, H = canvas.clientHeight;
     if (!W || !H) return;
 
+    ctx.clearRect(0, 0, W, H);
     ctx.fillStyle = '#faf9f6';
     ctx.fillRect(0, 0, W, H);
 
+    if (simSurf.graphMode === 'dual') {
+        var halfW  = Math.floor(W / 2);
+        var leftW  = halfW - 1;
+        var rightW = W - halfW - 1;
+
+        ctx.save();
+        ctx.beginPath(); ctx.rect(0, 0, leftW, H); ctx.clip();
+        _drawSurfOneGraph(ctx, 0, 0, leftW, H, simSurf.graphTab1);
+        ctx.restore();
+
+        ctx.save();
+        ctx.translate(halfW + 1, 0);
+        ctx.beginPath(); ctx.rect(0, 0, rightW, H); ctx.clip();
+        _drawSurfOneGraph(ctx, 0, 0, rightW, H, simSurf.graphTab2);
+        ctx.restore();
+    } else {
+        _drawSurfOneGraph(ctx, 0, 0, W, H, simSurf.graphTab1);
+    }
+}
+
+function _drawSurfOneGraph(ctx, x0, y0, W, H, tabKey) {
+    if (tabKey === 'amp-y') _drawSurfAmpY(ctx, x0, y0, W, H);
+    else _drawSurfAmpT(ctx, x0, y0, W, H);
+}
+
+// ── Graphe "Hauteur(t)" — hauteur d'eau au point M en fonction du temps
+//    (distincte de l'Amplitude(y), qui est l'enveloppe constante dans le
+//    temps — cf. discussion avec l'auteur) ──
+function _drawSurfAmpT(ctx, x0, y0, W, H) {
     var t    = simSurf.simTime;
     var tMax = Math.max(SURF_GRAPH_WINDOW, t);
     var tMin = tMax - SURF_GRAPH_WINDOW;
     var yMax = 1.25, yMin = -1.25;
 
-    var GL = 60, GR = 12, GT = 14, GB = 34;
+    var GL = 78, GR = 12, GT = 14, GB = 34;
     var pW = W - GL - GR, pH = H - GT - GB;
     if (pW < 20 || pH < 20) return;
 
-    function px(v) { return GL + (v - tMin) / (tMax - tMin) * pW; }
-    function py(v) { return GT + (1 - (v - yMin) / (yMax - yMin)) * pH; }
+    function px(v) { return x0 + GL + (v - tMin) / (tMax - tMin) * pW; }
+    function py(v) { return y0 + GT + (1 - (v - yMin) / (yMax - yMin)) * pH; }
 
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(GL, GT, pW, pH);
+    ctx.fillRect(x0 + GL, y0 + GT, pW, pH);
 
     // Grille horizontale (amplitude) + axe zéro
     ctx.strokeStyle = 'rgba(200,192,180,0.55)';
@@ -639,13 +757,13 @@ function drawSurfGraph() {
     ctx.textBaseline = 'middle';
     for (var v = -1; v <= 1; v += 0.5) {
         var yc = py(v);
-        ctx.beginPath(); ctx.moveTo(GL, yc); ctx.lineTo(GL + pW, yc); ctx.stroke();
-        ctx.fillText(v.toFixed(1).replace('.', ','), GL - 6, yc);
+        ctx.beginPath(); ctx.moveTo(x0 + GL, yc); ctx.lineTo(x0 + GL + pW, yc); ctx.stroke();
+        ctx.fillText(v.toFixed(1).replace('.', ','), x0 + GL - 8, yc);
     }
     ctx.strokeStyle = '#b0a898';
     ctx.lineWidth = 1;
-    var y0 = py(0);
-    ctx.beginPath(); ctx.moveTo(GL, y0); ctx.lineTo(GL + pW, y0); ctx.stroke();
+    var y0line = py(0);
+    ctx.beginPath(); ctx.moveTo(x0 + GL, y0line); ctx.lineTo(x0 + GL + pW, y0line); ctx.stroke();
 
     // Graduations temporelles (secondes)
     ctx.textAlign = 'center';
@@ -655,17 +773,17 @@ function drawSurfGraph() {
     for (var tt = tStart; tt <= tMax; tt += tStep) {
         var xc = px(tt);
         ctx.strokeStyle = 'rgba(200,192,180,0.4)';
-        ctx.beginPath(); ctx.moveTo(xc, GT); ctx.lineTo(xc, GT + pH); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(xc, y0 + GT); ctx.lineTo(xc, y0 + GT + pH); ctx.stroke();
         ctx.fillStyle = '#7a8a96';
         ctx.font = 'bold 14px monospace';
-        ctx.fillText(tt.toFixed(0), xc, GT + pH + 4);
+        ctx.fillText(tt.toFixed(0), xc, y0 + GT + pH + 4);
     }
 
-    // Courbe amplitude(t)
+    // Courbe hauteur(t)
     var data = simSurf.ptData;
     if (data && data.length > 1) {
         ctx.save();
-        ctx.beginPath(); ctx.rect(GL, GT, pW, pH); ctx.clip();
+        ctx.beginPath(); ctx.rect(x0 + GL, y0 + GT, pW, pH); ctx.clip();
         ctx.beginPath();
         var started = false;
         for (var i = 0; i < data.length; i++) {
@@ -683,21 +801,227 @@ function drawSurfGraph() {
 
     ctx.strokeStyle = '#c8c0b4';
     ctx.lineWidth = 1;
-    ctx.strokeRect(GL, GT, pW, pH);
+    ctx.strokeRect(x0 + GL, y0 + GT, pW, pH);
 
     ctx.fillStyle = '#5a6a78';
     ctx.font = 'bold 15px "Segoe UI", Arial, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
-    ctx.fillText('Temps (s)', GL + pW / 2, H - 2);
+    ctx.fillText('Temps (s)', x0 + GL + pW / 2, y0 + H - 2);
 
     ctx.save();
-    ctx.translate(14, GT + pH / 2);
+    ctx.translate(x0 + 12, y0 + GT + pH / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText('Hauteur', 0, 0);
+    ctx.restore();
+}
+
+// ── Graphe "Amplitude(y)" — enveloppe (amplitude MAXIMALE, √(P²+Q²), le
+//    facteur devant cos(ωt)/sin(ωt)) le long de l'axe de coupe vertical
+//    (draggable dans le bassin), 0 = centre de la figure (barrierCY). Ne
+//    dépend pas du temps (hormis le front causal qui la fait apparaître
+//    progressivement) — pas d'oscillation, contrairement à Hauteur(t). ──
+function _drawSurfAmpY(ctx, x0, y0, W, H) {
+    var s = simSurf;
+    if (s.pxPerCm <= 0 || !s.canvasH) return;
+
+    var halfRangeCm = (s.canvasH / 2) / s.pxPerCm;
+    var xMin = -halfRangeCm, xMax = halfRangeCm;
+
+    var GL = 78, GR = 12, GT = 14, GB = 34;
+    var pW = W - GL - GR, pH = H - GT - GB;
+    if (pW < 20 || pH < 20) return;
+
+    // ── Échantillonnage de l'enveloppe le long de l'axe de coupe, une seule
+    //    fois — sert à la fois à cadrer l'axe des ordonnées (qui doit monter
+    //    au-delà de 1 très près de l'obstacle, cf. interférences constructives
+    //    proches) et à tracer la courbe.
+    var N = Math.max(40, Math.round(pW));
+    var yCms = [], amps = [];
+    var maxAmp = 0;
+    for (var i = 0; i <= N; i++) {
+        var py_screen = i / N * s.canvasH;
+        yCms.push((py_screen - s.barrierCY) / s.pxPerCm);
+        var amp = _surfFieldEnvelope(s.cut.x, py_screen, s.simTime);
+        amps.push(amp);
+        if (amp > maxAmp) maxAmp = amp;
+    }
+
+    // Plancher à 1,25 (cadrage habituel), mais l'axe monte plus haut si
+    // l'enveloppe le dépasse (interférences constructives près de l'obstacle).
+    var yMin = 0, yMax = Math.max(1.25, maxAmp * 1.08);
+
+    function px(v) { return x0 + GL + (v - xMin) / (xMax - xMin) * pW; }
+    function py(v) { return y0 + GT + (1 - (v - yMin) / (yMax - yMin)) * pH; }
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(x0 + GL, y0 + GT, pW, pH);
+
+    // Grille horizontale (amplitude, toujours positive — enveloppe)
+    ctx.strokeStyle = 'rgba(200,192,180,0.55)';
+    ctx.lineWidth = 0.8;
+    ctx.fillStyle = '#7a8a96';
+    ctx.font = 'bold 14px monospace';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    var yStep = _niceAxisStep(yMax - yMin, 5);
+    var yStart = Math.ceil(yMin / yStep) * yStep;
+    for (var vy = yStart; vy <= yMax + yStep * 0.01; vy += yStep) {
+        var vyr = Math.round(vy / yStep) * yStep;
+        var yc = py(vyr);
+        ctx.beginPath(); ctx.moveTo(x0 + GL, yc); ctx.lineTo(x0 + GL + pW, yc); ctx.stroke();
+        ctx.fillText(vyr.toFixed(2).replace('.', ','), x0 + GL - 8, yc);
+    }
+    ctx.strokeStyle = '#b0a898';
+    ctx.lineWidth = 1;
+    var y0line = py(0);
+    ctx.beginPath(); ctx.moveTo(x0 + GL, y0line); ctx.lineTo(x0 + GL + pW, y0line); ctx.stroke();
+
+    // Graduations le long de l'axe (cm, 0 = centre)
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    var xStep = _niceAxisStep(xMax - xMin);
+    var xStart = Math.ceil(xMin / xStep) * xStep;
+    for (var xx = xStart; xx <= xMax; xx += xStep) {
+        var xc = px(xx);
+        ctx.strokeStyle = 'rgba(200,192,180,0.4)';
+        ctx.beginPath(); ctx.moveTo(xc, y0 + GT); ctx.lineTo(xc, y0 + GT + pH); ctx.stroke();
+        ctx.fillStyle = '#7a8a96';
+        ctx.font = 'bold 14px monospace';
+        ctx.fillText(Math.round(xx), xc, y0 + GT + pH + 4);
+    }
+
+    // Courbe amplitude(y) — enveloppe échantillonnée le long de l'axe de coupe
+    ctx.save();
+    ctx.beginPath(); ctx.rect(x0 + GL, y0 + GT, pW, pH); ctx.clip();
+    ctx.beginPath();
+    for (var j = 0; j <= N; j++) {
+        var cx = px(yCms[j]), cy2 = py(amps[j]);
+        if (j === 0) ctx.moveTo(cx, cy2);
+        else ctx.lineTo(cx, cy2);
+    }
+    ctx.strokeStyle = SURF_COL_CUT;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.strokeStyle = '#c8c0b4';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x0 + GL, y0 + GT, pW, pH);
+
+    ctx.fillStyle = '#5a6a78';
+    ctx.font = 'bold 15px "Segoe UI", Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('y (cm)', x0 + GL + pW / 2, y0 + H - 2);
+
+    ctx.save();
+    ctx.translate(x0 + 12, y0 + GT + pH / 2);
     ctx.rotate(-Math.PI / 2);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.fillText('Amplitude', 0, 0);
     ctx.restore();
+}
+
+// Pas "joli" pour les graduations d'un axe (cm ou amplitude) — targetTicks
+// graduations visées sur la plage donnée.
+function _niceAxisStep(range, targetTicks) {
+    var rough = range / (targetTicks || 6);
+    var mag  = Math.pow(10, Math.floor(Math.log10(rough)));
+    var mant = rough / mag;
+    if (mant < 1.5) return mag;
+    if (mant < 3.5) return 2 * mag;
+    if (mant < 7.5) return 5 * mag;
+    return 10 * mag;
+}
+
+// ── Barre de contrôle des graphes (1/2 graphes + sélecteurs) ──────────────
+// Même structure que _buildGraphCtrl (champ_uniforme/js/graph.js), adaptée aux
+// deux seuls graphes disponibles ici (Hauteur(t), Amplitude(y)).
+
+function _buildSurfGraphCtrl() {
+    var ctrl = document.getElementById('surf-graph-ctrl');
+    var sep  = document.getElementById('surf-graph-dual-sep');
+    if (!ctrl) return;
+    ctrl.innerHTML = '';
+    var s = simSurf;
+
+    if (s.graphMode === 'single') {
+        ctrl.style.cssText = '';
+        if (sep) sep.style.display = 'none';
+        ctrl.appendChild(_surfMakeDualBtn());
+        ctrl.appendChild(_surfMakeSelect('sel-surf-tab1', s.graphTab1, function(key) {
+            s.graphTab1 = key;
+            _buildSurfGraphCtrl();
+        }));
+        ctrl.appendChild(_surfMakeTitle(s.graphTab1));
+    } else {
+        ctrl.style.cssText = 'display:flex;align-items:stretch;padding:0;gap:0';
+        if (sep) sep.style.display = 'block';
+
+        var leftHalf = document.createElement('div');
+        leftHalf.style.cssText = 'flex:1;display:flex;align-items:center;gap:6px;' +
+            'padding:3px 8px;min-width:0;overflow-x:auto';
+        leftHalf.appendChild(_surfMakeDualBtn());
+        leftHalf.appendChild(_surfMakeSelect('sel-surf-tab1', s.graphTab1, function(key) {
+            s.graphTab1 = key;
+            _buildSurfGraphCtrl();
+        }));
+        leftHalf.appendChild(_surfMakeTitle(s.graphTab1));
+        ctrl.appendChild(leftHalf);
+
+        var rightHalf = document.createElement('div');
+        rightHalf.style.cssText = 'flex:1;display:flex;align-items:center;gap:6px;' +
+            'padding:3px 8px;min-width:0;overflow-x:auto';
+        rightHalf.appendChild(_surfMakeSelect('sel-surf-tab2', s.graphTab2, function(key) {
+            s.graphTab2 = key;
+            _buildSurfGraphCtrl();
+        }));
+        rightHalf.appendChild(_surfMakeTitle(s.graphTab2));
+        ctrl.appendChild(rightHalf);
+    }
+}
+
+function _surfMakeDualBtn() {
+    var btn = document.createElement('button');
+    btn.className = 'graph-mode-btn' + (simSurf.graphMode === 'dual' ? ' active' : '');
+    btn.textContent = simSurf.graphMode === 'dual' ? '2 graphes' : '1 graphe';
+    btn.style.cssText = 'flex-shrink:0';
+    btn.onclick = function () { toggleSurfDualGraph(); };
+    return btn;
+}
+
+function _surfMakeTitle(activeKey) {
+    var info = SURF_GRAPH_TABS.find(function(t) { return t.key === activeKey; });
+    var span = document.createElement('span');
+    span.className = 'graph-title';
+    span.style.cssText = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+    span.textContent = info ? info.title : '';
+    span.title = info ? info.title : '';
+    return span;
+}
+
+function _surfMakeSelect(id, activeKey, onChange) {
+    var sel = document.createElement('select');
+    sel.id = id;
+    sel.className = 'graph-select';
+    SURF_GRAPH_TABS.forEach(function(tab) {
+        var opt = document.createElement('option');
+        opt.value = tab.key;
+        opt.textContent = tab.label;
+        if (tab.key === activeKey) opt.selected = true;
+        sel.appendChild(opt);
+    });
+    sel.onchange = function() { onChange(sel.value); };
+    return sel;
+}
+
+function toggleSurfDualGraph() {
+    simSurf.graphMode = (simSurf.graphMode === 'dual') ? 'single' : 'dual';
+    _buildSurfGraphCtrl();
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -723,9 +1047,26 @@ function initSurfDrag() {
             simSurf.dragging = true;
             canvas.style.cursor = 'grabbing';
             evt.preventDefault();
+            return;
+        }
+        // Axe de coupe : n'accroche que si le graphe Amplitude(y) est actif —
+        // tolérance horizontale sur toute la hauteur (trait vertical).
+        if (simSurf.showGraph && _surfAmpYActive() &&
+            Math.abs(pos.x - simSurf.cut.x) <= 10) {
+            simSurf.cut.dragging = true;
+            canvas.style.cursor = 'ew-resize';
+            evt.preventDefault();
         }
     }
     function move(evt) {
+        if (simSurf.cut.dragging) {
+            var posC = _surfPointerPos(canvas, evt);
+            var c = simSurf.cut;
+            c.x = Math.max(0, Math.min(simSurf.canvasW, posC.x));
+            c.cmX = c.x / simSurf.pxPerCm;
+            evt.preventDefault();
+            return;
+        }
         if (!simSurf.dragging) return;
         var pos = _surfPointerPos(canvas, evt);
         var p = simSurf.point;
@@ -736,6 +1077,10 @@ function initSurfDrag() {
         evt.preventDefault();
     }
     function up() {
+        if (simSurf.cut.dragging) {
+            simSurf.cut.dragging = false;
+            canvas.style.cursor = 'grab';
+        }
         if (!simSurf.dragging) return;
         simSurf.dragging = false;
         canvas.style.cursor = 'grab';
@@ -933,7 +1278,11 @@ function syncSurfGraphUI() {
     graphEl.style.height = '';
     var btn = document.getElementById('btn-graph-surf');
     if (btn) btn.classList.toggle('active', visible);
-    if (visible) { simSurf.ptTimeOrigin = simSurf.simTime; simSurf.ptData = []; }
+    if (visible) {
+        simSurf.ptTimeOrigin = simSurf.simTime;
+        simSurf.ptData = [];
+        _buildSurfGraphCtrl();
+    }
     resize();
 }
 
@@ -955,6 +1304,9 @@ function resetSurfaces() {
     simSurf.a       = 5;
     simSurf.zoom    = SURF_ZOOM_MAX; // cran ×1, vue par défaut (dézoomée au max)
     simSurf.ptData  = [];
+    simSurf.graphMode = 'single';
+    simSurf.graphTab1 = 'amp-t';
+    simSurf.graphTab2 = 'amp-y';
     _surfLastFrameT = null;
 
     var slLambda = document.getElementById('sl-lambda-surf');
