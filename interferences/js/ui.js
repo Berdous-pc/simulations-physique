@@ -388,10 +388,10 @@ function setMainTab(tab) {
     document.getElementById(t + '-area').style.display = (t === tab) ? '' : 'none';
   });
 
-  // #lumineuses-area est display:none pendant les autres onglets : la scène 3D
-  // et le canvas du graphe n'ont des dimensions exploitables qu'une fois
-  // réaffichés — on relance donc le resize ici, pas seulement une fois à init().
-  if (tab === 'lumineuses') resize();
+  // #lumineuses-area et #surfaces-area sont display:none pendant les autres onglets :
+  // la scène 3D / le bassin et leurs canvas n'ont des dimensions exploitables qu'une
+  // fois réaffichés — on relance donc le resize ici, pas seulement une fois à init().
+  if (tab === 'lumineuses' || tab === 'surfaces') resize();
 }
 
 // ═══════════════════════════════════════════════════
