@@ -31,12 +31,27 @@
       </div>
     </div>
 
-    <!-- ═══ Zone ONDES DE SURFACE — à venir ═══ -->
+    <!-- ═══ Zone ONDES DE SURFACES (interférences de 2 sources ponctuelles) ═══ -->
     <div id="surfaces-area" style="display:none;">
-      <div id="surfaces-placeholder" class="tab-placeholder">
-        <span class="tab-placeholder-icon">🌊</span>
-        <p>Simulation à venir</p>
+
+      <!-- Bassin vu de dessus -->
+      <div id="surf-scene-area">
+        <canvas id="surf-canvas"></canvas>
       </div>
+
+      <!-- Splitter draggable (masqué tant que le graphe n'est pas affiché) -->
+      <div id="surf-splitter"></div>
+
+      <!-- Zone graphe(s) : Hauteur(t) au point M et/ou Amplitude(y) selon un axe
+           vertical draggable (cf. surfaces.js -> _buildSurfGraphCtrl) -->
+      <div id="surf-graph-area">
+        <div id="surf-graph-ctrl"><!-- construit dynamiquement par surfaces.js --></div>
+        <div id="surf-graph-wrap">
+          <canvas id="surf-graph-canvas"></canvas>
+        </div>
+        <div id="surf-graph-dual-sep"></div>
+      </div>
+
     </div>
 
     <!-- ═══ Zone ONDES LUMINEUSES (fentes/trous d'Young, déjà implémentée) ═══ -->
@@ -143,10 +158,40 @@
       <div class="input-hint">Cet onglet sera développé prochainement.</div>
     </div>
 
-    <!-- ═══ Section ONDES DE SURFACE — à venir ═══ -->
+    <!-- ═══ Section ONDES DE SURFACES ═══ -->
     <div class="panel-main-section" id="section-surfaces" style="display:none;">
-      <div class="section-title">Ondes de surface</div>
-      <div class="input-hint">Cet onglet sera développé prochainement.</div>
+
+      <div>
+        <div class="section-title">Animation</div>
+        <button class="btn btn-pause" id="btn-playpause-surf" onclick="togglePauseSurfaces()">⏸ Pause</button>
+        <div class="param-row" style="margin-top:8px;">
+          <label>Zoom <span>×<span id="lbl-zoom-surf">1</span></span></label>
+          <input type="range" id="sl-zoom-surf" min="1" max="3" step="1" value="1"
+                 oninput="onSliderZoomSurf(this.value)">
+        </div>
+      </div>
+
+      <div>
+        <div class="section-title">Paramètres</div>
+        <div class="param-row">
+          <label>Longueur d'onde λ <span><span id="lbl-lambda-surf">4,0</span> cm</span></label>
+          <input type="range" id="sl-lambda-surf" min="1" max="10" step="0.1" value="4"
+                 oninput="onSliderLambdaSurf(this.value)">
+        </div>
+        <div class="param-row">
+          <label>Écartement des sources b <span><span id="lbl-b-surf">8,0</span> cm</span></label>
+          <input type="range" id="sl-b-surf" min="1" max="30" step="0.1" value="8"
+                 oninput="onSliderBSurf(this.value)">
+        </div>
+        <button class="btn btn-reset" style="margin-top:4px;" onclick="resetSurfaces()">Par défaut</button>
+      </div>
+
+      <div>
+        <div class="section-title">Options</div>
+        <button class="btn btn-toggle-one" id="btn-graph-surf" onclick="toggleGraphSurf()">Afficher graphe</button>
+        <button class="btn btn-toggle-one" id="btn-interf-surf" onclick="toggleSurfInterfMode()" style="margin-top:8px;">Afficher les zones d'interférences :<br>Non</button>
+      </div>
+
     </div>
 
     <!-- ═══ Section ONDES LUMINEUSES ═══ -->
@@ -258,7 +303,11 @@
         <button class="panel-hint-toggle" onclick="toggleHint('surfaces')" title="Afficher les instructions">▲</button>
       </div>
       <div class="panel-hint-body">
-        Cette simulation sera disponible prochainement.
+        Deux sources ponctuelles synchrones émettent chacune une onde circulaire ; le bassin
+        affiche leur superposition. Réglez λ et l'écartement <strong>b</strong>, et faites
+        glisser le point <strong>M</strong> ou l'axe de coupe pour afficher leurs graphes
+        respectifs. Le bouton <strong>Afficher les zones d'interférences</strong> trace en
+        pointillés les zones constructives et/ou destructives.
       </div>
     </div>
 
@@ -286,6 +335,7 @@
 <script src="js/sim.js"></script>
 <script src="js/scene.js"></script>
 <script src="js/graph.js"></script>
+<script src="js/surfaces.js"></script>
 <script src="js/ui.js"></script>
 <script data-goatcounter="https://berdous-pc.goatcounter.com/count"
         async src="https://gc.zgo.at/count.js"></script>

@@ -468,6 +468,7 @@ function resize() {
     resizeScheduled = false;
     resizeScene();
     resizeGraphCanvas();
+    resizeSurfaces();
   });
 }
 window.addEventListener('resize', resize);
@@ -480,6 +481,7 @@ document.addEventListener('webkitfullscreenchange', resize);
 function loop() {
   renderScene();
   tickDecompose();
+  if (document.getElementById('surfaces-area').style.display !== 'none') tickSurfaces();
   // drawIntensityGraph() n'est plus appelée ici : chaque déclencheur qui affecte réellement le
   // graphe (slider, forme, mode lumineux, reset, zoom, survol, épinglage, redimensionnement)
   // l'appelle désormais explicitement (cf. ui.js → updateParam/updateMaskShape/resetSim,
@@ -499,6 +501,7 @@ function init() {
   setMainTab(tab);
 
   initScene();
+  initSurfaces();
   initGraphInteractions();
   initLegendeBlanche();
   appliquerBorneD();
