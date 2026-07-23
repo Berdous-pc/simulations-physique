@@ -62,8 +62,11 @@ var SURF_COL_BG      = [100, 125, 155];
 var SURF_COL_INTERF_CONSTRUCTIVE = '#ffe14d'; // jaune
 var SURF_COL_INTERF_DESTRUCTIVE  = '#8a3fd6'; // violet
 
-// Couleur des doubles flèches source→M, cf. _drawSurfDistances — même orange que le point M
-var SURF_COL_DIST = '#e07020';
+// Couleurs des doubles flèches source→M, cf. _drawSurfDistances — 2 teintes chaudes proches
+// (orange / rose-orangé), toutes deux bien tranchées sur le fond bleu-gris du bassin, mais
+// distinguables entre elles pour associer chaque flèche à sa source (S1 ↔ orange, S2 ↔ rose).
+var SURF_COL_DIST_S1 = '#e07020';
+var SURF_COL_DIST_S2 = '#e0397a';
 
 // ── État global ───────────────────────────────────────────────────────
 var simSurf = {
@@ -625,22 +628,26 @@ function _drawSurfDistances(ctx) {
         label1 = (d1_cm / s.lambda).toFixed(2).replace('.', ',') + ' × λ';
         label2 = (d2_cm / s.lambda).toFixed(2).replace('.', ',') + ' × λ';
     }
-    _drawSurfDoubleArrow(ctx, s.s1.x, s.s1.y, p.x, p.y, label1);
-    _drawSurfDoubleArrow(ctx, s.s2.x, s.s2.y, p.x, p.y, label2);
+    _drawSurfDoubleArrow(ctx, s.s1.x, s.s1.y, p.x, p.y, label1, s.canvasW, s.canvasH, s.s2.x, s.s2.y, SURF_COL_DIST_S1);
+    _drawSurfDoubleArrow(ctx, s.s2.x, s.s2.y, p.x, p.y, label2, s.canvasW, s.canvasH, s.s1.x, s.s1.y, SURF_COL_DIST_S2);
 }
 
-// Double flèche entre (x1,y1) et (x2,y2), avec un label centré, écrit parallèlement à
-// l'axe de la flèche, décalé perpendiculairement de `offsetPx` pour ne pas la recouvrir.
-function _drawSurfDoubleArrow(ctx, x1, y1, x2, y2, label) {
+// Double flèche entre (x1,y1) et (x2,y2), avec un label centré au milieu, décalé
+// perpendiculairement à la flèche de `offsetPx` pour ne pas la recouvrir. Le texte reste
+// TOUJOURS horizontal (pas de rotation, quelle que soit l'orientation de la flèche) pour
+// rester lisible, et sa position est repliée (clampée) à l'intérieur du canvas pour ne
+// jamais être coupé sur les bords. (otherX,otherY) est l'AUTRE source (pas celle de cette
+// flèche) : le label est décalé à l'opposé d'elle pour que les deux labels S1M/S2M,
+// convergeant tous deux vers M, ne se superposent jamais entre eux.
+function _drawSurfDoubleArrow(ctx, x1, y1, x2, y2, label, canvasW, canvasH, otherX, otherY, color) {
     var dx = x2 - x1, dy = y2 - y1;
     var len = Math.hypot(dx, dy);
     if (len < 1) return;
     var angle = Math.atan2(dy, dx);
-    var offsetPx = 14;
 
     ctx.save();
-    ctx.strokeStyle = SURF_COL_DIST;
-    ctx.fillStyle = SURF_COL_DIST;
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(x1, y1);
@@ -649,21 +656,31 @@ function _drawSurfDoubleArrow(ctx, x1, y1, x2, y2, label) {
     _surfDrawArrowHead(ctx, x1, y1, angle + Math.PI);
     _surfDrawArrowHead(ctx, x2, y2, angle);
 
-    // Angle du texte : toujours lisible (jamais la tête en bas).
-    var textAngle = angle;
-    if (textAngle > Math.PI / 2) textAngle -= Math.PI;
-    if (textAngle < -Math.PI / 2) textAngle += Math.PI;
+    // Décalage perpendiculaire à la flèche, du côté opposé à l'autre source : comme les
+    // deux flèches S1M et S2M convergent vers M, ça écarte systématiquement les deux
+    // labels l'un de l'autre plutôt que de risquer de les superposer au milieu.
+    var offsetPx = 46;
+    var perpX = -dy / len, perpY = dx / len;
+    var midX = (x1 + x2) / 2, midY = (y1 + y2) / 2;
+    var toOtherX = otherX - midX, toOtherY = otherY - midY;
+    if (perpX * toOtherX + perpY * toOtherY > 0) { perpX = -perpX; perpY = -perpY; }
+    var lx = midX + perpX * offsetPx;
+    var ly = midY + perpY * offsetPx;
 
-    ctx.translate((x1 + x2) / 2, (y1 + y2) / 2);
-    ctx.rotate(textAngle);
-    ctx.font = 'bold 13px monospace';
+    // Repli à l'intérieur du canvas (marge tenant compte de la largeur approx. du texte).
+    ctx.font = 'bold 30px monospace';
+    var textW = ctx.measureText(label).width;
+    var margin = textW / 2 + 4;
+    if (canvasW) lx = Math.max(margin, Math.min(canvasW - margin, lx));
+    if (canvasH) ly = Math.max(16, Math.min(canvasH - 6, ly));
+
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
     ctx.lineWidth = 3;
     ctx.strokeStyle = '#00000080';
-    ctx.strokeText(label, 0, -offsetPx);
-    ctx.fillStyle = SURF_COL_DIST;
-    ctx.fillText(label, 0, -offsetPx);
+    ctx.strokeText(label, lx, ly);
+    ctx.fillStyle = color;
+    ctx.fillText(label, lx, ly);
     ctx.restore();
 }
 
