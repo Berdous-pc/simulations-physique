@@ -104,8 +104,9 @@ var SURF_COL_BG      = [100, 125, 155];
 var simSurf = {
 
     // ── Contrôle de l'animation ─────────────────────────────────────
-    paused  : false,
-    simTime : 0,
+    paused      : false,
+    simTime     : 0,
+    speedFactor : 1.0,
 
     // ── Paramètres réglables ──────────────────────────────────────────
     lambda : 4,   // cm
@@ -695,7 +696,7 @@ function tickSurfaces() {
 
     if (!simSurf.paused) {
         var tPrev = simSurf.simTime;
-        simSurf.simTime += dt;
+        simSurf.simTime += dt * (simSurf.speedFactor || 1.0);
         if (simSurf.showGraph) _updateSurfPointData(tPrev, simSurf.simTime);
     }
     drawSurfaces();
@@ -1235,6 +1236,15 @@ function togglePauseSurfaces() {
     if (!btn) return;
     if (simSurf.paused) { btn.textContent = '▶ Reprendre'; btn.className = 'btn btn-play'; }
     else                { btn.textContent = '⏸ Pause';     btn.className = 'btn btn-pause'; }
+}
+
+var SURF_SPEED_STEPS = [0.10, 0.25, 0.50, 1.00];
+
+function onSliderSpeedSurf(v) {
+    var idx = parseInt(v, 10);
+    simSurf.speedFactor = SURF_SPEED_STEPS[idx];
+    var lbl = document.getElementById('lbl-speed-surf');
+    if (lbl) lbl.textContent = simSurf.speedFactor.toFixed(2).replace('.', ',');
 }
 
 function onSliderLambdaSurf(v) {

@@ -610,3 +610,21 @@ input[type=range]:disabled { accent-color: #b0aca4; cursor: not-allowed; }
 }
 .panel-hint:not(.collapsed) .panel-hint-toggle { transform: rotate(180deg); }
 
+
+/* Labels alignés sur les 4 crans d'un slider pas=1 (0-3) */
+.speed-ticks {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr) 0fr;
+  font-size: clamp(9px, 0.85vw, 11px);
+  color: #7a8a96;
+  padding: 0 7px;
+  line-height: 1;
+  margin-top: 1px;
+}
+.speed-ticks span:not(:last-child) {
+  text-align: left;
+}
+.speed-ticks span:last-child {
+  text-align: right;
+  white-space: nowrap;
+}
