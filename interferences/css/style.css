@@ -116,6 +116,41 @@ main {
 #surf-canvas { display: block; width: 100%; height: 100%; cursor: grab; }
 #surf-canvas:active { cursor: grabbing; }
 
+/* Bouton de vue (overlay coin haut-droit du bassin), cf. #view-buttons/.btn-view (onglet
+   Ondes lumineuses) — dupliqué plutôt que factorisé pour ne rien risquer de casser là-bas. */
+#surf-view-buttons {
+  position: absolute;
+  top: clamp(6px, 1vw, 12px);
+  right: clamp(6px, 1vw, 12px);
+  z-index: 10;
+  display: flex;
+  gap: 5px;
+  background: rgba(20,24,29,0.55);
+  padding: 5px;
+  border-radius: 7px;
+}
+
+/* Slider d'angle (overlay sous #surf-view-buttons, vue plongeante uniquement), même famille que
+   #echelle-angle-buttons : caché par défaut, visible via la classe .visible (cf. surfaces.js →
+   setSurfViewMode). */
+#surf-tilt-slider {
+  position: absolute;
+  top: calc(clamp(6px, 1vw, 12px) + 42px);
+  right: clamp(6px, 1vw, 12px);
+  z-index: 10;
+  display: none;
+  align-items: center;
+  gap: 8px;
+  background: rgba(20,24,29,0.55);
+  padding: 6px 10px;
+  border-radius: 7px;
+  color: #cfd8df;
+  font-size: clamp(11px, 1.05vw, 13px);
+  font-weight: 700;
+}
+#surf-tilt-slider.visible { display: flex; }
+#surf-tilt-slider input[type="range"] { width: clamp(80px, 10vw, 130px); }
+
 #surf-splitter {
   flex: 0 0 6px;
   background: #c8c0b4;

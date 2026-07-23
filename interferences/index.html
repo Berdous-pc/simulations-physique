@@ -37,6 +37,15 @@
       <!-- Bassin vu de dessus -->
       <div id="surf-scene-area">
         <canvas id="surf-canvas"></canvas>
+        <div id="surf-view-buttons">
+          <button class="btn-view active" id="btn-surf-view-top" data-view="top" onclick="setSurfViewMode('top')">Vue du dessus</button>
+          <button class="btn-view" id="btn-surf-view-plongeante" data-view="plongeante" onclick="setSurfViewMode('plongeante')">Vue plongeante</button>
+        </div>
+        <div id="surf-tilt-slider">
+          <input type="range" id="sl-tilt-surf" min="10" max="75" step="1" value="45"
+                 oninput="onSliderTiltSurf(this.value)">
+          <span><span id="lbl-tilt-surf">45</span>°</span>
+        </div>
       </div>
 
       <!-- Splitter draggable (masqué tant que le graphe n'est pas affiché) -->

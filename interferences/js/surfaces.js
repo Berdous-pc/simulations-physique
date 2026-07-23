@@ -52,6 +52,19 @@ var SURF_ZOOM_MIN  = 1;
 var SURF_ZOOM_MAX  = 3;
 var SURF_ZOOM_STAGES = 3; // nombre de crans du slider de zoom (×1 à ×3)
 
+// ── Vue plongeante (rotation 3D autour de l'axe S1S2), cf. setSurfViewMode ──
+var SURF_TILT_MIN     = 10;  // degrés
+var SURF_TILT_MAX     = 75;
+var SURF_TILT_DEFAULT = 45;
+// Hauteur visuelle max de la nappe (px CSS), à raw = ±1 (une seule source) — un point où les
+// 2 sources sont en phase peut monter jusqu'à ~2× cette hauteur (cf. décision : la hauteur 3D
+// n'est PAS écrêtée à ±1 comme la couleur, contrairement à _rebuildSurfFieldCache/drawSurfaces).
+var SURF_3D_AMP_PX = 42;
+// Demi-hauteur fixe (px CSS) du plan de coupe horizontal (Amplitude(x), cf. _render3DSurfView) —
+// réutilisée aussi pour la zone de drag (initSurfDrag), qui doit couvrir toute la bande visible
+// et pas seulement sa ligne centrale (sinon le plan "semble" non draggable, cf. retour utilisateur).
+var SURF_3D_PLANE_HALF_H = SURF_3D_AMP_PX * 2.2;
+
 // Couleurs de l'onde (crêtes ↔ creux) — identiques à diffraction/js/surfaces.js
 // pour une cohérence visuelle entre les pages du site.
 var SURF_COL_CREST  = [200, 240, 255];
@@ -101,6 +114,10 @@ var simSurf = {
     //    principe que `cut` mais orienté horizontalement (ne se déplace
     //    verticalement).
     cutH        : { y: 0, cmY: null, dragging: false },
+
+    // ── Vue plongeante (rotation 3D), cf. setSurfViewMode ──────────────
+    viewMode : 'top',            // 'top' | 'plongeante'
+    tiltDeg  : SURF_TILT_DEFAULT,
 
     // ── Zones d'interférences (trame de points), cf. toggleSurfInterfMode ──
     interfMode   : 'none',  // 'none' | 'constructive' | 'destructive' | 'both'
@@ -340,6 +357,49 @@ function _surfFieldEnvelope(px, py, tOverride) {
 }
 
 // ══════════════════════════════════════════════════════════════════════
+//  Projection 3D partagée (vue plongeante) — rotation d'angle theta autour de
+//  l'axe x (= droite S1S2). Reprend le principe de ondes/js/vagues.js →
+//  _render3DWaveView (screen_y = H/2 + (wz−srcY)·cosθ − wy·sinθ), ici wz = y
+//  bassin (axe perpendiculaire à S1S2) et wy = hauteur de vague au point.
+//  Utilisée par les overlays (zones d'interférence, axes de coupe, sources) —
+//  PAS par le rendu de la nappe elle-même (_render3DSurfView), qui lit
+//  directement le cache P/Q par cellule pour éviter de recalculer un
+//  sqrt+sin+cos par pixel affiché.
+//
+//  Hauteur volontairement NON écrêtée à ±1 (contrairement à la couleur) : un
+//  point où les 2 sources arrivent en phase peut ainsi monter visiblement
+//  plus haut qu'un point simple — c'est exactement ce qu'on veut mettre en
+//  évidence avec cette vue.
+// ══════════════════════════════════════════════════════════════════════
+
+function _surf3DProjectPoint(px, py, thetaRad) {
+    var s = simSurf;
+    var raw = _surfFieldRaw(px, py);
+    var wy = raw * SURF_3D_AMP_PX;
+    var screenYbase = s.canvasH / 2 + (py - s.originY) * Math.cos(thetaRad);
+    return { x: px, y: screenYbase - wy * Math.sin(thetaRad) };
+}
+
+// Inverse de _surf3DProjectPoint pour une abscisse x FIXÉE (screenX = x, insensible à theta,
+// cf. plus haut) : retrouve la coordonnée y du bassin correspondant à un clic écran, pour
+// permettre le drag du point M en vue plongeante. Pas de forme fermée (wy dépend lui-même de y)
+// — résolu par point fixe (quelques itérations suffisent, la correction de hauteur restant petite
+// devant le terme dominant en cosθ·y) ; amorcé à la position actuelle de M pour une convergence
+// rapide et une continuité visuelle d'une frame à l'autre.
+function _surf3DInvertY(x, screenY, thetaRad, seedY) {
+    var s = simSurf;
+    var cosT = Math.cos(thetaRad), sinT = Math.sin(thetaRad);
+    var y = seedY;
+    for (var i = 0; i < 8; i++) {
+        var raw = _surfFieldRaw(x, y);
+        var wy = raw * SURF_3D_AMP_PX;
+        y = s.originY + (screenY - s.canvasH / 2 + wy * sinT) / cosT;
+        if (y < 0) y = 0; else if (y > s.canvasH) y = s.canvasH;
+    }
+    return y;
+}
+
+// ══════════════════════════════════════════════════════════════════════
 //  Rendu principal du bassin (vue de dessus)
 // ══════════════════════════════════════════════════════════════════════
 
@@ -351,14 +411,16 @@ function drawSurfaces() {
     if (!W || !H) return;
     var s = simSurf;
 
+    var is3D = (s.viewMode === 'plongeante');
+
     if (!s.P1 || s.gridW * s.gridH !== s.P1.length) {
         // Cache pas encore construit (premier affichage juste après un resize/tab-switch,
         // rebuild anti-rebond en attente) : fond uni le temps qu'il arrive.
         ctx.fillStyle = 'rgb(' + SURF_COL_BG.join(',') + ')';
         ctx.fillRect(0, 0, W, H);
         _drawSurfSources(ctx);
-        _drawSurfPoint(ctx);
-        if (s.distMode !== 'none') _drawSurfDistances(ctx);
+        _drawSurfPoint(ctx, is3D);
+        if (!is3D && s.distMode !== 'none') _drawSurfDistances(ctx);
         if (s.showGraph && _surfAmpYActive()) _drawSurfCutAxis(ctx, H);
         if (s.showGraph && _surfAmpXActive()) _drawSurfCutAxisH(ctx, W);
         _updateSurfValues();
@@ -369,41 +431,214 @@ function drawSurfaces() {
     var cosWT = Math.cos(s.omega * t), sinWT = Math.sin(s.omega * t);
     var front = s.c_px * t;
 
-    var gw = s.gridW, gh = s.gridH;
-    var img  = s._imgData;
-    var data = img.data;
+    if (is3D) {
+        _render3DSurfView(ctx, W, H, cosWT, sinWT, front);
+    } else {
+        var gw = s.gridW, gh = s.gridH;
+        var img  = s._imgData;
+        var data = img.data;
 
-    for (var gy = 0; gy < gh; gy++) {
-        for (var gx = 0; gx < gw; gx++) {
-            var idx = gy * gw + gx;
-            var r1 = s.r1[idx], r2 = s.r2[idx];
-            var raw = 0;
-            if (r1 <= front) raw += s.P1[idx] * cosWT + s.Q1[idx] * sinWT;
-            if (r2 <= front) raw += s.P2[idx] * cosWT + s.Q2[idx] * sinWT;
-            if (raw > 1) raw = 1; else if (raw < -1) raw = -1;
-            var t01 = (raw + 1) * 0.5;
-            var p = idx * 4;
-            data[p]     = SURF_COL_TROUGH[0] + t01 * (SURF_COL_CREST[0] - SURF_COL_TROUGH[0]);
-            data[p + 1] = SURF_COL_TROUGH[1] + t01 * (SURF_COL_CREST[1] - SURF_COL_TROUGH[1]);
-            data[p + 2] = SURF_COL_TROUGH[2] + t01 * (SURF_COL_CREST[2] - SURF_COL_TROUGH[2]);
-            data[p + 3] = 255;
+        for (var gy = 0; gy < gh; gy++) {
+            for (var gx = 0; gx < gw; gx++) {
+                var idx = gy * gw + gx;
+                var r1 = s.r1[idx], r2 = s.r2[idx];
+                var raw = 0;
+                if (r1 <= front) raw += s.P1[idx] * cosWT + s.Q1[idx] * sinWT;
+                if (r2 <= front) raw += s.P2[idx] * cosWT + s.Q2[idx] * sinWT;
+                if (raw > 1) raw = 1; else if (raw < -1) raw = -1;
+                var t01 = (raw + 1) * 0.5;
+                var p = idx * 4;
+                data[p]     = SURF_COL_TROUGH[0] + t01 * (SURF_COL_CREST[0] - SURF_COL_TROUGH[0]);
+                data[p + 1] = SURF_COL_TROUGH[1] + t01 * (SURF_COL_CREST[1] - SURF_COL_TROUGH[1]);
+                data[p + 2] = SURF_COL_TROUGH[2] + t01 * (SURF_COL_CREST[2] - SURF_COL_TROUGH[2]);
+                data[p + 3] = 255;
+            }
+        }
+        s._offCtx.putImageData(img, 0, 0);
+
+        ctx.imageSmoothingEnabled = true;
+        ctx.filter = 'blur(0.6px)';
+        ctx.drawImage(s._offCanvas, 0, 0, gw, gh, 0, 0, W, H);
+        ctx.filter = 'none';
+    }
+
+    if (s.interfMode !== 'none') _drawSurfInterfZones(ctx, front, is3D);
+
+    _drawSurfSources(ctx, is3D);
+    _drawSurfPoint(ctx, is3D);
+    if (!is3D && s.distMode !== 'none') _drawSurfDistances(ctx);
+    if (s.showGraph && _surfAmpYActive()) _drawSurfCutAxis(ctx, H, is3D);
+    if (s.showGraph && _surfAmpXActive()) _drawSurfCutAxisH(ctx, W, is3D);
+    _updateSurfValues();
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Rendu de la nappe en vue plongeante (rotation 3D autour de l'axe S1S2) —
+//  réutilise la grille déjà mise en cache par _rebuildSurfFieldCache (mêmes
+//  tableaux P1/Q1/P2/Q2/r1/r2 que la vue de dessus), seul le mapping vers
+//  l'écran change. Algorithme du peintre par bandes, même principe que
+//  ondes/js/vagues.js → _render3DWaveView, mais ici chaque "bande" est une
+//  LIGNE de la grille (perpendiculaire à S1S2), remplie sur toute la largeur
+//  physique du canvas — pas de sin/cos par pixel : uniquement des lectures du
+//  cache déjà calculé (moins cher par pixel que vagues.js malgré 2 sources).
+// ══════════════════════════════════════════════════════════════════════
+
+// Conversion "#rrggbb" → [r,g,b], et mélange une fois pour toutes avec le fond du bassin (PAS un
+// alpha-blend répété pixel par pixel à chaque frame/bande — cf. _render3DSurfView plus bas pour
+// le pourquoi).
+function _hexToRgb(hex) {
+    var v = parseInt(hex.slice(1), 16);
+    return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+}
+function _blendWithSurfBg(rgb, alpha) {
+    return [
+        SURF_COL_BG[0] * (1 - alpha) + rgb[0] * alpha,
+        SURF_COL_BG[1] * (1 - alpha) + rgb[1] * alpha,
+        SURF_COL_BG[2] * (1 - alpha) + rgb[2] * alpha
+    ];
+}
+
+function _render3DSurfView(ctx, W, H, cosWT, sinWT, front) {
+    var s = simSurf;
+    var gw = s.gridW, gh = s.gridH;
+    var dpr = window.devicePixelRatio || 1;
+    var PW = Math.max(1, Math.round(W * dpr));
+    var PH = Math.max(1, Math.round(H * dpr));
+    var thetaRad = s.tiltDeg * Math.PI / 180;
+    var cosT = Math.cos(thetaRad), sinT = Math.sin(thetaRad);
+    var originY = s.canvasH / 2;
+
+    var imgData = ctx.createImageData(PW, PH);
+    var data = imgData.data;
+
+    // Fond (aucune vague n'a encore atteint la zone, ou hors nappe) : même bleu-gris qu'en vue
+    // de dessus (pas de dégradé "ciel" façon vagues.js — ici on regarde un bassin d'en haut, pas
+    // un tube avec de l'air au-dessus).
+    var bgR = SURF_COL_BG[0], bgG = SURF_COL_BG[1], bgB = SURF_COL_BG[2];
+    for (var i = 0; i < data.length; i += 4) {
+        data[i] = bgR; data[i + 1] = bgG; data[i + 2] = bgB; data[i + 3] = 255;
+    }
+
+    // Champ brut (non écrêté) précalculé une fois par cellule de la grille de cache (comme la
+    // boucle couleur de la vue de dessus), réutilisé ensuite par interpolation bilinéaire —
+    // évite de retomber sur un rendu "plus proche voisin" blocky (cause du pixelisé signalé) tout
+    // en gardant un coût de calcul par cellule (pas par pixel de sortie).
+    var rawGrid = new Float32Array(gw * gh);
+    for (var gyc = 0; gyc < gh; gyc++) {
+        for (var gxc = 0; gxc < gw; gxc++) {
+            var idxc = gyc * gw + gxc;
+            var r1c = s.r1[idxc], r2c = s.r2[idxc];
+            var rawc = 0;
+            if (r1c <= front) rawc += s.P1[idxc] * cosWT + s.Q1[idxc] * sinWT;
+            if (r2c <= front) rawc += s.P2[idxc] * cosWT + s.Q2[idxc] * sinWT;
+            rawGrid[idxc] = rawc;
         }
     }
-    s._offCtx.putImageData(img, 0, 0);
 
-    ctx.imageSmoothingEnabled = true;
-    ctx.filter = 'blur(0.6px)';
-    ctx.drawImage(s._offCanvas, 0, 0, gw, gh, 0, 0, W, H);
-    ctx.filter = 'none';
+    // Nombre de bandes de profondeur : DÉCOUPLÉ de la résolution de la grille de cache (gh, ≤250)
+    // pour éviter un effet de "marches d'escalier" horizontales sur la nappe une fois inclinée —
+    // borné par PH (inutile de dépasser la résolution physique de sortie).
+    var N_Z = Math.max(150, Math.min(500, PH));
 
-    if (s.interfMode !== 'none') _drawSurfInterfZones(ctx, front);
+    // ── Plan de coupe horizontal (Amplitude(x), y = cutH.y), cf. _drawSurfCutAxisH ──────────
+    // Rendu ICI (pas en overlay séparé après coup) : la nappe/le fond marin, dessinés APRÈS pour
+    // la même bande, masquent ainsi naturellement toute portion "sous l'eau" du plan (retour
+    // utilisateur : on ne devait plus du tout la voir). Couleur mélangée UNE SEULE FOIS avec le
+    // fond (pas un alpha-blend répété à chaque bande, qui sur-saturerait le plan) — alpha modéré
+    // pour qu'il reste visiblement transparent au-dessus de l'eau (2e retour utilisateur).
+    // Le plan vertical (Amplitude(y), x = cut.x) N'EST PAS traité ici : perpendiculaire à l'axe de
+    // rotation S1S2, il n'a par construction aucune épaisseur sous cet angle de vue (sa projection
+    // reste un simple TRAIT quel que soit theta) — inutile/trompeur d'en faire un plan rempli ; il
+    // est tracé en overlay simple par _drawSurfCutAxis, comme avant ce chantier des plans.
+    var showHPlane = s.showGraph && _surfAmpXActive();
+    var hRgb = showHPlane ? _blendWithSurfBg(_hexToRgb(SURF_COL_CUT_H), 0.22) : null;
+    var hHalfBand = (s.canvasH / N_Z) / 2 + 0.5; // demi-épaisseur (en y bassin) d'une bande z
 
-    _drawSurfSources(ctx);
-    _drawSurfPoint(ctx);
-    if (s.distMode !== 'none') _drawSurfDistances(ctx);
-    if (s.showGraph && _surfAmpYActive()) _drawSurfCutAxis(ctx, H);
-    if (s.showGraph && _surfAmpXActive()) _drawSurfCutAxisH(ctx, W);
-    _updateSurfValues();
+    // Position écran (physique) de la ligne "z = -0.5" (bord arrière du bassin, wy = 0).
+    var sy0 = Math.round((H / 2 + (0 - originY) * cosT) * dpr);
+    var prevSyArr = new Int32Array(PW);
+    for (var pxi = 0; pxi < PW; pxi++) prevSyArr[pxi] = sy0;
+
+    for (var zi = 0; zi < N_Z; zi++) {
+        var py = (zi + 0.5) / N_Z * s.canvasH;
+        var screenYbase = H / 2 + (py - originY) * cosT;
+        var fy = py / s.canvasH * gh - 0.5;
+        if (fy < 0) fy = 0; else if (fy > gh - 1) fy = gh - 1;
+        var gy0 = Math.floor(fy), gy1 = Math.min(gy0 + 1, gh - 1);
+        var ty = fy - gy0;
+
+        // Plan horizontal : n'existe qu'à UNE profondeur (y = cutH.y) — dessiné exactement à la
+        // bande zi qui la contient, intercalé DANS la boucle peintre (donc occlus par toute bande
+        // plus proche/plus tard, et occultant lui-même ce qui a été dessiné plus loin/avant).
+        var zIsHPlane = showHPlane && Math.abs(py - s.cutH.y) <= hHalfBand;
+        var hTop = 0, hBot = 0;
+        if (zIsHPlane) {
+            hTop = Math.round((screenYbase - SURF_3D_PLANE_HALF_H * sinT) * dpr);
+            hBot = Math.round((screenYbase + SURF_3D_PLANE_HALF_H * sinT) * dpr);
+            if (hTop < 0) hTop = 0;
+            if (hBot >= PH) hBot = PH - 1;
+        }
+
+        for (var pxi2 = 0; pxi2 < PW; pxi2++) {
+            var wx = pxi2 / dpr;
+            var fx = wx / s.canvasW * gw - 0.5;
+            if (fx < 0) fx = 0; else if (fx > gw - 1) fx = gw - 1;
+            var gx0 = Math.floor(fx), gx1 = Math.min(gx0 + 1, gw - 1);
+            var tx = fx - gx0;
+
+            // Interpolation bilinéaire de rawGrid aux 4 cellules voisines (gx0/gx1 × gy0/gy1).
+            var v00 = rawGrid[gy0 * gw + gx0], v10 = rawGrid[gy0 * gw + gx1];
+            var v01 = rawGrid[gy1 * gw + gx0], v11 = rawGrid[gy1 * gw + gx1];
+            var vx0 = v00 + (v10 - v00) * tx;
+            var vx1 = v01 + (v11 - v01) * tx;
+            var raw = vx0 + (vx1 - vx0) * ty;
+
+            // Couleur : même dégradé crête/creux que la vue de dessus, écrêté à ±1.
+            var rawC = raw; if (rawC > 1) rawC = 1; else if (rawC < -1) rawC = -1;
+            var t01 = (rawC + 1) * 0.5;
+            var wr = SURF_COL_TROUGH[0] + t01 * (SURF_COL_CREST[0] - SURF_COL_TROUGH[0]);
+            var wg = SURF_COL_TROUGH[1] + t01 * (SURF_COL_CREST[1] - SURF_COL_TROUGH[1]);
+            var wb = SURF_COL_TROUGH[2] + t01 * (SURF_COL_CREST[2] - SURF_COL_TROUGH[2]);
+
+            // Hauteur : NON écrêtée (cf. en-tête de fonction) — un point doublement constructif
+            // (raw jusqu'à ±2) monte visiblement plus haut qu'un point simple.
+            var wy = raw * SURF_3D_AMP_PX;
+            var sy = Math.round((screenYbase - wy * sinT) * dpr);
+
+            if (zIsHPlane) {
+                for (var pyH = hTop; pyH <= hBot; pyH++) {
+                    var pidxH = (pyH * PW + pxi2) * 4;
+                    data[pidxH] = hRgb[0]; data[pidxH + 1] = hRgb[1]; data[pidxH + 2] = hRgb[2];
+                }
+            }
+
+            var syPrev = prevSyArr[pxi2];
+            var yLo = syPrev < sy ? syPrev : sy;
+            var yHi = syPrev < sy ? sy : syPrev;
+            if (yLo < 0) yLo = 0;
+            if (yHi >= PH) yHi = PH - 1;
+            for (var py2 = yLo; py2 <= yHi; py2++) {
+                var pidx = (py2 * PW + pxi2) * 4;
+                data[pidx] = wr; data[pidx + 1] = wg; data[pidx + 2] = wb; data[pidx + 3] = 255;
+            }
+            prevSyArr[pxi2] = sy;
+        }
+    }
+
+    // Avant du bassin (sous la dernière ligne) : aplat façon fond marin, teinte "creux" assombrie.
+    for (var pxi3 = 0; pxi3 < PW; pxi3++) {
+        var syLast = prevSyArr[pxi3];
+        var yStart = syLast < 0 ? 0 : syLast;
+        for (var py3 = yStart; py3 < PH; py3++) {
+            var pidx2 = (py3 * PW + pxi3) * 4;
+            data[pidx2] = SURF_COL_TROUGH[0] * 0.5;
+            data[pidx2 + 1] = SURF_COL_TROUGH[1] * 0.5;
+            data[pidx2 + 2] = SURF_COL_TROUGH[2] * 0.7;
+            data[pidx2 + 3] = 255;
+        }
+    }
+
+    ctx.putImageData(imgData, 0, 0);
 }
 
 // Les axes de coupe (graphes "Amplitude(y)"/"Amplitude(x)") ne sont affichés/actifs que si le
@@ -424,7 +659,9 @@ function _surfAmpXActive() {
 // N'existe que pour d < b (l'écart de marche ne peut pas dépasser la distance entre les sources).
 // Seule la portion déjà atteinte par les 2 fronts d'onde (r1 ≤ front ET r2 ≤ front) est tracée.
 
-function _drawSurfInterfZones(ctx, front) {
+// `is3D` fait passer chaque point ajouté au chemin par _surf3DProjectPoint (vue plongeante) —
+// la logique de génération des points/visibilité (front d'onde) est identique dans les 2 vues.
+function _drawSurfInterfZones(ctx, front, is3D) {
     var s = simSurf;
     var lambda_px = s.lambda * s.pxPerCm;
     var b_px = s.b * s.pxPerCm;
@@ -432,6 +669,7 @@ function _drawSurfInterfZones(ctx, front) {
     if (lambda_px <= 0 || c <= 0) return;
 
     var cx = s.canvasW / 2, cy = s.canvasH / 2;
+    var theta = is3D ? (s.tiltDeg * Math.PI / 180) : null;
     var wantC = s.interfMode === 'constructive' || s.interfMode === 'both';
     var wantD = s.interfMode === 'destructive'  || s.interfMode === 'both';
 
@@ -443,7 +681,7 @@ function _drawSurfInterfZones(ctx, front) {
         ctx.strokeStyle = SURF_COL_INTERF_CONSTRUCTIVE;
         ctx.beginPath();
         for (var n = 0; n * lambda_px < b_px - 1e-6; n++) {
-            _surfAddInterfCurve(ctx, s, cx, cy, c, n * lambda_px, front);
+            _surfAddInterfCurve(ctx, s, cx, cy, c, n * lambda_px, front, theta);
         }
         ctx.stroke();
     }
@@ -451,35 +689,43 @@ function _drawSurfInterfZones(ctx, front) {
         ctx.strokeStyle = SURF_COL_INTERF_DESTRUCTIVE;
         ctx.beginPath();
         for (var m = 0; (m + 0.5) * lambda_px < b_px - 1e-6; m++) {
-            _surfAddInterfCurve(ctx, s, cx, cy, c, (m + 0.5) * lambda_px, front);
+            _surfAddInterfCurve(ctx, s, cx, cy, c, (m + 0.5) * lambda_px, front, theta);
         }
         ctx.stroke();
     }
     ctx.restore();
 }
 
+function _surfPathTo(ctx, x, y, theta, drawing) {
+    if (theta !== null) {
+        var pr = _surf3DProjectPoint(x, y, theta);
+        x = pr.x; y = pr.y;
+    }
+    if (!drawing) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    return true;
+}
+
 // Ajoute au chemin en cours la portion visible de l'hyperbole |r1-r2| = d (foyers en
 // (cx∓c, cy)) — d = 0 dégénère en la droite médiatrice x = cx.
-function _surfAddInterfCurve(ctx, s, cx, cy, c, d, front) {
+function _surfAddInterfCurve(ctx, s, cx, cy, c, d, front, theta) {
     var a = d / 2;
     if (a < 1e-6) {
-        _surfAddBisectorPoints(ctx, s, cx, cy, c, front);
+        _surfAddBisectorPoints(ctx, s, cx, cy, c, front, theta);
         return;
     }
     if (a >= c) return; // pas d'hyperbole réelle (d ≥ b)
     var bh = Math.sqrt(c * c - a * a);
-    _surfAddBranchPoints(ctx, s, cx, cy, a, bh, +1, front);
-    _surfAddBranchPoints(ctx, s, cx, cy, a, bh, -1, front);
+    _surfAddBranchPoints(ctx, s, cx, cy, a, bh, +1, front, theta);
+    _surfAddBranchPoints(ctx, s, cx, cy, a, bh, -1, front, theta);
 }
 
-function _surfAddBisectorPoints(ctx, s, cx, cy, c, front) {
+function _surfAddBisectorPoints(ctx, s, cx, cy, c, front, theta) {
     var step = 3;
     var drawing = false;
     for (var y = 0; y <= s.canvasH; y += step) {
         var r = Math.sqrt(c * c + (y - cy) * (y - cy));
         if (r <= front) {
-            if (!drawing) { ctx.moveTo(cx, y); drawing = true; }
-            else ctx.lineTo(cx, y);
+            drawing = _surfPathTo(ctx, cx, y, theta, drawing);
         } else {
             drawing = false;
         }
@@ -490,7 +736,7 @@ function _surfAddBisectorPoints(ctx, s, cx, cy, c, front) {
 // uMax est borné par la première des deux dimensions du canvas atteinte (cosh/sinh sont
 // monotones croissantes en |u| : une fois sortie du canvas sur un axe, la branche ne peut plus y
 // revenir), pour ne pas gaspiller l'échantillonnage au-delà de la portion visible.
-function _surfAddBranchPoints(ctx, s, cx, cy, a, bh, sign, front) {
+function _surfAddBranchPoints(ctx, s, cx, cy, a, bh, sign, front, theta) {
     var margin = 20;
     var uMaxX = Math.acosh(Math.max(1.001, (s.canvasW / 2 + margin) / a));
     var uMaxY = Math.asinh((s.canvasH / 2 + margin) / bh);
@@ -510,8 +756,7 @@ function _surfAddBranchPoints(ctx, s, cx, cy, a, bh, sign, front) {
             visible = (r1 <= front && r2 <= front);
         }
         if (visible) {
-            if (!drawing) { ctx.moveTo(x, y); drawing = true; }
-            else ctx.lineTo(x, y);
+            drawing = _surfPathTo(ctx, x, y, theta, drawing);
         } else {
             drawing = false;
         }
@@ -520,17 +765,23 @@ function _surfAddBranchPoints(ctx, s, cx, cy, a, bh, sign, front) {
 
 // ── Sources S1/S2 ─────────────────────────────────────────────────────
 
-function _drawSurfSources(ctx) {
+function _drawSurfSources(ctx, is3D) {
     var s = simSurf;
+    var theta = is3D ? (s.tiltDeg * Math.PI / 180) : null;
     var pts = [[s.s1, 'S₁'], [s.s2, 'S₂']];
     ctx.save();
     for (var i = 0; i < pts.length; i++) {
         var pos = pts[i][0], label = pts[i][1];
+        var sx = pos.x, sy = pos.y;
+        if (theta !== null) {
+            var pr = _surf3DProjectPoint(pos.x, pos.y, theta);
+            sx = pr.x; sy = pr.y;
+        }
         ctx.fillStyle = '#9b8264';
         ctx.strokeStyle = '#ffffff';
         ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.arc(pos.x, pos.y, 5, 0, Math.PI * 2);
+        ctx.arc(sx, sy, 5, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
 
@@ -540,25 +791,32 @@ function _drawSurfSources(ctx) {
         ctx.lineWidth = 3;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
-        ctx.strokeText(label, pos.x, pos.y - 9);
-        ctx.fillText(label, pos.x, pos.y - 9);
+        ctx.strokeText(label, sx, sy - 9);
+        ctx.fillText(label, sx, sy - 9);
     }
     ctx.restore();
 }
 
 // ── Point de mesure M (draggable) ────────────────────────────────────
 
-function _drawSurfPoint(ctx) {
+function _drawSurfPoint(ctx, is3D) {
     var p = simSurf.point;
+    var px = p.x, py = p.y;
+    if (is3D) {
+        // M reste sur la surface de l'eau par construction (sa hauteur écran suit la vague, comme
+        // les sources) — draggable, cf. initSurfDrag → _surf3DInvertY.
+        var proj = _surf3DProjectPoint(p.x, p.y, simSurf.tiltDeg * Math.PI / 180);
+        px = proj.x; py = proj.y;
+    }
     ctx.save();
     ctx.strokeStyle = '#e07020';
     ctx.lineWidth = 3.5;
     ctx.beginPath();
-    ctx.arc(p.x, p.y, 11, 0, Math.PI * 2);
+    ctx.arc(px, py, 11, 0, Math.PI * 2);
     ctx.stroke();
     ctx.fillStyle = '#e07020';
     ctx.beginPath();
-    ctx.arc(p.x, p.y, 4.5, 0, Math.PI * 2);
+    ctx.arc(px, py, 4.5, 0, Math.PI * 2);
     ctx.fill();
     ctx.font = 'bold 20px monospace';
     ctx.fillStyle = '#ffffff';
@@ -566,8 +824,8 @@ function _drawSurfPoint(ctx) {
     ctx.lineWidth = 3;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
-    ctx.strokeText('M', p.x, p.y - 14);
-    ctx.fillText('M', p.x, p.y - 14);
+    ctx.strokeText('M', px, py - 14);
+    ctx.fillText('M', px, py - 14);
     ctx.restore();
 }
 
@@ -702,8 +960,27 @@ function _surfDrawArrowHead(ctx, x, y, angle) {
 
 var SURF_COL_CUT = '#d21f1f';
 
-function _drawSurfCutAxis(ctx, H) {
-    var x = simSurf.cut.x;
+function _drawSurfCutAxis(ctx, H, is3D) {
+    var s = simSurf;
+    var x = s.cut.x;
+    if (is3D) {
+        // x = cut.x est perpendiculaire à l'axe de rotation (S1S2) : ce plan n'a, par construction,
+        // AUCUNE épaisseur sous cet angle de vue (sa projection reste un simple trait vertical quel
+        // que soit theta, cf. _render3DSurfView) — un rendu "plan rempli" façon plan horizontal
+        // n'aurait donc aucun sens géométrique ici (et se retrouvait de toute façon systématiquement
+        // recouvert par la nappe, celle-ci balayant la même plage de profondeur). Simple trait
+        // semi-transparent, non occulté (overlay), comme avant ce chantier des plans.
+        ctx.save();
+        ctx.globalAlpha = 0.55;
+        ctx.strokeStyle = SURF_COL_CUT;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, H);
+        ctx.stroke();
+        ctx.restore();
+        return;
+    }
     ctx.save();
     ctx.strokeStyle = SURF_COL_CUT;
     ctx.lineWidth = 3;
@@ -727,8 +1004,29 @@ function _drawSurfCutAxis(ctx, H) {
 // marine, cf. SURF_COL_CREST/TROUGH), un axe dans ces tons-là s'y distingue mal.
 var SURF_COL_CUT_H = '#F5278B';
 
-function _drawSurfCutAxisH(ctx, W) {
-    var y = simSurf.cutH.y;
+// Position écran (référence "eau au repos", PAS la vague instantanée) du plan de coupe
+// horizontal en vue plongeante — cf. _drawSurfCutAxisH/initSurfDrag. cosθ ne s'annule jamais
+// (SURF_TILT_MAX = 75°), l'inverse _surfCutHInvert est donc toujours bien défini.
+function _surfCutHScreenY() {
+    var s = simSurf;
+    var theta = s.tiltDeg * Math.PI / 180;
+    return s.canvasH / 2 + (s.cutH.y - s.originY) * Math.cos(theta);
+}
+function _surfCutHInvert(screenY) {
+    var s = simSurf;
+    var theta = s.tiltDeg * Math.PI / 180;
+    return s.originY + (screenY - s.canvasH / 2) / Math.cos(theta);
+}
+
+function _drawSurfCutAxisH(ctx, W, is3D) {
+    var s = simSurf;
+    var y = s.cutH.y;
+    if (is3D) {
+        // Idem _drawSurfCutAxis : le plan de coupe horizontal est déjà dessiné dans
+        // _render3DSurfView, intercalé au bon endroit de la boucle peintre pour une occlusion
+        // correcte par la nappe (cf. commentaire là-bas).
+        return;
+    }
     ctx.save();
     ctx.strokeStyle = SURF_COL_CUT_H;
     ctx.lineWidth = 3;
@@ -1234,6 +1532,46 @@ function initSurfDrag() {
 
     function down(evt) {
         var pos = _surfPointerPos(canvas, evt);
+
+        // Vue plongeante : les 2 plans de coupe ET le point M restent draggables.
+        // - Plan vertical (cut.x) : insensible à l'inclinaison (perpendiculaire à l'axe de
+        //   rotation S1S2) → hit-test identique à la vue de dessus.
+        // - Plan horizontal (cutH.y) : hit-test sur toute la bande visible, cf.
+        //   _surfCutHScreenY/SURF_3D_PLANE_HALF_H.
+        // - Point M : sa position écran suit la vague (cf. _surf3DProjectPoint) → hit-test sur sa
+        //   position PROJETÉE, pas sur (p.x,p.y) bruts.
+        if (simSurf.viewMode !== 'top') {
+            var theta0 = simSurf.tiltDeg * Math.PI / 180;
+            var p0 = simSurf.point;
+            var pProj = _surf3DProjectPoint(p0.x, p0.y, theta0);
+            if (Math.hypot(pos.x - pProj.x, pos.y - pProj.y) <= 18) {
+                simSurf.dragging = true;
+                canvas.style.cursor = 'grabbing';
+                evt.preventDefault();
+                return;
+            }
+            if (simSurf.showGraph && _surfAmpYActive() &&
+                Math.abs(pos.x - simSurf.cut.x) <= 10) {
+                simSurf.cut.dragging = true;
+                canvas.style.cursor = 'ew-resize';
+                evt.preventDefault();
+                return;
+            }
+            if (simSurf.showGraph && _surfAmpXActive()) {
+                // Zone de drag = toute la largeur de la bande VISIBLE du plan (± sa demi-hauteur
+                // à l'écran), pas seulement sa ligne centrale à ±10px — sinon cliquer n'importe
+                // où dans le plan bien visible ne faisait rien, ce qui le rendait de facto non
+                // draggable (retour utilisateur).
+                var hHitHalf = Math.max(10, SURF_3D_PLANE_HALF_H * Math.sin(theta0));
+                if (Math.abs(pos.y - _surfCutHScreenY()) <= hHitHalf) {
+                    simSurf.cutH.dragging = true;
+                    canvas.style.cursor = 'ns-resize';
+                    evt.preventDefault();
+                }
+            }
+            return;
+        }
+
         var p = simSurf.point;
         var d = Math.hypot(pos.x - p.x, pos.y - p.y);
         if (d <= 18) {
@@ -1268,7 +1606,11 @@ function initSurfDrag() {
         if (simSurf.cutH.dragging) {
             var posH = _surfPointerPos(canvas, evt);
             var ch = simSurf.cutH;
-            ch.y = Math.max(0, Math.min(simSurf.canvasH, posH.y));
+            // En vue plongeante, la position écran cliquée correspond au plan (référence "eau au
+            // repos", cf. _surfCutHScreenY) et doit être réinvertie pour retrouver la coordonnée y
+            // du bassin — en vue de dessus, écran et bassin coïncident (identité).
+            var newY = (simSurf.viewMode !== 'top') ? _surfCutHInvert(posH.y) : posH.y;
+            ch.y = Math.max(0, Math.min(simSurf.canvasH, newY));
             ch.cmY = (ch.y - simSurf.canvasH / 2) / simSurf.pxPerCm;
             evt.preventDefault();
             return;
@@ -1276,6 +1618,17 @@ function initSurfDrag() {
         if (!simSurf.dragging) return;
         var pos = _surfPointerPos(canvas, evt);
         var p = simSurf.point;
+        if (simSurf.viewMode !== 'top') {
+            // x est insensible à l'inclinaison (identité) ; y s'obtient par point fixe puisque la
+            // hauteur de vague (qui décale l'écran) dépend elle-même de y, cf. _surf3DInvertY.
+            var theta1 = simSurf.tiltDeg * Math.PI / 180;
+            p.x = Math.max(0, Math.min(simSurf.canvasW, pos.x));
+            p.y = _surf3DInvertY(p.x, pos.y, theta1, p.y);
+            p.cmX = (p.x - simSurf.canvasW / 2) / simSurf.pxPerCm;
+            p.cmY = (p.y - simSurf.canvasH / 2) / simSurf.pxPerCm;
+            evt.preventDefault();
+            return;
+        }
         p.x = Math.max(0, Math.min(simSurf.canvasW, pos.x));
         p.y = Math.max(0, Math.min(simSurf.canvasH, pos.y));
         p.cmX = (p.x - simSurf.canvasW / 2) / simSurf.pxPerCm;
@@ -1391,6 +1744,33 @@ function togglePauseSurfaces() {
     else                { btn.textContent = '⏸ Pause';     btn.className = 'btn btn-pause'; }
 }
 
+// ── Vue plongeante (rotation 3D autour de S1S2) ───────────────────────
+// Bascule simple (pas de transition animée, contrairement à ondes/js/vagues.js →
+// toggleViewVagues) : le slider d'angle fournit déjà le contrôle continu demandé.
+
+function setSurfViewMode(mode) {
+    var s = simSurf;
+    s.viewMode = mode;
+    var isPlongeante = (mode === 'plongeante');
+
+    var btnTop = document.getElementById('btn-surf-view-top');
+    var btnPlongeante = document.getElementById('btn-surf-view-plongeante');
+    if (btnTop) btnTop.classList.toggle('active', !isPlongeante);
+    if (btnPlongeante) btnPlongeante.classList.toggle('active', isPlongeante);
+
+    var slider = document.getElementById('surf-tilt-slider');
+    if (slider) slider.classList.toggle('visible', isPlongeante);
+
+    // Le drag de M/des axes de coupe reprend automatiquement en repassant en vue de dessus
+    // (cf. initSurfDrag → down(), gaté sur viewMode) ; rien d'autre à réinitialiser ici.
+}
+
+function onSliderTiltSurf(v) {
+    simSurf.tiltDeg = parseFloat(v);
+    var lbl = document.getElementById('lbl-tilt-surf');
+    if (lbl) lbl.textContent = simSurf.tiltDeg.toFixed(0);
+}
+
 function onSliderLambdaSurf(v) {
     simSurf.lambda = parseFloat(v);
     var lbl = document.getElementById('lbl-lambda-surf');
@@ -1502,7 +1882,20 @@ function resetSurfaces() {
     simSurf.interfMode = 'none';
     simSurf.distMode = 'none';
     simSurf.showValeurs = false;
+    simSurf.viewMode = 'top';
+    simSurf.tiltDeg  = SURF_TILT_DEFAULT;
     _surfLastFrameT = null;
+
+    var btnViewTop = document.getElementById('btn-surf-view-top');
+    var btnViewPlongeante = document.getElementById('btn-surf-view-plongeante');
+    if (btnViewTop) btnViewTop.classList.add('active');
+    if (btnViewPlongeante) btnViewPlongeante.classList.remove('active');
+    var tiltSlider = document.getElementById('surf-tilt-slider');
+    if (tiltSlider) tiltSlider.classList.remove('visible');
+    var slTilt = document.getElementById('sl-tilt-surf');
+    if (slTilt) slTilt.value = SURF_TILT_DEFAULT;
+    var lblTilt = document.getElementById('lbl-tilt-surf');
+    if (lblTilt) lblTilt.textContent = SURF_TILT_DEFAULT.toFixed(0);
 
     var slLambda = document.getElementById('sl-lambda-surf');
     var slB      = document.getElementById('sl-b-surf');
