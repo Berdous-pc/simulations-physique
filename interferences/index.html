@@ -197,6 +197,16 @@
 
       <div>
         <div class="section-title">Paramètres</div>
+        <div class="surf-src-toggles">
+          <label class="surf-src-toggle" style="border-left-color:#e07020;">
+            <input type="checkbox" id="chk-surf-s1" checked onchange="toggleSurfSource(1, this.checked)">
+            Source 1
+          </label>
+          <label class="surf-src-toggle" style="border-left-color:#e0397a;">
+            <input type="checkbox" id="chk-surf-s2" checked onchange="toggleSurfSource(2, this.checked)">
+            Source 2
+          </label>
+        </div>
         <div class="param-row">
           <label>Longueur d'onde λ <span><span id="lbl-lambda-surf">4,0</span> cm</span></label>
           <input type="range" id="sl-lambda-surf" min="1" max="10" step="0.1" value="4"

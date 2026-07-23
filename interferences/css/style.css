@@ -534,6 +534,20 @@ input[type=range]:disabled { accent-color: #b0aca4; cursor: not-allowed; }
 .param-row.disabled label span { color: #a8a49c; }
 .input-hint { font-size: clamp(10px, 0.9vw, 13px); color: #7a8a96; }
 
+/* Cases à cocher Source 1/2 (onglet Ondes de surface) — couleurs reprises des flèches de
+   distance S1M/S2M (SURF_COL_DIST_S1/S2 de surfaces.js) pour associer visuellement chaque
+   case à sa source. */
+.surf-src-toggles { display: flex; gap: 8px; margin-bottom: 10px; }
+.surf-src-toggle {
+  display: flex; align-items: center; gap: 6px; flex: 1;
+  font-size: clamp(11px, 1.05vw, 13px); font-weight: 600; color: #5a6a78;
+  cursor: pointer; padding: 6px 8px;
+  border: 1px solid #c8c0b4; border-left: 3px solid; border-radius: 5px;
+  background: #ece8e0;
+}
+.surf-src-toggle:hover { background: #ddd8ce; }
+.surf-src-toggle input[type="checkbox"] { margin: 0; cursor: pointer; flex-shrink: 0; }
+
 /* Pastille de couleur du laser à côté du réglage λ */
 #lambda-swatch {
   display: inline-block;

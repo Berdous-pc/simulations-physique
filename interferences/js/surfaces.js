@@ -93,6 +93,20 @@ var simSurf = {
     lambda : 4,   // cm
     b      : 8,   // écartement des 2 sources (cm)
 
+    // ── Sources actives/coupées, cf. toggleSurfSource ─────────────────────
+    // s1Enabled/s2Enabled reflètent l'état COURANT (coché ou non) ; s1Toggles/
+    // s2Toggles gardent l'historique des bascules {t: simTime, enabled} pour que
+    // l'extinction/l'allumage d'une source respecte la causalité : une onde déjà
+    // émise avant une coupure continue de se propager (elle n'est pas effacée
+    // instantanément), et une source rallumée ne fait pas réapparaître d'un coup
+    // tout le bassin — seul un nouveau front part de l'instant de rallumage (cf.
+    // _surfSourceContrib, qui évalue l'état de la source au temps RETARDÉ
+    // t - r/c, pas à l'instant présent).
+    s1Enabled : true,
+    s2Enabled : true,
+    s1Toggles : [],
+    s2Toggles : [],
+
     // ── Géométrie canvas ─────────────────────────────────────────────
     canvasW     : 0,
     canvasH     : 0,
@@ -307,6 +321,84 @@ function _rebuildSurfFieldCache() {
 //  reste largement assez rapide pour ces requêtes ponctuelles.
 // ══════════════════════════════════════════════════════════════════════
 
+// État allumé/éteint d'une source au temps `tau` (à évaluer au temps RETARDÉ d'émission,
+// pas au temps présent — cf. _surfSourceContrib), d'après l'historique des bascules
+// `toggles` (triées par ordre croissant de t, cf. toggleSurfSource). Avant la première
+// bascule, la source est considérée allumée depuis toujours.
+function _surfActiveAt(toggles, tau) {
+    var enabled = true;
+    for (var i = 0; i < toggles.length; i++) {
+        if (toggles[i].t <= tau) enabled = toggles[i].enabled; else break;
+    }
+    return enabled;
+}
+
+// Une source contribue au champ en (px,py) à l'instant t si (a) l'onde a eu le temps
+// d'arriver (r ≤ c·t, comme l'ancien test `r <= front`) ET (b) la source était allumée au
+// moment RETARDÉ où cette contribution a été émise (t - r/c) — pas forcément son état
+// actuel : une source coupée après avoir émis une onde ne l'efface pas rétroactivement.
+function _surfSourceContrib(toggles, t, r, c_px) {
+    if (r > c_px * t) return false;
+    return _surfActiveAt(toggles, t - r / c_px);
+}
+
+// Variante "anti-aliasée" de _surfSourceContrib, réservée aux 2 boucles qui peignent la grille
+// basse résolution du champ (cf. _rebuildSurfFieldCache) avant agrandissement par drawImage
+// (vue de dessus ET vue plongeante) : un front (de démarrage ou créé par une bascule marche/arrêt,
+// cf. toggleSurfSource) est une transition BRUTALE d'amplitude d'une cellule à l'autre — contrairement
+// au reste du champ qui varie progressivement — et cette brutalité, échantillonnée à la résolution
+// grossière de la grille, produit un cercle en escalier que le flou de rendu (bien plus fin qu'une
+// cellule) ne peut pas masquer. On adoucit donc ici l'état actif/inactif sur une petite largeur
+// `edgePx` (quelques cellules) en moyennant plusieurs échantillons radiaux, plutôt qu'en tranchant
+// net — un vrai anti-aliasing, pas un changement de la physique (la bascule reste un instant précis).
+// Retourne un facteur [0,1] à MULTIPLIER à la contribution (pas un booléen à tester).
+//
+// N'est appelée par _surfSourceGate QUE tout près d'une frontière réelle (cf. _surfBoundaryList/
+// _surfNearBoundary) : ailleurs (l'immense majorité de la grille, y compris tout le champ proche
+// entre les 2 sources où les franges d'interférence sont très serrées), on garde le test booléen
+// exact — sinon ce lissage, à largeur fixe, floute aussi du vrai détail fin du champ qui n'a rien
+// à voir avec un front (bug repéré : franges proches des sources floutées par le tout premier front
+// de démarrage qui les traverse en début d'animation).
+var SURF_FRONT_AA_SAMPLES = 3;
+function _surfSourceWeight(toggles, t, r, c_px, edgePx) {
+    var sum = 0;
+    for (var i = 0; i < SURF_FRONT_AA_SAMPLES; i++) {
+        var offset = edgePx * (i / (SURF_FRONT_AA_SAMPLES - 1) - 0.5);
+        var rr = r + offset;
+        if (rr < 0) rr = 0;
+        if (rr <= c_px * t && _surfActiveAt(toggles, t - rr / c_px)) sum++;
+    }
+    return sum / SURF_FRONT_AA_SAMPLES;
+}
+
+// Rayons des frontières actives pour une source donnée à l'instant t : le front d'arrivée
+// (c·t, commun aux 2 sources) et le rayon correspondant à chaque bascule marche/arrêt de
+// l'historique (cf. toggleSurfSource) — au-delà de `edgePx` de toutes ces frontières, le champ
+// est soit entièrement établi soit encore entièrement silencieux, sans transition à lisser.
+function _surfBoundaryList(toggles, t, c_px) {
+    var arr = [c_px * t];
+    for (var i = 0; i < toggles.length; i++) arr.push(c_px * (t - toggles[i].t));
+    return arr;
+}
+
+function _surfNearBoundary(r, boundaries, edgePx) {
+    for (var i = 0; i < boundaries.length; i++) {
+        var d = r - boundaries[i];
+        if (d < 0) d = -d;
+        if (d < edgePx) return true;
+    }
+    return false;
+}
+
+// Passerelle entre le test exact (rapide, utilisé partout) et le lissage anti-aliasé (coûteux,
+// réservé aux abords immédiats d'une frontière) — cf. commentaires de _surfSourceWeight.
+function _surfSourceGate(toggles, boundaries, t, r, c_px, edgePx) {
+    if (_surfNearBoundary(r, boundaries, edgePx)) {
+        return _surfSourceWeight(toggles, t, r, c_px, edgePx);
+    }
+    return _surfSourceContrib(toggles, t, r, c_px) ? 1 : 0;
+}
+
 function _surfSourcesAt(s, lambda_px, px, py) {
     var k = 2 * Math.PI / lambda_px;
     var R0 = SURF_ENV_R0_LAMBDA * lambda_px;
@@ -326,13 +418,12 @@ function _surfFieldRaw(px, py, tOverride) {
     var c_px  = SURF_C_CM * s.pxPerCm;
     var omega = 2 * Math.PI * c_px / lambda_px;
     var t     = (tOverride !== undefined) ? tOverride : s.simTime;
-    var front = c_px * t;
 
     var f = _surfSourcesAt(s, lambda_px, px, py);
     var cosWT = Math.cos(omega * t), sinWT = Math.sin(omega * t);
     var raw = 0;
-    if (f.r1 <= front) raw += f.P1 * cosWT + f.Q1 * sinWT;
-    if (f.r2 <= front) raw += f.P2 * cosWT + f.Q2 * sinWT;
+    if (_surfSourceContrib(s.s1Toggles, t, f.r1, c_px)) raw += f.P1 * cosWT + f.Q1 * sinWT;
+    if (_surfSourceContrib(s.s2Toggles, t, f.r2, c_px)) raw += f.P2 * cosWT + f.Q2 * sinWT;
     return raw;
 }
 
@@ -348,12 +439,11 @@ function _surfFieldEnvelope(px, py, tOverride) {
     if (lambda_px <= 0 || s.pxPerCm <= 0) return 0;
     var c_px = SURF_C_CM * s.pxPerCm;
     var t    = (tOverride !== undefined) ? tOverride : s.simTime;
-    var front = c_px * t;
 
     var f = _surfSourcesAt(s, lambda_px, px, py);
     var P = 0, Q = 0;
-    if (f.r1 <= front) { P += f.P1; Q += f.Q1; }
-    if (f.r2 <= front) { P += f.P2; Q += f.Q2; }
+    if (_surfSourceContrib(s.s1Toggles, t, f.r1, c_px)) { P += f.P1; Q += f.Q1; }
+    if (_surfSourceContrib(s.s2Toggles, t, f.r2, c_px)) { P += f.P2; Q += f.Q2; }
     return Math.sqrt(P * P + Q * Q);
 }
 
@@ -373,10 +463,13 @@ function _surfFieldEnvelope(px, py, tOverride) {
 //  évidence avec cette vue.
 // ══════════════════════════════════════════════════════════════════════
 
-function _surf3DProjectPoint(px, py, thetaRad) {
+// `flat` : ignore la hauteur d'onde (utilisé pour le marqueur d'une source désactivée, cf.
+// _drawSurfSources — sinon son marqueur continuerait d'osciller avec le champ TOTAL au point où
+// elle se trouve, y compris la contribution de l'AUTRE source encore active, ce qui donnerait
+// l'impression trompeuse qu'une source coupée "vibre" encore).
+function _surf3DProjectPoint(px, py, thetaRad, flat) {
     var s = simSurf;
-    var raw = _surfFieldRaw(px, py);
-    var wy = raw * SURF_3D_AMP_PX;
+    var wy = flat ? 0 : _surfFieldRaw(px, py) * SURF_3D_AMP_PX;
     var screenYbase = s.canvasH / 2 + (py - s.originY) * Math.cos(thetaRad);
     return { x: px, y: screenYbase - wy * Math.sin(thetaRad) };
 }
@@ -430,22 +523,24 @@ function drawSurfaces() {
 
     var t = s.simTime;
     var cosWT = Math.cos(s.omega * t), sinWT = Math.sin(s.omega * t);
-    var front = s.c_px * t;
 
     if (is3D) {
-        _render3DSurfView(ctx, W, H, cosWT, sinWT, front);
+        _render3DSurfView(ctx, W, H, cosWT, sinWT, t);
     } else {
         var gw = s.gridW, gh = s.gridH;
         var img  = s._imgData;
         var data = img.data;
+        var edgePx = 2 * (s.canvasW / gw); // largeur d'adoucissement des fronts, cf. _surfSourceWeight
+        var boundS1 = _surfBoundaryList(s.s1Toggles, t, s.c_px);
+        var boundS2 = _surfBoundaryList(s.s2Toggles, t, s.c_px);
 
         for (var gy = 0; gy < gh; gy++) {
             for (var gx = 0; gx < gw; gx++) {
                 var idx = gy * gw + gx;
                 var r1 = s.r1[idx], r2 = s.r2[idx];
                 var raw = 0;
-                if (r1 <= front) raw += s.P1[idx] * cosWT + s.Q1[idx] * sinWT;
-                if (r2 <= front) raw += s.P2[idx] * cosWT + s.Q2[idx] * sinWT;
+                raw += _surfSourceGate(s.s1Toggles, boundS1, t, r1, s.c_px, edgePx) * (s.P1[idx] * cosWT + s.Q1[idx] * sinWT);
+                raw += _surfSourceGate(s.s2Toggles, boundS2, t, r2, s.c_px, edgePx) * (s.P2[idx] * cosWT + s.Q2[idx] * sinWT);
                 if (raw > 1) raw = 1; else if (raw < -1) raw = -1;
                 var t01 = (raw + 1) * 0.5;
                 var p = idx * 4;
@@ -463,7 +558,7 @@ function drawSurfaces() {
         ctx.filter = 'none';
     }
 
-    if (s.interfMode !== 'none') _drawSurfInterfZones(ctx, front, is3D);
+    if (s.interfMode !== 'none') _drawSurfInterfZones(ctx, is3D);
 
     _drawSurfSources(ctx, is3D);
     _drawSurfPoint(ctx, is3D);
@@ -499,7 +594,7 @@ function _blendWithSurfBg(rgb, alpha) {
     ];
 }
 
-function _render3DSurfView(ctx, W, H, cosWT, sinWT, front) {
+function _render3DSurfView(ctx, W, H, cosWT, sinWT, t) {
     var s = simSurf;
     var gw = s.gridW, gh = s.gridH;
     var dpr = window.devicePixelRatio || 1;
@@ -525,13 +620,16 @@ function _render3DSurfView(ctx, W, H, cosWT, sinWT, front) {
     // évite de retomber sur un rendu "plus proche voisin" blocky (cause du pixelisé signalé) tout
     // en gardant un coût de calcul par cellule (pas par pixel de sortie).
     var rawGrid = new Float32Array(gw * gh);
+    var edgePx = 2 * (s.canvasW / gw); // largeur d'adoucissement des fronts, cf. _surfSourceWeight
+    var boundS1 = _surfBoundaryList(s.s1Toggles, t, s.c_px);
+    var boundS2 = _surfBoundaryList(s.s2Toggles, t, s.c_px);
     for (var gyc = 0; gyc < gh; gyc++) {
         for (var gxc = 0; gxc < gw; gxc++) {
             var idxc = gyc * gw + gxc;
             var r1c = s.r1[idxc], r2c = s.r2[idxc];
             var rawc = 0;
-            if (r1c <= front) rawc += s.P1[idxc] * cosWT + s.Q1[idxc] * sinWT;
-            if (r2c <= front) rawc += s.P2[idxc] * cosWT + s.Q2[idxc] * sinWT;
+            rawc += _surfSourceGate(s.s1Toggles, boundS1, t, r1c, s.c_px, edgePx) * (s.P1[idxc] * cosWT + s.Q1[idxc] * sinWT);
+            rawc += _surfSourceGate(s.s2Toggles, boundS2, t, r2c, s.c_px, edgePx) * (s.P2[idxc] * cosWT + s.Q2[idxc] * sinWT);
             rawGrid[idxc] = rawc;
         }
     }
@@ -662,7 +760,7 @@ function _surfAmpXActive() {
 
 // `is3D` fait passer chaque point ajouté au chemin par _surf3DProjectPoint (vue plongeante) —
 // la logique de génération des points/visibilité (front d'onde) est identique dans les 2 vues.
-function _drawSurfInterfZones(ctx, front, is3D) {
+function _drawSurfInterfZones(ctx, is3D) {
     var s = simSurf;
     var lambda_px = s.lambda * s.pxPerCm;
     var b_px = s.b * s.pxPerCm;
@@ -682,7 +780,7 @@ function _drawSurfInterfZones(ctx, front, is3D) {
         ctx.strokeStyle = SURF_COL_INTERF_CONSTRUCTIVE;
         ctx.beginPath();
         for (var n = 0; n * lambda_px < b_px - 1e-6; n++) {
-            _surfAddInterfCurve(ctx, s, cx, cy, c, n * lambda_px, front, theta);
+            _surfAddInterfCurve(ctx, s, cx, cy, c, n * lambda_px, theta);
         }
         ctx.stroke();
     }
@@ -690,7 +788,7 @@ function _drawSurfInterfZones(ctx, front, is3D) {
         ctx.strokeStyle = SURF_COL_INTERF_DESTRUCTIVE;
         ctx.beginPath();
         for (var m = 0; (m + 0.5) * lambda_px < b_px - 1e-6; m++) {
-            _surfAddInterfCurve(ctx, s, cx, cy, c, (m + 0.5) * lambda_px, front, theta);
+            _surfAddInterfCurve(ctx, s, cx, cy, c, (m + 0.5) * lambda_px, theta);
         }
         ctx.stroke();
     }
@@ -708,24 +806,25 @@ function _surfPathTo(ctx, x, y, theta, drawing) {
 
 // Ajoute au chemin en cours la portion visible de l'hyperbole |r1-r2| = d (foyers en
 // (cx∓c, cy)) — d = 0 dégénère en la droite médiatrice x = cx.
-function _surfAddInterfCurve(ctx, s, cx, cy, c, d, front, theta) {
+function _surfAddInterfCurve(ctx, s, cx, cy, c, d, theta) {
     var a = d / 2;
     if (a < 1e-6) {
-        _surfAddBisectorPoints(ctx, s, cx, cy, c, front, theta);
+        _surfAddBisectorPoints(ctx, s, cx, cy, c, theta);
         return;
     }
     if (a >= c) return; // pas d'hyperbole réelle (d ≥ b)
     var bh = Math.sqrt(c * c - a * a);
-    _surfAddBranchPoints(ctx, s, cx, cy, a, bh, +1, front, theta);
-    _surfAddBranchPoints(ctx, s, cx, cy, a, bh, -1, front, theta);
+    _surfAddBranchPoints(ctx, s, cx, cy, a, bh, +1, theta);
+    _surfAddBranchPoints(ctx, s, cx, cy, a, bh, -1, theta);
 }
 
-function _surfAddBisectorPoints(ctx, s, cx, cy, c, front, theta) {
+function _surfAddBisectorPoints(ctx, s, cx, cy, c, theta) {
     var step = 3;
     var drawing = false;
     for (var y = 0; y <= s.canvasH; y += step) {
         var r = Math.sqrt(c * c + (y - cy) * (y - cy));
-        if (r <= front) {
+        if (_surfSourceContrib(s.s1Toggles, s.simTime, r, s.c_px) &&
+            _surfSourceContrib(s.s2Toggles, s.simTime, r, s.c_px)) {
             drawing = _surfPathTo(ctx, cx, y, theta, drawing);
         } else {
             drawing = false;
@@ -737,7 +836,7 @@ function _surfAddBisectorPoints(ctx, s, cx, cy, c, front, theta) {
 // uMax est borné par la première des deux dimensions du canvas atteinte (cosh/sinh sont
 // monotones croissantes en |u| : une fois sortie du canvas sur un axe, la branche ne peut plus y
 // revenir), pour ne pas gaspiller l'échantillonnage au-delà de la portion visible.
-function _surfAddBranchPoints(ctx, s, cx, cy, a, bh, sign, front, theta) {
+function _surfAddBranchPoints(ctx, s, cx, cy, a, bh, sign, theta) {
     var margin = 20;
     var uMaxX = Math.acosh(Math.max(1.001, (s.canvasW / 2 + margin) / a));
     var uMaxY = Math.asinh((s.canvasH / 2 + margin) / bh);
@@ -754,7 +853,8 @@ function _surfAddBranchPoints(ctx, s, cx, cy, a, bh, sign, front, theta) {
         if (x >= -margin && x <= s.canvasW + margin && y >= -margin && y <= s.canvasH + margin) {
             var dx1 = x - s.s1.x, dy1 = y - s.s1.y, r1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
             var dx2 = x - s.s2.x, dy2 = y - s.s2.y, r2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
-            visible = (r1 <= front && r2 <= front);
+            visible = _surfSourceContrib(s.s1Toggles, s.simTime, r1, s.c_px) &&
+                      _surfSourceContrib(s.s2Toggles, s.simTime, r2, s.c_px);
         }
         if (visible) {
             drawing = _surfPathTo(ctx, x, y, theta, drawing);
@@ -769,16 +869,20 @@ function _surfAddBranchPoints(ctx, s, cx, cy, a, bh, sign, front, theta) {
 function _drawSurfSources(ctx, is3D) {
     var s = simSurf;
     var theta = is3D ? (s.tiltDeg * Math.PI / 180) : null;
-    var pts = [[s.s1, 'S₁'], [s.s2, 'S₂']];
+    var pts = [[s.s1, 'S₁', s.s1Enabled], [s.s2, 'S₂', s.s2Enabled]];
     ctx.save();
     for (var i = 0; i < pts.length; i++) {
-        var pos = pts[i][0], label = pts[i][1];
+        var pos = pts[i][0], label = pts[i][1], enabled = pts[i][2];
         var sx = pos.x, sy = pos.y;
         if (theta !== null) {
-            var pr = _surf3DProjectPoint(pos.x, pos.y, theta);
+            var pr = _surf3DProjectPoint(pos.x, pos.y, theta, !enabled);
             sx = pr.x; sy = pr.y;
         }
-        ctx.fillStyle = '#9b8264';
+        // Source coupée : grisée/translucide plutôt que masquée, pour rester repérable
+        // (le point M/les axes de coupe peuvent encore s'y référer) tout en signalant
+        // clairement qu'elle n'émet plus.
+        ctx.globalAlpha = enabled ? 1 : 0.4;
+        ctx.fillStyle = enabled ? '#9b8264' : '#8a8a8a';
         ctx.strokeStyle = '#ffffff';
         ctx.lineWidth = 1.5;
         ctx.beginPath();
@@ -794,6 +898,7 @@ function _drawSurfSources(ctx, is3D) {
         ctx.textBaseline = 'bottom';
         ctx.strokeText(label, sx, sy - 9);
         ctx.fillText(label, sx, sy - 9);
+        ctx.globalAlpha = 1;
     }
     ctx.restore();
 }
@@ -1822,6 +1927,19 @@ function toggleGraphSurf() {
     syncSurfGraphUI();
 }
 
+// ── Sources actives/coupées (cases à cocher) ──────────────────────────
+// Historise la bascule (cf. simSurf.s1Toggles/s2Toggles et _surfSourceContrib) plutôt que de
+// simplement lire l'état courant au rendu : une source coupée ne doit pas effacer d'un coup les
+// ondes déjà émises (causalité — cf. commentaire de simSurf).
+function toggleSurfSource(n, checked) {
+    var s = simSurf;
+    var enabledKey = 's' + n + 'Enabled';
+    var togglesKey = 's' + n + 'Toggles';
+    if (s[enabledKey] === checked) return;
+    s[enabledKey] = checked;
+    s[togglesKey].push({ t: s.simTime, enabled: checked });
+}
+
 // ── Zones d'interférences (bouton 4 états) ────────────────────────────
 
 var SURF_INTERF_MODES = ['none', 'constructive', 'destructive', 'both'];
@@ -1894,7 +2012,16 @@ function resetSurfaces() {
     simSurf.showValeurs = false;
     simSurf.viewMode = 'top';
     simSurf.tiltDeg  = SURF_TILT_DEFAULT;
+    simSurf.s1Enabled = true;
+    simSurf.s2Enabled = true;
+    simSurf.s1Toggles = [];
+    simSurf.s2Toggles = [];
     _surfLastFrameT = null;
+
+    var chkS1 = document.getElementById('chk-surf-s1');
+    var chkS2 = document.getElementById('chk-surf-s2');
+    if (chkS1) chkS1.checked = true;
+    if (chkS2) chkS2.checked = true;
 
     var btnViewTop = document.getElementById('btn-surf-view-top');
     var btnViewPlongeante = document.getElementById('btn-surf-view-plongeante');
