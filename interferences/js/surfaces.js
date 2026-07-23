@@ -62,6 +62,9 @@ var SURF_COL_BG      = [100, 125, 155];
 var SURF_COL_INTERF_CONSTRUCTIVE = '#ffe14d'; // jaune
 var SURF_COL_INTERF_DESTRUCTIVE  = '#8a3fd6'; // violet
 
+// Couleur des doubles flèches source→M, cf. _drawSurfDistances — même orange que le point M
+var SURF_COL_DIST = '#e07020';
+
 // ── État global ───────────────────────────────────────────────────────
 var simSurf = {
 
@@ -98,6 +101,12 @@ var simSurf = {
 
     // ── Zones d'interférences (trame de points), cf. toggleSurfInterfMode ──
     interfMode   : 'none',  // 'none' | 'constructive' | 'destructive' | 'both'
+
+    // ── Distances sources→M affichées, cf. toggleSurfDistMode ─────────────
+    distMode     : 'none',  // 'none' | 'cm' | 'lambda'
+
+    // ── Section "Valeurs" (S₁M, S₂M, δ), cf. toggleSurfValeurs ────────────
+    showValeurs  : false,
 
     // ── Graphe(s) — mode 1 ou 2 graphes, cf. _buildSurfGraphCtrl ──────────
     showGraph    : false,
@@ -345,9 +354,11 @@ function drawSurfaces() {
         ctx.fillStyle = 'rgb(' + SURF_COL_BG.join(',') + ')';
         ctx.fillRect(0, 0, W, H);
         _drawSurfSources(ctx);
-        if (s.showGraph) _drawSurfPoint(ctx);
+        _drawSurfPoint(ctx);
+        if (s.distMode !== 'none') _drawSurfDistances(ctx);
         if (s.showGraph && _surfAmpYActive()) _drawSurfCutAxis(ctx, H);
         if (s.showGraph && _surfAmpXActive()) _drawSurfCutAxisH(ctx, W);
+        _updateSurfValues();
         return;
     }
 
@@ -385,9 +396,11 @@ function drawSurfaces() {
     if (s.interfMode !== 'none') _drawSurfInterfZones(ctx, front);
 
     _drawSurfSources(ctx);
-    if (s.showGraph) _drawSurfPoint(ctx);
+    _drawSurfPoint(ctx);
+    if (s.distMode !== 'none') _drawSurfDistances(ctx);
     if (s.showGraph && _surfAmpYActive()) _drawSurfCutAxis(ctx, H);
     if (s.showGraph && _surfAmpXActive()) _drawSurfCutAxisH(ctx, W);
+    _updateSurfValues();
 }
 
 // Les axes de coupe (graphes "Amplitude(y)"/"Amplitude(x)") ne sont affichés/actifs que si le
@@ -552,6 +565,119 @@ function _drawSurfPoint(ctx) {
     ctx.textBaseline = 'bottom';
     ctx.strokeText('M', p.x, p.y - 14);
     ctx.fillText('M', p.x, p.y - 14);
+    ctx.restore();
+}
+
+// ── Distances S1→M et S2→M (doubles flèches), cf. toggleSurfDistMode ──
+
+// Met à jour la section "Valeurs" (S₁M, S₂M, différence de marche δ) — cm si le mode
+// "Distance depuis les sources" est "Non" ou "En centimètres", en multiples de λ sinon.
+function _updateSurfValues() {
+    var s = simSurf;
+    if (!s.showValeurs) return;
+    var p = s.point;
+    var d1_cm = Math.hypot(p.x - s.s1.x, p.y - s.s1.y) / s.pxPerCm;
+    var d2_cm = Math.hypot(p.x - s.s2.x, p.y - s.s2.y) / s.pxPerCm;
+
+    var unit, v1, v2;
+    if (s.distMode === 'lambda') {
+        unit = '× λ';
+        v1 = d1_cm / s.lambda;
+        v2 = d2_cm / s.lambda;
+    } else {
+        unit = 'cm';
+        v1 = d1_cm;
+        v2 = d2_cm;
+    }
+    var s1txt = v1.toFixed(2).replace('.', ',');
+    var s2txt = v2.toFixed(2).replace('.', ',');
+    var deltaTxt = Math.abs(v1 - v2).toFixed(2).replace('.', ',');
+
+    var elS1 = document.getElementById('ro-surf-s1m');
+    var elS2 = document.getElementById('ro-surf-s2m');
+    var elU1 = document.getElementById('ro-surf-unit1');
+    var elU2 = document.getElementById('ro-surf-unit2');
+    var elDetail = document.getElementById('ro-surf-delta-detail');
+    if (elS1) elS1.textContent = s1txt;
+    if (elS2) elS2.textContent = s2txt;
+    if (elU1) elU1.textContent = unit;
+    if (elU2) elU2.textContent = unit;
+    if (elDetail) {
+        var termUnit = (s.distMode === 'lambda') ? unit : '';
+        elDetail.innerHTML =
+            '<span class="rvd-lhs">δ</span><span class="rvd-eq">= |' + s1txt + termUnit + ' − ' + s2txt + termUnit + '|</span>' +
+            '<span class="rvd-lhs"></span><span class="rvd-eq">= ' + deltaTxt + ' ' + unit + '</span>';
+    }
+}
+
+function _drawSurfDistances(ctx) {
+    var s = simSurf;
+    var p = s.point;
+    var d1_px = Math.hypot(p.x - s.s1.x, p.y - s.s1.y);
+    var d2_px = Math.hypot(p.x - s.s2.x, p.y - s.s2.y);
+    var d1_cm = d1_px / s.pxPerCm;
+    var d2_cm = d2_px / s.pxPerCm;
+    var label1, label2;
+    if (s.distMode === 'cm') {
+        label1 = d1_cm.toFixed(1).replace('.', ',') + ' cm';
+        label2 = d2_cm.toFixed(1).replace('.', ',') + ' cm';
+    } else {
+        label1 = (d1_cm / s.lambda).toFixed(2).replace('.', ',') + ' × λ';
+        label2 = (d2_cm / s.lambda).toFixed(2).replace('.', ',') + ' × λ';
+    }
+    _drawSurfDoubleArrow(ctx, s.s1.x, s.s1.y, p.x, p.y, label1);
+    _drawSurfDoubleArrow(ctx, s.s2.x, s.s2.y, p.x, p.y, label2);
+}
+
+// Double flèche entre (x1,y1) et (x2,y2), avec un label centré, écrit parallèlement à
+// l'axe de la flèche, décalé perpendiculairement de `offsetPx` pour ne pas la recouvrir.
+function _drawSurfDoubleArrow(ctx, x1, y1, x2, y2, label) {
+    var dx = x2 - x1, dy = y2 - y1;
+    var len = Math.hypot(dx, dy);
+    if (len < 1) return;
+    var angle = Math.atan2(dy, dx);
+    var offsetPx = 14;
+
+    ctx.save();
+    ctx.strokeStyle = SURF_COL_DIST;
+    ctx.fillStyle = SURF_COL_DIST;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+    _surfDrawArrowHead(ctx, x1, y1, angle + Math.PI);
+    _surfDrawArrowHead(ctx, x2, y2, angle);
+
+    // Angle du texte : toujours lisible (jamais la tête en bas).
+    var textAngle = angle;
+    if (textAngle > Math.PI / 2) textAngle -= Math.PI;
+    if (textAngle < -Math.PI / 2) textAngle += Math.PI;
+
+    ctx.translate((x1 + x2) / 2, (y1 + y2) / 2);
+    ctx.rotate(textAngle);
+    ctx.font = 'bold 13px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#00000080';
+    ctx.strokeText(label, 0, -offsetPx);
+    ctx.fillStyle = SURF_COL_DIST;
+    ctx.fillText(label, 0, -offsetPx);
+    ctx.restore();
+}
+
+function _surfDrawArrowHead(ctx, x, y, angle) {
+    var size = 8;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(-size, -size * 0.5);
+    ctx.lineTo(-size, size * 0.5);
+    ctx.closePath();
+    ctx.fill();
     ctx.restore();
 }
 
@@ -1312,6 +1438,40 @@ function _syncSurfInterfBtn() {
     btn.classList.toggle('active', simSurf.interfMode !== 'none');
 }
 
+// ── Distances depuis les sources (bouton 3 états) ─────────────────────
+
+var SURF_DIST_MODES  = ['none', 'cm', 'lambda'];
+var SURF_DIST_LABELS = {
+    none   : 'Non',
+    cm     : 'En centimètres',
+    lambda : 'En longueurs d\'onde'
+};
+
+function toggleSurfDistMode() {
+    var idx = SURF_DIST_MODES.indexOf(simSurf.distMode);
+    simSurf.distMode = SURF_DIST_MODES[(idx + 1) % SURF_DIST_MODES.length];
+    _syncSurfDistBtn();
+    _updateSurfValues();
+}
+
+function _syncSurfDistBtn() {
+    var btn = document.getElementById('btn-dist-surf');
+    if (!btn) return;
+    btn.innerHTML = 'Distance depuis les sources :<br>' + SURF_DIST_LABELS[simSurf.distMode];
+    btn.classList.toggle('active', simSurf.distMode !== 'none');
+}
+
+// ── Section "Valeurs" (S₁M, S₂M, δ) ────────────────────────────────────
+
+function toggleSurfValeurs() {
+    simSurf.showValeurs = !simSurf.showValeurs;
+    var btn = document.getElementById('btn-toggle-valeurs-surf');
+    var box = document.getElementById('readouts-surf');
+    if (btn) btn.classList.toggle('active', simSurf.showValeurs);
+    if (box) box.style.display = simSurf.showValeurs ? '' : 'none';
+    if (simSurf.showValeurs) _updateSurfValues();
+}
+
 function resetSurfaces() {
     simSurf.paused  = false;
     simSurf.simTime = 0;
@@ -1323,6 +1483,8 @@ function resetSurfaces() {
     simSurf.graphTab1 = 'amp-t';
     simSurf.graphTab2 = 'amp-y';
     simSurf.interfMode = 'none';
+    simSurf.distMode = 'none';
+    simSurf.showValeurs = false;
     _surfLastFrameT = null;
 
     var slLambda = document.getElementById('sl-lambda-surf');
@@ -1341,6 +1503,11 @@ function resetSurfaces() {
     syncSurfGraphUI();
 
     _syncSurfInterfBtn();
+    _syncSurfDistBtn();
+    var btnValeurs = document.getElementById('btn-toggle-valeurs-surf');
+    var boxValeurs = document.getElementById('readouts-surf');
+    if (btnValeurs) btnValeurs.classList.remove('active');
+    if (boxValeurs) boxValeurs.style.display = 'none';
 
     var slZoom = document.getElementById('sl-zoom-surf');
     if (slZoom) slZoom.value = 1;
@@ -1357,5 +1524,6 @@ function resetSurfaces() {
 function initSurfaces() {
     initSurfDrag();
     _syncSurfInterfBtn();
+    _syncSurfDistBtn();
     syncSurfGraphUI();
 }

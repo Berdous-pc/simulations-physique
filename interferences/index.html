@@ -188,8 +188,29 @@
 
       <div>
         <div class="section-title">Options</div>
-        <button class="btn btn-toggle-one" id="btn-graph-surf" onclick="toggleGraphSurf()">Afficher graphe</button>
+        <button class="btn btn-toggle-one" id="btn-dist-surf" onclick="toggleSurfDistMode()">Distance depuis les sources :<br>Non</button>
         <button class="btn btn-toggle-one" id="btn-interf-surf" onclick="toggleSurfInterfMode()" style="margin-top:8px;">Afficher les zones d'interférences :<br>Non</button>
+        <button class="btn btn-toggle-one" id="btn-graph-surf" onclick="toggleGraphSurf()" style="margin-top:8px;">Afficher graphe</button>
+      </div>
+
+      <div>
+        <div class="section-title">Valeurs</div>
+        <button class="btn btn-toggle-one" id="btn-toggle-valeurs-surf" onclick="toggleSurfValeurs()">Afficher les valeurs</button>
+        <div class="readouts" id="readouts-surf" style="display:none; margin-top:8px;">
+          <div class="readout full-width">
+            <div class="ro-label">S₁M</div>
+            <div class="ro-value"><span id="ro-surf-s1m">0,00</span> <span class="ro-unit" id="ro-surf-unit1">cm</span></div>
+            <div class="ro-label" style="margin-top:6px;">S₂M</div>
+            <div class="ro-value"><span id="ro-surf-s2m">0,00</span> <span class="ro-unit" id="ro-surf-unit2">cm</span></div>
+          </div>
+          <div class="readout full-width">
+            <div class="ro-label" id="ro-surf-delta-label">Différence de marche<br>δ = |S₁M − S₂M| :</div>
+            <div class="ro-value ro-value-detail" id="ro-surf-delta-detail">
+              <span class="rvd-lhs">δ</span><span class="rvd-eq">= |0,00 − 0,00|</span>
+              <span class="rvd-lhs"></span><span class="rvd-eq">= 0,00 cm</span>
+            </div>
+          </div>
+        </div>
       </div>
 
     </div>
