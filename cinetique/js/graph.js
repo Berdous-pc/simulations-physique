@@ -6,20 +6,18 @@
 
 // ══════════════════════════════════════════════════════════════════════
 //  graph.js — Graphe canvas de l'évolution des quantités A/B/C/D(t)
-//  Dépend de : sim.js (sim.history, SPECIES_COLORS)
-//  Expose   : resizeChart(), drawChart(), buildChartLegend()
+//  Dépend de : sim.js (sims, SPECIES_COLORS)
+//  Expose   : attachChart(s), resizeChartAll(), resizeChart(s), drawChart(s),
+//             buildChartLegend(s), drawAllCharts()
+//
+//  Un graphe par simulation (#cinetique-chart-1 / -2). En mode 2 simulations,
+//  les DEUX graphes partagent les mêmes bornes d'axes (cf. _axisBounds) :
+//  sans cela, deux courbes d'allures très différentes se ressembleraient une
+//  fois chacune remise à l'échelle de son propre cadre, ce qui ruinerait la
+//  comparaison visuelle qui est tout l'objet du mode double.
 // ══════════════════════════════════════════════════════════════════════
 
 'use strict';
-
-var _chartVisible = { A: true, B: true, C: true, D: true };
-var _chartCanvas = document.getElementById('cinetique-chart');
-var _chartCtx = null;
-
-// Position souris courante sur le canvas (coordonnées CSS, {mx,my}), ou null
-// hors survol — utilisée pour afficher les coordonnées du point le plus
-// proche (cf. pattern _chartHover de titrage/js/graph.js).
-var _chartHover = null;
 
 // ── Utilitaire : pas d'axe "joli" (1/2/5 × 10ⁿ) ─────────────────────────
 function _niceStep(range, targetN) {
@@ -32,11 +30,34 @@ function _niceStep(range, targetN) {
 }
 
 // ══════════════════════════════════════════════════════════════════════
+//  Rattachement au DOM
+// ══════════════════════════════════════════════════════════════════════
+
+function attachChart(s) {
+  s.chartCanvas = document.getElementById('cinetique-chart-' + s.index);
+  s.chartCtx = null;
+  if (!s.chartCanvas) return;
+
+  // ── Survol souris (coordonnées du point le plus proche) ──
+  s.chartCanvas.addEventListener('mousemove', function (e) {
+    var r = s.chartCanvas.getBoundingClientRect();
+    var scX = s.chartCanvas.clientWidth  / r.width;
+    var scY = s.chartCanvas.clientHeight / r.height;
+    s.chartHover = { mx: (e.clientX - r.left) * scX, my: (e.clientY - r.top) * scY };
+    drawChart(s);
+  });
+  s.chartCanvas.addEventListener('mouseleave', function () {
+    s.chartHover = null;
+    drawChart(s);
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════════
 //  Légende overlay à checkboxes
 // ══════════════════════════════════════════════════════════════════════
 
-function buildChartLegend() {
-  var container = document.getElementById('cinetique-legende');
+function buildChartLegend(s) {
+  var container = document.getElementById('cinetique-legende-' + s.index);
   if (!container) return;
   container.innerHTML = '';
 
@@ -49,15 +70,17 @@ function buildChartLegend() {
 
   order.forEach(function (item) {
     var lbl = document.createElement('label');
-    lbl.className = 'chart-legend-item' + (_chartVisible[item.key] ? '' : ' unchecked');
+    lbl.className = 'chart-legend-item' + (s.chartVisible[item.key] ? '' : ' unchecked');
 
     var cb = document.createElement('input');
     cb.type = 'checkbox';
-    cb.checked = _chartVisible[item.key];
+    cb.checked = s.chartVisible[item.key];
     cb.addEventListener('change', function () {
-      _chartVisible[item.key] = cb.checked;
+      s.chartVisible[item.key] = cb.checked;
       lbl.classList.toggle('unchecked', !cb.checked);
-      drawChart();
+      // Les bornes des axes sont communes aux deux graphes : masquer une
+      // courbe ici peut donc changer l'échelle de l'autre.
+      drawAllCharts();
     });
 
     var swatch = document.createElement('span');
@@ -81,45 +104,81 @@ function buildChartLegend() {
 
 var _chartResizeRafPending = false;
 
-function resizeChart() {
+function resizeChartAll() {
   if (_chartResizeRafPending) return;
   _chartResizeRafPending = true;
   requestAnimationFrame(function () {
     _chartResizeRafPending = false;
-    _doResizeChart();
+    activeSims().forEach(function (s) { resizeChart(s); });
   });
 }
 
-function _doResizeChart() {
-  if (!_chartCanvas) return;
-  var w = _chartCanvas.clientWidth;
-  var h = _chartCanvas.clientHeight;
+function resizeChart(s) {
+  var cv = s.chartCanvas;
+  if (!cv) return;
+  var w = cv.clientWidth;
+  var h = cv.clientHeight;
   if (w < 1 || h < 1) return;
   var dpr = window.devicePixelRatio || 1;
-  _chartCanvas.width  = Math.round(w * dpr);
-  _chartCanvas.height = Math.round(h * dpr);
-  _chartCtx = _chartCanvas.getContext('2d');
-  _chartCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  drawChart();
+  cv.width  = Math.round(w * dpr);
+  cv.height = Math.round(h * dpr);
+  s.chartCtx = cv.getContext('2d');
+  s.chartCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  drawChart(s);
+}
+
+function drawAllCharts() {
+  activeSims().forEach(function (s) { drawChart(s); });
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Bornes des axes — COMMUNES à toutes les simulations affichées
+// ══════════════════════════════════════════════════════════════════════
+
+function _axisBounds() {
+  var keys = ['A', 'B', 'C', 'D'];
+  var xMax = 15;
+  var yMaxRaw = 1;
+
+  activeSims().forEach(function (s) {
+    var h = s.history;
+    var n = h.t.length;
+    if (n > 0 && h.t[n - 1] > xMax) xMax = h.t[n - 1];
+    for (var i = 0; i < n; i++) {
+      for (var k = 0; k < keys.length; k++) {
+        var key = keys[k];
+        if (!s.chartVisible[key]) continue;
+        if (h[key][i] > yMaxRaw) yMaxRaw = h[key][i];
+      }
+    }
+  });
+
+  var xStep = _niceStep(xMax, 5);
+  var yStep = _niceStep(yMaxRaw * 1.1, 5);
+  return {
+    xStep: xStep,
+    xTop: Math.ceil(xMax / xStep) * xStep,
+    yStep: yStep,
+    yTop: Math.ceil((yMaxRaw * 1.1) / yStep) * yStep
+  };
 }
 
 // ══════════════════════════════════════════════════════════════════════
 //  Dessin du graphe
 // ══════════════════════════════════════════════════════════════════════
 
-function drawChart() {
-  if (!_chartCanvas || !_chartCtx) return;
-  var ctx = _chartCtx;
-  var W = _chartCanvas.clientWidth;
-  var H = _chartCanvas.clientHeight;
+function drawChart(s) {
+  if (!s.chartCanvas || !s.chartCtx) return;
+  var ctx = s.chartCtx;
+  var W = s.chartCanvas.clientWidth;
+  var H = s.chartCanvas.clientHeight;
   if (W < 1 || H < 1) return;
 
   ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = '#faf9f6';
   ctx.fillRect(0, 0, W, H);
 
-  var keys = ['A', 'B', 'C', 'D'];
-  var h = sim.history;
+  var h = s.history;
   var n = h.t.length;
 
   var baseFont = Math.max(9, Math.min(W, H) * 0.05);
@@ -134,20 +193,10 @@ function drawChart() {
   var gh = H - padT - padB;
   if (gw <= 10 || gh <= 10) return;
 
-  // ── Bornes des axes ──
-  var xMax = n > 0 ? Math.max(15, h.t[n - 1]) : 15;
-  var yMaxRaw = 1;
-  for (var i = 0; i < n; i++) {
-    for (var k = 0; k < keys.length; k++) {
-      var key = keys[k];
-      if (!_chartVisible[key]) continue;
-      if (h[key][i] > yMaxRaw) yMaxRaw = h[key][i];
-    }
-  }
-  var xStep = _niceStep(xMax, 5);
-  var xTop  = Math.ceil(xMax / xStep) * xStep;
-  var yStep = _niceStep(yMaxRaw * 1.1, 5);
-  var yTop  = Math.ceil((yMaxRaw * 1.1) / yStep) * yStep;
+  // ── Bornes des axes (partagées entre les simulations affichées) ──
+  var bounds = _axisBounds();
+  var xStep = bounds.xStep, xTop = bounds.xTop;
+  var yStep = bounds.yStep, yTop = bounds.yTop;
 
   function px(t) { return padL + (t / xTop) * gw; }
   function py(v) { return padT + gh - (v / yTop) * gh; }
@@ -203,6 +252,15 @@ function drawChart() {
   ctx.fillText('N (molécules)', 0, 0);
   ctx.restore();
 
+  // ── Repère de la simulation (mode 2 simulations uniquement) ──
+  if (simCount > 1) {
+    ctx.fillStyle = '#5a6a78';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.font = 'bold ' + baseFont + 'px "Segoe UI", Arial, sans-serif';
+    ctx.fillText('Simulation ' + s.index, padL + baseFont * 0.4, padT + baseFont * 0.3);
+  }
+
   // ── Courbes ──
   // Ordre de tracé : B, C, D puis A en dernier — A passe donc devant les
   // autres (peint par-dessus) là où les courbes se superposent, ce qui
@@ -211,7 +269,7 @@ function drawChart() {
   if (n > 1) {
     for (var kk = 0; kk < drawOrder.length; kk++) {
       var key2 = drawOrder[kk];
-      if (!_chartVisible[key2]) continue;
+      if (!s.chartVisible[key2]) continue;
       ctx.beginPath();
       for (var ii = 0; ii < n; ii++) {
         var xp2 = px(h.t[ii]);
@@ -226,7 +284,7 @@ function drawChart() {
   }
 
   // ── Survol : coordonnées du point de courbe le plus proche du curseur ──
-  _drawChartHover(ctx, padL, padT, gw, gh, px, py, xTop, W, H, baseFont, n);
+  _drawChartHover(s, ctx, padL, padT, gw, gh, px, py, xTop, W, H, baseFont, n);
 }
 
 // Cherche, parmi les courbes visibles, le point le plus proche du curseur.
@@ -235,12 +293,12 @@ function drawChart() {
 // en continu au lieu de sauter d'un échantillon à l'autre.
 // Si deux courbes sont superposées à cet instant, seule la plus proche du
 // curseur en pixels est retenue (cf. pattern de titrage/js/graph.js).
-function _drawChartHover(ctx, padL, padT, gw, gh, px, py, xTop, W, H, baseFont, n) {
-  if (!_chartHover || n === 0) return;
-  var mx = _chartHover.mx, my = _chartHover.my;
+function _drawChartHover(s, ctx, padL, padT, gw, gh, px, py, xTop, W, H, baseFont, n) {
+  if (!s.chartHover || n === 0) return;
+  var mx = s.chartHover.mx, my = s.chartHover.my;
   if (mx < padL - 10 || mx > padL + gw + 10 || my < padT - 10 || my > padT + gh + 10) return;
 
-  var h = sim.history;
+  var h = s.history;
   var tMouse = ((mx - padL) / gw) * xTop;
 
   // Segment [i0, i1] de l'historique encadrant l'instant survolé, et position
@@ -259,7 +317,7 @@ function _drawChartHover(ctx, padL, padT, gw, gh, px, py, xTop, W, H, baseFont, 
   var bestKey = null, bestDist = Infinity, bestPx = 0, bestPy = 0, bestVal = 0;
   for (var k = 0; k < keys.length; k++) {
     var key = keys[k];
-    if (!_chartVisible[key]) continue;
+    if (!s.chartVisible[key]) continue;
     var val = h[key][i0] + frac * (h[key][i1] - h[key][i0]);
     var bx = px(tHover);
     var by = py(val);
@@ -314,20 +372,5 @@ function _drawChartHover(ctx, padL, padT, gw, gh, px, py, xTop, W, H, baseFont, 
   ctx.restore();
 }
 
-// ── Survol souris (coordonnées du point le plus proche) ─────────────────
-if (_chartCanvas) {
-  _chartCanvas.addEventListener('mousemove', function (e) {
-    var r = _chartCanvas.getBoundingClientRect();
-    var scX = _chartCanvas.clientWidth  / r.width;
-    var scY = _chartCanvas.clientHeight / r.height;
-    _chartHover = { mx: (e.clientX - r.left) * scX, my: (e.clientY - r.top) * scY };
-    drawChart();
-  });
-  _chartCanvas.addEventListener('mouseleave', function () {
-    _chartHover = null;
-    drawChart();
-  });
-}
-
 // ── Attacher l'événement resize ────────────────────────────────────────
-window.addEventListener('resize', resizeChart);
+window.addEventListener('resize', resizeChartAll);

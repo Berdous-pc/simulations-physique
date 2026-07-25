@@ -43,10 +43,14 @@ main {
   overflow: hidden;
 }
 
-/* ── Colonne gauche : récipient (60%) | graphe (40%) côte à côte ── */
+/* ── Colonne gauche : récipient (60%) | graphe (40%) côte à côte ──
+   En mode 2 simulations (body.duo), une seconde ligne s'ajoute
+   automatiquement (grid-auto-rows: 1fr → les deux lignes ont exactement
+   la même hauteur, et chaque graphe reste aligné avec son récipient). */
 #left-col {
   display: grid;
   grid-template-columns: 60fr 40fr;
+  grid-auto-rows: 1fr;
   min-height: 0;
   min-width: 0;
   overflow: hidden;
@@ -54,8 +58,13 @@ main {
   padding: 10px;
 }
 
+/* Éléments propres au mode 2 simulations : masqués tant que body.duo
+   est absent (on n'écrase jamais leur `display` propre, on se contente
+   de ne pas appliquer la règle). */
+body:not(.duo) .duo-only { display: none; }
+
 /* ── Zone simulation (récipient) ─────────────────── */
-#sim-area {
+.sim-area {
   min-height: 0;
   min-width: 0;
   background: #fdf8f0;
@@ -65,7 +74,7 @@ main {
   box-shadow: 0 1px 4px rgba(0,0,0,0.08);
 }
 
-#recipient-canvas {
+.sim-area canvas {
   display: block;
   width: 100%;
   height: 100%;
@@ -75,7 +84,7 @@ main {
 /* Le graphe n'a pas besoin de toute la hauteur : il garde un format 4/3
    (borné par la hauteur disponible) et se centre verticalement, sous
    l'équation de la réaction. */
-#graph-area {
+.graph-area {
   min-height: 0;
   min-width: 0;
   overflow: hidden;
@@ -98,7 +107,14 @@ main {
   font-weight: 800;
 }
 
-#chart-wrap {
+/* En mode 2 simulations, chaque ligne ne dispose que de la moitié de la
+   hauteur : l'équation est réduite pour ne pas rogner le premier graphe
+   (le second, sans équation au-dessus, garde alors la même taille). */
+body.duo #cinetique-equation {
+  font-size: clamp(15px, 2vw, 24px);
+}
+
+.chart-wrap {
   position: relative;
   width: 100%;
   aspect-ratio: 4 / 3;
@@ -116,14 +132,14 @@ main {
   container-type: size;
 }
 
-#cinetique-chart {
+.chart-wrap canvas {
   display: block;
   width: 100%;
   height: 100%;
 }
 
 /* ── Légende overlay du graphe (checkboxes de visibilité) ────────────── */
-#cinetique-legende {
+.cinetique-legende {
   position: absolute;
   top: 2cqmin;
   right: 2cqmin;
@@ -294,6 +310,41 @@ main {
   color: #7a8a96;
   line-height: 1.4;
   font-weight: 400;
+}
+
+/* ── Bouton 2 états « Nombre de simulation(s) » ───── */
+/* Même motif que le sélecteur de source lumineuse de la page Diffraction. */
+.nsim-toggle {
+  display: flex;
+  border: 1px solid #c8c0b4;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.nsim-btn {
+  flex: 1;
+  padding: 8px 4px;
+  font-size: clamp(12px, 1.1vw, 14px);
+  font-weight: 700;
+  font-family: inherit;
+  border: none;
+  background: #ece8e0;
+  color: #5a6a78;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.nsim-btn:not(:last-child) { border-right: 1px solid #c8c0b4; }
+.nsim-btn:hover { background: #ddd8ce; }
+.nsim-btn.active { background: #2a6aaa; color: #fff; }
+
+/* ── Sous-titre d'un groupe de réglages (mode 2 simulations) ── */
+.sim-group-title {
+  font-size: clamp(11px, 1.1vw, 14px);
+  font-weight: 700;
+  color: #2a5080;
+  border-top: 1px solid #c8c0b4;
+  padding-top: 7px;
+  margin-bottom: 6px;
 }
 
 /* ── Afficheurs valeur ───────────────────────────── */

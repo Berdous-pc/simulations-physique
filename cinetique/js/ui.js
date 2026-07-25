@@ -9,6 +9,12 @@
 //  Chargé en DERNIER. Dépend de sim.js, recipient.js et graph.js.
 //  Orchestre la boucle RAF, les événements des sliders/boutons,
 //  la mise à jour des readouts, et l'initialisation générale.
+//
+//  Les contrôles se répartissent en deux familles :
+//  - COMMUNS aux simulations : Lancer/Pause, RAZ, vitesse d'animation,
+//    nombre de simulations affichées ;
+//  - PROPRES à une simulation : température, molécules A, molécules B,
+//    readouts — dupliqués et suffixés par l'index (-1 / -2).
 // ══════════════════════════════════════════════════════════════════════
 
 'use strict';
@@ -41,10 +47,13 @@ function loop(ts) {
   var dtReal = Math.min(ts - _lastTs, 50);  // plafonné à 50 ms
   _lastTs = ts;
 
-  var dt = sim.paused ? 0 : dtReal * sim.speedFactor;
+  // Même dt pour toutes les simulations : elles avancent au même temps
+  // simulé, seule condition pour que la comparaison ait un sens.
+  var dt = paused ? 0 : dtReal * speedFactor;
+  var list = activeSims();
 
   if (dt > 0) {
-    stepPhysics(dt);
+    for (var i = 0; i < list.length; i++) stepPhysics(list[i], dt);
 
     // Readouts à ~10 Hz : 4 écritures DOM par frame ne servent à rien et
     // forcent le navigateur à recalculer la mise en page du panneau.
@@ -55,14 +64,17 @@ function loop(ts) {
     }
   }
 
-  drawScene();
+  for (var j = 0; j < list.length; j++) drawScene(list[j]);
 
   // Le graphe ne change qu'à chaque nouveau point d'historique (5 fois par
   // seconde de temps simulé) : inutile de le redessiner à 60 fps.
-  if (sim.historyDirty) {
-    sim.historyDirty = false;
-    drawChart();
+  // Les bornes des axes étant communes, dès qu'une simulation a un nouveau
+  // point on redessine tous les graphes affichés.
+  var dirty = false;
+  for (var k = 0; k < list.length; k++) {
+    if (list[k].historyDirty) { list[k].historyDirty = false; dirty = true; }
   }
+  if (dirty) drawAllCharts();
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -70,11 +82,13 @@ function loop(ts) {
 // ══════════════════════════════════════════════════════════════════════
 
 function updateReadouts() {
-  var c = countSpecies();
-  document.getElementById('ro-A').textContent = c.A;
-  document.getElementById('ro-B').textContent = c.B;
-  document.getElementById('ro-C').textContent = c.C;
-  document.getElementById('ro-D').textContent = c.D;
+  activeSims().forEach(function (s) {
+    var c = countSpecies(s);
+    ['A', 'B', 'C', 'D'].forEach(function (key) {
+      var el = document.getElementById('ro-' + key + '-' + s.index);
+      if (el) el.textContent = c[key];
+    });
+  });
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -82,14 +96,17 @@ function updateReadouts() {
 // ══════════════════════════════════════════════════════════════════════
 
 function syncUIToSim() {
-  document.getElementById('sl-T').value = sim.T_C;
-  document.getElementById('lbl-T').textContent = sim.T_C;
+  sims.forEach(function (s) {
+    var i = s.index;
+    document.getElementById('sl-T-' + i).value = s.T_C;
+    document.getElementById('lbl-T-' + i).textContent = s.T_C;
 
-  document.getElementById('sl-NA').value = sim.N0_A;
-  document.getElementById('lbl-NA').textContent = sim.N0_A;
+    document.getElementById('sl-NA-' + i).value = s.N0_A;
+    document.getElementById('lbl-NA-' + i).textContent = s.N0_A;
 
-  document.getElementById('sl-NB').value = sim.N0_B;
-  document.getElementById('lbl-NB').textContent = sim.N0_B;
+    document.getElementById('sl-NB-' + i).value = s.N0_B;
+    document.getElementById('lbl-NB-' + i).textContent = s.N0_B;
+  });
 
   _updatePlayPauseBtn();
   updateReadouts();
@@ -97,7 +114,7 @@ function syncUIToSim() {
 
 function _updatePlayPauseBtn() {
   var btn = document.getElementById('btn-playpause');
-  if (sim.paused) {
+  if (paused) {
     btn.textContent = '▶ Lancer';
     btn.className   = 'btn btn-play';
   } else {
@@ -110,38 +127,62 @@ function _updatePlayPauseBtn() {
 //  Gestionnaires des contrôles (appelés depuis index.html)
 // ══════════════════════════════════════════════════════════════════════
 
-// ── Play / Pause ──
+// ── Play / Pause (commun aux deux simulations) ──
 function togglePause() {
-  sim.paused = !sim.paused;
+  paused = !paused;
   _updatePlayPauseBtn();
 }
 
-// ── Slider Vitesse d'animation ──
+// ── Slider Vitesse d'animation (commun) ──
 function onSliderSpeed(val) {
   var idx = parseInt(val, 10);
-  sim.speedFactor = SPEED_STEPS[idx];
+  speedFactor = SPEED_STEPS[idx];
   document.getElementById('lbl-speed').textContent = SPEED_LABELS[idx];
 }
 
-// ── Slider Température ──
-function onSliderT(val) {
+// ── Bouton "Nombre de simulation(s)" : 1 ou 2 ──
+// Passer de 1 à 2 (ou l'inverse) redimensionne les zones d'animation : les
+// molécules doivent être replacées dans les nouveaux récipients, et les deux
+// simulations doivent repartir du même instant. On fait donc une RAZ.
+function setSimCount(n) {
+  if (n === simCount) return;
+  simCount = n;
+
+  document.body.classList.toggle('duo', n === 2);
+  document.getElementById('btn-nsim-1').classList.toggle('active', n === 1);
+  document.getElementById('btn-nsim-2').classList.toggle('active', n === 2);
+
+  // La lecture de clientWidth/clientHeight force le navigateur à appliquer la
+  // nouvelle mise en page : les canvas sont donc redimensionnés d'après leur
+  // taille définitive, pas celle d'avant le basculement.
+  activeSims().forEach(function (s) {
+    resizeRecipient(s);
+    resizeChart(s);
+  });
+
+  resetSim();      // repose les molécules dans les récipients redimensionnés
+  drawAllCharts();
+}
+
+// ── Slider Température (par simulation) ──
+function onSliderT(i, val) {
   var T_C_new = parseInt(val, 10);
-  document.getElementById('lbl-T').textContent = T_C_new;
-  setTemperature(T_C_new);
+  document.getElementById('lbl-T-' + i).textContent = T_C_new;
+  setTemperature(sims[i - 1], T_C_new);
 }
 
-// ── Slider Nombre de molécules A ──
-function onSliderNA(val) {
+// ── Slider Nombre de molécules A (par simulation) ──
+function onSliderNA(i, val) {
   var n = parseInt(val, 10);
-  document.getElementById('lbl-NA').textContent = n;
-  setSpeciesCount('A', n);
+  document.getElementById('lbl-NA-' + i).textContent = n;
+  setSpeciesCount(sims[i - 1], 'A', n);
 }
 
-// ── Slider Nombre de molécules B ──
-function onSliderNB(val) {
+// ── Slider Nombre de molécules B (par simulation) ──
+function onSliderNB(i, val) {
   var n = parseInt(val, 10);
-  document.getElementById('lbl-NB').textContent = n;
-  setSpeciesCount('B', n);
+  document.getElementById('lbl-NB-' + i).textContent = n;
+  setSpeciesCount(sims[i - 1], 'B', n);
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -149,50 +190,41 @@ function onSliderNB(val) {
 // ══════════════════════════════════════════════════════════════════════
 
 function init() {
-  // 1. Dimensionner le canvas récipient (synchrone — besoin de la géométrie
-  //    pour placer les molécules avant le premier rendu)
-  var area = canvas.parentElement;
-  _cw = area.clientWidth;
-  _ch = area.clientHeight;
-  var dpr = window.devicePixelRatio || 1;
-  canvas.width  = Math.round(_cw * dpr);
-  canvas.height = Math.round(_ch * dpr);
-  canvas.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
+  // 1. Rattacher chaque simulation à ses canvas (récipient + graphe)
+  sims.forEach(function (s) {
+    attachCanvas(s);
+    attachChart(s);
+  });
 
-  // Géométrie — doit rester synchronisée avec _doResize() de recipient.js
-  var rx1 = MARGIN, rx2 = _cw - MARGIN;
-  var ry1 = MARGIN, ry2 = _ch - MARGIN;
-  sim._rx1 = rx1; sim._rx2 = rx2;
-  sim._ry1 = ry1; sim._ry2 = ry2;
-  sim.boxLeft   = rx1 + WALL_THICK;
-  sim.boxRight  = rx2 - WALL_THICK;
-  sim.boxTop    = ry1 + WALL_THICK;
-  sim.boxBottom = ry2 - WALL_THICK;
+  // 2. Dimensionner les canvas et initialiser les molécules des simulations
+  //    affichées (resizeRecipient est synchrone : la géométrie est disponible
+  //    avant le placement des molécules et le premier rendu).
+  activeSims().forEach(function (s) {
+    resizeRecipient(s);
+    initMolecules(s);
+    buildChartLegend(s);
+    resizeChart(s);
+  });
 
-  var innerW = sim.boxRight - sim.boxLeft;
-  MOL_RADIUS = Math.max(1, Math.round(innerW * MOL_RADIUS_FRAC));
-  V0_PX      = innerW * 0.16;
+  // 3. Légende des graphes non affichés : construite une fois pour toutes,
+  //    elle sera prête si l'utilisateur passe à 2 simulations.
+  sims.slice(simCount).forEach(buildChartLegend);
 
-  // 2. Initialiser les molécules (50 A + 50 B par défaut)
-  initMolecules();
-
-  // 3. Préparer le graphe (légende + premier redimensionnement)
-  buildChartLegend();
-  resizeChart();
-
-  // 3 bis. Couleurs des pastilles du readout et des lettres de l'équation,
-  // toutes deux posées depuis SPECIES_COLORS (source unique)
+  // 4. Couleurs des pastilles des readouts et des lettres de l'équation,
+  //    toutes posées depuis SPECIES_COLORS (source unique)
   ['A', 'B', 'C', 'D'].forEach(function (k) {
-    var ro = document.getElementById('ro-lbl-' + k);
-    if (ro) ro.style.color = SPECIES_COLORS[k].fill;
+    sims.forEach(function (s) {
+      var ro = document.getElementById('ro-lbl-' + k + '-' + s.index);
+      if (ro) ro.style.color = SPECIES_COLORS[k].fill;
+    });
     var eq = document.getElementById('eq-' + k);
     if (eq) eq.style.color = SPECIES_COLORS[k].fill;
   });
 
-  // 4. Synchroniser l'UI
+  // 5. Synchroniser l'UI
   syncUIToSim();
 
-  // 5. Lancer la boucle RAF
+  // 6. Lancer la boucle RAF
   requestAnimationFrame(loop);
 }
 

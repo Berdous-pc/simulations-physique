@@ -22,21 +22,37 @@
 
   <!-- ══════════════════════════════════════════════
        COLONNE GAUCHE : récipient (60%) + graphe (40%)
+       En mode 2 simulations (body.duo), une seconde ligne identique
+       apparaît sous la première : chaque graphe est aligné avec la zone
+       d'animation à laquelle il se rapporte. L'équation de réaction, elle,
+       n'est pas dupliquée (elle vaut pour les deux).
   ══════════════════════════════════════════════ -->
   <div id="left-col">
 
-    <div id="sim-area">
-      <canvas id="recipient-canvas"></canvas>
+    <div class="sim-area">
+      <canvas id="recipient-canvas-1"></canvas>
     </div>
 
-    <div id="graph-area">
+    <div class="graph-area">
       <!-- Couleurs des lettres posées par ui.js depuis SPECIES_COLORS (source unique) -->
       <div id="cinetique-equation">
         <span id="eq-A">A</span> + <span id="eq-B">B</span> → <span id="eq-C">C</span> + <span id="eq-D">D</span>
       </div>
-      <div id="chart-wrap">
-        <canvas id="cinetique-chart"></canvas>
-        <div id="cinetique-legende"></div>
+      <div class="chart-wrap">
+        <canvas id="cinetique-chart-1"></canvas>
+        <div class="cinetique-legende" id="cinetique-legende-1"></div>
+      </div>
+    </div>
+
+    <!-- ── Seconde simulation (affichée uniquement si body.duo) ── -->
+    <div class="sim-area duo-only">
+      <canvas id="recipient-canvas-2"></canvas>
+    </div>
+
+    <div class="graph-area duo-only">
+      <div class="chart-wrap">
+        <canvas id="cinetique-chart-2"></canvas>
+        <div class="cinetique-legende" id="cinetique-legende-2"></div>
       </div>
     </div>
 
@@ -78,31 +94,45 @@
       <div class="panel-section">
         <div class="section-title">Paramètres</div>
 
+        <!-- Nombre de simulations affichées (1 ou 2) -->
+        <div class="param-row" style="margin-bottom:12px;">
+          <label>Nombre de simulation(s)</label>
+          <div class="nsim-toggle">
+            <button class="nsim-btn active" id="btn-nsim-1" onclick="setSimCount(1)">1</button>
+            <button class="nsim-btn" id="btn-nsim-2" onclick="setSimCount(2)">2</button>
+          </div>
+        </div>
+
+        <!-- ── Réglages de la simulation 1 ── -->
+        <!-- Le sous-titre n'apparaît qu'en mode 2 simulations : avec une seule,
+             il n'y a rien à distinguer. -->
+        <div class="sim-group-title duo-only">Simulation 1</div>
+
         <!-- Température -->
         <div class="param-row">
           <label>Température
-            <span class="param-value"><span id="lbl-T">20</span> °C</span>
+            <span class="param-value"><span id="lbl-T-1">20</span> °C</span>
           </label>
-          <input type="range" id="sl-T" min="1" max="90" step="1" value="20"
-                 oninput="onSliderT(this.value)">
+          <input type="range" id="sl-T-1" min="1" max="90" step="1" value="20"
+                 oninput="onSliderT(1, this.value)">
         </div>
 
         <!-- Nombre de molécules A -->
         <div class="param-row">
           <label>Molécules A
-            <span class="param-value"><span id="lbl-NA">50</span></span>
+            <span class="param-value"><span id="lbl-NA-1">50</span></span>
           </label>
-          <input type="range" id="sl-NA" min="0" max="150" step="5" value="50"
-                 oninput="onSliderNA(this.value)">
+          <input type="range" id="sl-NA-1" min="0" max="150" step="5" value="50"
+                 oninput="onSliderNA(1, this.value)">
         </div>
 
         <!-- Nombre de molécules B -->
         <div class="param-row">
           <label>Molécules B
-            <span class="param-value"><span id="lbl-NB">50</span></span>
+            <span class="param-value"><span id="lbl-NB-1">50</span></span>
           </label>
-          <input type="range" id="sl-NB" min="0" max="150" step="5" value="50"
-                 oninput="onSliderNB(this.value)">
+          <input type="range" id="sl-NB-1" min="0" max="150" step="5" value="50"
+                 oninput="onSliderNB(1, this.value)">
         </div>
 
         <div class="readout">
@@ -111,20 +141,71 @@
                SPECIES_COLORS (source unique, cf. js/sim.js) -->
           <div class="ro-chocs-grid">
             <div class="ro-choc-item">
-              <span class="ro-choc-label" id="ro-lbl-A">A</span>
-              <span class="ro-choc-val" id="ro-A">50</span>
+              <span class="ro-choc-label" id="ro-lbl-A-1">A</span>
+              <span class="ro-choc-val" id="ro-A-1">50</span>
             </div>
             <div class="ro-choc-item">
-              <span class="ro-choc-label" id="ro-lbl-B">B</span>
-              <span class="ro-choc-val" id="ro-B">50</span>
+              <span class="ro-choc-label" id="ro-lbl-B-1">B</span>
+              <span class="ro-choc-val" id="ro-B-1">50</span>
             </div>
             <div class="ro-choc-item">
-              <span class="ro-choc-label" id="ro-lbl-C">C</span>
-              <span class="ro-choc-val" id="ro-C">0</span>
+              <span class="ro-choc-label" id="ro-lbl-C-1">C</span>
+              <span class="ro-choc-val" id="ro-C-1">0</span>
             </div>
             <div class="ro-choc-item">
-              <span class="ro-choc-label" id="ro-lbl-D">D</span>
-              <span class="ro-choc-val" id="ro-D">0</span>
+              <span class="ro-choc-label" id="ro-lbl-D-1">D</span>
+              <span class="ro-choc-val" id="ro-D-1">0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Réglages de la simulation 2 (mode 2 simulations) ── -->
+        <div class="duo-only">
+          <div class="sim-group-title">Simulation 2</div>
+
+          <div class="param-row">
+            <label>Température
+              <span class="param-value"><span id="lbl-T-2">20</span> °C</span>
+            </label>
+            <input type="range" id="sl-T-2" min="1" max="90" step="1" value="20"
+                   oninput="onSliderT(2, this.value)">
+          </div>
+
+          <div class="param-row">
+            <label>Molécules A
+              <span class="param-value"><span id="lbl-NA-2">50</span></span>
+            </label>
+            <input type="range" id="sl-NA-2" min="0" max="150" step="5" value="50"
+                   oninput="onSliderNA(2, this.value)">
+          </div>
+
+          <div class="param-row">
+            <label>Molécules B
+              <span class="param-value"><span id="lbl-NB-2">50</span></span>
+            </label>
+            <input type="range" id="sl-NB-2" min="0" max="150" step="5" value="50"
+                   oninput="onSliderNB(2, this.value)">
+          </div>
+
+          <div class="readout">
+            <div class="ro-label">Quantités actuelles</div>
+            <div class="ro-chocs-grid">
+              <div class="ro-choc-item">
+                <span class="ro-choc-label" id="ro-lbl-A-2">A</span>
+                <span class="ro-choc-val" id="ro-A-2">50</span>
+              </div>
+              <div class="ro-choc-item">
+                <span class="ro-choc-label" id="ro-lbl-B-2">B</span>
+                <span class="ro-choc-val" id="ro-B-2">50</span>
+              </div>
+              <div class="ro-choc-item">
+                <span class="ro-choc-label" id="ro-lbl-C-2">C</span>
+                <span class="ro-choc-val" id="ro-C-2">0</span>
+              </div>
+              <div class="ro-choc-item">
+                <span class="ro-choc-label" id="ro-lbl-D-2">D</span>
+                <span class="ro-choc-val" id="ro-D-2">0</span>
+              </div>
             </div>
           </div>
         </div>
@@ -142,7 +223,7 @@
       </div>
       <div class="panel-hint-body">
         Modèle des <strong>chocs efficaces</strong> : quand une molécule A percute une molécule B,
-        la réaction A + B → C + D a lieu (quantité de mouvement conservée). Le graphe suit
+        la réaction A + B → C + D a lieu. Le graphe suit
         l'évolution des quantités de chaque espèce au cours du temps.
       </div>
     </div>

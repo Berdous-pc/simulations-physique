@@ -5,17 +5,23 @@
 // ═══════════════════════════════════════════════════
 
 // ══════════════════════════════════════════════════════════════════════
-//  sim.js — État global et physique de la simulation
-//  Chargé en PREMIER. Expose l'objet `sim` et toutes les fonctions
-//  physiques utilisées par recipient.js, graph.js et ui.js.
+//  sim.js — État et physique de la simulation
+//  Chargé en PREMIER. Expose la fabrique `createSim()`, le tableau `sims`
+//  (une entrée par simulation) et toutes les fonctions physiques utilisées
+//  par recipient.js, graph.js et ui.js.
+//
+//  La page peut afficher 1 ou 2 simulations (bouton « Nombre de
+//  simulation(s) ») pour comparer en direct deux jeux de paramètres. Toutes
+//  les fonctions physiques prennent donc en PREMIER ARGUMENT l'instance `s`
+//  sur laquelle elles travaillent : il n'y a plus d'état global unique.
 // ══════════════════════════════════════════════════════════════════════
 
 'use strict';
 
 // ── Constantes physiques et de simulation ──────────────────────────────
 var T_REF = 300;   // K, température de référence pour calibrage visuel
-// Vitesse de base en px/s à T_REF (recalibrée dans resize() de recipient.js)
-var V0_PX = 180;
+// Vitesse de base en px/s à T_REF (recalibrée par instance dans resize())
+var V0_PX_DEFAULT = 180;
 
 // ── Correspondance slider (°C) → température de simulation (K) ─────────
 // Le slider affiche des températures réalistes (1 °C à 90 °C) mais l'échelle
@@ -38,8 +44,7 @@ function simTempFromCelsius(T_C) {
 }
 
 // Rayon des molécules en fraction de la largeur intérieure du récipient
-var MOL_RADIUS_FRAC = 0.007;  // recalculé par recipient.js
-var MOL_RADIUS = 3;           // px effectif (mis à jour par recipient.js)
+var MOL_RADIUS_FRAC = 0.007;  // le rayon en px est recalculé par recipient.js
 
 // ── Sous-pas d'intégration par frame (anti-tunneling) ──────────────────
 // Le nombre de sous-pas est calculé à chaque frame (cf. _requiredSubsteps) :
@@ -76,44 +81,87 @@ var SPECIES_COLORS = {
   D: { fill: '#a89ab0', border: '#82748a', label: 'D' }
 };
 
-// ── État global de la simulation ───────────────────────────────────────
-var sim = {
-  // ── Molécules : { type:'A'|'B'|'C'|'D', x, y, vx, vy } ──
-  molecules: [],
+// ══════════════════════════════════════════════════════════════════════
+//  Instances de simulation
+// ══════════════════════════════════════════════════════════════════════
 
-  // ── Quantités initiales pilotées par les sliders (état courant) ──
-  N0_A: 50,
-  N0_B: 50,
+// Fabrique une instance complète. `index` vaut 1 ou 2 et sert à retrouver
+// les éléments du DOM correspondants (suffixe des id : -1 / -2).
+function createSim(index) {
+  return {
+    index: index,
 
-  // ── Contrôle de l'animation ──
-  // En pause au chargement de la page : l'élève lance lui-même la réaction.
-  paused: true,
-  speedFactor: 1,   // multiplie dt avant stepPhysics (×0,10 à ×4,00)
+    // ── Molécules : { type:'A'|'B'|'C'|'D', x, y, vx, vy } ──
+    molecules: [],
 
-  // ── Température ──
-  T_C: 20,                              // °C, valeur affichée par le slider
-  T_K: simTempFromCelsius(20),          // K, température de simulation associée
+    // ── Quantités initiales pilotées par les sliders (état courant) ──
+    N0_A: 50,
+    N0_B: 50,
 
-  // ── Géométrie du récipient (mise à jour par recipient.js) ──
-  boxLeft: 0,
-  boxRight: 0,
-  boxTop: 0,
-  boxBottom: 0,
+    // ── Température ──
+    T_C: 20,                              // °C, valeur affichée par le slider
+    T_K: simTempFromCelsius(20),          // K, température de simulation associée
 
-  // ── Temps simulé cumulé (ms) ──
-  simTime: 0,
+    // ── Géométrie du récipient (mise à jour par recipient.js) ──
+    boxLeft: 0,
+    boxRight: 0,
+    boxTop: 0,
+    boxBottom: 0,
+    _rx1: 0, _rx2: 0, _ry1: 0, _ry2: 0,
 
-  // ── Historique temporel des quantités (fenêtre glissante) ──
-  // t en secondes, A/B/C/D en nombre de molécules
-  history: { t: [], A: [], B: [], C: [], D: [] },
+    // ── Échelles dépendant de la taille du canvas (cf. recipient.js) ──
+    molRadius: 3,             // px
+    v0px: V0_PX_DEFAULT,      // px/s à T_REF
 
-  // Passe à true quand un point d'historique vient d'être ajouté : le graphe
-  // ne se redessine que dans ce cas (5 redraws/s au lieu de 60), cf. ui.js.
-  historyDirty: true
-};
+    // ── Rendu (renseigné par recipient.js / graph.js) ──
+    canvas: null, ctx: null, cw: 0, ch: 0,
+    chartCanvas: null, chartCtx: null,
+    chartVisible: { A: true, B: true, C: true, D: true },
+    chartHover: null,
 
-// Accumulateur interne pour l'échantillonnage de l'historique
-var _historyTimer = 0;
+    // ── Temps simulé cumulé (ms) ──
+    simTime: 0,
+
+    // Passe à true dès que A ou B tombe à 0 : la réaction A + B → C + D ne
+    // peut plus avoir lieu, l'animation et le tracé de CETTE simulation se
+    // figent — indépendamment de l'autre en mode 2 simulations, et même si
+    // l'utilisateur laisse le bouton Lancer/Pause sur "Pause" partagé actif.
+    finished: false,
+
+    // ── Historique temporel des quantités (fenêtre glissante) ──
+    // t en secondes, A/B/C/D en nombre de molécules
+    history: { t: [], A: [], B: [], C: [], D: [] },
+
+    // Passe à true quand un point d'historique vient d'être ajouté : le graphe
+    // ne se redessine que dans ce cas (5 redraws/s au lieu de 60), cf. ui.js.
+    historyDirty: true,
+
+    // Accumulateur interne pour l'échantillonnage de l'historique
+    _historyTimer: 0,
+
+    // Grille spatiale de détection des collisions (cf. _collidePairs)
+    _grid: [], _gridCols: 0, _gridRows: 0
+  };
+}
+
+// Les deux instances existent toujours ; seules les `simCount` premières
+// sont animées et affichées (cf. activeSims() et setSimCount() dans ui.js).
+var sims = [createSim(1), createSim(2)];
+
+// Nombre de simulations affichées (1 par défaut)
+var simCount = 1;
+
+// ── Contrôle de l'animation — COMMUN aux deux simulations ──────────────
+// Lancer/mettre en pause et la vitesse d'animation agissent sur les deux :
+// c'est ce qui permet de comparer deux évolutions « en direct », au même
+// temps simulé.
+// En pause au chargement de la page : l'élève lance lui-même la réaction.
+var paused = true;
+var speedFactor = 1;   // multiplie dt avant stepPhysics (×0,10 à ×2,00)
+
+function activeSims() {
+  return sims.slice(0, simCount);
+}
 
 // ══════════════════════════════════════════════════════════════════════
 //  Génération de vitesses — distribution de Maxwell-Boltzmann 2D
@@ -132,8 +180,8 @@ function _gaussRandom(sigma) {
 }
 
 // Vitesse selon Maxwell-Boltzmann 2D (deux gaussiennes indépendantes sur vx/vy)
-function randomVelocity() {
-  var sigma = V0_PX * Math.sqrt(sim.T_K / T_REF);
+function randomVelocity(s) {
+  var sigma = s.v0px * Math.sqrt(s.T_K / T_REF);
   return { vx: _gaussRandom(sigma), vy: _gaussRandom(sigma) };
 }
 
@@ -141,22 +189,22 @@ function randomVelocity() {
 //  Comptage des espèces et historique
 // ══════════════════════════════════════════════════════════════════════
 
-function countSpecies() {
+function countSpecies(s) {
   var c = { A: 0, B: 0, C: 0, D: 0 };
-  var mols = sim.molecules;
+  var mols = s.molecules;
   for (var i = 0; i < mols.length; i++) c[mols[i].type]++;
   return c;
 }
 
-function recordHistoryPoint() {
-  var c = countSpecies();
-  var h = sim.history;
-  h.t.push(sim.simTime / 1000);
+function recordHistoryPoint(s) {
+  var c = countSpecies(s);
+  var h = s.history;
+  h.t.push(s.simTime / 1000);
   h.A.push(c.A); h.B.push(c.B); h.C.push(c.C); h.D.push(c.D);
   if (h.t.length > MAX_HISTORY_POINTS) {
     h.t.shift(); h.A.shift(); h.B.shift(); h.C.shift(); h.D.shift();
   }
-  sim.historyDirty = true;
+  s.historyDirty = true;
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -167,15 +215,15 @@ function recordHistoryPoint() {
 // Stratégie : grille dimensionnée pour contenir EXACTEMENT les N molécules et
 // couvrir toute la zone d'animation (cols × rows ≥ N, proportions du récipient),
 // puis mélange Fisher-Yates pour répartir aléatoirement les types A/B.
-function initMolecules() {
-  sim.molecules = [];
-  var NA = sim.N0_A, NB = sim.N0_B;
+function initMolecules(s) {
+  s.molecules = [];
+  var NA = s.N0_A, NB = s.N0_B;
   var N  = NA + NB;
-  var r   = MOL_RADIUS;
-  var xlo = sim.boxLeft   + r + 1;
-  var xhi = sim.boxRight  - r - 1;
-  var ylo = sim.boxTop    + r + 1;
-  var yhi = sim.boxBottom - r - 1;
+  var r   = s.molRadius;
+  var xlo = s.boxLeft   + r + 1;
+  var xhi = s.boxRight  - r - 1;
+  var ylo = s.boxTop    + r + 1;
+  var yhi = s.boxBottom - r - 1;
 
   if (xhi > xlo && yhi > ylo && N > 0) {
     var w = xhi - xlo;
@@ -212,8 +260,8 @@ function initMolecules() {
 
     for (var m = 0; m < N; m++) {
       var pos = positions[m];
-      var vel = randomVelocity();
-      sim.molecules.push({
+      var vel = randomVelocity(s);
+      s.molecules.push({
         type: types[m],
         x: pos.x + (Math.random() * 2 - 1) * jitX,
         y: pos.y + (Math.random() * 2 - 1) * jitY,
@@ -222,10 +270,13 @@ function initMolecules() {
     }
   }
 
-  sim.simTime = 0;
-  _historyTimer = 0;
-  sim.history = { t: [], A: [], B: [], C: [], D: [] };
-  recordHistoryPoint();
+  s.simTime = 0;
+  s._historyTimer = 0;
+  s.history = { t: [], A: [], B: [], C: [], D: [] };
+  // Un réactif à 0 dès le départ (ex. N_A = 0) fige tout de suite : la
+  // réaction ne peut pas avoir lieu, inutile d'attendre un premier choc.
+  s.finished = (s.N0_A === 0 || s.N0_B === 0);
+  recordHistoryPoint(s);
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -233,16 +284,16 @@ function initMolecules() {
 // ══════════════════════════════════════════════════════════════════════
 
 // Rescale instantané des vitesses quand T change (consigne en °C)
-function setTemperature(T_C_new) {
+function setTemperature(s, T_C_new) {
   var T_new = simTempFromCelsius(T_C_new);
   if (T_new <= 0) return;
-  var ratio = Math.sqrt(T_new / sim.T_K);
-  for (var i = 0; i < sim.molecules.length; i++) {
-    sim.molecules[i].vx *= ratio;
-    sim.molecules[i].vy *= ratio;
+  var ratio = Math.sqrt(T_new / s.T_K);
+  for (var i = 0; i < s.molecules.length; i++) {
+    s.molecules[i].vx *= ratio;
+    s.molecules[i].vy *= ratio;
   }
-  sim.T_C = T_C_new;
-  sim.T_K = T_new;
+  s.T_C = T_C_new;
+  s.T_K = T_new;
 }
 
 // Change la quantité initiale d'une espèce réactive (A ou B).
@@ -250,33 +301,66 @@ function setTemperature(T_C_new) {
 // on remet donc l'animation à zéro (et en pause) plutôt que d'injecter des
 // molécules en cours de route, pour que la courbe affichée corresponde
 // toujours à une seule et même expérience.
-function setSpeciesCount(type, target) {
-  if (type === 'A') sim.N0_A = target; else sim.N0_B = target;
-  resetSim();
+//
+// En mode 2 simulations, deux cas :
+// - si l'une des simulations affichées a déjà commencé à évoluer (simTime > 0,
+//   donc a été lancée au moins une fois depuis la dernière RAZ), on ne peut pas
+//   ne repositionner QUE celle qu'on modifie : les deux courbes doivent redémarrer
+//   ensemble pour rester comparables sur le même axe des temps → RAZ complète ;
+// - si aucune n'a encore été lancée (t=0 des deux côtés, réglage des paramètres
+//   avant le premier "Lancer"), repositionner l'autre simulation n'aurait aucun
+//   effet utile — elle est déjà à t=0 — mais lui ferait perdre son placement
+//   aléatoire initial sans raison. On ne touche donc qu'à `s`.
+function setSpeciesCount(s, type, target) {
+  if (type === 'A') s.N0_A = target; else s.N0_B = target;
+
+  var anyStarted = activeSims().some(function (sim) { return sim.simTime > 0; });
+  if (anyStarted) {
+    resetSim();
+  } else {
+    paused = true;
+    initMolecules(s);
+    if (typeof syncUIToSim === 'function') syncUIToSim();
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════
 //  Intégration physique — un pas de temps
 // ══════════════════════════════════════════════════════════════════════
 
-function stepPhysics(dt_ms) {
-  if (dt_ms <= 0) return;
+function stepPhysics(s, dt_ms) {
+  if (dt_ms <= 0 || s.finished) return;
   var dt_s = dt_ms / 1000;
 
-  sim.simTime += dt_ms;
+  s.simTime += dt_ms;
 
-  var nSub  = _requiredSubsteps(dt_s);
+  var nSub  = _requiredSubsteps(s, dt_s);
   var subDt = dt_s / nSub;
   for (var sub = 0; sub < nSub; sub++) {
-    _moveAll(subDt);
-    _collidePairs();
-    _collideWalls();
+    _moveAll(s, subDt);
+    _collidePairs(s);
+    _collideWalls(s);
   }
 
-  _historyTimer += dt_ms;
-  if (_historyTimer >= HISTORY_PERIOD) {
-    _historyTimer = 0;
-    recordHistoryPoint();
+  s._historyTimer += dt_ms;
+  if (s._historyTimer >= HISTORY_PERIOD) {
+    s._historyTimer = 0;
+    recordHistoryPoint(s);
+  }
+
+  // Réactif épuisé : la réaction A + B → C + D ne peut plus avoir lieu.
+  // On fige immédiatement (animation ET graphe) plutôt que d'attendre la
+  // prochaine RAZ — un point d'historique final est enregistré tout de
+  // suite si ce n'était pas déjà fait, pour que la courbe s'arrête pile
+  // sur l'instant de l'épuisement plutôt que de laisser un plat jusqu'au
+  // prochain échantillon prévu 200 ms plus tard.
+  var c = countSpecies(s);
+  if (c.A === 0 || c.B === 0) {
+    s.finished = true;
+    if (s._historyTimer !== 0) {
+      s._historyTimer = 0;
+      recordHistoryPoint(s);
+    }
   }
 }
 
@@ -285,8 +369,8 @@ function stepPhysics(dt_ms) {
 // en premier. Le balayage est en O(N) (≤ 300 itérations), soit un coût
 // négligeable devant celui des sous-pas qu'il permet d'économiser quand
 // les vitesses sont faibles.
-function _requiredSubsteps(dt_s) {
-  var mols  = sim.molecules;
+function _requiredSubsteps(s, dt_s) {
+  var mols  = s.molecules;
   var v2max = 0;
   for (var i = 0; i < mols.length; i++) {
     var v2 = mols[i].vx * mols[i].vx + mols[i].vy * mols[i].vy;
@@ -295,7 +379,7 @@ function _requiredSubsteps(dt_s) {
   if (v2max === 0) return SUBSTEPS_MIN;
 
   var travel = Math.sqrt(v2max) * dt_s;      // px parcourus sur la frame
-  var budget = MOL_RADIUS * MAX_STEP_FRAC;   // px tolérés par sous-pas
+  var budget = s.molRadius * MAX_STEP_FRAC;  // px tolérés par sous-pas
   var n = Math.ceil(travel / budget);
   if (n < SUBSTEPS_MIN) return SUBSTEPS_MIN;
   if (n > SUBSTEPS_MAX) return SUBSTEPS_MAX;
@@ -303,8 +387,8 @@ function _requiredSubsteps(dt_s) {
 }
 
 // ── Avance toutes les positions (mouvement rectiligne uniforme) ────────
-function _moveAll(dt) {
-  var mols = sim.molecules;
+function _moveAll(s, dt) {
+  var mols = s.molecules;
   for (var i = 0; i < mols.length; i++) {
     mols[i].x += mols[i].vx * dt;
     mols[i].y += mols[i].vy * dt;
@@ -312,13 +396,13 @@ function _moveAll(dt) {
 }
 
 // ── Collisions avec les 4 parois du récipient ──────────────────────────
-function _collideWalls() {
-  var mols = sim.molecules;
-  var r    = MOL_RADIUS;
-  var xlo  = sim.boxLeft   + r;
-  var xhi  = sim.boxRight  - r;
-  var ylo  = sim.boxTop    + r;
-  var yhi  = sim.boxBottom - r;
+function _collideWalls(s) {
+  var mols = s.molecules;
+  var r    = s.molRadius;
+  var xlo  = s.boxLeft   + r;
+  var xhi  = s.boxRight  - r;
+  var ylo  = s.boxTop    + r;
+  var yhi  = s.boxBottom - r;
 
   for (var i = 0; i < mols.length; i++) {
     var m = mols[i];
@@ -397,36 +481,37 @@ function _resolvePair(mi, mj, diam, diam2) {
 // que contre celles de sa cellule et des 8 cellules voisines, ce qui ramène
 // le coût à O(N) (le nombre de voisins par cellule ne dépend pas de N mais
 // de la densité).
-var _grid = [];          // buckets réutilisés d'une frame à l'autre
-var _gridCols = 0;
-var _gridRows = 0;
+// La grille est stockée SUR l'instance (s._grid) : deux simulations animées
+// dans la même frame ne doivent pas se partager les buckets.
 
 // Décalages couvrant les 8 voisines sans traiter deux fois la même paire :
 // la cellule elle-même (avec j > i), puis droite, bas-gauche, bas, bas-droite.
 var _GRID_NEIGHBOURS = [[1, 0], [-1, 1], [0, 1], [1, 1]];
 
-function _collidePairs() {
-  var mols = sim.molecules;
+function _collidePairs(s) {
+  var mols = s.molecules;
   var n = mols.length;
   if (n < 2) return;
 
-  var diam  = 2 * MOL_RADIUS;
+  var diam  = 2 * s.molRadius;
   var diam2 = diam * diam;
 
   // Côté de cellule = 2 diamètres : assez grand pour garder peu de cellules
   // à vider, assez petit pour que peu de molécules tombent dans chacune.
   var cell = Math.max(1, diam * 2);
-  var x0 = sim.boxLeft, y0 = sim.boxTop;
-  var cols = Math.max(1, Math.ceil((sim.boxRight - x0) / cell));
-  var rows = Math.max(1, Math.ceil((sim.boxBottom - y0) / cell));
+  var x0 = s.boxLeft, y0 = s.boxTop;
+  var cols = Math.max(1, Math.ceil((s.boxRight - x0) / cell));
+  var rows = Math.max(1, Math.ceil((s.boxBottom - y0) / cell));
 
-  if (cols !== _gridCols || rows !== _gridRows) {
-    _grid = new Array(cols * rows);
-    for (var g = 0; g < _grid.length; g++) _grid[g] = [];
-    _gridCols = cols; _gridRows = rows;
+  if (cols !== s._gridCols || rows !== s._gridRows) {
+    s._grid = new Array(cols * rows);
+    for (var g = 0; g < s._grid.length; g++) s._grid[g] = [];
+    s._gridCols = cols; s._gridRows = rows;
   } else {
-    for (var g2 = 0; g2 < _grid.length; g2++) _grid[g2].length = 0;
+    for (var g2 = 0; g2 < s._grid.length; g2++) s._grid[g2].length = 0;
   }
+
+  var grid = s._grid;
 
   // ── Remplissage ──
   for (var i = 0; i < n; i++) {
@@ -434,13 +519,13 @@ function _collidePairs() {
     var cy = Math.floor((mols[i].y - y0) / cell);
     if (cx < 0) cx = 0; else if (cx >= cols) cx = cols - 1;
     if (cy < 0) cy = 0; else if (cy >= rows) cy = rows - 1;
-    _grid[cy * cols + cx].push(i);
+    grid[cy * cols + cx].push(i);
   }
 
   // ── Parcours cellule par cellule ──
   for (var r = 0; r < rows; r++) {
     for (var c = 0; c < cols; c++) {
-      var bucket = _grid[r * cols + c];
+      var bucket = grid[r * cols + c];
       var bl = bucket.length;
       if (bl === 0) continue;
 
@@ -456,7 +541,7 @@ function _collidePairs() {
         var nc = c + _GRID_NEIGHBOURS[k][0];
         var nr = r + _GRID_NEIGHBOURS[k][1];
         if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
-        var other = _grid[nr * cols + nc];
+        var other = grid[nr * cols + nc];
         var ol = other.length;
         for (var p = 0; p < bl; p++) {
           for (var q = 0; q < ol; q++) {
@@ -474,9 +559,11 @@ function _collidePairs() {
 // Conserve la température et les quantités N0_A/N0_B actuellement réglées
 // par l'utilisateur (RAZ = relancer la simulation avec les paramètres en
 // cours, pas revenir aux valeurs par défaut). L'animation repart en pause :
-// l'élève relance lui-même la réaction quand il est prêt.
+// l'élève relance lui-même la réaction.
+// La RAZ porte toujours sur TOUTES les simulations affichées, pour qu'elles
+// démarrent au même instant et restent comparables.
 function resetSim() {
-  sim.paused = true;
-  initMolecules();
+  paused = true;
+  activeSims().forEach(initMolecules);
   if (typeof syncUIToSim === 'function') syncUIToSim();
 }
