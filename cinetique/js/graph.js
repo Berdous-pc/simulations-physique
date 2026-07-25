@@ -299,32 +299,38 @@ function _drawChartHover(s, ctx, padL, padT, gw, gh, px, py, xTop, W, H, baseFon
   if (mx < padL - 10 || mx > padL + gw + 10 || my < padT - 10 || my > padT + gh + 10) return;
 
   var h = s.history;
-  var tMouse = ((mx - padL) / gw) * xTop;
 
-  // Segment [i0, i1] de l'historique encadrant l'instant survolé, et position
-  // fractionnaire du curseur à l'intérieur de ce segment.
-  var tClamp = Math.max(h.t[0], Math.min(h.t[n - 1], tMouse));
-  var i0 = 0;
-  for (var i = 0; i < n - 1; i++) {
-    if (h.t[i] <= tClamp) i0 = i; else break;
-  }
-  var i1 = Math.min(i0 + 1, n - 1);
-  var dt = h.t[i1] - h.t[i0];
-  var frac = dt > 0 ? (tClamp - h.t[i0]) / dt : 0;
-  var tHover = h.t[i0] + frac * dt;
-
+  // Pour chaque courbe visible, on cherche sur TOUS les segments du tracé
+  // (pas seulement celui à l'abscisse de la souris) le point projeté le plus
+  // proche du curseur en pixels (x ET y). Une restriction à l'abscisse de la
+  // souris ratait le vrai point le plus proche sur une portion pentue, car
+  // celui-ci peut se trouver sur un segment voisin décalé en x.
   var keys = ['A', 'B', 'C', 'D'];
-  var bestKey = null, bestDist = Infinity, bestPx = 0, bestPy = 0, bestVal = 0;
+  var bestKey = null, bestDist2 = Infinity, bestPx = 0, bestPy = 0, bestVal = 0, bestT = 0;
   for (var k = 0; k < keys.length; k++) {
     var key = keys[k];
     if (!s.chartVisible[key]) continue;
-    var val = h[key][i0] + frac * (h[key][i1] - h[key][i0]);
-    var bx = px(tHover);
-    var by = py(val);
-    var dist = Math.hypot(bx - mx, by - my);
-    if (dist < bestDist) { bestDist = dist; bestKey = key; bestPx = bx; bestPy = by; bestVal = val; }
+    for (var i = 0; i < n - 1; i++) {
+      var x0 = px(h.t[i]),     y0 = py(h[key][i]);
+      var x1 = px(h.t[i + 1]), y1 = py(h[key][i + 1]);
+      var dx = x1 - x0, dy = y1 - y0;
+      var segLenSq = dx * dx + dy * dy;
+      var frac = segLenSq > 0 ? ((mx - x0) * dx + (my - y0) * dy) / segLenSq : 0;
+      frac = Math.max(0, Math.min(1, frac));
+      var bx = x0 + frac * dx;
+      var by = y0 + frac * dy;
+      var ddx = bx - mx, ddy = by - my;
+      var dist2 = ddx * ddx + ddy * ddy;
+      if (dist2 < bestDist2) {
+        bestDist2 = dist2; bestKey = key; bestPx = bx; bestPy = by;
+        bestVal = h[key][i] + frac * (h[key][i + 1] - h[key][i]);
+        bestT   = h.t[i] + frac * (h.t[i + 1] - h.t[i]);
+      }
+    }
   }
-  if (!bestKey || bestDist > Math.max(30, baseFont * 3)) return;
+  var maxDist = Math.max(30, baseFont * 3);
+  if (!bestKey || bestDist2 > maxDist * maxDist) return;
+  var tHover = bestT;
 
   var color = SPECIES_COLORS[bestKey].fill;
 
