@@ -89,7 +89,7 @@ main {
 #cinetique-equation {
   flex: 0 0 auto;
   font-family: 'Segoe UI', Arial, sans-serif;
-  font-size: clamp(15px, 2vw, 24px);
+  font-size: clamp(22.5px, 3vw, 36px);
   font-weight: 700;
   color: #2c3e50;
   text-align: center;
@@ -336,29 +336,24 @@ main {
   font-variant-numeric: tabular-nums;
 }
 
+/* Crans sous un slider : chaque label est centré exactement sous la position
+   du curseur pour son cran. Le curseur natif (~16px de large) ne parcourt que
+   (100% - 16px) : les labels sont donc placés à 8px + frac × (100% - 16px),
+   via --tick-frac posé sur chaque span (0 pour le 1er cran, 1 pour le dernier). */
 .slider-ticks {
-  display: flex;
-  justify-content: space-between;
+  position: relative;
   margin-top: 3px;
-  padding: 0 8px;
+  height: 1.3em;
 }
 
 .slider-ticks span {
+  position: absolute;
+  top: 0;
+  left: calc(8px + (100% - 16px) * var(--tick-frac, 0));
+  transform: translateX(-50%);
   font-size: clamp(10px, 1vw, 13px);
   color: #7a8a96;
-  width: 0;
-  text-align: center;
   white-space: nowrap;
-}
-
-.slider-ticks span:first-child {
-  width: auto;
-  text-align: left;
-}
-
-.slider-ticks span:last-child {
-  width: auto;
-  text-align: right;
 }
 
 .panel-hint {

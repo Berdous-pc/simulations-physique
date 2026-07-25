@@ -21,8 +21,8 @@ var _readoutTimer  = 0;    // ms cumulés depuis la dernière mise à jour
 var READOUT_PERIOD = 100;  // ms (10 Hz)
 
 // ── Crans du slider "Vitesse d'animation" ──────────────────────────────
-var SPEED_STEPS  = [0.10, 0.50, 1.00, 2.00, 4.00];
-var SPEED_LABELS = ['0,10', '0,50', '1,00', '2,00', '4,00'];
+var SPEED_STEPS  = [0.10, 0.50, 1.00, 2.00];
+var SPEED_LABELS = ['0,10', '0,50', '1,00', '2,00'];
 
 // ══════════════════════════════════════════════════════════════════════
 //  Boucle d'animation (RAF)

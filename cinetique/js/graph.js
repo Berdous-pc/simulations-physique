@@ -135,7 +135,7 @@ function drawChart() {
   if (gw <= 10 || gh <= 10) return;
 
   // ── Bornes des axes ──
-  var xMax = n > 0 ? Math.max(5, h.t[n - 1]) : 5;
+  var xMax = n > 0 ? Math.max(15, h.t[n - 1]) : 15;
   var yMaxRaw = 1;
   for (var i = 0; i < n; i++) {
     for (var k = 0; k < keys.length; k++) {
@@ -229,9 +229,10 @@ function drawChart() {
   _drawChartHover(ctx, padL, padT, gw, gh, px, py, xTop, W, H, baseFont, n);
 }
 
-// Cherche, parmi les courbes visibles, le point le plus proche du curseur —
-// on ne compare qu'à l'échantillon temporel le plus proche de la souris
-// (pas à tous les points) puisque les courbes sont peu denses (1 point/200 ms).
+// Cherche, parmi les courbes visibles, le point le plus proche du curseur.
+// L'historique n'est échantillonné que toutes les 200 ms : on interpole
+// linéairement le long du segment tracé pour que le repère suive le curseur
+// en continu au lieu de sauter d'un échantillon à l'autre.
 // Si deux courbes sont superposées à cet instant, seule la plus proche du
 // curseur en pixels est retenue (cf. pattern de titrage/js/graph.js).
 function _drawChartHover(ctx, padL, padT, gw, gh, px, py, xTop, W, H, baseFont, n) {
@@ -242,21 +243,28 @@ function _drawChartHover(ctx, padL, padT, gw, gh, px, py, xTop, W, H, baseFont, 
   var h = sim.history;
   var tMouse = ((mx - padL) / gw) * xTop;
 
-  var bestIdx = 0, bestTDist = Infinity;
-  for (var i = 0; i < n; i++) {
-    var d = Math.abs(h.t[i] - tMouse);
-    if (d < bestTDist) { bestTDist = d; bestIdx = i; }
+  // Segment [i0, i1] de l'historique encadrant l'instant survolé, et position
+  // fractionnaire du curseur à l'intérieur de ce segment.
+  var tClamp = Math.max(h.t[0], Math.min(h.t[n - 1], tMouse));
+  var i0 = 0;
+  for (var i = 0; i < n - 1; i++) {
+    if (h.t[i] <= tClamp) i0 = i; else break;
   }
+  var i1 = Math.min(i0 + 1, n - 1);
+  var dt = h.t[i1] - h.t[i0];
+  var frac = dt > 0 ? (tClamp - h.t[i0]) / dt : 0;
+  var tHover = h.t[i0] + frac * dt;
 
   var keys = ['A', 'B', 'C', 'D'];
-  var bestKey = null, bestDist = Infinity, bestPx = 0, bestPy = 0;
+  var bestKey = null, bestDist = Infinity, bestPx = 0, bestPy = 0, bestVal = 0;
   for (var k = 0; k < keys.length; k++) {
     var key = keys[k];
     if (!_chartVisible[key]) continue;
-    var bx = px(h.t[bestIdx]);
-    var by = py(h[key][bestIdx]);
+    var val = h[key][i0] + frac * (h[key][i1] - h[key][i0]);
+    var bx = px(tHover);
+    var by = py(val);
     var dist = Math.hypot(bx - mx, by - my);
-    if (dist < bestDist) { bestDist = dist; bestKey = key; bestPx = bx; bestPy = by; }
+    if (dist < bestDist) { bestDist = dist; bestKey = key; bestPx = bx; bestPy = by; bestVal = val; }
   }
   if (!bestKey || bestDist > Math.max(30, baseFont * 3)) return;
 
@@ -275,8 +283,8 @@ function _drawChartHover(ctx, padL, padT, gw, gh, px, py, xTop, W, H, baseFont, 
   ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5;
   ctx.beginPath(); ctx.arc(bestPx, bestPy, 5, 0, Math.PI * 2); ctx.stroke();
 
-  var label = bestKey + '  |  t = ' + h.t[bestIdx].toFixed(1).replace('.', ',') +
-              ' s  |  N = ' + h[bestKey][bestIdx];
+  var label = bestKey + '  |  t = ' + tHover.toFixed(2).replace('.', ',') +
+              ' s  |  N = ' + Math.round(bestVal);
   var ttFs  = Math.max(11, Math.round(Math.min(W, H) * 0.038));
   ctx.font  = 'bold ' + ttFs + 'px "Segoe UI", Arial, sans-serif';
   var lw    = ctx.measureText(label).width;

@@ -61,14 +61,13 @@
           <label>Vitesse d'animation
             <span class="param-value">×<span id="lbl-speed">1,00</span></span>
           </label>
-          <input type="range" id="sl-speed" min="0" max="4" step="1" value="2"
+          <input type="range" id="sl-speed" min="0" max="3" step="1" value="2"
                  oninput="onSliderSpeed(this.value)">
           <div class="slider-ticks">
-            <span>0,10</span>
-            <span>0,50</span>
-            <span>1,00</span>
-            <span>2,00</span>
-            <span>4,00</span>
+            <span style="--tick-frac:0">×0,10</span>
+            <span style="--tick-frac:0.3333">×0,50</span>
+            <span style="--tick-frac:0.6667">×1,00</span>
+            <span style="--tick-frac:1">×2,00</span>
           </div>
         </div>
       </div>
