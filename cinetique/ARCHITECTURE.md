@@ -99,8 +99,7 @@ Charte graphique du projet (cf. `contexte_projet.md`). Particularités de cette 
 | `MOL_RADIUS_FRAC` | 0,007 | Fraction de la largeur intérieure du récipient |
 | `SUBSTEPS_MIN` / `SUBSTEPS_MAX` | 4 / 32 | Bornes du nombre de sous-pas par frame, calculé à chaque frame par `_requiredSubsteps()` (anti-tunneling) |
 | `MAX_STEP_FRAC` | 0,5 | Déplacement toléré par sous-pas, en fraction du rayon |
-| `HISTORY_PERIOD` | 200 ms | Période d'échantillonnage de l'historique (temps simulé) |
-| `MAX_HISTORY_POINTS` | 600 | Fenêtre glissante du graphe (FIFO) |
+| `HISTORY_PERIOD` | 200 ms | Période d'échantillonnage de l'historique (temps simulé). Historique conservé en entier depuis t=0 (pas de fenêtre glissante) : le graphe garde la totalité de l'expérience visible, même après plusieurs minutes |
 | `SPECIES_COLORS` | `{A,B,C,D}` | Couleurs (fill/border) de chaque espèce — **source unique**, réutilisée par recipient.js, graph.js et les pastilles du readout (posées par ui.js). Réactifs A/B en teintes **vives** (bleu `#0f7fe0`, orange-rouge `#f04a10`), produits C/D en teintes **ternes** (vert-de-gris `#8fa896`, mauve grisé `#a89ab0`) pour que les réactifs restants ressortent au milieu des produits accumulés |
 
 #### Instance de simulation (`createSim(index)`)
@@ -313,8 +312,10 @@ index.html
 - **Recyclage d'objets** : une réaction modifie `type`/`vx`/`vy` en place sur les objets
   existants (`mols[i]`, `mols[j]`) plutôt que de faire un `splice`/`push`, pour ne pas
   perturber les indices de la boucle `i<j` en cours.
-- **Historique borné** : fenêtre glissante FIFO (`MAX_HISTORY_POINTS`), évite une
-  croissance illimitée du tableau sur une session longue.
+- **Historique non borné** : le tableau `history` croît sans limite (pas de fenêtre
+  glissante) — l'élève doit pouvoir revoir le début de la courbe même après une
+  expérience longue, sans que les premiers points ne s'effacent. À 5 points/s, cela
+  reste négligeable en mémoire (quelques centaines de points par minute).
 
 ### Performance
 

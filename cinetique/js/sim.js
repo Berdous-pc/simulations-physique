@@ -67,8 +67,6 @@ var MAX_STEP_FRAC = 0.5;
 
 // Période d'échantillonnage de l'historique (ms simulés)
 var HISTORY_PERIOD = 200;
-// Fenêtre glissante : nombre maximal de points conservés dans l'historique
-var MAX_HISTORY_POINTS = 600;
 
 // ── Couleurs des espèces (réutilisées par recipient.js et graph.js) ────
 // Réactifs A/B : teintes VIVES et saturées, pour repérer d'un coup d'œil
@@ -201,9 +199,6 @@ function recordHistoryPoint(s) {
   var h = s.history;
   h.t.push(s.simTime / 1000);
   h.A.push(c.A); h.B.push(c.B); h.C.push(c.C); h.D.push(c.D);
-  if (h.t.length > MAX_HISTORY_POINTS) {
-    h.t.shift(); h.A.shift(); h.B.shift(); h.C.shift(); h.D.shift();
-  }
   s.historyDirty = true;
 }
 
