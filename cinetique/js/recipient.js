@@ -119,7 +119,50 @@ function drawScene(s) {
   ctx.fillRect(0, 0, s.cw, s.ch);
 
   _drawRecipient(s);
+  // Les halos sont peints AVANT les molécules : ils forment un fond, ils ne
+  // doivent jamais masquer les sphères qui les traversent.
+  _drawActionRadii(s);
   _drawMolecules(s);
+}
+
+// ── Halo du rayon d'action des catalyseurs ─────────────────────────────
+// Matérialise la zone dans laquelle une molécule est captée. Sans lui, les
+// molécules dévient brusquement vers un point sans raison visible à l'écran ;
+// avec lui, le mécanisme se lit directement.
+// Seuls les catalyseurs ayant encore un site libre sont entourés : un
+// catalyseur saturé ne capte plus rien, et avec 10 catalyseurs les zones
+// finiraient sinon par se recouvrir et charger l'image.
+function _drawActionRadii(s) {
+  if (!s.showActionRadius) return;
+  var ctx  = s.ctx;
+  var mols = s.molecules;
+  var capR = CATA_CAPTURE_RADIUS_FACTOR * s.molRadius;
+
+  ctx.save();
+  // Rogné à la zone intérieure (l'eau) : sans ça, le halo d'un catalyseur
+  // proche du bord déborderait par-dessus les parois, qui sont pourtant
+  // déjà dessinées à ce stade.
+  ctx.beginPath();
+  ctx.rect(s.boxLeft, s.boxTop, s.boxRight - s.boxLeft, s.boxBottom - s.boxTop);
+  ctx.clip();
+
+  ctx.lineWidth = Math.max(1, s.molRadius * 0.25);
+  ctx.setLineDash([Math.max(2, capR * 0.09), Math.max(2, capR * 0.07)]);
+
+  for (var i = 0; i < mols.length; i++) {
+    var m = mols[i];
+    if (m.type !== 'cata') continue;
+    if (m.sites[0] && m.sites[1]) continue;
+
+    ctx.beginPath();
+    ctx.arc(m.x, m.y, capR, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(31, 41, 51, 0.07)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(31, 41, 51, 0.38)';
+    ctx.stroke();
+  }
+
+  ctx.restore();
 }
 
 // ── Dessin du récipient (grand bécher rempli d'eau) ────────────────────
@@ -144,13 +187,15 @@ function _drawRecipient(s) {
 // La bordure est noire (et non la couleur `border` de SPECIES_COLORS, qui
 // reste utilisée ailleurs — ex. pastilles de légende) pour bien détacher
 // chaque molécule du fond et des molécules voisines de couleur proche.
-function drawSphere(ctx, x, y, r, fill) {
+// `stroke` et `widthMul` sont optionnels : sans eux on retrouve le contour
+// noir fin commun à toutes les molécules.
+function drawSphere(ctx, x, y, r, fill, stroke, widthMul) {
   ctx.beginPath();
   ctx.arc(x, y, r, 0, Math.PI * 2);
   ctx.fillStyle = fill;
   ctx.fill();
-  ctx.lineWidth = Math.max(0.75, r * 0.18);
-  ctx.strokeStyle = '#1a1a1a';
+  ctx.lineWidth = Math.max(0.75, r * 0.18) * (widthMul || 1);
+  ctx.strokeStyle = stroke || '#1a1a1a';
   ctx.stroke();
 }
 
@@ -160,7 +205,13 @@ function _drawMolecules(s) {
 
   for (var i = 0; i < mols.length; i++) {
     var m = mols[i];
-    drawSphere(s.ctx, m.x, m.y, r, SPECIES_COLORS[m.type].fill);
+    if (m.type === 'cata') {
+      // Motif inversé (fond sombre, contour clair épais) : c'est ce qui
+      // détache le catalyseur au premier coup d'œil, cf. CATA_COLOR.
+      drawSphere(s.ctx, m.x, m.y, r, CATA_COLOR.fill, CATA_COLOR.border, 2);
+    } else {
+      drawSphere(s.ctx, m.x, m.y, r, SPECIES_COLORS[m.type].fill);
+    }
   }
 }
 

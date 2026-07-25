@@ -292,6 +292,20 @@ body.duo #cinetique-equation {
   gap: 6px;
 }
 
+/* Pastille de couleur devant le titre d'un slider (molécule ou catalyseur) —
+   même gabarit que #lambda-swatch de la page Diffraction, mais couleur FIXE
+   posée en inline par ui.js (SPECIES_COLORS / CATA_COLOR) : pas de recalcul
+   dynamique ici, contrairement au laser dont la teinte suit la longueur
+   d'onde réglée par l'utilisateur. */
+.param-swatch {
+  display: inline-block;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  vertical-align: -1px;
+  margin-right: 5px;
+}
+
 .param-value {
   color: #2a5080;
   font-weight: 600;
@@ -311,6 +325,42 @@ body.duo #cinetique-equation {
   line-height: 1.4;
   font-weight: 400;
 }
+
+/* ── Case à cocher d'une ligne de paramètre ───────── */
+/* Grisée tant que l'option n'a pas d'objet (ex. « Afficher le rayon
+   d'action » sans aucun catalyseur) : la case reste visible pour annoncer
+   la fonctionnalité, mais son état inactif est explicite.
+   Sélecteur `label.check-row` (et non `.check-row` seul) : ce label est
+   imbriqué dans `.param-row`, donc `.param-row label` (spécificité 0-1-1)
+   écraserait un simple `.check-row` (0-1-0) — en particulier son
+   `justify-content: space-between`, qui plaquait le texte à l'extrême
+   droite de la ligne au lieu de le laisser juste après la case. */
+label.check-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.5em;
+  margin-top: 4px;
+  cursor: pointer;
+  user-select: none;
+  font-size: clamp(11px, 1.05vw, 13.5px);
+  font-weight: 400;
+}
+
+.check-row input[type="checkbox"] {
+  accent-color: #4a7aaa;
+  cursor: pointer;
+  width: 1.05em;
+  height: 1.05em;
+  flex: 0 0 auto;
+}
+
+.check-row:has(input:disabled) {
+  color: #a8b2ba;
+  cursor: default;
+}
+
+.check-row input[type="checkbox"]:disabled { cursor: default; }
 
 /* ── Bouton 2 états « Nombre de simulation(s) » ───── */
 /* Même motif que le sélecteur de source lumineuse de la page Diffraction. */
@@ -478,7 +528,11 @@ body.duo #cinetique-equation {
   padding: 0 10px 8px;
   overflow: hidden;
   transition: max-height 0.25s ease, padding 0.25s ease;
-  max-height: 200px;
+  /* 260px (200px à l'origine) : le texte s'est étoffé avec l'énergie
+     d'activation et le catalyseur, découpé en 4 lignes par de simples
+     <br> — sans cette marge, le bas était tronqué malgré le bouton
+     « déplié ». */
+  max-height: 260px;
 }
 
 .panel-hint.collapsed .panel-hint-body {

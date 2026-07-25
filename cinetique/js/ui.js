@@ -106,6 +106,16 @@ function syncUIToSim() {
 
     document.getElementById('sl-NB-' + i).value = s.N0_B;
     document.getElementById('lbl-NB-' + i).textContent = s.N0_B;
+
+    document.getElementById('sl-CATA-' + i).value = s.N_CATA;
+    document.getElementById('lbl-CATA-' + i).textContent = s.N_CATA;
+
+    // Le halo n'a d'objet que s'il y a au moins un catalyseur. L'état coché
+    // est conservé pendant que la case est grisée : remettre un catalyseur
+    // retrouve le réglage précédent de l'utilisateur.
+    var ck = document.getElementById('ck-radius-' + i);
+    ck.disabled = (s.N_CATA === 0);
+    ck.checked  = s.showActionRadius;
   });
 
   _updatePlayPauseBtn();
@@ -185,6 +195,18 @@ function onSliderNB(i, val) {
   setSpeciesCount(sims[i - 1], 'B', n);
 }
 
+// ── Slider Nombre de catalyseurs (par simulation) ──
+function onSliderCata(i, val) {
+  var n = parseInt(val, 10);
+  document.getElementById('lbl-CATA-' + i).textContent = n;
+  setCatalystCount(sims[i - 1], n);
+}
+
+// ── Case « Afficher le rayon d'action » (par simulation) ──
+function onToggleRadius(i, checked) {
+  sims[i - 1].showActionRadius = checked;
+}
+
 // ══════════════════════════════════════════════════════════════════════
 //  Initialisation
 // ══════════════════════════════════════════════════════════════════════
@@ -219,6 +241,17 @@ function init() {
     });
     var eq = document.getElementById('eq-' + k);
     if (eq) eq.style.color = SPECIES_COLORS[k].fill;
+  });
+
+  // 4bis. Pastilles devant les titres des sliders Molécules A/B et
+  //       Catalyseurs — mêmes sources uniques (SPECIES_COLORS / CATA_COLOR).
+  sims.forEach(function (s) {
+    var swA = document.getElementById('swatch-NA-' + s.index);
+    if (swA) swA.style.background = SPECIES_COLORS.A.fill;
+    var swB = document.getElementById('swatch-NB-' + s.index);
+    if (swB) swB.style.background = SPECIES_COLORS.B.fill;
+    var swC = document.getElementById('swatch-CATA-' + s.index);
+    if (swC) swC.style.background = CATA_COLOR.fill;
   });
 
   // 5. Synchroniser l'UI

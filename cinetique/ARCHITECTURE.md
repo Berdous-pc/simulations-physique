@@ -100,6 +100,12 @@ Charte graphique du projet (cf. `contexte_projet.md`). Particularités de cette 
 | `SUBSTEPS_MIN` / `SUBSTEPS_MAX` | 4 / 32 | Bornes du nombre de sous-pas par frame, calculé à chaque frame par `_requiredSubsteps()` (anti-tunneling) |
 | `MAX_STEP_FRAC` | 0,5 | Déplacement toléré par sous-pas, en fraction du rayon |
 | `HISTORY_PERIOD` | 200 ms | Période d'échantillonnage de l'historique (temps simulé). Historique conservé en entier depuis t=0 (pas de fenêtre glissante) : le graphe garde la totalité de l'expérience visible, même après plusieurs minutes |
+| `CATA_COLOR` | anthracite `#1f2933`, liseré `#f0f4f8` | Couleur du catalyseur. Joue sur la **luminosité**, seul axe libre : les 4 espèces saturent déjà le cercle chromatique (A 208°, B 15°, C 137°, D 278°) et la meilleure teinte restante n'offrirait que ~61° de marge, forcément très lumineuse donc peu contrastée sur fond clair. Le contour clair **inverse le motif** de toutes les molécules (fond clair + contour noir fin) : l'œil sépare l'inversion avant d'analyser la couleur. Survit au **daltonisme** (l'ancien magenta et le mauve D étaient indistinguables en deutéranopie) et à la **vidéoprojection**, qui délave les teintes saturées |
+| `CATA_CAPTURE_RADIUS_FACTOR` | 12 rayons (= 6 diamètres) | Distance de captage d'une molécule. **C'est le principal levier de l'effet catalytique visible** : mesuré sur 7 tirages, le temps pour consommer 80 % des réactifs avec 10 catalyseurs passe de ×1,16 (valeur 4, soit 2 diamètres) à ×1,42 (6) puis ×1,66 (8) et ×2,07 à la valeur retenue (12, soit 6 diamètres) par rapport à 0 catalyseur |
+| `CATA_ATTACH_DIST_FACTOR` | 1,0 rayon | Distance en-deçà de laquelle une molécule en approche est considérée arrivée sur son site. Complété par un test « site atteignable dans la frame » (`dist <= seekSpeed × dt`) — sans lui, une molécule rapide dépasse le point du site à chaque pas et **orbite** autour du catalyseur sans jamais s'y adsorber |
+| `CATA_SEEK_SPEED_FACTOR` | 1,15 | Vivacité de l'attraction (× la plus grande des vitesses en jeu). Doit rester légèrement > 1 : assez pour rattraper un catalyseur en mouvement, sans que les molécules aient l'air propulsées. Ce qui rend le captage lisible n'est pas ce facteur mais la correction de l'overshoot ci-dessus. **Sans effet sur le bilan d'énergie** : une molécule en vol guidé est découplée des chocs et sa vitesse est écrasée à la sortie (cf. plus bas) |
+| `CATA_RESIDENCE_MS` | 1800 ms | Temps de résidence moyen d'une molécule **seule** sur un site, avant désorption spontanée |
+| `ACTIVATION_SPEED_FACTOR` | 2,8 × `v0px` | **Énergie d'activation** : vitesse d'approche minimale pour qu'un choc A + B soit efficace. Calibré pour un t½ ≈ 20 s à 20 °C avec 50 A + 50 B sans catalyseur. Sensibilité forte et non linéaire (Arrhenius) : sur cette base de mesure, 1,3 → 4 s, 2,0 → 9 s, 2,4 → 22 s, 2,8 → 33 s, 3,2 → 94 s. **Ajuster par pas de 0,1** (≈ 12 % de temps de réaction) |
 | `SPECIES_COLORS` | `{A,B,C,D}` | Couleurs (fill/border) de chaque espèce — **source unique**, réutilisée par recipient.js, graph.js et les pastilles du readout (posées par ui.js). Réactifs A/B en teintes **vives** (bleu `#0f7fe0`, orange-rouge `#f04a10`), produits C/D en teintes **ternes** (vert-de-gris `#8fa896`, mauve grisé `#a89ab0`) pour que les réactifs restants ressortent au milieu des produits accumulés |
 
 #### Instance de simulation (`createSim(index)`)
@@ -107,8 +113,9 @@ Charte graphique du projet (cf. `contexte_projet.md`). Particularités de cette 
 | Propriété | Rôle |
 |---|---|
 | `index` | 1 ou 2 — suffixe des id du DOM correspondants |
-| `molecules[]` | `{type:'A'|'B'|'C'|'D', x, y, vx, vy}[]` |
+| `molecules[]` | `{type:'A'|'B'|'C'|'D'|'cata', x, y, vx, vy, state, target, seekSpeed}[]` — un catalyseur porte en plus `sites: [null|molécule, null|molécule]` |
 | `N0_A` / `N0_B` | Quantités pilotées par les sliders (état courant, pas seulement init) |
+| `N_CATA` | Nombre de catalyseurs (slider, 0 à 10) |
 | `T_C` / `T_K` | Consigne du slider (°C) et température de simulation associée (K) |
 | `boxLeft/Right/Top/Bottom` | Bords intérieurs du récipient |
 | `molRadius` / `v0px` | Rayon (px) et vitesse de base (px/s à T_REF), recalculés au resize |
@@ -127,6 +134,32 @@ Charte graphique du projet (cf. `contexte_projet.md`). Particularités de cette 
 | `activeSims()` | `sims.slice(0, simCount)` |
 | `paused` | Animation suspendue — **commun** aux deux simulations |
 | `speedFactor` | Multiplicateur de dt (×0,10 à ×2,00) — **commun** |
+
+#### Énergie d'activation — le pivot du modèle
+
+Un choc entre A et B n'est **efficace** que si la vitesse d'approche (composante normale
+de la vitesse relative) dépasse `ACTIVATION_SPEED_FACTOR × v0px` ; sinon la paire subit
+un choc élastique ordinaire. C'est ce seuil qui donne son sens au nom de la page : sans
+lui, *tous* les chocs A + B réagissaient et la notion centrale du modèle était absente.
+
+**Le seuil est absolu, jamais relatif à la température.** `v0px` est une échelle
+purement géométrique (proportionnelle à la taille du récipient, cf. `recipient.js`), pas
+thermique. La barrière reste donc fixe pendant que les vitesses varient en `√T`, et
+c'est exactement cet écart qui fait croître la proportion de chocs efficaces avec la
+température — un comportement de type Arrhenius. Définir le seuil en fraction de la
+vitesse thermique du moment donnerait une proportion constante et **supprimerait tout
+effet de la température** : c'est le piège à ne pas retomber dedans en retouchant ce
+paramètre.
+
+Trois conséquences pédagogiques, qui tiennent toutes à ce seul mécanisme :
+
+- le slider **Température** n'agit plus seulement sur la fréquence des chocs (en `√T`)
+  mais surtout sur leur *efficacité* — son effet devient spectaculaire ;
+- le **catalyseur** a enfin quelque chose à abaisser : deux molécules adsorbées réagissent
+  dans 100 % des cas, sans condition d'énergie. Avant l'introduction de ce seuil, la voie
+  directe tournait déjà à son débit maximum et l'effet catalytique plafonnait à ×2 quels
+  que soient les réglages ;
+- à froid, la voie directe est quasi gelée et **seule la voie catalytique fonctionne**.
 
 #### Règle de réaction A + B → C + D
 
@@ -171,6 +204,103 @@ En mode 2 simulations, le comportement dépend de si l'expérience a déjà comm
 Le `.readout` (A/B/C/D actuels) reflète en revanche le compte en temps réel, qui évolue
 tout seul au fil des réactions.
 
+#### Catalyseurs
+
+Slider **« Catalyseurs »** (0 à 10, 0 par défaut, un par simulation). Un catalyseur est
+une sphère magenta (`CATA_COLOR`) de même rayon que les molécules, de type `'cata'` —
+il n'est donc **pas** compté par `countSpecies()` ni tracé sur le graphe. Son mouvement
+de base est celui des autres molécules.
+
+Il porte **2 sites**, non représentés, aux extrémités de son diamètre horizontal
+(`_catalystSitePos`). Chaque site capte indifféremment une A ou une B tant que l'autre
+est vide ; dès qu'un site est occupé, l'autre n'accepte plus que le **type opposé**
+(`_catalystEligibleSite`) — c'est cette règle qui garantit que 2 sites occupés valent
+toujours 1 A + 1 B, donc que `_tryCatalystReaction()` peut réagir sans autre test.
+
+Cycle de vie d'une molécule (`state`) :
+
+| état | comportement |
+|---|---|
+| `free` | mouvement rectiligne uniforme normal |
+| `seeking` | entrée dans le rayon de captage (`CATA_CAPTURE_RADIUS_FACTOR` = 12 rayons, soit 6 diamètres) → vol guidé vers le site, direction réorientée chaque frame, norme figée à la capture (`seekSpeed`) |
+| `attached` | fixée au site, se déplace avec le catalyseur, **ne peut plus réagir par choc** |
+
+Si deux molécules du même type visent le même site, la première arrivée l'occupe et les
+autres reprennent leur route (`_releaseSeeker`). Quand les 2 sites sont remplis, la
+réaction a lieu **dans 100 % des cas, sans condition d'énergie d'activation** — c'est
+tout l'intérêt du catalyseur. Les molécules deviennent C et D et repartent avec une
+vitesse tirée dans la distribution de Maxwell-Boltzmann courante, le catalyseur est
+libéré.
+
+Une molécule accrochée **garde son type** tant que la réaction n'a pas eu lieu : elle
+reste comptée dans A ou B par `countSpecies()`, et n'est donc jamais « consommée »
+d'avance. C'est ce qui fait que A et B décroissent bien en 1 pour 1 sur le graphe.
+
+##### Vérification du type : au départ ET à l'arrivée
+
+`_catalystEligibleSite()` interdit de viser un catalyseur dont l'autre site porte déjà
+le même type, mais cela ne suffit pas : le vol guidé dure plusieurs frames, pendant
+lesquelles le catalyseur peut changer complètement d'état. Le scénario qui casse — une
+molécule vise le site libre d'un catalyseur portant une A, une réaction vide entre-temps
+les deux sites, une autre molécule de son propre type occupe l'autre site — aboutissait
+à deux molécules identiques sur un même catalyseur, définitivement incapable de réagir.
+Le type est donc **revérifié à l'instant de l'attachement**, et la molécule relâchée si
+l'occupant est devenu incompatible.
+
+##### Désorption spontanée — sans elle, la réaction se bloque
+
+Une molécule restée **seule** sur un site se détache avec une probabilité constante par
+unité de temps (`CATA_RESIDENCE_MS`), d'où des temps de résidence distribués
+exponentiellement — le comportement physique attendu, l'adsorption étant un équilibre
+dynamique et non un piège.
+
+Sans cela, les catalyseurs séquestrent définitivement les réactifs : dans le cas extrême,
+la moitié des catalyseurs retiennent des A et l'autre des B, plus aucune molécule libre
+ne circule et la réaction se fige alors qu'il reste des réactifs. La désorption supprime
+la classe entière de ces blocages, sans détection globale ni cas particulier.
+
+Une molécule ne se désorbe **jamais si son partenaire est déjà en vol guidé** vers
+l'autre site du même catalyseur (`cata.incoming[]`, recalculé à chaque frame) : sans ce
+garde-fou, elle pouvait partir à l'instant précis où la molécule manquante arrivait,
+gâchant un captage abouti et donnant un comportement erratique à l'écran.
+
+Subtilité : la molécule qui vient de se désorber est encore au contact du catalyseur,
+donc en plein dans son rayon d'action, et serait recaptée dès la frame suivante — la
+désorption n'aurait servi à rien. Elle porte donc un marqueur `lastCata` qui empêche ce
+**seul** catalyseur de la reprendre tant qu'elle n'est pas sortie de son rayon ; les
+autres peuvent la capter immédiatement.
+
+##### Conservation de l'énergie — trois pièges, tous mesurés
+
+L'ajout des catalyseurs a fait diverger la distribution des vitesses (moyenne ×14 en
+quelques secondes) tant que ces trois points n'étaient pas réglés. Un banc de test
+mesurant le bilan d'énergie **phase par phase** a été nécessaire pour les isoler ;
+c'est la seule façon fiable de les distinguer, chacun donnant la même symptomatologie.
+
+1. **Une molécule en vol guidé ne participe pas aux chocs** (`_resolvePair` sort
+   immédiatement sur `state === 'seeking'`). Sa vitesse étant réimposée à chaque frame,
+   l'énergie qu'elle céderait à une voisine lui serait aussitôt restituée : c'était une
+   pompe à énergie sans fond, de très loin la principale (**+1,3·10⁹** en 400 pas,
+   contre −2,9·10⁷ dissipés par l'ensemble des collisions). Elle traverse donc les
+   autres molécules, sur un trajet volontairement court.
+2. **Le bloc {catalyseur + molécules} compte pour une seule masse**, pas pour la somme
+   de ses membres. Une molécule captée prend la vitesse du catalyseur *sans que celui-ci
+   ralentisse* (contrainte pédagogique : le catalyseur n'est pas modifié par ce qu'il
+   porte) ; lui attribuer une masse 2 ou 3 créait donc de l'énergie à chaque capture.
+3. **Le bloc n'a qu'une vitesse**, portée par le catalyseur, que les molécules attachées
+   se contentent de refléter (`_syncAttachedPositions`). Donner sa propre vitesse `v` à
+   chacun des 3 membres puis laisser chacun la transmettre lors d'un choc revenait à
+   tripler l'énergie du bloc à chaque collision.
+
+`_bodyOf(m)` matérialise cette distinction, centrale dans `_resolvePair()` : la
+**géométrie** du contact se raisonne sur les hitboxes individuelles (une molécule
+attachée garde la sienne, elle peut être percutée), la **dynamique** sur les corps.
+
+Corollaires ailleurs dans le fichier : `_moveAll()` et `_collideWalls()` sautent les
+molécules attachées (elles n'ont pas de dynamique propre), et un catalyseur porteur
+rebondit sur les parois avec un débord de `2r` du côté du site occupé, sans quoi la
+molécule qu'il porte traverserait le mur.
+
 #### Fin de réaction (`s.finished`)
 
 Quand A ou B tombe à 0, la réaction A + B → C + D ne peut plus avoir lieu :
@@ -203,7 +333,16 @@ récipient rectangulaire occupant toute la zone utile (moins une marge fixe `MAR
 avec rescale des vitesses existantes si `s.v0px` change. `resizeAll()` (branché sur
 l'événement `resize` de la fenêtre, anti-rebond RAF) boucle sur `activeSims()`.
 `drawSphere()` dessine chaque molécule (disque uni + contour), couleur selon
-`SPECIES_COLORS[type]`.
+`SPECIES_COLORS[type]` ; ses paramètres `stroke`/`widthMul` sont optionnels et ne
+servent qu'au catalyseur (contour clair épais, cf. `CATA_COLOR`).
+
+`_drawActionRadii(s)` matérialise le rayon de captage (disque translucide + cercle
+pointillé) quand `s.showActionRadius` est vrai. Peint **avant** les molécules — c'est
+un fond, il ne doit jamais masquer les sphères qui le traversent. Rogné (`ctx.clip()`)
+à la zone intérieure du récipient : sans ça, le halo d'un catalyseur proche du bord
+déborderait par-dessus les parois, déjà dessinées à ce stade. Seuls les catalyseurs
+ayant encore un site libre sont entourés : un catalyseur saturé ne capte plus rien, et
+à 10 catalyseurs les zones se recouvriraient au point de charger l'image.
 
 **Transposition au resize** : les positions des molécules sont stockées en pixels du
 canvas. `resizeRecipient()` mémorise donc l'ancienne zone intérieure avant de l'écraser, puis
@@ -270,6 +409,8 @@ bulle blanche avec `espèce | t = … s | N = …` — même pattern que `titrag
 | `setSimCount(n)` | Bouton Nombre de simulation(s) | Bascule `body.duo`, redimensionne les canvas, puis `resetSim()` — les molécules doivent être replacées dans des récipients de hauteur différente, et les deux simulations repartir ensemble |
 | `onSliderT(i, val)` | Slider T de la simu `i` | `setTemperature(sims[i-1], …)` |
 | `onSliderNA(i, val)` / `onSliderNB(i, val)` | Sliders N_A/N_B de la simu `i` | `setSpeciesCount(sims[i-1], …)` |
+| `onSliderCata(i, val)` | Slider Catalyseurs de la simu `i` | `setCatalystCount(sims[i-1], …)` — même logique de RAZ que N_A/N_B |
+| `onToggleRadius(i, checked)` | Case « Afficher le rayon d'action » | Bascule `s.showActionRadius`. La case est grisée (`disabled`, posé par `syncUIToSim`) tant que `N_CATA === 0` ; l'état coché est **conservé** pendant ce temps, pour retrouver le réglage en remettant un catalyseur |
 | `resetSim()` | Bouton RAZ | Défini dans `sim.js`, RAZ de toutes les simulations affichées, appelle `syncUIToSim()` |
 | `syncUIToSim()` | Init + reset | Synchronise sliders/labels/readouts des deux simulations |
 
@@ -283,9 +424,10 @@ index.html
   │                                speedFactor, SPECIES_COLORS, T_REF,
   │                                MOL_RADIUS_FRAC, SUBSTEPS, randomVelocity,
   │                                countSpecies, initMolecules, setTemperature,
-  │                                setSpeciesCount, stepPhysics, resetSim
+  │                                setSpeciesCount, setCatalystCount, stepPhysics,
+  │                                resetSim, CATA_COLOR
   │
-  └── js/recipient.js    dépend de : sims, MOL_RADIUS_FRAC, SPECIES_COLORS
+  └── js/recipient.js    dépend de : sims, MOL_RADIUS_FRAC, SPECIES_COLORS, CATA_COLOR
   │                       expose : attachCanvas, resizeAll, resizeRecipient,
   │                                drawScene, drawSphere
   │

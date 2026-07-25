@@ -119,7 +119,7 @@
 
         <!-- Nombre de molécules A -->
         <div class="param-row">
-          <label>Molécules A
+          <label><span><span class="param-swatch" id="swatch-NA-1"></span>Molécules A</span>
             <span class="param-value"><span id="lbl-NA-1">50</span></span>
           </label>
           <input type="range" id="sl-NA-1" min="0" max="150" step="5" value="50"
@@ -128,11 +128,27 @@
 
         <!-- Nombre de molécules B -->
         <div class="param-row">
-          <label>Molécules B
+          <label><span><span class="param-swatch" id="swatch-NB-1"></span>Molécules B</span>
             <span class="param-value"><span id="lbl-NB-1">50</span></span>
           </label>
           <input type="range" id="sl-NB-1" min="0" max="150" step="5" value="50"
                  oninput="onSliderNB(1, this.value)">
+        </div>
+
+        <!-- Catalyseurs -->
+        <div class="param-row">
+          <label><span><span class="param-swatch" id="swatch-CATA-1"></span>Catalyseurs</span>
+            <span class="param-value"><span id="lbl-CATA-1">0</span></span>
+          </label>
+          <input type="range" id="sl-CATA-1" min="0" max="10" step="1" value="0"
+                 oninput="onSliderCata(1, this.value)">
+          <!-- Décochable seulement s'il y a au moins un catalyseur (état
+               `disabled` piloté par syncUIToSim). -->
+          <label class="check-row" id="ck-radius-row-1">
+            <input type="checkbox" id="ck-radius-1" disabled
+                   onchange="onToggleRadius(1, this.checked)">
+            Afficher le rayon d'action
+          </label>
         </div>
 
         <div class="readout">
@@ -172,7 +188,7 @@
           </div>
 
           <div class="param-row">
-            <label>Molécules A
+            <label><span><span class="param-swatch" id="swatch-NA-2"></span>Molécules A</span>
               <span class="param-value"><span id="lbl-NA-2">50</span></span>
             </label>
             <input type="range" id="sl-NA-2" min="0" max="150" step="5" value="50"
@@ -180,11 +196,24 @@
           </div>
 
           <div class="param-row">
-            <label>Molécules B
+            <label><span><span class="param-swatch" id="swatch-NB-2"></span>Molécules B</span>
               <span class="param-value"><span id="lbl-NB-2">50</span></span>
             </label>
             <input type="range" id="sl-NB-2" min="0" max="150" step="5" value="50"
                    oninput="onSliderNB(2, this.value)">
+          </div>
+
+          <div class="param-row">
+            <label><span><span class="param-swatch" id="swatch-CATA-2"></span>Catalyseurs</span>
+              <span class="param-value"><span id="lbl-CATA-2">0</span></span>
+            </label>
+            <input type="range" id="sl-CATA-2" min="0" max="10" step="1" value="0"
+                   oninput="onSliderCata(2, this.value)">
+            <label class="check-row" id="ck-radius-row-2">
+              <input type="checkbox" id="ck-radius-2" disabled
+                     onchange="onToggleRadius(2, this.checked)">
+              Afficher le rayon d'action
+            </label>
           </div>
 
           <div class="readout">
@@ -222,9 +251,16 @@
         <button class="panel-hint-toggle" onclick="toggleHint()" title="Afficher les instructions">▲</button>
       </div>
       <div class="panel-hint-body">
-        Modèle des <strong>chocs efficaces</strong> : quand une molécule A percute une molécule B,
-        la réaction A + B → C + D a lieu. Le graphe suit
-        l'évolution des quantités de chaque espèce au cours du temps.
+        Modèle des <strong>chocs efficaces</strong> : un choc entre A et B ne donne la réaction
+        A + B → C + D que s'il est assez énergétique pour franchir l'<strong>énergie
+        d'activation</strong> ; sinon les molécules rebondissent.
+        <br>
+        Élever la <strong>température</strong> augmente la proportion de chocs efficaces.
+        <br>
+        Un <strong>catalyseur</strong> attire une A et une B et les fait réagir sans condition
+        d'énergie.
+        <br>
+        Le graphe suit l'évolution des quantités de chaque espèce au cours du temps.
       </div>
     </div>
 
