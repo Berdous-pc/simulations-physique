@@ -1,0 +1,254 @@
+# Architecture — Simulation Cinétique chimique
+
+## Arborescence
+
+```
+cinetique/
+├── index.html
+├── ARCHITECTURE.md         ← ce fichier
+├── css/
+│   └── style.css
+└── js/
+    ├── sim.js
+    ├── recipient.js
+    ├── graph.js
+    └── ui.js
+```
+
+---
+
+## Vue d'ensemble
+
+Modèle des chocs efficaces pour la réaction **A + B → C + D** : un grand récipient
+contient des molécules A et B en mouvement rectiligne uniforme (chocs élastiques entre
+elles et sur les parois, cf. `pression/`). Quand une molécule A percute une molécule B,
+la réaction a lieu : les deux disparaissent et sont remplacées par une molécule C et
+une molécule D. Un graphe suit en temps réel l'évolution du nombre de molécules de
+chaque espèce.
+
+---
+
+## Fichiers et responsabilités
+
+### `index.html`
+
+Structure HTML pure. Colonne gauche divisée en deux zones **côte à côte**
+(`grid-template-columns: 60fr 40fr` sur `#left-col`) : `#sim-area` (récipient, 60 % de
+la largeur, à gauche) et `#graph-area` (graphe, 40 %, à droite). Panneau droit avec
+contrôle (Lancer/Pause, RAZ, vitesse d'animation) et paramètres (T, N_A, N_B).
+
+---
+
+### `css/style.css`
+
+Charte graphique du projet (cf. `contexte_projet.md`). Particularités de cette page :
+
+| Section | Contenu |
+|---|---|
+| `#left-col` | `display:grid; grid-template-columns:60fr 40fr` — récipient à gauche, graphe à droite |
+| `#graph-area` | Flex colonne centrée — équation puis graphe, qui ne prend pas toute la hauteur disponible |
+| `#cinetique-equation` | Équation A + B → C + D, lettres colorées via `SPECIES_COLORS` (posées par ui.js) |
+| `#chart-wrap` | `aspect-ratio: 4/3` + `max-height: 100%` ; `container-type: size` — nécessaire pour la légende overlay en `cqmin` |
+| `#cinetique-legende` | Overlay HTML positionné en haut-droite du graphe, checkboxes de visibilité par courbe |
+| `.chart-legend-item` | Ligne de légende (checkbox + pastille couleur + texte), style pilule inspiré de `titrage/` |
+
+---
+
+### `js/sim.js` — État global et physique
+
+**Chargé en premier.**
+
+#### Constantes
+
+| Constante | Valeur | Rôle |
+|---|---|---|
+| `T_REF` | 300 K | Température de référence pour le calibrage visuel |
+| `V0_PX` | calculé | Vitesse de base en px/s à T_REF (recalibré par recipient.js) |
+| `MOL_RADIUS_FRAC` | 0,007 | Fraction de la largeur intérieure du récipient |
+| `SUBSTEPS_MIN` / `SUBSTEPS_MAX` | 4 / 32 | Bornes du nombre de sous-pas par frame, calculé à chaque frame par `_requiredSubsteps()` (anti-tunneling) |
+| `MAX_STEP_FRAC` | 0,5 | Déplacement toléré par sous-pas, en fraction du rayon |
+| `HISTORY_PERIOD` | 200 ms | Période d'échantillonnage de l'historique (temps simulé) |
+| `MAX_HISTORY_POINTS` | 600 | Fenêtre glissante du graphe (FIFO) |
+| `SPECIES_COLORS` | `{A,B,C,D}` | Couleurs (fill/border) de chaque espèce — **source unique**, réutilisée par recipient.js, graph.js et les pastilles du readout (posées par ui.js). Réactifs A/B en teintes **vives** (bleu `#0f7fe0`, orange-rouge `#f04a10`), produits C/D en teintes **ternes** (vert-de-gris `#8fa896`, mauve grisé `#a89ab0`) pour que les réactifs restants ressortent au milieu des produits accumulés |
+
+#### Objet `sim`
+
+| Propriété | Rôle |
+|---|---|
+| `molecules[]` | `{type:'A'|'B'|'C'|'D', x, y, vx, vy}[]` |
+| `N0_A` / `N0_B` | Quantités pilotées par les sliders (état courant, pas seulement init) |
+| `paused` | Simulation suspendue |
+| `speedFactor` | Multiplicateur de dt (×0,10 à ×4,00) |
+| `T_K` | Température courante |
+| `boxLeft/Right/Top/Bottom` | Bords intérieurs du récipient |
+| `simTime` | Temps simulé cumulé (ms) |
+| `history` | `{t[], A[], B[], C[], D[]}` — historique pour le graphe |
+
+#### Règle de réaction A + B → C + D
+
+Dans `_resolvePair()`, une paire (A,B) en collision ne subit pas un choc élastique
+standard : elle réagit. On part de la vitesse du centre de masse `vG = (vA+vB)/2`, puis
+on ajoute à C et on retranche à D un même vecteur `kick` (tangent à la normale de choc,
+sens tiré au hasard, proportionnel à la vitesse d'approche `vrel_n`) :
+
+```
+vC = vG + kick
+vD = vG − kick
+```
+
+`vC + vD = 2·vG = vA + vB` **quel que soit `kick`**, puisqu'il s'annule dans la somme —
+c'est ce qui autorise à faire diverger C et D (au lieu de leur donner la même vitesse)
+sans jamais rompre la conservation de la quantité de mouvement. Sans ce `kick`, C et D
+repartiraient à l'identique, collés, en translation parallèle : conservatif sur le
+papier mais visuellement trompeur (aucune vraie collision ne "colle" ainsi les deux
+produits), au point de donner l'impression que la conservation n'est pas respectée.
+**L'énergie cinétique du système n'est volontairement pas conservée** lors d'une
+réaction (analogue simplifié à une transformation exo/endothermique) — ce n'est pas
+un choc élastique, c'est assumé.
+
+#### Sliders N_A / N_B
+
+`setSpeciesCount(type, target)` met à jour `N0_A`/`N0_B` puis appelle `resetSim()` :
+changer une quantité de réactif redéfinit les conditions initiales de l'expérience,
+donc l'animation repart de zéro (et en pause). Sans ça, la courbe affichée mélangerait
+deux expériences différentes sur le même axe des temps.
+
+Le `.readout` (A/B/C/D actuels) reflète en revanche le compte en temps réel, qui évolue
+tout seul au fil des réactions.
+
+#### Pause et RAZ
+
+La simulation démarre **en pause** (`sim.paused = true` à l'état initial) : au chargement
+ou au rafraîchissement de la page, l'élève voit la situation de départ figée et lance
+lui-même la réaction. `resetSim()` remet aussi l'animation en pause, et conserve la
+température et les N_A/N_B actuellement réglés par les sliders — ce n'est pas un retour
+aux valeurs par défaut (50/50, 300 K).
+
+---
+
+### `js/recipient.js` — Rendu du récipient
+
+**Chargé après `sim.js`.** `resize()`/`_doResize()` calquent `pression/js/recipient.js` :
+récipient rectangulaire occupant toute la zone utile (moins une marge fixe `MARGIN`),
+4 parois fermées (pas de piston). `MOL_RADIUS` et `V0_PX` recalculés à chaque resize,
+avec rescale des vitesses existantes si `V0_PX` change. `drawSphere()` dessine chaque
+molécule (disque uni + contour), couleur selon `SPECIES_COLORS[type]`.
+
+**Transposition au resize** : les positions des molécules sont stockées en pixels du
+canvas. `_doResize()` mémorise donc l'ancienne zone intérieure avant de l'écraser, puis
+replace chaque molécule à coordonnées **relatives** constantes dans la nouvelle zone
+(avec clamp sur les bords). Sans ça, un redimensionnement de fenêtre laisse les molécules
+groupées là où se trouvait l'ancien récipient, voire hors du nouveau cadre.
+
+---
+
+### `js/graph.js` — Graphe N(t)
+
+**Chargé après `recipient.js`.** Canvas séparé (`#cinetique-chart`), resize DPR propre
+(`resizeChart()`/`_doResizeChart()`). `drawChart()` dessine grille/axes/courbes à partir
+de `sim.history`, en ne traçant que les courbes dont `_chartVisible[espèce]` est vrai.
+Échelle Y dynamique (`_niceStep`, marge 10 % au-dessus du maximum affiché) ; échelle X
+sur `[0, max(5 s, t_dernier_point)]`. `buildChartLegend()` génère les 4 lignes à
+checkbox dans `#cinetique-legende` (overlay HTML positionné en `cqmin` sur `#chart-wrap`).
+
+Ordre de tracé des courbes : B, C, D puis **A en dernier** (`drawOrder` dans
+`drawChart()`) — A est ainsi peint par-dessus les autres là où elles se superposent,
+ce qui compte surtout au démarrage (N0_A = N0_B par défaut : A et B coïncident
+exactement, sans ce choix la courbe B masquerait A).
+
+#### Survol (coordonnées du point le plus proche)
+
+`_chartHover` mémorise la position souris (mise à jour par les listeners `mousemove`/
+`mouseleave` attachés une fois sur le canvas). À chaque `drawChart()`,
+`_drawChartHover()` cherche l'échantillon temporel `h.t[i]` le plus proche du curseur
+en X, puis, parmi les courbes visibles, celle dont le point à cet indice est le plus
+proche du curseur en pixels (si deux courbes sont superposées à cet instant, seule la
+plus proche du curseur est retenue). Au-delà d'un seuil de distance, rien ne s'affiche.
+Rendu : lignes pointillées vers les axes, point plein de la couleur de la courbe,
+bulle blanche avec `espèce | t = … s | N = …` — même pattern que `titrage/js/graph.js`
+(`_drawHoverTooltip`).
+
+---
+
+### `js/ui.js` — Contrôles UI et boucle d'animation
+
+**Chargé en dernier.**
+
+#### Boucle `loop(ts)`
+
+1. `dtReal = min(ts - lastTs, 50 ms)`
+2. `dt = paused ? 0 : dtReal × sim.speedFactor`
+3. `stepPhysics(dt)` + `updateReadouts()` si `dt > 0`
+4. `drawScene()` (récipient) puis `drawChart()` (graphe) — toujours, même en pause
+
+#### Contrôles
+
+| Fonction | Déclencheur | Rôle |
+|---|---|---|
+| `togglePause()` | Bouton Lancer/Pause | Suspend/reprend |
+| `onSliderSpeed(val)` | Slider vitesse | Fixe `sim.speedFactor` (crans `SPEED_STEPS`) |
+| `onSliderT(val)` | Slider T | `setTemperature()` |
+| `onSliderNA(val)` / `onSliderNB(val)` | Sliders N_A/N_B | `setSpeciesCount()` |
+| `resetSim()` | Bouton RAZ | Défini dans `sim.js`, appelle `syncUIToSim()` |
+| `syncUIToSim()` | Init + reset | Synchronise sliders/labels/readouts avec `sim` |
+
+---
+
+## Ordre de chargement et dépendances
+
+```
+index.html
+  └── js/sim.js         expose : sim, SPECIES_COLORS, T_REF, V0_PX, MOL_RADIUS,
+  │                                MOL_RADIUS_FRAC, SUBSTEPS, randomVelocity,
+  │                                countSpecies, initMolecules, setTemperature,
+  │                                setSpeciesCount, stepPhysics, resetSim
+  │
+  └── js/recipient.js    dépend de : sim, MOL_RADIUS, V0_PX, SPECIES_COLORS
+  │                       expose : canvas, ctx, resize, drawScene, drawSphere
+  │
+  └── js/graph.js        dépend de : sim.history, SPECIES_COLORS
+  │                       expose : resizeChart, drawChart, buildChartLegend
+  │
+  └── js/ui.js            dépend de : tous les fichiers précédents
+                          expose : togglePause, onSliderSpeed, onSliderT,
+                                   onSliderNA, onSliderNB, syncUIToSim, updateReadouts
+                          démarre : init() → requestAnimationFrame(loop)
+```
+
+## Points sensibles
+
+- **Anti-tunneling** : nombre de sous-pas **adaptatif** (4 à 32), recalculé à chaque
+  frame par `_requiredSubsteps()` d'après la vitesse de la molécule la plus rapide.
+  Contrairement à `pression/` (4 sous-pas fixes), le slider de vitesse d'animation
+  multiplie ici `dt` jusqu'à ×4 : à T élevée, un nombre fixe laisserait les molécules
+  rapides se traverser et ferait manquer des chocs efficaces A+B.
+- **Réaction vs choc élastique** : la même boucle `_collidePairs()` gère les deux cas ;
+  seule la paire {A,B} déclenche la réaction (`_isReactive()`), toute autre paire
+  (même type, ou impliquant C/D) subit un choc élastique standard.
+- **Recyclage d'objets** : une réaction modifie `type`/`vx`/`vy` en place sur les objets
+  existants (`mols[i]`, `mols[j]`) plutôt que de faire un `splice`/`push`, pour ne pas
+  perturber les indices de la boucle `i<j` en cours.
+- **Historique borné** : fenêtre glissante FIFO (`MAX_HISTORY_POINTS`), évite une
+  croissance illimitée du tableau sur une session longue.
+
+### Performance
+
+Trois optimisations, motivées par des ralentissements observés à fort N :
+
+1. **Grille spatiale pour les collisions** (`_collidePairs`). Un balayage naïf de toutes
+   les paires est en `O(N²)` : à N = 300 et 4 sous-pas, ~180 000 tests par frame, soit
+   ~11 M/s. Les molécules sont donc rangées dans une grille de cellules de côté
+   `2 × diamètre` ; chacune n'est testée que contre sa cellule et les 8 voisines, ce qui
+   ramène le coût à `O(N)` (le nombre de voisins par cellule dépend de la densité, pas
+   de N). Les buckets sont réutilisés d'une frame à l'autre (`_grid`), seule leur
+   `length` est remise à 0 — pas de réallocation.
+   Les décalages de `_GRID_NEIGHBOURS` ne couvrent que les voisines « en avant »
+   (droite, bas-gauche, bas, bas-droite) pour ne traiter chaque paire qu'une fois.
+2. **Graphe redessiné seulement quand il change** : `sim.historyDirty` est levé par
+   `recordHistoryPoint()`, donc `drawChart()` ne tourne que ~5 fois par seconde de temps
+   simulé au lieu de 60 fps — le tracé complet (grille, graduations, textes, jusqu'à
+   600 points × 4 courbes) était le deuxième poste de coût.
+3. **Readouts du panneau à 10 Hz** (`READOUT_PERIOD` dans `ui.js`) plutôt qu'à chaque
+   frame : évite 4 écritures DOM par frame et les recalculs de mise en page associés.
+
+Le rendu du récipient (`drawScene`), lui, reste à 60 fps — c'est l'animation elle-même.

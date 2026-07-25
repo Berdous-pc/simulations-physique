@@ -1,0 +1,443 @@
+/* ══════════════════════════════════════════════════
+   Simulation pédagogique — Physique-Chimie Lycée
+   Auteur  : Mathieu Berdous
+   Licence : CC BY-NC 4.0 — https://creativecommons.org/licenses/by-nc/4.0/
+══════════════════════════════════════════════════ */
+
+/* ── Reset & base ────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  white-space: nowrap;
+  border: 0;
+}
+
+body {
+  font-family: 'Segoe UI', Arial, sans-serif;
+  background: #e8e4de;
+  color: #2c3e50;
+  /* dvh : suit la hauteur réellement visible (barres dynamiques du navigateur) ;
+     vh reste le repli pour les navigateurs sans support dvh. */
+  height: 100vh;
+  max-height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* ── Grille principale ───────────────────────────── */
+main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr clamp(200px, 22vw, 300px);
+  min-height: 0;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+/* ── Colonne gauche : récipient (60%) | graphe (40%) côte à côte ── */
+#left-col {
+  display: grid;
+  grid-template-columns: 60fr 40fr;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  gap: 10px;
+  padding: 10px;
+}
+
+/* ── Zone simulation (récipient) ─────────────────── */
+#sim-area {
+  min-height: 0;
+  min-width: 0;
+  background: #fdf8f0;
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+
+#recipient-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* ── Zone graphe ──────────────────────────────────── */
+/* Le graphe n'a pas besoin de toute la hauteur : il garde un format 4/3
+   (borné par la hauteur disponible) et se centre verticalement, sous
+   l'équation de la réaction. */
+#graph-area {
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(4px, 0.8vh, 10px);
+}
+
+#cinetique-equation {
+  flex: 0 0 auto;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  font-size: clamp(15px, 2vw, 24px);
+  font-weight: 700;
+  color: #2c3e50;
+  text-align: center;
+}
+#cinetique-equation span {
+  font-weight: 800;
+}
+
+#chart-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  max-height: 100%;
+  min-height: 0;
+  min-width: 0;
+  background: #faf9f6;
+  border: 1px solid #c8c0b4;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  overflow: hidden;
+  /* Container query : la légende overlay se dimensionne en cqmin par
+     rapport à la taille réelle de ce wrapper (pas de la fenêtre), pour
+     rester lisible même quand la zone graphe est petite. */
+  container-type: size;
+}
+
+#cinetique-chart {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* ── Légende overlay du graphe (checkboxes de visibilité) ────────────── */
+#cinetique-legende {
+  position: absolute;
+  top: 2cqmin;
+  right: 2cqmin;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35em;
+  background: rgba(255, 255, 255, 0.92);
+  border: max(1px, 0.4cqmin) solid #c8ccd4;
+  border-radius: 1.6cqmin;
+  padding: 1.8cqmin 2.4cqmin;
+  font-size: clamp(9px, 2.6cqmin, 15px);
+  max-width: 46cqw;
+}
+
+.chart-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  cursor: pointer;
+  user-select: none;
+  transition: opacity 0.15s;
+}
+.chart-legend-item.unchecked { opacity: 0.4; }
+
+.chart-legend-item input[type="checkbox"] {
+  accent-color: #4a7aaa;
+  cursor: pointer;
+  width: 1.1em;
+  height: 1.1em;
+  flex: 0 0 auto;
+}
+
+.chart-legend-swatch {
+  flex: 0 0 auto;
+  width: 1.3em;
+  height: 0.35em;
+  border-radius: 2px;
+}
+
+.chart-legend-text {
+  color: #2c3e50;
+  white-space: nowrap;
+}
+
+/* ── Panneau droit ───────────────────────────────── */
+#panel {
+  background: #e8e4de;
+  border-left: 1.5px solid #c8c0b4;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  font-size: clamp(11px, 1.1vw, 14px);
+  overflow: hidden;
+}
+
+#panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: clamp(10px, 1.2vw, 16px) clamp(10px, 1.2vw, 14px);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* ── Titre du panneau ────────────────────────────── */
+.panel-title {
+  font-size: clamp(14px, 1.4vw, 17px);
+  font-weight: 700;
+  color: #2c3e50;
+  text-align: center;
+  padding-bottom: clamp(8px, 1vw, 12px);
+  border-bottom: 1.5px solid #c8c0b4;
+  margin-bottom: clamp(8px, 1vw, 12px);
+  letter-spacing: 0.3px;
+}
+
+/* ── Section ─────────────────────────────────────── */
+.panel-section {
+  margin-bottom: 8px;
+}
+
+/* ── Titres de section ───────────────────────────── */
+.section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #7a8a96;
+  margin-bottom: 7px;
+}
+
+/* ── Séparateur ──────────────────────────────────── */
+.sep {
+  border: none;
+  border-top: 1px solid #c8c0b4;
+  margin: 8px 0;
+}
+
+/* ── Boutons ─────────────────────────────────────── */
+.btn {
+  width: 100%;
+  border: none;
+  border-radius: 6px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 0.1s, background 0.15s;
+}
+.btn:active { transform: scale(0.97); }
+
+.btn-pause {
+  background: #c08020;
+  color: #fff;
+  font-size: clamp(14px, 1.4vw, 18px);
+  padding: 10px 6px;
+}
+.btn-pause:hover { background: #a06010; }
+
+.btn-play {
+  background: #2a8a50;
+  color: #fff;
+  font-size: clamp(14px, 1.4vw, 18px);
+  padding: 10px 6px;
+}
+.btn-play:hover { background: #1a6a38; }
+
+.btn-raz {
+  background: #dedad2;
+  color: #5a6a78;
+  font-size: clamp(12px, 1.2vw, 15px);
+  padding: 9px 6px;
+}
+.btn-raz:hover { background: #ccc8c0; }
+
+/* ── Paramètres ──────────────────────────────────── */
+.param-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 10px;
+}
+
+.param-row label {
+  font-size: clamp(12px, 1.25vw, 15px);
+  color: #2c3e50;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.param-value {
+  color: #2a5080;
+  font-weight: 600;
+  white-space: nowrap;
+  font-size: clamp(12px, 1.25vw, 15px);
+}
+
+.param-row input[type="range"] {
+  width: 100%;
+  accent-color: #4a7aaa;
+  cursor: pointer;
+}
+
+.input-hint {
+  font-size: clamp(10px, 0.9vw, 13px);
+  color: #7a8a96;
+  line-height: 1.4;
+  font-weight: 400;
+}
+
+/* ── Afficheurs valeur ───────────────────────────── */
+.readout {
+  background: #fff;
+  border: 1px solid #c8c0b4;
+  border-radius: 6px;
+  padding: 7px 9px;
+  margin-bottom: 8px;
+}
+
+.ro-label {
+  font-size: clamp(11px, 1vw, 14px);
+  color: #7a8a96;
+  margin-bottom: 2px;
+}
+
+.ro-chocs-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 8px;
+  margin-top: 5px;
+}
+
+.ro-choc-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.ro-choc-label {
+  font-size: clamp(10px, 0.9vw, 12px);
+  font-weight: 700;
+}
+
+.ro-choc-val {
+  font-size: clamp(15px, 1.6vw, 20px);
+  font-weight: 700;
+  color: #2a5080;
+  font-variant-numeric: tabular-nums;
+}
+
+.slider-ticks {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 3px;
+  padding: 0 8px;
+}
+
+.slider-ticks span {
+  font-size: clamp(10px, 1vw, 13px);
+  color: #7a8a96;
+  width: 0;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.slider-ticks span:first-child {
+  width: auto;
+  text-align: left;
+}
+
+.slider-ticks span:last-child {
+  width: auto;
+  text-align: right;
+}
+
+.panel-hint {
+  flex-shrink: 0;
+  color: #5a6a78;
+  line-height: 1.5;
+  background: #fff;
+  border: 1.5px solid #b0a898;
+  /* Pas de bordure gauche propre : #panel a déjà la sienne sur ce bord
+     (cf. contexte_projet.md §5, évite le décalage sous-pixel entre deux
+     bordures superposées quand la largeur du panneau est en clamp()). */
+  border-left: none;
+  overflow: hidden;
+  transition: padding 0.2s;
+}
+
+.panel-hint strong {
+  color: #2c3e50;
+}
+
+.panel-hint-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+}
+
+.panel-hint-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #7a8a96;
+  margin-left: auto;
+  margin-right: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panel-hint-menu-btn {
+  background: #f0f4f7;
+  border: 1px solid #c8d4dc;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  color: #4a5a68;
+  padding: 4px 9px;
+  line-height: 1.2;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.panel-hint-menu-btn:hover { background: #dde6ec; color: #2a6aaa; }
+
+.panel-hint-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: #7a8a96;
+  padding: 0 2px;
+  line-height: 1;
+  transition: transform 0.2s;
+}
+.panel-hint-toggle:hover { color: #2a6aaa; }
+
+.panel-hint-body {
+  font-size: clamp(11px, 1vw, 14px);
+  padding: 0 10px 8px;
+  overflow: hidden;
+  transition: max-height 0.25s ease, padding 0.25s ease;
+  max-height: 200px;
+}
+
+.panel-hint.collapsed .panel-hint-body {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.panel-hint:not(.collapsed) .panel-hint-toggle { transform: rotate(180deg); }

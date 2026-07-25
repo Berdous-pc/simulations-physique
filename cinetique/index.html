@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<!-- ════════════════════════════════════════════════════
+     Simulation pédagogique — Physique-Chimie Lycée
+     Auteur  : Mathieu Berdous
+     Licence : CC BY-NC 4.0 — https://creativecommons.org/licenses/by-nc/4.0/
+════════════════════════════════════════════════════ -->
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Simulation — Cinétique chimique</title>
+  <meta name="author" content="Mathieu Berdous">
+  <meta name="copyright" content="Mathieu Berdous — CC BY-NC 4.0">
+  <meta name="description" content="Simulation interactive (Terminale) : cinétique chimique, modèle des chocs efficaces A + B → C + D, évolution des quantités de matière au cours du temps.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>⚛️</text></svg>">
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<h1 class="sr-only">Simulation de cinétique chimique — modèle des chocs efficaces A + B → C + D</h1>
+
+<main>
+
+  <!-- ══════════════════════════════════════════════
+       COLONNE GAUCHE : récipient (60%) + graphe (40%)
+  ══════════════════════════════════════════════ -->
+  <div id="left-col">
+
+    <div id="sim-area">
+      <canvas id="recipient-canvas"></canvas>
+    </div>
+
+    <div id="graph-area">
+      <!-- Couleurs des lettres posées par ui.js depuis SPECIES_COLORS (source unique) -->
+      <div id="cinetique-equation">
+        <span id="eq-A">A</span> + <span id="eq-B">B</span> → <span id="eq-C">C</span> + <span id="eq-D">D</span>
+      </div>
+      <div id="chart-wrap">
+        <canvas id="cinetique-chart"></canvas>
+        <div id="cinetique-legende"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       PANNEAU DROIT : contrôles
+  ══════════════════════════════════════════════ -->
+  <div id="panel">
+    <div id="panel-body">
+
+      <!-- ── Titre ─────────────────────────────── -->
+      <div class="panel-title">Cinétique chimique</div>
+
+      <!-- ── Contrôle du temps ──────────────────── -->
+      <div class="panel-section">
+        <div class="section-title">Contrôle</div>
+        <button id="btn-playpause" class="btn btn-play" onclick="togglePause()">▶ Lancer</button>
+        <button class="btn btn-raz" onclick="resetSim()" style="margin-top:6px;">■ Remettre à zéro</button>
+
+        <div class="param-row" style="margin-top:10px;">
+          <label>Vitesse d'animation
+            <span class="param-value">×<span id="lbl-speed">1,00</span></span>
+          </label>
+          <input type="range" id="sl-speed" min="0" max="4" step="1" value="2"
+                 oninput="onSliderSpeed(this.value)">
+          <div class="slider-ticks">
+            <span>0,10</span>
+            <span>0,50</span>
+            <span>1,00</span>
+            <span>2,00</span>
+            <span>4,00</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="sep"></div>
+
+      <!-- ── Paramètres ─────────────────────────── -->
+      <div class="panel-section">
+        <div class="section-title">Paramètres</div>
+
+        <!-- Température -->
+        <div class="param-row">
+          <label>Température
+            <span class="param-value"><span id="lbl-T">300</span> K</span>
+          </label>
+          <input type="range" id="sl-T" min="100" max="1000" step="10" value="300"
+                 oninput="onSliderT(this.value)">
+          <span class="input-hint">Agit sur la vitesse moyenne des molécules</span>
+        </div>
+
+        <!-- Nombre de molécules A -->
+        <div class="param-row">
+          <label>Molécules A
+            <span class="param-value"><span id="lbl-NA">50</span></span>
+          </label>
+          <input type="range" id="sl-NA" min="0" max="150" step="5" value="50"
+                 oninput="onSliderNA(this.value)">
+          <span class="input-hint">Remet l'animation à zéro</span>
+        </div>
+
+        <!-- Nombre de molécules B -->
+        <div class="param-row">
+          <label>Molécules B
+            <span class="param-value"><span id="lbl-NB">50</span></span>
+          </label>
+          <input type="range" id="sl-NB" min="0" max="150" step="5" value="50"
+                 oninput="onSliderNB(this.value)">
+          <span class="input-hint">Remet l'animation à zéro</span>
+        </div>
+
+        <div class="readout">
+          <div class="ro-label">Quantités actuelles</div>
+          <!-- Couleurs des pastilles A/B/C/D appliquées par ui.js depuis
+               SPECIES_COLORS (source unique, cf. js/sim.js) -->
+          <div class="ro-chocs-grid">
+            <div class="ro-choc-item">
+              <span class="ro-choc-label" id="ro-lbl-A">A</span>
+              <span class="ro-choc-val" id="ro-A">50</span>
+            </div>
+            <div class="ro-choc-item">
+              <span class="ro-choc-label" id="ro-lbl-B">B</span>
+              <span class="ro-choc-val" id="ro-B">50</span>
+            </div>
+            <div class="ro-choc-item">
+              <span class="ro-choc-label" id="ro-lbl-C">C</span>
+              <span class="ro-choc-val" id="ro-C">0</span>
+            </div>
+            <div class="ro-choc-item">
+              <span class="ro-choc-label" id="ro-lbl-D">D</span>
+              <span class="ro-choc-val" id="ro-D">0</span>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- fin Paramètres -->
+
+    </div><!-- fin #panel-body -->
+
+    <!-- ── Bandeau Instructions ────────────────── -->
+    <div class="panel-hint collapsed" id="panel-hint">
+      <div class="panel-hint-header">
+        <button class="panel-hint-menu-btn" onclick="location.href='../index.html'" title="Retour au menu principal">☰ Menu</button>
+        <span class="panel-hint-title">Instructions</span>
+        <button class="panel-hint-toggle" onclick="toggleHint()" title="Afficher les instructions">▲</button>
+      </div>
+      <div class="panel-hint-body">
+        Modèle des <strong>chocs efficaces</strong> : quand une molécule A percute une molécule B,
+        la réaction A + B → C + D a lieu (quantité de mouvement conservée). Le graphe suit
+        l'évolution des quantités de chaque espèce au cours du temps.
+      </div>
+    </div>
+
+  </div><!-- fin #panel -->
+
+</main>
+
+<!-- Ordre de chargement : sim (état + physique) → recipient (rendu bécher) → graph (rendu courbes) → ui (boucle) -->
+<script src="js/sim.js"></script>
+<script src="js/recipient.js"></script>
+<script src="js/graph.js"></script>
+<script src="js/ui.js"></script>
+<script data-goatcounter="https://berdous-pc.goatcounter.com/count"
+        async src="https://gc.zgo.at/count.js"></script>
+</body>
+</html>
