@@ -122,10 +122,16 @@ var CATA_COLOR = { fill: '#1f2933', border: '#f0f4f8' };
 
 // ── Catalyseurs ──────────────────────────────────────────────────────
 // Rayon d'action (distance centre-à-centre à partir de laquelle une molécule
-// libre est captée) : 6 diamètres de sphère — effet catalytique nettement
-// visible (mesuré : ×2,07 sur le temps de consommation à 80 % avec 10
-// catalyseurs, contre ×1,16 à 2 diamètres, cf. ARCHITECTURE.md).
-var CATA_CAPTURE_RADIUS_FACTOR = 12;   // × molRadius
+// libre est captée) : 3 diamètres de sphère — valeur intermédiaire entre les
+// facteurs 4 (2 diamètres, ×1,16 mesuré) et 8 (4 diamètres, ×1,66 mesuré) sur
+// le temps de consommation à 80 % avec 10 catalyseurs, cf. ARCHITECTURE.md ;
+// non mesurée précisément pour ce facteur 6 lui-même. Ces mesures dataient
+// en outre d'avant l'introduction de l'énergie d'activation : la voie directe
+// tournait alors à son débit maximum, ce qui écrasait l'effet catalytique
+// relatif quel que soit ce facteur — le contraste réel, aujourd'hui que la
+// voie catalytique seule ignore la barrière, est sans doute plus net qu'à
+// l'époque de ces chiffres.
+var CATA_CAPTURE_RADIUS_FACTOR = 6;   // × molRadius
 // Distance en-deçà de laquelle une molécule en approche est considérée comme
 // arrivée à son site (le site est un point sur la bordure du catalyseur).
 var CATA_ATTACH_DIST_FACTOR = 1.0;    // × molRadius
