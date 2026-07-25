@@ -393,6 +393,7 @@ Toute page **HTML autonome** destinée à être publiée (page d'accueil `index.
 | `lunette/` | Lunette astronomique — deux lentilles, mode afocal | Terminale | **Arborescence** | `sim.js` + `draw.js` + `ui.js` ; drag/pan/zoom molette, animation propagation, réglage oculaire interactif |
 | `radioactivite/` | Décroissance radioactive — modèle des dés | Terminale | **Arborescence** | `sim.js` + `draw.js` + `ui.js` ; Mode Discret (Libre + Auto) et Mode Continu, zoom/pan/réticule/tangente/autoscale sur graphes, splitter draggable, overlay récipient agrandi, multi-séries avec légende |
 | `reaction/` | Réactions chimiques — stœchiométrie & réactif limitant | Seconde/Première | **Arborescence** | Mode Équilibrage + Mode Réactif limitant, modèles moléculaires 2D animés, mode test avec score, découpée en `css/style.css` + `js/data.js` + `js/sim.js` + `js/ui.js` + `index.html` |
+| `cinetique/` | Cinétique chimique — modèle des chocs efficaces A + B → C + D | Terminale | **Arborescence** | Mouvement moléculaire, réaction au contact, suivi en temps réel du nombre de molécules, mode 2 simulations comparées |
 | `titrage/` | Titrage colorimétrique, pH-métrique, conductimétrique | Première/Terminale | **Arborescence** | Voir `titrage/ARCHITECTURE.md` |
 | `pression/` | Pression d'un gaz parfait — modèle cinétique | Terminale | **Arborescence** | Piston animé, collisions élastiques 2D, PV=nRT, chocs/s sur 4 parois |
 | `champ_uniforme/` | Mécanique : vecteurs cinématiques — champ de pesanteur & champ électrique uniforme | Terminale | **Arborescence** | Référence d'architecture ; `sim.js` + `draw.js` + `ui.js` ; onglets Champ de pesanteur / Champ électrique, repères Orthonormé/Adapté, modes vue (Oxy, projections x/y), vecteurs vitesse/accélération, mode perpendiculaire (champ E), graphes d'énergie, deep-linking via `#champ-pesanteur` / `#champ-electrique` |
@@ -434,7 +435,7 @@ Structure d'une carte :
 
 **Attributs `data-*`** sur chaque `.card` pour le filtrage JS :
 - `data-discipline` : `"physique"` ou `"chimie"`
-- `data-theme` : `"electricite"` | `"optique"` | `"radioactivite"` | `"reaction"` | `"titrage"` | `"dissolution"` | `"thermodynamique"` | `"ondes"` | `"mecanique"`
+- `data-theme` : `"electricite"` | `"optique"` | `"radioactivite"` | `"reaction"` | `"cinetique"` | `"titrage"` | `"dissolution"` | `"thermodynamique"` | `"ondes"` | `"mecanique"`
 - `data-levels` : niveaux séparés par espace, ex: `"seconde premiere"`
 
 ### Panel de filtres
@@ -442,7 +443,7 @@ Structure d'une carte :
 Trois groupes de checkboxes (toutes cochées par défaut) :
 - **Niveau** : Seconde, Première, Terminale
 - **Discipline** : Physique, Chimie
-- **Thème** : Électricité, Optique, Radioactivité, Réaction chimique, Titrage, Solutions aqueuses (`data-value="dissolution"`), Thermodynamique, Ondes, Mécanique
+- **Thème** : Électricité, Optique, Radioactivité, Transformations chimiques (`data-value="reaction"` et `data-value="cinetique"`), Dosages (`data-value="titrage"`), Solutions aqueuses (`data-value="dissolution"`), Thermodynamique, Ondes, Mécanique
 
 Logique : **OU au sein d'une catégorie**, **ET entre catégories**.
 
@@ -474,6 +475,7 @@ Stockées dans `assets/previews/` au format **`.jpg`** (converties depuis les sc
 | `diffraction-lumiere.jpg` | Diffraction de la lumière |
 | `diffraction-vagues.jpg` | Diffraction d'ondes de surface |
 | `interferences-lumiere.jpg` | Interférences lumineuses |
+| `cinetique.jpg` | Cinétique chimique |
 
 **Optimisation poids/performance (juillet 2026)** : les screenshots d'origine (PNG plein format, jusqu'à 2273×1268 px et 300+ Ko chacun) alourdissaient inutilement le chargement de la page d'accueil et pénalisaient les Core Web Vitals (LCP, CLS), donc le référencement. Conversion en `.jpg` redimensionné (800 px de large max, qualité ~82) : dossier `assets/previews/` passé de ~1,4 Mo à ~630 Ko. Toute **nouvelle** image de preview doit suivre ce format (JPEG, 800 px de large max) plutôt que déposer un screenshot PNG brut.
 
