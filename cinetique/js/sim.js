@@ -17,6 +17,26 @@ var T_REF = 300;   // K, température de référence pour calibrage visuel
 // Vitesse de base en px/s à T_REF (recalibrée dans resize() de recipient.js)
 var V0_PX = 180;
 
+// ── Correspondance slider (°C) → température de simulation (K) ─────────
+// Le slider affiche des températures réalistes (1 °C à 90 °C) mais l'échelle
+// des vitesses reste celle, exagérée, qui rendait la simulation lisible :
+// - à 90 °C on retrouve la vitesse moyenne maximale d'avant (celle de 1000 K) ;
+// - à 1 °C la vitesse moyenne vaut le QUART de l'ancien minimum (100 K), soit
+//   V0·sqrt(100/300)/4 → T_SIM_MIN = 300·(sqrt(1/3)/4)² = 6,25 K.
+// L'interpolation est linéaire en température, donc la vitesse moyenne varie
+// bien comme sqrt(T) sur toute la course du slider.
+var T_C_MIN = 1;
+var T_C_MAX = 90;
+var T_SIM_MIN = 6.25;    // K, atteint à 1 °C
+var T_SIM_MAX = 1000;    // K, atteint à 90 °C
+
+// Température de simulation (K) correspondant à une consigne en °C
+function simTempFromCelsius(T_C) {
+  var f = (T_C - T_C_MIN) / (T_C_MAX - T_C_MIN);
+  if (f < 0) f = 0; else if (f > 1) f = 1;
+  return T_SIM_MIN + f * (T_SIM_MAX - T_SIM_MIN);
+}
+
 // Rayon des molécules en fraction de la largeur intérieure du récipient
 var MOL_RADIUS_FRAC = 0.007;  // recalculé par recipient.js
 var MOL_RADIUS = 3;           // px effectif (mis à jour par recipient.js)
@@ -24,7 +44,8 @@ var MOL_RADIUS = 3;           // px effectif (mis à jour par recipient.js)
 // ── Sous-pas d'intégration par frame (anti-tunneling) ──────────────────
 // Le nombre de sous-pas est calculé à chaque frame (cf. _requiredSubsteps) :
 // une valeur fixe ne tient pas quand le slider de vitesse multiplie dt par 4
-// et que T = 1000 K multiplie les vitesses par ~1,8. Dans ce cas la molécule
+// et que la température maximale du slider (90 °C, soit T_SIM_MAX) multiplie
+// les vitesses par ~1,8. Dans ce cas la molécule
 // la plus rapide parcourt plusieurs diamètres par sous-pas, traverse ses
 // voisines sans être détectée, et des chocs A+B efficaces sont manqués :
 // la réaction paraît alors artificiellement lente à haute température, ce
@@ -70,7 +91,8 @@ var sim = {
   speedFactor: 1,   // multiplie dt avant stepPhysics (×0,10 à ×4,00)
 
   // ── Température ──
-  T_K: 300,
+  T_C: 20,                              // °C, valeur affichée par le slider
+  T_K: simTempFromCelsius(20),          // K, température de simulation associée
 
   // ── Géométrie du récipient (mise à jour par recipient.js) ──
   boxLeft: 0,
@@ -210,14 +232,16 @@ function initMolecules() {
 //  Modification dynamique des paramètres
 // ══════════════════════════════════════════════════════════════════════
 
-// Rescale instantané des vitesses quand T change
-function setTemperature(T_new) {
+// Rescale instantané des vitesses quand T change (consigne en °C)
+function setTemperature(T_C_new) {
+  var T_new = simTempFromCelsius(T_C_new);
   if (T_new <= 0) return;
   var ratio = Math.sqrt(T_new / sim.T_K);
   for (var i = 0; i < sim.molecules.length; i++) {
     sim.molecules[i].vx *= ratio;
     sim.molecules[i].vy *= ratio;
   }
+  sim.T_C = T_C_new;
   sim.T_K = T_new;
 }
 

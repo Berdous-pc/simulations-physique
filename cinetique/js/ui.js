@@ -82,8 +82,8 @@ function updateReadouts() {
 // ══════════════════════════════════════════════════════════════════════
 
 function syncUIToSim() {
-  document.getElementById('sl-T').value = sim.T_K;
-  document.getElementById('lbl-T').textContent = sim.T_K;
+  document.getElementById('sl-T').value = sim.T_C;
+  document.getElementById('lbl-T').textContent = sim.T_C;
 
   document.getElementById('sl-NA').value = sim.N0_A;
   document.getElementById('lbl-NA').textContent = sim.N0_A;
@@ -125,9 +125,9 @@ function onSliderSpeed(val) {
 
 // ── Slider Température ──
 function onSliderT(val) {
-  var T_new = parseInt(val, 10);
-  document.getElementById('lbl-T').textContent = T_new;
-  setTemperature(T_new);
+  var T_C_new = parseInt(val, 10);
+  document.getElementById('lbl-T').textContent = T_C_new;
+  setTemperature(T_C_new);
 }
 
 // ── Slider Nombre de molécules A ──
