@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<!-- ════════════════════════════════════════════════════
+     Simulation pédagogique — Physique-Chimie Lycée
+     Auteur  : Mathieu Berdous
+     Licence : CC BY-NC 4.0 — https://creativecommons.org/licenses/by-nc/4.0/
+════════════════════════════════════════════════════ -->
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Simulation — Équilibre chimique</title>
+  <meta name="author" content="Mathieu Berdous">
+  <meta name="copyright" content="Mathieu Berdous — CC BY-NC 4.0">
+  <meta name="description" content="Simulation interactive (Terminale) : équilibre chimique, réaction réversible A + B ⇌ C + D, quotient de réaction et équilibre dynamique.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>⚛️</text></svg>">
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<h1 class="sr-only">Simulation d'équilibre chimique — réaction réversible A + B ⇌ C + D</h1>
+
+<main>
+
+  <!-- ══════════════════════════════════════════════
+       COLONNE GAUCHE : récipient (60%) + graphe (40%)
+       En mode 2 simulations (body.duo), une seconde ligne identique
+       apparaît sous la première : chaque graphe est aligné avec la zone
+       d'animation à laquelle il se rapporte. L'équation de réaction, elle,
+       n'est pas dupliquée (elle vaut pour les deux).
+  ══════════════════════════════════════════════ -->
+  <div id="left-col">
+
+    <div class="sim-area">
+      <canvas id="recipient-canvas-1"></canvas>
+    </div>
+
+    <!-- En mode 1 simulation, le graphe N(t) ET la frise Qr sont affichés,
+         l'un sous l'autre. En mode 2 simulations, chaque ligne ne dispose
+         que de la moitié de la hauteur : les onglets `.view-tabs` (visibles
+         dans ce seul mode) laissent alors choisir l'un OU l'autre, par
+         simulation. La classe `.view-frise` posée sur `.graph-area` par
+         setView() porte ce choix. -->
+    <div class="graph-area" id="graph-area-1">
+      <!-- Couleurs des lettres posées par ui.js depuis SPECIES_COLORS (source unique) -->
+      <div id="equilibre-equation">
+        <span id="eq-A">A</span> + <span id="eq-B">B</span> ⇌ <span id="eq-C">C</span> + <span id="eq-D">D</span>
+      </div>
+
+      <div class="view-tabs duo-only">
+        <button class="view-tab active" id="tab-graphe-1" onclick="setView(1, 'graphe')">Graphe</button>
+        <button class="view-tab" id="tab-frise-1" onclick="setView(1, 'frise')">Frise Q<sub>r</sub></button>
+      </div>
+
+      <!-- `.view-body` absorbe TOUT l'espace libre de la colonne (flex:1) :
+           les onglets ci-dessus restent donc ancrés à la même hauteur quelle
+           que soit la vue active. Sans ce conteneur, le `justify-content:
+           center` de `.graph-area` recentrait l'ensemble et les onglets se
+           déplaçaient à chaque bascule. -->
+      <div class="view-body">
+        <div class="chart-wrap">
+          <canvas id="equilibre-chart-1"></canvas>
+          <div class="equilibre-legende" id="equilibre-legende-1"></div>
+        </div>
+
+        <div class="frise-block">
+          <!-- Couleurs des lettres d'espèce posées par ui.js depuis
+               SPECIES_COLORS (classes .sp-A/.sp-B/.sp-C/.sp-D) -->
+          <div class="frise-formulas">
+            <div class="frise-formula">
+              <span>Q<sub>r</sub></span>
+              <span>=</span>
+              <span class="ff-frac">
+                <span class="ff-num"><span class="sp-C">N<sub>C</sub></span> × <span class="sp-D">N<sub>D</sub></span></span>
+                <span class="ff-den"><span class="sp-A">N<sub>A</sub></span> × <span class="sp-B">N<sub>B</sub></span></span>
+              </span>
+            </div>
+            <div class="frise-sep"></div>
+            <div class="frise-formula frise-formula-k">
+              <span>K</span>
+              <span>=</span>
+              <span class="ff-frac">
+                <span class="ff-num">p(<span class="sp-A">A</span> + <span class="sp-B">B</span>)</span>
+                <span class="ff-den">p(<span class="sp-C">C</span> + <span class="sp-D">D</span>)</span>
+              </span>
+              <span>=</span>
+              <span class="ff-val" id="frise-K-val-1">1,00</span>
+            </div>
+          </div>
+          <div class="frise-wrap">
+            <canvas id="frise-canvas-1"></canvas>
+          </div>
+          <label class="frise-check">
+            <input type="checkbox" id="ck-qr-inst-1" checked
+                   onchange="onToggleQrInstant(1, this.checked)">
+            <span>Afficher Q<sub>r</sub> instantané</span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Seconde simulation (affichée uniquement si body.duo) ── -->
+    <div class="sim-area duo-only">
+      <canvas id="recipient-canvas-2"></canvas>
+    </div>
+
+    <div class="graph-area duo-only" id="graph-area-2">
+      <div class="view-tabs duo-only">
+        <button class="view-tab active" id="tab-graphe-2" onclick="setView(2, 'graphe')">Graphe</button>
+        <button class="view-tab" id="tab-frise-2" onclick="setView(2, 'frise')">Frise Q<sub>r</sub></button>
+      </div>
+
+      <div class="view-body">
+        <div class="chart-wrap">
+          <canvas id="equilibre-chart-2"></canvas>
+          <div class="equilibre-legende" id="equilibre-legende-2"></div>
+        </div>
+
+        <div class="frise-block">
+          <div class="frise-formulas">
+            <div class="frise-formula">
+              <span>Q<sub>r</sub></span>
+              <span>=</span>
+              <span class="ff-frac">
+                <span class="ff-num"><span class="sp-C">N<sub>C</sub></span> × <span class="sp-D">N<sub>D</sub></span></span>
+                <span class="ff-den"><span class="sp-A">N<sub>A</sub></span> × <span class="sp-B">N<sub>B</sub></span></span>
+              </span>
+            </div>
+            <div class="frise-sep"></div>
+            <div class="frise-formula frise-formula-k">
+              <span>K</span>
+              <span>=</span>
+              <span class="ff-frac">
+                <span class="ff-num">p(<span class="sp-A">A</span> + <span class="sp-B">B</span>)</span>
+                <span class="ff-den">p(<span class="sp-C">C</span> + <span class="sp-D">D</span>)</span>
+              </span>
+              <span>=</span>
+              <span class="ff-val" id="frise-K-val-2">1,00</span>
+            </div>
+          </div>
+          <div class="frise-wrap">
+            <canvas id="frise-canvas-2"></canvas>
+          </div>
+          <label class="frise-check">
+            <input type="checkbox" id="ck-qr-inst-2" checked
+                   onchange="onToggleQrInstant(2, this.checked)">
+            <span>Afficher Q<sub>r</sub> instantané</span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       PANNEAU DROIT : contrôles
+  ══════════════════════════════════════════════ -->
+  <div id="panel">
+    <div id="panel-body">
+
+      <!-- ── Titre ─────────────────────────────── -->
+      <div class="panel-title">Équilibre chimique</div>
+
+      <!-- ── Contrôle du temps ──────────────────── -->
+      <div class="panel-section">
+        <div class="section-title">Contrôle</div>
+        <button id="btn-playpause" class="btn btn-play" onclick="togglePause()">▶ Lancer</button>
+        <button class="btn btn-raz" onclick="resetSim()" style="margin-top:6px;">■ Remettre à zéro</button>
+
+        <div class="param-row" style="margin-top:10px;">
+          <label>Vitesse d'animation
+            <span class="param-value">×<span id="lbl-speed">1,00</span></span>
+          </label>
+          <input type="range" id="sl-speed" min="0" max="3" step="1" value="2"
+                 oninput="onSliderSpeed(this.value)">
+          <div class="slider-ticks">
+            <span style="--tick-frac:0">×0,10</span>
+            <span style="--tick-frac:0.3333">×0,50</span>
+            <span style="--tick-frac:0.6667">×1,00</span>
+            <span style="--tick-frac:1">×2,00</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="sep"></div>
+
+      <!-- ── Paramètres ─────────────────────────── -->
+      <div class="panel-section">
+        <div class="section-title">Paramètres</div>
+
+        <!-- Nombre de simulations affichées (1 ou 2) -->
+        <div class="param-row" style="margin-bottom:12px;">
+          <label>Nombre de simulation(s)</label>
+          <div class="nsim-toggle">
+            <button class="nsim-btn active" id="btn-nsim-1" onclick="setSimCount(1)">1</button>
+            <button class="nsim-btn" id="btn-nsim-2" onclick="setSimCount(2)">2</button>
+          </div>
+        </div>
+
+        <!-- ── Réglages de la simulation 1 ── -->
+        <!-- Le sous-titre n'apparaît qu'en mode 2 simulations : avec une seule,
+             il n'y a rien à distinguer. -->
+        <div class="sim-group-title duo-only">Simulation 1</div>
+
+        <!-- Quantités initiales -->
+        <div class="param-row">
+          <label><span><span class="param-swatch" id="swatch-NA-1"></span>Molécules A initiales</span>
+            <span class="param-value"><span id="lbl-NA-1">40</span></span>
+          </label>
+          <input type="range" id="sl-NA-1" min="0" max="300" step="5" value="40"
+                 oninput="onSliderNA(1, this.value)">
+        </div>
+
+        <div class="param-row">
+          <label><span><span class="param-swatch" id="swatch-NB-1"></span>Molécules B initiales</span>
+            <span class="param-value"><span id="lbl-NB-1">40</span></span>
+          </label>
+          <input type="range" id="sl-NB-1" min="0" max="300" step="5" value="40"
+                 oninput="onSliderNB(1, this.value)">
+        </div>
+
+        <div class="param-row">
+          <label><span><span class="param-swatch" id="swatch-NC-1"></span>Molécules C initiales</span>
+            <span class="param-value"><span id="lbl-NC-1">10</span></span>
+          </label>
+          <input type="range" id="sl-NC-1" min="0" max="300" step="5" value="10"
+                 oninput="onSliderNC(1, this.value)">
+        </div>
+
+        <div class="param-row">
+          <label><span><span class="param-swatch" id="swatch-ND-1"></span>Molécules D initiales</span>
+            <span class="param-value"><span id="lbl-ND-1">10</span></span>
+          </label>
+          <input type="range" id="sl-ND-1" min="0" max="300" step="5" value="10"
+                 oninput="onSliderND(1, this.value)">
+        </div>
+
+        <!-- Probabilités de choc efficace (un réglage par sens) -->
+        <div class="param-row">
+          <label>Probabilité A + B
+            <span class="param-value"><span id="lbl-probAB-1">50</span> %</span>
+          </label>
+          <input type="range" id="sl-probAB-1" min="0" max="100" step="1" value="50"
+                 oninput="onSliderProbAB(1, this.value)">
+        </div>
+
+        <div class="param-row">
+          <label>Probabilité C + D
+            <span class="param-value"><span id="lbl-probCD-1">50</span> %</span>
+          </label>
+          <input type="range" id="sl-probCD-1" min="0" max="100" step="1" value="50"
+                 oninput="onSliderProbCD(1, this.value)">
+        </div>
+
+        <div class="readout">
+          <div class="ro-label">Quantités actuelles</div>
+          <!-- Couleurs des pastilles A/B/C/D appliquées par ui.js depuis
+               SPECIES_COLORS (source unique, cf. js/sim.js) -->
+          <div class="ro-chocs-grid">
+            <div class="ro-choc-item">
+              <span class="ro-choc-label" id="ro-lbl-A-1">A</span>
+              <span class="ro-choc-val" id="ro-A-1">40</span>
+            </div>
+            <div class="ro-choc-item">
+              <span class="ro-choc-label" id="ro-lbl-B-1">B</span>
+              <span class="ro-choc-val" id="ro-B-1">40</span>
+            </div>
+            <div class="ro-choc-item">
+              <span class="ro-choc-label" id="ro-lbl-C-1">C</span>
+              <span class="ro-choc-val" id="ro-C-1">10</span>
+            </div>
+            <div class="ro-choc-item">
+              <span class="ro-choc-label" id="ro-lbl-D-1">D</span>
+              <span class="ro-choc-val" id="ro-D-1">10</span>
+            </div>
+          </div>
+          <div class="ro-qr-row">
+            <span class="ro-qr-label">Q<sub>r</sub> instantané</span>
+            <span class="ro-qr-val" id="ro-Qr-1">0,06</span>
+          </div>
+          <div class="ro-qr-row ro-qr-row-avg">
+            <span class="ro-qr-label">Q<sub>r</sub> moyenné (20 s)</span>
+            <span class="ro-qr-val" id="ro-Qr-avg-1">0,06</span>
+          </div>
+        </div>
+
+        <!-- ── Réglages de la simulation 2 (mode 2 simulations) ── -->
+        <div class="duo-only">
+          <div class="sim-group-title">Simulation 2</div>
+
+          <div class="param-row">
+            <label><span><span class="param-swatch" id="swatch-NA-2"></span>Molécules A initiales</span>
+              <span class="param-value"><span id="lbl-NA-2">40</span></span>
+            </label>
+            <input type="range" id="sl-NA-2" min="0" max="300" step="5" value="40"
+                   oninput="onSliderNA(2, this.value)">
+          </div>
+
+          <div class="param-row">
+            <label><span><span class="param-swatch" id="swatch-NB-2"></span>Molécules B initiales</span>
+              <span class="param-value"><span id="lbl-NB-2">40</span></span>
+            </label>
+            <input type="range" id="sl-NB-2" min="0" max="300" step="5" value="40"
+                   oninput="onSliderNB(2, this.value)">
+          </div>
+
+          <div class="param-row">
+            <label><span><span class="param-swatch" id="swatch-NC-2"></span>Molécules C initiales</span>
+              <span class="param-value"><span id="lbl-NC-2">10</span></span>
+            </label>
+            <input type="range" id="sl-NC-2" min="0" max="300" step="5" value="10"
+                   oninput="onSliderNC(2, this.value)">
+          </div>
+
+          <div class="param-row">
+            <label><span><span class="param-swatch" id="swatch-ND-2"></span>Molécules D initiales</span>
+              <span class="param-value"><span id="lbl-ND-2">10</span></span>
+            </label>
+            <input type="range" id="sl-ND-2" min="0" max="300" step="5" value="10"
+                   oninput="onSliderND(2, this.value)">
+          </div>
+
+          <div class="param-row">
+            <label>Probabilité A + B
+              <span class="param-value"><span id="lbl-probAB-2">50</span> %</span>
+            </label>
+            <input type="range" id="sl-probAB-2" min="0" max="100" step="1" value="50"
+                   oninput="onSliderProbAB(2, this.value)">
+          </div>
+
+          <div class="param-row">
+            <label>Probabilité C + D
+              <span class="param-value"><span id="lbl-probCD-2">50</span> %</span>
+            </label>
+            <input type="range" id="sl-probCD-2" min="0" max="100" step="1" value="50"
+                   oninput="onSliderProbCD(2, this.value)">
+          </div>
+
+          <div class="readout">
+            <div class="ro-label">Quantités actuelles</div>
+            <div class="ro-chocs-grid">
+              <div class="ro-choc-item">
+                <span class="ro-choc-label" id="ro-lbl-A-2">A</span>
+                <span class="ro-choc-val" id="ro-A-2">40</span>
+              </div>
+              <div class="ro-choc-item">
+                <span class="ro-choc-label" id="ro-lbl-B-2">B</span>
+                <span class="ro-choc-val" id="ro-B-2">40</span>
+              </div>
+              <div class="ro-choc-item">
+                <span class="ro-choc-label" id="ro-lbl-C-2">C</span>
+                <span class="ro-choc-val" id="ro-C-2">10</span>
+              </div>
+              <div class="ro-choc-item">
+                <span class="ro-choc-label" id="ro-lbl-D-2">D</span>
+                <span class="ro-choc-val" id="ro-D-2">10</span>
+              </div>
+            </div>
+            <div class="ro-qr-row">
+              <span class="ro-qr-label">Q<sub>r</sub> instantané</span>
+              <span class="ro-qr-val" id="ro-Qr-2">0,06</span>
+            </div>
+            <div class="ro-qr-row ro-qr-row-avg">
+              <span class="ro-qr-label">Q<sub>r</sub> moyenné (20 s)</span>
+              <span class="ro-qr-val" id="ro-Qr-avg-2">0,06</span>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- fin Paramètres -->
+
+    </div><!-- fin #panel-body -->
+
+    <!-- ── Bandeau Instructions ────────────────── -->
+    <div class="panel-hint collapsed" id="panel-hint">
+      <div class="panel-hint-header">
+        <button class="panel-hint-menu-btn" onclick="location.href='../index.html'" title="Retour au menu principal">☰ Menu</button>
+        <span class="panel-hint-title">Instructions</span>
+        <button class="panel-hint-toggle" onclick="toggleHint()" title="Afficher les instructions">▲</button>
+      </div>
+      <div class="panel-hint-body">
+        La réaction <strong>A + B ⇌ C + D</strong> se produit dans les deux sens : un choc
+        efficace entre A et B forme C et D, mais un choc efficace entre C et D peut aussi
+        reformer A et B.
+        <br>
+        Les sliders <strong>Probabilité A + B</strong> et <strong>Probabilité C + D</strong>
+        donnent la proportion de chocs efficaces dans chaque sens : plus une probabilité est
+        élevée, plus la réaction correspondante est rapide.
+        <br>
+        Au bout d'un moment, les quantités cessent de varier en moyenne : les deux réactions
+        continuent mais se compensent exactement — c'est l'<strong>équilibre dynamique</strong>.
+        <br>
+        La <strong>frise</strong> situe le quotient de réaction Q<sub>r</sub> par rapport à la
+        constante d'équilibre <strong>K</strong> : la pastille (Q<sub>r</sub> moyenné) vient se
+        coller au trait de K, alors que l'aiguille pâle (Q<sub>r</sub> instantané) continue de
+        s'agiter — le nombre de molécules est trop petit pour que Q<sub>r</sub> soit stable à
+        chaque instant.
+      </div>
+    </div>
+
+  </div><!-- fin #panel -->
+
+</main>
+
+<!-- Ordre de chargement : sim (état + physique) → recipient (rendu bécher) → graph (rendu courbes) → frise (axe Qr) → ui (boucle) -->
+<script src="js/sim.js"></script>
+<script src="js/recipient.js"></script>
+<script src="js/graph.js"></script>
+<script src="js/frise.js"></script>
+<script src="js/ui.js"></script>
+<script data-goatcounter="https://berdous-pc.goatcounter.com/count"
+        async src="https://gc.zgo.at/count.js"></script>
+</body>
+</html>

@@ -1,0 +1,854 @@
+/* ══════════════════════════════════════════════════
+   Simulation pédagogique — Physique-Chimie Lycée
+   Auteur  : Mathieu Berdous
+   Licence : CC BY-NC 4.0 — https://creativecommons.org/licenses/by-nc/4.0/
+══════════════════════════════════════════════════ */
+
+/* ── Reset & base ────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── Indices de « Qr » (et N_A, N_C…) — réglage global ──────────────────
+   Trois essais précédents sans effet visible, y compris après Ctrl+Maj+R —
+   ce qui écarte un problème de cache et pointe vers un souci de cascade
+   (une règle plus spécifique, ailleurs, qui gagne). `!important` ici est un
+   diagnostic autant qu'un correctif : rien ne peut plus l'emporter sur ce
+   réglage. Si le rendu ne bouge toujours pas après ça, le problème n'est
+   plus dans ce fichier — vérifier que la page testée charge bien CE
+   `style.css` (chemin dans la barre d'adresse, onglet Réseau des outils de
+   développement) et pas une copie différente. */
+sub {
+  font-size: 0.72em !important;
+  vertical-align: -0.15em !important;
+}
+
+body {
+  font-family: 'Segoe UI', Arial, sans-serif;
+  background: #e8e4de;
+  color: #2c3e50;
+  /* dvh : suit la hauteur réellement visible (barres dynamiques du navigateur) ;
+     vh reste le repli pour les navigateurs sans support dvh. */
+  height: 100vh;
+  max-height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* ── Grille principale ───────────────────────────── */
+main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr clamp(200px, 22vw, 300px);
+  min-height: 0;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+/* ── Colonne gauche : récipient (60%) | graphe (40%) côte à côte ──
+   En mode 2 simulations (body.duo), une seconde ligne s'ajoute
+   automatiquement (grid-auto-rows: 1fr → les deux lignes ont exactement
+   la même hauteur, et chaque graphe reste aligné avec son récipient). */
+#left-col {
+  display: grid;
+  grid-template-columns: 60fr 40fr;
+  grid-auto-rows: 1fr;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  gap: 10px;
+  padding: 10px;
+}
+
+/* Éléments propres au mode 2 simulations : masqués tant que body.duo
+   est absent (on n'écrase jamais leur `display` propre, on se contente
+   de ne pas appliquer la règle). */
+body:not(.duo) .duo-only { display: none; }
+
+/* ── Zone simulation (récipient) ─────────────────── */
+.sim-area {
+  min-height: 0;
+  min-width: 0;
+  background: #fdf8f0;
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+
+.sim-area canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* ── Zone graphe ──────────────────────────────────── */
+/* Le graphe n'a pas besoin de toute la hauteur : il garde un format 4/3
+   (borné par la hauteur disponible) et se centre verticalement, sous
+   l'équation de la réaction. */
+.graph-area {
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(4px, 0.8vh, 10px);
+}
+
+#equilibre-equation {
+  flex: 0 0 auto;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  font-size: clamp(22.5px, 3vw, 36px);
+  font-weight: 700;
+  color: #2c3e50;
+  text-align: center;
+}
+#equilibre-equation span {
+  font-weight: 800;
+}
+
+/* En mode 2 simulations, chaque ligne ne dispose que de la moitié de la
+   hauteur : l'équation est réduite pour ne pas rogner le premier graphe
+   (le second, sans équation au-dessus, garde alors la même taille). */
+body.duo #equilibre-equation {
+  font-size: clamp(15px, 2vw, 24px);
+}
+
+.chart-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  max-height: 100%;
+  min-height: 0;
+  min-width: 0;
+  /* `flex-shrink: 1` (valeur par défaut, explicitée ici) : en mode 1
+     simulation la frise occupe le bas de la colonne, et c'est le graphe qui
+     cède de la hauteur si la fenêtre est courte — la frise, elle, a une
+     hauteur minimale en dessous de laquelle elle devient illisible. */
+  flex: 0 1 auto;
+  background: #faf9f6;
+  border: 1px solid #c8c0b4;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  overflow: hidden;
+  /* Container query : la légende overlay se dimensionne en cqmin par
+     rapport à la taille réelle de ce wrapper (pas de la fenêtre), pour
+     rester lisible même quand la zone graphe est petite. */
+  container-type: size;
+}
+
+.chart-wrap canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* ── Corps de la zone graphe (graphe et/ou frise) ──────────────────────
+   `flex: 1 1 auto` : ce conteneur absorbe TOUT l'espace libre de la
+   colonne, ce qui ancre l'équation et les onglets au-dessus de lui à une
+   hauteur FIXE. Sans lui, le `justify-content: center` de `.graph-area`
+   recentrait l'ensemble et les onglets se déplaçaient verticalement à
+   chaque bascule graphe ⇄ frise (les deux vues n'ont pas la même
+   hauteur) — un bouton qui bouge sous le curseur au moment où on le
+   clique. */
+.view-body {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(6px, 1.2vh, 14px);
+  /* Garde-fou indispensable : sans lui, un contenu plus haut que la place
+     disponible débordait de ce conteneur et, `justify-content: center`
+     répartissant le débordement des DEUX côtés, remontait par-dessus les
+     onglets — qui se retrouvaient recouverts par le cadre du graphe ou de
+     la frise sur une fenêtre courte. */
+  overflow: hidden;
+}
+
+/* `safe center` bascule automatiquement en `flex-start` quand le contenu
+   déborde, au lieu de le rogner symétriquement (ce qui couperait le haut
+   de l'encart de formules). `center` reste le repli pour les navigateurs
+   qui ne connaissent pas le mot-clé. */
+@supports (justify-content: safe center) {
+  .view-body { justify-content: safe center; }
+}
+
+/* ── Onglets « Graphe » / « Frise Qr » (mode 2 simulations) ─────────────
+   Même motif visuel que `.nsim-toggle` du panneau, mais nettement plus
+   grand : ces onglets sont dans la zone projetée, pas dans le panneau de
+   pilotage que seul le professeur lit de près. Portent `.duo-only` : en
+   mode 1 simulation les deux vues tiennent ensemble, il n'y a rien à
+   choisir. */
+.view-tabs {
+  flex: 0 0 auto;
+  display: flex;
+  border: 1.5px solid #c8c0b4;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+
+.view-tab {
+  padding: clamp(7px, 1vh, 13px) clamp(16px, 2vw, 32px);
+  font-size: clamp(14px, 1.6vw, 22px);
+  font-weight: 700;
+  font-family: inherit;
+  border: none;
+  background: #ece8e0;
+  color: #5a6a78;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s;
+}
+.view-tab:not(:last-child) { border-right: 1.5px solid #c8c0b4; }
+.view-tab:hover { background: #ddd8ce; }
+.view-tab.active { background: #2a6aaa; color: #fff; }
+
+/* ── Bloc frise Qr (formules + axe + case à cocher) ────────────────────
+   `flex: 0 1 auto` (compressible) : le graphe cède de la hauteur en
+   premier (`flex-shrink` sur une base 4/3 bien plus grande), mais la frise
+   doit pouvoir suivre — en `0 0 auto` elle poussait son contenu hors du
+   conteneur dès que la fenêtre devenait courte. Ce qui absorbe la
+   compression, c'est `.frise-wrap` (cf. plus bas) ; les formules et la
+   case à cocher gardent leur hauteur propre. */
+.frise-block {
+  flex: 0 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(5px, 1vh, 12px);
+}
+
+/* ── Encart des formules ───────────────────────────────────────────────
+   Carte blanche bordée, comme `.readout` du panneau : les formules sont
+   du contenu de cours à lire depuis le fond de la classe, pas une
+   annotation technique.
+
+   Les deux formules sont CÔTE À CÔTE, séparées d'un filet vertical : sur
+   une seule ligne, l'encart est deux fois moins haut, et toute la hauteur
+   ainsi rendue profite à la frise elle-même.
+   `flex-wrap: nowrap` + police calée sur la largeur (voir plus bas) :
+   l'encart doit tenir sur une ligne, pas se replier. */
+.frise-formulas {
+  width: 100%;
+  min-width: 0;
+  background: #fff;
+  border: 1px solid #c8c0b4;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  padding: clamp(8px, 1.2vh, 15px) clamp(10px, 1.2vw, 16px);
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(10px, 1.6vw, 26px);
+  overflow: hidden;
+  color: #2c3e50;
+  line-height: 1.15;
+  /* La contrainte dominante ici est la LARGEUR, pas la hauteur : les deux
+     fractions côte à côte occupent environ 16,2 fois la taille de police
+     (+72 px de filet, gaps et padding), et la colonne graphe vaut 40 % de
+     la largeur restant après le panneau — soit une place qui croît bien
+     plus vite que linéairement en vw à cause du `clamp()` du panneau.
+     `2,1vw − 9px` reste sous cette limite de 1024 px à 2560 px de large
+     avec ~10 % de marge (30 px atteints dès 1860 px). `overflow: hidden`
+     ci-dessus reste le garde-fou si une police système large déjoue
+     l'estimation. */
+  font-size: clamp(12px, calc(2.1vw - 9px), 30px);
+}
+
+/* En mode 2 simulations, la moitié de hauteur est partagée avec les
+   onglets et l'équation : on resserre légèrement. */
+body.duo .frise-formulas {
+  font-size: clamp(11px, calc(1.95vw - 9px), 26px);
+  padding: clamp(6px, 0.9vh, 11px) clamp(8px, 1vw, 14px);
+}
+
+/* Filet séparateur entre les deux formules */
+.frise-sep {
+  flex: 0 0 auto;
+  align-self: stretch;
+  width: 1px;
+  background: #d8d0c8;
+}
+
+/* Fraction en deux étages avec une vraie barre horizontale : bien plus
+   lisible de loin qu'un « (N_C × N_D) / (N_A × N_B) » sur une seule
+   ligne, où l'œil doit reconstituer les priorités entre parenthèses. */
+.frise-formula {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35em;
+  flex-wrap: wrap;
+  font-weight: 700;
+  text-align: center;
+}
+
+.ff-frac {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.12;
+}
+
+.ff-num {
+  padding: 0 0.4em 0.1em;
+  border-bottom: max(2px, 0.07em) solid currentColor;
+}
+
+.ff-den {
+  padding: 0.1em 0.4em 0;
+}
+
+/* La formule de K est en retrait : c'est une propriété du modèle (fixée
+   par les deux sliders), pas une grandeur qui évolue comme Qr. Sa VALEUR,
+   elle, reprend la couleur du repère K sur la frise. */
+.frise-formula-k { color: #5a6a78; }
+.ff-val {
+  color: #2c3e50;
+  font-variant-numeric: tabular-nums;
+}
+
+/* La hauteur ci-dessous est une hauteur SOUHAITÉE : `flex: 0 1 auto` +
+   `min-height` laissent le conteneur flex la réduire jusqu'à ce plancher
+   quand la fenêtre est courte. `resizeFrise()` lisant `clientHeight`, le
+   canvas suit la hauteur réellement obtenue, et `drawFrise()` bascule en
+   rendu compact en dessous d'un certain seuil (cf. js/frise.js). */
+.frise-wrap {
+  position: relative;
+  flex: 0 1 auto;
+  width: 100%;
+  min-width: 0;
+  height: clamp(138px, 19vh, 215px);
+  min-height: 56px;
+  background: #faf9f6;
+  border: 1px solid #c8c0b4;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  overflow: hidden;
+}
+
+/* En mode 2 simulations, la frise remplace le graphe (onglets) : elle
+   dispose alors de toute la hauteur de la ligne, autant en profiter pour
+   espacer les graduations. */
+body.duo .frise-wrap {
+  height: clamp(145px, 30vh, 280px);
+}
+
+.frise-wrap canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+label.frise-check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5em;
+  font-size: clamp(13px, 1.45vw, 19px);
+  color: #5a6a78;
+  cursor: pointer;
+  user-select: none;
+}
+
+.frise-check input[type="checkbox"] {
+  accent-color: #4a7aaa;
+  cursor: pointer;
+  width: 1.15em;
+  height: 1.15em;
+  flex: 0 0 auto;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   Adaptations aux petites fenêtres
+   ══════════════════════════════════════════════════════════════════════
+   Les `clamp()` ci-dessus suffisent pour une réduction progressive, mais
+   deux seuils demandent un changement de MISE EN PAGE, pas seulement
+   d'échelle. */
+
+/* ── ORDRE DES BLOCS CI-DESSOUS : ne pas réarranger ────────────────────
+   Une `@media` n'ajoute AUCUNE spécificité. Plusieurs de ces blocs visent
+   les mêmes sélecteurs (`.view-tab`, `.frise-wrap`) avec la même
+   spécificité, donc sur une fenêtre à la fois basse et étroite c'est le
+   DERNIER déclaré qui gagne. Les requêtes de hauteur viennent donc en
+   premier et celle de largeur en dernier : le débordement horizontal des
+   onglets est le symptôme le plus visible, la contrainte de largeur doit
+   avoir le dernier mot sur leur rembourrage.
+   Corollaire : chaque bloc qui touche `.frise-wrap` doit redéclarer la
+   variante `body.duo .frise-wrap`, sinon la règle de base (spécificité
+   0-2-1) écrase le `.frise-wrap` (0-1-0) de la requête. */
+
+/* ── Fenêtre basse : on rend de la hauteur à la frise ───────────────────
+   Priorité aux éléments porteurs de sens (l'axe et ses marqueurs) : ce
+   sont les marges, l'encart et les onglets qui maigrissent d'abord. */
+@media (max-height: 760px) {
+  .view-body { gap: clamp(4px, 0.8vh, 9px); }
+  .frise-block { gap: clamp(3px, 0.6vh, 7px); }
+  .frise-wrap { height: clamp(84px, 14vh, 150px); }
+  body.duo .frise-wrap { height: clamp(76px, 20vh, 170px); }
+  .frise-formulas { padding: clamp(5px, 0.8vh, 10px) clamp(8px, 1vw, 13px); }
+  .view-tab {
+    padding: clamp(5px, 0.8vh, 9px) clamp(12px, 1.6vw, 22px);
+    font-size: clamp(12px, 1.3vw, 17px);
+  }
+}
+
+@media (max-height: 560px) {
+  .frise-wrap { height: clamp(62px, 13vh, 108px); }
+  body.duo .frise-wrap { height: clamp(58px, 16vh, 118px); }
+  label.frise-check { font-size: clamp(11px, 1.2vw, 14px); }
+  .view-tab {
+    padding: 4px clamp(10px, 1.4vw, 18px);
+    font-size: clamp(11px, 1.2vw, 15px);
+  }
+}
+
+/* ── Fenêtre étroite : les formules s'empilent ──────────────────────────
+   Les deux fractions côte à côte réclament ~16,2 × la taille de police ;
+   sous ~1100 px de large, la colonne graphe (40 % de ce qui reste après le
+   panneau) ne les loge plus même à la taille minimale. Elles repassent
+   donc sur deux lignes — et le filet vertical disparaît, puisqu'il ne
+   sépare plus rien horizontalement.
+   DERNIER bloc à dessein (cf. note sur l'ordre ci-dessus). */
+@media (max-width: 1100px) {
+  .frise-formulas {
+    flex-wrap: wrap;
+    gap: clamp(2px, 0.6vh, 6px) clamp(10px, 1.6vw, 26px);
+  }
+  .frise-sep { display: none; }
+  /* Les libellés des onglets sont en `nowrap` : c'est leur rembourrage qui
+     doit céder, sinon la paire déborde en largeur d'une colonne étroite. */
+  .view-tab {
+    padding: clamp(5px, 0.8vh, 9px) clamp(9px, 1.2vw, 16px);
+    font-size: clamp(11px, 1.2vw, 15px);
+  }
+}
+
+/* ── Graphe OU frise, au choix, en mode 2 simulations seulement ────────
+   En mode 1 simulation (body sans .duo) aucune de ces deux règles ne
+   s'applique : les deux vues restent affichées, l'une sous l'autre. */
+body.duo .graph-area:not(.view-frise) .frise-block { display: none; }
+body.duo .graph-area.view-frise .chart-wrap { display: none; }
+
+/* ── Légende overlay du graphe (checkboxes de visibilité) ────────────── */
+.equilibre-legende {
+  position: absolute;
+  top: 2cqmin;
+  right: 2cqmin;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35em;
+  background: rgba(255, 255, 255, 0.92);
+  border: max(1px, 0.4cqmin) solid #c8ccd4;
+  border-radius: 1.6cqmin;
+  padding: 1.8cqmin 2.4cqmin;
+  font-size: clamp(9px, 2.6cqmin, 15px);
+  max-width: 46cqw;
+}
+
+.chart-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  cursor: pointer;
+  user-select: none;
+  transition: opacity 0.15s;
+}
+.chart-legend-item.unchecked { opacity: 0.4; }
+
+.chart-legend-item input[type="checkbox"] {
+  accent-color: #4a7aaa;
+  cursor: pointer;
+  width: 1.1em;
+  height: 1.1em;
+  flex: 0 0 auto;
+}
+
+.chart-legend-swatch {
+  flex: 0 0 auto;
+  width: 1.3em;
+  height: 0.35em;
+  border-radius: 2px;
+}
+
+.chart-legend-text {
+  color: #2c3e50;
+  white-space: nowrap;
+}
+
+/* ── Panneau droit ───────────────────────────────── */
+#panel {
+  background: #e8e4de;
+  border-left: 1.5px solid #c8c0b4;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  font-size: clamp(11px, 1.1vw, 14px);
+  overflow: hidden;
+}
+
+#panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: clamp(10px, 1.2vw, 16px) clamp(10px, 1.2vw, 14px);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* ── Titre du panneau ────────────────────────────── */
+.panel-title {
+  font-size: clamp(14px, 1.4vw, 17px);
+  font-weight: 700;
+  color: #2c3e50;
+  text-align: center;
+  padding-bottom: clamp(8px, 1vw, 12px);
+  border-bottom: 1.5px solid #c8c0b4;
+  margin-bottom: clamp(8px, 1vw, 12px);
+  letter-spacing: 0.3px;
+}
+
+/* ── Section ─────────────────────────────────────── */
+.panel-section {
+  margin-bottom: 8px;
+}
+
+/* ── Titres de section ───────────────────────────── */
+.section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #7a8a96;
+  margin-bottom: 7px;
+}
+
+/* ── Séparateur ──────────────────────────────────── */
+.sep {
+  border: none;
+  border-top: 1px solid #c8c0b4;
+  margin: 8px 0;
+}
+
+/* ── Boutons ─────────────────────────────────────── */
+.btn {
+  width: 100%;
+  border: none;
+  border-radius: 6px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 0.1s, background 0.15s;
+}
+.btn:active { transform: scale(0.97); }
+
+.btn-pause {
+  background: #c08020;
+  color: #fff;
+  font-size: clamp(14px, 1.4vw, 18px);
+  padding: 10px 6px;
+}
+.btn-pause:hover { background: #a06010; }
+
+.btn-play {
+  background: #2a8a50;
+  color: #fff;
+  font-size: clamp(14px, 1.4vw, 18px);
+  padding: 10px 6px;
+}
+.btn-play:hover { background: #1a6a38; }
+
+.btn-raz {
+  background: #dedad2;
+  color: #5a6a78;
+  font-size: clamp(12px, 1.2vw, 15px);
+  padding: 9px 6px;
+}
+.btn-raz:hover { background: #ccc8c0; }
+
+/* ── Paramètres ──────────────────────────────────── */
+.param-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 10px;
+}
+
+.param-row label {
+  font-size: clamp(12px, 1.25vw, 15px);
+  color: #2c3e50;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+}
+
+/* Pastille de couleur devant le titre d'un slider de molécule — même
+   gabarit que #lambda-swatch de la page Diffraction, mais couleur FIXE
+   posée en inline par ui.js (SPECIES_COLORS) : pas de recalcul dynamique
+   ici, contrairement au laser dont la teinte suit la longueur d'onde
+   réglée par l'utilisateur. */
+.param-swatch {
+  display: inline-block;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  vertical-align: -1px;
+  margin-right: 5px;
+}
+
+.param-value {
+  color: #2a5080;
+  font-weight: 600;
+  white-space: nowrap;
+  font-size: clamp(12px, 1.25vw, 15px);
+}
+
+.param-row input[type="range"] {
+  width: 100%;
+  accent-color: #4a7aaa;
+  cursor: pointer;
+}
+
+.input-hint {
+  font-size: clamp(10px, 0.9vw, 13px);
+  color: #7a8a96;
+  line-height: 1.4;
+  font-weight: 400;
+}
+
+/* ── Bouton 2 états « Nombre de simulation(s) » ───── */
+/* Même motif que le sélecteur de source lumineuse de la page Diffraction. */
+.nsim-toggle {
+  display: flex;
+  border: 1px solid #c8c0b4;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.nsim-btn {
+  flex: 1;
+  padding: 8px 4px;
+  font-size: clamp(12px, 1.1vw, 14px);
+  font-weight: 700;
+  font-family: inherit;
+  border: none;
+  background: #ece8e0;
+  color: #5a6a78;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.nsim-btn:not(:last-child) { border-right: 1px solid #c8c0b4; }
+.nsim-btn:hover { background: #ddd8ce; }
+.nsim-btn.active { background: #2a6aaa; color: #fff; }
+
+/* ── Sous-titre d'un groupe de réglages (mode 2 simulations) ── */
+.sim-group-title {
+  font-size: clamp(11px, 1.1vw, 14px);
+  font-weight: 700;
+  color: #2a5080;
+  border-top: 1px solid #c8c0b4;
+  padding-top: 7px;
+  margin-bottom: 6px;
+}
+
+/* ── Afficheurs valeur ───────────────────────────── */
+.readout {
+  background: #fff;
+  border: 1px solid #c8c0b4;
+  border-radius: 6px;
+  padding: 7px 9px;
+  margin-bottom: 8px;
+}
+
+.ro-label {
+  font-size: clamp(11px, 1vw, 14px);
+  color: #7a8a96;
+  margin-bottom: 2px;
+}
+
+.ro-chocs-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 8px;
+  margin-top: 5px;
+}
+
+.ro-choc-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.ro-choc-label {
+  font-size: clamp(10px, 0.9vw, 12px);
+  font-weight: 700;
+}
+
+.ro-choc-val {
+  font-size: clamp(15px, 1.6vw, 20px);
+  font-weight: 700;
+  color: #2a5080;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Quotient de réaction (sous la grille A/B/C/D) ───────────────── */
+.ro-qr-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px dashed #d8d0c8;
+}
+
+.ro-qr-label {
+  font-size: clamp(11px, 1vw, 13px);
+  color: #7a8a96;
+}
+
+.ro-qr-val {
+  font-size: clamp(15px, 1.6vw, 20px);
+  font-weight: 700;
+  color: #2a5080;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Ligne Qr moyenné : séparateur allégé (elle suit immédiatement le Qr
+   instantané, dont elle n'est qu'une lecture lissée) et couleur ambre, la
+   même que celle du marqueur correspondant sur la frise. */
+.ro-qr-row-avg {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: none;
+}
+.ro-qr-row-avg .ro-qr-val { color: #c08020; }
+
+/* Crans sous un slider : chaque label est centré exactement sous la position
+   du curseur pour son cran. Le curseur natif (~16px de large) ne parcourt que
+   (100% - 16px) : les labels sont donc placés à 8px + frac × (100% - 16px),
+   via --tick-frac posé sur chaque span (0 pour le 1er cran, 1 pour le dernier). */
+.slider-ticks {
+  position: relative;
+  margin-top: 3px;
+  height: 1.3em;
+}
+
+.slider-ticks span {
+  position: absolute;
+  top: 0;
+  left: calc(8px + (100% - 16px) * var(--tick-frac, 0));
+  transform: translateX(-50%);
+  font-size: clamp(10px, 1vw, 13px);
+  color: #7a8a96;
+  white-space: nowrap;
+}
+
+.panel-hint {
+  flex-shrink: 0;
+  color: #5a6a78;
+  line-height: 1.5;
+  background: #fff;
+  border: 1.5px solid #b0a898;
+  /* Pas de bordure gauche propre : #panel a déjà la sienne sur ce bord
+     (cf. contexte_projet.md §5, évite le décalage sous-pixel entre deux
+     bordures superposées quand la largeur du panneau est en clamp()). */
+  border-left: none;
+  overflow: hidden;
+  transition: padding 0.2s;
+}
+
+.panel-hint strong {
+  color: #2c3e50;
+}
+
+.panel-hint-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+}
+
+.panel-hint-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #7a8a96;
+  margin-left: auto;
+  margin-right: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panel-hint-menu-btn {
+  background: #f0f4f7;
+  border: 1px solid #c8d4dc;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  color: #4a5a68;
+  padding: 4px 9px;
+  line-height: 1.2;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.panel-hint-menu-btn:hover { background: #dde6ec; color: #2a6aaa; }
+
+.panel-hint-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: #7a8a96;
+  padding: 0 2px;
+  line-height: 1;
+  transition: transform 0.2s;
+}
+.panel-hint-toggle:hover { color: #2a6aaa; }
+
+.panel-hint-body {
+  font-size: clamp(11px, 1vw, 14px);
+  padding: 0 10px 8px;
+  overflow: hidden;
+  transition: max-height 0.25s ease, padding 0.25s ease;
+  /* Texte découpé en 4 lignes par de simples <br> — sans cette marge, le
+     bas était tronqué malgré le bouton « déplié ». */
+  max-height: 260px;
+}
+
+.panel-hint.collapsed .panel-hint-body {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.panel-hint:not(.collapsed) .panel-hint-toggle { transform: rotate(180deg); }
