@@ -146,7 +146,7 @@ Quatre fonctions, toutes dans `sim.js` :
 |---|---|
 | `reactionQuotient(c)` | Q<sub>r</sub> = (N<sub>C</sub>×N<sub>D</sub>)/(N<sub>A</sub>×N<sub>B</sub>) **instantané**, depuis un comptage `countSpecies(s)`. En nombre de molécules — proportionnel aux concentrations à volume constant. `null` si indéterminé (0/0), `Infinity` si seul le dénominateur est nul |
 | `equilibriumConstant(s)` | K = `probAB / probCD` (cf. démonstration ci-dessous). `null` si les deux probabilités sont nulles, `Infinity` si seul le sens indirect est bloqué |
-| `averagedReactionQuotient(s)` | Q<sub>r</sub> **moyenné** sur `QR_AVG_WINDOW_MS` = 40 s de temps simulé, lu directement dans `s.history` (200 points à `HISTORY_PERIOD` = 200 ms) |
+| `averagedReactionQuotient(s)` | Q<sub>r</sub> **moyenné** sur `QR_AVG_WINDOW_MS` = 40 s de temps simulé, soit `QR_AVG_SAMPLES` = 200 points à `HISTORY_PERIOD` = 200 ms. Lecture en O(1) d'un tampon circulaire à sommes courantes (cf. plus bas), indépendant de `s.history` |
 | `theoreticalEquilibrium(s)` | quantités **N_A/B/C/D théoriques à l'équilibre** (cf. section dédiée), affichées en pointillés sur le graphe |
 
 #### Pourquoi K = probAB / probCD
@@ -188,19 +188,51 @@ mélanger, pendant ces 40 s, des échantillons visant l'ANCIEN K et le
 NOUVEAU — la moyenne affichée dériverait de façon trompeuse au lieu de
 sauter proprement vers la nouvelle cible.
 
-`s._qrAvgSinceIndex` (initialisé à 0 dans `createSim`, remis à 0 par
-`initMolecules` à chaque RAZ) mémorise l'index du premier point
-d'historique éligible. `setReactionProbability()` l'avance à
-`s.history.t.length` dès qu'une probabilité change **réellement** (comparée
-à l'ancienne valeur — un slider ramené à sa position initiale ne doit pas
-tronquer la fenêtre inutilement). `averagedReactionQuotient()` borne alors
-son point de départ par `Math.max(0, n − want, s._qrAvgSinceIndex)` : plus
-aucun échantillon antérieur au dernier changement de K n'entre dans la
-moyenne, qui redémarre donc de zéro (au sens statistique) à chaque
-changement de probabilité.
+`setReactionProbability()` appelle donc `_resetQrWindow(s)` — qui vide
+intégralement le tampon et remet ses sommes à zéro — dès qu'une probabilité
+change **réellement** (comparée à l'ancienne valeur : un slider ramené à sa
+position courante ne doit pas tronquer la fenêtre inutilement). Plus aucun
+échantillon antérieur au dernier changement de K ne peut alors entrer dans
+la moyenne, qui redémarre de zéro (au sens statistique) à chaque changement
+de probabilité. `initMolecules()` fait le même appel à chaque RAZ.
 
 (Le rapport des sommes égale le rapport des moyennes — même nombre de
 termes — d'où l'absence de division par le compte dans le code.)
+
+#### Le tampon circulaire
+
+La fenêtre n'est pas relue dans `s.history` : `_pushQrSample(s, c)` entretient
+un tampon circulaire de `QR_AVG_SAMPLES` = 200 cases (`s._qrAB` / `s._qrCD`,
+tête `s._qrHead`) **et** les sommes courantes `s._qrSumAB` / `s._qrSumCD`, en
+retranchant l'échantillon évincé et en ajoutant le nouveau.
+`averagedReactionQuotient()` se réduit alors à une division. Les échantillons
+étant des produits d'entiers très en deçà de 2⁵³, ce cumul incrémental reste
+**exact** : aucune dérive de virgule flottante n'est possible.
+
+Ce découplage a une seconde conséquence, essentielle : le tampon est alimenté
+à **chaque** échantillon, y compris après que `s.history` a cessé de
+s'allonger (cf. `HISTORY_MAX_MS` ci-dessous). La frise continue donc de vivre
+indéfiniment alors que le graphe N(t) est figé.
+
+#### L'historique du graphe est plafonné à 5 min
+
+Au-delà de `HISTORY_MAX_MS` = 300 000 ms de temps simulé,
+`recordHistoryPoint()` échantillonne toujours (comptage, tampon Q<sub>r</sub>,
+`friseDirty`) mais **n'ajoute plus** de point à `s.history` : le graphe N(t)
+garde le tracé de ses 5 premières minutes.
+
+Deux motifs, l'un pédagogique et l'autre de performance :
+
+- tout ce qui porte le propos — la montée puis le plateau d'équilibre — se
+  joue très en amont de cette limite ; laisser l'axe des temps s'étirer
+  indéfiniment ne ferait qu'écraser cette partie-là ;
+- le coût de tracé du graphe est d'un `lineTo` par point et par courbe
+  visible : sans borne, il croît linéairement avec la durée de la séance.
+  5 min = 1500 points, soit ~4 points par pixel de large — la borne tombe
+  bien après que la courbe a cessé d'apporter de l'information.
+
+La simulation elle-même n'est jamais interrompue : molécules, readouts,
+frise et moyenne glissante restent vivants.
 
 #### Amplitude attendue des fluctuations
 
@@ -316,10 +348,13 @@ marqueur plaqué contre un bord se lirait comme une mesure exacte.
 
 ### Cadence de rafraîchissement
 
-`drawAllFrises()` est appelé depuis la branche `if (dirty)` de `loop()`, donc
-à la même cadence que les graphes (~5 Hz de temps simulé, celle des points
-d'historique). Trois appels explicites complètent ce flux, chacun pour un cas
-où aucun point d'historique n'est produit :
+`drawAllFrises()` est appelé depuis `loop()` sur le drapeau `friseDirty`,
+donc à la cadence des échantillons (~5 Hz de temps simulé). Les graphes ont
+leur propre drapeau `historyDirty`, levé seulement quand un point a
+effectivement été **ajouté** à `s.history` : passé `HISTORY_MAX_MS`, les
+graphes cessent d'être redessinés alors que les frises continuent. Trois
+appels explicites complètent ce flux, chacun pour un cas où aucun
+échantillon n'est produit :
 
 - `syncUIToSim()` → couvre l'init et toutes les RAZ (y compris celles
   déclenchées par un slider de quantité) ;
@@ -546,9 +581,10 @@ index.html
   │
   └── js/recipient.js    dépend de : sims, molRadiusFrac, SPECIES_COLORS
   │                       expose : attachCanvas, resizeAll, resizeRecipient,
-  │                                drawScene, drawSphere
+  │                                drawScene
   │
-  └── js/graph.js        dépend de : sims (history, chartVisible), SPECIES_COLORS
+  └── js/graph.js        dépend de : sims (history, _histMax, chartVisible),
+  │                                 SPECIES_COLORS
   │                       expose : attachChart, resizeChartAll, resizeChart,
   │                                drawChart, drawAllCharts, buildChartLegend
   │

@@ -71,6 +71,22 @@ var MAX_STEP_FRAC = 0.5;
 // Période d'échantillonnage de l'historique (ms simulés)
 var HISTORY_PERIOD = 200;
 
+// ── Durée maximale enregistrée dans l'historique du graphe (ms simulés) ──
+// Au-delà, `recordHistoryPoint` cesse d'ALLONGER `s.history` : le graphe
+// N(t) se fige sur ses 5 premières minutes. Deux raisons :
+//  - pédagogique : tout ce qui porte le propos (la montée puis le plateau
+//    d'équilibre) se joue très en amont de cette limite ; laisser l'axe des
+//    temps s'étirer indéfiniment ne fait qu'écraser cette partie-là ;
+//  - performance : sans borne, le coût de tracé du graphe (un `lineTo` par
+//    point et par courbe, cf. graph.js) croît linéairement avec la durée de
+//    la séance. 5 min = 1500 points, soit ~4 points par pixel de large sur
+//    un graphe typique : la borne est atteinte bien après que la courbe a
+//    cessé d'apporter de l'information nouvelle.
+// La simulation, elle, continue normalement : molécules, frise et moyenne
+// glissante de Qr restent vivants (cf. _pushQrSample, qui est alimenté même
+// une fois l'historique figé).
+var HISTORY_MAX_MS = 300000;   // 5 min
+
 // ── Fenêtre de moyennage du quotient de réaction (ms simulés) ──────────
 // Qr instantané fluctue beaucoup : son écart-type relatif vaut
 // √(1/N_A + 1/N_B + 1/N_C + 1/N_D), soit ~±40 % avec une centaine de
@@ -81,6 +97,9 @@ var HISTORY_PERIOD = 200;
 // marqueur de la frise vient alors visiblement se coller à K.
 var QR_AVG_WINDOW_MS = 40000;
 
+// Nombre d'échantillons couvrant cette fenêtre (200 points).
+var QR_AVG_SAMPLES = Math.round(QR_AVG_WINDOW_MS / HISTORY_PERIOD);
+
 // ── Couleurs des espèces (réutilisées par recipient.js, graph.js, frise.js) ──
 // Contrairement à cinetique/, C et D ne sont pas de simples « produits en
 // retrait » : la réaction étant réversible, ils sont tour à tour réactifs
@@ -88,8 +107,8 @@ var QR_AVG_WINDOW_MS = 40000;
 // VIVES et bien séparées sur le cercle chromatique (A 208° bleu, B 15°
 // rouge-orangé, C 130° vert franc, D 48° jaune), plutôt que de désaturer
 // C/D comme le faisait cinetique/. `border` ne sert qu'aux pastilles de
-// légende et de readout (drawSphere() dessine les molécules elles-mêmes
-// avec un contour noir commun, cf. recipient.js) — utile ici pour D
+// légende et de readout (les molécules elles-mêmes sont dessinées avec un
+// contour noir commun, cf. _drawMolecules dans recipient.js) — utile ici pour D
 // (jaune), la seule teinte assez claire pour perdre en lisibilité sur un
 // fond blanc sans un contour plus soutenu.
 var SPECIES_COLORS = {
@@ -172,6 +191,10 @@ function createSim(index) {
     chartCanvas: null, chartCtx: null,
     chartVisible: { A: true, B: true, C: true, D: true },
     chartHover: null,
+    // Vrai entre la prise en compte d'un `mousemove` sur le graphe et le
+    // redraw qui s'ensuit : coalesce en une seule frame la rafale
+    // d'événements d'une souris haute fréquence (cf. attachChart).
+    _hoverRafPending: false,
     friseCanvas: null, friseCtx: null,
 
     // Affiche sur le graphe, en pointillés, les quantités théoriques à
@@ -194,23 +217,45 @@ function createSim(index) {
     simTime: 0,
 
     // ── Historique temporel des quantités ──
-    // t en secondes, A/B/C/D en nombre de molécules
+    // t en secondes, A/B/C/D en nombre de molécules.
+    // Cesse de s'allonger au-delà de HISTORY_MAX_MS (cf. recordHistoryPoint).
     history: { t: [], A: [], B: [], C: [], D: [] },
+
+    // Maximum atteint par chaque espèce sur toute la durée de l'historique,
+    // tenu à jour à chaque point ajouté (cf. recordHistoryPoint) et remis à
+    // zéro à chaque RAZ. Évite à _axisBounds() (graph.js) de rebalayer tout
+    // l'historique à chaque redraw pour retrouver la borne de l'axe Y : les
+    // quantités ne faisant que croître ou décroître par pas de 1, ce
+    // maximum incrémental est exact.
+    _histMax: { A: 0, B: 0, C: 0, D: 0 },
 
     // Passe à true quand un point d'historique vient d'être ajouté : le graphe
     // ne se redessine que dans ce cas (5 redraws/s au lieu de 60), cf. ui.js.
     historyDirty: true,
 
+    // Même rôle pour la frise, mais sur un critère plus large : elle affiche
+    // Qr instantané et sa moyenne glissante, qui continuent d'évoluer même
+    // une fois l'historique du graphe figé (cf. HISTORY_MAX_MS). Ce drapeau
+    // est donc levé à CHAQUE échantillon, là où `historyDirty` ne l'est que
+    // si le point a effectivement été ajouté au graphe.
+    friseDirty: true,
+
     // Accumulateur interne pour l'échantillonnage de l'historique
     _historyTimer: 0,
 
-    // Index (dans s.history) du premier point à prendre en compte pour la
-    // moyenne glissante de Qr — cf. averagedReactionQuotient. Avancé
-    // chaque fois que probAB ou probCD change (donc K), pour que la
-    // fenêtre ne mélange jamais des échantillons visant des K différents ;
-    // remis à 0 à chaque RAZ (initMolecules), l'historique repartant de
-    // toute façon de zéro à ce moment-là.
-    _qrAvgSinceIndex: 0,
+    // ── Fenêtre glissante de Qr : tampon circulaire ──────────────────────
+    // Les produits N_A·N_B et N_C·N_D des QR_AVG_SAMPLES derniers
+    // échantillons, avec leurs sommes courantes — averagedReactionQuotient()
+    // n'a ainsi qu'une division à faire, au lieu de resommer 200 points à
+    // chaque redraw de la frise. Les valeurs étant des produits d'entiers,
+    // l'ajout/retrait incrémental sur les sommes reste EXACT (entiers bien
+    // en deçà de 2⁵³), sans dérive de virgule flottante.
+    // Le tampon est intégralement vidé dès que probAB ou probCD change
+    // (donc K) : la fenêtre ne mélange jamais des échantillons visant deux K
+    // différents, cf. setReactionProbability.
+    _qrAB: [], _qrCD: [],
+    _qrHead: 0, _qrCount: 0,
+    _qrSumAB: 0, _qrSumCD: 0,
 
     // Grille spatiale de détection des collisions (cf. _collidePairs)
     _grid: [], _gridCols: 0, _gridRows: 0
@@ -374,30 +419,68 @@ function theoreticalEquilibrium(s) {
 // Le rapport des SOMMES égale le rapport des moyennes (même nombre de
 // termes), inutile de diviser par le compte.
 function averagedReactionQuotient(s) {
-  var h = s.history;
-  var n = h.t.length;
-  if (n === 0) return null;
+  if (s._qrCount === 0) return null;
+  if (s._qrSumAB === 0) return s._qrSumCD === 0 ? null : Infinity;
+  return s._qrSumCD / s._qrSumAB;
+}
 
-  var want  = Math.round(QR_AVG_WINDOW_MS / HISTORY_PERIOD);
-  // Ne jamais remonter avant le dernier changement de probabilité
-  // (_qrAvgSinceIndex, cf. setReactionProbability) : mélanger des points
-  // visant deux K différents biaiserait la moyenne pendant toute la durée
-  // de la fenêtre suivant le changement.
-  var start = Math.max(0, n - want, s._qrAvgSinceIndex);
-  var sumAB = 0, sumCD = 0;
-  for (var i = start; i < n; i++) {
-    sumAB += h.A[i] * h.B[i];
-    sumCD += h.C[i] * h.D[i];
+// Ajoute un échantillon au tampon circulaire de la fenêtre glissante, en
+// maintenant les sommes courantes. Alimenté à CHAQUE échantillon, y compris
+// une fois l'historique du graphe figé (cf. HISTORY_MAX_MS) : c'est ce qui
+// permet à la frise de rester vivante indéfiniment.
+function _pushQrSample(s, c) {
+  var ab = c.A * c.B;
+  var cd = c.C * c.D;
+  if (s._qrCount < QR_AVG_SAMPLES) {
+    // Phase de remplissage : on empile, `_qrHead` (index du plus ancien)
+    // reste à 0.
+    s._qrAB.push(ab);
+    s._qrCD.push(cd);
+    s._qrCount++;
+  } else {
+    // Tampon plein : le plus ancien sort des sommes et cède sa case.
+    s._qrSumAB -= s._qrAB[s._qrHead];
+    s._qrSumCD -= s._qrCD[s._qrHead];
+    s._qrAB[s._qrHead] = ab;
+    s._qrCD[s._qrHead] = cd;
+    s._qrHead = (s._qrHead + 1) % QR_AVG_SAMPLES;
   }
-  if (sumAB === 0) return sumCD === 0 ? null : Infinity;
-  return sumCD / sumAB;
+  s._qrSumAB += ab;
+  s._qrSumCD += cd;
+}
+
+// Vide la fenêtre glissante (RAZ, ou changement de K).
+function _resetQrWindow(s) {
+  s._qrAB.length = 0;
+  s._qrCD.length = 0;
+  s._qrHead = 0;
+  s._qrCount = 0;
+  s._qrSumAB = 0;
+  s._qrSumCD = 0;
 }
 
 function recordHistoryPoint(s) {
   var c = countSpecies(s);
+
+  // La fenêtre glissante de Qr est alimentée sans condition : la frise doit
+  // continuer de vivre après que le graphe s'est figé.
+  _pushQrSample(s, c);
+  s.friseDirty = true;
+
+  // Au-delà de HISTORY_MAX_MS, le graphe N(t) garde le tracé déjà accumulé
+  // et cesse de s'allonger.
+  if (s.simTime > HISTORY_MAX_MS) return;
+
   var h = s.history;
   h.t.push(s.simTime / 1000);
   h.A.push(c.A); h.B.push(c.B); h.C.push(c.C); h.D.push(c.D);
+
+  var mx = s._histMax;
+  if (c.A > mx.A) mx.A = c.A;
+  if (c.B > mx.B) mx.B = c.B;
+  if (c.C > mx.C) mx.C = c.C;
+  if (c.D > mx.D) mx.D = c.D;
+
   s.historyDirty = true;
 }
 
@@ -467,7 +550,8 @@ function initMolecules(s) {
   s.simTime = 0;
   s._historyTimer = 0;
   s.history = { t: [], A: [], B: [], C: [], D: [] };
-  s._qrAvgSinceIndex = 0;
+  s._histMax = { A: 0, B: 0, C: 0, D: 0 };
+  _resetQrWindow(s);
   recordHistoryPoint(s);
 }
 
@@ -524,7 +608,11 @@ function setSpeciesCount(s, type, target) {
 function setReactionProbability(s, direction, percent) {
   var changed = (direction === 'AB') ? (s.probAB !== percent) : (s.probCD !== percent);
   if (direction === 'AB') s.probAB = percent; else s.probCD = percent;
-  if (changed) s._qrAvgSinceIndex = s.history.t.length;
+  // Vider la fenêtre plutôt que d'y mémoriser un index de départ : la
+  // moyenne repart de zéro (au sens statistique) et ne peut plus contenir un
+  // seul échantillon visant l'ancien K. Le test `changed` évite de la
+  // tronquer pour rien quand un slider revient à sa position courante.
+  if (changed) _resetQrWindow(s);
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -664,9 +752,16 @@ function _resolvePair(mi, mj, diam, diam2, vActAB, vActCD) {
 }
 
 // ── Détection des collisions par grille spatiale ───────────────────────
-// cf. cinetique/js/sim.js pour le détail : grille de cellules de côté
-// 2×diamètre, chaque molécule n'est testée que contre sa cellule et les
-// 8 voisines, ce qui ramène le coût de O(N²) à O(N).
+// cf. cinetique/js/sim.js pour le détail : chaque molécule n'est testée que
+// contre sa cellule et les 8 voisines, ce qui ramène le coût de O(N²) à O(N).
+//
+// Côté de cellule = UN diamètre (et non deux comme dans cinetique/) : c'est
+// le minimum correct — deux molécules en contact sont distantes de moins
+// d'un diamètre, donc au plus d'une cellule en x comme en y, et le
+// demi-voisinage _GRID_NEIGHBOURS les couvre. Doubler ce côté quadruple
+// l'aire d'une cellule, donc le nombre de molécules qu'elle contient, donc
+// (au carré de l'occupation) ~4× le nombre de paires testées — pour un
+// résultat rigoureusement identique.
 var _GRID_NEIGHBOURS = [[1, 0], [-1, 1], [0, 1], [1, 1]];
 
 function _collidePairs(s) {
@@ -682,7 +777,7 @@ function _collidePairs(s) {
   var vActAB = _activationFactorFromProbability(s.probAB) * s.v0px;
   var vActCD = _activationFactorFromProbability(s.probCD) * s.v0px;
 
-  var cell = Math.max(1, diam * 2);
+  var cell = Math.max(1, diam);
   var x0 = s.boxLeft, y0 = s.boxTop;
   var cols = Math.max(1, Math.ceil((s.boxRight - x0) / cell));
   var rows = Math.max(1, Math.ceil((s.boxBottom - y0) / cell));

@@ -144,29 +144,56 @@ function _drawRecipient(s) {
   ctx.fillRect(rx2 - WALL_THICK, ry1, WALL_THICK, ry2 - ry1);       // droite
 }
 
-// ── Dessin d'une molécule (disque uni + fine bordure noire) ─────────────
+// ── Dessin des molécules (disques unis + fine bordure noire) ───────────
 // La bordure est noire (et non la couleur `border` de SPECIES_COLORS, qui
 // reste utilisée ailleurs — ex. pastilles de légende) pour bien détacher
 // chaque molécule du fond et des molécules voisines de couleur proche.
-// `stroke` et `widthMul` sont optionnels : sans eux on retrouve le contour
-// noir fin commun à toutes les molécules.
-function drawSphere(ctx, x, y, r, fill, stroke, widthMul) {
-  ctx.beginPath();
-  ctx.arc(x, y, r, 0, Math.PI * 2);
-  ctx.fillStyle = fill;
-  ctx.fill();
-  ctx.lineWidth = Math.max(0.75, r * 0.18) * (widthMul || 1);
-  ctx.strokeStyle = stroke || '#1a1a1a';
-  ctx.stroke();
-}
+//
+// Rendu PAR LOT (une passe par espèce) et non molécule par molécule : les
+// 4 espèces ont toutes le même rayon, le même contour et la même épaisseur
+// de trait, seule la couleur de remplissage les distingue. On accumule donc
+// tous les disques d'une espèce dans un seul chemin, puis un `fill()` et un
+// `stroke()` pour tout le lot — soit 8 appels de dessin par frame au lieu de
+// 4 par molécule (~9600 avec 1200 molécules × 2 simulations). Ce sont les
+// changements d'état du contexte (`fillStyle`, `lineWidth`) qui coûtent le
+// plus cher : ils passent de 2400 par frame à 4.
+//
+// Le `moveTo` avant chaque `arc` est indispensable : sans lui, le chemin
+// relierait par un segment la fin d'un disque au début du suivant.
+//
+// Seule conséquence visible : là où deux molécules se chevauchent, l'ordre
+// de superposition est désormais celui des espèces (A, puis B, C, D) et non
+// celui du tableau. Sur des sphères dures que la séparation anti-sticking
+// maintient écartées, le recouvrement ne dépasse pas le pixel.
+var _SPECIES_KEYS = ['A', 'B', 'C', 'D'];
 
 function _drawMolecules(s) {
   var mols = s.molecules;
-  var r    = s.molRadius;
+  var n    = mols.length;
+  if (n === 0) return;
 
-  for (var i = 0; i < mols.length; i++) {
-    var m = mols[i];
-    drawSphere(s.ctx, m.x, m.y, r, SPECIES_COLORS[m.type].fill);
+  var ctx = s.ctx;
+  var r   = s.molRadius;
+  var TWO_PI = Math.PI * 2;
+
+  ctx.lineWidth   = Math.max(0.75, r * 0.18);
+  ctx.strokeStyle = '#1a1a1a';
+
+  for (var k = 0; k < _SPECIES_KEYS.length; k++) {
+    var key = _SPECIES_KEYS[k];
+    var any = false;
+    ctx.beginPath();
+    for (var i = 0; i < n; i++) {
+      var m = mols[i];
+      if (m.type !== key) continue;
+      ctx.moveTo(m.x + r, m.y);
+      ctx.arc(m.x, m.y, r, 0, TWO_PI);
+      any = true;
+    }
+    if (!any) continue;
+    ctx.fillStyle = SPECIES_COLORS[key].fill;
+    ctx.fill();
+    ctx.stroke();
   }
 }
 

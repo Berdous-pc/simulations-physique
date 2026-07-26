@@ -68,13 +68,19 @@ function loop(ts) {
 
   // Le graphe ne change qu'à chaque nouveau point d'historique (5 fois par
   // seconde de temps simulé) : inutile de le redessiner à 60 fps. La frise
-  // suit la même cadence — elle lit l'historique pour sa moyenne glissante,
-  // et son aiguille instantanée n'a rien à gagner à s'agiter à 60 fps.
-  var dirty = false;
+  // suit la même cadence — son aiguille instantanée n'a rien à gagner à
+  // s'agiter à 60 fps.
+  //
+  // Deux drapeaux distincts et non un seul : passé HISTORY_MAX_MS (5 min de
+  // temps simulé), le graphe cesse de s'allonger et n'a donc plus rien à
+  // redessiner, alors que la frise continue de suivre Qr indéfiniment.
+  var chartDirty = false, friseDirty = false;
   for (var k = 0; k < list.length; k++) {
-    if (list[k].historyDirty) { list[k].historyDirty = false; dirty = true; }
+    if (list[k].historyDirty) { list[k].historyDirty = false; chartDirty = true; }
+    if (list[k].friseDirty)   { list[k].friseDirty   = false; friseDirty = true; }
   }
-  if (dirty) { drawAllCharts(); drawAllFrises(); }
+  if (chartDirty) drawAllCharts();
+  if (friseDirty) drawAllFrises();
 }
 
 // ══════════════════════════════════════════════════════════════════════
