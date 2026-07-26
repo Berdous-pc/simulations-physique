@@ -198,6 +198,10 @@ function createSim(index) {
     chartCanvas: null, chartCtx: null,
     chartVisible: { A: true, B: true, C: true, D: true },
     chartHover: null,
+    // Vrai entre la prise en compte d'un `mousemove` sur le graphe et le
+    // redraw qui s'ensuit : coalesce en une seule frame la rafale
+    // d'événements d'une souris haute fréquence (cf. attachChart).
+    _hoverRafPending: false,
 
     // Halo matérialisant le rayon de captage des catalyseurs (checkbox du
     // panneau, activable seulement s'il y a au moins un catalyseur).
@@ -215,6 +219,13 @@ function createSim(index) {
     // ── Historique temporel des quantités (fenêtre glissante) ──
     // t en secondes, A/B/C/D en nombre de molécules
     history: { t: [], A: [], B: [], C: [], D: [] },
+
+    // Maximum atteint par chaque espèce sur toute la durée de l'historique,
+    // tenu à jour à chaque point ajouté (cf. recordHistoryPoint) et remis à
+    // zéro à chaque RAZ. Évite à _axisBounds() (graph.js) de rebalayer tout
+    // l'historique à chaque redraw pour retrouver la borne de l'axe Y : les
+    // quantités ne variant que par pas de 1, ce maximum incrémental est exact.
+    _histMax: { A: 0, B: 0, C: 0, D: 0 },
 
     // Passe à true quand un point d'historique vient d'être ajouté : le graphe
     // ne se redessine que dans ce cas (5 redraws/s au lieu de 60), cf. ui.js.
@@ -289,6 +300,13 @@ function recordHistoryPoint(s) {
   var h = s.history;
   h.t.push(s.simTime / 1000);
   h.A.push(c.A); h.B.push(c.B); h.C.push(c.C); h.D.push(c.D);
+
+  var mx = s._histMax;
+  if (c.A > mx.A) mx.A = c.A;
+  if (c.B > mx.B) mx.B = c.B;
+  if (c.C > mx.C) mx.C = c.C;
+  if (c.D > mx.D) mx.D = c.D;
+
   s.historyDirty = true;
 }
 
@@ -373,6 +391,7 @@ function initMolecules(s) {
   s.simTime = 0;
   s._historyTimer = 0;
   s.history = { t: [], A: [], B: [], C: [], D: [] };
+  s._histMax = { A: 0, B: 0, C: 0, D: 0 };
   // Un réactif à 0 dès le départ (ex. N_A = 0) fige tout de suite : la
   // réaction ne peut pas avoir lieu, inutile d'attendre un premier choc.
   s.finished = (s.N0_A === 0 || s.N0_B === 0);

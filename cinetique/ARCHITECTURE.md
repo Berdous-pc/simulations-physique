@@ -363,7 +363,10 @@ vrai. `buildChartLegend(s)` génère les 4 lignes à checkbox dans
 
 **Bornes d'axes communes** : `_axisBounds()` balaie *toutes* les simulations affichées
 — échelle Y dynamique (`_niceStep`, marge 10 % au-dessus du maximum affiché), échelle X
-sur `[0, max(15 s, t_dernier_point)]`. Les deux graphes partagent donc exactement les
+sur `[0, max(15 s, t_dernier_point)]`. Le balayage est en **O(1)** : le maximum par
+espèce est lu dans `s._histMax`, tenu à jour au fil de l'eau par `recordHistoryPoint()`,
+et non retrouvé en reparcourant tout l'historique — cette fonction est appelée à chaque
+redraw, donc à chaque frame de survol du graphe. Les deux graphes partagent donc exactement les
 mêmes axes, seule façon de comparer les allures à l'œil. Corollaire : décocher une
 courbe dans une légende peut changer l'échelle de l'autre graphe, d'où l'appel à
 `drawAllCharts()` (et non `drawChart(s)`) depuis les checkboxes. En mode double, le
@@ -431,7 +434,8 @@ index.html
   │                       expose : attachCanvas, resizeAll, resizeRecipient,
   │                                drawScene, drawSphere
   │
-  └── js/graph.js        dépend de : sims (history, chartVisible), SPECIES_COLORS
+  └── js/graph.js        dépend de : sims (history, _histMax, chartVisible),
+  │                                 SPECIES_COLORS
   │                       expose : attachChart, resizeChartAll, resizeChart,
   │                                drawChart, drawAllCharts, buildChartLegend
   │

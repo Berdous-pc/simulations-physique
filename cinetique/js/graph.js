@@ -39,15 +39,32 @@ function attachChart(s) {
   if (!s.chartCanvas) return;
 
   // ── Survol souris (coordonnées du point le plus proche) ──
+  // Le handler ne fait qu'enregistrer la position : le redraw est différé à
+  // la prochaine frame (cf. _requestHoverRedraw). Une souris échantillonnée
+  // à 500 ou 1000 Hz déclencherait sinon autant de redraws complets par
+  // seconde, chacun retraçant les 4 courbes puis cherchant le point le plus
+  // proche sur tous leurs segments.
   s.chartCanvas.addEventListener('mousemove', function (e) {
     var r = s.chartCanvas.getBoundingClientRect();
     var scX = s.chartCanvas.clientWidth  / r.width;
     var scY = s.chartCanvas.clientHeight / r.height;
     s.chartHover = { mx: (e.clientX - r.left) * scX, my: (e.clientY - r.top) * scY };
-    drawChart(s);
+    _requestHoverRedraw(s);
   });
   s.chartCanvas.addEventListener('mouseleave', function () {
     s.chartHover = null;
+    _requestHoverRedraw(s);
+  });
+}
+
+// Coalesce en un seul redraw, à la prochaine frame, la rafale d'événements
+// de survol reçue entre-temps. Un drapeau par simulation : les deux graphes
+// se survolent indépendamment.
+function _requestHoverRedraw(s) {
+  if (s._hoverRafPending) return;
+  s._hoverRafPending = true;
+  requestAnimationFrame(function () {
+    s._hoverRafPending = false;
     drawChart(s);
   });
 }
@@ -135,6 +152,12 @@ function drawAllCharts() {
 //  Bornes des axes — COMMUNES à toutes les simulations affichées
 // ══════════════════════════════════════════════════════════════════════
 
+// Appelée à chaque redraw (y compris à chaque frame de survol) : elle doit
+// donc rester en O(1). D'où la lecture de `s._histMax`, le maximum par
+// espèce tenu à jour au fil de l'eau par recordHistoryPoint() (sim.js),
+// plutôt qu'un rebalayage de tout l'historique — qui coûtait, lui, 4
+// lectures par point d'historique et par simulation à CHAQUE mouvement de
+// souris.
 function _axisBounds() {
   var keys = ['A', 'B', 'C', 'D'];
   var xMax = 15;
@@ -144,12 +167,10 @@ function _axisBounds() {
     var h = s.history;
     var n = h.t.length;
     if (n > 0 && h.t[n - 1] > xMax) xMax = h.t[n - 1];
-    for (var i = 0; i < n; i++) {
-      for (var k = 0; k < keys.length; k++) {
-        var key = keys[k];
-        if (!s.chartVisible[key]) continue;
-        if (h[key][i] > yMaxRaw) yMaxRaw = h[key][i];
-      }
+    for (var k = 0; k < keys.length; k++) {
+      var key = keys[k];
+      if (!s.chartVisible[key]) continue;
+      if (s._histMax[key] > yMaxRaw) yMaxRaw = s._histMax[key];
     }
   });
 
