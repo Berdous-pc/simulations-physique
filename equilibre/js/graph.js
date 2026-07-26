@@ -151,6 +151,18 @@ function _axisBounds() {
         if (h[key][i] > yMaxRaw) yMaxRaw = h[key][i];
       }
     }
+    // Les pointillés de quantités théoriques doivent rester visibles dès
+    // l'affichage, sans attendre que la courbe rejoigne cette hauteur.
+    if (s.showTheoretical) {
+      var eq = theoreticalEquilibrium(s);
+      if (eq) {
+        for (var k2 = 0; k2 < keys.length; k2++) {
+          var key2 = keys[k2];
+          if (!s.chartVisible[key2]) continue;
+          if (eq[key2] > yMaxRaw) yMaxRaw = eq[key2];
+        }
+      }
+    }
   });
 
   var xStep = _niceStep(xMax, 5);
@@ -280,6 +292,30 @@ function drawChart(s) {
       ctx.lineWidth = Math.max(1.5, baseFont * 0.16);
       ctx.lineJoin = 'round';
       ctx.stroke();
+    }
+  }
+
+  // ── Quantités finales théoriques (pointillés horizontaux) ──
+  // Une ligne par espèce visible, à la hauteur N_eq calculée par
+  // theoreticalEquilibrium() (cf. sim.js) — la valeur vers laquelle la
+  // courbe pleine correspondante devrait converger.
+  if (s.showTheoretical) {
+    var eqVals = theoreticalEquilibrium(s);
+    if (eqVals) {
+      ctx.save();
+      ctx.setLineDash([Math.max(4, baseFont * 0.5), Math.max(3, baseFont * 0.35)]);
+      ctx.lineWidth = Math.max(1.3, baseFont * 0.14);
+      for (var tk = 0; tk < drawOrder.length; tk++) {
+        var tKey = drawOrder[tk];
+        if (!s.chartVisible[tKey]) continue;
+        var yEq = py(eqVals[tKey]);
+        ctx.strokeStyle = SPECIES_COLORS[tKey].fill;
+        ctx.beginPath();
+        ctx.moveTo(padL, yEq);
+        ctx.lineTo(padL + gw, yEq);
+        ctx.stroke();
+      }
+      ctx.restore();
     }
   }
 

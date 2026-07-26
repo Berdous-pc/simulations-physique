@@ -140,13 +140,14 @@ physiquement élastiques de bout en bout.
 
 ### Quotient de réaction, constante d'équilibre et moyenne glissante
 
-Trois fonctions, toutes dans `sim.js` :
+Quatre fonctions, toutes dans `sim.js` :
 
 | Fonction | Rôle |
 |---|---|
 | `reactionQuotient(c)` | Q<sub>r</sub> = (N<sub>C</sub>×N<sub>D</sub>)/(N<sub>A</sub>×N<sub>B</sub>) **instantané**, depuis un comptage `countSpecies(s)`. En nombre de molécules — proportionnel aux concentrations à volume constant. `null` si indéterminé (0/0), `Infinity` si seul le dénominateur est nul |
 | `equilibriumConstant(s)` | K = `probAB / probCD` (cf. démonstration ci-dessous). `null` si les deux probabilités sont nulles, `Infinity` si seul le sens indirect est bloqué |
-| `averagedReactionQuotient(s)` | Q<sub>r</sub> **moyenné** sur `QR_AVG_WINDOW_MS` = 20 s de temps simulé, lu directement dans `s.history` (100 points à `HISTORY_PERIOD` = 200 ms) |
+| `averagedReactionQuotient(s)` | Q<sub>r</sub> **moyenné** sur `QR_AVG_WINDOW_MS` = 40 s de temps simulé, lu directement dans `s.history` (200 points à `HISTORY_PERIOD` = 200 ms) |
+| `theoreticalEquilibrium(s)` | quantités **N_A/B/C/D théoriques à l'équilibre** (cf. section dédiée), affichées en pointillés sur le graphe |
 
 #### Pourquoi K = probAB / probCD
 
@@ -179,6 +180,25 @@ importantes :
    contaminerait définitivement une moyenne de Q<sub>r</sub>, alors qu'ici il
    n'ajoute que 0 au dénominateur cumulé.
 
+#### La fenêtre de moyennage se réinitialise avec K
+
+Changer une probabilité change K, sans RAZ (cf. `setReactionProbability`
+ci-dessus). Sans précaution, la fenêtre glissante de 40 s continuerait donc à
+mélanger, pendant ces 40 s, des échantillons visant l'ANCIEN K et le
+NOUVEAU — la moyenne affichée dériverait de façon trompeuse au lieu de
+sauter proprement vers la nouvelle cible.
+
+`s._qrAvgSinceIndex` (initialisé à 0 dans `createSim`, remis à 0 par
+`initMolecules` à chaque RAZ) mémorise l'index du premier point
+d'historique éligible. `setReactionProbability()` l'avance à
+`s.history.t.length` dès qu'une probabilité change **réellement** (comparée
+à l'ancienne valeur — un slider ramené à sa position initiale ne doit pas
+tronquer la fenêtre inutilement). `averagedReactionQuotient()` borne alors
+son point de départ par `Math.max(0, n − want, s._qrAvgSinceIndex)` : plus
+aucun échantillon antérieur au dernier changement de K n'entre dans la
+moyenne, qui redémarre donc de zéro (au sens statistique) à chaque
+changement de probabilité.
+
 (Le rapport des sommes égale le rapport des moyennes — même nombre de
 termes — d'où l'absence de division par le compte dans le code.)
 
@@ -197,6 +217,53 @@ définie. À l'échelle visible de quelques centaines de molécules, l'élève v
 *pourquoi* il faut un très grand nombre de particules pour qu'un équilibre
 statistique se lise comme une valeur stable — d'où le choix d'afficher
 simultanément l'instantané (qui s'agite) et la moyenne (qui converge).
+
+Ces deux valeurs (instantanée et moyennée) ne sont affichées que sur la
+frise — elles ont été retirées du bloc `.readout` du panneau (« Quantités
+actuelles »), qui ne montre plus que le décompte brut A/B/C/D : la frise est
+le seul endroit dédié à la lecture de Qr, la duplication n'apportait rien.
+
+### Quantités théoriques à l'équilibre — `theoreticalEquilibrium(s)`
+
+Bouton **« Quantités finales théoriques »** (`.btn-toggle-one`, repris de
+`diffraction/`), juste après les 2 sliders de probabilité — un par
+simulation, état porté par `s.showTheoretical`. Affiche sur le graphe, en
+pointillés horizontaux, les 4 valeurs N_A/B/C/D vers lesquelles le système
+devrait converger.
+
+Toute la réaction se résume à un seul degré de liberté, l'**avancement ξ**
+(chaque événement, dans un sens ou dans l'autre, échange exactement 1 A + 1
+B contre 1 C + 1 D) : N_A = N0_A−ξ, N_B = N0_B−ξ, N_C = N0_C+ξ, N_D = N0_D+ξ.
+Résoudre Qr(ξ) = K donne l'équation du second degré
+
+```
+(K−1)·ξ² − [K·(N0_A+N0_B) + (N0_C+N0_D)]·ξ + (K·N0_A·N0_B − N0_C·N0_D) = 0
+```
+
+dont la racine physiquement valide est celle tombant dans
+[ξ_min, ξ_max] = [−min(N0_C,N0_D), min(N0_A,N0_B)] — l'intervalle sur lequel
+les 4 quantités restent positives ou nulles. Un argument des valeurs
+intermédiaires garantit qu'il en existe exactement une dans cet intervalle
+pour tout K fini non nul (aux deux bornes, un des deux membres de
+Qr(ξ)=K s'annule, avec un signe opposé) ; les cas K = 0, K = ∞ et K = null
+(un slider de probabilité à 0 %, ou les deux) sont traités à part, la
+réaction n'étant alors possible que dans un seul sens ou dans aucun.
+
+`_axisBounds()` (dans `graph.js`) inclut ces valeurs théoriques dans le
+calcul du yMax des DEUX graphes affichés (mode 2 simulations) quand
+`s.showTheoretical` est actif : sans ça, les pointillés resteraient hors
+cadre tant que la courbe pleine correspondante n'a pas encore rejoint cette
+hauteur. `drawChart()` les trace après les courbes pleines (par-dessus,
+lignes fines discontinues, une par espèce visible), dans la couleur
+`SPECIES_COLORS` de l'espèce concernée.
+
+**Redessin en direct** : `toggleTheoretical(i)` (dans `ui.js`) et les
+handlers `onSliderProbAB/CD()` appellent `drawAllCharts()` (pas seulement
+`drawChart(s)`) après tout changement de K ou de bascule du bouton — sans
+quoi les pointillés resteraient figés jusqu'au prochain point d'historique
+(~200 ms plus tard) au lieu de suivre le réglage en direct, et une bascule
+sur une seule simulation ne mettrait pas à jour l'échelle commune de
+l'autre.
 
 ---
 
@@ -269,9 +336,13 @@ où aucun point d'historique n'est produit :
 - 4 sliders de quantité initiale (A, B, C, D) au lieu de 2, plus 2 sliders
   de probabilité, au lieu du slider Température et du slider Catalyseurs
   (+ case « Afficher le rayon d'action », qui disparaît avec lui).
-- Deux lignes `.ro-qr-row` dans le bloc `.readout` : Q<sub>r</sub>
-  instantané, puis Q<sub>r</sub> moyenné (`.ro-qr-row-avg`, en ambre — la
-  couleur de son marqueur sur la frise).
+- Bouton **« Quantités finales théoriques »** (`.btn-toggle-one`, repris de
+  `diffraction/`) juste après les sliders de probabilité — cf. section
+  dédiée plus haut.
+- Le bloc `.readout` (« Quantités actuelles ») ne montre plus que le
+  décompte A/B/C/D : Q<sub>r</sub> instantané et moyenné, qui y vivaient
+  d'abord, ont été retirés au profit de la frise, seul endroit dédié à leur
+  lecture.
 - Identifiants renommés `cinetique-*` → `equilibre-*` (équation, légende,
   graphe) pour éviter toute ambiguïté entre les deux pages.
 
@@ -470,7 +541,8 @@ index.html
   │                              randomVelocity, countSpecies, initMolecules,
   │                              setSpeciesCount, setReactionProbability,
   │                              reactionQuotient, averagedReactionQuotient,
-  │                              equilibriumConstant, stepPhysics, resetSim
+  │                              equilibriumConstant, theoreticalEquilibrium,
+  │                              stepPhysics, resetSim
   │
   └── js/recipient.js    dépend de : sims, molRadiusFrac, SPECIES_COLORS
   │                       expose : attachCanvas, resizeAll, resizeRecipient,
@@ -488,8 +560,9 @@ index.html
   │
   └── js/ui.js            dépend de : tous les fichiers précédents
                           expose : togglePause, onSliderSpeed, setSimCount,
-                                   setView, onToggleQrInstant, onSliderNA/NB/NC/ND,
-                                   onSliderProbAB/ProbCD, syncUIToSim, updateReadouts
+                                   setView, onToggleQrInstant, toggleTheoretical,
+                                   onSliderNA/NB/NC/ND, onSliderProbAB/ProbCD,
+                                   syncUIToSim, updateReadouts
                           démarre : init() → requestAnimationFrame(loop)
 ```
 

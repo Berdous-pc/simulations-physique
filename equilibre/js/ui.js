@@ -95,11 +95,10 @@ function updateReadouts() {
       var el = document.getElementById('ro-' + key + '-' + s.index);
       if (el) el.textContent = c[key];
     });
-    var qrEl = document.getElementById('ro-Qr-' + s.index);
-    if (qrEl) qrEl.textContent = _formatQr(reactionQuotient(c));
 
-    var qrAvgEl = document.getElementById('ro-Qr-avg-' + s.index);
-    if (qrAvgEl) qrAvgEl.textContent = _formatQr(averagedReactionQuotient(s));
+    // Qr instantané et moyenné ne sont plus dupliqués dans le panneau
+    // (readout « Quantités actuelles ») : ils vivent uniquement sur la
+    // frise, cf. frise.js.
 
     // Valeur de K dans la formule affichée au-dessus de la frise : elle ne
     // dépend que des deux sliders de probabilité, mais on la rafraîchit ici
@@ -137,6 +136,9 @@ function syncUIToSim() {
 
     var ck = document.getElementById('ck-qr-inst-' + i);
     if (ck) ck.checked = s.showQrInstant;
+
+    var btnTheo = document.getElementById('btn-theo-' + i);
+    if (btnTheo) btnTheo.classList.toggle('active', s.showTheoretical);
   });
 
   _updatePlayPauseBtn();
@@ -224,6 +226,21 @@ function onToggleQrInstant(i, checked) {
   drawFrise(sims[i - 1]);
 }
 
+// ── Bouton « Quantités finales théoriques » (par simulation) ──
+// Même motif que .btn-toggle-one de diffraction/ : état porté par la
+// simulation, classe .active synchronisée à la main (pas de <input> caché
+// dessous). drawAllCharts() et non drawChart(s) seul : les bornes de l'axe
+// Y sont communes aux deux graphes affichés (cf. _axisBounds dans
+// graph.js), donc ce réglage sur UNE simulation peut changer l'échelle de
+// l'autre.
+function toggleTheoretical(i) {
+  var s = sims[i - 1];
+  s.showTheoretical = !s.showTheoretical;
+  var btn = document.getElementById('btn-theo-' + i);
+  if (btn) btn.classList.toggle('active', s.showTheoretical);
+  drawAllCharts();
+}
+
 // ── Sliders Nombre de molécules A/B/C/D (par simulation) ──
 function onSliderNA(i, val) {
   var n = parseInt(val, 10);
@@ -259,6 +276,12 @@ function onSliderProbAB(i, val) {
   setReactionProbability(sims[i - 1], 'AB', n);
   updateReadouts();
   drawFrise(sims[i - 1]);
+  // K vient de changer : les pointillés « Quantités finales théoriques »
+  // (théoriquement dépendants de K) doivent suivre en direct, pas
+  // seulement au prochain point d'historique. drawAllCharts() et non
+  // drawChart(s) seul : les bornes de l'axe Y sont communes aux deux
+  // graphes affichés (cf. _axisBounds dans graph.js).
+  drawAllCharts();
 }
 
 function onSliderProbCD(i, val) {
@@ -267,6 +290,7 @@ function onSliderProbCD(i, val) {
   setReactionProbability(sims[i - 1], 'CD', n);
   updateReadouts();
   drawFrise(sims[i - 1]);
+  drawAllCharts();
 }
 
 // ══════════════════════════════════════════════════════════════════════

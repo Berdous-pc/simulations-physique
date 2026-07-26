@@ -591,6 +591,27 @@ body.duo .graph-area.view-frise .chart-wrap { display: none; }
 }
 .btn-raz:hover { background: #ccc8c0; }
 
+/* ── Bouton à bascule « on/off » (ex. Quantités finales théoriques) ─────
+   Repris de .btn-toggle-one de diffraction/ : un seul bouton qui affiche
+   son propre état (contrairement à .nsim-toggle / .view-tabs, deux boutons
+   toujours présents dont un seul mis en avant). Teinte ambre au repos
+   actif, identique à celle du marqueur Qr moyenné de la frise et de
+   .btn-pause — cohérent avec le reste de la charte de cette page. */
+.btn-toggle-one {
+  background: #ece8e0;
+  color: #5a6a78;
+  border: 1px solid #c8c0b4;
+  font-size: clamp(12px, 1.2vw, 15px);
+  padding: 9px 6px;
+}
+.btn-toggle-one.active {
+  background: #fde8c8;
+  color: #7a3a10;
+  border-color: #d0a060;
+}
+.btn-toggle-one:hover { background: #ddd8ce; }
+.btn-toggle-one.active:hover { background: #f8dcb0; }
+
 /* ── Paramètres ──────────────────────────────────── */
 .param-row {
   display: flex;
@@ -716,39 +737,6 @@ body.duo .graph-area.view-frise .chart-wrap { display: none; }
   color: #2a5080;
   font-variant-numeric: tabular-nums;
 }
-
-/* ── Quotient de réaction (sous la grille A/B/C/D) ───────────────── */
-.ro-qr-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 8px;
-  margin-top: 8px;
-  padding-top: 7px;
-  border-top: 1px dashed #d8d0c8;
-}
-
-.ro-qr-label {
-  font-size: clamp(11px, 1vw, 13px);
-  color: #7a8a96;
-}
-
-.ro-qr-val {
-  font-size: clamp(15px, 1.6vw, 20px);
-  font-weight: 700;
-  color: #2a5080;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Ligne Qr moyenné : séparateur allégé (elle suit immédiatement le Qr
-   instantané, dont elle n'est qu'une lecture lissée) et couleur ambre, la
-   même que celle du marqueur correspondant sur la frise. */
-.ro-qr-row-avg {
-  margin-top: 4px;
-  padding-top: 4px;
-  border-top: none;
-}
-.ro-qr-row-avg .ro-qr-val { color: #c08020; }
 
 /* Crans sous un slider : chaque label est centré exactement sous la position
    du curseur pour son cran. Le curseur natif (~16px de large) ne parcourt que

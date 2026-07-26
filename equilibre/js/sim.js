@@ -76,10 +76,10 @@ var HISTORY_PERIOD = 200;
 // √(1/N_A + 1/N_B + 1/N_C + 1/N_D), soit ~±40 % avec une centaine de
 // molécules — un bruit intrinsèque, pas un défaut de simulation (c'est
 // justement parce que N ~ 10²³ en chimie réelle que K apparaît comme une
-// constante bien définie). Moyenner sur 20 s de temps simulé, soit
-// 20000/200 = 100 points d'historique, divise ce bruit par ~10 : le
+// constante bien définie). Moyenner sur 40 s de temps simulé, soit
+// 40000/200 = 200 points d'historique, divise ce bruit par ~14 : le
 // marqueur de la frise vient alors visiblement se coller à K.
-var QR_AVG_WINDOW_MS = 20000;
+var QR_AVG_WINDOW_MS = 40000;
 
 // ── Couleurs des espèces (réutilisées par recipient.js, graph.js, frise.js) ──
 // Contrairement à cinetique/, C et D ne sont pas de simples « produits en
@@ -174,6 +174,11 @@ function createSim(index) {
     chartHover: null,
     friseCanvas: null, friseCtx: null,
 
+    // Affiche sur le graphe, en pointillés, les quantités théoriques à
+    // l'équilibre (cf. theoreticalEquilibrium ci-dessous) — bouton
+    // « Quantités finales théoriques » du panneau.
+    showTheoretical: false,
+
     // ── Vue affichée en mode 2 SIMULATIONS : 'graphe' ou 'frise' ──
     // En mode 1 simulation, graphe ET frise sont affichés simultanément
     // (l'un sous l'autre) et cette propriété est ignorée : la place ne
@@ -198,6 +203,14 @@ function createSim(index) {
 
     // Accumulateur interne pour l'échantillonnage de l'historique
     _historyTimer: 0,
+
+    // Index (dans s.history) du premier point à prendre en compte pour la
+    // moyenne glissante de Qr — cf. averagedReactionQuotient. Avancé
+    // chaque fois que probAB ou probCD change (donc K), pour que la
+    // fenêtre ne mélange jamais des échantillons visant des K différents ;
+    // remis à 0 à chaque RAZ (initMolecules), l'historique repartant de
+    // toute façon de zéro à ce moment-là.
+    _qrAvgSinceIndex: 0,
 
     // Grille spatiale de détection des collisions (cf. _collidePairs)
     _grid: [], _gridCols: 0, _gridRows: 0
@@ -284,6 +297,69 @@ function equilibriumConstant(s) {
   return s.probAB / s.probCD;
 }
 
+// ── Quantités théoriques à l'équilibre ──────────────────────────────────
+// Toute la réaction se résume à un seul degré de liberté, l'avancement ξ :
+// chaque événement (dans un sens ou dans l'autre) échange exactement 1 A +
+// 1 B contre 1 C + 1 D. Donc, à partir des quantités INITIALES :
+//   N_A = N0_A − ξ,  N_B = N0_B − ξ,  N_C = N0_C + ξ,  N_D = N0_D + ξ
+// et il suffit de résoudre Qr(ξ) = K pour trouver l'avancement d'équilibre :
+//   K·(N0_A−ξ)(N0_B−ξ) = (N0_C+ξ)(N0_D+ξ)
+// soit, développé, l'équation du second degré (K−1)ξ² − [K(N0_A+N0_B) +
+// (N0_C+N0_D)]·ξ + (K·N0_A·N0_B − N0_C·N0_D) = 0. Le physiquement valide
+// des (au plus) deux racines est celui compris dans [ξmin, ξmax] où
+// ξmax = min(N0_A, N0_B) (A ou B totalement consommé, sens direct à fond)
+// et ξmin = −min(N0_C, N0_D) (sens indirect à fond) : c'est l'intervalle
+// sur lequel les 4 quantités restent positives ou nulles. Un argument des
+// valeurs intermédiaires garantit qu'exactement une racine tombe dans cet
+// intervalle pour tout K fini strictement positif (aux deux bornes, l'un
+// des deux membres de l'équation Qr(ξ)=K s'annule, avec un signe opposé).
+// `null` si le total de molécules est nul (rien à répartir).
+function theoreticalEquilibrium(s) {
+  var A0 = s.N0_A, B0 = s.N0_B, C0 = s.N0_C, D0 = s.N0_D;
+  if (A0 + B0 + C0 + D0 <= 0) return null;
+
+  var xiMin = -Math.min(C0, D0);
+  var xiMax = Math.min(A0, B0);
+  var K = equilibriumConstant(s);
+  var xi;
+
+  if (K === null) {
+    // Aucune des deux réactions n'est possible (probAB = probCD = 0) :
+    // le système reste figé à son état initial, ξ = 0.
+    xi = 0;
+  } else if (K === Infinity) {
+    // Seul le sens direct est possible : A + B se consomment à fond.
+    xi = xiMax;
+  } else if (K === 0) {
+    // Seul le sens indirect est possible : C + D se consomment à fond.
+    xi = xiMin;
+  } else {
+    var a = K - 1;
+    var b = -(K * (A0 + B0) + (C0 + D0));
+    var c = K * A0 * B0 - C0 * D0;
+    if (Math.abs(a) < 1e-9) {
+      // K ≈ 1 : l'équation dégénère en une droite (b·ξ + c = 0).
+      xi = (b === 0) ? 0 : -c / b;
+    } else {
+      var disc = Math.max(0, b * b - 4 * a * c);   // ⩾ 0 par construction (IVT)
+      var sq = Math.sqrt(disc);
+      var xi1 = (-b + sq) / (2 * a);
+      var xi2 = (-b - sq) / (2 * a);
+      var eps = 1e-6;
+      var ok1 = xi1 >= xiMin - eps && xi1 <= xiMax + eps;
+      var ok2 = xi2 >= xiMin - eps && xi2 <= xiMax + eps;
+      // Cas normal : une seule racine tombe dans l'intervalle physique.
+      // Si aucune n'y tombe pile (bord numérique), on garde celle qui en
+      // est la plus proche plutôt que d'échouer.
+      xi = ok1 ? xi1 : ok2 ? xi2 : xi1;
+    }
+  }
+
+  if (xi < xiMin) xi = xiMin; else if (xi > xiMax) xi = xiMax;
+
+  return { A: A0 - xi, B: B0 - xi, C: C0 + xi, D: D0 + xi };
+}
+
 // ── Quotient de réaction MOYENNÉ sur une fenêtre glissante ─────────────
 // On moyenne les PRODUITS N_C·N_D et N_A·N_B séparément, puis on divise —
 // et non l'inverse. Deux raisons, toutes deux importantes :
@@ -303,7 +379,11 @@ function averagedReactionQuotient(s) {
   if (n === 0) return null;
 
   var want  = Math.round(QR_AVG_WINDOW_MS / HISTORY_PERIOD);
-  var start = Math.max(0, n - want);
+  // Ne jamais remonter avant le dernier changement de probabilité
+  // (_qrAvgSinceIndex, cf. setReactionProbability) : mélanger des points
+  // visant deux K différents biaiserait la moyenne pendant toute la durée
+  // de la fenêtre suivant le changement.
+  var start = Math.max(0, n - want, s._qrAvgSinceIndex);
   var sumAB = 0, sumCD = 0;
   for (var i = start; i < n; i++) {
     sumAB += h.A[i] * h.B[i];
@@ -387,6 +467,7 @@ function initMolecules(s) {
   s.simTime = 0;
   s._historyTimer = 0;
   s.history = { t: [], A: [], B: [], C: [], D: [] };
+  s._qrAvgSinceIndex = 0;
   recordHistoryPoint(s);
 }
 
@@ -433,8 +514,17 @@ function setSpeciesCount(s, type, target) {
 // seulement le seuil appliqué aux PROCHAINS chocs, sans RAZ — l'élève peut
 // ainsi observer en direct l'effet d'un changement de probabilité sur un
 // système déjà en évolution (ou déjà à l'équilibre).
+//
+// K = probAB/probCD changeant avec ce réglage, la fenêtre de moyennage de
+// Qr (averagedReactionQuotient) avance son point de départ pour ne plus
+// jamais mélanger des échantillons visant deux K différents — sans ce
+// garde-fou, juste après un changement de réglage, la moyenne affichée
+// resterait un temps un mélange de l'ancien et du nouveau K, brouillant la
+// lecture de la convergence.
 function setReactionProbability(s, direction, percent) {
+  var changed = (direction === 'AB') ? (s.probAB !== percent) : (s.probCD !== percent);
   if (direction === 'AB') s.probAB = percent; else s.probCD = percent;
+  if (changed) s._qrAvgSinceIndex = s.history.t.length;
 }
 
 // ══════════════════════════════════════════════════════════════════════
