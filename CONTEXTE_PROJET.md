@@ -436,19 +436,31 @@ Structure d'une carte :
 
 **Attributs `data-*`** sur chaque `.card` pour le filtrage JS :
 - `data-discipline` : `"physique"` ou `"chimie"`
-- `data-theme` : `"electricite"` | `"optique"` | `"radioactivite"` | `"reaction"` | `"cinetique"` | `"equilibre"` | `"titrage"` | `"dissolution"` | `"thermodynamique"` | `"ondes"` | `"mecanique"`
+- `data-theme` : `"electricite"` | `"optique"` | `"radioactivite"` | `"transformations-chimiques"` | `"dosages"` | `"solutions-aqueuses"` | `"thermodynamique"` | `"ondes"` | `"mecanique"`
 - `data-levels` : niveaux séparés par espace, ex: `"seconde premiere"`
+
+Chaque valeur `data-theme`/`data-value` est le libellé affiché mis en kebab-case (accents retirés) — pas de slug arbitraire déconnecté du texte visible.
+
+Cinétique chimique et Équilibre chimique sont des **cartes** du thème `"transformations-chimiques"` — ce ne sont pas des thèmes à part entière, il n'existe pas de `data-theme="cinetique"` ni `"equilibre"`.
 
 ### Panel de filtres
 
 Trois groupes de checkboxes (toutes cochées par défaut) :
 - **Niveau** : Seconde, Première, Terminale
 - **Discipline** : Physique, Chimie
-- **Thème** : Électricité, Optique, Radioactivité, Transformations chimiques (`data-value="reaction"`, `data-value="cinetique"` et `data-value="equilibre"`), Dosages (`data-value="titrage"`), Solutions aqueuses (`data-value="dissolution"`), Thermodynamique, Ondes, Mécanique
+- **Thème** : Électricité, Optique, Radioactivité, Transformations chimiques (`data-value="transformations-chimiques"`), Dosages (`data-value="dosages"`), Solutions aqueuses (`data-value="solutions-aqueuses"`), Thermodynamique, Ondes, Mécanique
 
 Logique : **OU au sein d'une catégorie**, **ET entre catégories**.
 
 Bouton "Réinitialiser" remet toutes les cases à coché.
+
+### Tri alphabétique automatique (thème, puis titre)
+
+Au chargement, un script en fin de page (voir bloc `// Page d'accueil — filtres`) trie **dynamiquement** :
+- les checkboxes du groupe "Thème" du panel de filtres, par ordre alphabétique de leur libellé ;
+- les cartes de `.cards-grid`, d'abord par texte de `.card-theme` (même thème regroupé), puis par texte de `.card-title` au sein d'un même thème.
+
+Le tri utilise `Intl.Collator('fr', { sensitivity: 'base' })` et réordonne les éléments DOM via `appendChild` (pas de duplication, les écouteurs d'événements restent attachés). **Conséquence pratique** : l'ordre des cartes/checkboxes dans le code source `index.html` n'a plus besoin d'être alphabétique ni cohérent — une nouvelle carte ou un nouveau thème peut être ajouté n'importe où dans le HTML, l'ordre visuel se recalcule automatiquement à chaque chargement de page.
 
 ### Images de prévisualisation
 
@@ -508,7 +520,7 @@ Chaque fonction de bascule d'onglet (`setOnglet`/`setMainTab`/`setModePrincipal`
 1. Créer la(les) carte(s) dans `index.html` avec les bons attributs `data-*`
 2. Ajouter le screenshot dans `assets/previews/<nom>.jpg` (redimensionné à 800 px de large max, qualité JPEG ~82 — pas de PNG plein format), et sur la balise `<img>` : `width`/`height` réels + `loading="lazy"`
 3. Si la simulation a des onglets : ajouter le deep linking dans son `ui.js`
-4. Mettre à jour le panel de filtres si un nouveau thème ou niveau apparaît
+4. Ajouter une checkbox dans le panel de filtres si un nouveau thème ou niveau apparaît (position dans le HTML indifférente, voir « Tri alphabétique automatique » ci-dessus)
 5. Ajouter la `<meta name="description">`, le `<h1 class="sr-only">` et la règle CSS `.sr-only` (voir §7 « Référencement (SEO) »)
 
 ---

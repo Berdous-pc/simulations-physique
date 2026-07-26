@@ -488,8 +488,20 @@
           <button id="btn-uncheck-themes" class="link-uncheck">Décocher tous les thèmes</button>
         </div>
         <label class="filter-label">
+          <input type="checkbox" data-filter="theme" data-value="dosages" checked>
+          Dosages
+        </label>
+        <label class="filter-label">
           <input type="checkbox" data-filter="theme" data-value="electricite" checked>
           Électricité
+        </label>
+        <label class="filter-label">
+          <input type="checkbox" data-filter="theme" data-value="mecanique" checked>
+          Mécanique
+        </label>
+        <label class="filter-label">
+          <input type="checkbox" data-filter="theme" data-value="ondes" checked>
+          Ondes
         </label>
         <label class="filter-label">
           <input type="checkbox" data-filter="theme" data-value="optique" checked>
@@ -500,23 +512,7 @@
           Radioactivité
         </label>
         <label class="filter-label">
-          <input type="checkbox" data-filter="theme" data-value="reaction" checked>
-          Transformations chimiques
-        </label>
-        <label class="filter-label">
-          <input type="checkbox" data-filter="theme" data-value="cinetique" checked>
-          Cinétique chimique
-        </label>
-        <label class="filter-label">
-          <input type="checkbox" data-filter="theme" data-value="equilibre" checked>
-          Équilibre chimique
-        </label>
-        <label class="filter-label">
-          <input type="checkbox" data-filter="theme" data-value="titrage" checked>
-          Dosages
-        </label>
-        <label class="filter-label">
-          <input type="checkbox" data-filter="theme" data-value="dissolution" checked>
+          <input type="checkbox" data-filter="theme" data-value="solutions-aqueuses" checked>
           Solutions aqueuses
         </label>
         <label class="filter-label">
@@ -524,12 +520,8 @@
           Thermodynamique
         </label>
         <label class="filter-label">
-          <input type="checkbox" data-filter="theme" data-value="ondes" checked>
-          Ondes
-        </label>
-        <label class="filter-label">
-          <input type="checkbox" data-filter="theme" data-value="mecanique" checked>
-          Mécanique
+          <input type="checkbox" data-filter="theme" data-value="transformations-chimiques" checked>
+          Transformations chimiques
         </label>
       </div>
 
@@ -544,6 +536,46 @@
       <div class="cards-grid">
 
         <div id="no-results">Aucune simulation ne correspond aux filtres sélectionnés.</div>
+
+        <!-- Dosages — Principe du titrage ───────────── -->
+        <a class="card theme-chimie"
+           href="titrage/index.html?tab=principe"
+           data-discipline="chimie"
+           data-theme="dosages"
+           data-levels="premiere terminale">
+          <div class="card-meta">
+            <span class="card-theme theme-chimie">Dosages</span>
+            <span class="card-level level-premiere">Première</span>
+            <span class="card-level level-terminale">Terminale</span>
+          </div>
+          <div class="card-title">Principe du titrage</div>
+          <div class="card-preview">
+            <img src="assets/previews/titrage-principe.jpg" alt="Aperçu Principe du titrage" width="800" height="418" loading="lazy">
+          </div>
+          <div class="card-desc">
+            Comprendre le principe d'un dosage par titrage et la notion d'équivalence.
+          </div>
+</a>
+
+        <!-- Dosages — Titrage ────────────────────────── -->
+        <a class="card theme-chimie"
+           href="titrage/index.html?tab=titrage"
+           data-discipline="chimie"
+           data-theme="dosages"
+           data-levels="premiere terminale">
+          <div class="card-meta">
+            <span class="card-theme theme-chimie">Dosages</span>
+            <span class="card-level level-premiere">Première</span>
+            <span class="card-level level-terminale">Terminale</span>
+          </div>
+          <div class="card-title">Titrage</div>
+          <div class="card-preview">
+            <img src="assets/previews/titrage-titrage.jpg" alt="Aperçu Titrage" width="800" height="503" loading="lazy">
+          </div>
+          <div class="card-desc">
+            Modélisation de différents titrages (colorimétriques, pH-métriques, conductimétriques). Courbes n=f(V), pH=f(V), σ=f(V). Visualisation des espèces chimiques au cours du titrage.
+          </div>
+</a>
 
         <!-- Électricité — Circuit RC ────────────────── -->
         <a class="card theme-physique"
@@ -564,238 +596,43 @@
           </div>
 </a>
 
-        <!-- Optique — Lentille mince ─────────────────── -->
+        <!-- Électricité — Champ électrique ──────────────── -->
         <a class="card theme-physique"
-           href="lentille/index.html"
+           href="champ_uniforme/index.html#champ-electrique"
            data-discipline="physique"
-           data-theme="optique"
-           data-levels="seconde premiere">
+           data-theme="electricite"
+           data-levels="terminale">
           <div class="card-meta">
-            <span class="card-theme theme-physique">Optique</span>
-            <span class="card-level level-seconde">Seconde</span>
-            <span class="card-level level-premiere">Première</span>
+            <span class="card-theme theme-physique">Électricité</span>
+            <span class="card-level level-terminale">Terminale</span>
           </div>
-          <div class="card-title">Lentille mince</div>
+          <div class="card-title">Champ électrique</div>
           <div class="card-preview">
-            <img src="assets/previews/lentille.jpg" alt="Aperçu Lentille mince" width="719" height="386" loading="lazy">
+            <img src="assets/previews/champ_electrique.jpg" alt="Aperçu simulation champ électrique" width="479" height="334" loading="lazy" onerror="this.style.display='none'">
           </div>
           <div class="card-desc">
-            Construction géométrique des images par une lentille mince.
+            Mouvement d'une particule chargée dans un champ électrique uniforme. Vecteurs cinématiques animés, chronophotographie, équations horaires.
           </div>
-</a>
+        </a>
 
-        <!-- Optique — Lunette astronomique ───────────── -->
+        <!-- Mécanique — Champ de pesanteur ─────────────── -->
         <a class="card theme-physique"
-           href="lunette/index.html"
+           href="champ_uniforme/index.html#champ-pesanteur"
            data-discipline="physique"
-           data-theme="optique"
+           data-theme="mecanique"
            data-levels="terminale">
           <div class="card-meta">
-            <span class="card-theme theme-physique">Optique</span>
+            <span class="card-theme theme-physique">Mécanique</span>
             <span class="card-level level-terminale">Terminale</span>
           </div>
-          <div class="card-title">Lunette astronomique</div>
+          <div class="card-title">Champ de pesanteur</div>
           <div class="card-preview">
-            <img src="assets/previews/lunette.jpg" alt="Aperçu Lunette astronomique" width="800" height="472" loading="lazy">
+            <img src="assets/previews/mecanique_pesanteur.jpg" alt="Aperçu simulation champ de pesanteur" width="800" height="464" loading="lazy" onerror="this.style.display='none'">
           </div>
           <div class="card-desc">
-            Construction géométrique des images à travers deux lentilles minces convergentes. Modélisation d'une lunette astronomique.
+            Trajectoire d'un projectile dans le champ de pesanteur. Vecteurs cinématiques animés, chronophotographie, équations horaires.
           </div>
-</a>
-
-        <!-- Radioactivité — Décroissance radioactive ─── -->
-        <a class="card theme-physique"
-           href="radioactivite/index.html?tab=continu"
-           data-discipline="physique"
-           data-theme="radioactivite"
-           data-levels="terminale">
-          <div class="card-meta">
-            <span class="card-theme theme-physique">Radioactivité</span>
-            <span class="card-level level-terminale">Terminale</span>
-          </div>
-          <div class="card-title">Décroissance radioactive</div>
-          <div class="card-preview">
-            <img src="assets/previews/radioactivite-continu.jpg" alt="Aperçu Décroissance radioactive" width="800" height="446" loading="lazy">
-          </div>
-          <div class="card-desc">
-            Loi de décroissance radioactive. Étude des courbes N(t) ou A(t).
-          </div>
-</a>
-
-        <!-- Radioactivité — Lancers de dés ───────────── -->
-        <a class="card theme-physique"
-           href="radioactivite/index.html?tab=discret"
-           data-discipline="physique"
-           data-theme="radioactivite"
-           data-levels="terminale">
-          <div class="card-meta">
-            <span class="card-theme theme-physique">Radioactivité</span>
-            <span class="card-level level-terminale">Terminale</span>
-          </div>
-          <div class="card-title">Lancers de dés</div>
-          <div class="card-preview">
-            <img src="assets/previews/radioactivite-discret.jpg" alt="Aperçu Lancers de dés" width="800" height="326" loading="lazy">
-          </div>
-          <div class="card-desc">
-            Modèle des dés — simulation lancer par lancer pour comprendre la décroissance radioactive via un modèle discret.
-          </div>
-</a>
-
-        <!-- Transformations chimiques — Équilibrage ──────────── -->
-        <a class="card theme-chimie"
-           href="reaction/index.html?tab=equilibrage"
-           data-discipline="chimie"
-           data-theme="reaction"
-           data-levels="seconde premiere">
-          <div class="card-meta">
-            <span class="card-theme theme-chimie">Transformations chimiques</span>
-            <span class="card-level level-seconde">Seconde</span>
-            <span class="card-level level-premiere">Première</span>
-          </div>
-          <div class="card-title">Équilibrage</div>
-          <div class="card-preview">
-            <img src="assets/previews/reaction-equilibrage.jpg" alt="Aperçu Équilibrage" width="800" height="426" loading="lazy">
-          </div>
-          <div class="card-desc">
-            Équilibrer des équations de réaction chimique. Modèles moléculaires 2D animés pour comprendre la conservation des éléments.
-          </div>
-</a>
-
-        <!-- Transformations chimiques — Réactif limitant ─────── -->
-        <a class="card theme-chimie"
-           href="reaction/index.html?tab=limitant"
-           data-discipline="chimie"
-           data-theme="reaction"
-           data-levels="seconde premiere">
-          <div class="card-meta">
-            <span class="card-theme theme-chimie">Transformations chimiques</span>
-            <span class="card-level level-seconde">Seconde</span>
-            <span class="card-level level-premiere">Première</span>
-          </div>
-          <div class="card-title">Réactif limitant</div>
-          <div class="card-preview">
-            <img src="assets/previews/reaction-limitant.jpg" alt="Aperçu Réactif limitant" width="800" height="497" loading="lazy">
-          </div>
-          <div class="card-desc">
-            Comprendre les notions de réactif limitant et d'avancement d'une transformation chimique.
-          </div>
-</a>
-
-        <!-- Cinétique chimique ────────────────────────── -->
-        <a class="card theme-chimie"
-           href="cinetique/index.html"
-           data-discipline="chimie"
-           data-theme="cinetique"
-           data-levels="terminale">
-          <div class="card-meta">
-            <span class="card-theme theme-chimie">Transformations chimiques</span>
-            <span class="card-level level-terminale">Terminale</span>
-          </div>
-          <div class="card-title">Cinétique chimique</div>
-          <div class="card-preview">
-            <img src="assets/previews/cinetique.jpg" alt="Aperçu Cinétique chimique" width="800" height="505" loading="lazy">
-          </div>
-          <div class="card-desc">
-            Modèle des chocs efficaces A + B → C + D : influence des facteurs cinétiques (température, concentration) et catalyseur. Suivi temporel du nombre de molécules.
-          </div>
-</a>
-
-        <!-- Équilibre chimique ────────────────────────── -->
-        <a class="card theme-chimie"
-           href="equilibre/index.html"
-           data-discipline="chimie"
-           data-theme="equilibre"
-           data-levels="terminale">
-          <div class="card-meta">
-            <span class="card-theme theme-chimie">Transformations chimiques</span>
-            <span class="card-level level-terminale">Terminale</span>
-          </div>
-          <div class="card-title">Équilibre chimique</div>
-          <div class="card-preview">
-            <img src="assets/previews/equilibre.jpg" alt="Aperçu Équilibre chimique" width="587" height="346" loading="lazy">
-          </div>
-          <div class="card-desc">
-            Modèle des chocs efficaces avec réaction réversible A + B ⇌ C + D. Visualisation de l'équilibre dynamique. Évolution du quotient de réaction par rapport à la constante d'équilibre.
-          </div>
-</a>
-
-        <!-- Dosages — Principe du titrage ───────────── -->
-        <a class="card theme-chimie"
-           href="titrage/index.html?tab=principe"
-           data-discipline="chimie"
-           data-theme="titrage"
-           data-levels="premiere terminale">
-          <div class="card-meta">
-            <span class="card-theme theme-chimie">Dosages</span>
-            <span class="card-level level-premiere">Première</span>
-            <span class="card-level level-terminale">Terminale</span>
-          </div>
-          <div class="card-title">Principe du titrage</div>
-          <div class="card-preview">
-            <img src="assets/previews/titrage-principe.jpg" alt="Aperçu Principe du titrage" width="800" height="418" loading="lazy">
-          </div>
-          <div class="card-desc">
-            Comprendre le principe d'un dosage par titrage et la notion d'équivalence.
-          </div>
-</a>
-
-        <!-- Dosages — Titrage ────────────────────────── -->
-        <a class="card theme-chimie"
-           href="titrage/index.html?tab=titrage"
-           data-discipline="chimie"
-           data-theme="titrage"
-           data-levels="premiere terminale">
-          <div class="card-meta">
-            <span class="card-theme theme-chimie">Dosages</span>
-            <span class="card-level level-premiere">Première</span>
-            <span class="card-level level-terminale">Terminale</span>
-          </div>
-          <div class="card-title">Titrage</div>
-          <div class="card-preview">
-            <img src="assets/previews/titrage-titrage.jpg" alt="Aperçu Titrage" width="800" height="503" loading="lazy">
-          </div>
-          <div class="card-desc">
-            Modélisation de différents titrages (colorimétriques, pH-métriques, conductimétriques). Courbes n=f(V), pH=f(V), σ=f(V). Visualisation des espèces chimiques au cours du titrage.
-          </div>
-</a>
-
-        <!-- Dissolution — Mécanisme de dissolution ─────── -->
-        <a class="card theme-chimie"
-           href="dissolution/index.html#mecanisme"
-           data-discipline="chimie"
-           data-theme="dissolution"
-           data-levels="premiere">
-          <div class="card-meta">
-            <span class="card-theme theme-chimie">Solutions aqueuses</span>
-            <span class="card-level level-premiere">Première</span>
-          </div>
-          <div class="card-title">Mécanisme de dissolution</div>
-          <div class="card-preview">
-            <img src="assets/previews/mecanisme_dissolution.jpg" alt="Aperçu Mécanisme de la dissolution" width="800" height="518" loading="lazy">
-          </div>
-          <div class="card-desc">
-            Animation du mécanisme de dissolution d'un solide ionique dans l'eau à l'échelle microscopique.
-          </div>
-</a>
-
-        <!-- Dissolution — Quantités de matière lors d'une dissolution ─── -->
-        <a class="card theme-chimie"
-           href="dissolution/index.html#dissolution"
-           data-discipline="chimie"
-           data-theme="dissolution"
-           data-levels="premiere">
-          <div class="card-meta">
-            <span class="card-theme theme-chimie">Solutions aqueuses</span>
-            <span class="card-level level-premiere">Première</span>
-          </div>
-          <div class="card-title">Dissolution</div>
-          <div class="card-preview">
-            <img src="assets/previews/dissolution-dissolution.jpg" alt="Aperçu Dissolution" width="566" height="382" loading="lazy">
-          </div>
-          <div class="card-desc">
-            Dissolution d'un solide en solution aqueuse. Concentration en soluté apporté et concentrations effectives.
-          </div>
-</a>
+        </a>
 
         <!-- Ondes — Onde dans une corde ─────────────────── -->
         <a class="card theme-physique"
@@ -933,6 +770,121 @@
           </div>
         </a>
 
+        <!-- Optique — Lentille mince ─────────────────── -->
+        <a class="card theme-physique"
+           href="lentille/index.html"
+           data-discipline="physique"
+           data-theme="optique"
+           data-levels="seconde premiere">
+          <div class="card-meta">
+            <span class="card-theme theme-physique">Optique</span>
+            <span class="card-level level-seconde">Seconde</span>
+            <span class="card-level level-premiere">Première</span>
+          </div>
+          <div class="card-title">Lentille mince</div>
+          <div class="card-preview">
+            <img src="assets/previews/lentille.jpg" alt="Aperçu Lentille mince" width="719" height="386" loading="lazy">
+          </div>
+          <div class="card-desc">
+            Construction géométrique des images par une lentille mince.
+          </div>
+</a>
+
+        <!-- Optique — Lunette astronomique ───────────── -->
+        <a class="card theme-physique"
+           href="lunette/index.html"
+           data-discipline="physique"
+           data-theme="optique"
+           data-levels="terminale">
+          <div class="card-meta">
+            <span class="card-theme theme-physique">Optique</span>
+            <span class="card-level level-terminale">Terminale</span>
+          </div>
+          <div class="card-title">Lunette astronomique</div>
+          <div class="card-preview">
+            <img src="assets/previews/lunette.jpg" alt="Aperçu Lunette astronomique" width="800" height="472" loading="lazy">
+          </div>
+          <div class="card-desc">
+            Construction géométrique des images à travers deux lentilles minces convergentes. Modélisation d'une lunette astronomique.
+          </div>
+</a>
+
+        <!-- Radioactivité — Décroissance radioactive ─── -->
+        <a class="card theme-physique"
+           href="radioactivite/index.html?tab=continu"
+           data-discipline="physique"
+           data-theme="radioactivite"
+           data-levels="terminale">
+          <div class="card-meta">
+            <span class="card-theme theme-physique">Radioactivité</span>
+            <span class="card-level level-terminale">Terminale</span>
+          </div>
+          <div class="card-title">Décroissance radioactive</div>
+          <div class="card-preview">
+            <img src="assets/previews/radioactivite-continu.jpg" alt="Aperçu Décroissance radioactive" width="800" height="446" loading="lazy">
+          </div>
+          <div class="card-desc">
+            Loi de décroissance radioactive. Étude des courbes N(t) ou A(t).
+          </div>
+</a>
+
+        <!-- Radioactivité — Lancers de dés ───────────── -->
+        <a class="card theme-physique"
+           href="radioactivite/index.html?tab=discret"
+           data-discipline="physique"
+           data-theme="radioactivite"
+           data-levels="terminale">
+          <div class="card-meta">
+            <span class="card-theme theme-physique">Radioactivité</span>
+            <span class="card-level level-terminale">Terminale</span>
+          </div>
+          <div class="card-title">Lancers de dés</div>
+          <div class="card-preview">
+            <img src="assets/previews/radioactivite-discret.jpg" alt="Aperçu Lancers de dés" width="800" height="326" loading="lazy">
+          </div>
+          <div class="card-desc">
+            Modèle des dés — simulation lancer par lancer pour comprendre la décroissance radioactive via un modèle discret.
+          </div>
+</a>
+
+        <!-- Solutions aqueuses — Mécanisme de dissolution ─────── -->
+        <a class="card theme-chimie"
+           href="dissolution/index.html#mecanisme"
+           data-discipline="chimie"
+           data-theme="solutions-aqueuses"
+           data-levels="premiere">
+          <div class="card-meta">
+            <span class="card-theme theme-chimie">Solutions aqueuses</span>
+            <span class="card-level level-premiere">Première</span>
+          </div>
+          <div class="card-title">Mécanisme de dissolution</div>
+          <div class="card-preview">
+            <img src="assets/previews/mecanisme_dissolution.jpg" alt="Aperçu Mécanisme de la dissolution" width="800" height="518" loading="lazy">
+          </div>
+          <div class="card-desc">
+            Animation du mécanisme de dissolution d'un solide ionique dans l'eau à l'échelle microscopique.
+          </div>
+</a>
+
+        <!-- Solutions aqueuses — Quantités de matière lors d'une dissolution ─── -->
+        <a class="card theme-chimie"
+           href="dissolution/index.html#dissolution"
+           data-discipline="chimie"
+           data-theme="solutions-aqueuses"
+           data-levels="premiere">
+          <div class="card-meta">
+            <span class="card-theme theme-chimie">Solutions aqueuses</span>
+            <span class="card-level level-premiere">Première</span>
+          </div>
+          <div class="card-title">Dissolution</div>
+          <div class="card-preview">
+            <img src="assets/previews/dissolution-dissolution.jpg" alt="Aperçu Dissolution" width="566" height="382" loading="lazy">
+          </div>
+          <div class="card-desc">
+            Dissolution d'un solide en solution aqueuse. Concentration en soluté apporté et concentrations effectives.
+          </div>
+</a>
+
         <!-- Thermodynamique — Pression d'un gaz ────────── -->
         <a class="card theme-physique"
            href="pression/index.html"
@@ -950,43 +902,83 @@
           </div>
         </a>
 
-        <!-- Mécanique — Champ de pesanteur ─────────────── -->
-        <a class="card theme-physique"
-           href="champ_uniforme/index.html#champ-pesanteur"
-           data-discipline="physique"
-           data-theme="mecanique"
+        <!-- Transformations chimiques — Cinétique chimique ──────── -->
+        <a class="card theme-chimie"
+           href="cinetique/index.html"
+           data-discipline="chimie"
+           data-theme="transformations-chimiques"
            data-levels="terminale">
           <div class="card-meta">
-            <span class="card-theme theme-physique">Mécanique</span>
+            <span class="card-theme theme-chimie">Transformations chimiques</span>
             <span class="card-level level-terminale">Terminale</span>
           </div>
-          <div class="card-title">Champ de pesanteur</div>
+          <div class="card-title">Cinétique chimique</div>
           <div class="card-preview">
-            <img src="assets/previews/mecanique_pesanteur.jpg" alt="Aperçu simulation champ de pesanteur" width="800" height="464" loading="lazy" onerror="this.style.display='none'">
+            <img src="assets/previews/cinetique.jpg" alt="Aperçu Cinétique chimique" width="800" height="505" loading="lazy">
           </div>
           <div class="card-desc">
-            Trajectoire d'un projectile dans le champ de pesanteur. Vecteurs cinématiques animés, chronophotographie, équations horaires.
+            Modèle des chocs efficaces A + B → C + D : influence des facteurs cinétiques (température, concentration) et catalyseur. Suivi temporel du nombre de molécules.
           </div>
-        </a>
+</a>
 
-        <!-- Électricité — Champ électrique ──────────────── -->
-        <a class="card theme-physique"
-           href="champ_uniforme/index.html#champ-electrique"
-           data-discipline="physique"
-           data-theme="electricite"
-           data-levels="terminale">
+        <!-- Transformations chimiques — Équilibrage ──────────── -->
+        <a class="card theme-chimie"
+           href="reaction/index.html?tab=equilibrage"
+           data-discipline="chimie"
+           data-theme="transformations-chimiques"
+           data-levels="seconde premiere">
           <div class="card-meta">
-            <span class="card-theme theme-physique">Électricité</span>
-            <span class="card-level level-terminale">Terminale</span>
+            <span class="card-theme theme-chimie">Transformations chimiques</span>
+            <span class="card-level level-seconde">Seconde</span>
+            <span class="card-level level-premiere">Première</span>
           </div>
-          <div class="card-title">Champ électrique</div>
+          <div class="card-title">Équilibrage</div>
           <div class="card-preview">
-            <img src="assets/previews/champ_electrique.jpg" alt="Aperçu simulation champ électrique" width="479" height="334" loading="lazy" onerror="this.style.display='none'">
+            <img src="assets/previews/reaction-equilibrage.jpg" alt="Aperçu Équilibrage" width="800" height="426" loading="lazy">
           </div>
           <div class="card-desc">
-            Mouvement d'une particule chargée dans un champ électrique uniforme. Vecteurs cinématiques animés, chronophotographie, équations horaires.
+            Équilibrer des équations de réaction chimique. Modèles moléculaires 2D animés pour comprendre la conservation des éléments.
           </div>
-        </a>
+</a>
+
+        <!-- Transformations chimiques — Équilibre chimique ─────── -->
+        <a class="card theme-chimie"
+           href="equilibre/index.html"
+           data-discipline="chimie"
+           data-theme="transformations-chimiques"
+           data-levels="terminale">
+          <div class="card-meta">
+            <span class="card-theme theme-chimie">Transformations chimiques</span>
+            <span class="card-level level-terminale">Terminale</span>
+          </div>
+          <div class="card-title">Équilibre chimique</div>
+          <div class="card-preview">
+            <img src="assets/previews/equilibre.jpg" alt="Aperçu Équilibre chimique" width="587" height="346" loading="lazy">
+          </div>
+          <div class="card-desc">
+            Modèle des chocs efficaces avec réaction réversible A + B ⇌ C + D. Visualisation de l'équilibre dynamique. Évolution du quotient de réaction par rapport à la constante d'équilibre.
+          </div>
+</a>
+
+        <!-- Transformations chimiques — Réactif limitant ─────── -->
+        <a class="card theme-chimie"
+           href="reaction/index.html?tab=limitant"
+           data-discipline="chimie"
+           data-theme="transformations-chimiques"
+           data-levels="seconde premiere">
+          <div class="card-meta">
+            <span class="card-theme theme-chimie">Transformations chimiques</span>
+            <span class="card-level level-seconde">Seconde</span>
+            <span class="card-level level-premiere">Première</span>
+          </div>
+          <div class="card-title">Réactif limitant</div>
+          <div class="card-preview">
+            <img src="assets/previews/reaction-limitant.jpg" alt="Aperçu Réactif limitant" width="800" height="497" loading="lazy">
+          </div>
+          <div class="card-desc">
+            Comprendre les notions de réactif limitant et d'avancement d'une transformation chimique.
+          </div>
+</a>
 
       </div>
     </main>
@@ -1047,11 +1039,42 @@
   // ═══════════════════════════════════════════════════
 
   (function () {
+    const cardsGrid    = document.querySelector('.cards-grid');
+    const btnReset     = document.getElementById('btn-reset-filters');
+    const btnUncheckThemes = document.getElementById('btn-uncheck-themes');
+
+    // ── Tri alphabétique (thème, puis titre) ─────────
+    // Permet d'ajouter une nouvelle carte ou un nouveau filtre de thème
+    // n'importe où dans le HTML : l'ordre visuel se recalcule tout seul.
+    const collator = new Intl.Collator('fr', { sensitivity: 'base' });
+
+    (function sortThemeCheckboxes() {
+      const themeLabels = Array.from(document.querySelectorAll('#filter-panel .filter-label'))
+        .filter(label => label.querySelector('input[data-filter="theme"]'));
+      if (themeLabels.length === 0) return;
+      const parent = themeLabels[0].parentNode;
+      themeLabels
+        .sort((a, b) => collator.compare(a.textContent.trim(), b.textContent.trim()))
+        .forEach(label => parent.appendChild(label));
+    })();
+
+    (function sortCards() {
+      Array.from(cardsGrid.querySelectorAll('.card'))
+        .sort((a, b) => {
+          const themeA = a.querySelector('.card-theme').textContent.trim();
+          const themeB = b.querySelector('.card-theme').textContent.trim();
+          const themeCmp = collator.compare(themeA, themeB);
+          if (themeCmp !== 0) return themeCmp;
+          const titleA = a.querySelector('.card-title').textContent.trim();
+          const titleB = b.querySelector('.card-title').textContent.trim();
+          return collator.compare(titleA, titleB);
+        })
+        .forEach(card => cardsGrid.appendChild(card));
+    })();
+
     const checkboxes   = document.querySelectorAll('#filter-panel input[type="checkbox"]');
     const cards        = document.querySelectorAll('.cards-grid .card');
     const noResults    = document.getElementById('no-results');
-    const btnReset     = document.getElementById('btn-reset-filters');
-    const btnUncheckThemes = document.getElementById('btn-uncheck-themes');
 
     // ── Lecture de l'état courant des filtres ────────
     function getActiveValues(filterName) {
