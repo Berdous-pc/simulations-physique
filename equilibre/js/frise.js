@@ -121,7 +121,7 @@ function _friseClamp(v) {
 // Une valeur sort-elle de l'échelle ? (sert à signaler le marqueur plaqué
 // contre un bord, qui sinon se lirait comme une mesure exacte)
 function _friseOffScale(v) {
-  return v === Infinity || v > FRISE_QR_MAX || (v >= 0 && v < FRISE_QR_MIN);
+  return v === Infinity || v > FRISE_QR_MAX || (v > 0 && v < FRISE_QR_MIN);
 }
 
 function _friseFmt(v) {
