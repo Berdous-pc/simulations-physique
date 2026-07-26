@@ -752,16 +752,20 @@ function _resolvePair(mi, mj, diam, diam2, vActAB, vActCD) {
 }
 
 // ── Détection des collisions par grille spatiale ───────────────────────
-// cf. cinetique/js/sim.js pour le détail : chaque molécule n'est testée que
-// contre sa cellule et les 8 voisines, ce qui ramène le coût de O(N²) à O(N).
+// cf. cinetique/js/sim.js pour le détail : grille de cellules de côté
+// 2×diamètre, chaque molécule n'est testée que contre sa cellule et les
+// 8 voisines, ce qui ramène le coût de O(N²) à O(N).
 //
-// Côté de cellule = UN diamètre (et non deux comme dans cinetique/) : c'est
-// le minimum correct — deux molécules en contact sont distantes de moins
-// d'un diamètre, donc au plus d'une cellule en x comme en y, et le
-// demi-voisinage _GRID_NEIGHBOURS les couvre. Doubler ce côté quadruple
-// l'aire d'une cellule, donc le nombre de molécules qu'elle contient, donc
-// (au carré de l'occupation) ~4× le nombre de paires testées — pour un
-// résultat rigoureusement identique.
+// Pourquoi 2 diamètres et non 1 (le minimum correct pour ce voisinage) :
+// cette grille est TRÈS CREUSE — de 0,03 à 0,3 molécule par cellule selon
+// les réglages, jamais davantage. Le coût dominant n'est donc pas le test
+// des paires mais le coût FIXE par cellule, payé deux fois par sous-pas
+// (vidage des buckets, puis traversée des cellules). Diviser le côté par 2
+// quadruple le nombre de cellules, donc ce coût fixe, pour n'économiser que
+// quelques paires : mesuré en opérations par sous-pas, ~7100 contre ~2200
+// aux réglages par défaut, ~37000 contre ~16000 aux réglages maximaux.
+// L'argument inverse (« moins de paires testées ») ne vaut qu'en régime
+// dense, à plus d'une molécule par cellule — jamais atteint ici.
 var _GRID_NEIGHBOURS = [[1, 0], [-1, 1], [0, 1], [1, 1]];
 
 function _collidePairs(s) {
@@ -777,7 +781,7 @@ function _collidePairs(s) {
   var vActAB = _activationFactorFromProbability(s.probAB) * s.v0px;
   var vActCD = _activationFactorFromProbability(s.probCD) * s.v0px;
 
-  var cell = Math.max(1, diam);
+  var cell = Math.max(1, diam * 2);
   var x0 = s.boxLeft, y0 = s.boxTop;
   var cols = Math.max(1, Math.ceil((s.boxRight - x0) / cell));
   var rows = Math.max(1, Math.ceil((s.boxBottom - y0) / cell));
