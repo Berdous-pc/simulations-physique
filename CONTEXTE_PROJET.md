@@ -280,7 +280,7 @@ nom-simulation/
 
 Les anciennes simulations en fichier unique (`reaction.html`) conservent leur format d'origine. Toute **nouvelle** simulation adopte l'arborescence ci-dessus.
 
-> **Simulations déjà migrées en arborescence** : `lentille/`, `lunette/`, `radioactivite/`, `reaction/`, `titrage/`, `condensateur/`, `pression/`, `champ_uniforme/`, `ondes/`, `dissolution/`, `diffraction/`, `cinetique/`, `equilibre/`.
+> **Simulations déjà migrées en arborescence** : `lentille/`, `lunette/`, `radioactivite/`, `reaction/`, `titrage/`, `condensateur/`, `pression/`, `champ_uniforme/`, `ondes/`, `dissolution/`, `diffraction/`, `cinetique/`, `equilibre/`, `kepler/`.
 
 ### Règles générales
 
@@ -400,6 +400,7 @@ Toute page **HTML autonome** destinée à être publiée (page d'accueil `index.
 | `ondes/` | Propagation d'ondes — corde, onde sonore (tube), ondes de surface | Première/Terminale | **Arborescence** | Référence d'architecture ; `sim.js` + `tube.js` + `graph.js` + `ui.js` ; onglets Corde/Son/Vagues, sélection de particules par proximité (Ctrl/Maj+clic), mode pression colorée, graphes ΔP(x)/ΔP(t) avec zoom/pan/tangente, deep-linking via `#corde` / `#son` / `#vagues` — voir `ondes/ARCHITECTURE.md` |
 | `dissolution/` | Solutions aqueuses — mécanisme de dissolution (NaCl) & quantités de matière | Première | **Arborescence** | Onglets Mécanisme/Dissolution ; animation microscopique scriptée (coupelle, verre, zoom), plein écran type lecteur vidéo, tableau d'avancement ; deep-linking via `#mecanisme` / `#dissolution`. Onglet Dissolution : mouvement brownien + répulsion locale entre espèces dissoutes, légende overlay HTML, libellés coupelle/verre dynamiques selon le soluté |
 | `diffraction/` | Diffraction — ondes de surface (cuve à ondes) & diffraction de la lumière (modélisation 3D par une ouverture : fente/carré/cercle/fil) | Terminale | **Arborescence** | `sim.js` + `surfaces.js` (onglet Ondes de surface) + `scene.js` (rendu 3D Three.js, onglet Ondes lumineuses) + `graph.js` + `ui.js` ; onglet Ondes de surface : vue de dessus de la cuve, ouverture réglable, calcul de l'angle de diffraction avec avertissement si hors de portée de la cuve, point de mesure M déplaçable, coupe verticale draggable, graphes Amplitude(t)/Amplitude(y), splitter draggable, zoom par slider à crans ; onglet Ondes lumineuses : calcul de la figure de diffraction via FFT, enveloppe 3D du faisceau, mode lumière blanche avec décomposition spectrale, formes d'ouverture multiples, mesures d/D/L, graphe I(x) lié à la vue Écran ; deep-linking via `#surfaces` / `#lumineuses` — voir `diffraction/ARCHITECTURE.md` et `diffraction/PISTES_EVOLUTION.md` |
+| `kepler/` | Les trois lois de Kepler — ellipse et vocabulaire, loi des aires, loi des périodes | Terminale | **Arborescence** | `sim.js` + `orbites.js` + `graph.js` + `ui.js` ; 3 onglets (1 par loi) : ellipse paramétrable (a, e) avec foyers/axes/distances r+r′, balayage d'aires pendant Δt (jusqu'à 6 aires comparées, en ua²), systèmes réels animés (Mercure→Mars, Jupiter→Neptune, lunes de Jupiter) + graphe T/a à axes réglables (T, T², T³ / a, a², a³) avec détection automatique de l'alignement T² = k·a³ ; mouvement képlérien exact (équation de Kepler résolue par Newton) ; deep-linking via `#premiere-loi` / `#deuxieme-loi` / `#troisieme-loi` — voir `kepler/ARCHITECTURE.md` |
 | `equilibre/` | Équilibre chimique — réaction réversible A + B ⇌ C + D, modèle des chocs efficaces | Terminale | **Arborescence** | Dérivée de `cinetique/` (récipient + graphe, mode 1/2 simulations) ; 2 sliders de probabilité (A+B, C+D) remplacent température/catalyseur, 4 quantités initiales réglables (A/B/C/D), pas de fin de réaction (équilibre dynamique) ; quotient de réaction Q<sub>r</sub> et constante K = probAB/probCD, quantités théoriques à l'équilibre en pointillés sur le graphe ; **frise** dédiée (`js/frise.js`) : axe log de Qr avec repères K / Qr moyenné / Qr instantané ; rayon des molécules dépendant de N (`molRadiusFrac`) — voir `equilibre/ARCHITECTURE.md` |
 
 ---
@@ -490,6 +491,9 @@ Stockées dans `assets/previews/` au format **`.jpg`** (converties depuis les sc
 | `interferences-lumiere.jpg` | Interférences lumineuses |
 | `cinetique.jpg` | Cinétique chimique |
 | `equilibre.jpg` | Équilibre chimique |
+| `kepler-loi1.jpg` | 1ʳᵉ loi de Kepler (ellipses) |
+| `kepler-loi2.jpg` | 2ᵉ loi de Kepler (loi des aires) |
+| `kepler-loi3.jpg` | 3ᵉ loi de Kepler (loi des périodes) |
 
 **Optimisation poids/performance (juillet 2026)** : les screenshots d'origine (PNG plein format, jusqu'à 2273×1268 px et 300+ Ko chacun) alourdissaient inutilement le chargement de la page d'accueil et pénalisaient les Core Web Vitals (LCP, CLS), donc le référencement. Conversion en `.jpg` redimensionné (800 px de large max, qualité ~82) : dossier `assets/previews/` passé de ~1,4 Mo à ~630 Ko. Toute **nouvelle** image de preview doit suivre ce format (JPEG, 800 px de large max) plutôt que déposer un screenshot PNG brut.
 
@@ -510,6 +514,7 @@ Les simulations avec plusieurs onglets lisent un paramètre au chargement pour o
 | `ondes/js/ui.js` | `#hash` | `corde` · `son` · `vagues` |
 | `dissolution/js/ui.js` | `#hash` (repli `?tab=`) | `mecanisme` · `dissolution` |
 | `diffraction/js/ui.js` | `#hash` | `surfaces` · `lumineuses` |
+| `kepler/js/ui.js` | `#hash` | `premiere-loi` · `deuxieme-loi` · `troisieme-loi` |
 
 Toute **nouvelle** page à onglets utilise la convention `#hash`.
 

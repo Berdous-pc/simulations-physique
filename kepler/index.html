@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<!-- ════════════════════════════════════════════════════
+     Simulation pédagogique — Physique-Chimie Lycée
+     Auteur  : Mathieu Berdous
+     Licence : CC BY-NC 4.0 — https://creativecommons.org/licenses/by-nc/4.0/
+════════════════════════════════════════════════════ -->
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Simulation — Les lois de Kepler (ellipses, loi des aires, loi des périodes)</title>
+  <meta name="author" content="Mathieu Berdous">
+  <meta name="copyright" content="Mathieu Berdous — CC BY-NC 4.0">
+  <meta name="description" content="Simulation interactive (Terminale) : les trois lois de Kepler — vocabulaire de l'ellipse (foyers, excentricité, grand axe), loi des aires balayées, et loi des périodes T²/a³ sur les planètes du système solaire et les lunes de Jupiter.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>⚛️</text></svg>">
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<h1 class="sr-only">Simulation des trois lois de Kepler — orbites elliptiques, loi des aires et loi des périodes (Terminale)</h1>
+
+<main>
+
+  <!-- ══════════════════════════════════════════════
+       COLONNE GAUCHE : une vue d'animation par onglet
+  ══════════════════════════════════════════════ -->
+  <div id="left-col">
+
+    <!-- ── 1ʳᵉ loi : ellipse et vocabulaire ─────── -->
+    <div class="tab-view" id="view-premiere-loi">
+      <div class="sim-area">
+        <canvas id="canvas-loi1"></canvas>
+      </div>
+    </div>
+
+    <!-- ── 2ᵉ loi : loi des aires ───────────────── -->
+    <div class="tab-view" id="view-deuxieme-loi" style="display:none;">
+      <div class="sim-area">
+        <canvas id="canvas-loi2"></canvas>
+      </div>
+    </div>
+
+    <!-- ── 3ᵉ loi : animation + graphe ──────────── -->
+    <div class="tab-view duo" id="view-troisieme-loi" style="display:none;">
+      <div class="sim-area">
+        <canvas id="canvas-sys3"></canvas>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="canvas-graph3"></canvas>
+        <!-- Sélecteur de la grandeur portée en ordonnée -->
+        <div class="axis-sel axis-sel-y">
+          <button id="axeY-1" class="active" onclick="setAxeY(1)">T</button>
+          <button id="axeY-2" onclick="setAxeY(2)">T²</button>
+          <button id="axeY-3" onclick="setAxeY(3)">T³</button>
+        </div>
+        <!-- Sélecteur de la grandeur portée en abscisse -->
+        <div class="axis-sel axis-sel-x">
+          <button id="axeX-1" class="active" onclick="setAxeX(1)">a</button>
+          <button id="axeX-2" onclick="setAxeX(2)">a²</button>
+          <button id="axeX-3" onclick="setAxeX(3)">a³</button>
+        </div>
+        <div id="graph3-tooltip"></div>
+      </div>
+    </div>
+
+  </div><!-- fin #left-col -->
+
+  <!-- ══════════════════════════════════════════════
+       PANNEAU DROIT
+  ══════════════════════════════════════════════ -->
+  <div id="panel">
+
+    <!-- ── Onglets principaux ─────────────────── -->
+    <div class="panel-main-tabs">
+      <button class="panel-main-tab active" id="tab-premiere-loi"
+              onclick="setMainTab('premiere-loi')">
+        1<sup>re</sup> loi
+        <span class="tab-sub">Ellipse</span>
+      </button>
+      <button class="panel-main-tab" id="tab-deuxieme-loi"
+              onclick="setMainTab('deuxieme-loi')">
+        2<sup>e</sup> loi
+        <span class="tab-sub">Aires</span>
+      </button>
+      <button class="panel-main-tab" id="tab-troisieme-loi"
+              onclick="setMainTab('troisieme-loi')">
+        3<sup>e</sup> loi
+        <span class="tab-sub">Périodes</span>
+      </button>
+    </div>
+
+    <!-- ── Corps du panneau ───────────────────── -->
+    <div id="panel-body">
+
+      <!-- ═══ Section 1ʳᵉ LOI ═══ -->
+      <div class="panel-main-section" id="section-premiere-loi">
+
+        <div class="panel-section">
+          <div class="section-title">Contrôles</div>
+          <button id="btn-pp-1" class="btn btn-play" onclick="togglePause1()">▶ Lancer</button>
+          <button class="btn btn-raz" style="margin-top:6px;" onclick="razLoi1()">↺ Remettre à zéro</button>
+          <div class="param-row" style="margin-top:8px;">
+            <label>
+              Vitesse d'animation
+              <span class="param-value" id="lbl-speed-1">30 j/s</span>
+            </label>
+            <input type="range" id="sl-speed-1" min="0" max="3" step="1" value="1"
+                   oninput="onSliderSpeed1(this.value)">
+            <div class="slider-ticks">
+              <span style="--tick-frac:0;">10 j/s</span>
+              <span style="--tick-frac:0.333;">30 j/s</span>
+              <span style="--tick-frac:0.667;">60 j/s</span>
+              <span style="--tick-frac:1;">120 j/s</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="panel-section">
+          <div class="section-title">Paramètres de l'ellipse</div>
+          <div class="param-row">
+            <label>
+              Demi-grand axe a
+              <span class="param-value"><span id="lbl-a-1">1,0</span> ua</span>
+            </label>
+            <input type="range" id="sl-a-1" min="0.5" max="4" step="0.1" value="1"
+                   oninput="onSliderA1(this.value)">
+          </div>
+          <div class="param-row">
+            <label>
+              Excentricité e
+              <span class="param-value" id="lbl-e-1">0,50</span>
+            </label>
+            <input type="range" id="sl-e-1" min="0" max="0.99" step="0.01" value="0.5"
+                   oninput="onSliderE1(this.value)">
+            <div class="input-hint">e = c/a — vers 0 l'ellipse devient un cercle ; vers 1 elle s'aplatit de plus en plus (à e = 1 la trajectoire s'ouvrirait : ce ne serait plus une ellipse).</div>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="panel-section">
+          <div class="section-title">Affichage</div>
+          <label class="check-row">
+            <input type="checkbox" id="ck-foyers-1" checked
+                   onchange="toggleAffichage1('showFoyers', this.checked)">
+            <span class="cr-dot" style="background:#b04020;"></span>
+            Foyers F et F′, centre O, distance c
+          </label>
+          <label class="check-row">
+            <input type="checkbox" id="ck-grandaxe-1" checked
+                   onchange="toggleAffichage1('showGrandAxe', this.checked)">
+            <span class="cr-swatch" style="background:#2a6aaa;"></span>
+            Grand axe et demi-grand axe a
+          </label>
+          <label class="check-row">
+            <input type="checkbox" id="ck-petitaxe-1" checked
+                   onchange="toggleAffichage1('showPetitAxe', this.checked)">
+            <span class="cr-swatch" style="background:#2a8a50;"></span>
+            Petit axe et demi-petit axe b
+          </label>
+          <label class="check-row">
+            <input type="checkbox" id="ck-dist-1"
+                   onchange="toggleAffichage1('showDistances', this.checked)">
+            <span class="cr-swatch" style="background:linear-gradient(90deg,#c05020 50%,#8e44ad 50%);"></span>
+            Distances r et r′ aux foyers
+          </label>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="panel-section">
+          <div class="section-title">Grandeurs</div>
+          <div class="readout">
+            <div class="ro-grid">
+              <div class="ro-item">
+                <span class="ro-item-label">Demi-petit axe b</span>
+                <span class="ro-item-val" id="ro-b-1">—</span>
+              </div>
+              <div class="ro-item">
+                <span class="ro-item-label">Distance c = OF</span>
+                <span class="ro-item-val" id="ro-c-1">—</span>
+              </div>
+              <div class="ro-item">
+                <span class="ro-item-label">Périhélie</span>
+                <span class="ro-item-val" id="ro-peri-1">—</span>
+              </div>
+              <div class="ro-item">
+                <span class="ro-item-label">Aphélie</span>
+                <span class="ro-item-val" id="ro-apo-1">—</span>
+              </div>
+              <div class="ro-item">
+                <span class="ro-item-label">Période T</span>
+                <span class="ro-item-val" id="ro-T-1">—</span>
+              </div>
+            </div>
+          </div>
+          <div class="readout">
+            <div class="ro-label">Distances aux foyers (en direct)</div>
+            <div class="ro-grid">
+              <div class="ro-item">
+                <span class="ro-item-label">r</span>
+                <span class="ro-item-val" id="ro-r-1">—</span>
+              </div>
+              <div class="ro-item">
+                <span class="ro-item-label">r′</span>
+                <span class="ro-item-val" id="ro-rp-1">—</span>
+              </div>
+              <div class="ro-item" style="grid-column: 1 / -1;">
+                <span class="ro-item-label">r + r′ = 2a (constant !)</span>
+                <span class="ro-item-val" id="ro-sum-1">—</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- fin #section-premiere-loi -->
+
+      <!-- ═══ Section 2ᵉ LOI ═══ -->
+      <div class="panel-main-section" id="section-deuxieme-loi" style="display:none;">
+
+        <div class="panel-section">
+          <div class="section-title">Contrôles</div>
+          <button id="btn-pp-2" class="btn btn-play" onclick="togglePause2()">▶ Lancer</button>
+          <button class="btn btn-raz" style="margin-top:6px;" onclick="razLoi2()">↺ Remettre à zéro</button>
+          <div class="param-row" style="margin-top:8px;">
+            <label>
+              Vitesse d'animation
+              <span class="param-value" id="lbl-speed-2">10 j/s</span>
+            </label>
+            <input type="range" id="sl-speed-2" min="0" max="3" step="1" value="0"
+                   oninput="onSliderSpeed2(this.value)">
+            <div class="slider-ticks">
+              <span style="--tick-frac:0;">10 j/s</span>
+              <span style="--tick-frac:0.333;">30 j/s</span>
+              <span style="--tick-frac:0.667;">60 j/s</span>
+              <span style="--tick-frac:1;">120 j/s</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="panel-section">
+          <div class="section-title">Paramètres de l'ellipse</div>
+          <div class="param-row">
+            <label>
+              Excentricité e
+              <span class="param-value" id="lbl-e-2">0,60</span>
+            </label>
+            <input type="range" id="sl-e-2" min="0" max="0.99" step="0.01" value="0.6"
+                   oninput="onSliderE2(this.value)">
+            <div class="input-hint">Demi-grand axe fixé : a = 1 ua, donc T = 1 an = 365 j (3ᵉ loi). Changer e efface les aires.</div>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="panel-section">
+          <div class="section-title">Loi des aires</div>
+          <div class="param-row">
+            <label>
+              Durée de balayage Δt
+              <span class="param-value"><span id="lbl-dt-2">30</span> j</span>
+            </label>
+            <input type="range" id="sl-dt-2" min="5" max="60" step="1" value="30"
+                   oninput="onSliderDeltaT2(this.value)">
+          </div>
+          <button id="btn-balayer" class="btn btn-primary" onclick="balayerAire()">◔ Balayer l'aire pendant Δt</button>
+          <button class="btn btn-raz" style="margin-top:6px;" onclick="effacerAires()">✕ Effacer les aires</button>
+          <label class="check-row" style="margin-top:8px;">
+            <input type="checkbox" id="ck-vit-2" checked
+                   onchange="toggleVitesse2(this.checked)">
+            <span class="cr-swatch" style="background:#c03030;"></span>
+            Vecteur vitesse
+          </label>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="panel-section">
+          <div class="section-title">Mesures</div>
+          <div class="readout">
+            <div class="ro-label">Aires balayées</div>
+            <div class="aires-list" id="aires-list"></div>
+          </div>
+          <div class="readout">
+            <div class="ro-grid">
+              <div class="ro-item">
+                <span class="ro-item-label">Distance au Soleil r</span>
+                <span class="ro-item-val" id="ro-r-2">—</span>
+              </div>
+              <div class="ro-item">
+                <span class="ro-item-label">Vitesse v</span>
+                <span class="ro-item-val" id="ro-v-2">—</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- fin #section-deuxieme-loi -->
+
+      <!-- ═══ Section 3ᵉ LOI ═══ -->
+      <div class="panel-main-section" id="section-troisieme-loi" style="display:none;">
+
+        <div class="panel-section">
+          <div class="section-title">Système étudié</div>
+          <div class="sys-toggle">
+            <button class="sys-btn active" id="sys-btn-0" onclick="setSysteme(0)">Mercure → Mars</button>
+            <button class="sys-btn" id="sys-btn-1" onclick="setSysteme(1)">Jupiter → Neptune</button>
+            <button class="sys-btn" id="sys-btn-2" onclick="setSysteme(2)">Lunes de Jupiter</button>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="panel-section">
+          <div class="section-title">Contrôles</div>
+          <button id="btn-pp-3" class="btn btn-play" onclick="togglePause3()">▶ Lancer</button>
+          <button class="btn btn-raz" style="margin-top:6px;" onclick="razLoi3()">↺ Remettre à zéro</button>
+          <div class="param-row" style="margin-top:8px;">
+            <label>
+              Vitesse d'animation
+              <span class="param-value" id="lbl-speed-3">60 j/s</span>
+            </label>
+            <input type="range" id="sl-speed-3" min="0" max="3" step="1" value="2"
+                   oninput="onSliderSpeed3(this.value)">
+            <div class="slider-ticks">
+              <span style="--tick-frac:0;" id="st3-0">15 j/s</span>
+              <span style="--tick-frac:0.333;" id="st3-1">30 j/s</span>
+              <span style="--tick-frac:0.667;" id="st3-2">60 j/s</span>
+              <span style="--tick-frac:1;" id="st3-3">120 j/s</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="panel-section">
+          <div class="section-title">Affichage</div>
+          <label class="check-row">
+            <input type="checkbox" id="ck-noms-3" checked onchange="toggleNoms3(this.checked)">
+            Noms des astres
+          </label>
+          <label class="check-row">
+            <input type="checkbox" id="ck-orb-3" checked onchange="toggleOrbites3(this.checked)">
+            Trajectoires
+          </label>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="panel-section">
+          <div class="section-title">Données du système</div>
+          <div class="readout" id="sys-table-wrap"></div>
+          <div class="input-hint">
+            Sur le graphe, choisissez la grandeur portée par chaque axe
+            (T, T², T³ en ordonnée — a, a², a³ en abscisse) jusqu'à obtenir
+            des points alignés avec l'origine.
+          </div>
+        </div>
+
+      </div><!-- fin #section-troisieme-loi -->
+
+    </div><!-- fin #panel-body -->
+
+    <!-- ── Bandeau Instructions 1ʳᵉ loi ──────────── -->
+    <div class="panel-hint collapsed" id="panel-hint-premiere-loi">
+      <div class="panel-hint-header">
+        <button class="panel-hint-menu-btn"
+                onclick="location.href='../index.html'"
+                title="Retour au menu principal">☰ Menu</button>
+        <span class="panel-hint-title">Instructions</span>
+        <button class="panel-hint-toggle"
+                onclick="toggleHint('premiere-loi')"
+                title="Afficher les instructions">▲</button>
+      </div>
+      <div class="panel-hint-body">
+        <strong>1ʳᵉ loi</strong> : la planète décrit une <strong>ellipse</strong> dont le
+        Soleil occupe un des <strong>foyers</strong>.<br>
+        Réglez le demi-grand axe <strong>a</strong> et l'<strong>excentricité e</strong>,
+        puis observez les éléments de l'ellipse (foyers, axes, distances).<br>
+        Quand <strong>e → 0</strong>, les foyers rejoignent le centre O :
+        l'ellipse devient un <strong>cercle</strong>.<br>
+        Cochez <em>Distances r et r′</em> pour vérifier que
+        <strong>r + r′ = 2a</strong> reste constant.
+      </div>
+    </div>
+
+    <!-- ── Bandeau Instructions 2ᵉ loi ───────────── -->
+    <div class="panel-hint collapsed" id="panel-hint-deuxieme-loi" style="display:none;">
+      <div class="panel-hint-header">
+        <button class="panel-hint-menu-btn"
+                onclick="location.href='../index.html'"
+                title="Retour au menu principal">☰ Menu</button>
+        <span class="panel-hint-title">Instructions</span>
+        <button class="panel-hint-toggle"
+                onclick="toggleHint('deuxieme-loi')"
+                title="Afficher les instructions">▲</button>
+      </div>
+      <div class="panel-hint-body">
+        <strong>2ᵉ loi (loi des aires)</strong> : le segment Soleil–planète balaie des
+        <strong>aires égales pendant des durées égales</strong>.<br>
+        Lancez l'animation, choisissez <strong>Δt</strong> puis cliquez sur
+        <em>Balayer l'aire</em> à différents endroits de l'orbite.<br>
+        Comparez les aires obtenues : mêmes valeurs, mais formes différentes —
+        la planète va donc <strong>plus vite près du Soleil</strong> (périhélie)
+        que loin de lui (aphélie).
+      </div>
+    </div>
+
+    <!-- ── Bandeau Instructions 3ᵉ loi ───────────── -->
+    <div class="panel-hint collapsed" id="panel-hint-troisieme-loi" style="display:none;">
+      <div class="panel-hint-header">
+        <button class="panel-hint-menu-btn"
+                onclick="location.href='../index.html'"
+                title="Retour au menu principal">☰ Menu</button>
+        <span class="panel-hint-title">Instructions</span>
+        <button class="panel-hint-toggle"
+                onclick="toggleHint('troisieme-loi')"
+                title="Afficher les instructions">▲</button>
+      </div>
+      <div class="panel-hint-body">
+        <strong>3ᵉ loi (loi des périodes)</strong> : choisissez un
+        <strong>système</strong> et lancez l'animation — les astres lointains
+        mettent beaucoup plus longtemps à boucler leur orbite.<br>
+        Sur le <strong>graphe</strong>, changez les grandeurs portées par les axes :
+        pour un seul choix, les points s'alignent avec l'origine
+        (<strong>T² = k·a³</strong>).<br>
+        Comparez la valeur de <strong>k</strong> selon le système : elle ne dépend
+        que de l'astre attracteur (Soleil ou Jupiter).
+      </div>
+    </div>
+
+  </div><!-- fin #panel -->
+
+</main>
+
+<!-- ════════════════════════════════════════════════
+     Ordre de chargement : sim → orbites → graph → ui
+════════════════════════════════════════════════ -->
+<script src="js/sim.js"></script>
+<script src="js/orbites.js"></script>
+<script src="js/graph.js"></script>
+<script src="js/ui.js"></script>
+
+<script data-goatcounter="https://berdous-pc.goatcounter.com/count"
+        async src="https://gc.zgo.at/count.js"></script>
+</body>
+</html>
