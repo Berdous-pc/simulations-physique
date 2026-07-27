@@ -75,11 +75,15 @@ main {
 }
 
 /* ── Zone simulation (canvas animation) ──────────── */
+/* Exception assumée à la charte (fond ivoire) : ici la zone d'animation
+   est un fond « espace » — simple dégradé sombre, sans étoiles (choix de
+   l'utilisateur : rester sobre). Les couleurs des tracés sont éclaircies
+   en conséquence ; le reste de la page garde la charte claire. */
 .sim-area {
   flex: 1;
   min-height: 0;
   min-width: 0;
-  background: #fdf8f0;
+  background: radial-gradient(ellipse at center, #17202e 0%, #0a0f1a 100%);
   position: relative;
   overflow: hidden;
   border-radius: 8px;

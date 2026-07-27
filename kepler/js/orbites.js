@@ -37,13 +37,14 @@ function sizeCanvas(canvas) {
   return true;
 }
 
-// Texte avec halo clair : reste lisible même posé sur un trait ou une aire.
+// Texte avec halo sombre (assorti au fond « espace » de la zone
+// d'animation) : reste lisible même posé sur un trait ou une aire.
 function texteHalo(ctx, txt, x, y, fill, font, align, baseline) {
   ctx.font = font;
   ctx.textAlign = align || 'center';
   ctx.textBaseline = baseline || 'middle';
   ctx.lineWidth = 3.5;
-  ctx.strokeStyle = 'rgba(253,248,240,0.85)';
+  ctx.strokeStyle = 'rgba(10,15,26,0.85)';
   ctx.lineJoin = 'round';
   ctx.strokeText(txt, x, y);
   ctx.fillStyle = fill;
@@ -120,7 +121,7 @@ function drawEchelle(ctx, H, scale, unite) {
   var lPx = lUnite * scale;
   if (lPx < 30) return;                       // fenêtre vraiment minuscule
   var x0 = 16, y0 = H - 18;
-  ctx.strokeStyle = '#5a6a78';
+  ctx.strokeStyle = '#a8b8c8';
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(x0, y0); ctx.lineTo(x0 + lPx, y0);
@@ -128,7 +129,7 @@ function drawEchelle(ctx, H, scale, unite) {
   ctx.moveTo(x0 + lPx, y0 - 5); ctx.lineTo(x0 + lPx, y0 + 5);
   ctx.stroke();
   texteHalo(ctx, fmtSmart(lUnite) + ' ' + unite, x0 + lPx / 2, y0 - 12,
-            '#5a6a78', '600 12px monospace');
+            '#a8b8c8', '600 12px monospace');
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -166,7 +167,7 @@ function drawLoi1() {
   var fontTexte = 'italic ' + Math.round(fsBase * 0.82) + 'px "Segoe UI", Arial, sans-serif';
 
   // ── Trajectoire elliptique ──
-  ctx.strokeStyle = '#88a0b8';
+  ctx.strokeStyle = '#90a8c4';
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.ellipse(ox, oy, a * s, b * s, 0, 0, 2 * Math.PI);
@@ -174,58 +175,58 @@ function drawLoi1() {
 
   // ── Grand axe ──
   if (sim1.showGrandAxe) {
-    ctx.strokeStyle = 'rgba(42,106,170,0.35)';
+    ctx.strokeStyle = 'rgba(122,170,232,0.4)';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(ox - a * s, oy);
     ctx.lineTo(ox + a * s, oy);
     ctx.stroke();
     // Demi-grand axe a : flèche O → périhélie
-    fleche(ctx, ox, oy, ox + a * s, oy, '#2a6aaa', 2.5);
-    texteHalo(ctx, 'a', ox + a * s / 2, oy - fsBase * 0.75, '#2a6aaa', fontMath);
+    fleche(ctx, ox, oy, ox + a * s, oy, '#6aa2e0', 2.5);
+    texteHalo(ctx, 'a', ox + a * s / 2, oy - fsBase * 0.75, '#6aa2e0', fontMath);
     // Sommets : périhélie / aphélie (sans objet pour un cercle)
     if (e >= 0.05) {
-      texteHalo(ctx, 'périhélie', ox + a * s, oy + fsBase * 1.15, '#7a8a96', fontTexte);
-      texteHalo(ctx, 'aphélie',   ox - a * s, oy + fsBase * 1.15, '#7a8a96', fontTexte);
+      texteHalo(ctx, 'périhélie', ox + a * s, oy + fsBase * 1.15, '#98a8b8', fontTexte);
+      texteHalo(ctx, 'aphélie',   ox - a * s, oy + fsBase * 1.15, '#98a8b8', fontTexte);
     }
   }
 
   // ── Petit axe ──
   if (sim1.showPetitAxe) {
-    ctx.strokeStyle = 'rgba(42,138,80,0.35)';
+    ctx.strokeStyle = 'rgba(88,192,136,0.4)';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(ox, oy - b * s);
     ctx.lineTo(ox, oy + b * s);
     ctx.stroke();
     // Demi-petit axe b : flèche O → sommet haut
-    fleche(ctx, ox, oy, ox, oy - b * s, '#2a8a50', 2.5);
-    texteHalo(ctx, 'b', ox - fsBase * 0.7, oy - b * s / 2, '#2a8a50', fontMath);
+    fleche(ctx, ox, oy, ox, oy - b * s, '#58c088', 2.5);
+    texteHalo(ctx, 'b', ox - fsBase * 0.7, oy - b * s / 2, '#58c088', fontMath);
   }
 
   // ── Foyers, centre et distance c ──
   if (sim1.showFoyers) {
     // Distance c = OF (uniquement si elle est visible à l'écran)
     if (c * s > 14) {
-      fleche(ctx, ox, oy, fx, fy, '#b04020', 2.5);
-      texteHalo(ctx, 'c', ox + c * s / 2, oy + fsBase * 0.8, '#b04020', fontMath);
+      fleche(ctx, ox, oy, fx, fy, '#e87850', 2.5);
+      texteHalo(ctx, 'c', ox + c * s / 2, oy + fsBase * 0.8, '#e87850', fontMath);
     }
     // Centre O
-    ctx.strokeStyle = '#5a6a78';
+    ctx.strokeStyle = '#a8b8c8';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(ox - 5, oy); ctx.lineTo(ox + 5, oy);
     ctx.moveTo(ox, oy - 5); ctx.lineTo(ox, oy + 5);
     ctx.stroke();
-    texteHalo(ctx, 'O', ox - fsBase * 0.55, oy - fsBase * 0.6, '#5a6a78', fontMath);
+    texteHalo(ctx, 'O', ox - fsBase * 0.55, oy - fsBase * 0.6, '#a8b8c8', fontMath);
     // Foyer F′ (croix)
-    ctx.strokeStyle = '#b04020';
+    ctx.strokeStyle = '#e87850';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(f2x - 5, f2y - 5); ctx.lineTo(f2x + 5, f2y + 5);
     ctx.moveTo(f2x - 5, f2y + 5); ctx.lineTo(f2x + 5, f2y - 5);
     ctx.stroke();
-    texteHalo(ctx, 'F′', f2x - fsBase * 0.7, f2y - fsBase * 0.7, '#b04020', fontMath);
+    texteHalo(ctx, 'F′', f2x - fsBase * 0.7, f2y - fsBase * 0.7, '#e87850', fontMath);
   }
 
   // ── Position de la planète (mouvement képlérien réel) ──
@@ -235,29 +236,29 @@ function drawLoi1() {
   // ── Distances r et r′ aux deux foyers ──
   if (sim1.showDistances) {
     ctx.setLineDash([7, 5]);
-    ctx.strokeStyle = '#c05020';
+    ctx.strokeStyle = '#e08050';
     ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(fx, fy); ctx.stroke();
-    ctx.strokeStyle = '#8e44ad';
+    ctx.strokeStyle = '#c088e8';
     ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(f2x, f2y); ctx.stroke();
     ctx.setLineDash([]);
-    texteHalo(ctx, 'r',  (px + fx) / 2,  (py + fy) / 2 - fsBase * 0.6,  '#c05020', fontMath);
-    texteHalo(ctx, 'r′', (px + f2x) / 2, (py + f2y) / 2 - fsBase * 0.6, '#8e44ad', fontMath);
+    texteHalo(ctx, 'r',  (px + fx) / 2,  (py + fy) / 2 - fsBase * 0.6,  '#e08050', fontMath);
+    texteHalo(ctx, 'r′', (px + f2x) / 2, (py + f2y) / 2 - fsBase * 0.6, '#c088e8', fontMath);
   }
 
   // ── Soleil au foyer F ──
   drawSoleil(ctx, fx, fy, Math.max(8, Math.min(13, s * 0.055)));
   if (sim1.showFoyers) {
-    texteHalo(ctx, 'F', fx + fsBase * 0.75, fy + fsBase * 0.75, '#b04020', fontMath);
-    texteHalo(ctx, 'Soleil', fx, fy + fsBase * 1.9, '#7a8a96', fontTexte);
+    texteHalo(ctx, 'F', fx + fsBase * 0.75, fy + fsBase * 0.75, '#e87850', fontMath);
+    texteHalo(ctx, 'Soleil', fx, fy + fsBase * 1.9, '#98a8b8', fontTexte);
   }
 
   // ── Planète ──
   ctx.beginPath();
   ctx.arc(px, py, 7, 0, 2 * Math.PI);
-  ctx.fillStyle = '#2a6aaa';
+  ctx.fillStyle = '#4a8ad8';
   ctx.fill();
-  ctx.strokeStyle = '#1a4a7a';
+  ctx.strokeStyle = '#a8c8e8';
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
@@ -308,7 +309,7 @@ function drawLoi2() {
   var fontMath = 'italic 700 ' + fsBase + 'px "Segoe UI", Arial, sans-serif';
 
   // ── Trajectoire ──
-  ctx.strokeStyle = '#88a0b8';
+  ctx.strokeStyle = '#90a8c4';
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.ellipse(ox, oy, a * s, b * s, 0, 0, 2 * Math.PI);
@@ -354,9 +355,9 @@ function drawLoi2() {
   var px = sx(p.x), py = sy(p.y);
   ctx.beginPath();
   ctx.arc(px, py, 7, 0, 2 * Math.PI);
-  ctx.fillStyle = '#2a6aaa';
+  ctx.fillStyle = '#4a8ad8';
   ctx.fill();
-  ctx.strokeStyle = '#1a4a7a';
+  ctx.strokeStyle = '#a8c8e8';
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
@@ -369,14 +370,14 @@ function drawLoi2() {
     var lenPx = Math.max(16, Math.min(0.5 * a * s, (v / 30) * 0.30 * a * s));
     var vx = px + (dxE / norm) * lenPx;
     var vy = py - (dyE / norm) * lenPx;      // y écran inversé
-    fleche(ctx, px, py, vx, vy, '#c03030', 2.5);
+    fleche(ctx, px, py, vx, vy, '#e86060', 2.5);
     texteHalo(ctx, 'v = ' + fmtFr(v, 1) + ' km/s',
               vx + (vx - px) * 0.18, vy + (vy - py) * 0.18 - fsBase * 0.7,
-              '#c03030', '700 ' + Math.round(fsBase * 0.8) + 'px "Segoe UI", Arial, sans-serif');
+              '#e86060', '700 ' + Math.round(fsBase * 0.8) + 'px "Segoe UI", Arial, sans-serif');
   }
 
   // ── Temps simulé ──
-  texteHalo(ctx, 't = ' + fmtFr(sim2.t, 0) + ' j', 16, 22, '#5a6a78',
+  texteHalo(ctx, 't = ' + fmtFr(sim2.t, 0) + ' j', 16, 22, '#a8b8c8',
             '700 ' + (fsBase + 1) + 'px monospace', 'left');
 
   drawEchelle(ctx, H, s, 'ua');
@@ -410,7 +411,7 @@ function drawSys3() {
 
   // ── Orbites ──
   if (sys3.showOrbites) {
-    ctx.strokeStyle = 'rgba(122,138,150,0.45)';
+    ctx.strokeStyle = 'rgba(160,176,192,0.45)';
     ctx.lineWidth = 1.5;
     sys.corps.forEach(function (cps) {
       var bC = demiPetitAxe(cps.a, cps.e), cC = cps.a * cps.e;
@@ -427,32 +428,32 @@ function drawSys3() {
     drawJupiter(ctx, fx, fy, Math.max(8, Math.min(13, s * rMax * 0.035)));
   }
   if (sys3.showNoms) {
-    texteHalo(ctx, sys.attracteur.nom, fx, fy + fsNom * 1.9, '#7a8a96',
+    texteHalo(ctx, sys.attracteur.nom, fx, fy + fsNom * 1.9, '#98a8b8',
               'italic ' + fsNom + 'px "Segoe UI", Arial, sans-serif');
   }
 
-  // ── Corps en orbite ──
+  // ── Corps en orbite (teintes couleurClair : fond sombre) ──
   sys.corps.forEach(function (cps) {
     var M = 2 * Math.PI * sys3.t / cps.T;      // tous alignés à t = 0
     var p = posKepler(cps.a, cps.e, M);
     var px = sx(p.x), py = sy(p.y);
     ctx.beginPath();
     ctx.arc(px, py, cps.rayon, 0, 2 * Math.PI);
-    ctx.fillStyle = cps.couleur;
+    ctx.fillStyle = cps.couleurClair;
     ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+    ctx.strokeStyle = 'rgba(255,255,255,0.4)';
     ctx.lineWidth = 1;
     ctx.stroke();
     if (sys3.showNoms) {
       texteHalo(ctx, cps.nom, px + cps.rayon + 4, py - cps.rayon - 4,
-                cps.couleur, fontNom, 'left');
+                cps.couleurClair, fontNom, 'left');
     }
   });
 
   // ── Temps simulé ──
   var dec = (sys.uniteT === 'an' && sys3.t < 10) ? 2 : 1;
   texteHalo(ctx, 't = ' + fmtFr(sys3.t, dec) + ' ' + sys.uniteT, 16, 22,
-            '#5a6a78', '700 15px monospace', 'left');
+            '#a8b8c8', '700 15px monospace', 'left');
 
   drawEchelle(ctx, H, s, sys.uniteA);
 }

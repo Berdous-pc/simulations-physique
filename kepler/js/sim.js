@@ -111,13 +111,15 @@ var sim2 = {
 var MAX_AIRES = 6;
 
 // Couleurs des aires balayées (remplissage translucide + trait/étiquette).
+// Teintes claires : elles sont posées sur le fond « espace » sombre de la
+// zone d'animation (et restent lisibles sur le fond blanc du panneau).
 var AIRE_COULEURS = [
-  { fill: 'rgba(42,106,170,0.30)', stroke: '#2a6aaa' },
-  { fill: 'rgba(176,64,32,0.30)',  stroke: '#b04020' },
-  { fill: 'rgba(42,138,80,0.30)',  stroke: '#2a8a50' },
-  { fill: 'rgba(192,128,32,0.32)', stroke: '#c08020' },
-  { fill: 'rgba(142,68,173,0.28)', stroke: '#8e44ad' },
-  { fill: 'rgba(58,122,136,0.30)', stroke: '#3a7a88' }
+  { fill: 'rgba(106,162,224,0.35)', stroke: '#6aa2e0' },
+  { fill: 'rgba(224,128,96,0.35)',  stroke: '#e08060' },
+  { fill: 'rgba(88,192,136,0.35)',  stroke: '#58c088' },
+  { fill: 'rgba(224,176,80,0.35)',  stroke: '#e0b050' },
+  { fill: 'rgba(192,136,232,0.32)', stroke: '#c088e8' },
+  { fill: 'rgba(96,184,200,0.35)',  stroke: '#60b8c8' }
 ];
 
 var SUB_CHARS = ['₁', '₂', '₃', '₄', '₅', '₆'];
@@ -131,7 +133,9 @@ var SUB_CHARS = ['₁', '₂', '₃', '₄', '₅', '₆'];
 //  e : excentricité réelle (les orbites sont tracées comme de vraies
 //      ellipses, attracteur au foyer, périhélies alignés vers +x par
 //      simplification) ;
-//  speeds : crans du slider vitesse, en unité de T par seconde réelle.
+//  speeds : crans du slider vitesse, en unité de T par seconde réelle ;
+//  couleur : teinte pour les fonds CLAIRS (graphe, tableau du panneau) ;
+//  couleurClair : la même teinte éclaircie pour le canvas au fond sombre.
 
 var SYSTEMES = [
   {
@@ -146,10 +150,10 @@ var SYSTEMES = [
     ],
     defaultSpeedIdx: 2,
     corps: [
-      { nom: 'Mercure', a: 0.387,  T: 0.2408, e: 0.206, couleur: '#7a8a96', rayon: 4 },
-      { nom: 'Vénus',   a: 0.723,  T: 0.6152, e: 0.007, couleur: '#c08020', rayon: 6 },
-      { nom: 'Terre',   a: 1.000,  T: 1.0000, e: 0.017, couleur: '#2a6aaa', rayon: 6 },
-      { nom: 'Mars',    a: 1.524,  T: 1.8808, e: 0.093, couleur: '#b04020', rayon: 5 }
+      { nom: 'Mercure', a: 0.387,  T: 0.2408, e: 0.206, couleur: '#7a8a96', couleurClair: '#b0bcc6', rayon: 4 },
+      { nom: 'Vénus',   a: 0.723,  T: 0.6152, e: 0.007, couleur: '#c08020', couleurClair: '#e8a848', rayon: 6 },
+      { nom: 'Terre',   a: 1.000,  T: 1.0000, e: 0.017, couleur: '#2a6aaa', couleurClair: '#6aa2e0', rayon: 6 },
+      { nom: 'Mars',    a: 1.524,  T: 1.8808, e: 0.093, couleur: '#b04020', couleurClair: '#e87850', rayon: 5 }
     ]
   },
   {
@@ -164,10 +168,10 @@ var SYSTEMES = [
     ],
     defaultSpeedIdx: 2,
     corps: [
-      { nom: 'Jupiter', a: 5.203,  T: 11.86,  e: 0.049, couleur: '#b07040', rayon: 8 },
-      { nom: 'Saturne', a: 9.537,  T: 29.46,  e: 0.057, couleur: '#c8a050', rayon: 7 },
-      { nom: 'Uranus',  a: 19.19,  T: 84.02,  e: 0.046, couleur: '#4a9aa8', rayon: 6 },
-      { nom: 'Neptune', a: 30.07,  T: 164.8,  e: 0.010, couleur: '#3a5aaa', rayon: 6 }
+      { nom: 'Jupiter', a: 5.203,  T: 11.86,  e: 0.049, couleur: '#b07040', couleurClair: '#dc9868', rayon: 8 },
+      { nom: 'Saturne', a: 9.537,  T: 29.46,  e: 0.057, couleur: '#c8a050', couleurClair: '#e8c878', rayon: 7 },
+      { nom: 'Uranus',  a: 19.19,  T: 84.02,  e: 0.046, couleur: '#4a9aa8', couleurClair: '#70c8d8', rayon: 6 },
+      { nom: 'Neptune', a: 30.07,  T: 164.8,  e: 0.010, couleur: '#3a5aaa', couleurClair: '#7a96e0', rayon: 6 }
     ]
   },
   {
@@ -182,10 +186,10 @@ var SYSTEMES = [
     ],
     defaultSpeedIdx: 2,
     corps: [
-      { nom: 'Io',       a: 0.4218, T: 1.769,  e: 0.004, couleur: '#c0a030', rayon: 5 },
-      { nom: 'Europe',   a: 0.6711, T: 3.551,  e: 0.009, couleur: '#6a92b8', rayon: 4 },
-      { nom: 'Ganymède', a: 1.0704, T: 7.155,  e: 0.001, couleur: '#8a7a68', rayon: 6 },
-      { nom: 'Callisto', a: 1.8827, T: 16.69,  e: 0.007, couleur: '#6a5a48', rayon: 5 }
+      { nom: 'Io',       a: 0.4218, T: 1.769,  e: 0.004, couleur: '#c0a030', couleurClair: '#e8cc58', rayon: 5 },
+      { nom: 'Europe',   a: 0.6711, T: 3.551,  e: 0.009, couleur: '#6a92b8', couleurClair: '#98c0e8', rayon: 4 },
+      { nom: 'Ganymède', a: 1.0704, T: 7.155,  e: 0.001, couleur: '#8a7a68', couleurClair: '#c0ac94', rayon: 6 },
+      { nom: 'Callisto', a: 1.8827, T: 16.69,  e: 0.007, couleur: '#6a5a48', couleurClair: '#a89078', rayon: 5 }
     ]
   }
 ];

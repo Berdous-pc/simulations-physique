@@ -87,6 +87,14 @@ boucle RAF (`loop()` de `ui.js`), les autres restent figées.
 
 ## Points techniques
 
+- **Fond « espace »** : exception assumée à la charte (fond ivoire) — la
+  zone d'animation a un dégradé sombre (CSS, `.sim-area`), sans étoiles.
+  Conséquences : halo de texte sombre (`texteHalo`), couleurs des tracés
+  éclaircies, et **double teinte** pour les astres de la 3ᵉ loi
+  (`couleurClair` sur le canvas sombre, `couleur` sur le graphe et le
+  tableau qui restent sur fond clair). Le graphe, le panneau et le reste
+  de la page gardent la charte claire.
+
 - **Canvas & devicePixelRatio** : `sizeCanvas()` (dans `orbites.js`) pose les
   pixels physiques + `setTransform(dpr)` ; tout le dessin travaille ensuite
   en pixels CSS (`clientWidth`/`clientHeight`). Renvoie `false` si le canvas
