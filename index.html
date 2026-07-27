@@ -1157,12 +1157,12 @@
         const cardTheme      = card.dataset.theme;                // ex: "optique"
 
         // Catégorie niveau : au moins un niveau de la carte est coché
-        const levelOk = activeLevels.length === 0
-          || cardLevels.some(l => activeLevels.includes(l));
+        // (aucun niveau coché => aucune carte visible)
+        const levelOk = cardLevels.some(l => activeLevels.includes(l));
 
         // Catégorie discipline : la discipline de la carte est cochée
-        const disciplineOk = activeDisciplines.length === 0
-          || activeDisciplines.includes(cardDiscipline);
+        // (aucune discipline cochée => aucune carte visible)
+        const disciplineOk = activeDisciplines.includes(cardDiscipline);
 
         // Catégorie thème : le thème de la carte doit être coché
         // (contrairement aux autres catégories, ici "aucun thème coché" masque tout,
