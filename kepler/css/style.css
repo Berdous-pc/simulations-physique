@@ -411,7 +411,7 @@ main {
 }
 
 .ro-label {
-  font-size: clamp(11px, 1vw, 14px);
+  font-size: clamp(13.2px, 1.2vw, 15.6px);
   color: #7a8a96;
   margin-bottom: 4px;
 }
@@ -429,12 +429,12 @@ main {
 }
 
 .ro-item-label {
-  font-size: clamp(10px, 0.9vw, 12px);
+  font-size: clamp(12px, 1.05vw, 14px);
   color: #7a8a96;
 }
 
 .ro-item-val {
-  font-size: clamp(13px, 1.35vw, 17px);
+  font-size: clamp(16px, 1.7vw, 20px);
   font-weight: 700;
   color: #2a5080;
   font-variant-numeric: tabular-nums;

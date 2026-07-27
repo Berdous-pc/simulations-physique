@@ -73,6 +73,35 @@ function fleche(ctx, x0, y0, x1, y1, couleur, epaisseur) {
   ctx.fill();
 }
 
+// Double flèche (pointe à chaque extrémité) : pour représenter une longueur
+// entre deux points précis (a, b, c…), par opposition à un vecteur (r, r′).
+function flecheDouble(ctx, x0, y0, x1, y1, couleur, epaisseur) {
+  var dx = x1 - x0, dy = y1 - y0;
+  var len = Math.hypot(dx, dy);
+  if (len < 2) return;
+  var ux = dx / len, uy = dy / len;
+  var head = Math.min(10, 3 + len * 0.08);
+  ctx.strokeStyle = couleur;
+  ctx.fillStyle = couleur;
+  ctx.lineWidth = epaisseur;
+  ctx.beginPath();
+  ctx.moveTo(x0 + ux * head * 0.6, y0 + uy * head * 0.6);
+  ctx.lineTo(x1 - ux * head * 0.6, y1 - uy * head * 0.6);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x1 - ux * head - uy * head * 0.45, y1 - uy * head + ux * head * 0.45);
+  ctx.lineTo(x1 - ux * head + uy * head * 0.45, y1 - uy * head - ux * head * 0.45);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(x0, y0);
+  ctx.lineTo(x0 + ux * head + uy * head * 0.45, y0 + uy * head - ux * head * 0.45);
+  ctx.lineTo(x0 + ux * head - uy * head * 0.45, y0 + uy * head + ux * head * 0.45);
+  ctx.closePath();
+  ctx.fill();
+}
+
 // Soleil : disque orangé avec halo dégradé.
 function drawSoleil(ctx, x, y, rayon) {
   var g = ctx.createRadialGradient(x, y, rayon * 0.3, x, y, rayon * 2.6);
@@ -151,7 +180,7 @@ function drawLoi1() {
   // réellement la taille de l'ellipse à l'écran, et le slider e l'aplatit
   // sans toucher au grand axe.
   var padX = Math.max(56, W * 0.08), padY = Math.max(48, H * 0.10);
-  var s = Math.min((W - 2 * padX) / (2 * A1_MAX), (H - 2 * padY) / (2 * A1_MAX));
+  var s = 1.2 * Math.min((W - 2 * padX) / (2 * A1_MAX), (H - 2 * padY) / (2 * A1_MAX));
 
   // Centre O de l'ellipse au centre du canvas ; Soleil au foyer F (droite).
   var ox = W / 2, oy = H / 2;
@@ -162,9 +191,9 @@ function drawLoi1() {
   function sx(x) { return fx + x * s; }
   function sy(y) { return fy - y * s; }
 
-  var fsBase = Math.max(13, Math.min(18, Math.min(W, H) * 0.033));
+  var fsBase = Math.max(17, Math.min(23, Math.min(W, H) * 0.042));
   var fontMath  = 'italic 700 ' + fsBase + 'px "Segoe UI", Arial, sans-serif';
-  var fontTexte = 'italic ' + Math.round(fsBase * 0.82) + 'px "Segoe UI", Arial, sans-serif';
+  var fontTexte = 'italic 600 ' + Math.round(fsBase * 0.86) + 'px "Segoe UI", Arial, sans-serif';
 
   // ── Trajectoire elliptique ──
   ctx.strokeStyle = '#90a8c4';
@@ -182,7 +211,7 @@ function drawLoi1() {
     ctx.lineTo(ox + a * s, oy);
     ctx.stroke();
     // Demi-grand axe a : flèche O → périhélie
-    fleche(ctx, ox, oy, ox + a * s, oy, '#6aa2e0', 2.5);
+    flecheDouble(ctx, ox, oy, ox + a * s, oy, '#6aa2e0', 2.5);
     texteHalo(ctx, 'a', ox + a * s / 2, oy - fsBase * 0.75, '#6aa2e0', fontMath);
     // Sommets : périhélie / aphélie (sans objet pour un cercle)
     if (e >= 0.05) {
@@ -200,7 +229,7 @@ function drawLoi1() {
     ctx.lineTo(ox, oy + b * s);
     ctx.stroke();
     // Demi-petit axe b : flèche O → sommet haut
-    fleche(ctx, ox, oy, ox, oy - b * s, '#58c088', 2.5);
+    flecheDouble(ctx, ox, oy, ox, oy - b * s, '#58c088', 2.5);
     texteHalo(ctx, 'b', ox - fsBase * 0.7, oy - b * s / 2, '#58c088', fontMath);
   }
 
@@ -208,7 +237,7 @@ function drawLoi1() {
   if (sim1.showFoyers) {
     // Distance c = OF (uniquement si elle est visible à l'écran)
     if (c * s > 14) {
-      fleche(ctx, ox, oy, fx, fy, '#e87850', 2.5);
+      flecheDouble(ctx, ox, oy, fx, fy, '#e87850', 2.5);
       texteHalo(ctx, 'c', ox + c * s / 2, oy + fsBase * 0.8, '#e87850', fontMath);
     }
     // Centre O
@@ -234,16 +263,22 @@ function drawLoi1() {
   var px = sx(p.x), py = sy(p.y);
 
   // ── Distances r et r′ aux deux foyers ──
+  // r′ (et sa flèche) sont masqués quand e = 0 : les deux foyers sont alors
+  // confondus et les deux tracés se superposeraient exactement.
   if (sim1.showDistances) {
     ctx.setLineDash([7, 5]);
     ctx.strokeStyle = '#e08050';
     ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(fx, fy); ctx.stroke();
-    ctx.strokeStyle = '#c088e8';
-    ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(f2x, f2y); ctx.stroke();
+    if (e >= 0.01) {
+      ctx.strokeStyle = '#c088e8';
+      ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(f2x, f2y); ctx.stroke();
+    }
     ctx.setLineDash([]);
     texteHalo(ctx, 'r',  (px + fx) / 2,  (py + fy) / 2 - fsBase * 0.6,  '#e08050', fontMath);
-    texteHalo(ctx, 'r′', (px + f2x) / 2, (py + f2y) / 2 - fsBase * 0.6, '#c088e8', fontMath);
+    if (e >= 0.01) {
+      texteHalo(ctx, 'r′', (px + f2x) / 2, (py + f2y) / 2 - fsBase * 0.6, '#c088e8', fontMath);
+    }
   }
 
   // ── Soleil au foyer F ──
@@ -261,6 +296,7 @@ function drawLoi1() {
   ctx.strokeStyle = '#a8c8e8';
   ctx.lineWidth = 1.5;
   ctx.stroke();
+  texteHalo(ctx, 'planète', px, py - fsBase * 1.15, '#a8c8e8', fontTexte);
 
   drawEchelle(ctx, H, s, 'ua');
 }

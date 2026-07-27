@@ -83,7 +83,7 @@ var SPEED12 = [
 var A1_MAX = 4.0;     // valeur max du slider a (ua) — l'échelle tient 2·A1_MAX
 
 var sim1 = {
-  a: 1.0,             // demi-grand axe (ua)
+  a: 3.0,             // demi-grand axe (ua)
   e: 0.50,            // excentricité
   M: 0,               // anomalie moyenne (rad), intégrée dans la boucle
   paused: true,
