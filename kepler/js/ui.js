@@ -160,6 +160,7 @@ function razLoi2() {
   sim2.paused = true;
   sim2.aires = [];
   sim2.sweep = null;
+  sim2.sweepAutoPause = false;
   _updatePlayBtn(2, true);
   _updateBtnBalayer();
   updateAiresList();
@@ -242,8 +243,10 @@ function balayerAire() {
     tEnd:   sim2.t + sim2.deltaT,
     colorIdx: sim2.aires.length
   };
-  // Le balayage se regarde en mouvement : on relance si l'animation est
-  // en pause.
+  // Le balayage se regarde en mouvement : on relance si l'animation est en
+  // pause, et on mémorise ce départ pour la remettre en pause une fois le
+  // balayage terminé (sinon l'animation continue indéfiniment).
+  sim2.sweepAutoPause = sim2.paused;
   if (sim2.paused) togglePause2();
   _updateBtnBalayer();
 }
@@ -264,6 +267,13 @@ function _finaliserAire() {
     colorIdx: sw.colorIdx
   });
   sim2.sweep = null;
+  // Si l'animation avait été relancée automatiquement pour ce balayage
+  // (elle était en pause au clic sur « Balayer »), la remettre en pause.
+  if (sim2.sweepAutoPause) {
+    sim2.sweepAutoPause = false;
+    sim2.paused = true;
+    _updatePlayBtn(2, true);
+  }
   _updateBtnBalayer();
   updateAiresList();
 }

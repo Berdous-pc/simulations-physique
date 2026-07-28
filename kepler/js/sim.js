@@ -112,10 +112,11 @@ var sim2 = {
   showRayon: false,   // vecteur position r (Soleil → planète)
   showAccel: false,   // vecteur accélération (planète → Soleil)
   aires: [],          // aires terminées : { E0, E1, aire, colorIdx, tStart, tEnd }
-  sweep: null         // balayage en cours : { Mstart, Mend, tStart, tEnd, colorIdx }
+  sweep: null,        // balayage en cours : { Mstart, Mend, tStart, tEnd, colorIdx }
+  sweepAutoPause: false // animation relancée automatiquement pour ce balayage : la remettre en pause à la fin
 };
 
-var MAX_AIRES = 6;
+var MAX_AIRES = 10;
 
 // Couleurs des aires balayées (remplissage translucide + trait/étiquette).
 // Teintes claires : elles sont posées sur le fond « espace » sombre de la
@@ -126,10 +127,14 @@ var AIRE_COULEURS = [
   { fill: 'rgba(126,220,168,0.42)', stroke: '#7edca8' },
   { fill: 'rgba(245,205,120,0.42)', stroke: '#f5cd78' },
   { fill: 'rgba(214,168,248,0.40)', stroke: '#d6a8f8' },
-  { fill: 'rgba(130,212,228,0.42)', stroke: '#82d4e4' }
+  { fill: 'rgba(130,212,228,0.42)', stroke: '#82d4e4' },
+  { fill: 'rgba(245,140,175,0.42)', stroke: '#f58caf' },
+  { fill: 'rgba(180,215,110,0.42)', stroke: '#b4d76e' },
+  { fill: 'rgba(255,180,90,0.42)',  stroke: '#ffb45a' },
+  { fill: 'rgba(160,180,245,0.42)', stroke: '#a0b4f5' }
 ];
 
-var SUB_CHARS = ['₁', '₂', '₃', '₄', '₅', '₆'];
+var SUB_CHARS = ['₁', '₂', '₃', '₄', '₅', '₆', '₇', '₈', '₉', '₁₀'];
 
 // ══════════════════════════════════════════════════════════════════════
 //  Onglet 3 — systèmes réels

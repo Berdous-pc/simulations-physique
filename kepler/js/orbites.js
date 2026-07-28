@@ -505,8 +505,9 @@ function drawLoi2() {
   }
 
   // ── Temps simulé ──
-  texteHalo(ctx, 't = ' + fmtFr(sim2.t, 0) + ' j', 16, 22, '#a8b8c8',
-            '700 ' + (fsBase + 1) + 'px monospace', 'left');
+  var fsT = Math.round(fsBase * 1.5);
+  texteHalo(ctx, 't = ' + fmtFr(sim2.t, 0) + ' j', 16, fsT * 0.85 + 6, '#a8b8c8',
+            '700 ' + fsT + 'px monospace', 'left');
 
   drawEchelle(ctx, H, s, 'ua');
 }
