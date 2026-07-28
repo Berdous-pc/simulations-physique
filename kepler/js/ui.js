@@ -128,6 +128,7 @@ function updateReadouts() {
     var v = V_TERRE_KMS * Math.sqrt(Math.max(0, 2 / p2.r - 1 / sim2.a));
     _setText('ro-r-2', fmtFr(p2.r, 2) + ' ua');
     _setText('ro-v-2', fmtFr(v, 1) + ' km/s');
+    _setText('ro-acc-2', fmtFr(A_TERRE_MMS2 / (p2.r * p2.r), 2) + ' mm/s²');
   }
 }
 
@@ -225,8 +226,9 @@ function onSliderDeltaT2(val) {
   _setText('lbl-dt-2', sim2.deltaT);
 }
 
-function toggleVitesse2(checked) {
-  sim2.showVitesse = checked;
+// Vecteurs superposés à la trajectoire : vitesse, position r, accélération.
+function toggleAffichage2(cle, checked) {
+  sim2[cle] = checked;
 }
 
 // ── Bouton « Balayer l'aire pendant Δt » ──
@@ -412,6 +414,8 @@ function _syncUI() {
   document.getElementById('sl-speed-2').value = sim2.speedIdx;
   _setText('lbl-speed-2', SPEED12[sim2.speedIdx].label);
   document.getElementById('ck-vit-2').checked = sim2.showVitesse;
+  document.getElementById('ck-ray-2').checked = sim2.showRayon;
+  document.getElementById('ck-acc-2').checked = sim2.showAccel;
   _updateBtnBalayer();
   updateAiresList();
 

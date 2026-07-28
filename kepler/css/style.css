@@ -422,6 +422,11 @@ main {
   gap: 5px 10px;
 }
 
+/* Une grandeur par ligne (mesures de la 2ᵉ loi) */
+.ro-grid-1col {
+  grid-template-columns: 1fr;
+}
+
 .ro-item {
   display: flex;
   flex-direction: column;

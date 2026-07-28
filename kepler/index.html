@@ -224,15 +224,16 @@
           <div class="param-row" style="margin-top:8px;">
             <label>
               Vitesse d'animation
-              <span class="param-value" id="lbl-speed-2">10 j/s</span>
+              <span class="param-value" id="lbl-speed-2">60 j/s</span>
             </label>
-            <input type="range" id="sl-speed-2" min="0" max="3" step="1" value="0"
+            <input type="range" id="sl-speed-2" min="0" max="4" step="1" value="2"
                    oninput="onSliderSpeed2(this.value)">
             <div class="slider-ticks">
               <span style="--tick-frac:0;">10 j/s</span>
-              <span style="--tick-frac:0.333;">30 j/s</span>
-              <span style="--tick-frac:0.667;">60 j/s</span>
-              <span style="--tick-frac:1;">120 j/s</span>
+              <span style="--tick-frac:0.25;">30 j/s</span>
+              <span style="--tick-frac:0.5;">60 j/s</span>
+              <span style="--tick-frac:0.75;">120 j/s</span>
+              <span style="--tick-frac:1;">180 j/s</span>
             </div>
           </div>
         </div>
@@ -246,9 +247,9 @@
               Excentricité e
               <span class="param-value" id="lbl-e-2">0,60</span>
             </label>
-            <input type="range" id="sl-e-2" min="0" max="0.99" step="0.01" value="0.6"
+            <input type="range" id="sl-e-2" min="0" max="0.95" step="0.01" value="0.6"
                    oninput="onSliderE2(this.value)">
-            <div class="input-hint">Demi-grand axe fixé : a = 1 ua, donc T = 1 an = 365 j (3ᵉ loi). Changer e efface les aires.</div>
+            <div class="input-hint">Demi-grand axe fixé : a = 1 ua, donc T = 1 an. Changer e efface les aires.</div>
           </div>
         </div>
 
@@ -267,10 +268,22 @@
           <button id="btn-balayer" class="btn btn-primary" onclick="balayerAire()">◔ Balayer l'aire pendant Δt</button>
           <button class="btn btn-raz" style="margin-top:6px;" onclick="effacerAires()">✕ Effacer les aires</button>
           <label class="check-row" style="margin-top:8px;">
-            <input type="checkbox" id="ck-vit-2" checked
-                   onchange="toggleVitesse2(this.checked)">
+            <input type="checkbox" id="ck-vit-2"
+                   onchange="toggleAffichage2('showVitesse', this.checked)">
             <span class="cr-swatch" style="background:#e86060;"></span>
             Vecteur vitesse
+          </label>
+          <label class="check-row">
+            <input type="checkbox" id="ck-ray-2"
+                   onchange="toggleAffichage2('showRayon', this.checked)">
+            <span class="cr-swatch" style="background:#e0a850;"></span>
+            Vecteur position r (distance au Soleil)
+          </label>
+          <label class="check-row">
+            <input type="checkbox" id="ck-acc-2"
+                   onchange="toggleAffichage2('showAccel', this.checked)">
+            <span class="cr-swatch" style="background:#58c088;"></span>
+            Vecteur accélération
           </label>
         </div>
 
@@ -283,7 +296,7 @@
             <div class="aires-list" id="aires-list"></div>
           </div>
           <div class="readout">
-            <div class="ro-grid">
+            <div class="ro-grid ro-grid-1col">
               <div class="ro-item">
                 <span class="ro-item-label">Distance au Soleil r</span>
                 <span class="ro-item-val" id="ro-r-2">—</span>
@@ -291,6 +304,10 @@
               <div class="ro-item">
                 <span class="ro-item-label">Vitesse v</span>
                 <span class="ro-item-val" id="ro-v-2">—</span>
+              </div>
+              <div class="ro-item">
+                <span class="ro-item-label">Accélération a</span>
+                <span class="ro-item-val" id="ro-acc-2">—</span>
               </div>
             </div>
           </div>
@@ -400,10 +417,7 @@
         <strong>2ᵉ loi (loi des aires)</strong> : le segment Soleil–planète balaie des
         <strong>aires égales pendant des durées égales</strong>.<br>
         Lancez l'animation, choisissez <strong>Δt</strong> puis cliquez sur
-        <em>Balayer l'aire</em> à différents endroits de l'orbite.<br>
-        Comparez les aires obtenues : mêmes valeurs, mais formes différentes —
-        la planète va donc <strong>plus vite près du Soleil</strong> (périhélie)
-        que loin de lui (aphélie).
+        <em>Balayer l'aire</em> à différents endroits de l'orbite.
       </div>
     </div>
 

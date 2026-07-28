@@ -51,6 +51,42 @@ function texteHalo(ctx, txt, x, y, fill, font, align, baseline) {
   ctx.fillText(txt, x, y);
 }
 
+// Étiquette d'une flèche, centrée sur le MILIEU du trait et décalée
+// perpendiculairement pour ne jamais le chevaucher : le décalage minimal tient
+// compte de l'inclinaison (un texte horizontal « déborde » d'autant plus que la
+// flèche est oblique). La position finale est recadrée dans le canvas.
+//
+// Choix du côté, deux modes :
+//  - `cote` = ±1 : côté SOLIDAIRE de la flèche (normale obtenue par rotation
+//    constante de sa direction). L'étiquette suit alors la flèche sans jamais
+//    basculer, ce qu'il faut pour les flèches radiales r et a qui tournent avec
+//    la planète — et comme a est l'opposée de r, leurs étiquettes se placent
+//    automatiquement de part et d'autre de l'axe Soleil–planète.
+//  - `cote` = 0 : côté opposé au point (refx, refy). À réserver aux flèches non
+//    radiales (v) : sur une flèche pointant vers ce point, le critère serait
+//    dégénéré et l'étiquette sauterait d'un côté à l'autre à chaque image.
+function etiquetteFleche(ctx, x0, y0, x1, y1, txt, couleur, font, fs, W, H, cote, refx, refy) {
+  var dx = x1 - x0, dy = y1 - y0;
+  var len = Math.hypot(dx, dy);
+  if (len < 2) return;
+  var ux = dx / len, uy = dy / len;
+  ctx.font = font;
+  var w = ctx.measureText(txt).width, h = fs * 1.15;
+  var mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
+  var nx = -uy, ny = ux;
+  if (cote) {
+    if (cote < 0) { nx = -nx; ny = -ny; }
+  } else if (nx * (mx - refx) + ny * (my - refy) < 0) {
+    nx = -nx; ny = -ny;
+  }
+  var d = Math.abs(uy) * w / 2 + Math.abs(ux) * h / 2 + 6;
+  var lx = mx + nx * d, ly = my + ny * d;
+  var marge = 6;
+  lx = Math.max(marge + w / 2, Math.min(lx, W - marge - w / 2));
+  ly = Math.max(marge + h / 2, Math.min(ly, H - marge - h / 2));
+  texteHalo(ctx, txt, lx, ly, couleur, font);
+}
+
 // Flèche simple (segment + pointe).
 function fleche(ctx, x0, y0, x1, y1, couleur, epaisseur) {
   var dx = x1 - x0, dy = y1 - y0;
@@ -357,7 +393,7 @@ function drawLoi2() {
   // augmente, l'ellipse s'aplatit à grand axe constant — une échelle calée
   // sur 2b la ferait au contraire s'élargir à l'écran.
   var padX = Math.max(50, W * 0.07), padY = Math.max(44, H * 0.09);
-  var s = Math.min((W - 2 * padX) / (2 * a), (H - 2 * padY) / (2 * a));
+  var s = 1.1 * Math.min((W - 2 * padX) / (2 * a), (H - 2 * padY) / (2 * a));
 
   var ox = W / 2, oy = H / 2;
   var fx = ox + c * s, fy = oy;
@@ -421,6 +457,37 @@ function drawLoi2() {
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
+  var fsVec = Math.round(fsBase * 1.05);
+  var fontVec = '700 ' + fsVec + 'px "Segoe UI", Arial, sans-serif';
+
+  // ── Vecteur position r (Soleil → planète) ──
+  // Dessiné en premier : c'est le trait de construction, vitesse et
+  // accélération doivent passer au-dessus.
+  if (sim2.showRayon) {
+    fleche(ctx, fx, fy, px, py, '#e0a850', 2.2);
+    etiquetteFleche(ctx, fx, fy, px, py, 'r = ' + fmtFr(p.r, 2) + ' ua',
+                    '#e0a850', fontVec, fsVec, W, H, +1);
+  }
+
+  // ── Vecteur accélération (gravitation : dirigé vers le Soleil, en 1/r²) ──
+  if (sim2.showAccel) {
+    var acc = A_TERRE_MMS2 / (p.r * p.r);                 // mm/s²
+    var dxA = fx - px, dyA = fy - py;                      // direction planète → Soleil
+    var distSol = Math.hypot(dxA, dyA) || 1;
+    // Longueur ∝ acc (calée pour que a à 1 ua fasse ~0,22·a·s px), mais jamais
+    // au-delà du Soleil : sans ce plafond, l'accélération explose en 1/r² près
+    // du périhélie et la flèche traverse tout le dessin.
+    var lenA = (acc / A_TERRE_MMS2) * 0.22 * a * s;
+    lenA = Math.max(16, Math.min(lenA, 0.75 * distSol, 0.5 * a * s));
+    var ax = px + (dxA / distSol) * lenA;
+    var ay = py + (dyA / distSol) * lenA;
+    fleche(ctx, px, py, ax, ay, '#58c088', 2.5);
+    // Même signe que r : a étant l'opposée de r, l'étiquette se place d'elle-même
+    // de l'autre côté de l'axe Soleil–planète.
+    etiquetteFleche(ctx, px, py, ax, ay, 'a = ' + fmtFr(acc, 2) + ' mm/s²',
+                    '#58c088', fontVec, fsVec, W, H, +1);
+  }
+
   // ── Vecteur vitesse (vis-viva, tangent à la trajectoire) ──
   if (sim2.showVitesse) {
     var v = V_TERRE_KMS * Math.sqrt(Math.max(0, 2 / p.r - 1 / a));
@@ -431,9 +498,10 @@ function drawLoi2() {
     var vx = px + (dxE / norm) * lenPx;
     var vy = py - (dyE / norm) * lenPx;      // y écran inversé
     fleche(ctx, px, py, vx, vy, '#e86060', 2.5);
-    texteHalo(ctx, 'v = ' + fmtFr(v, 1) + ' km/s',
-              vx + (vx - px) * 0.18, vy + (vy - py) * 0.18 - fsBase * 0.7,
-              '#e86060', '700 ' + Math.round(fsBase * 0.8) + 'px "Segoe UI", Arial, sans-serif');
+    // v est ~perpendiculaire au rayon : le critère « à l'opposé du Soleil » est
+    // ici bien défini, et il éloigne l'étiquette de celles de r et a.
+    etiquetteFleche(ctx, px, py, vx, vy, 'v = ' + fmtFr(v, 1) + ' km/s',
+                    '#e86060', fontVec, fsVec, W, H, 0, fx, fy);
   }
 
   // ── Temps simulé ──

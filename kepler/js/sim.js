@@ -22,6 +22,10 @@ var JOURS_PAR_AN = 365.25;
 // autour du Soleil — sert de facteur d'échelle dans la formule vis-viva :
 // v = 29,78 × √(2/r − 1/a)  avec r et a en ua.
 var V_TERRE_KMS = 29.78;
+// Accélération gravitationnelle (mm/s²) subie par un corps à 1 ua du Soleil :
+// a = G·M☉/r², soit 1,327·10²⁰ / (1,496·10¹¹)² ≈ 5,93·10⁻³ m/s².
+// À une distance r (en ua), a = A_TERRE_MMS2 / r².
+var A_TERRE_MMS2 = 5.93;
 
 // ══════════════════════════════════════════════════════════════════════
 //  Mathématiques du mouvement képlérien
@@ -102,9 +106,11 @@ var sim2 = {
   M: 0,
   t: 0,               // temps simulé (jours)
   paused: true,
-  speedIdx: 0,        // 10 j/s : un balayage de 30 j dure 3 s à l'écran
+  speedIdx: 2,        // 60 j/s
   deltaT: 30,         // durée de balayage (jours)
-  showVitesse: true,  // vecteur vitesse
+  showVitesse: false, // vecteur vitesse (tangent à la trajectoire)
+  showRayon: false,   // vecteur position r (Soleil → planète)
+  showAccel: false,   // vecteur accélération (planète → Soleil)
   aires: [],          // aires terminées : { E0, E1, aire, colorIdx, tStart, tEnd }
   sweep: null         // balayage en cours : { Mstart, Mend, tStart, tEnd, colorIdx }
 };
@@ -115,12 +121,12 @@ var MAX_AIRES = 6;
 // Teintes claires : elles sont posées sur le fond « espace » sombre de la
 // zone d'animation (et restent lisibles sur le fond blanc du panneau).
 var AIRE_COULEURS = [
-  { fill: 'rgba(106,162,224,0.35)', stroke: '#6aa2e0' },
-  { fill: 'rgba(224,128,96,0.35)',  stroke: '#e08060' },
-  { fill: 'rgba(88,192,136,0.35)',  stroke: '#58c088' },
-  { fill: 'rgba(224,176,80,0.35)',  stroke: '#e0b050' },
-  { fill: 'rgba(192,136,232,0.32)', stroke: '#c088e8' },
-  { fill: 'rgba(96,184,200,0.35)',  stroke: '#60b8c8' }
+  { fill: 'rgba(140,190,245,0.42)', stroke: '#8cbef5' },
+  { fill: 'rgba(245,160,130,0.42)', stroke: '#f5a082' },
+  { fill: 'rgba(126,220,168,0.42)', stroke: '#7edca8' },
+  { fill: 'rgba(245,205,120,0.42)', stroke: '#f5cd78' },
+  { fill: 'rgba(214,168,248,0.40)', stroke: '#d6a8f8' },
+  { fill: 'rgba(130,212,228,0.42)', stroke: '#82d4e4' }
 ];
 
 var SUB_CHARS = ['₁', '₂', '₃', '₄', '₅', '₆'];
