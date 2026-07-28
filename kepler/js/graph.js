@@ -90,11 +90,12 @@ function drawGraph3() {
   // points, droite modèle) travaille sur cette vue.
   var xRangeFull = xMax * 1.15, yRangeFull = yMax * 1.15;
   var xRange, yRange;
-  if (sys.zoomMax) {
-    // Système Solaire : le graphe SUIT le zoom du canvas — il cadre les
-    // astres dont l'orbite est encore visible à l'écran (a ≤ aVis). Les
-    // deux axes se resserrent chacun selon leur exposant, en passant par
-    // la 3ᵉ loi elle-même (T = a^1,5 autour du Soleil, en an et ua).
+  if (sys.zoomMax && sys3.graphZoomLinked) {
+    // Système Solaire (zoom lié) : le graphe SUIT le zoom du canvas — il
+    // cadre les astres dont l'orbite est encore visible à l'écran (a ≤
+    // aVis). Les deux axes se resserrent chacun selon leur exposant, en
+    // passant par la 3ᵉ loi elle-même (T = a^1,5 autour du Soleil, en an
+    // et ua).
     var aMaxSys = 0;
     sys.corps.forEach(function (cps) { aMaxSys = Math.max(aMaxSys, cps.a); });
     var aVis = aMaxSys / sys3.zoom;
@@ -107,8 +108,8 @@ function drawGraph3() {
   }
 
   // ── Cadre de tracé (marges pour les sélecteurs d'axes et graduations) ──
-  var padL = Math.min(104, Math.max(84, W * 0.16));
-  var padR = 24, padT = 38, padB = 58;
+  var padL = Math.min(118, Math.max(96, W * 0.18));
+  var padR = 24, padT = 42, padB = 82;
   var x0 = padL, y0 = H - padB;                       // origine
   var plotW = W - padL - padR, plotH = H - padT - padB;
   if (plotW < 60 || plotH < 60) return;
@@ -122,7 +123,7 @@ function drawGraph3() {
   var divX = Math.pow(10, expX), divY = Math.pow(10, expY);
 
   // ── Grille + graduations ──
-  ctx.font = '12px monospace';
+  ctx.font = '15px monospace';
   ctx.fillStyle = '#5a6a78';
   var stepX = tickStep(xRange);
   var stepY = tickStep(yRange);
@@ -171,24 +172,20 @@ function drawGraph3() {
   ctx.closePath(); ctx.fill();
 
   // ── Titres d'axes ──
-  ctx.font = '700 14px "Segoe UI", Arial, sans-serif';
+  ctx.font = '700 17px "Segoe UI", Arial, sans-serif';
   ctx.fillStyle = '#2c3e50';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
-  ctx.fillText(yLab + ' (' + _puissanceTxt(expY) + yUnit + ')', Math.max(8, x0 - 44), padT - 14);
+  ctx.fillText(yLab + ' (' + _puissanceTxt(expY) + yUnit + ')', Math.max(8, x0 - 50), padT - 16);
   ctx.textAlign = 'right';
-  ctx.fillText(xLab + ' (' + _puissanceTxt(expX) + xUnit + ')', W - padR, y0 + 44);
+  ctx.fillText(xLab + ' (' + _puissanceTxt(expX) + xUnit + ')', W - padR, y0 + 50);
 
   // ── Ajustement proportionnel y = k·x : les points sont-ils alignés
-  //    avec l'origine ? (vrai uniquement pour T² en fonction de a³) ──
+  //    avec l'origine ? Uniquement affiché à la demande (bouton
+  //    « Modélisation linéaire ») : aux élèves de juger si ça correspond. ──
   var sxy = 0, sxx = 0;
   pts.forEach(function (pt) { sxy += pt.x * pt.y; sxx += pt.x * pt.x; });
   var k = sxy / sxx;
-  var residuMax = 0;
-  pts.forEach(function (pt) {
-    residuMax = Math.max(residuMax, Math.abs(pt.y - k * pt.x) / yMax);
-  });
-  var alignes = residuMax < 0.02;
 
   // Au-delà de zoom = 1, des points (et la droite modèle) peuvent sortir du
   // cadre : on les découpe proprement plutôt que de laisser déborder sur
@@ -198,11 +195,13 @@ function drawGraph3() {
   ctx.rect(x0, padT, plotW, plotH);
   ctx.clip();
 
-  if (alignes) {
-    // Droite modèle en pointillés, de l'origine au bord du cadre
+  if (sys3.modelLin) {
+    // Droite modèle en pointillés, de l'origine au bord du cadre — tracée
+    // qu'elle « colle » ou non aux points : c'est justement ce que l'élève
+    // doit observer.
     var xFin = Math.min(xRange, yRange / k);
     ctx.setLineDash([7, 5]);
-    ctx.strokeStyle = '#2a6aaa';
+    ctx.strokeStyle = '#5a6a78';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(gx(0), gy(0));
@@ -210,36 +209,32 @@ function drawGraph3() {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Encart : loi mise en évidence + valeur de k. Posé en haut à gauche
-    // du cadre : la droite y = kx laisse cette zone libre.
+    // Encart : relation testée + valeur de k. Ton neutre (ni rouge ni
+    // vert) : le message ne doit pas révéler si le modèle est pertinent.
     var kUnit = yUnit + '/' + xUnit;
-    var l1 = '✓ Les points sont alignés avec l’origine !';
-    var l2 = yLab + ' = k × ' + xLab;
-    var l3 = 'k = ' + fmtSmart(k) + ' ' + kUnit;
-    ctx.font = '700 13px "Segoe UI", Arial, sans-serif';
-    var bw = Math.max(ctx.measureText(l1).width, ctx.measureText(l2).width,
-                      ctx.measureText(l3).width) + 22;
-    var bx = x0 + 10, by = padT + 8, bh = 66;
+    var l1 = yLab + ' = k × ' + xLab;
+    var l2 = 'k = ' + fmtSmart(k) + ' ' + kUnit;
+    ctx.font = '700 20px "Segoe UI", Arial, sans-serif';
+    var bw = Math.max(ctx.measureText(l1).width, ctx.measureText(l2).width) + 32;
+    var bx = x0 + 10, by = padT + 8, bh = 72;
     ctx.fillStyle = 'rgba(255,255,255,0.95)';
-    ctx.strokeStyle = '#2a8a50';
+    ctx.strokeStyle = '#7a8a96';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    if (ctx.roundRect) ctx.roundRect(bx, by, bw, bh, 6);
+    if (ctx.roundRect) ctx.roundRect(bx, by, bw, bh, 8);
     else ctx.rect(bx, by, bw, bh);
     ctx.fill();
     ctx.stroke();
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#2a8a50';
-    ctx.fillText(l1, bx + 11, by + 14);
     ctx.fillStyle = '#2c3e50';
-    ctx.fillText(l2, bx + 11, by + 33);
-    ctx.fillText(l3, bx + 11, by + 52);
+    ctx.fillText(l1, bx + 16, by + 23);
+    ctx.fillText(l2, bx + 16, by + 51);
   }
 
   // ── Points + noms des corps ──
   _pts3 = [];
-  ctx.font = '700 12px "Segoe UI", Arial, sans-serif';
+  ctx.font = '700 15px "Segoe UI", Arial, sans-serif';
   pts.forEach(function (pt) {
     var px = gx(pt.x), py = gy(pt.y);
     ctx.beginPath();
@@ -259,21 +254,16 @@ function drawGraph3() {
     _pts3.push({ px: px, py: py, pt: pt, visible: px >= x0 && px <= W - padR && py >= padT && py <= y0 });
   });
   ctx.restore();
-
-  // ── Indicateur de zoom (visible dès qu'on s'écarte du cadre complet) ──
-  var zoomAffiche = sys.zoomMax ? sys3.zoom : _graph3Zoom;
-  if (zoomAffiche > 1.01) {
-    ctx.font = '700 12px "Segoe UI", Arial, sans-serif';
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'top';
-    ctx.fillStyle = '#7a8a96';
-    ctx.fillText('🔍 × ' + fmtSmart(zoomAffiche), W - padR, 6);
-  }
 }
 
 // ══════════════════════════════════════════════════════════════════════
 //  Sélecteurs d'axes (appelés depuis index.html)
 // ══════════════════════════════════════════════════════════════════════
+
+function _resetModelLin3() {
+  sys3.modelLin = false;
+  document.getElementById('btn-model-lin-3').classList.remove('active');
+}
 
 function setAxeX(pow) {
   if (sys3.axeX === pow) return;
@@ -282,6 +272,7 @@ function setAxeX(pow) {
     document.getElementById('axeX-' + n).classList.toggle('active', n === pow);
   }
   resetGraph3Zoom();     // l'étendue des données change du tout au tout
+  _resetModelLin3();      // relation testée différente : à revalider
   drawGraph3();
 }
 
@@ -292,6 +283,7 @@ function setAxeY(pow) {
     document.getElementById('axeY-' + n).classList.toggle('active', n === pow);
   }
   resetGraph3Zoom();
+  _resetModelLin3();
   drawGraph3();
 }
 
@@ -346,19 +338,22 @@ function initGraph3Wheel() {
     // Facteur exponentiel : lisse aussi bien à la molette (pas fixe, gros
     // deltaY) qu'au trackpad (deltaY continu, petits pas).
     var facteur = Math.exp(-ev.deltaY * 0.0015);
-    // Système Solaire : le graphe étant asservi au zoom du canvas, la
-    // molette pilote directement ce dernier (une seule notion de zoom).
-    if (SYSTEMES[sys3.sysIdx].zoomMax) {
+    // Système Solaire, zoom lié : le graphe étant asservi au zoom du
+    // canvas, la molette pilote directement ce dernier (une seule notion
+    // de zoom). Zoom délié : le graphe zoome indépendamment, comme les
+    // autres systèmes.
+    if (SYSTEMES[sys3.sysIdx].zoomMax && sys3.graphZoomLinked) {
       setZoom3(sys3.zoom * facteur);
       return;
     }
-    _graph3Zoom = Math.min(GRAPH3_ZOOM_MAX, Math.max(1, _graph3Zoom * facteur));
+    var zMax = SYSTEMES[sys3.sysIdx].zoomMax || GRAPH3_ZOOM_MAX;
+    _graph3Zoom = Math.min(zMax, Math.max(1, _graph3Zoom * facteur));
     drawGraph3();
   }, { passive: false });
 
   // Double-clic : retour rapide au cadre complet.
   canvas.addEventListener('dblclick', function () {
-    if (SYSTEMES[sys3.sysIdx].zoomMax) {
+    if (SYSTEMES[sys3.sysIdx].zoomMax && sys3.graphZoomLinked) {
       sys3.zoomCible = 1;                    // dézoom animé vers la vue complète
       return;
     }

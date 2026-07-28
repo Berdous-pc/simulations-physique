@@ -66,6 +66,14 @@ main {
   gap: 10px;
 }
 
+/* Graphe masqué (bouton « Afficher graphe ») : l'animation prend toute la place */
+.tab-view.duo.no-graph {
+  grid-template-columns: 1fr;
+}
+.tab-view.duo.no-graph .chart-wrap {
+  display: none;
+}
+
 /* Sur fenêtre étroite, les deux zones de la 3ᵉ loi s'empilent */
 @media (max-width: 950px) {
   .tab-view.duo {
@@ -128,8 +136,8 @@ main {
 }
 
 .axis-sel button {
-  padding: 4px 9px;
-  font-size: clamp(11px, 1.05vw, 14px);
+  padding: 6px 12px;
+  font-size: clamp(14px, 1.4vw, 18px);
   font-weight: 700;
   font-family: inherit;
   border: none;
@@ -152,8 +160,8 @@ main {
   transform: translateY(-50%);
 }
 .axis-sel-y button {
-  padding: 4px 8px;
-  font-size: clamp(11px, 1vw, 13px);
+  padding: 6px 10px;
+  font-size: clamp(13px, 1.3vw, 17px);
 }
 .axis-sel-y button:not(:last-child) { border-bottom: 1px solid #c8c0b4; }
 
@@ -164,6 +172,16 @@ main {
   transform: translateX(-50%);
 }
 .axis-sel-x button:not(:last-child) { border-right: 1px solid #c8c0b4; }
+
+/* ── Bouton « Modélisation linéaire » (graphe, 3ᵉ loi) ── */
+#btn-model-lin-3 {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: auto;
+  z-index: 3;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.10);
+}
 
 /* ── Bulle de survol des points du graphe ────────── */
 #graph3-tooltip {
@@ -300,6 +318,21 @@ main {
   padding: 11px 6px;
 }
 .btn-primary:hover { background: #1a5a9a; }
+
+.btn-toggle-one {
+  background: #ece8e0;
+  color: #5a6a78;
+  border: 1px solid #c8c0b4;
+  font-size: clamp(12px, 1.2vw, 15px);
+  padding: 9px 6px;
+}
+.btn-toggle-one.active {
+  background: #fde8c8;
+  color: #7a3a10;
+  border-color: #d0a060;
+}
+.btn-toggle-one:hover { background: #ddd8ce; }
+.btn-toggle-one.active:hover { background: #f8dcb0; }
 .btn-primary:disabled {
   background: #a0b8c8;
   cursor: not-allowed;

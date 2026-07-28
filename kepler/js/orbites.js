@@ -679,7 +679,7 @@ function drawSys3() {
   function sx(x) { return fx + x * s; }
   function sy(y) { return fy - y * s; }
 
-  var fsNom = Math.max(11, Math.min(14, Math.min(W, H) * 0.026));
+  var fsNom = Math.max(14, Math.min(19, Math.min(W, H) * 0.034));
   var fontNom = '700 ' + fsNom + 'px "Segoe UI", Arial, sans-serif';
 
   // ── Orbites ──
@@ -699,7 +699,7 @@ function drawSys3() {
 
   // ── Attracteur ──
   if (sys.attracteur.type === 'soleil') {
-    drawSoleil(ctx, fx, fy, Math.max(7, Math.min(12, s * rMax * 0.03)));
+    drawSoleil(ctx, fx, fy, Math.max(7, Math.min(20, s * rMax * 0.03)));
   } else if (sys.attracteur.type === 'saturne') {
     drawSaturne(ctx, fx, fy, Math.max(8, Math.min(13, s * rMax * 0.035)));
   } else {

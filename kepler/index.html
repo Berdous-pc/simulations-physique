@@ -40,11 +40,11 @@
     </div>
 
     <!-- ── 3ᵉ loi : animation + graphe ──────────── -->
-    <div class="tab-view duo" id="view-troisieme-loi" style="display:none;">
+    <div class="tab-view duo no-graph" id="view-troisieme-loi" style="display:none;">
       <div class="sim-area">
         <canvas id="canvas-sys3"></canvas>
       </div>
-      <div class="chart-wrap">
+      <div class="chart-wrap" id="chart-wrap-3">
         <canvas id="canvas-graph3"></canvas>
         <!-- Sélecteur de la grandeur portée en ordonnée -->
         <div class="axis-sel axis-sel-y">
@@ -59,6 +59,7 @@
           <button id="axeX-3" onclick="setAxeX(3)">a³</button>
         </div>
         <div id="graph3-tooltip"></div>
+        <button class="btn btn-toggle-one" id="btn-model-lin-3" onclick="toggleModelLin3()">Modélisation linéaire</button>
       </div>
     </div>
 
@@ -321,36 +322,13 @@
         <div class="panel-section">
           <div class="section-title">Système étudié</div>
           <div class="sys-toggle">
-            <button class="sys-btn active" id="sys-btn-0" onclick="setSysteme(0)">Mercure → Mars</button>
-            <button class="sys-btn" id="sys-btn-1" onclick="setSysteme(1)">Jupiter → Neptune</button>
-            <button class="sys-btn" id="sys-btn-2" onclick="setSysteme(2)">Système Solaire</button>
-            <button class="sys-btn" id="sys-btn-3" onclick="setSysteme(3)">Lunes de Jupiter</button>
-            <button class="sys-btn" id="sys-btn-4" onclick="setSysteme(4)">Lunes de Saturne</button>
+            <button class="sys-btn active" id="sys-btn-0" onclick="setSysteme(0)">Système Solaire</button>
+            <button class="sys-btn" id="sys-btn-1" onclick="setSysteme(1)">Lunes de Jupiter</button>
+            <button class="sys-btn" id="sys-btn-2" onclick="setSysteme(2)">Lunes de Saturne</button>
           </div>
         </div>
 
         <div class="sep"></div>
-
-        <!-- Zoom du canvas : visible uniquement pour le Système Solaire -->
-        <div class="panel-section" id="zoom-section-3" style="display:none;">
-          <div class="section-title">Zoom</div>
-          <div class="sys-toggle sys-toggle-row">
-            <button class="sys-btn active" id="zoom-preset-0" onclick="setZoomPreset3(0)">Système complet</button>
-            <button class="sys-btn" id="zoom-preset-1" onclick="setZoomPreset3(1)">Planètes internes</button>
-          </div>
-          <div class="param-row" style="margin-top:8px;">
-            <label>
-              Zoom
-              <span class="param-value" id="lbl-zoom-3">× 1,0</span>
-            </label>
-            <input type="range" id="sl-zoom-3" min="0" max="1" step="0.001" value="0"
-                   oninput="onSliderZoom3(this.value)">
-          </div>
-          <div class="input-hint">Molette sur l'animation pour zoomer librement,
-            double-clic pour revenir au système complet. Le graphe suit le zoom.</div>
-        </div>
-
-        <div class="sep" id="zoom-sep-3" style="display:none;"></div>
 
         <div class="panel-section">
           <div class="section-title">Contrôles</div>
@@ -367,13 +345,34 @@
                  crans variable selon le système) -->
             <div class="slider-ticks" id="speed-ticks-3"></div>
           </div>
+
+          <!-- Zoom du canvas : visible uniquement pour le Système Solaire -->
+          <div id="zoom-section-3" style="display:none;">
+            <div class="param-row" style="margin-top:12px;">
+              <label>
+                Zoom
+                <span class="param-value" id="lbl-zoom-3">× 1,0</span>
+              </label>
+              <input type="range" id="sl-zoom-3" min="0" max="1" step="0.001" value="0"
+                     oninput="onSliderZoom3(this.value)">
+            </div>
+            <div class="sys-toggle sys-toggle-row" style="margin-top:8px;">
+              <button class="sys-btn" id="zoom-preset-0" onclick="setZoomPreset3(0)">Système complet</button>
+              <button class="sys-btn active" id="zoom-preset-1" onclick="setZoomPreset3(1)">Planètes internes</button>
+            </div>
+            <label class="check-row" style="margin-top:8px;">
+              <input type="checkbox" id="ck-zoom-lie-3" checked onchange="toggleZoomLie3(this.checked)">
+              Lier le zoom du graphe
+            </label>
+          </div>
         </div>
 
         <div class="sep"></div>
 
         <div class="panel-section">
           <div class="section-title">Affichage</div>
-          <label class="check-row">
+          <button class="btn btn-toggle-one" id="btn-graph-3" onclick="toggleGraph3()">Afficher graphe</button>
+          <label class="check-row" style="margin-top:8px;">
             <input type="checkbox" id="ck-noms-3" checked onchange="toggleNoms3(this.checked)">
             Noms des astres
           </label>
@@ -388,11 +387,6 @@
         <div class="panel-section">
           <div class="section-title">Données du système</div>
           <div class="readout" id="sys-table-wrap"></div>
-          <div class="input-hint">
-            Sur le graphe, choisissez la grandeur portée par chaque axe
-            (T, T², T³ en ordonnée — a, a², a³ en abscisse) jusqu'à obtenir
-            des points alignés avec l'origine.
-          </div>
         </div>
 
       </div><!-- fin #section-troisieme-loi -->

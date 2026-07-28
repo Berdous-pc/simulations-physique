@@ -345,6 +345,10 @@ function setSysteme(idx) {
   sys3.speedIdx = SYSTEMES[idx].defaultSpeedIdx;
   sys3.zoom = 1;
   sys3.zoomCible = 1;
+  sys3.graphZoomLinked = true;
+  document.getElementById('ck-zoom-lie-3').checked = true;
+  sys3.modelLin = false;
+  document.getElementById('btn-model-lin-3').classList.remove('active');
   _updatePlayBtn(3, true);
 
   for (var i = 0; i < SYSTEMES.length; i++) {
@@ -363,7 +367,6 @@ function setSysteme(idx) {
 function _syncZoomVisibilite3() {
   var zoomable = !!SYSTEMES[sys3.sysIdx].zoomMax;
   document.getElementById('zoom-section-3').style.display = zoomable ? '' : 'none';
-  document.getElementById('zoom-sep-3').style.display = zoomable ? '' : 'none';
   if (zoomable) _syncZoomUI3();
 }
 
@@ -428,6 +431,27 @@ function initSys3Wheel() {
 
 function toggleNoms3(checked)    { sys3.showNoms = checked; }
 function toggleOrbites3(checked) { sys3.showOrbites = checked; }
+
+function toggleModelLin3() {
+  sys3.modelLin = !sys3.modelLin;
+  document.getElementById('btn-model-lin-3').classList.toggle('active', sys3.modelLin);
+  drawGraph3();
+}
+
+function toggleZoomLie3(checked) {
+  sys3.graphZoomLinked = checked;
+  if (checked) {
+    _graph3Zoom = sys3.zoom;   // le graphe rattrape le zoom courant de l'animation
+    drawGraph3();
+  }
+}
+
+function toggleGraph3() {
+  sys3.showGraph = !sys3.showGraph;
+  document.getElementById('btn-graph-3').classList.toggle('active', sys3.showGraph);
+  document.getElementById('view-troisieme-loi').classList.toggle('no-graph', !sys3.showGraph);
+  resizeAll();
+}
 
 // Slider vitesse + labels des crans, recalés sur le système courant.
 // Le NOMBRE de crans varie selon le système (6 pour le Système Solaire,
