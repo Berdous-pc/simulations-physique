@@ -510,6 +510,14 @@ main {
 .sys-btn:hover { background: #ddd8ce; }
 .sys-btn.active { background: #2a6aaa; color: #fff; }
 
+/* Variante horizontale : presets de zoom du Système Solaire */
+.sys-toggle-row { flex-direction: row; }
+.sys-toggle-row .sys-btn { flex: 1; }
+.sys-toggle-row .sys-btn:not(:last-child) {
+  border-bottom: none;
+  border-right: 1px solid #c8c0b4;
+}
+
 /* ── Tableau des données (3ᵉ loi) ────────────────── */
 .sys-table {
   width: 100%;

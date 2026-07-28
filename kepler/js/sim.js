@@ -162,10 +162,10 @@ var SYSTEMES = [
     ],
     defaultSpeedIdx: 2,
     corps: [
-      { nom: 'Mercure', a: 0.387,  T: 0.2408, e: 0.206, couleur: '#7a8a96', couleurClair: '#b0bcc6', rayon: 4 },
-      { nom: 'Vénus',   a: 0.723,  T: 0.6152, e: 0.007, couleur: '#c08020', couleurClair: '#e8a848', rayon: 6 },
-      { nom: 'Terre',   a: 1.000,  T: 1.0000, e: 0.017, couleur: '#2a6aaa', couleurClair: '#6aa2e0', rayon: 6 },
-      { nom: 'Mars',    a: 1.524,  T: 1.8808, e: 0.093, couleur: '#b04020', couleurClair: '#e87850', rayon: 5 }
+      { nom: 'Mercure', a: 0.387,  T: 0.2408, e: 0.206, couleur: '#7a8a96', couleurClair: '#b0bcc6', rayon: 4, type: 'mercure' },
+      { nom: 'Vénus',   a: 0.723,  T: 0.6152, e: 0.007, couleur: '#c08020', couleurClair: '#e8a848', rayon: 6, type: 'venus' },
+      { nom: 'Terre',   a: 1.000,  T: 1.0000, e: 0.017, couleur: '#2a6aaa', couleurClair: '#6aa2e0', rayon: 6, type: 'terre' },
+      { nom: 'Mars',    a: 1.524,  T: 1.8808, e: 0.093, couleur: '#b04020', couleurClair: '#e87850', rayon: 5, type: 'mars' }
     ]
   },
   {
@@ -180,10 +180,50 @@ var SYSTEMES = [
     ],
     defaultSpeedIdx: 2,
     corps: [
-      { nom: 'Jupiter', a: 5.203,  T: 11.86,  e: 0.049, couleur: '#b07040', couleurClair: '#dc9868', rayon: 8 },
-      { nom: 'Saturne', a: 9.537,  T: 29.46,  e: 0.057, couleur: '#c8a050', couleurClair: '#e8c878', rayon: 7 },
-      { nom: 'Uranus',  a: 19.19,  T: 84.02,  e: 0.046, couleur: '#4a9aa8', couleurClair: '#70c8d8', rayon: 6 },
-      { nom: 'Neptune', a: 30.07,  T: 164.8,  e: 0.010, couleur: '#3a5aaa', couleurClair: '#7a96e0', rayon: 6 }
+      { nom: 'Jupiter', a: 5.203,  T: 11.86,  e: 0.049, couleur: '#b07040', couleurClair: '#dc9868', rayon: 8, type: 'jupiter' },
+      { nom: 'Saturne', a: 9.537,  T: 29.46,  e: 0.057, couleur: '#c8a050', couleurClair: '#e8c878', rayon: 7, type: 'saturne' },
+      { nom: 'Uranus',  a: 19.19,  T: 84.02,  e: 0.046, couleur: '#4a9aa8', couleurClair: '#70c8d8', rayon: 6, type: 'uranus' },
+      { nom: 'Neptune', a: 30.07,  T: 164.8,  e: 0.010, couleur: '#3a5aaa', couleurClair: '#7a96e0', rayon: 6, type: 'neptune' }
+    ]
+  },
+  {
+    // Fusion des deux groupes précédents : les 8 planètes sur un seul
+    // canvas, avec un zoom (échelle log) pour passer de la vue complète
+    // (Neptune) aux planètes internes — l'élève « voit » le facteur ~20
+    // entre les deux échelles.
+    label: 'Système Solaire',
+    attracteur: { nom: 'Soleil', type: 'soleil' },
+    uniteA: 'ua', uniteT: 'an',
+    // zoomMax : borne du slider (échelle log, 1 = système complet).
+    // presets : vues prédéfinies (zoom animé) ; le zoom « internes » cadre
+    // l'aphélie de Mars (30,07·1,010 / 1,524·1,093 ≈ 18,2), et chaque
+    // preset pré-sélectionne un cran de vitesse adapté à l'échelle vue.
+    zoomMax: 40,
+    ceinture: true,     // ceinture d'astéroïdes décorative entre Mars et Jupiter
+    presets: [
+      { label: 'Système complet',   zoom: 1,    speedIdx: 4 },
+      { label: 'Planètes internes', zoom: 18.2, speedIdx: 2 }
+    ],
+    // Toute la gamme des deux anciens groupes : les crans « jours » servent
+    // zoomé sur les internes, les crans « an » servent en vue complète.
+    speeds: [
+      { v: 30 / JOURS_PAR_AN,  label: '30 j/s'   },
+      { v: 60 / JOURS_PAR_AN,  label: '60 j/s'   },
+      { v: 120 / JOURS_PAR_AN, label: '120 j/s'  },
+      { v: 0.5,                label: '6 mois/s' },
+      { v: 1,                  label: '1 an/s'   },
+      { v: 5,                  label: '5 an/s'   }
+    ],
+    defaultSpeedIdx: 4,
+    corps: [
+      { nom: 'Mercure', a: 0.387,  T: 0.2408, e: 0.206, couleur: '#7a8a96', couleurClair: '#b0bcc6', rayon: 4, type: 'mercure' },
+      { nom: 'Vénus',   a: 0.723,  T: 0.6152, e: 0.007, couleur: '#c08020', couleurClair: '#e8a848', rayon: 6, type: 'venus' },
+      { nom: 'Terre',   a: 1.000,  T: 1.0000, e: 0.017, couleur: '#2a6aaa', couleurClair: '#6aa2e0', rayon: 6, type: 'terre' },
+      { nom: 'Mars',    a: 1.524,  T: 1.8808, e: 0.093, couleur: '#b04020', couleurClair: '#e87850', rayon: 5, type: 'mars' },
+      { nom: 'Jupiter', a: 5.203,  T: 11.86,  e: 0.049, couleur: '#b07040', couleurClair: '#dc9868', rayon: 8, type: 'jupiter' },
+      { nom: 'Saturne', a: 9.537,  T: 29.46,  e: 0.057, couleur: '#c8a050', couleurClair: '#e8c878', rayon: 7, type: 'saturne' },
+      { nom: 'Uranus',  a: 19.19,  T: 84.02,  e: 0.046, couleur: '#4a9aa8', couleurClair: '#70c8d8', rayon: 6, type: 'uranus' },
+      { nom: 'Neptune', a: 30.07,  T: 164.8,  e: 0.010, couleur: '#3a5aaa', couleurClair: '#7a96e0', rayon: 6, type: 'neptune' }
     ]
   },
   {
@@ -235,6 +275,8 @@ var sys3 = {
   speedIdx: SYSTEMES[0].defaultSpeedIdx,
   showNoms: true,
   showOrbites: true,
+  zoom: 1,            // zoom canvas courant (systèmes avec zoomMax uniquement)
+  zoomCible: 1,       // cible du zoom animé (presets, double-clic)
   axeX: 1,            // exposant de a porté en abscisse  (1, 2 ou 3)
   axeY: 1             // exposant de T porté en ordonnée (1, 2 ou 3)
 };

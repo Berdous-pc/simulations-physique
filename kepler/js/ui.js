@@ -85,9 +85,21 @@ function loop(ts) {
     if (!sys3.paused) {
       sys3.t += dts * sys.speeds[sys3.speedIdx].v;
     }
+    // Zoom animé vers la cible (presets, double-clic) : interpolation
+    // exponentielle — un pas constant en échelle LOG, seule interpolation
+    // fluide quand la cible est à un facteur ~20.
+    if (sys.zoomMax && sys3.zoom !== sys3.zoomCible) {
+      var fz = Math.min(1, dts * 3.5);
+      sys3.zoom *= Math.pow(sys3.zoomCible / sys3.zoom, fz);
+      if (Math.abs(Math.log(sys3.zoomCible / sys3.zoom)) < 0.005) {
+        sys3.zoom = sys3.zoomCible;
+      }
+      _syncZoomUI3();
+      drawGraph3();          // le graphe suit le zoom du canvas
+    }
     drawSys3();
     // Le graphe de la 3ᵉ loi est statique : redessiné uniquement sur
-    // changement de système, d'axes ou de taille de fenêtre.
+    // changement de système, d'axes, de zoom ou de taille de fenêtre.
   }
 }
 
@@ -331,28 +343,107 @@ function setSysteme(idx) {
   sys3.t = 0;
   sys3.paused = true;
   sys3.speedIdx = SYSTEMES[idx].defaultSpeedIdx;
+  sys3.zoom = 1;
+  sys3.zoomCible = 1;
   _updatePlayBtn(3, true);
 
   for (var i = 0; i < SYSTEMES.length; i++) {
     document.getElementById('sys-btn-' + i).classList.toggle('active', i === idx);
   }
   _syncSpeedUI3();
+  _syncZoomVisibilite3();
   buildSysTable();
   resetGraph3Zoom();      // nouveau système = nouvelle étendue de données
   drawGraph3();
+}
+
+// ── Zoom du canvas (Système Solaire uniquement) ───────────────────────
+
+// Section Zoom du panneau : visible uniquement pour les systèmes zoomables.
+function _syncZoomVisibilite3() {
+  var zoomable = !!SYSTEMES[sys3.sysIdx].zoomMax;
+  document.getElementById('zoom-section-3').style.display = zoomable ? '' : 'none';
+  document.getElementById('zoom-sep-3').style.display = zoomable ? '' : 'none';
+  if (zoomable) _syncZoomUI3();
+}
+
+// Pose le zoom immédiatement (slider, molette) : pas d'animation, la main
+// de l'utilisateur EST l'animation.
+function setZoom3(z) {
+  var zMax = SYSTEMES[sys3.sysIdx].zoomMax;
+  if (!zMax) return;
+  z = Math.min(zMax, Math.max(1, z));
+  sys3.zoom = z;
+  sys3.zoomCible = z;
+  _syncZoomUI3();
+  drawSys3();
+  drawGraph3();
+}
+
+// Slider log : valeur ∈ [0, 1] → zoom ∈ [1, zoomMax] (chaque déplacement
+// égal du curseur multiplie l'échelle par un facteur constant).
+function onSliderZoom3(val) {
+  setZoom3(Math.pow(SYSTEMES[sys3.sysIdx].zoomMax, parseFloat(val)));
+}
+
+function setZoomPreset3(i) {
+  var sys = SYSTEMES[sys3.sysIdx];
+  var pr = sys.presets[i];
+  sys3.zoomCible = pr.zoom;              // le zoom animé fait le trajet
+  if (pr.speedIdx !== undefined) {
+    sys3.speedIdx = pr.speedIdx;         // cran de vitesse adapté à l'échelle
+    _syncSpeedUI3();
+  }
+  _syncZoomUI3();
+}
+
+// Slider + label + état actif des presets, recalés sur le zoom courant.
+function _syncZoomUI3() {
+  var sys = SYSTEMES[sys3.sysIdx];
+  if (!sys.zoomMax) return;
+  document.getElementById('sl-zoom-3').value =
+    Math.log(sys3.zoom) / Math.log(sys.zoomMax);
+  _setText('lbl-zoom-3', '× ' + fmtFr(sys3.zoom, sys3.zoom < 10 ? 1 : 0));
+  sys.presets.forEach(function (pr, i) {
+    // Un preset est « actif » si le zoom cible lui correspond (à 2 % près).
+    var actif = Math.abs(Math.log(sys3.zoomCible / pr.zoom)) < 0.02;
+    document.getElementById('zoom-preset-' + i).classList.toggle('active', actif);
+  });
+}
+
+// Molette et double-clic sur le canvas d'animation, comme sur le graphe.
+function initSys3Wheel() {
+  var canvas = document.getElementById('canvas-sys3');
+  canvas.addEventListener('wheel', function (ev) {
+    if (!SYSTEMES[sys3.sysIdx].zoomMax) return;
+    ev.preventDefault();
+    setZoom3(sys3.zoom * Math.exp(-ev.deltaY * 0.0015));
+  }, { passive: false });
+  canvas.addEventListener('dblclick', function () {
+    if (!SYSTEMES[sys3.sysIdx].zoomMax) return;
+    sys3.zoomCible = 1;                  // dézoom animé vers la vue complète
+    _syncZoomUI3();
+  });
 }
 
 function toggleNoms3(checked)    { sys3.showNoms = checked; }
 function toggleOrbites3(checked) { sys3.showOrbites = checked; }
 
 // Slider vitesse + labels des crans, recalés sur le système courant.
+// Le NOMBRE de crans varie selon le système (6 pour le Système Solaire,
+// 4 ailleurs) : l'étendue du slider et ses graduations sont reconstruites.
 function _syncSpeedUI3() {
   var sys = SYSTEMES[sys3.sysIdx];
-  document.getElementById('sl-speed-3').value = sys3.speedIdx;
+  var sl = document.getElementById('sl-speed-3');
+  sl.max = sys.speeds.length - 1;
+  sl.value = sys3.speedIdx;
   _setText('lbl-speed-3', sys.speeds[sys3.speedIdx].label);
-  for (var i = 0; i < 4; i++) {
-    _setText('st3-' + i, sys.speeds[i].label);
-  }
+  var html = '';
+  sys.speeds.forEach(function (sp, i) {
+    html += '<span style="--tick-frac:' + (i / (sys.speeds.length - 1)) +
+            ';">' + sp.label + '</span>';
+  });
+  document.getElementById('speed-ticks-3').innerHTML = html;
 }
 
 // Tableau des données (a, T) du système courant.
@@ -431,6 +522,7 @@ function _syncUI() {
 
   // Onglet 3
   _syncSpeedUI3();
+  _syncZoomVisibilite3();
   buildSysTable();
 
   _updatePlayBtn(1, sim1.paused);
@@ -447,6 +539,7 @@ function init() {
   _syncUI();
   initGraph3Tooltip();
   initGraph3Wheel();
+  initSys3Wheel();
   setMainTab(activeTab);
   requestAnimationFrame(loop);
 }

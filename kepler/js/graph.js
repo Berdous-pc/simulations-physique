@@ -89,7 +89,22 @@ function drawGraph3() {
   // application du zoom molette — tout le reste du tracé (grille, axes,
   // points, droite modèle) travaille sur cette vue.
   var xRangeFull = xMax * 1.15, yRangeFull = yMax * 1.15;
-  var xRange = xRangeFull / _graph3Zoom, yRange = yRangeFull / _graph3Zoom;
+  var xRange, yRange;
+  if (sys.zoomMax) {
+    // Système Solaire : le graphe SUIT le zoom du canvas — il cadre les
+    // astres dont l'orbite est encore visible à l'écran (a ≤ aVis). Les
+    // deux axes se resserrent chacun selon leur exposant, en passant par
+    // la 3ᵉ loi elle-même (T = a^1,5 autour du Soleil, en an et ua).
+    var aMaxSys = 0;
+    sys.corps.forEach(function (cps) { aMaxSys = Math.max(aMaxSys, cps.a); });
+    var aVis = aMaxSys / sys3.zoom;
+    var tVis = Math.pow(aVis, 1.5);
+    xRange = Math.min(xRangeFull, Math.pow(aVis, p) * 1.15);
+    yRange = Math.min(yRangeFull, Math.pow(tVis, q) * 1.15);
+  } else {
+    xRange = xRangeFull / _graph3Zoom;
+    yRange = yRangeFull / _graph3Zoom;
+  }
 
   // ── Cadre de tracé (marges pour les sélecteurs d'axes et graduations) ──
   var padL = Math.min(104, Math.max(84, W * 0.16));
@@ -246,12 +261,13 @@ function drawGraph3() {
   ctx.restore();
 
   // ── Indicateur de zoom (visible dès qu'on s'écarte du cadre complet) ──
-  if (_graph3Zoom > 1.01) {
+  var zoomAffiche = sys.zoomMax ? sys3.zoom : _graph3Zoom;
+  if (zoomAffiche > 1.01) {
     ctx.font = '700 12px "Segoe UI", Arial, sans-serif';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'top';
     ctx.fillStyle = '#7a8a96';
-    ctx.fillText('🔍 × ' + fmtSmart(_graph3Zoom), W - padR, 6);
+    ctx.fillText('🔍 × ' + fmtSmart(zoomAffiche), W - padR, 6);
   }
 }
 
@@ -330,12 +346,22 @@ function initGraph3Wheel() {
     // Facteur exponentiel : lisse aussi bien à la molette (pas fixe, gros
     // deltaY) qu'au trackpad (deltaY continu, petits pas).
     var facteur = Math.exp(-ev.deltaY * 0.0015);
+    // Système Solaire : le graphe étant asservi au zoom du canvas, la
+    // molette pilote directement ce dernier (une seule notion de zoom).
+    if (SYSTEMES[sys3.sysIdx].zoomMax) {
+      setZoom3(sys3.zoom * facteur);
+      return;
+    }
     _graph3Zoom = Math.min(GRAPH3_ZOOM_MAX, Math.max(1, _graph3Zoom * facteur));
     drawGraph3();
   }, { passive: false });
 
   // Double-clic : retour rapide au cadre complet.
   canvas.addEventListener('dblclick', function () {
+    if (SYSTEMES[sys3.sysIdx].zoomMax) {
+      sys3.zoomCible = 1;                    // dézoom animé vers la vue complète
+      return;
+    }
     resetGraph3Zoom();
     drawGraph3();
   });

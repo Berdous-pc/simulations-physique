@@ -199,6 +199,106 @@ function drawSaturne(ctx, x, y, rayon) {
   ctx.stroke();
 }
 
+// Planète stylisée (3ᵉ loi) : disque de base + détails « identité » selon
+// le type (calotte de Mars, continents de la Terre, bandes de Jupiter,
+// anneaux de Saturne…), dans l'esprit de drawJupiter/drawSaturne. Les
+// détails ne sont dessinés que si le disque est assez grand (r ≥ 3 px) :
+// en dessous — planètes internes vues dézoomées — un disque uni reste
+// plus lisible qu'une bouillie de pixels.
+function drawCorps(ctx, x, y, r, cps) {
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, 2 * Math.PI);
+  ctx.fillStyle = cps.couleurClair;
+  ctx.fill();
+
+  if (r >= 3 && cps.type) {
+    ctx.save();
+    ctx.clip();                                  // les détails restent dans le disque
+    switch (cps.type) {
+      case 'mercure':                            // gris criblé de cratères
+        ctx.fillStyle = 'rgba(70,80,90,0.5)';
+        ctx.beginPath(); ctx.arc(x - r * 0.35, y - r * 0.2, r * 0.24, 0, 2 * Math.PI); ctx.fill();
+        ctx.beginPath(); ctx.arc(x + r * 0.3,  y + r * 0.35, r * 0.2,  0, 2 * Math.PI); ctx.fill();
+        ctx.beginPath(); ctx.arc(x + r * 0.2,  y - r * 0.45, r * 0.14, 0, 2 * Math.PI); ctx.fill();
+        break;
+      case 'venus':                              // voiles nuageux crème
+        ctx.fillStyle = 'rgba(255,240,205,0.5)';
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(-0.35);
+        ctx.fillRect(-r, -r * 0.45, 2 * r, r * 0.3);
+        ctx.fillRect(-r, r * 0.15,  2 * r, r * 0.26);
+        ctx.restore();
+        break;
+      case 'terre':                              // continents + calotte polaire
+        ctx.fillStyle = 'rgba(58,150,88,0.9)';
+        ctx.beginPath(); ctx.arc(x - r * 0.3,  y - r * 0.05, r * 0.42, 0, 2 * Math.PI); ctx.fill();
+        ctx.beginPath(); ctx.arc(x + r * 0.4,  y + r * 0.35, r * 0.3,  0, 2 * Math.PI); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.8)';
+        ctx.beginPath(); ctx.arc(x, y - r * 0.95, r * 0.32, 0, 2 * Math.PI); ctx.fill();
+        break;
+      case 'mars':                               // calotte polaire + plaine sombre
+        ctx.fillStyle = 'rgba(110,45,25,0.55)';
+        ctx.beginPath(); ctx.arc(x + r * 0.25, y + r * 0.3, r * 0.4, 0, 2 * Math.PI); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.85)';
+        ctx.beginPath(); ctx.arc(x, y - r * 0.95, r * 0.3, 0, 2 * Math.PI); ctx.fill();
+        break;
+      case 'jupiter':                            // bandes + Grande Tache rouge
+        ctx.fillStyle = 'rgba(230,200,160,0.55)';
+        ctx.fillRect(x - r, y - r * 0.45, 2 * r, r * 0.28);
+        ctx.fillRect(x - r, y + r * 0.15, 2 * r, r * 0.24);
+        ctx.fillStyle = 'rgba(200,90,60,0.85)';
+        ctx.beginPath();
+        ctx.ellipse(x + r * 0.35, y + r * 0.27, r * 0.22, r * 0.13, 0, 0, 2 * Math.PI);
+        ctx.fill();
+        break;
+      case 'saturne':                            // bande claire (anneaux après le clip)
+        ctx.fillStyle = 'rgba(240,220,180,0.55)';
+        ctx.fillRect(x - r, y - r * 0.4, 2 * r, r * 0.25);
+        break;
+      case 'uranus':                             // bande subtile (axe très incliné)
+        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(1.35);
+        ctx.fillRect(-r, -r * 0.35, 2 * r, r * 0.25);
+        ctx.restore();
+        break;
+      case 'neptune':                            // Grande Tache sombre
+        ctx.fillStyle = 'rgba(26,50,120,0.75)';
+        ctx.beginPath();
+        ctx.ellipse(x - r * 0.25, y - r * 0.2, r * 0.32, r * 0.2, -0.3, 0, 2 * Math.PI);
+        ctx.fill();
+        break;
+    }
+    ctx.restore();
+  }
+
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, 2 * Math.PI);
+  ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Anneaux hors du disque : Saturne (francs) et Uranus (fins, quasi
+  // verticaux — l'axe de la planète est presque couché sur son orbite).
+  if (r >= 3) {
+    if (cps.type === 'saturne') {
+      ctx.beginPath();
+      ctx.ellipse(x, y, r * 1.9, r * 0.65, -0.30, 0, 2 * Math.PI);
+      ctx.strokeStyle = 'rgba(216,192,144,0.9)';
+      ctx.lineWidth = Math.max(1.5, r * 0.28);
+      ctx.stroke();
+    } else if (cps.type === 'uranus') {
+      ctx.beginPath();
+      ctx.ellipse(x, y, r * 0.5, r * 1.6, 0.2, 0, 2 * Math.PI);
+      ctx.strokeStyle = 'rgba(200,235,245,0.5)';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+    }
+  }
+}
+
 // Barre d'échelle en bas à gauche : longueur « ronde » choisie pour occuper
 // 60 à 160 px à l'écran, quel que soit le zoom.
 function drawEchelle(ctx, H, scale, unite) {
@@ -516,6 +616,47 @@ function drawLoi2() {
 //  Onglet 3 — Systèmes réels
 // ══════════════════════════════════════════════════════════════════════
 
+// ── Ceinture d'astéroïdes (décor du Système Solaire) ──────────────────
+// Champ de points entre Mars et Jupiter (2,1 → 3,3 ua). Orbites circulaires
+// (approximation suffisante pour un décor) mais périodes képlériennes
+// VRAIES (T = a^1,5) : les astéroïdes internes doublent visiblement les
+// externes, la 3ᵉ loi continue de s'appliquer sous les yeux de l'élève.
+// Générée une fois avec un petit LCG déterministe : la ceinture est
+// identique à chaque chargement.
+var _asteroides = null;
+
+function _initAsteroides() {
+  _asteroides = [];
+  var graine = 42;
+  function alea() {                              // LCG (Numerical Recipes)
+    graine = (graine * 1664525 + 1013904223) >>> 0;
+    return graine / 4294967296;
+  }
+  for (var i = 0; i < 350; i++) {
+    var a = 2.1 + 1.2 * Math.pow(alea(), 0.7);   // densité un peu plus forte côté interne
+    _asteroides.push({
+      a: a,
+      T: Math.pow(a, 1.5),                       // an (3ᵉ loi, attracteur = Soleil)
+      phase: alea() * 2 * Math.PI,
+      alpha: 0.25 + alea() * 0.5,
+      taille: alea() < 0.85 ? 1 : 1.6            // quelques « gros » astéroïdes
+    });
+  }
+}
+
+function drawCeinture(ctx, sx, sy, W, H) {
+  if (!_asteroides) _initAsteroides();
+  ctx.fillStyle = '#c8d0d8';
+  _asteroides.forEach(function (ast) {
+    var ang = ast.phase + 2 * Math.PI * sys3.t / ast.T;
+    var px = sx(ast.a * Math.cos(ang)), py = sy(ast.a * Math.sin(ang));
+    if (px < -4 || px > W + 4 || py < -4 || py > H + 4) return;
+    ctx.globalAlpha = ast.alpha;
+    ctx.fillRect(px, py, ast.taille, ast.taille);
+  });
+  ctx.globalAlpha = 1;
+}
+
 function drawSys3() {
   var canvas = document.getElementById('canvas-sys3');
   if (!sizeCanvas(canvas)) return;
@@ -529,7 +670,10 @@ function drawSys3() {
   var rMax = 0;
   sys.corps.forEach(function (cps) { rMax = Math.max(rMax, cps.a * (1 + cps.e)); });
   var pad = Math.max(34, Math.min(W, H) * 0.07);
-  var s = (Math.min(W, H) / 2 - pad) / rMax;
+  // Zoom (systèmes avec zoomMax uniquement, sinon sys3.zoom vaut 1) :
+  // à zoom = 1 l'orbite la plus externe tient dans la zone, zoomer
+  // agrandit l'échelle autour de l'attracteur, resté au centre.
+  var s = (Math.min(W, H) / 2 - pad) / rMax * sys3.zoom;
 
   var fx = W / 2, fy = H / 2;                  // attracteur au foyer
   function sx(x) { return fx + x * s; }
@@ -550,6 +694,9 @@ function drawSys3() {
     });
   }
 
+  // ── Ceinture d'astéroïdes (Système Solaire uniquement) ──
+  if (sys.ceinture) drawCeinture(ctx, sx, sy, W, H);
+
   // ── Attracteur ──
   if (sys.attracteur.type === 'soleil') {
     drawSoleil(ctx, fx, fy, Math.max(7, Math.min(12, s * rMax * 0.03)));
@@ -568,15 +715,13 @@ function drawSys3() {
     var M = 2 * Math.PI * sys3.t / cps.T;      // tous alignés à t = 0
     var p = posKepler(cps.a, cps.e, M);
     var px = sx(p.x), py = sy(p.y);
-    ctx.beginPath();
-    ctx.arc(px, py, cps.rayon, 0, 2 * Math.PI);
-    ctx.fillStyle = cps.couleurClair;
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.4)';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-    if (sys3.showNoms) {
-      texteHalo(ctx, cps.nom, px + cps.rayon + 4, py - cps.rayon - 4,
+    // Orbite devenue minuscule à l'écran (dézoom du Système Solaire) : le
+    // point rétrécit avec elle et son nom disparaît — c'est le message,
+    // les planètes internes se réduisent à des poussières près du Soleil.
+    var rDot = Math.min(cps.rayon, Math.max(1.5, cps.a * s * 0.25));
+    drawCorps(ctx, px, py, rDot, cps);
+    if (sys3.showNoms && cps.a * s > 26) {
+      texteHalo(ctx, cps.nom, px + rDot + 4, py - rDot - 4,
                 cps.couleurClair, fontNom, 'left');
     }
   });

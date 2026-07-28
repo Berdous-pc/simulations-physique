@@ -323,12 +323,34 @@
           <div class="sys-toggle">
             <button class="sys-btn active" id="sys-btn-0" onclick="setSysteme(0)">Mercure → Mars</button>
             <button class="sys-btn" id="sys-btn-1" onclick="setSysteme(1)">Jupiter → Neptune</button>
-            <button class="sys-btn" id="sys-btn-2" onclick="setSysteme(2)">Lunes de Jupiter</button>
-            <button class="sys-btn" id="sys-btn-3" onclick="setSysteme(3)">Lunes de Saturne</button>
+            <button class="sys-btn" id="sys-btn-2" onclick="setSysteme(2)">Système Solaire</button>
+            <button class="sys-btn" id="sys-btn-3" onclick="setSysteme(3)">Lunes de Jupiter</button>
+            <button class="sys-btn" id="sys-btn-4" onclick="setSysteme(4)">Lunes de Saturne</button>
           </div>
         </div>
 
         <div class="sep"></div>
+
+        <!-- Zoom du canvas : visible uniquement pour le Système Solaire -->
+        <div class="panel-section" id="zoom-section-3" style="display:none;">
+          <div class="section-title">Zoom</div>
+          <div class="sys-toggle sys-toggle-row">
+            <button class="sys-btn active" id="zoom-preset-0" onclick="setZoomPreset3(0)">Système complet</button>
+            <button class="sys-btn" id="zoom-preset-1" onclick="setZoomPreset3(1)">Planètes internes</button>
+          </div>
+          <div class="param-row" style="margin-top:8px;">
+            <label>
+              Zoom
+              <span class="param-value" id="lbl-zoom-3">× 1,0</span>
+            </label>
+            <input type="range" id="sl-zoom-3" min="0" max="1" step="0.001" value="0"
+                   oninput="onSliderZoom3(this.value)">
+          </div>
+          <div class="input-hint">Molette sur l'animation pour zoomer librement,
+            double-clic pour revenir au système complet. Le graphe suit le zoom.</div>
+        </div>
+
+        <div class="sep" id="zoom-sep-3" style="display:none;"></div>
 
         <div class="panel-section">
           <div class="section-title">Contrôles</div>
@@ -341,12 +363,9 @@
             </label>
             <input type="range" id="sl-speed-3" min="0" max="3" step="1" value="2"
                    oninput="onSliderSpeed3(this.value)">
-            <div class="slider-ticks">
-              <span style="--tick-frac:0;" id="st3-0">15 j/s</span>
-              <span style="--tick-frac:0.333;" id="st3-1">30 j/s</span>
-              <span style="--tick-frac:0.667;" id="st3-2">60 j/s</span>
-              <span style="--tick-frac:1;" id="st3-3">120 j/s</span>
-            </div>
+            <!-- Graduations reconstruites par _syncSpeedUI3 (nombre de
+                 crans variable selon le système) -->
+            <div class="slider-ticks" id="speed-ticks-3"></div>
           </div>
         </div>
 
@@ -440,7 +459,10 @@
         pour un seul choix, les points s'alignent avec l'origine
         (<strong>T² = k·a³</strong>).<br>
         Comparez la valeur de <strong>k</strong> selon le système : elle ne dépend
-        que de l'astre attracteur (Soleil, Jupiter ou Saturne).
+        que de l'astre attracteur (Soleil, Jupiter ou Saturne).<br>
+        Le système <strong>Système Solaire</strong> réunit les 8 planètes :
+        utilisez le <strong>zoom</strong> pour passer de la vue complète aux
+        planètes internes et prendre la mesure des échelles.
       </div>
     </div>
 
