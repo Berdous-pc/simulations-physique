@@ -326,6 +326,7 @@ function setSysteme(idx) {
   }
   _syncSpeedUI3();
   buildSysTable();
+  resetGraph3Zoom();      // nouveau système = nouvelle étendue de données
   drawGraph3();
 }
 
@@ -431,6 +432,7 @@ function init() {
 
   _syncUI();
   initGraph3Tooltip();
+  initGraph3Wheel();
   setMainTab(activeTab);
   requestAnimationFrame(loop);
 }

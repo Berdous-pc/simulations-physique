@@ -18,6 +18,17 @@
 // Positions écran des points tracés, mémorisées pour la bulle de survol.
 var _pts3 = [];
 
+// ── Zoom molette ────────────────────────────────────────────────────────
+// Facteur appliqué aux étendues xRange/yRange : l'origine (0,0) reste au
+// même endroit à l'écran (coin bas-gauche du cadre), donc zoomer resserre
+// la vue AUTOUR de l'origine — exactement ce qu'il faut pour distinguer des
+// astres tassés près de 0. Le dézoom est plafonné à 1 : c'est le cadre
+// complet (calculé sur les données) déjà implémenté avant l'ajout du zoom.
+var _graph3Zoom = 1;
+var GRAPH3_ZOOM_MAX = 40;
+
+function resetGraph3Zoom() { _graph3Zoom = 1; }
+
 // ── Formatage d'une graduation (groupement des milliers, virgule décimale) ──
 function fmtTick(v, step) {
   var dec = step >= 1 ? 0 : Math.min(3, -Math.floor(Math.log10(step)));
@@ -74,7 +85,11 @@ function drawGraph3() {
     xMax = Math.max(xMax, pt.x);
     yMax = Math.max(yMax, pt.y);
   });
-  var xRange = xMax * 1.15, yRange = yMax * 1.15;
+  // Étendue du cadre COMPLET (zoom = 1), puis vue réellement affichée après
+  // application du zoom molette — tout le reste du tracé (grille, axes,
+  // points, droite modèle) travaille sur cette vue.
+  var xRangeFull = xMax * 1.15, yRangeFull = yMax * 1.15;
+  var xRange = xRangeFull / _graph3Zoom, yRange = yRangeFull / _graph3Zoom;
 
   // ── Cadre de tracé (marges pour les sélecteurs d'axes et graduations) ──
   var padL = Math.min(104, Math.max(84, W * 0.16));
@@ -160,6 +175,14 @@ function drawGraph3() {
   });
   var alignes = residuMax < 0.02;
 
+  // Au-delà de zoom = 1, des points (et la droite modèle) peuvent sortir du
+  // cadre : on les découpe proprement plutôt que de laisser déborder sur
+  // les graduations ou les sélecteurs d'axes.
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x0, padT, plotW, plotH);
+  ctx.clip();
+
   if (alignes) {
     // Droite modèle en pointillés, de l'origine au bord du cadre
     var xFin = Math.min(xRange, yRange / k);
@@ -218,8 +241,18 @@ function drawGraph3() {
     ctx.textBaseline = 'middle';
     ctx.fillStyle = pt.corps.couleur;
     ctx.fillText(pt.corps.nom, px + (alignDroite ? -10 : 10), py + dy);
-    _pts3.push({ px: px, py: py, pt: pt });
+    _pts3.push({ px: px, py: py, pt: pt, visible: px >= x0 && px <= W - padR && py >= padT && py <= y0 });
   });
+  ctx.restore();
+
+  // ── Indicateur de zoom (visible dès qu'on s'écarte du cadre complet) ──
+  if (_graph3Zoom > 1.01) {
+    ctx.font = '700 12px "Segoe UI", Arial, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#7a8a96';
+    ctx.fillText('🔍 × ' + fmtSmart(_graph3Zoom), W - padR, 6);
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -232,6 +265,7 @@ function setAxeX(pow) {
   for (var n = 1; n <= 3; n++) {
     document.getElementById('axeX-' + n).classList.toggle('active', n === pow);
   }
+  resetGraph3Zoom();     // l'étendue des données change du tout au tout
   drawGraph3();
 }
 
@@ -241,6 +275,7 @@ function setAxeY(pow) {
   for (var n = 1; n <= 3; n++) {
     document.getElementById('axeY-' + n).classList.toggle('active', n === pow);
   }
+  resetGraph3Zoom();
   drawGraph3();
 }
 
@@ -256,6 +291,7 @@ function initGraph3Tooltip() {
     var mx = ev.offsetX, my = ev.offsetY;
     var best = null, bestD = 20;                     // rayon de capture : 20 px
     _pts3.forEach(function (e) {
+      if (!e.visible) return;                        // point découpé par le zoom
       var d = Math.hypot(e.px - mx, e.py - my);
       if (d < bestD) { bestD = d; best = e; }
     });
@@ -280,5 +316,27 @@ function initGraph3Tooltip() {
 
   canvas.addEventListener('mouseleave', function () {
     tip.style.display = 'none';
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Zoom molette (recadre autour de l'origine, dézoom max = cadre complet)
+// ══════════════════════════════════════════════════════════════════════
+
+function initGraph3Wheel() {
+  var canvas = document.getElementById('canvas-graph3');
+  canvas.addEventListener('wheel', function (ev) {
+    ev.preventDefault();
+    // Facteur exponentiel : lisse aussi bien à la molette (pas fixe, gros
+    // deltaY) qu'au trackpad (deltaY continu, petits pas).
+    var facteur = Math.exp(-ev.deltaY * 0.0015);
+    _graph3Zoom = Math.min(GRAPH3_ZOOM_MAX, Math.max(1, _graph3Zoom * facteur));
+    drawGraph3();
+  }, { passive: false });
+
+  // Double-clic : retour rapide au cadre complet.
+  canvas.addEventListener('dblclick', function () {
+    resetGraph3Zoom();
+    drawGraph3();
   });
 }

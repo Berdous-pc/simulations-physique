@@ -139,6 +139,30 @@ function drawJupiter(ctx, x, y, rayon) {
   ctx.stroke();
 }
 
+// Saturne (attracteur de ses lunes) : disque doré + anneaux inclinés.
+// Stylisation assumée : l'anneau est tracé entièrement par-dessus le disque.
+function drawSaturne(ctx, x, y, rayon) {
+  ctx.beginPath();
+  ctx.arc(x, y, rayon, 0, 2 * Math.PI);
+  ctx.fillStyle = '#d8b070';
+  ctx.fill();
+  ctx.save();
+  ctx.clip();
+  ctx.fillStyle = 'rgba(240,220,180,0.55)';
+  ctx.fillRect(x - rayon, y - rayon * 0.4, 2 * rayon, rayon * 0.25);
+  ctx.restore();
+  ctx.beginPath();
+  ctx.arc(x, y, rayon, 0, 2 * Math.PI);
+  ctx.strokeStyle = '#a07830';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.ellipse(x, y, rayon * 1.9, rayon * 0.65, -0.30, 0, 2 * Math.PI);
+  ctx.strokeStyle = 'rgba(216,192,144,0.9)';
+  ctx.lineWidth = Math.max(2, rayon * 0.3);
+  ctx.stroke();
+}
+
 // Barre d'échelle en bas à gauche : longueur « ronde » choisie pour occuper
 // 60 à 160 px à l'écran, quel que soit le zoom.
 function drawEchelle(ctx, H, scale, unite) {
@@ -210,9 +234,9 @@ function drawLoi1() {
     ctx.moveTo(ox - a * s, oy);
     ctx.lineTo(ox + a * s, oy);
     ctx.stroke();
-    // Demi-grand axe a : flèche O → périhélie
-    flecheDouble(ctx, ox, oy, ox + a * s, oy, '#6aa2e0', 2.5);
-    texteHalo(ctx, 'a', ox + a * s / 2, oy - fsBase * 0.75, '#6aa2e0', fontMath);
+    // Demi-grand axe a : flèche O → aphélie (côté gauche)
+    flecheDouble(ctx, ox, oy, ox - a * s, oy, '#6aa2e0', 2.5);
+    texteHalo(ctx, 'a', ox - a * s / 2, oy - fsBase * 0.75, '#6aa2e0', fontMath);
     // Sommets : périhélie / aphélie (sans objet pour un cercle)
     if (e >= 0.05) {
       texteHalo(ctx, 'périhélie', ox + a * s, oy + fsBase * 1.15, '#98a8b8', fontTexte);
@@ -255,7 +279,7 @@ function drawLoi1() {
     ctx.moveTo(f2x - 5, f2y - 5); ctx.lineTo(f2x + 5, f2y + 5);
     ctx.moveTo(f2x - 5, f2y + 5); ctx.lineTo(f2x + 5, f2y - 5);
     ctx.stroke();
-    texteHalo(ctx, 'F′', f2x - fsBase * 0.7, f2y - fsBase * 0.7, '#e87850', fontMath);
+    texteHalo(ctx, 'F′', f2x - fsBase * 0.7, f2y + fsBase * 1.1, '#e87850', fontMath);
   }
 
   // ── Position de la planète (mouvement képlérien réel) ──
@@ -284,8 +308,8 @@ function drawLoi1() {
   // ── Soleil au foyer F ──
   drawSoleil(ctx, fx, fy, Math.max(8, Math.min(13, s * 0.055)));
   if (sim1.showFoyers) {
-    texteHalo(ctx, 'F', fx + fsBase * 0.75, fy + fsBase * 0.75, '#e87850', fontMath);
-    texteHalo(ctx, 'Soleil', fx, fy + fsBase * 1.9, '#98a8b8', fontTexte);
+    texteHalo(ctx, 'F', fx + fsBase * 0.75, fy + fsBase * 1.1, '#e87850', fontMath);
+    texteHalo(ctx, 'Soleil', fx, fy - fsBase * 1.9, '#98a8b8', fontTexte);
   }
 
   // ── Planète ──
@@ -460,6 +484,8 @@ function drawSys3() {
   // ── Attracteur ──
   if (sys.attracteur.type === 'soleil') {
     drawSoleil(ctx, fx, fy, Math.max(7, Math.min(12, s * rMax * 0.03)));
+  } else if (sys.attracteur.type === 'saturne') {
+    drawSaturne(ctx, fx, fy, Math.max(8, Math.min(13, s * rMax * 0.035)));
   } else {
     drawJupiter(ctx, fx, fy, Math.max(8, Math.min(13, s * rMax * 0.035)));
   }

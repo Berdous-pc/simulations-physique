@@ -64,10 +64,13 @@ boucle RAF (`loop()` de `ui.js`), les autres restent figées.
 
 ### 3ᵉ loi — Loi des périodes (`sys3`, `drawSys3` + `graph.js`)
 
-- Trois systèmes (données réelles dans `SYSTEMES`, `sim.js`) :
+- Quatre systèmes (données réelles dans `SYSTEMES`, `sim.js`) :
   - Mercure → Mars (a en ua, T en an),
   - Jupiter → Neptune (a en ua, T en an),
-  - Lunes galiléennes de Jupiter (a en **Gm**, T en jours).
+  - Lunes galiléennes de Jupiter (a en **Gm**, T en jours),
+  - Lunes de Saturne : Encelade, Téthys, Dioné, Rhéa, Titan (a en Gm, T en
+    jours — Mimas et Japet écartées, Japet orbitant 15× plus loin
+    qu'Encelade l'échelle linéaire écraserait les orbites internes).
   Les deux groupes de planètes sont séparés pour éviter l'écrasement
   d'échelle (Mercure serait invisible à l'échelle de Neptune).
 - Orbites tracées avec leur **excentricité réelle** (attracteur au foyer),
@@ -81,9 +84,18 @@ boucle RAF (`loop()` de `ui.js`), les autres restent figées.
   max est < 2 % (vrai uniquement pour T² vs a³), la droite modèle et la
   valeur de k s'affichent automatiquement (encart vert).
   k ≈ 1,00 an²/ua³ pour les deux systèmes planétaires (même attracteur),
-  ≈ 41,7 j²/Gm³ pour les lunes — de quoi discuter du rôle de la masse
-  centrale.
+  ≈ 41,7 j²/Gm³ pour les lunes de Jupiter et ≈ 139 j²/Gm³ pour celles de
+  Saturne — de quoi discuter du rôle de la masse centrale.
 - Bulle de survol des points (`#graph3-tooltip`).
+- **Zoom molette** (`_graph3Zoom`, `initGraph3Wheel`) : resserre les
+  étendues `xRange`/`yRange` autour de l'origine (qui reste ancrée au coin
+  bas-gauche du cadre, donc le zoom la recadre naturellement) — utile pour
+  distinguer des astres tassés près de 0 (ex. les lunes de Jupiter/Saturne
+  sur l'axe a). Dézoom plafonné à 1 = le cadre complet calculé sur les
+  données ; pas de zoom-out au-delà. Réinitialisé à 1 sur changement de
+  système ou d'axe (l'étendue change du tout au tout). Double-clic = reset
+  rapide. Points/droite modèle découpés proprement au cadre de tracé
+  (`ctx.clip`) au-delà de zoom = 1.
 
 ## Points techniques
 

@@ -72,7 +72,8 @@ var SPEED12 = [
   { v: 10,  label: '10 j/s'  },
   { v: 30,  label: '30 j/s'  },
   { v: 60,  label: '60 j/s'  },
-  { v: 120, label: '120 j/s' }
+  { v: 120, label: '120 j/s' },
+  { v: 180, label: '180 j/s' }
 ];
 
 // ── 1ʳᵉ loi : planète fictive, a et e réglables ────────────────────────
@@ -87,7 +88,7 @@ var sim1 = {
   e: 0.50,            // excentricité
   M: 0,               // anomalie moyenne (rad), intégrée dans la boucle
   paused: true,
-  speedIdx: 1,        // 30 j/s
+  speedIdx: 2,        // 60 j/s
   showFoyers: true,   // foyers F, F′, centre O et distance c
   showGrandAxe: true,
   showPetitAxe: true,
@@ -190,6 +191,28 @@ var SYSTEMES = [
       { nom: 'Europe',   a: 0.6711, T: 3.551,  e: 0.009, couleur: '#6a92b8', couleurClair: '#98c0e8', rayon: 4 },
       { nom: 'Ganymède', a: 1.0704, T: 7.155,  e: 0.001, couleur: '#8a7a68', couleurClair: '#c0ac94', rayon: 6 },
       { nom: 'Callisto', a: 1.8827, T: 16.69,  e: 0.007, couleur: '#6a5a48', couleurClair: '#a89078', rayon: 5 }
+    ]
+  },
+  {
+    // Principales lunes glacées + Titan. Mimas et Japet sont volontairement
+    // écartées : Japet orbite 15× plus loin qu'Encelade, l'échelle linéaire
+    // écraserait toutes les orbites internes.
+    label: 'Lunes de Saturne',
+    attracteur: { nom: 'Saturne', type: 'saturne' },
+    uniteA: 'Gm', uniteT: 'j',
+    speeds: [
+      { v: 0.25, label: '6 h/s'  },
+      { v: 0.5,  label: '12 h/s' },
+      { v: 1,    label: '1 j/s'  },
+      { v: 2,    label: '2 j/s'  }
+    ],
+    defaultSpeedIdx: 2,
+    corps: [
+      { nom: 'Encelade', a: 0.2380, T: 1.370,  e: 0.005, couleur: '#4a90a0', couleurClair: '#78c8d8', rayon: 3 },
+      { nom: 'Téthys',   a: 0.2947, T: 1.888,  e: 0.001, couleur: '#8a8a9a', couleurClair: '#b8b8cc', rayon: 4 },
+      { nom: 'Dioné',    a: 0.3774, T: 2.737,  e: 0.002, couleur: '#9a7a9a', couleurClair: '#c8a8c8', rayon: 4 },
+      { nom: 'Rhéa',     a: 0.5271, T: 4.518,  e: 0.001, couleur: '#a08850', couleurClair: '#d0b878', rayon: 5 },
+      { nom: 'Titan',    a: 1.2219, T: 15.95,  e: 0.029, couleur: '#c07830', couleurClair: '#e8a058', rayon: 7 }
     ]
   }
 ];
