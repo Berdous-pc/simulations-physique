@@ -184,6 +184,7 @@ Tous les boutons partagent : `width: 100%`, `border-radius: 6px`, `font-weight: 
 
 ### Hint bas de panneau (`.panel-hint`)
 
+- Label du bandeau : **"Informations"** (renommé depuis "Instructions" sur toutes les pages)
 - Hors scroll, collé en bas de `#panel`
 - `.panel-hint-body` : `font-size: clamp(12px, 1.15vw, 15px); color: #5a6a78; background: #fff; border: 1.5px solid #b0a898`
 - `.panel-hint-title` : `11px`, uppercase, `letter-spacing: 1px`, et **doit pouvoir rétrécir** : `min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 6px` (sinon le bouton ▲ déborde du panneau sur petite fenêtre)

@@ -103,13 +103,14 @@
               Vitesse d'animation
               <span class="param-value" id="lbl-speed-1">30 j/s</span>
             </label>
-            <input type="range" id="sl-speed-1" min="0" max="3" step="1" value="1"
+            <input type="range" id="sl-speed-1" min="0" max="4" step="1" value="1"
                    oninput="onSliderSpeed1(this.value)">
             <div class="slider-ticks">
               <span style="--tick-frac:0;">10 j/s</span>
-              <span style="--tick-frac:0.333;">30 j/s</span>
-              <span style="--tick-frac:0.667;">60 j/s</span>
-              <span style="--tick-frac:1;">120 j/s</span>
+              <span style="--tick-frac:0.25;">30 j/s</span>
+              <span style="--tick-frac:0.5;">60 j/s</span>
+              <span style="--tick-frac:0.75;">120 j/s</span>
+              <span style="--tick-frac:1;">180 j/s</span>
             </div>
           </div>
         </div>
@@ -131,9 +132,9 @@
               Excentricité e
               <span class="param-value" id="lbl-e-1">0,50</span>
             </label>
-            <input type="range" id="sl-e-1" min="0" max="0.99" step="0.01" value="0.5"
+            <input type="range" id="sl-e-1" min="0" max="0.95" step="0.01" value="0.5"
                    oninput="onSliderE1(this.value)">
-            <div class="input-hint">e = c/a — vers 0 l'ellipse devient un cercle ; vers 1 elle s'aplatit de plus en plus (à e = 1 la trajectoire s'ouvrirait : ce ne serait plus une ellipse).</div>
+            <div class="input-hint">Excentricité définie par e = c/a. Le demi-petit axe se déduit de a et e par la relation b = a·√(1 − e²) (issue de b² = a² − c²).</div>
           </div>
         </div>
 
@@ -306,6 +307,7 @@
             <button class="sys-btn active" id="sys-btn-0" onclick="setSysteme(0)">Mercure → Mars</button>
             <button class="sys-btn" id="sys-btn-1" onclick="setSysteme(1)">Jupiter → Neptune</button>
             <button class="sys-btn" id="sys-btn-2" onclick="setSysteme(2)">Lunes de Jupiter</button>
+            <button class="sys-btn" id="sys-btn-3" onclick="setSysteme(3)">Lunes de Saturne</button>
           </div>
         </div>
 
@@ -367,7 +369,7 @@
         <button class="panel-hint-menu-btn"
                 onclick="location.href='../index.html'"
                 title="Retour au menu principal">☰ Menu</button>
-        <span class="panel-hint-title">Instructions</span>
+        <span class="panel-hint-title">Informations</span>
         <button class="panel-hint-toggle"
                 onclick="toggleHint('premiere-loi')"
                 title="Afficher les instructions">▲</button>
@@ -390,7 +392,7 @@
         <button class="panel-hint-menu-btn"
                 onclick="location.href='../index.html'"
                 title="Retour au menu principal">☰ Menu</button>
-        <span class="panel-hint-title">Instructions</span>
+        <span class="panel-hint-title">Informations</span>
         <button class="panel-hint-toggle"
                 onclick="toggleHint('deuxieme-loi')"
                 title="Afficher les instructions">▲</button>
@@ -412,7 +414,7 @@
         <button class="panel-hint-menu-btn"
                 onclick="location.href='../index.html'"
                 title="Retour au menu principal">☰ Menu</button>
-        <span class="panel-hint-title">Instructions</span>
+        <span class="panel-hint-title">Informations</span>
         <button class="panel-hint-toggle"
                 onclick="toggleHint('troisieme-loi')"
                 title="Afficher les instructions">▲</button>
@@ -425,7 +427,7 @@
         pour un seul choix, les points s'alignent avec l'origine
         (<strong>T² = k·a³</strong>).<br>
         Comparez la valeur de <strong>k</strong> selon le système : elle ne dépend
-        que de l'astre attracteur (Soleil ou Jupiter).
+        que de l'astre attracteur (Soleil, Jupiter ou Saturne).
       </div>
     </div>
 
