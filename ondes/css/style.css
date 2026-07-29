@@ -626,6 +626,15 @@ main {
   font-size: 0.85em;
 }
 
+/* Exposant de l'écriture scientifique (λ, c). line-height:0 empêche le <sup>
+   d'agrandir la boîte de ligne et de décaler la ligne du readout. */
+.ro-props-row sup,
+.ro-value sup {
+  font-size: 0.7em;
+  line-height: 0;
+  vertical-align: super;
+}
+
 /* ── Placeholder "À venir" ───────────────────────── */
 .coming-soon {
   text-align: center;

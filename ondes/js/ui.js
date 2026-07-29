@@ -61,7 +61,10 @@ function loop(ts) {
             }
         }
 
-        updateDpxData();
+        // Inutile de reconstruire la courbe ΔP(x) quand seul ΔP(t) est
+        // affiché (updateDpxData se court-circuite par ailleurs tant que
+        // rien n'a changé, ex. en pause).
+        if (sim.graphMode !== 'dpt') updateDpxData();
         drawTube();
         drawGraph();
 
@@ -96,7 +99,10 @@ function loop(ts) {
             }
         }
 
-        updateYxData();
+        // Inutile de reconstruire la courbe y(x) quand seul y(t) est affiché
+        // (updateYxData se court-circuite par ailleurs tant que rien n'a
+        // changé, ex. en pause — cf. commentaire équivalent pour Vagues).
+        if (simCorde.graphMode !== 'dpt') updateYxData();
         drawCorde();
         drawGraph();
 
@@ -111,9 +117,8 @@ function loop(ts) {
             simVagues.simTime += dtSimV;
             addSourceSampleVagues(simVagues.simTime);
 
-            var DPT_SAMPLE_DT_V = DPT_SAMPLE_DT;
-            while (simVagues.simTime - lastYtUpdateV >= DPT_SAMPLE_DT_V) {
-                lastYtUpdateV += DPT_SAMPLE_DT_V;
+            while (simVagues.simTime - lastYtUpdateV >= VAGUES_YT_SAMPLE_DT) {
+                lastYtUpdateV += VAGUES_YT_SAMPLE_DT;
                 updateYtDataVagues(lastYtUpdateV);
             }
 
@@ -122,7 +127,10 @@ function loop(ts) {
             }
         }
 
-        updateYxDataVagues();
+        // Inutile de reconstruire la courbe y(x) quand seul le graphe y(t) est
+        // affiché : elle n'est alors jamais dessinée. (updateYxDataVagues se
+        // court-circuite par ailleurs tant que rien n'a changé, ex. en pause.)
+        if (simVagues.graphMode !== 'dpt') updateYxDataVagues();
         drawVagues();
         drawGraph();
 
@@ -140,7 +148,7 @@ function loop(ts) {
 // ── Afficheur c (Son) ─────────────────────────────────────────────────
 function _updateCReadout() {
     var el = document.getElementById('ro-c');
-    if (el) el.textContent = sim.c_cms.toFixed(1).replace('.', ',');
+    if (el) el.innerHTML = fmtSciHTML(sim.c_cms, 2);
 }
 
 // ── Utilitaires source Son ────────────────────────────────────────────
@@ -170,8 +178,8 @@ function sendImpulse() {
     sim.impulsePropagating = true;
     sim.sourceMode         = 'impulse';
     sim.dptTimeOrigin = sim.simTime;
-    sim.dptData1      = [];
-    sim.dptData2      = [];
+    _dptClear(1);
+    _dptClear(2);
     _syncSourceButtons();
     _syncWavePropsBtnState();
 }
@@ -187,8 +195,8 @@ function toggleSinusoidal() {
         sim.sinStopTime      = -1;
         sim.sourceMode       = 'sinus';
         sim.dptTimeOrigin = sim.simTime;
-        sim.dptData1      = [];
-        sim.dptData2      = [];
+        _dptClear(1);
+        _dptClear(2);
         _syncSourceButtons();
         _syncWavePropsBtnState();
     }
@@ -280,7 +288,7 @@ function _applyWavePropsState() {
 function _updateWaveProps() {
     if (!sim.wavePropsVisible) return;
     var elC = document.getElementById('ro-c-ext');
-    if (elC) elC.textContent = sim.c_cms.toFixed(1).replace('.', ',');
+    if (elC) elC.innerHTML = fmtSciHTML(sim.c_cms, 2);
     var f   = sim.freq;
     var T   = (f > 0) ? 1 / f : 0;
     var elF = document.getElementById('ro-f');
@@ -289,7 +297,7 @@ function _updateWaveProps() {
     if (elT) elT.textContent = T.toFixed(3).replace('.', ',');
     var lambda = sim.c_cms * T;
     var elL    = document.getElementById('ro-lambda');
-    if (elL) elL.textContent = lambda.toFixed(1).replace('.', ',');
+    if (elL) elL.innerHTML = fmtSciHTML(lambda, 2);
 }
 
 function _syncWavePropsBtnState() {
@@ -333,7 +341,7 @@ function togglePressureColor() {
 // ── Afficheur c (Corde) ───────────────────────────────────────────────
 function _updateCReadoutCorde() {
     var el = document.getElementById('ro-c-corde');
-    if (el) el.textContent = simCorde.c_cms.toFixed(1).replace('.', ',');
+    if (el) el.innerHTML = fmtSciHTML(simCorde.c_cms, 2);
 }
 
 // ── Utilitaires source Corde ──────────────────────────────────────────
@@ -363,8 +371,8 @@ function sendImpulseCorde() {
     simCorde.impulsePropagating = true;
     simCorde.sourceMode         = 'impulse';
     simCorde.ytTimeOrigin = simCorde.simTime;
-    simCorde.ytData1      = [];
-    simCorde.ytData2      = [];
+    _ytClearCorde(1);
+    _ytClearCorde(2);
     lastYtUpdate = 0;
     _syncSourceButtonsCorde();
     _syncWavePropsBtnStateCorde();
@@ -381,8 +389,8 @@ function toggleSinusoidalCorde() {
         simCorde.sinStopTime      = -1;
         simCorde.sourceMode       = 'sinus';
         simCorde.ytTimeOrigin = simCorde.simTime;
-        simCorde.ytData1      = [];
-        simCorde.ytData2      = [];
+        _ytClearCorde(1);
+        _ytClearCorde(2);
         lastYtUpdate = 0;
         _syncSourceButtonsCorde();
         _syncWavePropsBtnStateCorde();
@@ -477,7 +485,7 @@ function _applyWavePropsCorde() {
 function _updateWavePropsCorde() {
     if (!simCorde.wavePropsVisible) return;
     var elC = document.getElementById('ro-c-ext-corde');
-    if (elC) elC.textContent = simCorde.c_cms.toFixed(1).replace('.', ',');
+    if (elC) elC.innerHTML = fmtSciHTML(simCorde.c_cms, 2);
     var f   = simCorde.freq;
     var T   = (f > 0) ? 1 / f : 0;
     var elF = document.getElementById('ro-f-corde');
@@ -486,7 +494,7 @@ function _updateWavePropsCorde() {
     if (elT) elT.textContent = T.toFixed(3).replace('.', ',');
     var lambda = simCorde.c_cms * T;   // m (c en m/s × T en s)
     var elL    = document.getElementById('ro-lambda-corde');
-    if (elL) elL.textContent = lambda.toFixed(2).replace('.', ',');
+    if (elL) elL.innerHTML = fmtSciHTML(lambda, 2);
 }
 
 function _syncWavePropsBtnStateCorde() {
@@ -524,8 +532,7 @@ function _toggleBeaconSon(n) {
         if (btn) btn.classList.add('active');
     } else {
         if (btn) btn.classList.remove('active');
-        if (n === 1) sim.dptData1 = [];
-        else         sim.dptData2 = [];
+        _dptClear(n);
     }
 }
 
@@ -539,8 +546,7 @@ function _toggleBeaconCorde(n) {
         if (btn) btn.classList.add('active');
     } else {
         if (btn) btn.classList.remove('active');
-        if (n === 1) simCorde.ytData1 = [];
-        else         simCorde.ytData2 = [];
+        _ytClearCorde(n);
     }
 }
 

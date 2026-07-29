@@ -55,6 +55,37 @@ function _updateFontSizes(ctx, W, H, yMin, yMax) {
     GM.bottom = Math.max(28, Math.round(_gFontTick * 1.6 + _gFontTitle * 1.5 + 4));
 }
 
+// ══════════════════════════════════════════════════════════════════════
+//  Cache du décor des graphes (fond, grille, cadre, titres d'axes)
+// ══════════════════════════════════════════════════════════════════════
+//  Tout ce décor est invariant tant que la géométrie et les échelles ne bougent
+//  pas, alors qu'il concentre les opérations canvas les plus coûteuses (fillText,
+//  et surtout measureText). Rendu une fois dans un canvas hors écran par onglet/
+//  mode (slot), puis simplement recomposé par drawImage à chaque frame — seules
+//  les courbes et les marqueurs, qui bougent, restent dessinés directement.
+//  Partagé par les 3 onglets (Son, Corde, Vagues) : chacun garde son propre
+//  objet `store` ({dpx:null, dpt:null} etc.) pour ne jamais mélanger les caches.
+function _drawGraphChrome(store, slot, key, W, H, drawFn) {
+    var c = store[slot];
+    if (!c) c = store[slot] = { canvas: document.createElement('canvas'), key: null, w: 0, h: 0, dpr: 0 };
+
+    var dpr = window.devicePixelRatio || 1;
+    if (c.key === key && c.w === W && c.h === H && c.dpr === dpr) return c.canvas;
+
+    c.canvas.width  = Math.max(1, Math.round(W * dpr));
+    c.canvas.height = Math.max(1, Math.round(H * dpr));
+    var cx = c.canvas.getContext('2d');
+    cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cx.clearRect(0, 0, W, H);
+    drawFn(cx);
+
+    c.key = key; c.w = W; c.h = H; c.dpr = dpr;
+    return c.canvas;
+}
+
+var _sonChrome   = { dpx: null, dpt: null };
+var _cordeChrome = { yx: null, yt: null };
+
 // Calcule GM.left de sorte que l'axe Y (x=0 du graphe) soit aligné
 // avec la position de repos de la membrane dans la fenêtre.
 // On utilise getBoundingClientRect pour comparer les positions viewport
@@ -85,11 +116,23 @@ function _syncLeftMarginWithTube(ctx, W, yMin, yMax) {
 
 // Calcule la marge minimale pour afficher les labels Y (chiffres seulement)
 // Utilise la taille de police dynamique courante (_gFontTick)
+// Mémoïsé : fonction pure de (_gFontTick, yMin, yMax), mais appelée plusieurs
+// fois par frame (dessin + hover + _yAxisTitleX) alors que measureText est
+// l'une des opérations canvas les plus coûteuses.
+var _lmCache = { key: '', val: 0 };
+
 function _calcLeftMarginRaw(ctx, yMin, yMax) {
+    var key = _gFontTick + '|' + yMin + '|' + yMax;
+    if (_lmCache.key === key) return _lmCache.val;
+
     ctx.font = _gFontTick + 'px monospace';
     var wMin = ctx.measureText(_fmtLabel(yMin)).width;
     var wMax = ctx.measureText(_fmtLabel(yMax)).width;
-    return Math.round(Math.max(wMin, wMax) + 14);
+    var val  = Math.round(Math.max(wMin, wMax) + 14);
+
+    _lmCache.key = key;
+    _lmCache.val = val;
+    return val;
 }
 
 // Position X (translate) du titre d'axe Y pivoté, juste à gauche de la
@@ -338,8 +381,7 @@ function _drawBothLinks(ctx, W, H, half, sep) {
 
 
 function _drawDpxGraph(ctx, W, H) {
-    var data = sim.dpxData;
-    var L    = sim.tubeLength;
+    var L = sim.tubeLength;
 
     // Bornes X : toujours 0 → L (fixe)
     var xMin = 0;
@@ -365,46 +407,29 @@ function _drawDpxGraph(ctx, W, H) {
     function px(x_data) { return GM.left + (x_data - xMin) / (xMax - xMin) * pW; }
     function py(y_data) { return GM.top  + (1 - (y_data - yMin) / (yMax - yMin)) * pH; }
 
-    // ── Fond de la zone de tracé ──────────────────────────────────────
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(GM.left, GM.top, pW, pH);
+    // ── Décor (mis en cache) ──────────────────────────────────────────
+    var key = W + '|' + H + '|' + xMin + '|' + xMax + '|' + GM.left + '|' + L;
+    var chrome = _drawGraphChrome(_sonChrome, 'dpx', key, W, H, function (cx) {
+        cx.fillStyle = '#ffffff';
+        cx.fillRect(GM.left, GM.top, pW, pH);
+        _drawGridY(cx, yMin, yMax, px, py, pW, pH);
+        _drawGridX_dpx(cx, xMin, xMax, px, py, pW, pH, L);
+        _drawZeroLine(cx, yMin, yMax, px, py, pW);
+        _drawAxisLabels_dpx(cx, W, H, GM, pW, pH, xMin, xMax, yMin, yMax, px, py, L);
+    });
+    ctx.drawImage(chrome, 0, 0, W, H);
 
-    // ── Grille Y ──────────────────────────────────────────────────────
-    _drawGridY(ctx, yMin, yMax, px, py, pW, pH);
-
-    // ── Grille X (ticks de distance) ─────────────────────────────────
-    _drawGridX_dpx(ctx, xMin, xMax, px, py, pW, pH, L);
-
-    // ── Ligne zéro ────────────────────────────────────────────────────
-    _drawZeroLine(ctx, yMin, yMax, px, py, pW);
-
-    // ── Courbe ΔP(x) ─────────────────────────────────────────────────
-    // On échantillonne directement en espace canvas (1 colonne de pixels = 1 échantillon).
-    // Pour chaque colonne cx on calcule le x_data correspondant, puis ΔP.
-    // Quand λ est petite (K faible / f haute), plusieurs périodes tiennent
-    // dans quelques pixels → on sur-échantillonne à 4 sous-colonnes par pixel
-    // pour capturer les extrema même quand λ < largeur d'un pixel.
-    {
-        var freqEff_g = (sim.sourceMode === 'impulse') ? 1.0 / T_IMPULSE : sim.freq;
-        var lambda_g  = (sim.c_sim > 0) ? sim.c_sim / freqEff_g : L;  // px de tube
-        // ratio : pixels canvas par longueur d'onde
-        var pxPerLambda = (lambda_g > 0) ? pW * lambda_g / L : pW;
-        // sous-pas : si λ couvre < 8 px canvas on sur-échantillonne
-        var subSteps = (pxPerLambda < 8) ? Math.ceil(8 / Math.max(0.5, pxPerLambda)) : 1;
-        subSteps = Math.min(subSteps, 16);   // cap à 16 sous-pas
-
-        var totalSteps = pW * subSteps;
+    // ── Courbe ΔP(x) ────────────────────────────────────────────────
+    // Points calculés une fois par frame par updateDpxData (résolution calée
+    // sur l'écran, partagée avec le hover snappé) — ici seulement le tracé.
+    var dx = sim.dpxX, dy = sim.dpxY, n = sim.dpxN | 0;
+    if (dx && n > 1) {
         ctx.save();
+        ctx.beginPath(); ctx.rect(GM.left, GM.top, pW, pH); ctx.clip();
         ctx.beginPath();
-        var firstPt = true;
-        for (var s = 0; s <= totalSteps; s++) {
-            var frac   = s / totalSteps;
-            var x_data = xMin + frac * (xMax - xMin);
-            var dp_val = waveDeltaP(x_data, sim.simTime);
-            var cx     = GM.left + frac * pW;
-            var cy     = py(dp_val);
-            if (firstPt) { ctx.moveTo(cx, cy); firstPt = false; }
-            else          { ctx.lineTo(cx, cy); }
+        ctx.moveTo(px(dx[0]), py(dy[0]));
+        for (var i = 1; i < n; i++) {
+            ctx.lineTo(px(dx[i]), py(dy[i]));
         }
         ctx.strokeStyle = '#2a6aaa';
         ctx.lineWidth   = 2;
@@ -422,13 +447,10 @@ function _drawDpxGraph(ctx, W, H) {
         _drawBeaconMarker(ctx, px(xb2), py, yMin, yMax, '#2a8a50', 'B2', pH);
     }
 
-    // ── Bordure zone tracé ────────────────────────────────────────────
+    // Cadre tracé en dernier pour recouvrir les débordements de trait sur le bord
     ctx.strokeStyle = '#c8c0b4';
     ctx.lineWidth   = 1;
     ctx.strokeRect(GM.left, GM.top, pW, pH);
-
-    // ── Labels axes ───────────────────────────────────────────────────
-    _drawAxisLabels_dpx(ctx, W, H, GM, pW, pH, xMin, xMax, yMin, yMax, px, py, L);
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -436,10 +458,10 @@ function _drawDpxGraph(ctx, W, H) {
 // ══════════════════════════════════════════════════════════════════════
 
 function _drawDptGraph(ctx, W, H) {
-    var d1 = sim.dptData1;
-    var d2 = sim.dptData2;
-    var hasData = (sim.beacon1.active && d1.length > 1) ||
-                  (sim.beacon2.active && d2.length > 1);
+    var d1 = _dptBuf(1);
+    var d2 = _dptBuf(2);
+    var hasData = (sim.beacon1.active && d1.n > 1) ||
+                  (sim.beacon2.active && d2.n > 1);
 
     if (!hasData) {
         // Message d'aide
@@ -474,30 +496,33 @@ function _drawDptGraph(ctx, W, H) {
     function px(x_data) { return GM.left + (x_data - xMin) / (xMax - xMin) * pW; }
     function py(y_data) { return GM.top  + (1 - (y_data - yMin) / (yMax - yMin)) * pH; }
 
-    // Fond
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(GM.left, GM.top, pW, pH);
-
-    // Grilles
-    _drawGridY(ctx, yMin, yMax, px, py, pW, pH);
-    _drawGridX_dpt(ctx, xMin, xMax, px, py, pW, pH);
-
-    // Ligne zéro
-    _drawZeroLine(ctx, yMin, yMax, px, py, pW);
+    // ── Décor (mis en cache) ──────────────────────────────────────────
+    var key = W + '|' + H + '|' + GM.left;
+    var chrome = _drawGraphChrome(_sonChrome, 'dpt', key, W, H, function (cx) {
+        cx.fillStyle = '#ffffff';
+        cx.fillRect(GM.left, GM.top, pW, pH);
+        _drawGridY(cx, yMin, yMax, px, py, pW, pH);
+        _drawGridX_dpt(cx, xMin, xMax, px, py, pW, pH);
+        _drawZeroLine(cx, yMin, yMax, px, py, pW);
+        _drawAxisLabels_dpt(cx, W, H, GM, pW, pH, xMin, xMax, yMin, yMax, px, py);
+    });
+    ctx.drawImage(chrome, 0, 0, W, H);
 
     // ── Tracé des séries ──────────────────────────────────────────────
-    // Clip dans la zone de tracé
     ctx.save();
     ctx.beginPath();
     ctx.rect(GM.left, GM.top, pW, pH);
     ctx.clip();
 
-    if (sim.beacon1.active && d1.length > 1) {
-        _drawSeries(ctx, d1, xMin, xMax, px, py, '#e07020', 2, sim.simTime);
-    }
-    if (sim.beacon2.active && d2.length > 1) {
-        _drawSeries(ctx, d2, xMin, xMax, px, py, '#2a8a50', 2, sim.simTime);
-    }
+    var tOrigin = sim.dptTimeOrigin || 0;
+    var tNow    = sim.simTime;
+    // Point "vivant" en tête de courbe (cf. correctif équivalent sur Vagues) :
+    // sans lui, la pointe n'avance qu'au rythme des échantillons enregistrés
+    // (DPT_SAMPLE_DT), ce qui saute visiblement en ralenti.
+    if (sim.beacon1.active && d1.n > 1)
+        _drawSeries(ctx, d1, px, py, '#e07020', 2, tOrigin, tNow, waveDeltaP(sim.beacon1.x - sim.tubeLeft, tNow));
+    if (sim.beacon2.active && d2.n > 1)
+        _drawSeries(ctx, d2, px, py, '#2a8a50', 2, tOrigin, tNow, waveDeltaP(sim.beacon2.x - sim.tubeLeft, tNow));
 
     ctx.restore();
 
@@ -506,57 +531,32 @@ function _drawDptGraph(ctx, W, H) {
     ctx.lineWidth   = 1;
     ctx.strokeRect(GM.left, GM.top, pW, pH);
 
-    // Labels axes
-    _drawAxisLabels_dpt(ctx, W, H, GM, pW, pH, xMin, xMax, yMin, yMax, px, py);
-
     // Légende
     _drawLegend(ctx, W, pH);
 }
 
-// ── Tracé d'une série dans la fenêtre visible ─────────────────────────
+// ── Tracé d'une série (tampon circulaire) dans la fenêtre visible ──────
 
-// ── Tracé d'une série dans la fenêtre visible ─────────────────────────
-// cycleTime : sim.simTime — utilisé pour n'afficher que le cycle courant
-// (fenêtre fixe 0–10 s : t affiché = pt.t % 10, cycle = floor(pt.t / 10))
-
-function _drawSeries(ctx, data, xMin, xMax, px, py, color, lw, cycleTime) {
+function _drawSeries(ctx, buf, px, py, color, lw, tOrigin, liveT, liveY) {
     var WINDOW = 5;
-    // Utiliser dptTimeOrigin si disponible, sinon fallback sur cycleTime
-    var tOrigin = (sim.dptTimeOrigin !== undefined) ? sim.dptTimeOrigin : 0;
-
     ctx.beginPath();
     var started = false;
-    for (var i = 0; i < data.length; i++) {
-        var pt = data[i];
-
-        // ── Mode cyclique (cycleTime fourni) ──────────────────────────
-        if (cycleTime !== undefined) {
-            var tLocal = pt.t - tOrigin;
-            // N'afficher que les points dans la fenêtre courante [0, WINDOW]
-            if (tLocal < 0 || tLocal > WINDOW) {
-                started = false;
-                continue;
-            }
-            // Couper si le point précédent était hors fenêtre
-            if (i > 0) {
-                var prevLocal = data[i - 1].t - tOrigin;
-                if (prevLocal < 0 || prevLocal > WINDOW) started = false;
-            }
-            var cx = px(tLocal);
-            var cy = py(pt.dp);
-            if (!started) { ctx.moveTo(cx, cy); started = true; }
-            else           { ctx.lineTo(cx, cy); }
-
-        // ── Mode normal (pas de cycleTime) ───────────────────────────
-        } else {
-            if (pt.t < xMin - 0.5 || pt.t > xMax + 0.5) {
-                started = false;
-                continue;
-            }
-            var cx2 = px(pt.t);
-            var cy2 = py(pt.dp);
-            if (!started) { ctx.moveTo(cx2, cy2); started = true; }
-            else           { ctx.lineTo(cx2, cy2); }
+    for (var i = 0; i < buf.n; i++) {
+        var j      = _cbufIdx(buf, i);
+        var tLocal = buf.t[j] - tOrigin;
+        if (tLocal < 0 || tLocal > WINDOW) { started = false; continue; }
+        var cx = px(tLocal);
+        var cy = py(buf.y[j]);
+        if (!started) { ctx.moveTo(cx, cy); started = true; }
+        else          { ctx.lineTo(cx, cy); }
+    }
+    // Extension "vivante" jusqu'à l'instant présent — seulement si elle
+    // prolonge le dernier échantillon tracé (pas de saut en arrière au moment
+    // où tOrigin se recale toutes les 5 s).
+    if (liveT !== undefined) {
+        var tLiveLocal = liveT - tOrigin;
+        if (started && tLiveLocal >= 0 && tLiveLocal <= WINDOW) {
+            ctx.lineTo(px(tLiveLocal), py(liveY));
         }
     }
     ctx.strokeStyle = color;
@@ -567,24 +567,23 @@ function _drawSeries(ctx, data, xMin, xMax, px, py, color, lw, cycleTime) {
 // ── Légende (balise 1 et 2) ───────────────────────────────────────────
 
 function _drawLegend(ctx, W, pH) {
-    var x  = GM.left + 8;
-    var y  = GM.top  + 10;
-    var fs = 12;
-    ctx.font      = 'bold ' + fs + 'px monospace';
+    // Taille alignée sur les graduations, comme le reste du graphe : une
+    // valeur en dur ne suivait pas la mise à l'échelle responsive du canvas.
+    var fs = _gFontTick;
+    var x  = GM.left + 8, y = GM.top + fs * 0.9;
+    ctx.font         = 'bold ' + fs + 'px monospace';
     ctx.textAlign    = 'left';
     ctx.textBaseline = 'middle';
     if (sim.beacon1.active) {
         ctx.fillStyle = '#e07020';
-        ctx.fillRect(x, y - fs * 0.4, 16, 3);
-        ctx.fillStyle = '#e07020';
-        ctx.fillText('Balise 1', x + 20, y);
+        ctx.fillRect(x, y - fs * 0.4, fs * 1.3, 3);
+        ctx.fillText('Balise 1', x + fs * 1.3 + 5, y);
         y += fs + 6;
     }
     if (sim.beacon2.active) {
         ctx.fillStyle = '#2a8a50';
-        ctx.fillRect(x, y - fs * 0.4, 16, 3);
-        ctx.fillStyle = '#2a8a50';
-        ctx.fillText('Balise 2', x + 20, y);
+        ctx.fillRect(x, y - fs * 0.4, fs * 1.3, 3);
+        ctx.fillText('Balise 2', x + fs * 1.3 + 5, y);
     }
 }
 
@@ -631,25 +630,26 @@ function _drawSnappedHover_dpt(ctx, W, H, mx, my, pW, pH) {
 
     // Candidats pour chaque série active
     var series = [];
-    if (sim.beacon1.active && sim.dptData1.length > 1)
-        series.push({ data: sim.dptData1, color: '#e07020' });
-    if (sim.beacon2.active && sim.dptData2.length > 1)
-        series.push({ data: sim.dptData2, color: '#2a8a50' });
+    if (sim.beacon1.active && _dptBuf(1).n > 1)
+        series.push({ buf: _dptBuf(1), color: '#e07020' });
+    if (sim.beacon2.active && _dptBuf(2).n > 1)
+        series.push({ buf: _dptBuf(2), color: '#2a8a50' });
 
     // Chercher le meilleur point toutes séries confondues (distance euclidienne canvas)
     var winner = null, winnerColor = null, winnerDist = Infinity;
 
     for (var s = 0; s < series.length; s++) {
-        var sr = series[s];
-        for (var i = 0; i < sr.data.length; i++) {
-            var pt = sr.data[i];
-            var tLocal = pt.t - tOrigin;
+        var buf = series[s].buf;
+        for (var i = 0; i < buf.n; i++) {
+            var j      = _cbufIdx(buf, i);
+            var tLocal = buf.t[j] - tOrigin;
             if (tLocal < 0 || tLocal > WINDOW) continue;
+            var dpVal = buf.y[j];
             var bx  = px(tLocal);
-            var by  = py(pt.dp);
+            var by  = py(dpVal);
             var byc = Math.max(GM.top, Math.min(GM.top + pH, by));
-            var dist = Math.sqrt((bx - mx) * (bx - mx) + (byc - my) * (byc - my));
-            if (dist < winnerDist) { winnerDist = dist; winner = pt; winnerColor = sr.color; }
+            var dist = (bx - mx) * (bx - mx) + (byc - my) * (byc - my);
+            if (dist < winnerDist) { winnerDist = dist; winner = { t: tLocal + tOrigin, dp: dpVal }; winnerColor = series[s].color; }
         }
     }
     if (!winner) return;
@@ -674,8 +674,8 @@ function _drawSnappedHover_dpt(ctx, W, H, mx, my, pW, pH) {
     ctx.fill();
 
     // Étiquette
-    var tLbl  = tLocal.toFixed(2) + ' s';
-    var vLbl  = 'ΔP = ' + winner.dp.toFixed(3);
+    var tLbl  = fmtFR(tLocal, 2) + ' s';
+    var vLbl  = 'ΔP = ' + fmtFR(winner.dp, 3);
     var label = '(' + tLbl + ', ' + vLbl + ')';
     ctx.font         = _gFontHover + 'px monospace';
     ctx.fillStyle    = winnerColor;
@@ -690,8 +690,8 @@ function _drawSnappedHover_dpt(ctx, W, H, mx, my, pW, pH) {
 // ── Hover snappé pour ΔP(x) ───────────────────────────────────────────
 
 function _drawSnappedHover_dpx(ctx, W, H, mx, my, pW, pH) {
-    var data = sim.dpxData;
-    if (!data || data.length < 2) return;
+    var dx = sim.dpxX, dy = sim.dpxY, dn = sim.dpxN | 0;
+    if (!dx || dn < 2) return;
 
     var L    = sim.tubeLength;
     var xMin = 0;
@@ -702,22 +702,19 @@ function _drawSnappedHover_dpx(ctx, W, H, mx, my, pW, pH) {
     function px(v) { return GM.left + (v - xMin) / (xMax - xMin) * pW; }
     function py(v) { return GM.top  + (1 - (v - yMin) / (yMax - yMin)) * pH; }
 
-    // Position X en coordonnées données (pixels tube)
-    var xCursor = xMin + (mx - GM.left) / pW * (xMax - xMin);
-
-    var best = null, bestDist = Infinity;
-    for (var i = 0; i < data.length; i++) {
-        var pt  = data[i];
-        var bx_ = px(pt.x);
-        var by_ = py(pt.dp);
+    var bestI = -1, bestDist = Infinity;
+    for (var i = 0; i < dn; i++) {
+        var bx_  = px(dx[i]);
+        var by_  = py(dy[i]);
         var byc_ = Math.max(GM.top, Math.min(GM.top + pH, by_));
-        var d = Math.sqrt((bx_ - mx) * (bx_ - mx) + (byc_ - my) * (byc_ - my));
-        if (d < bestDist) { bestDist = d; best = pt; }
+        var d = (bx_ - mx) * (bx_ - mx) + (byc_ - my) * (byc_ - my);
+        if (d < bestDist) { bestDist = d; bestI = i; }
     }
-    if (!best) return;
+    if (bestI < 0) return;
+    var bestX = dx[bestI], bestDp = dy[bestI];
 
-    var bx  = px(best.x);
-    var by  = py(best.dp);
+    var bx  = px(bestX);
+    var by  = py(bestDp);
     var byc = Math.max(GM.top, Math.min(GM.top + pH, by));
 
     // Lignes tiretées vers les axes
@@ -736,8 +733,8 @@ function _drawSnappedHover_dpx(ctx, W, H, mx, my, pW, pH) {
 
     // Étiquette : distance en cm
     var cmPerPx = (L > 0) ? 40 / L : 1;
-    var dCm     = (best.x * cmPerPx).toFixed(1);
-    var label   = '(' + dCm + ' cm, ΔP = ' + best.dp.toFixed(3) + ')';
+    var dCm     = fmtFR(bestX * cmPerPx, 1);
+    var label   = '(' + dCm + ' cm, ΔP = ' + fmtFR(bestDp, 3) + ')';
     ctx.font         = _gFontHover + 'px monospace';
     ctx.fillStyle    = '#2a6aaa';
     ctx.textBaseline = 'bottom';
@@ -756,10 +753,10 @@ function _drawSnappedHover_dpx(ctx, W, H, mx, my, pW, pH) {
 function _fmtLabel(v) {
     if (v === 0) return '0';
     var av = Math.abs(v);
-    if (av >= 100)  return v.toFixed(0);
-    if (av >= 10)   return v.toFixed(1);
-    if (av >= 1)    return v.toFixed(2);
-    return v.toFixed(3);
+    if (av >= 100)  return fmtFR(v, 0);
+    if (av >= 10)   return fmtFR(v, 1);
+    if (av >= 1)    return fmtFR(v, 2);
+    return fmtFR(v, 3);
 }
 
 // Pas "joli" pour les graduations
@@ -825,7 +822,7 @@ function _drawGridX_dpx(ctx, xMin, xMax, px, py, pW, pH, L, xMaxUnit, unit) {
         ctx.stroke();
 
         ctx.fillStyle = '#7a8a96';
-        ctx.fillText(u.toFixed(decimals), xc, GM.top + pH + 4);
+        ctx.fillText(fmtFR(u, decimals), xc, GM.top + pH + 4);
     }
 }
 
@@ -958,17 +955,17 @@ function _drawCrosshair(ctx, W, H) {
         if (sim.graphMode === 'dpx') {
             var xData = (mx - GM.left) / pW * sim.tubeLength;
             var cmPerPx = sim.tubeLength > 0 ? 40 / sim.tubeLength : 1;
-            xVal = (xData * cmPerPx).toFixed(1) + ' cm';
+            xVal = fmtFR(xData * cmPerPx, 1) + ' cm';
         } else {
             var tData = sim.graphView.xMin +
                 (mx - GM.left) / pW * (sim.graphView.xMax - sim.graphView.xMin);
-            xVal = tData.toFixed(2) + ' s';
+            xVal = fmtFR(tData, 2) + ' s';
         }
         var yRange = sim.graphMode === 'dpx'
             ? (sim.graphDpxYMax - sim.graphDpxYMin)
             : (sim.graphView.yMax - sim.graphView.yMin);
         var yMin   = sim.graphMode === 'dpx' ? sim.graphDpxYMin : sim.graphView.yMin;
-        yVal = (yMin + (1 - (my - GM.top) / pH) * yRange).toFixed(3);
+        yVal = fmtFR(yMin + (1 - (my - GM.top) / pH) * yRange, 3);
     }
 
     var tip = document.getElementById('graph-hover-tooltip');
@@ -1029,8 +1026,7 @@ function pushGraphView() {
 
 // ── Graphe y(x) ───────────────────────────────────────────────────────
 //  Analogue à _drawDpxGraph mais :
-//    • données : simCorde.yxData  [{x, y}]
-//    • courbe tracée pixel par pixel depuis cordeDisplacement
+//    • données : simCorde.yxX/yxY (Float32Array), via updateYxData
 //    • axe Y : y (cm), valeur physique réelle, bornes ±amplitudeCm×1.12
 //    • axe X : Distance depuis le pot (m), 0–CORDE_LENGTH_M
 
@@ -1054,38 +1050,31 @@ function _drawYxGraph(ctx, W, H) {
     function px(x_data) { return GM.left + (x_data - xMin) / (xMax - xMin) * pW; }
     function py(y_data) { return GM.top  + (1 - (y_data - yMin) / (yMax - yMin)) * pH; }
 
-    // Fond zone tracé
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(GM.left, GM.top, pW, pH);
-
-    // Grilles
-    _drawGridY(ctx, yMin, yMax, px, py, pW, pH);
-    _drawGridX_dpx(ctx, xMin, xMax, px, py, pW, pH, L, CORDE_LENGTH_M, 'm');
-    _drawZeroLine(ctx, yMin, yMax, px, py, pW);
+    // ── Décor (mis en cache) ──────────────────────────────────────────
+    var key = W + '|' + H + '|' + yMin + '|' + yMax + '|' + GM.left + '|' + L;
+    var chrome = _drawGraphChrome(_cordeChrome, 'yx', key, W, H, function (cx) {
+        cx.fillStyle = '#ffffff';
+        cx.fillRect(GM.left, GM.top, pW, pH);
+        _drawGridY(cx, yMin, yMax, px, py, pW, pH);
+        _drawGridX_dpx(cx, xMin, xMax, px, py, pW, pH, L, CORDE_LENGTH_M, 'm');
+        _drawZeroLine(cx, yMin, yMax, px, py, pW);
+        _drawAxisLabels_yx(cx, W, H, GM, pW, pH, yMin, yMax);
+    });
+    ctx.drawImage(chrome, 0, 0, W, H);
 
     // ── Courbe y(x) ───────────────────────────────────────────────────
-    // Conversion px → cm via pxPerCmAmpl pour afficher la vraie valeur de y
+    // Points calculés une fois par frame par updateYxData (résolution calée
+    // sur l'écran, partagée avec le hover snappé) — ici seulement le tracé.
+    // Conversion px → cm via pxPerCmAmpl pour afficher la vraie valeur de y.
     var amp = simCorde.pxPerCmAmpl > 0 ? simCorde.pxPerCmAmpl : 1;
-    {
-        var freqEff_g = (simCorde.sourceMode === 'impulse') ? 1.0 / T_IMPULSE : simCorde.freq;
-        var lambda_g  = (simCorde.c_sim > 0) ? simCorde.c_sim / freqEff_g : L;
-        var pxPerLambda = (lambda_g > 0) ? pW * lambda_g / L : pW;
-        var subSteps = (pxPerLambda < 8) ? Math.ceil(8 / Math.max(0.5, pxPerLambda)) : 1;
-        subSteps = Math.min(subSteps, 16);
-
-        var totalSteps = pW * subSteps;
+    var dx = simCorde.yxX, dy = simCorde.yxY, n = simCorde.yxN | 0;
+    if (dx && n > 1) {
         ctx.save();
+        ctx.beginPath(); ctx.rect(GM.left, GM.top, pW, pH); ctx.clip();
         ctx.beginPath();
-        var firstPt = true;
-        for (var s = 0; s <= totalSteps; s++) {
-            var frac   = s / totalSteps;
-            var x_data = xMin + frac * (xMax - xMin);
-            var y_raw  = cordeDisplacement(x_data, simCorde.simTime);
-            var y_cm   = y_raw / amp;   // px → cm (valeur réelle)
-            var cx     = GM.left + frac * pW;
-            var cy     = py(y_cm);
-            if (firstPt) { ctx.moveTo(cx, cy); firstPt = false; }
-            else          { ctx.lineTo(cx, cy); }
+        ctx.moveTo(px(dx[0]), py(dy[0] / amp));
+        for (var i = 1; i < n; i++) {
+            ctx.lineTo(px(dx[i]), py(dy[i] / amp));
         }
         ctx.strokeStyle = '#7a2510';
         ctx.lineWidth   = 2;
@@ -1103,22 +1092,19 @@ function _drawYxGraph(ctx, W, H) {
         _drawBeaconMarker(ctx, px(xb2), py, yMin, yMax, '#2a8a50', 'B2', pH);
     }
 
-    // Bordure
+    // Cadre tracé en dernier pour recouvrir les débordements de trait sur le bord
     ctx.strokeStyle = '#c8c0b4';
     ctx.lineWidth   = 1;
     ctx.strokeRect(GM.left, GM.top, pW, pH);
-
-    // Labels axes
-    _drawAxisLabels_yx(ctx, W, H, GM, pW, pH, yMin, yMax);
 }
 
 // ── Graphe y(t) ───────────────────────────────────────────────────────
 
 function _drawYtGraph(ctx, W, H) {
-    var d1 = simCorde.ytData1;
-    var d2 = simCorde.ytData2;
-    var hasData = (simCorde.beacon1.active && d1.length > 1) ||
-                  (simCorde.beacon2.active && d2.length > 1);
+    var d1 = _ytBufCorde(1);
+    var d2 = _ytBufCorde(2);
+    var hasData = (simCorde.beacon1.active && d1.n > 1) ||
+                  (simCorde.beacon2.active && d2.n > 1);
 
     if (!hasData) {
         ctx.fillStyle = '#7a8a96';
@@ -1149,12 +1135,17 @@ function _drawYtGraph(ctx, W, H) {
     function px(x_data) { return GM.left + (x_data - xMin) / (xMax - xMin) * pW; }
     function py(y_data) { return GM.top  + (1 - (y_data - yMin) / (yMax - yMin)) * pH; }
 
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(GM.left, GM.top, pW, pH);
-
-    _drawGridY(ctx, yMin, yMax, px, py, pW, pH);
-    _drawGridX_dpt(ctx, xMin, xMax, px, py, pW, pH);
-    _drawZeroLine(ctx, yMin, yMax, px, py, pW);
+    // ── Décor (mis en cache) ──────────────────────────────────────────
+    var key = W + '|' + H + '|' + yMin + '|' + yMax + '|' + GM.left;
+    var chrome = _drawGraphChrome(_cordeChrome, 'yt', key, W, H, function (cx) {
+        cx.fillStyle = '#ffffff';
+        cx.fillRect(GM.left, GM.top, pW, pH);
+        _drawGridY(cx, yMin, yMax, px, py, pW, pH);
+        _drawGridX_dpt(cx, xMin, xMax, px, py, pW, pH);
+        _drawZeroLine(cx, yMin, yMax, px, py, pW);
+        _drawAxisLabels_yt(cx, W, H, GM, pW, pH, yMin, yMax);
+    });
+    ctx.drawImage(chrome, 0, 0, W, H);
 
     // Clip
     ctx.save();
@@ -1162,14 +1153,16 @@ function _drawYtGraph(ctx, W, H) {
     ctx.rect(GM.left, GM.top, pW, pH);
     ctx.clip();
 
-    var amp = simCorde.pxPerCmAmpl > 0 ? simCorde.pxPerCmAmpl : 1;
-
-    if (simCorde.beacon1.active && d1.length > 1) {
-        _drawSeriesCorde(ctx, d1, xMin, xMax, px, py, '#e07020', 2, simCorde.simTime, amp);
-    }
-    if (simCorde.beacon2.active && d2.length > 1) {
-        _drawSeriesCorde(ctx, d2, xMin, xMax, px, py, '#2a8a50', 2, simCorde.simTime, amp);
-    }
+    var amp     = simCorde.pxPerCmAmpl > 0 ? simCorde.pxPerCmAmpl : 1;
+    var tOrigin = simCorde.ytTimeOrigin || 0;
+    var tNow    = simCorde.simTime;
+    // Point "vivant" en tête de courbe (cf. correctif équivalent sur Vagues/Son) :
+    // sans lui, la pointe n'avance qu'au rythme des échantillons enregistrés,
+    // ce qui saute visiblement en ralenti.
+    if (simCorde.beacon1.active && d1.n > 1)
+        _drawSeriesCorde(ctx, d1, px, py, '#e07020', 2, tOrigin, amp, tNow, cordeDisplacement(simCorde.beacon1.x - simCorde.cordeLeft, tNow));
+    if (simCorde.beacon2.active && d2.n > 1)
+        _drawSeriesCorde(ctx, d2, px, py, '#2a8a50', 2, tOrigin, amp, tNow, cordeDisplacement(simCorde.beacon2.x - simCorde.cordeLeft, tNow));
 
     ctx.restore();
 
@@ -1177,31 +1170,30 @@ function _drawYtGraph(ctx, W, H) {
     ctx.lineWidth   = 1;
     ctx.strokeRect(GM.left, GM.top, pW, pH);
 
-    _drawAxisLabels_yt(ctx, W, H, GM, pW, pH, yMin, yMax);
     _drawLegendCorde(ctx, W, pH);
 }
 
-// ── Tracé d'une série y(t) ────────────────────────────────────────────
+// ── Tracé d'une série y(t) (tampon circulaire) ─────────────────────────
 
-function _drawSeriesCorde(ctx, data, xMin, xMax, px, py, color, lw, cycleTime, amp) {
-    var WINDOW  = 5;
-    var tOrigin = simCorde.ytTimeOrigin || 0;
-
+function _drawSeriesCorde(ctx, buf, px, py, color, lw, tOrigin, amp, liveT, liveYRaw) {
+    var WINDOW = 5;
     ctx.beginPath();
     var started = false;
-    for (var i = 0; i < data.length; i++) {
-        var pt     = data[i];
-        var tLocal = pt.t - tOrigin;
+    for (var i = 0; i < buf.n; i++) {
+        var j      = _cbufIdx(buf, i);
+        var tLocal = buf.t[j] - tOrigin;
         if (tLocal < 0 || tLocal > WINDOW) { started = false; continue; }
-        if (i > 0) {
-            var prevLocal = data[i - 1].t - tOrigin;
-            if (prevLocal < 0 || prevLocal > WINDOW) started = false;
-        }
-        var y_cm = pt.y / amp;   // px → cm (valeur réelle)
+        var y_cm = buf.y[j] / amp;   // px → cm (valeur réelle)
         var cx = px(tLocal);
         var cy = py(y_cm);
         if (!started) { ctx.moveTo(cx, cy); started = true; }
-        else           { ctx.lineTo(cx, cy); }
+        else          { ctx.lineTo(cx, cy); }
+    }
+    if (liveT !== undefined) {
+        var tLiveLocal = liveT - tOrigin;
+        if (started && tLiveLocal >= 0 && tLiveLocal <= WINDOW) {
+            ctx.lineTo(px(tLiveLocal), py(liveYRaw / amp));
+        }
     }
     ctx.strokeStyle = color;
     ctx.lineWidth   = lw;
@@ -1211,24 +1203,22 @@ function _drawSeriesCorde(ctx, data, xMin, xMax, px, py, color, lw, cycleTime, a
 // ── Légende y(t) ──────────────────────────────────────────────────────
 
 function _drawLegendCorde(ctx, W, pH) {
-    var x  = GM.left + 8;
-    var y  = GM.top  + 10;
-    var fs = 12;
+    // Taille alignée sur les graduations, comme le reste du graphe.
+    var fs = _gFontTick;
+    var x  = GM.left + 8, y = GM.top + fs * 0.9;
     ctx.font         = 'bold ' + fs + 'px monospace';
     ctx.textAlign    = 'left';
     ctx.textBaseline = 'middle';
     if (simCorde.beacon1.active) {
         ctx.fillStyle = '#e07020';
-        ctx.fillRect(x, y - fs * 0.4, 16, 3);
-        ctx.fillStyle = '#e07020';
-        ctx.fillText('Balise 1', x + 20, y);
+        ctx.fillRect(x, y - fs * 0.4, fs * 1.3, 3);
+        ctx.fillText('Balise 1', x + fs * 1.3 + 5, y);
         y += fs + 6;
     }
     if (simCorde.beacon2.active) {
         ctx.fillStyle = '#2a8a50';
-        ctx.fillRect(x, y - fs * 0.4, 16, 3);
-        ctx.fillStyle = '#2a8a50';
-        ctx.fillText('Balise 2', x + 20, y);
+        ctx.fillRect(x, y - fs * 0.4, fs * 1.3, 3);
+        ctx.fillText('Balise 2', x + fs * 1.3 + 5, y);
     }
 }
 
@@ -1385,24 +1375,24 @@ function _drawSnappedHoverCorde_yt(ctx, W, H, mx, my, pW, pH) {
     function py(v) { return GM.top  + (1 - (v - yMin) / (yMax - yMin)) * pH; }
 
     var series = [];
-    if (simCorde.beacon1.active && simCorde.ytData1.length > 1)
-        series.push({ data: simCorde.ytData1, color: '#e07020' });
-    if (simCorde.beacon2.active && simCorde.ytData2.length > 1)
-        series.push({ data: simCorde.ytData2, color: '#2a8a50' });
+    if (simCorde.beacon1.active && _ytBufCorde(1).n > 1)
+        series.push({ buf: _ytBufCorde(1), color: '#e07020' });
+    if (simCorde.beacon2.active && _ytBufCorde(2).n > 1)
+        series.push({ buf: _ytBufCorde(2), color: '#2a8a50' });
 
     var winner = null, winnerColor = null, winnerDist = Infinity;
     for (var s = 0; s < series.length; s++) {
-        var sr = series[s];
-        for (var i = 0; i < sr.data.length; i++) {
-            var pt     = sr.data[i];
-            var tLocal = pt.t - tOrigin;
+        var buf = series[s].buf;
+        for (var i = 0; i < buf.n; i++) {
+            var j      = _cbufIdx(buf, i);
+            var tLocal = buf.t[j] - tOrigin;
             if (tLocal < 0 || tLocal > WINDOW) continue;
-            var y_cm = pt.y / amp;
+            var y_cm = buf.y[j] / amp;
             var bx   = px(tLocal);
             var by   = py(y_cm);
             var byc  = Math.max(GM.top, Math.min(GM.top + pH, by));
-            var dist = Math.sqrt((bx - mx) * (bx - mx) + (byc - my) * (byc - my));
-            if (dist < winnerDist) { winnerDist = dist; winner = pt; winnerColor = sr.color; }
+            var dist = (bx - mx) * (bx - mx) + (byc - my) * (byc - my);
+            if (dist < winnerDist) { winnerDist = dist; winner = { t: tLocal + tOrigin, y: buf.y[j] }; winnerColor = series[s].color; }
         }
     }
     if (!winner) return;
@@ -1425,8 +1415,8 @@ function _drawSnappedHoverCorde_yt(ctx, W, H, mx, my, pW, pH) {
     ctx.arc(bx, byc, 5, 0, Math.PI * 2);
     ctx.fill();
 
-    var tLbl  = tLocal.toFixed(2) + ' s';
-    var vLbl  = 'y = ' + y_cm.toFixed(2) + ' cm';
+    var tLbl  = fmtFR(tLocal, 2) + ' s';
+    var vLbl  = 'y = ' + fmtFR(y_cm, 2) + ' cm';
     var label = '(' + tLbl + ', ' + vLbl + ')';
     ctx.font         = _gFontHover + 'px monospace';
     ctx.fillStyle    = winnerColor;
@@ -1439,8 +1429,8 @@ function _drawSnappedHoverCorde_yt(ctx, W, H, mx, my, pW, pH) {
 }
 
 function _drawSnappedHoverCorde_yx(ctx, W, H, mx, my, pW, pH) {
-    var data = simCorde.yxData;
-    if (!data || data.length < 2) return;
+    var dx = simCorde.yxX, dy = simCorde.yxY, dn = simCorde.yxN | 0;
+    if (!dx || dn < 2) return;
 
     var L    = simCorde.cordeLength;
     var xMin = 0;
@@ -1452,20 +1442,20 @@ function _drawSnappedHoverCorde_yx(ctx, W, H, mx, my, pW, pH) {
     function px(v) { return GM.left + (v - xMin) / (xMax - xMin) * pW; }
     function py(v) { return GM.top  + (1 - (v - yMin) / (yMax - yMin)) * pH; }
 
-    var best = null, bestDist = Infinity;
-    for (var i = 0; i < data.length; i++) {
-        var pt   = data[i];
-        var y_cm = pt.y / amp;
-        var bx_  = px(pt.x);
+    var bestI = -1, bestDist = Infinity;
+    for (var i = 0; i < dn; i++) {
+        var y_cm = dy[i] / amp;
+        var bx_  = px(dx[i]);
         var by_  = py(y_cm);
         var byc_ = Math.max(GM.top, Math.min(GM.top + pH, by_));
-        var d    = Math.sqrt((bx_ - mx) * (bx_ - mx) + (byc_ - my) * (byc_ - my));
-        if (d < bestDist) { bestDist = d; best = pt; }
+        var d    = (bx_ - mx) * (bx_ - mx) + (byc_ - my) * (byc_ - my);
+        if (d < bestDist) { bestDist = d; bestI = i; }
     }
-    if (!best) return;
+    if (bestI < 0) return;
+    var bestX = dx[bestI];
 
-    var y_cm = best.y / amp;
-    var bx   = px(best.x);
+    var y_cm = dy[bestI] / amp;
+    var bx   = px(bestX);
     var by   = py(y_cm);
     var byc  = Math.max(GM.top, Math.min(GM.top + pH, by));
 
@@ -1482,8 +1472,8 @@ function _drawSnappedHoverCorde_yx(ctx, W, H, mx, my, pW, pH) {
     ctx.fill();
 
     var mPerPx  = (L > 0) ? CORDE_LENGTH_M / L : 1;
-    var dM      = (best.x * mPerPx).toFixed(2);
-    var label   = '(' + dM + ' m, y = ' + y_cm.toFixed(2) + ' cm)';
+    var dM      = fmtFR(bestX * mPerPx, 2);
+    var label   = '(' + dM + ' m, y = ' + fmtFR(y_cm, 2) + ' cm)';
     ctx.font         = _gFontHover + 'px monospace';
     ctx.fillStyle    = '#7a2510';
     ctx.textBaseline = 'bottom';
@@ -1522,17 +1512,17 @@ function _drawCrosshairCorde(ctx, W, H) {
         if (simCorde.graphMode === 'dpx') {
             var xData  = (mx - GM.left) / pW * simCorde.cordeLength;
             var mPerPx = simCorde.cordeLength > 0 ? CORDE_LENGTH_M / simCorde.cordeLength : 1;
-            xVal = (xData * mPerPx).toFixed(2) + ' m';
+            xVal = fmtFR(xData * mPerPx, 2) + ' m';
         } else {
             var tData = simCorde.graphView.xMin +
                 (mx - GM.left) / pW * (simCorde.graphView.xMax - simCorde.graphView.xMin);
-            xVal = tData.toFixed(2) + ' s';
+            xVal = fmtFR(tData, 2) + ' s';
         }
         var yRange = simCorde.graphMode === 'dpx'
             ? (simCorde.graphYxYMax - simCorde.graphYxYMin)
             : (simCorde.graphView.yMax - simCorde.graphView.yMin);
         var yMinV  = simCorde.graphMode === 'dpx' ? simCorde.graphYxYMin : simCorde.graphView.yMin;
-        yVal = (yMinV + (1 - (my - GM.top) / pH) * yRange).toFixed(2) + ' cm';
+        yVal = fmtFR(yMinV + (1 - (my - GM.top) / pH) * yRange, 2) + ' cm';
     }
 
     var tip = document.getElementById('graph-hover-tooltip');

@@ -682,7 +682,7 @@ function _drawOneBeacon(ctx, x, color, label) {
     ctx.font         = 'bold ' + fontSize + 'px monospace';
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'top';
-    ctx.fillText(xCm.toFixed(1), x, y2 + tickMaj + 1);
+    ctx.fillText(fmtFR(xCm, 1), x, y2 + tickMaj + 1);
     ctx.restore();
 }
 
@@ -1228,7 +1228,7 @@ function _drawOneCordeBeacon(ctx, x, color, label) {
     ctx.font         = 'bold ' + fontSize + 'px monospace';
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'top';
-    ctx.fillText(xM.toFixed(2), x, bottom + tickMaj + 1);
+    ctx.fillText(fmtFR(xM, 2), x, bottom + tickMaj + 1);
     ctx.restore();
 }
 
@@ -1282,7 +1282,7 @@ function _drawCordeRuler(ctx) {
         ctx.moveTo(xc, yBase);
         ctx.lineTo(xc, yBase + tickMaj);
         ctx.stroke();
-        ctx.fillText(m_ === 0 ? '0' : m_.toFixed(decimals), xc, yBase + tickMaj + 1);
+        ctx.fillText(m_ === 0 ? '0' : fmtFR(m_, decimals), xc, yBase + tickMaj + 1);
     }
 
     // Ticks secondaires

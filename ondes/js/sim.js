@@ -12,6 +12,54 @@
 
 'use strict';
 
+// ── Formatage numérique ───────────────────────────────────────────────
+// Convention française : séparateur décimal = virgule. À utiliser pour TOUT
+// nombre affiché à l'élève (graduations d'axes, étiquettes de survol, readouts),
+// aussi bien dans le DOM que dans les canvas.
+function fmtFR(v, decimals) {
+    var s = (decimals === undefined) ? String(v) : Number(v).toFixed(decimals);
+    return s.replace('.', ',');
+}
+
+// ── Tampon circulaire générique (séries y(t) / ΔP(t) des 3 onglets) ────
+// Remplace push()+shift() sur un tableau d'objets : shift() décale tout le
+// contenu en O(n) à chaque échantillon (300/s), pesant lourd sur la durée.
+// Écriture ici en O(1) sur des Float32Array pré-allouées.
+function _cbufMake(cap) {
+    return { cap: cap, t: new Float32Array(cap), y: new Float32Array(cap), head: 0, n: 0 };
+}
+function _cbufPush(buf, t, y) {
+    var i = (buf.head + buf.n) % buf.cap;
+    buf.t[i] = t;
+    buf.y[i] = y;
+    if (buf.n < buf.cap) buf.n++;
+    else                 buf.head = (buf.head + 1) % buf.cap;
+}
+function _cbufClear(buf) {
+    buf.head = 0;
+    buf.n    = 0;
+}
+// Index physique du i-ème point, du plus ancien au plus récent.
+function _cbufIdx(buf, i) {
+    var j = buf.head + i;
+    return (j < buf.cap) ? j : j - buf.cap;
+}
+
+// Écriture scientifique : mantisse à `decimals` décimales × 10^exposant.
+// Renvoie du HTML (exposant en <sup>, signe moins typographique) — à injecter
+// via innerHTML, pas textContent.
+function fmtSciHTML(v, decimals) {
+    if (!isFinite(v) || v === 0) return fmtFR(0, decimals) + ' × 10<sup>0</sup>';
+
+    var exp  = Math.floor(Math.log10(Math.abs(v)));
+    var mant = v / Math.pow(10, exp);
+    // L'arrondi peut faire basculer la mantisse à 10,00 (ex. 9,999 → 10,00) :
+    // on recale d'une décade pour rester dans [1 ; 10[.
+    if (Math.abs(Number(mant.toFixed(decimals))) >= 10) { mant /= 10; exp += 1; }
+
+    return fmtFR(mant, decimals) + ' × 10<sup>' + String(exp).replace('-', '−') + '</sup>';
+}
+
 // ── Constantes de calibration ─────────────────────────────────────────
 // Valeurs par défaut des paramètres (pour calibrer C_BASE à la resize)
 var K_DEFAULT        = 4.0;   // compressibilité par défaut
@@ -88,10 +136,16 @@ var sim = {
     pressureColorMode : false,   // true = particules et fond colorés selon ΔP
 
     // ── Données graphes ──────────────────────────────────────────────
+    //  dpxX/dpxY (Float32Array) : snapshot ΔP(x) courant, partagé par le
+    //  tracé et le hover snappé — dpxSig évite de le recalculer quand rien
+    //  n'a changé (typiquement en pause).
     graphMode : 'dpx',   // 'dpx' (spatial) | 'dpt' (temporel)
-    dpxData   : [],      // [{x, dp}] snapshot courant de ΔP(x)
-    dptData1  : [],      // [{t, dp}] série temporelle balise 1
-    dptData2  : [],      // [{t, dp}] série temporelle balise 2
+    dpxX      : null,
+    dpxY      : null,
+    dpxN      : 0,
+    dpxSig    : null,
+    dptBuf1   : null,    // tampon circulaire — série temporelle balise 1
+    dptBuf2   : null,    // tampon circulaire — série temporelle balise 2
     dptTimeOrigin : 0,   // sim.simTime au dernier reset du graphe ΔP(t)
 
     // ── Vue graphe ΔP(t) ─────────────────────────────────────────────
@@ -366,10 +420,16 @@ var simCorde = {
     beacon2 : { active: false, x: 0, frac: 0.65 },
 
     // ── Données graphes ──────────────────────────────────────────────
+    //  yxX/yxY (Float32Array) : snapshot y(x) courant, partagé par le tracé
+    //  et le hover snappé — yxSig évite de le recalculer quand rien n'a
+    //  changé (typiquement en pause).
     graphMode : 'dpx',   // 'dpx' (spatial) | 'dpt' (temporel)
-    yxData    : [],      // [{x, y}] snapshot courant de y(x)
-    ytData1   : [],      // [{t, y}] série temporelle balise 1
-    ytData2   : [],      // [{t, y}] série temporelle balise 2
+    yxX       : null,
+    yxY       : null,
+    yxN       : 0,
+    yxSig     : null,
+    ytBuf1    : null,    // tampon circulaire — série temporelle balise 1
+    ytBuf2    : null,    // tampon circulaire — série temporelle balise 2
     ytTimeOrigin : 0,    // simTime au dernier reset du graphe y(t)
 
     // ── Vue graphe y(t) ──────────────────────────────────────────────
@@ -462,43 +522,69 @@ function updateCordeDispCap() {
 
 // ══════════════════════════════════════════════════════════════════════
 //  Mise à jour du snapshot y(x)
-//  Analogue à updateDpxData() mais pour le déplacement transversal
+//  Analogue à updateDpxData() : un seul calcul par frame, partagé par le
+//  tracé et le hover snappé, avec skip via signature quand rien n'a changé.
 // ══════════════════════════════════════════════════════════════════════
 
+var CORDE_YX_PTS_PER_PX = 2;
+var CORDE_YX_PTS_MIN    = 300;
+var CORDE_YX_PTS_MAX    = 4000;
+
+function _cordeYxSignature() {
+    var s = simCorde;
+    return s.simTime + '|' + s.cordeLength + '|' + s.c_sim + '|' + s.freq + '|' +
+           s.sourceMode + '|' + s.memAmplitude + '|' + s.attenuation + '|' +
+           s.graphMode + '|' + s.impulses.length;
+}
+
 function updateYxData() {
+    var sig = _cordeYxSignature();
+    if (simCorde.yxSig === sig) return;
+    simCorde.yxSig = sig;
+
     var L = simCorde.cordeLength;
-    simCorde.yxData = [];
+    simCorde.yxN = 0;
     if (L <= 0) return;
 
     var freqEff = (simCorde.sourceMode === 'impulse') ? 1.0 / T_IMPULSE : simCorde.freq;
     var lambda  = (simCorde.c_sim > 0) ? simCorde.c_sim / freqEff : L;
-    var N = 400;
-    if (lambda > 0) {
-        N = Math.min(6000, Math.max(400, Math.ceil(50 * L / lambda)));
+
+    var gW = (typeof graphCanvas !== 'undefined' && graphCanvas && graphCanvas.clientWidth > 0)
+        ? graphCanvas.clientWidth : L;
+    if (simCorde.graphMode === 'both') gW *= 0.5;
+
+    var N = Math.min(CORDE_YX_PTS_MAX, Math.max(CORDE_YX_PTS_MIN, Math.ceil(gW * CORDE_YX_PTS_PER_PX)));
+    var pxPerLambda = (lambda > 0) ? gW * lambda / L : gW;
+    if (pxPerLambda > 0 && pxPerLambda < 8) {
+        N = Math.min(CORDE_YX_PTS_MAX, Math.ceil(N * 8 / Math.max(0.5, pxPerLambda)));
     }
 
+    if (!simCorde.yxX || simCorde.yxX.length < N + 1) {
+        simCorde.yxX = new Float32Array(N + 1);
+        simCorde.yxY = new Float32Array(N + 1);
+    }
     for (var i = 0; i <= N; i++) {
         var x = i / N * L;
-        var y = cordeDisplacement(x, simCorde.simTime);
-        simCorde.yxData.push({ x: x, y: y });
+        simCorde.yxX[i] = x;
+        simCorde.yxY[i] = cordeDisplacement(x, simCorde.simTime);
     }
+    simCorde.yxN = N + 1;
 }
 
 // ══════════════════════════════════════════════════════════════════════
 //  Enregistrement y(t) aux positions des balises actives
 // ══════════════════════════════════════════════════════════════════════
 
+function _ytBufCorde(n) {
+    var key = (n === 1) ? 'ytBuf1' : 'ytBuf2';
+    if (!simCorde[key]) simCorde[key] = _cbufMake(DP_MAX_POINTS);
+    return simCorde[key];
+}
+function _ytClearCorde(n) { _cbufClear(_ytBufCorde(n)); }
+
 function updateYtData(t) {
-    if (simCorde.beacon1.active) {
-        var y1 = cordeDisplacement(simCorde.beacon1.x - simCorde.cordeLeft, t);
-        simCorde.ytData1.push({ t: t, y: y1 });
-        if (simCorde.ytData1.length > DP_MAX_POINTS) simCorde.ytData1.shift();
-    }
-    if (simCorde.beacon2.active) {
-        var y2 = cordeDisplacement(simCorde.beacon2.x - simCorde.cordeLeft, t);
-        simCorde.ytData2.push({ t: t, y: y2 });
-        if (simCorde.ytData2.length > DP_MAX_POINTS) simCorde.ytData2.shift();
-    }
+    if (simCorde.beacon1.active) _cbufPush(_ytBufCorde(1), t, cordeDisplacement(simCorde.beacon1.x - simCorde.cordeLeft, t));
+    if (simCorde.beacon2.active) _cbufPush(_ytBufCorde(2), t, cordeDisplacement(simCorde.beacon2.x - simCorde.cordeLeft, t));
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -526,10 +612,11 @@ function resetAnimCorde() {
     simCorde.sinStopTime        = -1;
     simCorde.impulses           = [];
     simCorde.impulsePropagating = false;
-    simCorde.ytData1            = [];
-    simCorde.ytData2            = [];
+    _ytClearCorde(1);
+    _ytClearCorde(2);
     simCorde.ytTimeOrigin       = 0;
-    simCorde.yxData             = [];
+    simCorde.yxN                = 0;
+    simCorde.yxSig              = null;
     simCorde.graphView          = { xMin: 0, xMax: 5, yMin: -1, yMax: 1 };
     simCorde.graphViewHistory   = [];
     simCorde.graphUserPanned    = false;
@@ -556,46 +643,75 @@ function rescaleThermalVelocities(K_old, K_new) { /* no-op */ }
 // ══════════════════════════════════════════════════════════════════════
 //  Mise à jour du snapshot ΔP(x)
 // ══════════════════════════════════════════════════════════════════════
+//  Un seul calcul par frame, partagé par le tracé et le hover snappé (avant
+//  cette version, chacun recalculait indépendamment : le tracé en ligne dans
+//  _drawDpxGraph avec un échantillonnage propre, dpxData avec un autre —
+//  deux fois le coût pour un seul résultat affiché). dpxSig évite même ce
+//  calcul unique tant que rien n'a changé (typiquement en pause).
+
+var SON_DPX_PTS_PER_PX = 2;
+var SON_DPX_PTS_MIN    = 300;
+var SON_DPX_PTS_MAX    = 4000;
+
+function _dpxSignature() {
+    var s = sim;
+    return s.simTime + '|' + s.tubeLength + '|' + s.c_sim + '|' + s.freq + '|' +
+           s.sourceMode + '|' + s.K + '|' + s.memAmplitude + '|' + s.attenuation + '|' +
+           s.graphMode + '|' + s.impulses.length;
+}
 
 function updateDpxData() {
-    var L  = sim.tubeLength;
-    sim.dpxData = [];
+    var sig = _dpxSignature();
+    if (sim.dpxSig === sig) return;
+    sim.dpxSig = sig;
+
+    var L = sim.tubeLength;
+    sim.dpxN = 0;
     if (L <= 0) return;
 
-    // ── Échantillonnage adaptatif ─────────────────────────────────────
-    // On veut au moins 20 points par longueur d'onde pour tracer un sinus
-    // correctement sans qu'il paraisse "pointu".
-    // λ (px) = c_sim / f  → points nécessaires = 20 × L / λ = 20 × L × f / c_sim
-    // Minimum absolu : 400 pts (basse fréquence / impulsion)
-    // Maximum : 6000 pts (évite les calculs trop lents)
     var freqEff = (sim.sourceMode === 'impulse') ? 1.0 / T_IMPULSE : sim.freq;
-    var lambda  = (sim.c_sim > 0) ? sim.c_sim / freqEff : L;  // px
-    var N = 400;
-    if (lambda > 0) {
-        N = Math.min(6000, Math.max(400, Math.ceil(50 * L / lambda)));
+    var lambda  = (sim.c_sim > 0) ? sim.c_sim / freqEff : L;  // px tube
+
+    // Nombre de points calé sur la résolution d'affichage du graphe (pas sur λ) :
+    // en mode 'both' chaque courbe n'occupe que la moitié du canvas. On augmente
+    // ensuite la densité si λ est petite à l'écran, pour ne pas rendre une
+    // sinusoïde "pointue" (repliement visuel), même quand ça dépasse 1 pt/px.
+    var gW = (typeof graphCanvas !== 'undefined' && graphCanvas && graphCanvas.clientWidth > 0)
+        ? graphCanvas.clientWidth : L;
+    if (sim.graphMode === 'both') gW *= 0.5;
+
+    var N = Math.min(SON_DPX_PTS_MAX, Math.max(SON_DPX_PTS_MIN, Math.ceil(gW * SON_DPX_PTS_PER_PX)));
+    var pxPerLambda = (lambda > 0) ? gW * lambda / L : gW;
+    if (pxPerLambda > 0 && pxPerLambda < 8) {
+        N = Math.min(SON_DPX_PTS_MAX, Math.ceil(N * 8 / Math.max(0.5, pxPerLambda)));
     }
 
+    if (!sim.dpxX || sim.dpxX.length < N + 1) {
+        sim.dpxX = new Float32Array(N + 1);
+        sim.dpxY = new Float32Array(N + 1);
+    }
     for (var i = 0; i <= N; i++) {
         var x = i / N * L;
-        sim.dpxData.push({ x: x, dp: waveDeltaP(x, sim.simTime) });
+        sim.dpxX[i] = x;
+        sim.dpxY[i] = waveDeltaP(x, sim.simTime);
     }
+    sim.dpxN = N + 1;
 }
 
 // ══════════════════════════════════════════════════════════════════════
 //  Enregistrement ΔP(t) aux positions des balises actives
 // ══════════════════════════════════════════════════════════════════════
 
+function _dptBuf(n) {
+    var key = (n === 1) ? 'dptBuf1' : 'dptBuf2';
+    if (!sim[key]) sim[key] = _cbufMake(DP_MAX_POINTS);
+    return sim[key];
+}
+function _dptClear(n) { _cbufClear(_dptBuf(n)); }
+
 function updateDptData(t) {
-    if (sim.beacon1.active) {
-        var dp1 = waveDeltaP(sim.beacon1.x - sim.tubeLeft, t);
-        sim.dptData1.push({ t: t, dp: dp1 });
-        if (sim.dptData1.length > DP_MAX_POINTS) sim.dptData1.shift();
-    }
-    if (sim.beacon2.active) {
-        var dp2 = waveDeltaP(sim.beacon2.x - sim.tubeLeft, t);
-        sim.dptData2.push({ t: t, dp: dp2 });
-        if (sim.dptData2.length > DP_MAX_POINTS) sim.dptData2.shift();
-    }
+    if (sim.beacon1.active) _cbufPush(_dptBuf(1), t, waveDeltaP(sim.beacon1.x - sim.tubeLeft, t));
+    if (sim.beacon2.active) _cbufPush(_dptBuf(2), t, waveDeltaP(sim.beacon2.x - sim.tubeLeft, t));
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -632,10 +748,11 @@ function resetAnim() {
     sim.sinStopTime        = -1;
     sim.impulses           = [];
     sim.impulsePropagating = false;
-    sim.dptData1           = [];
-    sim.dptData2           = [];
+    _dptClear(1);
+    _dptClear(2);
     sim.dptTimeOrigin      = 0;
-    sim.dpxData            = [];
+    sim.dpxN               = 0;
+    sim.dpxSig             = null;
     sim.graphView          = { xMin: 0, xMax: 5, yMin: -1, yMax: 1 };
     sim.graphViewHistory   = [];
     sim.graphUserPanned    = false;
