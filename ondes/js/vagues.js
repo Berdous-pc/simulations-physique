@@ -15,7 +15,7 @@
 
 // ── Constantes ────────────────────────────────────────────────────────
 var BLOCK_V               = 2;     // taille des blocs de rendu (px) — 2 pour meilleure résolution
-var VAGUES_AMP_GAIN       = 1.6;   // gain visuel appliqué au champ calculé
+var VAGUES_AMP_GAIN       = 1.0;   // gain visuel appliqué au champ calculé (aligné sur surfaces.js — pas de sur-contraste)
 var VAGUES_VIS_AMP_SCALE  = 5/6;   // réduit l'amplitude visuelle animation (3→équivalent 2.5)
 var C_BASE_VAGUES         = 150;   // px/s par m/s — recalibré au resize
 var COUPE_LEFT_MARGIN     = 70;    // px réservés à gauche pour la source en vue coupe
@@ -52,12 +52,12 @@ var simVagues = {
     // ── Source ──────────────────────────────────────────────────────
     sourceX   : 0,   // position canvas (px)
     sourceY   : 0,
-    freq      : 1.5, // Hz
+    freq      : 3.0, // Hz
     amplitude : 1.0, // relative
 
     // ── Milieu ──────────────────────────────────────────────────────
     g              : 9.81,  // m/s²
-    h              : 0.005, // m (profondeur) — bornes 1mm–10mm pour λ_max=1m
+    h              : 0.003, // m (profondeur) — bornes 1mm–10mm pour λ_max=1m
     attenuation    : 0.0,
     geoAttenuation : false, // atténuation en 1/√r (désactivée par défaut)
 
@@ -135,9 +135,9 @@ function resizeVagues() {
     simVagues.canvasW = w;
     simVagues.canvasH = h;
 
-    // Calibration : λ_px ≈ W/6 à défaut (g=9.81, h=0.005, f=1.5 Hz)
-    var c_ms_def = Math.sqrt(9.81 * 0.005);         // ≈ 0,221 m/s
-    C_BASE_VAGUES = (w / 6.0 * 1.5) / c_ms_def;    // ≈ 679 px/(m/s) pour 600px
+    // Calibration : vue par défaut ±30 cm (g=9.81, h=0.003, f=3 Hz)
+    var c_ms_def = Math.sqrt(9.81 * 0.003);         // ≈ 0,171 m/s
+    C_BASE_VAGUES = (w / 12.0 * 3.0) / c_ms_def;   // px/(m/s), calibré sur les réglages par défaut
 
     // Source fixe au centre
     simVagues.sourceX = Math.round(w / 2);
@@ -341,6 +341,9 @@ function drawVagues() {
     var sinWt    = Math.sin(2 * Math.PI * s.freq * t);
     var cosWt    = Math.cos(2 * Math.PI * s.freq * t);
     var r_front  = s.c_sim * (t - s.sourceResetTime); // enveloppe causale
+    // Largeur de la zone de lissage du front (px CSS), calquée sur surfaces.js — évite la
+    // coupure nette en anneau qui apparaissait auparavant à la limite atteinte par l'onde.
+    var frontFeather = Math.max(1, s.c_sim / Math.max(1, s.freq) * 0.15);
 
     var gw = s.gridW, gh = s.gridH;
     var gridCos = s.gridCos, gridSin = s.gridSin, gridEnv = s.gridEnv, gridR = s.gridR;
@@ -349,7 +352,8 @@ function drawVagues() {
 
     for (var idx = 0, n = gw * gh; idx < n; idx++) {
         var p = idx * 4;
-        if (gridR[idx] > r_front) {
+        var r = gridR[idx];
+        if (r > r_front + frontFeather) {
             data[p] = COL_BG_R; data[p + 1] = COL_BG_G; data[p + 2] = COL_BG_B; data[p + 3] = 255;
             continue;
         }
@@ -358,6 +362,11 @@ function drawVagues() {
         var raw = sinWt * gridCos[idx] - cosWt * gridSin[idx];
         var env = gridEnv[idx] * VAGUES_AMP_GAIN;
         if (env > 1) env = 1;
+        // Fondu progressif à l'approche du front (au lieu d'une coupure nette) — atténue
+        // l'onde sur frontFeather px avant r_front pour un bord doux, comme surfaces.js.
+        if (r > r_front) {
+            env *= 1 - (r - r_front) / frontFeather;
+        }
         var t01 = (raw * env + 1) * 0.5;
         data[p]     = (COL_TROUGH_R + t01 * (COL_CREST_R - COL_TROUGH_R)) | 0;
         data[p + 1] = (COL_TROUGH_G + t01 * (COL_CREST_G - COL_TROUGH_G)) | 0;
@@ -366,10 +375,12 @@ function drawVagues() {
     }
     s._offCtx.putImageData(img, 0, 0);
 
-    // Agrandissement natif (lissé) de la grille basse résolution — bien moins coûteux qu'un
-    // remplissage par blocs en JS (cf. drawSurfaces dans diffraction/js/surfaces.js).
+    // Agrandissement natif (lissé) de la grille basse résolution + léger flou, alignés sur
+    // le rendu de surfaces.js (diffraction/interférences) pour une cohérence visuelle.
     ctx.imageSmoothingEnabled = true;
+    ctx.filter = 'blur(0.6px)';
     ctx.drawImage(s._offCanvas, 0, 0, gw, gh, 0, 0, W, H);
+    ctx.filter = 'none';
 
     _drawAxisVagues(ctx, W, H);
     _drawBeaconsVagues(ctx);
@@ -1218,7 +1229,15 @@ function onSliderAmplVagues(v) {
 }
 
 function onSliderGVagues(v) {
-    simVagues.g = parseFloat(v);
+    var g = parseFloat(v);
+    // "Cran" magnétique autour de g=9,81 m/s² (valeur terrestre usuelle) — permet de s'y
+    // recaler facilement malgré le pas du slider (0,1) qui ne tombe pas dessus exactement.
+    var slider = document.getElementById('sl-g-vagues');
+    if (Math.abs(g - 9.81) < 0.15) {
+        g = 9.81;
+        if (slider) slider.value = g;
+    }
+    simVagues.g = g;
     var lbl = document.getElementById('lbl-g-vagues');
     if (lbl) lbl.textContent = simVagues.g.toFixed(2).replace('.', ',');
     updateCeleriteVagues();
