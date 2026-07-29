@@ -109,7 +109,7 @@ var sim2 = {
   speedIdx: 2,        // 60 j/s
   deltaT: 30,         // durée de balayage (jours)
   showVitesse: false, // vecteur vitesse (tangent à la trajectoire)
-  showRayon: false,   // vecteur position r (Soleil → planète)
+  showRayon: true,    // vecteur position r (Soleil → planète)
   showAccel: false,   // vecteur accélération (planète → Soleil)
   aires: [],          // aires terminées : { E0, E1, aire, colorIdx, tStart, tEnd }
   sweep: null,        // balayage en cours : { Mstart, Mend, tStart, tEnd, colorIdx }
@@ -180,14 +180,20 @@ var SYSTEMES = [
     ],
     defaultSpeedIdx: 4,
     corps: [
+      // T dérivée de a via la 3ᵉ loi idéale (T = a^1,5, orbite képlérienne à
+      // 2 corps) plutôt que la période réellement observée : l'écart avec
+      // les valeurs mesurées (perturbations planétaires) est < 0,1 %,
+      // invisible sur l'animation, mais garantit k = 1,00 tout rond sur le
+      // graphe — au lieu d'un k = 0,999 déroutant pour les élèves alors
+      // que k = 1 par définition de l'ua et de l'année.
       { nom: 'Mercure', a: 0.387,  T: 0.2408, e: 0.206, couleur: '#7a8a96', couleurClair: '#b0bcc6', rayon: 6, type: 'mercure' },
-      { nom: 'Vénus',   a: 0.723,  T: 0.6152, e: 0.007, couleur: '#c08020', couleurClair: '#e8a848', rayon: 8, type: 'venus' },
+      { nom: 'Vénus',   a: 0.723,  T: 0.6148, e: 0.007, couleur: '#c08020', couleurClair: '#e8a848', rayon: 8, type: 'venus' },
       { nom: 'Terre',   a: 1.000,  T: 1.0000, e: 0.017, couleur: '#2a6aaa', couleurClair: '#6aa2e0', rayon: 8, type: 'terre' },
-      { nom: 'Mars',    a: 1.524,  T: 1.8808, e: 0.093, couleur: '#b04020', couleurClair: '#e87850', rayon: 7, type: 'mars' },
-      { nom: 'Jupiter', a: 5.203,  T: 11.86,  e: 0.049, couleur: '#b07040', couleurClair: '#dc9868', rayon: 11, type: 'jupiter' },
-      { nom: 'Saturne', a: 9.537,  T: 29.46,  e: 0.057, couleur: '#c8a050', couleurClair: '#e8c878', rayon: 10, type: 'saturne' },
-      { nom: 'Uranus',  a: 19.19,  T: 84.02,  e: 0.046, couleur: '#4a9aa8', couleurClair: '#70c8d8', rayon: 8, type: 'uranus' },
-      { nom: 'Neptune', a: 30.07,  T: 164.8,  e: 0.010, couleur: '#3a5aaa', couleurClair: '#7a96e0', rayon: 8, type: 'neptune' }
+      { nom: 'Mars',    a: 1.524,  T: 1.8814, e: 0.093, couleur: '#b04020', couleurClair: '#e87850', rayon: 7, type: 'mars' },
+      { nom: 'Jupiter', a: 5.203,  T: 11.87,  e: 0.049, couleur: '#b07040', couleurClair: '#dc9868', rayon: 11, type: 'jupiter' },
+      { nom: 'Saturne', a: 9.537,  T: 29.45,  e: 0.057, couleur: '#c8a050', couleurClair: '#e8c878', rayon: 10, type: 'saturne' },
+      { nom: 'Uranus',  a: 19.19,  T: 84.06,  e: 0.046, couleur: '#4a9aa8', couleurClair: '#70c8d8', rayon: 8, type: 'uranus' },
+      { nom: 'Neptune', a: 30.07,  T: 164.9,  e: 0.010, couleur: '#3a5aaa', couleurClair: '#7a96e0', rayon: 8, type: 'neptune' }
     ]
   },
   {

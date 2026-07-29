@@ -726,10 +726,12 @@ function drawSys3() {
     }
   });
 
-  // ── Temps simulé ──
+  // ── Temps simulé ── (même taille que l'onglet 2ᵉ loi : fsBase*1.5)
   var dec = (sys.uniteT === 'an' && sys3.t < 10) ? 2 : 1;
-  texteHalo(ctx, 't = ' + fmtFr(sys3.t, dec) + ' ' + sys.uniteT, 16, 22,
-            '#a8b8c8', '700 15px monospace', 'left');
+  var fsBaseT = Math.max(13, Math.min(18, Math.min(W, H) * 0.033));
+  var fsT3 = Math.round(fsBaseT * 1.5);
+  texteHalo(ctx, 't = ' + fmtFr(sys3.t, dec) + ' ' + sys.uniteT, 16, fsT3 * 0.85 + 6,
+            '#a8b8c8', '700 ' + fsT3 + 'px monospace', 'left');
 
   drawEchelle(ctx, H, s, sys.uniteA);
 }
