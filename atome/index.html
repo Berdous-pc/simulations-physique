@@ -28,39 +28,15 @@
     <!-- ── Schéma de l'atome ──────────────────── -->
     <div id="atom-zone">
 
-      <!-- Nom de l'élément sélectionné (rempli par majInfos) -->
-      <div id="atom-title"></div>
+      <!-- Nom de l'élément sélectionné (rempli par majInfos).
+           En mode comparaison, le second span apparaît au-dessus de la
+           demi-zone de droite (élément du sélecteur « Comparer »). -->
+      <div id="atom-title">
+        <span id="atom-title-a"></span>
+        <span id="atom-title-b"></span>
+      </div>
 
       <div id="atom-main">
-
-        <!-- Box Propriétés, repliable en bandeau vertical.
-             Position (left) recalculée en JS à chaque rendu du schéma,
-             ancrée au bord réel du cercle du schéma — cf. positionPropsBox()
-             dans ui.js — pour rester proche de l'atome quelle que soit la
-             proportion largeur/hauteur de la fenêtre. -->
-        <div id="props-box">
-          <button id="props-toggle" onclick="togglePropsBox()"
-                  aria-expanded="true" title="Réduire en bandeau">
-            <span id="props-label">Propriétés</span>
-            <span id="props-chevron">▼</span>
-          </button>
-          <div id="props-body">
-            <div class="props-sec-title">Symbole</div>
-            <div id="props-nuclide"><span id="props-sym"></span></div>
-
-            <div class="props-sec-title">Noyau</div>
-            <div class="props-row"><span class="props-dot dot-nucleon"></span><span id="props-a"></span></div>
-            <div class="props-row"><span class="props-dot dot-proton"></span><span id="props-p"></span></div>
-            <div class="props-row"><span class="props-dot dot-neutron"></span><span id="props-n"></span></div>
-            <div class="props-note">Isotope le plus abondant de l’élément.</div>
-
-            <div class="props-sep"></div>
-
-            <div class="props-sec-title">Cortège électronique</div>
-            <div class="props-row"><span class="props-dot dot-electron">−</span><span id="props-e"></span></div>
-            <div id="props-config"></div>
-          </div>
-        </div>
 
         <div id="atom-canvas-wrap">
           <canvas id="atom-canvas"></canvas>
@@ -86,20 +62,20 @@
     <!-- ── Corps du panneau ───────────────────── -->
     <div id="panel-body">
 
-      <!-- MODE -->
+      <!-- TITRE -->
+      <div class="panel-title">Structure de l'atome</div>
+
+      <!-- COMPARAISON -->
       <div class="panel-section">
-        <div class="section-title">Mode</div>
-        <div class="btn-group">
-          <button class="btn-toggle-one active" id="btn-mode-explorer">Explorer</button>
-          <button class="btn-toggle-one" id="btn-mode-comparer" disabled
-                  title="Bientôt disponible">Comparer</button>
-        </div>
-        <div class="btn-group">
-          <button class="btn-toggle-one" id="btn-mode-ioniser" disabled
-                  title="Bientôt disponible">Ioniser</button>
-          <button class="btn-toggle-one" id="btn-mode-test" disabled
-                  title="Bientôt disponible">Test</button>
-        </div>
+        <div class="section-title">Comparaison</div>
+        <button class="btn-toggle-one" id="btn-comparer"
+                aria-pressed="false"
+                onclick="toggleCompare()">⚖️ Comparer</button>
+        <label class="cmp-label" for="cmp-select">Comparer avec :</label>
+        <select class="cmp-select" id="cmp-select"
+                onchange="setCompareZ(this.value)">
+          <!-- options construites par buildCompareSelect() (js/ui.js) -->
+        </select>
       </div>
 
       <div class="sep"></div>
@@ -108,6 +84,7 @@
       <div class="panel-section">
         <div class="section-title">Noyau</div>
         <button class="btn btn-primary" id="btn-eclater"
+                title="Faire sortir les nucléons un par un pour les compter"
                 onclick="toggleEclate()">💥 Éclater le noyau</button>
         <div style="font-size:clamp(9px,0.85vw,11px);color:#7a8a96;font-style:italic;margin-top:4px;line-height:1.4;">
           Faites glisser le noyau avec la souris pour le faire tourner.
@@ -157,6 +134,9 @@
         <strong>Noyau</strong> : protons (rouge) et neutrons (blanc) de l'isotope
         le plus abondant — faites-le <strong>tourner</strong> en le faisant glisser
         avec la souris.<br>
+        <strong>⚖️ Comparer</strong> : coupe la zone en deux et affiche côte à
+        côte l'atome sélectionné et celui choisi dans la liste juste en dessous
+        (gaz nobles en gras).<br>
         <strong>💥 Éclater le noyau</strong> : les nucléons sortent un par un et
         se rangent dans un cadre pour être comptés.<br>
         <strong>Électrons</strong> : répartis sur les sous-couches 1s, 2s, 2p…

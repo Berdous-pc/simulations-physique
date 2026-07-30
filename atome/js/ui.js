@@ -98,6 +98,65 @@ function selectElement(Z) {
 }
 
 /* ─────────────────────────────────────────────────
+   Mode comparaison — sélecteur + bascule
+───────────────────────────────────────────────── */
+
+/* Liste des 18 éléments par numéro atomique croissant, gaz nobles en gras */
+function buildCompareSelect() {
+  var sel = document.getElementById('cmp-select');
+  ELEMENTS.forEach(function (el) {
+    var opt = document.createElement('option');
+    opt.value = el.Z;
+    opt.textContent = el.Z + ' — ' + el.sym + ' · ' + el.nom;
+    if (estGazNoble(el.Z)) opt.className = 'opt-noble';
+    sel.appendChild(opt);
+  });
+  sel.value = String(state.Zcmp);
+  majSelectNoble();
+}
+
+/* Le libellé refermé du sélecteur reprend le gras quand c'est un gaz noble */
+function majSelectNoble() {
+  var sel = document.getElementById('cmp-select');
+  sel.classList.toggle('noble', estGazNoble(state.Zcmp));
+}
+
+function toggleCompare() {
+  state.compare = !state.compare;
+  document.body.classList.toggle('compare', state.compare);
+
+  /* La vue éclatée n'a pas la place de tenir dans une demi-zone : on la
+     referme en entrant en comparaison (bouton désactivé ensuite). */
+  if (state.compare) resetNucVue();
+  majBtnEclate();
+
+  var btn = document.getElementById('btn-comparer');
+  btn.classList.toggle('active', state.compare);
+  btn.setAttribute('aria-pressed', String(state.compare));
+
+  majCompareTP();
+  majInfos();
+  render();
+}
+
+function setCompareZ(v) {
+  state.Zcmp = parseInt(v, 10);
+  majSelectNoble();
+  majCompareTP();
+  majInfos();
+  render();
+}
+
+/* Liseré sur la case du tableau périodique de l'élément comparé */
+function majCompareTP() {
+  var cells = document.querySelectorAll('.tp-cell');
+  for (var i = 0; i < cells.length; i++) cells[i].classList.remove('compared');
+  if (!state.compare) return;
+  var cell = document.getElementById('tp-cell-' + state.Zcmp);
+  if (cell) cell.classList.add('compared');
+}
+
+/* ─────────────────────────────────────────────────
    Vue éclatée du noyau
 ───────────────────────────────────────────────── */
 function toggleEclate() {
@@ -109,8 +168,12 @@ function toggleEclate() {
 function majBtnEclate() {
   var btn = document.getElementById('btn-eclater');
   btn.textContent = state.eclate ? '↺ Rassembler le noyau' : '💥 Éclater le noyau';
-  /* Désactivé pendant l'animation (réactivé par onNucAnimEnd) */
-  btn.disabled = _nucAnim.running;
+  /* Désactivé pendant l'animation (réactivé par onNucAnimEnd) et pendant la
+     comparaison (le cadre de comptage ne tient pas dans une demi-zone). */
+  btn.disabled = _nucAnim.running || state.compare;
+  btn.title = state.compare
+    ? 'Indisponible pendant la comparaison'
+    : 'Faire sortir les nucléons un par un pour les compter';
 }
 
 /* Hook appelé par draw.js à la fin de l'animation d'éclatement */
@@ -122,55 +185,13 @@ function onNucAnimEnd() {
    Légende du schéma, configuration écrite, panneau
 ───────────────────────────────────────────────── */
 
-/* Exposant HTML d'un nombre d'électrons */
-function supHTML(n) { return '<sup>' + n + '</sup>'; }
-
-/* Configuration électronique colorée (ex. : O : 1s² 2s² 2p⁴ (3s⁰ 3p⁰)) */
-function configHTML() {
-  var el = getElement(state.Z);
-  var conf = getConfig(state.Z);
-  var occ = {};
-  conf.forEach(function (c) { occ[c.sub.id] = true; });
-
-  var html = '<span class="cfg-sym">' + el.sym + '&nbsp;:</span> ';
-  conf.forEach(function (c) {
-    html += '<span class="cfg-term" style="color:' + c.sub.color + '">' +
-            c.sub.id + supHTML(c.count) + '</span> ';
-  });
-
-  if (state.showEmpty) {
-    var maxN = getMaxNAffiche(state.Z);
-    var vides = SUBSHELLS.filter(function (s) { return !occ[s.id] && s.n <= maxN; });
-    if (vides.length) {
-      html += '<span class="cfg-paren">(</span>';
-      vides.forEach(function (s, i) {
-        html += '<span class="cfg-term cfg-vide" style="color:' + s.color + '">' +
-                s.id + supHTML(0) + '</span>' + (i < vides.length - 1 ? ' ' : '');
-      });
-      html += '<span class="cfg-paren">)</span>';
-    }
-  }
-  return html;
-}
-
 function majInfos() {
-  var el = getElement(state.Z);
-  var N = el.A - el.Z;
-
-  /* Titre : nom de l'élément sélectionné */
-  document.getElementById('atom-title').textContent = el.nom;
-
-  /* Box Propriétés */
-  document.getElementById('props-sym').textContent = el.sym;
-  document.getElementById('props-a').innerHTML =
-    'A&nbsp;= <b>' + el.A + '</b> nucléon' + (el.A > 1 ? 's' : '');
-  document.getElementById('props-p').innerHTML =
-    'Z&nbsp;= <b>' + el.Z + '</b> proton' + (el.Z > 1 ? 's' : '');
-  document.getElementById('props-n').innerHTML =
-    'N&nbsp;= <b>' + N + '</b> neutron' + (N > 1 ? 's' : '');
-  document.getElementById('props-e').innerHTML =
-    '<b>' + el.Z + '</b> électron' + (el.Z > 1 ? 's' : '');
-  document.getElementById('props-config').innerHTML = configHTML();
+  /* Titre : nom de l'élément sélectionné — et, en comparaison, nom de
+     l'élément comparé au-dessus de la demi-zone de droite. Le reste des
+     informations (Z, A, configuration) est dessiné sous le schéma par
+     drawInfosAtome() (draw.js), plus de box HTML séparée. */
+  document.getElementById('atom-title-a').textContent = getElement(state.Z).nom;
+  document.getElementById('atom-title-b').textContent = getElement(state.Zcmp).nom;
 }
 
 /* ─────────────────────────────────────────────────
@@ -185,58 +206,6 @@ function toggleEmpty(checked) {
 function toggleLegend(checked) {
   state.showLegend = checked;
   document.getElementById('atom-legend').style.display = checked ? '' : 'none';
-}
-
-/* ─────────────────────────────────────────────────
-   Box Propriétés — position horizontale
-   Ancrée dynamiquement au bord réel du cercle du schéma (plutôt qu'à
-   une largeur de conteneur arbitraire) : le schéma est limité par
-   min(_w, _h) et peut donc être petit même sur une fenêtre très large
-   (fenêtre large et peu haute) — seule une position calculée à partir
-   de sa taille réelle reste juste dans tous les cas. Appelée par
-   render() (draw.js) à chaque rendu.
-───────────────────────────────────────────────── */
-var PROPS_GAP_MIN = 22;   /* espace mini entre la box et le cercle du schéma */
-var PROPS_GAP_MAX = 90;   /* espace maxi (grand écran, schéma petit et centré) */
-var PROPS_EDGE     = 10;  /* marge mini avec le bord gauche de la fenêtre */
-
-function positionPropsBox() {
-  var box = document.getElementById('props-box');
-  if (!box || !_w) return;
-  var schemaLeft = _w / 2 - _schemaRmax;   /* bord gauche du cercle 3p */
-  /* Sur grand écran, le schéma (limité par min(largeur, hauteur)) reste
-     petit et centré : la place libre à gauche est alors bien plus grande
-     que PROPS_GAP_MIN, et coller la box au cercle la fait paraître
-     abandonnée au milieu du vide. On étire donc l'écart avec une partie
-     de cette place libre, plafonné pour ne pas non plus s'éloigner à
-     l'excès sur les très grands écrans. */
-  var gap = Math.min(PROPS_GAP_MAX, Math.max(PROPS_GAP_MIN, schemaLeft * 0.18));
-  var left = schemaLeft - gap - box.offsetWidth;
-  box.style.left = Math.max(PROPS_EDGE, left) + 'px';
-}
-
-/* ─────────────────────────────────────────────────
-   Box Propriétés (repli en bandeau vertical)
-───────────────────────────────────────────────── */
-function togglePropsBox() {
-  var box = document.getElementById('props-box');
-  var body = document.getElementById('props-body');
-  var collapsed = box.classList.toggle('collapsed');
-  var btn = document.getElementById('props-toggle');
-  btn.setAttribute('aria-expanded', String(!collapsed));
-  btn.title = collapsed ? 'Afficher les propriétés' : 'Réduire en bandeau';
-
-  /* La scrollbar (overflow-y: auto) n'est réactivée qu'une fois la
-     transition d'ouverture terminée, sinon elle clignote tant que
-     max-height anime en dessous de la hauteur du contenu (cf. CSS). */
-  body.classList.remove('settled');
-  if (!collapsed) {
-    body.addEventListener('transitionend', function onEnd(e) {
-      if (e.propertyName !== 'max-height') return;
-      body.removeEventListener('transitionend', onEnd);
-      if (!box.classList.contains('collapsed')) body.classList.add('settled');
-    });
-  }
 }
 
 /* ─────────────────────────────────────────────────
@@ -274,6 +243,7 @@ new ResizeObserver(scheduleResize).observe(document.getElementById('atom-canvas-
 ───────────────────────────────────────────────── */
 initDraw();
 buildTP();
+buildCompareSelect();
 /* Pas d'appel synchrone à resizeAtomCanvas() ici : le ResizeObserver
    ci-dessus se déclenche de lui-même dès l'observation avec la taille
    déjà stabilisée, et fait le premier dessin correct directement — on

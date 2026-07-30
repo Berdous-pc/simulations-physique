@@ -65,26 +65,35 @@ main {
   overflow: hidden;
 }
 
-/* Nom de l'élément sélectionné, gros et centré */
+/* Nom de l'élément sélectionné, gros et centré.
+   En mode comparaison, les deux spans se partagent la largeur et se calent
+   chacun au-dessus de leur demi-zone de schéma. */
 #atom-title {
   flex-shrink: 0;
-  text-align: center;
+  display: flex;
   font-size: clamp(22px, 2.6vw, 40px);
   font-weight: 700;
   color: #2c3e50;
-  line-height: 1.1;
-  padding: clamp(6px, 1vh, 12px) 10px 0;
+  /* line-height généreux : à 1.1, la boîte de ligne est trop juste pour les
+     descentes des lettres (g, j, p, q…) en gras — l'overflow:hidden des
+     spans (nécessaire pour l'ellipsis horizontal) les rognait alors en bas,
+     systématiquement, quel que soit l'atome affiché en dessous. */
+  line-height: 1.35;
+  padding: clamp(6px, 1vh, 12px) 10px clamp(6px, 1.1vh, 14px);
 }
+#atom-title span {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#atom-title-b { display: none; }
 
-/* Rangée box Propriétés + canvas : le canvas occupe toute la zone (le
-   schéma reste ainsi toujours centré sur la fenêtre réelle), et la box
-   Propriétés est positionnée par-dessus, en JS (positionPropsBox() dans
-   ui.js), ancrée au bord réel du cercle du schéma plutôt qu'à un
-   conteneur de taille arbitraire — cf. #props-box ci-dessous : aucune
-   approche purement CSS (largeur fixe, ratio, plafond en vh…) ne peut
-   suivre correctement la taille du schéma, qui dépend de
-   min(largeur, hauteur) et peut donc être minuscule même sur une fenêtre
-   très large (cas fenêtre large et peu haute). */
+body.compare #atom-title { font-size: clamp(15px, 1.9vw, 28px); }
+body.compare #atom-title-b { display: block; }
+
 #atom-main {
   flex: 1;
   min-height: 0;
@@ -153,166 +162,6 @@ main {
 }
 .leg-s { border-top-style: dashed; }
 .leg-p { border-top-style: dotted; }
-
-/* ══════════════════════════════════════════════════
-   BOX « PROPRIÉTÉS » — à gauche du schéma, repliable
-   vers le bas (classe .collapsed) : la box garde sa
-   largeur, seul le corps se replie sous l'en-tête
-   (transition max-height, même mécanique que le
-   bandeau Informations du panneau).
-══════════════════════════════════════════════════ */
-
-#props-box {
-  position: absolute;
-  top: clamp(8px, 1.2vh, 14px);
-  /* left : posé dynamiquement par positionPropsBox() (ui.js), ancré au
-     bord réel du cercle du schéma. Valeur de repli le temps du tout
-     premier rendu (avant le premier appel JS). */
-  left: clamp(8px, 1vw, 16px);
-  z-index: 2;
-  width: clamp(220px, 23vw, 330px);
-  max-height: calc(100% - 2 * clamp(8px, 1.2vh, 14px));
-  display: flex;
-  flex-direction: column;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(200, 192, 180, 0.9);
-  border-radius: 8px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
-  overflow: hidden;
-}
-
-/* ── En-tête / bouton bascule ─────────────────── */
-#props-toggle {
-  flex-shrink: 0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-family: inherit;
-  font-size: clamp(11px, 1.1vw, 14px);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: #7a8a96;
-  padding: clamp(6px, 0.9vh, 10px) clamp(8px, 1vw, 12px);
-  transition: color 0.15s, background 0.15s;
-}
-#props-toggle:hover { color: #2a6aaa; background: rgba(42, 106, 170, 0.06); }
-
-/* Chevron : ▼ replié (ouvre vers le bas), pivoté en ▲ déplié */
-#props-chevron {
-  line-height: 1;
-  transition: transform 0.25s ease;
-}
-#props-box:not(.collapsed) #props-chevron { transform: rotate(180deg); }
-
-/* ── Corps (repli vers le bas) ────────────────── */
-/* overflow-y reste "hidden" pendant la transition (classe .anim, posée par
-   ui.js) : sans ça la scrollbar clignote tant que max-height anime en
-   dessous de la hauteur du contenu, même quand tout tient une fois
-   déployé. Repassé en "auto" une fois la transition terminée. */
-#props-body {
-  overflow-y: hidden;
-  max-height: 65vh;
-  padding: clamp(8px, 1.2vh, 14px) clamp(10px, 1.2vw, 16px) clamp(10px, 1.4vh, 16px);
-  transition: max-height 0.25s ease, padding 0.25s ease;
-}
-#props-box.collapsed #props-body {
-  max-height: 0;
-  padding-top: 0;
-  padding-bottom: 0;
-}
-
-/* Posée par ui.js une fois la transition d'ouverture terminée : autorise
-   le scroll interne si jamais le contenu dépasse les 65vh. */
-#props-body.settled { overflow-y: auto; }
-
-/* Symbole de l'élément */
-#props-nuclide {
-  text-align: center;
-  font-size: clamp(26px, 2.8vw, 42px);
-  font-weight: 700;
-  color: #2c3e50;
-  line-height: 1.1;
-  margin-bottom: clamp(4px, 0.8vh, 8px);
-}
-
-.props-sec-title {
-  font-size: clamp(11px, 1.05vw, 14px);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: #7a8a96;
-  margin: clamp(4px, 0.7vh, 8px) 0 clamp(4px, 0.7vh, 7px);
-}
-
-.props-row {
-  display: flex;
-  align-items: center;
-  gap: clamp(7px, 0.8vw, 10px);
-  font-size: clamp(15px, 1.5vw, 21px);
-  color: #2c3e50;
-  font-variant-numeric: tabular-nums;
-  margin-bottom: clamp(3px, 0.5vh, 6px);
-}
-.props-row b { color: #2a5080; }
-
-/* Pastilles couleur (mêmes teintes que la légende du schéma) */
-.props-dot {
-  width:  clamp(13px, 1.3vw, 17px);
-  height: clamp(13px, 1.3vw, 17px);
-  border-radius: 50%;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.dot-proton   { background: #c53222; border: 1.5px solid #8a1e10; }
-.dot-neutron  { background: #fff;    border: 1.5px solid #b0aca4; }
-.dot-nucleon  {
-  background: linear-gradient(90deg, #c53222 50%, #fff 50%);
-  border: 1.5px solid #9a8f80;
-}
-.dot-electron {
-  background: #2a6aaa;
-  border: 1.5px solid #1a4a7a;
-  color: #fff;
-  font-weight: 700;
-  font-size: clamp(10px, 1vw, 13px);
-  line-height: 1;
-}
-
-.props-note {
-  font-size: clamp(10px, 0.95vw, 12.5px);
-  color: #7a8a96;
-  font-style: italic;
-  line-height: 1.35;
-  margin: 2px 0 4px;
-}
-
-.props-sep {
-  border-top: 1px solid #ddd6ca;
-  margin: clamp(6px, 1vh, 10px) 0;
-}
-
-/* Configuration électronique colorée (remplie par configHTML) */
-#props-config {
-  font-size: clamp(17px, 1.9vw, 26px);
-  font-weight: 700;
-  line-height: 1.5;
-  font-variant-numeric: tabular-nums;
-  margin-top: 2px;
-}
-
-.cfg-sym   { color: #2c3e50; }
-.cfg-term  { white-space: nowrap; }
-.cfg-term sup { font-size: 0.62em; }
-.cfg-vide  { opacity: 0.55; }
-.cfg-paren { color: #7a8a96; font-weight: 600; }
 
 /* ══════════════════════════════════════════════════
    TABLEAU PÉRIODIQUE RÉDUIT (bas de la zone d'animation)
@@ -404,6 +253,13 @@ main {
 .tp-a { top:    clamp(2px, 0.45vh, 5px); }
 .tp-z { bottom: clamp(2px, 0.45vh, 5px); }
 
+/* Élément comparé (mode Comparer) : liseré orangé, distinct du bleu plein
+   de l'élément sélectionné. */
+.tp-cell.compared {
+  border-color: #d0a060;
+  box-shadow: inset 0 0 0 2px rgba(208, 128, 48, 0.5);
+}
+
 .tp-cell.selected { background: #2a6aaa; border-color: #1a4a7a; }
 .tp-cell.selected .tp-sym { color: #fff; }
 .tp-cell.selected .tp-a,
@@ -431,6 +287,18 @@ main {
   display: flex;
   flex-direction: column;
   gap: 0;
+}
+
+/* ── Titre du panneau (même charte que cinetique/) ── */
+.panel-title {
+  font-size: clamp(14px, 1.4vw, 17px);
+  font-weight: 700;
+  color: #2c3e50;
+  text-align: center;
+  padding-bottom: clamp(8px, 1vw, 12px);
+  border-bottom: 1.5px solid #c8c0b4;
+  margin-bottom: clamp(8px, 1vw, 12px);
+  letter-spacing: 0.3px;
 }
 
 .panel-section { margin-bottom: 8px; }
@@ -515,6 +383,30 @@ main {
   padding: 7px 4px;
   font-size: clamp(10px, 1vw, 13px);
 }
+
+/* ── Sélecteur de l'élément comparé ──────────── */
+.cmp-label {
+  display: block;
+  font-size: clamp(10px, 0.9vw, 12px);
+  color: #7a8a96;
+  margin: 7px 0 4px;
+}
+
+.cmp-select {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #c8c0b4;
+  border-radius: 5px;
+  font-size: clamp(11px, 1.05vw, 13.5px);
+  font-family: inherit;
+  background: #fff;
+  color: #2c3e50;
+  cursor: pointer;
+}
+/* Gaz nobles (He, Ne, Ar) en gras dans la liste — et le libellé refermé
+   reprend le gras quand l'un d'eux est choisi (classe posée par ui.js). */
+.cmp-select option.opt-noble { font-weight: 700; }
+.cmp-select.noble { font-weight: 700; }
 
 /* ── Cases à cocher ──────────────────────────── */
 .chk-label {

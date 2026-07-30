@@ -4,9 +4,10 @@
 > tableau périodique (H → Ar). Un clic sur un élément affiche le schéma de son
 > atome : noyau (protons/neutrons de l'isotope le plus abondant), cercles des
 > sous-couches électroniques (1s, 2s, 2p, 3s, 3p) avec électrons équirépartis.
-> Le nom de l'élément s'affiche en gros au-dessus du schéma ; une box
-> « Propriétés » repliable à gauche du schéma détaille le noyau (A, Z, N),
-> les électrons et la configuration électronique écrite.
+> Le nom de l'élément s'affiche en gros au-dessus du schéma ; un bandeau sous
+> le schéma rappelle Z, A et la configuration électronique écrite. Un mode
+> **Comparer** coupe la zone en deux pour afficher côte à côte l'atome
+> sélectionné et un second choisi dans une liste.
 
 ## Fichiers
 
@@ -36,7 +37,12 @@ Scope global (pas de modules ES) — l'ordre de chargement `sim → draw → ui`
 - `getMaxNAffiche(Z)` : quand l'option « sous-couches vides » est active, on
   montre les sous-couches vides **jusqu'à la période suivante** (plafonné à
   n = 3). Ex. : O (période 2) → 3s⁰ 3p⁰ affichés en pointillés atténués.
-- `state` : `{ Z, showEmpty, showLegend }`.
+- `GAZ_NOBLES` / `estGazNoble(Z)` : He, Ne, Ar — mis **en gras** dans le
+  sélecteur « Comparer avec » du panneau.
+- `state` : `{ Z, showEmpty, showLegend, eclate, compare, Zcmp }`
+  (`compare` = zone de schéma coupée en deux, `Zcmp` = élément comparé).
+  `showEmpty` s'applique aussi bien aux cercles du schéma (`getShellsAffichees`)
+  qu'à la configuration écrite du bandeau d'informations (`drawConfigLigne`).
 
 ## Rendu (`draw.js`)
 
@@ -90,6 +96,24 @@ que pendant l'animation d'éclatement (et un `rAF` ponctuel pendant le drag).
   `#2a6aaa` + signe − blanc, halo couleur fond pour se détacher du trait.
 - **Étiquettes** (`1s`, `2s`…) : posées sur le cercle à des angles alternés
   (`LABEL_ANGLES`), halo `#fdf8f0` pour rester lisibles.
+- **Bandeau d'informations** (`drawInfosAtome`, sous chaque schéma, mode
+  normal comme comparaison — pas de box HTML séparée) : rappel `Z = … A = …`
+  puis la configuration électronique colorée, préfixée du symbole
+  (`drawConfigLigne`, ex. « O : 1s² 2s² 2p⁴ »), exposants surélevés à la main
+  (pas de `<sup>`, tout est dessiné au canvas). Si `state.showEmpty` est actif,
+  les sous-couches vides jusqu'à la période suivante sont ajoutées entre
+  parenthèses en `globalAlpha 0.55`, même règle que `getMaxNAffiche()`.
+  `renderAtome()` réserve une bande basse `infoH = max(34, _h*0.16)` pour ce
+  bandeau, en plus de la place du schéma.
+- **Mode comparaison** (`state.compare`) : `render()` n'est qu'un aiguillage,
+  tout le dessin d'un atome (schéma + bandeau d'informations) est dans
+  `renderAtome(Z, x0, w)` qui travaille dans la bande verticale `[x0, x0 + w]`
+  du canvas (variables de vue `_vx` / `_vw`, à la place de `_w` — cf. aussi
+  `getFrameGeom()`). En comparaison, `renderAtome()` est appelée deux fois
+  (élément sélectionné à gauche, `state.Zcmp` à droite) avec un trait
+  pointillé de séparation (`drawSeparateurCompare`). La rotation du noyau
+  (drag) est commune aux deux atomes ; la **vue éclatée est désactivée** en
+  comparaison (le cadre de comptage ne tient pas dans une demi-zone).
 - Canvas dimensionné avec `devicePixelRatio` (cf. CONTEXTE_PROJET §7).
 
 ## UI (`ui.js`)
@@ -99,40 +123,24 @@ que pendant l'animation d'éclatement (et un `rAF` ponctuel pendant le drag).
   blocs s en colonnes 1-2, bloc p en colonnes 13-18). Chaque case affiche
   A (haut gauche), Z (bas gauche) et le symbole (centre) — notation AZX.
 - `selectElement(Z)` : met à jour la sélection, le schéma, le titre
-  (`#atom-title`, nom de l'élément), la box « Propriétés » et les afficheurs
-  du panneau.
-- **Box « Propriétés »** (`#props-box`, en overlay au-dessus du schéma —
-  `position: absolute` sur `#atom-main`, canvas en `inset: 0` dessous,
-  dépliée ou repliée sans affecter le centrage du schéma). Sa position
-  **horizontale** (`left`) est recalculée **en JS** à chaque rendu
-  (`positionPropsBox()`, appelée en fin de `render()` dans `draw.js`),
-  ancrée au bord réel du cercle du schéma (`_schemaRmax`, le `Rmax` de
-  `render()`, exposé en variable globale) plutôt qu'à un conteneur de
-  taille arbitraire. Nécessaire car le schéma est limité par
-  `min(_w, _h)` et peut donc rester petit même sur une fenêtre très
-  large (cas fenêtre large et peu haute) — aucune approche purement CSS
-  (largeur fixe, `aspect-ratio`, plafond en `vh`…) ne peut suivre cette
-  taille réelle, seule une position calculée en JS le peut. Sur un écran
-  large la box reste ainsi collée près du schéma ; sur un écran étroit,
-  le calcul se clampe à `PROPS_EDGE` (10 px) et la box se colle au bord
-  gauche faute de place.
-  notation AZX empilée, détail du noyau (A/Z/N avec pastilles couleur),
-  nombre d'électrons et configuration colorée (`#props-config`,
-  `configHTML()`, exposants en `<sup>`). **Repliable vers le bas** via
-  `togglePropsBox()` (classe `.collapsed`) : la box garde sa largeur, seul
-  le corps se replie sous l'en-tête (transition `max-height`, même mécanique
-  que le bandeau Informations du panneau), chevron pivoté à 180°.
+  (`#atom-title-a`, nom de l'élément) et relance le rendu — `majInfos()` ne
+  gère plus que les titres HTML, le reste (Z, A, configuration) est dessiné
+  au canvas par `drawInfosAtome()` (draw.js).
+- **Comparaison** : le panneau porte un titre (`.panel-title`, même charte que
+  `cinetique/`), puis le bouton bascule `#btn-comparer` (`toggleCompare()`) et,
+  juste dessous, le sélecteur `#cmp-select` des 18 éléments par Z croissant
+  (`buildCompareSelect()`, gaz nobles en gras via `.opt-noble` ; `majSelectNoble()`
+  reporte le gras sur le libellé refermé). `setCompareZ()` change l'élément
+  comparé. Entrer en comparaison pose `body.compare` (réduit le titre, affiche
+  le second nom d'élément `#atom-title-b`), referme la vue éclatée et
+  désactive son bouton. `majCompareTP()` pose un liseré orangé
+  (`.tp-cell.compared`) sur la case de l'élément comparé.
 - Options : `toggleEmpty()` (sous-couches vides), `toggleLegend()` (légende).
-- Élément par défaut au chargement : oxygène (Z = 8).
+- Élément par défaut au chargement : oxygène (Z = 8), comparé à l'argon (Z = 18).
 
 ## Extensions prévues (discutées avec l'auteur, non implémentées)
 
-La page est en « un seul écran + modes » : la section **Mode** du panneau
-contient déjà les boutons Explorer / Comparer / Ioniser / Test (les trois
-derniers `disabled`).
-
-- **Comparer** : 2 éléments côte à côte (2 schémas se partageant la zone).
 - **Ioniser** : retirer/ajouter des électrons, affichage de l'ion formé.
 - **Test** : s'entraîner à écrire la configuration électronique et/ou prédire
   l'ion stable — reprendre la mécanique de `reaction/` (score, popup, 2 essais).
-- Deep-linking `#hash` à ajouter quand les modes existeront.
+- Deep-linking `#hash` (élément sélectionné, élément comparé).

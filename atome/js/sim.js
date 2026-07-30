@@ -48,6 +48,11 @@ var SUBSHELLS = [
 /* ── Accès aux données ─────────────────────────── */
 function getElement(Z) { return ELEMENTS[Z - 1]; }
 
+/* Gaz nobles de la page (couches externes saturées) — mis en gras dans le
+   sélecteur de comparaison du panneau. */
+var GAZ_NOBLES = [2, 10, 18];
+function estGazNoble(Z) { return GAZ_NOBLES.indexOf(Z) !== -1; }
+
 /* Configuration électronique : liste des sous-couches occupées,
    dans l'ordre de remplissage → [{ sub, count }] */
 function getConfig(Z) {
@@ -73,5 +78,7 @@ var state = {
   Z: 8,               /* élément sélectionné (oxygène par défaut)      */
   showEmpty: false,   /* afficher les sous-couches vides suivantes     */
   showLegend: true,   /* afficher la légende sur la zone d'animation   */
-  eclate: false       /* vue éclatée du noyau (cadre de comptage)      */
+  eclate: false,      /* vue éclatée du noyau (cadre de comptage)      */
+  compare: false,     /* zone de schéma coupée en deux (comparaison)   */
+  Zcmp: 18            /* élément comparé (argon par défaut)            */
 };

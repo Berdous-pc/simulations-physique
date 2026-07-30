@@ -18,11 +18,15 @@
 var _canvas = null, _ctx = null;
 var _w = 0, _h = 0;   /* dimensions logiques (px CSS) */
 
+/* Vue courante (bande verticale du canvas dans laquelle un atome est dessiné) :
+   toute la largeur en mode normal, une moitié pour chacun des deux atomes en
+   mode comparaison. Posées par renderAtome(). */
+var _vx = 0, _vw = 0;
+
 /* Rayon extérieur réel du schéma (cercle 3p compris), mis à jour à chaque
-   render() — lu par ui.js (positionPropsBox()) pour ancrer la box
-   Propriétés au bord réel du schéma plutôt qu'à une largeur arbitraire :
-   ce rayon dépend de min(_w, _h) et peut donc être petit même sur une
-   fenêtre très large (fenêtre large et peu haute). */
+   render() — ce rayon dépend de min(largeur, hauteur) de la zone et peut
+   donc être petit même sur une fenêtre très large (fenêtre large et peu
+   haute). */
 var _schemaRmax = 0;
 
 /* ── Rotation du noyau (drag) ─────────────────────
@@ -278,10 +282,10 @@ function drawElectron(x, y, r) {
    les occupées + (option) les vides jusqu'à la période suivante.
    → [{ sub, count }] dans l'ordre de remplissage.
 ───────────────────────────────────────────────── */
-function getShellsAffichees() {
+function getShellsAffichees(Z) {
   var occ = {};
-  getConfig(state.Z).forEach(function (c) { occ[c.sub.id] = c.count; });
-  var maxN = getMaxNAffiche(state.Z);
+  getConfig(Z).forEach(function (c) { occ[c.sub.id] = c.count; });
+  var maxN = getMaxNAffiche(Z);
   var out = [];
   SUBSHELLS.forEach(function (s) {
     var count = occ[s.id] || 0;
@@ -399,11 +403,11 @@ function getFrameGeom(el, rb, minDim, cx) {
      droite) — on étire donc l'écart avec une partie de cette place
      libre, plafonné. Le minimum garantit qu'il ne chevauche jamais les
      sous-couches, y compris pour les gros atomes (cadre plus haut). */
-  var rightSpace = Math.max(0, _w - (cx + _schemaRmax) - w - 16);
+  var rightSpace = Math.max(0, (_vx + _vw) - (cx + _schemaRmax) - w - 16);
   var gap = Math.min(90, Math.max(36, rightSpace * 0.3 + 36));
   var x0 = cx + _schemaRmax + gap;
-  x0 = Math.min(x0, _w - w - 16);
-  x0 = Math.max(x0, 16);
+  x0 = Math.min(x0, _vx + _vw - w - 16);
+  x0 = Math.max(x0, _vx + 16);
   var y0 = Math.max(12, _h / 2 - h / 2);
   return { x0: x0, y0: y0, w: w, h: h, step: step, fsF: fsF, rbF: rbF,
            lineH: lineH, yP: yP, yN: yN, nP: nP, nN: nN, titre: titre };
@@ -497,11 +501,45 @@ function render() {
   if (!_ctx) return;
   _ctx.clearRect(0, 0, _w, _h);
 
-  var el = getElement(state.Z);
-  var shells = getShellsAffichees();
+  if (state.compare) {
+    /* Zone coupée en deux : à gauche l'élément sélectionné dans le tableau
+       périodique, à droite celui du sélecteur « Comparer » du panneau. */
+    var half = _w / 2;
+    renderAtome(state.Z,    0,    half);
+    renderAtome(state.Zcmp, half, half);
+    drawSeparateurCompare(half);
+  } else {
+    renderAtome(state.Z, 0, _w);
+  }
+}
 
-  var cx = _w / 2, cy = _h / 2;
-  var minDim = Math.min(_w, _h);
+/* Trait de séparation entre les deux demi-zones (mode comparaison) */
+function drawSeparateurCompare(x) {
+  _ctx.save();
+  _ctx.setLineDash([7, 6]);
+  _ctx.lineWidth = 1.5;
+  _ctx.strokeStyle = '#c8c0b4';
+  _ctx.beginPath();
+  _ctx.moveTo(x, _h * 0.03);
+  _ctx.lineTo(x, _h * 0.97);
+  _ctx.stroke();
+  _ctx.restore();
+}
+
+/* Dessin d'un atome dans la bande verticale [x0, x0 + w] du canvas */
+function renderAtome(Z, x0, w) {
+  _vx = x0;
+  _vw = w;
+
+  var el = getElement(Z);
+  var shells = getShellsAffichees(Z);
+
+  /* Une bande est réservée en bas de la zone (de chaque demi-zone en
+     comparaison) pour le rappel Z/A et la configuration électronique. */
+  var infoH = Math.max(34, _h * 0.16);
+
+  var cx = x0 + w / 2, cy = (_h - infoH) / 2;
+  var minDim = Math.min(w, _h - infoH);
   if (minDim < 60) return;
 
   /* Rayon extérieur : on réserve la place des étiquettes + électrons */
@@ -523,13 +561,15 @@ function render() {
   /* Même échelle pour tous : rayon de bille constant, l'amas grossit
      avec le nombre de nucléons A (garde-fou : l'amas ne doit pas
      toucher le cercle 1s). */
-  var layout = getNucleusLayout(state.Z);
+  var layout = getNucleusLayout(Z);
   var A = layout.pts.length;
   var RU = layout.radiusUnits;
   var rb = rStep * 0.075 * 1.25 * 1.5;
   rb *= Math.min(1, (rStep * 0.68) / (RU * rb));
 
-  var anim = _nucAnim.running || state.eclate;
+  /* La vue éclatée n'existe qu'en mode simple (cf. ui.js : le bouton est
+     désactivé pendant la comparaison, faute de place dans une demi-zone). */
+  var anim = !state.compare && (_nucAnim.running || state.eclate);
 
   /* Billes triées d'arrière en avant ; alpha réduit (fantôme) pour
      celles qui ont quitté le noyau. */
@@ -593,7 +633,116 @@ function render() {
   /* ── Vue éclatée : cadre de comptage + nucléons en vol ── */
   if (anim) drawVueEclatee(el, layout, cx, cy, rb, minDim);
 
-  if (typeof positionPropsBox === 'function') positionPropsBox();
+  /* ── Rappel Z/A + configuration sous le schéma ── */
+  drawInfosAtome(el, cx, infoH);
+}
+
+/* ─────────────────────────────────────────────────
+   Bandeau d'informations sous chaque schéma (mode normal comme
+   comparaison) : Z et A, puis la configuration électronique
+   aux couleurs des sous-couches, préfixée du symbole.
+───────────────────────────────────────────────── */
+function drawInfosAtome(el, cx, infoH) {
+  var fs = Math.max(11, Math.min(_vw * 0.05, infoH * 0.32));
+  var yCfg = _h - infoH * 0.20;
+  var yZA  = yCfg - fs * 1.75;
+
+  _ctx.textAlign = 'center';
+  _ctx.textBaseline = 'alphabetic';
+  _ctx.font = '700 ' + (fs * 0.82) + 'px monospace';
+  _ctx.fillStyle = '#7a8a96';
+  _ctx.fillText('Z = ' + el.Z + '   A = ' + el.A, cx, yZA);
+
+  drawConfigLigne(el, cx, yCfg, fs);
+}
+
+/* Configuration électronique sur une ligne, centrée en cx, précédée du
+   symbole de l'élément (ex. « O : 1s² 2s² 2p⁴ »), exposants surélevés —
+   équivalent canvas de l'ancien configHTML() (ui.js). Si l'option
+   « sous-couches vides » est active (state.showEmpty), les sous-couches
+   suivantes jusqu'à la période suivante sont ajoutées entre parenthèses,
+   atténuées — même règle que getShellsAffichees()/getMaxNAffiche(). */
+function drawConfigLigne(el, cx, y, fs) {
+  var conf = getConfig(el.Z);
+  var fsSup = fs * 0.68;
+  var space = fs * 0.5;
+
+  var occ = {};
+  conf.forEach(function (c) { occ[c.sub.id] = true; });
+  var vides = [];
+  if (state.showEmpty) {
+    var maxN = getMaxNAffiche(el.Z);
+    vides = SUBSHELLS.filter(function (s) { return !occ[s.id] && s.n <= maxN; });
+  }
+
+  _ctx.font = '700 ' + fs + 'px monospace';
+  var symTxt = el.sym + ' :';
+  var symW = _ctx.measureText(symTxt).width;
+
+  function termWidth(id, count) {
+    _ctx.font = '700 ' + fs + 'px monospace';
+    var wId = _ctx.measureText(id).width;
+    _ctx.font = '700 ' + fsSup + 'px monospace';
+    return { wId: wId, w: wId + _ctx.measureText(String(count)).width };
+  }
+
+  var parts = conf.map(function (c) {
+    var m = termWidth(c.sub.id, c.count);
+    return { id: c.sub.id, count: c.count, color: c.sub.color, alpha: 1, wId: m.wId, w: m.w };
+  });
+
+  var parenW = 0, videParts = [];
+  if (vides.length) {
+    _ctx.font = '700 ' + fs + 'px monospace';
+    parenW = _ctx.measureText('(').width;
+    videParts = vides.map(function (s) {
+      var m = termWidth(s.id, 0);
+      return { id: s.id, count: 0, color: s.color, alpha: 0.55, wId: m.wId, w: m.w };
+    });
+  }
+
+  var total = symW + space +
+              parts.reduce(function (s, p) { return s + p.w; }, 0) +
+              space * Math.max(0, parts.length - 1);
+  if (vides.length) {
+    total += space + parenW +
+             videParts.reduce(function (s, p) { return s + p.w; }, 0) +
+             space * (videParts.length - 1) + parenW;
+  }
+  var x = cx - total / 2;
+
+  _ctx.textAlign = 'left';
+  _ctx.font = '700 ' + fs + 'px monospace';
+  _ctx.fillStyle = '#2c3e50';
+  _ctx.fillText(symTxt, x, y);
+  x += symW + space;
+
+  function drawTerm(p) {
+    _ctx.globalAlpha = p.alpha;
+    _ctx.fillStyle = p.color;
+    _ctx.font = '700 ' + fs + 'px monospace';
+    _ctx.fillText(p.id, x, y);
+    _ctx.font = '700 ' + fsSup + 'px monospace';
+    _ctx.fillText(String(p.count), x + p.wId, y - fs * 0.42);
+    _ctx.globalAlpha = 1;
+    x += p.w + space;
+  }
+
+  parts.forEach(drawTerm);
+
+  if (vides.length) {
+    _ctx.fillStyle = '#7a8a96';
+    _ctx.font = '700 ' + fs + 'px monospace';
+    _ctx.fillText('(', x, y);
+    x += parenW + space;
+    videParts.forEach(drawTerm);
+    x -= space;
+    _ctx.fillStyle = '#7a8a96';
+    _ctx.font = '700 ' + fs + 'px monospace';
+    _ctx.fillText(')', x, y);
+  }
+
+  _ctx.textAlign = 'center';
 }
 
 /* ─────────────────────────────────────────────────
