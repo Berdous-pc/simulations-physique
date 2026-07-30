@@ -102,7 +102,7 @@ function getPeriode(Z) { return Z <= 2 ? 1 : (Z <= 10 ? 2 : 3); }
 /* n maximal des sous-couches affichables quand on montre les sous-couches
    vides : celles de la période suivante, sans dépasser n = 3 (portée de la
    page). Ex. : O (période 2) → on montre aussi 3s et 3p vides. */
-function getMaxNAffiche(Z) { return Math.min(3, getPeriode(Z) + 1); }
+function getMaxNAffiche(Z) { return 3; }
 
 /* ── État global ───────────────────────────────── */
 var state = {

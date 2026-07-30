@@ -301,7 +301,7 @@ body.compare #atom-title-b { display: block; }
   letter-spacing: 0.3px;
 }
 
-.panel-section { margin-bottom: 8px; }
+.panel-section { margin-bottom: 8px; container-type: inline-size; }
 
 .section-title {
   font-size: 11px;
@@ -396,14 +396,14 @@ body.compare #atom-title-b { display: block; }
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: clamp(4px, 1.2vw, 16px);
+  gap: clamp(4px, 5.5cqw, 16px);
   flex-wrap: nowrap;
   overflow: hidden;
 }
 .ion-atom {
   display: flex;
   align-items: center;
-  gap: clamp(2px, 0.5vw, 7px);
+  gap: clamp(2px, 2.3cqw, 7px);
   min-width: 0;
   flex: 1 1 0;
   overflow: hidden;
@@ -411,13 +411,10 @@ body.compare #atom-title-b { display: block; }
 .ion-sym {
   font-weight: 700;
   font-family: 'Segoe UI', Arial, sans-serif;
-  font-size: clamp(9px, 1.3vw, 17px);
+  font-size: clamp(6px, 5.9cqw, 17px);
   color: #2c3e50;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-  flex-shrink: 1;
+  flex-shrink: 0;
 }
 
 .ion-widget {
@@ -429,13 +426,13 @@ body.compare #atom-title-b { display: block; }
   flex-shrink: 0;
 }
 .ion-value {
-  width: clamp(24px, 3.2vw, 40px);
-  height: 34px;
+  width: clamp(15px, 14.5cqw, 40px);
+  height: clamp(18px, 13.6cqw, 34px);
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: clamp(11px, 1.8vw, 20px);
+  font-size: clamp(8px, 8.2cqw, 20px);
   font-weight: 700;
   color: #2a6aaa;
   background: #fff;
@@ -446,7 +443,7 @@ body.compare #atom-title-b { display: block; }
 .ion-value.ion-count-anion  { color: #2a6aaa; }   /* plus d'électrons */
 
 .ion-arrows {
-  width: clamp(12px, 1.6vw, 20px);
+  width: clamp(8px, 7.3cqw, 20px);
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -457,7 +454,7 @@ body.compare #atom-title-b { display: block; }
   border: none;
   background: #f0ecf4;
   color: #5a6a78;
-  font-size: 9px;
+  font-size: clamp(6px, 4.5cqw, 9px);
   font-weight: 700;
   cursor: pointer;
   display: flex;
@@ -473,7 +470,7 @@ body.compare #atom-title-b { display: block; }
 .ion-arrow-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
 .ion-unit {
-  font-size: clamp(9px, 1.4vw, 19px);
+  font-size: clamp(6px, 6.4cqw, 19px);
   font-weight: 800;
   white-space: nowrap;
   flex-shrink: 0;
@@ -483,7 +480,7 @@ body.compare #atom-title-b { display: block; }
 .ion-sep {
   align-self: stretch;
   width: 1.5px;
-  min-height: 34px;
+  min-height: clamp(18px, 13.6cqw, 34px);
   flex-shrink: 0;
   background: #c8c0b4;
   border-radius: 1px;

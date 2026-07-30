@@ -44,12 +44,23 @@ function matMul(A, B) {
   return M;
 }
 
-var _rotM = matMul(rotX(-0.40), rotY(0.55));   /* légère inclinaison initiale */
-var _drag = { active: false, lastX: 0, lastY: 0 };
+/* Une matrice de rotation par atome affiché ('main' / 'cmp') : en mode
+   comparaison, chaque noyau se manipule indépendamment de l'autre. */
+var _rotM = {
+  main: matMul(rotX(-0.40), rotY(0.55)),
+  cmp:  matMul(rotX(-0.40), rotY(0.55))
+};
+var _curRotKey = 'main';   /* posée par renderAtome() avant toute projection */
+var _drag = { active: false, key: null, lastX: 0, lastY: 0 };
+
+/* Zone de saisie du noyau (cercle englobant à l'écran), une par atome
+   affiché — recalculée à chaque renderAtome() pour permettre de restreindre
+   le déclenchement du drag au noyau plutôt qu'à tout le canvas. */
+var _nucleusHit = { main: null, cmp: null };
 
 /* Rotation incrémentale en espace écran (prémultiplication) */
-function rotateBy(ax, ay) {
-  _rotM = matMul(matMul(rotX(ax), rotY(ay)), _rotM);
+function rotateBy(ax, ay, key) {
+  _rotM[key] = matMul(matMul(rotX(ax), rotY(ay)), _rotM[key]);
 }
 
 /* ── Animation d'éclatement ───────────────────── */
@@ -88,33 +99,58 @@ var NUC_G0 = 260, NUC_RATIO = 0.90, NUC_FLIGHT = 380;   /* ms */
 function initDraw() {
   _canvas = document.getElementById('atom-canvas');
   _ctx = _canvas.getContext('2d');
-  _canvas.style.cursor = 'grab';
+  _canvas.style.cursor = 'default';
 
-  /* Rotation du noyau au drag, N'IMPORTE OÙ sur le canvas
-     (pointer events : souris + tactile) */
+  /* Rotation du noyau au drag, SAISIE RESTREINTE à la zone du noyau
+     (pointer events : souris + tactile). Une fois le noyau saisi, le
+     drag continue partout tant que le bouton reste enfoncé. */
   _canvas.addEventListener('pointerdown', function (e) {
     if (_nucAnim.running || _chargeAnim.running) return;
+    var rect = _canvas.getBoundingClientRect();
+    var px = e.clientX - rect.left, py = e.clientY - rect.top;
+    var key = hitNucleus(px, py);
+    if (!key) return;
     _drag.active = true;
+    _drag.key = key;
     _drag.lastX = e.clientX;
     _drag.lastY = e.clientY;
     _canvas.setPointerCapture(e.pointerId);
     _canvas.style.cursor = 'grabbing';
   });
   _canvas.addEventListener('pointermove', function (e) {
-    if (!_drag.active) return;
+    if (!_drag.active) {
+      var rect = _canvas.getBoundingClientRect();
+      _canvas.style.cursor = hitNucleus(e.clientX - rect.left, e.clientY - rect.top) ? 'grab' : 'default';
+      return;
+    }
     /* Axe X écran ← mouvement vertical ; axe Y écran ← mouvement
        horizontal. Signes choisis pour que le noyau roule sous le
        curseur (drag vers la droite → la face avant part à droite). */
-    rotateBy(-(e.clientY - _drag.lastY) * 0.01, (e.clientX - _drag.lastX) * 0.01);
+    rotateBy(-(e.clientY - _drag.lastY) * 0.01, (e.clientX - _drag.lastX) * 0.01, _drag.key);
     _drag.lastX = e.clientX;
     _drag.lastY = e.clientY;
     requestAnimationFrame(render);
   });
   _canvas.addEventListener('pointerup', function () {
     _drag.active = false;
+    _drag.key = null;
     _canvas.style.cursor = 'grab';
   });
-  _canvas.addEventListener('pointercancel', function () { _drag.active = false; });
+  _canvas.addEventListener('pointercancel', function () { _drag.active = false; _drag.key = null; });
+}
+
+/* Détermine si le point (px, py), en coordonnées canvas (px CSS), tombe
+   dans la zone de saisie d'un des noyaux affichés. Retourne 'main', 'cmp'
+   ou null. */
+function hitNucleus(px, py) {
+  var keys = state.compare ? ['main', 'cmp'] : ['main'];
+  for (var i = 0; i < keys.length; i++) {
+    var hz = _nucleusHit[keys[i]];
+    if (!hz) continue;
+    var dx = px - hz.cx, dy = py - hz.cy;
+    if (dx * dx + dy * dy <= hz.r * hz.r) return keys[i];
+  }
+  return null;
 }
 
 /* ── Redimensionnement (écrans haute densité gérés) ── */
@@ -245,7 +281,7 @@ function getNucleusLayout(Z) {
    Retour en unités de rayon de bille, z = profondeur (+ = devant).
 ───────────────────────────────────────────────── */
 function projectPt(p) {
-  var m = _rotM;
+  var m = _rotM[_curRotKey];
   return {
     x: m[0][0] * p.x + m[0][1] * p.y + m[0][2] * p.z,
     y: m[1][0] * p.x + m[1][1] * p.y + m[1][2] * p.z,
@@ -724,6 +760,7 @@ function drawSeparateurCompare(x) {
 function renderAtome(Z, x0, w, freezeKey) {
   _vx = x0;
   _vw = w;
+  _curRotKey = freezeKey;
 
   var el = getElement(Z);
   var ionQ = (freezeKey === 'cmp') ? state.ionQCmp : state.ionQ;
@@ -763,6 +800,10 @@ function renderAtome(Z, x0, w, freezeKey) {
   var RU = layout.radiusUnits;
   var rb = rStep * 0.075 * 1.25 * 1.5;
   rb *= Math.min(1, (rStep * 0.68) / (RU * rb));
+
+  /* Zone de saisie du noyau (drag) : cercle englobant, avec une marge pour
+     rester facilement cliquable même sur un petit noyau (H, He). */
+  _nucleusHit[freezeKey] = { cx: cx, cy: cy, r: Math.max(RU * rb * 1.3, rStep * 0.55) };
 
   var anim = _nucAnim.running || state.eclate;
   var animCharge = _chargeAnim.running || state.charge;
