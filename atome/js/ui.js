@@ -86,11 +86,14 @@ function buildTP() {
 ───────────────────────────────────────────────── */
 function selectElement(Z) {
   state.Z = Z;
+  state.ionQ = 0;
   /* Changement d'élément : on revient à la vue assemblée du noyau */
   resetNucVue();
   resetChargeVue();
+  resetIonVue();
   majBtnEclate();
   majBtnCharge();
+  majBtnIon();
   var cells = document.querySelectorAll('.tp-cell');
   for (var i = 0; i < cells.length; i++) cells[i].classList.remove('selected');
   var cell = document.getElementById('tp-cell-' + Z);
@@ -129,6 +132,7 @@ function toggleCompare() {
 
   majBtnEclate();
   majBtnCharge();
+  majBtnIon();
 
   var btn = document.getElementById('btn-comparer');
   btn.classList.toggle('active', state.compare);
@@ -141,13 +145,16 @@ function toggleCompare() {
 
 function setCompareZ(v) {
   state.Zcmp = parseInt(v, 10);
+  state.ionQCmp = 0;
   /* Changement de l'élément comparé : on revient à la vue assemblée du
      noyau (le figé de la vue éclatée ne correspondrait plus au nouvel
      élément). */
   resetNucVue();
   resetChargeVue();
+  resetIonVue();
   majBtnEclate();
   majBtnCharge();
+  majBtnIon();
   majSelectNoble();
   majCompareTP();
   majInfos();
@@ -174,6 +181,7 @@ function toggleEclate() {
   startNucAnim(state.eclate ? 1 : -1);
   majBtnEclate();   /* après startNucAnim : désactive le bouton pendant l'anim */
   majBtnCharge();
+  majBtnIon();
 }
 
 function majBtnEclate() {
@@ -188,6 +196,7 @@ function majBtnEclate() {
 function onNucAnimEnd() {
   majBtnEclate();
   majBtnCharge();
+  majBtnIon();
 }
 
 /* ─────────────────────────────────────────────────
@@ -201,6 +210,7 @@ function toggleCharge() {
   startChargeAnim(state.charge ? 1 : -1);
   majBtnCharge();   /* après startChargeAnim : désactive le bouton pendant l'anim */
   majBtnEclate();
+  majBtnIon();
 }
 
 function majBtnCharge() {
@@ -215,6 +225,104 @@ function majBtnCharge() {
 function onChargeAnimEnd() {
   majBtnCharge();
   majBtnEclate();
+  majBtnIon();
+}
+
+/* ─────────────────────────────────────────────────
+   Ionisation — ajout/retrait d'électrons (± ION_MAX)
+   `which` = 'main' (atome sélectionné) ou 'cmp' (atome comparé).
+───────────────────────────────────────────────── */
+function ionOf(which)      { return which === 'cmp' ? state.ionQCmp : state.ionQ; }
+function ZOf(which)        { return which === 'cmp' ? state.Zcmp    : state.Z; }
+function setIonOf(which, v) { if (which === 'cmp') state.ionQCmp = v; else state.ionQ = v; }
+
+/* Jamais bloquant : des clics rapprochés (même sens ou sens opposé)
+   déclenchent chacun leur propre vol d'électron, superposés/enchaînés
+   sans attendre la fin des précédents (cf. addIonFlight() dans draw.js,
+   qui gère aussi le demi-tour en vol si le clic inverse un vol en
+   cours). Seules les animations de noyau/charge (positions en cours de
+   figeage) bloquent temporairement l'ionisation. */
+function addElectron(which) {
+  if (_nucAnim.running || _chargeAnim.running) return;
+  var Z = ZOf(which), ionQ = ionOf(which);
+  var newIon = clampIon(Z, ionQ - 1);
+  if (newIon === ionQ) return;   /* déjà à la limite (± ION_MAX ou capacité) */
+  var oldNE = nElectronsIon(Z, ionQ), newNE = nElectronsIon(Z, newIon);
+  setIonOf(which, newIon);
+  if (state.charge) {
+    /* Vue « charge » déjà ouverte : la colonne d'électrons s'ajuste
+       instantanément, sans animation supplémentaire. */
+    render();
+  } else {
+    addIonFlight(which, Z, oldNE, newNE);
+  }
+  majBtnIon();
+  majInfos();
+}
+
+function removeElectron(which) {
+  if (_nucAnim.running || _chargeAnim.running) return;
+  var Z = ZOf(which), ionQ = ionOf(which);
+  var newIon = clampIon(Z, ionQ + 1);
+  if (newIon === ionQ) return;
+  var oldNE = nElectronsIon(Z, ionQ), newNE = nElectronsIon(Z, newIon);
+  setIonOf(which, newIon);
+  if (state.charge) {
+    render();
+  } else {
+    addIonFlight(which, Z, oldNE, newNE);
+  }
+  majBtnIon();
+  majInfos();
+}
+
+/* Libellé de la charge affiché dans le panneau (ex. « Ion Na⁺ », « Atome neutre ») */
+function ionLabel(which) {
+  var Z = ZOf(which), el = getElement(Z), ionQ = ionOf(which);
+  if (ionQ === 0) return 'Atome neutre';
+  return 'Ion ' + el.sym + ionExposant(ionQ);
+}
+
+/* Valeur affichée dans le widget (ex. « 0 », « +1 », « −2 ») — ionQ > 0 :
+   électrons retirés, ionQ < 0 : électrons ajoutés. */
+function ionCountLabel(which) {
+  var ionQ = ionOf(which);
+  if (ionQ === 0) return '0';
+  return (ionQ < 0 ? '+' : '−') + Math.abs(ionQ);
+}
+
+function majOneIonBlock(which) {
+  var running = _nucAnim.running || _chargeAnim.running;
+  var Z = ZOf(which), ionQ = ionOf(which);
+
+  var sym = document.getElementById('ion-sym-' + which);
+  if (sym) sym.textContent = getElement(Z).sym + ' :';
+
+  var count = document.getElementById('ion-count-' + which);
+  if (count) {
+    count.textContent = ionCountLabel(which);
+    count.title = ionLabel(which);
+    count.classList.toggle('ion-count-cation', ionQ > 0);
+    count.classList.toggle('ion-count-anion', ionQ < 0);
+  }
+
+  var addBtn = document.getElementById('btn-ion-add-' + which);
+  var subBtn = document.getElementById('btn-ion-sub-' + which);
+  /* Pas de blocage pendant un vol d'électron (plusieurs peuvent se
+     superposer) : seule une animation de noyau/charge désactive
+     temporairement les boutons. */
+  if (addBtn) addBtn.disabled = running || clampIon(Z, ionQ - 1) === ionQ;
+  if (subBtn) subBtn.disabled = running || clampIon(Z, ionQ + 1) === ionQ;
+}
+
+function majBtnIon() {
+  majOneIonBlock('main');
+
+  var blockCmp = document.getElementById('ion-atom-cmp');
+  var sep = document.getElementById('ion-sep');
+  if (blockCmp) blockCmp.style.display = state.compare ? '' : 'none';
+  if (sep) sep.style.display = state.compare ? '' : 'none';
+  if (state.compare) majOneIonBlock('cmp');
 }
 
 /* ─────────────────────────────────────────────────

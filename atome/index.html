@@ -103,6 +103,50 @@
 
       <div class="sep"></div>
 
+      <!-- IONISER -->
+      <div class="panel-section">
+        <div class="section-title">Ioniser</div>
+        <div class="ion-row" id="ion-row">
+
+          <div class="ion-atom" id="ion-atom-main">
+            <span class="ion-sym" id="ion-sym-main"></span>
+            <div class="ion-widget">
+              <div class="ion-value" id="ion-count-main">0</div>
+              <div class="ion-arrows">
+                <button class="ion-arrow-btn" id="btn-ion-add-main"
+                        title="Ajouter un électron" aria-label="Ajouter un électron"
+                        onclick="addElectron('main')">▲</button>
+                <button class="ion-arrow-btn" id="btn-ion-sub-main"
+                        title="Retirer un électron" aria-label="Retirer un électron"
+                        onclick="removeElectron('main')">▼</button>
+              </div>
+            </div>
+            <span class="ion-unit">e⁻</span>
+          </div>
+
+          <div class="ion-sep" id="ion-sep" style="display:none;"></div>
+
+          <div class="ion-atom" id="ion-atom-cmp" style="display:none;">
+            <span class="ion-sym" id="ion-sym-cmp"></span>
+            <div class="ion-widget">
+              <div class="ion-value" id="ion-count-cmp">0</div>
+              <div class="ion-arrows">
+                <button class="ion-arrow-btn" id="btn-ion-add-cmp"
+                        title="Ajouter un électron (atome comparé)" aria-label="Ajouter un électron (atome comparé)"
+                        onclick="addElectron('cmp')">▲</button>
+                <button class="ion-arrow-btn" id="btn-ion-sub-cmp"
+                        title="Retirer un électron (atome comparé)" aria-label="Retirer un électron (atome comparé)"
+                        onclick="removeElectron('cmp')">▼</button>
+              </div>
+            </div>
+            <span class="ion-unit">e⁻</span>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="sep"></div>
+
       <!-- AFFICHAGE -->
       <div class="panel-section">
         <div class="section-title">Affichage</div>
@@ -151,6 +195,9 @@
         se rangent dans un cadre pour être comptés.<br>
         <strong>⚡ Visualiser la charge</strong> : les protons et les électrons
         sortent et se rangent dans deux colonnes pour être comptés.<br>
+        <strong>Ioniser</strong> : ajoutez ou retirez jusqu'à 3 électrons
+        (l'électron le plus externe part ou arrive en premier) — le symbole,
+        la charge et la configuration électronique s'actualisent.<br>
         <strong>Électrons</strong> : répartis sur les sous-couches 1s, 2s, 2p…
         dans l'ordre de remplissage.<br>
         <strong>Option</strong> : afficher les sous-couches vides suivantes pour

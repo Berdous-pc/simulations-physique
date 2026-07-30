@@ -53,16 +53,47 @@ function getElement(Z) { return ELEMENTS[Z - 1]; }
 var GAZ_NOBLES = [2, 10, 18];
 function estGazNoble(Z) { return GAZ_NOBLES.indexOf(Z) !== -1; }
 
-/* Configuration électronique : liste des sous-couches occupées,
-   dans l'ordre de remplissage → [{ sub, count }] */
-function getConfig(Z) {
-  var reste = Z, out = [];
+/* Configuration électronique pour un nombre total d'électrons quelconque
+   (atome neutre ou ion) : remplissage dans l'ordre de `SUBSHELLS`
+   → [{ sub, count }]. */
+function getConfigForN(n) {
+  var reste = n, out = [];
   for (var i = 0; i < SUBSHELLS.length && reste > 0; i++) {
     var c = Math.min(reste, SUBSHELLS[i].cap);
     out.push({ sub: SUBSHELLS[i], count: c });
     reste -= c;
   }
   return out;
+}
+
+/* Configuration électronique de l'atome neutre Z → [{ sub, count }] */
+function getConfig(Z) { return getConfigForN(Z); }
+
+/* ── Ionisation ─────────────────────────────────
+   ionQ = charge de l'ion en unités élémentaires (positif = cation, il
+   manque des électrons ; négatif = anion, électrons en trop). Nombre
+   d'électrons de l'ion = Z - ionQ. Bornes : au plus ION_MAX électrons
+   ajoutés ou retirés, et le total d'électrons doit rester dans la
+   capacité des sous-couches représentées sur la page (1s→3p = 18). */
+var ION_MAX = 3;
+var SUBSHELLS_CAP = SUBSHELLS.reduce(function (s, sh) { return s + sh.cap; }, 0);
+
+function nElectronsIon(Z, ionQ) { return Z - ionQ; }
+
+function clampIon(Z, ionQ) {
+  var maxAdd  = Math.min(ION_MAX, SUBSHELLS_CAP - Z);   /* limite de capacité   */
+  var maxDrop = Math.min(ION_MAX, Z);                   /* pas d'électrons < 0  */
+  if (ionQ < -maxAdd) return -maxAdd;
+  if (ionQ > maxDrop) return maxDrop;
+  return ionQ;
+}
+
+/* Notation « exposant » de la charge d'un ion (nomenclature classique) :
+   '', '+', '2+', '3+' (cation) ou '-', '2-', '3-' (anion). */
+function ionExposant(ionQ) {
+  if (ionQ === 0) return '';
+  var n = Math.abs(ionQ);
+  return (n > 1 ? String(n) : '') + (ionQ > 0 ? '+' : '-');
 }
 
 /* Période (ligne du tableau) d'un élément */
@@ -81,5 +112,7 @@ var state = {
   eclate: false,      /* vue éclatée du noyau (cadre de comptage)      */
   charge: false,      /* vue éclatée protons/électrons (charge)        */
   compare: false,     /* zone de schéma coupée en deux (comparaison)   */
-  Zcmp: 18            /* élément comparé (argon par défaut)            */
+  Zcmp: 18,           /* élément comparé (argon par défaut)            */
+  ionQ: 0,            /* charge de l'ion sélectionné (0 = neutre)      */
+  ionQCmp: 0           /* charge de l'ion comparé (0 = neutre)          */
 };

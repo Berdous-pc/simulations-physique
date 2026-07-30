@@ -153,9 +153,40 @@ que pendant l'animation d'éclatement (et un `rAF` ponctuel pendant le drag).
 - Options : `toggleEmpty()` (sous-couches vides), `toggleLegend()` (légende).
 - Élément par défaut au chargement : oxygène (Z = 8), comparé à l'argon (Z = 18).
 
+## Ionisation (`state.ionQ` / `state.ionQCmp`)
+
+- **Données (`sim.js`)** : `getConfigForN(n)` calcule la configuration pour
+  un nombre d'électrons quelconque (`getConfig(Z)` en est le cas neutre).
+  `ION_MAX = 3` ; `clampIon(Z, ionQ)` borne la charge à ± ION_MAX et à la
+  capacité totale des sous-couches de la page (18, 1s→3p) — un anion ne
+  peut donc pas dépasser 18 électrons. `nElectronsIon(Z, ionQ)` = Z - ionQ.
+  `ionExposant(ionQ)` → notation classique (`'+'`, `'2+'`, `'-'`, `'2-'`…).
+- **Schéma (`draw.js`)** : `getShellsAffichees(Z, nE)` / `getElectronLayout(Z, nE)`
+  acceptent un nombre d'électrons distinct de Z (défaut = Z). `renderAtome()`
+  calcule `nE` à partir de `state.ionQ`/`state.ionQCmp` (selon `freezeKey`)
+  et l'utilise pour le schéma, la vue charge (`drawVueCharge`, colonne
+  électrons = nE) et le bandeau d'informations (`drawConfigLigne`, qui
+  préfixe aussi le symbole de la charge en exposant).
+- **Animation (`addIonFlight`/`_ionFlights`)** : jamais bloquante — chaque
+  clic ajoute (ou relance) un vol dans une liste par atome, sans attendre
+  les précédents ; des clics rapprochés font donc voler plusieurs électrons
+  en même temps. L'électron concerné est toujours celui de la sous-couche
+  la plus externe (dernier de l'ordre de remplissage à cet instant) ; il
+  file en ligne droite vers le haut hors du cadre (retrait) ou en arrive
+  symétriquement (ajout). Chaque vol suit une coordonnée `s ∈ [0,1]`
+  (0 = sur son cercle, 1 = hors cadre) et un sens `vel` (±1) ; un clic dans
+  le sens opposé sur le **même** slot (électron encore en vol) inverse
+  simplement `vel` depuis la position courante → demi-tour continu en vol,
+  sans saut. Indépendant de la vue charge : si celle-ci est déjà ouverte,
+  aucun vol n'est déclenché, la colonne d'électrons s'ajuste directement
+  (cf. `addElectron`/`removeElectron` dans `ui.js`).
+- **Panneau (`ui.js`)** : section « Ioniser », boutons `+ e⁻`/`− e⁻` par atome
+  (`'main'`/`'cmp'`, ce dernier visible seulement en mode Comparer), libellé
+  de charge (`ionLabel`), désactivation pendant toute animation en cours.
+  Réinitialisée à 0 par `selectElement()`/`setCompareZ()`.
+
 ## Extensions prévues (discutées avec l'auteur, non implémentées)
 
-- **Ioniser** : retirer/ajouter des électrons, affichage de l'ion formé.
 - **Test** : s'entraîner à écrire la configuration électronique et/ou prédire
   l'ion stable — reprendre la mécanique de `reaction/` (score, popup, 2 essais).
 - Deep-linking `#hash` (élément sélectionné, élément comparé).

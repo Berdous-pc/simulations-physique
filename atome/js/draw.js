@@ -69,6 +69,19 @@ var _chargeAnim = { running: false, dir: 1, t0: 0, dur: 0 };
    volée sans figeage. Indexé par slot de proton (0..Z-1), comme _freeze. */
 var _freezeCharge = { main: null, cmp: null };
 
+/* ── Animation d'ionisation (ajout/retrait d'électrons) ──
+   Plusieurs électrons peuvent voler en même temps (clics rapprochés :
+   chacun part/arrive à son propre slot, sans attendre les précédents) —
+   liste de « vols » par atome. Chaque vol suit une coordonnée s ∈ [0,1]
+   indépendante du sens (0 = sur son cercle de sous-couche, 1 = hors
+   cadre) ; `vel` = +1 (s croît : départ) ou -1 (s décroît : arrivée). Un
+   clic dans le sens opposé À UN VOL EN COURS SUR LE MÊME SLOT inverse
+   simplement `vel` et repart de la position courante — l'électron fait
+   demi-tour en vol au lieu de recommencer une nouvelle trajectoire. */
+var _ionFlights = { main: [], cmp: [] };
+var _ionLoopRunning = false;
+var ION_FLIGHT = 480;   /* ms — durée d'un aller simple complet (s : 0↔1) */
+
 /* Cadence de sortie : premiers nucléons lents, puis accélération */
 var NUC_G0 = 260, NUC_RATIO = 0.90, NUC_FLIGHT = 380;   /* ms */
 
@@ -297,9 +310,10 @@ function drawElectron(x, y, r, alpha) {
    les occupées + (option) les vides jusqu'à la période suivante.
    → [{ sub, count }] dans l'ordre de remplissage.
 ───────────────────────────────────────────────── */
-function getShellsAffichees(Z) {
+function getShellsAffichees(Z, nE) {
+  if (nE === undefined) nE = Z;
   var occ = {};
-  getConfig(Z).forEach(function (c) { occ[c.sub.id] = c.count; });
+  getConfigForN(nE).forEach(function (c) { occ[c.sub.id] = c.count; });
   var maxN = getMaxNAffiche(Z);
   var out = [];
   SUBSHELLS.forEach(function (s) {
@@ -398,14 +412,15 @@ function chargeProgress(idx, N) {
 /* Rangs entrelacés : proton de slot s sort au rang 2s, électron de slot s
    sort au rang 2s+1 — sur une échelle totale de 2Z rangs. */
 function chargeProgressP(slot, Z) { return chargeProgress(2 * slot, 2 * Z); }
-function chargeProgressE(slot, Z) { return chargeProgress(2 * slot + 1, 2 * Z); }
+function chargeProgressE(slot, nE) { return chargeProgress(2 * slot + 1, 2 * nE); }
 
 /* Position (en unités de rStep, indépendante du redimensionnement) des Z
    électrons d'un atome sur leurs cercles de sous-couches, dans l'ordre de
    remplissage (slot 0..Z-1) — même géométrie que le tracé normal des
    électrons dans renderAtome() (angle de départ décalé par sous-couche). */
-function getElectronLayout(Z) {
-  var shells = getShellsAffichees(Z);
+function getElectronLayout(Z, nE) {
+  if (nE === undefined) nE = Z;
+  var shells = getShellsAffichees(Z, nE);
   var radiiUnit = computeShellRadii(1);
   var list = [], slot = 0;
   shells.forEach(function (sh, k) {
@@ -429,14 +444,16 @@ function startChargeAnim(dir) {
     if (p.t === 'p') _freezeCharge.main[p.slot] = projectPt(p);
   });
 
-  var dur = nucTotalDur(2 * getElement(state.Z).Z);
+  var nEmain = nElectronsIon(getElement(state.Z).Z, state.ionQ);
+  var dur = Math.max(nucTotalDur(2 * getElement(state.Z).Z), nucTotalDur(2 * nEmain));
   if (state.compare) {
     var layoutCmp = getNucleusLayout(state.Zcmp);
     _freezeCharge.cmp = {};
     layoutCmp.pts.forEach(function (p) {
       if (p.t === 'p') _freezeCharge.cmp[p.slot] = projectPt(p);
     });
-    dur = Math.max(dur, nucTotalDur(2 * getElement(state.Zcmp).Z));
+    var nEcmp = nElectronsIon(getElement(state.Zcmp).Z, state.ionQCmp);
+    dur = Math.max(dur, nucTotalDur(2 * getElement(state.Zcmp).Z), nucTotalDur(2 * nEcmp));
   } else {
     _freezeCharge.cmp = null;
   }
@@ -462,6 +479,76 @@ function resetChargeVue() {
   _chargeAnim.running = false;
   _freezeCharge = { main: null, cmp: null };
   state.charge = false;
+}
+
+/* ─────────────────────────────────────────────────
+   Ajoute (ou relance) le vol d'un électron. `which` = 'main' ou 'cmp'.
+   `oldNE`/`newNE` = nombre d'électrons avant/après le clic — l'électron
+   concerné est toujours le dernier de l'ordre de remplissage (sous-couche
+   la plus externe), cohérent avec la règle « la plus externe part/arrive
+   en premier ». Appelée par ui.js APRÈS avoir mis à jour state.ionQ(Cmp),
+   jamais bloquante : plusieurs vols peuvent coexister sur un même atome.
+───────────────────────────────────────────────── */
+function addIonFlight(which, Z, oldNE, newNE) {
+  var vel = newNE > oldNE ? -1 : 1;             /* -1 : arrivée (s décroît), 1 : départ (s croît) */
+  var nE = (vel === 1) ? oldNE : newNE;         /* électron concerné = le dernier de cette config */
+  var layout = getElectronLayout(Z, nE);
+  var e = layout[layout.length - 1];
+  if (!e) return;
+
+  var now = performance.now();
+  var list = _ionFlights[which];
+  var existing = null;
+  for (var i = 0; i < list.length; i++) {
+    if (list[i].slot === e.slot) { existing = list[i]; break; }
+  }
+  if (existing) {
+    /* Même électron déjà en vol dans l'autre sens : demi-tour immédiat
+       depuis sa position actuelle (pas de saut, pas de redémarrage). */
+    var s = Math.max(0, Math.min(1, existing.s0 + existing.vel * (now - existing.t0) / ION_FLIGHT));
+    existing.s0 = s;
+    existing.t0 = now;
+    existing.vel = vel;
+    existing.Runit = e.Runit;
+    existing.angle = e.angle;
+  } else {
+    list.push({ slot: e.slot, Runit: e.Runit, angle: e.angle,
+                vel: vel, s0: (vel === 1) ? 0 : 1, t0: now });
+  }
+
+  if (!_ionLoopRunning) { _ionLoopRunning = true; requestAnimationFrame(ionTick); }
+}
+
+/* Retire de la liste les vols arrivés à leur terme (s = 0 pour une
+   arrivée, s = 1 pour un départ), en fixant `_s` (position figée pour ce
+   frame) sur les vols encore actifs — évite un décalage entre le test de
+   fin et le tracé au même instant. */
+function pruneIonFlights(which) {
+  var now = performance.now();
+  _ionFlights[which] = _ionFlights[which].filter(function (f) {
+    var s = Math.max(0, Math.min(1, f.s0 + f.vel * (now - f.t0) / ION_FLIGHT));
+    if (f.vel === 1 && s >= 1) return false;    /* départ terminé : électron sorti du cadre */
+    if (f.vel === -1 && s <= 0) return false;   /* arrivée terminée : rejoint le tracé normal */
+    f._s = s;
+    return true;
+  });
+}
+
+function ionTick() {
+  pruneIonFlights('main');
+  pruneIonFlights('cmp');
+  render();
+  if (_ionFlights.main.length || _ionFlights.cmp.length) {
+    requestAnimationFrame(ionTick);
+  } else {
+    _ionLoopRunning = false;
+  }
+}
+
+/* Réinitialisation immédiate (changement d'élément) */
+function resetIonVue() {
+  _ionFlights = { main: [], cmp: [] };
+  _ionLoopRunning = false;
 }
 
 /* ─────────────────────────────────────────────────
@@ -639,7 +726,10 @@ function renderAtome(Z, x0, w, freezeKey) {
   _vw = w;
 
   var el = getElement(Z);
-  var shells = getShellsAffichees(Z);
+  var ionQ = (freezeKey === 'cmp') ? state.ionQCmp : state.ionQ;
+  var nE = nElectronsIon(Z, ionQ);
+  var shells = getShellsAffichees(Z, nE);
+  var ionFlights = _ionFlights[freezeKey];
 
   /* Une bande est réservée en bas de la zone (de chaque demi-zone en
      comparaison) pour le rappel Z/A et la configuration électronique. */
@@ -719,8 +809,14 @@ function renderAtome(Z, x0, w, freezeKey) {
       var start = -Math.PI / 2 + k * 0.7;
       for (var i = 0; i < sh.count; i++) {
         var a = start + i * 2 * Math.PI / sh.count;
-        var progE = animCharge ? chargeProgressE(eSlot, el.Z) : 0;
+        var thisSlot = eSlot;
+        var progE = animCharge ? chargeProgressE(eSlot, nE) : 0;
         eSlot++;
+        /* L'électron en cours d'animation d'ionisation (arrivée) n'est pas
+           encore dessiné à sa place normale — il apparaît via l'overlay
+           ci-dessous, en vol. */
+        var arriving = ionFlights.some(function (f) { return f.vel === -1 && f.slot === thisSlot; });
+        if (arriving) continue;
         drawElectron(cx + R * Math.cos(a), cy + R * Math.sin(a), re, progE > 0 ? 0.20 : 1);
       }
     }
@@ -744,10 +840,23 @@ function renderAtome(Z, x0, w, freezeKey) {
   if (anim) drawVueEclatee(el, layout, cx, cy, rb, minDim, _freeze[freezeKey]);
 
   /* ── Vue charge : cadre protons/électrons + particules en vol ── */
-  if (animCharge) drawVueCharge(el, layout, cx, cy, rb, minDim, rStep, _freezeCharge[freezeKey]);
+  if (animCharge) drawVueCharge(el, layout, cx, cy, rb, minDim, rStep, _freezeCharge[freezeKey], nE);
+
+  /* ── Vols d'ionisation en cours : chaque électron file tout droit vers
+     le haut hors du cadre (départ) ou en arrive symétriquement (arrivée).
+     `f._s` (figé par pruneIonFlights()) ∈ [0,1] : 0 = sur son cercle de
+     sous-couche, 1 = hors cadre — même formule quel que soit le sens en
+     cours, ce qui permet un demi-tour continu sans discontinuité. ── */
+  var eyOut = -re * 4;   /* au-dessus du canvas */
+  ionFlights.forEach(function (f) {
+    var ex = cx + f.Runit * rStep * Math.cos(f.angle);
+    var eyShell = cy + f.Runit * rStep * Math.sin(f.angle);
+    var ey = eyShell + (eyOut - eyShell) * easeInOut(f._s);
+    drawElectron(ex, ey, re);
+  });
 
   /* ── Rappel Z/A + configuration sous le schéma ── */
-  drawInfosAtome(el, cx, infoH);
+  drawInfosAtome(el, cx, infoH, nE, ionQ);
 }
 
 /* ─────────────────────────────────────────────────
@@ -755,7 +864,9 @@ function renderAtome(Z, x0, w, freezeKey) {
    comparaison) : Z et A, puis la configuration électronique
    aux couleurs des sous-couches, préfixée du symbole.
 ───────────────────────────────────────────────── */
-function drawInfosAtome(el, cx, infoH) {
+function drawInfosAtome(el, cx, infoH, nE, ionQ) {
+  if (nE === undefined) nE = el.Z;
+  if (ionQ === undefined) ionQ = 0;
   var fs = Math.max(11, Math.min(_vw * 0.05, infoH * 0.32));
   var yCfg = _h - infoH * 0.20;
   var yZA  = yCfg - fs * 1.75;
@@ -766,7 +877,7 @@ function drawInfosAtome(el, cx, infoH) {
   _ctx.fillStyle = '#7a8a96';
   _ctx.fillText('Z = ' + el.Z + '   A = ' + el.A, cx, yZA);
 
-  drawConfigLigne(el, cx, yCfg, fs);
+  drawConfigLigne(el, cx, yCfg, fs, nE, ionQ);
 }
 
 /* Configuration électronique sur une ligne, centrée en cx, précédée du
@@ -775,8 +886,10 @@ function drawInfosAtome(el, cx, infoH) {
    « sous-couches vides » est active (state.showEmpty), les sous-couches
    suivantes jusqu'à la période suivante sont ajoutées entre parenthèses,
    atténuées — même règle que getShellsAffichees()/getMaxNAffiche(). */
-function drawConfigLigne(el, cx, y, fs) {
-  var conf = getConfig(el.Z);
+function drawConfigLigne(el, cx, y, fs, nE, ionQ) {
+  if (nE === undefined) nE = el.Z;
+  if (ionQ === undefined) ionQ = 0;
+  var conf = getConfigForN(nE);
   var fsSup = fs * 0.68;
   var space = fs * 0.5;
 
@@ -788,9 +901,19 @@ function drawConfigLigne(el, cx, y, fs) {
     vides = SUBSHELLS.filter(function (s) { return !occ[s.id] && s.n <= maxN; });
   }
 
+  /* Symbole suivi, pour un ion, de la charge en exposant (nomenclature
+     classique, ex. « Na⁺ », « O²⁻ ») avant le « : ». */
+  var chg = ionExposant(ionQ);
   _ctx.font = '700 ' + fs + 'px monospace';
-  var symTxt = el.sym + ' :';
-  var symW = _ctx.measureText(symTxt).width;
+  var symW = _ctx.measureText(el.sym).width;
+  var chgW = 0;
+  if (chg) {
+    _ctx.font = '700 ' + fsSup + 'px monospace';
+    chgW = _ctx.measureText(chg).width;
+  }
+  _ctx.font = '700 ' + fs + 'px monospace';
+  var colonW = _ctx.measureText(' :').width;
+  var symTxt = el.sym;
 
   function termWidth(id, count) {
     _ctx.font = '700 ' + fs + 'px monospace';
@@ -814,7 +937,7 @@ function drawConfigLigne(el, cx, y, fs) {
     });
   }
 
-  var total = symW + space +
+  var total = symW + chgW + colonW + space +
               parts.reduce(function (s, p) { return s + p.w; }, 0) +
               space * Math.max(0, parts.length - 1);
   if (vides.length) {
@@ -828,7 +951,15 @@ function drawConfigLigne(el, cx, y, fs) {
   _ctx.font = '700 ' + fs + 'px monospace';
   _ctx.fillStyle = '#2c3e50';
   _ctx.fillText(symTxt, x, y);
-  x += symW + space;
+  x += symW;
+  if (chg) {
+    _ctx.font = '700 ' + fsSup + 'px monospace';
+    _ctx.fillText(chg, x, y - fs * 0.42);
+    x += chgW;
+  }
+  _ctx.font = '700 ' + fs + 'px monospace';
+  _ctx.fillText(' :', x, y);
+  x += colonW + space;
 
   function drawTerm(p) {
     _ctx.globalAlpha = p.alpha;
@@ -918,9 +1049,10 @@ function drawVueEclatee(el, layout, cx, cy, rb, minDim, freeze) {
    éclatée du noyau, colonne 0 = protons (rouge), colonne 1 = électrons
    (bleu). Dessinée APRÈS les sous-couches, comme drawVueEclatee().
 ───────────────────────────────────────────────── */
-function drawVueCharge(el, layout, cx, cy, rb, minDim, rStep, freeze) {
+function drawVueCharge(el, layout, cx, cy, rb, minDim, rStep, freeze, nE) {
   var Z = el.Z;
-  var elFake = { Z: Z, A: 2 * Z };
+  if (nE === undefined) nE = Z;
+  var elFake = { Z: Z, A: Z + nE };
   var g = getFrameGeom(elFake, rb, minDim, cx);
   drawCountFrame(g);
 
@@ -946,8 +1078,8 @@ function drawVueCharge(el, layout, cx, cy, rb, minDim, rStep, freeze) {
   });
 
   /* Électrons : partent de leur position fixe sur leur cercle de sous-couche */
-  getElectronLayout(Z).forEach(function (el2) {
-    var prog = chargeProgressE(el2.slot, Z);
+  getElectronLayout(Z, nE).forEach(function (el2) {
+    var prog = chargeProgressE(el2.slot, nE);
     if (prog <= 0) return;
     var dest = slotPos(g, el2.slot, 1);
     if (prog >= 1) { drawElectron(dest.x, dest.y, g.rbF); return; }
