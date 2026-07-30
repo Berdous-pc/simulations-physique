@@ -16,21 +16,61 @@
 ───────────────────────────────────────────────── */
 
 /* Colonne (1-18) d'un élément dans le tableau périodique classique */
-function colonneTP(Z) {
+function colonneTPReelle(Z) {
   if (Z === 1) return 1;
   if (Z === 2) return 18;
   var rang = (Z <= 10) ? Z - 2 : Z - 10;   /* rang dans sa période      */
   return rang <= 2 ? rang : rang + 10;     /* blocs s (col 1-2) et p (13-18) */
 }
 
+/* Colonne CSS (grille resserrée) : les colonnes 1-2 et 13-18 gardent leur
+   largeur, les colonnes 3-12 (bloc d — absent de H à Ar) sont recollées en
+   une seule bande étroite hachurée, repérée « 3-12 ». Décalage de +1 pour
+   la colonne d'étiquettes de période à gauche. */
+function colonneTP(Z) {
+  var c = colonneTPReelle(Z);
+  return c <= 2 ? c + 1 : c - 8;
+}
+
+/* Positions CSS des en-têtes de colonnes affichées (avec la bande 3-12) */
+var TP_COL_HEADERS = [1, 2, '3-12', 13, 14, 15, 16, 17, 18];
+
 function buildTP() {
   var grid = document.getElementById('tp-grid');
+
+  /* Étiquettes de colonnes (rangée d'en-tête) */
+  TP_COL_HEADERS.forEach(function (c, i) {
+    var cell = document.createElement('div');
+    cell.className = (c === '3-12') ? 'tp-colnum tp-colnum-gap' : 'tp-colnum';
+    cell.textContent = c;
+    cell.style.gridRow = 1;
+    cell.style.gridColumn = i + 2;
+    grid.appendChild(cell);
+  });
+
+  /* Bande hachurée signalant le recollement artificiel des colonnes 3-12 */
+  var gapStrip = document.createElement('div');
+  gapStrip.className = 'tp-gap-strip';
+  gapStrip.style.gridRow = '2 / 5';
+  gapStrip.style.gridColumn = 4;
+  grid.appendChild(gapStrip);
+
+  /* Étiquettes de périodes (colonne d'en-tête) */
+  for (var p = 1; p <= 3; p++) {
+    var rcell = document.createElement('div');
+    rcell.className = 'tp-rownum';
+    rcell.textContent = p;
+    rcell.style.gridRow = p + 1;
+    rcell.style.gridColumn = 1;
+    grid.appendChild(rcell);
+  }
+
   ELEMENTS.forEach(function (el) {
     var btn = document.createElement('button');
     btn.className = 'tp-cell';
     btn.id = 'tp-cell-' + el.Z;
     btn.title = el.nom;
-    btn.style.gridRow = getPeriode(el.Z);
+    btn.style.gridRow = getPeriode(el.Z) + 1;
     btn.style.gridColumn = colonneTP(el.Z);
     btn.innerHTML =
       '<span class="tp-a">' + el.A + '</span>' +
@@ -156,9 +196,15 @@ function toggleHint() {
 
 /* ─────────────────────────────────────────────────
    Redimensionnement (anti-rebond requestAnimationFrame)
-───────────────────────────────────────────────── */
+   ResizeObserver sur le wrapper du canvas plutôt que
+   window.resize : capte aussi les changements de taille
+   qui ne viennent pas d'un resize de fenêtre (polices qui
+   finissent de charger, mise en page qui se stabilise…),
+   sans quoi le canvas garde sa résolution interne d'origine
+   alors que sa taille CSS a changé → rendu étiré/déformé
+   jusqu'au prochain resize de fenêtre. */
 var _resizePending = false;
-window.addEventListener('resize', function () {
+function scheduleResize() {
   if (_resizePending) return;
   _resizePending = true;
   requestAnimationFrame(function () {
@@ -166,12 +212,18 @@ window.addEventListener('resize', function () {
     resizeAtomCanvas();
     render();
   });
-});
+}
+window.addEventListener('resize', scheduleResize);
+new ResizeObserver(scheduleResize).observe(document.getElementById('atom-canvas-wrap'));
 
 /* ─────────────────────────────────────────────────
    Initialisation
 ───────────────────────────────────────────────── */
 initDraw();
 buildTP();
-resizeAtomCanvas();
+/* Pas d'appel synchrone à resizeAtomCanvas() ici : le ResizeObserver
+   ci-dessus se déclenche de lui-même dès l'observation avec la taille
+   déjà stabilisée, et fait le premier dessin correct directement — on
+   évite ainsi un premier rendu distordu (canvas mesuré trop tôt) suivi
+   d'une correction visible juste après. */
 selectElement(state.Z);

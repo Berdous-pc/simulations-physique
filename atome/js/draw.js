@@ -246,11 +246,6 @@ function drawNucleon(x, y, r, type, shade, alpha) {
 ───────────────────────────────────────────────── */
 function drawElectron(x, y, r) {
   _ctx.beginPath();
-  _ctx.arc(x, y, r * 1.35, 0, 2 * Math.PI);
-  _ctx.fillStyle = '#fdf8f0';
-  _ctx.fill();
-
-  _ctx.beginPath();
   _ctx.arc(x, y, r, 0, 2 * Math.PI);
   _ctx.fillStyle = '#2a6aaa';
   _ctx.fill();
@@ -378,6 +373,73 @@ function slotPos(g, idx, yTop) {
 }
 
 /* ─────────────────────────────────────────────────
+   Rayons des cercles de sous-couches — les sous-couches
+   d'une même couche (n) sont resserrées entre elles ; l'écart
+   est plus grand entre deux couches différentes. Dépend
+   uniquement de rStep (donc identique pour tous les atomes).
+───────────────────────────────────────────────── */
+var SHELL_STEP_INNER = 0.45;   /* même couche (n identique)   */
+var SHELL_STEP_OUTER = 1.35;   /* changement de couche        */
+
+function computeShellRadii(rStep) {
+  var radii = [];
+  var r = 0;
+  for (var i = 0; i < SUBSHELLS.length; i++) {
+    var sameGroup = i > 0 && SUBSHELLS[i].n === SUBSHELLS[i - 1].n;
+    r += rStep * (sameGroup ? SHELL_STEP_INNER : SHELL_STEP_OUTER);
+    radii.push(r);
+  }
+  return radii;
+}
+
+/* Mélange de couleurs hex (moyenne RGB) pour le halo d'une couche
+   regroupant plusieurs sous-couches de couleurs différentes. */
+function blendHexColors(colors) {
+  var r = 0, g = 0, b = 0;
+  colors.forEach(function (c) {
+    r += parseInt(c.slice(1, 3), 16);
+    g += parseInt(c.slice(3, 5), 16);
+    b += parseInt(c.slice(5, 7), 16);
+  });
+  var n = colors.length;
+  r = Math.round(r / n); g = Math.round(g / n); b = Math.round(b / n);
+  return 'rgb(' + r + ',' + g + ',' + b + ')';
+}
+
+/* Halos diffus englobant chaque couche (regroupe les sous-couches de
+   même n), dessinés avant les cercles pour rester en arrière-plan. */
+function drawShellHalos(cx, cy, shells, radii, rStep) {
+  var groups = {};
+  var order = [];
+  shells.forEach(function (sh) {
+    var idx = SUBSHELLS.indexOf(sh.sub);
+    var R = radii[idx];
+    if (!groups[sh.sub.n]) { groups[sh.sub.n] = { min: R, max: R, colors: [] }; order.push(sh.sub.n); }
+    var grp = groups[sh.sub.n];
+    grp.min = Math.min(grp.min, R);
+    grp.max = Math.max(grp.max, R);
+    grp.colors.push(sh.sub.color);
+  });
+
+  var pad = rStep * 0.32;
+  _ctx.save();
+  order.forEach(function (n) {
+    var grp = groups[n];
+    var inner = Math.max(0, grp.min - pad);
+    var outer = grp.max + pad;
+    var col = blendHexColors(grp.colors);
+    _ctx.filter = 'blur(6px)';
+    _ctx.globalAlpha = 0.16;
+    _ctx.fillStyle = col;
+    _ctx.beginPath();
+    _ctx.arc(cx, cy, outer, 0, 2 * Math.PI);
+    _ctx.arc(cx, cy, inner, 0, 2 * Math.PI, true);
+    _ctx.fill('evenodd');
+  });
+  _ctx.restore();
+}
+
+/* ─────────────────────────────────────────────────
    RENDER — dessin complet du schéma
 ───────────────────────────────────────────────── */
 
@@ -418,7 +480,7 @@ function render() {
   var layout = getNucleusLayout(state.Z);
   var A = layout.pts.length;
   var RU = layout.radiusUnits;
-  var rb = rStep * 0.075;
+  var rb = rStep * 0.075 * 1.25 * 1.5;
   rb *= Math.min(1, (rStep * 0.68) / (RU * rb));
 
   var anim = _nucAnim.running || state.eclate;
@@ -440,8 +502,11 @@ function render() {
   });
 
   /* ── Cercles des sous-couches + électrons + étiquettes ── */
+  var shellRadii = computeShellRadii(rStep);
+  drawShellHalos(cx, cy, shells, shellRadii, rStep);
+
   shells.forEach(function (sh, k) {
-    var R = rStep * (k + 1);
+    var R = shellRadii[SUBSHELLS.indexOf(sh.sub)];
     var col = sh.sub.color;
 
     /* cercle : tirets pour s, pointillés pour p (comme la légende) */
@@ -464,16 +529,16 @@ function render() {
       }
     }
 
-    /* étiquette de la sous-couche, posée sur le cercle avec halo fond */
+    /* étiquette de la sous-couche : décalée par rapport au cercle pour ne
+       pas se superposer aux pointillés — vers l'intérieur pour s, vers
+       l'extérieur pour p. */
     var la = LABEL_ANGLES[k % LABEL_ANGLES.length] * Math.PI / 180;
-    var lx = cx + R * Math.cos(la);
-    var ly = cy + R * Math.sin(la);
+    var Rlab = R + (sh.sub.l === 's' ? -1 : 1) * fs * 0.75;
+    var lx = cx + Rlab * Math.cos(la);
+    var ly = cy + Rlab * Math.sin(la);
     _ctx.font = '700 ' + fs + 'px monospace';
     _ctx.textAlign = 'center';
     _ctx.textBaseline = 'middle';
-    _ctx.lineWidth = fs * 0.45;
-    _ctx.strokeStyle = '#fdf8f0';
-    _ctx.strokeText(sh.sub.id, lx, ly);
     _ctx.fillStyle = col;
     _ctx.fillText(sh.sub.id, lx, ly);
     _ctx.globalAlpha = 1;
