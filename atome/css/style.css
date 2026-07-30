@@ -1,0 +1,462 @@
+/* ══════════════════════════════════════════════════
+   Simulation pédagogique — Physique-Chimie Lycée
+   Auteur  : Mathieu Berdous
+   Licence : CC BY-NC 4.0 — https://creativecommons.org/licenses/by-nc/4.0/
+══════════════════════════════════════════════════ */
+
+/* ── Reset & base ─────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  white-space: nowrap;
+  border: 0;
+}
+
+body {
+  font-family: 'Segoe UI', Arial, sans-serif;
+  background: #e8e4de;
+  color: #2c3e50;
+  /* dvh : suit la hauteur réellement visible (barres dynamiques du navigateur) ;
+     vh reste le repli pour les navigateurs sans support dvh. */
+  height: 100vh;
+  max-height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* ── Grille principale ────────────────────────── */
+main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr clamp(200px, 22vw, 300px);
+  min-height: 0;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+/* ══════════════════════════════════════════════════
+   COLONNE GAUCHE — schéma de l'atome + tableau périodique
+══════════════════════════════════════════════════ */
+
+#left-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  border-right: 1px solid #c8c0b4;
+  background: #fdf8f0;
+}
+
+/* ── Zone schéma (canvas + légendes) ──────────── */
+#atom-zone {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#atom-canvas-wrap {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+#atom-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* ── Légende (neutron / proton / électron / s / p) ── */
+#atom-legend {
+  position: absolute;
+  top: clamp(8px, 1.2vh, 14px);
+  right: clamp(8px, 1vw, 16px);
+  display: flex;
+  flex-direction: column;
+  gap: clamp(3px, 0.5vh, 6px);
+  padding: clamp(6px, 0.8vw, 10px) clamp(8px, 1vw, 12px);
+  background: rgba(255,255,255,0.72);
+  border: 1px solid rgba(200,192,180,0.7);
+  border-radius: 6px;
+  pointer-events: none;
+}
+
+.leg-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: clamp(10px, 1vw, 13px);
+  color: #2c3e50;
+  white-space: nowrap;
+}
+
+.leg-dot {
+  width:  clamp(10px, 1.1vw, 14px);
+  height: clamp(10px, 1.1vw, 14px);
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.leg-neutron  { background: #fff;     border: 1.5px solid #b0aca4; }
+.leg-proton   { background: #c53222;  border: 1.5px solid #8a1e10; }
+.leg-electron {
+  background: #2a6aaa;
+  border: 1.5px solid #1a4a7a;
+  color: #fff;
+  font-size: clamp(8px, 0.8vw, 11px);
+  font-weight: 700;
+  line-height: 1;
+}
+
+.leg-line {
+  width: clamp(20px, 2.2vw, 30px);
+  flex-shrink: 0;
+  border-top-width: 2px;
+  border-top-color: #5a6a78;
+}
+.leg-s { border-top-style: dashed; }
+.leg-p { border-top-style: dotted; }
+
+/* ── Légendes texte sous le schéma ────────────── */
+#atom-caption {
+  flex-shrink: 0;
+  text-align: center;
+  font-size: clamp(13px, 1.6vw, 19px);
+  color: #2c3e50;
+  padding: 0 10px;
+}
+
+#config-line {
+  flex-shrink: 0;
+  text-align: center;
+  font-size: clamp(17px, 2.3vw, 30px);
+  font-weight: 700;
+  padding: clamp(2px, 0.5vh, 6px) 10px clamp(6px, 1.2vh, 14px);
+  font-variant-numeric: tabular-nums;
+}
+
+.cfg-sym   { color: #2c3e50; }
+.cfg-term  { white-space: nowrap; }
+.cfg-term sup { font-size: 0.62em; }
+.cfg-vide  { opacity: 0.55; }
+.cfg-paren { color: #7a8a96; font-weight: 600; }
+
+/* ══════════════════════════════════════════════════
+   TABLEAU PÉRIODIQUE RÉDUIT (bas de la zone d'animation)
+══════════════════════════════════════════════════ */
+
+#tp-zone {
+  flex: 0 0 auto;
+  border-top: 1.5px solid #c8c0b4;
+  padding: clamp(5px, 0.8vh, 10px) clamp(6px, 0.8vw, 12px);
+}
+
+#tp-grid {
+  display: grid;
+  grid-template-columns: repeat(18, 1fr);
+  grid-auto-rows: clamp(34px, 9.5vh, 84px);
+  gap: clamp(2px, 0.35vw, 5px);
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.tp-cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #faf9f6;
+  border: 1.5px solid #c8c0b4;
+  border-radius: 5px;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 0;
+  transition: background 0.12s, border-color 0.12s, transform 0.1s;
+}
+.tp-cell:hover  { background: #eef4fa; border-color: #2a6aaa; }
+.tp-cell:active { transform: scale(0.95); }
+
+.tp-sym {
+  font-size: clamp(12px, 3.1vh, 26px);
+  font-weight: 700;
+  color: #2c3e50;
+  line-height: 1;
+}
+
+.tp-a, .tp-z {
+  position: absolute;
+  left: clamp(2px, 0.3vw, 5px);
+  font-size: clamp(8px, 1.55vh, 13px);
+  font-weight: 600;
+  color: #7a8a96;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.tp-a { top:    clamp(2px, 0.45vh, 5px); }
+.tp-z { bottom: clamp(2px, 0.45vh, 5px); }
+
+.tp-cell.selected { background: #2a6aaa; border-color: #1a4a7a; }
+.tp-cell.selected .tp-sym { color: #fff; }
+.tp-cell.selected .tp-a,
+.tp-cell.selected .tp-z   { color: rgba(255,255,255,0.82); }
+
+/* ══════════════════════════════════════════════════
+   PANNEAU DROIT
+══════════════════════════════════════════════════ */
+
+#panel {
+  background: #e8e4de;
+  border-left: 1.5px solid #c8c0b4;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  font-size: clamp(11px, 1.1vw, 14px);
+  overflow: hidden;
+}
+
+/* ── Corps scrollable ────────────────────────── */
+#panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: clamp(7px, 0.9vw, 12px) clamp(7px, 0.9vw, 11px);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.panel-section { margin-bottom: 8px; }
+
+.section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #7a8a96;
+  margin-bottom: 7px;
+}
+
+.sep {
+  border: none;
+  border-top: 1px solid #c8c0b4;
+  margin: 7px 0;
+}
+
+/* ── Boutons ─────────────────────────────────── */
+.btn {
+  width: 100%;
+  border: none;
+  border-radius: 6px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 0.1s, background 0.15s;
+}
+.btn:active { transform: scale(0.97); }
+
+.btn-primary {
+  background: #2a6aaa;
+  color: #fff;
+  font-size: clamp(13px, 1.3vw, 16px);
+  padding: 11px 6px;
+}
+.btn-primary:hover { background: #1f5588; }
+.btn-primary:disabled {
+  background: #a0b8c8;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ── Boutons de mode (toggle) ────────────────── */
+.btn-toggle-one {
+  width: 100%;
+  background: #ece8e0;
+  color: #5a6a78;
+  font-size: clamp(11px, 1.1vw, 14px);
+  padding: 7px 6px;
+  border: 1.5px solid #c8c0b4;
+  border-radius: 6px;
+  font-family: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: center;
+  transition: transform 0.1s, background 0.15s;
+}
+.btn-toggle-one:hover { background: #dedad2; }
+.btn-toggle-one:active { transform: scale(0.97); }
+.btn-toggle-one.active {
+  background: #fde8c8;
+  color: #7a3a10;
+  border-color: #d0a060;
+}
+.btn-toggle-one:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+.btn-toggle-one:disabled:hover { background: #ece8e0; }
+
+/* Groupe de boutons côte à côte */
+.btn-group {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.btn-group .btn-toggle-one {
+  flex: 1;
+  padding: 7px 4px;
+  font-size: clamp(10px, 1vw, 13px);
+}
+
+/* ── Cases à cocher ──────────────────────────── */
+.chk-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: clamp(10px, 0.9vw, 12px);
+  color: #4a5a68;
+  cursor: pointer;
+  line-height: 1.3;
+  margin-bottom: 6px;
+}
+.chk-label input[type="checkbox"] {
+  margin: 0;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+/* ── Afficheurs ─────────────────────────────── */
+.readout {
+  background: #fff;
+  border: 1px solid #c8c0b4;
+  border-radius: 6px;
+  padding: 6px 9px;
+  margin-bottom: 7px;
+}
+
+.ro-nom {
+  font-size: clamp(13px, 1.3vw, 17px);
+  font-weight: 700;
+  color: #2c3e50;
+  margin-bottom: 5px;
+}
+.ro-nom sup, .ro-nom sub {
+  font-size: 0.68em;
+  font-variant-numeric: tabular-nums;
+}
+
+.ro-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 8px;
+}
+
+.ro-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.ro-item-label {
+  font-size: clamp(9px, 0.85vw, 11px);
+  color: #7a8a96;
+}
+
+.ro-item-value {
+  font-size: clamp(12px, 1.2vw, 15px);
+  font-weight: 700;
+  color: #2a5080;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Bandeau informations ───────────────────── */
+.panel-hint {
+  flex-shrink: 0;
+  color: #5a6a78;
+  line-height: 1.5;
+  background: #fff;
+  border: 1.5px solid #b0a898;
+  /* Pas de bordure gauche propre : #panel a déjà la sienne (border-left,
+     1.5px) sur ce bord. Avec la largeur de #panel en clamp() (donc
+     fractionnaire en px), deux bordures superposées à cet endroit
+     arrondissent chacune de leur côté et laissent un décalage d'~1px
+     entre elles — en confiant ce bord à #panel seul, une seule bordure
+     le trace, sans place pour ce décalage. */
+  border-left: none;
+  overflow: hidden;
+}
+
+.panel-hint-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+}
+
+.panel-hint-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #7a8a96;
+  margin-left: auto;
+  margin-right: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panel-hint-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: #7a8a96;
+  padding: 0 2px;
+  line-height: 1;
+  transition: transform 0.2s;
+}
+.panel-hint-toggle:hover { color: #2a6aaa; }
+
+.panel-hint-menu-btn {
+  background: #f0f4f7;
+  border: 1px solid #c8d4dc;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  color: #4a5a68;
+  padding: 4px 9px;
+  line-height: 1.2;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.panel-hint-menu-btn:hover { background: #dde6ec; color: #2a6aaa; }
+
+.panel-hint-body {
+  font-size: clamp(11px, 1.1vw, 14px);
+  padding: 0 10px 8px;
+  overflow: hidden;
+  transition: max-height 0.25s ease, padding 0.25s ease;
+  max-height: 250px;
+}
+
+.panel-hint.collapsed .panel-hint-body {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.panel-hint:not(.collapsed) .panel-hint-toggle { transform: rotate(180deg); }

@@ -1,0 +1,177 @@
+'use strict';
+// ═══════════════════════════════════════════════════
+//  Simulation pédagogique — Physique-Chimie Lycée
+//  Auteur  : Mathieu Berdous
+//  Licence : CC BY-NC 4.0 — https://creativecommons.org/licenses/by-nc/4.0/
+// ═══════════════════════════════════════════════════
+
+/* ══════════════════════════════════════════════════
+   UI.JS — Tableau périodique cliquable, panneau de
+   contrôle, légendes HTML, redimensionnement, init.
+   (chargé en dernier — cf. index.html)
+══════════════════════════════════════════════════ */
+
+/* ─────────────────────────────────────────────────
+   Tableau périodique réduit (3 premières lignes)
+───────────────────────────────────────────────── */
+
+/* Colonne (1-18) d'un élément dans le tableau périodique classique */
+function colonneTP(Z) {
+  if (Z === 1) return 1;
+  if (Z === 2) return 18;
+  var rang = (Z <= 10) ? Z - 2 : Z - 10;   /* rang dans sa période      */
+  return rang <= 2 ? rang : rang + 10;     /* blocs s (col 1-2) et p (13-18) */
+}
+
+function buildTP() {
+  var grid = document.getElementById('tp-grid');
+  ELEMENTS.forEach(function (el) {
+    var btn = document.createElement('button');
+    btn.className = 'tp-cell';
+    btn.id = 'tp-cell-' + el.Z;
+    btn.title = el.nom;
+    btn.style.gridRow = getPeriode(el.Z);
+    btn.style.gridColumn = colonneTP(el.Z);
+    btn.innerHTML =
+      '<span class="tp-a">' + el.A + '</span>' +
+      '<span class="tp-z">' + el.Z + '</span>' +
+      '<span class="tp-sym">' + el.sym + '</span>';
+    btn.onclick = function () { selectElement(el.Z); };
+    grid.appendChild(btn);
+  });
+}
+
+/* ─────────────────────────────────────────────────
+   Sélection d'un élément
+───────────────────────────────────────────────── */
+function selectElement(Z) {
+  state.Z = Z;
+  /* Changement d'élément : on revient à la vue assemblée du noyau */
+  resetNucVue();
+  majBtnEclate();
+  var cells = document.querySelectorAll('.tp-cell');
+  for (var i = 0; i < cells.length; i++) cells[i].classList.remove('selected');
+  var cell = document.getElementById('tp-cell-' + Z);
+  if (cell) cell.classList.add('selected');
+  render();
+  majInfos();
+}
+
+/* ─────────────────────────────────────────────────
+   Vue éclatée du noyau
+───────────────────────────────────────────────── */
+function toggleEclate() {
+  state.eclate = !state.eclate;
+  startNucAnim(state.eclate ? 1 : -1);
+  majBtnEclate();   /* après startNucAnim : désactive le bouton pendant l'anim */
+}
+
+function majBtnEclate() {
+  var btn = document.getElementById('btn-eclater');
+  btn.textContent = state.eclate ? '↺ Rassembler le noyau' : '💥 Éclater le noyau';
+  /* Désactivé pendant l'animation (réactivé par onNucAnimEnd) */
+  btn.disabled = _nucAnim.running;
+}
+
+/* Hook appelé par draw.js à la fin de l'animation d'éclatement */
+function onNucAnimEnd() {
+  majBtnEclate();
+}
+
+/* ─────────────────────────────────────────────────
+   Légende du schéma, configuration écrite, panneau
+───────────────────────────────────────────────── */
+
+/* Exposant HTML d'un nombre d'électrons */
+function supHTML(n) { return '<sup>' + n + '</sup>'; }
+
+/* Configuration électronique colorée (ex. : O : 1s² 2s² 2p⁴ (3s⁰ 3p⁰)) */
+function configHTML() {
+  var el = getElement(state.Z);
+  var conf = getConfig(state.Z);
+  var occ = {};
+  conf.forEach(function (c) { occ[c.sub.id] = true; });
+
+  var html = '<span class="cfg-sym">' + el.sym + '&nbsp;:</span> ';
+  conf.forEach(function (c) {
+    html += '<span class="cfg-term" style="color:' + c.sub.color + '">' +
+            c.sub.id + supHTML(c.count) + '</span> ';
+  });
+
+  if (state.showEmpty) {
+    var maxN = getMaxNAffiche(state.Z);
+    var vides = SUBSHELLS.filter(function (s) { return !occ[s.id] && s.n <= maxN; });
+    if (vides.length) {
+      html += '<span class="cfg-paren">(</span>';
+      vides.forEach(function (s, i) {
+        html += '<span class="cfg-term cfg-vide" style="color:' + s.color + '">' +
+                s.id + supHTML(0) + '</span>' + (i < vides.length - 1 ? ' ' : '');
+      });
+      html += '<span class="cfg-paren">)</span>';
+    }
+  }
+  return html;
+}
+
+function majInfos() {
+  var el = getElement(state.Z);
+
+  /* Légende sous le schéma */
+  document.getElementById('atom-caption').textContent =
+    'Structure électronique de l’atome ' + el.art + el.nom.toLowerCase() +
+    ' (Z = ' + el.Z + ')';
+  document.getElementById('config-line').innerHTML = configHTML();
+
+  /* Panneau : élément sélectionné */
+  document.getElementById('ro-nom').innerHTML =
+    el.nom + ' — <sup>' + el.A + '</sup><sub>' + el.Z + '</sub>' + el.sym;
+  document.getElementById('ro-z').textContent = el.Z;
+  document.getElementById('ro-a').textContent = el.A;
+  document.getElementById('ro-p').textContent = el.Z;
+  document.getElementById('ro-n').textContent = el.A - el.Z;
+  document.getElementById('ro-e').textContent = el.Z;
+}
+
+/* ─────────────────────────────────────────────────
+   Options d'affichage
+───────────────────────────────────────────────── */
+function toggleEmpty(checked) {
+  state.showEmpty = checked;
+  render();
+  majInfos();
+}
+
+function toggleLegend(checked) {
+  state.showLegend = checked;
+  document.getElementById('atom-legend').style.display = checked ? '' : 'none';
+}
+
+/* ─────────────────────────────────────────────────
+   Bandeau informations
+───────────────────────────────────────────────── */
+function toggleHint() {
+  var hint = document.getElementById('panel-hint-atome');
+  if (hint) hint.classList.toggle('collapsed');
+}
+
+/* ─────────────────────────────────────────────────
+   Redimensionnement (anti-rebond requestAnimationFrame)
+───────────────────────────────────────────────── */
+var _resizePending = false;
+window.addEventListener('resize', function () {
+  if (_resizePending) return;
+  _resizePending = true;
+  requestAnimationFrame(function () {
+    _resizePending = false;
+    resizeAtomCanvas();
+    render();
+  });
+});
+
+/* ─────────────────────────────────────────────────
+   Initialisation
+───────────────────────────────────────────────── */
+initDraw();
+buildTP();
+resizeAtomCanvas();
+selectElement(state.Z);

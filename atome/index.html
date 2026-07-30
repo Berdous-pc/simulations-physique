@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<!-- ════════════════════════════════════════════════════
+     Simulation pédagogique — Physique-Chimie Lycée
+     Auteur  : Mathieu Berdous
+     Licence : CC BY-NC 4.0 — https://creativecommons.org/licenses/by-nc/4.0/
+════════════════════════════════════════════════════ -->
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Simulation — Structure électronique des atomes (H à Ar)</title>
+  <meta name="author" content="Mathieu Berdous">
+  <meta name="copyright" content="Mathieu Berdous — CC BY-NC 4.0">
+  <meta name="description" content="Simulation interactive (Seconde) : tableau périodique simplifié (3 premières lignes, H à Ar) — noyau, couches et sous-couches électroniques, configuration électronique de chaque atome.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>⚛️</text></svg>">
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<h1 class="sr-only">Simulation — Structure électronique des atomes : les 3 premières lignes du tableau périodique (H à Ar)</h1>
+
+<main>
+
+  <!-- ══════════════════════════════════════════════
+       COLONNE GAUCHE : schéma de l'atome + tableau périodique
+  ══════════════════════════════════════════════ -->
+  <div id="left-col">
+
+    <!-- ── Schéma de l'atome ──────────────────── -->
+    <div id="atom-zone">
+      <div id="atom-canvas-wrap">
+        <canvas id="atom-canvas"></canvas>
+
+        <!-- Légende (masquable via le panneau) -->
+        <div id="atom-legend">
+          <div class="leg-item"><span class="leg-dot leg-neutron"></span>Neutron</div>
+          <div class="leg-item"><span class="leg-dot leg-proton"></span>Proton</div>
+          <div class="leg-item"><span class="leg-dot leg-electron">−</span>Électron</div>
+          <div class="leg-item"><span class="leg-line leg-s"></span>Sous-couche s</div>
+          <div class="leg-item"><span class="leg-line leg-p"></span>Sous-couche p</div>
+        </div>
+      </div>
+
+      <!-- Légendes texte : titre + configuration électronique -->
+      <div id="atom-caption"></div>
+      <div id="config-line"></div>
+    </div>
+
+    <!-- ── Tableau périodique réduit (H → Ar) ──── -->
+    <div id="tp-zone">
+      <div id="tp-grid">
+        <!-- cases construites par buildTP() (js/ui.js) -->
+      </div>
+    </div>
+
+  </div><!-- fin #left-col -->
+
+  <!-- ══════════════════════════════════════════════
+       PANNEAU DROIT
+  ══════════════════════════════════════════════ -->
+  <div id="panel">
+
+    <!-- ── Corps du panneau ───────────────────── -->
+    <div id="panel-body">
+
+      <!-- MODE -->
+      <div class="panel-section">
+        <div class="section-title">Mode</div>
+        <div class="btn-group">
+          <button class="btn-toggle-one active" id="btn-mode-explorer">Explorer</button>
+          <button class="btn-toggle-one" id="btn-mode-comparer" disabled
+                  title="Bientôt disponible">Comparer</button>
+        </div>
+        <div class="btn-group">
+          <button class="btn-toggle-one" id="btn-mode-ioniser" disabled
+                  title="Bientôt disponible">Ioniser</button>
+          <button class="btn-toggle-one" id="btn-mode-test" disabled
+                  title="Bientôt disponible">Test</button>
+        </div>
+      </div>
+
+      <div class="sep"></div>
+
+      <!-- ÉLÉMENT SÉLECTIONNÉ -->
+      <div class="panel-section">
+        <div class="section-title">Élément sélectionné</div>
+        <div class="readout">
+          <div class="ro-nom" id="ro-nom"></div>
+          <div class="ro-grid">
+            <div class="ro-item">
+              <span class="ro-item-label">Numéro atomique Z</span>
+              <span class="ro-item-value" id="ro-z"></span>
+            </div>
+            <div class="ro-item">
+              <span class="ro-item-label">Nucléons A</span>
+              <span class="ro-item-value" id="ro-a"></span>
+            </div>
+            <div class="ro-item">
+              <span class="ro-item-label">Protons</span>
+              <span class="ro-item-value" id="ro-p"></span>
+            </div>
+            <div class="ro-item">
+              <span class="ro-item-label">Neutrons</span>
+              <span class="ro-item-value" id="ro-n"></span>
+            </div>
+            <div class="ro-item">
+              <span class="ro-item-label">Électrons</span>
+              <span class="ro-item-value" id="ro-e"></span>
+            </div>
+          </div>
+        </div>
+        <div style="font-size:clamp(9px,0.85vw,11px);color:#7a8a96;font-style:italic;line-height:1.4;">
+          Noyau représenté : isotope le plus abondant de l'élément.
+        </div>
+      </div>
+
+      <div class="sep"></div>
+
+      <!-- NOYAU -->
+      <div class="panel-section">
+        <div class="section-title">Noyau</div>
+        <button class="btn btn-primary" id="btn-eclater"
+                onclick="toggleEclate()">💥 Éclater le noyau</button>
+        <div style="font-size:clamp(9px,0.85vw,11px);color:#7a8a96;font-style:italic;margin-top:4px;line-height:1.4;">
+          Faites glisser le noyau avec la souris pour le faire tourner.
+        </div>
+      </div>
+
+      <div class="sep"></div>
+
+      <!-- AFFICHAGE -->
+      <div class="panel-section">
+        <div class="section-title">Affichage</div>
+        <label class="chk-label">
+          <input type="checkbox" id="chk-empty" onchange="toggleEmpty(this.checked)">
+          Afficher les sous-couches vides suivantes
+        </label>
+        <label class="chk-label">
+          <input type="checkbox" id="chk-legend" checked onchange="toggleLegend(this.checked)">
+          Afficher la légende
+        </label>
+      </div>
+
+    </div><!-- fin #panel-body -->
+
+    <!-- ── Bandeau Informations ────────────────── -->
+    <div class="panel-hint collapsed" id="panel-hint-atome">
+      <div class="panel-hint-header">
+        <button class="panel-hint-menu-btn"
+                onclick="location.href='../index.html'"
+                title="Retour au menu principal">☰ Menu</button>
+        <span class="panel-hint-title">Informations</span>
+        <button class="panel-hint-toggle"
+                onclick="toggleHint()"
+                title="Afficher les instructions">▲</button>
+      </div>
+      <div class="panel-hint-body">
+        Cliquez sur un <strong>élément</strong> du tableau périodique pour afficher
+        la structure électronique de son atome.<br>
+        <strong>Noyau</strong> : protons (rouge) et neutrons (blanc) de l'isotope
+        le plus abondant — faites-le <strong>tourner</strong> en le faisant glisser
+        avec la souris.<br>
+        <strong>💥 Éclater le noyau</strong> : les nucléons sortent un par un et
+        se rangent dans un cadre pour être comptés.<br>
+        <strong>Électrons</strong> : répartis sur les sous-couches 1s, 2s, 2p…
+        dans l'ordre de remplissage.<br>
+        <strong>Option</strong> : afficher les sous-couches vides suivantes pour
+        visualiser la place disponible.
+      </div>
+    </div>
+
+  </div><!-- fin #panel -->
+
+</main>
+
+<!-- ════════════════════════════════════════════════
+     Ordre de chargement : sim → draw → ui
+════════════════════════════════════════════════ -->
+<script src="js/sim.js"></script>
+<script src="js/draw.js"></script>
+<script src="js/ui.js"></script>
+
+<script data-goatcounter="https://berdous-pc.goatcounter.com/count"
+        async src="https://gc.zgo.at/count.js"></script>
+</body>
+</html>
