@@ -613,13 +613,17 @@ body.compare #atom-title-b { display: block; }
 .panel-hint-body {
   font-size: clamp(11px, 1.1vw, 14px);
   padding: 0 10px 8px;
-  overflow: hidden;
+  /* Le texte est long : on laisse assez de hauteur pour l'afficher en entier
+     sur grand écran, et on autorise le défilement interne si la place manque
+     (petits écrans) plutôt que de rogner la fin. */
+  overflow-y: auto;
   transition: max-height 0.25s ease, padding 0.25s ease;
-  max-height: 250px;
+  max-height: min(560px, 60vh);
 }
 
 .panel-hint.collapsed .panel-hint-body {
   max-height: 0;
+  overflow: hidden;
   padding-top: 0;
   padding-bottom: 0;
 }
