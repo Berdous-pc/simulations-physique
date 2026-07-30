@@ -103,21 +103,17 @@ main {
 }
 
 /* ── Légende (neutron / proton / électron / s / p) ──
-   Placée en haut à droite de la zone du tableau périodique
-   (au-dessus du tableau, sur sa propre ligne) pour libérer de
-   la place dans la zone du schéma de l'atome. */
+   Affichée dans le panneau de droite, section Affichage
+   (masquable via la case à cocher associée). */
 #atom-legend {
-  position: absolute;
-  top: clamp(8px, 1.2vh, 14px);
-  right: clamp(8px, 1vw, 16px);
   display: flex;
   flex-direction: column;
   gap: clamp(3px, 0.5vh, 6px);
   padding: clamp(6px, 0.8vw, 10px) clamp(8px, 1vw, 12px);
-  background: rgba(255,255,255,0.72);
+  margin-top: clamp(6px, 0.8vh, 10px);
+  background: #fff;
   border: 1px solid rgba(200,192,180,0.7);
   border-radius: 6px;
-  pointer-events: none;
 }
 
 .leg-item {
@@ -235,25 +231,14 @@ main {
    le scroll interne si jamais le contenu dépasse les 65vh. */
 #props-body.settled { overflow-y: auto; }
 
-/* Notation AZX : A et Z empilés à gauche du symbole */
+/* Symbole de l'élément */
 #props-nuclide {
   text-align: center;
   font-size: clamp(26px, 2.8vw, 42px);
   font-weight: 700;
   color: #2c3e50;
   line-height: 1.1;
-  font-variant-numeric: tabular-nums;
   margin-bottom: clamp(4px, 0.8vh, 8px);
-}
-#props-az {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: flex-end;
-  font-size: 0.48em;
-  line-height: 1.15;
-  color: #5a6a78;
-  margin-right: 3px;
-  vertical-align: middle;
 }
 
 .props-sec-title {

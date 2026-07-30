@@ -45,8 +45,8 @@
             <span id="props-chevron">▼</span>
           </button>
           <div id="props-body">
-            <!-- Notation AZX (A et Z empilés à gauche du symbole) -->
-            <div id="props-nuclide"><span id="props-az"><span id="props-az-a"></span><span id="props-az-z"></span></span><span id="props-sym"></span></div>
+            <div class="props-sec-title">Symbole</div>
+            <div id="props-nuclide"><span id="props-sym"></span></div>
 
             <div class="props-sec-title">Noyau</div>
             <div class="props-row"><span class="props-dot dot-nucleon"></span><span id="props-a"></span></div>
@@ -64,15 +64,6 @@
 
         <div id="atom-canvas-wrap">
           <canvas id="atom-canvas"></canvas>
-
-          <!-- Légende (masquable via le panneau) -->
-          <div id="atom-legend">
-            <div class="leg-item"><span class="leg-dot leg-neutron"></span>Neutron</div>
-            <div class="leg-item"><span class="leg-dot leg-proton"></span>Proton</div>
-            <div class="leg-item"><span class="leg-dot leg-electron">−</span>Électron</div>
-            <div class="leg-item"><span class="leg-line leg-s"></span>Sous-couche s</div>
-            <div class="leg-item"><span class="leg-line leg-p"></span>Sous-couche p</div>
-          </div>
         </div>
 
       </div><!-- fin #atom-main -->
@@ -136,6 +127,15 @@
           <input type="checkbox" id="chk-legend" checked onchange="toggleLegend(this.checked)">
           Afficher la légende
         </label>
+
+        <!-- Légende (masquable via la case ci-dessus) -->
+        <div id="atom-legend">
+          <div class="leg-item"><span class="leg-dot leg-neutron"></span>Neutron</div>
+          <div class="leg-item"><span class="leg-dot leg-proton"></span>Proton</div>
+          <div class="leg-item"><span class="leg-dot leg-electron">−</span>Électron</div>
+          <div class="leg-item"><span class="leg-line leg-s"></span>Sous-couche s</div>
+          <div class="leg-item"><span class="leg-line leg-p"></span>Sous-couche p</div>
+        </div>
       </div>
 
     </div><!-- fin #panel-body -->

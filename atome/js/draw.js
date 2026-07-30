@@ -352,30 +352,61 @@ function resetNucVue() {
 
 /* ─────────────────────────────────────────────────
    Cadre de comptage (vue éclatée) — géométrie
+   Simplifié : seul le titre « A = … nucléons », puis les
+   nucléons rangés par paquets de 5 (protons, puis neutrons).
+   La largeur du cadre est celle de la grille (5 sphères) ;
+   la police du titre est réduite si besoin pour ne pas
+   dépasser cette largeur.
 ───────────────────────────────────────────────── */
-function getFrameGeom(el, rb, minDim) {
-  var fsF  = Math.max(10, minDim * 0.028);
-  var step = rb * 2.6;
+/* Rayon plancher des billes du cadre : en dessous, sur petite fenêtre,
+   le cadre devient minuscule et le texte flou (police trop réduite pour
+   rester nette). Indépendant du rb du noyau (qui, lui, doit suivre
+   l'échelle commune du schéma) — seul le cadre de comptage garde une
+   taille lisible quelle que soit la fenêtre. */
+var FRAME_RB_MIN = 5.5;
+var FRAME_FS_MIN = 9;   /* police mini lisible (px) */
+
+function getFrameGeom(el, rb, minDim, cx) {
+  var rbF = Math.max(rb, FRAME_RB_MIN);
+  var step = rbF * 2.6;
   var nP = el.Z, nN = el.A - el.Z;
   var rowsP = Math.ceil(nP / 5);
   var rowsN = Math.ceil(nN / 5);
-  var lineH = fsF * 1.55;
   var gridW = 5 * step;
-  var w = Math.max(gridW, fsF * 8.5);
+  var w = gridW;
+
+  var titre = 'A = ' + el.A + (el.A > 1 ? ' nucléons' : ' nucléon');
+  var fsF = Math.max(FRAME_FS_MIN, minDim * 0.028);
+  _ctx.font = '700 ' + fsF + 'px monospace';
+  while (fsF > FRAME_FS_MIN && _ctx.measureText(titre).width > gridW) {
+    fsF -= 0.5;
+    _ctx.font = '700 ' + fsF + 'px monospace';
+  }
+  var lineH = fsF * 1.55;
 
   var h = lineH;                          /* titre                 */
-  var yP = h + lineH;                     /* haut grille protons   */
+  var yP = h;                             /* haut grille protons   */
   h = yP + rowsP * step;
   var yN = 0;
   if (nN > 0) {
-    yN = h + fsF * 0.8 + lineH;           /* haut grille neutrons  */
+    yN = h + fsF * 0.6;                   /* haut grille neutrons  */
     h = yN + rowsN * step;
   }
 
-  var x0 = 16;
+  /* Écart avec le schéma : comme pour la box Propriétés, un écart fixe
+     colle le cadre au cortège électronique sur grand écran (le schéma,
+     limité par min(largeur, hauteur), laisse alors beaucoup de place à
+     droite) — on étire donc l'écart avec une partie de cette place
+     libre, plafonné. Le minimum garantit qu'il ne chevauche jamais les
+     sous-couches, y compris pour les gros atomes (cadre plus haut). */
+  var rightSpace = Math.max(0, _w - (cx + _schemaRmax) - w - 16);
+  var gap = Math.min(90, Math.max(36, rightSpace * 0.3 + 36));
+  var x0 = cx + _schemaRmax + gap;
+  x0 = Math.min(x0, _w - w - 16);
+  x0 = Math.max(x0, 16);
   var y0 = Math.max(12, _h / 2 - h / 2);
-  return { x0: x0, y0: y0, w: w, h: h, step: step, fsF: fsF,
-           lineH: lineH, yP: yP, yN: yN, nP: nP, nN: nN };
+  return { x0: x0, y0: y0, w: w, h: h, step: step, fsF: fsF, rbF: rbF,
+           lineH: lineH, yP: yP, yN: yN, nP: nP, nN: nN, titre: titre };
 }
 
 /* Centre du slot idx (lignes de 5) d'un groupe commençant à yTop */
@@ -572,7 +603,7 @@ function render() {
 ───────────────────────────────────────────────── */
 function drawVueEclatee(el, layout, cx, cy, rb, minDim) {
   var A = layout.pts.length;
-  var g = getFrameGeom(el, rb, minDim);
+  var g = getFrameGeom(el, rb, minDim, cx);
 
   /* Cadre */
   var pad = 10;
@@ -588,20 +619,13 @@ function drawVueEclatee(el, layout, cx, cy, rb, minDim) {
   _ctx.strokeStyle = '#c8c0b4';
   _ctx.stroke();
 
-  /* Titre + labels des groupes */
+  /* Titre — seule mention textuelle, les paquets de billes ci-dessous
+     (protons puis neutrons) se passent d'étiquette Z/N. */
   _ctx.textAlign = 'left';
   _ctx.textBaseline = 'top';
   _ctx.font = '700 ' + g.fsF + 'px monospace';
   _ctx.fillStyle = '#2c3e50';
-  _ctx.fillText('A = ' + el.A + (el.A > 1 ? ' nucléons' : ' nucléon'), g.x0, g.y0);
-  _ctx.fillStyle = '#b02818';
-  _ctx.fillText('Z = ' + g.nP + (g.nP > 1 ? ' protons' : ' proton'),
-                g.x0, g.y0 + g.yP - g.lineH);
-  if (g.nN > 0) {
-    _ctx.fillStyle = '#5a6a78';
-    _ctx.fillText('N = ' + g.nN + (g.nN > 1 ? ' neutrons' : ' neutron'),
-                  g.x0, g.y0 + g.yN - g.lineH);
-  }
+  _ctx.fillText(g.titre, g.x0, g.y0);
 
   /* Nucléons rangés / en vol (ordre de sortie pour un empilement propre) */
   var enVol = [];
@@ -610,7 +634,7 @@ function drawVueEclatee(el, layout, cx, cy, rb, minDim) {
     if (prog <= 0) return;                        /* encore dans le noyau */
     var dest = slotPos(g, p.slot, p.t === 'p' ? g.yP : g.yN);
     if (prog >= 1) {
-      drawNucleon(dest.x, dest.y, rb, p.t, 0, 1);
+      drawNucleon(dest.x, dest.y, g.rbF, p.t, 0, 1);
       return;
     }
     /* Trajectoire courbe : Bézier quadratique passant au-dessus */
@@ -627,5 +651,5 @@ function drawVueEclatee(el, layout, cx, cy, rb, minDim) {
     });
   });
   /* Les billes en vol par-dessus tout */
-  enVol.forEach(function (b) { drawNucleon(b.x, b.y, rb, b.t, 0, 1); });
+  enVol.forEach(function (b) { drawNucleon(b.x, b.y, g.rbF, b.t, 0, 1); });
 }

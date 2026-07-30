@@ -161,8 +161,6 @@ function majInfos() {
   document.getElementById('atom-title').textContent = el.nom;
 
   /* Box Propriétés */
-  document.getElementById('props-az-a').textContent = el.A;
-  document.getElementById('props-az-z').textContent = el.Z;
   document.getElementById('props-sym').textContent = el.sym;
   document.getElementById('props-a').innerHTML =
     'A&nbsp;= <b>' + el.A + '</b> nucléon' + (el.A > 1 ? 's' : '');
@@ -198,14 +196,22 @@ function toggleLegend(checked) {
    de sa taille réelle reste juste dans tous les cas. Appelée par
    render() (draw.js) à chaque rendu.
 ───────────────────────────────────────────────── */
-var PROPS_GAP  = 22;   /* espace entre la box et le cercle du schéma   */
-var PROPS_EDGE = 10;   /* marge mini avec le bord gauche de la fenêtre */
+var PROPS_GAP_MIN = 22;   /* espace mini entre la box et le cercle du schéma */
+var PROPS_GAP_MAX = 90;   /* espace maxi (grand écran, schéma petit et centré) */
+var PROPS_EDGE     = 10;  /* marge mini avec le bord gauche de la fenêtre */
 
 function positionPropsBox() {
   var box = document.getElementById('props-box');
   if (!box || !_w) return;
   var schemaLeft = _w / 2 - _schemaRmax;   /* bord gauche du cercle 3p */
-  var left = schemaLeft - PROPS_GAP - box.offsetWidth;
+  /* Sur grand écran, le schéma (limité par min(largeur, hauteur)) reste
+     petit et centré : la place libre à gauche est alors bien plus grande
+     que PROPS_GAP_MIN, et coller la box au cercle la fait paraître
+     abandonnée au milieu du vide. On étire donc l'écart avec une partie
+     de cette place libre, plafonné pour ne pas non plus s'éloigner à
+     l'excès sur les très grands écrans. */
+  var gap = Math.min(PROPS_GAP_MAX, Math.max(PROPS_GAP_MIN, schemaLeft * 0.18));
+  var left = schemaLeft - gap - box.offsetWidth;
   box.style.left = Math.max(PROPS_EDGE, left) + 'px';
 }
 
