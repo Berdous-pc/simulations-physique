@@ -108,11 +108,10 @@ function getMaxNAffiche(Z) { return Math.min(3, getPeriode(Z) + 1); }
 var state = {
   Z: 8,               /* élément sélectionné (oxygène par défaut)      */
   showEmpty: false,   /* afficher les sous-couches vides suivantes     */
-  showLegend: true,   /* afficher la légende sur la zone d'animation   */
   eclate: false,      /* vue éclatée du noyau (cadre de comptage)      */
   charge: false,      /* vue éclatée protons/électrons (charge)        */
   compare: false,     /* zone de schéma coupée en deux (comparaison)   */
-  Zcmp: 18,           /* élément comparé (argon par défaut)            */
+  Zcmp: 1,            /* élément comparé (hydrogène par défaut)        */
   ionQ: 0,            /* charge de l'ion sélectionné (0 = neutre)      */
   ionQCmp: 0           /* charge de l'ion comparé (0 = neutre)          */
 };

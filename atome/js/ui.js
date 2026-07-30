@@ -112,7 +112,7 @@ function buildCompareSelect() {
   ELEMENTS.forEach(function (el) {
     var opt = document.createElement('option');
     opt.value = el.Z;
-    opt.textContent = el.Z + ' — ' + el.sym + ' · ' + el.nom;
+    opt.textContent = el.Z + ' - ' + el.nom + ' (' + el.sym + ')';
     if (estGazNoble(el.Z)) opt.className = 'opt-noble';
     sel.appendChild(opt);
   });
@@ -186,7 +186,7 @@ function toggleEclate() {
 
 function majBtnEclate() {
   var btn = document.getElementById('btn-eclater');
-  btn.textContent = state.eclate ? '↺ Rassembler le noyau' : '💥 Éclater le noyau';
+  btn.textContent = state.eclate ? '↺ Rassembler le noyau' : 'Disperser le noyau';
   /* Désactivé pendant l'animation (réactivé par onNucAnimEnd). */
   btn.disabled = _nucAnim.running || _chargeAnim.running;
   btn.title = 'Faire sortir les nucléons un par un pour les compter';
@@ -215,7 +215,7 @@ function toggleCharge() {
 
 function majBtnCharge() {
   var btn = document.getElementById('btn-charge');
-  btn.textContent = state.charge ? '↺ Rassembler l’atome' : '⚡ Visualiser la charge';
+  btn.textContent = state.charge ? '↺ Rassembler l’atome' : 'Visualiser la charge';
   /* Désactivé pendant l'animation (réactivé par onChargeAnimEnd). */
   btn.disabled = _nucAnim.running || _chargeAnim.running;
   btn.title = 'Faire sortir les protons et les électrons pour les compter';
@@ -341,15 +341,13 @@ function majInfos() {
 /* ─────────────────────────────────────────────────
    Options d'affichage
 ───────────────────────────────────────────────── */
-function toggleEmpty(checked) {
-  state.showEmpty = checked;
+function toggleEmpty() {
+  state.showEmpty = !state.showEmpty;
+  var btn = document.getElementById('btn-empty');
+  btn.classList.toggle('active', state.showEmpty);
+  btn.setAttribute('aria-pressed', String(state.showEmpty));
   render();
   majInfos();
-}
-
-function toggleLegend(checked) {
-  state.showLegend = checked;
-  document.getElementById('atom-legend').style.display = checked ? '' : 'none';
 }
 
 /* ─────────────────────────────────────────────────

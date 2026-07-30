@@ -63,14 +63,14 @@
     <div id="panel-body">
 
       <!-- TITRE -->
-      <div class="panel-title">Structure de l'atome</div>
+      <div class="panel-title">Structure des atomes/ions/.</div>
 
       <!-- COMPARAISON -->
       <div class="panel-section">
         <div class="section-title">Comparaison</div>
         <button class="btn-toggle-one" id="btn-comparer"
                 aria-pressed="false"
-                onclick="toggleCompare()">⚖️ Comparer</button>
+                onclick="toggleCompare()">Comparer</button>
         <label class="cmp-label" for="cmp-select">Comparer avec :</label>
         <select class="cmp-select" id="cmp-select"
                 onchange="setCompareZ(this.value)">
@@ -80,32 +80,20 @@
 
       <div class="sep"></div>
 
-      <!-- NOYAU -->
+      <!-- CONTRÔLES -->
       <div class="panel-section">
-        <div class="section-title">Noyau</div>
+        <div class="section-title">Contrôles</div>
+
         <button class="btn btn-primary" id="btn-eclater"
                 title="Faire sortir les nucléons un par un pour les compter"
-                onclick="toggleEclate()">💥 Éclater le noyau</button>
-        <div style="font-size:clamp(9px,0.85vw,11px);color:#7a8a96;font-style:italic;margin-top:4px;line-height:1.4;">
-          Faites glisser le noyau avec la souris pour le faire tourner.
-        </div>
-      </div>
+                onclick="toggleEclate()">Disperser le noyau</button>
 
-      <div class="sep"></div>
-
-      <!-- CHARGE -->
-      <div class="panel-section">
-        <div class="section-title">Charge</div>
         <button class="btn btn-primary" id="btn-charge"
+                style="margin-top:6px;"
                 title="Faire sortir les protons et les électrons pour les compter"
-                onclick="toggleCharge()">⚡ Visualiser la charge</button>
-      </div>
+                onclick="toggleCharge()">Visualiser la charge</button>
 
-      <div class="sep"></div>
-
-      <!-- IONISER -->
-      <div class="panel-section">
-        <div class="section-title">Ioniser</div>
+        <div class="ion-title">Ioniser</div>
         <div class="ion-row" id="ion-row">
 
           <div class="ion-atom" id="ion-atom-main">
@@ -143,23 +131,18 @@
           </div>
 
         </div>
+        <div class="hint-text">Gain/perte max : 3e⁻.</div>
       </div>
 
       <div class="sep"></div>
 
-      <!-- AFFICHAGE -->
+      <!-- OPTIONS -->
       <div class="panel-section">
-        <div class="section-title">Affichage</div>
-        <label class="chk-label">
-          <input type="checkbox" id="chk-empty" onchange="toggleEmpty(this.checked)">
-          Afficher les sous-couches vides suivantes
-        </label>
-        <label class="chk-label">
-          <input type="checkbox" id="chk-legend" checked onchange="toggleLegend(this.checked)">
-          Afficher la légende
-        </label>
+        <div class="section-title">Options</div>
+        <button class="btn-toggle-one" id="btn-empty"
+                aria-pressed="false"
+                onclick="toggleEmpty()">Afficher les sous-couches vides</button>
 
-        <!-- Légende (masquable via la case ci-dessus) -->
         <div id="atom-legend">
           <div class="leg-item"><span class="leg-dot leg-neutron"></span>Neutron</div>
           <div class="leg-item"><span class="leg-dot leg-proton"></span>Proton</div>
@@ -188,12 +171,12 @@
         <strong>Noyau</strong> : protons (rouge) et neutrons (blanc) de l'isotope
         le plus abondant — faites-le <strong>tourner</strong> en le faisant glisser
         avec la souris.<br>
-        <strong>⚖️ Comparer</strong> : coupe la zone en deux et affiche côte à
+        <strong>Comparer</strong> : coupe la zone en deux et affiche côte à
         côte l'atome sélectionné et celui choisi dans la liste juste en dessous
         (gaz nobles en gras).<br>
-        <strong>💥 Éclater le noyau</strong> : les nucléons sortent un par un et
+        <strong>Disperser le noyau</strong> : les nucléons sortent un par un et
         se rangent dans un cadre pour être comptés.<br>
-        <strong>⚡ Visualiser la charge</strong> : les protons et les électrons
+        <strong>Visualiser la charge</strong> : les protons et les électrons
         sortent et se rangent dans deux colonnes pour être comptés.<br>
         <strong>Ioniser</strong> : ajoutez ou retirez jusqu'à 3 électrons
         (l'électron le plus externe part ou arrive en premier) — le symbole,
