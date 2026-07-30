@@ -155,21 +155,24 @@ function configHTML() {
 
 function majInfos() {
   var el = getElement(state.Z);
+  var N = el.A - el.Z;
 
-  /* Légende sous le schéma */
-  document.getElementById('atom-caption').textContent =
-    'Structure électronique de l’atome ' + el.art + el.nom.toLowerCase() +
-    ' (Z = ' + el.Z + ')';
-  document.getElementById('config-line').innerHTML = configHTML();
+  /* Titre : nom de l'élément sélectionné */
+  document.getElementById('atom-title').textContent = el.nom;
 
-  /* Panneau : élément sélectionné */
-  document.getElementById('ro-nom').innerHTML =
-    el.nom + ' — <sup>' + el.A + '</sup><sub>' + el.Z + '</sub>' + el.sym;
-  document.getElementById('ro-z').textContent = el.Z;
-  document.getElementById('ro-a').textContent = el.A;
-  document.getElementById('ro-p').textContent = el.Z;
-  document.getElementById('ro-n').textContent = el.A - el.Z;
-  document.getElementById('ro-e').textContent = el.Z;
+  /* Box Propriétés */
+  document.getElementById('props-az-a').textContent = el.A;
+  document.getElementById('props-az-z').textContent = el.Z;
+  document.getElementById('props-sym').textContent = el.sym;
+  document.getElementById('props-a').innerHTML =
+    'A&nbsp;= <b>' + el.A + '</b> nucléon' + (el.A > 1 ? 's' : '');
+  document.getElementById('props-p').innerHTML =
+    'Z&nbsp;= <b>' + el.Z + '</b> proton' + (el.Z > 1 ? 's' : '');
+  document.getElementById('props-n').innerHTML =
+    'N&nbsp;= <b>' + N + '</b> neutron' + (N > 1 ? 's' : '');
+  document.getElementById('props-e').innerHTML =
+    '<b>' + el.Z + '</b> électron' + (el.Z > 1 ? 's' : '');
+  document.getElementById('props-config').innerHTML = configHTML();
 }
 
 /* ─────────────────────────────────────────────────
@@ -184,6 +187,50 @@ function toggleEmpty(checked) {
 function toggleLegend(checked) {
   state.showLegend = checked;
   document.getElementById('atom-legend').style.display = checked ? '' : 'none';
+}
+
+/* ─────────────────────────────────────────────────
+   Box Propriétés — position horizontale
+   Ancrée dynamiquement au bord réel du cercle du schéma (plutôt qu'à
+   une largeur de conteneur arbitraire) : le schéma est limité par
+   min(_w, _h) et peut donc être petit même sur une fenêtre très large
+   (fenêtre large et peu haute) — seule une position calculée à partir
+   de sa taille réelle reste juste dans tous les cas. Appelée par
+   render() (draw.js) à chaque rendu.
+───────────────────────────────────────────────── */
+var PROPS_GAP  = 22;   /* espace entre la box et le cercle du schéma   */
+var PROPS_EDGE = 10;   /* marge mini avec le bord gauche de la fenêtre */
+
+function positionPropsBox() {
+  var box = document.getElementById('props-box');
+  if (!box || !_w) return;
+  var schemaLeft = _w / 2 - _schemaRmax;   /* bord gauche du cercle 3p */
+  var left = schemaLeft - PROPS_GAP - box.offsetWidth;
+  box.style.left = Math.max(PROPS_EDGE, left) + 'px';
+}
+
+/* ─────────────────────────────────────────────────
+   Box Propriétés (repli en bandeau vertical)
+───────────────────────────────────────────────── */
+function togglePropsBox() {
+  var box = document.getElementById('props-box');
+  var body = document.getElementById('props-body');
+  var collapsed = box.classList.toggle('collapsed');
+  var btn = document.getElementById('props-toggle');
+  btn.setAttribute('aria-expanded', String(!collapsed));
+  btn.title = collapsed ? 'Afficher les propriétés' : 'Réduire en bandeau';
+
+  /* La scrollbar (overflow-y: auto) n'est réactivée qu'une fois la
+     transition d'ouverture terminée, sinon elle clignote tant que
+     max-height anime en dessous de la hauteur du contenu (cf. CSS). */
+  body.classList.remove('settled');
+  if (!collapsed) {
+    body.addEventListener('transitionend', function onEnd(e) {
+      if (e.propertyName !== 'max-height') return;
+      body.removeEventListener('transitionend', onEnd);
+      if (!box.classList.contains('collapsed')) body.classList.add('settled');
+    });
+  }
 }
 
 /* ─────────────────────────────────────────────────

@@ -27,22 +27,55 @@
 
     <!-- ── Schéma de l'atome ──────────────────── -->
     <div id="atom-zone">
-      <div id="atom-canvas-wrap">
-        <canvas id="atom-canvas"></canvas>
 
-        <!-- Légende (masquable via le panneau) -->
-        <div id="atom-legend">
-          <div class="leg-item"><span class="leg-dot leg-neutron"></span>Neutron</div>
-          <div class="leg-item"><span class="leg-dot leg-proton"></span>Proton</div>
-          <div class="leg-item"><span class="leg-dot leg-electron">−</span>Électron</div>
-          <div class="leg-item"><span class="leg-line leg-s"></span>Sous-couche s</div>
-          <div class="leg-item"><span class="leg-line leg-p"></span>Sous-couche p</div>
+      <!-- Nom de l'élément sélectionné (rempli par majInfos) -->
+      <div id="atom-title"></div>
+
+      <div id="atom-main">
+
+        <!-- Box Propriétés, repliable en bandeau vertical.
+             Position (left) recalculée en JS à chaque rendu du schéma,
+             ancrée au bord réel du cercle du schéma — cf. positionPropsBox()
+             dans ui.js — pour rester proche de l'atome quelle que soit la
+             proportion largeur/hauteur de la fenêtre. -->
+        <div id="props-box">
+          <button id="props-toggle" onclick="togglePropsBox()"
+                  aria-expanded="true" title="Réduire en bandeau">
+            <span id="props-label">Propriétés</span>
+            <span id="props-chevron">▼</span>
+          </button>
+          <div id="props-body">
+            <!-- Notation AZX (A et Z empilés à gauche du symbole) -->
+            <div id="props-nuclide"><span id="props-az"><span id="props-az-a"></span><span id="props-az-z"></span></span><span id="props-sym"></span></div>
+
+            <div class="props-sec-title">Noyau</div>
+            <div class="props-row"><span class="props-dot dot-nucleon"></span><span id="props-a"></span></div>
+            <div class="props-row"><span class="props-dot dot-proton"></span><span id="props-p"></span></div>
+            <div class="props-row"><span class="props-dot dot-neutron"></span><span id="props-n"></span></div>
+            <div class="props-note">Isotope le plus abondant de l’élément.</div>
+
+            <div class="props-sep"></div>
+
+            <div class="props-sec-title">Cortège électronique</div>
+            <div class="props-row"><span class="props-dot dot-electron">−</span><span id="props-e"></span></div>
+            <div id="props-config"></div>
+          </div>
         </div>
-      </div>
 
-      <!-- Légendes texte : titre + configuration électronique -->
-      <div id="atom-caption"></div>
-      <div id="config-line"></div>
+        <div id="atom-canvas-wrap">
+          <canvas id="atom-canvas"></canvas>
+
+          <!-- Légende (masquable via le panneau) -->
+          <div id="atom-legend">
+            <div class="leg-item"><span class="leg-dot leg-neutron"></span>Neutron</div>
+            <div class="leg-item"><span class="leg-dot leg-proton"></span>Proton</div>
+            <div class="leg-item"><span class="leg-dot leg-electron">−</span>Électron</div>
+            <div class="leg-item"><span class="leg-line leg-s"></span>Sous-couche s</div>
+            <div class="leg-item"><span class="leg-line leg-p"></span>Sous-couche p</div>
+          </div>
+        </div>
+
+      </div><!-- fin #atom-main -->
     </div>
 
     <!-- ── Tableau périodique réduit (H → Ar) ──── -->
@@ -75,41 +108,6 @@
                   title="Bientôt disponible">Ioniser</button>
           <button class="btn-toggle-one" id="btn-mode-test" disabled
                   title="Bientôt disponible">Test</button>
-        </div>
-      </div>
-
-      <div class="sep"></div>
-
-      <!-- ÉLÉMENT SÉLECTIONNÉ -->
-      <div class="panel-section">
-        <div class="section-title">Élément sélectionné</div>
-        <div class="readout">
-          <div class="ro-nom" id="ro-nom"></div>
-          <div class="ro-grid">
-            <div class="ro-item">
-              <span class="ro-item-label">Numéro atomique Z</span>
-              <span class="ro-item-value" id="ro-z"></span>
-            </div>
-            <div class="ro-item">
-              <span class="ro-item-label">Nucléons A</span>
-              <span class="ro-item-value" id="ro-a"></span>
-            </div>
-            <div class="ro-item">
-              <span class="ro-item-label">Protons</span>
-              <span class="ro-item-value" id="ro-p"></span>
-            </div>
-            <div class="ro-item">
-              <span class="ro-item-label">Neutrons</span>
-              <span class="ro-item-value" id="ro-n"></span>
-            </div>
-            <div class="ro-item">
-              <span class="ro-item-label">Électrons</span>
-              <span class="ro-item-value" id="ro-e"></span>
-            </div>
-          </div>
-        </div>
-        <div style="font-size:clamp(9px,0.85vw,11px);color:#7a8a96;font-style:italic;line-height:1.4;">
-          Noyau représenté : isotope le plus abondant de l'élément.
         </div>
       </div>
 

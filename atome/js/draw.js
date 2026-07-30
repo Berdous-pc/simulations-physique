@@ -18,6 +18,13 @@
 var _canvas = null, _ctx = null;
 var _w = 0, _h = 0;   /* dimensions logiques (px CSS) */
 
+/* Rayon extérieur réel du schéma (cercle 3p compris), mis à jour à chaque
+   render() — lu par ui.js (positionPropsBox()) pour ancrer la box
+   Propriétés au bord réel du schéma plutôt qu'à une largeur arbitraire :
+   ce rayon dépend de min(_w, _h) et peut donc être petit même sur une
+   fenêtre très large (fenêtre large et peu haute). */
+var _schemaRmax = 0;
+
 /* ── Rotation du noyau (drag) ─────────────────────
    Trackball : une matrice de rotation cumulée, chaque
    mouvement de souris tourne autour des axes de l'ÉCRAN
@@ -124,9 +131,13 @@ function getNucleusLayout(Z) {
   var A = el.A;
   var rng = mulberry32(Z * 7919 + 13);
 
-  /* Espacement entre billes voisines en rayons de bille : < 2 pour un
-     léger chevauchement (effet amas compact). */
-  var ESP = 1.85;
+  /* Espacement entre billes voisines en rayons de bille : légèrement < 2
+     pour un amas visuellement compact, mais proche de 2 pour limiter
+     l'interpénétration réelle des billes en 3D — plus l'écart avec 2 est
+     grand, plus l'ordre d'affichage (tri par profondeur) devient instable
+     dans les zones de recouvrement, ce qui fait « sauter » le contour d'une
+     bille au-dessus de l'autre au moindre changement d'angle de vue. */
+  var ESP = 1.96;
 
   /* Positions initiales : aléatoires dans une sphère ~taille finale */
   var pts = [];
@@ -230,8 +241,11 @@ function drawNucleon(x, y, r, type, shade, alpha) {
   _ctx.arc(x, y, r, 0, 2 * Math.PI);
   _ctx.fillStyle = grad;
   _ctx.fill();
-  _ctx.lineWidth = Math.max(0.6, r * 0.09);
-  _ctx.strokeStyle = 'rgba(60,40,30,0.25)';
+  /* Contour volontairement discret : un trait marqué rendrait très visible
+     la bascule d'ordre d'affichage entre deux billes qui se touchent presque
+     (tri par profondeur instable pile à leur tangence). */
+  _ctx.lineWidth = Math.max(0.5, r * 0.06);
+  _ctx.strokeStyle = 'rgba(60,40,30,0.16)';
   _ctx.stroke();
   if (shade) {
     _ctx.fillStyle = 'rgba(60,45,35,' + (shade * 0.35).toFixed(3) + ')';
@@ -462,6 +476,7 @@ function render() {
   /* Rayon extérieur : on réserve la place des étiquettes + électrons */
   var fs = Math.max(11, minDim * 0.034);          /* police étiquettes  */
   var Rmax = minDim / 2 - fs * 1.4;
+  _schemaRmax = Rmax;
 
   /* Échelle COMMUNE à tous les atomes : l'écart entre sous-couches est
      toujours Rmax / 5 (nombre total de sous-couches de la page), si bien
@@ -546,6 +561,8 @@ function render() {
 
   /* ── Vue éclatée : cadre de comptage + nucléons en vol ── */
   if (anim) drawVueEclatee(el, layout, cx, cy, rb, minDim);
+
+  if (typeof positionPropsBox === 'function') positionPropsBox();
 }
 
 /* ─────────────────────────────────────────────────

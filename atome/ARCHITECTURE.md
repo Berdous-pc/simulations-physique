@@ -3,8 +3,10 @@
 > Simulation « Structure de la matière » (Seconde) : les 3 premières lignes du
 > tableau périodique (H → Ar). Un clic sur un élément affiche le schéma de son
 > atome : noyau (protons/neutrons de l'isotope le plus abondant), cercles des
-> sous-couches électroniques (1s, 2s, 2p, 3s, 3p) avec électrons équirépartis,
-> et configuration électronique écrite sous le schéma.
+> sous-couches électroniques (1s, 2s, 2p, 3s, 3p) avec électrons équirépartis.
+> Le nom de l'élément s'affiche en gros au-dessus du schéma ; une box
+> « Propriétés » repliable à gauche du schéma détaille le noyau (A, Z, N),
+> les électrons et la configuration électronique écrite.
 
 ## Fichiers
 
@@ -45,8 +47,14 @@ que pendant l'animation d'éclatement (et un `rAF` ponctuel pendant le drag).
 - **Noyau 3D** : empilement compact obtenu par **relaxation** — les A billes
   partent de positions aléatoires (seedées par Z via `mulberry32`, cache
   `_nucleusCache` → disposition stable), puis 250 itérations « attraction
-  vers le centre (×0,96) + séparation des paires plus proches que 1,85 rayon
-  de bille ». Converge vers les vraies formes compactes : haltère pour A = 2,
+  vers le centre (×0,96) + séparation des paires plus proches que 1,96 rayon
+  de bille ». Cet écart, volontairement proche de 2 (billes qui se touchent
+  quasiment) plutôt que franchement inférieur, limite l'interpénétration 3D
+  réelle des billes — donc les zones où le tri par profondeur (`z`) devient
+  instable et fait « sauter » le contour d'une bille au-dessus de l'autre au
+  moindre changement d'angle de vue (le contour lui-même est aussi tracé
+  discret, `rgba(60,40,30,0.16)`, pour la même raison). Converge vers les
+  vraies formes compactes : haltère pour A = 2,
   tétraèdre pour l'hélium, boule quasi sphérique au-delà. Recentrage sur le
   barycentre, tri par distance au centre, protons (rouge) et neutrons (blanc)
   **entrelacés régulièrement** le long de l'ordre radial (pas de paquets
@@ -90,9 +98,30 @@ que pendant l'animation d'éclatement (et un `rAF` ponctuel pendant le drag).
   `colonneTP(Z)` place chaque élément dans sa vraie colonne (H col 1, He col 18,
   blocs s en colonnes 1-2, bloc p en colonnes 13-18). Chaque case affiche
   A (haut gauche), Z (bas gauche) et le symbole (centre) — notation AZX.
-- `selectElement(Z)` : met à jour la sélection, le schéma, la légende texte
-  (`#atom-caption`), la configuration colorée (`#config-line`, exposants en
-  `<sup>`) et les afficheurs du panneau.
+- `selectElement(Z)` : met à jour la sélection, le schéma, le titre
+  (`#atom-title`, nom de l'élément), la box « Propriétés » et les afficheurs
+  du panneau.
+- **Box « Propriétés »** (`#props-box`, en overlay au-dessus du schéma —
+  `position: absolute` sur `#atom-main`, canvas en `inset: 0` dessous,
+  dépliée ou repliée sans affecter le centrage du schéma). Sa position
+  **horizontale** (`left`) est recalculée **en JS** à chaque rendu
+  (`positionPropsBox()`, appelée en fin de `render()` dans `draw.js`),
+  ancrée au bord réel du cercle du schéma (`_schemaRmax`, le `Rmax` de
+  `render()`, exposé en variable globale) plutôt qu'à un conteneur de
+  taille arbitraire. Nécessaire car le schéma est limité par
+  `min(_w, _h)` et peut donc rester petit même sur une fenêtre très
+  large (cas fenêtre large et peu haute) — aucune approche purement CSS
+  (largeur fixe, `aspect-ratio`, plafond en `vh`…) ne peut suivre cette
+  taille réelle, seule une position calculée en JS le peut. Sur un écran
+  large la box reste ainsi collée près du schéma ; sur un écran étroit,
+  le calcul se clampe à `PROPS_EDGE` (10 px) et la box se colle au bord
+  gauche faute de place.
+  notation AZX empilée, détail du noyau (A/Z/N avec pastilles couleur),
+  nombre d'électrons et configuration colorée (`#props-config`,
+  `configHTML()`, exposants en `<sup>`). **Repliable vers le bas** via
+  `togglePropsBox()` (classe `.collapsed`) : la box garde sa largeur, seul
+  le corps se replie sous l'en-tête (transition `max-height`, même mécanique
+  que le bandeau Informations du panneau), chevron pivoté à 180°.
 - Options : `toggleEmpty()` (sous-couches vides), `toggleLegend()` (légende).
 - Élément par défaut au chargement : oxygène (Z = 8).
 
