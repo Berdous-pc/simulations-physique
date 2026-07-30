@@ -162,6 +162,12 @@ body.compare #atom-title-b { display: block; }
 }
 .leg-s { border-top-style: dashed; }
 .leg-p { border-top-style: dotted; }
+/* Capacité de la sous-couche, en retrait discret après son libellé */
+.leg-cap {
+  color: #7a8a96;
+  font-size: 0.9em;
+  margin-left: 3px;
+}
 
 /* ══════════════════════════════════════════════════
    TABLEAU PÉRIODIQUE RÉDUIT (bas de la zone d'animation)

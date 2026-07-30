@@ -143,12 +143,18 @@
                 aria-pressed="false"
                 onclick="toggleEmpty()">Afficher les sous-couches vides</button>
 
+        <button class="btn-toggle-one" id="btn-stable"
+                style="margin-top:6px;"
+                aria-pressed="false"
+                title="Indiquer si la couche de valence est saturée (règle du duet/de l’octet)"
+                onclick="toggleStable()">Afficher la stabilité</button>
+
         <div id="atom-legend">
           <div class="leg-item"><span class="leg-dot leg-neutron"></span>Neutron</div>
           <div class="leg-item"><span class="leg-dot leg-proton"></span>Proton</div>
           <div class="leg-item"><span class="leg-dot leg-electron">−</span>Électron</div>
-          <div class="leg-item"><span class="leg-line leg-s"></span>Sous-couche s</div>
-          <div class="leg-item"><span class="leg-line leg-p"></span>Sous-couche p</div>
+          <div class="leg-item"><span class="leg-line leg-s"></span>Sous-couche s <span class="leg-cap">(2 électrons max)</span></div>
+          <div class="leg-item"><span class="leg-line leg-p"></span>Sous-couche p <span class="leg-cap">(6 électrons max)</span></div>
         </div>
       </div>
 
@@ -183,8 +189,10 @@
         la charge et la configuration électronique s'actualisent.<br>
         <strong>Électrons</strong> : répartis sur les sous-couches 1s, 2s, 2p…
         dans l'ordre de remplissage.<br>
-        <strong>Option</strong> : afficher les sous-couches vides suivantes pour
-        visualiser la place disponible.
+        <strong>Options</strong> : afficher les sous-couches vides suivantes pour
+        visualiser la place disponible ; afficher la <strong>stabilité</strong> —
+        une pastille en haut à gauche du schéma indique si la couche de valence
+        est saturée (règle du duet ou de l'octet).
       </div>
     </div>
 

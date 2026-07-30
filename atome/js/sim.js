@@ -96,6 +96,24 @@ function ionExposant(ionQ) {
   return (n > 1 ? String(n) : '') + (ionQ > 0 ? '+' : '-');
 }
 
+/* ── Stabilité (règle du duet/octet) ────────────
+   Un atome ou un ion est dit stable quand sa couche de valence (la couche
+   n la plus élevée qui porte des électrons) est saturée : 2 e⁻ pour n = 1
+   (duet), 8 e⁻ pour n = 2 et n = 3 dans la portée de la page (octet). */
+function capCouche(n) {
+  return SUBSHELLS.reduce(function (s, sh) { return s + (sh.n === n ? sh.cap : 0); }, 0);
+}
+
+/* → { stable, n, count, cap, vide } — `vide` : plus aucun électron (H⁺). */
+function getStabilite(Z, ionQ) {
+  var conf = getConfigForN(nElectronsIon(Z, ionQ)).filter(function (c) { return c.count > 0; });
+  if (!conf.length) return { stable: true, n: 0, count: 0, cap: 0, vide: true };
+  var n = conf[conf.length - 1].sub.n;
+  var count = conf.reduce(function (s, c) { return s + (c.sub.n === n ? c.count : 0); }, 0);
+  var cap = capCouche(n);
+  return { stable: count === cap, n: n, count: count, cap: cap, vide: false };
+}
+
 /* Période (ligne du tableau) d'un élément */
 function getPeriode(Z) { return Z <= 2 ? 1 : (Z <= 10 ? 2 : 3); }
 
@@ -108,6 +126,7 @@ function getMaxNAffiche(Z) { return 3; }
 var state = {
   Z: 8,               /* élément sélectionné (oxygène par défaut)      */
   showEmpty: false,   /* afficher les sous-couches vides suivantes     */
+  showStable: false,  /* pastille de stabilité (couche de valence)     */
   eclate: false,      /* vue éclatée du noyau (cadre de comptage)      */
   charge: false,      /* vue éclatée protons/électrons (charge)        */
   compare: false,     /* zone de schéma coupée en deux (comparaison)   */

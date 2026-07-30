@@ -350,6 +350,14 @@ function toggleEmpty() {
   majInfos();
 }
 
+function toggleStable() {
+  state.showStable = !state.showStable;
+  var btn = document.getElementById('btn-stable');
+  btn.classList.toggle('active', state.showStable);
+  btn.setAttribute('aria-pressed', String(state.showStable));
+  render();
+}
+
 /* ─────────────────────────────────────────────────
    Bandeau informations
 ───────────────────────────────────────────────── */

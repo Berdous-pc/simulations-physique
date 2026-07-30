@@ -898,6 +898,116 @@ function renderAtome(Z, x0, w, freezeKey) {
 
   /* ── Rappel Z/A + configuration sous le schéma ── */
   drawInfosAtome(el, cx, infoH, nE, ionQ);
+
+  /* ── Pastille de stabilité (option) ── */
+  if (state.showStable) drawBadgeStabilite(Z, ionQ, cx, cy, minDim, infoH);
+}
+
+/* Écart (px) entre le bord d'un rectangle et un cercle : > 0 = dégagé,
+   < 0 = le rectangle mord dans le cercle (profondeur de la pénétration). */
+function _ecartRectCercle(r, cx, cy, R) {
+  var nx = Math.max(r.x, Math.min(cx, r.x + r.w));
+  var ny = Math.max(r.y, Math.min(cy, r.y + r.h));
+  return Math.sqrt((cx - nx) * (cx - nx) + (cy - ny) * (cy - ny)) - R;
+}
+
+/* ─────────────────────────────────────────────────
+   Pastille « Stable / Instable ». Sa position n'est pas fixe : selon la
+   forme de la zone (fenêtre large, étroite, mode comparaison), la place
+   libre autour du schéma n'est pas au même endroit — collée à un coin de
+   la zone elle se perdrait dans le vide sur grand écran, collée au schéma
+   elle mordrait sur les sous-couches sur petite fenêtre. On essaie donc
+   plusieurs emplacements (coin en diagonale, au-dessus, à gauche…) et on
+   garde le premier qui tient dans la zone **sans toucher** le cercle
+   extérieur du cortège électronique ; à défaut, le moins mauvais.
+   Deuxième ligne : l'état de la couche de valence.
+───────────────────────────────────────────────── */
+function drawBadgeStabilite(Z, ionQ, cx, cy, minDim, infoH) {
+  var st = getStabilite(Z, ionQ);
+  /* Taille calée sur celle du schéma (comme les étiquettes de sous-couches),
+     pas sur la largeur de la zone : lisible de loin au vidéoprojecteur. */
+  var fs = Math.max(13, Math.min(26, minDim * 0.058));
+
+  var l1 = (st.stable ? '✓ Stable' : '✗ Instable');
+  var l2 = st.vide ? 'aucune couche de valence'
+                   : 'Couche ' + st.n + (st.stable ? ' saturée.' : ' incomplète.');
+
+  _ctx.save();
+
+  /* Dimensions de la pastille ; si elle ne tient pas dans la largeur de la
+     zone, on réduit la police et on remesure une fois. */
+  var fs2, pad, bw, bh;
+  function mesure() {
+    fs2 = fs * 0.72;
+    pad = fs * 0.6;
+    _ctx.font = '700 ' + fs + 'px system-ui, sans-serif';
+    var w1 = _ctx.measureText(l1).width;
+    _ctx.font = '500 ' + fs2 + 'px system-ui, sans-serif';
+    var w2 = _ctx.measureText(l2).width;
+    bw = Math.max(w1, w2) + 2 * pad;
+    bh = fs * 1.2 + fs2 * 1.25 + 2 * pad * 0.7;
+  }
+  mesure();
+  var dispoW = _vw - 2 * FRAME_MARGIN;
+  if (bw > dispoW) { fs = Math.max(9, fs * dispoW / bw); mesure(); }
+
+  /* ── Choix de l'emplacement ──
+     Bande utile : toute la zone au-dessus du bandeau d'informations.
+     Le cercle à éviter est celui du cortège (_schemaRmax) + une marge. */
+  var xMin = _vx + FRAME_MARGIN, xMax = _vx + _vw - bw - FRAME_MARGIN;
+  var yMin = FRAME_MARGIN,       yMax = _h - infoH - bh - FRAME_MARGIN;
+  var g = pad * 0.6;                       /* respiration autour du schéma */
+  var R = _schemaRmax + g;
+
+  var cands = [
+    /* diagonale du coin haut-gauche du schéma (cas grand écran) */
+    { x: cx - _schemaRmax * 0.707 - g - bw, y: cy - _schemaRmax * 0.707 - g - bh },
+    /* au-dessus du schéma, aligné à gauche de la zone puis centré */
+    { x: xMin,          y: cy - R - bh },
+    { x: cx - bw / 2,   y: cy - R - bh },
+    /* à gauche du schéma, à mi-hauteur */
+    { x: cx - R - bw,   y: cy - bh / 2 },
+    /* sous le schéma, au-dessus du bandeau d'informations */
+    { x: xMin,          y: cy + R },
+    /* dernier recours : coin haut-gauche de la zone */
+    { x: xMin,          y: yMin }
+  ];
+
+  var best = null, bestCost = Infinity;
+  cands.forEach(function (c) {
+    var r = { x: c.x, y: c.y, w: bw, h: bh };
+    /* dépassement de la zone (compté double : sortir du cadre est pire
+       qu'effleurer un cercle) */
+    var hors = Math.max(0, xMin - r.x) + Math.max(0, r.x - xMax)
+             + Math.max(0, yMin - r.y) + Math.max(0, r.y - yMax);
+    var cost = 2 * hors + Math.max(0, -_ecartRectCercle(r, cx, cy, R));
+    if (cost < bestCost - 0.5) { bestCost = cost; best = r; }
+  });
+
+  var x = Math.max(xMin, Math.min(best.x, Math.max(xMin, xMax)));
+  var y = Math.max(yMin, Math.min(best.y, Math.max(yMin, yMax)));
+
+  var col    = st.stable ? '#2a8a50' : '#c0392b';
+  var fondOk = st.stable ? 'rgba(226,245,232,0.94)' : 'rgba(252,232,228,0.94)';
+
+  _ctx.beginPath();
+  if (_ctx.roundRect) _ctx.roundRect(x, y, bw, bh, 8);
+  else                _ctx.rect(x, y, bw, bh);
+  _ctx.fillStyle = fondOk;
+  _ctx.fill();
+  _ctx.lineWidth = 1.5;
+  _ctx.strokeStyle = col;
+  _ctx.stroke();
+
+  _ctx.textAlign = 'center';
+  _ctx.textBaseline = 'middle';
+  _ctx.fillStyle = col;
+  _ctx.font = '700 ' + fs + 'px system-ui, sans-serif';
+  _ctx.fillText(l1, x + bw / 2, y + pad * 0.7 + fs * 0.6);
+  _ctx.font = '500 ' + fs2 + 'px system-ui, sans-serif';
+  _ctx.globalAlpha = 0.85;
+  _ctx.fillText(l2, x + bw / 2, y + pad * 0.7 + fs * 1.2 + fs2 * 0.62);
+  _ctx.restore();
 }
 
 /* ─────────────────────────────────────────────────

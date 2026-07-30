@@ -150,7 +150,8 @@ que pendant l'animation d'éclatement (et un `rAF` ponctuel pendant le drag).
   le second nom d'élément `#atom-title-b`), referme la vue éclatée et
   désactive son bouton. `majCompareTP()` pose un liseré orangé
   (`.tp-cell.compared`) sur la case de l'élément comparé.
-- Options : `toggleEmpty()` (sous-couches vides), `toggleLegend()` (légende).
+- Options : `toggleEmpty()` (sous-couches vides), `toggleStable()` (pastille de
+  stabilité), `toggleLegend()` (légende).
 - Élément par défaut au chargement : oxygène (Z = 8), comparé à l'argon (Z = 18).
 
 ## Ionisation (`state.ionQ` / `state.ionQCmp`)
@@ -184,6 +185,29 @@ que pendant l'animation d'éclatement (et un `rAF` ponctuel pendant le drag).
   (`'main'`/`'cmp'`, ce dernier visible seulement en mode Comparer), libellé
   de charge (`ionLabel`), désactivation pendant toute animation en cours.
   Réinitialisée à 0 par `selectElement()`/`setCompareZ()`.
+
+## Stabilité (`state.showStable`)
+
+- **Donnée (`sim.js`)** : `getStabilite(Z, ionQ)` → `{ stable, n, count, cap, vide }`.
+  La **couche de valence** est la couche `n` la plus élevée qui porte des
+  électrons ; elle est saturée à `capCouche(n)` (2 pour n = 1 — duet ;
+  8 pour n = 2 et n = 3 — octet, dans la portée 1s→3p de la page). Cas
+  `vide` : plus aucun électron (H⁺), compté comme stable.
+- **Rendu (`draw.js`, `drawBadgeStabilite`)** : pastille « ✓ Stable » (vert)
+  ou « ✗ Instable » (rouge) + détail « Couche n saturée./incomplète. ».
+  **Placement adaptatif** : la place libre autour du schéma change de côté
+  selon la forme de la zone (fenêtre large, étroite, mode comparaison) —
+  collée à un coin fixe, la pastille se perdrait dans le vide sur grand
+  écran et mordrait sur les sous-couches sur petite fenêtre. Une liste
+  d'emplacements candidats est donc évaluée dans l'ordre (diagonale du
+  coin haut-gauche du schéma, au-dessus aligné à gauche puis centré, à
+  gauche à mi-hauteur, en dessous, coin de la zone) et on retient le
+  premier qui tient dans la zone **sans mordre** sur le cercle extérieur
+  du cortège (`_ecartRectCercle()`, dépassement de zone compté double), à
+  défaut le moins mauvais. La police, calée sur `minDim`, est réduite si
+  la pastille ne tient pas dans la largeur de la zone.
+  Taille calée sur `minDim` (comme les étiquettes de sous-couches). Suit
+  l'ionisation en cours (elle reçoit `ionQ` de `renderAtome()`).
 
 ## Extensions prévues (discutées avec l'auteur, non implémentées)
 
