@@ -59,6 +59,16 @@ var _nucAnim = { running: false, dir: 1, t0: 0, dur: 0 };
    moitié anime son propre noyau indépendamment mais sur le même minuteur. */
 var _freeze  = { main: null, cmp: null };
 
+/* ── Animation « visualiser la charge » (protons/électrons) ──
+   Même mécanique que l'éclatement du noyau, mais deux colonnes protons/
+   électrons au lieu de protons/neutrons. Les deux vues sont mutuellement
+   exclusives (cf. toggleEclate()/toggleCharge() dans ui.js). */
+var _chargeAnim = { running: false, dir: 1, t0: 0, dur: 0 };
+/* Seuls les protons ont besoin d'être figés (position 3D tournante) : les
+   électrons sont statiques (angle fixe sur leur cercle), calculables à la
+   volée sans figeage. Indexé par slot de proton (0..Z-1), comme _freeze. */
+var _freezeCharge = { main: null, cmp: null };
+
 /* Cadence de sortie : premiers nucléons lents, puis accélération */
 var NUC_G0 = 260, NUC_RATIO = 0.90, NUC_FLIGHT = 380;   /* ms */
 
@@ -70,7 +80,7 @@ function initDraw() {
   /* Rotation du noyau au drag, N'IMPORTE OÙ sur le canvas
      (pointer events : souris + tactile) */
   _canvas.addEventListener('pointerdown', function (e) {
-    if (_nucAnim.running) return;
+    if (_nucAnim.running || _chargeAnim.running) return;
     _drag.active = true;
     _drag.lastX = e.clientX;
     _drag.lastY = e.clientY;
@@ -265,7 +275,8 @@ function drawNucleon(x, y, r, type, shade, alpha) {
    Électron : disque bleu (charte) avec signe − blanc,
    halo couleur fond pour se détacher du trait du cercle.
 ───────────────────────────────────────────────── */
-function drawElectron(x, y, r) {
+function drawElectron(x, y, r, alpha) {
+  _ctx.globalAlpha = (alpha === undefined) ? 1 : alpha;
   _ctx.beginPath();
   _ctx.arc(x, y, r, 0, 2 * Math.PI);
   _ctx.fillStyle = '#2a6aaa';
@@ -278,6 +289,7 @@ function drawElectron(x, y, r) {
   _ctx.lineCap = 'round';
   _ctx.strokeStyle = '#fff';
   _ctx.stroke();
+  _ctx.globalAlpha = 1;
 }
 
 /* ─────────────────────────────────────────────────
@@ -365,6 +377,91 @@ function resetNucVue() {
   _nucAnim.running = false;
   _freeze = { main: null, cmp: null };
   state.eclate = false;
+}
+
+/* ─────────────────────────────────────────────────
+   Animation « visualiser la charge » — planning temporel
+   Même cadence accélérée que le noyau (departDelay/NUC_FLIGHT), mais sur
+   une échelle de 2Z rangs : protons et électrons alternent un par un
+   (proton 0, électron 0, proton 1, électron 1, …) au lieu de sortir par
+   paires simultanées.
+───────────────────────────────────────────────── */
+function chargeProgress(idx, N) {
+  if (!_chargeAnim.running) return state.charge ? 1 : 0;
+  var elapsed = performance.now() - _chargeAnim.t0;
+  if (_chargeAnim.dir === 1) {
+    return Math.max(0, Math.min(1, (elapsed - departDelay(idx)) / NUC_FLIGHT));
+  }
+  return 1 - Math.max(0, Math.min(1, (elapsed - departDelay(N - 1 - idx)) / NUC_FLIGHT));
+}
+
+/* Rangs entrelacés : proton de slot s sort au rang 2s, électron de slot s
+   sort au rang 2s+1 — sur une échelle totale de 2Z rangs. */
+function chargeProgressP(slot, Z) { return chargeProgress(2 * slot, 2 * Z); }
+function chargeProgressE(slot, Z) { return chargeProgress(2 * slot + 1, 2 * Z); }
+
+/* Position (en unités de rStep, indépendante du redimensionnement) des Z
+   électrons d'un atome sur leurs cercles de sous-couches, dans l'ordre de
+   remplissage (slot 0..Z-1) — même géométrie que le tracé normal des
+   électrons dans renderAtome() (angle de départ décalé par sous-couche). */
+function getElectronLayout(Z) {
+  var shells = getShellsAffichees(Z);
+  var radiiUnit = computeShellRadii(1);
+  var list = [], slot = 0;
+  shells.forEach(function (sh, k) {
+    if (sh.count <= 0) return;
+    var Runit = radiiUnit[SUBSHELLS.indexOf(sh.sub)];
+    var start = -Math.PI / 2 + k * 0.7;
+    for (var i = 0; i < sh.count; i++) {
+      list.push({ slot: slot++, Runit: Runit, angle: start + i * 2 * Math.PI / sh.count });
+    }
+  });
+  return list;
+}
+
+/* Déclenchement (appelé par ui.js) — dir 1 : éclater, -1 : rassembler.
+   Seuls les protons sont figés (position 3D rotative) ; les électrons se
+   recalculent à la volée (position fixe, indépendante de la rotation). */
+function startChargeAnim(dir) {
+  var layout = getNucleusLayout(state.Z);
+  _freezeCharge.main = {};
+  layout.pts.forEach(function (p) {
+    if (p.t === 'p') _freezeCharge.main[p.slot] = projectPt(p);
+  });
+
+  var dur = nucTotalDur(2 * getElement(state.Z).Z);
+  if (state.compare) {
+    var layoutCmp = getNucleusLayout(state.Zcmp);
+    _freezeCharge.cmp = {};
+    layoutCmp.pts.forEach(function (p) {
+      if (p.t === 'p') _freezeCharge.cmp[p.slot] = projectPt(p);
+    });
+    dur = Math.max(dur, nucTotalDur(2 * getElement(state.Zcmp).Z));
+  } else {
+    _freezeCharge.cmp = null;
+  }
+
+  _chargeAnim = { running: true, dir: dir, t0: performance.now(), dur: dur };
+  requestAnimationFrame(chargeTick);
+}
+
+function chargeTick() {
+  render();
+  if (!_chargeAnim.running) return;
+  if (performance.now() - _chargeAnim.t0 >= _chargeAnim.dur) {
+    _chargeAnim.running = false;
+    render();
+    if (typeof onChargeAnimEnd === 'function') onChargeAnimEnd();
+    return;
+  }
+  requestAnimationFrame(chargeTick);
+}
+
+/* Réinitialisation immédiate (changement d'élément) */
+function resetChargeVue() {
+  _chargeAnim.running = false;
+  _freezeCharge = { main: null, cmp: null };
+  state.charge = false;
 }
 
 /* ─────────────────────────────────────────────────
@@ -578,9 +675,10 @@ function renderAtome(Z, x0, w, freezeKey) {
   rb *= Math.min(1, (rStep * 0.68) / (RU * rb));
 
   var anim = _nucAnim.running || state.eclate;
+  var animCharge = _chargeAnim.running || state.charge;
 
   /* Billes triées d'arrière en avant ; alpha réduit (fantôme) pour
-     celles qui ont quitté le noyau. */
+     celles qui ont quitté le noyau (éclatement) ou l'atome (charge). */
   var proj = layout.pts.map(function (p, i) {
     var q = projectPt(p);
     q.t = p.t; q.rank = p.rank; q.slot = p.slot; q.i = i;
@@ -589,6 +687,7 @@ function renderAtome(Z, x0, w, freezeKey) {
   proj.sort(function (a, b) { return a.z - b.z; });
   proj.forEach(function (q) {
     var prog = anim ? nucProgress(q.rank, A) : 0;
+    if (q.t === 'p' && animCharge) prog = Math.max(prog, chargeProgressP(q.slot, el.Z));
     var scale = 1 + 0.22 * q.z / RU;                     /* effet perspective   */
     var shade = 0.5 * (1 - (q.z / RU + 1) / 2);          /* fond assombri       */
     drawNucleon(cx + q.x * rb, cy + q.y * rb, rb * scale, q.t,
@@ -599,6 +698,7 @@ function renderAtome(Z, x0, w, freezeKey) {
   var shellRadii = computeShellRadii(rStep);
   drawShellHalos(cx, cy, shells, shellRadii, rStep);
 
+  var eSlot = 0;
   shells.forEach(function (sh, k) {
     var R = shellRadii[SUBSHELLS.indexOf(sh.sub)];
     var col = sh.sub.color;
@@ -619,7 +719,9 @@ function renderAtome(Z, x0, w, freezeKey) {
       var start = -Math.PI / 2 + k * 0.7;
       for (var i = 0; i < sh.count; i++) {
         var a = start + i * 2 * Math.PI / sh.count;
-        drawElectron(cx + R * Math.cos(a), cy + R * Math.sin(a), re);
+        var progE = animCharge ? chargeProgressE(eSlot, el.Z) : 0;
+        eSlot++;
+        drawElectron(cx + R * Math.cos(a), cy + R * Math.sin(a), re, progE > 0 ? 0.20 : 1);
       }
     }
 
@@ -640,6 +742,9 @@ function renderAtome(Z, x0, w, freezeKey) {
 
   /* ── Vue éclatée : cadre de comptage + nucléons en vol ── */
   if (anim) drawVueEclatee(el, layout, cx, cy, rb, minDim, _freeze[freezeKey]);
+
+  /* ── Vue charge : cadre protons/électrons + particules en vol ── */
+  if (animCharge) drawVueCharge(el, layout, cx, cy, rb, minDim, rStep, _freezeCharge[freezeKey]);
 
   /* ── Rappel Z/A + configuration sous le schéma ── */
   drawInfosAtome(el, cx, infoH);
@@ -758,11 +863,8 @@ function drawConfigLigne(el, cx, y, fs) {
    Dessinée APRÈS les sous-couches : le cadre et les billes
    en vol passent devant les cercles.
 ───────────────────────────────────────────────── */
-function drawVueEclatee(el, layout, cx, cy, rb, minDim, freeze) {
-  var A = layout.pts.length;
-  var g = getFrameGeom(el, rb, minDim, cx);
-
-  /* Cadre */
+/* Cadre blanc arrondi commun aux deux vues éclatées (éclatement / charge) */
+function drawCountFrame(g) {
   var pad = 10;
   _ctx.beginPath();
   if (_ctx.roundRect) {
@@ -775,6 +877,12 @@ function drawVueEclatee(el, layout, cx, cy, rb, minDim, freeze) {
   _ctx.lineWidth = 1.5;
   _ctx.strokeStyle = '#c8c0b4';
   _ctx.stroke();
+}
+
+function drawVueEclatee(el, layout, cx, cy, rb, minDim, freeze) {
+  var A = layout.pts.length;
+  var g = getFrameGeom(el, rb, minDim, cx);
+  drawCountFrame(g);
 
   /* Nucléons rangés / en vol (ordre de sortie pour un empilement propre) */
   var enVol = [];
@@ -801,4 +909,63 @@ function drawVueEclatee(el, layout, cx, cy, rb, minDim, freeze) {
   });
   /* Les billes en vol par-dessus tout */
   enVol.forEach(function (b) { drawNucleon(b.x, b.y, g.rbF, b.t, 0, 1); });
+}
+
+/* ─────────────────────────────────────────────────
+   Vue « visualiser la charge » — cadre, protons/électrons rangés en vol.
+   Réutilise getFrameGeom()/slotPos() avec un élément fictif { Z, A: 2Z }
+   (nP = Z protons, nN = Z électrons) : même géométrie de cadre que la vue
+   éclatée du noyau, colonne 0 = protons (rouge), colonne 1 = électrons
+   (bleu). Dessinée APRÈS les sous-couches, comme drawVueEclatee().
+───────────────────────────────────────────────── */
+function drawVueCharge(el, layout, cx, cy, rb, minDim, rStep, freeze) {
+  var Z = el.Z;
+  var elFake = { Z: Z, A: 2 * Z };
+  var g = getFrameGeom(elFake, rb, minDim, cx);
+  drawCountFrame(g);
+
+  var enVol = [];
+
+  /* Protons : partent du noyau (position 3D figée, comme l'éclatement) */
+  layout.pts.forEach(function (p) {
+    if (p.t !== 'p') return;
+    var prog = chargeProgressP(p.slot, Z);
+    if (prog <= 0) return;
+    var dest = slotPos(g, p.slot, 0);
+    if (prog >= 1) { drawNucleon(dest.x, dest.y, g.rbF, 'p', 0, 1); return; }
+    var f = freeze ? freeze[p.slot] : projectPt(p);
+    var x0 = cx + f.x * rb, y0 = cy + f.y * rb;
+    var mx = (x0 + dest.x) / 2;
+    var my = Math.min(y0, dest.y) - minDim * 0.13;
+    var e = easeInOut(prog), u = 1 - e;
+    enVol.push({
+      x: u * u * x0 + 2 * u * e * mx + e * e * dest.x,
+      y: u * u * y0 + 2 * u * e * my + e * e * dest.y,
+      kind: 'p'
+    });
+  });
+
+  /* Électrons : partent de leur position fixe sur leur cercle de sous-couche */
+  getElectronLayout(Z).forEach(function (el2) {
+    var prog = chargeProgressE(el2.slot, Z);
+    if (prog <= 0) return;
+    var dest = slotPos(g, el2.slot, 1);
+    if (prog >= 1) { drawElectron(dest.x, dest.y, g.rbF); return; }
+    var x0 = cx + el2.Runit * rStep * Math.cos(el2.angle);
+    var y0 = cy + el2.Runit * rStep * Math.sin(el2.angle);
+    var mx = (x0 + dest.x) / 2;
+    var my = Math.min(y0, dest.y) - minDim * 0.13;
+    var e = easeInOut(prog), u = 1 - e;
+    enVol.push({
+      x: u * u * x0 + 2 * u * e * mx + e * e * dest.x,
+      y: u * u * y0 + 2 * u * e * my + e * e * dest.y,
+      kind: 'e'
+    });
+  });
+
+  /* Particules en vol par-dessus tout */
+  enVol.forEach(function (b) {
+    if (b.kind === 'p') drawNucleon(b.x, b.y, g.rbF, 'p', 0, 1);
+    else drawElectron(b.x, b.y, g.rbF);
+  });
 }

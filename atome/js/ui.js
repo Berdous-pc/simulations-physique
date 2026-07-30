@@ -88,7 +88,9 @@ function selectElement(Z) {
   state.Z = Z;
   /* Changement d'élément : on revient à la vue assemblée du noyau */
   resetNucVue();
+  resetChargeVue();
   majBtnEclate();
+  majBtnCharge();
   var cells = document.querySelectorAll('.tp-cell');
   for (var i = 0; i < cells.length; i++) cells[i].classList.remove('selected');
   var cell = document.getElementById('tp-cell-' + Z);
@@ -126,6 +128,7 @@ function toggleCompare() {
   document.body.classList.toggle('compare', state.compare);
 
   majBtnEclate();
+  majBtnCharge();
 
   var btn = document.getElementById('btn-comparer');
   btn.classList.toggle('active', state.compare);
@@ -142,7 +145,9 @@ function setCompareZ(v) {
      noyau (le figé de la vue éclatée ne correspondrait plus au nouvel
      élément). */
   resetNucVue();
+  resetChargeVue();
   majBtnEclate();
+  majBtnCharge();
   majSelectNoble();
   majCompareTP();
   majInfos();
@@ -162,21 +167,53 @@ function majCompareTP() {
    Vue éclatée du noyau
 ───────────────────────────────────────────────── */
 function toggleEclate() {
+  /* Vues mutuellement exclusives : si la vue charge était affichée, on la
+     referme instantanément (pas de contre-animation) avant de basculer. */
+  if (state.charge) { state.charge = false; _chargeAnim.running = false; }
   state.eclate = !state.eclate;
   startNucAnim(state.eclate ? 1 : -1);
   majBtnEclate();   /* après startNucAnim : désactive le bouton pendant l'anim */
+  majBtnCharge();
 }
 
 function majBtnEclate() {
   var btn = document.getElementById('btn-eclater');
   btn.textContent = state.eclate ? '↺ Rassembler le noyau' : '💥 Éclater le noyau';
   /* Désactivé pendant l'animation (réactivé par onNucAnimEnd). */
-  btn.disabled = _nucAnim.running;
+  btn.disabled = _nucAnim.running || _chargeAnim.running;
   btn.title = 'Faire sortir les nucléons un par un pour les compter';
 }
 
 /* Hook appelé par draw.js à la fin de l'animation d'éclatement */
 function onNucAnimEnd() {
+  majBtnEclate();
+  majBtnCharge();
+}
+
+/* ─────────────────────────────────────────────────
+   Vue charge (protons/électrons)
+───────────────────────────────────────────────── */
+function toggleCharge() {
+  /* Vues mutuellement exclusives : si le noyau était éclaté, on referme
+     instantanément cette vue avant de basculer sur la charge. */
+  if (state.eclate) { state.eclate = false; _nucAnim.running = false; }
+  state.charge = !state.charge;
+  startChargeAnim(state.charge ? 1 : -1);
+  majBtnCharge();   /* après startChargeAnim : désactive le bouton pendant l'anim */
+  majBtnEclate();
+}
+
+function majBtnCharge() {
+  var btn = document.getElementById('btn-charge');
+  btn.textContent = state.charge ? '↺ Rassembler l’atome' : '⚡ Visualiser la charge';
+  /* Désactivé pendant l'animation (réactivé par onChargeAnimEnd). */
+  btn.disabled = _nucAnim.running || _chargeAnim.running;
+  btn.title = 'Faire sortir les protons et les électrons pour les compter';
+}
+
+/* Hook appelé par draw.js à la fin de l'animation de charge */
+function onChargeAnimEnd() {
+  majBtnCharge();
   majBtnEclate();
 }
 

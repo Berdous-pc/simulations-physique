@@ -39,7 +39,7 @@ Scope global (pas de modules ES) — l'ordre de chargement `sim → draw → ui`
   n = 3). Ex. : O (période 2) → 3s⁰ 3p⁰ affichés en pointillés atténués.
 - `GAZ_NOBLES` / `estGazNoble(Z)` : He, Ne, Ar — mis **en gras** dans le
   sélecteur « Comparer avec » du panneau.
-- `state` : `{ Z, showEmpty, showLegend, eclate, compare, Zcmp }`
+- `state` : `{ Z, showEmpty, showLegend, eclate, charge, compare, Zcmp }`
   (`compare` = zone de schéma coupée en deux, `Zcmp` = élément comparé).
   `showEmpty` s'applique aussi bien aux cercles du schéma (`getShellsAffichees`)
   qu'à la configuration écrite du bandeau d'informations (`drawConfigLigne`).
@@ -85,6 +85,21 @@ que pendant l'animation d'éclatement (et un `rAF` ponctuel pendant le drag).
   de rayon de bille (`_freeze`) → insensibles au redimensionnement. Fin
   d'animation signalée à `ui.js` par le hook `onNucAnimEnd()` (réactive le
   bouton) ; changement d'élément → `resetNucVue()`.
+- **Vue charge** (`state.charge`, bouton « ⚡ Visualiser la charge » du
+  panneau, fonction `startChargeAnim(dir)`) : même mécanique que la vue
+  éclatée, mais deux colonnes **protons/électrons** (réutilise
+  `getFrameGeom()`/`slotPos()` avec un élément fictif `{ Z, A: 2Z }` pour que
+  `nP = nN = Z`). Les protons partent du noyau (position 3D figée dans
+  `_freezeCharge`, comme `_freeze`) ; les électrons partent de leur position
+  fixe sur leur cercle de sous-couche (`getElectronLayout()`, pas besoin de
+  figeage). Protons et électrons sortent **en alternance un par un**
+  (proton 0, électron 0, proton 1, électron 1, … — `chargeProgressP`/
+  `chargeProgressE`, rangs entrelacés 2s/2s+1 sur une échelle totale de 2Z),
+  même cadence accélérée que `nucProgress`. **Mutuellement exclusive** avec la vue
+  éclatée du noyau (`toggleEclate()`/`toggleCharge()` dans `ui.js`) : activer
+  l'une referme l'autre **instantanément** (pas de contre-animation) avant de
+  lancer sa propre animation. Fin d'animation → hook `onChargeAnimEnd()` ;
+  changement d'élément → `resetChargeVue()`.
 - **Sous-couches** : cercles concentriques à **échelle commune à tous les
   atomes** (`rStep = Rmax / 5`, le nombre total de sous-couches de la page) :
   une sous-couche donnée a le même rayon quel que soit l'élément, et le rayon

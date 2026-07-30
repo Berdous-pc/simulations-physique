@@ -79,6 +79,7 @@ var state = {
   showEmpty: false,   /* afficher les sous-couches vides suivantes     */
   showLegend: true,   /* afficher la légende sur la zone d'animation   */
   eclate: false,      /* vue éclatée du noyau (cadre de comptage)      */
+  charge: false,      /* vue éclatée protons/électrons (charge)        */
   compare: false,     /* zone de schéma coupée en deux (comparaison)   */
   Zcmp: 18            /* élément comparé (argon par défaut)            */
 };
