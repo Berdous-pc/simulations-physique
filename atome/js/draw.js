@@ -54,7 +54,10 @@ function rotateBy(ax, ay) {
 
 /* ── Animation d'éclatement ───────────────────── */
 var _nucAnim = { running: false, dir: 1, t0: 0, dur: 0 };
-var _freeze  = null;   /* positions projetées (unités rb) au déclenchement */
+/* Positions projetées (unités rb) au déclenchement, une par atome affiché
+   (« main » = state.Z, « cmp » = state.Zcmp en mode comparaison) : chaque
+   moitié anime son propre noyau indépendamment mais sur le même minuteur. */
+var _freeze  = { main: null, cmp: null };
 
 /* Cadence de sortie : premiers nucléons lents, puis accélération */
 var NUC_G0 = 260, NUC_RATIO = 0.90, NUC_FLIGHT = 380;   /* ms */
@@ -328,10 +331,20 @@ function startNucAnim(dir) {
 
   /* On fige les positions projetées courantes : points de départ (éclater)
      ou d'arrivée (rassembler) des trajectoires, en unités de rb pour
-     rester valables après un redimensionnement. */
-  _freeze = layout.pts.map(function (p) { return projectPt(p); });
+     rester valables après un redimensionnement. Les deux noyaux (mode
+     comparaison) sont figés ensemble et animés sur le même minuteur. */
+  _freeze.main = layout.pts.map(function (p) { return projectPt(p); });
 
-  _nucAnim = { running: true, dir: dir, t0: performance.now(), dur: nucTotalDur(A) };
+  var dur = nucTotalDur(A);
+  if (state.compare) {
+    var layoutCmp = getNucleusLayout(state.Zcmp);
+    _freeze.cmp = layoutCmp.pts.map(function (p) { return projectPt(p); });
+    dur = Math.max(dur, nucTotalDur(layoutCmp.pts.length));
+  } else {
+    _freeze.cmp = null;
+  }
+
+  _nucAnim = { running: true, dir: dir, t0: performance.now(), dur: dur };
   requestAnimationFrame(nucTick);
 }
 
@@ -350,52 +363,46 @@ function nucTick() {
 /* Réinitialisation immédiate (changement d'élément) */
 function resetNucVue() {
   _nucAnim.running = false;
-  _freeze = null;
+  _freeze = { main: null, cmp: null };
   state.eclate = false;
 }
 
 /* ─────────────────────────────────────────────────
    Cadre de comptage (vue éclatée) — géométrie
-   Simplifié : seul le titre « A = … nucléons », puis les
-   nucléons rangés par paquets de 5 (protons, puis neutrons).
-   La largeur du cadre est celle de la grille (5 sphères) ;
-   la police du titre est réduite si besoin pour ne pas
-   dépasser cette largeur.
+   Les nucléons sont rangés en 2 colonnes côte à côte,
+   une colonne protons et une colonne neutrons, chacune
+   empilée verticalement (pas de titre, pas de paquets de 5).
 ───────────────────────────────────────────────── */
-/* Rayon plancher des billes du cadre : en dessous, sur petite fenêtre,
-   le cadre devient minuscule et le texte flou (police trop réduite pour
-   rester nette). Indépendant du rb du noyau (qui, lui, doit suivre
-   l'échelle commune du schéma) — seul le cadre de comptage garde une
-   taille lisible quelle que soit la fenêtre. */
-var FRAME_RB_MIN = 5.5;
-var FRAME_FS_MIN = 9;   /* police mini lisible (px) */
+/* Marge verticale/horizontale minimale entre le cadre et les bords de la
+   zone de schéma (évite qu'il chevauche une zone voisine — ex. tableau
+   périodique replié sous le schéma sur petite fenêtre). */
+var FRAME_MARGIN = 12;
 
 function getFrameGeom(el, rb, minDim, cx) {
-  var rbF = Math.max(rb, FRAME_RB_MIN);
+  /* Les billes du cadre ont la même taille que les nucléons du noyau
+     (rb) : pas de taille plancher indépendante, pour que l'échelle soit
+     cohérente quelle que soit la fenêtre. */
+  var rbF = rb;
   var step = rbF * 2.6;
   var nP = el.Z, nN = el.A - el.Z;
-  var rowsP = Math.ceil(nP / 5);
-  var rowsN = Math.ceil(nN / 5);
-  var gridW = 5 * step;
-  var w = gridW;
+  var groupGap = step * 0.35;             /* interligne supplémentaire tous les 5 */
+  var nMax = Math.max(nP, nN, 1);
 
-  var titre = 'A = ' + el.A + (el.A > 1 ? ' nucléons' : ' nucléon');
-  var fsF = Math.max(FRAME_FS_MIN, minDim * 0.028);
-  _ctx.font = '700 ' + fsF + 'px monospace';
-  while (fsF > FRAME_FS_MIN && _ctx.measureText(titre).width > gridW) {
-    fsF -= 0.5;
-    _ctx.font = '700 ' + fsF + 'px monospace';
+  function dims(s, g) {
+    return { w: 2 * s, h: nMax * s + Math.floor((nMax - 1) / 5) * g };
   }
-  var lineH = fsF * 1.55;
+  var d = dims(step, groupGap);
 
-  var h = lineH;                          /* titre                 */
-  var yP = h;                             /* haut grille protons   */
-  h = yP + rowsP * step;
-  var yN = 0;
-  if (nN > 0) {
-    yN = h + fsF * 0.6;                   /* haut grille neutrons  */
-    h = yN + rowsN * step;
+  /* Si le cadre ne tient pas dans la hauteur disponible (petite fenêtre,
+     gros atome), on réduit billes/écarts pour qu'il tienne toujours
+     entièrement dans la zone de schéma. */
+  var maxH = Math.max(20, _h - 2 * FRAME_MARGIN);
+  if (d.h > maxH) {
+    var scale = maxH / d.h;
+    rbF *= scale; step *= scale; groupGap *= scale;
+    d = dims(step, groupGap);
   }
+  var w = d.w, h = d.h;
 
   /* Écart avec le schéma : comme pour la box Propriétés, un écart fixe
      colle le cadre au cortège électronique sur grand écran (le schéma,
@@ -406,18 +413,19 @@ function getFrameGeom(el, rb, minDim, cx) {
   var rightSpace = Math.max(0, (_vx + _vw) - (cx + _schemaRmax) - w - 16);
   var gap = Math.min(90, Math.max(36, rightSpace * 0.3 + 36));
   var x0 = cx + _schemaRmax + gap;
-  x0 = Math.min(x0, _vx + _vw - w - 16);
-  x0 = Math.max(x0, _vx + 16);
-  var y0 = Math.max(12, _h / 2 - h / 2);
-  return { x0: x0, y0: y0, w: w, h: h, step: step, fsF: fsF, rbF: rbF,
-           lineH: lineH, yP: yP, yN: yN, nP: nP, nN: nN, titre: titre };
+  x0 = Math.min(x0, _vx + _vw - w - FRAME_MARGIN);
+  x0 = Math.max(x0, _vx + FRAME_MARGIN);
+  var y0 = Math.max(FRAME_MARGIN, Math.min(_h / 2 - h / 2, _h - h - FRAME_MARGIN));
+  return { x0: x0, y0: y0, w: w, h: h, step: step, rbF: rbF, groupGap: groupGap,
+           yP: 0, yN: 0, nP: nP, nN: nN };
 }
 
-/* Centre du slot idx (lignes de 5) d'un groupe commençant à yTop */
-function slotPos(g, idx, yTop) {
+/* Centre du slot idx (empilé verticalement) dans sa colonne (0 = protons,
+   1 = neutrons) — interligne élargi tous les 5 nucléons */
+function slotPos(g, idx, col) {
   return {
-    x: g.x0 + (idx % 5) * g.step + g.step / 2,
-    y: g.y0 + yTop + Math.floor(idx / 5) * g.step + g.step / 2
+    x: g.x0 + col * g.step + g.step / 2,
+    y: g.y0 + idx * g.step + Math.floor(idx / 5) * g.groupGap + g.step / 2
   };
 }
 
@@ -505,11 +513,11 @@ function render() {
     /* Zone coupée en deux : à gauche l'élément sélectionné dans le tableau
        périodique, à droite celui du sélecteur « Comparer » du panneau. */
     var half = _w / 2;
-    renderAtome(state.Z,    0,    half);
-    renderAtome(state.Zcmp, half, half);
+    renderAtome(state.Z,    0,    half, 'main');
+    renderAtome(state.Zcmp, half, half, 'cmp');
     drawSeparateurCompare(half);
   } else {
-    renderAtome(state.Z, 0, _w);
+    renderAtome(state.Z, 0, _w, 'main');
   }
 }
 
@@ -526,8 +534,10 @@ function drawSeparateurCompare(x) {
   _ctx.restore();
 }
 
-/* Dessin d'un atome dans la bande verticale [x0, x0 + w] du canvas */
-function renderAtome(Z, x0, w) {
+/* Dessin d'un atome dans la bande verticale [x0, x0 + w] du canvas.
+   freezeKey ('main' ou 'cmp') identifie le noyau figé (_freeze) qui lui
+   correspond pendant l'animation d'éclatement. */
+function renderAtome(Z, x0, w, freezeKey) {
   _vx = x0;
   _vw = w;
 
@@ -567,9 +577,7 @@ function renderAtome(Z, x0, w) {
   var rb = rStep * 0.075 * 1.25 * 1.5;
   rb *= Math.min(1, (rStep * 0.68) / (RU * rb));
 
-  /* La vue éclatée n'existe qu'en mode simple (cf. ui.js : le bouton est
-     désactivé pendant la comparaison, faute de place dans une demi-zone). */
-  var anim = !state.compare && (_nucAnim.running || state.eclate);
+  var anim = _nucAnim.running || state.eclate;
 
   /* Billes triées d'arrière en avant ; alpha réduit (fantôme) pour
      celles qui ont quitté le noyau. */
@@ -631,7 +639,7 @@ function renderAtome(Z, x0, w) {
   });
 
   /* ── Vue éclatée : cadre de comptage + nucléons en vol ── */
-  if (anim) drawVueEclatee(el, layout, cx, cy, rb, minDim);
+  if (anim) drawVueEclatee(el, layout, cx, cy, rb, minDim, _freeze[freezeKey]);
 
   /* ── Rappel Z/A + configuration sous le schéma ── */
   drawInfosAtome(el, cx, infoH);
@@ -750,7 +758,7 @@ function drawConfigLigne(el, cx, y, fs) {
    Dessinée APRÈS les sous-couches : le cadre et les billes
    en vol passent devant les cercles.
 ───────────────────────────────────────────────── */
-function drawVueEclatee(el, layout, cx, cy, rb, minDim) {
+function drawVueEclatee(el, layout, cx, cy, rb, minDim, freeze) {
   var A = layout.pts.length;
   var g = getFrameGeom(el, rb, minDim, cx);
 
@@ -768,26 +776,18 @@ function drawVueEclatee(el, layout, cx, cy, rb, minDim) {
   _ctx.strokeStyle = '#c8c0b4';
   _ctx.stroke();
 
-  /* Titre — seule mention textuelle, les paquets de billes ci-dessous
-     (protons puis neutrons) se passent d'étiquette Z/N. */
-  _ctx.textAlign = 'left';
-  _ctx.textBaseline = 'top';
-  _ctx.font = '700 ' + g.fsF + 'px monospace';
-  _ctx.fillStyle = '#2c3e50';
-  _ctx.fillText(g.titre, g.x0, g.y0);
-
   /* Nucléons rangés / en vol (ordre de sortie pour un empilement propre) */
   var enVol = [];
   layout.pts.forEach(function (p, idx) {
     var prog = nucProgress(p.rank, A);
     if (prog <= 0) return;                        /* encore dans le noyau */
-    var dest = slotPos(g, p.slot, p.t === 'p' ? g.yP : g.yN);
+    var dest = slotPos(g, p.slot, p.t === 'p' ? 0 : 1);
     if (prog >= 1) {
       drawNucleon(dest.x, dest.y, g.rbF, p.t, 0, 1);
       return;
     }
     /* Trajectoire courbe : Bézier quadratique passant au-dessus */
-    var f = _freeze ? _freeze[idx] : projectPt(p);
+    var f = freeze ? freeze[idx] : projectPt(p);
     var x0 = cx + f.x * rb, y0 = cy + f.y * rb;
     var mx = (x0 + dest.x) / 2;
     var my = Math.min(y0, dest.y) - minDim * 0.13;

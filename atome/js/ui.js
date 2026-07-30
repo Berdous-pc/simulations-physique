@@ -125,9 +125,6 @@ function toggleCompare() {
   state.compare = !state.compare;
   document.body.classList.toggle('compare', state.compare);
 
-  /* La vue éclatée n'a pas la place de tenir dans une demi-zone : on la
-     referme en entrant en comparaison (bouton désactivé ensuite). */
-  if (state.compare) resetNucVue();
   majBtnEclate();
 
   var btn = document.getElementById('btn-comparer');
@@ -141,6 +138,11 @@ function toggleCompare() {
 
 function setCompareZ(v) {
   state.Zcmp = parseInt(v, 10);
+  /* Changement de l'élément comparé : on revient à la vue assemblée du
+     noyau (le figé de la vue éclatée ne correspondrait plus au nouvel
+     élément). */
+  resetNucVue();
+  majBtnEclate();
   majSelectNoble();
   majCompareTP();
   majInfos();
@@ -168,12 +170,9 @@ function toggleEclate() {
 function majBtnEclate() {
   var btn = document.getElementById('btn-eclater');
   btn.textContent = state.eclate ? '↺ Rassembler le noyau' : '💥 Éclater le noyau';
-  /* Désactivé pendant l'animation (réactivé par onNucAnimEnd) et pendant la
-     comparaison (le cadre de comptage ne tient pas dans une demi-zone). */
-  btn.disabled = _nucAnim.running || state.compare;
-  btn.title = state.compare
-    ? 'Indisponible pendant la comparaison'
-    : 'Faire sortir les nucléons un par un pour les compter';
+  /* Désactivé pendant l'animation (réactivé par onNucAnimEnd). */
+  btn.disabled = _nucAnim.running;
+  btn.title = 'Faire sortir les nucléons un par un pour les compter';
 }
 
 /* Hook appelé par draw.js à la fin de l'animation d'éclatement */
