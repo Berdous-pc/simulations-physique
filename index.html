@@ -238,10 +238,14 @@
       display: flex;
       align-items: center;
       gap: 8px;
+      row-gap: 5px;
       flex-wrap: wrap;
     }
 
+    /* Le thème occupe toute la ligne : les badges de niveau passent
+       systématiquement à la ligne suivante, même s'il reste de la place. */
     .card-theme {
+      flex: 0 0 100%;
       font-size: clamp(10px, 0.95vw, 12px);
       font-weight: 700;
       text-transform: uppercase;
@@ -488,6 +492,10 @@
           <button id="btn-uncheck-themes" class="link-uncheck">Décocher tous les thèmes</button>
         </div>
         <label class="filter-label">
+          <input type="checkbox" data-filter="theme" data-value="constitution-matiere" checked>
+          Constitution de la matière
+        </label>
+        <label class="filter-label">
           <input type="checkbox" data-filter="theme" data-value="dosages" checked>
           Dosages
         </label>
@@ -631,6 +639,25 @@
           </div>
           <div class="card-desc">
             Trajectoire d'un projectile dans le champ de pesanteur. Vecteurs cinématiques animés, chronophotographie, équations horaires.
+          </div>
+        </a>
+
+        <!-- Constitution de la matière — Structure des atomes/ions -->
+        <a class="card theme-chimie"
+           href="atome/index.html"
+           data-discipline="chimie"
+           data-theme="constitution-matiere"
+           data-levels="seconde">
+          <div class="card-meta">
+            <span class="card-theme theme-chimie">Constitution de la matière</span>
+            <span class="card-level level-seconde">Seconde</span>
+          </div>
+          <div class="card-title">Structure des atomes/ions</div>
+          <div class="card-preview">
+            <img src="assets/previews/atomes.jpg" alt="Aperçu simulation Structure des atomes/ions" width="800" height="514" loading="lazy">
+          </div>
+          <div class="card-desc">
+            Constitution des atomes et des ions pour les éléments des trois premières lignes du tableau périodique. Visualisation du noyau et du cortège électronique.
           </div>
         </a>
 

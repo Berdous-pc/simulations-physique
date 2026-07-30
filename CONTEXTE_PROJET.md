@@ -438,7 +438,7 @@ Structure d'une carte :
 
 **Attributs `data-*`** sur chaque `.card` pour le filtrage JS :
 - `data-discipline` : `"physique"` ou `"chimie"`
-- `data-theme` : `"electricite"` | `"optique"` | `"radioactivite"` | `"transformations-chimiques"` | `"dosages"` | `"solutions-aqueuses"` | `"thermodynamique"` | `"ondes"` | `"mecanique"`
+- `data-theme` : `"electricite"` | `"optique"` | `"radioactivite"` | `"transformations-chimiques"` | `"dosages"` | `"solutions-aqueuses"` | `"thermodynamique"` | `"ondes"` | `"mecanique"` | `"constitution-matiere"`
 - `data-levels` : niveaux séparés par espace, ex: `"seconde premiere"`
 
 Chaque valeur `data-theme`/`data-value` est le libellé affiché mis en kebab-case (accents retirés) — pas de slug arbitraire déconnecté du texte visible.
@@ -495,6 +495,7 @@ Stockées dans `assets/previews/` au format **`.jpg`** (converties depuis les sc
 | `kepler-loi1.jpg` | 1ʳᵉ loi de Kepler (ellipses) |
 | `kepler-loi2.jpg` | 2ᵉ loi de Kepler (loi des aires) |
 | `kepler-loi3.jpg` | 3ᵉ loi de Kepler (loi des périodes) |
+| `atomes.jpg` | Structure des atomes/ions |
 
 **Optimisation poids/performance (juillet 2026)** : les screenshots d'origine (PNG plein format, jusqu'à 2273×1268 px et 300+ Ko chacun) alourdissaient inutilement le chargement de la page d'accueil et pénalisaient les Core Web Vitals (LCP, CLS), donc le référencement. Conversion en `.jpg` redimensionné (800 px de large max, qualité ~82) : dossier `assets/previews/` passé de ~1,4 Mo à ~630 Ko. Toute **nouvelle** image de preview doit suivre ce format (JPEG, 800 px de large max) plutôt que déposer un screenshot PNG brut.
 
