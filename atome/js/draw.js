@@ -669,6 +669,19 @@ function computeShellRadii(rStep) {
   return radii;
 }
 
+/* Couleur de halo d'une couche : moyenne des couleurs de TOUTES les
+   sous-couches de cette couche (affichées ou non), pour que le fond
+   d'une couche ne change pas selon les sous-couches visibles. */
+var _shellHaloColors = {};
+function shellHaloColor(n) {
+  if (!_shellHaloColors[n]) {
+    var cols = [];
+    SUBSHELLS.forEach(function (s) { if (s.n === Number(n)) cols.push(s.color); });
+    _shellHaloColors[n] = blendHexColors(cols);
+  }
+  return _shellHaloColors[n];
+}
+
 /* Mélange de couleurs hex (moyenne RGB) pour le halo d'une couche
    regroupant plusieurs sous-couches de couleurs différentes. */
 function blendHexColors(colors) {
@@ -691,11 +704,10 @@ function drawShellHalos(cx, cy, shells, radii, rStep) {
   shells.forEach(function (sh) {
     var idx = SUBSHELLS.indexOf(sh.sub);
     var R = radii[idx];
-    if (!groups[sh.sub.n]) { groups[sh.sub.n] = { min: R, max: R, colors: [] }; order.push(sh.sub.n); }
+    if (!groups[sh.sub.n]) { groups[sh.sub.n] = { min: R, max: R }; order.push(sh.sub.n); }
     var grp = groups[sh.sub.n];
     grp.min = Math.min(grp.min, R);
     grp.max = Math.max(grp.max, R);
-    grp.colors.push(sh.sub.color);
   });
 
   var pad = rStep * 0.32;
@@ -704,7 +716,7 @@ function drawShellHalos(cx, cy, shells, radii, rStep) {
     var grp = groups[n];
     var inner = Math.max(0, grp.min - pad);
     var outer = grp.max + pad;
-    var col = blendHexColors(grp.colors);
+    var col = shellHaloColor(n);
     _ctx.filter = 'blur(6px)';
     _ctx.globalAlpha = 0.16;
     _ctx.fillStyle = col;
