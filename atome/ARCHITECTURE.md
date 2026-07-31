@@ -20,10 +20,13 @@ atome/
 └── js/
     ├── sim.js       ← données (ELEMENTS, SUBSHELLS) + état global (chargé en premier)
     ├── draw.js      ← rendu canvas du schéma de l'atome
-    └── ui.js        ← tableau périodique cliquable, panneau, resize, init (chargé en dernier)
+    ├── ui.js        ← tableau périodique cliquable, panneau, resize, init
+    └── test.js      ← mode test (quiz) — chargé en dernier
 ```
 
-Scope global (pas de modules ES) — l'ordre de chargement `sim → draw → ui` est critique.
+Scope global (pas de modules ES) — l'ordre de chargement `sim → draw → ui → test`
+est critique (`ui.js` fait l'init au chargement ; `test.js` n'expose que des
+gestionnaires appelés plus tard, il peut donc venir après).
 
 ## Données (`sim.js`)
 
@@ -209,8 +212,97 @@ que pendant l'animation d'éclatement (et un `rAF` ponctuel pendant le drag).
   Taille calée sur `minDim` (comme les étiquettes de sous-couches). Suit
   l'ionisation en cours (elle reçoit `ionQ` de `renderAtome()`).
 
+## Mode test (`test.js`)
+
+Même mécanique que `reaction/` et `titrage/` : overlay de choix, 5 questions,
+pop-up de correction, score final, 2 essais (1 pt puis 0,5 pt).
+`testState = { actif, mode, atomes, idx, score, essais, clos }`.
+
+- **Choix du thème** (`ouvrirConfirmTest()`) — même disposition de fenêtre et
+  mêmes zones de saisie dans les deux cas, seule la 3ᵉ ligne de la barre
+  change (`.mode-constit` / `.mode-stab`, pilotées par les classes
+  `body.test-constit` / `body.test-stab`) :
+  - **Constitution des atomes** : 5 atomes tirés **sans remise** parmi les 18
+    (`tirerAtomesTest()`). L'élève dispose du nom, de Z et de A ; il renseigne
+    le nombre de protons, de neutrons et d'électrons, complète la
+    configuration électronique et décrit la couche de valence (numéro +
+    nombre d'électrons).
+  - **Stabilité des éléments** : 5 éléments tirés sans remise parmi **16** —
+    carbone et silicium exclus, ils ne donnent pas d'ion monoatomique
+    (`ION_STABLE`, table explicite des charges). Les mêmes questions, mais
+    portant sur l'**ion stable** : particules, configuration électronique, et
+    **symbole de l'ion** (le symbole de l'élément est donné, la charge
+    s'écrit dans une zone posée en exposant). Une **consigne** est dessinée
+    sous le rappel Z/A (`state.testConsigne`, `drawConsigneTest()` — texte
+    découpé sur `|`, un segment sur deux en gras). Le bouton **Comparer**
+    reste actif (`TEST_CTRLS_STAB_ON`) : se repérer par rapport au gaz noble
+    voisin est la méthode attendue. Les **gaz nobles** font partie du tirage
+    et n'ont pas d'ion : la zone « charge » doit alors rester vide (ou porter
+    un 0).
+
+  Réponses attendues : `reponsesAttenduesTest(Z)`, à partir de
+  `getConfigForN(nElectronsIon(Z, ionQ))` et `ionExposant(ionQ)` — `ionQ` vaut
+  0 en « constitution », `ION_STABLE[Z]` en « stabilité ».
+- **Où sont les saisies** — toutes dans `#test-bar`, une barre HTML intercalée
+  entre le schéma et le tableau périodique (`#left-col`). Elle n'apparaît
+  qu'en mode test : la place vient du schéma, seul élément élastique de la
+  colonne (`#atom-zone` est en `flex: 1`), d'où une barre volontairement
+  compacte. Pour que le schéma ne rapetisse pas indéfiniment sur une fenêtre
+  courte, il reçoit en mode test une hauteur plancher
+  (`min-height: clamp(200px, 70vh, 475px)`) et le bas de la colonne défile :
+  la barre et le tableau périodique sont réunis dans `#left-bottom` pour
+  partager **une seule** barre de défilement (conteneur neutre hors test).
+  Le trait de séparation sous le schéma est porté par `#left-bottom` et non
+  par `#test-bar`, pour rester visible quand ce bloc a défilé.
+  Trois lignes (`.test-bar-row`) :
+  1. comptage des particules : protons / neutrons / électrons ;
+  2. configuration électronique `1s□ 2s□ 2p□ 3s□ 3p□` (`buildTestBar()`),
+     chaque zone de saisie tenant la place de l'exposant, aux couleurs de sa
+     sous-couche ;
+  3. selon le thème : couche de valence (numéro + nombre d'électrons) ou
+     symbole de l'ion (`Cl` + charge en exposant), puis **Valider**.
+
+  Le nom de l'élément (`#atom-title`) et le rappel `Z = … A = …` dessiné sous
+  le schéma restent **inchangés** en mode test : `drawInfosAtome()` sort
+  simplement avant `drawConfigLigne()` puisque la configuration est à écrire
+  en bas. HTML plutôt qu'un overlay au-dessus du canvas : rien à
+  resynchroniser au redimensionnement. Le panneau de droite ne porte que le
+  bouton d'entrée/sortie du mode test.
+- **Le schéma suit la saisie** : `onCfgInput()` écrit dans
+  `state.testShells` (un compteur par sous-couche) et relance `render()`.
+  Avec `state.testConsigne`, ce sont les **seuls aiguillages du mode test
+  dans `sim.js`/`draw.js`** : `getShellsAffichees()` renvoie alors les 5
+  sous-couches avec les effectifs saisis (vides comprises), et
+  `drawInfosAtome()` remplace la configuration écrite par la consigne. Les
+  deux ne valent que pour l'atome **de gauche** (`_curRotKey === 'main'`) :
+  en mode Comparer, celui de droite reste dessiné normalement. **Aucun
+  garde-fou de capacité** (choix acté) : écrire 1s³ dessine bien 3 électrons
+  sur le cercle 1s — c'est à l'élève de savoir.
+- **Ce qui est neutralisé** (`setTestUI()`, `TEST_CTRLS_OFF`, classe
+  `body.test`) : « Disperser le noyau », « Visualiser la charge »,
+  l'ionisation, les options d'affichage et — hors thème « stabilité » — la
+  comparaison sont désactivés. `ui.js` reteste `testBloqueControles()` dans
+  `majBtnEclate()`/`majBtnCharge()`/`majOneIonBlock()`, sans quoi un simple
+  `toggleCompare()` en cours de test réactiverait ces boutons ;
+  le tableau périodique reste **consultable mais non cliquable**
+  (`pointer-events: none` sur `#tp-grid` — l'atome est imposé par le test) et
+  **aucune case n'y est surlignée**, la période trahirait le nombre de
+  couches ; la capacité des sous-couches rappelée dans la légende
+  (`.leg-cap`, « 2 électrons max ») disparaît aussi.
+- **Correction** (`validerTest()`) : les zones fausses passent en rouge
+  (`.ko`), tout est vert (`.ok`) et verrouillé en cas de réussite. La zone
+  « couche de valence » n'est pas filtrée en numérique, justement pour qu'une
+  **sous-couche** écrite à la place du numéro de couche (« 3p ») puisse être
+  saisie — elle est comptée **fausse** même quand le chiffre est bon
+  (`champCorrect()`), et le message de correction ajoute alors « Attention à
+  ne pas confondre couche et sous-couche. » (`estSousCouche()`). Même principe
+  pour la **charge** de l'ion (`chargeCorrecte()`) : seule la notation
+  classique est acceptée (`2+`, `-`, avec le « 1 » redondant toléré) — `+2`
+  est faux et ajoute la remarque sur l'ordre nombre/signe
+  (`estChargeInversee()`). Après deux essais, « Voir la réponse »
+  (`voirReponseTest()`) remplit les zones et affiche la configuration correcte
+  sur le schéma. Entrée = Valider.
+
 ## Extensions prévues (discutées avec l'auteur, non implémentées)
 
-- **Test** : s'entraîner à écrire la configuration électronique et/ou prédire
-  l'ion stable — reprendre la mécanique de `reaction/` (score, popup, 2 essais).
 - Deep-linking `#hash` (élément sélectionné, élément comparé).

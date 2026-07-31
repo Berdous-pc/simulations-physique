@@ -370,6 +370,20 @@ function drawElectron(x, y, r, alpha) {
    → [{ sub, count }] dans l'ordre de remplissage.
 ───────────────────────────────────────────────── */
 function getShellsAffichees(Z, nE) {
+  /* Mode test « constitution » : la répartition dessinée est celle saisie par
+     l'élève (state.testShells), pas le remplissage réel — et les 5
+     sous-couches sont toujours tracées, y compris vides, puisque c'est à lui
+     de les remplir. Volontairement sans garde-fou sur les capacités : si
+     l'élève écrit 1s³, on dessine 3 électrons sur le cercle 1s. */
+  if (state.testShells && _curRotKey === 'main') {
+    /* `_curRotKey` est posé par renderAtome() avant tout appel : en mode
+       Comparer (accessible dans le test « stabilité »), seul l'atome de
+       gauche — celui du test — suit la saisie de l'élève ; celui de droite
+       reste dessiné normalement. */
+    return SUBSHELLS.map(function (s, i) {
+      return { sub: s, count: state.testShells[i] || 0 };
+    });
+  }
   if (nE === undefined) nE = Z;
   var occ = {};
   getConfigForN(nE).forEach(function (c) { occ[c.sub.id] = c.count; });
@@ -970,7 +984,7 @@ function renderAtome(Z, x0, w, freezeKey) {
   drawInfosAtome(el, cx, infoH, nE, ionQ);
 
   /* ── Pastille de stabilité (option) ── */
-  if (state.showStable) drawBadgeStabilite(Z, ionQ, cx, cy, minDim, infoH);
+  if (state.showStable && !state.testShells) drawBadgeStabilite(Z, ionQ, cx, cy, minDim, infoH);
 }
 
 /* Écart (px) entre le bord d'un rectangle et un cercle : > 0 = dégagé,
@@ -1098,7 +1112,48 @@ function drawInfosAtome(el, cx, infoH, nE, ionQ) {
   _ctx.fillStyle = '#7a8a96';
   _ctx.fillText('Z = ' + el.Z + '   A = ' + el.A, cx, yZA);
 
+  /* Mode test : la configuration électronique est à écrire par l'élève dans
+     la barre du bas — seul le rappel Z/A est dessiné ici, à sa place
+     habituelle, suivi de la consigne posée par test.js. La place libérée par
+     la configuration suffit largement. */
+  if (state.testShells && _curRotKey === 'main') {
+    if (state.testConsigne) drawConsigneTest(state.testConsigne, cx, yCfg, fs);
+    return;
+  }
+
   drawConfigLigne(el, cx, yCfg, fs, nE, ionQ);
+}
+
+/* Consigne du mode test, sur une ligne centrée sous le rappel Z/A. Le texte
+   est découpé sur « | » : un segment sur deux (indices impairs) est mis en
+   gras — c'est ainsi que test.js met « ion stable » en évidence. La police
+   est réduite tant que la ligne déborde de la zone. */
+function drawConsigneTest(txt, cx, y, fsBase) {
+  var segs = txt.split('|');
+
+  function police(i, fs) {
+    return (i % 2 ? '700 ' : '400 ') + fs + 'px "Segoe UI", Arial, sans-serif';
+  }
+  function largeur(fs) {
+    var w = 0;
+    segs.forEach(function (s, i) { _ctx.font = police(i, fs); w += _ctx.measureText(s).width; });
+    return w;
+  }
+
+  var fs = fsBase * 0.74;
+  var w = largeur(fs);
+  var wMax = _vw * 0.94;
+  while (w > wMax && fs > 9) { fs *= 0.92; w = largeur(fs); }
+
+  var x = cx - w / 2;
+  _ctx.textAlign = 'left';
+  _ctx.fillStyle = '#5a6a78';
+  segs.forEach(function (s, i) {
+    _ctx.font = police(i, fs);
+    _ctx.fillText(s, x, y);
+    x += _ctx.measureText(s).width;
+  });
+  _ctx.textAlign = 'center';
 }
 
 /* Configuration électronique sur une ligne, centrée en cx, précédée du

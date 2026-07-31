@@ -132,5 +132,15 @@ var state = {
   compare: false,     /* zone de schéma coupée en deux (comparaison)   */
   Zcmp: 1,            /* élément comparé (hydrogène par défaut)        */
   ionQ: 0,            /* charge de l'ion sélectionné (0 = neutre)      */
-  ionQCmp: 0           /* charge de l'ion comparé (0 = neutre)          */
+  ionQCmp: 0,         /* charge de l'ion comparé (0 = neutre)          */
+
+  /* Mode test « constitution » : électrons placés par l'élève, un compteur
+     par sous-couche dans l'ordre de SUBSHELLS (null hors mode test). C'est
+     le seul aiguillage du mode test dans sim.js/draw.js — toute la mécanique
+     du test vit dans test.js. */
+  testShells: null,
+
+  /* Consigne affichée sous le rappel Z/A pendant le test (null = aucune).
+     Découpage sur « | » : un segment sur deux est mis en gras. */
+  testConsigne: null
 };

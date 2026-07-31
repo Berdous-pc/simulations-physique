@@ -170,6 +170,15 @@ function majCompareTP() {
   if (cell) cell.classList.add('compared');
 }
 
+/* Un test en cours neutralise les commandes qui donneraient la réponse.
+   Testé ici plutôt que dans test.js seul : ces boutons sont réactivés par
+   les maj ci-dessous, appelées entre autres par toggleCompare() — encore
+   accessible pendant le test « stabilité ». (test.js est chargé après ui.js,
+   d'où le typeof : les premiers appels ont lieu à l'init.) */
+function testBloqueControles() {
+  return typeof testState !== 'undefined' && testState.actif;
+}
+
 /* ─────────────────────────────────────────────────
    Vue éclatée du noyau
 ───────────────────────────────────────────────── */
@@ -188,7 +197,7 @@ function majBtnEclate() {
   var btn = document.getElementById('btn-eclater');
   btn.textContent = state.eclate ? '↺ Rassembler le noyau' : 'Disperser le noyau';
   /* Désactivé pendant l'animation (réactivé par onNucAnimEnd). */
-  btn.disabled = _nucAnim.running || _chargeAnim.running;
+  btn.disabled = testBloqueControles() || _nucAnim.running || _chargeAnim.running;
   btn.title = 'Faire sortir les nucléons un par un pour les compter';
 }
 
@@ -217,7 +226,7 @@ function majBtnCharge() {
   var btn = document.getElementById('btn-charge');
   btn.textContent = state.charge ? '↺ Rassembler l’atome' : 'Visualiser la charge';
   /* Désactivé pendant l'animation (réactivé par onChargeAnimEnd). */
-  btn.disabled = _nucAnim.running || _chargeAnim.running;
+  btn.disabled = testBloqueControles() || _nucAnim.running || _chargeAnim.running;
   btn.title = 'Faire sortir les protons et les électrons pour les compter';
 }
 
@@ -285,7 +294,7 @@ function ionCountLabel(which) {
 }
 
 function majOneIonBlock(which) {
-  var running = _nucAnim.running || _chargeAnim.running;
+  var running = testBloqueControles() || _nucAnim.running || _chargeAnim.running;
   var Z = ZOf(which), ionQ = ionOf(which);
 
   var sym = document.getElementById('ion-sym-' + which);

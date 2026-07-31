@@ -42,7 +42,90 @@
           <canvas id="atom-canvas"></canvas>
         </div>
 
+        <!-- Progression du mode test (atome n/5 + score) -->
+        <div id="test-progress-bar"></div>
+
+        <!-- Pop-up de correction du mode test (au-dessus du schéma) -->
+        <div id="test-popup">
+          <div id="test-popup-msg"></div>
+          <div id="test-popup-btns"></div>
+        </div>
+
       </div><!-- fin #atom-main -->
+
+    </div>
+
+    <!-- ── Bas de la colonne : saisies du test + tableau périodique ──
+         Regroupés dans un même conteneur pour partager une seule barre de
+         défilement en mode test : quand la fenêtre devient trop courte,
+         c'est ce bloc qui défile, plutôt que le schéma qui rapetisse
+         indéfiniment (cf. #left-bottom / body.test dans css/style.css). -->
+    <div id="left-bottom">
+
+    <!-- ── Barre de saisie du mode test ──────────
+         S'intercale entre le schéma et le tableau périodique (qui reste
+         consultable) et rassemble toutes les zones de saisie, en trois
+         lignes : comptage des particules, configuration électronique (chaque
+         zone de saisie tenant la place de l'exposant), puis couche de valence
+         et validation. Le nom de l'élément, Z et A restent autour du schéma,
+         comme hors mode test. -->
+    <div id="test-bar">
+
+      <div class="test-bar-row">
+        <div class="test-q">
+          <label class="test-q-lab" for="ti-p">Protons</label>
+          <input class="test-input" id="ti-p" type="text" inputmode="numeric"
+                 maxlength="2" autocomplete="off">
+        </div>
+        <div class="test-q">
+          <label class="test-q-lab" for="ti-n">Neutrons</label>
+          <input class="test-input" id="ti-n" type="text" inputmode="numeric"
+                 maxlength="2" autocomplete="off">
+        </div>
+        <div class="test-q">
+          <label class="test-q-lab" for="ti-e">Électrons</label>
+          <input class="test-input" id="ti-e" type="text" inputmode="numeric"
+                 maxlength="2" autocomplete="off">
+        </div>
+      </div>
+
+      <div class="test-bar-row">
+        <span class="test-q-lab">Configuration électronique</span>
+        <span id="test-bar-cfg"><!-- construit par buildTestBar() (js/test.js) --></span>
+      </div>
+
+      <!-- Dernière ligne : propre à chaque thème du test (.mode-constit /
+           .mode-stab, cf. body.test-constit / body.test-stab) -->
+      <div class="test-bar-row">
+        <div class="test-q mode-constit">
+          <label class="test-q-lab" for="ti-vn">Couche de valence</label>
+          <!-- Pas de filtre numérique ici : on laisse l'élève écrire « 3p »
+               pour pouvoir compter la confusion couche/sous-couche fausse et
+               le lui signaler (cf. validerTest(), js/test.js). -->
+          <input class="test-input" id="ti-vn" type="text"
+                 maxlength="2" autocomplete="off">
+        </div>
+        <div class="test-q mode-constit">
+          <label class="test-q-lab" for="ti-ve">Électrons de valence</label>
+          <input class="test-input" id="ti-ve" type="text" inputmode="numeric"
+                 maxlength="2" autocomplete="off">
+        </div>
+
+        <!-- Symbole de l'ion : le symbole de l'élément est donné, la charge
+             s'écrit dans la zone de saisie posée en exposant. -->
+        <div class="test-q mode-stab">
+          <label class="test-q-lab" for="ti-charge">Symbole de l’ion stable</label>
+          <span class="ion-formule">
+            <span id="ti-sym"></span><input class="cfg-exp ion-charge" id="ti-charge"
+                   type="text" maxlength="3" autocomplete="off"
+                   aria-label="Charge de l’ion stable">
+          </span>
+        </div>
+
+        <button class="btn btn-primary btn-valider-test" id="btn-test-valider"
+                onclick="validerTest()">Valider</button>
+      </div>
+
     </div>
 
     <!-- ── Tableau périodique réduit (H → Ar) ──── -->
@@ -51,6 +134,8 @@
         <!-- cases construites par buildTP() (js/ui.js) -->
       </div>
     </div>
+
+    </div><!-- fin #left-bottom -->
 
   </div><!-- fin #left-col -->
 
@@ -158,6 +243,14 @@
         </div>
       </div>
 
+      <div class="sep"></div>
+
+      <!-- MODE TEST -->
+      <div class="panel-section">
+        <button class="btn btn-test-mode" id="btn-test-mode"
+                onclick="ouvrirConfirmTest()">&#9881; Mode Test</button>
+      </div>
+
     </div><!-- fin #panel-body -->
 
     <!-- ── Bandeau Informations ────────────────── -->
@@ -188,7 +281,17 @@
         (l'électron le plus externe part ou arrive en premier) — le symbole,
         la charge et la configuration électronique s'actualisent.<br>
         <strong>Électrons</strong> : répartis sur les sous-couches 1s, 2s, 2p…
-        dans l'ordre de remplissage.
+        dans l'ordre de remplissage.<br>
+        <strong>Mode Test</strong> : 5 éléments tirés au sort, deux thèmes au
+        choix. <em>Constitution des atomes</em> : comptage des particules,
+        configuration électronique et couche de valence de l'atome.
+        <em>Stabilité des éléments</em> : les mêmes informations, mais pour
+        l'<strong>ion stable</strong> de l'élément, plus son symbole avec sa
+        charge en exposant (le bouton Comparer reste disponible pour se
+        repérer par rapport à un gaz noble). Tout se renseigne dans la barre
+        juste au-dessus du tableau périodique, et le schéma se remplit au fur
+        et à mesure de la configuration écrite. Deux essais par question
+        (1 point, puis 0,5).
       </div>
     </div>
 
@@ -196,12 +299,18 @@
 
 </main>
 
+<!-- Overlay modal du mode test (choix du mode, score final) -->
+<div id="test-overlay">
+  <div class="test-modal" id="test-modal-content"></div>
+</div>
+
 <!-- ════════════════════════════════════════════════
-     Ordre de chargement : sim → draw → ui
+     Ordre de chargement : sim → draw → ui → test
 ════════════════════════════════════════════════ -->
 <script src="js/sim.js"></script>
 <script src="js/draw.js"></script>
 <script src="js/ui.js"></script>
+<script src="js/test.js"></script>
 
 <script data-goatcounter="https://berdous-pc.goatcounter.com/count"
         async src="https://gc.zgo.at/count.js"></script>
