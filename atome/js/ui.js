@@ -249,13 +249,10 @@ function addElectron(which) {
   if (newIon === ionQ) return;   /* déjà à la limite (± ION_MAX ou capacité) */
   var oldNE = nElectronsIon(Z, ionQ), newNE = nElectronsIon(Z, newIon);
   setIonOf(which, newIon);
-  if (state.charge) {
-    /* Vue « charge » déjà ouverte : la colonne d'électrons s'ajuste
-       instantanément, sans animation supplémentaire. */
-    render();
-  } else {
-    addIonFlight(which, Z, oldNE, newNE);
-  }
+  /* Le vol d'électron (cortège) est toujours déclenché, même vue « charge »
+     ouverte — seule la colonne d'électrons de cette vue s'ajuste en plus
+     instantanément (elle ne dépend que de nE courant, pas du vol). */
+  addIonFlight(which, Z, oldNE, newNE);
   majBtnIon();
   majInfos();
 }
@@ -267,11 +264,7 @@ function removeElectron(which) {
   if (newIon === ionQ) return;
   var oldNE = nElectronsIon(Z, ionQ), newNE = nElectronsIon(Z, newIon);
   setIonOf(which, newIon);
-  if (state.charge) {
-    render();
-  } else {
-    addIonFlight(which, Z, oldNE, newNE);
-  }
+  addIonFlight(which, Z, oldNE, newNE);
   majBtnIon();
   majInfos();
 }

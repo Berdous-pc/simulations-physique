@@ -93,6 +93,29 @@ var _ionFlights = { main: [], cmp: [] };
 var _ionLoopRunning = false;
 var ION_FLIGHT = 480;   /* ms — durée d'un aller simple complet (s : 0↔1) */
 
+/* ── Animation de la réorganisation électronique ──
+   Un ajout/retrait d'électron peut changer la répartition par sous-couche
+   (ex. un p passe de 6 à 5 électrons) : TOUS les électrons restants de
+   cette sous-couche changent alors d'angle d'un coup. On anime ce
+   glissement (Runit, angle) en parallèle du vol de l'électron
+   ajouté/retiré, sur la même durée. Indexé par slot (0..nE-1 courant),
+   comme getElectronLayout(). */
+var _configAnim = { main: null, cmp: null };
+
+function lerpElecPos(a, b, t) {
+  return { Runit: a.Runit + (b.Runit - a.Runit) * t, angle: a.angle + (b.angle - a.angle) * t };
+}
+
+/* Progression [0..1] (adoucie) de la transition de config en cours pour
+   `which`, ou null si aucune transition n'est active. */
+function configEase(which) {
+  var ca = _configAnim[which];
+  if (!ca) return null;
+  var t = (performance.now() - ca.t0) / ca.dur;
+  if (t >= 1) { _configAnim[which] = null; return null; }
+  return easeInOut(Math.max(0, t));
+}
+
 /* Cadence de sortie : premiers nucléons lents, puis accélération */
 var NUC_G0 = 260, NUC_RATIO = 0.90, NUC_FLIGHT = 380;   /* ms */
 
@@ -552,6 +575,26 @@ function addIonFlight(which, Z, oldNE, newNE) {
                 vel: vel, s0: (vel === 1) ? 0 : 1, t0: now });
   }
 
+  /* Transition de configuration : les électrons restants (communs aux
+     deux configs) glissent de leur ancienne à leur nouvelle position sur
+     la même durée qu'un vol simple. On repart de l'état courant si une
+     transition était déjà en cours (continuité, pas de saut). */
+  var toLayout = getElectronLayout(Z, newNE);
+  var prevCa = _configAnim[which];
+  var fromLayout;
+  if (prevCa) {
+    var pt = configEase(which);
+    if (pt === null) pt = 1;
+    fromLayout = toLayout.map(function (tgt, i) {
+      var a = prevCa.from[i], b = prevCa.to[i];
+      if (!a || !b) return b || a || tgt;
+      return lerpElecPos(a, b, pt);
+    });
+  } else {
+    fromLayout = getElectronLayout(Z, oldNE);
+  }
+  _configAnim[which] = { from: fromLayout, to: toLayout, t0: now, dur: ION_FLIGHT };
+
   if (!_ionLoopRunning) { _ionLoopRunning = true; requestAnimationFrame(ionTick); }
 }
 
@@ -574,7 +617,10 @@ function ionTick() {
   pruneIonFlights('main');
   pruneIonFlights('cmp');
   render();
-  if (_ionFlights.main.length || _ionFlights.cmp.length) {
+  var caRunning = false;
+  if (configEase('main') !== null) caRunning = true;
+  if (configEase('cmp') !== null) caRunning = true;
+  if (_ionFlights.main.length || _ionFlights.cmp.length || caRunning) {
     requestAnimationFrame(ionTick);
   } else {
     _ionLoopRunning = false;
@@ -584,6 +630,7 @@ function ionTick() {
 /* Réinitialisation immédiate (changement d'élément) */
 function resetIonVue() {
   _ionFlights = { main: [], cmp: [] };
+  _configAnim = { main: null, cmp: null };
   _ionLoopRunning = false;
 }
 
@@ -870,7 +917,18 @@ function renderAtome(Z, x0, w, freezeKey) {
            ci-dessous, en vol. */
         var arriving = ionFlights.some(function (f) { return f.vel === -1 && f.slot === thisSlot; });
         if (arriving) continue;
-        drawElectron(cx + R * Math.cos(a), cy + R * Math.sin(a), re, progE > 0 ? 0.20 : 1);
+        var ex = cx + R * Math.cos(a), ey = cy + R * Math.sin(a);
+        var ct = configEase(freezeKey);
+        if (ct !== null) {
+          var ca = _configAnim[freezeKey];
+          var fromE = ca.from[thisSlot], toE = ca.to[thisSlot];
+          if (fromE && toE) {
+            var pos = lerpElecPos(fromE, toE, ct);
+            ex = cx + pos.Runit * rStep * Math.cos(pos.angle);
+            ey = cy + pos.Runit * rStep * Math.sin(pos.angle);
+          }
+        }
+        drawElectron(ex, ey, re, progE > 0 ? 0.20 : 1);
       }
     }
 
