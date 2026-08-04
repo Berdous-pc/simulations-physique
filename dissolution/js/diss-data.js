@@ -71,10 +71,10 @@ const DISS_ION_NAMES = {
   Iod: 'Ion iodure',
 };
 
-/* Concentration effective (mol·L⁻¹) de l'espèce colorante à partir de
+/* Concentration effective (mmol·L⁻¹) de l'espèce colorante à partir de
    laquelle l'eau du verre affiche la teinte de saturation (cf. `tint: true`
    sur les especes ci-dessous, et son usage dans dissWaterTint(), diss.js). */
-const DISS_SOLUTION_COLOR_SAT_MOLL = 20;
+const DISS_SOLUTION_COLOR_SAT_MMOLL = 20;
 
 /* Chaque soluté définit :
    - `grain` : géométrie du groupement formulaire saisi dans la coupelle

@@ -75,7 +75,7 @@ const dissState = {
   soluteId: 'glucose',
   volumeML: 1000,
   unit: 'mol',                 // 'mol' | 'molL'
-  nApporte: 0,                 // nb de groupements largués dans l'eau depuis le dernier reset (mol)
+  nApporte: 0,                 // nb de groupements largués dans l'eau depuis le dernier reset (mmol — 1 entité = 1 mmol)
   tableY: 0,                   // ligne de table sur laquelle reposent la coupelle et le verre (vue de profil)
   baseY: 0,                    // fond réel des récipients (légèrement au-dessus de tableY, cf. DISS_BASE_LIFT)
   dish: { pile: [], x0: 0, y0: 0, w: 0, h: 0, flare: 0 },
@@ -1164,7 +1164,7 @@ function _dissLowerFirst(s) {
    progression d'une solution de sulfate de cuivre de diluée à concentrée) :
    dès qu'il y en a, l'eau suit cette progression en fonction de la
    concentration EFFECTIVE de cette espèce (n apporté × son coefficient
-   stœchiométrique / volume) rapportée à DISS_SOLUTION_COLOR_SAT_MOLL
+   stœchiométrique / volume) rapportée à DISS_SOLUTION_COLOR_SAT_MMOLL
    (diss-data.js) — c'est cette concentration-là qui donne sa couleur à une
    vraie solution, pas la concentration apportée du soluté lui-même. */
 function dissWaterTint() {
@@ -1176,7 +1176,7 @@ function dissWaterTint() {
   const conc = (dissState.nApporte * esp.coeff) / volumeL;
   if (conc <= 0) return DISS_WATER_NEUTRAL;
 
-  const t = clamp01(conc / DISS_SOLUTION_COLOR_SAT_MOLL);
+  const t = clamp01(conc / DISS_SOLUTION_COLOR_SAT_MMOLL);
   return _multiLerpHex(esp.colorStops, t);
 }
 
@@ -1305,7 +1305,7 @@ function dissRenderLegendDOM() {
 
   const W = DISS_LEGEND_CANVAS_W, H = DISS_LEGEND_CANVAS_H;
   let html = '<div class="diss-legend-title">Légende</div>'
-    + '<div class="diss-legend-sub">Chaque entité représente une mole.</div>';
+    + '<div class="diss-legend-sub">Chaque entité représente une millimole.</div>';
 
   solute.especes.forEach((esp, i) => {
     const symbol = esp.label || esp.formule;
@@ -1381,7 +1381,7 @@ function dissResize() {
 /* ══════════════════════════════════════════════════
    Tableau d'avancement — État initial (x = 0) / État final (dissolution
    totale, x = xmax = n apporté), colonnes générées depuis SOLUTES[i].especes.
-   Le mode mol·L⁻¹ convertit TOUTES les cellules, y compris la colonne
+   Le mode mmol·L⁻¹ convertit TOUTES les cellules, y compris la colonne
    solide (interprétée alors comme la concentration apportée c = n/V) :
    c'est précisément la comparaison recherchée avec la concentration
    effective de chaque ion.
@@ -1394,9 +1394,9 @@ function dissTd(text, className) {
 }
 
 function dissFormatQty(nMol) {
-  if (dissState.unit === 'mol') return nMol + ' mol';
+  if (dissState.unit === 'mol') return nMol + ' mmol';
   const c = nMol / (dissState.volumeML / 1000);
-  return c.toFixed(2).replace('.', ',') + ' mol·L⁻¹';
+  return c.toFixed(2).replace('.', ',') + ' mmol·L⁻¹';
 }
 
 function renderDissTable() {
@@ -1597,7 +1597,7 @@ function setDissUnit(u) {
    hauteur de la scène comme un lancer depuis la coupelle. */
 const DISS_ADD_DROP_CLEARANCE = 40;
 
-/* Bouton "+ Ajouter 1 mol de soluté" : lâche un groupement du soluté
+/* Bouton "+ Ajouter 1 mmol de soluté" : lâche un groupement du soluté
    courant à la verticale du centre du verre, en chute libre (vitesse
    initiale nulle) — rejoint ensuite dissState.flying, dont la physique déjà
    en place (dissStepPhysicsSub) le fait tomber puis se dissoudre au contact

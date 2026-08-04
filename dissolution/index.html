@@ -235,7 +235,7 @@
       <div class="panel-main-section" id="section-dissolution" style="display:none;">
         <div class="panel-section">
           <div class="section-title">Contrôles</div>
-          <button id="diss-btn-add" class="btn btn-primary" onclick="dissAddMole()">+ Ajouter 1 mol de soluté</button>
+          <button id="diss-btn-add" class="btn btn-primary" onclick="dissAddMole()">+ Ajouter 1 mmol de soluté</button>
           <button id="diss-btn-playpause" class="btn btn-pause" style="margin-top:6px;"
                   onclick="dissTogglePause()">⏸ Pause</button>
           <button class="btn btn-raz" style="margin-top:6px;" onclick="dissReset()">↺ Remettre à zéro</button>
@@ -295,8 +295,8 @@
         <div class="panel-section">
           <div class="section-title">Unité d'affichage</div>
           <div class="diss-unit-toggle">
-            <button class="diss-unit-btn active" id="diss-unit-btn-mol" onclick="setDissUnit('mol')">n (mol)</button>
-            <button class="diss-unit-btn" id="diss-unit-btn-molL" onclick="setDissUnit('molL')">c (mol·L⁻¹)</button>
+            <button class="diss-unit-btn active" id="diss-unit-btn-mol" onclick="setDissUnit('mol')">n (mmol)</button>
+            <button class="diss-unit-btn" id="diss-unit-btn-molL" onclick="setDissUnit('molL')">c (mmol·L⁻¹)</button>
           </div>
         </div>
 
