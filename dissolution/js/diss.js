@@ -27,6 +27,13 @@ const DISS_STAGE_W = 1000, DISS_STAGE_H = 560;
    petit, sans texte à l'intérieur (code couleur seul). */
 const DISS_ION_R = 7;
 
+/* Épaisseur du trait du fond/parois du verre (drawDissGlass) — un tracé
+   canvas est centré sur son chemin, donc ce trait déborde de LW/2 de part et
+   d'autre de `bottomY` : sans en tenir compte, la zone de nage des ions
+   (dissWaterZone) les laissait s'approcher jusqu'à `bottomY` pile, soit
+   jusqu'au milieu du trait — visuellement enfoncés dans la bordure basse. */
+const DISS_GLASS_BORDER_LW = 4;
+
 const DISS_VOL_MIN = 100, DISS_VOL_MAX = 2000;      // mL, bornes du slider volume
 /* Le récipient a une taille fixe à l'écran (cf. computeDissSceneLayout) :
    seule la fraction remplie varie avec le volume choisi. */
@@ -300,7 +307,7 @@ function dissWaterZone() {
   const r = DISS_ION_R;
   return {
     xMin: g.x0 + g.wallInset + r, xMax: g.x0 + g.w - g.wallInset - r,
-    yMin: g.waterTopY + r,        yMax: g.bottomY - r,
+    yMin: g.waterTopY + r,        yMax: g.bottomY - r - DISS_GLASS_BORDER_LW / 2,
   };
 }
 
@@ -908,21 +915,42 @@ function dissLabelFont() {
    Glouton : ajoute des mots à la ligne courante tant qu'elle tient, sinon
    ouvre une nouvelle ligne — suffisant ici, les libellés font au plus
    quelques mots (pas de mot isolé plus large que maxWidth à gérer). */
-function dissWrapLabel(ctx, text, maxWidth) {
+function dissWrapLabel(ctx, text, maxWidth, maxLines) {
   const words = text.split(' ');
   const lines = [];
   let current = '';
-  words.forEach(w => {
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
     const test = current ? current + ' ' + w : w;
     if (current && ctx.measureText(test).width > maxWidth) {
       lines.push(current);
+      /* Dernière ligne autorisée atteinte : plutôt que de continuer à
+         découper mot par mot (ce qui produirait une ligne supplémentaire
+         croppée hors de #diss-bottom-zone, cf. dissDrawLabel), on regroupe
+         tous les mots restants dans cette dernière ligne — sa longueur
+         excédentaire sera ensuite tronquée avec une ellipse. */
+      if (maxLines && lines.length === maxLines - 1) {
+        current = words.slice(i + 1).join(' ');
+        break;
+      }
       current = w;
     } else {
       current = test;
     }
-  });
+  }
   if (current) lines.push(current);
   return lines;
+}
+
+/* Raccourcit `text` caractère par caractère (avec une ellipse finale) jusqu'à
+   tenir dans `maxWidth` — filet de sécurité pour la dernière ligne autorisée
+   d'un libellé wrappé (dissWrapLabel avec maxLines), qui peut rester trop
+   longue après regroupement des mots restants. */
+function dissTruncateEllipsis(ctx, text, maxWidth) {
+  if (ctx.measureText(text).width <= maxWidth) return text;
+  let t = text;
+  while (t.length > 1 && ctx.measureText(t + '…').width > maxWidth) t = t.slice(0, -1);
+  return t + '…';
 }
 
 /* Légende inscrite dans le plan de table, sous le récipient concerné (plutôt
@@ -933,13 +961,50 @@ function dissWrapLabel(ctx, text, maxWidth) {
    largeur du verre) — la première ligne reste TOUJOURS à la même position
    qu'en l'absence de wrap (seules les lignes suivantes s'ajoutent en
    dessous), pour ne pas décaler tout le libellé au passage à deux lignes. */
+/* Nombre de lignes maximum d'un libellé wrappé (dissWrapLabel) : au-delà,
+   la dernière ligne déborde de #diss-bottom-zone et se retrouve croppée
+   (cf. dissRepositionBottomZone()). */
+const DISS_LABEL_MAX_LINES = 2;
+
+/* Largeur maximale à laquelle dissDrawLabel peut élargir la zone de texte
+   (au-delà de `maxWidth`, la largeur du récipient) pour faire tenir un nom
+   long sur DISS_LABEL_MAX_LINES lignes sans perdre de mots ni rapetisser la
+   police (ex. « Solution aqueuse de permanganate de potassium »). Calculée à
+   la main à partir de la géométrie fixe de la scène (computeDissSceneLayout) :
+   coupelle et verre sont centrés respectivement à x=262.5 et x=732.5,
+   distants de 470px — cette largeur (480, centrée sur chacun) laisse une
+   marge de part et d'autre sans jamais chevaucher le libellé du récipient
+   voisin ni sortir du cadre de la scène (DISS_STAGE_W). */
+const DISS_LABEL_WIDTH_CAP = 480;
+
 function dissDrawLabel(ctx, text, cx, tableY, maxWidth) {
   ctx.save();
   ctx.fillStyle = '#fff8ec';
   ctx.font = dissLabelFont();
   ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
-  const lines = (maxWidth && ctx.measureText(text).width > maxWidth)
-    ? dissWrapLabel(ctx, text, maxWidth) : [text];
+
+  let lines = [text];
+  if (maxWidth && ctx.measureText(text).width > maxWidth) {
+    lines = dissWrapLabel(ctx, text, maxWidth);
+    /* Élargit progressivement la zone de texte (plutôt que de rapetisser la
+       police ou de perdre des mots) tant que le libellé déborde encore de
+       DISS_LABEL_MAX_LINES lignes, jusqu'à DISS_LABEL_WIDTH_CAP. */
+    const steps = 12;
+    for (let i = 1; i <= steps && lines.length > DISS_LABEL_MAX_LINES; i++) {
+      const w = maxWidth + (DISS_LABEL_WIDTH_CAP - maxWidth) * i / steps;
+      lines = dissWrapLabel(ctx, text, w);
+    }
+    if (lines.length > DISS_LABEL_MAX_LINES) {
+      /* Filet de sécurité : même élargi au maximum, le nom ne tient toujours
+         pas sur DISS_LABEL_MAX_LINES lignes (cas extrême, pas rencontré avec
+         les libellés actuels du projet) — tronque en dernier recours plutôt
+         que de déborder de #diss-bottom-zone. */
+      lines = dissWrapLabel(ctx, text, DISS_LABEL_WIDTH_CAP, DISS_LABEL_MAX_LINES);
+      const last = lines.length - 1;
+      lines[last] = dissTruncateEllipsis(ctx, lines[last], DISS_LABEL_WIDTH_CAP);
+    }
+  }
+
   const lineH = Math.round(DISS_STAGE_H * 0.038);
   const y0 = tableY + 20;
   lines.forEach((line, i) => ctx.fillText(line, cx, y0 + i * lineH));
@@ -1124,7 +1189,7 @@ function drawDissGlass(ctx) {
   ctx.save();
   ctx.fillStyle = dissWaterTint();
   ctx.fillRect(g.x0, g.waterTopY, g.w, Math.max(0, g.bottomY - g.waterTopY));
-  ctx.strokeStyle = '#1a2744'; ctx.lineWidth = 4; ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#1a2744'; ctx.lineWidth = DISS_GLASS_BORDER_LW; ctx.lineJoin = 'round';
   ctx.beginPath();
   ctx.moveTo(g.x0, g.y0);
   ctx.lineTo(g.x0, baseY);
