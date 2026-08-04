@@ -344,17 +344,22 @@
 
 <!-- ════════════════════════════════════════════════
      Ordre de chargement : sim → cristal → eau → textboxes → diss-data → diss → ui
+     `?v=N` (à incrémenter à chaque modif d'un de ces fichiers) force le
+     navigateur à recharger la bonne version plutôt que de servir un fichier
+     JS caché : un diss.js caché référençant une constante renommée dans un
+     diss-data.js non caché (ou l'inverse) plante sinon avec un
+     ReferenceError, sans que le code lui-même soit en cause.
 ════════════════════════════════════════════════ -->
-<script src="js/sim.js"></script>
-<script src="js/cristal.js"></script>
-<script src="js/eau.js"></script>
-<script src="js/textboxes.js"></script>
-<script src="js/diss-data.js"></script>
-<script src="js/diss.js"></script>
-<script src="js/ui.js"></script>
-<script src="js/fullscreen.js"></script>
-<script src="js/devpanel.js"></script>
-<script src="js/table-devtool.js"></script>
+<script src="js/sim.js?v=2"></script>
+<script src="js/cristal.js?v=2"></script>
+<script src="js/eau.js?v=2"></script>
+<script src="js/textboxes.js?v=2"></script>
+<script src="js/diss-data.js?v=2"></script>
+<script src="js/diss.js?v=2"></script>
+<script src="js/ui.js?v=2"></script>
+<script src="js/fullscreen.js?v=2"></script>
+<script src="js/devpanel.js?v=2"></script>
+<script src="js/table-devtool.js?v=2"></script>
 
 <script data-goatcounter="https://berdous-pc.goatcounter.com/count"
         async src="https://gc.zgo.at/count.js"></script>
