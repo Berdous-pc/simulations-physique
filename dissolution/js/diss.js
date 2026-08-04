@@ -946,19 +946,30 @@ function dissDrawLabel(ctx, text, cx, tableY, maxWidth) {
   ctx.restore();
 }
 
-/* Atomes du gabarit `grain`, triés par coefficient stœchiométrique
-   DÉCROISSANT — l'espèce la plus rare (ex. Mg²⁺, coeff 1, face à 2 Cl⁻) est
-   ainsi toujours dessinée EN DERNIER, par-dessus les espèces plus
-   nombreuses, aussi bien au sein d'un même groupement qu'entre groupements
-   voisins du pavage (cf. dissDrawPile()) : elle ne se retrouve jamais
-   noyée/masquée sous l'espèce majoritaire, ce qui rendait la stœchiométrie
-   difficile à percevoir. */
+/* Atomes du gabarit `grain`, triés pour un empilement (arrière → avant plan)
+   qui ALTERNE les espèces plutôt que de grouper chaque espèce d'un bloc :
+   avec l'ancien tri (par coefficient décroissant), les 2 Cl⁻ de MgCl₂
+   passaient tous les deux derrière, avec Mg²⁺ seul devant — un ion du bas
+   restait donc toujours masqué au second plan sans jamais passer devant.
+   Ici, chaque exemplaire d'une espèce reçoit une position fractionnaire
+   (k+0.5)/n dans [0,1] selon son rang k parmi les n exemplaires de cette
+   espèce (n = son coefficient), et l'empilement final est l'ordre croissant
+   de cette position toutes espèces confondues. Résultat pour un ratio 1:2
+   (ex. MgCl₂) : Cl⁻(0.25), Mg²⁺(0.5), Cl⁻(0.75) → un Cl⁻ en arrière-plan, Mg²⁺
+   au milieu, l'autre Cl⁻ au premier plan. Pour un ratio 2:3 (ex. Al₂(SO₄)₃) :
+   SO₄²⁻, Al³⁺, SO₄²⁻, Al³⁺, SO₄²⁻ — les 2 Al³⁺ ne sont plus systématiquement
+   tous les deux au premier plan. */
 function dissOrderedGrainParts(solute) {
-  return [...solute.grain].sort((a, b) => {
-    const ca = (solute.especes.find(e => e.el === a.el) || {}).coeff || 1;
-    const cb = (solute.especes.find(e => e.el === b.el) || {}).coeff || 1;
-    return cb - ca;
-  });
+  const seen = {};
+  return solute.grain
+    .map(part => {
+      const coeff = (solute.especes.find(e => e.el === part.el) || {}).coeff || 1;
+      const rank = seen[part.el] = (seen[part.el] || 0);
+      seen[part.el]++;
+      return { part, pos: (rank + 0.5) / coeff };
+    })
+    .sort((a, b) => a.pos - b.pos)
+    .map(x => x.part);
 }
 
 /* `rot` (radians, optionnel) fait tourner le gabarit du groupement autour de

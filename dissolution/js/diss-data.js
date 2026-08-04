@@ -223,6 +223,19 @@ const SOLUTES = [
     ],
   },
   {
+    id: 'cucl2', formule: 'CuCl₂', nom: 'Chlorure de cuivre (II)',
+    dissocie: true,
+    grain: [
+      { el: 'Cu', dx: 0,    dy: -0.6 },
+      { el: 'Cl', dx: -0.8, dy: 0.5 },
+      { el: 'Cl', dx: 0.8,  dy: 0.5 },
+    ],
+    especes: [
+      { formule: 'Cu²⁺', coeff: 1, el: 'Cu', label: 'Cu²⁺', fill: DISS_ION_COLORS.Cu.fill, border: DISS_ION_COLORS.Cu.border, labelColor: DISS_ION_COLORS.Cu.label, tint: true, colorStops: DISS_ION_COLORS.Cu.colorStops },
+      { formule: 'Cl⁻',  coeff: 2, el: 'Cl', label: 'Cl⁻',  fill: ATOM_COLORS.Cl, border: ATOM_BORDER.Cl, labelColor: ATOM_LABEL_COLOR.Cl },
+    ],
+  },
+  {
     id: 'bacl2', formule: 'BaCl₂', nom: 'Chlorure de baryum',
     dissocie: true,
     grain: [
