@@ -66,6 +66,15 @@ main {
   min-height: clamp(80px, 18vh, 160px);
 }
 
+/* ── Option « Afficher graphe » désactivée : zone graphes + splitter
+   masqués, le circuit occupe alors toute la colonne gauche ── */
+#left-col.graph-off #graph-area,
+#left-col.graph-off #left-splitter { display: none; }
+#left-col.graph-off #circuit-area {
+  flex: 1 !important;
+  height: auto !important;
+}
+
 /* ── Splitter draggable ── */
 #left-splitter {
   flex: 0 0 6px;
@@ -98,7 +107,7 @@ main {
   padding: clamp(8px, 1.2vw, 16px) clamp(6px, 1vw, 14px);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 0;
   overflow-y: auto;
 }
 
@@ -224,6 +233,29 @@ main {
 }
 
 /* ── Panneau droit : styles communs ── */
+
+/* Titre du panneau */
+.panel-title {
+  font-size: clamp(14px, 1.4vw, 17px);
+  font-weight: 700;
+  color: #2c3e50;
+  text-align: center;
+  padding-bottom: clamp(8px, 1vw, 12px);
+  border-bottom: 1.5px solid #c8c0b4;
+  margin-bottom: clamp(8px, 1vw, 12px);
+  letter-spacing: 0.3px;
+}
+
+/* Section */
+.panel-section { margin-bottom: 8px; }
+
+/* Séparateur */
+.sep {
+  border: none;
+  border-top: 1px solid #c8c0b4;
+  margin: 8px 0;
+}
+
 .section-title {
   font-size: 11px; font-weight: 700; text-transform: uppercase;
   letter-spacing: 1px; color: #7a8a96; margin-bottom: 4px;
@@ -235,26 +267,75 @@ main {
 .param-row label span { color: #2a5080; font-weight: 600; }
 input[type=range] { width: 100%; accent-color: #4a7aaa; cursor: pointer; }
 
-/* Boutons Charge / Décharge */
-.btn-group { display: flex; gap: 10px; }
+/* ── Boutons ─────────────────────────────────────── */
 .btn {
-  flex: 1; padding: 10px 6px; border: 1px solid transparent; border-radius: 6px;
-  font-size: clamp(13px, 1.3vw, 16px); font-weight: 700; cursor: pointer;
-  transition: opacity 0.2s, transform 0.1s; letter-spacing: 0.3px;
+  width: 100%;
+  border: none;
+  border-radius: 6px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 0.1s, background 0.15s;
 }
 .btn:active { transform: scale(0.97); }
+
+.btn-pause {
+  background: #c08020;
+  color: #fff;
+  font-size: clamp(14px, 1.4vw, 18px);
+  padding: 10px 6px;
+}
+.btn-pause:hover { background: #a06010; }
+
+.btn-play {
+  background: #2a8a50;
+  color: #fff;
+  font-size: clamp(14px, 1.4vw, 18px);
+  padding: 10px 6px;
+}
+.btn-play:hover { background: #1a6a38; }
+
+.btn-raz {
+  background: #dedad2;
+  color: #5a6a78;
+  font-size: clamp(12px, 1.2vw, 15px);
+  padding: 9px 6px;
+}
+.btn-raz:hover { background: #ccc8c0; }
+
+/* ── Bouton à bascule « on/off » (ex. Afficher graphe) ── */
+.btn-toggle-one {
+  width: 100%;
+  background: #ece8e0;
+  color: #5a6a78;
+  font-size: clamp(13px, 1.3vw, 16px);
+  padding: 11px 6px;
+  border: 1.5px solid #c8c0b4;
+  border-radius: 6px;
+  font-family: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: center;
+  transition: transform 0.1s, background 0.15s;
+}
+.btn-toggle-one:hover { background: #dedad2; }
+.btn-toggle-one:active { transform: scale(0.97); }
+.btn-toggle-one.active {
+  background: #fde8c8;
+  color: #7a3a10;
+  border-color: #d0a060;
+}
+
+/* Boutons Charge / Décharge */
+.btn-group { display: flex; gap: 10px; }
+.btn-group .btn {
+  width: auto; flex: 1; padding: 10px 6px; border: 1px solid transparent;
+  font-size: clamp(13px, 1.3vw, 16px); letter-spacing: 0.3px;
+}
 .btn-charge    { background: #d0dce8; color: #1a3a5a; border-color: #a0b8d0; }
 .btn-charge.active    { background: #2a6aaa; color: #fff; border-color: #1a5a9a; }
 .btn-discharge { background: #e8d8cc; color: #5a2a10; border-color: #c8a898; }
 .btn-discharge.active { background: #c05020; color: #fff; border-color: #a04010; }
-
-/* Bouton Réinitialiser */
-.btn-reset {
-  width: 100%; padding: 8px; background: #dedad2; color: #5a6a78;
-  border: 1px solid #b0a898; border-radius: 6px; font-size: clamp(12px, 1.2vw, 15px);
-  cursor: pointer; margin-top: 4px;
-}
-.btn-reset:hover { background: #d0ccc4; color: #2c3e50; }
 
 /* Encarts de valeurs instantanées */
 .readouts { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
@@ -268,6 +349,7 @@ input[type=range] { width: 100%; accent-color: #4a7aaa; cursor: pointer; }
 #state-indicator {
   text-align: center; font-size: 14px; padding: 6px;
   border-radius: 5px; background: #fff; border: 1px solid #c8c0b4;
+  margin-bottom: 8px;
 }
 
 /* Bloc d'explication des modes */
@@ -284,27 +366,29 @@ input[type=range] { width: 100%; accent-color: #4a7aaa; cursor: pointer; }
   margin-bottom: 2px; font-size: 13px;
 }
 
-/* Contrôle du temps (pause + vitesse) */
-#time-control { display: flex; flex-direction: column; gap: 6px; }
-#time-control .tc-row { display: flex; gap: 6px; align-items: center; }
-#btn-playpause {
-  flex: 1; padding: 9px 6px; border: 1px solid #b0a898;
-  background: #dedad2; color: #2c3e50; border-radius: 6px;
-  font-size: clamp(13px, 1.3vw, 16px); font-weight: 700; cursor: pointer;
+.param-value {
+  color: #2a5080;
+  font-weight: 600;
+  white-space: nowrap;
+  font-size: clamp(12px, 1.25vw, 15px);
 }
-#btn-playpause:hover { background: #d0ccc4; }
-#btn-playpause.paused { background: #2a6aaa; color: #fff; border-color: #1a5a9a; }
 
-/* Boutons de vitesse */
-.speed-btns { display: flex; gap: 4px; flex-wrap: wrap; }
-.btn-speed {
-  flex: 1; padding: 6px 2px; border: 1px solid #b0a898;
-  background: #dedad2; color: #2c3e50; border-radius: 5px;
-  font-size: 13px; font-weight: 700; cursor: pointer; text-align: center;
-  min-width: 0;
+/* Crans sous un slider : chaque label est centré exactement sous la position
+   du curseur pour son cran (cf. équilibre/cinétique). */
+.slider-ticks {
+  position: relative;
+  margin-top: 3px;
+  height: 1.3em;
 }
-.btn-speed:hover { background: #d0ccc4; }
-.btn-speed.active { background: #2a5080; color: #fff; border-color: #1a4070; }
+.slider-ticks span {
+  position: absolute;
+  top: 0;
+  left: calc(8px + (100% - 16px) * var(--tick-frac, 0));
+  transform: translateX(-50%);
+  font-size: clamp(10px, 1vw, 13px);
+  color: #7a8a96;
+  white-space: nowrap;
+}
 
 /* ════════════════════════════════════════════════════
    BANDEAU INSTRUCTIONS

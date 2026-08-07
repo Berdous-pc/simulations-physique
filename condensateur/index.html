@@ -19,8 +19,10 @@
 <h1 class="sr-only">Simulation de la charge et décharge d'un condensateur dans un circuit RC</h1>
 
 <main>
-  <!-- Colonne gauche : circuit + splitter + graphes -->
-  <div id="left-col">
+  <!-- Colonne gauche : circuit + splitter + graphes
+       (classe graph-off posée par défaut : zone graphes masquée,
+       le circuit occupe alors toute la hauteur — cf. toggleGraphVisible()) -->
+  <div id="left-col" class="graph-off">
 
     <!-- Zone canvas du circuit électrique -->
     <div id="circuit-area">
@@ -68,14 +70,40 @@
   <div id="panel">
    <div id="panel-body">
 
+    <!-- ── Titre ─────────────────────────────── -->
+    <div class="panel-title">Circuit RC</div>
+
+    <!-- Section : Contrôle (pause + vitesse) -->
+    <div class="panel-section" id="time-control">
+      <div class="section-title">Contrôle</div>
+      <button id="btn-playpause" class="btn btn-pause" onclick="togglePause()">⏸ Pause</button>
+      <button class="btn btn-raz" onclick="resetSim()" style="margin-top:6px;">■ Remettre à zéro</button>
+
+      <div class="param-row" style="margin-top:10px;">
+        <label>Vitesse d'animation
+          <span class="param-value">×<span id="lbl-speed">1,0</span></span>
+        </label>
+        <input type="range" id="sl-speed" min="0" max="4" step="1" value="2"
+               oninput="onSliderSpeed(this.value)">
+        <div class="slider-ticks">
+          <span style="--tick-frac:0">×0,1</span>
+          <span style="--tick-frac:0.25">×0,5</span>
+          <span style="--tick-frac:0.5">×1,0</span>
+          <span style="--tick-frac:0.75">×2,0</span>
+          <span style="--tick-frac:1">×5,0</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="sep"></div>
+
     <!-- Section : Phase -->
-    <div>
+    <div class="panel-section">
       <div class="section-title">Phase</div>
       <div class="btn-group">
         <button class="btn btn-charge"    id="btn-charge"    onclick="setPhase('charge')">CHARGE</button>
         <button class="btn btn-discharge" id="btn-discharge" onclick="setPhase('discharge')">DÉCHARGE</button>
       </div>
-      <button class="btn-reset" onclick="resetSim()">&#9632; Réinitialiser</button>
     </div>
 
     <!-- Indicateur d'état de la simulation -->
@@ -83,23 +111,10 @@
       <span id="state-text" style="color:#4a6a9a">— En attente —</span>
     </div>
 
-    <!-- Section : Contrôle du temps (pause + vitesse) -->
-    <div id="time-control">
-      <div class="section-title">Contrôle du temps</div>
-      <div class="tc-row">
-        <button id="btn-playpause" onclick="togglePause()">&#9208; Pause</button>
-      </div>
-      <div class="tc-row speed-btns">
-        <button class="btn-speed" onclick="setTimeScale(0.1)">×0.1</button>
-        <button class="btn-speed" onclick="setTimeScale(0.5)">×0.5</button>
-        <button class="btn-speed active" onclick="setTimeScale(1)">×1</button>
-        <button class="btn-speed" onclick="setTimeScale(2)">×2</button>
-        <button class="btn-speed" onclick="setTimeScale(5)">×5</button>
-      </div>
-    </div>
+    <div class="sep"></div>
 
     <!-- Section : Paramètres physiques -->
-    <div>
+    <div class="panel-section">
       <div class="section-title">Paramètres</div>
       <div class="param-row">
         <label>Durée d'acquisition <span><span id="lbl-acqTime">60 s</span></span></label>
@@ -128,8 +143,20 @@
       </div>
     </div>
 
+    <div class="sep"></div>
+
+    <!-- Section : Options -->
+    <div class="panel-section">
+      <div class="section-title">Options</div>
+      <button class="btn-toggle-one" id="btn-toggle-graph"
+              aria-pressed="false"
+              onclick="toggleGraphVisible()">Afficher graphe</button>
+    </div>
+
+    <div class="sep"></div>
+
     <!-- Section : Valeurs instantanées -->
-    <div>
+    <div class="panel-section">
       <div class="section-title">Valeurs instantanées</div>
       <div class="readouts">
         <div class="readout">

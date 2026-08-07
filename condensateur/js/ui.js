@@ -39,7 +39,7 @@ function setPhase(p) {
   document.getElementById('btn-charge').classList.toggle('active',    p === 'charge');
   document.getElementById('btn-discharge').classList.toggle('active', p === 'discharge');
   const el = document.getElementById('state-text');
-  el.textContent = p === 'charge' ? '⚡ Phase de charge en cours…' : '↩ Phase de décharge en cours…';
+  el.textContent = p === 'charge' ? 'Phase de charge en cours…' : 'Phase de décharge en cours…';
   el.style.color = p === 'charge' ? '#4a90d9' : '#e86020';
 }
 
@@ -49,18 +49,39 @@ function setPhase(p) {
 function togglePause() {
   sim.paused = !sim.paused;
   const btn = document.getElementById('btn-playpause');
-  btn.textContent = sim.paused ? '▶ Lecture' : '⏸ Pause';
-  btn.classList.toggle('paused', sim.paused);
+  if (sim.paused) {
+    btn.textContent = '▶ Lancer';
+    btn.className   = 'btn btn-play';
+  } else {
+    btn.textContent = '⏸ Pause';
+    btn.className   = 'btn btn-pause';
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────
-//  Change le facteur d'accélération du temps.
+//  Slider Vitesse d'animation.
 // ─────────────────────────────────────────────────────────────────────
-function setTimeScale(v) {
-  sim.timeScale = v;
-  document.querySelectorAll('.btn-speed').forEach(b => {
-    b.classList.toggle('active', parseFloat(b.textContent.replace('×', '')) === v);
-  });
+var SPEED_STEPS  = [0.1, 0.5, 1, 2, 5];
+var SPEED_LABELS = ['0,1', '0,5', '1,0', '2,0', '5,0'];
+
+function onSliderSpeed(val) {
+  const idx = parseInt(val, 10);
+  sim.timeScale = SPEED_STEPS[idx];
+  document.getElementById('lbl-speed').textContent = SPEED_LABELS[idx];
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Bascule l'affichage de la zone de graphes (masquée par défaut :
+//  le circuit occupe alors toute la colonne gauche).
+// ─────────────────────────────────────────────────────────────────────
+let graphVisible = false;
+function toggleGraphVisible() {
+  graphVisible = !graphVisible;
+  document.getElementById('left-col').classList.toggle('graph-off', !graphVisible);
+  const btn = document.getElementById('btn-toggle-graph');
+  btn.classList.toggle('active', graphVisible);
+  btn.setAttribute('aria-pressed', String(graphVisible));
+  resize();
 }
 
 // ─────────────────────────────────────────────────────────────────────

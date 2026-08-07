@@ -48,7 +48,8 @@ Tout le CSS de la page. Organisé dans cet ordre :
 | Canvases graphes | `.graph-wrap`, `.graph-title`, `canvas` |
 | Tooltip hover | `#graph-hover-tooltip`, position absolute |
 | Panneau — composants | `.section-title`, `.param-row`, `.btn`, `.readout`, `#state-indicator` |
-| Contrôle du temps | `#btn-playpause`, `.btn-speed` |
+| Contrôle | `.panel-title`, `.panel-section`, `.sep`, `#btn-playpause`, `.slider-ticks` |
+| Options | `.btn-toggle-one#btn-toggle-graph` — masque/affiche `#graph-area` + `#left-splitter` (classe `#left-col.graph-off`) |
 
 ---
 
@@ -200,7 +201,8 @@ Paramètres : `(canvasId, data, color, yMin, yMax, yUnit)`
 
 - `setPhase(p)` — démarre une phase charge/décharge : mémorise la condition initiale, reinitialise les électrons, injecte un point à t=0
 - `togglePause()` — suspend/reprend la simulation
-- `setTimeScale(v)` — change le facteur d'accélération (0.1 à 5)
+- `onSliderSpeed(val)` — change le facteur d'accélération via le slider Vitesse d'animation (index 0 à 4 → 0.1/0.5/1/2/5)
+- `toggleGraphVisible()` — affiche/masque la zone de graphes (option « Afficher graphe », désactivée par défaut : le circuit occupe alors toute la colonne gauche)
 - `resetSim()` — remet tout à zéro (état physique, graphes, électrons, UI)
 - `updateParam(name, val)` — met à jour un paramètre physique depuis un slider
 - `updateReadouts()` — rafraîchit les encarts de valeurs instantanées et l'indicateur d'état
@@ -258,7 +260,8 @@ index.html
   │                                           prevGraphView, pushGraphView
   │
   └── <script src="js/ui.js">        dépend de : tous les fichiers précédents
-                                     expose : setPhase, togglePause, setTimeScale,
+                                     expose : setPhase, togglePause, onSliderSpeed,
+                                              toggleGraphVisible,
                                               resetSim, updateParam, updateReadouts
                                      démarre : init() → requestAnimationFrame(loop)
 ```
