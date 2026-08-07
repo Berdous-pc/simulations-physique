@@ -121,6 +121,17 @@
     <!-- Section : Paramètres physiques -->
     <div class="panel-section">
       <div class="section-title">Paramètres</div>
+
+      <!-- Orientation du générateur : purement graphique, les signes des
+           tensions et du courant restent inchangés (cf. genPlusRight) -->
+      <div class="param-row" style="margin-bottom:10px;">
+        <label>Borne + du générateur</label>
+        <div class="seg-toggle">
+          <button class="seg-btn" id="btn-plus-left" onclick="setGenPolarity(false)">Gauche</button>
+          <button class="seg-btn active" id="btn-plus-right" onclick="setGenPolarity(true)">Droite</button>
+        </div>
+      </div>
+
       <div class="param-row">
         <label>Tension E <span><span id="lbl-E">5,00</span> V</span></label>
         <input type="range" id="sl-E" min="1" max="12" step="0.5" value="5"

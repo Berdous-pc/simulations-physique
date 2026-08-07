@@ -16,6 +16,17 @@ const ctx    = canvas.getContext('2d');
 // Coordonnées des 6 nœuds du circuit (A, B, C, D, E, F), en unités virtuelles
 let pt = {};
 
+// ─────────────────────────────────────────────────────────────────────
+//  Orientation du générateur : borne + à droite (défaut) ou à gauche.
+//
+//  Purement graphique. Le générateur est ce qui DÉFINIT le sens positif :
+//  le retourner retourne le circuit avec lui, donc Uc(t) et i(t) gardent
+//  exactement les mêmes signes. sim.js et graph.js ignorent ce drapeau ;
+//  seuls changent ici les bornes + / −, le sens des flèches de courant,
+//  le sens de circulation des électrons et la polarité des armatures.
+// ─────────────────────────────────────────────────────────────────────
+let genPlusRight = true;
+
 // Protection anti-rebond du resize (une seule mise à jour par frame)
 let resizePending = false;
 
@@ -246,15 +257,17 @@ function drawGenerator(genX, genY, genR, active) {
   ctx.restore();
 
   // Bornes + / − : dans la marge extérieure, de part et d'autre du cercle.
-  const fs = fsLabel();
+  const fs   = fsLabel();
+  const s    = genPlusRight ? 1 : -1;
+  const bornY = genY - genR * 0.5;
   ctx.save();
   ctx.font         = `bold ${fs}px monospace`;
   ctx.textAlign    = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillStyle    = '#d26414';
-  ctx.fillText('+', genX + genR + 16, genY - genR * 0.5);
+  ctx.fillText('+', genX + s * (genR + 16), bornY);
   ctx.fillStyle    = '#2850b4';
-  ctx.fillText('−', genX - genR - 16, genY - genR * 0.5);
+  ctx.fillText('−', genX - s * (genR + 16), bornY);
   ctx.restore();
 
   // Étiquette E : côté intérieur du circuit, sous la branche du haut.
@@ -391,7 +404,7 @@ function drawCapacitor(cx, cy, active) {
   const nRows = Math.ceil(nIons / CAP_IONS_COLS);
   const bh    = capPlateH(nIons);
 
-  const chargeRatio = sim.E > 0 ? Math.min(sim.Uc / sim.E, 1) : 0;
+  const chargeRatio = plateChargeRatio();
   const leftX  = cx - gap / 2;
   const rightX = cx + gap / 2;
   const dis       = sim.phase === 'discharge';
@@ -431,7 +444,9 @@ function drawCapacitor(cx, cy, active) {
   }
 
   function drawPlateElectrons(nElectrons, useLeft) {
-    const filling = useLeft
+    // L'armature qui se remplit pendant la charge est celle reliée à la
+    // borne − : celle de gauche quand la borne + est à droite, l'autre sinon.
+    const filling = (useLeft === genPlusRight)
       ? sim.phase === 'charge'
       : sim.phase === 'discharge';
     for (let k = 0; k < nElectrons; k++) {
@@ -462,12 +477,18 @@ function drawCapacitor(cx, cy, active) {
   ctx.textBaseline = 'bottom';
   ctx.fillStyle    = COL.neutral;
   ctx.fillText('C', cx, labelY);
-  if (chargeRatio > 0.05) {
+  // Aucun seuil de coupure : l'opacité descend jusqu'à zéro avec la charge
+  // des armatures, donc les symboles s'éteignent pile quand la décharge se
+  // termine. Le seuil de 5 % qu'il y avait là les faisait disparaître dès
+  // Uc = 0,05·E, soit 3 τ — bien avant la fin de la phase.
+  if (chargeRatio > 0) {
     const alpha = Math.min(chargeRatio * 1.5, 1);
+    const xNeg = genPlusRight ? leftX  - pw/2 : rightX + pw/2;
+    const xPos = genPlusRight ? rightX + pw/2 : leftX  - pw/2;
     ctx.fillStyle = `rgba(40, 80, 180, ${alpha})`;
-    ctx.fillText('−', leftX  - pw/2, labelY);
+    ctx.fillText('−', xNeg, labelY);
     ctx.fillStyle = `rgba(210, 100, 20, ${alpha})`;
-    ctx.fillText('+', rightX + pw/2, labelY);
+    ctx.fillText('+', xPos, labelY);
   }
   ctx.restore();
 
@@ -531,9 +552,17 @@ const IONS_AT_CMAX = 30;
 
 let nOnPlateLeft  = 6;
 let nOnPlateRight = 6;
-let wireElectrons = [];
-let wireN0        = 1;
+let wireElectrons = [];   // positions ∈ [0,1) — DÉRIVÉES de wireProgress
 let wireSettled   = false;
+
+// Progression du transfert : nombre (fractionnaire) d'électrons arrivés sur
+// l'armature de destination depuis le début de la phase. Unique grandeur
+// d'état de l'animation — positions sur le fil et comptes des armatures s'en
+// déduisent, au lieu d'être intégrés position par position.
+let wireProgress  = 0;
+let wireNToMove   = 0;    // cible : surplus de l'armature source au départ
+let wirePlate0L   = 0;    // comptes des armatures au début de la phase
+let wirePlate0R   = 0;
 
 function nIonsFromC() {
   const C_uf = sim.C * 1e6;
@@ -548,15 +577,52 @@ function initElectrons() {
 
   if (!pt.A) buildPoints();
 
-  const g     = getCircuitGeometry();
-  const path  = buildPathCharge(g);
-  const L     = pathLength(path);
-  const nWire = Math.max(1, Math.floor(L / ELECTRON_SPACING));
+  wireProgress = 0;
+  wireNToMove  = 0;
+  wirePlate0L  = nIons;
+  wirePlate0R  = nIons;
+  wireSettled  = false;
+}
 
-  wireElectrons = [];
-  for (let i = 0; i < nWire; i++) wireElectrons.push((i + 0.5) / nWire);
-  wireN0      = nWire;
-  wireSettled = false;
+// ─────────────────────────────────────────────────────────────────────
+//  Charge portée par l'armature négative, ramenée à [0,1].
+//
+//  Lue sur wireProgress, et non sur Uc/E : c'est la charge que les électrons
+//  dessinent réellement, donc elle atteint 0 (ou 1) exactement à l'instant où
+//  le transfert se termine — et où le tracé se fige. Fractionnaire, pour que
+//  l'opacité des symboles varie continûment au lieu de sauter d'un cran à
+//  chaque électron : avec C = 100 µF il n'y en a que six.
+// ─────────────────────────────────────────────────────────────────────
+function plateChargeRatio() {
+  const nIons = nIonsFromC();
+  if (nIons <= 0) return 0;
+  // Le surplus est porté par l'armature reliée à la borne − du générateur.
+  const p0 = genPlusRight ? wirePlate0L : wirePlate0R;
+  const surplus = (p0 - nIons)
+    + (sim.phase === 'charge' ? wireProgress : -wireProgress);
+  return Math.max(0, Math.min(1, surplus / nIons));
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Prépare le transfert au démarrage d'une phase (appelé par setPhase,
+//  sim.phase déjà positionné).
+// ─────────────────────────────────────────────────────────────────────
+function startElectronPhase() {
+  wireProgress = 0;
+  wirePlate0L  = nOnPlateLeft;
+  wirePlate0R  = nOnPlateRight;
+
+  // Cible lue sur les armatures, et non recalculée depuis U0 : une phase
+  // lancée alors que le condensateur est partiellement chargé n'a qu'une
+  // partie des électrons à déplacer, et c'est l'état affiché qui fait foi.
+  // Entier par construction, donc le dernier électron arrive juste.
+  //
+  // L'armature source est celle qui se vide : en charge celle reliée à la
+  // borne +, en décharge celle qui porte le surplus (reliée à la borne −).
+  const srcChg = genPlusRight ? wirePlate0R : wirePlate0L;
+  const srcDis = genPlusRight ? wirePlate0L : wirePlate0R;
+  wireNToMove = sim.phase === 'charge' ? srcChg : srcDis - nIonsFromC();
+  wireSettled = wireNToMove <= 0;
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -622,6 +688,23 @@ function buildPathDischarge(g) {
   ];
 }
 
+// ─────────────────────────────────────────────────────────────────────
+//  Chemin parcouru en sens inverse (borne + à gauche).
+//
+//  Le drapeau `hidden` d'un point marque le segment qui ARRIVE sur lui
+//  (cf. posToXY) : en retournant la liste, il faut donc le décaler d'un cran,
+//  sinon les électrons réapparaîtraient à l'intérieur des composants.
+// ─────────────────────────────────────────────────────────────────────
+function reversePath(path) {
+  const n   = path.length;
+  const rev = [];
+  for (let i = 0; i < n; i++) rev.push({ x: path[n-1-i].x, y: path[n-1-i].y });
+  for (let i = 0; i < n - 1; i++) {
+    if (path[n-1-i].hidden) rev[i+1].hidden = true;
+  }
+  return rev;
+}
+
 function pathLength(path) {
   let len = 0;
   for (let i = 0; i < path.length - 1; i++) {
@@ -653,82 +736,65 @@ function posToXY(path, p) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-//  Mise à jour des électrons sur le fil pour une frame dt.
+//  Avance la progression du transfert pour une frame dt.
+//
+//  Calibration : la phase transfère la charge ΔQ = C·ampU·span d'ici
+//  settleTimeMs(), répartie sur wireNToMove électrons. Chacun vaut donc
+//  qe = ΔQ/wireNToMove, et dn = |i|·dt/qe. Le débit est ainsi rigoureusement
+//  proportionnel à i(t) — pas de plancher de vitesse, pas de cas particulier
+//  en fin de course — et atteint la cible pile quand le tracé se fige.
+//
+//  Le facteur span = 1 − e^(−t_settle/τ) ne vaut que 0,1 à 0,5 % de correction,
+//  mais c'est lui qui fait tomber la dernière arrivée sur l'échéance au lieu
+//  de la renvoyer à l'infini : sans lui, le transfert n'est complet qu'à t = ∞.
+//
+//  Le nombre d'électrons visibles sur le fil ne change jamais : chaque arrivée
+//  sur l'armature de destination est compensée par un départ de l'armature
+//  source, tant qu'il y reste du surplus — ce qui est vrai jusqu'à la cible.
 // ─────────────────────────────────────────────────────────────────────
-function updateElectrons(path, I_now, dt) {
+function updateElectrons(dt) {
   if (wireSettled) return;
 
-  const L = pathLength(path);
-  if (L === 0) return;
+  const τ        = tau();
+  const settle_s = settleTimeMs() / 1000;
+  const span     = 1 - Math.exp(-settle_s / τ);
+  const qe       = sim.C * phaseAmplitudeV() * span / wireNToMove;
 
-  const nIons    = nIonsFromC();
+  // Phase sans charge à déplacer (condensateur déjà à sa valeur finale) :
+  // rien à animer, et le tracé se fige de son côté au même instant.
+  if (!(qe > 0)) { wireProgress = wireNToMove; wireSettled = true; return; }
+
+  wireProgress += Math.abs(currentI()) * (dt / 1000) / qe;
+
+  // Le test sur sim.t verrouille la garantie même si les sliders ont bougé en
+  // cours de phase : l'intégration ne retombe alors plus exactement sur la
+  // cible, mais l'animation ne peut ni finir avant l'échéance ni la dépasser.
+  if (wireProgress >= wireNToMove || sim.t >= settleTimeMs()) {
+    wireProgress = wireNToMove;
+    wireSettled  = true;
+  }
+
+  const arrived  = Math.floor(wireProgress);
   const isCharge = sim.phase === 'charge';
-  const t_s      = sim.t / 1000;
-  const spacing0 = 1 / wireN0;
+  // Sens du transfert : vers l'armature reliée à la borne − pendant la charge.
+  const d = (isCharge ? arrived : -arrived) * (genPlusRight ? 1 : -1);
+  nOnPlateLeft  = wirePlate0L + d;
+  nOnPlateRight = wirePlate0R - d;
+}
 
-  const targetLeft  = isCharge ? nIons * 2 : nIons;
-  const targetRight = isCharge ? 0         : nIons;
-
-  // Calibration du flux : nIons électrons transférés ⇔ charge Q = C·E, donc
-  // une intensité I fait défiler I·nIons/(C·E) électrons par seconde, soit
-  // autant d'intervalles L/wireN0 par seconde.
-  //
-  // Recalculée à chaque frame, et non mise en cache : E, la géométrie (L) et
-  // le nombre d'électrons sur le fil changent tous en cours de phase — slider
-  // E, redimensionnement de la fenêtre. Un facteur figé à l'initialisation
-  // laissait la vitesse fausse d'un rapport E_nouveau/E_initial, ce qui
-  // remplissait les plaques bien avant que le graphe n'y soit.
-  const speedK      = (sim.E > 0 && sim.C > 0)
-    ? (nIons * L) / (wireN0 * sim.C * sim.E)
-    : 1;
-
-  // Échéance du plancher de vitesse : l'instant où les encarts se stabilisent
-  // (cf. settleTimeMs), et non un 6τ conventionnel — c'est ce qui fait
-  // atterrir le dernier électron exactement quand le tracé se fige.
-  const n_restant   = isCharge ? (nOnPlateRight - targetRight) : (nOnPlateLeft - targetLeft);
-  const t_restant_s = Math.max(settleTimeMs() / 1000 - t_s, dt / 1000);
-  const speedFloor  = (Math.max(n_restant, 0) * L / wireN0) / t_restant_s;
-  const speedPx     = Math.max(speedK * Math.abs(I_now), speedFloor);
-  const dp_raw      = (speedPx * dt / 1000) / L;
-
-  const nSteps = Math.max(1, Math.ceil(dp_raw / spacing0));
-  const dp     = dp_raw / nSteps;
-
-  for (let step = 0; step < nSteps; step++) {
-    const srcCount  = isCharge ? nOnPlateRight : nOnPlateLeft;
-    const srcTarget = isCharge ? targetRight   : targetLeft;
-    if (srcCount <= srcTarget) { wireSettled = true; break; }
-
-    for (let i = 0; i < wireElectrons.length; i++) wireElectrons[i] += dp;
-
-    let arrived = 0;
-    const remaining = [];
-    for (const p of wireElectrons) {
-      if (p >= 1) arrived++;
-      else remaining.push(p);
-    }
-    wireElectrons = remaining;
-
-    for (let i = 0; i < arrived; i++) {
-      if (isCharge) nOnPlateLeft  = Math.min(nOnPlateLeft  + 1, targetLeft);
-      else          nOnPlateRight = Math.min(nOnPlateRight + 1, targetRight);
-      const src = isCharge ? nOnPlateRight : nOnPlateLeft;
-      const tgt = isCharge ? targetRight   : targetLeft;
-      if (src > tgt) {
-        wireElectrons.push(0);
-        if (isCharge) nOnPlateRight--;
-        else          nOnPlateLeft--;
-      }
-    }
-
-    wireElectrons.sort((a, b) => a - b);
-  }
-
-  if (nOnPlateLeft === targetLeft && nOnPlateRight === targetRight) {
-    const U_finale = isCharge ? sim.E : 0;
-    const U_ref    = Math.max(Math.abs(isCharge ? sim.E : sim.U0_dis), 0.01);
-    if (Math.abs(sim.Uc - U_finale) / U_ref < 0.01) wireSettled = true;
-  }
+// ─────────────────────────────────────────────────────────────────────
+//  Positions des électrons du fil, dérivées de wireProgress.
+//
+//  Sa partie fractionnaire EST l'avancement commun de tous les électrons dans
+//  leur intervalle : l'électron de tête a parcouru la fraction du quantum de
+//  charge en cours de transfert. Le nombre d'intervalles est relu sur le
+//  chemin à chaque frame, ce qui suit un redimensionnement en pleine phase.
+// ─────────────────────────────────────────────────────────────────────
+function layoutWireElectrons(path) {
+  const nWire = Math.max(1, Math.floor(pathLength(path) / ELECTRON_SPACING));
+  const frac  = wireProgress - Math.floor(wireProgress);
+  wireElectrons.length = 0;
+  for (let j = 0; j < nWire; j++) wireElectrons.push((j + frac) / nWire);
 }
 
 function drawElectronsOnPath(path) {
@@ -740,15 +806,15 @@ function drawElectronsOnPath(path) {
 }
 
 function updateAndDrawElectrons(dt) {
-  const g          = getCircuitGeometry();
-  const activePath = sim.phase === 'discharge'
+  const g        = getCircuitGeometry();
+  const basePath = sim.phase === 'discharge'
     ? buildPathDischarge(g)
     : buildPathCharge(g);
+  const activePath = genPlusRight ? basePath : reversePath(basePath);
 
-  if (sim.phase !== 'idle') {
-    updateElectrons(activePath, Math.abs(currentI()), dt);
-  }
+  if (sim.phase !== 'idle') updateElectrons(dt);
 
+  layoutWireElectrons(activePath);
   drawElectronsOnPath(activePath);
 }
 
@@ -786,26 +852,38 @@ function drawScene(dt_scene) {
   drawWire(E.x,          E.y,  leftPlateX - pw,  capY, (chg || dis), dis);
   drawWire(rightPlateX + pw, capY, F.x,           F.y,  (chg || dis), dis);
 
-  // ── Flèches de courant ──
-  const I         = currentI();
-  const threshold = (sim.E / Math.min(sim.R1, sim.R2)) * 0.005;
+  // ── Flèches de courant (le label « I » est posé par drawCurrentArrow) ──
+  //
+  // Visibles tant que le transfert n'est pas terminé. wireSettled est le même
+  // critère que l'arrêt des électrons et que le gel du tracé : flèches, label,
+  // électrons et graphe s'arrêtent donc au même instant.
+  //
+  // Remplace un seuil à 0,5 % de E/min(R₁,R₂), qui escamotait les flèches dès
+  // 5,3 τ — et à un instant qui n'était même pas celui de la phase courante,
+  // puisqu'il se réglait sur la plus petite des deux résistances.
+  const flowing = !wireSettled;
 
-  if (chg && Math.abs(I) > threshold) {
-    drawCurrentArrow(A.x,         A.y, r1.lx,       A.y);
-    drawCurrentArrow(r1.rx,       A.y, genX - genR, A.y);
-    drawCurrentArrow(genX + genR, A.y, B.x,         A.y);
-    drawCurrentArrow(B.x, B.y, F.x, F.y);
-    drawCurrentArrow(rightPlateX + pw, capY, E.x, E.y);
-    drawCurrentArrow(contactUp.x, contactUp.y,  A.x, A.y);
+  // Borne + à gauche : le courant parcourt la même boucle en sens inverse.
+  const arrow = genPlusRight
+    ? drawCurrentArrow
+    : (x1, y1, x2, y2) => drawCurrentArrow(x2, y2, x1, y1);
+
+  if (chg && flowing) {
+    arrow(A.x,         A.y, r1.lx,       A.y);
+    arrow(r1.rx,       A.y, genX - genR, A.y);
+    arrow(genX + genR, A.y, B.x,         A.y);
+    arrow(B.x, B.y, F.x, F.y);
+    arrow(rightPlateX + pw, capY, E.x, E.y);
+    arrow(contactUp.x, contactUp.y,  A.x, A.y);
   }
 
-  if (dis && Math.abs(I) > threshold) {
-    drawCurrentArrow(rightPlateX + pw, capY,  F.x,  F.y);
-    drawCurrentArrow(F.x,   F.y,   C_.x,  C_.y);
-    drawCurrentArrow(C_.x,  C_.y,  r2.rx, C_.y);
-    drawCurrentArrow(r2.lx, C_.y,  D.x,   D.y);
-    drawCurrentArrow(D.x,   D.y,   contactDown.x, contactDown.y);
-    drawCurrentArrow(E.x,   E.y,   leftPlateX - pw, capY);
+  if (dis && flowing) {
+    arrow(rightPlateX + pw, capY,  F.x,  F.y);
+    arrow(F.x,   F.y,   C_.x,  C_.y);
+    arrow(C_.x,  C_.y,  r2.rx, C_.y);
+    arrow(r2.lx, C_.y,  D.x,   D.y);
+    arrow(D.x,   D.y,   contactDown.x, contactDown.y);
+    arrow(E.x,   E.y,   leftPlateX - pw, capY);
   }
 
   // ── Composants (par-dessus les fils) ──

@@ -20,14 +20,7 @@ function setPhase(p) {
   sim.t          = 0;
   sim.syncFrozen = false;
 
-  const g     = getCircuitGeometry();
-  const path  = p === 'discharge' ? buildPathDischarge(g) : buildPathCharge(g);
-  const L     = pathLength(path);
-  const nWire = Math.max(1, Math.floor(L / ELECTRON_SPACING));
-  wireElectrons = [];
-  for (let i = 0; i < nWire; i++) wireElectrons.push((i + 0.5) / nWire);
-  wireN0      = nWire;
-  wireSettled = false;
+  startElectronPhase();
 
   const uc0 = sim.Uc;
   const i0  = p === 'charge'
@@ -104,6 +97,25 @@ function resetSim() {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+//  Bouton « Borne + du générateur » : Droite (défaut) / Gauche.
+//
+//  N'agit que sur le schéma — bornes, flèches de courant, sens de
+//  circulation des électrons, polarité des armatures. Les signes de Uc(t)
+//  et i(t) sont ceux définis par le générateur, ils ne bougent donc pas.
+//
+//  RAZ : retourner la polarité en pleine charge laisserait les armatures
+//  chargées à l'envers de ce que le générateur impose. On repart de l'état
+//  déchargé, comme au changement de capacité.
+// ─────────────────────────────────────────────────────────────────────
+function setGenPolarity(plusRight) {
+  if (genPlusRight === plusRight) return;
+  genPlusRight = plusRight;
+  document.getElementById('btn-plus-right').classList.toggle('active',  plusRight);
+  document.getElementById('btn-plus-left').classList.toggle('active',  !plusRight);
+  resetSim();
+}
+
+// ─────────────────────────────────────────────────────────────────────
 //  Met à jour un paramètre physique depuis un slider.
 // ─────────────────────────────────────────────────────────────────────
 function updateParam(name, val) {
@@ -159,7 +171,9 @@ function loop(ts) {
     ? 0
     : dtReal * sim.timeScale;
 
-  if (sim.phase !== 'idle' && dt > 0) {
+  const advanced = sim.phase !== 'idle' && dt > 0;
+
+  if (advanced) {
     sim.t      += dt;
     sim.tTotal += dt;
 
@@ -221,11 +235,17 @@ function loop(ts) {
       sim.viewOffsetMs = Math.max(0, sim.tTotal - sim.graphWindowMs);
     }
 
-    updateReadouts();
   }
 
   // ── Rendu ──
   drawScene(dt);
+
+  // Après drawScene, et non à la fin du bloc ci-dessus : c'est updateElectrons(),
+  // appelé depuis la scène, qui pose wireSettled, dont dépend l'encart d'état.
+  // Appelé avant, il manquait le passage à « Condensateur chargé » d'une frame —
+  // et cette frame est la dernière, puisque dt retombe ensuite à 0 en mode
+  // Synchronisé : l'encart restait indéfiniment sur « Phase … en cours ».
+  if (advanced) updateReadouts();
 
   const def1 = graphDefFor(sim.graphTab1);
   drawGraph('graph-Uc', def1.data, def1.color, def1.yMin, def1.yMax, def1.unit, def1.name);

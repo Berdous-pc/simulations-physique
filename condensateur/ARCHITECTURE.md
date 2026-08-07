@@ -154,6 +154,46 @@ d'électrons sur le fil ne saute plus au redimensionnement.
 | `drawCapacitor(cx,cy,active)` | Condensateur (armatures + ions + signes) |
 | `drawSwitch(armLen)` | Interrupteur K (bras mobile) |
 
+**Extinction synchronisée.** Trois éléments doivent disparaître à la fin d'une phase,
+et tous trois sont accrochés au même critère que l'arrêt des électrons et le gel du
+tracé, `wireSettled` / `plateChargeRatio()` :
+
+| Élément | Critère | Ancien critère, et ce qu'il donnait |
+|---|---|---|
+| Flèches de courant + label `I` | `!wireSettled` | `\|i\| > 0,5 % · E/min(R₁,R₂)` → disparition à 5,3 τ, sur un seuil réglé sur la mauvaise résistance |
+| Signes `+`/`−` au-dessus des armatures | opacité ∝ `plateChargeRatio()`, sans plancher | `Uc/E > 0,05` → extinction à 3 τ |
+
+`plateChargeRatio()` lit la charge sur `wireProgress` plutôt que sur `Uc/E` : c'est la
+charge que les électrons dessinent, donc elle atteint 0 exactement quand le dernier
+électron regagne sa place. Fractionnaire, pour que l'opacité varie continûment — à
+C = 100 µF, une lecture sur le compte entier ne donnerait que six crans.
+
+#### Orientation du générateur (`genPlusRight`)
+
+Bouton à deux états « Borne + du générateur » (Droite par défaut). Le drapeau vit
+dans `circuit.js` et **n'est lu que par le dessin** : `sim.js` et `graph.js` l'ignorent.
+
+C'est voulu, et ce n'est pas un raccourci : le générateur est ce qui *définit* le
+sens positif du circuit. Le retourner retourne la convention avec lui, donc `Uc(t)`
+et `i(t)` gardent exactement les mêmes signes — seule change l'image.
+
+Ce que le drapeau retourne :
+
+| Élément | Où |
+|---|---|
+| Bornes `+` / `−` du générateur | `drawGenerator()` |
+| Sens des flèches de courant | helper `arrow` local à `drawScene()` |
+| Sens de circulation des électrons | `reversePath()` dans `updateAndDrawElectrons()` |
+| Armature qui accumule les électrons | `drawPlateElectrons()`, `updateElectrons()`, `startElectronPhase()` |
+| Signes `+` / `−` au-dessus des armatures | `drawCapacitor()` |
+| Armature porteuse du surplus | `plateChargeRatio()` |
+
+La topologie, elle, ne bouge pas : l'armature gauche reste câblée sur K, la droite
+sur la branche du générateur. C'est la *charge* de chaque armature qui s'échange.
+
+`setGenPolarity()` fait une RAZ, comme le slider de capacité : basculer en pleine
+charge laisserait les armatures chargées à l'envers de ce que le générateur impose.
+
 #### Couleur des branches
 
 `branchColor(active, discharge)` / `branchFill(active, discharge)` — noir au
@@ -204,11 +244,14 @@ Lecture de l'état par le nombre d'électrons par site : armature neutre → 1 p
 ion, négative → 2 par ion, positive → ion nu.
 
 - `nIonsFromC()` — nombre d'ions par armature, interpolé selon C (100–500 µF → 6–30 ions)
-- `initElectrons()` — initialise les positions des électrons
+- `initElectrons()` — état neutre au repos (armatures pleines, progression nulle)
+- `startElectronPhase()` — fige les comptes de départ et la cible du transfert ; appelé par `setPhase()`
 - `buildPathCharge(g)` / `buildPathDischarge(g)` — tableaux de nœuds définissant le chemin
+- `reversePath(path)` — même chemin parcouru à l'envers (borne + à gauche) ; décale les drapeaux `hidden` d'un cran, puisqu'ils marquent le segment *arrivant* sur un point
 - `pathLength(path)` — longueur totale du chemin
 - `posToXY(path, p)` — convertit une position normalisée en coordonnées `(x, y, hidden)`
-- `updateElectrons(path, I, dt)` — avance les électrons, gère les arrivées/départs sur les plaques
+- `updateElectrons(dt)` — avance `wireProgress` et en déduit les comptes des armatures
+- `layoutWireElectrons(path)` — reconstruit les positions sur le fil depuis `wireProgress`
 - `drawElectronsOnPath(path)` — dessine les électrons visibles sur le fil
 - `updateAndDrawElectrons(dt)` — point d'entrée appelé à chaque frame
 
@@ -216,20 +259,37 @@ Variables d'état des électrons :
 
 | Variable | Rôle |
 |---|---|
-| `nOnPlateLeft` / `nOnPlateRight` | Électrons sur chaque armature |
-| `wireElectrons` | Positions normalisées ∈ [0,1) des électrons sur le fil |
-| `wireN0` | Nombre d'électrons dans le fil au début de la phase |
-| `wireSettled` | Vrai quand les plaques ont atteint leur état final |
+| `wireProgress` | **Unique grandeur d'état** : nombre fractionnaire d'électrons arrivés depuis le début de la phase |
+| `wireNToMove` | Cible : surplus de l'armature source au début de la phase (entier) |
+| `wirePlate0L` / `wirePlate0R` | Comptes des armatures au début de la phase |
+| `nOnPlateLeft` / `nOnPlateRight` | Électrons sur chaque armature — **dérivés** de `wireProgress` |
+| `wireElectrons` | Positions normalisées ∈ [0,1) sur le fil — **dérivées** de `wireProgress` |
+| `wireSettled` | Vrai quand la cible est atteinte |
 
-Calibration de la vitesse : `nIons` électrons transférés ⇔ charge `Q = C·E`, d'où
-un facteur `nIons·L / (wireN0·C·E)` appliqué à `i(t)`. Il est **recalculé à chaque
-frame** dans `updateElectrons()`, jamais mis en cache — E, la géométrie (`L`) et
-`wireN0` changent tous en cours de phase (slider E, redimensionnement).
+**Modèle de l'animation.** Une seule grandeur est intégrée, `wireProgress` ; positions
+et comptes d'armatures en sont déduits. Il n'y a donc ni dérive d'intégration, ni
+dépendance au frame-rate, ni comptabilité d'arrivées/départs.
 
-Le plancher de vitesse qui garantit l'arrivée du dernier électron vise
-`settleTimeMs()` — l'instant où les encarts se stabilisent, c'est-à-dire le
-critère d'arrêt du mode Synchronisé — et non un 6τ conventionnel, qui
-désynchronisait la fin de l'animation et le gel du tracé de ±1,5τ.
+La phase transfère la charge `ΔQ = C·ampU·span` d'ici `settleTimeMs()`, répartie sur
+`wireNToMove` électrons ; chacun vaut `qe = ΔQ/wireNToMove` et `dn = |i|·dt/qe`. Le
+débit est donc **rigoureusement proportionnel à i(t)**, sans plancher de vitesse ni
+cas particulier en fin de course, et atteint la cible pile au moment où le tracé se
+fige — l'animation et le graphe s'arrêtent au même instant, par construction.
+
+Deux détails portent cette garantie :
+
+- `span = 1 − e^(−t_settle/τ)` ne corrige que de 0,1 à 0,5 %, mais sans lui le
+  transfert n'est complet qu'à `t = ∞` et la dernière arrivée tombe un demi-quantum
+  trop tôt (l'animation finissait alors à `τ·ln(2·nIons)`, soit 2,5 à 4,1 τ, contre
+  5,3 à 7,6 τ pour le gel du tracé).
+- `wireNToMove` est **lu sur les armatures**, pas recalculé depuis `U0` : une phase
+  lancée sur un condensateur partiellement chargé n'a qu'une partie des électrons à
+  déplacer, et l'entier affiché fait foi — ce qui absorbe l'arrondi du compte
+  théorique `nIons·ampU/E`.
+
+Reste un écart irréductible en cours de phase : l'armature est quantifiée en 6 à 30
+crans quand le graphe est continu. L'électron visible en transit sur le fil rend cet
+écart lisible plutôt que faux.
 
 #### Scène complète
 
@@ -337,6 +397,7 @@ calcul de placement était auparavant dupliqué.
 - `togglePause()` — suspend/reprend la simulation
 - `onSliderSpeed(val)` — change le facteur d'accélération via le slider Vitesse d'animation (index 0 à 4 → 0.1/0.5/1/2/5)
 - `toggleGraphVisible()` — affiche/masque la zone de graphes (option « Afficher graphe », désactivée par défaut : le circuit occupe alors toute la colonne gauche)
+- `setGenPolarity(plusRight)` — bouton « Borne + du générateur » (Droite par défaut) : positionne `genPlusRight` et fait une RAZ (cf. § Orientation du générateur)
 - `resetSim()` — remet tout à zéro (état physique, graphes, électrons, UI)
 - `updateParam(name, val)` — met à jour un paramètre physique depuis un slider
 - `updateReadouts()` — rafraîchit les encarts de valeurs instantanées et l'indicateur d'état
@@ -355,6 +416,15 @@ Appelée par `requestAnimationFrame` à ~60 fps :
 6. Écrête à 8000 points par tableau (sous-échantillonnage ×2 si dépassé)
 7. Auto-scroll si l'utilisateur n'a pas pané manuellement
 8. Appelle `drawScene(dt)`, puis `drawGraph(...)` pour les deux graphes
+9. Appelle `updateReadouts()` — **après** `drawScene`, et seulement si la frame a
+   avancé le temps
+
+L'ordre du point 9 n'est pas cosmétique. `wireSettled` est posé par
+`updateElectrons()`, appelé depuis `drawScene()` ; l'indicateur d'état en dépend.
+Rafraîchir les encarts avant la scène faisait manquer d'une frame le passage à
+« Condensateur chargé » — et cette frame est la dernière, puisque `dt` retombe
+ensuite à 0 en mode Synchronisé. L'indicateur restait donc bloqué sur
+« Phase … en cours ».
 
 #### Initialisation `init()`
 
@@ -387,6 +457,7 @@ index.html
   │                                           pathLength, wireElectrons, wireN0,
   │                                           wireSettled, ELECTRON_SPACING,
   │                                           nOnPlateLeft, nOnPlateRight,
+  │                                           genPlusRight,
   │                                           CAP_GAP_BASE, CAP_PLATE_W_BASE
   │
   └── <script src="js/graph.js">     dépend de : sim, setTimeWindow
@@ -399,7 +470,7 @@ index.html
   │
   └── <script src="js/ui.js">        dépend de : tous les fichiers précédents
                                      expose : setPhase, togglePause, onSliderSpeed,
-                                              toggleGraphVisible,
+                                              toggleGraphVisible, setGenPolarity,
                                               resetSim, updateParam, updateReadouts
                                      démarre : init() → requestAnimationFrame(loop)
 ```
