@@ -36,26 +36,28 @@
     <div id="graph-area">
       <div id="graph-hover-tooltip"></div>
       <div id="graph-time-control">
-        <!-- Boutons gauche : Mode Synchronisé/Continu + sélecteurs de grandeur -->
-        <div id="graph-btns-left">
+        <!-- Colonne alignée sur le graphe 1 : Mode Synchronisé/Continu + sélecteur -->
+        <div class="graph-ctrl-col">
           <button id="btn-graph-mode" onclick="toggleGraphMode()" class="active">Mode : Synchronisé</button>
           <select id="sel-graph1" class="graph-select" onchange="onGraphTabChange(1,this.value)">
             <option value="Uc">Uc(t)</option>
             <option value="i">i(t)</option>
             <option value="q" selected>q(t)</option>
           </select>
+        </div>
+        <!-- Colonne alignée sur le graphe 2 : sélecteur + Réticule libre, Précédent, Zoom, Adapter -->
+        <div class="graph-ctrl-col" id="graph-ctrl-col2">
           <select id="sel-graph2" class="graph-select" onchange="onGraphTabChange(2,this.value)">
             <option value="Uc">Uc(t)</option>
             <option value="i" selected>i(t)</option>
             <option value="q">q(t)</option>
           </select>
-        </div>
-        <!-- Boutons droite : Réticule libre, Précédent, Zoom, Adapter -->
-        <div id="graph-btns-right">
-          <button id="btn-graph-cursor" onclick="toggleGraphCursor()" title="Réticule libre">+</button>
-          <button id="btn-graph-prev"   onclick="prevGraphView()" disabled title="Vue précédente">&#8592;</button>
-          <button id="btn-graph-zoom"   onclick="toggleGraphZoom()" title="Mode zoom">&#128269;</button>
-          <button id="btn-graph-auto"   onclick="autoTimeWindow()" title="Adapter la fenêtre à 20τ">&#128269; Adapter</button>
+          <div id="graph-btns-right">
+            <button id="btn-graph-cursor" onclick="toggleGraphCursor()" title="Réticule libre">+</button>
+            <button id="btn-graph-prev"   onclick="prevGraphView()" disabled title="Vue précédente">&#8592;</button>
+            <button id="btn-graph-zoom"   onclick="toggleGraphZoom()" title="Mode zoom">&#128269;</button>
+            <button id="btn-graph-auto"   onclick="autoTimeWindow()" title="Adapter la fenêtre à 20τ">&#128269; Adapter</button>
+          </div>
         </div>
       </div>
       <div class="graph-graphs-row">

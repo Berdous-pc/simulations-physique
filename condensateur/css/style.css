@@ -124,22 +124,29 @@ main {
   position: relative;
 }
 
-/* Barre de contrôle graphes */
+/* Barre de contrôle graphes — même découpage 2 colonnes (flex:1 + gap 8px)
+   que .graph-graphs-row ci-dessous, pour aligner chaque colonne sur son graphe. */
 #graph-time-control {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 6px;
+  gap: 8px;
   flex-shrink: 0;
   padding: 6px 10px 4px;
 }
 
-/* Groupe gauche : Mode Synchronisé/Continu + Affichage */
-#graph-btns-left {
+/* Colonne alignée sur un graphe (1 ou 2) */
+.graph-ctrl-col {
+  flex: 1;
+  min-width: 0;
   display: flex;
   gap: 6px;
   align-items: center;
   flex-wrap: wrap;
+}
+
+/* Colonne du graphe 2 : sélecteur à gauche, boutons droite poussés à droite */
+#graph-ctrl-col2 {
+  justify-content: space-between;
 }
 
 /* Groupe droite : Réticule, Précédent, Zoom, Adapter */
@@ -147,6 +154,7 @@ main {
   display: flex;
   gap: 6px;
   align-items: center;
+  flex-shrink: 0;
 }
 
 /* Style commun boutons gauche */
