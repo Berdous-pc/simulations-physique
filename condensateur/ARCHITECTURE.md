@@ -103,14 +103,44 @@ Objet central qui contient tout l'état de la simulation :
 
 **Chargé après `sim.js`.** Prend en charge tout le rendu du canvas `#circuit-canvas`.
 
-#### Canvas et géométrie
+#### Repère virtuel
 
-- `canvas` / `ctx` — références au canvas et à son contexte 2D
-- `pt` — objet contenant les 6 nœuds du circuit : `A`, `B`, `C`, `D`, `E`, `F`
-- `buildPoints()` — calcule les coordonnées des nœuds à partir des dimensions du canvas
-- `circuitScale()` — facteur d'échelle (racine carrée du rapport taille/référence 1200×700)
-- `getCircuitGeometry()` — retourne toutes les dimensions dérivées (rayons, positions des composants…)
-- `resize()` — redimensionne le canvas circuit et les deux canvas graphes, avec anti-rebond `requestAnimationFrame`
+Le schéma est dessiné **dans un repère fixe `VW × VH` = 1200 × 700**, ramené au
+canvas par une homothétie unique appliquée en tête de `drawScene()`
+(`translate(view.ox, view.oy)` puis `scale(view.k, view.k)`, avec
+`k = min(W/VW, H/VH)` et centrage type letterbox).
+
+Motivation : l'ancien `circuitScale()` valait `√(min(W/1200, H/700))`, si bien
+que **le dessin rétrécissait deux fois plus vite que le texte**. En dessous
+d'environ 520 px de haut pour la zone circuit — c'est-à-dire dès un portable
+1366×768 avec les graphes affichés — l'étiquette `E` était plaquée en haut du
+canvas par un `Math.max` de garde et mordait sur le générateur. Avec une
+homothétie stricte, ce qui ne se chevauche pas à la taille de référence ne peut
+plus se chevaucher à aucune taille ni aucun format.
+
+Corollaires : toutes les constantes du fichier sont des longueurs de la maquette
+(plus aucun facteur d'échelle disséminé) ; `pt` et la longueur des chemins
+d'électrons deviennent indépendants de la taille de la fenêtre, donc le nombre
+d'électrons sur le fil ne saute plus au redimensionnement.
+
+- `computeView()` — calcule `view = {k, ox, oy}` ; appelée par `resize()`
+- `textScale()` — grossissement du texte, `min(1.35, max(1, 0.5/k))`. Compense
+  l'illisibilité des étiquettes sur une zone courte. **Plafonné**, et la maquette
+  réserve la place correspondant au grossissement maximal : le boost ne peut donc
+  pas recréer de collision
+- `strokeW(v)` — épaisseur de trait bornée à ~1,1 px réel après homothétie, sinon
+  les contours disparaissent sur les petites fenêtres
+- `pt` — les 6 nœuds du circuit (`A`…`F`), en unités virtuelles, donc constants
+- `buildPoints()` — pose les nœuds sur les marges `0,13·VW` / `0,10·VH`. Ces
+  marges n'ont plus à héberger d'étiquettes : les labels des composants sont posés
+  **du côté intérieur** de leur branche (`E` et `R₁` sous la branche du haut, `R₂`
+  au-dessus de celle du bas), là où l'espace est libre
+- `getCircuitGeometry()` — **source unique** de toute la géométrie dérivée
+  (positions des composants, bornes des résistances `r1`/`r2`, armatures,
+  contacts de l'interrupteur). `drawScene()` la consomme au lieu de recalculer
+  les mêmes valeurs en parallèle, comme c'était le cas auparavant
+- `resize()` — redimensionne le canvas circuit et les deux canvas graphes, avec
+  anti-rebond `requestAnimationFrame`
 
 #### Dessin des composants
 
@@ -118,14 +148,60 @@ Objet central qui contient tout l'état de la simulation :
 |---|---|
 | `drawWire(x1,y1,x2,y2,active,discharge)` | Segment de fil |
 | `drawCurrentArrow(x1,y1,x2,y2)` | Flèche rouge de courant + label "I" |
-| `drawGenerator(cx,cy,r,active)` | Générateur (cercle + bornes +/−) |
-| `drawResistor(cx,cy,label,active,discharge)` | Résistance (rectangle + label) |
+| `drawGenerator(cx,cy,r,active)` | Générateur (cercle + bornes +/− + label `E`) |
+| `drawResistor(cx,cy,label,active,discharge,inside)` | Résistance ; `inside` = ±1, sens vers l'intérieur du circuit où poser le label |
 | `drawCapacitor(cx,cy,active)` | Condensateur (armatures + ions + signes) |
 | `drawSwitch(armLen)` | Interrupteur K (bras mobile) |
 
+#### Couleur des branches
+
+`branchColor(active, discharge)` / `branchFill(active, discharge)` — noir au
+repos, **bleu** `#2a6aaa` sur la branche qui conduit en charge, **rouge**
+`#b04020` en décharge, **gris** `#b0a898` sur la branche inactive. Appliqué aux
+fils (également épaissis), au contour et au label des résistances, au générateur,
+et au remplissage des armatures.
+
+L'ancienne palette `COL.compCharge/compDischarge/compInactive` existait déjà mais
+était **morte** : `drawResistor` calculait la couleur puis peignait en noir, et
+les trois couleurs de fil valaient toutes `#1a1a1a`. Le seul indice d'activité
+était l'épaisseur du trait.
+
 #### Système d'électrons
 
-Modèle discret : des électrons (disques bleus `−`) circulent le long d'un chemin normalisé `[0, 1)`.
+Modèle discret : des électrons (billes bleues `−`) circulent le long d'un chemin normalisé `[0, 1)`.
+
+##### Rendu des charges
+
+`drawChargeBead(x, y, r, sign, pal, gloss)` — bille commune aux électrons
+(`ELECTRON_R = 6`) et aux ions (`ION_R = 9`) : dégradé radial, liseré, et **signe
+tracé au trait plutôt qu'en glyphe** — l'ancien caractère « − » rendu en police
+7 px se réduisait à une tache grise après antialiasing.
+
+Aucune bille n'est cerclée d'un halo couleur fond : les électrons doivent
+**chevaucher** leur ion, un halo les en séparerait. Seuls les ions portent le
+reflet spéculaire (`gloss`), qui alourdirait le rendu sur les électrons vu leur
+densité le long du fil.
+
+`drawElectronDot(x, y, alpha)` et `drawIonDot(x, y)` en dérivent.
+
+##### Géométrie des armatures
+
+Les électrons sont « accrochés » **en diagonale** à leur ion (`ELECTRON_OFFSETS`),
+en le **chevauchant** (`CAP_OFF = 0,8 · ION_R`) : le premier en haut à droite, le
+second en bas à gauche. Un site occupe donc un carré de `2·CAP_SITE_R` de côté.
+
+Le chevauchement n'est pas qu'un choix de rendu : c'est lui qui rend le site assez
+compact pour que **2 colonnes** — donc 15 rangées à 500 µF — tiennent dans la
+maille du circuit avec les charges à pleine taille. Sans lui il fallait passer à 3
+colonnes ou rapetisser les billes.
+
+`CAP_IONS_COLS` se bascule à 2 ou 3 sans rien d'autre à toucher : largeur et
+hauteur d'armature sont **dérivées du contenu**
+(`CAP_PLATE_W_BASE = CAP_IONS_COLS × CAP_COL_PITCH`, `capPlateH(nIons)`) au lieu
+d'être figées comme avant.
+
+Lecture de l'état par le nombre d'électrons par site : armature neutre → 1 par
+ion, négative → 2 par ion, positive → ion nu.
 
 - `nIonsFromC()` — nombre d'ions par armature, interpolé selon C (100–500 µF → 6–30 ions)
 - `initElectrons()` — initialise les positions et le facteur de vitesse `wireSpeedK`
@@ -134,7 +210,6 @@ Modèle discret : des électrons (disques bleus `−`) circulent le long d'un ch
 - `posToXY(path, p)` — convertit une position normalisée en coordonnées `(x, y, hidden)`
 - `updateElectrons(path, I, dt)` — avance les électrons, gère les arrivées/départs sur les plaques
 - `drawElectronsOnPath(path)` — dessine les électrons visibles sur le fil
-- `drawElectronDot(x, y, alpha)` — dessine un électron (disque bleu + "−")
 - `updateAndDrawElectrons(dt)` — point d'entrée appelé à chaque frame
 
 Variables d'état des électrons :
@@ -296,7 +371,8 @@ index.html
   │
   └── <script src="js/circuit.js">   dépend de : sim, currentI, tau
   │                                  expose : canvas, ctx, pt, resize, buildPoints,
-  │                                           circuitScale, getCircuitGeometry,
+  │                                           VW, VH, view, computeView, textScale,
+  │                                           strokeW, getCircuitGeometry,
   │                                           drawScene, initElectrons,
   │                                           buildPathCharge, buildPathDischarge,
   │                                           pathLength, wireElectrons, wireN0,

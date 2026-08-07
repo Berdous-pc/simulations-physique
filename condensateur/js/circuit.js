@@ -13,11 +13,69 @@
 const canvas = document.getElementById('circuit-canvas');
 const ctx    = canvas.getContext('2d');
 
-// Coordonnées des 6 nœuds du circuit (A, B, C, D, E, F)
+// Coordonnées des 6 nœuds du circuit (A, B, C, D, E, F), en unités virtuelles
 let pt = {};
 
 // Protection anti-rebond du resize (une seule mise à jour par frame)
 let resizePending = false;
+
+// ═══════════════════════════════════════════════════════════════════════
+//  REPÈRE VIRTUEL
+//
+//  Tout le schéma est dessiné dans un repère fixe VW × VH, puis ramené au
+//  canvas par une homothétie unique (facteur `view.k` + centrage). Deux
+//  conséquences :
+//    — ce qui ne se chevauche pas à la taille de référence ne se chevauchera
+//      jamais, quelles que soient la taille et le format de la fenêtre ;
+//    — toutes les constantes de ce fichier sont des longueurs de la maquette,
+//      directement lisibles, sans facteur d'échelle disséminé.
+// ═══════════════════════════════════════════════════════════════════════
+const VW = 1200, VH = 700;
+
+let view = { k: 1, ox: 0, oy: 0 };
+
+function computeView() {
+  const W = canvas.clientWidth  || VW;
+  const H = canvas.clientHeight || VH;
+  const k = Math.min(W / VW, H / VH);
+  view.k  = k;
+  view.ox = (W - VW * k) / 2;
+  view.oy = (H - VH * k) / 2;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Grossissement du texte sur les petites fenêtres.
+//
+//  L'homothétie stricte rendrait les étiquettes illisibles sur une zone
+//  courte. On les regrossit donc, mais d'un facteur **plafonné** : la
+//  maquette virtuelle réserve la place correspondant au grossissement
+//  maximal, si bien que le boost ne peut pas provoquer de collision.
+// ─────────────────────────────────────────────────────────────────────
+const TEXT_BOOST_FROM = 0.5;   // en dessous de ce k, le texte regrossit
+const TEXT_BOOST_MAX  = 1.35;  // plafond du grossissement
+
+function textScale() {
+  return Math.min(TEXT_BOOST_MAX, Math.max(1, TEXT_BOOST_FROM / view.k));
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Épaisseur de trait : jamais moins de ~1,1 px réel une fois l'homothétie
+//  appliquée, sinon les contours disparaissent sur les petites fenêtres.
+// ─────────────────────────────────────────────────────────────────────
+function strokeW(v) {
+  return Math.max(v, 1.1 / view.k);
+}
+
+// ── Tailles de police de la maquette (avant boost) ──
+const FS_LABEL = 34;   // E, R₁, R₂, C, K, signes + / −
+const FS_I     = 26;   // étiquette des flèches de courant
+
+function fsLabel() { return FS_LABEL * textScale(); }
+function fsI()     { return FS_I     * textScale(); }
+
+// ── Dimensions fixes des composants (unités virtuelles) ──
+const RES_W = 90, RES_H = 34;
+const GEN_R = 46;
 
 // ─────────────────────────────────────────────────────────────────────
 //  Adapte les dimensions des canvas (circuit + graphes) à la fenêtre.
@@ -38,6 +96,7 @@ function resize() {
     canvas.width  = Math.round(cssW * dpr);
     canvas.height = Math.round(cssH * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    computeView();
     buildPoints();
     if (sim.phase === 'idle') initElectrons();
 
@@ -59,7 +118,7 @@ function resize() {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-//  Calcule les coordonnées des 6 nœuds du circuit.
+//  Coordonnées des 6 nœuds, en unités virtuelles (donc constantes).
 //
 //  Topologie :
 //    A ──R1──Gén── B
@@ -67,13 +126,15 @@ function resize() {
 //    K(E)    C     F
 //    |              |
 //    D ────R2────── C_
+//
+//  Les marges n'ont plus à héberger d'étiquettes : les labels des
+//  composants sont posés du côté **intérieur** de leur branche, dans
+//  l'espace libre au centre du circuit (cf. drawGenerator / drawResistor).
 // ─────────────────────────────────────────────────────────────────────
 function buildPoints() {
-  const W = canvas.clientWidth, H = canvas.clientHeight;
-  const ml = W * 0.15, mr = W * 0.15;
-  const mt = H * 0.15, mb = H * 0.15;
-  const x0 = ml, x1 = W - mr;
-  const y0 = mt, y2 = H - mb;
+  const mx = VW * 0.13, my = VH * 0.10;
+  const x0 = mx, x1 = VW - mx;
+  const y0 = my, y2 = VH - my;
   const y1 = (y0 + y2) / 2;
   pt.A = { x: x0, y: y0 };
   pt.B = { x: x1, y: y0 };
@@ -88,25 +149,35 @@ function buildPoints() {
 // ═══════════════════════════════════════════════════════════════════════
 
 const COL = {
-  wire:          '#1a1a1a',
-  wireCharge:    '#1a1a1a',
-  wireDischarge: '#1a1a1a',
-  compCharge:    '#2a6aaa',
-  compDischarge: '#b04020',
-  compInactive:  '#b0a898',
+  neutral:       '#1a1a1a',
+  charge:        '#2a6aaa',
+  discharge:     '#b04020',
+  inactive:      '#b0a898',
+  bg:            '#fdf8f0',
+  fillCharge:    '#e9f1f9',
+  fillDischarge: '#faece6',
+  arrow:         '#cc2200',
 };
 
-function wireColor(active, discharge) {
-  if (!active) return COL.wire;
-  return discharge ? COL.wireDischarge : COL.wireCharge;
+// Couleur d'une branche : noire au repos, colorée quand elle conduit,
+// grisée quand c'est l'autre branche qui conduit.
+function branchColor(active, discharge) {
+  if (sim.phase === 'idle') return COL.neutral;
+  if (!active)              return COL.inactive;
+  return discharge ? COL.discharge : COL.charge;
+}
+
+function branchFill(active, discharge) {
+  if (sim.phase === 'idle' || !active) return COL.bg;
+  return discharge ? COL.fillDischarge : COL.fillCharge;
 }
 
 function drawWire(x1, y1, x2, y2, active, discharge) {
-  const col = wireColor(active, discharge);
-  const sc  = circuitScale();
+  const live = active && sim.phase !== 'idle';
   ctx.save();
-  ctx.strokeStyle = col;
-  ctx.lineWidth   = active ? 2.5 * sc : 1.5 * sc;
+  ctx.strokeStyle = branchColor(active, discharge);
+  ctx.lineWidth   = strokeW(live ? 4 : 2.5);
+  ctx.lineCap     = 'round';
   ctx.beginPath();
   ctx.moveTo(x1, y1);
   ctx.lineTo(x2, y2);
@@ -116,39 +187,38 @@ function drawWire(x1, y1, x2, y2, active, discharge) {
 
 // ─────────────────────────────────────────────────────────────────────
 //  Flèche rouge indiquant le sens conventionnel du courant.
+//  L'étiquette « I » est toujours posée à l'extérieur du circuit :
+//  au-dessus des segments horizontaux, du côté du bord le plus proche
+//  pour les segments verticaux.
 // ─────────────────────────────────────────────────────────────────────
 function drawCurrentArrow(x1, y1, x2, y2) {
-  const sc    = circuitScale();
-  const col   = '#cc2200';
   const mx    = (x1 + x2) / 2;
   const my    = (y1 + y2) / 2;
   const angle = Math.atan2(y2 - y1, x2 - x1);
-  const hs    = 12 * sc;
+  const hs    = 13;
 
   ctx.save();
   ctx.translate(mx, my);
   ctx.rotate(angle);
-  ctx.fillStyle = col;
+  ctx.fillStyle = COL.arrow;
   ctx.beginPath();
   ctx.moveTo( hs,  0);
-  ctx.lineTo(-hs, -6 * sc);
-  ctx.lineTo(-hs,  6 * sc);
+  ctx.lineTo(-hs, -7);
+  ctx.lineTo(-hs,  7);
   ctx.closePath();
   ctx.fill();
   ctx.restore();
 
   const isVertical = Math.abs(y2 - y1) > Math.abs(x2 - x1);
   ctx.save();
-  ctx.font         = `bold ${Math.round(26 * sc)}px serif`;
-  ctx.fillStyle    = col;
+  ctx.font         = `bold ${fsI()}px serif`;
+  ctx.fillStyle    = COL.arrow;
   ctx.textAlign    = 'center';
   ctx.textBaseline = 'middle';
   if (!isVertical) {
-    ctx.fillText('I', mx, my - 20 * sc);
+    ctx.fillText('I', mx, my - 22);
   } else {
-    const g           = getCircuitGeometry();
-    const outsideLeft = Math.abs(x1 - g.A.x) < 20;
-    ctx.fillText('I', mx + (outsideLeft ? -22 * sc : 22 * sc), my);
+    ctx.fillText('I', mx + (mx < VW / 2 ? -26 : 26), my);
   }
   ctx.restore();
 }
@@ -158,113 +228,189 @@ function drawCurrentArrow(x1, y1, x2, y2) {
 // ═══════════════════════════════════════════════════════════════════════
 
 function drawGenerator(genX, genY, genR, active) {
-  const sc = circuitScale();
+  const col = branchColor(active, false);
+
   ctx.save();
-  ctx.fillStyle   = '#fdf8f0';
-  ctx.strokeStyle = '#1a1a1a';
-  ctx.lineWidth   = 2;
+  ctx.fillStyle   = branchFill(active, false);
+  ctx.strokeStyle = col;
+  ctx.lineWidth   = strokeW(2.5);
   ctx.beginPath();
   ctx.arc(genX, genY, genR, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
-  ctx.restore();
 
-  ctx.save();
-  ctx.strokeStyle = '#1a1a1a';
-  ctx.lineWidth   = 2;
   ctx.beginPath();
   ctx.moveTo(genX - genR * 0.55, genY);
   ctx.lineTo(genX + genR * 0.55, genY);
   ctx.stroke();
   ctx.restore();
 
-  const signOffset = genR + 16 * sc;
-  const signY      = genY - genR * 0.5;
+  // Bornes + / − : dans la marge extérieure, de part et d'autre du cercle.
+  const fs = fsLabel();
   ctx.save();
-  ctx.font         = `bold ${Math.round(36 * sc)}px monospace`;
+  ctx.font         = `bold ${fs}px monospace`;
   ctx.textAlign    = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillStyle    = 'rgba(210, 100, 20, 1)';
-  ctx.fillText('+', genX + signOffset, signY);
-  ctx.fillStyle    = 'rgba(40, 80, 180, 1)';
-  ctx.fillText('−', genX - signOffset, signY);
+  ctx.fillStyle    = '#d26414';
+  ctx.fillText('+', genX + genR + 16, genY - genR * 0.5);
+  ctx.fillStyle    = '#2850b4';
+  ctx.fillText('−', genX - genR - 16, genY - genR * 0.5);
   ctx.restore();
 
+  // Étiquette E : côté intérieur du circuit, sous la branche du haut.
   ctx.save();
-  ctx.fillStyle    = '#1a1a1a';
-  ctx.font         = `bold ${Math.round(36 * sc)}px monospace`;
+  ctx.fillStyle    = COL.neutral;
+  ctx.font         = `bold ${fs}px monospace`;
   ctx.textAlign    = 'center';
-  ctx.textBaseline = 'bottom';
-  const labelEY = Math.max(Math.round(36 * sc) + 2, genY - genR - 6 * sc);
-  ctx.fillText('E', genX, labelEY);
+  ctx.textBaseline = 'top';
+  ctx.fillText('E', genX, genY + genR + 10);
   ctx.restore();
 }
 
-function drawResistor(cx, cy, label, active, discharge) {
-  const sc  = circuitScale();
-  const rw  = Math.min((pt.B.x - pt.A.x) * 0.28, 90 * sc);
-  const rh  = 32 * sc;
-  const col = discharge
-    ? (active ? COL.compDischarge : COL.compInactive)
-    : (active ? COL.compCharge    : COL.compInactive);
+// `inside` : sens vers l'intérieur du circuit (+1 = label sous le composant).
+function drawResistor(cx, cy, label, active, discharge, inside) {
+  const col = branchColor(active, discharge);
+  const fs  = fsLabel();
 
   ctx.save();
-  ctx.fillStyle   = '#fdf8f0';
-  ctx.strokeStyle = '#1a1a1a';
-  ctx.lineWidth   = 2;
+  ctx.fillStyle   = branchFill(active, discharge);
+  ctx.strokeStyle = col;
+  ctx.lineWidth   = strokeW(2.5);
   ctx.beginPath();
-  ctx.rect(cx - rw / 2, cy - rh / 2, rw, rh);
+  ctx.rect(cx - RES_W / 2, cy - RES_H / 2, RES_W, RES_H);
   ctx.fill();
   ctx.stroke();
-  ctx.fillStyle    = '#1a1a1a';
-  ctx.font         = `bold ${Math.round(28 * sc)}px monospace`;
-  ctx.textAlign    = 'center';
-  ctx.textBaseline = 'bottom';
-  ctx.fillText(label, cx, cy - rh / 2 - 5 * sc);
-  ctx.restore();
 
-  return { lx: cx - rw / 2, rx: cx + rw / 2 };
+  ctx.fillStyle    = col;
+  ctx.font         = `bold ${fs}px monospace`;
+  ctx.textAlign    = 'center';
+  if (inside > 0) {
+    ctx.textBaseline = 'top';
+    ctx.fillText(label, cx, cy + RES_H / 2 + 10);
+  } else {
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(label, cx, cy - RES_H / 2 - 10);
+  }
+  ctx.restore();
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  CHARGES (billes − et +)
+//
+//  Le signe est tracé au trait et non en glyphe : à ces tailles, un
+//  caractère « − » de 7 px se réduisait à une tache grise après
+//  antialiasing. Le dégradé radial donne le volume ; seuls les ions portent
+//  en plus un reflet, les électrons devant rester sobres vu leur densité.
+//  Aucune bille n'est cerclée : les électrons chevauchent leur ion.
+// ═══════════════════════════════════════════════════════════════════════
+const ELECTRON_R = 6;
+const ION_R      = 9;
+
+const PAL_ELECTRON = { light: '#6ba6de', dark: '#1d4f85', edge: 'rgba(14,42,72,0.85)' };
+const PAL_ION      = { light: '#e79063', dark: '#a8431c', edge: 'rgba(118,44,14,0.85)' };
+
+// `gloss` : reflet spéculaire.
+function drawChargeBead(x, y, r, sign, pal, gloss) {
+  ctx.save();
+
+  const g = ctx.createRadialGradient(x - r * 0.35, y - r * 0.4, r * 0.12, x, y, r);
+  g.addColorStop(0, pal.light);
+  g.addColorStop(1, pal.dark);
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+
+  ctx.strokeStyle = pal.edge;
+  ctx.lineWidth   = strokeW(0.9);
+  ctx.stroke();
+
+  if (gloss) {
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.beginPath();
+    ctx.ellipse(x - r * 0.3, y - r * 0.36, r * 0.32, r * 0.22, -0.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  const a = r * 0.52;
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth   = Math.max(r * 0.26, strokeW(1.1));
+  ctx.lineCap     = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x - a, y); ctx.lineTo(x + a, y);
+  if (sign > 0) { ctx.moveTo(x, y - a); ctx.lineTo(x, y + a); }
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawElectronDot(x, y, alpha) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  drawChargeBead(x, y, ELECTRON_R, -1, PAL_ELECTRON, false);
+  ctx.restore();
+}
+
+function drawIonDot(x, y) {
+  drawChargeBead(x, y, ION_R, +1, PAL_ION, true);
 }
 
 // ─────────────────────────────────────────────────────────────────────
 //  Condensateur plan (vue en coupe).
+//
+//  Chaque armature porte un réseau d'ions + fixes. Les électrons sont
+//  « accrochés » en diagonale à leur ion, en le **chevauchant** : le premier
+//  en haut à droite, le second en bas à gauche.
+//
+//  État lu par le nombre d'électrons par site :
+//    armature neutre   → 1 électron par ion
+//    armature négative → 2 électrons par ion
+//    armature positive → ion nu
+//
+//  CAP_IONS_COLS se bascule à 2 ou 3 sans rien d'autre à toucher : tout le
+//  reste (largeur et hauteur d'armature) en découle. Le chevauchement rend le
+//  site assez compact pour que 2 colonnes — donc 15 rangées à 500 µF —
+//  tiennent dans la maille du circuit avec les charges à pleine taille.
 // ─────────────────────────────────────────────────────────────────────
-const CAP_PLATE_W_BASE = 44;
-const CAP_GAP_BASE     = 45;
 const CAP_IONS_COLS    = 2;
-const CAP_PLATE_W      = CAP_PLATE_W_BASE;
+const CAP_OFF          = ION_R * 0.8;                             // ≈ 7,2
+const CAP_SITE_R       = CAP_OFF + ELECTRON_R;                    // ≈ 13,2
+const CAP_COL_PITCH    = 2 * CAP_SITE_R + 4;                      // ≈ 30,4
+const CAP_ROW_PITCH    = 2 * CAP_SITE_R + 1;                      // ≈ 27,4
+const CAP_PLATE_W_BASE = CAP_IONS_COLS * CAP_COL_PITCH;           // ≈ 61
+const CAP_GAP_BASE     = 54;
+const CAP_MIN_H        = 90;
 
-function capPlateW() { return CAP_PLATE_W_BASE * circuitScale(); }
-function capGap()    { return CAP_GAP_BASE     * circuitScale(); }
-
+// Position des électrons autour de leur ion, par couche.
 const ELECTRON_OFFSETS = [
-  { dx:  4, dy: -4 },
-  { dx: -4, dy:  4 },
-  { dx: -4, dy: -4 },
+  { dx:  CAP_OFF, dy: -CAP_OFF },
+  { dx: -CAP_OFF, dy:  CAP_OFF },
+  { dx: -CAP_OFF, dy: -CAP_OFF },
 ];
 
+function capPlateH(nIons) {
+  const nRows = Math.ceil(nIons / CAP_IONS_COLS);
+  return Math.max(CAP_MIN_H, nRows * CAP_ROW_PITCH);
+}
+
 function drawCapacitor(cx, cy, active) {
-  const sc  = circuitScale();
-  const gap = capGap();
-  const pw  = capPlateW();
+  const gap = CAP_GAP_BASE;
+  const pw  = CAP_PLATE_W_BASE;
 
   const nIons = nIonsFromC();
   const nRows = Math.ceil(nIons / CAP_IONS_COLS);
-  const bh    = Math.max(80 * sc, nRows * 18 * sc + 16 * sc);
+  const bh    = capPlateH(nIons);
 
   const chargeRatio = sim.E > 0 ? Math.min(sim.Uc / sim.E, 1) : 0;
   const leftX  = cx - gap / 2;
   const rightX = cx + gap / 2;
+  const dis       = sim.phase === 'discharge';
+  const plateFill = active ? branchFill(true, dis) : COL.bg;
 
   ctx.save();
-  ctx.fillStyle = active ? '#eef3f8' : '#fdf8f0';
+  ctx.fillStyle = plateFill;
   ctx.fillRect(leftX - pw, cy - bh/2, pw, bh);
   ctx.fillRect(rightX,     cy - bh/2, pw, bh);
-  ctx.restore();
-
-  ctx.save();
-  ctx.strokeStyle = '#1a1a1a';
-  ctx.lineWidth   = 2;
+  ctx.strokeStyle = COL.neutral;
+  ctx.lineWidth   = strokeW(2.5);
   ctx.strokeRect(leftX - pw, cy - bh/2, pw, bh);
   ctx.strokeRect(rightX,     cy - bh/2, pw, bh);
   ctx.restore();
@@ -279,23 +425,9 @@ function drawCapacitor(cx, cy, active) {
     }
   }
 
-  function drawIon(x, y) {
-    ctx.save();
-    ctx.fillStyle   = 'rgba(180, 80, 40, 0.75)';
-    ctx.strokeStyle = 'rgba(180, 80, 40, 0.4)';
-    ctx.lineWidth   = 1;
-    ctx.beginPath(); ctx.arc(x, y, 5 * sc, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-    ctx.fillStyle    = '#fff';
-    ctx.font         = `bold ${Math.round(7 * sc)}px sans-serif`;
-    ctx.textAlign    = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('+', x, y);
-    ctx.restore();
-  }
-
   for (const p of ionPositions) {
-    drawIon(p.xL, p.y);
-    drawIon(p.xR, p.y);
+    drawIonDot(p.xL, p.y);
+    drawIonDot(p.xR, p.y);
   }
 
   const drawOrder = [];
@@ -316,8 +448,7 @@ function drawCapacitor(cx, cy, active) {
         : drawOrder.length - 1 - (k % drawOrder.length);
       const ionIdx = drawOrder[orderIdx];
       const layer  = Math.floor(k / drawOrder.length);
-      const offBase = ELECTRON_OFFSETS[Math.min(layer, ELECTRON_OFFSETS.length - 1)];
-      const off    = { dx: offBase.dx * sc, dy: offBase.dy * sc };
+      const off    = ELECTRON_OFFSETS[Math.min(layer, ELECTRON_OFFSETS.length - 1)];
       const pos    = ionPositions[ionIdx];
       if (!pos) break;
       drawElectronDot(
@@ -330,25 +461,22 @@ function drawCapacitor(cx, cy, active) {
   drawPlateElectrons(nOnPlateLeft,  true);
   drawPlateElectrons(nOnPlateRight, false);
 
-  if (chargeRatio > 0.05) {
-    const alpha = Math.min(chargeRatio * 1.5, 1);
-    ctx.save();
-    ctx.font         = `bold ${Math.round(36 * sc)}px monospace`;
-    ctx.textAlign    = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle    = `rgba(40, 80, 180, ${alpha})`;
-    ctx.fillText('−', leftX  - pw/2, cy - bh/2 - 22 * sc);
-    ctx.fillStyle    = `rgba(210, 100, 20, ${alpha})`;
-    ctx.fillText('+', rightX + pw/2, cy - bh/2 - 22 * sc);
-    ctx.restore();
-  }
-
+  // Étiquettes au-dessus du condensateur : − | C | + sur une même ligne.
+  const fs     = fsLabel();
+  const labelY = cy - bh/2 - 12;
   ctx.save();
-  ctx.fillStyle    = '#1a1a1a';
-  ctx.font         = `bold ${Math.round(36 * sc)}px monospace`;
+  ctx.font         = `bold ${fs}px monospace`;
   ctx.textAlign    = 'center';
   ctx.textBaseline = 'bottom';
-  ctx.fillText('C', cx, cy - bh / 2 - 34 * sc);
+  ctx.fillStyle    = COL.neutral;
+  ctx.fillText('C', cx, labelY);
+  if (chargeRatio > 0.05) {
+    const alpha = Math.min(chargeRatio * 1.5, 1);
+    ctx.fillStyle = `rgba(40, 80, 180, ${alpha})`;
+    ctx.fillText('−', leftX  - pw/2, labelY);
+    ctx.fillStyle = `rgba(210, 100, 20, ${alpha})`;
+    ctx.fillText('+', rightX + pw/2, labelY);
+  }
   ctx.restore();
 
   return { leftX, rightX, bh, pw };
@@ -358,7 +486,6 @@ function drawCapacitor(cx, cy, active) {
 //  Interrupteur K
 // ─────────────────────────────────────────────────────────────────────
 function drawSwitch(armLen) {
-  const sc = circuitScale();
   const E = pt.E;
   const contactUp   = { x: E.x, y: E.y - armLen };
   const contactDown = { x: E.x, y: E.y + armLen };
@@ -372,29 +499,31 @@ function drawSwitch(armLen) {
   const by = E.y + Math.sin(angle) * armLen;
 
   ctx.save();
-  ctx.fillStyle = '#1a1a1a';
-  ctx.beginPath(); ctx.arc(contactUp.x,   contactUp.y,   5 * sc, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.arc(contactDown.x, contactDown.y, 5 * sc, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = COL.neutral;
+  ctx.beginPath(); ctx.arc(contactUp.x,   contactUp.y,   6, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(contactDown.x, contactDown.y, 6, 0, Math.PI * 2); ctx.fill();
   ctx.restore();
 
   ctx.save();
   ctx.strokeStyle = '#4a5a6a';
-  ctx.lineWidth   = 2.5;
+  ctx.lineWidth   = strokeW(3.5);
+  ctx.lineCap     = 'round';
   ctx.beginPath(); ctx.moveTo(E.x, E.y); ctx.lineTo(bx, by); ctx.stroke();
   ctx.restore();
 
   ctx.save();
   ctx.fillStyle   = '#e8e4de';
   ctx.strokeStyle = '#7a8a96';
-  ctx.lineWidth   = 1.5;
-  ctx.beginPath(); ctx.arc(E.x, E.y, 5 * sc, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.lineWidth   = strokeW(1.8);
+  ctx.beginPath(); ctx.arc(E.x, E.y, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   ctx.restore();
 
   ctx.save();
-  ctx.fillStyle    = '#1a1a1a';
-  ctx.font         = `bold ${Math.round(36 * sc)}px monospace`;
-  ctx.textBaseline = 'middle';
-  ctx.fillText('K', E.x + 18 * sc, E.y - 24 * sc);
+  ctx.fillStyle    = COL.neutral;
+  ctx.font         = `bold ${fsLabel()}px monospace`;
+  ctx.textAlign    = 'left';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText('K', E.x + 16, E.y - 20);
   ctx.restore();
 }
 
@@ -402,7 +531,7 @@ function drawSwitch(armLen) {
 //  SYSTÈME D'ÉLECTRONS
 // ═══════════════════════════════════════════════════════════════════════
 
-const ELECTRON_SPACING = 40;
+const ELECTRON_SPACING = 42;
 const C_MIN_UF    = 100;
 const C_MAX_UF    = 500;
 const IONS_AT_CMIN = 6;
@@ -426,12 +555,7 @@ function initElectrons() {
   nOnPlateLeft  = nIons;
   nOnPlateRight = nIons;
 
-  if (!pt.A) {
-    wireElectrons = [];
-    for (let i = 0; i < 20; i++) wireElectrons.push(i / 20);
-    wireN0 = 20;
-    return;
-  }
+  if (!pt.A) buildPoints();
 
   const g     = getCircuitGeometry();
   const path  = buildPathCharge(g);
@@ -449,35 +573,31 @@ function initElectrons() {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-//  Facteur d'échelle du circuit.
+//  Géométrie dérivée — **source unique**, consommée aussi bien par
+//  drawScene() que par les chemins d'électrons.
 // ─────────────────────────────────────────────────────────────────────
-function circuitScale() {
-  const REF_W = 1200, REF_H = 700;
-  const raw = Math.min(canvas.clientWidth / REF_W, canvas.clientHeight / REF_H);
-  return Math.pow(raw, 0.5);
-}
-
 function getCircuitGeometry() {
   const A = pt.A, B = pt.B, C_ = pt.C, D = pt.D, E = pt.E, F = pt.F;
-  const sc          = circuitScale();
   const circuitW    = B.x - A.x;
-  const rw          = Math.min(circuitW * 0.28, 90 * sc);
-  const genR        = Math.min(circuitW * 0.18, 46 * sc);
+  const rw          = RES_W;
+  const genR        = GEN_R;
   const r1X         = A.x + circuitW * 0.28;
   const genX        = A.x + circuitW * 0.68;
   const r2X         = (D.x + C_.x) / 2;
   const capX        = (E.x + F.x) / 2;
   const capY        = E.y;
-  const gap         = CAP_GAP_BASE * sc;
-  const pw          = CAP_PLATE_W_BASE * sc;
+  const gap         = CAP_GAP_BASE;
+  const pw          = CAP_PLATE_W_BASE;
   const leftPlateX  = capX - gap / 2;
   const rightPlateX = capX + gap / 2;
-  const armLen      = Math.min((E.y - A.y) * 0.45, 48 * sc);
+  const armLen      = Math.min((E.y - A.y) * 0.45, 52);
   const contactUp   = { x: E.x, y: E.y - armLen };
   const contactDown = { x: E.x, y: E.y + armLen };
-  return { A, B, C_, D, E, F, rw, genR, r1X, genX, r2X,
+  const r1          = { lx: r1X - rw / 2, rx: r1X + rw / 2 };
+  const r2          = { lx: r2X - rw / 2, rx: r2X + rw / 2 };
+  return { A, B, C_, D, E, F, rw, genR, r1X, genX, r2X, r1, r2,
            capX, capY, leftPlateX, rightPlateX, armLen, contactUp, contactDown,
-           gap, pw, sc };
+           gap, pw };
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -617,20 +737,6 @@ function drawElectronsOnPath(path) {
   }
 }
 
-function drawElectronDot(x, y, alpha) {
-  const sc = circuitScale();
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.fillStyle   = '#2a6aaa';
-  ctx.beginPath(); ctx.arc(x, y, 4 * sc, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle    = '#ffffff';
-  ctx.font         = `bold ${Math.round(7 * sc)}px sans-serif`;
-  ctx.textAlign    = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('−', x, y);
-  ctx.restore();
-}
-
 function updateAndDrawElectrons(dt) {
   const g          = getCircuitGeometry();
   const activePath = sim.phase === 'discharge'
@@ -648,37 +754,22 @@ function updateAndDrawElectrons(dt) {
 //  SCÈNE COMPLÈTE (redessinée à chaque frame)
 // ═══════════════════════════════════════════════════════════════════════
 function drawScene(dt_scene) {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = '#fdf8f0';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const W = canvas.clientWidth, H = canvas.clientHeight;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = COL.bg;
+  ctx.fillRect(0, 0, W, H);
 
-  const A = pt.A, B = pt.B, C_ = pt.C, D = pt.D, E = pt.E, F = pt.F;
+  ctx.save();
+  ctx.translate(view.ox, view.oy);
+  ctx.scale(view.k, view.k);
+
+  const g = getCircuitGeometry();
+  const { A, B, C_, D, E, F, genR, genX, r1X, r2X, r1, r2,
+          capX, capY, leftPlateX, rightPlateX, armLen,
+          contactUp, contactDown, pw } = g;
+
   const chg = sim.phase === 'charge';
-  const dis  = sim.phase === 'discharge';
-  const sc   = circuitScale();
-
-  const circuitW = B.x - A.x;
-  const rw       = Math.min(circuitW * 0.28, 90 * sc);
-  const genR     = Math.min(circuitW * 0.18, 46 * sc);
-  const r1X      = A.x + circuitW * 0.28;
-  const genX     = A.x + circuitW * 0.68;
-  const genY     = A.y;
-  const r2X      = (D.x + C_.x) / 2;
-  const capX     = (E.x + F.x) / 2;
-  const capY     = E.y;
-
-  const gap         = CAP_GAP_BASE * sc;
-  const pw          = CAP_PLATE_W_BASE * sc;
-  const leftPlateX  = capX - gap / 2;
-  const rightPlateX = capX + gap / 2;
-
-  const armLen      = Math.min((E.y - A.y) * 0.45, 48 * sc);
-  const contactUp   = { x: E.x, y: E.y - armLen };
-  const contactDown = { x: E.x, y: E.y + armLen };
-
-  // Résistances (dessinées en premier pour récupérer les coordonnées de raccord)
-  const r1 = drawResistor(r1X, A.y,  'R₁', chg, false);
-  const r2 = drawResistor(r2X, C_.y, 'R₂', dis, true);
+  const dis = sim.phase === 'discharge';
 
   // ── Fils ──
   drawWire(A.x,         A.y, r1.lx,        A.y, chg, false);
@@ -716,14 +807,16 @@ function drawScene(dt_scene) {
   }
 
   // ── Composants (par-dessus les fils) ──
-  drawResistor(r1X,  A.y,  'R₁', chg, false);
-  drawGenerator(genX, genY, genR, chg);
-  drawResistor(r2X,  C_.y, 'R₂', dis, true);
+  drawResistor(r1X,  A.y,  'R₁', chg, false, +1);
+  drawGenerator(genX, A.y, genR, chg);
+  drawResistor(r2X,  C_.y, 'R₂', dis, true, -1);
   drawCapacitor(capX, capY, chg || dis);
   drawSwitch(armLen);
 
   // ── Électrons (par-dessus tout le reste) ──
   updateAndDrawElectrons(dt_scene);
+
+  ctx.restore();
 }
 
 // ═══════════════════════════════════════════════════════════════════════
