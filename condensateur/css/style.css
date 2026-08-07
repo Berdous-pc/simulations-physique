@@ -92,6 +92,7 @@ main {
 /* Panneau de contrôle droit (toute la hauteur) */
 #panel {
   background: #e8e4de;
+  border-left: 1.5px solid #c8c0b4;
   display: flex;
   flex-direction: column;
   grid-row: 1;
@@ -467,6 +468,13 @@ input[type=range] { width: 100%; accent-color: #4a7aaa; cursor: pointer; }
   line-height: 1.5;
   background: #fff;
   border: 1.5px solid #b0a898;
+  /* Pas de bordure gauche propre : #panel a déjà la sienne (border-left,
+     1.5px) sur ce bord. Avec la largeur de #panel en clamp() (donc
+     fractionnaire en px), deux bordures superposées à cet endroit
+     arrondissent chacune de leur côté et laissent un décalage d'~1px
+     entre elles — en confiant ce bord à #panel seul, une seule bordure
+     le trace, sans place pour ce décalage. */
+  border-left: none;
   overflow: hidden;
   transition: padding 0.2s;
 }
