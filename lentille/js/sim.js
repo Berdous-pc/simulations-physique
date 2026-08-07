@@ -254,8 +254,9 @@ function updateTableHeight() {
   rows.forEach(tr => { tr.style.height = rowH + 'px'; });
   tbl.style.height = totalH + 'px';
   // Le calcul occupe 5 lignes, dont 2 avec des fractions (≈ 10,5 em au total
-  // interlignes compris) : la police doit les faire tenir dans la case.
-  const lineH = rowH / 10.5;
+  // interlignes compris) : la police doit les faire tenir dans la case,
+  // marges verticales de la case incluses (~0,9 em).
+  const lineH = rowH / 11.4;
   // baseScale et non scale : la taille du tableau ne doit pas suivre le zoom.
   const fontSize = Math.min(34, lineH, Math.max(11, sim.baseScale * 2.6));
   tbl.style.fontSize = fontSize + 'px';

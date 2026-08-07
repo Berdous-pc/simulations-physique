@@ -333,6 +333,9 @@ input[type=range] {
   color: #2c3e50;
   background: #fdf8f0;
   padding-left: clamp(6px, 0.9vw, 14px);
+  /* Un peu d'air entre la dernière ligne du calcul et la bordure du bas. */
+  padding-top: 0.35em;
+  padding-bottom: 0.55em;
 }
 /* Calcul détaillé : 3 colonnes (membre de gauche | = | membre de droite)
    pour aligner verticalement tous les signes « = ». */
