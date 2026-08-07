@@ -164,7 +164,9 @@ function compute() {
   } else if (Math.abs(OA) < 0.01) {
     sim.OA2 = Infinity; sim.gamma = Infinity; sim.h2 = Infinity;
   } else if (Math.abs(OA + fEff) < 0.4) {
-    sim.OA2   = -Math.sign(OA + fEff) * 9999;
+    // Objet (quasi) au foyer objet : image rejetée à l'infini. Math.sign(0)
+    // vaut 0 — sans le repli sur −1, OA' tomberait à 0 au lieu de +∞.
+    sim.OA2   = -(Math.sign(OA + fEff) || -1) * 9999;
     sim.gamma = sim.OA2 / OA;
     sim.h2    = sim.gamma * h;
   } else {
@@ -280,10 +282,32 @@ function updateConjugaison() {
   const OA2_bar = `<span style="text-decoration:overline">OA'</span>`;
   const OF_bar  = `<span style="text-decoration:overline">OF'</span>`;
 
+  /* ── Cohérence des arrondis ─────────────────────────────────────────
+     Les lignes affichées doivent « tomber juste » entre elles : la somme
+     des inverses arrondis doit être exactement le résultat affiché, et
+     l'inverse de ce résultat doit donner OA'. On choisit donc un nombre
+     de décimales commun : 3 dans l'immense majorité des cas, et on n'en
+     ajoute que si le résultat n'aurait plus aucun chiffre significatif
+     (image très éloignée, |1/OA'| < 0,001). ── */
+  let dec = 3;
+  if (isFinite(invOA2) && Math.abs(invOA2) > 1e-12) {
+    dec = Math.max(3, Math.min(5, -Math.floor(Math.log10(Math.abs(invOA2)))));
+  }
+  const round = v => Math.round(v * 10 ** dec) / 10 ** dec;
+  // Termes réellement affichés, puis résultat recalculé à partir d'eux.
+  const rOF  = round(invOF);
+  const rOA  = round(invOA);
+  const rRes = round(rOF + rOA);
+  // Objet à l'infini : 1/OA = 0, donc OA' = f' exactement. On court-circuite
+  // l'inversion, qui ferait ressortir l'erreur d'arrondi sur 1/f'.
+  const oa2Aff = rOA === 0 ? ofVal
+               : rRes === 0 ? Infinity
+               : 1 / rRes;
+
   function fmtInvVal(val) {
     if (!isFinite(val)) return val >= 0 ? '+∞' : '−∞';
-    if (Math.abs(val) < 1e-9) return '0,000';
-    return ((val >= 0 ? '+' : '') + val.toFixed(3)).replace('.', ',');
+    if (Math.abs(val) < 1e-12) return (0).toFixed(dec).replace('.', ',');
+    return ((val >= 0 ? '+' : '−') + Math.abs(val).toFixed(dec)).replace('.', ',');
   }
 
   // Valeur brute d'une longueur : pas de « + » devant les positifs.
@@ -299,7 +323,7 @@ function updateConjugaison() {
   // Inverse en valeur absolue : le signe est porté par l'opérateur (+ / −).
   function fmtInvAbs(val) {
     if (!isFinite(val)) return '∞';
-    return Math.abs(val).toFixed(3).replace('.', ',');
+    return Math.abs(val).toFixed(dec).replace('.', ',');
   }
 
   const cOA  = s => `<span class="col-OA">${s}</span>`;
@@ -311,7 +335,7 @@ function updateConjugaison() {
     `<span class="frac"><span class="frac-n">1</span><span class="frac-d">${den}</span></span>`;
 
   const lhs   = cOA2(frac(OA2_bar));
-  const opNum = invOA < 0 ? '−' : '+';
+  const opNum = rOA < 0 ? '−' : '+';
 
   // La grille compte 5 colonnes : membre gauche, « = », terme 1, opérateur,
   // terme 2. Les trois premières lignes remplissent les cinq colonnes, ce qui
@@ -329,8 +353,8 @@ function updateConjugaison() {
   document.getElementById('cj-calc').innerHTML =
     lineTerms(lhs, cOF(frac(OF_bar)), '+', cOA(frac(OA_bar))) +
     lineTerms('', cOF(frac(fmtLen(ofVal))), '+', cOA(frac(fmtLen(oaVal)))) +
-    lineTerms('', cOF((invOF < 0 ? '−' : '') + fmtInvAbs(invOF)), opNum, cOA(fmtInvAbs(invOA))) +
-    line(lhs, cOA2(`${fmtInvVal(invOA2)} cm⁻¹`)) +
+    lineTerms('', cOF((rOF < 0 ? '−' : '') + fmtInvAbs(rOF)), opNum, cOA(fmtInvAbs(rOA))) +
+    line(lhs, cOA2(`${fmtInvVal(rRes)} cm⁻¹`)) +
     // Conclusion : on inverse pour obtenir la position de l'image.
-    line(cOA2(`⇒ ${OA2_bar}`), cOA2(`${fmtLenSigned(oa2Val)} cm`), 'cj-gap');
+    line(cOA2(`⇒ ${OA2_bar}`), cOA2(`${fmtLenSigned(oa2Aff)} cm`), 'cj-gap');
 }
