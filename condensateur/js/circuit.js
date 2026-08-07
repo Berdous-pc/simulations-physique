@@ -45,9 +45,8 @@ function resize() {
       const c      = document.getElementById(id);
       const wrap   = c.parentElement;
       const wr     = wrap.getBoundingClientRect();
-      const titleH = wrap.querySelector('.graph-title').offsetHeight + 3;
       const cCssW  = Math.floor(wr.width);
-      const cCssH  = Math.max(Math.floor(wr.height) - titleH, 20);
+      const cCssH  = Math.max(Math.floor(wr.height), 20);
       c.style.width  = cCssW + 'px';
       c.style.height = cCssH + 'px';
       c.width  = Math.round(cCssW * dpr);

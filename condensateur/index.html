@@ -36,9 +36,19 @@
     <div id="graph-area">
       <div id="graph-hover-tooltip"></div>
       <div id="graph-time-control">
-        <!-- Boutons gauche : Mode Synchronisé/Continu -->
+        <!-- Boutons gauche : Mode Synchronisé/Continu + sélecteurs de grandeur -->
         <div id="graph-btns-left">
           <button id="btn-graph-mode" onclick="toggleGraphMode()" class="active">Mode : Synchronisé</button>
+          <select id="sel-graph1" class="graph-select" onchange="onGraphTabChange(1,this.value)">
+            <option value="Uc">Uc(t)</option>
+            <option value="i">i(t)</option>
+            <option value="q" selected>q(t)</option>
+          </select>
+          <select id="sel-graph2" class="graph-select" onchange="onGraphTabChange(2,this.value)">
+            <option value="Uc">Uc(t)</option>
+            <option value="i" selected>i(t)</option>
+            <option value="q">q(t)</option>
+          </select>
         </div>
         <!-- Boutons droite : Réticule libre, Précédent, Zoom, Adapter -->
         <div id="graph-btns-right">
@@ -50,23 +60,9 @@
       </div>
       <div class="graph-graphs-row">
         <div class="graph-wrap">
-          <div class="graph-title">
-            <select id="sel-graph1" class="graph-select" onchange="onGraphTabChange(1,this.value)">
-              <option value="Uc">Uc(t) — Tension aux bornes du condensateur (V)</option>
-              <option value="i">i(t) — Intensité du courant (mA)</option>
-              <option value="q" selected>q(t) — Charge de l'armature positive (µC)</option>
-            </select>
-          </div>
           <canvas id="graph-Uc"></canvas>
         </div>
         <div class="graph-wrap">
-          <div class="graph-title">
-            <select id="sel-graph2" class="graph-select" onchange="onGraphTabChange(2,this.value)">
-              <option value="Uc">Uc(t) — Tension aux bornes du condensateur (V)</option>
-              <option value="i" selected>i(t) — Intensité du courant (mA)</option>
-              <option value="q">q(t) — Charge de l'armature positive (µC)</option>
-            </select>
-          </div>
           <canvas id="graph-i"></canvas>
         </div>
       </div>

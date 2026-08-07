@@ -200,21 +200,22 @@ main {
   gap: 3px;
   overflow: hidden;
 }
-.graph-title { flex-shrink: 0; }
 .graph-select {
-  width: 100%;
-  height: 26px;
-  padding: 0 6px;
+  height: 30px;
+  padding: 0 8px;
   font-family: inherit;
   font-size: 13px;
   font-weight: 700;
-  color: #2c3e50;
-  background: #ffffff;
-  border: 1px solid #c8c0b4;
-  border-radius: 4px;
+  color: #5a6a78;
+  background: #e8e4de;
+  border: 1px solid #b0a898;
+  border-radius: 5px;
   cursor: pointer;
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
-.graph-select:focus { outline: none; border-color: #2a6aaa; }
+.graph-select:hover  { background: #d0ccc4; color: #2c3e50; }
+.graph-select:focus  { outline: none; border-color: #2a6aaa; }
 .graph-wrap canvas {
   background: #ffffff;
   border: 1px solid #c8c0b4;

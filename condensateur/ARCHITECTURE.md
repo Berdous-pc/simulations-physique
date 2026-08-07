@@ -44,8 +44,8 @@ Tout le CSS de la page. Organisé dans cet ordre :
 | Splitter `#left-splitter` | Barre `6px`, `cursor: row-resize`, bleu au survol/drag |
 | Panneau droit `#panel` | Fond `#e8e4de`, `overflow-y: auto`, `font-size: clamp(...)` |
 | Zone graphes `#graph-area` | Flex colonne, `flex: 2` |
-| Barre de contrôle graphes | Boutons gauche (mode/affichage) et droite (réticule/zoom/pan) |
-| Canvases graphes | `.graph-wrap`, `.graph-title`, `canvas` |
+| Barre de contrôle graphes | Boutons gauche (mode + sélecteurs `.graph-select`) et droite (réticule/zoom/pan) |
+| Canvases graphes | `.graph-wrap`, `canvas` |
 | Tooltip hover | `#graph-hover-tooltip`, position absolute |
 | Panneau — composants | `.section-title`, `.param-row`, `.btn`, `.readout`, `#state-indicator` |
 | Contrôle | `.panel-title`, `.panel-section`, `.sep`, `#btn-playpause`, `.slider-ticks` |
