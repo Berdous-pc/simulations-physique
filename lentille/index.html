@@ -26,7 +26,7 @@
   <!-- Zone canvas -->
   <div id="canvas-area">
     <canvas id="cv"></canvas>
-    <div id="drag-hint">Faites glisser l'objet, la lentille ou l'écran sur l'axe optique</div>
+    <div id="drag-hint">Faites glisser l'objet, la lentille ou l'écran sur l'axe optique — molette pour changer l'échelle</div>
 
     <!-- Boutons superposés au canvas : positionnés par layoutCanvasButtons()
          car ils suivent la géométrie des cadres Objet / Image. -->
@@ -121,7 +121,7 @@
             Distance focale f'
             <span id="lbl-f">+10,0 cm</span>
           </div>
-          <input type="range" id="sl-f" min="3" max="50" step="0.5" value="10"
+          <input type="range" id="sl-f" min="1" max="200" step="0.5" value="10"
                  oninput="onSliderF(this.value)">
         </div>
 
@@ -129,9 +129,9 @@
         <div class="param-row" id="row-h">
           <div class="param-label">
             Taille objet <span style="text-decoration:overline">AB</span>
-            <span id="lbl-h">+3,0 cm</span>
+            <span id="lbl-h">+15,0 cm</span>
           </div>
-          <input type="range" id="sl-h" min="-24" max="24" step="2" value="6"
+          <input type="range" id="sl-h" min="-100" max="100" step="2" value="30"
                  oninput="onSliderAB(this.value)">
         </div>
 
@@ -181,10 +181,11 @@
       </div>
     </div>
 
-    <!-- Résultats calculés -->
+    <!-- Valeurs calculées — masquées par défaut, cf. ui.js → toggleValeurs() -->
     <div>
-      <div class="section-title">Résultats</div>
-      <div class="results-grid" style="margin-top:8px;">
+      <div class="section-title">Valeurs</div>
+      <button id="btn-toggle-valeurs" class="btn-toggle-one" onclick="toggleValeurs()">Afficher les valeurs</button>
+      <div class="results-grid" id="results-grid" style="margin-top:8px; display:none;">
         <div class="readout">
           <div class="ro-label"><span style="text-decoration:overline">OA</span> (objet)</div>
           <div class="ro-value" id="res-OA">—</div>

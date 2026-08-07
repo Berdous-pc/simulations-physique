@@ -87,16 +87,16 @@ function hitTest(mx, my) {
     if (Math.abs(mx - objX) < DRAG_RADIUS && my >= yMin && my <= yMax) return 'obj';
   }
 
-  const lensHpx = sim.lensRadiusCm * sim.scale;
+  // Lentille et écran partagent la même demi-hauteur, fixe en pixels.
+  const lensHpx = sim.lensHpx;
   if (Math.abs(mx - lensX) < DRAG_RADIUS + 5 &&
       my >= axisY - lensHpx - DRAG_RADIUS &&
       my <= axisY + lensHpx + DRAG_RADIUS) return 'lens';
 
-  const scrX   = cmToX(OE);
-  const scrHpx = sim.H * 0.3;
+  const scrX = cmToX(OE);
   if (Math.abs(mx - scrX) < DRAG_RADIUS &&
-      my >= sim.axisY - scrHpx - DRAG_RADIUS &&
-      my <= sim.axisY + scrHpx + DRAG_RADIUS) return 'screen';
+      my >= sim.axisY - lensHpx - DRAG_RADIUS &&
+      my <= sim.axisY + lensHpx + DRAG_RADIUS) return 'screen';
 
   return null;
 }
@@ -189,7 +189,57 @@ cv.addEventListener('touchmove', e => {
   compute(); draw();
 }, { passive: false });
 
-cv.addEventListener('touchend', () => { drag = null; });
+cv.addEventListener('touchend', () => { drag = null; pinch = null; });
+
+/* ═══════════════════════════════════════════════════
+   ZOOM DE LA SCÈNE
+   ─────────────────────────────────────────────────
+   Molette (ou pincement à deux doigts) : change l'échelle cm → px
+   autour du centre optique O. La lentille et l'écran gardant une
+   taille fixe, c'est la portion de scène couverte qui varie — d'où
+   un cadrage utilisable aussi bien pour f' = 3 cm que f' = 200 cm.
+════════════════════════════════════════════════════ */
+function applyZoom(factor) {
+  if (!setZoom(sim.zoom * factor)) return;
+  compute();
+  draw();
+}
+
+cv.addEventListener('wheel', e => {
+  e.preventDefault();
+  if (drag) return;
+  applyZoom(e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP);
+}, { passive: false });
+
+// Double-clic hors élément draggable : retour à l'échelle nominale.
+cv.addEventListener('dblclick', e => {
+  const rect = cv.getBoundingClientRect();
+  if (hitTest(e.clientX - rect.left, e.clientY - rect.top)) return;
+  applyZoom(1 / sim.zoom);
+});
+
+let pinch = null;
+
+function pinchDist(e) {
+  const dx = e.touches[0].clientX - e.touches[1].clientX;
+  const dy = e.touches[0].clientY - e.touches[1].clientY;
+  return Math.hypot(dx, dy);
+}
+
+cv.addEventListener('touchstart', e => {
+  if (e.touches.length !== 2) return;
+  e.preventDefault();
+  drag  = null;
+  pinch = { dist: pinchDist(e), zoom: sim.zoom };
+}, { passive: false });
+
+cv.addEventListener('touchmove', e => {
+  if (!pinch || e.touches.length !== 2) return;
+  e.preventDefault();
+  const d = pinchDist(e);
+  if (pinch.dist < 1) return;
+  if (setZoom(pinch.zoom * d / pinch.dist)) { compute(); draw(); }
+}, { passive: false });
 
 /* ═══════════════════════════════════════════════════
    BOUTONS SUPERPOSÉS AU CANVAS
@@ -264,7 +314,7 @@ function onSliderF(val) {
 }
 
 // Dernière valeur brute retenue, pour savoir dans quel sens on franchit 0.
-let lastABRaw = 6;
+let lastABRaw = 30;
 
 function onSliderAB(rawVal) {
   let raw = parseInt(rawVal);
@@ -350,6 +400,16 @@ function toggleConjugaison() {
   } else {
     tbl.classList.remove('visible');
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  (Dés)active l'affichage du tableau de valeurs (section Valeurs) —
+//  désactivé par défaut.
+// ─────────────────────────────────────────────────────────────────────
+function toggleValeurs() {
+  sim.showValeurs = !sim.showValeurs;
+  document.getElementById('results-grid').style.display = sim.showValeurs ? '' : 'none';
+  document.getElementById('btn-toggle-valeurs').classList.toggle('active', sim.showValeurs);
 }
 
 /* ═══════════════════════════════════════════════════

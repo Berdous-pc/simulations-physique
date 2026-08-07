@@ -16,7 +16,7 @@
 const sim = {
   // ── Paramètres physiques ──
   f:     10,      // distance focale f' (cm) — toujours > 0 (valeur absolue)
-  h:     3,       // hauteur algébrique de l'objet AB (cm) ; > 0 : vers le haut
+  h:     15,      // hauteur algébrique de l'objet AB (cm) ; > 0 : vers le haut
   OA:   -25,      // position algébrique de l'objet (cm) ; toujours < 0
   OA_DEFAULT: -25,
   OE:    35,      // position de l'écran (cm)
@@ -32,6 +32,7 @@ const sim = {
   alpha:  0,
 
   // ── Résultats calculés (mis à jour par compute()) ──
+  showValeurs: false, // affichage du tableau de valeurs — désactivé par défaut
   OA2:   0,
   h2:    0,
   gamma: 0,
@@ -43,13 +44,17 @@ const sim = {
   hoveredGroup: -1,
 
   // ── Géométrie de la lentille ──
-  // Demi-hauteur effective, recalculée par resize() : elle est réduite quand
-  // la fenêtre est trop basse pour afficher la lentille en entier.
+  // La lentille (et l'écran) gardent une taille FIXE à l'écran, exprimée en
+  // pixels : c'est le zoom qui fait varier leur ouverture exprimée en cm.
+  // lensHpx est figée par resize(), lensRadiusCm en est déduite par applyScale().
+  lensHpx: 0,
   lensRadiusCm: 25,
 
   // ── Géométrie canvas (mis à jour par resize()) ──
   lensX: 0,
-  scale: 0,
+  zoom:      1,   // facteur de zoom molette, autour du centre optique O
+  baseScale: 0,   // px/cm au zoom 1, calculé par resize()
+  scale: 0,       // px/cm effectif = baseScale × zoom
   axisY: 0,
   W: 0, H: 0,
 
@@ -97,6 +102,43 @@ const MIN_SPAN_CM        = 80;
 const MIN_PX_PER_CM      = 10;
 const LENS_RADIUS_MAX_CM = 25;
 
+/* Au-delà de FAR_CM, une distance est traitée comme infinie (affichage « ∞ »,
+   image non tracée). Le seuil doit rester très au-dessus des configurations
+   légitimes : avec f' allant jusqu'à 200 cm, une image réelle à 3 m n'a rien
+   d'aberrant. Le pseudo-infini de compute() (±9999) reste au-dessus. */
+const FAR_CM = 4000;
+
+/* ═══════════════════════════════════════════════════
+   ZOOM
+   ─────────────────────────────────────────────────
+   Le zoom ne touche qu'à la conversion cm → px : toute la physique
+   reste calculée en centimètres. Il est centré sur O, qui est le seul
+   point d'ancrage du repère (il n'y a pas de translation de la vue).
+   Les bornes couvrent les très petites focales (zoom avant) comme les
+   objets et distances métriques (zoom arrière).
+════════════════════════════════════════════════════ */
+const ZOOM_MIN  = 0.12;
+const ZOOM_MAX  = 8;
+const ZOOM_STEP = 1.12;   // par cran de molette
+
+/* ─────────────────────────────────────────────────
+   applyScale() — Recalcule l'échelle effective et ce qui en dérive.
+   La lentille gardant une hauteur fixe en pixels, son demi-diamètre
+   exprimé en cm (qui borne l'ouverture du faisceau) suit le zoom.
+───────────────────────────────────────────────────── */
+function applyScale() {
+  sim.scale        = sim.baseScale * sim.zoom;
+  sim.lensRadiusCm = sim.lensHpx / sim.scale;
+}
+
+function setZoom(z) {
+  const clamped = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z));
+  if (clamped === sim.zoom) return false;
+  sim.zoom = clamped;
+  applyScale();
+  return true;
+}
+
 /* ═══════════════════════════════════════════════════
    CONVERSIONS COORDONNÉES
 ════════════════════════════════════════════════════ */
@@ -133,7 +175,7 @@ function compute() {
   }
 
   if (sim.autoScreen) {
-    const isReal = isFinite(sim.OA2) && Math.abs(sim.OA2) < 800 && sim.OA2 > 0;
+    const isReal = isFinite(sim.OA2) && Math.abs(sim.OA2) < FAR_CM && sim.OA2 > 0;
     sim.OE = isReal ? sim.OA2 : sim.OE_DEFAULT;
   }
 
@@ -144,13 +186,13 @@ function compute() {
    PANNEAU DROIT — affichage des résultats
 ════════════════════════════════════════════════════ */
 function fmt(val, unit = 'cm', decimals = 1) {
-  if (!isFinite(val) || Math.abs(val) > 800) return (val >= 0 ? '+' : '−') + '∞';
+  if (!isFinite(val) || Math.abs(val) > FAR_CM) return (val >= 0 ? '+' : '−') + '∞';
   return (val >= 0 ? '+' : '') + val.toFixed(decimals) + ' ' + unit;
 }
 
 function updatePanel() {
   const { OA, OA2, gamma, h2, infini } = sim;
-  const quasiInfini = Math.abs(OA2) > 800;
+  const quasiInfini = Math.abs(OA2) > FAR_CM;
 
   document.getElementById('res-OA').textContent  = infini ? '−∞' : fmt(OA);
   document.getElementById('res-OA2').textContent = fmt(OA2);
@@ -209,12 +251,13 @@ function updateTableHeight() {
   const rowH    = Math.floor(totalH / rows.length);
   rows.forEach(tr => { tr.style.height = rowH + 'px'; });
   tbl.style.height = totalH + 'px';
-  const fontSize = Math.min(26, rowH * 0.5, Math.max(11, sim.scale * 1.4));
+  // baseScale et non scale : la taille du tableau ne doit pas suivre le zoom.
+  const fontSize = Math.min(26, rowH * 0.5, Math.max(11, sim.baseScale * 1.4));
   tbl.style.fontSize = fontSize + 'px';
 }
 
 function fmtCj(val, decimals = 1) {
-  if (!isFinite(val) || Math.abs(val) > 800) return val >= 0 ? '+∞' : '−∞';
+  if (!isFinite(val) || Math.abs(val) > FAR_CM) return val >= 0 ? '+∞' : '−∞';
   return ((val >= 0 ? '+' : '') + val.toFixed(decimals)).replace('.', ',');
 }
 
@@ -228,7 +271,7 @@ function updateConjugaison() {
   const oa2Val = OA2;
   const ofVal  = fEff;
 
-  const invOA  = (infini || !isFinite(oaVal) || Math.abs(oaVal) > 800) ? 0 : 1 / oaVal;
+  const invOA  = (infini || !isFinite(oaVal) || Math.abs(oaVal) > FAR_CM) ? 0 : 1 / oaVal;
   const invOA2 = (!isFinite(oa2Val)) ? 0 : 1 / oa2Val;
   const invOF  = 1 / ofVal;
 
@@ -237,7 +280,7 @@ function updateConjugaison() {
   const OF_bar  = `<span style="text-decoration:overline">OF'</span>`;
 
   function fmtVal(val) {
-    if (!isFinite(val) || Math.abs(val) > 800) return val >= 0 ? '+∞' : '−∞';
+    if (!isFinite(val) || Math.abs(val) > FAR_CM) return val >= 0 ? '+∞' : '−∞';
     return fmtCj(val);
   }
   function fmtInvVal(val) {

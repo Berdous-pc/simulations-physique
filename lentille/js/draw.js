@@ -45,8 +45,10 @@ function fs(base) { return base * uiScale(); }
    largeur sur mobile et déborde en hauteur sur écran bas.
 ───────────────────────────────────────────────────── */
 function updateFrameMetrics() {
-  const { W, H, scale } = sim;
-  const frameH = Math.min(18 * scale, H * 0.30, W * 0.165);
+  const { W, H, baseScale } = sim;
+  // baseScale et non scale : les cadres sont des vignettes d'interface, leur
+  // taille ne doit pas suivre le zoom de la scène.
+  const frameH = Math.min(18 * baseScale, H * 0.30, W * 0.165);
   sim.frameH      = frameH;
   sim.frameW      = frameH * (4 / 3);
   sim.barH        = fs(26);
@@ -74,11 +76,14 @@ function resize() {
   // sur les canvas étroits pour conserver au moins MIN_PX_PER_CM par cm.
   const spanCm = Math.min(VIEW_SPAN_CM,
                           Math.max(MIN_SPAN_CM, W / MIN_PX_PER_CM));
-  sim.scale = W / spanCm;
+  sim.baseScale = W / spanCm;
 
-  // Demi-hauteur de la lentille : bornée par la hauteur disponible, pour que
-  // ni ses pointes ni le faisceau de rayons ne soient rognés en écran bas.
-  sim.lensRadiusCm = Math.min(LENS_RADIUS_MAX_CM, (H * 0.42) / sim.scale);
+  // Demi-hauteur de la lentille, en PIXELS : elle est fixe une fois la
+  // fenêtre dimensionnée, et la borne sur H évite que ses pointes ou le
+  // faisceau de rayons soient rognés en écran bas. L'écran partage cette
+  // même hauteur. applyScale() en déduit l'ouverture en cm selon le zoom.
+  sim.lensHpx = Math.min(LENS_RADIUS_MAX_CM * sim.baseScale, H * 0.42);
+  applyScale();
 
   updateFrameMetrics();
   compute();
@@ -118,6 +123,7 @@ function draw() {
   }
 
   drawViewfinders();
+  drawScaleBar();
 }
 
 /* ── Quadrillage à pas adaptatif (série 1-2-5) ──
@@ -126,7 +132,7 @@ function draw() {
    au moins GRID_MIN_PX entre deux lignes, et on renforce une ligne sur cinq
    pour garder un repère de lecture. */
 const GRID_MIN_PX = 9;
-const GRID_STEPS  = [1, 2, 5, 10, 20, 50, 100];
+const GRID_STEPS  = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
 
 function drawGrid() {
   const { W, H, scale, lensX, axisY } = sim;
@@ -286,7 +292,7 @@ function drawObject() {
 /* ── Image A'B' ── */
 function drawImage(alphaVal) {
   const { OA2, h2, infini } = sim;
-  if (!isFinite(OA2) || Math.abs(OA2) > 800 || alphaVal <= 0) return;
+  if (!isFinite(OA2) || Math.abs(OA2) > FAR_CM || alphaVal <= 0) return;
 
   const x  = cmToX(OA2);
   const yA = sim.axisY;
@@ -338,7 +344,7 @@ function drawImage(alphaVal) {
 
 /* ── Écran ── */
 function drawScreen() {
-  const { OE, H, axisY } = sim;
+  const { OE, axisY, lensHpx } = sim;
   const x = cmToX(OE);
 
   ctx.save();
@@ -346,12 +352,74 @@ function drawScreen() {
   ctx.lineWidth   = fs(4);
   ctx.lineCap     = 'round';
   ctx.beginPath();
-  ctx.moveTo(x, axisY - H * 0.3); ctx.lineTo(x, axisY + H * 0.3);
+  ctx.moveTo(x, axisY - lensHpx); ctx.lineTo(x, axisY + lensHpx);
   ctx.stroke();
   ctx.fillStyle = '#7a4010';
   ctx.font = `bold ${fs(15).toFixed(1)}px "Segoe UI", Arial, sans-serif`;
   ctx.textAlign = 'center';
-  ctx.fillText('Écran', x, axisY - H * 0.3 - fs(6));
+  ctx.fillText('Écran', x, axisY - lensHpx - fs(6));
+  ctx.restore();
+}
+
+/* ═══════════════════════════════════════════════════
+   BARRE D'ÉCHELLE
+   ─────────────────────────────────────────────────
+   Puisque la molette change l'échelle, le schéma n'est plus lisible
+   sans repère métrique explicite. On choisit dans la série 1-2-5 la
+   plus grande longueur ronde qui tient sous BAR_MAX_PX, et on la
+   dessine graduée en cinq intervalles, en bas à gauche du canvas.
+════════════════════════════════════════════════════ */
+const BAR_MAX_PX  = 170;
+const BAR_STEPS   = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000];
+
+function drawScaleBar() {
+  const { H, scale } = sim;
+
+  // Plus grande graduation ronde dont la longueur reste sous le plafond.
+  let stepCm = BAR_STEPS[0];
+  for (const s of BAR_STEPS) {
+    if (s * scale <= BAR_MAX_PX) stepCm = s; else break;
+  }
+  const lenPx = stepCm * scale;
+
+  const x0 = fs(16);
+  const y  = H - fs(20);
+  const tickH = fs(6);
+
+  const label = (stepCm < 1 ? stepCm.toFixed(1).replace('.', ',') : String(stepCm)) + ' cm';
+
+  ctx.save();
+  ctx.strokeStyle = '#7a6a52';
+  ctx.fillStyle   = '#7a6a52';
+  ctx.lineWidth   = fs(1.6);
+  ctx.lineCap     = 'butt';
+
+  // Trait principal + montants d'extrémité
+  ctx.beginPath();
+  ctx.moveTo(x0, y); ctx.lineTo(x0 + lenPx, y);
+  ctx.moveTo(x0, y - tickH); ctx.lineTo(x0, y + tickH);
+  ctx.moveTo(x0 + lenPx, y - tickH); ctx.lineTo(x0 + lenPx, y + tickH);
+  ctx.stroke();
+
+  // Graduations intermédiaires (cinquièmes), plus courtes
+  ctx.lineWidth = fs(1);
+  ctx.beginPath();
+  for (let k = 1; k < 5; k++) {
+    const xk = x0 + lenPx * k / 5;
+    ctx.moveTo(xk, y); ctx.lineTo(xk, y - tickH * 0.6);
+  }
+  ctx.stroke();
+
+  ctx.font = `${fs(12).toFixed(1)}px "Segoe UI", Arial, sans-serif`;
+  ctx.textAlign = 'left';
+  ctx.fillText(label, x0, y - tickH - fs(4));
+
+  // Facteur de zoom, en retrait, seulement s'il diffère de 1.
+  if (Math.abs(sim.zoom - 1) > 0.02) {
+    ctx.fillStyle = 'rgba(122,106,82,0.65)';
+    ctx.font = `${fs(11).toFixed(1)}px "Segoe UI", Arial, sans-serif`;
+    ctx.fillText('×' + sim.zoom.toFixed(2).replace('.', ','), x0, y + tickH + fs(12));
+  }
   ctx.restore();
 }
 
@@ -368,7 +436,10 @@ function drawViewfinders() {
   // Champ de vision représenté dans le cadre, en centimètres. Le cadre étant
   // désormais plafonné, on ne peut plus dessiner à l'échelle de la scène :
   // on projette sur la hauteur utile réelle du cadre.
-  const FIELD_CM = 16;
+  // Le champ s'élargit si l'objet dépasse : avec AB jusqu'à 50 cm, un champ
+  // figé à 16 cm ne montrerait plus qu'un trait vertical. Objet et image
+  // partagent ce même champ, donc la comparaison des tailles reste juste.
+  const FIELD_CM = Math.max(16, Math.abs(sim.h) * 1.25);
   const innerScale = (frameH - barH - 1) / FIELD_CM;
 
   function drawBar(fx, fy, fw, label) {
@@ -482,8 +553,8 @@ function drawViewfinders() {
     const ix = rightX + 1, iy = frameY + barH;
     const iw = frameW - 2, ih = frameH - barH - 1;
     const { OA2, h2, OE, f } = sim;
-    const isReal    = isFinite(OA2) && Math.abs(OA2) < 800 && OA2 > 0;
-    const isVirtual = isFinite(OA2) && Math.abs(OA2) < 800 && OA2 < 0;
+    const isReal    = isFinite(OA2) && Math.abs(OA2) < FAR_CM && OA2 > 0;
+    const isVirtual = isFinite(OA2) && Math.abs(OA2) < FAR_CM && OA2 < 0;
 
     if (sim.infini) {
       const distCm   = Math.abs(OE - OA2);
@@ -584,7 +655,7 @@ function computeRays() {
   const xRight = xToCm(sim.W + 80);
   const xLeft  = xToCm(-80);
 
-  const imgAtInfinity = !isFinite(OA2) || Math.abs(OA2) > 800;
+  const imgAtInfinity = !isFinite(OA2) || Math.abs(OA2) > FAR_CM;
   const alphaRad = alpha * Math.PI / 180;
 
   // Départ du balayage : l'abscisse où les rayons naissent réellement.
