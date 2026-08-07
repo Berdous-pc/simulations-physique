@@ -533,7 +533,6 @@ let nOnPlateLeft  = 6;
 let nOnPlateRight = 6;
 let wireElectrons = [];
 let wireN0        = 1;
-let wireSpeedK    = 1;
 let wireSettled   = false;
 
 function nIonsFromC() {
@@ -558,10 +557,6 @@ function initElectrons() {
   for (let i = 0; i < nWire; i++) wireElectrons.push((i + 0.5) / nWire);
   wireN0      = nWire;
   wireSettled = false;
-
-  wireSpeedK = (sim.E > 0 && sim.C > 0)
-    ? (nIonsFromC() * L) / (nWire * sim.C * sim.E)
-    : 1;
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -668,17 +663,32 @@ function updateElectrons(path, I_now, dt) {
 
   const nIons    = nIonsFromC();
   const isCharge = sim.phase === 'charge';
-  const tau_s    = sim.C * (isCharge ? sim.R1 : sim.R2);
   const t_s      = sim.t / 1000;
   const spacing0 = 1 / wireN0;
 
   const targetLeft  = isCharge ? nIons * 2 : nIons;
   const targetRight = isCharge ? 0         : nIons;
 
+  // Calibration du flux : nIons électrons transférés ⇔ charge Q = C·E, donc
+  // une intensité I fait défiler I·nIons/(C·E) électrons par seconde, soit
+  // autant d'intervalles L/wireN0 par seconde.
+  //
+  // Recalculée à chaque frame, et non mise en cache : E, la géométrie (L) et
+  // le nombre d'électrons sur le fil changent tous en cours de phase — slider
+  // E, redimensionnement de la fenêtre. Un facteur figé à l'initialisation
+  // laissait la vitesse fausse d'un rapport E_nouveau/E_initial, ce qui
+  // remplissait les plaques bien avant que le graphe n'y soit.
+  const speedK      = (sim.E > 0 && sim.C > 0)
+    ? (nIons * L) / (wireN0 * sim.C * sim.E)
+    : 1;
+
+  // Échéance du plancher de vitesse : l'instant où les encarts se stabilisent
+  // (cf. settleTimeMs), et non un 6τ conventionnel — c'est ce qui fait
+  // atterrir le dernier électron exactement quand le tracé se fige.
   const n_restant   = isCharge ? (nOnPlateRight - targetRight) : (nOnPlateLeft - targetLeft);
-  const t_restant_s = Math.max(6 * tau_s - t_s, dt / 1000);
+  const t_restant_s = Math.max(settleTimeMs() / 1000 - t_s, dt / 1000);
   const speedFloor  = (Math.max(n_restant, 0) * L / wireN0) / t_restant_s;
-  const speedPx     = Math.max(wireSpeedK * Math.abs(I_now), speedFloor);
+  const speedPx     = Math.max(speedK * Math.abs(I_now), speedFloor);
   const dp_raw      = (speedPx * dt / 1000) / L;
 
   const nSteps = Math.max(1, Math.ceil(dp_raw / spacing0));

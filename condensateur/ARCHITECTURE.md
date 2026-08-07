@@ -90,6 +90,7 @@ Objet central qui contient tout l'état de la simulation :
   Motivation : à chiffres significatifs constants, `i` s'affichait « 1,23×10⁻³ mA » — qui désigne en fait 1,23 µA et n'a aucun sens sur un calibre en mA. Sur un calibre 0,5 mA on lit maintenant « 0,123 mA », puis « 0,001 », puis « 0,000 ».
 - `iFullScale_mA()` — calibre de l'ampèremètre (mA), pris sur la **phase courante** comme `tau()` : `U/R1` en charge, `U/R2` en décharge. À ne pas confondre avec `U/min(R1,R2)`, qui borne l'axe du graphe `i(t)` parce que celui-ci doit cadrer les deux phases. Partagé par l'encart du panneau et le critère d'arrêt du mode Synchronisé
 - `scaleResolution(fullScale)` — seuil sous lequel une mesure s'affiche comme un zéro sur ce calibre. Extrait de `fmtScale()` pour être testable sans passer par le formatage : le critère d'arrêt tourne dans la boucle d'échantillonnage, où l'on ne veut pas construire une chaîne par point
+- `settleTimeMs()` — instant (ms depuis le début de la phase) où les deux appareils sont au repos : `τ · max(ln(ampU/uZero), ln(ampI/iZero))`. Même critère que l'arrêt du mode Synchronisé, mais **en forme fermée** — l'animation du circuit a besoin de l'échéance avant de l'atteindre, pour caler le plancher de vitesse des électrons dessus
 - `fmtMs(ms)` — formate une durée en "X ms" ou "X s"
 - `fmtTau(ms)` — formate une constante de temps
 - `minTimeWindowMs()` — fenêtre minimale = **cap du zoom avant**, calé sur `τ/20` (plancher 1 ms). Sans cap, les graduations finissaient par partager tous leurs chiffres de poids fort. Calé sur τ et non sur une durée fixe, parce que c'est τ qui donne l'échelle du phénomène ; laisse un facteur ~400 entre la vue « Adapter » et le zoom maximal
@@ -203,7 +204,7 @@ Lecture de l'état par le nombre d'électrons par site : armature neutre → 1 p
 ion, négative → 2 par ion, positive → ion nu.
 
 - `nIonsFromC()` — nombre d'ions par armature, interpolé selon C (100–500 µF → 6–30 ions)
-- `initElectrons()` — initialise les positions et le facteur de vitesse `wireSpeedK`
+- `initElectrons()` — initialise les positions des électrons
 - `buildPathCharge(g)` / `buildPathDischarge(g)` — tableaux de nœuds définissant le chemin
 - `pathLength(path)` — longueur totale du chemin
 - `posToXY(path, p)` — convertit une position normalisée en coordonnées `(x, y, hidden)`
@@ -218,8 +219,17 @@ Variables d'état des électrons :
 | `nOnPlateLeft` / `nOnPlateRight` | Électrons sur chaque armature |
 | `wireElectrons` | Positions normalisées ∈ [0,1) des électrons sur le fil |
 | `wireN0` | Nombre d'électrons dans le fil au début de la phase |
-| `wireSpeedK` | Facteur de calibration de la vitesse |
 | `wireSettled` | Vrai quand les plaques ont atteint leur état final |
+
+Calibration de la vitesse : `nIons` électrons transférés ⇔ charge `Q = C·E`, d'où
+un facteur `nIons·L / (wireN0·C·E)` appliqué à `i(t)`. Il est **recalculé à chaque
+frame** dans `updateElectrons()`, jamais mis en cache — E, la géométrie (`L`) et
+`wireN0` changent tous en cours de phase (slider E, redimensionnement).
+
+Le plancher de vitesse qui garantit l'arrivée du dernier électron vise
+`settleTimeMs()` — l'instant où les encarts se stabilisent, c'est-à-dire le
+critère d'arrêt du mode Synchronisé — et non un 6τ conventionnel, qui
+désynchronisait la fin de l'animation et le gel du tracé de ±1,5τ.
 
 #### Scène complète
 

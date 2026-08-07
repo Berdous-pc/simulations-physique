@@ -189,6 +189,42 @@ function scaleResolution(fullScale) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+//  Instant (ms depuis le début de la phase) où les DEUX appareils sont
+//  arrivés au repos : l'ampèremètre affiche zéro et le voltmètre affiche
+//  la valeur finale, chacun à la résolution de son calibre.
+//
+//  C'est le critère d'arrêt du mode Synchronisé, mais résolu analytiquement :
+//  i et Uc décroissent tous deux en e^(−t/τ) depuis une amplitude initiale
+//  connue, donc chaque échéance vaut τ·ln(amplitude / résolution) et l'on
+//  retient la plus tardive.
+//
+//  Forme fermée, et non un test par pas comme dans la boucle
+//  d'échantillonnage, parce que l'animation du circuit a besoin de cette
+//  échéance AVANT de l'atteindre : c'est elle qui règle le plancher de
+//  vitesse des électrons, de sorte que le dernier arrive sur sa plaque pile
+//  quand le tracé se fige. Le 6τ conventionnel qui tenait ce rôle les
+//  désynchronisait de ±1,5τ selon la position de E dans sa décade — les
+//  seuils de résolution étant des paliers, pas une fraction fixe.
+// ─────────────────────────────────────────────────────────────────────
+function settleTimeMs() {
+  // Amplitude de l'exponentielle : l'écart initial à la valeur finale.
+  const ampU = sim.phase === 'discharge'
+    ? Math.abs(sim.U0_dis)
+    : Math.abs(sim.E - sim.U0_chg);
+  const R    = sim.phase === 'discharge' ? sim.R2 : sim.R1;
+  const ampI = ampU / R * 1000;   // mA — même décroissance que Uc
+
+  const ratios = [ampU / scaleResolution(sim.E),
+                  ampI / scaleResolution(iFullScale_mA())];
+  // Un rapport ≤ 1 (ou non fini) signifie que la grandeur part déjà sous la
+  // résolution de son calibre : cette échéance-là est immédiate.
+  const nTau = ratios.reduce((m, r) => isFinite(r) && r > 1
+    ? Math.max(m, Math.log(r)) : m, 0);
+
+  return nTau * tau() * 1000;
+}
+
+// ─────────────────────────────────────────────────────────────────────
 //  Intensité instantanée du courant (A).
 //  Charge   : i = (U − Uc) / R1
 //  Décharge : i = −Uc / R2
