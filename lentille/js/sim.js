@@ -43,13 +43,18 @@ const sim = {
   hoveredGroup: -1,
 
   // ── Géométrie de la lentille ──
-  LENS_RADIUS_CM: 25,
+  // Demi-hauteur effective, recalculée par resize() : elle est réduite quand
+  // la fenêtre est trop basse pour afficher la lentille en entier.
+  lensRadiusCm: 25,
 
   // ── Géométrie canvas (mis à jour par resize()) ──
   lensX: 0,
   scale: 0,
   axisY: 0,
   W: 0, H: 0,
+
+  // ── Cadres Objet / Image (mis à jour par updateFrameMetrics()) ──
+  frameW: 0, frameH: 0, barH: 0, frameMargin: 0,
 
   // ── Mode d'affichage ──
   mode: 'instant', // 'instant' | 'anim'
@@ -64,9 +69,10 @@ const sim = {
   // ── Animation de propagation ──
   animT:         0,
   animSpeed:     0.2,
+  // Doit correspondre à la dernière entrée de SPEED_VALS (ui.js) : le curseur
+  // démarre à fond à droite, sinon le premier clic dessus change la vitesse.
   animSpeedMult: 1.0,
   animRewind:    false,
-  animRewindMult: 1.0,
   animPaused:    true,
   animRunning:   false,
   lastTs:        0,
@@ -75,6 +81,21 @@ const sim = {
 
 /* ── Couleurs des 3 rayons principaux ── */
 const RAY_COLORS = ['#e05c00', '#2a6aaa', '#2a9a4a'];
+
+/* ═══════════════════════════════════════════════════
+   CADRAGE DE LA SCÈNE
+   ─────────────────────────────────────────────────
+   VIEW_SPAN_CM   : largeur de scène visée sur un canvas confortable.
+   MIN_SPAN_CM    : on ne resserre jamais en deçà, sinon l'objet et l'écran
+                    sortent du cadre.
+   MIN_PX_PER_CM  : en dessous de cette densité le quadrillage et les
+                    étiquettes deviennent illisibles → on resserre la scène.
+   LENS_RADIUS_MAX_CM : demi-hauteur nominale de la lentille.
+════════════════════════════════════════════════════ */
+const VIEW_SPAN_CM       = 120;
+const MIN_SPAN_CM        = 80;
+const MIN_PX_PER_CM      = 10;
+const LENS_RADIUS_MAX_CM = 25;
 
 /* ═══════════════════════════════════════════════════
    CONVERSIONS COORDONNÉES
@@ -161,7 +182,19 @@ function updatePanel() {
   el.textContent = nature;
   el.className = 'ro-value ' + cls;
 
+  updateLegend();
   updateConjugaison();
+}
+
+/* ── Légende : en mode « objet à l'infini » (et pendant l'animation qui y
+   mène), computeRays() trace tous les rayons en gris. Afficher le code
+   couleur des trois rayons principaux serait alors mensonger. ── */
+function updateLegend() {
+  const mono = sim.infini || sim.infiniAnim;
+  const main = document.getElementById('legend-main');
+  const inf  = document.getElementById('legend-infini');
+  if (main) main.style.display = mono ? 'none' : '';
+  if (inf)  inf.style.display  = mono ? '' : 'none';
 }
 
 /* ═══════════════════════════════════════════════════
@@ -170,14 +203,13 @@ function updatePanel() {
 function updateTableHeight() {
   const tbl = document.getElementById('conjugaison-table');
   if (!tbl || !tbl.classList.contains('visible')) return;
-  const frameH  = 18 * sim.scale;
-  const barH    = 26;
-  const totalH  = frameH + barH;
+  // Le tableau s'aligne sur la hauteur des cadres Objet / Image.
+  const totalH  = sim.frameH + sim.barH;
   const rows    = tbl.querySelectorAll('tr');
   const rowH    = Math.floor(totalH / rows.length);
   rows.forEach(tr => { tr.style.height = rowH + 'px'; });
   tbl.style.height = totalH + 'px';
-  const fontSize = Math.min(26, Math.max(11, sim.scale * 1.4));
+  const fontSize = Math.min(26, rowH * 0.5, Math.max(11, sim.scale * 1.4));
   tbl.style.fontSize = fontSize + 'px';
 }
 

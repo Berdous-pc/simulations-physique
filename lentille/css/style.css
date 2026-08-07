@@ -85,6 +85,17 @@ main {
   overflow-y: auto;
 }
 
+/* Titre du panneau */
+.panel-title {
+  font-size: clamp(14px, 1.4vw, 17px);
+  font-weight: 700;
+  color: #2c3e50;
+  text-align: center;
+  padding-bottom: clamp(8px, 1vw, 12px);
+  border-bottom: 1.5px solid #c8c0b4;
+  letter-spacing: 0.3px;
+}
+
 /* ════════════════════════════════════════════════════
    TITRES DE SECTION
 ════════════════════════════════════════════════════ */
@@ -238,10 +249,21 @@ input[type=range] {
   border-color: #d0a060;
 }
 
+/* ── Bouton rembobinage : hérite de .mode-btn (y compris l'état .active),
+      mais reste à sa largeur d'icône au lieu de prendre un tiers de la ligne. ── */
+#speed-rewind {
+  flex: 0 0 auto;
+  padding: 7px 12px;
+  opacity: 0.75;
+}
+#speed-rewind:hover  { opacity: 1; }
+#speed-rewind.active { opacity: 1; }
+
 /* ════════════════════════════════════════════════════
    LÉGENDE
 ════════════════════════════════════════════════════ */
 .legend { display: flex; flex-direction: column; gap: 5px; }
+#legend-main { display: flex; flex-direction: column; gap: 5px; }
 .legend-row {
   display: flex;
   align-items: center;
@@ -304,6 +326,47 @@ input[type=range] {
 #conjugaison-table .col-OA  { color: #c05020; }
 #conjugaison-table .col-OA2 { color: #2a6aaa; }
 #conjugaison-table .col-OF  { color: #2a9a4a; }
+
+/* ════════════════════════════════════════════════════
+   BOUTONS SUPERPOSÉS AU CANVAS
+   Position et taille de police posées par layoutCanvasButtons().
+════════════════════════════════════════════════════ */
+.canvas-btn {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-family: inherit;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.canvas-btn:focus-visible { outline: 2px solid #2a6aaa; outline-offset: 2px; }
+
+.canvas-btn-collapse {
+  background: #c8c0b4;
+  border: 1px solid #a8a098;
+  border-radius: 3px;
+  color: #2c3e50;
+}
+.canvas-btn-collapse:hover { background: #b6ada0; }
+
+.canvas-btn-auto {
+  background: #e8e4de;
+  border: 1px solid #c8c0b4;
+  border-radius: 4px;
+  color: #7a8a96;
+}
+.canvas-btn-auto:hover { background: #dcd6cc; color: #2c3e50; }
+.canvas-btn-auto.active {
+  background: #2a6aaa;
+  border-color: #1a4a8a;
+  color: #fff;
+}
+.canvas-btn-auto.active:hover { background: #1f5a95; color: #fff; }
 
 /* ════════════════════════════════════════════════════
    BULLE D'AIDE AU DRAG

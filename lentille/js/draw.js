@@ -19,6 +19,40 @@
 const cv  = document.getElementById('cv');
 const ctx = cv.getContext('2d');
 
+/* ═══════════════════════════════════════════════════
+   ÉCHELLE TYPOGRAPHIQUE
+   ─────────────────────────────────────────────────
+   Les tailles de police et les petits éléments décoratifs
+   (croix des foyers, pointes de flèche, barres de titre,
+   boutons dessinés) sont exprimés pour un canvas de
+   référence 1200 × 700 px, puis remis à l'échelle.
+   L'homothétie est bornée : sous FS_MIN le texte devient
+   illisible, au-dessus de FS_MAX il écrase le schéma.
+════════════════════════════════════════════════════ */
+const FS_REF_W = 1200, FS_REF_H = 700;
+const FS_MIN   = 0.55, FS_MAX   = 1.25;
+
+function uiScale() {
+  const k = Math.min(sim.W / FS_REF_W, sim.H / FS_REF_H);
+  return Math.max(FS_MIN, Math.min(FS_MAX, k));
+}
+function fs(base) { return base * uiScale(); }
+
+/* ─────────────────────────────────────────────────
+   updateFrameMetrics() — Dimensions des cadres Objet / Image.
+   Le cadre suit l'échelle de la scène, mais reste plafonné en
+   proportion du canvas : sinon il dévore la moitié de la
+   largeur sur mobile et déborde en hauteur sur écran bas.
+───────────────────────────────────────────────────── */
+function updateFrameMetrics() {
+  const { W, H, scale } = sim;
+  const frameH = Math.min(18 * scale, H * 0.30, W * 0.165);
+  sim.frameH      = frameH;
+  sim.frameW      = frameH * (4 / 3);
+  sim.barH        = fs(26);
+  sim.frameMargin = fs(12);
+}
+
 /* ─────────────────────────────────────────────────
    resize() — Adapte le canvas à la taille de la fenêtre.
 ───────────────────────────────────────────────────── */
@@ -30,12 +64,23 @@ function resize() {
   cv.height = H * devicePixelRatio;
   cv.style.width  = W + 'px';
   cv.style.height = H + 'px';
-  ctx.scale(devicePixelRatio, devicePixelRatio);
+  ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
   sim.W = W;
   sim.H = H;
   sim.axisY  = H / 2;
-  sim.scale  = W / 120;
   sim.lensX  = W / 2;
+
+  // Largeur de scène visible : VIEW_SPAN_CM sur un canvas large, resserrée
+  // sur les canvas étroits pour conserver au moins MIN_PX_PER_CM par cm.
+  const spanCm = Math.min(VIEW_SPAN_CM,
+                          Math.max(MIN_SPAN_CM, W / MIN_PX_PER_CM));
+  sim.scale = W / spanCm;
+
+  // Demi-hauteur de la lentille : bornée par la hauteur disponible, pour que
+  // ni ses pointes ni le faisceau de rayons ne soient rognés en écran bas.
+  sim.lensRadiusCm = Math.min(LENS_RADIUS_MAX_CM, (H * 0.42) / sim.scale);
+
+  updateFrameMetrics();
   compute();
   updateTableHeight();
   draw();
@@ -75,24 +120,33 @@ function draw() {
   drawViewfinders();
 }
 
-/* ── Quadrillage 1 cm × 1 cm ── */
+/* ── Quadrillage à pas adaptatif (série 1-2-5) ──
+   À faible échelle, un pas fixe de 1 cm produit des lignes à 3 px d'écart :
+   le quadrillage vire au moiré. On monte donc dans la série jusqu'à obtenir
+   au moins GRID_MIN_PX entre deux lignes, et on renforce une ligne sur cinq
+   pour garder un repère de lecture. */
+const GRID_MIN_PX = 9;
+const GRID_STEPS  = [1, 2, 5, 10, 20, 50, 100];
+
 function drawGrid() {
   const { W, H, scale, lensX, axisY } = sim;
-  const step = scale;
+
+  let stepCm = GRID_STEPS[GRID_STEPS.length - 1];
+  for (const s of GRID_STEPS) {
+    if (s * scale >= GRID_MIN_PX) { stepCm = s; break; }
+  }
+  const minor = stepCm * scale;
 
   ctx.save();
-  ctx.strokeStyle = 'rgba(180, 160, 130, 0.25)';
   ctx.lineWidth = 0.5;
-  ctx.beginPath();
-
-  for (let x = lensX % step; x <= W; x += step) {
-    ctx.moveTo(x, 0); ctx.lineTo(x, H);
+  for (const [period, color] of [[minor,     'rgba(180, 160, 130, 0.22)'],
+                                 [minor * 5, 'rgba(180, 160, 130, 0.45)']]) {
+    ctx.strokeStyle = color;
+    ctx.beginPath();
+    for (let x = lensX % period; x <= W; x += period) { ctx.moveTo(x, 0); ctx.lineTo(x, H); }
+    for (let y = axisY % period; y <= H; y += period) { ctx.moveTo(0, y); ctx.lineTo(W, y); }
+    ctx.stroke();
   }
-  for (let y = axisY % step; y <= H; y += step) {
-    ctx.moveTo(0, y); ctx.lineTo(W, y);
-  }
-
-  ctx.stroke();
   ctx.restore();
 }
 
@@ -101,8 +155,8 @@ function drawAxis() {
   const { W, axisY } = sim;
   ctx.save();
   ctx.strokeStyle = '#aaa';
-  ctx.lineWidth = 1.5;
-  ctx.setLineDash([8, 6]);
+  ctx.lineWidth = fs(1.5);
+  ctx.setLineDash([fs(8), fs(6)]);
   ctx.beginPath(); ctx.moveTo(0, axisY); ctx.lineTo(W, axisY);
   ctx.stroke();
   ctx.setLineDash([]);
@@ -116,32 +170,42 @@ function drawFocalPoints() {
   const points = [[-fEff, "F"]];
   if (!infini) points.push([fEff, "F'"]);
 
+  const arm  = fs(7);
+  const font = fs(30);
+
+  // O et le foyer situé du même côté partent tous deux vers la droite depuis
+  // des abscisses distantes de |f'|·scale. Quand cet écart devient plus petit
+  // que l'étiquette, on bascule F et F' sous l'axe pour éviter la surimpression.
+  const below = Math.abs(fEff) * sim.scale < font * 1.7;
+
   for (const [cm, label] of points) {
     const x = cmToX(cm);
     ctx.save();
-    ctx.strokeStyle = '#888'; ctx.lineWidth = 1.8;
+    ctx.strokeStyle = '#888'; ctx.lineWidth = fs(1.8);
     ctx.beginPath();
-    ctx.moveTo(x - 7, axisY); ctx.lineTo(x + 7, axisY);
-    ctx.moveTo(x, axisY - 7); ctx.lineTo(x, axisY + 7);
+    ctx.moveTo(x - arm, axisY); ctx.lineTo(x + arm, axisY);
+    ctx.moveTo(x, axisY - arm); ctx.lineTo(x, axisY + arm);
     ctx.stroke();
     ctx.fillStyle = '#555';
-    ctx.font = 'bold 32px monospace';
+    ctx.font = `bold ${font.toFixed(1)}px monospace`;
     ctx.textAlign = cm < 0 ? 'right' : 'left';
-    ctx.fillText(label, x + (cm < 0 ? -10 : 10), axisY - 10);
+    ctx.fillText(label,
+                 x + (cm < 0 ? -fs(10) : fs(10)),
+                 below ? axisY + font * 0.95 : axisY - fs(10));
     ctx.restore();
   }
 }
 
 /* ── Lentille (double flèche verticale) ── */
 function drawLens() {
-  const { lensX, axisY, scale, LENS_RADIUS_CM, lensType } = sim;
-  const lensHpx = LENS_RADIUS_CM * scale;
+  const { lensX, axisY, scale, lensRadiusCm, lensType } = sim;
+  const lensHpx = lensRadiusCm * scale;
   const top = axisY - lensHpx;
   const bot = axisY + lensHpx;
-  const aw = 10, ah = 14;
+  const aw = fs(10), ah = fs(14);
 
   ctx.save();
-  ctx.strokeStyle = '#2c3e50'; ctx.lineWidth = 2.5;
+  ctx.strokeStyle = '#2c3e50'; ctx.lineWidth = fs(2.5);
 
   ctx.beginPath(); ctx.moveTo(lensX, top); ctx.lineTo(lensX, bot); ctx.stroke();
 
@@ -161,14 +225,14 @@ function drawLens() {
     ctx.stroke();
   }
 
-  ctx.fillStyle = '#2c3e50'; ctx.font = 'bold 32px monospace';
+  ctx.fillStyle = '#2c3e50'; ctx.font = `bold ${fs(30).toFixed(1)}px monospace`;
   ctx.textAlign = 'left';
-  ctx.fillText('O', lensX + 8, axisY - 8);
+  ctx.fillText('O', lensX + fs(8), axisY - fs(8));
 
   // Arc d'angle alpha (mode infini, alpha ≠ 0)
   if (sim.infini && sim.alpha !== 0) {
     const alphaRad = sim.alpha * Math.PI / 180;
-    const arcR = 38;
+    const arcR = fs(38);
     const angleAxis = Math.PI;
     const angleRay  = Math.PI - alphaRad;
 
@@ -176,14 +240,14 @@ function drawLens() {
     const aEnd   = alphaRad >= 0 ? angleAxis : angleRay;
 
     ctx.save();
-    ctx.strokeStyle = '#2a6aaa'; ctx.lineWidth = 1.5;
+    ctx.strokeStyle = '#2a6aaa'; ctx.lineWidth = fs(1.5);
     ctx.beginPath(); ctx.arc(lensX, axisY, arcR, aStart, aEnd); ctx.stroke();
 
     const aMid = (aStart + aEnd) / 2;
-    const lx = lensX + (arcR + 14) * Math.cos(aMid);
-    const ly = axisY  + (arcR + 14) * Math.sin(aMid);
+    const lx = lensX + (arcR + fs(14)) * Math.cos(aMid);
+    const ly = axisY  + (arcR + fs(14)) * Math.sin(aMid);
     ctx.fillStyle = '#2a6aaa';
-    ctx.font = 'bold 18px serif';
+    ctx.font = `bold ${fs(18).toFixed(1)}px serif`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('α', lx, ly);
     ctx.textBaseline = 'alphabetic';
@@ -201,17 +265,21 @@ function drawObject() {
   const yB = cmToY(h);
   const arrowDir = h > 0 ? 1 : -1;
 
+  const font = fs(30);
+
   ctx.save();
-  ctx.strokeStyle = '#c05020'; ctx.lineWidth = 3;
+  ctx.strokeStyle = '#c05020'; ctx.lineWidth = fs(3);
   ctx.beginPath(); ctx.moveTo(x, yA); ctx.lineTo(x, yB); ctx.stroke();
   ctx.beginPath();
-  ctx.moveTo(x - 8, yB + arrowDir * 14);
+  ctx.moveTo(x - fs(8), yB + arrowDir * fs(14));
   ctx.lineTo(x, yB);
-  ctx.lineTo(x + 8, yB + arrowDir * 14);
+  ctx.lineTo(x + fs(8), yB + arrowDir * fs(14));
   ctx.stroke();
-  ctx.fillStyle = '#c05020'; ctx.font = 'bold 32px monospace'; ctx.textAlign = 'right';
-  ctx.fillText('A', x - 8, yA + (h > 0 ? 26 : -10));
-  ctx.fillText('B', x - 8, yB + (h > 0 ? -10 : 28));
+  ctx.fillStyle = '#c05020';
+  ctx.font = `bold ${font.toFixed(1)}px monospace`;
+  ctx.textAlign = 'right';
+  ctx.fillText('A', x - fs(8), yA + (h > 0 ? font * 0.82 : -fs(10)));
+  ctx.fillText('B', x - fs(8), yB + (h > 0 ? -fs(10) : font * 0.88));
   ctx.restore();
 }
 
@@ -229,34 +297,39 @@ function drawImage(alphaVal) {
   const dash     = isReal ? [] : [5, 4];
   const arrowDir = h2 >= 0 ? 1 : -1;
 
+  const font = fs(30);
+
   ctx.save();
   ctx.globalAlpha = alphaVal;
-  ctx.strokeStyle = col; ctx.lineWidth = 3;
-  ctx.setLineDash(dash);
+  ctx.strokeStyle = col; ctx.lineWidth = fs(3);
+  ctx.setLineDash(dash.map(d => fs(d)));
   ctx.beginPath(); ctx.moveTo(x, yA); ctx.lineTo(x, yB); ctx.stroke();
   ctx.beginPath();
-  ctx.moveTo(x - 7, yB + arrowDir * 12);
+  ctx.moveTo(x - fs(7), yB + arrowDir * fs(12));
   ctx.lineTo(x, yB);
-  ctx.lineTo(x + 7, yB + arrowDir * 12);
+  ctx.lineTo(x + fs(7), yB + arrowDir * fs(12));
   ctx.stroke();
   ctx.setLineDash([]);
-  ctx.fillStyle = col; ctx.font = 'bold 32px monospace'; ctx.textAlign = 'left';
+  ctx.fillStyle = col;
+  ctx.font = `bold ${font.toFixed(1)}px monospace`;
+  ctx.textAlign = 'left';
 
-  const aOffsetY = h2 >= 0 ? 38 : -14;
+  const aOffsetY = h2 >= 0 ? font * 1.2 : -fs(14);
   if (infini) {
     ctx.textAlign = 'center';
     ctx.fillText("F'= A'", x, yA + aOffsetY);
     ctx.textAlign = 'left';
   } else {
-    ctx.fillText("A'", x + 8, yA + aOffsetY);
+    ctx.fillText("A'", x + fs(8), yA + aOffsetY);
   }
-  ctx.fillText("B'", x + 8, yB + (h2 >= 0 ? -10 : 38));
+  ctx.fillText("B'", x + fs(8), yB + (h2 >= 0 ? -fs(10) : font * 1.2));
 
   if (infini) {
-    ctx.strokeStyle = col; ctx.lineWidth = 1.8;
+    const arm = fs(7);
+    ctx.strokeStyle = col; ctx.lineWidth = fs(1.8);
     ctx.beginPath();
-    ctx.moveTo(x - 7, yA); ctx.lineTo(x + 7, yA);
-    ctx.moveTo(x, yA - 7); ctx.lineTo(x, yA + 7);
+    ctx.moveTo(x - arm, yA); ctx.lineTo(x + arm, yA);
+    ctx.moveTo(x, yA - arm); ctx.lineTo(x, yA + arm);
     ctx.stroke();
   }
 
@@ -270,14 +343,15 @@ function drawScreen() {
 
   ctx.save();
   ctx.strokeStyle = '#7a4010';
-  ctx.lineWidth   = 4;
+  ctx.lineWidth   = fs(4);
   ctx.lineCap     = 'round';
   ctx.beginPath();
   ctx.moveTo(x, axisY - H * 0.3); ctx.lineTo(x, axisY + H * 0.3);
   ctx.stroke();
   ctx.fillStyle = '#7a4010';
-  ctx.font = 'bold 15px "Segoe UI", Arial, sans-serif'; ctx.textAlign = 'center';
-  ctx.fillText('Écran', x, axisY - H * 0.3 - 6);
+  ctx.font = `bold ${fs(15).toFixed(1)}px "Segoe UI", Arial, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillText('Écran', x, axisY - H * 0.3 - fs(6));
   ctx.restore();
 }
 
@@ -285,37 +359,27 @@ function drawScreen() {
    CADRES DE VISUALISATION (Objet / Image sur écran)
 ════════════════════════════════════════════════════ */
 function drawViewfinders() {
-  const { W, scale } = sim;
+  const { W, frameW, frameH, barH, frameMargin: margin } = sim;
 
-  const frameH  = 18 * scale;
-  const frameW  = frameH * (4 / 3);
-  const barH    = 26;
-  const margin  = 12;
   const frameY  = margin;
   const leftX   = margin;
   const rightX  = W - margin - frameW;
 
-  function drawCollapseBtn(fx, fy, fw, collapsed) {
-    const bw = 16, bh = 16, br = 3;
-    const bx = fx + fw - bw - 5, by = fy + 5;
-    ctx.save();
-    ctx.fillStyle = '#c8c0b4'; ctx.strokeStyle = '#a8a098'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, br); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = '#2c3e50'; ctx.font = 'bold 14px "Segoe UI", Arial, sans-serif';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(collapsed ? '+' : '−', bx + bw / 2, by + bh / 2);
-    ctx.textBaseline = 'alphabetic';
-    ctx.restore();
-    return { x: bx, y: by, w: bw, h: bh };
-  }
+  // Champ de vision représenté dans le cadre, en centimètres. Le cadre étant
+  // désormais plafonné, on ne peut plus dessiner à l'échelle de la scène :
+  // on projette sur la hauteur utile réelle du cadre.
+  const FIELD_CM = 16;
+  const innerScale = (frameH - barH - 1) / FIELD_CM;
 
   function drawBar(fx, fy, fw, label) {
     ctx.save();
     ctx.fillStyle = '#e8e4de'; ctx.fillRect(fx, fy, fw, barH);
     ctx.strokeStyle = '#c8c0b4'; ctx.lineWidth = 1; ctx.strokeRect(fx, fy, fw, barH);
-    ctx.fillStyle = '#2c3e50'; ctx.font = 'bold 13px "Segoe UI", Arial, sans-serif';
+    ctx.fillStyle = '#2c3e50';
+    ctx.font = `bold ${fs(13).toFixed(1)}px "Segoe UI", Arial, sans-serif`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(label, fx + fw / 2, fy + barH / 2);
+    // Le bouton +/− mange la droite de la barre : on centre sur l'espace restant.
+    ctx.fillText(label, fx + (fw - fs(21)) / 2, fy + barH / 2);
     ctx.textBaseline = 'alphabetic';
     ctx.restore();
   }
@@ -394,9 +458,9 @@ function drawViewfinders() {
 
   function drawNoImageMsg(fx, fy, fw, fh, msg) {
     ctx.fillStyle = 'rgba(180,160,120,0.85)';
-    ctx.font = 'bold 11px "Segoe UI", Arial, sans-serif';
+    ctx.font = `bold ${fs(11).toFixed(1)}px "Segoe UI", Arial, sans-serif`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-    ctx.fillText(msg, fx + fw / 2, fy + fh - 6);
+    ctx.fillText(msg, fx + fw / 2, fy + fh - fs(6));
     ctx.textBaseline = 'alphabetic';
   }
 
@@ -406,11 +470,10 @@ function drawViewfinders() {
     drawInner(leftX, frameY, frameW, frameH);
     const ix = leftX + 1, iy = frameY + barH;
     const iw = frameW - 2, ih = frameH - barH - 1;
-    const hPx = Math.abs(sim.h) * scale;
+    const hPx = Math.abs(sim.h) * innerScale;
     drawGlowLetter(ix + iw / 2, iy + ih / 2, hPx, false, sim.h < 0, 0);
     ctx.restore();
   }
-  sim._objBtnRect = drawCollapseBtn(leftX, frameY, frameW, sim.objCollapsed);
 
   // ══ CADRE IMAGE ══
   drawBar(rightX, frameY, frameW, 'Image sur écran');
@@ -458,37 +521,63 @@ function drawViewfinders() {
       const distCm    = Math.abs(OE - OA2);
       const blurSeuil = Math.max(3, Math.abs(f) * 0.4);
       const blurFrac  = Math.min(1, distCm / blurSeuil);
-      const h2Px      = Math.abs(h2) * scale;
+      const h2Px      = Math.abs(h2) * innerScale;
       const blurPx    = blurFrac * blurFrac * h2Px * 0.8;
       drawGlowLetter(ix + iw / 2, iy + ih / 2, h2Px, true, sim.h > 0, blurPx);
     }
     ctx.restore();
   }
-  sim._imgBtnRect = drawCollapseBtn(rightX, frameY, frameW, sim.imgCollapsed);
 
-  // Bouton Auto
-  const btnW = 64, btnH = 22, btnR = 4;
-  const btnX = rightX + (frameW - btnW) / 2;
-  const btnY = frameY + (sim.imgCollapsed ? barH : frameH) + 6;
-  ctx.save();
-  ctx.fillStyle   = sim.autoScreen ? '#2a6aaa' : '#e8e4de';
-  ctx.strokeStyle = sim.autoScreen ? '#1a4a8a' : '#c8c0b4';
-  ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.roundRect(btnX, btnY, btnW, btnH, btnR); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = sim.autoScreen ? '#fff' : '#7a8a96';
-  ctx.font = 'bold 11px "Segoe UI", Arial, sans-serif';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText('Auto', btnX + btnW / 2, btnY + btnH / 2);
-  ctx.textBaseline = 'alphabetic';
-  ctx.restore();
-  sim._autoBtnRect = { x: btnX, y: btnY, w: btnW, h: btnH };
+  layoutCanvasButtons(leftX, rightX, frameY);
+}
+
+/* ─────────────────────────────────────────────────
+   layoutCanvasButtons() — Place les boutons HTML superposés au canvas.
+   Ils étaient auparavant dessinés au pinceau : ils n'avaient alors ni
+   survol, ni focus clavier, ni rôle accessible, et ignoraient le zoom
+   du navigateur. Seule leur position reste calculée ici, puisqu'elle
+   dépend de la géométrie des cadres.
+───────────────────────────────────────────────────── */
+function layoutCanvasButtons(leftX, rightX, frameY) {
+  const { frameW, frameH, barH } = sim;
+
+  function place(el, x, y, w, h, fontPx) {
+    el.style.left     = x + 'px';
+    el.style.top      = y + 'px';
+    el.style.width    = w + 'px';
+    el.style.height   = h + 'px';
+    el.style.fontSize = fontPx.toFixed(1) + 'px';
+  }
+
+  const bs = fs(17);
+  const collapseY = frameY + (barH - bs) / 2;
+
+  for (const [id, fx, collapsed, nom] of
+       [['btn-obj-collapse', leftX,  sim.objCollapsed, 'Objet'],
+        ['btn-img-collapse', rightX, sim.imgCollapsed, 'Image']]) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    place(el, fx + frameW - bs - fs(5), collapseY, bs, bs, fs(14));
+    el.textContent = collapsed ? '+' : '−';
+    el.title = (collapsed ? 'Déplier' : 'Replier') + ' le cadre ' + nom;
+    el.setAttribute('aria-expanded', String(!collapsed));
+  }
+
+  const autoBtn = document.getElementById('btn-auto-screen');
+  if (autoBtn) {
+    const aw = fs(64), ah = fs(22);
+    place(autoBtn, rightX + (frameW - aw) / 2,
+          frameY + (sim.imgCollapsed ? barH : frameH) + fs(6), aw, ah, fs(11));
+    autoBtn.classList.toggle('active', sim.autoScreen);
+    autoBtn.setAttribute('aria-pressed', String(sim.autoScreen));
+  }
 }
 
 /* ═══════════════════════════════════════════════════
    CALCUL DES RAYONS
 ════════════════════════════════════════════════════ */
 function computeRays() {
-  const { f, h, OA, OA2, infini, alpha, nRays, LENS_RADIUS_CM, lensType } = sim;
+  const { f, h, OA, OA2, infini, alpha, nRays, lensRadiusCm, lensType } = sim;
   const fEff = lensType === 'div' ? -f : f;
   const fObj = -fEff;
 
@@ -498,22 +587,28 @@ function computeRays() {
   const imgAtInfinity = !isFinite(OA2) || Math.abs(OA2) > 800;
   const alphaRad = alpha * Math.PI / 180;
 
+  // Départ du balayage : l'abscisse où les rayons naissent réellement.
+  // Hors mode infini c'est l'objet lui-même — partir du bord du canvas
+  // laissait défiler un quart de l'animation avant le premier trait visible.
+  // Le plancher à -80 px couvre le cas où l'objet est très loin à gauche
+  // (animation « vers l'infini », où OA descend jusqu'à −2000 cm).
   const xLeftPx  = cmToX(xLeft);
   const xRightPx = cmToX(xRight);
-  sim._animXLeft  = xLeftPx;
+  const xStartPx = infini ? xLeftPx : Math.max(xLeftPx, cmToX(OA));
+  sim._animXLeft  = xStartPx;
   sim._animXRight = xRightPx;
 
   let fracImage = 1.0;
   if (!imgAtInfinity && OA2 > 0) {
     const imgXpx = cmToX(OA2);
-    fracImage = Math.min(1.0, Math.max(0, (imgXpx - xLeftPx) / (xRightPx - xLeftPx)));
+    fracImage = Math.min(1.0, Math.max(0, (imgXpx - xStartPx) / (xRightPx - xStartPx)));
   }
   sim.animTImage = fracImage;
 
   function raysForSource(srcH, overrideColors, groupId = -1) {
     let yiList = [], colorList = [], isMainList = [];
 
-    const R  = LENS_RADIUS_CM;
+    const R  = lensRadiusCm;
     const Rc = R / 5;
 
     if (infini) {
@@ -703,7 +798,7 @@ function drawSegmentToX(pts, color, isMain, hovered, targetX) {
   if (pts.length < 2) return;
   ctx.save();
   ctx.strokeStyle = color;
-  ctx.lineWidth   = hovered ? 2.8 : (isMain ? 2.2 : 1.4);
+  ctx.lineWidth   = fs(hovered ? 2.8 : (isMain ? 2.2 : 1.4));
   ctx.globalAlpha = hovered ? 1.0 : (isMain ? 1.0 : 0.65);
   ctx.lineCap = 'round';
   ctx.beginPath();
@@ -740,10 +835,10 @@ function drawSegment(pts, color, virtual, frac, isMain = true, hovered = false) 
 
   ctx.save();
   ctx.strokeStyle = color;
-  ctx.lineWidth   = virtual ? 1.5 : (hovered ? 2.8 : (isMain ? 2.2 : 1.4));
+  ctx.lineWidth   = fs(virtual ? 1.5 : (hovered ? 2.8 : (isMain ? 2.2 : 1.4)));
   ctx.globalAlpha = virtual ? 0.55 : (hovered ? 1.0 : (isMain ? 1.0 : 0.65));
   ctx.lineCap     = 'round';
-  if (virtual) ctx.setLineDash([6, 5]);
+  if (virtual) ctx.setLineDash([fs(6), fs(5)]);
 
   ctx.beginPath();
   ctx.moveTo(pts[0].x, pts[0].y);
@@ -776,7 +871,7 @@ function drawArrowHead(from, to, color, isMain = true) {
   if (len < 2) return;
   const ux = dx/len, uy = dy/len;
   const mx = (from.x + to.x)/2, my = (from.y + to.y)/2;
-  const aLen = isMain ? 9 : 7, aHalf = isMain ? 5 : 3.5;
+  const aLen = fs(isMain ? 9 : 7), aHalf = fs(isMain ? 5 : 3.5);
 
   ctx.save();
   ctx.fillStyle   = color;
