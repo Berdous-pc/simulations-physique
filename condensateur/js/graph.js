@@ -82,16 +82,18 @@ function onGraphTabChange(slot, key) {
 //  gauche), et recopier tout l'historique à chaque mousemove — ce que fait
 //  la branche 'q' de graphDefFor — coûterait une allocation par événement.
 function graphStyleFor(key) {
-  const Imax = sim.U / Math.min(sim.R1, sim.R2) * 1000;
+  // min(R1,R2) et non iFullScale_mA() : l'axe de i(t) doit cadrer la charge
+  // ET la décharge, il se règle donc sur la plus grande des deux intensités.
+  const Imax = sim.E / Math.min(sim.R1, sim.R2) * 1000;
   if (key === 'i') {
     return { color: '#b04020', yMin: -Imax * 1.1, yMax: Imax * 1.1, unit: 'mA', name: 'i' };
   }
   if (key === 'q') {
     const C_uF = sim.C * 1e6;
-    return { color: '#2a8a55', yMin: 0, yMax: Math.max(sim.U * C_uF, 0.001) * 1.05, unit: 'µC', name: 'q' };
+    return { color: '#2a8a55', yMin: 0, yMax: Math.max(sim.E * C_uF, 0.001) * 1.05, unit: 'µC', name: 'q' };
   }
   // 'Uc' par défaut
-  return { color: '#2a6aaa', yMin: 0, yMax: Math.max(sim.U, 0.1), unit: 'V', name: 'Uc' };
+  return { color: '#2a6aaa', yMin: 0, yMax: Math.max(sim.E, 0.1), unit: 'V', name: 'Uc' };
 }
 
 function graphDefFor(key) {
@@ -520,9 +522,9 @@ function drawGraph(canvasId, data, color, yMin, yMax, yUnit, yName) {
       if (data.length >= 2) {
         const mouseT = startT + ((hx - pad.l) / gw) * winMs;
         const mouseV = yMin + (1 - (hy - pad.t) / gh) * (yMax - yMin);
-        // Même résolution que les encarts du panneau : la pleine échelle est
-        // ici l'étendue du cadrage vertical.
-        const label  = `(${fmtMs(mouseT)}, ${fmtSig3(quantizeToScale(mouseV, yMax - yMin))} ${yUnit || ''})`;
+        // Même calibre que les encarts du panneau : la pleine échelle est ici
+        // l'étendue du cadrage vertical.
+        const label  = `(${fmtMs(mouseT)}, ${fmtScale(mouseV, yMax - yMin)} ${yUnit || ''})`;
         drawHoverPill(gc, label, hx, hy, '#2a6aaa', pad, gw, gh, fs);
       }
       gc.restore();
@@ -557,7 +559,7 @@ function drawGraph(canvasId, data, color, yMin, yMax, yUnit, yName) {
         gc.lineWidth   = 1.5;
         gc.beginPath(); gc.arc(bx, byc, rPt, 0, Math.PI * 2); gc.stroke();
 
-        const label = `(${fmtMs(best.t)}, ${fmtSig3(quantizeToScale(best.v, yMax - yMin))} ${yUnit || ''})`;
+        const label = `(${fmtMs(best.t)}, ${fmtScale(best.v, yMax - yMin)} ${yUnit || ''})`;
         drawHoverPill(gc, label, bx, byc, color, pad, gw, gh, fs);
         gc.restore();
       }

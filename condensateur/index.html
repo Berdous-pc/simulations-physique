@@ -122,9 +122,9 @@
     <div class="panel-section">
       <div class="section-title">Paramètres</div>
       <div class="param-row">
-        <label>Tension U <span><span id="lbl-U">5,00</span> V</span></label>
-        <input type="range" id="sl-U" min="1" max="12" step="0.5" value="5"
-               oninput="updateParam('U',this.value)">
+        <label>Tension E <span><span id="lbl-E">5,00</span> V</span></label>
+        <input type="range" id="sl-E" min="1" max="12" step="0.5" value="5"
+               oninput="updateParam('E',this.value)">
       </div>
       <div class="param-row">
         <label>Capacité C <span><span id="lbl-C">300</span> µF</span></label>
@@ -183,7 +183,7 @@
       <div class="section-title">Modes d'affichage</div>
       <div class="mode-help-block">
         <span class="mode-help-name">Synchronisé</span>
-        Le tracé du graphe s'adapte à la durée des phases de charge et de décharge demandées. Le tracé est mis en pause une fois la phase considérée terminée (au bout de 6τ).
+        Le tracé du graphe s'adapte à la durée des phases de charge et de décharge demandées. Le tracé est mis en pause une fois la phase considérée terminée, c'est-à-dire lorsque l'intensité affichée est nulle et que la tension a atteint sa valeur finale.
       </div>
       <div class="mode-help-block">
         <span class="mode-help-name">Continu</span>
@@ -201,9 +201,10 @@
         <button class="panel-hint-toggle" onclick="toggleHint()" title="Afficher les instructions">▲</button>
       </div>
       <div class="panel-hint-body">
-        Choisissez la phase <strong>Charge</strong> ou <strong>Décharge</strong>, réglez la tension U,
+        Choisissez la phase <strong>Charge</strong> ou <strong>Décharge</strong>, réglez la tension E,
         la capacité C et les résistances R₁/R₂, puis observez l'évolution de la tension Uc(t)
-        et du courant i(t) sur les graphes. Le mode <em>Synchronisé</em> arrête le tracé après 6τ ;
+        et du courant i(t) sur les graphes. Le mode <em>Synchronisé</em> arrête le tracé
+        quand l'intensité affichée est nulle et que Uc a atteint sa valeur finale ;
         le mode <em>Continu</em> trace en continu, sans s'arrêter entre les phases.
       </div>
     </div>

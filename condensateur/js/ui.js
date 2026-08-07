@@ -31,7 +31,7 @@ function setPhase(p) {
 
   const uc0 = sim.Uc;
   const i0  = p === 'charge'
-    ? (sim.U - uc0) / sim.R1 * 1000
+    ? (sim.E - uc0) / sim.R1 * 1000
     : -uc0 / sim.R2 * 1000;
   sim.graphUc.push({ t: sim.tTotal, v: uc0 });
   sim.graphI.push({  t: sim.tTotal, v: i0  });
@@ -108,7 +108,7 @@ function resetSim() {
 // ─────────────────────────────────────────────────────────────────────
 function updateParam(name, val) {
   const v = parseFloat(val);
-  if (name === 'U')  { sim.U  = v;        document.getElementById('lbl-U').textContent  = fmtSig3(v); }
+  if (name === 'E')  { sim.E  = v;        document.getElementById('lbl-E').textContent  = fmtSig3(v); }
   if (name === 'C')  { sim.C  = v * 1e-6; document.getElementById('lbl-C').textContent  = fmtSig3(v); resetSim(); }
   if (name === 'R1') { sim.R1 = v;        document.getElementById('lbl-R1').textContent = fmtSig3(v); }
   if (name === 'R2') { sim.R2 = v;        document.getElementById('lbl-R2').textContent = fmtSig3(v); }
@@ -119,11 +119,11 @@ function updateParam(name, val) {
 //  Met à jour les encarts de valeurs instantanées.
 // ─────────────────────────────────────────────────────────────────────
 function updateReadouts() {
-  // Pleines échelles : U pour la tension, U/Rmin pour l'intensité — les
-  // mêmes bornes que celles des graphes (cf. graphStyleFor).
-  const iMax_mA = sim.U / Math.min(sim.R1, sim.R2) * 1000;
-  document.getElementById('ro-Uc').textContent      = fmtSig3(quantizeToScale(sim.Uc, sim.U));
-  document.getElementById('ro-i').textContent       = fmtSig3(quantizeToScale(currentI() * 1000, iMax_mA));
+  // Calibres : E pour la tension, iFullScale_mA() pour l'intensité — c'est
+  // ce même calibre qui décide de l'arrêt du mode Synchronisé, de sorte que
+  // le tracé se fige exactement quand l'encart passe à 0.
+  document.getElementById('ro-Uc').textContent      = fmtScale(sim.Uc, sim.E);
+  document.getElementById('ro-i').textContent       = fmtScale(currentI() * 1000, iFullScale_mA());
   document.getElementById('ro-tau-chg').textContent = fmtTau(sim.R1 * sim.C * 1000);
   document.getElementById('ro-tau-dis').textContent = fmtTau(sim.R2 * sim.C * 1000);
 
@@ -164,12 +164,24 @@ function loop(ts) {
 
     // Solution analytique exacte de Uc(t)
     sim.Uc = sim.phase === 'charge'
-      ? sim.U + (sim.U0_chg - sim.U) * Math.exp(-t_s / τ)
+      ? sim.E + (sim.U0_chg - sim.E) * Math.exp(-t_s / τ)
       : sim.U0_dis * Math.exp(-t_s / τ);
 
     // Stockage des points de graphe avec sous-échantillonnage adaptatif
     const tauMs       = τ * 1000;
     const SAMPLE_STEP = Math.max(0.5, tauMs / 100);
+    // Mode Synchronisé : on s'arrête quand les DEUX appareils sont au repos —
+    // l'ampèremètre affiche zéro ET le voltmètre affiche la tension finale —
+    // et non à 6τ, qui n'était qu'une convention.
+    //
+    // Les deux conditions sont nécessaires : i et Uc ont la même constante de
+    // temps mais des calibres indépendants, leurs seuils de résolution ne
+    // tombent donc pas au même instant. Le courant peut atteindre zéro alors
+    // qu'il manque encore un cran de tension à Uc, et le tracé s'arrêtait
+    // avant que la valeur finale soit lisible.
+    const iZero       = scaleResolution(iFullScale_mA());
+    const uZero       = scaleResolution(sim.E);
+    const ucFinal     = sim.phase === 'charge' ? sim.E : 0;
     const nSamples    = Math.max(1, Math.round(dt / SAMPLE_STEP));
     const subDt       = dt / nSamples;
 
@@ -177,16 +189,18 @@ function loop(ts) {
       const tAbs  = sim.tTotal - dt + s * subDt;
       const t_sub = (sim.t    - dt + s * subDt) / 1000;
       const ucSub = sim.phase === 'charge'
-        ? sim.U + (sim.U0_chg - sim.U) * Math.exp(-t_sub / τ)
+        ? sim.E + (sim.U0_chg - sim.E) * Math.exp(-t_sub / τ)
         : sim.U0_dis * Math.exp(-t_sub / τ);
       const iSub = sim.phase === 'charge'
-        ? (sim.U - ucSub) / sim.R1 * 1000
+        ? (sim.E - ucSub) / sim.R1 * 1000
         : -ucSub / sim.R2 * 1000;
 
       sim.graphUc.push({ t: tAbs, v: ucSub });
       sim.graphI.push({  t: tAbs, v: iSub  });
 
-      if (sim.graphMode === 'sync' && t_sub * 1000 >= 6 * tauMs) {
+      if (sim.graphMode === 'sync'
+          && Math.abs(iSub) < iZero
+          && Math.abs(ucSub - ucFinal) < uZero) {
         sim.syncFrozen = true;
         break;
       }

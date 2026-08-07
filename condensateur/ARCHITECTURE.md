@@ -67,14 +67,14 @@ Objet central qui contient tout l'état de la simulation :
 | `tTotal` | ms | Temps total depuis le dernier reset |
 | `Uc` | V | Tension aux bornes du condensateur |
 | `U0_chg` / `U0_dis` | V | Conditions initiales de chaque phase |
-| `U`, `C`, `R1`, `R2` | — | Paramètres physiques |
+| `E`, `C`, `R1`, `R2` | — | Paramètres physiques. `E` est la fem du générateur, notée comme sur le schéma du circuit — à ne pas confondre avec `Uc`, tension aux bornes du condensateur |
 | `graphUc`, `graphI` | `{t, v}[]` | Données des courbes (Uc en V, I en mA) |
 | `graphWindowMs` | ms | Largeur de la fenêtre visible (zoom X) |
 | `viewOffsetMs` | ms | Bord gauche de la fenêtre visible (pan) |
 | `userPanned` | bool | Désactive l'auto-scroll si vrai |
 | `graphMode` | `'sync'` \| `'continuous'` | Mode d'enregistrement |
 | `graphTab1` / `graphTab2` | `'Uc'` \| `'i'` \| `'q'` | Grandeur affichée sur le graphe 1 / 2 |
-| `syncFrozen` | bool | Tracé figé (6τ atteint en mode sync) |
+| `syncFrozen` | bool | Tracé figé en mode sync : intensité affichée nulle **et** tension arrivée à sa valeur finale. Les deux conditions sont nécessaires — même constante de temps mais calibres indépendants, donc seuils de résolution atteints à des instants différents |
 | `paused` | bool | Simulation suspendue |
 | `timeScale` | number | Facteur d'accélération (0.1 à 5) |
 
@@ -83,8 +83,13 @@ Objet central qui contient tout l'état de la simulation :
 - `tau()` — constante de temps de la phase courante (s) : `R1·C` ou `R2·C`
 - `currentI()` — intensité instantanée (A)
 - `fmtSig3(value)` — formate un nombre en 3 chiffres significatifs, virgule française. Écriture décimale sur `[0,01 ; 1000[`, scientifique **des deux côtés** de cet intervalle. La borne basse est indispensable : sans elle, `Uc` décroissant exponentiellement finissait affiché « 0,000000100 », puis provoquait un `RangeError: toFixed() digits argument must be between 0 and 100` vers 1e-300 (le nombre de décimales demandé suivait l'ordre de grandeur, sans borne)
-- `quantizeToScale(value, fullScale)` — renvoie 0 en dessous de `fullScale/1000`, soit 3 chiffres significatifs par rapport à la pleine échelle : modélise la résolution d'un appareil de mesure réel. Appliqué aux encarts de valeurs instantanées (pleine échelle `U` et `U/Rmin`) et aux étiquettes de survol des graphes (pleine échelle = étendue du cadrage vertical). Sans lui, `Uc` et `i` — qui ne s'annulent jamais — affichaient indéfiniment des « 3,17×10⁻⁹ V » exacts et inutiles
-  (écriture normale si |v| < 1000, écriture scientifique sinon)
+- `fmtScale(value, fullScale)` — affiche une mesure sur un **calibre**, façon multimètre : le nombre de décimales vient de la pleine échelle et non de la valeur, soit 3 chiffres significatifs à pleine échelle, moins en dessous, jamais plus. Sous la résolution, l'arrondi produit un zéro **avec les décimales du calibre** (« 0,000 » sur un calibre 0,5 mA, « 0,00 » sur un calibre 5 V), pas un `0` nu. Délègue à `fmtSig3` quand `fullScale ≥ 1000`, domaine où l'écriture scientifique est le bon rendu.
+
+  Appliqué aux encarts de valeurs instantanées (calibres `U` et `iFullScale_mA()`) et aux étiquettes de survol des graphes (calibre = étendue du cadrage vertical).
+
+  Motivation : à chiffres significatifs constants, `i` s'affichait « 1,23×10⁻³ mA » — qui désigne en fait 1,23 µA et n'a aucun sens sur un calibre en mA. Sur un calibre 0,5 mA on lit maintenant « 0,123 mA », puis « 0,001 », puis « 0,000 ».
+- `iFullScale_mA()` — calibre de l'ampèremètre (mA), pris sur la **phase courante** comme `tau()` : `U/R1` en charge, `U/R2` en décharge. À ne pas confondre avec `U/min(R1,R2)`, qui borne l'axe du graphe `i(t)` parce que celui-ci doit cadrer les deux phases. Partagé par l'encart du panneau et le critère d'arrêt du mode Synchronisé
+- `scaleResolution(fullScale)` — seuil sous lequel une mesure s'affiche comme un zéro sur ce calibre. Extrait de `fmtScale()` pour être testable sans passer par le formatage : le critère d'arrêt tourne dans la boucle d'échantillonnage, où l'on ne veut pas construire une chaîne par point
 - `fmtMs(ms)` — formate une durée en "X ms" ou "X s"
 - `fmtTau(ms)` — formate une constante de temps
 - `minTimeWindowMs()` — fenêtre minimale = **cap du zoom avant**, calé sur `τ/20` (plancher 1 ms). Sans cap, les graduations finissaient par partager tous leurs chiffres de poids fort. Calé sur τ et non sur une durée fixe, parce que c'est τ qui donne l'échelle du phénomène ; laisse un facteur ~400 entre la vue « Adapter » et le zoom maximal
@@ -284,7 +289,7 @@ requestAnimationFrame(loop)  → démarre la boucle
 
 ```
 index.html
-  └── <script src="js/sim.js">       expose : sim, tau, currentI, fmtSig3, quantizeToScale,
+  └── <script src="js/sim.js">       expose : sim, tau, currentI, fmtSig3, fmtScale,
   │                                              fmtMs, fmtTau,
   │                                           resetGraphs, setTimeWindow, autoTimeWindow,
   │                                           minTimeWindowMs, GRAPH_WINDOW_MARGIN

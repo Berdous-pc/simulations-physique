@@ -20,7 +20,10 @@ const sim = {
   U0_chg: 0,          // Uc au début de la dernière charge  (condition initiale)
 
   // Paramètres physiques
-  U: 5, C: 300e-6, R1: 10000, R2: 10000,
+  // E : force électromotrice du générateur (V) — même notation que sur le
+  // schéma du circuit. À ne pas confondre avec Uc, la tension aux bornes du
+  // condensateur.
+  E: 5, C: 300e-6, R1: 10000, R2: 10000,
 
   // Données des graphes
   // graphUc stocke toujours Uc en volts ; la conversion en µC se fait à l'affichage.
@@ -43,7 +46,7 @@ const sim = {
   graphTab2: 'i',
 
   // Mode synchronisé
-  syncFrozen: false,   // true quand le tracé est figé (6τ atteint)
+  syncFrozen: false,   // true quand le tracé est figé (intensité affichée nulle)
 
   // Contrôle de la vitesse de simulation
   paused: false,       // true = simulation suspendue
@@ -73,7 +76,7 @@ function fmtSig3(value) {
   const neg = value < 0;
   const av  = Math.abs(value);
   // Garde-fou purement numérique (aucune décision d'affichage ici, cf.
-  // quantizeToScale) : en dessous, Math.pow(10, exp) sous-déborde à 0 et la
+  // fmtScale) : en dessous, Math.pow(10, exp) sous-déborde à 0 et la
   // mantisse partirait à l'infini. Uc et i, qui décroissent exponentiellement
   // sans jamais s'annuler, atteignent bel et bien ces valeurs si on laisse le
   // mode Continu tourner longtemps.
@@ -95,21 +98,42 @@ function fmtSig3(value) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-//  Résolution d'affichage : 3 chiffres significatifs par rapport à la PLEINE
-//  ÉCHELLE de la grandeur, ce qui revient à modéliser un appareil de mesure
-//  réel. En dessous, on renvoie 0 franc.
+//  Affichage d'une mesure sur un CALIBRE donné — le modèle du multimètre.
 //
-//  Sans ce seuil, Uc et i — qui décroissent exponentiellement et ne
-//  s'annulent jamais — continuaient d'afficher indéfiniment des valeurs de
-//  plus en plus petites, désormais en écriture scientifique : « 3,17×10⁻⁹ V »
-//  est exact et parfaitement inutile. Un voltmètre affiche 0.
+//  Le nombre de décimales est fixé par la pleine échelle, pas par la valeur :
+//  3 chiffres significatifs à pleine échelle, moins en dessous, jamais plus.
+//  C'est ce que fait un appareil réel, et c'est ce qui évite les absurdités
+//  du formatage à chiffres significatifs constants — sur un calibre en mA,
+//  « 1,23×10⁻³ mA » désigne en réalité 1,23 µA et n'a aucun sens tel quel.
+//  Sur un calibre 0,5 mA on lit « 0,123 mA », puis « 0,001 », puis 0.
 //
-//  Le seuil est relatif et non absolu : la pleine échelle varie ici d'un
-//  facteur 500 entre les réglages extrêmes de R et C, un seuil fixe serait
-//  soit trop grossier soit sans effet selon les paramètres choisis.
+//  Sous la résolution, l'arrondi donne un zéro AVEC les décimales du calibre
+//  — « 0,000 » sur un calibre 0,5 mA, « 0,00 » sur un calibre 5 V — et non un
+//  « 0 » nu qui trancherait avec le reste de l'encart. C'est encore le
+//  comportement de l'appareil : Uc et i décroissent exponentiellement sans
+//  jamais s'annuler, ils afficheraient sinon indéfiniment des valeurs exactes
+//  et inutiles.
+//
+//  La résolution n'a pas besoin d'être testée : le nombre de décimales étant
+//  calé sur la pleine échelle, toFixed() ramène lui-même à zéro tout ce qui
+//  passe sous le dernier rang affichable.
 // ─────────────────────────────────────────────────────────────────────
-function quantizeToScale(value, fullScale) {
-  return Math.abs(value) < Math.abs(fullScale) / 1000 ? 0 : value;
+function fmtScale(value, fullScale) {
+  const scale = Math.abs(fullScale);
+  if (!isFinite(value) || !isFinite(scale) || scale === 0) return fmtSig3(value);
+
+  const dec = 2 - Math.floor(Math.log10(scale));
+
+  // Pleine échelle ≥ 1000 : il n'y a pas de décimale à ajouter, et c'est le
+  // domaine où l'écriture scientifique de fmtSig3 est le bon rendu. Le seuil
+  // de résolution redevient nécessaire ici, faute d'arrondi qui le porte.
+  if (dec <= 0) return Math.abs(value) < scaleResolution(scale) ? '0' : fmtSig3(value);
+
+  const d = Math.min(10, dec);
+  let out = value.toFixed(d);
+  // Une valeur négative sous la résolution rendrait « -0,000 ».
+  if (parseFloat(out) === 0) out = (0).toFixed(d);
+  return out.replace('.', ',');
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -135,13 +159,43 @@ function tau() {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+//  Pleine échelle de l'intensité (mA) — le « calibre » de l'ampèremètre.
+//  Source unique de l'encart du panneau et du critère d'arrêt du mode
+//  Synchronisé : sinon le tracé se figerait alors que l'encart affiche
+//  encore une valeur non nulle, ou l'inverse.
+//
+//  Calibre de la PHASE COURANTE (comme tau()), et non U/min(R1,R2) : cette
+//  dernière est la borne du graphe i(t), qui doit cadrer charge ET décharge
+//  sur un même axe. L'employer ici serait faux dès que R1 et R2 diffèrent
+//  nettement — avec R1 = 50 kΩ et R2 = 100 Ω, le courant de charge vaut 1/500
+//  de cette pleine échelle et passerait sous la résolution presque aussitôt.
+// ─────────────────────────────────────────────────────────────────────
+function iFullScale_mA() {
+  return sim.E / (sim.phase === 'discharge' ? sim.R2 : sim.R1) * 1000;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Seuil sous lequel une mesure s'affiche comme un zéro sur ce calibre.
+//  Défini à part de fmtScale() pour être testable sans passer par le
+//  formatage : le critère d'arrêt tourne dans la boucle d'échantillonnage,
+//  où l'on ne veut pas construire une chaîne par point.
+// ─────────────────────────────────────────────────────────────────────
+function scaleResolution(fullScale) {
+  const scale = Math.abs(fullScale);
+  if (!isFinite(scale) || scale === 0) return 0;
+  const dec = 2 - Math.floor(Math.log10(scale));
+  // dec ≤ 0 : fmtScale délègue à fmtSig3, qui n'arrondit pas à zéro tout seul
+  return dec <= 0 ? scale / 1000 : 0.5 * Math.pow(10, -dec);
+}
+
+// ─────────────────────────────────────────────────────────────────────
 //  Intensité instantanée du courant (A).
 //  Charge   : i = (U − Uc) / R1
 //  Décharge : i = −Uc / R2
 //  Idle     : i = 0
 // ─────────────────────────────────────────────────────────────────────
 function currentI() {
-  if (sim.phase === 'charge')    return (sim.U - sim.Uc) / sim.R1;
+  if (sim.phase === 'charge')    return (sim.E - sim.Uc) / sim.R1;
   if (sim.phase === 'discharge') return -sim.Uc / sim.R2;
   return 0;
 }

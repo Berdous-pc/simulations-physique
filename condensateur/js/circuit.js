@@ -252,7 +252,7 @@ function drawCapacitor(cx, cy, active) {
   const nRows = Math.ceil(nIons / CAP_IONS_COLS);
   const bh    = Math.max(80 * sc, nRows * 18 * sc + 16 * sc);
 
-  const chargeRatio = sim.U > 0 ? Math.min(sim.Uc / sim.U, 1) : 0;
+  const chargeRatio = sim.E > 0 ? Math.min(sim.Uc / sim.E, 1) : 0;
   const leftX  = cx - gap / 2;
   const rightX = cx + gap / 2;
 
@@ -443,8 +443,8 @@ function initElectrons() {
   wireN0      = nWire;
   wireSettled = false;
 
-  wireSpeedK = (sim.U > 0 && sim.C > 0)
-    ? (nIonsFromC() * L) / (nWire * sim.C * sim.U)
+  wireSpeedK = (sim.E > 0 && sim.C > 0)
+    ? (nIonsFromC() * L) / (nWire * sim.C * sim.E)
     : 1;
 }
 
@@ -603,8 +603,8 @@ function updateElectrons(path, I_now, dt) {
   }
 
   if (nOnPlateLeft === targetLeft && nOnPlateRight === targetRight) {
-    const U_finale = isCharge ? sim.U : 0;
-    const U_ref    = Math.max(Math.abs(isCharge ? sim.U : sim.U0_dis), 0.01);
+    const U_finale = isCharge ? sim.E : 0;
+    const U_ref    = Math.max(Math.abs(isCharge ? sim.E : sim.U0_dis), 0.01);
     if (Math.abs(sim.Uc - U_finale) / U_ref < 0.01) wireSettled = true;
   }
 }
@@ -695,7 +695,7 @@ function drawScene(dt_scene) {
 
   // ── Flèches de courant ──
   const I         = currentI();
-  const threshold = (sim.U / Math.min(sim.R1, sim.R2)) * 0.005;
+  const threshold = (sim.E / Math.min(sim.R1, sim.R2)) * 0.005;
 
   if (chg && Math.abs(I) > threshold) {
     drawCurrentArrow(A.x,         A.y, r1.lx,       A.y);
