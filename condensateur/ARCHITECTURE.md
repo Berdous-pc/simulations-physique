@@ -44,9 +44,8 @@ Tout le CSS de la page. Organisé dans cet ordre :
 | Splitter `#left-splitter` | Barre `6px`, `cursor: row-resize`, bleu au survol/drag |
 | Panneau droit `#panel` | Fond `#e8e4de`, `overflow-y: auto`, `font-size: clamp(...)` |
 | Zone graphes `#graph-area` | Flex colonne, `flex: 2` |
-| Barre de contrôle graphes | Boutons gauche (mode + sélecteurs `.graph-select`) et droite (réticule/zoom/pan) |
-| Canvases graphes | `.graph-wrap`, `canvas` |
-| Tooltip hover | `#graph-hover-tooltip`, position absolute |
+| Barre de contrôle graphes | Boutons gauche (mode + sélecteurs `.graph-select`) et droite (réticule/zoom/pan). Dimensions pilotées par les variables `--gctl-*` posées sur `#graph-area` |
+| Canvases graphes | `.graph-wrap` porte le cadre (bordure, `border-radius: 8px`, ombre) ; le `canvas` le remplit bord à bord |
 | Panneau — composants | `.section-title`, `.param-row`, `.btn`, `.readout`, `#state-indicator` |
 | Contrôle | `.panel-title`, `.panel-section`, `.sep`, `#btn-playpause`, `.slider-ticks` |
 | Options | `.btn-toggle-one#btn-toggle-graph` — masque/affiche `#graph-area` + `#left-splitter` (classe `#left-col.graph-off`) |
@@ -83,12 +82,14 @@ Objet central qui contient tout l'état de la simulation :
 
 - `tau()` — constante de temps de la phase courante (s) : `R1·C` ou `R2·C`
 - `currentI()` — intensité instantanée (A)
-- `fmtSig3(value)` — formate un nombre en 3 chiffres significatifs, virgule française
+- `fmtSig3(value)` — formate un nombre en 3 chiffres significatifs, virgule française. Écriture décimale sur `[0,01 ; 1000[`, scientifique **des deux côtés** de cet intervalle. La borne basse est indispensable : sans elle, `Uc` décroissant exponentiellement finissait affiché « 0,000000100 », puis provoquait un `RangeError: toFixed() digits argument must be between 0 and 100` vers 1e-300 (le nombre de décimales demandé suivait l'ordre de grandeur, sans borne)
+- `quantizeToScale(value, fullScale)` — renvoie 0 en dessous de `fullScale/1000`, soit 3 chiffres significatifs par rapport à la pleine échelle : modélise la résolution d'un appareil de mesure réel. Appliqué aux encarts de valeurs instantanées (pleine échelle `U` et `U/Rmin`) et aux étiquettes de survol des graphes (pleine échelle = étendue du cadrage vertical). Sans lui, `Uc` et `i` — qui ne s'annulent jamais — affichaient indéfiniment des « 3,17×10⁻⁹ V » exacts et inutiles
   (écriture normale si |v| < 1000, écriture scientifique sinon)
 - `fmtMs(ms)` — formate une durée en "X ms" ou "X s"
 - `fmtTau(ms)` — formate une constante de temps
-- `setTimeWindow(ms)` — modifie la fenêtre d'affichage
-- `autoTimeWindow()` — recale la fenêtre sur 20τ (τ de la phase courante) et réactive l'auto-scroll
+- `minTimeWindowMs()` — fenêtre minimale = **cap du zoom avant**, calé sur `τ/20` (plancher 1 ms). Sans cap, les graduations finissaient par partager tous leurs chiffres de poids fort. Calé sur τ et non sur une durée fixe, parce que c'est τ qui donne l'échelle du phénomène ; laisse un facteur ~400 entre la vue « Adapter » et le zoom maximal
+- `setTimeWindow(ms)` — modifie la fenêtre d'affichage, en la bornant par `minTimeWindowMs()`
+- `autoTimeWindow()` — recale la fenêtre sur `20τ × GRAPH_WINDOW_MARGIN` (τ de la phase courante) et réactive l'auto-scroll. Appelée une fois au chargement de `sim.js` pour poser le cadrage initial
 - `resetGraphs()` — vide les tableaux de points et remet la vue à t=0
 
 ---
@@ -159,7 +160,14 @@ IIFE `initSplitter()` attachée au chargement du fichier. Gère le redimensionne
 
 - `toggleGraphMode()` — bascule entre modes Synchronisé et Continu
 - `onGraphTabChange(slot, key)` — change la grandeur (`'Uc'`/`'i'`/`'q'`) affichée sur le graphe 1 ou 2
-- `graphDefFor(key)` — renvoie les données/couleur/échelle Y pour une grandeur donnée
+- `graphStyleFor(key)` — couleur, échelle Y, unité et nom (`name` : `Uc`/`i`/`q`) d'une grandeur, **sans** construire la série de points (appelée à chaque `mousemove`)
+- `graphDefFor(key)` — `graphStyleFor(key)` + la série de points correspondante
+- `graphTimeAxis(endMs)` — `{div, unit}` : unité unique de l'axe des temps (ms ou s) pour toute la fenêtre. `fmtMs()` tranchait valeur par valeur et pouvait mélanger « 500 ms » et « 1,00 s » sur un même axe ; l'unité vit désormais dans le titre, les graduations ne portent que des nombres. `fmtMs()` reste utilisé pour les étiquettes de survol, qui se lisent seules.
+- `axisFormat(step, maxAbs)` — `{suffix, fmt(v)}` : format commun à **toutes** les graduations d'un axe. Nombre de décimales imposé par le **pas seul** (borné à 6) ; écriture décimale conservée tant que les valeurs tiennent dans `[10⁻³, 10⁴[`, sinon facteur `×10ⁿ` commun sorti dans `suffix` (donc dans le titre d'axe, pas sur chaque graduation).
+
+  Motivation : `fmtSig3()` décidait pour chaque valeur isolément, d'où des axes portant « 500 » puis « 1,00×10³ ». Effet de bord bien pire que l'esthétique — la largeur des étiquettes sert à estimer le nombre de graduations qui tiennent, et une étiquette de 8 caractères faisait tomber cette estimation à 2 graduations alors que la place ne manquait pas.
+
+  **Pas de plafond à 3 chiffres significatifs**, volontairement : sur un axe zoomé loin de l'origine les graduations partagent leurs chiffres de poids fort (50,00 s / 50,02 s / 50,04 s…) et un tel plafond les rendait toutes identiques. Le pas venant de `niceStep()` (toujours 1/2/5 × 10ⁿ), on retombe de toute façon sur ≤ 3 chiffres significatifs dès que l'axe part de zéro — soit tous les cadrages courants.
 - `toggleGraphZoom()` — active/désactive le mode zoom par sélection rectangulaire
 - `toggleGraphCursor()` — active/désactive le réticule libre
 
@@ -181,16 +189,52 @@ Attaché aux deux canvas :
 | Clic-glissé (zoom actif) | Rectangle de sélection → zoom sur la zone |
 | Molette | Zoom centré sur la position X du curseur |
 
+#### Métriques du repère (`graphFont`, `graphPads`, `graphPadsFor`)
+
+**Source unique** des marges et de la taille de police, partagée par le rendu et
+par les handlers souris (pan, molette, rectangle de zoom) — qui codaient
+auparavant trois marges gauches différentes en dur, d'où un zoom décalé par
+rapport au rectangle tracé.
+
+- `graphFont(h)` — police dérivée de la hauteur réelle du canvas :
+  `max(11, min(26, h × 0,057))`. Calibré pour redonner les 22 px historiques
+  à la taille de fenêtre nominale (zone graphes ≈ 385 px de haut en 1080p).
+- `graphPads(cv, yMin, yMax)` — `{fs, yStep, yFmt, t, r, b, l}` ; `l` est mesuré
+  sur la largeur réelle des labels Y, les autres marges dérivent de `fs`. `b` et
+  `l` incluent chacun un `titleGap` (≈ `fs × 1,15`) réservé au titre d'axe, en
+  plus de la bande des graduations. `yStep` et `yFmt` sont renvoyés pour que
+  `drawGraph` trace exactement les graduations sur lesquelles `l` a été mesuré,
+  et avec le même format.
+- `graphPadsFor(canvasId)` — idem pour la grandeur affichée par ce canvas.
+
 #### Rendu (`drawGraph`)
 
-Paramètres : `(canvasId, data, color, yMin, yMax, yUnit)`
+Paramètres : `(canvasId, data, color, yMin, yMax, yUnit, yName)`
 
 Étapes de rendu dans l'ordre :
-1. Calcul de la marge gauche dynamique selon la largeur des labels Y
-2. Fond blanc, grille X (temps) avec pas "joli", grille Y avec pas "joli"
-3. Courbe (trait plein, sans halo)
-4. Rectangle de zoom en cours (si applicable)
-5. Hover : réticule libre ou point snappé selon le mode actif
+1. Marges et police via `graphPads` (sortie anticipée si la zone est trop petite)
+2. Fond blanc, grille X (temps) avec pas "joli", grille Y avec pas "joli" —
+   le **nombre** de graduations n'est pas fixe : il est déduit de la place
+   disponible (largeur mesurée des étiquettes X, hauteur pour Y), sinon elles
+   se chevauchaient sur une fenêtre graphique étroite ou courte. En X le
+   calcul est circulaire (largeur ← format ← pas ← nombre de graduations) et
+   se résout en deux passes, en partant de 6 et en redescendant —
+   la ligne `y = 0` est appuyée (`rgba(44,62,80,0.38)`, 1,4 px), essentielle
+   sur `i(t)` qui change de signe entre charge et décharge
+3. Axes X et Y en `#2c3e50` (1,5 px), puis titres d'axes : `t (ms|s)` centré
+   sous les graduations, `yName (yUnit)` pivoté à −90° le long de l'axe Y —
+   chacun préfixé du `suffix` (`×10ⁿ`) de son format d'axe s'il y en a un
+4. Courbe (trait plein, sans halo, `lineJoin: 'round'`)
+5. Rectangle de zoom en cours (si applicable)
+6. Hover : réticule libre ou point snappé selon le mode actif — l'étiquette
+   est tracée par `drawHoverPill()`
+
+#### `drawHoverPill(gc, label, ax, ay, color, pad, gw, gh, fs)`
+
+Cartouche arrondi blanc bordé de la couleur de la courbe, placé à droite du
+point si la place y est, à gauche sinon, puis recadré dans le repère. Partagé
+par les deux branches de survol (réticule libre et point snappé), dont le
+calcul de placement était auparavant dupliqué.
 
 ---
 
@@ -240,8 +284,10 @@ requestAnimationFrame(loop)  → démarre la boucle
 
 ```
 index.html
-  └── <script src="js/sim.js">       expose : sim, tau, currentI, fmtSig3, fmtMs, fmtTau,
-  │                                           resetGraphs, setTimeWindow, autoTimeWindow
+  └── <script src="js/sim.js">       expose : sim, tau, currentI, fmtSig3, quantizeToScale,
+  │                                              fmtMs, fmtTau,
+  │                                           resetGraphs, setTimeWindow, autoTimeWindow,
+  │                                           minTimeWindowMs, GRAPH_WINDOW_MARGIN
   │
   └── <script src="js/circuit.js">   dépend de : sim, currentI, tau
   │                                  expose : canvas, ctx, pt, resize, buildPoints,
@@ -254,8 +300,10 @@ index.html
   │                                           CAP_GAP_BASE, CAP_PLATE_W_BASE
   │
   └── <script src="js/graph.js">     dépend de : sim, setTimeWindow
-  │                                  expose : drawGraph, initGraphHover,
-  │                                           toggleGraphMode, onGraphTabChange, graphDefFor,
+  │                                  expose : drawGraph, drawHoverPill, initGraphHover,
+  │                                           toggleGraphMode, onGraphTabChange,
+  │                                           graphStyleFor, graphDefFor, graphTimeAxis,
+  │                                           graphFont, graphPads, graphPadsFor,
   │                                           toggleGraphZoom, toggleGraphCursor,
   │                                           prevGraphView, pushGraphView
   │

@@ -27,7 +27,9 @@ const sim = {
   graphUc: [], graphI: [],
 
   // Fenêtre d'affichage (zoom X des graphes)
-  graphWindowMs: 60000,
+  // Valeur posée juste après la déclaration de sim, par autoTimeWindow(),
+  // pour ne pas dupliquer ici le calcul 20τ × marge.
+  graphWindowMs: 0,
 
   // Décalage de vue (pan horizontal des graphes)
   viewOffsetMs: 0,     // bord gauche de la fenêtre visible (ms absolues)
@@ -50,9 +52,14 @@ const sim = {
 
 // ─────────────────────────────────────────────────────────────────────
 //  Formatage générique des nombres affichés dans l'interface.
-//  - 0 ≤ |v| < 1000  → écriture normale, 3 chiffres significatifs max
-//  - |v| ≥ 1000       → écriture scientifique, mantisse à 2 décimales
+//  - 0,01 ≤ |v| < 1000 → écriture normale, 3 chiffres significatifs
+//  - au-delà des deux bornes → écriture scientifique, mantisse à 2 décimales
 //  Virgule décimale française dans tous les cas.
+//
+//  Les DEUX bornes comptent : seule la borne haute existait, si bien que les
+//  valeurs très petites restaient en décimal avec autant de décimales qu'il
+//  le fallait — Uc décroissant exponentiellement finissait affiché
+//  « 0,000000100 ». Toujours 3 chiffres significatifs, mais illisible.
 // ─────────────────────────────────────────────────────────────────────
 const SUPERSCRIPT_DIGITS = { '-': '⁻', '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
                               '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹' };
@@ -65,8 +72,14 @@ function fmtSig3(value) {
   if (!isFinite(value) || value === 0) return '0';
   const neg = value < 0;
   const av  = Math.abs(value);
+  // Garde-fou purement numérique (aucune décision d'affichage ici, cf.
+  // quantizeToScale) : en dessous, Math.pow(10, exp) sous-déborde à 0 et la
+  // mantisse partirait à l'infini. Uc et i, qui décroissent exponentiellement
+  // sans jamais s'annuler, atteignent bel et bien ces valeurs si on laisse le
+  // mode Continu tourner longtemps.
+  if (av < 1e-300) return '0';
   let out;
-  if (av < 1000) {
+  if (av >= 0.01 && av < 1000) {
     const magnitude = Math.floor(Math.log10(av));
     const decimals  = Math.max(0, 2 - magnitude);
     out = av.toFixed(decimals);
@@ -79,6 +92,24 @@ function fmtSig3(value) {
   }
   out = out.replace('.', ',');
   return neg ? '-' + out : out;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Résolution d'affichage : 3 chiffres significatifs par rapport à la PLEINE
+//  ÉCHELLE de la grandeur, ce qui revient à modéliser un appareil de mesure
+//  réel. En dessous, on renvoie 0 franc.
+//
+//  Sans ce seuil, Uc et i — qui décroissent exponentiellement et ne
+//  s'annulent jamais — continuaient d'afficher indéfiniment des valeurs de
+//  plus en plus petites, désormais en écriture scientifique : « 3,17×10⁻⁹ V »
+//  est exact et parfaitement inutile. Un voltmètre affiche 0.
+//
+//  Le seuil est relatif et non absolu : la pleine échelle varie ici d'un
+//  facteur 500 entre les réglages extrêmes de R et C, un seuil fixe serait
+//  soit trop grossier soit sans effet selon les paramètres choisis.
+// ─────────────────────────────────────────────────────────────────────
+function quantizeToScale(value, fullScale) {
+  return Math.abs(value) < Math.abs(fullScale) / 1000 ? 0 : value;
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -116,21 +147,44 @@ function currentI() {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+//  Fenêtre d'affichage minimale — cap du zoom avant.
+//  Sans cap, on pouvait descendre à quelques millisecondes : les graduations
+//  finissaient par partager tous leurs chiffres de poids fort et le zoom
+//  n'apprenait plus rien. Le cap est calé sur τ (et non sur une durée fixe)
+//  parce que c'est τ qui donne l'échelle du phénomène : τ/20 laisse un
+//  facteur ~400 entre la vue « Adapter » (20τ) et le zoom maximal, ce qui
+//  couvre largement la lecture de la tangente à l'origine.
+// ─────────────────────────────────────────────────────────────────────
+function minTimeWindowMs() {
+  return Math.max(1, tau() * 1000 / 20);
+}
+
+// ─────────────────────────────────────────────────────────────────────
 //  Mise à jour de la fenêtre d'affichage (zoom X uniquement).
 // ─────────────────────────────────────────────────────────────────────
 function setTimeWindow(ms) {
-  sim.graphWindowMs = Math.max(100, ms);
+  sim.graphWindowMs = Math.max(minTimeWindowMs(), ms);
 }
+
+// Marge ajoutée à droite des 20τ visés. Sans elle, la fenêtre valait
+// exactement 20τ : la dernière graduation tombait pile sur le bord droit du
+// repère et son étiquette, centrée sur ce bord, était coupée en deux
+// (« 60, » au lieu de « 60,0 »). 6 % suffisent à la faire tenir en entier
+// sans décaler visiblement le cadrage.
+const GRAPH_WINDOW_MARGIN = 1.06;
 
 // ─────────────────────────────────────────────────────────────────────
 //  Bouton "Adapter" : cale la fenêtre sur 20τ (τ de la phase courante),
 //  remet la vue à t=0 et réactive l'auto-scroll.
 // ─────────────────────────────────────────────────────────────────────
 function autoTimeWindow() {
-  setTimeWindow(20 * tau() * 1000);
+  setTimeWindow(20 * tau() * 1000 * GRAPH_WINDOW_MARGIN);
   sim.viewOffsetMs = 0;
   sim.userPanned   = false;
 }
+
+// Cadrage initial, identique à celui du bouton "Adapter".
+autoTimeWindow();
 
 // ─────────────────────────────────────────────────────────────────────
 //  Efface les données des graphes et remet la vue à t=0.

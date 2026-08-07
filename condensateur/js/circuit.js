@@ -44,9 +44,11 @@ function resize() {
     for (const id of ['graph-Uc', 'graph-i']) {
       const c      = document.getElementById(id);
       const wrap   = c.parentElement;
-      const wr     = wrap.getBoundingClientRect();
-      const cCssW  = Math.floor(wr.width);
-      const cCssH  = Math.max(Math.floor(wr.height), 20);
+      // clientWidth/Height et non getBoundingClientRect() : depuis que c'est
+      // le wrapper qui porte la bordure du cadre, le rect inclurait ces 2 px
+      // et le canvas déborderait de son cadre arrondi.
+      const cCssW  = Math.floor(wrap.clientWidth);
+      const cCssH  = Math.max(Math.floor(wrap.clientHeight), 20);
       c.style.width  = cCssW + 'px';
       c.style.height = cCssH + 'px';
       c.width  = Math.round(cCssW * dpr);

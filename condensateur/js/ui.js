@@ -119,8 +119,11 @@ function updateParam(name, val) {
 //  Met à jour les encarts de valeurs instantanées.
 // ─────────────────────────────────────────────────────────────────────
 function updateReadouts() {
-  document.getElementById('ro-Uc').textContent      = fmtSig3(sim.Uc);
-  document.getElementById('ro-i').textContent       = fmtSig3(currentI() * 1000);
+  // Pleines échelles : U pour la tension, U/Rmin pour l'intensité — les
+  // mêmes bornes que celles des graphes (cf. graphStyleFor).
+  const iMax_mA = sim.U / Math.min(sim.R1, sim.R2) * 1000;
+  document.getElementById('ro-Uc').textContent      = fmtSig3(quantizeToScale(sim.Uc, sim.U));
+  document.getElementById('ro-i').textContent       = fmtSig3(quantizeToScale(currentI() * 1000, iMax_mA));
   document.getElementById('ro-tau-chg').textContent = fmtTau(sim.R1 * sim.C * 1000);
   document.getElementById('ro-tau-dis').textContent = fmtTau(sim.R2 * sim.C * 1000);
 
@@ -207,10 +210,10 @@ function loop(ts) {
   drawScene(dt);
 
   const def1 = graphDefFor(sim.graphTab1);
-  drawGraph('graph-Uc', def1.data, def1.color, def1.yMin, def1.yMax, def1.unit);
+  drawGraph('graph-Uc', def1.data, def1.color, def1.yMin, def1.yMax, def1.unit, def1.name);
 
   const def2 = graphDefFor(sim.graphTab2);
-  drawGraph('graph-i', def2.data, def2.color, def2.yMin, def2.yMax, def2.unit);
+  drawGraph('graph-i', def2.data, def2.color, def2.yMin, def2.yMax, def2.unit, def2.name);
 
   requestAnimationFrame(loop);
 }

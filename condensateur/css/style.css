@@ -111,8 +111,17 @@ main {
   overflow-y: auto;
 }
 
-/* Zone graphes */
+/* Zone graphes.
+   Les trois variables ci-dessous dimensionnent d'un seul endroit tous les
+   contrôles de la barre (boutons + sélecteurs) : sans elles, chaque règle
+   reposait ses propres px fixes et la barre gardait sa hauteur pleine sur
+   une fenêtre courte, au détriment des tracés. */
 #graph-area {
+  --gctl-h:  clamp(24px, 3.2vh, 30px);
+  --gctl-fs: clamp(11px, 1vw, 13px);
+  --gctl-px: clamp(6px, 0.8vw, 12px);
+  --gctl-gap: clamp(4px, 0.5vw, 6px);
+
   flex: 2;
   background: #faf9f6;
   border-top: 1px solid #c8c0b4;
@@ -124,24 +133,31 @@ main {
   position: relative;
 }
 
-/* Barre de contrôle graphes — même découpage 2 colonnes (flex:1 + gap 8px)
-   que .graph-graphs-row ci-dessous, pour aligner chaque colonne sur son graphe. */
+/* Barre de contrôle graphes — même découpage 2 colonnes (flex:1 + gap)
+   que .graph-graphs-row ci-dessous, pour aligner chaque colonne sur son
+   graphe. Fond et filet propres pour la détacher des tracés (cf. la barre
+   #graph-ctrl de champ_uniforme). */
 #graph-time-control {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: clamp(6px, 0.8vw, 8px);
   flex-shrink: 0;
-  padding: 6px 10px 4px;
+  padding: clamp(4px, 0.5vh, 6px) clamp(6px, 0.8vw, 10px);
+  background: #f0ede8;
+  border-bottom: 1px solid #c8c0b4;
 }
 
-/* Colonne alignée sur un graphe (1 ou 2) */
+/* Colonne alignée sur un graphe (1 ou 2).
+   `nowrap` volontaire : en autorisant le retour à la ligne, les quatre
+   boutons de droite passaient au-dessous sur une fenêtre étroite et
+   doublaient la hauteur de la barre. Ils rétrécissent au lieu de wrapper. */
 .graph-ctrl-col {
   flex: 1;
   min-width: 0;
   display: flex;
-  gap: 6px;
+  gap: var(--gctl-gap);
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 
 /* Colonne du graphe 2 : sélecteur à gauche, boutons droite poussés à droite */
@@ -152,18 +168,25 @@ main {
 /* Groupe droite : Réticule, Précédent, Zoom, Adapter */
 #graph-btns-right {
   display: flex;
-  gap: 6px;
+  gap: var(--gctl-gap);
   align-items: center;
-  flex-shrink: 0;
+  min-width: 0;
 }
 
 /* Style commun boutons gauche */
+/* inline-flex + line-height:1 : les glyphes des boutons iconiques (+, ←, 🔍)
+   sont nettement plus gros que --gctl-fs ; en inline-block leur line-box
+   dépassait la hauteur fixe du bouton et le symbole se décalait vers le bas.
+   Le centrage est ici géométrique, indépendant des métriques de la police. */
 #btn-graph-mode {
-  height: 30px; padding: 0 12px; font-weight: 700; line-height: 30px;
+  height: var(--gctl-h); padding: 0 var(--gctl-px); font-weight: 700;
   background: #e8e4de; color: #5a6a78;
   border: 1px solid #b0a898; border-radius: 5px;
   cursor: pointer; box-sizing: border-box; white-space: nowrap;
-  font-size: 13px;
+  font-family: inherit; font-size: var(--gctl-fs);
+  display: inline-flex; align-items: center; justify-content: center;
+  line-height: 1;
+  min-width: 0; overflow: hidden;
 }
 #btn-graph-mode:hover { background: #d0ccc4; color: #2c3e50; }
 #btn-graph-mode.active {
@@ -172,15 +195,31 @@ main {
 
 /* Style commun boutons droite */
 #graph-btns-right button {
-  height: 30px; padding: 0 12px; font-weight: 700; line-height: 30px;
+  height: var(--gctl-h); padding: 0 var(--gctl-px); font-weight: 700;
   background: #e8e4de; color: #5a6a78;
   border: 1px solid #b0a898; border-radius: 5px;
   cursor: pointer; box-sizing: border-box; white-space: nowrap;
+  font-family: inherit; font-size: var(--gctl-fs);
+  display: inline-flex; align-items: center; justify-content: center;
+  line-height: 1;
+  flex-shrink: 0;
 }
-#btn-graph-cursor  { font-size: 20px; padding: 0 10px !important; }
-#btn-graph-prev    { font-size: 16px; }
-#btn-graph-zoom    { font-size: 16px; }
-#btn-graph-auto    { font-size: 13px; }
+/* Boutons purement iconiques : carrés, padding réduit */
+#btn-graph-cursor,
+#btn-graph-prev,
+#btn-graph-zoom {
+  padding: 0;
+  width: var(--gctl-h);
+  font-size: calc(var(--gctl-fs) * 1.25);
+}
+#btn-graph-cursor { font-size: calc(var(--gctl-fs) * 1.55); }
+
+/* Le mot « Adapter » disparaît quand la barre devient étroite : l'icône
+   loupe suffit, et le title=… reste là pour lever l'ambiguïté. */
+@media (max-width: 900px) {
+  #btn-graph-auto .btn-label { display: none; }
+  #btn-graph-auto { padding: 0; width: var(--gctl-h); }
+}
 
 #btn-graph-zoom.active     { background: #2a6aaa; color: #fff; border-color: #1a5a9a; }
 #btn-graph-cursor.active   { background: #2a6aaa; color: #fff; border-color: #1a5a9a; }
@@ -195,24 +234,30 @@ main {
 .graph-graphs-row {
   display: flex;
   flex: 1;
-  gap: 8px;
+  gap: clamp(6px, 0.8vw, 10px);
   min-height: 0;
   overflow: hidden;
-  padding: 0 10px 8px;
+  padding: clamp(6px, 0.8vh, 10px) clamp(6px, 0.8vw, 10px);
 }
+
+/* Cadre du graphe : c'est le wrapper qui porte bordure, arrondi et ombre,
+   le canvas remplit l'intérieur bord à bord (motif .chart-wrap des pages
+   équilibre/cinétique). */
 .graph-wrap {
   flex: 1;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
+  min-height: 0;
+  background: #ffffff;
+  border: 1px solid #c8c0b4;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
   overflow: hidden;
 }
 .graph-select {
-  height: 30px;
-  padding: 0 8px;
+  height: var(--gctl-h);
+  padding: 0 clamp(4px, 0.6vw, 8px);
   font-family: inherit;
-  font-size: 13px;
+  font-size: var(--gctl-fs);
   font-weight: 700;
   color: #5a6a78;
   background: #e8e4de;
@@ -221,33 +266,15 @@ main {
   cursor: pointer;
   box-sizing: border-box;
   flex-shrink: 0;
+  min-width: 0;
 }
 .graph-select:hover  { background: #d0ccc4; color: #2c3e50; }
 .graph-select:focus  { outline: none; border-color: #2a6aaa; }
 .graph-wrap canvas {
-  background: #ffffff;
-  border: 1px solid #c8c0b4;
-  border-radius: 3px;
   display: block;
-  flex: 1;
-  min-height: 0;
+  width: 100%;
+  height: 100%;
   cursor: pointer;
-}
-
-/* Tooltip hover graphe */
-#graph-hover-tooltip {
-  display: none;
-  position: absolute;
-  z-index: 50;
-  background: #2c3e50;
-  color: #fff;
-  font-size: 13px;
-  font-family: monospace;
-  padding: 5px 10px;
-  border-radius: 5px;
-  pointer-events: none;
-  white-space: nowrap;
-  line-height: 1.6;
 }
 
 /* ── Panneau droit : styles communs ── */
