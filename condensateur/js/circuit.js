@@ -299,9 +299,9 @@ function drawResistor(cx, cy, label, active, discharge, inside) {
 //
 //  Le signe est tracé au trait et non en glyphe : à ces tailles, un
 //  caractère « − » de 7 px se réduisait à une tache grise après
-//  antialiasing. Le dégradé radial donne le volume ; seuls les ions portent
-//  en plus un reflet, les électrons devant rester sobres vu leur densité.
-//  Aucune bille n'est cerclée : les électrons chevauchent leur ion.
+//  antialiasing. Le volume vient du seul dégradé radial : ni halo, ni reflet
+//  — les électrons chevauchent leur ion, tout cerne les en séparerait, et
+//  le rendu doit rester sobre vu la densité de billes le long du fil.
 // ═══════════════════════════════════════════════════════════════════════
 const ELECTRON_R = 6;
 const ION_R      = 9;
@@ -309,8 +309,7 @@ const ION_R      = 9;
 const PAL_ELECTRON = { light: '#6ba6de', dark: '#1d4f85', edge: 'rgba(14,42,72,0.85)' };
 const PAL_ION      = { light: '#e79063', dark: '#a8431c', edge: 'rgba(118,44,14,0.85)' };
 
-// `gloss` : reflet spéculaire.
-function drawChargeBead(x, y, r, sign, pal, gloss) {
+function drawChargeBead(x, y, r, sign, pal) {
   ctx.save();
 
   const g = ctx.createRadialGradient(x - r * 0.35, y - r * 0.4, r * 0.12, x, y, r);
@@ -322,13 +321,6 @@ function drawChargeBead(x, y, r, sign, pal, gloss) {
   ctx.strokeStyle = pal.edge;
   ctx.lineWidth   = strokeW(0.9);
   ctx.stroke();
-
-  if (gloss) {
-    ctx.fillStyle = 'rgba(255,255,255,0.45)';
-    ctx.beginPath();
-    ctx.ellipse(x - r * 0.3, y - r * 0.36, r * 0.32, r * 0.22, -0.5, 0, Math.PI * 2);
-    ctx.fill();
-  }
 
   const a = r * 0.52;
   ctx.strokeStyle = '#ffffff';
@@ -345,12 +337,12 @@ function drawChargeBead(x, y, r, sign, pal, gloss) {
 function drawElectronDot(x, y, alpha) {
   ctx.save();
   ctx.globalAlpha = alpha;
-  drawChargeBead(x, y, ELECTRON_R, -1, PAL_ELECTRON, false);
+  drawChargeBead(x, y, ELECTRON_R, -1, PAL_ELECTRON);
   ctx.restore();
 }
 
 function drawIonDot(x, y) {
-  drawChargeBead(x, y, ION_R, +1, PAL_ION, true);
+  drawChargeBead(x, y, ION_R, +1, PAL_ION);
 }
 
 // ─────────────────────────────────────────────────────────────────────

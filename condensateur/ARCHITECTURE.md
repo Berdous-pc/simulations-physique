@@ -172,15 +172,14 @@ Modèle discret : des électrons (billes bleues `−`) circulent le long d'un ch
 
 ##### Rendu des charges
 
-`drawChargeBead(x, y, r, sign, pal, gloss)` — bille commune aux électrons
+`drawChargeBead(x, y, r, sign, pal)` — bille commune aux électrons
 (`ELECTRON_R = 6`) et aux ions (`ION_R = 9`) : dégradé radial, liseré, et **signe
 tracé au trait plutôt qu'en glyphe** — l'ancien caractère « − » rendu en police
 7 px se réduisait à une tache grise après antialiasing.
 
-Aucune bille n'est cerclée d'un halo couleur fond : les électrons doivent
-**chevaucher** leur ion, un halo les en séparerait. Seuls les ions portent le
-reflet spéculaire (`gloss`), qui alourdirait le rendu sur les électrons vu leur
-densité le long du fil.
+Ni halo couleur fond, ni reflet spéculaire : les électrons doivent **chevaucher**
+leur ion, tout cerne les en séparerait, et le rendu doit rester sobre vu la
+densité de billes le long du fil.
 
 `drawElectronDot(x, y, alpha)` et `drawIonDot(x, y)` en dérivent.
 
