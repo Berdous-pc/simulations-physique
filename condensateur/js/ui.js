@@ -206,17 +206,11 @@ function loop(ts) {
   // ── Rendu ──
   drawScene(dt);
 
-  const Imax = sim.U / Math.min(sim.R1, sim.R2) * 1000;
+  const def1 = graphDefFor(sim.graphTab1);
+  drawGraph('graph-Uc', def1.data, def1.color, def1.yMin, def1.yMax, def1.unit);
 
-  if (sim.graphMode1 === 'q') {
-    const C_uF  = sim.C * 1e6;
-    const dataQ = sim.graphUc.map(p => ({ t: p.t, v: p.v * C_uF }));
-    drawGraph('graph-Uc', dataQ, '#2a6aaa', 0, Math.max(sim.U * C_uF, 0.001) * 1.05, 'µC');
-  } else {
-    drawGraph('graph-Uc', sim.graphUc, '#2a6aaa', 0, Math.max(sim.U, 0.1), 'V');
-  }
-
-  drawGraph('graph-i', sim.graphI, '#b04020', -Imax * 1.1, Imax * 1.1, 'mA');
+  const def2 = graphDefFor(sim.graphTab2);
+  drawGraph('graph-i', def2.data, def2.color, def2.yMin, def2.yMax, def2.unit);
 
   requestAnimationFrame(loop);
 }

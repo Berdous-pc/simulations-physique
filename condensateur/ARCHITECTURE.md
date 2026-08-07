@@ -74,7 +74,7 @@ Objet central qui contient tout l'état de la simulation :
 | `viewOffsetMs` | ms | Bord gauche de la fenêtre visible (pan) |
 | `userPanned` | bool | Désactive l'auto-scroll si vrai |
 | `graphMode` | `'sync'` \| `'continuous'` | Mode d'enregistrement |
-| `graphMode1` | `'q'` \| `'Uc'` | Grandeur affichée sur le graphe gauche |
+| `graphTab1` / `graphTab2` | `'Uc'` \| `'i'` \| `'q'` | Grandeur affichée sur le graphe 1 / 2 |
 | `syncFrozen` | bool | Tracé figé (6τ atteint en mode sync) |
 | `paused` | bool | Simulation suspendue |
 | `timeScale` | number | Facteur d'accélération (0.1 à 5) |
@@ -158,7 +158,8 @@ IIFE `initSplitter()` attachée au chargement du fichier. Gère le redimensionne
 #### Fonctions de bascule UI
 
 - `toggleGraphMode()` — bascule entre modes Synchronisé et Continu
-- `toggleGraphMode1()` — bascule entre affichage q(t) et Uc(t) sur le graphe gauche
+- `onGraphTabChange(slot, key)` — change la grandeur (`'Uc'`/`'i'`/`'q'`) affichée sur le graphe 1 ou 2
+- `graphDefFor(key)` — renvoie les données/couleur/échelle Y pour une grandeur donnée
 - `toggleGraphZoom()` — active/désactive le mode zoom par sélection rectangulaire
 - `toggleGraphCursor()` — active/désactive le réticule libre
 
@@ -254,7 +255,7 @@ index.html
   │
   └── <script src="js/graph.js">     dépend de : sim, setTimeWindow
   │                                  expose : drawGraph, initGraphHover,
-  │                                           toggleGraphMode, toggleGraphMode1,
+  │                                           toggleGraphMode, onGraphTabChange, graphDefFor,
   │                                           toggleGraphZoom, toggleGraphCursor,
   │                                           prevGraphView, pushGraphView
   │

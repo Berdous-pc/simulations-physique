@@ -35,7 +35,10 @@ const sim = {
 
   // Mode d'enregistrement des graphes
   graphMode: 'sync',   // 'sync' | 'continuous'
-  graphMode1: 'q',     // 'q' : afficher q(t) = C·Uc(t) | 'Uc' : afficher Uc(t)
+
+  // Grandeur affichée sur chaque graphe : 'Uc' | 'i' | 'q'
+  graphTab1: 'q',
+  graphTab2: 'i',
 
   // Mode synchronisé
   syncFrozen: false,   // true quand le tracé est figé (6τ atteint)

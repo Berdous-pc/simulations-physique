@@ -67,20 +67,28 @@ function toggleGraphCursor() {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-//  Bascule le mode d'affichage du graphe gauche : q(t) ↔ Uc(t).
+//  Change la grandeur affichée sur le graphe 1 ou 2 (Uc/i/q).
 // ─────────────────────────────────────────────────────────────────────
-function toggleGraphMode1() {
-  sim.graphMode1 = sim.graphMode1 === 'Uc' ? 'q' : 'Uc';
-  const btn = document.getElementById('btn-graph-mode1');
-  if (sim.graphMode1 === 'q') {
-    btn.textContent = 'Affichage : Charge q(t)';
-    btn.classList.add('active');
-    document.getElementById('graph-Uc-title').textContent = 'q(t) — Charge de l\'armature positive (µC)';
-  } else {
-    btn.textContent = 'Affichage : Tension Uc(t)';
-    btn.classList.remove('active');
-    document.getElementById('graph-Uc-title').textContent = 'Uc(t) — Tension aux bornes du condensateur (V)';
+function onGraphTabChange(slot, key) {
+  if (slot === 1) sim.graphTab1 = key;
+  else             sim.graphTab2 = key;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Données + apparence du graphe pour une grandeur donnée ('Uc'|'i'|'q').
+// ─────────────────────────────────────────────────────────────────────
+function graphDefFor(key) {
+  const Imax = sim.U / Math.min(sim.R1, sim.R2) * 1000;
+  if (key === 'i') {
+    return { data: sim.graphI, color: '#b04020', yMin: -Imax * 1.1, yMax: Imax * 1.1, unit: 'mA' };
   }
+  if (key === 'q') {
+    const C_uF = sim.C * 1e6;
+    const data = sim.graphUc.map(p => ({ t: p.t, v: p.v * C_uF }));
+    return { data, color: '#2a8a55', yMin: 0, yMax: Math.max(sim.U * C_uF, 0.001) * 1.05, unit: 'µC' };
+  }
+  // 'Uc' par défaut
+  return { data: sim.graphUc, color: '#2a6aaa', yMin: 0, yMax: Math.max(sim.U, 0.1), unit: 'V' };
 }
 
 // ─────────────────────────────────────────────────────────────────────
