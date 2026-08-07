@@ -116,7 +116,7 @@ function initGraphHover() {
         const gw  = cv.clientWidth - 82 - 12;
         const dx  = (e.clientX - graphPan.startX) * (cv.clientWidth / r.width);
         const dMs = -(dx / gw) * sim.graphWindowMs;
-        const maxOffset = Math.max(0, sim.tAcq - sim.graphWindowMs);
+        const maxOffset = Math.max(0, sim.tTotal - sim.graphWindowMs);
         sim.viewOffsetMs = Math.max(0, Math.min(maxOffset, graphPan.startOffset + dMs));
         sim.userPanned   = true;
       }
@@ -173,9 +173,9 @@ function initGraphHover() {
       const frac = Math.max(0, Math.min(1, (mx - pad.l) / gw));
       const tUnderCursor = sim.viewOffsetMs + frac * sim.graphWindowMs;
       const factor = e.deltaY > 0 ? 1.25 : 0.8;
-      const newWindow = Math.max(200, Math.min(sim.tAcq * 2, sim.graphWindowMs * factor));
+      const newWindow = Math.max(200, sim.graphWindowMs * factor);
       const newOffset = tUnderCursor - frac * newWindow;
-      const maxOffset = Math.max(0, sim.tAcq - newWindow);
+      const maxOffset = Math.max(0, sim.tTotal - newWindow);
       pushGraphView();
       sim.graphWindowMs = newWindow;
       sim.viewOffsetMs  = Math.max(0, Math.min(maxOffset, newOffset));

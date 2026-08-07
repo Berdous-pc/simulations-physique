@@ -70,7 +70,6 @@ Objet central qui contient tout l'état de la simulation :
 | `U0_chg` / `U0_dis` | V | Conditions initiales de chaque phase |
 | `U`, `C`, `R1`, `R2` | — | Paramètres physiques |
 | `graphUc`, `graphI` | `{t, v}[]` | Données des courbes (Uc en V, I en mA) |
-| `tAcq` | ms | Durée d'acquisition maximale |
 | `graphWindowMs` | ms | Largeur de la fenêtre visible (zoom X) |
 | `viewOffsetMs` | ms | Bord gauche de la fenêtre visible (pan) |
 | `userPanned` | bool | Désactive l'auto-scroll si vrai |
@@ -87,8 +86,7 @@ Objet central qui contient tout l'état de la simulation :
 - `fmtMs(ms)` — formate une durée en "X ms" ou "X s"
 - `fmtTau(ms)` — formate une constante de temps
 - `setTimeWindow(ms)` — modifie la fenêtre d'affichage
-- `autoTimeWindow()` — recale la fenêtre sur `tAcq` et réactive l'auto-scroll
-- `updateAcqTime(idx)` — lit le slider de durée d'acquisition et remet à zéro
+- `autoTimeWindow()` — recale la fenêtre sur 20τ (τ de la phase courante) et réactive l'auto-scroll
 - `resetGraphs()` — vide les tableaux de points et remet la vue à t=0
 
 ---
@@ -240,8 +238,7 @@ requestAnimationFrame(loop)  → démarre la boucle
 ```
 index.html
   └── <script src="js/sim.js">       expose : sim, tau, currentI, fmtMs, fmtTau,
-  │                                           resetGraphs, setTimeWindow, autoTimeWindow,
-  │                                           updateAcqTime, TIME_VALUES
+  │                                           resetGraphs, setTimeWindow, autoTimeWindow
   │
   └── <script src="js/circuit.js">   dépend de : sim, currentI, tau
   │                                  expose : canvas, ctx, pt, resize, buildPoints,

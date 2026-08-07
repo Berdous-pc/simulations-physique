@@ -124,9 +124,6 @@ function updateReadouts() {
   document.getElementById('ro-tau-chg').textContent = fmtTau(sim.R1 * sim.C * 1000);
   document.getElementById('ro-tau-dis').textContent = fmtTau(sim.R2 * sim.C * 1000);
 
-  document.getElementById('lbl-acq-reached').style.display =
-    (sim.phase !== 'idle' && sim.tTotal >= sim.tAcq) ? 'inline' : 'none';
-
   if (sim.phase !== 'idle' && wireSettled) {
     const el = document.getElementById('state-text');
     if (sim.phase === 'charge') {
@@ -150,11 +147,10 @@ function loop(ts) {
   lastTime = ts;
 
   const simStopped = sim.paused
-    || sim.tTotal >= sim.tAcq
     || (sim.graphMode === 'sync' && sim.syncFrozen);
   const dt = simStopped
     ? 0
-    : Math.min(dtReal * sim.timeScale, sim.tAcq - sim.tTotal);
+    : dtReal * sim.timeScale;
 
   if (sim.phase !== 'idle' && dt > 0) {
     sim.t      += dt;

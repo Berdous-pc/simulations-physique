@@ -40,16 +40,13 @@
         <div id="graph-btns-left">
           <button id="btn-graph-mode" onclick="toggleGraphMode()" class="active">Mode : Synchronisé</button>
           <button id="btn-graph-mode1" onclick="toggleGraphMode1()" class="active">Affichage : Charge q(t)</button>
-          <span id="lbl-acq-reached" style="display:none;">
-            Durée d'acquisition atteinte. Réinitialiser la simulation.
-          </span>
         </div>
         <!-- Boutons droite : Réticule libre, Précédent, Zoom, Adapter -->
         <div id="graph-btns-right">
           <button id="btn-graph-cursor" onclick="toggleGraphCursor()" title="Réticule libre">+</button>
           <button id="btn-graph-prev"   onclick="prevGraphView()" disabled title="Vue précédente">&#8592;</button>
           <button id="btn-graph-zoom"   onclick="toggleGraphZoom()" title="Mode zoom">&#128269;</button>
-          <button id="btn-graph-auto"   onclick="autoTimeWindow()">&#128269; Adapter</button>
+          <button id="btn-graph-auto"   onclick="autoTimeWindow()" title="Adapter la fenêtre à 20τ">&#128269; Adapter</button>
         </div>
       </div>
       <div class="graph-graphs-row">
@@ -117,11 +114,6 @@
     <div class="panel-section">
       <div class="section-title">Paramètres</div>
       <div class="param-row">
-        <label>Durée d'acquisition <span><span id="lbl-acqTime">60 s</span></span></label>
-        <input type="range" id="sl-acqTime" min="0" max="10" step="1" value="9"
-               oninput="updateAcqTime(this.value)">
-      </div>
-      <div class="param-row">
         <label>Tension U <span><span id="lbl-U">5.0</span> V</span></label>
         <input type="range" id="sl-U" min="1" max="12" step="0.5" value="5"
                oninput="updateParam('U',this.value)">
@@ -187,7 +179,7 @@
       </div>
       <div class="mode-help-block">
         <span class="mode-help-name">Continu</span>
-        Le graphe se trace en continu jusqu'à la fin de la durée d'acquisition, sans s'arrêter entre les phases.
+        Le graphe se trace en continu, sans s'arrêter entre les phases.
       </div>
     </div>
 
@@ -204,7 +196,7 @@
         Choisissez la phase <strong>Charge</strong> ou <strong>Décharge</strong>, réglez la tension U,
         la capacité C et les résistances R₁/R₂, puis observez l'évolution de la tension Uc(t)
         et du courant i(t) sur les graphes. Le mode <em>Synchronisé</em> arrête le tracé après 6τ ;
-        le mode <em>Continu</em> trace en continu jusqu'à la fin de l'acquisition.
+        le mode <em>Continu</em> trace en continu, sans s'arrêter entre les phases.
       </div>
     </div>
 

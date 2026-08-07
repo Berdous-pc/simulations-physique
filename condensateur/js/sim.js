@@ -26,9 +26,6 @@ const sim = {
   // graphUc stocke toujours Uc en volts ; la conversion en µC se fait à l'affichage.
   graphUc: [], graphI: [],
 
-  // Durée d'acquisition
-  tAcq: 60000,         // ms simulées (60 s par défaut)
-
   // Fenêtre d'affichage (zoom X des graphes)
   graphWindowMs: 60000,
 
@@ -47,9 +44,6 @@ const sim = {
   paused: false,       // true = simulation suspendue
   timeScale: 1,        // facteur d'accélération (0.1 / 0.5 / 1 / 2 / 5)
 };
-
-// Valeurs possibles du slider de durée d'acquisition (11 valeurs)
-const TIME_VALUES = [100, 200, 500, 1000, 2000, 5000, 10000, 30000, 60000, 100000, 120000];
 
 // ─────────────────────────────────────────────────────────────────────
 //  Formate une durée en ms en "X ms" ou "X s" selon la valeur.
@@ -95,21 +89,11 @@ function setTimeWindow(ms) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-//  Mise à jour de la durée d'acquisition.
-//  Remet la simulation à zéro car l'arrêt global change.
-// ─────────────────────────────────────────────────────────────────────
-function updateAcqTime(idx) {
-  sim.tAcq = TIME_VALUES[parseInt(idx)];
-  document.getElementById('lbl-acqTime').textContent = fmtMs(sim.tAcq);
-  resetSim();
-}
-
-// ─────────────────────────────────────────────────────────────────────
-//  Bouton "Ajuster" : cale la fenêtre sur la durée d'acquisition,
+//  Bouton "Adapter" : cale la fenêtre sur 20τ (τ de la phase courante),
 //  remet la vue à t=0 et réactive l'auto-scroll.
 // ─────────────────────────────────────────────────────────────────────
 function autoTimeWindow() {
-  setTimeWindow(sim.tAcq);
+  setTimeWindow(20 * tau() * 1000);
   sim.viewOffsetMs = 0;
   sim.userPanned   = false;
 }
