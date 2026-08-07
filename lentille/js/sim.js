@@ -245,20 +245,20 @@ function updateLegend() {
 function updateTableHeight() {
   const tbl = document.getElementById('conjugaison-table');
   if (!tbl || !tbl.classList.contains('visible')) return;
-  // Le tableau s'aligne sur la hauteur des cadres Objet / Image.
-  const totalH  = sim.frameH + sim.barH;
+  // Le tableau est en overlay bas-gauche, sous l'axe optique : il n'est plus
+  // bridé par la hauteur des cadres Objet / Image (trop petite pour rester
+  // lisible en vidéoprojection), il peut monter jusqu'à 37 % du canvas.
+  const totalH  = Math.max(sim.frameH + sim.barH, Math.min(sim.H * 0.37, 370));
   const rows    = tbl.querySelectorAll('tr');
   const rowH    = Math.floor(totalH / rows.length);
   rows.forEach(tr => { tr.style.height = rowH + 'px'; });
   tbl.style.height = totalH + 'px';
+  // Le calcul occupe 5 lignes, dont 2 avec des fractions (≈ 10,5 em au total
+  // interlignes compris) : la police doit les faire tenir dans la case.
+  const lineH = rowH / 10.5;
   // baseScale et non scale : la taille du tableau ne doit pas suivre le zoom.
-  const fontSize = Math.min(26, rowH * 0.5, Math.max(11, sim.baseScale * 1.4));
+  const fontSize = Math.min(34, lineH, Math.max(11, sim.baseScale * 2.6));
   tbl.style.fontSize = fontSize + 'px';
-}
-
-function fmtCj(val, decimals = 1) {
-  if (!isFinite(val) || Math.abs(val) > FAR_CM) return val >= 0 ? '+∞' : '−∞';
-  return ((val >= 0 ? '+' : '') + val.toFixed(decimals)).replace('.', ',');
 }
 
 function updateConjugaison() {
@@ -279,31 +279,57 @@ function updateConjugaison() {
   const OA2_bar = `<span style="text-decoration:overline">OA'</span>`;
   const OF_bar  = `<span style="text-decoration:overline">OF'</span>`;
 
-  function fmtVal(val) {
-    if (!isFinite(val) || Math.abs(val) > FAR_CM) return val >= 0 ? '+∞' : '−∞';
-    return fmtCj(val);
-  }
   function fmtInvVal(val) {
     if (!isFinite(val)) return val >= 0 ? '+∞' : '−∞';
     if (Math.abs(val) < 1e-9) return '0,000';
     return ((val >= 0 ? '+' : '') + val.toFixed(3)).replace('.', ',');
   }
 
-  document.getElementById('cj-OA').innerHTML  = `${OA_bar} = ${fmtVal(oaVal)}`;
-  document.getElementById('cj-OA2').innerHTML = `${OA2_bar} = ${fmtVal(oa2Val)}`;
-  document.getElementById('cj-OF').innerHTML  = `${OF_bar} = ${fmtCj(ofVal)}`;
+  // Valeur brute d'une longueur : pas de « + » devant les positifs.
+  function fmtLen(val) {
+    if (!isFinite(val) || Math.abs(val) > FAR_CM) return val >= 0 ? '∞' : '−∞';
+    return val.toFixed(1).replace('.', ',').replace('-', '−');
+  }
+  // Longueur signée, pour le résultat final.
+  function fmtLenSigned(val) {
+    if (!isFinite(val) || Math.abs(val) > FAR_CM) return val >= 0 ? '+∞' : '−∞';
+    return ((val >= 0 ? '+' : '') + val.toFixed(1)).replace('.', ',').replace('-', '−');
+  }
+  // Inverse en valeur absolue : le signe est porté par l'opérateur (+ / −).
+  function fmtInvAbs(val) {
+    if (!isFinite(val)) return '∞';
+    return Math.abs(val).toFixed(3).replace('.', ',');
+  }
 
-  document.getElementById('cj-invOA').innerHTML  = `1/${OA_bar} = ${fmtInvVal(invOA)}`;
-  document.getElementById('cj-invOA2').innerHTML = `1/${OA2_bar} = ${fmtInvVal(invOA2)}`;
-  document.getElementById('cj-invOF').innerHTML  = `1/${OF_bar} = ${fmtInvVal(invOF)}`;
+  const cOA  = s => `<span class="col-OA">${s}</span>`;
+  const cOA2 = s => `<span class="col-OA2">${s}</span>`;
+  const cOF  = s => `<span class="col-OF">${s}</span>`;
 
-  const sOA  = fmtInvVal(invOA);
-  const sOF  = fmtInvVal(invOF);
-  const sRes = fmtInvVal(invOA2);
-  const cOA  = `<span class="col-OA">`;
-  const cOA2 = `<span class="col-OA2">`;
-  const cOF  = `<span class="col-OF">`;
-  const ce   = `</span>`;
-  document.getElementById('cj-verif').innerHTML =
-    `${cOA2}1/${OA2_bar}${ce} = ${cOA}1/${OA_bar}${ce} + ${cOF}1/${OF_bar}${ce} = ${cOA}${sOA}${ce}${cOF}${sOF}${ce} = ${cOA2}${sRes}${ce}`;
+  // Fraction typographique : 1 sur « den », avec un vrai trait de fraction.
+  const frac = den =>
+    `<span class="frac"><span class="frac-n">1</span><span class="frac-d">${den}</span></span>`;
+
+  const lhs   = cOA2(frac(OA2_bar));
+  const opNum = invOA < 0 ? '−' : '+';
+
+  // La grille compte 5 colonnes : membre gauche, « = », terme 1, opérateur,
+  // terme 2. Les trois premières lignes remplissent les cinq colonnes, ce qui
+  // aligne verticalement chaque membre ; les deux dernières fusionnent le
+  // membre de droite.
+  const c = cls => (cls ? ' ' + cls : '');
+  const lineTerms = (l, t1, op, t2, cls = '') =>
+    `<span class="cj-lhs${c(cls)}">${l}</span><span class="cj-eq${c(cls)}">=</span>` +
+    `<span class="cj-t1${c(cls)}">${t1}</span><span class="cj-op${c(cls)}">${op}</span>` +
+    `<span class="cj-t2${c(cls)}">${t2}</span>`;
+  const line = (l, r, cls = '') =>
+    `<span class="cj-lhs${c(cls)}">${l}</span><span class="cj-eq${c(cls)}">=</span>` +
+    `<span class="cj-rhs${c(cls)}">${r}</span>`;
+
+  document.getElementById('cj-calc').innerHTML =
+    lineTerms(lhs, cOF(frac(OF_bar)), '+', cOA(frac(OA_bar))) +
+    lineTerms('', cOF(frac(fmtLen(ofVal))), '+', cOA(frac(fmtLen(oaVal)))) +
+    lineTerms('', cOF((invOF < 0 ? '−' : '') + fmtInvAbs(invOF)), opNum, cOA(fmtInvAbs(invOA))) +
+    line(lhs, cOA2(`${fmtInvVal(invOA2)} cm⁻¹`)) +
+    // Conclusion : on inverse pour obtenir la position de l'image.
+    line(cOA2(`⇒ ${OA2_bar}`), cOA2(`${fmtLenSigned(oa2Val)} cm`), 'cj-gap');
 }

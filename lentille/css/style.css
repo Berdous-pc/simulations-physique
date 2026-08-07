@@ -288,7 +288,7 @@ input[type=range] {
   border-collapse: collapse;
   font-size: 14px;
   color: #2c3e50;
-  max-width: clamp(280px, 58vw, 900px);
+  max-width: clamp(280px, 62vw, 1100px);
   pointer-events: none;
   table-layout: auto;
 }
@@ -311,6 +311,21 @@ input[type=range] {
   color: #2c3e50;
   text-align: left;
 }
+/* Colonne de gauche : volontairement étroite, le texte peut passer à la ligne. */
+#conjugaison-table .cj-label {
+  white-space: normal;
+  width: 1px;              /* force la colonne au minimum utile */
+  max-width: 10em;
+  text-align: center;
+  font-size: 0.8em;
+  line-height: 1.27;
+  letter-spacing: 0.01em;
+}
+#conjugaison-table .cj-unit {
+  font-weight: 500;
+  font-size: 0.85em;
+  color: #6b7a86;
+}
 #conjugaison-table .td-verif {
   text-align: left;
   font-weight: 700;
@@ -318,6 +333,48 @@ input[type=range] {
   color: #2c3e50;
   background: #fdf8f0;
   padding-left: clamp(6px, 0.9vw, 14px);
+}
+/* Calcul détaillé : 3 colonnes (membre de gauche | = | membre de droite)
+   pour aligner verticalement tous les signes « = ». */
+#conjugaison-table .cj-calc {
+  display: grid;
+  /* membre gauche | = | terme 1 | opérateur | terme 2 */
+  grid-template-columns: auto auto auto auto auto;
+  align-items: center;
+  justify-content: start;
+  column-gap: 0.42em;
+  row-gap: 0.38em;
+  line-height: 1.12;
+}
+#conjugaison-table .cj-calc .cj-lhs { text-align: right; }
+#conjugaison-table .cj-calc .cj-eq,
+#conjugaison-table .cj-calc .cj-op,
+#conjugaison-table .cj-calc .cj-t1,
+#conjugaison-table .cj-calc .cj-t2 { text-align: center; }
+/* Lignes de résultat : le membre de droite occupe les 3 dernières colonnes. */
+#conjugaison-table .cj-calc .cj-rhs { grid-column: span 3; text-align: left; }
+/* Respiration avant la ligne de conclusion sur OA'. */
+#conjugaison-table .cj-calc .cj-gap { margin-top: 0.45em; }
+
+/* Vraies barres de fraction : numérateur / trait / dénominateur empilés. */
+#conjugaison-table .frac {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  vertical-align: middle;
+  line-height: 1.05;
+  margin: 0 0.06em;
+}
+#conjugaison-table .frac .frac-n {
+  /* Trait de fraction nettement plus long que le dénominateur, pour ne pas
+     le confondre avec la barre de longueur algébrique juste en dessous. */
+  align-self: stretch;
+  text-align: center;      /* le « 1 » hérite sinon du text-align de la case */
+  padding: 0 0.5em 0.06em;
+  border-bottom: 0.08em solid currentColor;
+}
+#conjugaison-table .frac .frac-d {
+  padding: 0.3em 0.5em 0;
 }
 #conjugaison-table .val-num {
   font-weight: 700;
