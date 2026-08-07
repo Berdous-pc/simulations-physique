@@ -556,7 +556,17 @@ function drawViewfinders() {
     const isReal    = isFinite(OA2) && Math.abs(OA2) < FAR_CM && OA2 > 0;
     const isVirtual = isFinite(OA2) && Math.abs(OA2) < FAR_CM && OA2 < 0;
 
-    if (sim.infini) {
+    // En mode « objet à l'infini », A'B' n'est un point que si α = 0 : dès que
+    // l'angle est non nul l'image a une taille et se dessine comme dans le cas
+    // général (lettre, floutée selon l'écart écran / plan image).
+    if (sim.infini && isReal && Math.abs(h2) * innerScale > 1.5) {
+      const distCm    = Math.abs(OE - OA2);
+      const blurSeuil = Math.max(3, Math.abs(f) * 0.4);
+      const blurFrac  = Math.min(1, distCm / blurSeuil);
+      const h2Px      = Math.abs(h2) * innerScale;
+      const blurPx    = blurFrac * blurFrac * h2Px * 0.8;
+      drawGlowLetter(ix + iw / 2, iy + ih / 2, h2Px, true, h2 < 0, blurPx);
+    } else if (sim.infini) {
       const distCm   = Math.abs(OE - OA2);
       const seuil    = Math.max(2, Math.abs(f) * 0.5);
       const t        = Math.min(1, distCm / seuil);
