@@ -122,10 +122,14 @@ function updateReadouts() {
   // Calibres : E pour la tension, iFullScale_mA() pour l'intensité — c'est
   // ce même calibre qui décide de l'arrêt du mode Synchronisé, de sorte que
   // le tracé se fige exactement quand l'encart passe à 0.
-  document.getElementById('ro-Uc').textContent      = fmtScale(sim.Uc, sim.E);
-  document.getElementById('ro-i').textContent       = fmtScale(currentI() * 1000, iFullScale_mA());
-  document.getElementById('ro-tau-chg').textContent = fmtTau(sim.R1 * sim.C * 1000);
-  document.getElementById('ro-tau-dis').textContent = fmtTau(sim.R2 * sim.C * 1000);
+  const roUc = document.getElementById('ro-Uc');
+  if (roUc) roUc.textContent = fmtScale(sim.Uc, sim.E);
+  const roI = document.getElementById('ro-i');
+  if (roI) roI.textContent = fmtScale(currentI() * 1000, iFullScale_mA());
+  const roTauChg = document.getElementById('ro-tau-chg');
+  if (roTauChg) roTauChg.textContent = fmtTau(sim.R1 * sim.C * 1000);
+  const roTauDis = document.getElementById('ro-tau-dis');
+  if (roTauDis) roTauDis.textContent = fmtTau(sim.R2 * sim.C * 1000);
 
   if (sim.phase !== 'idle' && wireSettled) {
     const el = document.getElementById('state-text');

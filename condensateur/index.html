@@ -153,44 +153,6 @@
               onclick="toggleGraphVisible()">Afficher graphe</button>
     </div>
 
-    <div class="sep"></div>
-
-    <!-- Section : Valeurs instantanées -->
-    <div class="panel-section">
-      <div class="section-title">Valeurs instantanées</div>
-      <div class="readouts">
-        <div class="readout">
-          <div class="ro-label">Tension Uc(t)</div>
-          <div class="ro-value"><span id="ro-Uc">0</span> <span class="ro-unit">V</span></div>
-        </div>
-        <div class="readout">
-          <div class="ro-label">Intensité i(t)</div>
-          <div class="ro-value"><span id="ro-i">0</span> <span class="ro-unit">mA</span></div>
-        </div>
-        <div class="readout">
-          <div class="ro-label">Constante τ charge</div>
-          <div class="ro-value"><span id="ro-tau-chg">3,00 s</span></div>
-        </div>
-        <div class="readout">
-          <div class="ro-label">Constante τ décharge</div>
-          <div class="ro-value"><span id="ro-tau-dis">3,00 s</span></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Explication des modes d'affichage -->
-    <div id="mode-help">
-      <div class="section-title">Modes d'affichage</div>
-      <div class="mode-help-block">
-        <span class="mode-help-name">Synchronisé</span>
-        Le tracé du graphe s'adapte à la durée des phases de charge et de décharge demandées. Le tracé est mis en pause une fois la phase considérée terminée, c'est-à-dire lorsque l'intensité affichée est nulle et que la tension a atteint sa valeur finale.
-      </div>
-      <div class="mode-help-block">
-        <span class="mode-help-name">Continu</span>
-        Le graphe se trace en continu, sans s'arrêter entre les phases.
-      </div>
-    </div>
-
    </div><!-- fin #panel-body -->
 
     <!-- ── Bandeau Instructions ────────────────── -->
@@ -203,9 +165,10 @@
       <div class="panel-hint-body">
         Choisissez la phase <strong>Charge</strong> ou <strong>Décharge</strong>, réglez la tension E,
         la capacité C et les résistances R₁/R₂, puis observez l'évolution de la tension Uc(t)
-        et du courant i(t) sur les graphes. Le mode <em>Synchronisé</em> arrête le tracé
+        et du courant i(t) sur les graphes.<br>
+        Le mode <strong>Synchronisé</strong> arrête le tracé
         quand l'intensité affichée est nulle et que Uc a atteint sa valeur finale ;
-        le mode <em>Continu</em> trace en continu, sans s'arrêter entre les phases.
+        le mode <strong>Continu</strong> trace en continu, sans s'arrêter entre les phases.
       </div>
     </div>
 
