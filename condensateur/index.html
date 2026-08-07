@@ -114,7 +114,7 @@
     <div class="panel-section">
       <div class="section-title">Paramètres</div>
       <div class="param-row">
-        <label>Tension U <span><span id="lbl-U">5.0</span> V</span></label>
+        <label>Tension U <span><span id="lbl-U">5,00</span> V</span></label>
         <input type="range" id="sl-U" min="1" max="12" step="0.5" value="5"
                oninput="updateParam('U',this.value)">
       </div>
@@ -124,12 +124,12 @@
                oninput="updateParam('C',this.value)">
       </div>
       <div class="param-row">
-        <label>Résistance R₁ <span><span id="lbl-R1">10000</span> Ω</span></label>
+        <label>Résistance R₁ <span><span id="lbl-R1">1,00×10⁴</span> Ω</span></label>
         <input type="range" id="sl-R1" min="100" max="50000" step="100" value="10000"
                oninput="updateParam('R1',this.value)">
       </div>
       <div class="param-row">
-        <label>Résistance R₂ <span><span id="lbl-R2">10000</span> Ω</span></label>
+        <label>Résistance R₂ <span><span id="lbl-R2">1,00×10⁴</span> Ω</span></label>
         <input type="range" id="sl-R2" min="100" max="50000" step="100" value="10000"
                oninput="updateParam('R2',this.value)">
       </div>
@@ -153,19 +153,19 @@
       <div class="readouts">
         <div class="readout">
           <div class="ro-label">Tension Uc(t)</div>
-          <div class="ro-value"><span id="ro-Uc">0.000</span> <span class="ro-unit">V</span></div>
+          <div class="ro-value"><span id="ro-Uc">0</span> <span class="ro-unit">V</span></div>
         </div>
         <div class="readout">
           <div class="ro-label">Intensité i(t)</div>
-          <div class="ro-value"><span id="ro-i">0.000</span> <span class="ro-unit">mA</span></div>
+          <div class="ro-value"><span id="ro-i">0</span> <span class="ro-unit">mA</span></div>
         </div>
         <div class="readout">
           <div class="ro-label">Constante τ charge</div>
-          <div class="ro-value"><span id="ro-tau-chg">3.00 s</span></div>
+          <div class="ro-value"><span id="ro-tau-chg">3,00 s</span></div>
         </div>
         <div class="readout">
           <div class="ro-label">Constante τ décharge</div>
-          <div class="ro-value"><span id="ro-tau-dis">3.00 s</span></div>
+          <div class="ro-value"><span id="ro-tau-dis">3,00 s</span></div>
         </div>
       </div>
     </div>

@@ -108,10 +108,10 @@ function resetSim() {
 // ─────────────────────────────────────────────────────────────────────
 function updateParam(name, val) {
   const v = parseFloat(val);
-  if (name === 'U')  { sim.U  = v;        document.getElementById('lbl-U').textContent  = v.toFixed(1); }
-  if (name === 'C')  { sim.C  = v * 1e-6; document.getElementById('lbl-C').textContent  = v; resetSim(); }
-  if (name === 'R1') { sim.R1 = v;        document.getElementById('lbl-R1').textContent = v; }
-  if (name === 'R2') { sim.R2 = v;        document.getElementById('lbl-R2').textContent = v; }
+  if (name === 'U')  { sim.U  = v;        document.getElementById('lbl-U').textContent  = fmtSig3(v); }
+  if (name === 'C')  { sim.C  = v * 1e-6; document.getElementById('lbl-C').textContent  = fmtSig3(v); resetSim(); }
+  if (name === 'R1') { sim.R1 = v;        document.getElementById('lbl-R1').textContent = fmtSig3(v); }
+  if (name === 'R2') { sim.R2 = v;        document.getElementById('lbl-R2').textContent = fmtSig3(v); }
   updateReadouts();
 }
 
@@ -119,8 +119,8 @@ function updateParam(name, val) {
 //  Met à jour les encarts de valeurs instantanées.
 // ─────────────────────────────────────────────────────────────────────
 function updateReadouts() {
-  document.getElementById('ro-Uc').textContent      = sim.Uc.toFixed(3);
-  document.getElementById('ro-i').textContent       = (currentI() * 1000).toFixed(3);
+  document.getElementById('ro-Uc').textContent      = fmtSig3(sim.Uc);
+  document.getElementById('ro-i').textContent       = fmtSig3(currentI() * 1000);
   document.getElementById('ro-tau-chg').textContent = fmtTau(sim.R1 * sim.C * 1000);
   document.getElementById('ro-tau-dis').textContent = fmtTau(sim.R2 * sim.C * 1000);
 

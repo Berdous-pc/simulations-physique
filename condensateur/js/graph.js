@@ -199,12 +199,7 @@ function niceStep(range, targetN) {
 //  Formate une valeur d'axe Y.
 // ─────────────────────────────────────────────────────────────────────
 function fmtAxisY(v) {
-  const a = Math.abs(v);
-  if (a === 0)      return '0';
-  if (a >= 100)     return v.toFixed(0);
-  if (a >= 10)      return v.toFixed(1);
-  if (a >= 0.1)     return v.toFixed(2);
-  return v.toExponential(1);
+  return fmtSig3(v);
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -250,7 +245,7 @@ function drawGraph(canvasId, data, color, yMin, yMax, yUnit) {
     const x = pad.l + ((t - startT) / winMs) * gw;
     if (x < pad.l - 1 || x > pad.l + gw + 1) continue;
     gc.beginPath(); gc.moveTo(x, pad.t); gc.lineTo(x, pad.t + gh); gc.stroke();
-    const lbl = t < 1000 ? t.toFixed(0) + 'ms' : (t / 1000).toFixed(t < 10000 ? 1 : 0) + 's';
+    const lbl = fmtMs(t);
     gc.fillText(lbl, x, pad.t + gh + 4);
   }
 
@@ -272,8 +267,6 @@ function drawGraph(canvasId, data, color, yMin, yMax, yUnit) {
     gc.save();
     gc.strokeStyle = color;
     gc.lineWidth   = 2;
-    gc.shadowColor = color;
-    gc.shadowBlur  = 4;
     gc.beginPath();
     let first = true;
     for (const dp of data) {
@@ -321,8 +314,8 @@ function drawGraph(canvasId, data, color, yMin, yMax, yUnit) {
       if (data.length >= 2) {
         const mouseT = startT + ((hx - pad.l) / gw) * winMs;
         const mouseV = yMin + (1 - (hy - pad.t) / gh) * (yMax - yMin);
-        const tLbl  = mouseT < 1000 ? mouseT.toFixed(0) + ' ms' : (mouseT / 1000).toFixed(2) + ' s';
-        const vLbl  = mouseV.toFixed(3) + ' ' + (yUnit || '');
+        const tLbl  = fmtMs(mouseT);
+        const vLbl  = fmtSig3(mouseV) + ' ' + (yUnit || '');
         const label = `(${tLbl}, ${vLbl})`;
         gc.font         = '22px monospace';
         gc.fillStyle    = '#2c3e50';
@@ -357,13 +350,10 @@ function drawGraph(canvasId, data, color, yMin, yMax, yUnit) {
         gc.setLineDash([]);
 
         gc.fillStyle   = color;
-        gc.shadowColor = color;
-        gc.shadowBlur  = 8;
         gc.beginPath(); gc.arc(bx, byc, 5, 0, Math.PI * 2); gc.fill();
-        gc.shadowBlur  = 0;
 
-        const tLbl  = best.t < 1000 ? best.t.toFixed(0) + ' ms' : (best.t / 1000).toFixed(2) + ' s';
-        const vLbl  = best.v.toFixed(3) + ' ' + (yUnit || '');
+        const tLbl  = fmtMs(best.t);
+        const vLbl  = fmtSig3(best.v) + ' ' + (yUnit || '');
         const label = `(${tLbl}, ${vLbl})`;
         gc.font         = '22px monospace';
         gc.fillStyle    = color;

@@ -83,6 +83,8 @@ Objet central qui contient tout l'état de la simulation :
 
 - `tau()` — constante de temps de la phase courante (s) : `R1·C` ou `R2·C`
 - `currentI()` — intensité instantanée (A)
+- `fmtSig3(value)` — formate un nombre en 3 chiffres significatifs, virgule française
+  (écriture normale si |v| < 1000, écriture scientifique sinon)
 - `fmtMs(ms)` — formate une durée en "X ms" ou "X s"
 - `fmtTau(ms)` — formate une constante de temps
 - `setTimeWindow(ms)` — modifie la fenêtre d'affichage
@@ -185,7 +187,7 @@ Paramètres : `(canvasId, data, color, yMin, yMax, yUnit)`
 Étapes de rendu dans l'ordre :
 1. Calcul de la marge gauche dynamique selon la largeur des labels Y
 2. Fond blanc, grille X (temps) avec pas "joli", grille Y avec pas "joli"
-3. Courbe avec léger halo (`shadowBlur`)
+3. Courbe (trait plein, sans halo)
 4. Rectangle de zoom en cours (si applicable)
 5. Hover : réticule libre ou point snappé selon le mode actif
 
@@ -237,7 +239,7 @@ requestAnimationFrame(loop)  → démarre la boucle
 
 ```
 index.html
-  └── <script src="js/sim.js">       expose : sim, tau, currentI, fmtMs, fmtTau,
+  └── <script src="js/sim.js">       expose : sim, tau, currentI, fmtSig3, fmtMs, fmtTau,
   │                                           resetGraphs, setTimeWindow, autoTimeWindow
   │
   └── <script src="js/circuit.js">   dépend de : sim, currentI, tau

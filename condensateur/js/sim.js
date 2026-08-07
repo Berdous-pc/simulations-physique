@@ -46,19 +46,50 @@ const sim = {
 };
 
 // ─────────────────────────────────────────────────────────────────────
+//  Formatage générique des nombres affichés dans l'interface.
+//  - 0 ≤ |v| < 1000  → écriture normale, 3 chiffres significatifs max
+//  - |v| ≥ 1000       → écriture scientifique, mantisse à 2 décimales
+//  Virgule décimale française dans tous les cas.
+// ─────────────────────────────────────────────────────────────────────
+const SUPERSCRIPT_DIGITS = { '-': '⁻', '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
+                              '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹' };
+
+function toSuperscript(n) {
+  return String(n).split('').map(c => SUPERSCRIPT_DIGITS[c] || c).join('');
+}
+
+function fmtSig3(value) {
+  if (!isFinite(value) || value === 0) return '0';
+  const neg = value < 0;
+  const av  = Math.abs(value);
+  let out;
+  if (av < 1000) {
+    const magnitude = Math.floor(Math.log10(av));
+    const decimals  = Math.max(0, 2 - magnitude);
+    out = av.toFixed(decimals);
+  } else {
+    let exp = Math.floor(Math.log10(av));
+    let mantissa = av / Math.pow(10, exp);
+    let mStr = mantissa.toFixed(2);
+    if (parseFloat(mStr) >= 10) { exp += 1; mStr = (av / Math.pow(10, exp)).toFixed(2); }
+    out = mStr + '×10' + toSuperscript(exp);
+  }
+  out = out.replace('.', ',');
+  return neg ? '-' + out : out;
+}
+
+// ─────────────────────────────────────────────────────────────────────
 //  Formate une durée en ms en "X ms" ou "X s" selon la valeur.
 // ─────────────────────────────────────────────────────────────────────
 function fmtMs(ms) {
-  return ms < 1000 ? ms + ' ms' : (ms / 1000).toFixed(ms % 1000 !== 0 ? 1 : 0) + ' s';
+  return ms < 1000 ? fmtSig3(ms) + ' ms' : fmtSig3(ms / 1000) + ' s';
 }
 
 // ─────────────────────────────────────────────────────────────────────
 //  Formate une constante de temps (en ms) avec bascule à 1 s.
 // ─────────────────────────────────────────────────────────────────────
 function fmtTau(ms) {
-  if (ms < 999.95) return ms.toFixed(1) + ' ms';
-  const s = ms / 1000;
-  return s.toFixed(s < 10 ? 2 : 1) + ' s';
+  return ms < 1000 ? fmtSig3(ms) + ' ms' : fmtSig3(ms / 1000) + ' s';
 }
 
 // ─────────────────────────────────────────────────────────────────────
