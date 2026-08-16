@@ -573,17 +573,20 @@ function drawDirectionLine() {
   const dy = yO2 - yB1;
   if (Math.abs(dx) < 0.1) return;
 
-  const t_right = (W - xO2) / dx;
-  const xEnd = xO2 + dx * t_right;
-  const yEnd = yO2 + dy * t_right;
+  // Le trait part du plus à gauche de B₁ et O₂ et file jusqu'au bord droit :
+  // en démarrant systématiquement de B₁, la portion B₁O₂ n'était pas tracée
+  // quand A₁ se formait au-delà de L₂ — soit justement quand ce repère sert.
+  const xStart = Math.min(xB1, xO2);
+  const yStart = yB1 + dy * (xStart - xB1) / dx;
+  const yEnd   = yB1 + dy * (W - xB1) / dx;
 
   ctx.save();
   ctx.strokeStyle = 'rgba(160,160,160,0.55)';
   ctx.lineWidth = fs(1.2);
   ctx.setLineDash([fs(5), fs(5)]);
   ctx.beginPath();
-  ctx.moveTo(xB1, yB1);
-  ctx.lineTo(xEnd, yEnd);
+  ctx.moveTo(xStart, yStart);
+  ctx.lineTo(W, yEnd);
   ctx.stroke();
   ctx.setLineDash([]);
   ctx.restore();
@@ -841,14 +844,12 @@ function computeRays() {
       ], virtual: true });
     }
 
-    rays.push({ color, segs, isMain, dTotal: 0 });
+    rays.push({ color, segs, isMain });
   }
 
-  const dTotal = rays.length > 0
-    ? Math.max(...rays.map(r => r.segs.filter(s => !s.virtual).reduce((acc, s) => acc + segLength(s.pts), 0)))
-    : 1;
-  sim._animDTotal = dTotal;
-  for (const ray of rays) ray.dTotal = dTotal;
+  // L'animation avance par un front vertical (drawRaysAnim travaille en X) :
+  // la longueur cumulée des rayons qui était calculée ici à chaque frame
+  // n'était lue nulle part.
   sim._animXLeft  = xLeftPx;
   sim._animXRight = xRightPx;
 

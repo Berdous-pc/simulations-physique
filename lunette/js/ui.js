@@ -15,10 +15,36 @@
 
 /* ═══════════════════════════════════════════════════
    BOUCLE D'ANIMATION
+   ─────────────────────────────────────────────────
+   Une frame déjà programmée par requestAnimationFrame ne s'annule pas en
+   posant animRunning = false : si la boucle est relancée avant qu'elle ne
+   s'exécute, elle repart et cohabite avec la nouvelle. Chacune ajoutait son
+   dt à animT — bouger un curseur pendant la propagation doublait donc la
+   vitesse, et six crans la multipliaient par soixante-quatre.
+
+   D'où le jeton animGen : chaque démarrage l'incrémente, et toute frame
+   issue d'une génération périmée se retire sans rien redessiner.
 ════════════════════════════════════════════════════ */
+let animGen = 0;
+
+function startAnimLoop() {
+  const gen = ++animGen;
+  sim.animRunning = true;
+  sim.lastTs = 0;
+  requestAnimationFrame(function step(ts) {
+    if (gen !== animGen || !sim.animRunning) return;
+    if (animLoop(ts)) requestAnimationFrame(step);
+  });
+}
+
+function stopAnimLoop() {
+  sim.animRunning = false;
+  animGen++;   // périme la frame éventuellement déjà programmée
+}
+
+/* Renvoie true tant que la boucle doit se poursuivre. */
 function animLoop(ts) {
-  if (!sim.animRunning) return;
-  if (sim.lastTs === 0) { sim.lastTs = ts; requestAnimationFrame(animLoop); return; }
+  if (sim.lastTs === 0) { sim.lastTs = ts; return true; }
   const dt = (ts - sim.lastTs) / 1000;
   sim.lastTs = ts;
 
@@ -27,37 +53,35 @@ function animLoop(ts) {
   if (sim.animRewind) {
     sim.animT = Math.max(0, sim.animT - dt * sim.animSpeed * sim.animSpeedMult);
     draw();
-    if (sim.animT > 0) requestAnimationFrame(animLoop);
-    else { sim.animRunning = false; draw(); }
-    return;
+    if (sim.animT > 0) return true;
+    sim.animRunning = false;
+    return false;
   }
 
-  if (sim.animPaused) { sim.animRunning = false; draw(); return; }
+  if (sim.animPaused) { sim.animRunning = false; draw(); return false; }
 
   sim.animT = Math.min(sim.animT + dt * sim.animSpeed * sim.animSpeedMult, 1.0);
   draw();
-  if (sim.animT < 1.0) {
-    requestAnimationFrame(animLoop);
-  } else {
-    sim.animRunning = false; sim.animPaused = true;
-    const btn = document.getElementById('btn-pause-play');
-    if (btn) { btn.textContent = '▶ Lancer'; btn.classList.remove('active'); }
-    draw();
-  }
+  if (sim.animT < 1.0) return true;
+
+  sim.animRunning = false; sim.animPaused = true;
+  const btn = document.getElementById('btn-pause-play');
+  if (btn) { btn.textContent = '▶ Lancer'; btn.classList.remove('active'); }
+  draw();
+  return false;
 }
 
 function startAnim() {
-  sim.animT = 0; sim.lastTs = 0;
+  sim.animT = 0;
   if (!sim.animPaused) {
-    sim.animRunning = true;
-    requestAnimationFrame(animLoop);
+    startAnimLoop();
   } else {
-    sim.animRunning = false; draw();
+    stopAnimLoop(); draw();
   }
 }
 
 function restartAnim() {
-  if (sim.rayMode === 'anim') { sim.animRunning = false; startAnim(); }
+  if (sim.rayMode === 'anim') startAnim();
 }
 
 /* ═══════════════════════════════════════════════════
@@ -96,8 +120,11 @@ function moveDragged(dxCm) {
   } else if (drag.target === 'L2') {
     if (sim.systemMode === 'lunette') {
       // En lunette, O₁O₂ est imposé par f'₁ + f'₂ : on translate l'ensemble.
+      // Les deux lentilles sont bornées au cadre : ne clamper que x2 laissait
+      // L₁ sortir par la gauche quand on poussait l'ensemble vers la droite.
       const dist12 = drag.startX2 - drag.startX1;
-      sim.x2 = clampToView(drag.startX2 + dxCm);
+      sim.x1 = clampToView(drag.startX1 + dxCm);
+      sim.x2 = clampToView(sim.x1 + dist12);
       sim.x1 = sim.x2 - dist12;
       sim.xOeil = sim.x2 + (drag.startOeil - drag.startX2);
     } else {
@@ -318,7 +345,7 @@ function setRayMode(mode) {
   document.getElementById('btn-anim').classList.toggle('active', mode === 'anim');
   document.getElementById('row-speed').style.display = mode === 'anim' ? '' : 'none';
   if (mode === 'instant') {
-    sim.animRunning = false; draw();
+    stopAnimLoop(); draw();
   } else {
     // Le cadrage n'est plus réinitialisé au passage en propagation :
     // l'utilisateur garde le zoom et le recadrage qu'il vient de choisir.
@@ -335,8 +362,11 @@ function toggleOeil(forceOff) {
   if (sim.oeilActif) {
     btn.textContent = 'Ajouter un œil : OUI';
     btn.classList.add('active');
-    sim.xOeil = sim.x2 + 20;
+    // On restitue l'écart choisi par l'utilisateur : masquer puis réafficher
+    // l'œil replaçait l'observateur à 20 cm, réglage perdu.
+    sim.xOeil = sim.x2 + Math.max(MIN_EYE_GAP_CM, sim.eyeGapCm);
   } else {
+    sim.eyeGapCm = Math.max(MIN_EYE_GAP_CM, sim.xOeil - sim.x2);
     btn.textContent = 'Ajouter un œil : NON';
     btn.classList.remove('active');
   }
@@ -362,25 +392,28 @@ function togglePausePlay() {
   const btn = document.getElementById('btn-pause-play');
   if (sim.animPaused) {
     btn.textContent = '▶ Lancer'; btn.classList.remove('active');
-    sim.animRunning = false;
+    stopAnimLoop();
   } else {
     btn.textContent = '⏸ Pause'; btn.classList.add('active');
     // L'animation terminée reste à animT = 1 : sans remise à zéro, Lancer
     // n'avait plus aucun effet une fois la propagation arrivée au bout.
     if (sim.animT >= 1.0) sim.animT = 0;
-    if (sim.rayMode === 'anim' && !sim.animRunning) {
-      sim.animRunning = true; sim.lastTs = 0;
-      requestAnimationFrame(animLoop);
-    }
+    if (sim.rayMode === 'anim') startAnimLoop();
   }
 }
 
+/* Posée par le module du curseur de vitesse : remet le rembobinage à plat,
+   son état interne compris. Sans elle, RAZ pressé pendant un ⏪ maintenu
+   désynchronisait le module, qui se croyait encore en rembobinage. */
+let stopRewindExternal = () => {};
+
 function resetAnim() {
-  sim.animRewind = false; sim.animT = 0; sim.animRunning = false;
+  stopRewindExternal();
+  sim.animRewind = false; sim.animT = 0;
+  stopAnimLoop();
   document.getElementById('speed-rewind').classList.remove('active');
   if (!sim.animPaused && sim.rayMode === 'anim') {
-    sim.animRunning = true; sim.lastTs = 0;
-    requestAnimationFrame(animLoop);
+    startAnimLoop();
   } else { draw(); }
 }
 
@@ -403,8 +436,7 @@ const SPEED_LABELS = ['×0.1', '×0.25', '×0.5', '×0.75', '×1'];
     document.getElementById('lbl-speed').textContent = SPEED_LABELS[idx];
     updateThumb(idx / (SPEED_VALS.length - 1) * 100);
     if (sim.rayMode === 'anim' && !sim.animRunning && !sim.animPaused) {
-      sim.animRunning = true; sim.lastTs = 0;
-      requestAnimationFrame(animLoop);
+      startAnimLoop();
     }
   }
 
@@ -434,10 +466,7 @@ const SPEED_LABELS = ['×0.1', '×0.25', '×0.5', '×0.75', '×1'];
     sim.animRewind = true;
     document.getElementById('lbl-speed').textContent = '⏪';
     document.getElementById('speed-rewind').classList.add('active');
-    if (sim.rayMode === 'anim' && !sim.animRunning) {
-      sim.animRunning = true; sim.lastTs = 0;
-      requestAnimationFrame(animLoop);
-    }
+    if (sim.rayMode === 'anim' && !sim.animRunning) startAnimLoop();
   }
 
   function stopRewind() {
@@ -451,10 +480,13 @@ const SPEED_LABELS = ['×0.1', '×0.25', '×0.5', '×0.75', '×1'];
     // Le rembobinage a pu vider la boucle en atteignant t = 0 : on la relance
     // si la lecture était en cours.
     if (sim.rayMode === 'anim' && !sim.animPaused && !sim.animRunning && sim.animT < 1.0) {
-      sim.animRunning = true; sim.lastTs = 0;
-      requestAnimationFrame(animLoop);
+      startAnimLoop();
     }
   }
+
+  // Exposé à resetAnim() : le module garde son propre drapeau isRewind, que
+  // seul stopRewind() remet à plat.
+  stopRewindExternal = stopRewind;
 
   document.addEventListener('DOMContentLoaded', () => {
     const track = document.getElementById('speed-track');

@@ -36,6 +36,7 @@ const sim = {
   // ── Mode système ──
   systemMode: 'libre',   // 'libre' | 'lunette'
   oeilActif: false,      // true = afficher l'œil (mode lunette uniquement)
+  eyeGapCm: 20,          // écart O₂–iris mémorisé, restitué au réaffichage de l'œil
   legendeActif: false,   // true = afficher Objectif/Oculaire sous les lentilles
 
   // ── Positions sur l'axe optique, en cm (repère de scène) ──
@@ -259,7 +260,9 @@ function compute() {
     sim.O2A2 = Infinity;
     sim.h2   = Infinity;
   } else if (Math.abs(O2A1) < 0.01) {
-    sim.O2A2 = Infinity; sim.h2 = Infinity;
+    // A₁ confondu avec O₂ : la relation de conjugaison donne O₂A₂ → 0, et non
+    // l'infini — l'image se forme sur la lentille elle-même, avec γ = 1.
+    sim.O2A2 = 0; sim.h2 = sim.h1;
   } else {
     const inv = 1/O2A1 + 1/f2;
     sim.O2A2 = 1 / inv;
@@ -284,17 +287,20 @@ function computeEye() {
   const crystalX    = sim.xOeil + EYE_IRIS_TO_LENS;
   const L2toCrystal = crystalX - sim.x2;
 
-  if (sim.isAfocal) {
+  // Objet à l'infini pour l'œil : A₁ est dans le plan focal objet de L₂, les
+  // rayons sortent de l'oculaire parallèles entre eux, de pente −h₁/f'₂, et
+  // convergent donc sur la rétine à la hauteur −f_œil·h₁/f'₂. Un seul calcul
+  // pour le réglage afocal et pour l'image rejetée à l'infini : la branche qui
+  // posait h₃ = 0 laissait la rétine vide alors que les rayons y convergent.
+  if (sim.isAfocal || !isFinite(sim.O2A2) || Math.abs(sim.O2A2) > FAR_CM) {
     sim.OeyeA3 = fEye;
-    const alphaRad = sim.alpha * Math.PI / 180;
-    const alphaSortie = -sim.f1/sim.f2 * Math.tan(alphaRad);
-    sim.h3 = fEye * (-alphaSortie);
-  } else if (!isFinite(sim.O2A2)) {
-    sim.OeyeA3 = fEye; sim.h3 = 0;
+    sim.h3     = -fEye * sim.h1 / sim.f2;
   } else {
     const crystalToA2cm = sim.O2A2 - L2toCrystal;
     if (Math.abs(crystalToA2cm) < 0.01) {
-      sim.OeyeA3 = Infinity; sim.h3 = Infinity;
+      // A₂ confondu avec le cristallin : image sur le cristallin, comme pour
+      // A₁ confondu avec O₂ plus haut — et non à l'infini.
+      sim.OeyeA3 = 0; sim.h3 = sim.h2;
     } else {
       const inv = 1/crystalToA2cm + 1/fEye;
       sim.OeyeA3 = 1/inv;
@@ -385,7 +391,9 @@ function enforceLensDistance() {
   if (sim.systemMode === 'lunette') {
     sim.x2 = sim.x1 + sim.f1 + sim.f2;
   } else if (sim.x2 < sim.x1 + MIN_LENS_GAP_CM) {
-    sim.x2 = sim.x1 + sim.f1 + sim.f2;
+    // L₁ pousse L₂ devant elle. L'ancienne version la renvoyait à f'₁ + f'₂,
+    // soit un bond de plusieurs dizaines de centimètres au moindre contact.
+    sim.x2 = sim.x1 + MIN_LENS_GAP_CM;
   }
 
   sim.xOeil = sim.x2 + Math.max(MIN_EYE_GAP_CM, dEye);
