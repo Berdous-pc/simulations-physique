@@ -58,6 +58,175 @@ function fs(base) { return base * uiScale(); }
 ════════════════════════════════════════════════════ */
 const LABEL_FONT = '"Segoe UI", Arial, sans-serif';
 
+/* ═══════════════════════════════════════════════════
+   GESTIONNAIRE D'ÉTIQUETTES
+   ─────────────────────────────────────────────────
+   Chaque fonction de dessin plaçait son texte avec des décalages en dur,
+   sans rien savoir des autres : dans le réglage afocal, F'₁, F₂ et A₁
+   tombent au même endroit, O₁ et O₂ se font rattraper par les foyers dès
+   que les focales sont courtes, et le tout se comprime encore au dézoom
+   puisque le texte garde une taille en pixels.
+
+   Les fonctions ne dessinent donc plus leurs étiquettes : elles les
+   DÉCLARENT (pushLabel), avec un point d'ancrage, une priorité et une
+   liste de positions candidates par ordre de préférence. flushLabels(),
+   appelé en fin de draw(), les place ensuite en une passe :
+
+     1. premier candidat dont la boîte englobante est libre ;
+     2. à défaut, on s'éloigne en couronne autour de l'ancre et on relie
+        l'étiquette à son point par un trait de rappel ;
+     3. en dernier recours, le candidat préféré, quitte à empiéter.
+
+   Le rendu ajoute systématiquement un halo à la couleur du fond : même
+   bien placée, une étiquette passe sur un rayon, sur l'axe pointillé ou
+   sur une flèche de lentille.
+
+   La priorité est un simple ordre de service — plus petit = servi en
+   premier, donc plus de chances d'obtenir sa position idéale.
+════════════════════════════════════════════════════ */
+const HALO_COLOR   = '#fdf8f0';   // couleur du fond du canvas
+const LABEL_PAD    = 2;           // marge de sécurité entre deux boîtes, en px de référence
+const LEADER_RADII = [34, 52, 72, 96];
+const LEADER_DIRS  = [
+  { cx:  1, cy: -1, align: 'left'   },
+  { cx: -1, cy: -1, align: 'right'  },
+  { cx:  1, cy:  1, align: 'left'   },
+  { cx: -1, cy:  1, align: 'right'  },
+  { cx:  0, cy: -1, align: 'center' },
+  { cx:  0, cy:  1, align: 'center' },
+  { cx:  1, cy:  0, align: 'left'   },
+  { cx: -1, cy:  0, align: 'right'  },
+];
+
+const labelQueue = [];   // étiquettes déclarées pendant la passe de dessin
+const occupied   = [];   // boîtes déjà attribuées, plus les zones réservées
+
+function resetLabels() { labelQueue.length = 0; occupied.length = 0; }
+
+/* Interdit une zone au placement (barre d'échelle, futurs encarts…). */
+function reserveBox(l, t, r, b) { occupied.push({ l, t, r, b }); }
+
+/* Déclare une étiquette. Champs : text, x, y (ancre), color, fontPx,
+   placements (liste de {dx, dy, align, baseline}), priority, et
+   optionnellement family, weight, leader:false pour interdire le rappel. */
+function pushLabel(o) { labelQueue.push(o); }
+
+function labelFont(lb) {
+  return `${lb.weight ?? 'bold'} ${lb.fontPx.toFixed(1)}px ${lb.family ?? LABEL_FONT}`;
+}
+
+/* Boîte englobante d'une étiquette pour un décalage donné.
+   La hauteur est prise au corps de la police : measureText ne renvoie de
+   métriques verticales fiables que sur les navigateurs récents, et
+   l'approximation suffit puisqu'elle sert de gabarit, pas de mesure. */
+function labelBox(lb, dx, dy, align, baseline) {
+  ctx.font = labelFont(lb);
+  const w = ctx.measureText(lb.text).width;
+  const h = lb.fontPx * 0.98;
+  const cx = lb.x + dx, cy = lb.y + dy;
+
+  let l = cx;
+  if (align === 'right')  l = cx - w;
+  if (align === 'center') l = cx - w / 2;
+
+  let t = cy;
+  if (baseline === 'bottom')     t = cy - h;
+  if (baseline === 'middle')     t = cy - h / 2;
+  if (baseline === 'alphabetic') t = cy - h * 0.78;
+
+  return { l, t, r: l + w, b: t + h };
+}
+
+function boxIsFree(b) {
+  // Une étiquette rognée par le bord est aussi illisible qu'une étiquette
+  // superposée : le candidat est rejeté et le placement cherche ailleurs.
+  if (b.l < 1 || b.r > sim.W - 1 || b.t < 1 || b.b > sim.H - 1) return false;
+  const p = fs(LABEL_PAD);
+  return !occupied.some(o => b.l < o.r + p && b.r > o.l - p &&
+                             b.t < o.b + p && b.b > o.t - p);
+}
+
+function flushLabels() {
+  labelQueue.sort((a, b) => (a.priority ?? 50) - (b.priority ?? 50));
+
+  for (const lb of labelQueue) {
+    // Ancre hors cadre : sans ce garde-fou, la recherche en couronne
+    // ramènerait l'étiquette dans le canvas au bout d'un trait de rappel
+    // pointant vers un point que l'on ne voit pas.
+    if (lb.x < 0 || lb.x > sim.W || lb.y < 0 || lb.y > sim.H) continue;
+
+    let box = null, leader = false;
+
+    for (const p of lb.placements) {
+      const b = labelBox(lb, p.dx, p.dy, p.align, p.baseline);
+      if (boxIsFree(b)) { box = b; break; }
+    }
+
+    if (!box && lb.leader !== false) {
+      for (const r of LEADER_RADII) {
+        for (const d of LEADER_DIRS) {
+          const k = (d.cx && d.cy) ? Math.SQRT1_2 : 1;   // diagonales à la même distance
+          const b = labelBox(lb, fs(r) * d.cx * k, fs(r) * d.cy * k, d.align, 'middle');
+          if (boxIsFree(b)) { box = b; leader = true; break; }
+        }
+        if (box) break;
+      }
+    }
+
+    if (!box) {
+      const p = lb.placements[0];
+      box = labelBox(lb, p.dx, p.dy, p.align, p.baseline);
+    }
+
+    occupied.push(box);
+    renderLabel(lb, box, leader);
+  }
+
+  labelQueue.length = 0;
+}
+
+function renderLabel(lb, box, leader) {
+  ctx.save();
+
+  if (leader) {
+    // Le trait rejoint le point de la boîte le plus proche de l'ancre :
+    // il reste court et n'entre jamais sous le texte.
+    const ax = Math.max(box.l, Math.min(lb.x, box.r));
+    const ay = Math.max(box.t, Math.min(lb.y, box.b));
+    ctx.strokeStyle = lb.color;
+    ctx.globalAlpha = 0.45;
+    ctx.lineWidth   = fs(1.1);
+    ctx.beginPath(); ctx.moveTo(lb.x, lb.y); ctx.lineTo(ax, ay); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.font = labelFont(lb);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.lineJoin = 'round'; ctx.miterLimit = 2;
+  ctx.strokeStyle = HALO_COLOR;
+  ctx.lineWidth   = Math.max(fs(2.5), lb.fontPx * 0.14);
+  ctx.strokeText(lb.text, box.l, box.t);
+  ctx.fillStyle = lb.color;
+  ctx.fillText(lb.text, box.l, box.t);
+
+  ctx.restore();
+}
+
+/* Jeu de quatre positions en coin autour d'une ancre, du coin préféré
+   (prefX, prefY : +1 droite / bas, -1 gauche / haut) aux trois autres. */
+function cornerPlacements(gapX, gapY, prefX = 1, prefY = -1) {
+  const out = [];
+  for (const sy of [prefY, -prefY]) {
+    for (const sx of [prefX, -prefX]) {
+      out.push({ dx: sx * gapX, dy: sy * gapY,
+                 align: sx < 0 ? 'right' : 'left',
+                 baseline: sy < 0 ? 'bottom' : 'top' });
+    }
+  }
+  return out;
+}
+
 /* ─────────────────────────────────────────────────
    resize() — Adapte le canvas à la taille de la fenêtre.
    Ne détruit plus l'état : les positions sont en cm. Seul le cadrage
@@ -117,8 +286,10 @@ function resize() {
 function draw() {
   const { W, H } = sim;
   ctx.clearRect(0, 0, W, H);
-  ctx.fillStyle = '#fdf8f0';
+  ctx.fillStyle = HALO_COLOR;
   ctx.fillRect(0, 0, W, H);
+
+  resetLabels();
 
   drawGrid();
   drawAxis();
@@ -148,6 +319,10 @@ function draw() {
   }
 
   drawScaleBar();
+
+  // Dernière étape : toutes les étiquettes déclarées ci-dessus sont placées
+  // et tracées d'un coup, donc par-dessus rayons, lentilles et quadrillage.
+  flushLabels();
 }
 
 /* ═══════════════════════════════════════════════════
@@ -211,6 +386,10 @@ function drawScaleBar() {
     ctx.fillText('×' + sim.zoom.toFixed(2).replace('.', ','), x0, y + tickH + fs(12));
   }
   ctx.restore();
+
+  // La barre n'est pas une étiquette gérée, mais elle occupe le coin :
+  // on l'interdit au placement pour qu'aucun texte ne vienne s'y poser.
+  reserveBox(0, y - tickH - fs(20), x0 + lenPx + fs(8), H);
 }
 
 /* ── Retour au cadrage nominal : zoom 1, système centré ── */
@@ -276,52 +455,72 @@ function drawAxis() {
 /* ── Foyers F1, F'1, F2, F'2 ──
    Les quatre foyers se resserrent dès que les focales sont courtes ou les
    lentilles proches, et F'₁ se confond avec F₂ dans le réglage afocal —
-   c'est-à-dire précisément dans la configuration étudiée. Les étiquettes
-   sont donc placées en deux rangs : celle qui empiéterait sur la
-   précédente bascule sous l'axe. */
+   c'est-à-dire précisément dans la configuration étudiée. Aucun placement
+   ne sépare deux points géométriquement confondus : on fusionne alors les
+   étiquettes en une seule, « F'₁ = F₂ », qui énonce la condition étudiée
+   au lieu de la masquer sous deux textes empilés. Le reste des collisions
+   est laissé au gestionnaire d'étiquettes. */
+const FOCUS_MERGE_PX = 15;
+
 function drawFocalPoints() {
   const { f1, f2, x1, x2, axisY } = sim;
 
-  const font = fs(31);
-  const arm  = fs(9);
-  const gap  = fs(8);
-  ctx.font = `bold ${font.toFixed(1)}px ${LABEL_FONT}`;
+  const arm = fs(9);
+  const gap = fs(8);
 
   const marks = [
-    { cm: -f1, xLens: x1, label: 'F₁'  },
-    { cm:  f1, xLens: x1, label: "F'₁" },
-    { cm: -f2, xLens: x2, label: 'F₂'  },
-    { cm:  f2, xLens: x2, label: "F'₂" },
+    { cm: -f1, xLens: x1, text: 'F₁'  },
+    { cm:  f1, xLens: x1, text: "F'₁" },
+    { cm: -f2, xLens: x2, text: 'F₂'  },
+    { cm:  f2, xLens: x2, text: "F'₂" },
   ]
-    .map(m => {
-      const x = xToPx(m.xLens + m.cm);
-      const w = ctx.measureText(m.label).width;
-      // L'étiquette s'écarte du foyer du côté opposé à sa lentille.
-      const left = m.cm < 0 ? x - gap - w : x + gap;
-      return { ...m, x, left, right: left + w };
-    })
-    .filter(m => m.right > 0 && m.left < sim.W)
-    .sort((a, b) => a.left - b.left);
+    .map(m => ({ ...m, x: xToPx(m.xLens + m.cm) }))
+    .filter(m => m.x > -fs(20) && m.x < sim.W + fs(20))
+    .sort((a, b) => a.x - b.x);
 
-  let occupiedRight = -Infinity;   // bord droit de la dernière étiquette du rang haut
-
+  // Regroupement des foyers confondus, dans l'ordre naturel F₁, F'₁, F₂, F'₂.
+  const groups = [];
   for (const m of marks) {
-    const below = m.left < occupiedRight;
-    if (!below) occupiedRight = m.right;
+    const g = groups[groups.length - 1];
+    if (g && Math.abs(m.x - g.x) <= fs(FOCUS_MERGE_PX)) {
+      g.parts.push(m);
+    } else {
+      groups.push({ x: m.x, parts: [m] });
+    }
+  }
 
+  for (const g of groups) {
     ctx.save();
     ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = fs(2.5);
     ctx.beginPath();
-    ctx.moveTo(m.x - arm, axisY); ctx.lineTo(m.x + arm, axisY);
-    ctx.moveTo(m.x, axisY - arm); ctx.lineTo(m.x, axisY + arm);
+    ctx.moveTo(g.x - arm, axisY); ctx.lineTo(g.x + arm, axisY);
+    ctx.moveTo(g.x, axisY - arm); ctx.lineTo(g.x, axisY + arm);
     ctx.stroke();
-    ctx.fillStyle = '#1a1a1a';
-    ctx.font = `bold ${font.toFixed(1)}px ${LABEL_FONT}`;
-    ctx.textAlign = m.cm < 0 ? 'right' : 'left';
-    ctx.fillText(m.label,
-                 m.x + (m.cm < 0 ? -gap : gap),
-                 below ? axisY + font * 0.95 : axisY - gap);
     ctx.restore();
+
+    // Un foyer objet s'écarte vers la gauche, un foyer image vers la droite :
+    // l'étiquette reste ainsi du côté opposé à sa lentille.
+    const ordered = g.parts.slice().sort((a, b) =>
+      (a.xLens - b.xLens) || (a.cm - b.cm));
+    const side = ordered[0].cm < 0 ? -1 : 1;
+
+    const placements = [];
+    for (const dy of [-gap, gap]) {
+      for (const s of [side, -side]) {
+        placements.push({ dx: s * gap, dy,
+                          align: s < 0 ? 'right' : 'left',
+                          baseline: dy < 0 ? 'bottom' : 'top' });
+      }
+    }
+
+    pushLabel({
+      text: ordered.map(m => m.text).join(' = '),
+      x: g.x, y: axisY,
+      color: '#1a1a1a',
+      fontPx: fs(31),
+      placements,
+      priority: 40,
+    });
   }
 }
 
@@ -346,22 +545,41 @@ function drawLens(xCm, label, isFirst) {
   ctx.moveTo(lensX - aw, bot - ah); ctx.lineTo(lensX, bot); ctx.lineTo(lensX + aw, bot - ah);
   ctx.stroke();
 
-  ctx.fillStyle = col; ctx.font = `bold ${fs(31).toFixed(1)}px ${LABEL_FONT}`;
-  ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-  ctx.fillText(label, lensX, top - fs(4));
+  ctx.restore();
 
-  ctx.textAlign = isFirst ? 'left' : 'right';
-  ctx.fillText(isFirst ? 'O₁' : 'O₂', lensX + (isFirst ? fs(10) : -fs(10)), axisY - fs(6));
-  ctx.textBaseline = 'alphabetic';
+  // L₁ / L₂, au-dessus de la pointe : de la place, donc servies en premier.
+  pushLabel({
+    text: label, x: lensX, y: top - fs(4),
+    color: col, fontPx: fs(31),
+    placements: [
+      { dx: 0,        dy: 0, align: 'center', baseline: 'bottom' },
+      { dx:  fs(12),  dy: 0, align: 'left',   baseline: 'bottom' },
+      { dx: -fs(12),  dy: 0, align: 'right',  baseline: 'bottom' },
+    ],
+    priority: 5,
+  });
+
+  // O₁ / O₂ : de préférence vers l'extérieur du système, au-dessus de l'axe.
+  const s0 = isFirst ? 1 : -1;
+  pushLabel({
+    text: isFirst ? 'O₁' : 'O₂', x: lensX, y: axisY,
+    color: col, fontPx: fs(31),
+    placements: cornerPlacements(fs(10), fs(6), s0, -1),
+    priority: 30,
+  });
 
   if (sim.legendeActif && sim.systemMode === 'lunette') {
-    ctx.font = `bold ${fs(20).toFixed(1)}px "Segoe UI", Arial`;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    ctx.fillText(isFirst ? 'Objectif' : 'Oculaire', lensX, bot + fs(6));
-    ctx.textBaseline = 'alphabetic';
+    pushLabel({
+      text: isFirst ? 'Objectif' : 'Oculaire', x: lensX, y: bot + fs(6),
+      color: col, fontPx: fs(20), family: '"Segoe UI", Arial',
+      placements: [
+        { dx: 0,       dy: 0, align: 'center', baseline: 'top' },
+        { dx:  fs(14), dy: 0, align: 'left',   baseline: 'top' },
+        { dx: -fs(14), dy: 0, align: 'right',  baseline: 'top' },
+      ],
+      priority: 50,
+    });
   }
-
-  ctx.restore();
 }
 
 /* ── Flèches A∞ et B∞ côté entrée ── */
@@ -381,11 +599,17 @@ function drawAlphaArrows() {
   ctx.strokeStyle = col; ctx.lineWidth = fs(1.8); ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(aX1, aY); ctx.lineTo(aX2, aY); ctx.stroke();
   drawArrowHead({ x: aX1, y: aY }, { x: aX2, y: aY }, col, true);
-  ctx.fillStyle = col; ctx.font = `bold ${fs(22).toFixed(1)}px serif`;
-  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  ctx.fillText('A∞', (aX1 + aX2) / 2, aY + fs(4));
-  ctx.textBaseline = 'alphabetic';
   ctx.restore();
+
+  pushLabel({
+    text: 'A∞', x: (aX1 + aX2) / 2, y: aY + fs(4),
+    color: col, fontPx: fs(22), family: 'serif',
+    placements: [
+      { dx: 0, dy: 0,        align: 'center', baseline: 'top' },
+      { dx: 0, dy: -fs(8),   align: 'center', baseline: 'bottom' },
+    ],
+    priority: 10,
+  });
 
   const cos_a  = Math.cos(alphaRad);
   const sin_a  = Math.sin(alphaRad);
@@ -398,13 +622,19 @@ function drawAlphaArrows() {
   ctx.strokeStyle = col; ctx.lineWidth = fs(1.8); ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(bX1, bY1); ctx.lineTo(bX2, bY2); ctx.stroke();
   drawArrowHead({ x: bX1, y: bY1 }, { x: bX2, y: bY2 }, col, true);
-  const bLx = (bX1 + bX2) / 2;
-  const bLy = Math.max(bY1, bY2) + fs(4);
-  ctx.fillStyle = col; ctx.font = `bold ${fs(22).toFixed(1)}px serif`;
-  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  ctx.fillText('B∞', bLx, bLy + fs(4));
-  ctx.textBaseline = 'alphabetic';
   ctx.restore();
+
+  const bLx = (bX1 + bX2) / 2;
+  const bLy = Math.max(bY1, bY2) + fs(8);
+  pushLabel({
+    text: 'B∞', x: bLx, y: bLy,
+    color: col, fontPx: fs(22), family: 'serif',
+    placements: [
+      { dx: 0, dy: 0, align: 'center', baseline: 'top' },
+      { dx: fs(10), dy: 0, align: 'left', baseline: 'top' },
+    ],
+    priority: 10,
+  });
 
   if (alpha !== 0) {
     if (sim.rayMode === 'anim' && sim.animT < (sim._fracL1 ?? 1.0)) return;
@@ -416,14 +646,22 @@ function drawAlphaArrows() {
     ctx.save();
     ctx.strokeStyle = col; ctx.lineWidth = fs(1.5);
     ctx.beginPath(); ctx.arc(lensX1, axisY, arcR, aStart, aEnd); ctx.stroke();
+    ctx.restore();
+
     const aMid = (aStart + aEnd) / 2;
     const lx = lensX1 + (arcR + fs(12)) * Math.cos(aMid);
     const ly = axisY  + (arcR + fs(12)) * Math.sin(aMid);
-    ctx.fillStyle = col; ctx.font = `bold ${fs(25).toFixed(1)}px serif`;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('α', lx, ly);
-    ctx.textBaseline = 'alphabetic';
-    ctx.restore();
+    pushLabel({
+      text: 'α', x: lx, y: ly,
+      color: col, fontPx: fs(25), family: 'serif',
+      placements: [
+        { dx: 0, dy: 0, align: 'center', baseline: 'middle' },
+        { dx: (arcR + fs(12)) * Math.cos(aMid) * 0.4,
+          dy: (arcR + fs(12)) * Math.sin(aMid) * 0.4,
+          align: 'center', baseline: 'middle' },
+      ],
+      priority: 10,
+    });
   }
 }
 
@@ -448,11 +686,17 @@ function drawOutputArrows() {
   ctx.strokeStyle = col; ctx.lineWidth = fs(1.8); ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(aX1, aY); ctx.lineTo(aX2, aY); ctx.stroke();
   drawArrowHead({ x: aX1, y: aY }, { x: aX2, y: aY }, col, true);
-  ctx.fillStyle = col; ctx.font = `bold ${fs(22).toFixed(1)}px serif`;
-  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  ctx.fillText("A'∞", (aX1 + aX2) / 2, aY + fs(4));
-  ctx.textBaseline = 'alphabetic';
   ctx.restore();
+
+  pushLabel({
+    text: "A'∞", x: (aX1 + aX2) / 2, y: aY + fs(4),
+    color: col, fontPx: fs(22), family: 'serif',
+    placements: [
+      { dx: 0, dy: 0,      align: 'center', baseline: 'top' },
+      { dx: 0, dy: -fs(8), align: 'center', baseline: 'bottom' },
+    ],
+    priority: 10,
+  });
 
   // Abscisse où l'on échantillonne le rayon virtuel pour poser B'∞ : à un
   // quart du canvas, mais toujours en amont de l'oculaire et jamais collée
@@ -484,13 +728,19 @@ function drawOutputArrows() {
   ctx.strokeStyle = col; ctx.lineWidth = fs(1.8); ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(bX1, bY1); ctx.lineTo(bX2, bY2); ctx.stroke();
   drawArrowHead({ x: bX1, y: bY1 }, { x: bX2, y: bY2 }, col, true);
-  const bLx = (bX1 + bX2) / 2;
-  const bLy = Math.min(bY1, bY2) - fs(4);
-  ctx.fillStyle = col; ctx.font = `bold ${fs(22).toFixed(1)}px serif`;
-  ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-  ctx.fillText("B'∞", bLx, bLy - fs(4));
-  ctx.textBaseline = 'alphabetic';
   ctx.restore();
+
+  const bLx = (bX1 + bX2) / 2;
+  const bLy = Math.min(bY1, bY2) - fs(8);
+  pushLabel({
+    text: "B'∞", x: bLx, y: bLy,
+    color: col, fontPx: fs(22), family: 'serif',
+    placements: [
+      { dx: 0, dy: 0, align: 'center', baseline: 'bottom' },
+      { dx: fs(10), dy: 0, align: 'left', baseline: 'bottom' },
+    ],
+    priority: 10,
+  });
 }
 
 /* ── Image intermédiaire A1B1 ── */
@@ -517,12 +767,19 @@ function drawIntermediateImage() {
   ctx.lineTo(x + fs(7), yB + arrowDir * fs(12));
   ctx.stroke();
   ctx.setLineDash([]);
-  ctx.fillStyle = col; ctx.font = `bold ${fs(31).toFixed(1)}px ${LABEL_FONT}`;
-  ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-  ctx.fillText('A₁', x + fs(6), yA + fs(6));
-  ctx.textBaseline = 'alphabetic';
-  ctx.fillText('B₁', x + fs(6), yB + (h1 >= 0 ? -fs(8) : fs(28)));
   ctx.restore();
+
+  // A₁ se pose du côté opposé à la flèche, B₁ dans son prolongement.
+  pushLabel({
+    text: 'A₁', x, y: yA, color: col, fontPx: fs(31),
+    placements: cornerPlacements(fs(6), fs(6), 1, h1 >= 0 ? 1 : -1),
+    priority: 20,
+  });
+  pushLabel({
+    text: 'B₁', x, y: yB, color: col, fontPx: fs(31),
+    placements: cornerPlacements(fs(6), fs(8), 1, h1 >= 0 ? -1 : 1),
+    priority: 20,
+  });
 }
 
 /* ── Image finale A2B2 (mode non afocal) ── */
@@ -550,11 +807,18 @@ function drawFinalImage() {
   ctx.lineTo(x + fs(7), yB + arrowDir * fs(12));
   ctx.stroke();
   ctx.setLineDash([]);
-  ctx.fillStyle = col; ctx.font = `bold ${fs(31).toFixed(1)}px ${LABEL_FONT}`;
-  ctx.textAlign = 'left';
-  ctx.fillText('A₂', x + fs(6), yA + (h2 >= 0 ? fs(28) : -fs(10)));
-  ctx.fillText('B₂', x + fs(6), yB + (h2 >= 0 ? -fs(8) : fs(28)));
   ctx.restore();
+
+  pushLabel({
+    text: 'A₂', x, y: yA, color: col, fontPx: fs(31),
+    placements: cornerPlacements(fs(6), fs(6), 1, h2 >= 0 ? 1 : -1),
+    priority: 20,
+  });
+  pushLabel({
+    text: 'B₂', x, y: yB, color: col, fontPx: fs(31),
+    placements: cornerPlacements(fs(6), fs(8), 1, h2 >= 0 ? -1 : 1),
+    priority: 20,
+  });
 }
 
 /* ── Trait de direction B1 → O2 ── */
@@ -611,15 +875,22 @@ function drawOutputAngle() {
     ctx.save();
     ctx.strokeStyle = '#2a6aaa'; ctx.lineWidth = fs(1.5);
     ctx.beginPath(); ctx.arc(lensX2, axisY, arcR, aStart, aEnd, alphaSortieRad < 0); ctx.stroke();
+    ctx.restore();
 
     const aMid = (aStart + aEnd) / 2;
     const lx = lensX2 + (arcR + fs(12)) * Math.cos(aMid);
     const ly = axisY  + (arcR + fs(12)) * Math.sin(aMid);
-    ctx.fillStyle = '#2a6aaa'; ctx.font = `bold ${fs(25).toFixed(1)}px serif`;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText("α'", lx, ly);
-    ctx.textBaseline = 'alphabetic';
-    ctx.restore();
+    pushLabel({
+      text: "α'", x: lx, y: ly,
+      color: '#2a6aaa', fontPx: fs(25), family: 'serif',
+      placements: [
+        { dx: 0, dy: 0, align: 'center', baseline: 'middle' },
+        { dx: (arcR + fs(12)) * Math.cos(aMid) * 0.4,
+          dy: (arcR + fs(12)) * Math.sin(aMid) * 0.4,
+          align: 'center', baseline: 'middle' },
+      ],
+      priority: 10,
+    });
   }
 }
 
@@ -643,10 +914,12 @@ function drawEye() {
   ctx.beginPath();
   ctx.moveTo(crystalX - aw, axisY + lensH - ah); ctx.lineTo(crystalX, axisY + lensH); ctx.lineTo(crystalX + aw, axisY + lensH - ah);
   ctx.stroke();
-  ctx.fillStyle = '#5a3a8a'; ctx.font = `bold ${fs(20).toFixed(1)}px "Segoe UI", Arial`;
-  ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
-  ctx.fillText('Cristallin', crystalX - fs(6), axisY - lensH - fs(5));
-  ctx.textBaseline = 'alphabetic';
+  pushLabel({
+    text: 'Cristallin', x: crystalX, y: axisY - lensH - fs(5),
+    color: '#5a3a8a', fontPx: fs(20), family: '"Segoe UI", Arial',
+    placements: cornerPlacements(fs(6), 0, -1, -1),
+    priority: 50,
+  });
 
   ctx.strokeStyle = '#888'; ctx.lineWidth = fs(1.2);
   ctx.beginPath();
@@ -659,10 +932,12 @@ function drawEye() {
   ctx.beginPath();
   ctx.moveTo(retinaX, axisY - eyeR); ctx.lineTo(retinaX, axisY + eyeR);
   ctx.stroke();
-  ctx.fillStyle = '#c05020'; ctx.font = `bold ${fs(20).toFixed(1)}px "Segoe UI", Arial`;
-  ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
-  ctx.fillText('Rétine', retinaX + fs(6), axisY - eyeR - fs(5));
-  ctx.textBaseline = 'alphabetic';
+  pushLabel({
+    text: 'Rétine', x: retinaX, y: axisY - eyeR - fs(5),
+    color: '#c05020', fontPx: fs(20), family: '"Segoe UI", Arial',
+    placements: cornerPlacements(fs(6), 0, 1, -1),
+    priority: 50,
+  });
 
   // ── Image A₃B₃ sur la rétine ──
   const { OeyeA3, h3, rayMode, animT } = sim;
@@ -686,11 +961,18 @@ function drawEye() {
       ctx.lineTo(imgX + fs(6), imgYB + arrowDir * fs(10));
       ctx.stroke();
       ctx.setLineDash([]);
-      ctx.fillStyle = imgCol; ctx.font = `bold ${fs(26).toFixed(1)}px ${LABEL_FONT}`;
-      ctx.textAlign = 'left';
-      ctx.fillText("A'", imgX + fs(5), imgYA + (h3 >= 0 ? fs(22) : -fs(8)));
-      ctx.fillText("B'", imgX + fs(5), imgYB + (h3 >= 0 ? -fs(6) : fs(22)));
       ctx.restore();
+
+      pushLabel({
+        text: "A'", x: imgX, y: imgYA, color: imgCol, fontPx: fs(26),
+        placements: cornerPlacements(fs(5), fs(5), 1, h3 >= 0 ? 1 : -1),
+        priority: 20,
+      });
+      pushLabel({
+        text: "B'", x: imgX, y: imgYB, color: imgCol, fontPx: fs(26),
+        placements: cornerPlacements(fs(5), fs(6), 1, h3 >= 0 ? -1 : 1),
+        priority: 20,
+      });
     }
   }
 
