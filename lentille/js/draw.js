@@ -38,6 +38,206 @@ function uiScale() {
 }
 function fs(base) { return base * uiScale(); }
 
+/* Police des étiquettes du schéma. */
+const LABEL_FONT = 'monospace';
+
+/* ═══════════════════════════════════════════════════
+   GESTIONNAIRE D'ÉTIQUETTES
+   ─────────────────────────────────────────────────
+   Chaque fonction de dessin plaçait son texte avec des décalages en dur,
+   sans rien savoir des autres : A recouvre F quand l'objet est au foyer
+   objet, A' recouvre F' quand l'objet s'éloigne, O se fait rattraper par
+   F' aux courtes focales, « Écran » disparaissait sous le cadre Image, et
+   le tout se comprime encore au dézoom puisque le texte garde une taille
+   en pixels.
+
+   Les fonctions ne dessinent donc plus leurs étiquettes : elles les
+   DÉCLARENT (pushLabel), avec un point d'ancrage, une priorité et une
+   liste de positions candidates par ordre de préférence. flushLabels(),
+   appelé en fin de draw(), les place ensuite en une passe :
+
+     1. premier candidat dont la boîte englobante est libre ;
+     2. à défaut, on s'éloigne en couronne autour de l'ancre et on relie
+        l'étiquette à son point par un trait de rappel ;
+     3. en dernier recours, le candidat préféré, quitte à empiéter.
+
+   Les meubles de l'interface — cadres Objet et Image, barre d'échelle,
+   boutons, tableau de conjugaison — réservent leur emprise (reserveBox),
+   de sorte qu'aucune étiquette ne vienne se glisser dessous.
+
+   Le rendu ajoute systématiquement un halo à la couleur du fond : même
+   bien placée, une étiquette passe sur un rayon, sur l'axe pointillé ou
+   sur une flèche de lentille — et le mode multipoints en trace beaucoup.
+
+   La priorité est un simple ordre de service — plus petit = servi en
+   premier, donc plus de chances d'obtenir sa position idéale.
+════════════════════════════════════════════════════ */
+const HALO_COLOR   = '#fdf8f0';   // couleur du fond du canvas
+const LABEL_PAD    = 2;           // marge de sécurité entre deux boîtes, en px de référence
+const LEADER_RADII = [34, 52, 72, 96];
+const LEADER_DIRS  = [
+  { cx:  1, cy: -1, align: 'left'   },
+  { cx: -1, cy: -1, align: 'right'  },
+  { cx:  1, cy:  1, align: 'left'   },
+  { cx: -1, cy:  1, align: 'right'  },
+  { cx:  0, cy: -1, align: 'center' },
+  { cx:  0, cy:  1, align: 'center' },
+  { cx:  1, cy:  0, align: 'left'   },
+  { cx: -1, cy:  0, align: 'right'  },
+];
+
+const labelQueue = [];   // étiquettes déclarées pendant la passe de dessin
+const occupied   = [];   // boîtes déjà attribuées, plus les zones réservées
+
+function resetLabels() { labelQueue.length = 0; occupied.length = 0; }
+
+/* Interdit une zone au placement. */
+function reserveBox(l, t, r, b) { occupied.push({ l, t, r, b }); }
+
+/* Réserve l'emprise des éléments HTML superposés au canvas. Ils sont
+   opaques et dessinés par le navigateur au-dessus de lui : une étiquette
+   qui tomberait dessous serait simplement invisible.
+
+   Réservé aux éléments dont la géométrie n'est pas connue d'ici — les
+   boutons, eux, réservent la leur depuis layoutCanvasButtons(), qui la
+   calcule déjà. getBoundingClientRect() force un recalcul de mise en page
+   à chaque image d'animation : on en appelle le moins possible.
+
+   Le repli sur la classe « hidden » n'est pas cosmétique : drag-hint
+   s'efface par opacity et non par display, si bien que offsetParent reste
+   non nul — sans ce test, sa place resterait réservée à jamais. */
+function reserveOverlays(ids) {
+  const c = cv.getBoundingClientRect();
+  for (const id of ids) {
+    const el = document.getElementById(id);
+    if (!el || el.offsetParent === null || el.classList.contains('hidden')) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) continue;
+    reserveBox(r.left - c.left, r.top - c.top, r.right - c.left, r.bottom - c.top);
+  }
+}
+
+/* Déclare une étiquette. Champs : text, x, y (ancre), color, fontPx,
+   placements (liste de {dx, dy, align, baseline}), priority, et
+   optionnellement family, weight, leader:false pour interdire le rappel. */
+function pushLabel(o) { labelQueue.push(o); }
+
+function labelFont(lb) {
+  return `${lb.weight ?? 'bold'} ${lb.fontPx.toFixed(1)}px ${lb.family ?? LABEL_FONT}`;
+}
+
+/* Boîte englobante d'une étiquette pour un décalage donné.
+   La hauteur est prise au corps de la police : measureText ne renvoie de
+   métriques verticales fiables que sur les navigateurs récents, et
+   l'approximation suffit puisqu'elle sert de gabarit, pas de mesure. */
+function labelBox(lb, dx, dy, align, baseline) {
+  ctx.font = labelFont(lb);
+  const w = ctx.measureText(lb.text).width;
+  const h = lb.fontPx * 0.98;
+  const cx = lb.x + dx, cy = lb.y + dy;
+
+  let l = cx;
+  if (align === 'right')  l = cx - w;
+  if (align === 'center') l = cx - w / 2;
+
+  let t = cy;
+  if (baseline === 'bottom')     t = cy - h;
+  if (baseline === 'middle')     t = cy - h / 2;
+  if (baseline === 'alphabetic') t = cy - h * 0.78;
+
+  return { l, t, r: l + w, b: t + h };
+}
+
+function boxIsFree(b) {
+  // Une étiquette rognée par le bord est aussi illisible qu'une étiquette
+  // superposée : le candidat est rejeté et le placement cherche ailleurs.
+  if (b.l < 1 || b.r > sim.W - 1 || b.t < 1 || b.b > sim.H - 1) return false;
+  const p = fs(LABEL_PAD);
+  return !occupied.some(o => b.l < o.r + p && b.r > o.l - p &&
+                             b.t < o.b + p && b.b > o.t - p);
+}
+
+function flushLabels() {
+  labelQueue.sort((a, b) => (a.priority ?? 50) - (b.priority ?? 50));
+
+  for (const lb of labelQueue) {
+    // Ancre hors cadre : sans ce garde-fou, la recherche en couronne
+    // ramènerait l'étiquette dans le canvas au bout d'un trait de rappel
+    // pointant vers un point que l'on ne voit pas.
+    if (lb.x < 0 || lb.x > sim.W || lb.y < 0 || lb.y > sim.H) continue;
+
+    let box = null, leader = false;
+
+    for (const p of lb.placements) {
+      const b = labelBox(lb, p.dx, p.dy, p.align, p.baseline);
+      if (boxIsFree(b)) { box = b; break; }
+    }
+
+    if (!box && lb.leader !== false) {
+      for (const r of LEADER_RADII) {
+        for (const d of LEADER_DIRS) {
+          const k = (d.cx && d.cy) ? Math.SQRT1_2 : 1;   // diagonales à la même distance
+          const b = labelBox(lb, fs(r) * d.cx * k, fs(r) * d.cy * k, d.align, 'middle');
+          if (boxIsFree(b)) { box = b; leader = true; break; }
+        }
+        if (box) break;
+      }
+    }
+
+    if (!box) {
+      const p = lb.placements[0];
+      box = labelBox(lb, p.dx, p.dy, p.align, p.baseline);
+    }
+
+    occupied.push(box);
+    renderLabel(lb, box, leader);
+  }
+
+  labelQueue.length = 0;
+}
+
+function renderLabel(lb, box, leader) {
+  ctx.save();
+
+  if (leader) {
+    // Le trait rejoint le point de la boîte le plus proche de l'ancre :
+    // il reste court et n'entre jamais sous le texte.
+    const ax = Math.max(box.l, Math.min(lb.x, box.r));
+    const ay = Math.max(box.t, Math.min(lb.y, box.b));
+    ctx.strokeStyle = lb.color;
+    ctx.globalAlpha = 0.45;
+    ctx.lineWidth   = fs(1.1);
+    ctx.beginPath(); ctx.moveTo(lb.x, lb.y); ctx.lineTo(ax, ay); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.font = labelFont(lb);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.lineJoin = 'round'; ctx.miterLimit = 2;
+  ctx.strokeStyle = HALO_COLOR;
+  ctx.lineWidth   = Math.max(fs(2.5), lb.fontPx * 0.14);
+  ctx.strokeText(lb.text, box.l, box.t);
+  ctx.fillStyle = lb.color;
+  ctx.fillText(lb.text, box.l, box.t);
+
+  ctx.restore();
+}
+
+/* Jeu de quatre positions en coin autour d'une ancre, du coin préféré
+   (prefX, prefY : +1 droite / bas, -1 gauche / haut) aux trois autres. */
+function cornerPlacements(gapX, gapY, prefX = 1, prefY = -1) {
+  const out = [];
+  for (const sy of [prefY, -prefY]) {
+    for (const sx of [prefX, -prefX]) {
+      out.push({ dx: sx * gapX, dy: sy * gapY,
+                 align: sx < 0 ? 'right' : 'left',
+                 baseline: sy < 0 ? 'bottom' : 'top' });
+    }
+  }
+  return out;
+}
+
 /* ─────────────────────────────────────────────────
    updateFrameMetrics() — Dimensions des cadres Objet / Image.
    Le cadre suit l'échelle de la scène, mais reste plafonné en
@@ -97,8 +297,10 @@ function resize() {
 function draw() {
   const { W, H, mode, animT, animTImage } = sim;
   ctx.clearRect(0, 0, W, H);
-  ctx.fillStyle = '#fdf8f0';
+  ctx.fillStyle = HALO_COLOR;
   ctx.fillRect(0, 0, W, H);
+
+  resetLabels();
 
   drawGrid();
   drawAxis();
@@ -116,14 +318,23 @@ function draw() {
   drawLens();
   if (!sim.infini) drawObject();
 
-  if (mode === 'instant') {
-    drawImage(1.0);
-  } else {
-    drawImage(animT >= animTImage ? 1.0 : 0.0);
-  }
+  // En animation, l'image n'apparaît qu'une fois le front d'onde parvenu
+  // jusqu'à elle : son étiquette doit suivre la même règle.
+  const imageShown = (mode === 'instant') || (animT >= animTImage);
+  drawImage(imageShown ? 1.0 : 0.0);
 
   drawViewfinders();
   drawScaleBar();
+
+  // Les meubles HTML posés sur le canvas sont opaques : ils réservent leur
+  // emprise avant que les étiquettes ne soient placées.
+  reserveOverlays(['drag-hint', 'conjugaison-table']);
+
+  // Dernière étape : F, A, F' et A' sont déclarés ensemble, car ce sont les
+  // seuls points susceptibles d'être confondus, puis tout est placé d'un coup
+  // — donc par-dessus rayons, lentille et quadrillage.
+  pushAxisPointLabels(imageShown);
+  flushLabels();
 }
 
 /* ── Quadrillage à pas adaptatif (série 1-2-5) ──
@@ -169,36 +380,99 @@ function drawAxis() {
   ctx.restore();
 }
 
-/* ── Foyers F et F' ── */
+/* ── Croix des foyers F et F' ──
+   Les étiquettes ne sont plus posées ici : F et F' peuvent se confondre
+   avec A ou A', et c'est pushAxisPointLabels() qui arbitre. */
 function drawFocalPoints() {
-  const { f, axisY, infini, lensType } = sim;
+  const { f, axisY, lensType } = sim;
   const fEff = lensType === 'div' ? -f : f;
-  const points = [[-fEff, "F"]];
-  if (!infini) points.push([fEff, "F'"]);
-
   const arm  = fs(7);
-  const font = fs(30);
 
-  // O et le foyer situé du même côté partent tous deux vers la droite depuis
-  // des abscisses distantes de |f'|·scale. Quand cet écart devient plus petit
-  // que l'étiquette, on bascule F et F' sous l'axe pour éviter la surimpression.
-  const below = Math.abs(fEff) * sim.scale < font * 1.7;
-
-  for (const [cm, label] of points) {
+  ctx.save();
+  ctx.strokeStyle = '#888'; ctx.lineWidth = fs(1.8);
+  for (const cm of [-fEff, fEff]) {
     const x = cmToX(cm);
-    ctx.save();
-    ctx.strokeStyle = '#888'; ctx.lineWidth = fs(1.8);
     ctx.beginPath();
     ctx.moveTo(x - arm, axisY); ctx.lineTo(x + arm, axisY);
     ctx.moveTo(x, axisY - arm); ctx.lineTo(x, axisY + arm);
     ctx.stroke();
-    ctx.fillStyle = '#555';
-    ctx.font = `bold ${font.toFixed(1)}px monospace`;
-    ctx.textAlign = cm < 0 ? 'right' : 'left';
-    ctx.fillText(label,
-                 x + (cm < 0 ? -fs(10) : fs(10)),
-                 below ? axisY + font * 0.95 : axisY - fs(10));
-    ctx.restore();
+  }
+  ctx.restore();
+}
+
+/* ═══════════════════════════════════════════════════
+   ÉTIQUETTES DES POINTS DE L'AXE — F, A, F', A'
+   ─────────────────────────────────────────────────
+   Ces quatre points se confondent deux à deux dans les configurations
+   canoniques du cours : A sur F quand l'objet est au foyer objet (image
+   rejetée à l'infini), A' sur F' quand l'objet est à l'infini. Aucun
+   placement ne sépare deux points confondus : on fusionne alors les
+   étiquettes en une seule — « F = A », « F' = A' » — qui énonce le
+   résultat au lieu de le masquer sous deux textes empilés. L'ancienne
+   version écrivait déjà « F'= A' », mais câblé pour le seul mode infini.
+
+   Le critère porte sur les CENTIMÈTRES et l'égalité doit être rigoureuse :
+   écrire « F = A » pour deux points seulement voisins énoncerait une
+   égalité fausse, ce qui est bien pire qu'un chevauchement. Un critère en
+   pixels laisserait le dézoom la fabriquer, et les tolérances de compute()
+   (0,4 cm autour du foyer objet) servent à décider du tracé des rayons,
+   pas à affirmer une égalité de points.
+
+   AXIS_SAME_CM ne couvre donc que le bruit de l'arithmétique flottante.
+   En mode infini, compute() pose OA' = f' et l'égalité est exacte ; sur
+   l'axe, c'est l'aimantation du glissement (ui.js) qui rend le foyer objet
+   atteignable à la souris. Hors de ces cas, les étiquettes restent
+   séparées — le gestionnaire les écarte, au besoin par un trait de rappel.
+════════════════════════════════════════════════════ */
+const AXIS_SAME_CM = 1e-6;
+
+function pushAxisPointLabels(imageShown) {
+  const { f, h, h2, OA, OA2, axisY, infini, lensType } = sim;
+  const fEff = lensType === 'div' ? -f : f;
+
+  // rank : ordre de lecture d'une étiquette fusionnée (le foyer en tête).
+  // up : côté de l'axe préféré, opposé à la flèche dont le point est le pied.
+  const pts = [
+    { rank: 0, cm: -fEff, text: 'F',   color: '#555' },
+    { rank: 1, cm:  fEff, text: "F'",  color: '#555' },
+  ];
+  if (!infini) {
+    pts.push({ rank: 2, cm: OA, text: 'A', color: '#c05020', up: h <= 0 });
+  }
+  if (imageShown && isFinite(OA2) && Math.abs(OA2) < FAR_CM) {
+    pts.push({ rank: 3, cm: OA2, text: "A'",
+               color: OA2 > 0 ? '#2a6aaa' : '#b04020', up: h2 < 0 });
+  }
+
+  const marks = pts
+    .map(m => ({ ...m, x: cmToX(m.cm) }))
+    .sort((a, b) => (a.cm - b.cm) || (a.rank - b.rank));
+
+  // Regroupement des points rigoureusement confondus.
+  const groups = [];
+  for (const m of marks) {
+    const g = groups[groups.length - 1];
+    if (g && Math.abs(m.cm - g.cm) <= AXIS_SAME_CM) g.parts.push(m);
+    else groups.push({ cm: m.cm, x: m.x, parts: [m] });
+  }
+
+  for (const g of groups) {
+    const ordered = g.parts.slice().sort((a, b) => a.rank - b.rank);
+    // Un groupe qui contient un point objet ou image en prend la couleur :
+    // elle porte une information (réelle / virtuelle) que le gris n'a pas.
+    const carrier = ordered.find(m => m.up !== undefined) ?? ordered[0];
+
+    pushLabel({
+      text: ordered.map(m => m.text).join(' = '),
+      x: g.x, y: axisY,
+      color: carrier.color,
+      fontPx: fs(30),
+      // Le point s'écarte de O, et se pose du côté opposé à sa flèche.
+      placements: cornerPlacements(fs(9), fs(9),
+                                   g.cm < 0 ? -1 : 1,
+                                   (carrier.up ?? true) ? -1 : 1),
+      priority: ordered.some(m => m.rank >= 2) ? 20 : 40,
+    });
   }
 }
 
@@ -231,9 +505,13 @@ function drawLens() {
     ctx.stroke();
   }
 
-  ctx.fillStyle = '#2c3e50'; ctx.font = `bold ${fs(30).toFixed(1)}px monospace`;
-  ctx.textAlign = 'left';
-  ctx.fillText('O', lensX + fs(8), axisY - fs(8));
+  // O : de préférence en haut à droite du centre optique.
+  pushLabel({
+    text: 'O', x: lensX, y: axisY,
+    color: '#2c3e50', fontPx: fs(30),
+    placements: cornerPlacements(fs(8), fs(8), 1, -1),
+    priority: 30,
+  });
 
   // Arc d'angle alpha (mode infini, alpha ≠ 0)
   if (sim.infini && sim.alpha !== 0) {
@@ -249,15 +527,17 @@ function drawLens() {
     ctx.strokeStyle = '#2a6aaa'; ctx.lineWidth = fs(1.5);
     ctx.beginPath(); ctx.arc(lensX, axisY, arcR, aStart, aEnd); ctx.stroke();
 
-    const aMid = (aStart + aEnd) / 2;
-    const lx = lensX + (arcR + fs(14)) * Math.cos(aMid);
-    const ly = axisY  + (arcR + fs(14)) * Math.sin(aMid);
-    ctx.fillStyle = '#2a6aaa';
-    ctx.font = `bold ${fs(18).toFixed(1)}px serif`;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('α', lx, ly);
-    ctx.textBaseline = 'alphabetic';
     ctx.restore();
+
+    const aMid = (aStart + aEnd) / 2;
+    pushLabel({
+      text: 'α',
+      x: lensX + (arcR + fs(14)) * Math.cos(aMid),
+      y: axisY + (arcR + fs(14)) * Math.sin(aMid),
+      color: '#2a6aaa', fontPx: fs(18), family: 'serif',
+      placements: [{ dx: 0, dy: 0, align: 'center', baseline: 'middle' }],
+      priority: 15,
+    });
   }
 
   ctx.restore();
@@ -271,8 +551,6 @@ function drawObject() {
   const yB = cmToY(h);
   const arrowDir = h > 0 ? 1 : -1;
 
-  const font = fs(30);
-
   ctx.save();
   ctx.strokeStyle = '#c05020'; ctx.lineWidth = fs(3);
   ctx.beginPath(); ctx.moveTo(x, yA); ctx.lineTo(x, yB); ctx.stroke();
@@ -281,12 +559,16 @@ function drawObject() {
   ctx.lineTo(x, yB);
   ctx.lineTo(x + fs(8), yB + arrowDir * fs(14));
   ctx.stroke();
-  ctx.fillStyle = '#c05020';
-  ctx.font = `bold ${font.toFixed(1)}px monospace`;
-  ctx.textAlign = 'right';
-  ctx.fillText('A', x - fs(8), yA + (h > 0 ? font * 0.82 : -fs(10)));
-  ctx.fillText('B', x - fs(8), yB + (h > 0 ? -fs(10) : font * 0.88));
   ctx.restore();
+
+  // A est sur l'axe : son étiquette est posée par pushAxisPointLabels(),
+  // qui seul sait si le point se confond avec un foyer.
+  pushLabel({
+    text: 'B', x, y: yB,
+    color: '#c05020', fontPx: fs(30),
+    placements: cornerPlacements(fs(8), fs(8), -1, h > 0 ? -1 : 1),
+    priority: 20,
+  });
 }
 
 /* ── Image A'B' ── */
@@ -303,8 +585,6 @@ function drawImage(alphaVal) {
   const dash     = isReal ? [] : [5, 4];
   const arrowDir = h2 >= 0 ? 1 : -1;
 
-  const font = fs(30);
-
   ctx.save();
   ctx.globalAlpha = alphaVal;
   ctx.strokeStyle = col; ctx.lineWidth = fs(3);
@@ -316,19 +596,6 @@ function drawImage(alphaVal) {
   ctx.lineTo(x + fs(7), yB + arrowDir * fs(12));
   ctx.stroke();
   ctx.setLineDash([]);
-  ctx.fillStyle = col;
-  ctx.font = `bold ${font.toFixed(1)}px monospace`;
-  ctx.textAlign = 'left';
-
-  const aOffsetY = h2 >= 0 ? font * 1.2 : -fs(14);
-  if (infini) {
-    ctx.textAlign = 'center';
-    ctx.fillText("F'= A'", x, yA + aOffsetY);
-    ctx.textAlign = 'left';
-  } else {
-    ctx.fillText("A'", x + fs(8), yA + aOffsetY);
-  }
-  ctx.fillText("B'", x + fs(8), yB + (h2 >= 0 ? -fs(10) : font * 1.2));
 
   if (infini) {
     const arm = fs(7);
@@ -340,6 +607,15 @@ function drawImage(alphaVal) {
   }
 
   ctx.restore();
+
+  // A' est sur l'axe : pushAxisPointLabels() s'en charge, et le fusionne
+  // avec F' lorsque l'objet est à l'infini.
+  pushLabel({
+    text: "B'", x, y: yB,
+    color: col, fontPx: fs(30),
+    placements: cornerPlacements(fs(8), fs(8), 1, h2 >= 0 ? -1 : 1),
+    priority: 20,
+  });
 }
 
 /* ── Écran ── */
@@ -354,11 +630,21 @@ function drawScreen() {
   ctx.beginPath();
   ctx.moveTo(x, axisY - lensHpx); ctx.lineTo(x, axisY + lensHpx);
   ctx.stroke();
-  ctx.fillStyle = '#7a4010';
-  ctx.font = `bold ${fs(15).toFixed(1)}px "Segoe UI", Arial, sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.fillText('Écran', x, axisY - lensHpx - fs(6));
   ctx.restore();
+
+  // « Écran » était écrit ici même, puis recouvert par le cadre Image, que
+  // drawViewfinders() peint ensuite : l'étiquette passe par le gestionnaire,
+  // qui la déplace au lieu de la laisser disparaître.
+  pushLabel({
+    text: 'Écran', x, y: axisY - lensHpx - fs(6),
+    color: '#7a4010', fontPx: fs(15), family: '"Segoe UI", Arial, sans-serif',
+    placements: [
+      { dx: 0,       dy: 0, align: 'center', baseline: 'bottom' },
+      { dx: -fs(10), dy: 0, align: 'right',  baseline: 'bottom' },
+      { dx:  fs(10), dy: 0, align: 'left',   baseline: 'bottom' },
+    ],
+    priority: 50,
+  });
 }
 
 /* ═══════════════════════════════════════════════════
@@ -421,6 +707,10 @@ function drawScaleBar() {
     ctx.fillText('×' + sim.zoom.toFixed(2).replace('.', ','), x0, y + tickH + fs(12));
   }
   ctx.restore();
+
+  // La barre n'est pas une étiquette gérée, mais elle occupe le coin :
+  // on l'interdit au placement pour qu'aucun texte ne vienne s'y poser.
+  reserveBox(0, y - tickH - fs(20), x0 + lenPx + fs(8), H);
 }
 
 /* ═══════════════════════════════════════════════════
@@ -432,6 +722,12 @@ function drawViewfinders() {
   const frameY  = margin;
   const leftX   = margin;
   const rightX  = W - margin - frameW;
+
+  // Les deux cadres sont opaques : ils réservent leur emprise, repliés
+  // (barre de titre seule) comme dépliés.
+  for (const [fx, collapsed] of [[leftX, sim.objCollapsed], [rightX, sim.imgCollapsed]]) {
+    reserveBox(fx, frameY, fx + frameW, frameY + (collapsed ? barH : frameH));
+  }
 
   // Champ de vision représenté dans le cadre, en centimètres. Le cadre étant
   // désormais plafonné, on ne peut plus dessiner à l'échelle de la scène :
@@ -628,6 +924,8 @@ function layoutCanvasButtons(leftX, rightX, frameY) {
     el.style.width    = w + 'px';
     el.style.height   = h + 'px';
     el.style.fontSize = fontPx.toFixed(1) + 'px';
+    // Le bouton est opaque : aucune étiquette ne doit se glisser dessous.
+    reserveBox(x, y, x + w, y + h);
   }
 
   const bs = fs(17);

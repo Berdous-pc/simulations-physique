@@ -101,6 +101,35 @@ function hitTest(mx, my) {
   return null;
 }
 
+/* ═══════════════════════════════════════════════════
+   AIMANTATION DE L'OBJET SUR LE FOYER OBJET
+   ─────────────────────────────────────────────────
+   Placer l'objet en F est l'une des configurations à retenir du cours :
+   l'image part à l'infini, et A se confond avec F. Mais OA varie
+   continûment sous la souris et ne tombe jamais sur l'égalité exacte — le
+   réglage serait donc inatteignable, et il faudrait tolérer une égalité
+   approchée pour afficher « F = A ».
+
+   On aimante donc le glissement : au voisinage du foyer objet, OA y
+   bascule exactement. L'égalité devient vraie dans le modèle et non
+   seulement à l'écran, et draw.js peut fusionner les étiquettes sans rien
+   approximer.
+
+   Le seuil est en pixels, et c'est ici légitime : il déclenche un geste,
+   il n'affirme aucune égalité. Le zoom change la facilité de l'accrochage,
+   jamais la véracité de ce qui est affiché ensuite.
+════════════════════════════════════════════════════ */
+const FOCUS_SNAP_PX = 7;
+
+function snapObjectAtFocus(oaCm) {
+  const fEff   = sim.lensType === 'div' ? -sim.f : sim.f;
+  const target = -fEff;
+  // Pour une lentille divergente, le foyer objet est APRÈS la lentille :
+  // l'objet, borné du côté des abscisses négatives, ne peut pas l'atteindre.
+  if (target >= -0.5) return oaCm;
+  return Math.abs(oaCm - target) < FOCUS_SNAP_PX / sim.scale ? target : oaCm;
+}
+
 cv.addEventListener('mousedown', e => {
   const rect = cv.getBoundingClientRect();
   const mx = e.clientX - rect.left, my = e.clientY - rect.top;
@@ -150,6 +179,7 @@ cv.addEventListener('mousemove', e => {
   if (drag.target === 'obj') {
     sim.OA = Math.min(drag.startOA + dx / sim.scale, -0.5);
     sim.OA = Math.max(sim.OA, xToCm(10));
+    sim.OA = snapObjectAtFocus(sim.OA);
   } else if (drag.target === 'lens') {
     sim.lensX = Math.max(sim.W * 0.1, Math.min(sim.W * 0.9, drag.startLens + dx));
   } else if (drag.target === 'screen') {
@@ -183,7 +213,7 @@ cv.addEventListener('touchmove', e => {
   if (!drag) return;
   const t = e.touches[0], rect = cv.getBoundingClientRect();
   const dx = t.clientX - rect.left - drag.startX;
-  if (drag.target === 'obj')    { sim.OA = Math.max(Math.min(drag.startOA + dx/sim.scale, -0.5), xToCm(10)); }
+  if (drag.target === 'obj')    { sim.OA = snapObjectAtFocus(Math.max(Math.min(drag.startOA + dx/sim.scale, -0.5), xToCm(10))); }
   else if (drag.target === 'lens')   { sim.lensX = Math.max(sim.W*0.1, Math.min(sim.W*0.9, drag.startLens+dx)); }
   else if (drag.target === 'screen') { sim.OE = Math.max(0.5, drag.startOE + dx/sim.scale); }
   compute(); draw();
