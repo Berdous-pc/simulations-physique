@@ -85,9 +85,8 @@ const sim = {
   // ── Animation ──
   animT: 0,
   animSpeed: 0.2,
-  animSpeedMult: 0.5,
+  animSpeedMult: 1.0,   // graduation du curseur ; le thumb démarre à fond à droite
   animRewind: false,
-  animRewindMult: 1.0,
   animPaused: true,
   animRunning: false,
   lastTs: 0,
@@ -111,6 +110,13 @@ const VIEW_SPAN_CM       = 200;
 const MIN_SPAN_CM        = 120;
 const MIN_PX_PER_CM      = 3.5;
 const LENS_RADIUS_MAX_CM = 46;
+
+/* Au-delà de FAR_CM, une distance est traitée comme infinie : « ∞ » au
+   panneau, image non tracée. Le seuil doit rester très au-dessus des
+   configurations légitimes — avec f' allant jusqu'à 100 cm, une image
+   réelle à quelques mètres de l'oculaire n'a rien d'aberrant, et le zoom
+   permet désormais de reculer pour l'atteindre. */
+const FAR_CM = 4000;
 
 /* Écarts minimaux imposés entre les éléments, en cm. */
 const MIN_LENS_GAP_CM = 5;
@@ -300,8 +306,11 @@ function computeEye() {
 /* ═══════════════════════════════════════════════════
    PANNEAU — AFFICHAGE DES RÉSULTATS
 ════════════════════════════════════════════════════ */
+/* Le seuil FAR_CM vaut aussi pour l'affichage : sans lui le panneau
+   annonçait une valeur chiffrée là où le schéma, lui, avait cessé de
+   tracer l'image depuis longtemps. */
 function fmt(val, unit='cm', dec=1) {
-  if (!isFinite(val)) return '∞';
+  if (!isFinite(val) || Math.abs(val) > FAR_CM) return (val >= 0 ? '+' : '−') + '∞';
   return (val >= 0 ? '+' : '') + val.toFixed(dec) + ' ' + unit;
 }
 

@@ -134,7 +134,6 @@ function draw() {
   }
 
   drawScaleBar();
-  drawDefaultBtn();
 }
 
 /* ═══════════════════════════════════════════════════
@@ -197,37 +196,6 @@ function drawScaleBar() {
     ctx.font = `${fs(11).toFixed(1)}px "Segoe UI", Arial, sans-serif`;
     ctx.fillText('×' + sim.zoom.toFixed(2).replace('.', ','), x0, y + tickH + fs(12));
   }
-  ctx.restore();
-}
-
-/* ─────────────────────────────────────────────────
-   Bouton "Défaut" affiché en surimpression.
-───────────────────────────────────────────────────── */
-let _defaultBtnRect = null;
-
-function drawDefaultBtn() {
-  const txt   = 'Défaut';
-  const pad   = 6;
-  ctx.font    = 'bold 13px "Segoe UI", Arial, sans-serif';
-  const tw    = ctx.measureText(txt).width;
-  const bw    = tw + pad * 2;
-  const bh    = 24;
-  const bx    = sim.W - bw - 10;
-  const by    = 10;
-  _defaultBtnRect = { x: bx, y: by, w: bw, h: bh };
-
-  ctx.save();
-  ctx.fillStyle   = '#e8e4de';
-  ctx.strokeStyle = '#b0a898';
-  ctx.lineWidth   = 1;
-  ctx.beginPath();
-  ctx.roundRect(bx, by, bw, bh, 4);
-  ctx.fill();
-  ctx.stroke();
-  ctx.fillStyle    = '#2c3e50';
-  ctx.textAlign    = 'left';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(txt, bx + pad, by + bh / 2);
   ctx.restore();
 }
 
@@ -516,7 +484,7 @@ function drawOutputArrows() {
 /* ── Image intermédiaire A1B1 ── */
 function drawIntermediateImage() {
   const { O1A1, h1, x1, axisY, rayMode, animT } = sim;
-  if (!isFinite(O1A1) || Math.abs(O1A1) > 800) return;
+  if (!isFinite(O1A1) || Math.abs(O1A1) > FAR_CM) return;
   if (rayMode === 'anim' && animT < (sim._fracA1 ?? 1.0)) return;
 
   const x  = xToPx(x1 + O1A1);
@@ -549,7 +517,7 @@ function drawIntermediateImage() {
 function drawFinalImage() {
   const { O2A2, h2, x2, isAfocal, rayMode, animT } = sim;
   if (isAfocal) return;
-  if (!isFinite(O2A2) || Math.abs(O2A2) > 800) return;
+  if (!isFinite(O2A2) || Math.abs(O2A2) > FAR_CM) return;
   if (rayMode === 'anim' && animT < (sim._fracA2 ?? 1.0)) return;
 
   const x  = xToPx(x2 + O2A2);
@@ -580,7 +548,7 @@ function drawFinalImage() {
 /* ── Trait de direction B1 → O2 ── */
 function drawDirectionLine() {
   const { O1A1, h1, x1, x2, axisY, W, rayMode, animT } = sim;
-  if (!isFinite(O1A1) || Math.abs(O1A1) > 800) return;
+  if (!isFinite(O1A1) || Math.abs(O1A1) > FAR_CM) return;
   if (Math.abs(h1) < 0.05) return;
   if (rayMode === 'anim' && animT < (sim._fracA1 ?? 1.0)) return;
 
@@ -683,7 +651,7 @@ function drawEye() {
 
   // ── Image A₃B₃ sur la rétine ──
   const { OeyeA3, h3, rayMode, animT } = sim;
-  if (isFinite(OeyeA3) && Math.abs(OeyeA3) < 800 && isFinite(h3) && Math.abs(h3) > 0.001) {
+  if (isFinite(OeyeA3) && Math.abs(OeyeA3) < FAR_CM && isFinite(h3) && Math.abs(h3) > 0.001) {
     const showImg = (rayMode === 'instant') || (animT >= (sim._fracA3 ?? 1.0));
     if (showImg) {
       const imgX      = xToPx(xOeil + EYE_IRIS_TO_LENS + OeyeA3);
@@ -809,7 +777,7 @@ function computeRays() {
     segs.push({ pts: [ P(x1, yi1), P(x2, yi2) ], virtual: false });
 
     // Prolongement vers A1 quand l'image intermédiaire est au-delà de L2
-    if (O2A1 > 0 && !sim.isAfocal && isFinite(O2A1) && Math.abs(O2A1) < 800) {
+    if (O2A1 > 0 && !sim.isAfocal && isFinite(O2A1) && Math.abs(O2A1) < FAR_CM) {
       segs.push({ pts: [
         P(x2,        yi2),
         P(x2 + O2A1, yi2 + slopeOut1 * O2A1)
@@ -832,7 +800,7 @@ function computeRays() {
         ], virtual: true });
       }
 
-    } else if (sim.isAfocal || !isFinite(sim.O2A2) || Math.abs(sim.O2A2) > 800) {
+    } else if (sim.isAfocal || !isFinite(sim.O2A2) || Math.abs(sim.O2A2) > FAR_CM) {
       segs.push({ pts: [
         P(x2,       yi2),
         P(xRightCm, yi2 + slopeOut2 * (xRightCm - x2))
@@ -880,7 +848,7 @@ function computeRays() {
   sim._fracL1 = fracAtX(xToPx(x1));
   sim._fracA1 = fracAtX(xToPx(x1 + sim.O1A1));
 
-  if (!sim.isAfocal && isFinite(sim.O2A2) && Math.abs(sim.O2A2) < 800) {
+  if (!sim.isAfocal && isFinite(sim.O2A2) && Math.abs(sim.O2A2) < FAR_CM) {
     sim._fracA2 = fracAtX(xToPx(x2 + sim.O2A2));
   } else {
     sim._fracA2 = 1.0;

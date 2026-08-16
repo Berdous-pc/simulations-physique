@@ -22,8 +22,10 @@ function animLoop(ts) {
   const dt = (ts - sim.lastTs) / 1000;
   sim.lastTs = ts;
 
+  // Le rembobinage suit la graduation du curseur, comme la marche avant :
+  // il avait sa propre vitesse, figée et sans rapport avec elle.
   if (sim.animRewind) {
-    sim.animT = Math.max(0, sim.animT - dt * sim.animSpeed * sim.animRewindMult);
+    sim.animT = Math.max(0, sim.animT - dt * sim.animSpeed * sim.animSpeedMult);
     draw();
     if (sim.animT > 0) requestAnimationFrame(animLoop);
     else { sim.animRunning = false; draw(); }
@@ -32,14 +34,14 @@ function animLoop(ts) {
 
   if (sim.animPaused) { sim.animRunning = false; draw(); return; }
 
-  sim.animT = Math.min(sim.animT + dt * sim.animSpeed * sim.animSpeedMult * 2, 1.0);
+  sim.animT = Math.min(sim.animT + dt * sim.animSpeed * sim.animSpeedMult, 1.0);
   draw();
   if (sim.animT < 1.0) {
     requestAnimationFrame(animLoop);
   } else {
     sim.animRunning = false; sim.animPaused = true;
     const btn = document.getElementById('btn-pause-play');
-    if (btn) { btn.textContent = '▶ Play'; btn.classList.remove('active'); }
+    if (btn) { btn.textContent = '▶ Lancer'; btn.classList.remove('active'); }
     draw();
   }
 }
@@ -85,13 +87,6 @@ function hitTest(mx, my) {
   return null;
 }
 
-/* ── Le clic est-il sur le bouton "Défaut" ? ── */
-function hitDefaultBtn(cx, cy) {
-  return _defaultBtnRect &&
-         cx >= _defaultBtnRect.x && cx <= _defaultBtnRect.x + _defaultBtnRect.w &&
-         cy >= _defaultBtnRect.y && cy <= _defaultBtnRect.y + _defaultBtnRect.h;
-}
-
 /* ── Applique un déplacement dxCm à l'élément saisi ── */
 function moveDragged(dxCm) {
   if (drag.target === 'L1') {
@@ -125,10 +120,10 @@ function beginDrag(target, cx) {
   document.getElementById('drag-hint').classList.add('hidden');
 }
 
+document.getElementById('btn-reset-view').addEventListener('click', resetView);
+
 cv.addEventListener('mousedown', e => {
   const { x: cx, y: cy } = clientToCanvas(e.clientX, e.clientY);
-
-  if (hitDefaultBtn(cx, cy)) { resetView(); return; }
 
   const target = hitTest(cx, cy);
   if (!target) {
@@ -224,8 +219,6 @@ cv.addEventListener('touchstart', e => {
 
   const t = e.touches[0];
   const { x: cx, y: cy } = clientToCanvas(t.clientX, t.clientY);
-
-  if (hitDefaultBtn(cx, cy)) { e.preventDefault(); resetView(); return; }
 
   const target = hitTest(cx, cy);
   if (!target) {
@@ -331,7 +324,7 @@ function setRayMode(mode) {
     // l'utilisateur garde le zoom et le recadrage qu'il vient de choisir.
     sim.animPaused = true;
     const btn = document.getElementById('btn-pause-play');
-    if (btn) { btn.textContent = '▶ Play'; btn.classList.remove('active'); }
+    if (btn) { btn.textContent = '▶ Lancer'; btn.classList.remove('active'); }
     startAnim();
   }
 }
@@ -368,11 +361,14 @@ function togglePausePlay() {
   sim.animPaused = !sim.animPaused;
   const btn = document.getElementById('btn-pause-play');
   if (sim.animPaused) {
-    btn.textContent = '▶ Play'; btn.classList.remove('active');
+    btn.textContent = '▶ Lancer'; btn.classList.remove('active');
     sim.animRunning = false;
   } else {
     btn.textContent = '⏸ Pause'; btn.classList.add('active');
-    if (sim.rayMode === 'anim' && !sim.animRunning && sim.animT < 1.0) {
+    // L'animation terminée reste à animT = 1 : sans remise à zéro, Lancer
+    // n'avait plus aucun effet une fois la propagation arrivée au bout.
+    if (sim.animT >= 1.0) sim.animT = 0;
+    if (sim.rayMode === 'anim' && !sim.animRunning) {
       sim.animRunning = true; sim.lastTs = 0;
       requestAnimationFrame(animLoop);
     }
@@ -381,7 +377,7 @@ function togglePausePlay() {
 
 function resetAnim() {
   sim.animRewind = false; sim.animT = 0; sim.animRunning = false;
-  document.getElementById('speed-rewind').style.opacity = '0.5';
+  document.getElementById('speed-rewind').classList.remove('active');
   if (!sim.animPaused && sim.rayMode === 'anim') {
     sim.animRunning = true; sim.lastTs = 0;
     requestAnimationFrame(animLoop);
@@ -391,13 +387,18 @@ function resetAnim() {
 /* ═══════════════════════════════════════════════════
    SLIDER VITESSE CUSTOM
 ════════════════════════════════════════════════════ */
-const SPEED_VALS   = [0.05, 0.125, 0.25, 0.375, 0.5];
+/* Les valeurs collent aux libellés : elles en valaient la moitié, rattrapée
+   par un facteur 2 en dur dans la marche avant de animLoop — que la branche
+   de rembobinage, elle, n'avait pas. */
+const SPEED_VALS   = [0.1, 0.25, 0.5, 0.75, 1.0];
 const SPEED_LABELS = ['×0.1', '×0.25', '×0.5', '×0.75', '×1'];
 
 (function() {
   let isDragging = false, isRewind = false;
+  let speedIdx   = SPEED_VALS.length - 1;   // le curseur démarre à fond à droite
 
   function setSpeedIdx(idx) {
+    speedIdx = idx;
     sim.animSpeedMult = SPEED_VALS[idx];
     document.getElementById('lbl-speed').textContent = SPEED_LABELS[idx];
     updateThumb(idx / (SPEED_VALS.length - 1) * 100);
@@ -427,10 +428,12 @@ const SPEED_LABELS = ['×0.1', '×0.25', '×0.5', '×0.75', '×1'];
     return Math.max(0, Math.min(SPEED_VALS.length - 1, idx));
   }
 
-  function startRewind(mult) {
-    isRewind = true; sim.animRewind = true; sim.animRewindMult = mult || 1.0;
+  function startRewind() {
+    if (isRewind) return;
+    isRewind = true;
+    sim.animRewind = true;
     document.getElementById('lbl-speed').textContent = '⏪';
-    document.getElementById('speed-rewind').style.opacity = '1';
+    document.getElementById('speed-rewind').classList.add('active');
     if (sim.rayMode === 'anim' && !sim.animRunning) {
       sim.animRunning = true; sim.lastTs = 0;
       requestAnimationFrame(animLoop);
@@ -439,9 +442,18 @@ const SPEED_LABELS = ['×0.1', '×0.25', '×0.5', '×0.75', '×1'];
 
   function stopRewind() {
     if (!isRewind) return;
-    isRewind = false; sim.animRewind = false;
-    document.getElementById('speed-rewind').style.opacity = '0.5';
-    setSpeedIdx(0);
+    isRewind = false;
+    sim.animRewind = false;
+    document.getElementById('speed-rewind').classList.remove('active');
+    // On restitue l'étiquette de la graduation choisie : l'ancienne version
+    // retombait silencieusement sur la plus lente.
+    document.getElementById('lbl-speed').textContent = SPEED_LABELS[speedIdx];
+    // Le rembobinage a pu vider la boucle en atteignant t = 0 : on la relance
+    // si la lecture était en cours.
+    if (sim.rayMode === 'anim' && !sim.animPaused && !sim.animRunning && sim.animT < 1.0) {
+      sim.animRunning = true; sim.lastTs = 0;
+      requestAnimationFrame(animLoop);
+    }
   }
 
   document.addEventListener('DOMContentLoaded', () => {
@@ -450,40 +462,42 @@ const SPEED_LABELS = ['×0.1', '×0.25', '×0.5', '×0.75', '×1'];
     if (!track) return;
 
     function onDown(e) {
-      isDragging = true; thumb.style.cursor = 'grabbing';
-      const pct = pctFromEvent(e, track);
-      if (pct < -5) { startRewind(); return; }
-      stopRewind();
-      setSpeedIdx(pctToIdx(Math.max(0, pct)));
-      e.preventDefault();
+      isDragging = true;
+      thumb.style.cursor = 'grabbing';
+      setSpeedIdx(pctToIdx(pctFromEvent(e, track)));
+      if (e.cancelable) e.preventDefault();
     }
-    track.addEventListener('mousedown', onDown);
-    thumb.addEventListener('mousedown', onDown);
 
-    document.addEventListener('mousemove', e => {
+    function onMove(e) {
       if (!isDragging) return;
-      const pct = pctFromEvent(e, track);
-      if (pct < 0) {
-        const rewindRect = document.getElementById('speed-rewind').getBoundingClientRect();
-        const trackRect  = track.getBoundingClientRect();
-        const minPct = (rewindRect.left - trackRect.left) / trackRect.width * 100;
-        const clampedPct = Math.max(minPct, pct);
-        updateThumb(clampedPct);
-        const frac = minPct < 0 ? Math.min(1, clampedPct / minPct) : 0;
-        startRewind(0.025 + frac * 0.225);
-      } else {
-        stopRewind();
-        const idx = pctToIdx(pct);
-        updateThumb(idx / (SPEED_VALS.length - 1) * 100);
-        setSpeedIdx(idx);
-      }
-    });
+      setSpeedIdx(pctToIdx(pctFromEvent(e, track)));
+      if (e.cancelable) e.preventDefault();
+    }
 
-    document.addEventListener('mouseup', () => {
-      if (!isDragging) return;
-      isDragging = false; thumb.style.cursor = 'grab';
+    function onUp() {
       stopRewind();
-    });
+      if (!isDragging) return;
+      isDragging = false;
+      thumb.style.cursor = 'grab';
+    }
+
+    track.addEventListener('mousedown',  onDown);
+    thumb.addEventListener('mousedown',  onDown);
+    track.addEventListener('touchstart', onDown, { passive: false });
+    thumb.addEventListener('touchstart', onDown, { passive: false });
+
+    // Rembobinage : bouton à maintenir. L'ancienne version imposait de tirer
+    // le thumb hors de la piste jusque sur l'icône — indécouvrable.
+    const rew = document.getElementById('speed-rewind');
+    rew.addEventListener('mousedown',  e => { e.preventDefault(); startRewind(); });
+    rew.addEventListener('touchstart', e => { e.preventDefault(); startRewind(); },
+                         { passive: false });
+
+    document.addEventListener('mousemove',   onMove);
+    document.addEventListener('mouseup',     onUp);
+    document.addEventListener('touchmove',   onMove, { passive: false });
+    document.addEventListener('touchend',    onUp);
+    document.addEventListener('touchcancel', onUp);
   });
 })();
 

@@ -146,7 +146,7 @@ input[type=range] { width: 100%; accent-color: #4a7aaa; cursor: pointer; }
 .mode-tab.active { background: #2a6aaa; color: #fff; }
 .mode-tab:disabled { opacity: 0.4; cursor: default; }
 
-/* ── Boutons d'action appariés (Play/Reset) ── */
+/* ── Boutons d'action de la propagation (Rembobiner / Lancer / RAZ) ── */
 .mode-row { display: flex; gap: 6px; }
 .mode-btn {
   flex: 1;
@@ -162,6 +162,16 @@ input[type=range] { width: 100%; accent-color: #4a7aaa; cursor: pointer; }
 }
 .mode-btn.active { background: #2a6aaa; color: #fff; border-color: #2a6aaa; }
 .mode-btn:disabled { opacity: 0.4; cursor: default; }
+
+/* ── Bouton rembobinage : hérite de .mode-btn (y compris l'état .active),
+      mais reste à sa largeur d'icône au lieu de prendre un tiers de la ligne. ── */
+#speed-rewind {
+  flex: 0 0 auto;
+  padding: 7px 12px;
+  opacity: 0.75;
+}
+#speed-rewind:hover  { opacity: 1; }
+#speed-rewind.active { opacity: 1; }
 
 /* ════════════════════════════════════════════════════
    BOUTONS BASCULE (charte : .btn-toggle-one)
@@ -213,6 +223,35 @@ input[type=range] { width: 100%; accent-color: #4a7aaa; cursor: pointer; }
 ════════════════════════════════════════════════════ */
 .legend { display: flex; flex-direction: column; gap: 5px; }
 .legend-row { display: flex; align-items: center; gap: 8px; font-size: 0.87em; color: #2c3e50; }
+
+/* ════════════════════════════════════════════════════
+   BOUTON SUPERPOSÉ AU CANVAS
+════════════════════════════════════════════════════ */
+.canvas-btn {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 10px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.canvas-btn:focus-visible { outline: 2px solid #2a6aaa; outline-offset: 2px; }
+
+.canvas-btn-default {
+  top: 10px;
+  right: 10px;
+  background: #e8e4de;
+  border: 1px solid #b0a898;
+  border-radius: 4px;
+  color: #2c3e50;
+}
+.canvas-btn-default:hover { background: #dcd6cc; }
 
 /* ════════════════════════════════════════════════════
    BULLE D'AIDE AU DRAG

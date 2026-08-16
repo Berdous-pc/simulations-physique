@@ -26,6 +26,13 @@
   <!-- Zone canvas -->
   <div id="canvas-area">
     <canvas id="cv"></canvas>
+
+    <!-- Bouton superposé au canvas : remet le cadrage nominal (zoom 1,
+         système centré). Peint dans le canvas auparavant, donc sans survol,
+         sans focus clavier, sans rôle accessible et sourd au zoom navigateur. -->
+    <button class="canvas-btn canvas-btn-default" id="btn-reset-view"
+            type="button" title="Revenir au cadrage nominal">Défaut</button>
+
     <div id="drag-hint">Faites glisser les lentilles sur l'axe optique — molette pour changer l'échelle, glisser le fond pour se déplacer</div>
   </div>
 
@@ -52,22 +59,26 @@
 
       <!-- Contrôles animation (masqués en mode instantané) -->
       <div id="row-speed" style="margin-top:8px; display:none;">
-        <div style="display:flex;gap:8px;margin-bottom:6px;">
-          <button id="btn-pause-play" class="mode-btn" style="flex:1;" onclick="togglePausePlay()">▶ Play</button>
-          <button id="btn-reset-anim" class="mode-btn" style="flex:1;" onclick="resetAnim()">↺ Reset</button>
+        <div class="mode-row" style="margin-bottom:6px;">
+          <button id="speed-rewind" class="mode-btn" type="button" title="Maintenir pour rembobiner">⏪</button>
+          <button id="btn-pause-play" class="mode-btn" onclick="togglePausePlay()">▶ Lancer</button>
+          <button id="btn-reset-anim" class="mode-btn" onclick="resetAnim()">↺ RAZ</button>
         </div>
         <div class="param-label" style="display:flex;justify-content:space-between;">
           <span>Vitesse</span><span id="lbl-speed">×1</span>
         </div>
-        <div id="speed-wrap" style="display:flex;align-items:center;gap:16px;user-select:none;">
-          <span id="speed-rewind" style="font-size:1em;cursor:pointer;opacity:0.5;flex-shrink:0;">⏪</span>
-          <div id="speed-track" style="position:relative;flex:1;height:6px;background:#c8c0b4;border-radius:3px;cursor:pointer;">
+        <div id="speed-wrap" style="user-select:none;">
+          <div id="speed-track" style="position:relative;height:6px;background:#c8c0b4;border-radius:3px;cursor:pointer;">
             <div id="speed-fill"  style="position:absolute;left:0;top:0;height:100%;background:#2a6aaa;border-radius:3px;width:100%;"></div>
             <div id="speed-thumb" style="position:absolute;top:50%;width:14px;height:14px;background:#2a6aaa;border-radius:50%;transform:translate(-50%,-50%);cursor:grab;box-shadow:0 1px 3px rgba(0,0,0,0.3);left:100%;"></div>
           </div>
-        </div>
-        <div style="display:flex;justify-content:space-between;margin-top:3px;font-size:0.75em;color:#7a8a96;padding:0 7px;padding-left:34px;">
-          <span>×0.1</span><span>×0.25</span><span>×0.5</span><span>×0.75</span><span>×1</span>
+          <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:0.75em;color:#7a8a96;">
+            <span>×0.1</span>
+            <span>×0.25</span>
+            <span>×0.5</span>
+            <span>×0.75</span>
+            <span>×1</span>
+          </div>
         </div>
       </div>
     </div>
