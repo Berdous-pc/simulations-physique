@@ -420,6 +420,18 @@ function toggleLegende() {
   sim.rayMode === 'instant' ? draw() : restartAnim();
 }
 
+// ─────────────────────────────────────────────────────────────────────
+//  (Dés)active l'affichage du tableau de valeurs (section Valeurs) —
+//  désactivé par défaut.
+// ─────────────────────────────────────────────────────────────────────
+function toggleValeurs() {
+  sim.showValeurs = !sim.showValeurs;
+  const vis = sim.showValeurs ? '' : 'none';
+  document.getElementById('results-grid').style.display      = vis;
+  document.getElementById('note-grossissement').style.display = vis;
+  document.getElementById('btn-toggle-valeurs').classList.toggle('active', sim.showValeurs);
+}
+
 function togglePausePlay() {
   sim.animPaused = !sim.animPaused;
   const btn = document.getElementById('btn-pause-play');

@@ -110,6 +110,10 @@ main {
   padding-bottom: 4px;
 }
 
+/* Bouton collé directement sous un titre de section : il lui faut le même
+   dégagement que les blocs qui portent un margin-top:8px inline. */
+.section-title + .btn-toggle-one { margin-top: 10px; }
+
 /* ════════════════════════════════════════════════════
    PARAMÈTRES (charte : .param-row)
 ════════════════════════════════════════════════════ */

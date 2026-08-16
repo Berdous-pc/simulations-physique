@@ -53,7 +53,7 @@
 
     <!-- Mode d'affichage des rayons -->
     <div>
-      <div class="section-title">Affichage des rayons</div>
+      <div class="section-title">Mode d'affichage</div>
       <div class="mode-tabs" style="margin-top:8px;">
         <button class="mode-tab active" id="btn-instant" onclick="setRayMode('instant')">Instantané</button>
         <button class="mode-tab" id="btn-anim" onclick="setRayMode('anim')">Propagation</button>
@@ -85,9 +85,9 @@
       </div>
     </div>
 
-    <!-- Paramètres optiques -->
+    <!-- Paramètres -->
     <div>
-      <div class="section-title">Paramètres optiques</div>
+      <div class="section-title">Paramètres</div>
       <div class="param-group" style="margin-top:8px;">
 
         <!-- Angle alpha -->
@@ -142,10 +142,11 @@
       </div>
     </div>
 
-    <!-- Résultats -->
+    <!-- Valeurs calculées — masquées par défaut, cf. ui.js → toggleValeurs() -->
     <div>
-      <div class="section-title">Résultats</div>
-      <div class="results-grid" style="margin-top:8px;">
+      <div class="section-title">Valeurs</div>
+      <button id="btn-toggle-valeurs" class="btn-toggle-one" onclick="toggleValeurs()">Afficher les valeurs</button>
+      <div class="results-grid" id="results-grid" style="margin-top:8px; display:none;">
         <div class="readout wide">
           <div class="ro-label"><span style="text-decoration:overline">O₁O₂</span></div>
           <div class="ro-value" id="res-dist">—</div>
@@ -191,11 +192,11 @@
           <div class="ro-value" id="res-systeme">—</div>
         </div>
       </div>
-    </div>
 
-    <!-- Note grossissement -->
-    <div style="font-size:0.8em; color:#7a8a96; line-height:1.5; padding: 4px 2px;">
-      Calcul du grossissement à partir des distances focales. Attention, cela ne correspond donc au rapport entre α' et α que pour des petits angles, ce qui n'est pas le cas dans cette simulation.
+      <!-- Note grossissement — suit le tableau de valeurs qu'elle commente -->
+      <div id="note-grossissement" style="font-size:0.8em; color:#7a8a96; line-height:1.5; padding: 4px 2px; display:none;">
+        Calcul du grossissement à partir des distances focales. Attention, cela ne correspond donc au rapport entre α' et α que pour des petits angles, ce qui n'est pas le cas dans cette simulation.
+      </div>
     </div>
 
    </div><!-- fin #panel-body -->
@@ -208,7 +209,7 @@
         <button class="panel-hint-toggle" onclick="toggleHint()" title="Afficher les instructions">▲</button>
       </div>
       <div class="panel-hint-body">
-        En mode <strong>Libre</strong>, déplacez les deux lentilles indépendamment sur l'axe optique.
+        En mode <strong>Libre</strong>, déplacez les deux lentilles indépendamment sur l'axe optique.<br>
         En mode <strong>Lunette</strong>, réglez les distances focales f'₁ et f'₂ de l'objectif et de
         l'oculaire pour former une lunette afocale. Ajustez l'angle α de l'objet à l'infini et activez
         l'<em>œil</em> pour visualiser l'image finale observée.<br>

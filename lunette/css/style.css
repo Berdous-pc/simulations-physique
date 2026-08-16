@@ -110,6 +110,10 @@ main {
   padding-bottom: 4px;
 }
 
+/* Bouton collé directement sous un titre de section : il lui faut le même
+   dégagement que les blocs qui portent un margin-top:8px inline. */
+.section-title + .btn-toggle-one { margin-top: 10px; }
+
 /* ════════════════════════════════════════════════════
    PARAMÈTRES (charte : .param-row)
 ════════════════════════════════════════════════════ */
@@ -349,7 +353,7 @@ input[type=range] { width: 100%; accent-color: #4a7aaa; cursor: pointer; }
   padding: 0 10px 8px;
   overflow: hidden;
   transition: max-height 0.25s ease, padding 0.25s ease;
-  max-height: 250px;
+  max-height: 320px;
 }
 
 .panel-hint.collapsed .panel-hint-body {
