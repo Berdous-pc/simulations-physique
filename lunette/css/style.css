@@ -86,6 +86,17 @@ main {
   overflow-y: auto;
 }
 
+/* Titre du panneau */
+.panel-title {
+  font-size: clamp(14px, 1.4vw, 17px);
+  font-weight: 700;
+  color: #2c3e50;
+  text-align: center;
+  padding-bottom: clamp(8px, 1vw, 12px);
+  border-bottom: 1.5px solid #c8c0b4;
+  letter-spacing: 0.3px;
+}
+
 /* ════════════════════════════════════════════════════
    TITRES DE SECTION
 ════════════════════════════════════════════════════ */
@@ -219,12 +230,6 @@ input[type=range] { width: 100%; accent-color: #4a7aaa; cursor: pointer; }
 .readout.wide { grid-column: span 2; }
 
 /* ════════════════════════════════════════════════════
-   LÉGENDE
-════════════════════════════════════════════════════ */
-.legend { display: flex; flex-direction: column; gap: 5px; }
-.legend-row { display: flex; align-items: center; gap: 8px; font-size: 0.87em; color: #2c3e50; }
-
-/* ════════════════════════════════════════════════════
    BOUTON SUPERPOSÉ AU CANVAS
 ════════════════════════════════════════════════════ */
 .canvas-btn {
@@ -270,11 +275,6 @@ input[type=range] { width: 100%; accent-color: #4a7aaa; cursor: pointer; }
   transition: opacity 1s;
 }
 #drag-hint.hidden { opacity: 0; }
-
-/* ════════════════════════════════════════════════════
-   SÉPARATEUR
-════════════════════════════════════════════════════ */
-.sep { border: none; border-top: 1px solid #c8c0b4; margin: 2px 0; }
 
 /* ════════════════════════════════════════════════════
    BANDEAU INSTRUCTIONS

@@ -44,6 +44,20 @@ function uiScale() {
 }
 function fs(base) { return base * uiScale(); }
 
+/* ═══════════════════════════════════════════════════
+   POLICE DES ÉTIQUETTES DU SCHÉMA
+   ─────────────────────────────────────────────────
+   Proportionnelle, et non monospace : en chasse fixe, chaque glyphe est
+   logé dans une cellule de même largeur, y compris ₁, ₂ et le prime, dont
+   le dessin n'en occupe qu'une fraction. F'₁ s'étalait ainsi sur trois
+   cellules, l'indice paraissant détaché de sa lettre.
+
+   En proportionnelle, ces caractères Unicode portent les métriques
+   voulues par le typographe — corps, graisse et position sur la ligne —
+   qu'aucun placement calculé à la main n'égale.
+════════════════════════════════════════════════════ */
+const LABEL_FONT = '"Segoe UI", Arial, sans-serif';
+
 /* ─────────────────────────────────────────────────
    resize() — Adapte le canvas à la taille de la fenêtre.
    Ne détruit plus l'état : les positions sont en cm. Seul le cadrage
@@ -271,7 +285,7 @@ function drawFocalPoints() {
   const font = fs(31);
   const arm  = fs(9);
   const gap  = fs(8);
-  ctx.font = `bold ${font.toFixed(1)}px monospace`;
+  ctx.font = `bold ${font.toFixed(1)}px ${LABEL_FONT}`;
 
   const marks = [
     { cm: -f1, xLens: x1, label: 'F₁'  },
@@ -302,7 +316,7 @@ function drawFocalPoints() {
     ctx.moveTo(m.x, axisY - arm); ctx.lineTo(m.x, axisY + arm);
     ctx.stroke();
     ctx.fillStyle = '#1a1a1a';
-    ctx.font = `bold ${font.toFixed(1)}px monospace`;
+    ctx.font = `bold ${font.toFixed(1)}px ${LABEL_FONT}`;
     ctx.textAlign = m.cm < 0 ? 'right' : 'left';
     ctx.fillText(m.label,
                  m.x + (m.cm < 0 ? -gap : gap),
@@ -332,12 +346,10 @@ function drawLens(xCm, label, isFirst) {
   ctx.moveTo(lensX - aw, bot - ah); ctx.lineTo(lensX, bot); ctx.lineTo(lensX + aw, bot - ah);
   ctx.stroke();
 
-  ctx.fillStyle = col; ctx.font = `bold ${fs(31).toFixed(1)}px monospace`;
+  ctx.fillStyle = col; ctx.font = `bold ${fs(31).toFixed(1)}px ${LABEL_FONT}`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
   ctx.fillText(label, lensX, top - fs(4));
-  ctx.textBaseline = 'alphabetic';
 
-  ctx.textBaseline = 'bottom';
   ctx.textAlign = isFirst ? 'left' : 'right';
   ctx.fillText(isFirst ? 'O₁' : 'O₂', lensX + (isFirst ? fs(10) : -fs(10)), axisY - fs(6));
   ctx.textBaseline = 'alphabetic';
@@ -505,7 +517,7 @@ function drawIntermediateImage() {
   ctx.lineTo(x + fs(7), yB + arrowDir * fs(12));
   ctx.stroke();
   ctx.setLineDash([]);
-  ctx.fillStyle = col; ctx.font = `bold ${fs(31).toFixed(1)}px monospace`;
+  ctx.fillStyle = col; ctx.font = `bold ${fs(31).toFixed(1)}px ${LABEL_FONT}`;
   ctx.textAlign = 'left'; ctx.textBaseline = 'top';
   ctx.fillText('A₁', x + fs(6), yA + fs(6));
   ctx.textBaseline = 'alphabetic';
@@ -538,7 +550,7 @@ function drawFinalImage() {
   ctx.lineTo(x + fs(7), yB + arrowDir * fs(12));
   ctx.stroke();
   ctx.setLineDash([]);
-  ctx.fillStyle = col; ctx.font = `bold ${fs(31).toFixed(1)}px monospace`;
+  ctx.fillStyle = col; ctx.font = `bold ${fs(31).toFixed(1)}px ${LABEL_FONT}`;
   ctx.textAlign = 'left';
   ctx.fillText('A₂', x + fs(6), yA + (h2 >= 0 ? fs(28) : -fs(10)));
   ctx.fillText('B₂', x + fs(6), yB + (h2 >= 0 ? -fs(8) : fs(28)));
@@ -671,7 +683,7 @@ function drawEye() {
       ctx.lineTo(imgX + fs(6), imgYB + arrowDir * fs(10));
       ctx.stroke();
       ctx.setLineDash([]);
-      ctx.fillStyle = imgCol; ctx.font = `bold ${fs(26).toFixed(1)}px monospace`;
+      ctx.fillStyle = imgCol; ctx.font = `bold ${fs(26).toFixed(1)}px ${LABEL_FONT}`;
       ctx.textAlign = 'left';
       ctx.fillText("A'", imgX + fs(5), imgYA + (h3 >= 0 ? fs(22) : -fs(8)));
       ctx.fillText("B'", imgX + fs(5), imgYB + (h3 >= 0 ? -fs(6) : fs(22)));

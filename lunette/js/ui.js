@@ -513,10 +513,12 @@ window.addEventListener('resize', () => {
 /* ═══════════════════════════════════════════════════
    INITIALISATION
 ════════════════════════════════════════════════════ */
+// Étiquettes initiales dérivées de sim, pour qu'elles ne puissent pas
+// diverger des valeurs de départ.
 document.getElementById('lbl-f1').textContent = '+' + sim.f1.toFixed(1) + ' cm';
 document.getElementById('lbl-f2').textContent = '+' + sim.f2.toFixed(1) + ' cm';
-document.getElementById('lbl-alpha').textContent = '+15°';
-document.getElementById('lbl-nrays').textContent = '3';
+document.getElementById('lbl-alpha').textContent = (sim.alpha >= 0 ? '+' : '') + sim.alpha + '°';
+document.getElementById('lbl-nrays').textContent = sim.nRays;
 
 resize();
 document.getElementById('row-speed').style.display = 'none';
