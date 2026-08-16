@@ -111,10 +111,42 @@ function hitTest(mx, my) {
   return null;
 }
 
+/* ═══════════════════════════════════════════════════
+   AIMANTATION DU RÉGLAGE AFOCAL (mode libre)
+   ─────────────────────────────────────────────────
+   En mode lunette, O₁O₂ est imposé et vaut exactement f'₁ + f'₂. En mode
+   libre, l'utilisateur place les lentilles à la main : le geste attendu est
+   justement d'amener F'₁ sur F₂, mais une abscisse continue ne tombe jamais
+   sur l'égalité exacte. Sans aide, le réglage afocal est inatteignable —
+   et il faudrait tolérer une égalité approchée pour l'afficher.
+
+   On aimante donc le glissement : dès que la distance entre lentilles
+   approche f'₁ + f'₂, elle y bascule exactement. L'égalité devient alors
+   vraie dans le modèle et non seulement à l'écran — rayons de sortie
+   rigoureusement parallèles, écart nul au panneau, et draw.js peut
+   fusionner les étiquettes en « F'₁ = F₂ » sans rien approximer.
+
+   Le seuil est en pixels, et c'est ici légitime : il déclenche un geste,
+   il n'affirme aucune égalité. Le zoom change donc la facilité de
+   l'accrochage, jamais la véracité de ce qui est affiché ensuite.
+════════════════════════════════════════════════════ */
+const AFOCAL_SNAP_PX = 7;
+
+/* Rapproche xCm de la cible afocale s'il en est assez près. */
+function snapAfocal(xCm, targetCm) {
+  // Une lunette dont les lentilles se toucheraient n'a pas de sens : on
+  // n'aimante pas vers une position que enforceLensDistance() défera.
+  if (sim.f1 + sim.f2 < MIN_LENS_GAP_CM) return xCm;
+  return Math.abs(xCm - targetCm) < AFOCAL_SNAP_PX / sim.scale ? targetCm : xCm;
+}
+
 /* ── Applique un déplacement dxCm à l'élément saisi ── */
 function moveDragged(dxCm) {
   if (drag.target === 'L1') {
-    sim.x1 = clampToView(drag.startX1 + dxCm);
+    let x1 = clampToView(drag.startX1 + dxCm);
+    // Déplacer L₁ change aussi O₁O₂ : l'aimantation joue dans les deux sens.
+    if (sim.systemMode === 'libre') x1 = snapAfocal(x1, sim.x2 - sim.f1 - sim.f2);
+    sim.x1 = x1;
     enforceLensDistance();
 
   } else if (drag.target === 'L2') {
@@ -128,7 +160,8 @@ function moveDragged(dxCm) {
       sim.x1 = sim.x2 - dist12;
       sim.xOeil = sim.x2 + (drag.startOeil - drag.startX2);
     } else {
-      sim.x2 = clampToView(Math.max(sim.x1 + MIN_LENS_GAP_CM, drag.startX2 + dxCm));
+      const x2 = clampToView(Math.max(sim.x1 + MIN_LENS_GAP_CM, drag.startX2 + dxCm));
+      sim.x2 = snapAfocal(x2, sim.x1 + sim.f1 + sim.f2);
     }
 
   } else if (drag.target === 'oeil') {
