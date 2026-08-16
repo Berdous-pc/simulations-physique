@@ -458,9 +458,25 @@ function drawAxis() {
    c'est-à-dire précisément dans la configuration étudiée. Aucun placement
    ne sépare deux points géométriquement confondus : on fusionne alors les
    étiquettes en une seule, « F'₁ = F₂ », qui énonce la condition étudiée
-   au lieu de la masquer sous deux textes empilés. Le reste des collisions
-   est laissé au gestionnaire d'étiquettes. */
-const FOCUS_MERGE_PX = 15;
+   au lieu de la masquer sous deux textes empilés.
+
+   Le critère de fusion porte sur les CENTIMÈTRES, et l'égalité doit être
+   rigoureuse : écrire « F'₁ = F₂ » pour deux foyers seulement voisins
+   énoncerait une égalité fausse, ce qui est bien pire qu'un chevauchement.
+   Deux écueils à éviter, donc :
+
+     — un critère en pixels laisserait le dézoom fabriquer l'égalité, deux
+       foyers distants de plusieurs centimètres pouvant tomber sous le seuil ;
+     — la tolérance de sim.isAfocal (0,5 cm) sert à décider du tracé des
+       rayons, pas à affirmer une égalité de points : en mode libre, un
+       écart de 0,3 cm passe pour afocal alors que F'₁ et F₂ sont distincts.
+
+   FOCUS_SAME_CM ne couvre donc que le bruit de l'arithmétique flottante.
+   En mode lunette, enforceLensDistance() pose x₂ = x₁ + f₁ + f₂ et
+   l'égalité est exacte ; en mode libre, elle ne l'est qu'exceptionnellement,
+   et les deux étiquettes restent alors séparées — c'est le gestionnaire
+   d'étiquettes qui les écarte, au besoin par un trait de rappel. */
+const FOCUS_SAME_CM = 1e-6;
 
 function drawFocalPoints() {
   const { f1, f2, x1, x2, axisY } = sim;
@@ -474,18 +490,19 @@ function drawFocalPoints() {
     { cm: -f2, xLens: x2, text: 'F₂'  },
     { cm:  f2, xLens: x2, text: "F'₂" },
   ]
-    .map(m => ({ ...m, x: xToPx(m.xLens + m.cm) }))
+    .map(m => ({ ...m, atCm: m.xLens + m.cm, x: xToPx(m.xLens + m.cm) }))
     .filter(m => m.x > -fs(20) && m.x < sim.W + fs(20))
-    .sort((a, b) => a.x - b.x);
+    .sort((a, b) => a.atCm - b.atCm);
 
-  // Regroupement des foyers confondus, dans l'ordre naturel F₁, F'₁, F₂, F'₂.
+  // Regroupement des foyers rigoureusement confondus, dans l'ordre naturel
+  // F₁, F'₁, F₂, F'₂.
   const groups = [];
   for (const m of marks) {
     const g = groups[groups.length - 1];
-    if (g && Math.abs(m.x - g.x) <= fs(FOCUS_MERGE_PX)) {
+    if (g && Math.abs(m.atCm - g.atCm) <= FOCUS_SAME_CM) {
       g.parts.push(m);
     } else {
-      groups.push({ x: m.x, parts: [m] });
+      groups.push({ atCm: m.atCm, x: m.x, parts: [m] });
     }
   }
 
