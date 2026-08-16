@@ -11,16 +11,20 @@
    ─────────────────────────────────────────────────
    Objet central contenant tous les paramètres physiques,
    les résultats calculés, les positions des éléments sur
-   le canvas, et l'état de l'animation.
+   l'axe optique, et l'état de l'animation.
 
    Repère physique :
      - axe X = axe optique (gauche → droite)
-     - distances en centimètres, positives vers la droite
-     - O1 = centre de L1 (objectif), O2 = centre de L2 (oculaire)
-     - lensX1, lensX2 = abscisses en pixels (converties via scale)
+     - TOUTES les positions sont en centimètres, dans un repère de
+       scène dont le zéro est arbitraire (x1, x2, xOeil).
+       Les pixels n'apparaissent qu'au moment du rendu, via xToPx().
+       C'est ce qui permet à resize() de ne rien détruire : l'état
+       physique ne dépend plus de la taille de la fenêtre.
+     - O₁ = centre de L₁ (objectif), O₂ = centre de L₂ (oculaire)
 
-   Échelle : 200 cm de large → scale = W_px / 200 px/cm
-             1 carreau de quadrillage = 5 cm
+   Cadrage : la scène couvre VIEW_SPAN_CM sur la largeur du canvas au
+   zoom 1 ; le zoom et le panoramique n'agissent que sur la conversion
+   cm → px (scale et originXpx), jamais sur la transformation du canvas.
 ════════════════════════════════════════════════════ */
 const sim = {
   // ── Paramètres physiques ──
@@ -34,13 +38,13 @@ const sim = {
   oeilActif: false,      // true = afficher l'œil (mode lunette uniquement)
   legendeActif: false,   // true = afficher Objectif/Oculaire sous les lentilles
 
-  // ── Positions des lentilles (en px, recalculées par resize()) ──
-  lensX1: 0,   // abscisse px de L1
-  lensX2: 0,   // abscisse px de L2
+  // ── Positions sur l'axe optique, en cm (repère de scène) ──
+  x1:    60,   // abscisse de O₁
+  x2:    95,   // abscisse de O₂
+  xOeil: 125,  // abscisse de l'iris de l'œil
 
-  // ── Œil : positions relatives en cm par rapport à son iris ──
-  // iris à oeilX px, cristallin à +EYE_IRIS_TO_LENS cm, rétine à +EYE_IRIS_TO_LENS+f_eye cm
-  oeilX: 0,         // abscisse px de l'iris de l'œil
+  // ── Œil : distances relatives en cm par rapport à son iris ──
+  // iris à xOeil, cristallin à +EYE_IRIS_TO_LENS, rétine à +EYE_IRIS_TO_LENS+EYE_FLENS
   EYE_IRIS_TO_LENS: 1,   // cm entre iris et cristallin
   EYE_FLENS: 5,          // distance focale du cristallin (cm)
 
@@ -59,11 +63,21 @@ const sim = {
 
   isAfocal: false,  // true si O1O2 ≈ f1+f2
 
-  // ── Géométrie canvas (mis à jour par resize()) ──
-  scale: 0,   // px/cm
-  axisY: 0,   // ordonnée px de l'axe optique
+  // ── Géométrie canvas (mise à jour par resize()) ──
   W: 0, H: 0,
-  LENS_RADIUS_CM: 46,  // rayon physique des lentilles en cm
+  axisY: 0,        // ordonnée px de l'axe optique
+
+  // ── Cadrage : conversion cm → px ──
+  baseScale: 0,    // px/cm au zoom 1, calculé par resize()
+  scale:     0,    // px/cm effectif = baseScale × zoom
+  zoom:      1,    // facteur de zoom (molette / pincement), ancré sur le pointeur
+  originXpx: 0,    // abscisse px du zéro de l'axe des cm ; le panoramique la translate
+
+  // Demi-hauteur des lentilles et de l'œil, FIXE en pixels : c'est leur
+  // ouverture exprimée en cm (lensRadiusCm) qui suit le zoom, et qui borne
+  // le faisceau de rayons.
+  lensHpx:      0,
+  lensRadiusCm: 0,
 
   // ── Mode d'affichage des rayons ──
   rayMode: 'instant',  // 'instant' | 'anim'
@@ -77,29 +91,132 @@ const sim = {
   animPaused: true,
   animRunning: false,
   lastTs: 0,
-
-  // ── Vue (zoom + pan) ──
-  // La transformation est appliquée au rendu canvas uniquement.
-  // Les positions sim.lensX1, lensX2 etc. restent en coordonnées logiques (px canvas sans zoom).
-  view: { scale: 1, tx: 0, ty: 0 },
 };
 
 /* ── Couleurs des 3 rayons principaux (orange, bleu, vert) ── */
 const RAY_COLORS = ['#e05c00', '#2a6aaa', '#2a9a4a'];
 
 /* ═══════════════════════════════════════════════════
-   CONVERSIONS COORDONNÉES
+   CADRAGE DE LA SCÈNE
    ─────────────────────────────────────────────────
-   cmToX(cm, lensX) : position cm depuis une lentille → px canvas
-   cmToY(cm)        : hauteur physique cm → ordonnée px (axe Y inversé)
-   xToCm(px, lensX) : px canvas → cm depuis une lentille
+   VIEW_SPAN_CM   : largeur de scène visée sur un canvas confortable.
+                    Doit couvrir O₁O₂ = f'₁ + f'₂ jusqu'à 200 cm.
+   MIN_SPAN_CM    : on ne resserre jamais en deçà, sinon les deux lentilles
+                    ne tiennent plus dans le cadre.
+   MIN_PX_PER_CM  : en dessous de cette densité le quadrillage et les
+                    étiquettes deviennent illisibles → on resserre la scène.
+   LENS_RADIUS_MAX_CM : demi-hauteur nominale des lentilles.
 ════════════════════════════════════════════════════ */
-function cmToX(cm, lensX) { return lensX + cm * sim.scale; }
-function cmToY(cm)         { return sim.axisY - cm * sim.scale; }
-function xToCm(px, lensX) { return (px - lensX) / sim.scale; }
+const VIEW_SPAN_CM       = 200;
+const MIN_SPAN_CM        = 120;
+const MIN_PX_PER_CM      = 3.5;
+const LENS_RADIUS_MAX_CM = 46;
 
-/* ── Retourne la distance O1O2 en cm ── */
-function getLensDistCm() { return (sim.lensX2 - sim.lensX1) / sim.scale; }
+/* Écarts minimaux imposés entre les éléments, en cm. */
+const MIN_LENS_GAP_CM = 5;
+const MIN_EYE_GAP_CM  = 5;
+
+/* ═══════════════════════════════════════════════════
+   ZOOM ET PANORAMIQUE
+   ─────────────────────────────────────────────────
+   Le zoom ne touche qu'à la conversion cm → px : toute la physique reste
+   calculée en centimètres, et les lentilles, l'œil et les textes gardent
+   leur taille en pixels. C'est la portion de scène couverte qui varie —
+   d'où un cadrage utilisable aussi bien pour f' = 5 cm que f' = 100 cm.
+
+   Contrairement à la page lentille, il n'y a pas ici de point fixe
+   naturel (les deux lentilles et l'œil sont tous mobiles) : le zoom est
+   donc ancré sur le pointeur, et un panoramique translate originXpx.
+════════════════════════════════════════════════════ */
+const ZOOM_MIN  = 0.15;
+const ZOOM_MAX  = 8;
+const ZOOM_STEP = 1.12;   // par cran de molette
+
+/* ─────────────────────────────────────────────────
+   Conversions repère physique (cm) → canvas (px).
+   xToPx / pxToX : le long de l'axe optique.
+   hToPx / pxToH : hauteurs, axe Y inversé.
+───────────────────────────────────────────────────── */
+function xToPx(xCm)  { return sim.originXpx + xCm * sim.scale; }
+function pxToX(px)   { return (px - sim.originXpx) / sim.scale; }
+function hToPx(hCm)  { return sim.axisY - hCm * sim.scale; }
+function pxToH(py)   { return (sim.axisY - py) / sim.scale; }
+
+/* ── Distance O₁O₂ en cm ── */
+function getLensDistCm() { return sim.x2 - sim.x1; }
+
+/* ─────────────────────────────────────────────────
+   applyScale() — Recalcule l'échelle effective et ce qui en dérive.
+   Les lentilles gardant une hauteur fixe en pixels, leur demi-diamètre
+   exprimé en cm (qui borne l'ouverture du faisceau) suit le zoom.
+───────────────────────────────────────────────────── */
+function applyScale() {
+  sim.scale        = sim.baseScale * sim.zoom;
+  sim.lensRadiusCm = sim.lensHpx / sim.scale;
+}
+
+/* ─────────────────────────────────────────────────
+   setZoom() — Change le zoom en laissant immobile le point de la scène
+   situé sous anchorPx (le pointeur). Renvoie false si la borne est
+   atteinte, pour éviter un redessin inutile.
+───────────────────────────────────────────────────── */
+function setZoom(z, anchorPx) {
+  const clamped = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z));
+  if (clamped === sim.zoom) return false;
+  const ax   = (anchorPx === undefined) ? sim.W / 2 : anchorPx;
+  const cmAt = pxToX(ax);
+  sim.zoom = clamped;
+  applyScale();
+  sim.originXpx = ax - cmAt * sim.scale;
+  clampPan();
+  return true;
+}
+
+/* ─────────────────────────────────────────────────
+   sceneExtentCm() — Emprise en cm des éléments manipulables.
+───────────────────────────────────────────────────── */
+function sceneExtentCm() {
+  let min = Math.min(sim.x1, sim.x2);
+  let max = Math.max(sim.x1, sim.x2);
+  if (sim.oeilActif && sim.systemMode === 'lunette') {
+    max = Math.max(max, sim.xOeil + sim.EYE_IRIS_TO_LENS + sim.EYE_FLENS);
+  }
+  return { min, max };
+}
+
+/* ─────────────────────────────────────────────────
+   clampPan() — Empêche de faire glisser toute la scène hors du cadre :
+   une bande d'au moins 15 % de la largeur reste occupée par le système.
+───────────────────────────────────────────────────── */
+function clampPan() {
+  if (!sim.W) return;
+  const { min, max } = sceneExtentCm();
+  const keep = sim.W * 0.15;
+  const lo   = keep - max * sim.scale;
+  const hi   = sim.W - keep - min * sim.scale;
+  sim.originXpx = Math.max(lo, Math.min(hi, sim.originXpx));
+}
+
+/* ─────────────────────────────────────────────────
+   centerScene() — Cadrage nominal : zoom 1, système centré.
+───────────────────────────────────────────────────── */
+function centerScene() {
+  sim.zoom = 1;
+  applyScale();
+  const { min, max } = sceneExtentCm();
+  sim.originXpx = sim.W / 2 - ((min + max) / 2) * sim.scale;
+  clampPan();
+}
+
+/* ─────────────────────────────────────────────────
+   clampToView() — Borne une abscisse cm à la portion visible, pour
+   qu'un élément ne puisse pas être traîné hors du cadre.
+───────────────────────────────────────────────────── */
+function clampToView(xCm) {
+  const marginCm = 20 / sim.scale;
+  return Math.max(pxToX(0) + marginCm,
+                  Math.min(pxToX(sim.W) - marginCm, xCm));
+}
 
 /* ═══════════════════════════════════════════════════
    PHYSIQUE
@@ -158,8 +275,8 @@ function computeEye() {
   const { EYE_IRIS_TO_LENS, EYE_FLENS } = sim;
   const fEye = EYE_FLENS;
 
-  const crystalX = sim.oeilX + EYE_IRIS_TO_LENS * sim.scale;
-  const L2toCrystal = (crystalX - sim.lensX2) / sim.scale;
+  const crystalX    = sim.xOeil + EYE_IRIS_TO_LENS;
+  const L2toCrystal = crystalX - sim.x2;
 
   if (sim.isAfocal) {
     sim.OeyeA3 = fEye;
@@ -245,15 +362,22 @@ function updatePanel() {
 }
 
 /* ═══════════════════════════════════════════════════
-   CONTRAINTES DE POSITIONNEMENT DES LENTILLES
+   CONTRAINTES DE POSITIONNEMENT DES ÉLÉMENTS
+   ─────────────────────────────────────────────────
+   En mode lunette, O₁O₂ est asservi à f'₁ + f'₂. L'œil conserve dans
+   tous les cas son écart à l'oculaire : c'est l'oculaire qu'on règle,
+   pas la position de l'observateur.
+   Plus aucune borne liée à la largeur du canvas : les positions sont
+   en cm, et le panoramique permet d'atteindre ce qui sort du cadre.
 ════════════════════════════════════════════════════ */
 function enforceLensDistance() {
+  const dEye = sim.xOeil - sim.x2;
+
   if (sim.systemMode === 'lunette') {
-    sim.lensX2 = sim.lensX1 + (sim.f1 + sim.f2) * sim.scale;
-  } else {
-    if (sim.lensX2 < sim.lensX1 + 5 * sim.scale) {
-      sim.lensX2 = sim.lensX1 + (sim.f1 + sim.f2) * sim.scale;
-    }
+    sim.x2 = sim.x1 + sim.f1 + sim.f2;
+  } else if (sim.x2 < sim.x1 + MIN_LENS_GAP_CM) {
+    sim.x2 = sim.x1 + sim.f1 + sim.f2;
   }
-  sim.lensX2 = Math.min(sim.lensX2, sim.W - 10 * sim.scale);
+
+  sim.xOeil = sim.x2 + Math.max(MIN_EYE_GAP_CM, dEye);
 }

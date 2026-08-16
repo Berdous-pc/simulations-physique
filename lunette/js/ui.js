@@ -59,100 +59,109 @@ function restartAnim() {
 }
 
 /* ═══════════════════════════════════════════════════
-   DRAG & DROP
+   POINTEUR — DÉPLACEMENT DES ÉLÉMENTS ET PANORAMIQUE
+   ─────────────────────────────────────────────────
+   Les positions manipulées sont en centimètres : un déplacement à
+   l'écran est converti par sim.scale, de sorte que le geste conserve
+   le même sens physique quel que soit le zoom.
 ════════════════════════════════════════════════════ */
 let drag    = null;
 let panDrag = null;
 const DRAG_R = 18;
 
 function hitTest(mx, my) {
-  const { lensX1, lensX2, axisY, scale, LENS_RADIUS_CM, oeilX, EYE_IRIS_TO_LENS, view } = sim;
-  const vs = view.scale;
-  const effectiveRadius = vs < 1 ? LENS_RADIUS_CM / vs : LENS_RADIUS_CM;
-  const lensHpx = effectiveRadius * scale;
+  const { axisY, lensHpx } = sim;
 
-  if (Math.abs(mx - lensX1) < DRAG_R &&
-      my >= axisY - lensHpx - DRAG_R && my <= axisY + lensHpx + DRAG_R) return 'L1';
+  const onElement = xCm =>
+    Math.abs(mx - xToPx(xCm)) < DRAG_R &&
+    my >= axisY - lensHpx - DRAG_R && my <= axisY + lensHpx + DRAG_R;
 
-  if (Math.abs(mx - lensX2) < DRAG_R &&
-      my >= axisY - lensHpx - DRAG_R && my <= axisY + lensHpx + DRAG_R) return 'L2';
+  if (onElement(sim.x1)) return 'L1';
+  if (onElement(sim.x2)) return 'L2';
 
-  if (sim.oeilActif && sim.systemMode === 'lunette') {
-    const crystalXpx = oeilX + EYE_IRIS_TO_LENS * scale;
-    const eyeHpx = effectiveRadius * scale;
-    if (Math.abs(mx - crystalXpx) < DRAG_R &&
-        my >= axisY - eyeHpx - DRAG_R && my <= axisY + eyeHpx + DRAG_R) return 'oeil';
-  }
+  if (sim.oeilActif && sim.systemMode === 'lunette' &&
+      onElement(sim.xOeil + sim.EYE_IRIS_TO_LENS)) return 'oeil';
 
   return null;
 }
 
-cv.addEventListener('mousedown', e => {
-  const { x: mx, y: my } = clientToSim(e.clientX, e.clientY);
+/* ── Le clic est-il sur le bouton "Défaut" ? ── */
+function hitDefaultBtn(cx, cy) {
+  return _defaultBtnRect &&
+         cx >= _defaultBtnRect.x && cx <= _defaultBtnRect.x + _defaultBtnRect.w &&
+         cy >= _defaultBtnRect.y && cy <= _defaultBtnRect.y + _defaultBtnRect.h;
+}
 
-  const rect = cv.getBoundingClientRect();
-  const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
-  if (_defaultBtnRect && cx >= _defaultBtnRect.x && cx <= _defaultBtnRect.x + _defaultBtnRect.w &&
-      cy >= _defaultBtnRect.y && cy <= _defaultBtnRect.y + _defaultBtnRect.h) {
-    resetView(); return;
+/* ── Applique un déplacement dxCm à l'élément saisi ── */
+function moveDragged(dxCm) {
+  if (drag.target === 'L1') {
+    sim.x1 = clampToView(drag.startX1 + dxCm);
+    enforceLensDistance();
+
+  } else if (drag.target === 'L2') {
+    if (sim.systemMode === 'lunette') {
+      // En lunette, O₁O₂ est imposé par f'₁ + f'₂ : on translate l'ensemble.
+      const dist12 = drag.startX2 - drag.startX1;
+      sim.x2 = clampToView(drag.startX2 + dxCm);
+      sim.x1 = sim.x2 - dist12;
+      sim.xOeil = sim.x2 + (drag.startOeil - drag.startX2);
+    } else {
+      sim.x2 = clampToView(Math.max(sim.x1 + MIN_LENS_GAP_CM, drag.startX2 + dxCm));
+    }
+
+  } else if (drag.target === 'oeil') {
+    sim.xOeil = clampToView(Math.max(sim.x2 + MIN_EYE_GAP_CM, drag.startOeil + dxCm));
   }
+}
 
-  const target = hitTest(mx, my);
+function beginDrag(target, cx) {
+  drag = {
+    target,
+    startPx:   cx,
+    startX1:   sim.x1,
+    startX2:   sim.x2,
+    startOeil: sim.xOeil,
+  };
+  document.getElementById('drag-hint').classList.add('hidden');
+}
+
+cv.addEventListener('mousedown', e => {
+  const { x: cx, y: cy } = clientToCanvas(e.clientX, e.clientY);
+
+  if (hitDefaultBtn(cx, cy)) { resetView(); return; }
+
+  const target = hitTest(cx, cy);
   if (!target) {
-    if (sim.rayMode === 'anim') return;
-    panDrag = { startClientX: e.clientX, startClientY: e.clientY,
-                startTx: sim.view.tx, startTy: sim.view.ty };
+    // Panoramique : disponible dans les deux modes d'affichage — se
+    // recadrer pendant une propagation est précisément ce dont on a
+    // besoin quand l'oculaire sort du champ.
+    panDrag = { startClientX: e.clientX, startOrigin: sim.originXpx };
     cv.style.cursor = 'grab';
     return;
   }
-  drag = { target, startX: mx, startL1: sim.lensX1, startL2: sim.lensX2, startOeil: sim.oeilX };
+  beginDrag(target, cx);
   cv.style.cursor = 'grabbing';
-  document.getElementById('drag-hint').classList.add('hidden');
 });
 
 cv.addEventListener('mousemove', e => {
-  const { x: mx, y: my } = clientToSim(e.clientX, e.clientY);
+  const { x: cx, y: cy } = clientToCanvas(e.clientX, e.clientY);
 
   if (panDrag) {
-    sim.view.tx = panDrag.startTx + (e.clientX - panDrag.startClientX);
-    sim.view.ty = panDrag.startTy + (e.clientY - panDrag.startClientY);
+    sim.originXpx = panDrag.startOrigin + (e.clientX - panDrag.startClientX);
     clampPan();
-    sim.rayMode === 'instant' ? draw() : restartAnim();
+    draw();
     return;
   }
 
   if (!drag) {
-    cv.style.cursor = hitTest(mx, my) ? 'ew-resize' : 'default';
+    cv.style.cursor = hitTest(cx, cy) ? 'ew-resize' : 'default';
     return;
   }
 
-  const dx = mx - drag.startX;
-  if (drag.target === 'L1') {
-    sim.lensX1 = Math.max(sim.W * 0.05, Math.min(sim.W * 0.6, drag.startL1 + dx));
-    enforceLensDistance();
-    if (sim.systemMode === 'lunette' && sim.oeilActif) {
-      const dOeil = drag.startOeil - drag.startL2;
-      sim.oeilX = sim.lensX2 + dOeil;
-    }
-  } else if (drag.target === 'L2') {
-    if (sim.systemMode === 'lunette') {
-      const dist12 = drag.startL2 - drag.startL1;
-      sim.lensX2 = Math.max(sim.W * 0.1, Math.min(sim.W * 0.95, drag.startL2 + dx));
-      sim.lensX1 = sim.lensX2 - dist12;
-      if (sim.oeilActif) {
-        const dOeil = drag.startOeil - drag.startL2;
-        sim.oeilX = sim.lensX2 + dOeil;
-      }
-    } else {
-      sim.lensX2 = Math.max(sim.lensX1 + 5 * sim.scale, Math.min(sim.W * 0.92, drag.startL2 + dx));
-    }
-  } else if (drag.target === 'oeil') {
-    sim.oeilX = Math.max(sim.lensX2 + 5 * sim.scale, drag.startOeil + dx);
-  }
-
+  moveDragged((cx - drag.startPx) / sim.scale);
   compute();
-  if (sim.rayMode === 'instant') draw();
-  else { sim.animT = 0; draw(); }
+  if (sim.rayMode === 'anim') sim.animT = 0;
+  draw();
 });
 
 cv.addEventListener('mouseup',    () => { drag = null; panDrag = null; cv.style.cursor = 'default'; });
@@ -161,68 +170,104 @@ cv.addEventListener('mouseleave', () => {
   if (panDrag) { panDrag = null; cv.style.cursor = 'default'; }
 });
 
-function clampPan() {
-  const { W, H, view } = sim;
-  const vs = view.scale;
-  const marginX = W * 0.2;
-  const marginY = H * 0.2;
-  view.tx = Math.max(-(W * vs - marginX), Math.min(W - marginX, view.tx));
-  view.ty = Math.max(-(H * vs - marginY), Math.min(H - marginY, view.ty));
-}
-
+/* ═══════════════════════════════════════════════════
+   ZOOM DE LA SCÈNE
+   ─────────────────────────────────────────────────
+   Molette (ou pincement à deux doigts) : change l'échelle cm → px en
+   laissant immobile le point de la scène situé sous le pointeur. Les
+   lentilles, l'œil et les textes gardant une taille fixe en pixels,
+   c'est la portion de scène couverte qui varie — d'où un cadrage
+   utilisable aussi bien pour f'₂ = 5 cm que pour O₁O₂ = 2 m.
+════════════════════════════════════════════════════ */
 cv.addEventListener('wheel', e => {
   e.preventDefault();
-  if (sim.rayMode === 'anim') return;
-  const rect   = cv.getBoundingClientRect();
-  const cx     = e.clientX - rect.left;
-  const cy     = e.clientY - rect.top;
-  const factor = e.deltaY > 0 ? 1 / 1.15 : 1.15;
-  const newScale = Math.max(0.3, Math.min(8, sim.view.scale * factor));
-  sim.view.tx = cx - (cx - sim.view.tx) * (newScale / sim.view.scale);
-  sim.view.ty = cy - (cy - sim.view.ty) * (newScale / sim.view.scale);
-  sim.view.scale = newScale;
-  clampPan();
-  sim.rayMode === 'instant' ? draw() : restartAnim();
+  if (drag) return;
+  const { x: cx } = clientToCanvas(e.clientX, e.clientY);
+  const factor = e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
+  if (!setZoom(sim.zoom * factor, cx)) return;
+  draw();
 }, { passive: false });
 
+// Double-clic hors élément draggable : retour au cadrage nominal.
+cv.addEventListener('dblclick', e => {
+  const { x: cx, y: cy } = clientToCanvas(e.clientX, e.clientY);
+  if (hitTest(cx, cy)) return;
+  resetView();
+});
+
+/* ═══════════════════════════════════════════════════
+   TACTILE
+   ─────────────────────────────────────────────────
+   Un doigt : déplace l'élément saisi, ou fait glisser la scène.
+   Deux doigts : pincement, ancré sur le milieu des deux contacts.
+════════════════════════════════════════════════════ */
+let pinch = null;
+
+function pinchDist(e) {
+  const dx = e.touches[0].clientX - e.touches[1].clientX;
+  const dy = e.touches[0].clientY - e.touches[1].clientY;
+  return Math.hypot(dx, dy);
+}
+
+function pinchMidPx(e) {
+  const mid = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+  return clientToCanvas(mid, 0).x;
+}
+
 cv.addEventListener('touchstart', e => {
-  e.preventDefault();
+  if (e.touches.length === 2) {
+    e.preventDefault();
+    drag = null; panDrag = null;
+    pinch = { dist: pinchDist(e), zoom: sim.zoom };
+    return;
+  }
+
   const t = e.touches[0];
-  const { x: mx, y: my } = clientToSim(t.clientX, t.clientY);
-  const target = hitTest(mx, my);
-  if (!target) return;
-  drag = { target, startX: mx, startL1: sim.lensX1, startL2: sim.lensX2, startOeil: sim.oeilX };
-  document.getElementById('drag-hint').classList.add('hidden');
+  const { x: cx, y: cy } = clientToCanvas(t.clientX, t.clientY);
+
+  if (hitDefaultBtn(cx, cy)) { e.preventDefault(); resetView(); return; }
+
+  const target = hitTest(cx, cy);
+  if (!target) {
+    panDrag = { startClientX: t.clientX, startOrigin: sim.originXpx };
+    return;
+  }
+  e.preventDefault();
+  beginDrag(target, cx);
 }, { passive: false });
 
 cv.addEventListener('touchmove', e => {
-  e.preventDefault();
-  if (!drag) return;
-  const t = e.touches[0];
-  const { x: mx } = clientToSim(t.clientX, t.clientY);
-  const dx = mx - drag.startX;
-  if (drag.target === 'L1') {
-    sim.lensX1 = Math.max(sim.W*0.05, Math.min(sim.W*0.6, drag.startL1 + dx));
-    enforceLensDistance();
-    if (sim.systemMode === 'lunette' && sim.oeilActif) {
-      sim.oeilX = sim.lensX2 + (drag.startOeil - drag.startL2);
-    }
-  } else if (drag.target === 'L2') {
-    if (sim.systemMode === 'lunette') {
-      const dist12 = drag.startL2 - drag.startL1;
-      sim.lensX2 = Math.max(sim.W*0.1, Math.min(sim.W*0.95, drag.startL2 + dx));
-      sim.lensX1 = sim.lensX2 - dist12;
-      if (sim.oeilActif) sim.oeilX = sim.lensX2 + (drag.startOeil - drag.startL2);
-    } else {
-      sim.lensX2 = Math.max(sim.lensX1 + 5*sim.scale, Math.min(sim.W*0.92, drag.startL2 + dx));
-    }
-  } else if (drag.target === 'oeil') {
-    sim.oeilX = Math.max(sim.lensX2 + 5*sim.scale, drag.startOeil + dx);
+  if (pinch && e.touches.length === 2) {
+    e.preventDefault();
+    if (pinch.dist < 1) return;
+    if (setZoom(pinch.zoom * pinchDist(e) / pinch.dist, pinchMidPx(e))) draw();
+    return;
   }
-  compute(); draw();
+
+  const t = e.touches[0];
+  if (!t) return;
+
+  if (panDrag) {
+    e.preventDefault();
+    sim.originXpx = panDrag.startOrigin + (t.clientX - panDrag.startClientX);
+    clampPan();
+    draw();
+    return;
+  }
+
+  if (!drag) return;
+  e.preventDefault();
+  const { x: cx } = clientToCanvas(t.clientX, t.clientY);
+  moveDragged((cx - drag.startPx) / sim.scale);
+  compute();
+  if (sim.rayMode === 'anim') sim.animT = 0;
+  draw();
 }, { passive: false });
 
-cv.addEventListener('touchend', () => { drag = null; });
+cv.addEventListener('touchend', e => {
+  if (e.touches.length < 2)   pinch = null;
+  if (e.touches.length === 0) { drag = null; panDrag = null; }
+});
 
 /* ═══════════════════════════════════════════════════
    CONTRÔLES DU PANNEAU
@@ -282,7 +327,8 @@ function setRayMode(mode) {
   if (mode === 'instant') {
     sim.animRunning = false; draw();
   } else {
-    sim.view.scale = 1; sim.view.tx = 0; sim.view.ty = 0;
+    // Le cadrage n'est plus réinitialisé au passage en propagation :
+    // l'utilisateur garde le zoom et le recadrage qu'il vient de choisir.
     sim.animPaused = true;
     const btn = document.getElementById('btn-pause-play');
     if (btn) { btn.textContent = '▶ Play'; btn.classList.remove('active'); }
@@ -296,7 +342,7 @@ function toggleOeil(forceOff) {
   if (sim.oeilActif) {
     btn.textContent = 'Ajouter un œil : OUI';
     btn.classList.add('active');
-    sim.oeilX = sim.lensX2 + 20 * sim.scale;
+    sim.xOeil = sim.x2 + 20;
   } else {
     btn.textContent = 'Ajouter un œil : NON';
     btn.classList.remove('active');
