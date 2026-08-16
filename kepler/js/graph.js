@@ -91,15 +91,20 @@ function drawGraph3() {
   var xRangeFull = xMax * 1.15, yRangeFull = yMax * 1.15;
   var xRange, yRange;
   if (sys.zoomMax && sys3.graphZoomLinked) {
-    // Système Solaire (zoom lié) : le graphe SUIT le zoom du canvas — il
+    // Système zoomable (zoom lié) : le graphe SUIT le zoom du canvas — il
     // cadre les astres dont l'orbite est encore visible à l'écran (a ≤
     // aVis). Les deux axes se resserrent chacun selon leur exposant, en
-    // passant par la 3ᵉ loi elle-même (T = a^1,5 autour du Soleil, en an
-    // et ua).
-    var aMaxSys = 0;
-    sys.corps.forEach(function (cps) { aMaxSys = Math.max(aMaxSys, cps.a); });
+    // passant par la 3ᵉ loi elle-même (T = k·a^1,5). k est déduit du corps
+    // le plus externe plutôt que fixé à 1 : vaut exactement 1 pour le
+    // Système Solaire (ua, an), mais dépend de l'attracteur et des unités
+    // pour les autres systèmes (Mm, jours…).
+    var aMaxSys = 0, tAMaxSys = 0;
+    sys.corps.forEach(function (cps) {
+      if (cps.a > aMaxSys) { aMaxSys = cps.a; tAMaxSys = cps.T; }
+    });
+    var k = tAMaxSys / Math.pow(aMaxSys, 1.5);
     var aVis = aMaxSys / sys3.zoom;
-    var tVis = Math.pow(aVis, 1.5);
+    var tVis = k * Math.pow(aVis, 1.5);
     xRange = Math.min(xRangeFull, Math.pow(aVis, p) * 1.15);
     yRange = Math.min(yRangeFull, Math.pow(tVis, q) * 1.15);
   } else {
@@ -213,7 +218,7 @@ function drawGraph3() {
     // vert) : le message ne doit pas révéler si le modèle est pertinent.
     var kUnit = yUnit + '/' + xUnit;
     var l1 = yLab + ' = k × ' + xLab;
-    var l2 = 'k = ' + fmtSmart(k) + ' ' + kUnit;
+    var l2 = 'k = ' + fmtK(k) + ' ' + kUnit;
     ctx.font = '700 20px "Segoe UI", Arial, sans-serif';
     var bw = Math.max(ctx.measureText(l1).width, ctx.measureText(l2).width) + 32;
     var bx = x0 + 10, by = padT + 8, bh = 72;
@@ -235,6 +240,9 @@ function drawGraph3() {
   // ── Points + noms des corps ──
   _pts3 = [];
   ctx.font = '700 15px "Segoe UI", Arial, sans-serif';
+  // Étiquettes déjà posées (rectangles) : évite que deux corps très proches
+  // en (a, T) — ex. ISS/Hubble — ne se retrouvent avec des noms superposés.
+  var _labelRects = [];
   pts.forEach(function (pt) {
     var px = gx(pt.x), py = gy(pt.y);
     ctx.beginPath();
@@ -247,10 +255,25 @@ function drawGraph3() {
     // Étiquette : à droite du point, sauf près du bord droit ou du haut
     var alignDroite = px > W - padR - 80;
     var dy = py < padT + 22 ? 17 : -10;
+    var txt = pt.corps.nom;
+    var tw = ctx.measureText(txt).width;
+    var x1 = alignDroite ? px - 10 - tw : px + 10;
+    var x2 = alignDroite ? px - 10 : px + 10 + tw;
+    // Écarte verticalement (par pas de 15 px) tant que ça chevauche une
+    // étiquette déjà posée : les points restent à leur vraie position, seul
+    // le texte est décalé.
+    var tries = 0;
+    while (tries < 8 && _labelRects.some(function (r) {
+      return x1 < r.x2 && x2 > r.x1 && py + dy - 11 < r.y2 && py + dy + 5 > r.y1;
+    })) {
+      dy += (dy > 0 ? 15 : -15);
+      tries++;
+    }
+    _labelRects.push({ x1: x1, x2: x2, y1: py + dy - 11, y2: py + dy + 5 });
     ctx.textAlign = alignDroite ? 'right' : 'left';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = pt.corps.couleur;
-    ctx.fillText(pt.corps.nom, px + (alignDroite ? -10 : 10), py + dy);
+    ctx.fillText(txt, px + (alignDroite ? -10 : 10), py + dy);
     _pts3.push({ px: px, py: py, pt: pt, visible: px >= x0 && px <= W - padR && py >= padT && py <= y0 });
   });
   ctx.restore();

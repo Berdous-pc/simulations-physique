@@ -199,6 +199,63 @@ function drawSaturne(ctx, x, y, rayon) {
   ctx.stroke();
 }
 
+// Illustration réelle de la Terre (uniquement pour le système « Satellites
+// terrestres » — les autres attracteurs restent des disques stylisés
+// dessinés au canvas). Chargée une fois ; tant qu'elle ne l'est pas,
+// drawTerreImg retombe sur le disque stylisé drawTerre ci-dessous.
+var _imgTerre = new Image();
+var _imgTerreReady = false;
+_imgTerre.onload = function () { _imgTerreReady = true; drawSys3(); };
+_imgTerre.src = 'terre.png';
+
+// Rotation propre de la Terre sur elle-même : jour SIDÉRAL (23 h 56 min 04 s
+// = 0,99727 j), pas le jour solaire de 24 h — même durée exacte que la
+// période du satellite géostationnaire (SYSTEMES[1], cf. sim.js), ce n'est
+// pas une coïncidence : c'est cette rotation qui définit son orbite.
+var JOUR_SIDERAL = 0.99727;
+
+function drawTerreImg(ctx, x, y, rayon, t) {
+  if (!_imgTerreReady) { drawTerre(ctx, x, y, rayon); return; }
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x, y, rayon, 0, 2 * Math.PI);
+  ctx.clip();
+  ctx.translate(x, y);
+  // Signe négatif : ctx.rotate() tourne dans le sens horaire à l'écran (y
+  // inversé), alors que les orbites de la scène (posKepler + sy()) sont
+  // dessinées dans le sens antihoraire pour un mouvement direct — la Terre
+  // doit tourner dans le même sens que ses satellites (rotation directe,
+  // vue du pôle Nord).
+  ctx.rotate(-2 * Math.PI * (t / JOUR_SIDERAL));
+  ctx.drawImage(_imgTerre, -rayon, -rayon, 2 * rayon, 2 * rayon);
+  ctx.restore();
+}
+
+// Terre stylisée (repli si l'image ne charge pas) : disque bleu + continents,
+// même esprit que drawJupiter/drawSaturne — pas à l'échelle réelle
+// (voir commentaire dans drawSys3 : le rayon terrestre est comparable à
+// celui de l'orbite de l'ISS, aucune taille fixe ne conviendrait aux deux
+// niveaux de zoom).
+function drawTerre(ctx, x, y, rayon) {
+  ctx.beginPath();
+  ctx.arc(x, y, rayon, 0, 2 * Math.PI);
+  ctx.fillStyle = '#2a6aaa';
+  ctx.fill();
+  ctx.save();
+  ctx.clip();
+  ctx.fillStyle = 'rgba(58,150,88,0.9)';
+  ctx.beginPath(); ctx.arc(x - rayon * 0.3, y - rayon * 0.05, rayon * 0.42, 0, 2 * Math.PI); ctx.fill();
+  ctx.beginPath(); ctx.arc(x + rayon * 0.4, y + rayon * 0.35, rayon * 0.3,  0, 2 * Math.PI); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.8)';
+  ctx.beginPath(); ctx.arc(x, y - rayon * 0.95, rayon * 0.32, 0, 2 * Math.PI); ctx.fill();
+  ctx.restore();
+  ctx.beginPath();
+  ctx.arc(x, y, rayon, 0, 2 * Math.PI);
+  ctx.strokeStyle = '#1a4a80';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+}
+
 // Planète stylisée (3ᵉ loi) : disque de base + détails « identité » selon
 // le type (calotte de Mars, continents de la Terre, bandes de Jupiter,
 // anneaux de Saturne…), dans l'esprit de drawJupiter/drawSaturne. Les
@@ -698,21 +755,65 @@ function drawSys3() {
   if (sys.ceinture) drawCeinture(ctx, sx, sy, W, H);
 
   // ── Attracteur ──
+  // Rayon symbolique par défaut (clamp indépendant de l'échelle réelle,
+  // cf. commentaire de drawTerre) — sauf si `attracteur.rayonReel` est
+  // fourni (en unité uniteA) : test demandé pour la Terre, dessinée alors à
+  // sa vraie taille relative à l'échelle du canvas.
+  var rAttracteur = sys.attracteur.rayonReel
+    ? Math.max(1.5, sys.attracteur.rayonReel * s)
+    : Math.max(8, Math.min(13, s * rMax * 0.035));
   if (sys.attracteur.type === 'soleil') {
-    drawSoleil(ctx, fx, fy, Math.max(7, Math.min(20, s * rMax * 0.03)));
+    drawSoleil(ctx, fx, fy, rAttracteur);
   } else if (sys.attracteur.type === 'saturne') {
-    drawSaturne(ctx, fx, fy, Math.max(8, Math.min(13, s * rMax * 0.035)));
+    drawSaturne(ctx, fx, fy, rAttracteur);
+  } else if (sys.attracteur.type === 'terre') {
+    drawTerreImg(ctx, fx, fy, rAttracteur, sys3.t);
   } else {
-    drawJupiter(ctx, fx, fy, Math.max(8, Math.min(13, s * rMax * 0.035)));
+    drawJupiter(ctx, fx, fy, rAttracteur);
   }
   if (sys3.showNoms) {
     texteHalo(ctx, sys.attracteur.nom, fx, fy + fsNom * 1.9, '#98a8b8',
               'italic ' + fsNom + 'px "Segoe UI", Arial, sans-serif');
   }
 
+  // ── Pointillés Terre → satellite géostationnaire ──
+  // Segment du CENTRE de la Terre jusqu'au satellite (même direction radiale
+  // que le point survolé, à la distance rAttracteur — le rayon RÉELLEMENT
+  // dessiné pour la Terre, symbolique ou à l'échelle) ; le repère au sol
+  // reste posé exactement sur ce point survolé.
+  if (sys3.showGeoLigne && sys.geoNom) {
+    var geoCps = sys.corps.filter(function (c) { return c.nom === sys.geoNom; })[0];
+    if (geoCps) {
+      var Mg = (geoCps.M0 || 0) + 2 * Math.PI * sys3.t / geoCps.T;
+      var pg = posKepler(geoCps.a, geoCps.e, Mg);
+      var pgx = sx(pg.x), pgy = sy(pg.y);
+      var dxg = pgx - fx, dyg = pgy - fy;
+      var distg = Math.hypot(dxg, dyg) || 1;
+      var sxg = fx + (dxg / distg) * rAttracteur;
+      var syg = fy + (dyg / distg) * rAttracteur;
+      ctx.save();
+      ctx.setLineDash([5, 4]);
+      ctx.strokeStyle = geoCps.couleurClair;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(fx, fy);
+      ctx.lineTo(pgx, pgy);
+      ctx.stroke();
+      ctx.restore();
+      // Repère au sol (point survolé)
+      ctx.beginPath();
+      ctx.arc(sxg, syg, 3, 0, 2 * Math.PI);
+      ctx.fillStyle = geoCps.couleurClair;
+      ctx.fill();
+    }
+  }
+
   // ── Corps en orbite (teintes couleurClair : fond sombre) ──
   sys.corps.forEach(function (cps) {
-    var M = 2 * Math.PI * sys3.t / cps.T;      // tous alignés à t = 0
+    // Tous alignés à t = 0, sauf phase M0 explicite (ex. ISS/Hubble : sans
+    // décalage, deux orbites aussi proches se superposeraient exactement au
+    // démarrage — impossible à distinguer visuellement).
+    var M = (cps.M0 || 0) + 2 * Math.PI * sys3.t / cps.T;
     var p = posKepler(cps.a, cps.e, M);
     var px = sx(p.x), py = sy(p.y);
     // Orbite devenue minuscule à l'écran (dézoom du Système Solaire) : le

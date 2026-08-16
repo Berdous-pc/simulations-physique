@@ -323,8 +323,9 @@
           <div class="section-title">Système étudié</div>
           <div class="sys-toggle">
             <button class="sys-btn active" id="sys-btn-0" onclick="setSysteme(0)">Système Solaire</button>
-            <button class="sys-btn" id="sys-btn-1" onclick="setSysteme(1)">Lunes de Jupiter</button>
-            <button class="sys-btn" id="sys-btn-2" onclick="setSysteme(2)">Lunes de Saturne</button>
+            <button class="sys-btn" id="sys-btn-1" onclick="setSysteme(1)">Satellites terrestres</button>
+            <button class="sys-btn" id="sys-btn-2" onclick="setSysteme(2)">Lunes de Jupiter</button>
+            <button class="sys-btn" id="sys-btn-3" onclick="setSysteme(3)">Lunes de Saturne</button>
           </div>
         </div>
 
@@ -356,10 +357,9 @@
               <input type="range" id="sl-zoom-3" min="0" max="1" step="0.001" value="0"
                      oninput="onSliderZoom3(this.value)">
             </div>
-            <div class="sys-toggle sys-toggle-row" style="margin-top:8px;">
-              <button class="sys-btn" id="zoom-preset-0" onclick="setZoomPreset3(0)">Système complet</button>
-              <button class="sys-btn active" id="zoom-preset-1" onclick="setZoomPreset3(1)">Planètes internes</button>
-            </div>
+            <!-- Boutons reconstruits par _buildZoomPresetsUI3 (nombre et
+                 libellés des presets variables selon le système) -->
+            <div class="sys-toggle sys-toggle-row" id="zoom-presets-3" style="margin-top:8px;"></div>
             <label class="check-row" style="margin-top:8px;">
               <input type="checkbox" id="ck-zoom-lie-3" checked onchange="toggleZoomLie3(this.checked)">
               Lier le zoom du graphe
@@ -379,6 +379,12 @@
           <label class="check-row">
             <input type="checkbox" id="ck-orb-3" checked onchange="toggleOrbites3(this.checked)">
             Trajectoires
+          </label>
+          <!-- Visible uniquement pour les systèmes ayant un satellite
+               géostationnaire (cf. _syncGeoLigneVisibilite3) -->
+          <label class="check-row" id="geo-ligne-row-3" style="display:none;">
+            <input type="checkbox" id="ck-geo-3" onchange="toggleGeoLigne3(this.checked)">
+            Position du satellite géostationnaire
           </label>
         </div>
 
@@ -449,8 +455,8 @@
         <strong>3ᵉ loi (loi des périodes)</strong> : relation entre période de
         révolution <strong>T</strong> et demi-grand axe <strong>a</strong> de
         l'orbite elliptique.<br>
-        Choisissez un <strong>système</strong> : Système Solaire, Lunes de
-        Jupiter ou Lunes de Saturne.<br>
+        Choisissez un <strong>système</strong> : Système Solaire, satellites
+        terrestres, Lunes de Jupiter ou Lunes de Saturne.<br>
         Utilisez le <strong>graphe</strong> pour mettre en évidence la
         troisième loi de Kepler.
       </div>

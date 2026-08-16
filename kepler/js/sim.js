@@ -197,6 +197,75 @@ var SYSTEMES = [
     ]
   },
   {
+    // Satellites terrestres : échelles a et T très étalées (ISS/Hubble en
+    // orbite basse, Galileo/GPS en orbite moyenne, géostationnaire, Lune) —
+    // rapport Lune/ISS ≈ 57, plus large que celui du Système Solaire (~18).
+    // D'où TROIS presets de zoom (au lieu de deux) pour donner un plan
+    // lisible à chaque échelle plutôt qu'un compromis flou.
+    label: 'Satellites terrestres',
+    // rayonReel (Mm) : TEST demandé — Terre dessinée à l'échelle réelle du
+    // canvas plutôt qu'avec le rayon symbolique habituel (drawSys3). À
+    // retirer ce champ pour revenir au rendu stylisé si le test ne
+    // convainc pas (rayon terrestre ≈ 94 % du rayon orbital de l'ISS : au
+    // zoom « Orbites basses » la Terre frôle les orbites basses ; au zoom
+    // « Avec la Lune », dézoomé ×400, elle est réduite à un point).
+    attracteur: { nom: 'Terre', type: 'terre', rayonReel: 6.371 },
+    uniteA: 'Mm', uniteT: 'j',           // Mm = 10³ km (Gm serait illisible ici)
+    // nom (dans `corps`) du satellite dont on peut tracer la position à la
+    // verticale de la Terre (checkbox « Position du satellite
+    // géostationnaire », visible seulement pour les systèmes définissant ce
+    // champ).
+    geoNom: 'Géostationnaire',
+    zoomMax: 60,
+    presets: [
+      { label: 'Orbites basses',  zoom: 50,  speedIdx: 1 }, // ISS / Hubble
+      { label: 'Orbites hautes',  zoom: 8.7, speedIdx: 2 }, // GPS / Galileo / géostationnaire
+      { label: 'Orbite lunaire',  zoom: 1,   speedIdx: 3 }
+    ],
+    // Non utilisé en pratique (setSysteme() part du 1ᵉʳ preset dès qu'il y
+    // en a un) — gardé aligné sur presets[0] par cohérence/filet de sécurité.
+    defaultSpeedIdx: 1,
+    // Crans en « durée simulée par seconde réelle », de la minute (ISS,
+    // T ≈ 93 min) au jour (Lune, T ≈ 27 j).
+    speeds: [
+      { v: 5 / 1440,   label: '5 min/s'  },
+      { v: 15 / 1440,  label: '15 min/s' },
+      { v: 60 / 1440,  label: '1 h/s'    },
+      { v: 180 / 1440, label: '3 h/s'    },
+      { v: 720 / 1440, label: '12 h/s'   },
+      { v: 1,          label: '1 j/s'    }
+    ],
+    corps: [
+      // T dérivée de a via la 3ᵉ loi idéale autour de la Terre (orbite
+      // képlérienne à 2 corps, GM⊕ = 398 600,4 km³/s² → T[j] = 0,00364265
+      // × a[Mm]^1,5), comme pour les planètes du Système Solaire : garantit
+      // un alignement net sur la droite modèle plutôt qu'un nuage de points
+      // dû aux imprécisions d'arrondi du catalogue.
+      // Exception : la Lune garde sa période RÉELLE observée (27,322 j) —
+      // contrairement aux satellites artificiels ci-dessus, sa trajectoire
+      // est mesurablement perturbée par le Soleil (comme les vraies lunes
+      // de Jupiter/Saturne plus bas) ; elle s'écarte donc un peu de la
+      // droite, ce qui est le point pédagogique, pas une erreur de calcul.
+      //
+      // M0 : ISS et Hubble déphasés au départ (orbites presque confondues
+      // à l'écran — sans ça, les deux points se superposeraient exactement
+      // à t = 0).
+      { nom: 'ISS',            a: 6.771,   T: 0.06422, e: 0.0003, M0: 0,        couleur: '#7a8896', couleurClair: '#b4bfc8', rayon: 5 },
+      { nom: 'Hubble',         a: 6.926,   T: 0.06640, e: 0.0002, M0: Math.PI,  couleur: '#c8a030', couleurClair: '#e8cc78', rayon: 5 },
+      { nom: 'GPS',            a: 26.560,  T: 0.49871, e: 0.01,   couleur: '#3a6aa8', couleurClair: '#7aa0d8', rayon: 5 },
+      { nom: 'Galileo',        a: 29.600,  T: 0.58664, e: 0.0002, couleur: '#2a9070', couleurClair: '#68c8a0', rayon: 5 },
+      // Géostationnaire : seul cas où c'est T qui DÉFINIT l'orbite (a en
+      // découle), pas l'inverse — un satellite est géostationnaire quand sa
+      // période égale exactement le jour SIDÉRAL terrestre (23 h 56 min 04 s
+      // = 0,99727 j), pas le jour solaire de 24 h (= 1 j). D'où un T très
+      // proche de 1 mais pas rigoureusement égal — valeur exacte du jour
+      // sidéral utilisée ici plutôt que le résultat (0,99739) de la formule
+      // ci-dessus appliquée à `a` arrondi à 3 chiffres.
+      { nom: 'Géostationnaire',a: 42.164,  T: 0.99727, e: 0,      couleur: '#8858b0', couleurClair: '#b898d8', rayon: 5 },
+      { nom: 'Lune',           a: 384.4,   T: 27.322,  e: 0.0549, couleur: '#9098a0', couleurClair: '#c8ccd0', rayon: 9 }
+    ]
+  },
+  {
     label: 'Lunes de Jupiter',
     attracteur: { nom: 'Jupiter', type: 'jupiter' },
     uniteA: 'Gm', uniteT: 'j',
@@ -246,6 +315,7 @@ var sys3 = {
   speedIdx: SYSTEMES[0].presets[1].speedIdx,
   showNoms: true,
   showOrbites: true,
+  showGeoLigne: false, // pointillés Terre → satellite géostationnaire (systèmes avec `geoNom`)
   showGraph: false,   // graphe masqué par défaut : place à l'animation
   zoom: SYSTEMES[0].presets[1].zoom,     // zoom canvas courant (systèmes avec zoomMax uniquement)
   zoomCible: SYSTEMES[0].presets[1].zoom, // cible du zoom animé (presets, double-clic)
@@ -277,3 +347,32 @@ function expChar(n) { return n === 2 ? '²' : (n === 3 ? '³' : ''); }
 
 // « T² », « a³ »… puis « an² », « ua³ »… pour les unités.
 function labelPow(base, n) { return base + expChar(n); }
+
+// ── Notation scientifique (pour les coefficients k très petits/grands) ──
+var SUP_DIGITS = { '-': '⁻', '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
+                    '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹' };
+
+function _supExp(n) {
+  return String(n).split('').map(function (c) { return SUP_DIGITS[c] || c; }).join('');
+}
+
+// « 1,25 × 10⁻⁵ » — mantisse à 2 décimales, exposant en Unicode.
+function fmtSci(x) {
+  if (x === 0) return '0';
+  var exp = Math.floor(Math.log10(Math.abs(x)));
+  var mant = x / Math.pow(10, exp);
+  mant = Math.round(mant * 100) / 100;
+  if (Math.abs(mant) >= 10) { mant /= 10; exp += 1; }   // arrondi ayant fait passer la mantisse à 10
+  return fmtFr(mant, 2) + ' × 10' + _supExp(exp);
+}
+
+// Formatage adapté à l'ordre de grandeur du coefficient directeur k d'une
+// modélisation y = k·x : au-delà des unités « naturelles » (ua/an, où k ≈ 1),
+// certains systèmes (satellites terrestres en Mm/j) donnent des k très
+// petits que fmtSmart tronquerait à « 0,000 » — bascule en notation
+// scientifique dans ces cas.
+function fmtK(x) {
+  var ax = Math.abs(x);
+  if (ax !== 0 && (ax < 0.001 || ax >= 100000)) return fmtSci(x);
+  return fmtSmart(x);
+}

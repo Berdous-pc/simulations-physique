@@ -65,14 +65,17 @@ boucle RAF (`loop()` de `ui.js`), les autres restent figées.
 ### 3ᵉ loi — Loi des périodes (`sys3`, `drawSys3` + `graph.js`)
 
 - Quatre systèmes (données réelles dans `SYSTEMES`, `sim.js`) :
-  - Mercure → Mars (a en ua, T en an),
-  - Jupiter → Neptune (a en ua, T en an),
+  - Système Solaire, les 8 planètes sur un seul canvas (a en ua, T en an),
+    avec un **zoom animé** (échelle log, `zoomMax`/`presets`) pour passer de
+    la vue complète (Neptune) aux planètes internes sans écraser Mercure,
+  - Satellites terrestres : ISS, Hubble, GPS, Galileo, géostationnaire, Lune
+    (a en **Mm**, T en jours) — écart d'échelle Lune/ISS ≈ 57×, plus large
+    que celui du Système Solaire (~18×), d'où **trois** presets de zoom au
+    lieu de deux,
   - Lunes galiléennes de Jupiter (a en **Gm**, T en jours),
   - Lunes de Saturne : Encelade, Téthys, Dioné, Rhéa, Titan (a en Gm, T en
     jours — Mimas et Japet écartées, Japet orbitant 15× plus loin
     qu'Encelade l'échelle linéaire écraserait les orbites internes).
-  Les deux groupes de planètes sont séparés pour éviter l'écrasement
-  d'échelle (Mercure serait invisible à l'échelle de Neptune).
 - Orbites tracées avec leur **excentricité réelle** (attracteur au foyer),
   périhélies alignés vers +x par simplification ; tous les astres partent
   alignés à t = 0.

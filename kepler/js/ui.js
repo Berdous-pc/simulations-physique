@@ -342,13 +342,21 @@ function setSysteme(idx) {
   sys3.sysIdx = idx;
   sys3.t = 0;
   sys3.paused = true;
-  sys3.speedIdx = SYSTEMES[idx].defaultSpeedIdx;
-  sys3.zoom = 1;
-  sys3.zoomCible = 1;
+  var sys = SYSTEMES[idx];
+  // Vue de départ : le premier preset de zoom s'il y en a (ex. « Orbites
+  // basses » pour les satellites terrestres), sinon la vue complète
+  // (systèmes sans zoom, ou Système Solaire dont le 1ᵉʳ preset EST déjà la
+  // vue complète).
+  var vueInit = (sys.zoomMax && sys.presets && sys.presets[0]) ? sys.presets[0] : null;
+  sys3.speedIdx = vueInit ? vueInit.speedIdx : sys.defaultSpeedIdx;
+  sys3.zoom = vueInit ? vueInit.zoom : 1;
+  sys3.zoomCible = sys3.zoom;
   sys3.graphZoomLinked = true;
   document.getElementById('ck-zoom-lie-3').checked = true;
   sys3.modelLin = false;
   document.getElementById('btn-model-lin-3').classList.remove('active');
+  sys3.showGeoLigne = false;
+  document.getElementById('ck-geo-3').checked = false;
   _updatePlayBtn(3, true);
 
   for (var i = 0; i < SYSTEMES.length; i++) {
@@ -356,6 +364,7 @@ function setSysteme(idx) {
   }
   _syncSpeedUI3();
   _syncZoomVisibilite3();
+  _syncGeoLigneVisibilite3();
   buildSysTable();
   resetGraph3Zoom();      // nouveau système = nouvelle étendue de données
   drawGraph3();
@@ -367,7 +376,23 @@ function setSysteme(idx) {
 function _syncZoomVisibilite3() {
   var zoomable = !!SYSTEMES[sys3.sysIdx].zoomMax;
   document.getElementById('zoom-section-3').style.display = zoomable ? '' : 'none';
-  if (zoomable) _syncZoomUI3();
+  if (zoomable) {
+    _buildZoomPresetsUI3();
+    _syncZoomUI3();
+  }
+}
+
+// Boutons de presets de zoom : reconstruits à chaque système (le NOMBRE de
+// presets et leurs libellés varient — 2 pour le Système Solaire, 3 pour les
+// satellites terrestres), même principe que _syncSpeedUI3 pour les crans.
+function _buildZoomPresetsUI3() {
+  var sys = SYSTEMES[sys3.sysIdx];
+  var html = '';
+  sys.presets.forEach(function (pr, i) {
+    html += '<button class="sys-btn" id="zoom-preset-' + i + '" onclick="setZoomPreset3(' + i + ')">' +
+            pr.label + '</button>';
+  });
+  document.getElementById('zoom-presets-3').innerHTML = html;
 }
 
 // Pose le zoom immédiatement (slider, molette) : pas d'animation, la main
@@ -429,8 +454,16 @@ function initSys3Wheel() {
   });
 }
 
-function toggleNoms3(checked)    { sys3.showNoms = checked; }
-function toggleOrbites3(checked) { sys3.showOrbites = checked; }
+function toggleNoms3(checked)     { sys3.showNoms = checked; }
+function toggleOrbites3(checked)  { sys3.showOrbites = checked; }
+function toggleGeoLigne3(checked) { sys3.showGeoLigne = checked; }
+
+// Checkbox « Position du satellite géostationnaire » : visible uniquement
+// pour les systèmes définissant `geoNom` (satellites terrestres).
+function _syncGeoLigneVisibilite3() {
+  var row = document.getElementById('geo-ligne-row-3');
+  if (row) row.style.display = SYSTEMES[sys3.sysIdx].geoNom ? '' : 'none';
+}
 
 function toggleModelLin3() {
   sys3.modelLin = !sys3.modelLin;
@@ -547,6 +580,8 @@ function _syncUI() {
   // Onglet 3
   _syncSpeedUI3();
   _syncZoomVisibilite3();
+  _syncGeoLigneVisibilite3();
+  document.getElementById('ck-geo-3').checked = sys3.showGeoLigne;
   buildSysTable();
 
   _updatePlayBtn(1, sim1.paused);
