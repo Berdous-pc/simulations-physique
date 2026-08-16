@@ -24,6 +24,26 @@
 const cv  = document.getElementById('cv');
 const ctx = cv.getContext('2d');
 
+/* ═══════════════════════════════════════════════════
+   ÉCHELLE DE L'INTERFACE
+   ─────────────────────────────────────────────────
+   Polices, épaisseurs de trait et géométries décoratives sont posées
+   pour un canvas de référence 1200 × 700 px, puis remises à l'échelle.
+   L'homothétie est bornée : sous FS_MIN le texte devient illisible,
+   au-dessus de FS_MAX il écrase le schéma.
+
+   À ne pas confondre avec sim.scale, qui convertit les centimètres en
+   pixels : ce qui passe par fs() ne dépend ni du zoom ni de la physique.
+════════════════════════════════════════════════════ */
+const FS_REF_W = 1200, FS_REF_H = 700;
+const FS_MIN   = 0.55, FS_MAX   = 1.25;
+
+function uiScale() {
+  const k = Math.min(sim.W / FS_REF_W, sim.H / FS_REF_H);
+  return Math.max(FS_MIN, Math.min(FS_MAX, k));
+}
+function fs(base) { return base * uiScale(); }
+
 /* ─────────────────────────────────────────────────
    resize() — Adapte le canvas à la taille de la fenêtre.
    Ne détruit plus l'état : les positions sont en cm. Seul le cadrage
@@ -113,7 +133,71 @@ function draw() {
     drawEye();
   }
 
+  drawScaleBar();
   drawDefaultBtn();
+}
+
+/* ═══════════════════════════════════════════════════
+   BARRE D'ÉCHELLE
+   ─────────────────────────────────────────────────
+   Puisque la molette change l'échelle, le schéma n'est plus lisible sans
+   repère métrique explicite. On choisit dans la série 1-2-5 la plus grande
+   longueur ronde qui tient sous BAR_MAX_PX, et on la dessine graduée en
+   cinq intervalles, en bas à gauche du canvas.
+════════════════════════════════════════════════════ */
+const BAR_MAX_PX = 170;
+const BAR_STEPS  = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000];
+
+function drawScaleBar() {
+  const { H, scale } = sim;
+
+  // Plus grande graduation ronde dont la longueur reste sous le plafond.
+  let stepCm = BAR_STEPS[0];
+  for (const s of BAR_STEPS) {
+    if (s * scale <= fs(BAR_MAX_PX)) stepCm = s; else break;
+  }
+  const lenPx = stepCm * scale;
+
+  const x0    = fs(16);
+  const y     = H - fs(20);
+  const tickH = fs(6);
+
+  const label = (stepCm < 1 ? stepCm.toFixed(1).replace('.', ',') : String(stepCm)) + ' cm';
+
+  ctx.save();
+  ctx.strokeStyle = '#7a6a52';
+  ctx.fillStyle   = '#7a6a52';
+  ctx.lineWidth   = fs(1.6);
+  ctx.lineCap     = 'butt';
+  ctx.textBaseline = 'alphabetic';
+
+  // Trait principal + montants d'extrémité
+  ctx.beginPath();
+  ctx.moveTo(x0, y); ctx.lineTo(x0 + lenPx, y);
+  ctx.moveTo(x0, y - tickH); ctx.lineTo(x0, y + tickH);
+  ctx.moveTo(x0 + lenPx, y - tickH); ctx.lineTo(x0 + lenPx, y + tickH);
+  ctx.stroke();
+
+  // Graduations intermédiaires (cinquièmes), plus courtes
+  ctx.lineWidth = fs(1);
+  ctx.beginPath();
+  for (let k = 1; k < 5; k++) {
+    const xk = x0 + lenPx * k / 5;
+    ctx.moveTo(xk, y); ctx.lineTo(xk, y - tickH * 0.6);
+  }
+  ctx.stroke();
+
+  ctx.font = `${fs(12).toFixed(1)}px "Segoe UI", Arial, sans-serif`;
+  ctx.textAlign = 'left';
+  ctx.fillText(label, x0, y - tickH - fs(4));
+
+  // Facteur de zoom, en retrait, seulement s'il diffère de 1.
+  if (Math.abs(sim.zoom - 1) > 0.02) {
+    ctx.fillStyle = 'rgba(122,106,82,0.65)';
+    ctx.font = `${fs(11).toFixed(1)}px "Segoe UI", Arial, sans-serif`;
+    ctx.fillText('×' + sim.zoom.toFixed(2).replace('.', ','), x0, y + tickH + fs(12));
+  }
+  ctx.restore();
 }
 
 /* ─────────────────────────────────────────────────
@@ -199,38 +283,62 @@ function drawGrid() {
 function drawAxis() {
   const { W, axisY } = sim;
   ctx.save();
-  ctx.strokeStyle = '#aaa'; ctx.lineWidth = 1.5;
-  ctx.setLineDash([8, 6]);
+  ctx.strokeStyle = '#aaa'; ctx.lineWidth = fs(1.5);
+  ctx.setLineDash([fs(8), fs(6)]);
   ctx.beginPath(); ctx.moveTo(0, axisY); ctx.lineTo(W, axisY);
   ctx.stroke();
   ctx.setLineDash([]);
   ctx.restore();
 }
 
-/* ── Foyers F1, F'1, F2, F'2 ── */
+/* ── Foyers F1, F'1, F2, F'2 ──
+   Les quatre foyers se resserrent dès que les focales sont courtes ou les
+   lentilles proches, et F'₁ se confond avec F₂ dans le réglage afocal —
+   c'est-à-dire précisément dans la configuration étudiée. Les étiquettes
+   sont donc placées en deux rangs : celle qui empiéterait sur la
+   précédente bascule sous l'axe. */
 function drawFocalPoints() {
   const { f1, f2, x1, x2, axisY } = sim;
-  const focalPts = [
+
+  const font = fs(31);
+  const arm  = fs(9);
+  const gap  = fs(8);
+  ctx.font = `bold ${font.toFixed(1)}px monospace`;
+
+  const marks = [
     { cm: -f1, xLens: x1, label: 'F₁'  },
     { cm:  f1, xLens: x1, label: "F'₁" },
     { cm: -f2, xLens: x2, label: 'F₂'  },
     { cm:  f2, xLens: x2, label: "F'₂" },
-  ];
+  ]
+    .map(m => {
+      const x = xToPx(m.xLens + m.cm);
+      const w = ctx.measureText(m.label).width;
+      // L'étiquette s'écarte du foyer du côté opposé à sa lentille.
+      const left = m.cm < 0 ? x - gap - w : x + gap;
+      return { ...m, x, left, right: left + w };
+    })
+    .filter(m => m.right > 0 && m.left < sim.W)
+    .sort((a, b) => a.left - b.left);
 
-  for (const { cm, xLens, label } of focalPts) {
-    const x = xToPx(xLens + cm);
-    if (x < 0 || x > sim.W) continue;
+  let occupiedRight = -Infinity;   // bord droit de la dernière étiquette du rang haut
+
+  for (const m of marks) {
+    const below = m.left < occupiedRight;
+    if (!below) occupiedRight = m.right;
+
     ctx.save();
-    ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 2.5;
+    ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = fs(2.5);
     ctx.beginPath();
-    ctx.moveTo(x - 9, axisY); ctx.lineTo(x + 9, axisY);
-    ctx.moveTo(x, axisY - 9); ctx.lineTo(x, axisY + 9);
+    ctx.moveTo(m.x - arm, axisY); ctx.lineTo(m.x + arm, axisY);
+    ctx.moveTo(m.x, axisY - arm); ctx.lineTo(m.x, axisY + arm);
     ctx.stroke();
-    ctx.fillStyle = '#1a1a1a'; ctx.font = 'bold 31px monospace';
-    ctx.textAlign = cm < 0 ? 'right' : 'left';
-    ctx.textBaseline = 'bottom';
-    ctx.fillText(label, x + (cm < 0 ? -8 : 8), axisY - 8);
-    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = '#1a1a1a';
+    ctx.font = `bold ${font.toFixed(1)}px monospace`;
+    ctx.textAlign = m.cm < 0 ? 'right' : 'left';
+    ctx.fillText(m.label,
+                 m.x + (m.cm < 0 ? -gap : gap),
+                 below ? axisY + font * 0.95 : axisY - gap);
     ctx.restore();
   }
 }
@@ -241,12 +349,12 @@ function drawLens(xCm, label, isFirst) {
   const lensX = xToPx(xCm);
   const top = axisY - lensHpx;
   const bot = axisY + lensHpx;
-  const aw  = 9;
-  const ah  = 12;
+  const aw  = fs(9);
+  const ah  = fs(12);
   const col = isFirst ? '#8b2800' : '#1a4a8a';
 
   ctx.save();
-  ctx.strokeStyle = col; ctx.lineWidth = 2.5;
+  ctx.strokeStyle = col; ctx.lineWidth = fs(2.5);
 
   ctx.beginPath(); ctx.moveTo(lensX, top); ctx.lineTo(lensX, bot); ctx.stroke();
   ctx.beginPath();
@@ -256,20 +364,20 @@ function drawLens(xCm, label, isFirst) {
   ctx.moveTo(lensX - aw, bot - ah); ctx.lineTo(lensX, bot); ctx.lineTo(lensX + aw, bot - ah);
   ctx.stroke();
 
-  ctx.fillStyle = col; ctx.font = 'bold 31px monospace';
+  ctx.fillStyle = col; ctx.font = `bold ${fs(31).toFixed(1)}px monospace`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-  ctx.fillText(label, lensX, top - 4);
+  ctx.fillText(label, lensX, top - fs(4));
   ctx.textBaseline = 'alphabetic';
 
   ctx.textBaseline = 'bottom';
   ctx.textAlign = isFirst ? 'left' : 'right';
-  ctx.fillText(isFirst ? 'O₁' : 'O₂', lensX + (isFirst ? 10 : -10), axisY - 6);
+  ctx.fillText(isFirst ? 'O₁' : 'O₂', lensX + (isFirst ? fs(10) : -fs(10)), axisY - fs(6));
   ctx.textBaseline = 'alphabetic';
 
   if (sim.legendeActif && sim.systemMode === 'lunette') {
-    ctx.font = 'bold 20px "Segoe UI", Arial';
+    ctx.font = `bold ${fs(20).toFixed(1)}px "Segoe UI", Arial`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    ctx.fillText(isFirst ? 'Objectif' : 'Oculaire', lensX, bot + 6);
+    ctx.fillText(isFirst ? 'Objectif' : 'Oculaire', lensX, bot + fs(6));
     ctx.textBaseline = 'alphabetic';
   }
 
@@ -281,57 +389,57 @@ function drawAlphaArrows() {
   const { alpha, axisY } = sim;
   const lensX1     = xToPx(sim.x1);
   const alphaRad   = alpha * Math.PI / 180;
-  const arrowLen   = 36;
-  const margin     = 18;
+  const arrowLen   = fs(36);
+  const margin     = fs(18);
   const col        = '#7a8a96';
 
-  const aY   = axisY - 28;
+  const aY   = axisY - fs(28);
   const aX1  = margin + arrowLen;
   const aX2  = margin;
 
   ctx.save();
-  ctx.strokeStyle = col; ctx.lineWidth = 1.8; ctx.lineCap = 'round';
+  ctx.strokeStyle = col; ctx.lineWidth = fs(1.8); ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(aX1, aY); ctx.lineTo(aX2, aY); ctx.stroke();
   drawArrowHead({ x: aX1, y: aY }, { x: aX2, y: aY }, col, true);
-  ctx.fillStyle = col; ctx.font = 'bold 22px serif';
+  ctx.fillStyle = col; ctx.font = `bold ${fs(22).toFixed(1)}px serif`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  ctx.fillText('A∞', (aX1 + aX2) / 2, aY + 4);
+  ctx.fillText('A∞', (aX1 + aX2) / 2, aY + fs(4));
   ctx.textBaseline = 'alphabetic';
   ctx.restore();
 
   const cos_a  = Math.cos(alphaRad);
   const sin_a  = Math.sin(alphaRad);
   const bX2    = margin;
-  const bY2    = axisY - 80;
+  const bY2    = axisY - fs(80);
   const bX1    = bX2 + arrowLen * cos_a;
   const bY1    = bY2 + arrowLen * sin_a;
 
   ctx.save();
-  ctx.strokeStyle = col; ctx.lineWidth = 1.8; ctx.lineCap = 'round';
+  ctx.strokeStyle = col; ctx.lineWidth = fs(1.8); ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(bX1, bY1); ctx.lineTo(bX2, bY2); ctx.stroke();
   drawArrowHead({ x: bX1, y: bY1 }, { x: bX2, y: bY2 }, col, true);
   const bLx = (bX1 + bX2) / 2;
-  const bLy = Math.max(bY1, bY2) + 4;
-  ctx.fillStyle = col; ctx.font = 'bold 22px serif';
+  const bLy = Math.max(bY1, bY2) + fs(4);
+  ctx.fillStyle = col; ctx.font = `bold ${fs(22).toFixed(1)}px serif`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  ctx.fillText('B∞', bLx, bLy + 4);
+  ctx.fillText('B∞', bLx, bLy + fs(4));
   ctx.textBaseline = 'alphabetic';
   ctx.restore();
 
   if (alpha !== 0) {
     if (sim.rayMode === 'anim' && sim.animT < (sim._fracL1 ?? 1.0)) return;
-    const arcR      = 30;
+    const arcR      = fs(30);
     const angleAxis = Math.PI;
     const angleRay  = Math.PI + alphaRad;
     const aStart    = alphaRad >= 0 ? angleAxis : angleRay;
     const aEnd      = alphaRad >= 0 ? angleRay  : angleAxis;
     ctx.save();
-    ctx.strokeStyle = col; ctx.lineWidth = 1.5;
+    ctx.strokeStyle = col; ctx.lineWidth = fs(1.5);
     ctx.beginPath(); ctx.arc(lensX1, axisY, arcR, aStart, aEnd); ctx.stroke();
     const aMid = (aStart + aEnd) / 2;
-    const lx = lensX1 + (arcR + 12) * Math.cos(aMid);
-    const ly = axisY  + (arcR + 12) * Math.sin(aMid);
-    ctx.fillStyle = col; ctx.font = 'bold 25px serif';
+    const lx = lensX1 + (arcR + fs(12)) * Math.cos(aMid);
+    const ly = axisY  + (arcR + fs(12)) * Math.sin(aMid);
+    ctx.fillStyle = col; ctx.font = `bold ${fs(25).toFixed(1)}px serif`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('α', lx, ly);
     ctx.textBaseline = 'alphabetic';
@@ -348,26 +456,30 @@ function drawOutputArrows() {
   const lensX2    = xToPx(sim.x2);
   const alphaRad  = alpha * Math.PI / 180;
   const alpha2Rad = Math.atan(-f1 / f2 * Math.tan(alphaRad));
-  const arrowLen  = 36;
-  const margin    = 18;
+  const arrowLen  = fs(36);
+  const margin    = fs(18);
   const col       = '#7a8a96';
 
-  const aY  = axisY + 28;
+  const aY  = axisY + fs(28);
   const aX1 = margin + arrowLen;
   const aX2 = margin;
 
   ctx.save();
-  ctx.strokeStyle = col; ctx.lineWidth = 1.8; ctx.lineCap = 'round';
+  ctx.strokeStyle = col; ctx.lineWidth = fs(1.8); ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(aX1, aY); ctx.lineTo(aX2, aY); ctx.stroke();
   drawArrowHead({ x: aX1, y: aY }, { x: aX2, y: aY }, col, true);
-  ctx.fillStyle = col; ctx.font = 'bold 22px serif';
+  ctx.fillStyle = col; ctx.font = `bold ${fs(22).toFixed(1)}px serif`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  ctx.fillText("A'∞", (aX1 + aX2) / 2, aY + 4);
+  ctx.fillText("A'∞", (aX1 + aX2) / 2, aY + fs(4));
   ctx.textBaseline = 'alphabetic';
   ctx.restore();
 
-  const bTargetX = Math.min(300, sim.W * 0.25);
-  let bRefY = axisY - 80;
+  // Abscisse où l'on échantillonne le rayon virtuel pour poser B'∞ : à un
+  // quart du canvas, mais toujours en amont de l'oculaire et jamais collée
+  // au bord — l'ancienne valeur de 300 px tombait derrière L₂ sur un canvas
+  // étroit, et contre le bord gauche sur un canvas large.
+  const bTargetX = Math.max(fs(70), Math.min(sim.W * 0.25, lensX2 - fs(70)));
+  let bRefY = axisY - fs(80);
   if (sim._lastRays) {
     const mainRay = sim._lastRays.find(r => r.isMain);
     if (mainRay) {
@@ -379,7 +491,7 @@ function drawOutputArrows() {
       }
     }
   }
-  bRefY = Math.max(30, Math.min(H - 30, bRefY));
+  bRefY = Math.max(fs(30), Math.min(H - fs(30), bRefY));
 
   const cos_a2 = Math.cos(alpha2Rad);
   const sin_a2 = Math.sin(alpha2Rad);
@@ -389,14 +501,14 @@ function drawOutputArrows() {
   const bY1 = bY2 + arrowLen * sin_a2;
 
   ctx.save();
-  ctx.strokeStyle = col; ctx.lineWidth = 1.8; ctx.lineCap = 'round';
+  ctx.strokeStyle = col; ctx.lineWidth = fs(1.8); ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(bX1, bY1); ctx.lineTo(bX2, bY2); ctx.stroke();
   drawArrowHead({ x: bX1, y: bY1 }, { x: bX2, y: bY2 }, col, true);
   const bLx = (bX1 + bX2) / 2;
-  const bLy = Math.min(bY1, bY2) - 4;
-  ctx.fillStyle = col; ctx.font = 'bold 22px serif';
+  const bLy = Math.min(bY1, bY2) - fs(4);
+  ctx.fillStyle = col; ctx.font = `bold ${fs(22).toFixed(1)}px serif`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-  ctx.fillText("B'∞", bLx, bLy - 4);
+  ctx.fillText("B'∞", bLx, bLy - fs(4));
   ctx.textBaseline = 'alphabetic';
   ctx.restore();
 }
@@ -417,19 +529,19 @@ function drawIntermediateImage() {
   const arrowDir = h1 >= 0 ? 1 : -1;
 
   ctx.save();
-  ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.setLineDash(dash);
+  ctx.strokeStyle = col; ctx.lineWidth = fs(2); ctx.setLineDash(dash.map(fs));
   ctx.beginPath(); ctx.moveTo(x, yA); ctx.lineTo(x, yB); ctx.stroke();
   ctx.beginPath();
-  ctx.moveTo(x - 7, yB + arrowDir * 12);
+  ctx.moveTo(x - fs(7), yB + arrowDir * fs(12));
   ctx.lineTo(x, yB);
-  ctx.lineTo(x + 7, yB + arrowDir * 12);
+  ctx.lineTo(x + fs(7), yB + arrowDir * fs(12));
   ctx.stroke();
   ctx.setLineDash([]);
-  ctx.fillStyle = col; ctx.font = 'bold 31px monospace';
+  ctx.fillStyle = col; ctx.font = `bold ${fs(31).toFixed(1)}px monospace`;
   ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-  ctx.fillText('A₁', x + 6, yA + 6);
+  ctx.fillText('A₁', x + fs(6), yA + fs(6));
   ctx.textBaseline = 'alphabetic';
-  ctx.fillText('B₁', x + 6, yB + (h1 >= 0 ? -8 : 28));
+  ctx.fillText('B₁', x + fs(6), yB + (h1 >= 0 ? -fs(8) : fs(28)));
   ctx.restore();
 }
 
@@ -450,18 +562,18 @@ function drawFinalImage() {
   const arrowDir = h2 >= 0 ? 1 : -1;
 
   ctx.save();
-  ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.setLineDash(dash);
+  ctx.strokeStyle = col; ctx.lineWidth = fs(2); ctx.setLineDash(dash.map(fs));
   ctx.beginPath(); ctx.moveTo(x, yA); ctx.lineTo(x, yB); ctx.stroke();
   ctx.beginPath();
-  ctx.moveTo(x - 7, yB + arrowDir * 12);
+  ctx.moveTo(x - fs(7), yB + arrowDir * fs(12));
   ctx.lineTo(x, yB);
-  ctx.lineTo(x + 7, yB + arrowDir * 12);
+  ctx.lineTo(x + fs(7), yB + arrowDir * fs(12));
   ctx.stroke();
   ctx.setLineDash([]);
-  ctx.fillStyle = col; ctx.font = 'bold 31px monospace';
+  ctx.fillStyle = col; ctx.font = `bold ${fs(31).toFixed(1)}px monospace`;
   ctx.textAlign = 'left';
-  ctx.fillText('A₂', x + 6, yA + (h2 >= 0 ? 28 : -10));
-  ctx.fillText('B₂', x + 6, yB + (h2 >= 0 ? -8 : 28));
+  ctx.fillText('A₂', x + fs(6), yA + (h2 >= 0 ? fs(28) : -fs(10)));
+  ctx.fillText('B₂', x + fs(6), yB + (h2 >= 0 ? -fs(8) : fs(28)));
   ctx.restore();
 }
 
@@ -487,8 +599,8 @@ function drawDirectionLine() {
 
   ctx.save();
   ctx.strokeStyle = 'rgba(160,160,160,0.55)';
-  ctx.lineWidth = 1.2;
-  ctx.setLineDash([5, 5]);
+  ctx.lineWidth = fs(1.2);
+  ctx.setLineDash([fs(5), fs(5)]);
   ctx.beginPath();
   ctx.moveTo(xB1, yB1);
   ctx.lineTo(xEnd, yEnd);
@@ -509,18 +621,18 @@ function drawOutputAngle() {
   const alphaSortieRad = Math.atan(alphaSortie);
 
   if (Math.abs(alphaSortieRad) > 0.005) {
-    const arcR   = 32;
+    const arcR   = fs(32);
     const aStart = 0;
     const aEnd   = alphaSortieRad;
 
     ctx.save();
-    ctx.strokeStyle = '#2a6aaa'; ctx.lineWidth = 1.5;
+    ctx.strokeStyle = '#2a6aaa'; ctx.lineWidth = fs(1.5);
     ctx.beginPath(); ctx.arc(lensX2, axisY, arcR, aStart, aEnd, alphaSortieRad < 0); ctx.stroke();
 
     const aMid = (aStart + aEnd) / 2;
-    const lx = lensX2 + (arcR + 12) * Math.cos(aMid);
-    const ly = axisY  + (arcR + 12) * Math.sin(aMid);
-    ctx.fillStyle = '#2a6aaa'; ctx.font = 'bold 25px serif';
+    const lx = lensX2 + (arcR + fs(12)) * Math.cos(aMid);
+    const ly = axisY  + (arcR + fs(12)) * Math.sin(aMid);
+    ctx.fillStyle = '#2a6aaa'; ctx.font = `bold ${fs(25).toFixed(1)}px serif`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText("α'", lx, ly);
     ctx.textBaseline = 'alphabetic';
@@ -539,8 +651,8 @@ function drawEye() {
 
   // ── Cristallin ──
   const lensH = eyeR;
-  const aw = 10, ah = 14;
-  ctx.strokeStyle = '#5a3a8a'; ctx.lineWidth = 2.5;
+  const aw = fs(10), ah = fs(14);
+  ctx.strokeStyle = '#5a3a8a'; ctx.lineWidth = fs(2.5);
   ctx.beginPath(); ctx.moveTo(crystalX, axisY - lensH); ctx.lineTo(crystalX, axisY + lensH); ctx.stroke();
   ctx.beginPath();
   ctx.moveTo(crystalX - aw, axisY - lensH + ah); ctx.lineTo(crystalX, axisY - lensH); ctx.lineTo(crystalX + aw, axisY - lensH + ah);
@@ -548,25 +660,25 @@ function drawEye() {
   ctx.beginPath();
   ctx.moveTo(crystalX - aw, axisY + lensH - ah); ctx.lineTo(crystalX, axisY + lensH); ctx.lineTo(crystalX + aw, axisY + lensH - ah);
   ctx.stroke();
-  ctx.fillStyle = '#5a3a8a'; ctx.font = 'bold 20px "Segoe UI", Arial';
+  ctx.fillStyle = '#5a3a8a'; ctx.font = `bold ${fs(20).toFixed(1)}px "Segoe UI", Arial`;
   ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
-  ctx.fillText('Cristallin', crystalX - 6, axisY - lensH - 5);
+  ctx.fillText('Cristallin', crystalX - fs(6), axisY - lensH - fs(5));
   ctx.textBaseline = 'alphabetic';
 
-  ctx.strokeStyle = '#888'; ctx.lineWidth = 1.2;
+  ctx.strokeStyle = '#888'; ctx.lineWidth = fs(1.2);
   ctx.beginPath();
-  ctx.moveTo(retinaX - 5, axisY); ctx.lineTo(retinaX + 5, axisY);
-  ctx.moveTo(retinaX, axisY - 5); ctx.lineTo(retinaX, axisY + 5);
+  ctx.moveTo(retinaX - fs(5), axisY); ctx.lineTo(retinaX + fs(5), axisY);
+  ctx.moveTo(retinaX, axisY - fs(5)); ctx.lineTo(retinaX, axisY + fs(5));
   ctx.stroke();
 
   // ── Rétine ──
-  ctx.strokeStyle = '#c05020'; ctx.lineWidth = 4;
+  ctx.strokeStyle = '#c05020'; ctx.lineWidth = fs(4);
   ctx.beginPath();
   ctx.moveTo(retinaX, axisY - eyeR); ctx.lineTo(retinaX, axisY + eyeR);
   ctx.stroke();
-  ctx.fillStyle = '#c05020'; ctx.font = 'bold 20px "Segoe UI", Arial';
+  ctx.fillStyle = '#c05020'; ctx.font = `bold ${fs(20).toFixed(1)}px "Segoe UI", Arial`;
   ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
-  ctx.fillText('Rétine', retinaX + 6, axisY - eyeR - 5);
+  ctx.fillText('Rétine', retinaX + fs(6), axisY - eyeR - fs(5));
   ctx.textBaseline = 'alphabetic';
 
   // ── Image A₃B₃ sur la rétine ──
@@ -583,18 +695,18 @@ function drawEye() {
       const imgDash   = imgIsReal ? [] : [4, 3];
 
       ctx.save();
-      ctx.strokeStyle = imgCol; ctx.lineWidth = 2; ctx.setLineDash(imgDash);
+      ctx.strokeStyle = imgCol; ctx.lineWidth = fs(2); ctx.setLineDash(imgDash.map(fs));
       ctx.beginPath(); ctx.moveTo(imgX, imgYA); ctx.lineTo(imgX, imgYB); ctx.stroke();
       ctx.beginPath();
-      ctx.moveTo(imgX - 6, imgYB + arrowDir * 10);
+      ctx.moveTo(imgX - fs(6), imgYB + arrowDir * fs(10));
       ctx.lineTo(imgX, imgYB);
-      ctx.lineTo(imgX + 6, imgYB + arrowDir * 10);
+      ctx.lineTo(imgX + fs(6), imgYB + arrowDir * fs(10));
       ctx.stroke();
       ctx.setLineDash([]);
-      ctx.fillStyle = imgCol; ctx.font = 'bold 26px monospace';
+      ctx.fillStyle = imgCol; ctx.font = `bold ${fs(26).toFixed(1)}px monospace`;
       ctx.textAlign = 'left';
-      ctx.fillText("A'", imgX + 5, imgYA + (h3 >= 0 ? 22 : -8));
-      ctx.fillText("B'", imgX + 5, imgYB + (h3 >= 0 ? -6 : 22));
+      ctx.fillText("A'", imgX + fs(5), imgYA + (h3 >= 0 ? fs(22) : -fs(8)));
+      ctx.fillText("B'", imgX + fs(5), imgYB + (h3 >= 0 ? -fs(6) : fs(22)));
       ctx.restore();
     }
   }
@@ -834,10 +946,10 @@ function drawSegment(pts, color, virtual, frac, isMain = true) {
   const targetLen = frac * segLength(pts);
   ctx.save();
   ctx.strokeStyle = color;
-  ctx.lineWidth   = virtual ? 1.4 : (isMain ? 2.0 : 1.3);
+  ctx.lineWidth   = fs(virtual ? 1.4 : (isMain ? 2.0 : 1.3));
   ctx.globalAlpha = virtual ? 0.5 : (isMain ? 1.0 : 0.65);
   ctx.lineCap = 'round';
-  if (virtual) ctx.setLineDash([6, 5]);
+  if (virtual) ctx.setLineDash([fs(6), fs(5)]);
 
   ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
   let covered = 0;
@@ -859,7 +971,7 @@ function drawSegmentToX(pts, color, isMain, targetX) {
   if (pts.length < 2) return;
   ctx.save();
   ctx.strokeStyle = color;
-  ctx.lineWidth   = isMain ? 2.0 : 1.3;
+  ctx.lineWidth   = fs(isMain ? 2.0 : 1.3);
   ctx.globalAlpha = isMain ? 1.0 : 0.65;
   ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
@@ -885,7 +997,7 @@ function drawArrowHead(from, to, color, isMain = true) {
   if (len < 2) return;
   const ux = dx/len, uy = dy/len;
   const mx = (from.x + to.x)/2, my = (from.y + to.y)/2;
-  const aLen = isMain ? 9 : 7, aHalf = isMain ? 5 : 3.5;
+  const aLen = fs(isMain ? 9 : 7), aHalf = fs(isMain ? 5 : 3.5);
   ctx.save();
   ctx.fillStyle = color;
   ctx.globalAlpha = isMain ? 1.0 : 0.65;
