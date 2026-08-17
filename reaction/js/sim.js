@@ -461,10 +461,14 @@ function drawBackground(layout, skipTransition) {
     ctx.strokeStyle = COL_BORDER_MID; ctx.lineWidth = 2;
     ctx.save(); roundRect(ctx, midX, midY, midW, midH, 10); ctx.stroke(); ctx.restore();
 
+    // save/restore : sans lui, textAlign/textBaseline restent posés sur le contexte et
+    // polluent tous les dessins de texte suivants (cf. labelOffset).
+    ctx.save();
     ctx.fillStyle = '#9a8a7a';
     ctx.font = 'bold 16px "Segoe UI", Arial, sans-serif';
     ctx.textAlign = 'left'; ctx.textBaseline = 'top';
     ctx.fillText('Zone de transition', midX + 10, midY + 6);
+    ctx.restore();
   }
 }
 
@@ -576,6 +580,46 @@ function drawBonds(ctx, formula, cx, cy, sc, alpha) {
   ctx.restore();
 }
 
+/* ── Centrage du symbole dans son cercle ──────────────────────────────────
+   Ni textAlign='center' ni textBaseline='middle' ne centrent sur l'encre du glyphe :
+   - 'middle' aligne sur le milieu de la hauteur d'x, alors que les symboles chimiques
+     sont des capitales, plus hautes que l'x : ils ressortaient trop haut. Erreur
+     systématique, de l'ordre du pixel — c'est celle qui se voyait.
+   - 'center' centre sur la chasse (approches latérales comprises), pas sur l'encre.
+     L'écart vaut (approche gauche − approche droite)/2, quasi nul pour les capitales
+     symétriques, un peu moins pour les symboles à deux lettres (Cl, Fe, Mg…).
+   On mesure donc la boîte d'encre réelle et on recentre dessus sur les deux axes.
+   Résultat mémorisé par (symbole, police) : quelques dizaines d'entrées, les tailles
+   de police étant arrondies à l'entier.
+   Renvoie null si le navigateur n'expose pas actualBoundingBox* — on retombe alors
+   sur l'ancien comportement.                                                      */
+const _labelOffsets = new Map();
+
+function labelOffset(ctx, el) {
+  const key = el + '|' + ctx.font;
+  if (_labelOffsets.has(key)) return _labelOffsets.get(key);
+  // actualBoundingBox* est mesuré depuis l'ancre définie par textAlign/textBaseline, PAS
+  // depuis l'origine du glyphe. Il faut donc fixer les deux avant de mesurer, aux mêmes
+  // valeurs qu'au dessin : sinon un 'top' laissé par un dessin précédent fausse la mesure,
+  // et la valeur fausse part en cache pour toute la session.
+  const prevBaseline = ctx.textBaseline, prevAlign = ctx.textAlign;
+  ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'center';
+  const m = ctx.measureText(el);
+  ctx.textBaseline = prevBaseline; ctx.textAlign = prevAlign;
+  const ok = typeof m.actualBoundingBoxAscent  === 'number'
+          && typeof m.actualBoundingBoxDescent === 'number'
+          && typeof m.actualBoundingBoxLeft    === 'number'
+          && typeof m.actualBoundingBoxRight   === 'number';
+  // L'encre s'étend de −Left à +Right et de −Ascent à +Descent autour de l'ancre : on
+  // déplace l'ancre de la moitié du déséquilibre pour amener le centre de l'encre sur (x,y).
+  const off = ok ? {
+    x: (m.actualBoundingBoxLeft   - m.actualBoundingBoxRight)   / 2,
+    y: (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2,
+  } : null;
+  _labelOffsets.set(key, off);
+  return off;
+}
+
 // `sc` : échelle de dessin de l'atome. Contour et police en dérivent exactement comme
 // dans paintMolecule, pour qu'un atome libre et le même atome au sein d'une molécule
 // soient rigoureusement identiques. Si `sc` est omis, on le reconstitue depuis le rayon
@@ -588,8 +632,11 @@ function drawAtom(ctx, el, x, y, r, alpha, sc) {
   ctx.strokeStyle=ATOM_BORDER[el]||'#555'; ctx.lineWidth=Math.max(1,1.5*s); ctx.stroke();
   ctx.fillStyle=el==='H'?'#444':'#fff';
   ctx.font=`bold ${Math.max(7,Math.round(10*s))}px 'Segoe UI', Arial, sans-serif`;
-  ctx.textAlign='center'; ctx.textBaseline='middle';
-  ctx.fillText(el,x,y); ctx.restore();
+  ctx.textAlign='center';
+  const off=labelOffset(ctx,el);
+  if (off===null) { ctx.textBaseline='middle'; ctx.fillText(el,x,y); }
+  else { ctx.textBaseline='alphabetic'; ctx.fillText(el,x+off.x,y+off.y); }
+  ctx.restore();
 }
 
 /* ══════════════════════════════════════════════════════════════════════════

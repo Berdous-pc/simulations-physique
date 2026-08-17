@@ -371,6 +371,14 @@ function testerEquilibrage() {
     return;
   }
   stopAnimations(); clearStatus();
+  // Recalcul synchrone AVANT de lire quoi que ce soit : contrairement au mode limitant
+  // (lancerReactionMax/_doLancer), lancerAnimEquilibrage ne dispose d'aucun filet de
+  // rattrapage si le layout de départ échoue — voir son propre garde-fou ci-dessous. Sans
+  // ce recalcul explicite ici, chaque clic sur « Tester » ne fait que compter sur un
+  // fixAndRedraw ASYNCHRONE déclenché par une action précédente (fin du test précédent,
+  // resize…) : un ré-appui rapide peut s'exécuter avant que ce recalcul différé n'ait eu
+  // lieu, avec un dimensionnement périmé pour toute la nouvelle animation.
+  fixCanvasRowHeight('eq'); resizeCanvas();
   const rxn = REACTIONS[state.reactionEqIdx];
   const coeffsR = rxn.reactifs.map((_,i) => getCoeffEq(i));
   const coeffsP = rxn.produits.map((_,j) => getCoeffEq(rxn.reactifs.length+j));
@@ -490,7 +498,11 @@ function lancerAnimEquilibrage(coeffsR, coeffsP) {
   const rxn = REACTIONS[state.reactionEqIdx];
   const coeffs4Init = [coeffsR[0]||0, coeffsR[1]||0, 0, 0];
   const layoutInit = computeLayout(rxn, coeffs4Init);
-  if (!layoutInit) return;
+  // computeLayout peut renvoyer null si la cellule canvas est encore à hauteur nulle (juste
+  // après un changement de réaction ou de mode, avant que le DOM n'ait fini de se mettre à
+  // jour). Retry au prochain frame au lieu d'abandonner silencieusement — même filet que
+  // lancerReactionMax/_doLancer côté mode limitant.
+  if (!layoutInit) { requestAnimationFrame(() => lancerAnimEquilibrage(coeffsR, coeffsP)); return; }
   const {midX,midY,midW,midH} = layoutInit;
   const midCY = midY+midH/2, PAD_ATOM = 20;
   const centeredRand = () => (Math.random()+Math.random())/2; // biais vers 0.5 (centre)
@@ -975,14 +987,19 @@ function updateSpeedLabelsEq() { updateSpeedLabelsForSlider('speed-slider-eq','s
 function prepareTourLim(anim) {
   const rxn=anim.rxn;
   const layoutSrc=anim.layoutSrcFixed, layoutDst=anim.layoutDstFixed;
-  if (!layoutSrc||!layoutDst) return [];
+  if (!layoutSrc||!layoutDst) { anim.srcMols=[]; return []; }
   const pool={};
+  // Molécules réactifs consommées ce tour : drawStable cesse de les dessiner dès que leurs
+  // atomes volent, c'est donc ici qu'on retient de quoi faire disparaître leurs liaisons
+  // en fondu au début du tour (phase 'dissolve').
+  const srcMols=[];
   rxn.reactifs.forEach((mol,i) => {
     const colSrc=layoutSrc.cols.find(c=>c.type==='reactif'&&c.idx===i); if (!colSrc) return;
     const model=MOL_MODELS[colSrc.formula]; if (!model) return;
     const start=anim.qtesR[i]-mol.coeff;
     for (let k=start;k<anim.qtesR[i];k++) {
       const molPosSrc=colSrc.positions[k]; if (!molPosSrc) continue;
+      srcMols.push({formula:colSrc.formula,cx:molPosSrc.cx,cy:molPosSrc.cy,sc:colSrc.sc});
       model.atoms.forEach((a,ai) => {
         const el=a.el;
         if (!pool[el]) pool[el]=[];
@@ -990,6 +1007,7 @@ function prepareTourLim(anim) {
       });
     }
   });
+  anim.srcMols=srcMols;
   const passes=[];
   rxn.produits.forEach((mol,j) => {
     const colDst=layoutDst.cols.find(c=>c.type==='produit'&&c.idx===j); if (!colDst) return;
@@ -1051,7 +1069,15 @@ function tickAnimLim(ts) {
     });
   };
   const drawPasseAtoms=(passe,t_fly)=>{
-    passe.flyAtoms.forEach(fa=>drawAtom(molCtx,fa.el,lerp(fa.ix,fa.fx,t_fly),lerp(fa.iy,fa.fy,t_fly),lerp(fa.r_src,fa.r_dst,t_fly),1,lerp(fa.sc_src,fa.sc_dst,t_fly)));
+    passe.flyAtoms.forEach(fa=>{
+      const r=lerp(fa.r_src,fa.r_dst,t_fly);
+      // Échelle déduite du rayon courant (on a toujours r = base × sc) plutôt qu'interpolée
+      // séparément : `base` change aussi en route, du rayon du modèle réactif à celui du
+      // modèle produit, donc deux interpolations indépendantes ne coïncident qu'aux
+      // extrémités et le disque se décale de sa lettre en milieu de trajet.
+      const base=lerp(fa.r_src/fa.sc_src, fa.r_dst/fa.sc_dst, t_fly);
+      drawAtom(molCtx,fa.el,lerp(fa.ix,fa.fx,t_fly),lerp(fa.iy,fa.fy,t_fly),r,1,base>0?r/base:fa.sc_src);
+    });
   };
   const drawPasseFinal=(passe,bondAlpha)=>{
     if (bondAlpha>0) passe.prodMols.forEach(pm=>drawBonds(molCtx,pm.formula,pm.pos.cx,pm.pos.cy,pm.sc,bondAlpha));
@@ -1095,16 +1121,26 @@ function tickAnimLim(ts) {
   }
 
   if (anim.phase==='dissolve') {
-    anim.passes=prepareTourLim(anim); anim.passeIdx=0; anim.phase='fly_p'; anim.t0=ts;
-    if (!anim.dissolveInitDone) { anim.reactifsOpaques.clear(); anim.dissolveInitDone=true; }
-    keysProchainTour(anim.qtesR).forEach(k=>anim.reactifsOpaques.add(k));
-    const nextR=rxn.reactifs.map((mol,i)=>anim.qtesR[i]-mol.coeff);
-    const nextAdv=state.avancement+1;
-    const tdAdv=document.getElementById('foot-avancement');
-    if (tdAdv) { tdAdv.textContent=`x = ${nextAdv} mol`; tdAdv.classList.remove('xmax'); }
-    rxn.reactifs.forEach((mol,i)=>{ const td=document.getElementById(`foot-qty-r${i}`); if(td) td.textContent=`n(${mol.formula}) = ${nextR[i]} mol`; });
+    // Préparation du tour : une seule fois par entrée dans la phase (passesReady est remis
+    // à false à chaque transition vers 'dissolve').
+    if (!anim.passesReady) {
+      anim.passes=prepareTourLim(anim); anim.passeIdx=0; anim.passesReady=true;
+      if (!anim.dissolveInitDone) { anim.reactifsOpaques.clear(); anim.dissolveInitDone=true; }
+      keysProchainTour(anim.qtesR).forEach(k=>anim.reactifsOpaques.add(k));
+      const nextR=rxn.reactifs.map((mol,i)=>anim.qtesR[i]-mol.coeff);
+      const nextAdv=state.avancement+1;
+      const tdAdv=document.getElementById('foot-avancement');
+      if (tdAdv) { tdAdv.textContent=`x = ${nextAdv} mol`; tdAdv.classList.remove('xmax'); }
+      rxn.reactifs.forEach((mol,i)=>{ const td=document.getElementById(`foot-qty-r${i}`); if(td) td.textContent=`n(${mol.formula}) = ${nextR[i]} mol`; });
+    }
+    // Disparition progressive des liaisons des molécules consommées, pendant que leurs
+    // atomes restent en place : l'équivalent de la sous-phase 'bonds' de l'onglet équilibrage.
+    // Sans elle la molécule passait d'entière à atomes libres en une seule frame.
+    const ease=easeInOut(Math.min(dt/Math.max(1,T_LIM('DECONS_BONDS')),1));
     drawStable();
+    (anim.srcMols||[]).forEach(m=>drawBonds(molCtx,m.formula,m.cx,m.cy,m.sc,1-ease));
     anim.passes.forEach(passe=>passe.flyAtoms.forEach(fa=>drawAtom(molCtx,fa.el,fa.ix,fa.iy,fa.r_src,1,fa.sc_src)));
+    if (ease>=1) { anim.phase='fly_p'; anim.t0=ts; }
     anim.rafId=requestAnimationFrame(t=>tickAnimLim(t)); return;
   }
   if (anim.phase==='fly_p') {
@@ -1125,7 +1161,16 @@ function tickAnimLim(ts) {
     for(let k=0;k<anim.passeIdx;k++) drawPasseFinal(anim.passes[k],1);
     for(let k=anim.passeIdx+1;k<anim.passes.length;k++) anim.passes[k].flyAtoms.forEach(fa=>drawAtom(molCtx,fa.el,fa.ix,fa.iy,fa.r_src,1,fa.sc_src));
     drawPasseFinal(passe,alpha);
-    if (alpha>=1) { anim.passeIdx++; anim.phase='fly_p'; anim.t0=ts; }
+    // Petit temps d'arrêt sur la molécule qui vient de se former, avant d'enchaîner sur la
+    // suivante — s'il en reste une. Sinon on repasse par 'fly_p', qui bascule en 'end_turn'.
+    if (alpha>=1) { anim.passeIdx++; anim.phase=(anim.passeIdx<anim.passes.length)?'pause_p':'fly_p'; anim.t0=ts; }
+    anim.rafId=requestAnimationFrame(t=>tickAnimLim(t)); return;
+  }
+  if (anim.phase==='pause_p') {
+    drawStable();
+    for(let k=0;k<anim.passeIdx;k++) drawPasseFinal(anim.passes[k],1);
+    for(let k=anim.passeIdx;k<anim.passes.length;k++) anim.passes[k].flyAtoms.forEach(fa=>drawAtom(molCtx,fa.el,fa.ix,fa.iy,fa.r_src,1,fa.sc_src));
+    if (dt>=T_LIM('PAUSE')) { anim.phase='fly_p'; anim.t0=ts; }
     anim.rafId=requestAnimationFrame(t=>tickAnimLim(t)); return;
   }
   if (anim.phase==='end_turn') {
@@ -1161,7 +1206,7 @@ function tickAnimLim(ts) {
     drawStable();
     if (anim.passes) anim.passes.forEach(passe=>drawPasseFinal(passe,1));
     if (anim.isStep) { anim.done=true; finirAnimLim(); return; }
-    if (dt>=T_LIM('HOLD')) { anim.phase='dissolve'; anim.t0=ts; }
+    if (dt>=T_LIM('HOLD')) { anim.phase='dissolve'; anim.passesReady=false; anim.t0=ts; }
     anim.rafId=requestAnimationFrame(t=>tickAnimLim(t)); return;
   }
   anim.rafId=requestAnimationFrame(t=>tickAnimLim(t));
@@ -1426,7 +1471,7 @@ function lancerReactionMax() {
     const layoutDstFixed=cache?computeLayoutLimFixed(qtesR_fin_global,qtesP_fin_global,scalesFixed):computeLayoutLimFixed(qtesR_fin,qtesP_fin,scalesFixed);
     if (!layoutSrcFixed||!layoutDstFixed) { requestAnimationFrame(_doLancer); return; }
     const nMaxTotal=cache?cache.nMaxTotal:nMax;
-    const anim={rxn,qtesR:state.qtesR.slice(),qtesP:state.qtesP.slice(),nMax,nMaxTotal,step:0,phase:'dissolve',t0:null,passes:[],passeIdx:0,layoutSrcFixed,layoutDstFixed,rafId:null,done:false,isStep:false,
+    const anim={rxn,qtesR:state.qtesR.slice(),qtesP:state.qtesP.slice(),nMax,nMaxTotal,step:0,phase:'dissolve',passesReady:false,t0:null,passes:[],passeIdx:0,srcMols:[],layoutSrcFixed,layoutDstFixed,rafId:null,done:false,isStep:false,
       reactifsOpaques:new Set(rxn.reactifs.flatMap((mol,i)=>Array.from({length:state.qtesR[i]},(_,k)=>`${i}_${k}`))),
       qtesRInit:state.qtesR.slice(),dissolveInitDone:false};
     state.animLim=anim;
@@ -1455,7 +1500,7 @@ function lancerReactionStep() {
     const layoutDstFixed=computeLayoutLimFixed(qtesR_fin,qtesP_fin,scalesFixed);
     if (!layoutSrcFixed||!layoutDstFixed) { requestAnimationFrame(_doLancer); return; }
     if (!state.stepCache) state.stepCache={nMaxTotal,scalesFixed,qtesRInitGlobal,qtesP_initGlobal};
-    const anim={rxn,qtesR:state.qtesR.slice(),qtesP:state.qtesP.slice(),nMax:1,nMaxTotal,step:0,phase:'dissolve',t0:null,passes:[],passeIdx:0,layoutSrcFixed,layoutDstFixed,rafId:null,done:false,isStep:true,
+    const anim={rxn,qtesR:state.qtesR.slice(),qtesP:state.qtesP.slice(),nMax:1,nMaxTotal,step:0,phase:'dissolve',passesReady:false,t0:null,passes:[],passeIdx:0,srcMols:[],layoutSrcFixed,layoutDstFixed,rafId:null,done:false,isStep:true,
       reactifsOpaques:new Set(rxn.reactifs.flatMap((mol,i)=>Array.from({length:state.qtesR[i]},(_,k)=>`${i}_${k}`))),
       qtesRInit:state.qtesR.slice(),dissolveInitDone:false};
     state.animLim=anim;
