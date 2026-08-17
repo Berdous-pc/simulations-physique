@@ -15,7 +15,7 @@
             lancerAnimEquilibrage, tickAnimEq, relayoutAnimEq, finirAnimEq,
             tickAnimLim, prepareTourLim, finirAnimLim,
             predictionEstCorrecte, afficherResultatPrediction,
-            razEquilibrage, razLimitant, setQteLimDirect, changeQteLim,
+            razEquilibrage, razLimitant, quantitesAleatoiresLimitant, setQteLimDirect, changeQteLim,
             toggleShowCoeffOneEq, toggleShowProductsEq, resetShowProductsEq,
             toggleShowReactifsEq, resetShowReactifsEq,
             toggleShowCoeffOneLim,
@@ -144,7 +144,7 @@ function buildTfoot(rxn) {
   const tdAdv = document.createElement('td');
   tdAdv.className = 'td-adv';
   tdAdv.style.width = '200px';
-  tdAdv.innerHTML = '<span class="foot-row-label">Avancement et quantités finales</span><span id="foot-avancement">x = 0 mol</span>';
+  tdAdv.innerHTML = '<span class="foot-row-label">Avancement et quantités</span><span id="foot-avancement">x = 0 mol</span>';
   tr.appendChild(tdAdv);
 
   for (let i = 0; i < N_COLS; i++) {
@@ -1279,6 +1279,29 @@ function razLimitant() {
   rebuildExtraRows(false);
   requestAnimationFrame(()=>fixAndRedraw('lim'));
 }
+function quantitesAleatoiresLimitant() {
+  const rxn=REACTIONS[state.reactionLimIdx];
+  const idxLimitant=Math.floor(Math.random()*rxn.reactifs.length);
+  const xmaxMax=Math.floor(20/Math.max(...rxn.reactifs.map(m=>m.coeff)));
+  const xmax=Math.floor(Math.random()*xmaxMax)+1;
+  state.qtesLimInit=rxn.reactifs.map((mol,i)=>{
+    if (i===idxLimitant) return mol.coeff*xmax;
+    const surplusMax=20-mol.coeff*xmax;
+    const surplus=surplusMax>0?Math.floor(Math.random()*(surplusMax+1)):0;
+    return mol.coeff*xmax+surplus;
+  });
+  state.qtesR=state.qtesLimInit.slice();
+  state.qtesP=rxn.produits.map(()=>0);
+  state.avancement=0; state.xmax=null;
+  stopAnimations(); clearSnapshots(); clearStatus(); unlockPrediction();
+  updateQtyWidgets();
+  document.getElementById('lim-progress').textContent='';
+  if (!testState.actif) document.getElementById('btn-reagir-step').disabled=false;
+  updateTableFoot(0,state.qtesR.slice(),state.qtesP.slice(),null);
+  rebuildExtraRows(false);
+  requestAnimationFrame(()=>fixAndRedraw('lim'));
+}
+
 function setQteLimDirect(i,val) {
   state.qtesLimInit[i]=val;
   state.qtesR=state.qtesLimInit.slice();
