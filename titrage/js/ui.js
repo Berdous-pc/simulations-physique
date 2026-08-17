@@ -3327,6 +3327,12 @@ const ESPECES = {
   FLASH_DURATION:    0.25,   // durée du flash des produits naissants (s)
   DESCENTE_VITESSE:  85,     // vitesse de descente le long du filet (SVG/s)
   MAX_TRANCHES_DESCENTE_PAR_FRAME: 2, // cap anti-explosion (nb tranches qui basculent en descente par frame)
+  ATTENTE_DISPERSION:    0.15,    // délai minimal en 'attente' avant de pouvoir réagir (s)
+  // ─── Répulsion mutuelle dans le bécher (cf. _especesRepulsionBecher) ───
+  REPEL_RADIUS:          1.2 * 4, // portée d'action autour de chaque sphère (unités SVG)
+  REPEL_STRENGTH:        260,     // poussée à recouvrement total (SVG/s² ; 0 à distance REPEL_RADIUS)
+  REPEL_MAX_PUSH:        390,     // plafond de la poussée totale reçue par une sphère en une frame
+  REPEL_DENSITY_CUTOFF:  0.55,    // au-delà de cette densité d'occupation, répulsion coupée
   // ─── Géométrie burette (en coordonnées SVG) ───
   // CLIP_TOP = graduation 0 (haut du liquide à V=0).
   // GRAD25_Y = graduation 25 = CLIP_TOP + MAX_ML × SCALE_Y. C'est la limite
@@ -3950,11 +3956,15 @@ function _especesTenterReactionPaquet(paquetId, eTitreeId) {
   const nuTitrant = Math.max(1, Math.round(coeffTitrant));
   const nuTitre   = Math.max(1, Math.round(coeffTitre));
 
-  // 1) Titrants du paquet en attente
+  // 1) Titrants du paquet en attente, ayant fini leur phase de dispersion
+  //    (cf. ESPECES.ATTENTE_DISPERSION) — sans ce délai, un paquet complet
+  //    partirait en migration dès l'image d'arrivée, sans jamais se décoller
+  //    du point de chute du filet.
   const titrants = _especesSpheres.filter(
-    s => s.paquetId === paquetId && s.zone === 'becher' && s.state === 'attente' && s._reagit
+    s => s.paquetId === paquetId && s.zone === 'becher' && s.state === 'attente' &&
+         s._reagit && (s.tAttente || 0) >= ESPECES.ATTENTE_DISPERSION
   );
-  if (titrants.length < nuTitrant) return; // pas encore tous arrivés
+  if (titrants.length < nuTitrant) return; // pas encore tous arrivés / dispersés
 
   // 2) Barycentre des titrants
   let cxT = 0, cyT = 0;
@@ -4117,6 +4127,11 @@ function _animEspeces(ts) {
     nTranchesBascule++;
   }
 
+  // 2 bis) Répulsion mutuelle dans le bécher : ajoute une poussée à vx/vy des
+  //        sphères en 'brownien'/'flash'/'attente'. Doit précéder la boucle,
+  //        qui intègre ces vitesses et reclampe sur les bornes de la zone.
+  _especesRepulsionBecher(dt, zBecher);
+
   // 3) Mise à jour de chaque sphère
   const entry    = _especesGetRxnEntry();
   const eTitree  = entry ? (entry.especes || []).find(e => e.role === 'titree') : null;
@@ -4141,8 +4156,15 @@ function _animEspeces(ts) {
       if (s.y >= zBecher.yTop + ESPECES.R + 0.5) {
         s.y = zBecher.yTop + ESPECES.R + 0.5;
         if (s._reagit && eTitreeId && s.paquetId) {
-          // Bascule temporairement en 'attente' pour synchroniser le paquet
-          s.state = 'attente';
+          // Bascule temporairement en 'attente' pour synchroniser le paquet.
+          // La sphère y reste mobile (brownien atténué + répulsion) pendant au
+          // moins ESPECES.ATTENTE_DISPERSION : sans ce délai, un paquet complet
+          // partirait en migration dès l'image d'arrivée et les sphères de
+          // titrant resteraient collées au point de chute du filet.
+          s.state    = 'attente';
+          s.tAttente = 0;
+          s.vx = (Math.random() - 0.5) * 1.5; // purge la vitesse héritée de la burette
+          s.vy = (Math.random() - 0.5) * 1.5;
           // Test de complétude du paquet : tous les titrants du même paquet
           // sont-ils arrivés (état 'attente' OU 'brownien' déjà placés) ?
           _especesTenterReactionPaquet(s.paquetId, eTitreeId);
@@ -4152,8 +4174,12 @@ function _animEspeces(ts) {
         }
       }
     } else if (s.state === 'attente') {
-      // En attente que tous les titrants du paquet soient arrivés.
-      // Pas de mouvement (statique au point d'arrivée).
+      // En attente que tous les titrants du paquet soient arrivés ET que
+      // chacun ait dispersé pendant ESPECES.ATTENTE_DISPERSION. Le brownien
+      // atténué, combiné à la répulsion, écarte les sphères du point de chute
+      // du filet où elles atterrissent toutes à la même abscisse.
+      s.tAttente = (s.tAttente || 0) + dt;
+      _especesBrownienStep(s, dt, zBecher, 0.5);
       // Note : si pour une raison quelconque l'arrivée ne se complète pas
       // (ex. animation suspendue), on retente la réaction périodiquement
       // au cas où d'autres sphères du paquet seraient arrivées.
@@ -4283,6 +4309,91 @@ function _especesBrownienStep(s, dt, zone, scaleFactor) {
   if (s.x > zone.xMax) { s.x = zone.xMax; s.vx = -Math.abs(s.vx) * 0.6; }
   if (s.y < zone.yMin) { s.y = zone.yMin; s.vy = Math.abs(s.vy) * 0.6; }
   if (s.y > zone.yMax) { s.y = zone.yMax; s.vy = -Math.abs(s.vy) * 0.6; }
+}
+
+/* Répulsion mutuelle des sphères du BÉCHER trop rapprochées — reprise de
+   dissApplyRepulsion() (dissolution/js/diss.js), qui descend elle-même de ce
+   fichier. Rôle : éviter que les sphères se superposent, en particulier au
+   point d'arrivée du titrant (toutes les sphères éjectées atterrissent au
+   même x = 88.668 sur la surface) et au point de contact où naissent les
+   produits, empilés à l'identique pendant leur flash.
+   La burette n'est PAS concernée (tube étroit, modèle en tranches empilées :
+   une répulsion y casserait l'empilement).
+
+   Participent les états 'brownien', 'flash' et 'attente' — les trois qui
+   intègrent une vitesse — ni comme source ni comme cible pour les autres.
+   'attente' est la phase de dispersion des titrants fraîchement arrivés, qui
+   atterrissent tous à la même abscisse (le filet) : c'est là que la répulsion
+   est la plus visible. Les états 'migration' / 'migration_groupe' / 'descente'
+   pilotent x,y directement — les exclure garantit que les sphères qui
+   convergent vers un même point pour réagir puissent bel et bien se toucher,
+   sans qu'aucune poussée ne dévie leur trajectoire ni celle de leurs voisines.
+
+   La répulsion s'exerce UNIQUEMENT entre sphères d'une MÊME espèce (même
+   `s.id`) : deux espèces différentes s'ignorent et peuvent se superposer.
+   Le traitement se fait donc espèce par espèce, y compris le critère de
+   densité, qui ne compte que les sphères de l'espèce considérée — une espèce
+   nombreuse repasse en brownien pur sans priver les autres de leur répulsion.
+
+   Parcours en O(n²) par espèce, volontairement simple (quelques dizaines de
+   sphères au total). Les contributions de tous les voisins sont accumulées
+   puis plafonnées (REPEL_MAX_PUSH) avant d'être appliquées à la vitesse, sans
+   quoi une sphère cernée rebondirait violemment en cascade sur ses voisines.
+   Au-delà de REPEL_DENSITY_CUTOFF (fraction de la surface du liquide occupée
+   par les disques de l'espèce) la répulsion est coupée d'un coup pour cette
+   espèce : à cette concentration un évitement deux-à-deux n'a plus de sens
+   visuel, autant repasser en brownien pur. La poussée n'est ajoutée qu'à
+   vx/vy — c'est _especesBrownienStep qui intègre et reclampe sur les bornes
+   du bécher dans la même frame, d'où l'appel AVANT la boucle de mise à jour. */
+function _especesRepulsionBecher(dt, zone) {
+  // Regroupement par espèce : la répulsion et le critère de densité sont
+  // évalués indépendamment pour chaque `id`.
+  const parEspece = new Map();
+  for (const s of _especesSpheres) {
+    if (s.zone !== 'becher') continue;
+    if (s.state !== 'brownien' && s.state !== 'flash' && s.state !== 'attente') continue;
+    let g = parEspece.get(s.id);
+    if (!g) { g = []; parEspece.set(s.id, g); }
+    g.push(s);
+  }
+  if (parEspece.size === 0) return;
+
+  const area     = Math.max(1, (zone.xMax - zone.xMin) * (zone.yMax - zone.yMin));
+  const aireDisq = Math.PI * ESPECES.R * ESPECES.R;
+  const R = ESPECES.REPEL_RADIUS, R2 = R * R;
+  const maxPush2 = ESPECES.REPEL_MAX_PUSH * ESPECES.REPEL_MAX_PUSH;
+
+  for (const actifs of parEspece.values()) {
+    const n = actifs.length;
+    if (n < 2) continue;
+    if ((n * aireDisq) / area > ESPECES.REPEL_DENSITY_CUTOFF) continue;
+
+    const pushX = new Float64Array(n), pushY = new Float64Array(n);
+    for (let i = 0; i < n; i++) {
+      const a = actifs[i];
+      for (let j = i + 1; j < n; j++) {
+        const b = actifs[j];
+        const dx = a.x - b.x, dy = a.y - b.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 > R2 || d2 < 1e-6) continue;
+        const d = Math.sqrt(d2);
+        const push = (1 - d / R) * ESPECES.REPEL_STRENGTH;
+        const fx = (dx / d) * push, fy = (dy / d) * push;
+        pushX[i] += fx; pushY[i] += fy;
+        pushX[j] -= fx; pushY[j] -= fy;
+      }
+    }
+    for (let i = 0; i < n; i++) {
+      let fx = pushX[i], fy = pushY[i];
+      const m2 = fx * fx + fy * fy;
+      if (m2 > maxPush2) {
+        const scale = ESPECES.REPEL_MAX_PUSH / Math.sqrt(m2);
+        fx *= scale; fy *= scale;
+      }
+      actifs[i].vx += fx * dt;
+      actifs[i].vy += fy * dt;
+    }
+  }
 }
 
 /** Rendu DOM : synchronise les <circle> dans les groupes SVG. */

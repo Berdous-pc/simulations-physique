@@ -621,10 +621,45 @@ const ESPECES = {
   MIG_DURATION: 0.45, FLASH_DURATION: 0.25,
   DESCENTE_VITESSE: 85,
   MAX_TRANCHES_DESCENTE_PAR_FRAME: 2,
+  ATTENTE_DISPERSION: 0.15,
+  REPEL_RADIUS: 1.2 * 4, REPEL_STRENGTH: 260,
+  REPEL_MAX_PUSH: 390, REPEL_DENSITY_CUTOFF: 0.55,
   GRAD25_Y: 12.98 + 25 * 6.282,   // ≈ 170,03
   CLIP_BOT_BURETTE: 214,
 };
 ```
+
+### Répulsion mutuelle dans le bécher
+
+`_especesRepulsionBecher(dt, zone)` — portage de `dissApplyRepulsion()`
+(`dissolution/js/diss.js`), qui descend elle-même de `_especesBrownienStep`.
+Empêche les sphères de se superposer, notamment au point d'arrivée du titrant
+(toutes les sphères éjectées atterrissent au même `x = 88.668`) et au point de
+contact où naissent les produits.
+
+- **Bécher uniquement** — la burette garde son modèle en tranches empilées.
+- Participent **seuls** les états `brownien`, `flash` et `attente` (les trois
+  qui intègrent une vitesse), ni comme source ni comme cible pour les autres.
+  Les états `migration` / `migration_groupe` / `descente` pilotent `x, y`
+  directement : les exclure garantit que les sphères convergeant vers un même
+  point pour réagir puissent se toucher.
+- L'état `attente` est devenu une **phase de dispersion** : la sphère de
+  titrant qui touche la surface y reste `ESPECES.ATTENTE_DISPERSION` (0,15 s)
+  en brownien atténué (×0,5) + répulsion avant d'être éligible à la migration
+  (compteur `s.tAttente`, filtré dans `_especesTenterReactionPaquet`). Sans ce
+  délai, un paquet complet part en migration dès l'image d'arrivée et les
+  sphères ne se décollent jamais du point de chute du filet.
+- **Entre molécules d'une même espèce chimique uniquement** : les sphères sont
+  regroupées par `s.id` et chaque groupe est traité indépendamment. Deux
+  espèces différentes s'ignorent et peuvent se superposer.
+- Poussée linéaire `(1 − d/R) × REPEL_STRENGTH` en O(n²) par espèce, accumulée
+  par sphère puis plafonnée à `REPEL_MAX_PUSH` (anti-emballement en cascade).
+- Coupure au-delà de `REPEL_DENSITY_CUTOFF`, **évaluée espèce par espèce**
+  (fraction de la surface du liquide occupée par les seuls disques de cette
+  espèce) → brownien pur pour elle seule, les autres gardent leur répulsion.
+- Appelée dans `_animEspeces` **avant** la boucle de mise à jour : elle
+  n'ajoute qu'à `vx/vy`, l'intégration et le clamp sur les bornes du bécher
+  restent le fait de `_especesBrownienStep` dans la même frame.
 
 ### Reconstruction d'un titrage déjà commencé
 
@@ -667,6 +702,7 @@ en sphères, pour rester cohérent avec `_creerTrancheSpheres` :
 | `_especesReaction(sT, sR)` | Supprime titrant+titré, crée les produits (état flash) |
 | `_animEspeces(ts)` | Boucle RAF principale : dispatch selon `state` |
 | `_especesBrownienStep(s, dt, zone, scaleFactor)` | Random walk + damping + rebonds élastiques |
+| `_especesRepulsionBecher(dt, zone)` | Répulsion mutuelle, par espèce, des sphères du bécher en `brownien`/`flash`/`attente` (cf. section dédiée) |
 | `_renderSpheres()` | Sync DOM SVG : création/maj/suppression de `<circle data-uid="...">` |
 | `_construireLegendeEspeces()` | Reconstruit le HTML de `#especes-legende-list` |
 | `_especesRebuild()` | Réinit + régén + redraw (appelée par `reinitialiserTitrage`) |
