@@ -118,9 +118,12 @@ calcScalesFixed(rxn, qtesRInit, nMax)              // calcule les scales fixes
 
 ```js
 drawBackground(layout, skipTransition)
-drawMolecule(ctx, formula, cx, cy, sc, alpha)
+atomRadius(model, el)      // rayon d'un atome à l'échelle 1 — RÉFÉRENCE UNIQUE
+paintMolecule(ctx, formula, cx, cy, sc)   // rendu opaque (sans alpha)
+getMolSprite(formula, sc)  // cache de sprites, pour le rendu translucide
+drawMolecule(ctx, formula, cx, cy, sc, alpha)  // alpha<1 → sprite composé d'un bloc
 drawBonds(ctx, formula, cx, cy, sc, alpha)
-drawAtom(ctx, el, x, y, r, alpha)
+drawAtom(ctx, el, x, y, r, alpha, sc)   // sc pilote contour + police
 drawStatic()       // dessin de l'état courant (hors animation)
 drawLastFrameEq(frame)
 redraw(retryCount)

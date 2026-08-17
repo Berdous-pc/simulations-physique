@@ -12,7 +12,7 @@
             resizeCanvas, resizeCanvasDuringAnim, fixCanvasRowHeight,
             fixAndRedraw, relayoutLimAfterResize,
             computeLayout, computeLayoutLim, computeLayoutLimFixed,
-            getBoundingRadius, scaleFor, scaleForMulti, gridPositions,
+            getBoundingRadius, atomRadius, scaleFor, scaleForMulti, gridPositions,
             drawBackground, drawMolecule, drawBonds, drawAtom,
             drawStatic, drawLastFrameEq, redraw,
             lerp, easeInOut, roundRect,
@@ -482,21 +482,70 @@ function roundRect(ctx, x, y, w, h, r) {
 }
 
 /* ── Rendu molécule ── */
-function drawMolecule(ctx, formula, cx, cy, sc, alpha) {
+
+// Rayon de dessin d'un atome, à l'échelle 1. RÉFÉRENCE UNIQUE : toute autre partie du
+// code qui a besoin de la taille d'un atome (notamment la décomposition en atomes libres
+// de l'animation d'équilibrage) doit passer par ici, sinon l'atome change brutalement de
+// taille au moment où l'on bascule entre drawMolecule et drawAtom.
+function atomRadius(m, el) {
+  if (!m) return 0;
+  return el === 'H' ? m.radius * 0.65 : m.radius;
+}
+
+// Corps opaque du rendu d'une molécule. Ne gère pas l'alpha : voir drawMolecule.
+function paintMolecule(ctx, formula, cx, cy, sc) {
   const m = MOL_MODELS[formula]; if (!m) return;
-  ctx.save(); ctx.globalAlpha = alpha ?? 1; ctx.translate(cx, cy);
+  ctx.save(); ctx.globalAlpha = 1; ctx.translate(cx, cy);
   m.bonds.forEach(b => drawBondLine(ctx, b, sc));
   m.atoms.forEach(a => {
-    const r = (a.el === 'H' ? m.radius * 0.65 : m.radius) * sc;
-    ctx.beginPath(); ctx.arc(a.x*sc, a.y*sc, r, 0, Math.PI*2);
-    ctx.fillStyle = ATOM_COLORS[a.el] || '#aaa'; ctx.fill();
-    ctx.strokeStyle = ATOM_BORDER[a.el] || '#555';
-    ctx.lineWidth = Math.max(1, 1.5*sc); ctx.stroke();
-    ctx.fillStyle = a.el === 'H' ? '#444' : '#fff';
-    ctx.font = `bold ${Math.max(7, Math.round(10*sc))}px 'Segoe UI', Arial, sans-serif`;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(a.el, a.x*sc, a.y*sc);
+    drawAtom(ctx, a.el, a.x*sc, a.y*sc, atomRadius(m, a.el)*sc, 1, sc);
   });
+  ctx.restore();
+}
+
+/* ── Cache de sprites (molécules translucides) ────────────────────────────
+   Appliquer un globalAlpha global puis dessiner liaisons PUIS atomes rend les
+   liaisons visibles À TRAVERS les atomes (chaque primitive est translucide
+   indépendamment). On dessine donc la molécule opaque dans un canvas hors écran,
+   puis on la compose d'un seul bloc avec l'alpha voulu.
+   Le chemin opaque (alpha >= 1) reste direct : rendu strictement identique et
+   aucun coût de cache quand il n'y a pas de fantôme à l'écran.                */
+const _molSprites = new Map();
+const _MOL_SPRITES_MAX = 40;
+
+function getMolSprite(formula, sc) {
+  const m = MOL_MODELS[formula]; if (!m) return null;
+  const dpr = window.devicePixelRatio || 1;
+  const key = `${formula}|${sc.toFixed(3)}|${dpr}`;
+  let sp = _molSprites.get(key);
+  if (sp) return sp;
+
+  // Marge : contour des atomes (lineWidth/2) + décalage perpendiculaire des liaisons multiples.
+  const R   = getBoundingRadius(formula) * sc + Math.max(4, 6 * sc);
+  // Taille en pixels physiques d'abord, puis taille CSS déduite : les deux correspondent
+  // ainsi exactement, et drawImage ne réétire pas le sprite d'une fraction de pixel.
+  const dev  = Math.max(2, Math.ceil(R * 2 * dpr));
+  const size = dev / dpr;
+  const cv   = document.createElement('canvas');
+  cv.width = dev; cv.height = dev;
+  const c = cv.getContext('2d');
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  paintMolecule(c, formula, size/2, size/2, sc);
+
+  sp = { canvas: cv, size, half: size/2 };
+  if (_molSprites.size >= _MOL_SPRITES_MAX) _molSprites.clear();
+  _molSprites.set(key, sp);
+  return sp;
+}
+
+function drawMolecule(ctx, formula, cx, cy, sc, alpha) {
+  const a = alpha ?? 1;
+  if (a <= 0) return;
+  if (a >= 1) { paintMolecule(ctx, formula, cx, cy, sc); return; }
+  const sp = getMolSprite(formula, sc); if (!sp) return;
+  ctx.save();
+  ctx.globalAlpha = a;
+  ctx.drawImage(sp.canvas, cx - sp.half, cy - sp.half, sp.size, sp.size);
   ctx.restore();
 }
 
@@ -527,13 +576,18 @@ function drawBonds(ctx, formula, cx, cy, sc, alpha) {
   ctx.restore();
 }
 
-function drawAtom(ctx, el, x, y, r, alpha) {
+// `sc` : échelle de dessin de l'atome. Contour et police en dérivent exactement comme
+// dans paintMolecule, pour qu'un atome libre et le même atome au sein d'une molécule
+// soient rigoureusement identiques. Si `sc` est omis, on le reconstitue depuis le rayon
+// (les modèles ont un radius de 11 à 14, d'où le 12 par défaut).
+function drawAtom(ctx, el, x, y, r, alpha, sc) {
+  const s = sc !== undefined ? sc : r / (el==='H' ? 12*0.65 : 12);
   ctx.save(); ctx.globalAlpha=alpha??1;
   ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2);
   ctx.fillStyle=ATOM_COLORS[el]||'#aaa'; ctx.fill();
-  ctx.strokeStyle=ATOM_BORDER[el]||'#555'; ctx.lineWidth=1.5; ctx.stroke();
+  ctx.strokeStyle=ATOM_BORDER[el]||'#555'; ctx.lineWidth=Math.max(1,1.5*s); ctx.stroke();
   ctx.fillStyle=el==='H'?'#444':'#fff';
-  ctx.font=`bold ${Math.max(7,Math.round(r*0.78))}px 'Segoe UI', Arial, sans-serif`;
+  ctx.font=`bold ${Math.max(7,Math.round(10*s))}px 'Segoe UI', Arial, sans-serif`;
   ctx.textAlign='center'; ctx.textBaseline='middle';
   ctx.fillText(el,x,y); ctx.restore();
 }
@@ -700,7 +754,13 @@ function drawLastFrameEq(frame) {
   if (frame.orphans && frame.orphans.length > 0) {
     const sx = molCanvas.clientWidth  / frame.canvasW;
     const sy = molCanvas.clientHeight / frame.canvasH;
-    frame.orphans.forEach(a => drawAtom(molCtx, a.el, (a.ex??a.tx)*sx, (a.ey??a.ty)*sy, a.r, 1));
+    // rScatter d'abord : c'est la taille à laquelle l'animation vient de les afficher dans la
+    // zone de transition (a.r est leur taille d'origine en colonne réactif, plus grande).
+    frame.orphans.forEach(a => {
+      const r = a.rScatter ?? a.r;
+      drawAtom(molCtx, a.el, (a.ex??a.tx)*sx, (a.ey??a.ty)*sy, r, 1,
+               a.sc ?? (a.baseR > 0 ? r/a.baseR : undefined));
+    });
   }
 }
 
