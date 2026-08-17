@@ -17,6 +17,7 @@
             predictionEstCorrecte, afficherResultatPrediction,
             razEquilibrage, razLimitant, setQteLimDirect, changeQteLim,
             toggleShowCoeffOneEq, toggleShowProductsEq, resetShowProductsEq,
+            toggleShowReactifsEq, resetShowReactifsEq,
             toggleShowCoeffOneLim,
             rebuildExtraRows, buildCmpText, cycleComparaison,
             togglePrediction, makePredWidget, lockPrediction, unlockPrediction,
@@ -679,6 +680,16 @@ function tickAnimEq(ts) {
   const {atoms,layoutInit,layoutFinal,queue,rxn}=anim;
   const layoutBg=anim.phase===7?layoutFinal:layoutInit;
   drawBackground(layoutBg);
+  const drawReactifGhosts=()=>{
+    if (!state.showReactifsEq) return;
+    const {coeffsR}=anim;
+    rxn.reactifs.forEach((mol,i)=>{
+      const col=layoutInit.cols.find(c=>c.type==='reactif'&&c.idx===i); if (!col) return;
+      const total=coeffsR[i]||0;
+      for(let k=0;k<total;k++){const p=col.positions[k];if(!p)continue;drawMolecule(molCtx,col.formula,p.cx,p.cy,col.sc,0.35);}
+    });
+  };
+  drawReactifGhosts();
   const drawDoneMols=()=>{
     const layoutDraw=anim.layoutGhost||anim.layoutFinal;
     rxn.produits.forEach((mol,j)=>{
@@ -1132,6 +1143,8 @@ function clearSnapshots() { state.lastFrameEq=null; state.lastFrameLim=null; sta
 function toggleShowCoeffOneEq()  { state.showCoeffOneEq=!state.showCoeffOneEq; document.getElementById('btn-show-one-eq').classList.toggle('active',state.showCoeffOneEq); buildEquationUI('eq'); redraw(); }
 function toggleShowProductsEq()  { state.showProductsEq=!state.showProductsEq; document.getElementById('btn-show-products-eq').classList.toggle('active',state.showProductsEq); redraw(); }
 function resetShowProductsEq()   { state.showProductsEq=false; const btn=document.getElementById('btn-show-products-eq'); if(btn) btn.classList.remove('active'); }
+function toggleShowReactifsEq()  { state.showReactifsEq=!state.showReactifsEq; document.getElementById('btn-show-reactifs-eq').classList.toggle('active',state.showReactifsEq); redraw(); }
+function resetShowReactifsEq()   { state.showReactifsEq=false; const btn=document.getElementById('btn-show-reactifs-eq'); if(btn) btn.classList.remove('active'); }
 function toggleShowCoeffOneLim() { state.showCoeffOneLim=!state.showCoeffOneLim; document.getElementById('btn-show-one-lim').classList.toggle('active',state.showCoeffOneLim); buildEquationUI('lim'); redraw(); }
 
 function razEquilibrage() { stopAnimations(); clearSnapshots(); clearStatus(); document.getElementById('eq-progress').textContent=''; buildEquationUI('eq'); redraw(); }

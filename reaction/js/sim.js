@@ -36,6 +36,7 @@ const state = {
   lastFrameLim: null,
   stepCache: null,
   showProductsEq: false,
+  showReactifsEq: false,
   showCoeffOneEq: false,
   showCoeffOneLim: false,
   avancement: 0,
@@ -667,6 +668,14 @@ function drawLastFrameEq(frame) {
   ]);
   if (!layout) return;
   drawBackground(layout);
+
+  if (state.showReactifsEq) {
+    rxn.reactifs.forEach((mol,i)=>{
+      const col = layout.cols.find(c=>c.type==='reactif'&&c.idx===i); if (!col) return;
+      const total = frame.coeffsR[i] ?? 0;
+      for(let k=0;k<total;k++){const p=col.positions[k];if(!p)continue;drawMolecule(molCtx,col.formula,p.cx,p.cy,col.sc,0.35);}
+    });
+  }
 
   const layoutGhost = frame.ghostCounts && frame.ghostCounts.some(v=>v>0)
     ? computeLayout(rxn, [frame.coeffsR[0]||0, frame.coeffsR[1]||0, frame.ghostCounts[0]||0, frame.ghostCounts[1]||0])
