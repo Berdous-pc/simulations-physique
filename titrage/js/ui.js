@@ -361,21 +361,7 @@ function onTypeTitrageChange(val) {
   if (typeof _applyChartsLayout === 'function') _applyChartsLayout();
 
   // Afficher / masquer et adapter le label du bouton du graphe principal
-  // (pH en mode pH-métrique, σ en mode conductimétrique, masqué sinon).
-  const btnPh = document.getElementById('btn-toggle-graph-ph');
-  if (btnPh) {
-    if (val === 'phmetrique') {
-      btnPh.style.display = '';
-      btnPh.textContent = "Afficher l'évolution du pH";
-      btnPh.classList.toggle('active', !!state.titrageShowGraphPH);
-    } else if (val === 'conductimetrique') {
-      btnPh.style.display = '';
-      btnPh.textContent = "Afficher l'évolution de la conductivité";
-      btnPh.classList.toggle('active', !!state.titrageShowGraphSigma);
-    } else {
-      btnPh.style.display = 'none';
-    }
-  }
+  _syncBtnGraphPrincipal();
 
   // Afficher le sélecteur "Pas d'acquisition" uniquement en pH-métrique / conducti
   const rowPas = document.getElementById('row-pas-acquisition');
@@ -393,27 +379,57 @@ function onTypeTitrageChange(val) {
 }
 
 /**
+ * Affiche/masque et libelle le bouton « Afficher l'évolution du pH / de la
+ * conductivité » d'après `state.titrageType` :
+ *   pH-métrique       → visible, libellé pH
+ *   conductimétrique  → visible, libellé conductivité
+ *   colorimétrique    → masqué (pas de graphe principal dans ce mode)
+ *
+ * Point d'entrée unique : appelé au changement de type ET à la sortie du mode
+ * test, qui restaurait auparavant `display = ''` sans condition — le bouton pH
+ * restait alors affiché en colorimétrique.
+ */
+function _syncBtnGraphPrincipal() {
+  const btnPh = document.getElementById('btn-toggle-graph-ph');
+  if (!btnPh) return;
+  if (state.titrageType === 'phmetrique') {
+    btnPh.style.display = '';
+    btnPh.textContent = "Afficher l'évolution du pH";
+    btnPh.classList.toggle('active', !!state.titrageShowGraphPH);
+  } else if (state.titrageType === 'conductimetrique') {
+    btnPh.style.display = '';
+    btnPh.textContent = "Afficher l'évolution de la conductivité";
+    btnPh.classList.toggle('active', !!state.titrageShowGraphSigma);
+  } else {
+    btnPh.style.display = 'none';
+  }
+}
+
+/**
  * (Re)peuple le sélecteur de solution titrée selon le type de titrage.
- * - colorimétrique         : TITRAGE_MODE_REACTIONS (8 entrées)
- * - pH-métrique            : TITRAGE_PH_REACTIONS   (HCl, CH₃COOH)
- * - conductimétrique       : TITRAGE_COND_REACTIONS (HCl pour l'instant)
- * Préserve la sélection courante si possible.
+ * - colorimétrique     : TITRAGE_MODE_REACTIONS (8 entrées)
+ * - pH-métrique        : TITRAGE_PH_REACTIONS   (11 entrées : acides et bases,
+ *                        forts et faibles ; les précipitations sont exclues)
+ * - conductimétrique   : TITRAGE_COND_REACTIONS (13 entrées, dont 3 précipitations)
+ *
+ * La `value` de chaque option est l'index dans le tableau **source**, pas la
+ * position dans la liste : les deux diffèrent dès qu'une entrée est filtrée.
+ * Préserve la sélection courante si elle est toujours proposée, sinon retombe
+ * sur la première option — en resynchronisant l'index dans `state`.
  */
 function populateTitrageRxnSelect() {
   const sel = document.getElementById('sel-rxn-titrage');
   if (!sel) return;
-  let source;
-  let idx;
+  let source, idx, stateKey;
   if (state.titrageType === 'phmetrique') {
-    source = TITRAGE_PH_REACTIONS;
-    idx = state.titragePhRxnIdx || 0;
+    source = TITRAGE_PH_REACTIONS;   stateKey = 'titragePhRxnIdx';
   } else if (state.titrageType === 'conductimetrique') {
-    source = TITRAGE_COND_REACTIONS;
-    idx = state.titrageCondRxnIdx || 0;
+    source = TITRAGE_COND_REACTIONS; stateKey = 'titrageCondRxnIdx';
   } else {
-    source = TITRAGE_MODE_REACTIONS;
-    idx = state.titrageRxnModeIdx || 0;
+    source = TITRAGE_MODE_REACTIONS; stateKey = 'titrageRxnModeIdx';
   }
+  idx = state[stateKey] || 0;
+
   sel.innerHTML = '';
   source.forEach((entry, i) => {
     // En mode pH-métrique, exclure les réactions de précipitation
@@ -422,18 +438,17 @@ function populateTitrageRxnSelect() {
     opt.value = i; opt.textContent = entry.label;
     sel.appendChild(opt);
   });
-  // S'assurer que l'index courant est valide (peut avoir changé si une
-  // réaction de précipitation était sélectionnée avant le basculement)
-  const validIdx = Math.min(idx, source.filter((e, i) =>
-    !(state.titrageType === 'phmetrique' && e.precipitationOnly)
-  ).length - 1);
-  // Sélectionner la valeur : chercher l'option avec la valeur correspondante
+
   const opts = Array.from(sel.options);
-  const found = opts.find(o => parseInt(o.value) === idx);
+  if (opts.length === 0) return;
+  const found = opts.find(o => parseInt(o.value, 10) === idx);
   if (found) {
     sel.value = String(idx);
-  } else if (opts.length > 0) {
+  } else {
+    // L'entrée sélectionnée n'est plus proposée (filtrée) : on retombe sur la
+    // première ET on met state à jour, sinon le select et l'état divergent.
     sel.value = opts[0].value;
+    state[stateKey] = parseInt(opts[0].value, 10);
   }
 }
 
@@ -494,18 +509,47 @@ function onPasAcquisitionChange(val) {
   const pas = parseFloat(val);
   if (!Number.isFinite(pas) || pas <= 0) return;
   state.titragePasAcquisition = pas;
-  // Ne pas régénérer les points existants : le nouveau pas s'applique
-  // uniquement aux prochains ajouts de titrant.
+  // Régénération intégrale de la série de mesures selon le nouveau pas.
+  // L'alternative (n'appliquer le pas qu'aux ajouts suivants) laissait
+  // cohabiter deux espacements sur la même courbe, illisible pour l'élève.
+  if (typeof _rebuildExpPoints === 'function') _rebuildExpPoints();
+  if (typeof _drawMainGraph    === 'function') _drawMainGraph();
+}
+
+/**
+ * Coefficients stœchiométriques (titré / titrant) de la réaction courante,
+ * **quel que soit le mode de titrage**.
+ *
+ * Même convention que `_calcVeq()` :
+ *   Veq = (n_titré / coeffTitree) × coeffTitrante / C_titrante
+ *
+ * - colorimétrique : coeffs de TITRAGE_REACTIONS via entry.rxnIdx (5:1, 2:5…)
+ * - pH-métrique    : 1:1 (tous les couples acide/base du tableau)
+ * - conductimétrique : 1:1, sauf précipitation où les coeffs sont portés par
+ *   l'entrée elle-même (Mg²⁺ + 2 HO⁻ → 1:2).
+ */
+function _coeffsTitrageCourants() {
+  const entry = (typeof _getRxnEntry === 'function') ? _getRxnEntry() : null;
+  if (!entry) return { coeffTitree: 1, coeffTitrante: 1 };
+  if ((entry.titre || {}).type === 'precipitation') {
+    return {
+      coeffTitree:   entry.coeffTitree   || 1,
+      coeffTitrante: entry.coeffTitrante || 1,
+    };
+  }
+  const eT  = (entry.especes || []).find(e => e.role === 'titree');
+  const eTt = (entry.especes || []).find(e => e.role === 'titrante');
+  return {
+    coeffTitree:   eT  ? (eT.coeff  || 1) : 1,
+    coeffTitrante: eTt ? (eTt.coeff || 1) : 1,
+  };
 }
 
 /** Génère une concentration titrée aléatoire et adapte la titrante */
 function titrageConcAlea() {
-  // Récupérer les coefficients stœchiométriques de la réaction courante
-  const rxnEntry       = TITRAGE_MODE_REACTIONS[state.titrageRxnModeIdx || 0];
-  const especeTitree   = rxnEntry.especes.find(e => e.role === 'titree');
-  const especeTitrante = rxnEntry.especes.find(e => e.role === 'titrante');
-  const coeffTitree    = especeTitree   ? especeTitree.coeff   : 1;
-  const coeffTitrante  = especeTitrante ? especeTitrante.coeff : 1;
+  // Coefficients de la réaction courante — le bouton est visible dans les
+  // trois modes, on ne peut donc pas lire TITRAGE_MODE_REACTIONS en dur.
+  const { coeffTitree, coeffTitrante } = _coeffsTitrageCourants();
 
   const V1 = parseFloat(document.getElementById('sel-v1').value) * 1e-3; // en L
   const C_MIN = 1e-5, C_MAX = 9.5e-1;
@@ -630,10 +674,14 @@ function _applyChartsLayout() {
   const btnDerivee      = document.getElementById('btn-courbe-derivee');
   const btnTangentes    = document.getElementById('btn-methode-tangentes');
   const btnTracerDroites = document.getElementById('btn-tracer-droites');
+  const btnIndicateur   = document.getElementById('btn-ph-indicateur');
   const isCond = (state.titrageType === 'conductimetrique');
   if (btnDerivee)       btnDerivee.style.display       = isCond ? 'none' : '';
   if (btnTangentes)     btnTangentes.style.display      = isCond ? 'none' : '';
   if (btnTracerDroites) btnTracerDroites.style.display  = isCond ? '' : 'none';
+  // "Indicateur coloré" colorie le graphe pH=f(V) : sans objet en conductimétrie
+  // (le canvas est partagé, un clic y repeindrait la courbe pH par-dessus σ).
+  if (btnIndicateur)    btnIndicateur.style.display     = isCond ? 'none' : '';
   // Masquer tout le panneau en mode colorimétrique (pas de graphe principal)
   const btnsAnalyse = document.getElementById('ph-analysis-btns');
   if (btnsAnalyse) {
@@ -2834,10 +2882,22 @@ function _syncPanelToState() {
 
   if (v1El)   state.titrageV1            = parseFloat(v1El.value)   || 20;
   if (veauEl) state.titrageVeau          = parseFloat(veauEl.value) || 0;
+
+  /* Concentrations : l'écoute se fait sur `input`, donc on passe ici pendant
+     la saisie — y compris quand le champ est momentanément vide ("" → NaN)
+     ou n'a qu'un signe. On conserve alors la valeur précédente de state
+     plutôt que de propager un NaN dans les couleurs, les graphes et le
+     calcul de pH (fill="rgb(NaN,NaN,NaN)", axes cassés…). */
+  const _conc = (elMant, elExp, precedent) => {
+    const m = parseFloat(elMant.value);
+    const e = parseInt(elExp.value, 10);
+    if (!Number.isFinite(m) || !Number.isFinite(e) || m <= 0) return precedent;
+    return m * Math.pow(10, e);
+  };
   if (ctMant && ctExp)
-    state.titrageConcTitrante = parseFloat(ctMant.value) * Math.pow(10, parseInt(ctExp.value));
+    state.titrageConcTitrante = _conc(ctMant, ctExp, state.titrageConcTitrante);
   if (crMant && crExp)
-    state.titrageConcTitree   = parseFloat(crMant.value) * Math.pow(10, parseInt(crExp.value));
+    state.titrageConcTitree   = _conc(crMant, crExp, state.titrageConcTitree);
 }
 
 /** Branche les listeners sur les inputs du panel pour resynchroniser en temps réel. */
@@ -2848,11 +2908,15 @@ function _initPanelListeners() {
   const ids = ['sel-v1', 'sel-veau',
                'conc-titrante-mantisse', 'conc-titrante-exp',
                'conc-titre-mantisse',    'conc-titre-exp'];
+  // `change` uniquement : sur les champs numériques, `input` se déclenche à
+  // chaque frappe et relançait une réinitialisation complète du titrage
+  // (graphes, sphères, liquides) par caractère saisi — y compris sur les
+  // valeurs intermédiaires. `change` couvre la validation clavier, la perte de
+  // focus et les flèches du spinner, ce qui suffit ici.
   ids.forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('change', () => { _syncPanelToState(); reinitialiserTitrage(); });
-    el.addEventListener('input',  () => { _syncPanelToState(); reinitialiserTitrage(); });
   });
 
   // Sélecteur "Type de titrage" : pilote l'affichage des éléments pH-mètre
@@ -3141,7 +3205,7 @@ function choisirIndicateur(idx) {
   _updateIndicateurBtn();
   updateLiquides();
   if (typeof updatePhAnalysisBtns === 'function') updatePhAnalysisBtns();
-  if (typeof drawTitragePhGraph   === 'function') drawTitragePhGraph();
+  if (typeof _drawMainGraph       === 'function') _drawMainGraph();
 }
 
 /** Retire l'indicateur actif et ferme la modal. */
@@ -3151,7 +3215,7 @@ function retirerIndicateur() {
   _updateIndicateurBtn();
   updateLiquides();
   if (typeof updatePhAnalysisBtns === 'function') updatePhAnalysisBtns();
-  if (typeof drawTitragePhGraph   === 'function') drawTitragePhGraph();
+  if (typeof _drawMainGraph       === 'function') _drawMainGraph();
 }
 
 /** Ferme la modal sans changer la sélection. */
@@ -3453,16 +3517,24 @@ function _especesCreerSphere(id, role, zone, opts = {}) {
 
 /**
  * Initialise les espèces pour la réaction courante :
- *  - Reset state.titrageEspecesVisible (cochés sauf spectateurs).
+ *  - Recalcule state.titrageEspecesVisible (cochés sauf spectateurs), en
+ *    conservant les choix déjà faits par l'utilisateur dans la légende.
  *  - Recalcule V_par_sphere_titrant à partir de Veq.
  *  - Vide la liste des sphères et la file d'éjection.
  */
 function _initEspeces() {
   const entry = _especesGetRxnEntry();
+  // On repart des choix courants : _especesRebuild() est appelé par
+  // reinitialiserTitrage(), lui-même déclenché au moindre changement de
+  // concentration ou de volume. Repartir d'un objet vide décochait
+  // silencieusement les spectateurs que l'utilisateur venait d'afficher.
+  const visibiliteAvant = state.titrageEspecesVisible || {};
   state.titrageEspecesVisible = {};
   if (entry && entry.especes) {
     entry.especes.forEach(e => {
-      state.titrageEspecesVisible[e.id] = (e.role !== 'spectateur');
+      state.titrageEspecesVisible[e.id] = (e.id in visibiliteAvant)
+        ? visibiliteAvant[e.id]              // choix explicite conservé
+        : (e.role !== 'spectateur');         // défaut : spectateurs décochés
     });
   }
   // V par sphère de titrant : à l'équivalence, on doit avoir exactement
@@ -3532,22 +3604,43 @@ function _genererSpheres() {
         }
       }
       // Spectateurs apportés par le titrant déjà versé.
+      // Comptage par TRANCHE (et non par sphère de titrant) pour rester
+      // cohérent avec _creerTrancheSpheres, qui en crée
+      // round(nuTitrant × coeffTitrant) par tranche versée.
       if (e.role === 'spectateur' && e.coeffTitrant != null && e.coeffTitrant > 0) {
-        const nTitrantVersees = Math.floor(state.titrageVverse / (_especesVparSphere || Infinity));
-        const n = Math.round(nTitrantVersees * e.coeffTitrant);
+        const nParTranche = Math.max(1, Math.round(nuTitrant * e.coeffTitrant));
+        const n = nTranchesVersees * nParTranche;
         for (let i = 0; i < n; i++) {
           _especesSpheres.push(_especesCreerSphere(e.id, 'spectateur', 'becher'));
         }
       }
     });
     // Produits déjà formés : on les ajoute comme sphères brownien dans le bécher.
-    const eProduits = especes.filter(e => e.role === 'produit');
+    // ⚠ Inclure le rôle 'precipite' (Mg(OH)₂, AgCl, BaSO₄) : il est produit par
+    // _especesReactionGroupee au même titre que 'produit', il doit donc être
+    // reconstruit ici aussi. On propage `ep.role` tel quel — _renderSpheres
+    // dessine un carré gris pour 'precipite' et un cercle coloré sinon.
+    const eProduits = especes.filter(e => e.role === 'produit' || e.role === 'precipite');
     eProduits.forEach(ep => {
       const nProduits = Math.round(nTitresConsommes * (ep.coeff || 1) / nuTitre);
       for (let i = 0; i < nProduits; i++) {
-        _especesSpheres.push(_especesCreerSphere(ep.id, 'produit', 'becher'));
+        _especesSpheres.push(_especesCreerSphere(ep.id, ep.role, 'becher'));
       }
     });
+    // Titrant en excès : au-delà de l'équivalence, les tranches versées ne
+    // trouvent plus de titré et restent en brownien dans le bécher (c'est ce
+    // que fait _especesTenterReactionPaquet en temps réel). Sans ça, activer
+    // le mode après Veq perdait tout l'excès — pourtant c'est précisément lui
+    // qui colore le bécher (MnO₄⁻, I₂) ou porte la conductivité (HO⁻).
+    if (eTitrante) {
+      const nTranchesReagies = nTitresConsommes / nuTitre;
+      const nTitrantExces    = Math.round((nTranchesVersees - nTranchesReagies) * nuTitrant);
+      for (let i = 0; i < nTitrantExces; i++) {
+        _especesSpheres.push(_especesCreerSphere(eTitrante.id, 'titrante', 'becher', {
+          _reagit: false,   // plus aucun titré disponible : sphère inerte
+        }));
+      }
+    }
   }
 
   // ── BURETTE : titrant + spectateurs apportés (coeffTitrant) ──
@@ -4679,18 +4772,12 @@ function _titrageTestTirerReaction(type) {
 
 // ── Tire des concentrations aléatoires (adapté pour pH/conducti aussi) ───
 function _titrageTestTirerConcentrations(type) {
-  // Pour pH-métrique et conductimétrique, la stœchiométrie est 1:1
-  // Pour colorimétrique, on lit les coefficients de la réaction
-  let coeffTitree = 1, coeffTitrante = 1;
-  if (type === 'colorimetrique') {
-    const entry = TITRAGE_MODE_REACTIONS[state.titrageRxnModeIdx || 0];
-    if (entry) {
-      const eT  = entry.especes.find(e => e.role === 'titree');
-      const eTt = entry.especes.find(e => e.role === 'titrante');
-      if (eT)  coeffTitree   = eT.coeff;
-      if (eTt) coeffTitrante = eTt.coeff;
-    }
-  }
+  // Coefficients de la réaction tirée juste avant par _titrageTestTirerReaction.
+  // Ne PAS supposer 1:1 hors colorimétrique : le tirage conductimétrique pioche
+  // dans tout TITRAGE_COND_REACTIONS, précipitations comprises, et
+  // Mg²⁺ + 2 HO⁻ est en 1:2 — le Veq visé était alors doublé (jusqu'à ~46 mL
+  // au lieu des 23 mL max de la plage cible).
+  const { coeffTitree, coeffTitrante } = _coeffsTitrageCourants();
 
   const V1 = (parseFloat(document.getElementById('sel-v1').value) || 20) * 1e-3;
   const C_MAX = 9.5e-1;
@@ -4780,14 +4867,13 @@ function setTitrageTestUI(actif) {
     }
   });
 
-  // btn-toggle-graph-ph : masquer en mode colorimetrique-ac, restaurer sinon
-  const btnTogglePh = document.getElementById('btn-toggle-graph-ph');
-  if (btnTogglePh) {
-    if (actif && titrageTestState.lastType === 'colorimetrique-ac') {
-      btnTogglePh.style.display = 'none';
-    } else {
-      btnTogglePh.style.display = '';
-    }
+  // btn-toggle-graph-ph : masquer en mode colorimetrique-ac (le dispositif
+  // affiché est colorimétrique), sinon s'aligner sur le mode courant.
+  if (actif && titrageTestState.lastType === 'colorimetrique-ac') {
+    const btnTogglePh = document.getElementById('btn-toggle-graph-ph');
+    if (btnTogglePh) btnTogglePh.style.display = 'none';
+  } else {
+    _syncBtnGraphPrincipal();
   }
   // Graphe pH : forcer masqué en mode colorimetrique-ac
   const chartPh = document.getElementById('titrage-chart-ph-panel');
@@ -4795,10 +4881,12 @@ function setTitrageTestUI(actif) {
     chartPh.style.display = 'none';
   }
 
-  // Déverrouiller btn-toggle-graph-ph si on sort du mode (au cas où il avait été lock)
+  // Déverrouiller btn-toggle-graph-ph si on sort du mode (au cas où il avait été lock).
+  // La visibilité est gérée par _syncBtnGraphPrincipal() ci-dessus : ne pas
+  // forcer display='' ici, sinon le bouton pH réapparaît en colorimétrique.
   if (!actif) {
     const btnPh = document.getElementById('btn-toggle-graph-ph');
-    if (btnPh) { btnPh.disabled = false; btnPh.classList.remove('titrage-test-locked'); btnPh.style.display = ''; }
+    if (btnPh) { btnPh.disabled = false; btnPh.classList.remove('titrage-test-locked'); }
   }
 
   // Onglet Principe
@@ -5137,7 +5225,7 @@ function quitterModeTestTitrage() {
     _updateIndicateurBtn();
     updateLiquides();
     if (typeof updatePhAnalysisBtns === 'function') updatePhAnalysisBtns();
-    if (typeof drawTitragePhGraph   === 'function') drawTitragePhGraph();
+    if (typeof _drawMainGraph       === 'function') _drawMainGraph();
   }
 
   // Désactiver le masque "Cacher la solution titrée" s'il est actif

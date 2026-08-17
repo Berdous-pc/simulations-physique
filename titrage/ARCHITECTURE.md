@@ -14,14 +14,15 @@ titrage/
 ├── css/
 │   └── style.css
 └── js/
-    ├── sim.js       ← state global, calculs pH/σ, canvas molécules (chargé en premier)
-    ├── data.js      ← réactions, couleurs, indicateurs colorés
+    ├── data.js      ← réactions, couleurs, indicateurs colorés (chargé en premier)
+    ├── sim.js       ← state global, calculs pH/σ, canvas molécules
     ├── graph.js     ← graphes n=f(V), pH=f(V), σ=f(V), hover, points expérimentaux
     └── ui.js        ← interface complète : modes Principe & Titrage, mode test (chargé en dernier)
 ```
 
 Ordre de chargement critique (scope global, pas de modules ES) :
-`sim.js` → `data.js` → `graph.js` → `ui.js`
+`data.js` → `sim.js` → `graph.js` → `ui.js`
+(`ui.js` se termine par l'appel à `init()`, tout doit être défini avant.)
 
 ---
 
@@ -79,17 +80,48 @@ Interface de simulation du dispositif de titrage. Accessible via l'onglet **"Tit
 | 6 | Permanganate de potassium (MnO₄⁻) | Sulfate de fer(II) (Fe²⁺) | 9 |
 | 7 | Acide ascorbique (C₆H₈O₆) | Diiode (I₂) | 10 |
 
-### `TITRAGE_PH_REACTIONS` (mode pH-métrique)
+### `TITRAGE_PH_REACTIONS` (11 entrées — mode pH-métrique)
+
+Index courant : `state.titragePhRxnIdx`.
 
 | Index | Espèce titrée | Type | pKa | Titrant |
 |---|---|---|---|---|
 | 0 | HCl (H₃O⁺ ; Cl⁻) | acide_fort | — | NaOH (Na⁺ ; HO⁻) |
-| 1 | CH₃COOH | acide_faible | 4,76 | NaOH (Na⁺ ; HO⁻) |
+| 1 | CH₃COOH | acide_faible | 4,76 | NaOH |
+| 2 | HF | acide_faible | 3,17 | NaOH |
+| 3 | HCOOH | acide_faible | 3,75 | NaOH |
+| 4 | C₂H₄OHCOOH (ac. lactique) | acide_faible | 3,86 | NaOH |
+| 5 | C₆H₅OH (phénol) | acide_faible | 9,95 | NaOH |
+| 6 | NaOH (Na⁺ ; HO⁻) | base_forte | — | HCl (H₃O⁺ ; Cl⁻) |
+| 7 | NH₃ | base_faible | 9,25 | HCl |
+| 8 | CH₃COO⁻ | base_faible | 4,76 | HCl |
+| 9 | CH₃NH₂ | base_faible | 10,64 | HCl |
 
-### `TITRAGE_COND_REACTIONS` (mode conductimétrique)
+> Le sélecteur filtre les entrées `precipitationOnly` en mode pH-métrique.
+> Ce tableau n'en contient aucune : le filtre est défensif (cf.
+> `populateTitrageRxnSelect`), il permet d'ajouter une précipitation au
+> tableau conducti sans la voir apparaître en pH-métrie.
 
-Réactions avec ions conducteurs suivis. Structure similaire à `TITRAGE_MODE_REACTIONS`.
-Index courant : `state.titrageCondRxnIdx`.
+### `TITRAGE_COND_REACTIONS` (13 entrées — mode conductimétrique)
+
+Index courant : `state.titrageCondRxnIdx`. Mêmes couples acide-base que
+`TITRAGE_PH_REACTIONS`, **plus 3 réactions de précipitation** marquées
+`precipitationOnly: true`, qui portent leur stœchiométrie sur l'entrée
+elle-même (`coeffTitree` / `coeffTitrante`) et non sur les espèces :
+
+| Espèce titrée | Titrant | Précipité | Stœchio |
+|---|---|---|---|
+| Mg²⁺ (MgCl₂) | HO⁻ (NaOH) | Mg(OH)₂↓ | 1:2 |
+| Cl⁻ (NaCl) | Ag⁺ (AgNO₃) | AgCl↓ | 1:1 |
+| SO₄²⁻ (Na₂SO₄) | Ba²⁺ (BaCl₂) | BaSO₄↓ | 1:1 |
+
+Chaque espèce porte une conductivité molaire `LAMBDA_IONIQUE[id]` ; les
+espèces sans λ (précipités, molécules neutres) ne contribuent pas à σ.
+
+> ⚠ Toute lecture de stœchiométrie doit passer par `_coeffsTitrageCourants()`
+> (ui.js), qui gère les trois modes **et** le cas précipitation. Lire
+> `TITRAGE_MODE_REACTIONS` en dur donne des coefficients faux hors
+> colorimétrie.
 
 ### `INDICATEURS_COLORES`
 
@@ -143,7 +175,7 @@ Sélectionné par `state.titrageIndicateur` (index ou `null`).
 | `titrageBecherNominal` | `100` | Volume nominal bécher (mL), recalculé au reinit |
 | `titrageAmidon` | `false` | Empois d'amidon actif (one-way, reset au reinit) |
 | `titrageIndicateur` | `null` | Index dans `INDICATEURS_COLORES`, ou `null` |
-| `titragePasAcquisition` | `1.0` | Pas entre deux points du graphe n=f(V) (mL) |
+| `titragePasAcquisition` | `1.0` | Pas entre deux points expérimentaux des graphes pH=f(V) / σ=f(V) (mL) — 0,1 / 0,5 / 1 / 2 |
 
 #### Mode Titrage — pH-métrique
 
@@ -240,7 +272,9 @@ Sélectionné par `state.titrageIndicateur` (index ou `null`).
 | `onTypeTitrageChange(val)` | Bascule colorimétrique / pH-métrique / conductimétrique : classe CSS `body.titrage-ph`, viewBox SVG, resync overlays. |
 | `onTitrageRxnChange(val)` | Changement de réaction : state, équation, reinit, légende, amidon. |
 | `populateTitrageRxnSelect()` | Repeuple `#sel-rxn-titrage` selon le type de titrage courant. |
-| `onPasAcquisitionChange(val)` | Met à jour le pas d'acquisition du graphe n=f(V). |
+| `onPasAcquisitionChange(val)` | Met à jour le pas d'acquisition, **régénère toute la série de points** depuis V=0 (`_rebuildExpPoints`) et redessine. |
+| `_coeffsTitrageCourants()` | Coeffs stœchio titré/titrant du mode courant (les 3 modes + précipitation). |
+| `_syncBtnGraphPrincipal()` | Affiche/masque et libelle le bouton du graphe pH ou σ selon `titrageType`. |
 | `titrageConcAlea()` | Tire des concentrations aléatoires avec Veq ∈ [7,23] mL, C_titrante ∈ [1e-5, 0.95]. |
 | `reinitialiserTitrage()` | Remet à zéro volume, amidon, graphe, liquides, filet. |
 | `ajouterTitrant(mL)` | Ajoute du volume, met à jour graphe et liquides. |
@@ -583,11 +617,35 @@ Section repliable `#especes-legende-section` intégrée à `#burette-box` (appar
 ```js
 const ESPECES = {
   R: 1.2, N_TITRE_INIT: 20,
-  V_BROWN: 3.5, V_BROWN_BURETTE: 2.0, DAMPING: 0.88,
+  V_BROWN: 12.0, V_BROWN_BURETTE: 2.5, DAMPING: 0.82,
   MIG_DURATION: 0.45, FLASH_DURATION: 0.25,
-  DESCENTE_VITESSE: 85, MAX_EJECT_PER_FRAME: 3,
+  DESCENTE_VITESSE: 85,
+  MAX_TRANCHES_DESCENTE_PAR_FRAME: 2,
+  GRAD25_Y: 12.98 + 25 * 6.282,   // ≈ 170,03
+  CLIP_BOT_BURETTE: 214,
 };
 ```
+
+### Reconstruction d'un titrage déjà commencé
+
+`_genererSpheres()` doit recréer **tout** l'état du bécher tel qu'il serait si
+le mode avait été actif depuis V = 0 — le bouton peut être activé en cours de
+manipulation. Le comptage se fait en **tranches** (`nTranchesVersees`), jamais
+en sphères, pour rester cohérent avec `_creerTrancheSpheres` :
+
+| À recréer | Quantité |
+|---|---|
+| Titré restant | `N_TITRE_INIT − nTitresConsommes` |
+| Spectateurs du titré | `N_TITRE_INIT × coeffTitree` (constant) |
+| Spectateurs du titrant | `nTranchesVersees × round(ν_titrant × coeffTitrant)` |
+| Produits **et précipités** | `nTitresConsommes × coeff / ν_titré` |
+| Titrant en excès (après Veq) | `(nTranchesVersees − nTitresConsommes/ν_titré) × ν_titrant` |
+
+> ⚠ Les précipités portent `role: 'precipite'`, pas `'produit'` : tout filtre
+> par rôle doit tester les deux (`_especesReaction`, `_especesReactionGroupee`,
+> `_genererSpheres`, `_calcPointAt`, `buildChartLegende`). Le rôle doit aussi
+> être **propagé tel quel** à `_especesCreerSphere` — `_renderSpheres` dessine
+> un `<rect>` gris pour `'precipite'` et un `<circle>` coloré sinon.
 
 ### Fonctions (`ui.js`)
 

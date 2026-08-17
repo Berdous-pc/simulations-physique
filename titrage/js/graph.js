@@ -202,7 +202,10 @@ function _sampleSigmaCurve(vMax) {
   const vEq = (Cb > 0) ? (Ca * V1 / Cb) : null;
 
   const dvBase = 25 / 400;        // ~16 points/mL hors zone fine
-  const dvFine = dvBase / 20;     // grille fine
+  // σ = f(V) est constituée de segments quasi-linéaires : une grille fine
+  // sert seulement à bien capturer la rupture de pente à l'équivalence.
+  // dvBase/5 ≈ 0,0125 mL suffit largement (≈ 0,3 px entre deux points).
+  const dvFine = dvBase / 5;      // grille fine
   const wFine  = Math.max(0.5, vMax * 0.05);
 
   const vols = new Set();
@@ -989,11 +992,16 @@ function _samplePhCurve(vMax) {
   // Soit ~16 points/mL — largement suffisant hors saut.
   const dvBase = 25 / 400;        // 0,0625 mL
 
-  // Pas ultra-fin autour de l'équivalence.
-  // dvFine = dvBase / 50 ≈ 0,00125 mL → ~1600 points sur ±1 mL.
-  // C'est nécessaire pour que le hover trouve un point proche en pixels
-  // même dans la zone quasi verticale du saut (surtout acides/bases forts).
-  const dvFine = dvBase / 50;     // ~0,00125 mL
+  // Pas fin autour de l'équivalence, pour que le hover trouve un point proche
+  // en pixels même dans la zone quasi verticale du saut.
+  //
+  // Dimensionnement : le graphe fait au plus ~600 px de large pour 25 mL, soit
+  // ~24 px/mL. dvBase/10 ≈ 0,00625 mL donne donc ~0,15 px entre deux points —
+  // déjà 6 échantillons par pixel. L'ancien dvBase/50 en produisait 30 par
+  // pixel, invisibles à l'écran mais recalculés à chaque redraw : la courbe est
+  // ré-échantillonnée toutes les 50 ms pendant le versement, chaque point
+  // coûtant une résolution complète de l'électroneutralité par bissection.
+  const dvFine = dvBase / 10;     // ~0,00625 mL
 
   // Demi-largeur de la fenêtre fine.
   // On prend le max entre 1 mL fixe et 8 % du domaine,
@@ -1657,14 +1665,12 @@ function initPhChartCanvas() {
  * Renvoie null si en dehors de la zone de tracé.
  */
 function _phPxToVPh(mx, my) {
-  const canvas = document.getElementById('titrage-chart-ph');
-  if (!canvas) return null;
-  const W = canvas.clientWidth, H = canvas.clientHeight;
-  const dim   = Math.min(W, H);
-  const pad   = { l: Math.round(dim * 0.10), r: Math.round(dim * 0.04),
-                  t: Math.round(dim * 0.08), b: Math.round(dim * 0.12) };
-  const gw = W - pad.l - pad.r;
-  const gh = H - pad.t - pad.b;
+  // IMPORTANT : réutiliser le layout réellement employé par drawTitragePhGraph
+  // (mémorisé dans _phLayout à chaque dessin). Recalculer des marges
+  // approchées ici décalait le point cliqué — notamment en vertical, car
+  // pad.t dépend de la hauteur réelle de la barre de boutons overlay.
+  if (!_phLayout || !_phLayout.pad) return null;
+  const { pad, gw, gh } = _phLayout;
   if (gw <= 0 || gh <= 0) return null;
   if (mx < pad.l || mx > pad.l + gw || my < pad.t || my > pad.t + gh) return null;
 
@@ -2037,7 +2043,9 @@ function buildChartLegende() {
         _chartVisible[e.id] = cb.checked;
         lbl.classList.toggle('unchecked', !cb.checked);
         drawTitrageGraph();
-        _chartAdjustCanvasToLegend();
+        // La hauteur de la légende peut changer (retour à la ligne des items) :
+        // resynchroniser la taille du canvas au prochain frame.
+        requestAnimationFrame(_syncCanvasSize);
       });
 
       const swatch = document.createElement('span');
@@ -2143,9 +2151,12 @@ function toggleModelCourbe() {
 function togglePhIndicateur() {
   const btn = document.getElementById('btn-ph-indicateur');
   if (!btn || btn.disabled) return;
+  // Outil réservé au graphe pH=f(V) : ne rien faire hors mode pH-métrique
+  // (le canvas #titrage-chart-ph est partagé avec σ=f(V)).
+  if (state.titrageType !== 'phmetrique') return;
   _phShowIndicateur = !_phShowIndicateur;
   btn.classList.toggle('active', _phShowIndicateur);
-  drawTitragePhGraph();
+  _drawMainGraph();
 }
 
 /**
