@@ -496,6 +496,8 @@ input[type=number]:focus, input[type=text]:focus { outline: none; border-color: 
 #continu-time-display {
   background: #fff; border: 1px solid #c8c0b4; border-radius: 6px;
   padding: 6px 9px; font-size: 13px; color: #5a6a78; text-align: center;
+  font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ── Bouton agrandissement récipient ── */

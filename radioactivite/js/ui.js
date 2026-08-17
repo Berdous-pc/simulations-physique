@@ -835,14 +835,14 @@ function updateContinuTimeDisplay(t) {
     (state.seriesContinu.length > 0 ? state.seriesContinu[state.seriesContinu.length - 1] : null);
   const tMax   = serie ? serie.duree : (Math.LN2 / state.lambda) * state.nThalfContinu;
   const { factor: tFactor } = pickTimeUnit(tMax);
-  const tStr = formatTimeInUnit(t, tFactor);
+  const tStr = formatTimeInUnitFixed(t, tFactor);
 
   let nVal = '—';
   if (serie) {
     const N = serie.n0 * Math.exp(-serie.lambda * t);
     nVal = state.graphModeContinu === 'N'
-      ? (N / 1e23).toFixed(3) + ' ×10²³'
-      : formatSci(serie.lambda * N) + ' s⁻¹';
+      ? (N / 1e23).toFixed(2) + ' ×10²³'
+      : formatSciFixed(serie.lambda * N) + ' s⁻¹';
   }
   const prefix = state.graphModeContinu === 'N' ? 'N' : 'A';
   document.getElementById('continu-time-display').textContent = 't = ' + tStr + '  |  ' + prefix + ' = ' + nVal;

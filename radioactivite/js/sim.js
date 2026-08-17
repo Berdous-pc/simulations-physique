@@ -253,6 +253,27 @@ function formatTimeInUnit(t, factor) {
   return val.toFixed(decimals).replace(/\.?0+$/, '') + ' ' + unitSuffix(factor);
 }
 
+/* Variante à décimales fixes (jamais de zéros retirés) : utilisée pour les
+   affichages qui se rafraîchissent en continu pendant l'animation, afin que
+   la largeur du texte reste stable et que la valeur ne "vibre" pas. */
+function formatTimeInUnitFixed(t, factor) {
+  const val = t / factor;
+  const decimals = Math.abs(val) < 100 ? 2 : 1;
+  return val.toFixed(decimals) + ' ' + unitSuffix(factor);
+}
+
+/* Idem pour l'écriture scientifique, sans retrait des zéros. */
+function formatSciFixed(n) {
+  if (n === 0) return '0.00';
+  const exp    = Math.floor(Math.log10(Math.abs(n)));
+  const man    = n / Math.pow(10, exp);
+  const manStr = man.toFixed(2);
+  if (exp === 0) return manStr;
+  const supMap = {'0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹','-':'⁻'};
+  const expStr = String(exp).split('').map(c => supMap[c] || c).join('');
+  return `${manStr}×10${expStr}`;
+}
+
 function unitSuffix(factor) {
   if (factor === 1e-9)      return 'ns';
   if (factor === 1e-6)      return 'µs';
