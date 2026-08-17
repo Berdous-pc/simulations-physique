@@ -635,8 +635,7 @@ function animStepContinu(now) {
       state.seriesContinu.push(state.animCurrentSerie);
       state.animCurrentSerie = null;
       state.viewContinu = computeFullViewContinu();
-      document.getElementById('continu-progress').textContent = 'Animation terminée.';
-      updateContinuSeriesCount(); renderLegendContinu();
+      renderLegendContinu();
     }
   }
   state.animSimTime = tSim;
@@ -717,8 +716,7 @@ function continuerEtRemplacer() {
   state.animSimTimeAtStart = 0;
   state.viewContinu        = null;
 
-  document.getElementById('continu-progress').textContent = 'Animation en cours…';
-  updateContinuSeriesCount(); renderLegendContinu();
+  renderLegendContinu();
   updateContinuTimeDisplay(0);
 
   state.animPlaying   = true;
@@ -730,7 +728,6 @@ function continuerEtRemplacer() {
 
 function continuerEtAjouter() {
   if (state.seriesContinu.length >= MAX_SERIES) {
-    document.getElementById('continu-progress').textContent = 'Maximum de ' + MAX_SERIES + ' séries atteint.';
     return;
   }
   state.animPlaying = false;
@@ -750,8 +747,7 @@ function continuerEtAjouter() {
   state.animSimTimeAtStart = 0;
   state.viewContinu        = null;
 
-  document.getElementById('continu-progress').textContent = 'Animation en cours…';
-  updateContinuSeriesCount(); renderLegendContinu();
+  renderLegendContinu();
   updateContinuTimeDisplay(0);
 
   state.animPlaying   = true;
@@ -763,7 +759,7 @@ function continuerEtAjouter() {
 
 function supprimerSerieContinu(id) {
   state.seriesContinu = state.seriesContinu.filter(s => s.id !== id);
-  renderLegendContinu(); drawGraphContinu(); updateContinuSeriesCount();
+  renderLegendContinu(); drawGraphContinu();
 }
 
 function masquerSerieContinu(id) {
@@ -781,8 +777,7 @@ function razContinu() {
   state.tangentesFigContinu = [];
   document.getElementById('btn-pause').disabled = true;
   document.getElementById('btn-pause').textContent = '⏸ Pause';
-  document.getElementById('continu-progress').textContent = '';
-  updateContinuSeriesCount(); renderLegendContinu(); drawGraphContinu(); drawRecipient();
+  renderLegendContinu(); drawGraphContinu(); drawRecipient();
   updateContinuTimeDisplay(0);
 }
 
@@ -916,6 +911,10 @@ function setMode(mode) {
   document.getElementById('tab-auto').classList.toggle('active',  mode === 'auto');
   document.getElementById('sec-libre').classList.toggle('visible', mode === 'libre');
   document.getElementById('sec-auto').classList.toggle('visible',  mode === 'auto');
+  document.getElementById('controls-libre').classList.toggle('visible', mode === 'libre');
+  document.getElementById('controls-auto').classList.toggle('visible',  mode === 'auto');
+  document.getElementById('sep-valeurs').style.display   = (mode === 'auto') ? 'none' : '';
+  document.getElementById('title-valeurs').style.display = (mode === 'auto') ? 'none' : '';
   document.getElementById('params-libre').classList.toggle('visible', mode === 'libre');
   document.getElementById('params-auto').classList.toggle('visible',  mode === 'auto');
   document.getElementById('sim-area').classList.toggle('visible',       mode === 'libre');

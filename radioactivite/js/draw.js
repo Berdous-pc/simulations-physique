@@ -15,7 +15,7 @@
             getAxDims, niceStep, computeFullView,
             computeFullViewContinu, computeCurrentSerieView,
             renderTable, renderLegend, renderLegendContinu,
-            updateSeriesCount, updateContinuSeriesCount,
+            updateSeriesCount,
             drawTangenteAuto, drawTangenteContinu,
             pickTimeUnit
 ════════════════════════════════════════════════════ */
@@ -1021,11 +1021,5 @@ function renderLegendContinu() {
 function updateSeriesCount() {
   const n = state.series.length;
   document.getElementById('auto-series-count').textContent =
-    n === 0 ? '' : `${n} / ${MAX_SERIES} série(s) affichée(s)`;
-}
-
-function updateContinuSeriesCount() {
-  const n = state.seriesContinu.length;
-  document.getElementById('continu-series-count').textContent =
     n === 0 ? '' : `${n} / ${MAX_SERIES} série(s) affichée(s)`;
 }

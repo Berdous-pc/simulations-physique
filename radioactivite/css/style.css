@@ -487,8 +487,7 @@ input[type=number]:focus, input[type=text]:focus { outline: none; border-color: 
 .tangente-label .tan-close:hover { color: #fff; }
 
 #auto-progress { font-size: 14px; color: #2a6aaa; font-style: italic; text-align: center; }
-#continu-progress { font-size: 14px; color: #2a8a50; font-style: italic; text-align: center; }
-#auto-series-count, #continu-series-count { font-size: 14px; color: #7a8a96; text-align: center; }
+#auto-series-count { font-size: 14px; color: #7a8a96; text-align: center; }
 
 .speed-row { display: flex; align-items: center; gap: 8px; }
 .speed-label { font-size: 14px; color: #7a8a96; white-space: nowrap; }

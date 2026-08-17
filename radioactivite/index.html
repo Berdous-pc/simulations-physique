@@ -146,6 +146,23 @@
         </div>
 
         <hr class="sep">
+        <div class="section-title">Contrôles</div>
+
+        <div class="mode-section visible" id="controls-libre">
+          <button class="btn btn-lancer-tous" onclick="lancerTous()">Lancer tous les dés</button>
+          <button class="btn btn-lancer-gris" id="btn-lancer-gris" onclick="lancerGris()">
+            Lancer les dés aux faces grises
+          </button>
+          <button class="btn btn-raz"         onclick="razLibre()">RAZ</button>
+        </div>
+
+        <div class="mode-section" id="controls-auto">
+          <button class="btn btn-auto-run" onclick="simulerEtRemplacer()">Simuler et remplacer</button>
+          <button class="btn btn-ajouter"  id="btn-ajouter" onclick="simulerEtAjouter()">Simuler et ajouter</button>
+          <button class="btn btn-raz"      onclick="razAuto()">Tout effacer</button>
+        </div>
+
+        <hr class="sep">
         <div class="section-title">Paramètres</div>
 
         <div class="mode-section visible" id="params-libre">
@@ -182,7 +199,8 @@
           </div>
         </div>
 
-        <hr class="sep">
+        <hr class="sep" id="sep-valeurs">
+        <div class="section-title" id="title-valeurs">Valeurs</div>
 
         <div class="mode-section visible" id="sec-libre">
           <div class="readout">
@@ -193,17 +211,9 @@
             <span class="ro-label">Lancer n°</span>
             <span class="ro-value" id="ro-lancer">0</span>
           </div>
-          <button class="btn btn-raz"         onclick="razLibre()">RAZ</button>
-          <button class="btn btn-lancer-tous" onclick="lancerTous()">Lancer tous les dés</button>
-          <button class="btn btn-lancer-gris" id="btn-lancer-gris" onclick="lancerGris()">
-            Lancer les dés aux faces grises
-          </button>
         </div>
 
         <div class="mode-section" id="sec-auto">
-          <button class="btn btn-auto-run" onclick="simulerEtRemplacer()">Simuler et remplacer</button>
-          <button class="btn btn-ajouter"  id="btn-ajouter" onclick="simulerEtAjouter()">Simuler et ajouter</button>
-          <button class="btn btn-raz"      onclick="razAuto()">Tout effacer</button>
           <div id="auto-progress"></div>
           <div id="auto-series-count"></div>
         </div>
@@ -213,6 +223,34 @@
       <!-- ── SECTION CONTINU ── -->
       <div class="panel-main-section" id="section-continu">
 
+        <div class="section-title">Contrôles</div>
+
+        <button class="btn btn-auto-run" onclick="continuerEtRemplacer()">Simuler et remplacer</button>
+        <button class="btn btn-ajouter"  id="btn-ajouter-continu" onclick="continuerEtAjouter()">Simuler et ajouter</button>
+        <button class="btn btn-raz"      onclick="razContinu()">Tout effacer</button>
+
+        <hr class="sep">
+        <div class="section-title">Simulation</div>
+
+        <button class="btn btn-pause" id="btn-pause" onclick="pauseContinu()" disabled>⏸ Pause</button>
+
+        <div class="param-row">
+          <label>Temps simulé <span id="lbl-nthalf">10 t½</span></label>
+          <input type="range" id="sl-nthalf" min="1" max="12" step="1" value="10"
+                 oninput="onNthalfChange(this.value)">
+          <div class="input-hint">Durée totale simulée (en multiples de t½)</div>
+        </div>
+
+        <div class="param-row">
+          <label>Durée de l'animation <span id="lbl-speed-continu">10 s</span></label>
+          <input type="range" id="sl-speed-continu" min="0" max="4" step="1" value="3"
+                 oninput="onSpeedContinuChange(this.value)">
+          <div class="input-hint">Durée réelle de l'animation</div>
+        </div>
+
+        <div id="continu-time-display">t = 0 s  |  N = —</div>
+
+        <hr class="sep">
         <div class="section-title">Paramètres</div>
 
         <div class="param-row">
@@ -258,36 +296,6 @@
                     onclick="setContinuGraphMode('A')" style="flex:1;">A(t) = λN(t)</button>
           </div>
         </div>
-
-        <hr class="sep">
-        <div class="section-title">Simulation</div>
-
-        <div class="param-row">
-          <label>Temps simulé <span id="lbl-nthalf">10 t½</span></label>
-          <input type="range" id="sl-nthalf" min="1" max="12" step="1" value="10"
-                 oninput="onNthalfChange(this.value)">
-          <div class="input-hint">Durée totale simulée (en multiples de t½)</div>
-        </div>
-
-        <div class="param-row">
-          <label>Durée de l'animation <span id="lbl-speed-continu">10 s</span></label>
-          <input type="range" id="sl-speed-continu" min="0" max="4" step="1" value="3"
-                 oninput="onSpeedContinuChange(this.value)">
-          <div class="input-hint">Durée réelle de l'animation</div>
-        </div>
-
-        <button class="btn btn-pause" id="btn-pause" onclick="pauseContinu()" disabled>⏸ Pause</button>
-
-        <hr class="sep">
-        <div class="section-title">Séries</div>
-
-        <button class="btn btn-auto-run" onclick="continuerEtRemplacer()">Simuler et remplacer</button>
-        <button class="btn btn-ajouter"  id="btn-ajouter-continu" onclick="continuerEtAjouter()">Simuler et ajouter</button>
-        <button class="btn btn-raz"      onclick="razContinu()">Tout effacer</button>
-
-        <div id="continu-progress"></div>
-        <div id="continu-series-count"></div>
-        <div id="continu-time-display">t = 0 s  |  N = —</div>
 
       </div><!-- #section-continu -->
 
