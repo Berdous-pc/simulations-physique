@@ -1204,9 +1204,14 @@ function _drawCordeBeads(ctx) {
     // sur toute la plage du curseur : rayon minimal à μ = 0,1, maximal à
     // μ = 4 — ce maximum est volontairement modeste, des sphères plus
     // grosses se toucheraient et la corde redeviendrait un trait plein.
-    var muFrac = (simCorde.mu - 0.1) / (4.0 - 0.1);
-    var beadR  = Math.max(2.5, zoneH * (0.011 + 0.00487 * muFrac));
-    var linkW  = Math.max(1.0, beadR * 0.45);
+    // Base = espacement entre points (proportionnel à L, la largeur de la
+    // zone), pas zoneH (hauteur) : sinon les sphères grossissent
+    // artificiellement dans une fenêtre haute et étroite alors que rien
+    // n'a changé horizontalement.
+    var spacing = L / (nBeads - 1);
+    var muFrac  = (simCorde.mu - 0.1) / (4.0 - 0.1);
+    var beadR   = Math.max(2.5, spacing * (0.26 + 0.11 * muFrac));
+    var linkW   = Math.max(1.0, beadR * 0.45);
 
     // Positions calculées une seule fois : elles servent aux liens puis aux
     // points. Le premier point est le point d'accroche sur le pot vibrant
