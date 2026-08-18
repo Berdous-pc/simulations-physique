@@ -773,6 +773,9 @@ var simCorde = {
     // ── Propriétés de l'onde (readout étendu) ─────────────────────────
     wavePropsVisible : false,
     speedFactor      : 1.0,
+
+    // ── Options : zone graphe affichée ou non (désactivé par défaut) ──
+    graphVisible     : false,
 };
 
 // ══════════════════════════════════════════════════════════════════════

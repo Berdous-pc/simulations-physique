@@ -652,6 +652,26 @@ function setCordeAspect(mode) {
     }
 }
 
+// ── Bouton "Afficher graphe" (Corde) ────────────────────────────────
+// Masque entièrement #graph-area (+ le splitter) pour que la zone
+// d'animation occupe tout l'espace disponible. Ne concerne que l'onglet
+// Corde : les autres onglets n'ont pas ce bouton et gardent le graphe visible.
+function toggleShowGraphCorde() {
+    simCorde.graphVisible = !simCorde.graphVisible;
+    _applyShowGraphCorde();
+}
+
+function _applyShowGraphCorde() {
+    var btn = document.getElementById('btn-show-graph-corde');
+    if (btn) btn.classList.toggle('active', simCorde.graphVisible);
+
+    var leftCol = document.getElementById('left-col');
+    if (leftCol) leftCol.classList.toggle('graph-hidden', activeTab === 'corde' && !simCorde.graphVisible);
+
+    scheduleResizeTube();
+    resizeGraph();
+}
+
 function toggleWavePropsCorde() {
     simCorde.wavePropsVisible = !simCorde.wavePropsVisible;
     _applyWavePropsCorde();
@@ -816,6 +836,10 @@ function setMainTab(tab) {
     var animArea = document.getElementById('anim-area');
     if (animArea) animArea.classList.toggle('vagues-layout', tab === 'vagues');
 
+    // ── Zone graphe masquée (bouton "Afficher graphe", Corde uniquement) ─
+    var leftCol = document.getElementById('left-col');
+    if (leftCol) leftCol.classList.toggle('graph-hidden', tab === 'corde' && !simCorde.graphVisible);
+
     // ── Resize pour adapter les canvas au tab ─────────────────────────
     if (tab === 'corde') {
         resizeCorde();
@@ -900,6 +924,8 @@ function _syncUIToSim() {
     simCorde.wavePropsVisible = false;
     _applyWavePropsCorde();
     _syncWavePropsBtnStateCorde();
+    simCorde.graphVisible = false;
+    _applyShowGraphCorde();
     updateCeleriteCorde();
     _updateCReadoutCorde();
     _applySourceModeCorde();

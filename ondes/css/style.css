@@ -247,6 +247,13 @@ main {
   background: #2a6aaa;
 }
 
+/* ── Graphe masqué (bouton "Afficher graphe", onglet Corde) ─────────
+   La zone d'animation récupère alors tout l'espace disponible. ────── */
+#left-col.graph-hidden #graph-area,
+#left-col.graph-hidden #left-splitter {
+  display: none;
+}
+
 /* ── Zone graphes ─────────────────────────────────── */
 #graph-area {
   flex: 2;

@@ -384,8 +384,23 @@
                    oninput="onSliderAttenCorde(this.value)">
           </div>
 
+        </div><!-- fin Propriétés de la corde -->
+
+        <div class="sep"></div>
+
+        <!-- Options -->
+        <div class="panel-section">
+          <div class="section-title">Options</div>
+
+          <!-- Bouton afficher/masquer la zone graphe -->
+          <button class="btn btn-toggle-one" id="btn-show-graph-corde"
+                  onclick="toggleShowGraphCorde()">
+            Afficher graphe
+          </button>
+
           <!-- Bouton propriétés de l'onde -->
           <button class="btn btn-toggle-one" id="btn-wave-props-corde"
+                  style="margin-top:6px;"
                   onclick="toggleWavePropsCorde()">
             Détailler les propriétés de l'onde
           </button>
@@ -394,7 +409,7 @@
           <div class="readout" id="readout-simple-corde" style="margin-top:8px;">
             <div class="ro-label">Célérité c = √(T / μ)</div>
             <div class="ro-value">
-              <span id="ro-c-corde">2,00 × 10<sup>0</sup></span>
+              <span id="ro-c-corde">2,00</span>
               <span class="ro-unit">m/s</span>
             </div>
           </div>
@@ -405,7 +420,7 @@
             <div class="ro-label-section">Imposé par la corde</div>
             <div class="ro-value ro-props-row">
               <span class="ro-props-name">c = √(T/μ)</span>
-              <span><span id="ro-c-ext-corde">2,00 × 10<sup>0</sup></span> <span class="ro-unit">m/s</span></span>
+              <span><span id="ro-c-ext-corde">2,00</span> <span class="ro-unit">m/s</span></span>
             </div>
 
             <div class="ro-label-section" style="margin-top:8px;">Imposé par le vibreur</div>
@@ -421,12 +436,12 @@
             <div class="ro-label-section" style="margin-top:8px;">Conséquence sur l'onde</div>
             <div class="ro-value ro-props-row">
               <span class="ro-props-name">λ = c·T</span>
-              <span><span id="ro-lambda-corde">1,33 × 10<sup>0</sup></span> <span class="ro-unit">m</span></span>
+              <span><span id="ro-lambda-corde">1,33</span> <span class="ro-unit">m</span></span>
             </div>
 
           </div><!-- fin #readout-props-corde -->
 
-        </div><!-- fin Propriétés de la corde -->
+        </div><!-- fin Options -->
 
       </div><!-- fin #section-corde -->
 
