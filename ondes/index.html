@@ -88,14 +88,15 @@
         <div id="source-corde" style="display:none;">
           <div class="section-title">Source</div>
           <div class="source-btns">
-            <button class="btn btn-toggle-one" id="btn-mode-impulse-corde"
-                    onclick="sendImpulseCorde()">
-              Impulsion
+            <button class="btn btn-toggle-one" id="btn-source-active-corde"
+                    onclick="toggleSourceActiveCorde()">
+              Activer
             </button>
-            <button class="btn btn-toggle-one" id="btn-mode-sinus-corde"
-                    onclick="toggleSinusoidalCorde()">
-              Sinusoïdale
-            </button>
+            <select class="select-mode" id="sel-mode-corde"
+                    onchange="onSourceModeChangeCorde(this.value)">
+              <option value="impulse">Impulsion</option>
+              <option value="sinus">Sinusoïdale</option>
+            </select>
           </div>
           <div class="param-row" id="freq-row-corde">
             <label>

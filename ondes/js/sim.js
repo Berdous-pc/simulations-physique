@@ -626,6 +626,11 @@ var simCorde = {
     // ── Mode source : null | 'impulse' | 'sinus' ────────────────────
     sourceMode        : null,
     impulsePropagating: false,
+    // simTime en dessous duquel le pot vibrant est encore en train de
+    // bouger (fin de la dernière impulsion lancée) — sert uniquement au
+    // bouton Activer/Désactiver, qui doit s'éteindre dès que LA SOURCE est
+    // au repos, sans attendre que l'onde ait fini de traverser la corde.
+    sourceActiveUntil : 0,
 
     // ── Source — composante sinusoïdale ─────────────────────────────
     //  sinPhase : phase accumulée (rad). Elle n'est JAMAIS recalculée à
@@ -886,6 +891,7 @@ function resetAnimCorde() {
     simCorde.sinPhase           = 0;
     simCorde.impulses           = [];
     simCorde.impulsePropagating = false;
+    simCorde.sourceActiveUntil  = 0;
     _srcClear(simCorde);
     _ytClearCorde(1);
     _ytClearCorde(2);

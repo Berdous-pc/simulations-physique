@@ -512,6 +512,23 @@ main {
   border-color: #d0a060;
 }
 
+/* Sélecteur de mode de la source (Impulsion / Sinusoïdale) */
+.select-mode {
+  width: 100%;
+  background: #ece8e0;
+  color: #5a6a78;
+  font-size: clamp(12px, 1.2vw, 15px);
+  padding: 8px 6px;
+  border: 1.5px solid #c8c0b4;
+  border-radius: 6px;
+  font-family: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: center;
+  text-align-last: center;
+}
+.select-mode:hover { background: #dedad2; }
+
 /* Flash impulsion — conservé pour usage futur */
 
 /* ── Paramètres ──────────────────────────────────── */

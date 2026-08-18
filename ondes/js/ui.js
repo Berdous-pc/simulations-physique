@@ -91,9 +91,13 @@ function loop(ts) {
             if (simCorde.impulsePropagating && simCorde.impulses.length === 0) {
                 simCorde.impulsePropagating = false;
                 simCorde.sourceMode         = null;
-                _syncSourceButtonsCorde();
                 _syncWavePropsBtnStateCorde();
             }
+
+            // Le bouton Activer/Désactiver dépend de simTime (source encore
+            // en mouvement ou non) : on le réévalue à chaque frame plutôt
+            // qu'aux seuls changements d'état ci-dessus.
+            _syncSourceButtonsCorde();
 
             // Échantillonnage de la source à pas fixe : c'est lui qui
             // « grave » l'onde émise. L'enregistrement y(t) des balises se
@@ -400,11 +404,38 @@ function _resetYtWindowCordeIfQuiet() {
     _ytClearCorde(2);
 }
 
+//  Le bouton reflète l'état DE LA SOURCE elle-même (le pot vibrant), pas
+//  celui de l'onde sur la corde : en impulsion, il s'éteint dès que le pot
+//  a fini son mouvement (sourceActiveUntil), bien avant que l'impulsion
+//  n'ait fini de traverser la corde.
 function _syncSourceButtonsCorde() {
-    var btnImp = document.getElementById('btn-mode-impulse-corde');
-    var btnSin = document.getElementById('btn-mode-sinus-corde');
-    if (btnImp) btnImp.classList.toggle('active', simCorde.sourceMode === 'impulse');
-    if (btnSin) btnSin.classList.toggle('active', simCorde.sourceMode === 'sinus');
+    var btn = document.getElementById('btn-source-active-corde');
+    if (!btn) return;
+    var active = (simCorde.sourceMode === 'impulse' && simCorde.simTime < simCorde.sourceActiveUntil) ||
+                 (simCorde.sourceMode === 'sinus'   && simCorde.sinusoidalActive);
+    btn.classList.toggle('active', active);
+}
+
+//  Bouton unique Activer/Désactiver : son effet dépend du mode choisi dans
+//  le sélecteur. En Impulsion, chaque appui relance une impulsion et le
+//  bouton se rallume tout seul le temps qu'elle traverse la corde (cf.
+//  animate() dans la boucle principale). En Sinusoïdale, il bascule
+//  l'émission continue on/off.
+function toggleSourceActiveCorde() {
+    var sel  = document.getElementById('sel-mode-corde');
+    var mode = sel ? sel.value : 'impulse';
+    if (mode === 'impulse') {
+        sendImpulseCorde();
+    } else {
+        toggleSinusoidalCorde();
+    }
+}
+
+//  Changement de mode dans le sélecteur : une émission sinusoïdale en cours
+//  est arrêtée (une impulsion en cours de propagation, elle, va à son terme).
+function onSourceModeChangeCorde() {
+    if (simCorde.sinusoidalActive) _stopEmissionCorde();
+    _syncSourceButtonsCorde();
 }
 
 //  Chaque appui envoie une NOUVELLE impulsion : celles qui sont déjà sur la
@@ -417,6 +448,7 @@ function sendImpulseCorde() {
     simCorde.impulses.push({ startTime: simCorde.simTime });
     simCorde.impulsePropagating = true;
     simCorde.sourceMode         = 'impulse';
+    simCorde.sourceActiveUntil  = Math.max(simCorde.sourceActiveUntil, simCorde.simTime + T_IMPULSE);
 
     _syncSourceButtonsCorde();
     _syncWavePropsBtnStateCorde();
