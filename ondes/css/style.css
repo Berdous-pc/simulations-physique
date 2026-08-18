@@ -84,6 +84,104 @@ main {
   grid-row: 1;
 }
 
+/* ── Chronomètre (onglet Corde) — box propre, au-dessus de la source ──
+   Afficheur blanc (valeur + unité) sur la première ligne, commandes sur
+   la seconde : marche/zéro à gauche, bascule d'unité s/T à droite. */
+#chrono-corde {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  margin-bottom: 8px;   /* marge entre le chrono et la box source */
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: clamp(5px, 0.6vw, 8px);
+  background: #e8e4de;
+  border: 1px solid #c8c0b4;
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.07);
+}
+
+/* Afficheur : nombre en gros (lisible au vidéoprojecteur) + unité */
+#chrono-display {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px;
+  padding: 2px 5px;
+  background: #fdfcfa;
+  border: 1px solid #c8c0b4;
+  border-radius: 5px;
+}
+#chrono-value {
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(21px, 2.3vw, 30px);
+  font-weight: 700;
+  line-height: 1.1;
+  color: #1e2c38;
+  white-space: nowrap;
+}
+#chrono-unit-lbl {
+  font-size: clamp(13px, 1.4vw, 18px);
+  font-weight: 600;
+  color: #5a6a78;
+}
+
+/* Ligne de commandes : boutons à gauche, bascule d'unité à droite */
+#chrono-ctrl {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Bascule s / T : deux demi-boutons accolés, calés à droite */
+#chrono-units {
+  display: flex;
+  margin-left: auto;
+  border: 1.5px solid #c8c0b4;
+  border-radius: 5px;
+  overflow: hidden;
+}
+.chrono-unit {
+  padding: 1px 7px;
+  font-size: clamp(10px, 1vw, 12px);
+  font-family: inherit;
+  font-weight: 700;
+  color: #5a6a78;
+  background: #f4f1ec;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.chrono-unit + .chrono-unit { border-left: 1.5px solid #c8c0b4; }
+.chrono-unit:hover:not(:disabled):not(.active) { background: #e2ded6; }
+.chrono-unit.active { background: #3a6ea5; color: #fff; }
+.chrono-unit:disabled { opacity: 0.35; cursor: default; }
+
+/* Marche/arrêt et remise à zéro : deux boutons-icônes carrés */
+.chrono-btn {
+  width: 24px;
+  height: 20px;
+  padding: 0;
+  line-height: 1;
+  font-size: 11px;
+  font-family: inherit;
+  color: #5a6a78;
+  background: #f4f1ec;
+  border: 1.5px solid #c8c0b4;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+}
+.chrono-btn:hover { background: #e2ded6; }
+.chrono-btn:active { transform: scale(0.92); }
+.chrono-btn.running {
+  background: #f0d8c0;
+  border-color: #d09050;
+  color: #8a5518;
+}
+
 /* Boutons balises : ligne 1 / col 2 — alignés en bas à droite */
 #tube-top-btns {
   grid-column: 2;
@@ -96,16 +194,25 @@ main {
   padding: 4px 6px 4px;
 }
 
-/* Box source : ligne 2 / col 1 — centrée verticalement */
-#source-box {
+/* Colonne chronomètre + source : ligne 2 / col 1.
+   Seule la box source occupe le flux, de sorte qu'elle reste centrée
+   verticalement exactement comme avant l'ajout du chronomètre ; celui-ci
+   est posé juste au-dessus, en absolu. */
+#source-col {
   grid-column: 1;
   grid-row: 2;
   align-self: center;
+  position: relative;
+  min-width: 0;
+  margin: 0 6px;
+}
+
+/* Box source */
+#source-box {
   display: flex;
   flex-direction: column;
   gap: 7px;
   padding: clamp(7px, 0.8vw, 12px) clamp(7px, 0.8vw, 11px);
-  margin: 0 6px;
   background: #e8e4de;
   border: 1px solid #c8c0b4;
   border-radius: 8px;
@@ -129,7 +236,7 @@ main {
   position: relative;
 }
 #anim-area.vagues-layout #anim-source-spacer { display: none; }
-#anim-area.vagues-layout #source-box         { display: none; }
+#anim-area.vagues-layout #source-col         { display: none; }
 #anim-area.vagues-layout #tube-canvas-wrap {
   grid-column: 1;
   grid-row: 1;

@@ -131,14 +131,21 @@ function scheduleResizeTube() {
 
             // Hauteurs intrinsèques (indépendantes du layout en cours)
             var topBtns   = document.getElementById('tube-top-btns');
-            var sourceBox = document.getElementById('source-box');
+            var sourceBox = document.getElementById('source-col');
+            var chronoBox = document.getElementById('chrono-corde');
             var btnH      = topBtns   ? topBtns.scrollHeight   : 36;
             var srcH      = sourceBox ? sourceBox.scrollHeight  : 80;
+            // Le chronomètre est posé en absolu au-dessus de la box source,
+            // qui reste centrée dans la row : il faut donc réserver sa hauteur
+            // des DEUX côtés, sinon il déborde par le haut et se fait rogner.
+            if (chronoBox && chronoBox.offsetParent !== null) {
+                srcH += 2 * (chronoBox.offsetHeight + 8);
+            }
 
             // La grid de #anim-area a deux rows :
             //   row1 = minmax(min-content, 10%) → hauteur effective = max(btnH, animH * 0.10)
             //   row2 = 1fr = minmax(auto, 1fr)  → plancher = min-content de la colonne
-            //          Le plancher de row2 est imposé par #source-box : au moins srcH.
+            //          Le plancher de row2 est imposé par #source-col : au moins srcH.
             //          Pour le tube : tubeH = row2H * 0.88 - 4 ≥ 20 → row2H ≥ 28.
             //          Donc row2H ≥ max(srcH, 28).
             //

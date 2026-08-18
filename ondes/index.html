@@ -67,7 +67,33 @@
         </button>
       </div>
 
-      <!-- Ligne 2 col 1 : box source, centrée verticalement -->
+      <!-- Ligne 2 col 1 : colonne chronomètre + box source, centrée verticalement -->
+      <div id="source-col">
+
+        <!-- Chronomètre (onglet Corde) : sa propre box, afficheur blanc
+             (valeur + unité) et, en dessous, marche/zéro à gauche et
+             bascule d'unité s/T à droite -->
+        <div id="chrono-corde" style="display:none;">
+          <div id="chrono-display">
+            <span id="chrono-value">0,00</span>
+            <span id="chrono-unit-lbl">s</span>
+          </div>
+          <div id="chrono-ctrl">
+            <button class="chrono-btn" id="btn-chrono-start"
+                    onclick="toggleChronoCorde()" title="Démarrer le chronomètre">▶</button>
+            <button class="chrono-btn" id="btn-chrono-reset"
+                    onclick="resetChronoCorde()" title="Remettre le chronomètre à zéro">⟲</button>
+            <span id="chrono-units">
+              <button class="chrono-unit active" id="btn-chrono-unit-s"
+                      onclick="setChronoUnitCorde('s')"
+                      title="Compter en secondes">s</button>
+              <button class="chrono-unit" id="btn-chrono-unit-T"
+                      onclick="setChronoUnitCorde('T')"
+                      title="Compter en multiples de la période T">T</button>
+            </span>
+          </div>
+        </div>
+
       <div id="source-box">
         <!-- Source Son (visible quand tab Son actif) -->
         <div id="source-son">
@@ -133,6 +159,8 @@
         <div id="source-vagues" style="display:none;"></div>
 
       </div><!-- fin #source-box -->
+
+      </div><!-- fin #source-col -->
 
       <!-- Ligne 2 col 2 : canvas tube -->
       <div id="tube-canvas-wrap">

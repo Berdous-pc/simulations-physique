@@ -86,6 +86,8 @@ function loop(ts) {
             var dtSimC = dtReal * (simCorde.speedFactor !== undefined ? simCorde.speedFactor : 1.0);
             simCorde.simTime += dtSimC;
 
+            if (chronoCorde.running) chronoCorde.elapsed += dtSimC;
+
             pruneImpulsesCorde();
 
             if (simCorde.impulsePropagating && simCorde.impulses.length === 0) {
@@ -145,6 +147,7 @@ function loop(ts) {
         if (!simCorde.paused) {
             _updateCReadoutCorde();
             _updateWavePropsCorde();
+            _updateChronoCorde();
         }
     } else {
         // ── Avancement temps Vagues ───────────────────────────────────
@@ -472,6 +475,8 @@ function _applySourceModeCorde() {
     _syncSourceButtonsCorde();
     _syncWavePropsBtnStateCorde();
     _syncLambdaBtnStateCorde();
+    _syncChronoUnitsCorde();
+    _updateChronoCorde();
 }
 
 //  Bouton unique Activer/Désactiver : son effet dépend du mode choisi dans
@@ -587,6 +592,12 @@ function resetSimAnimCorde() {
     resetAnimCorde();
     lastSrcUpdate = 0;
     _srcTickCorde = 0;
+    // Le chronomètre mesure le temps de simulation : remettre celle-ci à
+    // zéro sans l'arrêter laisserait une durée qui ne correspond plus à rien.
+    chronoCorde.running = false;
+    chronoCorde.elapsed = 0;
+    _syncChronoBtnCorde();
+    _updateChronoCorde();
     // resetAnimCorde remet sourceMode à null : on réapplique la sélection
     // du menu déroulant, qui elle n'est pas remise à zéro.
     _applySourceModeCorde();
@@ -602,6 +613,78 @@ function resetSimAnimCorde() {
     if (tip) tip.style.display = 'none';
 }
 
+// ══════════════════════════════════════════════════════════════════════
+//  Chronomètre (onglet Corde)
+// ══════════════════════════════════════════════════════════════════════
+//  Il compte le temps de SIMULATION et non le temps réel : il se fige donc
+//  avec la pause et suit le facteur de vitesse, sans quoi les durées lues
+//  ne correspondraient pas à celles des graphes.
+//
+//  Deux unités : la seconde, ou la période T de la source. Le comptage en
+//  T n'a de sens que pour un signal périodique — le bouton reste donc
+//  désactivé en mode Impulsion et Libre (cf. _cordeModeIsImpulseOrFree).
+//  La conversion utilise la fréquence COURANTE : changer f en cours de
+//  chronométrage réinterprète l'ensemble de la durée écoulée.
+var chronoCorde = { running: false, elapsed: 0, unit: 's' };
+
+function toggleChronoCorde() {
+    chronoCorde.running = !chronoCorde.running;
+    _syncChronoBtnCorde();
+}
+
+function resetChronoCorde() {
+    chronoCorde.elapsed = 0;
+    _updateChronoCorde();
+}
+
+function setChronoUnitCorde(unit) {
+    var btn = document.getElementById('btn-chrono-unit-' + unit);
+    if (btn && btn.disabled) return;
+    chronoCorde.unit = (unit === 'T') ? 'T' : 's';
+    _syncChronoUnitsCorde();
+    _updateChronoCorde();
+}
+
+function _syncChronoBtnCorde() {
+    var btn = document.getElementById('btn-chrono-start');
+    if (!btn) return;
+    btn.textContent = chronoCorde.running ? '⏸' : '▶';
+    btn.title       = chronoCorde.running ? 'Arrêter le chronomètre'
+                                          : 'Démarrer le chronomètre';
+    btn.classList.toggle('running', chronoCorde.running);
+}
+
+//  Appelé aussi au changement de mode de source : repasser en Impulsion ou
+//  Libre alors que l'affichage est en T le ramène aux secondes, faute de
+//  période définie.
+function _syncChronoUnitsCorde() {
+    var noPeriod = _cordeModeIsImpulseOrFree();
+    if (noPeriod && chronoCorde.unit === 'T') chronoCorde.unit = 's';
+
+    var btnT = document.getElementById('btn-chrono-unit-T');
+    if (btnT) {
+        btnT.disabled = noPeriod;
+        btnT.classList.toggle('active', chronoCorde.unit === 'T');
+    }
+    var btnS = document.getElementById('btn-chrono-unit-s');
+    if (btnS) btnS.classList.toggle('active', chronoCorde.unit === 's');
+}
+
+function _updateChronoCorde() {
+    var el = document.getElementById('chrono-value');
+    if (!el) return;
+    // En T, la durée est comptée en nombre de périodes : t x f.
+    var inT = (chronoCorde.unit === 'T' && simCorde.freq > 0);
+    var txt = inT ? fmtFR(chronoCorde.elapsed * simCorde.freq, 2)
+                  : fmtFR(chronoCorde.elapsed, 2);
+    // Écriture conditionnelle : la fonction est appelée à chaque frame.
+    if (txt !== _chronoLastTxt) { el.textContent = txt; _chronoLastTxt = txt; }
+
+    var lbl = document.getElementById('chrono-unit-lbl');
+    if (lbl) lbl.textContent = inT ? 'T' : 's';
+}
+var _chronoLastTxt = '';
+
 // ── Sliders Corde ─────────────────────────────────────────────────────
 //  Les readouts sont rafraîchis ICI et pas seulement dans la boucle : celle-ci
 //  ne les met à jour que si l'animation tourne, si bien qu'en pause les
@@ -611,6 +694,7 @@ function onSliderFreqCorde(v) {
     var lbl = document.getElementById('lbl-freq-corde');
     if (lbl) lbl.textContent = simCorde.freq.toFixed(1).replace('.', ',');
     _updateWavePropsCorde();
+    _updateChronoCorde();   // l'affichage en T dépend de f
 }
 
 function onSliderAmplCorde(v) {
@@ -692,6 +776,13 @@ function _applyShowGraphCorde() {
 
     var leftCol = document.getElementById('left-col');
     if (leftCol) leftCol.classList.toggle('graph-hidden', activeTab === 'corde' && !simCorde.graphVisible);
+
+    // La classe posée avant l'exécution de ce script (cf. script inline dans
+    // <head>, pour éviter le flash au chargement direct sur #corde) n'est
+    // plus utile dès que l'état réel est appliqué : sans ce retrait, elle
+    // masquerait #graph-area en permanence, même sur les autres onglets et
+    // même après avoir cliqué sur « Afficher graphe ».
+    document.documentElement.classList.remove('init-corde-graph-hidden');
 
     scheduleResizeTube();
     resizeGraph();
@@ -857,6 +948,10 @@ function setMainTab(tab) {
     if (srcCorde)  srcCorde.style.display  = (tab === 'corde') ? '' : 'none';
     if (srcVagues) srcVagues.style.display = (tab === 'vagues') ? '' : 'none';
 
+    // Chronomètre : propre à l'onglet Corde
+    var chrono = document.getElementById('chrono-corde');
+    if (chrono) chrono.style.display = (tab === 'corde') ? '' : 'none';
+
     // ── Boutons son-only / vagues-only au-dessus du canvas ───────────
     var sonOnlyBtns = document.querySelectorAll('.son-only');
     sonOnlyBtns.forEach(function(b) {
@@ -897,6 +992,9 @@ function setMainTab(tab) {
     // ── Zone graphe masquée (bouton "Afficher graphe", Corde uniquement) ─
     var leftCol = document.getElementById('left-col');
     if (leftCol) leftCol.classList.toggle('graph-hidden', tab === 'corde' && !simCorde.graphVisible);
+    // cf. commentaire dans _applyShowGraphCorde : la classe de pré-masquage
+    // posée dans <head> ne doit pas survivre au premier calcul de l'état réel.
+    document.documentElement.classList.remove('init-corde-graph-hidden');
 
     // ── Resize pour adapter les canvas au tab ─────────────────────────
     if (tab === 'corde') {
