@@ -914,7 +914,10 @@ function _shakerTopY() {
 //  (_drawCordeFreeHandle) et le hit-test de la souris (initTubeInteractions).
 
 function _cordeFreeHandleR() {
-    return Math.max(4, Math.round((simCorde.cordeBottom - simCorde.cordeTop) * 0.025));
+    // Indexé sur cordeLength (largeur), pas sur la hauteur de la zone :
+    // même correctif que pour les sphères du mode discret et le label
+    // des balises, cf. leurs commentaires respectifs.
+    return Math.max(4, Math.round(simCorde.cordeLength * 0.008));
 }
 
 // ── Débattement de la boule du mode Libre ─────────────────────────────
