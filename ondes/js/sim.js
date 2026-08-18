@@ -749,6 +749,16 @@ var simCorde = {
     beacon1 : { active: false, x: 0, frac: 0.30 },
     beacon2 : { active: false, x: 0, frac: 0.65 },
 
+    // ── Flèche de longueur d'onde (draggable horizontalement) ─────────
+    // lambdaX = abscisse écran de l'extrémité gauche de la flèche ;
+    // lambdaFrac = même position en relatif (0–1) le long de la corde,
+    // utilisée pour recalculer lambdaX au resize (comme les balises).
+    // La largeur, elle, n'est jamais stockée : recalculée à chaque frame
+    // depuis c_sim et freq, pour suivre en direct tout changement de λ.
+    lambdaVisible : false,
+    lambdaX       : 0,
+    lambdaFrac    : 0.08,
+
     // ── Données graphes ──────────────────────────────────────────────
     //  yxX/yxY (Float32Array) : snapshot y(x) courant, partagé par le tracé
     //  et le hover snappé — yxSig évite de le recalculer quand rien n'a

@@ -697,6 +697,20 @@ function _drawOneBeacon(ctx, x, color, label) {
         }
     }
 
+    // Hit-test : est-on sur la flèche de longueur d'onde (ligne ou pointillés) ?
+    // Bande verticale généreuse, de la flèche elle-même jusqu'à y = 0, pour
+    // rester attrapable même si l'onde a une grande amplitude.
+    function nearLambdaArrow(x, y) {
+        if (typeof activeTab === 'undefined' || activeTab !== 'corde') return false;
+        if (!simCorde.lambdaVisible) return false;
+        var lambdaPx = _cordeLambdaPx();
+        if (lambdaPx <= 0) return false;
+        var x1 = simCorde.lambdaX, x2 = x1 + lambdaPx;
+        var arrowY = _cordeLambdaArrowY();
+        return x >= x1 - 8 && x <= x2 + 8 &&
+               y >= arrowY - 10 && y <= simCorde.cordeMiddleY;
+    }
+
     // Hit-test : est-on sur la boule du mode Libre ? Zone de saisie élargie
     // (×2) pour rester attrapable même quand la corde vibre.
     function nearFreeHandle(x, y) {
@@ -721,6 +735,15 @@ function _drawOneBeacon(ctx, x, color, label) {
             // Sans temps qui s'écoule, le geste ne graverait rien.
             if (simCorde.paused && typeof _setPausedCorde === 'function') _setPausedCorde(false);
             if (typeof _resetYtWindowCordeIfQuiet === 'function') _resetYtWindowCordeIfQuiet();
+            tubeCanvas.setPointerCapture(e.pointerId);
+            return;
+        }
+
+        // Flèche de longueur d'onde : ne se déplace qu'horizontalement,
+        // en bloc (sa taille suit λ, jamais le geste de la souris).
+        if (nearLambdaArrow(mx, my)) {
+            tubeInter.mode = 'lambda-drag';
+            tubeInter.lambdaGrabDx = mx - simCorde.lambdaX;
             tubeCanvas.setPointerCapture(e.pointerId);
             return;
         }
@@ -769,7 +792,7 @@ function _drawOneBeacon(ctx, x, color, label) {
 
             if (nearFreeHandle(mx, my)) {
                 tubeCanvas.style.cursor = 'ns-resize';
-            } else if (nearBeacon(mx, b1) || nearBeacon(mx, b2)) {
+            } else if (nearBeacon(mx, b1) || nearBeacon(mx, b2) || nearLambdaArrow(mx, my)) {
                 tubeCanvas.style.cursor = 'ew-resize';
             } else if (sim.selectionMode && !(typeof activeTab !== 'undefined' && activeTab === 'corde')) {
                 tubeCanvas.style.cursor = 'crosshair';
@@ -803,6 +826,19 @@ function _drawOneBeacon(ctx, x, color, label) {
             var lim = cordeFreeLimitCm();
             simCorde.freeTargetY = Math.max(-lim.down,
                                             Math.min(lim.up, yCm));
+            return;
+        }
+
+        if (tubeInter.mode === 'lambda-drag') {
+            var lambdaPx = _cordeLambdaPx();
+            var nx = mx - tubeInter.lambdaGrabDx;
+            // Les deux extrémités doivent rester entre x = 0 et x = 5 m.
+            // Si λ dépasse la longueur de la corde, la flèche reste calée
+            // sur x = 0 (impossible de la faire tenir tout entière).
+            var maxX = Math.max(left, right - lambdaPx);
+            nx = Math.max(left, Math.min(maxX, nx));
+            simCorde.lambdaX = nx;
+            if (length > 0) simCorde.lambdaFrac = (nx - left) / length;
             return;
         }
 
@@ -999,6 +1035,9 @@ function resizeCorde() {
     snapCordeBeacon(simCorde.beacon1);
     snapCordeBeacon(simCorde.beacon2);
 
+    // ── Position de la flèche de longueur d'onde ──────────────────────
+    simCorde.lambdaX = simCorde.cordeLeft + simCorde.cordeLength * simCorde.lambdaFrac;
+
     updateCeleriteCorde();
 }
 
@@ -1035,6 +1074,9 @@ function drawCorde() {
     // Deux aspects possibles, même physique (cf. simCorde.aspect).
     if (simCorde.aspect === 'discret') _drawCordeBeads(ctx);
     else                               _drawCordeWire(ctx);
+
+    // ── Flèche de longueur d'onde ────────────────────────────────────
+    _drawCordeLambdaArrow(ctx);
 
     // ── Balises ───────────────────────────────────────────────────────
     _drawCordeBeacons(ctx);
@@ -1462,6 +1504,106 @@ function _drawCordeFreeHandle(ctx) {
     ctx.strokeStyle = '#4a1008';
     ctx.lineWidth   = 1.5;
     ctx.stroke();
+
+    ctx.restore();
+}
+
+// ── Flèche de longueur d'onde ─────────────────────────────────────────
+//  Uniquement pertinente en Sinusoïdale / Périodique (fréquence définie) ;
+//  cf. _syncLambdaBtnStateCorde dans ui.js pour le verrouillage du bouton
+//  en Impulsion / Libre.
+//
+//  La largeur n'est jamais mémorisée : recalculée à chaque frame depuis
+//  c_sim et freq (mêmes grandeurs que _drawCordeWire), si bien qu'un
+//  changement de μ, T ou f redimensionne la flèche instantanément.
+
+function _cordeLambdaPx() {
+    return (simCorde.c_sim > 0 && simCorde.freq > 0) ? simCorde.c_sim / simCorde.freq : 0;
+}
+
+// Hauteur de la flèche, partagée par le tracé et le hit-test du drag
+// (cf. nearLambdaArrow dans initTubeInteractions).
+function _cordeLambdaArrowY() {
+    return simCorde.cordeTop + Math.max(24, Math.round(simCorde.cordeLength * 0.09));
+}
+
+function _drawCordeLambdaArrow(ctx) {
+    if (!simCorde.lambdaVisible) return;
+    var lambdaPx = _cordeLambdaPx();
+    if (lambdaPx <= 0) return;
+
+    var x1 = simCorde.lambdaX;
+    var x2 = x1 + lambdaPx;
+    var arrowY = _cordeLambdaArrowY();
+    var zeroY  = simCorde.cordeMiddleY;
+    var color  = '#1a5fb4';
+
+    ctx.save();
+    // Clip à la zone de la corde : λ peut dépasser largement la longueur
+    // physique de la corde (jusqu'à 20 m pour 5 m de corde aux réglages
+    // extrêmes), la flèche ne doit pas déborder sur le reste du canvas.
+    ctx.beginPath();
+    ctx.rect(simCorde.cordeLeft, simCorde.cordeTop, simCorde.cordeLength,
+              simCorde.cordeBottom - simCorde.cordeTop);
+    ctx.clip();
+
+    // Pointillés verticaux jusqu'à y = 0, aux deux extrémités
+    ctx.strokeStyle = color;
+    ctx.lineWidth   = 1;
+    ctx.setLineDash([4, 3]);
+    ctx.globalAlpha = 0.7;
+    ctx.beginPath();
+    ctx.moveTo(x1, arrowY);
+    ctx.lineTo(x1, zeroY);
+    ctx.moveTo(x2, arrowY);
+    ctx.lineTo(x2, zeroY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+
+    // Intersection avec l'axe y = 0 : petite croix, pour repérer au premier
+    // coup d'œil où la flèche « touche » la ligne de repos.
+    var crossR = Math.max(4, Math.round(simCorde.cordeLength * 0.01)) * 0.75;
+    ctx.strokeStyle = color;
+    ctx.lineWidth   = 2;
+    ctx.globalAlpha = 1;
+    [x1, x2].forEach(function (x) {
+        ctx.beginPath();
+        ctx.moveTo(x - crossR, zeroY - crossR);
+        ctx.lineTo(x + crossR, zeroY + crossR);
+        ctx.moveTo(x - crossR, zeroY + crossR);
+        ctx.lineTo(x + crossR, zeroY - crossR);
+        ctx.stroke();
+    });
+
+    // Double flèche horizontale
+    var headLen = Math.max(6, Math.min(12, lambdaPx * 0.08));
+    ctx.strokeStyle = color;
+    ctx.fillStyle   = color;
+    ctx.lineWidth   = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x1, arrowY);
+    ctx.lineTo(x2, arrowY);
+    ctx.stroke();
+
+    function head(xTip, dir) {
+        ctx.beginPath();
+        ctx.moveTo(xTip, arrowY);
+        ctx.lineTo(xTip + dir * headLen, arrowY - headLen * 0.5);
+        ctx.lineTo(xTip + dir * headLen, arrowY + headLen * 0.5);
+        ctx.closePath();
+        ctx.fill();
+    }
+    head(x1, 1);
+    head(x2, -1);
+
+    // Étiquette λ centrée au-dessus de la flèche
+    var fSize = Math.max(12, Math.round(simCorde.cordeLength * 0.045));
+    ctx.font         = 'italic bold ' + fSize + 'px "Segoe UI", Arial, sans-serif';
+    ctx.fillStyle    = color;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('λ', (x1 + x2) / 2, arrowY - 4);
 
     ctx.restore();
 }

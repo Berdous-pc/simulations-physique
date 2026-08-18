@@ -92,6 +92,7 @@ function loop(ts) {
                 simCorde.impulsePropagating = false;
                 simCorde.sourceMode         = null;
                 _syncWavePropsBtnStateCorde();
+                _syncLambdaBtnStateCorde();
             }
 
             // Le bouton Activer/Désactiver dépend de simTime (source encore
@@ -411,6 +412,7 @@ function _stopEmissionCorde() {
     simCorde.sourceMode       = null;
     _syncSourceButtonsCorde();
     _syncWavePropsBtnStateCorde();
+    _syncLambdaBtnStateCorde();
 }
 
 //  Réinitialise la fenêtre du graphe y(t) — uniquement si la corde est au
@@ -469,6 +471,7 @@ function _applySourceModeCorde() {
 
     _syncSourceButtonsCorde();
     _syncWavePropsBtnStateCorde();
+    _syncLambdaBtnStateCorde();
 }
 
 //  Bouton unique Activer/Désactiver : son effet dépend du mode choisi dans
@@ -527,6 +530,7 @@ function sendImpulseCorde() {
 
     _syncSourceButtonsCorde();
     _syncWavePropsBtnStateCorde();
+    _syncLambdaBtnStateCorde();
 }
 
 function toggleSinusoidalCorde() {
@@ -543,6 +547,7 @@ function toggleSinusoidalCorde() {
 
         _syncSourceButtonsCorde();
         _syncWavePropsBtnStateCorde();
+        _syncLambdaBtnStateCorde();
     }
 }
 
@@ -563,6 +568,7 @@ function togglePeriodicCorde() {
 
         _syncSourceButtonsCorde();
         _syncWavePropsBtnStateCorde();
+        _syncLambdaBtnStateCorde();
     }
 }
 
@@ -727,12 +733,45 @@ function _updateWavePropsCorde() {
     if (elL) elL.textContent = fmtFRRound(lambda, 2);
 }
 
+//  Impulsion et Libre n'ont pas de fréquence définie : λ = c·T n'aurait
+//  aucun sens. On se base sur le SÉLECTEUR de mode, pas sur sourceMode
+//  (qui ne reflète que l'émission en cours) : le verrouillage doit
+//  s'appliquer dès que le mode est choisi, même avant toute activation
+//  de la source.
+function _cordeModeIsImpulseOrFree() {
+    var sel = document.getElementById('sel-mode-corde');
+    var mode = sel ? sel.value : 'impulse';
+    return (mode === 'impulse' || mode === 'free');
+}
+
+// ── Bouton "Afficher la longueur d'onde" (Corde) ─────────────────────
+function toggleLambdaCorde() {
+    var btn = document.getElementById('btn-lambda-corde');
+    if (btn && btn.disabled) return;
+    simCorde.lambdaVisible = !simCorde.lambdaVisible;
+    _applyLambdaCorde();
+}
+
+function _applyLambdaCorde() {
+    var btn = document.getElementById('btn-lambda-corde');
+    if (btn) btn.classList.toggle('active', simCorde.lambdaVisible);
+}
+
+function _syncLambdaBtnStateCorde() {
+    var btn = document.getElementById('btn-lambda-corde');
+    if (!btn) return;
+    var isImpulse = _cordeModeIsImpulseOrFree();
+    btn.disabled = isImpulse;
+    if (isImpulse && simCorde.lambdaVisible) {
+        simCorde.lambdaVisible = false;
+        _applyLambdaCorde();
+    }
+}
+
 function _syncWavePropsBtnStateCorde() {
     var btn = document.getElementById('btn-wave-props-corde');
     if (!btn) return;
-    // Impulsion et Libre n'ont pas de fréquence définie : λ = c·T n'aurait
-    // aucun sens, on verrouille donc le readout étendu.
-    var isImpulse = (simCorde.sourceMode === 'impulse' || simCorde.sourceMode === 'free');
+    var isImpulse = _cordeModeIsImpulseOrFree();
     btn.disabled = isImpulse;
     if (isImpulse && simCorde.wavePropsVisible) {
         simCorde.wavePropsVisible = false;
@@ -943,6 +982,9 @@ function _syncUIToSim() {
     simCorde.wavePropsVisible = false;
     _applyWavePropsCorde();
     _syncWavePropsBtnStateCorde();
+    simCorde.lambdaVisible = false;
+    _applyLambdaCorde();
+    _syncLambdaBtnStateCorde();
     simCorde.graphVisible = false;
     _applyShowGraphCorde();
     updateCeleriteCorde();

@@ -204,11 +204,13 @@
 
         <!-- Contrôle de l'animation -->
         <div class="panel-section">
-          <div class="section-title">Contrôles</div>
-          <button id="btn-playpause" class="btn btn-pause"
-                  onclick="togglePause()">⏸ Pause</button>
-          <button class="btn btn-raz" style="margin-top:6px;"
-                  onclick="resetSimAnim()">↺ Remettre à zéro</button>
+          <div class="section-title">Animation</div>
+          <div class="btn-row">
+            <button id="btn-playpause" class="btn btn-pause"
+                    onclick="togglePause()">⏸ Pause</button>
+            <button class="btn btn-raz"
+                    onclick="resetSimAnim()">↺ RAZ</button>
+          </div>
           <div class="param-row" style="margin-top:8px;">
             <label>
               Vitesse
@@ -319,11 +321,13 @@
 
         <!-- Contrôle de l'animation -->
         <div class="panel-section">
-          <div class="section-title">Contrôles</div>
-          <button id="btn-playpause-corde" class="btn btn-pause"
-                  onclick="togglePauseCorde()">⏸ Pause</button>
-          <button class="btn btn-raz" style="margin-top:6px;"
-                  onclick="resetSimAnimCorde()">↺ Remettre à zéro</button>
+          <div class="section-title">Animation</div>
+          <div class="btn-row">
+            <button id="btn-playpause-corde" class="btn btn-pause"
+                    onclick="togglePauseCorde()">⏸ Pause</button>
+            <button class="btn btn-raz"
+                    onclick="resetSimAnimCorde()">↺ RAZ</button>
+          </div>
           <div class="param-row" style="margin-top:8px;">
             <label>
               Vitesse
@@ -407,6 +411,13 @@
             Afficher graphe
           </button>
 
+          <!-- Bouton afficher/masquer la flèche de longueur d'onde -->
+          <button class="btn btn-toggle-one" id="btn-lambda-corde"
+                  style="margin-top:6px;"
+                  onclick="toggleLambdaCorde()">
+            Afficher la longueur d'onde
+          </button>
+
           <!-- Bouton propriétés de l'onde -->
           <button class="btn btn-toggle-one" id="btn-wave-props-corde"
                   style="margin-top:6px;"
@@ -459,11 +470,13 @@
 
         <!-- Contrôles -->
         <div class="panel-section">
-          <div class="section-title">Contrôles</div>
-          <button id="btn-playpause-vagues" class="btn btn-pause"
-                  onclick="togglePauseVagues()">⏸ Pause</button>
-          <button class="btn btn-raz" style="margin-top:6px;"
-                  onclick="resetSimAnimVagues()">↺ Remettre à zéro</button>
+          <div class="section-title">Animation</div>
+          <div class="btn-row">
+            <button id="btn-playpause-vagues" class="btn btn-pause"
+                    onclick="togglePauseVagues()">⏸ Pause</button>
+            <button class="btn btn-raz"
+                    onclick="resetSimAnimVagues()">↺ RAZ</button>
+          </div>
           <div class="param-row" style="margin-top:8px;">
             <label>
               Vitesse
