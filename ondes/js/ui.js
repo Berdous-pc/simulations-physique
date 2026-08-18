@@ -475,6 +475,7 @@ function _applySourceModeCorde() {
     _syncSourceButtonsCorde();
     _syncWavePropsBtnStateCorde();
     _syncLambdaBtnStateCorde();
+    _syncChronoLinkCorde(mode);
     _syncChronoUnitsCorde();
     _updateChronoCorde();
 }
@@ -488,9 +489,31 @@ function toggleSourceActiveCorde() {
     var sel  = document.getElementById('sel-mode-corde');
     var mode = sel ? sel.value : 'impulse';
     if (mode === 'free')          return;   // bouton désactivé — cf. _applySourceModeCorde
+
+    var wasOn = simCorde.sinusoidalActive || simCorde.periodicActive;
+
     if (mode === 'impulse')       sendImpulseCorde();
     else if (mode === 'sinus')    toggleSinusoidalCorde();
     else                          togglePeriodicCorde();
+
+    // Chronomètre lié (case « Lier ») : activer la source le lance s'il est
+    // à l'arrêt, sans toucher à la valeur affichée — la remise à zéro reste
+    // la main de l'utilisateur (bouton ⟲). S'il tourne déjà, on n'y touche
+    // pas : une mesure en cours n'est jamais interrompue, y compris quand on
+    // envoie une nouvelle impulsion pendant qu'une autre voyage encore.
+    // Désactiver la source ne l'arrête pas non plus : l'onde déjà émise
+    // continue de se propager et reste chronométrable.
+    var isOn = simCorde.sinusoidalActive || simCorde.periodicActive;
+    if (mode === 'impulse' || (!wasOn && isOn)) _startChronoIfLinkedCorde();
+}
+
+//  Démarrage du chronomètre lié. Appelé à la mise en marche de la source :
+//  par le bouton Activer, et par la saisie de la boule en mode Libre (cf.
+//  onDown dans tube.js), où le geste EST la source.
+function _startChronoIfLinkedCorde() {
+    if (!_chronoLinkedCorde() || chronoCorde.running) return;
+    chronoCorde.running = true;
+    _syncChronoBtnCorde();
 }
 
 //  Changement de mode dans le sélecteur : basculer entre Sinusoïdale et
@@ -627,13 +650,35 @@ function resetSimAnimCorde() {
 //  chronométrage réinterprète l'ensemble de la durée écoulée.
 var chronoCorde = { running: false, elapsed: 0, unit: 's' };
 
+//  Case « Lier » : quand elle est cochée, activer la source déclenche le
+//  chronomètre. Elle est recochée/décochée à chaque changement de mode
+//  (cf. _syncChronoLinkCorde), l'utilisateur restant libre de la modifier
+//  ensuite pour le mode courant.
+function _chronoLinkedCorde() {
+    var chk = document.getElementById('chk-chrono-link');
+    return !!(chk && chk.checked);
+}
+
+//  Par défaut : liée pour les émissions continues (Sinusoïdale, Périodique),
+//  où le chrono sert à compter des périodes depuis le début de l'émission ;
+//  déliée en Impulsion et Libre, où le déclenchement se fait plutôt à la
+//  main, au passage devant un repère.
+function _syncChronoLinkCorde(mode) {
+    var chk = document.getElementById('chk-chrono-link');
+    if (chk) chk.checked = (mode === 'sinus' || mode === 'periodic');
+}
+
 function toggleChronoCorde() {
     chronoCorde.running = !chronoCorde.running;
     _syncChronoBtnCorde();
 }
 
+//  Remise à zéro : arrête aussi le comptage, pour repartir d'un chronomètre
+//  à l'arrêt sur 0 plutôt que de le voir redémarrer aussitôt.
 function resetChronoCorde() {
     chronoCorde.elapsed = 0;
+    chronoCorde.running = false;
+    _syncChronoBtnCorde();
     _updateChronoCorde();
 }
 
@@ -645,12 +690,21 @@ function setChronoUnitCorde(unit) {
     _updateChronoCorde();
 }
 
+//  Icônes marche/arrêt dessinées en SVG plutôt qu'avec les caractères ▶ et
+//  ⏸ : ces glyphes sont rendus par la police emoji, dont les métriques
+//  décalent visiblement le symbole dans le bouton.
+var CHRONO_ICO_PLAY  = '<svg class="chrono-ico" viewBox="0 0 12 12" aria-hidden="true">' +
+                       '<polygon points="3.5,2 10,6 3.5,10"/></svg>';
+var CHRONO_ICO_PAUSE = '<svg class="chrono-ico" viewBox="0 0 12 12" aria-hidden="true">' +
+                       '<rect x="3" y="2" width="2.5" height="8"/>' +
+                       '<rect x="6.5" y="2" width="2.5" height="8"/></svg>';
+
 function _syncChronoBtnCorde() {
     var btn = document.getElementById('btn-chrono-start');
     if (!btn) return;
-    btn.textContent = chronoCorde.running ? '⏸' : '▶';
-    btn.title       = chronoCorde.running ? 'Arrêter le chronomètre'
-                                          : 'Démarrer le chronomètre';
+    btn.innerHTML = chronoCorde.running ? CHRONO_ICO_PAUSE : CHRONO_ICO_PLAY;
+    btn.title     = chronoCorde.running ? 'Arrêter le chronomètre'
+                                        : 'Démarrer le chronomètre';
     btn.classList.toggle('running', chronoCorde.running);
 }
 

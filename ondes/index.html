@@ -80,9 +80,15 @@
           </div>
           <div id="chrono-ctrl">
             <button class="chrono-btn" id="btn-chrono-start"
-                    onclick="toggleChronoCorde()" title="Démarrer le chronomètre">▶</button>
+                    onclick="toggleChronoCorde()" title="Démarrer le chronomètre"><svg
+                    class="chrono-ico" viewBox="0 0 12 12" aria-hidden="true"><polygon
+                    points="3.5,2 10,6 3.5,10"/></svg></button>
             <button class="chrono-btn" id="btn-chrono-reset"
                     onclick="resetChronoCorde()" title="Remettre le chronomètre à zéro">⟲</button>
+            <label id="chrono-link"
+                   title="Lier le déclenchement du chronomètre à l'activation de la source.">
+              <input type="checkbox" id="chk-chrono-link">Lier
+            </label>
             <span id="chrono-units">
               <button class="chrono-unit active" id="btn-chrono-unit-s"
                       onclick="setChronoUnitCorde('s')"

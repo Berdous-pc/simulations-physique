@@ -85,8 +85,10 @@ main {
 }
 
 /* ── Chronomètre (onglet Corde) — box propre, au-dessus de la source ──
-   Afficheur blanc (valeur + unité) sur la première ligne, commandes sur
-   la seconde : marche/zéro à gauche, bascule d'unité s/T à droite. */
+   Habillage métal gris/noir repris du pot vibrant dessiné sur le canvas
+   (mêmes gris bleutés #8a9aaa → #4a5a6a, contour #3a4a58). Afficheur clair
+   (valeur + unité) sur la première ligne, commandes sur la seconde :
+   marche/zéro à gauche, bascule d'unité s/T à droite. */
 #chrono-corde {
   position: absolute;
   left: 0;
@@ -95,91 +97,147 @@ main {
   margin-bottom: 8px;   /* marge entre le chrono et la box source */
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
   padding: clamp(5px, 0.6vw, 8px);
-  background: #e8e4de;
-  border: 1px solid #c8c0b4;
+  background: linear-gradient(#8a9aaa 0%, #6a7a8a 45%, #4a5a6a 100%);
+  border: 1px solid #3a4a58;
   border-radius: 8px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.07);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.22),
+              inset 0 1px 0 rgba(200,220,230,0.35);
 }
 
-/* Afficheur : nombre en gros (lisible au vidéoprojecteur) + unité */
+/* Afficheur : nombre en gros (lisible au vidéoprojecteur) + unité.
+   Légèrement creusé dans le boîtier (ombre interne). */
 #chrono-display {
   display: flex;
   align-items: baseline;
   justify-content: center;
   gap: 4px;
   padding: 2px 5px;
-  background: #fdfcfa;
-  border: 1px solid #c8c0b4;
-  border-radius: 5px;
+  background: #eef2f4;
+  border: 1px solid #2e3c48;
+  border-radius: 4px;
+  box-shadow: inset 0 1px 3px rgba(20,30,40,0.35);
 }
 #chrono-value {
   font-variant-numeric: tabular-nums;
   font-size: clamp(21px, 2.3vw, 30px);
   font-weight: 700;
   line-height: 1.1;
-  color: #1e2c38;
+  color: #16222c;
   white-space: nowrap;
 }
 #chrono-unit-lbl {
-  font-size: clamp(13px, 1.4vw, 18px);
+  font-size: clamp(16px, 1.8vw, 23px);
   font-weight: 600;
-  color: #5a6a78;
+  color: #55636e;
 }
 
-/* Ligne de commandes : boutons à gauche, bascule d'unité à droite */
+/* Ligne de commandes : marche/zéro puis « Lier » à gauche, bascule d'unité
+   à droite. Tout tient sur UNE ligne quelle que soit la largeur de colonne :
+   les commandes rétrécissent (clamp) au lieu de passer à la ligne. */
 #chrono-ctrl {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: clamp(2px, 0.3vw, 4px);
+}
+
+/* Case « Lier » : déclenchement du chrono à l'activation de la source */
+#chrono-link {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: clamp(9px, 0.95vw, 12px);
+  font-weight: 600;
+  color: #eaf1f5;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+#chk-chrono-link {
+  flex: 0 0 auto;
+  width: clamp(10px, 1.1vw, 13px);
+  height: clamp(10px, 1.1vw, 13px);
+  margin: 0;
+  accent-color: #3a6ea5;
+  cursor: pointer;
 }
 
 /* Bascule s / T : deux demi-boutons accolés, calés à droite */
 #chrono-units {
   display: flex;
+  flex: 0 0 auto;
   margin-left: auto;
-  border: 1.5px solid #c8c0b4;
+  border: 1px solid #2e3c48;
   border-radius: 5px;
   overflow: hidden;
 }
+
+/* Flex + line-height 1 : le glyphe est centré par la boîte, pas par les
+   métriques de la police (les chasses de « s », « T », « ▶ » et « ⟲ »
+   diffèrent trop pour se fier au centrage de texte par défaut).
+   min-width identique pour que les deux moitiés de la bascule soient
+   de même largeur quelle que soit la lettre. */
 .chrono-unit {
-  padding: 1px 7px;
-  font-size: clamp(10px, 1vw, 12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: clamp(15px, 1.7vw, 24px);
+  height: clamp(15px, 1.7vw, 18px);   /* + les 2 bordures du conteneur = hauteur des boutons */
+  padding: 0;
+  font-size: clamp(9px, 0.95vw, 12px);
   font-family: inherit;
   font-weight: 700;
-  color: #5a6a78;
-  background: #f4f1ec;
+  line-height: 1;
+  color: #e6eef2;
+  background: rgba(20,30,40,0.28);
   border: none;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background 0.15s, color 0.15s;
 }
-.chrono-unit + .chrono-unit { border-left: 1.5px solid #c8c0b4; }
-.chrono-unit:hover:not(:disabled):not(.active) { background: #e2ded6; }
-.chrono-unit.active { background: #3a6ea5; color: #fff; }
+.chrono-unit + .chrono-unit { border-left: 1px solid #2e3c48; }
+.chrono-unit:hover:not(:disabled):not(.active) { background: rgba(20,30,40,0.45); }
+/* Unité sélectionnée : pastille claire, comme une touche allumée */
+.chrono-unit.active {
+  background: #eef2f4;
+  color: #22303c;
+}
 .chrono-unit:disabled { opacity: 0.35; cursor: default; }
 
-/* Marche/arrêt et remise à zéro : deux boutons-icônes carrés */
+/* Marche/arrêt et remise à zéro : deux boutons-icônes en métal clair */
 .chrono-btn {
-  width: 24px;
-  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: clamp(19px, 2.1vw, 26px);
+  height: clamp(17px, 1.9vw, 20px);
   padding: 0;
-  line-height: 1;
-  font-size: 11px;
+  font-size: clamp(10px, 1.05vw, 12px);
   font-family: inherit;
-  color: #5a6a78;
-  background: #f4f1ec;
-  border: 1.5px solid #c8c0b4;
+  line-height: 1;
+  color: #1e2a34;
+  background: linear-gradient(#c0d0da, #9aabb8);
+  border: 1px solid #2e3c48;
   border-radius: 5px;
   cursor: pointer;
-  transition: background 0.15s, transform 0.1s;
+  transition: filter 0.15s, transform 0.1s;
 }
-.chrono-btn:hover { background: #e2ded6; }
+.chrono-btn:hover { filter: brightness(1.08); }
 .chrono-btn:active { transform: scale(0.92); }
 .chrono-btn.running {
-  background: #f0d8c0;
-  border-color: #d09050;
-  color: #8a5518;
+  background: linear-gradient(#f0c88a, #e0a44e);
+  border-color: #8a5518;
+  color: #4a2c08;
+}
+
+/* Icône marche/arrêt : SVG plutôt que les glyphes ▶/⏸, dont le rendu par
+   la police emoji décale visiblement le symbole dans le bouton. */
+.chrono-ico {
+  display: block;
+  width: clamp(9px, 1vw, 11px);
+  height: clamp(9px, 1vw, 11px);
+  fill: currentColor;
 }
 
 /* Boutons balises : ligne 1 / col 2 — alignés en bas à droite */

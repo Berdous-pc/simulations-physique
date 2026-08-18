@@ -742,6 +742,9 @@ function _drawOneBeacon(ctx, x, color, label) {
             // Sans temps qui s'écoule, le geste ne graverait rien.
             if (simCorde.paused && typeof _setPausedCorde === 'function') _setPausedCorde(false);
             if (typeof _resetYtWindowCordeIfQuiet === 'function') _resetYtWindowCordeIfQuiet();
+            // Mode Libre : la source, c'est le geste. Si le chronomètre est
+            // lié, la saisie de la boule joue donc le rôle du bouton Activer.
+            if (typeof _startChronoIfLinkedCorde === 'function') _startChronoIfLinkedCorde();
             tubeCanvas.setPointerCapture(e.pointerId);
             return;
         }
