@@ -14,6 +14,15 @@
   <meta name="description" content="Simulation interactive (Première/Terminale) : propagation d'ondes mécaniques sur une corde, onde sonore dans un tube et ondes de surface.">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>⚛️</text></svg>">
   <link rel="stylesheet" href="css/style.css" />
+  <!-- Évite le flash de la zone graphe (visible puis masquée) au refresh
+       sur l'onglet Corde : le graphe y est masqué par défaut, mais ui.js
+       ne s'exécute qu'après le parsing du body. On pose la classe tout
+       de suite, avant le premier paint, à partir du hash d'URL. -->
+  <script>
+    if (location.hash.replace('#', '') === 'corde') {
+      document.documentElement.classList.add('init-corde-graph-hidden');
+    }
+  </script>
 </head>
 <body>
 <h1 class="sr-only">Simulation de propagation d'ondes : corde, onde sonore et ondes de surface</h1>

@@ -250,7 +250,12 @@ main {
 /* ── Graphe masqué (bouton "Afficher graphe", onglet Corde) ─────────
    La zone d'animation récupère alors tout l'espace disponible. ────── */
 #left-col.graph-hidden #graph-area,
-#left-col.graph-hidden #left-splitter {
+#left-col.graph-hidden #left-splitter,
+/* Pré-masquage avant l'exécution de ui.js (cf. script inline dans <head>),
+   pour l'onglet Corde chargé directement via l'URL (#corde) : évite le
+   flash "graphe visible puis masqué" au refresh. */
+html.init-corde-graph-hidden #graph-area,
+html.init-corde-graph-hidden #left-splitter {
   display: none;
 }
 
