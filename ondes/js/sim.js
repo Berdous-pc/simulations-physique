@@ -45,6 +45,149 @@ function _cbufIdx(buf, i) {
     return (j < buf.cap) ? j : j - buf.cap;
 }
 
+// ══════════════════════════════════════════════════════════════════════
+//  Historique de la source — mécanique partagée par les onglets Son et Corde
+//
+//  Ces onglets ne recalculent PAS le champ à partir des réglages courants :
+//  ils enregistrent ce que la source a réellement émis, échantillon par
+//  échantillon, puis relisent cet historique en retard. C'est ce qui garantit
+//  qu'une onde déjà partie ne peut plus être ni modifiée ni effacée par un
+//  changement de réglage ou par une relance de la source.
+//
+//  Deux tampons circulaires parallèles :
+//    • srcD — déplacement émis par la source, unité propre à l'onglet
+//    • srcS — abscisse curviligne cumulée S(t) = ∫ c dt, soit la distance
+//             totale parcourue depuis t = 0 par un front parti à t = 0
+//
+//  Un point situé à la distance x lit l'échantillon dont le S vaut S(t) − x :
+//  inverser S revient à remonter au temps d'émission, ce qui reste exact même
+//  si c a changé entre-temps.
+//
+//    • pas : 1/600 s de temps simulé → 120 points par période à la fréquence
+//      max (5 Hz), tracé lisse en toutes circonstances
+//    • capacité : 40 s, soit largement le temps de trajet le plus long
+//      (Corde : c_min ≈ 0,35 m/s sur 5 m ≈ 14 s ; Son : c_min ≈ 3,5 cm/s
+//      sur 40 cm ≈ 11 s)
+// ══════════════════════════════════════════════════════════════════════
+
+var SRC_DT  = 1 / 600;
+var SRC_CAP = Math.round(40 / SRC_DT);
+
+function _srcAlloc(s) {
+    if (!s.srcD) {
+        s.srcD = new Float32Array(SRC_CAP);
+        s.srcS = new Float64Array(SRC_CAP);
+        s.srcA = new Float32Array(SRC_CAP);
+    }
+}
+
+// Index physique de l'échantillon n° k (k = 0 → le plus ancien)
+function _srcIdx(s, k) {
+    return (s.srcHead - s.srcN + k + SRC_CAP) % SRC_CAP;
+}
+
+function _srcClear(s) {
+    s.srcN      = 0;
+    s.srcHead   = 0;
+    s.srcTNew   = 0;
+    s.srcSCur   = 0;
+    s.lastEmitT = -1e9;
+    s.srcKMin   = Infinity;
+    s.srcSeq++;
+}
+
+// Écrit un échantillon : d = déplacement émis, cAdvance = célérité courante
+// dans l'unité de longueur de l'onglet (m/s pour la Corde, cm/s pour le Son).
+// aux = grandeur auxiliaire figée à l'émission, propre à l'onglet (le Son y
+// range le nombre d'onde, cf. stepSourceSon ; la Corde n'en a pas l'usage).
+function _srcPush(s, t, d, cAdvance, aux) {
+    _srcAlloc(s);
+    if (d !== 0) s.lastEmitT = t;
+    s.srcSCur += cAdvance * SRC_DT;
+    s.srcD[s.srcHead] = d;
+    s.srcS[s.srcHead] = s.srcSCur;
+    s.srcA[s.srcHead] = aux || 0;
+    s.srcHead = (s.srcHead + 1) % SRC_CAP;
+    if (s.srcN < SRC_CAP) s.srcN++;
+    s.srcTNew = t;
+    s.srcSeq++;
+}
+
+// S(t) : distance cumulée à l'instant t. Au-delà du dernier échantillon,
+// extrapolation linéaire à la célérité courante (le point « vivant » des
+// graphes est demandé à simTime, entre deux échantillons).
+function _srcSAtTime(s, t, cNow) {
+    var n = s.srcN;
+    if (n === 0) return 0;
+    if (t >= s.srcTNew) return s.srcSCur + cNow * (t - s.srcTNew);
+
+    var tOld = s.srcTNew - (n - 1) * SRC_DT;
+    if (t <= tOld) return s.srcS[_srcIdx(s, 0)];
+
+    var f = (t - tOld) / SRC_DT;
+    var k = Math.floor(f);
+    if (k >= n - 1) return s.srcS[_srcIdx(s, n - 1)];
+    var sA = s.srcS[_srcIdx(s, k)];
+    var sB = s.srcS[_srcIdx(s, k + 1)];
+    return sA + (sB - sA) * (f - k);
+}
+
+// Échantillon émis quand le front avait parcouru la distance sT : renvoie à la
+// fois le déplacement (.d) et la grandeur auxiliaire (.a). S étant croissante
+// (c > 0), on inverse par dichotomie. Un sT antérieur au plus ancien
+// échantillon signifie que l'onde n'est pas encore arrivée : .d = 0.
+//
+// Objet de sortie réutilisé d'un appel à l'autre : la fonction est appelée
+// quelques milliers de fois par frame, allouer y serait coûteux. La valeur
+// renvoyée doit donc être consommée immédiatement.
+var _srcOut = { d: 0, a: 0 };
+
+function _srcSampleAtS(s, sT) {
+    _srcOut.d = 0;
+    _srcOut.a = 0;
+
+    var n = s.srcN;
+    if (n === 0) return _srcOut;
+
+    if (sT <= s.srcS[_srcIdx(s, 0)]) return _srcOut;
+
+    var iLast = _srcIdx(s, n - 1);
+    if (sT >= s.srcS[iLast]) {
+        _srcOut.d = s.srcD[iLast];
+        _srcOut.a = s.srcA[iLast];
+        return _srcOut;
+    }
+
+    // Plus grand k tel que S(k) ≤ sT
+    var lo = 0, hi = n - 1;
+    while (hi - lo > 1) {
+        var mid = (lo + hi) >> 1;
+        if (s.srcS[_srcIdx(s, mid)] <= sT) lo = mid;
+        else                               hi = mid;
+    }
+    var iA = _srcIdx(s, lo);
+    var iB = _srcIdx(s, hi);
+    var span = s.srcS[iB] - s.srcS[iA];
+    var f    = (span > 0) ? (sT - s.srcS[iA]) / span : 0;
+
+    _srcOut.d = s.srcD[iA] + (s.srcD[iB] - s.srcD[iA]) * f;
+    _srcOut.a = s.srcA[iA] + (s.srcA[iB] - s.srcA[iA]) * f;
+    return _srcOut;
+}
+
+function _srcDAtS(s, sT) {
+    return _srcSampleAtS(s, sT).d;
+}
+
+// « Au repos » = plus rien n'est émis, et la dernière perturbation émise a eu
+// le temps de traverser toute la longueur affichée. Sert à décider si l'on
+// peut réinitialiser la fenêtre du graphe temporel sans couper une courbe.
+function _srcIsQuiet(s, length, c) {
+    if (s.sinusoidalActive || s.impulses.length > 0) return false;
+    if (c <= 0) return true;
+    return (s.simTime - s.lastEmitT) > length / c;
+}
+
 // Écriture scientifique : mantisse à `decimals` décimales × 10^exposant.
 // Renvoie du HTML (exposant en <sup>, signe moins typographique) — à injecter
 // via innerHTML, pas textContent.
@@ -67,6 +210,8 @@ var RHO_DEFAULT      = 1.0;   // masse volumique par défaut
 // C_DISPLAY_FACTOR : c_norm * C_DISPLAY_FACTOR = célérité affichée en cm/s
 // sqrt(K_DEFAULT/RHO_DEFAULT) * 10 = 2 * 10 = 20 cm/s à la configuration par défaut
 var C_DISPLAY_FACTOR = 10.0;
+// Longueur physique du tube représentée par tubeLength pixels
+var TUBE_LENGTH_CM   = 40.0;
 // C_BASE : px/s par unité de c_norm — recalibré dans tube.js resize()
 // Cible : onde traverse le tube (~700px) en ~8s avec c_norm=2 → C_BASE ≈ 700/(8*2) ≈ 43
 var C_BASE           = 43.0;
@@ -88,13 +233,30 @@ var sim = {
     impulsePropagating: false,  // true = une impulsion est en cours de propagation
 
     // ── Source — composante sinusoïdale ─────────────────────────────
+    //  sinPhase : phase accumulée (rad), jamais recalculée depuis un instant
+    //  de départ — changer f n'introduit donc aucun saut de phase.
     sinusoidalActive : false,    // oscillation en cours
-    sinStartTime     : 0,        // sim.simTime au démarrage
-    sinStopTime      : -1,       // sim.simTime à l'arrêt (-1 = pas encore arrêtée)
+    sinPhase         : 0,
 
     // ── Source — impulsions (superposables) ─────────────────────────
     // Chaque entrée : { startTime }  (1 période de sinus = T_IMPULSE)
     impulses : [],
+
+    // ── Historique de la source (cf. _srcPush / _srcDAtS) ────────────
+    //  srcD est enregistré NORMALISÉ (sans dimension, dans [−1, 1]) et non
+    //  en pixels : memAmplitude est recalibrée à chaque resize, et une
+    //  amplitude figée en pixels ne suivrait pas le redimensionnement.
+    //  srcS progresse en centimètres, l'unité physique du tube.
+    srcD    : null,
+    srcS    : null,
+    srcN    : 0,
+    srcHead : 0,
+    srcTNew : 0,
+    srcSCur : 0,
+    srcA    : null,   // nombre d'onde figé à l'émission (rad/cm)
+    srcSeq  : 0,
+    lastEmitT : -1e9,
+    srcKMin   : Infinity,   // plus petit k émis — dimensionne les zones virtuelles
 
     // ── Paramètres physiques du milieu ───────────────────────────────
     freq        : 1.5,            // fréquence de la sinusoïdale (Hz)
@@ -113,7 +275,7 @@ var sim = {
     // Chaque particule : { x0 (position de repos en px depuis tubeLeft),
     //                      selected, ry (position y en [0,1], gelée en pause) }
     // N ∝ ρ (linéaire). Domaine [0, tubeLength + 2×memAmplitude].
-    // Position affichée : tubeLeft + x0 + waveDisplacement(x0,t) × tubeDispCap
+    // Position affichée : tubeLeft + x0 + waveDisplacementDisplay(x0, t)
     cols              : [],
     selectionMode     : false,   // mode sélection par proximité actif
     selectionRadius   : 25,      // px, rayon de sélection (recalculé dans initCols)
@@ -150,10 +312,7 @@ var sim = {
 
     // ── Vue graphe ΔP(t) ─────────────────────────────────────────────
     graphView        : { xMin: 0, xMax: 5, yMin: -1, yMax: 1 },
-    graphViewHistory : [],
-    graphZoomMode    : false,
     graphCursorMode  : false,
-    graphUserPanned  : false,   // true = l'utilisateur a pané manuellement
 
     // ── Vue graphe ΔP(x) ─────────────────────────────────────────────
     graphDpxYMin : -1,
@@ -171,57 +330,134 @@ function updateCelerite() {
     sim.c_cms  = c_norm * C_DISPLAY_FACTOR;    // cm/s (affiché)
 }
 
+// Le tube est « au repos » : cf. _srcIsQuiet.
+function sonIsQuiet() {
+    return _srcIsQuiet(sim, TUBE_LENGTH_CM, sim.c_cms);
+}
+
 // ══════════════════════════════════════════════════════════════════════
-//  Déplacement de la membrane au temps retardé t_ret (s simulés)
-//  Cette fonction est appelée avec t_ret = sim.simTime − x / c_sim
-//  et retourne le déplacement de la membrane à ce moment passé.
+//  Avancement de la source son (membrane) d'un pas SRC_DT
+//
+//  Appelé à pas fixe par la boucle d'animation (ui.js). C'est le SEUL
+//  endroit où l'on consulte freq / c : une fois l'échantillon écrit, il est
+//  figé. Bouger un curseur n'affecte donc que la suite de l'émission, jamais
+//  l'onde déjà présente dans le tube.
+//
+//  Le déplacement est enregistré NORMALISÉ (sans dimension) ; il est remis à
+//  l'échelle par memAmplitude au moment de la lecture, ce qui laisse le
+//  redimensionnement de la fenêtre agir correctement sur toute l'onde.
 // ══════════════════════════════════════════════════════════════════════
 
-function memDisplacement(t_ret) {
+function stepSourceSon(t) {
     var d = 0;
 
-    // ── Composante sinusoïdale ────────────────────────────────────────
-    // Active entre sinStartTime et sinStopTime (ou maintenant si toujours active)
-    var sinStop = sim.sinusoidalActive ? Infinity : sim.sinStopTime;
-    if (sim.sinStopTime !== -1 || sim.sinusoidalActive) {
-        // La sinusoïdale a été démarrée au moins une fois
-        var sinStop2 = sim.sinusoidalActive ? 1e15 : sim.sinStopTime;
-        if (t_ret >= sim.sinStartTime && t_ret <= sinStop2) {
-            var tau = t_ret - sim.sinStartTime;
-            d += sim.memAmplitude * Math.sin(2 * Math.PI * sim.freq * tau);
-        }
+    // ── Composante sinusoïdale : phase accumulée ──────────────────────
+    if (sim.sinusoidalActive) {
+        sim.sinPhase += 2 * Math.PI * sim.freq * SRC_DT;
+        if (sim.sinPhase > 2 * Math.PI) sim.sinPhase -= 2 * Math.PI;
+        d += Math.sin(sim.sinPhase);
     }
 
-    // ── Composantes impulsions ────────────────────────────────────────
+    // ── Composantes impulsions (superposables) ────────────────────────
     // Forme du déplacement membranaire : (1 − cos(2π × τ/T)) / 2
     // → démarre à 0, monte doucement, revient à 0 en T (enveloppe demi-cosinus).
     // Sa dérivée spatiale (= ΔP dans le graphe) est un sinus pur sur [0, 2π] :
     // compression (+) puis détente (−), exactement 1 période propre.
     for (var i = 0; i < sim.impulses.length; i++) {
-        var imp = sim.impulses[i];
-        var tau_imp = t_ret - imp.startTime;
-        if (tau_imp >= 0 && tau_imp <= T_IMPULSE) {
-            d += sim.memAmplitude * (1 - Math.cos(2 * Math.PI * tau_imp / T_IMPULSE)) / 2;
+        var tau = t - sim.impulses[i].startTime;
+        if (tau >= 0 && tau <= T_IMPULSE) {
+            d += (1 - Math.cos(2 * Math.PI * tau / T_IMPULSE)) / 2;
         }
     }
 
-    return d;
+    // ── Nombre d'onde figé à l'émission (rad/cm) ──────────────────────
+    // C'est lui qui, à la lecture, fixera le gain d'affichage des colonnes
+    // (cf. _sonDisplayGain). L'enregistrer par échantillon est indispensable :
+    // un gain global recalculé à partir de la fréquence COURANTE redimensionnait
+    // d'un coup les zones de compression dans tout le tube dès qu'on touchait
+    // au curseur f. En cm⁻¹ pour survivre aux redimensionnements de fenêtre.
+    var freqEff = (sim.sourceMode === 'impulse') ? 1.0 / T_IMPULSE : sim.freq;
+    var k_cm    = (sim.c_cms > 0) ? 2 * Math.PI * freqEff / sim.c_cms : 0;
+
+    if (d !== 0 && k_cm > 0 && k_cm < sim.srcKMin) sim.srcKMin = k_cm;
+
+    _srcPush(sim, t, d, sim.c_cms, k_cm);
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Gain d'affichage des colonnes
+//
+//  Le déplacement physique des particules est bien trop petit ou bien trop
+//  grand selon les réglages : A·k (la modulation de densité) couvre trois
+//  décades sur les plages de curseurs. On le ramène dans [AK_MIN, AK_CAP] :
+//    • en dessous : on amplifie, sinon la compression est invisible
+//    • au-dessus  : on plafonne, sinon les colonnes se chevauchent
+//  Le calcul se fait à partir du k FIGÉ À L'ÉMISSION, donc chaque portion de
+//  l'onde garde son propre gain : changer f n'affecte plus l'affichage de ce
+//  qui est déjà parti.
+// ══════════════════════════════════════════════════════════════════════
+
+var AK_MIN = 0.55;
+var AK_CAP = 0.90;
+
+function _sonDisplayGain(k_cm) {
+    if (k_cm <= 0 || sim.tubeLength <= 0) return 1.0;
+    var k_px = k_cm * TUBE_LENGTH_CM / sim.tubeLength;   // rad/px
+    var ak   = sim.memAmplitude * k_px;
+    if (ak <= 0) return 1.0;
+    return Math.max(AK_MIN, Math.min(AK_CAP, ak)) / ak;
+}
+
+// Gain maximal susceptible d'être appliqué compte tenu de ce qui a déjà été
+// émis — sert à dimensionner les zones virtuelles de particules (initCols).
+function sonMaxDisplayGain() {
+    var g = _sonDisplayGain(sim.srcKMin === Infinity ? 0 : sim.srcKMin);
+    var kNow = (sim.c_cms > 0) ? 2 * Math.PI * sim.freq / sim.c_cms : 0;
+    return Math.max(1.0, g, _sonDisplayGain(kNow));
 }
 
 // ══════════════════════════════════════════════════════════════════════
 //  Déplacement d'onde au point x_px (distance depuis bord gauche du
 //  tube, en px) au temps t_sim.
-//  Modèle : onde progressive amortie, pas de réflexion à l'extrémité.
-//  u(x,t) = d_mem(t − x/c) × exp(−α × x/L)
+//
+//  Modèle : onde progressive amortie, pas de réflexion à l'extrémité. Le
+//  point situé à la distance x lit ce que la membrane a émis quand le front
+//  avait parcouru S(t) − x :
+//      u(x, t) = d_émis(S(t) − x) × memAmplitude × exp(−α·x/L)
+//
+//  Retourne des pixels (échelle d'affichage des colonnes). x_px est converti
+//  en centimètres : la propagation est ainsi indépendante de la taille du
+//  canvas.
 // ══════════════════════════════════════════════════════════════════════
 
 function waveDisplacement(x_px, t_sim) {
-    if (sim.c_sim <= 0 || sim.tubeLength <= 0) return 0;
-    var delay = x_px / sim.c_sim;        // retard de propagation (s)
-    var t_ret = t_sim - delay;           // temps retardé
+    if (sim.tubeLength <= 0) return 0;
+
+    var x_cm = x_px * TUBE_LENGTH_CM / sim.tubeLength;
+    var d    = _srcDAtS(sim, _srcSAtTime(sim, t_sim, sim.c_cms) - x_cm);
+    if (d === 0) return 0;
+
     var alpha = sim.attenuation * 5;     // amortissement (×5 pour visibilité sur L)
-    var atten = Math.exp(-alpha * x_px / sim.tubeLength);
-    return memDisplacement(t_ret) * atten;
+    return d * sim.memAmplitude * Math.exp(-alpha * x_cm / TUBE_LENGTH_CM);
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Déplacement D'AFFICHAGE : idem, mais pondéré par le gain de lisibilité
+//  propre à l'échantillon lu (cf. _sonDisplayGain). Réservé au rendu des
+//  colonnes et de la membrane — la physique (waveDeltaP, graphes) utilise
+//  waveDisplacement, qui n'est pas pondérée.
+// ══════════════════════════════════════════════════════════════════════
+
+function waveDisplacementDisplay(x_px, t_sim) {
+    if (sim.tubeLength <= 0) return 0;
+
+    var x_cm = x_px * TUBE_LENGTH_CM / sim.tubeLength;
+    var smp  = _srcSampleAtS(sim, _srcSAtTime(sim, t_sim, sim.c_cms) - x_cm);
+    if (smp.d === 0) return 0;
+
+    var alpha = sim.attenuation * 5;
+    return smp.d * sim.memAmplitude * _sonDisplayGain(smp.a)
+                 * Math.exp(-alpha * x_cm / TUBE_LENGTH_CM);
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -230,9 +466,19 @@ function waveDisplacement(x_px, t_sim) {
 // ══════════════════════════════════════════════════════════════════════
 
 function waveDeltaP(x_px, t_sim) {
-    var freqEff = (sim.sourceMode === 'impulse') ? 1.0 / T_IMPULSE : sim.freq;
-    var aEff    = (sim.sourceMode === 'impulse') ? sim.memAmplitude / 2 : sim.memAmplitude;
-    var kEff    = (sim.c_sim > 0) ? 2 * Math.PI * freqEff / sim.c_sim : 0;
+    if (sim.tubeLength <= 0) return 0;
+
+    // Nombre d'onde LOCAL, lu dans l'historique : comme le gain d'affichage,
+    // la normalisation doit être calée sur ce qui a été émis à cet endroit et
+    // non sur la fréquence courante — sinon bouger f redimensionne d'un coup
+    // toute la courbe, y compris la partie déjà propagée.
+    // (On copie la valeur : _srcOut est réutilisé par les appels suivants.)
+    var cmPerPx = TUBE_LENGTH_CM / sim.tubeLength;
+    var k_cm = _srcSampleAtS(sim, _srcSAtTime(sim, t_sim, sim.c_cms) - x_px * cmPerPx).a;
+    if (k_cm <= 0) return 0;
+
+    var aEff = (sim.sourceMode === 'impulse') ? sim.memAmplitude / 2 : sim.memAmplitude;
+    var kEff = k_cm * cmPerPx;   // rad/px
 
     // ── Pas h adaptatif ───────────────────────────────────────────────
     // h doit être petit devant λ = 2π/k pour que la DFC soit précise.
@@ -274,7 +520,7 @@ function particleRadius() {
 //
 //  Chaque particule représente une parcelle de fluide. Elle possède une
 //  position de repos x0 (en px depuis tubeLeft). À chaque frame, sa
-//  position affichée est : tubeLeft + x0 + u(x0, t) × tubeDispCap.
+//  position affichée est : tubeLeft + x0 + waveDisplacementDisplay(x0, t).
 //
 //  Le domaine s'étend au-delà de tubeRight de extraRight = 2×memAmplitude×max(1,cap)
 //  pour que le milieu soit continu : lors d'une raréfaction à l'extrémité
@@ -295,12 +541,11 @@ function initCols() {
     if (L <= 0 || H <= 0) return;
 
     // Zone virtuelle gauche et droite : doivent couvrir le déplacement max d'une
-    // particule, qui vaut memAmplitude × tubeDispCap. On recalcule tubeDispCap
-    // ici avec les paramètres courants pour avoir la bonne valeur.
-    var freqEff_ic = sim.freq;
-    var kEff_ic    = (sim.c_sim > 0) ? 2 * Math.PI * freqEff_ic / sim.c_sim : 0;
-    var akEff_ic   = sim.memAmplitude * kEff_ic;
-    var cap_ic     = (akEff_ic > 0) ? Math.max(0.55, Math.min(0.90, akEff_ic)) / akEff_ic : 1.0;
+    // particule, qui vaut memAmplitude × gain d'affichage. Le gain étant figé à
+    // l'émission, une portion ancienne peut demander plus de marge que les
+    // réglages courants : on dimensionne donc sur le maximum entre le gain
+    // actuel et celui déjà en circulation (cf. sonMaxDisplayGain).
+    var cap_ic     = sonMaxDisplayGain();
     var extraLeft  = sim.memAmplitude * cap_ic + 4;   // +4 px de marge sécurité
     // La zone droite doit être au moins aussi large que le déplacement max
     // amplifié. Si cap_ic > 1 (boost basse fréquence), les particules virtuelles
@@ -363,11 +608,13 @@ var MU_DEFAULT        = 1.0;    // masse linéique par défaut (kg/m)
 var T_DEFAULT         = 4.0;    // tension par défaut (N)
 // C_BASE_CORDE : px/s par unité de célérité (m/s) — recalibré dans tube.js resize
 var C_BASE_CORDE      = 43.0;
-// Bornes du slider Amplitude (cm) — l'amplitude visuelle (memAmplitude, px)
-// est mappée sur ces bornes indépendamment de l'échelle spatiale (x), pour
-// rester lisible quelle que soit la valeur choisie (cf. _recalcMemAmplitudeCorde).
-var CORDE_AMPL_CM_MIN = 1.0;
+// Borne haute du slider Amplitude (cm) — sert de référence à l'échelle
+// verticale, à l'écran comme sur les graphes (cf. _recalcMemAmplitudeCorde).
 var CORDE_AMPL_CM_MAX = 5.0;
+// Demi-étendue de l'axe y des graphes (cm). FIXE, et non calée sur
+// l'amplitude courante : sinon l'axe se redimensionnait exactement comme la
+// courbe et le curseur Amplitude semblait sans effet sur le graphe.
+var CORDE_Y_AXIS_CM   = 1.12 * CORDE_AMPL_CM_MAX;
 
 // ── État global de la simulation corde ────────────────────────────────
 var simCorde = {
@@ -381,12 +628,31 @@ var simCorde = {
     impulsePropagating: false,
 
     // ── Source — composante sinusoïdale ─────────────────────────────
+    //  sinPhase : phase accumulée (rad). Elle n'est JAMAIS recalculée à
+    //  partir de (t − t_départ) : on l'incrémente de 2π·f·dt à chaque pas.
+    //  Changer f en cours de route infléchit donc la suite du signal sans
+    //  créer de saut de phase, et sans toucher à ce qui est déjà émis.
     sinusoidalActive : false,
-    sinStartTime     : 0,
-    sinStopTime      : -1,
+    sinPhase         : 0,
 
     // ── Source — impulsions (superposables) ─────────────────────────
     impulses : [],
+
+    // ── Historique de la source (tampon circulaire) ──────────────────
+    //  srcD : déplacement émis par le pot vibrant (cm, valeur physique)
+    //  srcS : abscisse curviligne cumulée S(t) = ∫ c dt (m) — distance
+    //         totale parcourue depuis t = 0 par un front émis à t = 0.
+    //  Un point situé à la distance x lit l'échantillon dont le S vaut
+    //  S(t) − x : inverser S revient à remonter au temps d'émission, ce
+    //  qui reste exact même si c a changé entre-temps.
+    srcD    : null,
+    srcS    : null,
+    srcN    : 0,     // nombre d'échantillons valides
+    srcHead : 0,     // index de la prochaine écriture
+    srcTNew : 0,     // simTime du dernier échantillon
+    srcSCur : 0,     // dernière valeur de S (m)
+    srcSeq  : 0,     // compteur d'écritures — invalidation du cache y(x)
+    lastEmitT : -1e9, // dernier instant où la source a émis autre chose que 0
 
     // ── Paramètres physiques de la corde ────────────────────────────
     freq        : 1.5,          // fréquence de la sinusoïdale (Hz)
@@ -399,10 +665,10 @@ var simCorde = {
     c_sim : 0,    // célérité en px/s
     c_cms : 0,    // célérité en m/s (affichée)
 
-    // ── Amplitude du pot vibrant (recalibrée dans resize) ────────────
-    memAmplitude : 10,   // px (déplacement transversal maximal, échelle visuelle)
-    pxPerCmAmpl  : 1,    // px par cm d'amplitude réelle — pour reconvertir
-                          // les déplacements (px) en valeurs physiques (cm)
+    // ── Échelle verticale (recalibrée dans resize) ───────────────────
+    pxPerCmAmpl  : 1,    // px par cm — conversion valeur physique → écran
+                          // (les déplacements circulent en cm dans tout le
+                          //  code, la conversion n'a lieu qu'au tracé)
 
     // ── Géométrie de la zone corde (renseignée par tube.js resize) ────
     cordeLeft   : 0,
@@ -434,10 +700,7 @@ var simCorde = {
 
     // ── Vue graphe y(t) ──────────────────────────────────────────────
     graphView        : { xMin: 0, xMax: 5, yMin: -1, yMax: 1 },
-    graphViewHistory : [],
-    graphZoomMode    : false,
     graphCursorMode  : false,
-    graphUserPanned  : false,
 
     // ── Vue graphe y(x) ──────────────────────────────────────────────
     graphYxYMin : -1,
@@ -456,85 +719,94 @@ var simCorde = {
 function updateCeleriteCorde() {
     if (simCorde.mu <= 0) return;
     var c_ms       = Math.sqrt(simCorde.T_tension / simCorde.mu);   // m/s, formule réelle
-    simCorde.c_sim = c_ms * C_BASE_CORDE;   // px/s pour l'animation
-    simCorde.c_cms = c_ms;                  // m/s, valeur affichée
+    simCorde.c_cms = c_ms;                  // m/s — c'est CETTE valeur qui régit
+                                            // la propagation (cf. stepSourceCorde)
+    simCorde.c_sim = c_ms * C_BASE_CORDE;   // px/s — seulement pour calibrer la
+                                            // finesse d'échantillonnage du tracé
+}
+
+// La corde est « au repos » : cf. _srcIsQuiet.
+function cordeIsQuiet() {
+    return _srcIsQuiet(simCorde, CORDE_LENGTH_M, simCorde.c_cms);
 }
 
 // ══════════════════════════════════════════════════════════════════════
-//  Déplacement du pot vibrant au temps retardé t_ret
-//  Analogue à memDisplacement() mais utilise les paramètres de simCorde
+//  Avancement de la source corde d'un pas SRC_DT
+//
+//  Appelé à pas fixe par la boucle d'animation (ui.js). C'est le SEUL
+//  endroit où l'on consulte freq / amplitudeCm / c : une fois l'échantillon
+//  écrit, il est figé. Bouger un curseur n'affecte donc que la suite de
+//  l'émission, jamais l'onde déjà présente sur la corde.
+//
+//  Le déplacement est enregistré en centimètres (valeur physique) et S
+//  progresse en mètres.
 // ══════════════════════════════════════════════════════════════════════
 
-function memDisplacementCorde(t_ret) {
+function stepSourceCorde(t) {
     var d = 0;
 
-    // ── Composante sinusoïdale ────────────────────────────────────────
-    if (simCorde.sinStopTime !== -1 || simCorde.sinusoidalActive) {
-        var sinStop2 = simCorde.sinusoidalActive ? 1e15 : simCorde.sinStopTime;
-        if (t_ret >= simCorde.sinStartTime && t_ret <= sinStop2) {
-            var tau = t_ret - simCorde.sinStartTime;
-            d += simCorde.memAmplitude * Math.sin(2 * Math.PI * simCorde.freq * tau);
-        }
+    // ── Composante sinusoïdale : phase accumulée ──────────────────────
+    // Jamais recalculée depuis (t − t_départ) : changer f infléchit la suite
+    // du signal sans créer de saut de phase.
+    if (simCorde.sinusoidalActive) {
+        simCorde.sinPhase += 2 * Math.PI * simCorde.freq * SRC_DT;
+        if (simCorde.sinPhase > 2 * Math.PI) simCorde.sinPhase -= 2 * Math.PI;
+        d += simCorde.amplitudeCm * Math.sin(simCorde.sinPhase);
     }
 
-    // ── Composantes impulsions ────────────────────────────────────────
+    // ── Composantes impulsions (superposables) ────────────────────────
     for (var i = 0; i < simCorde.impulses.length; i++) {
-        var imp     = simCorde.impulses[i];
-        var tau_imp = t_ret - imp.startTime;
-        if (tau_imp >= 0 && tau_imp <= T_IMPULSE) {
-            d += simCorde.memAmplitude * (1 - Math.cos(2 * Math.PI * tau_imp / T_IMPULSE)) / 2;
+        var tau = t - simCorde.impulses[i].startTime;
+        if (tau >= 0 && tau <= T_IMPULSE) {
+            d += simCorde.amplitudeCm * (1 - Math.cos(2 * Math.PI * tau / T_IMPULSE)) / 2;
         }
     }
 
-    return d;
+    _srcPush(simCorde, t, d, simCorde.c_cms);
 }
 
 // ══════════════════════════════════════════════════════════════════════
 //  Déplacement transversal de la corde au point x_px au temps t_sim
-//  Modèle : onde progressive amortie, corde infinie à droite (pas de réflexion)
-//  y(x, t) = d_pot(t − x/c) × exp(−α × x/L)
+//
+//  Modèle : onde progressive amortie, corde infinie à droite (pas de
+//  réflexion). Le point situé à la distance x lit ce que la source a émis
+//  quand le front avait parcouru S(t) − x :
+//      y(x, t) = d_émis(S(t) − x) × exp(−α·x/L)
+//
+//  RETOURNE UNE VALEUR PHYSIQUE EN cm (conversion en px au tracé, via
+//  simCorde.pxPerCmAmpl). x_px est en pixels écran, converti en mètres :
+//  la physique est ainsi totalement indépendante de la taille du canvas.
 // ══════════════════════════════════════════════════════════════════════
 
 function cordeDisplacement(x_px, t_sim) {
-    if (simCorde.c_sim <= 0 || simCorde.cordeLength <= 0) return 0;
-    var delay = x_px / simCorde.c_sim;
-    var t_ret = t_sim - delay;
+    if (simCorde.cordeLength <= 0) return 0;
+
+    var x_m = x_px * CORDE_LENGTH_M / simCorde.cordeLength;
+    var d   = _srcDAtS(simCorde, _srcSAtTime(simCorde, t_sim, simCorde.c_cms) - x_m);
+    if (d === 0) return 0;
+
     var alpha = simCorde.attenuation * 5;
-    var atten = Math.exp(-alpha * x_px / simCorde.cordeLength);
-    return memDisplacementCorde(t_ret) * atten;
-}
-
-// ══════════════════════════════════════════════════════════════════════
-//  Cap visuel du déplacement transversal
-//  Contrairement au tube (où ak doit rester dans une fenêtre pour éviter
-//  le chevauchement des particules), la corde n'a pas cette contrainte
-//  physique : seule la borne géométrique (memAmplitude ≤ 90% de la
-//  demi-hauteur de la zone, cf. _recalcMemAmplitudeCorde dans tube.js)
-//  est nécessaire pour garder l'onde lisible. Le slider Amplitude doit
-//  donc se répercuter directement, sans compensation.
-// ══════════════════════════════════════════════════════════════════════
-
-var cordeDispCap = 1.0;
-
-function updateCordeDispCap() {
-    cordeDispCap = 1.0;
+    return d * Math.exp(-alpha * x_m / CORDE_LENGTH_M);
 }
 
 // ══════════════════════════════════════════════════════════════════════
 //  Mise à jour du snapshot y(x)
 //  Analogue à updateDpxData() : un seul calcul par frame, partagé par le
 //  tracé et le hover snappé, avec skip via signature quand rien n'a changé.
+//  yxY est stocké en cm (valeur physique), comme cordeDisplacement.
 // ══════════════════════════════════════════════════════════════════════
 
 var CORDE_YX_PTS_PER_PX = 2;
 var CORDE_YX_PTS_MIN    = 300;
 var CORDE_YX_PTS_MAX    = 4000;
 
+// Le profil ne dépend plus que de l'historique émis (srcSeq), de la
+// géométrie et de l'atténuation : freq / amplitude n'ont plus d'effet
+// rétroactif, donc plus besoin de les surveiller ici.
 function _cordeYxSignature() {
     var s = simCorde;
-    return s.simTime + '|' + s.cordeLength + '|' + s.c_sim + '|' + s.freq + '|' +
-           s.sourceMode + '|' + s.memAmplitude + '|' + s.attenuation + '|' +
-           s.graphMode + '|' + s.impulses.length;
+    return s.srcSeq + '|' + s.simTime + '|' + s.cordeLength + '|' +
+           s.attenuation + '|' + s.graphMode;
 }
 
 function updateYxData() {
@@ -592,8 +864,11 @@ function updateYtData(t) {
 // ══════════════════════════════════════════════════════════════════════
 
 function pruneImpulsesCorde() {
-    if (simCorde.c_sim <= 0) return;
-    var cutoff = simCorde.simTime - T_IMPULSE - simCorde.cordeLength / simCorde.c_sim - 0.5;
+    if (simCorde.c_cms <= 0) return;
+    // Une impulsion est « terminée » quand elle a fini d'être émise ET a
+    // fini de traverser la corde (durée exprimée en grandeurs physiques,
+    // donc insensible à la taille du canvas).
+    var cutoff = simCorde.simTime - T_IMPULSE - CORDE_LENGTH_M / simCorde.c_cms - 0.5;
     simCorde.impulses = simCorde.impulses.filter(function(imp) {
         return imp.startTime > cutoff;
     });
@@ -608,20 +883,26 @@ function resetAnimCorde() {
     simCorde.paused             = false;
     simCorde.sourceMode         = null;
     simCorde.sinusoidalActive   = false;
-    simCorde.sinStartTime       = 0;
-    simCorde.sinStopTime        = -1;
+    simCorde.sinPhase           = 0;
     simCorde.impulses           = [];
     simCorde.impulsePropagating = false;
+    _srcClear(simCorde);
     _ytClearCorde(1);
     _ytClearCorde(2);
     simCorde.ytTimeOrigin       = 0;
     simCorde.yxN                = 0;
     simCorde.yxSig              = null;
     simCorde.graphView          = { xMin: 0, xMax: 5, yMin: -1, yMax: 1 };
-    simCorde.graphViewHistory   = [];
-    simCorde.graphUserPanned    = false;
     simCorde.graphYxYMin        = -1;
     simCorde.graphYxYMax        =  1;
+
+    // Positions des balises : seul « Remettre à zéro » les restaure, le
+    // masquage/réaffichage par les boutons Balise les conserve.
+    simCorde.beacon1.frac = 0.30;
+    simCorde.beacon2.frac = 0.65;
+    simCorde.beacon1.x = simCorde.cordeLeft + simCorde.cordeLength * simCorde.beacon1.frac;
+    simCorde.beacon2.x = simCorde.cordeLeft + simCorde.cordeLength * simCorde.beacon2.frac;
+
     updateCeleriteCorde();
 }
 
@@ -653,11 +934,15 @@ var SON_DPX_PTS_PER_PX = 2;
 var SON_DPX_PTS_MIN    = 300;
 var SON_DPX_PTS_MAX    = 4000;
 
+// Le champ ne dépend plus que de l'historique émis (srcSeq), de la géométrie
+// et de l'atténuation. La normalisation de ΔP, elle, reste calée sur les
+// réglages courants (cf. waveDeltaP) : d'où la présence de freq, K et
+// sourceMode, qui changent l'échelle du tracé sans toucher au champ.
 function _dpxSignature() {
     var s = sim;
-    return s.simTime + '|' + s.tubeLength + '|' + s.c_sim + '|' + s.freq + '|' +
-           s.sourceMode + '|' + s.K + '|' + s.memAmplitude + '|' + s.attenuation + '|' +
-           s.graphMode + '|' + s.impulses.length;
+    return s.srcSeq + '|' + s.simTime + '|' + s.tubeLength + '|' + s.c_sim + '|' +
+           s.freq + '|' + s.sourceMode + '|' + s.K + '|' + s.memAmplitude + '|' +
+           s.attenuation + '|' + s.graphMode;
 }
 
 function updateDpxData() {
@@ -720,9 +1005,11 @@ function updateDptData(t) {
 // ══════════════════════════════════════════════════════════════════════
 
 function pruneImpulses() {
-    if (sim.c_sim <= 0) return;
-    // L'impulsion i expire à t = startTime + T_IMPULSE + tubeLength/c_sim
-    var cutoff = sim.simTime - T_IMPULSE - sim.tubeLength / sim.c_sim - 0.5;
+    if (sim.c_cms <= 0) return;
+    // Une impulsion est « terminée » quand elle a fini d'être émise ET a fini
+    // de traverser le tube (durée en grandeurs physiques, donc insensible à la
+    // taille du canvas).
+    var cutoff = sim.simTime - T_IMPULSE - TUBE_LENGTH_CM / sim.c_cms - 0.5;
     sim.impulses = sim.impulses.filter(function(imp) {
         return imp.startTime > cutoff;
     });
@@ -744,21 +1031,26 @@ function resetAnim() {
     sim.paused             = false;
     sim.sourceMode         = null;
     sim.sinusoidalActive   = false;
-    sim.sinStartTime       = 0;
-    sim.sinStopTime        = -1;
+    sim.sinPhase           = 0;
     sim.impulses           = [];
     sim.impulsePropagating = false;
+    _srcClear(sim);
     _dptClear(1);
     _dptClear(2);
     sim.dptTimeOrigin      = 0;
     sim.dpxN               = 0;
     sim.dpxSig             = null;
     sim.graphView          = { xMin: 0, xMax: 5, yMin: -1, yMax: 1 };
-    sim.graphViewHistory   = [];
-    sim.graphUserPanned    = false;
-    sim.graphAutoScaled    = false;
     sim.graphDpxYMin       = -1;
     sim.graphDpxYMax       =  1;
+
+    // Positions des balises : seul « Remettre à zéro » les restaure, le
+    // masquage/réaffichage par les boutons Balise les conserve.
+    sim.beacon1.frac = 0.30;
+    sim.beacon2.frac = 0.65;
+    sim.beacon1.x = sim.tubeLeft + sim.tubeLength * sim.beacon1.frac;
+    sim.beacon2.x = sim.tubeLeft + sim.tubeLength * sim.beacon2.frac;
+
     initCols();
     updateCelerite();
 }

@@ -21,10 +21,6 @@ var tubeCtx    = null;
 // Épaisseur visuelle de la membrane dans le canvas (px)
 var MEM_THICKNESS = 14;
 
-// Facteur de cap du déplacement visuel (recalculé chaque frame dans drawTube).
-// Garantit A×k ≤ 0.7 pour éviter les colonnes de largeur négative (bandes blanches).
-var tubeDispCap = 1.0;
-
 // ── État de l'interaction souris sur le canvas tube ───────────────────
 var tubeInter = {
     mode      : null,   // null | 'beacon1-drag' | 'beacon2-drag'
@@ -217,27 +213,9 @@ function drawTube() {
 
     if (!W || !H) return;
 
-    // ── Normalisation visuelle ───────────────────────────────────────────
-    // tubeDispCap cible A×k ∈ [AK_MIN, AK_CAP] :
-    //   • AK_MIN (0.55) : boost si A×k trop petit (K élevé / f faible)
-    //     → compression/raréfaction toujours bien perceptible (densité ±2×).
-    //   • AK_CAP (0.90) : cap si A×k trop grand (K faible / ρ élevé / f élevée)
-    //     → évite que les particules se chevauchent trop.
-    //   • Entre les deux : tubeDispCap = 1.0, physique naturelle.
-    // En mode impulsion, on utilise la fréquence effective 1/T_IMPULSE et
-    // l'amplitude effective aEff = memAmplitude/2 (déplacement (1−cos)/2).
-    // La physique (graphe ΔP, waveDisplacement) n'est PAS affectée.
-    {
-        var freqEff_ = (sim.sourceMode === 'impulse') ? 1.0 / T_IMPULSE : sim.freq;
-        var aEff_    = (sim.sourceMode === 'impulse') ? sim.memAmplitude / 2 : sim.memAmplitude;
-        var kEff_    = (sim.c_sim > 0) ? 2 * Math.PI * freqEff_ / sim.c_sim : 0;
-        var akEff_   = aEff_ * kEff_;
-        var AK_MIN   = 0.55;
-        var AK_CAP   = 0.90;
-        tubeDispCap = (akEff_ > 0)
-            ? Math.max(AK_MIN, Math.min(AK_CAP, akEff_)) / akEff_
-            : 1.0;
-    }
+    // La normalisation visuelle (gain de lisibilité des colonnes) n'est plus
+    // calculée ici : elle est propre à chaque échantillon émis et appliquée à
+    // la lecture par waveDisplacementDisplay (cf. _sonDisplayGain dans sim.js).
 
     // ── Fond général ─────────────────────────────────────────────────
     ctx.clearRect(0, 0, W, H);
@@ -475,14 +453,16 @@ function _drawTubeRuler(ctx) {
 // ── Membrane mobile ───────────────────────────────────────────────────
 
 function _drawMembrane(ctx) {
-    // Déplacement visuel de la membrane : même cap que les colonnes mais plafonné à 1.0.
-    // → La membrane bénéficie de la réduction du cap à haute fréquence (évite le chevauchement),
-    //   mais n'est jamais "boostée" au-delà de l'amplitude physique réelle à basse fréquence.
-    //   Aucun trou ne résulte de ce plafonnement : extraLeft (memAmplitude × tubeDispCap)
-    //   couvre largement la marge nécessaire (memAmplitude × (tubeDispCap − 1)) grâce au
-    //   réservoir de particules virtuelles à x0 < 0 qui glissent vers la zone visible.
-    var memCap = Math.min(1.0, tubeDispCap);
-    var disp = waveDisplacement(0, sim.simTime) * memCap;
+    // Déplacement visuel de la membrane : même gain de lisibilité que les
+    // colonnes, mais jamais amplifié au-delà de l'amplitude physique réelle.
+    // → La membrane bénéficie de la réduction à haute fréquence (qui évite le
+    //   chevauchement) sans être « boostée » à basse fréquence.
+    //   Aucun trou ne résulte de ce plafonnement : la zone virtuelle gauche
+    //   (extraLeft, cf. initCols) couvre largement la marge nécessaire grâce au
+    //   réservoir de particules à x0 < 0 qui glissent vers la zone visible.
+    var uPhys = waveDisplacement(0, sim.simTime);
+    var uDisp = waveDisplacementDisplay(0, sim.simTime);
+    var disp  = (Math.abs(uDisp) < Math.abs(uPhys)) ? uDisp : uPhys;
 
     // Corps de la membrane
     var mx    = sim.tubeLeft - MEM_THICKNESS + disp;
@@ -541,7 +521,7 @@ function _drawMembrane(ctx) {
 //  Chaque entrée de sim.cols est une parcelle de fluide avec :
 //    • x0  : position de repos (px depuis tubeLeft), domaine [-extraLeft, L+extraRight]
 //    • ry  : position y mémorisée (0..1), gelée en pause
-//  Position affichée : px = tubeLeft + x0 + u(x0, t) × tubeDispCap
+//  Position affichée : px = tubeLeft + x0 + waveDisplacementDisplay(x0, t)
 //
 //  Les particules de la zone virtuelle droite (x0 > tubeLength) entrent
 //  naturellement dans le tube quand l'onde crée une raréfaction à droite.
@@ -575,7 +555,7 @@ function _drawParticles(ctx) {
         // pas de contour blanc pour les sélectionnées (trop visuellement chargé).
         for (var i = 0; i < N; i++) {
             var x0 = sim.cols[i].x0;
-            var u  = waveDisplacement(x0, sim.simTime) * tubeDispCap;
+            var u  = waveDisplacementDisplay(x0, sim.simTime);
             var px = sim.tubeLeft + x0 + u;
 
             if (!sim.paused) sim.cols[i].ry = Math.random();
@@ -601,7 +581,7 @@ function _drawParticles(ctx) {
                 if (sim.cols[i].selected !== wantSelected) continue;
 
                 var x0 = sim.cols[i].x0;
-                var u  = waveDisplacement(x0, sim.simTime) * tubeDispCap;
+                var u  = waveDisplacementDisplay(x0, sim.simTime);
                 var px = sim.tubeLeft + x0 + u;
 
                 // Agitation thermique : nouvelle position y hors pause, figée en pause
@@ -704,6 +684,19 @@ function _drawOneBeacon(ctx, x, color, label) {
         return beacon.active && Math.abs(x - beacon.x) < 10;
     }
 
+    // Le graphe temporel enregistre la valeur mesurée À une position donnée :
+    // dès que la balise bouge, les points antérieurs ne décrivent plus le
+    // même point du milieu. On repart donc d'un tampon vide, au début et à
+    // la fin du glissement (les points intermédiaires du drag sont eux aussi
+    // écartés de cette façon).
+    function _clearBeaconRecord(n) {
+        if (typeof activeTab !== 'undefined' && activeTab === 'corde') {
+            _ytClearCorde(n);
+        } else {
+            _dptClear(n);
+        }
+    }
+
     function onDown(e) {
         var rect = tubeCanvas.getBoundingClientRect();
         var mx   = (e.clientX - rect.left) * (tubeCanvas.clientWidth  / rect.width);
@@ -718,11 +711,13 @@ function _drawOneBeacon(ctx, x, color, label) {
         // Priorité : drag d'une balise
         if (nearBeacon(mx, b1)) {
             tubeInter.mode = 'beacon1-drag';
+            _clearBeaconRecord(1);
             tubeCanvas.setPointerCapture(e.pointerId);
             return;
         }
         if (nearBeacon(mx, b2)) {
             tubeInter.mode = 'beacon2-drag';
+            _clearBeaconRecord(2);
             tubeCanvas.setPointerCapture(e.pointerId);
             return;
         }
@@ -780,6 +775,8 @@ function _drawOneBeacon(ctx, x, color, label) {
     }
 
     function onUp() {
+        if (tubeInter.mode === 'beacon1-drag') _clearBeaconRecord(1);
+        if (tubeInter.mode === 'beacon2-drag') _clearBeaconRecord(2);
         tubeInter.mode = null;
     }
 
@@ -819,32 +816,38 @@ function clearSelection() {
 // Épaisseur visuelle du corps du pot vibrant (px)
 var SHAKER_BASE_W = 28;
 
-// ── Recalcul de memAmplitude depuis amplitudeCm ───────────────────────
-//  L'amplitude visuelle (transversale) est volontairement DÉCOUPLÉE de
-//  l'échelle spatiale réelle (x, en m) : une amplitude réaliste de
-//  quelques cm serait invisible sur une corde de 5 m affichée à l'écran.
-//  On mappe donc amplitudeCm linéairement entre les bornes du slider
-//  [CORDE_AMPL_CM_MIN, CORDE_AMPL_CM_MAX] vers une fraction de la
-//  demi-hauteur disponible — ni trop petite (11 %), ni trop grande (55 %),
-//  soit un ratio max/min de 5, et toujours responsive puisque halfH suit
-//  le redimensionnement.
+// ── Échelle verticale de la corde (cm → px) ───────────────────────────
+//  L'échelle verticale (y) est volontairement DÉCOUPLÉE de l'échelle
+//  spatiale réelle (x, en m) : une amplitude réaliste de quelques cm serait
+//  invisible sur une corde de 5 m affichée à l'écran. On fixe donc un
+//  facteur cm → px tel que l'amplitude maximale du curseur occupe 55 % de la
+//  demi-hauteur disponible ; il reste responsive puisque halfH suit le
+//  redimensionnement.
 
-function _recalcMemAmplitudeCorde() {
+// Fraction de la demi-hauteur occupée par l'amplitude maximale du curseur.
+// Plafonnée à 45 % (et non 55 %) pour garder de la marge : deux impulsions
+// émises à moins de T_IMPULSE d'intervalle se superposent et atteignent le
+// double, soit 90 % — ça rentre encore, sans rognage ni décrochage du pot.
+var CORDE_AMPL_FRAC = 0.45;
+
+function _recalcCordeScale() {
     var halfH = (simCorde.cordeBottom - simCorde.cordeTop) / 2;
-    var range = CORDE_AMPL_CM_MAX - CORDE_AMPL_CM_MIN;
-    var frac  = range > 0
-        ? (simCorde.amplitudeCm - CORDE_AMPL_CM_MIN) / range
-        : 0;
-    frac = Math.max(0, Math.min(1, frac));
 
-    var pxMax = halfH * 0.55;
-    var pxMin = pxMax / 5;
-    simCorde.memAmplitude = pxMin + frac * (pxMax - pxMin);
+    // Échelle unique cm → px. Le facteur ne dépend PAS de l'amplitude
+    // courante, sans quoi toutes les amplitudes s'afficheraient à la même
+    // taille (c'était le cas avant : le curseur semblait sans effet).
+    simCorde.pxPerCmAmpl = (halfH * CORDE_AMPL_FRAC) / CORDE_AMPL_CM_MAX;
+}
 
-    // Facteur de reconversion px → cm pour les graphes (valeurs physiques réelles)
-    simCorde.pxPerCmAmpl = simCorde.amplitudeCm > 0
-        ? simCorde.memAmplitude / simCorde.amplitudeCm
-        : 1;
+// ── Point d'accroche de la corde sur le pot vibrant ───────────────────
+//  Source de vérité UNIQUE, partagée par le fil et par le pot : tant qu'ils
+//  calculaient chacun leur y avec des bornes différentes, une excursion
+//  ample pouvait les désolidariser visuellement.
+
+function _cordeAttachY() {
+    var disp = cordeDisplacement(0, simCorde.simTime) * simCorde.pxPerCmAmpl;
+    return Math.max(simCorde.cordeTop + 1,
+                    Math.min(simCorde.cordeBottom - 1, simCorde.cordeMiddleY - disp));
 }
 
 // ── Resize corde ──────────────────────────────────────────────────────
@@ -876,18 +879,17 @@ function resizeCorde() {
     simCorde.cordeBottom = Math.max(marginTop + 20, h - marginBottom);
     simCorde.cordeMiddleY = Math.round((simCorde.cordeTop + simCorde.cordeBottom) / 2);
 
-    // ── Calibration C_BASE_CORDE ──────────────────────────────────────
-    // px par mètre réel : c_sim (px/s) = c_norm (m/s) × C_BASE_CORDE doit
-    // représenter fidèlement la célérité réelle sur l'échelle spatiale
-    // CORDE_LENGTH_M affichée (sinon la longueur d'onde tracée ne
-    // correspond plus à λ = c/f réel — cf. bug constaté à l'usage).
+    // ── Échelle spatiale : px par mètre réel ──────────────────────────
+    // La propagation elle-même se calcule en mètres (cf. cordeDisplacement),
+    // donc ce facteur ne sert plus qu'à exprimer c et λ en pixels pour
+    // dimensionner la finesse d'échantillonnage du tracé.
     C_BASE_CORDE = simCorde.cordeLength / CORDE_LENGTH_M;
 
     // ── Amplitude du pot vibrant ──────────────────────────────────────
     // Échelle visuelle dédiée (indépendante de l'échelle spatiale x),
     // mappée sur une fraction lisible de la demi-hauteur disponible
-    // (cf. _recalcMemAmplitudeCorde).
-    _recalcMemAmplitudeCorde();
+    // (cf. _recalcCordeScale).
+    _recalcCordeScale();
 
     // ── Positions des balises ──────────────────────────────────────────
     // Recalculées depuis frac (position relative) pour rester à distance
@@ -907,9 +909,6 @@ function drawCorde() {
     var W      = tubeCanvas.clientWidth;
     var H      = tubeCanvas.clientHeight;
     if (!W || !H) return;
-
-    // Recalculer le cap de déplacement visuel
-    updateCordeDispCap();
 
     // ── Fond général ──────────────────────────────────────────────────
     ctx.clearRect(0, 0, W, H);
@@ -986,9 +985,9 @@ function _drawCordeGrid(ctx) {
 // ── Fil de la corde ───────────────────────────────────────────────────
 //
 //  La corde est tracée comme un chemin sinueux depuis x=cordeLeft jusqu'à
-//  x=cordeRight. Pour chaque colonne x (pixels), le déplacement vertical
-//  y(x,t) = cordeDisplacement(x − cordeLeft, simTime) × cordeDispCap
-//  est calculé et ajouté à cordeMiddleY.
+//  x=cordeRight. Pour chaque colonne x (pixels), le déplacement physique
+//  y(x,t) = cordeDisplacement(x − cordeLeft, simTime) (en cm) est converti
+//  en pixels par pxPerCmAmpl, puis retranché à cordeMiddleY.
 //
 //  Épaisseur du trait = f(μ) : de 1.5 px (μ=0.5) à 5 px (μ=4)
 //  Couleur : bordeaux #7a2510
@@ -997,21 +996,25 @@ function _drawCordeWire(ctx) {
     var L  = simCorde.cordeLength;
     if (L <= 0) return;
 
-    // Déplacement au point d'accroche (x=0 de la corde = cordeLeft)
-    // Signe inversé (− et non +) pour que y positif soit tracé vers le
-    // haut, comme sur le graphe y(x)/y(t) (convention mathématique standard).
-    var disp0 = cordeDisplacement(0, simCorde.simTime) * cordeDispCap;
+    // Point de départ = accroche sur le pot (cf. _cordeAttachY, partagé avec
+    // _drawShaker). Partout le déplacement est RETRANCHÉ à cordeMiddleY, pour
+    // que y positif aille vers le haut comme sur les graphes y(x) et y(t)
+    // (convention mathématique standard).
+    var cmToPx = simCorde.pxPerCmAmpl;
     var startX = simCorde.cordeLeft;
-    var startY = simCorde.cordeMiddleY - disp0;
+    var startY = _cordeAttachY();
 
     // Épaisseur selon μ : linéaire de 1.5 (μ=0.1) à 5 (μ=4)
     var muRange    = 4.0 - 0.1;
     var lwRange    = 5.0 - 1.5;
     var cordeLineW = 1.5 + ((simCorde.mu - 0.1) / muRange) * lwRange;
 
+    // Finesse d'échantillonnage : ~24 points par longueur d'onde suffisent
+    // pour un tracé lisse une fois joint en 'round' (on en calculait 50, soit
+    // deux fois plus de points que ce que l'écran peut distinguer).
     var freqEff_  = (simCorde.sourceMode === 'impulse') ? 1.0 / T_IMPULSE : simCorde.freq;
     var lambda_px = (simCorde.c_sim > 0) ? simCorde.c_sim / freqEff_ : L;
-    var subSteps  = Math.max(400, Math.min(6000, Math.ceil(50 * L / Math.max(0.5, lambda_px))));
+    var subSteps  = Math.max(400, Math.min(3000, Math.ceil(24 * L / Math.max(0.5, lambda_px))));
 
     // Clipping dans la zone corde uniquement
     ctx.save();
@@ -1019,25 +1022,42 @@ function _drawCordeWire(ctx) {
     ctx.rect(simCorde.cordeLeft, simCorde.cordeTop, L, simCorde.cordeBottom - simCorde.cordeTop);
     ctx.clip();
 
-    ctx.beginPath();
-    ctx.moveTo(startX, startY);   // premier point = point d'accroche
+    // Le chemin est construit dans un Path2D quand c'est possible : contrairement
+    // au chemin courant du contexte (figé dès sa construction), un Path2D est
+    // transformé au moment du tracé, ce qui permet de le réutiliser tel quel
+    // pour le passage d'ombre décalé — sans recalculer un seul point.
+    var path = (typeof Path2D === 'function') ? new Path2D() : null;
+    var sink = path || ctx;
+    if (!path) ctx.beginPath();
+
+    sink.moveTo(startX, startY);   // premier point = point d'accroche
     for (var s = 1; s <= subSteps; s++) {
-        var frac = s / subSteps;
-        var x_px = frac * L;
-        var disp = cordeDisplacement(x_px, simCorde.simTime) * cordeDispCap;
-        var cx   = simCorde.cordeLeft + x_px;
-        var cy   = simCorde.cordeMiddleY - disp;
-        ctx.lineTo(cx, cy);
+        var x_px = (s / subSteps) * L;
+        var disp = cordeDisplacement(x_px, simCorde.simTime) * cmToPx;
+        sink.lineTo(simCorde.cordeLeft + x_px, simCorde.cordeMiddleY - disp);
     }
 
-    ctx.shadowColor = 'rgba(80,20,0,0.25)';
-    ctx.shadowBlur  = cordeLineW;
-    ctx.strokeStyle = '#7a2510';
-    ctx.lineWidth   = cordeLineW;
-    ctx.lineJoin    = 'round';
-    ctx.lineCap     = 'round';
-    ctx.stroke();
-    ctx.shadowBlur  = 0;
+    // Pas de shadowBlur : sur un chemin de plusieurs milliers de points, le
+    // flou coûte bien plus cher que le tracé lui-même, à chaque frame, pour
+    // un halo à peine perceptible. Un second passage décalé d'un pixel et
+    // demi donne le même relief pour le prix d'un stroke.
+    ctx.lineJoin  = 'round';
+    ctx.lineCap   = 'round';
+    ctx.lineWidth = cordeLineW;
+
+    if (path) {
+        ctx.save();
+        ctx.translate(0, 1.5);
+        ctx.strokeStyle = 'rgba(80,20,0,0.20)';
+        ctx.stroke(path);
+        ctx.restore();
+
+        ctx.strokeStyle = '#7a2510';
+        ctx.stroke(path);
+    } else {
+        ctx.strokeStyle = '#7a2510';
+        ctx.stroke();
+    }
 
     ctx.restore();
 }
@@ -1064,12 +1084,11 @@ function _drawCordeWire(ctx) {
 function _drawShaker(ctx) {
     var cordeTop    = simCorde.cordeTop;
     var cordeBottom = simCorde.cordeBottom;
-    var midY        = simCorde.cordeMiddleY;
     var zoneH       = cordeBottom - cordeTop;
     var marginLeft  = simCorde.cordeLeft;   // largeur totale de la zone pot
 
-    // Déplacement actuel de l'extrémité gauche de la corde (x=0)
-    var disp = cordeDisplacement(0, simCorde.simTime) * Math.min(1.0, cordeDispCap);
+    // Hauteur actuelle de l'extrémité gauche de la corde (x = 0)
+    var attachY = _cordeAttachY();
 
     // ── Dimensions ────────────────────────────────────────────────────
     var baseH  = Math.max(12, Math.round(zoneH * 0.18));   // hauteur base fixe
@@ -1080,10 +1099,14 @@ function _drawShaker(ctx) {
     var tubeW  = Math.max(6, Math.round(baseW * 0.28));    // largeur tube fin
     var tubeX  = Math.round(marginLeft / 2 - tubeW / 2);  // centré
 
-    // Sommet du tube = position animée (midY − disp, cf. convention du
-    // fil de la corde : y positif vers le haut), plancher = dessus de la base
-    var tubeTop_anim = Math.min(baseY - 1, midY - disp);   // sommet animé (borné)
-    var tubeBot      = baseY;                               // pied du tube = dessus base
+    // Sommet du tube = point d'accroche exact de la corde — AUCUNE borne
+    // propre ici, sinon le tube pourrait s'arrêter alors que le fil, lui,
+    // continue de descendre (c'était la cause du décrochage visuel).
+    // Si l'accroche passe sous le dessus de la base, le tube n'est plus
+    // dessiné : la base, tracée ensuite, le recouvre — le vérin donne alors
+    // l'impression de rentrer dans le corps du pot, ce qui est réaliste.
+    var tubeTop_anim = attachY;
+    var tubeBot      = baseY;      // pied du tube = dessus de la base
 
     // ── Fond : masque la zone du pot (couleur de fond de zone) ────────
     ctx.fillStyle = '#f0ece4';
@@ -1138,8 +1161,7 @@ function _drawShaker(ctx) {
 
     // ── Point d'accroche de la corde (sommet du tube) ─────────────────
     var attachX = simCorde.cordeLeft;   // extrémité droite = bord de la zone corde
-    var attachY = tubeTop_anim;         // hauteur animée
-    var dotR    = Math.max(3, tubeW * 0.45);
+    var dotR    = Math.max(3, tubeW * 0.45);   // attachY : calculé plus haut
 
     // Petite encoche : trait horizontal reliant sommet tube au bord de zone
     ctx.strokeStyle = '#5a3a20';
@@ -1175,7 +1197,7 @@ function _drawOneCordeBeacon(ctx, x, color, label) {
     // transversal de la corde à cette abscisse (comme un point matériel posé
     // sur le fil). Signe inversé, cf. _drawCordeWire (y positif vers le haut).
     var xRel = x - simCorde.cordeLeft;
-    var disp = cordeDisplacement(xRel, simCorde.simTime) * cordeDispCap;
+    var disp = cordeDisplacement(xRel, simCorde.simTime) * simCorde.pxPerCmAmpl;
     var y    = Math.max(top, Math.min(bottom, simCorde.cordeMiddleY - disp));
 
     // Ligne pointillée vers le bas uniquement, jusqu'à la règle graduée
@@ -1309,9 +1331,3 @@ function _drawCordeRuler(ctx) {
     ctx.restore();
 }
 
-// ── Interactions souris pour les balises corde ────────────────────────
-// Injecté dans initTubeInteractions via le flag activeTab défini dans ui.js
-
-function _nearCordeBeacon(x, beacon) {
-    return beacon.active && Math.abs(x - beacon.x) < 10;
-}

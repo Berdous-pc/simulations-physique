@@ -93,10 +93,7 @@ var simVagues = {
 
     // ── Vue graphe ───────────────────────────────────────────────────
     graphView        : { xMin: 0, xMax: 5, yMin: -1, yMax: 1 },
-    graphViewHistory : [],
-    graphZoomMode    : false,
     graphCursorMode  : false,
-    graphUserPanned  : false,
     graphYxYMin      : -1,
     graphYxYMax      :  1,
     peakAmpCm        :  0.1,  // amplitude max observée (cm), pour l'échelle Y
@@ -1310,8 +1307,6 @@ function resetVagues() {
     simVagues.yxN            = 0;
     simVagues.yxSig          = null;
     simVagues.graphView      = { xMin: 0, xMax: 5, yMin: -1, yMax: 1 };
-    simVagues.graphViewHistory = [];
-    simVagues.graphUserPanned  = false;
     simVagues.graphYxYMin = -0.1;
     simVagues.graphYxYMax =  0.1;
     simVagues.peakAmpCm   =  0.1;

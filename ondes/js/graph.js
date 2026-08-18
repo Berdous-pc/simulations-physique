@@ -17,8 +17,6 @@ var graphCtx    = null;
 
 // ── État de l'interaction souris ──────────────────────────────────────
 var graphHoverPos  = null;   // {x, y} en coordonnées canvas
-var graphPan       = { dragging: false, startX: 0, startY: 0, startView: null };
-var graphZoomRect  = null;   // {x1,y1,x2,y2} en coordonnées canvas pendant le drag
 
 // ── Anti-rebond resize ─────────────────────────────────────────────────
 var graphResizeRAF = false;
@@ -203,7 +201,6 @@ function drawGraph() {
 
     if (isVagues) {
         drawGraphVagues(ctx, W, H);
-        if (simVagues.graphZoomMode && graphZoomRect) _drawZoomRect(ctx);
         return;
     }
 
@@ -291,11 +288,6 @@ function drawGraph() {
         }
     }
 
-    // Rectangle de zoom en cours
-    var _activeZoom = isCorde ? simCorde.graphZoomMode : sim.graphZoomMode;
-    if (_activeZoom && graphZoomRect) {
-        _drawZoomRect(ctx);
-    }
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -518,7 +510,7 @@ function _drawDptGraph(ctx, W, H) {
     var tNow    = sim.simTime;
     // Point "vivant" en tête de courbe (cf. correctif équivalent sur Vagues) :
     // sans lui, la pointe n'avance qu'au rythme des échantillons enregistrés
-    // (DPT_SAMPLE_DT), ce qui saute visiblement en ralenti.
+    // (un pas sur deux), ce qui saute visiblement en ralenti.
     if (sim.beacon1.active && d1.n > 1)
         _drawSeries(ctx, d1, px, py, '#e07020', 2, tOrigin, tNow, waveDeltaP(sim.beacon1.x - sim.tubeLeft, tNow));
     if (sim.beacon2.active && d2.n > 1)
@@ -987,38 +979,6 @@ function _drawCrosshair(ctx, W, H) {
     }
 }
 
-// Rectangle de zoom
-function _drawZoomRect(ctx) {
-    if (!graphZoomRect) return;
-    var r = graphZoomRect;
-    ctx.save();
-    ctx.strokeStyle = '#2a6aaa';
-    ctx.lineWidth   = 1.5;
-    ctx.setLineDash([4, 3]);
-    ctx.fillStyle   = 'rgba(42,106,170,0.08)';
-    var x1 = Math.min(r.x1, r.x2);
-    var y1 = Math.min(r.y1, r.y2);
-    ctx.fillRect  (x1, y1, Math.abs(r.x2 - r.x1), Math.abs(r.y2 - r.y1));
-    ctx.strokeRect(x1, y1, Math.abs(r.x2 - r.x1), Math.abs(r.y2 - r.y1));
-    ctx.setLineDash([]);
-    ctx.restore();
-}
-
-// ══════════════════════════════════════════════════════════════════════
-//  Historique de vues (zoom / précédent)
-// ══════════════════════════════════════════════════════════════════════
-
-function pushGraphView() {
-    var sv = _activeSv();
-    var v = {
-        xMin: sv.graphView.xMin, xMax: sv.graphView.xMax,
-        yMin: sv.graphView.yMin, yMax: sv.graphView.yMax
-    };
-    sv.graphViewHistory.push(v);
-    var btn = document.getElementById('btn-graph-prev');
-    if (btn) btn.disabled = false;
-}
-
 // ══════════════════════════════════════════════════════════════════════
 //  ██████╗ ██████╗ ██████╗ ██████╗ ███████╗
 //  Graphes — mode CORDE  (y(x) et y(t))
@@ -1027,16 +987,15 @@ function pushGraphView() {
 // ── Graphe y(x) ───────────────────────────────────────────────────────
 //  Analogue à _drawDpxGraph mais :
 //    • données : simCorde.yxX/yxY (Float32Array), via updateYxData
-//    • axe Y : y (cm), valeur physique réelle, bornes ±amplitudeCm×1.12
+//    • axe Y : y (cm), valeur physique réelle, bornes FIXES ±CORDE_Y_AXIS_CM
 //    • axe X : Distance depuis le pot (m), 0–CORDE_LENGTH_M
 
 function _drawYxGraph(ctx, W, H) {
     var L      = simCorde.cordeLength;
     var xMin   = 0;
     var xMax   = L > 0 ? L : 1;
-    var ampCm  = simCorde.amplitudeCm > 0 ? simCorde.amplitudeCm : 1;
-    var yMin   = -1.12 * ampCm;
-    var yMax   =  1.12 * ampCm;
+    var yMin   = -CORDE_Y_AXIS_CM;
+    var yMax   =  CORDE_Y_AXIS_CM;
     simCorde.graphYxYMin = yMin;
     simCorde.graphYxYMax = yMax;
 
@@ -1065,16 +1024,15 @@ function _drawYxGraph(ctx, W, H) {
     // ── Courbe y(x) ───────────────────────────────────────────────────
     // Points calculés une fois par frame par updateYxData (résolution calée
     // sur l'écran, partagée avec le hover snappé) — ici seulement le tracé.
-    // Conversion px → cm via pxPerCmAmpl pour afficher la vraie valeur de y.
-    var amp = simCorde.pxPerCmAmpl > 0 ? simCorde.pxPerCmAmpl : 1;
+    // yxY est déjà en cm (valeur physique) — aucune conversion ici.
     var dx = simCorde.yxX, dy = simCorde.yxY, n = simCorde.yxN | 0;
     if (dx && n > 1) {
         ctx.save();
         ctx.beginPath(); ctx.rect(GM.left, GM.top, pW, pH); ctx.clip();
         ctx.beginPath();
-        ctx.moveTo(px(dx[0]), py(dy[0] / amp));
+        ctx.moveTo(px(dx[0]), py(dy[0]));
         for (var i = 1; i < n; i++) {
-            ctx.lineTo(px(dx[i]), py(dy[i] / amp));
+            ctx.lineTo(px(dx[i]), py(dy[i]));
         }
         ctx.strokeStyle = '#7a2510';
         ctx.lineWidth   = 2;
@@ -1119,9 +1077,8 @@ function _drawYtGraph(ctx, W, H) {
     var xMax  = 5;
     simCorde.graphView.xMin = xMin;
     simCorde.graphView.xMax = xMax;
-    var ampCm = simCorde.amplitudeCm > 0 ? simCorde.amplitudeCm : 1;
-    var yMin  = -1.12 * ampCm;
-    var yMax  =  1.12 * ampCm;
+    var yMin  = -CORDE_Y_AXIS_CM;
+    var yMax  =  CORDE_Y_AXIS_CM;
     simCorde.graphView.yMin = yMin;
     simCorde.graphView.yMax = yMax;
 
@@ -1153,16 +1110,15 @@ function _drawYtGraph(ctx, W, H) {
     ctx.rect(GM.left, GM.top, pW, pH);
     ctx.clip();
 
-    var amp     = simCorde.pxPerCmAmpl > 0 ? simCorde.pxPerCmAmpl : 1;
     var tOrigin = simCorde.ytTimeOrigin || 0;
     var tNow    = simCorde.simTime;
     // Point "vivant" en tête de courbe (cf. correctif équivalent sur Vagues/Son) :
     // sans lui, la pointe n'avance qu'au rythme des échantillons enregistrés,
     // ce qui saute visiblement en ralenti.
     if (simCorde.beacon1.active && d1.n > 1)
-        _drawSeriesCorde(ctx, d1, px, py, '#e07020', 2, tOrigin, amp, tNow, cordeDisplacement(simCorde.beacon1.x - simCorde.cordeLeft, tNow));
+        _drawSeriesCorde(ctx, d1, px, py, '#e07020', 2, tOrigin, tNow, cordeDisplacement(simCorde.beacon1.x - simCorde.cordeLeft, tNow));
     if (simCorde.beacon2.active && d2.n > 1)
-        _drawSeriesCorde(ctx, d2, px, py, '#2a8a50', 2, tOrigin, amp, tNow, cordeDisplacement(simCorde.beacon2.x - simCorde.cordeLeft, tNow));
+        _drawSeriesCorde(ctx, d2, px, py, '#2a8a50', 2, tOrigin, tNow, cordeDisplacement(simCorde.beacon2.x - simCorde.cordeLeft, tNow));
 
     ctx.restore();
 
@@ -1175,7 +1131,7 @@ function _drawYtGraph(ctx, W, H) {
 
 // ── Tracé d'une série y(t) (tampon circulaire) ─────────────────────────
 
-function _drawSeriesCorde(ctx, buf, px, py, color, lw, tOrigin, amp, liveT, liveYRaw) {
+function _drawSeriesCorde(ctx, buf, px, py, color, lw, tOrigin, liveT, liveY) {
     var WINDOW = 5;
     ctx.beginPath();
     var started = false;
@@ -1183,16 +1139,15 @@ function _drawSeriesCorde(ctx, buf, px, py, color, lw, tOrigin, amp, liveT, live
         var j      = _cbufIdx(buf, i);
         var tLocal = buf.t[j] - tOrigin;
         if (tLocal < 0 || tLocal > WINDOW) { started = false; continue; }
-        var y_cm = buf.y[j] / amp;   // px → cm (valeur réelle)
         var cx = px(tLocal);
-        var cy = py(y_cm);
+        var cy = py(buf.y[j]);   // tampon déjà en cm
         if (!started) { ctx.moveTo(cx, cy); started = true; }
         else          { ctx.lineTo(cx, cy); }
     }
     if (liveT !== undefined) {
         var tLiveLocal = liveT - tOrigin;
         if (started && tLiveLocal >= 0 && tLiveLocal <= WINDOW) {
-            ctx.lineTo(px(tLiveLocal), py(liveYRaw / amp));
+            ctx.lineTo(px(tLiveLocal), py(liveY));
         }
     }
     ctx.strokeStyle = color;
@@ -1281,13 +1236,10 @@ function _syncLeftMarginWithCorde(ctx, W, yMin, yMax) {
 // ── Mode both corde : liaisons balise → point temporel ────────────────
 
 function _drawBothLinksYt(ctx, W, H, half, sep) {
-    var ampCm = simCorde.amplitudeCm > 0 ? simCorde.amplitudeCm : 1;
-    var yMin  = -1.12 * ampCm;
-    var yMax  =  1.12 * ampCm;
+    var yMin  = -CORDE_Y_AXIS_CM;
+    var yMax  =  CORDE_Y_AXIS_CM;
     var pH    = H - GM.top - GM.bottom;
     if (pH <= 0) return;
-
-    var amp = simCorde.pxPerCmAmpl > 0 ? simCorde.pxPerCmAmpl : 1;
 
     function py(y_cm) {
         return GM.top + (1 - (y_cm - yMin) / (yMax - yMin)) * pH;
@@ -1304,8 +1256,7 @@ function _drawBothLinksYt(ctx, W, H, half, sep) {
         var bc    = beacons[b];
         var color = bc.color;
         var xb    = bc.beacon.x - simCorde.cordeLeft;
-        var y_raw = cordeDisplacement(xb, simCorde.simTime);
-        var y_cm  = y_raw / amp;
+        var y_cm  = cordeDisplacement(xb, simCorde.simTime);
         var yc    = py(y_cm);
 
         if (yc < GM.top || yc > GM.top + pH) continue;
@@ -1369,7 +1320,6 @@ function _drawSnappedHoverCorde_yt(ctx, W, H, mx, my, pW, pH) {
     var yMax    = simCorde.graphView.yMax;
     var WINDOW  = 5;
     var tOrigin = simCorde.ytTimeOrigin || 0;
-    var amp     = simCorde.pxPerCmAmpl > 0 ? simCorde.pxPerCmAmpl : 1;
 
     function px(v) { return GM.left + (v - xMin) / (xMax - xMin) * pW; }
     function py(v) { return GM.top  + (1 - (v - yMin) / (yMax - yMin)) * pH; }
@@ -1387,7 +1337,7 @@ function _drawSnappedHoverCorde_yt(ctx, W, H, mx, my, pW, pH) {
             var j      = _cbufIdx(buf, i);
             var tLocal = buf.t[j] - tOrigin;
             if (tLocal < 0 || tLocal > WINDOW) continue;
-            var y_cm = buf.y[j] / amp;
+            var y_cm = buf.y[j];
             var bx   = px(tLocal);
             var by   = py(y_cm);
             var byc  = Math.max(GM.top, Math.min(GM.top + pH, by));
@@ -1398,7 +1348,7 @@ function _drawSnappedHoverCorde_yt(ctx, W, H, mx, my, pW, pH) {
     if (!winner) return;
 
     var tLocal = winner.t - tOrigin;
-    var y_cm   = winner.y / amp;
+    var y_cm   = winner.y;
     var bx  = px(tLocal);
     var by  = py(y_cm);
     var byc = Math.max(GM.top, Math.min(GM.top + pH, by));
@@ -1437,14 +1387,13 @@ function _drawSnappedHoverCorde_yx(ctx, W, H, mx, my, pW, pH) {
     var xMax = L > 0 ? L : 1;
     var yMin = simCorde.graphYxYMin;
     var yMax = simCorde.graphYxYMax;
-    var amp  = simCorde.pxPerCmAmpl > 0 ? simCorde.pxPerCmAmpl : 1;
 
     function px(v) { return GM.left + (v - xMin) / (xMax - xMin) * pW; }
     function py(v) { return GM.top  + (1 - (v - yMin) / (yMax - yMin)) * pH; }
 
     var bestI = -1, bestDist = Infinity;
     for (var i = 0; i < dn; i++) {
-        var y_cm = dy[i] / amp;
+        var y_cm = dy[i];
         var bx_  = px(dx[i]);
         var by_  = py(y_cm);
         var byc_ = Math.max(GM.top, Math.min(GM.top + pH, by_));
@@ -1454,7 +1403,7 @@ function _drawSnappedHoverCorde_yx(ctx, W, H, mx, my, pW, pH) {
     if (bestI < 0) return;
     var bestX = dx[bestI];
 
-    var y_cm = dy[bestI] / amp;
+    var y_cm = dy[bestI];
     var bx   = px(bestX);
     var by   = py(y_cm);
     var byc  = Math.max(GM.top, Math.min(GM.top + pH, by));
@@ -1543,17 +1492,6 @@ function _drawCrosshairCorde(ctx, W, H) {
     }
 }
 
-function prevGraphView() {
-    var sv = _activeSv();
-    if (sv.graphViewHistory.length === 0) return;
-    var v = sv.graphViewHistory.pop();
-    sv.graphView.xMin = v.xMin; sv.graphView.xMax = v.xMax;
-    sv.graphView.yMin = v.yMin; sv.graphView.yMax = v.yMax;
-    sv.graphUserPanned = true;
-    var btn = document.getElementById('btn-graph-prev');
-    if (btn) btn.disabled = sv.graphViewHistory.length === 0;
-}
-
 // ══════════════════════════════════════════════════════════════════════
 //  Basculement des modes graphe / outils
 // ══════════════════════════════════════════════════════════════════════
@@ -1585,11 +1523,6 @@ function setGraphMode(mode) {
     // Masquer tooltip
     var tip = document.getElementById('graph-hover-tooltip');
     if (tip) tip.style.display = 'none';
-    // Masquer les boutons zoom/adapter/précédent
-    ['btn-graph-prev', 'btn-graph-zoom', 'btn-graph-auto'].forEach(function(id) {
-        var btn = document.getElementById(id);
-        if (btn) btn.style.display = 'none';
-    });
 }
 
 // Met à jour les labels des boutons graphe selon le tab actif
@@ -1612,43 +1545,13 @@ function _activeSv() {
     return sim;
 }
 
-function toggleGraphZoom() {
-    var sv = _activeSv();
-    sv.graphZoomMode = !sv.graphZoomMode;
-    graphZoomRect = null;
-    if (sv.graphZoomMode) sv.graphCursorMode = false;
-    var z = document.getElementById('btn-graph-zoom');
-    var c = document.getElementById('btn-graph-cursor');
-    if (z) z.classList.toggle('active', sv.graphZoomMode);
-    if (c) c.classList.toggle('active', sv.graphCursorMode);
-}
-
 function toggleGraphCursor() {
     var sv  = _activeSv();
     var tip = document.getElementById('graph-hover-tooltip');
     sv.graphCursorMode = !sv.graphCursorMode;
-    if (sv.graphCursorMode) sv.graphZoomMode = false;
     if (!sv.graphCursorMode && tip) tip.style.display = 'none';
-    var z = document.getElementById('btn-graph-zoom');
     var c = document.getElementById('btn-graph-cursor');
-    if (z) z.classList.toggle('active', sv.graphZoomMode);
     if (c) c.classList.toggle('active', sv.graphCursorMode);
-}
-
-function autoScaleGraph() {
-    var sv = _activeSv();
-    sv.graphUserPanned  = false;
-    sv.graphViewHistory = [];
-    if (activeTab === 'corde') {
-        var ampCm = simCorde.amplitudeCm > 0 ? simCorde.amplitudeCm : 1;
-        sv.graphView.yMin = -1.12 * ampCm;
-        sv.graphView.yMax =  1.12 * ampCm;
-    } else {
-        sv.graphView.yMin = -1.12;
-        sv.graphView.yMax =  1.12;
-    }
-    var btn = document.getElementById('btn-graph-prev');
-    if (btn) btn.disabled = true;
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -1664,156 +1567,20 @@ function autoScaleGraph() {
             var rect = graphCanvas.getBoundingClientRect();
             var mx   = (e.clientX - rect.left) * (graphCanvas.clientWidth  / rect.width);
             var my   = (e.clientY - rect.top)  * (graphCanvas.clientHeight / rect.height);
-
-            var isCorde  = (typeof activeTab !== 'undefined' && activeTab === 'corde');
-            var cursorMd = _activeSv().graphCursorMode;
-            graphHoverPos = { x: mx, y: my, free: !!cursorMd };
-
-            if (graphPan.dragging) {
-                var sv   = _activeSv();
-                var mode = sv.graphMode;
-                if (mode === 'dpt') {
-                    var W  = graphCanvas.clientWidth;
-                    var pW = W - GM.left - GM.right;
-                    var dx = mx - graphPan.startX;
-                    var dataDx = dx / pW * (graphPan.startView.xMax - graphPan.startView.xMin);
-                    sv.graphView.xMin = graphPan.startView.xMin - dataDx;
-                    sv.graphView.xMax = graphPan.startView.xMax - dataDx;
-                    sv.graphUserPanned = true;
-                }
-            }
-
-            var zoomMode = _activeSv().graphZoomMode;
-            if (zoomMode && graphZoomRect) {
-                graphZoomRect.x2 = mx;
-                graphZoomRect.y2 = my;
-            }
-        });
-
-        graphCanvas.addEventListener('pointerdown', function(e) {
-            var rect = graphCanvas.getBoundingClientRect();
-            var mx   = (e.clientX - rect.left) * (graphCanvas.clientWidth  / rect.width);
-            var my   = (e.clientY - rect.top)  * (graphCanvas.clientHeight / rect.height);
-
-            var sv       = _activeSv();
-            var zoomMode = sv.graphZoomMode;
-
-            if (zoomMode) {
-                graphZoomRect = { x1: mx, y1: my, x2: mx, y2: my };
-                graphCanvas.setPointerCapture(e.pointerId);
-                return;
-            }
-
-            graphPan.dragging  = true;
-            graphPan.startX    = mx;
-            graphPan.startY    = my;
-            graphPan.startView = {
-                xMin: sv.graphView.xMin, xMax: sv.graphView.xMax,
-                yMin: sv.graphView.yMin, yMax: sv.graphView.yMax
-            };
-            graphCanvas.setPointerCapture(e.pointerId);
-            graphCanvas.style.cursor = 'default';
-        });
-
-        graphCanvas.addEventListener('pointerup', function() {
-            var zoomMode = _activeSv().graphZoomMode;
-            if (zoomMode && graphZoomRect) {
-                _applyZoom();
-                graphZoomRect = null;
-            }
-            graphPan.dragging = false;
-            graphCanvas.style.cursor = zoomMode ? 'crosshair' : 'default';
+            graphHoverPos = { x: mx, y: my, free: !!_activeSv().graphCursorMode };
         });
 
         graphCanvas.addEventListener('pointerleave', function() {
             graphHoverPos = null;
-            graphPan.dragging = false;
             var tip = document.getElementById('graph-hover-tooltip');
             if (tip) tip.style.display = 'none';
         });
-
-        // Zoom molette (ΔP(t) / y(t) uniquement)
-        graphCanvas.addEventListener('wheel', function(e) {
-            var sv   = _activeSv();
-            var mode = sv.graphMode;
-            if (mode !== 'dpt') return;
-            e.preventDefault();
-            var rect = graphCanvas.getBoundingClientRect();
-            var mx   = (e.clientX - rect.left) * (graphCanvas.clientWidth  / rect.width);
-            var W    = graphCanvas.clientWidth;
-            var pW   = W - GM.left - GM.right;
-            var tCur = sv.graphView.xMin +
-                (mx - GM.left) / pW * (sv.graphView.xMax - sv.graphView.xMin);
-            var factor = e.deltaY > 0 ? 1.2 : 0.8;
-            pushGraphView();
-            sv.graphView.xMin = tCur + (sv.graphView.xMin - tCur) * factor;
-            sv.graphView.xMax = tCur + (sv.graphView.xMax - tCur) * factor;
-            sv.graphUserPanned = true;
-        }, { passive: false });
     }
 
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function() {
-            setup();
-            _hideUnusedGraphBtns();
-        });
+        document.addEventListener('DOMContentLoaded', setup);
     } else {
         setup();
-        _hideUnusedGraphBtns();
     }
 })();
 
-// Masque les boutons zoom/adapter/précédent dès le chargement
-function _hideUnusedGraphBtns() {
-    ['btn-graph-prev', 'btn-graph-zoom', 'btn-graph-auto'].forEach(function(id) {
-        var btn = document.getElementById(id);
-        if (btn) btn.style.display = 'none';
-    });
-}
-
-// ── Applique le zoom par rectangle ────────────────────────────────────
-
-function _applyZoom() {
-    var r  = graphZoomRect;
-    if (!r) return;
-    var dx = Math.abs(r.x2 - r.x1);
-    var dy = Math.abs(r.y2 - r.y1);
-    if (dx < 6 || dy < 6) return;
-
-    var W  = graphCanvas.clientWidth;
-    var H  = graphCanvas.clientHeight;
-    var pW = W - GM.left - GM.right;
-    var pH = H - GM.top  - GM.bottom;
-
-    var sv = _activeSv();
-
-    function canvasToDataX(cx) {
-        var mode = sv.graphMode;
-        if (mode === 'dpx') return 0;  // X fixe
-        return sv.graphView.xMin + (cx - GM.left) / pW * (sv.graphView.xMax - sv.graphView.xMin);
-    }
-    function canvasToDataY(cy) {
-        var yMin = sv.graphYxYMin !== undefined ? sv.graphYxYMin : sv.graphView.yMin;
-        var yMax = sv.graphYxYMax !== undefined ? sv.graphYxYMax : sv.graphView.yMax;
-        return yMin + (1 - (cy - GM.top) / pH) * (yMax - yMin);
-    }
-
-    pushGraphView();
-
-    var x1 = Math.min(r.x1, r.x2);
-    var x2 = Math.max(r.x1, r.x2);
-    var y1 = Math.min(r.y1, r.y2);
-    var y2 = Math.max(r.y1, r.y2);
-
-    var mode = sv.graphMode;
-    if (mode === 'dpt') {
-        sv.graphView.xMin = canvasToDataX(x1);
-        sv.graphView.xMax = canvasToDataX(x2);
-    }
-    sv.graphView.yMin = canvasToDataY(y2);
-    sv.graphView.yMax = canvasToDataY(y1);
-    sv.graphUserPanned = true;
-
-    var btn = document.getElementById('btn-graph-prev');
-    if (btn) btn.disabled = false;
-}

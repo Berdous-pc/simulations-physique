@@ -319,19 +319,12 @@ main {
   white-space: nowrap;
 }
 #btn-graph-cursor { font-size: clamp(14px, 1.6vw, 18px); padding: 0 clamp(5px, 0.7vw, 8px) !important; }
-#btn-graph-prev   { font-size: clamp(11px, 1.2vw, 14px); }
-#btn-graph-zoom   { font-size: clamp(11px, 1.2vw, 14px); }
-#btn-graph-auto   { font-size: clamp(10px, 1.05vw, 12px); }
 
-#btn-graph-zoom.active,
 #btn-graph-cursor.active {
   background: #2a6aaa; color: #fff; border-color: #1a5a9a;
 }
-#graph-btns-right button:hover     { background: #d0ccc4; color: #2c3e50; }
-#btn-graph-zoom.active:hover,
-#btn-graph-cursor.active:hover     { background: #1a5a9a; color: #fff; }
-#btn-graph-prev:disabled           { opacity: 0.35; cursor: not-allowed; }
-#btn-graph-prev:disabled:hover     { background: #e8e4de; color: #5a6a78; }
+#graph-btns-right button:hover { background: #d0ccc4; color: #2c3e50; }
+#btn-graph-cursor.active:hover { background: #1a5a9a; color: #fff; }
 
 /* Tooltip hover graphe */
 #graph-hover-tooltip {

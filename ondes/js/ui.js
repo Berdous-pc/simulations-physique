@@ -17,10 +17,11 @@
 var activeTab = 'son';
 
 // ── Compteurs de temps pour l'enregistrement ─────────────────────────
-var lastDptUpdate    = 0;          // Son
-var lastYtUpdate     = 0;          // Corde
+var lastSrcUpdateSon = 0;          // Son   — échantillonnage de la membrane
+var _srcTickSon      = 0;          // Son   — 1 enregistrement ΔP(t) sur 2
+var lastSrcUpdate    = 0;          // Corde — échantillonnage de la source
+var _srcTickCorde    = 0;          // Corde — 1 enregistrement y(t) sur 2
 var lastYtUpdateV    = 0;          // Vagues
-var DPT_SAMPLE_DT    = 1 / 300;   // 300 enregistrements/s simulée
 
 // ── Paliers de vitesse ────────────────────────────────────────────────
 var SPEED_STEPS = [0.10, 0.25, 0.50, 1.00];
@@ -51,9 +52,15 @@ function loop(ts) {
                 _syncWavePropsBtnState();
             }
 
-            while (sim.simTime - lastDptUpdate >= DPT_SAMPLE_DT) {
-                lastDptUpdate += DPT_SAMPLE_DT;
-                updateDptData(lastDptUpdate);
+            // Échantillonnage de la membrane à pas fixe : c'est lui qui
+            // « grave » l'onde émise. L'enregistrement ΔP(t) des balises se
+            // fait un pas sur deux (600 Hz → 300 Hz), en phase avec les
+            // échantillons pour que les deux lectures soient cohérentes.
+            while (sim.simTime - lastSrcUpdateSon >= SRC_DT) {
+                lastSrcUpdateSon += SRC_DT;
+                stepSourceSon(lastSrcUpdateSon);
+                _srcTickSon = 1 - _srcTickSon;
+                if (_srcTickSon === 0) updateDptData(lastSrcUpdateSon);
             }
 
             if (sim.sourceMode === 'sinus' && sim.simTime - sim.dptTimeOrigin >= 5) {
@@ -88,9 +95,15 @@ function loop(ts) {
                 _syncWavePropsBtnStateCorde();
             }
 
-            while (simCorde.simTime - lastYtUpdate >= DPT_SAMPLE_DT) {
-                lastYtUpdate += DPT_SAMPLE_DT;
-                updateYtData(lastYtUpdate);
+            // Échantillonnage de la source à pas fixe : c'est lui qui
+            // « grave » l'onde émise. L'enregistrement y(t) des balises se
+            // fait un pas sur deux (600 Hz → 300 Hz), en phase avec les
+            // échantillons pour que les deux lectures soient cohérentes.
+            while (simCorde.simTime - lastSrcUpdate >= SRC_DT) {
+                lastSrcUpdate += SRC_DT;
+                stepSourceCorde(lastSrcUpdate);
+                _srcTickCorde = 1 - _srcTickCorde;
+                if (_srcTickCorde === 0) updateYtData(lastSrcUpdate);
             }
 
             if (simCorde.sourceMode === 'sinus' &&
@@ -152,16 +165,24 @@ function _updateCReadout() {
 }
 
 // ── Utilitaires source Son ────────────────────────────────────────────
-function _clearSourceModes() {
-    if (sim.sinusoidalActive) {
-        sim.sinusoidalActive = false;
-        sim.sinStopTime      = sim.simTime;
-    }
-    sim.impulses           = [];
-    sim.impulsePropagating = false;
-    sim.sourceMode         = null;
+//  Arrête l'ÉMISSION sans toucher à ce qui est déjà parti : la liste des
+//  impulsions est conservée (une impulsion encore en cours d'émission doit
+//  aller à son terme, et l'historique de la source est de toute façon figé).
+function _stopEmissionSon() {
+    sim.sinusoidalActive = false;
+    sim.sourceMode       = null;
     _syncSourceButtons();
     _syncWavePropsBtnState();
+}
+
+//  Réinitialise la fenêtre du graphe ΔP(t) — uniquement si le tube est au
+//  repos, pour ne pas tronquer une courbe en cours d'enregistrement quand on
+//  superpose une nouvelle perturbation.
+function _resetDptWindowSonIfQuiet() {
+    if (!sonIsQuiet()) return;
+    sim.dptTimeOrigin = sim.simTime;
+    _dptClear(1);
+    _dptClear(2);
 }
 
 function _syncSourceButtons() {
@@ -171,32 +192,32 @@ function _syncSourceButtons() {
     if (btnSin) btnSin.classList.toggle('active', sim.sourceMode === 'sinus');
 }
 
+//  Chaque appui envoie une NOUVELLE impulsion : celles qui sont déjà dans le
+//  tube poursuivent leur route et se superposent, au lieu d'être effacées.
 function sendImpulse() {
     if (sim.paused) _setPaused(false);
-    _clearSourceModes();
+    _resetDptWindowSonIfQuiet();
+
+    sim.sinusoidalActive   = false;   // les deux modes restent exclusifs
     sim.impulses.push({ startTime: sim.simTime });
     sim.impulsePropagating = true;
     sim.sourceMode         = 'impulse';
-    sim.dptTimeOrigin = sim.simTime;
-    _dptClear(1);
-    _dptClear(2);
+
     _syncSourceButtons();
     _syncWavePropsBtnState();
 }
 
 function toggleSinusoidal() {
     if (sim.sinusoidalActive) {
-        _clearSourceModes();
+        _stopEmissionSon();
     } else {
         if (sim.paused) _setPaused(false);
-        _clearSourceModes();
+        _resetDptWindowSonIfQuiet();
+
         sim.sinusoidalActive = true;
-        sim.sinStartTime     = sim.simTime;
-        sim.sinStopTime      = -1;
+        sim.sinPhase         = 0;   // démarrage à u = 0, sans saut
         sim.sourceMode       = 'sinus';
-        sim.dptTimeOrigin = sim.simTime;
-        _dptClear(1);
-        _dptClear(2);
+
         _syncSourceButtons();
         _syncWavePropsBtnState();
     }
@@ -215,21 +236,33 @@ function togglePause() { _setPaused(!sim.paused); }
 
 function resetSimAnim() {
     resetAnim();
-    lastDptUpdate = 0;
+    lastSrcUpdateSon = 0;
+    _srcTickSon      = 0;
     _syncSourceButtons();
     var btn = document.getElementById('btn-playpause');
     if (btn) { btn.textContent = '⏸ Pause'; btn.className = 'btn btn-pause'; }
     sim.pressureColorMode = false;
     var btnPc = document.getElementById('btn-pressure-color');
     if (btnPc) btnPc.classList.remove('active');
+
+    // Le réticule est un mode d'inspection : la remise à zéro le relâche aussi.
+    sim.graphCursorMode = false;
+    var btnCur = document.getElementById('btn-graph-cursor');
+    if (btnCur) btnCur.classList.remove('active');
+    var tip = document.getElementById('graph-hover-tooltip');
+    if (tip) tip.style.display = 'none';
 }
 
 // ── Sliders Son ───────────────────────────────────────────────────────
+//  Les readouts sont rafraîchis ICI et pas seulement dans la boucle : celle-ci
+//  ne les met à jour que si l'animation tourne, si bien qu'en pause les valeurs
+//  de T et λ restaient figées sur les anciens réglages.
 function onSliderFreq(v) {
     sim.freq = parseFloat(v);
     var lbl = document.getElementById('lbl-freq');
     if (lbl) lbl.textContent = sim.freq.toFixed(1).replace('.', ',');
     initCols();
+    _updateWaveProps();
 }
 
 function onSliderRho(v) {
@@ -239,6 +272,7 @@ function onSliderRho(v) {
     updateCelerite();
     _updateCReadout();
     initCols();
+    _updateWaveProps();
 }
 
 function onSliderK(v) {
@@ -248,6 +282,7 @@ function onSliderK(v) {
     updateCelerite();
     _updateCReadout();
     initCols();
+    _updateWaveProps();
 }
 
 function onSliderAtten(v) {
@@ -345,16 +380,24 @@ function _updateCReadoutCorde() {
 }
 
 // ── Utilitaires source Corde ──────────────────────────────────────────
-function _clearSourceModesCorde() {
-    if (simCorde.sinusoidalActive) {
-        simCorde.sinusoidalActive = false;
-        simCorde.sinStopTime      = simCorde.simTime;
-    }
-    simCorde.impulses           = [];
-    simCorde.impulsePropagating = false;
-    simCorde.sourceMode         = null;
+//  Arrête l'ÉMISSION sans toucher à ce qui est déjà parti : la liste des
+//  impulsions est conservée (une impulsion encore en cours d'émission doit
+//  aller à son terme, et l'historique de la source est de toute façon figé).
+function _stopEmissionCorde() {
+    simCorde.sinusoidalActive = false;
+    simCorde.sourceMode       = null;
     _syncSourceButtonsCorde();
     _syncWavePropsBtnStateCorde();
+}
+
+//  Réinitialise la fenêtre du graphe y(t) — uniquement si la corde est au
+//  repos, pour ne pas tronquer une courbe en cours d'enregistrement quand
+//  on superpose une nouvelle perturbation.
+function _resetYtWindowCordeIfQuiet() {
+    if (!cordeIsQuiet()) return;
+    simCorde.ytTimeOrigin = simCorde.simTime;
+    _ytClearCorde(1);
+    _ytClearCorde(2);
 }
 
 function _syncSourceButtonsCorde() {
@@ -364,34 +407,32 @@ function _syncSourceButtonsCorde() {
     if (btnSin) btnSin.classList.toggle('active', simCorde.sourceMode === 'sinus');
 }
 
+//  Chaque appui envoie une NOUVELLE impulsion : celles qui sont déjà sur la
+//  corde poursuivent leur route et se superposent, au lieu d'être effacées.
 function sendImpulseCorde() {
     if (simCorde.paused) _setPausedCorde(false);
-    _clearSourceModesCorde();
+    _resetYtWindowCordeIfQuiet();
+
+    simCorde.sinusoidalActive   = false;   // les deux modes restent exclusifs
     simCorde.impulses.push({ startTime: simCorde.simTime });
     simCorde.impulsePropagating = true;
     simCorde.sourceMode         = 'impulse';
-    simCorde.ytTimeOrigin = simCorde.simTime;
-    _ytClearCorde(1);
-    _ytClearCorde(2);
-    lastYtUpdate = 0;
+
     _syncSourceButtonsCorde();
     _syncWavePropsBtnStateCorde();
 }
 
 function toggleSinusoidalCorde() {
     if (simCorde.sinusoidalActive) {
-        _clearSourceModesCorde();
+        _stopEmissionCorde();
     } else {
         if (simCorde.paused) _setPausedCorde(false);
-        _clearSourceModesCorde();
+        _resetYtWindowCordeIfQuiet();
+
         simCorde.sinusoidalActive = true;
-        simCorde.sinStartTime     = simCorde.simTime;
-        simCorde.sinStopTime      = -1;
+        simCorde.sinPhase         = 0;   // démarrage à y = 0, sans saut
         simCorde.sourceMode       = 'sinus';
-        simCorde.ytTimeOrigin = simCorde.simTime;
-        _ytClearCorde(1);
-        _ytClearCorde(2);
-        lastYtUpdate = 0;
+
         _syncSourceButtonsCorde();
         _syncWavePropsBtnStateCorde();
     }
@@ -410,25 +451,36 @@ function togglePauseCorde() { _setPausedCorde(!simCorde.paused); }
 
 function resetSimAnimCorde() {
     resetAnimCorde();
-    lastYtUpdate = 0;
+    lastSrcUpdate = 0;
+    _srcTickCorde = 0;
     _syncSourceButtonsCorde();
     var btn = document.getElementById('btn-playpause-corde');
     if (btn) { btn.textContent = '⏸ Pause'; btn.className = 'btn btn-pause'; }
+
+    // Le réticule est un mode d'inspection : la remise à zéro le relâche
+    // aussi, sans quoi le bouton restait allumé sur une scène vierge.
+    simCorde.graphCursorMode = false;
+    var btnCur = document.getElementById('btn-graph-cursor');
+    if (btnCur) btnCur.classList.remove('active');
+    var tip = document.getElementById('graph-hover-tooltip');
+    if (tip) tip.style.display = 'none';
 }
 
 // ── Sliders Corde ─────────────────────────────────────────────────────
+//  Les readouts sont rafraîchis ICI et pas seulement dans la boucle : celle-ci
+//  ne les met à jour que si l'animation tourne, si bien qu'en pause les
+//  valeurs de T et λ restaient figées sur les anciens réglages.
 function onSliderFreqCorde(v) {
     simCorde.freq = parseFloat(v);
     var lbl = document.getElementById('lbl-freq-corde');
     if (lbl) lbl.textContent = simCorde.freq.toFixed(1).replace('.', ',');
+    _updateWavePropsCorde();
 }
 
 function onSliderAmplCorde(v) {
     simCorde.amplitudeCm = parseFloat(v);
     var lbl = document.getElementById('lbl-ampl-corde');
     if (lbl) lbl.textContent = simCorde.amplitudeCm.toFixed(1).replace('.', ',');
-    // Recalculer memAmplitude en px depuis la nouvelle valeur cm
-    _recalcMemAmplitudeCorde();
 }
 
 function onSliderMu(v) {
@@ -437,6 +489,7 @@ function onSliderMu(v) {
     if (lbl) lbl.textContent = simCorde.mu.toFixed(1).replace('.', ',');
     updateCeleriteCorde();
     _updateCReadoutCorde();
+    _updateWavePropsCorde();
 }
 
 function onSliderTension(v) {
@@ -445,6 +498,7 @@ function onSliderTension(v) {
     if (lbl) lbl.textContent = simCorde.T_tension.toFixed(1).replace('.', ',');
     updateCeleriteCorde();
     _updateCReadoutCorde();
+    _updateWavePropsCorde();
 }
 
 function onSliderAttenCorde(v) {
@@ -527,8 +581,10 @@ function _toggleBeaconSon(n) {
     var btn    = document.getElementById('btn-beacon' + n);
     beacon.active = !beacon.active;
     if (beacon.active) {
-        beacon.frac = (n === 1) ? 0.30 : 0.65;
-        beacon.x    = sim.tubeLeft + sim.tubeLength * beacon.frac;
+        // frac est CONSERVÉ d'une activation à l'autre : masquer une balise
+        // pour dégager la vue ne doit pas faire perdre la position choisie.
+        // (Le bouton « Remettre à zéro » restaure les positions par défaut.)
+        beacon.x = sim.tubeLeft + sim.tubeLength * beacon.frac;
         if (btn) btn.classList.add('active');
     } else {
         if (btn) btn.classList.remove('active');
@@ -541,8 +597,10 @@ function _toggleBeaconCorde(n) {
     var btn    = document.getElementById('btn-beacon' + n);
     beacon.active = !beacon.active;
     if (beacon.active) {
-        beacon.frac = (n === 1) ? 0.30 : 0.65;
-        beacon.x    = simCorde.cordeLeft + simCorde.cordeLength * beacon.frac;
+        // frac est CONSERVÉ d'une activation à l'autre : masquer une balise
+        // pour dégager la vue ne doit pas faire perdre la position choisie.
+        // (Le bouton « Remettre à zéro » restaure les positions par défaut.)
+        beacon.x = simCorde.cordeLeft + simCorde.cordeLength * beacon.frac;
         if (btn) btn.classList.add('active');
     } else {
         if (btn) btn.classList.remove('active');

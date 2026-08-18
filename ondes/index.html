@@ -8,7 +8,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Simulation — Propagation d'une onde sonore</title>
+  <title>Simulation — Propagation d'une onde : corde, son, vagues</title>
   <meta name="author" content="Mathieu Berdous">
   <meta name="copyright" content="Mathieu Berdous — CC BY-NC 4.0">
   <meta name="description" content="Simulation interactive (Première/Terminale) : propagation d'ondes mécaniques sur une corde, onde sonore dans un tube et ondes de surface.">
@@ -159,12 +159,6 @@
         <div id="graph-btns-right">
           <button id="btn-graph-cursor"
                   onclick="toggleGraphCursor()" title="Réticule libre">+</button>
-          <button id="btn-graph-prev"
-                  onclick="prevGraphView()" disabled title="Vue précédente">&#8592;</button>
-          <button id="btn-graph-zoom"
-                  onclick="toggleGraphZoom()" title="Mode zoom">&#128269;</button>
-          <button id="btn-graph-auto"
-                  onclick="autoScaleGraph()">&#128269; Adapter</button>
         </div>
       </div>
 
@@ -362,7 +356,7 @@
             <input type="range" id="sl-T-tension"
                    min="0.5" max="10.0" step="0.5" value="4.0"
                    oninput="onSliderTension(this.value)">
-            <span class="input-hint">Raideur de la corde.</span>
+            <span class="input-hint">Force de traction exercée sur la corde.</span>
           </div>
 
           <!-- Atténuation -->
@@ -576,9 +570,9 @@
                 title="Afficher les instructions">▲</button>
       </div>
       <div class="panel-hint-body" id="panel-hint-son-body">
-        <strong>Son :</strong> choisissez le mode <em>Impulsion</em> ou <em>Sinusoïdale</em> dans la box Source,
-        puis appuyez sur <em>▶ Lancer</em> dans le panneau Contrôle.
-        En mode Impulsion, chaque appui sur Play envoie une nouvelle perturbation (si aucune n'est déjà en cours).
+        <strong>Son :</strong> choisissez le mode <em>Impulsion</em> ou <em>Sinusoïdale</em> dans la box Source —
+        l'émission démarre aussitôt.
+        En mode Impulsion, chaque appui envoie une nouvelle perturbation.
         Ajustez ρ et K pour modifier la vitesse de l'onde.
         Activez les <strong>balises</strong> (Balise 1/2) puis basculez en mode
         <em>ΔP(t)</em> pour observer l'évolution de la surpression au fil du temps.
