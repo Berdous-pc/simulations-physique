@@ -261,6 +261,18 @@ exclusif du coloriage par pression : activer l'un désactive et grise l'autre.
   le réutiliser tel quel pour le passage d'ombre décalé, sans recalculer un
   seul point. Pas de `shadowBlur` : sur un chemin de plusieurs milliers de
   points, le flou coûte bien plus cher que le tracé lui-même.
+- `_drawCordeBeads()` — aspect **Discret** (`simCorde.aspect`, réglé par
+  `setCordeAspect` dans `ui.js`) : la corde devient un chapelet de points
+  matériels espacés de `CORDE_BEAD_STEP_M` (10 cm, soit 51 points sur 5 m),
+  reliés par de petits liens. Rien ne change côté physique ni côté graphes —
+  c'est un pur choix de rendu, destiné à faire voir que chaque point ne fait
+  qu'osciller verticalement en reproduisant, avec retard, le mouvement de son
+  voisin de gauche. En mode Libre, le point d'indice 0 n'est pas dessiné : il
+  est remplacé au même endroit par la poignée attrapable.
+- `snapCordeBeaconX()` / `snapCordeBeacon()` — en aspect Discret, une balise
+  se cale sur le point matériel le plus proche (elle ne peut pas se poser sur
+  un lien). Appelés au drag, au resize, à l'activation d'une balise et au
+  passage Continu → Discret. En aspect Continu, sans effet.
 
 ### Interactions communes
 

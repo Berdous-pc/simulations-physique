@@ -806,11 +806,16 @@ function _drawOneBeacon(ctx, x, color, label) {
             return;
         }
 
+        // Sur la corde en aspect Discret, la balise se cale sur le point
+        // matériel le plus proche (cf. snapCordeBeaconX) : elle ne peut pas
+        // se poser sur un lien entre deux points.
         if (tubeInter.mode === 'beacon1-drag') {
             b1.x = Math.max(left, Math.min(right, mx));
+            if (isCorde) b1.x = snapCordeBeaconX(b1.x);
             if (length > 0) b1.frac = (b1.x - left) / length;
         } else if (tubeInter.mode === 'beacon2-drag') {
             b2.x = Math.max(left, Math.min(right, mx));
+            if (isCorde) b2.x = snapCordeBeaconX(b2.x);
             if (length > 0) b2.frac = (b2.x - left) / length;
         }
     }
@@ -987,6 +992,9 @@ function resizeCorde() {
     // constante du vibreur quelle que soit la largeur du canvas.
     simCorde.beacon1.x = simCorde.cordeLeft + simCorde.cordeLength * simCorde.beacon1.frac;
     simCorde.beacon2.x = simCorde.cordeLeft + simCorde.cordeLength * simCorde.beacon2.frac;
+    // En aspect Discret, une balise ne peut vivre que sur un point matériel.
+    snapCordeBeacon(simCorde.beacon1);
+    snapCordeBeacon(simCorde.beacon2);
 
     updateCeleriteCorde();
 }
@@ -1019,9 +1027,11 @@ function drawCorde() {
     // corde est tracée par-dessus en partant exactement du point d'accroche.
     _drawShaker(ctx);
 
-    // ── Fil de la corde ───────────────────────────────────────────────
-    // Dessiné APRÈS le shaker pour partir visuellement du sommet du tube.
-    _drawCordeWire(ctx);
+    // ── Corde elle-même ───────────────────────────────────────────────
+    // Dessinée APRÈS le shaker pour partir visuellement du sommet du tube.
+    // Deux aspects possibles, même physique (cf. simCorde.aspect).
+    if (simCorde.aspect === 'discret') _drawCordeBeads(ctx);
+    else                               _drawCordeWire(ctx);
 
     // ── Poignée du mode Libre (au bout du fil) ────────────────────────
     _drawCordeFreeHandle(ctx);
@@ -1154,6 +1164,131 @@ function _drawCordeWire(ctx) {
     }
 
     ctx.restore();
+}
+
+// ── Corde en aspect « Discret » : chapelet de points matériels ────────
+//
+//  Même déplacement y(x,t) que le tracé continu, échantillonné cette fois
+//  à pas fixe : un point tous les CORDE_BEAD_STEP_M (10 cm), soit 51 points
+//  sur 5 m. Chacun est relié à son voisin par un petit lien.
+//
+//  Intérêt pédagogique : on suit un point donné et on constate qu'il ne se
+//  déplace jamais horizontalement — il ne fait que reproduire, avec un
+//  retard, le mouvement du point qui le précède.
+
+// Nombre de points (bornes incluses) — 51 pour 5 m au pas de 10 cm.
+function cordeBeadCount() {
+    return Math.round(CORDE_LENGTH_M / CORDE_BEAD_STEP_M) + 1;
+}
+
+// Abscisse écran (px) du point d'indice i.
+function cordeBeadX(i) {
+    var n = cordeBeadCount() - 1;
+    return simCorde.cordeLeft + (i / n) * simCorde.cordeLength;
+}
+
+function _drawCordeBeads(ctx) {
+    var L = simCorde.cordeLength;
+    if (L <= 0) return;
+
+    var cmToPx = simCorde.pxPerCmAmpl;
+    var zoneH  = simCorde.cordeBottom - simCorde.cordeTop;
+    var nBeads = cordeBeadCount();
+
+    // Rayon des points et épaisseur des liens : indexés sur μ, comme
+    // l'épaisseur du fil en aspect continu, pour que la corde reste
+    // visuellement « plus lourde » quand μ augmente. Interpolation linéaire
+    // sur toute la plage du curseur : rayon minimal à μ = 0,1, maximal à
+    // μ = 4 — ce maximum est volontairement modeste, des sphères plus
+    // grosses se toucheraient et la corde redeviendrait un trait plein.
+    var muFrac = (simCorde.mu - 0.1) / (4.0 - 0.1);
+    var beadR  = Math.max(2.5, zoneH * (0.011 + 0.00487 * muFrac));
+    var linkW  = Math.max(1.0, beadR * 0.45);
+
+    // Positions calculées une seule fois : elles servent aux liens puis aux
+    // points. Le premier point est le point d'accroche sur le pot vibrant
+    // (cf. _cordeAttachY), exactement comme le départ du fil continu.
+    var xs = new Float32Array(nBeads);
+    var ys = new Float32Array(nBeads);
+    for (var i = 0; i < nBeads; i++) {
+        var xPx = (i / (nBeads - 1)) * L;
+        xs[i] = simCorde.cordeLeft + xPx;
+        ys[i] = (i === 0)
+                    ? _cordeAttachY()
+                    : simCorde.cordeMiddleY - cordeDisplacement(xPx, simCorde.simTime) * cmToPx;
+    }
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(simCorde.cordeLeft, simCorde.cordeTop, L, zoneH);
+    ctx.clip();
+
+    // ── Liens ─────────────────────────────────────────────────────────
+    ctx.strokeStyle = 'rgba(122,37,16,0.55)';
+    ctx.lineWidth   = linkW;
+    ctx.lineCap     = 'round';
+    ctx.beginPath();
+    ctx.moveTo(xs[0], ys[0]);
+    for (var k = 1; k < nBeads; k++) ctx.lineTo(xs[k], ys[k]);
+    ctx.stroke();
+
+    // ── Points ────────────────────────────────────────────────────────
+    // En mode Libre le point d'indice 0 est remplacé par la poignée
+    // attrapable, dessinée juste après au même endroit (_drawCordeFreeHandle).
+    //
+    //  Anti-scintillement : une sphère de quelques pixels dont le bord n'est
+    //  qu'un dégradé adouci par l'antialiasing change d'aspect à chaque frame
+    //  quand elle traverse la hauteur de l'écran en quelques images — d'où
+    //  l'impression de clignotement. Deux parades :
+    //   - un contour net d'un pixel, qui donne à la sphère une silhouette
+    //     stable quelle que soit sa position sub-pixel ;
+    //   - un dégradé qui s'arrête avant le bord, pour que la couleur y soit
+    //     franche au lieu de s'y éteindre.
+    var first = simCorde.freeActive ? 1 : 0;
+    ctx.strokeStyle = '#4a1008';
+    ctx.lineWidth   = 1;
+    for (var j = first; j < nBeads; j++) {
+        var grd = ctx.createRadialGradient(
+            xs[j] - beadR * 0.35, ys[j] - beadR * 0.35, beadR * 0.15,
+            xs[j], ys[j], beadR
+        );
+        grd.addColorStop(0,    '#c05030');
+        grd.addColorStop(0.75, '#7a2510');
+        grd.addColorStop(1,    '#7a2510');
+        ctx.fillStyle = grd;
+        ctx.beginPath();
+        ctx.arc(xs[j], ys[j], beadR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+    }
+
+    ctx.restore();
+}
+
+// ── Calage des balises sur les points (aspect Discret) ────────────────
+//
+//  En aspect Discret la corde n'existe qu'aux points matériels : une balise
+//  posée entre deux d'entre eux ne suivrait aucun point réel. On l'aligne
+//  donc sur le point le plus proche. En aspect Continu, x est renvoyé tel
+//  quel — la balise reste librement positionnable.
+
+function snapCordeBeaconX(x) {
+    if (simCorde.aspect !== 'discret') return x;
+    var L = simCorde.cordeLength;
+    if (L <= 0) return x;
+    var n = cordeBeadCount() - 1;
+    var i = Math.round(((x - simCorde.cordeLeft) / L) * n);
+    i = Math.max(0, Math.min(n, i));
+    return cordeBeadX(i);
+}
+
+// Cale une balise corde et resynchronise sa position relative.
+function snapCordeBeacon(beacon) {
+    if (simCorde.aspect !== 'discret') return;
+    beacon.x = snapCordeBeaconX(beacon.x);
+    if (simCorde.cordeLength > 0) {
+        beacon.frac = (beacon.x - simCorde.cordeLeft) / simCorde.cordeLength;
+    }
 }
 
 // ── Pot vibrant ───────────────────────────────────────────────────────

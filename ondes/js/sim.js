@@ -604,6 +604,10 @@ function initParticles() { initCols(); }
 // Grandeurs physiques réelles : μ en kg/m, T en N, corde de longueur
 // CORDE_LENGTH_M, célérité c = √(T/μ) en m/s (sans facteur d'échelle).
 var CORDE_LENGTH_M    = 5.0;    // longueur physique de la corde (m)
+// Espacement des points matériels en aspect « Discret » (m) : un point
+// tous les 10 cm, soit 51 points sur les 5 m — assez pour lire la forme de
+// l'onde, assez peu pour distinguer chaque point à l'œil.
+var CORDE_BEAD_STEP_M = 0.10;
 var MU_DEFAULT        = 1.0;    // masse linéique par défaut (kg/m)
 var T_DEFAULT         = 4.0;    // tension par défaut (N)
 // C_BASE_CORDE : px/s par unité de célérité (m/s) — recalibré dans tube.js resize
@@ -713,6 +717,15 @@ var simCorde = {
     cordeTop    : 0,
     cordeBottom : 0,
     cordeLength : 0,    // = cordeRight − cordeLeft (px)
+
+    // ── Aspect de la corde : 'continu' | 'discret' ───────────────────
+    //  Purement visuel : la physique et les graphes sont identiques dans
+    //  les deux cas. En 'discret' la corde est dessinée comme un chapelet
+    //  de points matériels reliés (cf. _drawCordeBeads dans tube.js), ce
+    //  qui rend visible le fait que chaque point ne fait qu'osciller
+    //  verticalement en reproduisant, avec retard, le mouvement du
+    //  précédent. Les balises se calent alors sur ces points.
+    aspect : 'continu',
 
     // ── Balises (lignes verticales draggables) ───────────────────────
     // frac = position relative (0–1) le long de la corde — utilisée pour

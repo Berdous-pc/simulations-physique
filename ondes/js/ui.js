@@ -626,6 +626,32 @@ function onSliderSpeedCorde(v) {
 }
 
 // ── Propriétés de l'onde Corde ────────────────────────────────────────
+// ── Aspect de la corde : 'continu' | 'discret' ────────────────────────
+//  Purement visuel : rien n'est réinitialisé, l'onde en cours poursuit sa
+//  route. Passer en Discret cale simplement les balises sur les points
+//  matériels les plus proches (une balise ne peut pas être posée sur un
+//  lien entre deux points).
+function setCordeAspect(mode) {
+    if (mode !== 'discret') mode = 'continu';
+    simCorde.aspect = mode;
+
+    var btnC = document.getElementById('btn-aspect-continu');
+    var btnD = document.getElementById('btn-aspect-discret');
+    if (btnC) btnC.classList.toggle('active', mode === 'continu');
+    if (btnD) btnD.classList.toggle('active', mode === 'discret');
+
+    if (mode === 'discret') {
+        // Le graphe y(t) enregistré jusqu'ici décrit un point qui n'est plus
+        // celui suivi : on repart d'une trace propre, comme après un drag
+        // (cf. _clearBeaconRecord dans tube.js).
+        var moved1 = simCorde.beacon1.x, moved2 = simCorde.beacon2.x;
+        snapCordeBeacon(simCorde.beacon1);
+        snapCordeBeacon(simCorde.beacon2);
+        if (simCorde.beacon1.active && simCorde.beacon1.x !== moved1) _ytClearCorde(1);
+        if (simCorde.beacon2.active && simCorde.beacon2.x !== moved2) _ytClearCorde(2);
+    }
+}
+
 function toggleWavePropsCorde() {
     simCorde.wavePropsVisible = !simCorde.wavePropsVisible;
     _applyWavePropsCorde();
@@ -714,6 +740,7 @@ function _toggleBeaconCorde(n) {
         // pour dégager la vue ne doit pas faire perdre la position choisie.
         // (Le bouton « Remettre à zéro » restaure les positions par défaut.)
         beacon.x = simCorde.cordeLeft + simCorde.cordeLength * beacon.frac;
+        snapCordeBeacon(beacon);   // aspect Discret : cale sur un point matériel
         if (btn) btn.classList.add('active');
     } else {
         if (btn) btn.classList.remove('active');

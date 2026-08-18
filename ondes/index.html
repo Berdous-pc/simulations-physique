@@ -338,6 +338,17 @@
         <div class="panel-section">
           <div class="section-title">Propriétés de la corde</div>
 
+          <!-- Aspect de la corde : tracé continu ou chapelet de points -->
+          <div class="param-row" style="margin-bottom:12px;">
+            <label>Aspect de la corde</label>
+            <div class="seg-toggle">
+              <button class="seg-btn active" id="btn-aspect-continu"
+                      onclick="setCordeAspect('continu')">Continu</button>
+              <button class="seg-btn" id="btn-aspect-discret"
+                      onclick="setCordeAspect('discret')">Discret</button>
+            </div>
+          </div>
+
           <!-- Masse linéique μ -->
           <div class="param-row">
             <label>

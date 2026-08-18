@@ -521,6 +521,30 @@ main {
 .btn-toggle-one:disabled:hover  { background: #d4d0c8; }
 .btn-toggle-one:disabled:active { transform: none; }
 
+/* ── Sélecteur segmenté (deux choix exclusifs, ex. aspect de la corde) ── */
+.seg-toggle {
+  display: flex;
+  border: 1px solid #c8c0b4;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.seg-btn {
+  flex: 1;
+  padding: 8px 4px;
+  font-size: clamp(12px, 1.1vw, 14px);
+  font-weight: 700;
+  font-family: inherit;
+  border: none;
+  background: #ece8e0;
+  color: #5a6a78;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.seg-btn:not(:last-child) { border-right: 1px solid #c8c0b4; }
+.seg-btn:hover  { background: #ddd8ce; }
+.seg-btn.active { background: #2a6aaa; color: #fff; }
+
 /* Curseur neutralisé (ex. f et A en mode Libre) */
 .param-row.disabled label,
 .param-row.disabled .input-hint { opacity: 0.45; }
