@@ -1033,22 +1033,25 @@ function drawCorde() {
     if (simCorde.aspect === 'discret') _drawCordeBeads(ctx);
     else                               _drawCordeWire(ctx);
 
-    // ── Poignée du mode Libre (au bout du fil) ────────────────────────
-    _drawCordeFreeHandle(ctx);
-
     // ── Balises ───────────────────────────────────────────────────────
     _drawCordeBeacons(ctx);
 
     // ── Règle graduée (distance en bas) ────────────────────────────────
     _drawCordeRuler(ctx);
 
-    // ── Bordure de la zone (dessinée en dernier pour rester nette) ────
+    // ── Bordure de la zone (dessinée avant la poignée pour que celle-ci,
+    //    posée sur le bord gauche du cadre en mode Libre, ne soit pas
+    //    coupée par le trait de bordure) ────────────────────────────────
     ctx.strokeStyle = '#b0a89c';
     ctx.lineWidth   = 1;
     ctx.strokeRect(
         simCorde.cordeLeft + 0.5, simCorde.cordeTop + 0.5,
         simCorde.cordeLength - 1, zoneH - 1
     );
+
+    // ── Poignée du mode Libre (au bout du fil) ────────────────────────
+    // Dessinée en dernier pour rester au-dessus du cadre.
+    _drawCordeFreeHandle(ctx);
 }
 
 // ── Grille de la corde : repères verticaux (mètres) + ligne du zéro ───
@@ -1500,12 +1503,17 @@ function _drawOneCordeBeacon(ctx, x, color, label) {
     ctx.stroke();
     ctx.restore();
 
-    // Étiquette juste au-dessus du point
+    // Étiquette juste au-dessus du point. Quand l'amplitude est très grande,
+    // le point est plaqué contre le haut de la zone (clampé ci-dessus) et
+    // l'étiquette voudrait sortir du canvas : on la retient à une hauteur
+    // minimale pour qu'elle reste toujours visible, quitte à empiéter sur
+    // la marge au-dessus de la zone plutôt que d'être coupée.
+    var labelY = Math.max(fSize + 2, y - dotR - 3);
     ctx.fillStyle    = color;
     ctx.font         = 'bold ' + fSize + 'px "Segoe UI", Arial, sans-serif';
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'bottom';
-    ctx.fillText(label, x, y - dotR - 3);
+    ctx.fillText(label, x, labelY);
 
     // Label de position sur la règle graduée
     var L = simCorde.cordeLength;

@@ -21,6 +21,18 @@ function fmtFR(v, decimals) {
     return s.replace('.', ',');
 }
 
+// Comme fmtFR, mais avec un arrondi « logique » (moitié vers le haut) au lieu
+// du toFixed brut : toFixed hérite des imprécisions binaires du flottant
+// (ex. (1.235).toFixed(2) === "1.23" alors qu'on attend "1,24"). On corrige
+// en ajoutant une épsilon avant l'arrondi, ce qui recale les valeurs qui
+// tombent tout juste sous la moitié à cause de la représentation binaire.
+function fmtFRRound(v, decimals) {
+    if (!isFinite(v)) v = 0;
+    var factor  = Math.pow(10, decimals);
+    var rounded = Math.sign(v) * Math.round(Math.abs(v) * factor + 1e-9) / factor;
+    return rounded.toFixed(decimals).replace('.', ',');
+}
+
 // ── Tampon circulaire générique (séries y(t) / ΔP(t) des 3 onglets) ────
 // Remplace push()+shift() sur un tableau d'objets : shift() décale tout le
 // contenu en O(n) à chaque échantillon (300/s), pesant lourd sur la durée.
@@ -192,13 +204,16 @@ function _srcIsQuiet(s, length, c) {
 // Renvoie du HTML (exposant en <sup>, signe moins typographique) — à injecter
 // via innerHTML, pas textContent.
 function fmtSciHTML(v, decimals) {
-    if (!isFinite(v) || v === 0) return fmtFR(0, decimals) + ' × 10<sup>0</sup>';
+    if (!isFinite(v) || v === 0) return fmtFR(0, decimals);
 
     var exp  = Math.floor(Math.log10(Math.abs(v)));
     var mant = v / Math.pow(10, exp);
     // L'arrondi peut faire basculer la mantisse à 10,00 (ex. 9,999 → 10,00) :
     // on recale d'une décade pour rester dans [1 ; 10[.
     if (Math.abs(Number(mant.toFixed(decimals))) >= 10) { mant /= 10; exp += 1; }
+
+    // Puissance 0 : pas d'intérêt à afficher « × 10^0 ».
+    if (exp === 0) return fmtFR(mant, decimals);
 
     return fmtFR(mant, decimals) + ' × 10<sup>' + String(exp).replace('-', '−') + '</sup>';
 }

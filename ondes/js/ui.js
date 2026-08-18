@@ -398,7 +398,7 @@ function togglePressureColor() {
 // ── Afficheur c (Corde) ───────────────────────────────────────────────
 function _updateCReadoutCorde() {
     var el = document.getElementById('ro-c-corde');
-    if (el) el.innerHTML = fmtSciHTML(simCorde.c_cms, 2);
+    if (el) el.textContent = fmtFRRound(simCorde.c_cms, 2);
 }
 
 // ── Utilitaires source Corde ──────────────────────────────────────────
@@ -676,7 +676,7 @@ function _applyWavePropsCorde() {
 function _updateWavePropsCorde() {
     if (!simCorde.wavePropsVisible) return;
     var elC = document.getElementById('ro-c-ext-corde');
-    if (elC) elC.innerHTML = fmtSciHTML(simCorde.c_cms, 2);
+    if (elC) elC.textContent = fmtFRRound(simCorde.c_cms, 2);
     var f   = simCorde.freq;
     var T   = (f > 0) ? 1 / f : 0;
     var elF = document.getElementById('ro-f-corde');
@@ -685,7 +685,7 @@ function _updateWavePropsCorde() {
     if (elT) elT.textContent = T.toFixed(3).replace('.', ',');
     var lambda = simCorde.c_cms * T;   // m (c en m/s × T en s)
     var elL    = document.getElementById('ro-lambda-corde');
-    if (elL) elL.innerHTML = fmtSciHTML(lambda, 2);
+    if (elL) elL.textContent = fmtFRRound(lambda, 2);
 }
 
 function _syncWavePropsBtnStateCorde() {
