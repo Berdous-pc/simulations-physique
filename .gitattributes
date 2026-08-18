@@ -1,0 +1,13 @@
+# ── Fins de ligne ─────────────────────────────────────────────────────
+# Le dépôt stocke tout le texte en LF ; chaque poste retrouve la convention
+# de son système à la sortie (CRLF sous Windows). Rend la règle explicite,
+# au lieu de la faire dépendre du core.autocrlf configuré sur chaque machine.
+* text=auto
+
+# ── Images ────────────────────────────────────────────────────────────
+# Aucune conversion. Git les détecte déjà comme binaires, on le fige ici
+# pour écarter tout risque de corruption. Les motifs sont sensibles à la
+# casse : d'où la double entrée pour les .JPG.
+*.jpg binary
+*.JPG binary
+*.png binary
