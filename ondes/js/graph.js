@@ -40,8 +40,9 @@ var _gFontHover = 14;
 function _updateFontSizes(ctx, W, H, yMin, yMax) {
     // Taille tick : 3,5 % de la hauteur, bornes min/max selon usage
     _gFontTick  = Math.max(10, Math.min(18, Math.round(H * 0.038)));
-    // Taille titre : légèrement plus grand que le tick
-    _gFontTitle = Math.max(11, Math.min(20, Math.round(H * 0.046)));
+    // Taille titre : nettement plus grand que le tick, pour bien identifier
+    // les axes ("Distance (m)", "y (cm)"...) au premier coup d'œil.
+    _gFontTitle = Math.max(14, Math.min(26, Math.round(H * 0.058)));
     // Taille hover : proche du tick
     _gFontHover = Math.max(10, Math.min(18, Math.round(H * 0.038)));
 
@@ -92,6 +93,16 @@ function _syncLeftMarginWithTube(ctx, W, yMin, yMax) {
     // + place pour le titre d'axe Y pivoté (cf. _yAxisTitleX), pour qu'il
     // ne se retrouve jamais collé au bord gauche du canvas, loin des chiffres.
     var minForLabels = _calcLeftMarginRaw(ctx, yMin, yMax) + _gFontTitle + 8;
+
+    // En mode simultané, aucun alignement n'est possible : les deux graphes
+    // n'occupent qu'une demi-largeur chacun, l'origine ne peut donc pas tomber
+    // sous la membrane. On s'en tient au strict nécessaire pour les libellés,
+    // sans quoi la marge de l'alignement serait conservée en pure perte — deux
+    // fois, et sur des graphes deux fois plus étroits.
+    if (sim.graphMode === 'both') {
+        GM.left = minForLabels;
+        return;
+    }
 
     if (tubeCanvas && tubeCanvas.clientWidth > 0 && sim.tubeLeft > 0 && graphCanvas) {
         var tubeRect  = tubeCanvas.getBoundingClientRect();
@@ -1220,6 +1231,13 @@ function _drawAxisLabels_yt(ctx, W, H, GM, pW, pH, yMin, yMax) {
 function _syncLeftMarginWithCorde(ctx, W, yMin, yMax) {
     // + place pour le titre d'axe Y pivoté (cf. _yAxisTitleX)
     var minForLabels = _calcLeftMarginRaw(ctx, yMin, yMax) + _gFontTitle + 8;
+
+    // Mode simultané : pas d'alignement possible sur le pot vibrant, cf. le
+    // commentaire équivalent dans _syncLeftMarginWithTube.
+    if (simCorde.graphMode === 'both') {
+        GM.left = minForLabels;
+        return;
+    }
 
     if (tubeCanvas && tubeCanvas.clientWidth > 0 && simCorde.cordeLeft > 0 && graphCanvas) {
         var tubeRect  = tubeCanvas.getBoundingClientRect();
