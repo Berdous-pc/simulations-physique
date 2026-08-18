@@ -99,18 +99,36 @@ function loop(ts) {
             // qu'aux seuls changements d'état ci-dessus.
             _syncSourceButtonsCorde();
 
+            // Mode Libre : répartir le déplacement de la souris sur les
+            // échantillons de la frame. Le curseur ne donne qu'un point tous
+            // les ~16 ms là où la source en consomme dix : sans cette rampe,
+            // chaque position serait recopiée à l'identique et graverait un
+            // escalier de paliers au lieu d'un geste continu. On compte donc
+            // les pas à venir pour en déduire l'incrément par pas.
+            var freeInc = 0;
+            if (simCorde.freeActive) {
+                var nSteps = Math.floor((simCorde.simTime - lastSrcUpdate) / SRC_DT);
+                freeInc = (nSteps > 0)
+                    ? (simCorde.freeTargetY - simCorde.freeY) / nSteps : 0;
+            }
+
             // Échantillonnage de la source à pas fixe : c'est lui qui
             // « grave » l'onde émise. L'enregistrement y(t) des balises se
             // fait un pas sur deux (600 Hz → 300 Hz), en phase avec les
             // échantillons pour que les deux lectures soient cohérentes.
             while (simCorde.simTime - lastSrcUpdate >= SRC_DT) {
                 lastSrcUpdate += SRC_DT;
+                if (freeInc !== 0) simCorde.freeY += freeInc;
                 stepSourceCorde(lastSrcUpdate);
                 _srcTickCorde = 1 - _srcTickCorde;
                 if (_srcTickCorde === 0) updateYtData(lastSrcUpdate);
             }
+            // Recale exactement sur la cible : les additions successives de
+            // freeInc laissent sinon une dérive d'arrondi qui ferait diverger
+            // la boule du curseur au fil des frames.
+            if (freeInc !== 0) simCorde.freeY = simCorde.freeTargetY;
 
-            if (simCorde.sourceMode === 'sinus' &&
+            if ((simCorde.sourceMode === 'sinus' || simCorde.sourceMode === 'periodic') &&
                     simCorde.simTime - simCorde.ytTimeOrigin >= 5) {
                 simCorde.ytTimeOrigin += 5;
             }
@@ -389,6 +407,7 @@ function _updateCReadoutCorde() {
 //  aller à son terme, et l'historique de la source est de toute façon figé).
 function _stopEmissionCorde() {
     simCorde.sinusoidalActive = false;
+    simCorde.periodicActive   = false;
     simCorde.sourceMode       = null;
     _syncSourceButtonsCorde();
     _syncWavePropsBtnStateCorde();
@@ -411,31 +430,67 @@ function _resetYtWindowCordeIfQuiet() {
 function _syncSourceButtonsCorde() {
     var btn = document.getElementById('btn-source-active-corde');
     if (!btn) return;
-    var active = (simCorde.sourceMode === 'impulse' && simCorde.simTime < simCorde.sourceActiveUntil) ||
-                 (simCorde.sourceMode === 'sinus'   && simCorde.sinusoidalActive);
+    var active = (simCorde.sourceMode === 'impulse'  && simCorde.simTime < simCorde.sourceActiveUntil) ||
+                 (simCorde.sourceMode === 'sinus'    && simCorde.sinusoidalActive) ||
+                 (simCorde.sourceMode === 'periodic' && simCorde.periodicActive);
     btn.classList.toggle('active', active);
+}
+
+//  Applique le mode choisi dans le sélecteur : c'est le seul endroit qui
+//  décide de l'état « Libre » et de l'activation des commandes qui n'ont
+//  pas de sens dans ce mode (bouton Activer, curseurs f et A, propriétés
+//  de l'onde — le geste de la souris n'a ni fréquence ni amplitude fixe).
+function _applySourceModeCorde() {
+    var sel  = document.getElementById('sel-mode-corde');
+    var mode = sel ? sel.value : 'impulse';
+    var free = (mode === 'free');
+
+    simCorde.freeActive = free;
+    if (free) {
+        simCorde.sourceMode = 'free';
+    } else if (simCorde.sourceMode === 'free') {
+        simCorde.sourceMode   = null;
+        simCorde.freeY        = 0;   // la corde relâchée revient au repos
+        simCorde.freeTargetY  = 0;
+        simCorde.freeDragging = false;
+    }
+
+    var btn = document.getElementById('btn-source-active-corde');
+    if (btn) btn.disabled = free;
+
+    var rowF = document.getElementById('freq-row-corde');
+    var rowA = document.getElementById('ampl-row-corde');
+    if (rowF) rowF.classList.toggle('disabled', free);
+    if (rowA) rowA.classList.toggle('disabled', free);
+    var slF = document.getElementById('sl-freq-corde');
+    var slA = document.getElementById('sl-ampl-corde');
+    if (slF) slF.disabled = free;
+    if (slA) slA.disabled = free;
+
+    _syncSourceButtonsCorde();
+    _syncWavePropsBtnStateCorde();
 }
 
 //  Bouton unique Activer/Désactiver : son effet dépend du mode choisi dans
 //  le sélecteur. En Impulsion, chaque appui relance une impulsion et le
 //  bouton se rallume tout seul le temps qu'elle traverse la corde (cf.
-//  animate() dans la boucle principale). En Sinusoïdale, il bascule
-//  l'émission continue on/off.
+//  animate() dans la boucle principale). En Sinusoïdale et Périodique, il
+//  bascule l'émission continue on/off.
 function toggleSourceActiveCorde() {
     var sel  = document.getElementById('sel-mode-corde');
     var mode = sel ? sel.value : 'impulse';
-    if (mode === 'impulse') {
-        sendImpulseCorde();
-    } else {
-        toggleSinusoidalCorde();
-    }
+    if (mode === 'free')          return;   // bouton désactivé — cf. _applySourceModeCorde
+    if (mode === 'impulse')       sendImpulseCorde();
+    else if (mode === 'sinus')    toggleSinusoidalCorde();
+    else                          togglePeriodicCorde();
 }
 
-//  Changement de mode dans le sélecteur : une émission sinusoïdale en cours
-//  est arrêtée (une impulsion en cours de propagation, elle, va à son terme).
+//  Changement de mode dans le sélecteur : une émission continue en cours
+//  (sinusoïdale ou périodique) est arrêtée (une impulsion en cours de
+//  propagation, elle, va à son terme).
 function onSourceModeChangeCorde() {
-    if (simCorde.sinusoidalActive) _stopEmissionCorde();
-    _syncSourceButtonsCorde();
+    if (simCorde.sinusoidalActive || simCorde.periodicActive) _stopEmissionCorde();
+    _applySourceModeCorde();
 }
 
 //  Chaque appui envoie une NOUVELLE impulsion : celles qui sont déjà sur la
@@ -444,7 +499,8 @@ function sendImpulseCorde() {
     if (simCorde.paused) _setPausedCorde(false);
     _resetYtWindowCordeIfQuiet();
 
-    simCorde.sinusoidalActive   = false;   // les deux modes restent exclusifs
+    simCorde.sinusoidalActive   = false;   // tous les modes restent exclusifs
+    simCorde.periodicActive     = false;
     simCorde.impulses.push({ startTime: simCorde.simTime });
     simCorde.impulsePropagating = true;
     simCorde.sourceMode         = 'impulse';
@@ -462,8 +518,29 @@ function toggleSinusoidalCorde() {
         _resetYtWindowCordeIfQuiet();
 
         simCorde.sinusoidalActive = true;
-        simCorde.sinPhase         = 0;   // démarrage à y = 0, sans saut
+        simCorde.periodicActive   = false;   // tous les modes restent exclusifs
+        simCorde.sinPhase         = 0;       // démarrage à y = 0, sans saut
         simCorde.sourceMode       = 'sinus';
+
+        _syncSourceButtonsCorde();
+        _syncWavePropsBtnStateCorde();
+    }
+}
+
+//  Signal « Périodique » : somme fondamentale + harmonique 2 (cf.
+//  stepSourceCorde), non sinusoïdale mais toujours lisse — même logique de
+//  bascule on/off que le mode Sinusoïdale.
+function togglePeriodicCorde() {
+    if (simCorde.periodicActive) {
+        _stopEmissionCorde();
+    } else {
+        if (simCorde.paused) _setPausedCorde(false);
+        _resetYtWindowCordeIfQuiet();
+
+        simCorde.periodicActive   = true;
+        simCorde.sinusoidalActive = false;   // tous les modes restent exclusifs
+        simCorde.periodicPhase    = 0;       // démarrage à y = 0, sans saut
+        simCorde.sourceMode       = 'periodic';
 
         _syncSourceButtonsCorde();
         _syncWavePropsBtnStateCorde();
@@ -485,7 +562,9 @@ function resetSimAnimCorde() {
     resetAnimCorde();
     lastSrcUpdate = 0;
     _srcTickCorde = 0;
-    _syncSourceButtonsCorde();
+    // resetAnimCorde remet sourceMode à null : on réapplique la sélection
+    // du menu déroulant, qui elle n'est pas remise à zéro.
+    _applySourceModeCorde();
     var btn = document.getElementById('btn-playpause-corde');
     if (btn) { btn.textContent = '⏸ Pause'; btn.className = 'btn btn-pause'; }
 
@@ -586,7 +665,9 @@ function _updateWavePropsCorde() {
 function _syncWavePropsBtnStateCorde() {
     var btn = document.getElementById('btn-wave-props-corde');
     if (!btn) return;
-    var isImpulse = (simCorde.sourceMode === 'impulse');
+    // Impulsion et Libre n'ont pas de fréquence définie : λ = c·T n'aurait
+    // aucun sens, on verrouille donc le readout étendu.
+    var isImpulse = (simCorde.sourceMode === 'impulse' || simCorde.sourceMode === 'free');
     btn.disabled = isImpulse;
     if (isImpulse && simCorde.wavePropsVisible) {
         simCorde.wavePropsVisible = false;
@@ -794,7 +875,7 @@ function _syncUIToSim() {
     _syncWavePropsBtnStateCorde();
     updateCeleriteCorde();
     _updateCReadoutCorde();
-    _syncSourceButtonsCorde();
+    _applySourceModeCorde();
     var btnC = document.getElementById('btn-playpause-corde');
     if (btnC) { btnC.textContent = '⏸ Pause'; btnC.className = 'btn btn-pause'; }
 

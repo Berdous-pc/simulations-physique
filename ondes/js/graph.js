@@ -998,15 +998,15 @@ function _drawCrosshair(ctx, W, H) {
 // ── Graphe y(x) ───────────────────────────────────────────────────────
 //  Analogue à _drawDpxGraph mais :
 //    • données : simCorde.yxX/yxY (Float32Array), via updateYxData
-//    • axe Y : y (cm), valeur physique réelle, bornes FIXES ±CORDE_Y_AXIS_CM
+//    • axe Y : y (cm), valeur physique réelle, bornes ±cordeYAxisCm()
 //    • axe X : Distance depuis le pot (m), 0–CORDE_LENGTH_M
 
 function _drawYxGraph(ctx, W, H) {
     var L      = simCorde.cordeLength;
     var xMin   = 0;
     var xMax   = L > 0 ? L : 1;
-    var yMin   = -CORDE_Y_AXIS_CM;
-    var yMax   =  CORDE_Y_AXIS_CM;
+    var yMin   = -cordeYAxisCm();
+    var yMax   =  cordeYAxisCm();
     simCorde.graphYxYMin = yMin;
     simCorde.graphYxYMax = yMax;
 
@@ -1088,8 +1088,8 @@ function _drawYtGraph(ctx, W, H) {
     var xMax  = 5;
     simCorde.graphView.xMin = xMin;
     simCorde.graphView.xMax = xMax;
-    var yMin  = -CORDE_Y_AXIS_CM;
-    var yMax  =  CORDE_Y_AXIS_CM;
+    var yMin  = -cordeYAxisCm();
+    var yMax  =  cordeYAxisCm();
     simCorde.graphView.yMin = yMin;
     simCorde.graphView.yMax = yMax;
 
@@ -1254,8 +1254,8 @@ function _syncLeftMarginWithCorde(ctx, W, yMin, yMax) {
 // ── Mode both corde : liaisons balise → point temporel ────────────────
 
 function _drawBothLinksYt(ctx, W, H, half, sep) {
-    var yMin  = -CORDE_Y_AXIS_CM;
-    var yMax  =  CORDE_Y_AXIS_CM;
+    var yMin  = -cordeYAxisCm();
+    var yMax  =  cordeYAxisCm();
     var pH    = H - GM.top - GM.bottom;
     if (pH <= 0) return;
 

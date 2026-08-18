@@ -183,7 +183,7 @@ function _srcDAtS(s, sT) {
 // le temps de traverser toute la longueur affichée. Sert à décider si l'on
 // peut réinitialiser la fenêtre du graphe temporel sans couper une courbe.
 function _srcIsQuiet(s, length, c) {
-    if (s.sinusoidalActive || s.impulses.length > 0) return false;
+    if (s.sinusoidalActive || s.periodicActive || s.impulses.length > 0) return false;
     if (c <= 0) return true;
     return (s.simTime - s.lastEmitT) > length / c;
 }
@@ -616,6 +616,12 @@ var CORDE_AMPL_CM_MAX = 5.0;
 // courbe et le curseur Amplitude semblait sans effet sur le graphe.
 var CORDE_Y_AXIS_CM   = 1.12 * CORDE_AMPL_CM_MAX;
 
+// Signal « Périodique » : fondamentale + harmonique 2, motif classique de
+// somme de sinusoïdes (asymétrique, non sinusoïdal, mais lisse). Normalise
+// le pic de sin(x)·(1+cos(x)) — atteint en x=π/3, valeur 3√3/4 — pour que
+// l'amplitude affichée corresponde bien au déplacement maximal réel.
+var PERIODIC_NORM = 4 / (3 * Math.sqrt(3));
+
 // ── État global de la simulation corde ────────────────────────────────
 var simCorde = {
 
@@ -639,6 +645,31 @@ var simCorde = {
     //  créer de saut de phase, et sans toucher à ce qui est déjà émis.
     sinusoidalActive : false,
     sinPhase         : 0,
+
+    // ── Source — composante périodique non sinusoïdale ───────────────
+    //  Même principe de phase accumulée que sinPhase (cf. ci-dessus) :
+    //  somme fondamentale + harmonique 2, normalisée pour que le pic
+    //  atteigne exactement amplitudeCm (cf. PERIODIC_NORM).
+    periodicActive : false,
+    periodicPhase  : 0,
+
+    // ── Source — mode Libre (pilotée à la souris) ────────────────────
+    //  Le pot vibrant est débrayé : c'est l'utilisateur qui tient le bout
+    //  de la corde et impose lui-même le déplacement. Lâcher la boule ne la
+    //  ramène pas au repos : elle reste où on l'a laissée, comme une main
+    //  qui tient la corde.
+    //
+    //  DEUX hauteurs, et non une seule : la souris n'émet qu'un événement
+    //  par frame (~60 Hz) alors que la source est échantillonnée à 1/SRC_DT
+    //  (600 Hz). Réutiliser directement la position du curseur reviendrait à
+    //  écrire dix échantillons identiques d'affilée, soit un escalier de
+    //  paliers gravé sur la corde. freeTargetY reçoit donc le curseur, et
+    //  freeY — la valeur réellement émise — l'y rejoint par interpolation
+    //  linéaire, un pas à la fois (cf. boucle d'animation dans ui.js).
+    freeActive   : false,
+    freeY        : 0,
+    freeTargetY  : 0,
+    freeDragging : false,
 
     // ── Source — impulsions (superposables) ─────────────────────────
     impulses : [],
@@ -758,6 +789,17 @@ function stepSourceCorde(t) {
         if (simCorde.sinPhase > 2 * Math.PI) simCorde.sinPhase -= 2 * Math.PI;
         d += simCorde.amplitudeCm * Math.sin(simCorde.sinPhase);
     }
+
+    // ── Composante périodique non sinusoïdale (fondamentale + harmonique 2) ──
+    if (simCorde.periodicActive) {
+        simCorde.periodicPhase += 2 * Math.PI * simCorde.freq * SRC_DT;
+        if (simCorde.periodicPhase > 2 * Math.PI) simCorde.periodicPhase -= 2 * Math.PI;
+        var p = simCorde.periodicPhase;
+        d += simCorde.amplitudeCm * PERIODIC_NORM * Math.sin(p) * (1 + Math.cos(p));
+    }
+
+    // ── Mode Libre : la hauteur imposée à la souris EST le signal ─────
+    if (simCorde.freeActive) d += simCorde.freeY;
 
     // ── Composantes impulsions (superposables) ────────────────────────
     for (var i = 0; i < simCorde.impulses.length; i++) {
@@ -889,6 +931,11 @@ function resetAnimCorde() {
     simCorde.sourceMode         = null;
     simCorde.sinusoidalActive   = false;
     simCorde.sinPhase           = 0;
+    simCorde.periodicActive     = false;
+    simCorde.periodicPhase      = 0;
+    simCorde.freeY              = 0;
+    simCorde.freeTargetY        = 0;
+    simCorde.freeDragging       = false;
     simCorde.impulses           = [];
     simCorde.impulsePropagating = false;
     simCorde.sourceActiveUntil  = 0;

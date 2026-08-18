@@ -697,10 +697,33 @@ function _drawOneBeacon(ctx, x, color, label) {
         }
     }
 
+    // Hit-test : est-on sur la boule du mode Libre ? Zone de saisie élargie
+    // (×2) pour rester attrapable même quand la corde vibre.
+    function nearFreeHandle(x, y) {
+        if (typeof activeTab === 'undefined' || activeTab !== 'corde') return false;
+        if (!simCorde.freeActive) return false;
+        var dx = x - simCorde.cordeLeft;
+        var dy = y - _cordeAttachY();
+        var r  = _cordeFreeHandleR() * 2;
+        return dx * dx + dy * dy <= r * r;
+    }
+
     function onDown(e) {
         var rect = tubeCanvas.getBoundingClientRect();
         var mx   = (e.clientX - rect.left) * (tubeCanvas.clientWidth  / rect.width);
         var my   = (e.clientY - rect.top)  * (tubeCanvas.clientHeight / rect.height);
+
+        // Priorité absolue : saisie de la boule du mode Libre. Elle est au
+        // bord gauche, là où aucune balise ne peut se trouver.
+        if (nearFreeHandle(mx, my)) {
+            tubeInter.mode        = 'corde-free-drag';
+            simCorde.freeDragging = true;
+            // Sans temps qui s'écoule, le geste ne graverait rien.
+            if (simCorde.paused && typeof _setPausedCorde === 'function') _setPausedCorde(false);
+            if (typeof _resetYtWindowCordeIfQuiet === 'function') _resetYtWindowCordeIfQuiet();
+            tubeCanvas.setPointerCapture(e.pointerId);
+            return;
+        }
 
         // Choisir les balises selon le tab actif
         var b1 = (typeof activeTab !== 'undefined' && activeTab === 'corde')
@@ -737,13 +760,16 @@ function _drawOneBeacon(ctx, x, color, label) {
             // Curseur adaptatif
             var rect = tubeCanvas.getBoundingClientRect();
             var mx   = (e.clientX - rect.left) * (tubeCanvas.clientWidth  / rect.width);
+            var my   = (e.clientY - rect.top)  * (tubeCanvas.clientHeight / rect.height);
 
             var b1 = (typeof activeTab !== 'undefined' && activeTab === 'corde')
                         ? simCorde.beacon1 : sim.beacon1;
             var b2 = (typeof activeTab !== 'undefined' && activeTab === 'corde')
                         ? simCorde.beacon2 : sim.beacon2;
 
-            if (nearBeacon(mx, b1) || nearBeacon(mx, b2)) {
+            if (nearFreeHandle(mx, my)) {
+                tubeCanvas.style.cursor = 'ns-resize';
+            } else if (nearBeacon(mx, b1) || nearBeacon(mx, b2)) {
                 tubeCanvas.style.cursor = 'ew-resize';
             } else if (sim.selectionMode && !(typeof activeTab !== 'undefined' && activeTab === 'corde')) {
                 tubeCanvas.style.cursor = 'crosshair';
@@ -765,6 +791,21 @@ function _drawOneBeacon(ctx, x, color, label) {
         var b1      = isCorde ? simCorde.beacon1    : sim.beacon1;
         var b2      = isCorde ? simCorde.beacon2    : sim.beacon2;
 
+        if (tubeInter.mode === 'corde-free-drag') {
+            // La hauteur de la souris DEVIENT le signal émis : on convertit
+            // les pixels en cm (même échelle que le tracé) et on borne à toute
+            // la hauteur de la zone corde (cf. cordeFreeLimitCm).
+            // On n'écrit ici que la CIBLE : la boucle d'animation l'atteint
+            // en interpolant sur les échantillons de la frame, sans quoi le
+            // geste se graverait en escalier (cf. freeTargetY dans sim.js).
+            var cmToPx = simCorde.pxPerCmAmpl;
+            var yCm    = (cmToPx > 0) ? (simCorde.cordeMiddleY - my) / cmToPx : 0;
+            var lim = cordeFreeLimitCm();
+            simCorde.freeTargetY = Math.max(-lim.down,
+                                            Math.min(lim.up, yCm));
+            return;
+        }
+
         if (tubeInter.mode === 'beacon1-drag') {
             b1.x = Math.max(left, Math.min(right, mx));
             if (length > 0) b1.frac = (b1.x - left) / length;
@@ -777,6 +818,9 @@ function _drawOneBeacon(ctx, x, color, label) {
     function onUp() {
         if (tubeInter.mode === 'beacon1-drag') _clearBeaconRecord(1);
         if (tubeInter.mode === 'beacon2-drag') _clearBeaconRecord(2);
+        // La boule reste où on l'a lâchée (cf. simCorde.freeY) : la corde
+        // garde le déplacement imposé, comme une main qui la tiendrait.
+        if (tubeInter.mode === 'corde-free-drag') simCorde.freeDragging = false;
         tubeInter.mode = null;
     }
 
@@ -848,6 +892,53 @@ function _cordeAttachY() {
     var disp = cordeDisplacement(0, simCorde.simTime) * simCorde.pxPerCmAmpl;
     return Math.max(simCorde.cordeTop + 1,
                     Math.min(simCorde.cordeBottom - 1, simCorde.cordeMiddleY - disp));
+}
+
+// ── Sommet du vérin du pot vibrant ────────────────────────────────────
+//  Normalement confondu avec le point d'accroche de la corde. En mode
+//  Libre le pot est débrayé : le vérin ne suit plus la corde et reste
+//  immobile au repos (le zéro), c'est la petite tige horizontale qui
+//  pivote pour lâcher la corde (cf. _drawShaker).
+
+function _shakerTopY() {
+    return simCorde.freeActive ? simCorde.cordeMiddleY : _cordeAttachY();
+}
+
+// ── Boule du bout de corde (mode Libre) ───────────────────────────────
+//  Rayon de la poignée, et sa position courante — partagés par le tracé
+//  (_drawCordeFreeHandle) et le hit-test de la souris (initTubeInteractions).
+
+function _cordeFreeHandleR() {
+    return Math.max(4, Math.round((simCorde.cordeBottom - simCorde.cordeTop) * 0.025));
+}
+
+// ── Débattement de la boule du mode Libre ─────────────────────────────
+//  La boule se traîne dans TOUTE la hauteur de la zone corde, et non plus
+//  dans la seule plage du curseur Amplitude : le geste de l'utilisateur
+//  n'a pas de raison d'être bridé par un réglage qui ne le concerne pas.
+//  Le rayon de la boule est retranché pour qu'elle reste entièrement
+//  visible quand on la pousse contre un bord. Bornes séparées haut/bas :
+//  cordeMiddleY étant arrondi, les deux moitiés de la zone ne sont pas
+//  exactement égales.
+function cordeFreeLimitCm() {
+    var cmToPx = simCorde.pxPerCmAmpl;
+    if (!(cmToPx > 0)) return { up: CORDE_AMPL_CM_MAX, down: CORDE_AMPL_CM_MAX };
+    var r = _cordeFreeHandleR();
+    return {
+        up  : Math.max(0, simCorde.cordeMiddleY - simCorde.cordeTop     - r) / cmToPx,
+        down: Math.max(0, simCorde.cordeBottom  - simCorde.cordeMiddleY - r) / cmToPx
+    };
+}
+
+// ── Demi-étendue de l'axe y des graphes corde ─────────────────────────
+//  Fixe en temps normal (cf. CORDE_Y_AXIS_CM). En mode Libre elle s'ouvre
+//  au débattement réel de la boule, sinon le geste sortirait du cadre dès
+//  qu'il dépasse l'amplitude max du curseur. Les graduations, elles, se
+//  recalculent seules (cf. _niceStep dans graph.js).
+function cordeYAxisCm() {
+    if (!simCorde.freeActive) return CORDE_Y_AXIS_CM;
+    var lim = cordeFreeLimitCm();
+    return Math.max(CORDE_Y_AXIS_CM, 1.06 * Math.max(lim.up, lim.down));
 }
 
 // ── Resize corde ──────────────────────────────────────────────────────
@@ -931,6 +1022,9 @@ function drawCorde() {
     // ── Fil de la corde ───────────────────────────────────────────────
     // Dessiné APRÈS le shaker pour partir visuellement du sommet du tube.
     _drawCordeWire(ctx);
+
+    // ── Poignée du mode Libre (au bout du fil) ────────────────────────
+    _drawCordeFreeHandle(ctx);
 
     // ── Balises ───────────────────────────────────────────────────────
     _drawCordeBeacons(ctx);
@@ -1087,8 +1181,9 @@ function _drawShaker(ctx) {
     var zoneH       = cordeBottom - cordeTop;
     var marginLeft  = simCorde.cordeLeft;   // largeur totale de la zone pot
 
-    // Hauteur actuelle de l'extrémité gauche de la corde (x = 0)
-    var attachY = _cordeAttachY();
+    // Hauteur actuelle du sommet du pot. En mode Libre il est débrayé et
+    // reste en position haute, indépendamment de la corde (cf. _shakerTopY).
+    var attachY = _shakerTopY();
 
     // ── Dimensions ────────────────────────────────────────────────────
     var baseH  = Math.max(12, Math.round(zoneH * 0.18));   // hauteur base fixe
@@ -1159,19 +1254,27 @@ function _drawShaker(ctx) {
         ctx.stroke();
     }
 
-    // ── Point d'accroche de la corde (sommet du tube) ─────────────────
-    var attachX = simCorde.cordeLeft;   // extrémité droite = bord de la zone corde
-    var dotR    = Math.max(3, tubeW * 0.45);   // attachY : calculé plus haut
+    // ── Tige d'accroche de la corde (sommet du vérin) ─────────────────
+    // Petite tige reliant le sommet du vérin au bord de la zone corde.
+    // Son point d'attache au vérin sert de pivot : en mode Libre elle
+    // bascule d'un quart de tour dans le sens antihoraire et se dresse à la
+    // verticale, ce qui la déconnecte de la corde. (À l'écran l'axe y est
+    // orienté vers le bas : « vers le haut » = y décroissant.)
+    var pivotX = tubeX + tubeW / 2;   // centre du disque = pivot de la tige
+    var rodLen = simCorde.cordeLeft - pivotX;
+    var dotR   = Math.max(3, tubeW * 0.45);   // attachY : calculé plus haut
 
-    // Petite encoche : trait horizontal reliant sommet tube au bord de zone
     ctx.strokeStyle = '#5a3a20';
     ctx.lineWidth   = Math.max(1.5, tubeW * 0.3);
+    ctx.lineCap     = 'round';
     ctx.beginPath();
-    ctx.moveTo(tubeX + tubeW, attachY);
-    ctx.lineTo(attachX, attachY);
+    ctx.moveTo(pivotX, attachY);
+    if (simCorde.freeActive) ctx.lineTo(pivotX, attachY - rodLen);
+    else                     ctx.lineTo(pivotX + rodLen, attachY);
     ctx.stroke();
+    ctx.lineCap = 'butt';
 
-    // Disque d'accroche
+    // Disque d'accroche (sommet du vérin, également pivot de la tige)
     ctx.fillStyle   = '#7a2510';
     ctx.beginPath();
     ctx.arc(tubeX + tubeW / 2, attachY, dotR, 0, Math.PI * 2);
@@ -1179,6 +1282,42 @@ function _drawShaker(ctx) {
     ctx.strokeStyle = '#4a1008';
     ctx.lineWidth   = 1;
     ctx.stroke();
+}
+
+// ── Poignée du mode Libre : boule au bout de la corde ─────────────────
+//  Dessinée après le fil, à son extrémité gauche exacte : c'est le point
+//  que l'utilisateur attrape pour imposer lui-même le déplacement.
+
+function _drawCordeFreeHandle(ctx) {
+    if (!simCorde.freeActive) return;
+
+    var x = simCorde.cordeLeft;
+    var y = _cordeAttachY();
+    var r = _cordeFreeHandleR();
+
+    ctx.save();
+
+    // Halo quand la boule est saisie — retour visuel du glissement en cours
+    if (simCorde.freeDragging) {
+        ctx.fillStyle = 'rgba(122,37,16,0.20)';
+        ctx.beginPath();
+        ctx.arc(x, y, r * 1.8, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    var grd = ctx.createRadialGradient(x - r * 0.35, y - r * 0.35, r * 0.15, x, y, r);
+    grd.addColorStop(0, '#c05030');
+    grd.addColorStop(1, '#7a2510');
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = '#4a1008';
+    ctx.lineWidth   = 1.5;
+    ctx.stroke();
+
+    ctx.restore();
 }
 
 // ── Balises corde ─────────────────────────────────────────────────────
