@@ -485,11 +485,30 @@ function toggleSourceActiveCorde() {
     else                          togglePeriodicCorde();
 }
 
-//  Changement de mode dans le sélecteur : une émission continue en cours
-//  (sinusoïdale ou périodique) est arrêtée (une impulsion en cours de
-//  propagation, elle, va à son terme).
+//  Changement de mode dans le sélecteur : basculer entre Sinusoïdale et
+//  Périodique alors qu'une émission continue tourne ne l'arrête pas — la
+//  source reste activée, juste dans le nouveau mode. Ce n'est que vers un
+//  mode qui n'a pas d'émission continue (Impulsion, Libre) qu'elle est
+//  coupée (une impulsion en cours de propagation, elle, va à son terme).
 function onSourceModeChangeCorde() {
-    if (simCorde.sinusoidalActive || simCorde.periodicActive) _stopEmissionCorde();
+    var sel  = document.getElementById('sel-mode-corde');
+    var mode = sel ? sel.value : 'impulse';
+    var wasContinuous = simCorde.sinusoidalActive || simCorde.periodicActive;
+
+    if (wasContinuous && mode === 'sinus') {
+        simCorde.sinusoidalActive = true;
+        simCorde.periodicActive   = false;
+        simCorde.sinPhase         = 0;   // démarrage à y = 0, sans saut
+        simCorde.sourceMode       = 'sinus';
+    } else if (wasContinuous && mode === 'periodic') {
+        simCorde.periodicActive   = true;
+        simCorde.sinusoidalActive = false;
+        simCorde.periodicPhase    = 0;   // démarrage à y = 0, sans saut
+        simCorde.sourceMode       = 'periodic';
+    } else if (wasContinuous) {
+        _stopEmissionCorde();
+    }
+
     _applySourceModeCorde();
 }
 
