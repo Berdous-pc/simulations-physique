@@ -1473,7 +1473,10 @@ function _drawCordeBeacons(ctx) {
 function _drawOneCordeBeacon(ctx, x, color, label) {
     var top    = simCorde.cordeTop;
     var bottom = simCorde.cordeBottom;
-    var fSize  = Math.max(11, Math.round((bottom - top) * 0.13));
+    // Indexé sur la largeur de la zone (cordeLength), pas sur sa hauteur :
+    // sinon l'étiquette grossit artificiellement dans une fenêtre haute et
+    // étroite alors que rien n'a changé horizontalement.
+    var fSize  = Math.max(11, Math.round(simCorde.cordeLength * 0.045));
 
     // Position verticale actuelle du point d'attache : suit le déplacement
     // transversal de la corde à cette abscisse (comme un point matériel posé
