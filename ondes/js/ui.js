@@ -954,6 +954,11 @@ function _toggleBeaconSon(n) {
         // (Le bouton « Remettre à zéro » restaure les positions par défaut.)
         beacon.x = sim.tubeLeft + sim.tubeLength * beacon.frac;
         if (btn) btn.classList.add('active');
+        // Enregistre tout de suite un point : sinon, en pause, le graphe reste
+        // sur le message « Activer une balise… » jusqu'à ce que l'animation
+        // reprenne et fournisse un 2e échantillon (condition n > 1 au tracé).
+        updateDptData(sim.simTime);
+        updateDptData(sim.simTime);
     } else {
         if (btn) btn.classList.remove('active');
         _dptClear(n);
@@ -971,6 +976,11 @@ function _toggleBeaconCorde(n) {
         beacon.x = simCorde.cordeLeft + simCorde.cordeLength * beacon.frac;
         snapCordeBeacon(beacon);   // aspect Discret : cale sur un point matériel
         if (btn) btn.classList.add('active');
+        // Enregistre tout de suite un point : sinon, en pause, le graphe reste
+        // sur le message « Activer une balise… » jusqu'à ce que l'animation
+        // reprenne et fournisse un 2e échantillon (condition n > 1 au tracé).
+        updateYtData(simCorde.simTime);
+        updateYtData(simCorde.simTime);
     } else {
         if (btn) btn.classList.remove('active');
         _ytClearCorde(n);

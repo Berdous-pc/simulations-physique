@@ -1331,6 +1331,11 @@ function _toggleBeaconVagues(n) {
         beacon.ry = beacon.y / simVagues.canvasH;
         beacon.snapped = true;
         if (btn) btn.classList.add('active');
+        // Enregistre tout de suite un point : sinon, en pause, le graphe reste
+        // sur le message « Activer une balise… » jusqu'à ce que l'animation
+        // reprenne et fournisse un 2e échantillon (condition n > 1 au tracé).
+        updateYtDataVagues(simVagues.simTime);
+        updateYtDataVagues(simVagues.simTime);
     } else {
         beacon.snapped = false;
         if (btn) btn.classList.remove('active');
@@ -2134,10 +2139,29 @@ function _drawBeaconsCoupeVagues(ctx, W, H, srcX, yLevel, ampPx) {
         });
 
         canvas.addEventListener('pointerup', function() {
+            // Réenregistre un point à la position finale : sinon, en pause,
+            // le buffer reste vide (cf. _ytClear pendant le drag) et le
+            // graphe affiche « Activer une balise… » jusqu'à la reprise de
+            // l'animation (même cause que pour l'activation d'une balise,
+            // cf. _toggleBeaconVagues).
+            if (dragTarget === 'beacon1' && simVagues.beacon1.snapped) {
+                updateYtDataVagues(simVagues.simTime);
+                updateYtDataVagues(simVagues.simTime);
+            } else if (dragTarget === 'beacon2' && simVagues.beacon2.snapped) {
+                updateYtDataVagues(simVagues.simTime);
+                updateYtDataVagues(simVagues.simTime);
+            }
             dragTarget = null;
         });
 
         canvas.addEventListener('pointerleave', function() {
+            if (dragTarget === 'beacon1' && simVagues.beacon1.snapped) {
+                updateYtDataVagues(simVagues.simTime);
+                updateYtDataVagues(simVagues.simTime);
+            } else if (dragTarget === 'beacon2' && simVagues.beacon2.snapped) {
+                updateYtDataVagues(simVagues.simTime);
+                updateYtDataVagues(simVagues.simTime);
+            }
             dragTarget = null;
         });
     }
