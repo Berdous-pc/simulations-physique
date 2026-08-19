@@ -639,11 +639,12 @@ var CORDE_AMPL_CM_MAX = 5.0;
 // courbe et le curseur Amplitude semblait sans effet sur le graphe.
 var CORDE_Y_AXIS_CM   = 1.12 * CORDE_AMPL_CM_MAX;
 
-// Signal « Périodique » : fondamentale + harmonique 2, motif classique de
-// somme de sinusoïdes (asymétrique, non sinusoïdal, mais lisse). Normalise
-// le pic de sin(x)·(1+cos(x)) — atteint en x=π/3, valeur 3√3/4 — pour que
-// l'amplitude affichée corresponde bien au déplacement maximal réel.
-var PERIODIC_NORM = 4 / (3 * Math.sqrt(3));
+// Signal « Périodique » : sin(x) + 0,6·sin(3x) + 0,35·sin(2x) — l'harmonique 3
+// crée 6 extrema nets par période (3 maxima, 3 minima), et l'harmonique 2
+// (paire) casse la symétrie : les lobes positifs et négatifs ne se
+// ressemblent plus. Normalise le pic (trouvé numériquement, ≈ 1,507097)
+// pour que l'amplitude affichée corresponde au déplacement maximal réel.
+var PERIODIC_NORM = 1 / 1.507097;
 
 // ── État global de la simulation corde ────────────────────────────────
 var simCorde = {
@@ -858,12 +859,12 @@ function stepSourceCorde(t) {
         d += ampl * Math.sin(simCorde.sinPhase);
     }
 
-    // ── Composante périodique non sinusoïdale (fondamentale + harmonique 2) ──
+    // ── Composante périodique non sinusoïdale (multi-lobes, asymétrique) ──
     if (simCorde.periodicActive) {
         simCorde.periodicPhase += 2 * Math.PI * simCorde.freq * SRC_DT;
         if (simCorde.periodicPhase > 2 * Math.PI) simCorde.periodicPhase -= 2 * Math.PI;
         var p = simCorde.periodicPhase;
-        d += ampl * PERIODIC_NORM * Math.sin(p) * (1 + Math.cos(p));
+        d += ampl * PERIODIC_NORM * (Math.sin(p) + 0.6 * Math.sin(3 * p) + 0.35 * Math.sin(2 * p));
     }
 
     // ── Mode Libre : la hauteur imposée à la souris EST le signal ─────
