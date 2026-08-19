@@ -736,6 +736,22 @@ function drawGraphVagues(ctx, W, H) {
 
         _drawBothLinksVagues(ctx, W, H, half, sep);
 
+        // ── Hover snappé en mode « both » : bascule selon la moitié survolée ──
+        // (chaque fonction recalcule elle-même GM.left, pas besoin de le capturer.)
+        if (graphHoverPos && !simVagues.graphCursorMode) {
+            var mxBV = graphHoverPos.x, myBV = graphHoverPos.y;
+            if (mxBV < half) {
+                ctx.save();
+                _drawSnappedHoverVagues_yx(ctx, half, H, mxBV, myBV);
+                ctx.restore();
+            } else if (mxBV > half + sep) {
+                ctx.save();
+                ctx.translate(half + sep, 0);
+                _drawSnappedHoverVagues_yt(ctx, half, H, mxBV - (half + sep), myBV);
+                ctx.restore();
+            }
+        }
+
     } else if (mode === 'dpx') {
         _drawYxGraphVagues(ctx, W, H);
         if (graphHoverPos && !simVagues.graphCursorMode) _drawSnappedHoverVagues_yx(ctx, W, H);
@@ -955,12 +971,17 @@ function _drawYtGraphVagues(ctx, W, H) {
     }
 
     // ── Fenêtre glissante de 5 s : l'axe (graduations comprises) avance en
-    // continu avec simTime, toujours centré sur les 5 dernières secondes.
-    var tNow = simVagues.simTime;
-    var xMin = Math.max(0, tNow - 5);
+    // continu avec simTime — la source Vagues émet en continu dès simTime=0
+    // (pas de bouton d'activation séparé comme sur Corde/Son), donc l'origine
+    // de la fenêtre est simplement l'origine de simTime (remise à 0 au RAZ).
+    var tNow    = simVagues.simTime;
+    var origin  = 0;
+    var elapsed = tNow;
+    var xMin = Math.max(0, elapsed - 5);
     var xMax = xMin + 5;
     simVagues.graphView.xMin = xMin;
     simVagues.graphView.xMax = xMax;
+    simVagues.graphView.tOrigin = origin;
     var yMax = 3 * 1.12;
     var yMin = -yMax;
     simVagues.graphView.yMin = yMin;
@@ -1021,9 +1042,9 @@ function _drawYtGraphVagues(ctx, W, H) {
     // nouvel échantillon avant que la pointe ne bondisse). Calculé à la volée,
     // indépendamment de la fréquence de stockage.
     if (b1ok && d1.n > 1)
-        _drawSeriesVagues(ctx, d1, px, py, '#e07020', 2, xMin, xMax, tNow, _waveFieldRaw(simVagues.beacon1.x, simVagues.beacon1.y) * VAGUES_AMP_CM);
+        _drawSeriesVagues(ctx, d1, px, py, '#e07020', 2, xMin, xMax, origin, tNow, _waveFieldRaw(simVagues.beacon1.x, simVagues.beacon1.y) * VAGUES_AMP_CM);
     if (b2ok && d2.n > 1)
-        _drawSeriesVagues(ctx, d2, px, py, '#2a8a50', 2, xMin, xMax, tNow, _waveFieldRaw(simVagues.beacon2.x, simVagues.beacon2.y) * VAGUES_AMP_CM);
+        _drawSeriesVagues(ctx, d2, px, py, '#2a8a50', 2, xMin, xMax, origin, tNow, _waveFieldRaw(simVagues.beacon2.x, simVagues.beacon2.y) * VAGUES_AMP_CM);
 
     ctx.restore();
 
@@ -1034,12 +1055,12 @@ function _drawYtGraphVagues(ctx, W, H) {
     _drawLegendVagues(ctx, W, pH);
 }
 
-function _drawSeriesVagues(ctx, buf, px, py, color, lw, xMin, xMax, liveT, liveY) {
+function _drawSeriesVagues(ctx, buf, px, py, color, lw, xMin, xMax, origin, liveT, liveY) {
     ctx.beginPath();
     var started = false;
     for (var i = 0; i < buf.n; i++) {
         var j = _ytIdx(buf, i);
-        var t = buf.t[j];
+        var t = buf.t[j] - origin;   // origin = 0 (source Vagues toujours active depuis simTime=0)
         if (t < xMin || t > xMax) { started = false; continue; }
         var cx = px(t);
         var cy = py(buf.y[j]);
@@ -1047,8 +1068,11 @@ function _drawSeriesVagues(ctx, buf, px, py, color, lw, xMin, xMax, liveT, liveY
         else          { ctx.lineTo(cx, cy); }
     }
     // Extension "vivante" jusqu'à l'instant présent (cf. appelant).
-    if (liveT !== undefined && started && liveT >= xMin && liveT <= xMax) {
-        ctx.lineTo(px(liveT), py(liveY));
+    if (liveT !== undefined) {
+        var tLive = liveT - origin;
+        if (started && tLive >= xMin && tLive <= xMax) {
+            ctx.lineTo(px(tLive), py(liveY));
+        }
     }
     ctx.strokeStyle = color;
     ctx.lineWidth   = lw;
@@ -1118,7 +1142,7 @@ function _drawBothLinksVagues(ctx, W, H, half, sep) {
         var xDpx = GM.left + (bx_dist - xMin_yx) / (xMax_yx - xMin_yx) * pW_l;
         if (xDpx < GM.left || xDpx > GM.left + pW_l) continue;
 
-        // Point sur y(t) : position du curseur temporel dans la fenêtre 0–5 s
+        // Point sur y(t) : position du curseur temporel dans la fenêtre glissante de 5 s
         var WINDOW   = 5;
         var tOrigin  = Math.max(0, simVagues.simTime - WINDOW);
         var tLocal   = Math.max(0, Math.min(WINDOW, simVagues.simTime - tOrigin));
@@ -1148,7 +1172,7 @@ function _drawBothLinksVagues(ctx, W, H, half, sep) {
 
 // ── Hover snappé y(x) ────────────────────────────────────────────────
 
-function _drawSnappedHoverVagues_yx(ctx, W, H) {
+function _drawSnappedHoverVagues_yx(ctx, W, H, mxOverride, myOverride) {
     if (!graphHoverPos) return;
     var dx = simVagues.yxX, dy = simVagues.yxY, dn = simVagues.yxN | 0;
     if (!dx || dn < 2) return;
@@ -1164,7 +1188,10 @@ function _drawSnappedHoverVagues_yx(ctx, W, H) {
     function px(v) { return GM.left + (v - xMin) / (xMax - xMin) * pW; }
     function py(v) { return GM.top  + (1 - (v - yMin) / (yMax - yMin)) * pH; }
 
-    var mx = graphHoverPos.x, my = graphHoverPos.y;
+    // En mode « both », l'appelant fournit mx/my déjà exprimés dans le repère
+    // local du panneau (translaté) — sinon on retombe sur la position brute.
+    var mx = (mxOverride !== undefined) ? mxOverride : graphHoverPos.x;
+    var my = (myOverride !== undefined) ? myOverride : graphHoverPos.y;
     var bestI = -1, bestDist = Infinity;
     for (var i = 0; i < dn; i++) {
         var bx = px(dx[i]), by = py(dy[i]);
@@ -1204,7 +1231,7 @@ function _drawSnappedHoverVagues_yx(ctx, W, H) {
 
 // ── Hover snappé y(t) ────────────────────────────────────────────────
 
-function _drawSnappedHoverVagues_yt(ctx, W, H) {
+function _drawSnappedHoverVagues_yt(ctx, W, H, mxOverride, myOverride) {
     if (!graphHoverPos) return;
     ctx.save();
     var yMax = 3 * 1.12, yMin = -yMax;
@@ -1213,13 +1240,17 @@ function _drawSnappedHoverVagues_yt(ctx, W, H) {
     var pW = W - GM.left - GM.right, pH = H - GM.top - GM.bottom;
     if (pW < 10 || pH < 10) { ctx.restore(); return; }
 
-    // xMin/xMax en temps absolu, cf. simVagues.graphView mis à jour par
+    // xMin/xMax en simTime, cf. simVagues.graphView mis à jour par
     // _drawYtGraphVagues (fenêtre glissante de 5 s).
-    var xMin = simVagues.graphView.xMin, xMax = simVagues.graphView.xMax;
+    var xMin   = simVagues.graphView.xMin, xMax = simVagues.graphView.xMax;
+    var origin = simVagues.graphView.tOrigin || 0;
     function px(v) { return GM.left + (v - xMin) / (xMax - xMin) * pW; }
     function py(v) { return GM.top  + (1 - (v - yMin) / (yMax - yMin)) * pH; }
 
-    var mx = graphHoverPos.x, my = graphHoverPos.y;
+    // En mode « both », l'appelant fournit mx/my déjà exprimés dans le repère
+    // local du panneau (translaté) — sinon on retombe sur la position brute.
+    var mx = (mxOverride !== undefined) ? mxOverride : graphHoverPos.x;
+    var my = (myOverride !== undefined) ? myOverride : graphHoverPos.y;
     var series = [];
     if (simVagues.beacon1.active && simVagues.beacon1.snapped && _ytBuf(1).n > 1)
         series.push({ buf: _ytBuf(1), color: '#e07020' });
@@ -1231,7 +1262,7 @@ function _drawSnappedHoverVagues_yt(ctx, W, H) {
         var buf = series[s].buf;
         for (var i = 0; i < buf.n; i++) {
             var j = _ytIdx(buf, i);
-            var t = buf.t[j];
+            var t = buf.t[j] - origin;
             if (t < xMin || t > xMax) continue;
             var yVal = buf.y[j];
             var bx   = px(t), by = py(yVal);

@@ -323,6 +323,11 @@ var sim = {
     dpxSig    : null,
     dptBuf1   : null,    // tampon circulaire — série temporelle balise 1
     dptBuf2   : null,    // tampon circulaire — série temporelle balise 2
+    // Horloge du graphe ΔP(t) : null tant qu'aucune source n'a été activée
+    // depuis le dernier changement de mode/RAZ (graphe en attente) ; sinon
+    // simTime au moment de la 1ère activation (origine de la fenêtre glissante).
+    dptTimeOrigin : null,
+    dptArmedMode  : null,   // mode ('impulse' | 'sinus') pour lequel dptTimeOrigin est valide
 
     // ── Vue graphe ΔP(t) ─────────────────────────────────────────────
     graphView        : { xMin: 0, xMax: 5, yMin: -1, yMax: 1 },
@@ -769,6 +774,12 @@ var simCorde = {
     yxSig     : null,
     ytBuf1    : null,    // tampon circulaire — série temporelle balise 1
     ytBuf2    : null,    // tampon circulaire — série temporelle balise 2
+    // Horloge du graphe y(t) : null tant que la source n'a pas été activée
+    // pour la 1ère fois depuis le dernier changement de mode/RAZ (graphe en
+    // attente) ; sinon simTime au moment de cette 1ère activation (origine
+    // de la fenêtre glissante). Un changement de mode (sélecteur Corde)
+    // remet toujours à null, quel que soit le nouveau mode choisi.
+    ytTimeOrigin : null,
 
     // ── Vue graphe y(t) ──────────────────────────────────────────────
     graphView        : { xMin: 0, xMax: 5, yMin: -1, yMax: 1 },
@@ -981,6 +992,7 @@ function resetAnimCorde() {
     _srcClear(simCorde);
     _ytClearCorde(1);
     _ytClearCorde(2);
+    simCorde.ytTimeOrigin       = null;   // graphe en attente d'une 1ère activation
     simCorde.yxN                = 0;
     simCorde.yxSig              = null;
     simCorde.graphView          = { xMin: 0, xMax: 5, yMin: -1, yMax: 1 };
@@ -1128,6 +1140,8 @@ function resetAnim() {
     _srcClear(sim);
     _dptClear(1);
     _dptClear(2);
+    sim.dptTimeOrigin      = null;   // graphe en attente d'une 1ère activation
+    sim.dptArmedMode       = null;
     sim.dpxN               = 0;
     sim.dpxSig             = null;
     sim.graphView          = { xMin: 0, xMax: 5, yMin: -1, yMax: 1 };

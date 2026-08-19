@@ -228,6 +228,7 @@ function drawGraph() {
             ctx.clip();
             _drawYxGraph(ctx, half, H);
             ctx.restore();
+            var leftGMCorde = GM.left;    // marge du panneau gauche (y(x)) — écrasée par le dessin suivant
 
             ctx.save();
             ctx.translate(half + sep, 0);
@@ -236,11 +237,36 @@ function drawGraph() {
             ctx.clip();
             _drawYtGraph(ctx, half, H);
             ctx.restore();
+            var rightGMCorde = GM.left;   // marge du panneau droit (y(t))
 
             ctx.fillStyle = '#c8c0b4';
             ctx.fillRect(half, 0, sep, H);
 
             _drawBothLinksYt(ctx, W, H, half, sep);
+
+            // ── Hover snappé en mode « both » : bascule selon la moitié survolée ──
+            if (graphHoverPos && !simCorde.graphCursorMode) {
+                var mxBC = graphHoverPos.x, myBC = graphHoverPos.y;
+                if (mxBC < half) {
+                    GM.left = leftGMCorde;
+                    var pWlC = half - GM.left - GM.right, pHlC = H - GM.top - GM.bottom;
+                    if (pWlC > 10 && pHlC > 10) {
+                        ctx.save();
+                        _drawSnappedHoverCorde_yx(ctx, half, H, mxBC, myBC, pWlC, pHlC);
+                        ctx.restore();
+                    }
+                } else if (mxBC > half + sep) {
+                    GM.left = rightGMCorde;
+                    var pWrC = half - GM.left - GM.right, pHrC = H - GM.top - GM.bottom;
+                    if (pWrC > 10 && pHrC > 10) {
+                        ctx.save();
+                        ctx.translate(half + sep, 0);
+                        _drawSnappedHoverCorde_yt(ctx, half, H, mxBC - (half + sep), myBC, pWrC, pHrC);
+                        ctx.restore();
+                    }
+                }
+            }
+            GM.left = rightGMCorde;   // laisse GM dans l'état attendu par le prochain rendu hors « both »
 
         } else if (mode === 'dpx') {
             _drawYxGraph(ctx, W, H);
@@ -269,6 +295,7 @@ function drawGraph() {
             ctx.clip();
             _drawDpxGraph(ctx, half, H);
             ctx.restore();
+            var leftGMSon = GM.left;   // marge du panneau gauche (ΔP(x)) — écrasée par le dessin suivant
 
             ctx.save();
             ctx.translate(half + sep, 0);
@@ -277,11 +304,36 @@ function drawGraph() {
             ctx.clip();
             _drawDptGraph(ctx, half, H);
             ctx.restore();
+            var rightGMSon = GM.left;   // marge du panneau droit (ΔP(t))
 
             ctx.fillStyle = '#c8c0b4';
             ctx.fillRect(half, 0, sep, H);
 
             _drawBothLinks(ctx, W, H, half, sep);
+
+            // ── Hover snappé en mode « both » : bascule selon la moitié survolée ──
+            if (graphHoverPos && !sim.graphCursorMode) {
+                var mxBS = graphHoverPos.x, myBS = graphHoverPos.y;
+                if (mxBS < half) {
+                    GM.left = leftGMSon;
+                    var pWlS = half - GM.left - GM.right, pHlS = H - GM.top - GM.bottom;
+                    if (pWlS > 10 && pHlS > 10) {
+                        ctx.save();
+                        _drawSnappedHover_dpx(ctx, half, H, mxBS, myBS, pWlS, pHlS);
+                        ctx.restore();
+                    }
+                } else if (mxBS > half + sep) {
+                    GM.left = rightGMSon;
+                    var pWrS = half - GM.left - GM.right, pHrS = H - GM.top - GM.bottom;
+                    if (pWrS > 10 && pHrS > 10) {
+                        ctx.save();
+                        ctx.translate(half + sep, 0);
+                        _drawSnappedHover_dpt(ctx, half, H, mxBS - (half + sep), myBS, pWrS, pHrS);
+                        ctx.restore();
+                    }
+                }
+            }
+            GM.left = rightGMSon;   // laisse GM dans l'état attendu par le prochain rendu hors « both »
 
         } else if (sim.graphMode === 'dpx') {
             _drawDpxGraph(ctx, W, H);
@@ -316,6 +368,7 @@ function drawGraph() {
 // ══════════════════════════════════════════════════════════════════════
 
 function _drawBothLinks(ctx, W, H, half, sep) {
+    if (sim.dptTimeOrigin === null) return;   // graphe ΔP(t) en attente d'activation (cf. _drawDptGraph)
     var yMin = -1.12;
     var yMax =  1.12;
     var pH   = H - GM.top - GM.bottom;
@@ -326,7 +379,8 @@ function _drawBothLinks(ctx, W, H, half, sep) {
     }
 
     var WINDOW  = 5;
-    var tOrigin = Math.max(0, sim.simTime - WINDOW);
+    var elapsed = sim.simTime - sim.dptTimeOrigin;
+    var tOrigin = Math.max(0, elapsed - WINDOW);   // plancher de la fenêtre glissante (temps écoulé)
 
     var beacons = [];
     if (sim.beacon1.active) beacons.push({ beacon: sim.beacon1, color: '#e07020' });
@@ -349,7 +403,7 @@ function _drawBothLinks(ctx, W, H, half, sep) {
         var xDpx = GM.left + (xb / L) * pW_left;   // coordonnée X dans la moitié gauche
 
         // ── Point sur ΔP(t) : bord droit de la courbe = t_local actuel ──
-        var tLocal   = sim.simTime - tOrigin;
+        var tLocal   = elapsed - tOrigin;
         tLocal       = Math.max(0, Math.min(WINDOW, tLocal));
         var pW_right = half - GM.left - GM.right;
         var xDpt     = (half + sep) + GM.left + (tLocal / WINDOW) * pW_right;
@@ -463,9 +517,10 @@ function _drawDpxGraph(ctx, W, H) {
 function _drawDptGraph(ctx, W, H) {
     var d1 = _dptBuf(1);
     var d2 = _dptBuf(2);
-    var hasData = sim.beacon1.active || sim.beacon2.active;
+    var beaconOn = sim.beacon1.active || sim.beacon2.active;
+    var armed    = sim.dptTimeOrigin !== null;   // source déjà activée dans le mode courant
 
-    if (!hasData) {
+    if (!beaconOn) {
         // Message d'aide
         ctx.fillStyle = '#7a8a96';
         ctx.font      = 'italic ' + Math.round(W * 0.025 + 10) + 'px "Segoe UI", Arial, sans-serif';
@@ -476,15 +531,24 @@ function _drawDptGraph(ctx, W, H) {
     }
 
     // ── Fenêtre glissante de 5 s : l'axe (graduations comprises) avance en
-    // continu avec simTime, toujours centré sur les 5 dernières secondes —
-    // façon sismographe, sans coupure toutes les 5 s (ancien comportement
-    // cyclique). La grille X n'est donc plus mise en cache : elle dépend de
-    // xMin/xMax qui changent à chaque frame.
-    var tNow = sim.simTime;
-    var xMin = Math.max(0, tNow - 5);
+    // continu avec le temps écoulé depuis la 1ère activation de la source
+    // dans le mode courant — façon sismographe, sans coupure toutes les 5 s
+    // (ancien comportement cyclique). Le temps est compté depuis
+    // dptTimeOrigin (armé par _armDptWindowSon, remis en attente au
+    // changement de mode/RAZ), pas depuis l'origine absolue de simTime :
+    // sinon la fenêtre défilerait déjà avant même que la source ait émis
+    // quoi que ce soit. La grille X n'est donc plus mise en cache : elle
+    // dépend de xMin/xMax qui changent à chaque frame. Tant que la source
+    // n'a pas encore été activée (armed === false), le graphe est préaffiché
+    // avec sa fenêtre initiale figée à 0–5 s et une courbe plate à 0.
+    var tNow    = sim.simTime;
+    var origin  = armed ? sim.dptTimeOrigin : tNow;
+    var elapsed = armed ? (tNow - origin) : 0;
+    var xMin = Math.max(0, elapsed - 5);
     var xMax = xMin + 5;
     sim.graphView.xMin = xMin;   // mis à jour pour le réticule et le hover snappé
     sim.graphView.xMax = xMax;
+    sim.graphView.tOrigin = origin;
     var yMin = -1.12;
     var yMax =  1.12;
     sim.graphView.yMin = yMin;
@@ -523,13 +587,19 @@ function _drawDptGraph(ctx, W, H) {
     ctx.rect(GM.left, GM.top, pW, pH);
     ctx.clip();
 
-    // Point "vivant" en tête de courbe (cf. correctif équivalent sur Vagues) :
-    // sans lui, la pointe n'avance qu'au rythme des échantillons enregistrés
-    // (un pas sur deux), ce qui saute visiblement en ralenti.
-    if (sim.beacon1.active && d1.n > 1)
-        _drawSeries(ctx, d1, px, py, '#e07020', 2, xMin, xMax, tNow, waveDeltaP(sim.beacon1.x - sim.tubeLeft, tNow));
-    if (sim.beacon2.active && d2.n > 1)
-        _drawSeries(ctx, d2, px, py, '#2a8a50', 2, xMin, xMax, tNow, waveDeltaP(sim.beacon2.x - sim.tubeLeft, tNow));
+    if (armed) {
+        // Point "vivant" en tête de courbe (cf. correctif équivalent sur Vagues) :
+        // sans lui, la pointe n'avance qu'au rythme des échantillons enregistrés
+        // (un pas sur deux), ce qui saute visiblement en ralenti.
+        if (sim.beacon1.active && d1.n > 1)
+            _drawSeries(ctx, d1, px, py, '#e07020', 2, xMin, xMax, origin, tNow, waveDeltaP(sim.beacon1.x - sim.tubeLeft, tNow));
+        if (sim.beacon2.active && d2.n > 1)
+            _drawSeries(ctx, d2, px, py, '#2a8a50', 2, xMin, xMax, origin, tNow, waveDeltaP(sim.beacon2.x - sim.tubeLeft, tNow));
+    } else {
+        // Source pas encore activée : courbe figée à 0 pour prévisualiser le graphe.
+        if (sim.beacon1.active) _drawFlatZero(ctx, px, py, xMin, xMax, '#e07020');
+        if (sim.beacon2.active) _drawFlatZero(ctx, px, py, xMin, xMax, '#2a8a50');
+    }
 
     ctx.restore();
 
@@ -542,14 +612,27 @@ function _drawDptGraph(ctx, W, H) {
     _drawLegend(ctx, W, pH);
 }
 
+// ── Courbe plate à 0 (préaffichage avant activation de la source) ──────
+//  Utilisée par Son (ΔP(t)) et Corde (y(t)) : une balise déjà positionnée
+//  montre ainsi tout de suite l'axe et une trace figée, sans attendre que
+//  la source démarre.
+function _drawFlatZero(ctx, px, py, xMin, xMax, color) {
+    ctx.beginPath();
+    ctx.moveTo(px(xMin), py(0));
+    ctx.lineTo(px(xMax), py(0));
+    ctx.strokeStyle = color;
+    ctx.lineWidth   = 2;
+    ctx.stroke();
+}
+
 // ── Tracé d'une série (tampon circulaire) dans la fenêtre visible ──────
 
-function _drawSeries(ctx, buf, px, py, color, lw, xMin, xMax, liveT, liveY) {
+function _drawSeries(ctx, buf, px, py, color, lw, xMin, xMax, origin, liveT, liveY) {
     ctx.beginPath();
     var started = false;
     for (var i = 0; i < buf.n; i++) {
         var j = _cbufIdx(buf, i);
-        var t = buf.t[j];
+        var t = buf.t[j] - origin;   // temps écoulé depuis le début de la salve
         if (t < xMin || t > xMax) { started = false; continue; }
         var cx = px(t);
         var cy = py(buf.y[j]);
@@ -558,8 +641,11 @@ function _drawSeries(ctx, buf, px, py, color, lw, xMin, xMax, liveT, liveY) {
     }
     // Extension "vivante" jusqu'à l'instant présent : sans elle, la pointe
     // n'avance qu'au rythme des échantillons enregistrés.
-    if (liveT !== undefined && started && liveT >= xMin && liveT <= xMax) {
-        ctx.lineTo(px(liveT), py(liveY));
+    if (liveT !== undefined) {
+        var tLive = liveT - origin;
+        if (started && tLive >= xMin && tLive <= xMax) {
+            ctx.lineTo(px(tLive), py(liveY));
+        }
     }
     ctx.strokeStyle = color;
     ctx.lineWidth   = lw;
@@ -616,16 +702,17 @@ function _drawSnappedHover(ctx, W, H) {
 // ── Hover snappé pour ΔP(t) ───────────────────────────────────────────
 
 function _drawSnappedHover_dpt(ctx, W, H, mx, my, pW, pH) {
-    var xMin = sim.graphView.xMin;   // 0
-    var xMax = sim.graphView.xMax;   // 10
-    var yMin = sim.graphView.yMin;
-    var yMax = sim.graphView.yMax;
+    var xMin   = sim.graphView.xMin;
+    var xMax   = sim.graphView.xMax;
+    var yMin   = sim.graphView.yMin;
+    var yMax   = sim.graphView.yMax;
+    var origin = sim.graphView.tOrigin || 0;
 
     function px(v) { return GM.left + (v - xMin) / (xMax - xMin) * pW; }
     function py(v) { return GM.top  + (1 - (v - yMin) / (yMax - yMin)) * pH; }
 
-    // Temps correspondant à la position X du curseur (xMin/xMax déjà en
-    // temps absolu, cf. sim.graphView mis à jour par _drawDptGraph)
+    // Temps écoulé correspondant à la position X du curseur (xMin/xMax
+    // déjà en temps écoulé depuis dptTimeOrigin, cf. _drawDptGraph)
     var tCursor = xMin + (mx - GM.left) / pW * (xMax - xMin);
 
     // Candidats pour chaque série active
@@ -642,7 +729,7 @@ function _drawSnappedHover_dpt(ctx, W, H, mx, my, pW, pH) {
         var buf = series[s].buf;
         for (var i = 0; i < buf.n; i++) {
             var j = _cbufIdx(buf, i);
-            var t = buf.t[j];
+            var t = buf.t[j] - origin;
             if (t < xMin || t > xMax) continue;
             var dpVal = buf.y[j];
             var bx  = px(t);
@@ -1068,9 +1155,10 @@ function _drawYxGraph(ctx, W, H) {
 function _drawYtGraph(ctx, W, H) {
     var d1 = _ytBufCorde(1);
     var d2 = _ytBufCorde(2);
-    var hasData = simCorde.beacon1.active || simCorde.beacon2.active;
+    var beaconOn = simCorde.beacon1.active || simCorde.beacon2.active;
+    var armed    = simCorde.ytTimeOrigin !== null;   // source déjà activée dans le mode courant
 
-    if (!hasData) {
+    if (!beaconOn) {
         ctx.fillStyle = '#7a8a96';
         ctx.font      = 'italic ' + Math.round(W * 0.025 + 10) + 'px "Segoe UI", Arial, sans-serif';
         ctx.textAlign    = 'center';
@@ -1080,12 +1168,20 @@ function _drawYtGraph(ctx, W, H) {
     }
 
     // ── Fenêtre glissante de 5 s : l'axe (graduations comprises) avance en
-    // continu avec simTime, toujours centré sur les 5 dernières secondes.
-    var tNow = simCorde.simTime;
-    var xMin = Math.max(0, tNow - 5);
+    // continu avec le temps écoulé depuis la 1ère activation de la source
+    // dans le mode courant (ytTimeOrigin, armé par _armYtWindowCorde, remis
+    // en attente au changement de mode/RAZ) — sinon elle défilerait déjà
+    // avant même que la source ait émis quoi que ce soit. Tant qu'elle n'a
+    // pas encore été activée (armed === false), le graphe est préaffiché
+    // avec sa fenêtre initiale figée à 0–5 s et une courbe plate à 0.
+    var tNow    = simCorde.simTime;
+    var origin  = armed ? simCorde.ytTimeOrigin : tNow;
+    var elapsed = armed ? (tNow - origin) : 0;
+    var xMin = Math.max(0, elapsed - 5);
     var xMax = xMin + 5;
     simCorde.graphView.xMin = xMin;
     simCorde.graphView.xMax = xMax;
+    simCorde.graphView.tOrigin = origin;
     var yMin  = -cordeYAxisCm();
     var yMax  =  cordeYAxisCm();
     simCorde.graphView.yMin = yMin;
@@ -1121,13 +1217,19 @@ function _drawYtGraph(ctx, W, H) {
     ctx.rect(GM.left, GM.top, pW, pH);
     ctx.clip();
 
-    // Point "vivant" en tête de courbe (cf. correctif équivalent sur Vagues/Son) :
-    // sans lui, la pointe n'avance qu'au rythme des échantillons enregistrés,
-    // ce qui saute visiblement en ralenti.
-    if (simCorde.beacon1.active && d1.n > 1)
-        _drawSeriesCorde(ctx, d1, px, py, '#e07020', 2, xMin, xMax, tNow, cordeDisplacement(simCorde.beacon1.x - simCorde.cordeLeft, tNow));
-    if (simCorde.beacon2.active && d2.n > 1)
-        _drawSeriesCorde(ctx, d2, px, py, '#2a8a50', 2, xMin, xMax, tNow, cordeDisplacement(simCorde.beacon2.x - simCorde.cordeLeft, tNow));
+    if (armed) {
+        // Point "vivant" en tête de courbe (cf. correctif équivalent sur Vagues/Son) :
+        // sans lui, la pointe n'avance qu'au rythme des échantillons enregistrés,
+        // ce qui saute visiblement en ralenti.
+        if (simCorde.beacon1.active && d1.n > 1)
+            _drawSeriesCorde(ctx, d1, px, py, '#e07020', 2, xMin, xMax, origin, tNow, cordeDisplacement(simCorde.beacon1.x - simCorde.cordeLeft, tNow));
+        if (simCorde.beacon2.active && d2.n > 1)
+            _drawSeriesCorde(ctx, d2, px, py, '#2a8a50', 2, xMin, xMax, origin, tNow, cordeDisplacement(simCorde.beacon2.x - simCorde.cordeLeft, tNow));
+    } else {
+        // Source pas encore activée : courbe figée à 0 pour prévisualiser le graphe.
+        if (simCorde.beacon1.active) _drawFlatZero(ctx, px, py, xMin, xMax, '#e07020');
+        if (simCorde.beacon2.active) _drawFlatZero(ctx, px, py, xMin, xMax, '#2a8a50');
+    }
 
     ctx.restore();
 
@@ -1140,20 +1242,23 @@ function _drawYtGraph(ctx, W, H) {
 
 // ── Tracé d'une série y(t) (tampon circulaire) ─────────────────────────
 
-function _drawSeriesCorde(ctx, buf, px, py, color, lw, xMin, xMax, liveT, liveY) {
+function _drawSeriesCorde(ctx, buf, px, py, color, lw, xMin, xMax, origin, liveT, liveY) {
     ctx.beginPath();
     var started = false;
     for (var i = 0; i < buf.n; i++) {
         var j = _cbufIdx(buf, i);
-        var t = buf.t[j];
+        var t = buf.t[j] - origin;   // temps écoulé depuis le début de la salve
         if (t < xMin || t > xMax) { started = false; continue; }
         var cx = px(t);
         var cy = py(buf.y[j]);   // tampon déjà en cm
         if (!started) { ctx.moveTo(cx, cy); started = true; }
         else          { ctx.lineTo(cx, cy); }
     }
-    if (liveT !== undefined && started && liveT >= xMin && liveT <= xMax) {
-        ctx.lineTo(px(liveT), py(liveY));
+    if (liveT !== undefined) {
+        var tLive = liveT - origin;
+        if (started && tLive >= xMin && tLive <= xMax) {
+            ctx.lineTo(px(tLive), py(liveY));
+        }
     }
     ctx.strokeStyle = color;
     ctx.lineWidth   = lw;
@@ -1248,6 +1353,7 @@ function _syncLeftMarginWithCorde(ctx, W, yMin, yMax) {
 // ── Mode both corde : liaisons balise → point temporel ────────────────
 
 function _drawBothLinksYt(ctx, W, H, half, sep) {
+    if (simCorde.ytTimeOrigin === null) return;   // graphe y(t) en attente d'activation (cf. _drawYtGraph)
     var yMin  = -cordeYAxisCm();
     var yMax  =  cordeYAxisCm();
     var pH    = H - GM.top - GM.bottom;
@@ -1258,7 +1364,8 @@ function _drawBothLinksYt(ctx, W, H, half, sep) {
     }
 
     var WINDOW  = 5;
-    var tOrigin = Math.max(0, simCorde.simTime - WINDOW);
+    var elapsed = simCorde.simTime - simCorde.ytTimeOrigin;
+    var tOrigin = Math.max(0, elapsed - WINDOW);   // plancher de la fenêtre glissante (temps écoulé)
 
     var beacons = [];
     if (simCorde.beacon1.active) beacons.push({ beacon: simCorde.beacon1, color: '#e07020' });
@@ -1278,7 +1385,7 @@ function _drawBothLinksYt(ctx, W, H, half, sep) {
         var L    = simCorde.cordeLength > 0 ? simCorde.cordeLength : 1;
         var xDpx = GM.left + (xb / L) * pW_left;
 
-        var tLocal   = simCorde.simTime - tOrigin;
+        var tLocal   = elapsed - tOrigin;
         tLocal       = Math.max(0, Math.min(WINDOW, tLocal));
         var pW_right = half - GM.left - GM.right;
         var xDpt     = (half + sep) + GM.left + (tLocal / WINDOW) * pW_right;
@@ -1326,10 +1433,11 @@ function _drawSnappedHoverCorde(ctx, W, H) {
 }
 
 function _drawSnappedHoverCorde_yt(ctx, W, H, mx, my, pW, pH) {
-    var xMin    = simCorde.graphView.xMin;
-    var xMax    = simCorde.graphView.xMax;
-    var yMin    = simCorde.graphView.yMin;
-    var yMax    = simCorde.graphView.yMax;
+    var xMin   = simCorde.graphView.xMin;
+    var xMax   = simCorde.graphView.xMax;
+    var yMin   = simCorde.graphView.yMin;
+    var yMax   = simCorde.graphView.yMax;
+    var origin = simCorde.graphView.tOrigin || 0;
 
     function px(v) { return GM.left + (v - xMin) / (xMax - xMin) * pW; }
     function py(v) { return GM.top  + (1 - (v - yMin) / (yMax - yMin)) * pH; }
@@ -1345,7 +1453,7 @@ function _drawSnappedHoverCorde_yt(ctx, W, H, mx, my, pW, pH) {
         var buf = series[s].buf;
         for (var i = 0; i < buf.n; i++) {
             var j = _cbufIdx(buf, i);
-            var t = buf.t[j];
+            var t = buf.t[j] - origin;
             if (t < xMin || t > xMax) continue;
             var y_cm = buf.y[j];
             var bx   = px(t);

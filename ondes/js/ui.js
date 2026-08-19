@@ -188,11 +188,17 @@ function _stopEmissionSon() {
     _syncWavePropsBtnState();
 }
 
-//  Réinitialise la fenêtre du graphe ΔP(t) — uniquement si le tube est au
-//  repos, pour ne pas tronquer une courbe en cours d'enregistrement quand on
-//  superpose une nouvelle perturbation.
-function _resetDptWindowSonIfQuiet() {
-    if (!sonIsQuiet()) return;
+//  Horloge du graphe ΔP(t) : reste en attente (dptTimeOrigin = null, cf.
+//  resetAnim) tant qu'aucune source n'a été activée depuis le dernier
+//  changement de mode Impulsion ↔ Sinusoïdale. La 1ère activation dans un
+//  mode donné démarre l'horloge (origine = simTime courant) ; les suivantes
+//  dans le MÊME mode ne la relancent pas — la courbe continue de s'accumuler
+//  sur le même axe (plusieurs impulsions superposées, ou arrêt/reprise du
+//  mode continu). Un changement de mode force une nouvelle 1ère activation.
+function _armDptWindowSon(mode) {
+    if (sim.dptArmedMode === mode) return;   // déjà démarrée pour ce mode
+    sim.dptTimeOrigin = sim.simTime;
+    sim.dptArmedMode  = mode;
     _dptClear(1);
     _dptClear(2);
 }
@@ -208,7 +214,7 @@ function _syncSourceButtons() {
 //  tube poursuivent leur route et se superposent, au lieu d'être effacées.
 function sendImpulse() {
     if (sim.paused) _setPaused(false);
-    _resetDptWindowSonIfQuiet();
+    _armDptWindowSon('impulse');
 
     sim.sinusoidalActive   = false;   // les deux modes restent exclusifs
     sim.impulses.push({ startTime: sim.simTime });
@@ -224,7 +230,7 @@ function toggleSinusoidal() {
         _stopEmissionSon();
     } else {
         if (sim.paused) _setPaused(false);
-        _resetDptWindowSonIfQuiet();
+        _armDptWindowSon('sinus');
 
         sim.sinusoidalActive = true;
         sim.sinPhase         = 0;   // démarrage à u = 0, sans saut
@@ -404,11 +410,16 @@ function _stopEmissionCorde() {
     _syncLambdaBtnStateCorde();
 }
 
-//  Réinitialise la fenêtre du graphe y(t) — uniquement si la corde est au
-//  repos, pour ne pas tronquer une courbe en cours d'enregistrement quand
-//  on superpose une nouvelle perturbation.
-function _resetYtWindowCordeIfQuiet() {
-    if (!cordeIsQuiet()) return;
+//  Horloge du graphe y(t) : reste en attente (ytTimeOrigin = null) tant que
+//  la source n'a pas été activée pour la 1ère fois depuis le dernier
+//  changement de mode (sélecteur Corde) ou RAZ. Contrairement à Son, le
+//  choix du mode est décorrélé de l'activation (sélecteur + bouton Activer
+//  séparés) : c'est donc onSourceModeChangeCorde qui remet à null, et
+//  chaque point d'activation (impulsion, continu, 1ère saisie en Libre) qui
+//  démarre l'horloge — seulement si elle ne l'est pas déjà.
+function _armYtWindowCorde() {
+    if (simCorde.ytTimeOrigin !== null) return;   // déjà démarrée
+    simCorde.ytTimeOrigin = simCorde.simTime;
     _ytClearCorde(1);
     _ytClearCorde(2);
 }
@@ -511,6 +522,14 @@ function onSourceModeChangeCorde() {
     var mode = sel ? sel.value : 'impulse';
     var wasContinuous = simCorde.sinusoidalActive || simCorde.periodicActive;
 
+    // Changer de type de source remet le graphe y(t) à 0 et le met en
+    // attente : il ne repartira qu'à la prochaine 1ère activation dans le
+    // nouveau mode (cf. _armYtWindowCorde), même si l'émission continue
+    // physiquement (bascule Sinus ↔ Périodique sans passer par Activer).
+    simCorde.ytTimeOrigin = null;
+    _ytClearCorde(1);
+    _ytClearCorde(2);
+
     if (wasContinuous && mode === 'sinus') {
         simCorde.sinusoidalActive = true;
         simCorde.periodicActive   = false;
@@ -532,7 +551,7 @@ function onSourceModeChangeCorde() {
 //  corde poursuivent leur route et se superposent, au lieu d'être effacées.
 function sendImpulseCorde() {
     if (simCorde.paused) _setPausedCorde(false);
-    _resetYtWindowCordeIfQuiet();
+    _armYtWindowCorde();
 
     simCorde.sinusoidalActive   = false;   // tous les modes restent exclusifs
     simCorde.periodicActive     = false;
@@ -551,7 +570,7 @@ function toggleSinusoidalCorde() {
         _stopEmissionCorde();
     } else {
         if (simCorde.paused) _setPausedCorde(false);
-        _resetYtWindowCordeIfQuiet();
+        _armYtWindowCorde();
 
         simCorde.sinusoidalActive = true;
         simCorde.periodicActive   = false;   // tous les modes restent exclusifs
@@ -572,7 +591,7 @@ function togglePeriodicCorde() {
         _stopEmissionCorde();
     } else {
         if (simCorde.paused) _setPausedCorde(false);
-        _resetYtWindowCordeIfQuiet();
+        _armYtWindowCorde();
 
         simCorde.periodicActive   = true;
         simCorde.sinusoidalActive = false;   // tous les modes restent exclusifs
