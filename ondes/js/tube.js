@@ -1225,24 +1225,9 @@ function _drawOneBeacon(ctx, x, color, label) {
         }
     }
 
-    // Réenregistre un point à la position finale d'une balise après un drag :
-    // sinon, en pause, le buffer reste vide (cf. _clearBeaconRecord) et le
-    // graphe affiche « Activer une balise… » jusqu'à la reprise de l'animation
-    // (même cause que pour l'activation d'une balise, cf. toggleBeaconActive).
-    function _recordBeaconNow(n) {
-        var isCorde = (typeof activeTab !== 'undefined' && activeTab === 'corde');
-        if (isCorde) {
-            updateYtData(simCorde.simTime);
-            updateYtData(simCorde.simTime);
-        } else {
-            updateDptData(sim.simTime);
-            updateDptData(sim.simTime);
-        }
-    }
-
     function onUp() {
-        if (tubeInter.mode === 'beacon1-drag') { _clearBeaconRecord(1); _recordBeaconNow(1); }
-        if (tubeInter.mode === 'beacon2-drag') { _clearBeaconRecord(2); _recordBeaconNow(2); }
+        if (tubeInter.mode === 'beacon1-drag') _clearBeaconRecord(1);
+        if (tubeInter.mode === 'beacon2-drag') _clearBeaconRecord(2);
         // La boule reste où on l'a lâchée (cf. simCorde.freeY) : la corde
         // garde le déplacement imposé, comme une main qui la tiendrait.
         if (tubeInter.mode === 'corde-free-drag') simCorde.freeDragging = false;
