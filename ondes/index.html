@@ -70,6 +70,36 @@
       <!-- Ligne 2 col 1 : colonne chronomètre + box source, centrée verticalement -->
       <div id="source-col">
 
+        <!-- Chronomètre (onglet Son) : sa propre box, afficheur blanc
+             (valeur + unité) et, en dessous, marche/zéro à gauche et
+             bascule d'unité s/T à droite -->
+        <div id="chrono-son">
+          <div id="chrono-display">
+            <span id="chrono-value-son">0,00</span>
+            <span id="chrono-unit-lbl-son">s</span>
+          </div>
+          <div id="chrono-ctrl">
+            <button class="chrono-btn" id="btn-chrono-start-son"
+                    onclick="toggleChronoSon()" title="Démarrer le chronomètre"><svg
+                    class="chrono-ico" viewBox="0 0 12 12" aria-hidden="true"><polygon
+                    points="3.5,2 10,6 3.5,10"/></svg></button>
+            <button class="chrono-btn" id="btn-chrono-reset-son"
+                    onclick="resetChronoSon()" title="Remettre le chronomètre à zéro">⟲</button>
+            <label id="chrono-link-son"
+                   title="Lier le déclenchement du chronomètre à l'activation de la source.">
+              <input type="checkbox" id="chk-chrono-link-son">Lier
+            </label>
+            <span id="chrono-units">
+              <button class="chrono-unit active" id="btn-chrono-unit-s-son"
+                      onclick="setChronoUnitSon('s')"
+                      title="Compter en secondes">s</button>
+              <button class="chrono-unit" id="btn-chrono-unit-T-son"
+                      onclick="setChronoUnitSon('T')"
+                      title="Compter en multiples de la période T">T</button>
+            </span>
+          </div>
+        </div>
+
         <!-- Chronomètre (onglet Corde) : sa propre box, afficheur blanc
              (valeur + unité) et, en dessous, marche/zéro à gauche et
              bascule d'unité s/T à droite -->

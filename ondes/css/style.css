@@ -109,12 +109,12 @@ main {
   grid-row: 1;
 }
 
-/* ── Chronomètre (onglet Corde) — box propre, au-dessus de la source ──
-   Habillage métal gris/noir repris du pot vibrant dessiné sur le canvas
-   (mêmes gris bleutés #8a9aaa → #4a5a6a, contour #3a4a58). Afficheur clair
-   (valeur + unité) sur la première ligne, commandes sur la seconde :
-   marche/zéro à gauche, bascule d'unité s/T à droite. */
-#chrono-corde {
+/* ── Chronomètre (onglets Son + Corde) — box propre, au-dessus de la source ──
+   Habillage métal gris/noir repris du pot vibrant / de la membrane dessinés
+   sur le canvas (mêmes gris bleutés #8a9aaa → #4a5a6a, contour #3a4a58).
+   Afficheur clair (valeur + unité) sur la première ligne, commandes sur la
+   seconde : marche/zéro à gauche, bascule d'unité s/T à droite. */
+#chrono-corde, #chrono-son {
   position: absolute;
   left: 0;
   right: 0;
@@ -144,7 +144,7 @@ main {
   border-radius: 4px;
   box-shadow: inset 0 1px 3px rgba(20,30,40,0.35);
 }
-#chrono-value {
+#chrono-value, #chrono-value-son {
   font-variant-numeric: tabular-nums;
   font-size: clamp(21px, 2.3vw, 30px);
   font-weight: 700;
@@ -152,7 +152,7 @@ main {
   color: #16222c;
   white-space: nowrap;
 }
-#chrono-unit-lbl {
+#chrono-unit-lbl, #chrono-unit-lbl-son {
   font-size: clamp(16px, 1.8vw, 23px);
   font-weight: 600;
   color: #55636e;
@@ -168,7 +168,7 @@ main {
 }
 
 /* Case « Lier » : déclenchement du chrono à l'activation de la source */
-#chrono-link {
+#chrono-link, #chrono-link-son {
   display: flex;
   align-items: center;
   gap: 3px;
@@ -179,7 +179,7 @@ main {
   cursor: pointer;
   user-select: none;
 }
-#chk-chrono-link {
+#chk-chrono-link, #chk-chrono-link-son {
   flex: 0 0 auto;
   width: clamp(10px, 1.1vw, 13px);
   height: clamp(10px, 1.1vw, 13px);

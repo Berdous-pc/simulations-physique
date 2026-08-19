@@ -43,6 +43,8 @@ function loop(ts) {
             var dtSim = dtReal * (sim.speedFactor !== undefined ? sim.speedFactor : 1.0);
             sim.simTime += dtSim;
 
+            if (chronoSon.running) chronoSon.elapsed += dtSim;
+
             pruneImpulses();
 
             if (sim.impulsePropagating && sim.impulses.length === 0) {
@@ -74,6 +76,7 @@ function loop(ts) {
         if (!sim.paused) {
             _updateCReadout();
             _updateWaveProps();
+            _updateChronoSon();
         }
 
     } else if (activeTab === 'corde') {
@@ -231,6 +234,9 @@ function sendImpulse() {
 
     _syncSourceButtons();
     _syncWavePropsBtnState();
+    _syncChronoLinkSon('impulse');
+    _syncChronoUnitsSon();
+    _startChronoIfLinkedSon();
 }
 
 function toggleSinusoidal() {
@@ -246,6 +252,9 @@ function toggleSinusoidal() {
 
         _syncSourceButtons();
         _syncWavePropsBtnState();
+        _syncChronoLinkSon('sinus');
+        _syncChronoUnitsSon();
+        _startChronoIfLinkedSon();
     }
 }
 
@@ -264,6 +273,12 @@ function resetSimAnim() {
     resetAnim();
     lastSrcUpdateSon = 0;
     _srcTickSon      = 0;
+    // Le chronomètre mesure le temps de simulation : remettre celle-ci à
+    // zéro sans l'arrêter laisserait une durée qui ne correspond plus à rien.
+    chronoSon.running = false;
+    chronoSon.elapsed = 0;
+    _syncChronoBtnSon();
+    _updateChronoSon();
     _syncSourceButtons();
     var btn = document.getElementById('btn-playpause');
     if (btn) { btn.textContent = '⏸ Pause'; btn.className = 'btn btn-pause'; }
@@ -289,6 +304,7 @@ function onSliderFreq(v) {
     if (lbl) lbl.textContent = sim.freq.toFixed(1).replace('.', ',');
     initCols();
     _updateWaveProps();
+    _updateChronoSon();   // l'affichage en T dépend de f
 }
 
 function onSliderRho(v) {
@@ -394,6 +410,110 @@ function togglePressureColor() {
         if (btnSelect) btnSelect.disabled = false;
     }
 }
+
+// ══════════════════════════════════════════════════════════════════════
+//  Chronomètre (onglet Son)
+// ══════════════════════════════════════════════════════════════════════
+//  Il compte le temps de SIMULATION et non le temps réel : il se fige donc
+//  avec la pause et suit le facteur de vitesse, sans quoi les durées lues
+//  ne correspondraient pas à celles des graphes.
+//
+//  Deux unités : la seconde, ou la période T de la source. Le comptage en
+//  T n'a de sens que pour un signal périodique — le bouton reste donc
+//  désactivé en mode Impulsion. La conversion utilise la fréquence
+//  COURANTE : changer f en cours de chronométrage réinterprète l'ensemble
+//  de la durée écoulée.
+var chronoSon = { running: false, elapsed: 0, unit: 's' };
+
+//  Case « Lier » : quand elle est cochée, activer la source déclenche le
+//  chronomètre. Elle est recochée/décochée à chaque changement de mode
+//  (cf. _syncChronoLinkSon), l'utilisateur restant libre de la modifier
+//  ensuite pour le mode courant.
+function _chronoLinkedSon() {
+    var chk = document.getElementById('chk-chrono-link-son');
+    return !!(chk && chk.checked);
+}
+
+//  Par défaut : liée en Sinusoïdale, où le chrono sert à compter des
+//  périodes depuis le début de l'émission ; déliée en Impulsion, où le
+//  déclenchement se fait plutôt à la main, au passage devant un repère.
+function _syncChronoLinkSon(mode) {
+    var chk = document.getElementById('chk-chrono-link-son');
+    if (chk) chk.checked = (mode === 'sinus');
+}
+
+//  Démarrage du chronomètre lié. Appelé à la mise en marche de la source
+//  (Impulsion ou passage en Sinusoïdale).
+function _startChronoIfLinkedSon() {
+    if (!_chronoLinkedSon() || chronoSon.running) return;
+    chronoSon.running = true;
+    _syncChronoBtnSon();
+}
+
+function toggleChronoSon() {
+    chronoSon.running = !chronoSon.running;
+    _syncChronoBtnSon();
+}
+
+//  Remise à zéro : arrête aussi le comptage, pour repartir d'un chronomètre
+//  à l'arrêt sur 0 plutôt que de le voir redémarrer aussitôt.
+function resetChronoSon() {
+    chronoSon.elapsed = 0;
+    chronoSon.running = false;
+    _syncChronoBtnSon();
+    _updateChronoSon();
+}
+
+function setChronoUnitSon(unit) {
+    var btn = document.getElementById('btn-chrono-unit-' + unit + '-son');
+    if (btn && btn.disabled) return;
+    chronoSon.unit = (unit === 'T') ? 'T' : 's';
+    _syncChronoUnitsSon();
+    _updateChronoSon();
+}
+
+function _syncChronoBtnSon() {
+    var btn = document.getElementById('btn-chrono-start-son');
+    if (!btn) return;
+    btn.innerHTML = chronoSon.running ? CHRONO_ICO_PAUSE : CHRONO_ICO_PLAY;
+    btn.title     = chronoSon.running ? 'Arrêter le chronomètre'
+                                       : 'Démarrer le chronomètre';
+    btn.classList.toggle('running', chronoSon.running);
+}
+
+//  Impulsion n'a pas de fréquence d'émission continue : le comptage en T
+//  n'aurait aucun sens tant qu'aucun signal périodique n'a été choisi.
+function _sonModeIsImpulse() {
+    return sim.sourceMode === 'impulse';
+}
+
+function _syncChronoUnitsSon() {
+    var noPeriod = _sonModeIsImpulse();
+    if (noPeriod && chronoSon.unit === 'T') chronoSon.unit = 's';
+
+    var btnT = document.getElementById('btn-chrono-unit-T-son');
+    if (btnT) {
+        btnT.disabled = noPeriod;
+        btnT.classList.toggle('active', chronoSon.unit === 'T');
+    }
+    var btnS = document.getElementById('btn-chrono-unit-s-son');
+    if (btnS) btnS.classList.toggle('active', chronoSon.unit === 's');
+}
+
+function _updateChronoSon() {
+    var el = document.getElementById('chrono-value-son');
+    if (!el) return;
+    // En T, la durée est comptée en nombre de périodes : t x f.
+    var inT = (chronoSon.unit === 'T' && sim.freq > 0);
+    var txt = inT ? fmtFR(chronoSon.elapsed * sim.freq, 2)
+                  : fmtFR(chronoSon.elapsed, 2);
+    // Écriture conditionnelle : la fonction est appelée à chaque frame.
+    if (txt !== _chronoLastTxtSon) { el.textContent = txt; _chronoLastTxtSon = txt; }
+
+    var lbl = document.getElementById('chrono-unit-lbl-son');
+    if (lbl) lbl.textContent = inT ? 'T' : 's';
+}
+var _chronoLastTxtSon = '';
 
 // ══════════════════════════════════════════════════════════════════════
 //  ─────────────── TAB CORDE ─────────────────────────────────────────
@@ -1020,9 +1140,11 @@ function setMainTab(tab) {
     if (srcCorde)  srcCorde.style.display  = (tab === 'corde') ? '' : 'none';
     if (srcVagues) srcVagues.style.display = (tab === 'vagues') ? '' : 'none';
 
-    // Chronomètre : propre à l'onglet Corde
-    var chrono = document.getElementById('chrono-corde');
-    if (chrono) chrono.style.display = (tab === 'corde') ? '' : 'none';
+    // Chronomètre : une box par onglet (Son, Corde) — aucune en Vagues
+    var chronoC = document.getElementById('chrono-corde');
+    var chronoS = document.getElementById('chrono-son');
+    if (chronoC) chronoC.style.display = (tab === 'corde') ? '' : 'none';
+    if (chronoS) chronoS.style.display = (tab === 'son')   ? '' : 'none';
 
     // ── Boutons son-only / vagues-only au-dessus du canvas ───────────
     var sonOnlyBtns = document.querySelectorAll('.son-only');
@@ -1147,6 +1269,9 @@ function _syncUIToSim() {
     _syncSourceButtons();
     var btn = document.getElementById('btn-playpause');
     if (btn) { btn.textContent = '⏸ Pause'; btn.className = 'btn btn-pause'; }
+    _syncChronoLinkSon(sim.sourceMode);
+    _syncChronoUnitsSon();
+    _updateChronoSon();
 
     // ── Corde ──────────────────────────────────────────────────────────
     _setSlider('sl-freq-corde',  simCorde.freq,        'lbl-freq-corde',  1);

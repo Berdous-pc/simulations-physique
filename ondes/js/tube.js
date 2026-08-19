@@ -137,7 +137,8 @@ var _srcNat = { key: '', full: 0, noTitle: 0, chrono: 0 };
 
 function _sourceNatural(animArea) {
     var srcCol = document.getElementById('source-col');
-    var chrono = document.getElementById('chrono-corde');
+    var tab    = (typeof activeTab !== 'undefined') ? activeTab : '';
+    var chrono = document.getElementById(tab === 'corde' ? 'chrono-corde' : 'chrono-son');
     if (!srcCol) return _srcNat;
 
     var key = Math.round(animArea.getBoundingClientRect().width) + '|' +
