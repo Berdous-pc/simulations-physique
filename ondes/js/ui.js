@@ -98,18 +98,26 @@ function loop(ts) {
             // qu'aux seuls changements d'état ci-dessus.
             _syncSourceButtonsCorde();
 
-            // Mode Libre : répartir le déplacement de la souris sur les
-            // échantillons de la frame. Le curseur ne donne qu'un point tous
-            // les ~16 ms là où la source en consomme dix : sans cette rampe,
-            // chaque position serait recopiée à l'identique et graverait un
-            // escalier de paliers au lieu d'un geste continu. On compte donc
-            // les pas à venir pour en déduire l'incrément par pas.
-            var freeInc = 0;
-            if (simCorde.freeActive) {
-                var nSteps = Math.floor((simCorde.simTime - lastSrcUpdate) / SRC_DT);
-                freeInc = (nSteps > 0)
-                    ? (simCorde.freeTargetY - simCorde.freeY) / nSteps : 0;
-            }
+            // Mode Libre : rapprocher freeY de la cible à VITESSE BORNÉE,
+            // un peu à chaque pas SRC_DT, plutôt que de répartir le
+            // déplacement de la souris sur les seuls pas de LA frame en
+            // cours. L'ancienne version calculait l'incrément par pas en
+            // divisant par le nombre de pas *déjà* écoulés depuis le dernier
+            // passage dans la boucle ; au ralenti (curseur de vitesse < 1),
+            // une frame réelle avance moins vite qu'un pas SRC_DT, donc ce
+            // nombre de pas valait 0 pendant plusieurs frames d'affilée — la
+            // position de la souris s'accumulait sans être gravée — puis,
+            // dès qu'un pas SRC_DT devenait enfin disponible, tout le
+            // déplacement accumulé était recopié d'un coup dans un SEUL
+            // échantillon. Ce saut brutal se propage ensuite le long de la
+            // corde comme un coude net, d'autant plus visible que la corde
+            // est épaisse et que le ralenti laisse le temps de bien le voir.
+            // En bornant la vitesse de freeY (en cm de corde par seconde
+            // SIMULÉE, donc par pas SRC_DT), le rattrapage se répartit
+            // toujours sur autant de pas que nécessaire, quelle que soit la
+            // vitesse d'animation.
+            var FREE_MAX_SPEED_CMPS = 400;   // cm/s simulées, vitesse main plausible
+            var freeMaxStep = FREE_MAX_SPEED_CMPS * SRC_DT;
 
             // Échantillonnage de la source à pas fixe : c'est lui qui
             // « grave » l'onde émise. L'enregistrement y(t) des balises se
@@ -117,15 +125,15 @@ function loop(ts) {
             // échantillons pour que les deux lectures soient cohérentes.
             while (simCorde.simTime - lastSrcUpdate >= SRC_DT) {
                 lastSrcUpdate += SRC_DT;
-                if (freeInc !== 0) simCorde.freeY += freeInc;
+                if (simCorde.freeActive) {
+                    var diff = simCorde.freeTargetY - simCorde.freeY;
+                    if (Math.abs(diff) <= freeMaxStep) simCorde.freeY = simCorde.freeTargetY;
+                    else                                simCorde.freeY += Math.sign(diff) * freeMaxStep;
+                }
                 stepSourceCorde(lastSrcUpdate);
                 _srcTickCorde = 1 - _srcTickCorde;
                 if (_srcTickCorde === 0) updateYtData(lastSrcUpdate);
             }
-            // Recale exactement sur la cible : les additions successives de
-            // freeInc laissent sinon une dérive d'arrondi qui ferait diverger
-            // la boule du curseur au fil des frames.
-            if (freeInc !== 0) simCorde.freeY = simCorde.freeTargetY;
         }
 
         // Inutile de reconstruire la courbe y(x) quand seul y(t) est affiché

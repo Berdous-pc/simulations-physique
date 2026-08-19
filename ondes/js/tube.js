@@ -1530,12 +1530,16 @@ function _drawCordeWire(ctx) {
     var lwRange    = 5.0 - 1.5;
     var cordeLineW = 1.5 + ((simCorde.mu - 0.1) / muRange) * lwRange;
 
-    // Finesse d'échantillonnage : ~24 points par longueur d'onde suffisent
-    // pour un tracé lisse une fois joint en 'round' (on en calculait 50, soit
-    // deux fois plus de points que ce que l'écran peut distinguer).
+    // Finesse d'échantillonnage : ~60 points par longueur d'onde. À 24 pts/λ
+    // (valeur précédente), la corde de crête (courbure max, tangente quasi
+    // horizontale) n'était approchée que par une corde de polygone d'environ
+    // 1 px de flèche pour une corde épaisse au max d'amplitude — trop peu
+    // pour rester sous le seuil de perception une fois anti-aliasé sur un
+    // trait épais, d'où un léger « tremblement » visible surtout au ralenti
+    // (l'image reste assez longtemps pour que l'œil suive le sous-pixel).
     var freqEff_  = (simCorde.sourceMode === 'impulse') ? 1.0 / T_IMPULSE : simCorde.freq;
     var lambda_px = (simCorde.c_sim > 0) ? simCorde.c_sim / freqEff_ : L;
-    var subSteps  = Math.max(400, Math.min(3000, Math.ceil(24 * L / Math.max(0.5, lambda_px))));
+    var subSteps  = Math.max(400, Math.min(6000, Math.ceil(60 * L / Math.max(0.5, lambda_px))));
 
     // Clipping dans la zone corde uniquement
     ctx.save();

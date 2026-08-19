@@ -715,7 +715,11 @@ var simCorde = {
 
     // ── Paramètres physiques de la corde ────────────────────────────
     freq        : 1.5,          // fréquence de la sinusoïdale (Hz)
-    amplitudeCm : 2.0,          // amplitude imposée par le vibreur (cm, affiché)
+    amplitudeCm : 2.0,          // amplitude CIBLE, réglée par le curseur (cm, affiché)
+    amplitudeCmEff : 2.0,       // amplitude RÉELLEMENT émise (cf. stepSourceCorde) —
+                                 // rattrape amplitudeCm à vitesse bornée pour éviter
+                                 // qu'un coup de curseur en cours d'oscillation ne
+                                 // grave un saut brutal dans le signal émis
     mu          : MU_DEFAULT,   // masse linéique (kg/m)
     T_tension   : T_DEFAULT,    // tension (N)
     attenuation : 0.0,          // coefficient d'atténuation
@@ -828,8 +832,22 @@ function cordeIsQuiet() {
 //  progresse en mètres.
 // ══════════════════════════════════════════════════════════════════════
 
+// Vitesse maximale de rattrapage de amplitudeCmEff vers amplitudeCm, en cm par
+// seconde SIMULÉE. Un déplacement de curseur à mi-oscillation ne grave donc
+// plus un saut brutal dans le signal émis (visible en corde épaisse + ralenti) :
+// la nouvelle amplitude s'installe progressivement sur quelques pas SRC_DT au
+// lieu de s'appliquer d'un coup au prochain échantillon.
+var CORDE_AMPL_SLEW_CMPS = 60;
+
 function stepSourceCorde(t) {
     var d = 0;
+
+    // ── Rattrapage borné de l'amplitude réellement émise vers la cible ──
+    var amplDiff = simCorde.amplitudeCm - simCorde.amplitudeCmEff;
+    var amplStep = CORDE_AMPL_SLEW_CMPS * SRC_DT;
+    if (Math.abs(amplDiff) <= amplStep) simCorde.amplitudeCmEff = simCorde.amplitudeCm;
+    else                                simCorde.amplitudeCmEff += Math.sign(amplDiff) * amplStep;
+    var ampl = simCorde.amplitudeCmEff;
 
     // ── Composante sinusoïdale : phase accumulée ──────────────────────
     // Jamais recalculée depuis (t − t_départ) : changer f infléchit la suite
@@ -837,7 +855,7 @@ function stepSourceCorde(t) {
     if (simCorde.sinusoidalActive) {
         simCorde.sinPhase += 2 * Math.PI * simCorde.freq * SRC_DT;
         if (simCorde.sinPhase > 2 * Math.PI) simCorde.sinPhase -= 2 * Math.PI;
-        d += simCorde.amplitudeCm * Math.sin(simCorde.sinPhase);
+        d += ampl * Math.sin(simCorde.sinPhase);
     }
 
     // ── Composante périodique non sinusoïdale (fondamentale + harmonique 2) ──
@@ -845,7 +863,7 @@ function stepSourceCorde(t) {
         simCorde.periodicPhase += 2 * Math.PI * simCorde.freq * SRC_DT;
         if (simCorde.periodicPhase > 2 * Math.PI) simCorde.periodicPhase -= 2 * Math.PI;
         var p = simCorde.periodicPhase;
-        d += simCorde.amplitudeCm * PERIODIC_NORM * Math.sin(p) * (1 + Math.cos(p));
+        d += ampl * PERIODIC_NORM * Math.sin(p) * (1 + Math.cos(p));
     }
 
     // ── Mode Libre : la hauteur imposée à la souris EST le signal ─────
@@ -855,7 +873,7 @@ function stepSourceCorde(t) {
     for (var i = 0; i < simCorde.impulses.length; i++) {
         var tau = t - simCorde.impulses[i].startTime;
         if (tau >= 0 && tau <= T_IMPULSE) {
-            d += simCorde.amplitudeCm * (1 - Math.cos(2 * Math.PI * tau / T_IMPULSE)) / 2;
+            d += ampl * (1 - Math.cos(2 * Math.PI * tau / T_IMPULSE)) / 2;
         }
     }
 
