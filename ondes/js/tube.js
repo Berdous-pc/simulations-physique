@@ -95,6 +95,360 @@ function scheduleResizeTube() {
 }
 
 // ══════════════════════════════════════════════════════════════════════
+//  Échelle de la colonne source
+// ══════════════════════════════════════════════════════════════════════
+// Sur petite fenêtre, la box source et le chronomètre étaient hors de
+// proportion avec le canvas, se faisaient rogner en haut et en bas, et
+// imposaient au splitter un plancher qui bornait d'autant la zone graphe.
+//
+// Ils sont donc réduits par un `transform: scale(var(--src-s))` posé sur
+// #source-col (cf. style.css), avec une largeur de mise en page fixe. Deux
+// conséquences qui font tout l'intérêt de ce choix :
+//   — la hauteur naturelle de la colonne ne dépend pas du facteur, donc
+//     l'échelle qui la fait tenir se calcule exactement, en une division ;
+//   — rien ne peut être oublié : le facteur porte sur la boîte entière, et
+//     non sur chaque taille de police ou marge prise séparément.
+//
+// L'échelle se calcule sur la hauteur MESURÉE de #anim-area, jamais sur celle
+// du viewport : tirer le splitter change la première sans toucher la seconde.
+// Elle vaut exactement 1 dès que tout tient sans réduction — l'aspect grand
+// écran est alors celui d'origine au pixel près.
+
+var SRC_S_MIN     = 0.50;   // échelle minimale ; en dessous, la colonne est retirée
+var SRC_S_NOTITLE = 0.85;   // sous cette échelle, le titre « Source » est masqué
+
+// Part maximale de la row 2 que la box source peut occuper. C'est le réglage
+// qui gouverne les deux symptômes à la fois : en dessous de cette part elle ne
+// peut pas être rognée, et au-delà elle rapetisse au lieu de paraître énorme
+// face au canvas. Sur grand écran la box occupe environ 35 % de la row : le
+// facteur y vaut donc 1, sans rien changer à l'aspect d'origine.
+var SRC_MAX_FILL = 0.55;
+
+var _srcScaleCur = 1;       // dernière échelle appliquée
+var _srcGoneCur  = false;   // colonne source retirée ?
+
+// Hauteurs naturelles (échelle 1) de la colonne source, avec et sans le titre
+// « Source », et du chronomètre marge comprise. Elles ne dépendent pas du
+// facteur — la largeur de mise en page est fixe — mais de la largeur de la
+// colonne, de l'onglet et des clamp() en vw : d'où la mémoïsation par
+// largeur + onglet + largeur de fenêtre. Lire offsetHeight force le reflow,
+// donc les valeurs correspondent bien à l'état écrit juste avant.
+var _srcNat = { key: '', full: 0, noTitle: 0, chrono: 0 };
+
+function _sourceNatural(animArea) {
+    var srcCol = document.getElementById('source-col');
+    var chrono = document.getElementById('chrono-corde');
+    if (!srcCol) return _srcNat;
+
+    var key = Math.round(animArea.getBoundingClientRect().width) + '|' +
+              (typeof activeTab !== 'undefined' ? activeTab : '') + '|' +
+              Math.round(window.innerWidth);
+    if (_srcNat.key === key) return _srcNat;
+
+    var hadTiny   = animArea.classList.contains('src-tiny');
+    var hadHidden = animArea.classList.contains('src-hidden');
+
+    // La mesure doit impérativement se faire colonne AFFICHÉE : masquée, elle
+    // mesurerait 0, ce qui la ferait juger « tient partout » et donc réafficher
+    // — puis remasquer au calcul suivant, indéfiniment.
+    animArea.classList.remove('src-hidden');
+
+    animArea.classList.remove('src-tiny');
+    var full = srcCol.offsetHeight;
+
+    animArea.classList.add('src-tiny');
+    var noTitle = srcCol.offsetHeight;
+
+    var chronoH = 0;
+    if (chrono && chrono.offsetParent !== null) {
+        var mb  = parseFloat(getComputedStyle(chrono).marginBottom) || 0;
+        chronoH = chrono.offsetHeight + mb;
+    }
+
+    animArea.classList.toggle('src-tiny',   hadTiny);
+    animArea.classList.toggle('src-hidden', hadHidden);
+
+    _srcNat = { key: key, full: full, noTitle: noTitle, chrono: chronoH };
+    return _srcNat;
+}
+
+// Échelle à retenir pour une colonne de hauteur naturelle H, dans une zone
+// d'animation de hauteur animH. Renvoie { s, gone } : l'échelle, et si la
+// colonne doit être retirée faute de tenir à cette échelle.
+//
+// La grid de #anim-area a deux rows : row1 = auto (hauteur des boutons
+// balises), row2 = 1fr. La box source est centrée dans row2 ; le chronomètre
+// est posé juste au-dessus, en absolu, et peut déborder dans row1 — côté
+// colonne 1 celle-ci ne contient que #anim-source-spacer, qui est vide.
+//
+// Deux temps, et c'est ce qui rend la règle simple à énoncer :
+//
+//   1. l'échelle voulue — proportionnée à la place (SRC_MAX_FILL), jamais
+//      au-dessus de 1, et jamais en dessous de SRC_S_MIN, qui est un vrai
+//      minimum : en dessous, la colonne n'est plus ni lisible ni cliquable ;
+//   2. tient-elle à cette échelle ? Deux conditions, sans quoi elle dépasserait
+//      de la zone et se ferait rogner :
+//        (a) box :    H·s ≤ row2H
+//        (b) chrono : B·s ≤ btnH + (row2H − H·s)/2
+//      Si non, `gone`.
+function _srcFitFor(animH, btnH, H, B) {
+    var row2H = animH - btnH;
+    if (H <= 0)     return { s: 1, gone: false };   // Vagues : pas de colonne
+    if (row2H <= 0) return { s: SRC_S_MIN, gone: true };
+
+    var s    = Math.min(1, Math.max(SRC_MAX_FILL * row2H / H, SRC_S_MIN));
+    var gone = (H * s > row2H) ||
+               (B > 0 && B * s > btnH + (row2H - H * s) / 2);
+
+    return { s: s, gone: gone };
+}
+
+// Hauteur d'#anim-area à partir de laquelle la colonne source (sans son
+// titre — c'est la version qui compte près du seuil) tient encore à
+// SRC_S_MIN. Résolution analytique des deux mêmes contraintes que
+// _srcFitFor, prises à s = SRC_S_MIN : c'est la branche qui s'applique
+// effectivement au voisinage du seuil, puisque le terme de proportion
+// (SRC_MAX_FILL) y est toujours inférieur au plancher.
+function _srcMinAnimH(nat, btnH) {
+    var H = nat.noTitle, B = nat.chrono;
+    if (H <= 0) return -Infinity;   // Vagues : la colonne ne fait jamais loi
+
+    var row2Min = Math.max(H * SRC_S_MIN,
+                           2 * B * SRC_S_MIN - 2 * btnH + H * SRC_S_MIN);
+    return btnH + row2Min;
+}
+
+function _srcBtnH() {
+    var topBtns = document.getElementById('tube-top-btns');
+    return topBtns ? topBtns.offsetHeight : 36;
+}
+
+// Hauteur d'#anim-area en dessous de laquelle la zone n'a plus rien
+// d'exploitable à montrer — et c'est LE SEUL seuil de toute la zone
+// d'animation : boîte et canvas s'escamotent ensemble, exactement à cette
+// hauteur, jamais l'un avant l'autre.
+//
+// C'est le point qui a fait défaut aux versions précédentes : la box source
+// avait son propre seuil (issu de _srcFitFor) et le canvas le sien (une
+// constante indépendante, la hauteur minimale du tube) — deux critères
+// distincts, donc deux hauteurs de disparition différentes, avec une bande
+// intermédiaire où l'un avait disparu et pas l'autre.
+//
+// Ici, le seuil est le plus haut des deux besoins :
+//   — le tube doit rester dessinable (rangée des boutons balises + 28 px,
+//     cf. _minUsefulAnimHeight) ;
+//   — la colonne source doit tenir à SRC_S_MIN (cf. _srcMinAnimH).
+// En pratique c'est presque toujours la colonne source qui est la plus
+// exigeante des deux ; le max garde le calcul correct même si un onglet aux
+// proportions différentes inversait un jour ce constat.
+function _animHideThreshold(animArea) {
+    var nat  = _sourceNatural(animArea);
+    var btnH = _srcBtnH();
+    return Math.max(_minUsefulAnimHeight(btnH), _srcMinAnimH(nat, btnH));
+}
+
+// Applique l'échelle correspondant à la place disponible.
+function _applySourceScale() {
+    var animArea = document.getElementById('anim-area');
+    if (!animArea) return;
+    var h = animArea.getBoundingClientRect().height;
+    if (h <= 0) return;   // zone masquée : on garde l'état courant
+
+    var nat  = _sourceNatural(animArea);
+    var btnH = _srcBtnH();
+
+    // En dessous du seuil unifié, la box est retirée avec le reste de la
+    // zone — sans même tester _srcFitFor : c'est le même critère qui a déjà
+    // décidé, en amont, de la hauteur d'#anim-area (cf. _snapAnimHeight).
+    // Le test de repli ci-dessous (fit.gone) ne couvre que le cas où
+    // #anim-area a atteint cette hauteur par un autre chemin que le snap —
+    // la répartition par défaut de clearSplitSizes, en zone très exiguë.
+    var gone = h < _animHideThreshold(animArea);
+    var s, hide;
+
+    if (gone) {
+        s = SRC_S_MIN;
+        hide = true;
+    } else {
+        // Titre visible d'abord. S'il faut descendre sous le seuil — ou si
+        // la colonne ne tient pas —, on le masque et on recalcule :
+        // récupérer sa hauteur peut suffire à faire tenir le reste, et vaut
+        // mieux que de tout retirer.
+        var fit = _srcFitFor(h, btnH, nat.full, nat.chrono);
+        hide    = (fit.gone || fit.s < SRC_S_NOTITLE) && nat.noTitle < nat.full;
+        if (hide) fit = _srcFitFor(h, btnH, nat.noTitle, nat.chrono);
+
+        s    = fit.s;
+        gone = fit.gone;   // filet de sécurité, cf. commentaire ci-dessus
+    }
+
+    animArea.style.setProperty('--src-s', s.toFixed(3));
+    animArea.classList.toggle('src-tiny', hide && !gone);
+    animArea.classList.toggle('src-hidden', gone);
+
+    // La largeur de la colonne source suit l'échelle, et tombe à zéro quand
+    // elle est retirée : le canvas change donc de largeur, et doit être
+    // redessiné.
+    if (Math.abs(s - _srcScaleCur) > 0.002 || gone !== _srcGoneCur) {
+        _srcScaleCur = s;
+        _srcGoneCur  = gone;
+        scheduleResizeTube();
+    }
+}
+
+// Rangée des boutons balises, plus les 28 px sans lesquels le tube n'est plus
+// dessinable (tubeH = row2H·0,88 − 4 ≥ 20). Un des deux besoins combinés par
+// _animHideThreshold — voir ce commentaire pour le pourquoi de l'unification.
+function _minUsefulAnimHeight(btnH) {
+    return Math.ceil(btnH + 28);
+}
+
+// Hauteur retenue pour la zone d'animation : bornée par le maximum, et
+// escamotée d'un coup sous le seuil unifié (cf. _animHideThreshold) — jamais
+// la box source seule, jamais le canvas seul.
+function _snapAnimHeight(animH, bounds) {
+    if (animH < bounds.hideBelow) return 0;
+    return Math.min(bounds.maxAnim, animH);
+}
+
+// Suit la taille de #anim-area : elle change au resize de la fenêtre, au drag
+// du splitter et au masquage du graphe (onglet Corde), sans qu'aucun de ces
+// chemins n'ait à penser à l'échelle.
+// Pas de boucle de rétroaction possible : la taille de #anim-area est imposée
+// par le flex (ou par le style inline du drag), jamais par son contenu.
+(function initSourceScale() {
+    function init() {
+        var animArea = document.getElementById('anim-area');
+        if (!animArea) return;
+        _applySourceScale();
+        if (typeof ResizeObserver === 'function') {
+            new ResizeObserver(_applySourceScale).observe(animArea);
+        }
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+})();
+
+// ══════════════════════════════════════════════════════════════════════
+//  Répartition animation / graphe (position du splitter)
+// ══════════════════════════════════════════════════════════════════════
+// La position réglée par l'utilisateur est mémorisée sous forme de FRACTION
+// de l'espace partageable (hauteur de #left-col moins les 6 px du splitter)
+// revenant à #anim-area, et appliquée en flex-grow : elle survit ainsi au
+// redimensionnement de la fenêtre, au masquage du graphe (onglet Corde) et
+// au rechargement de la page.
+// Les hauteurs en pixels ne servent que pendant le drag lui-même.
+
+var SPLIT_KEY  = 'ondes.splitFrac';
+var splitFrac  = null;   // null = répartition par défaut (flex 3 / 2)
+
+// Distance de drag (px) qui suffit à faire réapparaître la zone d'animation
+// depuis l'état escamoté, quelle que soit la valeur — potentiellement bien
+// plus grande — du seuil de réapparition (cf. le pointermove d'initSplitter).
+var REVEAL_GRAB_PX = 24;
+
+function _loadSplitFrac() {
+    try {
+        var v = parseFloat(localStorage.getItem(SPLIT_KEY));
+        // 0 est une valeur légitime : zone d'animation escamotée, graphe sur
+        // toute la colonne. `parseFloat` d'une clé absente donne NaN, que les
+        // deux comparaisons rejettent.
+        return (v >= 0 && v <= 0.95) ? v : null;
+    } catch (e) {
+        return null;   // stockage indisponible (navigation privée, fichier local)
+    }
+}
+
+function _saveSplitFrac(f) {
+    try { localStorage.setItem(SPLIT_KEY, f.toFixed(4)); } catch (e) {}
+}
+
+// Bornes du splitter, dans l'état courant du DOM.
+// Renvoie null si la colonne gauche n'est pas mesurable.
+function _splitBounds() {
+    var leftCol  = document.getElementById('left-col');
+    var animArea = document.getElementById('anim-area');
+    if (!leftCol) return null;
+
+    var totalH    = leftCol.getBoundingClientRect().height;
+    var splitterH = 6;
+    var minGraph  = 60;
+
+    return {
+        total:     totalH,
+        avail:     totalH - splitterH,   // place réellement partageable
+        hideBelow: animArea ? _animHideThreshold(animArea) : 0,
+        maxAnim:   totalH - splitterH - minGraph
+    };
+}
+
+// Pose ou retire .anim-collapsed sur #left-col : la zone d'animation
+// escamotée met le splitter au ras du bord, sans rien en dessous pour le
+// distinguer visuellement — la classe élargit sa zone cliquable vers le bas
+// (cf. style.css), pour qu'il reste facile à attraper malgré la précision
+// qu'exigerait un clic pile sur 6 px de haut.
+function _setAnimCollapsed(collapsed) {
+    var leftCol = document.getElementById('left-col');
+    if (leftCol) leftCol.classList.toggle('anim-collapsed', collapsed);
+}
+
+// Rend la main à la répartition CSS par défaut (#anim-area flex 3,
+// #graph-area flex 2).
+function clearSplitSizes() {
+    var animArea  = document.getElementById('anim-area');
+    var graphArea = document.getElementById('graph-area');
+    if (animArea)  { animArea.style.flex  = ''; animArea.style.height  = ''; }
+    if (graphArea) { graphArea.style.flex = ''; graphArea.style.height = ''; }
+    _setAnimCollapsed(false);
+}
+
+// Applique une fraction (part de l'espace partageable revenant à
+// #anim-area), bornée par _splitBounds. À appeler après tout ce qui change
+// la place disponible : resize de la fenêtre, bascule du graphe, changement
+// d'onglet.
+function applySplitFrac(frac) {
+    var leftCol   = document.getElementById('left-col');
+    var animArea  = document.getElementById('anim-area');
+    var graphArea = document.getElementById('graph-area');
+    if (!leftCol || !animArea || !graphArea) return;
+
+    // Graphe masqué (onglet Corde) : #anim-area doit occuper tout #left-col.
+    // Une hauteur inline la figerait à sa valeur de drag et laisserait une
+    // bande vide en dessous, là où le graphe était.
+    if (frac === null ||
+        leftCol.classList.contains('graph-hidden') ||
+        document.documentElement.classList.contains('init-corde-graph-hidden')) {
+        clearSplitSizes();
+        return;
+    }
+
+    var b = _splitBounds();
+    if (!b || b.avail <= 0) return;
+    // Colonne trop courte pour laisser au graphe son minimum : le partage
+    // proportionnel par défaut reste le moins mauvais compromis.
+    if (b.maxAnim <= 0) { clearSplitSizes(); return; }
+
+    var animH = _snapAnimHeight(frac * b.avail, b);
+    var f     = animH / b.avail;
+    _setAnimCollapsed(animH === 0);
+
+    // Répartition exprimée en flex-grow, et non en hauteurs : les deux zones
+    // se partagent l'espace laissé par le splitter (flex: 0 0 6px) dans ce
+    // rapport, quelle que soit la taille de la fenêtre. Rien à recalculer au
+    // resize, et aucune dépendance à une hauteur de référence — un pixel ou
+    // un pourcentage figé, eux, auraient dû être repris à chaque fois.
+    animArea.style.height  = '';
+    graphArea.style.height = '';
+    animArea.style.flex    = f.toFixed(4) + ' 1 0%';
+    graphArea.style.flex   = (1 - f).toFixed(4) + ' 1 0%';
+
+    scheduleResizeTube();
+}
+
+// ══════════════════════════════════════════════════════════════════════
 //  Splitter draggable (sépare #anim-area et #graph-area)
 // ══════════════════════════════════════════════════════════════════════
 
@@ -106,8 +460,7 @@ function scheduleResizeTube() {
     var dragging   = false;
     var startY     = 0;
     var startAnim  = 0;
-    var minAnim    = 0;
-    var maxAnim    = 0;
+    var bounds     = null;
 
     function init() {
         splitter  = document.getElementById('left-splitter');
@@ -115,6 +468,12 @@ function scheduleResizeTube() {
         graphArea = document.getElementById('graph-area');
         leftCol   = document.getElementById('left-col');
         if (!splitter) return;
+
+        // Position mémorisée d'une session précédente. Appliquée telle
+        // quelle : applySplitFrac se charge de la borner et de ne rien poser
+        // si le graphe est masqué.
+        splitFrac = _loadSplitFrac();
+        if (splitFrac !== null) applySplitFrac(splitFrac);
 
         splitter.addEventListener('pointerdown', function(e) {
             dragging  = true;
@@ -125,65 +484,54 @@ function scheduleResizeTube() {
                 simVagues.transAnim._pausedAt = performance.now();
             }
 
-            var totalH    = leftCol.getBoundingClientRect().height;
-            var splitterH = 6;
-            var minGraph  = 60;
-
-            // Hauteurs intrinsèques (indépendantes du layout en cours)
-            var topBtns   = document.getElementById('tube-top-btns');
-            var sourceBox = document.getElementById('source-col');
-            var chronoBox = document.getElementById('chrono-corde');
-            var btnH      = topBtns   ? topBtns.scrollHeight   : 36;
-            var srcH      = sourceBox ? sourceBox.scrollHeight  : 80;
-            // Le chronomètre est posé en absolu au-dessus de la box source,
-            // qui reste centrée dans la row : il faut donc réserver sa hauteur
-            // des DEUX côtés, sinon il déborde par le haut et se fait rogner.
-            if (chronoBox && chronoBox.offsetParent !== null) {
-                srcH += 2 * (chronoBox.offsetHeight + 8);
-            }
-
-            // La grid de #anim-area a deux rows :
-            //   row1 = minmax(min-content, 10%) → hauteur effective = max(btnH, animH * 0.10)
-            //   row2 = 1fr = minmax(auto, 1fr)  → plancher = min-content de la colonne
-            //          Le plancher de row2 est imposé par #source-col : au moins srcH.
-            //          Pour le tube : tubeH = row2H * 0.88 - 4 ≥ 20 → row2H ≥ 28.
-            //          Donc row2H ≥ max(srcH, 28).
-            //
-            // Pour trouver minAnim on cherche le plus petit animH tel que :
-            //   row1H  = max(btnH, animH * 0.10)
-            //   row2H  = animH - row1H  ≥  max(srcH, 28)
-            //
-            //   Cas A — 0.10*animH ≥ btnH (row1 = 10%) :
-            //     animH - 0.10*animH ≥ row2min  →  animH ≥ row2min / 0.90
-            //     Valide si animH ≥ btnH / 0.10
-            //
-            //   Cas B — 0.10*animH < btnH (row1 = btnH) :
-            //     animH - btnH ≥ row2min  →  animH ≥ btnH + row2min
-            //     Valide si animH < btnH / 0.10
-            //
-            var row2min = Math.max(srcH, 28);
-            var minA    = Math.ceil(row2min / 0.90);   // Cas A
-            var minB    = btnH + row2min;               // Cas B
-            minAnim = Math.max(minA, minB);
-            maxAnim = totalH - splitterH - minGraph;
+            bounds = _splitBounds();
 
             splitter.setPointerCapture(e.pointerId);
             splitter.classList.add('dragging');
             e.preventDefault();
         });
 
+        // Pendant le drag, les hauteurs sont posées en pixels : c'est le
+        // suivi le plus direct du pointeur. La conversion en fraction n'a
+        // lieu qu'au relâchement.
         window.addEventListener('pointermove', function(e) {
-            if (!dragging) return;
+            if (!dragging || !bounds) return;
             requestAnimationFrame(function() {
                 var dy       = e.clientY - startY;
                 var totalH   = leftCol.getBoundingClientRect().height;
-                var newAnim  = Math.min(maxAnim, Math.max(minAnim, startAnim + dy));
+                var newAnim;
+
+                if (startAnim < 1 && bounds.hideBelow > 0) {
+                    // Repartir d'une zone escamotée est un cas à part. Suivre
+                    // le pointeur au pixel près depuis 0 obligerait à glisser
+                    // sur bounds.hideBelow (le seuil de réapparition, souvent
+                    // 100-200 px) avant que quoi que ce soit ne bouge à
+                    // l'écran — la zone paraît alors ne pas répondre. Un petit
+                    // geste (REVEAL_GRAB_PX) suffit à la faire réapparaître
+                    // d'un coup à sa taille utile minimale ; au-delà, le
+                    // pointeur reprend le contrôle au pixel près, exactement
+                    // comme _snapAnimHeight l'aurait fait sans discontinuité.
+                    if (dy <= REVEAL_GRAB_PX) {
+                        newAnim = 0;
+                    } else {
+                        newAnim = Math.min(bounds.maxAnim,
+                                           bounds.hideBelow + (dy - REVEAL_GRAB_PX));
+                    }
+                } else {
+                    // _snapAnimHeight escamote la zone d'animation dès qu'elle
+                    // n'aurait plus rien d'exploitable à montrer : le graphe
+                    // passe alors d'un coup à toute la colonne, sans bande
+                    // résiduelle.
+                    newAnim = _snapAnimHeight(Math.max(0, startAnim + dy), bounds);
+                }
+
                 var newGraph = totalH - 6 - newAnim;
 
                 animArea.style.flex    = 'none';
                 animArea.style.height  = newAnim  + 'px';
                 graphArea.style.flex   = 'none';
                 graphArea.style.height = newGraph + 'px';
+                _setAnimCollapsed(newAnim === 0);
                 scheduleResizeTube();
             });
         });
@@ -192,6 +540,17 @@ function scheduleResizeTube() {
             if (!dragging) return;
             dragging = false;
             splitter.classList.remove('dragging');
+
+            // Fige la position réglée sous forme de fraction de l'espace
+            // partageable, puis la réapplique en flex-grow : les pixels du
+            // drag ne survivraient pas au premier redimensionnement.
+            var avail = leftCol.getBoundingClientRect().height - 6;
+            if (avail > 0) {
+                splitFrac = animArea.getBoundingClientRect().height / avail;
+                _saveSplitFrac(splitFrac);
+                applySplitFrac(splitFrac);
+            }
+
             // Reprend la transition vagues en décalant startT de la durée de pause
             if (typeof simVagues !== 'undefined' && simVagues.transAnim && simVagues.transAnim._pausedAt) {
                 simVagues.transAnim.startT += performance.now() - simVagues.transAnim._pausedAt;

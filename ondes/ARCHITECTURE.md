@@ -89,6 +89,63 @@ Tout le CSS. Sections : reset et grille principale, `#anim-area`, `#source-box`,
 (`.panel-main-tabs`, `.btn`, `.param-row`, `.readout`), bandeau `.panel-hint`
 repliable (même motif que les pages titrage et radioactivité).
 
+**Échelle de la colonne source** : `#source-col` porte un
+`transform: scale(var(--src-s))` et une **largeur de mise en page fixe**
+(`clamp(132px, 14vw, 177px) − 12px`, indépendante du facteur), avec
+`transform-origin: left center` pour que la boîte réduite occupe exactement la
+colonne de grille — elle-même multipliée par le facteur, d'où la largeur rendue
+au canvas. La hauteur de layout, elle, ne diminue pas : le débordement qui
+subsiste n'est jamais rogné, puisque ce qui est peint est plus petit et centré.
+
+Le facteur est posé par `_applySourceScale` (`tube.js`) d'après la hauteur
+**mesurée** de `#anim-area`, pas celle du viewport, puisque le splitter la
+change sans que la fenêtre bouge. Comme la mise en page interne ne dépend pas
+du facteur, la hauteur naturelle de la colonne est invariante : `_srcFitFor`
+calcule donc, sans rien mesurer d'autre que les hauteurs relevées une fois par
+`_sourceNatural` (mémoïsées par largeur, onglet et largeur de fenêtre) :
+
+1. **l'échelle voulue** — proportionnée à la place (`SRC_MAX_FILL` borne la part
+   de la row 2 que la box peut occuper, contre l'effet de disproportion), jamais
+   au-dessus de 1, jamais en dessous de `SRC_S_MIN` ;
+2. **tient-elle ?** Si la box dépasse la row 2, ou si le chrono n'a plus la
+   place au-dessus d'elle, `gone`.
+
+**Le point important** : `gone` n'est **pas** ce qui décide de retirer la
+colonne (`.src-hidden`) — c'est un filet de sécurité. La vraie décision est
+prise en amont, par `_animHideThreshold`, qui combine en **un seul seuil** le
+besoin de la colonne source (`_srcMinAnimH`, résolution analytique des mêmes
+contraintes à `s = SRC_S_MIN`) et celui du tube (`_minUsefulAnimHeight`). Ce
+seuil unique pilote à la fois `_snapAnimHeight` (qui escamote toute la zone
+d'animation d'un coup en dessous) et `_applySourceScale` (qui retire la
+colonne dans le même mouvement). Avant cette unification, les deux avaient
+chacun leur propre seuil, avec une bande intermédiaire où l'un avait disparu
+et pas l'autre — colonne source absente mais canvas encore visible, ou
+l'inverse. `_srcFitFor` n'entre plus en jeu qu'au-dessus du seuil, où elle ne
+peut par construction plus renvoyer `gone` (sinon indication d'un cas où
+`#anim-area` a atteint sa hauteur par un chemin qui ne passe pas par le snap
+— cf. plus bas, `clearSplitSizes`).
+
+`_sourceNatural` retire `.src-hidden` le temps de mesurer : masquée, la colonne
+mesurerait 0, serait jugée « tient partout », donc réaffichée puis remasquée
+indéfiniment.
+
+Sur grand écran la box occupe environ 35 % de la row : le facteur vaut 1 et
+l'aspect d'origine est conservé au pixel près. Seule exception à l'homothétie,
+le titre « Source » est masqué (`.src-tiny`) sous `SRC_S_NOTITLE`, ou dès que
+récupérer sa hauteur suffit à éviter le retrait complet.
+
+> Deux approches ont été essayées avant, et écartées. Une loi fonction de la
+> seule hauteur de fenêtre : elle réduisait trop peu, trop tard, et ne
+> garantissait rien — la répartition par défaut (`#anim-area` `flex: 3`) peut
+> donner à la zone d'animation moins que la hauteur naturelle des boîtes, et le
+> plancher du splitter ne s'applique qu'au drag. Puis un facteur multipliant une
+> à une les tailles de police, marges et hauteurs : la colonne rétrécissant, les
+> textes finissaient par passer à la ligne et la boîte grandissait quand on
+> cherchait à la réduire — il fallait une recherche par essais mesurés pour
+> compenser, et le moindre `font-size` oublié ressortait comme un élément
+> refusant de rapetisser. Le `scale()` supprime les deux problèmes par
+> construction.
+
 ---
 
 ## `js/sim.js` — état et physique (Son + Corde)
@@ -281,8 +338,42 @@ exclusif du coloriage par pression : activer l'un désactive et grise l'autre.
 balise vide son tampon y(t) : les points antérieurs ne décrivent plus le même
 point de la corde.
 
-`initSplitter` ajuste les hauteurs de `#anim-area` et `#graph-area`, avec un
-calcul de hauteur minimale qui tient compte des deux rangées de la grille.
+`initSplitter` gère le drag ; les bornes viennent de `_splitBounds`. Il n'y a
+**pas de plancher** : la zone d'animation peut être réduite à zéro et le graphe
+occuper toute la colonne. `hideBelow` (`_animHideThreshold`, cf. plus haut)
+n'est pas une borne mais un seuil de bascule, en dessous duquel
+`_snapAnimHeight` escamote toute la zone d'un coup — boîte source et canvas
+ensemble, jamais l'un avant l'autre, puisque c'est le même seuil qui pilote
+les deux. Le drag et `applySplitFrac` passent tous deux par ce même
+escamotage, et une fraction de 0 est une valeur mémorisable comme une autre.
+
+**Réapparition depuis l'état escamoté** : suivre le pointeur au pixel près
+depuis une hauteur de 0 obligerait à glisser sur toute la valeur de
+`hideBelow` (potentiellement 100-200 px) avant que quoi que ce soit ne bouge à
+l'écran — le splitter paraît alors ne pas répondre. `REVEAL_GRAB_PX` (24 px)
+introduit une exception dans le `pointermove` : depuis 0, un petit geste suffit
+à faire réapparaître la zone d'un coup à `hideBelow`, après quoi le pointeur
+reprend le contrôle au pixel près, sans discontinuité (c'est exactement ce que
+`_snapAnimHeight` aurait donné à cette position). `_setAnimCollapsed` pose en
+parallèle `.anim-collapsed` sur `#left-col`, qui élargit vers le bas la zone
+cliquable du splitter (`::after` en position absolue, sans repousser
+`#graph-area`) — collé au bord supérieur sans rien pour le distinguer, il
+serait sinon difficile à attraper précisément sur ses seuls 6 px de haut.
+
+Le chronomètre, posé en absolu au-dessus de la box source, a le droit de
+déborder dans la rangée 1, vide côté colonne 1 (`#anim-source-spacer`) — sa
+hauteur n'est donc réservée qu'une fois, et non des deux côtés de la box
+centrée.
+
+La position réglée est mémorisée en **fraction** de l'espace partageable
+(`splitFrac`, persistée en `localStorage` sous `ondes.splitFrac`) et appliquée
+par `applySplitFrac` en **flex-grow** sur les deux zones : elle survit alors au
+resize de la fenêtre sans recalcul. Les hauteurs en pixels ne servent que
+pendant le drag. `applySplitFrac` est rappelée au resize, au changement
+d'onglet et à la bascule du graphe ; quand le graphe est masqué (`.graph-hidden`,
+onglet Corde) elle efface les styles inline via `clearSplitSizes` — sans quoi
+une hauteur héritée d'un drag figerait `#anim-area` et laisserait une bande vide
+sous l'animation.
 
 ---
 

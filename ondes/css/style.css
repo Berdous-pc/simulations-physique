@@ -62,20 +62,45 @@ main {
    Grid 2 colonnes × 2 lignes :
      col 1 = largeur de la box source (fixe)
      col 2 = 1fr (canvas tube)
-     row 1 = 10% de la hauteur → zone boutons balises
-     row 2 = 1fr               → box source + canvas
+     row 1 = auto → zone boutons balises, à la hauteur des boutons
+     row 2 = 1fr  → box source + canvas
    Garantit que les boutons balises sont toujours DANS la row 1,
    le canvas toujours dans la row 2 : aucune superposition possible.
+   La row 1 était à `minmax(min-content, 10%)` : une piste minmax prend son
+   maximum dès que la place existe, donc 10 % de la hauteur — soit ~60 px
+   réservés à des boutons qui en font 34 sur une grande zone d'animation.
+   `auto` donne exactement leur hauteur, le reste revient au canvas ; la
+   séparation des deux zones est assurée par la grille, pas par ce 10 %.
 ──────────────────────────────────────────────────────────────────── */
 #anim-area {
+  /* Échelle de la colonne source, pilotée par tube.js (_applySourceScale).
+     1 = tailles d'origine ; en dessous, la box source et le chronomètre
+     rapetissent continûment, largeur de colonne comprise. */
+  --src-s: 1;
   flex: 3;
   display: grid;
-  grid-template-columns: clamp(132px, 14vw, 177px) 1fr;
-  grid-template-rows: minmax(min-content, 10%) minmax(0, 1fr);
+  grid-template-columns: calc(clamp(132px, 14vw, 177px) * var(--src-s)) 1fr;
+  grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
   overflow: hidden;
   background: #fdf8f0;
   border-right: 1px solid #c8c0b4;
+}
+
+/* ── Colonne source retirée ──────────────────────────────────────────
+   En dessous de SRC_S_MIN (cf. tube.js), la colonne ne serait plus ni lisible
+   ni cliquable : plutôt que de la laisser rapetisser jusqu'à l'inutile, on la
+   retire — et la colonne de grille avec elle, si bien que le canvas occupe
+   toute la largeur. C'est le comportement voulu d'une zone d'animation réduite
+   à une bande : une corde pleine largeur, et les contrôles retrouvés dès qu'on
+   redonne de la hauteur à la zone.
+   Déclaré AVANT .vagues-layout, qui redéfinit la grille pour son propre compte
+   et doit garder la priorité à spécificité égale. ─────────────────────────── */
+#anim-area.src-hidden {
+  grid-template-columns: 0 1fr;
+}
+#anim-area.src-hidden #source-col {
+  display: none;
 }
 
 /* Cellule vide ligne 1 / col 1 (au-dessus de la source) */
@@ -262,7 +287,20 @@ main {
   align-self: center;
   position: relative;
   min-width: 0;
-  margin: 0 6px;
+  /* Largeur de mise en page FIXE, indépendante de --src-s : c'est elle qui
+     rend la hauteur naturelle de la colonne invariante (cf. le commentaire de
+     l'échelle plus bas). La largeur d'origine de la colonne de grille, moins
+     les deux marges. */
+  width: calc(clamp(132px, 14vw, 177px) - 12px);
+  margin: 0 calc(6px * var(--src-s));
+  /* Origine à gauche : la box réduite occupe alors exactement la colonne de
+     grille, elle-même multipliée par le facteur — et reste centrée
+     verticalement, l'origine étant à mi-hauteur.
+     Le débordement en hauteur qui subsiste côté MISE EN PAGE (la hauteur de
+     layout, elle, ne diminue pas) n'est jamais rogné : ce qui est peint est
+     plus petit, et centré. */
+  transform: scale(var(--src-s));
+  transform-origin: left center;
 }
 
 /* Box source */
@@ -276,6 +314,32 @@ main {
   border-radius: 8px;
   box-shadow: 0 2px 6px rgba(0,0,0,0.07);
 }
+
+/* ── Échelle de la colonne source ────────────────────────────────────
+   Un seul `transform: scale()`, piloté par tube.js (_applySourceScale), plutôt
+   qu'un facteur multipliant une à une les tailles de police, marges et
+   hauteurs de ces deux boîtes.
+
+   La différence n'est pas cosmétique. Avec `width` FIXE ci-dessus, la mise en
+   page interne de la colonne ne dépend plus du facteur : sa hauteur naturelle
+   est donc invariante, et l'échelle qui la fait tenir dans la place
+   disponible se calcule exactement, en une division. Mettre les tailles à
+   l'échelle une par une, au contraire, resserre la colonne — les textes
+   finissent par passer à la ligne et la boîte GRANDIT quand on cherche à la
+   réduire ; il fallait alors une recherche par essais mesurés pour compenser,
+   et le moindre `font-size` oublié (celui de `.param-value`, par exemple)
+   ressortait comme un élément qui refuse de rapetisser.
+
+   Le facteur vaut 1 dès que tout tient : l'aspect grand écran est alors celui
+   d'origine au pixel près.
+
+   Le titre « Source » est le seul écart à l'homothétie : purement décoratif,
+   on récupère sa hauteur plutôt que de rapetisser davantage ce qui doit
+   rester lisible et cliquable (seuil : SRC_S_NOTITLE dans tube.js). ────── */
+#anim-area.src-tiny #source-box .section-title {
+  display: none;
+}
+
 
 /* Canvas tube : ligne 2 / col 2 */
 #tube-canvas-wrap {
@@ -410,6 +474,23 @@ main {
 #left-splitter:hover,
 #left-splitter.dragging {
   background: #2a6aaa;
+}
+
+/* Zone d'animation escamotée (cf. tube.js, _setAnimCollapsed) : le splitter
+   se retrouve au ras du bord supérieur de #left-col, sans rien au-dessus pour
+   le distinguer — un clic qui viserait précisément ses 6 px de haut serait
+   pénible à réussir. `::after`, en position absolue, élargit sa zone
+   cliquable vers le bas SANS agrandir sa boîte visuelle (donc sans repousser
+   #graph-area) : le survol/clic reste possible sur une bande plus généreuse,
+   qui empiète légèrement sur le haut du graphe plutôt que sur une zone
+   d'animation qui, ici, n'existe plus. */
+#left-col.anim-collapsed #left-splitter::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 16px;
 }
 
 /* ── Graphe masqué (bouton "Afficher graphe", onglet Corde) ─────────

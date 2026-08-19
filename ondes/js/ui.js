@@ -838,6 +838,12 @@ function _applyShowGraphCorde() {
     // même après avoir cliqué sur « Afficher graphe ».
     document.documentElement.classList.remove('init-corde-graph-hidden');
 
+    // Rétablit la répartition réglée par l'utilisateur, ou la retire quand
+    // le graphe est masqué : sans ça, une hauteur inline laissée par un drag
+    // précédent figerait #anim-area et laisserait une bande vide sous
+    // l'animation, là où le graphe se trouvait.
+    applySplitFrac(splitFrac);
+
     scheduleResizeTube();
     resizeGraph();
 }
@@ -1050,6 +1056,15 @@ function setMainTab(tab) {
     // posée dans <head> ne doit pas survivre au premier calcul de l'état réel.
     document.documentElement.classList.remove('init-corde-graph-hidden');
 
+    // La box source n'a pas le même contenu d'un onglet à l'autre, donc pas la
+    // même hauteur : il faut réajuster son échelle. Le ResizeObserver, lui, ne
+    // verrait rien — la taille de #anim-area, elle, n'a pas changé.
+    _applySourceScale();
+
+    // La répartition réglée au splitter est posée ou retirée selon que le
+    // graphe est visible dans ce nouvel onglet (cf. applySplitFrac).
+    applySplitFrac(splitFrac);
+
     // ── Resize pour adapter les canvas au tab ─────────────────────────
     if (tab === 'corde') {
         resizeCorde();
@@ -1087,11 +1102,12 @@ function init() {
     resizeVagues();
     resizeGraph();
 
+    // La répartition mémorisée est en flex-grow : elle suit le
+    // redimensionnement d'elle-même. On la réapplique tout de même pour la
+    // reborner — un plancher qui tenait dans l'ancienne hauteur peut ne
+    // plus tenir dans la nouvelle.
     window.addEventListener('resize', function() {
-        var animArea  = document.getElementById('anim-area');
-        var graphArea = document.getElementById('graph-area');
-        if (animArea)  { animArea.style.flex  = ''; animArea.style.height  = ''; }
-        if (graphArea) { graphArea.style.flex = ''; graphArea.style.height = ''; }
+        applySplitFrac(splitFrac);
         scheduleResizeTube();
     });
 
