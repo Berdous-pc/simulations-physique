@@ -463,8 +463,7 @@ function _drawDpxGraph(ctx, W, H) {
 function _drawDptGraph(ctx, W, H) {
     var d1 = _dptBuf(1);
     var d2 = _dptBuf(2);
-    var hasData = (sim.beacon1.active && d1.n > 1) ||
-                  (sim.beacon2.active && d2.n > 1);
+    var hasData = sim.beacon1.active || sim.beacon2.active;
 
     if (!hasData) {
         // Message d'aide
@@ -1072,8 +1071,7 @@ function _drawYxGraph(ctx, W, H) {
 function _drawYtGraph(ctx, W, H) {
     var d1 = _ytBufCorde(1);
     var d2 = _ytBufCorde(2);
-    var hasData = (simCorde.beacon1.active && d1.n > 1) ||
-                  (simCorde.beacon2.active && d2.n > 1);
+    var hasData = simCorde.beacon1.active || simCorde.beacon2.active;
 
     if (!hasData) {
         ctx.fillStyle = '#7a8a96';

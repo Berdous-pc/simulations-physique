@@ -926,7 +926,7 @@ function _drawYtGraphVagues(ctx, W, H) {
     var d2   = _ytBuf(2);
     var b1ok = simVagues.beacon1.active && simVagues.beacon1.snapped;
     var b2ok = simVagues.beacon2.active && simVagues.beacon2.snapped;
-    var hasData = (b1ok && d1.n > 1) || (b2ok && d2.n > 1);
+    var hasData = b1ok || b2ok;
 
     if (!hasData) {
         var msg    = 'Activer une balise et la positionner sur l\'axe x pour visualiser le graphe';
