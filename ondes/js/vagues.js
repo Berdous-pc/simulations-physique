@@ -89,7 +89,6 @@ var simVagues = {
     yxSig         : null,    // signature de l'état ayant produit yxX/yxY (anti-recalcul)
     ytBuf1        : null,    // tampon circulaire série temporelle balise 1
     ytBuf2        : null,    // tampon circulaire série temporelle balise 2
-    ytTimeOrigin  : 0,
 
     // ── Vue graphe ───────────────────────────────────────────────────
     graphView        : { xMin: 0, xMax: 5, yMin: -1, yMax: 1 },
@@ -1009,8 +1008,8 @@ function _drawYtGraphVagues(ctx, W, H) {
     ctx.rect(GM.left, GM.top, pW, pH);
     ctx.clip();
 
-    var tOrigin = simVagues.ytTimeOrigin || 0;
     var tNow    = simVagues.simTime;
+    var tOrigin = Math.max(0, tNow - 5);
     // Point "vivant" ajouté en tête de chaque courbe : sans lui, la pointe du tracé
     // n'avance qu'au rythme des échantillons enregistrés (VAGUES_YT_SAMPLE_DT), ce
     // qui saute visiblement en ralenti (le temps simulé progresse alors moins vite
@@ -1123,7 +1122,7 @@ function _drawBothLinksVagues(ctx, W, H, half, sep) {
 
         // Point sur y(t) : position du curseur temporel dans la fenêtre 0–5 s
         var WINDOW   = 5;
-        var tOrigin  = simVagues.ytTimeOrigin || 0;
+        var tOrigin  = Math.max(0, simVagues.simTime - WINDOW);
         var tLocal   = Math.max(0, Math.min(WINDOW, simVagues.simTime - tOrigin));
         var xDpt     = (half + sep) + GM.left + (tLocal / WINDOW) * pW_r;
 
@@ -1211,7 +1210,7 @@ function _drawSnappedHoverVagues_yt(ctx, W, H) {
     if (!graphHoverPos) return;
     ctx.save();
     var WINDOW  = 5;
-    var tOrigin = simVagues.ytTimeOrigin || 0;
+    var tOrigin = Math.max(0, simVagues.simTime - WINDOW);
     var yMax = 3 * 1.12, yMin = -yMax;
     _updateFontSizes(ctx, W, H, yMin, yMax);
     GM.left = _calcLeftMarginRaw(ctx, yMin, yMax) + _gFontTitle + 8;
@@ -1303,7 +1302,6 @@ function resetVagues() {
     // que lastYtUpdateV reste à la valeur atteinte avant le reset — plus aucun
     // échantillon n'était enregistré tant que le temps n'avait pas rattrapé.
     lastYtUpdateV            = 0;
-    simVagues.ytTimeOrigin   = 0;
     simVagues.yxN            = 0;
     simVagues.yxSig          = null;
     simVagues.graphView      = { xMin: 0, xMax: 5, yMin: -1, yMax: 1 };

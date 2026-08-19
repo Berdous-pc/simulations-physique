@@ -323,7 +323,6 @@ var sim = {
     dpxSig    : null,
     dptBuf1   : null,    // tampon circulaire — série temporelle balise 1
     dptBuf2   : null,    // tampon circulaire — série temporelle balise 2
-    dptTimeOrigin : 0,   // sim.simTime au dernier reset du graphe ΔP(t)
 
     // ── Vue graphe ΔP(t) ─────────────────────────────────────────────
     graphView        : { xMin: 0, xMax: 5, yMin: -1, yMax: 1 },
@@ -770,7 +769,6 @@ var simCorde = {
     yxSig     : null,
     ytBuf1    : null,    // tampon circulaire — série temporelle balise 1
     ytBuf2    : null,    // tampon circulaire — série temporelle balise 2
-    ytTimeOrigin : 0,    // simTime au dernier reset du graphe y(t)
 
     // ── Vue graphe y(t) ──────────────────────────────────────────────
     graphView        : { xMin: 0, xMax: 5, yMin: -1, yMax: 1 },
@@ -983,7 +981,6 @@ function resetAnimCorde() {
     _srcClear(simCorde);
     _ytClearCorde(1);
     _ytClearCorde(2);
-    simCorde.ytTimeOrigin       = 0;
     simCorde.yxN                = 0;
     simCorde.yxSig              = null;
     simCorde.graphView          = { xMin: 0, xMax: 5, yMin: -1, yMax: 1 };
@@ -1131,7 +1128,6 @@ function resetAnim() {
     _srcClear(sim);
     _dptClear(1);
     _dptClear(2);
-    sim.dptTimeOrigin      = 0;
     sim.dpxN               = 0;
     sim.dpxSig             = null;
     sim.graphView          = { xMin: 0, xMax: 5, yMin: -1, yMax: 1 };

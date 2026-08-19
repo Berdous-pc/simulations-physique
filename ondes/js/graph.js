@@ -325,8 +325,8 @@ function _drawBothLinks(ctx, W, H, half, sep) {
         return GM.top + (1 - (dp - yMin) / (yMax - yMin)) * pH;
     }
 
-    var tOrigin = sim.dptTimeOrigin || 0;
     var WINDOW  = 5;
+    var tOrigin = Math.max(0, sim.simTime - WINDOW);
 
     var beacons = [];
     if (sim.beacon1.active) beacons.push({ beacon: sim.beacon1, color: '#e07020' });
@@ -475,7 +475,11 @@ function _drawDptGraph(ctx, W, H) {
         return;
     }
 
-    // ── Fenêtre fixe 0–5 s (cyclique, type oscilloscope) ─────────────
+    // ── Fenêtre glissante de 5 s ───────────────────────────────────────
+    // L'axe reste gradué en temps local 0–5 (« il y a 5 s » → « maintenant »),
+    // mais l'origine tOrigin (cf. plus bas) avance en continu avec simTime :
+    // les données défilent sous des graduations fixes, façon sismographe,
+    // au lieu de se couper net toutes les 5 s (ancien comportement cyclique).
     var xMin = 0;
     var xMax = 5;
     sim.graphView.xMin = xMin;   // mis à jour pour le réticule et le hover snappé
@@ -516,8 +520,8 @@ function _drawDptGraph(ctx, W, H) {
     ctx.rect(GM.left, GM.top, pW, pH);
     ctx.clip();
 
-    var tOrigin = sim.dptTimeOrigin || 0;
     var tNow    = sim.simTime;
+    var tOrigin = Math.max(0, tNow - 5);
     // Point "vivant" en tête de courbe (cf. correctif équivalent sur Vagues) :
     // sans lui, la pointe n'avance qu'au rythme des échantillons enregistrés
     // (un pas sur deux), ce qui saute visiblement en ralenti.
@@ -625,7 +629,7 @@ function _drawSnappedHover_dpt(ctx, W, H, mx, my, pW, pH) {
     function py(v) { return GM.top  + (1 - (v - yMin) / (yMax - yMin)) * pH; }
 
     var WINDOW  = 5;
-    var tOrigin = sim.dptTimeOrigin || 0;
+    var tOrigin = Math.max(0, sim.simTime - WINDOW);
 
     // Temps local (0–5) correspondant à la position X du curseur
     var tCursor = xMin + (mx - GM.left) / pW * (xMax - xMin);
@@ -1119,8 +1123,8 @@ function _drawYtGraph(ctx, W, H) {
     ctx.rect(GM.left, GM.top, pW, pH);
     ctx.clip();
 
-    var tOrigin = simCorde.ytTimeOrigin || 0;
     var tNow    = simCorde.simTime;
+    var tOrigin = Math.max(0, tNow - 5);
     // Point "vivant" en tête de courbe (cf. correctif équivalent sur Vagues/Son) :
     // sans lui, la pointe n'avance qu'au rythme des échantillons enregistrés,
     // ce qui saute visiblement en ralenti.
@@ -1261,8 +1265,8 @@ function _drawBothLinksYt(ctx, W, H, half, sep) {
         return GM.top + (1 - (y_cm - yMin) / (yMax - yMin)) * pH;
     }
 
-    var tOrigin = simCorde.ytTimeOrigin || 0;
     var WINDOW  = 5;
+    var tOrigin = Math.max(0, simCorde.simTime - WINDOW);
 
     var beacons = [];
     if (simCorde.beacon1.active) beacons.push({ beacon: simCorde.beacon1, color: '#e07020' });
@@ -1335,7 +1339,7 @@ function _drawSnappedHoverCorde_yt(ctx, W, H, mx, my, pW, pH) {
     var yMin    = simCorde.graphView.yMin;
     var yMax    = simCorde.graphView.yMax;
     var WINDOW  = 5;
-    var tOrigin = simCorde.ytTimeOrigin || 0;
+    var tOrigin = Math.max(0, simCorde.simTime - WINDOW);
 
     function px(v) { return GM.left + (v - xMin) / (xMax - xMin) * pW; }
     function py(v) { return GM.top  + (1 - (v - yMin) / (yMax - yMin)) * pH; }

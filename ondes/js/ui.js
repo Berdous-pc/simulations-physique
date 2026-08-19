@@ -62,10 +62,6 @@ function loop(ts) {
                 _srcTickSon = 1 - _srcTickSon;
                 if (_srcTickSon === 0) updateDptData(lastSrcUpdateSon);
             }
-
-            if (sim.sourceMode === 'sinus' && sim.simTime - sim.dptTimeOrigin >= 5) {
-                sim.dptTimeOrigin += 5;
-            }
         }
 
         // Inutile de reconstruire la courbe ΔP(x) quand seul ΔP(t) est
@@ -130,11 +126,6 @@ function loop(ts) {
             // freeInc laissent sinon une dérive d'arrondi qui ferait diverger
             // la boule du curseur au fil des frames.
             if (freeInc !== 0) simCorde.freeY = simCorde.freeTargetY;
-
-            if ((simCorde.sourceMode === 'sinus' || simCorde.sourceMode === 'periodic') &&
-                    simCorde.simTime - simCorde.ytTimeOrigin >= 5) {
-                simCorde.ytTimeOrigin += 5;
-            }
         }
 
         // Inutile de reconstruire la courbe y(x) quand seul y(t) est affiché
@@ -159,10 +150,6 @@ function loop(ts) {
             while (simVagues.simTime - lastYtUpdateV >= VAGUES_YT_SAMPLE_DT) {
                 lastYtUpdateV += VAGUES_YT_SAMPLE_DT;
                 updateYtDataVagues(lastYtUpdateV);
-            }
-
-            if (simVagues.simTime - simVagues.ytTimeOrigin >= 5) {
-                simVagues.ytTimeOrigin += 5;
             }
         }
 
@@ -206,7 +193,6 @@ function _stopEmissionSon() {
 //  superpose une nouvelle perturbation.
 function _resetDptWindowSonIfQuiet() {
     if (!sonIsQuiet()) return;
-    sim.dptTimeOrigin = sim.simTime;
     _dptClear(1);
     _dptClear(2);
 }
@@ -423,7 +409,6 @@ function _stopEmissionCorde() {
 //  on superpose une nouvelle perturbation.
 function _resetYtWindowCordeIfQuiet() {
     if (!cordeIsQuiet()) return;
-    simCorde.ytTimeOrigin = simCorde.simTime;
     _ytClearCorde(1);
     _ytClearCorde(2);
 }
