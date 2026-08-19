@@ -135,14 +135,16 @@
         <div id="source-son">
           <div class="section-title">Source</div>
           <div class="source-btns">
-            <button class="btn btn-toggle-one" id="btn-mode-impulse"
-                    onclick="sendImpulse()">
-              Impulsion
+            <button class="btn btn-toggle-one" id="btn-source-active-son"
+                    onclick="toggleSourceActiveSon()">
+              Activer
             </button>
-            <button class="btn btn-toggle-one" id="btn-mode-sinus"
-                    onclick="toggleSinusoidal()">
-              Sinusoïdale
-            </button>
+            <select class="select-mode" id="sel-mode-son"
+                    onchange="onSourceModeChangeSon()">
+              <option value="impulse">Impulsion</option>
+              <option value="sinus">Sinusoïdale</option>
+              <option value="periodic">Périodique</option>
+            </select>
           </div>
           <div class="param-row" id="freq-row">
             <label>
@@ -684,9 +686,9 @@
                 title="Afficher les instructions">▲</button>
       </div>
       <div class="panel-hint-body" id="panel-hint-son-body">
-        <strong>Son :</strong> choisissez le mode <em>Impulsion</em> ou <em>Sinusoïdale</em> dans la box Source —
-        l'émission démarre aussitôt.
-        En mode Impulsion, chaque appui envoie une nouvelle perturbation.
+        <strong>Son :</strong> choisissez le mode de la source — <em>Impulsion</em>,
+        <em>Sinusoïdale</em> ou <em>Périodique</em> — dans le sélecteur, puis appuyez
+        sur <em>Activer</em>. En mode Impulsion, chaque appui envoie une nouvelle perturbation.
         Ajustez ρ et K pour modifier la vitesse de l'onde.
         Activez les <strong>balises</strong> (Balise 1/2) puis basculez en mode
         <em>ΔP(t)</em> pour observer l'évolution de la surpression au fil du temps.

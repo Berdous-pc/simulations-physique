@@ -90,6 +90,7 @@ function _srcAlloc(s) {
         s.srcD = new Float32Array(SRC_CAP);
         s.srcS = new Float64Array(SRC_CAP);
         s.srcA = new Float32Array(SRC_CAP);
+        s.srcQ = new Float32Array(SRC_CAP);
     }
 }
 
@@ -112,13 +113,18 @@ function _srcClear(s) {
 // dans l'unité de longueur de l'onglet (m/s pour la Corde, cm/s pour le Son).
 // aux = grandeur auxiliaire figée à l'émission, propre à l'onglet (le Son y
 // range le nombre d'onde, cf. stepSourceSon ; la Corde n'en a pas l'usage).
-function _srcPush(s, t, d, cAdvance, aux) {
+// auxQ = 2e grandeur auxiliaire, réservée au Son (cf. PERIODIC_DP_FACTOR) :
+// facteur correcteur de ΔP figé à l'émission, propre au mode de la source
+// à cet instant — nécessaire pour qu'une portion d'onde émise en Périodique
+// garde SA correction même après un changement de mode.
+function _srcPush(s, t, d, cAdvance, aux, auxQ) {
     _srcAlloc(s);
     if (d !== 0) s.lastEmitT = t;
     s.srcSCur += cAdvance * SRC_DT;
     s.srcD[s.srcHead] = d;
     s.srcS[s.srcHead] = s.srcSCur;
     s.srcA[s.srcHead] = aux || 0;
+    s.srcQ[s.srcHead] = auxQ || 1;
     s.srcHead = (s.srcHead + 1) % SRC_CAP;
     if (s.srcN < SRC_CAP) s.srcN++;
     s.srcTNew = t;
@@ -152,11 +158,12 @@ function _srcSAtTime(s, t, cNow) {
 // Objet de sortie réutilisé d'un appel à l'autre : la fonction est appelée
 // quelques milliers de fois par frame, allouer y serait coûteux. La valeur
 // renvoyée doit donc être consommée immédiatement.
-var _srcOut = { d: 0, a: 0 };
+var _srcOut = { d: 0, a: 0, q: 1 };
 
 function _srcSampleAtS(s, sT) {
     _srcOut.d = 0;
     _srcOut.a = 0;
+    _srcOut.q = 1;
 
     var n = s.srcN;
     if (n === 0) return _srcOut;
@@ -167,6 +174,7 @@ function _srcSampleAtS(s, sT) {
     if (sT >= s.srcS[iLast]) {
         _srcOut.d = s.srcD[iLast];
         _srcOut.a = s.srcA[iLast];
+        _srcOut.q = s.srcQ[iLast];
         return _srcOut;
     }
 
@@ -184,6 +192,7 @@ function _srcSampleAtS(s, sT) {
 
     _srcOut.d = s.srcD[iA] + (s.srcD[iB] - s.srcD[iA]) * f;
     _srcOut.a = s.srcA[iA] + (s.srcA[iB] - s.srcA[iA]) * f;
+    _srcOut.q = s.srcQ[iA] + (s.srcQ[iB] - s.srcQ[iA]) * f;
     return _srcOut;
 }
 
@@ -243,15 +252,20 @@ var sim = {
     paused      : false,   // démarre en marche (agitation thermique visible)
     simTime     : 0,       // temps simulé cumulé (s)
 
-    // ── Mode source : null | 'impulse' | 'sinus' ────────────────────
+    // ── Mode source : null | 'impulse' | 'sinus' | 'periodic' ───────────
     sourceMode        : null,   // aucun mode actif au chargement
     impulsePropagating: false,  // true = une impulsion est en cours de propagation
+    sourceActiveUntil : 0,      // fin du mouvement de la membrane (mode Impulsion)
 
     // ── Source — composante sinusoïdale ─────────────────────────────
     //  sinPhase : phase accumulée (rad), jamais recalculée depuis un instant
     //  de départ — changer f n'introduit donc aucun saut de phase.
     sinusoidalActive : false,    // oscillation en cours
     sinPhase         : 0,
+
+    // ── Source — composante périodique non sinusoïdale (multi-lobes) ────
+    periodicActive : false,
+    periodicPhase  : 0,
 
     // ── Source — impulsions (superposables) ─────────────────────────
     // Chaque entrée : { startTime }  (1 période de sinus = T_IMPULSE)
@@ -377,6 +391,14 @@ function stepSourceSon(t) {
         d += Math.sin(sim.sinPhase);
     }
 
+    // ── Composante périodique non sinusoïdale (multi-lobes, asymétrique) ──
+    if (sim.periodicActive) {
+        sim.periodicPhase += 2 * Math.PI * sim.freq * SRC_DT;
+        if (sim.periodicPhase > 2 * Math.PI) sim.periodicPhase -= 2 * Math.PI;
+        var p = sim.periodicPhase;
+        d += PERIODIC_NORM * (Math.sin(p) + 0.6 * Math.sin(3 * p) + 0.35 * Math.sin(2 * p));
+    }
+
     // ── Composantes impulsions (superposables) ────────────────────────
     // Forme du déplacement membranaire : (1 − cos(2π × τ/T)) / 2
     // → démarre à 0, monte doucement, revient à 0 en T (enveloppe demi-cosinus).
@@ -400,7 +422,12 @@ function stepSourceSon(t) {
 
     if (d !== 0 && k_cm > 0 && k_cm < sim.srcKMin) sim.srcKMin = k_cm;
 
-    _srcPush(sim, t, d, sim.c_cms, k_cm);
+    // Facteur correcteur de ΔP figé à l'émission (cf. PERIODIC_DP_FACTOR) :
+    // 1 pour Impulsion/Sinusoïdale, où la normalisation de waveDeltaP est déjà
+    // exacte ; le facteur propre au signal multi-harmoniques en Périodique.
+    var dpFactor = sim.periodicActive ? PERIODIC_DP_FACTOR : 1;
+
+    _srcPush(sim, t, d, sim.c_cms, k_cm, dpFactor);
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -493,11 +520,17 @@ function waveDeltaP(x_px, t_sim) {
     // toute la courbe, y compris la partie déjà propagée.
     // (On copie la valeur : _srcOut est réutilisé par les appels suivants.)
     var cmPerPx = TUBE_LENGTH_CM / sim.tubeLength;
-    var k_cm = _srcSampleAtS(sim, _srcSAtTime(sim, t_sim, sim.c_cms) - x_px * cmPerPx).a;
+    var smp  = _srcSampleAtS(sim, _srcSAtTime(sim, t_sim, sim.c_cms) - x_px * cmPerPx);
+    var k_cm = smp.a;
     if (k_cm <= 0) return 0;
 
     var aEff = (sim.sourceMode === 'impulse') ? sim.memAmplitude / 2 : sim.memAmplitude;
     var kEff = k_cm * cmPerPx;   // rad/px
+    // Facteur correcteur figé à l'émission (1 en Impulsion/Sinusoïdale, cf.
+    // PERIODIC_DP_FACTOR en Périodique) : ΔP dérive le déplacement, ce qui
+    // amplifie chaque harmonique du signal multi-lobes par son propre rang —
+    // sans cette correction, ΔP en Périodique dépasserait largement dpMax.
+    var dpFactor = smp.q;
 
     // ── Pas h adaptatif ───────────────────────────────────────────────
     // h doit être petit devant λ = 2π/k pour que la DFC soit précise.
@@ -514,7 +547,7 @@ function waveDeltaP(x_px, t_sim) {
     // Normalisation : ΔP_max théorique = K × A_eff × k_eff
     // Correction du biais DFC : la DFC sous-estime ∂u/∂x d'un facteur sinc(k·h).
     // On compense en divisant dpMax par sinc(k·h) = sin(k·h)/(k·h).
-    var dpMax = sim.K * aEff * kEff;
+    var dpMax = sim.K * aEff * kEff * dpFactor;
     if (dpMax > 1e-9) {
         var kh     = kEff * h;
         var sincKH = (kh > 1e-6) ? Math.sin(kh) / kh : 1.0;
@@ -645,6 +678,16 @@ var CORDE_Y_AXIS_CM   = 1.12 * CORDE_AMPL_CM_MAX;
 // ressemblent plus. Normalise le pic (trouvé numériquement, ≈ 1,507097)
 // pour que l'amplitude affichée corresponde au déplacement maximal réel.
 var PERIODIC_NORM = 1 / 1.507097;
+
+// Facteur de correction pour ΔP (Son) en mode Périodique : ΔP ∝ ∂u/∂x, et
+// dériver amplifie chaque harmonique n par son propre rang n (harmonique 3 ×3,
+// harmonique 2 ×2). Le pic de l'enveloppe dérivée — cos(p) + 1,8·cos(3p) +
+// 0,7·cos(2p), atteint en p = 0 où les trois cosinus valent 1 — vaut donc
+// exactement 3,5 (au lieu de 1 pour un sinus pur), à multiplier par
+// PERIODIC_NORM pour rester cohérent avec l'amplitude normalisée du
+// déplacement. Sans cette correction, ΔP en Périodique dépasserait largement
+// l'échelle calée sur la Sinusoïdale (cf. waveDeltaP).
+var PERIODIC_DP_FACTOR = 3.5 * PERIODIC_NORM;
 
 // ── État global de la simulation corde ────────────────────────────────
 var simCorde = {
@@ -1154,8 +1197,11 @@ function resetAnim() {
     sim.sourceMode         = null;
     sim.sinusoidalActive   = false;
     sim.sinPhase           = 0;
+    sim.periodicActive     = false;
+    sim.periodicPhase      = 0;
     sim.impulses           = [];
     sim.impulsePropagating = false;
+    sim.sourceActiveUntil  = 0;
     _srcClear(sim);
     _dptClear(1);
     _dptClear(2);
