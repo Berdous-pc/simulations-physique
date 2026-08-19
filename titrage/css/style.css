@@ -428,8 +428,11 @@ main {
   transition: max-height 0.25s ease, padding 0.25s ease;
   max-height: 200px;
 }
+/* Texte long (type/réaction, volumes, options, mode Test) : hauteur
+   plafonnée et défilement interne plutôt que de couper la fin du texte. */
 .panel-hint:not(.collapsed) #panel-hint-titrage-body {
-  max-height: 340px;
+  max-height: 220px;
+  overflow-y: auto;
 }
 .panel-hint.collapsed .panel-hint-body {
   max-height: 0; padding-top: 0; padding-bottom: 0;

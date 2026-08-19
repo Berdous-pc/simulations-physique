@@ -1056,9 +1056,18 @@ html.init-corde-graph-hidden #left-splitter {
 .panel-hint-body {
   font-size: clamp(12px, 1.15vw, 15px);
   padding: 0 10px 8px;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: hidden;
   transition: max-height 0.25s ease, padding 0.25s ease;
   max-height: 250px;
+}
+
+/* Texte plus long sur l'onglet Corde (source, atténuation, graphe, balises) :
+   hauteur plafonnée et défilement interne plutôt que de pousser le panneau
+   à grandir indéfiniment (ou de couper la fin du texte). */
+.panel-hint:not(.collapsed) #panel-hint-corde-body {
+  max-height: 220px;
+  overflow-y: auto;
 }
 
 /* État replié */
