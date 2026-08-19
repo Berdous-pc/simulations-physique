@@ -895,7 +895,7 @@ function _drawGridX_vagues(ctx, xMin_px, xMax_px, px, py, pW, pH, max_r_px) {
         ctx.stroke();
 
         ctx.fillStyle = '#7a8a96';
-        ctx.fillText(fmtFR(u, decimals) + ' m', xc, GM.top + pH + 4);
+        ctx.fillText(fmtFR(u, decimals), xc, GM.top + pH + 4);
     }
 }
 

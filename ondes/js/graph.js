@@ -849,7 +849,7 @@ function _drawGridX_dpt(ctx, xMin, xMax, px, py, pW, pH) {
         ctx.stroke();
 
         ctx.fillStyle = '#7a8a96';
-        ctx.fillText(_fmtLabel(t) + ' s', xc, GM.top + pH + 4);
+        ctx.fillText(_fmtLabel(t), xc, GM.top + pH + 4);
     }
 }
 
