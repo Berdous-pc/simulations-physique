@@ -954,7 +954,11 @@ function _drawYtGraphVagues(ctx, W, H) {
         return;
     }
 
-    var xMin = 0, xMax = 5;
+    // ── Fenêtre glissante de 5 s : l'axe (graduations comprises) avance en
+    // continu avec simTime, toujours centré sur les 5 dernières secondes.
+    var tNow = simVagues.simTime;
+    var xMin = Math.max(0, tNow - 5);
+    var xMax = xMin + 5;
     simVagues.graphView.xMin = xMin;
     simVagues.graphView.xMax = xMax;
     var yMax = 3 * 1.12;
@@ -982,7 +986,6 @@ function _drawYtGraphVagues(ctx, W, H) {
         cx.fillRect(GM.left, GM.top, pW, pH);
 
         _drawGridY(cx, yMin, yMax, px, py, pW, pH);
-        _drawGridX_dpt(cx, xMin, xMax, px, py, pW, pH);
         _drawZeroLine(cx, yMin, yMax, px, py, pW);
 
         cx.fillStyle    = '#5a6a78';
@@ -1002,14 +1005,15 @@ function _drawYtGraphVagues(ctx, W, H) {
     });
     ctx.drawImage(chrome, 0, 0, W, H);
 
+    // ── Grille X (glissante, redessinée chaque frame) ──────────────────
+    _drawGridX_dpt(ctx, xMin, xMax, px, py, pW, pH);
+
     // ── Courbes ───────────────────────────────────────────────────────
     ctx.save();
     ctx.beginPath();
     ctx.rect(GM.left, GM.top, pW, pH);
     ctx.clip();
 
-    var tNow    = simVagues.simTime;
-    var tOrigin = Math.max(0, tNow - 5);
     // Point "vivant" ajouté en tête de chaque courbe : sans lui, la pointe du tracé
     // n'avance qu'au rythme des échantillons enregistrés (VAGUES_YT_SAMPLE_DT), ce
     // qui saute visiblement en ralenti (le temps simulé progresse alors moins vite
@@ -1017,9 +1021,9 @@ function _drawYtGraphVagues(ctx, W, H) {
     // nouvel échantillon avant que la pointe ne bondisse). Calculé à la volée,
     // indépendamment de la fréquence de stockage.
     if (b1ok && d1.n > 1)
-        _drawSeriesVagues(ctx, d1, px, py, '#e07020', 2, tOrigin, tNow, _waveFieldRaw(simVagues.beacon1.x, simVagues.beacon1.y) * VAGUES_AMP_CM);
+        _drawSeriesVagues(ctx, d1, px, py, '#e07020', 2, xMin, xMax, tNow, _waveFieldRaw(simVagues.beacon1.x, simVagues.beacon1.y) * VAGUES_AMP_CM);
     if (b2ok && d2.n > 1)
-        _drawSeriesVagues(ctx, d2, px, py, '#2a8a50', 2, tOrigin, tNow, _waveFieldRaw(simVagues.beacon2.x, simVagues.beacon2.y) * VAGUES_AMP_CM);
+        _drawSeriesVagues(ctx, d2, px, py, '#2a8a50', 2, xMin, xMax, tNow, _waveFieldRaw(simVagues.beacon2.x, simVagues.beacon2.y) * VAGUES_AMP_CM);
 
     ctx.restore();
 
@@ -1030,27 +1034,21 @@ function _drawYtGraphVagues(ctx, W, H) {
     _drawLegendVagues(ctx, W, pH);
 }
 
-function _drawSeriesVagues(ctx, buf, px, py, color, lw, tOrigin, liveT, liveY) {
-    var WINDOW = 5;
+function _drawSeriesVagues(ctx, buf, px, py, color, lw, xMin, xMax, liveT, liveY) {
     ctx.beginPath();
     var started = false;
     for (var i = 0; i < buf.n; i++) {
-        var j      = _ytIdx(buf, i);
-        var tLocal = buf.t[j] - tOrigin;
-        if (tLocal < 0 || tLocal > WINDOW) { started = false; continue; }
-        var cx = px(tLocal);
+        var j = _ytIdx(buf, i);
+        var t = buf.t[j];
+        if (t < xMin || t > xMax) { started = false; continue; }
+        var cx = px(t);
         var cy = py(buf.y[j]);
         if (!started) { ctx.moveTo(cx, cy); started = true; }
         else          { ctx.lineTo(cx, cy); }
     }
-    // Extension "vivante" jusqu'à l'instant présent (cf. appelant) — seulement si
-    // elle prolonge le dernier échantillon tracé (pas de saut en arrière au moment
-    // où tOrigin se recale toutes les 5 s).
-    if (liveT !== undefined) {
-        var tLiveLocal = liveT - tOrigin;
-        if (started && tLiveLocal >= 0 && tLiveLocal <= WINDOW) {
-            ctx.lineTo(px(tLiveLocal), py(liveY));
-        }
+    // Extension "vivante" jusqu'à l'instant présent (cf. appelant).
+    if (liveT !== undefined && started && liveT >= xMin && liveT <= xMax) {
+        ctx.lineTo(px(liveT), py(liveY));
     }
     ctx.strokeStyle = color;
     ctx.lineWidth   = lw;
@@ -1209,15 +1207,15 @@ function _drawSnappedHoverVagues_yx(ctx, W, H) {
 function _drawSnappedHoverVagues_yt(ctx, W, H) {
     if (!graphHoverPos) return;
     ctx.save();
-    var WINDOW  = 5;
-    var tOrigin = Math.max(0, simVagues.simTime - WINDOW);
     var yMax = 3 * 1.12, yMin = -yMax;
     _updateFontSizes(ctx, W, H, yMin, yMax);
     GM.left = _calcLeftMarginRaw(ctx, yMin, yMax) + _gFontTitle + 8;
     var pW = W - GM.left - GM.right, pH = H - GM.top - GM.bottom;
     if (pW < 10 || pH < 10) { ctx.restore(); return; }
 
-    var xMin = 0, xMax = 5;
+    // xMin/xMax en temps absolu, cf. simVagues.graphView mis à jour par
+    // _drawYtGraphVagues (fenêtre glissante de 5 s).
+    var xMin = simVagues.graphView.xMin, xMax = simVagues.graphView.xMax;
     function px(v) { return GM.left + (v - xMin) / (xMax - xMin) * pW; }
     function py(v) { return GM.top  + (1 - (v - yMin) / (yMax - yMin)) * pH; }
 
@@ -1232,19 +1230,19 @@ function _drawSnappedHoverVagues_yt(ctx, W, H) {
     for (var s = 0; s < series.length; s++) {
         var buf = series[s].buf;
         for (var i = 0; i < buf.n; i++) {
-            var j      = _ytIdx(buf, i);
-            var tLocal = buf.t[j] - tOrigin;
-            if (tLocal < 0 || tLocal > WINDOW) continue;
+            var j = _ytIdx(buf, i);
+            var t = buf.t[j];
+            if (t < xMin || t > xMax) continue;
             var yVal = buf.y[j];
-            var bx   = px(tLocal), by = py(yVal);
+            var bx   = px(t), by = py(yVal);
             var byc  = Math.max(GM.top, Math.min(GM.top + pH, by));
             var d    = (bx - mx) * (bx - mx) + (byc - my) * (byc - my);
-            if (d < winnerDist) { winnerDist = d; winner = { tLocal: tLocal, y: yVal }; winnerColor = series[s].color; }
+            if (d < winnerDist) { winnerDist = d; winner = { t: t, y: yVal }; winnerColor = series[s].color; }
         }
     }
     if (!winner) { ctx.restore(); return; }
 
-    var bx2  = px(winner.tLocal);
+    var bx2  = px(winner.t);
     var byc2 = Math.max(GM.top, Math.min(GM.top + pH, py(winner.y)));
     ctx.setLineDash([4, 4]);
     ctx.strokeStyle = 'rgba(60,60,60,0.45)';
@@ -1256,7 +1254,7 @@ function _drawSnappedHoverVagues_yt(ctx, W, H) {
     ctx.beginPath();
     ctx.arc(bx2, byc2, 5, 0, Math.PI * 2);
     ctx.fill();
-    var label = '(' + fmtFR(winner.tLocal, 2) + ' s, y = ' + fmtFR(winner.y, 2) + ')';
+    var label = '(' + fmtFR(winner.t, 2) + ' s, y = ' + fmtFR(winner.y, 2) + ')';
     ctx.font         = _gFontHover + 'px monospace';
     ctx.fillStyle    = winnerColor;
     ctx.textBaseline = 'bottom';

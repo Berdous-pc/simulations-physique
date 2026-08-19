@@ -475,13 +475,14 @@ function _drawDptGraph(ctx, W, H) {
         return;
     }
 
-    // ── Fenêtre glissante de 5 s ───────────────────────────────────────
-    // L'axe reste gradué en temps local 0–5 (« il y a 5 s » → « maintenant »),
-    // mais l'origine tOrigin (cf. plus bas) avance en continu avec simTime :
-    // les données défilent sous des graduations fixes, façon sismographe,
-    // au lieu de se couper net toutes les 5 s (ancien comportement cyclique).
-    var xMin = 0;
-    var xMax = 5;
+    // ── Fenêtre glissante de 5 s : l'axe (graduations comprises) avance en
+    // continu avec simTime, toujours centré sur les 5 dernières secondes —
+    // façon sismographe, sans coupure toutes les 5 s (ancien comportement
+    // cyclique). La grille X n'est donc plus mise en cache : elle dépend de
+    // xMin/xMax qui changent à chaque frame.
+    var tNow = sim.simTime;
+    var xMin = Math.max(0, tNow - 5);
+    var xMax = xMin + 5;
     sim.graphView.xMin = xMin;   // mis à jour pour le réticule et le hover snappé
     sim.graphView.xMax = xMax;
     var yMin = -1.12;
@@ -502,17 +503,19 @@ function _drawDptGraph(ctx, W, H) {
     function px(x_data) { return GM.left + (x_data - xMin) / (xMax - xMin) * pW; }
     function py(y_data) { return GM.top  + (1 - (y_data - yMin) / (yMax - yMin)) * pH; }
 
-    // ── Décor (mis en cache) ──────────────────────────────────────────
+    // ── Décor (mis en cache — indépendant de la fenêtre temporelle) ────
     var key = W + '|' + H + '|' + GM.left;
     var chrome = _drawGraphChrome(_sonChrome, 'dpt', key, W, H, function (cx) {
         cx.fillStyle = '#ffffff';
         cx.fillRect(GM.left, GM.top, pW, pH);
         _drawGridY(cx, yMin, yMax, px, py, pW, pH);
-        _drawGridX_dpt(cx, xMin, xMax, px, py, pW, pH);
         _drawZeroLine(cx, yMin, yMax, px, py, pW);
         _drawAxisLabels_dpt(cx, W, H, GM, pW, pH, xMin, xMax, yMin, yMax, px, py);
     });
     ctx.drawImage(chrome, 0, 0, W, H);
+
+    // ── Grille X (glissante, redessinée chaque frame) ──────────────────
+    _drawGridX_dpt(ctx, xMin, xMax, px, py, pW, pH);
 
     // ── Tracé des séries ──────────────────────────────────────────────
     ctx.save();
@@ -520,15 +523,13 @@ function _drawDptGraph(ctx, W, H) {
     ctx.rect(GM.left, GM.top, pW, pH);
     ctx.clip();
 
-    var tNow    = sim.simTime;
-    var tOrigin = Math.max(0, tNow - 5);
     // Point "vivant" en tête de courbe (cf. correctif équivalent sur Vagues) :
     // sans lui, la pointe n'avance qu'au rythme des échantillons enregistrés
     // (un pas sur deux), ce qui saute visiblement en ralenti.
     if (sim.beacon1.active && d1.n > 1)
-        _drawSeries(ctx, d1, px, py, '#e07020', 2, tOrigin, tNow, waveDeltaP(sim.beacon1.x - sim.tubeLeft, tNow));
+        _drawSeries(ctx, d1, px, py, '#e07020', 2, xMin, xMax, tNow, waveDeltaP(sim.beacon1.x - sim.tubeLeft, tNow));
     if (sim.beacon2.active && d2.n > 1)
-        _drawSeries(ctx, d2, px, py, '#2a8a50', 2, tOrigin, tNow, waveDeltaP(sim.beacon2.x - sim.tubeLeft, tNow));
+        _drawSeries(ctx, d2, px, py, '#2a8a50', 2, xMin, xMax, tNow, waveDeltaP(sim.beacon2.x - sim.tubeLeft, tNow));
 
     ctx.restore();
 
@@ -543,27 +544,22 @@ function _drawDptGraph(ctx, W, H) {
 
 // ── Tracé d'une série (tampon circulaire) dans la fenêtre visible ──────
 
-function _drawSeries(ctx, buf, px, py, color, lw, tOrigin, liveT, liveY) {
-    var WINDOW = 5;
+function _drawSeries(ctx, buf, px, py, color, lw, xMin, xMax, liveT, liveY) {
     ctx.beginPath();
     var started = false;
     for (var i = 0; i < buf.n; i++) {
-        var j      = _cbufIdx(buf, i);
-        var tLocal = buf.t[j] - tOrigin;
-        if (tLocal < 0 || tLocal > WINDOW) { started = false; continue; }
-        var cx = px(tLocal);
+        var j = _cbufIdx(buf, i);
+        var t = buf.t[j];
+        if (t < xMin || t > xMax) { started = false; continue; }
+        var cx = px(t);
         var cy = py(buf.y[j]);
         if (!started) { ctx.moveTo(cx, cy); started = true; }
         else          { ctx.lineTo(cx, cy); }
     }
-    // Extension "vivante" jusqu'à l'instant présent — seulement si elle
-    // prolonge le dernier échantillon tracé (pas de saut en arrière au moment
-    // où tOrigin se recale toutes les 5 s).
-    if (liveT !== undefined) {
-        var tLiveLocal = liveT - tOrigin;
-        if (started && tLiveLocal >= 0 && tLiveLocal <= WINDOW) {
-            ctx.lineTo(px(tLiveLocal), py(liveY));
-        }
+    // Extension "vivante" jusqu'à l'instant présent : sans elle, la pointe
+    // n'avance qu'au rythme des échantillons enregistrés.
+    if (liveT !== undefined && started && liveT >= xMin && liveT <= xMax) {
+        ctx.lineTo(px(liveT), py(liveY));
     }
     ctx.strokeStyle = color;
     ctx.lineWidth   = lw;
@@ -628,10 +624,8 @@ function _drawSnappedHover_dpt(ctx, W, H, mx, my, pW, pH) {
     function px(v) { return GM.left + (v - xMin) / (xMax - xMin) * pW; }
     function py(v) { return GM.top  + (1 - (v - yMin) / (yMax - yMin)) * pH; }
 
-    var WINDOW  = 5;
-    var tOrigin = Math.max(0, sim.simTime - WINDOW);
-
-    // Temps local (0–5) correspondant à la position X du curseur
+    // Temps correspondant à la position X du curseur (xMin/xMax déjà en
+    // temps absolu, cf. sim.graphView mis à jour par _drawDptGraph)
     var tCursor = xMin + (mx - GM.left) / pW * (xMax - xMin);
 
     // Candidats pour chaque série active
@@ -647,21 +641,20 @@ function _drawSnappedHover_dpt(ctx, W, H, mx, my, pW, pH) {
     for (var s = 0; s < series.length; s++) {
         var buf = series[s].buf;
         for (var i = 0; i < buf.n; i++) {
-            var j      = _cbufIdx(buf, i);
-            var tLocal = buf.t[j] - tOrigin;
-            if (tLocal < 0 || tLocal > WINDOW) continue;
+            var j = _cbufIdx(buf, i);
+            var t = buf.t[j];
+            if (t < xMin || t > xMax) continue;
             var dpVal = buf.y[j];
-            var bx  = px(tLocal);
+            var bx  = px(t);
             var by  = py(dpVal);
             var byc = Math.max(GM.top, Math.min(GM.top + pH, by));
             var dist = (bx - mx) * (bx - mx) + (byc - my) * (byc - my);
-            if (dist < winnerDist) { winnerDist = dist; winner = { t: tLocal + tOrigin, dp: dpVal }; winnerColor = series[s].color; }
+            if (dist < winnerDist) { winnerDist = dist; winner = { t: t, dp: dpVal }; winnerColor = series[s].color; }
         }
     }
     if (!winner) return;
 
-    var tLocal = winner.t - tOrigin;
-    var bx  = px(tLocal);
+    var bx  = px(winner.t);
     var by  = py(winner.dp);
     var byc = Math.max(GM.top, Math.min(GM.top + pH, by));
 
@@ -680,7 +673,7 @@ function _drawSnappedHover_dpt(ctx, W, H, mx, my, pW, pH) {
     ctx.fill();
 
     // Étiquette
-    var tLbl  = fmtFR(tLocal, 2) + ' s';
+    var tLbl  = fmtFR(winner.t, 2) + ' s';
     var vLbl  = 'ΔP = ' + fmtFR(winner.dp, 3);
     var label = '(' + tLbl + ', ' + vLbl + ')';
     ctx.font         = _gFontHover + 'px monospace';
@@ -1086,8 +1079,11 @@ function _drawYtGraph(ctx, W, H) {
         return;
     }
 
-    var xMin  = 0;
-    var xMax  = 5;
+    // ── Fenêtre glissante de 5 s : l'axe (graduations comprises) avance en
+    // continu avec simTime, toujours centré sur les 5 dernières secondes.
+    var tNow = simCorde.simTime;
+    var xMin = Math.max(0, tNow - 5);
+    var xMax = xMin + 5;
     simCorde.graphView.xMin = xMin;
     simCorde.graphView.xMax = xMax;
     var yMin  = -cordeYAxisCm();
@@ -1105,17 +1101,19 @@ function _drawYtGraph(ctx, W, H) {
     function px(x_data) { return GM.left + (x_data - xMin) / (xMax - xMin) * pW; }
     function py(y_data) { return GM.top  + (1 - (y_data - yMin) / (yMax - yMin)) * pH; }
 
-    // ── Décor (mis en cache) ──────────────────────────────────────────
+    // ── Décor (mis en cache — indépendant de la fenêtre temporelle) ────
     var key = W + '|' + H + '|' + yMin + '|' + yMax + '|' + GM.left;
     var chrome = _drawGraphChrome(_cordeChrome, 'yt', key, W, H, function (cx) {
         cx.fillStyle = '#ffffff';
         cx.fillRect(GM.left, GM.top, pW, pH);
         _drawGridY(cx, yMin, yMax, px, py, pW, pH);
-        _drawGridX_dpt(cx, xMin, xMax, px, py, pW, pH);
         _drawZeroLine(cx, yMin, yMax, px, py, pW);
         _drawAxisLabels_yt(cx, W, H, GM, pW, pH, yMin, yMax);
     });
     ctx.drawImage(chrome, 0, 0, W, H);
+
+    // ── Grille X (glissante, redessinée chaque frame) ──────────────────
+    _drawGridX_dpt(ctx, xMin, xMax, px, py, pW, pH);
 
     // Clip
     ctx.save();
@@ -1123,15 +1121,13 @@ function _drawYtGraph(ctx, W, H) {
     ctx.rect(GM.left, GM.top, pW, pH);
     ctx.clip();
 
-    var tNow    = simCorde.simTime;
-    var tOrigin = Math.max(0, tNow - 5);
     // Point "vivant" en tête de courbe (cf. correctif équivalent sur Vagues/Son) :
     // sans lui, la pointe n'avance qu'au rythme des échantillons enregistrés,
     // ce qui saute visiblement en ralenti.
     if (simCorde.beacon1.active && d1.n > 1)
-        _drawSeriesCorde(ctx, d1, px, py, '#e07020', 2, tOrigin, tNow, cordeDisplacement(simCorde.beacon1.x - simCorde.cordeLeft, tNow));
+        _drawSeriesCorde(ctx, d1, px, py, '#e07020', 2, xMin, xMax, tNow, cordeDisplacement(simCorde.beacon1.x - simCorde.cordeLeft, tNow));
     if (simCorde.beacon2.active && d2.n > 1)
-        _drawSeriesCorde(ctx, d2, px, py, '#2a8a50', 2, tOrigin, tNow, cordeDisplacement(simCorde.beacon2.x - simCorde.cordeLeft, tNow));
+        _drawSeriesCorde(ctx, d2, px, py, '#2a8a50', 2, xMin, xMax, tNow, cordeDisplacement(simCorde.beacon2.x - simCorde.cordeLeft, tNow));
 
     ctx.restore();
 
@@ -1144,24 +1140,20 @@ function _drawYtGraph(ctx, W, H) {
 
 // ── Tracé d'une série y(t) (tampon circulaire) ─────────────────────────
 
-function _drawSeriesCorde(ctx, buf, px, py, color, lw, tOrigin, liveT, liveY) {
-    var WINDOW = 5;
+function _drawSeriesCorde(ctx, buf, px, py, color, lw, xMin, xMax, liveT, liveY) {
     ctx.beginPath();
     var started = false;
     for (var i = 0; i < buf.n; i++) {
-        var j      = _cbufIdx(buf, i);
-        var tLocal = buf.t[j] - tOrigin;
-        if (tLocal < 0 || tLocal > WINDOW) { started = false; continue; }
-        var cx = px(tLocal);
+        var j = _cbufIdx(buf, i);
+        var t = buf.t[j];
+        if (t < xMin || t > xMax) { started = false; continue; }
+        var cx = px(t);
         var cy = py(buf.y[j]);   // tampon déjà en cm
         if (!started) { ctx.moveTo(cx, cy); started = true; }
         else          { ctx.lineTo(cx, cy); }
     }
-    if (liveT !== undefined) {
-        var tLiveLocal = liveT - tOrigin;
-        if (started && tLiveLocal >= 0 && tLiveLocal <= WINDOW) {
-            ctx.lineTo(px(tLiveLocal), py(liveY));
-        }
+    if (liveT !== undefined && started && liveT >= xMin && liveT <= xMax) {
+        ctx.lineTo(px(liveT), py(liveY));
     }
     ctx.strokeStyle = color;
     ctx.lineWidth   = lw;
@@ -1338,8 +1330,6 @@ function _drawSnappedHoverCorde_yt(ctx, W, H, mx, my, pW, pH) {
     var xMax    = simCorde.graphView.xMax;
     var yMin    = simCorde.graphView.yMin;
     var yMax    = simCorde.graphView.yMax;
-    var WINDOW  = 5;
-    var tOrigin = Math.max(0, simCorde.simTime - WINDOW);
 
     function px(v) { return GM.left + (v - xMin) / (xMax - xMin) * pW; }
     function py(v) { return GM.top  + (1 - (v - yMin) / (yMax - yMin)) * pH; }
@@ -1354,22 +1344,21 @@ function _drawSnappedHoverCorde_yt(ctx, W, H, mx, my, pW, pH) {
     for (var s = 0; s < series.length; s++) {
         var buf = series[s].buf;
         for (var i = 0; i < buf.n; i++) {
-            var j      = _cbufIdx(buf, i);
-            var tLocal = buf.t[j] - tOrigin;
-            if (tLocal < 0 || tLocal > WINDOW) continue;
+            var j = _cbufIdx(buf, i);
+            var t = buf.t[j];
+            if (t < xMin || t > xMax) continue;
             var y_cm = buf.y[j];
-            var bx   = px(tLocal);
+            var bx   = px(t);
             var by   = py(y_cm);
             var byc  = Math.max(GM.top, Math.min(GM.top + pH, by));
             var dist = (bx - mx) * (bx - mx) + (byc - my) * (byc - my);
-            if (dist < winnerDist) { winnerDist = dist; winner = { t: tLocal + tOrigin, y: buf.y[j] }; winnerColor = series[s].color; }
+            if (dist < winnerDist) { winnerDist = dist; winner = { t: t, y: buf.y[j] }; winnerColor = series[s].color; }
         }
     }
     if (!winner) return;
 
-    var tLocal = winner.t - tOrigin;
-    var y_cm   = winner.y;
-    var bx  = px(tLocal);
+    var y_cm = winner.y;
+    var bx  = px(winner.t);
     var by  = py(y_cm);
     var byc = Math.max(GM.top, Math.min(GM.top + pH, by));
 
@@ -1385,7 +1374,7 @@ function _drawSnappedHoverCorde_yt(ctx, W, H, mx, my, pW, pH) {
     ctx.arc(bx, byc, 5, 0, Math.PI * 2);
     ctx.fill();
 
-    var tLbl  = fmtFR(tLocal, 2) + ' s';
+    var tLbl  = fmtFR(winner.t, 2) + ' s';
     var vLbl  = 'y = ' + fmtFR(y_cm, 2) + ' cm';
     var label = '(' + tLbl + ', ' + vLbl + ')';
     ctx.font         = _gFontHover + 'px monospace';
