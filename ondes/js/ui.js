@@ -198,6 +198,7 @@ function _stopEmissionSon() {
     sim.sourceMode       = null;
     _syncSourceButtons();
     _syncWavePropsBtnState();
+    _syncLambdaBtnStateSon();
 }
 
 //  Horloge du graphe ΔP(t) : reste en attente (dptTimeOrigin = null, cf.
@@ -238,6 +239,7 @@ function _applySourceModeSon() {
 
     _syncSourceButtons();
     _syncWavePropsBtnState();
+    _syncLambdaBtnStateSon();
     _syncChronoLinkSon(mode);
     _syncChronoUnitsSon();
     _updateChronoSon();
@@ -297,6 +299,7 @@ function sendImpulse() {
 
     _syncSourceButtons();
     _syncWavePropsBtnState();
+    _syncLambdaBtnStateSon();
 }
 
 function toggleSinusoidalSon() {
@@ -313,6 +316,7 @@ function toggleSinusoidalSon() {
 
         _syncSourceButtons();
         _syncWavePropsBtnState();
+        _syncLambdaBtnStateSon();
     }
 }
 
@@ -332,6 +336,7 @@ function togglePeriodicSon() {
 
         _syncSourceButtons();
         _syncWavePropsBtnState();
+        _syncLambdaBtnStateSon();
     }
 }
 
@@ -487,6 +492,65 @@ function togglePressureColor() {
         clearSelection();
     } else {
         if (btnSelect) btnSelect.disabled = false;
+    }
+}
+
+// ── Bouton "Afficher graphe" (Son) ──────────────────────────────────
+// Masque entièrement #graph-area (+ le splitter) pour que la zone
+// d'animation occupe tout l'espace disponible. Même mécanique que côté
+// Corde (cf. toggleShowGraphCorde) : désactivé par défaut.
+function toggleShowGraphSon() {
+    sim.graphVisible = !sim.graphVisible;
+    if (sim.graphVisible) _resetSplitFracToDefault();
+    _applyShowGraphSon();
+}
+
+function _applyShowGraphSon() {
+    var btn = document.getElementById('btn-show-graph-son');
+    if (btn) btn.classList.toggle('active', sim.graphVisible);
+
+    var leftCol = document.getElementById('left-col');
+    if (leftCol) leftCol.classList.toggle('graph-hidden', activeTab === 'son' && !sim.graphVisible);
+
+    // La classe de pré-masquage posée dans <head> (cf. script inline, pour
+    // l'onglet chargé directement au premier paint) ne doit pas survivre au
+    // premier calcul de l'état réel — cf. commentaire équivalent côté Corde.
+    document.documentElement.classList.remove('init-graph-hidden');
+
+    // Rétablit la répartition réglée par l'utilisateur, ou la retire quand
+    // le graphe est masqué.
+    applySplitFrac(splitFrac);
+
+    scheduleResizeTube();
+    resizeGraph();
+}
+
+//  Impulsion n'a pas de fréquence définie : λ = c·T n'aurait aucun sens. On
+//  se base sur le SÉLECTEUR de mode (cf. _sonModeIsImpulse), pas sur
+//  sourceMode : le verrouillage doit s'appliquer dès que le mode est
+//  choisi, même avant toute activation de la source.
+
+// ── Bouton "Afficher la longueur d'onde" (Son) ───────────────────────
+function toggleLambdaSon() {
+    var btn = document.getElementById('btn-lambda-son');
+    if (btn && btn.disabled) return;
+    sim.lambdaVisible = !sim.lambdaVisible;
+    _applyLambdaSon();
+}
+
+function _applyLambdaSon() {
+    var btn = document.getElementById('btn-lambda-son');
+    if (btn) btn.classList.toggle('active', sim.lambdaVisible);
+}
+
+function _syncLambdaBtnStateSon() {
+    var btn = document.getElementById('btn-lambda-son');
+    if (!btn) return;
+    var isImpulse = _sonModeIsImpulse();
+    btn.disabled = isImpulse;
+    if (isImpulse && sim.lambdaVisible) {
+        sim.lambdaVisible = false;
+        _applyLambdaSon();
     }
 }
 
@@ -1019,10 +1083,10 @@ function setCordeAspect(mode) {
 
 // ── Bouton "Afficher graphe" (Corde) ────────────────────────────────
 // Masque entièrement #graph-area (+ le splitter) pour que la zone
-// d'animation occupe tout l'espace disponible. Ne concerne que l'onglet
-// Corde : les autres onglets n'ont pas ce bouton et gardent le graphe visible.
+// d'animation occupe tout l'espace disponible.
 function toggleShowGraphCorde() {
     simCorde.graphVisible = !simCorde.graphVisible;
+    if (simCorde.graphVisible) _resetSplitFracToDefault();
     _applyShowGraphCorde();
 }
 
@@ -1034,11 +1098,11 @@ function _applyShowGraphCorde() {
     if (leftCol) leftCol.classList.toggle('graph-hidden', activeTab === 'corde' && !simCorde.graphVisible);
 
     // La classe posée avant l'exécution de ce script (cf. script inline dans
-    // <head>, pour éviter le flash au chargement direct sur #corde) n'est
-    // plus utile dès que l'état réel est appliqué : sans ce retrait, elle
-    // masquerait #graph-area en permanence, même sur les autres onglets et
-    // même après avoir cliqué sur « Afficher graphe ».
-    document.documentElement.classList.remove('init-corde-graph-hidden');
+    // <head>, pour éviter le flash au chargement direct sur #corde ou #son)
+    // n'est plus utile dès que l'état réel est appliqué : sans ce retrait,
+    // elle masquerait #graph-area en permanence, même sur les autres onglets
+    // et même après avoir cliqué sur « Afficher graphe ».
+    document.documentElement.classList.remove('init-graph-hidden');
 
     // Rétablit la répartition réglée par l'utilisateur, ou la retire quand
     // le graphe est masqué : sans ça, une hauteur inline laissée par un drag
@@ -1253,12 +1317,15 @@ function setMainTab(tab) {
     var animArea = document.getElementById('anim-area');
     if (animArea) animArea.classList.toggle('vagues-layout', tab === 'vagues');
 
-    // ── Zone graphe masquée (bouton "Afficher graphe", Corde uniquement) ─
+    // ── Zone graphe masquée (bouton "Afficher graphe", Son + Corde) ──────
     var leftCol = document.getElementById('left-col');
-    if (leftCol) leftCol.classList.toggle('graph-hidden', tab === 'corde' && !simCorde.graphVisible);
-    // cf. commentaire dans _applyShowGraphCorde : la classe de pré-masquage
-    // posée dans <head> ne doit pas survivre au premier calcul de l'état réel.
-    document.documentElement.classList.remove('init-corde-graph-hidden');
+    var graphHidden = (tab === 'corde' && !simCorde.graphVisible) ||
+                       (tab === 'son'   && !sim.graphVisible);
+    if (leftCol) leftCol.classList.toggle('graph-hidden', graphHidden);
+    // cf. commentaire dans _applyShowGraphCorde/_applyShowGraphSon : la classe
+    // de pré-masquage posée dans <head> ne doit pas survivre au premier
+    // calcul de l'état réel.
+    document.documentElement.classList.remove('init-graph-hidden');
 
     // La box source n'a pas le même contenu d'un onglet à l'autre, donc pas la
     // même hauteur : il faut réajuster son échelle. Le ResizeObserver, lui, ne
@@ -1333,6 +1400,10 @@ function _syncUIToSim() {
     if (lblSpeed) lblSpeed.textContent = '1,00';
     sim.wavePropsVisible = false;
     _applyWavePropsState();
+    sim.lambdaVisible = false;
+    _applyLambdaSon();
+    sim.graphVisible = false;
+    _applyShowGraphSon();
     updateCelerite();
     _updateCReadout();
     _applySourceModeSon();

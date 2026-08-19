@@ -316,6 +316,16 @@ var sim = {
     beacon1 : { active: false, x: 0, frac: 0.30 },   // balise 1 (orange)
     beacon2 : { active: false, x: 0, frac: 0.65 },   // balise 2 (vert)
 
+    // ── Flèche de longueur d'onde (draggable horizontalement) ─────────
+    // lambdaX = abscisse écran de l'extrémité gauche de la flèche ;
+    // lambdaFrac = même position en relatif (0–1) le long du tube, utilisée
+    // pour recalculer lambdaX au resize (comme les balises). La largeur,
+    // elle, n'est jamais stockée : recalculée à chaque frame depuis c_sim
+    // et freq, pour suivre en direct tout changement de λ.
+    lambdaVisible : false,
+    lambdaX       : 0,
+    lambdaFrac    : 0.08,
+
     // ── Géométrie du tube (renseignée par tube.js resize) ────────────
     tubeLeft   : 0,
     tubeRight  : 0,
@@ -350,6 +360,9 @@ var sim = {
     // ── Vue graphe ΔP(x) ─────────────────────────────────────────────
     graphDpxYMin : -1,
     graphDpxYMax :  1,
+
+    // ── Options : zone graphe affichée ou non (désactivé par défaut) ──
+    graphVisible     : false,
 };
 
 // ══════════════════════════════════════════════════════════════════════

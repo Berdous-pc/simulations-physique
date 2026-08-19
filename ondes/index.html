@@ -15,12 +15,15 @@
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>⚛️</text></svg>">
   <link rel="stylesheet" href="css/style.css" />
   <!-- Évite le flash de la zone graphe (visible puis masquée) au refresh
-       sur l'onglet Corde : le graphe y est masqué par défaut, mais ui.js
-       ne s'exécute qu'après le parsing du body. On pose la classe tout
-       de suite, avant le premier paint, à partir du hash d'URL. -->
+       sur les onglets Son et Corde : le graphe y est masqué par défaut,
+       mais ui.js ne s'exécute qu'après le parsing du body. On pose la
+       classe tout de suite, avant le premier paint, à partir du hash
+       d'URL — Son étant l'onglet par défaut, l'absence de hash compte
+       aussi. -->
   <script>
-    if (location.hash.replace('#', '') === 'corde') {
-      document.documentElement.classList.add('init-corde-graph-hidden');
+    var _hash = location.hash.replace('#', '');
+    if (_hash === 'corde' || _hash === 'son' || _hash === '') {
+      document.documentElement.classList.add('init-graph-hidden');
     }
   </script>
 </head>
@@ -336,8 +339,30 @@
             <span class="input-hint">0 = aucune atténuation.</span>
           </div>
 
+        </div><!-- fin Propriétés du milieu -->
+
+        <div class="sep"></div>
+
+        <!-- Options -->
+        <div class="panel-section">
+          <div class="section-title">Options</div>
+
+          <!-- Bouton afficher/masquer la zone graphe -->
+          <button class="btn btn-toggle-one" id="btn-show-graph-son"
+                  onclick="toggleShowGraphSon()">
+            Afficher graphe
+          </button>
+
+          <!-- Bouton afficher/masquer la flèche de longueur d'onde -->
+          <button class="btn btn-toggle-one" id="btn-lambda-son"
+                  style="margin-top:6px;"
+                  onclick="toggleLambdaSon()">
+            Afficher la longueur d'onde
+          </button>
+
           <!-- Bouton propriétés de l'onde -->
           <button class="btn btn-toggle-one" id="btn-wave-props"
+                  style="margin-top:6px;"
                   onclick="toggleWaveProps()">
             Détailler les propriétés de l'onde
           </button>
@@ -378,7 +403,7 @@
 
           </div><!-- fin #readout-props -->
 
-        </div><!-- fin Propriétés du milieu -->
+        </div><!-- fin Options -->
 
       </div><!-- fin #section-son -->
 
