@@ -72,6 +72,11 @@ function _runVecScalesE(run) {
     };
 }
 
+/* Liseré blanc autour des vecteurs, pour les détacher du fond. Volontairement
+   très fin : VEC_HALO_W est le débord de CHAQUE côté, en px. */
+var VEC_HALO_COLOR = '#ffffff';
+var VEC_HALO_W     = 1;
+
 /* Couleurs vecteurs */
 var COL_VEC_POS    = '#2a6aaa';
 var COL_VEC_VIT    = '#c03030';
@@ -307,7 +312,13 @@ function _vecCanvasDelta(vx, vy, vecScale) {
     var p = _viewProjFactors();
     var cvx = vx * p.cx * sim.scaleX, cvy = -vy * p.cy * sim.scaleY;
     var cm  = Math.hypot(cvx, cvy) || 1;
-    var len = Math.hypot(vx, vy) * vecScale;
+    /* Longueur calculée sur les composantes PROJETÉES (vx·cx, vy·cy), pas sur le
+       vecteur complet. Avec Math.hypot(vx, vy), la direction était bien projetée
+       mais la flèche était ensuite renormalisée à la norme totale ‖v⃗‖ : en
+       projection sur l'axe y, v⃗ gardait donc la longueur ‖v⃗‖ au lieu de |vy| et
+       ne s'annulait jamais au sommet — elle basculait brutalement de bas en haut
+       à pleine longueur. En vue Oxy, cx = cy = 1 et le résultat est inchangé. */
+    var len = Math.hypot(vx * p.cx, vy * p.cy) * vecScale;
     return { dx: cvx * len / cm, dy: cvy * len / cm };
 }
 
@@ -1211,9 +1222,8 @@ function _drawVecArrow(ctx, cx, cy, dx, dy, color, label, opacity, lw) {
 
     ctx.save();
     ctx.globalAlpha = opacity;
-    ctx.strokeStyle = color;
-    ctx.fillStyle   = color;
-    ctx.lineWidth   = lw;
+    ctx.lineJoin    = 'round';
+    ctx.lineCap     = 'round';
 
     var ex = cx + dx, ey = cy + dy;
     var aLen  = Math.min(12, len * 0.4);
@@ -1221,20 +1231,42 @@ function _drawVecArrow(ctx, cx, cy, dx, dy, color, label, opacity, lw) {
 
     /* Corps : s'arrête à la base de la pointe pour que le bout épais du trait
        ne dépasse pas de la pointe (visible surtout avec un lineWidth élevé) */
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.lineTo(ex - aLen * 0.85 * Math.cos(angle), ey - aLen * 0.85 * Math.sin(angle));
-    ctx.stroke();
+    var bx = ex - aLen * 0.85 * Math.cos(angle);
+    var by = ey - aLen * 0.85 * Math.sin(angle);
 
-    /* Pointe */
-    ctx.beginPath();
-    ctx.moveTo(ex, ey);
-    ctx.lineTo(ex - aLen * Math.cos(angle - 0.38),
-               ey - aLen * Math.sin(angle - 0.38));
-    ctx.lineTo(ex - aLen * Math.cos(angle + 0.38),
-               ey - aLen * Math.sin(angle + 0.38));
-    ctx.closePath();
-    ctx.fill();
+    function _bodyPath() {
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(bx, by);
+    }
+    function _headPath() {
+        ctx.beginPath();
+        ctx.moveTo(ex, ey);
+        ctx.lineTo(ex - aLen * Math.cos(angle - 0.38),
+                   ey - aLen * Math.sin(angle - 0.38));
+        ctx.lineTo(ex - aLen * Math.cos(angle + 0.38),
+                   ey - aLen * Math.sin(angle + 0.38));
+        ctx.closePath();
+    }
+
+    /* Liseré blanc : mêmes chemins tracés d'abord en blanc et légèrement plus
+       épais, de sorte que seul le débord reste visible une fois le vecteur
+       dessiné par-dessus. Il détache le vecteur du fond (ciel, sol, armatures,
+       trajectoire) sans l'épaissir visuellement. Il suit le globalAlpha du
+       vecteur, pour qu'une flèche atténuée n'ait pas un liseré à pleine
+       opacité. */
+    ctx.strokeStyle = VEC_HALO_COLOR;
+    ctx.lineWidth   = lw + VEC_HALO_W * 2;
+    _bodyPath(); ctx.stroke();
+    ctx.lineWidth   = VEC_HALO_W * 2;
+    _headPath(); ctx.stroke();
+
+    /* Vecteur */
+    ctx.strokeStyle = color;
+    ctx.fillStyle   = color;
+    ctx.lineWidth   = lw;
+    _bodyPath(); ctx.stroke();
+    _headPath(); ctx.fill();
 
     /* Label */
     if (label) {
