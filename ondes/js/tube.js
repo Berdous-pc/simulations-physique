@@ -1772,6 +1772,12 @@ function _drawSonLambdaArrow(ctx) {
         if (nearFreeHandle(mx, my)) {
             tubeInter.mode        = 'corde-free-drag';
             simCorde.freeDragging = true;
+            // Amorcer les deux échantillons bruts sur la position actuelle
+            // de la boule : sans ça, le premier pointermove interpolerait
+            // depuis un horodatage périmé (0) et sauterait.
+            var nowGrab = performance.now();
+            simCorde.freeRawT0 = simCorde.freeRawT1 = nowGrab;
+            simCorde.freeRawY0 = simCorde.freeRawY1 = simCorde.freeY;
             // Sans temps qui s'écoule, le geste ne graverait rien.
             if (simCorde.paused && typeof _setPausedCorde === 'function') _setPausedCorde(false);
             if (typeof _armYtWindowCorde === 'function') _armYtWindowCorde();
@@ -1864,14 +1870,20 @@ function _drawSonLambdaArrow(ctx) {
             // La hauteur de la souris DEVIENT le signal émis : on convertit
             // les pixels en cm (même échelle que le tracé) et on borne à toute
             // la hauteur de la zone corde (cf. cordeFreeLimitCm).
-            // On n'écrit ici que la CIBLE : la boucle d'animation l'atteint
-            // en interpolant sur les échantillons de la frame, sans quoi le
-            // geste se graverait en escalier (cf. freeTargetY dans sim.js).
+            // On n'enregistre ici que l'échantillon BRUT, avec son horodatage
+            // réel : la boucle d'animation reconstitue le mouvement continu
+            // de la souris par interpolation entre ce point et le précédent
+            // (cf. freeRawT0/Y0/T1/Y1 dans sim.js), plutôt que de sauter
+            // directement dessus — ce qui gravait des plateaux en escalier.
             var cmToPx = simCorde.pxPerCmAmpl;
             var yCm    = (cmToPx > 0) ? (simCorde.cordeMiddleY - my) / cmToPx : 0;
             var lim = cordeFreeLimitCm();
-            simCorde.freeTargetY = Math.max(-lim.down,
-                                            Math.min(lim.up, yCm));
+            yCm = Math.max(-lim.down, Math.min(lim.up, yCm));
+
+            simCorde.freeRawT0 = simCorde.freeRawT1;
+            simCorde.freeRawY0 = simCorde.freeRawY1;
+            simCorde.freeRawT1 = performance.now();
+            simCorde.freeRawY1 = yCm;
             return;
         }
 

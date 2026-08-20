@@ -1004,6 +1004,16 @@ var simCorde = {
     freeTargetY  : 0,
     freeDragging : false,
 
+    //  Deux derniers échantillons BRUTS de la souris (valeur + horodatage
+    //  performance.now()), pour reconstituer par interpolation le mouvement
+    //  réel de la souris ENTRE deux pointermove — eux n'arrivent qu'à
+    //  ~60 Hz. freeTargetY est ensuite recalculé à chaque frame à partir de
+    //  ces deux points plutôt que de sauter directement à la valeur brute
+    //  (cf. boucle d'animation dans ui.js), ce qui évite les plateaux qui
+    //  se gravaient en escalier une fois filtrés par freeY.
+    freeRawT0 : 0, freeRawY0 : 0,
+    freeRawT1 : 0, freeRawY1 : 0,
+
     // ── Source — impulsions (superposables) ─────────────────────────
     impulses : [],
 
@@ -1314,6 +1324,8 @@ function resetAnimCorde() {
     simCorde.freeY              = 0;
     simCorde.freeTargetY        = 0;
     simCorde.freeDragging       = false;
+    simCorde.freeRawT0 = simCorde.freeRawT1 = 0;
+    simCorde.freeRawY0 = simCorde.freeRawY1 = 0;
     simCorde.impulses           = [];
     simCorde.impulsePropagating = false;
     simCorde.sourceActiveUntil  = 0;

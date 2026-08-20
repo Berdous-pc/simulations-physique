@@ -101,26 +101,46 @@ function loop(ts) {
             // qu'aux seuls changements d'état ci-dessus.
             _syncSourceButtonsCorde();
 
-            // Mode Libre : rapprocher freeY de la cible à VITESSE BORNÉE,
-            // un peu à chaque pas SRC_DT, plutôt que de répartir le
-            // déplacement de la souris sur les seuls pas de LA frame en
-            // cours. L'ancienne version calculait l'incrément par pas en
-            // divisant par le nombre de pas *déjà* écoulés depuis le dernier
-            // passage dans la boucle ; au ralenti (curseur de vitesse < 1),
-            // une frame réelle avance moins vite qu'un pas SRC_DT, donc ce
-            // nombre de pas valait 0 pendant plusieurs frames d'affilée — la
-            // position de la souris s'accumulait sans être gravée — puis,
-            // dès qu'un pas SRC_DT devenait enfin disponible, tout le
-            // déplacement accumulé était recopié d'un coup dans un SEUL
-            // échantillon. Ce saut brutal se propage ensuite le long de la
-            // corde comme un coude net, d'autant plus visible que la corde
-            // est épaisse et que le ralenti laisse le temps de bien le voir.
-            // En bornant la vitesse de freeY (en cm de corde par seconde
-            // SIMULÉE, donc par pas SRC_DT), le rattrapage se répartit
-            // toujours sur autant de pas que nécessaire, quelle que soit la
-            // vitesse d'animation.
-            var FREE_MAX_SPEED_CMPS = 400;   // cm/s simulées, vitesse main plausible
-            var freeMaxStep = FREE_MAX_SPEED_CMPS * SRC_DT;
+            // Mode Libre, étape 1/2 — reconstituer la cible : les
+            // pointermove n'arrivent qu'à ~60 Hz (souvent moins en
+            // trackpad), donc réutiliser directement la dernière position
+            // reçue la ferait rester plate jusqu'au prochain événement, puis
+            // sauter. On interpole plutôt entre les deux derniers échantillons
+            // bruts de la souris (freeRawT0/Y0 → freeRawT1/Y1, horodatés en
+            // temps réel, cf. onMove dans tube.js) à l'instant présent, ce qui
+            // reconstitue un mouvement continu même entre deux événements.
+            // Au-delà du dernier échantillon (frame dessinée avant le
+            // prochain pointermove), on maintient la dernière valeur connue.
+            if (simCorde.freeDragging) {
+                var nowFree = performance.now();
+                var ft0 = simCorde.freeRawT0, ft1 = simCorde.freeRawT1;
+                if (ft1 > ft0 && nowFree < ft1) {
+                    var frac = (nowFree - ft0) / (ft1 - ft0);
+                    simCorde.freeTargetY = simCorde.freeRawY0 +
+                        (simCorde.freeRawY1 - simCorde.freeRawY0) * frac;
+                } else {
+                    simCorde.freeTargetY = simCorde.freeRawY1;
+                }
+            }
+
+            // Mode Libre, étape 2/2 — rapprocher freeY de cette cible par un
+            // FILTRE PASSE-BAS (lissage exponentiel), un peu à chaque pas
+            // SRC_DT, plutôt que de répartir le déplacement de la souris sur
+            // les seuls pas de LA frame en cours. L'ancienne version calculait
+            // l'incrément par pas en divisant par le nombre de pas *déjà*
+            // écoulés depuis le dernier passage dans la boucle ; au ralenti
+            // (curseur de vitesse < 1), une frame réelle avance moins vite
+            // qu'un pas SRC_DT, donc ce nombre de pas valait 0 pendant
+            // plusieurs frames d'affilée — la position de la souris
+            // s'accumulait sans être gravée — puis, dès qu'un pas SRC_DT
+            // devenait enfin disponible, tout le déplacement accumulé était
+            // recopié d'un coup dans un SEUL échantillon. Une rampe à vitesse
+            // bornée réglait déjà ce saut brutal, mais laissait un coude net
+            // au moment du rattrapage (la pente passe abruptement de la
+            // vitesse max à 0) ; le filtre exponentiel a une courbure continue
+            // partout, sans ce coude, pour le même coût par pas.
+            var FREE_TAU = 0.02;   // s — constante de temps du lissage
+            var freeSmoothK = 1 - Math.exp(-SRC_DT / FREE_TAU);
 
             // Échantillonnage de la source à pas fixe : c'est lui qui
             // « grave » l'onde émise. L'enregistrement y(t) des balises se
@@ -129,9 +149,7 @@ function loop(ts) {
             while (simCorde.simTime - lastSrcUpdate >= SRC_DT) {
                 lastSrcUpdate += SRC_DT;
                 if (simCorde.freeActive) {
-                    var diff = simCorde.freeTargetY - simCorde.freeY;
-                    if (Math.abs(diff) <= freeMaxStep) simCorde.freeY = simCorde.freeTargetY;
-                    else                                simCorde.freeY += Math.sign(diff) * freeMaxStep;
+                    simCorde.freeY += (simCorde.freeTargetY - simCorde.freeY) * freeSmoothK;
                 }
                 stepSourceCorde(lastSrcUpdate);
                 _srcTickCorde = 1 - _srcTickCorde;
@@ -234,6 +252,15 @@ function _syncSourceButtons() {
 function _applySourceModeSon() {
     var sel  = document.getElementById('sel-mode-son');
     var mode = sel ? sel.value : 'impulse';
+
+    // Impulsion n'a pas de fréquence définie (cf. _syncLambdaBtnStateSon) :
+    // le curseur f est verrouillé dès le choix du mode, avant même toute
+    // activation de la source.
+    var isImpulse = (mode === 'impulse');
+    var rowF = document.getElementById('freq-row');
+    var slF  = document.getElementById('sl-freq');
+    if (rowF) rowF.classList.toggle('disabled', isImpulse);
+    if (slF)  slF.disabled = isImpulse;
 
     _syncSourceButtons();
     _syncWavePropsBtnState();
@@ -723,13 +750,17 @@ function _applySourceModeCorde() {
     var btn = document.getElementById('btn-source-active-corde');
     if (btn) btn.disabled = free;
 
+    // Impulsion n'a pas de fréquence définie non plus (cf. λ = c·T plus
+    // bas) : le curseur f est verrouillé dès le choix du mode.
+    var noFreq = free || mode === 'impulse';
+
     var rowF = document.getElementById('freq-row-corde');
     var rowA = document.getElementById('ampl-row-corde');
-    if (rowF) rowF.classList.toggle('disabled', free);
+    if (rowF) rowF.classList.toggle('disabled', noFreq);
     if (rowA) rowA.classList.toggle('disabled', free);
     var slF = document.getElementById('sl-freq-corde');
     var slA = document.getElementById('sl-ampl-corde');
-    if (slF) slF.disabled = free;
+    if (slF) slF.disabled = noFreq;
     if (slA) slA.disabled = free;
 
     _syncSourceButtonsCorde();
