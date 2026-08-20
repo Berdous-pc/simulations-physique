@@ -20,6 +20,59 @@ var VAGUES_VIS_AMP_SCALE  = 5/6;   // réduit l'amplitude visuelle animation (3�
 var C_BASE_VAGUES         = 150;   // px/s par m/s — recalibré au resize
 var COUPE_LEFT_MARGIN     = 70;    // px réservés à gauche pour la source en vue coupe
 
+// ── Transition vue du dessus ↔ vue en coupe ───────────────────────────
+// Durées des deux phases, en secondes. Il n'y a plus de fondu croisé final
+// (cf. _drawVaguesTransition) : le rendu 3D arrive exactement sur la vue en
+// coupe, si bien que les 2,0 s sont entièrement consacrées au mouvement
+// (rotation puis panoramique), là où l'ancienne version en dépensait un
+// tiers de sa durée en raccord.
+var VAGUES_TRANS_ROT   = 1.10;   // rotation θ : 0 → π/2
+var VAGUES_TRANS_SLIDE = 0.90;   // panoramique de la caméra vers la source
+var VAGUES_TRANS_TOTAL = VAGUES_TRANS_ROT + VAGUES_TRANS_SLIDE;
+
+function _clamp01(v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }
+
+// Adoucissements : cosinus (départ/arrivée nuls) pour la rotation,
+// quadratique in-out pour le panoramique — c'est la courbe qu'utilisait déjà
+// l'ancienne transition, conservée telle quelle. (tube.js a un _smoothstep01
+// très proche ; pas de mutualisation ici pour ne pas coupler les deux modules
+// sur un détail d'animation.)
+function _easeCos(t)   { return (1 - Math.cos(_clamp01(t) * Math.PI)) / 2; }
+function _easeInOut(t) { t = _clamp01(t); return t < 0.5 ? 2*t*t : -1 + (4 - 2*t)*t; }
+
+// Amplitude du panoramique : distance dont la caméra doit glisser pour amener
+// la source de sa position en vue du dessus à sa marge en vue coupe.
+function _vaguesMaxPan() {
+    return simVagues.sourceX - COUPE_LEFT_MARGIN;
+}
+
+// Progression de la transition. Point d'entrée UNIQUE, partagé par le canvas
+// (_drawVaguesTransition) et par le graphe y(x) (_drawYxGraphVagues) : les
+// durées étaient auparavant recopiées en dur des deux côtés, et la moindre
+// retouche désynchronisait la vue et son graphe.
+function _vaguesTransProgress(tr) {
+    var elapsed = tr._pausedAt
+        ? (tr._pausedAt - tr.startT) / 1000
+        : (performance.now() - tr.startT) / 1000;
+
+    var R = VAGUES_TRANS_ROT, S = VAGUES_TRANS_SLIDE;
+    var rotFrac, panFrac;
+    if (tr.direction === 'toCoupe') {
+        rotFrac = _clamp01(elapsed / R);
+        panFrac = _clamp01((elapsed - R) / S);
+    } else {                                  // toTop : phases inversées
+        panFrac = 1 - _clamp01(elapsed / S);
+        rotFrac = 1 - _clamp01((elapsed - S) / R);
+    }
+
+    return {
+        elapsed : elapsed,
+        done    : elapsed >= VAGUES_TRANS_TOTAL,
+        theta   : _easeCos(rotFrac) * Math.PI / 2,
+        panFrac : _easeInOut(panFrac)
+    };
+}
+
 // ── Cache de champ (vue du dessus) ───────────────────────────────────────
 // Même principe que diffraction/js/surfaces.js (_rebuildSurfFieldCache) : pour une
 // source ponctuelle, sin(ωt - k·r) = cos(k·r)·sin(ωt) - sin(k·r)·cos(ωt). Le couple
@@ -935,32 +988,9 @@ function _drawYxGraphVagues(ctx, W, H) {
     var xMin, xMax;
     var tr = simVagues.transAnim;
     if (tr) {
-        // Pendant la transition : anime xMin/xMax selon la progression du panoramique
-        var elapsed = tr._pausedAt
-            ? (tr._pausedAt - tr.startT) / 1000
-            : (performance.now() - tr.startT) / 1000;
-        var DUR_ROT = 0.90, DUR_SLIDE = 0.90, DUR_BLEND = 0.90;
-        var panFrac;
-        if (tr.direction === 'toCoupe') {
-            if (elapsed < DUR_ROT) {
-                panFrac = 0;
-            } else if (elapsed < DUR_ROT + DUR_SLIDE) {
-                var t01 = (elapsed - DUR_ROT) / DUR_SLIDE;
-                panFrac = t01 < 0.5 ? 2*t01*t01 : -1+(4-2*t01)*t01;
-            } else {
-                panFrac = 1;
-            }
-        } else { // toTop
-            if (elapsed < DUR_BLEND) {
-                panFrac = 1;
-            } else if (elapsed < DUR_BLEND + DUR_SLIDE) {
-                var t01 = (elapsed - DUR_BLEND) / DUR_SLIDE;
-                var ep  = t01 < 0.5 ? 2*t01*t01 : -1+(4-2*t01)*t01;
-                panFrac = 1 - ep;
-            } else {
-                panFrac = 0;
-            }
-        }
+        // Pendant la transition : anime xMin/xMax selon la progression du
+        // panoramique, lue via le même helper que le canvas (cf. _vaguesTransProgress)
+        var panFrac = _vaguesTransProgress(tr).panFrac;
         xMin = -max_r_top * (1 - panFrac);
         xMax = max_r_top + (max_r_coupe - max_r_top) * panFrac;
     } else {
@@ -1652,7 +1682,6 @@ function toggleViewVagues() {
     if (simVagues.transAnim) return;
     var toCoupe   = (simVagues.viewMode === 'top');
     if (toCoupe) {
-        simVagues.coupeSrcX = simVagues.canvasW / 2;
         // Désactiver les balises qui ne seront pas visibles en vue coupe (hors axe x>0)
         var sx = simVagues.sourceX;
         var bSpecs = [
@@ -1685,35 +1714,26 @@ function toggleViewVagues() {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-//  Animation de transition — 3 phases
+//  Animation de transition — 2 phases
 //
-//  toCoupe (total = DUR_ROT + DUR_SLIDE + DUR_BLEND) :
-//    Phase 1 — Rotation 3D (theta 0 → π/2), panOffset = 0
+//  toCoupe (total = VAGUES_TRANS_ROT + VAGUES_TRANS_SLIDE) :
+//    Phase 1 — Rotation 3D (theta 0 → π/2), panOffset = 0. À mi-course,
+//              l'onde s'estompe hors du plan de coupe (cf. « focus » dans
+//              _render3DWaveView) : elle se réduit visiblement à sa coupe.
 //    Phase 2 — Panoramique horizontal (theta = π/2, pan 0 → MAX_PAN)
-//              Toute la scène glisse vers la gauche ; les vagues à gauche
-//              de la source sortent progressivement de l'écran.
-//    Phase 3 — Fondu croisé 3D → coupe finale (opacité 0 → 1)
+//              Toute la scène glisse vers la gauche ; le bandeau sombre de
+//              la source arrive par la gauche comme un rideau.
+//  toTop : les mêmes phases dans l'ordre inverse.
 //
-//  toTop (total = DUR_BLEND + DUR_SLIDE + DUR_ROT) :
-//    Phase 1 — Fondu croisé coupe → 3D (opacité 1 → 0)
-//    Phase 2 — Panoramique inverse (pan MAX_PAN → 0)
-//    Phase 3 — Rotation 3D inverse (theta π/2 → 0)
+//  Il n'y a PAS de fondu croisé final : _render3DWaveView converge
+//  exactement vers _drawVaguesCoupe (mêmes formules d'atténuation, mêmes
+//  dégradés, mêmes décors), la bascule de viewMode est donc invisible.
+//  C'est ce qui permet de tenir en ~1,3 s au lieu de 2,7 s.
 // ══════════════════════════════════════════════════════════════════════
 
 function _drawVaguesTransition(ctx, W, H, PW, PH, dpr) {
-    var tr      = simVagues.transAnim;
-    var elapsed = tr._pausedAt
-        ? (tr._pausedAt - tr.startT) / 1000
-        : (performance.now() - tr.startT) / 1000;
-
-    var DUR_ROT   = 0.90;
-    var DUR_SLIDE = 0.90;
-    var DUR_BLEND = 0.90;
-    var MAX_PAN   = simVagues.sourceX - COUPE_LEFT_MARGIN;
-
-    var TOTAL = (tr.direction === 'toCoupe')
-                ? DUR_ROT + DUR_SLIDE + DUR_BLEND
-                : DUR_BLEND + DUR_SLIDE + DUR_ROT;
+    var tr = simVagues.transAnim;
+    var pr = _vaguesTransProgress(tr);
 
     // Nettoyage CSS résiduel
     var canvas = document.getElementById('tube-canvas');
@@ -1723,96 +1743,47 @@ function _drawVaguesTransition(ctx, W, H, PW, PH, dpr) {
     wrap.style.perspective       = '';
     wrap.style.background        = '';
 
-    if (elapsed >= TOTAL) {
+    if (pr.done) {
         simVagues.transAnim = null;
+        simVagues._buf3D    = null;   // ~8 Mo de tampons pleine résolution : rendus au GC
         simVagues.viewMode  = (tr.direction === 'toCoupe') ? 'coupe' : 'top';
-        if (simVagues.viewMode === 'coupe') simVagues.coupeSrcX = COUPE_LEFT_MARGIN;
+        simVagues.coupeSrcX = COUPE_LEFT_MARGIN;
         if (!tr.wasPaused) simVagues.paused = false;
         return;
     }
 
-    if (tr.direction === 'toCoupe') {
+    var pan = _vaguesMaxPan() * pr.panFrac;
+    // Tenir coupeSrcX à jour pendant la transition : les hit-tests souris
+    // (flèche λ) y lisent l'abscisse écran de la source.
+    simVagues.coupeSrcX = simVagues.sourceX - pan;
 
-        if (elapsed < DUR_ROT) {
-            // ── Phase 1 : rotation 3D (top → vue de profil) ──────────
-            var t01  = elapsed / DUR_ROT;
-            var ease = (1 - Math.cos(t01 * Math.PI)) / 2;
-            _render3DWaveView(ctx, W, H, ease * Math.PI / 2, 0, PW, PH, dpr);
-
-        } else if (elapsed < DUR_ROT + DUR_SLIDE) {
-            // ── Phase 2 : panoramique horizontal (caméra → droite) ───
-            var t01   = (elapsed - DUR_ROT) / DUR_SLIDE;
-            var easeP = t01 < 0.5 ? 2*t01*t01 : -1+(4-2*t01)*t01;
-            _render3DWaveView(ctx, W, H, Math.PI / 2, MAX_PAN * easeP, PW, PH, dpr);
-
-        } else {
-            // ── Phase 3 : fondu croisé 3D → coupe ────────────────────
-            var alpha = (elapsed - DUR_ROT - DUR_SLIDE) / DUR_BLEND;
-            simVagues.coupeSrcX = COUPE_LEFT_MARGIN;
-            _render3DWaveView(ctx, W, H, Math.PI / 2, MAX_PAN, PW, PH, dpr);
-            _overlayViewCoupe(ctx, W, H, tr, Math.min(1, alpha), PW, PH, dpr);
-        }
-
-    } else { // toTop
-
-        if (elapsed < DUR_BLEND) {
-            // ── Phase 1 : fondu croisé coupe → 3D ────────────────────
-            var alpha = 1 - elapsed / DUR_BLEND;
-            simVagues.coupeSrcX = COUPE_LEFT_MARGIN;
-            _render3DWaveView(ctx, W, H, Math.PI / 2, MAX_PAN, PW, PH, dpr);
-            _overlayViewCoupe(ctx, W, H, tr, Math.max(0, alpha), PW, PH, dpr);
-
-        } else if (elapsed < DUR_BLEND + DUR_SLIDE) {
-            // ── Phase 2 : panoramique inverse ────────────────────────
-            var t01   = (elapsed - DUR_BLEND) / DUR_SLIDE;
-            var easeP = t01 < 0.5 ? 2*t01*t01 : -1+(4-2*t01)*t01;
-            _render3DWaveView(ctx, W, H, Math.PI / 2, MAX_PAN * (1 - easeP), PW, PH, dpr);
-
-        } else {
-            // ── Phase 3 : rotation 3D inverse (profil → top) ─────────
-            var t01  = (elapsed - DUR_BLEND - DUR_SLIDE) / DUR_ROT;
-            var ease = (1 - Math.cos(t01 * Math.PI)) / 2;
-            _render3DWaveView(ctx, W, H, (1 - ease) * Math.PI / 2, 0, PW, PH, dpr);
-        }
-    }
-}
-
-// Superpose la vue en coupe sur ctx avec opacité alpha (0 = transparent, 1 = opaque).
-// Utilise un canvas offscreen stocké dans tr pour éviter une allocation à chaque frame.
-function _overlayViewCoupe(ctx, W, H, tr, alpha, PW, PH, dpr) {
-    if (!tr._offscreen) {
-        tr._offscreen        = document.createElement('canvas');
-        tr._offscreen.width  = PW;
-        tr._offscreen.height = PH;
-    } else if (tr._offscreen.width !== PW || tr._offscreen.height !== PH) {
-        tr._offscreen.width  = PW;
-        tr._offscreen.height = PH;
-    }
-    var offCtx = tr._offscreen.getContext('2d');
-    offCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    _drawVaguesCoupe(offCtx, W, H);
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);   // l'offscreen est déjà en pixels physiques
-    ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
-    ctx.drawImage(tr._offscreen, 0, 0);
-    ctx.restore();
+    _render3DWaveView(ctx, W, H, pr.theta, pan, PW, PH, dpr);
 }
 
 // ── Rendu perspectif orthographique de la surface d'eau ───────────────
 //   theta = 0   → vue de dessus (identique au rendu normal)
-//   theta = π/2 → vue de profil (côté) : équivalent à la coupe
+//   theta = π/2 → vue de profil (côté) : identique à la vue en coupe
 //
 // Algorithme du peintre : on itère les bandes z de l'arrière vers l'avant.
-// Projection : screen_y = H/2 + (wz − srcY)·cos(θ) − wy·sin(θ)
+// Projection : screen_y = yLevel + (wz − srcY)·cos(θ) − wy·sin(θ)
 //   À θ=0 : screen_y = wz  (la profondeur z devient la coordonnée y écran)
-//   À θ=π/2 : screen_y = H/2 − wy  (la hauteur de l'onde devient y écran)
+//   À θ=π/2 : screen_y = yLevel − wy  (la hauteur de l'onde devient y écran)
+//
+// Deux paramètres de fondu pilotent tous les décors, et c'est ce qui rend
+// les deux raccords (départ et arrivée) invisibles :
+//   sinT      (rotation)     → ciel, dégradé d'eau, écume, labels Air/Eau,
+//                              élévation de la flèche λ, style des balises
+//   bandAlpha (panoramique)  → bandeau/tige de source, repli de l'axe et
+//                              des graduations vers le demi-axe x > 0
 function _render3DWaveView(ctx, W, H, theta, panOffset, PW, PH, dpr) {
     panOffset = (panOffset | 0) || 0;
     var cosT = Math.cos(theta);
     var sinT = Math.sin(theta);
 
     var srcX     = simVagues.sourceX;
-    var srcY     = simVagues.sourceY;  // ≈ H/2
+    var srcY     = simVagues.sourceY;  // = round(H/2)
+    var yLevel   = Math.round(H / 2);  // même repère que _drawVaguesCoupe
+    var srcXs    = srcX - panOffset;   // abscisse écran de la source (px CSS)
     var c        = simVagues.c_sim;
     var t        = simVagues.simTime;
     var f        = simVagues.freq;
@@ -1824,31 +1795,77 @@ function _render3DWaveView(ctx, W, H, theta, panOffset, PW, PH, dpr) {
     var r_front  = (c > 0) ? c * (t - simVagues.sourceResetTime) : 0;
     var rfSq     = r_front * r_front;
 
-    var imgData = ctx.createImageData(PW, PH);
+    var maxPan    = _vaguesMaxPan();
+    // panOffset porte déjà l'adoucissement du panoramique : pas de second ease ici.
+    var bandAlpha = maxPan > 0 ? Math.min(1, panOffset / maxPan) : sinT;
+
+    // ── Tampons réutilisés d'une frame à l'autre ──────────────────────
+    // (l'animation dure ~1,3 s à 60 fps : réallouer un ImageData pleine
+    //  résolution physique à chaque frame mettait le GC sous pression)
+    var buf = simVagues._buf3D;
+    if (!buf || buf.PW !== PW || buf.PH !== PH) {
+        buf = simVagues._buf3D = {
+            PW      : PW,
+            PH      : PH,
+            imgData : ctx.createImageData(PW, PH),
+            prevSy  : new Int16Array(PW),
+            sky     : new Uint8Array(PH * 3),   // couleur ciel de la coupe, par ligne
+            water   : new Uint8Array(PH * 3),   // couleur d'eau de la coupe, par ligne
+            bg      : new Uint8Array(PH * 3)    // fond effectivement peint, par ligne
+        };
+    }
+    var imgData = buf.imgData;
     var data    = imgData.data;
 
-    // Fond : interpolé entre COL_BG (vue dessus) et ciel clair (vue coupe)
-    var bgR = (COL_BG_R + (176 - COL_BG_R) * sinT) | 0;
-    var bgG = (COL_BG_G + (216 - COL_BG_G) * sinT) | 0;
-    var bgB = (COL_BG_B + (240 - COL_BG_B) * sinT) | 0;
-    for (var i = 0; i < data.length; i += 4) {
-        data[i] = bgR; data[i + 1] = bgG; data[i + 2] = bgB; data[i + 3] = 255;
+    // ── Tables de couleurs de la vue en coupe, ligne par ligne ────────
+    // Reproduisent exactement les deux dégradés de _drawVaguesCoupe, pour
+    // pouvoir les interpoler pixel par pixel avec le rendu vue du dessus.
+    _fillCoupeColorLUTs(buf, H, PH, dpr, yLevel, ampPx);
+    var skyLUT = buf.sky, waterLUT = buf.water, bgLUT = buf.bg;
+
+    // ── Fond : COL_BG (vue dessus) → ciel de la coupe ─────────────────
+    // Mémorisé ligne par ligne : c'est aussi la couleur vers laquelle
+    // s'estompent les bandes hors du plan de coupe (cf. « focus » ci-dessous).
+    for (var py0 = 0; py0 < PH; py0++) {
+        var k3 = py0 * 3;
+        var br = (COL_BG_R + (skyLUT[k3]     - COL_BG_R) * sinT) | 0;
+        var bg = (COL_BG_G + (skyLUT[k3 + 1] - COL_BG_G) * sinT) | 0;
+        var bb = (COL_BG_B + (skyLUT[k3 + 2] - COL_BG_B) * sinT) | 0;
+        bgLUT[k3] = br; bgLUT[k3 + 1] = bg; bgLUT[k3 + 2] = bb;
+        for (var pxb = 0, ib = py0 * PW * 4; pxb < PW; pxb++, ib += 4) {
+            data[ib] = br; data[ib + 1] = bg; data[ib + 2] = bb; data[ib + 3] = 255;
+        }
     }
 
     if (c <= 0) { ctx.putImageData(imgData, 0, 0); return; }
 
     // Position écran (physique) de la première bande (wz = 0, wy = 0)
-    var sy0 = Math.round((H / 2 + (0 - srcY) * cosT) * dpr);
+    var sy0 = Math.round((yLevel + (0 - srcY) * cosT) * dpr);
 
-    var prevSyArr = new Int16Array(PW);
+    var prevSyArr = buf.prevSy;
     for (var px = 0; px < PW; px++) prevSyArr[px] = sy0;
 
     var N_Z = 110; // bandes z — ~27 échantillons par longueur d'onde à λ≈100 px
 
+    // ── Mise au point sur le plan de coupe ────────────────────────────
+    // À mi-rotation, l'empilement des bandes z ne donnait qu'une silhouette
+    // d'enveloppe, illisible. On estompe donc les bandes vers le fond à
+    // mesure qu'elles s'éloignent du plan y = sourceY : l'onde 2D « se
+    // réduit » visiblement à sa coupe. L'effet s'annule aux deux extrémités
+    // (focus = sin 2θ), pour ne toucher ni la vue du dessus ni la coupe.
+    var focus    = Math.sin(2 * theta);
+    if (focus < 0) focus = 0;
+    var HAZE_MAX = 0.72;                          // jamais totalement effacé
+    var sigma    = H * (0.55 - 0.39 * focus);     // demi-épaisseur du plan net
+    var invSig2  = 1 / Math.max(1, sigma * sigma);
+
+
     for (var zi = 0; zi < N_Z; zi++) {
         var wz = (zi / (N_Z - 1)) * H;
         var dz = wz - srcY;
-        var screenYbase = H / 2 + dz * cosT; // y écran (CSS) sans hauteur d'onde
+        var screenYbase = yLevel + dz * cosT; // y écran (CSS) sans hauteur d'onde
+        // Estompage de la bande : constant sur toute sa largeur, donc hors boucle px.
+        var haze = focus > 0 ? HAZE_MAX * focus * (1 - Math.exp(-dz * dz * invSig2)) : 0;
 
         for (var px = 0; px < PW; px++) {
             var wx          = px / dpr;   // colonne physique → position CSS pour la physique
@@ -1858,10 +1875,26 @@ function _render3DWaveView(ctx, W, H, theta, panOffset, PW, PH, dpr) {
             var raw = 0, env = 1.0;
 
             if (rfSq > 0 && rSq <= rfSq) {
-                var r  = Math.sqrt(rSq);
-                raw    = Math.sin(TWO_PI_F * (t - r / c));
-                if (geo) env = Math.min(1, Math.sqrt(50 / Math.max(1, r)));
-                if (a5 > 0) env *= Math.exp(-a5 * r / maxR);
+                var r = Math.sqrt(rSq);
+                raw   = Math.sin(TWO_PI_F * (t - r / c));
+                // Enveloppe interpolée entre la formule de la vue du dessus
+                // (cache de champ) et celle de la vue en coupe : sans cela les
+                // deux profils n'avaient pas la même amplitude et le raccord
+                // final se voyait (cf. _rebuildVaguesFieldCache / _waveFieldCoupeAt).
+                if (geo) {
+                    var gTop = Math.min(1, Math.sqrt(50 / Math.max(1, r)));
+                    var gCut = Math.sqrt(40 / (40 + r));
+                    env = gTop + (gCut - gTop) * sinT;
+                }
+                if (a5 > 0) {
+                    var aTop = Math.exp(-a5 * r / maxR);
+                    var aCut = Math.exp(-a5 * r / W);
+                    env *= aTop + (aCut - aTop) * sinT;
+                }
+                // La vue en coupe ne montre que le demi-axe x > 0 : à gauche de
+                // la source l'eau y est plate. On efface donc l'onde de gauche
+                // au rythme du rideau, qui la recouvre au même moment.
+                if (dx < 0) env *= 1 - bandAlpha;
             } else {
                 env = 0;
             }
@@ -1871,12 +1904,13 @@ function _render3DWaveView(ctx, W, H, theta, panOffset, PW, PH, dpr) {
             var sy  = Math.round((screenYbase - wy * sinT) * dpr);
             var syP = prevSyArr[px];
 
-            // Couleur de l'eau — même formule que la vue de dessus
+            // Couleur de l'eau : teinte de phase (vue du dessus) fondue vers
+            // le dégradé de profondeur de la coupe.
             var envC = Math.min(1, env * VAGUES_AMP_GAIN);
             var t01  = (raw * envC + 1) * 0.5;
-            var wr   = (COL_TROUGH_R + t01 * (COL_CREST_R - COL_TROUGH_R)) | 0;
-            var wg   = (COL_TROUGH_G + t01 * (COL_CREST_G - COL_TROUGH_G)) | 0;
-            var wb   = (COL_TROUGH_B + t01 * (COL_CREST_B - COL_TROUGH_B)) | 0;
+            var wr   = COL_TROUGH_R + t01 * (COL_CREST_R - COL_TROUGH_R);
+            var wg   = COL_TROUGH_G + t01 * (COL_CREST_G - COL_TROUGH_G);
+            var wb   = COL_TROUGH_B + t01 * (COL_CREST_B - COL_TROUGH_B);
 
             // Remplir la bande entre syP et sy (back-to-front overwrite)
             var yLo = (syP < sy ? syP : sy);
@@ -1885,9 +1919,16 @@ function _render3DWaveView(ctx, W, H, theta, panOffset, PW, PH, dpr) {
             if (yHi >= PH) yHi = PH - 1;
             for (var py = yLo; py <= yHi; py++) {
                 var idx = (py * PW + px) * 4;
-                data[idx]     = wr;
-                data[idx + 1] = wg;
-                data[idx + 2] = wb;
+                var kw  = py * 3;
+                var cr  = wr + (waterLUT[kw]     - wr) * sinT;
+                var cg  = wg + (waterLUT[kw + 1] - wg) * sinT;
+                var cb  = wb + (waterLUT[kw + 2] - wb) * sinT;
+                if (haze > 0) {
+                    cr += (bgLUT[kw]     - cr) * haze;
+                    cg += (bgLUT[kw + 1] - cg) * haze;
+                    cb += (bgLUT[kw + 2] - cb) * haze;
+                }
+                data[idx] = cr | 0; data[idx + 1] = cg | 0; data[idx + 2] = cb | 0;
                 data[idx + 3] = 255;
             }
 
@@ -1895,42 +1936,352 @@ function _render3DWaveView(ctx, W, H, theta, panOffset, PW, PH, dpr) {
         }
     }
 
-    // Fond marin : remplir en dessous de la dernière bande avec un dégradé profond
+    // Fond marin : sous la dernière bande, dégradé profond (vue du dessus)
+    // fondu vers le dégradé d'eau de la coupe. La dernière bande (wz = H) est
+    // la plus éloignée du plan de coupe : elle reçoit donc le même estompage
+    // que les bandes, sans quoi une masse d'eau opaque subsisterait au premier
+    // plan alors que tout le reste s'efface.
+    var dzFront   = H - srcY;
+    var hazeFront = focus > 0
+        ? HAZE_MAX * focus * (1 - Math.exp(-dzFront * dzFront * invSig2))
+        : 0;
     for (var px2 = 0; px2 < PW; px2++) {
-        var syLast = prevSyArr[px2];
-        var yStart = syLast < 0 ? 0 : syLast;
-        for (var py = yStart; py < PH; py++) {
-            var depth = (py - syLast) / Math.max(1, PH - syLast);
-            var idx   = (py * PW + px2) * 4;
-            data[idx]     = (COL_TROUGH_R * (1 - depth * 0.6)) | 0;
-            data[idx + 1] = (COL_TROUGH_G * (1 - depth * 0.3)) | 0;
-            data[idx + 2] = (COL_TROUGH_B + (90 - COL_TROUGH_B) * depth * 0.25) | 0;
-            data[idx + 3] = 255;
+        var syLast  = prevSyArr[px2];
+        var yStart  = syLast < 0 ? 0 : syLast;
+        var invSpan = 1 / Math.max(1, PH - syLast);
+        for (var py2 = yStart; py2 < PH; py2++) {
+            var depth = (py2 - syLast) * invSpan;
+            var idx2  = (py2 * PW + px2) * 4;
+            var kw2   = py2 * 3;
+            var dr = COL_TROUGH_R * (1 - depth * 0.6);
+            var dg = COL_TROUGH_G * (1 - depth * 0.3);
+            var db = COL_TROUGH_B + (90 - COL_TROUGH_B) * depth * 0.25;
+            var fr = dr + (waterLUT[kw2]     - dr) * sinT;
+            var fg = dg + (waterLUT[kw2 + 1] - dg) * sinT;
+            var fb = db + (waterLUT[kw2 + 2] - db) * sinT;
+            if (hazeFront > 0) {
+                fr += (bgLUT[kw2]     - fr) * hazeFront;
+                fg += (bgLUT[kw2 + 1] - fg) * hazeFront;
+                fb += (bgLUT[kw2 + 2] - fb) * hazeFront;
+            }
+            data[idx2] = fr | 0; data[idx2 + 1] = fg | 0; data[idx2 + 2] = fb | 0;
+            data[idx2 + 3] = 255;
         }
     }
 
     ctx.putImageData(imgData, 0, 0);
 
-    // Source projetée en 3D — position écran décalée du pan (pixels CSS, dessin vectoriel)
-    var osc_raw = Math.sin(TWO_PI_F * t) * simVagues.amplitude;
-    var sy_src  = Math.round(H / 2 - osc_raw * ampPx * sinT);
-    var sx_src  = Math.round(srcX - panOffset);
+    // ══ Décors, dans l'ordre de _drawVaguesCoupe ══════════════════════
 
-    if (sx_src >= -10 && sx_src <= W + 10) {
+    _draw3DFoamLine(ctx, prevSyArr, PW, dpr, srcXs * bandAlpha, sinT);
+    _draw3DSourceZone(ctx, W, H, srcXs, yLevel, ampPx, sinT, bandAlpha);
+    _draw3DAirWaterLabels(ctx, H, srcXs, sinT);
+    _draw3DAxis(ctx, W, H, srcXs, yLevel, sinT, bandAlpha);
+    _draw3DLambdaArrow(ctx, W, H, srcXs, yLevel, sinT, bandAlpha);
+    _draw3DBeacons(ctx, W, srcXs, yLevel, ampPx, sinT, cosT);
+}
+
+// Remplit les tables de couleurs (par ligne de pixels physiques) reproduisant
+// les deux dégradés verticaux de _drawVaguesCoupe : ciel et masse d'eau.
+// Coût linéaire en PH, négligeable devant la boucle de bandes.
+function _fillCoupeColorLUTs(buf, H, PH, dpr, yLevel, ampPx) {
+    var sky = buf.sky, water = buf.water;
+    // Ciel : #b0d8f0 (0) → #d4ecf8 (0,5) → #d4ecf8 (1)
+    var s0r = 176, s0g = 216, s0b = 240;
+    var s1r = 212, s1g = 236, s1b = 248;
+    // Eau : rgb(10,110,200) (0) → rgb(0,60,140) (0,3) → rgb(0,15,65) (1),
+    // de y = yLevel − ampPx à y = H (le canvas prolonge les teintes au-delà).
+    var w0r = 10, w0g = 110, w0b = 200;
+    var w1r = 0,  w1g = 60,  w1b = 140;
+    var w2r = 0,  w2g = 15,  w2b = 65;
+    var yTop = yLevel - ampPx;
+    var span = Math.max(1, H - yTop);
+
+    for (var py = 0; py < PH; py++) {
+        var y = py / dpr;
+        var k = py * 3;
+
+        var fs = (H > 0) ? (y / H) / 0.5 : 0;
+        if (fs > 1) fs = 1; else if (fs < 0) fs = 0;
+        sky[k]     = (s0r + (s1r - s0r) * fs) | 0;
+        sky[k + 1] = (s0g + (s1g - s0g) * fs) | 0;
+        sky[k + 2] = (s0b + (s1b - s0b) * fs) | 0;
+
+        var uw = (y - yTop) / span;
+        if (uw < 0) uw = 0; else if (uw > 1) uw = 1;
+        var ar, ag, ab, brr, bgg, bbb, fw;
+        if (uw < 0.3) {
+            ar = w0r; ag = w0g; ab = w0b; brr = w1r; bgg = w1g; bbb = w1b; fw = uw / 0.3;
+        } else {
+            ar = w1r; ag = w1g; ab = w1b; brr = w2r; bgg = w2g; bbb = w2b; fw = (uw - 0.3) / 0.7;
+        }
+        water[k]     = (ar + (brr - ar) * fw) | 0;
+        water[k + 1] = (ag + (bgg - ag) * fw) | 0;
+        water[k + 2] = (ab + (bbb - ab) * fw) | 0;
+    }
+}
+
+// ── Décors projetés ───────────────────────────────────────────────────
+// Chacun part de son apparence en vue du dessus et arrive exactement sur
+// celle de la vue en coupe. Aucun n'est masqué pendant la transition :
+// c'est ce qui supprime le « pop » des repères aux deux extrémités.
+
+// Ligne d'écume : suit le profil de la bande la plus en avant, qui est
+// précisément la surface libre une fois θ = π/2.
+function _draw3DFoamLine(ctx, prevSyArr, PW, dpr, xLeft, sinT) {
+    var alpha = 0.85 * sinT * sinT;
+    if (alpha < 0.01) return;
+    var pxLeft = Math.max(0, Math.round(xLeft * dpr));
+    if (pxLeft >= PW - 1) return;
+
+    ctx.save();
+    ctx.beginPath();
+    var started = false;
+    for (var px = pxLeft; px < PW; px += 2) {
+        var x = px / dpr, y = prevSyArr[px] / dpr;
+        if (!started) { ctx.moveTo(x, y); started = true; }
+        else            ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = 'rgba(255,255,255,' + alpha.toFixed(3) + ')';
+    ctx.lineWidth   = 2;
+    ctx.stroke();
+    ctx.restore();
+}
+
+// Bandeau sombre + tige du vibreur + flèche d'oscillation : arrivent en
+// rideau par la gauche pendant le panoramique (bandAlpha), puis le point S,
+// dont le style converge de la vue du dessus vers celui de la coupe (sinT).
+function _draw3DSourceZone(ctx, W, H, srcXs, yLevel, ampPx, sinT, bandAlpha) {
+    var osc  = Math.sin(2 * Math.PI * simVagues.freq * simVagues.simTime) * simVagues.amplitude;
+    var dotY = yLevel - osc * ampPx * sinT;
+
+    if (bandAlpha > 0.005 && srcXs > 0) {
         ctx.save();
-        ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-        ctx.lineWidth   = 2;
-        ctx.beginPath(); ctx.arc(sx_src, sy_src, 7, 0, Math.PI * 2); ctx.stroke();
-        ctx.fillStyle = '#ffdd44';
-        ctx.beginPath(); ctx.arc(sx_src, sy_src, 4, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle    = '#ffffff';
-        ctx.font         = 'bold 13px monospace';
-        ctx.textAlign    = 'center';
-        ctx.textBaseline = 'bottom';
-        ctx.shadowColor  = 'rgba(0,0,0,0.7)';
-        ctx.shadowBlur   = 3;
-        ctx.fillText('S', sx_src, sy_src - 10);
+        ctx.globalAlpha = bandAlpha;
+
+        var grd = ctx.createLinearGradient(0, 0, srcXs, 0);
+        grd.addColorStop(0, 'rgba(30, 35, 50, 0.95)');
+        grd.addColorStop(1, 'rgba(50, 55, 75, 0.90)');
+        ctx.fillStyle = grd;
+        ctx.fillRect(0, 0, srcXs, H);
+
+        ctx.strokeStyle = 'rgba(140, 180, 220, 0.40)';
+        ctx.lineWidth   = 1;
+        ctx.beginPath(); ctx.moveTo(srcXs, 0); ctx.lineTo(srcXs, H); ctx.stroke();
+
+        ctx.fillStyle = '#8aa4c0';
+        ctx.fillRect(srcXs - 3, 0, 6, H);
+
+        var arrowDir = osc >= 0 ? -1 : 1;
+        var ax = srcXs - 22, ay1 = dotY, ay2 = dotY + arrowDir * 14;
+        ctx.strokeStyle = 'rgba(255, 215, 80, 0.80)';
+        ctx.lineWidth   = 1.5;
+        ctx.beginPath(); ctx.moveTo(ax, ay1); ctx.lineTo(ax, ay2); ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(ax - 4, ay2 - arrowDir * 6);
+        ctx.lineTo(ax,     ay2);
+        ctx.lineTo(ax + 4, ay2 - arrowDir * 6);
+        ctx.stroke();
+
         ctx.restore();
+    }
+
+    // Point S — rayon 8 → 7 et libellé à −11 → −10 px : les deux vues ne le
+    // dessinaient pas tout à fait pareil, on interpole pour éviter le sursaut.
+    if (srcXs < -10 || srcXs > W + 10) return;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    ctx.lineWidth   = 2;
+    ctx.beginPath(); ctx.arc(srcXs, dotY, 8 - sinT, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = '#ffdd44';
+    ctx.beginPath(); ctx.arc(srcXs, dotY, 4, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle    = '#ffffff';
+    ctx.font         = 'bold 13px monospace';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.shadowColor  = 'rgba(0,0,0,' + (0.7 * sinT).toFixed(2) + ')';
+    ctx.shadowBlur   = 3;
+    ctx.fillText('S', srcXs, dotY - 11 + sinT);
+    ctx.restore();
+}
+
+function _draw3DAirWaterLabels(ctx, H, srcXs, sinT) {
+    if (sinT < 0.02) return;
+    ctx.save();
+    ctx.font        = 'italic 12px "Segoe UI", Arial, sans-serif';
+    ctx.textAlign   = 'left';
+    ctx.globalAlpha = sinT;
+    ctx.fillStyle   = 'rgba(30, 80, 130, 0.65)';
+    ctx.textBaseline = 'top';
+    ctx.fillText('Air', srcXs + 10, 8);
+    ctx.fillStyle    = 'rgba(200, 235, 255, 0.70)';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('Eau', srcXs + 10, H - 8);
+    ctx.restore();
+}
+
+// Axe d'équilibre + graduations. L'axe reste à yLevel quel que soit θ (sa
+// profondeur dz vaut 0, la projection le laisse sur place) : seul son bord
+// gauche se replie sur la source, au rythme du rideau qui le recouvre.
+function _draw3DAxis(ctx, W, H, srcXs, yLevel, sinT, bandAlpha) {
+    var xLeft = srcXs * bandAlpha;
+    ctx.save();
+
+    // 0,55 en vue du dessus, 0,45 en coupe — interpolé pour ne pas sauter
+    ctx.strokeStyle = 'rgba(255,255,255,' + (0.55 - 0.10 * sinT).toFixed(3) + ')';
+    ctx.lineWidth   = 1.2;
+    ctx.setLineDash([8, 6]);
+    ctx.beginPath();
+    ctx.moveTo(xLeft, yLevel);
+    ctx.lineTo(W, yLevel);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    if (C_BASE_VAGUES > 0) {
+        // Largeur de référence du pas de graduation : W en vue du dessus,
+        // W − srcX en coupe (qui ne montre que le demi-axe x > 0).
+        var total_m  = (W - srcXs * bandAlpha) / C_BASE_VAGUES;
+        var step_raw = total_m / 6;
+        var mag      = Math.pow(10, Math.floor(Math.log10(Math.max(step_raw, 1e-9))));
+        var step;
+        if      (step_raw / mag < 2) step = mag;
+        else if (step_raw / mag < 5) step = 2 * mag;
+        else                         step = 5 * mag;
+        var decimals = Math.max(0, -Math.floor(Math.log10(step)));
+
+        ctx.lineWidth   = 1;
+        ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+        ctx.fillStyle   = 'rgba(255,255,255,0.85)';
+        ctx.font        = '10px sans-serif';
+        ctx.shadowColor = 'rgba(0,0,0,0.6)';
+        ctx.shadowBlur  = 3;
+        var TICK = 5;
+
+        for (var d = step; srcXs + d * C_BASE_VAGUES < W + 1; d += step) {
+            var px = Math.round(srcXs + d * C_BASE_VAGUES);
+            ctx.beginPath(); ctx.moveTo(px, yLevel - TICK); ctx.lineTo(px, yLevel + TICK); ctx.stroke();
+            ctx.textAlign    = 'center';
+            ctx.textBaseline = 'top';
+            ctx.fillText(d.toFixed(decimals).replace('.', ','), px, yLevel + TICK + 2);
+        }
+        // Graduations à gauche de la source : s'effacent avec le rideau
+        if (bandAlpha < 0.99) {
+            ctx.globalAlpha = 1 - bandAlpha;
+            for (var d2 = step; srcXs - d2 * C_BASE_VAGUES > -1; d2 += step) {
+                var px2 = Math.round(srcXs - d2 * C_BASE_VAGUES);
+                ctx.beginPath(); ctx.moveTo(px2, yLevel - TICK); ctx.lineTo(px2, yLevel + TICK); ctx.stroke();
+            }
+            ctx.globalAlpha = 1;
+        }
+        ctx.shadowBlur = 0;
+    }
+
+    ctx.fillStyle    = 'rgba(255,255,255,0.6)';
+    ctx.font         = '11px sans-serif';
+    ctx.textAlign    = 'right';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('x (m) →', W - 4, yLevel - 3);
+    ctx.restore();
+}
+
+// Flèche λ : sa longueur ne change pas de la vue du dessus à la coupe (c'est
+// tout l'intérêt de la montrer pendant le basculement), seule sa hauteur
+// au-dessus de l'axe s'élève avec la rotation.
+function _draw3DLambdaArrow(ctx, W, H, srcXs, yLevel, sinT, bandAlpha) {
+    if (!simVagues.lambdaVisible) return;
+    var lambdaPx = _vaguesLambdaPx();
+    if (lambdaPx <= 0) return;
+
+    var dist = simVagues.lambdaX - simVagues.sourceX;
+    var x1   = srcXs + dist, x2 = x1 + lambdaPx;
+    if (x1 > W) return;
+
+    // Hors du demi-axe x > 0 : la coupe ne la montre pas, elle s'efface
+    // au rythme du rideau plutôt que de disparaître d'un coup.
+    var alpha = (dist <= 0) ? 1 - bandAlpha : 1;
+    if (alpha < 0.01) return;
+
+    var arrowYCoupe = _vaguesLambdaArrowYCoupe(W, H, srcXs);
+    var arrowY      = yLevel + (arrowYCoupe - yLevel) * sinT;
+    if (Math.abs(arrowY - yLevel) < 1) arrowY = yLevel;  // pas de pointillés à plat
+
+    var fTop  = Math.max(16, Math.round(simVagues.canvasW * 0.045));
+    var fCut  = Math.max(16, Math.round((W - srcXs) * 0.06));
+    var fSize = Math.round(fTop + (fCut - fTop) * sinT);
+
+    var clipL = srcXs * bandAlpha;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.beginPath();
+    ctx.rect(clipL, 0, W - clipL, H);
+    ctx.clip();
+    _drawLambdaArrowCore(ctx, x1, x2, arrowY, yLevel, fSize);
+    ctx.restore();
+}
+
+// Balises. toggleViewVagues n'a laissé actives que celles posées sur l'axe
+// (dz = 0) : elles montent donc sur la vague au fur et à mesure que θ croît,
+// ce qui montre que le point suivi est bien le même dans les deux vues.
+// Le style anneau (vue du dessus) se fond vers le style bouée (coupe).
+function _draw3DBeacons(ctx, W, srcXs, yLevel, ampPx, sinT, cosT) {
+    var specs = [
+        { b: simVagues.beacon1, color: '#e07020', label: 'B1' },
+        { b: simVagues.beacon2, color: '#2a8a50', label: 'B2' }
+    ];
+    for (var i = 0; i < specs.length; i++) {
+        var s = specs[i];
+        if (!s.b.active) continue;
+        var dist = s.b.x - simVagues.sourceX;
+        var bx   = srcXs + dist;
+        if (bx < -20 || bx > W + 20) continue;
+
+        // Hauteur d'onde au point suivi : même appel que la vue en coupe,
+        // pour arriver exactement sur sa position finale.
+        var wy    = (dist > 0) ? _waveFieldCoupeAt(simVagues.sourceX + dist, simVagues.sourceX) : 0;
+        var surfY = yLevel + (s.b.y - simVagues.sourceY) * cosT - wy * ampPx * sinT;
+
+        // — style vue du dessus (anneau fin) —
+        if (sinT < 0.995) {
+            ctx.save();
+            ctx.globalAlpha = 1 - sinT;
+            ctx.strokeStyle = s.color;
+            ctx.lineWidth   = 2.5;
+            ctx.beginPath(); ctx.arc(bx, surfY, 7, 0, Math.PI * 2); ctx.stroke();
+            ctx.fillStyle = s.color;
+            ctx.beginPath(); ctx.arc(bx, surfY, 3, 0, Math.PI * 2); ctx.fill();
+            ctx.font         = 'bold 22px monospace';
+            ctx.textAlign    = 'center';
+            ctx.textBaseline = 'bottom';
+            ctx.fillText(s.label, bx, surfY - 10);
+            ctx.restore();
+        }
+
+        // — style vue en coupe (bouée pleine + pointillé de mise à niveau) —
+        if (sinT > 0.005) {
+            ctx.save();
+            ctx.globalAlpha = sinT;
+
+            ctx.strokeStyle = s.color;
+            ctx.lineWidth   = 1.5;
+            ctx.setLineDash([5, 4]);
+            ctx.beginPath(); ctx.moveTo(bx, surfY); ctx.lineTo(bx, yLevel); ctx.stroke();
+            ctx.setLineDash([]);
+
+            ctx.fillStyle = s.color;
+            ctx.beginPath(); ctx.arc(bx, surfY, 10, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth   = 1.5;
+            ctx.stroke();
+
+            ctx.fillStyle    = s.color;
+            ctx.font         = 'bold 24px "Segoe UI", Arial, sans-serif';
+            ctx.textAlign    = 'center';
+            ctx.textBaseline = 'bottom';
+            ctx.shadowColor  = 'rgba(0,0,0,0.6)';
+            ctx.shadowBlur   = 3;
+            ctx.fillText(s.label, bx, surfY - 13);
+            ctx.restore();
+        }
     }
 }
 

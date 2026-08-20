@@ -835,6 +835,39 @@ Spécificités de l'onglet : source draggable dans le canvas, balises draggables
 dans le plan (et non sur un axe), et une **vue en coupe** (`viewMode`,
 avec animation de transition `transAnim`).
 
+### Transition vue du dessus ↔ vue en coupe
+
+Deux phases enchaînées (`VAGUES_TRANS_ROT` puis `VAGUES_TRANS_SLIDE`,
+2,0 s au total) : rotation de la caméra θ : 0 → π/2, puis panoramique
+horizontal amenant la source sur sa marge de gauche (`COUPE_LEFT_MARGIN`).
+Le fondu croisé final d’origine ayant disparu, toute la durée est consacrée
+au mouvement.
+
+`_vaguesTransProgress()` est le **point d'entrée unique** de la progression :
+le canvas (`_drawVaguesTransition`) et le graphe y(x) (`_drawYxGraphVagues`,
+qui anime `xMin`/`xMax` en parallèle) le partagent, les durées ne sont donc
+écrites qu'une fois.
+
+Tout le rendu intermédiaire passe par `_render3DWaveView(θ, pan)`, qui
+**converge exactement** vers `_drawVaguesCoupe` — mêmes formules
+d'atténuation (interpolées en sin θ entre celle du cache de champ et celle
+de `_waveFieldCoupeAt`), mêmes dégradés (reproduits ligne par ligne par
+`_fillCoupeColorLUTs`), mêmes décors. Il n'y a donc **pas** de fondu croisé
+final : la bascule de `viewMode` est invisible.
+
+Trois paramètres de fondu pilotent le rendu intermédiaire :
+
+| | piloté par | ce qui suit |
+|---|---|---|
+| `sinT` | rotation | ciel, dégradé d'eau, écume, labels Air/Eau, hauteur de la flèche λ, style des balises |
+| `bandAlpha` | panoramique | bandeau et tige de source, repli de l'axe et des graduations sur le demi-axe x > 0 |
+| `focus` = sin 2θ | mi-rotation | estompage des bandes z hors du plan de coupe (nul aux deux extrémités, maximum à θ = 45°) |
+
+Aucun décor n'est masqué pendant la transition (`_draw3DAxis`,
+`_draw3DLambdaArrow`, `_draw3DBeacons`, …) : les balises, posées sur l'axe,
+montent sur la vague au fur et à mesure de la rotation, et la flèche λ garde
+sa longueur — c'est ce qui relie les deux vues pour l'élève.
+
 ---
 
 ## `js/ui.js` — boucle et contrôles
