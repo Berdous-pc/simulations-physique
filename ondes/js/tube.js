@@ -1347,12 +1347,23 @@ function _sonFeaturePx() {
 
 // step = largeur du tirage uniforme par frame (cf. calibration), max = borne
 // dure. Les deux axes partagent les mêmes valeurs : l'errance est isotrope.
-function _wander(c, step, max) {
-    c.wy += (Math.random() - 0.5) * step - c.wy * WANDER_PULL;
+//
+// spd = sim.speedFactor : la boucle d'animation tourne toujours à ~60 fps
+// (requestAnimationFrame), que le ralenti soit actif ou non — seul dtSim,
+// le temps SIMULÉ, est ralenti. Sans ce facteur, l'agitation thermique
+// tirait un nouveau pas à chaque frame RÉELLE et restait donc à vitesse
+// normale même à ×0,10 : l'onde ralentissait, le nuage de gaz non. On
+// applique spd à la fois au pas de diffusion (∝ √dt physiquement, mais un
+// facteur linéaire suffit ici : c'est un rendu, pas une intégration
+// physique) et au rappel, pour que le régime stationnaire (σ, temps de
+// relaxation) reste cohérent au ralenti.
+function _wander(c, step, max, spd) {
+    var pull = WANDER_PULL * spd;
+    c.wy += (Math.random() - 0.5) * step * spd - c.wy * pull;
     if      (c.wy >  max) c.wy =  max;
     else if (c.wy < -max) c.wy = -max;
 
-    c.wx += (Math.random() - 0.5) * step - c.wx * WANDER_PULL;
+    c.wx += (Math.random() - 0.5) * step * spd - c.wx * pull;
     if      (c.wx >  max) c.wx =  max;
     else if (c.wx < -max) c.wx = -max;
 }
@@ -1398,6 +1409,7 @@ function _drawParticles(ctx) {
     var wStep  = 0.90 * wAmp;              // → σ ≈ 0,26 × wAmp par frame
     var wMax   = wAmp * WANDER_CLAMP;
     var moving = !sim.paused;
+    var spd    = (sim.speedFactor !== undefined) ? sim.speedFactor : 1.0;
 
     // Bande utile : ry ∈ [0,1] est réparti entre les deux parois, en gardant
     // le rayon du point de chaque côté. L'errance est ramenée dans la bande
@@ -1429,7 +1441,7 @@ function _drawParticles(ctx) {
             var x0 = c.x0;
             var u  = waveDisplacementDisplay(x0, sim.simTime);
 
-            if (moving) _wander(c, wStep, wMax);
+            if (moving) _wander(c, wStep, wMax, spd);
             var px = sim.tubeLeft + x0 + u + c.wx;
             var py = sim.tubeTop + yPad + c.ry * yBand + c.wy;
             if (py < yMin || py > yMax) py = _foldY(py, yMin, yMax);
@@ -1459,7 +1471,7 @@ function _drawParticles(ctx) {
 
                 // Agitation thermique : errance 2D autour de la position de
                 // repos, figée en pause (cf. _wander).
-                if (moving) _wander(c, wStep, wMax);
+                if (moving) _wander(c, wStep, wMax, spd);
                 var px = sim.tubeLeft + x0 + u + c.wx;
                 var py = sim.tubeTop + yPad + c.ry * yBand + c.wy;
                 if (py < yMin || py > yMax) py = _foldY(py, yMin, yMax);
