@@ -1355,6 +1355,84 @@ function _updateAnimHover(mouseX, mouseY) {
     _animHoverSnap = bestSnap;
 }
 
+/* ─────────────────────────────────────────────────
+   Style des noms de vecteurs sur le canvas — calé sur celui du <math> des
+   boutons "Vecteurs" du panneau (ex. <mover><mi>v</mi><mo>→</mo></mover>).
+   MathML Core met en italique un <mi> d'une seule lettre et droit un <mi> de
+   plusieurs lettres ; le Σ des boutons ΣF est en outre marqué
+   mathvariant="normal" (droit) explicitement dans le HTML. Reproduit ici :
+     - identifiant d'une lettre (v, a, F, f, P)  → italique
+     - identifiant de plusieurs lettres (OM)     → droit
+     - Σ, seul ou suivi d'une lettre (ΣF)        → toujours droit
+     - "F" + lettre d'espèce (FE, Fv)            → F italique, lettre en
+       indice italique, comme le F_E du bouton "Force électrique"
+   (<msub><mi>F</mi><mi>E</mi></msub>).
+   Défini nom par nom plutôt que déduit d'une règle générale, pour ne jamais
+   mal interpréter un nom qui n'existe pas encore dans cette table. */
+var VEC_NAME_PARTS = {
+    'OM': [{ t: 'OM' }],
+    'v':  [{ t: 'v', i: true }],
+    'a':  [{ t: 'a', i: true }],
+    'P':  [{ t: 'P', i: true }],
+    'f':  [{ t: 'f', i: true }],
+    'Fv': [{ t: 'F', i: true }, { t: 'v', i: true, sub: true }],
+    'FE': [{ t: 'F', i: true }, { t: 'E', i: true, sub: true }],
+    'ΣF': [{ t: 'Σ' }, { t: 'F', i: true }]
+};
+var VEC_SUB_RATIO = 0.68;  // taille d'un indice, fraction de la lettre normale
+var VEC_SUB_DY    = 0.32;  // décalage vertical d'un indice, fraction de la taille
+
+/* Police des boutons <math> : les navigateurs conformes à CSS Fonts 4
+   exposent leur police mathématique par défaut via le mot-clé générique
+   "math" — utilisable partout où une police se déclare, y compris dans
+   ctx.font en Canvas 2D. C'est exactement la police que le CSS des boutons
+   "Vecteurs" laisse le navigateur choisir lui-même pour leur <math> (aucune
+   règle de font-family ne cible ni <math> ni ses <mi>/<mo> dans style.css) :
+   demander "math" ici donne donc la MÊME police que les boutons, sans avoir
+   à la nommer ni à parier sur sa disponibilité (vérifié : sur canvas 2D,
+   `ctx.font = 'bold 16px math'` conserve la valeur au lieu de retomber sur
+   la police par défaut — donc bien reconnue et acceptée par le moteur de
+   rendu texte, comme pour un <math> HTML). */
+var VEC_MATH_FONT = 'math';
+
+function _mathNameParts(name) {
+    return VEC_NAME_PARTS[name] || [{ t: name }];   /* nom inconnu : rendu droit tel quel */
+}
+
+function _mathFont(sz, italic) {
+    return (italic ? 'italic ' : '') + 'bold ' + sz + 'px ' + VEC_MATH_FONT;
+}
+
+/* Largeur totale d'un nom de vecteur dans le style ci-dessus. */
+function _measureMathName(ctx, name, size) {
+    var parts = _mathNameParts(name);
+    var w = 0;
+    for (var i = 0; i < parts.length; i++) {
+        var p  = parts[i];
+        var sz = p.sub ? size * VEC_SUB_RATIO : size;
+        ctx.font = _mathFont(sz, p.i);
+        w += ctx.measureText(p.t).width;
+    }
+    return w;
+}
+
+/* Dessine un nom de vecteur dans le style ci-dessus.
+   (x, y) = coin haut-gauche du texte normal (textBaseline 'top'). */
+function _drawMathName(ctx, name, x, y, size, color) {
+    var parts = _mathNameParts(name);
+    ctx.textAlign    = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle    = color;
+    var cx = x;
+    for (var i = 0; i < parts.length; i++) {
+        var p  = parts[i];
+        var sz = p.sub ? size * VEC_SUB_RATIO : size;
+        ctx.font = _mathFont(sz, p.i);
+        ctx.fillText(p.t, cx, p.sub ? y + size * VEC_SUB_DY : y);
+        cx += ctx.measureText(p.t).width;
+    }
+}
+
 /* Affiche les coordonnées d'un vecteur en notation mathématique :
    grande parenthèse avec deux lignes (ligne1 / ligne2)  */
 /* Calcule les dimensions d'un label coordonnées (sans dessiner). */
@@ -1372,8 +1450,7 @@ function _measureVecLabel(ctx, vecName, line1, line2) {
     var iPad   = 7;
     var blockW = parenW * 2 + iPad * 2 + textW;
 
-    ctx.font = 'bold ' + nameSize + 'px "Segoe UI", Arial';
-    var nameW      = ctx.measureText(vecName).width;
+    var nameW      = _measureMathName(ctx, vecName, nameSize);
     var arrowExtra = Math.max(5, nameSize * 0.55);
     var nameColW   = nameW + 10;
     var nameColH   = arrowExtra + nameSize;
@@ -1495,11 +1572,7 @@ function _renderVecLabel(ctx, lx, ly, m, vecName, line1, line2, color) {
     ctx.stroke();
 
     /* Nom */
-    ctx.fillStyle    = color;
-    ctx.font         = 'bold ' + m.nameSize + 'px "Segoe UI", Arial';
-    ctx.textAlign    = 'left';
-    ctx.textBaseline = 'top';
-    ctx.fillText(vecName, lx, nameTopY + m.arrowExtra);
+    _drawMathName(ctx, vecName, lx, nameTopY + m.arrowExtra, m.nameSize, color);
 
     /* Parenthèses */
     var bx  = lx + m.nameColW;
@@ -1678,8 +1751,7 @@ function _drawAnimHover(ctx, snap, isPinned) {
 ───────────────────────────────────────────────── */
 function _measureForceName(ctx, name) {
     var sz = Math.max(11, Math.min(14, _animH * 0.028));
-    ctx.font = 'bold ' + sz + 'px "Segoe UI", Arial';
-    var tw = ctx.measureText(name).width;
+    var tw = _measureMathName(ctx, name, sz);
     var arrowH = Math.max(5, sz * 0.48);
     return { sz: sz, tw: tw, arrowH: arrowH, w: tw + 6, h: arrowH + 3 + sz };
 }
@@ -1704,10 +1776,7 @@ function _renderForceName(ctx, lx, ly, name, color, opacity, m) {
     ctx.stroke();
 
     /* Nom */
-    ctx.font = 'bold ' + m.sz + 'px "Segoe UI", Arial';
-    ctx.textAlign    = 'left';
-    ctx.textBaseline = 'top';
-    ctx.fillText(name, lx, ly + m.arrowH + 3);
+    _drawMathName(ctx, name, lx, ly + m.arrowH + 3, m.sz, color);
     ctx.restore();
 }
 
