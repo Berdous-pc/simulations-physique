@@ -1222,16 +1222,27 @@ function _updateAnimHover(mouseX, mouseY) {
         }
     }
 
-    var bestDist = Infinity, bestSnap = null;
+    /* Boucle appelée à chaque pointermove sur l'ensemble des points de toutes
+       les simulations affichées : on rejette d'abord par encadrement (deux
+       comparaisons) et on compare des distances au carré, pour ne calculer
+       ni racine ni groundY() sur la quasi-totalité des points. bestD2 part du
+       carré du rayon d'accroche, ce qui applique le seuil au passage. */
+    var R  = _hoverPickRadius();
+    var bestD2 = R * R, bestSnap = null;
+    var groundLimit = groundY() + 10;
     for (var di = 0; di < datasets.length; di++) {
         var pts = datasets[di].data;
         for (var k = 0; k < pts.length; k++) {
             var p = _toCanvasSplit(pts[k].x, pts[k].y, pts[k].vy || 0);
             /* ignorer les points sous le sol (hors zone visible) */
-            if (p.cy > groundY() + 10) continue;
-            var d = Math.hypot(p.cx - mouseX, p.cy - mouseY);
-            if (d < bestDist) {
-                bestDist = d;
+            if (p.cy > groundLimit) continue;
+            var dx = p.cx - mouseX;
+            if (dx > R || dx < -R) continue;
+            var dy = p.cy - mouseY;
+            if (dy > R || dy < -R) continue;
+            var d2 = dx * dx + dy * dy;
+            if (d2 < bestD2) {
+                bestD2 = d2;
                 bestSnap = { x: pts[k].x, y: pts[k].y,
                              vx: pts[k].vx, vy: pts[k].vy,
                              ax: pts[k].ax, ay: pts[k].ay,
@@ -1241,7 +1252,6 @@ function _updateAnimHover(mouseX, mouseY) {
             }
         }
     }
-    if (bestDist > _hoverPickRadius()) bestSnap = null;
     _animHoverSnap = bestSnap;
 }
 
@@ -2250,16 +2260,22 @@ function _updateAnimHoverE(mouseX, mouseY) {
             if (!visible[i].hidden) datasets.push({data: visible[i].graphData, color: visible[i].color, runId: visible[i].id});
         }
     }
-    var bestDist = Infinity, bestSnap = null;
+    /* Même rejet par encadrement + distance au carré qu'en pesanteur */
+    var R = _hoverPickRadius();
+    var bestD2 = R * R, bestSnap = null;
     /* sim is swapped to simE during drawAnimE but not here; use simE directly for toCanvas */
     var _simBak = sim; sim = simE;
     for (var di = 0; di < datasets.length; di++) {
         var pts = datasets[di].data;
         for (var k = 0; k < pts.length; k++) {
             var p = toCanvas(pts[k].x, pts[k].y);
-            var d = Math.hypot(p.cx - mouseX, p.cy - mouseY);
-            if (d < bestDist) {
-                bestDist = d;
+            var dx = p.cx - mouseX;
+            if (dx > R || dx < -R) continue;
+            var dy = p.cy - mouseY;
+            if (dy > R || dy < -R) continue;
+            var d2 = dx * dx + dy * dy;
+            if (d2 < bestD2) {
+                bestD2 = d2;
                 bestSnap = {x: pts[k].x, y: pts[k].y,
                             vx: pts[k].vx, vy: pts[k].vy,
                             ax: pts[k].ax, ay: pts[k].ay,
@@ -2269,7 +2285,6 @@ function _updateAnimHoverE(mouseX, mouseY) {
         }
     }
     sim = _simBak;
-    if (bestDist > _hoverPickRadius()) bestSnap = null;
     _animHoverSnapE = bestSnap;
 }
 

@@ -82,6 +82,21 @@ var SPEED_VALUES = [0.10, 0.25, 0.50, 1.00];
 /* ── Constante d'intégration ── */
 var PHYS_DT = 1 / 300;  // pas de temps simulation (s)
 
+/* ── Pas d'échantillonnage des données de graphe ──
+   La physique est intégrée à 300 Hz, mais enregistrer un point de graphe à
+   chaque pas est inutilement lourd : sur un tir long (g = 1 m/s², v0 = 40,
+   α = 90° → 80 s) cela faisait 24 000 points par simulation, parcourus
+   intégralement à chaque déplacement de souris (survol) et retracés à chaque
+   frame, pour cinq simulations sauvegardées en plus de la courante.
+
+   0,01 s est choisi pour diviser exactement tous les Δt possibles du slider
+   de chronophotographie (de 0,05 à 1,00 s par pas de 0,05) : la régénération
+   des poses par _regenerateChronoSnaps, qui rééchantillonne graphData, reste
+   donc exacte. Le mode champ électrique applique déjà le même principe
+   (_nextGraphRecordE). */
+var GRAPH_REC_DT = 0.01;
+var _nextGraphRecord = 0;
+
 /* ─────────────────────────────────────────────────
    resetSim — réinitialise l'état au début du lancer
 ───────────────────────────────────────────────── */
@@ -98,6 +113,9 @@ function resetSim() {
     sim.graphData      = [{t:0, x:sim.x, y:sim.y, vx:sim.vx, vy:sim.vy, ax:sim.ax, ay:sim.ay}];
     sim.analysisPoints = [];
     sim.nextChronoTime = 0;
+    /* Le point t = 0 vient d'être enregistré : le suivant est attendu à
+       GRAPH_REC_DT (mêmes conventions que _nextGraphRecordE en électrique). */
+    _nextGraphRecord   = GRAPH_REC_DT;
     sim.ended = false;
     if (sim.displayMode === 'chrono' || sim.displayMode === 'both') {
         pushChronoSnap();
@@ -158,12 +176,15 @@ function advanceSim(dtReal) {
             sim.trajPoints.push({x: sim.x, y: sim.y});
         }
 
-        /* Enregistrement données graphes */
-        sim.graphData.push({
-            t: sim.t, x: sim.x, y: sim.y,
-            vx: sim.vx, vy: sim.vy,
-            ax: sim.ax, ay: sim.ay
-        });
+        /* Enregistrement données graphes (voir GRAPH_REC_DT) */
+        if (sim.t >= _nextGraphRecord) {
+            sim.graphData.push({
+                t: sim.t, x: sim.x, y: sim.y,
+                vx: sim.vx, vy: sim.vy,
+                ax: sim.ax, ay: sim.ay
+            });
+            _nextGraphRecord += GRAPH_REC_DT;
+        }
 
         /* Chronophotographie */
         if ((sim.displayMode === 'chrono' || sim.displayMode === 'both') &&
