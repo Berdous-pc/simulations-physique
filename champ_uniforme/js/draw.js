@@ -38,8 +38,38 @@ function _vecScaleFactor() {
 /* Appelé depuis resizeAnimCanvas(), seul endroit où _animH change. */
 function _updateVecScales() {
     var f = _vecScaleFactor();
-    VEC_SCALE_VIT = VEC_SCALE_VIT_REF * f;
-    VEC_SCALE_ACC = VEC_SCALE_ACC_REF * f;
+    VEC_SCALE_VIT   = VEC_SCALE_VIT_REF   * f;
+    VEC_SCALE_ACC   = VEC_SCALE_ACC_REF   * f;
+    VEC_SCALE_FORCE = VEC_SCALE_FORCE_REF * f;
+}
+
+/* ── Échelles vecteurs du champ électrique ──────────────────────
+   Contrairement au champ de pesanteur, elles ne sont pas constantes : simE les
+   recalcule à chaque resetSimE() pour viser ~55 px à partir de v0 et E, et
+   chaque simulation sauvegardée en emporte une copie. Ces valeurs restent donc
+   des RÉFÉRENCES, calées sur un canvas de référence, et le facteur de taille
+   est appliqué ici — une seule fois par frame, au début de drawAnimE, plutôt
+   qu'aux dix endroits où elles sont lues (risque d'en oublier un, ou de
+   l'appliquer deux fois).
+─────────────────────────────────────────────────────────────── */
+var _vsE = { f: 1, vit: 1, acc: 1, force: 1 };
+
+function _updateVecScalesE() {
+    var f = _vecScaleFactor();
+    _vsE.f     = f;
+    _vsE.vit   = simE.vecScaleVit   * f;
+    _vsE.acc   = simE.vecScaleAcc   * f;
+    _vsE.force = simE.vecScaleForce * f;
+}
+
+/* Échelles d'une run sauvegardée, ramenées à la taille courante du canvas.
+   Repli sur celles de la simulation en cours pour les runs enregistrées avant
+   que ces champs n'existent. */
+function _runVecScalesE(run) {
+    return {
+        vit: (run.vecScaleVit || simE.vecScaleVit) * _vsE.f,
+        acc: (run.vecScaleAcc || simE.vecScaleAcc) * _vsE.f
+    };
 }
 
 /* Couleurs vecteurs */
@@ -60,8 +90,13 @@ var COL_VEC_SUMF_PERP   = COL_VEC_SUMF;
 var VEC_LW_PERP         = 3.5;
 var VEC_VIT_LW_PERP     = VEC_LW_PERP;
 
-/* Échelle forces : px par Newton */
-var VEC_SCALE_FORCE = 12;
+/* Échelle forces : px par Newton. Même traitement que VEC_SCALE_VIT/ACC —
+   valeur de référence, dérivée par _updateVecScales() selon la taille du
+   canvas. En px absolus, le poids d'une balle de 2 kg à g = 20 donnait une
+   flèche de 480 px, et les forces seraient restées à taille fixe pendant que
+   la vitesse et l'accélération se réduisaient. */
+var VEC_SCALE_FORCE_REF = 12;
+var VEC_SCALE_FORCE     = VEC_SCALE_FORCE_REF;
 
 /* Mode d'affichage des vecteurs : 'vecteur' | 'composantes' | 'vecteur-composantes' */
 var vecDisplayMode = 'vecteur';
@@ -2122,7 +2157,7 @@ function _drawForcesAtE(ctx, cx, cy, vx, vy, opacity, phys, placedRects) {
     var _col  = _perp ? COL_VEC_FORCES_PERP : COL_VEC_FORCES;
     var _op   = _perp ? 1.0 : opacity;
     var _vp = _viewProjFactors();
-    var _sf = sim.vecScaleForce || VEC_SCALE_FORCE;
+    var _sf = _vsE.force;
     var dxPx =  phys.FEx * _sf * _vp.cx;
     var dyPx = -phys.FEy * _sf * _vp.cy;
     _drawVecArrow(ctx, cx, cy, dxPx, dyPx, _col, null, _op, _perp ? VEC_LW_PERP : undefined);
@@ -2139,7 +2174,7 @@ function _drawSumFAtE(ctx, cx, cy, vx, vy, opacity, phys, placedRects) {
     var _col  = _perp ? COL_VEC_SUMF_PERP : COL_VEC_SUMF;
     var _op   = _perp ? 1.0 : opacity;
     var _vp = _viewProjFactors();
-    var _sf = sim.vecScaleForce || VEC_SCALE_FORCE;
+    var _sf = _vsE.force;
     var dxPx =  phys.FEx * _sf * _vp.cx;
     var dyPx = -phys.FEy * _sf * _vp.cy;
     _drawVecArrow(ctx, cx, cy, dxPx, dyPx, _col, null, _op, _perp ? VEC_LW_PERP : undefined);
@@ -2166,7 +2201,7 @@ function _drawChronoSnapsE(ctx) {
         if (sim.showVecPos)    _drawVectorPos(ctx, s.x, s.y, 0.6);
         if (sim.showVecVit) {
             var _cvxS = s.vx * sim.scaleX, _cvyS = -s.vy * sim.scaleY;
-            var _cmS = Math.hypot(_cvxS, _cvyS) || 1, _lS = Math.hypot(s.vx, s.vy) * sim.vecScaleVit;
+            var _cmS = Math.hypot(_cvxS, _cvyS) || 1, _lS = Math.hypot(s.vx, s.vy) * _vsE.vit;
             var _vitPerpS = sim.armatureMode === 'perp-x';
             _drawVecDispVA(ctx, p.cx, p.cy, _cvxS * _lS / _cmS, _cvyS * _lS / _cmS,
                 _vitPerpS ? COL_VEC_VIT_PERP : COL_VEC_VIT, null, _vitPerpS ? 1.0 : 0.6,
@@ -2174,7 +2209,7 @@ function _drawChronoSnapsE(ctx) {
         }
         if (sim.showVecAcc) {
             var _caxS = s.ax * sim.scaleX, _cayS = -s.ay * sim.scaleY;
-            var _caS = Math.hypot(_caxS, _cayS) || 1, _laS = Math.hypot(s.ax, s.ay) * sim.vecScaleAcc;
+            var _caS = Math.hypot(_caxS, _cayS) || 1, _laS = Math.hypot(s.ax, s.ay) * _vsE.acc;
             var _accPerpS = sim.armatureMode === 'perp-x';
             _drawVecDispVA(ctx, p.cx, p.cy, _caxS * _laS / _caS, _cayS * _laS / _caS,
                 _accPerpS ? COL_VEC_ACC_PERP : COL_VEC_ACC, null, _accPerpS ? 1.0 : 0.6,
@@ -2192,8 +2227,9 @@ function _drawSavedChronoSnapsE(ctx, run) {
     var snaps = run.chronoSnaps;
     if (!snaps.length) return;
     var _vp = _viewProjFactors();
-    var vsv = run.vecScaleVit   || sim.vecScaleVit;
-    var vsa = run.vecScaleAcc   || sim.vecScaleAcc;
+    var _rvs = _runVecScalesE(run);
+    var vsv = _rvs.vit;
+    var vsa = _rvs.acc;
     for (var i = 0; i < snaps.length; i++) {
         var s = snaps[i];
         if (_replaySessionActive && s.t > _replayT) break;
@@ -2252,14 +2288,14 @@ function _drawParticleE(ctx) {
     if (sim.showVecPos)    _drawVectorPos(ctx, sim.x, sim.y, 1.0);
     if (sim.showVecVit) {
         var _cvxP = sim.vx * sim.scaleX, _cvyP = -sim.vy * sim.scaleY;
-        var _cmP = Math.hypot(_cvxP, _cvyP) || 1, _lP = Math.hypot(sim.vx, sim.vy) * sim.vecScaleVit;
+        var _cmP = Math.hypot(_cvxP, _cvyP) || 1, _lP = Math.hypot(sim.vx, sim.vy) * _vsE.vit;
         var _vitPerpP = sim.armatureMode === 'perp-x';
         _drawVecDispVA(ctx, p.cx, p.cy, _cvxP * _lP / _cmP, _cvyP * _lP / _cmP,
             _vitPerpP ? COL_VEC_VIT_PERP : COL_VEC_VIT, null, 1.0, _vitPerpP ? VEC_VIT_LW_PERP : undefined);
     }
     if (sim.showVecAcc) {
         var _caxP = sim.ax * sim.scaleX, _cayP = -sim.ay * sim.scaleY;
-        var _caP = Math.hypot(_caxP, _cayP) || 1, _laP = Math.hypot(sim.ax, sim.ay) * sim.vecScaleAcc;
+        var _caP = Math.hypot(_caxP, _cayP) || 1, _laP = Math.hypot(sim.ax, sim.ay) * _vsE.acc;
         var _accPerpP = sim.armatureMode === 'perp-x';
         _drawVecDispVA(ctx, p.cx, p.cy, _caxP * _laP / _caP, _cayP * _laP / _caP,
             _accPerpP ? COL_VEC_ACC_PERP : COL_VEC_ACC, null, 1.0, _accPerpP ? VEC_LW_PERP : undefined);
@@ -2365,10 +2401,13 @@ function drawAnimE() {
     _replayT         = _replayTE;
     _animHoverSnap   = _animHoverSnapE;
     _labelMaxY       = _animH - 5;
+    /* Échelles électriques ramenées à la taille courante du canvas — à faire
+       avant tout tracé, tout le rendu ci-dessous lit _vsE. */
+    _updateVecScalesE();
     /* Nécessaire pour que les points épinglés (_drawAnalysisPoints) utilisent les
        échelles vitesse/accélération électriques, pas celles du champ de pesanteur */
-    _vecScaleVitOverride = simE.vecScaleVit;
-    _vecScaleAccOverride = simE.vecScaleAcc;
+    _vecScaleVitOverride = _vsE.vit;
+    _vecScaleAccOverride = _vsE.acc;
 
     /* try/finally : sans lui, une exception levée pendant le rendu laisserait
        "sim" pointé sur simE définitivement — l'onglet champ de pesanteur
@@ -2417,8 +2456,9 @@ function drawAnimE() {
 function _drawAnimHoverE(ctx, snap) {
     var _simBak = sim; var _runsBak = savedRuns; var _colBak = _currentRunColor;
     sim = simE; savedRuns = _visibleSavedRunsE(); _currentRunColor = _currentRunColorE;
-    _vecScaleVitOverride = simE.vecScaleVit;
-    _vecScaleAccOverride = simE.vecScaleAcc;
+    _updateVecScalesE();
+    _vecScaleVitOverride = _vsE.vit;
+    _vecScaleAccOverride = _vsE.acc;
     try {
         _drawAnimHover(ctx, snap);
     } finally {
