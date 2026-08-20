@@ -563,6 +563,49 @@ function _sonDisplayGain(k_cm, q) {
 }
 
 // ══════════════════════════════════════════════════════════════════════
+//  Contraste de densité RÉELLEMENT AFFICHÉ à l'abscisse x_px
+//
+//  C'est le A·k du champ d'AFFICHAGE, gain de lisibilité compris — donc la
+//  mesure de ce que les particules peuvent montrer à cet endroit. En
+//  dépliant le gain, il vaut
+//
+//      ak_disp = min( clamp(A·k, AK_MIN, AK_CAP) , sonMaxDisplayPx()·k )
+//
+//  et l'amplitude de la membrane en disparaît : seul compte le rapport
+//  entre la HAUTEUR du tube et la longueur d'onde. C'est pourquoi le
+//  contraste s'effondre aux grandes λ (le plafond absolu prend la main et
+//  neutralise le relèvement par AK_MIN) et pourquoi écraser le volet
+//  d'animation avec le splitter le dégrade lui aussi.
+//
+//  À ne PAS confondre avec waveDeltaP, qui est normalisée sur l'amplitude
+//  PHYSIQUE et atteint donc ±1 quels que soient les réglages : ΔP dit où
+//  sont les compressions, ak_disp dit si elles sont visibles.
+//
+//  Comme le gain, la valeur est lue dans l'HISTORIQUE : c'est le nombre
+//  d'onde figé à l'émission qui compte, pas la fréquence courante, sinon
+//  bouger f requalifierait d'un coup toute l'onde déjà propagée.
+//
+//  L'atténuation n'entre volontairement pas dans le calcul : elle réduit
+//  déjà ΔP dans les mêmes proportions (waveDeltaP normalise par une
+//  amplitude non atténuée), et la compter deux fois surdoserait tout ce
+//  qui s'appuie là-dessus. Renvoie 0 là où l'onde n'est pas encore arrivée.
+// ══════════════════════════════════════════════════════════════════════
+
+function sonDisplayAkAt(x_px, t_sim) {
+    if (sim.tubeLength <= 0) return 0;
+
+    var cmPerPx = TUBE_LENGTH_CM / sim.tubeLength;
+    var smp  = _srcSampleAtS(sim, _srcSAtTime(sim, t_sim, sim.c_cms) - x_px * cmPerPx);
+    // Copie immédiate : _srcOut est réutilisé d'un appel à l'autre.
+    var k_cm = smp.a;
+    var q    = smp.q;
+    if (k_cm <= 0) return 0;
+
+    var ak = sim.memAmplitude * (k_cm * cmPerPx) * (q > 0 ? q : 1);
+    return ak * _sonDisplayGain(k_cm, q);
+}
+
+// ══════════════════════════════════════════════════════════════════════
 //  Déplacement d'onde au point x_px (distance depuis bord gauche du
 //  tube, en px) au temps t_sim.
 //
@@ -678,18 +721,48 @@ function waveDeltaP(x_px, t_sim) {
 //
 //      πr² ≤ PARTICLE_FILL_MAX × (aire par particule à ρ_max)
 //
-//  l'aire par particule valant COL_SLOT_PX2/ρ (cf. initCols). Le taux de
-//  remplissage couvre alors ~6 % (ρ = 0,5) à 50 % (ρ = 4) : c'est la
-//  traduction fidèle des huit fois d'écart entre les deux extrêmes du
-//  curseur, et c'est bien le rôle de celui-ci.
+//  l'aire par particule valant COL_SLOT_PX2/ρ (cf. initCols).
+//
+//  ── Où placer PARTICLE_FILL_MAX ? ────────────────────────────────────
+//  « Ne pas saturer » ne dit pas où se placer, et la valeur d'origine
+//  (0,50) plaçait le nuage BEAUCOUP trop bas. Le calcul se pose : dans un
+//  semis aléatoire de taux de remplissage φ, la couverture perçue vaut
+//  C = 1 − e^(−φ). Une compression de taux ak porte localement φ à
+//  φ/(1−ak), une détente à φ/(1+ak), et ce qui se VOIT est l'écart
+//
+//      ΔC(φ) = e^(−φ/(1+ak)) − e^(−φ/(1−ak))
+//
+//  qui est nul aux deux bouts — nuage vide, nuage saturé — et maximal
+//  quelque part au milieu. À ak = 0,45 (le régime courant, cf. AK_MIN) le
+//  maximum tombe vers φ ≈ 0,9. Or l'ancien réglage donnait φ = 0,167 à
+//  ρ = 1 : on travaillait à un cinquième de l'optimum, et le contraste
+//  perdu là ne se rattrape par aucun fond ni aucune couleur.
+//
+//  Avec PARTICLE_FILL_MAX = 1,00 le remplissage va de 0,17 (ρ = 0,5) à
+//  1,00 (ρ = 3), et l'écart de couverture compression/détente passe de
+//  0,15 à 0,25 aux réglages par défaut — il double, à géométrie et à
+//  physique inchangées.
+//
+//  La crainte de l'aplat ne se vérifie pas à cette valeur : à ρ = 3 la
+//  couverture vaut 50 % en détente contre 84 % en compression. Le nuage
+//  est dense, mais il reste modulé — c'est φ = 2 ou 3 qui aplatirait.
+//  En revanche les points se touchent franchement à ρ élevé : c'est le
+//  prix assumé, et le curseur ρ reste là pour qui veut compter les points
+//  plutôt que lire les fronts.
 // ══════════════════════════════════════════════════════════════════════
 
-var PARTICLE_FILL_MAX = 0.50;   // part de l'aire disponible qu'un point peut couvrir
+var PARTICLE_FILL_MAX = 1.00;   // part de l'aire disponible qu'un point peut couvrir
 var RHO_MAX_UI        = 3.0;    // doit suivre le max du curseur ρ (index.html)
 
 function particleRadius() {
+    // La fenêtre de `base` suit PARTICLE_FILL_MAX : la laisser à son ancien
+    // calibrage (1,5 … 3,0 px) aurait fait d'elle la borne active — le rayon
+    // aurait plafonné à 3,0 px au lieu des 3,46 px visés, et les deux tiers
+    // du gain seraient restés sur la table. Facteur 1,2 sur les trois
+    // termes, pour que les petites hauteurs de volet profitent du même
+    // supplément d'encre que les grandes.
     var H    = sim.tubeBottom - sim.tubeTop;
-    var base = Math.max(1.5, Math.min(3.0, H * 0.015));
+    var base = Math.max(1.8, Math.min(3.6, H * 0.018));
 
     // Rayon au-delà duquel le nuage saturerait à ρ_max. Constante de fait :
     // ne dépend d'aucun réglage, seulement des bornes du curseur.

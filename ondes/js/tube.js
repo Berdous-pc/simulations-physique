@@ -783,10 +783,14 @@ function _drawTubePressureBg(ctx) {
 //  passage de l'onde, et cela se voit comme un artefact de rendu.
 //
 //  À noter : waveDeltaP est normalisée sur l'amplitude PHYSIQUE et non sur
-//  le gain d'affichage. Le voile se déclenche donc à pleine force même aux
+//  le gain d'affichage. Le voile SE DÉCLENCHE donc à pleine force même aux
 //  basses fréquences, là où le plafond de sonMaxDisplayPx() bride le
-//  mouvement visible et où le regroupement des particules est le moins net
-//  — le renfort arrive exactement là où il manque.
+//  mouvement visible et où le regroupement des particules est le moins net.
+//
+//  Se déclencher n'est pas se doser, et la nuance a longtemps masqué le
+//  défaut : le voile s'allumait bien aux basses fréquences, mais à sa teinte
+//  MINIMALE, faute d'un dosage qui sache que le nuage y est en difficulté.
+//  C'est ce que corrige l'arm de contraste plus bas.
 
 //  Le dosage est délibérément timide : le voile doit se remarquer sans qu'on
 //  le regarde, et surtout ne pas concurrencer le bleu des particules — deux
@@ -797,14 +801,16 @@ function _drawTubePressureBg(ctx) {
 //  ── Dosage adaptatif à la longueur d'onde ────────────────────────────
 //  Mais « timide » ne vaut que tant que les particules font le travail. Aux
 //  petites longueurs d'onde elles ne le peuvent plus : à λ = 50 px une bande
-//  de compression fait 25 px, pour des points de 2 px espacés de ~1 px — on
-//  est à la limite de résolution du nuage lui-même, et aucun réglage
-//  d'amplitude n'y changera rien. Le voile, lui, est un champ CONTINU : il
-//  résout parfaitement ces échelles.
+//  de compression fait 25 px, soit deux espacements à peine (le grain vaut
+//  ~10,6 px à ρ = 1) — on est à la limite de résolution du nuage lui-même,
+//  et aucun réglage d'amplitude n'y changera rien. Le voile, lui, est un
+//  champ CONTINU : il résout parfaitement ces échelles.
 //
-//  On l'appuie donc légèrement à mesure que λ rétrécit. Le passage entre les
-//  deux régimes est lissé (smoothstep), sans quoi le fond changerait
-//  visiblement d'aspect au franchissement d'un seuil du curseur f.
+//  On l'appuie donc légèrement à mesure que λ rétrécit — λ mesurée EN
+//  ESPACEMENTS, puisque c'est au grain du nuage qu'elle doit se comparer et
+//  que ce grain suit ρ (cf. les bornes plus bas). Le passage entre les deux
+//  régimes est lissé (smoothstep), sans quoi le fond changerait visiblement
+//  d'aspect au franchissement d'un seuil du curseur f.
 //
 //  ── Pourquoi le renfort reste modeste ────────────────────────────────
 //  Un premier réglage montait à 0,42 de teinte avec un genou abaissé à 0,22,
@@ -819,24 +825,99 @@ function _drawTubePressureBg(ctx) {
 //  qui se lit comme un effet du milieu — là où un genou bas donnait des
 //  bandes régulières, qui se lisent comme un décor.
 var DENS_BLUE      = [42, 106, 170];  // #2a6aaa — la couleur des particules
-// Bornes calées sur ce que les particules savent encore montrer : à λ = 140 px
-// la bande de compression fait 70 px pour un déplacement affiché de ~17 px,
-// largement lisible ; à λ = 45 px elle tombe à 22 px pour ~5 px de
-// déplacement, soit l'ordre de grandeur du grain du nuage.
-var DENS_LAM_COMFY = 140;             // px : au-delà, les particules suffisent
-var DENS_LAM_TIGHT = 45;              // px : en deçà, le voile porte tout
+
+// ── Bornes de l'arm de résolution, en GRAIN et non en pixels ──────────
+//
+//  Ces bornes ont d'abord été des pixels : 140 px « les particules
+//  suffisent », 45 px « le voile porte tout ». Elles ont été calées sur ce
+//  que le nuage savait montrer à ρ = 1 — donc sans le dire, elles étaient
+//  déjà une mesure du GRAIN du nuage, mais figée à une seule valeur de ρ.
+//
+//  Or ce grain suit ρ : l'aire par particule vaut COL_SLOT_PX2/ρ, donc
+//  l'espacement moyen vaut √(COL_SLOT_PX2/ρ) — 10,6 px à ρ = 1, mais 15,0 px
+//  à ρ = 0,5 et 6,1 px à ρ = 3. Un nuage dense résout des bandes deux fois
+//  plus fines qu'un nuage clairsemé, et des bornes en pixels absolus le
+//  ignoraient : le voile s'appuyait autant sur un nuage qui n'en avait pas
+//  besoin qu'il s'abstenait sur un nuage incapable de suivre.
+//
+//  Les bornes sont donc exprimées en ESPACEMENTS. Les valeurs reprennent
+//  très exactement les anciennes à ρ = 1 (13,2 × 10,6 ≈ 140 px, 4,2 × 10,6
+//  ≈ 45 px) : rien ne change au réglage par défaut, seule la réponse au
+//  curseur ρ apparaît.
+//
+//  ── Pourquoi le grain et non le NOMBRE de particules par bande ───────
+//  Le critère complet serait le comptage : une bande λ/2 × H contient
+//  n = (λ/2)·H·ρ/COL_SLOT_PX2 particules, de bruit relatif 1/√n — ce qui
+//  ferait aussi dépendre l'arm de la HAUTEUR du tube. On s'en garde, et pas
+//  par paresse : la hauteur est déjà l'affaire de l'AUTRE arm, puisque
+//  ak_disp ≤ 0,817·H/λ (cf. sonDisplayAkAt). Écraser le volet d'animation
+//  fait donc déjà monter le renfort par la voie du contraste ; le faire
+//  monter une seconde fois par la voie de la résolution le compterait deux
+//  fois. Chaque arm sa variable : le contraste porte H, la résolution ρ.
+var DENS_LAM_COMFY_SP = 13.2;         // espacements : au-delà, les particules suffisent
+var DENS_LAM_TIGHT_SP = 4.2;          // ... en deçà, le voile porte tout
 var DENS_KNEE_LO   = 0.55;            // seuil ΔP en régime confortable
 var DENS_KNEE_HI   = 0.45;            // ... et en régime serré
 var DENS_TINT_LO   = 0.14;            // teinte max en régime confortable
 var DENS_TINT_HI   = 0.22;            // ... et en régime serré
 
-// Position dans le régime serré : 0 = confortable, 1 = aussi serré que possible.
-function _densTightness() {
-    var lam = _sonFeaturePx();
-    var u   = (DENS_LAM_COMFY - lam) / (DENS_LAM_COMFY - DENS_LAM_TIGHT);
+// ── Le nuage échoue de DEUX façons, pas d'une ─────────────────────────
+//
+//  Le dosage ci-dessus ne connaissait que λ, et ne couvrait donc qu'une
+//  moitié du problème. Les particules cessent d'être lisibles pour deux
+//  raisons indépendantes, aux deux BOUTS de la plage de réglages :
+//
+//    • manque de RÉSOLUTION, aux petites λ — la bande de compression
+//      devient comparable au grain du nuage. C'est l'arm historique,
+//      mesurée sur λ (_densTightLam), et elle reste inchangée.
+//    • manque de CONTRASTE, aux grandes λ — le déplacement affiché est
+//      plafonné par la hauteur du tube (cf. sonDisplayAkAt), donc le
+//      rapport de densité s'écrase. À f = 0,5 Hz il tombe à 1,17 : les
+//      particules sont parfaitement résolues et ne montrent rien.
+//
+//  Le second cas n'était pas traité, et c'était le pire des deux : le
+//  voile y restait à sa teinte minimale précisément là où il aurait dû
+//  porter le plus. On dose donc sur le MAXIMUM des deux manques.
+//
+//  ── Pourquoi ça ne rend pas le fond plus visible ─────────────────────
+//  L'arm de contraste est ancrée sur AK_MIN — la valeur en dessous de
+//  laquelle le code considère déjà le contraste comme insuffisant. Elle ne
+//  contribue donc RIEN aux réglages par défaut et au-dessus (ak_disp ≈
+//  0,445 ≈ AK_MIN), et plafonne au même DENS_TINT_HI que l'arm de
+//  résolution. L'intensité maximale du voile est inchangée : il devient
+//  seulement atteignable dans un cas où il ne l'était pas.
+//
+//  ── Pourquoi la mesure est LOCALE ────────────────────────────────────
+//  ak_disp est lu dans l'historique, à l'abscisse du color-stop. Si f a
+//  bougé en cours de route, le tube contient des portions d'onde de nombres
+//  d'onde différents : chacune reçoit alors le renfort qui lui manque, au
+//  lieu d'un dosage global calé sur ce que la source émet en ce moment.
+var DENS_AK_FULL   = AK_MIN;          // ak affiché au-delà duquel le nuage suffit
+var DENS_AK_DEAD   = 0.12;            // ... et en deçà duquel il ne montre plus rien
+
+function _smoothstep01(u) {
     if (u <= 0) return 0;
     if (u >= 1) return 1;
-    return u * u * (3 - 2 * u);   // smoothstep
+    return u * u * (3 - 2 * u);
+}
+
+// Espacement moyen des particules, en px : l'aire par particule vaut
+// COL_SLOT_PX2/ρ (cf. initCols, même écrêtage de ρ).
+function _densGrainPx() {
+    return Math.sqrt(COL_SLOT_PX2 / Math.max(0.1, sim.rho));
+}
+
+// Manque de résolution : 0 = confortable, 1 = aussi serré que possible.
+function _densTightLam() {
+    var lam   = _sonFeaturePx() / _densGrainPx();   // λ, en espacements
+    return _smoothstep01((DENS_LAM_COMFY_SP - lam) /
+                         (DENS_LAM_COMFY_SP - DENS_LAM_TIGHT_SP));
+}
+
+// Manque de contraste affiché à l'abscisse courante : 0 = le nuage montre
+// tout, 1 = il ne montre plus rien.
+function _densTightAk(ak) {
+    return _smoothstep01((DENS_AK_FULL - ak) / (DENS_AK_FULL - DENS_AK_DEAD));
 }
 
 function _drawTubeDensityBg(ctx) {
@@ -853,16 +934,18 @@ function _drawTubeDensityBg(ctx) {
     var xRight = sim.tubeLeft + L;
     var span   = xRight - xLeft;
 
-    // ── Dosage, interpolé entre les deux régimes ──────────────────────
-    var tight = _densTightness();
-    var knee  = DENS_KNEE_LO + tight * (DENS_KNEE_HI - DENS_KNEE_LO);
-    var tint  = DENS_TINT_LO + tight * (DENS_TINT_HI - DENS_TINT_LO);
+    // ── Dosage ────────────────────────────────────────────────────────
+    // L'arm de résolution ne dépend que de ce que la source émet : elle se
+    // calcule une fois. L'arm de contraste est lue dans l'historique, donc
+    // au color-stop (cf. plus haut).
+    var tightLam = _densTightLam();
 
     // ── Finesse d'échantillonnage ─────────────────────────────────────
     // Le nombre de color-stops doit suivre λ : à 300 stops sur 900 px, une
     // λ de 55 px ne recevrait que 3 points par alternance et le dégradé
     // rendrait un moiré au lieu des bandes. On vise ~14 stops par λ, borné
-    // pour que le coût reste stable (chaque stop est un appel à waveDeltaP).
+    // pour que le coût reste stable — chaque stop coûte une remontée dans
+    // l'historique pour waveDeltaP et une pour sonDisplayAkAt.
     var lam   = _sonFeaturePx();
     var nb    = N_PRESSURE_BANDS;
     if (lam > 0) {
@@ -879,6 +962,14 @@ function _drawTubeDensityBg(ctx) {
         // négatif dans la bande découverte par la membrane — cf. _sonBgDeltaP.
         var x_px = xLeft - sim.tubeLeft + frac * span;
         var dp   = _sonBgDeltaP(x_px);
+
+        // Manque local : le pire des deux (résolution / contraste affiché).
+        // Même écrêtage de x que _sonBgDeltaP — dans la bande que la membrane
+        // vient de découvrir, l'échantillon à lire est celui de sa face.
+        var tightAk = _densTightAk(sonDisplayAkAt(x_px > 0 ? x_px : 0, sim.simTime));
+        var tight   = (tightAk > tightLam) ? tightAk : tightLam;
+        var knee    = DENS_KNEE_LO + tight * (DENS_KNEE_HI - DENS_KNEE_LO);
+        var tint    = DENS_TINT_LO + tight * (DENS_TINT_HI - DENS_TINT_LO);
 
         var a = 0;
         if (dp > knee) {
@@ -1145,29 +1236,51 @@ function _drawMembrane(ctx) {
 //  L'écart-type stationnaire d'une marche rappelée vaut σ/√(2·pull), soit
 //  ici ≈ 1,3 × wAmp ; WANDER_CLAMP borne les rares excursions au-delà.
 //
-//  L'errance est à DEUX dimensions, comme une vraie agitation thermique —
-//  purement verticale, elle donnait un effet de pluie. Mais les deux axes
-//  ne jouent PAS le même rôle :
+//  ── L'errance est ISOTROPE ───────────────────────────────────────────
+//  L'errance est à deux dimensions, comme une vraie agitation thermique —
+//  purement verticale, elle donnait un effet de pluie. Elle a longtemps été
+//  franchement ANISOTROPE : amplitude pleine en vertical, bridée à une
+//  fraction de λ en horizontal, au motif que le vertical est « gratuit »
+//  (déplacer une particule de haut en bas ne change rien à la densité lue
+//  le long du tube) alors que l'horizontal « floute » la structure. Le
+//  rapport atteignait 3:1 aux réglages par défaut, et 5:1 en haut de la
+//  plage de fréquence.
 //
-//    • en vertical, l'errance est gratuite — déplacer une particule de haut
-//      en bas ne change rien à la densité lue le long du tube ;
-//    • en horizontal, elle FLOUTE directement ce qu'on cherche à montrer.
-//      Une bande de compression mesure λ/2 ; à 5 Hz cela ne fait qu'une
-//      quarantaine de pixels, qu'une errance d'écart-type 9 px dissout.
-//      C'est ce qui rendait les fronts illisibles en haute fréquence.
+//  Ça se voit. Une agitation trois fois plus ample en hauteur qu'en largeur
+//  n'est pas lue comme de l'agitation thermique, elle est lue comme de la
+//  pluie — l'œil est très sensible à l'anisotropie d'un mouvement brownien.
 //
-//  La composante horizontale est donc bornée par la LONGUEUR D'ONDE
-//  courante (cf. _sonFeaturePx) et non par une simple fraction de wAmp :
-//  elle reste ainsi négligeable devant la structure à révéler, quels que
-//  soient les réglages. Elle n'entre pas dans la sélection, qui travaille
-//  sur x0.
+//  Et le motif ne tenait pas. Deux erreurs s'étaient superposées :
+//
+//    • « l'errance fabrique des amas parasites ». Non : chaque particule
+//      erre INDÉPENDAMMENT de ses voisines. Une telle marche ne peut pas
+//      créer d'amas, elle ne fait que FLOUTER. (Un déplacement indépendant
+//      laisse d'ailleurs un processus de Poisson inchangé.)
+//    • « le flou horizontal dissout les bandes ». Beaucoup moins qu'estimé :
+//      sur une sinusoïde de longueur d'onde λ, une errance d'écart-type σ
+//      réduit le contraste d'un facteur exp(−2π²σ²/λ²), soit 2 % seulement
+//      à σ = λ/30 et 5 % à σ = λ/20. Le budget horizontal était bien plus
+//      large que ce qu'on lui accordait.
+//
+//  Le réglage se pose donc à l'envers de l'ancien : UNE SEULE amplitude
+//  pour les deux axes, fixée par un budget de flou explicite — σ ≤ λ/20,
+//  soit wAmp ≤ λ/26 puisque σ ≈ 1,3 × wAmp. Aux réglages par défaut
+//  (λ ≈ 367 px) la borne vaut 14 px et coïncide avec l'amplitude naturelle :
+//  l'errance est exactement isotrope. Elle ne se resserre qu'en haut de la
+//  plage de fréquence, là où λ devient petite — et le nuage s'y calme sur
+//  les DEUX axes, ce qui est cohérent à l'œil et profite en prime à la
+//  lecture des bandes, devenues fines.
+//
+//  L'errance n'entre pas dans la sélection, qui travaille sur x0.
 var WANDER_PULL  = 0.02;   // rappel vers la position de repos
 var WANDER_CLAMP = 2.5;    // borne dure, en multiples de wAmp
-var WANDER_X_REL = 0.5;    // part horizontale, avant bornage par λ
-var WANDER_X_LAM = 1 / 40; // ... et jamais plus de λ/40
+var WANDER_LAM   = 1 / 26; // budget de flou : wAmp ≤ λ/26, soit σ ≤ λ/20
+var WANDER_MIN   = 2.5;    // px — plancher, pour que le gaz ne fige jamais
 
 function _wanderAmp(H) {
-    return Math.max(4.5, Math.min(14, H * 0.07));   // px
+    var base = Math.max(4.5, Math.min(14, H * 0.07));   // px
+    return Math.max(WANDER_MIN,
+                    Math.min(base, _sonFeaturePx() * WANDER_LAM));
 }
 
 // Taille caractéristique, en px, de ce que la source est en train d'émettre :
@@ -1183,15 +1296,43 @@ function _sonFeaturePx() {
     return Math.min(lam, sim.tubeLength);
 }
 
-// stepY / stepX = largeur du tirage uniforme par frame (cf. calibration).
-function _wander(c, stepY, stepX, maxY, maxX) {
-    c.wy += (Math.random() - 0.5) * stepY - c.wy * WANDER_PULL;
-    if      (c.wy >  maxY) c.wy =  maxY;
-    else if (c.wy < -maxY) c.wy = -maxY;
+// step = largeur du tirage uniforme par frame (cf. calibration), max = borne
+// dure. Les deux axes partagent les mêmes valeurs : l'errance est isotrope.
+function _wander(c, step, max) {
+    c.wy += (Math.random() - 0.5) * step - c.wy * WANDER_PULL;
+    if      (c.wy >  max) c.wy =  max;
+    else if (c.wy < -max) c.wy = -max;
 
-    c.wx += (Math.random() - 0.5) * stepX - c.wx * WANDER_PULL;
-    if      (c.wx >  maxX) c.wx =  maxX;
-    else if (c.wx < -maxX) c.wx = -maxX;
+    c.wx += (Math.random() - 0.5) * step - c.wx * WANDER_PULL;
+    if      (c.wx >  max) c.wx =  max;
+    else if (c.wx < -max) c.wx = -max;
+}
+
+// ── Rencontre d'une paroi : rebond, pas écrasement ────────────────────
+//
+//  L'errance verticale a un écart-type stationnaire de 1,3 × wAmp, soit
+//  jusqu'à 18 px. Sur une bande utile de 200 px, une particule sur cinq
+//  environ sort donc de la bande à un instant donné. Les ÉCRASER sur yMin
+//  ou yMax — ce que faisait un simple clamp — ne les fait pas disparaître :
+//  ça les EMPILE, exactement sur deux droites. Le tube se bordait ainsi de
+//  deux liserés sombres, permanents et insensibles à ΔP, qui prenaient une
+//  part appréciable de l'encre disponible tout en ne disant rien de l'onde.
+//  Autant d'encre en moins pour les compressions, et un cadre visuel qui
+//  attire l'œil hors de la zone où il faudrait le porter.
+//
+//  Le repliement rend la position à l'intérieur de la bande au lieu de la
+//  coller au bord. C'est aussi la bonne image physique : une molécule qui
+//  atteint la paroi rebondit, elle ne s'y colle pas.
+//
+//  Le repliement est ITÉRÉ (triangle) et non appliqué une seule fois : une
+//  bande étroite — volet d'animation très écrasé — peut être plus courte
+//  que l'excursion, et un repli unique ressortirait alors de l'autre côté.
+function _foldY(py, yMin, yMax) {
+    var span = yMax - yMin;
+    if (span <= 0) return yMin;
+    var t = (py - yMin) % (2 * span);
+    if (t < 0) t += 2 * span;
+    return yMin + (t <= span ? t : 2 * span - t);
 }
 
 function _drawParticles(ctx) {
@@ -1202,20 +1343,19 @@ function _drawParticles(ctx) {
     var r = particleRadius();
 
     // ── Paramètres d'errance de la frame (cf. calibration ci-dessus) ──
+    // Un seul jeu de valeurs : l'errance est isotrope, le bornage par λ est
+    // déjà intégré à _wanderAmp.
     var wAmp   = _wanderAmp(H);
-    var stepY  = 0.90 * wAmp;              // → σ ≈ 0,26 × wAmp
-    var maxY   = wAmp * WANDER_CLAMP;
-    // Horizontal : la plus contraignante des deux bornes (cf. plus haut).
-    var wAmpX  = Math.min(wAmp * WANDER_X_REL, _sonFeaturePx() * WANDER_X_LAM);
-    var stepX  = 0.90 * wAmpX;
-    var maxX   = wAmpX * WANDER_CLAMP;
+    var wStep  = 0.90 * wAmp;              // → σ ≈ 0,26 × wAmp par frame
+    var wMax   = wAmp * WANDER_CLAMP;
     var moving = !sim.paused;
 
     // Bande utile : ry ∈ [0,1] est réparti entre les deux parois, en gardant
-    // le rayon du point de chaque côté. L'errance est bornée À L'AFFICHAGE
-    // (yMin/yMax) plutôt qu'en lui réservant sa place dans la bande : lui
-    // réserver l'excursion maximale aurait laissé le gaz flotter entre deux
-    // marges vides, alors qu'une particule a le droit d'aller toucher la paroi.
+    // le rayon du point de chaque côté. L'errance est ramenée dans la bande
+    // À L'AFFICHAGE (yMin/yMax, par repliement — cf. _foldY) plutôt qu'en lui
+    // réservant sa place dans la bande : lui réserver l'excursion maximale
+    // aurait laissé le gaz flotter entre deux marges vides, alors qu'une
+    // particule a le droit d'aller toucher la paroi.
     var yPad  = r;
     var yBand = Math.max(0, H - 2 * yPad);
     var yMin  = sim.tubeTop + r;
@@ -1240,11 +1380,10 @@ function _drawParticles(ctx) {
             var x0 = c.x0;
             var u  = waveDisplacementDisplay(x0, sim.simTime);
 
-            if (moving) _wander(c, stepY, stepX, maxY, maxX);
+            if (moving) _wander(c, wStep, wMax);
             var px = sim.tubeLeft + x0 + u + c.wx;
             var py = sim.tubeTop + yPad + c.ry * yBand + c.wy;
-            if      (py < yMin) py = yMin;
-            else if (py > yMax) py = yMax;
+            if (py < yMin || py > yMax) py = _foldY(py, yMin, yMax);
 
             // Remplissage couleur ΔP
             var dp = waveDeltaP(x0, sim.simTime);
@@ -1271,11 +1410,10 @@ function _drawParticles(ctx) {
 
                 // Agitation thermique : errance 2D autour de la position de
                 // repos, figée en pause (cf. _wander).
-                if (moving) _wander(c, stepY, stepX, maxY, maxX);
+                if (moving) _wander(c, wStep, wMax);
                 var px = sim.tubeLeft + x0 + u + c.wx;
                 var py = sim.tubeTop + yPad + c.ry * yBand + c.wy;
-                if      (py < yMin) py = yMin;
-                else if (py > yMax) py = yMax;
+                if (py < yMin || py > yMax) py = _foldY(py, yMin, yMax);
 
                 ctx.moveTo(px + r, py);     // moveTo évite les lignes parasites entre arcs
                 ctx.arc(px, py, r, 0, Math.PI * 2);

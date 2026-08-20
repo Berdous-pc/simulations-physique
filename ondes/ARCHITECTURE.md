@@ -326,10 +326,30 @@ parcelle de fluide enfler parce que le milieu se raréfie n'a aucun sens.
 
 Le rayon est donc dimensionné une fois pour toutes sur le cas le plus
 défavorable, `ρ = RHO_MAX_UI` (à tenir synchronisé avec le max du curseur dans
-`index.html`), de sorte que le nuage ne sature nulle part sur la plage. Le taux
-de remplissage couvre alors ~6 % (ρ = 0,5) à 50 % (ρ = 4) : c'est la traduction
-fidèle des huit fois d'écart entre les extrêmes du curseur, et c'est bien son
-rôle.
+`index.html`).
+
+**Où placer `PARTICLE_FILL_MAX` ?** « Ne pas saturer » ne dit pas *où* se
+placer, et la valeur d'origine (0,50) plaçait le nuage beaucoup trop bas. Dans
+un semis aléatoire de taux de remplissage `φ`, la couverture perçue vaut
+`C = 1 − e^(−φ)` ; une compression de taux `ak` porte localement `φ` à
+`φ/(1−ak)`, une détente à `φ/(1+ak)`, et ce qui se **voit** est l'écart
+`ΔC(φ) = e^(−φ/(1+ak)) − e^(−φ/(1−ak))`. Nul aux deux bouts — nuage vide,
+nuage saturé — il est maximal vers `φ ≈ 0,9` à `ak = 0,45` (le régime courant,
+cf. `AK_MIN`). Or l'ancien réglage donnait `φ = 0,167` à ρ = 1 : on travaillait
+à un cinquième de l'optimum, et le contraste perdu là ne se rattrape par aucun
+fond ni aucune couleur.
+
+`PARTICLE_FILL_MAX = 1,00` porte le remplissage de 0,17 (ρ = 0,5) à 1,00
+(ρ = 3), et l'écart de couverture compression/détente de 0,15 à 0,25 aux
+réglages par défaut — il double, à géométrie et à physique inchangées. La
+crainte de l'aplat ne se vérifie pas à cette valeur : à ρ = 3 la couverture
+vaut 50 % en détente contre 84 % en compression. Le nuage est dense mais reste
+modulé — c'est `φ = 2` ou 3 qui aplatirait.
+
+La fenêtre de `base` (le rayon « esthétique » tiré de la hauteur du tube) suit
+`PARTICLE_FILL_MAX` : la laisser à son ancien calibrage `1,5 … 3,0 px` en
+aurait fait la borne active, le rayon aurait plafonné à 3,0 px au lieu des
+3,46 px visés, et les deux tiers du gain seraient restés sur la table.
 
 `updateDptData`, `pruneImpulses`, `resetAnim`, `selectNearbyParticles`.
 
@@ -441,15 +461,65 @@ d'œil et sans légende. D'où son caractère **unilatéral** : ne teinter que l
 compressions laisse les détentes se lire d'elles-mêmes comme les zones restées
 claires, au lieu d'introduire un second code couleur concurrent.
 
-**Le dosage suit la longueur d'onde** (`_densTightness`). « Discret » ne vaut
-que tant que les particules font le travail. Aux petites λ elles ne le peuvent
-plus : à λ = 45 px une bande de compression fait 22 px pour un déplacement
-affiché de ~5 px, soit l'ordre de grandeur du grain du nuage — aucun réglage
+**Le dosage suit le pire de DEUX manques.** « Discret » ne vaut que tant que
+les particules font le travail, et elles échouent pour deux raisons
+indépendantes, aux deux **bouts** de la plage de réglages.
+
+*Manque de résolution*, aux petites λ (`_densTightLam`) : à λ = 45 px une
+bande de compression fait 22 px, soit deux espacements à peine — aucun réglage
 d'amplitude n'y changera rien. Le voile, lui, est un champ **continu** : il
 résout parfaitement ces échelles. Il s'appuie donc à mesure que λ rétrécit
-(teinte 0,14 → 0,22), et retrouve son dosage discret aux grandes λ. La
-transition est lissée, sans quoi le fond changerait visiblement d'aspect au
-franchissement d'un seuil du curseur f.
+(teinte 0,14 → 0,22).
+
+Ses bornes sont exprimées **en espacements et non en pixels**
+(`DENS_LAM_*_SP`, converties par `_densGrainPx`). Elles ont d'abord été des
+pixels absolus — 140 px et 45 px — calés sur ce que le nuage savait montrer à
+ρ = 1 : sans le dire, c'était déjà une mesure du grain, mais figée à une seule
+valeur de ρ. Or le grain suit ρ, l'aire par particule valant
+`COL_SLOT_PX2/ρ` : l'espacement moyen vaut 10,6 px à ρ = 1, mais **15,0 px à
+ρ = 0,5 et 6,1 px à ρ = 3**. Un nuage dense résout des bandes deux fois plus
+fines qu'un nuage clairsemé, et des bornes en pixels absolus l'ignoraient — le
+voile s'appuyait autant sur un nuage qui n'en avait pas besoin qu'il
+s'abstenait sur un nuage incapable de suivre. Les valeurs (13,2 et 4,2)
+reprennent exactement les anciennes à ρ = 1 : rien ne change au réglage par
+défaut, seule la réponse au curseur ρ apparaît.
+
+*Manque de contraste*, aux grandes λ (`_densTightAk`) : le déplacement affiché
+est plafonné par la hauteur du tube, donc `ak_disp = min(clamp(A·k, AK_MIN,
+AK_CAP), sonMaxDisplayPx()·k)` s'écrase quand λ grandit. À f = 0,5 Hz le
+rapport de densité tombe à 1,17 — les particules sont parfaitement résolues et
+ne montrent rien. Ce cas n'était **pas traité** : le voile s'y allumait (ΔP
+atteint bien ±1, cf. plus bas) mais à sa teinte *minimale*, précisément là où
+il aurait dû porter le plus. Se déclencher n'est pas se doser, et la nuance a
+longtemps masqué le défaut.
+
+**Chaque arm sa variable : le contraste porte `H`, la résolution porte `ρ`.**
+Le critère de résolution complet serait le comptage — une bande `λ/2 × H`
+contient `n = (λ/2)·H·ρ/COL_SLOT_PX2` particules, de bruit relatif `1/√n` —
+ce qui ferait aussi dépendre l'arm de la hauteur du tube. On s'en garde
+délibérément : la hauteur est déjà l'affaire de l'autre arm, puisque
+`ak_disp ≤ 0,817·H/λ`. Écraser le volet d'animation avec le splitter fait donc
+déjà monter le renfort par la voie du contraste ; le faire monter une seconde
+fois par la voie de la résolution le compterait deux fois — même écueil que
+l'atténuation, écartée de `sonDisplayAkAt` pour la même raison.
+
+Le dosage retenu est le **maximum** des deux manques. L'arm de contraste est
+ancrée sur `AK_MIN` — la valeur en dessous de laquelle le code considère déjà
+le contraste comme insuffisant — donc elle ne contribue rien aux réglages par
+défaut et au-dessus (`ak_disp` ≈ 0,445 ≈ `AK_MIN`), et plafonne au même
+`DENS_TINT_HI`. **L'intensité maximale du voile est inchangée** : il devient
+seulement atteignable dans un cas où il ne l'était pas.
+
+Les deux transitions sont lissées (smoothstep), sans quoi le fond changerait
+visiblement d'aspect au franchissement d'un seuil du curseur f.
+
+**La mesure de contraste est locale.** `sonDisplayAkAt` lit `ak_disp` dans
+l'**historique**, à l'abscisse du color-stop — comme le gain d'affichage
+lui-même. Si f a bougé en cours de route, le tube contient des portions d'onde
+de nombres d'onde différents : chacune reçoit alors le renfort qui lui manque,
+au lieu d'un dosage global calé sur ce que la source émet en ce moment.
+L'atténuation n'entre volontairement pas dans `sonDisplayAkAt` : elle réduit
+déjà ΔP dans les mêmes proportions, et la compter deux fois surdoserait.
 
 **Le renfort reste volontairement modeste.** Un réglage plus appuyé a été
 essayé (teinte 0,42, genou abaissé à 0,22 pour élargir les bandes) : il se
@@ -487,8 +557,8 @@ Deux détails qui comptent :
 - `waveDeltaP` étant normalisée sur l'amplitude **physique** et non sur le
   gain d'affichage, le voile se déclenche à pleine force même aux basses
   fréquences — là où le plafond de `sonMaxDisplayPx()` bride le mouvement
-  visible et où le regroupement des particules est le moins net. Le renfort
-  arrive donc exactement là où il manque.
+  visible et où le regroupement des particules est le moins net. C'est le
+  dosage, et non le déclenchement, qui manquait là : cf. `_densTightAk`.
 
 **Le fond part de la face réelle de la membrane** (`_sonTubeFillLeft` =
 `tubeLeft + min(0, disp)`) et non de `tubeLeft`, dans les deux fonds comme
@@ -535,20 +605,53 @@ réglage essayé, dix fois plus discret, donnait un gaz visuellement figé. À
 l'inverse, le pas doit rester inférieur au rayon d'une particule, faute de
 quoi on retombe sur du scintillement.
 
-**Les deux axes ne jouent pas le même rôle.** En vertical l'errance est
-gratuite : déplacer une particule de haut en bas ne change rien à la densité
-lue le long du tube. En horizontal elle **floute directement** ce qu'on
-cherche à montrer — une bande de compression mesure λ/2, soit une quarantaine
-de pixels à 5 Hz, qu'une errance d'écart-type 9 px dissout. C'est ce qui
-rendait les fronts illisibles en haute fréquence. La composante horizontale
-est donc bornée par la **longueur d'onde courante** (`_sonFeaturePx`, λ/40) et
-non par une simple fraction de l'excursion verticale ; elle n'entre pas dans
-la sélection, qui travaille sur `x0`.
+**L'errance est isotrope.** Elle a longtemps été franchement **anisotrope** :
+amplitude pleine en vertical, bridée à une fraction de λ en horizontal, au
+motif que le vertical est « gratuit » (déplacer une particule de haut en bas
+ne change rien à la densité lue le long du tube) alors que l'horizontal
+« floute » la structure. Le rapport atteignait **3:1** aux réglages par défaut
+et 5:1 en haut de la plage de fréquence — et ça se voit : une agitation trois
+fois plus ample en hauteur qu'en largeur n'est pas lue comme de l'agitation
+thermique, elle est lue comme de la **pluie**. L'œil est très sensible à
+l'anisotropie d'un mouvement brownien.
 
-L'errance est bornée **à l'affichage** et non en lui réservant sa place dans
-la bande utile : lui réserver l'excursion maximale laissait le gaz flotter
-entre deux marges vides, alors qu'une particule a le droit d'aller toucher la
-paroi.
+Le motif ne tenait pas, pour deux raisons superposées :
+
+- *« l'errance fabrique des amas parasites »* — non : chaque particule erre
+  **indépendamment** de ses voisines, une telle marche ne peut pas créer
+  d'amas, elle ne fait que flouter (un déplacement indépendant laisse
+  d'ailleurs un processus de Poisson inchangé) ;
+- *« le flou horizontal dissout les bandes »* — beaucoup moins qu'estimé : sur
+  une sinusoïde de longueur d'onde λ, une errance d'écart-type σ réduit le
+  contraste d'un facteur `exp(−2π²σ²/λ²)`, soit **2 % à σ = λ/30** et 5 % à
+  σ = λ/20. Le budget horizontal était bien plus large que ce qu'on lui
+  accordait.
+
+Le réglage se pose donc à l'envers de l'ancien : **une seule amplitude pour
+les deux axes**, fixée par un budget de flou explicite — `σ ≤ λ/20`, soit
+`wAmp ≤ λ/26` puisque `σ ≈ 1,3 × wAmp` (`WANDER_LAM`). Aux réglages par défaut
+(λ ≈ 367 px) la borne vaut 14 px et coïncide avec l'amplitude naturelle tirée
+de `H` : l'errance est exactement isotrope. Elle ne se resserre qu'en haut de
+la plage de fréquence, où λ devient petite — et le nuage s'y calme sur les
+**deux** axes, ce qui est cohérent à l'œil et profite en prime à la lecture
+des bandes, devenues fines. `WANDER_MIN` empêche le gaz de figer tout à fait.
+L'errance n'entre pas dans la sélection, qui travaille sur `x0`.
+
+L'errance est ramenée dans la bande **à l'affichage** et non en lui réservant
+sa place dans la bande utile : lui réserver l'excursion maximale laissait le
+gaz flotter entre deux marges vides, alors qu'une particule a le droit d'aller
+toucher la paroi.
+
+**Rebond, pas écrasement** (`_foldY`). L'errance a un écart-type
+stationnaire de `1,3 × wAmp`, jusqu'à 18 px : sur une bande utile de 200 px,
+une particule sur cinq environ en sort à un instant donné. Un simple *clamp*
+sur `yMin`/`yMax` ne les faisait pas disparaître, il les **empilait** sur deux
+droites — le tube se bordait de deux liserés sombres, permanents et
+insensibles à ΔP, qui consommaient une part appréciable de l'encre disponible
+sans rien dire de l'onde. Le repliement (triangle itéré, pour tenir même quand
+la bande est plus courte que l'excursion) rend la position à l'intérieur de la
+bande, ce qui est aussi la bonne image physique : une molécule qui atteint la
+paroi rebondit, elle ne s'y colle pas.
 
 **Sélection de particules par proximité** : clic simple = remplace la sélection,
 Ctrl+clic = ajoute, Maj+clic = retire, dans un rayon `selectionRadius`
