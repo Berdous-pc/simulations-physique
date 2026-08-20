@@ -20,15 +20,15 @@ var _graphTimeNs = false;
 var GRAPH_TABS = [
     {key: 'x(t)',   xlabel: 't (s)', ylabel: 'x (m)',    yFn: function(d){return d.y_key==='x(t)';},  col: function(d){return d.x;},  xFn: function(d){return d.t;}},
     {key: 'y(t)',   xlabel: 't (s)', ylabel: 'y (m)',    col: function(d){return d.y;},  xFn: function(d){return d.t;}},
-    {key: 'vx(t)',  xlabel: 't (s)', ylabel: 'vx (m/s)', col: function(d){return d.vx;}, xFn: function(d){return d.t;}},
-    {key: 'vy(t)',  xlabel: 't (s)', ylabel: 'vy (m/s)', col: function(d){return d.vy;}, xFn: function(d){return d.t;}},
-    {key: 'ax(t)',  xlabel: 't (s)', ylabel: 'ax (m/s²)',col: function(d){return d.ax;}, xFn: function(d){return d.t;}},
-    {key: 'ay(t)',  xlabel: 't (s)', ylabel: 'ay (m/s²)',col: function(d){return d.ay;}, xFn: function(d){return d.t;}},
+    {key: 'vx(t)',  xlabel: 't (s)', ylabel: 'v_x (m/s)', col: function(d){return d.vx;}, xFn: function(d){return d.t;}},
+    {key: 'vy(t)',  xlabel: 't (s)', ylabel: 'v_y (m/s)', col: function(d){return d.vy;}, xFn: function(d){return d.t;}},
+    {key: 'ax(t)',  xlabel: 't (s)', ylabel: 'a_x (m/s²)',col: function(d){return d.ax;}, xFn: function(d){return d.t;}},
+    {key: 'ay(t)',  xlabel: 't (s)', ylabel: 'a_y (m/s²)',col: function(d){return d.ay;}, xFn: function(d){return d.t;}},
     {key: 'y(x)',   xlabel: 'x (m)', ylabel: 'y (m)',    col: function(d){return d.y;},  xFn: function(d){return d.x;}},
     /* Champ de pesanteur uniquement : rendu entièrement spécifique (voir _drawEnergiesGraph) */
     {key: 'energies', label: 'Énergies', xlabel: 't (s)', ylabel: 'E (J)', modes: ['pesanteur']},
     /* Champ électrique uniquement : Ec = 1/2 m v² (Epp électrique hors programme) */
-    {key: 'ec(t)', label: 'Ec(t)', xlabel: 't (s)', ylabel: 'Ec (J)',
+    {key: 'ec(t)', label: 'Ec(t)', xlabel: 't (s)', ylabel: 'E_c (J)',
      col: function(d){ return 0.5 * d.mass * (d.vx * d.vx + d.vy * d.vy); },
      xFn: function(d){ return d.t; }, modes: ['electrique']}
 ];
@@ -154,7 +154,7 @@ function _makeEnergyControls(slot) {
     };
     wrap.appendChild(runSel);
 
-    function makeCheckbox(label, color, key) {
+    function makeCheckbox(label, sub, color, key) {
         var lab = document.createElement('label');
         lab.style.cssText = 'display:flex;align-items:center;gap:3px;' +
             'font-size:clamp(10px,0.95vw,12px);color:' + color + ';font-weight:700;white-space:nowrap;';
@@ -163,12 +163,18 @@ function _makeEnergyControls(slot) {
         cb.checked = cfg[key];
         cb.onchange = function() { cfg[key] = cb.checked; };
         lab.appendChild(cb);
-        lab.appendChild(document.createTextNode(label));
+        /* Nom en deux morceaux : la grandeur, puis son indice en <sub> */
+        var txt = document.createElement('span');
+        txt.appendChild(document.createTextNode(label));
+        var sb = document.createElement('sub');
+        sb.textContent = sub;
+        txt.appendChild(sb);
+        lab.appendChild(txt);
         return lab;
     }
-    wrap.appendChild(makeCheckbox('Ec',  COL_ENERGY_EC,  'ec'));
-    wrap.appendChild(makeCheckbox('Epp', COL_ENERGY_EPP, 'epp'));
-    wrap.appendChild(makeCheckbox('Em',  COL_ENERGY_EM,  'em'));
+    wrap.appendChild(makeCheckbox('E', 'c',  COL_ENERGY_EC,  'ec'));
+    wrap.appendChild(makeCheckbox('E', 'pp', COL_ENERGY_EPP, 'epp'));
+    wrap.appendChild(makeCheckbox('E', 'm',  COL_ENERGY_EM,  'em'));
 
     return wrap;
 }
@@ -287,7 +293,12 @@ function _calcGraphLeftMarginRaw(ctx, yMin, yMax, fmtFn) {
     return Math.round(wMax + 14);
 }
 
-/* Extrait nom et unité depuis un label d'axe du type "vx (m/s)" */
+/* Police des labels d'axes et de l'infobulle, au format attendu par
+   _drawSubText (draw.js) : une fonction taille → ctx.font. */
+function _gAxisFont(sz)    { return sz + 'px "Segoe UI", Arial, sans-serif'; }
+function _gTooltipFont(sz) { return sz + 'px monospace'; }
+
+/* Extrait nom et unité depuis un label d'axe du type "v_x (m/s)" */
 function _parseAxisLabel(label) {
     var m = label.match(/^(\S+)\s*\(([^)]+)\)/);
     if (m) return { name: m[1], unit: m[2] };
@@ -463,9 +474,9 @@ function _drawEnergiesGraph(ctx, x0, y0, W, H, hoverPos, slot) {
         var mx = hoverPos.x, my = hoverPos.y;
         if (mx >= x0 + ml && mx <= x0 + ml + plotW && my >= y0 + mt && my <= y0 + mt + plotH) {
             var cands = [];
-            if (cfg.ec)  cands.push({ vals: isChrono ? ecArrC  : ecArr,  color: COL_ENERGY_EC,  name: 'Ec' });
-            if (cfg.epp) cands.push({ vals: isChrono ? eppArrC : eppArr, color: COL_ENERGY_EPP, name: 'Epp' });
-            if (cfg.em)  cands.push({ vals: isChrono ? emArrC  : emArr,  color: COL_ENERGY_EM,  name: 'Em' });
+            if (cfg.ec)  cands.push({ vals: isChrono ? ecArrC  : ecArr,  color: COL_ENERGY_EC,  name: 'E_c' });
+            if (cfg.epp) cands.push({ vals: isChrono ? eppArrC : eppArr, color: COL_ENERGY_EPP, name: 'E_pp' });
+            if (cfg.em)  cands.push({ vals: isChrono ? emArrC  : emArr,  color: COL_ENERGY_EM,  name: 'E_m' });
             var bestDist = Infinity, bestX = 0, bestY = 0, bestColor = '#333', bestName = '', bestXVal = 0, bestYVal = 0;
             for (var ci = 0; ci < cands.length; ci++) {
                 for (var k = 0; k < hoverT.length; k++) {
@@ -490,8 +501,7 @@ function _drawEnergiesGraph(ctx, x0, y0, W, H, hoverPos, slot) {
                 ctx.beginPath(); ctx.arc(bestX, bestY, 5, 0, Math.PI * 2); ctx.fill();
 
                 var lbl = 't = ' + _fmtLabel(bestXVal) + ' s    ' + bestName + ' = ' + _fmtLabel(bestYVal) + ' J';
-                ctx.font = _gFontTick + 'px monospace';
-                var lblW = ctx.measureText(lbl).width, lblH = _gFontTick, PAD = 5;
+                var lblW = _measureSubText(ctx, lbl, _gFontTick, _gTooltipFont), lblH = _gFontTick, PAD = 5;
                 var lx = bestX + 12;
                 if (lx + lblW + 8 > x0 + W) lx = bestX - 12 - lblW;
                 lx = Math.max(x0 + PAD, Math.min(x0 + W - lblW - PAD, lx));
@@ -501,8 +511,8 @@ function _drawEnergiesGraph(ctx, x0, y0, W, H, hoverPos, slot) {
                 ctx.fillStyle = 'rgba(255,255,255,0.88)';
                 ctx.fillRect(lx - PAD, ly - 2, lblW + PAD * 2, lblH + 6);
                 ctx.fillStyle = bestColor;
-                ctx.textBaseline = 'top'; ctx.textAlign = 'left';
-                ctx.fillText(lbl, lx, ly + 1);
+                ctx.textBaseline = 'top';
+                _drawSubText(ctx, lbl, lx, ly + 1, _gFontTick, _gTooltipFont);
                 ctx.restore();
             }
         }
@@ -838,8 +848,7 @@ function _drawOneGraph(ctx, x0, y0, W, H, tabKey, hoverPos, slot) {
                            '    ' +
                            yl.name + ' = ' + _yFmtFn(bestYVal) + (yl.unit ? ' ' + yl.unit : '');
 
-                ctx.font = _gFontTick + 'px monospace';
-                var lblW  = ctx.measureText(lbl).width;
+                var lblW  = _measureSubText(ctx, lbl, _gFontTick, _gTooltipFont);
                 var lblH  = _gFontTick;
                 var PAD   = 5;
 
@@ -856,8 +865,7 @@ function _drawOneGraph(ctx, x0, y0, W, H, tabKey, hoverPos, slot) {
 
                 ctx.fillStyle    = bestColor;
                 ctx.textBaseline = 'top';
-                ctx.textAlign    = 'left';
-                ctx.fillText(lbl, lx, ly + 1);
+                _drawSubText(ctx, lbl, lx, ly + 1, _gFontTick, _gTooltipFont);
                 ctx.restore();
             }
         }
@@ -904,23 +912,25 @@ function _drawOneGraph(ctx, x0, y0, W, H, tabKey, hoverPos, slot) {
         }
     }
 
-    /* ── Labels axes ── */
+    /* ── Labels axes ──
+       Tracés via _drawSubText (draw.js) : les composantes portent un souligné
+       dans GRAPH_TABS ('v_x (m/s)') et sortent avec un vrai indice. Comme ce
+       rendu ne connaît que l'alignement à gauche, on centre à la main à partir
+       de la largeur mesurée. */
     ctx.fillStyle = '#5a6a78';
-    ctx.font      = _gFontTitle + 'px "Segoe UI", Arial, sans-serif';
 
     /* Axe X (centré sous la zone de tracé) */
-    ctx.textAlign    = 'center';
     ctx.textBaseline = 'bottom';
-    ctx.fillText(_xlabel, x0 + ml + plotW / 2, y0 + H - 2);
+    var _xlw = _measureSubText(ctx, _xlabel, _gFontTitle, _gAxisFont);
+    _drawSubText(ctx, _xlabel, x0 + ml + plotW / 2 - _xlw / 2, y0 + H - 2, _gFontTitle, _gAxisFont);
 
     /* Axe Y (pivoté, placé à gauche des chiffres) */
     ctx.save();
     ctx.translate(x0 + Math.max(4, ml - mlRaw - _gFontTitle - 4), y0 + mt + plotH / 2);
     ctx.rotate(-Math.PI / 2);
-    ctx.font         = _gFontTitle + 'px "Segoe UI", Arial, sans-serif';
-    ctx.textAlign    = 'center';
     ctx.textBaseline = 'top';
-    ctx.fillText(info.ylabel, 0, 0);
+    var _ylw = _measureSubText(ctx, info.ylabel, _gFontTitle, _gAxisFont);
+    _drawSubText(ctx, info.ylabel, -_ylw / 2, 0, _gFontTitle, _gAxisFont);
     ctx.restore();
 }
 

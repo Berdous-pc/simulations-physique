@@ -1382,25 +1382,73 @@ var VEC_NAME_PARTS = {
 var VEC_SUB_RATIO = 0.68;  // taille d'un indice, fraction de la lettre normale
 var VEC_SUB_DY    = 0.32;  // décalage vertical d'un indice, fraction de la taille
 
-/* Police des boutons <math> : les navigateurs conformes à CSS Fonts 4
-   exposent leur police mathématique par défaut via le mot-clé générique
-   "math" — utilisable partout où une police se déclare, y compris dans
-   ctx.font en Canvas 2D. C'est exactement la police que le CSS des boutons
-   "Vecteurs" laisse le navigateur choisir lui-même pour leur <math> (aucune
-   règle de font-family ne cible ni <math> ni ses <mi>/<mo> dans style.css) :
-   demander "math" ici donne donc la MÊME police que les boutons, sans avoir
-   à la nommer ni à parier sur sa disponibilité (vérifié : sur canvas 2D,
-   `ctx.font = 'bold 16px math'` conserve la valeur au lieu de retomber sur
-   la police par défaut — donc bien reconnue et acceptée par le moteur de
-   rendu texte, comme pour un <math> HTML). */
-var VEC_MATH_FONT = 'math';
+/* Police des noms de vecteurs — reproduit ce que le navigateur fait pour les
+   <math> des boutons "Vecteurs" (aucune règle de font-family ne les cible dans
+   style.css : ils s'affichent donc dans la police mathématique par défaut).
+
+   Le mot-clé générique CSS "math" désigne cette police, mais il ne suffit pas
+   de l'écrire seul dans ctx.font : un navigateur qui ne le connaît pas le lit
+   comme un simple NOM de famille, ne trouve rien, et retombe sur la police par
+   défaut du canvas — d'où des noms sans aucun rapport avec ceux des boutons.
+   On le place donc en tête d'une pile qui nomme explicitement les polices math
+   réellement installées (Cambria Math sous Windows, celle que Chrome choisit
+   pour <math>), avec un repli serif final. */
+var VEC_MATH_FONT = 'math, "Cambria Math", "STIX Two Math", "Latin Modern Math", ' +
+                    '"DejaVu Math TeX Gyre", Georgia, "Times New Roman", serif';
+
+/* Italique : MathML n'incline rien. <mi>v</mi> est rendu via text-transform
+   math-auto, qui remplace la lettre par son codet italique mathématique
+   (v → U+1D463 𝑣), un glyphe réellement dessiné dans la police math. Demander
+   "italic" au canvas donnerait au contraire une oblique synthétique — les
+   polices math n'ont pas de fonte italique —, nettement plus lourde et
+   différente des boutons. On applique donc la même substitution de codets. */
+function _mathItalicGlyph(t) {
+    var out = '';
+    for (var i = 0; i < t.length; i++) {
+        var c = t.charCodeAt(i), cp;
+        if      (c === 104)           cp = 0x210E;              // h : absent du bloc, glyphe de Planck
+        else if (c >= 65 && c <= 90)  cp = 0x1D434 + (c - 65);  // A–Z italique math
+        else if (c >= 97 && c <= 122) cp = 0x1D44E + (c - 97);  // a–z italique math
+        else { out += t.charAt(i); continue; }                  // Σ, chiffres… : inchangés
+        /* Hors du plan de base : encodage en paire de substitution UTF-16 */
+        out += (cp > 0xFFFF)
+            ? String.fromCharCode(0xD800 + ((cp - 0x10000) >> 10), 0xDC00 + ((cp - 0x10000) & 0x3FF))
+            : String.fromCharCode(cp);
+    }
+    return out;
+}
+
+/* Ces codets ne sont pas couverts par toutes les polices : sans police math
+   installée, ils s'afficheraient en carrés vides. Test fait une seule fois, en
+   comparant la largeur du glyphe à celle d'un codet d'usage privé qu'aucune
+   police courante ne dessine (largeurs identiques = les deux sont des carrés
+   vides). Si absent, on retombe sur l'oblique synthétique, moins fidèle mais
+   toujours lisible. */
+var _mathItalicOk = null;
+function _mathItalicAvailable(ctx) {
+    if (_mathItalicOk === null) {
+        var prev = ctx.font;
+        ctx.font = 'bold 40px ' + VEC_MATH_FONT;
+        var wGlyph = ctx.measureText('𝑣').width;   // 𝑣 italique math
+        var wTofu  = ctx.measureText('󰀀').width;   // codet d'usage privé, sans glyphe
+        _mathItalicOk = (wGlyph > 0 && Math.abs(wGlyph - wTofu) > 0.5);
+        ctx.font = prev;
+    }
+    return _mathItalicOk;
+}
 
 function _mathNameParts(name) {
     return VEC_NAME_PARTS[name] || [{ t: name }];   /* nom inconnu : rendu droit tel quel */
 }
 
-function _mathFont(sz, italic) {
-    return (italic ? 'italic ' : '') + 'bold ' + sz + 'px ' + VEC_MATH_FONT;
+/* Texte à tracer pour une partie de nom, selon la disponibilité des codets. */
+function _mathText(ctx, p) {
+    return (p.i && _mathItalicAvailable(ctx)) ? _mathItalicGlyph(p.t) : p.t;
+}
+
+function _mathFont(ctx, sz, italic) {
+    var synth = italic && !_mathItalicAvailable(ctx);   /* repli : oblique simulée */
+    return (synth ? 'italic ' : '') + 'bold ' + sz + 'px ' + VEC_MATH_FONT;
 }
 
 /* Largeur totale d'un nom de vecteur dans le style ci-dessus. */
@@ -1410,8 +1458,8 @@ function _measureMathName(ctx, name, size) {
     for (var i = 0; i < parts.length; i++) {
         var p  = parts[i];
         var sz = p.sub ? size * VEC_SUB_RATIO : size;
-        ctx.font = _mathFont(sz, p.i);
-        w += ctx.measureText(p.t).width;
+        ctx.font = _mathFont(ctx, sz, p.i);
+        w += ctx.measureText(_mathText(ctx, p)).width;
     }
     return w;
 }
@@ -1427,8 +1475,105 @@ function _drawMathName(ctx, name, x, y, size, color) {
     for (var i = 0; i < parts.length; i++) {
         var p  = parts[i];
         var sz = p.sub ? size * VEC_SUB_RATIO : size;
-        ctx.font = _mathFont(sz, p.i);
-        ctx.fillText(p.t, cx, p.sub ? y + size * VEC_SUB_DY : y);
+        var tx = _mathText(ctx, p);
+        ctx.font = _mathFont(ctx, sz, p.i);
+        ctx.fillText(tx, cx, p.sub ? y + size * VEC_SUB_DY : y);
+        cx += ctx.measureText(tx).width;
+    }
+}
+
+/* ── Flèche de vecteur, au-dessus du nom ──
+   Les boutons l'obtiennent par <mover><mi>v</mi><mo>→</mo></mover> : c'est le
+   GLYPHE → (U+2192) de la police math, pas un dessin. La tracer ici au trait
+   avec des barbes de taille fixe donnait forcément autre chose — pointe trop
+   grosse sur les petits noms de forces, trop maigre sur les grandes étiquettes,
+   épaisseur sans rapport avec celle des lettres. On dessine donc le même
+   glyphe, dans la même police et la même graisse que le nom.
+
+   Comme dans un <mover>, la flèche n'est jamais comprimée sous sa largeur
+   naturelle : si le nom est plus étroit qu'elle (v, a, f…), c'est la boîte du
+   composé qui vaut la largeur de la flèche et le nom qui se centre dessous ;
+   si le nom est plus large (OM, ΣF, F indicé), la flèche s'étire jusqu'à le
+   couvrir. */
+var VEC_ARROW_CHAR = '→';
+
+function _measureMathArrow(ctx, size) {
+    ctx.font = 'bold ' + size + 'px ' + VEC_MATH_FONT;
+    var mt   = ctx.measureText(VEC_ARROW_CHAR);
+    /* Hauteur réelle de l'encre : la flèche est un trait fin très au-dessus de
+       la ligne de base, la boîte em serait beaucoup trop haute. */
+    var asc  = (typeof mt.actualBoundingBoxAscent  === 'number') ? mt.actualBoundingBoxAscent  : size * 0.46;
+    var desc = (typeof mt.actualBoundingBoxDescent === 'number') ? mt.actualBoundingBoxDescent : -size * 0.30;
+    return { w: mt.width, h: Math.max(1, asc + desc), asc: asc };
+}
+
+/* (x, y) = coin haut-gauche de l'encre de la flèche ; w = largeur voulue. */
+function _drawMathArrow(ctx, x, y, w, size, color) {
+    var a = _measureMathArrow(ctx, size);
+    ctx.save();
+    ctx.fillStyle    = color;
+    ctx.textAlign    = 'left';
+    ctx.textBaseline = 'alphabetic';
+    ctx.font         = 'bold ' + size + 'px ' + VEC_MATH_FONT;
+    if (w > a.w + 0.5) {
+        ctx.translate(x, 0);
+        ctx.scale(w / a.w, 1);          /* étirement horizontal seul : le trait
+                                           s'allonge, l'épaisseur ne bouge pas */
+        ctx.fillText(VEC_ARROW_CHAR, 0, y + a.asc);
+    } else {
+        ctx.fillText(VEC_ARROW_CHAR, x, y + a.asc);
+    }
+    ctx.restore();
+}
+
+/* ── Lignes de coordonnées : indices ──
+   Les lignes sont écrites avec un souligné devant la lettre à mettre en
+   indice : 'v_x = 3,2 m/s' donne « vx = 3,2 m/s » avec le x en indice, comme
+   il se doit pour une composante. Le souligné ne concerne que le caractère qui
+   le suit ; tout le reste de la ligne est rendu normalement. */
+var TXT_SUB_RATIO = 0.72;   // taille de l'indice, fraction de la taille normale
+var TXT_SUB_DY    = 0.22;   // abaissement de l'indice, fraction de la taille normale
+
+/* Découpe une ligne en morceaux [{ t, sub }]. */
+function _subParts(line) {
+    var parts = [], buf = '';
+    for (var i = 0; i < line.length; i++) {
+        if (line.charAt(i) === '_' && i + 1 < line.length) {
+            if (buf) { parts.push({ t: buf }); buf = ''; }
+            parts.push({ t: line.charAt(i + 1), sub: true });
+            i++;
+        } else {
+            buf += line.charAt(i);
+        }
+    }
+    if (buf) parts.push({ t: buf });
+    return parts;
+}
+
+/* Police par défaut (étiquettes de l'animation). fontFn(taille) → ctx.font :
+   graph.js passe la sienne pour les axes et l'infobulle des graphes. */
+function _txtFont(sz) { return 'bold ' + sz + 'px "Segoe UI", Arial'; }
+
+function _measureSubText(ctx, line, size, fontFn) {
+    var f = fontFn || _txtFont;
+    var parts = _subParts(line), w = 0;
+    for (var i = 0; i < parts.length; i++) {
+        ctx.font = f(parts[i].sub ? size * TXT_SUB_RATIO : size);
+        w += ctx.measureText(parts[i].t).width;
+    }
+    return w;
+}
+
+/* (x, y) = origine gauche du texte normal ; l'appelant fixe textBaseline, le
+   décalage de l'indice est le même quelle que soit la ligne de référence. */
+function _drawSubText(ctx, line, x, y, size, fontFn) {
+    var f = fontFn || _txtFont;
+    var parts = _subParts(line), cx = x;
+    ctx.textAlign = 'left';
+    for (var i = 0; i < parts.length; i++) {
+        var p = parts[i];
+        ctx.font = f(p.sub ? size * TXT_SUB_RATIO : size);
+        ctx.fillText(p.t, cx, p.sub ? y + size * TXT_SUB_DY : y);
         cx += ctx.measureText(p.t).width;
     }
 }
@@ -1437,12 +1582,13 @@ function _drawMathName(ctx, name, x, y, size, color) {
    grande parenthèse avec deux lignes (ligne1 / ligne2)  */
 /* Calcule les dimensions d'un label coordonnées (sans dessiner). */
 function _measureVecLabel(ctx, vecName, line1, line2) {
-    var fontSize = Math.max(15, Math.min(22, _animH * 0.045));
-    var nameSize = Math.max(14, Math.min(20, _animH * 0.042));
+    /* Tailles calibrées pour rester lisibles vidéoprojetées, au fond d'une
+       salle : ~6 % de la hauteur du canvas, avec un plancher confortable. */
+    var fontSize = Math.max(20, Math.min(30, _animH * 0.060));
+    var nameSize = Math.max(19, Math.min(28, _animH * 0.056));
 
-    ctx.font = 'bold ' + fontSize + 'px "Segoe UI", Arial';
-    var w1    = ctx.measureText(line1).width;
-    var w2    = ctx.measureText(line2).width;
+    var w1    = _measureSubText(ctx, line1, fontSize);
+    var w2    = _measureSubText(ctx, line2, fontSize);
     var textW = Math.max(w1, w2);
     var lineH = fontSize * 1.45;
     var parenH = lineH * 2;
@@ -1451,14 +1597,18 @@ function _measureVecLabel(ctx, vecName, line1, line2) {
     var blockW = parenW * 2 + iPad * 2 + textW;
 
     var nameW      = _measureMathName(ctx, vecName, nameSize);
-    var arrowExtra = Math.max(5, nameSize * 0.55);
-    var nameColW   = nameW + 10;
+    var arrow      = _measureMathArrow(ctx, nameSize);
+    var accW       = Math.max(nameW, arrow.w);          // largeur du composé <mover>
+    var arrowGap   = Math.max(1, nameSize * 0.07);      // jeu flèche / sommet des lettres
+    var arrowExtra = arrow.h + arrowGap;
+    var nameColW   = accW + 10;
     var nameColH   = arrowExtra + nameSize;
 
     return {
         fontSize: fontSize, nameSize: nameSize,
         textW: textW, lineH: lineH, parenH: parenH, parenW: parenW, iPad: iPad, blockW: blockW,
-        nameW: nameW, arrowExtra: arrowExtra, nameColW: nameColW, nameColH: nameColH,
+        nameW: nameW, accW: accW, arrowW: arrow.w, arrowH: arrow.h,
+        arrowExtra: arrowExtra, nameColW: nameColW, nameColH: nameColH,
         totalW: nameColW + blockW,
         totalH: Math.max(parenH, nameColH)
     };
@@ -1554,25 +1704,16 @@ function _bestLabelPos(anchorX, anchorY, totalW, totalH, preferOrder, placedRect
 function _renderVecLabel(ctx, lx, ly, m, vecName, line1, line2, color) {
     var nameCenterY = ly + m.totalH / 2;
     var nameTopY    = nameCenterY - m.nameColH / 2;
-    var arrowMidY   = nameTopY + m.arrowExtra * 0.5;
 
     ctx.save();
-    ctx.strokeStyle = color;
-    ctx.lineWidth   = 1.8;
     ctx.lineCap     = 'round';
     ctx.lineJoin    = 'round';
 
-    /* Flèche au-dessus du nom */
-    ctx.beginPath();
-    ctx.moveTo(lx,               arrowMidY);
-    ctx.lineTo(lx + m.nameW,     arrowMidY);
-    ctx.moveTo(lx + m.nameW - 5, arrowMidY - 3);
-    ctx.lineTo(lx + m.nameW,     arrowMidY);
-    ctx.lineTo(lx + m.nameW - 5, arrowMidY + 3);
-    ctx.stroke();
-
-    /* Nom */
-    _drawMathName(ctx, vecName, lx, nameTopY + m.arrowExtra, m.nameSize, color);
+    /* Flèche au-dessus du nom, puis nom : les deux centrés dans la largeur du
+       composé, comme les deux étages d'un <mover>. */
+    _drawMathArrow(ctx, lx, nameTopY, m.accW, m.nameSize, color);
+    _drawMathName(ctx, vecName, lx + (m.accW - m.nameW) / 2, nameTopY + m.arrowExtra,
+                  m.nameSize, color);
 
     /* Parenthèses */
     var bx  = lx + m.nameColW;
@@ -1599,11 +1740,9 @@ function _renderVecLabel(ctx, lx, ly, m, vecName, line1, line2, color) {
 
     /* Texte */
     ctx.fillStyle    = color;
-    ctx.font         = 'bold ' + m.fontSize + 'px "Segoe UI", Arial';
-    ctx.textAlign    = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText(line1, bx + m.parenW + m.iPad, bly + m.lineH * 0.5);
-    ctx.fillText(line2, bx + m.parenW + m.iPad, bly + m.lineH * 1.5);
+    _drawSubText(ctx, line1, bx + m.parenW + m.iPad, bly + m.lineH * 0.5, m.fontSize);
+    _drawSubText(ctx, line2, bx + m.parenW + m.iPad, bly + m.lineH * 1.5, m.fontSize);
 
     ctx.restore();
 }
@@ -1675,8 +1814,8 @@ function _drawAnimHover(ctx, snap, isPinned) {
             anchorX: p.cx + dvx / 2,
             anchorY: p.cy + dvy / 2,
             vecName: 'v',
-            line1: 'vx = ' + (_vecScaleVitOverride !== null ? fmtSci(snap.vx, 3) : fmt(snap.vx, 2)) + ' m/s',
-            line2: 'vy = ' + (_vecScaleVitOverride !== null ? fmtSci(snap.vy, 3) : fmt(snap.vy, 2)) + ' m/s',
+            line1: 'v_x = ' + (_vecScaleVitOverride !== null ? fmtSci(snap.vx, 3) : fmt(snap.vx, 2)) + ' m/s',
+            line2: 'v_y = ' + (_vecScaleVitOverride !== null ? fmtSci(snap.vy, 3) : fmt(snap.vy, 2)) + ' m/s',
             color:  _colVit,
             prefer: vPrefer,
             showCoords: showCoords
@@ -1702,8 +1841,8 @@ function _drawAnimHover(ctx, snap, isPinned) {
                 anchorX: p.cx + dax / 2,
                 anchorY: p.cy + day / 2,
                 vecName: 'a',
-                line1: 'ax = ' + (_vecScaleAccOverride !== null ? fmtSci(snap.ax, 3) : fmt(snap.ax, 2)) + ' m/s²',
-                line2: 'ay = ' + (_vecScaleAccOverride !== null ? fmtSci(snap.ay, 3) : fmt(snap.ay, 2)) + ' m/s²',
+                line1: 'a_x = ' + (_vecScaleAccOverride !== null ? fmtSci(snap.ax, 3) : fmt(snap.ax, 2)) + ' m/s²',
+                line2: 'a_y = ' + (_vecScaleAccOverride !== null ? fmtSci(snap.ay, 3) : fmt(snap.ay, 2)) + ' m/s²',
                 color:  _colAcc,
                 prefer: ['right', 'upper-right', 'left', 'upper-left', 'above', 'lower-right', 'lower-left', 'below'],
                 showCoords: showCoords
@@ -1750,33 +1889,26 @@ function _drawAnimHover(ctx, snap, isPinned) {
    (version allégée sans bloc coordonnées)
 ───────────────────────────────────────────────── */
 function _measureForceName(ctx, name) {
-    var sz = Math.max(11, Math.min(14, _animH * 0.028));
-    var tw = _measureMathName(ctx, name, sz);
-    var arrowH = Math.max(5, sz * 0.48);
-    return { sz: sz, tw: tw, arrowH: arrowH, w: tw + 6, h: arrowH + 3 + sz };
+    /* Même logique de lisibilité en projection que _measureVecLabel : ces noms
+       sont plus petits (ils accompagnent chaque flèche de force, souvent
+       plusieurs à la fois), mais suivent le même agrandissement. */
+    var sz    = Math.max(16, Math.min(21, _animH * 0.042));
+    var tw    = _measureMathName(ctx, name, sz);
+    var arrow = _measureMathArrow(ctx, sz);
+    var accW  = Math.max(tw, arrow.w);              // largeur du composé <mover>
+    var gap   = Math.max(1, sz * 0.07);
+    return { sz: sz, tw: tw, accW: accW, arrowH: arrow.h, gap: gap,
+             w: accW + 6, h: arrow.h + gap + sz };
 }
 
 function _renderForceName(ctx, lx, ly, name, color, opacity, m) {
     ctx.save();
     ctx.globalAlpha  = opacity * 0.92;
-    ctx.strokeStyle  = color;
     ctx.fillStyle    = color;
-    ctx.lineWidth    = 1.6;
-    ctx.lineCap      = 'round';
-    ctx.lineJoin     = 'round';
 
-    var arrowY = ly + m.arrowH * 0.5;
-    /* Flèche au-dessus */
-    ctx.beginPath();
-    ctx.moveTo(lx,           arrowY);
-    ctx.lineTo(lx + m.tw,    arrowY);
-    ctx.moveTo(lx + m.tw - 5, arrowY - 3);
-    ctx.lineTo(lx + m.tw,    arrowY);
-    ctx.lineTo(lx + m.tw - 5, arrowY + 3);
-    ctx.stroke();
-
-    /* Nom */
-    _drawMathName(ctx, name, lx, ly + m.arrowH + 3, m.sz, color);
+    /* Flèche puis nom, centrés dans la largeur du composé (cf. _drawMathArrow) */
+    _drawMathArrow(ctx, lx, ly, m.accW, m.sz, color);
+    _drawMathName(ctx, name, lx + (m.accW - m.tw) / 2, ly + m.arrowH + m.gap, m.sz, color);
     ctx.restore();
 }
 
