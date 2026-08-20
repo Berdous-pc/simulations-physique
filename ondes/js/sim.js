@@ -534,9 +534,35 @@ var AK_CAP = 0.75;
 // n'ont ainsi plus à être reconstruites quand f ou K changent.
 var SON_A_MAX_FRAC = 0.13;
 
+// ── Pourquoi une hauteur PLANCHER dans ce plafond ─────────────────────
+// Adossé à la seule hauteur, ce plafond fait dépendre le contraste affiché
+// de l'écrasement du volet : ak_disp = min(clamp(A·k), 0,13·H·k), et k ne
+// dépend, lui, que de la LARGEUR (λ_px ∝ tubeLength). Réduire H à hauteur
+// constante de λ_px, c'est donc réduire ak_disp dans le même rapport —
+// aux réglages par défaut, il tombe de 0,73 à 0,20 quand le graphe s'ouvre.
+// Les compressions ne s'effaçaient pas « un peu » : elles passaient très en
+// dessous d'AK_MIN, le seuil sous lequel on a jugé qu'elles n'étaient plus
+// lisibles. Un réglage de mise en page ne doit pas décider de la physique
+// visible.
+//
+// Le mouvement de la membrane étant HORIZONTAL, ce qui doit le borner est
+// la longueur du tube, pas sa hauteur. On garde malgré tout la hauteur tant
+// qu'elle est confortable — c'est sur elle qu'a été calibré SON_A_MAX_FRAC
+// — et on l'empêche seulement de tomber sous la hauteur qu'aurait un volet
+// non écrasé, prise comme fraction de la longueur (rapport d'aspect ≈ 0,35
+// en plein écran sans graphe).
+//
+// Conséquence : au-dessus de ce rapport d'aspect, comportement inchangé au
+// pixel près ; en dessous, l'amplitude se fige à 0,13 × 0,35 × L ≈ 4,5 % de
+// la longueur, et le contraste cesse de se dégrader. Le plafond reste
+// purement géométrique — insensible à f, K et ρ — donc la garde de
+// non-reconstruction d'initCols tient toujours.
+var SON_H_REF_FRAC = 0.35;   // hauteur de tube « non écrasée », en fraction de L
+
 function sonMaxDisplayPx() {
     var H = sim.tubeBottom - sim.tubeTop;
-    return (H > 0) ? H * SON_A_MAX_FRAC : sim.memAmplitude;
+    if (H <= 0) return sim.memAmplitude;
+    return Math.max(H, sim.tubeLength * SON_H_REF_FRAC) * SON_A_MAX_FRAC;
 }
 
 // q = facteur de forme du signal émis (srcQ) : rapport entre la pente maximale
@@ -572,10 +598,12 @@ function _sonDisplayGain(k_cm, q) {
 //      ak_disp = min( clamp(A·k, AK_MIN, AK_CAP) , sonMaxDisplayPx()·k )
 //
 //  et l'amplitude de la membrane en disparaît : seul compte le rapport
-//  entre la HAUTEUR du tube et la longueur d'onde. C'est pourquoi le
-//  contraste s'effondre aux grandes λ (le plafond absolu prend la main et
-//  neutralise le relèvement par AK_MIN) et pourquoi écraser le volet
-//  d'animation avec le splitter le dégrade lui aussi.
+//  entre la hauteur retenue par sonMaxDisplayPx et la longueur d'onde. C'est
+//  pourquoi le contraste s'effondre aux grandes λ — le plafond absolu prend
+//  la main et neutralise le relèvement par AK_MIN. En revanche écraser le
+//  volet d'animation ne le dégrade plus : le plancher d'aspect de
+//  sonMaxDisplayPx tient la hauteur de référence, et le rapport reste celui
+//  d'un volet non écrasé.
 //
 //  À ne PAS confondre avec waveDeltaP, qui est normalisée sur l'amplitude
 //  PHYSIQUE et atteint donc ±1 quels que soient les réglages : ΔP dit où
@@ -754,21 +782,73 @@ function waveDeltaP(x_px, t_sim) {
 var PARTICLE_FILL_MAX = 1.00;   // part de l'aire disponible qu'un point peut couvrir
 var RHO_MAX_UI        = 3.0;    // doit suivre le max du curseur ρ (index.html)
 
-function particleRadius() {
-    // La fenêtre de `base` suit PARTICLE_FILL_MAX : la laisser à son ancien
-    // calibrage (1,5 … 3,0 px) aurait fait d'elle la borne active — le rayon
-    // aurait plafonné à 3,0 px au lieu des 3,46 px visés, et les deux tiers
-    // du gain seraient restés sur la table. Facteur 1,2 sur les trois
-    // termes, pour que les petites hauteurs de volet profitent du même
-    // supplément d'encre que les grandes.
-    var H    = sim.tubeBottom - sim.tubeTop;
-    var base = Math.max(1.8, Math.min(3.6, H * 0.018));
+// Hauteur de tube au-delà de laquelle le rayon sature : c'est celle où
+// l'ancienne loi linéaire H × 0,018 atteignait rSat. Les tubes hauts gardent
+// donc EXACTEMENT le rendu calibré jusqu'ici ; seuls les tubes écrasés
+// changent. ≈ 192 px.
+function _particleHRef() {
+    return Math.sqrt(PARTICLE_FILL_MAX * COL_SLOT_PX2 /
+                     (Math.PI * RHO_MAX_UI)) / 0.018;
+}
 
+function particleRadius() {
     // Rayon au-delà duquel le nuage saturerait à ρ_max. Constante de fait :
     // ne dépend d'aucun réglage, seulement des bornes du curseur.
     var rSat = Math.sqrt(PARTICLE_FILL_MAX * COL_SLOT_PX2 / (Math.PI * RHO_MAX_UI));
 
-    return Math.max(1.2, Math.min(base, rSat));
+    // ── Pourquoi √H et non H ? ────────────────────────────────────────
+    // La case allouée à une particule suit πr² (cf. particleSlotPx2), donc
+    //     N = (domaine × H × ρ) / (π r² ρ_max / φ_max)
+    // Faire varier r comme H (ou le borner par un plancher, ce qui revient à
+    // le figer) laisse N ∝ H : le tube écrasé garde le bon TAUX de
+    // remplissage, mais contient physiquement moins de molécules — le gaz
+    // semble s'être vidé au lieu d'avoir été redessiné plus petit.
+    //
+    // En r ∝ √H, la case suit H et le facteur H se simplifie :
+    //     r = rSat × √(H/H_ref)  ⟹  N = domaine × ρ × H_ref / COL_SLOT_PX2
+    // N ne dépend PLUS de la hauteur du tube — un tube écrasé montre le même
+    // nombre de molécules que le tube plein, simplement dessinées plus
+    // petites et plus serrées, exactement comme une vue dézoomée. Et comme
+    // la case suit r², le taux de remplissage, lui, reste constant.
+    //
+    // Corollaire sur les performances : N est plafonné par sa valeur à
+    // H_ref, donc aplatir le tube ne peut plus faire exploser le compte. Le
+    // plafond de 8000 dans initCols joue au même moment qu'avant.
+    var H = sim.tubeBottom - sim.tubeTop;
+    var r = rSat * Math.sqrt(Math.min(1, H / _particleHRef()));
+
+    // Plancher de lisibilité pur : en deçà de ~41 px de tube, un point
+    // descendrait sous 1,6 px et deviendrait invisible. N recommence alors à
+    // diminuer, mais un tube de 40 px n'est plus exploitable de toute façon.
+    return Math.max(1.6, r);
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Aire de « case » allouée à une particule à ρ = 1, en px²
+//
+//  COL_SLOT_PX2 est une constante en pixels : la grille des particules a
+//  donc longtemps gardé le même pas (≈ 10,6 px à ρ = 1) quelle que soit la
+//  hauteur du tube, alors que le RAYON des points, lui, suit cette hauteur.
+//  Le taux de remplissage φ = πr²ρ/slot dépendait donc de H comme r² : un
+//  tube écrasé (petite fenêtre, ou graphe affiché) contenait bien le même
+//  nombre de points par px², mais des points deux fois plus petits — d'où
+//  l'impression, parfaitement fondée, d'un gaz beaucoup trop raréfié.
+//
+//  La case suit donc πr² : quand le rayon diminue, la grille se resserre
+//  dans le même rapport, et φ ne dépend plus que de ρ. Au rayon de
+//  saturation rSat la formule redonne EXACTEMENT COL_SLOT_PX2 — le
+//  calibrage historique est donc conservé tel quel pour les tubes hauts,
+//  et seuls les tubes écrasés voient leur nuage se densifier.
+//
+//  Combinée à r ∝ √H (cf. particleRadius), la case vaut COL_SLOT_PX2 × H/H_ref
+//  et le facteur H de l'aire du tube se simplifie : le NOMBRE de particules
+//  ne dépend plus de la hauteur du tube non plus. Densité et effectif sont
+//  alors tous deux invariants — seule l'échelle du dessin change.
+// ══════════════════════════════════════════════════════════════════════
+
+function particleSlotPx2() {
+    var r = particleRadius();
+    return Math.PI * r * r * RHO_MAX_UI / PARTICLE_FILL_MAX;
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -781,12 +861,13 @@ function particleRadius() {
 //  Le domaine s'étend au-delà de tubeRight de extraRight = 2 × sonMaxDisplayPx()
 //  pour que le milieu soit continu : lors d'une raréfaction à l'extrémité
 //  droite, les particules "extérieures" entrent naturellement dans le tube.
-//  Ce plafond ne dépendant que de la hauteur du tube, le domaine est
-//  insensible à f et K — cf. la garde de non-reconstruction plus bas.
+//  Ce plafond ne dépendant que de la géométrie du tube (hauteur et longueur),
+//  le domaine est insensible à f et K — cf. la garde de non-reconstruction
+//  plus bas.
 //
 //  N ∝ ρ : doubler ρ double le nombre de particules → densité visuelle
 //  directement proportionnelle à la masse volumique du milieu.
-//  N = min(8000, round((L + extraRight) × H × ρ / COL_SLOT_PX2))
+//  N = min(8000, round((L + extraRight) × H × ρ / particleSlotPx2()))
 // ══════════════════════════════════════════════════════════════════════
 
 // Relevé de la sélection courante, sous forme d'intervalles de x0 exprimés
@@ -829,7 +910,7 @@ function initCols() {
 
     // Zone virtuelle gauche et droite : doivent couvrir le déplacement max
     // d'une particule. Celui-ci est désormais borné en dur par
-    // sonMaxDisplayPx(), qui ne dépend QUE de la hauteur du tube — le
+    // sonMaxDisplayPx(), qui ne dépend QUE de la géométrie du tube — le
     // domaine est donc insensible à f, K et ρ. C'est ce qui permet la garde
     // ci-dessous : bouger le curseur Fréquence ou Compressibilité ne
     // reconstruit plus les particules, et n'efface donc plus la sélection.
@@ -841,7 +922,7 @@ function initCols() {
     var domain     = L + extraRight + extraLeft;
     var N = Math.min(8000,
                 Math.max(50,
-                    Math.round(domain * H * Math.max(0.1, sim.rho) / COL_SLOT_PX2)));
+                    Math.round(domain * H * Math.max(0.1, sim.rho) / particleSlotPx2())));
 
     // Distribution jittered (grille régulière + bruit uniforme dans chaque case).
     // Borne la lacune maximale à ~2 × slot au lieu de ~7 × slot avec Math.random() pur,

@@ -951,6 +951,21 @@ html.init-graph-hidden #left-splitter {
   color: #7a8a96;
   font-family: monospace;
   font-size: 0.85em;
+  /* Une formule coupée en deux ne se lit plus : « c = √(K/ρ) » reste d'un
+     seul tenant, quitte à ce que ce soit le membre de droite qui passe à la
+     ligne. Le flex-shrink par défaut suffirait à la comprimer sinon. */
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+/* Membre de droite : c'est LUI qui se replie quand la place manque, et le
+   pli se fait entre la valeur et son unité — jamais au milieu de l'écriture
+   scientifique, d'où le nowrap sur les deux enfants. */
+.ro-props-row > span:last-child {
+  text-align: right;
+}
+.ro-props-row > span:last-child > span {
+  white-space: nowrap;
 }
 
 /* Exposant de l'écriture scientifique (λ, c). line-height:0 empêche le <sup>

@@ -21,6 +21,22 @@ var tubeCtx    = null;
 // Épaisseur visuelle de la membrane dans le canvas (px)
 var MEM_THICKNESS = 14;
 
+// ── Bande basse (règle graduée + position des balises) ────────────────
+// RULER_FONT_MIN : plancher de lisibilité des étiquettes, en px.
+// RULER_LABEL_MIN_PX : place qu'une étiquette réclame sous la ligne de base
+//   — tick principal (6) + 1 px d'écart + la police à son plancher. En deçà,
+//   on renonce aux étiquettes plutôt que de les laisser déborder du canvas.
+// RULER_BAND_MIN_PX : ce même besoin, plus 2 px de garde ; c'est la hauteur
+//   que resizeTube réserve à la bande tant que le tube peut se le permettre.
+var RULER_FONT_MIN     = 13;
+var RULER_LABEL_MIN_PX = 6 + 1 + RULER_FONT_MIN;
+var RULER_BAND_MIN_PX  = RULER_LABEL_MIN_PX + 2;
+
+// Hauteur de canvas en dessous de laquelle le tube n'est plus dessinable :
+// la bande basse étant plafonnée à 0,34 h, il reste 0,66 h − 4 au tube, et
+// exiger 20 px donne h ≥ 37.
+var MIN_TUBE_CANVAS_H = 37;
+
 // ── État de l'interaction souris sur le canvas tube ───────────────────
 var tubeInter = {
     mode      : null,   // null | 'beacon1-drag' | 'beacon2-drag'
@@ -40,7 +56,10 @@ function resizeTube() {
     var wrap = document.getElementById('tube-canvas-wrap');
     var w    = wrap.clientWidth;
     var h    = wrap.clientHeight;
-    if (w < 10 || h < 28) return;  // tubeH = h*0.88-4 ≥ 20 requiert h ≥ 28
+    // La bande basse étant plafonnée à 0,34 h, le tube en garde 0,66 h − 4 :
+    // le rendre dessinable (≥ 20 px) demande h ≥ 37. Même seuil que
+    // MIN_TUBE_CANVAS_H, qui le fait remonter jusqu'au splitter.
+    if (w < 10 || h < MIN_TUBE_CANVAS_H) return;
 
     var dpr = window.devicePixelRatio || 1;
     tubeCanvas.width  = Math.round(w * dpr);
@@ -50,7 +69,20 @@ function resizeTube() {
     // ── Géométrie interne du tube ─────────────────────────────────────
     var marginH      = 13;   // 5 px de plus de chaque côté → labels règle non croppés
     var marginTop    = 4;
-    var marginBottom = Math.round(h * 0.12);
+    // Bande basse : elle porte la règle graduée et les étiquettes de position
+    // des balises. Strictement proportionnelle, elle passait sous la place
+    // que ces textes RÉCLAMENT — leur police a un plancher de lisibilité de
+    // 13 px, qui ne rapetisse pas avec la bande — dès que la zone
+    // d'animation descendait vers 145 px : le splitter tiré vers le haut
+    // coupait alors le bas du canvas, graduations comprises.
+    //
+    // On lui réserve donc le nécessaire (tick 6 px + 1 px + police 13 px +
+    // 2 px de garde), sans jamais la laisser prendre plus du tiers de la
+    // hauteur — le tube reste le sujet, et sous ~65 px de zone il vaut mieux
+    // rogner la règle que le tube. C'est _drawTubeRuler qui décide alors de
+    // s'abréger, plutôt que de déborder (cf. RULER_LABEL_MIN_PX).
+    var marginBottom = Math.round(Math.min(Math.max(h * 0.12, RULER_BAND_MIN_PX),
+                                           h * 0.34));
     sim.tubeLeft   = marginH + MEM_THICKNESS;
     sim.tubeRight  = w - marginH;
     sim.tubeTop    = marginTop;
@@ -313,11 +345,11 @@ function _applySourceScale() {
     }
 }
 
-// Rangée des boutons balises, plus les 28 px sans lesquels le tube n'est plus
-// dessinable (tubeH = row2H·0,88 − 4 ≥ 20). Un des deux besoins combinés par
+// Rangée des boutons balises, plus la hauteur sans laquelle le tube n'est
+// plus dessinable (cf. MIN_TUBE_CANVAS_H). Un des deux besoins combinés par
 // _animHideThreshold — voir ce commentaire pour le pourquoi de l'unification.
 function _minUsefulAnimHeight(btnH) {
-    return Math.ceil(btnH + 28);
+    return Math.ceil(btnH + MIN_TUBE_CANVAS_H);
 }
 
 // Hauteur retenue pour la zone d'animation : bornée par le maximum, et
@@ -833,8 +865,9 @@ var DENS_BLUE      = [42, 106, 170];  // #2a6aaa — la couleur des particules
 //  que le nuage savait montrer à ρ = 1 — donc sans le dire, elles étaient
 //  déjà une mesure du GRAIN du nuage, mais figée à une seule valeur de ρ.
 //
-//  Or ce grain suit ρ : l'aire par particule vaut COL_SLOT_PX2/ρ, donc
-//  l'espacement moyen vaut √(COL_SLOT_PX2/ρ) — 10,6 px à ρ = 1, mais 15,0 px
+//  Or ce grain suit ρ : l'aire par particule vaut particleSlotPx2()/ρ, donc
+//  l'espacement moyen vaut √(slot/ρ) — dans un tube haut (slot = COL_SLOT_PX2),
+//  10,6 px à ρ = 1, mais 15,0 px
 //  à ρ = 0,5 et 6,1 px à ρ = 3. Un nuage dense résout des bandes deux fois
 //  plus fines qu'un nuage clairsemé, et des bornes en pixels absolus le
 //  ignoraient : le voile s'appuyait autant sur un nuage qui n'en avait pas
@@ -902,9 +935,11 @@ function _smoothstep01(u) {
 }
 
 // Espacement moyen des particules, en px : l'aire par particule vaut
-// COL_SLOT_PX2/ρ (cf. initCols, même écrêtage de ρ).
+// particleSlotPx2()/ρ (cf. initCols, même écrêtage de ρ). Cette case suit
+// πr², donc la hauteur du tube : le grain lu ici reste bien celui du nuage
+// réellement dessiné, y compris quand le tube est écrasé.
 function _densGrainPx() {
-    return Math.sqrt(COL_SLOT_PX2 / Math.max(0.1, sim.rho));
+    return Math.sqrt(particleSlotPx2() / Math.max(0.1, sim.rho));
 }
 
 // Manque de résolution : 0 = confortable, 1 = aussi serré que possible.
@@ -1061,9 +1096,20 @@ function _drawTubeRuler(ctx) {
     var mant      = rough / mag;
     var step      = mant < 1.5 ? mag : mant < 3.5 ? 2 * mag : mant < 7.5 ? 5 * mag : 10 * mag;
 
-    var fontSize  = Math.max(13, Math.min(18, Math.round(yRoom * 0.75)));
     var tickMaj   = Math.min(yRoom * 0.40, 6);   // hauteur tick principal
     var tickMin   = tickMaj * 0.55;               // hauteur tick secondaire
+
+    // La police se cale sur la place RESTANTE sous les ticks, et plus
+    // seulement sur une fraction de la bande : avec le seul plancher de
+    // lisibilité, une bande trop courte laissait le texte déborder sous le
+    // bord du canvas, qui le coupait net. resizeTube réserve normalement de
+    // quoi tenir ; `labels` couvre le cas où la bande a malgré tout été
+    // sacrifiée au tube (zone d'animation très basse) — mieux vaut une règle
+    // réduite à ses ticks qu'une rangée de chiffres tronqués.
+    var room      = yRoom - tickMaj - 1;
+    var labels    = room >= RULER_FONT_MIN;
+    var fontSize  = Math.max(RULER_FONT_MIN,
+                             Math.min(18, Math.round(yRoom * 0.75), Math.floor(room)));
 
     ctx.save();
     ctx.font         = fontSize + 'px monospace';
@@ -1093,6 +1139,7 @@ function _drawTubeRuler(ctx) {
         ctx.stroke();
 
         // Label : "0" à l'origine, sinon valeur en cm
+        if (!labels) continue;
         var lbl = cm === 0 ? '0' : cm.toFixed(0);
         ctx.fillText(lbl, xc, yBase + tickMaj + 1);
     }
@@ -1110,8 +1157,10 @@ function _drawTubeRuler(ctx) {
         ctx.stroke();
     }
 
-    // Unité (en cm) à gauche de l'origine, avant la graduation 0
-    if (yRoom >= 14) {
+    // Unité (en cm) à gauche de l'origine, avant la graduation 0.
+    // Même condition que les chiffres : elle est écrite sur la même ligne de
+    // base, elle serait donc coupée exactement en même temps.
+    if (labels) {
         ctx.fillStyle    = '#7a8a96';
         ctx.font         = Math.max(12, fontSize - 1) + 'px monospace';
         ctx.textAlign    = 'right';
@@ -1437,16 +1486,24 @@ function _drawOneBeacon(ctx, x, color, label) {
     var y2    = sim.tubeBottom;
     var fSize = Math.max(11, Math.round((y2 - y1) * 0.13));
 
-    // Ligne verticale en pointillés
+    // Ligne verticale en pointillés, cernée d'un liseré blanc — même
+    // traitement que les pointillés de la flèche λ : sur le nuage de
+    // particules, un tiret de couleur seul se confond avec les points qu'il
+    // recouvre. Le blanc est tracé dans le MÊME pointillé et depuis le même
+    // point de départ, donc tiret sur tiret ; 5 px sous 3 px laissent
+    // déborder 1 px de chaque côté.
     ctx.save();
-    ctx.strokeStyle = color;
-    ctx.lineWidth   = 3;
     ctx.setLineDash([6, 4]);
-    ctx.globalAlpha = 0.9;
-    ctx.beginPath();
-    ctx.moveTo(x, y1);
-    ctx.lineTo(x, y2);
-    ctx.stroke();
+    ctx.lineCap = 'butt';
+    [1, 0].forEach(function (isBorder) {
+        ctx.strokeStyle = isBorder ? '#ffffff' : color;
+        ctx.lineWidth   = isBorder ? 5 : 3;
+        ctx.globalAlpha = isBorder ? 1 : 0.9;
+        ctx.beginPath();
+        ctx.moveTo(x, y1);
+        ctx.lineTo(x, y2);
+        ctx.stroke();
+    });
     ctx.setLineDash([]);
     ctx.restore();
 
@@ -1481,8 +1538,15 @@ function _drawOneBeacon(ctx, x, color, label) {
     var yRoom    = H - y2;
     if (yRoom < 6) return;
 
-    var fontSize  = Math.max(13, Math.min(18, Math.round(yRoom * 0.75)));
     var tickMaj   = Math.min(yRoom * 0.40, 6);
+    // Même calcul que _drawTubeRuler : l'étiquette est écrite sur la même
+    // ligne de base, dans la même bande, avec le même plancher de police —
+    // elle débordait donc du canvas au même moment. Sous la place
+    // nécessaire, on la tait plutôt que de la laisser tronquée.
+    var room      = yRoom - tickMaj - 1;
+    if (room < RULER_FONT_MIN) return;
+    var fontSize  = Math.max(RULER_FONT_MIN,
+                             Math.min(18, Math.round(yRoom * 0.75), Math.floor(room)));
 
     ctx.save();
     ctx.fillStyle    = color;
@@ -1573,32 +1637,51 @@ function _drawSonLambdaArrow(ctx) {
     });
 
     // Double flèche horizontale — épaissie et têtes agrandies pour rester
-    // bien visible même par-dessus le reste du dessin. Pas de halo ici : sur
-    // un trait aussi large, il épaississait la silhouette au lieu de la
-    // détacher proprement.
+    // bien visible même par-dessus le reste du dessin.
+    //
+    // Liseré blanc : un HALO (trait blanc large dessous, comme sous les
+    // pointillés) noyait la silhouette d'un trait déjà épais — d'où son
+    // absence jusqu'ici. Une bordure d'1 px, elle, ne change pas la forme
+    // perçue et suffit à décoller la flèche du nuage de particules, qui
+    // passe sous elle en bleu comme en rouge.
     var headLen = Math.max(10, Math.min(20, lambdaPx * 0.12));
-    ctx.strokeStyle = color;
-    ctx.fillStyle   = color;
-    ctx.lineWidth   = 3;
-    ctx.lineCap     = 'butt';
     // Le trait s'arrête à la BASE des têtes de flèche (pas à leur pointe) :
     // près de l'apex, le triangle s'effile bien plus fin que l'épaisseur du
     // trait, qui dépasserait sinon visiblement au-delà de la pointe.
-    ctx.beginPath();
-    ctx.moveTo(Math.min(x1 + headLen, (x1 + x2) / 2), arrowY);
-    ctx.lineTo(Math.max(x2 - headLen, (x1 + x2) / 2), arrowY);
-    ctx.stroke();
+    var shaftA = Math.min(x1 + headLen, (x1 + x2) / 2);
+    var shaftB = Math.max(x2 - headLen, (x1 + x2) / 2);
 
-    function head(xTip, dir) {
+    function headPath(xTip, dir) {
         ctx.beginPath();
         ctx.moveTo(xTip, arrowY);
         ctx.lineTo(xTip + dir * headLen, arrowY - headLen * 0.6);
         ctx.lineTo(xTip + dir * headLen, arrowY + headLen * 0.6);
         ctx.closePath();
-        ctx.fill();
     }
-    head(x1, 1);
-    head(x2, -1);
+
+    ctx.lineCap  = 'butt';
+    ctx.lineJoin = 'round';
+    [1, 0].forEach(function (isBorder) {
+        ctx.strokeStyle = isBorder ? halo : color;
+        ctx.fillStyle   = isBorder ? halo : color;
+
+        // Hampe : 3 px de magenta, 5 px de blanc dessous → 1 px déborde de
+        // chaque côté.
+        ctx.lineWidth = isBorder ? 5 : 3;
+        ctx.beginPath();
+        ctx.moveTo(shaftA, arrowY);
+        ctx.lineTo(shaftB, arrowY);
+        ctx.stroke();
+
+        // Têtes : remplies dans les deux passes, et cernées au 1er passage
+        // pour que le liseré suive aussi les flancs du triangle.
+        ctx.lineWidth = 2;
+        [[x1, 1], [x2, -1]].forEach(function (h) {
+            headPath(h[0], h[1]);
+            ctx.fill();
+            if (isBorder) ctx.stroke();
+        });
+    });
 
     // Étiquette λ centrée au-dessus de la flèche — halo blanc puis texte
     // magenta, technique classique de contour de texte.
@@ -1958,7 +2041,7 @@ function resizeCorde() {
     var wrap = document.getElementById('tube-canvas-wrap');
     var w    = wrap.clientWidth;
     var h    = wrap.clientHeight;
-    if (w < 10 || h < 28) return;
+    if (w < 10 || h < MIN_TUBE_CANVAS_H) return;
 
     var dpr = window.devicePixelRatio || 1;
     tubeCanvas.width  = Math.round(w * dpr);
@@ -1966,10 +2049,14 @@ function resizeCorde() {
     tubeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     // ── Géométrie de la zone corde ────────────────────────────────────
-    // Même logique que le tube son : marge horizontale + verticale
+    // Même logique que le tube son : marge horizontale + verticale, bande
+    // basse comprise — la règle en mètres a exactement le même plancher de
+    // police que celle du tube, donc le même seuil au-delà duquel elle se
+    // faisait couper par le bord du canvas (cf. RULER_BAND_MIN_PX).
     var marginH      = 13;
     var marginTop    = 10;
-    var marginBottom = Math.round(h * 0.12);
+    var marginBottom = Math.round(Math.min(Math.max(h * 0.12, RULER_BAND_MIN_PX),
+                                           h * 0.34));
 
     simCorde.cordeLeft   = marginH + SHAKER_BASE_W;
     simCorde.cordeRight  = w - marginH;
@@ -2663,8 +2750,14 @@ function _drawOneCordeBeacon(ctx, x, color, label) {
     var yRoom    = H - bottom;
     if (yRoom < 6) return;
 
-    var fontSize = Math.max(13, Math.min(18, Math.round(yRoom * 0.75)));
     var tickMaj  = Math.min(yRoom * 0.40, 6);
+    // Même règle que côté Son : la police se cale sur la place restante sous
+    // les ticks, et l'étiquette est tue plutôt que tronquée si la bande a été
+    // sacrifiée à la corde.
+    var room     = yRoom - tickMaj - 1;
+    if (room < RULER_FONT_MIN) return;
+    var fontSize = Math.max(RULER_FONT_MIN,
+                            Math.min(18, Math.round(yRoom * 0.75), Math.floor(room)));
 
     ctx.save();
     ctx.fillStyle    = color;
@@ -2696,9 +2789,14 @@ function _drawCordeRuler(ctx) {
     var step     = mant < 1.5 ? mag : mant < 3.5 ? 2 * mag : mant < 7.5 ? 5 * mag : 10 * mag;
     var decimals = step < 1 ? 1 : 0;
 
-    var fontSize = Math.max(13, Math.min(18, Math.round(yRoom * 0.75)));
     var tickMaj  = Math.min(yRoom * 0.40, 6);
     var tickMin  = tickMaj * 0.55;
+    // Cf. _drawTubeRuler : police calée sur la place restante, étiquettes
+    // tues plutôt que tronquées.
+    var room     = yRoom - tickMaj - 1;
+    var labels   = room >= RULER_FONT_MIN;
+    var fontSize = Math.max(RULER_FONT_MIN,
+                            Math.min(18, Math.round(yRoom * 0.75), Math.floor(room)));
 
     ctx.save();
     ctx.font         = fontSize + 'px monospace';
@@ -2725,7 +2823,7 @@ function _drawCordeRuler(ctx) {
         ctx.moveTo(xc, yBase);
         ctx.lineTo(xc, yBase + tickMaj);
         ctx.stroke();
-        ctx.fillText(m_ === 0 ? '0' : fmtFR(m_, decimals), xc, yBase + tickMaj + 1);
+        if (labels) ctx.fillText(m_ === 0 ? '0' : fmtFR(m_, decimals), xc, yBase + tickMaj + 1);
     }
 
     // Ticks secondaires
@@ -2741,8 +2839,8 @@ function _drawCordeRuler(ctx) {
         ctx.stroke();
     }
 
-    // Unité
-    if (yRoom >= 14) {
+    // Unité — même ligne de base que les chiffres, donc même condition
+    if (labels) {
         ctx.fillStyle    = '#7a8a96';
         ctx.font         = Math.max(12, fontSize - 1) + 'px monospace';
         ctx.textAlign    = 'right';

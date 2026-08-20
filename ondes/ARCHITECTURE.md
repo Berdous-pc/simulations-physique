@@ -209,6 +209,18 @@ Deux consommateurs :
   basses fréquences, où la compression s'étale sur tout le tube et reste
   lisible malgré un contraste plus doux.
 
+  **Plancher d'aspect (`SON_H_REF_FRAC`).** Adossé à la seule hauteur, ce
+  plafond faisait dépendre la physique visible d'un réglage de mise en page :
+  `k` ne dépend que de la LARGEUR (`λ_px ∝ tubeLength`), donc écraser le volet
+  — splitter, petite fenêtre, ouverture du graphe — divisait `ak_disp` d'autant.
+  Aux réglages par défaut il tombait de 0,73 à 0,20, très en dessous d'`AK_MIN`,
+  et les compressions cessaient d'être lisibles. Le mouvement de la membrane
+  étant *horizontal*, ce qui doit le borner est la longueur : la hauteur retenue
+  est donc `max(H, SON_H_REF_FRAC × L)`, avec `SON_H_REF_FRAC = 0,35` — le
+  rapport d'aspect d'un volet non écrasé. Au-dessus de ce rapport, comportement
+  inchangé au pixel près ; en dessous, l'amplitude se fige à ≈ 4,5 % de `L` et
+  le contraste cesse de se dégrader.
+
   Le plafond ne dépendant **que de la géométrie du tube**, il est aussi ce qui
   dimensionne les zones virtuelles de `initCols` : le domaine des particules
   est devenu insensible à f, K et ρ.
@@ -328,6 +340,30 @@ Le rayon est donc dimensionné une fois pour toutes sur le cas le plus
 défavorable, `ρ = RHO_MAX_UI` (à tenir synchronisé avec le max du curseur dans
 `index.html`).
 
+**`particleSlotPx2` : la grille suit le rayon.** `COL_SLOT_PX2` est une
+constante en pixels, alors que le rayon, lui, suit la hauteur du tube : le
+remplissage `φ = πr²ρ/slot` dépendait donc de `H` comme `r²`. Un tube écrasé
+(petite fenêtre, ou graphe affiché) contenait le même nombre de points par px²
+mais des points bien plus petits, d'où un gaz visuellement beaucoup trop
+raréfié. L'aire de case allouée à une particule suit donc `πr²` : la grille se
+resserre exactement dans le rapport où le rayon diminue, et `φ` ne dépend plus
+que de `ρ`. Au rayon de saturation la formule redonne `COL_SLOT_PX2` — le
+calibrage historique des tubes hauts est intact.
+
+**Le rayon varie en `√H`, pas en `H`.** La case suivant `πr²`, on a
+`N = domaine × H × ρ / (πr²ρ_max/φ_max)`. Une loi `r ∝ H` — ou un simple
+plancher, qui revient à figer `r` — laisse `N ∝ H` : le taux de remplissage
+est bon, mais le tube écrasé contient réellement **moins de molécules**, il
+semble s'être vidé. Avec `r = rSat·√(H/H_ref)`, la case vaut
+`COL_SLOT_PX2·H/H_ref`, le facteur `H` se simplifie et
+`N = domaine × ρ × H_ref / COL_SLOT_PX2` : **ni la densité ni l'effectif ne
+dépendent plus de la hauteur du tube**, seule l'échelle du dessin change.
+`H_ref ≈ 192 px` est la hauteur où l'ancienne loi `H × 0,018` atteignait
+`rSat` — au-delà, rendu strictement inchangé. `N` étant plafonné par sa valeur
+à `H_ref`, aplatir le tube ne peut pas faire exploser le compte : le plafond
+de 8000 de `initCols` joue exactement au même moment qu'avant. Le plancher
+résiduel de 1,6 px est purement une garantie de lisibilité (tube < 41 px).
+
 **Où placer `PARTICLE_FILL_MAX` ?** « Ne pas saturer » ne dit pas *où* se
 placer, et la valeur d'origine (0,50) plaçait le nuage beaucoup trop bas. Dans
 un semis aléatoire de taux de remplissage `φ`, la couverture perçue vaut
@@ -426,6 +462,24 @@ Autres fonctions : `updateCeleriteCorde` (`c = √(T/μ)`), `updateYxData`
 `resizeTube()` recalibre `C_BASE` puis réinitialise les colonnes. `drawTube()`
 dessine fond, membrane, colonnes, balises, règle graduée.
 
+**La bande basse se réserve la place de ses textes.** Elle valait `h × 0,12`,
+alors que la police de la règle et des positions de balises a un plancher de
+lisibilité (13 px) qui, lui, ne rapetisse pas : en dessous de `h ≈ 145 px` —
+splitter tiré vers le haut pour agrandir le graphe — les étiquettes
+réclamaient plus que la bande et le bord du canvas les coupait net. La bande
+vaut donc `clamp(h × 0,12, RULER_BAND_MIN_PX, h × 0,34)` : identique au pixel
+près sur grand écran, plancher égal au besoin réel (`tick + 1 + police`),
+plafond au tiers de la hauteur pour que le tube reste le sujet. Symétriquement,
+`_drawTubeRuler` et `_drawOneBeacon` calent leur police sur la place
+*restante* sous les ticks et **taisent** les étiquettes en dessous de
+`RULER_FONT_MIN` — une règle réduite à ses ticks vaut mieux qu'une rangée de
+chiffres tronqués. Le seuil de dessinabilité du tube passe de 28 à
+`MIN_TUBE_CANVAS_H` = 37 px (`0,66 h − 4 ≥ 20`), et remonte jusqu'au splitter
+via `_minUsefulAnimHeight`. Le tab **Corde** partageant le canvas, la bande et
+les plancher de police, il avait le défaut à l'identique : `resizeCorde`,
+`_drawCordeRuler` et les positions de balises corde appliquent exactement les
+mêmes constantes.
+
 **`C_BASE` ne doit dépendre d'aucune valeur par défaut.** `c_sim` (px/s) est
 tenu d'être *exactement* la conversion en pixels de `c_cms`, sans quoi tout ce
 qui exprime une longueur d'onde en pixels — au premier rang la flèche λ — est
@@ -485,7 +539,7 @@ reprennent exactement les anciennes à ρ = 1 : rien ne change au réglage par
 défaut, seule la réponse au curseur ρ apparaît.
 
 *Manque de contraste*, aux grandes λ (`_densTightAk`) : le déplacement affiché
-est plafonné par la hauteur du tube, donc `ak_disp = min(clamp(A·k, AK_MIN,
+est plafonné par `sonMaxDisplayPx()`, donc `ak_disp = min(clamp(A·k, AK_MIN,
 AK_CAP), sonMaxDisplayPx()·k)` s'écrase quand λ grandit. À f = 0,5 Hz le
 rapport de densité tombe à 1,17 — les particules sont parfaitement résolues et
 ne montrent rien. Ce cas n'était **pas traité** : le voile s'y allumait (ΔP
