@@ -22,7 +22,7 @@
        aussi. -->
   <script>
     var _hash = location.hash.replace('#', '');
-    if (_hash === 'corde' || _hash === 'son' || _hash === '') {
+    if (_hash === 'corde' || _hash === 'son' || _hash === 'vagues' || _hash === '') {
       document.documentElement.classList.add('init-graph-hidden');
     }
   </script>
@@ -666,6 +666,28 @@
             Atténuation géométrique (1/√r)
           </button>
 
+        </div><!-- fin Propriétés du milieu -->
+
+        <div class="sep"></div>
+
+        <!-- Options -->
+        <div class="panel-section">
+          <div class="section-title">Options</div>
+
+          <!-- Bouton afficher/masquer la zone graphe -->
+          <button class="btn btn-toggle-one" id="btn-show-graph-vagues"
+                  onclick="toggleShowGraphVagues()">
+            Afficher graphe
+          </button>
+
+          <!-- Bouton afficher/masquer la flèche de longueur d'onde -->
+          <button class="btn btn-toggle-one" id="btn-lambda-vagues"
+                  style="margin-top:6px;"
+                  onclick="toggleLambdaVagues()">
+            Afficher la longueur d'onde
+          </button>
+
+          <!-- Bouton propriétés de l'onde -->
           <button class="btn btn-toggle-one" id="btn-wave-props-vagues"
                   onclick="toggleWavePropsVagues()" style="margin-top:6px;">
             Détailler les propriétés de l'onde
@@ -701,7 +723,7 @@
             </div>
           </div>
 
-        </div><!-- fin Propriétés du milieu -->
+        </div><!-- fin Options -->
 
       </div><!-- fin #section-vagues -->
 

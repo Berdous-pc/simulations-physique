@@ -100,6 +100,20 @@ var simVagues = {
     // ── Propriétés de l'onde (readout étendu) ────────────────────────
     wavePropsVisible : false,
 
+    // ── Options d'affichage (zone graphe / flèche λ) ──────────────────
+    //  Masqués par défaut, comme sur les onglets Son et Corde
+    //  (cf. toggleShowGraphVagues/toggleLambdaVagues dans ui.js).
+    graphVisible  : false,
+    lambdaVisible : false,
+    // Flèche λ draggable le long de l'axe horizontal (cf. _drawLambdaArrowVagues
+    // et initVaguesMouse). lambdaX = abscisse écran de son extrémité gauche, en
+    // repère VUE DU DESSUS ; lambdaOffsetFrac = distance (signée) à la source
+    // sourceX, en fraction de la largeur du canvas — utilisée pour recalculer
+    // lambdaX au resize (comme pour les balises), et par la vue en coupe pour
+    // replacer la flèche sur son propre axe (cf. _drawLambdaArrowCoupeVagues).
+    lambdaX          : 0,
+    lambdaOffsetFrac : 0.05,
+
     // ── Géométrie canvas ─────────────────────────────────────────────
     canvasW     : 0,
     canvasH     : 0,
@@ -162,6 +176,10 @@ function resizeVagues() {
     simVagues.beacon1.y = Math.round(simVagues.beacon1.ry * h);
     simVagues.beacon2.x = Math.round(simVagues.beacon2.rx * w);
     simVagues.beacon2.y = Math.round(simVagues.beacon2.ry * h);
+
+    // Recalcul pixel de la flèche λ depuis sa distance relative à la source
+    // (cf. lambdaOffsetFrac)
+    simVagues.lambdaX = Math.round(simVagues.sourceX + simVagues.lambdaOffsetFrac * w);
 
     if (simVagues.viewMode === 'coupe') {
         simVagues.coupeSrcX = COUPE_LEFT_MARGIN;
@@ -400,6 +418,7 @@ function drawVagues() {
     ctx.filter = 'none';
 
     _drawAxisVagues(ctx, W, H);
+    _drawLambdaArrowVagues(ctx, W, H);
     _drawBeaconsVagues(ctx);
     _drawSourceVagues(ctx);
 }
@@ -464,6 +483,146 @@ function _drawAxisVagues(ctx, W, H) {
     ctx.textAlign    = 'right';
     ctx.textBaseline = 'bottom';
     ctx.fillText('x (m) →', W - 4, sy - 3);
+    ctx.restore();
+}
+
+// ── Flèche de longueur d'onde (segment radial) ──────────────────────────
+//  L'onde de Vagues étant circulaire, la flèche suit l'axe horizontal (vue
+//  du dessus) ou l'axe d'équilibre y=0 (vue en coupe) plutôt qu'un axe de
+//  propagation dédié — une simple coupe radiale de longueur λ. Draggable
+//  horizontalement, comme sur Son/Corde (cf. initVaguesMouse).
+//
+//  Position stockée en repère VUE DU DESSUS (lambdaX, absolu ; lambdaOffsetFrac,
+//  relatif à la largeur du canvas) : dist = lambdaX - sourceX est la
+//  distance (signée) à la source, seule grandeur physique pertinente,
+//  invariante par rotation de vue. La vue en coupe la retraduit en
+//  coupeSrcX + dist (même principe que les balises, cf.
+//  _drawBeaconsCoupeVagues) et masque la flèche si dist ≤ 0 : ce cadrage-là
+//  ne montre que le demi-axe x > 0 depuis la source.
+function _vaguesLambdaPx() {
+    return (simVagues.c_sim > 0 && simVagues.freq > 0)
+        ? simVagues.c_sim / simVagues.freq : 0;
+}
+
+// Hauteur de la flèche au-dessus de l'axe d'équilibre, en vue coupe —
+// jamais nulle (contrairement à la vue du dessus, où la flèche est posée
+// directement sur l'axe) : sans relief, les pointillés de mise à niveau
+// n'auraient rien à montrer.
+function _vaguesLambdaArrowYCoupe(W, H, srcX) {
+    var yLevel = Math.round(H / 2);
+    return Math.max(20, yLevel - Math.max(28, Math.round((W - srcX) * 0.12)));
+}
+
+// Tracé générique d'une double flèche horizontale λ, avec pointillés de
+// mise à niveau optionnels si arrowY ≠ zeroY (vue coupe) — même dessin que
+// _drawSonLambdaArrow/_drawCordeLambdaArrow (tube.js), adapté ici pour
+// n'avoir qu'un seul appelant par vue plutôt qu'un état sim.tubeLeft/Right.
+function _drawLambdaArrowCore(ctx, x1, x2, arrowY, zeroY, fSize) {
+    var lambdaPx = x2 - x1;
+    var color = '#e6007e';   // même magenta que Son/Corde
+    var halo  = '#ffffff';
+
+    ctx.save();
+    ctx.lineJoin = 'round';
+    ctx.lineCap  = 'round';
+
+    // Pointillés verticaux jusqu'à l'axe d'équilibre (vue coupe uniquement).
+    if (arrowY !== zeroY) {
+        ctx.setLineDash([4, 3]);
+        [1, 0].forEach(function (isHalo) {
+            ctx.strokeStyle = isHalo ? halo : color;
+            ctx.lineWidth   = isHalo ? 3 : 1;
+            ctx.globalAlpha = isHalo ? 1 : 0.7;
+            ctx.beginPath();
+            ctx.moveTo(x1, arrowY); ctx.lineTo(x1, zeroY);
+            ctx.moveTo(x2, arrowY); ctx.lineTo(x2, zeroY);
+            ctx.stroke();
+        });
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 1;
+    }
+
+    ctx.lineCap = 'butt';
+    var headLen = Math.max(8, Math.min(18, lambdaPx * 0.12));
+    var shaftA  = Math.min(x1 + headLen, (x1 + x2) / 2);
+    var shaftB  = Math.max(x2 - headLen, (x1 + x2) / 2);
+
+    function headPath(xTip, dir) {
+        ctx.beginPath();
+        ctx.moveTo(xTip, arrowY);
+        ctx.lineTo(xTip + dir * headLen, arrowY - headLen * 0.6);
+        ctx.lineTo(xTip + dir * headLen, arrowY + headLen * 0.6);
+        ctx.closePath();
+    }
+
+    [1, 0].forEach(function (isBorder) {
+        ctx.strokeStyle = isBorder ? halo : color;
+        ctx.fillStyle   = isBorder ? halo : color;
+
+        ctx.lineWidth = isBorder ? 5 : 3;
+        ctx.beginPath();
+        ctx.moveTo(shaftA, arrowY);
+        ctx.lineTo(shaftB, arrowY);
+        ctx.stroke();
+
+        ctx.lineWidth = 2;
+        [[x1, 1], [x2, -1]].forEach(function (h) {
+            headPath(h[0], h[1]);
+            ctx.fill();
+            if (isBorder) ctx.stroke();
+        });
+    });
+
+    ctx.font         = 'italic bold ' + fSize + 'px "Segoe UI", Arial, sans-serif';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.strokeStyle  = halo;
+    ctx.lineWidth    = 4;
+    ctx.strokeText('λ', (x1 + x2) / 2, arrowY - 4);
+    ctx.fillStyle    = color;
+    ctx.fillText('λ', (x1 + x2) / 2, arrowY - 4);
+
+    ctx.restore();
+}
+
+// ── Vue du dessus : flèche posée sur l'axe, à l'abscisse lambdaX ───────
+function _drawLambdaArrowVagues(ctx, W, H) {
+    if (!simVagues.lambdaVisible) return;
+    var lambdaPx = _vaguesLambdaPx();
+    if (lambdaPx <= 0) return;
+
+    var sy = simVagues.sourceY;
+    var x1 = simVagues.lambdaX, x2 = x1 + lambdaPx;
+    var fSize = Math.max(16, Math.round(simVagues.canvasW * 0.045));
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, W, H);
+    ctx.clip();
+    _drawLambdaArrowCore(ctx, x1, x2, sy, sy, fSize);
+    ctx.restore();
+}
+
+// ── Vue en coupe : flèche au-dessus de l'axe y=0, reliée par pointillés ──
+function _drawLambdaArrowCoupeVagues(ctx, W, H, srcX, yLevel) {
+    if (!simVagues.lambdaVisible) return;
+    var lambdaPx = _vaguesLambdaPx();
+    if (lambdaPx <= 0) return;
+
+    var dist = simVagues.lambdaX - simVagues.sourceX;
+    if (dist <= 0) return;   // hors du demi-axe x > 0 montré en coupe
+
+    var x1 = srcX + dist, x2 = x1 + lambdaPx;
+    if (x1 > W) return;      // entièrement hors champ, rien à dessiner
+
+    var arrowY = _vaguesLambdaArrowYCoupe(W, H, srcX);
+    var fSize  = Math.max(16, Math.round((W - srcX) * 0.06));
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(srcX, 0, W - srcX, H);
+    ctx.clip();
+    _drawLambdaArrowCore(ctx, x1, x2, arrowY, yLevel, fSize);
     ctx.restore();
 }
 
@@ -1908,7 +2067,10 @@ function _drawVaguesCoupe(ctx, W, H) {
     // ── 6. Axe x et graduations ───────────────────────────────────────
     _drawAxisCoupeVagues(ctx, W, H, srcX, yLevel);
 
-    // ── 7. Balises (bouées flottantes) ────────────────────────────────
+    // ── 7. Flèche de longueur d'onde ───────────────────────────────────
+    _drawLambdaArrowCoupeVagues(ctx, W, H, srcX, yLevel);
+
+    // ── 8. Balises (bouées flottantes) ────────────────────────────────
     _drawBeaconsCoupeVagues(ctx, W, H, srcX, yLevel, ampPx);
 }
 
@@ -2080,8 +2242,9 @@ function _drawBeaconsCoupeVagues(ctx, W, H, srcX, yLevel, ampPx) {
 // ══════════════════════════════════════════════════════════════════════
 
 (function initVaguesMouse() {
-    var dragTarget = null; // null | 'beacon1' | 'beacon2'
-    var DRAG_RADIUS_B  = 14;  // px autour d'une balise pour le drag
+    var dragTarget    = null; // null | 'beacon1' | 'beacon2' | 'lambda'
+    var lambdaGrabDx  = 0;    // décalage souris ↔ extrémité gauche de la flèche, saisi au clic
+    var DRAG_RADIUS_B = 14;  // px autour d'une balise pour le drag
 
     function canvasCoords(e, canvas) {
         var rect   = canvas.getBoundingClientRect();
@@ -2091,6 +2254,40 @@ function _drawBeaconsCoupeVagues(ctx, W, H, srcX, yLevel, ampPx) {
             x : (e.clientX - rect.left) * scaleX,
             y : (e.clientY - rect.top)  * scaleY
         };
+    }
+
+    // Abscisse écran de l'extrémité gauche de la flèche λ, dans le repère
+    // de la vue actuellement affichée (cf. commentaire sur lambdaOffsetFrac
+    // dans simVagues, en tête de fichier).
+    function lambdaScreenX1() {
+        if (simVagues.viewMode === 'coupe') {
+            return simVagues.coupeSrcX + (simVagues.lambdaX - simVagues.sourceX);
+        }
+        return simVagues.lambdaX;
+    }
+
+    // Hit-test : est-on sur la flèche de longueur d'onde (hampe, têtes, ou
+    // pointillés de mise à niveau en vue coupe) ? Bande généreuse sur toute
+    // la largeur de la flèche — même principe que nearLambdaArrow dans
+    // tube.js (Son/Corde).
+    function nearLambdaArrowVagues(mx, my) {
+        if (!simVagues.lambdaVisible) return false;
+        var lambdaPx = _vaguesLambdaPx();
+        if (lambdaPx <= 0) return false;
+
+        if (simVagues.viewMode === 'coupe') {
+            var dist = simVagues.lambdaX - simVagues.sourceX;
+            if (dist <= 0) return false;
+            var srcX = simVagues.coupeSrcX;
+            var x1c = srcX + dist, x2c = x1c + lambdaPx;
+            var arrowY = _vaguesLambdaArrowYCoupe(simVagues.canvasW, simVagues.canvasH, srcX);
+            var yLevel = Math.round(simVagues.canvasH / 2);
+            return mx >= x1c - 10 && mx <= x2c + 10 && my >= arrowY - 10 && my <= yLevel;
+        }
+
+        var x1 = simVagues.lambdaX, x2 = x1 + lambdaPx;
+        var sy = simVagues.sourceY;
+        return mx >= x1 - 10 && mx <= x2 + 10 && Math.abs(my - sy) <= 12;
     }
 
     function setup() {
@@ -2103,7 +2300,8 @@ function _drawBeaconsCoupeVagues(ctx, W, H, srcX, yLevel, ampPx) {
             var pos = canvasCoords(e, canvas);
             var mx = pos.x, my = pos.y;
 
-            // Drag des balises uniquement (source fixe au centre)
+            // Drag des balises (priorité : cible ponctuelle, plus précise que
+            // la flèche λ qui, elle, couvre toute une bande horizontale).
             if (simVagues.beacon1.active) {
                 var db1 = Math.sqrt(
                     (mx - simVagues.beacon1.x) * (mx - simVagues.beacon1.x) +
@@ -2124,11 +2322,45 @@ function _drawBeaconsCoupeVagues(ctx, W, H, srcX, yLevel, ampPx) {
                     return;
                 }
             }
+
+            // Flèche de longueur d'onde : ne se déplace qu'horizontalement,
+            // en bloc (sa taille suit λ, jamais le geste de la souris).
+            if (nearLambdaArrowVagues(mx, my)) {
+                dragTarget   = 'lambda';
+                lambdaGrabDx = mx - lambdaScreenX1();
+                canvas.setPointerCapture(e.pointerId);
+                return;
+            }
         });
 
         canvas.addEventListener('pointermove', function(e) {
-            if (!dragTarget) return;
+            if (!dragTarget) {
+                // Curseur adaptatif au survol de la flèche λ.
+                if (typeof activeTab !== 'undefined' && activeTab === 'vagues') {
+                    var hoverPos = canvasCoords(e, canvas);
+                    canvas.style.cursor = nearLambdaArrowVagues(hoverPos.x, hoverPos.y)
+                        ? 'ew-resize' : 'default';
+                }
+                return;
+            }
             if (typeof activeTab === 'undefined' || activeTab !== 'vagues') { dragTarget = null; return; }
+
+            if (dragTarget === 'lambda') {
+                var posL = canvasCoords(e, canvas);
+                var nx = posL.x - lambdaGrabDx;
+                var dist;
+                if (simVagues.viewMode === 'coupe') {
+                    // Bornée à droite de la source : la vue coupe ne montre
+                    // que le demi-axe x > 0 (cf. _drawLambdaArrowCoupeVagues).
+                    dist = Math.max(0, Math.min(simVagues.canvasW - simVagues.coupeSrcX, nx - simVagues.coupeSrcX));
+                } else {
+                    nx = Math.max(0, Math.min(simVagues.canvasW, nx));
+                    dist = nx - simVagues.sourceX;
+                }
+                simVagues.lambdaX = simVagues.sourceX + dist;
+                if (simVagues.canvasW > 0) simVagues.lambdaOffsetFrac = dist / simVagues.canvasW;
+                return;
+            }
 
             var pos = canvasCoords(e, canvas);
             var mx  = Math.max(0, Math.min(simVagues.canvasW, pos.x));

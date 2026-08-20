@@ -1205,6 +1205,40 @@ function _syncLambdaBtnStateCorde() {
     }
 }
 
+// ── Bouton "Afficher graphe" (Vagues) ───────────────────────────────
+// Même mécanique que Son/Corde (cf. toggleShowGraphSon).
+function toggleShowGraphVagues() {
+    simVagues.graphVisible = !simVagues.graphVisible;
+    if (simVagues.graphVisible) _resetSplitFracToDefault();
+    _applyShowGraphVagues();
+}
+
+function _applyShowGraphVagues() {
+    var btn = document.getElementById('btn-show-graph-vagues');
+    if (btn) btn.classList.toggle('active', simVagues.graphVisible);
+
+    var leftCol = document.getElementById('left-col');
+    if (leftCol) leftCol.classList.toggle('graph-hidden', activeTab === 'vagues' && !simVagues.graphVisible);
+
+    document.documentElement.classList.remove('init-graph-hidden');
+
+    applySplitFrac(splitFrac);
+
+    scheduleResizeTube();
+    resizeGraph();
+}
+
+// ── Bouton "Afficher la longueur d'onde" (Vagues) ────────────────────
+function toggleLambdaVagues() {
+    simVagues.lambdaVisible = !simVagues.lambdaVisible;
+    _applyLambdaVagues();
+}
+
+function _applyLambdaVagues() {
+    var btn = document.getElementById('btn-lambda-vagues');
+    if (btn) btn.classList.toggle('active', simVagues.lambdaVisible);
+}
+
 function _syncWavePropsBtnStateCorde() {
     var btn = document.getElementById('btn-wave-props-corde');
     if (!btn) return;
@@ -1339,8 +1373,9 @@ function setMainTab(tab) {
 
     // ── Zone graphe masquée (bouton "Afficher graphe", Son + Corde) ──────
     var leftCol = document.getElementById('left-col');
-    var graphHidden = (tab === 'corde' && !simCorde.graphVisible) ||
-                       (tab === 'son'   && !sim.graphVisible);
+    var graphHidden = (tab === 'corde'  && !simCorde.graphVisible) ||
+                       (tab === 'son'    && !sim.graphVisible) ||
+                       (tab === 'vagues' && !simVagues.graphVisible);
     if (leftCol) leftCol.classList.toggle('graph-hidden', graphHidden);
     // cf. commentaire dans _applyShowGraphCorde/_applyShowGraphSon : la classe
     // de pré-masquage posée dans <head> ne doit pas survivre au premier
@@ -1470,6 +1505,10 @@ function _syncUIToSim() {
     if (lblSpeedV) lblSpeedV.textContent = '1,00';
     simVagues.wavePropsVisible = false;
     _applyWavePropsVagues();
+    simVagues.lambdaVisible = false;
+    _applyLambdaVagues();
+    simVagues.graphVisible = false;
+    _applyShowGraphVagues();
     updateCeleriteVagues();
     _updateCReadoutVagues();
     var btnV = document.getElementById('btn-playpause-vagues');
