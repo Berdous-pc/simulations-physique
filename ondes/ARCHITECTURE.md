@@ -231,52 +231,35 @@ Chaque portion de l'onde conserve donc son propre gain : après un changement de
 f, les deux longueurs d'onde qui cohabitent s'affichent chacune avec un contraste
 lisible, au lieu que l'ensemble du tube se dilate ou se contracte.
 
-#### Le facteur de forme doit entrer dans le budget d'amplitude
+#### Retiré : la source « Périodique » du Son
 
-Le Son n'affiche pas le déplacement mais sa **dérivée** : la densité des
-particules comme le graphe ΔP valent tous deux `∂u/∂x`. Or dériver multiplie
-chaque harmonique par son rang, et le motif Périodique a de ce fait une pente
-maximale **2,32 fois** celle d'une sinusoïde de même amplitude
-(`PERIODIC_DP_FACTOR`).
+Le Son a longtemps proposé un troisième mode de source, « Périodique » — un
+signal non sinusoïdal destiné à donner des zones de compression plus
+marquées. Il a été **retiré** ; la Corde conserve le sien.
 
-`_sonDisplayGain` calibrait l'amplitude sur `A·k` du seul fondamental. En
-Périodique la pente réelle valait donc `A·k × 2,32`, soit jusqu'à 1,74 — or
-**`|∂u/∂x| > 1` signifie que `x₀ ↦ x₀ + u` n'est plus monotone** : les
-particules se replient les unes sur les autres. Les trois lobes du motif
-(3,5 / 0,95 / 0,95) saturaient alors en trois bandes d'aspect identique, et la
-période apparente devenait λ/3 — alors que la vraie période est bien λ = c/f.
+Le motif y était structurellement désavantagé, parce que le Son n'affiche pas
+le déplacement mais sa **dérivée** (densité des particules et graphe ΔP valent
+tous deux `∂u/∂x`) :
 
-C'était donc un artefact de rendu, et non une erreur sur λ : il n'y avait rien
-à corriger côté longueur d'onde. Le facteur de forme est simplement entré dans
-le budget de `_sonDisplayGain`, via le `q` déjà rangé par échantillon (`srcQ`,
-même mécanique que `k`). La pente reste bornée par `AK_CAP`, les trois lobes
-retrouvent leurs amplitudes relatives réelles, et la période lue à l'écran
-redevient λ.
+- La pente affichée est bornée par `AK_CAP` — au-delà de 1, `x₀ ↦ x₀ + u`
+  cesse d'être monotone et les particules se replient. Rendre les pics plus
+  fins augmentait la pente maximale du motif, que le gain divisait aussitôt
+  d'autant : **le contraste au sommet des pics ne dépendait pas de la forme
+  du motif**, seulement du plafond.
+- Conservation de la matière : sur une période, `∫(∂u/∂x)dx = 0`. Des
+  compressions étroites ne peuvent donc déplacer que peu de gaz, et la
+  détente — étalée sur tout le reste — restait pâle. Compressions marquées et
+  détente creusée sont **mutuellement exclusives** à pente bornée.
+- Deux calibrations du rendu, toutes deux établies sur une sinusoïde, se
+  retournaient contre un motif à structure fine : le budget d'errance
+  thermique (`WANDER_LAM`, indexé sur λ) valait ~40 % de la largeur d'un pic
+  et le floutait, et le nombre de color-stops du voile de fond
+  (14 par λ) n'échantillonnait qu'environ 1,7 point par pic.
 
-> Une autre piste avait été suivie d'abord : faire émettre au Son la
-> *primitive* du motif de la Corde, pour que ΔP en porte exactement le profil.
-> Mathématiquement élégant — `max|u′|` retombait pile sur la constante 1,507097
-> de la Corde — mais le motif devenait trop proche d'une sinusoïde à l'écran.
-> Écarté : le défaut n'était pas dans le choix du signal.
-
-#### Harmoniques renforcées côté Son
-
-Le repliement corrigé, les lobes secondaires apparaissaient à 27 % du lobe
-principal — trop discrets pour qu'on lise la structure du motif. Les
-harmoniques sont donc renforcées **pour le Son uniquement** (la Corde garde
-`PERIODIC_NORM` et ses poids) :
-
-```
-u(p)  = sin p + 1,000·sin 3p + 0,500·sin 2p     (max|u| = 2,016026)
-ΔP ∝   cos p + 3,000·cos 3p + 1,000·cos 2p     (max = 5,000000)
-```
-
-Le lobe secondaire passe à 40 % du principal, soit un contraste de densité de
-×1,43 contre ×1,26. C'est un **compromis assumé** : plus `PERIODIC_B3_SON`
-monte, plus les lobes s'égalisent — et plus le motif finit par se lire comme
-une onde de longueur d'onde λ/3, ce qui est précisément le défaut qu'on
-cherche à éviter. Le principal doit rester dominant pour que la période lue
-soit λ.
+Le retrait a permis de supprimer la mécanique du **facteur de forme** (`srcQ`,
+`PERIODIC_DP_FACTOR`), qui n'existait que pour ce mode : `q` valait 1 partout
+ailleurs. `_srcPush` ne range donc plus qu'une seule grandeur auxiliaire par
+échantillon — le nombre d'onde `k`.
 
 #### L'enveloppe de démarrage et d'arrêt
 

@@ -90,7 +90,6 @@ function _srcAlloc(s) {
         s.srcD = new Float32Array(SRC_CAP);
         s.srcS = new Float64Array(SRC_CAP);
         s.srcA = new Float32Array(SRC_CAP);
-        s.srcQ = new Float32Array(SRC_CAP);
     }
 }
 
@@ -113,18 +112,13 @@ function _srcClear(s) {
 // dans l'unité de longueur de l'onglet (m/s pour la Corde, cm/s pour le Son).
 // aux = grandeur auxiliaire figée à l'émission, propre à l'onglet (le Son y
 // range le nombre d'onde, cf. stepSourceSon ; la Corde n'en a pas l'usage).
-// auxQ = 2e grandeur auxiliaire, réservée au Son (cf. PERIODIC_DP_FACTOR) :
-// facteur correcteur de ΔP figé à l'émission, propre au mode de la source
-// à cet instant — nécessaire pour qu'une portion d'onde émise en Périodique
-// garde SA correction même après un changement de mode.
-function _srcPush(s, t, d, cAdvance, aux, auxQ) {
+function _srcPush(s, t, d, cAdvance, aux) {
     _srcAlloc(s);
     if (d !== 0) s.lastEmitT = t;
     s.srcSCur += cAdvance * SRC_DT;
     s.srcD[s.srcHead] = d;
     s.srcS[s.srcHead] = s.srcSCur;
     s.srcA[s.srcHead] = aux || 0;
-    s.srcQ[s.srcHead] = auxQ || 1;
     s.srcHead = (s.srcHead + 1) % SRC_CAP;
     if (s.srcN < SRC_CAP) s.srcN++;
     s.srcTNew = t;
@@ -158,12 +152,11 @@ function _srcSAtTime(s, t, cNow) {
 // Objet de sortie réutilisé d'un appel à l'autre : la fonction est appelée
 // quelques milliers de fois par frame, allouer y serait coûteux. La valeur
 // renvoyée doit donc être consommée immédiatement.
-var _srcOut = { d: 0, a: 0, q: 1 };
+var _srcOut = { d: 0, a: 0 };
 
 function _srcSampleAtS(s, sT) {
     _srcOut.d = 0;
     _srcOut.a = 0;
-    _srcOut.q = 1;
 
     var n = s.srcN;
     if (n === 0) return _srcOut;
@@ -174,7 +167,6 @@ function _srcSampleAtS(s, sT) {
     if (sT >= s.srcS[iLast]) {
         _srcOut.d = s.srcD[iLast];
         _srcOut.a = s.srcA[iLast];
-        _srcOut.q = s.srcQ[iLast];
         return _srcOut;
     }
 
@@ -192,7 +184,6 @@ function _srcSampleAtS(s, sT) {
 
     _srcOut.d = s.srcD[iA] + (s.srcD[iB] - s.srcD[iA]) * f;
     _srcOut.a = s.srcA[iA] + (s.srcA[iB] - s.srcA[iA]) * f;
-    _srcOut.q = s.srcQ[iA] + (s.srcQ[iB] - s.srcQ[iA]) * f;
     return _srcOut;
 }
 
@@ -258,7 +249,7 @@ var sim = {
     paused      : false,   // démarre en marche (agitation thermique visible)
     simTime     : 0,       // temps simulé cumulé (s)
 
-    // ── Mode source : null | 'impulse' | 'sinus' | 'periodic' ───────────
+    // ── Mode source : null | 'impulse' | 'sinus' ────────────────────
     sourceMode        : null,   // aucun mode actif au chargement
     impulsePropagating: false,  // true = une impulsion est en cours de propagation
     sourceActiveUntil : 0,      // fin du mouvement de la membrane (mode Impulsion)
@@ -269,13 +260,9 @@ var sim = {
     sinusoidalActive : false,    // oscillation en cours
     sinPhase         : 0,
 
-    // ── Source — composante périodique non sinusoïdale (multi-lobes) ────
-    periodicActive : false,
-    periodicPhase  : 0,
-
     // ── Enveloppe de démarrage / d'arrêt de la source continue ──────────
     //  sonEmitMode : signal RÉELLEMENT émis, extinction comprise. Il survit
-    //  donc à sinusoidalActive / periodicActive le temps de la descente.
+    //  donc à sinusoidalActive le temps de la descente.
     //  sonEnv : progression de l'enveloppe dans [0, 1] (cf. stepSourceSon).
     sonEmitMode : null,
     sonEnv      : 0,
@@ -424,9 +411,7 @@ function stepSourceSon(t) {
     // haut-parleur, dont la membrane ne peut pas accélérer instantanément.
     // Passé cette période, le signal est une sinusoïde pure — la longueur
     // d'onde reste donc mesurable partout ailleurs.
-    var wantMode = sim.sinusoidalActive ? 'sinus'
-                 : sim.periodicActive   ? 'periodic'
-                 : null;
+    var wantMode = sim.sinusoidalActive ? 'sinus' : null;
 
     // Changer de type de source pendant l'extinction : on repart de zéro
     // plutôt que de faire hériter la nouvelle forme de l'enveloppe en cours.
@@ -451,21 +436,6 @@ function stepSourceSon(t) {
         d += env * Math.sin(sim.sinPhase);
     }
 
-    // ── Composante périodique non sinusoïdale (multi-lobes, asymétrique) ──
-    // Harmoniques renforcées par rapport à la Corde, le Son n'affichant que
-    // ∂u/∂x — cf. le bloc PERIODIC_*_SON. La pente du motif valant 2,48 fois
-    // celle d'une sinusoïde de même amplitude, c'est PERIODIC_DP_FACTOR
-    // (rangé dans srcQ) qui en tient compte à la lecture, pour ΔP comme pour
-    // l'amplitude d'affichage.
-    if (sim.sonEmitMode === 'periodic') {
-        sim.periodicPhase += 2 * Math.PI * sim.freq * SRC_DT;
-        if (sim.periodicPhase > 2 * Math.PI) sim.periodicPhase -= 2 * Math.PI;
-        var p = sim.periodicPhase;
-        d += env * PERIODIC_NORM_SON
-                 * (Math.sin(p) + PERIODIC_A3_SON * Math.sin(3 * p)
-                                + PERIODIC_A2_SON * Math.sin(2 * p));
-    }
-
     // ── Composantes impulsions (superposables) ────────────────────────
     // Forme du déplacement membranaire : (1 − cos(2π × τ/T)) / 2
     // → démarre à 0, monte doucement, revient à 0 en T (enveloppe demi-cosinus).
@@ -488,13 +458,7 @@ function stepSourceSon(t) {
     var k_cm    = (sim.c_cms > 0) ? 2 * Math.PI * freqEff / sim.c_cms : 0;
 
     if (d !== 0 && k_cm > 0 && k_cm < sim.srcKMin) sim.srcKMin = k_cm;
-
-    // Facteur correcteur de ΔP figé à l'émission (cf. PERIODIC_DP_FACTOR) :
-    // 1 pour Impulsion/Sinusoïdale, où la normalisation de waveDeltaP est déjà
-    // exacte ; le facteur propre au signal multi-harmoniques en Périodique.
-    var dpFactor = (sim.sonEmitMode === 'periodic') ? PERIODIC_DP_FACTOR : 1;
-
-    _srcPush(sim, t, d, sim.c_cms, k_cm, dpFactor);
+    _srcPush(sim, t, d, sim.c_cms, k_cm);
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -565,22 +529,10 @@ function sonMaxDisplayPx() {
     return Math.max(H, sim.tubeLength * SON_H_REF_FRAC) * SON_A_MAX_FRAC;
 }
 
-// q = facteur de forme du signal émis (srcQ) : rapport entre la pente maximale
-// réelle du motif et celle d'une sinusoïde de même amplitude. Vaut 1 en
-// Sinusoïdale et en Impulsion, PERIODIC_DP_FACTOR en Périodique.
-//
-// Il DOIT entrer dans le budget, sinon on calibre sur le seul fondamental
-// alors que les harmoniques dominent la pente. En Périodique la pente réelle
-// valait A·k × 2,32, donc bien au-delà de 1 : or |∂u/∂x| > 1 signifie que
-// x₀ ↦ x₀ + u n'est plus monotone — les particules se REPLIENT les unes sur
-// les autres. Les trois lobes du motif (3,5 / 0,95 / 0,95) saturaient alors
-// en trois bandes d'aspect identique, et la période apparente devenait λ/3
-// alors que la vraie période est bien λ = c/f. C'était un artefact de rendu,
-// pas une erreur sur λ.
-function _sonDisplayGain(k_cm, q) {
+function _sonDisplayGain(k_cm) {
     if (k_cm <= 0 || sim.tubeLength <= 0) return 1.0;
     var k_px = k_cm * TUBE_LENGTH_CM / sim.tubeLength;   // rad/px
-    var ak   = sim.memAmplitude * k_px * (q > 0 ? q : 1);
+    var ak   = sim.memAmplitude * k_px;
     if (ak <= 0) return 1.0;
     var g    = Math.max(AK_MIN, Math.min(AK_CAP, ak)) / ak;
     // Plafond absolu : A × g ≤ sonMaxDisplayPx()
@@ -626,11 +578,10 @@ function sonDisplayAkAt(x_px, t_sim) {
     var smp  = _srcSampleAtS(sim, _srcSAtTime(sim, t_sim, sim.c_cms) - x_px * cmPerPx);
     // Copie immédiate : _srcOut est réutilisé d'un appel à l'autre.
     var k_cm = smp.a;
-    var q    = smp.q;
     if (k_cm <= 0) return 0;
 
-    var ak = sim.memAmplitude * (k_cm * cmPerPx) * (q > 0 ? q : 1);
-    return ak * _sonDisplayGain(k_cm, q);
+    var ak = sim.memAmplitude * (k_cm * cmPerPx);
+    return ak * _sonDisplayGain(k_cm);
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -673,7 +624,7 @@ function waveDisplacementDisplay(x_px, t_sim) {
     if (smp.d === 0) return 0;
 
     var alpha = sim.attenuation * 5;
-    return smp.d * sim.memAmplitude * _sonDisplayGain(smp.a, smp.q)
+    return smp.d * sim.memAmplitude * _sonDisplayGain(smp.a)
                  * Math.exp(-alpha * x_cm / TUBE_LENGTH_CM);
 }
 
@@ -697,11 +648,6 @@ function waveDeltaP(x_px, t_sim) {
 
     var aEff = (sim.sourceMode === 'impulse') ? sim.memAmplitude / 2 : sim.memAmplitude;
     var kEff = k_cm * cmPerPx;   // rad/px
-    // Facteur correcteur figé à l'émission (1 en Impulsion/Sinusoïdale, cf.
-    // PERIODIC_DP_FACTOR en Périodique) : ΔP dérive le déplacement, ce qui
-    // amplifie chaque harmonique du signal multi-lobes par son propre rang —
-    // sans cette correction, ΔP en Périodique dépasserait largement dpMax.
-    var dpFactor = smp.q;
 
     // ── Pas h adaptatif ───────────────────────────────────────────────
     // h doit être petit devant λ = 2π/k pour que la DFC soit précise.
@@ -718,7 +664,7 @@ function waveDeltaP(x_px, t_sim) {
     // Normalisation : ΔP_max théorique = K × A_eff × k_eff
     // Correction du biais DFC : la DFC sous-estime ∂u/∂x d'un facteur sinc(k·h).
     // On compense en divisant dpMax par sinc(k·h) = sin(k·h)/(k·h).
-    var dpMax = sim.K * aEff * kEff * dpFactor;
+    var dpMax = sim.K * aEff * kEff;
     if (dpMax > 1e-9) {
         var kh     = kEff * h;
         var sincKH = (kh > 1e-6) ? Math.sin(kh) / kh : 1.0;
@@ -1008,47 +954,6 @@ var CORDE_Y_AXIS_CM   = 1.12 * CORDE_AMPL_CM_MAX;
 // ressemblent plus. Normalise le pic (trouvé numériquement, ≈ 1,507097)
 // pour que l'amplitude affichée corresponde au déplacement maximal réel.
 var PERIODIC_NORM = 1 / 1.507097;
-
-// ══════════════════════════════════════════════════════════════════════
-//  Motif Périodique — version SON, harmoniques renforcées
-//
-//  Le Son affiche ∂u/∂x, où chaque harmonique n est multipliée par son rang.
-//  Le motif de la Corde y donne des lobes secondaires à 27 % du lobe
-//  principal — trop discrets pour qu'on lise la structure du motif. On
-//  renforce donc les harmoniques CÔTÉ SON uniquement :
-//
-//      u(p)  = sin p + 1,000·sin 3p + 0,500·sin 2p
-//      ΔP ∝    cos p + 3,000·cos 3p + 1,000·cos 2p
-//
-//  Le lobe secondaire passe à 40 % du principal (contraste de densité ×1,43
-//  contre ×1,26), sans que le principal cesse de dominer — condition pour
-//  que la période lue reste λ et non λ/3. C'est un compromis, et le curseur
-//  est PERIODIC_B3_SON : plus il monte, plus les lobes s'égalisent, jusqu'à
-//  ce que le motif se lise comme une onde de longueur d'onde λ/3.
-//
-//  Vérifié numériquement : max|u| = 2,016026, max|∂u/∂x| = 5,000000.
-//
-//  ── Facteur de forme ─────────────────────────────────────────────────
-//  Rapport entre la pente maximale du motif et celle d'une sinusoïde de
-//  même amplitude : 5,000000 / 2,016026 = 2,480126.
-//
-//  Ce facteur a DEUX usages, et c'est important :
-//    • waveDeltaP  — sans lui, ΔP en Périodique sortirait de l'échelle calée
-//      sur la Sinusoïdale ;
-//    • _sonDisplayGain — sans lui, l'amplitude d'affichage était calibrée sur
-//      le seul fondamental alors que les harmoniques dominent la pente, et
-//      les particules se repliaient (cf. le commentaire de cette fonction).
-//
-//  Il est enregistré par échantillon (srcQ) et non lu sur les réglages
-//  courants : une portion émise en Périodique garde ainsi SA correction même
-//  après un changement de mode.
-// ══════════════════════════════════════════════════════════════════════
-var PERIODIC_B3_SON   = 3.0;              // poids de l'harmonique 3 dans ΔP
-var PERIODIC_B2_SON   = 1.0;              // ... et de l'harmonique 2
-var PERIODIC_A3_SON   = PERIODIC_B3_SON / 3;   // = 1,000 dans le déplacement
-var PERIODIC_A2_SON   = PERIODIC_B2_SON / 2;   // = 0,500
-var PERIODIC_NORM_SON = 1 / 2.016026;
-var PERIODIC_DP_FACTOR = 2.480126;
 
 // ── État global de la simulation corde ────────────────────────────────
 var simCorde = {
@@ -1558,8 +1463,6 @@ function resetAnim() {
     sim.sourceMode         = null;
     sim.sinusoidalActive   = false;
     sim.sinPhase           = 0;
-    sim.periodicActive     = false;
-    sim.periodicPhase      = 0;
     sim.sonEmitMode        = null;
     sim.sonEnv             = 0;
     sim.impulses           = [];

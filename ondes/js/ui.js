@@ -194,7 +194,6 @@ function _updateCReadout() {
 //  aller à son terme, et l'historique de la source est de toute façon figé).
 function _stopEmissionSon() {
     sim.sinusoidalActive = false;
-    sim.periodicActive   = false;
     sim.sourceMode       = null;
     _syncSourceButtons();
     _syncWavePropsBtnState();
@@ -224,9 +223,8 @@ function _armDptWindowSon(mode) {
 function _syncSourceButtons() {
     var btn = document.getElementById('btn-source-active-son');
     if (!btn) return;
-    var active = (sim.sourceMode === 'impulse'  && sim.simTime < sim.sourceActiveUntil) ||
-                 (sim.sourceMode === 'sinus'    && sim.sinusoidalActive) ||
-                 (sim.sourceMode === 'periodic' && sim.periodicActive);
+    var active = (sim.sourceMode === 'impulse' && sim.simTime < sim.sourceActiveUntil) ||
+                 (sim.sourceMode === 'sinus'   && sim.sinusoidalActive);
     btn.classList.toggle('active', active);
 }
 
@@ -248,21 +246,20 @@ function _applySourceModeSon() {
 //  Bouton unique Activer/Désactiver : son effet dépend du mode choisi dans
 //  le sélecteur. En Impulsion, chaque appui relance une impulsion et le
 //  bouton se rallume tout seul le temps qu'elle traverse le tube. En
-//  Périodique, il bascule l'émission continue on/off.
+//  Sinusoïdale, il bascule l'émission continue on/off.
 function toggleSourceActiveSon() {
     var sel  = document.getElementById('sel-mode-son');
     var mode = sel ? sel.value : 'impulse';
 
-    var wasOn = sim.sinusoidalActive || sim.periodicActive;
+    var wasOn = sim.sinusoidalActive;
 
     if (mode === 'impulse')      sendImpulse();
-    else if (mode === 'sinus')   toggleSinusoidalSon();
-    else                         togglePeriodicSon();
+    else                         toggleSinusoidalSon();
 
     // Chronomètre lié (case « Lier ») : activer la source le lance s'il est
     // à l'arrêt, sans toucher à la valeur affichée. Désactiver la source ne
     // l'arrête pas non plus : l'onde déjà émise reste chronométrable.
-    var isOn = sim.sinusoidalActive || sim.periodicActive;
+    var isOn = sim.sinusoidalActive;
     if (mode === 'impulse' || (!wasOn && isOn)) _startChronoIfLinkedSon();
 }
 
@@ -270,7 +267,7 @@ function toggleSourceActiveSon() {
 //  en cours, quel que soit le mode visé — il faut rappuyer sur Activer pour
 //  repartir dans le nouveau mode.
 function onSourceModeChangeSon() {
-    var wasContinuous = sim.sinusoidalActive || sim.periodicActive;
+    var wasContinuous = sim.sinusoidalActive;
 
     // Changer de type de source remet le graphe ΔP(t) à 0 et en attente :
     // il ne repartira qu'à la prochaine 1ère activation dans le nouveau mode.
@@ -291,7 +288,6 @@ function sendImpulse() {
     _armDptWindowSon('impulse');
 
     sim.sinusoidalActive   = false;   // tous les modes restent exclusifs
-    sim.periodicActive     = false;
     sim.impulses.push({ startTime: sim.simTime });
     sim.impulsePropagating = true;
     sim.sourceMode         = 'impulse';
@@ -310,7 +306,6 @@ function toggleSinusoidalSon() {
         _armDptWindowSon('sinus');
 
         sim.sinusoidalActive = true;
-        sim.periodicActive   = false;   // tous les modes restent exclusifs
         // Démarrage à u = 0, sans saut. Sauf si l'on rallume alors que
         // l'enveloppe d'arrêt n'a pas fini de descendre : la source émet
         // encore, remettre la phase à zéro y créerait justement le saut que
@@ -318,28 +313,6 @@ function toggleSinusoidalSon() {
         // l'enveloppe remonter (cf. stepSourceSon).
         if (sim.sonEmitMode !== 'sinus') sim.sinPhase = 0;
         sim.sourceMode       = 'sinus';
-
-        _syncSourceButtons();
-        _syncWavePropsBtnState();
-        _syncLambdaBtnStateSon();
-    }
-}
-
-//  Signal « Périodique » : somme fondamentale + harmonique 2 (cf.
-//  stepSourceSon), non sinusoïdale mais toujours lisse.
-function togglePeriodicSon() {
-    if (sim.periodicActive) {
-        _stopEmissionSon();
-    } else {
-        if (sim.paused) _setPaused(false);
-        _armDptWindowSon('periodic');
-
-        sim.periodicActive   = true;
-        sim.sinusoidalActive = false;   // tous les modes restent exclusifs
-        // Démarrage à u = 0, sans saut — sauf reprise pendant l'extinction
-        // (cf. toggleSinusoidalSon pour le détail).
-        if (sim.sonEmitMode !== 'periodic') sim.periodicPhase = 0;
-        sim.sourceMode       = 'periodic';
 
         _syncSourceButtons();
         _syncWavePropsBtnState();
@@ -593,13 +566,13 @@ function _chronoLinkedSon() {
     return !!(chk && chk.checked);
 }
 
-//  Par défaut : liée pour les émissions continues (Sinusoïdale, Périodique),
-//  où le chrono sert à compter des périodes depuis le début de l'émission ;
-//  déliée en Impulsion, où le déclenchement se fait plutôt à la main, au
-//  passage devant un repère.
+//  Par défaut : liée pour l'émission continue (Sinusoïdale), où le chrono
+//  sert à compter des périodes depuis le début de l'émission ; déliée en
+//  Impulsion, où le déclenchement se fait plutôt à la main, au passage
+//  devant un repère.
 function _syncChronoLinkSon(mode) {
     var chk = document.getElementById('chk-chrono-link-son');
-    if (chk) chk.checked = (mode === 'sinus' || mode === 'periodic');
+    if (chk) chk.checked = (mode === 'sinus');
 }
 
 //  Démarrage du chronomètre lié. Appelé à la mise en marche de la source
