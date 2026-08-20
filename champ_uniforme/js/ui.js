@@ -91,7 +91,7 @@ function init() {
 
     var tabsEl = document.getElementById('saved-runs-tabs');
     if (tabsEl) tabsEl.addEventListener('scroll', _updateTabsScrollBtns);
-    _lockAxisBtnWidth();
+    _updateToolbarDensity();   /* pose les libellés + fige la largeur du bouton Repère */
 }
 
 window.addEventListener('DOMContentLoaded', init);
@@ -148,14 +148,30 @@ document.addEventListener('click', function(e) {
     if (_openToolbarDropdown && !e.target.closest('.toolbar-dropdown-wrap')) {
         _closeAllToolbarDropdowns();
     }
-    /* Ferme le dropdown run si on clique en dehors */
-    if (_openDropdownId === null) return;
+    /* Ferme le dropdown de détails d'une run si on clique en dehors — dans les
+       deux onglets (l'onglet électrique a son propre identifiant d'ouverture). */
+    if (_openDropdownId === null && _openDropdownIdE === null) return;
     if (!e.target.closest('#run-tab-dropdown') && !e.target.closest('#saved-runs-tabs')) {
-        closeRunDropdown();
+        if (_openDropdownId  !== null) closeRunDropdown();
+        if (_openDropdownIdE !== null) closeRunDropdownE();
     }
 });
 
-window.addEventListener('resize', function () {
+/* Échap ferme tout ce qui est ouvert par-dessus la barre d'outils */
+document.addEventListener('keydown', function(e) {
+    if (e.key !== 'Escape') return;
+    if (_openToolbarDropdown) _closeAllToolbarDropdowns();
+    if (_openDropdownId  !== null) closeRunDropdown();
+    if (_openDropdownIdE !== null) closeRunDropdownE();
+});
+
+/* Anti-rebond requestAnimationFrame : le recalcul de densité de la barre
+   d'outils mesure le DOM (donc force un reflow), on ne le fait qu'une fois
+   par frame et non à chaque événement resize. */
+var _resizeRaf = null;
+
+function _onResize() {
+    _resizeRaf = null;
     /* Si le splitter avait fixé des hauteurs px, on les réinitialise
        pour que le flex CSS reprenne le contrôle au nouveau viewport. */
     var animArea  = document.getElementById('anim-area');
@@ -164,15 +180,28 @@ window.addEventListener('resize', function () {
     if (graphArea) { graphArea.style.flex = ''; graphArea.style.height = ''; }
     resizeAnimCanvas();
     resizeGraphCanvas();
+    _updateToolbarDensity();
     _updateTabsScrollBtns();
     computeScale(_animW, _animH);
     computeScaleE(_animW, _animH);
+}
+
+window.addEventListener('resize', function () {
+    if (_resizeRaf === null) _resizeRaf = requestAnimationFrame(_onResize);
 });
 
 /* ─────────────────────────────────────────────────
    Changement de tab principal
 ───────────────────────────────────────────────── */
 function setMainTab(tab) {
+    /* Un rejeu en cours sur l'onglet quitté garderait le bouton partagé
+       "Tout rejouer" surligné sur le nouvel onglet. */
+    _stopReplay();
+    /* Idem pour les menus ouverts : la barre d'onglets de runs est partagée,
+       un dropdown resté ouvert y ferait re-rendre la liste de l'autre onglet. */
+    _closeAllToolbarDropdowns();
+    if (_openDropdownId  !== null) closeRunDropdown();
+    if (_openDropdownIdE !== null) closeRunDropdownE();
     activeTab = tab;
     validTabs.forEach(function (t) {
         var sec = document.getElementById('section-' + t);
@@ -222,6 +251,15 @@ function setMainTab(tab) {
     var zoomGroup   = document.getElementById('toolbar-zoom-group');
     if (btnAdapter) btnAdapter.style.display = disableViewToolbar ? 'none' : '';
     if (zoomGroup)  zoomGroup.style.display  = disableViewToolbar ? '' : 'none';
+
+    /* Le rejeu vient d'être interrompu : les deux boutons Lancer/Pause doivent
+       repasser sur le libellé correspondant à leur simulation. */
+    _updatePlayBtn();
+    _updatePlayBtnE();
+
+    /* Le groupe de gauche vient de changer de contenu (Zoom ↔ rien) : sa largeur
+       n'est plus la même, la densité doit être réévaluée. */
+    _updateToolbarDensity();
 
     history.replaceState(null, '', location.pathname + '#' + tab);
 }
@@ -307,6 +345,7 @@ function adapterVue() {
 }
 
 function resetSimAnim() {
+    _stopReplay();
     sim.paused = true;
     resetSim();
     _updateCurrentRunColor();
@@ -535,6 +574,11 @@ function _syncAllUI() {
     document.getElementById('btn-vec-forces').classList.toggle('active', sim.showVecForces);
     document.getElementById('btn-vec-sumf').classList.toggle('active', sim.showVecSumF);
 
+    /* Cases à cocher */
+    _setChk('chk-field-g',      sim.showFieldG);
+    _setChk('chk-hover-coords', sim.hoverShowCoords);
+    _setChk('chk-pin-coords',   pinShowCoords);
+
     _updatePlayBtn();
 }
 
@@ -548,15 +592,101 @@ function _setSl(id, val) {
     if (el) el.value = val;
 }
 
+function _setChk(id, val) {
+    var el = document.getElementById(id);
+    if (el) el.checked = !!val;
+}
+
+/* ═════════════════════════════════════════════════
+   Densité de la barre d'outils
+   ─────────────────────────────────────────────────
+   Le groupe de gauche (Repère, Vue, Vecteurs, Épingler, Zoom) ne se
+   comprime pas : sur fenêtre étroite il écrasait donc entièrement le
+   groupe de droite (onglets de simulations sauvegardées, Adapter, Tout
+   rejouer), qui disparaissait sous son overflow:hidden sans aucun signe.
+
+   Plutôt qu'un point de rupture en px — les largeurs dépendent des polices
+   en clamp(), donc du viewport — on mesure la place réellement occupée et
+   on resserre les libellés d'un cran tant que le groupe de droite n'a pas
+   son minimum vital. Chaque bouton raccourci conserve son intitulé complet
+   en title, donc rien n'est perdu.
+═════════════════════════════════════════════════ */
+
+/* Libellés par niveau de densité ('' = complet, puis de plus en plus court) */
+var _TOOLBAR_DENSITY_LEVELS = ['', 'tb-compact', 'tb-mini'];
+var _TOOLBAR_LABELS = {
+    '': {
+        axisOrtho: 'Repère : Orthonormé', axisAdapt: 'Repère : Adapté',
+        vecteurs: 'Vecteurs ▾', pin: 'Épingler 📍', zoomDefault: 'Défaut'
+    },
+    'tb-compact': {
+        axisOrtho: 'Orthonormé', axisAdapt: 'Adapté',
+        vecteurs: 'Vecteurs ▾', pin: 'Épingler 📍', zoomDefault: 'Défaut'
+    },
+    'tb-mini': {
+        axisOrtho: 'Ortho', axisAdapt: 'Adapté',
+        vecteurs: 'Vect. ▾', pin: '📍', zoomDefault: '⟲'
+    }
+};
+
+/* Place minimale à laisser au groupe de droite avant de resserrer le groupe
+   de gauche d'un cran. Elle dépend du niveau : au niveau complet, la droite
+   comprend encore le libellé "SIMULATIONS SAUVEGARDÉES :" (~130 px) en plus
+   des deux boutons d'action et d'au moins un onglet de run. */
+var _TOOLBAR_RIGHT_MIN = { '': 330, 'tb-compact': 210, 'tb-mini': 190 };
+
+var _toolbarDensity = '';
+
+/* Applique les libellés d'un niveau (sans mesurer) */
+function _applyToolbarDensity(level) {
+    _toolbarDensity = level;
+    var tb = document.getElementById('anim-toolbar');
+    if (tb) {
+        tb.classList.remove('tb-compact', 'tb-mini');
+        if (level) tb.classList.add(level);
+    }
+    var L = _TOOLBAR_LABELS[level];
+    _setBtnLabel('btn-vecteurs-dropdown', L.vecteurs,    'Affichage des vecteurs');
+    _setBtnLabel('btn-pin-mode',          L.pin,         'Épingler un point de la trajectoire');
+    _setBtnLabel('btn-zoom-default',      L.zoomDefault, "Revenir à l'affichage par défaut");
+    _updateAxisModeBtn();   /* pioche les libellés dans le niveau courant */
+    _lockAxisBtnWidth();
+}
+
+function _setBtnLabel(id, txt, title) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = txt;
+    el.title = title;
+}
+
+/* Choisit le niveau le plus généreux qui laisse sa place au groupe de droite */
+function _updateToolbarDensity() {
+    var tb   = document.getElementById('anim-toolbar');
+    var left = document.querySelector('.toolbar-left');
+    if (!tb || !left) return;
+    for (var i = 0; i < _TOOLBAR_DENSITY_LEVELS.length; i++) {
+        var level = _TOOLBAR_DENSITY_LEVELS[i];
+        _applyToolbarDensity(level);
+        /* scrollWidth : largeur réellement occupée par le groupe de gauche,
+           qui ne peut pas se comprimer (flex-shrink: 0). */
+        if (tb.clientWidth - left.scrollWidth >= _TOOLBAR_RIGHT_MIN[level]) break;
+        /* Dernier niveau atteint : on s'y tient, c'est le plancher. */
+    }
+}
+
 /* ─────────────────────────────────────────────────
    Mode repère (orthonormé / adapté)
 ───────────────────────────────────────────────── */
 function _updateAxisModeBtn() {
     var btn = document.getElementById('btn-axis-mode');
-    if (btn) {
-        btn.textContent = 'Repère : ' + (sim.axisMode === 'ortho' ? 'Orthonormé' : 'Adapté');
-        btn.classList.toggle('active', sim.axisMode === 'adapted');
-    }
+    if (!btn) return;
+    var L      = _TOOLBAR_LABELS[_toolbarDensity];
+    var isOrtho = (sim.axisMode === 'ortho');
+    btn.textContent = isOrtho ? L.axisOrtho : L.axisAdapt;
+    btn.title = 'Repère : ' + (isOrtho ? 'Orthonormé' : 'Adapté') +
+                ' — cliquer pour changer';
+    btn.classList.toggle('active', !isOrtho);
 }
 
 function toggleAxisMode() {
@@ -565,15 +695,21 @@ function toggleAxisMode() {
     _updateAxisModeBtn();
 }
 
+/* Fige la largeur du bouton Repère sur le plus long de ses deux états, pour
+   qu'il ne saute pas d'une largeur à l'autre au clic. Remesuré à chaque
+   changement de densité ET à chaque resize : la police du bouton étant en
+   clamp(), une largeur figée une fois pour toutes au chargement finissait
+   par tronquer le libellé ou laisser un blanc. */
 function _lockAxisBtnWidth() {
     var btn = document.getElementById('btn-axis-mode');
-    if (!btn || btn.style.width) return;
-    /* Mesure sur le texte le plus long des deux états (Orthonormé/Adapté),
-       quel que soit celui affiché au moment de l'appel (ex: onglet initial
-       champ électrique via le hash), pour ne jamais tronquer l'autre. */
+    if (!btn) return;
+    var L = _TOOLBAR_LABELS[_toolbarDensity];
     var current = btn.textContent;
-    btn.textContent = 'Repère : Orthonormé';
+    btn.style.width = '';
+    btn.textContent = L.axisOrtho;
     var w = btn.offsetWidth;
+    btn.textContent = L.axisAdapt;
+    if (btn.offsetWidth > w) w = btn.offsetWidth;
     btn.textContent = current;
     btn.style.width = w + 'px';
 }
@@ -600,6 +736,21 @@ var _replayPlaying       = false;
 var _replaySessionActive = false;
 var _replayT       = 0;
 var _replayMaxT    = 0;
+
+/* Interrompt le rejeu "Tout rejouer" dans les DEUX onglets et éteint le bouton.
+   Le bouton #btn-tout-rejouer étant partagé, une session de rejeu laissée active
+   sur un onglet le gardait surligné (et continuait d'avancer) après un
+   "Remettre à zéro", un déplacement de slider ou un changement d'onglet. */
+function _stopReplay() {
+    _replayPlaying        = false;
+    _replaySessionActive  = false;
+    _replayT              = 0;
+    _replayPlayingE       = false;
+    _replaySessionActiveE = false;
+    _replayTE             = 0;
+    var btn = document.getElementById('btn-tout-rejouer');
+    if (btn) btn.classList.remove('active');
+}
 
 function toutRejouer() {
     if (activeTab === 'champ-electrique') { toutRejouerE(); return; }
@@ -724,9 +875,14 @@ function setPinShowCoords(val) {
     pinShowCoords = val;
 }
 
-var hoverShowCoords = false;
+/* Les deux onglets ont chacun leur case "Afficher les coordonnées" : l'état est
+   donc porté par sim / simE (et non par un global unique, qui rendait les deux
+   cases désynchronisées et obligeait à cliquer deux fois après un changement
+   d'onglet). draw.js le lit via sim.hoverShowCoords, sim étant permuté sur simE
+   pendant le rendu du champ électrique. */
 function setHoverShowCoords(val) {
-    hoverShowCoords = val;
+    var s = (activeTab === 'champ-electrique') ? simE : sim;
+    s.hoverShowCoords = val;
 }
 
 function _updateCurrentRunColor() {
@@ -803,6 +959,7 @@ function renderSavedRuns() {
         var empty = document.createElement('span');
         empty.className = 'toolbar-empty';
         empty.textContent = 'Appuyer sur Sauvegarder à la fin d\'une simulation pour la conserver.';
+        empty.title = empty.textContent;   /* abrégé en … sur barre étroite */
         tabs.appendChild(empty);
         return;
     }
@@ -1028,7 +1185,7 @@ function _updatePlayBtnE() {
 }
 
 function resetSimAnimE() {
-    _replayPlayingE = false;
+    _stopReplay();
     simE.paused = true;
     resetSimE();
     expandBoundsGlobalE();
@@ -1317,6 +1474,7 @@ function renderSavedRunsE() {
         var empty = document.createElement('span');
         empty.className = 'toolbar-empty';
         empty.textContent = 'Appuyer sur Sauvegarder à la fin d\'une simulation pour la conserver.';
+        empty.title = empty.textContent;   /* abrégé en … sur barre étroite */
         tabs.appendChild(empty);
         return;
     }
@@ -1493,6 +1651,10 @@ function _syncAllUIE() {
         var btn = document.getElementById('btn-e-vec-' + k);
         if (btn) btn.classList.toggle('active', vecMap[k]);
     });
+
+    /* Cases à cocher */
+    _setChk('chk-e-field',        simE.showFieldE);
+    _setChk('chk-e-hover-coords', simE.hoverShowCoords);
 
     _updatePlayBtnE();
 }

@@ -47,6 +47,17 @@ var _animCtx    = null;
 var _animW = 0, _animH = 0;
 var _animHoverSnap = null;
 
+/* ── Rayon d'accroche du survol (px) ────────────────────────────
+   Au-delà de cette distance au curseur, aucun point n'est retenu.
+   Sans ce seuil, le point le plus proche était sélectionné quelle que
+   soit la distance : l'étiquette de vecteur apparaissait dès que la
+   souris traversait la zone d'animation, souvent accrochée à un point
+   situé à l'autre bout du canvas.
+─────────────────────────────────────────────────────────────── */
+function _hoverPickRadius() {
+    return Math.max(20, Math.min(40, _animH * 0.055));
+}
+
 /* ── Géométrie des axes (recalculée à chaque frame) ─────────────
    Centralisé ici pour que _drawGrid et _drawAxes soient cohérents.
 ─────────────────────────────────────────────────────────────── */
@@ -1175,6 +1186,7 @@ function _updateAnimHover(mouseX, mouseY) {
             }
         }
     }
+    if (bestDist > _hoverPickRadius()) bestSnap = null;
     _animHoverSnap = bestSnap;
 }
 
@@ -1369,7 +1381,7 @@ function _drawAnimHover(ctx, snap, isPinned) {
     var showAcc    = isPinned ? pinShowVecAcc    : sim.showVecAcc;
     var showForces = isPinned ? pinShowVecForces : sim.showVecForces;
     var showSumF   = isPinned ? pinShowVecSumF   : sim.showVecSumF;
-    var showCoords = isPinned ? pinShowCoords    : hoverShowCoords;
+    var showCoords = isPinned ? pinShowCoords    : sim.hoverShowCoords;
 
     /* ── Point survolé ── */
     ctx.save();
@@ -2188,6 +2200,7 @@ function _updateAnimHoverE(mouseX, mouseY) {
         }
     }
     sim = _simBak;
+    if (bestDist > _hoverPickRadius()) bestSnap = null;
     _animHoverSnapE = bestSnap;
 }
 

@@ -33,6 +33,9 @@ var sim = {
     showVecAcc:    false,
     showVecForces: false,
     showVecSumF:   false,
+    /* Coordonnées des vecteurs au survol : propre à cet onglet (la case du
+       panneau électrique pilote simE.hoverShowCoords, pas celle-ci). */
+    hoverShowCoords: false,
     deltaT:      0.3,           // pas chronophotographie (s)
 
     /* ── Données run courant ── */
@@ -413,6 +416,7 @@ var simE = {
     showVecAcc:    false,
     showVecForces: false,
     showVecSumF:   false,
+    hoverShowCoords: false,
     deltaT: 1e-9,
     /* ── Données run courant ── */
     trajPoints: [], chronoSnaps: [], graphData: [], analysisPoints: [],
