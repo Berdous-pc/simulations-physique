@@ -259,7 +259,7 @@
             <div class="sci-input-row">
               <input type="number" id="e-field-mantisse" class="sci-mantisse"
                      min="-9.9" max="9.9" step="0.1" value="1.5"
-                     oninput="onEFieldChange()">
+                     oninput="onEFieldChange()" onchange="onEFieldCommit()">
               <span class="sci-times">× 10</span>
               <select id="e-field-exp" class="sci-exp-sel" onchange="onEFieldChange()">
                 <option value="3">³</option>
@@ -544,7 +544,8 @@
         <strong>Graphes</strong> : position, vitesse, accélération, trajectoire et
         énergies en fonction du temps.<br>
         <strong>Sauvegarde</strong> (✦) : jusqu'à 5 simulations comparables simultanément,
-        sur l'animation et les graphes.
+        sur l'animation et les graphes.<br>
+        <strong>Raccourcis</strong> : Espace = lancer/pause, R = remise à zéro.
       </div>
     </div>
 
@@ -567,7 +568,8 @@
         <strong>Zoom</strong> : rapproche l'affichage des armatures.<br>
         <strong>Graphes</strong> : position, vitesse, accélération, trajectoire et
         énergies en fonction du temps.<br>
-        <strong>Sauvegarde</strong> (✦) : jusqu'à 5 simulations comparables simultanément.
+        <strong>Sauvegarde</strong> (✦) : jusqu'à 5 simulations comparables simultanément.<br>
+        <strong>Raccourcis</strong> : Espace = lancer/pause, R = remise à zéro.
       </div>
     </div>
 

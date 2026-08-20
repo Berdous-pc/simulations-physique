@@ -47,6 +47,60 @@ var _animCtx    = null;
 var _animW = 0, _animH = 0;
 var _animHoverSnap = null;
 
+/* ── Points épinglés : plafond et message associé ───────────────
+   Le clic au-delà du plafond était ignoré sans le moindre retour : on ne
+   pouvait pas distinguer « limite atteinte » de « clic mal visé ».
+─────────────────────────────────────────────────────────────── */
+var MAX_ANALYSIS_POINTS = 10;
+var MSG_MAX_PINS = 'Maximum de ' + MAX_ANALYSIS_POINTS + ' points épinglés — cliquez un point existant pour le retirer';
+
+/* ── Message temporaire dessiné sur le canvas d'animation ───────
+   Pas d'élément HTML : la zone d'animation est un canvas plein cadre, et un
+   overlay DOM devrait suivre le splitter et les changements d'échelle.
+─────────────────────────────────────────────────────────────── */
+var _animToast = null;   // { msg, until }  (until = timestamp ms)
+
+function showAnimToast(msg) {
+    _animToast = { msg: msg, until: Date.now() + 2600 };
+}
+
+function _drawAnimToast(ctx) {
+    if (!_animToast) return;
+    var remain = _animToast.until - Date.now();
+    if (remain <= 0) { _animToast = null; return; }
+
+    var fontSize = Math.max(12, Math.min(17, _animH * 0.036));
+    ctx.save();
+    /* Fondu sur les 600 dernières ms */
+    ctx.globalAlpha = Math.min(1, remain / 600);
+    ctx.font = 'bold ' + fontSize + 'px "Segoe UI", Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    var padX = fontSize * 0.9, padY = fontSize * 0.55;
+    var tw = ctx.measureText(_animToast.msg).width;
+    var bw = tw + padX * 2, bh = fontSize + padY * 2;
+    var bx = _animW / 2 - bw / 2, by = _animH * 0.08;
+
+    ctx.fillStyle   = 'rgba(60,50,40,0.86)';
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.lineWidth   = 1;
+    var r = 6;
+    ctx.beginPath();
+    ctx.moveTo(bx + r, by);
+    ctx.arcTo(bx + bw, by,      bx + bw, by + bh, r);
+    ctx.arcTo(bx + bw, by + bh, bx,      by + bh, r);
+    ctx.arcTo(bx,      by + bh, bx,      by,      r);
+    ctx.arcTo(bx,      by,      bx + bw, by,      r);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(_animToast.msg, _animW / 2, by + bh / 2);
+    ctx.restore();
+}
+
 /* ── Rayon d'accroche du survol (px) ────────────────────────────
    Au-delà de cette distance au curseur, aucun point n'est retenu.
    Sans ce seuil, le point le plus proche était sélectionné quelle que
@@ -103,7 +157,7 @@ function initAnimCanvas() {
                 return;
             }
         }
-        if (targetList.length >= 10) return;
+        if (targetList.length >= MAX_ANALYSIS_POINTS) { showAnimToast(MSG_MAX_PINS); return; }
 
         var physCtx = (snap.runId === null)
             ? { mass: sim.mass, g: sim.g, windForce: sim.windForce, useFriction: sim.useFriction, k: sim.k }
@@ -270,6 +324,7 @@ function drawAnim() {
     _drawViewLabel(ctx);
     _drawAnalysisPoints(ctx);
     if (_animHoverSnap) _drawAnimHover(ctx, _animHoverSnap);
+    _drawAnimToast(ctx);
 }
 
 /* ─────────────────────────────────────────────────
@@ -1703,7 +1758,21 @@ function _drawViewLabel(ctx) {
             graphArea.style.flex = 'none';
             animArea.style.height  = newAH + 'px';
             graphArea.style.height = newGH + 'px';
+            /* Redimensionner le bitmap des canvas pendant le glissé, et pas
+               seulement au relâchement : sinon l'animation et les graphes
+               restent étirés/flous tout le temps du déplacement, puis
+               claquent d'un coup. Une fois par frame au plus. */
+            if (dragRaf === null) dragRaf = requestAnimationFrame(_applyDragResize);
         });
+
+        var dragRaf = null;
+        function _applyDragResize() {
+            dragRaf = null;
+            resizeAnimCanvas();
+            resizeGraphCanvas();
+            computeScale(_animW, _animH);
+            computeScaleE(_animW, _animH);
+        }
 
         function endDrag() {
             if (!dragging) return;
@@ -2218,7 +2287,7 @@ function _handleClickE() {
         }
     }
     sim = _simBak;
-    if (targetList.length >= 10) return;
+    if (targetList.length >= MAX_ANALYSIS_POINTS) { showAnimToast(MSG_MAX_PINS); return; }
     var ep = runRef
         ? _fieldForceAt(runRef, snap.x, snap.y)
         : _fieldForceAt(simE, snap.x, snap.y);
@@ -2277,6 +2346,7 @@ function drawAnimE() {
     _drawAnalysisPoints(ctx);
     _drawViewLabel(ctx);
     if (_animHoverSnapE) _drawAnimHoverE(ctx, _animHoverSnapE);
+    _drawAnimToast(ctx);
 
     /* Restore */
     sim              = _simOrig;

@@ -26,7 +26,7 @@ var GRAPH_TABS = [
     {key: 'ay(t)',  xlabel: 't (s)', ylabel: 'ay (m/s²)',col: function(d){return d.ay;}, xFn: function(d){return d.t;}},
     {key: 'y(x)',   xlabel: 'x (m)', ylabel: 'y (m)',    col: function(d){return d.y;},  xFn: function(d){return d.x;}},
     /* Champ de pesanteur uniquement : rendu entièrement spécifique (voir _drawEnergiesGraph) */
-    {key: 'energies', label: 'Energies', xlabel: 't (s)', ylabel: 'E (J)', modes: ['pesanteur']},
+    {key: 'energies', label: 'Énergies', xlabel: 't (s)', ylabel: 'E (J)', modes: ['pesanteur']},
     /* Champ électrique uniquement : Ec = 1/2 m v² (Epp électrique hors programme) */
     {key: 'ec(t)', label: 'Ec(t)', xlabel: 't (s)', ylabel: 'Ec (J)',
      col: function(d){ return 0.5 * d.mass * (d.vx * d.vx + d.vy * d.vy); },

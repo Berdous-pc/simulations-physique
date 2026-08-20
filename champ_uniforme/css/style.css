@@ -161,6 +161,14 @@ main {
   transition: background 0.12s, color 0.12s;
 }
 .toolbar-action-btn:hover { background: #ccc8c0; color: #2c3e50; }
+/* Grisé quand l'action n'a rien à faire (ex. Tout rejouer sans sauvegarde).
+   pointer-events reste actif, contrairement à .toolbar-btn:disabled, pour que
+   le title expliquant l'inactivité s'affiche au survol. */
+.toolbar-action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.toolbar-action-btn:disabled:hover { background: #d8d4cc; color: #4a5a68; }
 
 /* ── Séparateur vertical droit ── */
 .toolbar-sep {
@@ -497,6 +505,9 @@ main {
   z-index: 20;
   transition: background 0.15s;
   border-right: 1px solid #c8c0b4;
+  /* Sans ça, sur écran tactile le geste est interprété comme un défilement
+     et le splitter ne suit pas le doigt. */
+  touch-action: none;
 }
 #left-splitter:hover,
 #left-splitter.dragging {
@@ -1027,6 +1038,18 @@ main {
   overflow: hidden;
   transition: max-height 0.25s ease, padding 0.25s ease;
   max-height: 250px;
+}
+
+/* Déplié : plafond relatif à la hauteur de fenêtre et défilement interne,
+   plutôt que de couper la fin du texte (comme le bandeau de titrage/).
+   Le plafond fixe de 250px suffisait sur grand écran, mais sur fenêtre
+   étroite le panneau se resserre, le texte se répartit sur plus de lignes
+   et les dernières étaient perdues sans recours — overflow:hidden interdisait
+   même de les faire défiler. Le vh borne aussi la place prise à #panel-body,
+   qui reste scrollable de son côté. */
+.panel-hint:not(.collapsed) .panel-hint-body {
+  max-height: min(45vh, 340px);
+  overflow-y: auto;
 }
 
 .panel-hint.collapsed .panel-hint-body {

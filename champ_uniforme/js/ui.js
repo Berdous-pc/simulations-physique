@@ -157,12 +157,32 @@ document.addEventListener('click', function(e) {
     }
 });
 
-/* Échap ferme tout ce qui est ouvert par-dessus la barre d'outils */
+/* ─────────────────────────────────────────────────
+   Raccourcis clavier
+   Échap ferme les menus ; Espace lance/met en pause et R remet à zéro
+   l'onglet courant — utile en projection, où viser un bouton de 30 px depuis
+   le tableau n'est pas praticable.
+───────────────────────────────────────────────── */
 document.addEventListener('keydown', function(e) {
-    if (e.key !== 'Escape') return;
-    if (_openToolbarDropdown) _closeAllToolbarDropdowns();
-    if (_openDropdownId  !== null) closeRunDropdown();
-    if (_openDropdownIdE !== null) closeRunDropdownE();
+    if (e.key === 'Escape') {
+        if (_openToolbarDropdown) _closeAllToolbarDropdowns();
+        if (_openDropdownId  !== null) closeRunDropdown();
+        if (_openDropdownIdE !== null) closeRunDropdownE();
+        return;
+    }
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+    /* Ne pas détourner la frappe d'un champ de saisie, ni doubler l'activation
+       d'un bouton ou d'un curseur qui a le focus : Espace et Entrée les
+       actionnent déjà, et les flèches déplacent les sliders. */
+    var tag = e.target && e.target.tagName;
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || tag === 'BUTTON') return;
+
+    if (e.key === ' ' || e.key === 'Spacebar') {
+        e.preventDefault();   /* sinon le navigateur tente de faire défiler */
+        if (activeTab === 'champ-electrique') togglePauseE(); else togglePause();
+    } else if (e.key === 'r' || e.key === 'R') {
+        if (activeTab === 'champ-electrique') resetSimAnimE(); else resetSimAnim();
+    }
 });
 
 /* Anti-rebond requestAnimationFrame : le recalcul de densité de la barre
@@ -374,14 +394,46 @@ function _updatePlayBtn() {
     }
     var btnSave = document.getElementById('btn-save');
     if (btnSave) {
-        if (savedRuns.length >= MAX_SAVED_RUNS) {
-            btnSave.disabled = true;
-            btnSave.textContent = 'Nombre max de sauvegardes atteint.';
-        } else {
-            btnSave.disabled = !sim.ended;
-            btnSave.textContent = '✦ Sauvegarder';
-        }
+        _updateSaveBtn(btnSave, savedRuns.length, sim.ended);
     }
+    _updateToutRejouerBtn();
+}
+
+/* ─────────────────────────────────────────────────
+   Bouton "Sauvegarder" — libellé et raison de l'inactivité
+   Le compteur (n/5) tient dans le bouton et explique de lui-même le grisé à
+   5/5. L'ancien libellé "Nombre max de sauvegardes atteint." passait sur
+   trois lignes dans un panneau à 200 px et décalait toute la colonne.
+───────────────────────────────────────────────── */
+function _updateSaveBtn(btn, nbSaved, ended) {
+    btn.textContent = '✦ Sauvegarder (' + nbSaved + '/' + MAX_SAVED_RUNS + ')';
+    btn.disabled = (nbSaved >= MAX_SAVED_RUNS) || !ended;
+    if (nbSaved >= MAX_SAVED_RUNS) {
+        btn.title = 'Maximum de ' + MAX_SAVED_RUNS + ' simulations sauvegardées atteint — ' +
+                    'supprimez-en une (✕ sur son onglet) pour en enregistrer une nouvelle.';
+    } else if (!ended) {
+        btn.title = 'Disponible une fois la simulation terminée.';
+    } else {
+        btn.title = 'Conserver cette simulation pour la comparer aux suivantes.';
+    }
+}
+
+/* ─────────────────────────────────────────────────
+   Bouton "Tout rejouer" — grisé quand il n'a rien à rejouer
+   Il retournait silencieusement sans rien faire s'il n'y avait aucune
+   simulation sauvegardée sur l'onglet courant.
+───────────────────────────────────────────────── */
+function _updateToutRejouerBtn() {
+    var btn = document.getElementById('btn-tout-rejouer');
+    if (!btn) return;
+    /* Même décompte que la garde de toutRejouer / toutRejouerE */
+    var n = (activeTab === 'champ-electrique')
+        ? _visibleSavedRunsE().length
+        : savedRuns.length;
+    btn.disabled = (n === 0);
+    btn.title = (n === 0)
+        ? 'Sauvegardez au moins une simulation (✦) pour pouvoir les rejouer ensemble.'
+        : 'Rejouer simultanément les simulations sauvegardées.';
 }
 
 /* ─────────────────────────────────────────────────
@@ -485,7 +537,10 @@ function onSliderAlpha(v) {
 ───────────────────────────────────────────────── */
 function onSliderG(v) {
     var val = parseFloat(v);
-    if (Math.abs(val - 9.81) < 0.2) { val = 9.81; document.getElementById('sl-g').value = 9.81; }
+    /* 9,81 est la seule valeur à ne pas tomber sur un cran (min 1, pas 0,1) :
+       le cran 9,8 la vaut donc exactement. Aimant volontairement étroit — à
+       ±0,2 il avalait aussi 9,7, 9,9 et 10,0. */
+    if (Math.abs(val - 9.8) < 0.05) val = 9.81;
     sim.g = val;
     document.getElementById('lbl-g').textContent = fmt(sim.g, 2);
     resetSimAnim();
@@ -506,7 +561,8 @@ function toggleFriction() {
 ───────────────────────────────────────────────── */
 function onSliderWind(v) {
     var val = parseFloat(v);
-    if (Math.abs(val) < 0.15) { val = 0; document.getElementById('sl-wind').value = 0; }
+    /* Pas d'aimantation : 0 tombe exactement sur un cran (min -5, pas 0,1).
+       L'ancien aimant à ±0,15 rendait ±0,1 N inaccessible pour rien. */
     sim.windForce = val;
     var lbl = document.getElementById('lbl-wind');
     if (lbl) {
@@ -1174,14 +1230,9 @@ function _updatePlayBtnE() {
     }
     var btnSave = document.getElementById('btn-e-save');
     if (btnSave) {
-        if (_visibleSavedRunsE().length >= MAX_SAVED_RUNS) {
-            btnSave.disabled = true;
-            btnSave.textContent = 'Nombre max de sauvegardes atteint.';
-        } else {
-            btnSave.disabled = !simE.ended;
-            btnSave.textContent = '✦ Sauvegarder';
-        }
+        _updateSaveBtn(btnSave, _visibleSavedRunsE().length, simE.ended);
     }
+    _updateToutRejouerBtn();
 }
 
 function resetSimAnimE() {
@@ -1311,7 +1362,10 @@ function onSelectParticleE(v) {
 
 function onSliderEV0(v) {
     var val = parseFloat(v);
-    if (Math.abs(val - 22.7) < 1.0) { val = 22.7; document.getElementById('sl-e-v0').value = 22.7; }
+    /* Pas d'aimantation : 22,7 tombe exactement sur un cran du slider
+       (min 10, pas 0,1) et est donc directement atteignable. L'ancien aimant
+       à ±1,0 rendait au contraire 19 crans inaccessibles autour de 2,27×10⁷,
+       dont 2,20 et 2,35. */
     simE.v0 = val * 1e6;
     simE._modeParams[simE.armatureMode].v0 = simE.v0;
     _setTxt('lbl-e-v0', (val / 10).toFixed(2).replace('.', ','));
@@ -1325,14 +1379,33 @@ function onSliderEAlpha(v) {
     resetSimAnimE();
 }
 
+/* Bornes de la mantisse, identiques aux min/max de l'input — que le navigateur
+   n'applique PAS à la frappe : sans ce garde-fou, taper 50 donnait E = 5×10⁵
+   affiché « 50 × 10⁴ », une écriture scientifique fausse sous les yeux de la
+   classe. */
+var E_MANT_MIN = -9.9;
+var E_MANT_MAX =  9.9;
+
 function onEFieldChange() {
     var mant = parseFloat(document.getElementById('e-field-mantisse').value);
     var exp  = parseInt(document.getElementById('e-field-exp').value);
-    if (isNaN(mant)) mant = 1.0;
+    /* Champ vide ou saisie en cours ("-", "1."). On garde la dernière valeur
+       valide sans réécrire le widget : le réécrire déplacerait le curseur de
+       saisie à chaque frappe. La remise en forme a lieu à la validation
+       (onEFieldCommit, sur change/blur). */
+    if (isNaN(mant)) return;
     mant = Math.round(mant * 10) / 10;
+    if (mant < E_MANT_MIN) mant = E_MANT_MIN;
+    if (mant > E_MANT_MAX) mant = E_MANT_MAX;
     simE.E = mant * Math.pow(10, exp);
     simE._modeParams[simE.armatureMode].E = simE.E;
     resetSimAnimE();
+}
+
+/* Fin de saisie : le widget est remis en cohérence avec la valeur réellement
+   utilisée (bornée et arrondie au dixième). */
+function onEFieldCommit() {
+    _restoreEFieldWidget(simE.E);
 }
 
 function _restoreEFieldWidget(E) {
