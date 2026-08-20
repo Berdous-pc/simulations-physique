@@ -566,8 +566,23 @@ main {
   flex: 1;
   max-width: 120px;
 }
-.graph-select:focus {
-  outline: none;
+/* Anciennement outline:none, ce qui supprimait le seul repère de focus clavier
+   de la page. :focus-visible ne le montre qu'à la navigation au clavier, donc
+   sans le liseré disgracieux qui apparaissait au clic souris — c'était le
+   motif du outline:none d'origine. */
+.graph-select:focus { outline: none; }
+.graph-select:focus-visible {
+  outline: 2px solid #2a6aaa;
+  outline-offset: 1px;
+}
+
+/* Repère de focus clavier homogène sur tous les contrôles de la page. */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+label:focus-visible {
+  outline: 2px solid #2a6aaa;
+  outline-offset: 1px;
 }
 
 .graph-mode-btn {
@@ -774,7 +789,15 @@ main {
   justify-content: center;
 }
 .btn-vec-compact:hover { background: #dedad2; }
-.btn-vec-compact.active { background: #fde8c8; border-color: #e8a060; border-width: 2px; }
+/* L'épaisseur perçue de la bordure active passe par un box-shadow intérieur et
+   non par border-width : passer de 1.5px à 2px agrandissait le bouton d'un
+   demi-pixel de chaque côté, ce qui décalait ses quatre voisins de la rangée
+   flex à chaque activation. */
+.btn-vec-compact.active {
+  background: #fde8c8;
+  border-color: #e8a060;
+  box-shadow: inset 0 0 0 1px #e8a060;
+}
 .btn-vec-compact.active .vec-label { opacity: 1; }
 
 .btn-vec-compact-dot {

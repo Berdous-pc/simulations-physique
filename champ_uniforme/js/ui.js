@@ -1120,15 +1120,6 @@ function _renderDropdown(run) {
     var dd = document.getElementById('run-tab-dropdown');
     if (!dd) return;
 
-    var tab = document.querySelector('.run-tab[data-id="' + run.id + '"]');
-    if (tab) {
-        var toolbar = document.getElementById('anim-toolbar');
-        var tabRect = tab.getBoundingClientRect();
-        var tbRect  = toolbar.getBoundingClientRect();
-        var left = tabRect.left - tbRect.left;
-        left = Math.max(0, Math.min(left, tbRect.width - 220));
-        dd.style.left = left + 'px';
-    }
     dd.style.display = 'block';
     dd.innerHTML = '';
 
@@ -1173,6 +1164,25 @@ function _renderDropdown(run) {
         vecsDiv.appendChild(b);
     });
     dd.appendChild(vecsDiv);
+    _positionRunDropdown(run.id);
+}
+
+/* Positionne le dropdown de détails sous son onglet, sans déborder de la barre.
+   Appelé APRÈS le remplissage : la largeur réelle du panneau dépend de son
+   contenu (min-width 200px, max-width 320px en CSS). L'ancien calcul, fait
+   avant remplissage, supposait 220px en dur et laissait donc déborder d'une
+   centaine de pixels sur le bord droit. */
+function _positionRunDropdown(runId) {
+    var dd = document.getElementById('run-tab-dropdown');
+    var tab = document.querySelector('.run-tab[data-id="' + runId + '"]');
+    var toolbar = document.getElementById('anim-toolbar');
+    if (!dd || !tab || !toolbar) return;
+    var tabRect = tab.getBoundingClientRect();
+    var tbRect  = toolbar.getBoundingClientRect();
+    var ddW     = dd.offsetWidth || 220;
+    var left    = tabRect.left - tbRect.left;
+    left = Math.max(0, Math.min(left, tbRect.width - ddW));
+    dd.style.left = left + 'px';
 }
 
 function toggleSavedVec(id, key) {
@@ -1623,15 +1633,6 @@ function closeRunDropdownE() {
 function _renderDropdownE(run) {
     var dd = document.getElementById('run-tab-dropdown');
     if (!dd) return;
-    var tab = document.querySelector('.run-tab[data-id="' + run.id + '"]');
-    if (tab) {
-        var toolbar = document.getElementById('anim-toolbar');
-        var tabRect = tab.getBoundingClientRect();
-        var tbRect  = toolbar.getBoundingClientRect();
-        var left = tabRect.left - tbRect.left;
-        left = Math.max(0, Math.min(left, tbRect.width - 220));
-        dd.style.left = left + 'px';
-    }
     dd.style.display = 'block';
     dd.innerHTML = '';
 
@@ -1675,6 +1676,7 @@ function _renderDropdownE(run) {
         vecsDiv.appendChild(b);
     });
     dd.appendChild(vecsDiv);
+    _positionRunDropdown(run.id);
 }
 
 function toggleSavedVecE(id, key) {

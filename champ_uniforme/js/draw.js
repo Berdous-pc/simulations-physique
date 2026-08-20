@@ -10,10 +10,37 @@
 var _ballonImg = new Image();
 _ballonImg.src = 'ballon.png';
 
-/* ── Échelles visuelles des vecteurs ── */
+/* ── Échelles visuelles des vecteurs (champ de pesanteur) ──
+   Valeurs de référence, exprimées pour un canvas d'animation d'au moins
+   VEC_SCALE_REF_H px de haut (cas du plein écran / vidéoprojecteur).
+   VEC_SCALE_VIT et VEC_SCALE_ACC en sont dérivées à chaque redimensionnement
+   par _updateVecScales() : en px absolus, une flèche d'accélération mesurait
+   98 px à g = 9,81 et 200 px à g = 20 quelle que soit la taille de la
+   fenêtre, ce qui la rendait démesurée sur petite fenêtre — de même que les
+   flèches de champ g⃗, calées sur la même échelle. */
 var VEC_SCALE_POS = 0.22;   // fraction de l'échelle physique
-var VEC_SCALE_VIT = 7.5;    // px par m/s
-var VEC_SCALE_ACC = 10;     // px par m/s²
+var VEC_SCALE_VIT_REF = 7.5;    // px par m/s   (canvas de référence)
+var VEC_SCALE_ACC_REF = 10;     // px par m/s²  (canvas de référence)
+var VEC_SCALE_REF_H   = 520;    // hauteur de canvas de référence (px)
+var VEC_SCALE_MIN_F   = 0.55;   // réduction maximale sur très petite fenêtre
+
+var VEC_SCALE_VIT = VEC_SCALE_VIT_REF;
+var VEC_SCALE_ACC = VEC_SCALE_ACC_REF;
+
+/* Facteur de réduction : 1 sur un canvas de référence ou plus grand — le
+   rendu en projection reste donc exactement celui d'aujourd'hui — et décroît
+   proportionnellement en dessous, sans passer sous VEC_SCALE_MIN_F. */
+function _vecScaleFactor() {
+    if (!_animH) return 1;
+    return Math.max(VEC_SCALE_MIN_F, Math.min(1, _animH / VEC_SCALE_REF_H));
+}
+
+/* Appelé depuis resizeAnimCanvas(), seul endroit où _animH change. */
+function _updateVecScales() {
+    var f = _vecScaleFactor();
+    VEC_SCALE_VIT = VEC_SCALE_VIT_REF * f;
+    VEC_SCALE_ACC = VEC_SCALE_ACC_REF * f;
+}
 
 /* Couleurs vecteurs */
 var COL_VEC_POS    = '#2a6aaa';
@@ -182,6 +209,7 @@ function resizeAnimCanvas() {
     _animCanvas.width  = Math.round(_animW * dpr);
     _animCanvas.height = Math.round(_animH * dpr);
     _animCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    _updateVecScales();   /* les longueurs de flèches suivent la taille du canvas */
     computeScale(_animW, _animH);
 }
 
@@ -339,48 +367,53 @@ function drawAnim() {
 function _drawFieldG(ctx) {
     var gndY   = groundY();
     var topY   = 20;
-    /* Même échelle que les vecteurs accélération (VEC_SCALE_ACC px par m/s²) */
-    var vecLen = Math.max(8, sim.g * VEC_SCALE_ACC * _viewProjFactors().cy);
-    vecLen = Math.min(vecLen, (gndY - topY - 28) * 0.45);
-    var safeGndY = gndY - vecLen - 8;
-    if (safeGndY <= topY) return;
-
     var rows = 2;
+    /* Position du MILIEU de chaque rangée, en fraction de la bande utile.
+       Les flèches étaient auparavant ancrées par le haut à ces fractions et se
+       déployaient vers le bas : les allonger les poussait donc dans la rangée
+       suivante, et toute borne empêchant le chevauchement bloquait du même coup
+       leur croissance. Centrées, elles s'allongent des deux côtés à la fois et
+       restent chacune dans sa moitié de bande. */
+    var rowCenters = [0.25, 0.75];
+
+    /* Hauteur de bande utile, indépendante de vecLen (8px de marge au sol). */
+    var bandH = (gndY - 8) - topY;
+    if (bandH < 30) return;
+
+    /* Même échelle que les vecteurs accélération (VEC_SCALE_ACC px par m/s²),
+       qui suit désormais la taille du canvas — l'égalité visuelle a⃗ = g⃗ en
+       chute libre est donc préservée à toutes les tailles de fenêtre. */
+    var vecLen = Math.max(8, sim.g * VEC_SCALE_ACC * _viewProjFactors().cy);
+
+    /* Rangées centrées à 0,25 et 0,75 : l'espace libre entre elles vaut
+       0,5·bandH − vecLen. Plafonner vecLen à 0,42·bandH y laisse donc toujours
+       0,08·bandH de vide, tout en autorisant la croissance jusqu'à g = 20 sur un
+       canvas de taille normale — l'ancienne borne (45 % de la hauteur utile)
+       ignorait l'écart entre rangées et les faisait se confondre. */
+    vecLen = Math.min(vecLen, bandH * 0.42);
+
     var xLeft  = sim.originX + 15;
     var xRight = _animW - 15;
-    var cols   = Math.max(3, Math.round((xRight - xLeft) / 75));
+    /* Espacement resserré en même temps que les flèches, pour que la trame
+       garde la même densité apparente sur petite fenêtre. */
+    var cols   = Math.max(3, Math.round((xRight - xLeft) / (75 * _vecScaleFactor())));
     var xStep  = (xRight - xLeft) / (cols - 1);
 
-    var rowFracs = [0.28, 0.68];
     var COL = '#e67e22';
     var OPACITY = 0.55;
 
-    ctx.save();
-    ctx.globalAlpha = OPACITY;
-    ctx.strokeStyle = COL;
-    ctx.fillStyle   = COL;
-    ctx.lineWidth   = 1.8;
-    ctx.lineCap     = 'round';
-
+    /* Même tracé que les vecteurs cinématiques (_drawVecArrow) : corps arrêté à
+       la base d'une pointe triangulaire pleine, au lieu du chevron ouvert au
+       trait dessiné ici auparavant. Seules la couleur et l'opacité distinguent
+       les flèches de champ des vecteurs. */
     for (var r = 0; r < rows; r++) {
-        var cy = topY + (safeGndY - topY) * rowFracs[r];
+        /* Haut de la flèche : la rangée est centrée sur sa fraction de bande */
+        var cy = topY + bandH * rowCenters[r] - vecLen / 2;
         for (var c = 0; c < cols; c++) {
             var cx = xLeft + c * xStep;
-            /* Tige */
-            ctx.beginPath();
-            ctx.moveTo(cx, cy);
-            ctx.lineTo(cx, cy + vecLen);
-            ctx.stroke();
-            /* Pointe de flèche */
-            var ah = Math.max(6, vecLen * 0.22);
-            ctx.beginPath();
-            ctx.moveTo(cx - ah * 0.45, cy + vecLen - ah);
-            ctx.lineTo(cx,             cy + vecLen);
-            ctx.lineTo(cx + ah * 0.45, cy + vecLen - ah);
-            ctx.stroke();
+            _drawVecArrow(ctx, cx, cy, 0, vecLen, COL, null, OPACITY);
         }
     }
-    ctx.restore();
 }
 
 function _drawBackground(ctx) {
@@ -2016,24 +2049,33 @@ function _drawArmatures(ctx) {
 
 function _drawFieldE(ctx) {
     var COL = '#e67e22';
+    var OPACITY = 0.50;
     var E   = sim.E;
     var dir = E >= 0 ? -1 : 1;   /* -1 = flèche vers le haut (cy décroît) */
-    ctx.save();
-    ctx.strokeStyle = COL; ctx.fillStyle = COL;
-    ctx.globalAlpha = 0.50; ctx.lineWidth = 1.8; ctx.lineCap = 'round';
+
+    /* Même tracé que les vecteurs cinématiques (_drawVecArrow) : corps arrêté à
+       la base d'une pointe triangulaire pleine, au lieu du chevron ouvert au
+       trait dessiné ici auparavant. Seules la couleur et l'opacité distinguent
+       les flèches de champ des vecteurs. */
 
     /* Échelle des flèches en fonction de l'intensité du champ (log, bornée) */
     var E_REF = 1.5e4;
     var eScale = 1 + 0.65 * Math.log10(Math.max(Math.abs(E), 1) / E_REF);
     eScale = Math.max(0.4, Math.min(2.2, eScale));
 
+    /* Les bornes en px absolus ci-dessous (longueur plancher/plafond et
+       espacement) suivent la taille du canvas : le plancher de 14 px rendait
+       les flèches démesurées quand l'écartement des armatures se réduisait
+       sur une petite fenêtre. */
+    var f = _vecScaleFactor();
+
     if (sim.armatureMode === 'parallel-x') {
         var xL   = sim.originX + 12;
         var xR   = toCanvas(sim.L, 0).cx - 12;
-        var cols = Math.max(3, Math.floor((xR - xL) / 50));
+        var cols = Math.max(3, Math.floor((xR - xL) / (50 * f)));
         var halfE  = sim.e / 2;
         var halfPx = Math.abs(toCanvas(0, halfE).cy - toCanvas(0, 0).cy);
-        var vecLen = Math.min(Math.max(14, Math.min(36, halfPx * 0.75)) * eScale, halfPx * 0.9);
+        var vecLen = Math.min(Math.max(14 * f, Math.min(36 * f, halfPx * 0.75)) * eScale, halfPx * 0.9);
         var midCy  = toCanvas(0, 0).cy;
         var rowOffset = halfPx * 0.5; /* décale chaque rangée à mi-chemin entre l'axe x et une plaque */
 
@@ -2042,23 +2084,16 @@ function _drawFieldE(ctx) {
             for (var c = 0; c < cols; c++) {
                 var fx = xL + c * (xR - xL) / Math.max(1, cols - 1);
                 var fy1 = rowCy - dir * vecLen / 2;
-                var fy2 = rowCy + dir * vecLen / 2;
-                ctx.beginPath(); ctx.moveTo(fx, fy1); ctx.lineTo(fx, fy2); ctx.stroke();
-                var ah = vecLen * 0.22;
-                ctx.beginPath();
-                ctx.moveTo(fx - ah * 0.45, fy2 - dir * ah);
-                ctx.lineTo(fx, fy2);
-                ctx.lineTo(fx + ah * 0.45, fy2 - dir * ah);
-                ctx.stroke();
+                _drawVecArrow(ctx, fx, fy1, 0, dir * vecLen, COL, null, OPACITY);
             }
         });
     } else {
         /* perp-x : miroir du mode parallel-x (colonnes ↔ rangées, x ↔ y) */
         var yT   = toCanvas(0, PLATE_HALF_HEIGHT_PERP).cy + 12;
         var yB   = toCanvas(0, -PLATE_HALF_HEIGHT_PERP).cy - 12;
-        var rows = Math.max(3, Math.floor((yB - yT) / 50));
+        var rows = Math.max(3, Math.floor((yB - yT) / (50 * f)));
         var halfPxH = Math.abs(toCanvas(sim.e, 0).cx - toCanvas(sim.e / 2, 0).cx);
-        var vecLenH = Math.min(Math.max(14, Math.min(36, halfPxH * 0.75)) * eScale, halfPxH * 0.9);
+        var vecLenH = Math.min(Math.max(14 * f, Math.min(36 * f, halfPxH * 0.75)) * eScale, halfPxH * 0.9);
         var midCx   = toCanvas(sim.e / 2, 0).cx;
         var colOffset = halfPxH * 0.5;
         var dxd = E >= 0 ? 1 : -1;
@@ -2068,18 +2103,10 @@ function _drawFieldE(ctx) {
             for (var r = 0; r < rows; r++) {
                 var fy  = yT + r * (yB - yT) / Math.max(1, rows - 1);
                 var fx1 = colCx - dxd * vecLenH / 2;
-                var fx2 = colCx + dxd * vecLenH / 2;
-                ctx.beginPath(); ctx.moveTo(fx1, fy); ctx.lineTo(fx2, fy); ctx.stroke();
-                var ah2 = vecLenH * 0.22;
-                ctx.beginPath();
-                ctx.moveTo(fx2 - dxd * ah2, fy - ah2 * 0.45);
-                ctx.lineTo(fx2, fy);
-                ctx.lineTo(fx2 - dxd * ah2, fy + ah2 * 0.45);
-                ctx.stroke();
+                _drawVecArrow(ctx, fx1, fy, dxd * vecLenH, 0, COL, null, OPACITY);
             }
         });
     }
-    ctx.restore();
 }
 
 /* Force électrique au point (x,y) — nulle hors du condensateur.
@@ -2265,26 +2292,29 @@ function _updateAnimHoverE(mouseX, mouseY) {
     var bestD2 = R * R, bestSnap = null;
     /* sim is swapped to simE during drawAnimE but not here; use simE directly for toCanvas */
     var _simBak = sim; sim = simE;
-    for (var di = 0; di < datasets.length; di++) {
-        var pts = datasets[di].data;
-        for (var k = 0; k < pts.length; k++) {
-            var p = toCanvas(pts[k].x, pts[k].y);
-            var dx = p.cx - mouseX;
-            if (dx > R || dx < -R) continue;
-            var dy = p.cy - mouseY;
-            if (dy > R || dy < -R) continue;
-            var d2 = dx * dx + dy * dy;
-            if (d2 < bestD2) {
-                bestD2 = d2;
-                bestSnap = {x: pts[k].x, y: pts[k].y,
-                            vx: pts[k].vx, vy: pts[k].vy,
-                            ax: pts[k].ax, ay: pts[k].ay,
-                            t: pts[k].t, color: datasets[di].color,
-                            runId: datasets[di].runId, _cx: p.cx, _cy: p.cy};
+    try {
+        for (var di = 0; di < datasets.length; di++) {
+            var pts = datasets[di].data;
+            for (var k = 0; k < pts.length; k++) {
+                var p = toCanvas(pts[k].x, pts[k].y);
+                var dx = p.cx - mouseX;
+                if (dx > R || dx < -R) continue;
+                var dy = p.cy - mouseY;
+                if (dy > R || dy < -R) continue;
+                var d2 = dx * dx + dy * dy;
+                if (d2 < bestD2) {
+                    bestD2 = d2;
+                    bestSnap = {x: pts[k].x, y: pts[k].y,
+                                vx: pts[k].vx, vy: pts[k].vy,
+                                ax: pts[k].ax, ay: pts[k].ay,
+                                t: pts[k].t, color: datasets[di].color,
+                                runId: datasets[di].runId, _cx: p.cx, _cy: p.cy};
+                }
             }
         }
+    } finally {
+        sim = _simBak;
     }
-    sim = _simBak;
     _animHoverSnapE = bestSnap;
 }
 
@@ -2295,13 +2325,16 @@ function _handleClickE() {
     if (snap.runId !== null && !runRef) return; /* run supprimée entre-temps */
     var targetList = runRef ? runRef.analysisPoints : simE.analysisPoints;
     var _simBak = sim; sim = simE;
-    for (var i = 0; i < targetList.length; i++) {
-        var pp = toCanvas(targetList[i].x, targetList[i].y);
-        if (Math.hypot(pp.cx - snap._cx, pp.cy - snap._cy) < 12) {
-            sim = _simBak; targetList.splice(i, 1); return;
+    var hitIdx = -1;
+    try {
+        for (var i = 0; i < targetList.length; i++) {
+            var pp = toCanvas(targetList[i].x, targetList[i].y);
+            if (Math.hypot(pp.cx - snap._cx, pp.cy - snap._cy) < 12) { hitIdx = i; break; }
         }
+    } finally {
+        sim = _simBak;
     }
-    sim = _simBak;
+    if (hitIdx !== -1) { targetList.splice(hitIdx, 1); return; }
     if (targetList.length >= MAX_ANALYSIS_POINTS) { showAnimToast(MSG_MAX_PINS); return; }
     var ep = runRef
         ? _fieldForceAt(runRef, snap.x, snap.y)
@@ -2337,43 +2370,48 @@ function drawAnimE() {
     _vecScaleVitOverride = simE.vecScaleVit;
     _vecScaleAccOverride = simE.vecScaleAcc;
 
-    _updateViewAngles();
-    ctx.clearRect(0, 0, _animW, _animH);
+    /* try/finally : sans lui, une exception levée pendant le rendu laisserait
+       "sim" pointé sur simE définitivement — l'onglet champ de pesanteur
+       deviendrait inutilisable jusqu'au rechargement, sans message. */
+    try {
+        _updateViewAngles();
+        ctx.clearRect(0, 0, _animW, _animH);
 
-    _drawBackgroundE(ctx);
-    _drawGridE(ctx);
-    _drawAxesE(ctx);
-    _drawArmatures(ctx);
-    if (simE.showFieldE) _drawFieldE(ctx);
+        _drawBackgroundE(ctx);
+        _drawGridE(ctx);
+        _drawAxesE(ctx);
+        _drawArmatures(ctx);
+        if (simE.showFieldE) _drawFieldE(ctx);
 
-    for (var _sri = 0; _sri < savedRuns.length; _sri++) {
-        var _sr = savedRuns[_sri];
-        if (_sr.hidden) continue;
-        if (simE.displayMode === 'trajectory' || simE.displayMode === 'both') _drawSavedTrajectory(ctx, _sr);
-        if (simE.displayMode === 'chrono'     || simE.displayMode === 'both') _drawSavedChronoSnapsE(ctx, _sr);
-        if (_replaySessionActive) _drawSavedBallE(ctx, _sr);
+        for (var _sri = 0; _sri < savedRuns.length; _sri++) {
+            var _sr = savedRuns[_sri];
+            if (_sr.hidden) continue;
+            if (simE.displayMode === 'trajectory' || simE.displayMode === 'both') _drawSavedTrajectory(ctx, _sr);
+            if (simE.displayMode === 'chrono'     || simE.displayMode === 'both') _drawSavedChronoSnapsE(ctx, _sr);
+            if (_replaySessionActive) _drawSavedBallE(ctx, _sr);
+        }
+
+        if (simE.displayMode === 'trajectory' || simE.displayMode === 'both') _drawTrajectory(ctx);
+        if (simE.displayMode === 'chrono'     || simE.displayMode === 'both') _drawChronoSnapsE(ctx);
+
+        _drawParticleE(ctx);
+        _drawAnalysisPoints(ctx);
+        _drawViewLabel(ctx);
+        if (_animHoverSnapE) _drawAnimHoverE(ctx, _animHoverSnapE);
+        _drawAnimToast(ctx);
+    } finally {
+        /* Restore */
+        sim              = _simOrig;
+        savedRuns        = _runsOrig;
+        _currentRunColor = _colorOrig;
+        _replayPlaying   = _repOrig;
+        _replaySessionActive = _repActiveOrig;
+        _replayT         = _repTOrig;
+        _animHoverSnap   = _hoverOrig;
+        _labelMaxY       = null;
+        _vecScaleVitOverride = null;
+        _vecScaleAccOverride = null;
     }
-
-    if (simE.displayMode === 'trajectory' || simE.displayMode === 'both') _drawTrajectory(ctx);
-    if (simE.displayMode === 'chrono'     || simE.displayMode === 'both') _drawChronoSnapsE(ctx);
-
-    _drawParticleE(ctx);
-    _drawAnalysisPoints(ctx);
-    _drawViewLabel(ctx);
-    if (_animHoverSnapE) _drawAnimHoverE(ctx, _animHoverSnapE);
-    _drawAnimToast(ctx);
-
-    /* Restore */
-    sim              = _simOrig;
-    savedRuns        = _runsOrig;
-    _currentRunColor = _colorOrig;
-    _replayPlaying   = _repOrig;
-    _replaySessionActive = _repActiveOrig;
-    _replayT         = _repTOrig;
-    _animHoverSnap   = _hoverOrig;
-    _labelMaxY       = null;
-    _vecScaleVitOverride = null;
-    _vecScaleAccOverride = null;
 }
 
 function _drawAnimHoverE(ctx, snap) {
@@ -2381,8 +2419,11 @@ function _drawAnimHoverE(ctx, snap) {
     sim = simE; savedRuns = _visibleSavedRunsE(); _currentRunColor = _currentRunColorE;
     _vecScaleVitOverride = simE.vecScaleVit;
     _vecScaleAccOverride = simE.vecScaleAcc;
-    _drawAnimHover(ctx, snap);
-    _vecScaleVitOverride = null;
-    _vecScaleAccOverride = null;
-    sim = _simBak; savedRuns = _runsBak; _currentRunColor = _colBak;
+    try {
+        _drawAnimHover(ctx, snap);
+    } finally {
+        _vecScaleVitOverride = null;
+        _vecScaleAccOverride = null;
+        sim = _simBak; savedRuns = _runsBak; _currentRunColor = _colBak;
+    }
 }

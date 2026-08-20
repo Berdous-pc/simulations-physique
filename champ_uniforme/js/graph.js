@@ -939,11 +939,16 @@ function drawGraphE() {
     _animHoverSnap   = _animHoverSnapE;
     _graphTimeNs     = true;
 
-    drawGraph();
-
-    _graphTimeNs     = false;
-    sim              = _simOrig;
-    savedRuns        = _runsOrig;
-    _currentRunColor = _colOrig;
-    _animHoverSnap   = _hOrig;
+    /* try/finally : une exception pendant le tracé laisserait sinon "sim"
+       pointé sur simE définitivement, rendant l'onglet champ de pesanteur
+       inutilisable jusqu'au rechargement, sans message. */
+    try {
+        drawGraph();
+    } finally {
+        _graphTimeNs     = false;
+        sim              = _simOrig;
+        savedRuns        = _runsOrig;
+        _currentRunColor = _colOrig;
+        _animHoverSnap   = _hOrig;
+    }
 }
