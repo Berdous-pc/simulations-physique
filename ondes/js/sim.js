@@ -229,10 +229,13 @@ function fmtSciHTML(v, decimals) {
 
 // ── Constantes de calibration ─────────────────────────────────────────
 // Valeurs par défaut des paramètres (pour calibrer C_BASE à la resize)
-var K_DEFAULT        = 4.0;   // compressibilité par défaut
+// K_DEFAULT doit rester DANS la plage du curseur (index.html, min 5,0) :
+// une valeur en dehors serait clampée par le navigateur à l'affichage,
+// laissant sim.K et le curseur en désaccord au chargement.
+var K_DEFAULT        = 6.0;   // compressibilité par défaut
 var RHO_DEFAULT      = 1.0;   // masse volumique par défaut
 // C_DISPLAY_FACTOR : c_norm * C_DISPLAY_FACTOR = célérité affichée en cm/s
-// sqrt(K_DEFAULT/RHO_DEFAULT) * 10 = 2 * 10 = 20 cm/s à la configuration par défaut
+// sqrt(K_DEFAULT/RHO_DEFAULT) * 10 = sqrt(6) * 10 ≈ 24,5 cm/s par défaut
 var C_DISPLAY_FACTOR = 10.0;
 // Longueur physique du tube représentée par tubeLength pixels
 var TUBE_LENGTH_CM   = 40.0;
@@ -244,6 +247,9 @@ var C_BASE           = 43.0;
 var T_IMPULSE        = 0.6;   // secondes de temps simulé
 // Nombre max de points enregistrés pour ΔP(t)
 var DP_MAX_POINTS    = 1600;  // 300 pts/s × 5 s + marge → courbes lisses sur la fenêtre entière
+// Aire disponible par particule à ρ = 1, en px² : fixe le nombre de particules
+// dans initCols, et le seuil de saturation dans particleRadius.
+var COL_SLOT_PX2     = 113;   // ≈ 25 % de remplissage à ρ = 1
 
 // ── État global de la simulation ──────────────────────────────────────
 var sim = {
@@ -266,6 +272,13 @@ var sim = {
     // ── Source — composante périodique non sinusoïdale (multi-lobes) ────
     periodicActive : false,
     periodicPhase  : 0,
+
+    // ── Enveloppe de démarrage / d'arrêt de la source continue ──────────
+    //  sonEmitMode : signal RÉELLEMENT émis, extinction comprise. Il survit
+    //  donc à sinusoidalActive / periodicActive le temps de la descente.
+    //  sonEnv : progression de l'enveloppe dans [0, 1] (cf. stepSourceSon).
+    sonEmitMode : null,
+    sonEnv      : 0,
 
     // ── Source — impulsions (superposables) ─────────────────────────
     // Chaque entrée : { startTime }  (1 période de sinus = T_IMPULSE)
@@ -306,6 +319,8 @@ var sim = {
     // N ∝ ρ (linéaire). Domaine [0, tubeLength + 2×memAmplitude].
     // Position affichée : tubeLeft + x0 + waveDisplacementDisplay(x0, t)
     cols              : [],
+    colsSig           : null,    // géométrie pour laquelle cols a été construit
+    colsL             : 0,       // tubeLength correspondante (transposition sélection)
     selectionMode     : false,   // mode sélection par proximité actif
     selectionRadius   : 25,      // px, rayon de sélection (recalculé dans initCols)
 
@@ -397,19 +412,58 @@ function sonIsQuiet() {
 function stepSourceSon(t) {
     var d = 0;
 
+    // ── Enveloppe de démarrage / d'arrêt de la source continue ────────
+    // Une sinusoïde démarrée brutalement est continue en u, mais PAS en
+    // ∂u/∂x — or c'est ∂u/∂x que l'élève voit (densité des particules) et
+    // que trace le graphe ΔP. Le tout premier lobe de compression arrivait
+    // donc avec un bord franc et ne mesurait qu'un QUART de longueur d'onde
+    // au lieu d'une demie ; l'arrêt produisait la même coupure nette à
+    // l'arrière du train d'ondes.
+    // On module donc l'amplitude par une enveloppe demi-cosinus étalée sur
+    // exactement UNE période : la source démarre et s'arrête comme un vrai
+    // haut-parleur, dont la membrane ne peut pas accélérer instantanément.
+    // Passé cette période, le signal est une sinusoïde pure — la longueur
+    // d'onde reste donc mesurable partout ailleurs.
+    var wantMode = sim.sinusoidalActive ? 'sinus'
+                 : sim.periodicActive   ? 'periodic'
+                 : null;
+
+    // Changer de type de source pendant l'extinction : on repart de zéro
+    // plutôt que de faire hériter la nouvelle forme de l'enveloppe en cours.
+    if (wantMode && wantMode !== sim.sonEmitMode) {
+        sim.sonEmitMode = wantMode;
+        sim.sonEnv      = 0;
+    }
+
+    var envStep = Math.max(0.2, sim.freq) * SRC_DT;   // 1 période pour 0 → 1
+    if (wantMode) {
+        sim.sonEnv = Math.min(1, sim.sonEnv + envStep);
+    } else if (sim.sonEmitMode) {
+        sim.sonEnv = Math.max(0, sim.sonEnv - envStep);
+        if (sim.sonEnv === 0) sim.sonEmitMode = null;
+    }
+    var env = (1 - Math.cos(Math.PI * sim.sonEnv)) / 2;
+
     // ── Composante sinusoïdale : phase accumulée ──────────────────────
-    if (sim.sinusoidalActive) {
+    if (sim.sonEmitMode === 'sinus') {
         sim.sinPhase += 2 * Math.PI * sim.freq * SRC_DT;
         if (sim.sinPhase > 2 * Math.PI) sim.sinPhase -= 2 * Math.PI;
-        d += Math.sin(sim.sinPhase);
+        d += env * Math.sin(sim.sinPhase);
     }
 
     // ── Composante périodique non sinusoïdale (multi-lobes, asymétrique) ──
-    if (sim.periodicActive) {
+    // Harmoniques renforcées par rapport à la Corde, le Son n'affichant que
+    // ∂u/∂x — cf. le bloc PERIODIC_*_SON. La pente du motif valant 2,48 fois
+    // celle d'une sinusoïde de même amplitude, c'est PERIODIC_DP_FACTOR
+    // (rangé dans srcQ) qui en tient compte à la lecture, pour ΔP comme pour
+    // l'amplitude d'affichage.
+    if (sim.sonEmitMode === 'periodic') {
         sim.periodicPhase += 2 * Math.PI * sim.freq * SRC_DT;
         if (sim.periodicPhase > 2 * Math.PI) sim.periodicPhase -= 2 * Math.PI;
         var p = sim.periodicPhase;
-        d += PERIODIC_NORM * (Math.sin(p) + 0.6 * Math.sin(3 * p) + 0.35 * Math.sin(2 * p));
+        d += env * PERIODIC_NORM_SON
+                 * (Math.sin(p) + PERIODIC_A3_SON * Math.sin(3 * p)
+                                + PERIODIC_A2_SON * Math.sin(2 * p));
     }
 
     // ── Composantes impulsions (superposables) ────────────────────────
@@ -438,7 +492,7 @@ function stepSourceSon(t) {
     // Facteur correcteur de ΔP figé à l'émission (cf. PERIODIC_DP_FACTOR) :
     // 1 pour Impulsion/Sinusoïdale, où la normalisation de waveDeltaP est déjà
     // exacte ; le facteur propre au signal multi-harmoniques en Périodique.
-    var dpFactor = sim.periodicActive ? PERIODIC_DP_FACTOR : 1;
+    var dpFactor = (sim.sonEmitMode === 'periodic') ? PERIODIC_DP_FACTOR : 1;
 
     _srcPush(sim, t, d, sim.c_cms, k_cm, dpFactor);
 }
@@ -456,23 +510,56 @@ function stepSourceSon(t) {
 //  qui est déjà parti.
 // ══════════════════════════════════════════════════════════════════════
 
-var AK_MIN = 0.55;
-var AK_CAP = 0.90;
+// Le fond du tube n'est colorié que sur demande : la lisibilité de la
+// compression repose donc bien sur la seule position des particules, et les
+// bornes doivent rester franches. Elles sont malgré tout en retrait des
+// valeurs d'origine (0,55 / 0,90), le plafond absolu ci-dessous ayant pris
+// en charge le cas qui les rendait disgracieuses — les grandes longueurs
+// d'onde, où l'amplitude devenait énorme.
+var AK_MIN = 0.45;
+var AK_CAP = 0.75;
 
-function _sonDisplayGain(k_cm) {
-    if (k_cm <= 0 || sim.tubeLength <= 0) return 1.0;
-    var k_px = k_cm * TUBE_LENGTH_CM / sim.tubeLength;   // rad/px
-    var ak   = sim.memAmplitude * k_px;
-    if (ak <= 0) return 1.0;
-    return Math.max(AK_MIN, Math.min(AK_CAP, ak)) / ak;
+// ── Plafond absolu d'amplitude affichée ───────────────────────────────
+// A·k doit rester dans [AK_MIN, AK_CAP], donc l'amplitude affichée est
+// nécessairement PROPORTIONNELLE à λ : aux grandes longueurs d'onde
+// (f = 0,5 Hz, λ = tube entier) elle atteignait le tiers de la hauteur du
+// tube, et la membrane pompait de façon disgracieuse. On la borne donc en
+// dur à une fraction de la hauteur du tube. Le contraste de densité passe
+// alors sous AK_MIN : c'est le prix à payer, mais il ne se paie qu'aux très
+// basses fréquences, où la compression s'étale sur tout le tube et reste
+// lisible malgré un contraste plus doux.
+//
+// Le plafond ne dépend QUE de la géométrie du tube : il est donc aussi ce
+// qui dimensionne les zones virtuelles de particules (cf. initCols), qui
+// n'ont ainsi plus à être reconstruites quand f ou K changent.
+var SON_A_MAX_FRAC = 0.13;
+
+function sonMaxDisplayPx() {
+    var H = sim.tubeBottom - sim.tubeTop;
+    return (H > 0) ? H * SON_A_MAX_FRAC : sim.memAmplitude;
 }
 
-// Gain maximal susceptible d'être appliqué compte tenu de ce qui a déjà été
-// émis — sert à dimensionner les zones virtuelles de particules (initCols).
-function sonMaxDisplayGain() {
-    var g = _sonDisplayGain(sim.srcKMin === Infinity ? 0 : sim.srcKMin);
-    var kNow = (sim.c_cms > 0) ? 2 * Math.PI * sim.freq / sim.c_cms : 0;
-    return Math.max(1.0, g, _sonDisplayGain(kNow));
+// q = facteur de forme du signal émis (srcQ) : rapport entre la pente maximale
+// réelle du motif et celle d'une sinusoïde de même amplitude. Vaut 1 en
+// Sinusoïdale et en Impulsion, PERIODIC_DP_FACTOR en Périodique.
+//
+// Il DOIT entrer dans le budget, sinon on calibre sur le seul fondamental
+// alors que les harmoniques dominent la pente. En Périodique la pente réelle
+// valait A·k × 2,32, donc bien au-delà de 1 : or |∂u/∂x| > 1 signifie que
+// x₀ ↦ x₀ + u n'est plus monotone — les particules se REPLIENT les unes sur
+// les autres. Les trois lobes du motif (3,5 / 0,95 / 0,95) saturaient alors
+// en trois bandes d'aspect identique, et la période apparente devenait λ/3
+// alors que la vraie période est bien λ = c/f. C'était un artefact de rendu,
+// pas une erreur sur λ.
+function _sonDisplayGain(k_cm, q) {
+    if (k_cm <= 0 || sim.tubeLength <= 0) return 1.0;
+    var k_px = k_cm * TUBE_LENGTH_CM / sim.tubeLength;   // rad/px
+    var ak   = sim.memAmplitude * k_px * (q > 0 ? q : 1);
+    if (ak <= 0) return 1.0;
+    var g    = Math.max(AK_MIN, Math.min(AK_CAP, ak)) / ak;
+    // Plafond absolu : A × g ≤ sonMaxDisplayPx()
+    var gMax = (sim.memAmplitude > 0) ? sonMaxDisplayPx() / sim.memAmplitude : 1.0;
+    return Math.min(g, gMax);
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -515,7 +602,7 @@ function waveDisplacementDisplay(x_px, t_sim) {
     if (smp.d === 0) return 0;
 
     var alpha = sim.attenuation * 5;
-    return smp.d * sim.memAmplitude * _sonDisplayGain(smp.a)
+    return smp.d * sim.memAmplitude * _sonDisplayGain(smp.a, smp.q)
                  * Math.exp(-alpha * x_cm / TUBE_LENGTH_CM);
 }
 
@@ -570,14 +657,45 @@ function waveDeltaP(x_px, t_sim) {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-//  Rayon adaptatif des points — dépend de la hauteur du tube uniquement.
-//  La densité visuelle est portée par N ∝ ρ ; le rayon est indépendant
-//  de ρ pour que chaque particule reste lisible quelle que soit la densité.
+//  Rayon adaptatif des points
+//
+//  La densité visuelle est portée par N ∝ ρ. Le rayon était pour cette
+//  raison rendu indépendant de ρ — mais l'aire occupée vaut alors N·πr²,
+//  elle aussi ∝ ρ : le taux de remplissage passait de ~25 % à ρ = 1 à
+//  100 % à ρ = 4. Le tube devenait un aplat, et une compression n'est plus
+//  lisible dans ce qui est déjà plein : c'est pourquoi les fronts d'onde
+//  disparaissaient aux fortes masses volumiques.
+//
+//  Le rayon ne doit donc dépendre QUE de la hauteur du tube, jamais de ρ.
+//  Toute dépendance en ρ, même à sens unique, revient au même défaut vu à
+//  l'envers : un rayon qui rétrécit quand ρ monte est un rayon qui GROSSIT
+//  quand ρ descend, et voir une parcelle de fluide enfler parce que le
+//  milieu se raréfie n'a aucun sens.
+//
+//  On dimensionne donc le rayon une fois pour toutes sur le cas le plus
+//  défavorable — ρ au maximum du curseur — de sorte que le nuage ne sature
+//  nulle part sur la plage :
+//
+//      πr² ≤ PARTICLE_FILL_MAX × (aire par particule à ρ_max)
+//
+//  l'aire par particule valant COL_SLOT_PX2/ρ (cf. initCols). Le taux de
+//  remplissage couvre alors ~6 % (ρ = 0,5) à 50 % (ρ = 4) : c'est la
+//  traduction fidèle des huit fois d'écart entre les deux extrêmes du
+//  curseur, et c'est bien le rôle de celui-ci.
 // ══════════════════════════════════════════════════════════════════════
 
+var PARTICLE_FILL_MAX = 0.50;   // part de l'aire disponible qu'un point peut couvrir
+var RHO_MAX_UI        = 3.0;    // doit suivre le max du curseur ρ (index.html)
+
 function particleRadius() {
-    var H = sim.tubeBottom - sim.tubeTop;
-    return Math.max(1.5, Math.min(3.0, H * 0.015));
+    var H    = sim.tubeBottom - sim.tubeTop;
+    var base = Math.max(1.5, Math.min(3.0, H * 0.015));
+
+    // Rayon au-delà duquel le nuage saturerait à ρ_max. Constante de fait :
+    // ne dépend d'aucun réglage, seulement des bornes du curseur.
+    var rSat = Math.sqrt(PARTICLE_FILL_MAX * COL_SLOT_PX2 / (Math.PI * RHO_MAX_UI));
+
+    return Math.max(1.2, Math.min(base, rSat));
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -587,47 +705,95 @@ function particleRadius() {
 //  position de repos x0 (en px depuis tubeLeft). À chaque frame, sa
 //  position affichée est : tubeLeft + x0 + waveDisplacementDisplay(x0, t).
 //
-//  Le domaine s'étend au-delà de tubeRight de extraRight = 2×memAmplitude×max(1,cap)
+//  Le domaine s'étend au-delà de tubeRight de extraRight = 2 × sonMaxDisplayPx()
 //  pour que le milieu soit continu : lors d'une raréfaction à l'extrémité
 //  droite, les particules "extérieures" entrent naturellement dans le tube.
-//  extraRight est proportionnel au boost de cap pour éviter les zones blanches
-//  sur grand écran avec petite fréquence / grand K / petit ρ.
+//  Ce plafond ne dépendant que de la hauteur du tube, le domaine est
+//  insensible à f et K — cf. la garde de non-reconstruction plus bas.
 //
 //  N ∝ ρ : doubler ρ double le nombre de particules → densité visuelle
 //  directement proportionnelle à la masse volumique du milieu.
-//  N = min(8000, round((L + extraRight) × H × ρ / SLOT))
-//  SLOT = 113 px² ≈ aire par particule pour ~25 % de remplissage à ρ=1.
+//  N = min(8000, round((L + extraRight) × H × ρ / COL_SLOT_PX2))
 // ══════════════════════════════════════════════════════════════════════
 
+// Relevé de la sélection courante, sous forme d'intervalles de x0 exprimés
+// en FRACTION de la longueur du tube — donc transposables à un tube d'une
+// autre largeur. sim.cols est rempli par x0 croissant, un simple balayage
+// suffit à regrouper les particules voisines en paquets.
+function _colsSelectionSnapshot() {
+    // La longueur de RÉFÉRENCE est celle pour laquelle les x0 ont été
+    // construits, pas la longueur courante : au resize, sim.tubeLength vaut
+    // déjà la nouvelle valeur quand initCols est appelée, et rapporter les
+    // anciens x0 à la nouvelle longueur décalerait la sélection.
+    var out = [], L = sim.colsL || sim.tubeLength;
+    if (L <= 0) return out;
+    var run = null;
+    for (var i = 0; i < sim.cols.length; i++) {
+        if (!sim.cols[i].selected) continue;
+        var f = sim.cols[i].x0 / L;
+        if (run && (f - run.b) < 0.02) run.b = f;   // même paquet
+        else { run = { a: f, b: f }; out.push(run); }
+    }
+    return out;
+}
+
+function _colsSelectionRestore(runs) {
+    if (!runs || runs.length === 0) return;
+    var L = sim.tubeLength;
+    if (L <= 0) return;
+    for (var i = 0; i < sim.cols.length; i++) {
+        var f = sim.cols[i].x0 / L;
+        for (var r = 0; r < runs.length; r++) {
+            if (f >= runs[r].a && f <= runs[r].b) { sim.cols[i].selected = true; break; }
+        }
+    }
+}
+
 function initCols() {
-    sim.cols = [];
     var L = sim.tubeLength;
     var H = sim.tubeBottom - sim.tubeTop;
-    if (L <= 0 || H <= 0) return;
+    if (L <= 0 || H <= 0) { sim.cols = []; return; }
 
-    // Zone virtuelle gauche et droite : doivent couvrir le déplacement max d'une
-    // particule, qui vaut memAmplitude × gain d'affichage. Le gain étant figé à
-    // l'émission, une portion ancienne peut demander plus de marge que les
-    // réglages courants : on dimensionne donc sur le maximum entre le gain
-    // actuel et celui déjà en circulation (cf. sonMaxDisplayGain).
-    var cap_ic     = sonMaxDisplayGain();
-    var extraLeft  = sim.memAmplitude * cap_ic + 4;   // +4 px de marge sécurité
-    // La zone droite doit être au moins aussi large que le déplacement max
-    // amplifié. Si cap_ic > 1 (boost basse fréquence), les particules virtuelles
-    // droites doivent se trouver assez loin pour que, déplacées vers la gauche,
-    // elles couvrent la zone proche de tubeRight sans laisser de blanc.
-    var extraRight = sim.memAmplitude * Math.max(1.0, cap_ic) * 2 + 4; // zone virtuelle droite
+    // Zone virtuelle gauche et droite : doivent couvrir le déplacement max
+    // d'une particule. Celui-ci est désormais borné en dur par
+    // sonMaxDisplayPx(), qui ne dépend QUE de la hauteur du tube — le
+    // domaine est donc insensible à f, K et ρ. C'est ce qui permet la garde
+    // ci-dessous : bouger le curseur Fréquence ou Compressibilité ne
+    // reconstruit plus les particules, et n'efface donc plus la sélection.
+    var aMax       = sonMaxDisplayPx();
+    var extraLeft  = aMax + 4;        // +4 px de marge sécurité
+    // La zone droite doit rester peuplée même quand une raréfaction tire les
+    // particules vers la gauche sur toute l'amplitude : d'où le facteur 2.
+    var extraRight = aMax * 2 + 4;
     var domain     = L + extraRight + extraLeft;
-    var SLOT       = 113;                           // px² par particule à ρ=1
     var N = Math.min(8000,
                 Math.max(50,
-                    Math.round(domain * H * Math.max(0.1, sim.rho) / SLOT)));
+                    Math.round(domain * H * Math.max(0.1, sim.rho) / COL_SLOT_PX2)));
 
     // Distribution jittered (grille régulière + bruit uniforme dans chaque case).
     // Borne la lacune maximale à ~2 × slot au lieu de ~7 × slot avec Math.random() pur,
     // ce qui élimine les bandes verticales blanches visibles au repos.
     // Les ry sont aussi jitterés pour éviter les alignements horizontaux.
     var slot = domain / N;
+
+    // ── Rayon de sélection adaptatif à la densité ─────────────────────
+    // Le rayon s'adapte à l'espacement moyen des colonnes pour rester cohérent
+    // quelle que soit la résolution et la densité (ρ).
+    // Formule : rayon = 1.5 × dx0, borné entre 20 et 40 px
+    sim.selectionRadius = Math.max(20, Math.min(40, 1.5 * slot));
+
+    // ── Garde : rien de géométrique n'a changé, on ne reconstruit pas ──
+    // Reconstruire, c'est retirer aux particules leur position de repos et
+    // donc effacer la sélection de l'élève : à ne faire que si le nombre de
+    // particules ou la géométrie du tube l'imposent réellement.
+    var sig = L + '|' + H + '|' + N;
+    if (sig === sim.colsSig && sim.cols.length === N) return;
+
+    var keep = _colsSelectionSnapshot();
+    sim.colsSig = sig;
+    sim.colsL   = L;
+    sim.cols    = [];
+
     // Tableau d'indices mélangés pour que les ry ne suivent pas l'ordre des x0
     var ryOrder = [];
     for (var j = 0; j < N; j++) ryOrder.push(j);
@@ -640,16 +806,13 @@ function initCols() {
         sim.cols.push({
             x0      : (i + Math.random()) * slot - extraLeft,  // jittered, domaine [-extraLeft, L+extraRight]
             selected: false,
-            ry      : (ryOrder[i] + Math.random()) / N  // jittered en Y aussi
+            ry      : (ryOrder[i] + Math.random()) / N, // jittered en Y aussi
+            wx      : 0,                                // errance thermique (cf. _wander)
+            wy      : 0
         });
     }
 
-    // ── Recalcul du rayon de sélection adaptatif à la densité ─────────
-    // Le rayon s'adapte à l'espacement moyen des colonnes pour rester cohérent
-    // quelle que soit la résolution et la densité (ρ).
-    // Formule : rayon = 1.5 × dx0, borné entre 20 et 40 px
-    var dx0 = slot;
-    sim.selectionRadius = Math.max(20, Math.min(40, 1.5 * dx0));
+    _colsSelectionRestore(keep);
 }
 
 // Alias pour compatibilité ascendante
@@ -692,15 +855,46 @@ var CORDE_Y_AXIS_CM   = 1.12 * CORDE_AMPL_CM_MAX;
 // pour que l'amplitude affichée corresponde au déplacement maximal réel.
 var PERIODIC_NORM = 1 / 1.507097;
 
-// Facteur de correction pour ΔP (Son) en mode Périodique : ΔP ∝ ∂u/∂x, et
-// dériver amplifie chaque harmonique n par son propre rang n (harmonique 3 ×3,
-// harmonique 2 ×2). Le pic de l'enveloppe dérivée — cos(p) + 1,8·cos(3p) +
-// 0,7·cos(2p), atteint en p = 0 où les trois cosinus valent 1 — vaut donc
-// exactement 3,5 (au lieu de 1 pour un sinus pur), à multiplier par
-// PERIODIC_NORM pour rester cohérent avec l'amplitude normalisée du
-// déplacement. Sans cette correction, ΔP en Périodique dépasserait largement
-// l'échelle calée sur la Sinusoïdale (cf. waveDeltaP).
-var PERIODIC_DP_FACTOR = 3.5 * PERIODIC_NORM;
+// ══════════════════════════════════════════════════════════════════════
+//  Motif Périodique — version SON, harmoniques renforcées
+//
+//  Le Son affiche ∂u/∂x, où chaque harmonique n est multipliée par son rang.
+//  Le motif de la Corde y donne des lobes secondaires à 27 % du lobe
+//  principal — trop discrets pour qu'on lise la structure du motif. On
+//  renforce donc les harmoniques CÔTÉ SON uniquement :
+//
+//      u(p)  = sin p + 1,000·sin 3p + 0,500·sin 2p
+//      ΔP ∝    cos p + 3,000·cos 3p + 1,000·cos 2p
+//
+//  Le lobe secondaire passe à 40 % du principal (contraste de densité ×1,43
+//  contre ×1,26), sans que le principal cesse de dominer — condition pour
+//  que la période lue reste λ et non λ/3. C'est un compromis, et le curseur
+//  est PERIODIC_B3_SON : plus il monte, plus les lobes s'égalisent, jusqu'à
+//  ce que le motif se lise comme une onde de longueur d'onde λ/3.
+//
+//  Vérifié numériquement : max|u| = 2,016026, max|∂u/∂x| = 5,000000.
+//
+//  ── Facteur de forme ─────────────────────────────────────────────────
+//  Rapport entre la pente maximale du motif et celle d'une sinusoïde de
+//  même amplitude : 5,000000 / 2,016026 = 2,480126.
+//
+//  Ce facteur a DEUX usages, et c'est important :
+//    • waveDeltaP  — sans lui, ΔP en Périodique sortirait de l'échelle calée
+//      sur la Sinusoïdale ;
+//    • _sonDisplayGain — sans lui, l'amplitude d'affichage était calibrée sur
+//      le seul fondamental alors que les harmoniques dominent la pente, et
+//      les particules se repliaient (cf. le commentaire de cette fonction).
+//
+//  Il est enregistré par échantillon (srcQ) et non lu sur les réglages
+//  courants : une portion émise en Périodique garde ainsi SA correction même
+//  après un changement de mode.
+// ══════════════════════════════════════════════════════════════════════
+var PERIODIC_B3_SON   = 3.0;              // poids de l'harmonique 3 dans ΔP
+var PERIODIC_B2_SON   = 1.0;              // ... et de l'harmonique 2
+var PERIODIC_A3_SON   = PERIODIC_B3_SON / 3;   // = 1,000 dans le déplacement
+var PERIODIC_A2_SON   = PERIODIC_B2_SON / 2;   // = 0,500
+var PERIODIC_NORM_SON = 1 / 2.016026;
+var PERIODIC_DP_FACTOR = 2.480126;
 
 // ── État global de la simulation corde ────────────────────────────────
 var simCorde = {
@@ -1212,6 +1406,8 @@ function resetAnim() {
     sim.sinPhase           = 0;
     sim.periodicActive     = false;
     sim.periodicPhase      = 0;
+    sim.sonEmitMode        = null;
+    sim.sonEnv             = 0;
     sim.impulses           = [];
     sim.impulsePropagating = false;
     sim.sourceActiveUntil  = 0;
@@ -1239,11 +1435,25 @@ function resetAnim() {
 
 // ══════════════════════════════════════════════════════════════════════
 //  Sélection de particules par proximité
-//  Sélectionne toutes les particules dont la position de repos x0 se
-//  trouve dans un rayon selectionRadius autour du clic utilisateur.
+//
+//  Le clic désigne une particule TELLE QU'ELLE EST AFFICHÉE ; on remonte à
+//  sa position de repos, puis on sélectionne tout le paquet qui partage
+//  cette position de repos à selectionRadius près. Comparer directement le
+//  clic à x0, comme on le faisait, revenait à ignorer le déplacement de
+//  l'onde : on cliquait sur un paquet et on en sélectionnait un autre,
+//  décalé de u(x0) — soit plusieurs dizaines de pixels, et précisément
+//  quand l'onde est la plus ample.
+//
+//  u(x0) n'étant pas inversible analytiquement (historique de source), on
+//  balaie les particules une fois pour trouver l'affichée la plus proche.
+//  C'est du O(N) une seule fois par clic, donc sans effet sur le rendu.
+//
+//  Le paquet est ensuite défini sur x0 et non sur la position affichée :
+//  ses membres restent donc solidaires quand l'onde les déplace, ce qui est
+//  tout l'intérêt pédagogique de la sélection.
 //
 //  Paramètres :
-//    • x0_click : position horizontale cliquée (en px depuis tubeLeft)
+//    • xScreen : abscisse cliquée, en px depuis le bord gauche du canvas
 //    • modifiers.ctrl : true si Ctrl est enfoncé (ajouter à la sélection)
 //    • modifiers.shift : true si Maj est enfoncée (retirer de la sélection)
 //
@@ -1253,7 +1463,7 @@ function resetAnim() {
 //    • Maj+clic : retirer de la sélection actuelle
 // ══════════════════════════════════════════════════════════════════════
 
-function selectNearbyParticles(x0_click, modifiers) {
+function selectNearbyParticles(xScreen, modifiers) {
     if (!sim.cols || sim.cols.length === 0) return;
 
     var ctrl = modifiers && modifiers.ctrl;
@@ -1265,6 +1475,23 @@ function selectNearbyParticles(x0_click, modifiers) {
             sim.cols[i].selected = false;
         }
     }
+
+    // ── Position de repos visée : celle de la particule affichée la plus
+    //    proche du clic.
+    var t = sim.simTime, best = -1, bestD = Infinity;
+    for (var i = 0; i < sim.cols.length; i++) {
+        var xd = sim.tubeLeft + sim.cols[i].x0
+               + waveDisplacementDisplay(sim.cols[i].x0, t);
+        var dd = Math.abs(xd - xScreen);
+        if (dd < bestD) { bestD = dd; best = i; }
+    }
+    if (best < 0) return;
+
+    // Clic manifestement à côté de toute particule (hors tube, derrière la
+    // membrane) : on ne sélectionne rien — le reset éventuel a déjà eu lieu.
+    if (bestD > sim.selectionRadius) return;
+
+    var x0_click = sim.cols[best].x0;
 
     // Itérer sur toutes les particules et tester la proximité
     for (var i = 0; i < sim.cols.length; i++) {

@@ -311,7 +311,12 @@ function toggleSinusoidalSon() {
 
         sim.sinusoidalActive = true;
         sim.periodicActive   = false;   // tous les modes restent exclusifs
-        sim.sinPhase         = 0;       // démarrage à u = 0, sans saut
+        // Démarrage à u = 0, sans saut. Sauf si l'on rallume alors que
+        // l'enveloppe d'arrêt n'a pas fini de descendre : la source émet
+        // encore, remettre la phase à zéro y créerait justement le saut que
+        // l'enveloppe est censée éviter — on laisse alors la phase courir et
+        // l'enveloppe remonter (cf. stepSourceSon).
+        if (sim.sonEmitMode !== 'sinus') sim.sinPhase = 0;
         sim.sourceMode       = 'sinus';
 
         _syncSourceButtons();
@@ -331,7 +336,9 @@ function togglePeriodicSon() {
 
         sim.periodicActive   = true;
         sim.sinusoidalActive = false;   // tous les modes restent exclusifs
-        sim.periodicPhase    = 0;       // démarrage à u = 0, sans saut
+        // Démarrage à u = 0, sans saut — sauf reprise pendant l'extinction
+        // (cf. toggleSinusoidalSon pour le détail).
+        if (sim.sonEmitMode !== 'periodic') sim.periodicPhase = 0;
         sim.sourceMode       = 'periodic';
 
         _syncSourceButtons();
@@ -369,6 +376,15 @@ function resetSimAnim() {
     sim.pressureColorMode = false;
     var btnPc = document.getElementById('btn-pressure-color');
     if (btnPc) btnPc.classList.remove('active');
+
+    // La sélection est un mode d'inspection, au même titre que le coloriage
+    // et le réticule : la remise à zéro la relâche. Elle ne disparaît plus
+    // d'elle-même, initCols() ne reconstruisant plus les particules à tout
+    // propos (cf. la garde dans sim.js).
+    sim.selectionMode = false;
+    clearSelection();
+    var btnSel = document.getElementById('btn-select');
+    if (btnSel) { btnSel.disabled = false; btnSel.classList.remove('active'); }
 
     // Le réticule est un mode d'inspection : la remise à zéro le relâche aussi.
     sim.graphCursorMode = false;

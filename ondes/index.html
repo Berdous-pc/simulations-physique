@@ -310,7 +310,7 @@
               <span class="param-value"><span id="lbl-rho">1,0</span> kg/m³</span>
             </label>
             <input type="range" id="sl-rho"
-                   min="0.5" max="4.0" step="0.1" value="1.0"
+                   min="0.5" max="3.0" step="0.1" value="1.0"
                    oninput="onSliderRho(this.value)">
             <span class="input-hint">Densité de particules dans le tube.</span>
           </div>
@@ -319,10 +319,17 @@
           <div class="param-row">
             <label>
               Module de compressibilité K
-              <span class="param-value"><span id="lbl-K">4,0</span> Pa</span>
+              <span class="param-value"><span id="lbl-K">6,0</span> Pa</span>
             </label>
+            <!-- K minimal à 5,0 et non 0,5 : sous cette valeur, combiné à
+                 ρ maximal et f maximale, λ tombait bien en deçà du centimètre
+                 sur un tube de 40 cm — les zones de compression passaient
+                 alors sous la résolution du nuage de particules.
+                 La valeur par défaut (6,0) doit rester DANS la plage, sans
+                 quoi le navigateur clamperait le curseur et il n'accorderait
+                 plus avec K_DEFAULT (sim.js). -->
             <input type="range" id="sl-K"
-                   min="0.5" max="10.0" step="0.5" value="4.0"
+                   min="5.0" max="10.0" step="0.5" value="6.0"
                    oninput="onSliderK(this.value)">
             <span class="input-hint">Capacité du milieu à résister à la déformation.</span>
           </div>
@@ -371,7 +378,7 @@
           <div class="readout" id="readout-simple" style="margin-top:8px;">
             <div class="ro-label">Célérité c = √(K / ρ)</div>
             <div class="ro-value">
-              <span id="ro-c">2,00 × 10<sup>1</sup></span>
+              <span id="ro-c">2,45 × 10<sup>1</sup></span>
               <span class="ro-unit">cm/s</span>
             </div>
           </div>
@@ -382,7 +389,7 @@
             <div class="ro-label-section">Imposé par le milieu</div>
             <div class="ro-value ro-props-row">
               <span class="ro-props-name">c = √(K/ρ)</span>
-              <span><span id="ro-c-ext">2,00 × 10<sup>1</sup></span> <span class="ro-unit">cm/s</span></span>
+              <span><span id="ro-c-ext">2,45 × 10<sup>1</sup></span> <span class="ro-unit">cm/s</span></span>
             </div>
 
             <div class="ro-label-section" style="margin-top:8px;">Imposé par le vibreur</div>

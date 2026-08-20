@@ -58,12 +58,25 @@ function resizeTube() {
     sim.tubeLength = sim.tubeRight - sim.tubeLeft;
 
     // ── Calibration de C_BASE ─────────────────────────────────────────
-    // Cohérence physique : C_DISPLAY_FACTOR × L_px / L_physical_cm
-    //   = 10 × L_px / 40 cm = L_px / 4
-    // → à K_DEFAULT et RHO_DEFAULT, l'onde traverse le tube en ~2 s,
-    //   et λ_graphique = c_cms / f (en cm) — unités cohérentes.
-    var c_norm_default = Math.sqrt(K_DEFAULT / RHO_DEFAULT);   // = 2
-    C_BASE = sim.tubeLength / (2.0 * c_norm_default);
+    // c_sim (px/s) doit être EXACTEMENT la conversion en pixels de c_cms,
+    // sans quoi tout ce qui exprime une longueur d'onde en pixels — au
+    // premier rang la flèche λ — est faux d'un facteur constant :
+    //
+    //     c_sim = c_cms × (L_px / L_cm)
+    //           = c_norm × C_DISPLAY_FACTOR × L_px / TUBE_LENGTH_CM
+    //   ⟹ C_BASE = C_DISPLAY_FACTOR × L_px / TUBE_LENGTH_CM = L_px / 4
+    //
+    // La formule employée jusqu'ici, L_px / (2 × √(K_DEFAULT/RHO_DEFAULT)),
+    // ne donnait cette valeur que par coïncidence : elle suppose
+    // √(K_DEFAULT/RHO_DEFAULT) = 2, ce qui n'était vrai qu'avec K_DEFAULT = 4.
+    // Passer K_DEFAULT à 6 a donc raccourci la flèche λ d'un facteur
+    // √6/2 ≈ 1,22, dans TOUS les modes de source. La propagation, elle,
+    // n'était pas touchée : elle se calcule en centimètres, via c_cms.
+    //
+    // Écrite ainsi, la calibration ne dépend plus d'aucune valeur par défaut.
+    // Le temps de traversée du tube en découle (4/c_norm, soit ~1,6 s aux
+    // réglages par défaut) au lieu d'être imposé.
+    C_BASE = C_DISPLAY_FACTOR * sim.tubeLength / TUBE_LENGTH_CM;
 
     // ── Amplitude de la membrane ──────────────────────────────────────
     // Calibrée sur dx0 à ρ=1 pour un ratio A/dx0 ≈ 7.5 constant,
@@ -605,12 +618,24 @@ function drawTube() {
     ctx.fillRect(0, 0, W, H);
 
     // ── Fond intérieur du tube ────────────────────────────────────────
+    // Deux fonds distincts, jamais superposés :
+    //   • bouton « Colorier selon la pression » → palette pastel signée,
+    //     qui code ΔP (compression ET détente) — cf. _drawTubePressureBg ;
+    //   • sinon → voile bleu de densité, réservé aux fortes compressions,
+    //     cf. _drawTubeDensityBg.
+    // Dans les trois cas le remplissage part de la face RÉELLE de la
+    // membrane et non de tubeLeft — cf. _sonTubeFillLeft.
     if (sim.pressureColorMode) {
         _drawTubePressureBg(ctx);
+    } else if (sim.srcN === 0 || sonIsQuiet()) {
+        // Rien n'a jamais été émis, ou la dernière onde a fini de traverser :
+        // le voile serait nul partout, autant peindre à plat.
+        var xf = _sonTubeFillLeft();
+        ctx.fillStyle = TUBE_BG;
+        ctx.fillRect(xf, sim.tubeTop,
+                     sim.tubeRight - xf, sim.tubeBottom - sim.tubeTop);
     } else {
-        ctx.fillStyle = '#f7f3ec';
-        ctx.fillRect(sim.tubeLeft, sim.tubeTop,
-                     sim.tubeLength, sim.tubeBottom - sim.tubeTop);
+        _drawTubeDensityBg(ctx);
     }
 
     // ── Parois du tube (haut et bas) ─────────────────────────────────
@@ -660,7 +685,39 @@ function drawTube() {
 //    dp = +1 → rose pâle    rgb(250,185,180)  (surpression / compression)
 //    dp = −1 → jaune pâle   rgb(252,245,185)  (dépression / raréfaction)
 
+var TUBE_BG = '#f7f3ec';
+
 var N_PRESSURE_BANDS = 300;
+
+// ── Bord gauche du fond intérieur ─────────────────────────────────────
+//  Quand la membrane recule, elle laisse entre sa face et tubeLeft une bande
+//  qui appartient bel et bien à l'intérieur du tube. Peindre à partir de
+//  tubeLeft y laissait apparaître le fond général du canvas — c'était la
+//  bande blanche visible en mode pression (invisible en mode normal, les
+//  deux crèmes étant presque identiques). On peint donc depuis la face
+//  réelle de la membrane. Vers la droite rien à étendre : la membrane
+//  recouvre ce qu'elle avance.
+function _sonTubeFillLeft() {
+    return sim.tubeLeft + Math.min(0, _sonMembraneDisp());
+}
+
+// ── ΔP pour le fond, échantillonné à l'abscisse écran ─────────────────
+//  x_px est mesuré depuis tubeLeft, et devient donc NÉGATIF dans la bande
+//  que la membrane vient de découvrir. Il faut y ramener l'échantillonnage
+//  en x = 0 : waveDeltaP est une différence finie, et pour un x négatif ses
+//  deux points de calcul, u(x−h) et u(x+h), tombent tous deux au-delà du
+//  dernier échantillon émis. _srcSampleAtS les écrête alors à la MÊME
+//  valeur, et leur différence vaut exactement zéro.
+//
+//  Ce zéro produisait une bande neutre large de |disp| − h, soit près de
+//  20 px, plaquée contre la membrane et d'autant plus visible que
+//  l'excursion était grande — donc précisément aux très grandes longueurs
+//  d'onde. Écrêter x à 0 y met la pression de la face de la membrane, ce
+//  qui est aussi la valeur juste : ce fluide est celui que la membrane
+//  vient d'emmener avec elle, il est dans son état de compression.
+function _sonBgDeltaP(x_px) {
+    return waveDeltaP(x_px > 0 ? x_px : 0, sim.simTime);
+}
 
 function _drawTubePressureBg(ctx) {
     var L    = sim.tubeLength;
@@ -675,13 +732,19 @@ function _drawTubePressureBg(ctx) {
     // Dépression (dp = −1) : jaune pâle
     var rN = 252, gN = 245, bN = 185;
 
+    var xLeft  = _sonTubeFillLeft();
+    var xRight = sim.tubeLeft + L;
+
     // Construire le gradient linéaire horizontal
-    var grad = ctx.createLinearGradient(sim.tubeLeft, 0, sim.tubeLeft + L, 0);
+    var grad = ctx.createLinearGradient(xLeft, 0, xRight, 0);
+    var span = xRight - xLeft;
 
     for (var i = 0; i <= N_PRESSURE_BANDS; i++) {
         var frac = i / N_PRESSURE_BANDS;
-        var x_px = frac * L;
-        var dp   = Math.max(-1, Math.min(1, waveDeltaP(x_px, sim.simTime)));
+        // x_px est mesuré depuis tubeLeft (origine de l'onde) ; il est
+        // négatif dans la bande découverte par la membrane — cf. _sonBgDeltaP.
+        var x_px = xLeft - sim.tubeLeft + frac * span;
+        var dp   = Math.max(-1, Math.min(1, _sonBgDeltaP(x_px)));
 
         var r, g, b;
         if (dp >= 0) {
@@ -699,7 +762,140 @@ function _drawTubePressureBg(ctx) {
     }
 
     ctx.fillStyle = grad;
-    ctx.fillRect(sim.tubeLeft, yTop, L, h);
+    ctx.fillRect(xLeft, yTop, span, h);
+}
+
+// ── Voile bleu de densité (fond permanent) ────────────────────────────
+//
+//  Un halo dans la COULEUR DES PARTICULES sous les zones de forte
+//  compression. Il ne code pas une grandeur de plus : il redit ce que les
+//  particules disent déjà — « il y a du monde ici » — mais en aplat, donc
+//  lisible d'un coup d'œil et sans légende à apprendre. C'est aussi pour
+//  cela qu'il est UNILATÉRAL : ne teinter que les compressions laisse les
+//  détentes se lire d'elles-mêmes comme les zones restées claires, au lieu
+//  d'introduire un second code couleur concurrent.
+//
+//  Réservé aux fortes compressions (au-delà du genou), pour rester un
+//  renfort et non un fond permanent qui écraserait le nuage.
+//
+//  Le genou est ADOUCI (smoothstep) et non un simple seuil : un seuil franc
+//  sur un champ continu crée des bords nets qui glissent le long du tube au
+//  passage de l'onde, et cela se voit comme un artefact de rendu.
+//
+//  À noter : waveDeltaP est normalisée sur l'amplitude PHYSIQUE et non sur
+//  le gain d'affichage. Le voile se déclenche donc à pleine force même aux
+//  basses fréquences, là où le plafond de sonMaxDisplayPx() bride le
+//  mouvement visible et où le regroupement des particules est le moins net
+//  — le renfort arrive exactement là où il manque.
+
+//  Le dosage est délibérément timide : le voile doit se remarquer sans qu'on
+//  le regarde, et surtout ne pas concurrencer le bleu des particules — deux
+//  bleus d'intensité voisine se brouillent l'un l'autre et le nuage paraît
+//  sale. Un premier réglage à 0,30 de teinte dès ΔP = 0,45 était nettement
+//  trop appuyé.
+//
+//  ── Dosage adaptatif à la longueur d'onde ────────────────────────────
+//  Mais « timide » ne vaut que tant que les particules font le travail. Aux
+//  petites longueurs d'onde elles ne le peuvent plus : à λ = 50 px une bande
+//  de compression fait 25 px, pour des points de 2 px espacés de ~1 px — on
+//  est à la limite de résolution du nuage lui-même, et aucun réglage
+//  d'amplitude n'y changera rien. Le voile, lui, est un champ CONTINU : il
+//  résout parfaitement ces échelles.
+//
+//  On l'appuie donc légèrement à mesure que λ rétrécit. Le passage entre les
+//  deux régimes est lissé (smoothstep), sans quoi le fond changerait
+//  visiblement d'aspect au franchissement d'un seuil du curseur f.
+//
+//  ── Pourquoi le renfort reste modeste ────────────────────────────────
+//  Un premier réglage montait à 0,42 de teinte avec un genou abaissé à 0,22,
+//  pour élargir les bandes. Le résultat se dénonçait immédiatement comme un
+//  ARTEFACT : un aplat de couleur uniforme ne ressemble pas à « beaucoup de
+//  particules au même endroit », il ressemble à un rectangle peint, et
+//  d'autant plus qu'on l'appuie. La limite est structurelle, pas une
+//  question de dosage.
+//
+//  Le genou est donc maintenu HAUT même en régime serré : ne marquer que
+//  les cœurs de compression donne des taches douces et isolées — un halo,
+//  qui se lit comme un effet du milieu — là où un genou bas donnait des
+//  bandes régulières, qui se lisent comme un décor.
+var DENS_BLUE      = [42, 106, 170];  // #2a6aaa — la couleur des particules
+// Bornes calées sur ce que les particules savent encore montrer : à λ = 140 px
+// la bande de compression fait 70 px pour un déplacement affiché de ~17 px,
+// largement lisible ; à λ = 45 px elle tombe à 22 px pour ~5 px de
+// déplacement, soit l'ordre de grandeur du grain du nuage.
+var DENS_LAM_COMFY = 140;             // px : au-delà, les particules suffisent
+var DENS_LAM_TIGHT = 45;              // px : en deçà, le voile porte tout
+var DENS_KNEE_LO   = 0.55;            // seuil ΔP en régime confortable
+var DENS_KNEE_HI   = 0.45;            // ... et en régime serré
+var DENS_TINT_LO   = 0.14;            // teinte max en régime confortable
+var DENS_TINT_HI   = 0.22;            // ... et en régime serré
+
+// Position dans le régime serré : 0 = confortable, 1 = aussi serré que possible.
+function _densTightness() {
+    var lam = _sonFeaturePx();
+    var u   = (DENS_LAM_COMFY - lam) / (DENS_LAM_COMFY - DENS_LAM_TIGHT);
+    if (u <= 0) return 0;
+    if (u >= 1) return 1;
+    return u * u * (3 - 2 * u);   // smoothstep
+}
+
+function _drawTubeDensityBg(ctx) {
+    var L    = sim.tubeLength;
+    var yTop = sim.tubeTop;
+    var h    = sim.tubeBottom - yTop;
+    if (L <= 0 || h <= 0) return;
+
+    // Fond neutre décomposé une fois (TUBE_BG = #f7f3ec)
+    var r0 = 247, g0 = 243, b0 = 236;
+    var rB = DENS_BLUE[0], gB = DENS_BLUE[1], bB = DENS_BLUE[2];
+
+    var xLeft  = _sonTubeFillLeft();
+    var xRight = sim.tubeLeft + L;
+    var span   = xRight - xLeft;
+
+    // ── Dosage, interpolé entre les deux régimes ──────────────────────
+    var tight = _densTightness();
+    var knee  = DENS_KNEE_LO + tight * (DENS_KNEE_HI - DENS_KNEE_LO);
+    var tint  = DENS_TINT_LO + tight * (DENS_TINT_HI - DENS_TINT_LO);
+
+    // ── Finesse d'échantillonnage ─────────────────────────────────────
+    // Le nombre de color-stops doit suivre λ : à 300 stops sur 900 px, une
+    // λ de 55 px ne recevrait que 3 points par alternance et le dégradé
+    // rendrait un moiré au lieu des bandes. On vise ~14 stops par λ, borné
+    // pour que le coût reste stable (chaque stop est un appel à waveDeltaP).
+    var lam   = _sonFeaturePx();
+    var nb    = N_PRESSURE_BANDS;
+    if (lam > 0) {
+        nb = Math.round(span / lam * 14);
+        if (nb < N_PRESSURE_BANDS) nb = N_PRESSURE_BANDS;
+        else if (nb > 1400)        nb = 1400;
+    }
+
+    var grad = ctx.createLinearGradient(xLeft, 0, xRight, 0);
+
+    for (var i = 0; i <= nb; i++) {
+        var frac = i / nb;
+        // x_px est mesuré depuis tubeLeft (origine de l'onde) ; il est
+        // négatif dans la bande découverte par la membrane — cf. _sonBgDeltaP.
+        var x_px = xLeft - sim.tubeLeft + frac * span;
+        var dp   = _sonBgDeltaP(x_px);
+
+        var a = 0;
+        if (dp > knee) {
+            var u = (dp - knee) / (1 - knee);
+            if (u > 1) u = 1;
+            a = u * u * (3 - 2 * u) * tint;   // smoothstep
+        }
+
+        var r = Math.round(r0 + a * (rB - r0));
+        var g = Math.round(g0 + a * (gB - g0));
+        var b = Math.round(b0 + a * (bB - b0));
+
+        grad.addColorStop(frac, 'rgb(' + r + ',' + g + ',' + b + ')');
+    }
+
+    ctx.fillStyle = grad;
+    ctx.fillRect(xLeft, yTop, span, h);
 }
 
 // ── Conversion ΔP → couleur RGB pour les particules ──────────────────
@@ -837,17 +1033,25 @@ function _drawTubeRuler(ctx) {
 
 // ── Membrane mobile ───────────────────────────────────────────────────
 
+// Déplacement de la face de la membrane, en px.
+//
+//  RIGOUREUSEMENT le même que celui des particules : c'est la particule en
+//  x0 = 0, ni plus ni moins. La membrane et le fluide qu'elle pousse restent
+//  ainsi solidaires par construction.
+//
+//  L'ancien code prenait min(|uDisp|, |uPhys|) pour éviter que la membrane
+//  soit « boostée » aux basses fréquences. Mais les particules, elles,
+//  suivaient uDisp : quand le gain amplifiait, elles partaient à droite plus
+//  loin que la membrane, ouvrant devant sa face un vide que rien ne peignait.
+//  L'amplitude excessive qui motivait ce bridage est désormais traitée à sa
+//  source, par le plafond de sonMaxDisplayPx() — qui s'applique au gain
+//  d'affichage lui-même, donc au fluide ET à la membrane ensemble.
+function _sonMembraneDisp() {
+    return waveDisplacementDisplay(0, sim.simTime);
+}
+
 function _drawMembrane(ctx) {
-    // Déplacement visuel de la membrane : même gain de lisibilité que les
-    // colonnes, mais jamais amplifié au-delà de l'amplitude physique réelle.
-    // → La membrane bénéficie de la réduction à haute fréquence (qui évite le
-    //   chevauchement) sans être « boostée » à basse fréquence.
-    //   Aucun trou ne résulte de ce plafonnement : la zone virtuelle gauche
-    //   (extraLeft, cf. initCols) couvre largement la marge nécessaire grâce au
-    //   réservoir de particules à x0 < 0 qui glissent vers la zone visible.
-    var uPhys = waveDisplacement(0, sim.simTime);
-    var uDisp = waveDisplacementDisplay(0, sim.simTime);
-    var disp  = (Math.abs(uDisp) < Math.abs(uPhys)) ? uDisp : uPhys;
+    var disp = _sonMembraneDisp();
 
     // Corps de la membrane
     var mx    = sim.tubeLeft - MEM_THICKNESS + disp;
@@ -917,12 +1121,105 @@ function _drawMembrane(ctx) {
 //  Deux passes (non-sélectionnées puis sélectionnées) pour minimiser
 //  les changements de fillStyle.
 
+// ── Agitation thermique ───────────────────────────────────────────────
+//  Chaque particule garde SA hauteur, tirée une fois pour toutes à la
+//  création (cols[i].ry) ; l'agitation n'est qu'une petite errance autour
+//  d'elle (cols[i].wy, en px).
+//
+//  L'ancien code réaffectait ry = Math.random() à chaque frame. Ce n'était
+//  pas une agitation thermique mais un ré-échantillonnage complet du nuage :
+//  un scintillement à 60 Hz qui brouillait la lecture des zones de
+//  compression et rendait impossible le suivi d'une particule — donc
+//  l'essentiel de l'intérêt du bouton « Sélectionner des particules ».
+//
+//  Le terme de rappel (−w × WANDER_PULL) évite que la marche aléatoire
+//  finisse par plaquer toutes les particules contre leurs bornes.
+//
+//  ── Calibration ──────────────────────────────────────────────────────
+//  Une marche aléatoire de pas σ parcourt σ√n en n frames : le pas se
+//  déduit donc de l'excursion voulue et du temps qu'on veut y mettre.
+//  On vise ici l'excursion typique `wAmp` en une quinzaine de frames, soit
+//  σ ≈ 0,26 × wAmp — assez vif pour que le gaz paraisse franchement agité,
+//  mais avec des sauts de l'ordre du rayon d'une particule, donc perçus
+//  comme un mouvement continu et non comme le scintillement d'avant.
+//  L'écart-type stationnaire d'une marche rappelée vaut σ/√(2·pull), soit
+//  ici ≈ 1,3 × wAmp ; WANDER_CLAMP borne les rares excursions au-delà.
+//
+//  L'errance est à DEUX dimensions, comme une vraie agitation thermique —
+//  purement verticale, elle donnait un effet de pluie. Mais les deux axes
+//  ne jouent PAS le même rôle :
+//
+//    • en vertical, l'errance est gratuite — déplacer une particule de haut
+//      en bas ne change rien à la densité lue le long du tube ;
+//    • en horizontal, elle FLOUTE directement ce qu'on cherche à montrer.
+//      Une bande de compression mesure λ/2 ; à 5 Hz cela ne fait qu'une
+//      quarantaine de pixels, qu'une errance d'écart-type 9 px dissout.
+//      C'est ce qui rendait les fronts illisibles en haute fréquence.
+//
+//  La composante horizontale est donc bornée par la LONGUEUR D'ONDE
+//  courante (cf. _sonFeaturePx) et non par une simple fraction de wAmp :
+//  elle reste ainsi négligeable devant la structure à révéler, quels que
+//  soient les réglages. Elle n'entre pas dans la sélection, qui travaille
+//  sur x0.
+var WANDER_PULL  = 0.02;   // rappel vers la position de repos
+var WANDER_CLAMP = 2.5;    // borne dure, en multiples de wAmp
+var WANDER_X_REL = 0.5;    // part horizontale, avant bornage par λ
+var WANDER_X_LAM = 1 / 40; // ... et jamais plus de λ/40
+
+function _wanderAmp(H) {
+    return Math.max(4.5, Math.min(14, H * 0.07));   // px
+}
+
+// Taille caractéristique, en px, de ce que la source est en train d'émettre :
+// la longueur d'onde en régime continu, l'étendue spatiale de l'impulsion
+// sinon. Sert à borner tout ce qui ne doit pas brouiller la structure de
+// l'onde. Bornée à la longueur du tube, faute de quoi une très basse
+// fréquence donnerait une valeur sans rapport avec ce qui est affiché.
+function _sonFeaturePx() {
+    var lam;
+    if (sim.sourceMode === 'impulse') lam = sim.c_sim * T_IMPULSE;
+    else                              lam = (sim.freq > 0) ? sim.c_sim / sim.freq : 0;
+    if (!(lam > 0)) lam = sim.tubeLength;
+    return Math.min(lam, sim.tubeLength);
+}
+
+// stepY / stepX = largeur du tirage uniforme par frame (cf. calibration).
+function _wander(c, stepY, stepX, maxY, maxX) {
+    c.wy += (Math.random() - 0.5) * stepY - c.wy * WANDER_PULL;
+    if      (c.wy >  maxY) c.wy =  maxY;
+    else if (c.wy < -maxY) c.wy = -maxY;
+
+    c.wx += (Math.random() - 0.5) * stepX - c.wx * WANDER_PULL;
+    if      (c.wx >  maxX) c.wx =  maxX;
+    else if (c.wx < -maxX) c.wx = -maxX;
+}
+
 function _drawParticles(ctx) {
     var N = sim.cols.length;
     if (N === 0) return;
 
     var H = sim.tubeBottom - sim.tubeTop;
     var r = particleRadius();
+
+    // ── Paramètres d'errance de la frame (cf. calibration ci-dessus) ──
+    var wAmp   = _wanderAmp(H);
+    var stepY  = 0.90 * wAmp;              // → σ ≈ 0,26 × wAmp
+    var maxY   = wAmp * WANDER_CLAMP;
+    // Horizontal : la plus contraignante des deux bornes (cf. plus haut).
+    var wAmpX  = Math.min(wAmp * WANDER_X_REL, _sonFeaturePx() * WANDER_X_LAM);
+    var stepX  = 0.90 * wAmpX;
+    var maxX   = wAmpX * WANDER_CLAMP;
+    var moving = !sim.paused;
+
+    // Bande utile : ry ∈ [0,1] est réparti entre les deux parois, en gardant
+    // le rayon du point de chaque côté. L'errance est bornée À L'AFFICHAGE
+    // (yMin/yMax) plutôt qu'en lui réservant sa place dans la bande : lui
+    // réserver l'excursion maximale aurait laissé le gaz flotter entre deux
+    // marges vides, alors qu'une particule a le droit d'aller toucher la paroi.
+    var yPad  = r;
+    var yBand = Math.max(0, H - 2 * yPad);
+    var yMin  = sim.tubeTop + r;
+    var yMax  = sim.tubeBottom - r;
 
     // Clipping : on laisse les particules déborder légèrement à gauche de tubeLeft
     // (zone virtuelle gauche). La membrane, dessinée par-dessus, masque proprement
@@ -939,12 +1236,15 @@ function _drawParticles(ctx) {
         // Une seule passe : affichage couleur ΔP uniquement,
         // pas de contour blanc pour les sélectionnées (trop visuellement chargé).
         for (var i = 0; i < N; i++) {
-            var x0 = sim.cols[i].x0;
+            var c  = sim.cols[i];
+            var x0 = c.x0;
             var u  = waveDisplacementDisplay(x0, sim.simTime);
-            var px = sim.tubeLeft + x0 + u;
 
-            if (!sim.paused) sim.cols[i].ry = Math.random();
-            var py = sim.tubeTop + sim.cols[i].ry * H;
+            if (moving) _wander(c, stepY, stepX, maxY, maxX);
+            var px = sim.tubeLeft + x0 + u + c.wx;
+            var py = sim.tubeTop + yPad + c.ry * yBand + c.wy;
+            if      (py < yMin) py = yMin;
+            else if (py > yMax) py = yMax;
 
             // Remplissage couleur ΔP
             var dp = waveDeltaP(x0, sim.simTime);
@@ -963,15 +1263,19 @@ function _drawParticles(ctx) {
             ctx.beginPath();
 
             for (var i = 0; i < N; i++) {
-                if (sim.cols[i].selected !== wantSelected) continue;
+                var c = sim.cols[i];
+                if (c.selected !== wantSelected) continue;
 
-                var x0 = sim.cols[i].x0;
+                var x0 = c.x0;
                 var u  = waveDisplacementDisplay(x0, sim.simTime);
-                var px = sim.tubeLeft + x0 + u;
 
-                // Agitation thermique : nouvelle position y hors pause, figée en pause
-                if (!sim.paused) sim.cols[i].ry = Math.random();
-                var py = sim.tubeTop + sim.cols[i].ry * H;
+                // Agitation thermique : errance 2D autour de la position de
+                // repos, figée en pause (cf. _wander).
+                if (moving) _wander(c, stepY, stepX, maxY, maxX);
+                var px = sim.tubeLeft + x0 + u + c.wx;
+                var py = sim.tubeTop + yPad + c.ry * yBand + c.wy;
+                if      (py < yMin) py = yMin;
+                else if (py > yMax) py = yMax;
 
                 ctx.moveTo(px + r, py);     // moveTo évite les lignes parasites entre arcs
                 ctx.arc(px, py, r, 0, Math.PI * 2);
@@ -1289,8 +1593,10 @@ function _drawSonLambdaArrow(ctx) {
 
         // Sélection par proximité (si mode actif — Son uniquement)
         if (sim.selectionMode && !(typeof activeTab !== 'undefined' && activeTab === 'corde')) {
-            var x0_click = mx - sim.tubeLeft;
-            selectNearbyParticles(x0_click, {
+            // On passe l'abscisse ÉCRAN : c'est selectNearbyParticles qui
+            // remonte à la position de repos, l'onde ayant déplacé les
+            // particules par rapport à leur x0.
+            selectNearbyParticles(mx, {
                 ctrl  : e.ctrlKey,
                 shift : e.shiftKey
             });

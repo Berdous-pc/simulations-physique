@@ -188,12 +188,30 @@ redimensionnements), relu ensuite avec le déplacement.
 
 Deux consommateurs :
 
-- **`_sonDisplayGain(k)`** — gain de lisibilité des colonnes. La modulation de
+- **`_sonDisplayGain(k, q)`** — gain de lisibilité des colonnes. La modulation de
   densité `A·k` couvre trois décades sur les plages de curseurs : en dessous de
-  `AK_MIN` (0,55) la compression serait invisible, au-dessus de `AK_CAP` (0,90)
+  `AK_MIN` (0,45) la compression serait invisible, au-dessus de `AK_CAP` (0,75)
   les colonnes se chevaucheraient. Le gain est appliqué par
   `waveDisplacementDisplay()`, réservée au rendu ; `waveDisplacement()` reste la
   grandeur physique, non pondérée.
+
+  Ces bornes restent en retrait des valeurs d'origine (0,55 / 0,90) : le cas
+  qui les rendait disgracieuses — les grandes longueurs d'onde — est pris en
+  charge par le plafond absolu ci-dessous, et non plus par un serrage de la
+  bande.
+
+  **Plafond absolu.** Maintenir `A·k` dans une bande impose que l'amplitude
+  affichée soit *proportionnelle à λ* : à `f = 0,5 Hz` (λ = tube entier) elle
+  atteignait le tiers de la hauteur du tube et la membrane pompait de façon
+  disgracieuse. `_sonDisplayGain` la borne donc en dur à `sonMaxDisplayPx()`
+  = `SON_A_MAX_FRAC` (0,13) × hauteur du tube. Le contraste de densité passe
+  alors sous `AK_MIN` : c'est le prix à payer, mais il ne se paie qu'aux très
+  basses fréquences, où la compression s'étale sur tout le tube et reste
+  lisible malgré un contraste plus doux.
+
+  Le plafond ne dépendant **que de la géométrie du tube**, il est aussi ce qui
+  dimensionne les zones virtuelles de `initCols` : le domaine des particules
+  est devenu insensible à f, K et ρ.
 - **`waveDeltaP`** — la normalisation `K·aEff·kEff` et le pas `h` de la
   différence finie utilisent eux aussi le k local.
 
@@ -201,9 +219,76 @@ Chaque portion de l'onde conserve donc son propre gain : après un changement de
 f, les deux longueurs d'onde qui cohabitent s'affichent chacune avec un contraste
 lisible, au lieu que l'ensemble du tube se dilate ou se contracte.
 
-`sim.srcKMin` mémorise le plus petit k émis ; `sonMaxDisplayGain()` s'en sert
-pour dimensionner les zones virtuelles de particules dans `initCols`, une
-portion ancienne pouvant réclamer plus de marge que les réglages courants.
+#### Le facteur de forme doit entrer dans le budget d'amplitude
+
+Le Son n'affiche pas le déplacement mais sa **dérivée** : la densité des
+particules comme le graphe ΔP valent tous deux `∂u/∂x`. Or dériver multiplie
+chaque harmonique par son rang, et le motif Périodique a de ce fait une pente
+maximale **2,32 fois** celle d'une sinusoïde de même amplitude
+(`PERIODIC_DP_FACTOR`).
+
+`_sonDisplayGain` calibrait l'amplitude sur `A·k` du seul fondamental. En
+Périodique la pente réelle valait donc `A·k × 2,32`, soit jusqu'à 1,74 — or
+**`|∂u/∂x| > 1` signifie que `x₀ ↦ x₀ + u` n'est plus monotone** : les
+particules se replient les unes sur les autres. Les trois lobes du motif
+(3,5 / 0,95 / 0,95) saturaient alors en trois bandes d'aspect identique, et la
+période apparente devenait λ/3 — alors que la vraie période est bien λ = c/f.
+
+C'était donc un artefact de rendu, et non une erreur sur λ : il n'y avait rien
+à corriger côté longueur d'onde. Le facteur de forme est simplement entré dans
+le budget de `_sonDisplayGain`, via le `q` déjà rangé par échantillon (`srcQ`,
+même mécanique que `k`). La pente reste bornée par `AK_CAP`, les trois lobes
+retrouvent leurs amplitudes relatives réelles, et la période lue à l'écran
+redevient λ.
+
+> Une autre piste avait été suivie d'abord : faire émettre au Son la
+> *primitive* du motif de la Corde, pour que ΔP en porte exactement le profil.
+> Mathématiquement élégant — `max|u′|` retombait pile sur la constante 1,507097
+> de la Corde — mais le motif devenait trop proche d'une sinusoïde à l'écran.
+> Écarté : le défaut n'était pas dans le choix du signal.
+
+#### Harmoniques renforcées côté Son
+
+Le repliement corrigé, les lobes secondaires apparaissaient à 27 % du lobe
+principal — trop discrets pour qu'on lise la structure du motif. Les
+harmoniques sont donc renforcées **pour le Son uniquement** (la Corde garde
+`PERIODIC_NORM` et ses poids) :
+
+```
+u(p)  = sin p + 1,000·sin 3p + 0,500·sin 2p     (max|u| = 2,016026)
+ΔP ∝   cos p + 3,000·cos 3p + 1,000·cos 2p     (max = 5,000000)
+```
+
+Le lobe secondaire passe à 40 % du principal, soit un contraste de densité de
+×1,43 contre ×1,26. C'est un **compromis assumé** : plus `PERIODIC_B3_SON`
+monte, plus les lobes s'égalisent — et plus le motif finit par se lire comme
+une onde de longueur d'onde λ/3, ce qui est précisément le défaut qu'on
+cherche à éviter. Le principal doit rester dominant pour que la période lue
+soit λ.
+
+#### L'enveloppe de démarrage et d'arrêt
+
+Une sinusoïde démarrée brutalement est continue en `u`, mais **pas en
+`∂u/∂x`** — or c'est `∂u/∂x` que l'élève voit (densité des particules) et que
+trace le graphe ΔP. Le tout premier lobe de compression arrivait donc avec un
+bord franc et ne mesurait qu'un **quart** de longueur d'onde au lieu d'une
+demie ; l'arrêt produisait la même coupure nette à l'arrière du train.
+
+`stepSourceSon` module donc l'amplitude par une enveloppe demi-cosinus étalée
+sur **exactement une période** : la source démarre et s'arrête comme un vrai
+haut-parleur, dont la membrane ne peut pas accélérer instantanément. Passé
+cette période, le signal est une sinusoïde pure — λ reste mesurable partout
+ailleurs.
+
+L'arrêt étant progressif, l'émission survit à `sinusoidalActive` /
+`periodicActive` : c'est **`sonEmitMode`** (avec `sonEnv`, la progression de
+l'enveloppe) qui dit ce qui sort réellement de la membrane, et c'est lui que
+consultent la génération du signal et le facteur `dpFactor`. Rallumer pendant
+l'extinction ne remet pas la phase à zéro (cf. `toggleSinusoidalSon`), sans
+quoi on recréerait le saut que l'enveloppe est censée supprimer.
+
+> Le défaut n'existait pas sur Corde — qui affiche `y`, pas sa dérivée — ni en
+> mode Impulsion, dont l'enveloppe `(1 − cos)/2` démarre déjà à dérivée nulle.
 
 | Propriété | Rôle |
 |---|---|
@@ -223,8 +308,39 @@ portion ancienne pouvant réclamer plus de marge que les réglages courants.
 
 Fonctions : `updateCelerite`, `stepSourceSon`, `waveDisplacement`,
 `waveDisplacementDisplay`, `waveDeltaP`, `sonIsQuiet`, `_sonDisplayGain`,
-`sonMaxDisplayGain`, `particleRadius`, `initCols`, `updateDpxData`,
+`sonMaxDisplayPx`, `particleRadius`, `initCols`, `updateDpxData`,
+
+**`particleRadius` compense partiellement ρ.** Le rayon était volontairement
+indépendant de ρ, la densité visuelle étant censée être portée par `N ∝ ρ`.
+Mais l'aire occupée vaut `N·πr²`, elle aussi `∝ ρ` : le taux de remplissage
+passait de ~25 % à ρ = 1 à **100 % à ρ = 4**. Le tube devenait un aplat, et
+une compression n'est plus lisible dans ce qui est déjà plein — c'est ce qui
+faisait disparaître les fronts d'onde aux fortes masses volumiques.
+
+Le rayon ne dépend **que de la hauteur du tube, jamais de ρ**. Deux tentatives
+ont échoué avant d'en arriver là, pour la même raison : une loi en `ρ^(−1/4)`,
+puis un plafond `πr² ≤ PARTICLE_FILL_MAX × COL_SLOT_PX2/ρ`. Toute dépendance
+en ρ, même à sens unique, est le même défaut vu à l'envers — un rayon qui
+rétrécit quand ρ monte est un rayon qui *grossit* quand ρ descend, et voir une
+parcelle de fluide enfler parce que le milieu se raréfie n'a aucun sens.
+
+Le rayon est donc dimensionné une fois pour toutes sur le cas le plus
+défavorable, `ρ = RHO_MAX_UI` (à tenir synchronisé avec le max du curseur dans
+`index.html`), de sorte que le nuage ne sature nulle part sur la plage. Le taux
+de remplissage couvre alors ~6 % (ρ = 0,5) à 50 % (ρ = 4) : c'est la traduction
+fidèle des huit fois d'écart entre les extrêmes du curseur, et c'est bien son
+rôle.
+
 `updateDptData`, `pruneImpulses`, `resetAnim`, `selectNearbyParticles`.
+
+**`initCols` ne reconstruit qu'en cas de nécessité.** Reconstruire, c'est
+retirer aux particules leur position de repos, donc effacer la sélection de
+l'élève — ce qui arrivait à chaque `input` des curseurs f, ρ et K, et à chaque
+resize. Une signature `L|H|N` court-circuite désormais l'appel quand rien de
+géométrique n'a bougé (cas de f et K, le domaine ne dépendant plus d'eux) ; et
+quand la reconstruction est inévitable (ρ, resize), la sélection est relevée
+sous forme d'intervalles de `x0` **en fraction de `colsL`** puis réappliquée,
+si bien qu'elle se transpose à la nouvelle largeur.
 
 > `stepParticles` et `rescaleThermalVelocities` sont des **no-op** conservés
 > pour compatibilité : le modèle en colonnes n'intègre pas de vitesses.
@@ -287,14 +403,167 @@ Autres fonctions : `updateCeleriteCorde` (`c = √(T/μ)`), `updateYxData`
 
 ### Son
 
-`resizeTube()` recalibre `C_BASE = tubeLength / (2·c_norm_défaut)` — l'onde
-traverse alors le tube en ~2 s aux réglages par défaut — puis réinitialise les
-colonnes. `drawTube()` dessine fond, membrane, colonnes, balises, règle graduée.
+`resizeTube()` recalibre `C_BASE` puis réinitialise les colonnes. `drawTube()`
+dessine fond, membrane, colonnes, balises, règle graduée.
+
+**`C_BASE` ne doit dépendre d'aucune valeur par défaut.** `c_sim` (px/s) est
+tenu d'être *exactement* la conversion en pixels de `c_cms`, sans quoi tout ce
+qui exprime une longueur d'onde en pixels — au premier rang la flèche λ — est
+faux d'un facteur constant :
+
+```
+c_sim = c_cms × (L_px / L_cm) = c_norm × C_DISPLAY_FACTOR × L_px / TUBE_LENGTH_CM
+⟹ C_BASE = C_DISPLAY_FACTOR × L_px / TUBE_LENGTH_CM = L_px / 4
+```
+
+La formule employée auparavant, `L_px / (2 × √(K_DEFAULT/RHO_DEFAULT))`, ne
+donnait cette valeur **que par coïncidence** : elle suppose
+`√(K_DEFAULT/RHO_DEFAULT) = 2`, vrai avec `K_DEFAULT = 4` seulement. Relever
+`K_DEFAULT` à 6 a donc raccourci la flèche λ d'un facteur `√6/2 ≈ 1,22`, dans
+tous les modes de source. La propagation, elle, n'était pas touchée : elle se
+calcule en centimètres, via `c_cms` — d'où un défaut purement d'affichage, et
+d'autant plus déroutant.
+
+> Piège à retenir : une constante calibrée sur une valeur par défaut est une
+> bombe à retardement dès que cette valeur bouge. Le temps de traversée du
+> tube est maintenant une *conséquence* (4/c_norm, ~1,6 s par défaut) et non
+> une contrainte imposée.
+
+**Deux fonds intérieurs, jamais superposés.** Le bouton « Colorier selon la
+pression » donne la palette pastel signée de `_drawTubePressureBg`, qui code
+ΔP dans les deux sens. Sinon, `_drawTubeDensityBg` pose un **voile bleu de
+densité**, dans la couleur même des particules (`#2a6aaa`), sous les seules
+zones de forte compression.
+
+Ce voile ne code pas une grandeur de plus : il redit ce que les particules
+disent déjà — « il y a du monde ici » — mais en aplat, donc lisible d'un coup
+d'œil et sans légende. D'où son caractère **unilatéral** : ne teinter que les
+compressions laisse les détentes se lire d'elles-mêmes comme les zones restées
+claires, au lieu d'introduire un second code couleur concurrent.
+
+**Le dosage suit la longueur d'onde** (`_densTightness`). « Discret » ne vaut
+que tant que les particules font le travail. Aux petites λ elles ne le peuvent
+plus : à λ = 45 px une bande de compression fait 22 px pour un déplacement
+affiché de ~5 px, soit l'ordre de grandeur du grain du nuage — aucun réglage
+d'amplitude n'y changera rien. Le voile, lui, est un champ **continu** : il
+résout parfaitement ces échelles. Il s'appuie donc à mesure que λ rétrécit
+(teinte 0,14 → 0,22), et retrouve son dosage discret aux grandes λ. La
+transition est lissée, sans quoi le fond changerait visiblement d'aspect au
+franchissement d'un seuil du curseur f.
+
+**Le renfort reste volontairement modeste.** Un réglage plus appuyé a été
+essayé (teinte 0,42, genou abaissé à 0,22 pour élargir les bandes) : il se
+dénonçait immédiatement comme un **artefact**. Un aplat de couleur uniforme ne
+ressemble pas à « beaucoup de particules au même endroit », il ressemble à un
+rectangle peint — d'autant plus qu'on l'appuie. La limite est structurelle et
+non affaire de dosage : c'est pourquoi le genou reste **haut** même en régime
+serré (0,55 → 0,45 seulement). Ne marquer que les cœurs de compression donne
+des taches douces et isolées, un halo qui se lit comme un effet du milieu ;
+un genou bas donnait des bandes régulières, qui se lisent comme un décor.
+
+> Aller plus loin sur les très petites λ demanderait de faire porter
+> l'information par **les particules elles-mêmes** plutôt que par le fond —
+> par exemple en les dessinant semi-transparentes, l'accumulation dans les
+> zones comprimées devenant alors émergente au lieu d'être codée. Cela
+> impose un `fill()` par particule au lieu des deux passes groupées
+> actuelles, d'où un coût sensiblement plus élevé aux fortes densités.
+
+Le **nombre de color-stops suit λ** lui aussi (~14 par λ, borné à
+[`N_PRESSURE_BANDS`, 1400]) : à 300 stops sur 900 px, une λ de 55 px n'en
+recevrait que 3 par alternance et le dégradé rendrait un moiré au lieu des
+bandes.
+
+> C'est aussi pourquoi le curseur **K démarre à 2,0 et non 0,5** : en dessous,
+> combiné à ρ maximal et f maximale, λ tombait sous le centimètre sur un tube
+> de 40 cm — 56 longueurs d'onde à l'écran, sous la résolution du nuage comme
+> du voile.
+
+Deux détails qui comptent :
+
+- le genou est **adouci par un smoothstep** et non appliqué
+  comme un seuil franc — un seuil net sur un champ continu crée des bords qui
+  glissent le long du tube au passage de l'onde, et cela se voit comme un
+  artefact ;
+- `waveDeltaP` étant normalisée sur l'amplitude **physique** et non sur le
+  gain d'affichage, le voile se déclenche à pleine force même aux basses
+  fréquences — là où le plafond de `sonMaxDisplayPx()` bride le mouvement
+  visible et où le regroupement des particules est le moins net. Le renfort
+  arrive donc exactement là où il manque.
+
+**Le fond part de la face réelle de la membrane** (`_sonTubeFillLeft` =
+`tubeLeft + min(0, disp)`) et non de `tubeLeft`, dans les deux fonds comme
+dans le remplissage à plat. Quand la membrane recule, elle découvre entre sa face et
+`tubeLeft` une bande qui appartient bel et bien à l'intérieur du tube :
+peindre à partir de `tubeLeft` y laissait apparaître le fond général du canvas
+— c'était la bande blanche visible en mode pression (invisible en mode normal,
+les deux crèmes étant presque identiques).
+
+Dans cette bande, `x_px` devient négatif, et **`waveDeltaP` ne peut pas y être
+appelée telle quelle** : c'est une différence finie, et pour un `x` négatif ses
+deux points de calcul `u(x−h)` et `u(x+h)` tombent tous deux au-delà du dernier
+échantillon émis. `_srcSampleAtS` les écrête à la *même* valeur, dont la
+différence vaut exactement zéro. Ce zéro produisait une bande neutre large de
+`|disp| − h` (près de 20 px) plaquée contre la membrane, d'autant plus visible
+que l'excursion était grande — donc précisément aux très grandes longueurs
+d'onde. `_sonBgDeltaP` écrête donc `x` à 0, ce qui y met la pression de la face
+de la membrane : c'est aussi la valeur juste, ce fluide étant celui que la
+membrane vient d'emmener avec elle, dans son état de compression.
+
+**La membrane suit exactement les particules** : `_sonMembraneDisp()` renvoie
+`waveDisplacementDisplay(0, t)`, ni plus ni moins — c'est la particule en
+`x0 = 0`. L'ancien `min(|uDisp|, |uPhys|)` la bridait pour éviter le « boost »
+basse fréquence, mais les particules, elles, suivaient `uDisp` : quand le gain
+amplifiait, elles partaient à droite plus loin que la membrane et ouvraient
+devant sa face un vide que rien ne peignait. L'amplitude excessive qui motivait
+ce bridage est traitée à sa source, par le plafond de `sonMaxDisplayPx()` —
+lequel s'applique au gain d'affichage, donc au fluide **et** à la membrane
+ensemble.
+
+**Agitation thermique** : chaque particule garde SA hauteur, tirée une fois
+pour toutes à la création (`ry`) ; l'agitation est une errance **2D** autour
+d'elle (`wx`, `wy` — marche aléatoire bornée avec rappel, cf. `_wander`).
+L'ancien code réaffectait `ry = Math.random()` à chaque frame : ce n'était pas
+une agitation thermique mais un ré-échantillonnage complet du nuage, un
+scintillement à 60 Hz qui brouillait la lecture des compressions et rendait
+impossible le suivi d'une particule — donc l'essentiel de l'intérêt de la
+sélection.
+
+La calibration est le point délicat : une marche de pas σ parcourt σ√n en n
+frames, on déduit donc le pas de l'excursion voulue (`_wanderAmp`, ~4,5 % de
+la hauteur du tube) et du temps qu'on veut y mettre (~25 frames). Le premier
+réglage essayé, dix fois plus discret, donnait un gaz visuellement figé. À
+l'inverse, le pas doit rester inférieur au rayon d'une particule, faute de
+quoi on retombe sur du scintillement.
+
+**Les deux axes ne jouent pas le même rôle.** En vertical l'errance est
+gratuite : déplacer une particule de haut en bas ne change rien à la densité
+lue le long du tube. En horizontal elle **floute directement** ce qu'on
+cherche à montrer — une bande de compression mesure λ/2, soit une quarantaine
+de pixels à 5 Hz, qu'une errance d'écart-type 9 px dissout. C'est ce qui
+rendait les fronts illisibles en haute fréquence. La composante horizontale
+est donc bornée par la **longueur d'onde courante** (`_sonFeaturePx`, λ/40) et
+non par une simple fraction de l'excursion verticale ; elle n'entre pas dans
+la sélection, qui travaille sur `x0`.
+
+L'errance est bornée **à l'affichage** et non en lui réservant sa place dans
+la bande utile : lui réserver l'excursion maximale laissait le gaz flotter
+entre deux marges vides, alors qu'une particule a le droit d'aller toucher la
+paroi.
 
 **Sélection de particules par proximité** : clic simple = remplace la sélection,
 Ctrl+clic = ajoute, Maj+clic = retire, dans un rayon `selectionRadius`
 proportionnel à la densité des colonnes (recalculé dans `initCols`). Le mode est
 exclusif du coloriage par pression : activer l'un désactive et grise l'autre.
+
+Le clic désigne une particule **telle qu'elle est affichée** :
+`selectNearbyParticles` reçoit l'abscisse écran, balaie les colonnes pour
+trouver l'affichée la plus proche (O(N), une fois par clic), et sélectionne
+ensuite le paquet autour de **son `x0`**. Comparer directement le clic à `x0`,
+comme on le faisait, revenait à ignorer le déplacement de l'onde : on cliquait
+sur un paquet et on en sélectionnait un autre, décalé de `u(x0)` — précisément
+quand l'onde est la plus ample. Le paquet reste défini sur `x0` et non sur la
+position affichée, pour que ses membres restent solidaires quand l'onde les
+déplace.
 
 ### Corde
 
