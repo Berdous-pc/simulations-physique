@@ -359,9 +359,7 @@ function setSysteme(idx) {
   document.getElementById('ck-geo-3').checked = false;
   _updatePlayBtn(3, true);
 
-  for (var i = 0; i < SYSTEMES.length; i++) {
-    document.getElementById('sys-btn-' + i).classList.toggle('active', i === idx);
-  }
+  document.getElementById('sys-select').value = idx;
   _syncSpeedUI3();
   _syncZoomVisibilite3();
   _syncGeoLigneVisibilite3();

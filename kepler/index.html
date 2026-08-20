@@ -321,12 +321,12 @@
 
         <div class="panel-section">
           <div class="section-title">Système étudié</div>
-          <div class="sys-toggle">
-            <button class="sys-btn active" id="sys-btn-0" onclick="setSysteme(0)">Système Solaire</button>
-            <button class="sys-btn" id="sys-btn-1" onclick="setSysteme(1)">Satellites terrestres</button>
-            <button class="sys-btn" id="sys-btn-2" onclick="setSysteme(2)">Lunes de Jupiter</button>
-            <button class="sys-btn" id="sys-btn-3" onclick="setSysteme(3)">Lunes de Saturne</button>
-          </div>
+          <select class="sys-select" id="sys-select" onchange="setSysteme(parseInt(this.value, 10))">
+            <option value="0">Système Solaire</option>
+            <option value="1">Satellites terrestres</option>
+            <option value="2">Lunes de Jupiter</option>
+            <option value="3">Lunes de Saturne</option>
+          </select>
         </div>
 
         <div class="sep"></div>

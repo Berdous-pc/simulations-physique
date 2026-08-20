@@ -520,6 +520,19 @@ main {
 }
 
 /* ── Sélecteur de système (3ᵉ loi) ───────────────── */
+.sys-select {
+  width: 100%;
+  padding: 8px 6px;
+  font-size: clamp(12px, 1.15vw, 15px);
+  font-weight: 700;
+  font-family: inherit;
+  border: 1px solid #c8c0b4;
+  border-radius: 6px;
+  background: #ece8e0;
+  color: #5a6a78;
+  cursor: pointer;
+}
+
 .sys-toggle {
   display: flex;
   flex-direction: column;
