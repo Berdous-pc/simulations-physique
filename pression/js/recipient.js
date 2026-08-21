@@ -237,6 +237,29 @@ function _drawPiston(x1, x2, pistonY, boxTop) {
   ctx.strokeRect(px, py, pw, ph);
 }
 
+// ── Test de survol du piston ───────────────────────────────────────────
+// Défini ici, à côté de _drawPiston(), pour que la zone saisissable reste
+// exactement celle qui est dessinée. (x, y) sont en px CSS, repère canvas.
+// La tolérance rattrape l'imprécision du pointeur, à la souris comme au doigt.
+var PISTON_GRAB_TOL = 7;  // px
+
+function isOnPiston(x, y) {
+  var py = sim.pistonY;
+
+  // Corps du piston : toute la largeur intérieure du récipient
+  if (x >= sim.boxLeft  - PISTON_GRAB_TOL &&
+      x <= sim.boxRight + PISTON_GRAB_TOL &&
+      y >= py - PISTON_BODY_H - PISTON_GRAB_TOL &&
+      y <= py + PISTON_GRAB_TOL) {
+    return true;
+  }
+
+  // Tige, du haut du canvas jusqu'au corps
+  var cx = (sim.boxLeft + sim.boxRight) / 2;
+  return y >= 0 && y <= py - PISTON_BODY_H &&
+         Math.abs(x - cx) <= PISTON_ROD_W / 2 + PISTON_GRAB_TOL;
+}
+
 // ── Dessin des molécules ───────────────────────────────────────────────
 // Les molécules sont toutes identiques : on les dessine une seule fois dans
 // un canvas hors écran (le « sprite »), puis on se contente de le recopier.

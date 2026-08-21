@@ -77,6 +77,8 @@ Tout le CSS de la page. Suit la charte graphique du projet.
 | `pistonTargetY` | px | Position cible (lissage) |
 | `molecules[]` | `{x,y,vx,vy}[]` | État de chaque molécule |
 | `paused` | bool | Simulation suspendue |
+| `speedFactor` | 0,10 → 1,00 | Facteur appliqué au pas de temps de la physique (ralenti), comme dans `ondes/` |
+| `gravityFactor` | 0 → 3 | Multiplicateur de pesanteur (0 = désactivée) |
 | `wallHits` | `{top,bottom,left,right}` | Horodatages des chocs (ms simulé) |
 | `wallRate` | `{top,bottom,left,right}` | Chocs/s mis à jour à 10 Hz |
 | `P_Pa` | Pa | Pression calculée par PV=nRT |
@@ -112,6 +114,7 @@ Tout le CSS de la page. Suit la charte graphique du projet.
 - `canvas` / `ctx` — références au canvas et à son contexte 2D
 - `resize()` — redimensionne le canvas et recalcule la géométrie (avec anti-rebond RAF)
 - `drawScene()` — redessine l'intégralité d'une frame (fond opaque, pas de `clearRect`)
+- `isOnPiston(x, y)` — test de saisie du piston, en px CSS ; défini à côté de `_drawPiston()` pour que la zone saisissable reste celle qui est dessinée
 
 #### Rendu dans l'ordre
 
@@ -144,6 +147,9 @@ Tout le CSS de la page. Suit la charte graphique du projet.
 | `onSliderT(val)` | Slider T | Appelle `setTemperature()`, met à jour le label |
 | `onSliderN(val)` | Slider n | Appelle `setMoleculeCount()`, met à jour les labels |
 | `onSliderV(val)` | Slider V | Appelle `setVolume()`, met à jour le label |
+| `onSliderGravity(val)` | Curseur pesanteur | Fixe `sim.gravityFactor` |
+| `onSliderSpeed(val)` | Curseur vitesse | Fixe `sim.speedFactor` (×0,10 / ×0,25 / ×0,50 / ×1,00) |
+| Glisser-déposer du piston | `pointerdown/move/up` sur le canvas | `_setPistonFromY()` : hauteur → volume calé sur 0,5 L, puis synchronisation du curseur V, des étiquettes et des molécules |
 | `resetSim()` | Bouton Réinitialiser | Délègue à `sim.js/resetSim()`, puis `syncUIToSim()` |
 | `syncUIToSim()` | Init + reset | Synchronise les valeurs des sliders/labels avec l'état `sim` |
 | `updateReadouts()` | 10 Hz | Rafraîchit N, P, chocs/s dans le panneau |
@@ -153,7 +159,7 @@ Tout le CSS de la page. Suit la charte graphique du projet.
 Appelée par RAF à ~60 fps :
 
 1. `dtReal = min(ts - lastTs, 50 ms)` — protection contre les grandes pauses
-2. `dt = paused ? 0 : dtReal`
+2. `dt = paused ? 0 : dtReal × sim.speedFactor` — le facteur de vitesse ne touche que le temps SIMULÉ
 3. `stepPhysics(dt)` si dt > 0
 4. Lissage piston : `pistonY += (target - pistonY) × (1 - exp(-dtReal / PISTON_TAU))`
 5. `pushMoleculesDownFromPiston()` si le piston a bougé
@@ -190,12 +196,12 @@ index.html
   │                                             updateWallRates, resetSim
   │
   └── <script src="js/recipient.js">   dépend de : sim, MOL_RADIUS, V0_PX, MOL_RADIUS_FRAC
-  │                                    expose : canvas, ctx, resize, drawScene
+  │                                    expose : canvas, ctx, resize, drawScene, isOnPiston
   │
   └── <script src="js/ui.js">          dépend de : tous les fichiers précédents
                                        expose : togglePause, onSliderT, onSliderN,
-                                                onSliderV, syncUIToSim,
-                                                updateReadouts
+                                                onSliderV, onSliderGravity, onSliderSpeed,
+                                                syncUIToSim, updateReadouts
                                        démarre : init() → requestAnimationFrame(loop)
 ```
 
@@ -206,9 +212,10 @@ index.html
 | Grandeur | Unité affichée | Plage | Défaut | Mapping interne |
 |---|---|---|---|---|
 | Température T | K | 100 → 1000 K | 300 K | Vitesse : `v = v0 × √(T/T_REF)` |
-| Quantité de matière n | mol | 0,01 → 0,30 mol | 0,10 mol | `Nmol = round(n × 1000)` |
+| Quantité de matière n | mol | 0,02 → 0,30 mol | 0,10 mol | `Nmol = round(n × 1000)` |
 | Volume V | L | 1,0 → 10,0 L | 7,0 L | Hauteur piston proportionnelle à V |
-| Pression P | Pa | calculée | ~35 600 Pa | `P = nRT/V` (SI strict) |
+| Pression P | Pa | calculée | ~35 600 Pa | `P = nRT/V` (SI strict) — calculée mais **pas encore affichée** |
+| Vitesse d'animation | × | ×0,10 → ×1,00 | ×1,00 | Facteur sur `dt` (temps simulé uniquement) |
 
 ## Points sensibles
 
@@ -219,6 +226,9 @@ index.html
 - **Lissage du piston** : constante de temps `PISTON_TAU = 110 ms` (`1 - exp(-dt/TAU)`), et non un facteur fixe par image — indispensable pour que le mouvement soit identique à 60 et à 144 Hz
 - **Démarrage** : `DOMContentLoaded` (et non `load`, qui attend le script de statistiques distant et bloquerait la page hors ligne)
 - **Raccourcis clavier** : Espace = pause, R = réinitialiser ; ignorés si le focus est sur un `INPUT`/`BUTTON`
+- **Glisser-déposer du piston** : `_setPistonFromY()` cale le volume sur le pas de 0,5 L du curseur — sans quoi le curseur et l'étiquette afficheraient une valeur arrondie différente de la position réelle du piston — puis appelle `pushMoleculesDownFromPiston()` explicitement : le déplacement ayant lieu entre deux images, la détection de mouvement de `loop()` compare deux valeurs déjà à jour et ne verrait rien
+- **Vitesse d'animation** : `sim.speedFactor` multiplie le pas de temps de la physique, pas le lissage du piston (une commande, qui doit rester réactive) ni la période de rafraîchissement de l'affichage. La fenêtre glissante des chocs étant en temps simulé, les taux affichés restent des chocs par seconde simulée, donc justes au ralenti Crans, étiquette et nom d'état repris de `ondes/`, qui porte déjà ce curseur ; ses quatre repères utilisent `.speed-ticks` (grille `repeat(3, 1fr) 0fr`) et non `.slider-ticks`, calibré pour les cinq crans de la pesanteur
+- **Typographie du panneau** : les valeurs en px fixes (`.section-title`, `.panel-hint-title`, `.panel-hint-menu-btn` à 11px ; paddings des boutons à 10/9px ; `margin-bottom` des `.param-row` à 10px) sont la convention du site — `#panel` porte déjà un `font-size: clamp(11px, 1.1vw, 14px)` dont tout le reste hérite. Les passer en `clamp()` désaligne cette page des autres : à copier telles quelles depuis `ondes/` ou `dissolution/`
 - **Calibrage `V0_PX`** : recalibré à chaque resize (`innerWidth × 0,18`), les vitesses ET les positions existantes sont rescalées dans le même rapport au resize, de sorte que la trajectoire visible est inchangée (cf. `remapMoleculesToBox()`)
 - **`container-type: size` sur `#left-col`** : impose une ligne `grid-template-rows: 1fr` sur `main`, la hauteur intrinsèque d'un conteneur de requête en `size` étant nulle
 - **Dimensionnement du bloc d'informations** : `#info-panel` porte la police et la largeur, en `em` (20em) — la largeur nécessaire étant proportionnelle au corps du texte, seule la police est calculée, à partir des DEUX axes de `#left-col` : `min(1.75cqw, 5.5cqh)`. L'écriture précédente mélangeait les axes (police en `vh`, largeur en `vw`), ce qui donnait un texte minuscule dans une boîte immense en fenêtre large et courte, et l'inverse en fenêtre étroite et haute. Les colonnes sont fixées par `<colgroup>`. Empilés, les deux tableaux partagent le même partage 38/62, sans quoi leur séparation verticale ne coïncide pas ; côte à côte, où ce sont deux cartes indépendantes, celui des chocs reprend 25/75. À 50/50, la colonne des valeurs ne logeait plus le sous-tableau des chocs dès que la moyenne passait à deux chiffres

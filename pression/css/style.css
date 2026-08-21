@@ -251,7 +251,7 @@ main {
 #panel-body {
   flex: 1;
   overflow-y: auto;
-  padding: clamp(10px, 1.2vw, 16px) clamp(10px, 1.2vw, 14px);
+  padding: clamp(8px, 1vw, 14px) clamp(8px, 1vw, 12px);
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -276,7 +276,7 @@ main {
 
 /* ── Titres de section ───────────────────────────── */
 .section-title {
-  font-size: clamp(10px, 0.85vw, 13px);
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 1px;
@@ -307,7 +307,7 @@ main {
   background: #c08020;
   color: #fff;
   font-size: clamp(14px, 1.4vw, 18px);
-  padding: clamp(7px, 0.8vw, 13px) 6px;
+  padding: 10px 6px;
 }
 .btn-pause:hover { background: #a06010; }
 
@@ -315,7 +315,7 @@ main {
   background: #2a8a50;
   color: #fff;
   font-size: clamp(14px, 1.4vw, 18px);
-  padding: clamp(7px, 0.8vw, 13px) 6px;
+  padding: 10px 6px;
 }
 .btn-play:hover { background: #1a6a38; }
 
@@ -323,20 +323,29 @@ main {
   background: #dedad2;
   color: #5a6a78;
   font-size: clamp(12px, 1.2vw, 15px);
-  padding: clamp(6px, 0.7vw, 11px) 6px;
+  padding: 9px 6px;
 }
 .btn-raz:hover { background: #ccc8c0; }
+
+/* Espacements de la section Contrôle (auparavant en style inline).
+   8px sous les boutons : même valeur que le curseur de vitesse de ondes/. */
+.btn-raz { margin-top: 6px; }
+
+.param-row-speed {
+  margin-top: 8px;
+  margin-bottom: 0;
+}
 
 /* ── Paramètres ──────────────────────────────────── */
 .param-row {
   display: flex;
   flex-direction: column;
   gap: 3px;
-  margin-bottom: clamp(7px, 0.9vw, 12px);
+  margin-bottom: 10px;
 }
 
 .param-row label {
-  font-size: clamp(12px, 1.25vw, 15px);
+  font-size: clamp(12px, 1.15vw, 15px);
   color: #2c3e50;
   display: flex;
   justify-content: space-between;
@@ -348,7 +357,7 @@ main {
   color: #2a5080;
   font-weight: 600;
   white-space: nowrap;
-  font-size: clamp(12px, 1.25vw, 15px);
+  font-size: clamp(12px, 1.15vw, 15px);
 }
 
 .param-unit {
@@ -367,7 +376,7 @@ main {
    <label>, pas un descendant. Et 14px fixes dans un panneau qui descend à
    200px faisaient tenir l'aide du curseur n sur cinq lignes. */
 .input-hint {
-  font-size: clamp(10px, 0.95vw, 13px);
+  font-size: clamp(10px, 0.9vw, 13px);
   color: #7a8a96;
   line-height: 1.4;
   font-weight: 400;
@@ -384,6 +393,27 @@ main {
   justify-content: space-between;
   margin-top: 3px;
   padding: 0 8px;
+}
+
+/* Étiquettes alignées sur les 4 crans d'un curseur pas=1 (0-3).
+   Reprise telle quelle de ondes/, qui porte le même curseur de vitesse :
+   .slider-ticks (flex, space-between) est calibré pour les 5 crans de la
+   pesanteur et décale les étiquettes intermédiaires sur un curseur à 4. */
+.speed-ticks {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr) 0fr;
+  font-size: clamp(9px, 0.85vw, 11px);
+  color: #7a8a96;
+  padding: 0 7px;   /* compense le padding interne du thumb sur les bords */
+  line-height: 1;
+  margin-top: 1px;
+}
+.speed-ticks span:not(:last-child) {
+  text-align: left;
+}
+.speed-ticks span:last-child {
+  text-align: right;
+  white-space: nowrap;
 }
 
 .slider-ticks span {
@@ -429,10 +459,11 @@ main {
   align-items: center;
   justify-content: space-between;
   padding: 6px 10px;
+  cursor: default;
 }
 
 .panel-hint-title {
-  font-size: clamp(10px, 0.85vw, 13px);
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 1px;
@@ -450,7 +481,7 @@ main {
   border: 1px solid #c8d4dc;
   border-radius: 6px;
   cursor: pointer;
-  font-size: clamp(10px, 0.85vw, 13px);
+  font-size: 11px;
   font-weight: 600;
   color: #4a5a68;
   padding: 4px 9px;
@@ -473,31 +504,11 @@ main {
 .panel-hint-toggle:hover { color: #2a6aaa; }
 
 .panel-hint-body {
-  font-size: clamp(11px, 1vw, 14px);
+  font-size: clamp(12px, 1.15vw, 15px);
   padding: 0 10px 8px;
   overflow: hidden;
   transition: max-height 0.25s ease, padding 0.25s ease;
-  max-height: 200px;
-}
-
-/* Rappel des raccourcis clavier dans le bandeau Informations */
-.panel-hint-keys {
-  margin-top: 6px;
-  padding-top: 6px;
-  border-top: 1px solid #e0dcd4;
-  font-size: 0.9em;
-  color: #7a8a96;
-}
-
-.panel-hint-keys kbd {
-  font-family: inherit;
-  font-size: 0.95em;
-  font-weight: 600;
-  color: #4a5a68;
-  background: #f0f4f7;
-  border: 1px solid #c8d4dc;
-  border-radius: 4px;
-  padding: 1px 5px;
+  max-height: 250px;
 }
 
 .panel-hint.collapsed .panel-hint-body {
@@ -505,6 +516,8 @@ main {
   padding-top: 0;
   padding-bottom: 0;
 }
+.panel-hint.collapsed .panel-hint-header { padding-bottom: 6px; }
+
 .panel-hint:not(.collapsed) .panel-hint-toggle { transform: rotate(180deg); }
 
 /* ══════════════════════════════════════════════════

@@ -45,7 +45,10 @@ function loop(ts) {
   var dtReal = Math.min(ts - _lastTs, 50);  // plafonné à 50 ms
   _lastTs = ts;
 
-  var dt = sim.paused ? 0 : dtReal;
+  // Le facteur de vitesse ne s'applique qu'au temps SIMULÉ : les compteurs
+  // de chocs restent exprimés par seconde simulée (donc physiquement justes
+  // au ralenti), et le rafraîchissement de l'affichage reste en temps réel.
+  var dt = sim.paused ? 0 : dtReal * sim.speedFactor;
 
   // ── Intégration physique ──
   if (dt > 0) {
@@ -100,8 +103,8 @@ var _el = {};
 
 var _EL_IDS = [
   'it-T', 'it-n', 'it-V', 'it-top', 'it-bot', 'it-lft', 'it-rgt', 'it-mean',
-  'sl-T', 'sl-n', 'sl-V', 'sl-gravity',
-  'lbl-T', 'lbl-n', 'lbl-V', 'lbl-gravity', 'lbl-n-molecules',
+  'sl-T', 'sl-n', 'sl-V', 'sl-gravity', 'sl-speed',
+  'lbl-T', 'lbl-n', 'lbl-V', 'lbl-gravity', 'lbl-speed', 'lbl-n-molecules',
   'btn-playpause', 'panel-hint'
 ];
 
@@ -159,6 +162,10 @@ function syncUIToSim() {
   // Slider pesanteur
   _el['sl-gravity'].value = 0;
   _el['lbl-gravity'].textContent = '0 g';
+
+  // Curseur vitesse (dernier cran = ×1)
+  _el['sl-speed'].value = SPEED_STEPS.length - 1;
+  _el['lbl-speed'].textContent = SPEED_STEPS[SPEED_STEPS.length - 1].toFixed(2).replace('.', ',');
 
   // Bouton Play/Pause
   _updatePlayPauseBtn();
@@ -241,6 +248,98 @@ function onSliderGravity(val) {
   sim.gravityFactor = GRAVITY_STEPS[idx];
   _el['lbl-gravity'].textContent = GRAVITY_LABELS[idx] + ' g';
 }
+
+// ── Vitesse d'animation ──
+// Le ralenti permet de suivre un choc individuel, impossible à l'œil nu à
+// vitesse réelle. Il n'agit que sur le pas de temps de la physique.
+// Crans, étiquette (deux décimales) et nom d'état repris de ondes/, qui
+// porte déjà ce curseur.
+var SPEED_STEPS = [0.10, 0.25, 0.50, 1.00];
+
+function onSliderSpeed(val) {
+  var idx = parseInt(val, 10);
+  sim.speedFactor = SPEED_STEPS[idx];
+  _el['lbl-speed'].textContent = sim.speedFactor.toFixed(2).replace('.', ',');
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Glisser-déposer du piston
+//  Faire varier V en tirant le piston est le geste naturel ; le curseur du
+//  panneau reste synchronisé, et réciproquement.
+// ══════════════════════════════════════════════════════════════════════
+
+var _dragging = false;
+
+// Coordonnées du pointeur dans le repère du canvas (px CSS, comme le dessin)
+function _canvasPos(e) {
+  var r = canvas.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+
+// Applique une position verticale de piston : conversion en volume, calage
+// sur le pas du curseur, puis synchronisation de tout le reste.
+function _setPistonFromY(y) {
+  var range = sim.boxTopMax - sim.boxTopMin;
+  if (range === 0) return;
+
+  var frac = (y - sim.boxTopMin) / range;
+  if (frac < 0) frac = 0; else if (frac > 1) frac = 1;
+
+  // Calage sur le pas de 0,5 L du curseur : sans lui, le curseur et
+  // l'étiquette afficheraient une valeur arrondie différente de la position
+  // réelle du piston.
+  var V_L = Math.round((1.0 + frac * 9.0) * 2) / 2;
+
+  setVolume(V_L);
+  // Suivi immédiat du pointeur : passer par le lissage donnerait un piston
+  // qui traîne derrière la souris.
+  sim.pistonY = sim.pistonTargetY;
+  // Le déplacement a lieu ENTRE deux images : la détection de mouvement de
+  // loop() compare deux valeurs déjà à jour et ne verrait rien. Sans cet
+  // appel, les molécules resteraient au-dessus du piston qui descend — de
+  // façon durable en pause, où la physique ne tourne pas pour les rattraper.
+  pushMoleculesDownFromPiston();
+  sim.needsRedraw = true;
+
+  _el['sl-V'].value = Math.round(V_L * 10);
+  _updateLabelV(Math.round(V_L * 10));
+  updateReadouts();
+}
+
+canvas.addEventListener('pointerdown', function (e) {
+  var p = _canvasPos(e);
+  if (!isOnPiston(p.x, p.y)) return;
+
+  _dragging = true;
+  canvas.setPointerCapture(e.pointerId);
+  canvas.style.cursor = 'grabbing';
+  e.preventDefault();
+  _setPistonFromY(p.y);
+});
+
+canvas.addEventListener('pointermove', function (e) {
+  var p = _canvasPos(e);
+
+  if (_dragging) {
+    _setPistonFromY(p.y);
+    return;
+  }
+  // Hors glissement : signaler que le piston est saisissable
+  canvas.style.cursor = isOnPiston(p.x, p.y) ? 'grab' : 'default';
+});
+
+function _endDrag(e) {
+  if (!_dragging) return;
+  _dragging = false;
+  if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+  canvas.style.cursor = isOnPiston(_canvasPos(e).x, _canvasPos(e).y) ? 'grab' : 'default';
+}
+
+canvas.addEventListener('pointerup', _endDrag);
+canvas.addEventListener('pointercancel', _endDrag);
+canvas.addEventListener('pointerleave', function () {
+  if (!_dragging) canvas.style.cursor = 'default';
+});
 
 // ══════════════════════════════════════════════════════════════════════
 //  Initialisation

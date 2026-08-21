@@ -108,7 +108,23 @@
       <div class="panel-section">
         <div class="section-title">Contrôle</div>
         <button id="btn-playpause" class="btn btn-pause" onclick="togglePause()">&#9646;&#9646; Pause</button>
-        <button class="btn btn-raz" onclick="resetSim()" style="margin-top:6px;">&#9632; Réinitialiser</button>
+        <button class="btn btn-raz" onclick="resetSim()">&#9632; Réinitialiser</button>
+
+        <!-- Vitesse d'animation : le ralenti permet de suivre un choc isolé.
+             Mêmes crans, mêmes étiquettes et même mise en forme que ondes/. -->
+        <div class="param-row param-row-speed">
+          <label for="sl-speed">Vitesse
+            <span class="param-value">×<span id="lbl-speed">1,00</span></span>
+          </label>
+          <input type="range" id="sl-speed" min="0" max="3" step="1" value="3"
+                 oninput="onSliderSpeed(this.value)">
+          <div class="speed-ticks">
+            <span>×0,10</span>
+            <span>×0,25</span>
+            <span>×0,50</span>
+            <span>×1,00</span>
+          </div>
+        </div>
       </div>
 
       <div class="sep"></div>
@@ -182,9 +198,8 @@
       <div class="panel-hint-body">
         Chaque choc d'une molécule sur une paroi exerce une force.
         La <strong>pression</strong> macroscopique P résulte de la somme statistique de ces chocs.
-        <div class="panel-hint-keys">
-          Raccourcis : <kbd>Espace</kbd> pause &nbsp;·&nbsp; <kbd>R</kbd> réinitialiser
-        </div>
+        Le piston se saisit directement à la souris pour faire varier V.
+        <br><strong>Raccourcis</strong> : Espace = pause, R = réinitialiser.
       </div>
     </div>
 

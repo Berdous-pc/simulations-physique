@@ -64,6 +64,12 @@ var sim = {
   // ── Contrôle de l'animation ──
   paused : false,
 
+  // ── Vitesse d'animation (facteur appliqué au pas de temps) ──
+  // Même nom et mêmes crans que dans ondes/, qui porte le même curseur.
+  // Le ralenti sert à observer un choc individuel ; il n'affecte que la
+  // physique, pas le déplacement du piston, qui reste une commande.
+  speedFactor : 1,
+
   // ── Pesanteur ──
   gravityFactor : 0,   // 0 = désactivée, 1 = 1g, 2 = 2g
 
@@ -639,6 +645,7 @@ function resetSim() {
   sim.simTime  = 0;
   sim.paused   = false;
   sim.gravityFactor = 0;
+  sim.speedFactor  = 1;
 
   // Recalcul du piston et des molécules (recipient.js doit avoir défini la géométrie)
   setVolume(sim.V_L);
