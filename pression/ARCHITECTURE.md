@@ -58,7 +58,7 @@ Tout le CSS de la page. Suit la charte graphique du projet.
 | `V0_PX` | calculé | Vitesse de base en px/s à T_REF (recalibré par recipient.js) |
 | `MOL_RADIUS` | calculé | Rayon des molécules en px (recalibré par recipient.js) |
 | `MOL_RADIUS_FRAC` | 0,006 | Fraction de la largeur intérieure du récipient |
-| `SUBSTEPS` | 4 | Sous-pas par frame (anti-tunneling) |
+| `SUBSTEPS_MIN` / `SUBSTEPS_MAX` | 2 / 4 | Bornes du nombre de sous-pas par image ; le nombre effectif vient de `_substepCount()` |
 | `WALL_RATE_WINDOW` | 1000 ms | Fenêtre temporelle pour le comptage des chocs/s |
 
 #### Objet `sim`
@@ -76,6 +76,7 @@ Tout le CSS de la page. Suit la charte graphique du projet.
 | `wallHits` | `{top,bottom,left,right}` | Horodatages des chocs (ms simulé) |
 | `wallRate` | `{top,bottom,left,right}` | Chocs/s mis à jour à 10 Hz |
 | `P_Pa` | Pa | Pression calculée par PV=nRT |
+| `needsRedraw` | bool | Levé par tout ce qui modifie l'image ; consommé par `loop()` pour éviter de redessiner en pause |
 | `simTime` | ms | Temps simulé cumulé (fenêtre glissante) |
 | `boxLeft/Right/Bottom` | px | Bords intérieurs du récipient |
 | `boxTopMax/Min` | px | Positions piston à V_max/V_min |
@@ -90,9 +91,10 @@ Tout le CSS de la page. Suit la charte graphique du projet.
 | `setTemperature(T)` | Rescaling instantané `v ← v·√(T_new/T_old)` |
 | `setMoleculeCount(N)` | Ajoute/retire des molécules incrémentalement |
 | `setVolume(V_L)` | Met à jour `pistonTargetY` |
-| `stepPhysics(dt_ms)` | Un pas de temps : `SUBSTEPS` × (avance + parois + paires) |
+| `stepPhysics(dt_ms)` | Un pas de temps : `_substepCount()` × (avance + paires via la grille spatiale + parois) |
 | `pushMoleculesDownFromPiston()` | Repousse les molécules quand le piston descend |
 | `updateWallRates()` | Purge + décompte → `sim.wallRate` |
+| `_gridBuild(cap)` / `_gridInsert(i)` / `_gridHasNeighbor(x,y)` | Grille spatiale : rangement des molécules en cellules d'un diamètre, et requête de voisinage 3×3 |
 | `resetSim()` | Remet tout à zéro |
 
 ---
@@ -105,7 +107,7 @@ Tout le CSS de la page. Suit la charte graphique du projet.
 
 - `canvas` / `ctx` — références au canvas et à son contexte 2D
 - `resize()` — redimensionne le canvas et recalcule la géométrie (avec anti-rebond RAF)
-- `drawScene()` — efface et redessine l'intégralité d'une frame
+- `drawScene()` — redessine l'intégralité d'une frame (fond opaque, pas de `clearRect`)
 
 #### Rendu dans l'ordre
 
@@ -113,7 +115,7 @@ Tout le CSS de la page. Suit la charte graphique du projet.
 2. Fond intérieur de la boîte (`#f5f0e8`)
 3. 3 parois fixes (gauche, droite, bas) en `#2c3e50`
 4. Piston animé (tige + corps hachuré + contour)
-5. Molécules (disques `#2a6aaa` + reflet)
+5. Molécules — recopie d'un sprite hors écran (disque `#2a6aaa` + reflet), reconstruit quand `MOL_RADIUS` ou la densité de pixels change
 (les anciennes étiquettes chocs/s dessinées dans le canvas ont été remplacées par le tableau HTML `#info-table`)
 
 #### Géométrie recalculée dans `_doResize()`
@@ -152,7 +154,7 @@ Appelée par RAF à ~60 fps :
 4. Lissage piston : `pistonY += (target - pistonY) × (1 - exp(-dtReal / PISTON_TAU))`
 5. `pushMoleculesDownFromPiston()` si le piston a bougé
 6. `updateWallRates()` + `updateReadouts()` à 10 Hz (timers internes)
-7. `drawScene()`
+7. `drawScene()` — seulement si `dt > 0` ou `sim.needsRedraw` (rien à redessiner en pause)
 
 #### Initialisation `init()`
 
@@ -176,7 +178,7 @@ _doResize()  (géométrie synchrone)
 index.html
   └── <script src="js/sim.js">         expose : sim, R_GAS, N_SCALE, T_REF,
   │                                             V0_PX, MOL_RADIUS, MOL_RADIUS_FRAC,
-  │                                             SUBSTEPS, WALL_RATE_WINDOW,
+  │                                             SUBSTEPS_MIN/MAX, WALL_RATE_WINDOW,
   │                                             updatePressure, remapMoleculesToBox,
   │                                             initMolecules, setTemperature,
   │                                             setMoleculeCount, setVolume,
@@ -206,7 +208,7 @@ index.html
 
 ## Points sensibles
 
-- **Anti-tunneling** : 4 sous-pas par frame ; à augmenter si des molécules traversent les parois à T > 800 K
+- **Anti-tunneling** : nombre de sous-pas calculé par `_substepCount()` d'après 3σ et la durée réelle de l'image, borné à `[SUBSTEPS_MIN, SUBSTEPS_MAX]` ; élargir `SUBSTEPS_MAX` si des molécules se traversent à T > 800 K
 - **Anti-sticking** : séparation positionnelle (+0,5 px de marge) appliquée après chaque choc paire-à-paire
 - **Push du piston** : `pushMoleculesDownFromPiston()` appelé uniquement si `|ΔpistonY| > 0,1 px`
 - **Marges du canvas** : proportionnelles (`MARGIN_FRAC = 0,03` de `min(largeur, hauteur)`, plancher `MARGIN_MIN = 8 px`) ; la marge haute est en plus minorée par `PISTON_BODY_H + 6`, car le corps du piston dépasse le sommet du récipient à V maximum
@@ -214,4 +216,4 @@ index.html
 - **Démarrage** : `DOMContentLoaded` (et non `load`, qui attend le script de statistiques distant et bloquerait la page hors ligne)
 - **Raccourcis clavier** : Espace = pause, R = réinitialiser ; ignorés si le focus est sur un `INPUT`/`BUTTON`
 - **Calibrage `V0_PX`** : recalibré à chaque resize (`innerWidth × 0,18`), les vitesses ET les positions existantes sont rescalées dans le même rapport au resize, de sorte que la trajectoire visible est inchangée (cf. `remapMoleculesToBox()`)
-- **Performance** : `O(N²)` collisions ; à N=300 et 4 sous-pas, ~21 M tests/s à 60 fps — acceptable sur tout PC lycée moderne
+- **Performance** : collisions en `O(N)` via la grille spatiale (cellules d'un diamètre, voisinage 3×3) ; à N=300, ~2 700 consultations par sous-pas contre 44 850 comparaisons avec l'ancien double balayage `O(N²)`. Molécules dessinées par recopie d'un sprite hors écran plutôt que deux chemins Canvas chacune

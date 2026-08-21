@@ -29,9 +29,10 @@ var PISTON_BODY_H   = 16;   // px  (hauteur du rectangle du piston)
 var HATCH_SPACING   = 8;    // px  (espacement des hachures sur le piston)
 
 // ── Dimensions dynamiques ──────────────────────────────────────────────
-// Ces valeurs sont calculées dans resize() et utilisées par drawScene()
-var _cw = 0;  // largeur canvas en px
-var _ch = 0;  // hauteur canvas en px
+// Ces valeurs sont calculées dans _doResize() et utilisées par drawScene()
+var _cw  = 0;  // largeur canvas en px
+var _ch  = 0;  // hauteur canvas en px
+var _dpr = 1;  // densité de pixels de l'écran (window.devicePixelRatio)
 
 // ── Anti-rebond resize ─────────────────────────────────────────────────
 var _resizeRafPending = false;
@@ -51,10 +52,10 @@ function _doResize() {
   _ch = area.clientHeight;
   if (_cw === 0 || _ch === 0) return;   // conteneur pas encore mis en page
 
-  var dpr = window.devicePixelRatio || 1;
-  canvas.width  = Math.round(_cw * dpr);
-  canvas.height = Math.round(_ch * dpr);
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  _dpr = window.devicePixelRatio || 1;
+  canvas.width  = Math.round(_cw * _dpr);
+  canvas.height = Math.round(_ch * _dpr);
+  ctx.setTransform(_dpr, 0, 0, _dpr, 0, 0);
 
   // ── Mémorisation de l'ancienne géométrie ──
   // Elle sert à reporter le piston et les molécules à la même position
@@ -139,6 +140,9 @@ function _doResize() {
       sim.molecules[i].vy *= ratio;
     }
   }
+
+  // La géométrie a changé : l'image doit être refaite, même en pause.
+  sim.needsRedraw = true;
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -234,21 +238,57 @@ function _drawPiston(x1, x2, pistonY, boxTop) {
 }
 
 // ── Dessin des molécules ───────────────────────────────────────────────
+// Les molécules sont toutes identiques : on les dessine une seule fois dans
+// un canvas hors écran (le « sprite »), puis on se contente de le recopier.
+// Le tracé direct coûtait deux chemins et deux changements de fillStyle par
+// molécule, soit 600 chemins par image à N = 300.
+var _molSprite     = null;   // canvas hors écran
+var _molSpriteR    = -1;     // rayon pour lequel il a été rendu
+var _molSpriteDpr  = 0;      // densité de pixels pour laquelle il a été rendu
+var _molSpriteSize = 0;      // côté du sprite en px CSS
+
+function _buildMolSprite() {
+  var r   = MOL_RADIUS;
+  var pad = 1;                    // marge pour l'anticrénelage du bord
+  var size = 2 * r + 2 * pad;
+
+  var c = document.createElement('canvas');
+  c.width  = Math.ceil(size * _dpr);
+  c.height = Math.ceil(size * _dpr);
+
+  var g = c.getContext('2d');
+  g.setTransform(_dpr, 0, 0, _dpr, 0, 0);
+
+  var cx = size / 2;
+  var cy = size / 2;
+  g.beginPath();
+  g.arc(cx, cy, r, 0, Math.PI * 2);
+  g.fillStyle = '#2a6aaa';
+  g.fill();
+  // Reflet pour le relief
+  g.beginPath();
+  g.arc(cx - r * 0.28, cy - r * 0.28, r * 0.38, 0, Math.PI * 2);
+  g.fillStyle = 'rgba(255,255,255,0.30)';
+  g.fill();
+
+  _molSprite     = c;
+  _molSpriteR    = r;
+  _molSpriteDpr  = _dpr;
+  _molSpriteSize = size;
+}
+
 function _drawMolecules() {
   var mols = sim.molecules;
-  var r    = MOL_RADIUS;
+  if (!mols.length) return;
 
+  if (!_molSprite || _molSpriteR !== MOL_RADIUS || _molSpriteDpr !== _dpr) {
+    _buildMolSprite();
+  }
+
+  var s = _molSpriteSize;
+  var o = s / 2;
   for (var i = 0; i < mols.length; i++) {
-    var m = mols[i];
-    ctx.beginPath();
-    ctx.arc(m.x, m.y, r, 0, Math.PI * 2);
-    ctx.fillStyle = '#2a6aaa';
-    ctx.fill();
-    // Reflet pour le relief
-    ctx.beginPath();
-    ctx.arc(m.x - r * 0.28, m.y - r * 0.28, r * 0.38, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255,255,255,0.30)';
-    ctx.fill();
+    ctx.drawImage(_molSprite, mols[i].x - o, mols[i].y - o, s, s);
   }
 }
 

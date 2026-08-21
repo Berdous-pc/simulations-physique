@@ -24,8 +24,11 @@ var V0_PX   = 180;     // px/s à T_REF (recalibré dans resize() de recipient.j
 var MOL_RADIUS_FRAC = 0.006;  // constante ; MOL_RADIUS (px) en découle, cf. recipient.js
 var MOL_RADIUS = 3;           // px effectif (mis à jour par recipient.js)
 
-// Nombre de sous-pas par frame pour l'intégration (anti-tunneling)
-var SUBSTEPS = 4;
+// Bornes du nombre de sous-pas par image (anti-tunneling).
+// Le nombre effectif est calculé par _substepCount() d'après la vitesse
+// maximale et la durée réelle de l'image.
+var SUBSTEPS_MIN = 2;
+var SUBSTEPS_MAX = 4;
 
 // G_PX = accélération visuelle correspondant à 1g terrestre (px/s²)
 // Calibrée proportionnellement à V0_PX pour rester visible à toute taille d'écran.
@@ -83,6 +86,11 @@ var sim = {
   boxBottom : 0,
   boxTopMax : 0,
   boxTopMin : 0,
+
+  // ── Redessin nécessaire à la prochaine image (voir loop() dans ui.js) ──
+  // En pause, rien ne bouge : inutile de redessiner 60 fois par seconde une
+  // image identique. Ce drapeau est levé par tout ce qui change l'affichage.
+  needsRedraw : true,
 
   // ── Temps simulé cumulé (ms) — pour la fenêtre glissante ──
   simTime : 0,
@@ -187,6 +195,8 @@ function initMolecules() {
     sim.molecules.push({ x: x, y: y, vx: vel.vx, vy: vel.vy });
   }
 
+  sim.needsRedraw = true;
+
   // Ré-initialiser les compteurs de chocs
   resetWallHits();
 }
@@ -228,6 +238,7 @@ function remapMoleculesToBox(o) {
     mols[i].x = xlo + fx * newW;
     mols[i].y = ylo + fy * newH;
   }
+  sim.needsRedraw = true;
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -252,51 +263,42 @@ function setMoleculeCount(Ntarget) {
   var current = sim.molecules.length;
 
   if (Ntarget > current) {
-    // Ajouter des molécules
-    var r   = MOL_RADIUS;
-    var xlo = sim.boxLeft   + r + 1;
-    var xhi = sim.boxRight  - r - 1;
-    var ylo = sim.pistonY   + r + 1;
-    var yhi = sim.boxBottom - r - 1;
+    // ── Ajouter des molécules ──
+    // Le test de non-chevauchement passe par la grille spatiale (voisinage
+    // 3×3 seulement) : l'ancien hasOverlap() balayait TOUTES les molécules à
+    // chaque tentative, soit jusqu'à 50·N tests par molécule ajoutée, à
+    // chaque cran du curseur n.
+    var r    = MOL_RADIUS;
+    var xlo  = sim.boxLeft   + r + 1;
+    var xhi  = sim.boxRight  - r - 1;
+    var ylo  = sim.pistonY   + r + 1;
+    var yhi  = sim.boxBottom - r - 1;
+    var mols = sim.molecules;
+
+    _gridBuild(Ntarget);
+
     for (var i = current; i < Ntarget; i++) {
       var vel = randomVelocity();
-      // Placer sans chevauchement (tentatives)
-      var placed = false;
-      for (var attempt = 0; attempt < 50; attempt++) {
-        var x = xlo + Math.random() * (xhi - xlo);
-        var y = ylo + Math.random() * (yhi - ylo);
-        if (!hasOverlap(x, y, -1)) {
-          sim.molecules.push({ x: x, y: y, vx: vel.vx, vy: vel.vy });
-          placed = true;
-          break;
-        }
+      var x = 0, y = 0;
+      // Quelques tentatives suffisent : au-delà, soit la boîte est trop
+      // dense pour qu'un emplacement libre existe, soit on l'aurait déjà
+      // trouvé. On accepte alors le chevauchement, que la séparation
+      // positionnelle de _collidePairs() résorbe en quelques images.
+      for (var attempt = 0; attempt < 12; attempt++) {
+        x = xlo + Math.random() * (xhi - xlo);
+        y = ylo + Math.random() * (yhi - ylo);
+        if (!_gridHasNeighbor(x, y)) break;
       }
-      if (!placed) {
-        // Forcer la position (acceptable pour quelques molécules)
-        var x2 = xlo + Math.random() * (xhi - xlo);
-        var y2 = ylo + Math.random() * (yhi - ylo);
-        sim.molecules.push({ x: x2, y: y2, vx: vel.vx, vy: vel.vy });
-      }
+      mols.push({ x: x, y: y, vx: vel.vx, vy: vel.vy });
+      _gridInsert(i);
     }
   } else if (Ntarget < current) {
     // Retirer des molécules (on supprime les dernières)
     sim.molecules.splice(Ntarget);
   }
 
+  sim.needsRedraw = true;
   updatePressure();
-}
-
-// Teste si la position (x,y) est en collision avec une molécule existante
-// excludeIdx : index à exclure (-1 = aucun)
-function hasOverlap(x, y, excludeIdx) {
-  var diam2 = (2 * MOL_RADIUS) * (2 * MOL_RADIUS);
-  for (var i = 0; i < sim.molecules.length; i++) {
-    if (i === excludeIdx) continue;
-    var dx = sim.molecules[i].x - x;
-    var dy = sim.molecules[i].y - y;
-    if (dx * dx + dy * dy < diam2) return true;
-  }
-  return false;
 }
 
 // Met à jour pistonTargetY selon le volume V_L
@@ -350,6 +352,103 @@ function updateWallRates() {
 }
 
 // ══════════════════════════════════════════════════════════════════════
+//  Grille spatiale (hachage uniforme) pour les collisions
+//  Deux molécules ne peuvent interagir que si elles sont distantes de moins
+//  d'un diamètre : en rangeant les molécules dans des cellules de côté un
+//  diamètre, il suffit d'examiner le voisinage 3×3 de chacune au lieu de
+//  toutes les autres. Coût O(N) au lieu de O(N²) — à N = 300, ~2 700
+//  consultations par sous-pas contre 44 850 comparaisons auparavant.
+//
+//  Représentation : listes chaînées par cellule (_gHead / _gNext), qui
+//  évitent toute allocation par image une fois les tableaux dimensionnés.
+// ══════════════════════════════════════════════════════════════════════
+
+var _gCols = 0, _gRows = 0;   // dimensions de la grille (cellules)
+var _gCell = 1;               // côté d'une cellule (px)
+var _gX0   = 0, _gY0 = 0;     // coin haut-gauche de la zone couverte
+var _gHead = null;            // Int32Array(_gCols·_gRows) — 1re molécule de la cellule, -1 si vide
+var _gNext = null;            // Int32Array(capacité)      — molécule suivante dans la même cellule
+var _gCellOf = null;          // Int32Array(capacité)      — cellule de chaque molécule au moment du build
+
+// Indice de cellule d'un point, ramené dans la grille (une molécule peut être
+// très légèrement hors de la boîte entre deux appels à _collideWalls).
+function _gridIndexAt(x, y) {
+  var cx = Math.floor((x - _gX0) / _gCell);
+  var cy = Math.floor((y - _gY0) / _gCell);
+  if (cx < 0) cx = 0; else if (cx >= _gCols) cx = _gCols - 1;
+  if (cy < 0) cy = 0; else if (cy >= _gRows) cy = _gRows - 1;
+  return cy * _gCols + cx;
+}
+
+// (Re)construit la grille sur les molécules présentes.
+// `capacity` = nombre maximal de molécules qui y seront rangées (permet à
+// setMoleculeCount() de prévoir la place des molécules qu'il va ajouter).
+function _gridBuild(capacity) {
+  var mols = sim.molecules;
+  var n    = mols.length;
+  if (capacity < n) capacity = n;
+  if (capacity < 1) capacity = 1;
+
+  _gCell = 2 * MOL_RADIUS;
+  if (_gCell < 1) _gCell = 1;
+
+  _gX0 = sim.boxLeft;
+  _gY0 = sim.pistonY;
+  var w = sim.boxRight  - sim.boxLeft;
+  var h = sim.boxBottom - sim.pistonY;
+  _gCols = Math.max(1, Math.ceil(w / _gCell));
+  _gRows = Math.max(1, Math.ceil(h / _gCell));
+
+  var nCells = _gCols * _gRows;
+  if (!_gHead || _gHead.length < nCells) _gHead = new Int32Array(nCells);
+  _gHead.fill(-1, 0, nCells);
+
+  if (!_gNext || _gNext.length < capacity) {
+    _gNext   = new Int32Array(capacity);
+    _gCellOf = new Int32Array(capacity);
+  }
+
+  for (var i = 0; i < n; i++) {
+    var c = _gridIndexAt(mols[i].x, mols[i].y);
+    _gCellOf[i] = c;
+    _gNext[i]   = _gHead[c];
+    _gHead[c]   = i;
+  }
+}
+
+// Range dans la grille une molécule déjà ajoutée à sim.molecules
+function _gridInsert(i) {
+  var m = sim.molecules[i];
+  var c = _gridIndexAt(m.x, m.y);
+  _gCellOf[i] = c;
+  _gNext[i]   = _gHead[c];
+  _gHead[c]   = i;
+}
+
+// Vrai s'il existe déjà une molécule à moins d'un diamètre de (x, y)
+function _gridHasNeighbor(x, y) {
+  var diam2 = (2 * MOL_RADIUS) * (2 * MOL_RADIUS);
+  var mols  = sim.molecules;
+  var cx = Math.floor((x - _gX0) / _gCell);
+  var cy = Math.floor((y - _gY0) / _gCell);
+
+  for (var oy = -1; oy <= 1; oy++) {
+    var ry = cy + oy;
+    if (ry < 0 || ry >= _gRows) continue;
+    for (var ox = -1; ox <= 1; ox++) {
+      var rx = cx + ox;
+      if (rx < 0 || rx >= _gCols) continue;
+      for (var j = _gHead[ry * _gCols + rx]; j !== -1; j = _gNext[j]) {
+        var dx = mols[j].x - x;
+        var dy = mols[j].y - y;
+        if (dx * dx + dy * dy < diam2) return true;
+      }
+    }
+  }
+  return false;
+}
+
+// ══════════════════════════════════════════════════════════════════════
 //  Intégration physique — un pas de temps
 // ══════════════════════════════════════════════════════════════════════
 
@@ -359,13 +458,30 @@ function stepPhysics(dt_ms) {
 
   sim.simTime += dt_ms;
 
-  var subDt = dt_s / SUBSTEPS;
+  var nSub  = _substepCount(dt_s);
+  var subDt = dt_s / nSub;
 
-  for (var sub = 0; sub < SUBSTEPS; sub++) {
+  for (var sub = 0; sub < nSub; sub++) {
     _moveAll(subDt);
     _collidePairs();
     _collideWalls();
   }
+}
+
+// ── Nombre de sous-pas nécessaires pour ce pas de temps ────────────────
+// Deux molécules ne doivent pas se croiser sans être vues : leur rapprochement
+// pendant un sous-pas doit rester inférieur à un diamètre. On majore la vitesse
+// par 3σ (σ de Maxwell-Boltzmann à la température courante), et le
+// rapprochement de deux molécules par le double de cette vitesse.
+// Le nombre fixe de 4 sous-pas était calibré sur le pire cas (T = 1000 K à
+// 60 Hz) : à 300 K, ou sur un écran 144 Hz, c'était deux à quatre fois plus de
+// travail que nécessaire.
+function _substepCount(dt_s) {
+  var vMax = 3 * V0_PX * Math.sqrt(sim.T_K / T_REF);
+  var n    = Math.ceil(vMax * dt_s / Math.max(1, MOL_RADIUS));
+  if (n < SUBSTEPS_MIN) n = SUBSTEPS_MIN;
+  if (n > SUBSTEPS_MAX) n = SUBSTEPS_MAX;
+  return n;
 }
 
 // ── Avance toutes les positions (+ pesanteur si activée) ──────────────
@@ -415,52 +531,76 @@ function _collideWalls() {
 }
 
 // ── Collisions élastiques paire-à-paire ────────────────────────────────
-// Formule : choc élastique 2D, masses égales.
-// Les vitesses échangent leurs composantes le long de la normale au contact.
+// Chaque molécule n'est confrontée qu'aux occupantes des 9 cellules de son
+// voisinage dans la grille spatiale, et seulement à celles d'indice
+// supérieur pour ne traiter chaque paire qu'une fois.
 function _collidePairs() {
   var mols = sim.molecules;
-  var diam = 2 * MOL_RADIUS;
-  var diam2 = diam * diam;
+  var n    = mols.length;
+  if (n < 2) return;
 
-  for (var i = 0; i < mols.length - 1; i++) {
-    for (var j = i + 1; j < mols.length; j++) {
-      var mi = mols[i];
-      var mj = mols[j];
+  _gridBuild(n);
 
-      var dx = mj.x - mi.x;
-      var dy = mj.y - mi.y;
-      var dist2 = dx * dx + dy * dy;
+  for (var i = 0; i < n; i++) {
+    // Cellule au moment du build : garantit que la paire (i, j) est vue par
+    // un seul des deux, même si la séparation positionnelle a déjà déplacé
+    // l'une des deux molécules pendant cette passe.
+    var c  = _gCellOf[i];
+    var cx = c % _gCols;
+    var cy = (c - cx) / _gCols;
 
-      if (dist2 >= diam2 || dist2 === 0) continue;
-
-      var dist = Math.sqrt(dist2);
-      // Normale unitaire i→j
-      var nx = dx / dist;
-      var ny = dy / dist;
-
-      // Vitesse relative le long de la normale
-      var dvx = mi.vx - mj.vx;
-      var dvy = mi.vy - mj.vy;
-      var vrel_n = dvx * nx + dvy * ny;
-
-      // Ne traiter que si les molécules se rapprochent
-      if (vrel_n <= 0) continue;
-
-      // Échange des composantes normales (masses égales → transfert total)
-      mi.vx -= vrel_n * nx;
-      mi.vy -= vrel_n * ny;
-      mj.vx += vrel_n * nx;
-      mj.vy += vrel_n * ny;
-
-      // ── Séparation positionnelle anti-sticking ──
-      var overlap = diam - dist;
-      var half = (overlap / 2) + 0.5;  // +0.5 px marge
-      mi.x -= nx * half;
-      mi.y -= ny * half;
-      mj.x += nx * half;
-      mj.y += ny * half;
+    for (var oy = -1; oy <= 1; oy++) {
+      var ry = cy + oy;
+      if (ry < 0 || ry >= _gRows) continue;
+      for (var ox = -1; ox <= 1; ox++) {
+        var rx = cx + ox;
+        if (rx < 0 || rx >= _gCols) continue;
+        for (var j = _gHead[ry * _gCols + rx]; j !== -1; j = _gNext[j]) {
+          if (j > i) _resolvePair(mols[i], mols[j]);
+        }
+      }
     }
   }
+}
+
+// ── Choc élastique 2D entre deux molécules de même masse ───────────────
+// Les vitesses échangent leurs composantes le long de la normale au contact.
+function _resolvePair(mi, mj) {
+  var diam  = 2 * MOL_RADIUS;
+  var diam2 = diam * diam;
+
+  var dx = mj.x - mi.x;
+  var dy = mj.y - mi.y;
+  var dist2 = dx * dx + dy * dy;
+
+  if (dist2 >= diam2 || dist2 === 0) return;
+
+  var dist = Math.sqrt(dist2);
+  // Normale unitaire i→j
+  var nx = dx / dist;
+  var ny = dy / dist;
+
+  // Vitesse relative le long de la normale
+  var dvx = mi.vx - mj.vx;
+  var dvy = mi.vy - mj.vy;
+  var vrel_n = dvx * nx + dvy * ny;
+
+  // Ne traiter que si les molécules se rapprochent
+  if (vrel_n <= 0) return;
+
+  // Échange des composantes normales (masses égales → transfert total)
+  mi.vx -= vrel_n * nx;
+  mi.vy -= vrel_n * ny;
+  mj.vx += vrel_n * nx;
+  mj.vy += vrel_n * ny;
+
+  // ── Séparation positionnelle anti-sticking ──
+  var overlap = diam - dist;
+  var half = (overlap / 2) + 0.5;  // +0.5 px marge
+  mi.x -= nx * half;
+  mi.y -= ny * half;
+  mj.x += nx * half;
+  mj.y += ny * half;
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -472,6 +612,8 @@ function pushMoleculesDownFromPiston() {
   var limit  = sim.pistonY + r + 1;
   var mols   = sim.molecules;
   var floor  = sim.boxBottom - r - 1;
+
+  sim.needsRedraw = true;
 
   for (var i = 0; i < mols.length; i++) {
     if (mols[i].y < limit) {
@@ -503,6 +645,9 @@ function resetSim() {
   sim.pistonY = sim.pistonTargetY;
   initMolecules();
   updatePressure();
+
+  // Mise à jour de l'UI (définie dans ui.js)
+  sim.needsRedraw = true;
 
   // Mise à jour de l'UI (définie dans ui.js)
   if (typeof syncUIToSim === 'function') syncUIToSim();

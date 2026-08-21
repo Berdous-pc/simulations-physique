@@ -33,7 +33,7 @@ var PISTON_TAU = 110;
 
 // ── Bandeau instructions ───────────────────────────────────────────────
 function toggleHint() {
-  var hint = document.getElementById('panel-hint');
+  var hint = _el['panel-hint'];
   if (hint) hint.classList.toggle('collapsed');
 }
 
@@ -80,7 +80,35 @@ function loop(ts) {
   }
 
   // ── Rendu ──
-  drawScene();
+  // En pause, l'image est identique d'une fois sur l'autre : on ne redessine
+  // que si quelque chose l'a effectivement modifiée (curseur déplacé, piston
+  // encore en mouvement, redimensionnement…). Évite de faire tourner le GPU
+  // et la batterie pour rien sur le poste de l'élève.
+  if (dt > 0 || sim.needsRedraw) {
+    drawScene();
+    sim.needsRedraw = false;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Cache des éléments du DOM
+//  updateReadouts() tourne à 10 Hz et faisait huit getElementById() à
+//  chaque passage ; les curseurs en font autant à chaque cran.
+// ══════════════════════════════════════════════════════════════════════
+
+var _el = {};
+
+var _EL_IDS = [
+  'it-T', 'it-n', 'it-V', 'it-top', 'it-bot', 'it-lft', 'it-rgt', 'it-mean',
+  'sl-T', 'sl-n', 'sl-V', 'sl-gravity',
+  'lbl-T', 'lbl-n', 'lbl-V', 'lbl-gravity', 'lbl-n-molecules',
+  'btn-playpause', 'panel-hint'
+];
+
+function _cacheElements() {
+  for (var i = 0; i < _EL_IDS.length; i++) {
+    _el[_EL_IDS[i]] = document.getElementById(_EL_IDS[i]);
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -90,9 +118,9 @@ function loop(ts) {
 function updateReadouts() {
   updatePressure();
 
-  document.getElementById('it-T').textContent  = sim.T_K + ' K';
-  document.getElementById('it-n').textContent  = sim.n_mol.toFixed(2).replace('.', ',') + ' mol';
-  document.getElementById('it-V').textContent  = _fmtVolume(sim.V_L);
+  _el['it-T'].textContent  = sim.T_K + ' K';
+  _el['it-n'].textContent  = sim.n_mol.toFixed(2).replace('.', ',') + ' mol';
+  _el['it-V'].textContent  = _fmtVolume(sim.V_L);
 
   var top  = Math.round(sim.wallRate.top);
   var bot  = Math.round(sim.wallRate.bottom);
@@ -100,11 +128,11 @@ function updateReadouts() {
   var rgt  = Math.round(sim.wallRate.right);
   var mean = ((sim.wallRate.top + sim.wallRate.bottom + sim.wallRate.left + sim.wallRate.right) / 4).toFixed(1).replace('.', ',');
 
-  document.getElementById('it-top').textContent  = top  + ' /s';
-  document.getElementById('it-bot').textContent  = bot  + ' /s';
-  document.getElementById('it-lft').textContent  = lft  + ' /s';
-  document.getElementById('it-rgt').textContent  = rgt  + ' /s';
-  document.getElementById('it-mean').textContent = mean + ' /s';
+  _el['it-top'].textContent  = top  + ' /s';
+  _el['it-bot'].textContent  = bot  + ' /s';
+  _el['it-lft'].textContent  = lft  + ' /s';
+  _el['it-rgt'].textContent  = rgt  + ' /s';
+  _el['it-mean'].textContent = mean + ' /s';
 }
 
 // ── Formatage du volume en m³ avec notation scientifique ──
@@ -124,18 +152,18 @@ function _fmtVolume(V_L) {
 
 function syncUIToSim() {
   // Sliders
-  document.getElementById('sl-T').value = sim.T_K;
-  document.getElementById('sl-n').value = sim.Nmol;
-  document.getElementById('sl-V').value = Math.round(sim.V_L * 10);
+  _el['sl-T'].value = sim.T_K;
+  _el['sl-n'].value = sim.Nmol;
+  _el['sl-V'].value = Math.round(sim.V_L * 10);
 
   // Labels
-  document.getElementById('lbl-T').textContent = sim.T_K;
+  _el['lbl-T'].textContent = sim.T_K;
   _updateLabelN(sim.Nmol);
   _updateLabelV(Math.round(sim.V_L * 10));
 
   // Slider pesanteur
-  document.getElementById('sl-gravity').value = 0;
-  document.getElementById('lbl-gravity').textContent = '0 g';
+  _el['sl-gravity'].value = 0;
+  _el['lbl-gravity'].textContent = '0 g';
 
   // Bouton Play/Pause
   _updatePlayPauseBtn();
@@ -146,19 +174,19 @@ function syncUIToSim() {
 
 function _updateLabelN(Nmol) {
   var n_mol = Nmol / N_SCALE;
-  document.getElementById('lbl-n').textContent = n_mol.toFixed(2).replace('.', ',');
-  document.getElementById('lbl-n-molecules').innerHTML =
+  _el['lbl-n'].textContent = n_mol.toFixed(2).replace('.', ',');
+  _el['lbl-n-molecules'].innerHTML =
     '\u2248 ' + Nmol + ' mol\u00e9cules \u00e0 l\u2019\u00e9cran'
     + ' <span class="input-hint-sub">(100 mol\u00e9cules dessin\u00e9es pour 0,10&nbsp;mol)</span>';
 }
 
 function _updateLabelV(sliderVal) {
   var V_L = sliderVal / 10;
-  document.getElementById('lbl-V').textContent = V_L.toFixed(1).replace('.', ',');
+  _el['lbl-V'].textContent = V_L.toFixed(1).replace('.', ',');
 }
 
 function _updatePlayPauseBtn() {
-  var btn = document.getElementById('btn-playpause');
+  var btn = _el['btn-playpause'];
   if (sim.paused) {
     btn.textContent = '▶ Reprendre';
     btn.className   = 'btn btn-play';
@@ -181,7 +209,7 @@ function togglePause() {
 // ── Slider Température ──
 function onSliderT(val) {
   var T_new = parseInt(val, 10);
-  document.getElementById('lbl-T').textContent = T_new;
+  _el['lbl-T'].textContent = T_new;
   setTemperature(T_new);
   updatePressure();
   updateReadouts();
@@ -216,7 +244,7 @@ var GRAVITY_LABELS = ['0', '0,5', '1', '2', '3'];
 function onSliderGravity(val) {
   var idx = parseInt(val);
   sim.gravityFactor = GRAVITY_STEPS[idx];
-  document.getElementById('lbl-gravity').textContent = GRAVITY_LABELS[idx] + ' g';
+  _el['lbl-gravity'].textContent = GRAVITY_LABELS[idx] + ' g';
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -224,6 +252,9 @@ function onSliderGravity(val) {
 // ══════════════════════════════════════════════════════════════════════
 
 function init() {
+  // 0. Références du DOM (une fois pour toutes)
+  _cacheElements();
+
   // 1. Dimensionner le canvas et calculer la géométrie.
   //    On appelle directement _doResize() (variante synchrone de resize(),
   //    qui elle diffère d'une image) : la géométrie doit être connue AVANT
