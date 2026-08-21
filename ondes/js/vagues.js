@@ -2449,7 +2449,12 @@ function _drawSourceCoupeVagues(ctx, W, H, srcX, yLevel, ampPx) {
     ctx.fillRect(srcX - 3, 0, 6, H);
 
     // ── Petite flèche indiquant le sens d'oscillation ─────────────────
-    var arrowDir = osc >= 0 ? -1 : 1;
+    // Sens du mouvement réel de la source = signe de la vitesse (dérivée de
+    // la position), pas de la position elle-même : sinon la flèche pointe
+    // dans le même sens pendant toute une demi-période au lieu de s'inverser
+    // aux instants où la source change effectivement de sens.
+    var vel      = Math.cos(2 * Math.PI * simVagues.freq * t);
+    var arrowDir = vel >= 0 ? -1 : 1;
     var ax = srcX - 22, ay1 = dotY, ay2 = dotY + arrowDir * 14;
     ctx.strokeStyle = 'rgba(255, 215, 80, 0.80)';
     ctx.lineWidth   = 1.5;
@@ -2595,7 +2600,14 @@ function _drawBeaconsCoupeVagues(ctx, W, H, srcX, yLevel, ampPx) {
 (function initVaguesMouse() {
     var dragTarget    = null; // null | 'beacon1' | 'beacon2' | 'lambda'
     var lambdaGrabDx  = 0;    // décalage souris ↔ extrémité gauche de la flèche, saisi au clic
-    var DRAG_RADIUS_B = 14;  // px autour d'une balise pour le drag
+    var DRAG_RADIUS_B = 14;  // px autour d'une balise pour le drag (vue du dessus)
+
+    // En vue coupe, la balise ne se déplace que sur l'axe des x : la saisie
+    // est bien plus facile si on ne demande pas de tomber pile sur le point
+    // de surface (qui bouge avec la houle) mais sur toute une large bande
+    // verticale au-dessus/en dessous de son abscisse.
+    var COUPE_HIT_HALF_W = 22; // tolérance horizontale (px)
+    var COUPE_HIT_MARGIN = 20; // marge verticale ajoutée à l'amplitude (px)
 
     function canvasCoords(e, canvas) {
         var rect   = canvas.getBoundingClientRect();
@@ -2605,6 +2617,22 @@ function _drawBeaconsCoupeVagues(ctx, W, H, srcX, yLevel, ampPx) {
             x : (e.clientX - rect.left) * scaleX,
             y : (e.clientY - rect.top)  * scaleY
         };
+    }
+
+    // Hit-test large en vue coupe : bande verticale généreuse autour de
+    // l'abscisse de la balise plutôt qu'un cercle centré sur son point de
+    // surface exact (qui oscille avec la houle et serait difficile à viser).
+    function nearBeaconCoupe(mx, my, b) {
+        if (!b.active || !b.snapped) return false;
+        var dist = b.x - simVagues.sourceX;
+        if (dist <= 0) return false;
+        var bx = simVagues.coupeSrcX + dist;
+        if (bx < simVagues.coupeSrcX || bx > simVagues.canvasW) return false;
+        if (Math.abs(mx - bx) > COUPE_HIT_HALF_W) return false;
+        var H      = simVagues.canvasH;
+        var yLevel = Math.round(H / 2);
+        var ampPx  = Math.min(H * 0.18, 55) * VAGUES_VIS_AMP_SCALE;
+        return my >= yLevel - ampPx - COUPE_HIT_MARGIN && my <= yLevel + ampPx + COUPE_HIT_MARGIN;
     }
 
     // Abscisse écran de l'extrémité gauche de la flèche λ, dans le repère
@@ -2641,6 +2669,29 @@ function _drawBeaconsCoupeVagues(ctx, W, H, srcX, yLevel, ampPx) {
         return mx >= x1 - 10 && mx <= x2 + 10 && Math.abs(my - sy) <= 12;
     }
 
+    // Balise sous le curseur (ou null), tous modes de vue confondus — sert
+    // au hit-test du clic comme au curseur adaptatif au survol.
+    function beaconAt(mx, my) {
+        var isCoupe = (simVagues.viewMode === 'coupe');
+        if (simVagues.beacon1.active) {
+            if (isCoupe) {
+                if (nearBeaconCoupe(mx, my, simVagues.beacon1)) return 'beacon1';
+            } else {
+                var dx1 = mx - simVagues.beacon1.x, dy1 = my - simVagues.beacon1.y;
+                if (Math.sqrt(dx1 * dx1 + dy1 * dy1) <= DRAG_RADIUS_B) return 'beacon1';
+            }
+        }
+        if (simVagues.beacon2.active) {
+            if (isCoupe) {
+                if (nearBeaconCoupe(mx, my, simVagues.beacon2)) return 'beacon2';
+            } else {
+                var dx2 = mx - simVagues.beacon2.x, dy2 = my - simVagues.beacon2.y;
+                if (Math.sqrt(dx2 * dx2 + dy2 * dy2) <= DRAG_RADIUS_B) return 'beacon2';
+            }
+        }
+        return null;
+    }
+
     function setup() {
         var canvas = document.getElementById('tube-canvas');
         if (!canvas) return;
@@ -2653,25 +2704,12 @@ function _drawBeaconsCoupeVagues(ctx, W, H, srcX, yLevel, ampPx) {
 
             // Drag des balises (priorité : cible ponctuelle, plus précise que
             // la flèche λ qui, elle, couvre toute une bande horizontale).
-            if (simVagues.beacon1.active) {
-                var db1 = Math.sqrt(
-                    (mx - simVagues.beacon1.x) * (mx - simVagues.beacon1.x) +
-                    (my - simVagues.beacon1.y) * (my - simVagues.beacon1.y));
-                if (db1 <= DRAG_RADIUS_B) {
-                    dragTarget = 'beacon1';
-                    canvas.setPointerCapture(e.pointerId);
-                    return;
-                }
-            }
-            if (simVagues.beacon2.active) {
-                var db2 = Math.sqrt(
-                    (mx - simVagues.beacon2.x) * (mx - simVagues.beacon2.x) +
-                    (my - simVagues.beacon2.y) * (my - simVagues.beacon2.y));
-                if (db2 <= DRAG_RADIUS_B) {
-                    dragTarget = 'beacon2';
-                    canvas.setPointerCapture(e.pointerId);
-                    return;
-                }
+            var hitBeacon = beaconAt(mx, my);
+            if (hitBeacon) {
+                dragTarget = hitBeacon;
+                canvas.setPointerCapture(e.pointerId);
+                canvas.style.cursor = 'grabbing';
+                return;
             }
 
             // Flèche de longueur d'onde : ne se déplace qu'horizontalement,
@@ -2686,11 +2724,16 @@ function _drawBeaconsCoupeVagues(ctx, W, H, srcX, yLevel, ampPx) {
 
         canvas.addEventListener('pointermove', function(e) {
             if (!dragTarget) {
-                // Curseur adaptatif au survol de la flèche λ.
+                // Curseur adaptatif au survol d'une balise ou de la flèche λ.
                 if (typeof activeTab !== 'undefined' && activeTab === 'vagues') {
                     var hoverPos = canvasCoords(e, canvas);
-                    canvas.style.cursor = nearLambdaArrowVagues(hoverPos.x, hoverPos.y)
-                        ? 'ew-resize' : 'default';
+                    if (beaconAt(hoverPos.x, hoverPos.y)) {
+                        canvas.style.cursor = 'grab';
+                    } else if (nearLambdaArrowVagues(hoverPos.x, hoverPos.y)) {
+                        canvas.style.cursor = 'ew-resize';
+                    } else {
+                        canvas.style.cursor = 'default';
+                    }
                 }
                 return;
             }
@@ -2716,12 +2759,26 @@ function _drawBeaconsCoupeVagues(ctx, W, H, srcX, yLevel, ampPx) {
             var pos = canvasCoords(e, canvas);
             var mx  = Math.max(0, Math.min(simVagues.canvasW, pos.x));
             var my  = Math.max(0, Math.min(simVagues.canvasH, pos.y));
+            var beacon = (dragTarget === 'beacon1') ? simVagues.beacon1 : simVagues.beacon2;
+
+            // En vue coupe, seule l'abscisse compte : la balise reste sur
+            // l'axe de propagation (demi-axe x > 0 depuis la source), sa
+            // hauteur à l'écran est imposée par la houle, pas par la souris.
+            if (simVagues.viewMode === 'coupe') {
+                var dist = Math.max(0, Math.min(simVagues.canvasW - simVagues.coupeSrcX,
+                                                 mx - simVagues.coupeSrcX));
+                beacon.x       = simVagues.sourceX + dist;
+                beacon.y       = simVagues.sourceY;
+                beacon.rx      = beacon.x / simVagues.canvasW;
+                beacon.ry      = beacon.y / simVagues.canvasH;
+                beacon.snapped = true;
+                return;
+            }
 
             // Snap à l'axe x avec hystérésis :
             //   entrée : ≤12 px de l'axe   |   sortie : >25 px de l'axe
             var axisY    = simVagues.sourceY;
             var SNAP_IN  = 12, SNAP_OUT = 25;
-            var beacon   = (dragTarget === 'beacon1') ? simVagues.beacon1 : simVagues.beacon2;
             var dist2ax  = Math.abs(my - axisY);
             var snapped  = beacon.snapped ? (dist2ax <= SNAP_OUT) : (dist2ax <= SNAP_IN);
             if (snapped) my = axisY;
@@ -2743,12 +2800,16 @@ function _drawBeaconsCoupeVagues(ctx, W, H, srcX, yLevel, ampPx) {
             }
         });
 
-        canvas.addEventListener('pointerup', function() {
+        canvas.addEventListener('pointerup', function(e) {
             dragTarget = null;
+            var upPos = canvasCoords(e, canvas);
+            canvas.style.cursor = beaconAt(upPos.x, upPos.y) ? 'grab'
+                : (nearLambdaArrowVagues(upPos.x, upPos.y) ? 'ew-resize' : 'default');
         });
 
         canvas.addEventListener('pointerleave', function() {
             dragTarget = null;
+            canvas.style.cursor = 'default';
         });
     }
 
