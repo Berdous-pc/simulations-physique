@@ -173,6 +173,7 @@ main {
   font-weight: 700;
   font-family: 'Segoe UI', Arial, sans-serif;
   font-variant-numeric: tabular-nums;
+  text-align: right;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -212,14 +213,8 @@ main {
   font-size: 0.95em;
 }
 
-.it-choc-val {
-  color: #2a5080;
-  font-weight: 700;
-  font-family: 'Segoe UI', Arial, sans-serif;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  text-align: right;
-}
+/* .it-choc-val a disparu : depuis que .it-val aligne les valeurs à droite,
+   cette classe ne reprenait plus que des propriétés identiques. */
 
 /* Ligne Moyenne — séparateur visuel au-dessus */
 .it-mean-row td {
@@ -231,16 +226,15 @@ main {
   color: #2c3e50 !important;
 }
 
-/* Pas de display: block ici : sur un <td>, il le sort de l'algorithme de mise
-   en page du tableau — la cellule cesse d'être contrainte par la largeur de sa
-   colonne et, avec white-space: nowrap, débordait dès que la moyenne passait
-   à deux chiffres. */
+/* Seule la couleur distingue la moyenne : tout le reste vient de .it-val,
+   que la cellule porte aussi. Le !important n'est pas nécessaire, cette
+   règle étant plus bas dans la feuille que .it-val, à spécificité égale.
+   Pas de display: block ici non plus : sur un <td>, il le sort de
+   l'algorithme de mise en page du tableau — la cellule cesse d'être
+   contrainte par la largeur de sa colonne et, avec white-space: nowrap,
+   débordait dès que la moyenne passait à deux chiffres. */
 .it-mean-val {
-  color: #b04020 !important;
-  font-weight: 700;
-  font-family: 'Segoe UI', Arial, sans-serif;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
+  color: #b04020;
 }
 
 /* ── Panneau droit ───────────────────────────────── */

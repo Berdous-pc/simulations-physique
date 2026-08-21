@@ -135,15 +135,10 @@ function updateReadouts() {
   _el['it-mean'].textContent = mean + ' /s';
 }
 
-// ── Formatage du volume en m³ avec notation scientifique ──
+// ── Formatage du volume en litres ──────────────────────────────────────
+// Le curseur avance par pas de 0,5 L : une décimale suffit.
 function _fmtVolume(V_L) {
-  var V_m3 = V_L * 1e-3;
-  var exp  = Math.floor(Math.log10(V_m3));
-  var mant = V_m3 / Math.pow(10, exp);
-  var supDigits = ['\u2070','\u00b9','\u00b2','\u00b3','\u2074','\u2075','\u2076','\u2077','\u2078','\u2079'];
-  var expStr = String(Math.abs(exp)).split('').map(function(c){ return supDigits[+c]; }).join('');
-  var sign   = exp < 0 ? '\u207b' : '';
-  return mant.toFixed(2).replace('.', ',') + '\u00d710' + sign + expStr + ' m\u00b3';
+  return V_L.toFixed(1).replace('.', ',') + ' L';
 }
 
 // ══════════════════════════════════════════════════════════════════════
