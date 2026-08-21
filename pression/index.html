@@ -25,48 +25,69 @@
   ══════════════════════════════════════════════ -->
   <div id="left-col">
 
-    <!-- Tableau d'informations — à gauche du canvas -->
-    <table id="info-table">
-      <tr>
-        <td class="it-lbl">Température</td>
-        <td class="it-val" id="it-T">—</td>
-      </tr>
-      <tr>
-        <td class="it-lbl it-wrap">Quantité de matière</td>
-        <td class="it-val" id="it-n">—</td>
-      </tr>
-      <tr>
-        <td class="it-lbl">Volume</td>
-        <td class="it-val" id="it-V">—</td>
-      </tr>
-      <tr>
-        <td class="it-lbl it-chocs-lbl" rowspan="5">Chocs</td>
-        <td class="it-choc-sub">
-          <table class="it-choc-inner">
-            <tr>
-              <td class="it-choc-lbl">Haut :</td>
-              <td class="it-val it-choc-val" id="it-top">—</td>
-            </tr>
-            <tr>
-              <td class="it-choc-lbl">Bas :</td>
-              <td class="it-val it-choc-val" id="it-bot">—</td>
-            </tr>
-            <tr>
-              <td class="it-choc-lbl">Gauche :</td>
-              <td class="it-val it-choc-val" id="it-lft">—</td>
-            </tr>
-            <tr>
-              <td class="it-choc-lbl">Droite :</td>
-              <td class="it-val it-choc-val" id="it-rgt">—</td>
-            </tr>
-            <tr class="it-mean-row">
-              <td class="it-choc-lbl it-mean-lbl">Moyenne :</td>
-              <td class="it-val it-mean-val" id="it-mean">—</td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
+    <!-- Tableau d'informations — deux blocs distincts : côte à côte avec le
+         canvas ils s'empilent et forment une seule carte ; en fenêtre étroite
+         ils se placent l'un à côté de l'autre, ce qui divise par deux la
+         hauteur occupée et laisse la place à la simulation. -->
+    <div id="info-panel">
+
+      <!-- Grandeurs macroscopiques -->
+      <table class="info-table" id="it-macro">
+        <colgroup>
+          <col class="it-col-lbl">
+          <col class="it-col-val">
+        </colgroup>
+        <tr>
+          <td class="it-lbl">Température</td>
+          <td class="it-val" id="it-T">—</td>
+        </tr>
+        <tr>
+          <td class="it-lbl it-wrap">Quantité de matière</td>
+          <td class="it-val" id="it-n">—</td>
+        </tr>
+        <tr>
+          <td class="it-lbl">Volume</td>
+          <td class="it-val" id="it-V">—</td>
+        </tr>
+      </table>
+
+      <!-- Chocs sur les parois — l'étiquette occupe une colonne plus étroite,
+           le sous-tableau des quatre parois ayant besoin de la place. -->
+      <table class="info-table" id="it-chocs">
+        <colgroup>
+          <col class="it-col-chocs-lbl">
+          <col class="it-col-chocs-val">
+        </colgroup>
+        <tr>
+          <td class="it-lbl">Chocs</td>
+          <td class="it-choc-sub">
+            <table class="it-choc-inner">
+              <tr>
+                <td class="it-choc-lbl">Haut :</td>
+                <td class="it-val it-choc-val" id="it-top">—</td>
+              </tr>
+              <tr>
+                <td class="it-choc-lbl">Bas :</td>
+                <td class="it-val it-choc-val" id="it-bot">—</td>
+              </tr>
+              <tr>
+                <td class="it-choc-lbl">Gauche :</td>
+                <td class="it-val it-choc-val" id="it-lft">—</td>
+              </tr>
+              <tr>
+                <td class="it-choc-lbl">Droite :</td>
+                <td class="it-val it-choc-val" id="it-rgt">—</td>
+              </tr>
+              <tr class="it-mean-row">
+                <td class="it-choc-lbl it-mean-lbl">Moyenne :</td>
+                <td class="it-val it-mean-val" id="it-mean">—</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+
+    </div>
 
     <div id="sim-area">
       <canvas id="recipient-canvas"></canvas>

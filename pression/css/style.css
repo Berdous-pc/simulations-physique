@@ -38,20 +38,31 @@ main {
   flex: 1;
   display: grid;
   grid-template-columns: 1fr clamp(200px, 22vw, 300px);
+  /* Ligne explicite en 1fr : #left-col est un conteneur de requête en
+     container-type: size, donc sa hauteur intrinsèque est nulle. Une ligne
+     auto la déduirait du contenu — et tout s'effondrerait. */
+  grid-template-rows: 1fr;
   min-height: 0;
   max-height: 100%;
   overflow: hidden;
 }
 
 /* ── Colonne gauche ──────────────────────────────── */
+/* container-type: size fait de #left-col le référentiel des unités cq de
+   ses descendants. Sans lui, un clamp(…, Nvw, …) sur le tableau suivrait la
+   largeur de la FENÊTRE, alors que la colonne ne fait qu'une fraction de
+   celle-ci (le panneau droit et les marges en sont retranchés) — et
+   ignorerait totalement sa hauteur. */
 #left-col {
   display: flex;
   flex-direction: row;
   align-items: center;
+  height: 100%;
   min-height: 0;
   overflow: hidden;
-  gap: 12px;
-  padding: 12px;
+  gap: clamp(6px, 0.9vw, 14px);
+  padding: clamp(6px, 0.9vw, 14px);
+  container-type: size;
 }
 
 /* ── Zone simulation (canvas) ────────────────────── */
@@ -75,38 +86,73 @@ main {
      pour un futur glisser-déposer du piston). */
   touch-action: none;
 }
-
-/* ── Tableau d'informations (à gauche du canvas) ─── */
-#info-table {
+/* ── Tableau d'informations (à côté du canvas) ────── */
+/* Le bloc est dimensionné en em autour de sa propre police : la largeur
+   nécessaire (une étiquette + une valeur du type « 7,00×10⁻³ m³ ») est
+   proportionnelle au corps du texte, donc le rapport largeur/police doit
+   rester constant. Seule la police est calculée, à partir des DEUX axes du
+   conteneur :
+     - 1,75cqw  borne la largeur du bloc à ~35 % de la colonne ;
+     - 5,5cqh   garantit que ses huit lignes tiennent en hauteur.
+   L'ancienne écriture mélangeait les axes (police en vh, largeur en vw) :
+   dans une fenêtre large et courte, on obtenait un texte minuscule dans une
+   boîte immense, et l'inverse dans une fenêtre étroite et haute. */
+#info-panel {
+  display: flex;
+  flex-direction: column;
   flex-shrink: 1;
-  border-collapse: separate;
-  border-spacing: 0;
   font-family: 'Segoe UI', Arial, sans-serif;
-  font-size: clamp(10px, 2.7vh, 42px);
+  font-size: clamp(11px, min(1.75cqw, 5.5cqh), 30px);
+  /* La carte (fond, bordure, arrondi, ombre) est portée par le conteneur :
+     les deux tableaux s'y empilent sans couture. */
   background: #fdf8f0;
   border: 1px solid #c8c0b4;
   border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 1px 4px rgba(0,0,0,0.08);
-  width: 27vw;
-  max-width: 27vw;
+  width: 20em;
+  max-width: 42cqw;
+}
+
+.info-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
   table-layout: fixed;
 }
 
-#info-table > tbody > tr > td {
+/* Trait de séparation entre les deux tableaux empilés */
+.info-table + .info-table {
+  border-top: 1px solid #b0a898;
+}
+
+/* Répartition des colonnes. Empilés, les deux tableaux forment une seule
+   carte : leur séparation verticale doit tomber au même endroit, donc ils
+   partagent le même partage 38/62. Les 62 % suffisent au sous-tableau des
+   chocs (« Moyenne : 1234,5 /s » ≈ 11,5em contre 12,4em disponibles).
+   Côte à côte, en revanche, ce sont deux cartes indépendantes : le tableau
+   des chocs y reprend un partage plus favorable (cf. la media query). */
+.it-col-lbl        { width: 38%; }
+.it-col-val        { width: 62%; }
+.it-col-chocs-lbl  { width: 38%; }
+.it-col-chocs-val  { width: 62%; }
+
+.info-table > tbody > tr > td {
   border-bottom: 1px solid #b0a898;
   border-right: 1px solid #b0a898;
-  padding: clamp(3px, 0.6vh, 8px) clamp(5px, 0.8vw, 12px);
+  /* Marges en em : elles suivent la police du tableau, ce qui garde exacte
+     la largeur de 20em calculée ci-dessus. */
+  padding: 0.32em 0.55em;
   vertical-align: middle;
 }
 
 /* Pas de bordure droite sur la dernière colonne */
-#info-table > tbody > tr > td:last-child {
+.info-table > tbody > tr > td:last-child {
   border-right: none;
 }
 
 /* Pas de bordure basse sur la dernière ligne */
-#info-table > tbody > tr:last-child > td {
+.info-table > tbody > tr:last-child > td {
   border-bottom: none;
 }
 
@@ -146,7 +192,7 @@ main {
 
 .it-choc-inner td {
   border-bottom: 1px solid #c8c0b4;
-  padding: 5px 10px;
+  padding: 0.3em 0.55em;
   vertical-align: middle;
 }
 
@@ -185,13 +231,16 @@ main {
   color: #2c3e50 !important;
 }
 
+/* Pas de display: block ici : sur un <td>, il le sort de l'algorithme de mise
+   en page du tableau — la cellule cesse d'être contrainte par la largeur de sa
+   colonne et, avec white-space: nowrap, débordait dès que la moyenne passait
+   à deux chiffres. */
 .it-mean-val {
   color: #b04020 !important;
   font-weight: 700;
   font-family: 'Segoe UI', Arial, sans-serif;
   font-variant-numeric: tabular-nums;
   text-align: right;
-  display: block;
 }
 
 /* ── Panneau droit ───────────────────────────────── */
@@ -233,7 +282,7 @@ main {
 
 /* ── Titres de section ───────────────────────────── */
 .section-title {
-  font-size: 11px;
+  font-size: clamp(10px, 0.85vw, 13px);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 1px;
@@ -264,7 +313,7 @@ main {
   background: #c08020;
   color: #fff;
   font-size: clamp(14px, 1.4vw, 18px);
-  padding: 10px 6px;
+  padding: clamp(7px, 0.8vw, 13px) 6px;
 }
 .btn-pause:hover { background: #a06010; }
 
@@ -272,7 +321,7 @@ main {
   background: #2a8a50;
   color: #fff;
   font-size: clamp(14px, 1.4vw, 18px);
-  padding: 10px 6px;
+  padding: clamp(7px, 0.8vw, 13px) 6px;
 }
 .btn-play:hover { background: #1a6a38; }
 
@@ -280,7 +329,7 @@ main {
   background: #dedad2;
   color: #5a6a78;
   font-size: clamp(12px, 1.2vw, 15px);
-  padding: 9px 6px;
+  padding: clamp(6px, 0.7vw, 11px) 6px;
 }
 .btn-raz:hover { background: #ccc8c0; }
 
@@ -289,7 +338,7 @@ main {
   display: flex;
   flex-direction: column;
   gap: 3px;
-  margin-bottom: 10px;
+  margin-bottom: clamp(7px, 0.9vw, 12px);
 }
 
 .param-row label {
@@ -320,11 +369,20 @@ main {
   cursor: pointer;
 }
 
-.input-hint, .input-hint-sub {
-  font-size: 14px !important;
-  color: #7a8a96 !important;
+/* Le !important n'avait rien à surcharger : .input-hint est un frère du
+   <label>, pas un descendant. Et 14px fixes dans un panneau qui descend à
+   200px faisaient tenir l'aide du curseur n sur cinq lignes. */
+.input-hint {
+  font-size: clamp(10px, 0.95vw, 13px);
+  color: #7a8a96;
   line-height: 1.4;
   font-weight: 400;
+}
+
+/* Parenthèse de rappel, imbriquée dans #lbl-n-molecules */
+.input-hint-sub {
+  font-size: 0.92em;
+  color: #8a96a0;
 }
 
 .slider-ticks {
@@ -380,7 +438,7 @@ main {
 }
 
 .panel-hint-title {
-  font-size: 11px;
+  font-size: clamp(10px, 0.85vw, 13px);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 1px;
@@ -398,7 +456,7 @@ main {
   border: 1px solid #c8d4dc;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 11px;
+  font-size: clamp(10px, 0.85vw, 13px);
   font-weight: 600;
   color: #4a5a68;
   padding: 4px 9px;
@@ -454,3 +512,83 @@ main {
   padding-bottom: 0;
 }
 .panel-hint:not(.collapsed) .panel-hint-toggle { transform: rotate(180deg); }
+
+/* ══════════════════════════════════════════════════
+   Fenêtre étroite ou en portrait
+   Côte à côte, le bloc d'informations et le canvas se disputent une largeur
+   qui ne suffit plus à aucun des deux. On empile alors : simulation en haut,
+   sur toute la largeur, informations dessous — mais les deux tableaux
+   passent l'un À CÔTÉ de l'autre. Empilés, leurs huit lignes mangeaient plus
+   de hauteur que la simulation elle-même, qui se retrouvait réduite à une
+   bande où le récipient, carré, n'était plus qu'une vignette.
+══════════════════════════════════════════════════ */
+@media (max-width: 820px), (max-aspect-ratio: 3/4) {
+  #left-col {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  #info-panel {
+    /* Sous la simulation, malgré sa position en tête du HTML. */
+    order: 1;
+    flex-direction: row;
+    align-items: flex-start;
+    /* Repli si les deux tableaux ne tiennent plus côte à côte */
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: clamp(5px, 1.2cqw, 12px);
+    flex-shrink: 0;
+
+    /* La carte n'est plus portée par le conteneur mais par chaque tableau. */
+    background: none;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    overflow: visible;
+
+    /* Les deux tableaux font ensemble ~31em de large et 5 lignes de haut :
+         - 3,2cqw  les maintient dans la largeur de la colonne ;
+         - 2,3cqh  leur réserve environ le quart de la hauteur, le reste
+                   revenant à la simulation. */
+    font-size: clamp(10px, min(3.2cqw, 2.3cqh), 20px);
+    width: auto;
+    max-width: 100%;
+  }
+
+  .info-table {
+    background: #fdf8f0;
+    border: 1px solid #c8c0b4;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  }
+
+  /* Plus de couture entre les deux : ce sont deux cartes distinctes. */
+  .info-table + .info-table {
+    border-top: 1px solid #c8c0b4;
+  }
+
+  /* Deux cartes distinctes : plus de séparation verticale à faire coïncider,
+     le tableau des chocs peut donner sa juste part à son sous-tableau. */
+  .it-col-chocs-lbl { width: 25%; }
+  .it-col-chocs-val { width: 75%; }
+
+  #it-macro { width: 14em; }
+  #it-chocs { width: 16em; }
+}
+
+/* ══════════════════════════════════════════════════
+   Animations réduites (réglage système de l'utilisateur)
+   Ne concerne que l'habillage : la simulation elle-même est le propos de
+   la page et continue de tourner.
+══════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  .btn,
+  .panel-hint,
+  .panel-hint-body,
+  .panel-hint-toggle,
+  .panel-hint-menu-btn {
+    transition: none;
+  }
+  .btn:active { transform: none; }
+}

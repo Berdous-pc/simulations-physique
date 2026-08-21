@@ -292,5 +292,15 @@ function _drawMolecules() {
   }
 }
 
-// ── Attacher l'événement resize ────────────────────────────────────────
+// ── Suivi des changements de taille ────────────────────────────────────
+// window.resize ne couvre pas tout : la zone de simulation peut changer de
+// dimensions sans que la fenêtre bouge (bascule de la mise en page en
+// colonne, apparition de la barre de défilement du panneau, reflow du
+// tableau d'informations). Le ResizeObserver observe le conteneur réel.
+// Les deux sources convergent vers resize(), qui n'exécute qu'un seul
+// _doResize() par image grâce à son anti-rebond.
 window.addEventListener('resize', resize);
+
+if (typeof ResizeObserver === 'function') {
+  new ResizeObserver(resize).observe(canvas.parentElement);
+}
