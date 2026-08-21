@@ -21,7 +21,7 @@ var T_REF   = 300;     // K, température de référence pour calibrage visuel
 var V0_PX   = 180;     // px/s à T_REF (recalibré dans resize() de recipient.js)
 
 // Rayon des molécules en fraction de la largeur intérieure du récipient
-var MOL_RADIUS_FRAC = 0.006;  // recalculé par recipient.js
+var MOL_RADIUS_FRAC = 0.006;  // constante ; MOL_RADIUS (px) en découle, cf. recipient.js
 var MOL_RADIUS = 3;           // px effectif (mis à jour par recipient.js)
 
 // Nombre de sous-pas par frame pour l'intégration (anti-tunneling)
@@ -98,44 +98,6 @@ function updatePressure() {
   sim.P_Pa = (sim.n_mol * R_GAS * sim.T_K) / V_m3;
 }
 
-// Formate une pression en Pa avec notation adaptative
-// < 10 000 Pa → décimal entier, sinon notation scientifique à 2 déc.
-function fmtPressure(P) {
-  if (isNaN(P) || !isFinite(P)) return '—';
-  if (P < 10000) {
-    return Math.round(P).toLocaleString('fr-FR') + ' Pa';
-  }
-  var exp = Math.floor(Math.log10(P));
-  var mantissa = P / Math.pow(10, exp);
-  return mantissa.toFixed(2).replace('.', ',') + '\u00d710\u207b\u00b9'.slice(0,2) +
-         exp.toString().replace('-','') + ' Pa';
-}
-
-// Version propre avec exposant Unicode
-function fmtPressureNice(P) {
-  if (isNaN(P) || !isFinite(P)) return '—';
-  if (P < 10000) {
-    return Math.round(P).toLocaleString('fr-FR') + ' Pa';
-  }
-  var exp = Math.floor(Math.log10(P));
-  var mantissa = P / Math.pow(10, exp);
-  var expStr = String(exp);
-  // Exposants Unicode pour 0-9
-  var supDigits = ['⁰','¹','²','³','⁴','⁵','⁶','⁷','⁸','⁹'];
-  var supExp = expStr.split('').map(function(c){ return supDigits[parseInt(c)] || c; }).join('');
-  return mantissa.toFixed(2).replace('.', ',') + '\u00d710' + supExp + ' Pa';
-}
-
-// Formate n en mol avec 2 décimales et virgule française
-function fmtMol(n) {
-  return n.toFixed(2).replace('.', ',') + ' mol';
-}
-
-// Formate V en L avec 1 décimale et virgule française
-function fmtLitre(v) {
-  return (v / 10).toFixed(1).replace('.', ',') + ' L';
-}
-
 // ══════════════════════════════════════════════════════════════════════
 //  Initialisation des molécules
 // ══════════════════════════════════════════════════════════════════════
@@ -162,8 +124,15 @@ function randomVelocity() {
   return { vx: _gaussRandom(sigma), vy: _gaussRandom(sigma) };
 }
 
-// Place N molécules sans chevauchement dans la boîte
-// Stratégie : grille + jitter, avec fallback aléatoire
+// Place N molécules réparties dans toute la boîte, sans chevauchement.
+// Stratégie : grille virtuelle de pas 2,5·r → on tire N cellules DISTINCTES
+// au hasard dans toute la grille, puis on décentre chaque molécule à
+// l'intérieur de sa cellule (jitter) pour casser l'aspect « cristal ».
+//
+// Historique : la version précédente construisait la liste des cellules en
+// s'arrêtant à 4·N cellules AVANT de mélanger. Les cellules étant énumérées
+// ligne par ligne depuis le haut, seules les premières rangées entraient dans
+// le tirage : toutes les molécules naissaient collées sous le piston.
 function initMolecules() {
   sim.molecules = [];
   var N   = sim.Nmol;
@@ -178,38 +147,87 @@ function initMolecules() {
   var w = xhi - xlo;
   var h = yhi - ylo;
 
-  // Grille initiale
-  var cols = Math.max(1, Math.floor(w / (r * 2.5)));
-  var rows = Math.max(1, Math.floor(h / (r * 2.5)));
-  var positions = [];
+  // Grille couvrant TOUTE la zone gaz
+  var cols  = Math.max(1, Math.floor(w / (r * 2.5)));
+  var rows  = Math.max(1, Math.floor(h / (r * 2.5)));
+  var total = cols * rows;
 
-  for (var i = 0; i < cols * rows && positions.length < N * 4; i++) {
-    var col = i % cols;
-    var row = Math.floor(i / cols);
-    var cx  = xlo + (col + 0.5) * (w / cols);
-    var cy  = ylo + (row + 0.5) * (h / rows);
-    positions.push({ x: cx, y: cy });
-  }
+  var cellW = w / cols;
+  var cellH = h / rows;
 
-  // Mélange Fisher-Yates
-  for (var k = positions.length - 1; k > 0; k--) {
-    var j = Math.floor(Math.random() * (k + 1));
-    var tmp = positions[k]; positions[k] = positions[j]; positions[j] = tmp;
+  // Amplitude du jitter : la molécule doit rester dans sa cellule, sinon deux
+  // voisines pourraient se chevaucher dès la première image.
+  var jx = Math.max(0, (cellW / 2 - r) * 0.9);
+  var jy = Math.max(0, (cellH / 2 - r) * 0.9);
+
+  // Tirage de min(N, total) cellules distinctes : Fisher-Yates PARTIEL sur le
+  // tableau d'indices — on ne mélange que les N premières positions, ce qui
+  // suffit et évite de brasser plusieurs milliers de cellules.
+  var nGrid = Math.min(N, total);
+  var idx   = new Int32Array(total);
+  for (var i = 0; i < total; i++) idx[i] = i;
+  for (var k = 0; k < nGrid; k++) {
+    var j = k + Math.floor(Math.random() * (total - k));
+    var tmp = idx[k]; idx[k] = idx[j]; idx[j] = tmp;
   }
 
   for (var m = 0; m < N; m++) {
-    var pos;
-    if (m < positions.length) {
-      pos = positions[m];
+    var x, y;
+    if (m < nGrid) {
+      // Centre de la cellule tirée + jitter
+      var cell = idx[m];
+      x = xlo + (cell % cols + 0.5) * cellW + (Math.random() * 2 - 1) * jx;
+      y = ylo + (Math.floor(cell / cols) + 0.5) * cellH + (Math.random() * 2 - 1) * jy;
     } else {
-      pos = { x: xlo + Math.random() * w, y: ylo + Math.random() * h };
+      // Plus de molécules que de cellules : repli aléatoire uniforme
+      x = xlo + Math.random() * w;
+      y = ylo + Math.random() * h;
     }
     var vel = randomVelocity();
-    sim.molecules.push({ x: pos.x, y: pos.y, vx: vel.vx, vy: vel.vy });
+    sim.molecules.push({ x: x, y: y, vx: vel.vx, vy: vel.vy });
   }
 
   // Ré-initialiser les compteurs de chocs
   resetWallHits();
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Transposition des molécules après un redimensionnement
+// ══════════════════════════════════════════════════════════════════════
+
+// Reporte chaque molécule à la MÊME position relative dans la nouvelle zone
+// gaz. Sans cela, un redimensionnement de la fenêtre laisse les molécules à
+// leurs coordonnées px absolues : elles se retrouvent hors du récipient, et
+// comme la physique ne tourne pas en pause, elles y restent affichées.
+// `o` = ancienne géométrie {left, right, top, bottom} de la zone gaz
+// (top = ancienne position du piston).
+function remapMoleculesToBox(o) {
+  var mols = sim.molecules;
+  if (!mols.length) return;
+
+  var oldW = o.right  - o.left;
+  var oldH = o.bottom - o.top;
+  if (oldW <= 0 || oldH <= 0) return;
+
+  var r    = MOL_RADIUS;
+  var xlo  = sim.boxLeft   + r;
+  var xhi  = sim.boxRight  - r;
+  var ylo  = sim.pistonY   + r;
+  var yhi  = sim.boxBottom - r;
+  var newW = xhi - xlo;
+  var newH = yhi - ylo;
+  if (newW <= 0 || newH <= 0) return;
+
+  for (var i = 0; i < mols.length; i++) {
+    var fx = (mols[i].x - o.left) / oldW;
+    var fy = (mols[i].y - o.top)  / oldH;
+    // Clamp : une molécule en cours de rebond peut être très légèrement
+    // hors de l'ancienne boîte ; on la ramène dans la nouvelle.
+    if (fx < 0) fx = 0; else if (fx > 1) fx = 1;
+    if (fy < 0) fy = 0; else if (fy > 1) fy = 1;
+    mols[i].x = xlo + fx * newW;
+    mols[i].y = ylo + fy * newH;
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -355,7 +373,6 @@ function _moveAll(dt) {
   var mols = sim.molecules;
   var g    = G_PX * sim.gravityFactor;
   for (var i = 0; i < mols.length; i++) {
-    mols[i].vx  += 0;               // pas de force horizontale
     mols[i].vy  += g * dt;          // pesanteur vers le bas (y croissant)
     mols[i].x   += mols[i].vx * dt;
     mols[i].y   += mols[i].vy * dt;

@@ -98,7 +98,7 @@
 
         <!-- Température -->
         <div class="param-row">
-          <label>Température
+          <label for="sl-T">Température
             <span class="param-value"><span id="lbl-T">300</span> K</span>
           </label>
           <input type="range" id="sl-T" min="100" max="1000" step="10" value="300"
@@ -107,7 +107,7 @@
 
         <!-- Quantité de matière -->
         <div class="param-row">
-          <label>Quantité de matière
+          <label for="sl-n">Quantité de matière
             <span class="param-value">n = <span id="lbl-n">0,10</span> mol</span>
           </label>
           <input type="range" id="sl-n" min="20" max="300" step="10" value="100"
@@ -117,12 +117,13 @@
 
         <!-- Volume -->
         <div class="param-row">
-          <label>Volume
+          <label for="sl-V">Volume
             <span class="param-value">V = <span id="lbl-V">7,0</span> L</span>
           </label>
           <input type="range" id="sl-V" min="10" max="100" step="5" value="70"
                  oninput="onSliderV(this.value)">
-          <span class="input-hint">Agit sur la position du piston</span>        </div>
+          <span class="input-hint">Agit sur la position du piston</span>
+        </div>
 
       </div>
 
@@ -132,7 +133,7 @@
       <div class="panel-section">
         <div class="section-title">Options</div>
         <div class="param-row">
-          <label>Pesanteur (g = 9,81 m/s²)
+          <label for="sl-gravity">Pesanteur (g = 9,81 m/s²)
             <span class="param-value"><span id="lbl-gravity">0 g</span></span>
           </label>
           <input type="range" id="sl-gravity" min="0" max="4" step="1" value="0"
@@ -160,6 +161,9 @@
       <div class="panel-hint-body">
         Chaque choc d'une molécule sur une paroi exerce une force.
         La <strong>pression</strong> macroscopique P résulte de la somme statistique de ces chocs.
+        <div class="panel-hint-keys">
+          Raccourcis : <kbd>Espace</kbd> pause &nbsp;·&nbsp; <kbd>R</kbd> réinitialiser
+        </div>
       </div>
     </div>
 

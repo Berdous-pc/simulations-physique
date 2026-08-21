@@ -71,7 +71,8 @@ main {
   display: block;
   width: 100%;
   height: 100%;
-  /* évite que le drag du piston ne déclenche le scroll tactile */
+  /* Pas de scroll ni de zoom tactile sur la zone de simulation (utile aussi
+     pour un futur glisser-déposer du piston). */
   touch-action: none;
 }
 
@@ -151,11 +152,6 @@ main {
 
 .it-choc-inner tr:last-child td {
   border-bottom: none;
-}
-
-/* Ligne Moyenne — pas de border-top séparé, la border-bottom de Droite suffit */
-.it-mean-row td {
-  border-top: none !important;
 }
 
 /* Ligne Droite (avant-dernière) — garde sa border-bottom comme séparateur */
@@ -288,22 +284,6 @@ main {
 }
 .btn-raz:hover { background: #ccc8c0; }
 
-/* Bouton toggle (option on/off) */
-.btn-toggle-one {
-  background: #ece8e0;
-  color: #5a6a78;
-  font-size: clamp(12px, 1.2vw, 15px);
-  padding: 7px 6px;
-  border: 1.5px solid #c8c0b4;
-  text-align: left;
-}
-.btn-toggle-one:hover { background: #dedad2; }
-.btn-toggle-one.active {
-  background: #fde8c8;
-  color: #7a3a10;
-  border-color: #d0a060;
-}
-
 /* ── Paramètres ──────────────────────────────────── */
 .param-row {
   display: flex;
@@ -346,63 +326,6 @@ main {
   line-height: 1.4;
   font-weight: 400;
 }
-
-/* ── Afficheurs valeur ───────────────────────────── */
-.readout {
-  background: #fff;
-  border: 1px solid #c8c0b4;
-  border-radius: 6px;
-  padding: 7px 9px;
-  margin-bottom: 8px;
-}
-
-.ro-label {
-  font-size: clamp(11px, 1vw, 14px);
-  color: #7a8a96;
-  margin-bottom: 2px;
-}
-
-.ro-value {
-  font-size: clamp(15px, 1.6vw, 20px);
-  font-weight: 700;
-  color: #2a5080;
-  font-variant-numeric: tabular-nums;
-}
-
-.ro-unit {
-  font-size: 0.75em;
-  font-weight: 400;
-  color: #7a8a96;
-}
-
-/* ── Grille des chocs/s ──────────────────────────── */
-.ro-chocs-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px 8px;
-  margin-top: 5px;
-}
-
-.ro-choc-item {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.ro-choc-label {
-  font-size: clamp(10px, 0.9vw, 12px);
-  color: #7a8a96;
-}
-
-.ro-choc-val {
-  font-size: clamp(13px, 1.3vw, 17px);
-}
-
-/* État grisé (toggle chocs OFF) */
-#ro-chocs-wrap.disabled .ro-choc-val {
-  color: #b0b8c4;
-}
-
 
 .slider-ticks {
   display: flex;
@@ -503,6 +426,26 @@ main {
   overflow: hidden;
   transition: max-height 0.25s ease, padding 0.25s ease;
   max-height: 200px;
+}
+
+/* Rappel des raccourcis clavier dans le bandeau Informations */
+.panel-hint-keys {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid #e0dcd4;
+  font-size: 0.9em;
+  color: #7a8a96;
+}
+
+.panel-hint-keys kbd {
+  font-family: inherit;
+  font-size: 0.95em;
+  font-weight: 600;
+  color: #4a5a68;
+  background: #f0f4f7;
+  border: 1px solid #c8d4dc;
+  border-radius: 4px;
+  padding: 1px 5px;
 }
 
 .panel-hint.collapsed .panel-hint-body {

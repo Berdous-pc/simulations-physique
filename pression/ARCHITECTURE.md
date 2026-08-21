@@ -38,10 +38,8 @@ Tout le CSS de la page. Suit la charte graphique du projet.
 | Grille principale | `main` en CSS Grid : `1fr` + `clamp(200px, 22vw, 300px)` |
 | Zone simulation `#sim-area` | Fond ivoire `#fdf8f0`, flex 1 |
 | Panneau droit `#panel` | Fond `#e8e4de`, scrollable, `font-size: clamp(...)` |
-| Boutons `.btn` | Variantes : `.btn-pause`, `.btn-play`, `.btn-raz`, `.btn-toggle-one` |
+| Boutons `.btn` | Variantes : `.btn-pause`, `.btn-play`, `.btn-raz` |
 | Paramètres `.param-row` | Label + slider + hint |
-| Afficheurs `.readout` | Fond blanc, valeurs `tabular-nums` |
-| Grille chocs `.ro-chocs-grid` | 2×2 compteurs haut/bas/gauche/droite |
 | Hint bas `.panel-hint` | Collé en bas hors scroll |
 
 ---
@@ -59,7 +57,7 @@ Tout le CSS de la page. Suit la charte graphique du projet.
 | `T_REF` | 300 K | Température de référence pour le calibrage visuel |
 | `V0_PX` | calculé | Vitesse de base en px/s à T_REF (recalibré par recipient.js) |
 | `MOL_RADIUS` | calculé | Rayon des molécules en px (recalibré par recipient.js) |
-| `MOL_RADIUS_FRAC` | 0,018 | Fraction de la largeur intérieure du récipient |
+| `MOL_RADIUS_FRAC` | 0,006 | Fraction de la largeur intérieure du récipient |
 | `SUBSTEPS` | 4 | Sous-pas par frame (anti-tunneling) |
 | `WALL_RATE_WINDOW` | 1000 ms | Fenêtre temporelle pour le comptage des chocs/s |
 
@@ -75,7 +73,6 @@ Tout le CSS de la page. Suit la charte graphique du projet.
 | `pistonTargetY` | px | Position cible (lissage) |
 | `molecules[]` | `{x,y,vx,vy}[]` | État de chaque molécule |
 | `paused` | bool | Simulation suspendue |
-| `showCollisionRate` | bool | Affichage des overlays chocs/s |
 | `wallHits` | `{top,bottom,left,right}` | Horodatages des chocs (ms simulé) |
 | `wallRate` | `{top,bottom,left,right}` | Chocs/s mis à jour à 10 Hz |
 | `P_Pa` | Pa | Pression calculée par PV=nRT |
@@ -88,8 +85,8 @@ Tout le CSS de la page. Suit la charte graphique du projet.
 | Fonction | Rôle |
 |---|---|
 | `updatePressure()` | Calcule `sim.P_Pa = n·R·T/V` |
-| `fmtPressureNice(P)` | Formate P en Pa (décimal si < 10 000, sinon notation scientifique avec exposants Unicode) |
 | `initMolecules()` | Peuple la boîte sans chevauchement, vitesses à `v0·√(T/T_REF)` |
+| `remapMoleculesToBox(o)` | Après un resize, reporte chaque molécule à la même position RELATIVE dans la nouvelle zone gaz |
 | `setTemperature(T)` | Rescaling instantané `v ← v·√(T_new/T_old)` |
 | `setMoleculeCount(N)` | Ajoute/retire des molécules incrémentalement |
 | `setVolume(V_L)` | Met à jour `pistonTargetY` |
@@ -115,17 +112,17 @@ Tout le CSS de la page. Suit la charte graphique du projet.
 1. Fond ivoire (`#fdf8f0`)
 2. Fond intérieur de la boîte (`#f5f0e8`)
 3. 3 parois fixes (gauche, droite, bas) en `#2c3e50`
-4. Piston animé (tige + corps hachuré + contour + flèche indicative)
+4. Piston animé (tige + corps hachuré + contour)
 5. Molécules (disques `#2a6aaa` + reflet)
-6. Overlays chocs/s (si `sim.showCollisionRate`) : étiquettes à l'extérieur de chaque paroi, dessinées dans le canvas (pas en DOM)
+(les anciennes étiquettes chocs/s dessinées dans le canvas ont été remplacées par le tableau HTML `#info-table`)
 
-#### Géométrie recalculée dans `resize()`
+#### Géométrie recalculée dans `_doResize()`
 
 - `sim.boxLeft/Right/Bottom` — bords intérieurs de la boîte
 - `sim.boxTopMax` — position Y du piston quand V = 10 L
 - `sim.boxTopMin` — position Y du piston quand V = 1 L
 - `MOL_RADIUS` = `innerWidth × MOL_RADIUS_FRAC`
-- `V0_PX` = `innerWidth × 0,22` (vitesse de base en px/s à T_REF)
+- `V0_PX` = `innerWidth × 0,18` (vitesse de base en px/s à T_REF)
 
 ---
 
@@ -141,7 +138,6 @@ Tout le CSS de la page. Suit la charte graphique du projet.
 | `onSliderT(val)` | Slider T | Appelle `setTemperature()`, met à jour le label |
 | `onSliderN(val)` | Slider n | Appelle `setMoleculeCount()`, met à jour les labels |
 | `onSliderV(val)` | Slider V | Appelle `setVolume()`, met à jour le label |
-| `toggleChocs()` | Bouton toggle | Active/désactive overlays + readouts chocs/s |
 | `resetSim()` | Bouton Réinitialiser | Délègue à `sim.js/resetSim()`, puis `syncUIToSim()` |
 | `syncUIToSim()` | Init + reset | Synchronise les valeurs des sliders/labels avec l'état `sim` |
 | `updateReadouts()` | 10 Hz | Rafraîchit N, P, chocs/s dans le panneau |
@@ -153,24 +149,24 @@ Appelée par RAF à ~60 fps :
 1. `dtReal = min(ts - lastTs, 50 ms)` — protection contre les grandes pauses
 2. `dt = paused ? 0 : dtReal`
 3. `stepPhysics(dt)` si dt > 0
-4. Lissage piston : `pistonY += (target - pistonY) × 0,15`
+4. Lissage piston : `pistonY += (target - pistonY) × (1 - exp(-dtReal / PISTON_TAU))`
 5. `pushMoleculesDownFromPiston()` si le piston a bougé
 6. `updateWallRates()` + `updateReadouts()` à 10 Hz (timers internes)
 7. `drawScene()`
 
 #### Initialisation `init()`
 
-Appelée une seule fois au `window.load` :
+Appelée une seule fois au `DOMContentLoaded` :
 
 ```
-Calcul géométrie synchrone (sans RAF)
+_doResize()  (géométrie synchrone)
 → initMolecules()
 → updatePressure()
 → syncUIToSim()
 → requestAnimationFrame(loop)
 ```
 
-> Note : l'initialisation duplique partiellement le calcul de géométrie de `_doResize()` de recipient.js pour garantir que les dimensions sont disponibles avant le premier `initMolecules()`.
+> Note : `init()` appelle directement `_doResize()` (variante synchrone de `resize()`) pour que la géométrie soit connue avant le premier `initMolecules()`. Si le conteneur n'est pas encore mis en page (`_cw === 0`), `init()` se replanifie à l'image suivante.
 
 ---
 
@@ -181,7 +177,7 @@ index.html
   └── <script src="js/sim.js">         expose : sim, R_GAS, N_SCALE, T_REF,
   │                                             V0_PX, MOL_RADIUS, MOL_RADIUS_FRAC,
   │                                             SUBSTEPS, WALL_RATE_WINDOW,
-  │                                             updatePressure, fmtPressureNice,
+  │                                             updatePressure, remapMoleculesToBox,
   │                                             initMolecules, setTemperature,
   │                                             setMoleculeCount, setVolume,
   │                                             stepPhysics, pushMoleculesDownFromPiston,
@@ -192,7 +188,7 @@ index.html
   │
   └── <script src="js/ui.js">          dépend de : tous les fichiers précédents
                                        expose : togglePause, onSliderT, onSliderN,
-                                                onSliderV, toggleChocs, syncUIToSim,
+                                                onSliderV, syncUIToSim,
                                                 updateReadouts
                                        démarre : init() → requestAnimationFrame(loop)
 ```
@@ -213,5 +209,9 @@ index.html
 - **Anti-tunneling** : 4 sous-pas par frame ; à augmenter si des molécules traversent les parois à T > 800 K
 - **Anti-sticking** : séparation positionnelle (+0,5 px de marge) appliquée après chaque choc paire-à-paire
 - **Push du piston** : `pushMoleculesDownFromPiston()` appelé uniquement si `|ΔpistonY| > 0,1 px`
-- **Calibrage `V0_PX`** : recalibré à chaque resize (`innerWidth × 0,22`), les vitesses existantes ne sont PAS rescalées au resize (pour ne pas perturber la simulation)
+- **Marges du canvas** : proportionnelles (`MARGIN_FRAC = 0,03` de `min(largeur, hauteur)`, plancher `MARGIN_MIN = 8 px`) ; la marge haute est en plus minorée par `PISTON_BODY_H + 6`, car le corps du piston dépasse le sommet du récipient à V maximum
+- **Lissage du piston** : constante de temps `PISTON_TAU = 110 ms` (`1 - exp(-dt/TAU)`), et non un facteur fixe par image — indispensable pour que le mouvement soit identique à 60 et à 144 Hz
+- **Démarrage** : `DOMContentLoaded` (et non `load`, qui attend le script de statistiques distant et bloquerait la page hors ligne)
+- **Raccourcis clavier** : Espace = pause, R = réinitialiser ; ignorés si le focus est sur un `INPUT`/`BUTTON`
+- **Calibrage `V0_PX`** : recalibré à chaque resize (`innerWidth × 0,18`), les vitesses ET les positions existantes sont rescalées dans le même rapport au resize, de sorte que la trajectoire visible est inchangée (cf. `remapMoleculesToBox()`)
 - **Performance** : `O(N²)` collisions ; à N=300 et 4 sous-pas, ~21 M tests/s à 60 fps — acceptable sur tout PC lycée moderne

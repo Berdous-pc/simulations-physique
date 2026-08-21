@@ -22,6 +22,11 @@ var _rateTimer     = 0;   // ms cumulés depuis la dernière mise à jour wallRa
 var READOUT_PERIOD = 100; // ms (10 Hz)
 var RATE_PERIOD    = 100; // ms (10 Hz)
 
+// ── Constante de temps du lissage du piston (ms) ───────────────────────
+// 110 ms reproduit le facteur 0,15 par image d'un écran 60 Hz, mais sans
+// dépendre du taux de rafraîchissement (cf. loop()).
+var PISTON_TAU = 110;
+
 // ══════════════════════════════════════════════════════════════════════
 //  Boucle d'animation (RAF)
 // ══════════════════════════════════════════════════════════════════════
@@ -48,8 +53,11 @@ function loop(ts) {
   }
 
   // ── Lissage du piston ──
+  // Constante de temps exprimée en ms, et non en « 0,15 par image » : sans
+  // cela le piston se déplace ~2,4 fois plus vite sur un écran 144 Hz que
+  // sur un 60 Hz. exp(-dt/TAU) donne le même mouvement à tout framerate.
   var prevPistonY = sim.pistonY;
-  sim.pistonY += (sim.pistonTargetY - sim.pistonY) * 0.15;
+  sim.pistonY += (sim.pistonTargetY - sim.pistonY) * (1 - Math.exp(-dtReal / PISTON_TAU));
   // Si le piston a bougé, repousser les molécules en dehors
   if (Math.abs(sim.pistonY - prevPistonY) > 0.1) {
     pushMoleculesDownFromPiston();
@@ -83,7 +91,7 @@ function updateReadouts() {
   updatePressure();
 
   document.getElementById('it-T').textContent  = sim.T_K + ' K';
-  document.getElementById('it-n').textContent  = sim.n_mol.toFixed(3).replace('.', ',') + ' mol';
+  document.getElementById('it-n').textContent  = sim.n_mol.toFixed(2).replace('.', ',') + ' mol';
   document.getElementById('it-V').textContent  = _fmtVolume(sim.V_L);
 
   var top  = Math.round(sim.wallRate.top);
@@ -195,7 +203,6 @@ function onSliderV(val) {
   var sliderVal = parseInt(val, 10);
   _updateLabelV(sliderVal);
   var V_L = sliderVal / 10;
-  sim.n_mol = sim.Nmol / N_SCALE;  // cohérence
   setVolume(V_L);
   updatePressure();
   updateReadouts();
@@ -217,66 +224,52 @@ function onSliderGravity(val) {
 // ══════════════════════════════════════════════════════════════════════
 
 function init() {
-  // 1. Dimensionner le canvas (synchrone — besoin de la géométrie pour init molécules)
-  var area = canvas.parentElement;
-  _cw = area.clientWidth;
-  _ch = area.clientHeight;
-  var dpr = window.devicePixelRatio || 1;
-  canvas.width  = Math.round(_cw * dpr);
-  canvas.height = Math.round(_ch * dpr);
-  canvas.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
+  // 1. Dimensionner le canvas et calculer la géométrie.
+  //    On appelle directement _doResize() (variante synchrone de resize(),
+  //    qui elle diffère d'une image) : la géométrie doit être connue AVANT
+  //    initMolecules(). L'ancienne version recopiait ici les ~50 lignes de
+  //    calcul de recipient.js, avec ses propres constantes de marge — les
+  //    deux blocs avaient fini par diverger.
+  _doResize();
 
-  // Recalculer géométrie — doit rester synchronisée avec _doResize() de recipient.js
-  var MARGIN_TOP_L    = 60;
-  var MARGIN_BOTTOM_L = 40;
-  var MARGIN_LEFT_L   = 60;
-  var MARGIN_RIGHT_L  = 60;
-  var WALL_THICK_L    = 6;
+  // Mise en page pas encore effectuée (conteneur de largeur nulle) :
+  // réessayer à l'image suivante plutôt que de démarrer sur une boîte vide.
+  if (_cw === 0 || _ch === 0) { requestAnimationFrame(init); return; }
 
-  var availW = _cw - MARGIN_LEFT_L - MARGIN_RIGHT_L;
-  var availH = _ch - MARGIN_TOP_L  - MARGIN_BOTTOM_L;
-  var side   = Math.max(40, Math.min(availW, availH));
-  var cx     = MARGIN_LEFT_L + availW / 2;
-  var cy     = MARGIN_TOP_L  + availH / 2;
-
-  var rx1 = cx - side / 2;
-  var rx2 = cx + side / 2;
-  var ry1 = cy - side / 2;
-  var ry2 = cy + side / 2;
-
-  sim.boxLeft   = rx1 + WALL_THICK_L;
-  sim.boxRight  = rx2 - WALL_THICK_L;
-  sim.boxTop    = ry1 + WALL_THICK_L;
-  sim.boxBottom = ry2 - WALL_THICK_L;
-  sim._rx1 = rx1; sim._rx2 = rx2;
-  sim._ry1 = ry1; sim._ry2 = ry2;
-
-  var totalH = sim.boxBottom - sim.boxTop;
-  sim.boxTopMax = sim.boxTop;
-  sim.boxTopMin = sim.boxBottom - totalH / 10;
-
-  var innerW = sim.boxRight - sim.boxLeft;
-  MOL_RADIUS = Math.max(1, Math.round(innerW * MOL_RADIUS_FRAC));
-  V0_PX      = innerW * 0.18;
-  G_PX       = V0_PX * G_FRAC;
-
-  // 2. Position initiale du piston
-  var frac = (sim.V_L - 1.0) / (10.0 - 1.0);
-  sim.pistonTargetY = sim.boxTopMin + frac * (sim.boxTopMax - sim.boxTopMin);
-  sim.pistonY       = sim.pistonTargetY;
-
-  // 3. Initialiser les molécules
+  // 2. Initialiser les molécules (le piston est placé par _doResize())
   initMolecules();
 
-  // 4. Calculer la pression initiale
+  // 3. Calculer la pression initiale
   updatePressure();
 
-  // 5. Synchroniser l'UI
+  // 4. Synchroniser l'UI
   syncUIToSim();
 
-  // 6. Lancer la boucle RAF
+  // 5. Lancer la boucle RAF
   requestAnimationFrame(loop);
 }
 
-// ── Démarrage au chargement de la page ────────────────────────────────
-window.addEventListener('load', init);
+// ── Raccourcis clavier ─────────────────────────────────────────────────
+// Espace met en pause / reprend, R réinitialise — utile en projection, où
+// viser un bouton du panneau à la souris depuis le fond de la classe n'est
+// pas praticable.
+document.addEventListener('keydown', function (e) {
+  if (e.ctrlKey || e.altKey || e.metaKey) return;
+  // Ne pas doubler l'activation d'un curseur ou d'un bouton qui a le focus :
+  // Espace et Entrée les actionnent déjà, et les flèches déplacent les sliders.
+  var tag = e.target && e.target.tagName;
+  if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || tag === 'BUTTON') return;
+
+  if (e.key === ' ' || e.key === 'Spacebar') {
+    e.preventDefault();   // sinon le navigateur tente de faire défiler
+    togglePause();
+  } else if (e.key === 'r' || e.key === 'R') {
+    resetSim();
+  }
+});
+
+// ── Démarrage ──────────────────────────────────────────────────────────
+// DOMContentLoaded et non load : `load` attend TOUTES les ressources, y
+// compris le script de statistiques distant. Hors ligne (usage en classe),
+// la simulation restait figée jusqu'au timeout réseau.
+document.addEventListener('DOMContentLoaded', init);

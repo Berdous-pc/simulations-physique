@@ -17,17 +17,14 @@ var canvas = document.getElementById('recipient-canvas');
 var ctx    = canvas.getContext('2d');
 
 // ── Marges visuelles du récipient dans le canvas ──────────────────────
-// Le récipient ne prend pas tout le canvas — on laisse des marges
-// pour afficher les étiquettes de chocs/s à l'extérieur.
-var MARGIN_TOP    = 60;  // px — espace au-dessus du récipient (pour piston + étiquette)
-var MARGIN_BOTTOM = 40;  // px
-var MARGIN_LEFT   = 60;  // px — espace pour l'étiquette gauche
-var MARGIN_RIGHT  = 60;  // px
-var WALL_THICK    = 6;   // épaisseur des parois (px)
+// Marge proportionnelle à la plus petite dimension du canvas : le récipient
+// reste aéré sur grand écran sans se faire amputer sur petit écran.
+var MARGIN_FRAC = 0.03;  // fraction de min(largeur, hauteur) du canvas
+var MARGIN_MIN  = 8;     // px — plancher pour les très petits canvas
+var WALL_THICK  = 6;     // épaisseur des parois (px)
 
-// ── Hauteur réservée à la tige du piston (visible au-dessus du récipient) ──
-var PISTON_ROD_H    = 30;   // px
-var PISTON_ROD_W    = 14;   // px
+// ── Piston ─────────────────────────────────────────────────────────────
+var PISTON_ROD_W    = 14;   // px  (largeur de la tige)
 var PISTON_BODY_H   = 16;   // px  (hauteur du rectangle du piston)
 var HATCH_SPACING   = 8;    // px  (espacement des hachures sur le piston)
 
@@ -52,20 +49,37 @@ function _doResize() {
   var area = canvas.parentElement;
   _cw = area.clientWidth;
   _ch = area.clientHeight;
+  if (_cw === 0 || _ch === 0) return;   // conteneur pas encore mis en page
+
   var dpr = window.devicePixelRatio || 1;
   canvas.width  = Math.round(_cw * dpr);
   canvas.height = Math.round(_ch * dpr);
-  canvas.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  // ── Mémorisation de l'ancienne géométrie ──
+  // Elle sert à reporter le piston et les molécules à la même position
+  // RELATIVE dans le nouveau récipient (cf. remapMoleculesToBox).
+  var hadGeom   = (sim.boxRight > sim.boxLeft) && (sim.boxBottom > sim.pistonY);
+  var oldGas    = { left  : sim.boxLeft,  right  : sim.boxRight,
+                    top   : sim.pistonY,  bottom : sim.boxBottom };
+  var oldTopMin = sim.boxTopMin;
+  var oldTopMax = sim.boxTopMax;
+  var V0_PX_old = V0_PX;
 
   // ── Récipient carré : plus grand carré tenant dans la zone utile ──
-  // Zone utile = canvas moins les marges (pour les étiquettes chocs/s)
-  var availW = _cw - MARGIN_LEFT - MARGIN_RIGHT;
-  var availH = _ch - MARGIN_TOP  - MARGIN_BOTTOM;
+  // Marges proportionnelles au canvas (et non plus 60 px fixes, qui
+  // amputaient le récipient de 120 px de large sur toutes les tailles
+  // d'écran). En haut, il faut au minimum de quoi loger le corps du piston,
+  // qui dépasse le sommet du récipient quand V est au maximum.
+  var base   = Math.max(MARGIN_MIN, Math.round(Math.min(_cw, _ch) * MARGIN_FRAC));
+  var mTop   = Math.max(base, PISTON_BODY_H + 6);
+  var availW = _cw - 2 * base;
+  var availH = _ch - mTop - base;
   var side   = Math.max(40, Math.min(availW, availH));  // côté du carré
 
   // Centre de la zone utile
-  var cx = MARGIN_LEFT + availW / 2;
-  var cy = MARGIN_TOP  + availH / 2;
+  var cx = base + availW / 2;
+  var cy = mTop + availH / 2;
 
   // Coins extérieurs du récipient (parois incluses)
   var rx1 = cx - side / 2;
@@ -96,9 +110,26 @@ function _doResize() {
   var innerW = sim.boxRight - sim.boxLeft;
   MOL_RADIUS = Math.max(1, Math.round(innerW * MOL_RADIUS_FRAC));
 
+  // ── Piston : cible depuis V, position courante depuis sa fraction de course ──
+  // Reprendre la fraction (et non recaler sur la cible) préserve une
+  // animation de piston en cours pendant le redimensionnement.
+  var frac = (sim.V_L - 1.0) / (10.0 - 1.0);
+  sim.pistonTargetY = sim.boxTopMin + frac * (sim.boxTopMax - sim.boxTopMin);
+
+  var oldRange = oldTopMax - oldTopMin;
+  if (!hadGeom || oldRange === 0) {
+    sim.pistonY = sim.pistonTargetY;
+  } else {
+    var fCur = (sim.pistonY - oldTopMin) / oldRange;
+    sim.pistonY = sim.boxTopMin + fCur * (sim.boxTopMax - sim.boxTopMin);
+  }
+
+  // ── Molécules : même position relative dans la nouvelle zone gaz ──
+  if (hadGeom) remapMoleculesToBox(oldGas);
+
   // ── Vitesse de base proportionnelle à la taille du récipient ──
-  // Rescale les vitesses existantes si V0_PX change (redimensionnement fenêtre)
-  var V0_PX_old = V0_PX;
+  // Les vitesses existantes sont rescalées dans le même rapport que les
+  // positions : la trajectoire visible est identique après redimensionnement.
   V0_PX = innerW * 0.18;
   G_PX  = V0_PX * G_FRAC;   // pesanteur recalibrée avec V0_PX
   if (V0_PX_old > 0 && sim.molecules.length > 0 && Math.abs(V0_PX - V0_PX_old) > 0.5) {
@@ -107,15 +138,6 @@ function _doResize() {
       sim.molecules[i].vx *= ratio;
       sim.molecules[i].vy *= ratio;
     }
-  }
-
-  // ── Recalcul du piston cible selon V courant ──
-  var frac = (sim.V_L - 1.0) / (10.0 - 1.0);
-  sim.pistonTargetY = sim.boxTopMin + frac * (sim.boxTopMax - sim.boxTopMin);
-
-  // Recaler la position courante si c'est le premier redimensionnement
-  if (sim.pistonY === 0) {
-    sim.pistonY = sim.pistonTargetY;
   }
 }
 
@@ -126,9 +148,8 @@ function _doResize() {
 function drawScene() {
   if (_cw === 0 || _ch === 0) return;
 
-  ctx.clearRect(0, 0, _cw, _ch);
-
-  // Fond de la zone hors récipient
+  // Fond opaque de tout le canvas (couvre la frame précédente : pas besoin
+  // d'un clearRect préalable)
   ctx.fillStyle = '#fdf8f0';
   ctx.fillRect(0, 0, _cw, _ch);
 
@@ -229,22 +250,6 @@ function _drawMolecules() {
     ctx.fillStyle = 'rgba(255,255,255,0.30)';
     ctx.fill();
   }
-}
-
-// ── Overlays chocs/s ───────────────────────────────────────────────────
-// Utilitaire : chemin rectangle arrondi
-function _roundRect(ctx, x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y);
-  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-  ctx.lineTo(x + w, y + h - r);
-  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-  ctx.lineTo(x + r, y + h);
-  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-  ctx.lineTo(x, y + r);
-  ctx.quadraticCurveTo(x, y, x + r, y);
-  ctx.closePath();
 }
 
 // ── Attacher l'événement resize ────────────────────────────────────────
