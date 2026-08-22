@@ -601,8 +601,13 @@ function _resolvePair(mi, mj) {
   mj.vy += vrel_n * ny;
 
   // ── Séparation positionnelle anti-sticking ──
+  // Marge proportionnelle au rayon, et non 0,5 px fixe : ce déplacement n'a
+  // rien de thermique et ne doit pas prendre le pas sur l'agitation. À 10 K
+  // et 60 Hz, une molécule n'avance que d'environ 0,3 px par image — la
+  // marge fixe la dépassait. (Elle était aussi mal dimensionnée dans l'autre
+  // sens sur un écran très dense, où le rayon atteint la dizaine de pixels.)
   var overlap = diam - dist;
-  var half = (overlap / 2) + 0.5;  // +0.5 px marge
+  var half = (overlap / 2) + MOL_RADIUS * 0.08;
   mi.x -= nx * half;
   mi.y -= ny * half;
   mj.x += nx * half;

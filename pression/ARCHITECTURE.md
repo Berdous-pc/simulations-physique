@@ -211,7 +211,7 @@ index.html
 
 | Grandeur | Unité affichée | Plage | Défaut | Mapping interne |
 |---|---|---|---|---|
-| Température T | K | 100 → 1000 K | 300 K | Vitesse : `v = v0 × √(T/T_REF)` |
+| Température T | K | 10 → 1000 K | 300 K | Vitesse : `v = v0 × √(T/T_REF)` |
 | Quantité de matière n | mol | 0,02 → 0,30 mol | 0,10 mol | `Nmol = round(n × 1000)` |
 | Volume V | L | 1,0 → 10,0 L | 7,0 L | Hauteur piston proportionnelle à V |
 | Pression P | Pa | calculée | ~35 600 Pa | `P = nRT/V` (SI strict) — calculée mais **pas encore affichée** |
@@ -220,7 +220,7 @@ index.html
 ## Points sensibles
 
 - **Anti-tunneling** : nombre de sous-pas calculé par `_substepCount()` d'après 3σ et la durée réelle de l'image, borné à `[SUBSTEPS_MIN, SUBSTEPS_MAX]` ; élargir `SUBSTEPS_MAX` si des molécules se traversent à T > 800 K
-- **Anti-sticking** : séparation positionnelle (+0,5 px de marge) appliquée après chaque choc paire-à-paire
+- **Anti-sticking** : séparation positionnelle appliquée après chaque choc paire-à-paire, avec une marge de `MOL_RADIUS × 0,08` — proportionnelle au rayon et non en px fixes : ce déplacement n'est pas thermique et ne doit pas prendre le pas sur l'agitation, or à 10 K une molécule n'avance que d'environ 0,3 px par image
 - **Push du piston** : `pushMoleculesDownFromPiston()` appelé uniquement si `|ΔpistonY| > 0,1 px`
 - **Marges du canvas** : proportionnelles (`MARGIN_FRAC = 0,03` de `min(largeur, hauteur)`, plancher `MARGIN_MIN = 8 px`) ; la marge haute est en plus minorée par `PISTON_BODY_H + 6`, car le corps du piston dépasse le sommet du récipient à V maximum
 - **Lissage du piston** : constante de temps `PISTON_TAU = 110 ms` (`1 - exp(-dt/TAU)`), et non un facteur fixe par image — indispensable pour que le mouvement soit identique à 60 et à 144 Hz
