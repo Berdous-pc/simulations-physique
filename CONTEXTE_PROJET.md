@@ -281,7 +281,19 @@ nom-simulation/
 
 Les anciennes simulations en fichier unique (`reaction.html`) conservent leur format d'origine. Toute **nouvelle** simulation adopte l'arborescence ci-dessus.
 
-> **Simulations déjà migrées en arborescence** : `lentille/`, `lunette/`, `radioactivite/`, `reaction/`, `titrage/`, `condensateur/`, `pression/`, `champ_uniforme/`, `ondes/`, `dissolution/`, `diffraction/`, `cinetique/`, `equilibre/`, `kepler/`.
+> **Simulations déjà migrées en arborescence** : `lentille/`, `lunette/`, `radioactivite/`, `reaction/`, `titrage/`, `condensateur/`, `pression/`, `champ_uniforme/`, `ondes/`, `dissolution/`, `diffraction/`, `cinetique/`, `equilibre/`, `kepler/`, `interferences/`, `atome/`.
+
+### Bibliothèques externes vendorées (`libs/`)
+
+Seule exception assumée à la règle « zéro dépendance externe » : le dossier **`libs/`** à la racine du site, **partagé** par toutes les simulations 3D (`diffraction/`, `interferences/`, et toute future page 3D) :
+
+```
+libs/
+├── three.min.js      ← Three.js, build UMD/global r128
+└── OrbitControls.js  ← contrôles de caméra
+```
+
+Ces fichiers sont **vendorés** (copiés dans le dépôt, pas chargés depuis un CDN) et inclus en `<script>` classiques **avant** `sim.js` — scope global, pas de modules ES, pour que les pages restent ouvrables en double-clic (`file://`) sans serveur, comme le reste du site. Une nouvelle page 3D réutilise `libs/` plutôt que d'en dupliquer une copie dans son propre dossier.
 
 ### Règles générales
 
@@ -368,6 +380,11 @@ Toute page **HTML autonome** destinée à être publiée (page d'accueil et chaq
     border: 0;
   }
   ```
+- **Une entrée dans `sitemap.xml`** (à la racine du site), avec l'URL du dossier de la simulation :
+  ```xml
+  <url><loc>https://berdous-pc.github.io/simulations-physique/<dossier>/</loc></url>
+  ```
+  Le fichier `robots.txt`, également à la racine, pointe vers ce sitemap — il n'a pas à être modifié. **Toute nouvelle simulation publiée doit être ajoutée au sitemap**, sinon elle reste invisible pour l'indexation.
 
 ### Suivi d'audience (GoatCounter)
 
@@ -396,13 +413,15 @@ Toute page **HTML autonome** destinée à être publiée (page d'accueil `index.
 | `reaction/` | Réactions chimiques — stœchiométrie & réactif limitant | Seconde/Première | **Arborescence** | Mode Équilibrage + Mode Réactif limitant, modèles moléculaires 2D animés, mode test avec score, découpée en `css/style.css` + `js/data.js` + `js/sim.js` + `js/ui.js` + `index.html` |
 | `cinetique/` | Cinétique chimique — modèle des chocs efficaces A + B → C + D | Terminale | **Arborescence** | Mouvement moléculaire, réaction au contact, suivi en temps réel du nombre de molécules, mode 2 simulations comparées |
 | `titrage/` | Titrage colorimétrique, pH-métrique, conductimétrique | Première/Terminale | **Arborescence** | Voir `titrage/ARCHITECTURE.md` |
-| `pression/` | Pression d'un gaz parfait — modèle cinétique | Terminale | **Arborescence** | Piston animé, collisions élastiques 2D, PV=nRT, chocs/s sur 4 parois |
+| `pression/` | Pression d'un gaz parfait — modèle cinétique | Terminale | **Arborescence** | `sim.js` + `recipient.js` + `ui.js` ; collisions élastiques 2D détectées en O(N) par **grille spatiale**, PV=nRT, chocs/s sur les 4 parois ; **piston déplaçable à la souris** (en plus des boutons), curseur de vitesse d'animation, volume affiché en litres, valeurs alignées à droite, bloc d'informations en deux tableaux, responsivité par **container queries** — voir `pression/ARCHITECTURE.md` |
 | `champ_uniforme/` | Mécanique : vecteurs cinématiques — champ de pesanteur & champ électrique uniforme | Terminale | **Arborescence** | Référence d'architecture ; `sim.js` + `draw.js` + `ui.js` ; onglets Champ de pesanteur / Champ électrique, repères Orthonormé/Adapté, modes vue (Oxy, projections x/y), vecteurs vitesse/accélération, mode perpendiculaire (champ E), graphes d'énergie, deep-linking via `#champ-pesanteur` / `#champ-electrique` |
 | `ondes/` | Propagation d'ondes — corde, onde sonore (tube), ondes de surface | Première/Terminale | **Arborescence** | Référence d'architecture ; `sim.js` + `tube.js` + `graph.js` + `ui.js` ; onglets Corde/Son/Vagues, sélection de particules par proximité (Ctrl/Maj+clic), mode pression colorée, graphes ΔP(x)/ΔP(t) avec zoom/pan/tangente, deep-linking via `#corde` / `#son` / `#vagues` — voir `ondes/ARCHITECTURE.md` |
 | `dissolution/` | Solutions aqueuses — mécanisme de dissolution (NaCl) & quantités de matière | Première | **Arborescence** | Onglets Mécanisme/Dissolution ; animation microscopique scriptée (coupelle, verre, zoom), plein écran type lecteur vidéo, tableau d'avancement ; deep-linking via `#mecanisme` / `#dissolution`. Onglet Dissolution : mouvement brownien + répulsion locale entre espèces dissoutes, légende overlay HTML, libellés coupelle/verre dynamiques selon le soluté |
 | `diffraction/` | Diffraction — ondes de surface (cuve à ondes) & diffraction de la lumière (modélisation 3D par une ouverture : fente/carré/cercle/fil) | Terminale | **Arborescence** | `sim.js` + `surfaces.js` (onglet Ondes de surface) + `scene.js` (rendu 3D Three.js, onglet Ondes lumineuses) + `graph.js` + `ui.js` ; onglet Ondes de surface : vue de dessus de la cuve, ouverture réglable, calcul de l'angle de diffraction avec avertissement si hors de portée de la cuve, point de mesure M déplaçable, coupe verticale draggable, graphes Amplitude(t)/Amplitude(y), splitter draggable, zoom par slider à crans ; onglet Ondes lumineuses : calcul de la figure de diffraction via FFT, enveloppe 3D du faisceau, mode lumière blanche avec décomposition spectrale, formes d'ouverture multiples, mesures d/D/L, graphe I(x) lié à la vue Écran ; deep-linking via `#surfaces` / `#lumineuses` — voir `diffraction/ARCHITECTURE.md` et `diffraction/PISTES_EVOLUTION.md` |
 | `kepler/` | Les trois lois de Kepler — ellipse et vocabulaire, loi des aires, loi des périodes | Terminale | **Arborescence** | `sim.js` + `orbites.js` + `graph.js` + `ui.js` ; 3 onglets (1 par loi) : ellipse paramétrable (a, e) avec foyers/axes/distances r+r′, balayage d'aires pendant Δt (jusqu'à 6 aires comparées, en ua²), systèmes réels animés (Mercure→Mars, Jupiter→Neptune, lunes de Jupiter) + graphe T/a à axes réglables (T, T², T³ / a, a², a³) avec détection automatique de l'alignement T² = k·a³ ; mouvement képlérien exact (équation de Kepler résolue par Newton) ; deep-linking via `#premiere-loi` / `#deuxieme-loi` / `#troisieme-loi` — voir `kepler/ARCHITECTURE.md` |
 | `equilibre/` | Équilibre chimique — réaction réversible A + B ⇌ C + D, modèle des chocs efficaces | Terminale | **Arborescence** | Dérivée de `cinetique/` (récipient + graphe, mode 1/2 simulations) ; 2 sliders de probabilité (A+B, C+D) remplacent température/catalyseur, 4 quantités initiales réglables (A/B/C/D), pas de fin de réaction (équilibre dynamique) ; quotient de réaction Q<sub>r</sub> et constante K = probAB/probCD, quantités théoriques à l'équilibre en pointillés sur le graphe ; **frise** dédiée (`js/frise.js`) : axe log de Qr avec repères K / Qr moyenné / Qr instantané ; rayon des molécules dépendant de N (`molRadiusFrac`) — voir `equilibre/ARCHITECTURE.md` |
+| `interferences/` | Interférences — trous/fentes d'Young (modélisation 3D) & interférences d'ondes de surface (cuve à ondes) | Terminale | **Arborescence** | Dossier dupliqué depuis `diffraction/` puis adapté (même pipeline FFT et rendu 3D), mais **aucun fichier commun** : `sim.js` + `scene.js` (rendu 3D Three.js) + `surfaces.js` + `graph.js` + `ui.js` ; 3 onglets — **Principe** (placeholder « Simulation à venir », réservé pour plus tard), **Ondes de surface** (2 sources ponctuelles synchrones vues de dessus, champ précalculé P/Q par géométrie, λ et écartement b réglables, sources activables séparément, distances S₁M/S₂M et différence de marche, zones d'interférences, vue plongeante 3D, graphe y(t), zoom et vitesse d'animation), **Ondes lumineuses** (figure d'interférences par FFT, enveloppe 3D du faisceau, fentes ou trous d'Young, écartement b 0,1–1 mm, mode lumière blanche, graphe I(x)) ; deep-linking via `#principe` / `#surfaces` / `#lumineuses` — voir `interferences/ARCHITECTURE.md` |
+| `atome/` | Structure électronique des atomes et des ions — 3 premières lignes du tableau périodique (H → Ar) | Seconde | **Arborescence** | `sim.js` (données `ELEMENTS` / `SUBSHELLS`) + `draw.js` + `ui.js` + `test.js` ; tableau périodique cliquable, noyau 3D en empilement compact **rotatif à la souris** (trackball), cercles de sous-couches à échelle commune à tous les éléments, configuration électronique colorée, option « sous-couches vides », vue **éclatée** du noyau et vue **charge** (protons/électrons) animées nucléon par nucléon, mode **Comparer** (zone de schéma coupée en deux), **mode test** (quiz) — voir `atome/ARCHITECTURE.md` |
 
 ---
 
@@ -450,7 +469,7 @@ Cinétique chimique et Équilibre chimique sont des **cartes** du thème `"trans
 Trois groupes de checkboxes (toutes cochées par défaut) :
 - **Niveau** : Seconde, Première, Terminale
 - **Discipline** : Physique, Chimie
-- **Thème** : Électricité, Optique, Radioactivité, Transformations chimiques (`data-value="transformations-chimiques"`), Dosages (`data-value="dosages"`), Solutions aqueuses (`data-value="solutions-aqueuses"`), Thermodynamique, Ondes, Mécanique
+- **Thème** : Constitution de la matière (`data-value="constitution-matiere"`), Électricité, Optique, Radioactivité, Transformations chimiques (`data-value="transformations-chimiques"`), Dosages (`data-value="dosages"`), Solutions aqueuses (`data-value="solutions-aqueuses"`), Thermodynamique, Ondes, Mécanique
 
 Logique : **OU au sein d'une catégorie**, **ET entre catégories**.
 
@@ -490,6 +509,7 @@ Stockées dans `assets/previews/` au format **`.jpg`** (converties depuis les sc
 | `diffraction-lumiere.jpg` | Diffraction de la lumière |
 | `diffraction-vagues.jpg` | Diffraction d'ondes de surface |
 | `interferences-lumiere.jpg` | Interférences lumineuses |
+| `interferences-vagues.jpg` | Interférences d'ondes de surface |
 | `cinetique.jpg` | Cinétique chimique |
 | `equilibre.jpg` | Équilibre chimique |
 | `kepler-loi1.jpg` | 1ʳᵉ loi de Kepler (ellipses) |
@@ -517,6 +537,7 @@ Les simulations avec plusieurs onglets lisent un paramètre au chargement pour o
 | `dissolution/js/ui.js` | `#hash` (repli `?tab=`) | `mecanisme` · `dissolution` |
 | `diffraction/js/ui.js` | `#hash` | `surfaces` · `lumineuses` |
 | `kepler/js/ui.js` | `#hash` | `premiere-loi` · `deuxieme-loi` · `troisieme-loi` |
+| `interferences/js/ui.js` | `#hash` | `principe` · `surfaces` · `lumineuses` |
 
 Toute **nouvelle** page à onglets utilise la convention `#hash`.
 
@@ -529,6 +550,8 @@ Chaque fonction de bascule d'onglet (`setOnglet`/`setMainTab`/`setModePrincipal`
 3. Si la simulation a des onglets : ajouter le deep linking dans son `ui.js`
 4. Ajouter une checkbox dans le panel de filtres si un nouveau thème ou niveau apparaît (position dans le HTML indifférente, voir « Tri alphabétique automatique » ci-dessus)
 5. Ajouter la `<meta name="description">`, le `<h1 class="sr-only">` et la règle CSS `.sr-only` (voir §7 « Référencement (SEO) »)
+6. Ajouter le script GoatCounter juste avant `</body>` (voir §7 « Suivi d'audience »)
+7. **Ajouter l'URL du dossier dans `sitemap.xml`** (voir §7 « Référencement (SEO) ») — étape la plus souvent oubliée
 
 ---
 

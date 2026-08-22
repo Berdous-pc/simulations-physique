@@ -1,4 +1,4 @@
-# Architecture — Simulation Interférences (fentes/trous d'Young, 3D)
+# Architecture — Simulation Interférences (ondes de surface + fentes/trous d'Young en 3D)
 
 ## Arborescence
 
@@ -9,11 +9,16 @@ interferences/
 ├── css/
 │   └── style.css
 └── js/
-    ├── sim.js
-    ├── scene.js
-    ├── graph.js
+    ├── sim.js       ← état + physique de l'onglet "Ondes lumineuses"
+    ├── scene.js     ← scène 3D (Three.js)
+    ├── graph.js     ← graphe I(x) de l'onglet "Ondes lumineuses"
+    ├── surfaces.js  ← onglet "Ondes de surface" (état, rendu et graphes propres)
     └── ui.js
 ```
+
+> `surfaces.js` est **autonome** : il porte son propre état (`simSurf`), son propre rendu canvas
+> 2D et ses propres graphes, et ne partage ni `sim` ni `gview` avec l'onglet "Ondes lumineuses".
+> Les deux onglets ne communiquent que par `setMainTab()` (`ui.js`).
 
 Dépendances externes vendées dans `site/libs/` (partagées avec `diffraction/` et toute future
 simulation 3D) : `three.min.js` (build UMD/global, r128) + `OrbitControls.js`. Chargées en
@@ -39,9 +44,17 @@ Chaque ouverture a la même grandeur caractéristique `a` (largeur de fente / ra
 horizontaux, carrés ou fil pour l'instant (`sim.maskShape` réduit à `'fente'`/`'cercle'`,
 contrairement aux 5 formes de `diffraction/`) — évolution possible plus tard.
 
-`index.html` expose **3 onglets principaux** (`setMainTab`, `ui.js`) : **Principe** (placeholder),
-**Ondes de surface** (placeholder), **Ondes lumineuses** (cette simulation, entièrement
-implémentée) — dans cet ordre, "Ondes lumineuses" actif par défaut.
+`index.html` expose **3 onglets principaux** (`setMainTab`, `ui.js`), dans cet ordre :
+
+| Onglet | `#hash` | État | Contenu |
+|---|---|---|---|
+| **Principe** | `#principe` | **Placeholder** (icône + « Simulation à venir ») | Réservé pour une future mise en situation |
+| **Ondes de surface** | `#surfaces` | **Implémenté** (`js/surfaces.js`) | Interférences de 2 sources ponctuelles synchrones dans une cuve à ondes — cf. §`js/surfaces.js` |
+| **Ondes lumineuses** | `#lumineuses` | **Implémenté** (`js/sim.js` + `scene.js` + `graph.js`), **actif par défaut** | Interférences d'Young modélisées en 3D — le reste de ce document |
+
+Le périmètre physique décrit ci-dessus (Fraunhofer, FFT, `a`/`b` en µm) est celui de l'onglet
+**Ondes lumineuses** uniquement ; l'onglet **Ondes de surface** a sa propre physique (ondes
+cylindriques 2D, λ et écartement en cm), documentée dans sa propre section.
 
 ---
 
@@ -262,6 +275,76 @@ figure », mode Lumière blanche) est inchangé.
 
 ---
 
+### `js/surfaces.js` — Onglet « Ondes de surface »
+
+**Chargé après `graph.js`, avant `ui.js`.** Adapté de `diffraction/js/surfaces.js` (même principe
+de vue de dessus d'un bassin, mêmes conventions de drag), mais avec **2 sources ponctuelles
+réelles** au lieu d'une somme de Huygens sur une ouverture.
+
+#### Physique et rendu du champ
+
+- Chaque source émet une onde circulaire ; le champ affiché est leur **superposition**. On écrit
+  `champ(x,y,t) = P(x,y)·cos(ωt) + Q(x,y)·sin(ωt)`, avec `P`/`Q` **indépendants du temps** :
+  ils sont précalculés une fois par géométrie (`_rebuildSurfFieldCache`) sur une grille basse
+  résolution, ensuite agrandie par `drawImage`. Le coût par frame se réduit donc à 2 sources
+  × 1 addition par cellule.
+- Chaque source ponctuelle utilise le **même modèle asymptotique d'onde cylindrique 2D** que les
+  sources de Huygens de `diffraction/` (facteur `(1−i)/√(2λ)`, `_surfPointSourcePQ`) — le Green
+  du problème 2D, pas un simple `sin(kr−ωt)/√r`, pour rester cohérent avec le reste du site.
+- Grille de calcul bornée en dur (`SURF_GRID_W_MAX` 380 × `SURF_GRID_H_MAX` 250,
+  `SURF_GRID_CELLS_PER_LAMBDA` = 5) : le coût du rebuild et du dessin par frame est proportionnel
+  à largeur × hauteur de grille. Les rebuilds sont regroupés par `_scheduleSurfRebuild()`
+  (au plus un par frame, même principe que `resize()`/`resizeScheduled`).
+- **Célérité fixe** `SURF_C_CM = 9,6 cm/s` ; largeur visible du bassin `SURF_VIEW_WIDTH_CM = 45 cm`
+  (calibre `pxPerCm` au resize).
+
+#### Causalité des sources activables
+
+`s1Enabled`/`s2Enabled` donnent l'état courant des cases à cocher, mais `s1Toggles`/`s2Toggles`
+gardent **l'historique** des bascules `{t, enabled}`. `_surfSourceContrib` évalue l'état de la
+source au **temps retardé** `t − r/c`, pas à l'instant présent : une onde déjà émise avant une
+coupure continue de se propager (elle n'est pas effacée d'un coup), et une source rallumée ne
+fait pas réapparaître tout le bassin — seul un nouveau front part de l'instant de rallumage.
+
+#### État (`simSurf`)
+
+| Groupe | Champs |
+|---|---|
+| Animation | `paused`, `simTime`, `speedFactor` (`SURF_SPEED_STEPS` = ×0,10 / 0,25 / 0,50 / 1,00) |
+| Paramètres | `lambda` (cm, 1–10), `b` (écartement des sources, cm, 1–30) |
+| Sources | `s1Enabled`/`s2Enabled`, `s1Toggles`/`s2Toggles` (cf. ci-dessus) |
+| Géométrie | `canvasW/H`, `pxPerCm`, `zoom` (`SURF_ZOOM_MIN`→`MAX`, slider à 3 crans), `originX/Y`, `s1`, `s2` |
+| Point de mesure M | `point {x, y, cmX, cmY}` + `dragging` — position **physique en cm**, donc invariante au zoom |
+| Axes de coupe | `cut` (vertical, graphe Amplitude(y)) et `cutH` (horizontal, graphe Amplitude(x)), tous deux draggables |
+| Vue | `viewMode` `'top'` \| `'plongeante'`, `tiltDeg` (10–75°, défaut 45°) |
+| Options d'affichage | `interfMode` (`none`/`constructive`/`destructive`/`both`), `distMode` (`none`/`cm`/`lambda`), `showValeurs` (S₁M, S₂M, δ) |
+| Graphes | `showGraph`, `graphMode` `'single'` \| `'dual'`, `graphTab1`/`graphTab2`, `ptData`, `ptTimeOrigin` |
+
+#### Vues et options
+
+- **Vue de dessus** (défaut) : champ colorié entre `SURF_COL_TROUGH` et `SURF_COL_CREST`.
+- **Vue plongeante** (`_render3DSurfView`) : la surface est projetée en 3D avec un angle
+  d'inclinaison réglable ; les éléments 2D (sources, point M, axes de coupe, zones
+  d'interférences) sont projetés dans le même repère (`_surf3DProjectPoint` / `_surf3DInvertY`).
+- **Zones d'interférences** (`_drawSurfInterfZones`) : trame de points sur les lieux d'interférence
+  constructive (jaune `#ffe14d`) et/ou destructive (violet `#8a3fd6`) — hyperboles tracées
+  analytiquement (médiatrice + branches), pas par seuillage du champ.
+- **Distances** `S₁M`/`S₂M` (`_drawSurfDistances`) affichées en cm **ou en nombre de λ**, avec la
+  différence de marche δ ; couleurs dédiées par source (`#e07020` / `#e0397a`).
+
+#### Graphes (`SURF_GRAPH_TABS`)
+
+Trois graphes au choix, affichables **seul ou par deux** (`graphMode`, `toggleSurfDualGraph`) :
+
+| Clé | Titre | Contenu |
+|---|---|---|
+| `amp-t` | Hauteur(t) | Hauteur de l'eau au point M en fonction du temps (fenêtre `SURF_GRAPH_WINDOW` = 5 s) |
+| `amp-y` | Amplitude(y) | Amplitude le long de l'axe de coupe vertical (`cut`) |
+| `amp-x` | Amplitude(x) | Amplitude le long de l'axe de coupe horizontal (`cutH`) |
+
+Échantillonnage adaptatif (`SURF_GRAPH_SAMPLES_PER_LAMBDA` = 8, plafonné à
+`SURF_GRAPH_SAMPLES_MAX` = 6000) : le nombre de points suit λ et l'étendue affichée.
+
 ### `js/ui.js` — Contrôles et boucle d'animation
 
 **Chargé en dernier.** Repris de `diffraction/` avec :
@@ -333,6 +416,16 @@ index.html
   │                             resizeGraphCanvas, toggleGraphPin, toggleGraphLien,
   │                             syncGraphLienDisponibilite, syncGraphPixelParfait
   │
+  └── js/surfaces.js  dépend de : rien d'autre (état `simSurf` autonome ; chargé après scene.js/
+  │                               graph.js par simple convention d'ordre, pas par dépendance)
+  │                   expose : simSurf, SURF_GRAPH_TABS, initSurfaces, resizeSurfaces,
+  │                             tickSurfaces, drawSurfaces, drawSurfGraph, resizeSurfGraphCanvas,
+  │                             togglePauseSurfaces, onSliderSpeedSurf, onSliderZoomSurf,
+  │                             onSliderTiltSurf, onSliderLambdaSurf, onSliderBSurf,
+  │                             setSurfViewMode, toggleSurfSource, toggleSurfInterfMode,
+  │                             toggleSurfDistMode, toggleSurfValeurs, toggleGraphSurf,
+  │                             toggleSurfDualGraph, resetSurfaces
+  │
   └── js/ui.js        dépend de : tous les fichiers précédents
                        expose : updateParam, updateMaskShape, appliquerBorneD, setLightSource,
                                  toggleRays, toggleLengths, cycleBeamMode, toggleGraphIntensite,
@@ -385,11 +478,12 @@ n'importe quel slider pour la fluidité) :
 
 - Aucune fonctionnalité de détection téléphone/orientation (pas d'overlay de rotation, pas de
   media query dédiée) : choix assumé pour cette page, comme `diffraction/`.
-- Onglets « Principe » (`#section-principe`, `#principe-area`) et « Ondes de surface »
-  (`#section-surfaces`, `#surfaces-area`) : placeholders non implémentés (icône + texte
-  « Simulation à venir »), déjà présents dans le HTML/CSS/`ui.js` → `setMainTab()` pour préparer
-  de futures simulations dans cette même page — n'affectent pas l'onglet « Ondes lumineuses »
-  documenté ci-dessus.
+- Onglet « Principe » (`#section-principe`, `#principe-area`) : placeholder non implémenté (icône
+  + texte « Simulation à venir »), présent dans le HTML/CSS et dans `ui.js` → `setMainTab()` pour
+  préparer une future simulation dans cette même page — n'affecte ni « Ondes de surface » ni
+  « Ondes lumineuses ». (L'onglet « Ondes de surface » était lui aussi un placeholder à la
+  création de la page ; il est depuis **entièrement implémenté** dans `js/surfaces.js`, cf. la
+  section dédiée ci-dessus.)
 - Formes d'ouverture limitées à fente verticale et trou circulaire (pas de fente horizontale,
   trou carré ou fil, contrairement à `diffraction/`) — limitation assumée, cf. §Périmètre
   physique.
