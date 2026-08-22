@@ -13,12 +13,15 @@ interferences/
     ├── scene.js     ← scène 3D (Three.js)
     ├── graph.js     ← graphe I(x) de l'onglet "Ondes lumineuses"
     ├── surfaces.js  ← onglet "Ondes de surface" (état, rendu et graphes propres)
+    ├── principe.js  ← onglet "Principe" (état, physique et rendu propres — mode 1D)
     └── ui.js
 ```
 
-> `surfaces.js` est **autonome** : il porte son propre état (`simSurf`), son propre rendu canvas
-> 2D et ses propres graphes, et ne partage ni `sim` ni `gview` avec l'onglet "Ondes lumineuses".
-> Les deux onglets ne communiquent que par `setMainTab()` (`ui.js`).
+> `surfaces.js` et `principe.js` sont **autonomes** : chacun porte son propre état (`simSurf`,
+> `simPrin`) et son propre rendu canvas 2D (plus ses propres graphes pour `surfaces.js`), et ne
+> partage ni `sim` ni `gview` avec l'onglet "Ondes lumineuses". `principe.js` n'emprunte au reste
+> de la page que l'utilitaire `formatFr()` (`scene.js`). Les trois onglets ne communiquent que
+> par `setMainTab()` (`ui.js`).
 
 Dépendances externes vendées dans `site/libs/` (partagées avec `diffraction/` et toute future
 simulation 3D) : `three.min.js` (build UMD/global, r128) + `OrbitControls.js`. Chargées en
@@ -48,7 +51,7 @@ contrairement aux 5 formes de `diffraction/`) — évolution possible plus tard.
 
 | Onglet | `#hash` | État | Contenu |
 |---|---|---|---|
-| **Principe** | `#principe` | **Placeholder** (icône + « Simulation à venir ») | Réservé pour une future mise en situation |
+| **Principe** | `#principe` | **Implémenté** (`js/principe.js`) en **mode 1D** ; mode 2D en placeholder | Deux haut-parleurs face à face sur un axe, et un micro déplaçable entre eux — cf. §`js/principe.js` |
 | **Ondes de surface** | `#surfaces` | **Implémenté** (`js/surfaces.js`) | Interférences de 2 sources ponctuelles synchrones dans une cuve à ondes — cf. §`js/surfaces.js` |
 | **Ondes lumineuses** | `#lumineuses` | **Implémenté** (`js/sim.js` + `scene.js` + `graph.js`), **actif par défaut** | Interférences d'Young modélisées en 3D — le reste de ce document |
 
@@ -345,6 +348,120 @@ Trois graphes au choix, affichables **seul ou par deux** (`graphMode`, `toggleSu
 Échantillonnage adaptatif (`SURF_GRAPH_SAMPLES_PER_LAMBDA` = 8, plafonné à
 `SURF_GRAPH_SAMPLES_MAX` = 6000) : le nombre de points suit λ et l'étendue affichée.
 
+### `js/principe.js` — Onglet « Principe »
+
+**Chargé après `surfaces.js`, avant `ui.js`.** Autonome : état `simPrin`, rendu canvas 2D propre,
+aucune dépendance au reste de la page hormis `formatFr()` (`scene.js`).
+
+#### Mise en situation (mode 1D)
+
+Deux haut-parleurs **S₁** (gauche) et **S₂** (droite) se font face sur un même axe horizontal et
+émettent l'un vers l'autre le même signal sinusoïdal ; un micro **M**, placé entre les deux, reçoit
+la somme. Les trois éléments se déplacent le long de l'axe au glisser-déposer.
+
+La zone centrale est un **seul canvas** découpé en trois lignes de même échelle horizontale :
+
+| Ligne | Hauteur | Contenu |
+|---|---|---|
+| 1 | 1 unité | `S₁` seule → y₁(x, t) |
+| 2 | 1 unité | `S₂` seule → y₂(x, t) |
+| 3 | 2 unités | `S₁`, `S₂` et `M` → y₁ + y₂ |
+
+La ligne 3 reçoit **le double** de hauteur précisément parce que la somme peut atteindre
+A₁ + A₂ = 2 : l'échelle verticale (`simPrin.ampPx`, px par unité d'amplitude) reste ainsi
+**identique et fixe** sur les trois lignes — pas d'auto-échelle, donc un doublement d'amplitude
+se voit vraiment. Un **guide vertical pointillé** à l'abscisse de M traverse les trois lignes,
+avec un point de lecture sur chaque courbe : y₁(M), y₂(M) et leur somme se lisent sur la même
+verticale.
+
+#### Physique
+
+Célérité fixe `PRIN_C` = 340 m/s (son dans l'air), ω = 2π·c/λ :
+
+```
+y₁(x,t) = A₁·sin(ω·(t − (x−x₁)/c))   pour x ≥ x₁ et t ≥ (x−x₁)/c,   0 sinon
+y₂(x,t) = A₂·sin(ω·(t − (x₂−x)/c))   pour x ≤ x₂ et t ≥ (x₂−x)/c,   0 sinon
+```
+
+La condition `t ≥ d/c` est le **front d'onde** : après RAZ tout est plat, « ▶ Lancer » fait partir
+les deux fronts, qui se croisent et installent progressivement la zone de recouvrement.
+*Approximation assumée* : déplacer une source pendant l'animation re-cale son front sur la
+nouvelle position (pas d'historique causal à la `_surfSourceContrib` de `surfaces.js` — inutile
+ici, une seule position par source).
+
+Là où les deux fronts sont passés, avec d₁ = x−x₁, d₂ = x₂−x et δ = d₂ − d₁ :
+
+```
+A(x) = √(A₁² + A₂² + 2·A₁·A₂·cos(2π·δ/λ))        (_prinEnveloppe)
+```
+
+C'est une **onde stationnaire** : nœuds et ventres sont FIXES, espacés de λ/2. Comme d₁ + d₂ =
+x₂ − x₁ est constant, δ(x) = x₁ + x₂ − 2x varie **linéairement** — les positions remarquables
+s'écrivent donc en clair, sans balayage numérique (`_prinDrawReperes`) :
+
+```
+constructif   x = (x₁ + x₂ − k·λ)/2
+destructif    x = (x₁ + x₂ − (k+½)·λ)/2
+```
+
+#### Ralenti
+
+À λ = 0,60 m, T = λ/c ≈ 1,8 ms : inobservable en temps réel. `simTime` avance de
+`dtRéel · speedFactor / PRIN_RALENTI` avec `PRIN_RALENTI` = 340, soit une célérité **apparente**
+de 1 m/s — le front traverse les 4 m de l'axe en 4 s au facteur de vitesse ×1,00. Le curseur
+« Vitesse » garde les crans habituels du site (`[0.10, 0.25, 0.50, 1.00]`).
+
+#### Réglages et bornes
+
+| Grandeur | Bornes | Défaut |
+|---|---|---|
+| λ | 0,20 → 1,50 m (pas 0,01) | 0,60 m |
+| A₁, A₂ | 0 → 1,00 u.a. (pas 0,05) | 0,80 |
+| x₁, x_M, x₂ | axe de `PRIN_VIEW_WIDTH_M` = 4,00 m | 0,30 / 2,00 / 3,70 m |
+
+Le glisser-déposer impose l'ordre **S₁ < M < S₂** avec une marge `PRIN_MARGE_M` = 0,10 m, sans
+« poussée » : chaque élément est simplement borné par ses voisins (`_prinSetDragPos`).
+
+#### Options d'affichage (toutes OFF au départ)
+
+| Bouton | Effet |
+|---|---|
+| Afficher l'enveloppe | ±A(x) en pointillés sur la ligne 3 — rend les nœuds/ventres visibles comme positions fixes |
+| Repérer les interférences | traits aux positions constructives (ocre, plein) / destructives (violet, pointillé), sous les courbes, + légende par-dessus |
+| Coter S₁M et S₂M | doubles flèches cotées sur la ligne 3, couleurs de S₁/S₂ |
+| Afficher les valeurs | encarts du panneau : S₁M, S₂M, la différence de marche δ (valeur absolue de S₁M − S₂M), le rapport δ/λ et la conclusion — constructive / destructive / cas intermédiaire, tolérance `PRIN_TOL_RATIO` = 0,03 sur δ/λ |
+
+#### Conventions de rendu
+
+- Fond **`#fdf8f0`** (fond « simulation » de la charte) et non le `#14181d` des deux autres
+  onglets : celui-ci trace des courbes sur des axes, pas un champ.
+- Positions stockées en **mètres**, jamais en pixels — le resize les reprojette, rien ne dérive.
+- Tous les libellés passent par `_prinText()`, qui les cerne d'un halo couleur fond : ils se
+  superposent forcément aux courbes. Corollaire : `_prinText()` écrase `strokeStyle`, on ne
+  l'appelle donc jamais au milieu d'un tracé (cf. `_prinDrawAxe`, qui trace axe + graduations en
+  un seul `stroke()` avant d'écrire quoi que ce soit).
+- Glisser-déposer en **Pointer Events + `setPointerCapture`** (souris et tactile d'un seul jeu
+  d'écouteurs, cf. `pression/js/ui.js`), hit-test tolérant à 16 px défini à côté du code de
+  dessin des poignées.
+- `drawPrincipe()` est appelée **à chaque frame, même en pause** : sinon un redimensionnement ou
+  un glissement de source pendant la pause laisserait une image obsolète.
+
+#### RAZ et « Par défaut »
+
+- **RAZ** (section Contrôles) : `simTime = 0`, retour en pause (bouton → « ▶ Lancer ») et
+  positions de S₁/M/S₂ par défaut. `_prinLastFrameT = null` au passage, sinon le premier `dt`
+  après le reset vaudrait tout le temps écoulé depuis la dernière frame.
+- **Par défaut** (section Paramètres) : remet λ, A₁, A₂ — des réglages, pas un état d'animation.
+
+#### Mode 2D
+
+Le sélecteur `.seg-toggle` du panneau expose déjà **1D / 2D** ; le mode 2D est un **placeholder**
+(`#prin-2d-placeholder`). `setPrincipeMode()` masque la zone de tracé et les blocs de réglages
+propres au 1D (`#prin-1d-blocks`) sans toucher à l'état de l'animation, et `tickPrincipe()` sort
+immédiatement — le temps ne doit pas avancer dans le dos de l'élève.
+
+---
+
 ### `js/ui.js` — Contrôles et boucle d'animation
 
 **Chargé en dernier.** Repris de `diffraction/` avec :
@@ -374,11 +491,17 @@ Trois graphes au choix, affichables **seul ou par deux** (`graphMode`, `toggleSu
 - `setMainTab(tab)` généralisée à **3 onglets** (`MAIN_TABS = ['principe','surfaces',
   'lumineuses']`, parcourus en boucle) plutôt que les 2 branches hardcodées de `diffraction/` —
   chaque onglet suit la convention d'ID `tab-{t}`/`section-{t}`/`panel-hint-{t}`/`{t}-area`,
-  aucun cas particulier par onglet.
-- `init()` : lit le hash parmi les 3 valeurs de `MAIN_TABS` (défaut `'lumineuses'`).
+  aucun cas particulier par onglet. Elle termine par un `resize()` **inconditionnel** : les trois
+  zones portent désormais un canvas, et aucune n'a de dimensions exploitables tant qu'elle est
+  `display:none`.
+- `init()` : lit le hash parmi les 3 valeurs de `MAIN_TABS` (défaut `'lumineuses'`), puis appelle
+  `initScene()`, `initSurfaces()` et `initPrincipe()`.
+- `resize()` appelle `resizeScene()` + `resizeGraphCanvas()` + `resizeSurfaces()` +
+  `resizePrincipe()` ; `loop()` appelle `tickSurfaces()` et `tickPrincipe()`, chacun uniquement si
+  sa zone est visible.
 
 Le reste (`appliquerBorneD`, `setLightSource`, `toggleRays/Lengths`, `cycleBeamMode`,
-`toggleGraphIntensite/ValeursExp`, `setView`, splitter draggable, `resize`, `loop`) : inchangé.
+`toggleGraphIntensite/ValeursExp`, `setView`, splitter draggable) : inchangé.
 
 ---
 
@@ -425,6 +548,13 @@ index.html
   │                             setSurfViewMode, toggleSurfSource, toggleSurfInterfMode,
   │                             toggleSurfDistMode, toggleSurfValeurs, toggleGraphSurf,
   │                             toggleSurfDualGraph, resetSurfaces
+  │
+  └── js/principe.js  dépend de : formatFr (js/scene.js) ; état `simPrin` autonome pour tout le reste
+  │                   expose : simPrin, initPrincipe, resizePrincipe, tickPrincipe, drawPrincipe,
+  │                             setPrincipeMode, togglePausePrincipe, resetPrincipe,
+  │                             onSliderSpeedPrin, onSliderLambdaPrin, onSliderA1Prin,
+  │                             onSliderA2Prin, resetParamsPrincipe, togglePrinEnveloppe,
+  │                             togglePrinReperes, togglePrinCotes, togglePrinValeurs
   │
   └── js/ui.js        dépend de : tous les fichiers précédents
                        expose : updateParam, updateMaskShape, appliquerBorneD, setLightSource,
@@ -478,12 +608,10 @@ n'importe quel slider pour la fluidité) :
 
 - Aucune fonctionnalité de détection téléphone/orientation (pas d'overlay de rotation, pas de
   media query dédiée) : choix assumé pour cette page, comme `diffraction/`.
-- Onglet « Principe » (`#section-principe`, `#principe-area`) : placeholder non implémenté (icône
-  + texte « Simulation à venir »), présent dans le HTML/CSS et dans `ui.js` → `setMainTab()` pour
-  préparer une future simulation dans cette même page — n'affecte ni « Ondes de surface » ni
-  « Ondes lumineuses ». (L'onglet « Ondes de surface » était lui aussi un placeholder à la
-  création de la page ; il est depuis **entièrement implémenté** dans `js/surfaces.js`, cf. la
-  section dédiée ci-dessus.)
+- Onglet « Principe » : le **mode 1D est implémenté** (`js/principe.js`) ; le **mode 2D** du
+  sélecteur reste un placeholder (icône + texte « Simulation à venir »), câblé dans
+  `setPrincipeMode()` en attendant son contenu — il n'affecte ni « Ondes de surface » ni
+  « Ondes lumineuses ».
 - Formes d'ouverture limitées à fente verticale et trou circulaire (pas de fente horizontale,
   trou carré ou fil, contrairement à `diffraction/`) — limitation assumée, cf. §Périmètre
   physique.

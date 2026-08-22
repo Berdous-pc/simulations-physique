@@ -78,15 +78,35 @@ main {
   z-index: 15;
 }
 
-/* ── Onglet Principe — à venir ── */
+/* ── Onglet Principe ── */
+/* Colonne qui contient la zone de tracé (mode 1D) OU le placeholder du mode 2D,
+   cf. js/principe.js → setPrincipeMode. */
 #principe-area {
   flex: 1;
   min-height: 0;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #14181d;
+  flex-direction: column;
 }
+/* Fond ivoire "simulation" de la charte, et NON le #14181d des deux autres
+   onglets : celui-ci trace des courbes sur des axes, pas un champ. */
+#prin-scene-area {
+  flex: 1;
+  min-height: 0;
+  background: #fdf8f0;
+  border-right: 1px solid #c8c0b4;
+  overflow: hidden;
+  position: relative;
+}
+#principe-canvas { display: block; width: 100%; height: 100%; }
+/* Blocs de réglages propres au mode 1D de l'onglet Principe : la mise en page
+   est ici et non en style inline, car setPrincipeMode() les réaffiche en
+   remettant style.display à '' — un display:flex inline serait alors perdu. */
+#prin-1d-blocks {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 .tab-placeholder {
   display: flex;
   flex-direction: column;
@@ -97,6 +117,15 @@ main {
   font-weight: 600;
 }
 .tab-placeholder-icon { font-size: clamp(36px, 5vw, 56px); }
+/* Placeholder du mode 2D : reprend le fond sombre et le centrage que
+   #principe-area portait lui-même quand tout l'onglet était un placeholder. */
+#prin-2d-placeholder {
+  flex: 1;
+  min-height: 0;
+  justify-content: center;
+  background: #14181d;
+  border-right: 1px solid #c8c0b4;
+}
 
 /* ── Onglet Ondes de surfaces : bassin (vue de dessus) + splitter + graphe ── */
 #surfaces-area {
@@ -530,6 +559,33 @@ input[type=range]:disabled { accent-color: #b0aca4; cursor: not-allowed; }
 .light-source-btn:hover { background: #ddd8ce; }
 .light-source-btn.active { background: #2a6aaa; color: #fff; }
 
+/* Sélecteur segmenté générique (deux choix exclusifs de même poids, ex. le mode
+   1D/2D de l'onglet Principe) — repris de ondes/css/style.css, où il porte le
+   bouton "Aspect de la corde : Continu/Discret". Rendu identique à
+   .light-source-toggle ci-dessus, dont le nom est lié à son usage (source
+   lumineuse) : les deux coexistent plutôt que d'être fusionnés. */
+.seg-toggle {
+  display: flex;
+  border: 1px solid #c8c0b4;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.seg-btn {
+  flex: 1;
+  padding: 8px 4px;
+  font-size: clamp(12px, 1.1vw, 14px);
+  font-weight: 700;
+  font-family: inherit;
+  border: none;
+  background: #ece8e0;
+  color: #5a6a78;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.seg-btn:not(:last-child) { border-right: 1px solid #c8c0b4; }
+.seg-btn:hover  { background: #ddd8ce; }
+.seg-btn.active { background: #2a6aaa; color: #fff; }
+
 .param-row.disabled label { color: #a8a49c; }
 .param-row.disabled label span { color: #a8a49c; }
 .input-hint { font-size: clamp(10px, 0.9vw, 13px); color: #7a8a96; }
@@ -585,6 +641,17 @@ input[type=range]:disabled { accent-color: #b0aca4; cursor: not-allowed; }
 .btn-play { background: #2a8a50; color: #fff; }
 .btn-play:hover { background: #1a6a38; }
 
+.btn-raz { background: #dedad2; color: #5a6a78; border: 1px solid #b0a898; }
+.btn-raz:hover { background: #ccc8c0; color: #2c3e50; }
+
+/* Ligne de boutons côte à côte (ex. Lancer/Pause + RAZ) : chacun garde le style
+   .btn habituel, seule la largeur devient partagée au lieu de 100%. RAZ reste
+   étroit (texte court et fixe) pour laisser toute la place à Lancer/Pause, dont
+   le texte change et ne doit pas passer à la ligne. */
+.btn-row { display: flex; gap: 6px; }
+.btn-row > .btn { width: auto; flex: 1 1 0; white-space: nowrap; }
+.btn-row > .btn-raz { flex: 0 0 auto; }
+
 /* Encarts de valeurs instantanées */
 .readouts { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
 .readout { background: #fff; border: 1px solid #c8c0b4; border-radius: 6px; padding: 7px 9px; }
@@ -604,6 +671,15 @@ input[type=range]:disabled { accent-color: #b0aca4; cursor: not-allowed; }
 .readout .ro-value-detail .rvd-lhs { text-align: left; }
 .readout .ro-value-detail .rvd-eq  { white-space: nowrap; }
 .readout .ro-unit  { font-size: 14.4px; color: #7a8a96; }
+/* Ligne de conclusion sous une valeur (nature de l'interférence, onglet
+   Principe) : sa couleur est posée en JS selon le cas — ocre si constructive,
+   violet si destructive, gris sinon (cf. principe.js → _prinUpdateValeurs). */
+.ro-conclusion {
+  margin-top: 4px;
+  font-size: clamp(11.5px, 1.05vw, 14px);
+  font-weight: 700;
+  line-height: 1.3;
+}
 
 /* Point de couleur identifiant une longueur d'onde dans les cadres de valeurs (lumière blanche) */
 .swatch-blanche { display: inline-block; width: 9px; height: 9px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.15); margin-right: 4px; vertical-align: middle; flex: none; }

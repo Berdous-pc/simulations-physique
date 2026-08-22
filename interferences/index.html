@@ -23,9 +23,14 @@
        ou placeholder (onglets Principe / Ondes de surface) -->
   <div id="left-col">
 
-    <!-- ═══ Zone PRINCIPE — à venir ═══ -->
+    <!-- ═══ Zone PRINCIPE ═══
+         Mode 1D : trois lignes (y₁ seule, y₂ seule, y₁+y₂) tracées sur un seul
+         canvas, cf. js/principe.js. Mode 2D : placeholder, à venir. -->
     <div id="principe-area" style="display:none;">
-      <div id="principe-placeholder" class="tab-placeholder">
+      <div id="prin-scene-area">
+        <canvas id="principe-canvas"></canvas>
+      </div>
+      <div id="prin-2d-placeholder" class="tab-placeholder" style="display:none;">
         <span class="tab-placeholder-icon">📐</span>
         <p>Simulation à venir</p>
       </div>
@@ -161,10 +166,102 @@
 
    <div id="panel-body">
 
-    <!-- ═══ Section PRINCIPE — à venir ═══ -->
+    <!-- ═══ Section PRINCIPE ═══ -->
     <div class="panel-main-section" id="section-principe" style="display:none;">
-      <div class="section-title">Principe</div>
-      <div class="input-hint">Cet onglet sera développé prochainement.</div>
+
+      <!-- Mode de la mise en situation : 1D (deux sources face à face sur un axe)
+           ou 2D (à venir). Sélecteur segmenté à deux options de même poids, cf.
+           .seg-toggle (repris de ondes/ → "Aspect de la corde"). -->
+      <div>
+        <div class="section-title">Mode</div>
+        <div class="seg-toggle">
+          <button class="seg-btn active" id="btn-mode-1d" onclick="setPrincipeMode('1d')">1D</button>
+          <button class="seg-btn" id="btn-mode-2d" onclick="setPrincipeMode('2d')">2D</button>
+        </div>
+      </div>
+
+      <!-- Blocs propres au mode 1D (masqués en mode 2D, cf. setPrincipeMode) -->
+      <div id="prin-1d-blocks">
+
+        <div>
+          <div class="section-title">Contrôles</div>
+          <div class="btn-row">
+            <button class="btn btn-play" id="btn-playpause-prin" onclick="togglePausePrincipe()">▶ Lancer</button>
+            <button class="btn btn-raz" onclick="resetPrincipe()">↺ RAZ</button>
+          </div>
+          <div class="param-row" style="margin-top:8px;">
+            <label>
+              Vitesse
+              <span>×<span id="lbl-speed-prin">1,00</span></span>
+            </label>
+            <input type="range" id="sl-speed-prin"
+                   min="0" max="3" step="1" value="3"
+                   oninput="onSliderSpeedPrin(this.value)">
+            <div class="speed-ticks">
+              <span>×0,10</span>
+              <span>×0,25</span>
+              <span>×0,50</span>
+              <span>×1,00</span>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="section-title">Paramètres</div>
+          <div class="param-row">
+            <label>Longueur d'onde λ <span><span id="lbl-lambda-prin">0,60</span> m</span></label>
+            <input type="range" id="sl-lambda-prin" min="0.20" max="1.50" step="0.01" value="0.60"
+                   oninput="onSliderLambdaPrin(this.value)">
+          </div>
+          <div class="param-row">
+            <label>Amplitude de S₁ <span><span id="lbl-a1-prin">0,80</span></span></label>
+            <input type="range" id="sl-a1-prin" min="0" max="1" step="0.05" value="0.80"
+                   oninput="onSliderA1Prin(this.value)">
+          </div>
+          <div class="param-row">
+            <label>Amplitude de S₂ <span><span id="lbl-a2-prin">0,80</span></span></label>
+            <input type="range" id="sl-a2-prin" min="0" max="1" step="0.05" value="0.80"
+                   oninput="onSliderA2Prin(this.value)">
+          </div>
+          <button class="btn btn-reset" style="margin-top:4px;" onclick="resetParamsPrincipe()">Par défaut</button>
+        </div>
+
+        <div>
+          <div class="section-title">Options</div>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <button class="btn btn-toggle-one" id="btn-env-prin" onclick="togglePrinEnveloppe()">Afficher l'enveloppe</button>
+            <button class="btn btn-toggle-one" id="btn-reperes-prin" onclick="togglePrinReperes()">Repérer les interférences</button>
+            <button class="btn btn-toggle-one" id="btn-cotes-prin" onclick="togglePrinCotes()">Coter S₁M et S₂M</button>
+          </div>
+        </div>
+
+        <div>
+          <div class="section-title">Valeurs</div>
+          <button class="btn btn-toggle-one" id="btn-toggle-valeurs-prin" onclick="togglePrinValeurs()">Afficher les valeurs</button>
+          <div class="readouts" id="readouts-prin" style="display:none; margin-top:8px;">
+            <div class="readout full-width">
+              <div class="ro-label">S₁M</div>
+              <div class="ro-value"><span id="ro-prin-s1m">1,70</span> <span class="ro-unit">m</span></div>
+              <div class="ro-label" style="margin-top:6px;">S₂M</div>
+              <div class="ro-value"><span id="ro-prin-s2m">1,70</span> <span class="ro-unit">m</span></div>
+            </div>
+            <div class="readout full-width">
+              <div class="ro-label">Différence de marche<br>δ = |S₁M − S₂M| :</div>
+              <div class="ro-value ro-value-detail" id="ro-prin-delta-detail">
+                <span class="rvd-lhs">δ</span><span class="rvd-eq">= |1,70 − 1,70|</span>
+                <span class="rvd-lhs"></span><span class="rvd-eq">= 0,00 m</span>
+              </div>
+            </div>
+            <div class="readout full-width">
+              <div class="ro-label">Comparaison à λ</div>
+              <div class="ro-value">δ / λ = <span id="ro-prin-ratio">0,00</span></div>
+              <div class="ro-conclusion" id="ro-prin-nature">δ ≈ k·λ → interférence constructive</div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- fin #prin-1d-blocks -->
+
     </div>
 
     <!-- ═══ Section ONDES DE SURFACES ═══ -->
@@ -346,7 +443,13 @@
         <button class="panel-hint-toggle" onclick="toggleHint('principe')" title="Afficher les instructions">▲</button>
       </div>
       <div class="panel-hint-body">
-        Cette simulation sera disponible prochainement.
+        Deux haut-parleurs <strong>S₁</strong> et <strong>S₂</strong> se font face et émettent
+        chacun la même onde sinusoïdale vers l'autre (célérité du son c = 340 m/s ; l'animation
+        est fortement ralentie). Les deux premières lignes montrent chaque onde seule, la
+        troisième leur <strong>superposition</strong>. Faites glisser S₁, S₂ et le micro
+        <strong>M</strong> le long de l'axe : selon la différence de marche
+        δ = |S₁M − S₂M| comparée à λ, l'interférence en M est
+        <strong>constructive</strong> (δ = k·λ) ou <strong>destructive</strong> (δ = (k + ½)·λ).
       </div>
     </div>
 
@@ -384,13 +487,14 @@
   </div><!-- fin #panel -->
 </main>
 
-<!-- Ordre de chargement : Three.js (vendé) → sim (état/physique) → scene (3D) → graph (2D) → ui (contrôles) -->
+<!-- Ordre de chargement : Three.js (vendé) → sim (état/physique) → scene (3D) → graph (2D) → surfaces (2D) → principe (1D) → ui (contrôles) -->
 <script src="../libs/three.min.js"></script>
 <script src="../libs/OrbitControls.js"></script>
 <script src="js/sim.js"></script>
 <script src="js/scene.js"></script>
 <script src="js/graph.js"></script>
 <script src="js/surfaces.js"></script>
+<script src="js/principe.js"></script>
 <script src="js/ui.js"></script>
 <script data-goatcounter="https://berdous-pc.goatcounter.com/count"
         async src="https://gc.zgo.at/count.js"></script>

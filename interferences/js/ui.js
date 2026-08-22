@@ -388,10 +388,10 @@ function setMainTab(tab) {
     document.getElementById(t + '-area').style.display = (t === tab) ? '' : 'none';
   });
 
-  // #lumineuses-area et #surfaces-area sont display:none pendant les autres onglets :
-  // la scène 3D / le bassin et leurs canvas n'ont des dimensions exploitables qu'une
+  // Les trois zones sont display:none pendant les autres onglets : la scène 3D,
+  // le bassin et les tracés du Principe n'ont des dimensions exploitables qu'une
   // fois réaffichés — on relance donc le resize ici, pas seulement une fois à init().
-  if (tab === 'lumineuses' || tab === 'surfaces') resize();
+  resize();
 }
 
 // ═══════════════════════════════════════════════════
@@ -469,6 +469,7 @@ function resize() {
     resizeScene();
     resizeGraphCanvas();
     resizeSurfaces();
+    resizePrincipe();
   });
 }
 window.addEventListener('resize', resize);
@@ -482,6 +483,7 @@ function loop() {
   renderScene();
   tickDecompose();
   if (document.getElementById('surfaces-area').style.display !== 'none') tickSurfaces();
+  if (document.getElementById('principe-area').style.display !== 'none') tickPrincipe();
   // drawIntensityGraph() n'est plus appelée ici : chaque déclencheur qui affecte réellement le
   // graphe (slider, forme, mode lumineux, reset, zoom, survol, épinglage, redimensionnement)
   // l'appelle désormais explicitement (cf. ui.js → updateParam/updateMaskShape/resetSim,
@@ -502,6 +504,7 @@ function init() {
 
   initScene();
   initSurfaces();
+  initPrincipe();
   initGraphInteractions();
   initLegendeBlanche();
   appliquerBorneD();
