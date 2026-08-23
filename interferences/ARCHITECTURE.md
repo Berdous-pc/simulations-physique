@@ -443,6 +443,279 @@ constructif   x = (x₁ + x₂ − k·λ)/2
 destructif    x = (x₁ + x₂ − (k+½)·λ)/2
 ```
 
+#### Ce que représente `y` : la SURPRESSION
+
+`y₁`, `y₂` et leur somme sont des **surpressions acoustiques**, pas des déplacements de matière.
+Le choix n'est pas cosmétique : il commande entièrement le mode « Particules » ci-dessous, et
+c'est lui qui rend les deux représentations superposables.
+
+- Un micro est un capteur de **pression** : la ligne 3 est donc littéralement ce que M mesure, et
+  « δ = k·λ → constructif » veut dire « le micro entend fort ».
+- L'excès de densité d'un gaz vaut −∂u/∂x à un facteur près, soit exactement ΔP : **pression et
+  densité sont rigoureusement en phase**. La courbe tracée est donc aussi la courbe de densité, et
+  en mode « Les deux » un sommet de courbe tombe *pile* sur un paquet de particules. Avec
+  `y` = déplacement, la compression se serait située là où la courbe a sa **pente** maximale —
+  courbe et paquets décalés de λ/4 à l'écran, ce qui aurait disqualifié le mode superposé.
+- Les deux membranes sources se déplacent alors **en miroir** (elles poussent vers l'intérieur
+  ensemble), ce qu'on obtient en branchant deux haut-parleurs identiques sur la même sortie
+  d'ampli. Avec `y` = déplacement elles auraient translaté parallèlement, dans le même sens.
+
+Contrepartie assumée : le champ de **déplacement** du gaz est en quadrature avec la courbe. Aux
+ventres de pression les particules sont quasi immobiles et la densité pulse au maximum ; aux nœuds
+c'est l'inverse. C'est correct — c'est même le contenu — mais la **légende des repères change de
+libellé** en mode Particules (`_prinDrawReperesLegende`) pour le dire, sans quoi l'élève lit
+« constructif » sur des particules immobiles et en conclut le contraire.
+
+#### Mode « Particules » — gaz de compressions / détentes
+
+`simPrin.repr` ∈ `'signal'` (défaut) | `'particules'` | `'lesdeux'`, piloté par un sélecteur
+segmenté à trois crans (`setPrinRepresentation`). Chaque bande devient un **tube de gaz
+horizontal** : les haut-parleurs y sont des membranes, le micro une membrane mise en mouvement par
+la pression.
+
+**Le basculement ne déplace rien.** `_prinLayout` ne connaît pas `simPrin.repr` : les trois bandes,
+le couloir de cotes, le micro et les sources gardent leur place au pixel près, et seul le contenu
+des bandes change. On peut donc basculer en pleine animation pour comparer — c'est l'usage visé.
+
+Physique identique à celle de l'onglet Son de la page Ondes (`ondes/js/tube.js` + `ondes/js/sim.js`) :
+modèle lagrangien continu, une particule = une parcelle de fluide, position affichée = position de
+repos + déplacement du champ. Le code en est **adapté, non partagé** — aucune page du site n'a de
+fichier commun avec une autre. Deux simplifications par rapport au tab Son : pas d'historique de
+source (λ et A s'appliquent instantanément ici, comme partout dans cet onglet, donc `u` est
+analytique) et pas de curseurs ρ/K.
+
+Le déplacement se déduit de `p = −K·∂u/∂x`, en tenant compte de `∂d₂/∂x = −1` :
+
+```
+u₁(x,t) = +A₁·(1 − cos(ω·tr₁))     ⟹  p₁ = A₁·sin(ω·tr₁)   = _prinY1Libre   ✔
+u₂(x,t) = −A₂·(1 − cos(ω·tr₂))     ⟹  p₂ = A₂·sin(ω·tr₂)   = _prinY2Libre   ✔
+```
+
+Les deux redonnent **exactement** les courbes déjà tracées : il n'y a pas deux modèles parallèles
+à tenir d'accord. Le terme `(1 − cos)` et non `(−cos)` est la constante d'intégration d'une source
+qui démarre **au repos** — sans elle `u` sauterait de 0 à −U au passage du front et toutes les
+particules se décaleraient d'un coup. Conséquence assumée : derrière le front le gaz est translaté
+en bloc de U, ce qui est **invisible dans le gaz** (∂/∂x d'une constante est nul, donc aucune
+densité n'en dépend) et se compense exactement entre les sources si A₁ = A₂ ; cela ne se voit que
+sur les membranes, qui pompent vers l'intérieur au lieu de battre autour de leur repos — le
+comportement réel d'un haut-parleur démarré brutalement sur une sinusoïde.
+
+**Calibrage de l'amplitude** (`_prinGazGain`) : ce qui rend une compression visible n'est pas
+l'amplitude mais le produit `A·k`. Le gain vise `PRIN_GAZ_AK` = 0,55 **pour A = 1** et s'applique à
+l'identique sur les trois bandes — même doctrine que `ampPx` pour les courbes : un ventre à
+A₁ + A₂ = 2 doit vraiment montrer deux fois plus de contraste, et A₁ = 0 ne doit plus rien montrer.
+0,55 et non 0,75 (`AK_CAP` du tab Son) parce que la ligne somme monte à 2·A·k = 1,10 : au-delà de
+π/2 ≈ 1,57 les trajectoires de particules voisines se croisent et le nuage produit des caustiques.
+Un plafond absolu (`PRIN_GAZ_G_MAX_FRAC` = 4,5 % de la largeur de l'axe) évite qu'à λ = 1,50 m le
+mouvement d'ensemble masque la structure de l'onde.
+
+**Nuage** (`_prinGazInit`) : un tableau par bande, positions de repos stockées **en mètres** — jamais
+en pixels, même doctrine que `simPrin.x1/x2/xM`. Un redimensionnement ne le régénère que si le
+grain change réellement, et le nuage couvre **tout l'axe** indépendamment de la position des
+sources, si bien que déplacer S₁ ou S₂ ne le reconstruit pas : c'est le clip au dessin qui
+restreint la portion visible. Le rayon est indexé sur `unitH` et non sur la hauteur de la bande —
+les trois bandes montrent le *même* gaz, la ligne somme en contient simplement deux fois plus.
+Grille jitterée en x et ordre des ordonnées mélangé, comme `initCols`.
+
+Le **plafond d'effectif** (`PRIN_GAZ_N_MAX` = 8 000, aligné sur `initCols`) est appliqué en
+**élargissant la case** (`_prinGazSlot`) et non par un écrêtage bande par bande : les trois bandes
+montrent le *même* gaz, leur densité doit rester identique. Un plafond par bande écrêterait d'abord
+la ligne somme, deux fois plus peuplée, qui apparaîtrait alors deux fois moins dense que les lignes
+sources. Comme la case s'élargit exactement de ce que le plafond retire, le rapport λ/espacement —
+la seule grandeur qui compte pour la lisibilité des bandes — reste indépendant de la taille de la
+fenêtre. `_prinGazEspacement` est dérivé de la case **effective**, plafond compris, sinon le voile
+se doserait sur un grain plus fin que celui réellement affiché.
+
+#### Agitation thermique : c'est le PAS qui compte, pas l'amplitude
+
+Marche aléatoire 2D isotrope rappelée, **multipliée par `speedFactor`** (sans quoi l'onde
+ralentirait et le gaz non), avec repliement aux parois (`_prinGazFold`) plutôt qu'un clamp qui
+empilerait les particules en deux liserés.
+
+Le réglage repris tel quel de l'onglet Son rendait les **zones destructives invisibles**, et pas
+pour la raison qu'on croit. Un nœud de pression est un ventre de *déplacement* : le gaz y oscille en
+bloc sans changer de densité, et le seul indice est ce mouvement d'ensemble. L'œil sait parfaitement
+le détecter dans un champ de points aléatoires — à condition qu'il ressorte du bruit. Or aux
+réglages par défaut :
+
+| | par frame (60 fps) |
+|---|---|
+| mouvement cohérent au ventre de déplacement | 1,12 px (RMS) |
+| pas de l'errance, ancien réglage | 1,30 px (σ) |
+
+Le bruit était **plus grand que le signal**. Le ratio ne dépend pas du ralenti, `speedFactor`
+multipliant déjà les deux.
+
+Les deux grandeurs se règlent séparément puisque `σ_stat = σ_pas / √(2·pull)`. On baisse donc à la
+fois l'amplitude (σ visé = λ_px/52 ≈ 2,5 px au lieu de 6,5) **et** le rappel (0,020 → 0,014, soit
+une relaxation de ~1,2 s) : l'errance devient plus lente et plus douce, le gaz reste vivant, et le
+pas tombe à ≈ 0,42 px/frame — le mouvement cohérent passe devant d'un facteur ~2,7. Rétrécir la
+seule amplitude à rappel constant aurait gardé un scintillement, simplement plus serré. Le budget de
+flou, lui, n'est plus contraignant : à σ = λ/52 le contraste des bandes perd `exp(−2π²σ²/λ²)`, soit
+moins de 1 %.
+
+**Voile de densité** (`_prinDrawGazVoile`) : halo unilatéral dans la couleur des particules sous les
+cœurs de compression, **dosé sur λ mesurée en espacements** — inexistant au réglage par défaut
+(λ ≈ 15 espacements, le nuage suffit), franc en bas de plage. Il est indispensable là : à λ = 0,20 m
+une bande de compression fait ~22 px pour un grain de ~9 px, le nuage est à sa limite de résolution
+et aucun réglage d'amplitude n'y changera rien, alors que le voile est un champ continu. Posé en
+**transparence** et non en aplat : un aplat, fût-il de la couleur exacte du fond, effacerait la
+grille verticale de la bande.
+
+**Membranes** : la source garde son libellé et son ergot de position à l'abscisse **exacte** x₁/x₂,
+jamais sur la membrane qui bouge — sinon la cote S₁M paraîtrait respirer. La caisse **suit** la
+face de la membrane, faute de quoi celle-ci laisserait derrière elle une bande de fond nu large de
+tout son débattement. Le déplacement de la membrane est lu dans le champ **de la bande** et non
+dans la seule contribution de sa propre source : sur les lignes 1 et 2 cela revient au même, mais
+sur la ligne somme prendre u₁ seul ferait glisser le gaz *à travers* la membrane de S₁, de tout ce
+que vaut u₂ à cette abscisse. Contrepartie : sur la ligne somme la membrane réagit aussi à l'onde
+qui lui arrive d'en face, ce qui est bien ce que décrit le modèle affiché (superposition libre,
+sans réflexion sur les sources).
+
+#### La membrane du micro (`_prinDrawMembraneMicro`)
+
+Une membrane **horizontale** encastrée sur une **cavité rigide et scellée**, dont le centre est
+exactement le point M. Elle s'enfonce dans la cavité quand le gaz se comprime au-dessus d'elle, se
+bombe vers l'extérieur quand il se raréfie. Sa flèche suit `y₁(M) + y₂(M)`, la valeur même que
+lisent les trois fenêtres d'oscilloscope ; le gain (`_prinMicGain`) est indexé sur la taille du
+pictogramme et **non sur λ**, la réponse d'un micro à une pression donnée ne dépendant pas de la
+longueur d'onde.
+
+Une première version faisait **coulisser une membrane verticale selon x**, comme un piston. Deux
+défauts, tous deux sérieux :
+
+- une barre mince avec du gaz **des deux côtés** subit la même pression sur ses deux faces et ne
+  devrait pas bouger : l'objet dessiné était mécaniquement incohérent, et l'élève avait raison de ne
+  pas y croire. D'où la cavité scellée — c'est elle, à pression de référence, qui fait qu'une
+  membrane répond à ΔP ;
+- surtout, elle se déplaçait dans la **même direction que le ballottement des particules**. Cela ne
+  brouillait pas seulement la lecture : cela suggérait que le micro *suit le flux*, c'est-à-dire
+  précisément l'idée à détruire. Une membrane qui se bombe dit « quelque chose appuie dessus » ;
+  une membrane qui glisse dit « quelque chose l'emporte ».
+
+La pression étant un scalaire, presser perpendiculairement est tout aussi juste — et les deux
+mouvements, désormais orthogonaux, se lisent sans se gêner.
+
+Effet de bord bienvenu : à la position par défaut (x_M = 2,00 m, δ = 0) le micro est sur un ventre
+de pression, donc sur un **nœud de déplacement** — le gaz y est rigoureusement immobile. Avec une
+membrane qui coulissait, la toute première image montrait un objet qui glisse au milieu de
+particules figées, le cas le plus déroutant possible. Avec une membrane qui se bombe, il n'y a plus
+de paradoxe apparent. C'est ce qui a rendu inutile un décalage de la position par défaut de M.
+
+**La cavité contient du gaz**, à la densité de repos, teinté en `PRIN_COL_M` (il appartient à
+l'appareil, pas à la bande). Ce n'est pas un ornement : c'est la raison même pour laquelle la
+membrane bouge. Un capteur de pression ne mesure pas « la pression », il mesure un **écart à une
+référence** — et cette référence est là, visible, sous la forme d'un gaz dont la densité ne change
+jamais, contre lequel se lit la compression du dehors.
+
+Le comptage se fait sur l'aire **réellement occupée** (`geo.gazW × geo.gazH`, retraits de paroi
+compris) et non sur l'aire brute de la cavité : compter sur l'aire brute puis tasser les particules
+dans une boîte plus petite les rendait une fois et demie plus denses que le gaz ambiant, soit
+exactement le contraire de ce que la cavité doit montrer. `_prinMicGeo` est donc la **source unique**
+de cette géométrie, partagée par `_prinGazInit` et le rendu.
+
+Les ordonnées sont rapportées à la **membrane courante** et non à l'axe : le volume se réduit un peu
+quand elle s'enfonce et le gaz s'y resserre d'autant, ce qui est physiquement juste (une cavité
+fermée dont une paroi avance se comprime) et évite surtout que des particules disparaissent sous le
+couvercle à chaque compression. L'ordonnée de la membrane à la fraction `t` de sa largeur vaut
+`y0 + 4·flèche·t·(1−t)` : le point de contrôle de la quadratique étant à l'abscisse médiane, `x(t)`
+est exactement linéaire et `t` se confond avec la fraction de largeur.
+
+**La membrane est posée sous l'axe** (`PRIN_MIC_DECALAGE` = 0,50 · micH) : au repos elle tombait
+exactement sur y = 0 et s'y confondait — on ne savait plus si le trait horizontal était l'axe ou le
+capteur. Le **fond** de la cavité, lui, ne bouge pas : il reste calé sur `PRIN_MIC_BAS_RATIO`, et
+avec lui le libellé et le badge δ. C'est un point contraint, pas un choix : le badge n'a qu'un pixel
+de marge avant d'être rabattu dans la bande (cf. la borne `min(…)` de `drawPrincipe`), donc
+descendre le fond de la cavité le ferait chevaucher le libellé. **C'est la cavité qui se raccourcit,
+pas la scène qui bouge.**
+
+Conséquences en chaîne, toutes liées : la membrane est **élargie de 25 %** (`1,25 → 1,5625 · micH`),
+et le gain `_prinMicGain` **abaissé de 0,30 à 0,20 · micH`**. Le gain devait baisser pour deux
+raisons simultanées — le bombement vers l'extérieur doit rester sous l'axe (flèche max
+0,40 · micH < 0,50 · micH de décalage), et une membrane qui s'enfoncerait de la moitié de la
+profondeur restante écraserait le gaz de référence qu'elle est censée laisser tranquille. La
+lisibilité n'y perd rien : c'est le rapport flèche/corde qui fait la courbure perçue, et la corde
+s'est allongée dans le même temps. L'effectif du gaz enfermé suit automatiquement, `geo.gazW` et
+`geo.gazH` étant recalculés depuis la nouvelle géométrie.
+
+Détails de rendu : la flèche est calculée à partir de la pression au **seul centre** — la largeur du
+dessin est picturale, elle ne moyenne rien (ce qui suppose, comme pour tout micro réel, un capteur
+petit devant λ, hypothèse qui s'affaiblit en bas de plage où λ ne fait plus que ~45 px). Le contour
+de la cavité est tracé **d'une pièce, couvercle déformé compris**, pour que le volume reste fermé
+quand la membrane se bombe au-dessus de l'axe : cette portion appartient alors à la cavité, pas au
+gaz. Le corps est **opaque** — c'est un volume scellé, aucune particule ne doit se voir au travers —
+et creusé d'un vide intérieur clair, sans lequel il se lirait comme un bloc plein sur lequel une
+membrane ne peut pas s'enfoncer. Les mors d'encastrement aux deux extrémités disent qu'elle est
+*tenue* là, donc qu'elle se déforme au lieu de se déplacer. Le fond de la cavité est calé sur
+`PRIN_MIC_BAS_RATIO`, inchangé : libellé et badge δ ne bougent pas d'un pixel.
+
+**Ce qui s'efface** en mode `'particules'` : l'échelle verticale (elle gradue une amplitude de
+courbe), le point de lecture bleu et sa valeur (la membrane du micro les remplace). En mode
+`'lesdeux'` la courbe est tracée plus fine et **sans son aplat de remplissage**, qui délaverait le
+nuage sur toute la hauteur de la bande.
+
+#### Sélection de particules
+
+Même principe que « Sélectionner des particules » de l'onglet Son (`selectNearbyParticles`,
+`ondes/js/sim.js`) : en mode sélection, un clic marque le paquet voisin de l'abscisse cliquée,
+Ctrl+clic ajoute un paquet, Maj+clic en retire un, quitter le mode efface tout. Le paquet est repéré
+par la particule **affichée** la plus proche du clic, et non par conversion directe de l'abscisse
+écran : l'onde ayant déplacé les particules, `_prinXm()` désignerait la position de repos d'une
+autre parcelle.
+
+Trois adaptations propres à cet onglet :
+
+- **Un seul bouton pour deux fonctions.** « Afficher l'enveloppe » n'a d'objet que sur une courbe,
+  « Sélectionner des particules » que sur un gaz : ils ne peuvent jamais servir en même temps et se
+  partagent donc la même place (`togglePrinEnvOuSel` dispatche sur `simPrin.repr`). Une première
+  version neutralisait le bouton d'enveloppe (`disabled`) ; le remplacer vaut mieux que le griser.
+  Conséquence assumée en mode `'lesdeux'` : la courbe est là mais son enveloppe n'est plus
+  atteignable — `showEnv` est **conservé** et reprend effet au retour en `'signal'`, seul mode où
+  `drawPrincipe` la trace.
+- **Le paquet est marqué dans la seule bande cliquée**, comme l'onglet Son ne marque que son unique
+  tube. Marquer la même abscisse sur les trois d'un coup serait tentant — on comparerait la même
+  tranche de gaz sous y₁ seule, y₂ seule et la superposition — mais un clic sur la ligne 1 qui fait
+  apparaître des marques sur la ligne 3 surprend plus qu'il n'aide.
+- **Le gaz de la cavité du micro n'est jamais sélectionnable** : `simPrin.gazMic` n'est pas touché
+  par `_prinGazSelect`, et ses particules n'ont même pas de champ `sel`. Il n'est pas là pour être
+  suivi, il est la référence de pression et doit rester le même quoi qu'on fasse.
+
+Rendu : les particules marquées sont **mises de côté au passage** de la boucle principale plutôt que
+redessinées dans une seconde boucle — l'errance doit être avancée exactement une fois par frame et
+par particule, une seconde boucle la ferait courir deux fois plus vite. Le tampon `_prinGazSelBuf`
+est réutilisé d'une frame à l'autre pour ne pas donner au ramasse-miettes de quoi hoqueter. Couleur
+`#0e7a45` : l'onglet Son passe ses particules marquées en brique sur un nuage bleu, mais ici le
+nuage prend trois teintes dont un orange, et le vert profond est la seule famille encore libre de la
+page (l'ocre est pris par les repères constructifs, le violet par les destructifs). Le **rayon est
+inchangé** : ce sont les mêmes parcelles de fluide, seulement repeintes. Une version les grossissait
+de 55 % — ça en faisait des objets à part, et surtout ça gonflait artificiellement le paquet, donc
+l'étendue qu'on croit observer.
+
+**Largeur du paquet** (`_prinGazSelRadius`) : indexée sur **λ** et non sur la largeur du canvas comme
+`_prinGrabTol()`. L'étalon pertinent n'est pas la taille de l'écran mais celle de la structure
+observée : un paquet doit tenir *entier* dans une zone de même comportement, sinon il en enjambe deux
+et ne montre plus rien. Un premier réglage à 25 px de rayon valait 38 % de λ aux réglages par défaut
+— à cheval sur un cœur de compression et sur le nœud voisin, il empêchait précisément de voir les
+endroits où les molécules ne font que se translater sans jamais se comprimer. À λ/12 de rayon le
+paquet fait λ/6 et tient dans la zone de détente d'un ventre de déplacement, large d'environ λ/4.
+Bornes 7 → 20 px.
+
+**Zones de saisie resserrées en mode sélection** (`_prinHit`, via `_prinSelActive`). La générosité
+du glisser-déposer se retourne contre l'élève dès qu'un clic peut vouloir dire autre chose que
+« déplacer » : M étant saisissable sur les **trois** lignes et sur ±22 px, il stérilisait une colonne
+entière de gaz — impossible de marquer les particules au voisinage du micro, c'est-à-dire justement
+là où l'on veut regarder. En mode sélection, la saisie se réduit donc à ce que l'on **voit** : M
+n'est attrapable que sur son boîtier (ligne 3, sur la seule hauteur de la cavité et de son libellé),
+S₁ et S₂ gardent leurs lignes — leur membrane y barre toute la hauteur — mais avec la largeur de
+leur caisse plutôt que la tolérance tactile. Le clavier est inchangé : M se déplace toujours aux
+flèches quel que soit le mode, donc rien n'est perdu en accessibilité.
+
+La sélection **survit à un redimensionnement** (`_prinGazSelSnapshot` / `_prinGazSelRestore`) : le
+passage en plein écran pour le vidéoprojecteur est précisément le moment où l'on vient de préparer
+un paquet. Les intervalles sont relevés **en mètres** — contrairement à `_colsSelectionSnapshot`, il
+n'y a rien à rapporter à une longueur de référence, les positions de repos n'étant déjà pas en
+pixels.
+
 #### Ralenti
 
 À λ = 0,60 m, T = λ/c ≈ 1,8 ms : inobservable en temps réel. `simTime` avance de
@@ -763,7 +1036,9 @@ index.html
   │                             onSliderA2Prin, resetParamsPrincipe, togglePrinEnveloppe,
   │                             togglePrinReperes, togglePrinCotes, togglePrinValeurs,
   │                             togglePrinDelta, togglePrinHideBeyondMic,
-  │                             togglePrinGraph, setPrinGraphOverlay
+  │                             togglePrinGraph, setPrinGraphOverlay,
+  │                             setPrinRepresentation, togglePrinEnvOuSel,
+  │                             togglePrinSelection
   │
   └── js/ui.js        dépend de : tous les fichiers précédents
                        expose : updateParam, updateMaskShape, appliquerBorneD, setLightSource,

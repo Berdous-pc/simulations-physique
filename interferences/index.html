@@ -238,6 +238,21 @@
 
         <div>
           <div class="section-title">Paramètres</div>
+          <!-- Représentation de l'onde : courbe de surpression (Signal), gaz de
+               particules (Particules), ou les deux superposés — cf. principe.js
+               → setPrinRepresentation. Le basculement ne déplace RIEN dans la
+               scène : seul le contenu des trois bandes change. -->
+          <div class="param-row" style="margin-bottom:12px;">
+            <label>Représentation</label>
+            <div class="seg-toggle">
+              <button class="seg-btn active" id="btn-repr-signal-prin"
+                      onclick="setPrinRepresentation('signal')">Signal</button>
+              <button class="seg-btn" id="btn-repr-part-prin"
+                      onclick="setPrinRepresentation('particules')">Particules</button>
+              <button class="seg-btn" id="btn-repr-deux-prin"
+                      onclick="setPrinRepresentation('lesdeux')">Les deux</button>
+            </div>
+          </div>
           <div class="param-row">
             <label>Longueur d'onde λ <span><span id="lbl-lambda-prin">0,60</span> m</span></label>
             <input type="range" id="sl-lambda-prin" min="0.20" max="1.50" step="0.01" value="0.60"
@@ -269,7 +284,7 @@
         <div>
           <div class="section-title">Options</div>
           <div style="display:flex; flex-direction:column; gap:8px;">
-            <button class="btn btn-toggle-one" id="btn-env-prin" onclick="togglePrinEnveloppe()">Afficher l'enveloppe</button>
+            <button class="btn btn-toggle-one" id="btn-env-prin" onclick="togglePrinEnvOuSel()">Afficher l&#39;enveloppe</button>
             <button class="btn btn-toggle-one" id="btn-reperes-prin" onclick="togglePrinReperes()">Repérer les interférences</button>
             <button class="btn btn-toggle-one" id="btn-cotes-prin" onclick="togglePrinCotes()">Afficher S₁M et S₂M</button>
             <button class="btn btn-toggle-one" id="btn-delta-prin" onclick="togglePrinDelta()">Afficher la différence de marche</button>
@@ -496,6 +511,16 @@
         espacées de λ/2. Au clavier,
         <strong>1</strong>/<strong>2</strong>/<strong>3</strong> choisissent S₁, M ou S₂ et les
         flèches ← → les déplacent.
+        <br><br>
+        Les courbes représentent la <strong>surpression</strong> — c'est elle que mesure un micro.
+        Le sélecteur <strong>Représentation</strong> permet de voir la même onde comme un
+        <strong>gaz de particules</strong> : les sources deviennent des membranes qui poussent
+        l'air, le micro une membrane mise en mouvement par la pression, et les interférences se
+        lisent en zones de compression et de détente. Attention : là où l'interférence est
+        constructive, le gaz se comprime au maximum mais les particules y bougent très peu — et
+        inversement aux nœuds. Le bouton <strong>Sélectionner des particules</strong> permet alors
+        de marquer un paquet d'un clic pour suivre son mouvement (Ctrl+clic pour en ajouter un,
+        Maj+clic pour en retirer un).
       </div>
     </div>
 
