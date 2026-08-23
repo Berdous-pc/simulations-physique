@@ -471,7 +471,7 @@ curseur est plus sûr. Les deux voies restent synchronisées — `_prinUpdateVal
 | Bouton | Effet |
 |---|---|
 | Afficher l'enveloppe | ±A(x) en pointillés sur la ligne 3 — rend les nœuds/ventres visibles comme positions fixes |
-| Repérer les interférences | **bandes translucides** de fond (ocre / violet) aux positions remarquables + marqueurs **V** (ventre) / **N** (nœud) sur l'axe + légende. Les anciens traits verticaux concurrençaient les guides de S₁/S₂/M ; en bandes, ils passent au fond. V et N sont les mots du programme |
+| Repérer les interférences | **marqueurs ponctuels** aux positions remarquables de la bande somme : trait vertical fin calé au pixel sur x, encadré de deux **pointes pleines** (haut/bas de bande) dont l'apex tombe sur x — ocre + trait continu pour le constructif, violet + trait tireté pour le destructif. Ces positions sont des **points**, pas des intervalles : ni bandes translucides ni trame de points, qui en faisaient des zones floues. Légende (`_prinDrawReperesLegende`) dans le coin haut-droit de la bande — elle nomme les deux natures, sans la condition sur δ (contenu du cours et de l'encart « Valeurs ») |
 | Coter S₁M et S₂M | doubles flèches cotées dans le couloir sous la ligne 3, couleurs de S₁/S₂ |
 | Afficher les valeurs | encarts du panneau (S₁M, S₂M, δ = \|S₁M − S₂M\|, δ/λ, conclusion) **et** valeur chiffrée à chaque point de lecture du micro sur le canvas |
 

@@ -715,33 +715,135 @@ function _prinPositionsRemarquables() {
     return out;
 }
 
-// ── Repères des interférences : pointillés de fond (orange / violet) ──
-// Zones pointillées (et non plus des aplats translucides ni des lettres) :
-// des points francs, assez gros pour rester lisibles au vidéoprojecteur au
-// fond d'une salle, sans afficher les mots « ventre »/« nœud » ni les
-// lettres V/N (le programme n'exige que « interférence constructive/
-// destructive »). Appelé AVANT les axes et les courbes : c'est un repère de
-// fond, il ne doit pas masquer le tracé.
+// ── Repères des interférences : marqueurs PONCTUELS (ocre / violet) ───
+// Les interférences constructives et destructives se produisent en des
+// POSITIONS PRÉCISES (x = (x₁ + x₂ − k·λ)/2 et x = (x₁ + x₂ − (k+½)·λ)/2),
+// pas sur des intervalles : l'ancienne trame de points, large de λ·0,14, en
+// faisait des bandes floues dont on ne pouvait pas lire le centre — et deux
+// colonnes de points sur fond ivoire, ce n'est pas un repère, c'est du bruit.
+// Chaque position est donc marquée par UN trait vertical fin, calé au pixel
+// sur x, encadré de deux pointes de repère (haut et bas de la bande) dont
+// l'apex tombe exactement sur ce même x.
+//
+// Deux niveaux de lecture, redondants pour le vidéoprojecteur : la COULEUR
+// (ocre / violet, cf. PRIN_COL_CONSTR / PRIN_COL_DESTR) et le TRAIT (continu
+// pour le constructif, tireté pour le destructif) — lisible même reprojeté
+// délavé.
+//
+// Appelé AVANT les axes et les courbes : c'est un repère de fond, il ne doit
+// pas masquer le tracé. Les pointes se logent aux deux bords de la bande, là
+// où la courbe ne passe jamais (l'amplitude maximale, 2, n'occupe que 82 %
+// de la demi-hauteur — cf. s.ampPx dans _prinLayout).
+
+// Pointe de repère : triangle PLEIN dont l'APEX est exactement en
+// (x, y + sens·h). Pleine sur les deux types : une pointe creuse en violet
+// se lisait mal au vidéoprojecteur (le cerne se délave et il ne reste qu'un
+// contour fantôme) — la distinction se joue sur la couleur et sur le trait,
+// continu ou tireté.
+function _prinDrawPointeRepere(ctx, x, y, h, sens, couleur) {
+    var demi = h * 0.72;
+    ctx.beginPath();
+    ctx.moveTo(x, y + sens * h);
+    ctx.lineTo(x - demi, y);
+    ctx.lineTo(x + demi, y);
+    ctx.closePath();
+    ctx.fillStyle = couleur;
+    ctx.fill();
+}
+
 function _prinDrawReperes(ctx, positions) {
-    var s = simPrin, lw = _prinLW();
+    var s = simPrin, lw = _prinLW(), fs = _prinFont();
     var row = s.rows[2];
-    var yTop = row.y0 - row.half + 1, h = row.half * 2 - 2;
-    var largeur = Math.max(6, Math.min(16, s.lambda * s.pxPerM * 0.14));
-    var r = Math.max(2.2, 1.8 * lw);          // rayon des points — visible de loin
-    var pas = r * 3.1;
+    var yTop = row.y0 - row.half + 1, yBas = row.y0 + row.half - 1;
+    var h = Math.max(4, fs * 0.34);           // hauteur des pointes de repère
     ctx.save();
     for (var i = 0; i < positions.length; i++) {
-        var px = _prinXpx(positions[i].x);
-        var xg = px - largeur / 2, xd = px + largeur / 2;
-        ctx.fillStyle = (positions[i].type === 'V') ? PRIN_COL_CONSTR : PRIN_COL_DESTR;
-        ctx.globalAlpha = 0.55;
-        for (var x = xg + pas / 2; x <= xd; x += pas) {
-            for (var y = yTop + pas / 2; y <= yTop + h; y += pas) {
-                ctx.beginPath();
-                ctx.arc(x, y, r, 0, Math.PI * 2);
-                ctx.fill();
-            }
-        }
+        var constructif = (positions[i].type === 'V');
+        var couleur = constructif ? PRIN_COL_CONSTR : PRIN_COL_DESTR;
+        // +0,5 px : un trait de 1 px centré sur une abscisse entière bave sur
+        // deux colonnes de pixels et paraît deux fois plus épais qu'il n'est.
+        var px = Math.round(_prinXpx(positions[i].x)) + 0.5;
+
+        // Trait de position — continu (constructif) ou tireté (destructif)
+        ctx.globalAlpha = 0.5;
+        ctx.strokeStyle = couleur;
+        ctx.lineWidth = 1.3 * lw;
+        ctx.setLineDash(constructif ? [] : [4 * lw, 3.5 * lw]);
+        ctx.beginPath();
+        ctx.moveTo(px, yTop + h);
+        ctx.lineTo(px, yBas - h);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Pointes : pleine opacité, ce sont elles qui DÉSIGNENT la position
+        ctx.globalAlpha = 1;
+        _prinDrawPointeRepere(ctx, px, yTop, h,  1, couleur);
+        _prinDrawPointeRepere(ctx, px, yBas, h, -1, couleur);
+    }
+    ctx.restore();
+}
+
+// ── Légende des repères d'interférences ───────────────────────────────
+// Dessinée APRÈS les courbes (contrairement aux repères eux-mêmes) : un
+// cartouche opaque calé dans le coin haut-droit de la bande « somme », en
+// vis-à-vis de la pastille de titre qui en occupe le coin haut-gauche. Sans
+// elle, les deux couleurs ne disent rien : rien à l'écran ne nomme ce que
+// marquent l'ocre et le violet. Elle NOMME seulement les deux natures — la
+// condition sur δ qui les produit est le contenu du cours et de l'encart
+// « Valeurs » du panneau ; l'écrire ici donnait la réponse d'avance.
+// La police se réduit si la place laissée par la pastille de titre l'exige :
+// mieux vaut une légende petite qu'une légende qui chevauche le titre.
+function _prinDrawReperesLegende(ctx) {
+    var s = simPrin, lw = _prinLW(), fs = _prinFont();
+    var row = s.rows[2];
+    var lignes = [
+        { txt : 'interférences constructives', col : PRIN_COL_CONSTR },
+        { txt : 'interférences destructives',  col : PRIN_COL_DESTR  }
+    ];
+
+    ctx.save();
+    // Largeur disponible : la moitié droite de la bande — la pastille de
+    // titre s'arrête bien avant, sur toutes les tailles de fenêtre.
+    var dispo = s.plotW * 0.62 - 6;
+    var f = fs * 0.82;
+    ctx.font = f + 'px "Segoe UI", Arial, sans-serif';
+    var wTxt = Math.max(ctx.measureText(lignes[0].txt).width,
+                        ctx.measureText(lignes[1].txt).width);
+    var marge = f * 0.7, wSym = f * 1.1;
+    var w = marge * 2 + wSym + f * 0.45 + wTxt;
+    if (w > dispo) {                          // fenêtre étroite : on rétrécit
+        f = Math.max(fs * 0.55, f * dispo / w);
+        ctx.font = f + 'px "Segoe UI", Arial, sans-serif';
+        wTxt = Math.max(ctx.measureText(lignes[0].txt).width,
+                        ctx.measureText(lignes[1].txt).width);
+        marge = f * 0.7; wSym = f * 1.1;
+        w = marge * 2 + wSym + f * 0.45 + wTxt;
+    }
+    var hPointe = f * 0.40;
+    var dy = f * 1.30;
+    var h = marge * 0.9 + dy * lignes.length;
+    var x = s.plotX0 + s.plotW - 2 - w;
+    var y = row.y0 - row.half + 3 * lw;
+
+    ctx.globalAlpha = 0.94;
+    ctx.fillStyle = PRIN_COL_BG;
+    _prinRoundRect(ctx, x, y, w, h, Math.min(8, f * 0.5));
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = PRIN_COL_BAND_BD;
+    ctx.lineWidth = 1.2 * lw;
+    ctx.stroke();
+
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    for (var i = 0; i < lignes.length; i++) {
+        var yl = y + marge * 0.45 + dy * (i + 0.5);
+        // Même pointe que sur la scène : la légende montre le symbole exact,
+        // et non une pastille ronde qui n'existe nulle part sur le tracé.
+        _prinDrawPointeRepere(ctx, x + marge + wSym / 2, yl - hPointe / 2,
+                              hPointe, 1, lignes[i].col);
+        ctx.fillStyle = lignes[i].col;
+        ctx.fillText(lignes[i].txt, x + marge + wSym + f * 0.45, yl);
     }
     ctx.restore();
 }
@@ -1177,7 +1279,7 @@ function drawPrincipe() {
     // Fonds de bande + grille : tout au fond, avant le moindre repère
     for (var b = 0; b < 3; b++) _prinDrawBande(ctx, s.rows[b], _prinRowBoundsM(b));
 
-    // Repères d'interférences : zones pointillées, ligne somme uniquement
+    // Repères d'interférences : marqueurs ponctuels, ligne somme uniquement
     if (s.showReperes) _prinDrawReperes(ctx, positions);
 
     // Guides verticaux : UN SEUL trait continu par élément, du haut de sa
@@ -1262,6 +1364,10 @@ function drawPrincipe() {
             _prinDrawSourceMark(ctx, xS2 - srcH * PRIN_SRC_TIP_RATIO, row.y0, PRIN_COL_S2);
         }
     }
+
+    // Légende des repères — après les courbes : c'est un cartouche de
+    // lecture, il doit rester lisible même si le tracé passe dessous.
+    if (s.showReperes) _prinDrawReperesLegende(ctx);
 
     // Micro M — poignée sur l'axe de la ligne somme uniquement
     var row3 = s.rows[2];
