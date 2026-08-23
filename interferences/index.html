@@ -32,6 +32,44 @@
              l'élément sélectionné, 1/2/3 le choisissent (cf. principe.js). -->
         <canvas id="principe-canvas" tabindex="0"
                 aria-label="Deux haut-parleurs face à face et un micro déplaçables sur un axe"></canvas>
+
+        <!-- ═══ Fenêtres volantes des graphes temporels y(M, t) ═══
+             Superposées à la zone de tracé, déplaçables par leur barre de
+             titre (souris ou doigt) — cf. js/principe.js → initPrincipeGraphDrag.
+             Ouvertes/fermées par la section « Graphes temporels » du panneau.
+             Le code couleur du cadre et de la barre de titre est celui de la
+             ligne correspondante du tracé, que la flèche rejoint. -->
+        <div class="prin-graph-win" id="prin-win-y1" style="display:none;">
+          <div class="prin-graph-head">
+            <span class="prin-graph-title">y₁(M) = f(t)</span>
+            <button class="prin-graph-close" onclick="togglePrinGraph('y1')" title="Fermer le graphe">✕</button>
+          </div>
+          <canvas class="prin-graph-canvas"></canvas>
+        </div>
+
+        <div class="prin-graph-win" id="prin-win-y2" style="display:none;">
+          <div class="prin-graph-head">
+            <span class="prin-graph-title">y₂(M) = f(t)</span>
+            <button class="prin-graph-close" onclick="togglePrinGraph('y2')" title="Fermer le graphe">✕</button>
+          </div>
+          <canvas class="prin-graph-canvas"></canvas>
+        </div>
+
+        <div class="prin-graph-win" id="prin-win-som" style="display:none;">
+          <div class="prin-graph-head">
+            <span class="prin-graph-title">y₁(M)+y₂(M) = f(t)</span>
+            <!-- Légende cliquable : superpose y₁ et y₂ à leur somme (décochées
+                 par défaut — la somme seule est le sujet du graphe). Logée DANS
+                 la barre de titre : en ligne sous le graphe, elle coûtait une
+                 rangée de hauteur à chaque fenêtre. -->
+            <div class="prin-graph-legend">
+              <label class="lg-y1"><input type="checkbox" onchange="setPrinGraphOverlay('y1', this.checked)">y₁</label>
+              <label class="lg-y2"><input type="checkbox" onchange="setPrinGraphOverlay('y2', this.checked)">y₂</label>
+            </div>
+            <button class="prin-graph-close" onclick="togglePrinGraph('som')" title="Fermer le graphe">✕</button>
+          </div>
+          <canvas class="prin-graph-canvas"></canvas>
+        </div>
       </div>
       <div id="prin-2d-placeholder" class="tab-placeholder" style="display:none;">
         <span class="tab-placeholder-icon">📐</span>
@@ -214,6 +252,17 @@
             <label>Amplitude de S₂ <span><span id="lbl-a2-prin">0,80</span></span></label>
             <input type="range" id="sl-a2-prin" min="0" max="1" step="0.05" value="0.80"
                    oninput="onSliderA2Prin(this.value)">
+          </div>
+        </div>
+
+        <div>
+          <div class="section-title">Graphes temporels</div>
+          <!-- Chaque bouton ouvre/ferme une fenêtre volante dans la zone de
+               tracé (cf. #prin-win-* plus haut et principe.js). -->
+          <div class="btn-row btn-row-tight">
+            <button class="btn btn-toggle-one" id="btn-graph-y1-prin" onclick="togglePrinGraph('y1')">y₁(M)</button>
+            <button class="btn btn-toggle-one" id="btn-graph-y2-prin" onclick="togglePrinGraph('y2')">y₂(M)</button>
+            <button class="btn btn-toggle-one" id="btn-graph-som-prin" onclick="togglePrinGraph('som')">y₁(M)+y₂(M)</button>
           </div>
         </div>
 

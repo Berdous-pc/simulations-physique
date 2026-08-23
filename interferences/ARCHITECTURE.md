@@ -481,6 +481,93 @@ panneau et par le **badge « δ = … · constructive »** dessiné en permanenc
 est le résultat même de la simulation : il était auparavant invisible tant que l'encart
 « Valeurs » restait replié.
 
+
+#### Graphes temporels y(M, t) — fenêtres volantes
+
+Le tracé principal montre **y(x) à un instant donné** ; ces graphes montrent la grandeur
+**complémentaire — y(t) en un point fixe**, celui du micro : c'est ce que « voit » M, et c'est sur
+y(t) que se lit l'amplitude reçue. Section « Graphes temporels » du panneau (entre *Paramètres* et
+*Options*), trois boutons sur une même ligne (`.btn-row.btn-row-tight`) — `y₁(M)`, `y₂(M)`,
+`y₁(M)+y₂(M)` — chacun ouvrant/fermant une **fenêtre volante** superposée à la zone de tracé
+(`#prin-win-y1` / `-y2` / `-som`, déclarées dans `index.html` à l'intérieur de `#prin-scene-area`).
+
+- **Descripteurs `PRIN_GRAPHS`** : source unique du bouton, de la fenêtre, de la couleur (celle de
+  la ligne correspondante) et de la ligne d'ancrage de la flèche.
+- **Échelle verticale COMMUNE** — `PRIN_GRAPH_MAXU` = 2, soit ±(A₁ + A₂), sur les **trois**
+  graphes. Les trois fenêtres ayant la même taille, une demi-étendue commune vaut un nombre de
+  pixels par unité d'amplitude commun, et le doublement de y₁ + y₂ devant y₁ ou y₂ **se voit**.
+  Un axe ajusté par graphe (±1 pour y₁/y₂, ±2 pour la somme) donnait trois courbes de même hauteur
+  à l'écran : exactement l'illusion que cette simulation doit détruire. Même doctrine que
+  `simPrin.ampPx`, identique sur les trois bandes du tracé principal.
+- **Calcul analytique, pas d'historique** : `_prinGraphVal` réévalue la courbe sur toute la fenêtre
+  temporelle à chaque frame, avec les réglages **courants**. Même approximation assumée que le
+  reste de l'onglet (déplacer une source re-cale son front) ; bouger M ou λ pendant l'animation
+  redessine un graphe cohérent, au lieu de laisser traîner un morceau de courbe obtenu avec les
+  anciens réglages.
+- **Fenêtre temporelle** de `PRIN_GRAPH_PERIODES` = 4 **périodes** et non une durée fixe : T = λ/c
+  va de 0,6 à 4,4 ms sur la plage de λ, un axe en durée fixe montrerait tantôt une demi-oscillation,
+  tantôt vingt. Tant que t < 4T la courbe **pousse** vers la droite depuis un axe vide — le palier
+  plat du début est le temps de vol d/c du front — puis l'axe défile comme sur un oscilloscope.
+  **Graduation de l'axe des temps** : pas ROND en millisecondes (1 / 2 / 5 ×10ⁿ, `_prinNicePas`),
+  jamais un pas d'une demi-période. Le pas en période donnait des étiquettes qui changeaient de
+  valeur dès qu'on touchait λ, et l'axe ne portait que ses deux valeurs extrêmes, elles-mêmes en
+  défilement continu : rien n'était lisible. Désormais les nombres sont ronds quel que soit λ,
+  seule leur DENSITÉ suit la largeur disponible (≈ une étiquette par 4,2·fs, entre 2 et 8) — une
+  petite fenêtre ne se retrouve pas avec dix étiquettes qui se chevauchent. La grille verticale
+  tombe EXACTEMENT sur ces graduations — c'est elle qui relie le nombre écrit sous le cadre au
+  point de la courbe qui lui correspond — et les marques sont portées à la fois par l'axe des
+  temps (la ligne y = 0, de part et d'autre, comme `_prinDrawAxe` sur le tracé principal) et par
+  le bord bas, là où sont écrits les nombres. Le libellé « t (ms) » est posé au bout de la ligne
+  comme « x (m) » sur le tracé principal ; une valeur qui viendrait le heurter est omise plutôt
+  que superposée.
+- **La fenêtre est un OSCILLOSCOPE, pas un graphe de plus** — boîtier sombre (CSS), écran encastré,
+  verre `PRIN_COL_SCOPE_BG` et tracé « phosphore » (`shadowBlur` sur la courbe). C'est la réponse à
+  un vrai risque didactique : y(M, t) et y(x, t) ont forcément le même aspect — même sinusoïde,
+  même couleur d'identité — et l'élève confond alors représentation spatiale et représentation
+  temporelle (la confusion λ ↔ T, classique). On ne casse **pas** la ressemblance des courbes,
+  qui est précisément ce qui rend la superposition lisible d'un coup d'œil sur y₁+y₂(t) : on rend
+  impossible la confusion des **cadres**. Un écran d'appareil ne se lit pas comme la scène — et
+  c'est en prime l'écran qu'on branche vraiment sur un micro en TP. Corollaire : les tons de la
+  scène sont calibrés pour l'ivoire et illisibles sur le verre, d'où les contreparties
+  `PRIN_COL_SCOPE_S1/S2/SOMME` — la somme y passe en **bleu vif**, qui reste sa couleur d'identité
+  (`PRIN_COL_SOMME` est un bleu nuit, invisible sur fond sombre) tout en se détachant de l'orange
+  et du rose des sources — plus `PRIN_COL_SCOPE_GRID/AXE/TICK`. La couleur de la LIGNE, elle, reste
+  sur le cadre, la barre de titre et la flèche : c'est elle qui relie la fenêtre à sa bande.
+- Un **point de lecture** (`PRIN_COL_SCOPE_CURSEUR`) marque l'instant courant sur la courbe, jumeau
+  de celui que porte le micro sur le tracé principal : c'est lui qui fait le lien entre les deux
+  vues. Il garde le bleu du micro (`PRIN_COL_SCOPE_CURSEUR`, contrepartie claire de `PRIN_COL_M`),
+  au plus près de la teinte de la somme sur le verre : c'est son trait pointillé et son cerne
+  sombre qui le distinguent de la courbe, pas sa couleur.
+- **Flèche de rattachement** (`_prinDrawGraphFleches` / `_prinFlecheVersFenetre`, dessinée sur le
+  canvas principal) : elle part de l'abscisse de M **sur la ligne concernée** (1, 2 ou 3) et rejoint
+  le point du boîtier le plus proche, dans la couleur de la ligne. Sans elle, trois fenêtres de plus
+  flottent sans qu'on sache laquelle montre quoi. **Rectiligne** : le plus court chemin, donc le
+  plus lisible au vidéoprojecteur. Ancrée sur l'**axe** de la bande et non sur le point de lecture,
+  qui oscille : la flèche battrait au rythme de l'onde. Elle est tracée sur le canvas, donc **sous**
+  les fenêtres DOM qui le recouvrent — la pointe s'arrête au boîtier. Les fenêtres étant des
+  éléments DOM de `#prin-scene-area`, conteneur du canvas, leurs `offsetLeft/offsetTop` sont
+  **déjà** dans le repère du canvas en px CSS.
+- **Légende cliquable** de la fenêtre « y₁ + y₂ » : deux cases superposent y₁ et y₂ à leur somme,
+  **décochées par défaut** (la somme seule est le sujet du graphe), tracées sous elle et plus fines.
+  Elle est logée **dans la barre de titre** — en rangée sous le graphe, elle coûtait de la hauteur
+  à une fenêtre déjà petite ; c'est le titre qui cède la place quand la fenêtre rétrécit
+  (`min-width: 0` + ellipsis), jamais les cases. Ses teintes sont des versions **éclaircies** de
+  PRIN_COL_S1/S2 : les tons du tracé sont calibrés pour l'ivoire de la scène et manquent de
+  contraste sur le bleu foncé de la barre. Le glisser-déposer l'exclut de la poignée, au même titre
+  que le bouton de fermeture : ce sont des contrôles, un clic sur une case ne doit pas embarquer la
+  fenêtre.
+- **Glisser-déposer** par la barre de titre, en Pointer Events + capture comme S₁/M/S₂ — l'écart
+  de saisie est mémorisé, donc pas de saut sous le pointeur. La dernière fenêtre touchée passe
+  devant (`_prinGraphZ`).
+- **Responsivité** : largeur en `clamp(190px, 26%, 460px)` et hauteur déduite par `aspect-ratio`,
+  donc lisible au vidéoprojecteur sans dévorer une petite fenêtre ; le canvas suit sa taille rendue
+  à chaque frame (comparaison de `clientWidth/Height`, pas de `ResizeObserver`) et police comme
+  épaisseurs dérivent de `_prinGraphFont`/`_prinGraphLW`, indexées sur **ce** canvas. La position
+  est mémorisée en px **et** en fraction de la place disponible : c'est la fraction qui est
+  rejouée au redimensionnement (`_prinRelayoutGraphWins`, appelée par `resizePrincipe`), donc une
+  fenêtre calée en haut à droite le reste au passage en plein écran. Les libellés passent par
+  `_prinGraphText` et non `_prinText`, dont le halo est calibré sur la police du tracé principal
+  (jusqu'à 24 px) et mangerait la courbe dans une petite fenêtre.
 #### Conventions de rendu
 
 - **Lisibilité au vidéoprojecteur — `_prinFont()` / `_prinLW()`.** Toute la typographie et toutes
@@ -674,7 +761,9 @@ index.html
   │                             onSliderSpeedPrin, onSliderLambdaPrin, onSliderA1Prin,
   │                             onSliderX1Prin, onSliderXMPrin, onSliderX2Prin,
   │                             onSliderA2Prin, resetParamsPrincipe, togglePrinEnveloppe,
-  │                             togglePrinReperes, togglePrinCotes, togglePrinValeurs
+  │                             togglePrinReperes, togglePrinCotes, togglePrinValeurs,
+  │                             togglePrinDelta, togglePrinHideBeyondMic,
+  │                             togglePrinGraph, setPrinGraphOverlay
   │
   └── js/ui.js        dépend de : tous les fichiers précédents
                        expose : updateParam, updateMaskShape, appliquerBorneD, setLightSource,

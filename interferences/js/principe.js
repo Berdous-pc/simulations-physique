@@ -98,6 +98,62 @@ var PRIN_COL_BAND_BD = '#e6ddcd';
 var PRIN_COL_GRILLE     = '#e7dcc7';   // demi-mètres
 var PRIN_COL_GRILLE_MAJ = '#d3c4a6';   // mètres entiers, nettement plus marqués
 
+// ── Couleurs de l'ÉCRAN D'OSCILLOSCOPE des fenêtres de graphes ────────
+// Les fenêtres temporelles ne sont pas des graphes de plus posés sur la
+// scène : ce sont les ÉCRANS d'un oscilloscope branché sur le micro, et
+// c'est délibéré. Les courbes y(M, t) et les courbes y(x, t) du tracé ont
+// forcément le même aspect — même sinusoïde, même couleur d'identité — et
+// l'élève confond alors représentation spatiale et représentation
+// temporelle (la confusion λ ↔ T, classique). On ne casse pas la
+// ressemblance des COURBES, qui est justement ce qui rend la superposition
+// lisible d'un coup d'œil : on rend impossible la confusion des CADRES. Un
+// écran d'appareil ne se lit pas comme la scène — et c'est en plus l'écran
+// que l'on branche vraiment sur un micro en TP.
+var PRIN_COL_SCOPE_BG       = '#0f1720';   // verre de l'écran
+var PRIN_COL_SCOPE_GRID     = '#22323e';
+var PRIN_COL_SCOPE_GRID_MAJ = '#2e4352';
+var PRIN_COL_SCOPE_AXE      = '#5a7484';
+var PRIN_COL_SCOPE_TICK     = '#9db4c2';
+// Point de lecture de l'instant courant : contrepartie claire de PRIN_COL_M,
+// donc le même bleu de micro que sur la scène.
+var PRIN_COL_SCOPE_CURSEUR  = '#6fc3ff';
+// Contreparties « phosphore » de S₁/S₂/somme : les tons du tracé sont
+// calibrés pour l'ivoire de la scène, illisibles sur du verre sombre — et le
+// bleu nuit de la somme y disparaîtrait tout à fait. Elle passe donc en BLEU
+// vif, qui reste sa couleur d'identité (PRIN_COL_SOMME est un bleu nuit) tout
+// en se détachant nettement de l'orange et du rose des deux sources.
+var PRIN_COL_SCOPE_S1    = '#ffa64d';
+var PRIN_COL_SCOPE_S2    = '#ff6fa8';
+var PRIN_COL_SCOPE_SOMME = '#4fb8ff';
+
+// ── Graphes temporels y(M, t) ─────────────────────────────────────────
+// Largeur de la fenêtre temporelle affichée, en PÉRIODES (et non en secondes
+// fixes) : T = λ/c varie de 0,6 à 4,4 ms sur la plage de λ, un axe en durée
+// fixe montrerait tantôt une demi-oscillation, tantôt vingt.
+var PRIN_GRAPH_PERIODES = 4;
+// Descripteurs des trois graphes — source unique pour les boutons du panneau,
+// les fenêtres volantes, la couleur (celle de la ligne du tracé : c'est elle
+// qui relie la fenêtre à sa ligne, sur le cadre, la barre de titre et la
+// flèche), sa contrepartie « phosphore » pour le tracé sur verre sombre, et la
+// ligne d'où part la flèche.
+var PRIN_GRAPHS = [
+    { cle : 'y1',  idx : 0, row : 0, couleur : PRIN_COL_S1,    scope : PRIN_COL_SCOPE_S1,
+      btn : 'btn-graph-y1-prin',  win : 'prin-win-y1' },
+    { cle : 'y2',  idx : 1, row : 1, couleur : PRIN_COL_S2,    scope : PRIN_COL_SCOPE_S2,
+      btn : 'btn-graph-y2-prin',  win : 'prin-win-y2' },
+    { cle : 'som', idx : 2, row : 2, couleur : PRIN_COL_SOMME, scope : PRIN_COL_SCOPE_SOMME,
+      btn : 'btn-graph-som-prin', win : 'prin-win-som' }
+];
+// Demi-étendue de l'axe vertical, en unités d'amplitude — ±2, la valeur que
+// peut atteindre A₁ + A₂, et la MÊME pour les trois graphes. C'est tout
+// l'enjeu : les trois fenêtres ont la même taille, donc une échelle commune
+// vaut un nombre de pixels par unité d'amplitude commun, et le doublement de
+// y₁ + y₂ devant y₁ ou y₂ SE VOIT. Un axe auto-ajusté par graphe (±1 pour
+// y₁/y₂, ±2 pour la somme) donnait trois courbes de même hauteur à l'écran :
+// exactement l'illusion que cette simulation doit détruire. Même doctrine que
+// simPrin.ampPx, identique sur les trois bandes du tracé principal.
+var PRIN_GRAPH_MAXU = 2;
+
 // ── État global ───────────────────────────────────────────────────────
 var simPrin = {
 
@@ -146,6 +202,23 @@ var simPrin = {
     srcH      : 0,   // hauteur du pictogramme de haut-parleur (px)
     micH      : 0,   // hauteur du pictogramme de micro (px) — PLUS PETIT que srcH
     coteYs    : [],  // ordonnées du couloir de cotes, sous la bande "somme"
+
+    // ── Graphes temporels y(M, t) en fenêtres volantes ──────────────
+    // Une entrée par graphe (cf. PRIN_GRAPHS) : ouverte ou non, et position
+    // de la fenêtre. x/y sont en px CSS dans #prin-scene-area — fx/fy sont la
+    // MÊME position en fraction de la place disponible, et c'est elle qui
+    // survit au redimensionnement : une fenêtre calée en haut à droite doit
+    // le rester quand on passe de la fenêtre du navigateur au plein écran du
+    // vidéoprojecteur (cf. _prinSetGraphWinPos / _prinRelayoutGraphWins).
+    graphs : {
+        y1  : { open : false, x : 0, y : 0, fx : null, fy : null },
+        y2  : { open : false, x : 0, y : 0, fx : null, fy : null },
+        som : { open : false, x : 0, y : 0, fx : null, fy : null }
+    },
+    // Légende cliquable de la fenêtre « y₁ + y₂ » : superposition de chaque
+    // terme à leur somme. DÉCOCHÉES au départ — la somme seule est le sujet.
+    graphSomY1 : false,
+    graphSomY2 : false,
 
     // ── Glisser-déposer ─────────────────────────────────────────────
     drag      : null,  // 'S1' | 'S2' | 'M' | null — élément en cours de déplacement
@@ -385,6 +458,9 @@ function resizePrincipe() {
     simPrin.canvasW = w;
     simPrin.canvasH = h;
     _prinLayout(ctx);
+    // Les fenêtres volantes des graphes se recalent sur la nouvelle taille
+    // de la zone (positions mémorisées en fraction, cf. simPrin.graphs).
+    _prinRelayoutGraphWins();
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -1211,6 +1287,477 @@ function drawPrincipe() {
         _prinDrawCote(ctx, xM, xS2, s.coteYs[1],
                       'S₂M = ' + formatFr(Math.abs(s.x2 - s.xM), 2) + ' m', PRIN_COL_S2);
     }
+
+    // ── Graphes temporels y(M, t) ────────────────────────────────────
+    // Flèches de rattachement (sur CE canvas, donc sous les fenêtres DOM qui
+    // le recouvrent : la pointe s'arrête au boîtier), puis contenu des écrans.
+    // En dernier : la flèche traverse la scène par construction, elle doit
+    // passer par-dessus.
+    _prinDrawGraphFleches(ctx);
+    _prinRenderGraphWins();
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  GRAPHES TEMPORELS y(M, t) — fenêtres volantes
+//
+//  Le tracé principal montre y(x) à un instant donné ; ces graphes montrent
+//  la grandeur COMPLÉMENTAIRE — y(t) en un point fixe, celui du micro. C'est
+//  ce que « voit » le micro, et c'est sur y(t) que se lit l'amplitude reçue.
+//
+//  Les valeurs sont recalculées ANALYTIQUEMENT à chaque frame sur toute la
+//  fenêtre temporelle, sans historique enregistré : même approximation assumée
+//  que le reste de l'onglet (déplacer une source re-cale son front, cf.
+//  _prinY1Libre). Conséquence voulue : bouger M ou λ pendant l'animation
+//  redessine tout le graphe cohérent avec les réglages COURANTS, au lieu de
+//  laisser traîner un morceau de courbe obtenu avec les anciens.
+// ══════════════════════════════════════════════════════════════════════
+
+// Descripteur d'un graphe à partir de sa clé
+function _prinGraphDef(cle) {
+    for (var i = 0; i < PRIN_GRAPHS.length; i++) {
+        if (PRIN_GRAPHS[i].cle === cle) return PRIN_GRAPHS[i];
+    }
+    return null;
+}
+
+// Valeur tracée en M à l'instant tau. Versions BORNÉES (_prinY1/_prinY2) :
+// M est entre les deux sources, elles y coïncident avec les versions libres,
+// mais la borne reste la règle physique (un haut-parleur ne rayonne pas à
+// travers l'autre).
+function _prinGraphVal(cle, tau) {
+    var s = simPrin;
+    if (cle === 'y1') return _prinY1(s.xM, tau);
+    if (cle === 'y2') return _prinY2(s.xM, tau);
+    return _prinY1(s.xM, tau) + _prinY2(s.xM, tau);
+}
+
+// Police et épaisseurs propres à une fenêtre de graphe : même doctrine que
+// _prinFont/_prinLW pour le tracé principal (aucun px fixe), mais indexées sur
+// la taille de CE canvas — une fenêtre volante fait le quart de la scène.
+function _prinGraphFont(w, h) { return Math.max(9, Math.min(w / 17, h / 9.5, 22)); }
+function _prinGraphLW(fs)     { return Math.max(1, fs / 14); }
+
+// Pas de graduation « rond » immédiatement supérieur ou égal à `brut` :
+// 1, 2 ou 5 fois une puissance de 10. Une échelle de temps doit tomber sur des
+// nombres que l'élève lit d'un coup d'œil, quelle que soit la valeur de λ.
+function _prinNicePas(brut) {
+    if (!(brut > 0)) return 1;
+    var p = Math.pow(10, Math.floor(Math.log(brut) / Math.LN10));
+    var r = brut / p;
+    return ((r <= 1) ? 1 : (r <= 2) ? 2 : (r <= 5) ? 5 : 10) * p;
+}
+
+// Même service que _prinText, mais avec un halo calibré sur la police de CE
+// canvas, et de la couleur du verre de l'écran. _prinText, lui, dimensionne son
+// halo sur _prinFont() — celle du tracé principal, qui monte à 24 px — et le
+// teinte en fond ivoire : sur une petite fenêtre d'oscilloscope, cela ferait
+// une tache claire de 6 px là où il ne doit y avoir qu'un liseré.
+function _prinGraphText(ctx, txt, x, y, color, font, align, baseline, fs) {
+    ctx.font = font;
+    ctx.textAlign = align || 'center';
+    ctx.textBaseline = baseline || 'middle';
+    ctx.lineWidth = Math.max(2, fs * 0.28);
+    ctx.strokeStyle = PRIN_COL_SCOPE_BG;
+    ctx.lineJoin = 'round';
+    ctx.strokeText(txt, x, y);
+    ctx.fillStyle = color;
+    ctx.fillText(txt, x, y);
+}
+
+// ── Rendu d'une fenêtre ───────────────────────────────────────────────
+function _prinRenderGraphWin(def) {
+    var s = simPrin;
+    if (!s.graphs[def.cle].open) return;
+    var el = document.getElementById(def.win);
+    if (!el) return;
+    var cv = el.querySelector('.prin-graph-canvas');
+    if (!cv) return;
+
+    // Le canvas est dimensionné par le CSS (largeur en clamp() + aspect-ratio) :
+    // on ne fait que suivre sa taille rendue, à chaque frame — pas de
+    // ResizeObserver, la comparaison coûte moins qu'un écouteur de plus.
+    var w = cv.clientWidth, h = cv.clientHeight;
+    if (w < 20 || h < 20) return;
+    var dpr = window.devicePixelRatio || 1;
+    var pw = Math.round(w * dpr), ph = Math.round(h * dpr);
+    if (cv.width !== pw || cv.height !== ph) { cv.width = pw; cv.height = ph; }
+    var ctx = cv.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    var fs = _prinGraphFont(w, h), lw = _prinGraphLW(fs);
+
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = PRIN_COL_SCOPE_BG;
+    ctx.fillRect(0, 0, w, h);
+
+    // Gouttières : à gauche les valeurs de l'échelle verticale, en bas les
+    // durées et le libellé « t (ms) » — mesurées, jamais devinées.
+    ctx.font = 'bold ' + (fs * 0.9) + 'px monospace';
+    var padL = ctx.measureText('−2').width + 9 * lw;
+    var padR = Math.max(fs * 0.5, ctx.measureText('0,0').width / 2);
+    var padT = fs * 0.55;
+    var padB = fs * 1.75;
+    var px0 = padL, py0 = padT;
+    var pw2 = Math.max(20, w - padL - padR), ph2 = Math.max(20, h - padT - padB);
+    var yz = py0 + ph2 / 2;                       // ordonnée de y = 0
+    var ampPx = (ph2 / 2) / (PRIN_GRAPH_MAXU * 1.10);    // 10 % de respiration au-dessus de ±2
+
+    // Fenêtre temporelle : [0, W] tant que t < W (la courbe POUSSE vers la
+    // droite, et le palier plat du début montre le temps de vol d/c du front),
+    // puis défilement [t − W, t] comme sur un oscilloscope.
+    var T  = simPrin.lambda / PRIN_C;
+    var Wt = PRIN_GRAPH_PERIODES * T;
+    var t1 = Math.max(simPrin.simTime, Wt), t0 = t1 - Wt;
+    var xOf = function (tau) { return px0 + (tau - t0) / Wt * pw2; };
+
+    // ── Graduation de l'axe des temps ────────────────────────────────
+    // Pas ROND en millisecondes (1 / 2 / 5 ×10ⁿ, cf. _prinNicePas), et non un
+    // pas d'une demi-période : la période vaut 1,76 ms à λ = 0,60 m, une
+    // graduation à ce pas donne des nombres illisibles et une échelle qui
+    // change de valeur dès qu'on touche λ. Ici les nombres restent ronds quel
+    // que soit λ, seule leur DENSITÉ suit la largeur disponible — une petite
+    // fenêtre ne se retrouve pas avec dix étiquettes qui se chevauchent.
+    var msW   = Wt * 1000;
+    var nVise = Math.max(2, Math.min(8, Math.round(pw2 / (fs * 4.2))));
+    var pasMs = _prinNicePas(msW / nVise);
+    var decMs = (pasMs >= 1) ? 0 : (pasMs >= 0.1 ? 1 : 2);
+    var kt0   = Math.ceil(t0 * 1000 / pasMs - 1e-9);
+    var kt1   = Math.floor(t1 * 1000 / pasMs + 1e-9);
+
+    // Grille verticale : AUX GRADUATIONS, pas ailleurs — c'est elle qui relie
+    // le nombre écrit sous le cadre au point de la courbe qui lui correspond.
+    ctx.save();
+    ctx.lineWidth = lw;
+    ctx.strokeStyle = PRIN_COL_SCOPE_GRID;
+    for (var kt = kt0; kt <= kt1; kt++) {
+        var xg = xOf(kt * pasMs / 1000);
+        ctx.beginPath(); ctx.moveTo(xg, py0); ctx.lineTo(xg, py0 + ph2); ctx.stroke();
+    }
+    // Horizontales aux amplitudes entières (0 exclu : c'est l'axe, tracé après)
+    for (var u = -PRIN_GRAPH_MAXU; u <= PRIN_GRAPH_MAXU; u++) {
+        if (u === 0) continue;
+        var yg = yz - u * ampPx;
+        ctx.beginPath(); ctx.moveTo(px0, yg); ctx.lineTo(px0 + pw2, yg); ctx.stroke();
+    }
+    ctx.restore();
+
+    // ── Axes : l'axe des temps est la ligne y = 0, au milieu ; l'axe des
+    //    ordonnées ferme la gouttière de gauche.
+    ctx.save();
+    ctx.strokeStyle = PRIN_COL_SCOPE_AXE;
+    ctx.lineWidth = 1.4 * lw;
+    ctx.beginPath();
+    ctx.moveTo(px0, yz); ctx.lineTo(px0 + pw2, yz);
+    ctx.moveTo(px0, py0); ctx.lineTo(px0, py0 + ph2);
+    ctx.stroke();
+    // Graduations portées PAR l'axe des temps, de part et d'autre de la ligne
+    // (même doctrine que _prinDrawAxe sur le tracé principal) : sans elles,
+    // les nombres du bas flottent sous un cadre et rien ne dit qu'ils
+    // graduent cette ligne-là. Les mêmes marques sont répétées sur le bord
+    // bas, là où sont écrits les nombres.
+    ctx.strokeStyle = PRIN_COL_SCOPE_TICK;
+    ctx.lineWidth = 1.2 * lw;
+    for (var kg = kt0; kg <= kt1; kg++) {
+        var xt = xOf(kg * pasMs / 1000);
+        ctx.moveTo(xt, yz - 4 * lw);        ctx.lineTo(xt, yz + 4 * lw);
+        ctx.moveTo(xt, py0 + ph2 - 4 * lw); ctx.lineTo(xt, py0 + ph2);
+    }
+    ctx.stroke();
+    ctx.restore();
+
+    // ── Échelle verticale : ±2 sur les TROIS graphes (PRIN_GRAPH_MAXU) —
+    //    c'est elle qui rend visible que y₁ + y₂ peut valoir le double de y₁.
+    for (var v = -PRIN_GRAPH_MAXU; v <= PRIN_GRAPH_MAXU; v++) {
+        var yv = yz - v * ampPx;
+        ctx.save();
+        ctx.strokeStyle = PRIN_COL_SCOPE_TICK;
+        ctx.lineWidth = 1.2 * lw;
+        ctx.beginPath(); ctx.moveTo(px0 - 4 * lw, yv); ctx.lineTo(px0, yv); ctx.stroke();
+        ctx.restore();
+        _prinGraphText(ctx, (v < 0 ? '−' : '') + Math.abs(v), px0 - 6 * lw, yv,
+                  PRIN_COL_SCOPE_TICK, 'bold ' + (fs * 0.9) + 'px monospace', 'right', 'middle',
+                  fs);
+    }
+
+    // ── Valeurs des graduations, en MILLISECONDES : à λ = 0,60 m, T ≈ 1,8 ms
+    //    — la seconde ne dirait rien ici. Le libellé « t (ms) » est posé au
+    //    bout de la ligne, comme « x (m) » sur le tracé principal ; une valeur
+    //    qui viendrait le heurter est simplement omise plutôt que superposée.
+    var fT = 'bold ' + (fs * 0.82) + 'px monospace';
+    var yT = py0 + ph2 + fs * 0.62;
+    ctx.font = fT;
+    var xLim = px0 + pw2 - ctx.measureText('t (ms)').width - 5 * lw;
+    _prinGraphText(ctx, 't (ms)', px0 + pw2, yT, PRIN_COL_SCOPE_TICK, fT, 'right', 'middle', fs);
+    for (var kl = kt0; kl <= kt1; kl++) {
+        var txt = formatFr(kl * pasMs, decMs);
+        var xl  = xOf(kl * pasMs / 1000);
+        ctx.font = fT;
+        if (xl + ctx.measureText(txt).width / 2 > xLim) continue;
+        _prinGraphText(ctx, txt, xl, yT, PRIN_COL_SCOPE_TICK, fT, 'center', 'middle', fs);
+    }
+
+    // ── Courbes ───────────────────────────────────────────────────────
+    // Un point par pixel environ : au-delà, on paie sans rien voir de plus.
+    var nPts = Math.max(120, Math.min(900, Math.round(pw2 * 1.2)));
+    var tFin = Math.min(simPrin.simTime, t1);
+
+    var trace = function (couleur, epaisseur, alpha, valeurDe) {
+        if (tFin <= t0) return;                  // rien d'émis dans la fenêtre
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.strokeStyle = couleur;
+        ctx.lineWidth = epaisseur;
+        ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+        // Halo « phosphore » : c'est lui, avec le verre sombre, qui fait lire
+        // la fenêtre comme l'ÉCRAN d'un appareil et non comme un morceau de
+        // la scène — toute la parade à la confusion espace/temps tient là.
+        ctx.shadowColor = couleur;
+        ctx.shadowBlur  = 3 * lw;
+        ctx.beginPath();
+        for (var i = 0; i <= nPts; i++) {
+            var tau = t0 + (tFin - t0) * i / nPts;
+            var yy = yz - valeurDe(tau) * ampPx;
+            if (i === 0) ctx.moveTo(xOf(tau), yy); else ctx.lineTo(xOf(tau), yy);
+        }
+        ctx.stroke();
+        ctx.restore();
+    };
+
+    // Superpositions de la fenêtre « y₁ + y₂ » : tracées SOUS la somme et plus
+    // fines, la somme doit rester la courbe principale du graphe. Teintes
+    // phosphore de S₁/S₂ : sur le verre sombre, les tons de la scène
+    // disparaissent.
+    if (def.cle === 'som') {
+        if (simPrin.graphSomY1) trace(PRIN_COL_SCOPE_S1, 1.6 * lw, 0.9,
+                                      function (tau) { return _prinGraphVal('y1', tau); });
+        if (simPrin.graphSomY2) trace(PRIN_COL_SCOPE_S2, 1.6 * lw, 0.9,
+                                      function (tau) { return _prinGraphVal('y2', tau); });
+    }
+    trace(def.scope, 2.4 * lw, 1, function (tau) { return _prinGraphVal(def.cle, tau); });
+
+    // ── Instant courant : le point de lecture du micro, jumeau de celui du
+    //    tracé principal, dans la contrepartie CLAIRE de PRIN_COL_M (le bleu
+    //    de la scène est illisible sur le verre).
+    if (simPrin.simTime > t0 && simPrin.simTime <= t1) {
+        var xNow = xOf(simPrin.simTime);
+        var yNow = yz - _prinGraphVal(def.cle, simPrin.simTime) * ampPx;
+        ctx.save();
+        ctx.strokeStyle = PRIN_COL_SCOPE_CURSEUR;
+        ctx.lineWidth = lw;
+        ctx.setLineDash([3 * lw, 3 * lw]);
+        ctx.beginPath(); ctx.moveTo(xNow, py0); ctx.lineTo(xNow, py0 + ph2); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = PRIN_COL_SCOPE_CURSEUR;
+        ctx.strokeStyle = PRIN_COL_SCOPE_BG;
+        ctx.lineWidth = 1.4 * lw;
+        ctx.beginPath(); ctx.arc(xNow, yNow, Math.max(3, fs * 0.28), 0, Math.PI * 2);
+        ctx.fill(); ctx.stroke();
+        ctx.restore();
+    }
+
+    // ── Cadre du domaine tracé
+    ctx.save();
+    ctx.strokeStyle = PRIN_COL_SCOPE_GRID_MAJ;
+    ctx.lineWidth = lw;
+    ctx.strokeRect(px0, py0, pw2, ph2);
+    ctx.restore();
+}
+
+// Rendu des fenêtres ouvertes — appelé par drawPrincipe, donc à chaque frame,
+// même en pause (mêmes raisons : un redimensionnement ne doit pas laisser une
+// image obsolète).
+function _prinRenderGraphWins() {
+    for (var i = 0; i < PRIN_GRAPHS.length; i++) _prinRenderGraphWin(PRIN_GRAPHS[i]);
+}
+
+// ── Flèche de rattachement ────────────────────────────────────────────
+// Elle part de l'abscisse de M SUR LA LIGNE concernée (ligne 1 pour y₁, 2 pour
+// y₂, 3 pour la somme) et rejoint le boîtier de la fenêtre : sans elle, trois
+// fenêtres de plus flottent sans qu'on sache laquelle montre quoi. Sa couleur
+// est celle de la ligne, comme le cadre et la barre de titre de la fenêtre.
+// Rectiligne : le plus court chemin, donc le plus lisible au vidéoprojecteur.
+// Ancrée sur l'AXE de la bande et non sur le point de lecture, qui oscille —
+// la flèche battrait au rythme de l'onde.
+function _prinFlecheVersFenetre(ctx, ax, ay, rect, color) {
+    // Point du boîtier le plus proche de l'ancre (le clamp d'un point
+    // extérieur sur un rectangle tombe toujours sur son bord).
+    var cx = Math.max(rect.x, Math.min(ax, rect.x + rect.w));
+    var cy = Math.max(rect.y, Math.min(ay, rect.y + rect.h));
+    var dx = cx - ax, dy = cy - ay;
+    var d  = Math.sqrt(dx * dx + dy * dy);
+    if (d < 14) return;   // fenêtre posée sur son ancre : plus rien à relier
+    var lw = _prinLW();
+    var ux = dx / d, uy = dy / d;
+    var tx = cx - ux * 3 * lw, ty = cy - uy * 3 * lw;   // recul : ne pas mordre le cadre
+
+    ctx.save();
+    ctx.globalAlpha = 0.9;
+    ctx.strokeStyle = color; ctx.fillStyle = color;
+    ctx.lineWidth = 2 * lw; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(tx, ty);
+    ctx.stroke();
+    // Pointe orientée par la direction du segment.
+    var ang = Math.atan2(ty - ay, tx - ax), hl = 9 * lw;
+    ctx.beginPath();
+    ctx.moveTo(tx, ty);
+    ctx.lineTo(tx - hl * Math.cos(ang - 0.42), ty - hl * Math.sin(ang - 0.42));
+    ctx.lineTo(tx - hl * Math.cos(ang + 0.42), ty - hl * Math.sin(ang + 0.42));
+    ctx.closePath();
+    ctx.fill();
+    // Petit disque à l'ancre : marque le point de la ligne dont on parle.
+    ctx.beginPath(); ctx.arc(ax, ay, 2.8 * lw, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+}
+// Les fenêtres sont des éléments DOM positionnés dans #prin-scene-area, qui
+// est aussi le conteneur du canvas : offsetLeft/offsetTop y sont donc DÉJÀ
+// dans le repère du canvas en px CSS, aucune conversion à faire.
+function _prinDrawGraphFleches(ctx) {
+    var s = simPrin;
+    for (var i = 0; i < PRIN_GRAPHS.length; i++) {
+        var def = PRIN_GRAPHS[i];
+        if (!s.graphs[def.cle].open) continue;
+        var el = document.getElementById(def.win);
+        if (!el || !el.offsetWidth) continue;
+        var row = s.rows[def.row];
+        if (!row) continue;
+        _prinFlecheVersFenetre(ctx, _prinXpx(s.xM), row.y0,
+            { x : el.offsetLeft, y : el.offsetTop, w : el.offsetWidth, h : el.offsetHeight },
+            def.couleur);
+    }
+}
+
+// ── Position des fenêtres ─────────────────────────────────────────────
+// Position stockée à la fois en px (ce qu'on applique) et en fraction de la
+// place disponible (ce qui survit au redimensionnement, cf. simPrin.graphs).
+function _prinSetGraphWinPos(def, el, x, y) {
+    var area = document.getElementById('prin-scene-area');
+    if (!area) return;
+    var maxX = Math.max(0, area.clientWidth  - el.offsetWidth);
+    var maxY = Math.max(0, area.clientHeight - el.offsetHeight);
+    var g = simPrin.graphs[def.cle];
+    g.x = Math.max(0, Math.min(x, maxX));
+    g.y = Math.max(0, Math.min(y, maxY));
+    g.fx = maxX > 0 ? g.x / maxX : 0;
+    g.fy = maxY > 0 ? g.y / maxY : 0;
+    el.style.left = g.x + 'px';
+    el.style.top  = g.y + 'px';
+}
+
+// Placement à l'ouverture : colonne de droite, réparties sur la hauteur en
+// haut / milieu / bas — soit l'ordre même des trois lignes du tracé, et aucun
+// recouvrement entre fenêtres au premier affichage.
+function _prinPlaceGraphWin(def, el) {
+    var area = document.getElementById('prin-scene-area');
+    if (!area) return;
+    var g = simPrin.graphs[def.cle];
+    if (g.fx === null) {
+        var marge = Math.max(8, area.clientWidth * 0.012);
+        var libre = Math.max(0, area.clientHeight - 2 * marge - el.offsetHeight);
+        _prinSetGraphWinPos(def, el,
+            area.clientWidth - el.offsetWidth - marge,
+            marge + def.idx * libre / 2);
+    } else {
+        _prinSetGraphWinPos(def, el, g.x, g.y);
+    }
+}
+
+// Redimensionnement de la zone : on repart des FRACTIONS, pas des px — une
+// fenêtre calée en haut à droite le reste au passage en plein écran.
+function _prinRelayoutGraphWins() {
+    var area = document.getElementById('prin-scene-area');
+    if (!area) return;
+    for (var i = 0; i < PRIN_GRAPHS.length; i++) {
+        var def = PRIN_GRAPHS[i], g = simPrin.graphs[def.cle];
+        if (!g.open) continue;
+        var el = document.getElementById(def.win);
+        if (!el || !el.offsetWidth) continue;
+        if (g.fx === null) { _prinPlaceGraphWin(def, el); continue; }
+        _prinSetGraphWinPos(def, el,
+            g.fx * Math.max(0, area.clientWidth  - el.offsetWidth),
+            g.fy * Math.max(0, area.clientHeight - el.offsetHeight));
+    }
+}
+
+// ── Glisser-déposer des fenêtres ──────────────────────────────────────
+// Pointer Events + capture, comme le glisser-déposer de S₁/M/S₂ : un seul jeu
+// d'écouteurs pour la souris et le tactile. La saisie se fait par la barre de
+// titre — le corps de la fenêtre reste libre pour les cases à cocher.
+var _prinGraphZ = 20;   // empilement : la dernière fenêtre saisie passe devant
+
+function initPrincipeGraphDrag() {
+    for (var i = 0; i < PRIN_GRAPHS.length; i++) {
+        (function (def) {
+            var el = document.getElementById(def.win);
+            if (!el) return;
+            var head = el.querySelector('.prin-graph-head');
+            if (!head) return;
+            var off = null;
+
+            // Passer devant dès qu'on touche la fenêtre, barre ou contenu.
+            el.addEventListener('pointerdown', function () {
+                el.style.zIndex = ++_prinGraphZ;
+            });
+
+            head.addEventListener('pointerdown', function (e) {
+                // Bouton de fermeture et légende : ce sont des CONTRÔLES,
+                // pas une poignée — un clic sur une case à cocher ne doit
+                // pas embarquer la fenêtre.
+                if (e.target.closest &&
+                    e.target.closest('.prin-graph-close, .prin-graph-legend')) return;
+                var area = document.getElementById('prin-scene-area');
+                if (!area) return;
+                var r = area.getBoundingClientRect();
+                // Écart de saisie mémorisé : la fenêtre ne saute pas sous le
+                // pointeur au premier pixel de mouvement.
+                off = { x : e.clientX - r.left - el.offsetLeft,
+                        y : e.clientY - r.top  - el.offsetTop };
+                head.setPointerCapture(e.pointerId);
+                head.classList.add('dragging');
+                e.preventDefault();
+            });
+
+            head.addEventListener('pointermove', function (e) {
+                if (!off) return;
+                var area = document.getElementById('prin-scene-area');
+                if (!area) return;
+                var r = area.getBoundingClientRect();
+                _prinSetGraphWinPos(def, el, e.clientX - r.left - off.x,
+                                             e.clientY - r.top  - off.y);
+            });
+
+            var fin = function () { off = null; head.classList.remove('dragging'); };
+            head.addEventListener('pointerup', fin);
+            head.addEventListener('pointercancel', fin);
+        })(PRIN_GRAPHS[i]);
+    }
+}
+
+// ── Contrôles du panneau ──────────────────────────────────────────────
+function togglePrinGraph(cle) {
+    var def = _prinGraphDef(cle);
+    if (!def) return;
+    var g = simPrin.graphs[cle];
+    g.open = !g.open;
+
+    var btn = document.getElementById(def.btn);
+    if (btn) btn.classList.toggle('active', g.open);
+
+    var el = document.getElementById(def.win);
+    if (!el) return;
+    el.style.display = g.open ? '' : 'none';
+    if (g.open) {
+        el.style.zIndex = ++_prinGraphZ;
+        // offsetWidth/Height ne valent quelque chose qu'une fois affichée.
+        _prinPlaceGraphWin(def, el);
+    }
+}
+
+// Légende cliquable de la fenêtre « y₁ + y₂ »
+function setPrinGraphOverlay(quoi, actif) {
+    if (quoi === 'y1') simPrin.graphSomY1 = !!actif;
+    else               simPrin.graphSomY2 = !!actif;
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -1546,6 +2093,7 @@ function initPrincipe() {
     if (!document.getElementById('principe-canvas')) return;
     resizePrincipe();
     initPrincipeDrag();
+    initPrincipeGraphDrag();
     _prinSyncSliders();
     _prinSyncPlayBtn();
     setPrincipeMode(simPrin.mode);

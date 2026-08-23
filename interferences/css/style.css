@@ -131,6 +131,81 @@ main {
   border-right: 1px solid #c8c0b4;
 }
 
+/* ── Fenêtres volantes des graphes temporels y(M, t) (onglet Principe) ──
+   Superposées à la zone de tracé (#prin-scene-area, en position:relative :
+   c'est lui le référentiel de leur left/top, et donc aussi celui que lit
+   principe.js pour tracer la flèche de rattachement sur le canvas).
+   Déplaçables par leur barre de titre, souris comme doigt (touch-action:none
+   sur la barre — sans quoi le geste part en défilement de page).
+   Largeur en clamp() plutôt qu'en px : lisible au vidéoprojecteur (plein
+   écran) sans dévorer une petite fenêtre. */
+.prin-graph-win {
+  position: absolute; left: 0; top: 0; z-index: 20;
+  width: clamp(190px, 26%, 460px);
+  display: flex; flex-direction: column;
+  /* Corps d'APPAREIL (et non une fiche posée sur la scène) : c'est ce qui
+     empêche de lire l'écran comme un morceau du tracé — cf. le bandeau
+     PRIN_COL_SCOPE_* de principe.js. */
+  background: #2b3138;
+  border: 2px solid #2c3e50; border-radius: 8px;
+  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+.prin-graph-head {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 4px 4px 8px;
+  background: #2c3e50; color: #fff;
+  font-size: clamp(11px, 1.15vw, 16px); font-weight: 700;
+  cursor: grab; touch-action: none; user-select: none;
+}
+.prin-graph-head.dragging { cursor: grabbing; }
+.prin-graph-title { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.prin-graph-close {
+  flex: 0 0 auto; border: none; border-radius: 4px; cursor: pointer;
+  background: rgba(255, 255, 255, 0.18); color: #fff;
+  font-family: inherit; font-size: clamp(11px, 1.1vw, 15px); line-height: 1;
+  padding: 3px 6px;
+}
+.prin-graph-close:hover { background: rgba(255, 255, 255, 0.38); }
+/* L'écran, encastré dans le boîtier : la marge est la façade de l'appareil,
+   le liseré sombre le joint du verre. Le rapport largeur/hauteur est fixé ici,
+   la hauteur de l'écran suit donc la largeur en clamp() ci-dessus, et le tracé
+   reste lisible à toutes les tailles (principe.js recalibre police et traits
+   dessus). */
+.prin-graph-canvas {
+  display: block;
+  width: calc(100% - 12px); margin: 6px; aspect-ratio: 5 / 3;
+  border: 1px solid #171c22; border-radius: 3px;
+  background: #0f1720;
+}
+/* Légende cliquable de la fenêtre "y₁ + y₂" : superpose les deux termes à leur
+   somme. Elle est logée DANS la barre de titre — sous le graphe, elle coûtait
+   une rangée de hauteur à une fenêtre déjà petite. C'est le titre qui cède la
+   place le premier (flex:1 + min-width:0 → ellipsis), jamais les cases.
+   accent-color: currentColor → la case reprend la couleur de son libellé, donc
+   celle de la source. */
+.prin-graph-legend {
+  flex: 0 0 auto;
+  display: flex; flex-wrap: nowrap; gap: 0 8px;
+  font-size: clamp(10px, 1.05vw, 14px); font-weight: 700;
+}
+.prin-graph-legend label { display: flex; align-items: center; gap: 3px; cursor: pointer; }
+.prin-graph-legend input {
+  margin: 0; cursor: pointer; accent-color: currentColor;
+  width: clamp(11px, 1.15vw, 15px); height: clamp(11px, 1.15vw, 15px);
+}
+/* Teintes ÉCLAIRCIES de PRIN_COL_S1/S2 : les tons du tracé sont calibrés pour
+   le fond ivoire de la scène et manquent de contraste sur le bleu foncé de la
+   barre de titre — surtout le rose, au fond d'une salle de classe. */
+.prin-graph-legend .lg-y1 { color: #ffa85c; }
+.prin-graph-legend .lg-y2 { color: #ff8ab4; }
+/* Code couleur des lignes du tracé (PRIN_COL_S1/S2/SOMME de principe.js) :
+   c'est ce qui relie visuellement une fenêtre à sa ligne, avec la flèche. */
+#prin-win-y1 { border-color: #e07020; }
+#prin-win-y1 .prin-graph-head { background: #e07020; }
+#prin-win-y2 { border-color: #e0397a; }
+#prin-win-y2 .prin-graph-head { background: #e0397a; }
+
 /* ── Onglet Ondes de surfaces : bassin (vue de dessus) + splitter + graphe ── */
 #surfaces-area {
   display: flex;
@@ -655,6 +730,12 @@ input[type=range]:disabled { accent-color: #b0aca4; cursor: not-allowed; }
 .btn-row { display: flex; gap: 6px; }
 .btn-row > .btn { width: auto; flex: 1 1 0; white-space: nowrap; }
 .btn-row > .btn-raz { flex: 0 0 auto; }
+/* Trois boutons sur une même ligne dans un panneau qui descend à 200 px de
+   large (cf. grid-template-columns de main) : padding et police resserrés,
+   sinon les libellés y₁(M) / y₂(M) / y₁(M)+y₂(M) débordent. */
+/* flex 1 1 auto (et non une base 0 partagée) : « y₁(M)+y₂(M) » est deux fois
+   plus long que « y₁(M) », des largeurs égales le tronqueraient. */
+.btn-row-tight > .btn { flex: 1 1 auto; padding: 8px 4px; font-size: clamp(11px, 1.05vw, 14px); letter-spacing: 0; }
 
 /* Encarts de valeurs instantanées */
 .readouts { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
