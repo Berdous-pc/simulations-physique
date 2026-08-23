@@ -383,15 +383,34 @@ chaque gouttière.
 
 Sous la ligne 3 viennent, **dans cet ordre** : les valeurs chiffrées de l'axe, collées au bas de la
 bande — elles graduent son axe, elles lui restent attachées — puis un **couloir de cotes**
-(`simPrin.coteYs`) qui accueille les doubles flèches λ/2, S₁M et S₂M. Ces cotes étaient auparavant
+(`simPrin.coteYs`) qui accueille les doubles flèches S₁M et S₂M. Ces cotes étaient auparavant
 tracées *dans* la bande, à `y0 + half·0,82` — c'est-à-dire exactement sur l'amplitude 2, donc dans
 la courbe dès que A₁ + A₂ approchait son maximum.
 
-Ses `PRIN_N_COTES` = 3 lignes sont réservées **en permanence**, à slots fixes (0 = λ/2, 1 = S₁M,
-2 = S₂M) : une cote masquée laisse sa ligne vide. Un couloir dimensionné sur les options actives
-faisait se comprimer et se translater toute la scène à chaque bascule de « Coter S₁M et S₂M » ou
-« Repérer les interférences » — le repère visuel de l'élève sautait à chaque clic. Aucune option
-d'affichage ne touche donc plus à la mise en page.
+Ses `PRIN_N_COTES` = 2 lignes sont réservées **en permanence**, à slots fixes (0 = S₁M, 1 = S₂M) :
+une cote masquée laisse sa ligne vide. Un couloir dimensionné sur les options actives faisait se
+comprimer et se translater toute la scène à chaque bascule de « Coter S₁M et S₂M » — le repère
+visuel de l'élève sautait à chaque clic. Aucune option d'affichage ne touche donc plus à la mise
+en page.
+
+Le couloir a compté une **troisième ligne**, en tête, pour une cote λ/2 tracée avec les repères
+d'interférences. Supprimée : elle repoussait les deux cotes utiles vers le bas pour une
+information déjà lisible dans l'espacement des marqueurs V/N. `basH` se décompose désormais en
+trois termes explicites — descente jusqu'à la dernière ligne (`coteY0 + coteDY · (N − 1)`, en
+unités de `fs`), place des pointes de flèche (`10 · lw`), puis `0,55 · fs` de marge avec le bord
+bas du cadre, sans laquelle la cote S₂M s'y retrouvait collée. `coteY0` = 2,10 et `coteDY` = 1,60
+sont des **variables locales de `_prinLayout`, pas des littéraux répétés** : elles servent à la
+fois à `basH` et au remplissage de `s.coteYs`, les deux calculs doivent rester d'accord. Leurs
+valeurs dégagent le cartouche des libellés de cote (1,20 · fs de haut) des valeurs chiffrées de
+l'axe qui le précèdent, et empêchent deux cartouches consécutifs de se toucher.
+
+Les **libellés de cote** sont au même corps que ceux de S₁/S₂/M (1,05 · fs) — ce sont les mêmes
+grandeurs lues au tableau — et posés sur un **cartouche plein** (`PRIN_COL_BG`) plutôt que sur le
+simple halo de `_prinText()` : le halo laissait deviner le trait de cote derrière les lettres. Le
+cartouche est dessiné dans `_prinDrawCote` et non dans `_prinText()`, pour être calé sur la
+hauteur du couloir. Les distances sont affichées en **valeur absolue** : l'ordre S₁ < M < S₂ est
+certes garanti par `PRIN_MARGE_M`, mais la formule doit dire ce qu'elle mesure plutôt que
+s'appuyer sur cette contrainte.
 
 #### Physique
 
@@ -417,7 +436,7 @@ A(x) = √(A₁² + A₂² + 2·A₁·A₂·cos(2π·δ/λ))        (_prinEnvelo
 C'est une **onde stationnaire** : nœuds et ventres sont FIXES, espacés de λ/2. Comme d₁ + d₂ =
 x₂ − x₁ est constant, δ(x) = x₁ + x₂ − 2x varie **linéairement** — les positions remarquables
 s'écrivent donc en clair, sans balayage numérique (`_prinPositionsRemarquables()`, source unique
-pour le fond coloré, les marqueurs V/N, la cote λ/2 et l'aimantation du glisser-déposer) :
+pour le fond coloré, les marqueurs V/N et l'aimantation du glisser-déposer) :
 
 ```
 constructif   x = (x₁ + x₂ − k·λ)/2
@@ -452,7 +471,7 @@ curseur est plus sûr. Les deux voies restent synchronisées — `_prinUpdateVal
 | Bouton | Effet |
 |---|---|
 | Afficher l'enveloppe | ±A(x) en pointillés sur la ligne 3 — rend les nœuds/ventres visibles comme positions fixes |
-| Repérer les interférences | **bandes translucides** de fond (ocre / violet) aux positions remarquables + marqueurs **V** (ventre) / **N** (nœud) sur l'axe + cote λ/2 dans le couloir + légende. Les anciens traits verticaux concurrençaient les guides de S₁/S₂/M ; en bandes, ils passent au fond. V et N sont les mots du programme |
+| Repérer les interférences | **bandes translucides** de fond (ocre / violet) aux positions remarquables + marqueurs **V** (ventre) / **N** (nœud) sur l'axe + légende. Les anciens traits verticaux concurrençaient les guides de S₁/S₂/M ; en bandes, ils passent au fond. V et N sont les mots du programme |
 | Coter S₁M et S₂M | doubles flèches cotées dans le couloir sous la ligne 3, couleurs de S₁/S₂ |
 | Afficher les valeurs | encarts du panneau (S₁M, S₂M, δ = \|S₁M − S₂M\|, δ/λ, conclusion) **et** valeur chiffrée à chaque point de lecture du micro sur le canvas |
 
@@ -464,17 +483,38 @@ est le résultat même de la simulation : il était auparavant invisible tant qu
 
 #### Conventions de rendu
 
+- **Lisibilité au vidéoprojecteur — `_prinFont()` / `_prinLW()`.** Toute la typographie et toutes
+  les épaisseurs de trait de l'onglet dérivent de ces deux fonctions ; aucune valeur en px fixe.
+  `_prinFont()` prend le **plus grand** de deux calibrages : `min(canvasW/62, 17)`, l'ancien
+  calibrage conservé comme **plancher** (aucune fenêtre ne peut perdre en taille de texte), et
+  `min(canvasW/52, canvasH/30, 24)`, le calibrage « grande image ». Le plafond de 17 px était
+  atteint dès 1054 px de canvas : projeté en plein écran (canvas ≈ 1615 px), le texte ne faisait
+  plus que 1 % de la largeur de l'image, donc illisible au fond d'une salle. Le terme en
+  `canvasH` n'est pas décoratif — `_prinLayout` consomme ≈ 7,6·fs hors bandes (padTop +
+  gouttières + couloir de cotes), donc suivre la seule largeur écraserait les bandes sur une
+  fenêtre large et basse. Résultat : ×1,41 en plein écran (17 → 24 px) pour seulement −9 %
+  d'amplitude de courbe, ×1,19 en 1280×800, inchangé sur les fenêtres déjà contraintes.
+  `_prinLW()` = `max(1, fs/17)` multiplie **toutes** les épaisseurs et longueurs de graduation :
+  sans lui on obtenait de gros textes posés sur des traits de 1 px, qui se noient dans le voile
+  lumineux d'un vidéoprojecteur. Son plancher à 1 garantit un rendu identique à l'ancien partout
+  où `fs < 17`.
+- **Hiérarchie typographique resserrée** : les libellés les plus utiles en classe (échelle
+  verticale, lettres V/N, badge δ, titres de bande) étaient les plus petits de la scène
+  (0,72–0,85 · fs). Ils sont remontés à 0,85–0,95 · fs, le rapport au libellé de source (1,05)
+  restant lisible comme hiérarchie. Les marges correspondantes de `_prinLayout` (`margeEch`) sont
+  mesurées avec la **même** police que le tracé : toute modification d'un de ces facteurs doit
+  être répercutée des deux côtés.
 - Fond **`#fdf8f0`** (fond « simulation » de la charte) et non le `#14181d` des deux autres
   onglets : celui-ci trace des courbes sur des axes, pas un champ. Chaque ligne est posée sur une
   **bande** à coins arrondis (`PRIN_COL_BAND`, filet `PRIN_COL_BAND_BD`) parcourue d'une **grille
   verticale** tous les 0,5 m : on lit trois panneaux au lieu d'un aplat continu, et une abscisse
   se repère sur les trois lignes d'un coup d'œil. La grille a **deux niveaux** — mètre entier
-  (`PRIN_COL_GRILLE_MAJ`, 1,3 px) nettement plus marqué que le demi-mètre (`PRIN_COL_GRILLE`) —
+  (`PRIN_COL_GRILLE_MAJ`, 1,3 · lw) nettement plus marqué que le demi-mètre (`PRIN_COL_GRILLE`) —
   un ton unique trop pâle ne donnait aucun repère chiffrable. Une **gouttière**
   (`gap` = `max(8, fs·1,15)`, deux intervalles pour trois bandes) sépare les panneaux, qui étaient
   jointifs et se lisaient donc comme un seul bloc.
-- **Graduations** dessinées sur les trois axes, de part et d'autre de la ligne (7 px au mètre,
-  4 px au demi-mètre) et dans un ton `PRIN_COL_TICK` franchement plus foncé que l'axe lui-même :
+- **Graduations** dessinées sur les trois axes, de part et d'autre de la ligne (7 · lw au mètre,
+  4 · lw au demi-mètre) et dans un ton `PRIN_COL_TICK` franchement plus foncé que l'axe lui-même :
   au ton de l'axe, elles s'y noyaient, et n'exister que sur la bande du bas laissait les deux
   autres sans repère chiffrable. Même ton pour l'échelle verticale, les valeurs chiffrées et
   « x (m) ».
@@ -486,7 +526,9 @@ est le résultat même de la simulation : il était auparavant invisible tant qu
   tracé de la superposition, la courbe la plus ample de la scène — c'est le guide vertical
   pointillé à l'abscisse de M qui fait le lien avec l'axe, pas un contact physique.
   `PRIN_MIC_BAS_RATIO` donne la hauteur totale rapportée à `micH` : c'est elle qui cale le libellé
-  « M » puis le badge δ dessous (badge rabattu dans la bande si la fenêtre est trop basse).
+  de M puis le badge δ dessous (badge rabattu dans la bande si la fenêtre est trop basse). Ce
+  libellé porte l'abscisse entre parenthèses — `M (2,00 m)` — exactement comme ceux des sources ;
+  il est passé en paramètre à `_prinDrawMicro()`, qui écrivait auparavant un « M » en dur.
 - **Couleur des pictogrammes** : même doctrine pour le micro que pour les haut-parleurs — corps en
   gris métallique (l'objet), couleur d'identité réservée au seul organe actif : le pavillon pour
   une source, la tête grillagée pour le micro. Un micro entièrement bleu lisait comme un symbole,
@@ -495,8 +537,10 @@ est le résultat même de la simulation : il était auparavant invisible tant qu
   tracé ; escamotés quand la bande devient trop basse.
 - Les **haut-parleurs sont animés** : membrane qui respire et arcs qui s'éloignent, en phase avec
   ω·t. Ils étaient figés même en pleine animation.
-- Une **horloge** en haut à droite affiche `t`, `T = λ/c` et `f` : le ralenti × `PRIN_RALENTI`
-  rend sinon le temps physique impossible à estimer.
+- **Pas d'horloge.** Une ligne `t / T = λ/c / f` occupait le haut de la zone ; elle relevait de
+  l'information de panneau, pas de la scène, et coûtait `padTop = 1,6 · fs` de hauteur. Supprimée,
+  `padTop` est retombé à `0,55 · fs` (simple respiration avant la première bande) et la hauteur
+  récupérée est allée aux bandes.
 - Positions stockées en **mètres**, jamais en pixels — le resize les reprojette, rien ne dérive.
 - Tous les libellés passent par `_prinText()`, qui les cerne d'un halo couleur fond : ils se
   superposent forcément aux courbes. Le paramètre optionnel `halo` sert aux textes posés **sur une

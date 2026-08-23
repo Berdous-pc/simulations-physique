@@ -45,10 +45,13 @@ var PRIN_C            = 340;   // célérité du son dans l'air (m/s), fixe
 var PRIN_VIEW_WIDTH_M = 4.0;   // largeur physique de l'axe (m) — calibre pxPerM au resize
 var PRIN_RALENTI      = 340;   // facteur de ralenti (cf. bandeau de doc ci-dessus)
 var PRIN_MARGE_M      = 0.10;  // écart minimal imposé entre deux éléments voisins (m)
-// Lignes du couloir de cotes sous la bande "somme" : 0 = λ/2, 1 = S₁M, 2 = S₂M.
+// Lignes du couloir de cotes sous la bande "somme" : 0 = S₁M, 1 = S₂M.
 // Réservées EN PERMANENCE — cf. _prinLayout : la scène ne doit pas bouger
-// quand on active « Coter S₁M et S₂M » ou « Repérer les interférences ».
-var PRIN_N_COTES      = 3;
+// quand on active « Coter S₁M et S₂M ».
+// Il y avait une troisième ligne, en tête, pour une cote λ/2 tracée avec les
+// repères d'interférences : elle éloignait les deux cotes utiles du bas de la
+// scène pour une information déjà lisible dans l'espacement des marqueurs V/N.
+var PRIN_N_COTES      = 2;
 var PRIN_BORD_M       = 0;     // marge minimale aux deux extrémités de l'axe (m) — 0 : les sources peuvent aller jusqu'aux bords (x = 0 et x = 4 m)
 
 // Crans du curseur de vitesse d'animation — identiques au reste du site
@@ -212,8 +215,37 @@ function _prinXm(xpx) { return (xpx - simPrin.plotX0) / simPrin.pxPerM; }
 
 // Taille de police proportionnelle au canvas (charte : jamais de px fixe
 // pour un texte dessiné dans une zone de simulation).
+//
+// Deux calibrages, dont on prend le PLUS GRAND :
+//
+//  • `base` — calibrage historique, conservé comme PLANCHER : ce qui était
+//    lisible sur une petite fenêtre doit le rester à l'identique. Aucune
+//    taille de fenêtre ne peut perdre en taille de texte.
+//
+//  • `grand` — calibrage « grande image ». L'ancien plafond de 17 px était
+//    atteint dès 1054 px de canvas : en plein écran (canvas ≈ 1615 px), le
+//    texte ne faisait plus que 1 % de la largeur projetée, donc illisible au
+//    fond d'une salle de classe au vidéoprojecteur. Le texte doit grandir
+//    AVEC l'image. Le terme en canvasH n'est pas décoratif : _prinLayout
+//    consomme ≈ 7,6·fs de hauteur hors bandes (padTop + gouttières + couloir
+//    de cotes), donc laisser fs suivre la seule largeur écraserait les bandes
+//    sur une fenêtre large et basse. Le plafond à 24 px est la limite au-delà
+//    de laquelle la pastille de titre (1,45·fs) mange une demi-bande.
 function _prinFont() {
-    return Math.max(10, Math.min(17, simPrin.canvasW / 62));
+    var base  = Math.min(simPrin.canvasW / 62, 17);
+    var grand = Math.min(simPrin.canvasW / 52, simPrin.canvasH / 30, 24);
+    return Math.max(10, base, grand);
+}
+
+// Facteur d'épaisseur des traits, indexé sur la police (17 = ancienne taille
+// maximale, d'où la valeur 1 quand rien n'a changé).
+//
+// Les épaisseurs et les longueurs de graduation étaient en pixels FIXES :
+// à 24 px de police sur un vidéoprojecteur, un trait de 1 px se noie dans le
+// voile lumineux et on obtient de gros textes posés sur des traits fantômes.
+// Plancher à 1 : les fenêtres où fs < 17 gardent EXACTEMENT le rendu d'avant.
+function _prinLW() {
+    return Math.max(1, _prinFont() / 17);
 }
 
 // Découpe verticale : 4 "unités" de hauteur — 1 pour y₁, 1 pour y₂, 2 pour la
@@ -223,20 +255,37 @@ function _prinFont() {
 function _prinLayout(ctx) {
     var s = simPrin;
     var fs = _prinFont();
-    var padTop = fs * 1.6;
+    // Simple respiration entre le bord du cadre et la première bande. Elle
+    // valait 1,6·fs pour loger l'horloge « t / T / f », supprimée : cette
+    // hauteur retourne désormais aux bandes.
+    var padTop = fs * 0.55;
 
     // Sous la dernière bande, dans cet ordre : les valeurs chiffrées de l'axe
     // COLLÉES à la bande (elles graduent son axe, elles doivent lui rester
-    // attachées), puis le couloir de cotes λ/2 / S₁M / S₂M.
+    // attachées), puis le couloir de cotes S₁M / S₂M.
     //
-    // Ce couloir garde une hauteur CONSTANTE : ses trois lignes sont réservées
-    // en permanence, occupées ou non. Un couloir dimensionné sur les options
+    // Ce couloir garde une hauteur CONSTANTE : ses lignes sont réservées en
+    // permanence, occupées ou non. Un couloir dimensionné sur les options
     // actives faisait se comprimer et se translater toute la scène à chaque
-    // bascule de « Coter S₁M et S₂M » ou « Repérer les interférences ».
+    // bascule de « Coter S₁M et S₂M ».
     // Les cotes sont hors de la bande parce qu'à l'ancienne ordonnée
     // (y0 + half·0,82) elles tombaient exactement sur l'amplitude 2, donc dans
     // la courbe dès que A₁ + A₂ approchait son maximum.
-    var basH = fs * (1.90 + 1.40 * (PRIN_N_COTES - 1)) + 10;   // + pointes de flèche
+    //
+    // Trois termes : la descente jusqu'à la DERNIÈRE ligne de cote, la place
+    // des pointes de flèche sous elle (cf. `t` dans _prinDrawCote, plafonné à
+    // 7·lw), puis une marge de respiration avec le bord bas du cadre — sans
+    // elle, supprimer la ligne λ/2 collait la cote S₂M au bas de la zone.
+    //
+    // coteY0/coteDY (en unités de fs) servent ICI et au calcul de s.coteYs
+    // plus bas : les deux doivent rester d'accord, d'où les variables. Elles
+    // tiennent compte du cartouche plein des libellés (1,20·fs de haut, cf.
+    // _prinDrawCote) : coteY0 le dégage des valeurs chiffrées de l'axe qui le
+    // précèdent, coteDY empêche deux cartouches consécutifs de se toucher.
+    var coteY0 = 2.10, coteDY = 1.60;
+    var basH = fs * (coteY0 + coteDY * (PRIN_N_COTES - 1))   // jusqu'à la dernière ligne
+             + 10 * _prinLW()                                // pointes de flèche
+             + fs * 0.55;                                    // marge avec le bas du cadre
 
     // unitH/ampPx ne dépendent que de canvasH : on les calcule AVANT padL/padR
     // pour en tirer la taille des haut-parleurs (srcH) et réserver la marge
@@ -284,8 +333,8 @@ function _prinLayout(ctx) {
     var margeEch = 0, margeXm = 0;
     if (ctx) {
         ctx.save();
-        ctx.font = 'bold ' + (fs * 0.76) + 'px monospace';
-        margeEch = ctx.measureText('−2').width + 16;   // + tick + respiration
+        ctx.font = 'bold ' + (fs * 0.88) + 'px monospace';
+        margeEch = ctx.measureText('−2').width + 16 * _prinLW();   // + tick + respiration
         // "x (m)" est désormais posé APRÈS la dernière graduation, sur la même
         // ligne que les chiffres : padR doit lui faire place (cf. _prinDrawAxe).
         ctx.font = 'bold ' + (fs * 0.9) + 'px monospace';
@@ -307,13 +356,13 @@ function _prinLayout(ctx) {
     ];
 
     // Valeurs chiffrées collées au bas de la bande, puis le couloir de cotes.
-    // Slots FIXES : 0 = λ/2, 1 = S₁M, 2 = S₂M (cf. drawPrincipe) ; une cote
-    // masquée laisse sa ligne vide, elle ne décale pas les autres.
+    // Slots FIXES : 0 = S₁M, 1 = S₂M (cf. drawPrincipe) ; une cote masquée
+    // laisse sa ligne vide, elle ne décale pas l'autre.
     var basBandes = padTop + s.unitH * 4 + gap * 2;
     s.axeLabelY = basBandes + fs * 0.30;
-    var yc = basBandes + fs * 1.90;
+    var yc = basBandes + fs * coteY0;
     s.coteYs = [];
-    for (var c = 0; c < PRIN_N_COTES; c++) { s.coteYs.push(yc); yc += fs * 1.40; }
+    for (var c = 0; c < PRIN_N_COTES; c++) { s.coteYs.push(yc); yc += fs * coteDY; }
 }
 
 function resizePrincipe() {
@@ -372,8 +421,8 @@ function _prinRoundRect(ctx, x, y, w, h, r) {
 // ainsi sur les trois lignes d'un seul coup d'œil, ce qu'un tick de 6 px posé
 // sur l'axe ne permettait pas.
 function _prinDrawBande(ctx, row) {
-    var s = simPrin;
-    var x = s.plotX0 - 6, w = s.plotW + 12;
+    var s = simPrin, lw = _prinLW();
+    var x = s.plotX0 - 6 * lw, w = s.plotW + 12 * lw;
     var y = row.y0 - row.half, h = row.half * 2;
 
     ctx.save();
@@ -381,14 +430,14 @@ function _prinDrawBande(ctx, row) {
     _prinRoundRect(ctx, x, y, w, h, Math.min(8, h * 0.15));
     ctx.fill();
     ctx.strokeStyle = PRIN_COL_BAND_BD;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 1 * lw;
     ctx.stroke();
 
     // Grille en DEUX niveaux : le mètre entier bien marqué, le demi-mètre plus
     // discret. Un seul ton, trop pâle, ne donnait aucun repère chiffrable.
     for (var niveau = 0; niveau < 2; niveau++) {
         ctx.strokeStyle = niveau ? PRIN_COL_GRILLE_MAJ : PRIN_COL_GRILLE;
-        ctx.lineWidth = niveau ? 1.3 : 1;
+        ctx.lineWidth = (niveau ? 1.3 : 1) * lw;
         ctx.beginPath();
         for (var i = 0; i * 0.5 <= PRIN_VIEW_WIDTH_M + 1e-9; i++) {
             if ((i % 2 === 0) !== (niveau === 1)) continue;
@@ -406,26 +455,26 @@ function _prinDrawBande(ctx, row) {
 // échelle ampPx : c'est la preuve visuelle que les trois lignes sont
 // comparables — et donc que la somme peut vraiment valoir le double.
 function _prinDrawEchelleY(ctx, row) {
-    var s = simPrin, fs = _prinFont();
-    var police = 'bold ' + (fs * 0.76) + 'px monospace';
+    var s = simPrin, fs = _prinFont(), lw = _prinLW();
+    var police = 'bold ' + (fs * 0.88) + 'px monospace';
     // Bande écrasée (petite fenêtre) : les graduations intermédiaires se
     // chevaucheraient — on ne garde alors que 0 et les extrêmes.
     var pas = (s.ampPx < fs * 1.05) ? row.maxU : 1;
     ctx.save();
     ctx.strokeStyle = PRIN_COL_TICK;
-    ctx.lineWidth = 1.3;
+    ctx.lineWidth = 1.3 * lw;
     ctx.beginPath();
     for (var u = -row.maxU; u <= row.maxU; u += pas) {
         var y = row.y0 - u * s.ampPx;
-        ctx.moveTo(s.plotX0 - 6, y);
-        ctx.lineTo(s.plotX0 - (u === 0 ? 11 : 9), y);
+        ctx.moveTo(s.plotX0 - 6 * lw, y);
+        ctx.lineTo(s.plotX0 - (u === 0 ? 11 : 9) * lw, y);
     }
     ctx.stroke();
     ctx.restore();
     for (var v = -row.maxU; v <= row.maxU; v += pas) {
         var yv = row.y0 - v * s.ampPx;
         var txt = (v > 0 ? '+' : (v < 0 ? '−' : '')) + Math.abs(v);
-        _prinText(ctx, txt, s.plotX0 - 12, yv, PRIN_COL_TICK, police, 'right', 'middle');
+        _prinText(ctx, txt, s.plotX0 - 12 * lw, yv, PRIN_COL_TICK, police, 'right', 'middle');
     }
 }
 
@@ -435,13 +484,13 @@ function _prinDrawEchelleY(ctx, row) {
 // les deux autres sans repère chiffrable. Valeurs chiffrées une seule fois,
 // SOUS la dernière ligne, les trois axes partageant la même échelle.
 function _prinDrawAxe(ctx, row, avecValeurs) {
-    var s = simPrin, fs = _prinFont();
+    var s = simPrin, fs = _prinFont(), lw = _prinLW();
 
     // Axe + graduations d'un seul trait : _prinText() écrase strokeStyle
     // (halo couleur fond), on ne l'appelle donc jamais au milieu d'un tracé.
     ctx.save();
     ctx.strokeStyle = PRIN_COL_AXE;
-    ctx.lineWidth = 1.4;
+    ctx.lineWidth = 1.4 * lw;
     ctx.beginPath();
     ctx.moveTo(s.plotX0, row.y0);
     ctx.lineTo(s.plotX0 + s.plotW, row.y0);
@@ -449,11 +498,11 @@ function _prinDrawAxe(ctx, row, avecValeurs) {
     // Graduations à part, plus foncées que l'axe : c'est ce qui les rendait
     // invisibles à 1,2 px dans le gris de l'axe.
     ctx.strokeStyle = PRIN_COL_TICK;
-    ctx.lineWidth = 1.4;
+    ctx.lineWidth = 1.4 * lw;
     ctx.beginPath();
     for (var i = 0; i * 0.5 <= PRIN_VIEW_WIDTH_M + 1e-9; i++) {
         var px = Math.round(_prinXpx(i * 0.5)) + 0.5;
-        var t = (i % 2 === 0) ? 7 : 4;
+        var t = ((i % 2 === 0) ? 7 : 4) * lw;
         ctx.moveTo(px, row.y0 - t);
         ctx.lineTo(px, row.y0 + t);
     }
@@ -525,8 +574,8 @@ function _prinDrawEnveloppe(ctx, row, t) {
     var s = simPrin;
     ctx.save();
     ctx.strokeStyle = PRIN_COL_ENV;
-    ctx.lineWidth = 1.6;
-    ctx.setLineDash([6, 4]);
+    ctx.lineWidth = 1.6 * _prinLW();
+    ctx.setLineDash([6 * _prinLW(), 4 * _prinLW()]);
     for (var signe = -1; signe <= 1; signe += 2) {
         ctx.beginPath();
         for (var i = 0; i <= s.plotW; i++) {
@@ -546,8 +595,8 @@ function _prinDrawEnveloppe(ctx, row, t) {
 // Liste ordonnée des positions remarquables entre S₁ et S₂ :
 //   type 'V' — ventre  (interférence constructive, δ = k·λ)
 //   type 'N' — nœud    (interférence destructive,  δ = (k + ½)·λ)
-// Utilisée pour le fond, les lettres V/N, la cote λ/2 et l'aimantation du
-// glisser-déposer : une seule source de vérité.
+// Utilisée pour le fond, les lettres V/N et l'aimantation du glisser-déposer :
+// une seule source de vérité.
 function _prinPositionsRemarquables() {
     var s = simPrin;
     var somme = s.x1 + s.x2;
@@ -589,10 +638,10 @@ function _prinDrawReperes(ctx, positions) {
 function _prinDrawReperesLettres(ctx, positions) {
     var s = simPrin, fs = _prinFont();
     var row = s.rows[2];
-    var r = Math.max(6, fs * 0.52);
+    var r = Math.max(6, fs * 0.54);
     // Juste AU-DESSUS de l'axe : la moitié basse de la bande est occupée par
     // le micro suspendu et son badge, et le haut par la légende.
-    var y = row.y0 - r - 3;
+    var y = row.y0 - r - 3 * _prinLW();
     ctx.save();
     for (var i = 0; i < positions.length; i++) {
         var px = _prinXpx(positions[i].x);
@@ -602,7 +651,7 @@ function _prinDrawReperesLettres(ctx, positions) {
         ctx.arc(px, y, r, 0, Math.PI * 2);
         ctx.fill();
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold ' + (fs * 0.72) + 'px "Segoe UI", Arial, sans-serif';
+        ctx.font = 'bold ' + (fs * 0.85) + 'px "Segoe UI", Arial, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(estV ? 'V' : 'N', px, y + 0.5);
@@ -622,7 +671,7 @@ function _prinLegendeEntree(ctx, xDroite, y, couleur, lettre, texte, police) {
     ctx.font = police;
     var largeur = ctx.measureText(texte).width;
     _prinText(ctx, texte, xDroite, y, couleur, police, 'right', 'middle', PRIN_COL_BAND);
-    var r = Math.max(6, _prinFont() * 0.52);
+    var r = Math.max(6, _prinFont() * 0.54);
     var xp = xDroite - largeur - 6 - r;
     ctx.save();
     ctx.fillStyle = couleur;
@@ -630,7 +679,7 @@ function _prinLegendeEntree(ctx, xDroite, y, couleur, lettre, texte, police) {
     ctx.arc(xp, y, r, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold ' + (_prinFont() * 0.72) + 'px "Segoe UI", Arial, sans-serif';
+    ctx.font = 'bold ' + (_prinFont() * 0.85) + 'px "Segoe UI", Arial, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(lettre, xp, y + 0.5);
@@ -644,7 +693,7 @@ function _prinDrawReperesLegende(ctx) {
     var s = simPrin, fs = _prinFont();
     var row = s.rows[2];
     var y = row.y0 - row.half * 0.86;
-    var police = 'bold ' + (fs * 0.85) + 'px "Segoe UI", Arial, sans-serif';
+    var police = 'bold ' + (fs * 0.92) + 'px "Segoe UI", Arial, sans-serif';
     var x = _prinLegendeEntree(ctx, s.plotX0 + s.plotW, y, PRIN_COL_DESTR, 'N', 'nœud (destructif)', police);
     _prinLegendeEntree(ctx, x, y, PRIN_COL_CONSTR, 'V', 'ventre (constructif)', police);
 }
@@ -668,8 +717,8 @@ function _prinDrawGuide(ctx, row, xpx, color, actif) {
     ctx.save();
     ctx.strokeStyle = color;
     ctx.globalAlpha = actif ? 0.95 : 0.45;
-    ctx.lineWidth = actif ? 2 : 1.2;
-    ctx.setLineDash(actif ? [] : [4, 4]);
+    ctx.lineWidth = (actif ? 2 : 1.2) * _prinLW();
+    ctx.setLineDash(actif ? [] : [4 * _prinLW(), 4 * _prinLW()]);
     ctx.beginPath();
     ctx.moveTo(xpx, row.y0 - row.half);
     ctx.lineTo(xpx, row.y0 + row.half);
@@ -683,16 +732,17 @@ function _prinDrawGuide(ctx, row, xpx, color, actif) {
 // que S₁M / S₂M se mesurent depuis cette position précise — d'où ce repère
 // dédié, dessiné PAR-DESSUS l'axe et la courbe pour rester visible.
 function _prinDrawSourceMark(ctx, xpx, y0, color) {
+    var lw = _prinLW();
     ctx.save();
     ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2 * lw;
     ctx.beginPath();
-    ctx.moveTo(xpx, y0 - 7);
-    ctx.lineTo(xpx, y0 + 7);
+    ctx.moveTo(xpx, y0 - 7 * lw);
+    ctx.lineTo(xpx, y0 + 7 * lw);
     ctx.stroke();
     ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.arc(xpx, y0, 3.2, 0, Math.PI * 2);
+    ctx.arc(xpx, y0, 3.2 * lw, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 }
@@ -730,7 +780,7 @@ function _prinDrawHautParleur(ctx, xpx, y0, h, color, label, sens, phase) {
     ctx.rect(-w * 1.15, -h / 2, w, h);
     ctx.fill();
     ctx.strokeStyle = '#5a6a78';
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 1 * _prinLW();
     ctx.strokeRect(-w * 1.15, -h / 2, w, h);
     // Membrane (petit disque au centre de la caisse), dans la couleur source ;
     // son rayon oscille de ±12 % au rythme de l'onde émise.
@@ -752,7 +802,7 @@ function _prinDrawHautParleur(ctx, xpx, y0, h, color, label, sens, phase) {
     ctx.fill();
     // Ondes émises — trois arcs qui s'éloignent en boucle et s'effacent en
     // s'éloignant (la fraction avance avec la phase).
-    ctx.lineWidth = 1.8;
+    ctx.lineWidth = 1.8 * _prinLW();
     var frac = (((phase || 0) / (2 * Math.PI)) % 1 + 1) % 1;
     for (var i = 0; i < 3; i++) {
         var u = (frac + i / 3) % 1;                    // 0 → sortie du pavillon, 1 → au loin
@@ -789,7 +839,8 @@ function _prinDrawHautParleur(ctx, xpx, y0, h, color, label, sens, phase) {
 //  caler ce qui vient dessous (libellé, badge δ), cf. drawPrincipe.
 var PRIN_MIC_BAS_RATIO = 1.82;
 
-function _prinDrawMicro(ctx, xpx, y0, h) {
+function _prinDrawMicro(ctx, xpx, y0, h, label) {
+    var lw  = _prinLW();
     var w   = h * 0.58;                 // largeur du corps
     var hc  = h * 1.02;                 // hauteur du corps (tête comprise)
     var yT  = y0 + h * 0.45;            // sommet de la tête — décalé sous l'axe
@@ -815,7 +866,7 @@ function _prinDrawMicro(ctx, xpx, y0, h) {
     // 1. Liseré couleur bande sous TOUTE la silhouette : le micro reste net
     //    là où la courbe de superposition lui passe dessus.
     ctx.strokeStyle = PRIN_COL_BAND;
-    ctx.lineWidth = 4;
+    ctx.lineWidth = 4 * lw;
     ctx.beginPath();
     ctx.moveTo(xpx, yB);
     ctx.lineTo(xpx, yP);
@@ -825,16 +876,16 @@ function _prinDrawMicro(ctx, xpx, y0, h) {
 
     // 2. Pied + socle, en gris métallique sombre
     ctx.strokeStyle = '#5a6a78';
-    ctx.lineWidth = Math.max(1.6, h * 0.09);
+    ctx.lineWidth = Math.max(1.6 * lw, h * 0.09);
     ctx.beginPath();
     ctx.moveTo(xpx, yB);
     ctx.lineTo(xpx, yP);
     ctx.stroke();
     ctx.fillStyle = '#8a99a6';
     ctx.strokeStyle = '#5a6a78';
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 1 * lw;
     ctx.beginPath();
-    ctx.ellipse(xpx, yP, w * 0.80, Math.max(1.6, h * 0.11), 0, 0, Math.PI * 2);
+    ctx.ellipse(xpx, yP, w * 0.80, Math.max(1.6 * lw, h * 0.11), 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
 
@@ -863,7 +914,7 @@ function _prinDrawMicro(ctx, xpx, y0, h) {
     ctx.fillStyle = grdT;
     ctx.fillRect(xg, yT, w, hTete);
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.32)';
-    ctx.lineWidth = Math.max(0.8, h * 0.045);
+    ctx.lineWidth = Math.max(0.8 * lw, h * 0.045);
     var pas = Math.max(2.4, hTete / 4);
     ctx.beginPath();
     for (var y = yT + pas * 0.9; y < yT + hTete - pas * 0.2; y += pas) {
@@ -873,7 +924,7 @@ function _prinDrawMicro(ctx, xpx, y0, h) {
     ctx.stroke();
     // Bague de séparation tête / corps
     ctx.strokeStyle = '#5a6a78';
-    ctx.lineWidth = Math.max(1, h * 0.07);
+    ctx.lineWidth = Math.max(1 * lw, h * 0.07);
     ctx.beginPath();
     ctx.moveTo(xg, yT + hTete);
     ctx.lineTo(xg + w, yT + hTete);
@@ -882,24 +933,27 @@ function _prinDrawMicro(ctx, xpx, y0, h) {
 
     // 5. Contour
     ctx.strokeStyle = '#5a6a78';
-    ctx.lineWidth = 1.1;
+    ctx.lineWidth = 1.1 * lw;
     corps();
     ctx.stroke();
     ctx.restore();
 
-    _prinText(ctx, 'M', xpx, yP + h * 0.22, PRIN_COL_M,
+    _prinText(ctx, label, xpx, yP + h * 0.22, PRIN_COL_M,
               'bold ' + (_prinFont() * 1.05) + 'px "Segoe UI", Arial, sans-serif',
               'center', 'top', PRIN_COL_BAND);
 }
 
 // ── Double flèche cotée horizontale (cotes S₁M / S₂M) ─────────────────
 function _prinDrawCote(ctx, xa, xb, y, label, color) {
-    var fs = _prinFont();
-    var t = Math.min(7, Math.max(4, fs * 0.45));   // demi-hauteur des pointes
+    var fs = _prinFont(), lw = _prinLW();
+    // Demi-hauteur des pointes. Le plafond suit lw, sinon les pointes restent
+    // figées à 7 px sous une police de 24 px. Il reste cohérent avec le
+    // « + 10·lw » que basH réserve pour elles dans _prinLayout.
+    var t = Math.max(4, Math.min(7 * lw, fs * 0.45));
     ctx.save();
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
-    ctx.lineWidth = 1.8;
+    ctx.lineWidth = 1.8 * lw;
     ctx.beginPath();
     ctx.moveTo(xa, y);
     ctx.lineTo(xb, y);
@@ -913,18 +967,36 @@ function _prinDrawCote(ctx, xa, xb, y, label, color) {
         ctx.closePath();
         ctx.fill();
     });
-    ctx.lineWidth = 1.2;                           // traits d'attache
+    ctx.lineWidth = 1.2 * lw;                      // traits d'attache
     ctx.beginPath();
     ctx.moveTo(xa, y - t); ctx.lineTo(xa, y + t);
     ctx.moveTo(xb, y - t); ctx.lineTo(xb, y + t);
     ctx.stroke();
     ctx.restore();
-    // Libellé posé SUR la ligne de cote (et non au-dessus) : son halo
-    // interrompt le trait. Les cotes sont désormais empilées dans un couloir
-    // serré sous la bande — un libellé en surplomb heurterait la cote du
-    // dessus.
-    _prinText(ctx, label, (xa + xb) / 2, y, color,
-              'bold ' + (fs * 0.9) + 'px "Segoe UI", Arial, sans-serif', 'center', 'middle');
+
+    // Libellé posé SUR la ligne de cote (et non au-dessus) : les cotes sont
+    // empilées dans un couloir serré sous la bande, un libellé en surplomb
+    // heurterait la cote du dessus. Même corps que les libellés de S₁/S₂/M
+    // (1,05·fs) : ce sont les mêmes grandeurs lues au tableau.
+    //
+    // Cartouche PLEIN sous le texte, et non le simple halo de _prinText() :
+    // le halo laissait deviner le trait de cote derrière les lettres. Il est
+    // dessiné ici, pas dans _prinText(), pour être ajusté à la hauteur du
+    // couloir.
+    var police = 'bold ' + (fs * 1.05) + 'px "Segoe UI", Arial, sans-serif';
+    ctx.save();
+    ctx.font = police;
+    var wTxt = ctx.measureText(label).width;
+    var padX = fs * 0.34, hPlaque = fs * 1.20;
+    ctx.fillStyle = PRIN_COL_BG;
+    _prinRoundRect(ctx, (xa + xb) / 2 - wTxt / 2 - padX, y - hPlaque / 2,
+                   wTxt + padX * 2, hPlaque, hPlaque * 0.28);
+    ctx.fill();
+    ctx.fillStyle = color;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, (xa + xb) / 2, y + 0.5);
+    ctx.restore();
 }
 
 // ── Nature de l'interférence en M ─────────────────────────────────────
@@ -960,7 +1032,7 @@ function _prinDrawBadgeDelta(ctx, xpx, y) {
     var s = simPrin, fs = _prinFont();
     var nat = _prinNature();
     var txt = 'δ = ' + formatFr(nat.delta, 2) + ' m · ' + nat.court;
-    var police = 'bold ' + (fs * 0.82) + 'px "Segoe UI", Arial, sans-serif';
+    var police = 'bold ' + (fs * 0.92) + 'px "Segoe UI", Arial, sans-serif';
     ctx.save();
     ctx.font = police;
     var w = ctx.measureText(txt).width + fs * 0.9;
@@ -969,7 +1041,7 @@ function _prinDrawBadgeDelta(ctx, xpx, y) {
     var x = Math.max(2, Math.min(s.canvasW - w - 2, xpx - w / 2));
     ctx.fillStyle = PRIN_COL_BAND;
     ctx.strokeStyle = nat.couleur;
-    ctx.lineWidth = 1.4;
+    ctx.lineWidth = 1.4 * _prinLW();
     _prinRoundRect(ctx, x, y, w, h, h / 2);
     ctx.fill();
     ctx.stroke();
@@ -986,13 +1058,13 @@ function _prinDrawBadgeDelta(ctx, xpx, y) {
 function _prinDrawTitre(ctx, row, couleur) {
     var s = simPrin, fs = _prinFont();
     if (row.half < fs * 1.4) return;      // bande trop basse : le titre nuirait
-    var police = 'bold ' + (fs * 0.85) + 'px "Segoe UI", Arial, sans-serif';
+    var police = 'bold ' + (fs * 0.92) + 'px "Segoe UI", Arial, sans-serif';
     ctx.save();
     ctx.font = police;
     var r = fs * 0.28;
     var w = ctx.measureText(row.titre).width + fs * 1.5 + r * 2;
     var h = fs * 1.45;
-    var x = s.plotX0 - 2, y = row.y0 - row.half + 3;
+    var x = s.plotX0 - 2, y = row.y0 - row.half + 3 * _prinLW();
     ctx.fillStyle = PRIN_COL_BG;
     ctx.globalAlpha = 0.92;
     _prinRoundRect(ctx, x, y, w, h, h / 2);
@@ -1009,25 +1081,12 @@ function _prinDrawTitre(ctx, row, couleur) {
     ctx.restore();
 }
 
-// ── Horloge : t courant, période et fréquence de l'onde ───────────────
-// Le ralenti (× PRIN_RALENTI) rend le temps physique impossible à estimer à
-// l'œil ; ces trois valeurs le rendent tangible.
-function _prinDrawHorloge(ctx) {
-    var s = simPrin, fs = _prinFont();
-    var T = s.lambda / PRIN_C;                       // s
-    var f = 1 / T;                                   // Hz
-    var txt = 't = ' + formatFr(s.simTime * 1000, 1) + ' ms   ·   T = ' +
-              formatFr(T * 1000, 2) + ' ms   ·   f = ' + formatFr(f, 0) + ' Hz';
-    _prinText(ctx, txt, s.plotX0 + s.plotW, fs * 0.75, PRIN_COL_LABEL,
-              (fs * 0.85) + 'px monospace', 'right', 'middle');
-}
-
 // ── Dessin complet ────────────────────────────────────────────────────
 function drawPrincipe() {
     var canvas = document.getElementById('principe-canvas');
     if (!canvas || simPrin.canvasW < 10) return;
     var ctx = canvas.getContext('2d');
-    var s = simPrin, t = s.simTime, fs = _prinFont();
+    var s = simPrin, t = s.simTime, fs = _prinFont(), lw = _prinLW();
 
     ctx.clearRect(0, 0, s.canvasW, s.canvasH);
     ctx.fillStyle = PRIN_COL_BG;
@@ -1041,8 +1100,6 @@ function drawPrincipe() {
     // Élément désigné : celui qu'on déplace, sinon celui qu'on survole. Son
     // guide passe en trait plein appuyé — c'est tout le retour visuel.
     var vise = s.drag || s.hover;
-
-    _prinDrawHorloge(ctx);
 
     // Fonds de bande + grille : tout au fond, avant le moindre repère
     for (var b = 0; b < 3; b++) _prinDrawBande(ctx, s.rows[b]);
@@ -1085,14 +1142,14 @@ function drawPrincipe() {
             fy = function (x) { return _prinY1(x, t) + _prinY2(x, t); };
             col = PRIN_COL_SOMME; xMin = s.x1; xMax = s.x2;
         }
-        _prinDrawCourbe(ctx, row, fy, col, r === 2 ? 2.6 : 2, xMin, xMax, r === 2);
+        _prinDrawCourbe(ctx, row, fy, col, (r === 2 ? 2.6 : 2) * lw, xMin, xMax, r === 2);
 
         // Point de lecture du micro sur la courbe de la bande
         var yLec = fy(s.xM);
         ctx.save();
         ctx.fillStyle = PRIN_COL_M;
         ctx.strokeStyle = PRIN_COL_BAND;
-        ctx.lineWidth = 1.6;
+        ctx.lineWidth = 1.6 * lw;
         ctx.beginPath();
         ctx.arc(xM, row.y0 - yLec * s.ampPx, Math.max(3.5, fs * 0.3), 0, Math.PI * 2);
         ctx.fill();
@@ -1106,7 +1163,7 @@ function drawPrincipe() {
             var cote = (s.xM > (s.x1 + s.x2) / 2) ? -1 : 1;   // du côté le plus dégagé
             _prinText(ctx, nomLec + ' = ' + formatFr(yLec, 2),
                       xM + cote * fs * 0.9, row.y0 - yLec * s.ampPx - fs * 0.9,
-                      PRIN_COL_M, 'bold ' + (fs * 0.8) + 'px "Segoe UI", Arial, sans-serif',
+                      PRIN_COL_M, 'bold ' + (fs * 0.88) + 'px "Segoe UI", Arial, sans-serif',
                       cote > 0 ? 'left' : 'right', 'middle', PRIN_COL_BAND);
         }
 
@@ -1136,35 +1193,24 @@ function drawPrincipe() {
 
     // Micro M — poignée sur l'axe de la ligne somme uniquement
     var row3 = s.rows[2];
-    _prinDrawMicro(ctx, xM, row3.y0, micH);
+    _prinDrawMicro(ctx, xM, row3.y0, micH, 'M (' + formatFr(s.xM, 2) + ' m)');
     // Badge δ : sous le socle du micro, puis sous son libellé « M » — rabattu
     // dans la bande si la fenêtre est trop basse pour tout empiler.
     _prinDrawBadgeDelta(ctx, xM,
         Math.min(row3.y0 + micH * (PRIN_MIC_BAS_RATIO + 0.22) + fs * 1.15,
                  row3.y0 + row3.half - fs * 1.5 - 3));
 
-    // Couloir de cotes, sous la bande somme. Slots FIXES : 0 = λ/2, 1 = S₁M,
-    // 2 = S₂M — une cote masquée laisse sa ligne vide plutôt que de décaler
-    // les autres, et la scène ne bouge pas quand on bascule une option.
-    if (s.coteYs.length >= 3) {
-        if (s.showReperes) {
-            // Écart entre deux positions remarquables CONSÉCUTIVES de même
-            // nature : c'est λ/2, le résultat quantitatif de l'onde
-            // stationnaire. Coté une seule fois, sur la première paire.
-            for (var p = 0; p + 2 < positions.length; p++) {
-                if (positions[p].type !== positions[p + 2].type) continue;
-                _prinDrawCote(ctx, _prinXpx(positions[p].x), _prinXpx(positions[p + 2].x),
-                              s.coteYs[0], 'λ/2 = ' + formatFr(s.lambda / 2, 2) + ' m',
-                              PRIN_COL_ENV);
-                break;
-            }
-        }
-        if (s.showCotes) {
-            _prinDrawCote(ctx, xS1, xM, s.coteYs[1],
-                          'S₁M = ' + formatFr(s.xM - s.x1, 2) + ' m', PRIN_COL_S1);
-            _prinDrawCote(ctx, xM, xS2, s.coteYs[2],
-                          'S₂M = ' + formatFr(s.x2 - s.xM, 2) + ' m', PRIN_COL_S2);
-        }
+    // Couloir de cotes, sous la bande somme. Slots FIXES : 0 = S₁M, 1 = S₂M —
+    // une cote masquée laisse sa ligne vide plutôt que de décaler l'autre, et
+    // la scène ne bouge pas quand on bascule l'option.
+    // Valeurs en valeur absolue : S₁M et S₂M sont des DISTANCES. L'ordre des
+    // éléments est certes contraint (S₁ < M < S₂, cf. PRIN_MARGE_M), mais la
+    // formule doit dire ce qu'elle mesure, pas s'appuyer sur cette contrainte.
+    if (s.showCotes && s.coteYs.length >= 2) {
+        _prinDrawCote(ctx, xS1, xM, s.coteYs[0],
+                      'S₁M = ' + formatFr(Math.abs(s.xM - s.x1), 2) + ' m', PRIN_COL_S1);
+        _prinDrawCote(ctx, xM, xS2, s.coteYs[1],
+                      'S₂M = ' + formatFr(Math.abs(s.x2 - s.xM), 2) + ' m', PRIN_COL_S2);
     }
 }
 
