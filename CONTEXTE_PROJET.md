@@ -508,6 +508,7 @@ Stockées dans `assets/previews/` au format **`.jpg`** (converties depuis les sc
 | `dissolution-dissolution.jpg` | Dissolution |
 | `diffraction-lumiere.jpg` | Diffraction de la lumière |
 | `diffraction-vagues.jpg` | Diffraction d'ondes de surface |
+| `interferences-1d.jpg` | Interférences en 1D |
 | `interferences-lumiere.jpg` | Interférences lumineuses |
 | `interferences-vagues.jpg` | Interférences d'ondes de surface |
 | `cinetique.jpg` | Cinétique chimique |
