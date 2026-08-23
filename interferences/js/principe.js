@@ -45,7 +45,7 @@ var PRIN_C            = 340;   // célérité du son dans l'air (m/s), fixe
 var PRIN_VIEW_WIDTH_M = 4.0;   // largeur physique de l'axe (m) — calibre pxPerM au resize
 var PRIN_RALENTI      = 340;   // facteur de ralenti (cf. bandeau de doc ci-dessus)
 var PRIN_MARGE_M      = 0.10;  // écart minimal imposé entre deux éléments voisins (m)
-var PRIN_BORD_M       = 0.10;  // marge minimale aux deux extrémités de l'axe (m)
+var PRIN_BORD_M       = 0;     // marge minimale aux deux extrémités de l'axe (m) — 0 : les sources peuvent aller jusqu'aux bords (x = 0 et x = 4 m)
 
 // Crans du curseur de vitesse d'animation — identiques au reste du site
 // (cf. ondes/js/ui.js → SPEED_STEPS, surfaces.js → SURF_SPEED_STEPS).
@@ -53,7 +53,7 @@ var PRIN_SPEED_STEPS = [0.10, 0.25, 0.50, 1.00];
 
 // Valeurs par défaut des réglages et des positions
 var PRIN_LAMBDA_DEF = 0.60, PRIN_A1_DEF = 0.80, PRIN_A2_DEF = 0.80;
-var PRIN_X1_DEF = 0.30, PRIN_X2_DEF = 3.70, PRIN_XM_DEF = 2.00;
+var PRIN_X1_DEF = 0, PRIN_X2_DEF = PRIN_VIEW_WIDTH_M, PRIN_XM_DEF = 2.00;
 
 // ── Couleurs ──────────────────────────────────────────────────────────
 // Fond clair (#fdf8f0, "fond simulation" de la charte) : cet onglet trace des
@@ -191,21 +191,47 @@ function _prinFont() {
 // somme. La ligne somme reçoit le double PRÉCISÉMENT parce que y₁+y₂ peut
 // atteindre A₁+A₂ = 2 : l'échelle verticale (ampPx) reste ainsi IDENTIQUE et
 // FIXE sur les trois lignes, donc un doublement d'amplitude se voit vraiment.
-function _prinLayout() {
+function _prinLayout(ctx) {
     var s = simPrin;
     var fs = _prinFont();
     var padTop = fs * 1.6;
     var padBot = fs * 2.8;                   // graduations sous l'axe du bas
-    var padL   = Math.max(38, s.canvasW * 0.045);
-    var padR   = Math.max(24, s.canvasW * 0.030);
+
+    // unitH/ampPx ne dépendent que de canvasH : on les calcule AVANT padL/padR
+    // pour en tirer la taille des haut-parleurs (srcH, cf. drawPrincipe) et
+    // réserver la marge horizontale qu'ils débordent derrière leur caisse —
+    // sans cela, une source glissée jusqu'au bord de l'axe (x = 0 ou x = 4 m,
+    // PRIN_BORD_M = 0) se retrouve avec sa caisse coupée par le cadre.
+    var utile = Math.max(40, s.canvasH - padTop - padBot);
+    s.unitH = utile / 4;
+    s.ampPx = s.unitH * 0.5 * 0.82;          // ±1 tient dans une unité
+    var hpH  = Math.min(s.unitH * 0.55, s.ampPx * 1.25);
+    var srcH = hpH * 0.5;
+    var margeCaisse = srcH * 0.42 * 1.15;    // w * 1.15, cf. _prinDrawHautParleur
+
+    // Le libellé "S₁ (x,xx m)" / "S₂ (x,xx m)" est centré sur la position de
+    // la source (cf. _prinText dans _prinDrawHautParleur) : quand celle-ci est
+    // proche du bord de l'axe, sa MOITIÉ de largeur peut déborder du canvas —
+    // débordement souvent plus grand que celui de la caisse. On mesure donc
+    // ce libellé (police identique à _prinDrawHautParleur) pour dimensionner
+    // la marge en conséquence plutôt que de le laisser se faire tronquer.
+    var margeLabel = margeCaisse;
+    if (ctx) {
+        ctx.save();
+        ctx.font = 'bold ' + (fs * 1.05) + 'px "Segoe UI", Arial, sans-serif';
+        var wLbl1 = ctx.measureText('S₁ (' + formatFr(0, 2) + ' m)').width;
+        var wLbl2 = ctx.measureText('S₂ (' + formatFr(PRIN_VIEW_WIDTH_M, 2) + ' m)').width;
+        ctx.restore();
+        margeLabel = Math.max(margeCaisse, wLbl1 / 2, wLbl2 / 2) + 4;
+    }
+
+    var padL = Math.max(38, s.canvasW * 0.045, margeLabel);
+    var padR = Math.max(24, s.canvasW * 0.030, margeLabel);
 
     s.plotX0 = padL;
     s.plotW  = Math.max(10, s.canvasW - padL - padR);
     s.pxPerM = s.plotW / PRIN_VIEW_WIDTH_M;
 
-    var utile = Math.max(40, s.canvasH - padTop - padBot);
-    s.unitH = utile / 4;
-    s.ampPx = s.unitH * 0.5 * 0.82;          // ±1 tient dans une unité
     // Ligne de base des valeurs chiffrées de l'axe : SOUS la dernière bande
     // (padBot leur est réservé), cf. _prinDrawAxe.
     s.axeLabelY = padTop + s.unitH * 4 + fs * 0.35;
@@ -228,10 +254,11 @@ function resizePrincipe() {
     var dpr = window.devicePixelRatio || 1;
     canvas.width  = Math.round(w * dpr);
     canvas.height = Math.round(h * dpr);
-    canvas.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
+    var ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     simPrin.canvasW = w;
     simPrin.canvasH = h;
-    _prinLayout();
+    _prinLayout(ctx);
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -387,6 +414,23 @@ function _prinDrawReperesLegende(ctx) {
     _prinLegendeEntree(ctx, x, y, PRIN_COL_CONSTR, [], 'constructif', police);
 }
 
+// ── Guide vertical pointillé, sur toute la hauteur d'une bande ────────
+// Factorisé depuis l'ancien guide de M (seul élément qui en bénéficiait) et
+// réutilisé pour S₁/S₂ : leur pictogramme de haut-parleur, plus large que le
+// point de M, rendait l'abscisse exacte de la source moins évidente à situer.
+function _prinDrawGuide(ctx, row, xpx, color) {
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = 0.45;
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(xpx, row.y0 - row.half);
+    ctx.lineTo(xpx, row.y0 + row.half);
+    ctx.stroke();
+    ctx.restore();
+}
+
 // ── Repère de position réelle sur l'axe ────────────────────────────────
 // Petit ergot + point plein exactement sur la ligne y = 0 : le haut-parleur
 // (ci-dessous) est un pictogramme, pas toujours lisible au pixel près, alors
@@ -406,6 +450,15 @@ function _prinDrawSourceMark(ctx, xpx, y0, color) {
     ctx.fill();
     ctx.restore();
 }
+
+// Décalage (en unités de h) entre le centre géométrique du haut-parleur
+// (xpx, position physique x₁/x₂) et la pointe de son pavillon — c'est cette
+// pointe qui émet visuellement le signal. Doit rester cohérent avec les
+// facteurs w = h*0.42 et w*0.55 du pavillon dans _prinDrawHautParleur
+// ci-dessous ; utilisé par drawPrincipe() pour caler le repère de position
+// (cf. _prinDrawSourceMark) exactement sur cette pointe plutôt que sur le
+// centre de la caisse.
+var PRIN_SRC_TIP_RATIO = 0.42 * 0.55;
 
 // ── Haut-parleur schématique posé sur l'axe ───────────────────────────
 // `sens` = +1 émet vers la droite (S₁), −1 vers la gauche (S₂). Caisse en
@@ -535,6 +588,14 @@ function drawPrincipe() {
     // Repères d'interférences : sous tout le reste, ligne somme uniquement
     if (s.showReperes) _prinDrawReperes(ctx);
 
+    // Guide de S₁ : un seul trait continu du haut de la ligne 1 au bas de la
+    // ligne 3, plutôt que deux segments coupés par la bande "S₂ seule" (où
+    // S₁ n'apparaît pas) — l'abscisse x₁ se suit ainsi d'un seul coup d'œil
+    // sur toute la hauteur de la scène.
+    _prinDrawGuide(ctx, { y0: (s.rows[0].y0 - s.rows[0].half + s.rows[2].y0 + s.rows[2].half) / 2,
+                          half: (s.rows[2].y0 + s.rows[2].half - (s.rows[0].y0 - s.rows[0].half)) / 2 },
+                   xS1, PRIN_COL_S1);
+
     for (var r = 0; r < 3; r++) {
         var row = s.rows[r];
         _prinDrawAxe(ctx, row, r === 2);
@@ -561,19 +622,16 @@ function drawPrincipe() {
         }
         _prinDrawCourbe(ctx, row, fy, col, r === 2 ? 2.6 : 2, xMin, xMax);
 
-        // Guide vertical au niveau de M + point de lecture sur la courbe : les
-        // trois lignes se lisent ainsi sur une même verticale (y₁ en M, y₂ en M,
-        // et leur somme).
-        ctx.save();
-        ctx.strokeStyle = PRIN_COL_M;
-        ctx.globalAlpha = 0.45;
-        ctx.lineWidth = 1.2;
-        ctx.setLineDash([4, 4]);
-        ctx.beginPath();
-        ctx.moveTo(xM, row.y0 - row.half);
-        ctx.lineTo(xM, row.y0 + row.half);
-        ctx.stroke();
-        ctx.restore();
+        // Guides verticaux aux abscisses de S₂ et M : les lignes se lisent
+        // ainsi sur une même verticale (y₁ en M, y₂ en M, leur somme — et,
+        // pour S₂, l'abscisse exacte de la source reste repérable même quand
+        // le pictogramme du haut-parleur la rend moins immédiate à l'œil).
+        // S₁ est traité à part, en un seul trait continu (cf. plus bas) : il
+        // n'apparaît pas sur la ligne "S₂ seule", contrairement à S₂ et M qui
+        // sont présents sur des bandes adjacentes.
+        if (r === 1 || r === 2) _prinDrawGuide(ctx, row, xS2, PRIN_COL_S2);
+        _prinDrawGuide(ctx, row, xM, PRIN_COL_M);
+
         ctx.save();
         ctx.fillStyle = PRIN_COL_M;
         ctx.beginPath();
@@ -590,12 +648,14 @@ function drawPrincipe() {
         // Le repère de position (ergot + point) est dessiné APRÈS, par-dessus la
         // courbe et le pictogramme, pour rester net à l'endroit exact x₁/x₂.
         if (r === 0 || r === 2) {
-            _prinDrawHautParleur(ctx, xS1, row.y0, srcH, PRIN_COL_S1, 'S₁', 1);
-            _prinDrawSourceMark(ctx, xS1, row.y0, PRIN_COL_S1);
+            _prinDrawHautParleur(ctx, xS1, row.y0, srcH, PRIN_COL_S1,
+                                  'S₁ (' + formatFr(s.x1, 2) + ' m)', 1);
+            _prinDrawSourceMark(ctx, xS1 + srcH * PRIN_SRC_TIP_RATIO, row.y0, PRIN_COL_S1);
         }
         if (r === 1 || r === 2) {
-            _prinDrawHautParleur(ctx, xS2, row.y0, srcH, PRIN_COL_S2, 'S₂', -1);
-            _prinDrawSourceMark(ctx, xS2, row.y0, PRIN_COL_S2);
+            _prinDrawHautParleur(ctx, xS2, row.y0, srcH, PRIN_COL_S2,
+                                  'S₂ (' + formatFr(s.x2, 2) + ' m)', -1);
+            _prinDrawSourceMark(ctx, xS2 - srcH * PRIN_SRC_TIP_RATIO, row.y0, PRIN_COL_S2);
         }
     }
 
