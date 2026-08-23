@@ -370,9 +370,26 @@ La zone centrale est un **seul canvas** découpé en trois lignes de même éche
 La ligne 3 reçoit **le double** de hauteur précisément parce que la somme peut atteindre
 A₁ + A₂ = 2 : l'échelle verticale (`simPrin.ampPx`, px par unité d'amplitude) reste ainsi
 **identique et fixe** sur les trois lignes — pas d'auto-échelle, donc un doublement d'amplitude
-se voit vraiment. Un **guide vertical pointillé** à l'abscisse de M traverse les trois lignes,
-avec un point de lecture sur chaque courbe : y₁(M), y₂(M) et leur somme se lisent sur la même
-verticale.
+se voit vraiment. Ce point n'est plus implicite : une **échelle verticale** est graduée dans la
+gouttière gauche de chaque bande (±1 sur les lignes 1-2, ±2 sur la ligne 3, `_prinDrawEchelleY`) —
+sans elle, rien ne disait à l'élève que les bandes ne sont pas auto-normalisées.
+
+Un **guide vertical pointillé** à l'abscisse de M traverse les trois lignes, avec un point de
+lecture sur chaque courbe : y₁(M), y₂(M) et leur somme se lisent sur la même verticale (et,
+quand « Afficher les valeurs » est actif, chaque point porte sa valeur chiffrée). Les trois guides
+(S₁ sur les bandes 1→3, S₂ sur 2→3, M sur 1→3) sont tracés **d'une seule pièce** via `_prinSpan()`,
+avant la boucle de rendu des bandes : tracés bande par bande, leurs pointillés étaient tronqués à
+chaque gouttière.
+
+Sous la ligne 3, un **couloir de cotes** (`simPrin.coteYs`) accueille les doubles flèches λ/2, S₁M
+et S₂M. Elles étaient auparavant tracées *dans* la bande, à `y0 + half·0,82` — c'est-à-dire
+exactement sur l'amplitude 2, donc dans la courbe dès que A₁ + A₂ approchait son maximum.
+
+Ses `PRIN_N_COTES` = 3 lignes sont réservées **en permanence**, à slots fixes (0 = λ/2, 1 = S₁M,
+2 = S₂M) : une cote masquée laisse sa ligne vide. Un couloir dimensionné sur les options actives
+faisait se comprimer et se translater toute la scène à chaque bascule de « Coter S₁M et S₂M » ou
+« Repérer les interférences » — le repère visuel de l'élève sautait à chaque clic. Aucune option
+d'affichage ne touche donc plus à la mise en page.
 
 #### Physique
 
@@ -397,7 +414,8 @@ A(x) = √(A₁² + A₂² + 2·A₁·A₂·cos(2π·δ/λ))        (_prinEnvelo
 
 C'est une **onde stationnaire** : nœuds et ventres sont FIXES, espacés de λ/2. Comme d₁ + d₂ =
 x₂ − x₁ est constant, δ(x) = x₁ + x₂ − 2x varie **linéairement** — les positions remarquables
-s'écrivent donc en clair, sans balayage numérique (`_prinDrawReperes`) :
+s'écrivent donc en clair, sans balayage numérique (`_prinPositionsRemarquables()`, source unique
+pour le fond coloré, les marqueurs V/N, la cote λ/2 et l'aimantation du glisser-déposer) :
 
 ```
 constructif   x = (x₁ + x₂ − k·λ)/2
@@ -417,32 +435,87 @@ de 1 m/s — le front traverse les 4 m de l'axe en 4 s au facteur de vitesse ×1
 |---|---|---|
 | λ | 0,20 → 1,50 m (pas 0,01) | 0,60 m |
 | A₁, A₂ | 0 → 1,00 u.a. (pas 0,05) | 0,80 |
-| x₁, x_M, x₂ | axe de `PRIN_VIEW_WIDTH_M` = 4,00 m | 0,30 / 2,00 / 3,70 m |
+| x₁, x_M, x₂ | axe de `PRIN_VIEW_WIDTH_M` = 4,00 m (`PRIN_BORD_M` = 0 : sources jusqu'aux bords) | 0,00 / 2,00 / 4,00 m |
 
 Le glisser-déposer impose l'ordre **S₁ < M < S₂** avec une marge `PRIN_MARGE_M` = 0,10 m, sans
 « poussée » : chaque élément est simplement borné par ses voisins (`_prinSetDragPos`).
+
+Trois **curseurs de position** (section « Positions » du panneau) doublent le geste à la souris :
+un énoncé du type « placez M à 1,80 m » ne se traite pas au glissement, et au vidéoprojecteur le
+curseur est plus sûr. Les deux voies restent synchronisées — `_prinUpdateValeurs()` appelle
+`_prinSyncPosSliders()`, donc tout déplacement du canvas remonte dans les curseurs.
 
 #### Options d'affichage (toutes OFF au départ)
 
 | Bouton | Effet |
 |---|---|
 | Afficher l'enveloppe | ±A(x) en pointillés sur la ligne 3 — rend les nœuds/ventres visibles comme positions fixes |
-| Repérer les interférences | traits aux positions constructives (ocre, plein) / destructives (violet, pointillé), sous les courbes, + légende par-dessus |
-| Coter S₁M et S₂M | doubles flèches cotées sur la ligne 3, couleurs de S₁/S₂ |
-| Afficher les valeurs | encarts du panneau : S₁M, S₂M, la différence de marche δ (valeur absolue de S₁M − S₂M), le rapport δ/λ et la conclusion — constructive / destructive / cas intermédiaire, tolérance `PRIN_TOL_RATIO` = 0,03 sur δ/λ |
+| Repérer les interférences | **bandes translucides** de fond (ocre / violet) aux positions remarquables + marqueurs **V** (ventre) / **N** (nœud) sur l'axe + cote λ/2 dans le couloir + légende. Les anciens traits verticaux concurrençaient les guides de S₁/S₂/M ; en bandes, ils passent au fond. V et N sont les mots du programme |
+| Coter S₁M et S₂M | doubles flèches cotées dans le couloir sous la ligne 3, couleurs de S₁/S₂ |
+| Afficher les valeurs | encarts du panneau (S₁M, S₂M, δ = \|S₁M − S₂M\|, δ/λ, conclusion) **et** valeur chiffrée à chaque point de lecture du micro sur le canvas |
+
+La conclusion constructive / destructive / intermédiaire (tolérance `PRIN_TOL_RATIO` = 0,03 sur
+δ/λ) est calculée par **`_prinNature()`**, seule source de vérité, partagée par l'encart du
+panneau et par le **badge « δ = … · constructive »** dessiné en permanence sous le micro. Ce badge
+est le résultat même de la simulation : il était auparavant invisible tant que l'encart
+« Valeurs » restait replié.
 
 #### Conventions de rendu
 
 - Fond **`#fdf8f0`** (fond « simulation » de la charte) et non le `#14181d` des deux autres
-  onglets : celui-ci trace des courbes sur des axes, pas un champ.
+  onglets : celui-ci trace des courbes sur des axes, pas un champ. Chaque ligne est posée sur une
+  **bande** à coins arrondis (`PRIN_COL_BAND`, filet `PRIN_COL_BAND_BD`) parcourue d'une **grille
+  verticale** tous les 0,5 m : on lit trois panneaux au lieu d'un aplat continu, et une abscisse
+  se repère sur les trois lignes d'un coup d'œil. La grille a **deux niveaux** — mètre entier
+  (`PRIN_COL_GRILLE_MAJ`, 1,3 px) nettement plus marqué que le demi-mètre (`PRIN_COL_GRILLE`) —
+  un ton unique trop pâle ne donnait aucun repère chiffrable. Une **gouttière**
+  (`gap` = `max(8, fs·1,15)`, deux intervalles pour trois bandes) sépare les panneaux, qui étaient
+  jointifs et se lisaient donc comme un seul bloc.
+- **Graduations** dessinées sur les trois axes, de part et d'autre de la ligne (7 px au mètre,
+  4 px au demi-mètre) et dans un ton `PRIN_COL_TICK` franchement plus foncé que l'axe lui-même :
+  au ton de l'axe, elles s'y noyaient, et n'exister que sur la bande du bas laissait les deux
+  autres sans repère chiffrable. Même ton pour l'échelle verticale, les valeurs chiffrées et
+  « x (m) ».
+- **Hiérarchie de taille des pictogrammes** : le haut-parleur est plus grand que le micro
+  (`s.srcH = 1,35 · s.micH`, calculés dans `_prinLayout`). L'ancien code faisait l'inverse — le
+  micro valait le double d'une source.
+- Le **micro est un micro de mesure debout, nettement décalé sous l'axe** (socle, pied fin, corps
+  cylindrique, tête grillagée). Le décalage est délibéré : collé à l'axe, le pictogramme se mêle au
+  tracé de la superposition, la courbe la plus ample de la scène — c'est le guide vertical
+  pointillé à l'abscisse de M qui fait le lien avec l'axe, pas un contact physique.
+  `PRIN_MIC_BAS_RATIO` donne la hauteur totale rapportée à `micH` : c'est elle qui cale le libellé
+  « M » puis le badge δ dessous (badge rabattu dans la bande si la fenêtre est trop basse).
+- **Couleur des pictogrammes** : même doctrine pour le micro que pour les haut-parleurs — corps en
+  gris métallique (l'objet), couleur d'identité réservée au seul organe actif : le pavillon pour
+  une source, la tête grillagée pour le micro. Un micro entièrement bleu lisait comme un symbole,
+  pas comme un instrument.
+- **Titres de ligne en pastille** (`_prinDrawTitre`) plutôt qu'en texte haloé posé dans le coin du
+  tracé ; escamotés quand la bande devient trop basse.
+- Les **haut-parleurs sont animés** : membrane qui respire et arcs qui s'éloignent, en phase avec
+  ω·t. Ils étaient figés même en pleine animation.
+- Une **horloge** en haut à droite affiche `t`, `T = λ/c` et `f` : le ralenti × `PRIN_RALENTI`
+  rend sinon le temps physique impossible à estimer.
 - Positions stockées en **mètres**, jamais en pixels — le resize les reprojette, rien ne dérive.
 - Tous les libellés passent par `_prinText()`, qui les cerne d'un halo couleur fond : ils se
-  superposent forcément aux courbes. Corollaire : `_prinText()` écrase `strokeStyle`, on ne
+  superposent forcément aux courbes. Le paramètre optionnel `halo` sert aux textes posés **sur une
+  bande**, dont le fond n'est plus `PRIN_COL_BG`. Corollaire : `_prinText()` écrase `strokeStyle`, on ne
   l'appelle donc jamais au milieu d'un tracé (cf. `_prinDrawAxe`, qui trace axe + graduations en
   un seul `stroke()` avant d'écrire quoi que ce soit).
 - Glisser-déposer en **Pointer Events + `setPointerCapture`** (souris et tactile d'un seul jeu
-  d'écouteurs, cf. `pression/js/ui.js`), hit-test tolérant à 16 px défini à côté du code de
-  dessin des poignées.
+  d'écouteurs, cf. `pression/js/ui.js`), hit-test tolérant à `_prinGrabTol()` =
+  `max(22, canvasW/45)` px — les 16 px fixes d'origine étaient sous la cible tactile recommandée.
+  Quatre points d'ergonomie s'y ajoutent :
+  - l'**écart de saisie** est mémorisé (`simPrin.dragOff`) au `pointerdown` au lieu de recentrer
+    l'élément sous le pointeur : un clic 10 px à côté ne le téléporte plus ;
+  - **retour visuel par le guide** : celui de l'élément survolé ou déplacé passe en trait plein
+    appuyé (`_prinDrawGuide(..., actif)`) — seul le curseur CSS changeait, donc rien en tactile.
+    Pas de halo autour du pictogramme : il empâtait l'objet au lieu de le désigner ;
+  - **aimantation** du micro sur les positions remarquables à `PRIN_SNAP_PX` = 5 px (Alt la
+    désactive). Seul M s'aimante : déplacer une source déplacerait aussi les cibles, l'aimant y
+    serait un piège ;
+  - **clavier** : le canvas est focusable (`tabindex="0"`), ← → déplacent l'élément sélectionné de
+    1 cm (10 cm avec Maj), 1/2/3 choisissent S₁, M ou S₂. Aucune aimantation au clavier — le pas
+    y est déjà exact.
 - `drawPrincipe()` est appelée **à chaque frame, même en pause** : sinon un redimensionnement ou
   un glissement de source pendant la pause laisserait une image obsolète.
 
@@ -553,6 +626,7 @@ index.html
   │                   expose : simPrin, initPrincipe, resizePrincipe, tickPrincipe, drawPrincipe,
   │                             setPrincipeMode, togglePausePrincipe, resetPrincipe,
   │                             onSliderSpeedPrin, onSliderLambdaPrin, onSliderA1Prin,
+  │                             onSliderX1Prin, onSliderXMPrin, onSliderX2Prin,
   │                             onSliderA2Prin, resetParamsPrincipe, togglePrinEnveloppe,
   │                             togglePrinReperes, togglePrinCotes, togglePrinValeurs
   │

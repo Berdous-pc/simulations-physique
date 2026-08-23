@@ -97,7 +97,11 @@ main {
   overflow: hidden;
   position: relative;
 }
-#principe-canvas { display: block; width: 100%; height: 100%; }
+#principe-canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+/* Le canvas est focusable (tabindex) pour le pilotage clavier : on garde un
+   liseré discret plutôt que le contour par défaut du navigateur, très épais. */
+#principe-canvas:focus { outline: none; box-shadow: inset 0 0 0 2px rgba(42, 106, 170, 0.35); }
+#principe-canvas:focus-visible { outline: none; box-shadow: inset 0 0 0 2px rgba(42, 106, 170, 0.55); }
 /* Blocs de réglages propres au mode 1D de l'onglet Principe : la mise en page
    est ici et non en style inline, car setPrincipeMode() les réaffiche en
    remettant style.display à '' — un display:flex inline serait alors perdu. */

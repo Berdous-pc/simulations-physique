@@ -28,7 +28,10 @@
          canvas, cf. js/principe.js. Mode 2D : placeholder, à venir. -->
     <div id="principe-area" style="display:none;">
       <div id="prin-scene-area">
-        <canvas id="principe-canvas"></canvas>
+        <!-- tabindex : rend le canvas focusable au clavier — ← → déplacent
+             l'élément sélectionné, 1/2/3 le choisissent (cf. principe.js). -->
+        <canvas id="principe-canvas" tabindex="0"
+                aria-label="Deux haut-parleurs face à face et un micro déplaçables sur un axe"></canvas>
       </div>
       <div id="prin-2d-placeholder" class="tab-placeholder" style="display:none;">
         <span class="tab-placeholder-icon">📐</span>
@@ -224,6 +227,29 @@
                    oninput="onSliderA2Prin(this.value)">
           </div>
           <button class="btn btn-reset" style="margin-top:4px;" onclick="resetParamsPrincipe()">Par défaut</button>
+        </div>
+
+        <!-- Positions : doublon assumé du glisser-déposer sur le canvas — un
+             énoncé « placez M à 1,80 m » ne se traite pas à la souris, et au
+             vidéoprojecteur un curseur est plus sûr qu'un glissement. Les deux
+             voies restent synchronisées (cf. _prinSyncPosSliders). -->
+        <div>
+          <div class="section-title">Positions</div>
+          <div class="param-row">
+            <label>Source S₁ <span><span id="lbl-x1-prin">0,00</span> m</span></label>
+            <input type="range" id="sl-x1-prin" min="0" max="4" step="0.01" value="0"
+                   oninput="onSliderX1Prin(this.value)">
+          </div>
+          <div class="param-row">
+            <label>Micro M <span><span id="lbl-xm-prin">2,00</span> m</span></label>
+            <input type="range" id="sl-xm-prin" min="0" max="4" step="0.01" value="2"
+                   oninput="onSliderXMPrin(this.value)">
+          </div>
+          <div class="param-row">
+            <label>Source S₂ <span><span id="lbl-x2-prin">4,00</span> m</span></label>
+            <input type="range" id="sl-x2-prin" min="0" max="4" step="0.01" value="4"
+                   oninput="onSliderX2Prin(this.value)">
+          </div>
         </div>
 
         <div>
@@ -449,7 +475,11 @@
         troisième leur <strong>superposition</strong>. Faites glisser S₁, S₂ et le micro
         <strong>M</strong> le long de l'axe : selon la différence de marche
         δ = |S₁M − S₂M| comparée à λ, l'interférence en M est
-        <strong>constructive</strong> (δ = k·λ) ou <strong>destructive</strong> (δ = (k + ½)·λ).
+        <strong>constructive</strong> (δ = k·λ) ou <strong>destructive</strong> (δ = (k + ½)·λ) —
+        les positions repérées <strong>V</strong> (ventre) et <strong>N</strong> (nœud) sont
+        espacées de λ/2. Les curseurs « Positions » donnent une valeur exacte ; au clavier,
+        <strong>1</strong>/<strong>2</strong>/<strong>3</strong> choisissent S₁, M ou S₂ et les
+        flèches ← → les déplacent.
       </div>
     </div>
 
