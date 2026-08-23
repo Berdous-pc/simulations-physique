@@ -531,8 +531,8 @@ function _prinLayout(ctx) {
     s.pxPerM = s.plotW / PRIN_VIEW_WIDTH_M;
 
     s.rows = [
-        { y0: padTop + s.unitH * 0.5,             half: s.unitH * 0.5, maxU: 1, titre: 'S₁ seule — y₁(x, t)' },
-        { y0: padTop + s.unitH * 1.5 + gap,       half: s.unitH * 0.5, maxU: 1, titre: 'S₂ seule — y₂(x, t)' },
+        { y0: padTop + s.unitH * 0.5,             half: s.unitH * 0.5, maxU: 1, titre: 'S₁ seule — y₁' },
+        { y0: padTop + s.unitH * 1.5 + gap,       half: s.unitH * 0.5, maxU: 1, titre: 'S₂ seule — y₂' },
         { y0: padTop + s.unitH * 3.0 + gap * 2,   half: s.unitH * 1.0, maxU: 2, titre: 'Superposition — y₁ + y₂' }
     ];
 
@@ -2533,8 +2533,6 @@ function drawPrincipe() {
             }
         }
 
-        _prinDrawTitre(ctx, row, col, boundsM, r === 1 ? 'right' : 'left');
-
         // Poignées déplaçables : S₁ sur les lignes 1 et 3, S₂ sur les lignes 2 et 3.
         // Le repère de position (ergot + point) est dessiné APRÈS, par-dessus la
         // courbe et le pictogramme, pour rester net à l'endroit exact x₁/x₂.
@@ -2576,6 +2574,11 @@ function drawPrincipe() {
                 _prinDrawSourceMark(ctx, xS2 - srcH * PRIN_SRC_TIP_RATIO, row.y0, PRIN_COL_S2);
             }
         }
+
+        // Titre de la bande : tracé APRÈS les pictogrammes (haut-parleurs en
+        // mode Signal, membranes en mode Particules) pour rester lisible
+        // devant eux — cf. correctif du recouvrement en mode Particules/Les deux.
+        _prinDrawTitre(ctx, row, col, boundsM, r === 1 ? 'right' : 'left');
     }
 
     // Légende des repères — après les courbes : c'est un cartouche de

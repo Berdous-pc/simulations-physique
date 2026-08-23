@@ -13,7 +13,7 @@ interferences/
     ├── scene.js     ← scène 3D (Three.js)
     ├── graph.js     ← graphe I(x) de l'onglet "Ondes lumineuses"
     ├── surfaces.js  ← onglet "Ondes de surface" (état, rendu et graphes propres)
-    ├── principe.js  ← onglet "Principe" (état, physique et rendu propres — mode 1D)
+    ├── principe.js  ← onglet "Interférences en 1D" (état, physique et rendu propres — mode 1D)
     └── ui.js
 ```
 
@@ -51,7 +51,7 @@ contrairement aux 5 formes de `diffraction/`) — évolution possible plus tard.
 
 | Onglet | `#hash` | État | Contenu |
 |---|---|---|---|
-| **Principe** | `#principe` | **Implémenté** (`js/principe.js`) en **mode 1D** ; mode 2D en placeholder | Deux haut-parleurs face à face sur un axe, et un micro déplaçable entre eux — cf. §`js/principe.js` |
+| **Interférences en 1D** | `#principe` | **Implémenté** (`js/principe.js`) en **mode 1D** ; mode 2D en placeholder | Deux haut-parleurs face à face sur un axe, et un micro déplaçable entre eux — cf. §`js/principe.js` |
 | **Ondes de surface** | `#surfaces` | **Implémenté** (`js/surfaces.js`) | Interférences de 2 sources ponctuelles synchrones dans une cuve à ondes — cf. §`js/surfaces.js` |
 | **Ondes lumineuses** | `#lumineuses` | **Implémenté** (`js/sim.js` + `scene.js` + `graph.js`), **actif par défaut** | Interférences d'Young modélisées en 3D — le reste de ce document |
 
@@ -348,7 +348,7 @@ Trois graphes au choix, affichables **seul ou par deux** (`graphMode`, `toggleSu
 Échantillonnage adaptatif (`SURF_GRAPH_SAMPLES_PER_LAMBDA` = 8, plafonné à
 `SURF_GRAPH_SAMPLES_MAX` = 6000) : le nombre de points suit λ et l'étendue affichée.
 
-### `js/principe.js` — Onglet « Principe »
+### `js/principe.js` — Onglet « Interférences en 1D »
 
 **Chargé après `surfaces.js`, avant `ui.js`.** Autonome : état `simPrin`, rendu canvas 2D propre,
 aucune dépendance au reste de la page hormis `formatFr()` (`scene.js`).
@@ -1092,7 +1092,7 @@ n'importe quel slider pour la fluidité) :
 
 - Aucune fonctionnalité de détection téléphone/orientation (pas d'overlay de rotation, pas de
   media query dédiée) : choix assumé pour cette page, comme `diffraction/`.
-- Onglet « Principe » : le **mode 1D est implémenté** (`js/principe.js`) ; le **mode 2D** du
+- Onglet « Interférences en 1D » : le **mode 1D est implémenté** (`js/principe.js`) ; le **mode 2D** du
   sélecteur reste un placeholder (icône + texte « Simulation à venir »), câblé dans
   `setPrincipeMode()` en attendant son contenu — il n'affecte ni « Ondes de surface » ni
   « Ondes lumineuses ».

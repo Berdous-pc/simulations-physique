@@ -376,7 +376,7 @@ function toggleHint(tab) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-//  Onglets principaux du panneau : Principe / Ondes de surface / Ondes lumineuses.
+//  Onglets principaux du panneau : Interférences en 1D / Ondes de surface / Ondes lumineuses.
 // ─────────────────────────────────────────────────────────────────────
 const MAIN_TABS = ['principe', 'surfaces', 'lumineuses'];
 function setMainTab(tab) {
