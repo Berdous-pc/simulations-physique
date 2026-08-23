@@ -127,15 +127,15 @@ var simPrin = {
 // Pulsation ω = 2π·c/λ (rad/s)
 function _prinOmega() { return 2 * Math.PI * PRIN_C / simPrin.lambda; }
 
-// Onde issue de S₁, qui se propage vers la DROITE. Nulle avant la source, au
-// delà de S₂ (un haut-parleur ne rayonne pas à travers l'autre — on ne
-// représente que la zone S₁→S₂, pas la moitié arrière de S₁) et tant que le
-// front n'est pas arrivé (t < d/c) : c'est ce qui rend la propagation visible
-// au lancement. Déplacer la source pendant l'animation re-cale son front sur
-// la nouvelle position (approximation assumée : pas d'historique causal comme
-// _surfSourceContrib, inutile ici).
-function _prinY1(x, t) {
-    if (x > simPrin.x2) return 0;
+// Onde issue de S₁, qui se propage vers la DROITE, tant que le front n'est
+// pas arrivé (t < d/c) : c'est ce qui rend la propagation visible au
+// lancement. Déplacer la source pendant l'animation re-cale son front sur la
+// nouvelle position (approximation assumée : pas d'historique causal comme
+// _surfSourceContrib, inutile ici). Non bornée en x = x₂ : c'est
+// _prinY1(), plus bas, qui impose cette limite pour le calcul de la somme —
+// cf. _prinY1Libre() pour le tracé de la ligne "S₁ seule", qui va jusqu'au
+// bord de la fenêtre.
+function _prinY1Libre(x, t) {
     var d = x - simPrin.x1;
     if (d < 0) return 0;
     var tr = t - d / PRIN_C;
@@ -144,14 +144,19 @@ function _prinY1(x, t) {
 }
 
 // Onde issue de S₂, qui se propage vers la GAUCHE (mêmes remarques, symétriques).
-function _prinY2(x, t) {
-    if (x < simPrin.x1) return 0;
+function _prinY2Libre(x, t) {
     var d = simPrin.x2 - x;
     if (d < 0) return 0;
     var tr = t - d / PRIN_C;
     if (tr < 0) return 0;
     return simPrin.a2 * Math.sin(_prinOmega() * tr);
 }
+
+// Versions bornées à [x₁, x₂] — un haut-parleur ne rayonne pas à travers
+// l'autre — utilisées pour la SOMME (ligne 3), qui doit rester nulle hors de
+// la zone de recouvrement (cf. bandeau de doc en tête de fichier).
+function _prinY1(x, t) { return (x > simPrin.x2) ? 0 : _prinY1Libre(x, t); }
+function _prinY2(x, t) { return (x < simPrin.x1) ? 0 : _prinY2Libre(x, t); }
 
 // Amplitude de la résultante en x, une fois les fronts passés :
 //   A(x) = √(a₁² + a₂² + 2·a₁·a₂·cos(2π·δ/λ))
@@ -280,16 +285,25 @@ function _prinDrawAxe(ctx, row, avecValeurs) {
 }
 
 // ── Courbe y(x) échantillonnée une valeur par colonne de pixels ───────
-function _prinDrawCourbe(ctx, row, fy, color, largeur) {
+// xMin/xMax (m, optionnels) restreignent le TRACÉ à ce domaine : en dehors,
+// rien n'est dessiné (pas de segment plat sur l'axe) — évite que le signal
+// paraisse "relié" à l'axe y = 0 juste au niveau de la source (cf. appelants).
+function _prinDrawCourbe(ctx, row, fy, color, largeur, xMin, xMax) {
     var s = simPrin;
+    // Arrondis dissymétriques (ceil / floor), jamais Math.round : round() peut
+    // tomber d'un demi-pixel à l'INTÉRIEUR de la borne interdite (x < xMin par
+    // ex.), où fy() vaut 0 par définition — un seul pixel à 0 juste à côté de
+    // la vraie valeur suffit à dessiner un faux trait vertical à l'origine.
+    var iMin = (xMin === undefined) ? 0        : Math.max(0, Math.ceil(xMin * s.pxPerM));
+    var iMax = (xMax === undefined) ? s.plotW  : Math.min(s.plotW, Math.floor(xMax * s.pxPerM));
     ctx.save();
     ctx.strokeStyle = color;
     ctx.lineWidth = largeur;
     ctx.lineJoin = 'round';
     ctx.beginPath();
-    for (var i = 0; i <= s.plotW; i++) {
+    for (var i = iMin; i <= iMax; i++) {
         var y = row.y0 - fy(i / s.pxPerM) * s.ampPx;
-        if (i === 0) ctx.moveTo(s.plotX0, y); else ctx.lineTo(s.plotX0 + i, y);
+        if (i === iMin) ctx.moveTo(s.plotX0 + i, y); else ctx.lineTo(s.plotX0 + i, y);
     }
     ctx.stroke();
     ctx.restore();
@@ -373,21 +387,58 @@ function _prinDrawReperesLegende(ctx) {
     _prinLegendeEntree(ctx, x, y, PRIN_COL_CONSTR, [], 'constructif', police);
 }
 
+// ── Repère de position réelle sur l'axe ────────────────────────────────
+// Petit ergot + point plein exactement sur la ligne y = 0 : le haut-parleur
+// (ci-dessous) est un pictogramme, pas toujours lisible au pixel près, alors
+// que S₁M / S₂M se mesurent depuis cette position précise — d'où ce repère
+// dédié, dessiné PAR-DESSUS l'axe et la courbe pour rester visible.
+function _prinDrawSourceMark(ctx, xpx, y0, color) {
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(xpx, y0 - 7);
+    ctx.lineTo(xpx, y0 + 7);
+    ctx.stroke();
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(xpx, y0, 3.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+}
+
 // ── Haut-parleur schématique posé sur l'axe ───────────────────────────
-// `sens` = +1 émet vers la droite (S₁), −1 vers la gauche (S₂).
+// `sens` = +1 émet vers la droite (S₁), −1 vers la gauche (S₂). Caisse en
+// gris métallique (même famille de teintes que le pot vibrant de la page
+// Ondes, cf. ondes/js/tube.js → _drawShaker) ; seul le pavillon reste dans la
+// couleur de la source, pour garder l'identification S₁ orange / S₂ rose.
 function _prinDrawHautParleur(ctx, xpx, y0, h, color, label, sens) {
     var w = h * 0.42;
     ctx.save();
     ctx.translate(xpx, y0);
     ctx.scale(sens, 1);
-    ctx.fillStyle = color;
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
-    // Caisse
+
+    // Caisse — dégradé métallique clair/foncé, indépendant de la couleur source
+    var caisseGrd = ctx.createLinearGradient(0, -h / 2, 0, h / 2);
+    caisseGrd.addColorStop(0,   '#c8d2da');
+    caisseGrd.addColorStop(0.5, '#eef3f6');
+    caisseGrd.addColorStop(1,   '#8a99a6');
+    ctx.fillStyle = caisseGrd;
     ctx.beginPath();
     ctx.rect(-w * 1.15, -h / 2, w, h);
     ctx.fill();
-    // Pavillon
+    ctx.strokeStyle = '#5a6a78';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(-w * 1.15, -h / 2, w, h);
+    // Membrane (petit disque au centre de la caisse), dans la couleur source
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(-w * 0.63, 0, w * 0.32, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Pavillon — couleur de la source
+    ctx.fillStyle = color;
+    ctx.strokeStyle = color;
     ctx.beginPath();
     ctx.moveTo(-w * 0.15, -h / 2);
     ctx.lineTo(w * 0.55, -h * 0.82);
@@ -490,11 +541,25 @@ function drawPrincipe() {
 
         if (r === 2 && s.showEnv) _prinDrawEnveloppe(ctx, row, t);
 
-        var fy, col;
-        if (r === 0)      { fy = function (x) { return _prinY1(x, t); };                 col = PRIN_COL_S1; }
-        else if (r === 1) { fy = function (x) { return _prinY2(x, t); };                 col = PRIN_COL_S2; }
-        else              { fy = function (x) { return _prinY1(x, t) + _prinY2(x, t); }; col = PRIN_COL_SOMME; }
-        _prinDrawCourbe(ctx, row, fy, col, r === 2 ? 2.6 : 2);
+        var fy, col, xMin, xMax;
+        if (r === 0) {
+            // "S₁ seule" : tracée du haut-parleur jusqu'au bord de la fenêtre
+            // (elle ne s'arrête plus à l'abscisse de S₂), jamais avant S₁.
+            fy = function (x) { return _prinY1Libre(x, t); };
+            col = PRIN_COL_S1; xMin = s.x1; xMax = PRIN_VIEW_WIDTH_M;
+        } else if (r === 1) {
+            fy = function (x) { return _prinY2Libre(x, t); };
+            col = PRIN_COL_S2; xMin = 0; xMax = s.x2;
+        } else {
+            // Superposition : affichée seulement entre S₁ et S₂ (comportement
+            // inchangé), mais domaine de tracé explicitement borné à [x₁, x₂] —
+            // sans cela, le tracé démarrait en x = 0 avec une valeur nulle
+            // (hors zone), créant le même faux « trait vertical » au niveau de
+            // chaque source que sur les lignes 1 et 2 avant leur correctif.
+            fy = function (x) { return _prinY1(x, t) + _prinY2(x, t); };
+            col = PRIN_COL_SOMME; xMin = s.x1; xMax = s.x2;
+        }
+        _prinDrawCourbe(ctx, row, fy, col, r === 2 ? 2.6 : 2, xMin, xMax);
 
         // Guide vertical au niveau de M + point de lecture sur la courbe : les
         // trois lignes se lisent ainsi sur une même verticale (y₁ en M, y₂ en M,
@@ -521,9 +586,17 @@ function drawPrincipe() {
                   PRIN_COL_LABEL, 'bold ' + (fs * 0.9) + 'px "Segoe UI", Arial, sans-serif',
                   'left', 'top');
 
-        // Poignées déplaçables : S₁ sur les lignes 1 et 3, S₂ sur les lignes 2 et 3
-        if (r === 0 || r === 2) _prinDrawHautParleur(ctx, xS1, row.y0, srcH, PRIN_COL_S1, 'S₁', 1);
-        if (r === 1 || r === 2) _prinDrawHautParleur(ctx, xS2, row.y0, srcH, PRIN_COL_S2, 'S₂', -1);
+        // Poignées déplaçables : S₁ sur les lignes 1 et 3, S₂ sur les lignes 2 et 3.
+        // Le repère de position (ergot + point) est dessiné APRÈS, par-dessus la
+        // courbe et le pictogramme, pour rester net à l'endroit exact x₁/x₂.
+        if (r === 0 || r === 2) {
+            _prinDrawHautParleur(ctx, xS1, row.y0, srcH, PRIN_COL_S1, 'S₁', 1);
+            _prinDrawSourceMark(ctx, xS1, row.y0, PRIN_COL_S1);
+        }
+        if (r === 1 || r === 2) {
+            _prinDrawHautParleur(ctx, xS2, row.y0, srcH, PRIN_COL_S2, 'S₂', -1);
+            _prinDrawSourceMark(ctx, xS2, row.y0, PRIN_COL_S2);
+        }
     }
 
     if (s.showReperes) _prinDrawReperesLegende(ctx);
