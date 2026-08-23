@@ -381,9 +381,11 @@ quand « Afficher les valeurs » est actif, chaque point porte sa valeur chiffr�
 avant la boucle de rendu des bandes : tracés bande par bande, leurs pointillés étaient tronqués à
 chaque gouttière.
 
-Sous la ligne 3, un **couloir de cotes** (`simPrin.coteYs`) accueille les doubles flèches λ/2, S₁M
-et S₂M. Elles étaient auparavant tracées *dans* la bande, à `y0 + half·0,82` — c'est-à-dire
-exactement sur l'amplitude 2, donc dans la courbe dès que A₁ + A₂ approchait son maximum.
+Sous la ligne 3 viennent, **dans cet ordre** : les valeurs chiffrées de l'axe, collées au bas de la
+bande — elles graduent son axe, elles lui restent attachées — puis un **couloir de cotes**
+(`simPrin.coteYs`) qui accueille les doubles flèches λ/2, S₁M et S₂M. Ces cotes étaient auparavant
+tracées *dans* la bande, à `y0 + half·0,82` — c'est-à-dire exactement sur l'amplitude 2, donc dans
+la courbe dès que A₁ + A₂ approchait son maximum.
 
 Ses `PRIN_N_COTES` = 3 lignes sont réservées **en permanence**, à slots fixes (0 = λ/2, 1 = S₁M,
 2 = S₂M) : une cote masquée laisse sa ligne vide. Un couloir dimensionné sur les options actives

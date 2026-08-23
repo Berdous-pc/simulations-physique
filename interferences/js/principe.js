@@ -224,19 +224,19 @@ function _prinLayout(ctx) {
     var s = simPrin;
     var fs = _prinFont();
     var padTop = fs * 1.6;
-    var padBot = fs * 1.9;                   // valeurs chiffrées de l'axe, sur UNE seule ligne
 
-    // Couloir de cotes réservé SOUS la bande "superposition". Les cotes y sont
-    // tracées au lieu de l'être DANS la bande : à l'ancienne ordonnée
+    // Sous la dernière bande, dans cet ordre : les valeurs chiffrées de l'axe
+    // COLLÉES à la bande (elles graduent son axe, elles doivent lui rester
+    // attachées), puis le couloir de cotes λ/2 / S₁M / S₂M.
+    //
+    // Ce couloir garde une hauteur CONSTANTE : ses trois lignes sont réservées
+    // en permanence, occupées ou non. Un couloir dimensionné sur les options
+    // actives faisait se comprimer et se translater toute la scène à chaque
+    // bascule de « Coter S₁M et S₂M » ou « Repérer les interférences ».
+    // Les cotes sont hors de la bande parce qu'à l'ancienne ordonnée
     // (y0 + half·0,82) elles tombaient exactement sur l'amplitude 2, donc dans
     // la courbe dès que A₁ + A₂ approchait son maximum.
-    //
-    // Hauteur CONSTANTE : trois lignes (λ/2, S₁M, S₂M) réservées en permanence,
-    // occupées ou non. Un couloir dimensionné sur les options actives faisait
-    // se comprimer et se translater toute la scène à chaque bascule de
-    // « Coter S₁M et S₂M » ou « Repérer les interférences » — insupportable à
-    // l'œil, et le repère visuel de l'élève sautait à chaque clic.
-    var coteH = PRIN_N_COTES * fs * 1.40;
+    var basH = fs * (1.90 + 1.40 * (PRIN_N_COTES - 1)) + 10;   // + pointes de flèche
 
     // unitH/ampPx ne dépendent que de canvasH : on les calcule AVANT padL/padR
     // pour en tirer la taille des haut-parleurs (srcH) et réserver la marge
@@ -246,7 +246,7 @@ function _prinLayout(ctx) {
     // Gouttière entre deux bandes : les trois panneaux étaient jointifs, donc
     // lus comme un seul bloc. Deux intervalles pour trois bandes.
     var gap = Math.max(8, fs * 1.15);
-    var utile = Math.max(40, s.canvasH - padTop - padBot - coteH - 2 * gap);
+    var utile = Math.max(40, s.canvasH - padTop - basH - 2 * gap);
     s.unitH = utile / 4;
     s.ampPx = s.unitH * 0.5 * 0.82;          // ±1 tient dans une unité
 
@@ -306,15 +306,14 @@ function _prinLayout(ctx) {
         { y0: padTop + s.unitH * 3.0 + gap * 2,   half: s.unitH * 1.0, maxU: 2, titre: 'Superposition — y₁ + y₂' }
     ];
 
-    // Couloir de cotes, puis valeurs chiffrées de l'axe — dans cet ordre sous
-    // la dernière bande. Slots FIXES : 0 = λ/2, 1 = S₁M, 2 = S₂M (cf.
-    // drawPrincipe) ; une cote masquée laisse sa ligne vide, elle ne décale
-    // pas les autres.
+    // Valeurs chiffrées collées au bas de la bande, puis le couloir de cotes.
+    // Slots FIXES : 0 = λ/2, 1 = S₁M, 2 = S₂M (cf. drawPrincipe) ; une cote
+    // masquée laisse sa ligne vide, elle ne décale pas les autres.
     var basBandes = padTop + s.unitH * 4 + gap * 2;
-    var yc = basBandes + fs * 0.95;
+    s.axeLabelY = basBandes + fs * 0.30;
+    var yc = basBandes + fs * 1.90;
     s.coteYs = [];
     for (var c = 0; c < PRIN_N_COTES; c++) { s.coteYs.push(yc); yc += fs * 1.40; }
-    s.axeLabelY = basBandes + coteH + fs * 0.30;
 }
 
 function resizePrincipe() {
@@ -720,14 +719,6 @@ function _prinDrawHautParleur(ctx, xpx, y0, h, color, label, sens, phase) {
     ctx.save();
     ctx.translate(xpx, y0);
     ctx.scale(sens, 1);
-
-    // Ombre portée douce : « pose » la caisse sur l'axe au lieu de l'y coller
-    ctx.save();
-    ctx.fillStyle = 'rgba(60, 55, 45, 0.16)';
-    ctx.beginPath();
-    ctx.ellipse(-w * 0.5, h * 0.56, w * 1.15, h * 0.10, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
 
     // Caisse — dégradé métallique clair/foncé, indépendant de la couleur source
     var caisseGrd = ctx.createLinearGradient(0, -h / 2, 0, h / 2);
