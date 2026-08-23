@@ -30,7 +30,7 @@
 //
 //  Ralenti : à λ = 0,60 m, T = λ/c ≈ 1,8 ms — inobservable en temps réel.
 //  simTime avance de dtRéel / PRIN_RALENTI, ce qui donne une célérité
-//  APPARENTE de 1 m/s (le front traverse les 4 m de l'axe en 4 s au
+//  APPARENTE de 0,5 m/s (le front traverse les 4 m de l'axe en 8 s au
 //  facteur de vitesse ×1,00).
 //
 //  Autonome (état `simPrin`), sur le modèle de js/surfaces.js. N'utilise
@@ -43,7 +43,11 @@
 // ── Constantes physiques ──────────────────────────────────────────────
 var PRIN_C            = 340;   // célérité du son dans l'air (m/s), fixe
 var PRIN_VIEW_WIDTH_M = 4.0;   // largeur physique de l'axe (m) — calibre pxPerM au resize
-var PRIN_RALENTI      = 340;   // facteur de ralenti (cf. bandeau de doc ci-dessus)
+// Facteur de ralenti (cf. bandeau de doc ci-dessus) — doublé (680, au lieu de
+// 340) pour diviser par 2 toutes les vitesses d'animation SANS toucher aux
+// crans affichés (×0,10/0,25/0,50/1,00 restent les mêmes libellés) : le
+// nouveau ×1,00 se déplace comme l'ancien ×0,50, etc.
+var PRIN_RALENTI      = 680;
 var PRIN_MARGE_M      = 0.10;  // écart minimal imposé entre deux éléments voisins (m)
 // Lignes du couloir de cotes sous la bande "somme" : 0 = S₁M, 1 = S₂M.
 // Réservées EN PERMANENCE — cf. _prinLayout : la scène ne doit pas bouger
