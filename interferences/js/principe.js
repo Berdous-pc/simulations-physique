@@ -127,6 +127,7 @@ var simPrin = {
     showEnv     : false,   // enveloppe ±A(x) sur la ligne "somme"
     showReperes : false,   // positions constructives / destructives
     showCotes   : false,   // doubles flèches cotées S₁M et S₂M
+    showDelta   : false,   // étiquette δ = |S₁M − S₂M| sous le micro
     showValeurs : false,   // encarts du panneau
 
     // ── Géométrie canvas (px CSS), recalculée au resize ─────────────
@@ -1025,13 +1026,16 @@ function _prinNature() {
              court: 'intermédiaire', texte: 'Cas intermédiaire' };
 }
 
-// ── Badge « δ = … · constructive » posé sous le micro ─────────────────
-// C'EST le résultat de la simulation : il était jusqu'ici enfoui dans le
-// panneau, invisible tant que l'encart « Valeurs » restait replié.
+// ── Badge « δ = |S₁M − S₂M| = … · constructive » posé sous le micro ───
+// Calcul détaillé (barres de valeur absolue comprises), sur le modèle de
+// l'encart « Valeurs » du panneau (cf. _prinUpdateValeurs) : l'élève doit
+// pouvoir suivre le calcul sans ouvrir cet encart. Option « Afficher la
+// différence de marche », désactivée par défaut (cf. showDelta).
 function _prinDrawBadgeDelta(ctx, xpx, y) {
     var s = simPrin, fs = _prinFont();
     var nat = _prinNature();
-    var txt = 'δ = ' + formatFr(nat.delta, 2) + ' m · ' + nat.court;
+    var txt = 'δ = |' + formatFr(nat.d1, 2) + ' − ' + formatFr(nat.d2, 2) + '| = ' +
+               formatFr(nat.delta, 2) + ' m · ' + nat.court;
     var police = 'bold ' + (fs * 0.92) + 'px "Segoe UI", Arial, sans-serif';
     ctx.save();
     ctx.font = police;
@@ -1161,7 +1165,11 @@ function drawPrincipe() {
         if (s.showValeurs) {
             var nomLec = (r === 0) ? 'y₁(M)' : (r === 1) ? 'y₂(M)' : 'y₁+y₂';
             var cote = (s.xM > (s.x1 + s.x2) / 2) ? -1 : 1;   // du côté le plus dégagé
-            _prinText(ctx, nomLec + ' = ' + formatFr(yLec, 2),
+            // + 0 chasse le "-0,00" : à 2 décimales, une valeur infime mais
+            // négative (creux d'interférence destructive) s'arrondissait en
+            // "-0,00", qui oscillait moche avec "0,00" au fil de l'animation.
+            var yAff = yLec.toFixed(2) === '-0.00' ? 0 : yLec;
+            _prinText(ctx, nomLec + ' = ' + formatFr(yAff, 2),
                       xM + cote * fs * 0.9, row.y0 - yLec * s.ampPx - fs * 0.9,
                       PRIN_COL_M, 'bold ' + (fs * 0.88) + 'px "Segoe UI", Arial, sans-serif',
                       cote > 0 ? 'left' : 'right', 'middle', PRIN_COL_BAND);
@@ -1195,10 +1203,13 @@ function drawPrincipe() {
     var row3 = s.rows[2];
     _prinDrawMicro(ctx, xM, row3.y0, micH, 'M (' + formatFr(s.xM, 2) + ' m)');
     // Badge δ : sous le socle du micro, puis sous son libellé « M » — rabattu
-    // dans la bande si la fenêtre est trop basse pour tout empiler.
-    _prinDrawBadgeDelta(ctx, xM,
-        Math.min(row3.y0 + micH * (PRIN_MIC_BAS_RATIO + 0.22) + fs * 1.15,
-                 row3.y0 + row3.half - fs * 1.5 - 3));
+    // dans la bande si la fenêtre est trop basse pour tout empiler. N'apparaît
+    // que si « Afficher la différence de marche » est activé (cf. showDelta).
+    if (s.showDelta) {
+        _prinDrawBadgeDelta(ctx, xM,
+            Math.min(row3.y0 + micH * (PRIN_MIC_BAS_RATIO + 0.22) + fs * 1.15,
+                     row3.y0 + row3.half - fs * 1.5 - 3));
+    }
 
     // Couloir de cotes, sous la bande somme. Slots FIXES : 0 = S₁M, 1 = S₂M —
     // une cote masquée laisse sa ligne vide plutôt que de décaler l'autre, et
@@ -1394,21 +1405,15 @@ function initPrincipeDrag() {
 //  CONTRÔLES DU PANNEAU
 // ══════════════════════════════════════════════════════════════════════
 
-// ── Mode 1D / 2D ──────────────────────────────────────────────────────
-// Le mode 2D est un placeholder : il masque la zone de tracé ET les blocs de
-// réglages propres au 1D, sans toucher à l'état de l'animation (revenir en 1D
-// retrouve la scène telle qu'on l'avait laissée).
+// ── Mode 1D ───────────────────────────────────────────────────────────
+// Un seul mode existe pour l'instant (le sélecteur 1D/2D a été retiré du
+// panneau) : cette fonction ne fait plus que révéler la scène au premier
+// affichage de l'onglet.
 function setPrincipeMode(mode) {
-    if (mode !== '2d') mode = '1d';
-    simPrin.mode = mode;
-    var un = (mode === '1d');
-    document.getElementById('btn-mode-1d').classList.toggle('active', un);
-    document.getElementById('btn-mode-2d').classList.toggle('active', !un);
-    document.getElementById('prin-scene-area').style.display = un ? '' : 'none';
-    document.getElementById('prin-2d-placeholder').style.display = un ? 'none' : '';
-    document.getElementById('prin-1d-blocks').style.display = un ? '' : 'none';
-    // Le canvas n'a des dimensions exploitables qu'une fois réaffiché.
-    if (un) resizePrincipe();
+    simPrin.mode = '1d';
+    document.getElementById('prin-scene-area').style.display = '';
+    document.getElementById('prin-2d-placeholder').style.display = 'none';
+    resizePrincipe();
 }
 
 // ── Lancer / Pause / Reprendre ────────────────────────────────────────
@@ -1431,18 +1436,15 @@ function togglePausePrincipe() {
     _prinSyncPlayBtn();
 }
 
-// RAZ : remet l'ANIMATION à zéro (temps, pause, positions des trois éléments).
-// Les réglages λ / A₁ / A₂ ne sont pas touchés — ils relèvent du bouton
-// "Par défaut" de la section Paramètres.
+// RAZ : remet l'ANIMATION à zéro (temps, pause). Les positions de S₁, S₂ et M
+// ne sont PAS touchées — seul le glisser-déposer sur le canvas les déplace
+// désormais (plus de bouton "Par défaut" ni de curseurs « Positions »), donc
+// RAZ ne doit pas les réinitialiser dans le dos de l'élève.
 function resetPrincipe() {
     simPrin.simTime = 0;
     simPrin.paused = true;
-    simPrin.x1 = PRIN_X1_DEF;
-    simPrin.x2 = PRIN_X2_DEF;
-    simPrin.xM = PRIN_XM_DEF;
     simPrin.drag = null;
     simPrin.hover = null;
-    simPrin.sel = 'M';
     // Sans cette remise à null, le premier dt après le reset vaudrait tout le
     // temps écoulé depuis la dernière frame (cf. surfaces.js → resetSurfaces).
     _prinLastFrameT = null;
@@ -1478,33 +1480,6 @@ function onSliderA2Prin(v) {
     if (lbl) lbl.textContent = formatFr(simPrin.a2, 2);
 }
 
-// ── Positions au curseur ──────────────────────────────────────────────
-// Le glisser-déposer sur le canvas reste le geste principal, mais un énoncé
-// du type « placez M à 1,80 m » ne se traite pas à la souris — et au tableau,
-// un curseur est bien plus sûr qu'un glissement. Les trois curseurs et les
-// positions du canvas restent synchronisés dans les deux sens
-// (_prinSyncPosSliders est appelée par _prinUpdateValeurs, donc à chaque
-// déplacement).
-function onSliderX1Prin(v) { _prinSetDragPos('S1', parseFloat(v), true); }
-function onSliderXMPrin(v) { _prinSetDragPos('M',  parseFloat(v), true); }
-function onSliderX2Prin(v) { _prinSetDragPos('S2', parseFloat(v), true); }
-
-function _prinSyncPosSliders() {
-    var s = simPrin;
-    _prinSetSlider('sl-x1-prin', s.x1, 'lbl-x1-prin', 2);
-    _prinSetSlider('sl-xm-prin', s.xM, 'lbl-xm-prin', 2);
-    _prinSetSlider('sl-x2-prin', s.x2, 'lbl-x2-prin', 2);
-}
-
-// Remet les seuls PARAMÈTRES (λ, A₁, A₂) à leurs valeurs par défaut.
-function resetParamsPrincipe() {
-    simPrin.lambda = PRIN_LAMBDA_DEF;
-    simPrin.a1 = PRIN_A1_DEF;
-    simPrin.a2 = PRIN_A2_DEF;
-    _prinSyncSliders();
-    _prinUpdateValeurs();
-}
-
 function _prinSetSlider(id, value, lblId, dec) {
     var sl  = document.getElementById(id);
     var lbl = document.getElementById(lblId);
@@ -1522,7 +1497,6 @@ function _prinSyncSliders() {
     if (sl) sl.value = idx;
     var lbl = document.getElementById('lbl-speed-prin');
     if (lbl) lbl.textContent = formatFr(simPrin.speedFactor, 2);
-    _prinSyncPosSliders();
 }
 
 // ── Options d'affichage ───────────────────────────────────────────────
@@ -1538,6 +1512,7 @@ function togglePrinEnveloppe() { _prinToggleOption('showEnv', 'btn-env-prin'); }
 // pixel quand on les active.
 function togglePrinReperes()   { _prinToggleOption('showReperes', 'btn-reperes-prin'); }
 function togglePrinCotes()     { _prinToggleOption('showCotes', 'btn-cotes-prin'); }
+function togglePrinDelta()     { _prinToggleOption('showDelta', 'btn-delta-prin'); }
 
 function togglePrinValeurs() {
     _prinToggleOption('showValeurs', 'btn-toggle-valeurs-prin');
@@ -1550,7 +1525,6 @@ function togglePrinValeurs() {
 // La classification constructif / destructif / intermédiaire vit désormais
 // dans _prinNature() (partagée avec le badge dessiné sous le micro).
 function _prinUpdateValeurs() {
-    _prinSyncPosSliders();          // les curseurs de position suivent le drag
     if (!simPrin.showValeurs) return;
     var nat = _prinNature();
 

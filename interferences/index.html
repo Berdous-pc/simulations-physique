@@ -172,18 +172,7 @@
     <!-- ═══ Section PRINCIPE ═══ -->
     <div class="panel-main-section" id="section-principe" style="display:none;">
 
-      <!-- Mode de la mise en situation : 1D (deux sources face à face sur un axe)
-           ou 2D (à venir). Sélecteur segmenté à deux options de même poids, cf.
-           .seg-toggle (repris de ondes/ → "Aspect de la corde"). -->
-      <div>
-        <div class="section-title">Mode</div>
-        <div class="seg-toggle">
-          <button class="seg-btn active" id="btn-mode-1d" onclick="setPrincipeMode('1d')">1D</button>
-          <button class="seg-btn" id="btn-mode-2d" onclick="setPrincipeMode('2d')">2D</button>
-        </div>
-      </div>
-
-      <!-- Blocs propres au mode 1D (masqués en mode 2D, cf. setPrincipeMode) -->
+      <!-- Blocs propres au mode 1D (seul mode existant, cf. setPrincipeMode) -->
       <div id="prin-1d-blocks">
 
         <div>
@@ -226,30 +215,6 @@
             <input type="range" id="sl-a2-prin" min="0" max="1" step="0.05" value="0.80"
                    oninput="onSliderA2Prin(this.value)">
           </div>
-          <button class="btn btn-reset" style="margin-top:4px;" onclick="resetParamsPrincipe()">Par défaut</button>
-        </div>
-
-        <!-- Positions : doublon assumé du glisser-déposer sur le canvas — un
-             énoncé « placez M à 1,80 m » ne se traite pas à la souris, et au
-             vidéoprojecteur un curseur est plus sûr qu'un glissement. Les deux
-             voies restent synchronisées (cf. _prinSyncPosSliders). -->
-        <div>
-          <div class="section-title">Positions</div>
-          <div class="param-row">
-            <label>Source S₁ <span><span id="lbl-x1-prin">0,00</span> m</span></label>
-            <input type="range" id="sl-x1-prin" min="0" max="4" step="0.01" value="0"
-                   oninput="onSliderX1Prin(this.value)">
-          </div>
-          <div class="param-row">
-            <label>Micro M <span><span id="lbl-xm-prin">2,00</span> m</span></label>
-            <input type="range" id="sl-xm-prin" min="0" max="4" step="0.01" value="2"
-                   oninput="onSliderXMPrin(this.value)">
-          </div>
-          <div class="param-row">
-            <label>Source S₂ <span><span id="lbl-x2-prin">4,00</span> m</span></label>
-            <input type="range" id="sl-x2-prin" min="0" max="4" step="0.01" value="4"
-                   oninput="onSliderX2Prin(this.value)">
-          </div>
         </div>
 
         <div>
@@ -257,7 +222,8 @@
           <div style="display:flex; flex-direction:column; gap:8px;">
             <button class="btn btn-toggle-one" id="btn-env-prin" onclick="togglePrinEnveloppe()">Afficher l'enveloppe</button>
             <button class="btn btn-toggle-one" id="btn-reperes-prin" onclick="togglePrinReperes()">Repérer les interférences</button>
-            <button class="btn btn-toggle-one" id="btn-cotes-prin" onclick="togglePrinCotes()">Coter S₁M et S₂M</button>
+            <button class="btn btn-toggle-one" id="btn-cotes-prin" onclick="togglePrinCotes()">Afficher S₁M et S₂M</button>
+            <button class="btn btn-toggle-one" id="btn-delta-prin" onclick="togglePrinDelta()">Afficher la différence de marche</button>
           </div>
         </div>
 
@@ -477,7 +443,7 @@
         δ = |S₁M − S₂M| comparée à λ, l'interférence en M est
         <strong>constructive</strong> (δ = k·λ) ou <strong>destructive</strong> (δ = (k + ½)·λ) —
         les positions repérées <strong>V</strong> (ventre) et <strong>N</strong> (nœud) sont
-        espacées de λ/2. Les curseurs « Positions » donnent une valeur exacte ; au clavier,
+        espacées de λ/2. Au clavier,
         <strong>1</strong>/<strong>2</strong>/<strong>3</strong> choisissent S₁, M ou S₂ et les
         flèches ← → les déplacent.
       </div>
