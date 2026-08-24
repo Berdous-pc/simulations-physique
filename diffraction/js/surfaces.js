@@ -60,6 +60,10 @@
 //  grille d'aperçu ~4× moins chère tient lieu de rendu, la grille définitive n'étant calculée
 //  qu'à l'accalmie — cf. _scheduleSurfRebuild.
 //
+//  Le cadrage, enfin, se règle en largeur de vue (cm) — slider continu ou molette sur le bassin,
+//  avec une barre d'échelle graduée comme repère. Il reste FIXE EN CENTIMÈTRES, jamais indexé sur
+//  λ : cf. la discussion en tête du bloc SURF_VIEW_* pour la raison, qui est pédagogique.
+//
 //  Dépend de : sim.js, scene.js (formatFr). Chargé après graph.js, avant ui.js.
 // ══════════════════════════════════════════════════════════════════════
 
@@ -67,7 +71,31 @@
 
 // ── Constantes ────────────────────────────────────────────────────────
 var SURF_C_CM           = 9.6;  // célérité de l'onde (cm/s), fixe
-var SURF_VIEW_WIDTH_CM  = 45;   // largeur visible du bassin (calibre pxPerCm au resize)
+// ── Cadrage du bassin ─────────────────────────────────────────────────
+// Le zoom se règle DIRECTEMENT en largeur de vue (cm), la grandeur physique que l'utilisateur
+// lit sur le slider et sur la barre d'échelle (cf. _drawSurfScaleBar) — plus de facteur abstrait
+// dont le « ×1 » désignait paradoxalement le dézoom maximal.
+//
+// Ce cadrage est FIXE EN CENTIMÈTRES : rien ici ne réagit à λ. C'est délibéré et non
+// négociable pédagogiquement — un cadrage qui suivrait λ rendrait toutes les vues semblables
+// (la figure ne dépend que de a/λ), et le slider λ semblerait ne rien faire alors que c'est
+// précisément l'effet qu'on veut montrer. La contrepartie assumée : aux petites λ dans une vue
+// large, une longueur d'onde ne fait plus que quelques pixels — c'est à l'utilisateur de zoomer,
+// d'où l'importance d'un zoom qui va assez loin.
+//
+// Le défaut n'est PLUS la vue la plus large (qui était aussi la moins lisible de toute la plage).
+// Bornes et défaut sont choisis pour que le facteur de zoom AFFICHÉ tombe juste : le libellé
+// montre ×(défaut/vue), donc ×1 = vue par défaut, et la plage 25↔200 cm autour de 100 cm donne
+// exactement ×0,5 (le plus large) à ×4 (le plus serré).
+var SURF_VIEW_MIN_CM     = 25;   // vue la plus serrée (slider à droite) → ×4
+var SURF_VIEW_MAX_CM     = 200;  // vue la plus large  (slider à gauche) → ×0,5
+var SURF_VIEW_DEFAULT_CM = 100;  // → ×1
+// Slider à progression GÉOMÉTRIQUE (chaque cran multiplie la largeur de vue par un facteur
+// constant) : c'est ce qui rend les pas perceptivement uniformes. 240 crans ⇒ +0,8 % par cran,
+// donc un glissement continu à l'œil. Ce qui interdisait un slider continu autrefois — un
+// rebuild complet par évènement — a disparu avec la grille d'aperçu (cf. _scheduleSurfRebuild).
+var SURF_ZOOM_STEPS      = 240;
+var SURF_WHEEL_SENS      = 0.0015; // molette : facteur exp(deltaY · sens) sur la largeur de vue
 var SURF_GRAPH_WINDOW   = 5;    // fenêtre temporelle du graphe y(t), en s
 var SURF_GRID_FACTOR    = 4;    // sous-échantillonnage du champ (px CSS par cellule de grille) à zoom=1
 
@@ -81,16 +109,41 @@ var SURF_GRID_FACTOR    = 4;    // sous-échantillonnage du champ (px CSS par ce
 //     brouillait. 9 échantillons par période : en dessous de ~8, la reconstruction bilinéaire de
 //     l'agrandissement (cf. drawSurfaces) laisse une ondulation d'amplitude parasite et un moiré
 //     avec la trame de la grille. (Valeur précédente : 5.)
-// Le coût (rebuild ∝ cellules × sources, dessin par frame ∝ cellules) est borné non plus par des
-// maxima SÉPARÉS en largeur et en hauteur — qui écrasaient la largeur bien avant la hauteur, donc
-// déformaient la grille — mais par un BUDGET DE CELLULES : au-delà, les deux dimensions sont
-// divisées par le même facteur. La dégradation est ainsi progressive et isotrope au lieu d'être
-// une falaise sur un seul axe.
+// Le coût est borné non plus par des maxima SÉPARÉS en largeur et en hauteur — qui écrasaient la
+// largeur bien avant la hauteur, donc déformaient la grille — mais par des BUDGETS globaux : au
+// delà, les deux dimensions sont divisées par le même facteur. La dégradation est ainsi
+// progressive et isotrope au lieu d'être une falaise sur un seul axe. Deux budgets, parce que les
+// deux coûts ne suivent pas la même loi : le dessin par frame ∝ cellules, le rebuild ∝ cellules ×
+// sources (cf. SURF_REBUILD_BUDGET plus bas).
 var SURF_GRID_CELLS_PER_LAMBDA = 9;
-var SURF_GRID_BUDGET       = 180000; // cellules, grille définitive
-var SURF_GRID_BUDGET_DRAFT = 45000;  // cellules, grille d'aperçu pendant un geste (cf. _scheduleSurfRebuild)
+var SURF_GRID_BUDGET       = 360000; // cellules, grille définitive
+var SURF_GRID_BUDGET_DRAFT = 90000;  // cellules, grille d'aperçu pendant un geste (cf. _scheduleSurfRebuild)
 var SURF_GRID_MIN_W        = 40;
 var SURF_GRID_MIN_H        = 30;
+
+// PLAFOND ÉCRAN — une cellule par pixel CSS. Au-delà, la finesse calculée ne peut tout simplement
+// pas s'afficher : c'est du calcul jeté. Ce plafond est aussi la limite théorique de la
+// simulation — au dézoom maximal avec λ = 1 cm, une longueur d'onde ne couvre que ~4,5 pixels
+// écran, donc aucune grille, si fine soit-elle, ne rendra ce réglage net. C'est à l'utilisateur
+// de zoomer ; le budget ci-dessus est dimensionné pour atteindre CE plafond, pas pour le dépasser.
+
+// PLAFOND DE COÛT DU REBUILD — le nombre de cellules ne borne que le dessin par frame ; le
+// rebuild, lui, coûte cellules × sources (la symétrie haut/bas n'en calculant que la moitié,
+// d'où le facteur 2 à l'usage). Or les sources de Huygens sont les plus nombreuses exactement là
+// où l'on voudrait le plus de cellules : grande ouverture ET petite longueur d'onde. Sans ce
+// second plafond, le temps de rebuild pourrait se mettre à figer visiblement l'affichage sur une
+// machine modeste.
+//
+// Il est réglé pour NE PAS MORDRE sur la plage de réglages accessible : le pire cas est
+// N = 3·a/λ = 90 sources (a = 30 cm, λ = 1 cm), qui demande SURF_GRID_BUDGET·N/2 = 16,2e6
+// évaluations. Une première valeur plus basse (8e6) rabotait la grille dans tout le haut de la
+// plage de `a`, proportionnellement à `a` puisque N lui est proportionnel — la figure se
+// dégradait donc visiblement à mesure qu'on ouvrait la fente, alors même que c'est le réglage où
+// le faisceau reste le plus brillant, donc où l'artefact se voit le plus. Le plafond ne sert donc
+// plus que de garde-fou si SURF_GRID_BUDGET était relevé, ou sur un bassin au rapport
+// hauteur/largeur inhabituel (un bassin haut coûte plus de cellules à finesse égale).
+var SURF_REBUILD_BUDGET       = 17e6; // évaluations source×cellule par rebuild définitif
+var SURF_REBUILD_BUDGET_DRAFT = 2e6;  // idem, grille d'aperçu (lui mord, et c'est voulu)
 
 // ── Aperçu pendant les gestes, puis raffinement ───────────────────────
 // Deux demandes de rebuild rapprochées de moins de SURF_INTERACT_WINDOW_MS = un geste en cours
@@ -170,19 +223,13 @@ var SURF_GEO_R_FLOOR    = 0.25;     // plancher de r (× λ) dans la décroissan
 var SURF_GAIN_MAX       = 3.5;  // plafond (sinon écrêtage massif du champ lointain)
 var SURF_GAIN_R0_LAMBDA = 3;    // plancher de r₀, en longueurs d'onde
 
-// ── Zoom (slider à crans) ────────────────────────────────────────────
-// zoom = 1 → vue par défaut (SURF_VIEW_WIDTH_CM affichés) ; zoom = SURF_ZOOM_MAX → champ de
-// vision SURF_ZOOM_MAX fois plus large (dézoom, utile pour les grands λ dont le champ proche
-// dépasse la fenêtre par défaut). N'affecte QUE pxPerCm (le rapport a/λ et le nombre de sources
-// de Huygens restent inchangés par le zoom) — MAIS un zoom plus large peut, à λ fixe, exiger une
-// grille plus fine pour rester au-dessus de SURF_GRID_CELLS_PER_LAMBDA (cf.
-// _rebuildSurfFieldCache), donc un rebuild coûteux. Un slider continu (ou la molette) génère
-// des dizaines d'évènements par geste, ce qui saturait le rebuild ; on utilise donc un slider à
-// 4 crans DISCRETS (×1 à ×4, cf. onSliderZoomSurf) : chaque cran ne déclenche qu'un seul rebuild,
-// donc plus besoin d'anti-rebond (setTimeout) ici.
-var SURF_ZOOM_MIN  = 1;
-var SURF_ZOOM_MAX  = 3;
-var SURF_ZOOM_STAGES = 3; // nombre de crans du slider de zoom (×1 à ×3)
+// ── Barre d'échelle (cf. _drawSurfScaleBar) ──────────────────────────
+// Le cadrage étant désormais réglable en continu, une référence métrique dessinée dans le bassin
+// devient indispensable pour situer les distances. Bénéfice secondaire, et pas le moindre : elle
+// rend le changement de λ PLUS explicite qu'avant, les crêtes se resserrant contre une règle qui,
+// elle, ne bouge pas.
+var SURF_SCALE_NICE_CM   = [1, 2, 5, 10, 20, 50, 100, 200]; // longueurs « rondes » admissibles
+var SURF_SCALE_TARGET_FR = 0.14; // longueur visée, en fraction de la largeur du bassin
 
 // Couleurs de l'onde (crêtes ↔ creux) — identiques à ondes/js/vagues.js pour
 // une cohérence visuelle entre les pages du site.
@@ -257,7 +304,7 @@ var simSurf = {
     canvasW     : 0,
     canvasH     : 0,
     pxPerCm     : 10,
-    zoom        : SURF_ZOOM_MAX,   // SURF_ZOOM_MAX = vue par défaut (dézoomée au max, cran ×1 du slider), SURF_ZOOM_MIN = zoom le plus net (cf. constantes ci-dessus)
+    viewCm      : SURF_VIEW_DEFAULT_CM, // largeur de vue du bassin, en cm — SEULE grandeur du zoom (cf. constantes ci-dessus)
     barrierX    : 0,
     barrierCY   : 0,
     gapHalf     : 0,
@@ -344,7 +391,7 @@ function resizeSurfaces() {
     canvas.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
     simSurf.canvasW = w;
     simSurf.canvasH = h;
-    simSurf.pxPerCm = w / (SURF_VIEW_WIDTH_CM * simSurf.zoom);
+    simSurf.pxPerCm = w / simSurf.viewCm;
     simSurf.barrierX = Math.round(w * 0.30);
 
     if (simSurf.firstResize) {
@@ -517,13 +564,21 @@ function _rebuildSurfFieldCache(draft) {
     var lambda_px = s.lambda * s.pxPerCm;
     if (lambda_px <= 0) return;
 
-    // Dimensions de la grille : la plus forte des deux exigences (cadrage écran / échantillonnage
-    // de λ, cf. constantes en tête de fichier), ramenée sous le budget de cellules en divisant
-    // les DEUX dimensions par le même facteur — les deux exigences ayant le rapport d'aspect du
-    // canvas, la grille le conserve donc quoi qu'il arrive.
+    // Dimensions de la grille — tout se joue sur UN scalaire, le nombre de cellules par pixel
+    // CSS : les deux exigences (cadrage écran / échantillonnage de λ, cf. constantes en tête de
+    // fichier) ayant le rapport d'aspect du canvas, la grille le conserve quoi qu'il arrive.
+    var m = Math.max(1 / SURF_GRID_FACTOR, SURF_GRID_CELLS_PER_LAMBDA / lambda_px);
+    if (m > 1) m = 1; // plafond écran : au-delà d'une cellule par pixel, rien ne s'affiche de plus
+    var gw = s.canvasW * m;
+    var gh = s.canvasH * m;
+
+    // Puis les deux plafonds de coût (cf. constantes) : nombre de cellules pour le dessin par
+    // frame, produit cellules × sources pour le rebuild. Le plus contraignant l'emporte, et le
+    // dépassement divise les DEUX dimensions par le même facteur.
     var budget = (draft ? SURF_GRID_BUDGET_DRAFT : SURF_GRID_BUDGET) * s.perfScale;
-    var gw = Math.max(s.canvasW / SURF_GRID_FACTOR, s.canvasW * SURF_GRID_CELLS_PER_LAMBDA / lambda_px);
-    var gh = Math.max(s.canvasH / SURF_GRID_FACTOR, s.canvasH * SURF_GRID_CELLS_PER_LAMBDA / lambda_px);
+    var cellCap = 2 * (draft ? SURF_REBUILD_BUDGET_DRAFT : SURF_REBUILD_BUDGET)
+                    / Math.max(1, _surfEstimateSourceCount());
+    if (cellCap < budget) budget = cellCap;
     if (gw * gh > budget) {
         var shrink = Math.sqrt(budget / (gw * gh));
         gw *= shrink;
@@ -785,6 +840,7 @@ function drawSurfaces() {
         if (s.showAngle) _drawSurfAngle(ctx, W, H);
         if (s.showGraph) _drawSurfPoint(ctx);
         if (s.showGraph && _surfAmpYActive()) _drawSurfCutAxis(ctx, H);
+        _drawSurfScaleBar(ctx, W, H);
         return;
     }
 
@@ -858,6 +914,7 @@ function drawSurfaces() {
     if (s.showAngle) _drawSurfAngle(ctx, W, H);
     if (simSurf.showGraph) _drawSurfPoint(ctx);
     if (simSurf.showGraph && _surfAmpYActive()) _drawSurfCutAxis(ctx, H);
+    _drawSurfScaleBar(ctx, W, H);
 
     _surfPerfSample(perfMs); // en dernier : peut déclencher un rebuild (cf. SURF_PERF_COOLDOWN_MS)
 }
@@ -945,7 +1002,13 @@ function _drawSurfAngle(ctx, W, H) {
 
 // ── Obstacle percé de l'ouverture ────────────────────────────────────
 
-var SURF_OBSTACLE_WIDTH_PX = 27; // épaisseur (px écran) au zoom le plus net (SURF_ZOOM_MIN) ; ×3 par rapport aux 9px précédents
+// Épaisseur exprimée en CENTIMÈTRES (grandeur physique) plutôt qu'en pixels écran, pour que
+// l'obstacle garde une taille cohérente à tout cadrage. Bornée en pixels : la plage de zoom
+// couvrant un facteur ~7, l'obstacle deviendrait sinon un pavé à la vue la plus serrée et un fil
+// à la plus large.
+var SURF_OBSTACLE_CM     = 1.35;
+var SURF_OBSTACLE_MIN_PX = 6;
+var SURF_OBSTACLE_MAX_PX = 50;
 
 function _drawBarrierSurf(ctx, W, H) {
     var s = simSurf;
@@ -953,15 +1016,63 @@ function _drawBarrierSurf(ctx, W, H) {
     // Couleur complémentaire de SURF_COL_BG (= milieu crête/creux, couleur moyenne des vagues) :
     // 255 - [100,125,155] = [155,130,100] = #9b8264.
     ctx.strokeStyle = '#9b8264';
-    // Épaisseur exprimée en cm (fixée au zoom le plus net) plutôt qu'en px écran, pour que
-    // l'obstacle garde une taille physique cohérente quel que soit le cran de zoom choisi.
-    ctx.lineWidth = SURF_OBSTACLE_WIDTH_PX * SURF_ZOOM_MIN / s.zoom;
+    ctx.lineWidth = Math.max(SURF_OBSTACLE_MIN_PX,
+                    Math.min(SURF_OBSTACLE_MAX_PX, SURF_OBSTACLE_CM * s.pxPerCm));
     ctx.beginPath();
     ctx.moveTo(s.barrierX, 0);
     ctx.lineTo(s.barrierX, Math.max(0, s.barrierCY - s.gapHalf));
     ctx.moveTo(s.barrierX, Math.min(H, s.barrierCY + s.gapHalf));
     ctx.lineTo(s.barrierX, H);
     ctx.stroke();
+    ctx.restore();
+}
+
+// ── Barre d'échelle ──────────────────────────────────────────────────
+// Référence métrique en bas à gauche du bassin — côté onde incidente, dont le motif régulier
+// est le moins gênant à recouvrir. Longueur choisie parmi des valeurs rondes (cf.
+// SURF_SCALE_NICE_CM), la plus proche de SURF_SCALE_TARGET_FR de la largeur du bassin, de sorte
+// que le nombre affiché reste lisible à tout cadrage. Tracée en clair sur un liseré sombre, pour
+// rester lisible aussi bien sur les crêtes que sur les creux.
+
+function _drawSurfScaleBar(ctx, W, H) {
+    var pxPerCm = simSurf.pxPerCm;
+    if (!(pxPerCm > 0)) return;
+
+    var targetPx = SURF_SCALE_TARGET_FR * W;
+    var bestCm = SURF_SCALE_NICE_CM[0], bestErr = Infinity;
+    for (var i = 0; i < SURF_SCALE_NICE_CM.length; i++) {
+        // Écart comparé en RELATIF (rapport des longueurs) : sinon les grandes valeurs, dont
+        // l'écart absolu est mécaniquement plus grand, ne seraient jamais retenues.
+        var err = Math.abs(Math.log(SURF_SCALE_NICE_CM[i] * pxPerCm / targetPx));
+        if (err < bestErr) { bestErr = err; bestCm = SURF_SCALE_NICE_CM[i]; }
+    }
+
+    var len = bestCm * pxPerCm;
+    var x0 = 16, y = H - 18, tick = 5;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(x0, y);           ctx.lineTo(x0 + len, y);
+    ctx.moveTo(x0, y - tick);    ctx.lineTo(x0, y + tick);
+    ctx.moveTo(x0 + len, y - tick); ctx.lineTo(x0 + len, y + tick);
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(0, 12, 40, 0.75)';
+    ctx.lineWidth = 5;
+    ctx.stroke();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.font = 'bold 14px "Segoe UI", Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    var label = bestCm + ' cm';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = 'rgba(0, 12, 40, 0.75)';
+    ctx.strokeText(label, x0 + len / 2, y - tick - 3);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(label, x0 + len / 2, y - tick - 3);
     ctx.restore();
 }
 
@@ -1479,31 +1590,77 @@ function initSurfDrag() {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-//  Zoom (slider à SURF_ZOOM_STAGES crans) — champ de vision de SURF_VIEW_WIDTH_CM
-//  (zoom=SURF_ZOOM_MIN, cran ×SURF_ZOOM_STAGES, le plus net) à SURF_ZOOM_MAX·SURF_VIEW_WIDTH_CM
-//  (zoom=SURF_ZOOM_MAX, cran ×1, vue par défaut, dézoomée au max — utile pour les grandes
-//  longueurs d'onde dont le champ proche dépasse la fenêtre la plus zoomée). Le cran de slider
-//  (1 à SURF_ZOOM_STAGES) est INVERSEMENT proportionnel au zoom interne — cf. onSliderZoomSurf.
-//  Chaque cran ne déclenche qu'un seul rebuild de la grille (pas de geste continu comme à la
-//  molette), donc pas besoin d'anti-rebond ici.
+//  Zoom — réglé en largeur de vue (cm), du plus large (SURF_VIEW_MAX_CM, slider à gauche) au
+//  plus serré (SURF_VIEW_MIN_CM, slider à droite) : le slider va donc dans le SENS NATUREL,
+//  contrairement à l'ancien réglage à 3 crans dont le cran ×1 était le dézoom maximal.
+//  Progression géométrique (cf. SURF_ZOOM_STEPS) pour des pas perceptivement uniformes.
+//
+//  N'affecte QUE pxPerCm : ni le rapport a/λ, ni le nombre de sources de Huygens, ni la physique.
+//  Zoomer est même MOINS coûteux (moins de λ dans le champ ⇒ grille plus petite à
+//  SURF_GRID_CELLS_PER_LAMBDA constant) ; seul le dézoom demande plus de cellules, et le budget
+//  de B les borne. Les dizaines d'évènements d'un glissement ou d'un coup de molette ne
+//  déclenchent qu'une grille d'aperçu, le définitif venant à l'accalmie (cf. _scheduleSurfRebuild).
 // ══════════════════════════════════════════════════════════════════════
+
+// Position de slider (0…SURF_ZOOM_STEPS) ↔ largeur de vue (cm), en progression géométrique.
+function _surfViewFromSlider(pos) {
+    var f = Math.max(0, Math.min(1, pos / SURF_ZOOM_STEPS));
+    return SURF_VIEW_MAX_CM * Math.pow(SURF_VIEW_MIN_CM / SURF_VIEW_MAX_CM, f);
+}
+
+function _surfSliderFromView(cm) {
+    var f = Math.log(SURF_VIEW_MAX_CM / cm) / Math.log(SURF_VIEW_MAX_CM / SURF_VIEW_MIN_CM);
+    return Math.round(Math.max(0, Math.min(1, f)) * SURF_ZOOM_STEPS);
+}
 
 function _surfApplyZoom() {
     var s = simSurf;
     if (s.canvasW < 10) return;
-    s.pxPerCm = s.canvasW / (SURF_VIEW_WIDTH_CM * s.zoom);
+    s.pxPerCm = s.canvasW / s.viewCm;
     updateSurfGeometry();
 }
 
-function onSliderZoomSurf(v) {
-    var stage = parseInt(v, 10);
-    // Cran ×SURF_ZOOM_STAGES → zoom = SURF_ZOOM_MIN (le plus net) ;
-    // cran ×1 (défaut) → zoom = SURF_ZOOM_MAX (le plus dézoomé).
-    simSurf.zoom = SURF_ZOOM_MAX + SURF_ZOOM_MIN - stage;
+// Point d'entrée unique du zoom (slider, molette, reset) — `syncSlider` remet le curseur en
+// place quand le changement ne vient pas de lui.
+function _surfSetViewCm(cm, syncSlider) {
+    var s = simSurf;
+    s.viewCm = Math.max(SURF_VIEW_MIN_CM, Math.min(SURF_VIEW_MAX_CM, cm));
+
+    // Affiché comme un facteur de zoom classique — ×1 = vue par défaut, plus grand = plus zoomé
+    // (cf. bornes SURF_VIEW_*). La largeur de vue en cm, elle, se lit sur la barre d'échelle
+    // dessinée dans le bassin (cf. _drawSurfScaleBar).
     var lbl = document.getElementById('lbl-zoom-surf');
-    if (lbl) lbl.textContent = stage;
+    if (lbl) lbl.textContent = (SURF_VIEW_DEFAULT_CM / s.viewCm).toFixed(1).replace('.', ',');
+    if (syncSlider) {
+        var sl = document.getElementById('sl-zoom-surf');
+        if (sl) sl.value = _surfSliderFromView(s.viewCm);
+    }
     _surfApplyZoom();
     _syncSurfAngleWarning();
+}
+
+function onSliderZoomSurf(v) {
+    _surfSetViewCm(_surfViewFromSlider(parseInt(v, 10)), false);
+}
+
+// ── Molette sur le bassin ────────────────────────────────────────────
+// Variation MULTIPLICATIVE de la largeur de vue, comme le slider : un cran de molette change la
+// vue du même pourcentage où qu'on soit dans la plage. Ancrée sur l'ouverture comme le slider
+// (barrierX reste à 30 % de la largeur, l'axe reste centré) : la figure étant un éventail issu
+// de l'ouverture, la garder à poste fixe conserve TOUS les lobes à l'écran quel que soit le zoom
+// — d'où l'absence de panoramique à prévoir.
+function initSurfWheelZoom() {
+    var canvas = document.getElementById('surf-canvas');
+    if (!canvas) return;
+    canvas.addEventListener('wheel', function (evt) {
+        // deltaMode : 0 = pixels, 1 = lignes, 2 = pages — normalisé en « pixels » approximatifs.
+        var d = evt.deltaY;
+        if (evt.deltaMode === 1) d *= 16;
+        else if (evt.deltaMode === 2) d *= 400;
+        if (!d) return;
+        evt.preventDefault(); // sinon la page défile sous le curseur pendant qu'on zoome
+        _surfSetViewCm(simSurf.viewCm * Math.exp(d * SURF_WHEEL_SENS), true);
+    }, { passive: false });
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -1632,15 +1789,16 @@ function _updateSurfRatioReadout() {
 //  Avertissement : l'ouverture angulaire théorique (sin θ₁ = λ/a) ne devient visible qu'à
 //  partir de la distance de Fraunhofer a²/λ (au-delà, le faisceau a eu la place de s'ouvrir ;
 //  en-deçà, il reste quasi collimaté — régime de Fresnel proche, cf. discussion avec l'auteur).
-//  Le bassin affiché ne couvre que ~0,70·SURF_VIEW_WIDTH_CM·zoom cm derrière l'obstacle (30% de
-//  la largeur est occupée par l'obstacle) : si cette profondeur est trop courte devant a²/λ,
-//  l'angle ne peut pas se voir sur la figure, quel que soit le zoom raisonnable choisi.
+//  Le bassin affiché ne couvre que ~0,70·viewCm cm derrière l'obstacle (30% de la largeur est
+//  occupée par l'obstacle) : si cette profondeur est trop courte devant a²/λ, l'angle ne peut pas
+//  se voir sur la figure. Comme le cadrage est maintenant réglable en continu, l'avertissement
+//  suit le zoom — dézoomer suffit parfois à le faire disparaître.
 // ══════════════════════════════════════════════════════════════════════
 function _syncSurfAngleWarning() {
     var warn = document.getElementById('surf-angle-warning');
     if (!warn) return;
     var fraunhoferDist = (simSurf.a * simSurf.a) / simSurf.lambda;
-    var visibleDepth = 0.70 * SURF_VIEW_WIDTH_CM * simSurf.zoom;
+    var visibleDepth = 0.70 * simSurf.viewCm;
     warn.style.display = (fraunhoferDist > visibleDepth) ? '' : 'none';
 }
 
@@ -1695,7 +1853,7 @@ function resetSurfaces() {
     simSurf.simTime = 0;
     simSurf.lambda  = 4;
     simSurf.a       = 5;
-    simSurf.zoom    = SURF_ZOOM_MAX; // cran ×1, vue par défaut (dézoomée au max)
+    simSurf.viewCm  = SURF_VIEW_DEFAULT_CM;
     simSurf.ptData  = [];
     simSurf.graphMode = 'single';
     simSurf.graphTab1 = 'amp-t';
@@ -1724,12 +1882,9 @@ function resetSurfaces() {
     var btnAngle = document.getElementById('btn-angle-surf');
     if (btnAngle) btnAngle.classList.remove('active');
 
-    var slZoom = document.getElementById('sl-zoom-surf');
-    if (slZoom) slZoom.value = 1;
-    var lblZoom = document.getElementById('lbl-zoom-surf');
-    if (lblZoom) lblZoom.textContent = 1;
-
-    _surfApplyZoom(); // recalcule pxPerCm (zoom remis à 1) + géométrie + programme le rebuild
+    // Remet le cadrage par défaut, resynchronise slider + libellé, recalcule pxPerCm et la
+    // géométrie, et programme le rebuild.
+    _surfSetViewCm(SURF_VIEW_DEFAULT_CM, true);
     _updateSurfRatioReadout();
 }
 
@@ -1739,6 +1894,8 @@ function resetSurfaces() {
 
 function initSurfaces() {
     initSurfDrag();
+    initSurfWheelZoom();
+    _surfSetViewCm(simSurf.viewCm, true); // aligne slider et libellé sur SURF_VIEW_DEFAULT_CM
     _updateSurfRatioReadout();
     syncValeursSurfUI();
     syncSurfGraphUI();

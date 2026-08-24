@@ -242,8 +242,11 @@
           </div>
         </div>
         <div class="param-row" style="margin-top:8px;">
-          <label>Zoom <span>×<span id="lbl-zoom-surf">1</span></span></label>
-          <input type="range" id="sl-zoom-surf" min="1" max="3" step="1" value="1"
+          <label>Zoom <span>×<span id="lbl-zoom-surf">1,0</span></span></label>
+          <!-- Position ↔ largeur de vue : progression géométrique, cf. _surfViewFromSlider
+               (surfaces.js). value=80 = SURF_VIEW_DEFAULT_CM (100 cm, soit ×1) ; initSurfaces()
+               la resynchronise de toute façon au chargement. La molette sur le bassin zoome aussi. -->
+          <input type="range" id="sl-zoom-surf" min="0" max="240" step="1" value="80"
                  oninput="onSliderZoomSurf(this.value)">
         </div>
       </div>
@@ -319,6 +322,8 @@
       <div class="panel-hint-body">
         Une onde plane traverse une ouverture et diffracte. Réglez λ et a, et faites glisser le
         point <strong>M</strong> ou l'axe de coupe pour afficher leurs graphes respectifs.
+        Le <strong>zoom</strong> (slider ou molette sur le bassin) change la largeur de vue sans
+        toucher à l'échelle des longueurs : la barre graduée en bas à gauche sert de repère.
       </div>
     </div>
 
