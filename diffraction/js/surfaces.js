@@ -42,6 +42,17 @@
 //  drawImage — le rendu par frame n'a donc ni trigonométrie par source ni
 //  boucle sur les sources, juste 2 multiplications par cellule de grille.
 //
+//  Optimisations de la boucle chaude (aucun effet visible, cf. chaque point pour le détail) :
+//    • la phase constante k·barrierX est sortie du cache et réinjectée au rendu par un décalage
+//      de l'origine des temps — cf. _surfHuygensPQAtCell ;
+//    • le champ étant symétrique haut/bas, seule la moitié haute de la grille est calculée, le
+//      reste est recopié — facteur 2 exact sur le rebuild, cf. _rebuildSurfFieldCache ;
+//    • sin/cos y sont lus dans une table interpolée (_surfSinTab/_surfCosTab) plutôt qu'appelés
+//      des millions de fois ;
+//    • le rendu par frame écrit des couleurs pré-empaquetées 32 bits (_surfColLUT) via une vue
+//      Uint32Array de l'ImageData, et recopie telle quelle la bande d'onde plane à gauche de
+//      l'obstacle, identique sur toutes les lignes.
+//
 //  Dépend de : sim.js, scene.js (formatFr). Chargé après graph.js, avant ui.js.
 // ══════════════════════════════════════════════════════════════════════
 
@@ -126,6 +137,55 @@ var SURF_COL_TROUGH = [0, 10, 55];
 // SURF_COL_BG = midpoint crête/creux → pas de cassure au front d'onde ni hors
 // du bassin non encore atteint par l'onde.
 var SURF_COL_BG      = [100, 125, 155];
+
+// ── Table de sinus/cosinus (rebuild) ──────────────────────────────────
+// La somme de Huygens évalue sin(k·r) et cos(k·r) pour CHAQUE couple (cellule, source), soit
+// plusieurs millions d'appels par rebuild dans les pires réglages — c'est le poste dominant.
+// Math.sin/Math.cos y sont remplacés par une table de SURF_TRIG_N valeurs sur une période, lue
+// avec interpolation linéaire : l'erreur maximale vaut (2π/N)²/8 ≈ 3·10⁻⁷ pour N = 4096, soit
+// très en deçà du pas d'une couleur 8 bits — indétectable à l'écran, mais ~3× plus rapide.
+// Indexation par ET binaire (d'où une taille en puissance de 2) : la phase k·r est toujours
+// positive et reste largement sous 2³¹ pour toute taille de canvas réaliste, donc `| 0` suffit
+// à en prendre la partie entière.
+var SURF_TRIG_BITS  = 12;
+var SURF_TRIG_N     = 1 << SURF_TRIG_BITS;   // 4096
+var SURF_TRIG_MASK  = SURF_TRIG_N - 1;
+var SURF_TRIG_SCALE = SURF_TRIG_N / (2 * Math.PI); // radians → unités de table
+var _surfSinTab = new Float64Array(SURF_TRIG_N + 1); // +1 : borne haute de l'interpolation
+var _surfCosTab = new Float64Array(SURF_TRIG_N + 1);
+(function _buildSurfTrigTables() {
+    for (var i = 0; i <= SURF_TRIG_N; i++) {
+        var ang = 2 * Math.PI * i / SURF_TRIG_N;
+        _surfSinTab[i] = Math.sin(ang);
+        _surfCosTab[i] = Math.cos(ang);
+    }
+})();
+
+// ── Table de couleurs (rendu par frame) ───────────────────────────────
+// Le rendu convertit le champ (∈ [-1, 1]) en RVBA pour chaque cellule de grille, à chaque frame.
+// Au lieu de réinterpoler les 3 canaux puis d'écrire 4 octets, on pré-calcule les couleurs déjà
+// empaquetées en 32 bits : une lecture de table + UNE écriture dans une vue Uint32Array de
+// l'ImageData. SURF_COL_LUT_N = 512 dépasse largement l'amplitude maximale d'un canal (200
+// niveaux pour le bleu), donc aucun risque de bandes.
+// L'ordre des octets dans un mot de 32 bits dépend du boutisme de la machine, d'où la sonde.
+var SURF_COL_LUT_N   = 512;
+var SURF_COL_LUT_MAX = SURF_COL_LUT_N - 1;
+var SURF_COL_LUT_HALF = SURF_COL_LUT_MAX / 2; // champ ∈ [-1,1] → indice : (raw + 1) * HALF
+var _surfColLUT = new Uint32Array(SURF_COL_LUT_N);
+(function _buildSurfColorLUT() {
+    var probe = new ArrayBuffer(4);
+    new Uint32Array(probe)[0] = 0x0a0b0c0d;
+    var littleEndian = (new Uint8Array(probe)[0] === 0x0d);
+    for (var i = 0; i < SURF_COL_LUT_N; i++) {
+        var t01 = i / SURF_COL_LUT_MAX;
+        var r = Math.round(SURF_COL_TROUGH[0] + t01 * (SURF_COL_CREST[0] - SURF_COL_TROUGH[0]));
+        var g = Math.round(SURF_COL_TROUGH[1] + t01 * (SURF_COL_CREST[1] - SURF_COL_TROUGH[1]));
+        var b = Math.round(SURF_COL_TROUGH[2] + t01 * (SURF_COL_CREST[2] - SURF_COL_TROUGH[2]));
+        _surfColLUT[i] = littleEndian
+            ? (((255 << 24) | (b << 16) | (g << 8) | r) >>> 0)
+            : (((r << 24) | (g << 16) | (b << 8) | 255) >>> 0);
+    }
+})();
 
 // ── État global ───────────────────────────────────────────────────────
 var simSurf = {
@@ -311,9 +371,20 @@ function _surfRmin(w, z, y) {
 // ══════════════════════════════════════════════════════════════════════
 //  P,Q (cf. en-tête de fichier) au point (z,y) derrière l'obstacle — somme de Huygens sur les
 //  sources (amplitude uniforme) de l'ouverture, chacune émettant une onde cylindrique 2D
-//  ∝ exp(i(k·R - ωt))/√r (R = barrierX + r, distance totale depuis l'origine ; décroissance
-//  géométrique 1/√r d'une onde cylindrique, avec un plancher SURF_GEO_R_FLOOR·λ pour éviter la
-//  singularité tout contre une source).
+//  ∝ exp(i(k·r - ωt))/√r (décroissance géométrique 1/√r d'une onde cylindrique, avec un
+//  plancher SURF_GEO_R_FLOOR·λ pour éviter la singularité tout contre une source).
+//
+//  PHASE DE L'OBSTACLE SORTIE DU CALCUL — la distance totale parcourue depuis l'origine vaut
+//  R = barrierX + r, mais le terme k·barrierX est le MÊME pour toutes les cellules et toutes
+//  les sources : c'est une rotation globale du couple (P,Q). L'y inclure ici reviendrait à la
+//  payer des millions de fois par rebuild, et rendrait le cache dépendant de la position de
+//  l'obstacle. On calcule donc P,Q pour R = r seul, et on réinjecte k·barrierX au rendu en
+//  décalant simplement l'origine des temps :
+//      P·cos(ωt) + Q·sin(ωt)  avec la phase incluse
+//    = P₀·cos(ωt - k·barrierX) + Q₀·sin(ωt - k·barrierX)  sans elle
+//  soit DEUX évaluations trigonométriques par frame au lieu d'une par couple (cellule, source).
+//  Tous les consommateurs de P,Q (cf. drawSurfaces, _surfFieldRaw) doivent donc appliquer ce
+//  décalage ; l'enveloppe √(P²+Q²), invariante par rotation, n'a rien à changer.
 //
 //  Normalisation — la somme discrète APPROXIME l'intégrale continue de Huygens
 //  U(y,z,t) = (1/√(iλ)) · ∫ [exp(i(kR-ωt))/√r] dy0, dont on sait (en l'approximant en
@@ -331,20 +402,24 @@ function _surfRmin(w, z, y) {
 //  pour le modèle de Fresnel précédent.
 // ══════════════════════════════════════════════════════════════════════
 
-function _surfHuygensPQAtCell(sourcesInfo, lambda_px, barrierX, z, y) {
+// Chemin de repli (points isolés : point M, axe de coupe) quand le cache de grille n'est pas
+// encore prêt. La boucle chaude équivalente est écrite en ligne dans _rebuildSurfFieldCache
+// (pas d'objet {P,Q} alloué par cellule, table de sinus) — ici le coût est négligeable, on
+// garde donc la version lisible avec Math.sin/Math.cos.
+function _surfHuygensPQAtCell(sourcesInfo, lambda_px, z, y) {
     var k = 2 * Math.PI / lambda_px;
     var rFloor = SURF_GEO_R_FLOOR * lambda_px;
     var ys = sourcesInfo.ys, spacing = sourcesInfo.spacing;
     var N = ys.length;
-    var sSin = 0, sCos = 0; // Σ (spacing/√r)·sin(kR) et Σ (spacing/√r)·cos(kR)
+    var z2 = z * z;
+    var sSin = 0, sCos = 0; // Σ (spacing/√r)·sin(kr) et Σ (spacing/√r)·cos(kr)
     for (var i = 0; i < N; i++) {
         var dy = y - ys[i];
-        var r = Math.sqrt(z * z + dy * dy);
+        var r = Math.sqrt(z2 + dy * dy);
         if (r < rFloor) r = rFloor;
         var wgt = spacing / Math.sqrt(r);
-        var R = barrierX + r;
-        sSin += wgt * Math.sin(k * R);
-        sCos += wgt * Math.cos(k * R);
+        sSin += wgt * Math.sin(k * r);
+        sCos += wgt * Math.cos(k * r);
     }
     var norm = 1 / Math.sqrt(2 * lambda_px); // |1/√(iλ)|, réparti en P,Q ci-dessous
     return { P: norm * (sSin - sCos), Q: -norm * (sCos + sSin) };
@@ -371,6 +446,7 @@ function _rebuildSurfFieldCache() {
     var w     = s.gapHalf;
     var cy0   = s.barrierCY;
     var sources = _surfHuygensSources(w, lambda_px);
+    var srcYs = sources.ys, srcN = srcYs.length, spacing = sources.spacing;
 
     var leftSin   = new Float32Array(gw), leftCos = new Float32Array(gw);
     var rightP    = new Float32Array(gw * gh);
@@ -381,37 +457,91 @@ function _rebuildSurfFieldCache() {
     // r₀ : distance à partir de laquelle la décroissance cylindrique s'installe (cf. constantes)
     var gainR0 = Math.max(SURF_GAIN_R0_LAMBDA * lambda_px, (2 * w) * (2 * w) / lambda_px);
 
+    // Abscisse (px écran) de chaque colonne de grille, et première colonne située à DROITE de
+    // l'obstacle : le test `px <= barrierX` ne dépend que de la colonne, inutile de le refaire
+    // pour chaque cellule (ici) ni pour chaque cellule de chaque frame (cf. drawSurfaces).
+    var gridPx = new Float64Array(gw);
+    var gxBar  = gw;
     for (var gx = 0; gx < gw; gx++) {
         var px0 = (gx + 0.5) / gw * s.canvasW;
+        gridPx[gx]  = px0;
         leftSin[gx] = Math.sin(k * px0);
         leftCos[gx] = Math.cos(k * px0);
+        if (gxBar === gw && px0 > s.barrierX) gxBar = gx;
     }
+    for (var gxz = 0; gxz < gxBar; gxz++) {
+        // Zone à gauche de l'obstacle : pas de champ diffracté (cf. drawSurfaces, qui y applique
+        // l'onde plane incidente). Front à l'infini → jamais atteint par le test causal.
+        for (var gyz = 0; gyz < gh; gyz++) rightFront[gyz * gw + gxz] = Infinity;
+    }
+    rightGain.fill(1);
 
-    for (var gy = 0; gy < gh; gy++) {
+    var rFloor  = SURF_GEO_R_FLOOR * lambda_px;
+    var norm    = 1 / Math.sqrt(2 * lambda_px); // |1/√(iλ)|, cf. _surfHuygensPQAtCell
+    var kScaled = k * SURF_TRIG_SCALE;          // k·r directement en unités de table
+    var SIN = _surfSinTab, COS = _surfCosTab, TMASK = SURF_TRIG_MASK;
+    var dyArr = new Float64Array(srcN); // écarts source→cellule, constants sur une ligne
+
+    // SYMÉTRIE HAUT/BAS — l'obstacle est centré (barrierCY = canvasH/2), les sources de Huygens
+    // sont réparties symétriquement autour de l'axe de l'ouverture (cf. _surfHuygensSources,
+    // règle du point milieu) et les lignes de grille sont elles-mêmes symétriques deux à deux
+    // ((gy+0,5)/gh et (gh-1-gy+0,5)/gh sont de somme 1, donc d'ordonnées opposées par rapport à
+    // canvasH/2, quelle que soit la parité de gh). Le champ vérifie donc P(z,-y) = P(z,y) : on ne
+    // calcule que la moitié haute et on recopie ligne à ligne. Facteur 2 exact sur le rebuild.
+    // (Si gh est impair, la ligne médiane est son propre miroir — d'où le test mgy > gy.)
+    var halfRows = Math.ceil(gh / 2);
+    for (var gy = 0; gy < halfRows; gy++) {
         var py = (gy + 0.5) / gh * s.canvasH;
-        for (var gx2 = 0; gx2 < gw; gx2++) {
-            var px = (gx2 + 0.5) / gw * s.canvasW;
-            var idx = gy * gw + gx2;
-            if (px <= s.barrierX) {
-                rightP[idx] = 0; rightQ[idx] = 0; rightFront[idx] = Infinity; rightGain[idx] = 1;
-                continue;
-            }
-            var z = px - s.barrierX;
-            var y = py - cy0;
+        var y  = py - cy0;
+        var rowOff = gy * gw;
+        for (var si = 0; si < srcN; si++) dyArr[si] = y - srcYs[si];
+
+        for (var gx2 = gxBar; gx2 < gw; gx2++) {
+            var z   = gridPx[gx2] - s.barrierX;
+            var z2  = z * z;
+            var idx = rowOff + gx2;
             var rCell = _surfRmin(w, z, y);
             rightFront[idx] = s.barrierX + rCell;
             rightGain[idx]  = (rCell <= gainR0) ? 1
                             : Math.min(SURF_GAIN_MAX, Math.sqrt(rCell / gainR0));
 
-            var pq = _surfHuygensPQAtCell(sources, lambda_px, s.barrierX, z, y);
-            rightP[idx] = pq.P;
-            rightQ[idx] = pq.Q;
+            // Somme de Huygens en ligne (cf. _surfHuygensPQAtCell pour le modèle et la
+            // normalisation) : boucle chaude du rebuild, d'où la table de sinus et l'absence
+            // d'objet intermédiaire.
+            var sSin = 0, sCos = 0;
+            for (var si2 = 0; si2 < srcN; si2++) {
+                var dy = dyArr[si2];
+                var r = Math.sqrt(z2 + dy * dy);
+                if (r < rFloor) r = rFloor;
+                var ph = kScaled * r;
+                var fi = ph | 0;
+                var fr = ph - fi;
+                var i0 = fi & TMASK, i1 = i0 + 1;
+                var wgt = spacing / Math.sqrt(r);
+                sSin += wgt * (SIN[i0] + fr * (SIN[i1] - SIN[i0]));
+                sCos += wgt * (COS[i0] + fr * (COS[i1] - COS[i0]));
+            }
+            rightP[idx] =  norm * (sSin - sCos);
+            rightQ[idx] = -norm * (sCos + sSin);
+        }
+
+        var mgy = gh - 1 - gy;
+        if (mgy > gy) {
+            var dstOff = mgy * gw;
+            rightP.set(rightP.subarray(rowOff, rowOff + gw), dstOff);
+            rightQ.set(rightQ.subarray(rowOff, rowOff + gw), dstOff);
+            rightFront.set(rightFront.subarray(rowOff, rowOff + gw), dstOff);
+            rightGain.set(rightGain.subarray(rowOff, rowOff + gw), dstOff);
         }
     }
 
     s.gridW = gw; s.gridH = gh;
     s.k = k; s.c_px = c_px; s.omega = omega;
     s.leftSin = leftSin; s.leftCos = leftCos;
+    // barrierX est figé dans le cache (rightFront, et la phase k·barrierX que le rendu réinjecte) :
+    // on le mémorise pour que le rendu reste cohérent avec la grille pendant les ~100 ms d'attente
+    // d'un rebuild anti-rebondi, où s.barrierX a déjà changé mais pas encore la grille.
+    s.gridPx = gridPx; s.gridBarrierCol = gxBar; s.gridBarrierX = s.barrierX;
     s.rightP = rightP; s.rightQ = rightQ; s.rightFront = rightFront; s.rightGain = rightGain;
 
     if (!s._offCanvas) s._offCanvas = document.createElement('canvas');
@@ -421,6 +551,10 @@ function _rebuildSurfFieldCache() {
     // Buffer de pixels réutilisé à chaque frame (cf. drawSurfaces) — évite de réallouer un
     // nouvel ImageData 60 fois par seconde (pression sur le ramasse-miettes).
     s._imgData = s._offCtx.createImageData(gw, gh);
+    // Vue 32 bits sur le MÊME tampon : le rendu y écrit une couleur pré-empaquetée par cellule
+    // (cf. _surfColLUT) au lieu de 4 octets, putImageData lit toujours s._imgData.
+    s._imgU32   = new Uint32Array(s._imgData.data.buffer);
+    s._leftRow  = new Uint32Array(gxBar); // bande gauche : identique sur toutes les lignes
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -494,9 +628,12 @@ function _surfFieldRaw(px, py, tOverride) {
     var pq = _surfSampleGridPQ(s, z, y);
     if (!pq) {
         var sources = _surfHuygensSources(w, lambda_px);
-        pq = _surfHuygensPQAtCell(sources, lambda_px, s.barrierX, z, y);
+        pq = _surfHuygensPQAtCell(sources, lambda_px, z, y);
     }
-    return pq.P * Math.cos(omega * t) + pq.Q * Math.sin(omega * t);
+    // Décalage de l'origine des temps = phase constante k·barrierX sortie du calcul de P,Q
+    // (cf. _surfHuygensPQAtCell) — même convention qu'au rendu.
+    var th = omega * t - k * s.barrierX;
+    return pq.P * Math.cos(th) + pq.Q * Math.sin(th);
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -528,8 +665,9 @@ function _surfFieldEnvelope(px, py, tOverride) {
     var pq = _surfSampleGridPQ(s, z, y);
     if (!pq) {
         var sources = _surfHuygensSources(w, lambda_px);
-        pq = _surfHuygensPQAtCell(sources, lambda_px, s.barrierX, z, y);
+        pq = _surfHuygensPQAtCell(sources, lambda_px, z, y);
     }
+    // √(P²+Q²) est invariant par la rotation de phase k·barrierX — rien à réinjecter ici.
     return Math.sqrt(pq.P * pq.P + pq.Q * pq.Q);
 }
 
@@ -559,33 +697,48 @@ function drawSurfaces() {
 
     var t = s.simTime;
     var cosWT = Math.cos(s.omega * t), sinWT = Math.sin(s.omega * t);
+    // Zone diffractée : la phase constante k·barrierX, sortie du cache (cf. _surfHuygensPQAtCell),
+    // est réinjectée ici par un simple décalage de l'origine des temps.
+    var thR   = s.omega * t - s.k * s.gridBarrierX;
+    var cosWR = Math.cos(thR), sinWR = Math.sin(thR);
     var front     = s.c_px * t; // distance parcourue depuis l'origine (front causal, gauche ET droite)
 
     var gw = s.gridW, gh = s.gridH;
     var img  = s._imgData; // buffer réutilisé (cf. _rebuildSurfFieldCache), pas de réallocation par frame
-    var data = img.data;
+    var out  = s._imgU32;  // même tampon, vu en couleurs 32 bits pré-empaquetées
+    var LUT  = _surfColLUT, LHALF = SURF_COL_LUT_HALF, LMAX = SURF_COL_LUT_MAX;
+    var gxBar = s.gridBarrierCol;
+    var rightP = s.rightP, rightQ = s.rightQ, rightFront = s.rightFront, rightGain = s.rightGain;
+    var ci;
+
+    // Bande à gauche de l'obstacle : onde plane incidente, donc STRICTEMENT identique sur toutes
+    // les lignes — on la calcule une fois par frame et on la recopie ligne à ligne (~30 % des
+    // cellules du bassin, cf. barrierX à 30 % de la largeur).
+    var leftRow = s._leftRow, leftSin = s.leftSin, leftCos = s.leftCos, gridPx = s.gridPx;
+    for (var gxl = 0; gxl < gxBar; gxl++) {
+        var rawL = (gridPx[gxl] > front) ? 0 : (cosWT * leftSin[gxl] - sinWT * leftCos[gxl]);
+        ci = (rawL + 1) * LHALF;
+        if (ci < 0) ci = 0; else if (ci > LMAX) ci = LMAX;
+        leftRow[gxl] = LUT[ci | 0];
+    }
 
     for (var gy = 0; gy < gh; gy++) {
-        for (var gx = 0; gx < gw; gx++) {
-            var idx = gy * gw + gx;
-            var px  = (gx + 0.5) / gw * s.canvasW;
+        var rowOff = gy * gw;
+        out.set(leftRow, rowOff);
+        for (var gx = gxBar; gx < gw; gx++) {
+            var idx = rowOff + gx;
             var raw;
-            if (px <= s.barrierX) {
-                raw = (px > front) ? 0 : (cosWT * s.leftSin[gx] - sinWT * s.leftCos[gx]);
-            } else if (s.rightFront[idx] > front) {
+            if (rightFront[idx] > front) {
                 raw = 0;
             } else {
                 // Gain purement géométrique (cf. SURF_GAIN_MAX) : rendu seulement, les graphes
                 // lisent rightP/rightQ bruts.
-                raw = (s.rightP[idx] * cosWT + s.rightQ[idx] * sinWT) * s.rightGain[idx];
+                raw = (rightP[idx] * cosWR + rightQ[idx] * sinWR) * rightGain[idx];
             }
-            if (raw > 1) raw = 1; else if (raw < -1) raw = -1;
-            var t01 = (raw + 1) * 0.5;
-            var p = idx * 4;
-            data[p]     = SURF_COL_TROUGH[0] + t01 * (SURF_COL_CREST[0] - SURF_COL_TROUGH[0]);
-            data[p + 1] = SURF_COL_TROUGH[1] + t01 * (SURF_COL_CREST[1] - SURF_COL_TROUGH[1]);
-            data[p + 2] = SURF_COL_TROUGH[2] + t01 * (SURF_COL_CREST[2] - SURF_COL_TROUGH[2]);
-            data[p + 3] = 255;
+            // L'écrêtage à [-1, 1] du champ est assuré par le bornage de l'indice de couleur.
+            ci = (raw + 1) * LHALF;
+            if (ci < 0) ci = 0; else if (ci > LMAX) ci = LMAX;
+            out[idx] = LUT[ci | 0];
         }
     }
     s._offCtx.putImageData(img, 0, 0);
