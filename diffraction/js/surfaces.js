@@ -78,6 +78,33 @@ var SURF_HUYGENS_N_MAX  = 110;      // garde-fou (coût du rebuild ∝ grille ×
 var SURF_HUYGENS_N_MIN  = 4;
 var SURF_GEO_R_FLOOR    = 0.25;     // plancher de r (× λ) dans la décroissance 1/√r, cf. _surfHuygensPQAtCell
 
+// ── Compensation de l'étalement géométrique (contraste du bassin) ─────────────
+// L'onde plane incidente a l'amplitude 1 (calibre de la palette crête↔creux), mais derrière
+// l'ouverture le champ est cylindrique : son amplitude décroît en 1/√r. Aux réglages par
+// défaut (λ=4 cm, a=5 cm, ~25 λ de profondeur visible) elle tombe à ~0,25 en bord droit — le
+// mapping linéaire ne balaie alors que le voisinage de SURF_COL_BG, d'où un motif diffracté
+// délavé bien qu'il soit physiquement correct.
+// On multiplie donc le champ, AU RENDU SEULEMENT, par g(z,y) = min(SURF_GAIN_MAX, √(r/r₀)),
+// r = distance parcourue depuis l'ouverture (cf. _surfRmin, la même que pour le front causal) :
+//   • g ne dépend que de la POSITION, jamais de l'amplitude → le rapport entre un lobe et une
+//     annulation du sinc est rigoureusement inchangé, les minima restent des lignes noires ;
+//   • g varie sur l'échelle de r, pas sur celle de λ → aucune harmonique spatiale créée, donc
+//     pas de repliement sur la grille (5 à 7 cellules par λ, cf. SURF_GRID_CELLS_PER_LAMBDA) ;
+//   • il annule exactement le 1/√r, donc le motif garde le même contraste près et loin de la
+//     fente au lieu de s'éteindre vers le bord droit.
+// (Une compression non linéaire du champ instantané — signe(u)·|u|^γ — a été essayée d'abord :
+// son gain est maximal là où |u| est petit, donc elle comble les annulations du sinc, et elle
+// transforme le cosinus en quasi-créneau dont les harmoniques 3k, 5k… se replient sur la
+// grille → crénelage des surfaces d'onde. Deux défauts intrinsèques, sans bon réglage de γ.)
+// r₀ = début de la décroissance cylindrique : au-delà de la distance de Fresnel a²/λ (en deçà,
+// pour une ouverture large, l'onde n'a pas encore commencé à s'étaler et vaut déjà ~1 — la
+// compenser la ferait saturer), avec un plancher de SURF_GAIN_R0_LAMBDA·λ pour les petites
+// ouvertures. g = 1 pour r < r₀ → continuité avec l'onde incidente à la sortie de la fente.
+// À noter : les graphes Hauteur(t) et Amplitude(y) lisent rightP/rightQ (via _surfSampleGridPQ),
+// PAS ce gain — ils restent donc rigoureusement physiques.
+var SURF_GAIN_MAX       = 3.5;  // plafond (sinon écrêtage massif du champ lointain)
+var SURF_GAIN_R0_LAMBDA = 3;    // plancher de r₀, en longueurs d'onde
+
 // ── Zoom (slider à crans) ────────────────────────────────────────────
 // zoom = 1 → vue par défaut (SURF_VIEW_WIDTH_CM affichés) ; zoom = SURF_ZOOM_MAX → champ de
 // vision SURF_ZOOM_MAX fois plus large (dézoom, utile pour les grands λ dont le champ proche
@@ -349,6 +376,10 @@ function _rebuildSurfFieldCache() {
     var rightP    = new Float32Array(gw * gh);
     var rightQ    = new Float32Array(gw * gh);
     var rightFront = new Float32Array(gw * gh); // distance (origine → cellule) déclenchant le front causal
+    var rightGain  = new Float32Array(gw * gh); // compensation de l'étalement 1/√r, rendu seulement (cf. SURF_GAIN_MAX)
+
+    // r₀ : distance à partir de laquelle la décroissance cylindrique s'installe (cf. constantes)
+    var gainR0 = Math.max(SURF_GAIN_R0_LAMBDA * lambda_px, (2 * w) * (2 * w) / lambda_px);
 
     for (var gx = 0; gx < gw; gx++) {
         var px0 = (gx + 0.5) / gw * s.canvasW;
@@ -362,12 +393,15 @@ function _rebuildSurfFieldCache() {
             var px = (gx2 + 0.5) / gw * s.canvasW;
             var idx = gy * gw + gx2;
             if (px <= s.barrierX) {
-                rightP[idx] = 0; rightQ[idx] = 0; rightFront[idx] = Infinity;
+                rightP[idx] = 0; rightQ[idx] = 0; rightFront[idx] = Infinity; rightGain[idx] = 1;
                 continue;
             }
             var z = px - s.barrierX;
             var y = py - cy0;
-            rightFront[idx] = s.barrierX + _surfRmin(w, z, y);
+            var rCell = _surfRmin(w, z, y);
+            rightFront[idx] = s.barrierX + rCell;
+            rightGain[idx]  = (rCell <= gainR0) ? 1
+                            : Math.min(SURF_GAIN_MAX, Math.sqrt(rCell / gainR0));
 
             var pq = _surfHuygensPQAtCell(sources, lambda_px, s.barrierX, z, y);
             rightP[idx] = pq.P;
@@ -378,7 +412,7 @@ function _rebuildSurfFieldCache() {
     s.gridW = gw; s.gridH = gh;
     s.k = k; s.c_px = c_px; s.omega = omega;
     s.leftSin = leftSin; s.leftCos = leftCos;
-    s.rightP = rightP; s.rightQ = rightQ; s.rightFront = rightFront;
+    s.rightP = rightP; s.rightQ = rightQ; s.rightFront = rightFront; s.rightGain = rightGain;
 
     if (!s._offCanvas) s._offCanvas = document.createElement('canvas');
     s._offCanvas.width  = gw;
@@ -541,7 +575,9 @@ function drawSurfaces() {
             } else if (s.rightFront[idx] > front) {
                 raw = 0;
             } else {
-                raw = s.rightP[idx] * cosWT + s.rightQ[idx] * sinWT;
+                // Gain purement géométrique (cf. SURF_GAIN_MAX) : rendu seulement, les graphes
+                // lisent rightP/rightQ bruts.
+                raw = (s.rightP[idx] * cosWT + s.rightQ[idx] * sinWT) * s.rightGain[idx];
             }
             if (raw > 1) raw = 1; else if (raw < -1) raw = -1;
             var t01 = (raw + 1) * 0.5;
