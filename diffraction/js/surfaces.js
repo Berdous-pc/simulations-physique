@@ -53,6 +53,13 @@
 //      Uint32Array de l'ImageData, et recopie telle quelle la bande d'onde plane à gauche de
 //      l'obstacle, identique sur toutes les lignes.
 //
+//  Le budget ainsi dégagé est dépensé en résolution de grille : 9 cellules par λ au lieu de 5,
+//  bornées par un budget global de cellules (et non plus par des maxima séparés en largeur et en
+//  hauteur), lui-même ajusté à la machine par un régulateur de performance — cf. les constantes
+//  SURF_GRID_* / SURF_PERF_* et _surfPerfSample. Pendant un geste (glissement de slider), une
+//  grille d'aperçu ~4× moins chère tient lieu de rendu, la grille définitive n'étant calculée
+//  qu'à l'accalmie — cf. _scheduleSurfRebuild.
+//
 //  Dépend de : sim.js, scene.js (formatFr). Chargé après graph.js, avant ui.js.
 // ══════════════════════════════════════════════════════════════════════
 
@@ -63,15 +70,62 @@ var SURF_C_CM           = 9.6;  // célérité de l'onde (cm/s), fixe
 var SURF_VIEW_WIDTH_CM  = 45;   // largeur visible du bassin (calibre pxPerCm au resize)
 var SURF_GRAPH_WINDOW   = 5;    // fenêtre temporelle du graphe y(t), en s
 var SURF_GRID_FACTOR    = 4;    // sous-échantillonnage du champ (px CSS par cellule de grille) à zoom=1
-var SURF_GRID_W_MAX     = 380;  // bornes DURES de la grille de calcul du champ (coût du rebuild et du
-var SURF_GRID_H_MAX     = 250;  // dessin par frame ∝ largeur × hauteur de grille)
-// Le cadrage ci-dessus (SURF_GRID_FACTOR px/cellule) est fixé en pixels ÉCRAN, donc indépendant
-// du zoom : dézoomer (cf. SURF_ZOOM_MAX) fait couvrir plus de cm à chaque cellule, ce qui peut
-// sous-échantillonner l'onde pour les petits λ. La grille est donc aussi dimensionnée pour
-// garantir au moins SURF_GRID_CELLS_PER_LAMBDA cellules par longueur d'onde (cf.
-// _rebuildSurfFieldCache), la plus grande des deux exigences l'emportant — plafonné par
-// SURF_GRID_W_MAX/H_MAX pour borner le coût dans les pires cas (zoom max + petit λ + grand a).
-var SURF_GRID_CELLS_PER_LAMBDA = 5;
+
+// ── Dimensionnement de la grille de calcul du champ ───────────────────
+// Deux exigences concurrentes, toutes deux au rapport d'aspect du canvas (cf.
+// _rebuildSurfFieldCache) — la plus forte l'emporte :
+//   • le CADRAGE ÉCRAN (SURF_GRID_FACTOR px CSS par cellule), qui suffit aux grandes longueurs
+//     d'onde et garde la grille bon marché ;
+//   • l'ÉCHANTILLONNAGE DE L'ONDE (SURF_GRID_CELLS_PER_LAMBDA cellules par λ), qui commande dès
+//     que λ est petit devant la largeur de vue — c'est le régime où la figure d'interférences se
+//     brouillait. 9 échantillons par période : en dessous de ~8, la reconstruction bilinéaire de
+//     l'agrandissement (cf. drawSurfaces) laisse une ondulation d'amplitude parasite et un moiré
+//     avec la trame de la grille. (Valeur précédente : 5.)
+// Le coût (rebuild ∝ cellules × sources, dessin par frame ∝ cellules) est borné non plus par des
+// maxima SÉPARÉS en largeur et en hauteur — qui écrasaient la largeur bien avant la hauteur, donc
+// déformaient la grille — mais par un BUDGET DE CELLULES : au-delà, les deux dimensions sont
+// divisées par le même facteur. La dégradation est ainsi progressive et isotrope au lieu d'être
+// une falaise sur un seul axe.
+var SURF_GRID_CELLS_PER_LAMBDA = 9;
+var SURF_GRID_BUDGET       = 180000; // cellules, grille définitive
+var SURF_GRID_BUDGET_DRAFT = 45000;  // cellules, grille d'aperçu pendant un geste (cf. _scheduleSurfRebuild)
+var SURF_GRID_MIN_W        = 40;
+var SURF_GRID_MIN_H        = 30;
+
+// ── Aperçu pendant les gestes, puis raffinement ───────────────────────
+// Deux demandes de rebuild rapprochées de moins de SURF_INTERACT_WINDOW_MS = un geste en cours
+// (glissement de slider, répétition clavier). On ne calcule alors qu'une grille d'aperçu
+// (SURF_GRID_BUDGET_DRAFT, ~4× moins chère), et la grille définitive n'est calculée qu'après
+// SURF_REFINE_DELAY_MS sans nouvelle demande. Une action isolée (clic, reset, changement
+// d'onglet) part au contraire directement en pleine résolution.
+var SURF_INTERACT_WINDOW_MS = 350;
+var SURF_REFINE_DELAY_MS    = 260;
+
+// ── Régulateur de performance ─────────────────────────────────────────
+// Le budget ci-dessus est calibré pour une machine correcte ; sur un portable de lycée le dessin
+// par frame peut ne plus tenir dans le budget d'une frame. On mesure donc la durée réelle de la
+// boucle de rendu (moyenne sur SURF_PERF_SAMPLES frames) et on rabote — ou on redonne — du
+// budget. Descente proportionnelle (viser SURF_PERF_MS_HIGH d'un coup, le coût étant linéaire en
+// nombre de cellules), remontée prudente par paliers de 25 %. Garde-fous contre l'oscillation :
+// seuils asymétriques (on descend au-dessus de SURF_PERF_MS_HIGH, on ne remonte qu'en dessous de
+// SURF_PERF_MS_LOW), écart minimal de 5 % pour agir, et délai minimal entre deux ajustements —
+// chacun coûtant un rebuild.
+var SURF_PERF_SAMPLES     = 30;
+var SURF_PERF_MS_HIGH     = 9;
+var SURF_PERF_MS_LOW      = 4;
+var SURF_PERF_SCALE_MIN   = 0.2;
+var SURF_PERF_COOLDOWN_MS = 1500;
+
+// ── Flou d'agrandissement ─────────────────────────────────────────────
+// L'agrandissement bilinéaire de la grille vers l'écran laisse voir sa trame quand une cellule
+// dépasse quelques pixels. Un flou léger la gomme — mais ctx.filter alloue une surface temporaire
+// à chaque frame, c'est cher. On ne l'applique donc QUE dans ce régime (grandes longueurs d'onde,
+// grille au cadrage écran), et pas quand la grille est déjà très fine (petits λ) : c'est
+// justement là qu'on a le moins de marge. À SURF_GRID_FACTOR = 4 px/cellule, la formule redonne
+// le rayon de 0,6 px utilisé jusqu'ici.
+var SURF_BLUR_MIN_PX_PER_CELL = 2.5;
+var SURF_BLUR_RATIO           = 0.15;
+var SURF_BLUR_MAX_PX          = 1.0;
 // Espacement des sources = λ / SURF_HUYGENS_SPACING_DIV. La granulosité en champ proche
 // (sources individuelles distinguables) ne dépend que du rapport a/λ (le rendu est
 // auto-similaire par mise à l'échelle) : resserrer l'espacement au-delà du critère de Nyquist
@@ -234,6 +288,14 @@ var simSurf = {
     graphTab2    : 'amp-y',   // Amplitude(y) selon l'axe de coupe
     ptData       : [],   // [{t, y}] — échantillons pour Hauteur(t)
     ptTimeOrigin : 0,
+
+    // ── Grille de calcul du champ ────────────────────────────────────
+    // perfScale : fraction du budget de cellules réellement utilisée, pilotée par le régulateur
+    // de performance (cf. _surfPerfSample) — propriété de la MACHINE, jamais remise à 1 par un
+    // reset de la simulation. gridIsDraft : la grille en place n'est qu'un aperçu de geste (cf.
+    // _scheduleSurfRebuild), à ne pas prendre en compte dans les mesures de performance.
+    perfScale    : 1,
+    gridIsDraft  : false
 };
 
 // Options de graphe disponibles pour l'onglet Ondes de surfaces
@@ -309,16 +371,39 @@ function _surfEstimateSourceCount() {
 
 var _surfRebuildScheduled = false;
 var _surfRebuildTimer = null;
+var _surfRefineTimer  = null;
+var _surfLastReqT     = -1e9;
+
+function _surfNow() {
+    return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+}
+
 function _scheduleSurfRebuild() {
+    var now = _surfNow();
+    // Geste en cours ? (cf. SURF_INTERACT_WINDOW_MS) — si oui, l'aperçu se contente de la grille
+    // brouillon et la grille définitive attend l'accalmie ; sinon on va directement au définitif.
+    var asDraft = (now - _surfLastReqT) < SURF_INTERACT_WINDOW_MS;
+    _surfLastReqT = now;
+
+    if (_surfRefineTimer) { clearTimeout(_surfRefineTimer); _surfRefineTimer = null; }
+    if (asDraft) {
+        _surfRefineTimer = setTimeout(function () {
+            _surfRefineTimer = null;
+            _rebuildSurfFieldCache(false);
+        }, SURF_REFINE_DELAY_MS);
+    }
+
     // Au-delà de SURF_REBUILD_DEBOUNCE_N sources, un rebuild par frame (rAF) pendant un drag de
     // slider devient trop coûteux (cf. discussion : lag sur a max / λ min) — on bascule sur un
     // anti-rebond à 100 ms (un seul rebuild après une pause dans le glissement) au lieu d'un par
-    // frame. En dessous de ce seuil, rAF reste réactif sans souci de perf.
-    if (_surfEstimateSourceCount() > SURF_REBUILD_DEBOUNCE_N) {
+    // frame. En dessous de ce seuil, rAF reste réactif sans souci de perf. Le seuil est doublé
+    // pour une grille brouillon, ~4× moins chère à calculer.
+    var nMax = asDraft ? SURF_REBUILD_DEBOUNCE_N * 2 : SURF_REBUILD_DEBOUNCE_N;
+    if (_surfEstimateSourceCount() > nMax) {
         if (_surfRebuildTimer) clearTimeout(_surfRebuildTimer);
         _surfRebuildTimer = setTimeout(function () {
             _surfRebuildTimer = null;
-            _rebuildSurfFieldCache();
+            _rebuildSurfFieldCache(asDraft);
         }, 100);
         return;
     }
@@ -326,7 +411,7 @@ function _scheduleSurfRebuild() {
     _surfRebuildScheduled = true;
     requestAnimationFrame(function () {
         _surfRebuildScheduled = false;
-        _rebuildSurfFieldCache();
+        _rebuildSurfFieldCache(asDraft);
     });
 }
 
@@ -425,20 +510,28 @@ function _surfHuygensPQAtCell(sourcesInfo, lambda_px, z, y) {
     return { P: norm * (sSin - sCos), Q: -norm * (sCos + sSin) };
 }
 
-function _rebuildSurfFieldCache() {
+function _rebuildSurfFieldCache(draft) {
     var s = simSurf;
     if (s.canvasW < 10 || s.canvasH < 10) return;
 
     var lambda_px = s.lambda * s.pxPerCm;
     if (lambda_px <= 0) return;
 
-    var gw = Math.max(40, Math.min(SURF_GRID_W_MAX, Math.round(s.canvasW / SURF_GRID_FACTOR)));
-    var gh = Math.max(30, Math.min(SURF_GRID_H_MAX, Math.round(s.canvasH / SURF_GRID_FACTOR)));
-    // Repasse dessus si le cadrage écran seul sous-échantillonnerait λ (cf. constantes ci-dessus).
-    var neededGw = Math.ceil(s.canvasW * SURF_GRID_CELLS_PER_LAMBDA / lambda_px);
-    var neededGh = Math.ceil(s.canvasH * SURF_GRID_CELLS_PER_LAMBDA / lambda_px);
-    if (neededGw > gw) gw = Math.min(SURF_GRID_W_MAX, neededGw);
-    if (neededGh > gh) gh = Math.min(SURF_GRID_H_MAX, neededGh);
+    // Dimensions de la grille : la plus forte des deux exigences (cadrage écran / échantillonnage
+    // de λ, cf. constantes en tête de fichier), ramenée sous le budget de cellules en divisant
+    // les DEUX dimensions par le même facteur — les deux exigences ayant le rapport d'aspect du
+    // canvas, la grille le conserve donc quoi qu'il arrive.
+    var budget = (draft ? SURF_GRID_BUDGET_DRAFT : SURF_GRID_BUDGET) * s.perfScale;
+    var gw = Math.max(s.canvasW / SURF_GRID_FACTOR, s.canvasW * SURF_GRID_CELLS_PER_LAMBDA / lambda_px);
+    var gh = Math.max(s.canvasH / SURF_GRID_FACTOR, s.canvasH * SURF_GRID_CELLS_PER_LAMBDA / lambda_px);
+    if (gw * gh > budget) {
+        var shrink = Math.sqrt(budget / (gw * gh));
+        gw *= shrink;
+        gh *= shrink;
+    }
+    gw = Math.max(SURF_GRID_MIN_W, Math.round(gw));
+    gh = Math.max(SURF_GRID_MIN_H, Math.round(gh));
+    s.gridIsDraft = !!draft;
 
     var k     = 2 * Math.PI / lambda_px;
     var c_px  = SURF_C_CM * s.pxPerCm;
@@ -703,6 +796,8 @@ function drawSurfaces() {
     var cosWR = Math.cos(thR), sinWR = Math.sin(thR);
     var front     = s.c_px * t; // distance parcourue depuis l'origine (front causal, gauche ET droite)
 
+    var tPerf0 = _surfNow(); // mesure pour le régulateur de performance (cf. _surfPerfSample)
+
     var gw = s.gridW, gh = s.gridH;
     var img  = s._imgData; // buffer réutilisé (cf. _rebuildSurfFieldCache), pas de réallocation par frame
     var out  = s._imgU32;  // même tampon, vu en couleurs 32 bits pré-empaquetées
@@ -743,19 +838,71 @@ function drawSurfaces() {
     }
     s._offCtx.putImageData(img, 0, 0);
 
-    // Agrandissement natif (lissé) de la grille basse résolution vers la taille d'affichage
-    // réelle — bien moins coûteux qu'un remplissage par blocs en JS. Léger flou en plus, juste
-    // pour adoucir la trame de la grille basse résolution elle-même (pas pour masquer du
-    // repliement : l'espacement des sources en λ/SURF_HUYGENS_SPACING_DIV s'en charge déjà).
+    // Agrandissement natif (lissé) de la grille vers la taille d'affichage réelle — bien moins
+    // coûteux qu'un remplissage par blocs en JS. Flou d'appoint pour adoucir la trame de la
+    // grille (pas pour masquer du repliement : l'espacement des sources en
+    // λ/SURF_HUYGENS_SPACING_DIV s'en charge déjà), conditionné à la taille écran d'une cellule
+    // — cf. SURF_BLUR_MIN_PX_PER_CELL pour la justification.
     ctx.imageSmoothingEnabled = true;
-    ctx.filter = 'blur(0.6px)';
+    var pxPerCell = W / gw;
+    var blurPx = (pxPerCell >= SURF_BLUR_MIN_PX_PER_CELL)
+               ? Math.min(SURF_BLUR_MAX_PX, pxPerCell * SURF_BLUR_RATIO) : 0;
+    if (blurPx > 0) ctx.filter = 'blur(' + blurPx.toFixed(2) + 'px)';
     ctx.drawImage(s._offCanvas, 0, 0, gw, gh, 0, 0, W, H);
-    ctx.filter = 'none';
+    if (blurPx > 0) ctx.filter = 'none';
+    // Mesuré ici, sur la seule partie dont le coût suit le budget de cellules (boucle de rendu +
+    // agrandissement), à l'exclusion des surcouches vectorielles ci-dessous.
+    var perfMs = _surfNow() - tPerf0;
 
     _drawBarrierSurf(ctx, W, H);
     if (s.showAngle) _drawSurfAngle(ctx, W, H);
     if (simSurf.showGraph) _drawSurfPoint(ctx);
     if (simSurf.showGraph && _surfAmpYActive()) _drawSurfCutAxis(ctx, H);
+
+    _surfPerfSample(perfMs); // en dernier : peut déclencher un rebuild (cf. SURF_PERF_COOLDOWN_MS)
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Régulateur de performance — ajuste la fraction du budget de cellules réellement utilisée
+//  (simSurf.perfScale) d'après le coût mesuré du rendu, pour que la simulation reste fluide sur
+//  une machine modeste sans brider inutilement les autres. Cf. les constantes SURF_PERF_* pour
+//  les seuils et les garde-fous anti-oscillation.
+// ══════════════════════════════════════════════════════════════════════
+
+var _surfPerfSum = 0, _surfPerfCount = 0, _surfPerfLastAdjust = -1e9;
+
+function _surfPerfSample(ms) {
+    var s = simSurf;
+    // Une grille brouillon ne mesure pas le coût réel du rendu définitif : on l'ignore, et on
+    // repart d'une moyenne vierge pour ne pas la contaminer.
+    if (s.gridIsDraft) { _surfPerfSum = 0; _surfPerfCount = 0; return; }
+
+    _surfPerfSum += ms;
+    if (++_surfPerfCount < SURF_PERF_SAMPLES) return;
+    var avg = _surfPerfSum / _surfPerfCount;
+    _surfPerfSum = 0;
+    _surfPerfCount = 0;
+
+    var now = _surfNow();
+    if (now - _surfPerfLastAdjust < SURF_PERF_COOLDOWN_MS) return;
+
+    var next = s.perfScale;
+    if (avg > SURF_PERF_MS_HIGH) {
+        // Le coût du rendu est quasi linéaire en nombre de cellules : on vise DIRECTEMENT
+        // SURF_PERF_MS_HIGH au lieu de descendre par paliers fixes, ce qui évite plusieurs
+        // secondes de saccades avant convergence sur une machine lente. Correction bornée pour
+        // ne pas sur-réagir à une rafale de frames parasites (onglet réactivé, autre appli…).
+        next = Math.max(SURF_PERF_SCALE_MIN, s.perfScale * Math.max(0.4, SURF_PERF_MS_HIGH / avg));
+    } else if (avg < SURF_PERF_MS_LOW) {
+        // Remontée prudente, par paliers : rien ne presse, et un pas trop grand ferait osciller.
+        next = Math.min(1, s.perfScale / 0.75);
+    }
+    // Sous 5 % d'écart, le gain ne vaut pas le rebuild.
+    if (Math.abs(next - s.perfScale) < 0.05 * s.perfScale) return;
+
+    s.perfScale = next;
+    _surfPerfLastAdjust = now;
+    _rebuildSurfFieldCache(false);
 }
 
 // L'axe de coupe (graphe "Amplitude(y)") n'est affiché/actif que si ce graphe
