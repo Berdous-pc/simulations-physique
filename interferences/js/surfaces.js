@@ -683,71 +683,7 @@ function _surf3DInvertY(x, screenY, thetaRad, seedY) {
 //  Rendu principal du bassin (vue de dessus)
 // ══════════════════════════════════════════════════════════════════════
 
-// ══════════════════════════════════════════════════════════════════════
-//  Profileur — TEMPORAIRE, à retirer à la fin de ce chantier.
-//
-//  Éteint par défaut et ne pilote RIEN : il ne fait que mesurer, à la demande. C'est délibéré —
-//  la session précédente a perdu des heures sur trois hypothèses de coût successives, toutes
-//  démenties par la première mesure venue, et sur un régulateur qui, lui, agissait.
-//
-//  Usage, depuis la console du navigateur :
-//      SURF_PERF_DEBUG = true;   // puis laisser tourner ~3 s dans la vue à mesurer
-//      surfPerfReport();         // affiche le relevé et remet les compteurs à zéro
-//
-//  Le compteur de frames est incrémenté dans drawSurfaces, donc dans les DEUX vues — les
-//  compteurs de détail s'alimentant eux aussi dans les deux, l'incrémenter seulement dans le
-//  rendu 3D ferait afficher des SOMMES au lieu de moyennes en vue de dessus (bug de la session
-//  précédente : un absurde champ_ms à 2617).
-// ══════════════════════════════════════════════════════════════════════
-
-var SURF_PERF_DEBUG = false;
-var _surfPerf = { frames: 0, total: 0, field: 0, paint: 0, span: 0, first: 0, last: 0, dims: '',
-                  fillPx: 0, seabedPx: 0 };
-
-function _surfPerfNow() {
-    return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-}
-
-function _surfPerfFrame(t0) {
-    var p = _surfPerf;
-    var now = _surfPerfNow();
-    if (!p.frames) p.first = t0;
-    p.frames++;
-    p.total += now - t0;
-    p.last = now;
-}
-
-function surfPerfReport() {
-    var p = _surfPerf;
-    if (!p.frames) {
-        console.log('Profileur inactif. Faire : SURF_PERF_DEBUG = true; puis attendre ~3 s.');
-        return;
-    }
-    // Période d'affichage RÉELLEMENT observée — sans plafond. Un plafond à 16,7 ms a sa place
-    // dans une boucle d'asservissement (une simulation qui rame allonge les intervalles, et un
-    // estimateur naïf en conclurait « le budget a doublé » puis se relâcherait encore), mais dans
-    // un RAPPORT il efface exactement ce qu'on cherche à lire : la cadence effective. Les deux
-    // sont donc affichés séparément — l'observé, et le budget d'une image à 60 Hz.
-    var f = p.frames;
-    var period = (p.last - p.first) / Math.max(1, f - 1);
-    console.log(
-        'frames=' + f +
-        '  frame_totale_ms=' + (p.total / f).toFixed(3) +
-        '  champ_ms=' + (p.field / f).toFixed(3) +
-        '  peintre_ms=' + (p.paint / f).toFixed(3) +
-        '\nperiode_observee_ms=' + period.toFixed(2) +
-        '  fps_observe=' + (1000 / period).toFixed(1) +
-        '  pct_budget_60Hz=' + (100 * p.total / f / 16.7).toFixed(1) +
-        '\npixels_remplis=' + Math.round(p.fillPx / f) +
-        '  pixels_fond_marin=' + Math.round(p.seabedPx / f) +
-        '\n' + p.dims
-    );
-    _surfPerf = { frames: 0, total: 0, field: 0, paint: 0, span: 0, first: 0, last: 0, dims: '',
-                  fillPx: 0, seabedPx: 0 };
-}
-
 function drawSurfaces() {
-    var _perfT0 = SURF_PERF_DEBUG ? _surfPerfNow() : 0;
     var canvas = document.getElementById('surf-canvas');
     if (!canvas) return;
     var ctx = canvas.getContext('2d');
@@ -769,7 +705,6 @@ function drawSurfaces() {
         if (s.showGraph && _surfAmpXActive()) _drawSurfCutAxisH(ctx, W);
         _drawSurfScaleBar(ctx, W, H);
         _updateSurfValues();
-        if (SURF_PERF_DEBUG) _surfPerfFrame(_perfT0);
         return;
     }
 
@@ -798,7 +733,6 @@ function drawSurfaces() {
         var cpx = s.c_px;
         var tr0 = SURF_COL_TROUGH[0], tr1 = SURF_COL_TROUGH[1], tr2 = SURF_COL_TROUGH[2];
         var dc0 = SURF_COL_CREST[0] - tr0, dc1 = SURF_COL_CREST[1] - tr1, dc2 = SURF_COL_CREST[2] - tr2;
-        var _pField0 = SURF_PERF_DEBUG ? _surfPerfNow() : 0;
 
         for (var gy = 0; gy < hh; gy++) {
             for (var gx = 0; gx < gw; gx++) {
@@ -821,10 +755,6 @@ function drawSurfaces() {
             var srcB = (gh - 1 - gyb) * rowBytes;
             data.set(data.subarray(srcB, srcB + rowBytes), gyb * rowBytes);
         }
-        if (SURF_PERF_DEBUG) {
-            _surfPerf.field += _surfPerfNow() - _pField0;
-            _surfPerf.dims = 'vue=dessus  grille=' + gw + '×' + gh + ' (' + (gw * gh) + ' cellules)';
-        }
         s._offCtx.putImageData(img, 0, 0);
 
         ctx.imageSmoothingEnabled = true;
@@ -842,7 +772,6 @@ function drawSurfaces() {
     if (s.showGraph && _surfAmpXActive()) _drawSurfCutAxisH(ctx, W, is3D);
     _drawSurfScaleBar(ctx, W, H);
     _updateSurfValues();
-    if (SURF_PERF_DEBUG) _surfPerfFrame(_perfT0);
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -917,7 +846,6 @@ function _render3DSurfView(ctx, W, H, cosWT, sinWT, t) {
     var hhc = (gh + 1) >> 1;
     var r1c_ = s.r1, r2c_ = s.r2, P1c = s.P1, Q1c = s.Q1, P2c = s.P2, Q2c = s.Q2;
     var cpxc = s.c_px;
-    var _pField0 = SURF_PERF_DEBUG ? _surfPerfNow() : 0;
     for (var gyc = 0; gyc < hhc; gyc++) {
         for (var gxc = 0; gxc < gw; gxc++) {
             var idxc = gyc * gw + gxc;
@@ -931,7 +859,6 @@ function _render3DSurfView(ctx, W, H, cosWT, sinWT, t) {
         var srcC = (gh - 1 - gycb) * gw;
         rawGrid.set(rawGrid.subarray(srcC, srcC + gw), gycb * gw);
     }
-    if (SURF_PERF_DEBUG) _surfPerf.field += _surfPerfNow() - _pField0;
 
     // ── Nombre de bandes de profondeur ────────────────────────────────────────────────────
     // C'est l'échantillonnage de la nappe le long de l'axe y du bassin, et donc l'axe FAIBLE du
@@ -1075,8 +1002,6 @@ function _render3DSurfView(ctx, W, H, cosWT, sinWT, t) {
     // Hauteur → décalage écran, en pixels physiques : un seul facteur au lieu de trois produits.
     var ampSinDpr = _surfAmp3D() * sinT * dpr;
 
-    var _fillPxAcc = 0, _seabedPxAcc = 0;
-    var _pPaint0 = SURF_PERF_DEBUG ? _surfPerfNow() : 0;
 
     for (var zi = 0; zi < N_Z; zi++) {
         var py = (zi + 0.5) / N_Z * s.canvasH;
@@ -1147,15 +1072,6 @@ function _render3DSurfView(ctx, W, H, cosWT, sinWT, t) {
             else             { yLo = sy; yHi = syPrev; tLo = t01; tHi = tPrev; }
             if (yLo < 0) yLo = 0;
             if (yHi >= PH) yHi = PH - 1;
-            // Compteur de pixels remplis — TEMPORAIRE, avec le reste du profileur. Il sert à
-            // trancher une question de coût : le peintre est-il dominé par le préambule par
-            // colonne (859 000 évaluations/frame au dézoom max) ou par les écritures de
-            // remplissage ? Les deux optimisations candidates ne visent pas la même partie, et on
-            // a déjà perdu du temps dans ce chantier à optimiser sur une hypothèse de coût fausse.
-            // Compté par SEGMENT (une addition par colonne), pas par pixel. Le test sur
-            // SURF_PERF_DEBUG reste dans la boucle chaude : il perturbe la mesure de ~1 %, ce qui
-            // est sans importance devant le rapport qu'on cherche à établir.
-            if (SURF_PERF_DEBUG) _fillPxAcc += yHi - yLo + 1;
 
             var nSeg = yHi - yLo;
             var wr, wg, wb, dwr = 0, dwg = 0, dwb = 0;
@@ -1184,7 +1100,7 @@ function _render3DSurfView(ctx, W, H, cosWT, sinWT, t) {
 
     // Avant du bassin (sous la dernière ligne) : aplat façon fond marin, teinte "creux" assombrie.
     // Les trois composantes étaient recalculées à CHAQUE pixel (trois lectures indexées et trois
-    // multiplications pour trois constantes), sur ~300 000 pixels par image d'après le profileur.
+    // multiplications pour trois constantes), sur ~300 000 pixels par image d'après les mesures.
     var sea0_ = SURF_COL_TROUGH[0] * 0.5;
     var sea1_ = SURF_COL_TROUGH[1] * 0.5;
     var sea2_ = SURF_COL_TROUGH[2] * 0.7;
@@ -1192,30 +1108,12 @@ function _render3DSurfView(ctx, W, H, cosWT, sinWT, t) {
     for (var pxi3 = 0; pxi3 < PW; pxi3++) {
         var syLast = prevSyArr[pxi3];
         var yStart = syLast < 0 ? 0 : syLast;
-        if (SURF_PERF_DEBUG) _seabedPxAcc += PH - yStart;
         var pidx2 = (yStart * PW + pxi3) * 4;
         for (var py3 = yStart; py3 < PH; py3++) {
             data[pidx2] = sea0_; data[pidx2 + 1] = sea1_; data[pidx2 + 2] = sea2_;
             data[pidx2 + 3] = 255;
             pidx2 += seaStep_;
         }
-    }
-
-    if (SURF_PERF_DEBUG) {
-        _surfPerf.paint += _surfPerfNow() - _pPaint0;
-        _surfPerf.fillPx += _fillPxAcc;
-        _surfPerf.seabedPx += _seabedPxAcc;
-        _surfPerf.dims = 'vue=plongeante  grille=' + gw + '×' + gh + ' (' + (gw * gh) + ' cellules)'
-            + '  peinture=' + PW + '×' + PH + ' (pleine resolution)'
-            + '  bandes=' + N_Z + ' (' + (N_Z * PW) + ' iterations)'
-            + '\ncellules/lambda=' + (gw * lambda_px_3d / s.canvasW).toFixed(1)
-            + '  echantillons_x/lambda=' + (PW * lambda_px_3d / s.canvasW).toFixed(1)
-            + '  echantillons_profondeur/lambda=' + (N_Z * lambda_px_3d / s.canvasH).toFixed(1)
-            + '  lambda_px=' + lambda_px_3d.toFixed(1)
-            + '  amp_px=' + _surfAmp3D().toFixed(1)
-            + '  cambrure_crete_a_creux/lambda=' + (lambda_px_3d > 0 ? (2 * _surfAmp3D() / lambda_px_3d).toFixed(2) : '-')
-            + '\ngh/N_Z=' + (gh / N_Z).toFixed(3)
-            + '  periode_battement_bandes=' + (N_Z < gh ? (1 / Math.max(1e-6, Math.abs(gh / N_Z - Math.round(gh / N_Z)))).toFixed(1) : 'aucune (sur-echantillonnage)');
     }
 
     // Écriture directe des pixels physiques : putImageData ignore la transformation du contexte

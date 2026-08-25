@@ -294,12 +294,21 @@ réelles** au lieu d'une somme de Huygens sur une ouverture.
 - Chaque source ponctuelle utilise le **même modèle asymptotique d'onde cylindrique 2D** que les
   sources de Huygens de `diffraction/` (facteur `(1−i)/√(2λ)`, `_surfPointSourcePQ`) — le Green
   du problème 2D, pas un simple `sin(kr−ωt)/√r`, pour rester cohérent avec le reste du site.
-- Grille de calcul bornée en dur (`SURF_GRID_W_MAX` 380 × `SURF_GRID_H_MAX` 250,
-  `SURF_GRID_CELLS_PER_LAMBDA` = 5) : le coût du rebuild et du dessin par frame est proportionnel
-  à largeur × hauteur de grille. Les rebuilds sont regroupés par `_scheduleSurfRebuild()`
-  (au plus un par frame, même principe que `resize()`/`resizeScheduled`).
-- **Célérité fixe** `SURF_C_CM = 9,6 cm/s` ; largeur visible du bassin `SURF_VIEW_WIDTH_CM = 45 cm`
-  (calibre `pxPerCm` au resize).
+- **Dimensionnement de la grille** — un scalaire unique `m` = cellules par pixel écran, tiré de
+  `SURF_GRID_CELLS_PER_LAMBDA` (= 9) divisé par λ en pixels, borné en bas par
+  `1/SURF_GRID_FACTOR` et en haut par 1 (au-delà, l'écran ne peut plus rien montrer de plus).
+  La grille vaut `m × canvas`, puis un **budget isotrope** `SURF_GRID_BUDGET` (360 000 cellules)
+  la rétrécit par un facteur de forme unique `√(budget/aire)` si elle déborde. Les anciens
+  plafonds anisotropes en dur (380 × 250) produisaient une grille de rapport 1,52 sur un canvas
+  de rapport 1,25, donc une résolution deux fois moindre en x qu'en y. Les rebuilds sont
+  regroupés par `_scheduleSurfRebuild()` (au plus un par frame, même principe que
+  `resize()`/`resizeScheduled`).
+- **Symétries du maillage** (`_rebuildSurfFieldCache`) : les deux sources étant sur la médiane
+  horizontale, `r₁` d'une cellule vaut `r₂` de sa cellule miroir gauche/droite, et la moitié basse
+  de la grille est le miroir exact de la moitié haute. Seul un quart de la grille est réellement
+  calculé ; le reste est rempli par écriture croisée puis recopie de lignes (`set`/`subarray`).
+- **Célérité fixe** `SURF_C_CM = 9,6 cm/s`. Le cadrage est décrit par `viewCm` (largeur visible du
+  bassin en cm), qui calibre `pxPerCm` au resize.
 
 #### Causalité des sources activables
 
@@ -316,7 +325,7 @@ fait pas réapparaître tout le bassin — seul un nouveau front part de l'insta
 | Animation | `paused`, `simTime`, `speedFactor` (`SURF_SPEED_STEPS` = ×0,10 / 0,25 / 0,50 / 1,00) |
 | Paramètres | `lambda` (cm, 1–10), `b` (écartement des sources, cm, 1–30) |
 | Sources | `s1Enabled`/`s2Enabled`, `s1Toggles`/`s2Toggles` (cf. ci-dessus) |
-| Géométrie | `canvasW/H`, `pxPerCm`, `zoom` (`SURF_ZOOM_MIN`→`MAX`, slider à 3 crans), `originX/Y`, `s1`, `s2` |
+| Géométrie | `canvasW/H`, `pxPerCm`, `viewCm` (largeur visible en cm, `SURF_VIEW_MIN_CM` 20 → `SURF_VIEW_MAX_CM` 160, défaut 80 ; slider **géométrique** à `SURF_ZOOM_STEPS` = 240 crans, cf. §Zoom), `originX/Y`, `s1`, `s2` |
 | Point de mesure M | `point {x, y, cmX, cmY}` + `dragging` — position **physique en cm**, donc invariante au zoom |
 | Axes de coupe | `cut` (vertical, graphe Amplitude(y)) et `cutH` (horizontal, graphe Amplitude(x)), tous deux draggables |
 | Vue | `viewMode` `'top'` \| `'plongeante'`, `tiltDeg` (10–75°, défaut 45°) |
@@ -334,6 +343,58 @@ fait pas réapparaître tout le bassin — seul un nouveau front part de l'insta
   analytiquement (médiatrice + branches), pas par seuillage du champ.
 - **Distances** `S₁M`/`S₂M` (`_drawSurfDistances`) affichées en cm **ou en nombre de λ**, avec la
   différence de marche δ ; couleurs dédiées par source (`#e07020` / `#e0397a`).
+
+#### Zoom
+
+Même doctrine que `diffraction/` : le cadrage est décrit par une **largeur visible en cm**
+(`viewCm`), pas par un facteur multiplicatif. `pxPerCm = canvasW / viewCm`, donc redimensionner la
+fenêtre ne change pas ce qu'on voit, seulement la finesse avec laquelle on le voit.
+
+- Slider **géométrique** (`_surfViewFromSlider` / `_surfSliderFromView`) : un cran donne toujours
+  le même rapport, jamais le même nombre de cm. Il va de `SURF_VIEW_MAX_CM` (dézoom, à gauche) à
+  `SURF_VIEW_MIN_CM` (zoom, à droite), et le libellé affiche `SURF_VIEW_DEFAULT_CM / viewCm`.
+- **Molette** (`initSurfWheelZoom`) : loi multiplicative `viewCm × exp(Δ·SURF_WHEEL_SENS)`,
+  resynchronisée sur le slider.
+- **Barre d'échelle** (`_drawSurfScaleBar`) : longueur « ronde » choisie dans
+  `SURF_SCALE_NICE_CM`, visant `SURF_SCALE_TARGET_FR` de la largeur du bassin. Dessinée dans les
+  **deux** vues — l'inclinaison tournant autour de l'axe horizontal S₁S₂, les longueurs en x
+  gardent leur échelle exacte en vue plongeante.
+
+**Le cadrage ne réagit jamais automatiquement à λ.** Ce serait masquer la grandeur qu'on fait
+varier : c'est à l'élève de constater que les crêtes se resserrent, et de zoomer s'il le souhaite.
+
+#### Vue plongeante — échantillonnage et artefacts
+
+Le rendu 3D (`_render3DSurfView`) est un **algorithme du peintre** : `N_Z` bandes de profondeur
+dessinées d'arrière en avant, chacune remplissant verticalement l'écart avec la silhouette de la
+bande précédente (`_prevSy`), ce qui produit l'occlusion. Tampon `ImageData` et tables
+d'interpolation par colonne réutilisés d'une frame à l'autre (rien n'est alloué par frame).
+
+Quatre réglages gouvernent la qualité, et chacun corrige un artefact précis :
+
+| réglage | rôle |
+|---|---|
+| `SURF_3D_BANDS_BUDGET` (750 000 itérations) | plafonne `N_Z × PW`. Exprimé en **itérations**, pas en millisecondes : le budget d'une frame appartient à l'écran, pas au code, et une constante en ms serait fausse sur toute autre machine |
+| `SURF_3D_STEEPNESS` (0,5) | **plafond de raideur** : la hauteur effective (`_surfAmp3D`) est bornée à une fraction de λ *à l'écran*. Sans lui, 42 px fixes sur une λ de 10 px donnent une vague 8 fois plus haute que large — une palissade dont la silhouette est un peigne et dont l'occlusion masque toute la figure |
+| recalage `N_Z` sur `gh` (`SURF_3D_BEAT_PERIOD` = 4) | supprime le **battement de rééchantillonnage**. Décimer 537 lignes de grille en 469 bandes fait dériver le poids `ty` de 0,145 par bande : `ty` = 0 lit une ligne telle quelle (contraste plein), `ty` = 0,5 moyenne deux lignes en quasi-opposition de phase (contraste écrasé), d'où des stries net/fondu de période ~13 px. `N_Z` est calé sur un sous-multiple entier de `gh` (`ty` constant), mais **seulement** en décimation et seulement si la période dépasse 4 bandes |
+| interpolation verticale de la couleur | le remplissage rampe entre la couleur de la bande précédente et celle de la bande courante. Sans elle, la profondeur était reconstruite en escalier alors que l'axe x l'est linéairement : à nombre de cellules par λ pourtant identique, les vagues se propageant en profondeur paraissaient bien plus grossières que celles se propageant latéralement |
+
+**Ce qui a été mesuré puis écarté.** Réduire la résolution de *peinture* : la boucle est un
+rastériseur, pas un interpolateur — elle produit des arêtes (bords de crête, occlusion, limite
+eau/fond marin) que la grille ne contient pas, et dont la finesse ne dépend que de `PW`/`PH`.
+Découpler l'échantillonnage du champ de la résolution de remplissage, et transposer le tampon
+pour la localité de cache : mesuré à ~3 ms chacun sur 25, pour un vrai risque de régression —
+le peintre est équilibré ~50/50 entre préambule par colonne et écritures (2,61 M d'écritures pour
+859 k évaluations, segment moyen 2,70 px, surdessin 1,28×).
+
+#### Gel en pause
+
+`tickSurfaces` ne redessine pas à l'arrêt. L'invalidation se fait sur les **événements d'entrée**
+(`initSurfInvalidation`, en capture à la racine du document) et non sur une signature d'état :
+une signature n'est juste que si elle est exhaustive, et un champ oublié fige l'image sur une
+valeur périmée — panne silencieuse. L'animation étant à l'arrêt, rien ne peut changer l'image sans
+qu'un événement l'ait précédé. Filet de sécurité (`SURF_PAUSED_REFRESH_MS` = 500 ms) pour
+rattraper une invalidation manquante en moins d'une demi-seconde.
 
 #### Graphes (`SURF_GRAPH_TABS`)
 
@@ -1021,7 +1082,7 @@ index.html
   └── js/surfaces.js  dépend de : rien d'autre (état `simSurf` autonome ; chargé après scene.js/
   │                               graph.js par simple convention d'ordre, pas par dépendance)
   │                   expose : simSurf, SURF_GRAPH_TABS, initSurfaces, resizeSurfaces,
-  │                             tickSurfaces, drawSurfaces, drawSurfGraph, resizeSurfGraphCanvas,
+  │                             tickSurfaces, drawSurfaces, surfInvalidate, drawSurfGraph, resizeSurfGraphCanvas,
   │                             togglePauseSurfaces, onSliderSpeedSurf, onSliderZoomSurf,
   │                             onSliderTiltSurf, onSliderLambdaSurf, onSliderBSurf,
   │                             setSurfViewMode, toggleSurfSource, toggleSurfInterfMode,
