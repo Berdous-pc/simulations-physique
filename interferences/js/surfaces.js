@@ -130,12 +130,36 @@ var SURF_3D_PLANE_HALF_H = SURF_3D_AMP_PX * 2.2;
 // dépensait déjà (N_Z plafonné à 500), le dégraissage de la boucle du peintre finançant
 // l'écart. C'est le poste de coût dominant du rendu : à surveiller si l'animation accroche.
 var SURF_3D_BANDS_MIN    = 150;
-var SURF_3D_BANDS_MAX    = 900;
-// Ancien pire cas : 500 bandes, soit 800 000 itérations sur une sortie de 1600 px de large. Le
-// budget ci-dessous est un peu au-dessus, mais le corps de la boucle a été allégé d'environ un
-// quart en parallèle (tables d'interpolation horizontale sorties de la boucle, constantes de
-// couleur hoistées) : à budget plein, on dépense donc moins qu'avant.
-var SURF_3D_BANDS_BUDGET = 1000000;
+
+// ── Budget de la boucle du peintre, et cible de 30 images/s ──────────
+// La nappe est peinte à la RÉSOLUTION PLEINE de l'écran, et ce n'est pas négociable. Une
+// tentative de peindre dans un tampon réduit puis de l'agrandir (comme le fait la vue de dessus
+// avec sa grille) a été essayée et retirée : elle partait de l'idée qu'interpoler une grille de
+// 400 colonnes sur 1599 colonnes de sortie était du gaspillage. C'est faux. La boucle du peintre
+// n'est pas un interpolateur mais un RASTERISEUR : elle produit une silhouette — bord des crêtes,
+// occlusion d'une vague par la suivante, frontière eau/fond marin — c'est-à-dire des arêtes
+// FRANCHES que la grille, elle, ne contient pas. Leur finesse est donc bornée par la résolution
+// de peinture et par elle seule. Réduire le tampon les floutait toutes (constat visuel sans
+// appel : « la nappe est beaucoup plus moche, très brouillée »).
+//
+// D'où la cible assumée de 30 images/s en vue plongeante plein écran, plutôt que 60 sur une image
+// molle. La synchronisation verticale rend ce choix binaire et sans regret : une frame à 17 ms et
+// une frame à 33 ms s'affichent EXACTEMENT à la même cadence. Dès qu'on dépasse 16,7 ms, autant
+// dépenser les 33,4 ms en entier — une frame à 18 ms jetterait 15 ms de qualité gratuite.
+//
+// Rien ne fixe la cadence dans le code : le budget ci-dessous borne le travail, et la cadence
+// suit la taille de la fenêtre. Le bassin plein écran fait 2 mégapixels et se pose à 30 fps ;
+// dans une fenêtre deux fois moins large le coût est divisé par 4 et on repasse à 60 fps sans
+// que rien ne s'ajuste. Budget en ITÉRATIONS (bandes × colonnes), jamais en millisecondes : le
+// budget d'une image appartient à l'écran, pas au code.
+//
+// Calage : 27 ns par itération mesurées (28 avec la grosse grille, qui pèse sur le cache), soit
+// ~21 ms de peinture au budget plein, ~24 ms de frame complète — 9 ms de marge avant décrochage
+// à 20 fps. Une piste existe pour récupérer les 60 fps sans rien sacrifier (transposer le tampon
+// de peinture : la boucle progresse en colonnes alors que le tampon est rangé par lignes, donc
+// chaque écriture d'un segment tombe dans une ligne de cache différente) — c'est une hypothèse,
+// pas une mesure, et elle n'a pas été tentée.
+var SURF_3D_BANDS_BUDGET = 750000;
 
 // Couleurs de l'onde (crêtes ↔ creux) — identiques à diffraction/js/surfaces.js
 // pour une cohérence visuelle entre les pages du site.
@@ -665,18 +689,21 @@ function surfPerfReport() {
         console.log('Profileur inactif. Faire : SURF_PERF_DEBUG = true; puis attendre ~3 s.');
         return;
     }
-    // Période d'affichage MESURÉE, pas une constante en dur — mais plafonnée à 16,7 ms : si la
-    // simulation rame, les intervalles s'allongent et un estimateur naïf conclurait « le budget a
-    // doublé », donc se relâcherait encore (piège de rétroaction du bilan précédent).
-    var period = Math.min(16.7, (p.last - p.first) / Math.max(1, p.frames - 1));
+    // Période d'affichage RÉELLEMENT observée — sans plafond. Un plafond à 16,7 ms a sa place
+    // dans une boucle d'asservissement (une simulation qui rame allonge les intervalles, et un
+    // estimateur naïf en conclurait « le budget a doublé » puis se relâcherait encore), mais dans
+    // un RAPPORT il efface exactement ce qu'on cherche à lire : la cadence effective. Les deux
+    // sont donc affichés séparément — l'observé, et le budget d'une image à 60 Hz.
     var f = p.frames;
+    var period = (p.last - p.first) / Math.max(1, f - 1);
     console.log(
         'frames=' + f +
         '  frame_totale_ms=' + (p.total / f).toFixed(3) +
         '  champ_ms=' + (p.field / f).toFixed(3) +
         '  peintre_ms=' + (p.paint / f).toFixed(3) +
-        '\nperiode_mesuree_ms=' + period.toFixed(2) +
-        '  budget_consomme_pct=' + (100 * p.total / f / period).toFixed(1) +
+        '\nperiode_observee_ms=' + period.toFixed(2) +
+        '  fps_observe=' + (1000 / period).toFixed(1) +
+        '  pct_budget_60Hz=' + (100 * p.total / f / 16.7).toFixed(1) +
         '\n' + p.dims
     );
     _surfPerf = { frames: 0, total: 0, field: 0, paint: 0, span: 0, first: 0, last: 0, dims: '' };
@@ -811,15 +838,16 @@ function _render3DSurfView(ctx, W, H, cosWT, sinWT, t) {
     var s = simSurf;
     var gw = s.gridW, gh = s.gridH;
     var dpr = window.devicePixelRatio || 1;
-    var PW = Math.max(1, Math.round(W * dpr));
-    var PH = Math.max(1, Math.round(H * dpr));
     var thetaRad = s.tiltDeg * Math.PI / 180;
     var cosT = Math.cos(thetaRad), sinT = Math.sin(thetaRad);
     var originY = s.canvasH / 2;
 
-    // Tampon de sortie réutilisé d'une frame sur l'autre — un createImageData(PW, PH) par frame,
-    // c'est ~8 Mo alloués puis jetés 60 fois par seconde en plein écran, à la seule charge du
-    // ramasse-miettes. Recréé uniquement si la taille de sortie change (resize, splitter, dpr).
+    // Tampon de peinture, à la résolution PLEINE de l'écran (cf. SURF_3D_BANDS_BUDGET pour
+    // pourquoi il n'est pas réduit). Réutilisé d'une frame sur l'autre — un createImageData par
+    // frame, c'était ~8 Mo alloués puis jetés à chaque image, à la seule charge du ramasse-miettes.
+    // Recréé uniquement si la taille de sortie change (resize, splitter, dpr).
+    var PW = Math.max(1, Math.round(W * dpr));
+    var PH = Math.max(1, Math.round(H * dpr));
     if (!s._img3D || s._img3D.width !== PW || s._img3D.height !== PH) {
         s._img3D  = ctx.createImageData(PW, PH);
         s._img3Du32 = new Uint32Array(s._img3D.data.buffer);
@@ -910,10 +938,16 @@ function _render3DSurfView(ctx, W, H, cosWT, sinWT, t) {
     var N_Z = Math.ceil(PH * cosT);                            // lissage
     var nLambda = Math.ceil(s.canvasH * mDepth);               // échantillonnage de λ
     if (nLambda > N_Z) N_Z = nLambda;
-    if (N_Z > SURF_3D_BANDS_MAX) N_Z = SURF_3D_BANDS_MAX;
-    if (N_Z > PH) N_Z = PH; // au-delà, deux bandes tombent sur la même ligne de sortie
+    // Plafonné par la hauteur de sortie : au-delà, deux bandes tombent sur la même ligne et la
+    // seconde efface la première.
+    if (N_Z > PH) N_Z = PH;
+    // Puis le budget de travail. C'est LE seul levier de coût de cette vue, la résolution de
+    // peinture n'en étant pas un (cf. SURF_3D_BANDS_BUDGET) : sur un grand bassin il mord, et
+    // arbitre en faveur de la netteté de la silhouette contre l'échantillonnage en profondeur.
+    // Sur une fenêtre modeste il ne mord pas du tout et la vue tourne à 60 images/s.
     if (N_Z * PW > SURF_3D_BANDS_BUDGET) N_Z = Math.floor(SURF_3D_BANDS_BUDGET / PW);
-    if (N_Z < SURF_3D_BANDS_MIN) N_Z = SURF_3D_BANDS_MIN; // plancher appliqué en dernier : il prime
+    var nFloor = Math.min(SURF_3D_BANDS_MIN, PH);
+    if (N_Z < nFloor) N_Z = nFloor;
 
     // ── Plan de coupe horizontal (Amplitude(x), y = cutH.y), cf. _drawSurfCutAxisH ──────────
     // Rendu ICI (pas en overlay séparé après coup) : la nappe/le fond marin, dessinés APRÈS pour
@@ -1046,15 +1080,18 @@ function _render3DSurfView(ctx, W, H, cosWT, sinWT, t) {
 
     if (SURF_PERF_DEBUG) {
         _surfPerf.paint += _surfPerfNow() - _pPaint0;
-        // Échantillons de profondeur par longueur d'onde — la grandeur que l'étape 3b vise.
-        var depthPerLambda = N_Z * lambda_px_3d / s.canvasH;
         _surfPerf.dims = 'vue=plongeante  grille=' + gw + '×' + gh + ' (' + (gw * gh) + ' cellules)'
-            + '  sortie=' + PW + '×' + PH
+            + '  peinture=' + PW + '×' + PH + ' (pleine resolution)'
             + '  bandes=' + N_Z + ' (' + (N_Z * PW) + ' iterations)'
             + '\ncellules/lambda=' + (gw * lambda_px_3d / s.canvasW).toFixed(1)
-            + '  echantillons_profondeur/lambda=' + depthPerLambda.toFixed(1)
+            + '  echantillons_x/lambda=' + (PW * lambda_px_3d / s.canvasW).toFixed(1)
+            + '  echantillons_profondeur/lambda=' + (N_Z * lambda_px_3d / s.canvasH).toFixed(1)
             + '  lambda_px=' + lambda_px_3d.toFixed(1);
     }
+
+    // Écriture directe des pixels physiques : putImageData ignore la transformation du contexte
+    // et écrit à l'échelle 1:1, ce qui est exactement voulu ici puisque le tampon est déjà à la
+    // résolution de l'écran. Aucun agrandissement, donc aucun adoucissement de la silhouette.
     ctx.putImageData(imgData, 0, 0);
 }
 
