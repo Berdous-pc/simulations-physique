@@ -177,6 +177,10 @@ var SURF_3D_BANDS_MIN    = 150;
 // chaque écriture d'un segment tombe dans une ligne de cache différente) — c'est une hypothèse,
 // pas une mesure, et elle n'a pas été tentée.
 var SURF_3D_BANDS_BUDGET = 750000;
+// Période de battement (en bandes) au-delà de laquelle on recale N_Z sur un sous-multiple entier
+// de gh, cf. « Accord avec la grille » dans _render3DSurfView. En dessous, la modulation est trop
+// haute en fréquence pour être perçue et on laisse N_Z tranquille.
+var SURF_3D_BEAT_PERIOD  = 4;
 
 // Couleurs de l'onde (crêtes ↔ creux) — identiques à diffraction/js/surfaces.js
 // pour une cohérence visuelle entre les pages du site.
@@ -978,6 +982,40 @@ function _render3DSurfView(ctx, W, H, cosWT, sinWT, t) {
     var nFloor = Math.min(SURF_3D_BANDS_MIN, PH);
     if (N_Z < nFloor) N_Z = nFloor;
 
+    // ── Accord avec la grille : suppression du battement de rééchantillonnage ──────────────
+    // Le peintre lit le champ à N_Z profondeurs dans une grille qui en compte gh. Quand N_Z < gh,
+    // c'est une DÉCIMATION : le poids d'interpolation ty (cf. plus bas) avance de frac(gh/N_Z) à
+    // chaque bande. Si ce rapport est proche d'un entier sans l'être, ty dérive lentement et
+    // repasse par 0 puis par 0,5 avec une longue période — or ty = 0 lit une ligne de grille
+    // telle quelle (contraste plein) tandis que ty = 0,5 moyenne deux lignes voisines, quasi en
+    // opposition de phase à petite λ (contraste écrasé). D'où une alternance net/fondu en
+    // profondeur : les "ombres qui bavent" signalées par l'utilisateur.
+    //
+    // Mesuré sur le relevé : gh=537 / N_Z=469 → rapport 1,145 → période 6,9 bandes ≈ 13 px, bien
+    // visible ; gh=320 / N_Z=469 (λ = 8 cm) → pas de décimation du tout, rien à corriger. Le
+    // modèle prédit donc exactement le régime où l'artefact apparaît.
+    //
+    // Correctif : quand la période dépasse SURF_3D_BEAT_PERIOD, caler N_Z sur un SOUS-MULTIPLE
+    // ENTIER de gh, ce qui rend ty CONSTANT (plus de dérive, plus de stries). Deux limites
+    // volontaires :
+    //   • on n'intervient QUE sur la décimation (N_Z < gh). Au-delà, on sur-échantillonne la
+    //     grille : ty varie alors de façon continue entre deux mêmes lignes, ce qui est une
+    //     interpolation lisse et non une destruction périodique du contraste — bénin.
+    //   • on n'intervient QUE si la période est longue. Une période de 2 ou 3 bandes (~4 px) est
+    //     une fréquence spatiale trop haute pour être perçue, et y toucher ferait perdre des
+    //     bandes là où le rendu est déjà bon.
+    // Le budget SURF_3D_BANDS_BUDGET peut être dépassé par ce recalage (jusqu'à ~15 % dans le cas
+    // mesuré) : c'est assumé, il calibre un coût, il n'arbitre pas une correction d'artefact.
+    if (N_Z < gh) {
+        var uDec = gh / N_Z;
+        var uNear = Math.round(uDec);
+        if (Math.abs(uDec - uNear) * SURF_3D_BEAT_PERIOD < 1) {
+            N_Z = Math.round(gh / uNear);
+            if (N_Z > PH) N_Z = PH;
+            if (N_Z < 1) N_Z = 1;
+        }
+    }
+
     // ── Plan de coupe horizontal (Amplitude(x), y = cutH.y), cf. _drawSurfCutAxisH ──────────
     // Rendu ICI (pas en overlay séparé après coup) : la nappe/le fond marin, dessinés APRÈS pour
     // la même bande, masquent ainsi naturellement toute portion "sous l'eau" du plan (retour
@@ -1117,7 +1155,9 @@ function _render3DSurfView(ctx, W, H, cosWT, sinWT, t) {
             + '  echantillons_profondeur/lambda=' + (N_Z * lambda_px_3d / s.canvasH).toFixed(1)
             + '  lambda_px=' + lambda_px_3d.toFixed(1)
             + '  amp_px=' + _surfAmp3D().toFixed(1)
-            + '  cambrure_crete_a_creux/lambda=' + (lambda_px_3d > 0 ? (2 * _surfAmp3D() / lambda_px_3d).toFixed(2) : '-');
+            + '  cambrure_crete_a_creux/lambda=' + (lambda_px_3d > 0 ? (2 * _surfAmp3D() / lambda_px_3d).toFixed(2) : '-')
+            + '\ngh/N_Z=' + (gh / N_Z).toFixed(3)
+            + '  periode_battement_bandes=' + (N_Z < gh ? (1 / Math.max(1e-6, Math.abs(gh / N_Z - Math.round(gh / N_Z)))).toFixed(1) : 'aucune (sur-echantillonnage)');
     }
 
     // Écriture directe des pixels physiques : putImageData ignore la transformation du contexte
