@@ -885,6 +885,7 @@ function _render3DSurfView(ctx, W, H, cosWT, sinWT, t) {
         s._img3D  = ctx.createImageData(PW, PH);
         s._img3Du32 = new Uint32Array(s._img3D.data.buffer);
         s._prevSy = new Int32Array(PW);
+        s._prevT01 = new Float32Array(PW);
     }
     var imgData = s._img3D;
     var data = imgData.data;
@@ -1034,6 +1035,12 @@ function _render3DSurfView(ctx, W, H, cosWT, sinWT, t) {
     var sy0 = Math.round((H / 2 + (0 - originY) * cosT) * dpr);
     var prevSyArr = s._prevSy; // alloué en même temps que le tampon de sortie, cf. plus haut
     prevSyArr.fill(sy0);
+    // Couleur de la bande PRÉCÉDENTE, par colonne — nécessaire à l'interpolation verticale du
+    // remplissage (cf. plus bas). Stockée sous forme de t01 (un seul tableau) plutôt que de trois
+    // composantes : la couleur en est une fonction affine, interpoler t01 revient exactement à
+    // interpoler la couleur. Amorcée à 0,5, la valeur de raw = 0 au bord arrière du bassin.
+    var prevT01Arr = s._prevT01;
+    prevT01Arr.fill(0.5);
 
     // ── Tables d'interpolation horizontale ────────────────────────────────────────────────
     // gx0/gx1/tx ne dépendent QUE de la colonne : les recalculer dans la boucle interne les
@@ -1101,9 +1108,6 @@ function _render3DSurfView(ctx, W, H, cosWT, sinWT, t) {
             // Couleur : même dégradé crête/creux que la vue de dessus, écrêté à ±1.
             var rawC = raw; if (rawC > 1) rawC = 1; else if (rawC < -1) rawC = -1;
             var t01 = (rawC + 1) * 0.5;
-            var wr = tr0_ + t01 * dc0_;
-            var wg = tr1_ + t01 * dc1_;
-            var wb = tr2_ + t01 * dc2_;
 
             // Hauteur : NON écrêtée (cf. en-tête de fonction) — un point doublement constructif
             // (raw jusqu'à ±2) monte visiblement plus haut qu'un point simple.
@@ -1116,19 +1120,51 @@ function _render3DSurfView(ctx, W, H, cosWT, sinWT, t) {
                 }
             }
 
+            // ── Remplissage vertical du segment, en INTERPOLANT la couleur ──────────────────
+            // Le segment relie la silhouette de la bande précédente (syPrev, couleur tPrev) à
+            // celle de la bande courante (sy, couleur t01). Le peindre d'une couleur unique
+            // reconstruisait la profondeur en ESCALIER (plus proche voisin) alors que l'axe x,
+            // lui, est reconstruit linéairement — d'où des vagues se propageant en profondeur
+            // nettement plus grossières que celles se propageant latéralement, à nombre de
+            // cellules par λ pourtant identique (retour utilisateur). La rampe met les deux
+            // directions sur le même pied.
+            //
+            // L'ordre est important : la couleur COURANTE va du côté de sy (le bord que la bande
+            // courante vient d'exposer), la précédente du côté de syPrev (la surface qui s'éloigne
+            // derrière) — sinon la rampe s'inverse quand la nappe redescend.
             var syPrev = prevSyArr[pxi2];
-            var yLo = syPrev < sy ? syPrev : sy;
-            var yHi = syPrev < sy ? sy : syPrev;
+            var tPrev = prevT01Arr[pxi2];
+            prevSyArr[pxi2] = sy;
+            prevT01Arr[pxi2] = t01;
+
+            var yLo, yHi, tLo, tHi;
+            if (syPrev < sy) { yLo = syPrev; yHi = sy; tLo = tPrev; tHi = t01; }
+            else             { yLo = sy; yHi = syPrev; tLo = t01; tHi = tPrev; }
             if (yLo < 0) yLo = 0;
             if (yHi >= PH) yHi = PH - 1;
-            // Remplissage vertical du segment : l'index avance d'une LIGNE de tampon à chaque pas
-            // (PW·4 octets), inutile de le recalculer par multiplication à chaque pixel.
+
+            var nSeg = yHi - yLo;
+            var wr, wg, wb, dwr = 0, dwg = 0, dwb = 0;
+            if (nSeg > 0) {
+                var tStep = (tHi - tLo) / nSeg;
+                wr = tr0_ + tLo * dc0_; dwr = tStep * dc0_;
+                wg = tr1_ + tLo * dc1_; dwg = tStep * dc1_;
+                wb = tr2_ + tLo * dc2_; dwb = tStep * dc2_;
+            } else {
+                // Segment d'un seul pixel (le cas le plus fréquent aux grandes λ) : pas de rampe,
+                // pas de division — on garde la couleur de la bande courante, comme avant.
+                wr = tr0_ + t01 * dc0_;
+                wg = tr1_ + t01 * dc1_;
+                wb = tr2_ + t01 * dc2_;
+            }
+            // L'index avance d'une LIGNE de tampon à chaque pas (PW·4 octets), inutile de le
+            // recalculer par multiplication à chaque pixel.
             var pidx = (yLo * PW + pxi2) * 4, pStep = PW * 4;
             for (var py2 = yLo; py2 <= yHi; py2++) {
                 data[pidx] = wr; data[pidx + 1] = wg; data[pidx + 2] = wb; data[pidx + 3] = 255;
+                wr += dwr; wg += dwg; wb += dwb;
                 pidx += pStep;
             }
-            prevSyArr[pxi2] = sy;
         }
     }
 
