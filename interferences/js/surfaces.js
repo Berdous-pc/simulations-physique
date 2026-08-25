@@ -117,9 +117,26 @@ var SURF_TILT_DEFAULT = 45;
 // 2 sources sont en phase peut monter jusqu'à ~2× cette hauteur (cf. décision : la hauteur 3D
 // n'est PAS écrêtée à ±1 comme la couleur, contrairement à _rebuildSurfFieldCache/drawSurfaces).
 var SURF_3D_AMP_PX = 42;
+// PLAFOND DE RAIDEUR (cf. _surfAmp3D). SURF_3D_AMP_PX ci-dessus est un PLAFOND, pas la hauteur
+// effective : à petite λ, une hauteur fixe de 42 px sur une longueur d'onde de 10 px à l'écran
+// donne une vague 8 fois plus haute que large — plus une surface d'eau, une palissade. La
+// silhouette devient un peigne (arête verticale en un pixel : aucun raffinement d'échantillonnage
+// ne peut la lisser) et l'occlusion devient totale (chaque crête masque tout ce qui est derrière).
+// On borne donc la hauteur à une fraction de la longueur d'onde À L'ÉCRAN : la cambrure
+// crête-à-creux / λ ne dépasse plus 2× cette valeur, au lieu de 8 aujourd'hui.
+//
+// Ce n'est PAS un cadrage qui réagirait à λ : l'espacement des crêtes — la grandeur qu'on fait
+// varier — reste rigoureusement exact, la figure d'interférence est inchangée. Seule bouge
+// l'exagération verticale du relief, qui est de toute façon une convention arbitraire (42 px ne
+// correspond à aucune amplitude physique). Valeur choisie pour que le plafond soit inactif en
+// haut de la plage de λ : à λ = 8 cm dans la vue par défaut, il ne mord quasiment pas.
+var SURF_3D_STEEPNESS = 0.5;
 // Demi-hauteur fixe (px CSS) du plan de coupe horizontal (Amplitude(x), cf. _render3DSurfView) —
 // réutilisée aussi pour la zone de drag (initSurfDrag), qui doit couvrir toute la bande visible
 // et pas seulement sa ligne centrale (sinon le plan "semble" non draggable, cf. retour utilisateur).
+// Délibérément indexée sur le PLAFOND SURF_3D_AMP_PX et non sur la hauteur courante _surfAmp3D() :
+// c'est un élément d'interface, pas un morceau de nappe. Le suivre ferait fondre le plan ET sa zone
+// de drag à quelques pixels aux petites λ, donc le rendrait invisible et inattrapable.
 var SURF_3D_PLANE_HALF_H = SURF_3D_AMP_PX * 2.2;
 
 // ── Échantillonnage en PROFONDEUR de la vue plongeante (cf. _render3DSurfView) ──
@@ -616,13 +633,24 @@ function _surfFieldEnvelope(px, py, tOverride) {
 //  évidence avec cette vue.
 // ══════════════════════════════════════════════════════════════════════
 
+// Hauteur effective de la nappe (px CSS) à raw = ±1 : le plafond SURF_3D_AMP_PX, borné par la
+// raideur maximale admise (cf. SURF_3D_STEEPNESS). Source unique de vérité — les trois endroits
+// qui projettent une hauteur vers l'écran (_surf3DProjectPoint pour les overlays, _surf3DInvertY
+// pour le drag, la boucle du peintre dans _render3DSurfView) DOIVENT lire cette même valeur,
+// sinon le point M et les plans de coupe se désolidarisent de la nappe qu'ils sont censés suivre.
+function _surfAmp3D() {
+    var s = simSurf;
+    var cap = SURF_3D_STEEPNESS * s.lambda * s.pxPerCm;
+    return (cap < SURF_3D_AMP_PX) ? cap : SURF_3D_AMP_PX;
+}
+
 // `flat` : ignore la hauteur d'onde (utilisé pour le marqueur d'une source désactivée, cf.
 // _drawSurfSources — sinon son marqueur continuerait d'osciller avec le champ TOTAL au point où
 // elle se trouve, y compris la contribution de l'AUTRE source encore active, ce qui donnerait
 // l'impression trompeuse qu'une source coupée "vibre" encore).
 function _surf3DProjectPoint(px, py, thetaRad, flat) {
     var s = simSurf;
-    var wy = flat ? 0 : _surfFieldRaw(px, py) * SURF_3D_AMP_PX;
+    var wy = flat ? 0 : _surfFieldRaw(px, py) * _surfAmp3D();
     var screenYbase = s.canvasH / 2 + (py - s.originY) * Math.cos(thetaRad);
     return { x: px, y: screenYbase - wy * Math.sin(thetaRad) };
 }
@@ -636,10 +664,11 @@ function _surf3DProjectPoint(px, py, thetaRad, flat) {
 function _surf3DInvertY(x, screenY, thetaRad, seedY) {
     var s = simSurf;
     var cosT = Math.cos(thetaRad), sinT = Math.sin(thetaRad);
+    var amp = _surfAmp3D();
     var y = seedY;
     for (var i = 0; i < 8; i++) {
         var raw = _surfFieldRaw(x, y);
-        var wy = raw * SURF_3D_AMP_PX;
+        var wy = raw * amp;
         y = s.originY + (screenY - s.canvasH / 2 + wy * sinT) / cosT;
         if (y < 0) y = 0; else if (y > s.canvasH) y = s.canvasH;
     }
@@ -995,7 +1024,7 @@ function _render3DSurfView(ctx, W, H, cosWT, sinWT, t) {
     var tr0_ = SURF_COL_TROUGH[0], tr1_ = SURF_COL_TROUGH[1], tr2_ = SURF_COL_TROUGH[2];
     var dc0_ = SURF_COL_CREST[0] - tr0_, dc1_ = SURF_COL_CREST[1] - tr1_, dc2_ = SURF_COL_CREST[2] - tr2_;
     // Hauteur → décalage écran, en pixels physiques : un seul facteur au lieu de trois produits.
-    var ampSinDpr = SURF_3D_AMP_PX * sinT * dpr;
+    var ampSinDpr = _surfAmp3D() * sinT * dpr;
 
     var _pPaint0 = SURF_PERF_DEBUG ? _surfPerfNow() : 0;
 
@@ -1086,7 +1115,9 @@ function _render3DSurfView(ctx, W, H, cosWT, sinWT, t) {
             + '\ncellules/lambda=' + (gw * lambda_px_3d / s.canvasW).toFixed(1)
             + '  echantillons_x/lambda=' + (PW * lambda_px_3d / s.canvasW).toFixed(1)
             + '  echantillons_profondeur/lambda=' + (N_Z * lambda_px_3d / s.canvasH).toFixed(1)
-            + '  lambda_px=' + lambda_px_3d.toFixed(1);
+            + '  lambda_px=' + lambda_px_3d.toFixed(1)
+            + '  amp_px=' + _surfAmp3D().toFixed(1)
+            + '  cambrure_crete_a_creux/lambda=' + (lambda_px_3d > 0 ? (2 * _surfAmp3D() / lambda_px_3d).toFixed(2) : '-');
     }
 
     // Écriture directe des pixels physiques : putImageData ignore la transformation du contexte
