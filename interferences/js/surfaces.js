@@ -2553,11 +2553,15 @@ function razSurfaces() {
 
     // L'historique des bascules de source est daté en simTime : le conserver
     // après un retour à t = 0 placerait ces bascules dans le futur, et
-    // _surfSourceContrib rendrait éteinte une source pourtant cochée. On
-    // repart d'un historique vide, cohérent avec s1Enabled/s2Enabled — que la
-    // RAZ ne touche pas, les cases restent dans l'état choisi.
-    simSurf.s1Toggles = [];
-    simSurf.s2Toggles = [];
+    // _surfSourceContrib rendrait éteinte une source pourtant cochée.
+    //
+    // Mais le vider ne suffit pas : sur un historique vide _surfActiveAt
+    // répond « allumée depuis toujours », si bien qu'une source DÉCOCHÉE se
+    // remettrait à émettre alors que sa case reste décochée. On réamorce donc
+    // l'historique à t = 0 avec l'état courant des cases — que la RAZ ne
+    // touche pas — au lieu de le vider.
+    simSurf.s1Toggles = simSurf.s1Enabled ? [] : [{ t: 0, enabled: false }];
+    simSurf.s2Toggles = simSurf.s2Enabled ? [] : [{ t: 0, enabled: false }];
 
     var btnPlay = document.getElementById('btn-playpause-surf');
     if (btnPlay) { btnPlay.textContent = '⏸ Pause'; btnPlay.className = 'btn btn-pause'; }
