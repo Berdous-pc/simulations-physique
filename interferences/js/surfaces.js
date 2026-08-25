@@ -2531,6 +2531,38 @@ function toggleSurfValeurs() {
     if (simSurf.showValeurs) _updateSurfValues();
 }
 
+// ── RAZ de l'animation ────────────────────────────────────────────────
+//  Rembobine le bassin à t = 0 et le relance, en laissant intacts TOUS les
+//  réglages de l'utilisateur : λ, b, zoom, sources cochées ou non, vue de
+//  dessus/plongeante, position du point M et de l'axe de coupe, graphes
+//  ouverts, options d'affichage. C'est ce qui la distingue du bouton
+//  « Par défaut » (resetSurfaces), qui lui repart des valeurs initiales.
+// ─────────────────────────────────────────────────────────────────────
+function razSurfaces() {
+    simSurf.simTime = 0;
+    simSurf.paused  = false;
+    // Sans cela, le dt de la première frame après la RAZ vaudrait le temps
+    // écoulé depuis la dernière, et l'onde repartirait déjà en avance.
+    _surfLastFrameT = null;
+
+    // Le graphe Hauteur(t) est une fenêtre glissante sur des échantillons
+    // horodatés : garder ceux d'avant la RAZ afficherait un passé qui n'existe
+    // plus, et la purge ne les évacuerait qu'une fois le temps revenu à leur
+    // hauteur.
+    simSurf.ptData = [];
+
+    // L'historique des bascules de source est daté en simTime : le conserver
+    // après un retour à t = 0 placerait ces bascules dans le futur, et
+    // _surfSourceContrib rendrait éteinte une source pourtant cochée. On
+    // repart d'un historique vide, cohérent avec s1Enabled/s2Enabled — que la
+    // RAZ ne touche pas, les cases restent dans l'état choisi.
+    simSurf.s1Toggles = [];
+    simSurf.s2Toggles = [];
+
+    var btnPlay = document.getElementById('btn-playpause-surf');
+    if (btnPlay) { btnPlay.textContent = '⏸ Pause'; btnPlay.className = 'btn btn-pause'; }
+}
+
 function resetSurfaces() {
     simSurf.paused  = false;
     simSurf.simTime = 0;
