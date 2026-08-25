@@ -302,39 +302,85 @@ function _rebuildSurfFieldCache() {
     var omega = 2 * Math.PI * c_px / lambda_px;
     var R0    = SURF_ENV_R0_LAMBDA * lambda_px;
 
-    var r1arr = new Float32Array(gw * gh), r2arr = new Float32Array(gw * gh);
-    var P1 = new Float32Array(gw * gh), Q1 = new Float32Array(gw * gh);
-    var P2 = new Float32Array(gw * gh), Q2 = new Float32Array(gw * gh);
+    // Tableaux réalloués UNIQUEMENT si la taille de grille change (le rebuild est déclenché par
+    // tout changement de λ/b/zoom/resize, donc très souvent à taille constante — réallouer
+    // 6 Float32Array à chaque fois ne servirait qu'à nourrir le ramasse-miettes).
+    var n = gw * gh;
+    if (!s.r1 || s.r1.length !== n) {
+        s.r1 = new Float32Array(n); s.r2 = new Float32Array(n);
+        s.P1 = new Float32Array(n); s.Q1 = new Float32Array(n);
+        s.P2 = new Float32Array(n); s.Q2 = new Float32Array(n);
+    }
+    var r1arr = s.r1, r2arr = s.r2;
+    var P1 = s.P1, Q1 = s.Q1, P2 = s.P2, Q2 = s.Q2;
 
-    for (var gy = 0; gy < gh; gy++) {
+    // ── Les deux symétries exactes du maillage ────────────────────────────────────────────
+    // Le maillage px = (gx+0,5)/gw·canvasW et py = (gy+0,5)/gh·canvasH est EXACTEMENT symétrique
+    // par rapport au centre du canvas, et les 2 sources sont placées en (cx ∓ b/2, cy) avec
+    // cx = canvasW/2 et cy = canvasH/2 (cf. updateSurfGeometry). D'où deux identités exactes,
+    // au flottant près, valables pour toute cellule :
+    //
+    //   • SYMÉTRIE HAUT/BAS — les 2 sources étant sur la ligne médiane, dy(gh-1-gy) = -dy(gy),
+    //     donc r1[gh-1-gy][gx] = r1[gy][gx] (idem r2). On ne calcule que la moitié haute et on
+    //     RECOPIE les lignes. Facteur 2.
+    //
+    //   • SYMÉTRIE GAUCHE/DROITE — attention, elle n'échange pas une source avec elle-même mais
+    //     LES DEUX SOURCES ENTRE ELLES : dx1(gw-1-gx) = -dx2(gx), donc r1[gy][gw-1-gx] =
+    //     r2[gy][gx]. Elle ne divise donc PAS le calcul de r1 par 2 — elle donne r2/P2/Q2
+    //     GRATUITEMENT à partir de r1/P1/Q1, par simple écriture en miroir. Facteur 2 aussi.
+    //
+    // Total : 1 sqrt + 1 sqrt(env) + 1 sin + 1 cos sur la moitié des cellules, là où le code
+    // précédent en faisait 2+2+2+2 sur la totalité — soit le quart du travail trigonométrique.
+    //
+    // NB : ces deux identités sont purement GÉOMÉTRIQUES (elles ne portent que sur r/P/Q, jamais
+    // sur l'état allumé/éteint des sources) — elles restent donc vraies quel que soit l'historique
+    // des bascules. C'est ce qui les distingue de la symétrie du CHAMP, cf. drawSurfaces.
+    var hh = (gh + 1) >> 1; // lignes réellement calculées (moitié haute, arrondie au-dessus)
+
+    for (var gy = 0; gy < hh; gy++) {
         var py = (gy + 0.5) / gh * s.canvasH;
+        var dy1 = py - s.s1.y;
+        var dy1sq = dy1 * dy1;
+        var row = gy * gw;
         for (var gx = 0; gx < gw; gx++) {
-            var idx = gy * gw + gx;
             var px = (gx + 0.5) / gw * s.canvasW;
+            var dx1 = px - s.s1.x;
+            var r1 = Math.sqrt(dx1 * dx1 + dy1sq);
+            var env = Math.sqrt(R0 / (R0 + r1));
+            var kr = k * r1;
+            var Pv = env * Math.sin(kr), Qv = -env * Math.cos(kr);
 
-            var dx1 = px - s.s1.x, dy1 = py - s.s1.y;
-            var r1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
-            var dx2 = px - s.s2.x, dy2 = py - s.s2.y;
-            var r2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
-            r1arr[idx] = r1; r2arr[idx] = r2;
-
-            var pq1 = _surfPointSourcePQ(_surfSourceEnv(R0, r1), k, r1);
-            P1[idx] = pq1.P; Q1[idx] = pq1.Q;
-            var pq2 = _surfPointSourcePQ(_surfSourceEnv(R0, r2), k, r2);
-            P2[idx] = pq2.P; Q2[idx] = pq2.Q;
+            var idx = row + gx;
+            r1arr[idx] = r1; P1[idx] = Pv; Q1[idx] = Qv;
+            // Miroir gauche/droite → source 2, sans le moindre calcul supplémentaire.
+            var mir = row + (gw - 1 - gx);
+            r2arr[mir] = r1; P2[mir] = Pv; Q2[mir] = Qv;
         }
+    }
+
+    // Miroir haut/bas : recopie de lignes entières (memcpy), aucun calcul.
+    for (var gyb = hh; gyb < gh; gyb++) {
+        var srcOff = (gh - 1 - gyb) * gw, dstOff = gyb * gw;
+        r1arr.set(r1arr.subarray(srcOff, srcOff + gw), dstOff);
+        r2arr.set(r2arr.subarray(srcOff, srcOff + gw), dstOff);
+        P1.set(P1.subarray(srcOff, srcOff + gw), dstOff);
+        Q1.set(Q1.subarray(srcOff, srcOff + gw), dstOff);
+        P2.set(P2.subarray(srcOff, srcOff + gw), dstOff);
+        Q2.set(Q2.subarray(srcOff, srcOff + gw), dstOff);
     }
 
     s.gridW = gw; s.gridH = gh;
     s.k = k; s.c_px = c_px; s.omega = omega;
-    s.r1 = r1arr; s.r2 = r2arr;
-    s.P1 = P1; s.Q1 = Q1; s.P2 = P2; s.Q2 = Q2;
 
+    // Canvas hors écran + ImageData de la vue de dessus : reconstruits seulement si la grille a
+    // changé de dimensions (redimensionner un canvas l'efface et réalloue son tampon).
     if (!s._offCanvas) s._offCanvas = document.createElement('canvas');
-    s._offCanvas.width  = gw;
-    s._offCanvas.height = gh;
-    s._offCtx = s._offCanvas.getContext('2d');
-    s._imgData = s._offCtx.createImageData(gw, gh);
+    if (s._offCanvas.width !== gw || s._offCanvas.height !== gh || !s._imgData) {
+        s._offCanvas.width  = gw;
+        s._offCanvas.height = gh;
+        s._offCtx = s._offCanvas.getContext('2d');
+        s._imgData = s._offCtx.createImageData(gw, gh);
+    }
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -564,21 +610,39 @@ function drawSurfaces() {
         var boundS1 = _surfBoundaryList(s.s1Toggles, t, s.c_px);
         var boundS2 = _surfBoundaryList(s.s2Toggles, t, s.c_px);
 
-        for (var gy = 0; gy < gh; gy++) {
+        // ── Symétrie haut/bas du CHAMP ────────────────────────────────────────────────────
+        // r/P/Q sont symétriques ligne à ligne (cf. _rebuildSurfFieldCache), et les portes
+        // marche/arrêt ne dépendent que de r — donc raw, et donc la couleur, le sont aussi.
+        // Contrairement au rebuild, la symétrie GAUCHE/DROITE n'est ici PAS exploitable : elle
+        // échange les 2 sources, or leurs historiques de bascule peuvent différer (une source
+        // coupée, l'autre non) — le champ cesse alors d'être symétrique en x. Celle du haut/bas,
+        // elle, tient inconditionnellement, les 2 sources étant sur la ligne médiane.
+        var hh = (gh + 1) >> 1;
+        var r1a = s.r1, r2a = s.r2, P1a = s.P1, Q1a = s.Q1, P2a = s.P2, Q2a = s.Q2;
+        var cpx = s.c_px;
+        var tr0 = SURF_COL_TROUGH[0], tr1 = SURF_COL_TROUGH[1], tr2 = SURF_COL_TROUGH[2];
+        var dc0 = SURF_COL_CREST[0] - tr0, dc1 = SURF_COL_CREST[1] - tr1, dc2 = SURF_COL_CREST[2] - tr2;
+
+        for (var gy = 0; gy < hh; gy++) {
             for (var gx = 0; gx < gw; gx++) {
                 var idx = gy * gw + gx;
-                var r1 = s.r1[idx], r2 = s.r2[idx];
                 var raw = 0;
-                raw += _surfSourceGate(s.s1Toggles, boundS1, t, r1, s.c_px, edgePx) * (s.P1[idx] * cosWT + s.Q1[idx] * sinWT);
-                raw += _surfSourceGate(s.s2Toggles, boundS2, t, r2, s.c_px, edgePx) * (s.P2[idx] * cosWT + s.Q2[idx] * sinWT);
+                raw += _surfSourceGate(s.s1Toggles, boundS1, t, r1a[idx], cpx, edgePx) * (P1a[idx] * cosWT + Q1a[idx] * sinWT);
+                raw += _surfSourceGate(s.s2Toggles, boundS2, t, r2a[idx], cpx, edgePx) * (P2a[idx] * cosWT + Q2a[idx] * sinWT);
                 if (raw > 1) raw = 1; else if (raw < -1) raw = -1;
                 var t01 = (raw + 1) * 0.5;
                 var p = idx * 4;
-                data[p]     = SURF_COL_TROUGH[0] + t01 * (SURF_COL_CREST[0] - SURF_COL_TROUGH[0]);
-                data[p + 1] = SURF_COL_TROUGH[1] + t01 * (SURF_COL_CREST[1] - SURF_COL_TROUGH[1]);
-                data[p + 2] = SURF_COL_TROUGH[2] + t01 * (SURF_COL_CREST[2] - SURF_COL_TROUGH[2]);
+                data[p]     = tr0 + t01 * dc0;
+                data[p + 1] = tr1 + t01 * dc1;
+                data[p + 2] = tr2 + t01 * dc2;
                 data[p + 3] = 255;
             }
+        }
+        // Moitié basse : recopie des lignes RGBA déjà peintes (memcpy, aucun calcul).
+        var rowBytes = gw * 4;
+        for (var gyb = hh; gyb < gh; gyb++) {
+            var srcB = (gh - 1 - gyb) * rowBytes;
+            data.set(data.subarray(srcB, srcB + rowBytes), gyb * rowBytes);
         }
         s._offCtx.putImageData(img, 0, 0);
 
@@ -635,34 +699,52 @@ function _render3DSurfView(ctx, W, H, cosWT, sinWT, t) {
     var cosT = Math.cos(thetaRad), sinT = Math.sin(thetaRad);
     var originY = s.canvasH / 2;
 
-    var imgData = ctx.createImageData(PW, PH);
+    // Tampon de sortie réutilisé d'une frame sur l'autre — un createImageData(PW, PH) par frame,
+    // c'est ~8 Mo alloués puis jetés 60 fois par seconde en plein écran, à la seule charge du
+    // ramasse-miettes. Recréé uniquement si la taille de sortie change (resize, splitter, dpr).
+    if (!s._img3D || s._img3D.width !== PW || s._img3D.height !== PH) {
+        s._img3D  = ctx.createImageData(PW, PH);
+        s._img3Du32 = new Uint32Array(s._img3D.data.buffer);
+        s._prevSy = new Int32Array(PW);
+    }
+    var imgData = s._img3D;
     var data = imgData.data;
 
     // Fond (aucune vague n'a encore atteint la zone, ou hors nappe) : même bleu-gris qu'en vue
     // de dessus (pas de dégradé "ciel" façon vagues.js — ici on regarde un bassin d'en haut, pas
-    // un tube avec de l'air au-dessus).
-    var bgR = SURF_COL_BG[0], bgG = SURF_COL_BG[1], bgB = SURF_COL_BG[2];
-    for (var i = 0; i < data.length; i += 4) {
-        data[i] = bgR; data[i + 1] = bgG; data[i + 2] = bgB; data[i + 3] = 255;
-    }
+    // un tube avec de l'air au-dessus). Peint en un seul fill() sur une vue 32 bits du tampon
+    // (~4× moins d'écritures qu'une boucle octet par octet). Le motif 32 bits est fabriqué en
+    // écrivant les 4 composantes puis en RELISANT le mot : pas d'hypothèse sur le boutisme.
+    data[0] = SURF_COL_BG[0]; data[1] = SURF_COL_BG[1]; data[2] = SURF_COL_BG[2]; data[3] = 255;
+    s._img3Du32.fill(s._img3Du32[0]);
 
     // Champ brut (non écrêté) précalculé une fois par cellule de la grille de cache (comme la
     // boucle couleur de la vue de dessus), réutilisé ensuite par interpolation bilinéaire —
     // évite de retomber sur un rendu "plus proche voisin" blocky (cause du pixelisé signalé) tout
     // en gardant un coût de calcul par cellule (pas par pixel de sortie).
-    var rawGrid = new Float32Array(gw * gh);
+    if (!s._rawGrid || s._rawGrid.length !== gw * gh) s._rawGrid = new Float32Array(gw * gh);
+    var rawGrid = s._rawGrid;
     var edgePx = 2 * (s.canvasW / gw); // largeur d'adoucissement des fronts, cf. _surfSourceWeight
     var boundS1 = _surfBoundaryList(s.s1Toggles, t, s.c_px);
     var boundS2 = _surfBoundaryList(s.s2Toggles, t, s.c_px);
-    for (var gyc = 0; gyc < gh; gyc++) {
+
+    // Moitié haute seulement, puis recopie des lignes : même symétrie haut/bas que la boucle
+    // couleur de la vue de dessus, et pour la même raison (cf. drawSurfaces).
+    var hhc = (gh + 1) >> 1;
+    var r1c_ = s.r1, r2c_ = s.r2, P1c = s.P1, Q1c = s.Q1, P2c = s.P2, Q2c = s.Q2;
+    var cpxc = s.c_px;
+    for (var gyc = 0; gyc < hhc; gyc++) {
         for (var gxc = 0; gxc < gw; gxc++) {
             var idxc = gyc * gw + gxc;
-            var r1c = s.r1[idxc], r2c = s.r2[idxc];
             var rawc = 0;
-            rawc += _surfSourceGate(s.s1Toggles, boundS1, t, r1c, s.c_px, edgePx) * (s.P1[idxc] * cosWT + s.Q1[idxc] * sinWT);
-            rawc += _surfSourceGate(s.s2Toggles, boundS2, t, r2c, s.c_px, edgePx) * (s.P2[idxc] * cosWT + s.Q2[idxc] * sinWT);
+            rawc += _surfSourceGate(s.s1Toggles, boundS1, t, r1c_[idxc], cpxc, edgePx) * (P1c[idxc] * cosWT + Q1c[idxc] * sinWT);
+            rawc += _surfSourceGate(s.s2Toggles, boundS2, t, r2c_[idxc], cpxc, edgePx) * (P2c[idxc] * cosWT + Q2c[idxc] * sinWT);
             rawGrid[idxc] = rawc;
         }
+    }
+    for (var gycb = hhc; gycb < gh; gycb++) {
+        var srcC = (gh - 1 - gycb) * gw;
+        rawGrid.set(rawGrid.subarray(srcC, srcC + gw), gycb * gw);
     }
 
     // Nombre de bandes de profondeur : DÉCOUPLÉ de la résolution de la grille de cache (gh, ≤250)
@@ -686,8 +768,8 @@ function _render3DSurfView(ctx, W, H, cosWT, sinWT, t) {
 
     // Position écran (physique) de la ligne "z = -0.5" (bord arrière du bassin, wy = 0).
     var sy0 = Math.round((H / 2 + (0 - originY) * cosT) * dpr);
-    var prevSyArr = new Int32Array(PW);
-    for (var pxi = 0; pxi < PW; pxi++) prevSyArr[pxi] = sy0;
+    var prevSyArr = s._prevSy; // alloué en même temps que le tampon de sortie, cf. plus haut
+    prevSyArr.fill(sy0);
 
     for (var zi = 0; zi < N_Z; zi++) {
         var py = (zi + 0.5) / N_Z * s.canvasH;
