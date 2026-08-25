@@ -288,9 +288,12 @@ réelles** au lieu d'une somme de Huygens sur une ouverture.
 
 - Chaque source émet une onde circulaire ; le champ affiché est leur **superposition**. On écrit
   `champ(x,y,t) = P(x,y)·cos(ωt) + Q(x,y)·sin(ωt)`, avec `P`/`Q` **indépendants du temps** :
-  ils sont précalculés une fois par géométrie (`_rebuildSurfFieldCache`) sur une grille basse
-  résolution, ensuite agrandie par `drawImage`. Le coût par frame se réduit donc à 2 sources
-  × 1 addition par cellule.
+  ils sont précalculés une fois par géométrie (`_rebuildSurfFieldCache`) sur une grille dont la
+  résolution suit λ (cf. ci-dessous). Le coût par frame se réduit donc à 2 sources × 1 addition
+  par cellule. Les deux vues consomment ensuite cette grille différemment : la **vue de dessus**
+  colorie la grille puis l'agrandit par `drawImage` (interpolation du navigateur), la **vue
+  plongeante** l'interpole elle-même, bilinéairement, directement à la résolution de l'écran
+  (`putImageData` à l'échelle 1:1, aucun agrandissement — cf. §Vue plongeante).
 - Chaque source ponctuelle utilise le **même modèle asymptotique d'onde cylindrique 2D** que les
   sources de Huygens de `diffraction/` (facteur `(1−i)/√(2λ)`, `_surfPointSourcePQ`) — le Green
   du problème 2D, pas un simple `sin(kr−ωt)/√r`, pour rester cohérent avec le reste du site.
