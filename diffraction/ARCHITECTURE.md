@@ -13,8 +13,13 @@ diffraction/
     ├── sim.js
     ├── scene.js
     ├── graph.js
+    ├── surfaces.js  ← onglet "Ondes de surface" (état, rendu et graphe(s) propres)
     └── ui.js
 ```
+
+> `surfaces.js` est **autonome** : il porte son propre état (`simSurf`), son propre rendu canvas
+> 2D et ses propres graphes, et ne partage ni `sim` ni `gview` avec l'onglet "Ondes lumineuses".
+> Les deux onglets ne communiquent que par `setMainTab()` (`ui.js`).
 
 Dépendances externes vendées dans `site/libs/` (partagées entre futures simulations 3D) :
 `three.min.js` (build UMD/global, r128) + `OrbitControls.js` (version non-module correspondante).
@@ -32,9 +37,11 @@ principe de Babinet). Pas de fentes d'Young, pas de réseau. Source
 laser réglable en `λ` (monochromatique) **ou** lumière blanche (6 couleurs de référence, cf.
 §Lumière blanche ci-dessous).
 
-`index.html` expose deux onglets principaux (`setMainTab`, `ui.js`) : **Ondes lumineuses**
-(cette simulation, entièrement implémentée) et **Ondes de surfaces** (placeholder, à venir —
-cf. §Écarts connus).
+`index.html` expose deux onglets principaux (`setMainTab`, `ui.js`) : **Ondes de surface**
+(`js/surfaces.js` — onde plane diffractée par une ouverture percée dans un obstacle, vue de
+dessus d'un bassin, cf. §`js/surfaces.js`) et **Ondes lumineuses** (cette simulation, actif par
+défaut — le reste de ce document). Les deux sont entièrement implémentés ; le périmètre physique
+décrit ci-dessous ne concerne que l'onglet **Ondes lumineuses**.
 
 Le calcul du rendu visuel (texture d'écran, enveloppe 3D — cf. §Pipeline FFT ci-dessous) est
 généralisé aux 5 formes d'ouverture ci-dessus via un unique pipeline FFT 2D, plutôt que
@@ -578,6 +585,52 @@ deux canvas peut changer à tout moment sans qu'aucun événement dédié ne le 
 
 ---
 
+### `js/surfaces.js` — Onglet « Ondes de surface »
+
+**Chargé après `graph.js`, avant `ui.js`.** Autonome : état `simSurf`, rendu canvas 2D et
+graphe(s) propres, aucune dépendance à `sim`/`gview` de l'onglet Ondes lumineuses (partage
+uniquement `setMainTab()` côté `ui.js`).
+
+Onde plane diffractée par une ouverture (largeur `a`, cm) percée dans un obstacle rectiligne
+(`barrierX`), vue de dessus d'un bassin — **pas** deux sources ponctuelles synchrones comme
+l'onglet homonyme d'`interferences/` (physique et fichier entièrement différents malgré le nom
+partagé, cf. `interferences/ARCHITECTURE.md` §`js/surfaces.js`).
+
+- **Un seul modèle physique sur toute la plage de `a`/λ** : somme de Huygens discrète sur des
+  sources ponctuelles réparties dans l'ouverture (espacement fixé à λ/`SURF_HUYGENS_SPACING_DIV`
+  ≈ λ/3, bien sous Nyquist, pour éviter les faux lobes de réseau), chacune émettant une onde
+  cylindrique 2D — valide à tout angle, y compris l'onde quasi-omnidirectionnelle d'une
+  ouverture ponctuelle (a≪λ). Une intégrale de Fresnel (essayée, écartée) aurait été moins
+  coûteuse mais paraxiale — fausse dès que la figure s'étale sur de grands angles (a≲λ) — et
+  produisait un moiré au contact du modèle Huygens.
+- Le champ `champ(x,y,t) = P(x,y)·cos(ωt) + Q(x,y)·sin(ωt)` (P/Q indépendants du temps) est
+  précalculé une fois par géométrie (`_rebuildSurfFieldCache`) sur une grille basse résolution
+  agrandie par `drawImage` — le rendu par frame n'a ni trigonométrie ni boucle sur les sources.
+  Optimisations de la boucle chaude (sans effet visible individuellement) : symétrie haut/bas
+  (seule la moitié haute est calculée), tables sin/cos interpolées (`_surfSinTab`/`_surfCosTab`),
+  écriture de couleurs 32 bits pré-empaquetées (`_surfColLUT`) via une vue `Uint32Array`, bande
+  d'onde plane à gauche de l'obstacle recopiée telle quelle sur toutes les lignes.
+- **Grille d'aperçu pendant un geste** (`_scheduleSurfRebuild`) : glisser un slider ne recalcule
+  qu'une grille ~4× moins chère (`SURF_GRID_BUDGET_DRAFT`/`SURF_REBUILD_BUDGET_DRAFT`,
+  `gridIsDraft`), la grille définitive n'étant reconstruite qu'à l'accalmie
+  (`SURF_INTERACT_WINDOW_MS`/`SURF_REFINE_DELAY_MS`).
+- **Régulateur de performance** (`_surfPerfSample`, `perfScale`) : mesure le temps de la boucle
+  de rendu (moyenne glissante sur `SURF_PERF_SAMPLES` frames) et rabote/redonne le budget de
+  cellules en conséquence — descente proportionnelle, remontée prudente (seuils asymétriques
+  `SURF_PERF_MS_HIGH`/`SURF_PERF_MS_LOW`, cooldown `SURF_PERF_COOLDOWN_MS`). `perfScale` est une
+  propriété de la MACHINE, jamais remise à 1 par `resetSim()`.
+- **Cadrage** en largeur de vue (cm, `simSurf.viewCm`) — slider géométrique
+  (`SURF_ZOOM_STEPS` crans) ou molette sur le bassin, barre d'échelle graduée en repère. Fixe en
+  centimètres, jamais indexé sur λ — même doctrine pédagogique que `interferences/js/surfaces.js`
+  §Zoom (l'élève doit constater lui-même que les vagues se resserrent).
+- **Point de mesure M et axe de coupe vertical** (`simSurf.point`/`simSurf.cut`) : positions
+  physiques en cm (`cmX`/`cmY`), jamais en pixels — recalculées en px à chaque changement de
+  `pxPerCm` (`updateSurfGeometry`), pour rester au même endroit du bassin quel que soit le zoom.
+- **Graphes** (`SURF_GRAPH_TABS`, `simSurf.graphMode` `'single'`/`'dual'`) : Hauteur(t) au point
+  M (fenêtre `SURF_GRAPH_WINDOW` = 5 s) et/ou Amplitude(y) le long de l'axe de coupe.
+
+---
+
 ### `js/ui.js` — Contrôles et boucle d'animation
 
 **Chargé en dernier.**
@@ -674,6 +727,10 @@ index.html
   │                             resizeGraphCanvas, toggleGraphPin, toggleGraphLien,
   │                             syncGraphLienDisponibilite, syncGraphPixelParfait
   │
+  └── js/surfaces.js  dépend de : rien (autonome, canvas 2D propre)
+  │                   expose : simSurf, SURF_GRAPH_TABS, updateSurfGeometry, resizeSurfaces,
+  │                             resizeSurfGraphCanvas
+  │
   └── js/ui.js        dépend de : tous les fichiers précédents
                        expose : updateParam, updateMaskShape, appliquerBorneD, setLightSource,
                                  toggleRays, toggleLengths, cycleBeamMode, toggleGraphIntensite,
@@ -690,7 +747,6 @@ index.html
 
 - Aucune fonctionnalité de détection téléphone/orientation (pas d'overlay de rotation, pas de
   media query dédiée) : choix assumé pour cette page.
-- Onglet principal « Ondes de surfaces » (`#section-surfaces`, `#surfaces-area`) : placeholder
-  non implémenté (icône + texte « Simulation à venir »), déjà présent dans le HTML/CSS/`ui.js` →
-  `setMainTab()` pour préparer une future simulation dans cette même page — n'affecte pas
-  l'onglet « Ondes lumineuses » documenté ci-dessus.
+- Onglet principal « Ondes de surface » (`#surfaces-area`, `js/surfaces.js`) : entièrement
+  implémenté (cf. §`js/surfaces.js`), pas un placeholder — n'affecte pas l'onglet « Ondes
+  lumineuses » documenté ci-dessus, les deux onglets ne partageant que `setMainTab()`.
