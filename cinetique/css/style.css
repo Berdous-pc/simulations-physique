@@ -275,6 +275,23 @@ body.duo #cinetique-equation {
 }
 .btn-raz:hover { background: #ccc8c0; }
 
+/* Ligne de boutons côte à côte (ex. Pause + RAZ) : chacun garde le style
+   .btn habituel, seule la largeur devient partagée au lieu de 100%. RAZ
+   reste étroit (texte court et fixe) pour laisser toute la place à
+   Lancer/Pause/Reprendre, dont le texte change et ne doit pas passer à la ligne. */
+.btn-row {
+  display: flex;
+  gap: 6px;
+}
+.btn-row > .btn {
+  width: auto;
+  flex: 1 1 0;
+  white-space: nowrap;
+}
+.btn-row > .btn-raz {
+  flex: 0 0 auto;
+}
+
 /* ── Paramètres ──────────────────────────────────── */
 .param-row {
   display: flex;

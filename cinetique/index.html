@@ -70,8 +70,10 @@
       <!-- ── Contrôle du temps ──────────────────── -->
       <div class="panel-section">
         <div class="section-title">Contrôle</div>
-        <button id="btn-playpause" class="btn btn-play" onclick="togglePause()">▶ Lancer</button>
-        <button class="btn btn-raz" onclick="resetSim()" style="margin-top:6px;">■ Remettre à zéro</button>
+        <div class="btn-row">
+          <button id="btn-playpause" class="btn btn-play" onclick="togglePause()">▶ Lancer</button>
+          <button class="btn btn-raz" onclick="resetSim()">↺ RAZ</button>
+        </div>
 
         <div class="param-row" style="margin-top:10px;">
           <label>Vitesse d'animation
