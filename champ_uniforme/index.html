@@ -152,10 +152,12 @@
         <!-- CONTRÔLES -->
         <div class="panel-section">
           <div class="section-title">Contrôles</div>
-          <button id="btn-e-playpause" class="btn btn-play"
-                  onclick="togglePauseE()">▶ Lancer</button>
-          <button class="btn btn-raz" style="margin-top:6px;"
-                  onclick="resetSimAnimE()">↺ Remettre à zéro</button>
+          <div class="btn-row">
+            <button id="btn-e-playpause" class="btn btn-play"
+                    onclick="togglePauseE()">▶ Lancer</button>
+            <button class="btn btn-raz"
+                    onclick="resetSimAnimE()">↺ RAZ</button>
+          </div>
           <button id="btn-e-save" class="btn btn-save" style="margin-top:6px;"
                   onclick="sauvegarderRunE()" disabled>✦ Sauvegarder</button>
           <div class="param-row" style="margin-top:8px;">
@@ -345,10 +347,12 @@
         <!-- CONTRÔLES -->
         <div class="panel-section">
           <div class="section-title">Contrôles</div>
-          <button id="btn-playpause" class="btn btn-play"
-                  onclick="togglePause()">▶ Lancer</button>
-          <button class="btn btn-raz" style="margin-top:6px;"
-                  onclick="resetSimAnim()">↺ Remettre à zéro</button>
+          <div class="btn-row">
+            <button id="btn-playpause" class="btn btn-play"
+                    onclick="togglePause()">▶ Lancer</button>
+            <button class="btn btn-raz"
+                    onclick="resetSimAnim()">↺ RAZ</button>
+          </div>
           <button id="btn-save" class="btn btn-save" style="margin-top:6px;"
                   onclick="sauvegarderRun()" disabled>✦ Sauvegarder</button>
           <div class="param-row" style="margin-top:8px;">
