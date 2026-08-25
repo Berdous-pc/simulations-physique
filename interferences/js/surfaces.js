@@ -122,6 +122,21 @@ var SURF_3D_AMP_PX = 42;
 // et pas seulement sa ligne centrale (sinon le plan "semble" non draggable, cf. retour utilisateur).
 var SURF_3D_PLANE_HALF_H = SURF_3D_AMP_PX * 2.2;
 
+// ── Échantillonnage en PROFONDEUR de la vue plongeante (cf. _render3DSurfView) ──
+// Nombre de bandes de l'algorithme du peintre. Indexé sur λ comme la grille du champ, avec :
+// un plancher de lissage de la silhouette, un plafond dur, et un BUDGET D'ITÉRATIONS
+// (bandes × colonnes) — pas un budget en millisecondes, qui appartiendrait à l'écran et non
+// au code. Le budget est calé pour rester du même ordre que ce que la version précédente
+// dépensait déjà (N_Z plafonné à 500), le dégraissage de la boucle du peintre finançant
+// l'écart. C'est le poste de coût dominant du rendu : à surveiller si l'animation accroche.
+var SURF_3D_BANDS_MIN    = 150;
+var SURF_3D_BANDS_MAX    = 900;
+// Ancien pire cas : 500 bandes, soit 800 000 itérations sur une sortie de 1600 px de large. Le
+// budget ci-dessous est un peu au-dessus, mais le corps de la boucle a été allégé d'environ un
+// quart en parallèle (tables d'interpolation horizontale sorties de la boucle, constantes de
+// couleur hoistées) : à budget plein, on dépense donc moins qu'avant.
+var SURF_3D_BANDS_BUDGET = 1000000;
+
 // Couleurs de l'onde (crêtes ↔ creux) — identiques à diffraction/js/surfaces.js
 // pour une cohérence visuelle entre les pages du site.
 var SURF_COL_CREST  = [200, 240, 255];
@@ -611,7 +626,64 @@ function _surf3DInvertY(x, screenY, thetaRad, seedY) {
 //  Rendu principal du bassin (vue de dessus)
 // ══════════════════════════════════════════════════════════════════════
 
+// ══════════════════════════════════════════════════════════════════════
+//  Profileur — TEMPORAIRE, à retirer à la fin de ce chantier.
+//
+//  Éteint par défaut et ne pilote RIEN : il ne fait que mesurer, à la demande. C'est délibéré —
+//  la session précédente a perdu des heures sur trois hypothèses de coût successives, toutes
+//  démenties par la première mesure venue, et sur un régulateur qui, lui, agissait.
+//
+//  Usage, depuis la console du navigateur :
+//      SURF_PERF_DEBUG = true;   // puis laisser tourner ~3 s dans la vue à mesurer
+//      surfPerfReport();         // affiche le relevé et remet les compteurs à zéro
+//
+//  Le compteur de frames est incrémenté dans drawSurfaces, donc dans les DEUX vues — les
+//  compteurs de détail s'alimentant eux aussi dans les deux, l'incrémenter seulement dans le
+//  rendu 3D ferait afficher des SOMMES au lieu de moyennes en vue de dessus (bug de la session
+//  précédente : un absurde champ_ms à 2617).
+// ══════════════════════════════════════════════════════════════════════
+
+var SURF_PERF_DEBUG = false;
+var _surfPerf = { frames: 0, total: 0, field: 0, paint: 0, span: 0, first: 0, last: 0, dims: '' };
+
+function _surfPerfNow() {
+    return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+}
+
+function _surfPerfFrame(t0) {
+    var p = _surfPerf;
+    var now = _surfPerfNow();
+    if (!p.frames) p.first = t0;
+    p.frames++;
+    p.total += now - t0;
+    p.last = now;
+}
+
+function surfPerfReport() {
+    var p = _surfPerf;
+    if (!p.frames) {
+        console.log('Profileur inactif. Faire : SURF_PERF_DEBUG = true; puis attendre ~3 s.');
+        return;
+    }
+    // Période d'affichage MESURÉE, pas une constante en dur — mais plafonnée à 16,7 ms : si la
+    // simulation rame, les intervalles s'allongent et un estimateur naïf conclurait « le budget a
+    // doublé », donc se relâcherait encore (piège de rétroaction du bilan précédent).
+    var period = Math.min(16.7, (p.last - p.first) / Math.max(1, p.frames - 1));
+    var f = p.frames;
+    console.log(
+        'frames=' + f +
+        '  frame_totale_ms=' + (p.total / f).toFixed(3) +
+        '  champ_ms=' + (p.field / f).toFixed(3) +
+        '  peintre_ms=' + (p.paint / f).toFixed(3) +
+        '\nperiode_mesuree_ms=' + period.toFixed(2) +
+        '  budget_consomme_pct=' + (100 * p.total / f / period).toFixed(1) +
+        '\n' + p.dims
+    );
+    _surfPerf = { frames: 0, total: 0, field: 0, paint: 0, span: 0, first: 0, last: 0, dims: '' };
+}
+
 function drawSurfaces() {
+    var _perfT0 = SURF_PERF_DEBUG ? _surfPerfNow() : 0;
     var canvas = document.getElementById('surf-canvas');
     if (!canvas) return;
     var ctx = canvas.getContext('2d');
@@ -633,6 +705,7 @@ function drawSurfaces() {
         if (s.showGraph && _surfAmpXActive()) _drawSurfCutAxisH(ctx, W);
         _drawSurfScaleBar(ctx, W, H);
         _updateSurfValues();
+        if (SURF_PERF_DEBUG) _surfPerfFrame(_perfT0);
         return;
     }
 
@@ -661,6 +734,7 @@ function drawSurfaces() {
         var cpx = s.c_px;
         var tr0 = SURF_COL_TROUGH[0], tr1 = SURF_COL_TROUGH[1], tr2 = SURF_COL_TROUGH[2];
         var dc0 = SURF_COL_CREST[0] - tr0, dc1 = SURF_COL_CREST[1] - tr1, dc2 = SURF_COL_CREST[2] - tr2;
+        var _pField0 = SURF_PERF_DEBUG ? _surfPerfNow() : 0;
 
         for (var gy = 0; gy < hh; gy++) {
             for (var gx = 0; gx < gw; gx++) {
@@ -683,6 +757,10 @@ function drawSurfaces() {
             var srcB = (gh - 1 - gyb) * rowBytes;
             data.set(data.subarray(srcB, srcB + rowBytes), gyb * rowBytes);
         }
+        if (SURF_PERF_DEBUG) {
+            _surfPerf.field += _surfPerfNow() - _pField0;
+            _surfPerf.dims = 'vue=dessus  grille=' + gw + '×' + gh + ' (' + (gw * gh) + ' cellules)';
+        }
         s._offCtx.putImageData(img, 0, 0);
 
         ctx.imageSmoothingEnabled = true;
@@ -700,6 +778,7 @@ function drawSurfaces() {
     if (s.showGraph && _surfAmpXActive()) _drawSurfCutAxisH(ctx, W, is3D);
     _drawSurfScaleBar(ctx, W, H);
     _updateSurfValues();
+    if (SURF_PERF_DEBUG) _surfPerfFrame(_perfT0);
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -772,6 +851,7 @@ function _render3DSurfView(ctx, W, H, cosWT, sinWT, t) {
     var hhc = (gh + 1) >> 1;
     var r1c_ = s.r1, r2c_ = s.r2, P1c = s.P1, Q1c = s.Q1, P2c = s.P2, Q2c = s.Q2;
     var cpxc = s.c_px;
+    var _pField0 = SURF_PERF_DEBUG ? _surfPerfNow() : 0;
     for (var gyc = 0; gyc < hhc; gyc++) {
         for (var gxc = 0; gxc < gw; gxc++) {
             var idxc = gyc * gw + gxc;
@@ -785,11 +865,55 @@ function _render3DSurfView(ctx, W, H, cosWT, sinWT, t) {
         var srcC = (gh - 1 - gycb) * gw;
         rawGrid.set(rawGrid.subarray(srcC, srcC + gw), gycb * gw);
     }
+    if (SURF_PERF_DEBUG) _surfPerf.field += _surfPerfNow() - _pField0;
 
-    // Nombre de bandes de profondeur : DÉCOUPLÉ de la résolution de la grille de cache (gh, ≤250)
-    // pour éviter un effet de "marches d'escalier" horizontales sur la nappe une fois inclinée —
-    // borné par PH (inutile de dépasser la résolution physique de sortie).
-    var N_Z = Math.max(150, Math.min(500, PH));
+    // ── Nombre de bandes de profondeur ────────────────────────────────────────────────────
+    // C'est l'échantillonnage de la nappe le long de l'axe y du bassin, et donc l'axe FAIBLE du
+    // rendu : la grille du champ offre désormais 9 cellules par λ dans les deux directions (cf.
+    // étape 3a), mais la boucle du peintre ne relisait cette grille qu'à travers un nombre de
+    // bandes indexé sur la seule résolution de SORTIE (150…500), sans aucun rapport avec λ. Aux
+    // petites longueurs d'onde sur un bassin haut, la profondeur retombait sous les 5 échantillons
+    // par λ — en dessous de ce que la grille fournit, donc c'est ce maillon-là qui repliait le
+    // champ et crénelait les crêtes, pas la grille.
+    //
+    // On l'indexe donc sur λ exactement comme la grille, avec le MÊME scalaire cellules/px, puis
+    // trois bornes : un plancher de lissage, la résolution de sortie (au-delà, deux bandes
+    // tombent sur la même ligne et la seconde efface la première), et un budget d'itérations.
+    //
+    // Ce budget est exprimé en ITÉRATIONS (bandes × colonnes), pas en millisecondes : le budget
+    // d'une frame appartient à l'écran, pas au code, et une constante en ms se serait révélée
+    // fausse sur toute autre machine (cf. bilan de la session précédente). C'est la boucle du
+    // peintre qui domine le coût du rendu — d'où le dégraissage de son corps ci-dessous, qui
+    // finance ces bandes supplémentaires.
+    //
+    // NB : l'optimisation « ne peindre que PH·cos θ bandes » (l'inclinaison comprimant la
+    // profondeur) est délibérément ÉCARTÉE — elle réduit précisément la grandeur qu'on cherche
+    // ici à augmenter, et d'autant plus qu'on regarde de plus en plus rasant.
+    // DEUX exigences indépendantes, dont on prend le maximum :
+    //
+    //   • LISSAGE DE LA SILHOUETTE — une bande par ligne de sortie réellement couverte par la
+    //     nappe. L'inclinaison comprimant la profondeur, la nappe ne s'étale que sur PH·cos θ
+    //     lignes : c'est donc là, et pas à PH, qu'il faut viser. C'est exactement le facteur
+    //     cos θ que la session précédente avait mesuré — mais utilisé ici comme un PLANCHER de
+    //     lissage, pas comme un plafond d'économie. Il donne d'ailleurs ce qu'on veut des deux
+    //     côtés : plus de bandes en vue quasi-verticale (nappe étalée), moins en vue rasante
+    //     (nappe écrasée), ce qui libère justement du budget là où l'autre exigence monte.
+    //
+    //   • ÉCHANTILLONNAGE DE λ EN PROFONDEUR — le même nombre de cellules par λ que la grille du
+    //     champ. C'est cette exigence-là qui manquait : elle ne l'emporte que pour λ_px inférieur
+    //     à ~13 px, c'est-à-dire précisément le régime de dézoom à petite λ où les crêtes se
+    //     crénelaient, et où le maillon faible était la profondeur, pas la grille.
+    var lambda_px_3d = s.lambda * s.pxPerCm;
+    var mDepth = (lambda_px_3d > 0)
+        ? Math.max(1 / SURF_GRID_FACTOR, SURF_GRID_CELLS_PER_LAMBDA / lambda_px_3d)
+        : 1 / SURF_GRID_FACTOR;
+    var N_Z = Math.ceil(PH * cosT);                            // lissage
+    var nLambda = Math.ceil(s.canvasH * mDepth);               // échantillonnage de λ
+    if (nLambda > N_Z) N_Z = nLambda;
+    if (N_Z > SURF_3D_BANDS_MAX) N_Z = SURF_3D_BANDS_MAX;
+    if (N_Z > PH) N_Z = PH; // au-delà, deux bandes tombent sur la même ligne de sortie
+    if (N_Z * PW > SURF_3D_BANDS_BUDGET) N_Z = Math.floor(SURF_3D_BANDS_BUDGET / PW);
+    if (N_Z < SURF_3D_BANDS_MIN) N_Z = SURF_3D_BANDS_MIN; // plancher appliqué en dernier : il prime
 
     // ── Plan de coupe horizontal (Amplitude(x), y = cutH.y), cf. _drawSurfCutAxisH ──────────
     // Rendu ICI (pas en overlay séparé après coup) : la nappe/le fond marin, dessinés APRÈS pour
@@ -810,13 +934,46 @@ function _render3DSurfView(ctx, W, H, cosWT, sinWT, t) {
     var prevSyArr = s._prevSy; // alloué en même temps que le tampon de sortie, cf. plus haut
     prevSyArr.fill(sy0);
 
+    // ── Tables d'interpolation horizontale ────────────────────────────────────────────────
+    // gx0/gx1/tx ne dépendent QUE de la colonne : les recalculer dans la boucle interne les
+    // refaisait à l'identique N_Z fois de suite (une division, un floor, deux comparaisons et
+    // une soustraction par pixel peint). Calculés une fois par frame — et même seulement quand
+    // la géométrie change, ce qui est le cas courant.
+    var colSig = PW + '|' + gw + '|' + s.canvasW + '|' + dpr;
+    if (s._colSig !== colSig) {
+        s._colSig = colSig;
+        s._colGx0 = new Int32Array(PW);
+        s._colGx1 = new Int32Array(PW);
+        s._colTx  = new Float32Array(PW);
+        for (var ci = 0; ci < PW; ci++) {
+            var fxc = (ci / dpr) / s.canvasW * gw - 0.5;
+            if (fxc < 0) fxc = 0; else if (fxc > gw - 1) fxc = gw - 1;
+            var g0 = Math.floor(fxc);
+            s._colGx0[ci] = g0;
+            s._colGx1[ci] = Math.min(g0 + 1, gw - 1);
+            s._colTx[ci]  = fxc - g0;
+        }
+    }
+    var colGx0 = s._colGx0, colGx1 = s._colGx1, colTx = s._colTx;
+
+    // Constantes de couleur sorties des boucles : elles étaient relues dans les tableaux
+    // SURF_COL_* à chaque pixel peint (6 accès indexés par pixel).
+    var tr0_ = SURF_COL_TROUGH[0], tr1_ = SURF_COL_TROUGH[1], tr2_ = SURF_COL_TROUGH[2];
+    var dc0_ = SURF_COL_CREST[0] - tr0_, dc1_ = SURF_COL_CREST[1] - tr1_, dc2_ = SURF_COL_CREST[2] - tr2_;
+    // Hauteur → décalage écran, en pixels physiques : un seul facteur au lieu de trois produits.
+    var ampSinDpr = SURF_3D_AMP_PX * sinT * dpr;
+
+    var _pPaint0 = SURF_PERF_DEBUG ? _surfPerfNow() : 0;
+
     for (var zi = 0; zi < N_Z; zi++) {
         var py = (zi + 0.5) / N_Z * s.canvasH;
         var screenYbase = H / 2 + (py - originY) * cosT;
+        var screenYbaseDpr = screenYbase * dpr;
         var fy = py / s.canvasH * gh - 0.5;
         if (fy < 0) fy = 0; else if (fy > gh - 1) fy = gh - 1;
         var gy0 = Math.floor(fy), gy1 = Math.min(gy0 + 1, gh - 1);
         var ty = fy - gy0;
+        var row0 = gy0 * gw, row1 = gy1 * gw; // décalages de ligne, invariants dans la bande
 
         // Plan horizontal : n'existe qu'à UNE profondeur (y = cutH.y) — dessiné exactement à la
         // bande zi qui la contient, intercalé DANS la boucle peintre (donc occlus par toute bande
@@ -831,15 +988,11 @@ function _render3DSurfView(ctx, W, H, cosWT, sinWT, t) {
         }
 
         for (var pxi2 = 0; pxi2 < PW; pxi2++) {
-            var wx = pxi2 / dpr;
-            var fx = wx / s.canvasW * gw - 0.5;
-            if (fx < 0) fx = 0; else if (fx > gw - 1) fx = gw - 1;
-            var gx0 = Math.floor(fx), gx1 = Math.min(gx0 + 1, gw - 1);
-            var tx = fx - gx0;
+            var gx0 = colGx0[pxi2], gx1 = colGx1[pxi2], tx = colTx[pxi2];
 
             // Interpolation bilinéaire de rawGrid aux 4 cellules voisines (gx0/gx1 × gy0/gy1).
-            var v00 = rawGrid[gy0 * gw + gx0], v10 = rawGrid[gy0 * gw + gx1];
-            var v01 = rawGrid[gy1 * gw + gx0], v11 = rawGrid[gy1 * gw + gx1];
+            var v00 = rawGrid[row0 + gx0], v10 = rawGrid[row0 + gx1];
+            var v01 = rawGrid[row1 + gx0], v11 = rawGrid[row1 + gx1];
             var vx0 = v00 + (v10 - v00) * tx;
             var vx1 = v01 + (v11 - v01) * tx;
             var raw = vx0 + (vx1 - vx0) * ty;
@@ -847,14 +1000,13 @@ function _render3DSurfView(ctx, W, H, cosWT, sinWT, t) {
             // Couleur : même dégradé crête/creux que la vue de dessus, écrêté à ±1.
             var rawC = raw; if (rawC > 1) rawC = 1; else if (rawC < -1) rawC = -1;
             var t01 = (rawC + 1) * 0.5;
-            var wr = SURF_COL_TROUGH[0] + t01 * (SURF_COL_CREST[0] - SURF_COL_TROUGH[0]);
-            var wg = SURF_COL_TROUGH[1] + t01 * (SURF_COL_CREST[1] - SURF_COL_TROUGH[1]);
-            var wb = SURF_COL_TROUGH[2] + t01 * (SURF_COL_CREST[2] - SURF_COL_TROUGH[2]);
+            var wr = tr0_ + t01 * dc0_;
+            var wg = tr1_ + t01 * dc1_;
+            var wb = tr2_ + t01 * dc2_;
 
             // Hauteur : NON écrêtée (cf. en-tête de fonction) — un point doublement constructif
             // (raw jusqu'à ±2) monte visiblement plus haut qu'un point simple.
-            var wy = raw * SURF_3D_AMP_PX;
-            var sy = Math.round((screenYbase - wy * sinT) * dpr);
+            var sy = Math.round(screenYbaseDpr - raw * ampSinDpr);
 
             if (zIsHPlane) {
                 for (var pyH = hTop; pyH <= hBot; pyH++) {
@@ -868,9 +1020,12 @@ function _render3DSurfView(ctx, W, H, cosWT, sinWT, t) {
             var yHi = syPrev < sy ? sy : syPrev;
             if (yLo < 0) yLo = 0;
             if (yHi >= PH) yHi = PH - 1;
+            // Remplissage vertical du segment : l'index avance d'une LIGNE de tampon à chaque pas
+            // (PW·4 octets), inutile de le recalculer par multiplication à chaque pixel.
+            var pidx = (yLo * PW + pxi2) * 4, pStep = PW * 4;
             for (var py2 = yLo; py2 <= yHi; py2++) {
-                var pidx = (py2 * PW + pxi2) * 4;
                 data[pidx] = wr; data[pidx + 1] = wg; data[pidx + 2] = wb; data[pidx + 3] = 255;
+                pidx += pStep;
             }
             prevSyArr[pxi2] = sy;
         }
@@ -889,6 +1044,17 @@ function _render3DSurfView(ctx, W, H, cosWT, sinWT, t) {
         }
     }
 
+    if (SURF_PERF_DEBUG) {
+        _surfPerf.paint += _surfPerfNow() - _pPaint0;
+        // Échantillons de profondeur par longueur d'onde — la grandeur que l'étape 3b vise.
+        var depthPerLambda = N_Z * lambda_px_3d / s.canvasH;
+        _surfPerf.dims = 'vue=plongeante  grille=' + gw + '×' + gh + ' (' + (gw * gh) + ' cellules)'
+            + '  sortie=' + PW + '×' + PH
+            + '  bandes=' + N_Z + ' (' + (N_Z * PW) + ' iterations)'
+            + '\ncellules/lambda=' + (gw * lambda_px_3d / s.canvasW).toFixed(1)
+            + '  echantillons_profondeur/lambda=' + depthPerLambda.toFixed(1)
+            + '  lambda_px=' + lambda_px_3d.toFixed(1);
+    }
     ctx.putImageData(imgData, 0, 0);
 }
 
