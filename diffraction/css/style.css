@@ -516,6 +516,17 @@ input[type=range]:disabled { accent-color: #b0aca4; cursor: not-allowed; }
 .btn-play { background: #2a8a50; color: #fff; }
 .btn-play:hover { background: #1a6a38; }
 
+.btn-raz { background: #dedad2; color: #5a6a78; border: 1px solid #b0a898; }
+.btn-raz:hover { background: #ccc8c0; color: #2c3e50; }
+
+/* Ligne de boutons côte à côte (ex. Pause + RAZ) : chacun garde le style .btn
+   habituel, seule la largeur devient partagée au lieu de 100%. RAZ reste
+   étroit (texte court et fixe) pour laisser toute la place à Pause/Reprendre,
+   dont le texte change et ne doit pas passer à la ligne. */
+.btn-row { display: flex; gap: 6px; }
+.btn-row > .btn { width: auto; flex: 1 1 0; white-space: nowrap; }
+.btn-row > .btn-raz { flex: 0 0 auto; }
+
 /* Encarts de valeurs instantanées */
 .readouts { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
 .readout { background: #fff; border: 1px solid #c8c0b4; border-radius: 6px; padding: 7px 9px; }
