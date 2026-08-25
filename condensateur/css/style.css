@@ -346,6 +346,7 @@ input[type=range] { width: 100%; accent-color: #4a7aaa; cursor: pointer; }
   color: #5a6a78;
   font-size: clamp(12px, 1.2vw, 15px);
   padding: 9px 6px;
+  border: 1.5px solid #c8c0b4;
 }
 .btn-raz:hover { background: #ccc8c0; }
 
