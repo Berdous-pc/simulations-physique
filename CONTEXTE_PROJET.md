@@ -281,7 +281,7 @@ nom-simulation/
 
 Les anciennes simulations en fichier unique (`reaction.html`) conservent leur format d'origine. Toute **nouvelle** simulation adopte l'arborescence ci-dessus.
 
-> **Simulations déjà migrées en arborescence** : `lentille/`, `lunette/`, `radioactivite/`, `reaction/`, `titrage/`, `condensateur/`, `pression/`, `champ_uniforme/`, `ondes/`, `dissolution/`, `diffraction/`, `cinetique/`, `equilibre/`, `kepler/`, `interferences/`, `atome/`.
+> **Simulations déjà migrées en arborescence** : `lentille/`, `lunette/`, `radioactivite/`, `reaction/`, `titrage/`, `condensateur/`, `pression/`, `champ_uniforme/`, `ondes/`, `dissolution/`, `diffraction/`, `cinetique/`, `equilibre/`, `kepler/`, `interferences/`, `atome/`, `derivee/`.
 
 ### Bibliothèques externes vendorées (`libs/`)
 
@@ -406,6 +406,7 @@ Toute page **HTML autonome** destinée à être publiée (page d'accueil `index.
 
 | Dossier / Fichier | Sujet | Niveau | Format | Particularités |
 |---|---|---|---|---|
+| `derivee/` | La dérivée d'une fonction — taux de variation, sécante et tangente | Première/Terminale | **Arborescence** | `sim.js` + `courbe.js` + `graph.js` + `ui.js` ; page sans onglets. Catalogue de fonctions au choix (trajectoire verticale, oscillateur, décharge de condensateur, fonction cube) défini entièrement dans `FONCTIONS` (panneau et unités construits à partir de la définition) ; point M déplaçable sur la courbe, points A/B encadrants réglés par Δ (slider quadratique pour approcher 0 finement), sécante → tangente, animation « Δt → 0 », zoom logarithmique jusqu'à ×2000 recentré sur M (la courbe se confond avec sa tangente), cotes Δt/Δf, graphe optionnel de la fonction dérivée à axe des abscisses aligné sur le graphe principal, splitter draggable — voir `derivee/ARCHITECTURE.md` |
 | `condensateur/` | Circuit RC — charge/décharge condensateur plan | Terminale | **Arborescence** | Splitter draggable, zoom/pan/réticule sur graphes, animation courant et électrons |
 | `lentille/` | Lentille mince convergente/divergente — construction géométrique | Seconde/Première | **Arborescence** | `sim.js` + `draw.js` + `ui.js` ; drag objet/lentille/écran, mode infini avec animation, multi-points, tableau conjugaison, cadres viewfinder avec `drawGlowLetter` |
 | `lunette/` | Lunette astronomique — deux lentilles, mode afocal | Terminale | **Arborescence** | `sim.js` + `draw.js` + `ui.js` ; drag/pan/zoom molette, animation propagation, réglage oculaire interactif |
