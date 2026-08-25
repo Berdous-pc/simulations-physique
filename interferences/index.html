@@ -343,8 +343,11 @@
           </div>
         </div>
         <div class="param-row" style="margin-top:8px;">
-          <label>Zoom <span>×<span id="lbl-zoom-surf">1</span></span></label>
-          <input type="range" id="sl-zoom-surf" min="1" max="3" step="1" value="1"
+          <label>Zoom <span>×<span id="lbl-zoom-surf">1,0</span></span></label>
+          <!-- Slider en largeur de vue (cm), progression géométrique sur 240 crans : cf.
+               SURF_VIEW_*_CM / SURF_ZOOM_STEPS dans js/surfaces.js. La position initiale est
+               fixée par initSurfaces() (vue par défaut), pas par cet attribut value. -->
+          <input type="range" id="sl-zoom-surf" min="0" max="240" step="1" value="120"
                  oninput="onSliderZoomSurf(this.value)">
         </div>
       </div>
@@ -527,7 +530,9 @@
         affiche leur superposition. Réglez λ et l'écartement <strong>b</strong>, et faites
         glisser le point <strong>M</strong> ou l'axe de coupe pour afficher leurs graphes
         respectifs. Le bouton <strong>Afficher les zones d'interférences</strong> trace en
-        pointillés les zones constructives et/ou destructives.
+        pointillés les zones constructives et/ou destructives. La molette (ou le curseur
+        <strong>Zoom</strong>) resserre ou élargit le cadrage ; la barre d'échelle en bas à gauche
+        du bassin donne la distance correspondante.
       </div>
     </div>
 
