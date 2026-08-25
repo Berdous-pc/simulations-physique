@@ -701,7 +701,8 @@ function _surf3DInvertY(x, screenY, thetaRad, seedY) {
 // ══════════════════════════════════════════════════════════════════════
 
 var SURF_PERF_DEBUG = false;
-var _surfPerf = { frames: 0, total: 0, field: 0, paint: 0, span: 0, first: 0, last: 0, dims: '' };
+var _surfPerf = { frames: 0, total: 0, field: 0, paint: 0, span: 0, first: 0, last: 0, dims: '',
+                  fillPx: 0, seabedPx: 0 };
 
 function _surfPerfNow() {
     return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
@@ -737,9 +738,12 @@ function surfPerfReport() {
         '\nperiode_observee_ms=' + period.toFixed(2) +
         '  fps_observe=' + (1000 / period).toFixed(1) +
         '  pct_budget_60Hz=' + (100 * p.total / f / 16.7).toFixed(1) +
+        '\npixels_remplis=' + Math.round(p.fillPx / f) +
+        '  pixels_fond_marin=' + Math.round(p.seabedPx / f) +
         '\n' + p.dims
     );
-    _surfPerf = { frames: 0, total: 0, field: 0, paint: 0, span: 0, first: 0, last: 0, dims: '' };
+    _surfPerf = { frames: 0, total: 0, field: 0, paint: 0, span: 0, first: 0, last: 0, dims: '',
+                  fillPx: 0, seabedPx: 0 };
 }
 
 function drawSurfaces() {
@@ -1071,6 +1075,7 @@ function _render3DSurfView(ctx, W, H, cosWT, sinWT, t) {
     // Hauteur → décalage écran, en pixels physiques : un seul facteur au lieu de trois produits.
     var ampSinDpr = _surfAmp3D() * sinT * dpr;
 
+    var _fillPxAcc = 0, _seabedPxAcc = 0;
     var _pPaint0 = SURF_PERF_DEBUG ? _surfPerfNow() : 0;
 
     for (var zi = 0; zi < N_Z; zi++) {
@@ -1142,6 +1147,15 @@ function _render3DSurfView(ctx, W, H, cosWT, sinWT, t) {
             else             { yLo = sy; yHi = syPrev; tLo = t01; tHi = tPrev; }
             if (yLo < 0) yLo = 0;
             if (yHi >= PH) yHi = PH - 1;
+            // Compteur de pixels remplis — TEMPORAIRE, avec le reste du profileur. Il sert à
+            // trancher une question de coût : le peintre est-il dominé par le préambule par
+            // colonne (859 000 évaluations/frame au dézoom max) ou par les écritures de
+            // remplissage ? Les deux optimisations candidates ne visent pas la même partie, et on
+            // a déjà perdu du temps dans ce chantier à optimiser sur une hypothèse de coût fausse.
+            // Compté par SEGMENT (une addition par colonne), pas par pixel. Le test sur
+            // SURF_PERF_DEBUG reste dans la boucle chaude : il perturbe la mesure de ~1 %, ce qui
+            // est sans importance devant le rapport qu'on cherche à établir.
+            if (SURF_PERF_DEBUG) _fillPxAcc += yHi - yLo + 1;
 
             var nSeg = yHi - yLo;
             var wr, wg, wb, dwr = 0, dwg = 0, dwb = 0;
@@ -1169,20 +1183,28 @@ function _render3DSurfView(ctx, W, H, cosWT, sinWT, t) {
     }
 
     // Avant du bassin (sous la dernière ligne) : aplat façon fond marin, teinte "creux" assombrie.
+    // Les trois composantes étaient recalculées à CHAQUE pixel (trois lectures indexées et trois
+    // multiplications pour trois constantes), sur ~300 000 pixels par image d'après le profileur.
+    var sea0_ = SURF_COL_TROUGH[0] * 0.5;
+    var sea1_ = SURF_COL_TROUGH[1] * 0.5;
+    var sea2_ = SURF_COL_TROUGH[2] * 0.7;
+    var seaStep_ = PW * 4;
     for (var pxi3 = 0; pxi3 < PW; pxi3++) {
         var syLast = prevSyArr[pxi3];
         var yStart = syLast < 0 ? 0 : syLast;
+        if (SURF_PERF_DEBUG) _seabedPxAcc += PH - yStart;
+        var pidx2 = (yStart * PW + pxi3) * 4;
         for (var py3 = yStart; py3 < PH; py3++) {
-            var pidx2 = (py3 * PW + pxi3) * 4;
-            data[pidx2] = SURF_COL_TROUGH[0] * 0.5;
-            data[pidx2 + 1] = SURF_COL_TROUGH[1] * 0.5;
-            data[pidx2 + 2] = SURF_COL_TROUGH[2] * 0.7;
+            data[pidx2] = sea0_; data[pidx2 + 1] = sea1_; data[pidx2 + 2] = sea2_;
             data[pidx2 + 3] = 255;
+            pidx2 += seaStep_;
         }
     }
 
     if (SURF_PERF_DEBUG) {
         _surfPerf.paint += _surfPerfNow() - _pPaint0;
+        _surfPerf.fillPx += _fillPxAcc;
+        _surfPerf.seabedPx += _seabedPxAcc;
         _surfPerf.dims = 'vue=plongeante  grille=' + gw + '×' + gh + ' (' + (gw * gh) + ' cellules)'
             + '  peinture=' + PW + '×' + PH + ' (pleine resolution)'
             + '  bandes=' + N_Z + ' (' + (N_Z * PW) + ' iterations)'
@@ -1669,6 +1691,45 @@ function _drawSurfCutAxisH(ctx, W, is3D) {
 
 var _surfLastFrameT = null;
 
+
+// ══════════════════════════════════════════════════════════════════════
+//  Gel en pause — ne pas redessiner une image identique 60 fois par seconde
+//
+//  tickSurfaces appelait drawSurfaces() sans condition, y compris à l'arrêt : sur un bassin plein
+//  écran en vue plongeante, c'était ~25 ms de peintre par image pour un résultat rigoureusement
+//  identique. Aucun intérêt pédagogique, et c'est le poste de salle lent qui le paie.
+//
+//  CHOIX DE CONCEPTION — on n'utilise PAS une signature d'état (λ, b, zoom, inclinaison, taille du
+//  canvas, axes de coupe, position de M, état des sources, mode de vue…). Une signature n'est
+//  juste que si elle est EXHAUSTIVE : le jour où un champ s'ajoute et qu'on oublie de l'y mettre,
+//  l'image reste figée sur une valeur périmée — le pire mode de panne possible, silencieux et
+//  difficile à relier à sa cause.
+//
+//  On invalide donc sur les ÉVÉNEMENTS D'ENTRÉE, à la racine du document et en phase de capture :
+//  toute interaction quelle qu'elle soit rallume le rendu pour quelques images. C'est
+//  volontairement grossier — un clic hors du bassin redessine pour rien — mais c'est sûr par
+//  construction : rien ne peut changer l'image sans qu'un événement l'ait précédé, l'animation
+//  étant par définition à l'arrêt.
+//
+//  Et par sécurité, un rafraîchissement de fond toutes les SURF_PAUSED_REFRESH_MS : si une
+//  invalidation manquait malgré tout, l'image se corrige d'elle-même en moins d'une demi-seconde
+//  au lieu de rester fausse indéfiniment. Coût au repos : ~3 % au lieu de 100 %.
+var SURF_IDLE_REDRAW_FRAMES = 12;   // images redessinées après une interaction (couvre un drag)
+var SURF_PAUSED_REFRESH_MS  = 500;  // filet de sécurité
+
+var _surfIdleFrames = 0;
+var _surfLastPausedDraw = 0;
+
+function surfInvalidate() { _surfIdleFrames = SURF_IDLE_REDRAW_FRAMES; }
+
+function initSurfInvalidation() {
+    var evts = ['pointerdown', 'pointermove', 'pointerup', 'wheel', 'input', 'change',
+                'keydown', 'click'];
+    for (var i = 0; i < evts.length; i++) {
+        document.addEventListener(evts[i], surfInvalidate, true);
+    }
+    window.addEventListener('resize', surfInvalidate);
+}
 function tickSurfaces() {
     var now = performance.now();
     if (_surfLastFrameT === null) _surfLastFrameT = now;
@@ -1680,6 +1741,16 @@ function tickSurfaces() {
         var tPrev = simSurf.simTime;
         simSurf.simTime += dt * (simSurf.speedFactor || 1.0);
         if (simSurf.showGraph) _updateSurfPointData(tPrev, simSurf.simTime);
+    } else {
+        // À l'arrêt, l'image ne peut changer que si l'utilisateur a agi (cf. surfInvalidate) —
+        // sinon on rend la frame au navigateur. Le filet de sécurité rattrape une invalidation
+        // manquante en moins d'une demi-seconde.
+        if (_surfIdleFrames > 0) {
+            _surfIdleFrames--;
+        } else if (now - _surfLastPausedDraw < SURF_PAUSED_REFRESH_MS) {
+            return;
+        }
+        _surfLastPausedDraw = now;
     }
     drawSurfaces();
     if (simSurf.showGraph) drawSurfGraph();
@@ -2633,6 +2704,7 @@ function resetSurfaces() {
 function initSurfaces() {
     initSurfDrag();
     initSurfWheelZoom();
+    initSurfInvalidation();
     // Le slider part de la position correspondant à la vue par défaut (pas de sa borne gauche,
     // qui est le dézoom maximal) et le libellé affiche le facteur ×1 correspondant.
     _surfSetViewCm(SURF_VIEW_DEFAULT_CM, true);
