@@ -59,10 +59,38 @@ var SURF_ZOOM_STEPS      = 240;
 var SURF_WHEEL_SENS      = 0.0015; // molette : facteur exp(deltaY · sens) sur la largeur de vue
 
 var SURF_GRAPH_WINDOW   = 5;    // fenêtre temporelle du graphe y(t), en s
-var SURF_GRID_FACTOR    = 4;    // sous-échantillonnage du champ (px CSS par cellule de grille) à zoom=1
-var SURF_GRID_W_MAX     = 380;  // bornes DURES de la grille de calcul du champ (coût du rebuild et du
-var SURF_GRID_H_MAX     = 250;  // dessin par frame ∝ largeur × hauteur de grille)
-var SURF_GRID_CELLS_PER_LAMBDA = 5;
+// ── Dimensionnement de la grille de calcul du champ ───────────────────
+// Deux exigences concurrentes, toutes deux au rapport d'aspect du canvas (cf.
+// _rebuildSurfFieldCache) — la plus forte l'emporte :
+//   • le CADRAGE ÉCRAN (SURF_GRID_FACTOR px CSS par cellule), qui suffit aux grandes longueurs
+//     d'onde et garde la grille bon marché ;
+//   • l'ÉCHANTILLONNAGE DE L'ONDE (SURF_GRID_CELLS_PER_LAMBDA cellules par λ), qui commande dès
+//     que λ est petit devant la largeur de vue — c'est le régime où la figure d'interférences se
+//     brouillait. 9 échantillons par période : en dessous de ~8, la reconstruction bilinéaire de
+//     l'agrandissement (cf. drawSurfaces) laisse une ondulation d'amplitude parasite et un moiré
+//     avec la trame de la grille. (Valeur précédente : 5.)
+//
+// Le coût est borné non plus par des maxima SÉPARÉS en largeur et en hauteur — qui écrasaient la
+// largeur (380) bien avant la hauteur (250), donc déformaient la grille et créaient une falaise
+// sur un seul axe — mais par un BUDGET GLOBAL en cellules : au delà, les deux dimensions sont
+// divisées par le même facteur, donc la dégradation est progressive et isotrope.
+//
+// Budget calé sur celui de diffraction/ (même valeur) alors que le coût est ici bien moindre :
+// 2 sources ponctuelles contre une centaine de sources de Huygens, et le rebuild ne fait plus que
+// le quart du travail trigonométrique depuis l'étape 2. Pas de régulateur adaptatif : un budget
+// FIXE, cf. le bilan de la session précédente (un régulateur à levier unique avait raboté la
+// grille jusqu'au repliement en croyant soulager une vue dont le coût est ailleurs).
+var SURF_GRID_FACTOR    = 4;    // px CSS par cellule de grille quand λ n'exige pas mieux
+var SURF_GRID_CELLS_PER_LAMBDA = 9;
+var SURF_GRID_BUDGET    = 360000; // cellules
+var SURF_GRID_MIN_W     = 40;
+var SURF_GRID_MIN_H     = 30;
+
+// PLAFOND ÉCRAN — une cellule par pixel CSS. Au-delà, la finesse calculée ne peut tout simplement
+// pas s'afficher : c'est du calcul jeté. Ce plafond est aussi la limite théorique de la
+// simulation — au dézoom maximal (160 cm) avec λ = 1 cm, une longueur d'onde ne couvre qu'une
+// dizaine de pixels écran, donc aucune grille, si fine soit-elle, ne rendra ce réglage net.
+// C'est à l'utilisateur de zoomer, et c'est précisément à quoi sert la plage de zoom de l'étape 1.
 // Enveloppe géométrique d'une source ponctuelle réelle : sqrt(R0/(R0+r)), R0 = SURF_ENV_R0_LAMBDA·λ —
 // vaut 1 tout contre la source (pas de singularité 1/√r à traiter) et tend vers la décroissance
 // cylindrique physique 1/√r pour r ≫ R0. Même famille de formule que l'enveloppe géométrique de
@@ -290,12 +318,23 @@ function _rebuildSurfFieldCache() {
     var lambda_px = s.lambda * s.pxPerCm;
     if (lambda_px <= 0) return;
 
-    var gw = Math.max(40, Math.min(SURF_GRID_W_MAX, Math.round(s.canvasW / SURF_GRID_FACTOR)));
-    var gh = Math.max(30, Math.min(SURF_GRID_H_MAX, Math.round(s.canvasH / SURF_GRID_FACTOR)));
-    var neededGw = Math.ceil(s.canvasW * SURF_GRID_CELLS_PER_LAMBDA / lambda_px);
-    var neededGh = Math.ceil(s.canvasH * SURF_GRID_CELLS_PER_LAMBDA / lambda_px);
-    if (neededGw > gw) gw = Math.min(SURF_GRID_W_MAX, neededGw);
-    if (neededGh > gh) gh = Math.min(SURF_GRID_H_MAX, neededGh);
+    // Dimensions de la grille — tout se joue sur UN scalaire, le nombre de cellules par pixel
+    // CSS : les deux exigences (cadrage écran / échantillonnage de λ, cf. constantes en tête de
+    // fichier) ayant le rapport d'aspect du canvas, la grille le conserve quoi qu'il arrive.
+    var m = Math.max(1 / SURF_GRID_FACTOR, SURF_GRID_CELLS_PER_LAMBDA / lambda_px);
+    if (m > 1) m = 1; // plafond écran : au-delà d'une cellule par pixel, rien ne s'affiche de plus
+    var gw = s.canvasW * m;
+    var gh = s.canvasH * m;
+
+    // Puis le budget global : un dépassement divise les DEUX dimensions par le même facteur,
+    // au lieu d'écraser un seul axe.
+    if (gw * gh > SURF_GRID_BUDGET) {
+        var shrink = Math.sqrt(SURF_GRID_BUDGET / (gw * gh));
+        gw *= shrink;
+        gh *= shrink;
+    }
+    gw = Math.max(SURF_GRID_MIN_W, Math.round(gw));
+    gh = Math.max(SURF_GRID_MIN_H, Math.round(gh));
 
     var k     = 2 * Math.PI / lambda_px;
     var c_px  = SURF_C_CM * s.pxPerCm;
