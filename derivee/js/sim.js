@@ -39,12 +39,14 @@ var FONCTIONS = [
     derivUnite: 'm/s',
     derivSens: 'vitesse',
     tMin: 0, tMax: 3,
-    t0: 0.4,
+    t0: 1.6,
     dtMax: 1.2,
+    dt0: 0.8, // écart Δt affiché par défaut (au chargement et après « Réinitialiser »)
+    zMin: 0, zMax: 55, // fenêtre verticale par défaut fixe (n'est pas recalculée sur la courbe)
     params: [
-      { id: 'a', label: 'a', unite: 'm·s⁻²', min: -8, max: 8,  step: 0.1, val: -4.9, dec: 1 },
-      { id: 'b', label: 'b', unite: 'm·s⁻¹', min: -5, max: 20, step: 0.5, val: 12,   dec: 1 },
-      { id: 'c', label: 'c', unite: 'm',     min: 0,  max: 40, step: 1,   val: 10,   dec: 0 }
+      { id: 'a', label: 'a', unite: 'm·s⁻²', min: -8, max: 8,  step: 0.1, val: 3.5, dec: 1 },
+      { id: 'b', label: 'b', unite: 'm·s⁻¹', min: -5, max: 20, step: 0.5, val: 0,   dec: 1 },
+      { id: 'c', label: 'c', unite: 'm',     min: 0,  max: 40, step: 1,   val: 30,  dec: 0 }
     ],
     f:  function (t, p) { return p.a * t * t + p.b * t + p.c; },
     df: function (t, p) { return 2 * p.a * t + p.b; }
@@ -64,6 +66,7 @@ var FONCTIONS = [
     tMin: 0, tMax: 4,
     t0: 0.5,
     dtMax: 1.5,
+    dt0: 0.6,
     params: [
       { id: 'A', label: 'A', unite: 'cm', min: 1,   max: 6, step: 0.5,  val: 4, dec: 1 },
       { id: 'T', label: 'T', unite: 's',  min: 0.5, max: 4, step: 0.25, val: 2, dec: 2 }
@@ -88,6 +91,7 @@ var FONCTIONS = [
     tMin: 0, tMax: 3,
     t0: 0.3,
     dtMax: 1.2,
+    dt0: 0.48,
     params: [
       { id: 'E',   label: 'E', unite: 'V', min: 1,    max: 12, step: 0.5,  val: 6,   dec: 1 },
       { id: 'tau', label: 'τ', unite: 's', min: 0.15, max: 2,  step: 0.05, val: 0.5, dec: 2 }
@@ -110,6 +114,7 @@ var FONCTIONS = [
     tMin: -2.5, tMax: 2.5,
     t0: -0.6,
     dtMax: 2,
+    dt0: 0.8,
     params: [
       { id: 'p', label: 'p', unite: '', min: -6, max: 4, step: 0.25, val: -3, dec: 2 }
     ],
@@ -127,12 +132,12 @@ var sim = {
   params: {},         // valeurs courantes des paramètres de la fonction
 
   t0: 0,              // abscisse du point d'étude M
-  dt: 0.4,            // écart Δt entre les points A et B
+  dt: 0.8,            // écart Δt entre les points A et B
 
   zoom: 1,            // facteur de zoom (≥ 1), centré sur M
   panT: 0, panZ: 0,   // décalage manuel de la vue (unités de la fonction)
 
-  showTangente: true, // tangente exacte en M (en plus de la sécante)
+  showTangente: false, // tangente exacte en M (en plus de la sécante)
   showCotes: true,    // cotes Δt et Δf sur le graphe
   showDeriv: false,   // graphe de la fonction dérivée (bas)
   showCourbeDeriv: true, // dans ce graphe : courbe f′ complète
@@ -184,7 +189,7 @@ function chargeParamsDefaut() {
   sim.params = {};
   F.params.forEach(function (p) { sim.params[p.id] = p.val; });
   sim.t0 = F.t0;
-  sim.dt = Math.min(sim.dt, F.dtMax);
+  sim.dt = (F.dt0 !== undefined) ? F.dt0 : Math.min(sim.dt, F.dtMax);
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -195,6 +200,18 @@ function chargeParamsDefaut() {
 // pour englober la courbe entière avec une marge de 12 %.
 function calcVueBase() {
   var F = fonCourante();
+  vueBase.cT = (F.tMin + F.tMax) / 2;
+  vueBase.w  = (F.tMax - F.tMin) * 1.06;
+
+  // Fenêtre verticale fixe si la fonction en définit une (zMin/zMax) :
+  // pas de recalcul sur la courbe, la vue par défaut ne bouge pas quand
+  // on change les paramètres.
+  if (F.zMin !== undefined && F.zMax !== undefined) {
+    vueBase.cZ = (F.zMin + F.zMax) / 2;
+    vueBase.h  = F.zMax - F.zMin;
+    return;
+  }
+
   var zMin = Infinity, zMax = -Infinity;
   var N = 400;
   for (var i = 0; i <= N; i++) {
@@ -206,8 +223,6 @@ function calcVueBase() {
   }
   if (!isFinite(zMin) || !isFinite(zMax)) { zMin = -1; zMax = 1; }
   var marge = (zMax - zMin) * 0.12 || 1;
-  vueBase.cT = (F.tMin + F.tMax) / 2;
-  vueBase.w  = (F.tMax - F.tMin) * 1.06;
   vueBase.cZ = (zMin + zMax) / 2;
   vueBase.h  = (zMax - zMin) + 2 * marge;
 }

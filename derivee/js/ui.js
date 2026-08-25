@@ -152,7 +152,6 @@ function razVueUI() {
 function razTout() {
   stopAnimDt();
   chargeParamsDefaut();
-  sim.dt = fonCourante().dtMax * 0.4;
   sim.zoom = 1; sim.panT = 0; sim.panZ = 0;
   recadre();
   construitParams();
@@ -362,7 +361,6 @@ function loop(ts) {
 
 function init() {
   chargeParamsDefaut();
-  sim.dt = fonCourante().dtMax * 0.4;
 
   construitSelecteurFonctions();
   construitParams();
