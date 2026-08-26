@@ -2085,20 +2085,56 @@ function _renderVecLabel(ctx, lx, ly, m, vecName, line1, line2, color) {
     ctx.restore();
 }
 
-/* Étiquette allégée pour les vues projetées (proj-x / proj-y) : le vecteur
-   n'a plus de sens hors de son axe de projection, donc plus de flèche ni de
-   nom vectoriel — seule la coordonnée projetée reste affichée (ex. « v_x =
-   3,20 m/s » au lieu de vecteur(v) avec x et y). */
-function _measureScalarLabel(ctx, line) {
+/* Étiquettes des vues projetées (proj-x / proj-y) : le vecteur n'a plus de
+   sens hors de son axe de projection, donc plus de flèche ni de nom
+   vectoriel — seule la coordonnée projetée reste affichée.
+
+   Les trois grandeurs sont réunies dans un bloc unique, une par ligne. La
+   projection écrase les trois ancres — milieu de OM, milieu de v, milieu de
+   a — sur la même ligne : séparées, elles se disputaient littéralement le
+   même point. Réunies, la compétition disparaît au lieu d'être arbitrée, et
+   trois rectangles n'en font plus qu'un.
+
+   Chaque ligne garde la couleur de SON vecteur : c'est ce qui préserve le
+   lien avec la flèche correspondante, sans quoi le bloc gagnerait de la
+   place en perdant toute lecture.
+
+   Les noms sont alignés à droite et les valeurs à gauche, de part et
+   d'autre du signe égal : empilées au fil du texte, des lignes de largeurs
+   différentes dessinent un escalier.
+
+     rows = [{ name, value, color }]   ex. { name: 'v_x', value: '3,20 m/s' } */
+function _measureProjBlock(ctx, rows) {
     var fontSize = _animFontSize(20, 30, 0.060);
-    return { fontSize: fontSize, totalW: _measureSubText(ctx, line, fontSize), totalH: fontSize * 1.45 };
+    var gap      = fontSize * 0.28;
+    var nameW = 0, valW = 0;
+    for (var i = 0; i < rows.length; i++) {
+        nameW = Math.max(nameW, _measureSubText(ctx, rows[i].name,  fontSize));
+        valW  = Math.max(valW,  _measureSubText(ctx, rows[i].value, fontSize));
+    }
+    var eqW = _measureSubText(ctx, '=', fontSize);
+    return {
+        fontSize: fontSize, lineH: fontSize * 1.45, gap: gap,
+        nameW: nameW, eqW: eqW, valW: valW,
+        totalW: nameW + gap + eqW + gap + valW,
+        totalH: fontSize * 1.45 * rows.length
+    };
 }
 
-function _renderScalarLabel(ctx, lx, ly, m, line, color) {
+function _renderProjBlock(ctx, lx, ly, m, rows) {
     ctx.save();
-    ctx.fillStyle    = color;
     ctx.textBaseline = 'middle';
-    _drawSubText(ctx, line, lx, ly + m.totalH / 2, m.fontSize, null, _axisLW(3));
+    var eqX  = lx + m.nameW + m.gap;
+    var valX = eqX + m.eqW + m.gap;
+    for (var i = 0; i < rows.length; i++) {
+        var r  = rows[i];
+        var y  = ly + m.lineH * (i + 0.5);
+        var nw = _measureSubText(ctx, r.name, m.fontSize);
+        ctx.fillStyle = r.color;
+        _drawSubText(ctx, r.name,  lx + m.nameW - nw, y, m.fontSize, null, _axisLW(3));
+        _drawSubText(ctx, '=',     eqX,               y, m.fontSize, null, _axisLW(3));
+        _drawSubText(ctx, r.value, valX,              y, m.fontSize, null, _axisLW(3));
+    }
     ctx.restore();
 }
 
@@ -2157,6 +2193,8 @@ function _drawAnimHover(ctx, snap, isPinned) {
             anchorY: (origin.cy + p.cy) / 2,
             vecName: 'OM',
             compX: 'x', compY: 'y',
+            valX: fmt(snap.x, 2) + ' m',
+            valY: fmt(snap.y, 2) + ' m',
             line1: 'x = ' + fmt(snap.x, 2) + ' m',
             line2: 'y = ' + fmt(snap.y, 2) + ' m',
             color:  sim.armatureMode === 'perp-x' ? COL_VEC_POS_PERP : COL_VEC_POS,
@@ -2188,6 +2226,8 @@ function _drawAnimHover(ctx, snap, isPinned) {
             anchorY: p.cy + dvy / 2,
             vecName: 'v',
             compX: 'v_x', compY: 'v_y',
+            valX: (_vecScaleVitOverride !== null ? fmtSci(snap.vx, 3) : fmt(snap.vx, 2)) + ' m/s',
+            valY: (_vecScaleVitOverride !== null ? fmtSci(snap.vy, 3) : fmt(snap.vy, 2)) + ' m/s',
             line1: 'v_x = ' + (_vecScaleVitOverride !== null ? fmtSci(snap.vx, 3) : fmt(snap.vx, 2)) + ' m/s',
             line2: 'v_y = ' + (_vecScaleVitOverride !== null ? fmtSci(snap.vy, 3) : fmt(snap.vy, 2)) + ' m/s',
             color:  _colVit,
@@ -2216,6 +2256,8 @@ function _drawAnimHover(ctx, snap, isPinned) {
                 anchorY: p.cy + day / 2,
                 vecName: 'a',
                 compX: 'a_x', compY: 'a_y',
+                valX: (_vecScaleAccOverride !== null ? fmtSci(snap.ax, 3) : fmt(snap.ax, 2)) + ' m/s²',
+                valY: (_vecScaleAccOverride !== null ? fmtSci(snap.ay, 3) : fmt(snap.ay, 2)) + ' m/s²',
                 line1: 'a_x = ' + (_vecScaleAccOverride !== null ? fmtSci(snap.ax, 3) : fmt(snap.ax, 2)) + ' m/s²',
                 line2: 'a_y = ' + (_vecScaleAccOverride !== null ? fmtSci(snap.ay, 3) : fmt(snap.ay, 2)) + ' m/s²',
                 color:  _colAcc,
@@ -2234,6 +2276,33 @@ function _drawAnimHover(ctx, snap, isPinned) {
     /* Registre de l'image : les points épinglés et le survol se partagent le
        même, ils ne se recouvrent donc plus entre eux. */
     var placedRects = _labelRectsHard;
+
+    /* ── Vue projetée, coordonnées demandées : un seul bloc pour les trois ──
+       Ancré sur le mobile lui-même, seul point que les trois grandeurs
+       partagent honnêtement : origine de v et de a, extrémité de OM.
+       Le côté préféré suit l'axe d'écrasement — proj-x aplatit la scène sur
+       une bande horizontale, l'espace libre est donc au-dessus et en dessous ;
+       proj-y la réduit à une colonne, l'espace est à droite et à gauche. */
+    if (projLine && showCoords !== false && toPlace.length > 0) {
+        var rows = [];
+        for (var ri = 0; ri < toPlace.length; ri++) {
+            var rl = toPlace[ri];
+            rows.push({
+                name:  projLine === 1 ? rl.compX : rl.compY,
+                value: projLine === 1 ? rl.valX  : rl.valY,
+                color: rl.color
+            });
+        }
+        var bm  = _measureProjBlock(ctx, rows);
+        var bpr = projLine === 1
+            ? ['above', 'upper-right', 'upper-left', 'below', 'lower-right', 'lower-left', 'right', 'left']
+            : ['right', 'upper-right', 'lower-right', 'left', 'upper-left', 'lower-left', 'above', 'below'];
+        var bpos = _bestLabelPos(p.cx, p.cy, bm.totalW, bm.totalH, bpr, placedRects);
+        placedRects.push({ lx: bpos.lx, ly: bpos.ly, w: bm.totalW, h: bm.totalH });
+        _renderProjBlock(ctx, bpos.lx, bpos.ly, bm, rows);
+        toPlace.length = 0;
+    }
+
     for (var i = 0; i < toPlace.length; i++) {
         var lbl = toPlace[i];
         if (lbl.showCoords === false && projLine && lbl.compX) {
@@ -2252,13 +2321,10 @@ function _drawAnimHover(ctx, snap, isPinned) {
                 lbl.prefer, placedRects);
             placedRects.push({ lx: fpos.lx, ly: fpos.ly, w: fm.w, h: fm.h });
             _renderForceName(ctx, fpos.lx, fpos.ly, lbl.vecName, lbl.color, 1.0, fm);
-        } else if (projLine) {
-            var line = projLine === 1 ? lbl.line1 : lbl.line2;
-            var sm   = _measureScalarLabel(ctx, line);
-            var spos = _bestLabelPos(lbl.anchorX, lbl.anchorY, sm.totalW, sm.totalH, lbl.prefer, placedRects);
-            placedRects.push({ lx: spos.lx, ly: spos.ly, w: sm.totalW, h: sm.totalH });
-            _renderScalarLabel(ctx, spos.lx, spos.ly, sm, line, lbl.color);
         } else {
+            /* Vue normale : notation vectorielle complète. Le cas « vue
+               projetée avec coordonnées » n'arrive jamais ici, il a été
+               traité en bloc au-dessus. */
             var m   = _measureVecLabel(ctx, lbl.vecName, lbl.line1, lbl.line2);
             var pos = _bestLabelPos(lbl.anchorX, lbl.anchorY, m.totalW, m.totalH, lbl.prefer, placedRects);
             placedRects.push({ lx: pos.lx, ly: pos.ly, w: m.totalW, h: m.totalH });
