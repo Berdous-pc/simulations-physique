@@ -136,7 +136,7 @@ function _drawAnimToast(ctx) {
     var remain = _animToast.until - Date.now();
     if (remain <= 0) { _animToast = null; return; }
 
-    var fontSize = Math.max(12, Math.min(17, _animH * 0.036));
+    var fontSize = _animFontSize(12, 17, 0.036);
     ctx.save();
     /* Fondu sur les 600 dernières ms */
     ctx.globalAlpha = Math.min(1, remain / 600);
@@ -177,6 +177,61 @@ function _drawAnimToast(ctx) {
 ─────────────────────────────────────────────────────────────── */
 function _hoverPickRadius() {
     return Math.max(20, Math.min(40, _animH * 0.055));
+}
+
+/* ── Taille des textes de l'animation ───────────────────────────
+   Toutes les étiquettes du canvas (graduations, noms d'axes, noms de
+   vecteurs, bloc coordonnées…) suivaient la hauteur du canvas jusqu'à un
+   plafond en px, atteint aux alentours de 500 px de haut. Au-delà — 1080p
+   en plein écran, 1440p, vidéoprojecteur — la scène continuait de grandir
+   pendant que le texte restait figé : en relatif il rétrécissait de 20 %
+   sur un canvas de 600 px, de 40 % sur un canvas de 830 px, au point de
+   devenir difficile à lire depuis le fond de la salle.
+
+   Le plafond suit donc maintenant la taille du canvas au lieu d'être une
+   constante : au-dessus de la hauteur de référence, il est multiplié par
+   ANIM_TXT_REF_H / hauteur, ce qui revient à laisser le texte strictement
+   proportionnel à la scène. ANIM_TXT_MAX_F borne l'agrandissement pour
+   qu'en 4K les étiquettes ne deviennent pas envahissantes.
+
+   En dessous de la hauteur de référence le facteur vaut 1 : aucun plafond
+   n'était actif là, le rendu sur portable et tablette est inchangé. */
+var ANIM_TXT_REF_H = 500;    // hauteur de canvas où les tailles nominales s'appliquent
+var ANIM_TXT_MAX_F = 1.6;    // agrandissement maximal du texte sur très grand écran
+
+function _txtScale() {
+    if (!_animH) return 1;
+    return Math.min(ANIM_TXT_MAX_F, Math.max(1, _animH / ANIM_TXT_REF_H));
+}
+
+/* minPx  : taille plancher, sur très petite fenêtre
+   refPx  : taille nominale, sur un canvas de référence
+   k      : fraction de la hauteur du canvas suivie entre les deux */
+function _animFontSize(minPx, refPx, k) {
+    return Math.max(minPx, Math.min(refPx * _txtScale(), _animH * k));
+}
+
+/* ── Marges du repère ───────────────────────────────────────────
+   sim.originX / sim.originY sont la marge gauche et la marge basse du
+   canvas, en px : c'est la place réservée aux étiquettes des graduations
+   et aux noms d'axes (« 12,5 » aligné à droite de l'axe y, « y (m) » sous
+   la pointe de la flèche, « x (m) » sous l'axe x). Fixées à 65 et 50 px,
+   elles étaient dimensionnées pour les tailles de texte d'un canvas de
+   référence ; dès que le texte suit la taille du canvas, un « y (m) » ou
+   un « 12,5 » agrandi déborde du canvas et se retrouve coupé.
+
+   Elles suivent donc exactement la même échelle que le texte qu'elles
+   logent — donc inchangées elles aussi en dessous de la hauteur de
+   référence. */
+var ANIM_MARGIN_L_REF  = 65;   // gauche : graduations de l'axe y + « y (m) »
+var ANIM_MARGIN_B_REF  = 50;   // bas    : graduations de l'axe x + « x (m) »
+var ANIM_MARGIN_LE_REF = 65;   // gauche, mode champ électrique
+
+function _updateAnimMargins() {
+    var f = _txtScale();
+    sim.originX  = Math.round(ANIM_MARGIN_L_REF  * f);
+    sim.originY  = Math.round(ANIM_MARGIN_B_REF  * f);
+    simE.originX = Math.round(ANIM_MARGIN_LE_REF * f);
 }
 
 /* ── Géométrie des axes (recalculée à chaque frame) ─────────────
@@ -249,6 +304,7 @@ function resizeAnimCanvas() {
     _animCanvas.width  = Math.round(_animW * dpr);
     _animCanvas.height = Math.round(_animH * dpr);
     _animCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    _updateAnimMargins(); /* les marges du repère suivent la taille du texte    */
     _updateVecScales();   /* les longueurs de flèches suivent la taille du canvas */
     computeScale(_animW, _animH);
 }
@@ -558,7 +614,7 @@ function _drawGrid(ctx) {
     var xMaxPhy  = (_animW - sim.originX) / sim.scaleX;
     var yMaxPhy  = (_animH - sim.originY) / sim.scaleY;
     var gy0      = groundY();
-    var fontSize = Math.max(11, Math.min(16, _animH * 0.032));
+    var fontSize = _animFontSize(11, 16, 0.032);
 
     /* Pas adaptatifs pour chaque axe */
     var xGrid    = _niceGridStep(xMaxPhy, 6);
@@ -579,7 +635,7 @@ function _drawGrid(ctx) {
     var _ag        = _axisGeom();
     var tickMajor  = Math.max(6, _animH * 0.014);
     var tickMinor  = Math.max(3, _animH * 0.007);
-    var axesFontSz = Math.max(14, Math.min(20, _animH * 0.041));
+    var axesFontSz = _animFontSize(14, 20, 0.041);
     var yAxisEnd   = _ag.yEnd + _ag.aLen + axesFontSz + 12;
     var xAxisCutoff = _ag.xEnd - axesFontSz * 3 - 20;
 
@@ -707,7 +763,7 @@ function _drawGrid(ctx) {
 
 function _drawAxes(ctx) {
     var origin   = toCanvas(0, 0);
-    var fontSize = Math.max(14, Math.min(20, _animH * 0.041));
+    var fontSize = _animFontSize(14, 20, 0.041);
     var ag   = _axisGeom();
     var aLen = ag.aLen;
     var xEnd = ag.xEnd;
@@ -755,7 +811,7 @@ function _drawAxes(ctx) {
 
     /* ── Labels ── */
     var tickMajorRef = Math.max(6,  _animH * 0.014);
-    var fontSizeGrid = Math.max(11, Math.min(16, _animH * 0.032));
+    var fontSizeGrid = _animFontSize(11, 16, 0.032);
     ctx.font          = 'bold ' + fontSize + 'px Segoe UI, Arial';
     ctx.shadowColor   = 'rgba(0,0,0,0.55)';
     ctx.shadowBlur    = 4;
@@ -787,7 +843,7 @@ function _drawAxes(ctx) {
         ctx.fillStyle    = 'rgba(255,255,255,' + (0.95 * Math.min(cos_tx, 1)).toFixed(2) + ')';
         ctx.textBaseline = 'top';
         if (_splitActive()) {
-            var smallFs = Math.max(10, Math.min(13, _animH * 0.027));
+            var smallFs = _animFontSize(10, 13, 0.027);
             ctx.font      = 'bold ' + smallFs + 'px Segoe UI, Arial';
             ctx.textAlign = 'center';
             ctx.fillText('↑ Montée',   _phaseOx(1),  yEnd + aLen + 3);
@@ -1270,7 +1326,7 @@ function _drawVecArrow(ctx, cx, cy, dx, dy, color, label, opacity, lw) {
 
     /* Label */
     if (label) {
-        ctx.font = 'bold ' + Math.max(11, Math.min(13, _animH * 0.028)) + 'px Segoe UI, Arial';
+        ctx.font = 'bold ' + _animFontSize(11, 13, 0.028) + 'px Segoe UI, Arial';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         var lx = ex + Math.cos(angle + Math.PI / 2) * 10;
@@ -1584,8 +1640,8 @@ function _drawSubText(ctx, line, x, y, size, fontFn) {
 function _measureVecLabel(ctx, vecName, line1, line2) {
     /* Tailles calibrées pour rester lisibles vidéoprojetées, au fond d'une
        salle : ~6 % de la hauteur du canvas, avec un plancher confortable. */
-    var fontSize = Math.max(20, Math.min(30, _animH * 0.060));
-    var nameSize = Math.max(19, Math.min(28, _animH * 0.056));
+    var fontSize = _animFontSize(20, 30, 0.060);
+    var nameSize = _animFontSize(19, 28, 0.056);
 
     var w1    = _measureSubText(ctx, line1, fontSize);
     var w2    = _measureSubText(ctx, line2, fontSize);
@@ -1892,7 +1948,7 @@ function _measureForceName(ctx, name) {
     /* Même logique de lisibilité en projection que _measureVecLabel : ces noms
        sont plus petits (ils accompagnent chaque flèche de force, souvent
        plusieurs à la fois), mais suivent le même agrandissement. */
-    var sz    = Math.max(16, Math.min(21, _animH * 0.042));
+    var sz    = _animFontSize(16, 21, 0.042);
     var tw    = _measureMathName(ctx, name, sz);
     var arrow = _measureMathArrow(ctx, sz);
     var accW  = Math.max(tw, arrow.w);              // largeur du composé <mover>
@@ -2002,7 +2058,7 @@ function _drawViewLabel(ctx) {
     var opacity   = maxAngle / (Math.PI / 2);
     var isProj_y  = ty > tx;
     var label     = isProj_y ? 'Vue de face' : 'Vue du dessus';
-    var fontSize  = Math.max(12, Math.min(16, _animH * 0.033));
+    var fontSize  = _animFontSize(12, 16, 0.033);
 
     ctx.save();
     ctx.globalAlpha   = opacity * 0.9;
@@ -2133,7 +2189,7 @@ function _drawGridE(ctx) {
     var yGrid = _niceGridStep(yGridMax, 4);
     var xDec  = _gridDec(xGrid.major);
     var yDec  = _gridDec(yGrid.major);
-    var fontSize = Math.max(11, Math.min(15, _animH * 0.030));
+    var fontSize = _animFontSize(11, 15, 0.030);
     var tickLen = Math.max(5, _animH * 0.012);
     var orig = toCanvas(0, 0);
 
@@ -2186,7 +2242,7 @@ function _drawGridE(ctx) {
 function _drawAxesE(ctx) {
     var orig = toCanvas(0, 0);
     var ag   = _axisGeom();
-    var fontSize = Math.max(13, Math.min(18, _animH * 0.038));
+    var fontSize = _animFontSize(13, 18, 0.038);
     ctx.save();
     ctx.strokeStyle = 'rgba(40,40,40,0.70)';
     ctx.fillStyle   = 'rgba(40,40,40,0.70)';
