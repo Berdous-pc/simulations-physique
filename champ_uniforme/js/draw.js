@@ -1806,15 +1806,27 @@ function _measureSubText(ctx, line, size, fontFn) {
 }
 
 /* (x, y) = origine gauche du texte normal ; l'appelant fixe textBaseline, le
-   décalage de l'indice est le même quelle que soit la ligne de référence. */
-function _drawSubText(ctx, line, x, y, size, fontFn) {
+   décalage de l'indice est le même quelle que soit la ligne de référence.
+   outlineW : épaisseur (px) d'un liseré blanc tracé sous le texte, pour le
+   détacher d'un fond chargé (vue projetée) ; omis, aucun liseré. */
+function _drawSubText(ctx, line, x, y, size, fontFn, outlineW) {
     var f = fontFn || _txtFont;
     var parts = _subParts(line), cx = x;
     ctx.textAlign = 'left';
     for (var i = 0; i < parts.length; i++) {
         var p = parts[i];
+        var py = p.sub ? y + size * TXT_SUB_DY : y;
         ctx.font = f(p.sub ? size * TXT_SUB_RATIO : size);
-        ctx.fillText(p.t, cx, p.sub ? y + size * TXT_SUB_DY : y);
+        if (outlineW) {
+            ctx.save();
+            ctx.lineJoin    = 'round';
+            ctx.miterLimit  = 2;
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth   = outlineW;
+            ctx.strokeText(p.t, cx, py);
+            ctx.restore();
+        }
+        ctx.fillText(p.t, cx, py);
         cx += ctx.measureText(p.t).width;
     }
 }
@@ -1990,6 +2002,40 @@ function _renderVecLabel(ctx, lx, ly, m, vecName, line1, line2, color) {
     ctx.restore();
 }
 
+/* Étiquette allégée pour les vues projetées (proj-x / proj-y) : le vecteur
+   n'a plus de sens hors de son axe de projection, donc plus de flèche ni de
+   nom vectoriel — seule la coordonnée projetée reste affichée (ex. « v_x =
+   3,20 m/s » au lieu de vecteur(v) avec x et y). */
+function _measureScalarLabel(ctx, line) {
+    var fontSize = _animFontSize(20, 30, 0.060);
+    return { fontSize: fontSize, totalW: _measureSubText(ctx, line, fontSize), totalH: fontSize * 1.45 };
+}
+
+function _renderScalarLabel(ctx, lx, ly, m, line, color) {
+    ctx.save();
+    ctx.fillStyle    = color;
+    ctx.textBaseline = 'middle';
+    _drawSubText(ctx, line, lx, ly + m.totalH / 2, m.fontSize, null, _axisLW(3));
+    ctx.restore();
+}
+
+/* Même idée que ci-dessus mais pour le nom seul (sans bloc coordonnées),
+   utilisée quand « Afficher les coordonnées » est désactivé : en vue
+   projetée, plus de flèche ni de <mover> — juste le nom scalaire (v_x, a_y…),
+   à la taille des noms de force pour rester cohérent avec eux. */
+function _measureScalarName(ctx, text) {
+    var sz = _animFontSize(16, 21, 0.042);
+    return { sz: sz, w: _measureSubText(ctx, text, sz), h: sz * 1.2 };
+}
+
+function _renderScalarName(ctx, lx, ly, text, color, m) {
+    ctx.save();
+    ctx.fillStyle    = color;
+    ctx.textBaseline = 'middle';
+    _drawSubText(ctx, text, lx, ly + m.h / 2, m.sz, null, _axisLW(3));
+    ctx.restore();
+}
+
 function _drawAnimHover(ctx, snap, isPinned) {
     var p = _toCanvasSplit(snap.x, snap.y, snap.vy || 0);
     /* Un point épinglé qui sort du cadre (zoom) ne doit plus être affiché,
@@ -2027,6 +2073,7 @@ function _drawAnimHover(ctx, snap, isPinned) {
             anchorX: (origin.cx + p.cx) / 2,
             anchorY: (origin.cy + p.cy) / 2,
             vecName: 'OM',
+            compX: 'x', compY: 'y',
             line1: 'x = ' + fmt(snap.x, 2) + ' m',
             line2: 'y = ' + fmt(snap.y, 2) + ' m',
             color:  sim.armatureMode === 'perp-x' ? COL_VEC_POS_PERP : COL_VEC_POS,
@@ -2057,6 +2104,7 @@ function _drawAnimHover(ctx, snap, isPinned) {
             anchorX: p.cx + dvx / 2,
             anchorY: p.cy + dvy / 2,
             vecName: 'v',
+            compX: 'v_x', compY: 'v_y',
             line1: 'v_x = ' + (_vecScaleVitOverride !== null ? fmtSci(snap.vx, 3) : fmt(snap.vx, 2)) + ' m/s',
             line2: 'v_y = ' + (_vecScaleVitOverride !== null ? fmtSci(snap.vy, 3) : fmt(snap.vy, 2)) + ' m/s',
             color:  _colVit,
@@ -2084,6 +2132,7 @@ function _drawAnimHover(ctx, snap, isPinned) {
                 anchorX: p.cx + dax / 2,
                 anchorY: p.cy + day / 2,
                 vecName: 'a',
+                compX: 'a_x', compY: 'a_y',
                 line1: 'a_x = ' + (_vecScaleAccOverride !== null ? fmtSci(snap.ax, 3) : fmt(snap.ax, 2)) + ' m/s²',
                 line2: 'a_y = ' + (_vecScaleAccOverride !== null ? fmtSci(snap.ay, 3) : fmt(snap.ay, 2)) + ' m/s²',
                 color:  _colAcc,
@@ -2093,17 +2142,37 @@ function _drawAnimHover(ctx, snap, isPinned) {
         }
     }
 
+    /* En vue projetée sur un axe (pesanteur uniquement), seule la coordonnée
+       projetée a un sens : proj-x → composante x (line1), proj-y → composante
+       y (line2). */
+    var projLine = (sim.viewMode === 'proj-x') ? 1 : (sim.viewMode === 'proj-y') ? 2 : 0;
+
     /* ── Place et dessine chaque label cinématique en évitant les collisions ── */
     var placedRects = [];
     for (var i = 0; i < toPlace.length; i++) {
         var lbl = toPlace[i];
-        if (lbl.showCoords === false) {
+        if (lbl.showCoords === false && projLine && lbl.compX) {
+            /* Vue projetée, sans bloc coordonnées : juste le nom scalaire
+               (v_x, a_y…), sans flèche ni <mover> — un vecteur n'a plus de
+               sens hors de son axe de projection. */
+            var compName = projLine === 1 ? lbl.compX : lbl.compY;
+            var cm = _measureScalarName(ctx, compName);
+            var cpos = _bestLabelPos(lbl.anchorX, lbl.anchorY, cm.w, cm.h, lbl.prefer, placedRects);
+            placedRects.push({ lx: cpos.lx, ly: cpos.ly, w: cm.w, h: cm.h });
+            _renderScalarName(ctx, cpos.lx, cpos.ly, compName, lbl.color, cm);
+        } else if (lbl.showCoords === false) {
             /* Juste la flèche + nom, sans bloc coordonnées */
             var fm = _measureForceName(ctx, lbl.vecName);
             var fpos = _bestLabelPos(lbl.anchorX, lbl.anchorY, fm.w, fm.h,
                 lbl.prefer, placedRects);
             placedRects.push({ lx: fpos.lx, ly: fpos.ly, w: fm.w, h: fm.h });
             _renderForceName(ctx, fpos.lx, fpos.ly, lbl.vecName, lbl.color, 1.0, fm);
+        } else if (projLine) {
+            var line = projLine === 1 ? lbl.line1 : lbl.line2;
+            var sm   = _measureScalarLabel(ctx, line);
+            var spos = _bestLabelPos(lbl.anchorX, lbl.anchorY, sm.totalW, sm.totalH, lbl.prefer, placedRects);
+            placedRects.push({ lx: spos.lx, ly: spos.ly, w: sm.totalW, h: sm.totalH });
+            _renderScalarLabel(ctx, spos.lx, spos.ly, sm, line, lbl.color);
         } else {
             var m   = _measureVecLabel(ctx, lbl.vecName, lbl.line1, lbl.line2);
             var pos = _bestLabelPos(lbl.anchorX, lbl.anchorY, m.totalW, m.totalH, lbl.prefer, placedRects);
