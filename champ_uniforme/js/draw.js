@@ -2340,17 +2340,38 @@ function _bestLabelPos(anchorX, anchorY, totalW, totalH, preferOrder, placedRect
 
     var area = Math.max(1, totalW * totalH);
 
-    /* Aire recouverte, marge de sécurité comprise : une mesure continue, là où
-       un booléen ne distinguait pas un frôlement d'un empilement complet. */
-    function overlapArea(lx, ly) {
+    /* Coût du recouvrement des étiquettes déjà posées, marge de sécurité
+       comprise : une mesure continue, là où un booléen ne distinguait pas un
+       frôlement d'un empilement complet.
+
+       La fraction cachée se rapporte, voisine par voisine, à la PLUS PETITE
+       des deux boîtes — exactement la règle appliquée au décor par
+       sceneryCost(). Elle manquait ici, et cet oubli suffisait à faire passer
+       le pire cas pour anodin : la version précédente rapportait l'aire
+       recouverte à celle du CANDIDAT. Un panneau de 300 × 160 posé à cheval
+       sur une étiquette de force de 60 × 40 masquait celle-ci entièrement en
+       ne payant que 2400/48000, soit 5 % — une centaine de pixels, le prix
+       d'un petit déplacement. S'écarter coûtait donc plus cher qu'effacer la
+       voisine, et le tri choisissait d'effacer. Rapportée à la petite boîte,
+       la même situation vaut 1, c'est-à-dire rédhibitoire, ce qu'elle est.
+
+       Les fractions s'additionnent : recouvrir deux voisines est deux fois
+       pire qu'une, et rien ne doit rendre la seconde gratuite une fois la
+       première condamnée. Chacune est plafonnée à 1 — la marge PAD gonfle la
+       boîte du candidat et peut faire dépasser l'aire réelle de la voisine,
+       sans que cela veuille dire « plus que totalement recouverte ». */
+    function overlapCost(lx, ly) {
         var sum = 0;
         for (var j = 0; j < placedRects.length; j++) {
             var r  = placedRects[j];
             var ox = Math.min(lx + totalW + PAD, r.lx + r.w) - Math.max(lx - PAD, r.lx);
             var oy = Math.min(ly + totalH + PAD, r.ly + r.h) - Math.max(ly - PAD, r.ly);
-            if (ox > 0 && oy > 0) sum += ox * oy;
+            if (ox > 0 && oy > 0) {
+                var ref = Math.max(1, Math.min(area, r.w * r.h));
+                sum += Math.min(1, ox * oy / ref);
+            }
         }
-        return sum;
+        return sum * COST_OVERLAP;
     }
 
     /* Coût du décor : rectangles pondérés puis points d'encre.
@@ -2412,7 +2433,7 @@ function _bestLabelPos(anchorX, anchorY, totalW, totalH, preferOrder, placedRect
     function cost(lx, ly, rank, leader) {
         return gapToAnchor(lx, ly)
              + sideCost(lx, ly)
-             + overlapArea(lx, ly) / area * COST_OVERLAP
+             + overlapCost(lx, ly)
              + outAmount(lx, ly) * COST_OUT
              + rank * COST_RANK
              + (leader ? COST_LEADER : 0);
