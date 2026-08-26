@@ -409,6 +409,43 @@ function _gridDec(step) {
     return 2;
 }
 
+/* ── Encombrement réel des titres d'axes ────────────────────────
+   Les graduations doivent s'arrêter avant « x (m) » et « y (m) ». La place
+   réservée était estimée au jugé (axesFontSz * 3 - 20 en largeur, + 12 en
+   hauteur) : ça tombait juste pour la police d'origine, mais l'écart
+   vertical n'a jamais dépassé 5 px et devenait négatif — donc superposé —
+   dès que la police des titres passait ~29 px. Et le mode champ électrique
+   ne réservait rien du tout.
+
+   On mesure donc le texte réellement tracé, dans la police réellement
+   utilisée, au lieu de l'estimer.
+
+   GRAD_ASC : hauteur d'encre d'un label de graduation au-dessus de sa ligne
+   de base, en fraction de sa taille (chiffres et virgule : ni jambage, ni
+   accent). */
+var GRAD_ASC  = 0.75;
+var AXIS_TITLE_PAD = 6;   // jeu minimal entre un titre d'axe et une graduation
+
+function _axisTitleW(ctx, text, size) {
+    var prev = ctx.font;
+    ctx.font = 'bold ' + size + 'px Segoe UI, Arial';
+    var w = ctx.measureText(text).width;
+    ctx.font = prev;
+    return w;
+}
+
+/* Largeur du plus large label de graduation à tracer sur un axe : les
+   graduations x sont centrées sur leur marque, il faut donc connaître leur
+   demi-largeur pour savoir où les arrêter. bold = false pour le mode champ
+   électrique, dont les graduations sont en graisse normale. */
+function _gradLabelW(ctx, maxVal, dec, size, bold) {
+    var prev = ctx.font;
+    ctx.font = (bold === false ? '' : 'bold ') + size + 'px Segoe UI, Arial';
+    var w = ctx.measureText(fmt(maxVal, dec)).width;
+    ctx.font = prev;
+    return w;
+}
+
 /* ── Position sol en pixels canvas (animée avec l'origine de vue) ── */
 function groundY() {
     return _animH - _viewAngles.oy;
@@ -636,8 +673,17 @@ function _drawGrid(ctx) {
     var tickMajor  = Math.max(6, _animH * 0.014);
     var tickMinor  = Math.max(3, _animH * 0.007);
     var axesFontSz = _animFontSize(14, 20, 0.041);
-    var yAxisEnd   = _ag.yEnd + _ag.aLen + axesFontSz + 12;
-    var xAxisCutoff = _ag.xEnd - axesFontSz * 3 - 20;
+    /* Titre « y (m) » : tracé sous la pointe de la flèche, de _ag.yEnd +
+       _ag.aLen + 3 (baseline 'top') à + axesFontSz. Une graduation y déborde
+       de GRAD_ASC * fontSize au-dessus de sa ligne de base, elle-même à
+       fontSize * 0.35 sous le centre de la marque. */
+    var yAxisEnd   = _ag.yEnd + _ag.aLen + 3 + axesFontSz + AXIS_TITLE_PAD
+                     + fontSize * (GRAD_ASC - 0.35);
+    /* Titre « x (m) » : aligné à droite sur _ag.xEnd. Les graduations x sont
+       centrées sur leur marque, d'où la demi-largeur du plus large label. */
+    var xAxisCutoff = _ag.xEnd - _axisTitleW(ctx, 'x (m)', axesFontSz)
+                      - _gradLabelW(ctx, xMaxPhy, xDec, fontSize) / 2
+                      - AXIS_TITLE_PAD;
 
     /* Tolérance pour distinguer major vs minor (floating point) */
     function isMultiple(v, step) {
@@ -747,7 +793,12 @@ function _drawGrid(ctx) {
                     var _labelX = _tDir > 0
                         ? _ax.ox - tickMajor - 3
                         : _ax.ox + tickMajor + 3;
-                    ctx.fillText(fmt(yv, yDec), _labelX, pcy.cy + fontSize * 0.35);
+                    /* Hors canvas plutôt que tronqué : on préfère ne pas
+                       tracer le label que d'en laisser dépasser la moitié. */
+                    var _lw = ctx.measureText(fmt(yv, yDec)).width;
+                    if (_tDir > 0 ? (_labelX - _lw >= 2) : (_labelX + _lw <= _animW - 2)) {
+                        ctx.fillText(fmt(yv, yDec), _labelX, pcy.cy + fontSize * 0.35);
+                    }
                     ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
                 }
             }
@@ -2191,7 +2242,25 @@ function _drawGridE(ctx) {
     var yDec  = _gridDec(yGrid.major);
     var fontSize = _animFontSize(11, 15, 0.030);
     var tickLen = Math.max(5, _animH * 0.012);
+
+    /* ── Bornes de non-superposition avec les titres d'axes ──
+       Ce mode n'en avait aucune : la dernière graduation x passait sous
+       « x (m) » et la plus haute graduation y sous « y (m) », d'autant plus
+       nettement que la fenêtre était petite (les titres sont placés par des
+       constantes plafonnées, les graduations par l'échelle physique, qui se
+       comprime). Mêmes règles qu'en mode pesanteur. */
+    var agE         = _axisGeom();
+    var axesFontSzE = _animFontSize(13, 18, 0.038);
+    var yAxisEndE   = agE.yEnd + agE.aLen + 2 + axesFontSzE + AXIS_TITLE_PAD
+                      + fontSize * 0.45;   /* labels y en textBaseline 'middle' : demi-hauteur d'encre */
+    var xCutoffE    = agE.xEnd - _axisTitleW(ctx, 'x (m)', axesFontSzE)
+                      - _gradLabelW(ctx, xGridMax, xDec, fontSize, false) / 2
+                      - AXIS_TITLE_PAD;
     var orig = toCanvas(0, 0);
+    /* Labels y du mode électrique : alignés à droite dans la marge gauche ; on
+       ne les trace pas s'ils n'y tiennent pas plutôt que de les laisser tronquer. */
+    var _yLblFitsE  = (orig.cx - tickLen - 4
+                       - _gradLabelW(ctx, yGridMax, yDec, fontSize, false)) >= 2;
 
     ctx.save();
     ctx.strokeStyle = 'rgba(0,0,0,0.10)';
@@ -2219,7 +2288,7 @@ function _drawGridE(ctx) {
         var xv = jx * xGrid.minor;
         var isMaj = Math.abs(xv / xGrid.major - Math.round(xv / xGrid.major)) < 0.001;
         var gx2 = toCanvas(xv, 0).cx;
-        if (gx2 > _animW - 5) break;
+        if (gx2 > _animW - 5 || gx2 > xCutoffE) break;
         ctx.strokeStyle = 'rgba(60,60,60,' + (isMaj ? '0.45' : '0.22') + ')';
         ctx.lineWidth = isMaj ? 1.4 : 0.8;
         ctx.beginPath(); ctx.moveTo(gx2, orig.cy - tickLen); ctx.lineTo(gx2, orig.cy + tickLen); ctx.stroke();
@@ -2233,8 +2302,16 @@ function _drawGridE(ctx) {
         var pcyN = toCanvas(0, -yv).cy;
         var ck = 'rgba(60,60,60,' + (isMaj2 ? '0.45' : '0.22') + ')';
         ctx.strokeStyle = ck; ctx.lineWidth = isMaj2 ? 1.4 : 0.8;
-        if (pcyP >= 5)          { ctx.beginPath(); ctx.moveTo(orig.cx - tickLen, pcyP); ctx.lineTo(orig.cx + tickLen, pcyP); ctx.stroke(); if (isMaj2) ctx.fillText(fmt(yv, yDec), orig.cx - tickLen - 4, pcyP); }
-        if (pcyN <= _animH - 5) { ctx.beginPath(); ctx.moveTo(orig.cx - tickLen, pcyN); ctx.lineTo(orig.cx + tickLen, pcyN); ctx.stroke(); if (isMaj2) ctx.fillText(fmt(-yv, yDec), orig.cx - tickLen - 4, pcyN); }
+        /* Marques : jusqu'au bord. Labels : seulement s'ils ne passent ni sous
+           « y (m) » (en haut) ni hors du canvas (en bas). */
+        if (pcyP >= 5) {
+            ctx.beginPath(); ctx.moveTo(orig.cx - tickLen, pcyP); ctx.lineTo(orig.cx + tickLen, pcyP); ctx.stroke();
+            if (isMaj2 && _yLblFitsE && pcyP >= yAxisEndE) ctx.fillText(fmt(yv, yDec), orig.cx - tickLen - 4, pcyP);
+        }
+        if (pcyN <= _animH - 5) {
+            ctx.beginPath(); ctx.moveTo(orig.cx - tickLen, pcyN); ctx.lineTo(orig.cx + tickLen, pcyN); ctx.stroke();
+            if (isMaj2 && _yLblFitsE && pcyN <= _animH - fontSize * 0.45 - 3) ctx.fillText(fmt(-yv, yDec), orig.cx - tickLen - 4, pcyN);
+        }
     }
     ctx.restore();
 }
@@ -2259,10 +2336,12 @@ function _drawAxesE(ctx) {
     ctx.beginPath(); ctx.moveTo(orig.cx, ag.yEnd);
     ctx.lineTo(orig.cx - 4, ag.yEnd + ag.aLen); ctx.lineTo(orig.cx + 4, ag.yEnd + ag.aLen);
     ctx.closePath(); ctx.fill();
-
     ctx.font = 'bold ' + fontSize + 'px Segoe UI, Arial';
-    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-    ctx.fillText('x (m)', ag.xEnd - ag.aLen - 2, orig.cy + fontSize + 4);
+    /* Aligné à droite sur la pointe de la flèche, comme en mode pesanteur :
+       aligné à gauche, « x (m) » partait vers la droite depuis un xEnd déjà
+       à ~18 px du bord et sortait du canvas. */
+    ctx.textAlign = 'right'; ctx.textBaseline = 'alphabetic';
+    ctx.fillText('x (m)', ag.xEnd, orig.cy + fontSize + 4);
     ctx.textAlign = 'right'; ctx.textBaseline = 'top';
     ctx.fillText('y (m)', orig.cx - 6, ag.yEnd + ag.aLen + 2);
     ctx.textAlign = 'right'; ctx.textBaseline = 'top';
