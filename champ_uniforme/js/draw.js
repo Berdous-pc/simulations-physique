@@ -1904,6 +1904,29 @@ var _labelMaxY = null; // null = auto (ground), number = override
    d'opacité fait qu'elle se lit par-dessus, et c'est le compromis voulu :
    mieux vaut une étiquette nette sur un fantôme que la bonne étiquette
    exilée à l'autre bout du canvas. */
+/* Bord bas au-delà duquel une étiquette ne doit pas descendre.
+
+   En vue normale c'est le sol : une étiquette enterrée n'a pas de sens. Mais
+   en vue du dessus (proj-x), tx vaut π/2, le cosinus de toCanvas s'annule et
+   toute la scène s'écrase sur la ligne y = 0, désormais au milieu du canvas.
+   Cette ligne n'est plus le sol — c'est l'axe x vu du dessus, et le sol, lui,
+   a envahi tout le cadre. La contrainte, devenue vide de sens, restait
+   pourtant active : elle interdisait aux étiquettes la moitié basse du
+   canvas, laissée vide pendant que la moitié haute se serrait.
+
+   La limite suit donc l'aplatissement de la scène, du sol vers le bas du
+   cadre. L'interpolation est progressive et non un basculement, parce que le
+   changement de vue est animé : une limite qui sauterait ferait sauter les
+   étiquettes avec elle en milieu de transition.
+
+   En proj-y, tx reste nul : la verticale y est toujours physique, le sol
+   toujours le sol, et rien ne change. */
+function _labelGroundLimit(M) {
+    var ground = toCanvas(0, 0).cy - M;
+    var flat   = Math.min(1, Math.max(0, _viewAngles.tx / (Math.PI / 2)));
+    return ground + (_animH - M - ground) * flat;
+}
+
 var _labelRectsHard = [];
 var _labelRectsSoft = [];
 
@@ -1931,7 +1954,7 @@ function _bestLabelPos(anchorX, anchorY, totalW, totalH, preferOrder, placedRect
     var f    = _txtScale();
     var GAP  = 14 * f;
     var M    = 5 * f;
-    var maxY = (_labelMaxY !== null) ? _labelMaxY : toCanvas(0, 0).cy - M;
+    var maxY = (_labelMaxY !== null) ? _labelMaxY : _labelGroundLimit(M);
     var maxX = _animW - M;
 
     var slots = {
