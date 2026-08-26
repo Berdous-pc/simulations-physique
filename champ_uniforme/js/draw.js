@@ -663,6 +663,7 @@ function drawAnim() {
     _labelPrio = PRIO_PIN;
     _drawAnalysisPoints(ctx);
     _labelPrio = PRIO_HOVER;
+    _labelSrc  = 'hover';
     if (_animHoverSnap) _drawAnimHover(ctx, _animHoverSnap);
 
     /* Le décor est complet : les étiquettes peuvent enfin arbitrer contre
@@ -1581,14 +1582,25 @@ function _drawVecArrow(ctx, cx, cy, dx, dy, color, label, opacity, lw) {
 /* ─────────────────────────────────────────────────
    Points d'analyse épinglés — hover figé
 ───────────────────────────────────────────────── */
+/* Les épingles sont accompagnées de leur clé de mémoire (cf. _labelSrc) : la
+   course dont elles viennent et leur rang dans sa liste. La concaténation
+   seule perdait la première moitié — deux épingles de courses différentes
+   auraient partagé un rang, donc une clé, donc leur position. */
 function _drawAnalysisPoints(ctx) {
-    var allPins = sim.analysisPoints.slice();
+    var allPins = [], srcs = [], k;
+    for (k = 0; k < sim.analysisPoints.length; k++) {
+        allPins.push(sim.analysisPoints[k]);
+        srcs.push('pin:c:' + k);
+    }
     for (var ri = 0; ri < savedRuns.length; ri++) {
-        if (!savedRuns[ri].hidden) {
-            allPins = allPins.concat(savedRuns[ri].analysisPoints);
+        if (savedRuns[ri].hidden) continue;
+        for (k = 0; k < savedRuns[ri].analysisPoints.length; k++) {
+            allPins.push(savedRuns[ri].analysisPoints[k]);
+            srcs.push('pin:' + ri + ':' + k);
         }
     }
     for (var pi = 0; pi < allPins.length; pi++) {
+        _labelSrc = srcs[pi];
         _drawAnimHover(ctx, allPins[pi], true);
     }
 }
@@ -2284,7 +2296,7 @@ function _labelObstacles(opacity) {
    libre l'emporte toujours : le trait n'apparaît que faute de mieux.
 
    Retourne {lx, ly, leader} ; leader vrai réclame un appel à _drawLeader. */
-function _bestLabelPos(anchorX, anchorY, totalW, totalH, preferOrder, placedRects) {
+function _bestLabelPos(anchorX, anchorY, totalW, totalH, preferOrder, placedRects, mem) {
     /* Ces jeux étaient en pixels fixes alors que la police, elle, suit
        _txtScale() depuis le passage aux tailles responsives : sur grand écran
        les étiquettes grossissaient de 60 % en restant séparées des mêmes 14 px,
@@ -2524,14 +2536,63 @@ function _bestLabelPos(anchorX, anchorY, totalW, totalH, preferOrder, placedRect
     var KEEP  = 6;
     var pool  = [];
 
-    function consider(lx, ly, rank, leader) {
-        pool.push({ lx: lx, ly: ly, leader: leader, c: cost(lx, ly, rank, leader) });
+    /* ── Mémoire d'une image à l'autre ──
+       Le coût était recalculé de zéro à chaque image, sans rien savoir de la
+       précédente. Or son paysage est discontinu : le recouvrement bascule dès
+       que deux boîtes se frôlent, le rang change de miroir au fil de la
+       bascule de vue, le passage d'un créneau à une couronne déplace
+       l'étiquette de plusieurs dizaines de pixels d'un coup. Deux positions
+       quasi équivalentes s'échangeaient donc la première place plusieurs fois
+       par seconde, et l'étiquette sautait de l'une à l'autre sans que rien
+       dans la scène ne l'explique.
+
+       Le créneau retenu à l'image précédente reçoit maintenant une remise.
+       L'étiquette ne change de place que si une autre position est FRANCHEMENT
+       meilleure, pas seulement meilleure d'un cheveu — ce qui est exactement
+       la différence entre un déplacement motivé et un tremblement.
+
+       La remise est calibrée pour tenir contre le bruit sans tenir contre un
+       fait : elle vaut quelques rangs de préférence ou deux points d'encre
+       traversés, mais reste sans commune mesure avec un recouvrement (2000)
+       ou un débordement du cadre (40 par pixel). Un obstacle réel déloge donc
+       toujours l'étiquette ; une oscillation de coût, jamais.
+
+       C'est l'identité du CRÉNEAU qui est mémorisée, non la position en
+       pixels. Le pointeur déplaçant l'ancre en continu, retenir des
+       coordonnées perdrait la mémoire dès que l'ancre s'est un peu éloignée —
+       alors que ce qu'il faut conserver est le côté choisi, que l'étiquette
+       accompagne ensuite en glissant avec son ancre.
+
+       ── Pourquoi une marge ne suffisait pas ──
+       Une remise fixe compare deux coûts À L'INSTANT T. Or ce coût est un
+       signal bruité : chaque fois qu'un point d'encre entre ou sort de la
+       boîte, il fait un bond, et l'ancre glisse en permanence. Un seuil, si
+       haut soit-il, ne sait pas distinguer une bouffée de bruit d'une vraie
+       tendance — il faudrait le monter jusqu'à rendre l'étiquette sourde à
+       un encombrement réel.
+
+       Le prétendant doit donc être meilleur DANS LA DURÉE. Tant qu'il ne
+       dépasse le tenant que d'une marge, rien ne bouge ; au-delà, la pression
+       monte d'une image, et la place ne change de main qu'une fois la
+       pression tenue sur STICKY_FRAMES images consécutives. Une seule image
+       où le tenant reprend l'avantage remet le compteur à zéro.
+
+       Un bruit alterne, donc n'accumule rien. Un vrai changement — une
+       étiquette voisine qui s'installe, le bord du cadre qui approche —
+       persiste et l'emporte en une fraction de seconde, imperceptible à
+       l'usage mais très au-delà de la durée d'une oscillation. */
+    var COST_STICKY   = 50 * f;
+    var STICKY_FRAMES = 8;
+
+    function consider(lx, ly, rank, leader, id) {
+        pool.push({ lx: lx, ly: ly, leader: leader, id: id,
+                    c: cost(lx, ly, rank, leader) });
     }
 
     /* 1. Les huit créneaux au contact, dans l'ordre de préférence. */
     for (var i = 0; i < preferOrder.length; i++) {
         var s = slots[preferOrder[i]];
-        if (s) consider(s.lx, s.ly, effRank(i), false);
+        if (s) consider(s.lx, s.ly, effRank(i), false, preferOrder[i]);
     }
 
     /* 2. Couronnes de rayon croissant. La boîte est poussée vers l'extérieur
@@ -2550,23 +2611,58 @@ function _bestLabelPos(anchorX, anchorY, totalW, totalH, preferOrder, placedRect
             var rx = rad * ux * k, ry = rad * uy * k;
             var lx = anchorX + (ux > 0 ? rx : ux < 0 ? rx - totalW : -totalW / 2);
             var ly = anchorY + (uy > 0 ? ry : uy < 0 ? ry - totalH : -totalH / 2);
-            consider(lx, ly, preferOrder.length, true);
+            consider(lx, ly, preferOrder.length, true, 'r' + ri + ':' + di);
         }
     }
 
     pool.sort(function (a, b) { return a.c - b.c; });
 
-    var best = pool[0];
-    if (_labelScenery.length || _labelInk.length) {
-        var n = Math.min(KEEP, pool.length);
-        for (var pi = 0; pi < n; pi++) {
-            var cand = pool[pi];
-            cand.c += sceneryCost(cand.lx, cand.ly);
-            if (cand.c < best.c || pi === 0) best = cand;
+    var hasDecor = (_labelScenery.length || _labelInk.length);
+    var scored   = hasDecor ? Math.min(KEEP, pool.length) : pool.length;
+    var pi, cand;
+
+    if (hasDecor) {
+        for (pi = 0; pi < scored; pi++) {
+            pool[pi].c += sceneryCost(pool[pi].lx, pool[pi].ly);
         }
     }
 
-    return { lx: best.lx, ly: best.ly, leader: best.leader };
+    var best = pool[0];
+    for (pi = 1; pi < scored; pi++) {
+        if (pool[pi].c < best.c) best = pool[pi];
+    }
+
+    if (!mem) return { lx: best.lx, ly: best.ly, leader: best.leader, id: best.id };
+
+    /* Le tenant est noté même hors présélection : le comparer au prétendant
+       sur un coût auquel il manque le décor le condamnerait d'avance, et la
+       stabilité qu'on cherche ici disparaîtrait précisément dans les scènes
+       chargées où elle sert le plus. */
+    var held = null;
+    for (pi = 0; pi < pool.length; pi++) {
+        if (pool[pi].id === mem.id) {
+            held = pool[pi];
+            if (hasDecor && pi >= scored) held.c += sceneryCost(held.lx, held.ly);
+            break;
+        }
+    }
+
+    if (held) {
+        if (held.c <= best.c + COST_STICKY) {
+            /* Le prétendant ne fait pas la différence : rien ne bouge, et la
+               pression éventuellement accumulée retombe. */
+            best = held;
+            mem.pressure = 0;
+        } else if (++mem.pressure < STICKY_FRAMES) {
+            /* Il la fait, mais pas encore assez longtemps. */
+            best = held;
+        } else {
+            mem.pressure = 0;
+        }
+    }
+
+    mem.id = best.id;
+    return { lx: best.lx, ly: best.ly, leader: best.leader, id: best.id };
 }
 
 /* Trait de rappel : relie l'étiquette exilée au point qu'elle décrit, sans
@@ -2686,7 +2782,33 @@ var PRIO_SAVED  = 4;
 
 var _labelPrio = PRIO_MOBILE;
 
+/* ── L'identité d'une étiquette, d'une image à l'autre ──
+   Pour qu'une étiquette se souvienne d'où elle était, encore faut-il pouvoir
+   dire que c'est la même. Elle n'existe pourtant nulle part comme objet : à
+   chaque image, tout est reconstruit et redéposé. Son identité est donc
+   composée de ce qui la caractérise vraiment — d'OÙ elle vient (le point
+   épinglé, ou le survol) et QUOI elle nomme (OM, v, ΣF, le panneau…).
+
+   La source est ambiante, posée par l'appelant autour de son tracé, comme
+   _labelPrio : elle vaut pour toutes les étiquettes d'un même point, et les
+   sites de dépôt n'ont pas à la connaître. Le genre, lui, est propre à
+   chaque demande.
+
+   Les épingles sont numérotées par leur rang dans leur liste. Supprimer une
+   épingle renumérote donc les suivantes, qui peuvent se replacer une fois —
+   au moment d'un geste délibéré de l'utilisateur, jamais pendant qu'il
+   regarde la scène bouger. C'est la tolérance déjà retenue pour la taille
+   des polices.
+
+   Une demande sans genre n'a pas de mémoire : mieux vaut une étiquette qui
+   se replace librement qu'une clé partagée par deux étiquettes, qui les
+   ferait se voler leur position à tour de rôle. */
+var _labelSrc       = '';
+var _labelSticky    = {};   // clé → créneau retenu à l'image précédente
+var _labelStickyNew = {};   // se remplit pendant l'image, remplace à la fin
+
 function _queueLabel(req) {
+    req.key  = (req.kind === undefined) ? null : (_labelSrc + '|' + req.kind);
     req.prio = _labelPrio;
     /* Rang de dépôt, pour départager à priorité égale. Un tri qui s'en
        remettrait à la stabilité de sort() laisserait l'ordre des forces d'un
@@ -2710,8 +2832,11 @@ function _flushLabels(ctx) {
     for (i = 0; i < order.length; i++) {
         req = order[i];
         req.lvl = (req.level === undefined) ? req.opacity : req.level;
+        var mem = req.key ? (_labelSticky[req.key] || { id: null, pressure: 0 })
+                          : null;
         req.pos = _bestLabelPos(req.anchorX, req.anchorY, req.w, req.h,
-                                req.prefer, _labelObstacles(req.lvl));
+                                req.prefer, _labelObstacles(req.lvl), mem);
+        if (req.key) _labelStickyNew[req.key] = mem;
         _labelRects(req.lvl).push({ lx: req.pos.lx, ly: req.pos.ly, w: req.w, h: req.h });
     }
 
@@ -2728,6 +2853,11 @@ function _flushLabels(ctx) {
         req.render(req.pos.lx, req.pos.ly);
     }
 
+    /* La mémoire est remplacée, non complétée : une étiquette qui a disparu
+       de la scène doit perdre son souvenir, sans quoi elle reviendrait des
+       minutes plus tard se poser dans un décor qui a changé. */
+    _labelSticky    = _labelStickyNew;
+    _labelStickyNew = {};
     _labelQueue.length = 0;
 }
 
@@ -2745,7 +2875,7 @@ function _queueForceName(ctx, anchorX, anchorY, name, color, opacity, level, pre
     _queueLabel({
         anchorX: anchorX, anchorY: anchorY,
         w: lm.w, h: lm.h,
-        prefer: prefer, color: color, opacity: opacity, level: level,
+        prefer: prefer, color: color, opacity: opacity, level: level, kind: name,
         render: function (lx, ly) { _renderForceName(ctx, lx, ly, name, color, opacity, lm); }
     });
 }
@@ -2968,7 +3098,7 @@ function _queueKinLabel(ctx, lbl, projLine) {
         _queueLabel({
             anchorX: lbl.anchorX, anchorY: lbl.anchorY,
             w: cm.w, h: cm.h,
-            prefer: lbl.prefer, color: lbl.color,
+            prefer: lbl.prefer, color: lbl.color, kind: lbl.vecName,
             render: function (lx, ly) { _renderScalarName(ctx, lx, ly, compName, lbl.color, cm); }
         });
     } else if (lbl.showCoords === false) {
@@ -2984,7 +3114,7 @@ function _queueKinLabel(ctx, lbl, projLine) {
         _queueLabel({
             anchorX: lbl.anchorX, anchorY: lbl.anchorY,
             w: m.totalW, h: m.totalH,
-            prefer: lbl.prefer, color: lbl.color,
+            prefer: lbl.prefer, color: lbl.color, kind: lbl.vecName,
             render: function (lx, ly) {
                 _renderVecLabel(ctx, lx, ly, m, lbl.vecName, lbl.line1, lbl.line2, lbl.color);
             }
@@ -3138,7 +3268,7 @@ function _drawAnimHover(ctx, snap, isPinned) {
         _queueLabel({
             anchorX: p.cx, anchorY: p.cy,
             w: bm.totalW, h: bm.totalH,
-            prefer: bpr, color: rows[0].color,
+            prefer: bpr, color: rows[0].color, kind: 'proj',
             render: function (lx, ly) { _renderProjBlock(ctx, lx, ly, bm, rows); }
         });
         toPlace.length = 0;
@@ -3168,7 +3298,7 @@ function _drawAnimHover(ctx, snap, isPinned) {
         _queueLabel({
             anchorX: p.cx, anchorY: p.cy,
             w: pm.totalW, h: pm.totalH,
-            prefer: ppr, color: items[0].color,
+            prefer: ppr, color: items[0].color, kind: 'panneau',
             render: function (lx, ly) { _renderVecPanel(ctx, lx, ly, pm, items); }
         });
         toPlace.length = 0;
@@ -4041,6 +4171,7 @@ function drawAnimE() {
         _drawAnalysisPoints(ctx);
         _drawViewLabel(ctx);
         _labelPrio = PRIO_HOVER;
+        _labelSrc  = 'hover';
         if (_animHoverSnapE) _drawAnimHoverE(ctx, _animHoverSnapE);
 
         /* Dans le try, impérativement : _bestLabelPos lit _labelMaxY et
