@@ -161,41 +161,60 @@ main {
   margin: 8px 0;
 }
 
-/* ── Sélecteur de fonction ───────────────────────── */
-.fon-select {
+/* ── Sélecteur de fonction ─────────────────────────
+   Le <select> natif reste cliquable mais invisible (opacity 0) : son menu
+   déroulant garde l'apparence par défaut du navigateur, inchangée.
+   L'affichage de la case fermée est un calque par-dessus, qui ne montre
+   que l'équation de la fonction (au lieu de « nom — équation »). ───── */
+.fon-select-wrap {
+  position: relative;
+}
+
+.fon-select-display {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 6px;
+  font-size: clamp(15px, 1.5vw, 19px);
+  font-weight: 700;
+  font-family: 'Cambria', Georgia, serif;
   border: 1px solid #c8c0b4;
   border-radius: 6px;
-  overflow: hidden;
-}
-
-.fon-btn {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  padding: 7px 8px;
-  text-align: left;
-  font-family: inherit;
-  border: none;
   background: #ece8e0;
   color: #5a6a78;
-  cursor: pointer;
-  transition: background 0.12s, color 0.12s;
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.fon-btn:not(:last-child) { border-bottom: 1px solid #c8c0b4; }
-.fon-btn:hover { background: #ddd8ce; }
-.fon-btn.active { background: #2a6aaa; color: #fff; }
 
-.fon-nom {
+.fon-select-caret {
+  flex: none;
+  font-size: 11px;
+  font-style: normal;
+  opacity: 0.7;
+}
+
+.fon-select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
   font-size: clamp(12px, 1.15vw, 15px);
   font-weight: 700;
+  font-family: inherit;
+  background: #ece8e0;
+  color: #5a6a78;
+  opacity: 0;
+  cursor: pointer;
 }
-.fon-formule {
-  font-size: clamp(10px, 0.95vw, 13px);
-  font-family: 'Cambria', Georgia, serif;
-  font-style: italic;
-  opacity: 0.85;
+
+.fon-select option {
+  background: #ece8e0;
+  color: #5a6a78;
 }
 
 /* ── Boutons ─────────────────────────────────────── */

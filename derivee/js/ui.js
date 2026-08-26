@@ -51,12 +51,11 @@ function sliderDepuisZoom(z) {
 function construitSelecteurFonctions() {
   var html = '';
   FONCTIONS.forEach(function (F, i) {
-    html += '<button class="fon-btn' + (i === sim.fonIdx ? ' active' : '') +
-            '" id="fon-btn-' + i + '" onclick="setFonction(' + i + ')">' +
-            '<span class="fon-nom">' + F.nom + '</span>' +
-            '<span class="fon-formule">' + F.sousTitre + '</span></button>';
+    html += '<option value="' + i + '"' + (i === sim.fonIdx ? ' selected' : '') + '>' +
+            F.nom + ' — ' + F.sousTitre + '</option>';
   });
   _el('fon-select').innerHTML = html;
+  _setText('fon-select-formule', FONCTIONS[sim.fonIdx].sousTitre);
 }
 
 // Sliders des paramètres (a, b, c… propres à chaque fonction).
