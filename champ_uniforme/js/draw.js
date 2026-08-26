@@ -2520,6 +2520,42 @@ function _drawLeader(ctx, anchorX, anchorY, pos, w, h, color, opacity) {
     ctx.restore();
 }
 
+/* ── Le protocole de pose, en un seul endroit ──
+   Poser une étiquette, c'est toujours la même suite de cinq gestes : choisir
+   la position, tirer le trait de rappel si elle s'est exilée, inscrire la
+   boîte au registre pour que les suivantes l'évitent, puis dessiner. Cette
+   suite était réécrite à l'identique en huit endroits — bloc projeté,
+   panneau, nom scalaire, nom de force, étiquette vectorielle, forces et ΣF
+   en pesanteur, les mêmes en électrique.
+
+   Huit copies d'un protocole, c'est huit occasions de le faire diverger, et
+   c'est déjà arrivé : les versions électriques ont leur liste de créneaux
+   codée en dur, plus courte que les autres. C'est surtout huit endroits où
+   l'on peut oublier l'inscription au registre — un oubli parfaitement
+   silencieux, qui ne se voit qu'à la première étiquette recouverte.
+
+   Le rendu est passé en fonction plutôt qu'en paramètres : chaque famille
+   d'étiquettes a sa propre signature de tracé (des lignes, un panneau, un
+   nom seul), et les réunir demanderait un descripteur commun qui n'existe
+   pas. La fermeture, elle, capture ce dont chacune a besoin.
+
+     req = { anchorX, anchorY, w, h, prefer, color, opacity, level, render }
+
+   opacity ne concerne que l'encre — le trait de rappel la suit. level dit à
+   quel registre l'étiquette appartient, dur ou fané ; il vaut opacity par
+   défaut. Les deux ne coïncident pas toujours : en mode électrique et vue
+   perpendiculaire, les étiquettes sont tracées en pleine opacité tout en
+   restant inscrites au registre fané de leur instantané. */
+function _placeLabel(ctx, req) {
+    var lvl = (req.level === undefined) ? req.opacity : req.level;
+    var pos = _bestLabelPos(req.anchorX, req.anchorY, req.w, req.h,
+                            req.prefer, _labelObstacles(lvl));
+    _drawLeader(ctx, req.anchorX, req.anchorY, pos, req.w, req.h, req.color, req.opacity);
+    _labelRects(lvl).push({ lx: pos.lx, ly: pos.ly, w: req.w, h: req.h });
+    req.render(pos.lx, pos.ly);
+    return pos;
+}
+
 /* Dessine le label à la position (lx, ly) déjà calculée. */
 function _renderVecLabel(ctx, lx, ly, m, vecName, line1, line2, color) {
     var nameCenterY = ly + m.totalH / 2;
@@ -2842,8 +2878,9 @@ function _drawAnimHover(ctx, snap, isPinned) {
 
     /* ── Place et dessine chaque label cinématique en évitant les collisions ── */
     /* Registre de l'image : les points épinglés et le survol se partagent le
-       même, ils ne se recouvrent donc plus entre eux. */
-    var placedRects = _labelRectsHard;
+       même, ils ne se recouvrent donc plus entre eux. Il n'est plus nommé
+       ici — toutes ces étiquettes sont tracées en pleine opacité, et
+       _placeLabel en déduit le registre dur, celui-là même. */
 
     /* ── Vue projetée, coordonnées demandées : un seul bloc pour les trois ──
        Ancré sur le mobile lui-même, seul point que les trois grandeurs
@@ -2865,10 +2902,12 @@ function _drawAnimHover(ctx, snap, isPinned) {
         var bpr = projLine === 1
             ? ['above', 'upper-right', 'upper-left', 'below', 'lower-right', 'lower-left', 'right', 'left']
             : ['right', 'upper-right', 'lower-right', 'left', 'upper-left', 'lower-left', 'above', 'below'];
-        var bpos = _bestLabelPos(p.cx, p.cy, bm.totalW, bm.totalH, bpr, placedRects);
-        _drawLeader(ctx, p.cx, p.cy, bpos, bm.totalW, bm.totalH, rows[0].color);
-        placedRects.push({ lx: bpos.lx, ly: bpos.ly, w: bm.totalW, h: bm.totalH });
-        _renderProjBlock(ctx, bpos.lx, bpos.ly, bm, rows);
+        _placeLabel(ctx, {
+            anchorX: p.cx, anchorY: p.cy,
+            w: bm.totalW, h: bm.totalH,
+            prefer: bpr, color: rows[0].color,
+            render: function (lx, ly) { _renderProjBlock(ctx, lx, ly, bm, rows); }
+        });
         toPlace.length = 0;
     }
 
@@ -2893,10 +2932,12 @@ function _drawAnimHover(ctx, snap, isPinned) {
         }
         var pm   = _measureVecPanel(ctx, items);
         var ppr  = ['right', 'upper-right', 'lower-right', 'left', 'upper-left', 'lower-left', 'above', 'below'];
-        var ppos = _bestLabelPos(p.cx, p.cy, pm.totalW, pm.totalH, ppr, placedRects);
-        _drawLeader(ctx, p.cx, p.cy, ppos, pm.totalW, pm.totalH, items[0].color);
-        placedRects.push({ lx: ppos.lx, ly: ppos.ly, w: pm.totalW, h: pm.totalH });
-        _renderVecPanel(ctx, ppos.lx, ppos.ly, pm, items);
+        _placeLabel(ctx, {
+            anchorX: p.cx, anchorY: p.cy,
+            w: pm.totalW, h: pm.totalH,
+            prefer: ppr, color: items[0].color,
+            render: function (lx, ly) { _renderVecPanel(ctx, lx, ly, pm, items); }
+        });
         toPlace.length = 0;
     }
 
@@ -2908,27 +2949,34 @@ function _drawAnimHover(ctx, snap, isPinned) {
                sens hors de son axe de projection. */
             var compName = projLine === 1 ? lbl.compX : lbl.compY;
             var cm = _measureScalarName(ctx, compName);
-            var cpos = _bestLabelPos(lbl.anchorX, lbl.anchorY, cm.w, cm.h, lbl.prefer, placedRects);
-            _drawLeader(ctx, lbl.anchorX, lbl.anchorY, cpos, cm.w, cm.h, lbl.color);
-            placedRects.push({ lx: cpos.lx, ly: cpos.ly, w: cm.w, h: cm.h });
-            _renderScalarName(ctx, cpos.lx, cpos.ly, compName, lbl.color, cm);
+            _placeLabel(ctx, {
+                anchorX: lbl.anchorX, anchorY: lbl.anchorY,
+                w: cm.w, h: cm.h,
+                prefer: lbl.prefer, color: lbl.color,
+                render: function (lx, ly) { _renderScalarName(ctx, lx, ly, compName, lbl.color, cm); }
+            });
         } else if (lbl.showCoords === false) {
             /* Juste la flèche + nom, sans bloc coordonnées */
             var fm = _measureForceName(ctx, lbl.vecName);
-            var fpos = _bestLabelPos(lbl.anchorX, lbl.anchorY, fm.w, fm.h,
-                lbl.prefer, placedRects);
-            _drawLeader(ctx, lbl.anchorX, lbl.anchorY, fpos, fm.w, fm.h, lbl.color);
-            placedRects.push({ lx: fpos.lx, ly: fpos.ly, w: fm.w, h: fm.h });
-            _renderForceName(ctx, fpos.lx, fpos.ly, lbl.vecName, lbl.color, 1.0, fm);
+            _placeLabel(ctx, {
+                anchorX: lbl.anchorX, anchorY: lbl.anchorY,
+                w: fm.w, h: fm.h,
+                prefer: lbl.prefer, color: lbl.color,
+                render: function (lx, ly) { _renderForceName(ctx, lx, ly, lbl.vecName, lbl.color, 1.0, fm); }
+            });
         } else {
             /* Vue normale : notation vectorielle complète. Le cas « vue
                projetée avec coordonnées » n'arrive jamais ici, il a été
                traité en bloc au-dessus. */
-            var m   = _measureVecLabel(ctx, lbl.vecName, lbl.line1, lbl.line2);
-            var pos = _bestLabelPos(lbl.anchorX, lbl.anchorY, m.totalW, m.totalH, lbl.prefer, placedRects);
-            _drawLeader(ctx, lbl.anchorX, lbl.anchorY, pos, m.totalW, m.totalH, lbl.color);
-            placedRects.push({ lx: pos.lx, ly: pos.ly, w: m.totalW, h: m.totalH });
-            _renderVecLabel(ctx, pos.lx, pos.ly, m, lbl.vecName, lbl.line1, lbl.line2, lbl.color);
+            var m = _measureVecLabel(ctx, lbl.vecName, lbl.line1, lbl.line2);
+            _placeLabel(ctx, {
+                anchorX: lbl.anchorX, anchorY: lbl.anchorY,
+                w: m.totalW, h: m.totalH,
+                prefer: lbl.prefer, color: lbl.color,
+                render: function (lx, ly) {
+                    _renderVecLabel(ctx, lx, ly, m, lbl.vecName, lbl.line1, lbl.line2, lbl.color);
+                }
+            });
         }
     }
 
@@ -3010,17 +3058,20 @@ function _drawForcesAt(ctx, cx, cy, vx, vy, opacity, phys) {
 
     /* Labels avec anti-chevauchement */
     var pref = ['right', 'upper-right', 'lower-right', 'left', 'upper-left', 'lower-left', 'above', 'below'];
-    var reg  = _labelRects(opacity);
+    /* Les obstacles sont relus à chaque étiquette, dans _placeLabel : la liste
+       des fanées grandit au fil de la boucle, une copie prise avant elle les
+       rendrait aveugles entre elles. */
     for (var i = 0; i < forces.length; i++) {
         var f = forces[i];
         var lm = _measureForceName(ctx, f.name);
-        /* Obstacles relus à chaque étiquette : la liste des fanées grandit au
-           fil de la boucle, une copie prise avant elle les rendrait aveugles
-           entre elles. */
-        var pos = _bestLabelPos(cx + f.dx, cy + f.dy, lm.w, lm.h, pref, _labelObstacles(opacity));
-        _drawLeader(ctx, cx + f.dx, cy + f.dy, pos, lm.w, lm.h, COL_VEC_FORCES, opacity);
-        reg.push({ lx: pos.lx, ly: pos.ly, w: lm.w, h: lm.h });
-        _renderForceName(ctx, pos.lx, pos.ly, f.name, COL_VEC_FORCES, opacity, lm);
+        _placeLabel(ctx, {
+            anchorX: cx + f.dx, anchorY: cy + f.dy,
+            w: lm.w, h: lm.h,
+            prefer: pref, color: COL_VEC_FORCES, opacity: opacity,
+            render: function (lx, ly) {
+                _renderForceName(ctx, lx, ly, f.name, COL_VEC_FORCES, opacity, lm);
+            }
+        });
     }
 }
 
@@ -3036,10 +3087,14 @@ function _drawSumFAt(ctx, cx, cy, vx, vy, opacity, phys) {
 
     var lm  = _measureForceName(ctx, 'ΣF');
     var pref = ['right', 'upper-right', 'lower-right', 'left', 'upper-left', 'lower-left', 'above', 'below'];
-    var pos = _bestLabelPos(cx + dxPx, cy + dyPx, lm.w, lm.h, pref, _labelObstacles(opacity));
-    _drawLeader(ctx, cx + dxPx, cy + dyPx, pos, lm.w, lm.h, COL_VEC_SUMF, opacity);
-    _labelRects(opacity).push({ lx: pos.lx, ly: pos.ly, w: lm.w, h: lm.h });
-    _renderForceName(ctx, pos.lx, pos.ly, 'ΣF', COL_VEC_SUMF, opacity, lm);
+    _placeLabel(ctx, {
+        anchorX: cx + dxPx, anchorY: cy + dyPx,
+        w: lm.w, h: lm.h,
+        prefer: pref, color: COL_VEC_SUMF, opacity: opacity,
+        render: function (lx, ly) {
+            _renderForceName(ctx, lx, ly, 'ΣF', COL_VEC_SUMF, opacity, lm);
+        }
+    });
 }
 
 /* ─────────────────────────────────────────────────
@@ -3505,11 +3560,13 @@ function _drawForcesAtE(ctx, cx, cy, vx, vy, opacity, phys) {
     _drawVecArrow(ctx, cx, cy, dxPx, dyPx, _col, null, _op, _perp ? VEC_LW_PERP : undefined);
     _reserveArrow(cx, cy, dxPx, dyPx);
     var lm  = _measureForceName(ctx, 'FE');
-    var pos = _bestLabelPos(cx + dxPx, cy + dyPx, lm.w, lm.h,
-                            ['right','upper-right','lower-right','left','above','below'], _labelObstacles(opacity));
-    _drawLeader(ctx, cx + dxPx, cy + dyPx, pos, lm.w, lm.h, _col, _op);
-    _labelRects(opacity).push({lx: pos.lx, ly: pos.ly, w: lm.w, h: lm.h});
-    _renderForceName(ctx, pos.lx, pos.ly, 'FE', _col, _op, lm);
+    _placeLabel(ctx, {
+        anchorX: cx + dxPx, anchorY: cy + dyPx,
+        w: lm.w, h: lm.h,
+        prefer: ['right','upper-right','lower-right','left','above','below'],
+        color: _col, opacity: _op, level: opacity,
+        render: function (lx, ly) { _renderForceName(ctx, lx, ly, 'FE', _col, _op, lm); }
+    });
 }
 
 function _drawSumFAtE(ctx, cx, cy, vx, vy, opacity, phys) {
@@ -3524,11 +3581,13 @@ function _drawSumFAtE(ctx, cx, cy, vx, vy, opacity, phys) {
     _drawVecArrow(ctx, cx, cy, dxPx, dyPx, _col, null, _op, _perp ? VEC_LW_PERP : undefined);
     _reserveArrow(cx, cy, dxPx, dyPx);
     var lm  = _measureForceName(ctx, 'ΣF');
-    var pos = _bestLabelPos(cx + dxPx, cy + dyPx, lm.w, lm.h,
-                            ['right','upper-right','lower-right','left','above','below'], _labelObstacles(opacity));
-    _drawLeader(ctx, cx + dxPx, cy + dyPx, pos, lm.w, lm.h, _col, _op);
-    _labelRects(opacity).push({lx: pos.lx, ly: pos.ly, w: lm.w, h: lm.h});
-    _renderForceName(ctx, pos.lx, pos.ly, 'ΣF', _col, _op, lm);
+    _placeLabel(ctx, {
+        anchorX: cx + dxPx, anchorY: cy + dyPx,
+        w: lm.w, h: lm.h,
+        prefer: ['right','upper-right','lower-right','left','above','below'],
+        color: _col, opacity: _op, level: opacity,
+        render: function (lx, ly) { _renderForceName(ctx, lx, ly, 'ΣF', _col, _op, lm); }
+    });
 }
 
 function _drawChronoSnapsE(ctx) {
