@@ -11,8 +11,8 @@ var _ballonImg = new Image();
 _ballonImg.src = 'ballon.png';
 
 /* ── Échelles visuelles des vecteurs (champ de pesanteur) ──
-   Valeurs de référence, exprimées pour un canvas d'animation d'au moins
-   VEC_SCALE_REF_H px de haut (cas du plein écran / vidéoprojecteur).
+   Valeurs de référence, exprimées pour un canvas d'animation de
+   VEC_SCALE_REF_H px de haut.
    VEC_SCALE_VIT et VEC_SCALE_ACC en sont dérivées à chaque redimensionnement
    par _updateVecScales() : en px absolus, une flèche d'accélération mesurait
    98 px à g = 9,81 et 200 px à g = 20 quelle que soit la taille de la
@@ -27,12 +27,21 @@ var VEC_SCALE_MIN_F   = 0.55;   // réduction maximale sur très petite fenêtre
 var VEC_SCALE_VIT = VEC_SCALE_VIT_REF;
 var VEC_SCALE_ACC = VEC_SCALE_ACC_REF;
 
-/* Facteur de réduction : 1 sur un canvas de référence ou plus grand — le
-   rendu en projection reste donc exactement celui d'aujourd'hui — et décroît
-   proportionnellement en dessous, sans passer sous VEC_SCALE_MIN_F. */
+/* Facteur de taille : décroît proportionnellement sous la hauteur de
+   référence, sans passer sous VEC_SCALE_MIN_F, et croît au-dessus, plafonné
+   au même agrandissement maximal que le texte (ANIM_TXT_MAX_F).
+
+   Il était borné à 1 vers le haut : les flèches gardaient donc leur longueur
+   de référence en px pendant que la scène, elle, continuait de grandir avec
+   le canvas. En relatif elles rétrécissaient — le même défaut que les
+   étiquettes plafonnées. Les longueurs restent des grandeurs physiques (px
+   par m/s), mais l'échelle qui les convertit suit la taille de la scène,
+   comme le fait déjà l'échelle du vecteur position (VEC_SCALE_POS, une
+   fraction de l'échelle physique). */
 function _vecScaleFactor() {
     if (!_animH) return 1;
-    return Math.max(VEC_SCALE_MIN_F, Math.min(1, _animH / VEC_SCALE_REF_H));
+    return Math.max(VEC_SCALE_MIN_F,
+                    Math.min(ANIM_TXT_MAX_F, _animH / VEC_SCALE_REF_H));
 }
 
 /* Appelé depuis resizeAnimCanvas(), seul endroit où _animH change. */
@@ -1898,7 +1907,9 @@ function _renderVecLabel(ctx, lx, ly, m, vecName, line1, line2, color) {
     var bx  = lx + m.nameColW;
     var bly = ly + (m.totalH - m.parenH) / 2;
 
-    ctx.lineWidth   = 2.5;
+    /* Trait des parenthèses : la seule épaisseur restée fixe dans le bloc,
+       alors que sa police, elle, suit la taille du canvas. */
+    ctx.lineWidth   = 2.5 * _txtScale();
     ctx.strokeStyle = color;
 
     var lPx = bx + m.parenW;
