@@ -745,7 +745,7 @@ input[type=range]:disabled { accent-color: #b0aca4; cursor: not-allowed; }
 .readout .ro-value { font-size: clamp(16.8px, 1.8vw, 21.6px); font-weight: 700; color: #2a5080; font-variant-numeric: tabular-nums; }
 .readout .ro-value.ro-value-split { display: flex; justify-content: space-between; align-items: baseline; }
 .readout .ro-value.ro-value-detail {
-  font-size: clamp(18px, 1.92vw, 22.8px);
+  font-size: clamp(14px, 1.7vw, 22.8px);
   font-variant-numeric: tabular-nums;
   display: grid;
   grid-template-columns: max-content max-content;

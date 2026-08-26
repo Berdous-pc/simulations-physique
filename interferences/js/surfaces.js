@@ -1403,9 +1403,12 @@ function _updateSurfValues() {
     if (elU1) elU1.textContent = unit;
     if (elU2) elU2.textContent = unit;
     if (elDetail) {
-        var termUnit = (s.distMode === 'lambda') ? unit : '';
+        // Pas d'unité sur CHAQUE terme : en mode « × λ » la ligne
+        // « = |3,14× λ − 2,71× λ| » est deux fois plus longue que le cadre et
+        // débordait de la box. L'unité est déjà rappelée en face de S₁M et
+        // S₂M au-dessus, et elle reste sur le résultat.
         elDetail.innerHTML =
-            '<span class="rvd-lhs">δ</span><span class="rvd-eq">= |' + s1txt + termUnit + ' − ' + s2txt + termUnit + '|</span>' +
+            '<span class="rvd-lhs">δ</span><span class="rvd-eq">= |' + s1txt + ' − ' + s2txt + '|</span>' +
             '<span class="rvd-lhs"></span><span class="rvd-eq">= ' + deltaTxt + ' ' + unit + '</span>';
     }
 }
