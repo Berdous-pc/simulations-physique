@@ -256,6 +256,7 @@ function _updateAnimMargins() {
 function _axisLW(refPx) {
     return refPx * _txtScale();
 }
+
 /* ── Encre du repère (champ de pesanteur) ───────────────────────
    Les axes, graduations et étiquettes étaient blancs. Sur le dégradé de
    ciel, qui monte à #cce0f4 près de l'horizon, le contraste tombait à
@@ -267,36 +268,16 @@ function _axisLW(refPx) {
    clair que sur le bleu du haut ou sur l'herbe. C'est ce que fait déjà le
    mode champ électrique, les deux modes se ressemblent enfin.
 
-   Les TRAITS — axes, pointes, marques de graduation — n'ont aucun contour :
-   ce sont de longues lignes fines, et les cerner sur toute leur longueur
-   double leur poids visuel (deux essais l'ont confirmé, avec un liseré
-   sombre puis un halo clair). L'encre seule suffit.
-
-   Les ÉTIQUETTES, si : un fin contour blanc tracé sous le texte. Une
-   étiquette est une forme compacte, pas une ligne — le contour la détache
-   sans l'alourdir, et il compte là où l'encre sombre est le plus faible,
-   c'est-à-dire sur la bande d'herbe sous la ligne de sol, où atterrissent
-   les graduations de l'axe x. AXIS_TEXT_OUTLINE_W est l'épaisseur TOTALE
-   du trait, donc le double du débord de chaque côté. */
-var AXIS_INK              = '22,32,48';                // composantes RVB de l'encre
-var AXIS_TEXT_OUTLINE     = 'rgba(255,255,255,0.85)';
-var AXIS_TEXT_OUTLINE_W   = 2;                         // px sur un canvas de référence
+   Rien n'est cerné, ni les traits ni les étiquettes. Trois essais l'ont
+   tranché à l'œil : liseré sombre autour des traits, halo clair derrière,
+   puis fin contour blanc sous les seules étiquettes. Cerner de longues
+   lignes fines double leur poids visuel et transforme des marques de 8 px
+   en pâtés ; et sur un fond majoritairement clair, un contour d'étiquette
+   se voit plus qu'il ne sert. L'encre seule suffit. */
+var AXIS_INK = '22,32,48';   // composantes RVB de l'encre
 
 function _ink(alpha) {
     return 'rgba(' + AXIS_INK + ',' + alpha.toFixed(2) + ')';
-}
-
-/* Étiquette du repère : contour blanc d'abord, texte par-dessus. La police,
-   l'alignement et la couleur de remplissage sont ceux déjà posés par
-   l'appelant. */
-function _fillTextOutlined(ctx, text, x, y) {
-    var prevStroke = ctx.strokeStyle, prevLW = ctx.lineWidth, prevJoin = ctx.lineJoin;
-    ctx.strokeStyle = AXIS_TEXT_OUTLINE;
-    ctx.lineWidth   = _axisLW(AXIS_TEXT_OUTLINE_W);
-    ctx.lineJoin    = 'round';
-    ctx.strokeText(text, x, y);
-    ctx.strokeStyle = prevStroke; ctx.lineWidth = prevLW; ctx.lineJoin = prevJoin;
-    ctx.fillText(text, x, y);
 }
 
 /* ── Géométrie des axes (recalculée à chaque frame) ─────────────
@@ -864,7 +845,7 @@ function _drawGrid(ctx) {
                 ctx.font = 'bold ' + fontSize + 'px Segoe UI, Arial';
                 ctx.textAlign = 'center';
                 ctx.fillStyle = _ink(0.95 * _opX);
-                _fillTextOutlined(ctx, fmt(xv, xDec), pcx.cx, gy0 + tickMajor + fontSize * 0.9);
+                ctx.fillText(fmt(xv, xDec), pcx.cx, gy0 + tickMajor + fontSize * 0.9);
             }
         }
     }
@@ -908,7 +889,7 @@ function _drawGrid(ctx) {
                        tracer le label que d'en laisser dépasser la moitié. */
                     var _lw = ctx.measureText(fmt(yv, yDec)).width;
                     if (_tDir > 0 ? (_labelX - _lw >= 2) : (_labelX + _lw <= _animW - 2)) {
-                        _fillTextOutlined(ctx, fmt(yv, yDec), _labelX, pcy.cy + fontSize * 0.35);
+                        ctx.fillText(fmt(yv, yDec), _labelX, pcy.cy + fontSize * 0.35);
                     }
                 }
             }
@@ -981,19 +962,19 @@ function _drawAxes(ctx) {
         ctx.fillStyle    = _ink(0.95 * Math.min(cos_ty, 1));
         ctx.textAlign    = 'right';
         ctx.textBaseline = 'alphabetic';
-        _fillTextOutlined(ctx, 'x (m)', xEnd, origin.cy + tickMajorRef + fontSizeGrid * 0.9);
+        ctx.fillText('x (m)', xEnd, origin.cy + tickMajorRef + fontSizeGrid * 0.9);
     }
 
     /* Label O */
     ctx.fillStyle    = _ink(0.95);
     if (_splitActive()) {
         ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
-        _fillTextOutlined(ctx, 'O', _phaseOx(1),  origin.cy + fontSize + 2);
-        _fillTextOutlined(ctx, 'O', _phaseOx(-1), origin.cy + fontSize + 2);
+        ctx.fillText('O', _phaseOx(1),  origin.cy + fontSize + 2);
+        ctx.fillText('O', _phaseOx(-1), origin.cy + fontSize + 2);
     } else {
         ctx.textAlign    = 'right';
         ctx.textBaseline = 'alphabetic';
-        _fillTextOutlined(ctx, 'O', origin.cx - 6, origin.cy + fontSize + 2);
+        ctx.fillText('O', origin.cx - 6, origin.cy + fontSize + 2);
     }
 
     /* Label y / labels "Montée" "Descente" */
@@ -1004,11 +985,11 @@ function _drawAxes(ctx) {
             var smallFs = _animFontSize(10, 13, 0.027);
             ctx.font      = 'bold ' + smallFs + 'px Segoe UI, Arial';
             ctx.textAlign = 'center';
-            _fillTextOutlined(ctx, '↑ Montée',   _phaseOx(1),  yEnd + aLen + 3);
-            _fillTextOutlined(ctx, '↓ Descente', _phaseOx(-1), yEnd + aLen + 3);
+            ctx.fillText('↑ Montée',   _phaseOx(1),  yEnd + aLen + 3);
+            ctx.fillText('↓ Descente', _phaseOx(-1), yEnd + aLen + 3);
         } else {
             ctx.textAlign = 'right';
-            _fillTextOutlined(ctx, 'y (m)', origin.cx - 6, yEnd + aLen + 3);
+            ctx.fillText('y (m)', origin.cx - 6, yEnd + aLen + 3);
         }
     }
 
