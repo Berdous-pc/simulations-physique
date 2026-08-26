@@ -606,6 +606,7 @@ function drawAnim() {
     var ctx = _animCtx;
     _updateViewAngles();
     ctx.clearRect(0, 0, _animW, _animH);
+    _resetLabelRects();
 
     _drawBackground(ctx);
     _drawGrid(ctx);
@@ -1141,9 +1142,8 @@ function _drawSavedChronoSnaps(ctx, run) {
         }
         if (run.showVecForces || run.showVecSumF) {
             var _rp = { mass: run.mass, g: run.g, windForce: run.windForce, useFriction: run.useFriction, k: 0.15 };
-            var _rr = [];
-            if (run.showVecForces) _drawForcesAt(ctx, p.cx, p.cy, s.vx, s.vy, 0.42, _rp, _rr);
-            if (run.showVecSumF)   _drawSumFAt(ctx,   p.cx, p.cy, s.vx, s.vy, 0.42, _rp, _rr);
+            if (run.showVecForces) _drawForcesAt(ctx, p.cx, p.cy, s.vx, s.vy, 0.42, _rp);
+            if (run.showVecSumF)   _drawSumFAt(ctx,   p.cx, p.cy, s.vx, s.vy, 0.42, _rp);
         }
     }
 }
@@ -1328,9 +1328,8 @@ function _drawChronoSnaps(ctx) {
         }
         if (sim.showVecForces || sim.showVecSumF) {
             var _sp = { mass: sim.mass, g: sim.g, windForce: sim.windForce, useFriction: sim.useFriction, k: sim.k };
-            var _sr = [];
-            if (sim.showVecForces) _drawForcesAt(ctx, p.cx, p.cy, s.vx, s.vy, 0.6, _sp, _sr);
-            if (sim.showVecSumF)   _drawSumFAt(ctx,   p.cx, p.cy, s.vx, s.vy, 0.6, _sp, _sr);
+            if (sim.showVecForces) _drawForcesAt(ctx, p.cx, p.cy, s.vx, s.vy, 0.6, _sp);
+            if (sim.showVecSumF)   _drawSumFAt(ctx,   p.cx, p.cy, s.vx, s.vy, 0.6, _sp);
         }
     }
 }
@@ -1383,9 +1382,8 @@ function _drawBall(ctx) {
     }
     if (sim.showVecForces || sim.showVecSumF) {
         var _bp = { mass: sim.mass, g: sim.g, windForce: sim.windForce, useFriction: sim.useFriction, k: sim.k };
-        var _br = [];
-        if (sim.showVecForces) _drawForcesAt(ctx, p.cx, p.cy, sim.vx, sim.vy, 1.0, _bp, _br);
-        if (sim.showVecSumF)   _drawSumFAt(ctx,   p.cx, p.cy, sim.vx, sim.vy, 1.0, _bp, _br);
+        if (sim.showVecForces) _drawForcesAt(ctx, p.cx, p.cy, sim.vx, sim.vy, 1.0, _bp);
+        if (sim.showVecSumF)   _drawSumFAt(ctx,   p.cx, p.cy, sim.vx, sim.vy, 1.0, _bp);
     }
 }
 
@@ -1883,6 +1881,47 @@ function _measureVecLabel(ctx, vecName, line1, line2) {
    - ne chevauche aucun rect dans placedRects [{lx,ly,w,h}]. */
 var _labelMaxY = null; // null = auto (ground), number = override
 
+/* ── Registre des boîtes déjà attribuées, partagé par toute une image ──
+   Chaque groupe d'étiquettes repartait d'un tableau vide : un par instantané
+   chronophoto, un par point épinglé, un pour le mobile, un pour le survol.
+   Aveugles les uns aux autres, ils se recouvraient systématiquement dès que
+   la chronophotographie affichait les forces. Un seul registre par image y
+   met fin.
+
+   Deux niveaux, parce que les regrouper tous rendrait le remède pire que le
+   mal : les instantanés figés sont dessinés AVANT le mobile et le survol,
+   donc placés avant eux. Nombreux et fanés, ils rafleraient les bonnes
+   positions et exileraient loin de son vecteur l'étiquette que l'on est
+   justement en train de désigner.
+
+   • dur  — étiquettes à pleine opacité : mobile courant, points épinglés,
+            survol. Elles s'évitent entre elles et rien ne leur prend leur
+            place.
+   • fané — instantanés chronophoto (α 0,42 à 0,6). Ils s'évitent entre eux
+            et évitent les dures, sans jamais les contraindre.
+
+   Une étiquette dure peut donc encore tomber sur une fanée ; le contraste
+   d'opacité fait qu'elle se lit par-dessus, et c'est le compromis voulu :
+   mieux vaut une étiquette nette sur un fantôme que la bonne étiquette
+   exilée à l'autre bout du canvas. */
+var _labelRectsHard = [];
+var _labelRectsSoft = [];
+
+function _resetLabelRects() {
+    _labelRectsHard.length = 0;
+    _labelRectsSoft.length = 0;
+}
+
+/* Registre où réserver, et registres à éviter, pour une opacité donnée. */
+function _labelRects(opacity) {
+    return (opacity === undefined || opacity >= 1) ? _labelRectsHard : _labelRectsSoft;
+}
+function _labelObstacles(opacity) {
+    return (opacity === undefined || opacity >= 1)
+        ? _labelRectsHard
+        : _labelRectsSoft.concat(_labelRectsHard);
+}
+
 function _bestLabelPos(anchorX, anchorY, totalW, totalH, preferOrder, placedRects) {
     /* Ces jeux étaient en pixels fixes alors que la police, elle, suit
        _txtScale() depuis le passage aux tailles responsives : sur grand écran
@@ -2169,7 +2208,9 @@ function _drawAnimHover(ctx, snap, isPinned) {
     var projLine = (sim.viewMode === 'proj-x') ? 1 : (sim.viewMode === 'proj-y') ? 2 : 0;
 
     /* ── Place et dessine chaque label cinématique en évitant les collisions ── */
-    var placedRects = [];
+    /* Registre de l'image : les points épinglés et le survol se partagent le
+       même, ils ne se recouvrent donc plus entre eux. */
+    var placedRects = _labelRectsHard;
     for (var i = 0; i < toPlace.length; i++) {
         var lbl = toPlace[i];
         if (lbl.showCoords === false && projLine && lbl.compX) {
@@ -2207,12 +2248,12 @@ function _drawAnimHover(ctx, snap, isPinned) {
         if (_vecScaleVitOverride !== null) {
             /* Mode électrique : force électrique FE, pas le poids */
             var phE = snap.phys || _getEPhys(snap.x, snap.y);
-            if (showForces) _drawForcesAtE(ctx, p.cx, p.cy, snap.vx, snap.vy, 1.0, phE, placedRects);
-            if (showSumF)   _drawSumFAtE(ctx,   p.cx, p.cy, snap.vx, snap.vy, 1.0, phE, placedRects);
+            if (showForces) _drawForcesAtE(ctx, p.cx, p.cy, snap.vx, snap.vy, 1.0, phE);
+            if (showSumF)   _drawSumFAtE(ctx,   p.cx, p.cy, snap.vx, snap.vy, 1.0, phE);
         } else {
             var ph = snap.phys || { mass: sim.mass, g: sim.g, windForce: sim.windForce, useFriction: sim.useFriction, k: sim.k };
-            if (showForces) _drawForcesAt(ctx, p.cx, p.cy, snap.vx, snap.vy, 1.0, ph, placedRects);
-            if (showSumF)   _drawSumFAt(ctx,   p.cx, p.cy, snap.vx, snap.vy, 1.0, ph, placedRects);
+            if (showForces) _drawForcesAt(ctx, p.cx, p.cy, snap.vx, snap.vy, 1.0, ph);
+            if (showSumF)   _drawSumFAt(ctx,   p.cx, p.cy, snap.vx, snap.vy, 1.0, ph);
         }
     }
 }
@@ -2248,9 +2289,10 @@ function _renderForceName(ctx, lx, ly, name, color, opacity, m) {
 /* ─────────────────────────────────────────────────
    Forces : poids, vent, frottement, ΣF
    phys = {mass, g, windForce, useFriction, k}
-   placedRects : tableau partagé anti-chevauchement
+   Le registre anti-chevauchement est celui de l'image entière, choisi selon
+   l'opacité (cf. _labelRects).
 ───────────────────────────────────────────────── */
-function _drawForcesAt(ctx, cx, cy, vx, vy, opacity, phys, placedRects) {
+function _drawForcesAt(ctx, cx, cy, vx, vy, opacity, phys) {
     var forces = [];
 
     var _fvp = _viewProjFactors();
@@ -2275,16 +2317,20 @@ function _drawForcesAt(ctx, cx, cy, vx, vy, opacity, phys, placedRects) {
 
     /* Labels avec anti-chevauchement */
     var pref = ['right', 'upper-right', 'lower-right', 'left', 'upper-left', 'lower-left', 'above', 'below'];
+    var reg  = _labelRects(opacity);
     for (var i = 0; i < forces.length; i++) {
         var f = forces[i];
         var lm = _measureForceName(ctx, f.name);
-        var pos = _bestLabelPos(cx + f.dx, cy + f.dy, lm.w, lm.h, pref, placedRects);
-        placedRects.push({ lx: pos.lx, ly: pos.ly, w: lm.w, h: lm.h });
+        /* Obstacles relus à chaque étiquette : la liste des fanées grandit au
+           fil de la boucle, une copie prise avant elle les rendrait aveugles
+           entre elles. */
+        var pos = _bestLabelPos(cx + f.dx, cy + f.dy, lm.w, lm.h, pref, _labelObstacles(opacity));
+        reg.push({ lx: pos.lx, ly: pos.ly, w: lm.w, h: lm.h });
         _renderForceName(ctx, pos.lx, pos.ly, f.name, COL_VEC_FORCES, opacity, lm);
     }
 }
 
-function _drawSumFAt(ctx, cx, cy, vx, vy, opacity, phys, placedRects) {
+function _drawSumFAt(ctx, cx, cy, vx, vy, opacity, phys) {
     var _sfvp = _viewProjFactors();
     var SFx = phys.windForce - (phys.useFriction ? phys.k * vx : 0);
     var SFy = -phys.mass * phys.g - (phys.useFriction ? phys.k * vy : 0);
@@ -2295,8 +2341,8 @@ function _drawSumFAt(ctx, cx, cy, vx, vy, opacity, phys, placedRects) {
 
     var lm  = _measureForceName(ctx, 'ΣF');
     var pref = ['right', 'upper-right', 'lower-right', 'left', 'upper-left', 'lower-left', 'above', 'below'];
-    var pos = _bestLabelPos(cx + dxPx, cy + dyPx, lm.w, lm.h, pref, placedRects);
-    placedRects.push({ lx: pos.lx, ly: pos.ly, w: lm.w, h: lm.h });
+    var pos = _bestLabelPos(cx + dxPx, cy + dyPx, lm.w, lm.h, pref, _labelObstacles(opacity));
+    _labelRects(opacity).push({ lx: pos.lx, ly: pos.ly, w: lm.w, h: lm.h });
     _renderForceName(ctx, pos.lx, pos.ly, 'ΣF', COL_VEC_SUMF, opacity, lm);
 }
 
@@ -2745,7 +2791,7 @@ function _getEPhys(x, y) {
     return _fieldForceAt(sim, x, y);
 }
 
-function _drawForcesAtE(ctx, cx, cy, vx, vy, opacity, phys, placedRects) {
+function _drawForcesAtE(ctx, cx, cy, vx, vy, opacity, phys) {
     if (phys.FEx === 0 && phys.FEy === 0) return; /* hors du condensateur : rien à afficher */
     var _perp = sim.armatureMode === 'perp-x';
     var _col  = _perp ? COL_VEC_FORCES_PERP : COL_VEC_FORCES;
@@ -2757,12 +2803,12 @@ function _drawForcesAtE(ctx, cx, cy, vx, vy, opacity, phys, placedRects) {
     _drawVecArrow(ctx, cx, cy, dxPx, dyPx, _col, null, _op, _perp ? VEC_LW_PERP : undefined);
     var lm  = _measureForceName(ctx, 'FE');
     var pos = _bestLabelPos(cx + dxPx, cy + dyPx, lm.w, lm.h,
-                            ['right','upper-right','lower-right','left','above','below'], placedRects);
-    placedRects.push({lx: pos.lx, ly: pos.ly, w: lm.w, h: lm.h});
+                            ['right','upper-right','lower-right','left','above','below'], _labelObstacles(opacity));
+    _labelRects(opacity).push({lx: pos.lx, ly: pos.ly, w: lm.w, h: lm.h});
     _renderForceName(ctx, pos.lx, pos.ly, 'FE', _col, _op, lm);
 }
 
-function _drawSumFAtE(ctx, cx, cy, vx, vy, opacity, phys, placedRects) {
+function _drawSumFAtE(ctx, cx, cy, vx, vy, opacity, phys) {
     if (phys.FEx === 0 && phys.FEy === 0) return; /* hors du condensateur : rien à afficher */
     var _perp = sim.armatureMode === 'perp-x';
     var _col  = _perp ? COL_VEC_SUMF_PERP : COL_VEC_SUMF;
@@ -2774,8 +2820,8 @@ function _drawSumFAtE(ctx, cx, cy, vx, vy, opacity, phys, placedRects) {
     _drawVecArrow(ctx, cx, cy, dxPx, dyPx, _col, null, _op, _perp ? VEC_LW_PERP : undefined);
     var lm  = _measureForceName(ctx, 'ΣF');
     var pos = _bestLabelPos(cx + dxPx, cy + dyPx, lm.w, lm.h,
-                            ['right','upper-right','lower-right','left','above','below'], placedRects);
-    placedRects.push({lx: pos.lx, ly: pos.ly, w: lm.w, h: lm.h});
+                            ['right','upper-right','lower-right','left','above','below'], _labelObstacles(opacity));
+    _labelRects(opacity).push({lx: pos.lx, ly: pos.ly, w: lm.w, h: lm.h});
     _renderForceName(ctx, pos.lx, pos.ly, 'ΣF', _col, _op, lm);
 }
 
@@ -2810,9 +2856,8 @@ function _drawChronoSnapsE(ctx) {
                 _accPerpS ? VEC_LW_PERP : undefined);
         }
         if (sim.showVecForces || sim.showVecSumF) {
-            var er = [];
-            if (sim.showVecForces) _drawForcesAtE(ctx, p.cx, p.cy, s.vx, s.vy, 0.6, ep, er);
-            if (sim.showVecSumF)   _drawSumFAtE  (ctx, p.cx, p.cy, s.vx, s.vy, 0.6, ep, er);
+            if (sim.showVecForces) _drawForcesAtE(ctx, p.cx, p.cy, s.vx, s.vy, 0.6, ep);
+            if (sim.showVecSumF)   _drawSumFAtE  (ctx, p.cx, p.cy, s.vx, s.vy, 0.6, ep);
         }
     }
 }
@@ -2852,9 +2897,8 @@ function _drawSavedChronoSnapsE(ctx, run) {
                 _accPerpR ? VEC_LW_PERP : undefined);
         }
         if (run.showVecForces || run.showVecSumF) {
-            var er2 = [];
-            if (run.showVecForces) _drawForcesAtE(ctx, p.cx, p.cy, s.vx, s.vy, 0.42, ep, er2);
-            if (run.showVecSumF)   _drawSumFAtE  (ctx, p.cx, p.cy, s.vx, s.vy, 0.42, ep, er2);
+            if (run.showVecForces) _drawForcesAtE(ctx, p.cx, p.cy, s.vx, s.vy, 0.42, ep);
+            if (run.showVecSumF)   _drawSumFAtE  (ctx, p.cx, p.cy, s.vx, s.vy, 0.42, ep);
         }
     }
 }
@@ -2895,9 +2939,9 @@ function _drawParticleE(ctx) {
             _accPerpP ? COL_VEC_ACC_PERP : COL_VEC_ACC, null, 1.0, _accPerpP ? VEC_LW_PERP : undefined);
     }
     if (sim.showVecForces || sim.showVecSumF) {
-        var ep = _getEPhys(); var er = [];
-        if (sim.showVecForces) _drawForcesAtE(ctx, p.cx, p.cy, sim.vx, sim.vy, 1.0, ep, er);
-        if (sim.showVecSumF)   _drawSumFAtE  (ctx, p.cx, p.cy, sim.vx, sim.vy, 1.0, ep, er);
+        var ep = _getEPhys();
+        if (sim.showVecForces) _drawForcesAtE(ctx, p.cx, p.cy, sim.vx, sim.vy, 1.0, ep);
+        if (sim.showVecSumF)   _drawSumFAtE  (ctx, p.cx, p.cy, sim.vx, sim.vy, 1.0, ep);
     }
 }
 
@@ -3009,6 +3053,7 @@ function drawAnimE() {
     try {
         _updateViewAngles();
         ctx.clearRect(0, 0, _animW, _animH);
+        _resetLabelRects();
 
         _drawBackgroundE(ctx);
         _drawGridE(ctx);
