@@ -1447,8 +1447,8 @@ function _drawVectorPos(ctx, px, py, alpha) {
     if (showComp) _drawVecComponents(ctx, origin.cx, origin.cy, dx, dy, _col, _a, _lw);
     if (showBoth) _drawCompDashes(ctx, origin.cx, origin.cy, dx, dy, _col, _a);
     if (showVec)  _drawVecArrow(ctx, origin.cx, origin.cy, dx, dy, _col, '', _a, _posPerp ? VEC_LW_PERP : undefined);
-    if (showVec)  _reserveArrow(origin.cx, origin.cy, dx, dy);
-    if (showComp) { _reserveArrow(origin.cx, origin.cy, dx, 0); _reserveArrow(origin.cx, origin.cy, 0, dy); }
+    if (showVec)  _reserveArrow(origin.cx, origin.cy, dx, dy, alpha);
+    if (showComp) { _reserveArrow(origin.cx, origin.cy, dx, 0, alpha); _reserveArrow(origin.cx, origin.cy, 0, dy, alpha); }
 }
 
 /* ─────────────────────────────────────────────────
@@ -1502,8 +1502,8 @@ function _drawVecDispVA(ctx, cx, cy, dxPx, dyPx, color, label, opacity, lw) {
     if (showVec)  _drawVecArrow(ctx, cx, cy, dxPx, dyPx, color, label, opacity, lw);
     /* Déclaré au décor : une étiquette ne doit pas couvrir la flèche qu'elle
        nomme, ni celle de la voisine. */
-    if (showVec)  _reserveArrow(cx, cy, dxPx, dyPx);
-    if (showComp) { _reserveArrow(cx, cy, dxPx, 0); _reserveArrow(cx, cy, 0, dyPx); }
+    if (showVec)  _reserveArrow(cx, cy, dxPx, dyPx, opacity);
+    if (showComp) { _reserveArrow(cx, cy, dxPx, 0, opacity); _reserveArrow(cx, cy, 0, dyPx, opacity); }
 }
 
 function _drawVecArrow(ctx, cx, cy, dx, dy, color, label, opacity, lw) {
@@ -2159,10 +2159,27 @@ function _reserveInkSeg(x1, y1, x2, y2, weight) {
     }
 }
 
-/* Une flèche de vecteur, déclarée depuis son point d'application. */
-function _reserveArrow(cx, cy, dx, dy) {
+/* Une flèche de vecteur, déclarée depuis son point d'application.
+
+   ── L'encre pèse ce qu'elle se voit ──
+   Le poids était le même pour toutes les flèches, alors qu'elles ne sont pas
+   toutes tracées à la même opacité. En « chronophotographie + trajectoire »,
+   chaque instantané porte les siennes à 0,6 — 0,42 pour une course
+   sauvegardée — et elles pesaient exactement autant que celles du point
+   courant. L'étiquette du point survolé passait son temps à les esquiver,
+   sautant d'une position à l'autre au fil du pointeur pour épargner un décor
+   pâle que personne ne lit.
+
+   Ce décor ne demande pas cette déférence : à 0,42 une flèche est déjà à
+   moitié effacée, elle sert de contexte et non de sujet, et le tracé la
+   recouvre de toute façon des flèches pleines du point courant. Le poids
+   suit donc l'opacité — une flèche fanée à 0,42 descend dans la bande des
+   décors tolérés, entre la trajectoire (0,25) et la flèche pleine (1,00),
+   pendant que celle du point courant garde tout son poids. */
+function _reserveArrow(cx, cy, dx, dy, opacity) {
     if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
-    _reserveInkSeg(cx, cy, cx + dx, cy + dy, INK_ARROW);
+    var op = (opacity === undefined) ? 1 : opacity;
+    _reserveInkSeg(cx, cy, cx + dx, cy + dy, INK_ARROW * op);
 }
 
 /* Déclare l'emprise d'un texte que l'on vient de tracer. L'alignement et la
@@ -3215,7 +3232,7 @@ function _drawForcesAt(ctx, cx, cy, vx, vy, opacity, phys, showNames) {
     /* Flèches d'abord */
     for (var i = 0; i < forces.length; i++) {
         _drawVecArrow(ctx, cx, cy, forces[i].dx, forces[i].dy, COL_VEC_FORCES, null, opacity);
-        _reserveArrow(cx, cy, forces[i].dx, forces[i].dy);
+        _reserveArrow(cx, cy, forces[i].dx, forces[i].dy, opacity);
     }
 
     /* Noms, seulement s'ils sont demandés */
@@ -3236,7 +3253,7 @@ function _drawSumFAt(ctx, cx, cy, vx, vy, opacity, phys, showNames) {
     var dyPx = -SFy * VEC_SCALE_FORCE * _sfvp.cy;
 
     _drawVecArrow(ctx, cx, cy, dxPx, dyPx, COL_VEC_SUMF, null, opacity);
-    _reserveArrow(cx, cy, dxPx, dyPx);
+    _reserveArrow(cx, cy, dxPx, dyPx, opacity);
 
     if (!showNames) return;
     var pref = ['right', 'upper-right', 'lower-right', 'left', 'upper-left', 'lower-left', 'above', 'below'];
@@ -3706,7 +3723,9 @@ function _drawForcesAtE(ctx, cx, cy, vx, vy, opacity, phys, showNames) {
     var dxPx =  phys.FEx * _sf * _vp.cx;
     var dyPx = -phys.FEy * _sf * _vp.cy;
     _drawVecArrow(ctx, cx, cy, dxPx, dyPx, _col, null, _op, _perp ? VEC_LW_PERP : undefined);
-    _reserveArrow(cx, cy, dxPx, dyPx);
+    /* _op, non opacity : c'est l'opacité à laquelle la flèche est réellement
+       tracée, et la vue perpendiculaire la force à 1. */
+    _reserveArrow(cx, cy, dxPx, dyPx, _op);
     if (!showNames) return;
     _queueForceName(ctx, cx + dxPx, cy + dyPx, 'FE', _col, _op, opacity,
                     ['right','upper-right','lower-right','left','above','below']);
@@ -3722,7 +3741,9 @@ function _drawSumFAtE(ctx, cx, cy, vx, vy, opacity, phys, showNames) {
     var dxPx =  phys.FEx * _sf * _vp.cx;
     var dyPx = -phys.FEy * _sf * _vp.cy;
     _drawVecArrow(ctx, cx, cy, dxPx, dyPx, _col, null, _op, _perp ? VEC_LW_PERP : undefined);
-    _reserveArrow(cx, cy, dxPx, dyPx);
+    /* _op, non opacity : c'est l'opacité à laquelle la flèche est réellement
+       tracée, et la vue perpendiculaire la force à 1. */
+    _reserveArrow(cx, cy, dxPx, dyPx, _op);
     if (!showNames) return;
     _queueForceName(ctx, cx + dxPx, cy + dyPx, 'ΣF', _col, _op, opacity,
                     ['right','upper-right','lower-right','left','above','below']);
