@@ -615,11 +615,17 @@ function drawAnim() {
     _drawAxes(ctx);
     if (sim.showFieldG) _drawFieldG(ctx);
 
-    /* Trajectoires déclarées au décor avant tout placement d'étiquette, pour
-       que même les étiquettes fanées des instantanés les évitent — elles sont
-       tracées plus bas, après ces instantanés. Les flèches du champ de
-       pesanteur, elles, ne sont volontairement pas déclarées : décor de fond
-       régulier, elles quadrillent le canvas et interdiraient tout. */
+    /* Trajectoires déclarées au décor. L'avance sur le tracé n'a plus lieu
+       d'être depuis que les étiquettes sont toutes résolues en fin d'image ;
+       la déclaration reste ici parce qu'elle ne suit PAS exactement ce qui
+       est tracé — en replay et en phases séparées, le tracé lit graphData
+       tronqué à l'instant courant quand la réservation, elle, prend la
+       trajectoire entière. Les réunir demande de trancher ce point ; ce
+       n'est pas le sujet du jour.
+
+       Les flèches du champ de pesanteur ne sont volontairement pas
+       déclarées : décor de fond régulier, elles quadrillent le canvas et
+       interdiraient tout. */
     if (sim.displayMode === 'trajectory' || sim.displayMode === 'both') {
         _reserveTrajPts(sim.trajPoints);
         for (var _tri = 0; _tri < savedRuns.length; _tri++) {
@@ -653,6 +659,11 @@ function drawAnim() {
     _drawViewLabel(ctx);
     _drawAnalysisPoints(ctx);
     if (_animHoverSnap) _drawAnimHover(ctx, _animHoverSnap);
+
+    /* Le décor est complet : les étiquettes peuvent enfin arbitrer contre
+       l'image entière. Avant le toast, qui est un message par-dessus la
+       scène et doit le rester. */
+    _flushLabels(ctx);
     _drawAnimToast(ctx);
 }
 
@@ -2033,6 +2044,10 @@ function _resetLabelRects() {
     _labelRectsSoft.length = 0;
     _labelScenery.length   = 0;
     _labelInk.length       = 0;
+    /* La file aussi : _flushLabels la vide en temps normal, mais une exception
+       levée en cours d'image la laisserait pleine, et ses demandes se
+       poseraient à l'image suivante contre un décor qui n'est plus le leur. */
+    _labelQueue.length     = 0;
     _inkGrid  = null;
     _inkGridN = -1;
 }
@@ -2545,15 +2560,68 @@ function _drawLeader(ctx, anchorX, anchorY, pos, w, h, color, opacity) {
    quel registre l'étiquette appartient, dur ou fané ; il vaut opacity par
    défaut. Les deux ne coïncident pas toujours : en mode électrique et vue
    perpendiculaire, les étiquettes sont tracées en pleine opacité tout en
-   restant inscrites au registre fané de leur instantané. */
-function _placeLabel(ctx, req) {
-    var lvl = (req.level === undefined) ? req.opacity : req.level;
-    var pos = _bestLabelPos(req.anchorX, req.anchorY, req.w, req.h,
-                            req.prefer, _labelObstacles(lvl));
-    _drawLeader(ctx, req.anchorX, req.anchorY, pos, req.w, req.h, req.color, req.opacity);
-    _labelRects(lvl).push({ lx: pos.lx, ly: pos.ly, w: req.w, h: req.h });
-    req.render(pos.lx, pos.ly);
-    return pos;
+   restant inscrites au registre fané de leur instantané.
+
+   ── Pourquoi la demande est mise en file plutôt qu'honorée ──
+   Le décor que le placement évite — _labelScenery, _labelInk — ne contient
+   que ce qui a DÉJÀ été tracé. Tant que chaque étiquette était posée au fil
+   du dessin, chacune ne voyait donc que le passé de l'image : les étiquettes
+   du mobile ignoraient purement et simplement les flèches des points
+   épinglés, dessinés après elles. Un placement soigneusement calculé contre
+   la moitié d'une scène.
+
+   Le pré-enregistrement des trajectoires en tête de drawAnim est la trace de
+   ce défaut : un cas particulier réglé à la main, faute de pouvoir régler le
+   cas général. Les autres n'ont jamais été réglés.
+
+   Les fonctions de dessin n'obtiennent donc plus de position : elles
+   déposent une demande et continuent de tracer flèches et encre. Quand le
+   décor est complet, _flushLabels résout toute la file d'un coup. Chaque
+   étiquette arbitre alors contre l'image entière.
+
+   Effet de bord voulu : les étiquettes passent toutes au-dessus du décor,
+   au lieu de s'intercaler dans l'ordre de tracé et d'être recouvertes par
+   ce qui se dessinait après elles. */
+var _labelQueue = [];
+
+function _queueLabel(req) {
+    _labelQueue.push(req);
+}
+
+/* Résout et dessine toute la file. Appelée en fin d'image, une fois le décor
+   complet — et, en mode électrique, IMPÉRATIVEMENT avant que drawAnimE ne
+   restaure les globales qu'il a permutées : _bestLabelPos lit _labelMaxY et
+   _viewAngles, qui valent alors ceux de la scène électrique. */
+function _flushLabels(ctx) {
+    for (var i = 0; i < _labelQueue.length; i++) {
+        var req = _labelQueue[i];
+        var lvl = (req.level === undefined) ? req.opacity : req.level;
+        var pos = _bestLabelPos(req.anchorX, req.anchorY, req.w, req.h,
+                                req.prefer, _labelObstacles(lvl));
+        _drawLeader(ctx, req.anchorX, req.anchorY, pos, req.w, req.h, req.color, req.opacity);
+        _labelRects(lvl).push({ lx: pos.lx, ly: pos.ly, w: req.w, h: req.h });
+        req.render(pos.lx, pos.ly);
+    }
+    _labelQueue.length = 0;
+}
+
+/* Dépose la demande d'un nom de vecteur au bout d'une flèche — les quatre
+   sites de forces, pesanteur et électrique.
+
+   Cette fonction n'existe pas seulement pour éviter une redite : elle donne
+   à chaque étiquette une PORTÉE PROPRE. Les demandes étant honorées après la
+   boucle qui les dépose, une fermeture qui capturerait la variable de boucle
+   les verrait toutes pointer sur la dernière force — les trois noms se
+   poseraient au même endroit, avec le même texte. Un appel de fonction par
+   étiquette est ce qui rend la capture correcte. */
+function _queueForceName(ctx, anchorX, anchorY, name, color, opacity, level, prefer) {
+    var lm = _measureForceName(ctx, name);
+    _queueLabel({
+        anchorX: anchorX, anchorY: anchorY,
+        w: lm.w, h: lm.h,
+        prefer: prefer, color: color, opacity: opacity, level: level,
+        render: function (lx, ly) { _renderForceName(ctx, lx, ly, name, color, opacity, lm); }
+    });
 }
 
 /* Dessine le label à la position (lx, ly) déjà calculée. */
@@ -2759,6 +2827,45 @@ function _renderScalarName(ctx, lx, ly, text, color, m) {
     ctx.restore();
 }
 
+/* Dépose la demande d'une étiquette cinématique — OM, v ou a — sous la forme
+   que la vue et les réglages appellent. Comme _queueForceName, c'est une
+   fonction et non un bloc dans la boucle appelante : chaque étiquette a
+   besoin de sa propre portée, sinon les fermetures, honorées après la
+   boucle, verraient toutes la dernière mesure. */
+function _queueKinLabel(ctx, lbl, projLine) {
+    if (lbl.showCoords === false && projLine && lbl.compX) {
+        /* Vue projetée, sans bloc coordonnées : juste le nom scalaire
+           (v_x, a_y…), sans flèche ni <mover> — un vecteur n'a plus de
+           sens hors de son axe de projection. */
+        var compName = projLine === 1 ? lbl.compX : lbl.compY;
+        var cm = _measureScalarName(ctx, compName);
+        _queueLabel({
+            anchorX: lbl.anchorX, anchorY: lbl.anchorY,
+            w: cm.w, h: cm.h,
+            prefer: lbl.prefer, color: lbl.color,
+            render: function (lx, ly) { _renderScalarName(ctx, lx, ly, compName, lbl.color, cm); }
+        });
+    } else if (lbl.showCoords === false) {
+        /* Juste la flèche + nom, sans bloc coordonnées : la même étiquette
+           que celle des forces, au même rendu près. */
+        _queueForceName(ctx, lbl.anchorX, lbl.anchorY, lbl.vecName,
+                        lbl.color, 1.0, undefined, lbl.prefer);
+    } else {
+        /* Vue normale : notation vectorielle complète. Le cas « vue projetée
+           avec coordonnées » n'arrive jamais ici, il a été traité en bloc
+           par l'appelant. */
+        var m = _measureVecLabel(ctx, lbl.vecName, lbl.line1, lbl.line2);
+        _queueLabel({
+            anchorX: lbl.anchorX, anchorY: lbl.anchorY,
+            w: m.totalW, h: m.totalH,
+            prefer: lbl.prefer, color: lbl.color,
+            render: function (lx, ly) {
+                _renderVecLabel(ctx, lx, ly, m, lbl.vecName, lbl.line1, lbl.line2, lbl.color);
+            }
+        });
+    }
+}
+
 function _drawAnimHover(ctx, snap, isPinned) {
     var p = _toCanvasSplit(snap.x, snap.y, snap.vy || 0);
     /* Un point épinglé qui sort du cadre (zoom) ne doit plus être affiché,
@@ -2876,11 +2983,11 @@ function _drawAnimHover(ctx, snap, isPinned) {
        y (line2). */
     var projLine = (sim.viewMode === 'proj-x') ? 1 : (sim.viewMode === 'proj-y') ? 2 : 0;
 
-    /* ── Place et dessine chaque label cinématique en évitant les collisions ── */
-    /* Registre de l'image : les points épinglés et le survol se partagent le
+    /* ── Dépose chaque label cinématique ; la position viendra plus tard ──
+       Registre de l'image : les points épinglés et le survol se partagent le
        même, ils ne se recouvrent donc plus entre eux. Il n'est plus nommé
        ici — toutes ces étiquettes sont tracées en pleine opacité, et
-       _placeLabel en déduit le registre dur, celui-là même. */
+       _flushLabels en déduit le registre dur, celui-là même. */
 
     /* ── Vue projetée, coordonnées demandées : un seul bloc pour les trois ──
        Ancré sur le mobile lui-même, seul point que les trois grandeurs
@@ -2902,7 +3009,7 @@ function _drawAnimHover(ctx, snap, isPinned) {
         var bpr = projLine === 1
             ? ['above', 'upper-right', 'upper-left', 'below', 'lower-right', 'lower-left', 'right', 'left']
             : ['right', 'upper-right', 'lower-right', 'left', 'upper-left', 'lower-left', 'above', 'below'];
-        _placeLabel(ctx, {
+        _queueLabel({
             anchorX: p.cx, anchorY: p.cy,
             w: bm.totalW, h: bm.totalH,
             prefer: bpr, color: rows[0].color,
@@ -2932,7 +3039,7 @@ function _drawAnimHover(ctx, snap, isPinned) {
         }
         var pm   = _measureVecPanel(ctx, items);
         var ppr  = ['right', 'upper-right', 'lower-right', 'left', 'upper-left', 'lower-left', 'above', 'below'];
-        _placeLabel(ctx, {
+        _queueLabel({
             anchorX: p.cx, anchorY: p.cy,
             w: pm.totalW, h: pm.totalH,
             prefer: ppr, color: items[0].color,
@@ -2942,42 +3049,7 @@ function _drawAnimHover(ctx, snap, isPinned) {
     }
 
     for (var i = 0; i < toPlace.length; i++) {
-        var lbl = toPlace[i];
-        if (lbl.showCoords === false && projLine && lbl.compX) {
-            /* Vue projetée, sans bloc coordonnées : juste le nom scalaire
-               (v_x, a_y…), sans flèche ni <mover> — un vecteur n'a plus de
-               sens hors de son axe de projection. */
-            var compName = projLine === 1 ? lbl.compX : lbl.compY;
-            var cm = _measureScalarName(ctx, compName);
-            _placeLabel(ctx, {
-                anchorX: lbl.anchorX, anchorY: lbl.anchorY,
-                w: cm.w, h: cm.h,
-                prefer: lbl.prefer, color: lbl.color,
-                render: function (lx, ly) { _renderScalarName(ctx, lx, ly, compName, lbl.color, cm); }
-            });
-        } else if (lbl.showCoords === false) {
-            /* Juste la flèche + nom, sans bloc coordonnées */
-            var fm = _measureForceName(ctx, lbl.vecName);
-            _placeLabel(ctx, {
-                anchorX: lbl.anchorX, anchorY: lbl.anchorY,
-                w: fm.w, h: fm.h,
-                prefer: lbl.prefer, color: lbl.color,
-                render: function (lx, ly) { _renderForceName(ctx, lx, ly, lbl.vecName, lbl.color, 1.0, fm); }
-            });
-        } else {
-            /* Vue normale : notation vectorielle complète. Le cas « vue
-               projetée avec coordonnées » n'arrive jamais ici, il a été
-               traité en bloc au-dessus. */
-            var m = _measureVecLabel(ctx, lbl.vecName, lbl.line1, lbl.line2);
-            _placeLabel(ctx, {
-                anchorX: lbl.anchorX, anchorY: lbl.anchorY,
-                w: m.totalW, h: m.totalH,
-                prefer: lbl.prefer, color: lbl.color,
-                render: function (lx, ly) {
-                    _renderVecLabel(ctx, lx, ly, m, lbl.vecName, lbl.line1, lbl.line2, lbl.color);
-                }
-            });
-        }
+        _queueKinLabel(ctx, toPlace[i], projLine);
     }
 
     /* ── Forces (utilisent le contexte physique du point épinglé) ── */
@@ -3058,20 +3130,10 @@ function _drawForcesAt(ctx, cx, cy, vx, vy, opacity, phys) {
 
     /* Labels avec anti-chevauchement */
     var pref = ['right', 'upper-right', 'lower-right', 'left', 'upper-left', 'lower-left', 'above', 'below'];
-    /* Les obstacles sont relus à chaque étiquette, dans _placeLabel : la liste
-       des fanées grandit au fil de la boucle, une copie prise avant elle les
-       rendrait aveugles entre elles. */
     for (var i = 0; i < forces.length; i++) {
         var f = forces[i];
-        var lm = _measureForceName(ctx, f.name);
-        _placeLabel(ctx, {
-            anchorX: cx + f.dx, anchorY: cy + f.dy,
-            w: lm.w, h: lm.h,
-            prefer: pref, color: COL_VEC_FORCES, opacity: opacity,
-            render: function (lx, ly) {
-                _renderForceName(ctx, lx, ly, f.name, COL_VEC_FORCES, opacity, lm);
-            }
-        });
+        _queueForceName(ctx, cx + f.dx, cy + f.dy, f.name,
+                        COL_VEC_FORCES, opacity, undefined, pref);
     }
 }
 
@@ -3085,16 +3147,9 @@ function _drawSumFAt(ctx, cx, cy, vx, vy, opacity, phys) {
     _drawVecArrow(ctx, cx, cy, dxPx, dyPx, COL_VEC_SUMF, null, opacity);
     _reserveArrow(cx, cy, dxPx, dyPx);
 
-    var lm  = _measureForceName(ctx, 'ΣF');
     var pref = ['right', 'upper-right', 'lower-right', 'left', 'upper-left', 'lower-left', 'above', 'below'];
-    _placeLabel(ctx, {
-        anchorX: cx + dxPx, anchorY: cy + dyPx,
-        w: lm.w, h: lm.h,
-        prefer: pref, color: COL_VEC_SUMF, opacity: opacity,
-        render: function (lx, ly) {
-            _renderForceName(ctx, lx, ly, 'ΣF', COL_VEC_SUMF, opacity, lm);
-        }
-    });
+    _queueForceName(ctx, cx + dxPx, cy + dyPx, 'ΣF',
+                    COL_VEC_SUMF, opacity, undefined, pref);
 }
 
 /* ─────────────────────────────────────────────────
@@ -3559,14 +3614,8 @@ function _drawForcesAtE(ctx, cx, cy, vx, vy, opacity, phys) {
     var dyPx = -phys.FEy * _sf * _vp.cy;
     _drawVecArrow(ctx, cx, cy, dxPx, dyPx, _col, null, _op, _perp ? VEC_LW_PERP : undefined);
     _reserveArrow(cx, cy, dxPx, dyPx);
-    var lm  = _measureForceName(ctx, 'FE');
-    _placeLabel(ctx, {
-        anchorX: cx + dxPx, anchorY: cy + dyPx,
-        w: lm.w, h: lm.h,
-        prefer: ['right','upper-right','lower-right','left','above','below'],
-        color: _col, opacity: _op, level: opacity,
-        render: function (lx, ly) { _renderForceName(ctx, lx, ly, 'FE', _col, _op, lm); }
-    });
+    _queueForceName(ctx, cx + dxPx, cy + dyPx, 'FE', _col, _op, opacity,
+                    ['right','upper-right','lower-right','left','above','below']);
 }
 
 function _drawSumFAtE(ctx, cx, cy, vx, vy, opacity, phys) {
@@ -3580,14 +3629,8 @@ function _drawSumFAtE(ctx, cx, cy, vx, vy, opacity, phys) {
     var dyPx = -phys.FEy * _sf * _vp.cy;
     _drawVecArrow(ctx, cx, cy, dxPx, dyPx, _col, null, _op, _perp ? VEC_LW_PERP : undefined);
     _reserveArrow(cx, cy, dxPx, dyPx);
-    var lm  = _measureForceName(ctx, 'ΣF');
-    _placeLabel(ctx, {
-        anchorX: cx + dxPx, anchorY: cy + dyPx,
-        w: lm.w, h: lm.h,
-        prefer: ['right','upper-right','lower-right','left','above','below'],
-        color: _col, opacity: _op, level: opacity,
-        render: function (lx, ly) { _renderForceName(ctx, lx, ly, 'ΣF', _col, _op, lm); }
-    });
+    _queueForceName(ctx, cx + dxPx, cy + dyPx, 'ΣF', _col, _op, opacity,
+                    ['right','upper-right','lower-right','left','above','below']);
 }
 
 function _drawChronoSnapsE(ctx) {
@@ -3843,6 +3886,10 @@ function drawAnimE() {
         _drawAnalysisPoints(ctx);
         _drawViewLabel(ctx);
         if (_animHoverSnapE) _drawAnimHoverE(ctx, _animHoverSnapE);
+
+        /* Dans le try, impérativement : _bestLabelPos lit _labelMaxY et
+           _viewAngles, que le finally ci-dessous s'apprête à restaurer. */
+        _flushLabels(ctx);
         _drawAnimToast(ctx);
     } finally {
         /* Restore */
