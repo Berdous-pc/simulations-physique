@@ -1888,11 +1888,12 @@ function _drawSubText(ctx, line, x, y, size, fontFn, outlineW) {
 /* Affiche les coordonnées d'un vecteur en notation mathématique :
    grande parenthèse avec deux lignes (ligne1 / ligne2)  */
 /* Calcule les dimensions d'un label coordonnées (sans dessiner). */
-function _measureVecLabel(ctx, vecName, line1, line2) {
+function _measureVecLabel(ctx, vecName, line1, line2, scale) {
     /* Tailles calibrées pour rester lisibles vidéoprojetées, au fond d'une
        salle : ~6 % de la hauteur du canvas, avec un plancher confortable. */
-    var fontSize = _animFontSize(20, 30, 0.060);
-    var nameSize = _animFontSize(19, 28, 0.056);
+    var k        = scale || 1;
+    var fontSize = _animFontSize(20, 30, 0.060) * k;
+    var nameSize = _animFontSize(19, 28, 0.056) * k;
 
     var w1    = _measureSubText(ctx, line1, fontSize);
     var w2    = _measureSubText(ctx, line2, fontSize);
@@ -1900,7 +1901,7 @@ function _measureVecLabel(ctx, vecName, line1, line2) {
     var lineH = fontSize * 1.45;
     var parenH = lineH * 2;
     var parenW = Math.max(7, fontSize * 0.38);
-    var iPad   = 7;
+    var iPad   = 7 * k;
     var blockW = parenW * 2 + iPad * 2 + textW;
 
     var nameW      = _measureMathName(ctx, vecName, nameSize);
@@ -1908,7 +1909,7 @@ function _measureVecLabel(ctx, vecName, line1, line2) {
     var accW       = Math.max(nameW, arrow.w);          // largeur du composé <mover>
     var arrowGap   = Math.max(1, nameSize * 0.07);      // jeu flèche / sommet des lettres
     var arrowExtra = arrow.h + arrowGap;
-    var nameColW   = accW + 10;
+    var nameColW   = accW + 10 * k;
     var nameColH   = arrowExtra + nameSize;
 
     return {
@@ -2369,8 +2370,12 @@ function _renderVecLabel(ctx, lx, ly, m, vecName, line1, line2, color) {
 
     /* Flèche au-dessus du nom, puis nom : les deux centrés dans la largeur du
        composé, comme les deux étages d'un <mover>. */
-    _drawMathArrow(ctx, lx, nameTopY, m.accW, m.nameSize, color, halo);
-    _drawMathName(ctx, vecName, lx + (m.accW - m.nameW) / 2, nameTopY + m.arrowExtra,
+    /* Le composé est centré dans la colonne des noms, et non calé à gauche :
+       en panneau, cette colonne est élargie à la plus longue des lignes, et
+       un OM calé à gauche pendrait hors de l'axe des v et des a. */
+    var nameX = lx + (m.nameColW - m.accW) / 2;
+    _drawMathArrow(ctx, nameX, nameTopY, m.accW, m.nameSize, color, halo);
+    _drawMathName(ctx, vecName, nameX + (m.accW - m.nameW) / 2, nameTopY + m.arrowExtra,
                   m.nameSize, color, halo);
 
     /* Parenthèses */
@@ -2403,12 +2408,85 @@ function _renderVecLabel(ctx, lx, ly, m, vecName, line1, line2, color) {
     /* Texte */
     ctx.fillStyle    = color;
     ctx.textBaseline = 'middle';
-    _drawSubText(ctx, line1, bx + m.parenW + m.iPad, bly + m.lineH * 0.5, m.fontSize, null, halo);
-    _drawSubText(ctx, line2, bx + m.parenW + m.iPad, bly + m.lineH * 1.5, m.fontSize, null, halo);
+    /* Chaque ligne est centrée dans la largeur de la colonne, et non calée à
+       gauche : cette largeur est celle de la plus longue — de la plus longue
+       du panneau entier quand les blocs sont groupés — et une ligne courte
+       calée à gauche laisserait un vide sous la parenthèse droite. */
+    var textX = bx + m.parenW + m.iPad;
+    var w1 = _measureSubText(ctx, line1, m.fontSize);
+    var w2 = _measureSubText(ctx, line2, m.fontSize);
+    _drawSubText(ctx, line1, textX + (m.textW - w1) / 2, bly + m.lineH * 0.5, m.fontSize, null, halo);
+    _drawSubText(ctx, line2, textX + (m.textW - w2) / 2, bly + m.lineH * 1.5, m.fontSize, null, halo);
 
     ctx.restore();
 }
 
+
+/* ── Panneau : plusieurs vecteurs d'un même point dans une seule étiquette ──
+   En vue normale, OM, v et a affichés ensemble donnaient trois blocs
+   séparés qui se disputaient le voisinage du mobile — trois boîtes à placer
+   pour une seule information, celle de ce point-là. Rangés en panneau, ils
+   n'en forment plus qu'une, reliée au point par un trait de rappel dès
+   qu'elle doit s'éloigner.
+
+   Ce qui distingue un panneau d'un tas, c'est l'alignement : une seule
+   largeur de colonne de noms et une seule largeur de coordonnées, prises au
+   maximum des lignes, pour que les parenthèses se superposent au cordeau.
+   Chaque ligne garde en revanche sa couleur — c'est elle qui rattache la
+   ligne à sa flèche.
+
+   La police décroît avec le nombre de lignes : trois blocs à pleine taille
+   dépasseraient la demi-hauteur du canvas sur grand écran. La réduction
+   reste modeste et très au-dessus du seuil de lisibilité au vidéoprojecteur,
+   qui a présidé au calibrage de ces tailles.
+
+   items = [{ vecName, line1, line2, color }] */
+function _measureVecPanel(ctx, items) {
+    var scale = items.length >= 3 ? 0.85 : items.length === 2 ? 0.93 : 1;
+    var rows  = [];
+    var nameColW = 0, textW = 0, parenW = 0, iPad = 0;
+
+    var i, m;
+    for (i = 0; i < items.length; i++) {
+        m = _measureVecLabel(ctx, items[i].vecName, items[i].line1, items[i].line2, scale);
+        rows.push(m);
+        nameColW = Math.max(nameColW, m.nameColW);
+        textW    = Math.max(textW,    m.textW);
+        parenW   = Math.max(parenW,   m.parenW);
+        iPad     = Math.max(iPad,     m.iPad);
+    }
+
+    /* Colonnes unifiées, puis largeurs dérivées recalculées sur ces colonnes.
+       accW et nameW restent propres à chaque ligne : ce sont les dimensions
+       du composé <mover> lui-même, que _renderVecLabel centre dans la
+       colonne commune. */
+    var blockW = parenW * 2 + iPad * 2 + textW;
+    var gap    = rows.length ? rows[0].fontSize * 0.25 : 0;
+    var totalH = 0;
+    for (i = 0; i < rows.length; i++) {
+        m = rows[i];
+        m.nameColW = nameColW;
+        m.textW    = textW;
+        m.parenW   = parenW;
+        m.iPad     = iPad;
+        m.blockW   = blockW;
+        m.totalW   = nameColW + blockW;
+        totalH += m.totalH;
+        if (i) totalH += gap;
+    }
+
+    return { rows: rows, gap: gap, totalW: nameColW + blockW, totalH: totalH };
+}
+
+function _renderVecPanel(ctx, lx, ly, pm, items) {
+    var y = ly;
+    for (var i = 0; i < items.length; i++) {
+        var m = pm.rows[i];
+        _renderVecLabel(ctx, lx, y, m, items[i].vecName, items[i].line1, items[i].line2,
+                        items[i].color);
+        y += m.totalH + pm.gap;
+    }
+}
 /* Étiquettes des vues projetées (proj-x / proj-y) : le vecteur n'a plus de
    sens hors de son axe de projection, donc plus de flèche ni de nom
    vectoriel — seule la coordonnée projetée reste affichée.
@@ -2625,6 +2703,34 @@ function _drawAnimHover(ctx, snap, isPinned) {
         _drawLeader(ctx, p.cx, p.cy, bpos, bm.totalW, bm.totalH, rows[0].color);
         placedRects.push({ lx: bpos.lx, ly: bpos.ly, w: bm.totalW, h: bm.totalH });
         _renderProjBlock(ctx, bpos.lx, bpos.ly, bm, rows);
+        toPlace.length = 0;
+    }
+
+    /* ── Vue normale, coordonnées demandées : un panneau pour les trois ──
+       Même raison qu'en vue projetée, sous une autre forme. Trois blocs
+       séparés se disputaient le voisinage du mobile : trois boîtes à placer
+       pour une seule information, celle de ce point-là. Rangés en panneau,
+       colonnes alignées, ils n'en forment plus qu'une.
+
+       Seule différence avec la vue projetée : la notation vectorielle est
+       conservée telle quelle — flèche, nom, grandes parenthèses. C'est elle
+       qui a un sens ici, puisque le vecteur en a un. */
+    if (!projLine && showCoords !== false && toPlace.length > 1) {
+        var items = [];
+        for (var pi2 = 0; pi2 < toPlace.length; pi2++) {
+            items.push({
+                vecName: toPlace[pi2].vecName,
+                line1:   toPlace[pi2].line1,
+                line2:   toPlace[pi2].line2,
+                color:   toPlace[pi2].color
+            });
+        }
+        var pm   = _measureVecPanel(ctx, items);
+        var ppr  = ['right', 'upper-right', 'lower-right', 'left', 'upper-left', 'lower-left', 'above', 'below'];
+        var ppos = _bestLabelPos(p.cx, p.cy, pm.totalW, pm.totalH, ppr, placedRects);
+        _drawLeader(ctx, p.cx, p.cy, ppos, pm.totalW, pm.totalH, items[0].color);
+        placedRects.push({ lx: ppos.lx, ly: ppos.ly, w: pm.totalW, h: pm.totalH });
+        _renderVecPanel(ctx, ppos.lx, ppos.ly, pm, items);
         toPlace.length = 0;
     }
 
