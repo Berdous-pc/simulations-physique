@@ -208,6 +208,14 @@ function _hoverPickRadius() {
 var ANIM_TXT_REF_H = 500;    // hauteur de canvas où les tailles nominales s'appliquent
 var ANIM_TXT_MAX_F = 1.6;    // agrandissement maximal du texte sur très grand écran
 
+/* Rapport largeur/hauteur en dessous duquel la largeur devient le facteur
+   limitant. Le plafond de _animFontSize ne suivait que la hauteur : sur un
+   canvas étroit et haut (fenêtre en colonne, tablette en portrait), un bloc
+   coordonnées atteignait sa taille maximale alors qu'il ne restait plus la
+   place de l'écrire — il débordait ou se collait à ses voisins. Au-dessus de
+   ce rapport, la largeur n'a jamais été le problème et rien ne change. */
+var ANIM_TXT_REF_AR = 1.6;
+
 function _txtScale() {
     if (!_animH) return 1;
     return Math.min(ANIM_TXT_MAX_F, Math.max(1, _animH / ANIM_TXT_REF_H));
@@ -217,7 +225,9 @@ function _txtScale() {
    refPx  : taille nominale, sur un canvas de référence
    k      : fraction de la hauteur du canvas suivie entre les deux */
 function _animFontSize(minPx, refPx, k) {
-    return Math.max(minPx, Math.min(refPx * _txtScale(), _animH * k));
+    var byH = _animH * k;
+    var byW = _animW ? _animW * k / ANIM_TXT_REF_AR : byH;
+    return Math.max(minPx, Math.min(refPx * _txtScale(), byH, byW));
 }
 
 /* ── Marges du repère ───────────────────────────────────────────
@@ -1874,8 +1884,14 @@ function _measureVecLabel(ctx, vecName, line1, line2) {
 var _labelMaxY = null; // null = auto (ground), number = override
 
 function _bestLabelPos(anchorX, anchorY, totalW, totalH, preferOrder, placedRects) {
-    var GAP  = 14;
-    var M    = 5;
+    /* Ces jeux étaient en pixels fixes alors que la police, elle, suit
+       _txtScale() depuis le passage aux tailles responsives : sur grand écran
+       les étiquettes grossissaient de 60 % en restant séparées des mêmes 14 px,
+       d'où l'impression de labels serrés les uns contre les autres. Ils suivent
+       maintenant le texte, comme le reste de l'encre de la scène. */
+    var f    = _txtScale();
+    var GAP  = 14 * f;
+    var M    = 5 * f;
     var maxY = (_labelMaxY !== null) ? _labelMaxY : toCanvas(0, 0).cy - M;
     var maxX = _animW - M;
 
@@ -1890,11 +1906,16 @@ function _bestLabelPos(anchorX, anchorY, totalW, totalH, preferOrder, placedRect
         'lower-left':  { lx: anchorX - totalW - GAP,  ly: anchorY + GAP }
     };
 
+    /* Marge de sécurité entre deux boîtes : le test ne portait que sur le
+       recouvrement strict, si bien que deux étiquettes qui se touchaient au
+       pixel près étaient déclarées compatibles — lisiblement collées. */
+    var PAD = 4 * f;
+
     function overlaps(lx, ly) {
         for (var j = 0; j < placedRects.length; j++) {
             var r = placedRects[j];
-            if (lx < r.lx + r.w && lx + totalW > r.lx &&
-                ly < r.ly + r.h && ly + totalH > r.ly) return true;
+            if (lx < r.lx + r.w + PAD && lx + totalW + PAD > r.lx &&
+                ly < r.ly + r.h + PAD && ly + totalH + PAD > r.ly) return true;
         }
         return false;
     }
@@ -1916,7 +1937,7 @@ function _bestLabelPos(anchorX, anchorY, totalW, totalH, preferOrder, placedRect
        Pour chaque colonne x, on collecte les y candidats (au-dessus/en-dessous
        de chaque rect déjà placé qui chevauche cette colonne) et on prend le plus
        proche de l'ancre qui ne chevauche rien et reste dans les bornes. */
-    var STACK_GAP  = 5;
+    var STACK_GAP  = 5 * f;
     var xTries     = [anchorX + GAP, anchorX - totalW - GAP];
 
     for (var xi = 0; xi < xTries.length; xi++) {
