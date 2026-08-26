@@ -2031,6 +2031,29 @@ var INK_TRAJ    = 0.25;   // trajectoire : tolérée, le halo la sauve
    animation qui rame. */
 var _INK_MAX = 900;
 
+/* ── Traverser un trait coûte ce qu'il en coûte, pas ce que sa longueur mesure ──
+   Le coût s'accumulait point par point, donc proportionnellement à la
+   LONGUEUR de trait recouverte. Une étiquette large posée près d'une courbe
+   peu inclinée en contient des dizaines : la trajectoire seule pouvait valoir
+   plus de cent cinquante pixels d'éloignement, et ce compte changeait à
+   chaque image à mesure que l'ancre glissait le long de la courbe. Deux
+   positions symétriques — au-dessus, en dessous — s'échangeaient ainsi la
+   première place sur une scène pourtant presque vide.
+
+   C'était surtout faux. Un trait fin traversé de part en part ne se lit ni
+   mieux ni moins bien selon qu'on en cache 80 px ou 300 : ce qui compte est
+   qu'il soit coupé, et le halo de l'étiquette le laisse deviner au travers
+   dans les deux cas. Le coût est donc plafonné par TRAIT — chaque
+   réservation compte pour une source, et une source ne compte jamais plus de
+   quelques points.
+
+   Le plafond ne désarme pas l'évitement : à pleine pondération, une flèche
+   coupée vaut encore quatre points, très au-dessus de la remise de
+   stabilité. Il supprime seulement l'écart énorme, et surtout instable,
+   entre « effleurer » et « traverser en long ». */
+var INK_SRC_MAX = 4;
+var _inkSrcSeq  = 0;
+
 /* Le nuage d'encre est rangé en cases, sans quoi chaque position candidate le
    parcourrait en entier : une quarantaine de candidats par étiquette, autant
    d'étiquettes par image, quelques centaines de points — le compte grimpe
@@ -2053,8 +2076,9 @@ function _resetLabelRects() {
        levée en cours d'image la laisserait pleine, et ses demandes se
        poseraient à l'image suivante contre un décor qui n'est plus le leur. */
     _labelQueue.length     = 0;
-    _inkGrid  = null;
-    _inkGridN = -1;
+    _inkSrcSeq = 0;
+    _inkGrid   = null;
+    _inkGridN  = -1;
 }
 
 /* Halo (liseré blanc) des étiquettes de vecteur et de coordonnées : utile sur
@@ -2153,9 +2177,10 @@ function _reserveInkSeg(x1, y1, x2, y2, weight) {
     var step = 10 * _txtScale();
     var dx = x2 - x1, dy = y2 - y1;
     var n  = Math.max(1, Math.round(Math.sqrt(dx * dx + dy * dy) / step));
+    var src = _inkSrcSeq++;
     for (var i = 0; i <= n; i++) {
         if (_labelInk.length >= _INK_MAX) return;
-        _labelInk.push({ x: x1 + dx * i / n, y: y1 + dy * i / n, weight: weight });
+        _labelInk.push({ x: x1 + dx * i / n, y: y1 + dy * i / n, weight: weight, src: src });
     }
 }
 
@@ -2210,10 +2235,11 @@ function _reserveTextBox(ctx, text, x, y, size, weight) {
 function _reserveTrajPts(pts) {
     if (!pts || pts.length < 2 || _splitActive()) return;
     var step = Math.max(1, Math.round(pts.length / 120));
+    var src  = _inkSrcSeq++;
     for (var i = 0; i < pts.length; i += step) {
         if (_labelInk.length >= _INK_MAX) return;
         var q = toCanvas(pts[i].x, pts[i].y);
-        _labelInk.push({ x: q.cx, y: q.cy, weight: INK_TRAJ });
+        _labelInk.push({ x: q.cx, y: q.cy, weight: INK_TRAJ, src: src });
     }
 }
 
@@ -2429,6 +2455,9 @@ function _bestLabelPos(anchorX, anchorY, totalW, totalH, preferOrder, placedRect
             }
         }
         if (_labelInk.length) {
+            /* Points déjà comptés pour chaque trait, afin de plafonner par
+               trait plutôt que par longueur (cf. INK_SRC_MAX). */
+            var seen = {};
             var g  = _inkGridEnsure();
             var c0 = Math.max(0, Math.floor(lx / _INK_CELL));
             var c1 = Math.min(g.cols - 1, Math.floor((lx + totalW) / _INK_CELL));
@@ -2441,7 +2470,13 @@ function _bestLabelPos(anchorX, anchorY, totalW, totalH, preferOrder, placedRect
                     for (var bi = 0; bi < bucket.length; bi++) {
                         var p = bucket[bi];
                         if (p.x >= lx && p.x <= lx + totalW &&
-                            p.y >= ly && p.y <= ly + totalH) sum += COST_INK * p.weight;
+                            p.y >= ly && p.y <= ly + totalH) {
+                            var nSeen = seen[p.src] || 0;
+                            if (nSeen < INK_SRC_MAX) {
+                                seen[p.src] = nSeen + 1;
+                                sum += COST_INK * p.weight;
+                            }
+                        }
                     }
                 }
             }
