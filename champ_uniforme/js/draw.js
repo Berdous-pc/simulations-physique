@@ -606,6 +606,7 @@ function drawAnim() {
     var ctx = _animCtx;
     _updateViewAngles();
     _updateLabelHalo(false);
+    _updateLabelCrowd();
     ctx.clearRect(0, 0, _animW, _animH);
     _resetLabelRects();
 
@@ -1892,7 +1893,7 @@ function _drawSubText(ctx, line, x, y, size, fontFn, outlineW) {
 function _measureVecLabel(ctx, vecName, line1, line2, scale) {
     /* Tailles calibrées pour rester lisibles vidéoprojetées, au fond d'une
        salle : ~6 % de la hauteur du canvas, avec un plancher confortable. */
-    var k        = scale || 1;
+    var k        = (scale || 1) * _labelCrowdScale;
     var fontSize = _animFontSize(20, 30, 0.060) * k;
     var nameSize = _animFontSize(19, 28, 0.056) * k;
 
@@ -2057,6 +2058,48 @@ var _labelHaloFrac = 0;
 
 function _updateLabelHalo(isElectric) {
     _labelHaloFrac = isElectric ? 0 : _viewAngles.tx / (Math.PI / 2);
+}
+
+/* ── F : rétrécir les étiquettes quand la scène est chargée ──
+   Idée de l'utilisateur : sur grand écran, la responsivité (_txtScale) a
+   agrandi les polices — confortable quand la scène est calme, mais ça donne
+   moins de marge au placement dès que plusieurs points cohabitent. Plutôt que
+   d'ajouter un critère de plus dans le coût de _bestLabelPos, on redonne ici
+   une partie de cet agrandissement quand ça sature.
+
+   La charge se mesure au NOMBRE DE POINTS ÉPINGLÉS, et à rien d'autre. Une
+   première version comptait les étiquettes réellement posées à l'image
+   précédente : plus fin sur le papier, insupportable à l'usage — ce nombre
+   varie à chaque image (le mobile avance, une flèche entre ou sort du cadre,
+   un instantané chronophoto apparaît) et les étiquettes respiraient en
+   permanence. L'épinglage, lui, ne change que sur un geste délibéré de
+   l'utilisateur : la taille ne bouge qu'au moment où il épingle ou dépingle,
+   et reste ensuite parfaitement stable.
+
+   Pour la même raison le changement est instantané, sans amortissement : un
+   lissage n'aurait servi qu'à masquer les oscillations qu'on vient de
+   supprimer à la source, et transformerait un geste net en glissement mou.
+
+   Borné à [1/_txtScale(), 1] : au plus on rend l'agrandissement que
+   _txtScale() a apporté, jamais on ne descend sous la taille de référence
+   (calibrée pour rester lisible au vidéoprojecteur, au fond d'une salle).
+   Sur un écran de taille normale, _txtScale() vaut 1, la borne basse aussi :
+   le mécanisme est alors inerte, comme demandé ("surtout sur grand écran"). */
+var _labelCrowdScale = 1;
+var CROWD_PIN_FULL = 4;   // nombre d'épingles à partir duquel on est à la borne basse
+
+function _updateLabelCrowd() {
+    /* Mêmes épingles que _drawAnalysisPoints : celles de la course en cours
+       plus celles des courses sauvegardées visibles. En mode électrique, sim
+       et savedRuns sont déjà permutés vers leurs équivalents E au moment de
+       l'appel, le même comptage vaut donc pour les deux modes. */
+    var n = sim.analysisPoints.length;
+    for (var ri = 0; ri < savedRuns.length; ri++) {
+        if (!savedRuns[ri].hidden) n += savedRuns[ri].analysisPoints.length;
+    }
+    var frac  = Math.min(1, n / CROWD_PIN_FULL);
+    var floor = 1 / _txtScale();
+    _labelCrowdScale = 1 - frac * (1 - floor);
 }
 
 function _inkGridEnsure() {
@@ -2609,7 +2652,7 @@ function _renderVecPanel(ctx, lx, ly, pm, items) {
 
      rows = [{ name, value, color }]   ex. { name: 'v_x', value: '3,20 m/s' } */
 function _measureProjBlock(ctx, rows) {
-    var fontSize = _animFontSize(20, 30, 0.060);
+    var fontSize = _animFontSize(20, 30, 0.060) * _labelCrowdScale;
     var gap      = fontSize * 0.28;
     var nameW = 0, valW = 0;
     for (var i = 0; i < rows.length; i++) {
@@ -2647,7 +2690,7 @@ function _renderProjBlock(ctx, lx, ly, m, rows) {
    projetée, plus de flèche ni de <mover> — juste le nom scalaire (v_x, a_y…),
    à la taille des noms de force pour rester cohérent avec eux. */
 function _measureScalarName(ctx, text) {
-    var sz = _animFontSize(16, 21, 0.042);
+    var sz = _animFontSize(16, 21, 0.042) * _labelCrowdScale;
     return { sz: sz, w: _measureSubText(ctx, text, sz), h: sz * 1.2 };
 }
 
@@ -2891,7 +2934,7 @@ function _measureForceName(ctx, name) {
     /* Même logique de lisibilité en projection que _measureVecLabel : ces noms
        sont plus petits (ils accompagnent chaque flèche de force, souvent
        plusieurs à la fois), mais suivent le même agrandissement. */
-    var sz    = _animFontSize(16, 21, 0.042);
+    var sz    = _animFontSize(16, 21, 0.042) * _labelCrowdScale;
     var tw    = _measureMathName(ctx, name, sz);
     var arrow = _measureMathArrow(ctx, sz);
     var accW  = Math.max(tw, arrow.w);              // largeur du composé <mover>
@@ -3695,6 +3738,7 @@ function drawAnimE() {
     try {
         _updateViewAngles();
         _updateLabelHalo(true);
+        _updateLabelCrowd();
         ctx.clearRect(0, 0, _animW, _animH);
         _resetLabelRects();
 
