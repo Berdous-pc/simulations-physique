@@ -613,6 +613,18 @@ function drawAnim() {
     _drawAxes(ctx);
     if (sim.showFieldG) _drawFieldG(ctx);
 
+    /* Trajectoires déclarées au décor avant tout placement d'étiquette, pour
+       que même les étiquettes fanées des instantanés les évitent — elles sont
+       tracées plus bas, après ces instantanés. Les flèches du champ de
+       pesanteur, elles, ne sont volontairement pas déclarées : décor de fond
+       régulier, elles quadrillent le canvas et interdiraient tout. */
+    if (sim.displayMode === 'trajectory' || sim.displayMode === 'both') {
+        _reserveTrajPts(sim.trajPoints);
+        for (var _tri = 0; _tri < savedRuns.length; _tri++) {
+            if (!savedRuns[_tri].hidden) _reserveTrajPts(savedRuns[_tri].trajPoints);
+        }
+    }
+
     /* Runs sauvegardées (en dessous de la run courante) */
     for (var _sri = 0; _sri < savedRuns.length; _sri++) {
         var _sr = savedRuns[_sri];
@@ -897,6 +909,7 @@ function _drawGrid(ctx) {
                 ctx.textAlign = 'center';
                 ctx.fillStyle = _ink(0.95 * _opX);
                 ctx.fillText(fmt(xv, xDec), pcx.cx, gy0 + tickMajor + fontSize * 0.9);
+                _reserveTextBox(ctx, fmt(xv, xDec), pcx.cx, gy0 + tickMajor + fontSize * 0.9, fontSize, INK_GRAD);
             }
         }
     }
@@ -941,6 +954,7 @@ function _drawGrid(ctx) {
                     var _lw = ctx.measureText(fmt(yv, yDec)).width;
                     if (_tDir > 0 ? (_labelX - _lw >= 2) : (_labelX + _lw <= _animW - 2)) {
                         ctx.fillText(fmt(yv, yDec), _labelX, pcy.cy + fontSize * 0.35);
+                        _reserveTextBox(ctx, fmt(yv, yDec), _labelX, pcy.cy + fontSize * 0.35, fontSize, INK_GRAD);
                     }
                 }
             }
@@ -980,6 +994,7 @@ function _drawAxes(ctx) {
         ctx.strokeStyle = _ink(0.92 * opX);
         ctx.fillStyle   = _ink(0.92 * opX);
         ctx.beginPath(); ctx.moveTo(_viewAngles.ox - 5, origin.cy); ctx.lineTo(xEnd - aBase, origin.cy); ctx.stroke();
+        _reserveInkSeg(_viewAngles.ox - 5, origin.cy, xEnd, origin.cy, INK_AXIS);
         ctx.beginPath(); ctx.moveTo(xEnd, origin.cy); ctx.lineTo(xEnd - aLen, origin.cy - aHalf); ctx.lineTo(xEnd - aLen, origin.cy + aHalf); ctx.closePath(); ctx.fill();
     }
 
@@ -994,10 +1009,12 @@ function _drawAxes(ctx) {
             var gy  = groundY();
             [oxL, oxR].forEach(function(ox) {
                 ctx.beginPath(); ctx.moveTo(ox, gy + 5); ctx.lineTo(ox, yEnd + aBase); ctx.stroke();
+                _reserveInkSeg(ox, gy + 5, ox, yEnd, INK_AXIS);
                 ctx.beginPath(); ctx.moveTo(ox, yEnd); ctx.lineTo(ox - aHalf, yEnd + aLen); ctx.lineTo(ox + aHalf, yEnd + aLen); ctx.closePath(); ctx.fill();
             });
         } else {
             ctx.beginPath(); ctx.moveTo(origin.cx, groundY() + 5); ctx.lineTo(origin.cx, yEnd + aBase); ctx.stroke();
+            _reserveInkSeg(origin.cx, groundY() + 5, origin.cx, yEnd, INK_AXIS);
             ctx.beginPath(); ctx.moveTo(origin.cx, yEnd); ctx.lineTo(origin.cx - aHalf, yEnd + aLen); ctx.lineTo(origin.cx + aHalf, yEnd + aLen); ctx.closePath(); ctx.fill();
         }
     }
@@ -1014,6 +1031,7 @@ function _drawAxes(ctx) {
         ctx.textAlign    = 'right';
         ctx.textBaseline = 'alphabetic';
         ctx.fillText('x (m)', xEnd, origin.cy + tickMajorRef + fontSizeGrid * 0.9);
+        _reserveTextBox(ctx, "x (m)", xEnd, origin.cy + tickMajorRef + fontSizeGrid * 0.9, fontSize, INK_GRAD);
     }
 
     /* Label O */
@@ -1022,10 +1040,13 @@ function _drawAxes(ctx) {
         ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
         ctx.fillText('O', _phaseOx(1),  origin.cy + fontSize + 2);
         ctx.fillText('O', _phaseOx(-1), origin.cy + fontSize + 2);
+        _reserveTextBox(ctx, "O", _phaseOx(1),  origin.cy + fontSize + 2, fontSize, INK_GRAD);
+        _reserveTextBox(ctx, "O", _phaseOx(-1), origin.cy + fontSize + 2, fontSize, INK_GRAD);
     } else {
         ctx.textAlign    = 'right';
         ctx.textBaseline = 'alphabetic';
         ctx.fillText('O', origin.cx - 6, origin.cy + fontSize + 2);
+        _reserveTextBox(ctx, "O", origin.cx - 6, origin.cy + fontSize + 2, fontSize, INK_GRAD);
     }
 
     /* Label y / labels "Montée" "Descente" */
@@ -1038,9 +1059,12 @@ function _drawAxes(ctx) {
             ctx.textAlign = 'center';
             ctx.fillText('↑ Montée',   _phaseOx(1),  yEnd + aLen + 3);
             ctx.fillText('↓ Descente', _phaseOx(-1), yEnd + aLen + 3);
+            _reserveTextBox(ctx, "↑ Montée",   _phaseOx(1),  yEnd + aLen + 3, smallFs, INK_GRAD);
+            _reserveTextBox(ctx, "↓ Descente", _phaseOx(-1), yEnd + aLen + 3, smallFs, INK_GRAD);
         } else {
             ctx.textAlign = 'right';
             ctx.fillText('y (m)', origin.cx - 6, yEnd + aLen + 3);
+            _reserveTextBox(ctx, "y (m)", origin.cx - 6, yEnd + aLen + 3, fontSize, INK_GRAD);
         }
     }
 
@@ -1405,6 +1429,8 @@ function _drawVectorPos(ctx, px, py, alpha) {
     if (showComp) _drawVecComponents(ctx, origin.cx, origin.cy, dx, dy, _col, _a, _lw);
     if (showBoth) _drawCompDashes(ctx, origin.cx, origin.cy, dx, dy, _col, _a);
     if (showVec)  _drawVecArrow(ctx, origin.cx, origin.cy, dx, dy, _col, '', _a, _posPerp ? VEC_LW_PERP : undefined);
+    if (showVec)  _reserveArrow(origin.cx, origin.cy, dx, dy);
+    if (showComp) { _reserveArrow(origin.cx, origin.cy, dx, 0); _reserveArrow(origin.cx, origin.cy, 0, dy); }
 }
 
 /* ─────────────────────────────────────────────────
@@ -1456,6 +1482,10 @@ function _drawVecDispVA(ctx, cx, cy, dxPx, dyPx, color, label, opacity, lw) {
     if (showComp) _drawVecComponents(ctx, cx, cy, dxPx, dyPx, color, opacity);
     if (showBoth) _drawCompDashes(ctx, cx, cy, dxPx, dyPx, color, opacity);
     if (showVec)  _drawVecArrow(ctx, cx, cy, dxPx, dyPx, color, label, opacity, lw);
+    /* Déclaré au décor : une étiquette ne doit pas couvrir la flèche qu'elle
+       nomme, ni celle de la voisine. */
+    if (showVec)  _reserveArrow(cx, cy, dxPx, dyPx);
+    if (showComp) { _reserveArrow(cx, cy, dxPx, 0); _reserveArrow(cx, cy, 0, dyPx); }
 }
 
 function _drawVecArrow(ctx, cx, cy, dx, dy, color, label, opacity, lw) {
@@ -1715,7 +1745,7 @@ function _measureMathName(ctx, name, size) {
 
 /* Dessine un nom de vecteur dans le style ci-dessus.
    (x, y) = coin haut-gauche du texte normal (textBaseline 'top'). */
-function _drawMathName(ctx, name, x, y, size, color) {
+function _drawMathName(ctx, name, x, y, size, color, outlineW) {
     var parts = _mathNameParts(name);
     ctx.textAlign    = 'left';
     ctx.textBaseline = 'top';
@@ -1726,7 +1756,17 @@ function _drawMathName(ctx, name, x, y, size, color) {
         var sz = p.sub ? size * VEC_SUB_RATIO : size;
         var tx = _mathText(ctx, p);
         ctx.font = _mathFont(ctx, sz, p.i);
-        ctx.fillText(tx, cx, p.sub ? y + size * VEC_SUB_DY : y);
+        var py = p.sub ? y + size * VEC_SUB_DY : y;
+        if (outlineW) {
+            ctx.save();
+            ctx.lineJoin    = 'round';
+            ctx.miterLimit  = 2;
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth   = outlineW;
+            ctx.strokeText(tx, cx, py);
+            ctx.restore();
+        }
+        ctx.fillText(tx, cx, py);
         cx += ctx.measureText(tx).width;
     }
 }
@@ -1757,7 +1797,7 @@ function _measureMathArrow(ctx, size) {
 }
 
 /* (x, y) = coin haut-gauche de l'encre de la flèche ; w = largeur voulue. */
-function _drawMathArrow(ctx, x, y, w, size, color) {
+function _drawMathArrow(ctx, x, y, w, size, color, outlineW) {
     var a = _measureMathArrow(ctx, size);
     ctx.save();
     ctx.fillStyle    = color;
@@ -1768,10 +1808,16 @@ function _drawMathArrow(ctx, x, y, w, size, color) {
         ctx.translate(x, 0);
         ctx.scale(w / a.w, 1);          /* étirement horizontal seul : le trait
                                            s'allonge, l'épaisseur ne bouge pas */
-        ctx.fillText(VEC_ARROW_CHAR, 0, y + a.asc);
-    } else {
-        ctx.fillText(VEC_ARROW_CHAR, x, y + a.asc);
+        x = 0;
     }
+    if (outlineW) {
+        ctx.lineJoin    = 'round';
+        ctx.miterLimit  = 2;
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth   = outlineW;
+        ctx.strokeText(VEC_ARROW_CHAR, x, y + a.asc);
+    }
+    ctx.fillText(VEC_ARROW_CHAR, x, y + a.asc);
     ctx.restore();
 }
 
@@ -1930,9 +1976,140 @@ function _labelGroundLimit(M) {
 var _labelRectsHard = [];
 var _labelRectsSoft = [];
 
+/* ── Le décor : ce que les étiquettes doivent éviter de masquer ──
+   Jusqu'ici le placement n'arbitrait qu'entre étiquettes ; les axes, les
+   flèches et la trajectoire n'existaient pas pour lui. Une étiquette pouvait
+   se poser en plein sur la parabole sans que rien ne s'y oppose.
+
+   Le décor est déclaré en deux formes, parce que deux natures d'encre ne se
+   masquent pas de la même façon :
+
+   • _labelScenery — des RECTANGLES, pour ce qui occupe une surface : les
+     graduations chiffrées, les noms d'axes. Recouvrir la moitié d'un « 12 »
+     le rend illisible ; ce qui compte est la fraction cachée.
+
+   • _labelInk — des POINTS échantillonnés le long des TRAITS : axes, flèches,
+     trajectoire. Un trait ne s'évalue pas en surface — il est fin, et son
+     coût tient à la longueur qu'on en traverse. Compter les points tombés
+     dans la boîte mesure exactement cela, et coûte bien moins cher qu'un
+     test rectangle contre rectangle par segment.
+
+   Les poids traduisent la règle retenue : on tolère de croiser la trajectoire
+   (le halo la laisse lire au travers) pour rester près du vecteur, mais on
+   s'éloigne plutôt que de couvrir une flèche ou une graduation. La grille de
+   fond n'est pas déclarée du tout : elle est gratuite. */
+var _labelScenery = [];
+var _labelInk     = [];
+
+var INK_GRAD    = 0.60;   // graduations chiffrées, noms d'axes
+var INK_AXIS    = 0.45;   // le trait des axes lui-même
+var INK_ARROW   = 1.00;   // flèches de vecteurs : le sujet du cours
+var INK_TRAJ    = 0.25;   // trajectoire : tolérée, le halo la sauve
+
+/* Plafond du nuage de points. Sans lui, une trajectoire longue et une
+   chronophotographie fournie feraient enfler la boucle de coût à chaque
+   image. Au-delà, on cesse d'ajouter : mieux vaut un décor incomplet qu'une
+   animation qui rame. */
+var _INK_MAX = 900;
+
+/* Le nuage d'encre est rangé en cases, sans quoi chaque position candidate le
+   parcourrait en entier : une quarantaine de candidats par étiquette, autant
+   d'étiquettes par image, quelques centaines de points — le compte grimpe
+   vite. Une étiquette ne couvre qu'une poignée de cases, et n'a donc à
+   examiner que les points qui s'y trouvent.
+
+   La grille se reconstruit quand le nuage a changé de taille. Les points ne
+   font que s'y ajouter jusqu'au prochain _resetLabelRects, si bien que sa
+   longueur suffit à dater son contenu. */
+var _INK_CELL = 64;
+var _inkGrid  = null;
+var _inkGridN = -1;
+
 function _resetLabelRects() {
     _labelRectsHard.length = 0;
     _labelRectsSoft.length = 0;
+    _labelScenery.length   = 0;
+    _labelInk.length       = 0;
+    _inkGrid  = null;
+    _inkGridN = -1;
+}
+
+function _inkGridEnsure() {
+    if (_inkGrid && _inkGridN === _labelInk.length) return _inkGrid;
+    var cols = Math.max(1, Math.ceil(_animW / _INK_CELL));
+    var rows = Math.max(1, Math.ceil(_animH / _INK_CELL));
+    var cell = new Array(cols * rows);
+    for (var i = 0; i < _labelInk.length; i++) {
+        var p  = _labelInk[i];
+        var cx = Math.floor(p.x / _INK_CELL), cy = Math.floor(p.y / _INK_CELL);
+        /* Hors cadre : aucune étiquette ne peut s'y poser, le point ne servira
+           jamais. */
+        if (cx < 0 || cy < 0 || cx >= cols || cy >= rows) continue;
+        var k = cx + cy * cols;
+        if (cell[k]) cell[k].push(p); else cell[k] = [p];
+    }
+    _inkGrid  = { cols: cols, rows: rows, cell: cell };
+    _inkGridN = _labelInk.length;
+    return _inkGrid;
+}
+
+function _reserveScenery(lx, ly, w, h, weight) {
+    if (w > 0 && h > 0) _labelScenery.push({ lx: lx, ly: ly, w: w, h: h, weight: weight });
+}
+
+/* Échantillonne un segment en points d'encre. Le pas suit _txtScale() : sur
+   grand écran tout est plus gros, il serait absurde d'y semer deux fois plus
+   de points pour la même longueur de trait. */
+function _reserveInkSeg(x1, y1, x2, y2, weight) {
+    if (_labelInk.length >= _INK_MAX) return;
+    var step = 10 * _txtScale();
+    var dx = x2 - x1, dy = y2 - y1;
+    var n  = Math.max(1, Math.round(Math.sqrt(dx * dx + dy * dy) / step));
+    for (var i = 0; i <= n; i++) {
+        if (_labelInk.length >= _INK_MAX) return;
+        _labelInk.push({ x: x1 + dx * i / n, y: y1 + dy * i / n, weight: weight });
+    }
+}
+
+/* Une flèche de vecteur, déclarée depuis son point d'application. */
+function _reserveArrow(cx, cy, dx, dy) {
+    if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+    _reserveInkSeg(cx, cy, cx + dx, cy + dy, INK_ARROW);
+}
+
+/* Déclare l'emprise d'un texte que l'on vient de tracer. L'alignement et la
+   ligne de base sont relus sur le contexte plutôt que passés en paramètre :
+   chaque site de tracé les a déjà posés, les redonner serait les redire — et
+   ouvrir la porte à ce que les deux divergent. */
+function _reserveTextBox(ctx, text, x, y, size, weight) {
+    var w  = ctx.measureText(text).width;
+    var h  = size;
+    var lx = x;
+    if (ctx.textAlign === 'right')  lx = x - w;
+    if (ctx.textAlign === 'center') lx = x - w / 2;
+    var ly = y;
+    if (ctx.textBaseline === 'bottom')          ly = y - h;
+    else if (ctx.textBaseline === 'middle')     ly = y - h / 2;
+    else if (ctx.textBaseline === 'alphabetic') ly = y - h * 0.78;
+    _reserveScenery(lx, ly, w, h, weight);
+}
+
+/* Une trajectoire, échantillonnée en une centaine de points au plus quelle
+   que soit sa finesse : c'est la forme de la courbe qui compte ici, pas sa
+   définition.
+
+   Sautée quand la phase de descente est séparée : la trajectoire y est
+   redessinée en deux colonnes miroir, et trajPoints ne porte pas la vitesse
+   qui dirait de quel côté va chaque point. Réserver la mauvaise colonne
+   serait pire que de ne rien réserver. */
+function _reserveTrajPts(pts) {
+    if (!pts || pts.length < 2 || _splitActive()) return;
+    var step = Math.max(1, Math.round(pts.length / 120));
+    for (var i = 0; i < pts.length; i += step) {
+        if (_labelInk.length >= _INK_MAX) return;
+        var q = toCanvas(pts[i].x, pts[i].y);
+        _labelInk.push({ x: q.cx, y: q.cy, weight: INK_TRAJ });
+    }
 }
 
 /* Registre où réserver, et registres à éviter, pour une opacité donnée. */
@@ -2003,6 +2180,7 @@ function _bestLabelPos(anchorX, anchorY, totalW, totalH, preferOrder, placedRect
     var COST_OUT     = 40;     // par pixel débordé, cumulé sur les quatre bords
     var COST_RANK    = 8 * f;
     var COST_LEADER  = 30 * f;
+    var COST_INK     = 22 * f; // par point d'encre traversé, pondéré
 
     var slots = {
         'right':       { lx: anchorX + GAP,           ly: anchorY - totalH / 2 },
@@ -2026,6 +2204,44 @@ function _bestLabelPos(anchorX, anchorY, totalW, totalH, preferOrder, placedRect
             var ox = Math.min(lx + totalW + PAD, r.lx + r.w) - Math.max(lx - PAD, r.lx);
             var oy = Math.min(ly + totalH + PAD, r.ly + r.h) - Math.max(ly - PAD, r.ly);
             if (ox > 0 && oy > 0) sum += ox * oy;
+        }
+        return sum;
+    }
+
+    /* Coût du décor : rectangles pondérés puis points d'encre.
+
+       La fraction cachée se rapporte à la PLUS PETITE des deux boîtes. Sinon
+       un grand bloc posé sur une petite graduation ne paierait presque rien —
+       la graduation serait entièrement effacée pour un coût dérisoire, alors
+       que c'est précisément le cas à éviter. */
+    function sceneryCost(lx, ly) {
+        var sum = 0, j;
+        for (j = 0; j < _labelScenery.length; j++) {
+            var r  = _labelScenery[j];
+            var ox = Math.min(lx + totalW + PAD, r.lx + r.w) - Math.max(lx - PAD, r.lx);
+            var oy = Math.min(ly + totalH + PAD, r.ly + r.h) - Math.max(ly - PAD, r.ly);
+            if (ox > 0 && oy > 0) {
+                var ref = Math.max(1, Math.min(area, r.w * r.h));
+                sum += Math.min(1, ox * oy / ref) * COST_OVERLAP * r.weight;
+            }
+        }
+        if (_labelInk.length) {
+            var g  = _inkGridEnsure();
+            var c0 = Math.max(0, Math.floor(lx / _INK_CELL));
+            var c1 = Math.min(g.cols - 1, Math.floor((lx + totalW) / _INK_CELL));
+            var r0 = Math.max(0, Math.floor(ly / _INK_CELL));
+            var r1 = Math.min(g.rows - 1, Math.floor((ly + totalH) / _INK_CELL));
+            for (var gy = r0; gy <= r1; gy++) {
+                for (var gx = c0; gx <= c1; gx++) {
+                    var bucket = g.cell[gx + gy * g.cols];
+                    if (!bucket) continue;
+                    for (var bi = 0; bi < bucket.length; bi++) {
+                        var p = bucket[bi];
+                        if (p.x >= lx && p.x <= lx + totalW &&
+                            p.y >= ly && p.y <= ly + totalH) sum += COST_INK * p.weight;
+                    }
+                }
+            }
         }
         return sum;
     }
@@ -2056,11 +2272,21 @@ function _bestLabelPos(anchorX, anchorY, totalW, totalH, preferOrder, placedRect
              + (leader ? COST_LEADER : 0);
     }
 
-    var best = null;
+    /* Deux passes. La première note tous les candidats avec le coût bon marché
+       — distance, étiquettes voisines, cadre, préférence — et n'en garde que
+       les meilleurs ; la seconde n'ajoute le coût du décor qu'à ceux-là.
+
+       Sans cela, chaque candidat parcourrait le nuage d'encre entier, une
+       quarantaine de fois par étiquette et pour chaque étiquette de l'image.
+       Le décor ne fait jamais que renchérir un candidat : restreindre la
+       seconde passe à une présélection large ne peut donc écarter un bon
+       placement que si tous les finalistes se révèlent chargés en décor, ce
+       que la largeur de la présélection rend improbable. */
+    var KEEP  = 6;
+    var pool  = [];
 
     function consider(lx, ly, rank, leader) {
-        var c = cost(lx, ly, rank, leader);
-        if (!best || c < best.c) best = { lx: lx, ly: ly, leader: leader, c: c };
+        pool.push({ lx: lx, ly: ly, leader: leader, c: cost(lx, ly, rank, leader) });
     }
 
     /* 1. Les huit créneaux au contact, dans l'ordre de préférence. */
@@ -2086,6 +2312,18 @@ function _bestLabelPos(anchorX, anchorY, totalW, totalH, preferOrder, placedRect
             var lx = anchorX + (ux > 0 ? rx : ux < 0 ? rx - totalW : -totalW / 2);
             var ly = anchorY + (uy > 0 ? ry : uy < 0 ? ry - totalH : -totalH / 2);
             consider(lx, ly, preferOrder.length, true);
+        }
+    }
+
+    pool.sort(function (a, b) { return a.c - b.c; });
+
+    var best = pool[0];
+    if (_labelScenery.length || _labelInk.length) {
+        var n = Math.min(KEEP, pool.length);
+        for (var pi = 0; pi < n; pi++) {
+            var cand = pool[pi];
+            cand.c += sceneryCost(cand.lx, cand.ly);
+            if (cand.c < best.c || pi === 0) best = cand;
         }
     }
 
@@ -2124,42 +2362,49 @@ function _renderVecLabel(ctx, lx, ly, m, vecName, line1, line2, color) {
     ctx.lineCap     = 'round';
     ctx.lineJoin    = 'round';
 
+    /* Halo : même bien placé, un bloc passe sur la grille, sur un rayon de
+       champ ou sur la trajectoire — c'est ce qui rend tolérable, dans le
+       calcul de coût, de croiser un trait fin plutôt que de s'exiler. */
+    var halo = _axisLW(3.2);
+
     /* Flèche au-dessus du nom, puis nom : les deux centrés dans la largeur du
        composé, comme les deux étages d'un <mover>. */
-    _drawMathArrow(ctx, lx, nameTopY, m.accW, m.nameSize, color);
+    _drawMathArrow(ctx, lx, nameTopY, m.accW, m.nameSize, color, halo);
     _drawMathName(ctx, vecName, lx + (m.accW - m.nameW) / 2, nameTopY + m.arrowExtra,
-                  m.nameSize, color);
+                  m.nameSize, color, halo);
 
     /* Parenthèses */
     var bx  = lx + m.nameColW;
     var bly = ly + (m.totalH - m.parenH) / 2;
 
     /* Trait des parenthèses : la seule épaisseur restée fixe dans le bloc,
-       alors que sa police, elle, suit la taille du canvas. */
-    ctx.lineWidth   = 2.5 * _txtScale();
-    ctx.strokeStyle = color;
+       alors que sa police, elle, suit la taille du canvas.
+       Tracé deux fois — blanc épais, puis couleur — pour leur donner le même
+       halo qu'au texte : sans lui, elles seules resteraient à nu. */
+    var parenLW = 2.5 * _txtScale();
 
-    var lPx = bx + m.parenW;
-    ctx.beginPath();
-    ctx.moveTo(lPx, bly);
-    ctx.bezierCurveTo(lPx - m.parenW * 1.3, bly + m.parenH * 0.18,
-                      lPx - m.parenW * 1.3, bly + m.parenH * 0.82,
-                      lPx, bly + m.parenH);
-    ctx.stroke();
+    function strokeParen(px, dir) {
+        ctx.beginPath();
+        ctx.moveTo(px, bly);
+        ctx.bezierCurveTo(px + dir * m.parenW * 1.3, bly + m.parenH * 0.18,
+                          px + dir * m.parenW * 1.3, bly + m.parenH * 0.82,
+                          px, bly + m.parenH);
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth   = parenLW + halo;
+        ctx.stroke();
+        ctx.strokeStyle = color;
+        ctx.lineWidth   = parenLW;
+        ctx.stroke();
+    }
 
-    var rPx = bx + m.parenW + m.iPad + m.textW + m.iPad;
-    ctx.beginPath();
-    ctx.moveTo(rPx, bly);
-    ctx.bezierCurveTo(rPx + m.parenW * 1.3, bly + m.parenH * 0.18,
-                      rPx + m.parenW * 1.3, bly + m.parenH * 0.82,
-                      rPx, bly + m.parenH);
-    ctx.stroke();
+    strokeParen(bx + m.parenW, -1);
+    strokeParen(bx + m.parenW + m.iPad + m.textW + m.iPad, 1);
 
     /* Texte */
     ctx.fillStyle    = color;
     ctx.textBaseline = 'middle';
-    _drawSubText(ctx, line1, bx + m.parenW + m.iPad, bly + m.lineH * 0.5, m.fontSize);
-    _drawSubText(ctx, line2, bx + m.parenW + m.iPad, bly + m.lineH * 1.5, m.fontSize);
+    _drawSubText(ctx, line1, bx + m.parenW + m.iPad, bly + m.lineH * 0.5, m.fontSize, null, halo);
+    _drawSubText(ctx, line2, bx + m.parenW + m.iPad, bly + m.lineH * 1.5, m.fontSize, null, halo);
 
     ctx.restore();
 }
@@ -2452,9 +2697,12 @@ function _renderForceName(ctx, lx, ly, name, color, opacity, m) {
     ctx.globalAlpha  = opacity * 0.92;
     ctx.fillStyle    = color;
 
-    /* Flèche puis nom, centrés dans la largeur du composé (cf. _drawMathArrow) */
-    _drawMathArrow(ctx, lx, ly, m.accW, m.sz, color);
-    _drawMathName(ctx, name, lx + (m.accW - m.tw) / 2, ly + m.arrowH + m.gap, m.sz, color);
+    /* Flèche puis nom, centrés dans la largeur du composé (cf. _drawMathArrow).
+       Halo comme pour les blocs coordonnées : ces noms se posent souvent au
+       bout d'une flèche, donc en travers d'une autre. */
+    var halo = _axisLW(2.6);
+    _drawMathArrow(ctx, lx, ly, m.accW, m.sz, color, halo);
+    _drawMathName(ctx, name, lx + (m.accW - m.tw) / 2, ly + m.arrowH + m.gap, m.sz, color, halo);
     ctx.restore();
 }
 
@@ -2485,6 +2733,7 @@ function _drawForcesAt(ctx, cx, cy, vx, vy, opacity, phys) {
     /* Flèches d'abord */
     for (var i = 0; i < forces.length; i++) {
         _drawVecArrow(ctx, cx, cy, forces[i].dx, forces[i].dy, COL_VEC_FORCES, null, opacity);
+        _reserveArrow(cx, cy, forces[i].dx, forces[i].dy);
     }
 
     /* Labels avec anti-chevauchement */
@@ -2511,6 +2760,7 @@ function _drawSumFAt(ctx, cx, cy, vx, vy, opacity, phys) {
     var dyPx = -SFy * VEC_SCALE_FORCE * _sfvp.cy;
 
     _drawVecArrow(ctx, cx, cy, dxPx, dyPx, COL_VEC_SUMF, null, opacity);
+    _reserveArrow(cx, cy, dxPx, dyPx);
 
     var lm  = _measureForceName(ctx, 'ΣF');
     var pref = ['right', 'upper-right', 'lower-right', 'left', 'upper-left', 'lower-left', 'above', 'below'];
@@ -2739,6 +2989,7 @@ function _drawGridE(ctx) {
         ctx.lineWidth = _axisLW(isMaj ? 1.4 : 0.8);
         ctx.beginPath(); ctx.moveTo(gx2, orig.cy - tickLen); ctx.lineTo(gx2, orig.cy + tickLen); ctx.stroke();
         if (isMaj) ctx.fillText(fmt(xv, xDec), gx2, orig.cy + tickLen + 2);
+        if (isMaj) _reserveTextBox(ctx, fmt(xv, xDec), gx2, orig.cy + tickLen + 2, fontSize, INK_GRAD);
     }
     ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
     for (var jy = 1; jy * yGrid.minor <= yGridMax * 1.001; jy++) {
@@ -2753,10 +3004,12 @@ function _drawGridE(ctx) {
         if (pcyP >= 5) {
             ctx.beginPath(); ctx.moveTo(orig.cx - tickLen, pcyP); ctx.lineTo(orig.cx + tickLen, pcyP); ctx.stroke();
             if (isMaj2 && _yLblFitsE && pcyP >= yAxisEndE) ctx.fillText(fmt(yv, yDec), orig.cx - tickLen - 4, pcyP);
+            if (isMaj2 && _yLblFitsE && pcyP >= yAxisEndE) _reserveTextBox(ctx, fmt(yv, yDec), orig.cx - tickLen - 4, pcyP, fontSize, INK_GRAD);
         }
         if (pcyN <= _animH - 5) {
             ctx.beginPath(); ctx.moveTo(orig.cx - tickLen, pcyN); ctx.lineTo(orig.cx + tickLen, pcyN); ctx.stroke();
             if (isMaj2 && _yLblFitsE && pcyN <= _animH - fontSize * 0.45 - 3) ctx.fillText(fmt(-yv, yDec), orig.cx - tickLen - 4, pcyN);
+            if (isMaj2 && _yLblFitsE && pcyN <= _animH - fontSize * 0.45 - 3) _reserveTextBox(ctx, fmt(-yv, yDec), orig.cx - tickLen - 4, pcyN, fontSize, INK_GRAD);
         }
     }
     ctx.restore();
@@ -2788,10 +3041,13 @@ function _drawAxesE(ctx) {
        à ~18 px du bord et sortait du canvas. */
     ctx.textAlign = 'right'; ctx.textBaseline = 'alphabetic';
     ctx.fillText('x (m)', ag.xEnd, orig.cy + fontSize + 4);
+    _reserveTextBox(ctx, "x (m)", ag.xEnd, orig.cy + fontSize + 4, fontSize, INK_GRAD);
     ctx.textAlign = 'right'; ctx.textBaseline = 'top';
     ctx.fillText('y (m)', orig.cx - 6, ag.yEnd + ag.aLen + 2);
+    _reserveTextBox(ctx, "y (m)", orig.cx - 6, ag.yEnd + ag.aLen + 2, fontSize, INK_GRAD);
     ctx.textAlign = 'right'; ctx.textBaseline = 'top';
     ctx.fillText('O', orig.cx - 4, orig.cy + 2);
+    _reserveTextBox(ctx, "O", orig.cx - 4, orig.cy + 2, fontSize, INK_GRAD);
     ctx.restore();
 }
 
@@ -2975,6 +3231,7 @@ function _drawForcesAtE(ctx, cx, cy, vx, vy, opacity, phys) {
     var dxPx =  phys.FEx * _sf * _vp.cx;
     var dyPx = -phys.FEy * _sf * _vp.cy;
     _drawVecArrow(ctx, cx, cy, dxPx, dyPx, _col, null, _op, _perp ? VEC_LW_PERP : undefined);
+    _reserveArrow(cx, cy, dxPx, dyPx);
     var lm  = _measureForceName(ctx, 'FE');
     var pos = _bestLabelPos(cx + dxPx, cy + dyPx, lm.w, lm.h,
                             ['right','upper-right','lower-right','left','above','below'], _labelObstacles(opacity));
@@ -2993,6 +3250,7 @@ function _drawSumFAtE(ctx, cx, cy, vx, vy, opacity, phys) {
     var dxPx =  phys.FEx * _sf * _vp.cx;
     var dyPx = -phys.FEy * _sf * _vp.cy;
     _drawVecArrow(ctx, cx, cy, dxPx, dyPx, _col, null, _op, _perp ? VEC_LW_PERP : undefined);
+    _reserveArrow(cx, cy, dxPx, dyPx);
     var lm  = _measureForceName(ctx, 'ΣF');
     var pos = _bestLabelPos(cx + dxPx, cy + dyPx, lm.w, lm.h,
                             ['right','upper-right','lower-right','left','above','below'], _labelObstacles(opacity));
