@@ -154,6 +154,30 @@ function _srcSAtTime(s, t, cNow) {
 // renvoyée doit donc être consommée immédiatement.
 var _srcOut = { d: 0, a: 0 };
 
+// Lecture brute du déplacement, sans extrapolation et sans toucher à _srcOut :
+// c'est le point miroir dont _srcSampleAtS a besoin pour prolonger au-delà du
+// dernier échantillon. sT y est toujours à l'intérieur de l'historique.
+function _srcDLookup(s, sT) {
+    var n = s.srcN;
+    if (n === 0) return 0;
+    if (sT <= s.srcS[_srcIdx(s, 0)]) return 0;
+
+    var iLast = _srcIdx(s, n - 1);
+    if (sT >= s.srcS[iLast]) return s.srcD[iLast];
+
+    var lo = 0, hi = n - 1;
+    while (hi - lo > 1) {
+        var mid = (lo + hi) >> 1;
+        if (s.srcS[_srcIdx(s, mid)] <= sT) lo = mid;
+        else                               hi = mid;
+    }
+    var iA = _srcIdx(s, lo);
+    var iB = _srcIdx(s, hi);
+    var span = s.srcS[iB] - s.srcS[iA];
+    var f    = (span > 0) ? (sT - s.srcS[iA]) / span : 0;
+    return s.srcD[iA] + (s.srcD[iB] - s.srcD[iA]) * f;
+}
+
 function _srcSampleAtS(s, sT) {
     _srcOut.d = 0;
     _srcOut.a = 0;
@@ -165,7 +189,17 @@ function _srcSampleAtS(s, sT) {
 
     var iLast = _srcIdx(s, n - 1);
     if (sT >= s.srcS[iLast]) {
-        _srcOut.d = s.srcD[iLast];
+        // Au-delà du dernier échantillon émis : PROLONGEMENT LINÉAIRE, et non
+        // gel de la dernière valeur. Ce cas n'est pas marginal — waveDeltaP y
+        // tombe pour tout x < h, puisque sa différence centrée lit u(x − h).
+        // Geler d y rendait u(x − h) identique pour tous ces x : ΔP devenait
+        // constant sur les h premiers pixels, d'où le petit trait horizontal
+        // collé à la membrane, et la marche à x = h. On extrapole en miroir
+        // autour du dernier échantillon — d(S+e) ≈ 2·d(S) − d(S−e) — exact
+        // pour une pente constante et d'erreur O(e²) comme la DFC elle-même
+        // (e ≤ h ≈ λ/40, donc ~1 %).
+        var e = sT - s.srcS[iLast];
+        _srcOut.d = 2 * s.srcD[iLast] - _srcDLookup(s, s.srcS[iLast] - e);
         _srcOut.a = s.srcA[iLast];
         return _srcOut;
     }
@@ -656,6 +690,11 @@ function waveDeltaP(x_px, t_sim) {
     var hIdeal = (kEff > 0) ? Math.PI / (10 * kEff) : sim.tubeLength / 100;
     var h      = Math.max(0.5, Math.min(sim.tubeLength / 100, hIdeal));
 
+    // Le stencil déborde en x < 0 sur les h premiers pixels. C'est correct :
+    // l'historique y répond par prolongement linéaire (cf. _srcSampleAtS), ce
+    // qui garde la différence centrée valable jusqu'à la membrane. Rétrécir ou
+    // décaler le stencil au bord, au contraire, y aplatissait ΔP et laissait
+    // une marche visible en x = h.
     var u_m = waveDisplacement(x_px - h, t_sim);
     var u_p = waveDisplacement(x_px + h, t_sim);
     // ΔP = −K × ∂u/∂x  ≈  K × (u_m − u_p) / (2h)
