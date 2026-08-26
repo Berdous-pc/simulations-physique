@@ -2194,6 +2194,83 @@ function _bestLabelPos(anchorX, anchorY, totalW, totalH, preferOrder, placedRect
         'lower-left':  { lx: anchorX - totalW - GAP,  ly: anchorY + GAP }
     };
 
+    /* ── Symétrie du rang dans les vues projetées ──
+       Les listes de préférence sont câblées d'un côté : 'right' avant 'left',
+       'above' avant 'below'. En vue normale c'est un choix raisonnable. En vue
+       projetée, il devient un biais coûteux : la scène s'écrase sur une bande,
+       tout l'espace disponible est de part et d'autre de cette bande, et les
+       étiquettes s'entassent d'un seul côté pendant que l'autre reste vide.
+
+       Plutôt que de réécrire chaque liste, on rend le rang symétrique le long
+       de l'axe où l'espace s'est libéré : les deux créneaux d'une paire
+       reçoivent le meilleur des deux rangs. La préférence haut/bas ou
+       près/loin est conservée ; seul le choix du côté est rendu au coût, qui
+       tranchera sur l'encombrement réel — c'est-à-dire sur le côté le plus
+       libre.
+
+       proj-x aplatit la scène sur une bande horizontale : l'espace est
+       au-dessus et en dessous, on symétrise donc verticalement. proj-y la
+       réduit à une colonne : on symétrise horizontalement. Le fondu suit
+       l'angle de vue, pour que rien ne saute pendant la bascule. */
+    var MIRROR_V = { 'above': 'below', 'below': 'above',
+                     'upper-right': 'lower-right', 'lower-right': 'upper-right',
+                     'upper-left':  'lower-left',  'lower-left':  'upper-left' };
+    var MIRROR_H = { 'right': 'left', 'left': 'right',
+                     'upper-right': 'upper-left', 'upper-left': 'upper-right',
+                     'lower-right': 'lower-left', 'lower-left': 'lower-right' };
+
+    var flatV = Math.min(1, Math.max(0, _viewAngles.tx / (Math.PI / 2)));
+    var flatH = Math.min(1, Math.max(0, _viewAngles.ty / (Math.PI / 2)));
+    var mirror = (flatV >= flatH) ? MIRROR_V : MIRROR_H;
+    var tSym   = Math.max(flatV, flatH);
+
+    var slotIdx = {};
+    for (var si = 0; si < preferOrder.length; si++) slotIdx[preferOrder[si]] = si;
+
+    function effRank(i) {
+        if (!tSym) return i;
+        var m = mirror[preferOrder[i]];
+        var j = (m !== undefined && slotIdx[m] !== undefined) ? slotIdx[m] : i;
+        return i * (1 - tSym) + Math.min(i, j) * tSym;
+    }
+
+    /* Symétriser le rang ne suffisait pas : à égalité parfaite de rang ET de
+       distance — le cas exact de deux créneaux miroirs —, le tri conserve le
+       premier créneau listé, et tout repartait à droite. Rien ne se produisait
+       tant que les étiquettes ne se recouvraient pas franchement, c'est-à-dire
+       précisément dans le cas qui pose problème : un côté dense, l'autre vide,
+       sans un seul chevauchement à signaler.
+
+       Ce terme compte les étiquettes déjà posées du côté visé de l'axe de la
+       scène. Il est faible — il départage des candidats équivalents, il ne
+       renverse jamais une vraie différence de proximité ou un recouvrement. */
+    var COST_SIDE = 12 * f;
+    var sideAxis  = (mirror === MIRROR_H) ? _viewAngles.ox : toCanvas(0, 0).cy;
+
+    /* Zone morte autour de l'axe : les créneaux centrés sur l'ancre — 'right'
+       et 'left' quand on symétrise verticalement — ont leur milieu exactement
+       sur l'axe. Sans elle, un signe arbitraire les verse tous du même côté et
+       fausse le décompte pour tous les suivants. À cheval, une étiquette n'est
+       d'aucun côté : elle ne compte pour personne et ne paie rien. */
+    var sideBand = ((mirror === MIRROR_H) ? totalW : totalH) * 0.25;
+
+    function sideOf(c) {
+        if (Math.abs(c - sideAxis) <= sideBand) return 0;
+        return (c < sideAxis) ? -1 : 1;
+    }
+
+    function sideCost(lx, ly) {
+        if (!tSym) return 0;
+        var side = sideOf((mirror === MIRROR_H) ? lx + totalW / 2 : ly + totalH / 2);
+        if (!side) return 0;
+        var n = 0;
+        for (var k = 0; k < placedRects.length; k++) {
+            var r = placedRects[k];
+            if (sideOf((mirror === MIRROR_H) ? r.lx + r.w / 2 : r.ly + r.h / 2) === side) n++;
+        }
+        return n * COST_SIDE * tSym;
+    }
+
     var area = Math.max(1, totalW * totalH);
 
     /* Aire recouverte, marge de sécurité comprise : une mesure continue, là où
@@ -2267,6 +2344,7 @@ function _bestLabelPos(anchorX, anchorY, totalW, totalH, preferOrder, placedRect
 
     function cost(lx, ly, rank, leader) {
         return gapToAnchor(lx, ly)
+             + sideCost(lx, ly)
              + overlapArea(lx, ly) / area * COST_OVERLAP
              + outAmount(lx, ly) * COST_OUT
              + rank * COST_RANK
@@ -2293,7 +2371,7 @@ function _bestLabelPos(anchorX, anchorY, totalW, totalH, preferOrder, placedRect
     /* 1. Les huit créneaux au contact, dans l'ordre de préférence. */
     for (var i = 0; i < preferOrder.length; i++) {
         var s = slots[preferOrder[i]];
-        if (s) consider(s.lx, s.ly, i, false);
+        if (s) consider(s.lx, s.ly, effRank(i), false);
     }
 
     /* 2. Couronnes de rayon croissant. La boîte est poussée vers l'extérieur
