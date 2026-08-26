@@ -634,6 +634,7 @@ function drawAnim() {
     }
 
     /* Runs sauvegardées (en dessous de la run courante) */
+    _labelPrio = PRIO_SAVED;
     for (var _sri = 0; _sri < savedRuns.length; _sri++) {
         var _sr = savedRuns[_sri];
         if (_sr.hidden) continue;
@@ -652,12 +653,16 @@ function drawAnim() {
         _drawTrajectory(ctx);
     }
     if (sim.displayMode === 'chrono' || sim.displayMode === 'both') {
+        _labelPrio = PRIO_CHRONO;
         _drawChronoSnaps(ctx);
     }
 
+    _labelPrio = PRIO_MOBILE;
     _drawBall(ctx);
     _drawViewLabel(ctx);
+    _labelPrio = PRIO_PIN;
     _drawAnalysisPoints(ctx);
+    _labelPrio = PRIO_HOVER;
     if (_animHoverSnap) _drawAnimHover(ctx, _animHoverSnap);
 
     /* Le décor est complet : les étiquettes peuvent enfin arbitrer contre
@@ -2584,7 +2589,57 @@ function _drawLeader(ctx, anchorX, anchorY, pos, w, h, color, opacity) {
    ce qui se dessinait après elles. */
 var _labelQueue = [];
 
+/* ── Qui se sert en premier ──
+   Le premier placé prend la meilleure position et ne la rend jamais : les
+   suivants héritent de ce qu'il laisse, jusqu'à l'exil en couronne au bout
+   d'un trait de rappel. Cet ordre était celui du tracé, ce qui revenait à
+   décider de l'importance des étiquettes par la profondeur du décor.
+
+   Il était même exactement inversé. Le ballon est dessiné avant les points
+   épinglés : les noms de ses forces se servaient donc avant eux. Or une
+   épingle est le seul élément de la scène que l'utilisateur a posé lui-même,
+   d'un geste délibéré, parce que c'est ce point-là qu'il veut lire.
+
+   L'ordre part donc de ce qui est demandé vers ce qui est ambiant : les
+   épingles, le point survolé, le mobile courant, ses instantanés
+   chronophotographiques, enfin les courses sauvegardées. Ce qui reste de
+   place échoit à ce qui est le plus reproductible — une chronophotographie
+   se relit point par point, une épingle est unique.
+
+   ── Pourquoi les épingles passent devant le survol ──
+   Le survol désigne ce que l'utilisateur regarde à l'instant même, ce qui
+   plaidait pour le servir en premier. C'est exactement ce qu'il ne faut pas
+   faire : son ancre suit le pointeur, donc elle se déplace à chaque image.
+   Servi en premier, il se réserve à chaque image une position différente, et
+   toutes les étiquettes épinglées se replacent derrière lui — elles dansent
+   le long de la trajectoire alors que rien, chez elles, n'a bougé.
+
+   Les épingles, elles, sont immobiles tant qu'on n'y touche pas. Servies en
+   premier, elles se posent une fois et ne bougent plus ; il ne reste qu'une
+   seule étiquette mobile dans la scène, celle qui suit effectivement le
+   pointeur. Le mouvement est ainsi ramené à ce qui bouge vraiment.
+
+   C'est aussi la première pierre de la stabilité dans le temps : servir
+   d'abord ce qui ne bouge pas, c'est déjà ne plus laisser le transitoire
+   commander au permanent.
+
+   La granularité s'arrête à la phase de tracé. Faire passer ΣF devant les
+   forces qui la composent serait défendable ; c'est un arbitrage de fond sur
+   ce qu'on veut lire d'abord, pas une conséquence de ce qui précède. */
+var PRIO_PIN    = 0;
+var PRIO_HOVER  = 1;
+var PRIO_MOBILE = 2;
+var PRIO_CHRONO = 3;
+var PRIO_SAVED  = 4;
+
+var _labelPrio = PRIO_MOBILE;
+
 function _queueLabel(req) {
+    req.prio = _labelPrio;
+    /* Rang de dépôt, pour départager à priorité égale. Un tri qui s'en
+       remettrait à la stabilité de sort() laisserait l'ordre des forces d'un
+       même point à la discrétion du moteur. */
+    req.seq  = _labelQueue.length;
     _labelQueue.push(req);
 }
 
@@ -2593,15 +2648,34 @@ function _queueLabel(req) {
    restaure les globales qu'il a permutées : _bestLabelPos lit _labelMaxY et
    _viewAngles, qui valent alors ceux de la scène électrique. */
 function _flushLabels(ctx) {
-    for (var i = 0; i < _labelQueue.length; i++) {
-        var req = _labelQueue[i];
-        var lvl = (req.level === undefined) ? req.opacity : req.level;
-        var pos = _bestLabelPos(req.anchorX, req.anchorY, req.w, req.h,
-                                req.prefer, _labelObstacles(lvl));
-        _drawLeader(ctx, req.anchorX, req.anchorY, pos, req.w, req.h, req.color, req.opacity);
-        _labelRects(lvl).push({ lx: pos.lx, ly: pos.ly, w: req.w, h: req.h });
-        req.render(pos.lx, pos.ly);
+    var order = _labelQueue.slice();
+    order.sort(function (a, b) { return (a.prio - b.prio) || (a.seq - b.seq); });
+
+    var i, req;
+
+    /* 1. Résolution, du plus important au moins important : chacun arbitre
+       contre les boîtes déjà attribuées, donc contre plus important que lui. */
+    for (i = 0; i < order.length; i++) {
+        req = order[i];
+        req.lvl = (req.level === undefined) ? req.opacity : req.level;
+        req.pos = _bestLabelPos(req.anchorX, req.anchorY, req.w, req.h,
+                                req.prefer, _labelObstacles(req.lvl));
+        _labelRects(req.lvl).push({ lx: req.pos.lx, ly: req.pos.ly, w: req.w, h: req.h });
     }
+
+    /* 2. Tracé dans l'ordre inverse, pour que le plus important passe
+       par-dessus. Se servir en premier ne suffirait pas : sur une scène
+       saturée, aucune position n'est propre, et la moins mauvaise recouvre
+       quand même quelque chose. Autant que ce soit l'accessoire qui cède.
+
+       Le trait de rappel accompagne son étiquette plutôt que la résolution :
+       il doit se superposer comme elle. */
+    for (i = order.length - 1; i >= 0; i--) {
+        req = order[i];
+        _drawLeader(ctx, req.anchorX, req.anchorY, req.pos, req.w, req.h, req.color, req.opacity);
+        req.render(req.pos.lx, req.pos.ly);
+    }
+
     _labelQueue.length = 0;
 }
 
@@ -3871,6 +3945,7 @@ function drawAnimE() {
         _drawArmatures(ctx);
         if (simE.showFieldE) _drawFieldE(ctx);
 
+        _labelPrio = PRIO_SAVED;
         for (var _sri = 0; _sri < savedRuns.length; _sri++) {
             var _sr = savedRuns[_sri];
             if (_sr.hidden) continue;
@@ -3880,11 +3955,15 @@ function drawAnimE() {
         }
 
         if (simE.displayMode === 'trajectory' || simE.displayMode === 'both') _drawTrajectory(ctx);
+        _labelPrio = PRIO_CHRONO;
         if (simE.displayMode === 'chrono'     || simE.displayMode === 'both') _drawChronoSnapsE(ctx);
 
+        _labelPrio = PRIO_MOBILE;
         _drawParticleE(ctx);
+        _labelPrio = PRIO_PIN;
         _drawAnalysisPoints(ctx);
         _drawViewLabel(ctx);
+        _labelPrio = PRIO_HOVER;
         if (_animHoverSnapE) _drawAnimHoverE(ctx, _animHoverSnapE);
 
         /* Dans le try, impérativement : _bestLabelPos lit _labelMaxY et
