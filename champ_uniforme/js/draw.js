@@ -605,6 +605,7 @@ function drawAnim() {
     if (!_animCtx) return;
     var ctx = _animCtx;
     _updateViewAngles();
+    _updateLabelHalo(false);
     ctx.clearRect(0, 0, _animW, _animH);
     _resetLabelRects();
 
@@ -2035,6 +2036,29 @@ function _resetLabelRects() {
     _inkGridN = -1;
 }
 
+/* Halo (liseré blanc) des étiquettes de vecteur et de coordonnées : utile sur
+   fond clair ou sur la scène habituelle, mais un liseré blanc sur le fond vert
+   de la vue du dessus (proj-x) dessine un cadre autour du texte au lieu de le
+   détacher du décor — l'effet inverse de celui recherché.
+
+   La couverture verte croît continûment avec tx (l'horizon monte à mesure
+   que la caméra bascule), donc le halo suit la même fraction plutôt que de
+   basculer net : sans ça, il apparaîtrait ou disparaîtrait d'un coup en
+   plein milieu de l'animation de changement de vue.
+
+   Ne concerne pas les flèches elles-mêmes (_drawVecArrow a son propre halo,
+   indépendant) : sur un trait fin, contre la grille ou une autre flèche, le
+   même problème ne se pose pas.
+
+   Le mode électrique n'a jamais de sol vert (_drawBackgroundE est toujours
+   clair et plat) : la fraction y est donc nulle, quelle que soit la vue
+   affichée — même règle que oxy et proj-y en mode pesanteur. */
+var _labelHaloFrac = 0;
+
+function _updateLabelHalo(isElectric) {
+    _labelHaloFrac = isElectric ? 0 : _viewAngles.tx / (Math.PI / 2);
+}
+
 function _inkGridEnsure() {
     if (_inkGrid && _inkGridN === _labelInk.length) return _inkGrid;
     var cols = Math.max(1, Math.ceil(_animW / _INK_CELL));
@@ -2444,7 +2468,7 @@ function _renderVecLabel(ctx, lx, ly, m, vecName, line1, line2, color) {
     /* Halo : même bien placé, un bloc passe sur la grille, sur un rayon de
        champ ou sur la trajectoire — c'est ce qui rend tolérable, dans le
        calcul de coût, de croiser un trait fin plutôt que de s'exiler. */
-    var halo = _axisLW(3.2);
+    var halo = _axisLW(3.2) * _labelHaloFrac;
 
     /* Flèche au-dessus du nom, puis nom : les deux centrés dans la largeur du
        composé, comme les deux étages d'un <mover>. */
@@ -2611,9 +2635,9 @@ function _renderProjBlock(ctx, lx, ly, m, rows) {
         var y  = ly + m.lineH * (i + 0.5);
         var nw = _measureSubText(ctx, r.name, m.fontSize);
         ctx.fillStyle = r.color;
-        _drawSubText(ctx, r.name,  lx + m.nameW - nw, y, m.fontSize, null, _axisLW(3));
-        _drawSubText(ctx, '=',     eqX,               y, m.fontSize, null, _axisLW(3));
-        _drawSubText(ctx, r.value, valX,              y, m.fontSize, null, _axisLW(3));
+        _drawSubText(ctx, r.name,  lx + m.nameW - nw, y, m.fontSize, null, _axisLW(3) * _labelHaloFrac);
+        _drawSubText(ctx, "=",     eqX,               y, m.fontSize, null, _axisLW(3) * _labelHaloFrac);
+        _drawSubText(ctx, r.value, valX,              y, m.fontSize, null, _axisLW(3) * _labelHaloFrac);
     }
     ctx.restore();
 }
@@ -2631,7 +2655,7 @@ function _renderScalarName(ctx, lx, ly, text, color, m) {
     ctx.save();
     ctx.fillStyle    = color;
     ctx.textBaseline = 'middle';
-    _drawSubText(ctx, text, lx, ly + m.h / 2, m.sz, null, _axisLW(3));
+    _drawSubText(ctx, text, lx, ly + m.h / 2, m.sz, null, _axisLW(3) * _labelHaloFrac);
     ctx.restore();
 }
 
@@ -2884,7 +2908,7 @@ function _renderForceName(ctx, lx, ly, name, color, opacity, m) {
     /* Flèche puis nom, centrés dans la largeur du composé (cf. _drawMathArrow).
        Halo comme pour les blocs coordonnées : ces noms se posent souvent au
        bout d'une flèche, donc en travers d'une autre. */
-    var halo = _axisLW(2.6);
+    var halo = _axisLW(2.6) * _labelHaloFrac;
     _drawMathArrow(ctx, lx, ly, m.accW, m.sz, color, halo);
     _drawMathName(ctx, name, lx + (m.accW - m.tw) / 2, ly + m.arrowH + m.gap, m.sz, color, halo);
     ctx.restore();
@@ -3670,6 +3694,7 @@ function drawAnimE() {
        deviendrait inutilisable jusqu'au rechargement, sans message. */
     try {
         _updateViewAngles();
+        _updateLabelHalo(true);
         ctx.clearRect(0, 0, _animW, _animH);
         _resetLabelRects();
 
