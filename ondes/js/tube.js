@@ -1276,14 +1276,15 @@ function _drawMembrane(ctx) {
 //  finisse par plaquer toutes les particules contre leurs bornes.
 //
 //  ── Calibration ──────────────────────────────────────────────────────
-//  Une marche aléatoire de pas σ parcourt σ√n en n frames : le pas se
-//  déduit donc de l'excursion voulue et du temps qu'on veut y mettre.
-//  On vise ici l'excursion typique `wAmp` en une quinzaine de frames, soit
-//  σ ≈ 0,26 × wAmp — assez vif pour que le gaz paraisse franchement agité,
-//  mais avec des sauts de l'ordre du rayon d'une particule, donc perçus
-//  comme un mouvement continu et non comme le scintillement d'avant.
-//  L'écart-type stationnaire d'une marche rappelée vaut σ/√(2·pull), soit
-//  ici ≈ 1,3 × wAmp ; WANDER_CLAMP borne les rares excursions au-delà.
+//  Réglage COMMUN avec le gaz de l'onglet Principe des interférences
+//  (cf. _prinGazWander) : mêmes constantes, même façon de les poser.
+//  Ce qui masque le mouvement d'ensemble du gaz — seul indice visible là
+//  où la densité ne change pas — n'est pas l'amplitude de l'errance mais
+//  son PAS PAR FRAME, à comparer à la vitesse de l'onde. On règle donc les
+//  deux séparément, via σ_stationnaire = σ_pas/√(2·pull) : amplitude visée
+//  fixée par le budget de flou (σ ≤ λ/52), rappel lent (1/pull ≈ 71
+//  frames, ~1,2 s), pas déduit. Le gaz reste vivant sans scintiller, et le
+//  ballottement d'ensemble passe devant le bruit.
 //
 //  ── L'errance est ISOTROPE ───────────────────────────────────────────
 //  L'errance est à deux dimensions, comme une vraie agitation thermique —
@@ -1312,24 +1313,32 @@ function _drawMembrane(ctx) {
 //      large que ce qu'on lui accordait.
 //
 //  Le réglage se pose donc à l'envers de l'ancien : UNE SEULE amplitude
-//  pour les deux axes, fixée par un budget de flou explicite — σ ≤ λ/20,
-//  soit wAmp ≤ λ/26 puisque σ ≈ 1,3 × wAmp. Aux réglages par défaut
-//  (λ ≈ 367 px) la borne vaut 14 px et coïncide avec l'amplitude naturelle :
-//  l'errance est exactement isotrope. Elle ne se resserre qu'en haut de la
-//  plage de fréquence, là où λ devient petite — et le nuage s'y calme sur
-//  les DEUX axes, ce qui est cohérent à l'œil et profite en prime à la
-//  lecture des bandes, devenues fines.
+//  pour les deux axes, fixée par un budget de flou explicite (σ ≤ λ/52,
+//  cf. Calibration ci-dessus). L'errance est ainsi exactement isotrope ;
+//  elle ne se resserre qu'en haut de la plage de fréquence, là où λ devient
+//  petite — et le nuage s'y calme sur les DEUX axes, ce qui est cohérent à
+//  l'œil et profite en prime à la lecture des bandes, devenues fines.
 //
 //  L'errance n'entre pas dans la sélection, qui travaille sur x0.
-var WANDER_PULL  = 0.02;   // rappel vers la position de repos
-var WANDER_CLAMP = 2.5;    // borne dure, en multiples de wAmp
-var WANDER_LAM   = 1 / 26; // budget de flou : wAmp ≤ λ/26, soit σ ≤ λ/20
-var WANDER_MIN   = 2.5;    // px — plancher, pour que le gaz ne fige jamais
+var WANDER_PULL  = 0.014;   // rappel vers la position de repos
+var WANDER_CLAMP = 3.0;     // borne dure, en multiples de σ
+var WANDER_LAM   = 1 / 52;  // budget de flou : σ ≤ λ/52
+var WANDER_MIN   = 0.6;     // px — plancher, pour que le gaz ne fige jamais
 
-function _wanderAmp(H) {
-    var base = Math.max(4.5, Math.min(14, H * 0.07));   // px
+// Écart-type stationnaire de l'errance (px). Borné aussi par la hauteur de
+// bande : sur un tube écrasé, une errance calée sur λ seule sortirait des
+// parois en permanence et le repliement ferait tout le travail.
+function _wanderSigma(H) {
+    var parBande = Math.max(1.0, Math.min(4.5, H * 0.028));
     return Math.max(WANDER_MIN,
-                    Math.min(base, _sonFeaturePx() * WANDER_LAM));
+                    Math.min(parBande, _sonFeaturePx() * WANDER_LAM));
+}
+
+// Largeur du tirage uniforme par frame donnant l'écart-type stationnaire
+// voulu : σ_pas = σ_stat·√(2·pull), et un tirage uniforme de largeur w a pour
+// écart-type w/√12, d'où w = σ_stat·√(24·pull).
+function _wanderStep(sigma) {
+    return sigma * Math.sqrt(24 * WANDER_PULL);
 }
 
 // Taille caractéristique, en px, de ce que la source est en train d'émettre :
@@ -1370,9 +1379,9 @@ function _wander(c, step, max, spd) {
 
 // ── Rencontre d'une paroi : rebond, pas écrasement ────────────────────
 //
-//  L'errance verticale a un écart-type stationnaire de 1,3 × wAmp, soit
-//  jusqu'à 18 px. Sur une bande utile de 200 px, une particule sur cinq
-//  environ sort donc de la bande à un instant donné. Les ÉCRASER sur yMin
+//  L'errance verticale a un écart-type stationnaire σ de quelques px, et
+//  des excursions bornées à 3σ. Une particule proche d'une paroi en sort
+//  donc régulièrement. Les ÉCRASER sur yMin
 //  ou yMax — ce que faisait un simple clamp — ne les fait pas disparaître :
 //  ça les EMPILE, exactement sur deux droites. Le tube se bordait ainsi de
 //  deux liserés sombres, permanents et insensibles à ΔP, qui prenaient une
@@ -1404,10 +1413,10 @@ function _drawParticles(ctx) {
 
     // ── Paramètres d'errance de la frame (cf. calibration ci-dessus) ──
     // Un seul jeu de valeurs : l'errance est isotrope, le bornage par λ est
-    // déjà intégré à _wanderAmp.
-    var wAmp   = _wanderAmp(H);
-    var wStep  = 0.90 * wAmp;              // → σ ≈ 0,26 × wAmp par frame
-    var wMax   = wAmp * WANDER_CLAMP;
+    // déjà intégré à _wanderSigma.
+    var wSig   = _wanderSigma(H);
+    var wStep  = _wanderStep(wSig);
+    var wMax   = wSig * WANDER_CLAMP;
     var moving = !sim.paused;
     var spd    = (sim.speedFactor !== undefined) ? sim.speedFactor : 1.0;
 

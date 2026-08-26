@@ -665,13 +665,19 @@ Le motif ne tenait pas, pour deux raisons superposées :
   accordait.
 
 Le réglage se pose donc à l'envers de l'ancien : **une seule amplitude pour
-les deux axes**, fixée par un budget de flou explicite — `σ ≤ λ/20`, soit
-`wAmp ≤ λ/26` puisque `σ ≈ 1,3 × wAmp` (`WANDER_LAM`). Aux réglages par défaut
-(λ ≈ 367 px) la borne vaut 14 px et coïncide avec l'amplitude naturelle tirée
-de `H` : l'errance est exactement isotrope. Elle ne se resserre qu'en haut de
-la plage de fréquence, où λ devient petite — et le nuage s'y calme sur les
-**deux** axes, ce qui est cohérent à l'œil et profite en prime à la lecture
-des bandes, devenues fines. `WANDER_MIN` empêche le gaz de figer tout à fait.
+les deux axes**, fixée par un budget de flou explicite — `σ ≤ λ/52`
+(`WANDER_LAM`), l'écart-type stationnaire étant visé directement et le pas par
+frame déduit de `σ_pas = σ_stat·√(2·pull)` (`_wanderSigma`, `_wanderStep`).
+C'est **exactement le réglage du gaz de l'onglet Principe des interférences**
+(`_prinGazWander`) : mêmes constantes, même calibration. Ce qui masque le
+mouvement d'ensemble du gaz n'est pas l'amplitude de l'errance mais son **pas
+par frame**, à comparer à la vitesse de l'onde ; on baisse donc à la fois
+l'amplitude et le rappel (`WANDER_PULL = 0,014`, relaxation ≈ 71 frames), et
+le gaz reste vivant sans scintiller. L'errance est exactement isotrope ; elle
+ne se resserre qu'en haut de la plage de fréquence, où λ devient petite — et
+le nuage s'y calme sur les **deux** axes, ce qui est cohérent à l'œil et
+profite en prime à la lecture des bandes, devenues fines. `WANDER_MIN` empêche
+le gaz de figer tout à fait.
 L'errance n'entre pas dans la sélection, qui travaille sur `x0`.
 
 L'errance est ramenée dans la bande **à l'affichage** et non en lui réservant
@@ -679,9 +685,9 @@ sa place dans la bande utile : lui réserver l'excursion maximale laissait le
 gaz flotter entre deux marges vides, alors qu'une particule a le droit d'aller
 toucher la paroi.
 
-**Rebond, pas écrasement** (`_foldY`). L'errance a un écart-type
-stationnaire de `1,3 × wAmp`, jusqu'à 18 px : sur une bande utile de 200 px,
-une particule sur cinq environ en sort à un instant donné. Un simple *clamp*
+**Rebond, pas écrasement** (`_foldY`). L'errance a un écart-type stationnaire
+σ de quelques px, avec des excursions bornées à 3σ : une particule proche
+d'une paroi en sort régulièrement. Un simple *clamp*
 sur `yMin`/`yMax` ne les faisait pas disparaître, il les **empilait** sur deux
 droites — le tube se bordait de deux liserés sombres, permanents et
 insensibles à ΔP, qui consommaient une part appréciable de l'encre disponible
