@@ -401,6 +401,49 @@ function _niceGridStep(range, targetMajor) {
     return { major: major, minor: minor };
 }
 
+/* ── Densité de graduations : en pixels, pas en nombre ───────────
+   _niceGridStep recevait un nombre de divisions fixe (6 en x, 5 en y ;
+   6 et 4 en champ électrique) quelle que soit la taille du canvas. Les
+   graduations se resserraient donc à mesure que la fenêtre rétrécissait —
+   et les petites marques, à major / 5, tombaient à 6 ou 8 px d'intervalle :
+   ce n'est plus une graduation, c'est une trame. Dans l'autre sens, 6
+   divisions sur un canvas de 1400 px, c'est un label tous les 220 px.
+
+   Le nombre de divisions est maintenant déduit de la place disponible en
+   px. GRID_MAJOR_PX_* est l'espacement visé entre deux graduations
+   chiffrées sur un canvas de référence ; il suit _txtScale(), puisque
+   c'est la taille des labels qui dicte la place qu'il leur faut. Les
+   valeurs sont calées pour reproduire la densité actuelle sur un canvas de
+   bureau (~900 × 540) : c'est en petite fenêtre que le rendu change.
+
+   L'axe x demande plus d'espace que l'axe y : ses labels sont côte à côte,
+   c'est leur largeur qui compte, alors qu'en y ils sont empilés. */
+var GRID_MAJOR_PX_X  = 145;   // pesanteur, axe x
+var GRID_MAJOR_PX_Y  = 90;    // pesanteur, axe y
+/* Champ électrique, axe x : calé un cran plus serré que le mode pesanteur.
+   Sa plage physique n'admet que des pas de 0,05 ou 0,1 m — deux fois plus
+   grossiers l'un que l'autre — et 145 px le faisait retomber à 5 divisions
+   sur grand écran là où 120 px lui en donne 10. */
+var GRID_MAJOR_PX_XE = 120;
+var GRID_MAJOR_PX_YE = 55;    // champ électrique, axe y (demi-axe, court)
+var GRID_MINOR_MIN_PX = 7;    // espacement minimal des petites marques
+
+function _gridTargetCount(pxSpan, idealPx) {
+    if (!(pxSpan > 0)) return 2;
+    return Math.max(2, Math.min(14, Math.round(pxSpan / (idealPx * _txtScale()))));
+}
+
+/* Pas de graduation d'un axe, à partir de son étendue physique et de la
+   place qu'elle occupe à l'écran. */
+function _gridSteps(range, pxSpan, idealPx) {
+    var g = _niceGridStep(range, _gridTargetCount(pxSpan, idealPx));
+    /* Petites marques supprimées si elles se retrouvent trop serrées : le
+       pas « joli » retenu peut valoir jusqu'à 0,57 fois le pas visé. */
+    var pxPerUnit = (range > 0) ? pxSpan / range : 0;
+    if (g.minor * pxPerUnit < GRID_MINOR_MIN_PX * _txtScale()) g.minor = g.major;
+    return g;
+}
+
 /* Nombre de décimales à afficher pour un pas donné */
 function _gridDec(step) {
     if (step >= 10)  return 0;
@@ -654,8 +697,8 @@ function _drawGrid(ctx) {
     var fontSize = _animFontSize(11, 16, 0.032);
 
     /* Pas adaptatifs pour chaque axe */
-    var xGrid    = _niceGridStep(xMaxPhy, 6);
-    var yGrid    = _niceGridStep(yMaxPhy, 5);
+    var xGrid    = _gridSteps(xMaxPhy, _animW - sim.originX, GRID_MAJOR_PX_X);
+    var yGrid    = _gridSteps(yMaxPhy, _animH - sim.originY, GRID_MAJOR_PX_Y);
     var xMajor   = xGrid.major,  xMinor = xGrid.minor;
     var yMajor   = yGrid.major,  yMinor = yGrid.minor;
     var xDec     = _gridDec(xMajor);
@@ -2236,8 +2279,8 @@ function _drawGridE(ctx) {
        pas sur la marge visuelle du canvas */
     var xGridMax = _effXMaxE(sim);
     var yGridMax = _effYMaxE(sim);
-    var xGrid = _niceGridStep(xGridMax, 6);
-    var yGrid = _niceGridStep(yGridMax, 4);
+    var xGrid = _gridSteps(xGridMax, xGridMax * sim.scaleX, GRID_MAJOR_PX_XE);
+    var yGrid = _gridSteps(yGridMax, yGridMax * sim.scaleY, GRID_MAJOR_PX_YE);
     var xDec  = _gridDec(xGrid.major);
     var yDec  = _gridDec(yGrid.major);
     var fontSize = _animFontSize(11, 15, 0.030);
