@@ -609,6 +609,7 @@ function drawAnim() {
     _updateLabelCrowd();
     ctx.clearRect(0, 0, _animW, _animH);
     _resetLabelRects();
+    _namedMobilePts.length = 0;
 
     _drawBackground(ctx);
     _drawGrid(ctx);
@@ -635,6 +636,7 @@ function drawAnim() {
 
     /* Runs sauvegardées (en dessous de la run courante) */
     _labelPrio = PRIO_SAVED;
+    var _leadDone = false;
     for (var _sri = 0; _sri < savedRuns.length; _sri++) {
         var _sr = savedRuns[_sri];
         if (_sr.hidden) continue;
@@ -645,7 +647,18 @@ function drawAnim() {
             _drawSavedChronoSnaps(ctx, _sr);
         }
         if (_replaySessionActive) {
-            _drawSavedBall(ctx, _sr);
+            /* Première course visible : c'est elle qui porte les étiquettes,
+               au rang du mobile et sous sa propre source, le temps de sa
+               balle. Le rang est rendu tout de suite après : les courses
+               suivantes n'ont aucune raison d'en hériter. */
+            var _lead = !_leadDone;
+            if (_lead) {
+                _leadDone  = true;
+                _labelPrio = PRIO_MOBILE;
+                _labelSrc  = 'rejeu';
+            }
+            _drawSavedBall(ctx, _sr, _lead);
+            if (_lead) _labelPrio = PRIO_SAVED;
         }
     }
 
@@ -658,13 +671,14 @@ function drawAnim() {
     }
 
     _labelPrio = PRIO_MOBILE;
+    _labelSrc  = 'mobile';
     _drawBall(ctx);
     _drawViewLabel(ctx);
     _labelPrio = PRIO_PIN;
     _drawAnalysisPoints(ctx);
     _labelPrio = PRIO_HOVER;
     _labelSrc  = 'hover';
-    if (_animHoverSnap) _drawAnimHover(ctx, _animHoverSnap);
+    if (_animHoverSnap && !_hoverOnNamedMobile(_animHoverSnap)) _drawAnimHover(ctx, _animHoverSnap);
 
     /* Le décor est complet : les étiquettes peuvent enfin arbitrer contre
        l'image entière. Avant le toast, qui est un message par-dessus la
@@ -1194,29 +1208,38 @@ function _drawSavedChronoSnaps(ctx, run) {
 /* ─────────────────────────────────────────────────
    Ballon pour une run sauvegardée (replay)
 ───────────────────────────────────────────────── */
-function _drawSavedBall(ctx, run) {
+function _drawSavedBall(ctx, run, withVec) {
     var pts = run.graphData;
     if (pts.length === 0) return;
 
-    /* Interpolation linéaire de la position à _replayT */
+    /* Interpolation linéaire de l'état à _replayT. Les vitesses et
+       accélérations le sont aussi désormais : la balle en tête du rejeu
+       porte ses vecteurs, qui doivent suivre le même instant que sa
+       position — un vecteur lu au point d'échantillonnage précédent
+       traînerait visiblement derrière la balle. */
     var idx = pts.length - 1;
     for (var k = 0; k < pts.length - 1; k++) {
         if (pts[k + 1].t > _replayT) { idx = k; break; }
     }
     var d0 = pts[idx];
-    var x, y;
+    var st;
     if (idx < pts.length - 1 && pts[idx + 1].t > pts[idx].t) {
         var d1 = pts[idx + 1];
         var alpha = (_replayT - d0.t) / (d1.t - d0.t);
-        x = d0.x + alpha * (d1.x - d0.x);
-        y = d0.y + alpha * (d1.y - d0.y);
-        var vyInterp = d0.vy + alpha * (d1.vy - d0.vy);
+        st = {
+            x:  d0.x  + alpha * (d1.x  - d0.x),
+            y:  d0.y  + alpha * (d1.y  - d0.y),
+            vx: d0.vx + alpha * (d1.vx - d0.vx),
+            vy: d0.vy + alpha * (d1.vy - d0.vy),
+            ax: d0.ax + alpha * (d1.ax - d0.ax),
+            ay: d0.ay + alpha * (d1.ay - d0.ay)
+        };
     } else {
-        x = d0.x; y = d0.y;
-        var vyInterp = d0.vy;
+        st = { x: d0.x, y: d0.y, vx: d0.vx, vy: d0.vy, ax: d0.ax, ay: d0.ay };
     }
+    var x = st.x, y = st.y;
 
-    var p = _toCanvasSplit(x, y, vyInterp);
+    var p = _toCanvasSplit(x, y, st.vy);
     var r = _ballRadius();
 
     ctx.save();
@@ -1247,10 +1270,29 @@ function _drawSavedBall(ctx, run) {
     }
 
     ctx.restore();
+
+    /* La balle en tête du rejeu tient le rôle du mobile : ce sont ses
+       vecteurs — ceux enregistrés avec la course — qu'on suit, nommés comme
+       ceux du ballon en vol. Les autres courses rejouées restent muettes :
+       une scène qui porte autant de jeux d'étiquettes que de courses n'en
+       laisse lire aucun. */
+    if (withVec) {
+        st.phys = { mass: run.mass, g: run.g, windForce: run.windForce,
+                    useFriction: run.useFriction, k: 0.15 };
+        _drawSnapVectors(ctx, p, st, {
+            pos:    run.showVecPos,
+            vit:    run.showVecVit,
+            acc:    run.showVecAcc,
+            forces: run.showVecForces,
+            sumF:   run.showVecSumF,
+            coords: sim.hoverShowCoords,
+            names:  true
+        });
+    }
 }
 
 /* Rejoue une particule (pas le ballon de pesanteur) pour une run électrique sauvegardée */
-function _drawSavedBallE(ctx, run) {
+function _drawSavedBallE(ctx, run, withVec) {
     var pts = run.graphData;
     if (pts.length === 0) return;
 
@@ -1259,15 +1301,22 @@ function _drawSavedBallE(ctx, run) {
         if (pts[k + 1].t > _replayT) { idx = k; break; }
     }
     var d0 = pts[idx];
-    var x, y;
+    var st;
     if (idx < pts.length - 1 && pts[idx + 1].t > pts[idx].t) {
         var d1 = pts[idx + 1];
         var alpha = (_replayT - d0.t) / (d1.t - d0.t);
-        x = d0.x + alpha * (d1.x - d0.x);
-        y = d0.y + alpha * (d1.y - d0.y);
+        st = {
+            x:  d0.x  + alpha * (d1.x  - d0.x),
+            y:  d0.y  + alpha * (d1.y  - d0.y),
+            vx: d0.vx + alpha * (d1.vx - d0.vx),
+            vy: d0.vy + alpha * (d1.vy - d0.vy),
+            ax: d0.ax + alpha * (d1.ax - d0.ax),
+            ay: d0.ay + alpha * (d1.ay - d0.ay)
+        };
     } else {
-        x = d0.x; y = d0.y;
+        st = { x: d0.x, y: d0.y, vx: d0.vx, vy: d0.vy, ax: d0.ax, ay: d0.ay };
     }
+    var x = st.x, y = st.y;
 
     var p = toCanvas(x, y);
     var r = _particleRadius();
@@ -1286,6 +1335,31 @@ function _drawSavedBallE(ctx, run) {
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(charge, p.cx, p.cy);
     ctx.restore();
+
+    /* Même règle qu'en pesanteur : la particule en tête du rejeu porte ses
+       vecteurs nommés. Les échelles sont celles de SA course — les mêmes
+       que ses instantanés chronophotographiques — le temps de l'appel. */
+    if (withVec) {
+        var _rvs = _runVecScalesE(run);
+        var _vBak = _vecScaleVitOverride, _aBak = _vecScaleAccOverride;
+        _vecScaleVitOverride = _rvs.vit;
+        _vecScaleAccOverride = _rvs.acc;
+        st.phys = _fieldForceAt(run, x, y);
+        try {
+            _drawSnapVectors(ctx, p, st, {
+                pos:    run.showVecPos,
+                vit:    run.showVecVit,
+                acc:    run.showVecAcc,
+                forces: run.showVecForces,
+                sumF:   run.showVecSumF,
+                coords: sim.hoverShowCoords,
+                names:  true
+            });
+        } finally {
+            _vecScaleVitOverride = _vBak;
+            _vecScaleAccOverride = _aBak;
+        }
+    }
 }
 
 /* ─────────────────────────────────────────────────
@@ -1413,21 +1487,34 @@ function _drawBall(ctx) {
 
     ctx.restore();
 
-    /* Vecteurs sur la balle courante */
-    if (sim.showVecPos) _drawVectorPos(ctx, sim.x, sim.y, 1.0);
-    if (sim.showVecVit) {
-        var _dV = _vecCanvasDelta(sim.vx, sim.vy, VEC_SCALE_VIT);
-        _drawVecDispVA(ctx, p.cx, p.cy, _dV.dx, _dV.dy, COL_VEC_VIT, null, 1.0);
-    }
-    if (sim.showVecAcc) {
-        var _dA = _vecCanvasDelta(sim.ax, sim.ay, VEC_SCALE_ACC);
-        _drawVecDispVA(ctx, p.cx, p.cy, _dA.dx, _dA.dy, COL_VEC_ACC, null, 1.0);
-    }
-    if (sim.showVecForces || sim.showVecSumF) {
-        var _bp = { mass: sim.mass, g: sim.g, windForce: sim.windForce, useFriction: sim.useFriction, k: sim.k };
-        if (sim.showVecForces) _drawForcesAt(ctx, p.cx, p.cy, sim.vx, sim.vy, 1.0, _bp);
-        if (sim.showVecSumF)   _drawSumFAt(ctx,   p.cx, p.cy, sim.vx, sim.vy, 1.0, _bp);
-    }
+    /* Vecteurs sur la balle courante, nommés tant qu'elle vole */
+    _drawSnapVectors(ctx, p, {
+        x: sim.x, y: sim.y, vx: sim.vx, vy: sim.vy, ax: sim.ax, ay: sim.ay,
+        phys: { mass: sim.mass, g: sim.g, windForce: sim.windForce, useFriction: sim.useFriction, k: sim.k }
+    }, _mobileShow());
+}
+
+/* ── Ce que le mobile montre de lui-même ─────────────────────────
+   Les cases du panneau, plus la question de savoir s'il faut nommer ce
+   qu'elles affichent. Le vol est le seul moment où le mobile mérite ses
+   étiquettes : elles suivent alors la grandeur qui change sous les yeux,
+   ce qu'aucune épingle ne peut faire. Au repos — avant le lancer, une fois
+   posé au sol — la scène est immobile et se lit au survol ou à l'épingle,
+   sans que rien n'encombre en permanence.
+
+   « Tant qu'elle vole » couvre aussi la pause en plein vol : c'est un arrêt
+   sur image, pas une fin de course, et l'instant qu'on met en pause est
+   justement celui qu'on veut lire. */
+function _mobileShow() {
+    return {
+        pos:    sim.showVecPos,
+        vit:    sim.showVecVit,
+        acc:    sim.showVecAcc,
+        forces: sim.showVecForces,
+        sumF:   sim.showVecSumF,
+        coords: sim.hoverShowCoords,
+        names:  sim.t > 0 && !sim.ended
+    };
 }
 
 /* ── Vecteur position (de O vers la balle) ── */
@@ -3112,18 +3199,49 @@ function _queueKinLabel(ctx, lbl, projLine) {
     }
 }
 
+/* ── Le survol s'efface devant le mobile qu'il recouvre ──────────
+   Un point déjà nommé n'a pas besoin de l'être deux fois. Quand le mobile
+   porte ses étiquettes — il vole, ou c'est la balle de tête du rejeu — et
+   que le curseur accroche un point de trajectoire posé sur lui, le survol
+   redirait exactement la même chose à quelques pixels près : deux jeux
+   d'étiquettes pour un seul instant, l'un décalé par l'anti-chevauchement.
+
+   Le seuil est le rayon d'accroche du survol lui-même : à cette distance,
+   ce qu'on désigne, c'est le mobile. Au-delà, le survol reprend tous ses
+   droits — c'est alors un autre instant de la trajectoire, qui mérite bien
+   sa propre étiquette à côté de celle du mobile.
+
+   La liste est remplie pendant l'image par _drawSnapVectors, qui sait seul
+   quels points ont été nommés, et le mobile est toujours tracé avant le
+   survol dans les deux modes. */
+var _namedMobilePts = [];
+
+function _hoverOnNamedMobile(snap) {
+    if (_namedMobilePts.length === 0) return false;
+    var p = _toCanvasSplit(snap.x, snap.y, snap.vy || 0);
+    var r = _hoverPickRadius();
+    for (var i = 0; i < _namedMobilePts.length; i++) {
+        var m = _namedMobilePts[i];
+        if (Math.hypot(p.cx - m.cx, p.cy - m.cy) < r) return true;
+    }
+    return false;
+}
+
 function _drawAnimHover(ctx, snap, isPinned) {
     var p = _toCanvasSplit(snap.x, snap.y, snap.vy || 0);
     /* Un point épinglé qui sort du cadre (zoom) ne doit plus être affiché,
        ni lui ni ses étiquettes. */
     if (isPinned && (p.cx < 0 || p.cx > _animW || p.cy < 0 || p.cy > _animH)) return;
 
-    var showPos    = isPinned ? pinShowVecPos    : sim.showVecPos;
-    var showVit    = isPinned ? pinShowVecVit    : sim.showVecVit;
-    var showAcc    = isPinned ? pinShowVecAcc    : sim.showVecAcc;
-    var showForces = isPinned ? pinShowVecForces : sim.showVecForces;
-    var showSumF   = isPinned ? pinShowVecSumF   : sim.showVecSumF;
-    var showCoords = isPinned ? pinShowCoords    : sim.hoverShowCoords;
+    var sh = {
+        pos:    isPinned ? pinShowVecPos    : sim.showVecPos,
+        vit:    isPinned ? pinShowVecVit    : sim.showVecVit,
+        acc:    isPinned ? pinShowVecAcc    : sim.showVecAcc,
+        forces: isPinned ? pinShowVecForces : sim.showVecForces,
+        sumF:   isPinned ? pinShowVecSumF   : sim.showVecSumF,
+        coords: isPinned ? pinShowCoords    : sim.hoverShowCoords,
+        names:  true
+    };
 
     /* ── Point survolé ── */
     ctx.save();
@@ -3139,11 +3257,33 @@ function _drawAnimHover(ctx, snap, isPinned) {
     ctx.stroke();
     ctx.restore();
 
+    _drawSnapVectors(ctx, p, snap, sh);
+}
+
+/* ── Les vecteurs d'un point, et ce qui les nomme ────────────────
+   Un instantané { x, y, vx, vy, ax, ay, phys? } déjà converti en pixels (p),
+   et le choix de ce qu'on en montre :
+
+     sh = { pos, vit, acc, forces, sumF, coords, names }
+
+   names sépare le tracé de la nomination. Une flèche se trace toujours dès
+   que sa case est cochée ; son nom, lui, ne se pose que là où on a décidé
+   qu'une étiquette avait sa place — au survol, sur une épingle, et sur le
+   mobile pendant qu'il vole. Partout ailleurs — chronophotographie, courses
+   sauvegardées — les flèches restent muettes, sans quoi la scène porterait
+   autant d'étiquettes que de points.
+
+   Le corps était celui de _drawAnimHover seul. Le mobile en dessinait sa
+   propre copie, plus courte : les mêmes flèches, sans un nom. */
+function _drawSnapVectors(ctx, p, snap, sh) {
+    if (sh.names) _namedMobilePts.push({ cx: p.cx, cy: p.cy });
+
     /* ── Prépare les labels à placer ── */
     var toPlace  = [];   /* { anchorX, anchorY, vecName, line1, line2, color, prefer } */
     var origin   = toCanvas(0, 0);
+    var showCoords = sh.coords;
 
-    if (showPos) {
+    if (sh.pos) {
         _drawVectorPos(ctx, snap.x, snap.y, 1.0);
         toPlace.push({
             anchorX: (origin.cx + p.cx) / 2,
@@ -3159,7 +3299,7 @@ function _drawAnimHover(ctx, snap, isPinned) {
             showCoords: showCoords
         });
     }
-    if (showVit) {
+    if (sh.vit) {
         var _vscV = _vecScaleVitOverride !== null ? _vecScaleVitOverride : VEC_SCALE_VIT;
         var dvx, dvy;
         if (_vecScaleVitOverride !== null) {
@@ -3192,7 +3332,7 @@ function _drawAnimHover(ctx, snap, isPinned) {
             showCoords: showCoords
         });
     }
-    if (showAcc) {
+    if (sh.acc) {
         var _vscA = _vecScaleAccOverride !== null ? _vecScaleAccOverride : VEC_SCALE_ACC;
         var dax, day;
         if (_vecScaleAccOverride !== null) {
@@ -3241,7 +3381,7 @@ function _drawAnimHover(ctx, snap, isPinned) {
        Le côté préféré suit l'axe d'écrasement — proj-x aplatit la scène sur
        une bande horizontale, l'espace libre est donc au-dessus et en dessous ;
        proj-y la réduit à une colonne, l'espace est à droite et à gauche. */
-    if (projLine && showCoords !== false && toPlace.length > 0) {
+    if (sh.names && projLine && showCoords !== false && toPlace.length > 0) {
         var rows = [];
         for (var ri = 0; ri < toPlace.length; ri++) {
             var rl = toPlace[ri];
@@ -3273,7 +3413,7 @@ function _drawAnimHover(ctx, snap, isPinned) {
        Seule différence avec la vue projetée : la notation vectorielle est
        conservée telle quelle — flèche, nom, grandes parenthèses. C'est elle
        qui a un sens ici, puisque le vecteur en a un. */
-    if (!projLine && showCoords !== false && toPlace.length > 1) {
+    if (sh.names && !projLine && showCoords !== false && toPlace.length > 1) {
         var items = [];
         for (var pi2 = 0; pi2 < toPlace.length; pi2++) {
             items.push({
@@ -3294,21 +3434,23 @@ function _drawAnimHover(ctx, snap, isPinned) {
         toPlace.length = 0;
     }
 
-    for (var i = 0; i < toPlace.length; i++) {
-        _queueKinLabel(ctx, toPlace[i], projLine);
+    if (sh.names) {
+        for (var i = 0; i < toPlace.length; i++) {
+            _queueKinLabel(ctx, toPlace[i], projLine);
+        }
     }
 
     /* ── Forces (utilisent le contexte physique du point épinglé) ── */
-    if (showForces || showSumF) {
+    if (sh.forces || sh.sumF) {
         if (_vecScaleVitOverride !== null) {
             /* Mode électrique : force électrique FE, pas le poids */
             var phE = snap.phys || _getEPhys(snap.x, snap.y);
-            if (showForces) _drawForcesAtE(ctx, p.cx, p.cy, snap.vx, snap.vy, 1.0, phE, true);
-            if (showSumF)   _drawSumFAtE(ctx,   p.cx, p.cy, snap.vx, snap.vy, 1.0, phE, true);
+            if (sh.forces) _drawForcesAtE(ctx, p.cx, p.cy, snap.vx, snap.vy, 1.0, phE, sh.names);
+            if (sh.sumF)   _drawSumFAtE(ctx,   p.cx, p.cy, snap.vx, snap.vy, 1.0, phE, sh.names);
         } else {
             var ph = snap.phys || { mass: sim.mass, g: sim.g, windForce: sim.windForce, useFriction: sim.useFriction, k: sim.k };
-            if (showForces) _drawForcesAt(ctx, p.cx, p.cy, snap.vx, snap.vy, 1.0, ph, true);
-            if (showSumF)   _drawSumFAt(ctx,   p.cx, p.cy, snap.vx, snap.vy, 1.0, ph, true);
+            if (sh.forces) _drawForcesAt(ctx, p.cx, p.cy, snap.vx, snap.vy, 1.0, ph, sh.names);
+            if (sh.sumF)   _drawSumFAt(ctx,   p.cx, p.cy, snap.vx, snap.vy, 1.0, ph, sh.names);
         }
     }
 }
@@ -3359,10 +3501,11 @@ function _renderForceName(ctx, lx, ly, name, color, opacity, m) {
    même point : deux P, deux ΣF, l'un décalé par l'anti-chevauchement — le
    doublon visible.
 
-   showNames n'est donc vrai qu'aux appels venus de _drawAnimHover, survol ou
-   épingle. Partout ailleurs — ballon, particule, instantanés
-   chronophotographiques, courses sauvegardées — les flèches sont tracées et
-   déclarées au décor, sans un mot.
+   showNames n'est donc vrai que là où une étiquette a été demandée : le
+   survol, l'épingle, et le mobile pendant qu'il vole — un point qui bouge
+   est le seul que le survol ne sait pas suivre. Partout ailleurs —
+   instantanés chronophotographiques, courses sauvegardées, mobile au repos
+   — les flèches sont tracées et déclarées au décor, sans un mot.
 ───────────────────────────────────────────────── */
 function _drawForcesAt(ctx, cx, cy, vx, vy, opacity, phys, showNames) {
     var forces = [];
@@ -3999,27 +4142,13 @@ function _drawParticleE(ctx) {
     ctx.fillText(charge, p.cx, p.cy);
     ctx.restore();
 
-    var _vp = _viewProjFactors();
-    if (sim.showVecPos)    _drawVectorPos(ctx, sim.x, sim.y, 1.0);
-    if (sim.showVecVit) {
-        var _cvxP = sim.vx * sim.scaleX, _cvyP = -sim.vy * sim.scaleY;
-        var _cmP = Math.hypot(_cvxP, _cvyP) || 1, _lP = Math.hypot(sim.vx, sim.vy) * _vsE.vit;
-        var _vitPerpP = sim.armatureMode === 'perp-x';
-        _drawVecDispVA(ctx, p.cx, p.cy, _cvxP * _lP / _cmP, _cvyP * _lP / _cmP,
-            _vitPerpP ? COL_VEC_VIT_PERP : COL_VEC_VIT, null, 1.0, _vitPerpP ? VEC_VIT_LW_PERP : undefined);
-    }
-    if (sim.showVecAcc) {
-        var _caxP = sim.ax * sim.scaleX, _cayP = -sim.ay * sim.scaleY;
-        var _caP = Math.hypot(_caxP, _cayP) || 1, _laP = Math.hypot(sim.ax, sim.ay) * _vsE.acc;
-        var _accPerpP = sim.armatureMode === 'perp-x';
-        _drawVecDispVA(ctx, p.cx, p.cy, _caxP * _laP / _caP, _cayP * _laP / _caP,
-            _accPerpP ? COL_VEC_ACC_PERP : COL_VEC_ACC, null, 1.0, _accPerpP ? VEC_LW_PERP : undefined);
-    }
-    if (sim.showVecForces || sim.showVecSumF) {
-        var ep = _getEPhys();
-        if (sim.showVecForces) _drawForcesAtE(ctx, p.cx, p.cy, sim.vx, sim.vy, 1.0, ep);
-        if (sim.showVecSumF)   _drawSumFAtE  (ctx, p.cx, p.cy, sim.vx, sim.vy, 1.0, ep);
-    }
+    /* Mêmes vecteurs qu'au survol, et nommés tant que la particule vole :
+       drawAnimE a déjà posé les échelles électriques en override, le tracé
+       est donc identique à celui qui était écrit ici à la main. */
+    _drawSnapVectors(ctx, p, {
+        x: sim.x, y: sim.y, vx: sim.vx, vy: sim.vy, ax: sim.ax, ay: sim.ay,
+        phys: _getEPhys()
+    }, _mobileShow());
 }
 
 function _updateAnimHoverE(mouseX, mouseY) {
@@ -4133,6 +4262,7 @@ function drawAnimE() {
         _updateLabelCrowd();
         ctx.clearRect(0, 0, _animW, _animH);
         _resetLabelRects();
+        _namedMobilePts.length = 0;
 
         _drawBackgroundE(ctx);
         _drawGridE(ctx);
@@ -4141,12 +4271,22 @@ function drawAnimE() {
         if (simE.showFieldE) _drawFieldE(ctx);
 
         _labelPrio = PRIO_SAVED;
+        var _leadDoneE = false;
         for (var _sri = 0; _sri < savedRuns.length; _sri++) {
             var _sr = savedRuns[_sri];
             if (_sr.hidden) continue;
             if (simE.displayMode === 'trajectory' || simE.displayMode === 'both') _drawSavedTrajectory(ctx, _sr);
             if (simE.displayMode === 'chrono'     || simE.displayMode === 'both') _drawSavedChronoSnapsE(ctx, _sr);
-            if (_replaySessionActive) _drawSavedBallE(ctx, _sr);
+            if (_replaySessionActive) {
+                var _leadE = !_leadDoneE;
+                if (_leadE) {
+                    _leadDoneE = true;
+                    _labelPrio = PRIO_MOBILE;
+                    _labelSrc  = 'rejeu';
+                }
+                _drawSavedBallE(ctx, _sr, _leadE);
+                if (_leadE) _labelPrio = PRIO_SAVED;
+            }
         }
 
         if (simE.displayMode === 'trajectory' || simE.displayMode === 'both') _drawTrajectory(ctx);
@@ -4154,13 +4294,14 @@ function drawAnimE() {
         if (simE.displayMode === 'chrono'     || simE.displayMode === 'both') _drawChronoSnapsE(ctx);
 
         _labelPrio = PRIO_MOBILE;
+        _labelSrc  = 'mobile';
         _drawParticleE(ctx);
         _labelPrio = PRIO_PIN;
         _drawAnalysisPoints(ctx);
         _drawViewLabel(ctx);
         _labelPrio = PRIO_HOVER;
         _labelSrc  = 'hover';
-        if (_animHoverSnapE) _drawAnimHoverE(ctx, _animHoverSnapE);
+        if (_animHoverSnapE && !_hoverOnNamedMobile(_animHoverSnapE)) _drawAnimHoverE(ctx, _animHoverSnapE);
 
         /* Dans le try, impérativement : _bestLabelPos lit _labelMaxY et
            _viewAngles, que le finally ci-dessous s'apprête à restaurer. */
