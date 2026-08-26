@@ -1978,8 +1978,48 @@ function clearSelection() {
 //              _drawCordeBeacons, _drawCordeRuler
 // ══════════════════════════════════════════════════════════════════════
 
-// Épaisseur visuelle du corps du pot vibrant (px)
-var SHAKER_BASE_W = 28;
+// ── Dimensions du pot vibrant ─────────────────────────────────────────
+//  Le socle est un rectangle PLUS HAUT QUE LARGE, et doit le rester à
+//  l'identique quelle que soit la fenêtre. Le défaut n'était pas la forme
+//  mais sa dérive : la hauteur suivait la hauteur de zone pendant que la
+//  largeur, elle, était figée (28 px de colonne). Sur grande fenêtre le
+//  rapport passait de ~0,55 à ~0,30 — le socle s'étirait vers le haut.
+//  La largeur est donc désormais déduite de la hauteur, à rapport constant.
+
+// Hauteur du socle, en fraction de la hauteur de zone (inchangée).
+var SHAKER_BASE_H_FRAC = 0.18;
+
+// Rapport largeur / hauteur du socle. En dessous de 1 : plus haut que large.
+var SHAKER_BASE_W_OVER_H = 0.65;
+
+// Part du socle dans la colonne du pot (le reste est de l'air autour).
+var SHAKER_BASE_FILL = 0.80;
+
+var SHAKER_COL_W_MIN = 28;
+
+// Marge horizontale gauche du canvas corde : elle appartient à la colonne du
+// pot, donc elle compte dans la largeur du socle (cf. _drawShaker) et doit
+// être retranchée quand on remonte de la largeur voulue à celle de la colonne.
+var CORDE_MARGIN_H = 13;
+
+
+// Largeur de socle des petites fenêtres — celle où la colonne est au
+// plancher SHAKER_COL_W_MIN. Sert de référence à la tête du support, qui y
+// retrouve exactement son rendu d'origine (cf. _drawShaker).
+var SHAKER_BASE_W_REF = Math.round((CORDE_MARGIN_H + SHAKER_COL_W_MIN) * SHAKER_BASE_FILL);
+
+function _shakerBaseH(zoneH) {
+    return Math.max(12, Math.round(zoneH * SHAKER_BASE_H_FRAC));
+}
+
+// Largeur de colonne telle que le socle qu'elle contient ait exactement le
+// rapport voulu. Bornée par une fraction de la largeur du canvas : sur un
+// canvas court et large, le pot ne doit pas dévorer la corde.
+function _shakerColW(zoneH, w) {
+    var wanted = Math.round(_shakerBaseH(zoneH) * SHAKER_BASE_W_OVER_H / SHAKER_BASE_FILL)
+                 - CORDE_MARGIN_H;
+    return Math.max(SHAKER_COL_W_MIN, Math.min(wanted, Math.round(w * 0.16)));
+}
 
 // ── Échelle verticale de la corde (cm → px) ───────────────────────────
 //  L'échelle verticale (y) est volontairement DÉCOUPLÉE de l'échelle
@@ -2065,6 +2105,43 @@ function cordeYAxisCm() {
     return Math.max(CORDE_Y_AXIS_CM, 1.06 * Math.max(lim.up, lim.down));
 }
 
+
+// ── Épaisseur du trait de corde (aspect Continu) ──────────────────────
+//  Deux informations superposées dans une seule grandeur :
+//
+//  1. μ, encodé linéairement de CORDE_LW_MIN (μ = 0,1) à CORDE_LW_MAX
+//     (μ = 4). C'est une grandeur PHYSIQUE affichée : à fenêtre donnée, le
+//     rapport d'épaisseur entre deux μ ne doit jamais bouger.
+//  2. la taille du cadre, par un facteur commun aux deux bornes — donc sans
+//     effet sur le point 1.
+//
+//  Le facteur est indexé sur la LARGEUR (la longueur de corde), et non sur
+//  la hauteur : même raisonnement que les billes du mode Discret, dont il
+//  reprend d'ailleurs la référence — une fenêtre haute et étroite ne doit
+//  pas épaissir la corde alors que rien n'a changé horizontalement. Sans
+//  lui, la corde valait 4 % de la hauteur de zone en petite fenêtre et
+//  0,2 % en grande, et le passage Continu → Discret faisait un saut
+//  d'épaisseur d'un facteur 4.
+//
+//  Plancher à 1 : les petites fenêtres gardent exactement le rendu
+//  d'origine, jamais plus fin. Plafond, sinon un écran très large donnerait
+//  un câble.
+var CORDE_LW_MIN   = 1.5;
+var CORDE_LW_MAX   = 5.0;
+var CORDE_LW_REF_L = 900;   // longueur de corde (px) où le facteur vaut 1
+var CORDE_LW_K_MAX = 2.2;
+
+function _cordeLineWScale() {
+    var L = simCorde.cordeLength;
+    if (!(L > 0)) return 1;
+    return Math.max(1, Math.min(L / CORDE_LW_REF_L, CORDE_LW_K_MAX));
+}
+
+function _cordeLineW() {
+    var muFrac = (simCorde.mu - 0.1) / (4.0 - 0.1);
+    return (CORDE_LW_MIN + muFrac * (CORDE_LW_MAX - CORDE_LW_MIN))
+           * _cordeLineWScale();
+}
 // ── Resize corde ──────────────────────────────────────────────────────
 
 function resizeCorde() {
@@ -2086,17 +2163,20 @@ function resizeCorde() {
     // basse comprise — la règle en mètres a exactement le même plancher de
     // police que celle du tube, donc le même seuil au-delà duquel elle se
     // faisait couper par le bord du canvas (cf. RULER_BAND_MIN_PX).
-    var marginH      = 13;
+    var marginH      = CORDE_MARGIN_H;
     var marginTop    = 10;
     var marginBottom = Math.round(Math.min(Math.max(h * 0.12, RULER_BAND_MIN_PX),
                                            h * 0.34));
 
-    simCorde.cordeLeft   = marginH + SHAKER_BASE_W;
-    simCorde.cordeRight  = w - marginH;
-    simCorde.cordeLength = simCorde.cordeRight - simCorde.cordeLeft;
     simCorde.cordeTop    = marginTop;
     simCorde.cordeBottom = Math.max(marginTop + 20, h - marginBottom);
     simCorde.cordeMiddleY = Math.round((simCorde.cordeTop + simCorde.cordeBottom) / 2);
+
+    // La hauteur de zone est connue AVANT la largeur : c'est elle qui dicte
+    // la taille du pot, et donc la largeur de sa colonne (cf. _shakerColW).
+    simCorde.cordeLeft   = marginH + _shakerColW(simCorde.cordeBottom - simCorde.cordeTop, w);
+    simCorde.cordeRight  = w - marginH;
+    simCorde.cordeLength = simCorde.cordeRight - simCorde.cordeLeft;
 
     // ── Échelle spatiale : px par mètre réel ──────────────────────────
     // La propagation elle-même se calcule en mètres (cf. cordeDisplacement),
@@ -2240,10 +2320,8 @@ function _drawCordeWire(ctx) {
     var startX = simCorde.cordeLeft;
     var startY = _cordeAttachY();
 
-    // Épaisseur selon μ : linéaire de 1.5 (μ=0.1) à 5 (μ=4)
-    var muRange    = 4.0 - 0.1;
-    var lwRange    = 5.0 - 1.5;
-    var cordeLineW = 1.5 + ((simCorde.mu - 0.1) / muRange) * lwRange;
+    // Épaisseur selon μ, mise à l'échelle du cadre (cf. _cordeLineW).
+    var cordeLineW = _cordeLineW();
 
     // Finesse d'échantillonnage : ~60 points par longueur d'onde. À 24 pts/λ
     // (valeur précédente), la corde de crête (courbure max, tangente quasi
@@ -2462,12 +2540,28 @@ function _drawShaker(ctx) {
     var attachY = _shakerTopY();
 
     // ── Dimensions ────────────────────────────────────────────────────
-    var baseH  = Math.max(12, Math.round(zoneH * 0.18));   // hauteur base fixe
-    var baseW  = Math.max(18, Math.round(marginLeft * 0.80)); // largeur base
+    // Hauteur de socle donnée par _shakerBaseH — la MÊME que celle sur
+    // laquelle resizeCorde a calé la largeur de la colonne : le rapport
+    // voulu tombe donc juste. Le plancher sur baseH ne joue que si la
+    // colonne a été bornée par la largeur du canvas (canvas court et
+    // large) : le socle est alors un peu moins élancé, plutôt que de
+    // déborder de sa colonne.
+    var baseW  = Math.max(18, Math.round(marginLeft * SHAKER_BASE_FILL));
+    var baseH  = Math.max(12, Math.min(_shakerBaseH(zoneH),
+                                       Math.round(baseW / SHAKER_BASE_W_OVER_H)));
     var baseX  = Math.round((marginLeft - baseW) / 2);     // centré horizontalement
     var baseY  = cordeBottom - baseH;                       // ancré en bas de zone
 
-    var tubeW  = Math.max(6, Math.round(baseW * 0.28));    // largeur tube fin
+    // Vérin, tige d'accroche et disque-pivot sont TOUS indexés sur tubeW :
+    // la tête du support reste solidaire d'elle-même à toute taille.
+    // Mais elle ne suit PAS le socle proportionnellement — elle grossit
+    // comme la RACINE de sa largeur (cf. SHAKER_BASE_W_REF). En strict
+    // proportionnel, un socle de 92 px donnait un vérin de 26 px et un
+    // disque de 12 px de rayon : massif. En racine, la tête reste visible
+    // sur grand écran sans jamais écraser la corde, et vaut exactement le
+    // rendu d'origine (9 px) à la taille de socle des petites fenêtres.
+    var tubeW  = Math.max(6, Math.round(SHAKER_BASE_W_REF * 0.28 *
+                                        Math.sqrt(baseW / SHAKER_BASE_W_REF)));
     var tubeX  = Math.round(marginLeft / 2 - tubeW / 2);  // centré
 
     // Sommet du tube = point d'accroche exact de la corde — AUCUNE borne
