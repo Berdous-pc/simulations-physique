@@ -1945,6 +1945,37 @@ function _labelObstacles(opacity) {
         : _labelRectsSoft.concat(_labelRectsHard);
 }
 
+/* Placement au coût.
+   ─────────────────────────────────────────────────
+   L'ancienne version prenait le premier créneau libre de preferOrder, puis
+   tentait un empilage, puis — faute de mieux — clampait l'étiquette sans
+   aucun test de collision. Trois défauts :
+
+   • la réponse était binaire, libre ou occupé : impossible d'arbitrer entre
+     « un peu loin mais propre » et « tout près mais à cheval sur un rect » ;
+   • le dernier recours posait l'étiquette à l'aveugle, exactement le cas où
+     il aurait fallu réfléchir le plus ;
+   • une étiquette exilée par l'empilage devenait orpheline — plus rien ne
+     disait à quelle flèche elle se rapportait.
+
+   Chaque candidat reçoit maintenant un coût, et le moins cher gagne :
+
+     coût = éloignement de l'ancre
+          + recouvrement des étiquettes déjà posées (très cher)
+          + débordement du cadre (pire encore)
+          + rang dans preferOrder (départage les candidats équivalents)
+          + supplément de trait de rappel
+
+   Il n'y a donc plus de placement aveugle : même saturé, le canvas rend la
+   position la moins mauvaise, et non la première venue.
+
+   Les candidats sont de deux familles : les huit créneaux au contact de
+   l'ancre, et des couronnes de rayon croissant autour d'elle. Une position
+   en couronne est reliée à son ancre par un trait de rappel — l'étiquette
+   s'éloigne sans se détacher. Son supplément de coût fait qu'un créneau
+   libre l'emporte toujours : le trait n'apparaît que faute de mieux.
+
+   Retourne {lx, ly, leader} ; leader vrai réclame un appel à _drawLeader. */
 function _bestLabelPos(anchorX, anchorY, totalW, totalH, preferOrder, placedRects) {
     /* Ces jeux étaient en pixels fixes alors que la police, elle, suit
        _txtScale() depuis le passage aux tailles responsives : sur grand écran
@@ -1957,6 +1988,22 @@ function _bestLabelPos(anchorX, anchorY, totalW, totalH, preferOrder, placedRect
     var maxY = (_labelMaxY !== null) ? _labelMaxY : _labelGroundLimit(M);
     var maxX = _animW - M;
 
+    /* Marge de sécurité entre deux boîtes : sans elle, deux étiquettes qui se
+       touchent au pixel près passent pour compatibles — lisiblement collées. */
+    var PAD  = 4 * f;
+
+    /* Poids, tous ramenés à des pixels pour rester comparables à
+       l'éloignement. COST_OVERLAP : une étiquette entièrement recouverte
+       coûte comme un exil de 2000 px, très au-delà de la diagonale du canvas
+       — recouvrir une voisine est donc rédhibitoire sauf si rien d'autre
+       n'existe, conformément à la règle « on s'éloigne plutôt que de couvrir ».
+       COST_RANK reste petit : la préférence départage deux candidats aussi
+       propres l'un que l'autre, elle ne rachète jamais un recouvrement. */
+    var COST_OVERLAP = 2000;
+    var COST_OUT     = 40;     // par pixel débordé, cumulé sur les quatre bords
+    var COST_RANK    = 8 * f;
+    var COST_LEADER  = 30 * f;
+
     var slots = {
         'right':       { lx: anchorX + GAP,           ly: anchorY - totalH / 2 },
         'left':        { lx: anchorX - totalW - GAP,  ly: anchorY - totalH / 2 },
@@ -1968,72 +2015,104 @@ function _bestLabelPos(anchorX, anchorY, totalW, totalH, preferOrder, placedRect
         'lower-left':  { lx: anchorX - totalW - GAP,  ly: anchorY + GAP }
     };
 
-    /* Marge de sécurité entre deux boîtes : le test ne portait que sur le
-       recouvrement strict, si bien que deux étiquettes qui se touchaient au
-       pixel près étaient déclarées compatibles — lisiblement collées. */
-    var PAD = 4 * f;
+    var area = Math.max(1, totalW * totalH);
 
-    function overlaps(lx, ly) {
+    /* Aire recouverte, marge de sécurité comprise : une mesure continue, là où
+       un booléen ne distinguait pas un frôlement d'un empilement complet. */
+    function overlapArea(lx, ly) {
+        var sum = 0;
         for (var j = 0; j < placedRects.length; j++) {
-            var r = placedRects[j];
-            if (lx < r.lx + r.w + PAD && lx + totalW + PAD > r.lx &&
-                ly < r.ly + r.h + PAD && ly + totalH + PAD > r.ly) return true;
+            var r  = placedRects[j];
+            var ox = Math.min(lx + totalW + PAD, r.lx + r.w) - Math.max(lx - PAD, r.lx);
+            var oy = Math.min(ly + totalH + PAD, r.ly + r.h) - Math.max(ly - PAD, r.ly);
+            if (ox > 0 && oy > 0) sum += ox * oy;
         }
-        return false;
+        return sum;
     }
 
-    function fits(s) {
-        return s.lx >= M && s.ly >= M &&
-               s.lx + totalW <= maxX &&
-               s.ly + totalH <= maxY &&
-               !overlaps(s.lx, s.ly);
+    /* Débordement du cadre, en pixels cumulés sur les quatre bords. Continu
+       lui aussi : dépasser de 2 px doit coûter moins que dépasser de 60. */
+    function outAmount(lx, ly) {
+        return Math.max(0, M - lx)
+             + Math.max(0, M - ly)
+             + Math.max(0, lx + totalW - maxX)
+             + Math.max(0, ly + totalH - maxY);
     }
 
+    /* Distance de l'ancre au point le plus proche de la boîte : le vide que
+       l'oeil doit franchir pour relier l'étiquette à son vecteur. Nulle dès
+       que l'ancre tombe dans la boîte. */
+    function gapToAnchor(lx, ly) {
+        var dx = Math.max(lx - anchorX, 0, anchorX - (lx + totalW));
+        var dy = Math.max(ly - anchorY, 0, anchorY - (ly + totalH));
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    function cost(lx, ly, rank, leader) {
+        return gapToAnchor(lx, ly)
+             + overlapArea(lx, ly) / area * COST_OVERLAP
+             + outAmount(lx, ly) * COST_OUT
+             + rank * COST_RANK
+             + (leader ? COST_LEADER : 0);
+    }
+
+    var best = null;
+
+    function consider(lx, ly, rank, leader) {
+        var c = cost(lx, ly, rank, leader);
+        if (!best || c < best.c) best = { lx: lx, ly: ly, leader: leader, c: c };
+    }
+
+    /* 1. Les huit créneaux au contact, dans l'ordre de préférence. */
     for (var i = 0; i < preferOrder.length; i++) {
         var s = slots[preferOrder[i]];
-        if (s && fits(s)) return { lx: s.lx, ly: s.ly };
+        if (s) consider(s.lx, s.ly, i, false);
     }
 
-    /* Repli : empilage vertical ancré sur la position du vecteur courant.
-       On essaie d'abord à droite de l'ancre, puis à gauche.
-       Pour chaque colonne x, on collecte les y candidats (au-dessus/en-dessous
-       de chaque rect déjà placé qui chevauche cette colonne) et on prend le plus
-       proche de l'ancre qui ne chevauche rien et reste dans les bornes. */
-    var STACK_GAP  = 5 * f;
-    var xTries     = [anchorX + GAP, anchorX - totalW - GAP];
+    /* 2. Couronnes de rayon croissant. La boîte est poussée vers l'extérieur
+       plutôt que centrée sur le point de la couronne : centrée, un bloc large
+       reviendrait à cheval sur l'ancre qu'il est justement censé fuir. */
+    var RING_R   = [2.4, 3.8, 5.4, 7.2];
+    var RING_DIR = [[ 1, -1], [-1, -1], [ 1,  1], [-1,  1],
+                    [ 0, -1], [ 0,  1], [ 1,  0], [-1,  0]];
 
-    for (var xi = 0; xi < xTries.length; xi++) {
-        var stackLx = Math.max(M, Math.min(maxX - totalW, xTries[xi]));
-
-        /* Positions y candidates : centrée sur l'ancre + au-dessus/en-dessous
-           de chaque rect existant qui chevauche cette colonne x */
-        var yTries = [anchorY - totalH / 2, anchorY - totalH - GAP, anchorY + GAP];
-        for (var j = 0; j < placedRects.length; j++) {
-            var r = placedRects[j];
-            if (r.lx < stackLx + totalW && r.lx + r.w > stackLx) {
-                yTries.push(r.ly + r.h + STACK_GAP);
-                yTries.push(r.ly - totalH - STACK_GAP);
-            }
-        }
-        /* Trier par proximité au centre de l'ancre */
-        yTries.sort(function(a, b) {
-            return Math.abs(a + totalH / 2 - anchorY) - Math.abs(b + totalH / 2 - anchorY);
-        });
-
-        for (var yi = 0; yi < yTries.length; yi++) {
-            var stackLy = yTries[yi];
-            if (stackLy >= M && stackLy + totalH <= maxY && !overlaps(stackLx, stackLy)) {
-                return { lx: stackLx, ly: stackLy };
-            }
+    for (var ri = 0; ri < RING_R.length; ri++) {
+        var rad = RING_R[ri] * GAP;
+        for (var di = 0; di < RING_DIR.length; di++) {
+            var ux = RING_DIR[di][0], uy = RING_DIR[di][1];
+            /* Diagonales ramenées au même éloignement que les axes */
+            var k  = (ux && uy) ? Math.SQRT1_2 : 1;
+            var rx = rad * ux * k, ry = rad * uy * k;
+            var lx = anchorX + (ux > 0 ? rx : ux < 0 ? rx - totalW : -totalW / 2);
+            var ly = anchorY + (uy > 0 ? ry : uy < 0 ? ry - totalH : -totalH / 2);
+            consider(lx, ly, preferOrder.length, true);
         }
     }
 
-    /* Dernier recours : clamp dur sans vérification de collision */
-    var fb = slots[preferOrder[0]];
-    return {
-        lx: Math.max(M, Math.min(maxX - totalW, fb.lx)),
-        ly: Math.max(M, Math.min(maxY - totalH, fb.ly))
-    };
+    return { lx: best.lx, ly: best.ly, leader: best.leader };
+}
+
+/* Trait de rappel : relie l'étiquette exilée au point qu'elle décrit, sans
+   quoi elle flotte et l'on ne sait plus de quelle flèche elle parle.
+
+   Il vise le point de la boîte le plus proche de l'ancre : il reste donc
+   court et ne passe jamais sous le texte. Discret à dessein — c'est un
+   rappel, pas un trait de construction. */
+function _drawLeader(ctx, anchorX, anchorY, pos, w, h, color, opacity) {
+    if (!pos.leader) return;
+    var tx = Math.max(pos.lx, Math.min(anchorX, pos.lx + w));
+    var ty = Math.max(pos.ly, Math.min(anchorY, pos.ly + h));
+    ctx.save();
+    /* Le trait suit l'estompage de son étiquette : un rappel bien visible
+       vers un texte fantôme désignerait l'accessoire au lieu du principal. */
+    ctx.globalAlpha = (opacity === undefined ? 1 : opacity) * 0.45;
+    ctx.strokeStyle = color;
+    ctx.lineWidth   = _axisLW(1.1);
+    ctx.beginPath();
+    ctx.moveTo(anchorX, anchorY);
+    ctx.lineTo(tx, ty);
+    ctx.stroke();
+    ctx.restore();
 }
 
 /* Dessine le label à la position (lx, ly) déjà calculée. */
@@ -2298,6 +2377,7 @@ function _drawAnimHover(ctx, snap, isPinned) {
             ? ['above', 'upper-right', 'upper-left', 'below', 'lower-right', 'lower-left', 'right', 'left']
             : ['right', 'upper-right', 'lower-right', 'left', 'upper-left', 'lower-left', 'above', 'below'];
         var bpos = _bestLabelPos(p.cx, p.cy, bm.totalW, bm.totalH, bpr, placedRects);
+        _drawLeader(ctx, p.cx, p.cy, bpos, bm.totalW, bm.totalH, rows[0].color);
         placedRects.push({ lx: bpos.lx, ly: bpos.ly, w: bm.totalW, h: bm.totalH });
         _renderProjBlock(ctx, bpos.lx, bpos.ly, bm, rows);
         toPlace.length = 0;
@@ -2312,6 +2392,7 @@ function _drawAnimHover(ctx, snap, isPinned) {
             var compName = projLine === 1 ? lbl.compX : lbl.compY;
             var cm = _measureScalarName(ctx, compName);
             var cpos = _bestLabelPos(lbl.anchorX, lbl.anchorY, cm.w, cm.h, lbl.prefer, placedRects);
+            _drawLeader(ctx, lbl.anchorX, lbl.anchorY, cpos, cm.w, cm.h, lbl.color);
             placedRects.push({ lx: cpos.lx, ly: cpos.ly, w: cm.w, h: cm.h });
             _renderScalarName(ctx, cpos.lx, cpos.ly, compName, lbl.color, cm);
         } else if (lbl.showCoords === false) {
@@ -2319,6 +2400,7 @@ function _drawAnimHover(ctx, snap, isPinned) {
             var fm = _measureForceName(ctx, lbl.vecName);
             var fpos = _bestLabelPos(lbl.anchorX, lbl.anchorY, fm.w, fm.h,
                 lbl.prefer, placedRects);
+            _drawLeader(ctx, lbl.anchorX, lbl.anchorY, fpos, fm.w, fm.h, lbl.color);
             placedRects.push({ lx: fpos.lx, ly: fpos.ly, w: fm.w, h: fm.h });
             _renderForceName(ctx, fpos.lx, fpos.ly, lbl.vecName, lbl.color, 1.0, fm);
         } else {
@@ -2327,6 +2409,7 @@ function _drawAnimHover(ctx, snap, isPinned) {
                traité en bloc au-dessus. */
             var m   = _measureVecLabel(ctx, lbl.vecName, lbl.line1, lbl.line2);
             var pos = _bestLabelPos(lbl.anchorX, lbl.anchorY, m.totalW, m.totalH, lbl.prefer, placedRects);
+            _drawLeader(ctx, lbl.anchorX, lbl.anchorY, pos, m.totalW, m.totalH, lbl.color);
             placedRects.push({ lx: pos.lx, ly: pos.ly, w: m.totalW, h: m.totalH });
             _renderVecLabel(ctx, pos.lx, pos.ly, m, lbl.vecName, lbl.line1, lbl.line2, lbl.color);
         }
@@ -2414,6 +2497,7 @@ function _drawForcesAt(ctx, cx, cy, vx, vy, opacity, phys) {
            fil de la boucle, une copie prise avant elle les rendrait aveugles
            entre elles. */
         var pos = _bestLabelPos(cx + f.dx, cy + f.dy, lm.w, lm.h, pref, _labelObstacles(opacity));
+        _drawLeader(ctx, cx + f.dx, cy + f.dy, pos, lm.w, lm.h, COL_VEC_FORCES, opacity);
         reg.push({ lx: pos.lx, ly: pos.ly, w: lm.w, h: lm.h });
         _renderForceName(ctx, pos.lx, pos.ly, f.name, COL_VEC_FORCES, opacity, lm);
     }
@@ -2431,6 +2515,7 @@ function _drawSumFAt(ctx, cx, cy, vx, vy, opacity, phys) {
     var lm  = _measureForceName(ctx, 'ΣF');
     var pref = ['right', 'upper-right', 'lower-right', 'left', 'upper-left', 'lower-left', 'above', 'below'];
     var pos = _bestLabelPos(cx + dxPx, cy + dyPx, lm.w, lm.h, pref, _labelObstacles(opacity));
+    _drawLeader(ctx, cx + dxPx, cy + dyPx, pos, lm.w, lm.h, COL_VEC_SUMF, opacity);
     _labelRects(opacity).push({ lx: pos.lx, ly: pos.ly, w: lm.w, h: lm.h });
     _renderForceName(ctx, pos.lx, pos.ly, 'ΣF', COL_VEC_SUMF, opacity, lm);
 }
@@ -2893,6 +2978,7 @@ function _drawForcesAtE(ctx, cx, cy, vx, vy, opacity, phys) {
     var lm  = _measureForceName(ctx, 'FE');
     var pos = _bestLabelPos(cx + dxPx, cy + dyPx, lm.w, lm.h,
                             ['right','upper-right','lower-right','left','above','below'], _labelObstacles(opacity));
+    _drawLeader(ctx, cx + dxPx, cy + dyPx, pos, lm.w, lm.h, _col, _op);
     _labelRects(opacity).push({lx: pos.lx, ly: pos.ly, w: lm.w, h: lm.h});
     _renderForceName(ctx, pos.lx, pos.ly, 'FE', _col, _op, lm);
 }
@@ -2910,6 +2996,7 @@ function _drawSumFAtE(ctx, cx, cy, vx, vy, opacity, phys) {
     var lm  = _measureForceName(ctx, 'ΣF');
     var pos = _bestLabelPos(cx + dxPx, cy + dyPx, lm.w, lm.h,
                             ['right','upper-right','lower-right','left','above','below'], _labelObstacles(opacity));
+    _drawLeader(ctx, cx + dxPx, cy + dyPx, pos, lm.w, lm.h, _col, _op);
     _labelRects(opacity).push({lx: pos.lx, ly: pos.ly, w: lm.w, h: lm.h});
     _renderForceName(ctx, pos.lx, pos.ly, 'ΣF', _col, _op, lm);
 }
