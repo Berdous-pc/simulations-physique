@@ -27,10 +27,24 @@ function loop(ts) {
 
     if (activeTab === 'champ-pesanteur') {
         var _wasEnded = sim.ended;
-        advanceSim(dtReal);
-        if (!_wasEnded && sim.ended) _updatePlayBtn();
+        if (_rewindHeld) {
+            /* Le rembobinage remplace l'avance : les deux dans la même image
+               se battraient pour le même instant. Le rejeu recule avec lui —
+               c'est la même horloge, vue de deux côtés. */
+            rewindSim(dtReal);
+            if (_replaySessionActive) {
+                _replayT = Math.max(0, _replayT - dtReal * sim.speedFactor);
+            }
+            /* Rembobiner une course finie la remet en pause : on est revenu
+               sur cet instant pour le regarder, pas pour repartir dès que le
+               doigt se lève. */
+            if (_wasEnded && !sim.ended) { sim.paused = true; _updatePlayBtn(); }
+        } else {
+            advanceSim(dtReal);
+            if (!_wasEnded && sim.ended) _updatePlayBtn();
+        }
 
-        if (_replayPlaying) {
+        if (!_rewindHeld && _replayPlaying) {
             _replayT += dtReal * sim.speedFactor;
             if (_replayT >= _replayMaxT) {
                 _replayT = _replayMaxT;
@@ -47,10 +61,18 @@ function loop(ts) {
 
     } else if (activeTab === 'champ-electrique') {
         var _wasEndedE = simE.ended;
-        advanceSimE(dtReal);
-        if (!_wasEndedE && simE.ended) _updatePlayBtnE();
+        if (_rewindHeldE) {
+            rewindSimE(dtReal);
+            if (_replaySessionActiveE) {
+                _replayTE = Math.max(0, _replayTE - dtReal * simE.speedFactor);
+            }
+            if (_wasEndedE && !simE.ended) { simE.paused = true; _updatePlayBtnE(); }
+        } else {
+            advanceSimE(dtReal);
+            if (!_wasEndedE && simE.ended) _updatePlayBtnE();
+        }
 
-        if (_replayPlayingE) {
+        if (!_rewindHeldE && _replayPlayingE) {
             _replayTE += dtReal * simE.speedFactor;
             if (_replayTE >= _replayMaxTE) {
                 _replayTE = _replayMaxTE;
@@ -91,6 +113,8 @@ function init() {
 
     var tabsEl = document.getElementById('saved-runs-tabs');
     if (tabsEl) tabsEl.addEventListener('scroll', _updateTabsScrollBtns);
+    _initRewindBtn('btn-rewind',   false);
+    _initRewindBtn('btn-e-rewind', true);
     _updateToolbarDensity();   /* pose les libellés + fige la largeur du bouton Repère */
 }
 
@@ -439,6 +463,60 @@ function _updateToutRejouerBtn() {
 /* ─────────────────────────────────────────────────
    Slider vitesse (crans 0-3 → ×0.1 / ×0.25 / ×0.5 / ×1)
 ───────────────────────────────────────────────── */
+/* ─────────────────────────────────────────────────
+   Rembobinage — un bouton qu'on maintient
+
+   Le geste est celui des pages Lentille et Lunette : tant que le doigt
+   appuie, le temps recule ; dès qu'il lâche, l'animation retrouve l'état
+   qu'elle avait — en lecture elle repart, en pause elle reste où le
+   rembobinage l'a laissée. C'est ce qui en fait un outil de classe : on
+   revient sur l'instant qu'on veut commenter sans relancer la course
+   depuis le début, et sans avoir à viser une position sur une réglette.
+
+   La vitesse du recul est celle du curseur Vitesse, dont l'étiquette
+   affiche ⏪ le temps de l'appui : le même curseur pour les deux sens, et
+   rien de plus à régler.
+
+   Le pointeur est capturé : relâcher hors du bouton — voire hors de la
+   fenêtre — arrête bien le rembobinage, là où un simple mouseup sur le
+   bouton l'aurait laissé filer.
+───────────────────────────────────────────────── */
+var _rewindHeld  = false;
+var _rewindHeldE = false;
+
+function _initRewindBtn(id, isE) {
+    var btn = document.getElementById(id);
+    if (!btn) return;
+    btn.addEventListener('pointerdown', function (e) {
+        e.preventDefault();
+        if (btn.setPointerCapture) btn.setPointerCapture(e.pointerId);
+        _rewindStart(isE);
+    });
+    ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(function (ev) {
+        btn.addEventListener(ev, function () { _rewindStop(isE); });
+    });
+}
+
+function _rewindStart(isE) {
+    if (isE ? _rewindHeldE : _rewindHeld) return;
+    if (isE) _rewindHeldE = true; else _rewindHeld = true;
+    var btn = document.getElementById(isE ? 'btn-e-rewind' : 'btn-rewind');
+    if (btn) btn.classList.add('active');
+    _setTxt(isE ? 'lbl-e-speed' : 'lbl-speed', '⏪');
+}
+
+function _rewindStop(isE) {
+    if (!(isE ? _rewindHeldE : _rewindHeld)) return;
+    if (isE) _rewindHeldE = false; else _rewindHeld = false;
+    var btn = document.getElementById(isE ? 'btn-e-rewind' : 'btn-rewind');
+    if (btn) btn.classList.remove('active');
+    /* L'étiquette revient à la graduation choisie : la relire sur le curseur
+       lui-même évite de tenir un second exemplaire de la vitesse courante. */
+    var sl = document.getElementById(isE ? 'sl-e-speed' : 'sl-speed');
+    if (sl) { if (isE) onSliderSpeedE(sl.value); else onSliderSpeed(sl.value); }
+    if (isE) _updatePlayBtnE(); else _updatePlayBtn();
+}
+
 function onSliderSpeed(v) {
     sim.speedFactor = SPEED_VALUES[parseInt(v)];
     document.getElementById('lbl-speed').textContent =

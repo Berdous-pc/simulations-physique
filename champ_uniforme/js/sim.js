@@ -39,7 +39,7 @@ var sim = {
     deltaT:      0.3,           // pas chronophotographie (s)
 
     /* ── Données run courant ── */
-    trajPoints:      [],  // [{x,y}]
+    trajPoints:      [],  // [{x,y,t}]  (t : pour le rembobinage)
     chronoSnaps:     [],  // [{x,y,vx,vy,ax,ay,t}]
     graphData:       [],  // [{t,x,y,vx,vy,ax,ay}]
     analysisPoints:  [],  // [{x,y,vx,vy,ax,ay,t,color}]
@@ -108,7 +108,7 @@ function resetSim() {
     sim.vx = sim.v0 * Math.cos(alphaRad);
     sim.vy = sim.v0 * Math.sin(alphaRad);
     computeAcceleration();
-    sim.trajPoints     = [{x: sim.x, y: sim.y}];
+    sim.trajPoints     = [{x: sim.x, y: sim.y, t: 0}];
     sim.chronoSnaps    = [];
     sim.graphData      = [{t:0, x:sim.x, y:sim.y, vx:sim.vx, vy:sim.vy, ax:sim.ax, ay:sim.ay}];
     sim.analysisPoints = [];
@@ -173,7 +173,7 @@ function advanceSim(dtReal) {
         if (sim.trajPoints.length === 0 ||
             Math.hypot(sim.x - sim.trajPoints[sim.trajPoints.length-1].x,
                        sim.y - sim.trajPoints[sim.trajPoints.length-1].y) > 0.05) {
-            sim.trajPoints.push({x: sim.x, y: sim.y});
+            sim.trajPoints.push({x: sim.x, y: sim.y, t: sim.t});
         }
 
         /* Enregistrement données graphes (voir GRAPH_REC_DT) */
@@ -198,7 +198,7 @@ function advanceSim(dtReal) {
             sim.y = 0;
             sim.vx = 0; sim.vy = 0; sim.ax = 0; sim.ay = 0;
             sim.ended = true;
-            sim.trajPoints.push({x: sim.x, y: 0});
+            sim.trajPoints.push({x: sim.x, y: 0, t: sim.t});
             sim.graphData.push({
                 t: sim.t, x: sim.x, y: 0,
                 vx: 0, vy: 0, ax: 0, ay: 0
@@ -206,6 +206,96 @@ function advanceSim(dtReal) {
             break;
         }
     }
+}
+
+/* ─────────────────────────────────────────────────
+   Rembobinage — la course se rejoue à l'envers
+
+   Le mouvement n'est pas intégrable à rebours : les frottements dissipent,
+   et repartir en arrière avec un pas négatif ne redonnerait pas la
+   trajectoire parcourue mais une autre, qui s'en écarterait un peu plus à
+   chaque pas. La course a heureusement laissé sa trace — graphData retient
+   l'état complet tous les GRAPH_REC_DT. Rembobiner, ce n'est donc pas
+   recalculer : c'est relire cette trace, et défaire ce qu'elle a produit.
+
+   Défaire compte autant que relire. La trajectoire tracée, la
+   chronophotographie et les courbes des graphes sont l'histoire de la
+   course : les laisser derrière une balle qui recule montrerait un futur
+   que la balle n'a plus vécu. On les tronque au même instant, et la course
+   redevient exactement ce qu'elle était en passant là la première fois —
+   reprendre la lecture la poursuit sans couture.
+
+   s.ended tombe au passage : une course rembobinée n'est plus finie, et le
+   ballon resté au sol repartirait sinon pour toujours.
+───────────────────────────────────────────────── */
+function _rewindRun(s, tTarget, recDt) {
+    var g = s.graphData;
+    if (g.length === 0) return recDt;
+    if (tTarget < 0) tTarget = 0;
+
+    /* Dernier état enregistré à ou avant l'instant visé, et interpolation
+       jusqu'à lui : sans elle, le mobile reculerait par sauts d'un pas
+       d'enregistrement, visibles au ralenti. */
+    var i = g.length - 1;
+    while (i > 0 && g[i].t > tTarget) i--;
+    var a = g[i];
+    var b = (i + 1 < g.length) ? g[i + 1] : a;
+    var f = (b.t > a.t) ? (tTarget - a.t) / (b.t - a.t) : 0;
+    if (f > 1) f = 1;
+
+    s.t  = tTarget;
+    s.x  = a.x  + f * (b.x  - a.x);
+    s.y  = a.y  + f * (b.y  - a.y);
+    s.vx = a.vx + f * (b.vx - a.vx);
+    s.vy = a.vy + f * (b.vy - a.vy);
+    s.ax = a.ax + f * (b.ax - a.ax);
+    s.ay = a.ay + f * (b.ay - a.ay);
+
+    /* ── Pourquoi l'instant courant est réinscrit dans la trace ──
+       Tronquer à g[i] emporterait le point d'après, seul partenaire possible
+       de l'interpolation : à l'image suivante il ne resterait plus rien
+       au-dessus de l'instant visé, et l'état retomberait sur g[i] tel quel.
+       Le mobile restait donc figé sur un point d'enregistrement, puis
+       sautait au précédent — invisible à vitesse normale, où chaque image
+       franchit au moins un pas, mais très saccadé au ralenti, où il en faut
+       six pour en franchir un.
+
+       Réinscrire l'état interpolé en fin de trace donne à l'image suivante
+       le point supérieur qui lui manque, et la trace se termine exactement
+       là où est le mobile — ce que les graphes montrent aussi. */
+    g.length = i + 1;
+    if (tTarget > a.t) {
+        var p = { t: tTarget, x: s.x, y: s.y, vx: s.vx, vy: s.vy, ax: s.ax, ay: s.ay };
+        if (a.mass !== undefined) p.mass = a.mass;   /* champ électrique */
+        g.push(p);
+    }
+
+    /* Le premier point de trajectoire est le départ : il ne se retire pas,
+       sans quoi il ne resterait rien à tracer. */
+    while (s.trajPoints.length > 1 &&
+           s.trajPoints[s.trajPoints.length - 1].t > tTarget) {
+        s.trajPoints.pop();
+    }
+
+    while (s.chronoSnaps.length > 0 &&
+           s.chronoSnaps[s.chronoSnaps.length - 1].t > tTarget) {
+        s.chronoSnaps.pop();
+    }
+    /* Les instantanés tombent aux multiples de deltaT : leur nombre dit à
+       lui seul quand tombera le suivant. */
+    s.nextChronoTime = s.chronoSnaps.length * s.deltaT;
+
+    s.ended = false;
+    /* La trace s'arrête à l'instant courant : le prochain enregistrement se
+       compte à partir de là, sinon la reprise en poserait un aussitôt, collé
+       au précédent. */
+    return tTarget + recDt;
+}
+
+/* Recule de dtReal secondes réelles, à la vitesse d'animation courante —
+   le curseur Vitesse règle donc la marche arrière comme la marche avant. */
+function rewindSim(dtReal) {
+    _nextGraphRecord = _rewindRun(sim, sim.t - dtReal * sim.speedFactor, GRAPH_REC_DT);
 }
 
 /* ─────────────────────────────────────────────────
@@ -548,7 +638,7 @@ function resetSimE() {
     simE.vecScaleAcc   = _maxA > 0 ? _tpx / _maxA : 1e-14;
     simE.vecScaleForce = simE.vecScaleAcc / simE.mass * 0.5;
 
-    simE.trajPoints     = [{x: 0, y: 0}];
+    simE.trajPoints     = [{x: 0, y: 0, t: 0}];
     simE.chronoSnaps    = [];
     simE.graphData      = [{t:0, x:0, y:0, vx:simE.vx, vy:simE.vy, ax:simE.ax, ay:simE.ay, mass:simE.mass}];
     simE.analysisPoints = [];
@@ -636,7 +726,7 @@ function advanceSimE(dtReal) {
         elapsed += step;
         var last = simE.trajPoints[simE.trajPoints.length - 1];
         if (Math.hypot(simE.x - last.x, simE.y - last.y) > 2e-4) {
-            simE.trajPoints.push({x: simE.x, y: simE.y});
+            simE.trajPoints.push({x: simE.x, y: simE.y, t: simE.t});
         }
         if (simE.t >= _nextGraphRecordE) {
             simE.graphData.push({t:simE.t, x:simE.x, y:simE.y,
@@ -650,12 +740,18 @@ function advanceSimE(dtReal) {
         }
         if (_hitsBoundaryE(prevX)) {
             simE.ended = true;
-            simE.trajPoints.push({x: simE.x, y: simE.y});
+            simE.trajPoints.push({x: simE.x, y: simE.y, t: simE.t});
             simE.graphData.push({t:simE.t, x:simE.x, y:simE.y,
                 vx:simE.vx, vy:simE.vy, ax:0, ay:0, mass:simE.mass});
             break;
         }
     }
+}
+
+/* Rembobinage de la particule — même trace, même pas d'enregistrement que
+   celui d'advanceSimE. */
+function rewindSimE(dtReal) {
+    _nextGraphRecordE = _rewindRun(simE, simE.t - dtReal * simE.speedFactor, PHYS_DT_E * 10);
 }
 
 function computeTrajectoryBoundsE() {

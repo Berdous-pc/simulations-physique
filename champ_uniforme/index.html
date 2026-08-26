@@ -165,14 +165,20 @@
               Vitesse d'animation
               <span class="param-value"><span id="lbl-e-speed">6 ns/s</span></span>
             </label>
-            <input type="range" id="sl-e-speed"
-                   min="0" max="3" step="1" value="3"
-                   oninput="onSliderSpeedE(this.value)">
-            <div class="speed-ticks">
-              <span>0,6 ns/s</span>
-              <span>1,5 ns/s</span>
-              <span>3 ns/s</span>
-              <span>6 ns/s</span>
+            <div class="speed-line">
+              <button id="btn-e-rewind" class="btn-rewind" type="button"
+                      title="Maintenir pour rembobiner">⏪</button>
+              <div class="speed-col">
+                <input type="range" id="sl-e-speed"
+                       min="0" max="3" step="1" value="3"
+                       oninput="onSliderSpeedE(this.value)">
+                <div class="speed-ticks">
+                  <span>0,6 ns/s</span>
+                  <span>1,5 ns/s</span>
+                  <span>3 ns/s</span>
+                  <span>6 ns/s</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -360,14 +366,20 @@
               Vitesse d'animation
               <span class="param-value"><span id="lbl-speed">1,00</span></span>
             </label>
-            <input type="range" id="sl-speed"
-                   min="0" max="3" step="1" value="3"
-                   oninput="onSliderSpeed(this.value)">
-            <div class="speed-ticks">
-              <span>×0,10</span>
-              <span>×0,25</span>
-              <span>×0,50</span>
-              <span>×1,00</span>
+            <div class="speed-line">
+              <button id="btn-rewind" class="btn-rewind" type="button"
+                      title="Maintenir pour rembobiner">⏪</button>
+              <div class="speed-col">
+                <input type="range" id="sl-speed"
+                       min="0" max="3" step="1" value="3"
+                       oninput="onSliderSpeed(this.value)">
+                <div class="speed-ticks">
+                  <span>×0,10</span>
+                  <span>×0,25</span>
+                  <span>×0,50</span>
+                  <span>×1,00</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>

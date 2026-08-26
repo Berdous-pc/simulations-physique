@@ -955,6 +955,46 @@ label:focus-visible {
 }
 
 /* ── Speed ticks ─────────────────────────────── */
+/* ── Ligne « vitesse » : le bouton de rembobinage, puis le curseur ──
+      Le bouton garde sa largeur d'icône ; le curseur prend tout le reste.
+      Les graduations sont dans la même colonne que lui, sinon elles
+      resteraient calées sur la largeur d'avant et ne montreraient plus le
+      bon repère sous le bon cran. ── */
+.speed-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+}
+
+.speed-col {
+  flex: 1 1 auto;
+  min-width: 0;   /* sans quoi le curseur refuse de se comprimer */
+}
+
+.btn-rewind {
+  flex: 0 0 auto;
+  border: 1px solid #c8c0b4;
+  border-radius: 6px;
+  background: #ede9e2;
+  color: #5a6a78;
+  font-family: inherit;
+  font-size: clamp(11px, 1.1vw, 14px);
+  line-height: 1;
+  padding: 5px 8px;
+  cursor: pointer;
+  opacity: 0.75;
+  transition: transform 0.1s, background 0.15s, opacity 0.15s;
+  touch-action: none;   /* l'appui maintenu ne doit pas faire défiler la page */
+}
+.btn-rewind:hover  { opacity: 1; background: #dedad2; }
+.btn-rewind:active { transform: scale(0.97); }
+.btn-rewind.active {
+  opacity: 1;
+  background: #fde8c8;
+  color: #7a3a10;
+  border-color: #d0a060;
+}
+
 .speed-ticks {
   display: grid;
   grid-template-columns: repeat(3, 1fr) 0fr;
