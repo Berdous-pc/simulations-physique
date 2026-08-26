@@ -256,6 +256,48 @@ function _updateAnimMargins() {
 function _axisLW(refPx) {
     return refPx * _txtScale();
 }
+/* ── Encre du repère (champ de pesanteur) ───────────────────────
+   Les axes, graduations et étiquettes étaient blancs. Sur le dégradé de
+   ciel, qui monte à #cce0f4 près de l'horizon, le contraste tombait à
+   ~1,2:1 — autant dire rien — et seule une ombre portée floue d'1 px les
+   détachait, or c'est exactement ce qui se dilue sur un vidéoprojecteur en
+   salle éclairée.
+
+   Encre sombre plutôt que blanche, donc : ~5:1 aussi bien sur le ciel
+   clair que sur le bleu du haut ou sur l'herbe. C'est ce que fait déjà le
+   mode champ électrique, les deux modes se ressemblent enfin.
+
+   Les TRAITS — axes, pointes, marques de graduation — n'ont aucun contour :
+   ce sont de longues lignes fines, et les cerner sur toute leur longueur
+   double leur poids visuel (deux essais l'ont confirmé, avec un liseré
+   sombre puis un halo clair). L'encre seule suffit.
+
+   Les ÉTIQUETTES, si : un fin contour blanc tracé sous le texte. Une
+   étiquette est une forme compacte, pas une ligne — le contour la détache
+   sans l'alourdir, et il compte là où l'encre sombre est le plus faible,
+   c'est-à-dire sur la bande d'herbe sous la ligne de sol, où atterrissent
+   les graduations de l'axe x. AXIS_TEXT_OUTLINE_W est l'épaisseur TOTALE
+   du trait, donc le double du débord de chaque côté. */
+var AXIS_INK              = '22,32,48';                // composantes RVB de l'encre
+var AXIS_TEXT_OUTLINE     = 'rgba(255,255,255,0.85)';
+var AXIS_TEXT_OUTLINE_W   = 2;                         // px sur un canvas de référence
+
+function _ink(alpha) {
+    return 'rgba(' + AXIS_INK + ',' + alpha.toFixed(2) + ')';
+}
+
+/* Étiquette du repère : contour blanc d'abord, texte par-dessus. La police,
+   l'alignement et la couleur de remplissage sont ceux déjà posés par
+   l'appelant. */
+function _fillTextOutlined(ctx, text, x, y) {
+    var prevStroke = ctx.strokeStyle, prevLW = ctx.lineWidth, prevJoin = ctx.lineJoin;
+    ctx.strokeStyle = AXIS_TEXT_OUTLINE;
+    ctx.lineWidth   = _axisLW(AXIS_TEXT_OUTLINE_W);
+    ctx.lineJoin    = 'round';
+    ctx.strokeText(text, x, y);
+    ctx.strokeStyle = prevStroke; ctx.lineWidth = prevLW; ctx.lineJoin = prevJoin;
+    ctx.fillText(text, x, y);
+}
 
 /* ── Géométrie des axes (recalculée à chaque frame) ─────────────
    Centralisé ici pour que _drawGrid et _drawAxes soient cohérents.
@@ -775,7 +817,7 @@ function _drawGrid(ctx) {
         var _labelMid = gy0 + tickMajor + fontSize * 0.9;   // baseline du label
         var _gapTop   = _labelMid - fontSize * 0.85;         // début de la coupure
         var _gapBot   = _labelMid + fontSize * 0.25;         // fin de la coupure
-        ctx.strokeStyle = 'rgba(255,255,255,' + (0.38 * _gcos_ty).toFixed(2) + ')';
+        ctx.strokeStyle = _ink(0.22 * _gcos_ty);
         for (var ix = 1; ix * xMinor <= xMaxPhy * 1.05; ix++) {
             var gxv = ix * xMinor;
             if (!isMultiple(gxv, xMajor)) continue;
@@ -792,7 +834,7 @@ function _drawGrid(ctx) {
     }
     /* Lignes horizontales (axe y) — masquées si y comprimé */
     if (_gcos_tx >= _PROJ_THRESH) {
-        ctx.strokeStyle = 'rgba(255,255,255,' + (0.38 * _gcos_tx).toFixed(2) + ')';
+        ctx.strokeStyle = _ink(0.22 * _gcos_tx);
         for (var iy = 1; iy * yMinor <= yMaxPhy * 1.05; iy++) {
             var gyv = iy * yMinor;
             if (!isMultiple(gyv, yMajor)) continue;
@@ -814,18 +856,15 @@ function _drawGrid(ctx) {
             var tLen   = isMajX ? tickMajor : tickMinor;
 
             ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
-            ctx.strokeStyle = 'rgba(255,255,255,' + ((isMajX ? 0.95 : 0.75) * _opX).toFixed(2) + ')';
+            ctx.strokeStyle = _ink((isMajX ? 0.95 : 0.75) * _opX);
             ctx.lineWidth   = _axisLW(isMajX ? 2 : 1.5);
             ctx.beginPath(); ctx.moveTo(pcx.cx, gy0 - tLen); ctx.lineTo(pcx.cx, gy0); ctx.stroke();
 
             if (isMajX) {
                 ctx.font = 'bold ' + fontSize + 'px Segoe UI, Arial';
                 ctx.textAlign = 'center';
-                ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = 4;
-                ctx.shadowOffsetX = 1; ctx.shadowOffsetY = 1;
-                ctx.fillStyle = 'rgba(255,255,255,' + (0.95 * _opX).toFixed(2) + ')';
-                ctx.fillText(fmt(xv, xDec), pcx.cx, gy0 + tickMajor + fontSize * 0.9);
-                ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+                ctx.fillStyle = _ink(0.95 * _opX);
+                _fillTextOutlined(ctx, fmt(xv, xDec), pcx.cx, gy0 + tickMajor + fontSize * 0.9);
             }
         }
     }
@@ -845,7 +884,7 @@ function _drawGrid(ctx) {
             var tLenY  = isMajY ? tickMajor : tickMinor;
 
             ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
-            ctx.strokeStyle = 'rgba(255,255,255,' + ((isMajY ? 0.95 : 0.75) * _opY).toFixed(2) + ')';
+            ctx.strokeStyle = _ink((isMajY ? 0.95 : 0.75) * _opY);
             ctx.lineWidth   = _axisLW(isMajY ? 2 : 1.5);
 
             for (var _ai = 0; _ai < _yAxes.length; _ai++) {
@@ -861,9 +900,7 @@ function _drawGrid(ctx) {
                     ctx.font = 'bold ' + fontSize + 'px Segoe UI, Arial';
                     /* Label : à l'extérieur de l'axe (opposé au tick) */
                     ctx.textAlign = _tDir > 0 ? 'right' : 'left';
-                    ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = 4;
-                    ctx.shadowOffsetX = 1; ctx.shadowOffsetY = 1;
-                    ctx.fillStyle = 'rgba(255,255,255,' + (0.95 * _opY).toFixed(2) + ')';
+                    ctx.fillStyle = _ink(0.95 * _opY);
                     var _labelX = _tDir > 0
                         ? _ax.ox - tickMajor - 3
                         : _ax.ox + tickMajor + 3;
@@ -871,9 +908,8 @@ function _drawGrid(ctx) {
                        tracer le label que d'en laisser dépasser la moitié. */
                     var _lw = ctx.measureText(fmt(yv, yDec)).width;
                     if (_tDir > 0 ? (_labelX - _lw >= 2) : (_labelX + _lw <= _animW - 2)) {
-                        ctx.fillText(fmt(yv, yDec), _labelX, pcy.cy + fontSize * 0.35);
+                        _fillTextOutlined(ctx, fmt(yv, yDec), _labelX, pcy.cy + fontSize * 0.35);
                     }
-                    ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
                 }
             }
         }
@@ -901,17 +937,16 @@ function _drawAxes(ctx) {
 
     ctx.save();
 
-    ctx.shadowColor   = 'rgba(0,0,0,0.5)';
-    ctx.shadowBlur    = 3;
-    ctx.shadowOffsetX = 1;
-    ctx.shadowOffsetY = 1;
-    ctx.lineWidth     = _axisLW(2);
+    /* Aucun contour sur les traits : l'encre sombre se suffit, et cerner de
+       longues lignes fines les alourdit. */
+    ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+    ctx.lineWidth  = _axisLW(2);
 
     /* ── Axe X (visible tant que cos_ty > THRESH) ── */
     if (cos_ty >= THRESH) {
         var opX = Math.min(cos_ty, 1);
-        ctx.strokeStyle = 'rgba(255,255,255,' + (0.92 * opX).toFixed(2) + ')';
-        ctx.fillStyle   = 'rgba(255,255,255,' + (0.92 * opX).toFixed(2) + ')';
+        ctx.strokeStyle = _ink(0.92 * opX);
+        ctx.fillStyle   = _ink(0.92 * opX);
         ctx.beginPath(); ctx.moveTo(_viewAngles.ox - 5, origin.cy); ctx.lineTo(xEnd - aBase, origin.cy); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(xEnd, origin.cy); ctx.lineTo(xEnd - aLen, origin.cy - aHalf); ctx.lineTo(xEnd - aLen, origin.cy + aHalf); ctx.closePath(); ctx.fill();
     }
@@ -919,8 +954,8 @@ function _drawAxes(ctx) {
     /* ── Axe Y (visible tant que cos_tx > THRESH) ── */
     if (cos_tx >= THRESH) {
         var opY = Math.min(cos_tx, 1);
-        ctx.strokeStyle = 'rgba(255,255,255,' + (0.92 * opY).toFixed(2) + ')';
-        ctx.fillStyle   = 'rgba(255,255,255,' + (0.92 * opY).toFixed(2) + ')';
+        ctx.strokeStyle = _ink(0.92 * opY);
+        ctx.fillStyle   = _ink(0.92 * opY);
         if (_splitActive()) {
             /* Deux axes Y : montée (gauche) + descente (droite) */
             var oxL = _phaseOx(1), oxR = _phaseOx(-1);
@@ -939,44 +974,41 @@ function _drawAxes(ctx) {
     var tickMajorRef = Math.max(6,  _animH * 0.014);
     var fontSizeGrid = _animFontSize(11, 16, 0.032);
     ctx.font          = 'bold ' + fontSize + 'px Segoe UI, Arial';
-    ctx.shadowColor   = 'rgba(0,0,0,0.55)';
-    ctx.shadowBlur    = 4;
-    ctx.shadowOffsetX = 1;
-    ctx.shadowOffsetY = 1;
+    ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
 
     /* Label x */
     if (cos_ty >= THRESH) {
-        ctx.fillStyle    = 'rgba(255,255,255,' + (0.95 * Math.min(cos_ty, 1)).toFixed(2) + ')';
+        ctx.fillStyle    = _ink(0.95 * Math.min(cos_ty, 1));
         ctx.textAlign    = 'right';
         ctx.textBaseline = 'alphabetic';
-        ctx.fillText('x (m)', xEnd, origin.cy + tickMajorRef + fontSizeGrid * 0.9);
+        _fillTextOutlined(ctx, 'x (m)', xEnd, origin.cy + tickMajorRef + fontSizeGrid * 0.9);
     }
 
     /* Label O */
-    ctx.fillStyle    = 'rgba(255,255,255,0.95)';
+    ctx.fillStyle    = _ink(0.95);
     if (_splitActive()) {
         ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
-        ctx.fillText('O', _phaseOx(1),  origin.cy + fontSize + 2);
-        ctx.fillText('O', _phaseOx(-1), origin.cy + fontSize + 2);
+        _fillTextOutlined(ctx, 'O', _phaseOx(1),  origin.cy + fontSize + 2);
+        _fillTextOutlined(ctx, 'O', _phaseOx(-1), origin.cy + fontSize + 2);
     } else {
         ctx.textAlign    = 'right';
         ctx.textBaseline = 'alphabetic';
-        ctx.fillText('O', origin.cx - 6, origin.cy + fontSize + 2);
+        _fillTextOutlined(ctx, 'O', origin.cx - 6, origin.cy + fontSize + 2);
     }
 
     /* Label y / labels "Montée" "Descente" */
     if (cos_tx >= THRESH) {
-        ctx.fillStyle    = 'rgba(255,255,255,' + (0.95 * Math.min(cos_tx, 1)).toFixed(2) + ')';
+        ctx.fillStyle    = _ink(0.95 * Math.min(cos_tx, 1));
         ctx.textBaseline = 'top';
         if (_splitActive()) {
             var smallFs = _animFontSize(10, 13, 0.027);
             ctx.font      = 'bold ' + smallFs + 'px Segoe UI, Arial';
             ctx.textAlign = 'center';
-            ctx.fillText('↑ Montée',   _phaseOx(1),  yEnd + aLen + 3);
-            ctx.fillText('↓ Descente', _phaseOx(-1), yEnd + aLen + 3);
+            _fillTextOutlined(ctx, '↑ Montée',   _phaseOx(1),  yEnd + aLen + 3);
+            _fillTextOutlined(ctx, '↓ Descente', _phaseOx(-1), yEnd + aLen + 3);
         } else {
             ctx.textAlign = 'right';
-            ctx.fillText('y (m)', origin.cx - 6, yEnd + aLen + 3);
+            _fillTextOutlined(ctx, 'y (m)', origin.cx - 6, yEnd + aLen + 3);
         }
     }
 
