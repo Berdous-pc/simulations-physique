@@ -280,6 +280,46 @@ function _ink(alpha) {
     return 'rgba(' + AXIS_INK + ',' + alpha.toFixed(2) + ')';
 }
 
+/* ── Rayon du mobile ────────────────────────────────────────────
+   Le ballon suit l'échelle physique : 0,55 px par px/m, soit un ballon de
+   0,55 m de rayon — exagéré à dessein, un vrai ballon (0,11 m) serait un
+   point. Les bornes évitent qu'il devienne invisible sur une scène très
+   dézoomée ou énorme sur une scène très zoomée.
+
+   Ces bornes étaient en px fixes : le plafond de 13 px figeait le ballon à
+   26 px de diamètre dès que l'échelle dépassait ~24 px/m, ce qui est le cas
+   courant en plein écran. Il rétrécissait donc en relatif pendant que la
+   scène grandissait, comme le faisaient les étiquettes et les traits. Les
+   deux bornes suivent maintenant la taille du canvas ; la branche du milieu,
+   elle, était déjà proportionnelle à la scène.
+
+   La particule du mode champ électrique, elle, avait un rayon franchement
+   constant : Math.max(5, Math.min(10, 6)) vaut 6, toujours — un reste de
+   clamp dont la valeur centrale a été figée en cours de route. */
+var BALL_R_MIN_REF   = 7;      // px sur un canvas de référence
+var BALL_R_MAX_REF   = 13;
+var BALL_R_PER_SCALE = 0.55;   // px de rayon par px/m d'échelle
+var PARTICLE_R_REF   = 6;      // mode champ électrique
+
+function _ballRadius() {
+    var f = _txtScale();
+    return Math.max(BALL_R_MIN_REF * f,
+                    Math.min(BALL_R_MAX_REF * f,
+                             Math.min(sim.scaleX, sim.scaleY) * BALL_R_PER_SCALE));
+}
+
+function _particleRadius() {
+    return PARTICLE_R_REF * _txtScale();
+}
+
+/* Disques de la chronophotographie et du point survolé : même traitement,
+   ils étaient figés à 5 et 7 px de rayon. */
+var CHRONO_R_REF = 5;
+var HOVER_R_REF  = 7;
+
+function _chronoRadius() { return CHRONO_R_REF * _txtScale(); }
+function _hoverRadius()  { return HOVER_R_REF  * _txtScale(); }
+
 /* ── Géométrie des axes (recalculée à chaque frame) ─────────────
    Centralisé ici pour que _drawGrid et _drawAxes soient cohérents.
    aLen  = longueur de la pointe de flèche, aHalf = sa demi-largeur.
@@ -1073,9 +1113,9 @@ function _drawSavedChronoSnaps(ctx, run) {
         ctx.globalAlpha = 0.85;
         ctx.fillStyle = run.color;
         ctx.strokeStyle = 'rgba(255,255,255,0.8)';
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = _axisLW(1.5);
         ctx.beginPath();
-        ctx.arc(p.cx, p.cy, 5, 0, 2 * Math.PI);
+        ctx.arc(p.cx, p.cy, _chronoRadius(), 0, 2 * Math.PI);
         ctx.fill();
         ctx.stroke();
         ctx.restore();
@@ -1124,20 +1164,20 @@ function _drawSavedBall(ctx, run) {
     }
 
     var p = _toCanvasSplit(x, y, vyInterp);
-    var r = Math.max(7, Math.min(13, Math.min(sim.scaleX, sim.scaleY) * 0.55));
+    var r = _ballRadius();
 
     ctx.save();
 
     if (_ballonImg.complete && _ballonImg.naturalWidth > 0) {
         var d = r * 2;
         ctx.shadowColor = 'rgba(0,0,0,0.35)';
-        ctx.shadowBlur  = 5;
+        ctx.shadowBlur  = _axisLW(5);
         ctx.drawImage(_ballonImg, p.cx - r, p.cy - r, d, d);
         ctx.shadowBlur  = 0;
         ctx.beginPath();
         ctx.arc(p.cx, p.cy, r, 0, 2 * Math.PI);
         ctx.strokeStyle = run.color;
-        ctx.lineWidth   = 1.8;
+        ctx.lineWidth   = _axisLW(1.8);
         ctx.stroke();
     } else {
         /* Corps blanc (repli tant que l'image charge) */
@@ -1145,11 +1185,11 @@ function _drawSavedBall(ctx, run) {
         ctx.arc(p.cx, p.cy, r, 0, 2 * Math.PI);
         ctx.fillStyle = '#ffffff';
         ctx.shadowColor = 'rgba(0,0,0,0.35)';
-        ctx.shadowBlur  = 5;
+        ctx.shadowBlur  = _axisLW(5);
         ctx.fill();
         ctx.shadowBlur  = 0;
         ctx.strokeStyle = run.color;
-        ctx.lineWidth   = 1.8;
+        ctx.lineWidth   = _axisLW(1.8);
         ctx.stroke();
     }
 
@@ -1177,19 +1217,19 @@ function _drawSavedBallE(ctx, run) {
     }
 
     var p = toCanvas(x, y);
-    var r = Math.max(5, Math.min(10, 6));
+    var r = _particleRadius();
     var charge = run.q < 0 ? '−' : '+';
     var color  = run.q < 0 ? '#4a90d9' : '#e06060';
 
     ctx.save();
     ctx.beginPath(); ctx.arc(p.cx, p.cy, r, 0, 2 * Math.PI);
     ctx.fillStyle = color;
-    ctx.shadowColor = 'rgba(0,0,0,0.30)'; ctx.shadowBlur = 5;
+    ctx.shadowColor = 'rgba(0,0,0,0.30)'; ctx.shadowBlur = _axisLW(5);
     ctx.fill();
     ctx.shadowBlur = 0;
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = _axisLW(1.5); ctx.stroke();
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold ' + Math.max(10, r * 1.3) + 'px Arial';
+    ctx.font = 'bold ' + Math.max(10, r * 1.3) + 'px Arial';   /* r suit déjà l'échelle */
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(charge, p.cx, p.cy);
     ctx.restore();
@@ -1202,7 +1242,7 @@ function _drawTrajectory(ctx) {
     if (sim.trajPoints.length < 2) return;
     ctx.save();
     ctx.strokeStyle = _currentRunColor || 'rgba(255,255,100,0.75)';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = _axisLW(2);
     ctx.lineJoin = 'round';
 
     if (_splitActive()) {
@@ -1257,9 +1297,9 @@ function _drawChronoSnaps(ctx) {
         ctx.save();
         ctx.fillStyle = _currentRunColor || 'rgba(255,255,255,0.85)';
         ctx.strokeStyle = 'rgba(255,255,255,0.8)';
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = _axisLW(1.5);
         ctx.beginPath();
-        ctx.arc(p.cx, p.cy, 5, 0, 2 * Math.PI);
+        ctx.arc(p.cx, p.cy, _chronoRadius(), 0, 2 * Math.PI);
         ctx.fill();
         ctx.stroke();
         ctx.restore();
@@ -1290,20 +1330,20 @@ function _drawChronoSnaps(ctx) {
 ───────────────────────────────────────────────── */
 function _drawBall(ctx) {
     var p = _toCanvasSplit(sim.x, sim.y, sim.vy);
-    var r = Math.max(7, Math.min(13, Math.min(sim.scaleX, sim.scaleY) * 0.55));
+    var r = _ballRadius();
 
     ctx.save();
 
     if (_ballonImg.complete && _ballonImg.naturalWidth > 0) {
         var d = r * 2;
         ctx.shadowColor = 'rgba(0,0,0,0.35)';
-        ctx.shadowBlur  = 5;
+        ctx.shadowBlur  = _axisLW(5);
         ctx.drawImage(_ballonImg, p.cx - r, p.cy - r, d, d);
         ctx.shadowBlur  = 0;
         ctx.beginPath();
         ctx.arc(p.cx, p.cy, r, 0, 2 * Math.PI);
         ctx.strokeStyle = _currentRunColor || '#000';
-        ctx.lineWidth   = 1.8;
+        ctx.lineWidth   = _axisLW(1.8);
         ctx.stroke();
     } else {
         /* Corps blanc (repli tant que l'image charge) */
@@ -1311,11 +1351,11 @@ function _drawBall(ctx) {
         ctx.arc(p.cx, p.cy, r, 0, 2 * Math.PI);
         ctx.fillStyle = '#ffffff';
         ctx.shadowColor = 'rgba(0,0,0,0.35)';
-        ctx.shadowBlur  = 5;
+        ctx.shadowBlur  = _axisLW(5);
         ctx.fill();
         ctx.shadowBlur  = 0;
         ctx.strokeStyle = _currentRunColor || '#333';
-        ctx.lineWidth   = 1.8;
+        ctx.lineWidth   = _axisLW(1.8);
         ctx.stroke();
     }
 
@@ -1967,11 +2007,11 @@ function _drawAnimHover(ctx, snap, isPinned) {
     ctx.save();
     ctx.fillStyle   = snap.color;
     ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-    ctx.lineWidth   = 2;
+    ctx.lineWidth   = _axisLW(2);
     ctx.shadowColor = 'rgba(0,0,0,0.4)';
-    ctx.shadowBlur  = 5;
+    ctx.shadowBlur  = _axisLW(5);
     ctx.beginPath();
-    ctx.arc(p.cx, p.cy, 7, 0, 2 * Math.PI);
+    ctx.arc(p.cx, p.cy, _hoverRadius(), 0, 2 * Math.PI);
     ctx.fill();
     ctx.shadowBlur = 0;
     ctx.stroke();
@@ -2659,8 +2699,8 @@ function _drawChronoSnapsE(ctx) {
         var p = toCanvas(s.x, s.y);
         ctx.save();
         ctx.fillStyle = _currentRunColor || 'rgba(50,80,180,0.85)';
-        ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.arc(p.cx, p.cy, 5, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+        ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = _axisLW(1.5);
+        ctx.beginPath(); ctx.arc(p.cx, p.cy, _chronoRadius(), 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
         ctx.restore();
         if (sim.showVecPos)    _drawVectorPos(ctx, s.x, s.y, 0.6);
         if (sim.showVecVit) {
@@ -2701,8 +2741,8 @@ function _drawSavedChronoSnapsE(ctx, run) {
         var p = toCanvas(s.x, s.y);
         ctx.save();
         ctx.globalAlpha = 0.82;
-        ctx.fillStyle = run.color; ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.arc(p.cx, p.cy, 5, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = run.color; ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = _axisLW(1.5);
+        ctx.beginPath(); ctx.arc(p.cx, p.cy, _chronoRadius(), 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
         ctx.restore();
         if (run.showVecPos)    _drawVectorPos(ctx, s.x, s.y, 0.42);
         if (run.showVecVit) {
@@ -2732,18 +2772,18 @@ function _drawSavedChronoSnapsE(ctx, run) {
 function _drawParticleE(ctx) {
     if (sim.ended && sim.trajPoints.length > 0) return;
     var p = toCanvas(sim.x, sim.y);
-    var r = Math.max(5, Math.min(10, 6));
+    var r = _particleRadius();
     var charge = sim.q < 0 ? '−' : '+';
     var color  = sim.q < 0 ? '#4a90d9' : '#e06060';
     ctx.save();
     ctx.beginPath(); ctx.arc(p.cx, p.cy, r, 0, 2 * Math.PI);
     ctx.fillStyle = color;
-    ctx.shadowColor = 'rgba(0,0,0,0.30)'; ctx.shadowBlur = 5;
+    ctx.shadowColor = 'rgba(0,0,0,0.30)'; ctx.shadowBlur = _axisLW(5);
     ctx.fill();
     ctx.shadowBlur = 0;
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = _axisLW(1.5); ctx.stroke();
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold ' + Math.max(10, r * 1.3) + 'px Arial';
+    ctx.font = 'bold ' + Math.max(10, r * 1.3) + 'px Arial';   /* r suit déjà l'échelle */
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(charge, p.cx, p.cy);
     ctx.restore();
