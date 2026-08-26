@@ -234,14 +234,36 @@ function _updateAnimMargins() {
     simE.originX = Math.round(ANIM_MARGIN_LE_REF * f);
 }
 
+/* ── Traits du repère ───────────────────────────────────────────
+   Les épaisseurs étaient des constantes en px (2 pour les axes, 2 et 1,5
+   pour les marques, 1 pour les lignes de grille) et les pointes de flèches
+   des demi-largeurs de 4 px, plafonnées comme le reste vers 500 px de
+   canvas. Un trait de 2 px sur un canvas de 800 px, c'est un cheveu : les
+   axes étaient plus visibles sur un portable qu'au vidéoprojecteur.
+
+   Les valeurs de référence ne changent pas, elles suivent simplement la
+   même échelle que le texte — donc inchangées sous la hauteur de
+   référence, comme tout le reste. */
+function _axisLW(refPx) {
+    return refPx * _txtScale();
+}
+
 /* ── Géométrie des axes (recalculée à chaque frame) ─────────────
    Centralisé ici pour que _drawGrid et _drawAxes soient cohérents.
+   aLen  = longueur de la pointe de flèche, aHalf = sa demi-largeur.
+   aBase = où le trait de l'axe doit s'arrêter : tracé jusqu'au sommet, il
+           dépasse de part et d'autre du triangle sur le dernier quart de la
+           pointe — un petit rectangle au bout de la flèche, d'autant plus
+           voyant que le trait est épais. Les vecteurs appliquent le même
+           retrait depuis toujours (cf. _drawVecArrow), pas les axes.
 ─────────────────────────────────────────────────────────────── */
 function _axisGeom() {
-    var aLen = Math.max(8,  Math.min(14, _animH * 0.030));
-    var yEnd = Math.max(16, Math.min(28, _animH * 0.050));
-    var xEnd = _animW - Math.max(18, _animW * 0.030);
-    return { aLen: aLen, yEnd: yEnd, xEnd: xEnd };
+    var f     = _txtScale();
+    var aLen  = Math.max(8,  Math.min(14 * f, _animH * 0.030));
+    var aHalf = 4 * f;
+    var yEnd  = Math.max(16, Math.min(28 * f, _animH * 0.050));
+    var xEnd  = _animW - Math.max(18, _animW * 0.030);
+    return { aLen: aLen, aHalf: aHalf, aBase: aLen * 0.85, yEnd: yEnd, xEnd: xEnd };
 }
 
 /* ─────────────────────────────────────────────────
@@ -734,8 +756,8 @@ function _drawGrid(ctx) {
     }
 
     /* ── Grandes lignes de grille ── */
-    ctx.lineWidth   = 1;
-    ctx.setLineDash([4, 4]);
+    ctx.lineWidth   = _axisLW(1);
+    ctx.setLineDash([_axisLW(4), _axisLW(4)]);
 
     /* Lignes verticales (axe x) — masquées si x comprimé */
     if (_gcos_ty >= _PROJ_THRESH) {
@@ -784,7 +806,7 @@ function _drawGrid(ctx) {
 
             ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
             ctx.strokeStyle = 'rgba(255,255,255,' + ((isMajX ? 0.95 : 0.75) * _opX).toFixed(2) + ')';
-            ctx.lineWidth   = isMajX ? 2 : 1.5;
+            ctx.lineWidth   = _axisLW(isMajX ? 2 : 1.5);
             ctx.beginPath(); ctx.moveTo(pcx.cx, gy0 - tLen); ctx.lineTo(pcx.cx, gy0); ctx.stroke();
 
             if (isMajX) {
@@ -815,7 +837,7 @@ function _drawGrid(ctx) {
 
             ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
             ctx.strokeStyle = 'rgba(255,255,255,' + ((isMajY ? 0.95 : 0.75) * _opY).toFixed(2) + ')';
-            ctx.lineWidth   = isMajY ? 2 : 1.5;
+            ctx.lineWidth   = _axisLW(isMajY ? 2 : 1.5);
 
             for (var _ai = 0; _ai < _yAxes.length; _ai++) {
                 var _ax = _yAxes[_ai];
@@ -858,11 +880,12 @@ function _drawGrid(ctx) {
 function _drawAxes(ctx) {
     var origin   = toCanvas(0, 0);
     var fontSize = _animFontSize(14, 20, 0.041);
-    var ag   = _axisGeom();
-    var aLen = ag.aLen;
-    var xEnd = ag.xEnd;
-    var yEnd = ag.yEnd;
-
+    var ag    = _axisGeom();
+    var aLen  = ag.aLen;
+    var aHalf = ag.aHalf;
+    var xEnd  = ag.xEnd;
+    var yEnd  = ag.yEnd;
+    var aBase = ag.aBase;
     var cos_tx = Math.cos(_viewAngles.tx);  // 1 = y visible, 0 = y dans l'écran
     var cos_ty = Math.cos(_viewAngles.ty);  // 1 = x visible, 0 = x dans l'écran
     var THRESH = 0.08;
@@ -873,15 +896,15 @@ function _drawAxes(ctx) {
     ctx.shadowBlur    = 3;
     ctx.shadowOffsetX = 1;
     ctx.shadowOffsetY = 1;
-    ctx.lineWidth     = 2;
+    ctx.lineWidth     = _axisLW(2);
 
     /* ── Axe X (visible tant que cos_ty > THRESH) ── */
     if (cos_ty >= THRESH) {
         var opX = Math.min(cos_ty, 1);
         ctx.strokeStyle = 'rgba(255,255,255,' + (0.92 * opX).toFixed(2) + ')';
         ctx.fillStyle   = 'rgba(255,255,255,' + (0.92 * opX).toFixed(2) + ')';
-        ctx.beginPath(); ctx.moveTo(_viewAngles.ox - 5, origin.cy); ctx.lineTo(xEnd, origin.cy); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(xEnd, origin.cy); ctx.lineTo(xEnd - aLen, origin.cy - 4); ctx.lineTo(xEnd - aLen, origin.cy + 4); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(_viewAngles.ox - 5, origin.cy); ctx.lineTo(xEnd - aBase, origin.cy); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(xEnd, origin.cy); ctx.lineTo(xEnd - aLen, origin.cy - aHalf); ctx.lineTo(xEnd - aLen, origin.cy + aHalf); ctx.closePath(); ctx.fill();
     }
 
     /* ── Axe Y (visible tant que cos_tx > THRESH) ── */
@@ -894,12 +917,12 @@ function _drawAxes(ctx) {
             var oxL = _phaseOx(1), oxR = _phaseOx(-1);
             var gy  = groundY();
             [oxL, oxR].forEach(function(ox) {
-                ctx.beginPath(); ctx.moveTo(ox, gy + 5); ctx.lineTo(ox, yEnd); ctx.stroke();
-                ctx.beginPath(); ctx.moveTo(ox, yEnd); ctx.lineTo(ox - 4, yEnd + aLen); ctx.lineTo(ox + 4, yEnd + aLen); ctx.closePath(); ctx.fill();
+                ctx.beginPath(); ctx.moveTo(ox, gy + 5); ctx.lineTo(ox, yEnd + aBase); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(ox, yEnd); ctx.lineTo(ox - aHalf, yEnd + aLen); ctx.lineTo(ox + aHalf, yEnd + aLen); ctx.closePath(); ctx.fill();
             });
         } else {
-            ctx.beginPath(); ctx.moveTo(origin.cx, groundY() + 5); ctx.lineTo(origin.cx, yEnd); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(origin.cx, yEnd); ctx.lineTo(origin.cx - 4, yEnd + aLen); ctx.lineTo(origin.cx + 4, yEnd + aLen); ctx.closePath(); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(origin.cx, groundY() + 5); ctx.lineTo(origin.cx, yEnd + aBase); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(origin.cx, yEnd); ctx.lineTo(origin.cx - aHalf, yEnd + aLen); ctx.lineTo(origin.cx + aHalf, yEnd + aLen); ctx.closePath(); ctx.fill();
         }
     }
 
@@ -1338,8 +1361,8 @@ function _drawCompDashes(ctx, cx, cy, dxPx, dyPx, color, opacity) {
     ctx.save();
     ctx.globalAlpha  = opacity * 0.40;
     ctx.strokeStyle  = color;
-    ctx.lineWidth    = 1.2;
-    ctx.setLineDash([4, 5]);
+    ctx.lineWidth    = 1.2 * _txtScale();
+    ctx.setLineDash([4 * _txtScale(), 5 * _txtScale()]);
     ctx.lineCap      = 'round';
     /* Pointe x-comp → pointe vecteur (vertical) */
     ctx.beginPath();
@@ -1368,7 +1391,13 @@ function _drawVecDispVA(ctx, cx, cy, dxPx, dyPx, color, label, opacity, lw) {
 function _drawVecArrow(ctx, cx, cy, dx, dy, color, label, opacity, lw) {
     var len = Math.hypot(dx, dy);
     if (len < 3) return;
-    lw = lw || 2;
+    /* Épaisseur, pointe et liseré suivent la taille du canvas comme les traits
+       du repère : les valeurs reçues et les constantes sont des références sur
+       un canvas de référence. La LONGUEUR de la flèche, elle, ne bouge pas —
+       c'est une échelle physique (px par m/s), pas un choix graphique. */
+    var f = _txtScale();
+    lw = (lw || 2) * f;
+    var halo = VEC_HALO_W * f;
 
     ctx.save();
     ctx.globalAlpha = opacity;
@@ -1376,7 +1405,7 @@ function _drawVecArrow(ctx, cx, cy, dx, dy, color, label, opacity, lw) {
     ctx.lineCap     = 'round';
 
     var ex = cx + dx, ey = cy + dy;
-    var aLen  = Math.min(12, len * 0.4);
+    var aLen  = Math.min(12 * f, len * 0.4);
     var angle = Math.atan2(dy, dx);
 
     /* Corps : s'arrête à la base de la pointe pour que le bout épais du trait
@@ -1406,9 +1435,9 @@ function _drawVecArrow(ctx, cx, cy, dx, dy, color, label, opacity, lw) {
        vecteur, pour qu'une flèche atténuée n'ait pas un liseré à pleine
        opacité. */
     ctx.strokeStyle = VEC_HALO_COLOR;
-    ctx.lineWidth   = lw + VEC_HALO_W * 2;
+    ctx.lineWidth   = lw + halo * 2;
     _bodyPath(); ctx.stroke();
-    ctx.lineWidth   = VEC_HALO_W * 2;
+    ctx.lineWidth   = halo * 2;
     _headPath(); ctx.stroke();
 
     /* Vecteur */
@@ -2307,8 +2336,8 @@ function _drawGridE(ctx) {
 
     ctx.save();
     ctx.strokeStyle = 'rgba(0,0,0,0.10)';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([4, 4]);
+    ctx.lineWidth = _axisLW(1);
+    ctx.setLineDash([_axisLW(4), _axisLW(4)]);
 
     for (var ix = 1; ix * xGrid.minor <= xGridMax * 1.001; ix++) {
         var gx = toCanvas(ix * xGrid.minor, 0).cx;
@@ -2333,7 +2362,7 @@ function _drawGridE(ctx) {
         var gx2 = toCanvas(xv, 0).cx;
         if (gx2 > _animW - 5 || gx2 > xCutoffE) break;
         ctx.strokeStyle = 'rgba(60,60,60,' + (isMaj ? '0.45' : '0.22') + ')';
-        ctx.lineWidth = isMaj ? 1.4 : 0.8;
+        ctx.lineWidth = _axisLW(isMaj ? 1.4 : 0.8);
         ctx.beginPath(); ctx.moveTo(gx2, orig.cy - tickLen); ctx.lineTo(gx2, orig.cy + tickLen); ctx.stroke();
         if (isMaj) ctx.fillText(fmt(xv, xDec), gx2, orig.cy + tickLen + 2);
     }
@@ -2344,7 +2373,7 @@ function _drawGridE(ctx) {
         var pcyP = toCanvas(0,  yv).cy;
         var pcyN = toCanvas(0, -yv).cy;
         var ck = 'rgba(60,60,60,' + (isMaj2 ? '0.45' : '0.22') + ')';
-        ctx.strokeStyle = ck; ctx.lineWidth = isMaj2 ? 1.4 : 0.8;
+        ctx.strokeStyle = ck; ctx.lineWidth = _axisLW(isMaj2 ? 1.4 : 0.8);
         /* Marques : jusqu'au bord. Labels : seulement s'ils ne passent ni sous
            « y (m) » (en haut) ni hors du canvas (en bas). */
         if (pcyP >= 5) {
@@ -2366,18 +2395,18 @@ function _drawAxesE(ctx) {
     ctx.save();
     ctx.strokeStyle = 'rgba(40,40,40,0.70)';
     ctx.fillStyle   = 'rgba(40,40,40,0.70)';
-    ctx.lineWidth   = 2;
+    ctx.lineWidth   = _axisLW(2);
 
     /* Axe X */
-    ctx.beginPath(); ctx.moveTo(orig.cx - 5, orig.cy); ctx.lineTo(ag.xEnd, orig.cy); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(orig.cx - 5, orig.cy); ctx.lineTo(ag.xEnd - ag.aBase, orig.cy); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(ag.xEnd, orig.cy);
-    ctx.lineTo(ag.xEnd - ag.aLen, orig.cy - 4); ctx.lineTo(ag.xEnd - ag.aLen, orig.cy + 4);
+    ctx.lineTo(ag.xEnd - ag.aLen, orig.cy - ag.aHalf); ctx.lineTo(ag.xEnd - ag.aLen, orig.cy + ag.aHalf);
     ctx.closePath(); ctx.fill();
 
     /* Axe Y symétrique */
-    ctx.beginPath(); ctx.moveTo(orig.cx, _animH - ag.yEnd); ctx.lineTo(orig.cx, ag.yEnd); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(orig.cx, _animH - ag.yEnd); ctx.lineTo(orig.cx, ag.yEnd + ag.aBase); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(orig.cx, ag.yEnd);
-    ctx.lineTo(orig.cx - 4, ag.yEnd + ag.aLen); ctx.lineTo(orig.cx + 4, ag.yEnd + ag.aLen);
+    ctx.lineTo(orig.cx - ag.aHalf, ag.yEnd + ag.aLen); ctx.lineTo(orig.cx + ag.aHalf, ag.yEnd + ag.aLen);
     ctx.closePath(); ctx.fill();
     ctx.font = 'bold ' + fontSize + 'px Segoe UI, Arial';
     /* Aligné à droite sur la pointe de la flèche, comme en mode pesanteur :
