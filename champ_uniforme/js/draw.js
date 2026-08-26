@@ -3131,12 +3131,12 @@ function _drawAnimHover(ctx, snap, isPinned) {
         if (_vecScaleVitOverride !== null) {
             /* Mode électrique : force électrique FE, pas le poids */
             var phE = snap.phys || _getEPhys(snap.x, snap.y);
-            if (showForces) _drawForcesAtE(ctx, p.cx, p.cy, snap.vx, snap.vy, 1.0, phE);
-            if (showSumF)   _drawSumFAtE(ctx,   p.cx, p.cy, snap.vx, snap.vy, 1.0, phE);
+            if (showForces) _drawForcesAtE(ctx, p.cx, p.cy, snap.vx, snap.vy, 1.0, phE, true);
+            if (showSumF)   _drawSumFAtE(ctx,   p.cx, p.cy, snap.vx, snap.vy, 1.0, phE, true);
         } else {
             var ph = snap.phys || { mass: sim.mass, g: sim.g, windForce: sim.windForce, useFriction: sim.useFriction, k: sim.k };
-            if (showForces) _drawForcesAt(ctx, p.cx, p.cy, snap.vx, snap.vy, 1.0, ph);
-            if (showSumF)   _drawSumFAt(ctx,   p.cx, p.cy, snap.vx, snap.vy, 1.0, ph);
+            if (showForces) _drawForcesAt(ctx, p.cx, p.cy, snap.vx, snap.vy, 1.0, ph, true);
+            if (showSumF)   _drawSumFAt(ctx,   p.cx, p.cy, snap.vx, snap.vy, 1.0, ph, true);
         }
     }
 }
@@ -3177,8 +3177,24 @@ function _renderForceName(ctx, lx, ly, name, color, opacity, m) {
    phys = {mass, g, windForce, useFriction, k}
    Le registre anti-chevauchement est celui de l'image entière, choisi selon
    l'opacité (cf. _labelRects).
+
+   ── showNames : la même règle que pour tous les autres vecteurs ──
+   Afficher les forces posait leurs noms, alors qu'afficher la vitesse ou
+   l'accélération ne pose rien : v et a ne se nomment qu'au survol du point,
+   ou une fois celui-ci épinglé. Les forces échappaient seules à cette règle.
+
+   Elles la payaient deux fois. La scène portait en permanence des étiquettes
+   que l'utilisateur n'avait pas demandées, occupant la place de celles qu'il
+   demandait. Et au survol du mobile, _drawAnimHover repose les mêmes noms au
+   même point : deux P, deux ΣF, l'un décalé par l'anti-chevauchement — le
+   doublon visible.
+
+   showNames n'est donc vrai qu'aux appels venus de _drawAnimHover, survol ou
+   épingle. Partout ailleurs — ballon, particule, instantanés
+   chronophotographiques, courses sauvegardées — les flèches sont tracées et
+   déclarées au décor, sans un mot.
 ───────────────────────────────────────────────── */
-function _drawForcesAt(ctx, cx, cy, vx, vy, opacity, phys) {
+function _drawForcesAt(ctx, cx, cy, vx, vy, opacity, phys, showNames) {
     var forces = [];
 
     var _fvp = _viewProjFactors();
@@ -3202,7 +3218,8 @@ function _drawForcesAt(ctx, cx, cy, vx, vy, opacity, phys) {
         _reserveArrow(cx, cy, forces[i].dx, forces[i].dy);
     }
 
-    /* Labels avec anti-chevauchement */
+    /* Noms, seulement s'ils sont demandés */
+    if (!showNames) return;
     var pref = ['right', 'upper-right', 'lower-right', 'left', 'upper-left', 'lower-left', 'above', 'below'];
     for (var i = 0; i < forces.length; i++) {
         var f = forces[i];
@@ -3211,7 +3228,7 @@ function _drawForcesAt(ctx, cx, cy, vx, vy, opacity, phys) {
     }
 }
 
-function _drawSumFAt(ctx, cx, cy, vx, vy, opacity, phys) {
+function _drawSumFAt(ctx, cx, cy, vx, vy, opacity, phys, showNames) {
     var _sfvp = _viewProjFactors();
     var SFx = phys.windForce - (phys.useFriction ? phys.k * vx : 0);
     var SFy = -phys.mass * phys.g - (phys.useFriction ? phys.k * vy : 0);
@@ -3221,6 +3238,7 @@ function _drawSumFAt(ctx, cx, cy, vx, vy, opacity, phys) {
     _drawVecArrow(ctx, cx, cy, dxPx, dyPx, COL_VEC_SUMF, null, opacity);
     _reserveArrow(cx, cy, dxPx, dyPx);
 
+    if (!showNames) return;
     var pref = ['right', 'upper-right', 'lower-right', 'left', 'upper-left', 'lower-left', 'above', 'below'];
     _queueForceName(ctx, cx + dxPx, cy + dyPx, 'ΣF',
                     COL_VEC_SUMF, opacity, undefined, pref);
@@ -3677,7 +3695,8 @@ function _getEPhys(x, y) {
     return _fieldForceAt(sim, x, y);
 }
 
-function _drawForcesAtE(ctx, cx, cy, vx, vy, opacity, phys) {
+/* showNames : même règle qu'en pesanteur, cf. _drawForcesAt. */
+function _drawForcesAtE(ctx, cx, cy, vx, vy, opacity, phys, showNames) {
     if (phys.FEx === 0 && phys.FEy === 0) return; /* hors du condensateur : rien à afficher */
     var _perp = sim.armatureMode === 'perp-x';
     var _col  = _perp ? COL_VEC_FORCES_PERP : COL_VEC_FORCES;
@@ -3688,11 +3707,12 @@ function _drawForcesAtE(ctx, cx, cy, vx, vy, opacity, phys) {
     var dyPx = -phys.FEy * _sf * _vp.cy;
     _drawVecArrow(ctx, cx, cy, dxPx, dyPx, _col, null, _op, _perp ? VEC_LW_PERP : undefined);
     _reserveArrow(cx, cy, dxPx, dyPx);
+    if (!showNames) return;
     _queueForceName(ctx, cx + dxPx, cy + dyPx, 'FE', _col, _op, opacity,
                     ['right','upper-right','lower-right','left','above','below']);
 }
 
-function _drawSumFAtE(ctx, cx, cy, vx, vy, opacity, phys) {
+function _drawSumFAtE(ctx, cx, cy, vx, vy, opacity, phys, showNames) {
     if (phys.FEx === 0 && phys.FEy === 0) return; /* hors du condensateur : rien à afficher */
     var _perp = sim.armatureMode === 'perp-x';
     var _col  = _perp ? COL_VEC_SUMF_PERP : COL_VEC_SUMF;
@@ -3703,6 +3723,7 @@ function _drawSumFAtE(ctx, cx, cy, vx, vy, opacity, phys) {
     var dyPx = -phys.FEy * _sf * _vp.cy;
     _drawVecArrow(ctx, cx, cy, dxPx, dyPx, _col, null, _op, _perp ? VEC_LW_PERP : undefined);
     _reserveArrow(cx, cy, dxPx, dyPx);
+    if (!showNames) return;
     _queueForceName(ctx, cx + dxPx, cy + dyPx, 'ΣF', _col, _op, opacity,
                     ['right','upper-right','lower-right','left','above','below']);
 }
