@@ -2004,8 +2004,14 @@ function _labelGroundLimit(M) {
     return ground + (_animH - M - ground) * flat;
 }
 
-var _labelRectsHard = [];
-var _labelRectsSoft = [];
+/* Les boîtes déjà attribuées dans l'image. Il y en avait deux registres, un
+   « dur » et un « fané », du temps où les instantanés de chronophotographie
+   posaient eux aussi des étiquettes : une étiquette pâle ne devait pas
+   écarter une étiquette pleine. Les noms ne s'affichant plus qu'au survol
+   ou sur épingle, toutes les étiquettes de l'image sont désormais pleines,
+   le registre fané restait vide, et le choisir coûtait une concaténation par
+   étiquette placée. */
+var _labelRects = [];
 
 /* ── Le décor : ce que les étiquettes doivent éviter de masquer ──
    Jusqu'ici le placement n'arbitrait qu'entre étiquettes ; les axes, les
@@ -2080,8 +2086,7 @@ var _inkGrid  = null;
 var _inkGridN = -1;
 
 function _resetLabelRects() {
-    _labelRectsHard.length = 0;
-    _labelRectsSoft.length = 0;
+    _labelRects.length     = 0;
     _labelScenery.length   = 0;
     _labelInk.length       = 0;
     /* La file aussi : _flushLabels la vide en temps normal, mais une exception
@@ -2253,16 +2258,6 @@ function _reserveTrajPts(pts) {
         var q = toCanvas(pts[i].x, pts[i].y);
         _labelInk.push({ x: q.cx, y: q.cy, weight: INK_TRAJ, src: src });
     }
-}
-
-/* Registre où réserver, et registres à éviter, pour une opacité donnée. */
-function _labelRects(opacity) {
-    return (opacity === undefined || opacity >= 1) ? _labelRectsHard : _labelRectsSoft;
-}
-function _labelObstacles(opacity) {
-    return (opacity === undefined || opacity >= 1)
-        ? _labelRectsHard
-        : _labelRectsSoft.concat(_labelRectsHard);
 }
 
 /* Placement au coût.
@@ -2707,13 +2702,9 @@ function _drawLeader(ctx, anchorX, anchorY, pos, w, h, color, opacity) {
    nom seul), et les réunir demanderait un descripteur commun qui n'existe
    pas. La fermeture, elle, capture ce dont chacune a besoin.
 
-     req = { anchorX, anchorY, w, h, prefer, color, opacity, level, render }
+     req = { anchorX, anchorY, w, h, prefer, color, opacity, render }
 
-   opacity ne concerne que l'encre — le trait de rappel la suit. level dit à
-   quel registre l'étiquette appartient, dur ou fané ; il vaut opacity par
-   défaut. Les deux ne coïncident pas toujours : en mode électrique et vue
-   perpendiculaire, les étiquettes sont tracées en pleine opacité tout en
-   restant inscrites au registre fané de leur instantané.
+   opacity ne concerne que l'encre — le trait de rappel la suit.
 
    ── Pourquoi la demande est mise en file plutôt qu'honorée ──
    Le décor que le placement évite — _labelScenery, _labelInk — ne contient
@@ -2831,13 +2822,12 @@ function _flushLabels(ctx) {
        contre les boîtes déjà attribuées, donc contre plus important que lui. */
     for (i = 0; i < order.length; i++) {
         req = order[i];
-        req.lvl = (req.level === undefined) ? req.opacity : req.level;
         var mem = req.key ? (_labelSticky[req.key] || { id: null, pressure: 0 })
                           : null;
         req.pos = _bestLabelPos(req.anchorX, req.anchorY, req.w, req.h,
-                                req.prefer, _labelObstacles(req.lvl), mem);
+                                req.prefer, _labelRects, mem);
         if (req.key) _labelStickyNew[req.key] = mem;
-        _labelRects(req.lvl).push({ lx: req.pos.lx, ly: req.pos.ly, w: req.w, h: req.h });
+        _labelRects.push({ lx: req.pos.lx, ly: req.pos.ly, w: req.w, h: req.h });
     }
 
     /* 2. Tracé dans l'ordre inverse, pour que le plus important passe
@@ -2870,12 +2860,12 @@ function _flushLabels(ctx) {
    les verrait toutes pointer sur la dernière force — les trois noms se
    poseraient au même endroit, avec le même texte. Un appel de fonction par
    étiquette est ce qui rend la capture correcte. */
-function _queueForceName(ctx, anchorX, anchorY, name, color, opacity, level, prefer) {
+function _queueForceName(ctx, anchorX, anchorY, name, color, opacity, prefer) {
     var lm = _measureForceName(ctx, name);
     _queueLabel({
         anchorX: anchorX, anchorY: anchorY,
         w: lm.w, h: lm.h,
-        prefer: prefer, color: color, opacity: opacity, level: level, kind: name,
+        prefer: prefer, color: color, opacity: opacity, kind: name,
         render: function (lx, ly) { _renderForceName(ctx, lx, ly, name, color, opacity, lm); }
     });
 }
@@ -3105,7 +3095,7 @@ function _queueKinLabel(ctx, lbl, projLine) {
         /* Juste la flèche + nom, sans bloc coordonnées : la même étiquette
            que celle des forces, au même rendu près. */
         _queueForceName(ctx, lbl.anchorX, lbl.anchorY, lbl.vecName,
-                        lbl.color, 1.0, undefined, lbl.prefer);
+                        lbl.color, 1.0, lbl.prefer);
     } else {
         /* Vue normale : notation vectorielle complète. Le cas « vue projetée
            avec coordonnées » n'arrive jamais ici, il a été traité en bloc
@@ -3357,8 +3347,6 @@ function _renderForceName(ctx, lx, ly, name, color, opacity, m) {
 /* ─────────────────────────────────────────────────
    Forces : poids, vent, frottement, ΣF
    phys = {mass, g, windForce, useFriction, k}
-   Le registre anti-chevauchement est celui de l'image entière, choisi selon
-   l'opacité (cf. _labelRects).
 
    ── showNames : la même règle que pour tous les autres vecteurs ──
    Afficher les forces posait leurs noms, alors qu'afficher la vitesse ou
@@ -3406,7 +3394,7 @@ function _drawForcesAt(ctx, cx, cy, vx, vy, opacity, phys, showNames) {
     for (var i = 0; i < forces.length; i++) {
         var f = forces[i];
         _queueForceName(ctx, cx + f.dx, cy + f.dy, f.name,
-                        COL_VEC_FORCES, opacity, undefined, pref);
+                        COL_VEC_FORCES, opacity, pref);
     }
 }
 
@@ -3423,7 +3411,7 @@ function _drawSumFAt(ctx, cx, cy, vx, vy, opacity, phys, showNames) {
     if (!showNames) return;
     var pref = ['right', 'upper-right', 'lower-right', 'left', 'upper-left', 'lower-left', 'above', 'below'];
     _queueForceName(ctx, cx + dxPx, cy + dyPx, 'ΣF',
-                    COL_VEC_SUMF, opacity, undefined, pref);
+                    COL_VEC_SUMF, opacity, pref);
 }
 
 /* ─────────────────────────────────────────────────
@@ -3892,7 +3880,7 @@ function _drawForcesAtE(ctx, cx, cy, vx, vy, opacity, phys, showNames) {
        tracée, et la vue perpendiculaire la force à 1. */
     _reserveArrow(cx, cy, dxPx, dyPx, _op);
     if (!showNames) return;
-    _queueForceName(ctx, cx + dxPx, cy + dyPx, 'FE', _col, _op, opacity,
+    _queueForceName(ctx, cx + dxPx, cy + dyPx, 'FE', _col, _op,
                     ['right','upper-right','lower-right','left','above','below']);
 }
 
@@ -3910,7 +3898,7 @@ function _drawSumFAtE(ctx, cx, cy, vx, vy, opacity, phys, showNames) {
        tracée, et la vue perpendiculaire la force à 1. */
     _reserveArrow(cx, cy, dxPx, dyPx, _op);
     if (!showNames) return;
-    _queueForceName(ctx, cx + dxPx, cy + dyPx, 'ΣF', _col, _op, opacity,
+    _queueForceName(ctx, cx + dxPx, cy + dyPx, 'ΣF', _col, _op,
                     ['right','upper-right','lower-right','left','above','below']);
 }
 
