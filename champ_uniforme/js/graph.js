@@ -261,13 +261,15 @@ function _niceStep(range, targetTicks) {
     return 10 * mag;
 }
 
+/* Séparateur décimal français, comme fmt() et fmtSci() côté animation. */
 function _fmtLabel(v) {
     if (v === 0) return '0';
     var av = Math.abs(v);
-    if (av >= 1000) return v.toFixed(0);
-    if (av >= 100)  return v.toFixed(0);
-    if (av >= 10)   return v.toFixed(1);
-    return v.toFixed(2);
+    var dec;
+    if (av >= 100)     dec = 0;
+    else if (av >= 10) dec = 1;
+    else               dec = 2;
+    return v.toFixed(dec).replace('.', ',');
 }
 
 /* Tailles de police dynamiques (recalculées par frame) */
