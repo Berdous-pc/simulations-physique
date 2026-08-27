@@ -90,6 +90,25 @@ main {
 .anim-phase-btn:hover  { background: rgba(80,110,80,0.75); }
 .anim-phase-btn.active { background: rgba(40,100,60,0.85); border-color: rgba(100,220,120,0.6); }
 
+/* ── Chronomètre overlay (haut-droite de la zone anim) ── */
+#anim-chrono {
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  pointer-events: none;
+  padding: 0.15em 0.5em;
+  /* La taille est posée en JS par _animFontSize() : le chrono suit la même
+     règle que les étiquettes dessinées dans le canvas, pas une règle à part. */
+  font: bold 16px 'Segoe UI', Arial, sans-serif;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  background: rgba(50,60,80,0.55);
+  border: 1px solid rgba(255,255,255,0.35);
+  border-radius: 4px;
+  backdrop-filter: blur(2px);
+  white-space: nowrap;
+}
+
 /* ── Barre d'outils animation ──────────────────── */
 #anim-toolbar {
   flex: 0 0 auto;

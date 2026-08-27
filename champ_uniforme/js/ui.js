@@ -58,6 +58,7 @@ function loop(ts) {
 
         drawAnim();
         drawGraph();
+        _updateChrono(sim.t, false);
 
     } else if (activeTab === 'champ-electrique') {
         var _wasEndedE = simE.ended;
@@ -86,7 +87,33 @@ function loop(ts) {
 
         drawAnimE();
         drawGraphE();
+        _updateChrono(simE.t, true);
     }
+}
+
+/* ─────────────────────────────────────────────────
+   Chronomètre overlay — affiche l'instant courant.
+   En champ électrique les durées se comptent en nanosecondes, comme
+   l'axe des graphes : la même horloge, la même unité.
+───────────────────────────────────────────────── */
+var _chronoEl   = null;
+var _chronoLast = null;
+var _chronoFs   = 0;
+
+function _updateChrono(t, isNs) {
+    if (_chronoEl === null) _chronoEl = document.getElementById('anim-chrono');
+    if (!_chronoEl) return;
+
+    /* Mêmes paramètres que les étiquettes d'axes de la zone d'animation
+       (draw.js) : le chrono grandit et rétrécit avec elles. */
+    var fs = isNs ? _animFontSize(13, 18, 0.038) : _animFontSize(14, 20, 0.041);
+    if (Math.abs(fs - _chronoFs) > 0.25) {
+        _chronoEl.style.fontSize = fs.toFixed(1) + 'px';
+        _chronoFs = fs;
+    }
+
+    var txt = 't = ' + fmt(isNs ? t * 1e9 : t, 2) + (isNs ? ' ns' : ' s');
+    if (txt !== _chronoLast) { _chronoEl.textContent = txt; _chronoLast = txt; }
 }
 
 /* ─────────────────────────────────────────────────
