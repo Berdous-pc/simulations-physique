@@ -1747,7 +1747,7 @@ function _renderDropdownE(run) {
     var l1 = document.createElement('div'); l1.className = 'run-drop-line';
     var l2 = document.createElement('div'); l2.className = 'run-drop-line';
     [pName,
-     'v₀ = ' + (run.v0 / 1e6).toFixed(1) + ' ×10⁶ m/s',
+     'v₀ = ' + fmt(run.v0 / 1e6, 1) + ' ×10⁶ m/s',
      'α = ' + run.alpha + '°',
      'E = ' + run.E + ' V/m'
     ].forEach(function(txt) {
@@ -1755,7 +1755,7 @@ function _renderDropdownE(run) {
         s.textContent = txt; l1.appendChild(s);
     });
     var modeLabel = run.armatureMode === 'parallel-x' ? 'Parallèles x' : 'Perp. x';
-    var dimLabel  = run.armatureMode === 'parallel-x' ? 'L = ' + run.L.toFixed(2) + ' m' : 'e = ' + run.e.toFixed(2) + ' m';
+    var dimLabel  = run.armatureMode === 'parallel-x' ? 'L = ' + fmt(run.L, 2) + ' m' : 'e = ' + fmt(run.e, 2) + ' m';
     [modeLabel, dimLabel].forEach(function(txt) {
         var s = document.createElement('span'); s.className = 'run-drop-item';
         s.textContent = txt; l2.appendChild(s);
