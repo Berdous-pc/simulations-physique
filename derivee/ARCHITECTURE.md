@@ -36,17 +36,21 @@ plusieurs fonctions au choix, une animation `Δt → 0` et le graphe de `f′`.
 derivee/
 ├── index.html         ← structure HTML uniquement
 ├── ARCHITECTURE.md    ← ce fichier
+├── fusée.png          ← image de la fusée (mode décollage)
 ├── css/
 │   └── style.css
 └── js/
     ├── sim.js         ← état, catalogue de fonctions, vue, utilitaires (1er)
     ├── courbe.js      ← graphe principal + interactions souris
     ├── graph.js       ← graphe de la fonction dérivée
+    ├── fusee.js       ← panneau du décollage (fusée, sol, alignement)
     └── ui.js          ← contrôles du panneau, animation, boucle (dernier)
 ```
 
 Ordre de chargement critique (scope global, pas de modules ES) :
-`sim.js` → `courbe.js` → `graph.js` → `ui.js`.
+`sim.js` → `courbe.js` → `graph.js` → `fusee.js` → `ui.js`.
+`fusee.js` lit `geoCourbe`, posé par `courbe.js` : il doit donc être tracé
+APRÈS `drawCourbe()` à chaque image.
 
 Page **sans onglets** : pas de deep-linking `#hash`.
 
@@ -256,3 +260,73 @@ quand la courbe dérivée est affichée.
   et `titreAxe()`, jamais concaténer une unité directement.
 - Les étiquettes `Δz/Δt` et `dz/dt` sont construites par `labelTaux()` /
   `labelDeriv()` à partir des noms de la fonction — aucune chaîne codée en dur.
+
+---
+
+## 8. Décollage de fusée (`fusee.js`)
+
+Bascule depuis la section **Options** du panneau (réservée, comme la
+chronophotographie, à la trajectoire `z(t)` : `fuseeDispo()`). Une section
+**Décollage** apparaît alors entre *Paramètres* et *Encadrement*, avec les
+mêmes commandes que la section *Contrôles* de la page champ uniforme :
+Lancer/Pause, RAZ, curseur de vitesse (`FUSEE_VITESSES`) et bouton de
+rembobinage à maintenir appuyé.
+
+### Ce que le mode change
+
+- **Le graphe n'est plus donné d'avance.** `sim.fuseeT` court de 0 à
+  `fuseeDuree()` ; la courbe n'est tracée que jusqu'à cette date. En
+  chronophotographie, seuls les **relevés** se posent pendant le vol — la
+  courbe continue n'apparaît qu'à l'arrivée, dans l'ordre où on l'obtient
+  au laboratoire.
+- **Aucune figure de lecture pendant le vol** : ni point M, ni A/B, ni
+  cotes, ni sécante, ni tangente, ni coordonnées. `drawCourbe()` sort tôt
+  (`fuseeAnimEnCours()`), et le bandeau du taux de variation cède la place
+  à un **chronomètre** (`dessineChronometre()`), au même endroit et à la
+  même taille. Tout revient d'un coup à `sim.fuseeFini`, le point d'étude
+  étant posé au milieu du vol pour que la sécante soit encadrée des deux
+  côtés.
+- **Les paramètres sont bornés autrement** : `a ∈ [0 ; 10]`, `b = 0`
+  (figé), `c ∈ [15 ; 45]`. Tout le panneau passe par `bornesParam()`, qui
+  consulte `FUSEE_BORNES` quand le mode est actif. Entrer dans le mode
+  remet `a`, `b`, `c` à leurs valeurs par défaut.
+- **Le vol s'arrête à une ALTITUDE, pas à une date** : `fuseeDuree()`
+  résout `z(t) = 1000 m`, soit `t = √((1000 − c) / a)`. Doubler `a`
+  raccourcit le vol au lieu de le faire sortir du cadre — le graphe garde
+  la même altitude d'arrivée, seule l'abscisse se resserre. À `a = 0` la
+  fusée ne décolle pas : `FUSEE_DUREE_MAX` (60 s) sert de garde-fou.
+- **Le cadrage** est recalculé par `calcVueBase()` sur le VOL et non sur le
+  domaine d'étude de la fonction : l'abscisse court jusqu'à `fuseeDuree()`,
+  et l'ordonnée doit contenir le sol (`z = 0`) *et* le sommet de la fusée à
+  l'arrivée, soit `z(durée) + c`.
+- **Le plafond de Δ** suit la durée du vol (`dtMaxCourant()`) : avec un Δt
+  bloqué à 3 s, un vol de 40 s ne s'explorerait qu'à la loupe et la
+  chronophotographie manquerait d'écart entre relevés.
+
+### L'invariant du mode
+
+`z(0) = c` est l'altitude du **centre de masse** quand la fusée est posée
+au sol : c'est donc sa **demi-hauteur**. La fusée mesure `2c` mètres, et
+changer `c` change la taille de l'image — sans quoi elle flotterait ou
+s'enfoncerait. Trois conséquences en découlent d'elles-mêmes :
+
+- le bas de la fusée affleure exactement `z = 0` à l'instant zéro ;
+- le jet de gaz, situé **sous** la fusée dans l'image, est donc enterré au
+  départ : la fusée a l'air posée, moteurs éteints. Le sol est peint
+  **après** l'image, aucun cas particulier n'est écrit ;
+- les flammes sortent d'elles-mêmes dès que le vol commence.
+
+Les repères dans l'image (`FUSEE_HAUT`, `FUSEE_BAS`) ont été relevés sur le
+fichier : la fusée occupe le haut, le jet de gaz le bas. Le centre de masse
+est à mi-hauteur de la **fusée**, pas de l'image — le placer au milieu de
+l'image le ferait descendre dans les flammes, qui ne sont pas de la matière
+embarquée.
+
+### Alignement des deux canevas
+
+`drawFusee()` ne recalcule aucune échelle : il lit `geoCourbe.gy(z)` — donc
+l'ordonnée que le **graphe** donne à `z` — et la translate dans son propre
+canevas par la différence des `getBoundingClientRect()` des deux. Relue à
+chaque tracé, elle suit le splitter et les redimensionnements. L'élève peut
+alors aller à l'horizontale du point de la courbe jusqu'à la fusée : c'est
+tout l'objet du mode.

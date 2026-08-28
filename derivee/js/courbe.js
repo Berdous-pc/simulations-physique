@@ -203,6 +203,18 @@ function drawCourbe() {
   ctx.rect(g.x0, g.padT, g.plotW, g.plotH);
   ctx.clip();
 
+  // ── Décollage de fusée : la figure se construit au fil du vol ──
+  //    Tant que la fusée monte, le graphe n'est qu'un enregistrement en
+  //    cours : ni point d'étude, ni sécante, ni cotes — il n'y a pas
+  //    encore de courbe sur laquelle les poser. Tout revient à l'arrivée.
+  var enVol = fuseeAnimEnCours();
+  // En chronophotographie, seuls les relevés se posent pendant le vol :
+  // la courbe continue n'apparaît qu'à la fin, une fois tous les points
+  // obtenus. C'est l'ordre dans lequel on l'obtient au laboratoire.
+  var courbeVisible = !enVol || !chronoActif();
+  // Borne droite du tracé pendant le vol : le crayon suit la fusée.
+  var tTrace = enVol ? Math.min(g.tMax, sim.fuseeT) : g.tMax;
+
   // ── Courbe f, échantillonnée sur toute la largeur visible ──
   ctx.strokeStyle = COUL.courbe;
   ctx.lineWidth = 2.6 * s;
@@ -210,8 +222,11 @@ function drawCourbe() {
   ctx.beginPath();
   var N = Math.max(200, Math.round(g.plotW));
   var trace = false;
-  for (var i = 0; i <= N; i++) {
+  for (var i = 0; courbeVisible && i <= N; i++) {
     var t = g.tMin + (g.tMax - g.tMin) * i / N;
+    if (t > tTrace) break;
+    // Le vol commence à t = 0 : rien n'a été enregistré avant.
+    if (enVol && t < 0) { trace = false; continue; }
     var z = fVal(t);
     if (!isFinite(z)) { trace = false; continue; }
     var px = g.gx(t), py = g.gy(z);
@@ -223,7 +238,15 @@ function drawCourbe() {
   ctx.stroke();
 
   // ── Points de la chronophotographie ──
-  if (chronoActif()) dessineChrono(ctx, g);
+  //    Pendant le vol, les relevés se posent l'un après l'autre et AUCUN
+  //    n'est réservé aux pastilles A/M/B : celles-ci n'existent pas encore.
+  if (chronoActif()) dessineChrono(ctx, g, enVol ? tTrace : null);
+
+  if (enVol) {
+    ctx.restore();
+    dessineChronometre(ctx, g);
+    return;
+  }
 
   // ── Points A, M, B et pente courante ──
   var tA = tGauche(), tB = tDroite(), tM = sim.t0;
@@ -430,11 +453,17 @@ function chronoIndicesVisibles(g) {
   return { i0: i0, i1: i1 };
 }
 
-function dessineChrono(ctx, g) {
+// `tMaxVol` non nul : on est en plein décollage. Les relevés se posent
+// alors jusqu'à la date atteinte, et tous portent leur pastille — aucun
+// n'est mis de côté pour A/M/B, qui n'apparaîtront qu'à l'arrivée.
+function dessineChrono(ctx, g, tMaxVol) {
   var lim = chronoIndicesVisibles(g);
   if (!lim) return;
   var s = g.s;
-  var idx = sim.chronoIdx;
+  var idx = (tMaxVol === null || tMaxVol === undefined) ? sim.chronoIdx : NaN;
+  if (tMaxVol !== null && tMaxVol !== undefined) {
+    lim = { i0: Math.max(lim.i0, 0), i1: Math.min(lim.i1, Math.floor(tMaxVol / chronoPas() + 1e-9)) };
+  }
   var font = '600 ' + Math.round(11.5 * s) + 'px "Segoe UI", Arial, sans-serif';
   // Les étiquettes se serrent vite : on ne les écrit que si les points sont
   // assez espacés à l'écran pour qu'elles restent lisibles.
@@ -490,6 +519,39 @@ function dessineCotes(ctx, g, tA, zA, tB, zB) {
 // ══════════════════════════════════════════════════════════════════════
 //  Bandeau : la grandeur lue sur le graphe, en grand, pour la projection
 // ══════════════════════════════════════════════════════════════════════
+
+// Chronomètre du décollage : il occupe exactement la place du bandeau du
+// taux de variation, et lui rend la place à l'arrivée. Pendant le vol il
+// n'y a rien à calculer — il n'y a qu'une date qui court.
+function dessineChronometre(ctx, g) {
+  var s = g.s;
+  var txt = fmtFr(sim.fuseeT, 2) + ' s';
+  var sous = 'décollage en cours';
+
+  ctx.font = '700 ' + Math.round(24 * s) + 'px "Segoe UI", Arial, sans-serif';
+  var w = ctx.measureText(txt).width;
+  ctx.font = Math.round(12 * s) + 'px "Segoe UI", Arial, sans-serif';
+  w = Math.max(w, ctx.measureText(sous).width) + 20 * s;
+  var h = 46 * s;
+  var bx = g.x0 + g.plotW - w - 8 * s, by = g.padT + 8 * s;
+
+  ctx.fillStyle = 'rgba(255,255,255,0.94)';
+  ctx.strokeStyle = COUL.coteT;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.rect(bx, by, w, h);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = COUL.coteT;
+  ctx.font = '700 ' + Math.round(24 * s) + 'px "Segoe UI", Arial, sans-serif';
+  ctx.fillText(txt, bx + w / 2, by + 16 * s);
+  ctx.fillStyle = COUL.label;
+  ctx.font = Math.round(12 * s) + 'px "Segoe UI", Arial, sans-serif';
+  ctx.fillText(sous, bx + w / 2, by + 34 * s);
+}
 
 function dessineBandeau(ctx, g, pente, tangenteSeule) {
   var F = fonCourante();
@@ -584,7 +646,9 @@ function initCourbeSouris() {
     var px = e.clientX - r.left, py = e.clientY - r.top;
     // Zone d'accroche généreuse : en projection, viser la courbe à la
     // souris depuis le fond de la salle doit rester facile.
-    if (_distCourbePx(geoCourbe, px, py) < 40) {
+    // Pendant le décollage il n'y a pas encore de point d'étude à saisir :
+    // le geste ne peut que décaler la vue.
+    if (!fuseeAnimEnCours() && _distCourbePx(geoCourbe, px, py) < 40) {
       dragCourbe.mode = 'point';
       _poseM(geoCourbe, px);
     } else {
@@ -611,7 +675,8 @@ function initCourbeSouris() {
       sim.panZ = dragCourbe.panZ + (py - dragCourbe.y) / g.plotH * (g.zMax - g.zMin);
       appliqueVue();
     } else {
-      canvas.style.cursor = _distCourbePx(geoCourbe, px, py) < 40 ? 'ew-resize' : 'grab';
+      canvas.style.cursor = (!fuseeAnimEnCours() && _distCourbePx(geoCourbe, px, py) < 40)
+                            ? 'ew-resize' : 'grab';
     }
   });
 

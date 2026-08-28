@@ -40,6 +40,12 @@
       </div>
 
     </div><!-- fin #row-graphes -->
+
+    <!-- Décollage : la fusée monte à droite du graphe, son centre de masse
+         tenu à l’ordonnée que le graphe donne à z(t). -->
+    <div class="chart-wrap" id="wrap-fusee">
+      <canvas id="canvas-fusee"></canvas>
+    </div>
   </div><!-- fin #left-col -->
 
   <!-- ══════════════════════════════════════════════
@@ -71,6 +77,45 @@
       </div>
 
       <div class="sep"></div>
+
+      <!-- ═══ Décollage : commandes de l'animation ═══════════════════
+           N'apparaît qu'en mode « Décollage de fusée ». Mêmes commandes
+           que la section Contrôles de la page « champ uniforme » :
+           Lancer/Pause, RAZ, et un curseur de vitesse doublé d'un bouton
+           de rembobinage à maintenir appuyé. -->
+      <div id="bloc-fusee" style="display:none;">
+        <div class="panel-section">
+          <div class="section-title">Décollage</div>
+          <div class="btn-row">
+            <button id="btn-fusee-play" class="btn btn-play"
+                    onclick="toggleFuseePlay()">▶ Lancer</button>
+            <button class="btn btn-raz" onclick="razFusee()">↺ RAZ</button>
+          </div>
+          <div class="param-row" style="margin-top:8px;">
+            <label>
+              Vitesse d'animation
+              <span class="param-value"><span id="lbl-fusee-speed">1,00</span></span>
+            </label>
+            <div class="speed-line">
+              <button id="btn-fusee-rewind" class="btn-rewind" type="button"
+                      title="Maintenir pour rembobiner">⏪</button>
+              <div class="speed-col">
+                <input type="range" id="sl-fusee-speed"
+                       min="0" max="3" step="1" value="3"
+                       oninput="onFuseeSpeed(this.value)">
+                <div class="speed-ticks">
+                  <span>×0,10</span>
+                  <span>×0,25</span>
+                  <span>×0,50</span>
+                  <span>×1,00</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+      </div>
 
       <!-- ═══ Encadrement : écart Δt ═══ -->
       <div class="panel-section">
@@ -147,9 +192,9 @@
 
       <div class="sep"></div>
 
-      <!-- ═══ Affichage ═══ -->
+      <!-- ═══ Options ═══ -->
       <div class="panel-section">
-        <div class="section-title">Affichage</div>
+        <div class="section-title">Options</div>
         <label class="check-row">
           <input type="checkbox" id="ck-tangente" onchange="toggleTangente(this.checked)">
           <span class="cr-swatch" style="background:#2a8a50"></span>
@@ -171,6 +216,9 @@
              est masqué par majBtnChrono() pour les autres fonctions -->
         <button class="btn btn-toggle-one" id="btn-chrono"
                 onclick="toggleChrono()">Chronophotographie</button>
+        <!-- Décollage de fusée : lui aussi réservé à la trajectoire z(t) -->
+        <button class="btn btn-toggle-one" id="btn-fusee"
+                onclick="toggleFusee()">Décollage de fusée</button>
       </div>
 
       <div class="sep"></div>
@@ -203,6 +251,13 @@
         sont relevées à intervalle de temps constant à partir de
         <strong>M₀</strong> (t = 0) ; le point d'étude se choisit alors parmi
         les relevés et la vitesse se calcule d'un relevé à l'autre.<br>
+        <strong>Décollage de fusée</strong> (trajectoire z(t)) : la courbe
+        n'est plus donnée d'avance, elle s'écrit pendant que la fusée monte
+        à côté du graphe, son <strong>centre de masse</strong> tenu à
+        l'ordonnée z(t). Le vol s'arrête à <strong>1000 m</strong> : c'est
+        l'accélération a qui décide du temps qu'il y met. Le point d'étude, les cotes et la sécante
+        n'apparaissent qu'une fois le vol terminé — on ne calcule pas une
+        vitesse sur un enregistrement en cours.<br>
         Sur le graphe : <em>glisser sur la courbe</em> déplace M,
         <em>glisser ailleurs</em> déplace la vue, la <em>molette</em> zoome et
         un <em>double-clic</em> revient à la vue initiale.
@@ -214,11 +269,12 @@
 </main>
 
 <!-- ════════════════════════════════════════════════
-     Ordre de chargement : sim → courbe → graph → ui
+     Ordre de chargement : sim → courbe → graph → fusee → ui
 ════════════════════════════════════════════════ -->
 <script src="js/sim.js"></script>
 <script src="js/courbe.js"></script>
 <script src="js/graph.js"></script>
+<script src="js/fusee.js"></script>
 <script src="js/ui.js"></script>
 
 <script data-goatcounter="https://berdous-pc.goatcounter.com/count"

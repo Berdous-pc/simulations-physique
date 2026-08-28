@@ -158,7 +158,16 @@ var sim = {
   // feraient dériver le point (cf. chronoRecale).
   chronoAncre: 0,
 
-  animDt: false       // animation « Δt → 0 » en cours
+  animDt: false,      // animation « Δt → 0 » en cours
+
+  // Décollage de fusée : le graphe z(t) se construit au rythme d'une
+  // animation, une image de fusée montant à côté du graphe, son centre de
+  // masse aligné sur l'ordonnée z(t) lue sur la courbe.
+  fusee: false,       // mode actif
+  fuseeT: 0,          // date courante de l'animation (s)
+  fuseePlay: false,   // animation en marche
+  fuseeFini: false,   // animation arrivée au bout : la lecture reprend ses droits
+  fuseeSpeed: 1       // facteur de vitesse de l'animation
 };
 
 // Vue affichée du graphe principal : centre + dimensions, en unités de la
@@ -221,6 +230,23 @@ function calcVueBase() {
   var F = fonCourante();
   vueBase.cT = (F.tMin + F.tMax) / 2;
   vueBase.w  = (F.tMax - F.tMin) * 1.06;
+
+  // En décollage, la fenêtre est celle du VOL, pas du domaine d'étude de
+  // la fonction : l'abscisse court jusqu'à l'arrivée aux 1000 m, et
+  // l'ordonnée doit contenir le sol (z = 0) ET la fusée entière à cet
+  // instant — son sommet culmine à z(durée) + c, puisque le centre de
+  // masse est à mi-hauteur d'une fusée haute de 2c.
+  if (fuseeActif()) {
+    var duree = fuseeDuree();
+    vueBase.cT = duree / 2;
+    vueBase.w  = duree * 1.06;
+    var zHaut = fVal(duree) + sim.params.c;
+    var zBas  = -0.05 * zHaut;
+    var zSom  = zHaut * 1.04;
+    vueBase.cZ = (zBas + zSom) / 2;
+    vueBase.h  = zSom - zBas;
+    return;
+  }
 
   // Fenêtre verticale fixe si la fonction en définit une (zMin/zMax) :
   // pas de recalcul sur la courbe, la vue par défaut ne bouge pas quand
@@ -553,3 +579,97 @@ function indiceSub(n) {
 
 // Nom affiché du point Mᵢ (« M₃ »), ou « M » hors chronophotographie.
 function nomPointM(i) { return chronoActif() ? 'M' + indiceSub(i) : 'M'; }
+
+// ══════════════════════════════════════════════════════════════════════
+//  Décollage de fusée
+//  Le graphe z(t) cesse d'être une figure déjà faite : il se construit
+//  sous les yeux de l'élève, au rythme d'une fusée qui monte à côté de
+//  lui. Le centre de masse M de la fusée est tenu à la MÊME ordonnée que
+//  le point de la courbe — c'est tout l'intérêt du mode : la courbe n'est
+//  pas une image du mouvement, elle en est le relevé.
+//
+//  Le décor impose ses valeurs aux paramètres :
+//    a ∈ [0 ; 10] m·s⁻²   (la fusée monte, elle ne retombe pas)
+//    b = 0                (elle part du repos)
+//    c ∈ [15 ; 45] m      z(0) = c est l'altitude du centre de masse au
+//                         sol, donc la DEMI-HAUTEUR de la fusée : changer
+//                         c change la taille de l'image, sans quoi la
+//                         fusée flotterait ou s'enfoncerait dans le sol.
+// ══════════════════════════════════════════════════════════════════════
+
+// Comme la chronophotographie, le décollage n'a de sens que sur z(t).
+function fuseeDispo() { return fonCourante().id === 'trajectoire'; }
+function fuseeActif() { return sim.fusee && fuseeDispo(); }
+
+// Vrai tant que l'animation n'est pas arrivée à son terme : c'est cette
+// phase qui masque le point M, les cotes et la sécante, et qui remplace
+// le cadre du taux de variation par un chronomètre.
+function fuseeAnimEnCours() { return fuseeActif() && !sim.fuseeFini; }
+
+// Altitude à laquelle le vol s'arrête. Ce n'est pas une durée qui borne
+// l'animation mais une HAUTEUR : la fusée monte jusqu'à 1000 m, et c'est
+// l'accélération qui décide du temps qu'elle y met. Doubler a raccourcit
+// le vol au lieu de le faire sortir du cadre — le graphe garde la même
+// altitude d'arrivée, seule l'abscisse se resserre.
+var FUSEE_ALTITUDE = 1000;
+
+// Garde-fou : à très faible accélération les 1000 m ne sont jamais
+// atteints (a = 0 : la fusée ne décolle pas). Le vol s'arrête quand même.
+var FUSEE_DUREE_MAX = 60;
+
+// Durée du vol : la date à laquelle z(t) = 1000 m.
+// Avec b = 0, z(t) = a·t² + c, donc t = √((1000 − c) / a).
+function fuseeDuree() {
+  var a = sim.params.a, c = sim.params.c;
+  if (!(a > 0)) return FUSEE_DUREE_MAX;
+  return Math.min(Math.sqrt(Math.max(0, (FUSEE_ALTITUDE - c) / a)), FUSEE_DUREE_MAX);
+}
+
+// Écart Δ maximal proposé par le slider. En décollage il suit la durée du
+// vol : avec un Δt plafonné à 3 s, un vol de 40 s ne s'explorerait qu'à la
+// loupe, et la chronophotographie n'aurait plus assez d'écart entre relevés.
+function dtMaxCourant() {
+  return fuseeActif() ? fuseeDuree() : fonCourante().dtMax;
+}
+
+// Ramène la date courante dans le vol quand a ou c viennent de changer :
+// la durée est calculée sur eux, elle a pu se raccourcir sous l'animation.
+function fuseeClampT() {
+  var d = fuseeDuree();
+  if (sim.fuseeT <= d) return false;
+  sim.fuseeT = d;
+  sim.fuseePlay = false;
+  sim.fuseeFini = true;
+  return true;
+}
+
+// Bornes imposées aux paramètres en mode décollage. `fixe` marque un
+// paramètre qui n'est plus réglable du tout (b = 0 : départ du repos).
+var FUSEE_BORNES = {
+  a: { min: 0,  max: 10, step: 0.1 },
+  b: { min: 0,  max: 0,  step: 0.1, fixe: true },
+  c: { min: 15, max: 45, step: 1 }
+};
+
+// Bornes effectives d'un paramètre : celles de sa définition, ou celles
+// que le mode décollage lui impose. Tout le panneau passe par ici.
+function bornesParam(p) {
+  var o = fuseeActif() ? FUSEE_BORNES[p.id] : null;
+  return o ? { min: o.min, max: o.max, step: o.step, fixe: !!o.fixe }
+           : { min: p.min, max: p.max, step: p.step, fixe: false };
+}
+
+// Ramène les paramètres dans les bornes du mode courant.
+function borneParamsAuMode() {
+  fonCourante().params.forEach(function (p) {
+    var b = bornesParam(p);
+    sim.params[p.id] = Math.max(b.min, Math.min(b.max, sim.params[p.id]));
+  });
+}
+
+// Remet l'animation à l'instant zéro : fusée au sol, courbe effacée.
+function fuseeRaz() {
+  sim.fuseeT = 0;
+  sim.fuseePlay = false;
+  sim.fuseeFini = false;
+}

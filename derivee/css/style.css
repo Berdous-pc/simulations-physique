@@ -86,6 +86,20 @@ main {
 /* Le graphe de la dérivée et son séparateur n'existent qu'à la demande. */
 #splitter, #wrap-deriv { display: none; }
 
+/* ── Panneau du décollage, à droite des graphes ──────────────────────
+      Il n'apparaît qu'en mode « Décollage de fusée » ; les graphes se
+      resserrent alors d'autant. La largeur est bornée : trop étroite la
+      fusée devient un trait, trop large elle mange la lecture du graphe. */
+#wrap-fusee { display: none; }
+
+#left-col.avec-fusee { gap: 10px; }
+#left-col.avec-fusee #wrap-fusee {
+  display: block;
+  flex: 0 0 clamp(110px, 17vw, 230px);
+  min-width: 0;
+  background: #eef4fb;
+}
+
 /* Les deux graphes se partagent la hauteur selon --frac-courbe. Le grow est
    posé propriété par propriété : un calc() en position flex-grow dans le
    raccourci `flex` n'est pas interprété partout. */
@@ -283,6 +297,72 @@ main {
 }
 .btn-toggle-one:hover { background: #ddd8ce; }
 .btn-toggle-one.active:hover { background: #f8dcb0; }
+
+.btn-play {
+  background: #2a8a50;
+  color: #fff;
+  font-size: clamp(14px, 1.4vw, 18px);
+  padding: 11px 6px;
+}
+.btn-play:hover { background: #1a6a38; }
+
+/* Deux boutons côte à côte (Lancer/Pause + RAZ) : chacun garde son style,
+   seule la largeur devient partagée. RAZ reste étroit — son texte ne
+   change pas — pour laisser la place à Lancer/Pause/Reprendre. */
+.btn-row { display: flex; gap: 6px; }
+.btn-row > .btn { width: auto; }
+.btn-row > .btn-play,
+.btn-row > .btn-pause { flex: 1 1 auto; }
+.btn-row > .btn-raz   { flex: 0 0 auto; }
+
+/* ── Ligne « vitesse d'animation » : rembobinage puis curseur ──
+      Le bouton garde sa largeur d'icône, le curseur prend tout le reste,
+      et les graduations partagent sa colonne pour rester sous les crans. */
+.speed-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+}
+.speed-col {
+  flex: 1 1 auto;
+  min-width: 0;   /* sans quoi le curseur refuse de se comprimer */
+}
+
+.btn-rewind {
+  flex: 0 0 auto;
+  border: 1px solid #c8c0b4;
+  border-radius: 6px;
+  background: #ede9e2;
+  color: #5a6a78;
+  font-family: inherit;
+  font-size: clamp(11px, 1.1vw, 14px);
+  line-height: 1;
+  padding: 5px 8px;
+  cursor: pointer;
+  opacity: 0.75;
+  transition: transform 0.1s, background 0.15s, opacity 0.15s;
+  touch-action: none;   /* l'appui maintenu ne doit pas faire défiler la page */
+}
+.btn-rewind:hover  { opacity: 1; background: #dedad2; }
+.btn-rewind:active { transform: scale(0.97); }
+.btn-rewind.active {
+  opacity: 1;
+  background: #fde8c8;
+  color: #7a3a10;
+  border-color: #d0a060;
+}
+
+.speed-ticks {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr) 0fr;
+  font-size: clamp(9px, 0.85vw, 11px);
+  color: #7a8a96;
+  padding: 0 7px;
+  line-height: 1;
+  margin-top: 1px;
+}
+.speed-ticks span:not(:last-child) { text-align: left; }
+.speed-ticks span:last-child { text-align: right; white-space: nowrap; }
 
 /* ── Sélecteur segmenté (deux choix exclusifs, ex. définition du taux) ── */
 .seg-toggle {
@@ -587,3 +667,9 @@ main {
 
 /* Bouton de remise à zéro sous les sliders de paramètres. */
 #params-box .btn-raz { margin-top: 2px; }
+
+/* ── Paramètre figé par le mode décollage (b = 0 : départ du repos) ──
+      Il reste lisible — l'élève doit voir que b vaut zéro, c'est une
+      hypothèse du modèle — mais il n'est plus réglable. */
+.param-fige { opacity: 0.55; }
+.param-fige input { cursor: not-allowed; }

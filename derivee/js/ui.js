@@ -30,11 +30,11 @@ var DT_MIN = 0.01;
 function dtDepuisSlider(v) {
   if (v <= 0) return 0;
   var f = (v - 1) / (CRANS - 1);
-  return DT_MIN + f * f * (fonCourante().dtMax - DT_MIN);
+  return DT_MIN + f * f * (dtMaxCourant() - DT_MIN);
 }
 function sliderDepuisDt(dt) {
   if (dt <= 0) return 0;
-  var dtMax = fonCourante().dtMax;
+  var dtMax = dtMaxCourant();
   var f = Math.sqrt(Math.max(0, dt - DT_MIN) / (dtMax - DT_MIN));
   return 1 + Math.round((CRANS - 1) * f);
 }
@@ -60,16 +60,21 @@ function construitSelecteurFonctions() {
 function construitParams() {
   var F = fonCourante();
   var html = '';
+  // Les bornes ne viennent plus de la seule définition de la fonction : le
+  // mode décollage impose les siennes (cf. bornesParam), et fige b à 0.
+  borneParamsAuMode();
   F.params.forEach(function (p) {
-    html += '<div class="param-row param-inline">' +
+    var b = bornesParam(p);
+    var off = b.fixe ? ' disabled' : '';
+    html += '<div class="param-row param-inline' + (b.fixe ? ' param-fige' : '') + '">' +
             '<label for="num-par-' + p.id + '" class="p-nom">' + p.label + '</label>' +
-            '<input type="range" id="sl-par-' + p.id + '" min="' + p.min + '" max="' + p.max +
-            '" step="' + p.step + '" value="' + sim.params[p.id] +
-            '" oninput="onParam(\'' + p.id + '\', this.value)">' +
+            '<input type="range" id="sl-par-' + p.id + '" min="' + b.min + '" max="' + b.max +
+            '" step="' + b.step + '" value="' + sim.params[p.id] + '"' + off +
+            ' oninput="onParam(\'' + p.id + '\', this.value)">' +
             '<span class="param-field">' +
             '<input type="text" inputmode="decimal" class="param-num" id="num-par-' + p.id +
-            '" value="' + fmtFr(sim.params[p.id], p.dec) + '"' +
-            ' title="Entre ' + fmtFr(p.min, p.dec) + ' et ' + fmtFr(p.max, p.dec) + '"' +
+            '" value="' + fmtFr(sim.params[p.id], p.dec) + '"' + off +
+            ' title="Entre ' + fmtFr(b.min, p.dec) + ' et ' + fmtFr(b.max, p.dec) + '"' +
             ' onchange="onParamSaisi(\'' + p.id + '\', this.value)"' +
             ' onblur="onParamSaisi(\'' + p.id + '\', this.value)"' +
             ' onkeydown="if (event.key === \'Enter\') this.blur();">' +
@@ -111,6 +116,9 @@ function setFonction(i) {
   if (i === sim.fonIdx) return;
   sim.fonIdx = i;
   stopAnimDt();
+  // Le décollage ne survit pas au changement de fonction : il n'a de sens
+  // que sur z(t), et il impose ses bornes aux paramètres.
+  if (sim.fusee && !fuseeDispo()) quitteFusee();
   chargeParamsDefaut();
   sim.zoom = 1; sim.panT = 0; sim.panZ = 0;
   recadre();
@@ -122,6 +130,8 @@ function setFonction(i) {
   setEncadrement(sim.encadrement);
   syncDtUI();
   majBtnChrono();
+  majPanneauFusee();
+  resizeAll();
   majAffichages();
 }
 
@@ -130,9 +140,7 @@ function onParam(id, val) {
   sim.params[id] = parseFloat(val);
   var champ = _el('num-par-' + id);
   if (champ && p) champ.value = fmtFr(sim.params[id], p.dec);
-  // La courbe change de forme : le cadrage de référence doit suivre.
-  recadre();
-  majAffichages();
+  majApresParam();
 }
 
 // Valeur tapée au clavier : virgule ou point acceptés, valeur ramenée dans
@@ -141,14 +149,29 @@ function onParamSaisi(id, txt) {
   var p = _defParam(id);
   if (!p) return;
   var v = parseFloat(String(txt).replace(',', '.').replace(/\s/g, ''));
+  var b = bornesParam(p);
   if (isFinite(v)) {
-    v = Math.max(p.min, Math.min(p.max, v));
+    v = Math.max(b.min, Math.min(b.max, v));
     sim.params[id] = v;
     _el('sl-par-' + id).value = v;
-    recadre();
-    majAffichages();
+    majApresParam();
   }
   _el('num-par-' + id).value = fmtFr(sim.params[id], p.dec);
+}
+
+// Suites d'un changement de paramètre : la courbe change de forme, donc
+// le cadrage de référence doit suivre. En décollage, a et c commandent en
+// plus la DURÉE du vol (date des 1000 m) : elle a pu passer sous la date
+// courante, et l'écart Δ sous son propre plafond.
+function majApresParam() {
+  if (fuseeActif()) {
+    if (fuseeClampT()) majBtnFusee();
+    var dtM = dtMaxCourant();
+    if (sim.dt > dtM) { sim.dt = dtM; chronoRecale(); }
+    syncDtUI();
+  }
+  recadre();
+  majAffichages();
 }
 
 // Appelé depuis courbe.js pendant un glissé du point M sur la courbe :
@@ -205,6 +228,8 @@ function razVueUI() {
 
 function razTout() {
   stopAnimDt();
+  // Le décollage repart à l'instant zéro, fusée au sol.
+  fuseeRaz();
   chargeParamsDefaut();
   sim.zoom = 1; sim.panT = 0; sim.panZ = 0;
   recadre();
@@ -215,6 +240,7 @@ function razTout() {
   setEncadrement(sim.encadrement);
   syncDtUI();
   majBtnChrono();
+  majBtnFusee();
   majAffichages();
 }
 
@@ -265,6 +291,159 @@ function majBtnChrono() {
   btn.textContent = on ? 'Masquer la chronophotographie' : 'Chronophotographie';
 }
 
+// ══════════════════════════════════════════════════════════════════════
+//  Décollage de fusée
+//  Le graphe cesse d'être donné d'avance : il s'écrit pendant que la
+//  fusée monte, à la même ordonnée qu'elle. Ce n'est qu'une fois posée
+//  la dernière valeur que le point d'étude, les cotes et la sécante
+//  reviennent — on ne calcule pas un taux de variation sur un
+//  enregistrement en cours.
+// ══════════════════════════════════════════════════════════════════════
+
+// Crans du curseur de vitesse (mêmes valeurs que la page champ uniforme).
+var FUSEE_VITESSES = [0.10, 0.25, 0.50, 1.00];
+
+function toggleFusee() {
+  if (!fuseeDispo()) return;
+  sim.fusee = !sim.fusee;
+  stopAnimDt();
+  fuseeRaz();
+  // Entrer dans le mode (comme en sortir) remet a, b et c dans leurs
+  // valeurs d'origine : les bornes du décollage sont plus étroites, et
+  // surtout le décor — hauteur de la fusée, cadrage — doit repartir d'un
+  // état connu.
+  var F = fonCourante();
+  F.params.forEach(function (p) { sim.params[p.id] = p.val; });
+  sim.zoom = 1; sim.panT = 0; sim.panZ = 0;
+  construitParams();
+  recadre();
+  majPanneauFusee();
+  // Le plafond de Δ change avec le mode (durée du vol / dtMax de la
+  // fonction) : l'écart courant doit y rentrer, dans un sens comme dans
+  // l'autre, sinon le curseur se retrouverait hors de sa course.
+  sim.dt = Math.min(sim.dt, dtMaxCourant());
+  chronoRecale();
+  syncDtUI();
+  // Le canevas de la fusée avait une taille nulle tant qu'il était masqué.
+  resizeAll();
+  majAffichages();
+}
+
+// Sortie du mode sans toucher aux paramètres : appelée quand on change de
+// fonction, où chargeParamsDefaut() s'en charge juste après.
+function quitteFusee() {
+  sim.fusee = false;
+  fuseeRaz();
+  majPanneauFusee();
+}
+
+// Montre ou cache ce qui n'appartient qu'au décollage : le panneau de la
+// fusée à gauche, la section de commandes à droite.
+function majPanneauFusee() {
+  _el('left-col').classList.toggle('avec-fusee', fuseeActif());
+  _el('bloc-fusee').style.display = fuseeActif() ? '' : 'none';
+  majBtnFusee();
+}
+
+// Le bouton n'existe que pour la trajectoire z(t) : ailleurs, il n'y a
+// rien qui décolle.
+function majBtnFusee() {
+  var btn = _el('btn-fusee');
+  if (btn) {
+    var dispo = fuseeDispo();
+    btn.style.display = dispo ? '' : 'none';
+    var on = dispo && sim.fusee;
+    btn.classList.toggle('active', on);
+    btn.textContent = on ? 'Quitter le décollage' : 'Décollage de fusée';
+  }
+  var b = _el('btn-fusee-play');
+  if (!b) return;
+  // Arrivée au bout, le bouton propose de rejouer plutôt que de reprendre
+  // une animation qui n'a plus nulle part où aller.
+  var fini = sim.fuseeFini && sim.fuseeT >= fuseeDuree();
+  b.textContent = sim.fuseePlay ? '❚❚ Pause' : (fini ? '↻ Rejouer' : '▶ Lancer');
+  b.classList.toggle('btn-pause', sim.fuseePlay);
+  b.classList.toggle('btn-play', !sim.fuseePlay);
+}
+
+function toggleFuseePlay() {
+  if (!fuseeActif()) return;
+  if (!sim.fuseePlay && sim.fuseeT >= fuseeDuree()) fuseeRaz();  // rejouer
+  sim.fuseePlay = !sim.fuseePlay;
+  majBtnFusee();
+  requestDraw();
+}
+
+function razFusee() {
+  if (!fuseeActif()) return;
+  fuseeRaz();
+  majBtnFusee();
+  requestDraw();
+  majAffichages();
+}
+
+function onFuseeSpeed(v) {
+  sim.fuseeSpeed = FUSEE_VITESSES[parseInt(v, 10)] || 1;
+  _setText('lbl-fusee-speed', '×' + sim.fuseeSpeed.toFixed(2).replace('.', ','));
+}
+
+// Avance (ou recule, dtMs < 0) l'animation. Le point d'étude suit la
+// fusée : à l'arrivée, il est posé sur la dernière valeur enregistrée,
+// et c'est là que la lecture du taux de variation commence.
+function avanceFusee(dtMs) {
+  var duree = fuseeDuree();
+  sim.fuseeT += dtMs / 1000 * sim.fuseeSpeed;
+
+  if (sim.fuseeT >= duree) {
+    sim.fuseeT = duree;
+    sim.fuseePlay = false;
+    if (!sim.fuseeFini) {
+      sim.fuseeFini = true;
+      // Le point d'étude atterrit au milieu du vol : la sécante y est bien
+      // encadrée des deux côtés, alors qu'au bout elle sortirait du relevé.
+      sim.t0 = duree / 2;
+      sim.chronoAncre = sim.t0;
+      chronoRecale();
+      syncDtUI();
+    }
+    majBtnFusee();
+  } else {
+    if (sim.fuseeT < 0) { sim.fuseeT = 0; }
+    // Rembobiner rouvre l'enregistrement : la figure de lecture se retire.
+    if (sim.fuseeFini) { sim.fuseeFini = false; majBtnFusee(); }
+  }
+  requestDraw();
+}
+
+// Rembobinage : bouton à MAINTENIR appuyé. Le pointeur est capturé, si
+// bien que relâcher hors du bouton — voire hors de la fenêtre — arrête
+// bien le retour en arrière.
+var _fuseeRewind = false;
+
+function initFuseeRewind() {
+  var btn = _el('btn-fusee-rewind');
+  if (!btn) return;
+  btn.addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    if (btn.setPointerCapture) btn.setPointerCapture(e.pointerId);
+    _fuseeRewind = true;
+    sim.fuseePlay = false;
+    btn.classList.add('active');
+    _setText('lbl-fusee-speed', '⏪');
+    majBtnFusee();
+  });
+  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(function (ev) {
+    btn.addEventListener(ev, function () {
+      if (!_fuseeRewind) return;
+      _fuseeRewind = false;
+      btn.classList.remove('active');
+      // L'étiquette revient à la graduation choisie, relue sur le curseur
+      // lui-même plutôt que tenue en double.
+      onFuseeSpeed(_el('sl-fusee-speed').value);
+    });
+  });
+}
+
 function toggleHint() {
   var hint = _el('panel-hint');
   if (hint) hint.classList.toggle('collapsed');
@@ -285,7 +464,7 @@ function lanceAnimDt() {
   if (sim.animDt) { stopAnimDt(); return; }
   // Si Δt est déjà nul, on repart du haut : le bouton relance la démo.
   if (sim.dt <= 0) {
-    sim.dt = fonCourante().dtMax;
+    sim.dt = dtMaxCourant();
     syncDtUI();
   }
   _animV0 = sliderDepuisDt(sim.dt);
@@ -424,6 +603,7 @@ function initSplitter() {
 function resizeAll() {
   sizeCanvas(_el('canvas-courbe'));
   if (sim.showDeriv) sizeCanvas(_el('canvas-deriv'));
+  if (fuseeActif()) sizeCanvas(_el('canvas-fusee'));
   requestDraw();
 }
 
@@ -444,12 +624,21 @@ function loop(ts) {
 
   if (sim.animDt) { avanceAnimDt(dtMs); majAffichages(); }
 
+  // Décollage : le temps du vol avance (ou recule, bouton de rembobinage).
+  if (fuseeActif() && (sim.fuseePlay || _fuseeRewind)) {
+    avanceFusee(_fuseeRewind ? -dtMs : dtMs);
+    majAffichages();
+  }
+
   // Rien ne bouge tant que l'utilisateur n'agit pas : inutile de
   // redessiner 60 fois par seconde une image identique.
   if (!needsDraw) return;
   needsDraw = false;
   drawCourbe();
   if (sim.showDeriv) drawDeriv();
+  // Après drawCourbe : le panneau de la fusée lit `geoCourbe`, qui vient
+  // d'être remis à jour, pour aligner le centre de masse sur z(t).
+  if (fuseeActif()) drawFusee();
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -474,6 +663,8 @@ function init() {
 
   initCourbeSouris();
   initSplitter();
+  initFuseeRewind();
+  majBtnFusee();
   resizeAll();
   requestAnimationFrame(loop);
 }
