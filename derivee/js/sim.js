@@ -44,9 +44,9 @@ var FONCTIONS = [
     dt0: 0.8, // écart Δt affiché par défaut (au chargement et après « Réinitialiser »)
     zMin: 0, zMax: 55, // fenêtre verticale par défaut fixe (n'est pas recalculée sur la courbe)
     params: [
-      { id: 'a', label: 'a', unite: 'm·s⁻²', min: -8, max: 8,  step: 0.1, val: 3.5, dec: 1 },
-      { id: 'b', label: 'b', unite: 'm·s⁻¹', min: -5, max: 20, step: 0.5, val: 0,   dec: 1 },
-      { id: 'c', label: 'c', unite: 'm',     min: 0,  max: 40, step: 1,   val: 30,  dec: 0 }
+      { id: 'a', label: 'a', unite: 'm·s⁻²', min: -20, max: 20, step: 0.1, val: 3.5, dec: 1 },
+      { id: 'b', label: 'b', unite: 'm·s⁻¹', min: -20, max: 20, step: 0.5, val: 0,   dec: 1 },
+      { id: 'c', label: 'c', unite: 'm',     min: -50, max: 50, step: 1,   val: 30,  dec: 0 }
     ],
     f:  function (t, p) { return p.a * t * t + p.b * t + p.c; },
     df: function (t, p) { return 2 * p.a * t + p.b; }

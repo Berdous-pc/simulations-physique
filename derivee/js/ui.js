@@ -80,7 +80,18 @@ function construitParams() {
             (p.unite ? '<span class="p-unite">' + p.unite + '</span>' : '') +
             '</span></div>';
   });
+  html += '<button class="btn btn-raz" onclick="razParams()">↺ Valeurs par défaut</button>';
   _el('params-box').innerHTML = html;
+}
+
+// Remet les seuls paramètres de la fonction à leurs valeurs d'origine :
+// le point d'étude, l'écart Δ et la vue ne bougent pas.
+function razParams() {
+  var F = fonCourante();
+  F.params.forEach(function (p) { sim.params[p.id] = p.val; });
+  construitParams();
+  recadre();
+  majAffichages();
 }
 
 // Retrouve la description d'un paramètre de la fonction courante.

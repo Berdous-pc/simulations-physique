@@ -546,3 +546,6 @@ main {
   flex: 0 0 auto;
   min-width: clamp(18px, 2.2vw, 30px);
 }
+
+/* Bouton de remise à zéro sous les sliders de paramètres. */
+#params-box .btn-raz { margin-top: 2px; }
