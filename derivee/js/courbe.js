@@ -352,10 +352,9 @@ function _distCourbePx(g, px, py) {
   return Math.abs(py - g.gy(z));
 }
 
+// Aucune borne : n'importe quel point visible de la courbe peut être choisi.
 function _tSousCurseur(g, px) {
-  var t = g.tMin + (px - g.x0) / g.plotW * (g.tMax - g.tMin);
-  var F = fonCourante();
-  return Math.max(F.tMin, Math.min(F.tMax, t));
+  return g.tMin + (px - g.x0) / g.plotW * (g.tMax - g.tMin);
 }
 
 function initCourbeSouris() {

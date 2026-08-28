@@ -308,7 +308,10 @@ function tickStep(range, cible) {
 // Graduation formatée à la française (virgule décimale), avec juste le
 // nombre de décimales imposé par le pas.
 function fmtTick(v, step) {
-  var dec = step >= 1 ? 0 : Math.min(8, Math.ceil(-Math.log10(step) - 1e-9));
+  // Deux décimales au maximum : en zoom fort, les graduations passent en
+  // notation scientifique au lieu d'allonger la partie décimale.
+  if (step < 0.01) return v === 0 ? '0' : fmtSci(v, 2);
+  var dec = step >= 1 ? 0 : Math.min(2, Math.ceil(-Math.log10(step) - 1e-9));
   var s = v.toFixed(dec);
   if (parseFloat(s) === 0) s = (0).toFixed(dec);   // évite « -0 »
   return s.replace('.', ',');
@@ -340,6 +343,8 @@ function fmtSci(x, dec) {
 
 // Nombre de décimales adapté à l'ordre de grandeur — utilisé pour tous
 // les afficheurs de valeur du panneau.
+// Jamais plus de deux décimales : sous 0,01 on bascule en notation
+// scientifique plutôt que d'aligner des zéros.
 function fmtSmart(x) {
   if (!isFinite(x)) return '—';
   var a = Math.abs(x);
@@ -347,9 +352,7 @@ function fmtSmart(x) {
   if (a >= 1e5)     return fmtSci(x, 2);
   if (a >= 1000)    return fmtFr(x, 0);
   if (a >= 100)     return fmtFr(x, 1);
-  if (a >= 10)      return fmtFr(x, 2);
-  if (a >= 1)       return fmtFr(x, 3);
-  if (a >= 0.001)   return fmtFr(x, 4);
+  if (a >= 0.01)    return fmtFr(x, 2);
   return fmtSci(x, 2);
 }
 

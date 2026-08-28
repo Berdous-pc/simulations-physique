@@ -101,16 +101,10 @@ function _defParam(id) {
   return res;
 }
 
-// Slider du point d'étude : ses bornes suivent le domaine de la fonction.
+// Le point d'étude se déplace uniquement sur la courbe, sans borne : seul
+// le nom de l'écart dépend encore de la fonction choisie.
 function construitSliderT0() {
-  var F = fonCourante();
-  var sl = _el('sl-t0');
-  sl.min = F.tMin;
-  sl.max = F.tMax;
-  sl.step = (F.tMax - F.tMin) / CRANS;
-  sl.value = sim.t0;
-  _setText('lbl-t0-nom', 'Point d\'étude ' + F.varNom + '₀');
-  _setText('lbl-dt-nom', 'Écart Δ' + F.varNom);
+  _setText('lbl-dt-nom', 'Écart Δ' + fonCourante().varNom);
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -158,16 +152,9 @@ function onParamSaisi(id, txt) {
   _el('num-par-' + id).value = fmtFr(sim.params[id], p.dec);
 }
 
-function onT0(val) {
-  sim.t0 = parseFloat(val);
-  appliqueVue();          // en zoom fort, la vue suit le point d'étude
-  majAffichages();
-}
-
 // Appelé depuis courbe.js pendant un glissé du point M sur la courbe :
 // la vue est volontairement laissée telle quelle (cf. courbe.js).
 function onPointDeplace() {
-  _el('sl-t0').value = sim.t0;
   requestDraw();
   majAffichages();
 }
@@ -175,6 +162,10 @@ function onPointDeplace() {
 function onDt(val) {
   stopAnimDt();
   sim.dt = dtDepuisSlider(parseFloat(val));
+  // On rafraîchit le label sans réécrire la position du slider : le
+  // réécrire pendant le glissé le ferait sauter d'un cran à l'autre.
+  _setText('lbl-dt', sim.dt <= 0 ? '0'
+                                 : avecUnite(fmtSmart(sim.dt), fonCourante().varUnite));
   requestDraw();
   majAffichages();
 }
@@ -322,7 +313,6 @@ function majAffichages() {
     ecart.className = 'ecart-txt' + (rel !== null && rel < 1 ? ' proche' : '');
   }
 
-  _setText('lbl-t0', avecUnite(fmtSmart(sim.t0), F.varUnite));
   _setText('lbl-deriv-nom', 'Courbe ' + labelDeriv() + ' exacte');
   _setText('sens-deriv', F.derivSens ? '(' + F.derivSens + ')' : '');
 }
