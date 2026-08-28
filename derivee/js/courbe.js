@@ -563,10 +563,12 @@ function _tSousCurseur(g, px) {
 function _poseM(g, px) {
   var t = _tSousCurseur(g, px);
   if (chronoActif()) {
-    sim.chronoIdx = chronoIdxProche(t);
-    majT0Chrono();
+    // L'abscisse visée par le geste devient la nouvelle ancre : c'est elle
+    // que la chronophotographie conservera si le pas change ensuite.
+    chronoAncrer(t);
   } else {
     sim.t0 = t;
+    sim.chronoAncre = t;
   }
   onPointDeplace();
 }

@@ -119,6 +119,7 @@ function setFonction(i) {
   construitSliderT0();
   syncDtUI();
   setEncadrement(sim.encadrement);
+  sim.chronoAncre = sim.t0;
   sim.chronoIdx = chronoIdxProche(sim.t0);
   majBtnChrono();
   majT0Chrono();
@@ -161,8 +162,9 @@ function onPointDeplace() {
 function onDt(val) {
   stopAnimDt();
   sim.dt = dtDepuisSlider(parseFloat(val));
-  // Le pas des relevés suit Δt : la chronophotographie se resserre avec lui.
-  majT0Chrono();
+  // Le pas des relevés suit Δt : la chronophotographie se resserre autour
+  // du point d'étude, qui garde son abscisse (et change donc d'indice).
+  chronoRecale();
   // On rafraîchit le label sans réécrire la position du slider : le
   // réécrire pendant le glissé le ferait sauter d'un cran à l'autre.
   _setText('lbl-dt', sim.dt <= 0 ? '0'
@@ -178,8 +180,9 @@ function onDt(val) {
 function setEncadrement(mode) {
   if (mode !== 'avant') mode = 'sym';
   sim.encadrement = mode;
-  // Le pas des relevés vaut Δt/2 en symétrique, Δt sinon : il change ici.
-  majT0Chrono();
+  // Le pas des relevés vaut Δt/2 en symétrique, Δt sinon : il change ici,
+  // mais le point d'étude reste à son abscisse.
+  chronoRecale();
 
   var bS = _el('btn-enc-sym'), bA = _el('btn-enc-avant');
   if (bS) bS.classList.toggle('active', mode === 'sym');
@@ -210,6 +213,7 @@ function razTout() {
   construitSliderT0();
   syncDtUI();
   setEncadrement(sim.encadrement);
+  sim.chronoAncre = sim.t0;
   sim.chronoIdx = chronoIdxProche(sim.t0);
   majBtnChrono();
   majT0Chrono();
@@ -240,7 +244,10 @@ function toggleGraphDeriv() {
 function toggleChrono() {
   if (!chronoDispo()) return;
   sim.chrono = !sim.chrono;
-  if (sim.chrono) sim.chronoIdx = chronoIdxProche(sim.t0);
+  if (sim.chrono) {
+    sim.chronoAncre = sim.t0;
+    sim.chronoIdx = chronoIdxProche(sim.t0);
+  }
   majT0Chrono();
   majBtnChrono();
   requestDraw();
@@ -308,7 +315,8 @@ function avanceAnimDt(dtMs) {
   var v = _animV0 * (1 - f);
   sim.dt = dtDepuisSlider(v);
   if (f >= 1) { sim.dt = 0; stopAnimDt(); }
-  majT0Chrono();
+  // Même invariant que le slider : c'est l'abscisse de M qui est conservée.
+  chronoRecale();
   syncDtUI();
   requestDraw();
 }

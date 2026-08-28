@@ -152,6 +152,11 @@ var sim = {
   // de temps constant (cf. plus bas).
   chrono: false,
   chronoIdx: 0,       // indice du point Mᵢ sélectionné
+  // Abscisse visée par l'utilisateur en chronophotographie. Distincte de
+  // t0, qui est rabattu sur le relevé le plus proche : c'est elle qui sert
+  // de référence quand le pas change, sinon les recalages successifs
+  // feraient dériver le point (cf. chronoRecale).
+  chronoAncre: 0,
 
   animDt: false       // animation « Δt → 0 » en cours
 };
@@ -202,6 +207,7 @@ function chargeParamsDefaut() {
   sim.params = {};
   F.params.forEach(function (p) { sim.params[p.id] = p.val; });
   sim.t0 = F.t0;
+  sim.chronoAncre = F.t0;
   sim.dt = (F.dt0 !== undefined) ? F.dt0 : Math.min(sim.dt, F.dtMax);
 }
 
@@ -502,6 +508,28 @@ function majT0Chrono() {
 function chronoIdxProche(t) {
   var pas = chronoPas();
   return pas > 0 ? Math.round(t / pas) : 0;
+}
+
+// Mémorise l'abscisse visée par l'utilisateur, puis pose le point dessus.
+function chronoAncrer(t) {
+  sim.chronoAncre = t;
+  chronoRecale();
+}
+
+// Réaccroche la chronophotographie autour de l'abscisse ancrée : l'indice
+// du point d'étude est recalculé pour le pas courant. Sert dès que le pas
+// change (Δt, ou définition du taux) : le point reste au même endroit de
+// la courbe et seule la densité des relevés varie — c'est le gain de
+// précision autour de M que l'on veut voir quand Δt tend vers 0. Sans ce
+// recalage, garder l'indice ramènerait le point vers t = 0.
+//
+// La référence est chronoAncre et non t0 : t0 vaut déjà idx × pas, donc le
+// relire ferait converger chaque micro-variation du slider sur le même
+// indice, et t0 suivrait le pas vers 0 — précisément le défaut à corriger.
+function chronoRecale() {
+  if (!chronoActif()) return;
+  sim.chronoIdx = chronoIdxProche(sim.chronoAncre);
+  sim.t0 = chronoT(sim.chronoIdx);
 }
 
 // Indices en chiffres inférieurs : M₀, M₁, M₋₂…
