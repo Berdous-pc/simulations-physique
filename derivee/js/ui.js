@@ -117,12 +117,11 @@ function setFonction(i) {
   construitSelecteurFonctions();
   construitParams();
   construitSliderT0();
-  syncDtUI();
-  setEncadrement(sim.encadrement);
+  // L'ancre précède le recalage : setEncadrement quantifie le pas dessus.
   sim.chronoAncre = sim.t0;
-  sim.chronoIdx = chronoIdxProche(sim.t0);
+  setEncadrement(sim.encadrement);
+  syncDtUI();
   majBtnChrono();
-  majT0Chrono();
   majAffichages();
 }
 
@@ -162,8 +161,8 @@ function onPointDeplace() {
 function onDt(val) {
   stopAnimDt();
   sim.dt = dtDepuisSlider(parseFloat(val));
-  // Le pas des relevés suit Δt : la chronophotographie se resserre autour
-  // du point d'étude, qui garde son abscisse (et change donc d'indice).
+  // Le pas des relevés suit Δt, mais se cale sur le point d'étude : celui-ci
+  // garde son abscisse, seule la densité des relevés change.
   chronoRecale();
   // On rafraîchit le label sans réécrire la position du slider : le
   // réécrire pendant le glissé le ferait sauter d'un cran à l'autre.
@@ -211,12 +210,11 @@ function razTout() {
   recadre();
   construitParams();
   construitSliderT0();
-  syncDtUI();
-  setEncadrement(sim.encadrement);
+  // L'ancre precede le recalage : setEncadrement quantifie le pas dessus.
   sim.chronoAncre = sim.t0;
-  sim.chronoIdx = chronoIdxProche(sim.t0);
+  setEncadrement(sim.encadrement);
+  syncDtUI();
   majBtnChrono();
-  majT0Chrono();
   majAffichages();
 }
 
@@ -237,18 +235,19 @@ function toggleGraphDeriv() {
 }
 
 // ── Chronophotographie ────────────────────────────────────────────────
-// Le point d'étude cesse d'être libre : il se choisit parmi les positions
-// relevées à intervalle de temps constant. En entrant dans ce mode, on
-// sélectionne le relevé le plus proche du point courant, pour ne pas
-// déplacer brutalement l'étude en cours.
+// La courbe se peuple des positions relevées à intervalle de temps
+// constant. La grille se cale sur le point d'étude, qui garde donc son
+// abscisse en entrant dans le mode : l'étude en cours n'est pas déplacée.
 function toggleChrono() {
   if (!chronoDispo()) return;
   sim.chrono = !sim.chrono;
   if (sim.chrono) {
+    // Le point courant devient l'ancre : la grille des relevés se cale sur
+    // lui, il ne bouge donc pas en entrant dans le mode.
     sim.chronoAncre = sim.t0;
-    sim.chronoIdx = chronoIdxProche(sim.t0);
+    chronoRecale();
+    syncDtUI();
   }
-  majT0Chrono();
   majBtnChrono();
   requestDraw();
   majAffichages();

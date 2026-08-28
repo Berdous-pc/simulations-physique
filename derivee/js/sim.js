@@ -498,38 +498,46 @@ function chronoActif() {
 // avant l'origine des temps.
 function chronoT(i) { return i * chronoPas(); }
 
-// Recale le point d'étude sur le point Mᵢ sélectionné.
-function majT0Chrono() {
-  if (chronoActif()) sim.t0 = chronoT(sim.chronoIdx);
-}
-
-// Indice du point relevé le plus proche d'une abscisse donnée : sert à
-// entrer en mode chronophotographie sans faire sauter le point d'étude.
-function chronoIdxProche(t) {
-  var pas = chronoPas();
-  return pas > 0 ? Math.round(t / pas) : 0;
-}
-
-// Mémorise l'abscisse visée par l'utilisateur, puis pose le point dessus.
+// Mémorise l'abscisse visée par l'utilisateur, puis cale la grille dessus.
 function chronoAncrer(t) {
   sim.chronoAncre = t;
   chronoRecale();
 }
 
-// Réaccroche la chronophotographie autour de l'abscisse ancrée : l'indice
-// du point d'étude est recalculé pour le pas courant. Sert dès que le pas
-// change (Δt, ou définition du taux) : le point reste au même endroit de
-// la courbe et seule la densité des relevés varie — c'est le gain de
-// précision autour de M que l'on veut voir quand Δt tend vers 0. Sans ce
-// recalage, garder l'indice ramènerait le point vers t = 0.
+// Réaccroche la chronophotographie sur l'abscisse ancrée, dès que le pas
+// change (Δt, ou définition du taux). Trois exigences se disputent ici :
+// le point d'étude doit être un vrai relevé, M₀ doit rester à t = 0, et le
+// point ne doit pas bouger quand on resserre Δt. Rabattre le point sur la
+// grille tient les deux premières mais pas la troisième : le rabattement
+// vaut jusqu'à un demi-pas, il change à chaque cran du slider (le point
+// sautille) et l'ancre n'est atteinte qu'à la limite.
 //
-// La référence est chronoAncre et non t0 : t0 vaut déjà idx × pas, donc le
-// relire ferait converger chaque micro-variation du slider sur le même
-// indice, et t0 suivrait le pas vers 0 — précisément le défaut à corriger.
+// On ajuste donc la GRILLE au point, et non l'inverse : le pas ne prend
+// que les valeurs t_M / n, n entier. Le point d'étude tombe alors pile sur
+// le relevé Mₙ tout en gardant exactement son abscisse, et n se lit comme
+// le nombre d'intervalles entre l'origine et M. Δt devient discret en
+// chronophotographie — ce qu'est une cadence de prise de vue.
 function chronoRecale() {
   if (!chronoActif()) return;
-  sim.chronoIdx = chronoIdxProche(sim.chronoAncre);
-  sim.t0 = chronoT(sim.chronoIdx);
+  var a = sim.chronoAncre;
+  var A = Math.abs(a);
+  var pas = chronoPas();
+
+  // Ancre à l'origine : aucun découpage à faire, le pas reste libre.
+  if (A === 0 || pas <= 0) {
+    sim.chronoIdx = 0;
+    sim.t0 = 0;
+    return;
+  }
+
+  var n = Math.max(1, Math.round(A / pas));
+  pas = A / n;
+  // Le pas vaut Δt/2 en symétrique, Δt sinon : on remonte à Δt.
+  sim.dt = (sim.encadrement === 'avant') ? pas : 2 * pas;
+  sim.chronoIdx = (a < 0) ? -n : n;
+  // Pas n × pas : l'ancre elle-même, pour que le point ne bouge d'aucun
+  // pixel malgré les arrondis flottants accumulés sur le pas.
+  sim.t0 = a;
 }
 
 // Indices en chiffres inférieurs : M₀, M₁, M₋₂…

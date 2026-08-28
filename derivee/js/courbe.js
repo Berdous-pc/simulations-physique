@@ -559,7 +559,8 @@ function _tSousCurseur(g, px) {
 }
 
 // Pose le point d'étude à l'abscisse visée. En chronophotographie, le point
-// ne se pose plus n'importe où : il saute sur le relevé Mᵢ le plus proche.
+// reste libre de se poser où l'on veut : c'est la grille des relevés qui se
+// recale sur lui, en découpant [0 ; t_M] en un nombre entier d'intervalles.
 function _poseM(g, px) {
   var t = _tSousCurseur(g, px);
   if (chronoActif()) {
