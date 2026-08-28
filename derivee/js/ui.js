@@ -22,16 +22,21 @@ function _setText(id, txt) { var e = _el(id); if (e) e.textContent = txt; }
 //  Correspondance slider ↔ grandeur
 // ══════════════════════════════════════════════════════════════════════
 
-// Δt : progression QUADRATIQUE. Les derniers crans avant zéro couvrent des
-// valeurs de plus en plus petites — c'est là que se joue le passage à la
-// limite, il faut pouvoir s'en approcher finement.
+// Δt : progression QUADRATIQUE, resserrée près de zéro — c'est là que se joue
+// le passage à la limite. En dessous de DT_MIN le zoom ne distingue plus rien :
+// le cran 0 vaut exactement 0, le cran 1 vaut DT_MIN, sans paliers inutiles
+// entre les deux.
+var DT_MIN = 0.01;
 function dtDepuisSlider(v) {
-  var f = v / CRANS;
-  return f * f * fonCourante().dtMax;
+  if (v <= 0) return 0;
+  var f = (v - 1) / (CRANS - 1);
+  return DT_MIN + f * f * (fonCourante().dtMax - DT_MIN);
 }
 function sliderDepuisDt(dt) {
+  if (dt <= 0) return 0;
   var dtMax = fonCourante().dtMax;
-  return Math.round(CRANS * Math.sqrt(Math.max(0, dt) / dtMax));
+  var f = Math.sqrt(Math.max(0, dt - DT_MIN) / (dtMax - DT_MIN));
+  return 1 + Math.round((CRANS - 1) * f);
 }
 
 // ══════════════════════════════════════════════════════════════════════
