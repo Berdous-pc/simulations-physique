@@ -1871,6 +1871,24 @@ function updateSceneParams() {
     // construireGeometrieEnveloppe.
     const balayage2D = (sim.maskShape === 'cercle');
     const img = screenTexCtx.createImageData(w, h);
+
+    // Position physique verticale de chaque ligne, et — pour la fente — son profil gaussien Iy,
+    // précalculés PAR LIGNE avant la boucle sur les colonnes : ni l'un ni l'autre ne dépend de
+    // x. Même optimisation que dessinerTextureEcranBlanche (cf. son commentaire), qui la faisait
+    // déjà ; cette passe-ci, elle, évaluait Math.exp() largeur×hauteur fois (~629 000 appels par
+    // redessin pour 614 valeurs distinctes). Le gain compte particulièrement ici : contrairement
+    // aux enveloppes couleur, cette passe est SYNCHRONE et non anti-rebondie — elle tourne à
+    // chaque frappe de slider, donc son coût se voit directement sur la fluidité du glissement.
+    // Résultat identique au bit près (mêmes valeurs, seulement calculées une fois chacune).
+    const yCmLignes = new Float64Array(h);
+    for (let py = 0; py < h; py++) yCmLignes[py] = -SCREEN_HEIGHT / 2 + (SCREEN_HEIGHT * py) / (h - 1);
+    let iyLignes = null;
+    if (!balayage2D) {
+      iyLignes = new Float64Array(h);
+      // Profil gaussien standard (convention laser : I(r) = I0·exp(-2r²/w²))
+      for (let py = 0; py < h; py++) iyLignes[py] = Math.exp(-2 * yCmLignes[py] * yCmLignes[py] / (w_cm * w_cm));
+    }
+
     for (let px = 0; px < w; px++) {
       const x = -sim.screenHalfWidth + (2 * sim.screenHalfWidth * px) / (w - 1);
       const Ix = echantillonnerChampInterference(champ, x, 0, sim.b, PAS_TEXTURE_M); // y=0 : le champ (enveloppe × frange) est normalisé (pic=1) comme intensiteInterference(), et le profil vertical (Iy ci-dessous) reste appliqué séparément (fente uniquement)
@@ -1882,13 +1900,12 @@ function updateSceneParams() {
       const IxAffichage = Math.sqrt(Ix);
       const rx = r0 * IxAffichage, gx = g0 * IxAffichage, bx = b0 * IxAffichage;
       for (let py = 0; py < h; py++) {
-        const y_cm = -SCREEN_HEIGHT / 2 + (SCREEN_HEIGHT * py) / (h - 1); // position physique verticale (cm)
         let r, g, b;
         if (balayage2D) {
-          const I2 = Math.sqrt(echantillonnerChampInterference(champ, x, y_cm / 100, sim.b, PAS_TEXTURE_M));
+          const I2 = Math.sqrt(echantillonnerChampInterference(champ, x, yCmLignes[py] / 100, sim.b, PAS_TEXTURE_M));
           r = Math.round(r0 * I2); g = Math.round(g0 * I2); b = Math.round(b0 * I2);
         } else {
-          const Iy = Math.exp(-2 * y_cm * y_cm / (w_cm * w_cm)); // profil gaussien standard (convention laser : I(r)=I0·exp(-2r²/w²))
+          const Iy = iyLignes[py]; // cf. précalcul par ligne ci-dessus
           r = Math.round(rx * Iy); g = Math.round(gx * Iy); b = Math.round(bx * Iy);
         }
         const idx = (py * w + px) * 4;
