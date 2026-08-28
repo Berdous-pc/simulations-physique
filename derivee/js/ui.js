@@ -314,10 +314,20 @@ function majAffichages() {
     ecart.className = 'ecart-txt';
   } else {
     var e = Math.abs(taux - deriv);
-    var rel = Math.abs(deriv) > 1e-9 ? (e / Math.abs(deriv)) * 100 : null;
-    ecart.textContent = 'Écart : ' + fmtSmart(e) +
-                        (rel !== null ? ' (' + fmtFr(rel, rel < 10 ? 2 : 1) + ' %)' : '');
-    ecart.className = 'ecart-txt' + (rel !== null && rel < 1 ? ' proche' : '');
+    // Le taux vient d'une soustraction de deux valeurs proches divisée par Δt :
+    // il traîne une erreur d'arrondi de l'ordre de eps·|f|/Δt. En dessous de ce
+    // bruit, l'écart est nul en mathématiques (ex. taux symétrique sur une
+    // parabole) et on l'affiche comme tel plutôt qu'en 10⁻¹⁶.
+    var bruit = 1e-11 * ((Math.abs(zA) + Math.abs(zB)) / sim.dt + Math.abs(deriv) + 1);
+    if (e <= bruit) {
+      ecart.textContent = 'Écart : 0';
+      ecart.className = 'ecart-txt exact';
+    } else {
+      var rel = Math.abs(deriv) > 1e-9 ? (e / Math.abs(deriv)) * 100 : null;
+      ecart.textContent = 'Écart : ' + fmtSmart(e) +
+                          (rel !== null ? ' (' + fmtFr(rel, rel < 10 ? 2 : 1) + ' %)' : '');
+      ecart.className = 'ecart-txt' + (rel !== null && rel < 1 ? ' proche' : '');
+    }
   }
 
   _setText('lbl-deriv-nom', 'Courbe ' + labelDeriv() + ' exacte');
