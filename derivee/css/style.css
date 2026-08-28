@@ -94,17 +94,31 @@ main {
   flex-shrink: 1;
   flex-basis: 0;
 }
+/* Séparateur : zone de préhension confortable, mais visuellement réduite à
+   une petite poignée centrée (::after) qui ne coupe pas la page en deux. */
 #left-col.avec-deriv #splitter {
-  display: block;
-  flex: 0 0 6px;
-  background: #c8c0b4;
-  border-radius: 3px;
-  margin: 4px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 14px;
+  background: none;
   cursor: row-resize;
-  transition: background 0.12s;
+  touch-action: none;
 }
-#left-col.avec-deriv #splitter:hover,
-#left-col.avec-deriv #splitter.actif { background: #2a6aaa; }
+#left-col.avec-deriv #splitter::after {
+  content: '';
+  width: 44px;
+  height: 4px;
+  border-radius: 2px;
+  background: #c8c0b4;
+  transition: background 0.12s, width 0.12s;
+}
+#left-col.avec-deriv #splitter:hover::after,
+#left-col.avec-deriv #splitter.actif::after {
+  background: #9aa7b4;
+  width: 64px;
+}
+#left-col.avec-deriv #splitter.actif::after { background: #2a6aaa; }
 #left-col.avec-deriv #wrap-deriv {
   display: block;
   flex-grow: calc(1 - var(--frac-courbe));
