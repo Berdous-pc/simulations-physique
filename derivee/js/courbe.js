@@ -136,10 +136,14 @@ function dessineRepere(ctx, W, H, o) {
   texteCartouche(ctx, o.yLabel, yAxeX + 8 * s, padT - padT * 0.45,
                  COUL.texte, fontAxe, 'left', 'top');
 
+  // La position des deux axes et le côté de leurs graduations sont rendus
+  // au tracé : les coordonnées du point courant s'y rabattent exactement.
   return { x0: x0, y0: y0, padT: padT, plotW: plotW, plotH: plotH,
            gx: gx, gy: gy, s: s,
            tMin: tMin, tMax: tMax, zMin: zMin, zMax: zMax,
-           padL: padL, padR: padR };
+           padL: padL, padR: padR,
+           xAxeY: xAxeY, yAxeX: yAxeX,
+           labSousX: labSousX, labGaucheY: labGaucheY };
 }
 
 // Titre d'axe « nom (unité) », ou « nom » seul si la grandeur n'a pas d'unité.
@@ -257,6 +261,9 @@ function drawCourbe() {
   // ── Cotes Δt et Δf ──
   if (sim.showCotes && !tangenteSeule) dessineCotes(ctx, g, tA, zA, tB, zB);
 
+  // ── Coordonnées du point courant, rabattues sur les deux axes ──
+  if (sim.showCoords) dessineCoords(ctx, g, tM, zM, COUL.pointM, F.varUnite, F.funUnite);
+
   // ── Les trois points ──
   if (montreA) pastille(ctx, g.gx(tA), g.gy(zA), 6 * s, COUL.pointAB);
   if (!tangenteSeule) {
@@ -282,6 +289,53 @@ function drawCourbe() {
 // ══════════════════════════════════════════════════════════════════════
 //  Cotes Δt (horizontale) et Δf (verticale) formant le triangle de pente
 // ══════════════════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════════════
+//  Coordonnées du point courant : les deux pointillés qu'on trace au
+//  tableau pour lire une valeur sur les axes, et les deux nombres lus.
+//  Le même tracé sert aux deux graphes (courbe f et courbe dérivée) :
+//  seuls le point, sa couleur et les unités changent.
+// ══════════════════════════════════════════════════════════════════════
+
+function dessineCoords(ctx, g, t, v, couleur, uniteT, uniteV) {
+  if (!isFinite(t) || !isFinite(v)) return;
+  var s = g.s;
+  var x = g.gx(t), y = g.gy(v);
+  // Un point hors de la fenêtre n'a pas de coordonnées à rabattre.
+  if (x < g.x0 || x > g.x0 + g.plotW || y < g.padT || y > g.y0) return;
+
+  // Les deux pointillés vont du point jusqu'à SON axe, pas jusqu'au bord :
+  // c'est le geste du rabattement sur les axes.
+  ctx.save();
+  ctx.strokeStyle = couleur;
+  ctx.globalAlpha = 0.75;
+  ctx.lineWidth = 1.6 * s;
+  ctx.setLineDash([5 * s, 4 * s]);
+  ctx.beginPath();
+  ctx.moveTo(x, y); ctx.lineTo(g.yAxeX, y);
+  ctx.moveTo(x, y); ctx.lineTo(x, g.xAxeY);
+  ctx.stroke();
+  ctx.restore();
+
+  // Marques pleines à l'endroit exact où la lecture se fait sur les axes.
+  ctx.strokeStyle = couleur;
+  ctx.lineWidth = 2.6 * s;
+  ctx.beginPath();
+  ctx.moveTo(x, g.xAxeY - 5 * s); ctx.lineTo(x, g.xAxeY + 5 * s);
+  ctx.moveTo(g.yAxeX - 5 * s, y); ctx.lineTo(g.yAxeX + 5 * s, y);
+  ctx.stroke();
+  ctx.lineWidth = 1;
+
+  // Les deux valeurs, du côté où l'axe porte déjà ses graduations : elles
+  // les recouvrent (halo blanc) plutôt que de s'écrire par-dessus.
+  var font = '700 ' + Math.round(13.5 * s) + 'px "Segoe UI", Arial, sans-serif';
+  texteCartouche(ctx, avecUnite(fmtSmart(t), uniteT), x,
+                 g.labSousX ? g.xAxeY + 8 * s : g.xAxeY - 8 * s,
+                 couleur, font, 'center', g.labSousX ? 'top' : 'bottom');
+  texteCartouche(ctx, avecUnite(fmtSmart(v), uniteV),
+                 g.labGaucheY ? g.yAxeX - 8 * s : g.yAxeX + 8 * s, y,
+                 couleur, font, g.labGaucheY ? 'right' : 'left', 'middle');
+}
 
 // ══════════════════════════════════════════════════════════════════════
 //  Chronophotographie : les positions relevées à intervalle constant

@@ -145,6 +145,7 @@ var sim = {
   showTangente: false, // tangente exacte en M (en plus de la sécante)
   showCotes: true,    // cotes Δt et Δf sur le graphe
   showDeriv: false,   // graphe de la fonction dérivée (bas)
+  showCoords: false,  // coordonnées du point courant rabattues sur les axes
 
   // Chronophotographie : le point d'étude ne se pose plus librement sur la
   // courbe, il se choisit parmi les points M₀, M₁, M₂… relevés à intervalle

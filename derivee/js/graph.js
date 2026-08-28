@@ -95,8 +95,14 @@ function drawDeriv() {
   }
   ctx.setLineDash([]);
 
-  // ── Points : pente de la sécante (terracotta) et nombre dérivé (vert) ──
+  // ── Coordonnées du point courant sur la courbe dérivée ──
+  //    Même lecture que sur le graphe du haut : on rabat sur les axes, ici
+  //    l'abscisse du point M et la valeur du nombre dérivé.
   var dM = fDeriv(sim.t0);
+  if (sim.showCoords)
+    dessineCoords(ctx, g, sim.t0, dM, COUL.tangente, F.varUnite, F.derivUnite);
+
+  // ── Points : pente de la sécante (terracotta) et nombre dérivé (vert) ──
   if (sim.dt > 0 && isFinite(taux)) {
     pastille(ctx, g.gx(sim.t0), g.gy(taux), 6 * s, COUL.secante);
   }

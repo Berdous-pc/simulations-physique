@@ -219,6 +219,7 @@ function razTout() {
 // ── Cases à cocher d'affichage ────────────────────────────────────────
 function toggleTangente(v) { sim.showTangente = v; requestDraw(); }
 function toggleCotes(v)    { sim.showCotes = v;    requestDraw(); }
+function toggleCoords(v)   { sim.showCoords = v;   requestDraw(); }
 
 function toggleGraphDeriv() {
   sim.showDeriv = !sim.showDeriv;
@@ -462,6 +463,7 @@ function init() {
 
   _el('ck-tangente').checked = sim.showTangente;
   _el('ck-cotes').checked = sim.showCotes;
+  _el('ck-coords').checked = sim.showCoords;
 
   initCourbeSouris();
   initSplitter();

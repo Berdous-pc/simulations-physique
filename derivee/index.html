@@ -160,6 +160,11 @@
           <span class="cr-swatch" style="background:#2a6aaa"></span>
           Cotes Δ sur le graphe
         </label>
+        <label class="check-row">
+          <input type="checkbox" id="ck-coords" onchange="toggleCoords(this.checked)">
+          <span class="cr-swatch" style="background:#2a8a50"></span>
+          Afficher les coordonnées du point courant
+        </label>
         <button class="btn btn-toggle-one" id="btn-graph-deriv"
                 onclick="toggleGraphDeriv()">Afficher la courbe dérivée</button>
         <!-- Chronophotographie : réservée à la trajectoire z(t), le bouton

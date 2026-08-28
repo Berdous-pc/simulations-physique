@@ -168,6 +168,14 @@ si `Δt = 0`, portion `[A ; B]` renforcée), tangente exacte optionnelle
 Tout est découpé au cadre (`ctx.clip`) : en zoom fort, les droites en sortent
 largement.
 
+`dessineCoords()` (optionnel, case « Afficher les coordonnées du point
+courant ») rabat le point courant sur les deux axes : deux pointillés, deux
+marques et les deux valeurs écrites du côté où l'axe porte ses graduations.
+Le même tracé sert aux **deux graphes** — le graphe du bas y lit l'abscisse
+de M et le nombre dérivé. Il s'appuie sur `xAxeY`, `yAxeX`, `labSousX` et
+`labGaucheY` renvoyés par `dessineRepere()` : les valeurs se posent donc là
+où l'axe se trouve réellement, y compris quand il est plaqué contre un bord.
+
 Un **bandeau** en haut à droite affiche en grand la grandeur lue
 (`Δz/Δt` ou `dz/dt`), pour la projection en classe.
 
