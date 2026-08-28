@@ -85,7 +85,7 @@ elle-même être une approximation.
 ### État `sim`
 
 `fonIdx`, `params`, `t0`, `dt`, `encadrement` (`'sym'` | `'avant'`), `zoom`, `panT`/`panZ`, les bascules d'affichage
-(`showTangente`, `showCotes`, `showDeriv`, `showCourbeDeriv`) et `animDt`.
+(`showTangente`, `showCotes`, `showDeriv`) et `animDt`.
 
 ### Vue (`vueBase`, `vue`)
 

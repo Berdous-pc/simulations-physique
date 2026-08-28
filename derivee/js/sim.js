@@ -145,7 +145,6 @@ var sim = {
   showTangente: false, // tangente exacte en M (en plus de la sécante)
   showCotes: true,    // cotes Δt et Δf sur le graphe
   showDeriv: false,   // graphe de la fonction dérivée (bas)
-  showCourbeDeriv: true, // dans ce graphe : courbe f′ complète
 
   animDt: false       // animation « Δt → 0 » en cours
 };

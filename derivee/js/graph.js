@@ -59,22 +59,20 @@ function drawDeriv() {
   ctx.clip();
 
   // ── Courbe de la fonction dérivée ──
-  if (sim.showCourbeDeriv) {
-    ctx.strokeStyle = COUL.tangente;
-    ctx.lineWidth = 2.4 * s;
-    ctx.lineJoin = 'round';
-    ctx.beginPath();
-    var trace = false;
-    var NP = Math.max(200, Math.round(g.plotW));
-    for (i = 0; i <= NP; i++) {
-      var t = g.tMin + (g.tMax - g.tMin) * i / NP;
-      d = fDeriv(t);
-      if (!isFinite(d)) { trace = false; continue; }
-      var py = Math.max(-1e4, Math.min(1e4, g.gy(d)));
-      if (trace) ctx.lineTo(g.gx(t), py); else { ctx.moveTo(g.gx(t), py); trace = true; }
-    }
-    ctx.stroke();
+  ctx.strokeStyle = COUL.tangente;
+  ctx.lineWidth = 2.4 * s;
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  var trace = false;
+  var NP = Math.max(200, Math.round(g.plotW));
+  for (i = 0; i <= NP; i++) {
+    var t = g.tMin + (g.tMax - g.tMin) * i / NP;
+    d = fDeriv(t);
+    if (!isFinite(d)) { trace = false; continue; }
+    var py = Math.max(-1e4, Math.min(1e4, g.gy(d)));
+    if (trace) ctx.lineTo(g.gx(t), py); else { ctx.moveTo(g.gx(t), py); trace = true; }
   }
+  ctx.stroke();
 
   // ── Repère vertical à l'abscisse du point M ──
   ctx.strokeStyle = 'rgba(42,138,80,0.45)';

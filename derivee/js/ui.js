@@ -209,7 +209,6 @@ function razTout() {
 // ── Cases à cocher d'affichage ────────────────────────────────────────
 function toggleTangente(v) { sim.showTangente = v; requestDraw(); }
 function toggleCotes(v)    { sim.showCotes = v;    requestDraw(); }
-function toggleCourbeDeriv(v) { sim.showCourbeDeriv = v; requestDraw(); }
 
 function toggleGraphDeriv() {
   sim.showDeriv = !sim.showDeriv;
@@ -218,7 +217,6 @@ function toggleGraphDeriv() {
   btn.textContent = sim.showDeriv ? 'Masquer la courbe dérivée'
                                   : 'Afficher la courbe dérivée';
   _el('left-col').classList.toggle('avec-deriv', sim.showDeriv);
-  _el('row-courbe-deriv').style.display = sim.showDeriv ? '' : 'none';
   // Le canvas du bas avait une taille nulle tant qu'il était masqué.
   resizeAll();
 }
@@ -330,7 +328,6 @@ function majAffichages() {
     }
   }
 
-  _setText('lbl-deriv-nom', 'Courbe ' + labelDeriv() + ' exacte');
   _setText('sens-deriv', F.derivSens ? '(' + F.derivSens + ')' : '');
 }
 
@@ -421,7 +418,6 @@ function init() {
 
   _el('ck-tangente').checked = sim.showTangente;
   _el('ck-cotes').checked = sim.showCotes;
-  _el('ck-courbe-deriv').checked = sim.showCourbeDeriv;
 
   initCourbeSouris();
   initSplitter();
