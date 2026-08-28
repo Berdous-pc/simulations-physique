@@ -59,19 +59,35 @@ function construitSelecteurFonctions() {
 }
 
 // Sliders des paramètres (a, b, c… propres à chaque fonction).
+// Chaque paramètre est réglable de deux façons : au slider pour explorer,
+// au clavier pour poser une valeur précise. L'unité ferme la ligne.
 function construitParams() {
   var F = fonCourante();
   var html = '';
   F.params.forEach(function (p) {
-    html += '<div class="param-row">' +
-            '<label>' + p.label + (p.unite ? ' <span class="p-unite">(' + p.unite + ')</span>' : '') +
-            '<span class="param-value" id="lbl-par-' + p.id + '">' +
-            fmtFr(sim.params[p.id], p.dec) + '</span></label>' +
+    html += '<div class="param-row param-inline">' +
+            '<label for="num-par-' + p.id + '" class="p-nom">' + p.label + '</label>' +
             '<input type="range" id="sl-par-' + p.id + '" min="' + p.min + '" max="' + p.max +
             '" step="' + p.step + '" value="' + sim.params[p.id] +
-            '" oninput="onParam(\'' + p.id + '\', this.value)"></div>';
+            '" oninput="onParam(\'' + p.id + '\', this.value)">' +
+            '<span class="param-field">' +
+            '<input type="text" inputmode="decimal" class="param-num" id="num-par-' + p.id +
+            '" value="' + fmtFr(sim.params[p.id], p.dec) + '"' +
+            ' title="Entre ' + fmtFr(p.min, p.dec) + ' et ' + fmtFr(p.max, p.dec) + '"' +
+            ' onchange="onParamSaisi(\'' + p.id + '\', this.value)"' +
+            ' onblur="onParamSaisi(\'' + p.id + '\', this.value)"' +
+            ' onkeydown="if (event.key === \'Enter\') this.blur();">' +
+            (p.unite ? '<span class="p-unite">' + p.unite + '</span>' : '') +
+            '</span></div>';
   });
   _el('params-box').innerHTML = html;
+}
+
+// Retrouve la description d'un paramètre de la fonction courante.
+function _defParam(id) {
+  var res = null;
+  fonCourante().params.forEach(function (q) { if (q.id === id) res = q; });
+  return res;
 }
 
 // Slider du point d'étude : ses bornes suivent le domaine de la fonction.
@@ -106,13 +122,29 @@ function setFonction(i) {
 }
 
 function onParam(id, val) {
+  var p = _defParam(id);
   sim.params[id] = parseFloat(val);
-  var p = null;
-  fonCourante().params.forEach(function (q) { if (q.id === id) p = q; });
-  if (p) _setText('lbl-par-' + id, fmtFr(sim.params[id], p.dec));
+  var champ = _el('num-par-' + id);
+  if (champ && p) champ.value = fmtFr(sim.params[id], p.dec);
   // La courbe change de forme : le cadrage de référence doit suivre.
   recadre();
   majAffichages();
+}
+
+// Valeur tapée au clavier : virgule ou point acceptés, valeur ramenée dans
+// les bornes du slider. Une saisie inutilisable laisse la valeur en place.
+function onParamSaisi(id, txt) {
+  var p = _defParam(id);
+  if (!p) return;
+  var v = parseFloat(String(txt).replace(',', '.').replace(/\s/g, ''));
+  if (isFinite(v)) {
+    v = Math.max(p.min, Math.min(p.max, v));
+    sim.params[id] = v;
+    _el('sl-par-' + id).value = v;
+    recadre();
+    majAffichages();
+  }
+  _el('num-par-' + id).value = fmtFr(sim.params[id], p.dec);
 }
 
 function onT0(val) {

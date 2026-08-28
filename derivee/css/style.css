@@ -293,6 +293,54 @@ main {
   font-size: 0.88em;
 }
 
+/* Paramètre de la fonction : nom, slider, saisie et unité sur une ligne. */
+.param-inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+.param-inline .p-nom {
+  display: inline-block;
+  font-size: clamp(12px, 1.25vw, 15px);
+  color: #2c3e50;
+  font-weight: 600;
+  flex: 0 0 auto;
+}
+
+.param-inline input[type="range"] {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Champ de saisie + unité, en bout de ligne. */
+.param-field {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.param-num {
+  width: clamp(46px, 5vw, 62px);
+  padding: 2px 5px;
+  border: 1px solid #c3d0da;
+  border-radius: 5px;
+  background: #fff;
+  color: #2a5080;
+  font-family: inherit;
+  font-weight: 600;
+  font-size: clamp(12px, 1.25vw, 15px);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.param-num:focus {
+  outline: none;
+  border-color: #4a7aaa;
+  box-shadow: 0 0 0 2px rgba(74, 122, 170, 0.18);
+}
+
 .param-value {
   color: #2a5080;
   font-weight: 600;
@@ -491,3 +539,10 @@ main {
   padding-bottom: 0;
 }
 .panel-hint:not(.collapsed) .panel-hint-toggle { transform: rotate(180deg); }
+
+/* Unité de largeur mini : les sliders des paramètres restent alignés
+   entre eux même quand les unités ont des longueurs différentes. */
+.param-inline .p-unite {
+  flex: 0 0 auto;
+  min-width: clamp(18px, 2.2vw, 30px);
+}
