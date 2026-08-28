@@ -413,8 +413,13 @@ function initCourbeSouris() {
   canvas.addEventListener('wheel', function (e) {
     e.preventDefault();
     setZoom(sim.zoom * (e.deltaY < 0 ? 1.18 : 1 / 1.18));
-    syncZoomUI();
   }, { passive: false });
+
+  // Double-clic gauche : retour à la vue initiale (zoom et décalage).
+  canvas.addEventListener('dblclick', function (e) {
+    e.preventDefault();
+    razVueUI();
+  });
 
   canvas.style.cursor = 'grab';
 }

@@ -34,15 +34,6 @@ function sliderDepuisDt(dt) {
   return Math.round(CRANS * Math.sqrt(Math.max(0, dt) / dtMax));
 }
 
-// Zoom : progression LOGARITHMIQUE de ×1 à ×2000, sinon la moitié haute du
-// slider serait inutilisable.
-function zoomDepuisSlider(v) {
-  return Math.pow(ZOOM_MAX, v / CRANS);
-}
-function sliderDepuisZoom(z) {
-  return Math.round(CRANS * Math.log(z) / Math.log(ZOOM_MAX));
-}
-
 // ══════════════════════════════════════════════════════════════════════
 //  Construction du panneau selon la fonction choisie
 // ══════════════════════════════════════════════════════════════════════
@@ -122,7 +113,6 @@ function setFonction(i) {
   construitParams();
   construitSliderT0();
   syncDtUI();
-  syncZoomUI();
   majAffichages();
 }
 
@@ -170,15 +160,9 @@ function onDt(val) {
   majAffichages();
 }
 
-function onZoom(val) {
-  setZoom(zoomDepuisSlider(parseFloat(val)));
-  _setText('lbl-zoom', '×' + fmtSmart(sim.zoom));
-  majAffichages();
-}
-
+// Retour à la vue initiale — déclenché par un double-clic sur le graphe.
 function razVueUI() {
   razVue();
-  syncZoomUI();
   majAffichages();
 }
 
@@ -190,7 +174,6 @@ function razTout() {
   construitParams();
   construitSliderT0();
   syncDtUI();
-  syncZoomUI();
   majAffichages();
 }
 
@@ -272,11 +255,6 @@ function syncDtUI() {
   var F = fonCourante();
   _el('sl-dt').value = sliderDepuisDt(sim.dt);
   _setText('lbl-dt', sim.dt <= 0 ? '0' : avecUnite(fmtSmart(sim.dt), F.varUnite));
-}
-
-function syncZoomUI() {
-  _el('sl-zoom').value = sliderDepuisZoom(sim.zoom);
-  _setText('lbl-zoom', '×' + fmtSmart(sim.zoom));
 }
 
 function majAffichages() {
@@ -399,7 +377,6 @@ function init() {
   construitSliderT0();
   recadre();
   syncDtUI();
-  syncZoomUI();
   majAffichages();
 
   _el('ck-tangente').checked = sim.showTangente;

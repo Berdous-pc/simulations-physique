@@ -81,7 +81,7 @@
             <span id="lbl-dt-nom">Écart Δt</span>
             <span class="param-value" id="lbl-dt">—</span>
           </label>
-          <input type="range" id="sl-dt" min="0" max="1000" step="1" value="632"
+          <input type="range" id="sl-dt" min="0" max="1000" step="1" value="516"
                  oninput="onDt(this.value)">
           <div class="input-hint">
             A et B encadrent M : Δ = distance de A à B. Les derniers crans
@@ -90,26 +90,6 @@
         </div>
 
         <button class="btn btn-primary" id="btn-anim" onclick="lanceAnimDt()">Δt → 0</button>
-      </div>
-
-      <div class="sep"></div>
-
-      <!-- ═══ Zoom sur le point ═══ -->
-      <div class="panel-section">
-        <div class="section-title">Zoom sur le point M</div>
-        <div class="param-row">
-          <label>
-            Grossissement
-            <span class="param-value" id="lbl-zoom">×1</span>
-          </label>
-          <input type="range" id="sl-zoom" min="0" max="1000" step="1" value="0"
-                 oninput="onZoom(this.value)">
-          <div class="input-hint">
-            En zoomant fort autour de M, la courbe finit par se confondre
-            avec sa tangente : c'est l'idée de la dérivée.
-          </div>
-        </div>
-        <button class="btn btn-raz" onclick="razVueUI()">↺ Vue initiale</button>
       </div>
 
       <div class="sep"></div>
@@ -205,7 +185,8 @@
         <strong>Zoomez</strong> autour de M : la courbe devient localement une
         droite — la tangente.<br>
         Sur le graphe : <em>glisser sur la courbe</em> déplace M,
-        <em>glisser ailleurs</em> déplace la vue, la <em>molette</em> zoome.
+        <em>glisser ailleurs</em> déplace la vue, la <em>molette</em> zoome et
+        un <em>double-clic</em> revient à la vue initiale.
       </div>
     </div>
 

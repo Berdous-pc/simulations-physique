@@ -40,7 +40,7 @@ var FONCTIONS = [
     derivSens: 'vitesse',
     tMin: 0, tMax: 3,
     t0: 1.6,
-    dtMax: 1.2,
+    dtMax: 3,
     dt0: 0.8, // écart Δt affiché par défaut (au chargement et après « Réinitialiser »)
     zMin: 0, zMax: 55, // fenêtre verticale par défaut fixe (n'est pas recalculée sur la courbe)
     params: [
@@ -65,7 +65,7 @@ var FONCTIONS = [
     derivSens: 'vitesse',
     tMin: 0, tMax: 4,
     t0: 0.5,
-    dtMax: 1.5,
+    dtMax: 3,
     dt0: 0.6,
     params: [
       { id: 'A', label: 'A', unite: 'cm', min: 1,   max: 6, step: 0.5,  val: 4, dec: 1 },
@@ -90,7 +90,7 @@ var FONCTIONS = [
     derivSens: '',
     tMin: 0, tMax: 3,
     t0: 0.3,
-    dtMax: 1.2,
+    dtMax: 3,
     dt0: 0.48,
     params: [
       { id: 'E',   label: 'E', unite: 'V', min: 1,    max: 12, step: 0.5,  val: 6,   dec: 1 },
@@ -113,7 +113,7 @@ var FONCTIONS = [
     derivSens: '',
     tMin: -2.5, tMax: 2.5,
     t0: -0.6,
-    dtMax: 2,
+    dtMax: 3,
     dt0: 0.8,
     params: [
       { id: 'p', label: 'p', unite: '', min: -6, max: 4, step: 0.25, val: -3, dec: 2 }
@@ -233,7 +233,8 @@ function calcVueBase() {
 // c'est ce recentrage qui permet de « plonger » sur le point et de voir
 // la courbe se confondre avec sa tangente.
 function appliqueVue() {
-  var k = 1 - 1 / sim.zoom;
+  // En dézoom (zoom < 1) on garde le cadrage de base : inutile de fuir M.
+  var k = Math.max(0, 1 - 1 / sim.zoom);
   vue.w  = vueBase.w / sim.zoom;
   vue.h  = vueBase.h / sim.zoom;
   vue.cT = vueBase.cT + (sim.t0 - vueBase.cT) * k + sim.panT;
@@ -247,7 +248,9 @@ function recadre() {
   appliqueVue();
 }
 
-var ZOOM_MIN = 1, ZOOM_MAX = 2000;
+// Le zoom avant reste modeste (×4,00 au maximum) ; en revanche on peut
+// s'éloigner nettement pour reprendre l'allure générale de la courbe.
+var ZOOM_MIN = 0.1, ZOOM_MAX = 4;
 
 function setZoom(z) {
   sim.zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z));
