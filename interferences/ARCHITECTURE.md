@@ -230,6 +230,96 @@ porté à **400** (vs 240 en diffraction) et largeur de `screenTexCanvas` porté
 lecture FFT (déjà calculée) + un `cos()` via `echantillonnerChampInterference`, sans relancer de
 FFT. À affiner encore si nécessaire (cf. §Points de calibration).
 
+**Grille en x de l'enveloppe 3D : étendue restreinte + `n` adaptatif** (correctif ultérieur —
+franges visiblement sous-échantillonnées à grand `b`, surtout à petit `D`, constaté par
+l'utilisateur). Deux volets, dans `construireGeometrieEnveloppe` :
+
+1. **Étendue** — la grille couvrait toujours toute la demi-largeur d'écran (±12,5 cm) alors que
+   le champ FFT n'a de valeur non nulle que jusqu'à `porteeChamp_m` (= `D·tanθmax` avec
+   `sinθmax = (N/2)·λ/FFT_FENETRE_M`, la même borne qui servait déjà au balayage vertical du
+   trou circulaire). `spreadHalfCm = min(halfW, porteeChamp_m)·100` : troncature **sans perte**
+   (au-delà, `echantillonnerChamp` renvoie 0 — colonnes noires et de hauteur nulle), qui rend à
+   la zone utile toute la résolution jusqu'ici dépensée dans le vide. Le gain est d'autant plus
+   grand que `a` est grand (fenêtre FFT large ⇒ portée angulaire faible) : jusqu'à ~30× à
+   `a`=500 µm.
+2. **`n` adaptatif** — l'interfrange `λD/b` n'a aucun rapport avec la largeur de l'écran et
+   descend à ~0,1 mm à `b` max / `D` min, contre 0,6 mm de pas de grille à `n`=400 sur 12,5 cm.
+   `n` est donc recalculé pour tenir `ENVELOPPE_ECH_PAR_FRANGE` (8) échantillons par
+   interfrange sur l'étendue ci-dessus, borné par `ENVELOPPE_N_TRANCHES` (400, plancher
+   historique) et `ENVELOPPE_N_MAX` (1600, garde-fou de coût : le nombre de sommets du maillage
+   est proportionnel à `n` et la géométrie est reconstruite à chaque frappe de slider ; en
+   lumière blanche s'y ajoute le facteur 6 des enveloppes couleur, heureusement anti-rebondies).
+
+Les deux volets se combinent : c'est la restriction d'étendue qui rend 8 échantillons par frange
+atteignable sous le plafond `ENVELOPPE_N_MAX`.
+
+**Anti-crénelage des franges : `pas_m` (moyenne au lieu du pointage)**. La texture d'écran ne
+peut PAS recevoir le traitement ci-dessus : elle doit couvrir les 25 cm de l'écran entiers (elle
+est mappée sur le plan `screenMesh`), donc impossible de concentrer sa résolution là où il en
+faut, et augmenter `TEXTURE_LARGEUR_PX` coûte quadratiquement (la hauteur suit, pour garder des
+texels carrés). À 1024 px sur 25 cm, un pixel vaut 0,24 mm contre un interfrange descendant à
+~0,10 mm : **moins d'un pixel par frange**, irrémédiablement.
+
+La sortie n'est donc pas plus de résolution mais le bon **filtrage**. `facteurInterference()`
+(`sim.js`) accepte un argument optionnel `pas_m` = largeur physique de l'échantillon à l'écran
+(un pixel de texture, une colonne d'enveloppe) et renvoie alors la MOYENNE du facteur sur cet
+intervalle au lieu de sa valeur au centre. Avec φ = π·b·sinθ/λ et cos²φ = (1+cos2φ)/2, φ étant
+localement affine à l'échelle d'un pixel :
+
+```
+⟨cos²φ⟩ = ½ · (1 + cos(2φ₀) · sin(u)/u · G(u)),   u = φ'(x₀)·pas_m,   φ' = (π·b/λ)·D²/(x²+D²)^{3/2}
+```
+
+`cos²φ` étant de période π en φ, **u = π × pas / interfrange** : `u` mesure directement le pas
+d'échantillonnage en fraction de frange, et `u = π/2` est exactement la fréquence de **Nyquist**
+(2 échantillons par frange).
+
+`G(u)` = `gardeAntiRepliement()`, ajoutée après coup — **la moyenne seule ne suffit pas**.
+Symptôme constaté par l'utilisateur : en augmentant `b`, le nombre de franges affichées croissait
+normalement puis se remettait à **décroître** vers `b` ≈ 0,5 mm à petit `D`, ce qui est
+physiquement impossible. Cause : moyenner sur un échantillon revient à filtrer par une fenêtre
+**rectangulaire**, dont la réponse `sin(u)/u` ne décroît qu'en `1/u`. Au-delà de Nyquist il
+subsistait 30 à 60 % de contraste sur une porteuse trop fine pour la grille, qui se repliait en
+fausses franges **larges** — d'autant plus larges que `b` augmentait, d'où l'inversion. Le seuil
+mesuré tombe pile sur Nyquist (`b` ≈ 0,52 mm à `D` = 0,40 m ; > `b` max dès `D` ≥ 1 m, cohérent
+avec « quand D est grand le problème ne se pose pas »).
+
+`G(u) = exp(-(u/(π/2))⁶)` : quasi plat tant que les franges sont confortablement résolues (0,94 à
+3 px/frange — la moyenne rectangulaire, physiquement exacte, reste alors seule aux commandes),
+puis chute très vite (0,37 à Nyquist, 1,5·10⁻³ à 1,5 px/frange, 10⁻⁸ à 1,25). Surtout :
+**strictement décroissant en `u`, donc en `b`** (vérifié numériquement sur tout le domaine) — le
+contraste ne peut plus jamais remonter, ce qui rend l'inversion structurellement impossible. Le
+nombre de franges visibles croît avec `b` puis **sature** en un éclairement uniforme (= ½ ×
+enveloppe, la vraie moyenne).
+
+Cette saturation est le prix assumé, et c'est le bon : un écran de 25 cm ne peut pas montrer les
+~2600 franges de `b` max à `D` min, quelle que soit la résolution de texture. Les fondre est le
+rendu honnête ; les replier ne l'est pas. La lecture quantitative des franges reste le rôle du
+graphe I(x), qui est zoomable et n'est pas filtré (cf. `pas_m` = 0 par défaut).
+
+Forme fermée — **aucun sur-échantillonnage**, coût O(1) par point (un `sin` + un `exp`), ce qui
+comptait : la texture est redessinée à chaque frappe de slider, et jusqu'à 6× en lumière
+blanche. Le terme `sin(u)/u` seul a été vérifié numériquement contre une moyenne par force brute :
+écart max 1,5·10⁻⁴ (échelle 0–1) dans le cas le plus défavorable (`b` max + `D` min) — c'est donc
+bien la vraie moyenne tant que `G(u)` ≈ 1, c'est-à-dire tant que les franges sont résolues.
+
+Comportement aux deux extrêmes : sinus cardinal ≈ 1 quand les franges sont résolues (on retrouve
+exactement `cos²φ₀`, rien n'est perdu ni flouté), et → 0 quand le pixel couvre plusieurs franges,
+la moyenne tendant vers ½ × enveloppe — un gris uniforme, exactement ce que montre un écran réel
+photographié de trop loin. C'est **physiquement juste**, contrairement au pointage ponctuel qui
+fabriquait de fausses franges larges (moiré) n'existant nulle part.
+
+`pas_m` est transmis en cascade par `intensiteInterference()` → `intensiteBlancheComposantes()`
+et par `echantillonnerChampInterference()`, **toujours en paramètre optionnel valant 0 par
+défaut** (= ancien comportement, valeur ponctuelle exacte, bit à bit) : seuls les appels de RENDU
+le renseignent. Le graphe I(x) (`graph.js`), `echantillonnerIntensite()` et les encarts de
+valeurs gardent l'intensité physique ponctuelle — leur lecture doit rester quantitative. Les
+appelants qui le renseignent : texture d'écran mono et lumière blanche (`PAS_TEXTURE_M`,
+constante de module dans `scene.js`) et enveloppe 3D (`pasColonne_m`, cf.
+`construireGeometrieEnveloppe`) — pour cette dernière, c'est ce qui rend le plafond
+`ENVELOPPE_N_MAX` inoffensif : quand il mord, les franges se fondent proprement au lieu de se
+déchirer.
+
 ---
 
 ### `js/graph.js` — Graphe I(x) interactif
@@ -1124,11 +1214,17 @@ fichier — à ajuster si un artefact (lag, franges encore hachées) est constat
 réglages extrêmes (D minimal + b maximal pour la frange la plus fine, glissement rapide de
 n'importe quel slider pour la fluidité) :
 
-1. `ENVELOPPE_N_TRANCHES` (400), largeur de `screenTexCanvas` (1024), `js/scene.js` — résolution
-   des franges en 3D. Peuvent être augmentées encore si besoin (coût faible désormais, cf.
-   §Pipeline FFT) — mais chaque pixel/tranche coûte quand même un `cos()`, donc pas totalement
-   gratuit pendant un glissement de slider (le rendu texture/enveloppe reste synchrone, non
-   anti-rebond, sur le chemin mono).
+1. `ENVELOPPE_ECH_PAR_FRANGE` (8) / `ENVELOPPE_N_MAX` (1600) / `ENVELOPPE_N_TRANCHES` (400,
+   plancher) et largeur de `screenTexCanvas` (1024), `js/scene.js` — résolution des franges en
+   3D. L'enveloppe est désormais échantillonnée **par interfrange** et non plus sur la largeur
+   d'écran (cf. §Grille en x de l'enveloppe 3D) : à ajuster via `ENVELOPPE_ECH_PAR_FRANGE`
+   (qualité) et `ENVELOPPE_N_MAX` (coût). La **texture d'écran** garde ses 1024 px sur les 25 cm
+   entiers (0,24 mm/px, moins d'un pixel par interfrange dans le cas extrême) : son crénelage
+   est traité par filtrage (`PAS_TEXTURE_M`, cf. §Anti-crénelage) et non par résolution, la
+   monter coûtant quadratiquement. Peuvent être augmentées encore si besoin (coût faible désormais, cf. §Pipeline FFT) — mais
+   chaque pixel/tranche coûte quand même un `cos()`, donc pas totalement gratuit pendant un
+   glissement de slider (le rendu texture/enveloppe reste synchrone, non anti-rebond, sur le
+   chemin mono).
 2. `N_ECHANTILLONS` (6000), `js/graph.js` — densité du graphe I(x). Cheap (pas de FFT), tourne à
    chaque frame — éviter de le pousser inutilement haut si le graphe est affiché en continu.
 3. `largeurFenteVisuelle`/`ecartementVisuel` (échelle réelle, `ECHELLE_REELLE_UM_VERS_CM`),

@@ -177,12 +177,67 @@ function intensiteOuverture(x_m, lambda_nm, a_um, D_m, shape = sim.maskShape) {
 //  cohérent avec la convention pic=1 de intensiteOuverture(). Généralise à N'IMPORTE QUELLE
 //  forme d'ouverture (fente, trou...), cf. intensiteInterference ci-dessous.
 // ─────────────────────────────────────────────────────────────────────
-function facteurInterference(x_m, lambda_nm, b_um, D_m) {
+//
+//  `pas_m` (optionnel, 0 par défaut = comportement d'origine, valeur PONCTUELLE) : largeur, à
+//  l'écran, de l'échantillon représenté par ce point — un pixel de texture, une colonne de
+//  l'enveloppe 3D. Quand elle est fournie, on renvoie la MOYENNE du facteur sur cet intervalle
+//  au lieu de sa valeur au centre. Indispensable dès que l'interfrange (λD/b) descend sous le
+//  pas d'échantillonnage — cas courant à grand b et petit D : un échantillonnage ponctuel
+//  produit alors du CRÉNELAGE, c'est-à-dire de fausses franges larges (moiré) qui n'existent
+//  pas physiquement, ce qui est bien pire qu'un simple flou (constaté par l'utilisateur).
+//  La moyenne, elle, tend vers 1/2 × enveloppe quand les franges deviennent irrésolubles —
+//  exactement ce que montre un écran réel photographié trop loin : un gris uniforme.
+//
+//  Forme fermée, PAS de sur-échantillonnage (aucun coût proportionnel au nombre de
+//  sous-échantillons) : avec φ = π·b·sinθ/λ, cos²φ = (1 + cos2φ)/2, et sur un intervalle où φ
+//  est localement affine (toujours le cas : un pixel est minuscule devant l'échelle de
+//  variation de sinθ), ⟨cos2φ⟩ = cos(2φ₀)·sin(u)/u avec u = φ'(x₀)·pas — le classique
+//  sinus cardinal, qui vaut 1 à pas nul (franges résolues, on retrouve cos²φ₀) et s'amortit
+//  vers 0 quand le pas couvre plusieurs franges (moyenne = 1/2).
+// ─────────────────────────────────────────────────────────────────────
+//  Garde anti-repliement appliquée à la porteuse résiduelle cos(2φ) des franges, en plus de
+//  la moyenne sur l'échantillon (cf. facteurInterference). `u` = π × pas / interfrange, donc
+//  u = π/2 est la fréquence de Nyquist (2 échantillons par frange).
+//
+//  POURQUOI la moyenne seule ne suffit pas (bug constaté par l'utilisateur : en augmentant b,
+//  le nombre de franges affichées croissait normalement puis se remettait à DÉCROÎTRE vers
+//  b ≈ 0,5 mm à petit D — physiquement impossible) : moyenner sur un échantillon revient à
+//  filtrer par une fenêtre RECTANGULAIRE, dont la réponse sin(u)/u ne décroît qu'en 1/u.
+//  Au-delà de Nyquist il subsistait donc 30 à 60 % de contraste sur une porteuse trop fine
+//  pour la grille — qui se replie en fausses franges LARGES, d'autant plus larges que b
+//  augmente : d'où l'inversion observée (seuil vérifié numériquement, il tombe pile sur
+//  Nyquist : b ≈ 0,52 mm à D = 0,40 m, et > b_max dès D ≥ 1 m — cohérent avec « quand D est
+//  grand le problème ne se pose pas »).
+//
+//  Profil retenu exp(-(u/(π/2))⁶) : quasi plat tant que les franges sont confortablement
+//  résolues (0,94 à 3 px/frange — la moyenne rectangulaire, qui est la valeur physiquement
+//  exacte, reste alors seule aux commandes), puis chute très vite (0,37 à Nyquist, 1e-7 à
+//  1,25 px/frange). STRICTEMENT DÉCROISSANT en u, donc en b : le contraste des franges ne
+//  peut plus jamais remonter, et le nombre de franges visibles croît avec b puis sature en
+//  un éclairement uniforme (= ½ × enveloppe, la vraie moyenne) au lieu de s'inverser.
+//  Un écran de 25 cm ne peut de toute façon pas montrer les ~2600 franges de b_max à D min :
+//  les fondre est le rendu honnête, les replier ne l'est pas.
+// ─────────────────────────────────────────────────────────────────────
+function gardeAntiRepliement(u) {
+  const t = Math.abs(u) / (Math.PI / 2);
+  if (t >= 3) return 0; // exp(-729) : déjà nul, et évite un underflow inutile
+  const t3 = t * t * t;
+  return Math.exp(-t3 * t3);
+}
+
+function facteurInterference(x_m, lambda_nm, b_um, D_m, pas_m = 0) {
   const lambda = lambda_nm * 1e-9;
   const b = b_um * 1e-6;
-  const sinTheta = x_m / Math.sqrt(x_m * x_m + D_m * D_m);
+  const r2 = x_m * x_m + D_m * D_m;
+  const sinTheta = x_m / Math.sqrt(r2);
   const phi = Math.PI * b * sinTheta / lambda;
-  return Math.cos(phi) * Math.cos(phi);
+  if (!(pas_m > 0)) return Math.cos(phi) * Math.cos(phi);
+  // u = φ'(x)·pas, avec d(sinθ)/dx = D²/(x²+D²)^{3/2}. Comme cos²φ est de période π en φ,
+  // u = π·pas/interfrange : u mesure directement le pas d'échantillonnage en fraction de
+  // frange, et u = π/2 est EXACTEMENT la fréquence de Nyquist (2 pixels par frange).
+  const u = (Math.PI * b / lambda) * (D_m * D_m / (r2 * Math.sqrt(r2))) * pas_m;
+  const cardinal = Math.abs(u) < 1e-8 ? 1 : Math.sin(u) / u;
+  return 0.5 * (1 + Math.cos(2 * phi) * cardinal * gardeAntiRepliement(u));
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -193,8 +248,11 @@ function facteurInterference(x_m, lambda_nm, b_um, D_m) {
 //  jamais le pipeline FFT (texture d'écran, enveloppe 3D), qui construit directement le champ
 //  à 2 ouvertures, cf. construireChampOuverture plus bas.
 // ─────────────────────────────────────────────────────────────────────
-function intensiteInterference(x_m, lambda_nm, a_um, b_um, D_m, shape = sim.maskShape) {
-  return intensiteOuverture(x_m, lambda_nm, a_um, D_m, shape) * facteurInterference(x_m, lambda_nm, b_um, D_m);
+//  `pas_m` (optionnel) : transmis tel quel à facteurInterference — cf. sa docstring. Seul le
+//  RENDU (texture d'écran en lumière blanche) le renseigne ; le graphe I(x) et les encarts
+//  gardent la valeur ponctuelle exacte (défaut 0), leur lecture devant rester quantitative.
+function intensiteInterference(x_m, lambda_nm, a_um, b_um, D_m, shape = sim.maskShape, pas_m = 0) {
+  return intensiteOuverture(x_m, lambda_nm, a_um, D_m, shape) * facteurInterference(x_m, lambda_nm, b_um, D_m, pas_m);
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -455,11 +513,13 @@ function echantillonnerChamp(champ, x_m, y_m) {
 //  garder une fenêtre FFT dimensionnée sur `a` seul (rapide) tout en affichant des franges
 //  nettes à n'importe quelle valeur de b.
 // ─────────────────────────────────────────────────────────────────────
-function echantillonnerChampInterference(champ, x_m, y_m, b_um) {
+//  `pas_m` (optionnel) : largeur de l'échantillon à l'écran, transmise à facteurInterference
+//  pour moyenner les franges au lieu de les pointer — cf. sa docstring (anti-crénelage).
+function echantillonnerChampInterference(champ, x_m, y_m, b_um, pas_m = 0) {
   const I = echantillonnerChamp(champ, x_m, y_m);
   if (I === 0) return 0;
   const lambda_nm = champ.lambda_m * 1e9;
-  return I * facteurInterference(x_m, lambda_nm, b_um, champ.D_m);
+  return I * facteurInterference(x_m, lambda_nm, b_um, champ.D_m, pas_m);
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -592,12 +652,12 @@ function decomposeYCm(shape = sim.maskShape) {
 //  réutilisées telles quelles par la vue « Décomposer » (chaque couleur y garde sa PROPRE
 //  figure de diffraction, pas de raison de la renormaliser comme le composite).
 // ─────────────────────────────────────────────────────────────────────
-function intensiteBlancheComposantes(x_m, a_um, b_um, D_m) {
+function intensiteBlancheComposantes(x_m, a_um, b_um, D_m, pas_m = 0) {
   const composantes = new Array(BLANCHE_COULEURS.length);
   let r = 0, g = 0, b = 0;
   for (let i = 0; i < BLANCHE_COULEURS.length; i++) {
     const c = BLANCHE_COULEURS[i];
-    const I = Math.sqrt(intensiteInterference(x_m, c.lambda, a_um, b_um, D_m));
+    const I = Math.sqrt(intensiteInterference(x_m, c.lambda, a_um, b_um, D_m, sim.maskShape, pas_m));
     const rgb = longueurOndeVersRGB(c.lambda);
     const cr = I * rgb.r, cg = I * rgb.g, cb = I * rgb.b;
     composantes[i] = { r: cr, g: cg, b: cb };

@@ -216,6 +216,22 @@ const SLIDE_THICK = 0.2;       // cm — épaisseur réelle d'une lame
 const SLIT_BAND_HEIGHT = FENTE_HAUTEUR_CM;
 const SCREEN_WIDTH = sim.screenHalfWidth * 2 * 100; // = 25 cm, cohérent avec sim.screenHalfWidth
 const SCREEN_HEIGHT = 15;      // cm — écran réel de TP, 25×15 cm
+// Largeur du buffer de texture d'écran (screenTexCanvas, construit dans construireObjets) —
+// doublée vs diffraction (512) : les franges d'interférence sont plus fines que l'enveloppe de
+// diffraction seule, et chaque pixel supplémentaire ne coûte qu'une lecture FFT + un cos()
+// (cf. echantillonnerChampInterference), bon marché contrairement à agrandir la fenêtre FFT.
+const TEXTURE_LARGEUR_PX = 1024;
+// Largeur PHYSIQUE (m) d'un pixel de cette texture : 25 cm / 1024 ≈ 0,24 mm. À comparer à
+// l'interfrange λD/b, qui descend à ~0,1 mm à b max et D min — soit MOINS d'un pixel par
+// frange. Contrairement à l'enveloppe 3D (dont la grille peut être resserrée sur la portée
+// utile du champ, cf. construireGeometrieEnveloppe), cette texture doit couvrir les 25 cm de
+// l'écran entiers : on ne peut pas lui donner plus de résolution là où il en faut, et monter
+// TEXTURE_LARGEUR_PX coûte quadratiquement (la hauteur suit, pour garder des texels carrés).
+// La sortie est donc l'ANTI-CRÉNELAGE : chaque pixel reçoit la MOYENNE du facteur de frange
+// sur sa largeur (forme fermée, coût nul — cf. facteurInterference dans sim.js), au lieu d'un
+// pointage au centre qui fabriquait de fausses franges larges. Quand les franges redeviennent
+// résolubles, la moyenne retombe exactement sur la valeur ponctuelle : rien n'est perdu.
+const PAS_TEXTURE_M = (sim.screenHalfWidth * 2) / (TEXTURE_LARGEUR_PX - 1);
 const TABLE_Y = -18;            // cm — hauteur du dessus des plateaux de support (sommet de la table)
 const PLATEAU_EPAISSEUR = 0.8;  // cm — épaisseur des plateaux de support, cf. creerSupport()
 const TABLE_THICK = 2;          // cm — épaisseur de la table
@@ -403,6 +419,17 @@ function creerSupport(largeurPlateau, profondeurPlateau, longueurTige) {
 // echantillonnerChampInterference) sont bien plus fines que la seule enveloppe de diffraction —
 // leur évaluation reste bon marché (un cos², pas de coût FFT supplémentaire), donc augmenter N
 // ici n'a quasiment aucun impact sur les performances (contrairement à agrandir la fenêtre FFT).
+// N ci-dessus n'est plus qu'un PLANCHER : la grille en x est en fait dimensionnée par
+// l'interfrange (λD/b), qui peut descendre à ~0,1 mm à grand b et petit D — sans rapport
+// avec la largeur de l'écran. On vise ENVELOPPE_ECH_PAR_FRANGE échantillons par interfrange,
+// dans la limite de ENVELOPPE_N_MAX (garde-fou de coût : le nombre de sommets du maillage est
+// proportionnel à n, et il est reconstruit à chaque frappe de slider ; en lumière blanche
+// s'ajoute le facteur 6 des enveloppes couleur, heureusement anti-rebondies). Cf.
+// construireGeometrieEnveloppe → spreadHalfCm, qui restreint d'abord l'étendue de la grille
+// à la portée utile du champ : les deux se combinent, c'est la restriction d'étendue qui
+// rend ce nombre d'échantillons par frange atteignable à coût raisonnable.
+const ENVELOPPE_ECH_PAR_FRANGE = 8;
+const ENVELOPPE_N_MAX = 1600;
 const ENVELOPPE_N_TRANCHES = 400;
 const ENVELOPPE_M_TRANCHES = 12;
 const ENVELOPPE_K_COUCHES = 6;
@@ -463,7 +490,7 @@ const ENVELOPPE_GAMMA_LUMINOSITE = 1.6;
 //  concernée le jour où la forme de l'ouverture changera.
 // ─────────────────────────────────────────────────────────────────────
 function construireGeometrieEnveloppe(zNear, zFar, hNear, wMax, champ, x1Cm, shape = sim.maskShape) {
-  let n = ENVELOPPE_N_TRANCHES;
+  let n = ENVELOPPE_N_TRANCHES; // réajusté plus bas (cf. portée du champ + échantillonnage des franges)
   const m = ENVELOPPE_M_TRANCHES, kMax = ENVELOPPE_K_COUCHES;
   const halfW = sim.screenHalfWidth; // m — même étendue physique que la texture d'écran
   // xFars[k]/yFars[k] = position à l'écran (fixe, non tapée) du rayon auquel appartient le
@@ -489,11 +516,14 @@ function construireGeometrieEnveloppe(zNear, zFar, hNear, wMax, champ, x1Cm, sha
   // ~1000× plus grossier que la portée réelle de la figure à petit a, donnant une silhouette
   // quantifiée/artefactée au lieu d'un contour lisse (constaté par l'utilisateur — cercle pas
   // du tout circulaire).
+  // Portée MAXIMALE que la grille FFT peut effectivement représenter, en mètres à l'écran :
+  // au-delà, echantillonnerChamp() renvoie 0 (indice hors grille), en x comme en y — cf. sa
+  // docstring. Calculée une fois ici, utilisée à la fois pour borner le balayage vertical
+  // (ci-dessous) et l'étendue de la grille en x (cf. spreadHalfCm).
+  const sinThetaMaxChamp = Math.min((champ.N / 2) * champ.lambda_m / champ.FFT_FENETRE_M, 0.999);
+  const porteeChamp_m = champ.D_m * sinThetaMaxChamp / Math.sqrt(1 - sinThetaMaxChamp * sinThetaMaxChamp);
   let yBalayageMax_m = halfW;
-  if (balayage2D) {
-    const sinThetaMax = Math.min((champ.N / 2) * champ.lambda_m / champ.FFT_FENETRE_M, 0.999);
-    yBalayageMax_m = Math.min(halfW, champ.D_m * sinThetaMax / Math.sqrt(1 - sinThetaMax * sinThetaMax));
-  }
+  if (balayage2D) yBalayageMax_m = Math.min(halfW, porteeChamp_m);
 
   // Grille en X non-uniforme : n+1 points uniformément répartis (résolution générale), PLUS
   // les positions milestones (0, ±x1Cm, ±x2Cm, cf. RATIO_X2_SUR_X1) insérées comme colonnes
@@ -504,8 +534,26 @@ function construireGeometrieEnveloppe(zNear, zFar, hNear, wMax, champ, x1Cm, sha
   // à x1, cf. raysLine) du milieu de la vraie zone sombre (constaté par l'utilisateur, capture
   // à l'appui). `n` est réajusté à la taille réelle de la grille fusionnée : tout le code plus
   // bas continue de s'appuyer sur `n`/xCm sans autre changement.
-  // Borne de la grille le long de l'axe de diffraction : demi-largeur de l'écran (12,5 cm).
-  const spreadHalfCm = halfW * 100;
+  // Borne de la grille le long de l'axe de diffraction : demi-largeur de l'écran (12,5 cm),
+  // MAIS ramenée à la portée réelle du champ (porteeChamp_m ci-dessus) quand celle-ci est plus
+  // petite — ce qui est le cas dès que `a` est grand (fenêtre FFT large ⇒ portée angulaire
+  // faible). Troncature strictement SANS PERTE : au-delà de cette portée echantillonnerChamp()
+  // renvoie 0, donc les colonnes concernées étaient noires et de hauteur nulle (silhouette
+  // pincée à 0) — elles ne dépensaient que de la résolution. Or c'est justement cette
+  // résolution qui manquait aux franges d'interférence : celles-ci ont un pas (interfrange
+  // λD/b) qui n'a AUCUN rapport avec la largeur de l'écran et devient très fin à grand b et
+  // petit D (jusqu'à ~0,1 mm, contre 0,6 mm de pas de grille sur 12,5 cm à n=400) — les
+  // franges étaient alors sous-échantillonnées et crénelées (constaté par l'utilisateur).
+  const spreadHalfCm = Math.min(halfW, porteeChamp_m) * 100;
+  // Second volet du même correctif : `n` suit désormais le nombre de franges réellement
+  // contenues dans l'étendue ci-dessus, pour garder ENVELOPPE_ECH_PAR_FRANGE échantillons par
+  // interfrange (plancher : la valeur historique ENVELOPPE_N_TRANCHES ; plafond :
+  // ENVELOPPE_N_MAX, garde-fou de coût — le nombre de sommets du maillage est proportionnel
+  // à n, et cette géométrie est reconstruite à chaque frappe de slider).
+  const interfrangeCm = interfrangeI(champ.lambda_m * 1e9, sim.b, champ.D_m) * 100;
+  n = Math.max(ENVELOPPE_N_TRANCHES,
+               Math.min(ENVELOPPE_N_MAX,
+                        Math.ceil((2 * spreadHalfCm * ENVELOPPE_ECH_PAR_FRANGE) / interfrangeCm)));
   const xCmUniforme = [];
   for (let i = 0; i <= n; i++) xCmUniforme.push(-spreadHalfCm + (2 * spreadHalfCm * i) / n);
   const ratioX2 = RATIO_X2_SUR_X1[shape] || 2;
@@ -513,6 +561,14 @@ function construireGeometrieEnveloppe(zNear, zFar, hNear, wMax, champ, x1Cm, sha
   const jalonsCm = [0, x1Cm, -x1Cm, x2Cm, -x2Cm].filter(x => Math.abs(x) <= spreadHalfCm);
   const xCm = Array.from(new Set([...xCmUniforme, ...jalonsCm])).sort((a, b) => a - b);
   n = xCm.length - 1;
+  // Pas nominal de la grille en x (m à l'écran) : passé aux échantillonnages ci-dessous pour
+  // moyenner le facteur de frange sur la colonne au lieu de le pointer en son centre (cf.
+  // facteurInterference dans sim.js). C'est ce qui rend le plafond ENVELOPPE_N_MAX inoffensif :
+  // quand il mord (interfrange trop fin pour être résolu même sur l'étendue restreinte), les
+  // franges se fondent proprement en un faisceau à demi-intensité au lieu de se déchirer en
+  // fausses franges larges. Tant que le plafond ne mord pas, cette moyenne est indiscernable
+  // de la valeur ponctuelle (sinus cardinal ≈ 1 à 8 échantillons par frange).
+  const pasColonne_m = (2 * spreadHalfCm) / (100 * n);
 
   // Par colonne (x) : facteur géométrique (racine carrée, cf. commentaire plus bas), facteur de
   // LUMINOSITÉ (plus compressif, cf. ENVELOPPE_GAMMA_LUMINOSITE — fente/fil seulement, cf.
@@ -524,7 +580,7 @@ function construireGeometrieEnveloppe(zNear, zFar, hNear, wMax, champ, x1Cm, sha
   const ixLumCol = new Array(n + 1), ixColReel = new Array(n + 1), halfHFar = new Array(n + 1);
   for (let i = 0; i <= n; i++) {
     const x_m = xCm[i] / 100;
-    const Ix = echantillonnerChampInterference(champ, x_m, 0, sim.b);
+    const Ix = echantillonnerChampInterference(champ, x_m, 0, sim.b, pasColonne_m);
     ixColReel[i] = Ix;
     if (balayage2D) {
       // Cherche le plus grand y où le champ reste non négligeable À CETTE ABSCISSE (balayage
@@ -536,7 +592,7 @@ function construireGeometrieEnveloppe(zNear, zFar, hNear, wMax, champ, x1Cm, sha
       let yLimite_m = 0;
       for (let s = PAS_BALAYAGE_Y; s >= 1; s--) {
         const y_scan = (yBalayageMax_m * s) / PAS_BALAYAGE_Y;
-        if (echantillonnerChampInterference(champ, x_m, y_scan, sim.b) > SEUIL_ENVELOPPE_NEGLIGEABLE) { yLimite_m = y_scan; break; }
+        if (echantillonnerChampInterference(champ, x_m, y_scan, sim.b, pasColonne_m) > SEUIL_ENVELOPPE_NEGLIGEABLE) { yLimite_m = y_scan; break; }
       }
       halfHFar[i] = yLimite_m * 100;
     } else {
@@ -574,7 +630,7 @@ function construireGeometrieEnveloppe(zNear, zFar, hNear, wMax, champ, x1Cm, sha
       pCol[j] = y_cm;
       let intensite, intensiteReelle;
       if (balayage2D) {
-        intensiteReelle = echantillonnerChampInterference(champ, x_m, y_cm / 100, sim.b);
+        intensiteReelle = echantillonnerChampInterference(champ, x_m, y_cm / 100, sim.b, pasColonne_m);
         intensite = Math.pow(intensiteReelle, ENVELOPPE_GAMMA_LUMINOSITE);
       } else {
         // Profil gaussien réel (même formule que le profil vertical de la texture d'écran,
@@ -1414,11 +1470,8 @@ function construireObjets() {
   // non carré une fois étiré sur le plan, ce qui déforme tout profil vertical dessiné dedans
   // (cf. discussion de conception — le profil gaussien SIGMA_Y ressortait écrasé verticalement).
   screenTexCanvas = document.createElement('canvas');
-  // Largeur doublée vs diffraction (512) : les franges d'interférence sont plus fines que
-  // l'enveloppe de diffraction seule, et chaque pixel supplémentaire ne coûte qu'une lecture
-  // FFT + un cos() (cf. echantillonnerChampInterference) — bon marché, contrairement à
-  // agrandir la fenêtre FFT elle-même.
-  const TEXTURE_LARGEUR_PX = 1024;
+  // Largeur : cf. TEXTURE_LARGEUR_PX / PAS_TEXTURE_M (portée module — le pas physique
+  // correspondant sert à l'anti-crénelage des franges, cf. leurs commentaires).
   screenTexCanvas.width = TEXTURE_LARGEUR_PX;
   screenTexCanvas.height = Math.round(TEXTURE_LARGEUR_PX * SCREEN_HEIGHT / SCREEN_WIDTH);
   screenTexCtx = screenTexCanvas.getContext('2d');
@@ -1546,13 +1599,13 @@ function dessinerTextureEcranBlanche(t) {
 
   for (let px = 0; px < w; px++) {
     const x = -sim.screenHalfWidth + (2 * sim.screenHalfWidth * px) / (w - 1);
-    const composantes = balayage2D ? null : intensiteBlancheComposantes(x, sim.a, sim.b, sim.D).composantes;
+    const composantes = balayage2D ? null : intensiteBlancheComposantes(x, sim.a, sim.b, sim.D, PAS_TEXTURE_M).composantes;
     for (let py = 0; py < h; py++) {
       const y_cm = -SCREEN_HEIGHT / 2 + (SCREEN_HEIGHT * py) / (h - 1);
       let r = 0, g = 0, b = 0;
       for (let k = 0; k < n; k++) {
         if (balayage2D) {
-          const I2 = Math.sqrt(echantillonnerChampInterference(champsTextureBlanche[k], x, (y_cm - decomposeCm[k]) / 100, sim.b));
+          const I2 = Math.sqrt(echantillonnerChampInterference(champsTextureBlanche[k], x, (y_cm - decomposeCm[k]) / 100, sim.b, PAS_TEXTURE_M));
           if (I2 < 1e-3) continue; // négligeable à cette position : rien à ajouter
           const rgb = rgbCouleurs[k];
           r += (255 * I2 * rgb.r) / BLANCHE_REF.r;
@@ -1820,7 +1873,7 @@ function updateSceneParams() {
     const img = screenTexCtx.createImageData(w, h);
     for (let px = 0; px < w; px++) {
       const x = -sim.screenHalfWidth + (2 * sim.screenHalfWidth * px) / (w - 1);
-      const Ix = echantillonnerChampInterference(champ, x, 0, sim.b); // y=0 : le champ (enveloppe × frange) est normalisé (pic=1) comme intensiteInterference(), et le profil vertical (Iy ci-dessous) reste appliqué séparément (fente uniquement)
+      const Ix = echantillonnerChampInterference(champ, x, 0, sim.b, PAS_TEXTURE_M); // y=0 : le champ (enveloppe × frange) est normalisé (pic=1) comme intensiteInterference(), et le profil vertical (Iy ci-dessous) reste appliqué séparément (fente uniquement)
       // Les franges secondaires/l'enveloppe sont physiquement plus faibles que le maximum
       // central : en couleur linéaire elles seraient quasi invisibles à l'écran. On applique une
       // racine carrée uniquement ici (affichage), jamais dans intensiteInterference() ni dans le
@@ -1832,7 +1885,7 @@ function updateSceneParams() {
         const y_cm = -SCREEN_HEIGHT / 2 + (SCREEN_HEIGHT * py) / (h - 1); // position physique verticale (cm)
         let r, g, b;
         if (balayage2D) {
-          const I2 = Math.sqrt(echantillonnerChampInterference(champ, x, y_cm / 100, sim.b));
+          const I2 = Math.sqrt(echantillonnerChampInterference(champ, x, y_cm / 100, sim.b, PAS_TEXTURE_M));
           r = Math.round(r0 * I2); g = Math.round(g0 * I2); b = Math.round(b0 * I2);
         } else {
           const Iy = Math.exp(-2 * y_cm * y_cm / (w_cm * w_cm)); // profil gaussien standard (convention laser : I(r)=I0·exp(-2r²/w²))
