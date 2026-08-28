@@ -119,6 +119,9 @@ function setFonction(i) {
   construitSliderT0();
   syncDtUI();
   setEncadrement(sim.encadrement);
+  sim.chronoIdx = chronoIdxProche(sim.t0);
+  majBtnChrono();
+  majT0Chrono();
   majAffichages();
 }
 
@@ -158,6 +161,8 @@ function onPointDeplace() {
 function onDt(val) {
   stopAnimDt();
   sim.dt = dtDepuisSlider(parseFloat(val));
+  // Le pas des relevés suit Δt : la chronophotographie se resserre avec lui.
+  majT0Chrono();
   // On rafraîchit le label sans réécrire la position du slider : le
   // réécrire pendant le glissé le ferait sauter d'un cran à l'autre.
   _setText('lbl-dt', sim.dt <= 0 ? '0'
@@ -173,6 +178,8 @@ function onDt(val) {
 function setEncadrement(mode) {
   if (mode !== 'avant') mode = 'sym';
   sim.encadrement = mode;
+  // Le pas des relevés vaut Δt/2 en symétrique, Δt sinon : il change ici.
+  majT0Chrono();
 
   var bS = _el('btn-enc-sym'), bA = _el('btn-enc-avant');
   if (bS) bS.classList.toggle('active', mode === 'sym');
@@ -203,6 +210,9 @@ function razTout() {
   construitSliderT0();
   syncDtUI();
   setEncadrement(sim.encadrement);
+  sim.chronoIdx = chronoIdxProche(sim.t0);
+  majBtnChrono();
+  majT0Chrono();
   majAffichages();
 }
 
@@ -219,6 +229,33 @@ function toggleGraphDeriv() {
   _el('left-col').classList.toggle('avec-deriv', sim.showDeriv);
   // Le canvas du bas avait une taille nulle tant qu'il était masqué.
   resizeAll();
+}
+
+// ── Chronophotographie ────────────────────────────────────────────────
+// Le point d'étude cesse d'être libre : il se choisit parmi les positions
+// relevées à intervalle de temps constant. En entrant dans ce mode, on
+// sélectionne le relevé le plus proche du point courant, pour ne pas
+// déplacer brutalement l'étude en cours.
+function toggleChrono() {
+  if (!chronoDispo()) return;
+  sim.chrono = !sim.chrono;
+  if (sim.chrono) sim.chronoIdx = chronoIdxProche(sim.t0);
+  majT0Chrono();
+  majBtnChrono();
+  requestDraw();
+  majAffichages();
+}
+
+// Le bouton n'apparaît que pour la trajectoire z(t) : ailleurs, il n'y a
+// pas de mobile dont on filmerait les positions successives.
+function majBtnChrono() {
+  var btn = _el('btn-chrono');
+  if (!btn) return;
+  var dispo = chronoDispo();
+  btn.style.display = dispo ? '' : 'none';
+  var on = dispo && sim.chrono;
+  btn.classList.toggle('active', on);
+  btn.textContent = on ? 'Masquer la chronophotographie' : 'Chronophotographie';
 }
 
 function toggleHint() {
@@ -270,6 +307,7 @@ function avanceAnimDt(dtMs) {
   var v = _animV0 * (1 - f);
   sim.dt = dtDepuisSlider(v);
   if (f >= 1) { sim.dt = 0; stopAnimDt(); }
+  majT0Chrono();
   syncDtUI();
   requestDraw();
 }
@@ -290,6 +328,11 @@ function majAffichages() {
   var taux = tauxVariation();
   var deriv = fDeriv(sim.t0);
   var nul = (sim.dt <= 0);
+
+  // En chronophotographie, le point d'étude porte son nom de relevé (M₃…).
+  var nomM = nomPointM(sim.chronoIdx);
+  _setText('lbl-ro-t0', 'Abscisse de ' + nomM);
+  _setText('lbl-ro-fm', 'Valeur en ' + nomM);
 
   _setText('ro-t0', avecUnite(fmtSmart(sim.t0), F.varUnite));
   _setText('ro-fm', avecUnite(fmtSmart(fVal(sim.t0)), F.funUnite));
@@ -414,6 +457,7 @@ function init() {
   recadre();
   syncDtUI();
   setEncadrement(sim.encadrement);
+  majBtnChrono();
   majAffichages();
 
   _el('ck-tangente').checked = sim.showTangente;

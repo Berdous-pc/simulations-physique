@@ -146,6 +146,12 @@ var sim = {
   showCotes: true,    // cotes Δt et Δf sur le graphe
   showDeriv: false,   // graphe de la fonction dérivée (bas)
 
+  // Chronophotographie : le point d'étude ne se pose plus librement sur la
+  // courbe, il se choisit parmi les points M₀, M₁, M₂… relevés à intervalle
+  // de temps constant (cf. plus bas).
+  chrono: false,
+  chronoIdx: 0,       // indice du point Mᵢ sélectionné
+
   animDt: false       // animation « Δt → 0 » en cours
 };
 
@@ -446,3 +452,64 @@ var COUL = {
   texte:    '#2c3e50',
   label:    '#5a6a78'
 };
+
+// ══════════════════════════════════════════════════════════════════════
+//  Chronophotographie
+//  Sur la trajectoire z(t), les positions ne sont plus lues n'importe où :
+//  elles sont relevées à intervalle de temps constant, comme sur une
+//  chronophotographie réelle. Le point d'étude devient l'un des points
+//  M₀, M₁, M₂… (M₀ à t = 0), et le taux de variation se calcule entre
+//  deux points relevés — c'est exactement la vitesse qu'on calcule en
+//  physique à partir d'un enregistrement.
+//
+//  Le pas de temps est celui de l'encadrement choisi :
+//    'sym'   → un point tous les Δt/2, le taux se lit de Mᵢ₋₁ à Mᵢ₊₁
+//    'avant' → un point tous les Δt,   le taux se lit de Mᵢ à Mᵢ₊₁
+//  Dans les deux cas tGauche()/tDroite() tombent déjà sur des points
+//  voisins : rien d'autre à changer dans le calcul du taux.
+// ══════════════════════════════════════════════════════════════════════
+
+// La chronophotographie n'a de sens que pour la trajectoire z(t) : ailleurs
+// (oscillateur en cm, tension, fonction cube) il n'y a pas de mobile filmé.
+function chronoDispo() { return fonCourante().id === 'trajectoire'; }
+
+// Pas de temps entre deux points relevés.
+function chronoPas() {
+  return sim.encadrement === 'avant' ? sim.dt : sim.dt / 2;
+}
+
+// La chronophotographie est réellement en service (activée, disponible, et
+// avec un pas non nul : à Δt = 0 tous les points se confondraient).
+function chronoActif() {
+  return sim.chrono && chronoDispo() && chronoPas() > 0;
+}
+
+// Abscisse du point Mᵢ. M₀ est à t = 0, les indices négatifs remontent
+// avant l'origine des temps.
+function chronoT(i) { return i * chronoPas(); }
+
+// Recale le point d'étude sur le point Mᵢ sélectionné.
+function majT0Chrono() {
+  if (chronoActif()) sim.t0 = chronoT(sim.chronoIdx);
+}
+
+// Indice du point relevé le plus proche d'une abscisse donnée : sert à
+// entrer en mode chronophotographie sans faire sauter le point d'étude.
+function chronoIdxProche(t) {
+  var pas = chronoPas();
+  return pas > 0 ? Math.round(t / pas) : 0;
+}
+
+// Indices en chiffres inférieurs : M₀, M₁, M₋₂…
+var _EXP_INF = { '0':'₀','1':'₁','2':'₂','3':'₃','4':'₄','5':'₅',
+                 '6':'₆','7':'₇','8':'₈','9':'₉' };
+
+function indiceSub(n) {
+  var s = String(Math.abs(n)).split('').map(function (c) {
+    return _EXP_INF[c] || c;
+  }).join('');
+  return (n < 0 ? '₋' : '') + s;
+}
+
+// Nom affiché du point Mᵢ (« M₃ »), ou « M » hors chronophotographie.
+function nomPointM(i) { return chronoActif() ? 'M' + indiceSub(i) : 'M'; }

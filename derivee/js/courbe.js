@@ -194,6 +194,9 @@ function drawCourbe() {
   }
   ctx.stroke();
 
+  // ── Points de la chronophotographie ──
+  if (chronoActif()) dessineChrono(ctx, g);
+
   // ── Points A, M, B et pente courante ──
   var tA = tGauche(), tB = tDroite(), tM = sim.t0;
   var zA = fVal(tA),  zB = fVal(tB),  zM = fVal(tM);
@@ -203,7 +206,13 @@ function drawCourbe() {
   // l'étiquette « A » feraient double emploi sur le même point.
   var montreA = !tangenteSeule && sim.encadrement !== 'avant';
   // Sans A à gauche, le second point ne « borne » plus M : il est nommé N.
-  var nomB = (sim.encadrement === 'avant') ? 'N' : 'B';
+  // En chronophotographie, A/M/B sont trois points relevés successifs :
+  // ils portent leur nom de chronophotographie plutôt que A, M et B.
+  var chro = chronoActif();
+  var nomA = chro ? nomPointM(sim.chronoIdx - 1) : 'A';
+  var nomM = chro ? nomPointM(sim.chronoIdx)     : 'M';
+  var nomB = chro ? nomPointM(sim.chronoIdx + 1)
+                  : (sim.encadrement === 'avant' ? 'N' : 'B');
 
   // ── Droite (AB) : sécante, ou tangente si Δt = 0 ──
   //    Tracée sur toute la largeur du cadre pour que sa direction se lise
@@ -258,11 +267,11 @@ function drawCourbe() {
   // ── Étiquettes des points ──
   var fontPt = '700 ' + Math.round(14 * s) + 'px "Segoe UI", Arial, sans-serif';
   if (montreA)
-    texteCartouche(ctx, 'A', g.gx(tA) - 13 * s, g.gy(zA) - 13 * s, COUL.pointAB, fontPt);
+    texteCartouche(ctx, nomA, g.gx(tA) - 13 * s, g.gy(zA) - 13 * s, COUL.pointAB, fontPt);
   if (!tangenteSeule) {
     texteCartouche(ctx, nomB, g.gx(tB) + 13 * s, g.gy(zB) - 13 * s, COUL.pointAB, fontPt);
   }
-  texteCartouche(ctx, 'M', g.gx(tM) + 15 * s, g.gy(zM) - 14 * s, COUL.pointM, fontPt);
+  texteCartouche(ctx, nomM, g.gx(tM) + 15 * s, g.gy(zM) - 14 * s, COUL.pointM, fontPt);
 
   ctx.restore();
 
@@ -273,6 +282,53 @@ function drawCourbe() {
 // ══════════════════════════════════════════════════════════════════════
 //  Cotes Δt (horizontale) et Δf (verticale) formant le triangle de pente
 // ══════════════════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════════════
+//  Chronophotographie : les positions relevées à intervalle constant
+//  Les trois points servant au taux (Mᵢ₋₁, Mᵢ, Mᵢ₊₁) sont tracés plus loin
+//  avec leurs pastilles A/M/B : ici on ne pose que les AUTRES relevés.
+// ══════════════════════════════════════════════════════════════════════
+
+// Indices des points relevés visibles dans la fenêtre, du premier au
+// dernier, en bornant le nombre de points (zoom arrière + Δt minuscule).
+var CHRONO_MAX_PTS = 400;
+
+function chronoIndicesVisibles(g) {
+  var pas = chronoPas();
+  var i0 = Math.ceil(g.tMin / pas), i1 = Math.floor(g.tMax / pas);
+  if (i1 - i0 > CHRONO_MAX_PTS) return null;
+  return { i0: i0, i1: i1 };
+}
+
+function dessineChrono(ctx, g) {
+  var lim = chronoIndicesVisibles(g);
+  if (!lim) return;
+  var s = g.s;
+  var idx = sim.chronoIdx;
+  var font = '600 ' + Math.round(11.5 * s) + 'px "Segoe UI", Arial, sans-serif';
+  // Les étiquettes se serrent vite : on ne les écrit que si les points sont
+  // assez espacés à l'écran pour qu'elles restent lisibles.
+  var ecartPx = chronoPas() / (g.tMax - g.tMin) * g.plotW;
+  var libelles = ecartPx > 26 * s;
+
+  for (var i = lim.i0; i <= lim.i1; i++) {
+    // Les points voisins portent déjà les pastilles A/M/B.
+    if (i === idx || i === idx + 1 || (sim.encadrement !== 'avant' && i === idx - 1)) continue;
+    var t = chronoT(i), z = fVal(t);
+    if (!isFinite(z)) continue;
+    var x = g.gx(t), y = g.gy(z);
+    ctx.beginPath();
+    ctx.arc(x, y, 4 * s, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.lineWidth = 1.8;
+    ctx.strokeStyle = COUL.label;
+    ctx.stroke();
+    if (libelles)
+      texteCartouche(ctx, 'M' + indiceSub(i), x, y - 13 * s, COUL.label, font);
+  }
+  ctx.lineWidth = 1;
+}
 
 function dessineCotes(ctx, g, tA, zA, tB, zB) {
   var F = fonCourante();
@@ -311,8 +367,17 @@ function dessineBandeau(ctx, g, pente, tangenteSeule) {
   var txt = tangenteSeule
     ? labelDeriv() + ' = ' + avecUnite(fmtSmart(pente), F.derivUnite)
     : labelTaux()  + ' = ' + avecUnite(fmtSmart(pente), F.derivUnite);
-  var sous = tangenteSeule ? 'nombre dérivé en M (Δ' + F.varNom + ' = 0)'
-                           : 'taux de variation entre ' + (sim.encadrement === 'avant' ? 'M et N' : 'A et B');
+  // En chronophotographie, le taux se lit entre deux relevés nommés.
+  var entre;
+  if (chronoActif()) {
+    var i = sim.chronoIdx;
+    entre = nomPointM(sim.encadrement === 'avant' ? i : i - 1) + ' et ' + nomPointM(i + 1);
+  } else {
+    entre = (sim.encadrement === 'avant') ? 'M et N' : 'A et B';
+  }
+  var sous = tangenteSeule ? 'nombre dérivé en ' + nomPointM(sim.chronoIdx) +
+                             ' (Δ' + F.varNom + ' = 0)'
+                           : 'taux de variation entre ' + entre;
 
   ctx.font = '700 ' + Math.round(20 * s) + 'px "Segoe UI", Arial, sans-serif';
   var w = ctx.measureText(txt).width;
@@ -363,6 +428,19 @@ function _tSousCurseur(g, px) {
   return g.tMin + (px - g.x0) / g.plotW * (g.tMax - g.tMin);
 }
 
+// Pose le point d'étude à l'abscisse visée. En chronophotographie, le point
+// ne se pose plus n'importe où : il saute sur le relevé Mᵢ le plus proche.
+function _poseM(g, px) {
+  var t = _tSousCurseur(g, px);
+  if (chronoActif()) {
+    sim.chronoIdx = chronoIdxProche(t);
+    majT0Chrono();
+  } else {
+    sim.t0 = t;
+  }
+  onPointDeplace();
+}
+
 function initCourbeSouris() {
   var canvas = document.getElementById('canvas-courbe');
   if (!canvas) return;
@@ -375,8 +453,7 @@ function initCourbeSouris() {
     // souris depuis le fond de la salle doit rester facile.
     if (_distCourbePx(geoCourbe, px, py) < 40) {
       dragCourbe.mode = 'point';
-      sim.t0 = _tSousCurseur(geoCourbe, px);
-      onPointDeplace();
+      _poseM(geoCourbe, px);
     } else {
       dragCourbe.mode = 'pan';
       dragCourbe.x = px; dragCourbe.y = py;
@@ -394,8 +471,7 @@ function initCourbeSouris() {
     if (dragCourbe.mode === 'point') {
       // Pendant le glissé, la vue reste figée : si elle se recentrait sur M
       // à chaque frame, le point fuirait sous le curseur.
-      sim.t0 = _tSousCurseur(geoCourbe, px);
-      onPointDeplace();
+      _poseM(geoCourbe, px);
     } else if (dragCourbe.mode === 'pan') {
       var g = geoCourbe;
       sim.panT = dragCourbe.panT - (px - dragCourbe.x) / g.plotW * (g.tMax - g.tMin);

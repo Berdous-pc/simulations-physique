@@ -112,11 +112,11 @@
         <div class="readout">
           <div class="ro-grid">
             <div class="ro-item">
-              <span class="ro-item-label">Abscisse de M</span>
+              <span class="ro-item-label" id="lbl-ro-t0">Abscisse de M</span>
               <span class="ro-item-val" id="ro-t0">—</span>
             </div>
             <div class="ro-item">
-              <span class="ro-item-label">Valeur en M</span>
+              <span class="ro-item-label" id="lbl-ro-fm">Valeur en M</span>
               <span class="ro-item-val" id="ro-fm">—</span>
             </div>
             <div class="ro-item">
@@ -162,6 +162,10 @@
         </label>
         <button class="btn btn-toggle-one" id="btn-graph-deriv"
                 onclick="toggleGraphDeriv()">Afficher la courbe dérivée</button>
+        <!-- Chronophotographie : réservée à la trajectoire z(t), le bouton
+             est masqué par majBtnChrono() pour les autres fonctions -->
+        <button class="btn btn-toggle-one" id="btn-chrono"
+                onclick="toggleChrono()">Chronophotographie</button>
       </div>
 
       <div class="sep"></div>
@@ -190,6 +194,10 @@
         <strong>nombre dérivé</strong>.<br>
         <strong>Zoomez</strong> autour de M : la courbe devient localement une
         droite — la tangente.<br>
+        <strong>Chronophotographie</strong> (trajectoire z(t)) : les positions
+        sont relevées à intervalle de temps constant à partir de
+        <strong>M₀</strong> (t = 0) ; le point d'étude se choisit alors parmi
+        les relevés et la vitesse se calcule d'un relevé à l'autre.<br>
         Sur le graphe : <em>glisser sur la courbe</em> déplace M,
         <em>glisser ailleurs</em> déplace la vue, la <em>molette</em> zoome et
         un <em>double-clic</em> revient à la vue initiale.

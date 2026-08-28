@@ -111,6 +111,24 @@ via le slider `t₀`, le zoom, ou un changement de fonction.
 `fmtTick()`, `fmtFr()`, `fmtSci()`, `fmtSmart()`, `avecUnite()`,
 `texteCartouche()`, `flecheDouble()`, `pastille()`, palette `COUL`.
 
+### Chronophotographie
+
+Réservée à la trajectoire `z(t)` (`chronoDispo()` teste `id === 'trajectoire'`).
+Le point d'étude cesse d'être libre : il se choisit parmi les positions
+relevées à intervalle de temps constant, `M₀` à `t = 0`, un point tous les
+`chronoPas()` — **Δt/2** en encadrement symétrique, **Δt** en non symétrique.
+Les indices sont des entiers relatifs : `M₋₁`, `M₋₂`… avant l'origine.
+
+L'état tient en `sim.chrono` (bascule) et `sim.chronoIdx` (indice choisi) ;
+`majT0Chrono()` recale `sim.t0 = chronoIdx · chronoPas()` et doit être rappelée
+partout où Δt ou l'encadrement changent (slider Δ, animation, `setEncadrement`).
+Ce choix de pas fait tomber `tGauche()`/`tDroite()` **exactement** sur les
+relevés voisins : le calcul du taux de variation n'a pas eu à changer — il se
+lit de `Mᵢ₋₁` à `Mᵢ₊₁` (symétrique) ou de `Mᵢ` à `Mᵢ₊₁` (non symétrique).
+
+`chronoActif()` exige en plus un pas non nul : à Δt = 0 tous les relevés se
+confondraient, la page revient au point M seul.
+
 ---
 
 ## 4. `courbe.js`
@@ -157,7 +175,7 @@ Un **bandeau** en haut à droite affiche en grand la grandeur lue
 
 | Geste | Effet |
 |---|---|
-| clic/glissé à moins de 40 px de la courbe | déplace le point M |
+| clic/glissé à moins de 40 px de la courbe | déplace le point M (en chronophotographie : saute sur le relevé Mᵢ le plus proche, `_poseM()`) |
 | clic/glissé ailleurs | décale la vue (pan) |
 | molette | zoom autour de M |
 
