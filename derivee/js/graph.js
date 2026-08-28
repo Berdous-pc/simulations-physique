@@ -27,6 +27,11 @@ function drawDeriv() {
   var F = fonCourante();
   var tMin = vueTMin(), tMax = vueTMax();
 
+  // Décollage : la dérivée est un enregistrement au même titre que z(t).
+  // Elle s'écrit au fil du vol, et rien ne se pose dessus tant qu'il dure —
+  // ni repère à l'abscisse de M, ni taux de variation, ni pastilles.
+  var enVol = fuseeAnimEnCours();
+
   // ── Cadrage vertical : balayage de f′ sur la plage visible, en
   //    englobant aussi le taux de variation courant (qui peut sortir de
   //    l'intervalle des valeurs de f′ quand Δt est grand). ──
@@ -39,7 +44,7 @@ function drawDeriv() {
     if (d > dMax) dMax = d;
   }
   var taux = tauxVariation();
-  if (isFinite(taux)) { dMin = Math.min(dMin, taux); dMax = Math.max(dMax, taux); }
+  if (!enVol && isFinite(taux)) { dMin = Math.min(dMin, taux); dMax = Math.max(dMax, taux); }
   if (!isFinite(dMin) || !isFinite(dMax)) { dMin = -1; dMax = 1; }
   if (dMax - dMin < 1e-9) { dMin -= 1; dMax += 1; }
   var marge = (dMax - dMin) * 0.14;
@@ -67,12 +72,17 @@ function drawDeriv() {
   var NP = Math.max(200, Math.round(g.plotW));
   for (i = 0; i <= NP; i++) {
     var t = g.tMin + (g.tMax - g.tMin) * i / NP;
+    // Le crayon suit la fusée, et le vol commence à t = 0.
+    if (enVol && t > sim.fuseeT) break;
+    if (enVol && t < 0) { trace = false; continue; }
     d = fDeriv(t);
     if (!isFinite(d)) { trace = false; continue; }
     var py = Math.max(-1e4, Math.min(1e4, g.gy(d)));
     if (trace) ctx.lineTo(g.gx(t), py); else { ctx.moveTo(g.gx(t), py); trace = true; }
   }
   ctx.stroke();
+
+  if (enVol) { ctx.restore(); return; }
 
   // ── Repère vertical à l'abscisse du point M ──
   ctx.strokeStyle = 'rgba(42,138,80,0.45)';

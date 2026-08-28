@@ -244,6 +244,10 @@ function drawCourbe() {
 
   if (enVol) {
     ctx.restore();
+    // Le trait de liaison sort du cadre de tracé (il va jusqu'au bord du
+    // canevas, où le panneau de la fusée le reprend) : il se dessine donc
+    // une fois le découpage levé.
+    traitVersFusee(ctx, g, W, tTrace);
     dessineChronometre(ctx, g);
     return;
   }

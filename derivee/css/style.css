@@ -92,12 +92,20 @@ main {
       fusée devient un trait, trop large elle mange la lecture du graphe. */
 #wrap-fusee { display: none; }
 
-#left-col.avec-fusee { gap: 10px; }
+/* Les deux zones sont ACCOLÉES : le pointillé qui relie l'extrémité de la
+   courbe au centre de masse de la fusée passe d'un canevas à l'autre, et
+   le moindre écart entre eux le couperait en deux. D'où le gap nul, la
+   bordure partagée et les coins carrés à la jonction. */
+#left-col.avec-fusee { gap: 0; }
+#left-col.avec-fusee #row-graphes .chart-wrap { border-top-right-radius: 0; border-bottom-right-radius: 0; }
 #left-col.avec-fusee #wrap-fusee {
   display: block;
   flex: 0 0 clamp(110px, 17vw, 230px);
   min-width: 0;
   background: #eef4fb;
+  border-left: 0;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
 }
 
 /* Les deux graphes se partagent la hauteur selon --frac-courbe. Le grow est

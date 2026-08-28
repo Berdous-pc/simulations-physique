@@ -368,7 +368,8 @@ function majBtnFusee() {
 
 function toggleFuseePlay() {
   if (!fuseeActif()) return;
-  if (!sim.fuseePlay && sim.fuseeT >= fuseeDuree()) fuseeRaz();  // rejouer
+  // Rejouer : retour à l'instant zéro, donc au cadre de départ.
+  if (!sim.fuseePlay && sim.fuseeT >= fuseeDuree()) { fuseeRaz(); recadre(); }
   sim.fuseePlay = !sim.fuseePlay;
   majBtnFusee();
   requestDraw();
@@ -377,6 +378,7 @@ function toggleFuseePlay() {
 function razFusee() {
   if (!fuseeActif()) return;
   fuseeRaz();
+  recadre();
   majBtnFusee();
   requestDraw();
   majAffichages();
@@ -412,7 +414,9 @@ function avanceFusee(dtMs) {
     // Rembobiner rouvre l'enregistrement : la figure de lecture se retire.
     if (sim.fuseeFini) { sim.fuseeFini = false; majBtnFusee(); }
   }
-  requestDraw();
+  // La fenêtre suit l'enregistrement : elle se dilate au fil de la montée
+  // (cf. fuseeCadre), donc le cadrage se recalcule à chaque pas.
+  recadre();
 }
 
 // Rembobinage : bouton à MAINTENIR appuyé. Le pointeur est capturé, si

@@ -127,11 +127,51 @@ function drawFusee() {
       ctx.lineWidth = 1.8 * s;
       ctx.setLineDash([6 * s, 4 * s]);
       ctx.beginPath();
-      ctx.moveTo(0, yM); ctx.lineTo(W, yM);
+      // Pendant le vol le trait s'arrête au centre de masse : il vient de
+      // l'extrémité de la courbe (bord gauche) et meurt sur M. Une fois le
+      // vol fini, plus de crayon à relier : le trait traverse tout le
+      // panneau et sert de report d'altitude.
+      ctx.moveTo(0, yM); ctx.lineTo(fuseeAnimEnCours() ? W / 2 : W, yM);
       ctx.stroke();
       ctx.restore();
       texteCartouche(ctx, 'M', 11 * s, yM - 11 * s, COUL.pointM,
                      '700 ' + Math.round(15 * s) + 'px "Segoe UI", Arial, sans-serif');
     }
   }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Le trait de liaison, côté graphe
+// ══════════════════════════════════════════════════════════════════════
+
+// Pendant le vol, un pointillé part du bout du crayon — l'extrémité de la
+// courbe en train de s'écrire — et file vers la droite jusqu'au bord du
+// canevas, où le panneau de la fusée le prolonge jusqu'au centre de masse.
+// Les deux moitiés sont à la même ordonnée : c'est le même z, lu une fois
+// sur le graphe et une fois sur la fusée. Appelée par drawCourbe(), hors
+// du découpage au cadre de tracé.
+//
+//   g       géométrie du graphe        W   largeur du canevas de la courbe
+//   tTrace  date du bout du crayon
+function traitVersFusee(ctx, g, W, tTrace) {
+  var z = fVal(tTrace);
+  if (!isFinite(z)) return;
+  var x = g.gx(tTrace), y = g.gy(z);
+  if (y < g.padT || y > g.padT + g.plotH) return;   // le bout est hors cadre
+  x = Math.max(g.x0, Math.min(g.x0 + g.plotW, x));
+
+  var s = g.s;
+  ctx.save();
+  ctx.strokeStyle = COUL_FUSEE.ligne;
+  ctx.globalAlpha = 0.85;
+  ctx.lineWidth = 1.8 * s;
+  ctx.setLineDash([6 * s, 4 * s]);
+  ctx.beginPath();
+  ctx.moveTo(x, y); ctx.lineTo(W, y);
+  ctx.stroke();
+  ctx.restore();
+
+  // Le crayon lui-même : la pastille qui trace la courbe, posée au bout du
+  // trait. C'est elle qu'on suit du regard, du graphe jusqu'à la fusée.
+  pastille(ctx, x, y, 6 * s, COUL.courbe);
 }

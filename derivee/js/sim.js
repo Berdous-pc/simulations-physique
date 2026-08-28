@@ -231,20 +231,14 @@ function calcVueBase() {
   vueBase.cT = (F.tMin + F.tMax) / 2;
   vueBase.w  = (F.tMax - F.tMin) * 1.06;
 
-  // En décollage, la fenêtre est celle du VOL, pas du domaine d'étude de
-  // la fonction : l'abscisse court jusqu'à l'arrivée aux 1000 m, et
-  // l'ordonnée doit contenir le sol (z = 0) ET la fusée entière à cet
-  // instant — son sommet culmine à z(durée) + c, puisque le centre de
-  // masse est à mi-hauteur d'une fusée haute de 2c.
+  // En décollage, la fenêtre ne se calcule plus sur les paramètres mais
+  // sur ce qui est DÉJÀ ENREGISTRÉ : au départ un cadre fixe de 4 s, puis
+  // un dézoom progressif à mesure que la courbe monte, jusqu'à contenir
+  // tout le vol. Changer a ou b ne redimensionne donc plus rien — la
+  // courbe change de pente dans une fenêtre inchangée ; seul c, qui est
+  // la demi-hauteur de la fusée, modifie la taille de son image.
   if (fuseeActif()) {
-    var duree = fuseeDuree();
-    vueBase.cT = duree / 2;
-    vueBase.w  = duree * 1.06;
-    var zHaut = fVal(duree) + sim.params.c;
-    var zBas  = -0.05 * zHaut;
-    var zSom  = zHaut * 1.04;
-    vueBase.cZ = (zBas + zSom) / 2;
-    vueBase.h  = zSom - zBas;
+    fuseeCadre();
     return;
   }
 
@@ -665,6 +659,40 @@ function borneParamsAuMode() {
     var b = bornesParam(p);
     sim.params[p.id] = Math.max(b.min, Math.min(b.max, sim.params[p.id]));
   });
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Cadrage du décollage
+// ══════════════════════════════════════════════════════════════════════
+
+// Fenêtre de départ, fusée au sol : 4 s en abscisse, 120 m en ordonnée.
+// Les deux vont ensemble — avec les valeurs par défaut, la fusée atteint
+// justement le haut du cadre au bout de ces 4 s, et le dézoom prend le
+// relais sans à-coup.
+var FUSEE_VUE_T = 4;
+var FUSEE_VUE_Z = 120;
+
+// Cadre du mode décollage à la date enregistrée `sim.fuseeT`.
+//
+// La fenêtre ne montre jamais que ce qui est déjà tracé : elle part du
+// cadre fixe ci-dessus, et ne s'élargit que lorsque la courbe — ou le
+// sommet de la fusée, à z + c — vient toucher un bord. Le dézoom est donc
+// continu, piloté par le temps qui passe et non par les paramètres : à
+// l'arrivée aux 1000 m, tout le vol tient dans le graphe.
+function fuseeCadre() {
+  var tv = sim.fuseeT;
+  var c  = sim.params.c;
+
+  var tHaut = Math.max(FUSEE_VUE_T, tv * 1.08);
+  var zHaut = fVal(tv) + c;
+  if (!isFinite(zHaut)) zHaut = FUSEE_VUE_Z;
+  var zSom  = Math.max(FUSEE_VUE_Z, zHaut * 1.06);
+  var zBas  = -0.05 * zSom;
+
+  vueBase.cT = tHaut / 2;
+  vueBase.w  = tHaut * 1.06;
+  vueBase.cZ = (zBas + zSom) / 2;
+  vueBase.h  = zSom - zBas;
 }
 
 // Remet l'animation à l'instant zéro : fusée au sol, courbe effacée.
