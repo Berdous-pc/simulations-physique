@@ -9,8 +9,11 @@
 ## 1. Intention pédagogique
 
 Un point **M** est posé sur la courbe d'une fonction `f`, à l'abscisse `t₀`.
-Deux points **A** et **B** l'encadrent symétriquement, à `t₀ − Δt/2` et
-`t₀ + Δt/2`.
+Deux points **A** et **B** définissent le taux de variation. Le sélecteur
+« Définition du taux » choisit l'intervalle : **symétrique** (`t₀ − Δt/2` et
+`t₀ + Δt/2`, M au milieu) ou **non symétrique** (`t₀` et `t₀ + Δt`, A confondu
+avec M — c'est alors la définition `(z(t₀+Δt) − z(t₀))/Δt`). Les deux tendent
+vers le même nombre dérivé. Seules `tGauche()/tDroite()` en dépendent.
 
 - La pente de la **sécante (AB)** est le **taux de variation** `Δf/Δt`.
 - Quand **Δt → 0**, la sécante bascule sur la **tangente** en M, et le taux de
@@ -81,7 +84,7 @@ elle-même être une approximation.
 
 ### État `sim`
 
-`fonIdx`, `params`, `t0`, `dt`, `zoom`, `panT`/`panZ`, les bascules d'affichage
+`fonIdx`, `params`, `t0`, `dt`, `encadrement` (`'sym'` | `'avant'`), `zoom`, `panT`/`panZ`, les bascules d'affichage
 (`showTangente`, `showCotes`, `showDeriv`, `showCourbeDeriv`) et `animDt`.
 
 ### Vue (`vueBase`, `vue`)

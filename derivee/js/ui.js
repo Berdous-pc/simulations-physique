@@ -113,6 +113,7 @@ function setFonction(i) {
   construitParams();
   construitSliderT0();
   syncDtUI();
+  setEncadrement(sim.encadrement);
   majAffichages();
 }
 
@@ -160,6 +161,28 @@ function onDt(val) {
   majAffichages();
 }
 
+// ── Définition du taux : 'sym' | 'avant' ──────────────────────────────
+// Seules les abscisses de A et B changent (cf. tGauche/tDroite) : Δt, le
+// point M et la vue sont conservés, on voit la sécante basculer d'une
+// définition à l'autre. Les deux tendent vers le même nombre dérivé.
+function setEncadrement(mode) {
+  if (mode !== 'avant') mode = 'sym';
+  sim.encadrement = mode;
+
+  var bS = _el('btn-enc-sym'), bA = _el('btn-enc-avant');
+  if (bS) bS.classList.toggle('active', mode === 'sym');
+  if (bA) bA.classList.toggle('active', mode === 'avant');
+
+  var F = fonCourante();
+  _setText('hint-enc', mode === 'sym'
+    ? 'A et B de part et d’autre de M.'
+    : 'Taux calculé de M au point N : [' + F.varNom + '₀ ; ' +
+      F.varNom + '₀ + Δ' + F.varNom + '].');
+
+  requestDraw();
+  majAffichages();
+}
+
 // Retour à la vue initiale — déclenché par un double-clic sur le graphe.
 function razVueUI() {
   razVue();
@@ -174,6 +197,7 @@ function razTout() {
   construitParams();
   construitSliderT0();
   syncDtUI();
+  setEncadrement(sim.encadrement);
   majAffichages();
 }
 
@@ -377,6 +401,7 @@ function init() {
   construitSliderT0();
   recadre();
   syncDtUI();
+  setEncadrement(sim.encadrement);
   majAffichages();
 
   _el('ck-tangente').checked = sim.showTangente;

@@ -134,6 +134,11 @@ var sim = {
   t0: 0,              // abscisse du point d'étude M
   dt: 0.8,            // écart Δt entre les points A et B
 
+  // Définition du taux de variation :
+  //   'sym'   → [t₀ − Δt/2 ; t₀ + Δt/2], M au milieu de [AB]
+  //   'avant' → [t₀ ; t₀ + Δt], A confondu avec M
+  encadrement: 'sym',
+
   zoom: 1,            // facteur de zoom (≥ 1), centré sur M
   panT: 0, panZ: 0,   // décalage manuel de la vue (unités de la fonction)
 
@@ -168,8 +173,10 @@ function fVal(t) { return fonCourante().f(t, sim.params); }
 function fDeriv(t) { return fonCourante().df(t, sim.params); }
 
 // Abscisses des points A (gauche) et B (droite) encadrant M.
-function tGauche() { return sim.t0 - sim.dt / 2; }
-function tDroite() { return sim.t0 + sim.dt / 2; }
+// En mode 'avant', A est confondu avec M : l'intervalle part de t₀.
+function tGauche() { return sim.encadrement === 'avant' ? sim.t0 : sim.t0 - sim.dt / 2; }
+function tDroite() { return sim.encadrement === 'avant' ? sim.t0 + sim.dt
+                                                       : sim.t0 + sim.dt / 2; }
 
 // Taux de variation Δf/Δt entre A et B. Quand Δt = 0, la sécante n'existe
 // plus : on renvoie directement le nombre dérivé (position limite).

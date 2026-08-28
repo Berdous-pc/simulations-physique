@@ -76,6 +76,21 @@
       <div class="panel-section">
         <div class="section-title">Encadrement</div>
 
+        <!-- Définition du taux de variation : encadrement symétrique de M,
+             ou intervalle [t₀ ; t₀+Δt] partant de M -->
+        <div class="param-row">
+          <label>Définition du taux</label>
+          <div class="seg-toggle">
+            <button class="seg-btn active" id="btn-enc-sym"
+                    onclick="setEncadrement('sym')">Symétrique</button>
+            <button class="seg-btn" id="btn-enc-avant"
+                    onclick="setEncadrement('avant')">Non symétrique</button>
+          </div>
+          <div class="input-hint" id="hint-enc">
+            A et B de part et d'autre de M.
+          </div>
+        </div>
+
         <div class="param-row">
           <label>
             <span id="lbl-dt-nom">Écart Δt</span>
@@ -83,10 +98,6 @@
           </label>
           <input type="range" id="sl-dt" min="0" max="1000" step="1" value="516"
                  oninput="onDt(this.value)">
-          <div class="input-hint">
-            A et B encadrent M : Δ = distance de A à B. Les derniers crans
-            avant zéro sont très resserrés.
-          </div>
         </div>
 
         <button class="btn btn-primary" id="btn-anim" onclick="lanceAnimDt()">Δt → 0</button>

@@ -199,6 +199,11 @@ function drawCourbe() {
   var zA = fVal(tA),  zB = fVal(tB),  zM = fVal(tM);
   var pente = tauxVariation();
   var tangenteSeule = (sim.dt <= 0);
+  // En mode non symétrique A est confondu avec M : la pastille et
+  // l'étiquette « A » feraient double emploi sur le même point.
+  var montreA = !tangenteSeule && sim.encadrement !== 'avant';
+  // Sans A à gauche, le second point ne « borne » plus M : il est nommé N.
+  var nomB = (sim.encadrement === 'avant') ? 'N' : 'B';
 
   // ── Droite (AB) : sécante, ou tangente si Δt = 0 ──
   //    Tracée sur toute la largeur du cadre pour que sa direction se lise
@@ -244,17 +249,18 @@ function drawCourbe() {
   if (sim.showCotes && !tangenteSeule) dessineCotes(ctx, g, tA, zA, tB, zB);
 
   // ── Les trois points ──
+  if (montreA) pastille(ctx, g.gx(tA), g.gy(zA), 6 * s, COUL.pointAB);
   if (!tangenteSeule) {
-    pastille(ctx, g.gx(tA), g.gy(zA), 6 * s, COUL.pointAB);
     pastille(ctx, g.gx(tB), g.gy(zB), 6 * s, COUL.pointAB);
   }
   pastille(ctx, g.gx(tM), g.gy(zM), 7.5 * s, COUL.pointM);
 
   // ── Étiquettes des points ──
   var fontPt = '700 ' + Math.round(14 * s) + 'px "Segoe UI", Arial, sans-serif';
-  if (!tangenteSeule) {
+  if (montreA)
     texteCartouche(ctx, 'A', g.gx(tA) - 13 * s, g.gy(zA) - 13 * s, COUL.pointAB, fontPt);
-    texteCartouche(ctx, 'B', g.gx(tB) + 13 * s, g.gy(zB) - 13 * s, COUL.pointAB, fontPt);
+  if (!tangenteSeule) {
+    texteCartouche(ctx, nomB, g.gx(tB) + 13 * s, g.gy(zB) - 13 * s, COUL.pointAB, fontPt);
   }
   texteCartouche(ctx, 'M', g.gx(tM) + 15 * s, g.gy(zM) - 14 * s, COUL.pointM, fontPt);
 
@@ -306,7 +312,7 @@ function dessineBandeau(ctx, g, pente, tangenteSeule) {
     ? labelDeriv() + ' = ' + avecUnite(fmtSmart(pente), F.derivUnite)
     : labelTaux()  + ' = ' + avecUnite(fmtSmart(pente), F.derivUnite);
   var sous = tangenteSeule ? 'nombre dérivé en M (Δ' + F.varNom + ' = 0)'
-                           : 'taux de variation entre A et B';
+                           : 'taux de variation entre ' + (sim.encadrement === 'avant' ? 'M et N' : 'A et B');
 
   ctx.font = '700 ' + Math.round(20 * s) + 'px "Segoe UI", Arial, sans-serif';
   var w = ctx.measureText(txt).width;
