@@ -309,7 +309,10 @@ function sizeCanvas(canvas) {
 // grossissent avec la zone de tracé (lisibilité en projection) tout en
 // restant lisibles sur petite fenêtre.
 function echelleTexte(W, H) {
-  return Math.max(0.82, Math.min(1.4, Math.min(W, H) / 520));
+  // Les deux graphes sont larges et peu hauts : se caler sur la plus petite
+  // dimension écrasait les textes dès qu'on partageait la fenêtre en deux.
+  // La moyenne géométrique suit la surface réellement disponible.
+  return Math.max(0.85, Math.min(1.75, Math.sqrt(W * H) / 560));
 }
 
 // Pas « rond » donnant environ `cible` graduations sur l'étendue donnée.

@@ -39,7 +39,7 @@ function dessineRepere(ctx, W, H, o) {
   // Marges réduites : les graduations sont désormais portées par les axes,
   // À L'INTÉRIEUR de la fenêtre. Il ne reste à réserver que la place des
   // pointes de flèches et des noms d'axes.
-  var padL = Math.max(26, Math.min(46, W * 0.05));
+  var padL = Math.max(14, Math.min(24, W * 0.02));
   var padR = Math.max(30, Math.min(60, W * 0.07));
   var padT = Math.max(26, Math.min(48, H * 0.09));
   var padB = Math.max(26, Math.min(46, H * 0.09));
@@ -73,10 +73,26 @@ function dessineRepere(ctx, W, H, o) {
 
   var stepX = tickStep(dT, Math.max(3, Math.round(plotW / (110 * s))));
   var stepY = tickStep(dZ, Math.max(3, Math.round(plotH / (60 * s))));
-  var fontTick = Math.round(13 * s) + 'px monospace';
-  var v, i, px, py;
+  var tTick = Math.round(15 * s);
+  var fontTick = tTick + 'px monospace';
+  var v, i, px, py, b;
+
+  // ── Encombrement des noms d'axes, calculé AVANT les graduations ──
+  //    Les titres sont posés au bout des flèches, là où passe justement la
+  //    dernière graduation : on mesure leur place pour effacer l'étiquette
+  //    de graduation qui viendrait s'écrire dessous.
+  var tAxe = Math.round(17 * s);
+  var fontAxe = '700 ' + tAxe + 'px "Segoe UI", Arial, sans-serif';
+  ctx.font = fontAxe;
+  var wX = ctx.measureText(o.xLabel).width, wY = ctx.measureText(o.yLabel).width;
+  var xTitre = x0 + plotW + padR * 0.55, yTitre = padT - padT * 0.45;
+  var boiteX = { x1: xTitre - wX - 4 * s, x2: xTitre + 4 * s,
+                 y1: xAxeY + 6 * s, y2: xAxeY + 10 * s + tAxe * 1.3 };
+  var boiteY = { x1: yAxeX + 4 * s, x2: yAxeX + 8 * s + wY + 4 * s,
+                 y1: yTitre - 4 * s, y2: yTitre + tAxe * 1.3 };
 
   // ── Grille légère : aide à la lecture sans concurrencer les axes ──
+  ctx.strokeStyle = COUL.grille;
   ctx.strokeStyle = COUL.grille;
   ctx.lineWidth = 1;
   for (i = Math.ceil(tMin / stepX); i * stepX <= tMax; i++) {
@@ -97,11 +113,11 @@ function dessineRepere(ctx, W, H, o) {
   ctx.stroke();
   pointeFleche(ctx, x0 + plotW + padR * 0.55, xAxeY, 1, 0, 9 * s, COUL.axe);
   pointeFleche(ctx, yAxeX, padT - padT * 0.45, 0, -1, 9 * s, COUL.axe);
-
   // ── Graduations portées par les axes ──
   // texteCartouche() repose son propre trait (halo blanc) : la couleur et
   // l'épaisseur du trait doivent être réarmées à CHAQUE tour de boucle,
   // sinon les graduations suivantes seraient tracées en blanc.
+  ctx.font = fontTick;
   for (i = Math.ceil(tMin / stepX); i * stepX <= tMax; i++) {
     v = i * stepX;
     px = gx(v);
@@ -110,6 +126,10 @@ function dessineRepere(ctx, W, H, o) {
     ctx.beginPath();
     ctx.moveTo(px, xAxeY - 4 * s); ctx.lineTo(px, xAxeY + 4 * s);
     ctx.stroke();
+    ctx.font = fontTick;
+    b = boiteT({ xAxeY: xAxeY }, px, ctx.measureText(fmtTick(v, stepX)).width,
+               tTick * 1.2, labSousX, s);
+    if (chevauche(b, boiteX) || chevauche(b, boiteY)) continue;
     texteCartouche(ctx, fmtTick(v, stepX), px,
                    labSousX ? xAxeY + 7 * s : xAxeY - 7 * s,
                    COUL.label, fontTick, 'center', labSousX ? 'top' : 'bottom');
@@ -124,16 +144,19 @@ function dessineRepere(ctx, W, H, o) {
     ctx.beginPath();
     ctx.moveTo(yAxeX - 4 * s, py); ctx.lineTo(yAxeX + 4 * s, py);
     ctx.stroke();
+    ctx.font = fontTick;
+    b = boiteV({ yAxeX: yAxeX }, py, ctx.measureText(fmtTick(v, stepY)).width,
+               tTick * 1.2, s, labGaucheY);
+    if (chevauche(b, boiteX) || chevauche(b, boiteY)) continue;
     texteCartouche(ctx, fmtTick(v, stepY),
                    labGaucheY ? yAxeX - 7 * s : yAxeX + 7 * s, py,
                    COUL.label, fontTick, labGaucheY ? 'right' : 'left', 'middle');
   }
 
   // ── Noms des axes, posés au bout de chaque flèche ──
-  var fontAxe = '700 ' + Math.round(15 * s) + 'px "Segoe UI", Arial, sans-serif';
-  texteCartouche(ctx, o.xLabel, x0 + plotW + padR * 0.55, xAxeY + 10 * s,
+  texteCartouche(ctx, o.xLabel, xTitre, xAxeY + 10 * s,
                  COUL.texte, fontAxe, 'right', 'top');
-  texteCartouche(ctx, o.yLabel, yAxeX + 8 * s, padT - padT * 0.45,
+  texteCartouche(ctx, o.yLabel, yAxeX + 8 * s, yTitre,
                  COUL.texte, fontAxe, 'left', 'top');
 
   // La position des deux axes et le côté de leurs graduations sont rendus
@@ -143,6 +166,7 @@ function dessineRepere(ctx, W, H, o) {
            tMin: tMin, tMax: tMax, zMin: zMin, zMax: zMax,
            padL: padL, padR: padR,
            xAxeY: xAxeY, yAxeX: yAxeX,
+           boiteTitreX: boiteX, boiteTitreY: boiteY,
            labSousX: labSousX, labGaucheY: labGaucheY };
 }
 
@@ -261,9 +285,6 @@ function drawCourbe() {
   // ── Cotes Δt et Δf ──
   if (sim.showCotes && !tangenteSeule) dessineCotes(ctx, g, tA, zA, tB, zB);
 
-  // ── Coordonnées du point courant, rabattues sur les deux axes ──
-  if (sim.showCoords) dessineCoords(ctx, g, tM, zM, COUL.pointM, F.varUnite, F.funUnite);
-
   // ── Les trois points ──
   if (montreA) pastille(ctx, g.gx(tA), g.gy(zA), 6 * s, COUL.pointAB);
   if (!tangenteSeule) {
@@ -281,6 +302,11 @@ function drawCourbe() {
   texteCartouche(ctx, nomM, g.gx(tM) + 15 * s, g.gy(zM) - 14 * s, COUL.pointM, fontPt);
 
   ctx.restore();
+
+  // ── Coordonnées du point courant, rabattues sur les deux axes ──
+  //    Tracées hors du clip : les valeurs s'écrivent SUR les axes, donc
+  //    parfois juste au bord de la fenêtre graphique.
+  if (sim.showCoords) dessineCoords(ctx, g, tM, zM, COUL.pointM, F.varUnite, F.funUnite);
 
   // ── Bandeau de lecture posé en haut du cadre ──
   dessineBandeau(ctx, g, pente, tangenteSeule);
@@ -327,14 +353,64 @@ function dessineCoords(ctx, g, t, v, couleur, uniteT, uniteV) {
   ctx.lineWidth = 1;
 
   // Les deux valeurs, du côté où l'axe porte déjà ses graduations : elles
-  // les recouvrent (halo blanc) plutôt que de s'écrire par-dessus.
-  var font = '700 ' + Math.round(13.5 * s) + 'px "Segoe UI", Arial, sans-serif';
-  texteCartouche(ctx, avecUnite(fmtSmart(t), uniteT), x,
-                 g.labSousX ? g.xAxeY + 8 * s : g.xAxeY - 8 * s,
-                 couleur, font, 'center', g.labSousX ? 'top' : 'bottom');
-  texteCartouche(ctx, avecUnite(fmtSmart(v), uniteV),
-                 g.labGaucheY ? g.yAxeX - 8 * s : g.yAxeX + 8 * s, y,
-                 couleur, font, g.labGaucheY ? 'right' : 'left', 'middle');
+  // recouvrent les graduations (halo blanc) plutôt que de s'écrire par-dessus.
+  // Elles doivent en revanche s'écarter des NOMS des axes, qui occupent le
+  // bout de chaque flèche : on bascule alors la valeur de l'autre côté.
+  var tf = Math.round(16 * s);
+  var font = '700 ' + tf + 'px "Segoe UI", Arial, sans-serif';
+
+  var txtT = avecUnite(fmtSmart(t), uniteT);
+  var txtV = avecUnite(fmtSmart(v), uniteV);
+  ctx.font = font;
+  var wT = ctx.measureText(txtT).width, wV = ctx.measureText(txtV).width;
+  var h = tf * 1.2;
+  var xDroite = g.x0 + g.plotW + g.padR;
+
+  // ── Ordonnée : à gauche ou à droite de l'axe vertical ──
+  var aGauche = g.labGaucheY;
+  if (aGauche && g.yAxeX - wV - 8 * s < 2) aGauche = false;
+  else if (!aGauche && g.yAxeX + wV + 8 * s > xDroite - 2) aGauche = true;
+  if (!aGauche && chevauche(boiteV(g, y, wV, h, s, false), g.boiteTitreY)
+      && g.yAxeX - wV - 8 * s >= 2) aGauche = true;
+
+  // ── Abscisse : sous ou au-dessus de l'axe horizontal ──
+  // Recentrée d'abord pour ne pas sortir du canevas.
+  var xTxt = Math.max(wT / 2 + 2, Math.min(xDroite - wT / 2 - 2, x));
+  var sousX = g.labSousX;
+  if (sousX && chevauche(boiteT(g, xTxt, wT, h, sousX, s), g.boiteTitreX)
+      && g.xAxeY - 8 * s - h > g.padT) sousX = false;
+
+  // Les valeurs lues se posent PAR-DESSUS les graduations de l'axe : on
+  // efface d'abord le fond sous chacune, sinon les deux nombres se mêlent.
+  efface(ctx, boiteT(g, xTxt, wT, h, sousX, s), 2 * s);
+  efface(ctx, boiteV(g, y, wV, h, s, aGauche), 2 * s);
+
+  texteCartouche(ctx, txtT, xTxt,
+                 sousX ? g.xAxeY + 8 * s : g.xAxeY - 8 * s,
+                 couleur, font, 'center', sousX ? 'top' : 'bottom');
+  texteCartouche(ctx, txtV,
+                 aGauche ? g.yAxeX - 8 * s : g.yAxeX + 8 * s, y,
+                 couleur, font, aGauche ? 'right' : 'left', 'middle');
+}
+
+// Efface (fond blanc) le rectangle qu'occupera une étiquette, marge comprise.
+function efface(ctx, b, m) {
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(b.x1 - m, b.y1 - m, b.x2 - b.x1 + 2 * m, b.y2 - b.y1 + 2 * m);
+}
+
+// Encombrement des deux étiquettes de coordonnées, et test de recouvrement.
+function boiteT(g, xc, w, h, sous, s) {
+  var yh = sous ? g.xAxeY + 8 * s : g.xAxeY - 8 * s - h;
+  return { x1: xc - w / 2, x2: xc + w / 2, y1: yh, y2: yh + h };
+}
+function boiteV(g, y, w, h, s, aGauche) {
+  var xg = aGauche ? g.yAxeX - 8 * s - w : g.yAxeX + 8 * s;
+  return { x1: xg, x2: xg + w, y1: y - h / 2, y2: y + h / 2 };
+}
+function chevauche(a, b) {
+  if (!a || !b) return false;
+  return a.x1 < b.x2 && a.x2 > b.x1 && a.y1 < b.y2 && a.y2 > b.y1;
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -404,7 +480,7 @@ function dessineCotes(ctx, g, tA, zA, tB, zB) {
   flecheDouble(ctx, xA, yA, xB, yA, COUL.coteT, 2.2 * s, 9 * s);
   flecheDouble(ctx, xB, yA, xB, yB, COUL.secante, 2.2 * s, 9 * s);
 
-  var font = '700 ' + Math.round(14 * s) + 'px "Segoe UI", Arial, sans-serif';
+  var font = '700 ' + Math.round(16.5 * s) + 'px "Segoe UI", Arial, sans-serif';
   texteCartouche(ctx, 'Δ' + F.varNom + ' = ' + avecUnite(fmtSmart(sim.dt), F.varUnite),
                  (xA + xB) / 2, yA + 16 * s, COUL.coteT, font);
   texteCartouche(ctx, 'Δ' + F.funNom + ' = ' + avecUnite(fmtSmart(zB - zA), F.funUnite),

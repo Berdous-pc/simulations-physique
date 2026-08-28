@@ -97,10 +97,9 @@ function drawDeriv() {
 
   // ── Coordonnées du point courant sur la courbe dérivée ──
   //    Même lecture que sur le graphe du haut : on rabat sur les axes, ici
-  //    l'abscisse du point M et la valeur du nombre dérivé.
+  //    l'abscisse du point M et la valeur du nombre dérivé. Hors du clip :
+  //    les valeurs s'écrivent SUR les axes, donc parfois au bord du cadre.
   var dM = fDeriv(sim.t0);
-  if (sim.showCoords)
-    dessineCoords(ctx, g, sim.t0, dM, COUL.tangente, F.varUnite, F.derivUnite);
 
   // ── Points : pente de la sécante (terracotta) et nombre dérivé (vert) ──
   if (sim.dt > 0 && isFinite(taux)) {
@@ -111,4 +110,7 @@ function drawDeriv() {
   }
 
   ctx.restore();
+
+  if (sim.showCoords)
+    dessineCoords(ctx, g, sim.t0, dM, COUL.tangente, F.varUnite, F.derivUnite);
 }
