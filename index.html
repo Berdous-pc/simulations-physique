@@ -154,24 +154,6 @@
     #btn-reset-filters:hover  { background: #ccc8c0; }
     #btn-reset-filters:active { transform: scale(0.97); }
 
-    .link-uncheck {
-      background: none;
-      border: none;
-      font-family: inherit;
-      font-size: 10px;
-      font-weight: 600;
-      text-transform: none;
-      letter-spacing: normal;
-      color: #2a6aaa;
-      text-decoration: underline;
-      cursor: pointer;
-      padding: 0;
-      white-space: normal;
-      text-align: left;
-      line-height: 1.3;
-    }
-    .link-uncheck:hover { color: #1f5486; }
-
     /* Message "aucun résultat" */
     #no-results {
       display: none;
@@ -463,15 +445,15 @@
       <div class="filter-group">
         <div class="filter-group-title">Niveau</div>
         <label class="filter-label">
-          <input type="checkbox" data-filter="level" data-value="seconde" checked>
+          <input type="checkbox" data-filter="level" data-value="seconde">
           <span class="filter-badge level-seconde">Seconde</span>
         </label>
         <label class="filter-label">
-          <input type="checkbox" data-filter="level" data-value="premiere" checked>
+          <input type="checkbox" data-filter="level" data-value="premiere">
           <span class="filter-badge level-premiere">Première</span>
         </label>
         <label class="filter-label">
-          <input type="checkbox" data-filter="level" data-value="terminale" checked>
+          <input type="checkbox" data-filter="level" data-value="terminale">
           <span class="filter-badge level-terminale">Terminale</span>
         </label>
       </div>
@@ -480,17 +462,17 @@
       <div class="filter-group">
         <div class="filter-group-title">Discipline</div>
         <label class="filter-label">
-          <input type="checkbox" data-filter="discipline" data-value="physique" checked>
+          <input type="checkbox" data-filter="discipline" data-value="physique">
           <span class="filter-dot dot-physique"></span>
           Physique
         </label>
         <label class="filter-label">
-          <input type="checkbox" data-filter="discipline" data-value="chimie" checked>
+          <input type="checkbox" data-filter="discipline" data-value="chimie">
           <span class="filter-dot dot-chimie"></span>
           Chimie
         </label>
         <label class="filter-label">
-          <input type="checkbox" data-filter="discipline" data-value="maths" checked>
+          <input type="checkbox" data-filter="discipline" data-value="maths">
           <span class="filter-dot dot-maths"></span>
           Maths
         </label>
@@ -500,55 +482,54 @@
       <div class="filter-group">
         <div class="filter-group-title">
           Thème
-          <button id="btn-uncheck-themes" class="link-uncheck">Décocher tous les thèmes</button>
         </div>
         <label class="filter-label">
-          <input type="checkbox" data-filter="theme" data-value="outils-mathematiques" checked>
+          <input type="checkbox" data-filter="theme" data-value="outils-mathematiques">
           Outils mathématiques
         </label>
         <label class="filter-label">
-          <input type="checkbox" data-filter="theme" data-value="constitution-matiere" checked>
+          <input type="checkbox" data-filter="theme" data-value="constitution-matiere">
           Constitution de la matière
         </label>
         <label class="filter-label">
-          <input type="checkbox" data-filter="theme" data-value="dosages" checked>
+          <input type="checkbox" data-filter="theme" data-value="dosages">
           Dosages
         </label>
         <label class="filter-label">
-          <input type="checkbox" data-filter="theme" data-value="electricite" checked>
+          <input type="checkbox" data-filter="theme" data-value="electricite">
           Électricité
         </label>
         <label class="filter-label">
-          <input type="checkbox" data-filter="theme" data-value="mecanique" checked>
+          <input type="checkbox" data-filter="theme" data-value="mecanique">
           Mécanique
         </label>
         <label class="filter-label">
-          <input type="checkbox" data-filter="theme" data-value="ondes" checked>
+          <input type="checkbox" data-filter="theme" data-value="ondes">
           Ondes
         </label>
         <label class="filter-label">
-          <input type="checkbox" data-filter="theme" data-value="optique" checked>
+          <input type="checkbox" data-filter="theme" data-value="optique">
           Optique
         </label>
         <label class="filter-label">
-          <input type="checkbox" data-filter="theme" data-value="radioactivite" checked>
+          <input type="checkbox" data-filter="theme" data-value="radioactivite">
           Radioactivité
         </label>
         <label class="filter-label">
-          <input type="checkbox" data-filter="theme" data-value="solutions-aqueuses" checked>
+          <input type="checkbox" data-filter="theme" data-value="solutions-aqueuses">
           Solutions aqueuses
         </label>
         <label class="filter-label">
-          <input type="checkbox" data-filter="theme" data-value="thermodynamique" checked>
+          <input type="checkbox" data-filter="theme" data-value="thermodynamique">
           Thermodynamique
         </label>
         <label class="filter-label">
-          <input type="checkbox" data-filter="theme" data-value="transformations-chimiques" checked>
+          <input type="checkbox" data-filter="theme" data-value="transformations-chimiques">
           Transformations chimiques
         </label>
       </div>
 
-      <button id="btn-reset-filters">Réinitialiser</button>
+      <button id="btn-reset-filters">Tout afficher</button>
 
     </aside>
 
@@ -1178,7 +1159,6 @@
   (function () {
     const cardsGrid    = document.querySelector('.cards-grid');
     const btnReset     = document.getElementById('btn-reset-filters');
-    const btnUncheckThemes = document.getElementById('btn-uncheck-themes');
 
     // ── Tri alphabétique (thème, puis titre) ─────────
     // Permet d'ajouter une nouvelle carte ou un nouveau filtre de thème
@@ -1221,9 +1201,10 @@
     }
 
     // ── Application des filtres ──────────────────────
-    // Logique : OU au sein d'une catégorie, ET entre catégories.
-    // Une carte reste visible si elle satisfait AU MOINS UNE valeur cochée
-    // dans CHAQUE catégorie (niveau, discipline, thème).
+    // Logique : cocher une case RESTREINT l'affichage.
+    // Une catégorie sans aucune case cochée n'impose aucune contrainte.
+    // Sinon : OU au sein d'une catégorie, ET entre catégories.
+    // Rien de coché => toutes les simulations sont affichées.
     function applyFilters() {
       const activeLevels      = getActiveValues('level');
       const activeDisciplines = getActiveValues('discipline');
@@ -1236,18 +1217,18 @@
         const cardDiscipline = card.dataset.discipline;           // ex: "physique"
         const cardTheme      = card.dataset.theme;                // ex: "optique"
 
-        // Catégorie niveau : au moins un niveau de la carte est coché
-        // (aucun niveau coché => aucune carte visible)
-        const levelOk = cardLevels.some(l => activeLevels.includes(l));
+        // Catégorie niveau : aucune case cochée => pas de filtre,
+        // sinon au moins un niveau de la carte doit être coché
+        const levelOk = activeLevels.length === 0
+                     || cardLevels.some(l => activeLevels.includes(l));
 
-        // Catégorie discipline : la discipline de la carte est cochée
-        // (aucune discipline cochée => aucune carte visible)
-        const disciplineOk = activeDisciplines.includes(cardDiscipline);
+        // Catégorie discipline : idem
+        const disciplineOk = activeDisciplines.length === 0
+                          || activeDisciplines.includes(cardDiscipline);
 
-        // Catégorie thème : le thème de la carte doit être coché
-        // (contrairement aux autres catégories, ici "aucun thème coché" masque tout,
-        // pour que le bouton "Décocher tous les thèmes" vide bien la grille)
-        const themeOk = activeThemes.includes(cardTheme);
+        // Catégorie thème : idem
+        const themeOk = activeThemes.length === 0
+                     || activeThemes.includes(cardTheme);
 
         const visible = levelOk && disciplineOk && themeOk;
         card.classList.toggle('hidden', !visible);
@@ -1261,14 +1242,7 @@
     checkboxes.forEach(cb => cb.addEventListener('change', applyFilters));
 
     btnReset.addEventListener('click', function () {
-      checkboxes.forEach(cb => { cb.checked = true; });
-      applyFilters();
-    });
-
-    btnUncheckThemes.addEventListener('click', function () {
-      checkboxes.forEach(cb => {
-        if (cb.dataset.filter === 'theme') cb.checked = false;
-      });
+      checkboxes.forEach(cb => { cb.checked = false; });
       applyFilters();
     });
 
