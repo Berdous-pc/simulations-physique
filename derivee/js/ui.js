@@ -405,7 +405,9 @@ function avanceFusee(dtMs) {
       // encadrée des deux côtés, alors qu'au bout elle sortirait du relevé.
       sim.t0 = duree / 2;
       sim.chronoAncre = sim.t0;
-      chronoRecale();
+      // En chronophotographie on se pose sur le relevé le plus proche du
+      // milieu, sans toucher au pas de prise de vue.
+      if (chronoActif()) chronoChoisirPres(sim.t0);
       syncDtUI();
     }
     majBtnFusee();

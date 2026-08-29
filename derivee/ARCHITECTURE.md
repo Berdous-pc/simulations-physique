@@ -123,9 +123,17 @@ relevées à intervalle de temps constant, `M₀` à `t = 0`, un point tous les
 `chronoPas()` — **Δt/2** en encadrement symétrique, **Δt** en non symétrique.
 Les indices sont des entiers relatifs : `M₋₁`, `M₋₂`… avant l'origine.
 
-L'état tient en `sim.chrono` (bascule) et `sim.chronoIdx` (indice choisi) ;
-`majT0Chrono()` recale `sim.t0 = chronoIdx · chronoPas()` et doit être rappelée
-partout où Δt ou l'encadrement changent (slider Δ, animation, `setEncadrement`).
+L'état tient en `sim.chrono` (bascule), `sim.chronoIdx` (indice choisi) et
+`sim.chronoAncre` (abscisse retenue). Deux gestes distincts, à ne pas confondre :
+
+- **choisir le point** (souris) → `chronoChoisirPres()` : Δt ne bouge pas, on
+  saute sur le relevé le plus proche (`chronoIdx = round(t / pas)`). Un
+  changement de point ne doit jamais changer la cadence de prise de vue, et le
+  point ne glisse pas continûment sur l'axe ;
+- **changer Δt ou l'encadrement** → `chronoRecale()` : c'est alors la grille
+  qui se recale sur l'ancre, en découpant `[0 ; t_M]` en un nombre entier
+  d'intervalles ; le point ne bouge pas. À rappeler partout où Δt ou
+  l'encadrement changent (slider Δ, animation, `setEncadrement`).
 Ce choix de pas fait tomber `tGauche()`/`tDroite()` **exactement** sur les
 relevés voisins : le calcul du taux de variation n'a pas eu à changer — il se
 lit de `Mᵢ₋₁` à `Mᵢ₊₁` (symétrique) ou de `Mᵢ` à `Mᵢ₊₁` (non symétrique).
@@ -187,7 +195,7 @@ Un **bandeau** en haut à droite affiche en grand la grandeur lue
 
 | Geste | Effet |
 |---|---|
-| clic/glissé à moins de 40 px de la courbe | déplace le point M (en chronophotographie : saute sur le relevé Mᵢ le plus proche, `_poseM()`) |
+| clic/glissé à moins de 40 px de la courbe | déplace le point M (en chronophotographie : saute sur le relevé Mᵢ le plus proche, à Δt inchangé — `_poseM()` → `chronoChoisirPres()`) |
 | clic/glissé ailleurs | décale la vue (pan) |
 | molette | zoom autour de M |
 

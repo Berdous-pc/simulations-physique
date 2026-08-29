@@ -625,14 +625,12 @@ function _tSousCurseur(g, px) {
 }
 
 // Pose le point d'étude à l'abscisse visée. En chronophotographie, le point
-// reste libre de se poser où l'on veut : c'est la grille des relevés qui se
-// recale sur lui, en découpant [0 ; t_M] en un nombre entier d'intervalles.
+// saute d'un relevé à l'autre, à pas de prise de vue inchangé : la grille ne
+// se recale sur le point que lorsque c'est Δt qui change (chronoRecale).
 function _poseM(g, px) {
   var t = _tSousCurseur(g, px);
   if (chronoActif()) {
-    // L'abscisse visée par le geste devient la nouvelle ancre : c'est elle
-    // que la chronophotographie conservera si le pas change ensuite.
-    chronoAncrer(t);
+    chronoChoisirPres(t);
   } else {
     sim.t0 = t;
     sim.chronoAncre = t;

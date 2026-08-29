@@ -518,6 +518,20 @@ function chronoActif() {
 // avant l'origine des temps.
 function chronoT(i) { return i * chronoPas(); }
 
+// Choix du point d'étude à la souris : on SAUTE sur le relevé le plus proche
+// de l'abscisse visée. Le pas de prise de vue ne bouge pas — changer de point
+// ne doit pas changer Δt, et le point ne doit pas glisser continûment sur
+// l'axe : sur une chronophotographie il n'existe que les positions relevées.
+// L'ancre devient ce relevé, c'est lui que chronoRecale() conservera si Δt
+// change ensuite.
+function chronoChoisirPres(t) {
+  var pas = chronoPas();
+  if (pas <= 0) return;
+  sim.chronoIdx = Math.round(t / pas);
+  sim.t0 = chronoT(sim.chronoIdx);
+  sim.chronoAncre = sim.t0;
+}
+
 // Mémorise l'abscisse visée par l'utilisateur, puis cale la grille dessus.
 function chronoAncrer(t) {
   sim.chronoAncre = t;
