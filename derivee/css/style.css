@@ -654,10 +654,24 @@ main {
 .panel-hint-body {
   font-size: clamp(11px, 1vw, 14px);
   padding: 0 10px 8px;
-  overflow: hidden;
+  /* Le texte peut dépasser la hauteur allouée : on le rend défilable
+     plutôt que rogné (overflow-x caché pour éviter une barre parasite). */
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
   transition: max-height 0.25s ease, padding 0.25s ease;
   max-height: 300px;
 }
+
+/* Barre de défilement discrète du bandeau Informations. */
+.panel-hint-body::-webkit-scrollbar { width: 8px; }
+.panel-hint-body::-webkit-scrollbar-track { background: transparent; }
+.panel-hint-body::-webkit-scrollbar-thumb {
+  background: #c8d4dc;
+  border-radius: 4px;
+}
+.panel-hint-body::-webkit-scrollbar-thumb:hover { background: #a8b8c4; }
+.panel-hint-body { scrollbar-width: thin; scrollbar-color: #c8d4dc transparent; }
 
 .panel-hint.collapsed .panel-hint-body {
   max-height: 0;
