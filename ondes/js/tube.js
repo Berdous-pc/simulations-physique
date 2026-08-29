@@ -698,11 +698,13 @@ function drawTube() {
     // ── Flèche de longueur d'onde ────────────────────────────────────
     _drawSonLambdaArrow(ctx);
 
+    // ── Règle graduée sous le tube ────────────────────────────────────
+    // AVANT les balises : celles-ci masquent la graduation derrière leur
+    // étiquette de position, ce qui suppose d'être dessinées par-dessus.
+    _drawTubeRuler(ctx);
+
     // ── Balises ───────────────────────────────────────────────────────
     _drawBeacons(ctx);
-
-    // ── Règle graduée sous le tube ────────────────────────────────────
-    _drawTubeRuler(ctx);
 }
 
 // ── Fond du tube colorié selon la pression ────────────────────────────
@@ -1511,15 +1513,16 @@ function _drawOneBeacon(ctx, x, color, label) {
     // traitement que les pointillés de la flèche λ : sur le nuage de
     // particules, un tiret de couleur seul se confond avec les points qu'il
     // recouvre. Le blanc est tracé dans le MÊME pointillé et depuis le même
-    // point de départ, donc tiret sur tiret ; 5 px sous 3 px laissent
-    // déborder 1 px de chaque côté.
+    // point de départ, donc tiret sur tiret ; 8 px sous 5 px laissent
+    // déborder 1,5 px de chaque côté. Trait opaque et plus épais : sur le
+    // nuage dense de particules, une balise fine et translucide se perdait.
     ctx.save();
-    ctx.setLineDash([6, 4]);
+    ctx.setLineDash([8, 5]);
     ctx.lineCap = 'butt';
     [1, 0].forEach(function (isBorder) {
         ctx.strokeStyle = isBorder ? '#ffffff' : color;
-        ctx.lineWidth   = isBorder ? 5 : 3;
-        ctx.globalAlpha = isBorder ? 1 : 0.9;
+        ctx.lineWidth   = isBorder ? 8 : 5;
+        ctx.globalAlpha = 1;
         ctx.beginPath();
         ctx.moveTo(x, y1);
         ctx.lineTo(x, y2);
@@ -1528,12 +1531,36 @@ function _drawOneBeacon(ctx, x, color, label) {
     ctx.setLineDash([]);
     ctx.restore();
 
-    // Étiquette au-dessus du tube
-    ctx.fillStyle    = color;
+    // Étiquette au-dessus du tube : pastille pleine de la couleur de la
+    // balise, texte blanc — bien plus lisible qu'un texte coloré posé sur
+    // le fond, et repère la balise même quand le trait est masqué par les
+    // particules.
+    ctx.save();
     ctx.font         = 'bold ' + fSize + 'px "Segoe UI", Arial, sans-serif';
     ctx.textAlign    = 'center';
-    ctx.textBaseline = 'bottom';
-    ctx.fillText(label, x, y1 - 2);
+    ctx.textBaseline = 'middle';
+    var padX  = Math.round(fSize * 0.45);
+    var padY  = Math.round(fSize * 0.28);
+    var boxW  = ctx.measureText(label).width + padX * 2;
+    var boxH  = fSize + padY * 2;
+    var boxCy = y1 - 4 - boxH / 2;
+    var rad   = Math.min(boxH / 2, 6);
+
+    ctx.beginPath();
+    if (ctx.roundRect) {
+        ctx.roundRect(x - boxW / 2, boxCy - boxH / 2, boxW, boxH, rad);
+    } else {
+        ctx.rect(x - boxW / 2, boxCy - boxH / 2, boxW, boxH);
+    }
+    ctx.fillStyle   = color;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth   = 2;
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(label, x, boxCy);
+    ctx.restore();
 
     // Poignée de drag (losange)
     ctx.save();
@@ -1567,14 +1594,28 @@ function _drawOneBeacon(ctx, x, color, label) {
     var room      = yRoom - tickMaj - 1;
     if (room < RULER_FONT_MIN) return;
     var fontSize  = Math.max(RULER_FONT_MIN,
-                             Math.min(18, Math.round(yRoom * 0.75), Math.floor(room)));
+                             Math.min(24, Math.round(yRoom * 0.95), Math.floor(room)));
+
+    var txt = fmtFR(xCm, 1);
+    var ty  = y2 + tickMaj + 1;
 
     ctx.save();
-    ctx.fillStyle    = color;
     ctx.font         = 'bold ' + fontSize + 'px monospace';
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'top';
-    ctx.fillText(fmtFR(xCm, 1), x, y2 + tickMaj + 1);
+
+    // Cache opaque : la valeur de la balise s'écrit sur la même ligne que les
+    // nombres de la règle. Un simple liseré les laissait transparaître entre
+    // les chiffres ; on efface donc la bande allant du bas du tube au bas du
+    // texte — traits de graduation compris, sinon ils dépassent au-dessus du
+    // cache. On s'arrête à la hauteur du texte, sans descendre jusqu'en bas.
+    var boxW = ctx.measureText(txt).width + fontSize * 0.4;
+    var boxB = Math.min(ty + fontSize + 1, H);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(x - boxW / 2, y2 + 1, boxW, boxB - y2 - 1);
+
+    ctx.fillStyle = color;
+    ctx.fillText(txt, x, ty);
     ctx.restore();
 }
 
@@ -1734,7 +1775,7 @@ function _drawSonLambdaArrow(ctx) {
 (function initTubeInteractions() {
     // Hit-test : est-on proche d'une balise ?
     function nearBeacon(x, beacon) {
-        return beacon.active && Math.abs(x - beacon.x) < 10;
+        return beacon.active && Math.abs(x - beacon.x) < 14;
     }
 
     // Le graphe temporel enregistre la valeur mesurée À une position donnée :
