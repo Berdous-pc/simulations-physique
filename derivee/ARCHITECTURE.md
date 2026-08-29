@@ -298,7 +298,8 @@ rembobinage à maintenir appuyé.
 - **Le cadrage** est recalculé par `calcVueBase()` sur le VOL et non sur le
   domaine d'étude de la fonction : l'abscisse court jusqu'à `fuseeDuree()`,
   et l'ordonnée doit contenir le sol (`z = 0`) *et* le sommet de la fusée à
-  l'arrivée, soit `z(durée) + c`.
+  l'arrivée, soit `z(durée) + c`. Ce dézoom se fait **par paliers** (cf.
+  ci-dessous).
 - **Le plafond de Δ** suit la durée du vol (`dtMaxCourant()`) : avec un Δt
   bloqué à 3 s, un vol de 40 s ne s'explorerait qu'à la loupe et la
   chronophotographie manquerait d'écart entre relevés.
@@ -321,6 +322,66 @@ fichier : la fusée occupe le haut, le jet de gaz le bas. Le centre de masse
 est à mi-hauteur de la **fusée**, pas de l'image — le placer au milieu de
 l'image le ferait descendre dans les flammes, qui ne sont pas de la matière
 embarquée.
+
+### Voir l'accélération : dézoom par paliers
+
+Un dézoom qui colle à `z(t)` est un piège. La fenêtre grandit exactement au
+rythme de la trajectoire, la fusée reste à la même hauteur relative, et son
+**accélération devient invisible** — le mouvement paraît uniforme. Deux
+dispositifs la rendent lisible.
+
+**1. Le cadre avance par paliers** (`fuseeCadre()`). Entre deux sauts
+d'échelle la fenêtre est *figée* : la fusée y grimpe, de plus en plus vite,
+et c'est là que l'accélération se voit.
+
+Trois règles font tout le comportement :
+
+- **C'est le NOMBRE de sauts qui est fixé** (`FUSEE_NB_PALIERS = 2`, soit
+  **trois** fenêtres successives : celle de départ et deux ensuite), pas le
+  rapport d'un palier au suivant. Ce rapport s'en déduit, par axe, de façon
+  que le dernier palier tombe exactement sur le cadre du vol entier. Un
+  rapport fixe (×2) donnait un nombre de sauts variable selon `a` et `c` —
+  jusqu'à sept, ce qui hachait l'animation.
+- **Les deux axes sautent en même temps.** Le palier est commandé par l'axe
+  le plus en avance (`fuseeAvancement()` mesure, pour chacun, la progression
+  *géométrique* de son échelle de départ vers celle du vol entier ; on
+  retient le maximum). Un saut se lit alors comme un seul événement — « on a
+  changé d'échelle » — et non comme deux secousses successives.
+- **La fin du vol est le plafond.** Comme le dernier palier *est* le cadre du
+  vol entier, l'axe des z s'arrête à ~1090 m pour un vol qui monte à 1000 —
+  là où un rapport ×2 arrondi au palier supérieur le poussait à 3840 m.
+
+> Attention au vocabulaire quand on règle `FUSEE_NB_PALIERS` : il compte les
+> **sauts**, et il y a donc un cadrage de plus que de sauts.
+
+Le palier est une **fonction pure de `sim.fuseeT`** : le palier en service
+est l'entier immédiatement supérieur à l'avancement. Aucune hystérésis, aucun
+état mémorisé — sans quoi le **rembobinage** ne repasserait pas par les mêmes
+cadrages que l'aller.
+
+À chaque palier la fusée repart vers 50 % de la hauteur du cadre et remonte
+vers 90 % ; sur le dernier, que rien ne repousse plus, elle monte d'un trait
+jusqu'à 94 %. C'est la fin du vol qui est le moment le plus démonstratif.
+
+Le saut est adouci sur `FUSEE_TRANSITION` de palier (25 %), par une
+interpolation **lissée** (`lissage()`, dérivée nulle aux deux bouts). Une
+rampe linéaire laissait un coin au départ *et* à l'arrivée de la transition,
+et ces deux cassures de vitesse se lisaient comme un à-coup. C'est le seul
+réglage du mode : trop court, c'est saccadé ; trop long, on retombe sur un
+dézoom continu et l'accélération redevient invisible. Le lissage démarre plus
+mou qu'une rampe et mettrait donc l'échelle en retard de 0,4 % au pire sur son
+contenu ; chaque axe est borné par en dessous à ce qu'il doit contenir, si
+bien que rien ne sort jamais du cadre.
+
+**2. La traînée des relevés** (`dessineTraineeChrono()`, dans `fusee.js`),
+active **uniquement en chronophotographie**. Le panneau partageant l'échelle
+verticale du graphe, chaque relevé déjà enregistré pose une pastille dans le
+ciel, sur l'axe de la fusée, à l'ordonnée `geoCourbe.gy(z(tᵢ))`. L'écartement
+croissant des pastilles *est* l'accélération, lue directement à côté de la
+fusée ; à l'arrivée, on a la bande chronophoto complète, resserrée en bas et
+étalée en haut. Le parcours part du relevé le plus récent et descend : les
+plus anciens, tassés, sont écartés d'eux-mêmes par le critère d'écartement
+minimal (3 px), et deux garde-fous bornent le coût quand Δ est minuscule.
 
 ### Alignement des deux canevas
 

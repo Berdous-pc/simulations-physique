@@ -116,6 +116,9 @@ function drawFusee() {
     ctx.stroke();
   }
 
+  // ── La traînée des relevés, par-dessus tout le reste ──
+  dessineTraineeChrono(ctx, W, H, y, g.s);
+
   // ── Le trait de lecture : l'altitude de M, à l'horizontale du graphe ──
   if (isFinite(zM)) {
     var s = g.s;
@@ -138,6 +141,57 @@ function drawFusee() {
                      '700 ' + Math.round(15 * s) + 'px "Segoe UI", Arial, sans-serif');
     }
   }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  La traînée de la chronophotographie
+// ══════════════════════════════════════════════════════════════════════
+
+// Le panneau partage l'échelle verticale du graphe : les relevés déjà
+// enregistrés peuvent donc se poser dans le ciel, sur l'axe de la fusée,
+// à l'ordonnée que le graphe donne à z(tᵢ). Leur écartement croissant est
+// la lecture directe de l'accélération — celle que le dézoom, à lui seul,
+// masquerait. Réservé au mode chronophotographie : c'est de la mesure, pas
+// de la décoration.
+var TRAINEE_MAX_PTS  = 400;   // pastilles réellement tracées
+var TRAINEE_MAX_ITER = 4000;  // relevés examinés (Δ minuscule + vol long)
+
+function dessineTraineeChrono(ctx, W, H, y, s) {
+  if (!chronoActif()) return;
+
+  var pas = chronoPas();
+  var tMax = fuseeAnimEnCours() ? sim.fuseeT : fuseeDuree();
+  var iMax = Math.floor(tMax / pas + 1e-9);
+  if (iMax < 0) return;
+
+  var x = W / 2;
+  var ecartMin = 3 * s;
+  var yPrec = null, poses = 0;
+
+  // On descend depuis le relevé le plus récent : ce sont les plus récents
+  // qui portent l'information, et les plus anciens — tassés en bas — se
+  // font écarter d'eux-mêmes par le critère d'écartement.
+  for (var i = iMax, n = 0; i >= 0 && n < TRAINEE_MAX_ITER; i--, n++) {
+    var t = chronoT(i);
+    // La fusée occupe déjà sa position courante : pas de pastille dessous.
+    if (Math.abs(t - tMax) < 1e-9) continue;
+    var z = fVal(t);
+    if (!isFinite(z)) continue;
+    var yi = y(z);
+    if (yi < -10 || yi > H + 10) continue;
+    if (yPrec !== null && Math.abs(yi - yPrec) < ecartMin) continue;
+    yPrec = yi;
+
+    ctx.beginPath();
+    ctx.arc(x, yi, 4 * s, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.lineWidth = 1.8;
+    ctx.strokeStyle = COUL.label;
+    ctx.stroke();
+    if (++poses >= TRAINEE_MAX_PTS) break;
+  }
+  ctx.lineWidth = 1;
 }
 
 // ══════════════════════════════════════════════════════════════════════
