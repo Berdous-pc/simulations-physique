@@ -131,6 +131,11 @@ var simVagues = {
     beacon1 : { active: false, x: 0, y: 0, snapped: false },
     beacon2 : { active: false, x: 0, y: 0, snapped: false },
 
+    // Trace y(t) à recalculer au prochain rendu (balise déplacée) —
+    // cf. rebuildYtDataVagues
+    ytDirty1 : false,
+    ytDirty2 : false,
+
     // ── Données graphes ──────────────────────────────────────────────
     //  Stockage en Float32Array plutôt qu'en tableaux d'objets : la courbe y(x)
     //  est régénérée à chaque frame (cf. updateYxDataVagues) et allouer quelques
@@ -365,11 +370,14 @@ function _waveFieldAt(px, py) {
 
 // Retourne le champ physique brut (sin × atténuation, sans gain visuel).
 // Valeurs ∈ [-1,1] en conditions normales ; peut dépasser si géo désactivée près de la source.
-function _waveFieldRaw(px, py) {
+// tOverride (optionnel) : évalue le champ à un instant passé au lieu de
+// l'instant courant. Sert à reconstruire la trace y(t) d'une balise qu'on
+// vient de déplacer (cf. rebuildYtDataVagues).
+function _waveFieldRaw(px, py, tOverride) {
     var c = simVagues.c_sim;
     if (c <= 0) return 0;
 
-    var t    = simVagues.simTime;
+    var t    = (tOverride === undefined) ? simVagues.simTime : tOverride;
     var f    = simVagues.freq;
     var maxR = Math.sqrt(simVagues.canvasW * simVagues.canvasW + simVagues.canvasH * simVagues.canvasH);
     var a5   = simVagues.attenuation * 5;
@@ -880,15 +888,30 @@ function updateYtDataVagues(t) {
     var b2 = simVagues.beacon2.active && simVagues.beacon2.snapped;
     if (!b1 && !b2) return;
 
-    // _waveFieldRaw lit simVagues.simTime en interne : on l'évalue au temps
-    // d'échantillonnage t (identique à cordeDisplacement(x, t) dans sim.js).
-    var savedT = simVagues.simTime;
-    simVagues.simTime = t;
+    // Champ évalué au temps d'échantillonnage t, et non à l'instant courant
+    // (identique à cordeDisplacement(x, t) dans sim.js).
+    if (b1) _ytPush(_ytBuf(1), t, _waveFieldRaw(simVagues.beacon1.x, simVagues.beacon1.y, t) * VAGUES_AMP_CM);
+    if (b2) _ytPush(_ytBuf(2), t, _waveFieldRaw(simVagues.beacon2.x, simVagues.beacon2.y, t) * VAGUES_AMP_CM);
+}
 
-    if (b1) _ytPush(_ytBuf(1), t, _waveFieldRaw(simVagues.beacon1.x, simVagues.beacon1.y) * VAGUES_AMP_CM);
-    if (b2) _ytPush(_ytBuf(2), t, _waveFieldRaw(simVagues.beacon2.x, simVagues.beacon2.y) * VAGUES_AMP_CM);
+// Déplacement d'une balise : la trace n'est pas effacée, elle est recalculée
+// pour la nouvelle position (cf. _cbufRebuild dans sim.js). Le recalcul est
+// différé au prochain rendu par un drapeau, pour ne le faire qu'une fois par
+// frame et non à chaque pointermove.
+function _ytMarkMovedVagues(n) { simVagues[(n === 1) ? 'ytDirty1' : 'ytDirty2'] = true; }
 
-    simVagues.simTime = savedT;
+function rebuildYtDataVagues() {
+    for (var n = 1; n <= 2; n++) {
+        var key = (n === 1) ? 'ytDirty1' : 'ytDirty2';
+        if (!simVagues[key]) continue;
+        simVagues[key] = false;
+        var b = (n === 1) ? simVagues.beacon1 : simVagues.beacon2;
+        if (!b.active || !b.snapped) continue;
+        var bx = b.x, by = b.y;
+        _cbufRebuild(_ytBuf(n), function (t) {
+            return _waveFieldRaw(bx, by, t) * VAGUES_AMP_CM;
+        });
+    }
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -2773,6 +2796,7 @@ function _drawBeaconsCoupeVagues(ctx, W, H, srcX, yLevel, ampPx) {
                 beacon.rx      = beacon.x / simVagues.canvasW;
                 beacon.ry      = beacon.y / simVagues.canvasH;
                 beacon.snapped = true;
+                _ytMarkMovedVagues(dragTarget === 'beacon1' ? 1 : 2);
                 return;
             }
 
@@ -2790,14 +2814,16 @@ function _drawBeaconsCoupeVagues(ctx, W, H, srcX, yLevel, ampPx) {
                 simVagues.beacon1.rx = mx / simVagues.canvasW;
                 simVagues.beacon1.ry = my / simVagues.canvasH;
                 simVagues.beacon1.snapped = snapped;
-                if (!snapped) { _ytClear(1); }
+                // Hors de l'axe, rien n'est enregistré : la trace est vidée.
+                // Sur l'axe, elle est recalculée pour la nouvelle distance.
+                if (!snapped) { _ytClear(1); } else { _ytMarkMovedVagues(1); }
             } else if (dragTarget === 'beacon2') {
                 simVagues.beacon2.x = mx;
                 simVagues.beacon2.y = my;
                 simVagues.beacon2.rx = mx / simVagues.canvasW;
                 simVagues.beacon2.ry = my / simVagues.canvasH;
                 simVagues.beacon2.snapped = snapped;
-                if (!snapped) { _ytClear(2); }
+                if (!snapped) { _ytClear(2); } else { _ytMarkMovedVagues(2); }
             }
         });
 

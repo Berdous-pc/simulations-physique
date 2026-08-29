@@ -1780,14 +1780,14 @@ function _drawSonLambdaArrow(ctx) {
 
     // Le graphe temporel enregistre la valeur mesurée À une position donnée :
     // dès que la balise bouge, les points antérieurs ne décrivent plus le
-    // même point du milieu. On repart donc d'un tampon vide, au début et à
-    // la fin du glissement (les points intermédiaires du drag sont eux aussi
-    // écartés de cette façon).
-    function _clearBeaconRecord(n) {
+    // même point du milieu. Plutôt que d'effacer la trace, on la recalcule
+    // pour la nouvelle position : le motif reste affiché et glisse simplement
+    // du nouveau retard de propagation (cf. rebuildYtDataCorde / rebuildDptData).
+    function _markBeaconMoved(n) {
         if (typeof activeTab !== 'undefined' && activeTab === 'corde') {
-            _ytClearCorde(n);
+            _ytMarkMovedCorde(n);
         } else {
-            _dptClear(n);
+            _dptMarkMoved(n);
         }
     }
 
@@ -1869,13 +1869,11 @@ function _drawSonLambdaArrow(ctx) {
         // Priorité : drag d'une balise
         if (nearBeacon(mx, b1)) {
             tubeInter.mode = 'beacon1-drag';
-            _clearBeaconRecord(1);
             tubeCanvas.setPointerCapture(e.pointerId);
             return;
         }
         if (nearBeacon(mx, b2)) {
             tubeInter.mode = 'beacon2-drag';
-            _clearBeaconRecord(2);
             tubeCanvas.setPointerCapture(e.pointerId);
             return;
         }
@@ -1967,19 +1965,21 @@ function _drawSonLambdaArrow(ctx) {
         // matériel le plus proche (cf. snapCordeBeaconX) : elle ne peut pas
         // se poser sur un lien entre deux points.
         if (tubeInter.mode === 'beacon1-drag') {
+            var oldX1 = b1.x;
             b1.x = Math.max(left, Math.min(right, mx));
             if (isCorde) b1.x = snapCordeBeaconX(b1.x);
             if (length > 0) b1.frac = (b1.x - left) / length;
+            if (b1.x !== oldX1) _markBeaconMoved(1);
         } else if (tubeInter.mode === 'beacon2-drag') {
+            var oldX2 = b2.x;
             b2.x = Math.max(left, Math.min(right, mx));
             if (isCorde) b2.x = snapCordeBeaconX(b2.x);
             if (length > 0) b2.frac = (b2.x - left) / length;
+            if (b2.x !== oldX2) _markBeaconMoved(2);
         }
     }
 
     function onUp() {
-        if (tubeInter.mode === 'beacon1-drag') _clearBeaconRecord(1);
-        if (tubeInter.mode === 'beacon2-drag') _clearBeaconRecord(2);
         // La boule reste où on l'a lâchée (cf. simCorde.freeY) : la corde
         // garde le déplacement imposé, comme une main qui la tiendrait.
         if (tubeInter.mode === 'corde-free-drag') simCorde.freeDragging = false;

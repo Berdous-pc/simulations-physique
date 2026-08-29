@@ -69,6 +69,10 @@ function loop(ts) {
         // Inutile de reconstruire la courbe ΔP(x) quand seul ΔP(t) est
         // affiché (updateDpxData se court-circuite par ailleurs tant que
         // rien n'a changé, ex. en pause).
+        // Hors du bloc « non en pause » : déplacer une balise doit faire
+        // glisser la trace temporelle même simulation figée.
+        rebuildDptData();
+
         if (sim.graphMode !== 'dpt') updateDpxData();
         drawTube();
         drawGraph();
@@ -160,6 +164,8 @@ function loop(ts) {
         // Inutile de reconstruire la courbe y(x) quand seul y(t) est affiché
         // (updateYxData se court-circuite par ailleurs tant que rien n'a
         // changé, ex. en pause — cf. commentaire équivalent pour Vagues).
+        rebuildYtDataCorde();   // cf. rebuildDptData côté Son
+
         if (simCorde.graphMode !== 'dpt') updateYxData();
         drawCorde();
         drawGraph();
@@ -185,6 +191,8 @@ function loop(ts) {
         // Inutile de reconstruire la courbe y(x) quand seul le graphe y(t) est
         // affiché : elle n'est alors jamais dessinée. (updateYxDataVagues se
         // court-circuite par ailleurs tant que rien n'a changé, ex. en pause.)
+        rebuildYtDataVagues();   // cf. rebuildDptData côté Son
+
         if (simVagues.graphMode !== 'dpt') updateYxDataVagues();
         drawVagues();
         drawGraph();
@@ -1091,13 +1099,13 @@ function setCordeAspect(mode) {
 
     if (mode === 'discret') {
         // Le graphe y(t) enregistré jusqu'ici décrit un point qui n'est plus
-        // celui suivi : on repart d'une trace propre, comme après un drag
-        // (cf. _clearBeaconRecord dans tube.js).
+        // celui suivi : on recalcule la trace pour la nouvelle position, comme
+        // après un drag (cf. _markBeaconMoved dans tube.js).
         var moved1 = simCorde.beacon1.x, moved2 = simCorde.beacon2.x;
         snapCordeBeacon(simCorde.beacon1);
         snapCordeBeacon(simCorde.beacon2);
-        if (simCorde.beacon1.active && simCorde.beacon1.x !== moved1) _ytClearCorde(1);
-        if (simCorde.beacon2.active && simCorde.beacon2.x !== moved2) _ytClearCorde(2);
+        if (simCorde.beacon1.active && simCorde.beacon1.x !== moved1) _ytMarkMovedCorde(1);
+        if (simCorde.beacon2.active && simCorde.beacon2.x !== moved2) _ytMarkMovedCorde(2);
     }
 }
 

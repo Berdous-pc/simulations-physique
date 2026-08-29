@@ -56,6 +56,19 @@ function _cbufIdx(buf, i) {
     var j = buf.head + i;
     return (j < buf.cap) ? j : j - buf.cap;
 }
+// Recalcule toutes les ordonnées du tampon à dates INCHANGÉES.
+// Sert au déplacement des balises : plutôt que d'effacer la trace temporelle,
+// on redemande « qu'aurait enregistré la balise si elle avait toujours été
+// là ? » pour chaque instant déjà mémorisé. Le motif reste donc à l'écran et
+// se décale simplement du nouveau retard de propagation — il « glisse » dans
+// la fenêtre — avec l'atténuation de la nouvelle distance correctement
+// appliquée (un simple décalage des dates ne le ferait pas).
+function _cbufRebuild(buf, fn) {
+    for (var i = 0; i < buf.n; i++) {
+        var j = _cbufIdx(buf, i);
+        buf.y[j] = fn(buf.t[j]);
+    }
+}
 
 // ══════════════════════════════════════════════════════════════════════
 //  Historique de la source — mécanique partagée par les onglets Son et Corde
@@ -351,6 +364,11 @@ var sim = {
     // de la membrane, indépendamment de la largeur du canvas.
     beacon1 : { active: false, x: 0, frac: 0.30 },   // balise 1 (orange)
     beacon2 : { active: false, x: 0, frac: 0.65 },   // balise 2 (vert)
+
+    // Trace ΔP(t) à recalculer au prochain rendu (balise déplacée) —
+    // cf. rebuildDptData
+    dptDirty1 : false,
+    dptDirty2 : false,
 
     // ── Flèche de longueur d'onde (draggable horizontalement) ─────────
     // lambdaX = abscisse écran de l'extrémité gauche de la flèche ;
@@ -1116,6 +1134,11 @@ var simCorde = {
     beacon1 : { active: false, x: 0, frac: 0.30 },
     beacon2 : { active: false, x: 0, frac: 0.65 },
 
+    // Trace y(t) à recalculer au prochain rendu (balise déplacée) —
+    // cf. rebuildYtDataCorde
+    ytDirty1 : false,
+    ytDirty2 : false,
+
     // ── Flèche de longueur d'onde (draggable horizontalement) ─────────
     // lambdaX = abscisse écran de l'extrémité gauche de la flèche ;
     // lambdaFrac = même position en relatif (0–1) le long de la corde,
@@ -1328,6 +1351,24 @@ function _ytBufCorde(n) {
 }
 function _ytClearCorde(n) { _cbufClear(_ytBufCorde(n)); }
 
+// Déplacement d'une balise : la trace n'est pas effacée, elle est recalculée
+// pour la nouvelle position (cf. _cbufRebuild). Le recalcul est différé au
+// prochain rendu par un drapeau, pour ne le faire qu'une fois par frame et
+// non à chaque pointermove.
+function _ytMarkMovedCorde(n) { simCorde[(n === 1) ? 'ytDirty1' : 'ytDirty2'] = true; }
+
+function rebuildYtDataCorde() {
+    for (var n = 1; n <= 2; n++) {
+        var key = (n === 1) ? 'ytDirty1' : 'ytDirty2';
+        if (!simCorde[key]) continue;
+        simCorde[key] = false;
+        var b = (n === 1) ? simCorde.beacon1 : simCorde.beacon2;
+        if (!b.active) continue;
+        var xb = b.x - simCorde.cordeLeft;
+        _cbufRebuild(_ytBufCorde(n), function (t) { return cordeDisplacement(xb, t); });
+    }
+}
+
 function updateYtData(t) {
     if (simCorde.beacon1.active) _cbufPush(_ytBufCorde(1), t, cordeDisplacement(simCorde.beacon1.x - simCorde.cordeLeft, t));
     if (simCorde.beacon2.active) _cbufPush(_ytBufCorde(2), t, cordeDisplacement(simCorde.beacon2.x - simCorde.cordeLeft, t));
@@ -1475,6 +1516,22 @@ function _dptBuf(n) {
     return sim[key];
 }
 function _dptClear(n) { _cbufClear(_dptBuf(n)); }
+
+// Déplacement d'une balise — même mécanique que sur la corde
+// (cf. _ytMarkMovedCorde / rebuildYtDataCorde).
+function _dptMarkMoved(n) { sim[(n === 1) ? 'dptDirty1' : 'dptDirty2'] = true; }
+
+function rebuildDptData() {
+    for (var n = 1; n <= 2; n++) {
+        var key = (n === 1) ? 'dptDirty1' : 'dptDirty2';
+        if (!sim[key]) continue;
+        sim[key] = false;
+        var b = (n === 1) ? sim.beacon1 : sim.beacon2;
+        if (!b.active) continue;
+        var xb = b.x - sim.tubeLeft;
+        _cbufRebuild(_dptBuf(n), function (t) { return waveDeltaP(xb, t); });
+    }
+}
 
 function updateDptData(t) {
     if (sim.beacon1.active) _cbufPush(_dptBuf(1), t, waveDeltaP(sim.beacon1.x - sim.tubeLeft, t));
