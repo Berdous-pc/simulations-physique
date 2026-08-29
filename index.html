@@ -124,6 +124,7 @@
     }
     .dot-physique { background: #b04020; }
     .dot-chimie   { background: #2a6aaa; }
+    .dot-maths    { background: #7a5aa8; }
 
     /* Pastille niveau */
     .filter-badge {
@@ -233,6 +234,10 @@
     .card.theme-chimie { background: #f2f7fd; border-color: #b8cce4; }
     .card.theme-chimie:hover { border-color: #8aaace; }
 
+    /* Maths : fond violet pastel */
+    .card.theme-maths { background: #f7f3fd; border-color: #c8b8e2; }
+    .card.theme-maths:hover { border-color: #a68cca; }
+
     /* ── Contenu carte ─────────────────────────────── */
     .card-meta {
       display: flex;
@@ -254,6 +259,7 @@
 
     .theme-physique { color: #b04020; }
     .theme-chimie   { color: #2a6aaa; }
+    .theme-maths    { color: #7a5aa8; }
 
     .card-level {
       font-size: clamp(10px, 0.9vw, 12px);
@@ -483,6 +489,11 @@
           <span class="filter-dot dot-chimie"></span>
           Chimie
         </label>
+        <label class="filter-label">
+          <input type="checkbox" data-filter="discipline" data-value="maths" checked>
+          <span class="filter-dot dot-maths"></span>
+          Maths
+        </label>
       </div>
 
       <!-- Thème -->
@@ -491,6 +502,10 @@
           Thème
           <button id="btn-uncheck-themes" class="link-uncheck">Décocher tous les thèmes</button>
         </div>
+        <label class="filter-label">
+          <input type="checkbox" data-filter="theme" data-value="outils-mathematiques" checked>
+          Outils mathématiques
+        </label>
         <label class="filter-label">
           <input type="checkbox" data-filter="theme" data-value="constitution-matiere" checked>
           Constitution de la matière
@@ -544,6 +559,25 @@
       <div class="cards-grid">
 
         <div id="no-results">Aucune simulation ne correspond aux filtres sélectionnés.</div>
+
+        <!-- Outils mathématiques — Dérivée ────────────────────────── -->
+        <a class="card theme-maths"
+           href="derivee/index.html"
+           data-discipline="maths"
+           data-theme="outils-mathematiques"
+           data-levels="terminale">
+          <div class="card-meta">
+            <span class="card-theme theme-maths">Outils mathématiques</span>
+            <span class="card-level level-terminale">Terminale</span>
+          </div>
+          <div class="card-title">Dérivée</div>
+          <div class="card-preview">
+            <img src="assets/previews/derivee.jpg" alt="Aperçu Dérivée" width="800" height="477" loading="lazy">
+          </div>
+          <div class="card-desc">
+            Visualisation des notions de taux de variation et de dérivée d'une fonction. Lien entre dérivée et pente de la tangente, influence du pas de temps.
+          </div>
+</a>
 
         <!-- Dosages — Principe du titrage ───────────── -->
         <a class="card theme-chimie"
