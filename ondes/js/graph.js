@@ -497,11 +497,11 @@ function _drawDpxGraph(ctx, W, H) {
     // ── Marqueurs de balises ──────────────────────────────────────────
     if (sim.beacon1.active) {
         var xb1 = sim.beacon1.x - sim.tubeLeft;
-        _drawBeaconMarker(ctx, px(xb1), py, yMin, yMax, '#e07020', 'B1', pH);
+        _drawBeaconMarker(ctx, px(xb1), py, yMin, yMax, '#e07020', 'B1', pH, waveDeltaP(xb1, sim.simTime));
     }
     if (sim.beacon2.active) {
         var xb2 = sim.beacon2.x - sim.tubeLeft;
-        _drawBeaconMarker(ctx, px(xb2), py, yMin, yMax, '#2a8a50', 'B2', pH);
+        _drawBeaconMarker(ctx, px(xb2), py, yMin, yMax, '#2a8a50', 'B2', pH, waveDeltaP(xb2, sim.simTime));
     }
 
     // Cadre tracé en dernier pour recouvrir les débordements de trait sur le bord
@@ -952,7 +952,11 @@ function _drawZeroLine(ctx, yMin, yMax, px, py, pW) {
 }
 
 // Marqueur de balise sur le graphe ΔP(x)
-function _drawBeaconMarker(ctx, xc, py, yMin, yMax, color, label, pH) {
+// yVal (optionnel) : valeur courante de la courbe à l'abscisse de la balise.
+// Fournie → une pastille est dessinée sur la courbe, quel que soit le mode
+// d'affichage (le mode simultané ajoute en plus la liaison vers le graphe
+// temporel, cf. _drawBothLinks*).
+function _drawBeaconMarker(ctx, xc, py, yMin, yMax, color, label, pH, yVal) {
     ctx.save();
     ctx.strokeStyle = color;
     ctx.lineWidth   = 1.5;
@@ -970,6 +974,17 @@ function _drawBeaconMarker(ctx, xc, py, yMin, yMax, color, label, pH) {
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'top';
     ctx.fillText(label, xc, GM.top + 2);
+
+    // Pastille sur la courbe
+    if (typeof yVal === 'number' && isFinite(yVal)) {
+        var yc = py(yVal);
+        if (yc >= GM.top && yc <= GM.top + pH) {
+            ctx.globalAlpha = 1.0;
+            ctx.beginPath();
+            ctx.arc(xc, yc, 4, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
     ctx.restore();
 }
 
@@ -1137,11 +1152,11 @@ function _drawYxGraph(ctx, W, H) {
     // Marqueurs de balises
     if (simCorde.beacon1.active) {
         var xb1 = simCorde.beacon1.x - simCorde.cordeLeft;
-        _drawBeaconMarker(ctx, px(xb1), py, yMin, yMax, '#e07020', 'B1', pH);
+        _drawBeaconMarker(ctx, px(xb1), py, yMin, yMax, '#e07020', 'B1', pH, cordeDisplacement(xb1, simCorde.simTime));
     }
     if (simCorde.beacon2.active) {
         var xb2 = simCorde.beacon2.x - simCorde.cordeLeft;
-        _drawBeaconMarker(ctx, px(xb2), py, yMin, yMax, '#2a8a50', 'B2', pH);
+        _drawBeaconMarker(ctx, px(xb2), py, yMin, yMax, '#2a8a50', 'B2', pH, cordeDisplacement(xb2, simCorde.simTime));
     }
 
     // Cadre tracé en dernier pour recouvrir les débordements de trait sur le bord

@@ -1119,7 +1119,8 @@ function _drawBeaconMarkerVagues(ctx, px, py, pW, pH, yMin, yMax) {
         if (bx_dist < 0 && simVagues.viewMode !== 'top') continue;
         var xBeacon = px(bx_dist);
         if (xBeacon < GM.left - 1 || xBeacon > GM.left + pW + 1) continue;
-        _drawBeaconMarker(ctx, xBeacon, py, yMin, yMax, s.color, s.label, pH);
+        _drawBeaconMarker(ctx, xBeacon, py, yMin, yMax, s.color, s.label, pH,
+                          _waveFieldRaw(s.b.x, s.b.y) * VAGUES_AMP_CM);
     }
 }
 
