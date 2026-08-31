@@ -129,7 +129,16 @@
     </div>
 
     <!-- ── Tableau périodique réduit (H → Ar) ──── -->
+    <!-- Le bouton replie le tableau pour laisser toute la hauteur au schéma
+         de l'atome (le canvas se redimensionne via le ResizeObserver). -->
     <div id="tp-zone">
+      <div id="tp-head">
+        <span id="tp-head-lab">Tableau périodique</span>
+        <button type="button" id="tp-toggle" onclick="toggleTP()"
+                aria-expanded="true" aria-controls="tp-grid"
+                title="Réduire le tableau périodique"><span
+          id="tp-toggle-lab">Réduire</span></button>
+      </div>
       <div id="tp-grid">
         <!-- cases construites par buildTP() (js/ui.js) -->
       </div>

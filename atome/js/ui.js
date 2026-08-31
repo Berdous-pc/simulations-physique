@@ -369,6 +369,24 @@ function toggleHint() {
 }
 
 /* ─────────────────────────────────────────────────
+   Tableau périodique : réduire / déplier
+   Le schéma de l'atome est le seul élément élastique de la
+   colonne : replier le tableau lui rend toute la hauteur.
+   Le canvas suit tout seul (ResizeObserver ci-dessous).
+───────────────────────────────────────────────── */
+function toggleTP() {
+  var replie = document.body.classList.toggle('tp-collapsed');
+  var btn = document.getElementById('tp-toggle');
+  if (btn) {
+    btn.setAttribute('aria-expanded', replie ? 'false' : 'true');
+    btn.title = replie ? 'Afficher le tableau périodique'
+                       : 'Réduire le tableau périodique';
+  }
+  var lab = document.getElementById('tp-toggle-lab');
+  if (lab) lab.textContent = replie ? 'Afficher' : 'Réduire';
+}
+
+/* ─────────────────────────────────────────────────
    Redimensionnement (anti-rebond requestAnimationFrame)
    ResizeObserver sur le wrapper du canvas plutôt que
    window.resize : capte aussi les changements de taille

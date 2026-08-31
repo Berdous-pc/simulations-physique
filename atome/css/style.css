@@ -189,6 +189,57 @@ body.compare #atom-title-b { display: block; }
   padding: clamp(5px, 0.8vh, 10px) clamp(6px, 0.8vw, 12px);
 }
 
+/* ── En-tête du tableau : bouton réduire/déplier ──
+   Réduit, le tableau ne laisse que cette ligne : toute la hauteur libérée
+   revient au schéma de l'atome. Le libellé n'apparaît qu'une fois replié,
+   pour rappeler ce que le bouton rouvre. */
+#tp-head {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: clamp(1px, 0.3vh, 4px);
+}
+
+#tp-head-lab {
+  display: none;
+  margin-right: auto;
+  font-size: clamp(11px, 1.2vh, 14px);
+  font-weight: 600;
+  color: #7a8a96;
+}
+body.tp-collapsed #tp-head-lab { display: block; }
+body.tp-collapsed #tp-head     { margin-bottom: 0; }
+body.tp-collapsed #tp-grid     { display: none; }
+
+/* Bouton bien visible : pastille bleue de la charte, avec libellé —
+   le chevron seul se perdait au-dessus de la grille colorée. */
+#tp-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #eaf2fa;
+  border: 1.5px solid #2a6aaa;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: clamp(11px, 1.25vh, 14px);
+  font-weight: 700;
+  line-height: 1.2;
+  color: #2a6aaa;
+  padding: clamp(3px, 0.5vh, 6px) clamp(7px, 0.8vw, 12px);
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+#tp-toggle:hover { background: #2a6aaa; color: #fff; }
+
+#tp-toggle::after {
+  content: '▾';
+  font-size: 1.1em;
+  line-height: 1;
+  transition: transform 0.2s;
+}
+body.tp-collapsed #tp-toggle::after { transform: rotate(180deg); }
+
 #tp-grid {
   display: grid;
   grid-template-columns:
