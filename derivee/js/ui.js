@@ -369,17 +369,26 @@ function majBtnFusee() {
 
 function toggleFuseePlay() {
   if (!fuseeActif()) return;
-  // Rejouer : retour à l'instant zéro, donc au cadre de départ.
-  if (!sim.fuseePlay && sim.fuseeT >= fuseeDuree()) { fuseeRaz(); recadre(); }
+  // Rejouer : retour à l'instant zéro, et surtout au cadre du vol. Le zoom
+  // et le décalage laissés par la lecture du taux de variation sont annulés,
+  // sans quoi la fusée repartirait dans une fenêtre de travail quelconque.
+  if (!sim.fuseePlay && sim.fuseeT >= fuseeDuree()) { fuseeRaz(); razCadreFusee(); }
   sim.fuseePlay = !sim.fuseePlay;
   majBtnFusee();
   requestDraw();
 }
 
+// Remet la vue du décollage dans son état de départ : cadre du vol entier,
+// ni zoom ni décalage. C'est le même geste après un RAZ et avant un rejeu.
+function razCadreFusee() {
+  sim.zoom = 1; sim.panT = 0; sim.panZ = 0;
+  recadre();
+}
+
 function razFusee() {
   if (!fuseeActif()) return;
   fuseeRaz();
-  recadre();
+  razCadreFusee();
   majBtnFusee();
   requestDraw();
   majAffichages();
@@ -417,8 +426,9 @@ function avanceFusee(dtMs) {
     // Rembobiner rouvre l'enregistrement : la figure de lecture se retire.
     if (sim.fuseeFini) { sim.fuseeFini = false; majBtnFusee(); }
   }
-  // La fenêtre suit l'enregistrement : elle se dilate au fil de la montée
-  // (cf. fuseeCadre), donc le cadrage se recalcule à chaque pas.
+  // Le cadre du vol ne dépend pas de la date courante (cf. fuseeCadre), mais
+  // le recalcul reste nécessaire : le centre de la vue suit M dès qu'on a
+  // zoomé.
   recadre();
 }
 
