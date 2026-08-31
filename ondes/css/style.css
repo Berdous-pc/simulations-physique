@@ -379,6 +379,32 @@ main {
   color: #fff;
   border-color: rgba(255,255,255,0.35);
 }
+/* Bande « Trajectoire des molécules d'eau » : overlay posé sous
+   #tube-top-btns, affiché seulement en vue coupe (cf. syncBtnOrbitesVagues,
+   qui pose aussi le `top` exact d'après la hauteur mesurée de la bande du
+   dessus — celle-ci suit les clamp() de .btn-tube-top). */
+#orbites-btns {
+  position: absolute;
+  top: 38px;
+  right: 8px;
+  display: none;
+  padding: 3px 4px;
+  background: rgba(0,0,0,0.18);
+  border-radius: 7px;
+  z-index: 10;
+}
+#orbites-btns.visible { display: flex; }
+#orbites-btns .btn-tube-top {
+  background: rgba(255,255,255,0.18);
+  color: #fff;
+  border-color: rgba(255,255,255,0.35);
+}
+#orbites-btns .btn-tube-top.active {
+  background: rgba(255, 210, 74, 0.90);
+  color: #2a2418;
+  border-color: #ffd24a;
+}
+
 #anim-area.vagues-layout #tube-top-btns #btn-beacon1.active {
   background: rgba(224, 112, 32, 0.90);
   color: #fff;

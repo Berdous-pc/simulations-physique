@@ -1351,6 +1351,9 @@ function setMainTab(tab) {
     vaguesOnlyBtns.forEach(function(b) {
         b.style.display = (tab === 'vagues') ? '' : 'none';
     });
+    // Bande « Trajectoire des molécules d'eau » : conditionnée à l'onglet ET à
+    // la vue en coupe, elle ne peut pas passer par la classe .vagues-only.
+    syncBtnOrbitesVagues();
 
     // ── Remise à zéro des états de balises dans les boutons ───────────
     // Resynchronise l'état visuel des boutons Balise selon le tab

@@ -874,6 +874,150 @@ Aucun décor n'est masqué pendant la transition (`_draw3DAxis`,
 montent sur la vague au fur et à mesure de la rotation, et la flèche λ garde
 sa longueur — c'est ce qui relie les deux vues pour l'élève.
 
+### Raideur maximale dessinée en coupe
+
+`_coupeAmpPx(H)` est le **point d'entrée unique** de l'amplitude visuelle
+de la vue de profil : la coupe, la transition 3D et le hit-test des
+balises doivent partager la même valeur, sinon la transition n'arrive plus
+exactement sur la coupe.
+
+Au-delà du seuil `COUPE_STEEP_FRAC·λ`, elle **comprime** le déplacement
+dessiné en loi de puissance (`COUPE_STEEP_EXP`). Sans ce garde-fou, à
+λ = 75 px (réglages par défaut) la vue dessine une amplitude de 46 px,
+soit une houle haute de **0,6 λ** — une raideur qu'aucune vague réelle
+n'atteint, même sur le point de déferler, et qui rend le tracé des
+trajectoires de molécules impossible (cf. la borne λ/π plus bas).
+
+**Comprimer, et non plafonner** : c'est la leçon d'une première version
+qui saturait en `tanh`. Le seuil est toujours très en dessous de la course
+du curseur Amplitude (≈ 9 px pour une course de 23 à 138 px aux réglages
+par défaut) ; toute saturation le rend donc parfaitement **inerte** en vue
+de profil. Avec l'exposant, sa course de 1 à 6 se lit encore comme une
+course de 1 à ~1,9 à l'écran. Les deux constantes se règlent
+indépendamment : `FRAC` déplace le seuil (donc la platitude générale),
+`EXP` dose ce qui reste de course au curseur au-delà (1 = aucune
+compression, 0 = plafond dur).
+
+En dessous du seuil la fonction est l'identité : la compression ne mord
+que là où le dessin était invraisemblable, c'est-à-dire aux petites λ — à
+f = 1 Hz et h = 10 mm (λ ≈ 410 px) la houle est rendue à l'identique.
+L'amplitude reste par ailleurs lisible quantitativement sur le graphe
+y(x), gradué en cm et auto-échelonné.
+
+### Trajectoire des molécules d'eau (vue en coupe)
+
+Option `simVagues.showOrbits`, rendue par `_drawOrbitesCoupeVagues()` en
+étape 4 de `_drawVaguesCoupe` — après l'écume, pour que la molécule de la
+rangée de surface se voie **sur** la ligne blanche qu'elle suit, et avant
+la source, l'axe et les balises.
+
+Objectif pédagogique : montrer qu'il n'y a **pas de transport de matière**
+— la molécule décrit une boucle fermée pendant que la forme, elle, avance.
+
+Le modèle est la **théorie d'Airy à profondeur finie**, celle qui
+correspond au `c = √(gh)` de l'onglet — et non le cas eau profonde des
+cercles en `e^(−kd)`. Une particule de position moyenne à la profondeur
+*d* décrit une **ellipse** de demi-axes
+`V(d) = a·sinh(k(h−d))/sinh(kh)` (vertical) et
+`Hz(d) = a·cosh(k(h−d))/sinh(kh)` (horizontal) : en surface `V = a`, au
+fond `V = 0` (va-et-vient purement horizontal). Le rapport
+`Hz/V = coth(k(h−d))` couvre tout le spectre sur la plage des curseurs,
+`kh = 2π·f·√(h/g)` allant de ≈ 0,02 à ≈ 3,1 : du segment quasi horizontal
+jusqu'au quasi-cercle.
+
+**La colonne d'eau dessinée représente h.** Le fond marin est posé à
+`H − ORBIT_SEABED_PAD` et matérialisé par `_drawSeabedVagues()` (bande de
+sable dégradée, ligne de crête, galets), sans quoi l'ellipse écrasée en
+segment de la rangée du bas n'aurait pas de sens visible.
+
+Deux détails de rendu à ne pas défaire :
+
+- **Orbite et molécule sont doublées d'un halo sombre.** L'orbite de la
+  rangée de surface monte jusqu'au niveau des crêtes : elle traverse donc
+  des zones de ciel clair autant que d'eau profonde, et un trait d'une
+  seule couleur y disparaît forcément d'un côté ou de l'autre. L'ellipse
+  est tracée deux fois (halo large sombre, puis trait clair fin) et la
+  bille porte un liseré sombre appuyé. Un essai antérieur avec un sillage
+  en arcs dégressifs a été abandonné : segmenté, il rendait mal.
+- **La molécule est un sprite mis en cache** (`_orbitBeadSprite`), pas un
+  dégradé radial recréé à chaque frame — il y en aurait une trentaine par
+  image. Les galets du fond ont des positions **déterministes** : un
+  `Math.random` dans une boucle de rendu ferait grésiller le fond d'une
+  frame à l'autre.
+
+Le reste du cadrage découle d'un **conflit d'échelles** qu'il faut avoir
+en tête avant de retoucher quoi que ce soit. La vue en coupe exagère
+l'échelle **verticale** devant l'horizontale ; c'est `COUPE_STEEP_FRAC`
+(section précédente) qui borne cette exagération, et sans lui rien de ce
+qui suit ne tiendrait.
+
+Même borné, il reste **impossible** d'avoir simultanément (a) la molécule
+de surface collée à l'écume, (b) le rapport d'aplatissement exact et (c)
+une orbite plus étroite que λ. L'objectif étant de montrer l'absence de
+transport de matière, **on garde (a), on lâche (b)** :
+
+- **Demi-axe vertical : échelle exacte de la surface.** La molécule du
+  haut est rigoureusement sur l'écume, d'où la synchronisation visible
+  avec l'avancement de la vague. L'ellipse de cette rangée couvre
+  exactement la bande balayée par la houle — il est donc *normal* qu'une
+  partie de son tracé soit momentanément au-dessus de la surface locale :
+  c'est la trajectoire, pas de l'eau.
+- **Demi-axe horizontal : comprimé par un `hScale` global**, calculé sur
+  la rangée de surface et appliqué tel quel aux autres. La largeur reste
+  ainsi quasi constante avec la profondeur — c'est la physique — pendant
+  que la hauteur décroît jusqu'à s'annuler sur le fond. L'aplatissement
+  affiché n'est pas mesurable.
+
+**La borne λ/π est la contrainte dure du tracé.** La molécule est dessinée
+en `px = x₀ − Hz·cos φ` alors que sa hauteur est celle de sa propre
+trajectoire ; pour qu'elle reste sous la surface il faut
+`sin(φ + β·cos φ) ≤ sin φ` pour tout φ, avec `β = k·Hz`. Le développement
+au voisinage de `φ = π/2` (cas critique) donne `1 − (1 − β)² ≥ 0`, soit
+**`β ≤ 2`, c'est-à-dire `Hz ≤ λ/π`**. Au-delà, la molécule double la forme
+de la vague et se retrouve en l'air — invisible aux grandes λ, flagrant
+aux petites. D'où le plafond `ORBIT_LAMBDA_FRAC·λ`, qui prime sur le
+plafond par case. Corollaire à assumer : plus λ est petite devant
+l'amplitude **dessinée**, plus la boucle est étroite et verticale. Une
+boucle large et plate suppose une vague plate.
+
+Le garde-fou du tracé compare la molécule à la surface prise **à
+l'abscisse où elle est dessinée**, pas à celle de sa position moyenne —
+confondre les deux était précisément le bug d'origine.
+- **Le nombre de rangées s'adapte à l'amplitude** (2 à
+  `ORBIT_MAX_ROWS`) : à échelle verticale exacte, une ellipse de surface
+  haute de `2a` exige des rangées espacées de plus de `1,1·a`, faute de
+  quoi elles s'interpénètrent — c'était le principal défaut de la
+  première version.
+- **Les colonnes sont espacées d'un multiple impair de λ/2**, donc en
+  antiphase : à un instant donné une molécule est au sommet de sa boucle
+  sous la crête pendant que sa voisine est au fond de la sienne sous le
+  creux. Repli sur `ORBIT_TARGET_STEP` nu quand λ est trop grand ou trop
+  petit pour que ce calage donne un nombre de colonnes exploitable.
+
+Les rangées gardent leur profondeur moyenne **exacte** (une orbite ne
+dérive pas avec la vague). Un garde-fou saute la molécule d'une rangée
+intermédiaire qui se retrouverait au-dessus de la surface locale — cas
+possible aux très fortes amplitudes seulement ; la rangée de surface, qui
+*est* la surface, n'est jamais masquée.
+
+La phase ne coûte rien : le champ de la coupe vaut `F = env·sin(φ)` et la
+composante horizontale est sa **quadrature** `Q = env·cos(φ)`, les deux
+renvoyées par `_coupeFieldPairAt()` — dont `out[0]` doit rester la copie
+exacte de `_waveFieldCoupeAt`. `√(F² + Q²)` redonne l'amplitude locale
+sans ré-évaluer les atténuations, si bien que les orbites rétrécissent
+aussi avec la distance à S, gratuitement. `ζ = +(V/a)·F` et
+`ξ = −(Hz/a)·Q` : la molécule avance sur la crête et recule dans le creux,
+sens de rotation correct pour une onde allant vers +x.
+
+Le bouton vit dans une **seconde bande** `#orbites-btns`, posée sous
+`#tube-top-btns` — même dispositif que le bouton « Décomposer » de la page
+diffraction. Elle n'existe à l'écran qu'en onglet Vagues, vue coupe,
+transition terminée ; `syncBtnOrbitesVagues()` en est le point d'entrée
+unique (appelé par `setMainTab`, `toggleViewVagues`, la fin de transition
+et `resizeVagues`) et mesure la hauteur de la bande du dessus plutôt que
+de coder son `top` en dur, celle-ci suivant les `clamp()` de
+`.btn-tube-top`.
+
 ---
 
 ## `js/ui.js` — boucle et contrôles
