@@ -300,8 +300,9 @@ function majBtnChrono() {
 //  enregistrement en cours.
 // ══════════════════════════════════════════════════════════════════════
 
-// Crans du curseur de vitesse (mêmes valeurs que la page champ uniforme).
-var FUSEE_VITESSES = [0.10, 0.25, 0.50, 1.00];
+// Crans du curseur de vitesse. ×1,00 est le cran par défaut (value="2" dans
+// la page) ; ×2,00 sert aux vols lents, à faible accélération.
+var FUSEE_VITESSES = [0.10, 0.50, 1.00, 2.00];
 
 function toggleFusee() {
   if (!fuseeDispo()) return;
