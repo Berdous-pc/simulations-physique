@@ -231,12 +231,12 @@ function calcVueBase() {
   vueBase.cT = (F.tMin + F.tMax) / 2;
   vueBase.w  = (F.tMax - F.tMin) * 1.06;
 
-  // En décollage, la fenêtre ne se calcule plus sur les paramètres mais
-  // sur ce qui est DÉJÀ ENREGISTRÉ : au départ un cadre fixe de 4 s, puis
-  // un dézoom progressif à mesure que la courbe monte, jusqu'à contenir
-  // tout le vol. Changer a ou b ne redimensionne donc plus rien — la
-  // courbe change de pente dans une fenêtre inchangée ; seul c, qui est
-  // la demi-hauteur de la fusée, modifie la taille de son image.
+  // En décollage, la fenêtre est celle du VOL ENTIER, calculée une fois et
+  // valable dès la première image : l'échelle ne change pas pendant
+  // l'animation, et c'est ce qui rend l'accélération lisible. Changer a ne
+  // redimensionne donc rien — la courbe change de pente dans une fenêtre
+  // inchangée ; seul c, qui est la demi-hauteur de la fusée, modifie la
+  // taille de son image (et, un peu, la durée du vol).
   if (fuseeActif()) {
     fuseeCadre();
     return;
@@ -615,18 +615,18 @@ function fuseeActif() { return sim.fusee && fuseeDispo(); }
 function fuseeAnimEnCours() { return fuseeActif() && !sim.fuseeFini; }
 
 // Altitude à laquelle le vol s'arrête. Ce n'est pas une durée qui borne
-// l'animation mais une HAUTEUR : la fusée monte jusqu'à 1000 m, et c'est
+// l'animation mais une HAUTEUR : la fusée monte jusqu'à 500 m, et c'est
 // l'accélération qui décide du temps qu'elle y met. Doubler a raccourcit
 // le vol au lieu de le faire sortir du cadre — le graphe garde la même
 // altitude d'arrivée, seule l'abscisse se resserre.
-var FUSEE_ALTITUDE = 1000;
+var FUSEE_ALTITUDE = 500;
 
-// Garde-fou : à très faible accélération les 1000 m ne sont jamais
+// Garde-fou : à très faible accélération les 500 m ne sont jamais
 // atteints (a = 0 : la fusée ne décolle pas). Le vol s'arrête quand même.
 var FUSEE_DUREE_MAX = 60;
 
-// Durée du vol : la date à laquelle z(t) = 1000 m.
-// Avec b = 0, z(t) = a·t² + c, donc t = √((1000 − c) / a).
+// Durée du vol : la date à laquelle z(t) = 500 m.
+// Avec b = 0, z(t) = a·t² + c, donc t = √((500 − c) / a).
 function fuseeDuree() {
   var a = sim.params.a, c = sim.params.c;
   if (!(a > 0)) return FUSEE_DUREE_MAX;
@@ -679,105 +679,29 @@ function borneParamsAuMode() {
 //  Cadrage du décollage
 // ══════════════════════════════════════════════════════════════════════
 
-// Fenêtre de départ, fusée au sol : 4 s en abscisse, 120 m en ordonnée.
-// Les deux vont ensemble — avec les valeurs par défaut, la fusée atteint
-// justement le haut du cadre au bout de ces 4 s, et le dézoom prend le
-// relais sans à-coup.
+// Fenêtre minimale, au cas où le vol n'aille nulle part (a = 0) : sans
+// elle le cadre serait plat et le graphe illisible.
 var FUSEE_VUE_T = 4;
 var FUSEE_VUE_Z = 120;
 
-// Nombre de SAUTS d'échelle sur tout le vol — soit un cadrage de départ et
-// FUSEE_NB_PALIERS cadrages ensuite, donc trois fenêtres successives en
-// tout. C'est ce nombre qui est fixé, pas le rapport d'un palier au
-// suivant : celui-ci s'en déduit, par axe, de façon que le dernier palier
-// tombe exactement sur le cadre du vol entier. Un rapport fixe (×2) donnait
-// un nombre de sauts variable selon a et c — jusqu'à sept, ce qui hachait
-// l'animation.
-var FUSEE_NB_PALIERS = 2;
-
-// Fraction de palier sur laquelle le saut d'échelle est adouci. Tout le
-// réglage du mode tient là : trop court, le saut est saccadé ; trop long,
-// on retombe sur un dézoom continu et l'accélération redevient invisible.
-// Le reste du palier — les trois quarts — est à échelle FIGÉE, et c'est
-// pendant ce temps-là que la fusée accélère visiblement.
-var FUSEE_TRANSITION = 0.25;
-
-// Interpolation lissée : dérivée nulle aux deux bouts. Une rampe linéaire
-// laisserait un coin au départ ET à l'arrivée de la transition, et ce sont
-// ces deux cassures de vitesse que l'œil lit comme un à-coup.
-function lissage(x) {
-  if (x <= 0) return 0;
-  if (x >= 1) return 1;
-  return x * x * (3 - 2 * x);
-}
-
-// Cadre du mode décollage à la date enregistrée `sim.fuseeT`.
+// Cadre du mode décollage.
 //
-// Le cadre ne suivait autrefois la trajectoire qu'en collant à elle : la
-// fenêtre grandissait exactement au rythme de z(t), si bien que la fusée
-// restait à la même hauteur relative et que son ACCÉLÉRATION devenait
-// invisible. Le dézoom se fait donc maintenant par PALIERS : entre deux
-// sauts d'échelle la fenêtre est figée, et la fusée y grimpe de plus en
-// plus vite — c'est là que l'accélération se voit. Chaque palier vaut ×2
-// en ordonnée et ×√2 en abscisse.
-//
-// Le numéro de palier reste une **fonction pure de `sim.fuseeT`** : aucune
-// hystérésis, aucun état mémorisé. C'est indispensable, sinon le
-// rembobinage ne repasserait pas par les mêmes cadrages que l'aller.
-//
-// Avancement d'un axe, de 0 (cadre de départ) à 1 (cadre du vol entier),
-// mesuré en progression GÉOMÉTRIQUE : c'est le rapport des échelles qui
-// compte à l'œil, pas leur différence.
-function fuseeAvancement(besoin, depart, fin) {
-  if (!(fin > depart)) return 0;               // l'axe n'a pas à s'élargir
-  var p = Math.log(Math.max(1e-9, besoin / depart)) / Math.log(fin / depart);
-  return Math.max(0, Math.min(1, p));
-}
-
-// Échelle d'un axe au palier `j` (réel, pour laisser passer l'adoucissement
-// du saut). Les paliers se répartissent géométriquement entre le cadre de
-// départ et celui du vol entier.
-function fuseeEchelleAu(j, depart, fin) {
-  if (!(fin > depart)) return depart;
-  return depart * Math.pow(fin / depart, j / FUSEE_NB_PALIERS);
-}
-
+// La fenêtre est celle du VOL ENTIER, et elle l'est dès la première image :
+// le cadre ne bouge plus une seule fois pendant l'animation. Le dézoom par
+// paliers qu'il y avait ici faisait grandir la fenêtre à mesure que la
+// fusée montait ; l'échelle changeait donc sous les yeux de l'élève, et
+// c'est précisément ce qu'on ne veut pas — l'accélération se lit sur une
+// échelle qui ne bouge pas. Avec un plafond d'altitude à FUSEE_ALTITUDE,
+// le vol entier tient de toute façon dans un cadre raisonnable.
 function fuseeCadre() {
-  var tv = sim.fuseeT;
-  var c  = sim.params.c;
+  var c = sim.params.c;
   var duree = fuseeDuree();
 
-  var zHaut = fVal(tv) + c;
-  if (!isFinite(zHaut)) zHaut = FUSEE_VUE_Z;
-  var zFin = fVal(duree) + c;
+  var zFin = fVal(duree) + c;                       // sommet de la fusée à l'arrivée
   if (!isFinite(zFin)) zFin = FUSEE_VUE_Z;
 
-  var zBesoin = zHaut * 1.06, zDep = FUSEE_VUE_Z;
-  var tBesoin = tv * 1.08,    tDep = FUSEE_VUE_T;
-  var zFinM = Math.max(zDep, zFin * 1.06);
-  var tFinM = Math.max(tDep, duree * 1.08);
-
-  // Les deux axes changent d'échelle EN MÊME TEMPS : un saut se lit comme
-  // un seul événement, « on a changé d'échelle », et non comme deux
-  // secousses successives. Le palier est commandé par l'axe le plus en
-  // avance — celui qui est sur le point de déborder.
-  var x = FUSEE_NB_PALIERS * Math.max(
-            fuseeAvancement(zBesoin, zDep, zFinM),
-            fuseeAvancement(tBesoin, tDep, tFinM));
-
-  // `m` est le palier en service, `u` vaut 1 juste après le saut et tend
-  // vers 0 juste avant le suivant ; `w` passe du palier précédent au
-  // palier courant sur les premiers FUSEE_TRANSITION, en douceur.
-  var m = Math.ceil(x - 1e-9);
-  var u = m - x;
-  var j = Math.max(0, (m - 1) + lissage((1 - u) / FUSEE_TRANSITION));
-
-  // Le lissage démarre plus mou qu'une rampe : au tout début d'une
-  // transition l'échelle serait en retard de 0,4 % au pire sur ce qu'elle
-  // doit contenir. Le plancher `besoin` l'en empêche, le plafond `finM`
-  // interdit de dépasser le cadre du vol entier.
-  var zSom  = Math.min(zFinM, Math.max(fuseeEchelleAu(j, zDep, zFinM), zBesoin));
-  var tHaut = Math.min(tFinM, Math.max(fuseeEchelleAu(j, tDep, tFinM), tBesoin));
+  var zSom  = Math.max(FUSEE_VUE_Z, zFin * 1.06);
+  var tHaut = Math.max(FUSEE_VUE_T, duree * 1.08);
   var zBas  = -0.05 * zSom;
 
   vueBase.cT = tHaut / 2;
@@ -785,6 +709,7 @@ function fuseeCadre() {
   vueBase.cZ = (zBas + zSom) / 2;
   vueBase.h  = zSom - zBas;
 }
+
 
 // Remet l'animation à l'instant zéro : fusée au sol, courbe effacée.
 function fuseeRaz() {

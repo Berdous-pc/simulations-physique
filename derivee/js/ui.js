@@ -161,7 +161,7 @@ function onParamSaisi(id, txt) {
 
 // Suites d'un changement de paramètre : la courbe change de forme, donc
 // le cadrage de référence doit suivre. En décollage, a et c commandent en
-// plus la DURÉE du vol (date des 1000 m) : elle a pu passer sous la date
+// plus la DURÉE du vol (date des 500 m) : elle a pu passer sous la date
 // courante, et l'écart Δ sous son propre plafond.
 function majApresParam() {
   if (fuseeActif()) {
