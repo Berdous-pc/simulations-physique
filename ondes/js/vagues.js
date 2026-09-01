@@ -31,36 +31,51 @@ var COUPE_LEFT_MARGIN     = 70;    // px réservés à gauche pour la source en 
 //  Au-delà du seuil COUPE_STEEP_FRAC·λ, le déplacement dessiné est donc
 //  COMPRIMÉ en loi de puissance — et non plafonné. La nuance est
 //  essentielle : un plafond dur (ou une saturation tanh) est ici toujours
-//  très en dessous de la course du curseur Amplitude (seuil ≈ 9 px pour
-//  une course de 23 à 138 px aux réglages par défaut), qui devient alors
-//  parfaitement inerte en vue de profil. Avec l'exposant, la course de 1 à
-//  6 du curseur se lit encore comme une course de 1 à ~1,9 à l'écran.
+//  très en dessous de la course du curseur Amplitude, qui devient alors
+//  parfaitement inerte en vue de profil.
+//
+//  MAIS la compression est calibrée sur l'amplitude MAXIMALE du curseur, et
+//  non sur l'amplitude courante : le facteur d'écrasement est le même pour
+//  toute la course, si bien que le dessin reste strictement PROPORTIONNEL à
+//  l'amplitude (0,5 est bien six fois plus bas que 3,0). Appliquer la loi de
+//  puissance à l'amplitude courante — la version précédente — écrasait au
+//  contraire les rapports : la course 0,5 → 3,0 ne se lisait plus que comme
+//  un facteur 6^EXP ≈ 1,9 à l'écran, et le curseur mentait sur la physique.
+//  Seule la crête maximale est bornée, ce qui suffit au garde-fou de
+//  raideur : à amplitude 3,0 le tracé est exactement celui que produisait la
+//  loi de puissance (à FRAC égal).
 //
 //  La compression ne mord QUE là où le dessin était invraisemblable,
-//  c'est-à-dire aux petites λ : en dessous du seuil la fonction est
-//  l'identité, et à f = 1 Hz + h = 10 mm (λ ≈ 410 px) la houle est rendue
-//  à l'identique. L'amplitude reste par ailleurs lisible quantitativement
-//  sur le graphe y(x), gradué en cm et auto-échelonné.
+//  c'est-à-dire aux petites λ : quand même le maximum du curseur tient sous
+//  le seuil (grandes λ — f = 1 Hz + h = 10 mm, λ ≈ 410 px), la houle est
+//  rendue à l'identité. L'amplitude reste par ailleurs lisible
+//  quantitativement sur le graphe y(x), gradué en cm.
 //
 //  Les deux constantes se règlent indépendamment : FRAC déplace le seuil
-//  (donc la platitude générale), EXP dose ce qui reste de course au
-//  curseur Amplitude au-delà (1 = aucune compression, 0 = plafond dur).
-var COUPE_STEEP_FRAC = 0.12;
+//  (donc la platitude générale), EXP dose la crête laissée au maximum du
+//  curseur au-delà (1 = aucune compression, 0 = plafond dur).
+var COUPE_STEEP_FRAC = 0.16;
 var COUPE_STEEP_EXP  = 0.35;
+
+// Amplitude maximale offerte par le curseur Amplitude (cf. #sl-ampl-vagues
+// dans index.html) : elle calibre la compression ci-dessus et l'échelle Y fixe
+// du graphe y(x). À garder synchronisée avec le max du slider.
+var VAGUES_AMPL_MAX = 3.0;
 
 // Amplitude visuelle de la vue de profil, en px pour une enveloppe de 1.
 // Point d'entrée UNIQUE : la vue en coupe, la transition 3D et le hit-test
 // des balises doivent impérativement partager la même valeur, sinon la
 // transition n'arrive plus exactement sur la coupe.
+// Ne dépend PAS de simVagues.amplitude (les appelants multiplient par elle) :
+// la valeur est stable d'un coup de curseur à l'autre.
 function _coupeAmpPx(H) {
     var base = Math.min(H * 0.18, 55) * VAGUES_VIS_AMP_SCALE;
     var lam  = (simVagues.freq > 0) ? simVagues.c_sim / simVagues.freq : 0;
     if (!(lam > 0)) return base;
-    var aRaw = base * simVagues.amplitude;   // déplacement crête demandé (px)
+    var aMax = base * VAGUES_AMPL_MAX;       // crête demandée à fond de course (px)
     var aRef = COUPE_STEEP_FRAC * lam;       // seuil de compression (px)
-    if (aRaw <= aRef || aRaw < 1e-6) return base;   // sous le seuil : identité
-    var aDraw = aRef * Math.pow(aRaw / aRef, COUPE_STEEP_EXP);
-    return base * (aDraw / aRaw);
+    if (aMax <= aRef || aMax < 1e-6) return base;   // sous le seuil : identité
+    return base * Math.pow(aRef / aMax, 1 - COUPE_STEEP_EXP);
 }
 
 // ── Transition vue du dessus ↔ vue en coupe ───────────────────────────
@@ -1073,7 +1088,7 @@ function _drawYxGraphVagues(ctx, W, H) {
         xMin = (simVagues.viewMode !== 'coupe') ? -max_r_px : 0;
         xMax = max_r_px;
     }
-    var yMax = 3 * 1.12;  // échelle fixe : amplitude max slider × marge
+    var yMax = VAGUES_AMPL_MAX * 1.12;  // échelle fixe : amplitude max slider × marge
     var yMin = -yMax;
     simVagues.graphYxYMin = yMin;
     simVagues.graphYxYMax = yMax;
@@ -1247,7 +1262,7 @@ function _drawYtGraphVagues(ctx, W, H) {
     simVagues.graphView.xMin = xMin;
     simVagues.graphView.xMax = xMax;
     simVagues.graphView.tOrigin = origin;
-    var yMax = 3 * 1.12;
+    var yMax = VAGUES_AMPL_MAX * 1.12;
     var yMin = -yMax;
     simVagues.graphView.yMin = yMin;
     simVagues.graphView.yMax = yMax;
@@ -1369,7 +1384,7 @@ function _drawLegendVagues(ctx, W, pH) {
 
 function _drawBothLinksVagues(ctx, W, H, half, sep) {
     // Échelle Y identique aux deux graphes
-    var yMax = 3 * 1.12, yMin = -yMax;
+    var yMax = VAGUES_AMPL_MAX * 1.12, yMin = -yMax;
     var pH   = H - GM.top - GM.bottom;
     var pW_l = half - GM.left - GM.right;
     var pW_r = half - GM.left - GM.right;
@@ -1499,7 +1514,7 @@ function _drawSnappedHoverVagues_yx(ctx, W, H, mxOverride, myOverride) {
 function _drawSnappedHoverVagues_yt(ctx, W, H, mxOverride, myOverride) {
     if (!graphHoverPos) return;
     ctx.save();
-    var yMax = 3 * 1.12, yMin = -yMax;
+    var yMax = VAGUES_AMPL_MAX * 1.12, yMin = -yMax;
     _updateFontSizes(ctx, W, H, yMin, yMax);
     GM.left = _calcLeftMarginRaw(ctx, yMin, yMax) + _gFontTitle + 8;
     var pW = W - GM.left - GM.right, pH = H - GM.top - GM.bottom;
