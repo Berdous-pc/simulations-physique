@@ -551,6 +551,108 @@ function drawVagues() {
     _drawSourceVagues(ctx);
 }
 
+
+// ── Graduations de l'axe x — style commun aux trois vues ──────────────
+//  Vue du dessus, vue en coupe et transition 3D partagent le même rendu :
+//  ticks principaux étiquetés + sous-graduations, tracés en blanc sur un
+//  liseré sombre. Le liseré (plutôt qu'une ombre floue) garde les chiffres
+//  lisibles aussi bien sur le bleu clair des crêtes que sur le fond sombre.
+var VAGUES_TICK_HALO = 'rgba(4,14,26,0.85)';
+
+// Taille de police des graduations, proportionnelle à la hauteur du canvas
+function _vaguesTickFont(H) {
+    return Math.max(12, Math.min(19, Math.round(H * 0.042)));
+}
+
+// Trait vertical : liseré sombre épais (wHalo = 0 pour s'en passer) puis trait blanc
+function _vaguesTick(ctx, px, yLevel, half, wHalo, wLine, alpha) {
+    ctx.beginPath(); ctx.moveTo(px, yLevel - half); ctx.lineTo(px, yLevel + half);
+    if (wHalo > 0) { ctx.strokeStyle = VAGUES_TICK_HALO; ctx.lineWidth = wHalo; ctx.stroke(); }
+    ctx.strokeStyle = 'rgba(255,255,255,' + alpha + ')'; ctx.lineWidth = wLine; ctx.stroke();
+}
+
+// refWidth : largeur (px) servant à choisir le pas — la portion d'axe
+// réellement montrée, qui diffère entre vue du dessus et vue en coupe.
+// leftAlpha : opacité des ticks à gauche de la source (0 = aucun).
+function _drawVaguesTicks(ctx, W, H, srcX, yLevel, refWidth, leftAlpha) {
+    if (C_BASE_VAGUES <= 0) return;
+
+    var step_raw = (refWidth / C_BASE_VAGUES) / 6;
+    var mag      = Math.pow(10, Math.floor(Math.log10(Math.max(step_raw, 1e-9))));
+    var step, sub;                      // sub : nombre de sous-graduations par pas
+    if      (step_raw / mag < 2) { step = mag;     sub = 5; }
+    else if (step_raw / mag < 5) { step = 2 * mag; sub = 4; }
+    else                         { step = 5 * mag; sub = 5; }
+    var decimals = Math.max(0, -Math.floor(Math.log10(step)));
+
+    var fs    = _vaguesTickFont(H);
+    var HALF  = Math.round(fs * 0.60);  // demi-longueur d'un tick principal
+    var MINOR = Math.round(fs * 0.30);
+    var pxStep = step * C_BASE_VAGUES;
+
+    ctx.save();
+    ctx.lineCap = 'round';
+
+    // Sous-graduations (sans étiquette), des deux côtés de la source
+    var subStep = pxStep / sub;
+    for (var i = 1; srcX + i * subStep < W + 1; i++) {
+        if (i % sub === 0) continue;
+        _vaguesTick(ctx, Math.round(srcX + i * subStep), yLevel, MINOR, 0, 1.2, 0.75);
+    }
+    if (leftAlpha > 0.01) {
+        for (var j = 1; srcX - j * subStep > -1; j++) {
+            if (j % sub === 0) continue;
+            _vaguesTick(ctx, Math.round(srcX - j * subStep), yLevel, MINOR, 0, 1.2, 0.75 * leftAlpha);
+        }
+    }
+
+    // Graduations principales + étiquettes, de part et d'autre de la source.
+    // À gauche les valeurs sont négatives (signe « − » typographique) et tout
+    // le groupe s'estompe avec leftAlpha pendant la bascule vers la coupe.
+    ctx.font         = 'bold ' + fs + 'px "Segoe UI", Arial, sans-serif';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'top';
+    ctx.lineJoin     = 'round';
+    ctx.miterLimit   = 2;
+    for (var side = 0; side < 2; side++) {
+        var sign = side === 0 ? 1 : -1;
+        if (sign < 0) {
+            if (leftAlpha <= 0.01) break;
+            ctx.globalAlpha = leftAlpha;
+        }
+        for (var d = step; ; d += step) {
+            var px = Math.round(srcX + sign * d * C_BASE_VAGUES);
+            if (sign > 0 ? px > W + 1 : px < -1) break;
+            _vaguesTick(ctx, px, yLevel, HALF, 4.5, 2, 0.95);
+            var txt = (sign < 0 ? '\u2212' : '') + d.toFixed(decimals).replace('.', ',');
+            ctx.strokeStyle = VAGUES_TICK_HALO;
+            ctx.lineWidth   = Math.max(3, fs * 0.3);
+            ctx.strokeText(txt, px, yLevel + HALF + 3);
+            ctx.fillStyle   = '#ffffff';
+            ctx.fillText(txt, px, yLevel + HALF + 3);
+        }
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+}
+
+// Étiquette « x (m) → » au bord droit de l'axe, même traitement lisible
+function _drawVaguesAxisLabel(ctx, W, H, yLevel) {
+    var fs = _vaguesTickFont(H);
+    ctx.save();
+    ctx.font         = 'italic bold ' + fs + 'px "Segoe UI", Arial, sans-serif';
+    ctx.textAlign    = 'right';
+    ctx.textBaseline = 'bottom';
+    ctx.lineJoin     = 'round';
+    ctx.miterLimit   = 2;
+    ctx.strokeStyle  = VAGUES_TICK_HALO;
+    ctx.lineWidth    = Math.max(3, fs * 0.3);
+    ctx.strokeText('x (m) \u2192', W - 5, yLevel - 5);
+    ctx.fillStyle    = '#ffffff';
+    ctx.fillText('x (m) \u2192', W - 5, yLevel - 5);
+    ctx.restore();
+}
+
 // ── Axe horizontal en pointillés ─────────────────────────────────────
 
 function _drawAxisVagues(ctx, W, H) {
@@ -559,58 +661,19 @@ function _drawAxisVagues(ctx, W, H) {
     ctx.save();
 
     // Ligne en pointillés
-    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
-    ctx.lineWidth   = 1.2;
-    ctx.setLineDash([8, 6]);
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+    ctx.lineWidth   = 1.6;
+    ctx.setLineDash([9, 6]);
     ctx.beginPath();
     ctx.moveTo(0, sy);
     ctx.lineTo(W, sy);
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // ── Graduations en mètres ─────────────────────────────────────────
-    if (C_BASE_VAGUES > 0) {
-        var m_per_px  = 1.0 / C_BASE_VAGUES;
-        var total_m   = W * m_per_px;
-        // Pas agréable ciblant ~6 graduations sur la largeur
-        var step_raw  = total_m / 6;
-        var mag       = Math.pow(10, Math.floor(Math.log10(step_raw)));
-        var step;
-        if      (step_raw / mag < 2) step = mag;
-        else if (step_raw / mag < 5) step = 2 * mag;
-        else                         step = 5 * mag;
-        var decimals = Math.max(0, -Math.floor(Math.log10(step)));
+    // Graduations en mètres, de part et d'autre de la source
+    _drawVaguesTicks(ctx, W, H, sx, sy, W, 1);
+    _drawVaguesAxisLabel(ctx, W, H, sy);
 
-        ctx.lineWidth   = 1;
-        ctx.strokeStyle = 'rgba(255,255,255,0.8)';
-        ctx.fillStyle   = 'rgba(255,255,255,0.85)';
-        ctx.font        = '10px sans-serif';
-        ctx.shadowColor = 'rgba(0,0,0,0.6)';
-        ctx.shadowBlur  = 3;
-        var TICK = 5;
-
-        // Droite (x > 0)
-        for (var d = step; sx + d * C_BASE_VAGUES < W + 1; d += step) {
-            var px = Math.round(sx + d * C_BASE_VAGUES);
-            ctx.beginPath(); ctx.moveTo(px, sy - TICK); ctx.lineTo(px, sy + TICK); ctx.stroke();
-            ctx.textAlign    = 'center';
-            ctx.textBaseline = 'top';
-            ctx.fillText(d.toFixed(decimals).replace('.', ','), px, sy + TICK + 2);
-        }
-        // Gauche (x < 0) — ticks sans labels
-        for (var d2 = step; sx - d2 * C_BASE_VAGUES > -1; d2 += step) {
-            var px2 = Math.round(sx - d2 * C_BASE_VAGUES);
-            ctx.beginPath(); ctx.moveTo(px2, sy - TICK); ctx.lineTo(px2, sy + TICK); ctx.stroke();
-        }
-        ctx.shadowBlur = 0;
-    }
-
-    // Label "x (m) →" au bord droit
-    ctx.fillStyle    = 'rgba(255,255,255,0.6)';
-    ctx.font         = '11px sans-serif';
-    ctx.textAlign    = 'right';
-    ctx.textBaseline = 'bottom';
-    ctx.fillText('x (m) →', W - 4, sy - 3);
     ctx.restore();
 }
 
@@ -2254,60 +2317,21 @@ function _draw3DAxis(ctx, W, H, srcXs, yLevel, sinT, bandAlpha) {
     var xLeft = srcXs * bandAlpha;
     ctx.save();
 
-    // 0,55 en vue du dessus, 0,45 en coupe — interpolé pour ne pas sauter
-    ctx.strokeStyle = 'rgba(255,255,255,' + (0.55 - 0.10 * sinT).toFixed(3) + ')';
-    ctx.lineWidth   = 1.2;
-    ctx.setLineDash([8, 6]);
+    // 0,70 en vue du dessus, 0,60 en coupe — interpolé pour ne pas sauter
+    ctx.strokeStyle = 'rgba(255,255,255,' + (0.70 - 0.10 * sinT).toFixed(3) + ')';
+    ctx.lineWidth   = 1.6;
+    ctx.setLineDash([9, 6]);
     ctx.beginPath();
     ctx.moveTo(xLeft, yLevel);
     ctx.lineTo(W, yLevel);
     ctx.stroke();
     ctx.setLineDash([]);
 
-    if (C_BASE_VAGUES > 0) {
-        // Largeur de référence du pas de graduation : W en vue du dessus,
-        // W − srcX en coupe (qui ne montre que le demi-axe x > 0).
-        var total_m  = (W - srcXs * bandAlpha) / C_BASE_VAGUES;
-        var step_raw = total_m / 6;
-        var mag      = Math.pow(10, Math.floor(Math.log10(Math.max(step_raw, 1e-9))));
-        var step;
-        if      (step_raw / mag < 2) step = mag;
-        else if (step_raw / mag < 5) step = 2 * mag;
-        else                         step = 5 * mag;
-        var decimals = Math.max(0, -Math.floor(Math.log10(step)));
+    // Largeur de référence du pas : W en vue du dessus, W − srcX en coupe.
+    // Les graduations à gauche de la source s'effacent avec le rideau.
+    _drawVaguesTicks(ctx, W, H, srcXs, yLevel, W - srcXs * bandAlpha, 1 - bandAlpha);
+    _drawVaguesAxisLabel(ctx, W, H, yLevel);
 
-        ctx.lineWidth   = 1;
-        ctx.strokeStyle = 'rgba(255,255,255,0.8)';
-        ctx.fillStyle   = 'rgba(255,255,255,0.85)';
-        ctx.font        = '10px sans-serif';
-        ctx.shadowColor = 'rgba(0,0,0,0.6)';
-        ctx.shadowBlur  = 3;
-        var TICK = 5;
-
-        for (var d = step; srcXs + d * C_BASE_VAGUES < W + 1; d += step) {
-            var px = Math.round(srcXs + d * C_BASE_VAGUES);
-            ctx.beginPath(); ctx.moveTo(px, yLevel - TICK); ctx.lineTo(px, yLevel + TICK); ctx.stroke();
-            ctx.textAlign    = 'center';
-            ctx.textBaseline = 'top';
-            ctx.fillText(d.toFixed(decimals).replace('.', ','), px, yLevel + TICK + 2);
-        }
-        // Graduations à gauche de la source : s'effacent avec le rideau
-        if (bandAlpha < 0.99) {
-            ctx.globalAlpha = 1 - bandAlpha;
-            for (var d2 = step; srcXs - d2 * C_BASE_VAGUES > -1; d2 += step) {
-                var px2 = Math.round(srcXs - d2 * C_BASE_VAGUES);
-                ctx.beginPath(); ctx.moveTo(px2, yLevel - TICK); ctx.lineTo(px2, yLevel + TICK); ctx.stroke();
-            }
-            ctx.globalAlpha = 1;
-        }
-        ctx.shadowBlur = 0;
-    }
-
-    ctx.fillStyle    = 'rgba(255,255,255,0.6)';
-    ctx.font         = '11px sans-serif';
-    ctx.textAlign    = 'right';
-    ctx.textBaseline = 'bottom';
-    ctx.fillText('x (m) →', W - 4, yLevel - 3);
     ctx.restore();
 }
 
@@ -2933,51 +2957,18 @@ function _drawAxisCoupeVagues(ctx, W, H, srcX, yLevel) {
     ctx.save();
 
     // Ligne pointillée à l'équilibre (y=0)
-    ctx.strokeStyle = 'rgba(255,255,255,0.45)';
-    ctx.lineWidth   = 1.2;
-    ctx.setLineDash([8, 6]);
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+    ctx.lineWidth   = 1.6;
+    ctx.setLineDash([9, 6]);
     ctx.beginPath();
     ctx.moveTo(srcX, yLevel);
     ctx.lineTo(W, yLevel);
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Graduations en mètres depuis la source
-    if (C_BASE_VAGUES > 0) {
-        var m_per_px = 1.0 / C_BASE_VAGUES;
-        var total_m  = (W - srcX) * m_per_px;
-        var step_raw = total_m / 6;
-        var mag      = Math.pow(10, Math.floor(Math.log10(Math.max(step_raw, 1e-9))));
-        var step;
-        if      (step_raw / mag < 2) step = mag;
-        else if (step_raw / mag < 5) step = 2 * mag;
-        else                         step = 5 * mag;
-        var decimals = Math.max(0, -Math.floor(Math.log10(step)));
-
-        ctx.lineWidth   = 1;
-        ctx.strokeStyle = 'rgba(255,255,255,0.8)';
-        ctx.fillStyle   = 'rgba(255,255,255,0.85)';
-        ctx.font        = '10px sans-serif';
-        ctx.shadowColor = 'rgba(0,0,0,0.6)';
-        ctx.shadowBlur  = 3;
-        var TICK = 5;
-
-        for (var d = step; srcX + d * C_BASE_VAGUES < W + 1; d += step) {
-            var px = Math.round(srcX + d * C_BASE_VAGUES);
-            ctx.beginPath(); ctx.moveTo(px, yLevel - TICK); ctx.lineTo(px, yLevel + TICK); ctx.stroke();
-            ctx.textAlign    = 'center';
-            ctx.textBaseline = 'top';
-            ctx.fillText(d.toFixed(decimals).replace('.', ','), px, yLevel + TICK + 2);
-        }
-        ctx.shadowBlur = 0;
-    }
-
-    // Label axe x
-    ctx.fillStyle    = 'rgba(255,255,255,0.6)';
-    ctx.font         = '11px sans-serif';
-    ctx.textAlign    = 'right';
-    ctx.textBaseline = 'bottom';
-    ctx.fillText('x (m) →', W - 4, yLevel - 3);
+    // Graduations en mètres depuis la source (la coupe ne montre que x > 0)
+    _drawVaguesTicks(ctx, W, H, srcX, yLevel, W - srcX, 0);
+    _drawVaguesAxisLabel(ctx, W, H, yLevel);
 
     ctx.restore();
 }
