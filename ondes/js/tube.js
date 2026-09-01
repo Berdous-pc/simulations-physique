@@ -33,6 +33,10 @@ var MEM_THICKNESS = 14;
 var RULER_FONT_MIN     = 15;
 var RULER_FONT_MAX     = 22;
 var RULER_TICK_MAJ     = 9;
+// Couleur unique de la règle : ligne de base, ticks principaux et
+// secondaires. Les nuances plus claires d'autrefois faisaient lire l'axe
+// comme un trait de fond alors qu'il porte les mêmes graduations.
+var RULER_COLOR        = '#243039';
 var RULER_LABEL_MIN_PX = RULER_TICK_MAJ + 2 + RULER_FONT_MIN;
 var RULER_BAND_MIN_PX  = RULER_LABEL_MIN_PX + 2;
 
@@ -1151,7 +1155,7 @@ function _drawTubeRuler(ctx) {
     ctx.textBaseline = 'top';
 
     // Ligne de base horizontale (depuis la membrane jusqu'à la fin du tube)
-    ctx.strokeStyle = '#5c6f7e';
+    ctx.strokeStyle = RULER_COLOR;
     ctx.lineWidth   = 1.5;
     ctx.beginPath();
     ctx.moveTo(sim.tubeLeft, yBase);
@@ -1159,9 +1163,9 @@ function _drawTubeRuler(ctx) {
     ctx.stroke();
 
     // Ticks principaux et labels
-    ctx.strokeStyle = '#243039';
+    ctx.strokeStyle = RULER_COLOR;
     ctx.lineWidth   = 2;
-    ctx.fillStyle   = '#243039';
+    ctx.fillStyle   = RULER_COLOR;
 
     for (var cm = 0; cm <= xMaxCm + step * 0.01; cm += step) {
         var xc = sim.tubeLeft + cm / cmPerPx;
@@ -1179,7 +1183,7 @@ function _drawTubeRuler(ctx) {
     }
 
     // Ticks secondaires (mi-pas)
-    ctx.strokeStyle = '#63767f';
+    ctx.strokeStyle = RULER_COLOR;
     ctx.lineWidth   = 1.4;
     var halfStep = step / 2;
     for (var cm2 = halfStep; cm2 <= xMaxCm + halfStep * 0.01; cm2 += step) {
@@ -1195,7 +1199,7 @@ function _drawTubeRuler(ctx) {
     // Même condition que les chiffres : elle est écrite sur la même ligne de
     // base, elle serait donc coupée exactement en même temps.
     if (labels) {
-        ctx.fillStyle    = '#37474f';
+        ctx.fillStyle    = RULER_COLOR;
         ctx.font         = 'bold ' + Math.max(13, fontSize - 1) + 'px monospace';
         ctx.textAlign    = 'right';
         ctx.textBaseline = 'top';
@@ -3028,7 +3032,7 @@ function _drawCordeRuler(ctx) {
     ctx.textBaseline = 'top';
 
     // Ligne de base
-    ctx.strokeStyle = '#5c6f7e';
+    ctx.strokeStyle = RULER_COLOR;
     ctx.lineWidth   = 1.5;
     ctx.beginPath();
     ctx.moveTo(simCorde.cordeLeft, yBase);
@@ -3036,9 +3040,9 @@ function _drawCordeRuler(ctx) {
     ctx.stroke();
 
     // Ticks principaux
-    ctx.strokeStyle = '#243039';
+    ctx.strokeStyle = RULER_COLOR;
     ctx.lineWidth   = 2;
-    ctx.fillStyle   = '#243039';
+    ctx.fillStyle   = RULER_COLOR;
 
     for (var m_ = 0; m_ <= xMaxM + step * 0.01; m_ += step) {
         var xc = simCorde.cordeLeft + m_ / mPerPx;
@@ -3051,7 +3055,7 @@ function _drawCordeRuler(ctx) {
     }
 
     // Ticks secondaires
-    ctx.strokeStyle = '#63767f';
+    ctx.strokeStyle = RULER_COLOR;
     ctx.lineWidth   = 1.4;
     var halfStep = step / 2;
     for (var m2 = halfStep; m2 <= xMaxM + halfStep * 0.01; m2 += step) {
@@ -3065,7 +3069,7 @@ function _drawCordeRuler(ctx) {
 
     // Unité — même ligne de base que les chiffres, donc même condition
     if (labels) {
-        ctx.fillStyle    = '#37474f';
+        ctx.fillStyle    = RULER_COLOR;
         ctx.font         = 'bold ' + Math.max(13, fontSize - 1) + 'px monospace';
         ctx.textAlign    = 'right';
         ctx.fillText('m', simCorde.cordeLeft - 8, rm.textY);
