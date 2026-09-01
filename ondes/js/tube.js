@@ -2333,9 +2333,11 @@ function drawCorde() {
         simCorde.cordeLength - 1, zoneH - 1
     );
 
-    // ── Poignée du mode Libre (au bout du fil) ────────────────────────
-    // Dessinée en dernier pour rester au-dessus du cadre.
+    // ── Bout gauche de la corde (au-dessus du cadre) ──────────────────
+    // Dessiné en dernier pour rester au-dessus du cadre : la poignée en
+    // mode Libre, la première sphère du chapelet en aspect Discret.
     _drawCordeFreeHandle(ctx);
+    _drawCordeFirstBead(ctx);
 }
 
 // ── Grille de la corde : repères verticaux (mètres) + ligne du zéro ───
@@ -2470,6 +2472,60 @@ function cordeBeadCount() {
     return Math.round(CORDE_LENGTH_M / CORDE_BEAD_STEP_M) + 1;
 }
 
+// ── Rayon des sphères (px) ────────────────────────────────────────────
+//
+//  Indexé sur μ, comme l'épaisseur du fil en aspect continu, pour que la
+//  corde reste visuellement « plus lourde » quand μ augmente. Interpolation
+//  linéaire sur toute la plage du curseur : rayon minimal à μ = 0,1,
+//  maximal à μ = 4.
+//
+//  Ce maximum est volontairement modeste : des sphères plus grosses se
+//  toucheraient et la corde redeviendrait un trait plein.
+//
+//  Base = espacement entre points (proportionnel à L, la largeur de la
+//  zone), pas zoneH (hauteur) : sinon les sphères grossissent
+//  artificiellement dans une fenêtre haute et étroite alors que rien n'a
+//  changé horizontalement.
+function cordeBeadR() {
+    var spacing = simCorde.cordeLength / (cordeBeadCount() - 1);
+    var muFrac  = (simCorde.mu - 0.1) / (4.0 - 0.1);
+    return Math.max(2.5, spacing * (0.26 + 0.11 * muFrac));
+}
+
+// Dessine une sphère du chapelet, contour compris (cf. _drawCordeBeads
+// pour le détail du dégradé et de l'anti-scintillement).
+function _drawCordeBead(ctx, x, y, r) {
+    var grd = ctx.createRadialGradient(x - r * 0.35, y - r * 0.35, r * 0.15, x, y, r);
+    grd.addColorStop(0,    '#c05030');
+    grd.addColorStop(0.75, '#7a2510');
+    grd.addColorStop(1,    '#7a2510');
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+}
+
+// ── Première sphère (aspect Discret, hors mode Libre) ─────────────────
+//
+//  Elle est posée exactement sur le bord gauche du cadre : dessinée avec
+//  le reste du chapelet, elle serait coupée en deux par le clip de zone.
+//  On la sort donc du lot et on la trace en tout dernier, par-dessus la
+//  bordure et par-dessus la tige d'accroche horizontale — même traitement
+//  que la poignée du mode Libre (_drawCordeFreeHandle), qui la remplace
+//  quand ce mode est actif.
+
+function _drawCordeFirstBead(ctx) {
+    if (simCorde.aspect !== 'discret' || simCorde.freeActive) return;
+    if (simCorde.cordeLength <= 0) return;
+
+    ctx.save();
+    ctx.strokeStyle = '#4a1008';
+    ctx.lineWidth   = 1;
+    _drawCordeBead(ctx, simCorde.cordeLeft, _cordeAttachY(), cordeBeadR());
+    ctx.restore();
+}
+
 // Abscisse écran (px) du point d'indice i.
 function cordeBeadX(i) {
     var n = cordeBeadCount() - 1;
@@ -2484,19 +2540,8 @@ function _drawCordeBeads(ctx) {
     var zoneH  = simCorde.cordeBottom - simCorde.cordeTop;
     var nBeads = cordeBeadCount();
 
-    // Rayon des points et épaisseur des liens : indexés sur μ, comme
-    // l'épaisseur du fil en aspect continu, pour que la corde reste
-    // visuellement « plus lourde » quand μ augmente. Interpolation linéaire
-    // sur toute la plage du curseur : rayon minimal à μ = 0,1, maximal à
-    // μ = 4 — ce maximum est volontairement modeste, des sphères plus
-    // grosses se toucheraient et la corde redeviendrait un trait plein.
-    // Base = espacement entre points (proportionnel à L, la largeur de la
-    // zone), pas zoneH (hauteur) : sinon les sphères grossissent
-    // artificiellement dans une fenêtre haute et étroite alors que rien
-    // n'a changé horizontalement.
-    var spacing = L / (nBeads - 1);
-    var muFrac  = (simCorde.mu - 0.1) / (4.0 - 0.1);
-    var beadR   = Math.max(2.5, spacing * (0.26 + 0.11 * muFrac));
+    // Rayon des points (cf. cordeBeadR) et épaisseur des liens qui en découle.
+    var beadR   = cordeBeadR();
     var linkW   = Math.max(1.0, beadR * 0.45);
 
     // Positions calculées une seule fois : elles servent aux liens puis aux
@@ -2527,8 +2572,10 @@ function _drawCordeBeads(ctx) {
     ctx.stroke();
 
     // ── Points ────────────────────────────────────────────────────────
-    // En mode Libre le point d'indice 0 est remplacé par la poignée
-    // attrapable, dessinée juste après au même endroit (_drawCordeFreeHandle).
+    // Le point d'indice 0 n'est JAMAIS tracé ici : posé sur le bord gauche
+    // du cadre, il serait coupé en deux par le clip. Il est dessiné en fin
+    // de scène, hors clip — par _drawCordeFreeHandle en mode Libre (la
+    // poignée attrapable le remplace), par _drawCordeFirstBead sinon.
     //
     //  Anti-scintillement : une sphère de quelques pixels dont le bord n'est
     //  qu'un dégradé adouci par l'antialiasing change d'aspect à chaque frame
@@ -2538,23 +2585,9 @@ function _drawCordeBeads(ctx) {
     //     stable quelle que soit sa position sub-pixel ;
     //   - un dégradé qui s'arrête avant le bord, pour que la couleur y soit
     //     franche au lieu de s'y éteindre.
-    var first = simCorde.freeActive ? 1 : 0;
     ctx.strokeStyle = '#4a1008';
     ctx.lineWidth   = 1;
-    for (var j = first; j < nBeads; j++) {
-        var grd = ctx.createRadialGradient(
-            xs[j] - beadR * 0.35, ys[j] - beadR * 0.35, beadR * 0.15,
-            xs[j], ys[j], beadR
-        );
-        grd.addColorStop(0,    '#c05030');
-        grd.addColorStop(0.75, '#7a2510');
-        grd.addColorStop(1,    '#7a2510');
-        ctx.fillStyle = grd;
-        ctx.beginPath();
-        ctx.arc(xs[j], ys[j], beadR, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-    }
+    for (var j = 1; j < nBeads; j++) _drawCordeBead(ctx, xs[j], ys[j], beadR);
 
     ctx.restore();
 }

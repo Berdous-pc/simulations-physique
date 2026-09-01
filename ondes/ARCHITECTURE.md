@@ -739,8 +739,12 @@ déplace.
   reliés par de petits liens. Rien ne change côté physique ni côté graphes —
   c'est un pur choix de rendu, destiné à faire voir que chaque point ne fait
   qu'osciller verticalement en reproduisant, avec retard, le mouvement de son
-  voisin de gauche. En mode Libre, le point d'indice 0 n'est pas dessiné : il
-  est remplacé au même endroit par la poignée attrapable.
+  voisin de gauche. Le rayon des sphères vient de `cordeBeadR()`,
+  indexé sur μ et sur l'espacement entre points.
+  Le point d'indice 0 n'est jamais dessiné dans cette fonction (le clip de
+  zone le couperait en deux) : il est tracé en fin de scène, hors clip, par
+  `_drawCordeFreeHandle()` en mode Libre (la poignée attrapable le remplace)
+  et par `_drawCordeFirstBead()` sinon.
 - `snapCordeBeaconX()` / `snapCordeBeacon()` — en aspect Discret, une balise
   se cale sur le point matériel le plus proche (elle ne peut pas se poser sur
   un lien). Appelés au drag, au resize, à l'activation d'une balise et au

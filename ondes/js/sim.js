@@ -992,6 +992,13 @@ var CORDE_LENGTH_M    = 5.0;    // longueur physique de la corde (m)
 // Espacement des points matériels en aspect « Discret » (m) : un point
 // tous les 10 cm, soit 51 points sur les 5 m — assez pour lire la forme de
 // l'onde, assez peu pour distinguer chaque point à l'œil.
+//
+//  Densifier ce chapelet a été essayé (6,25 cm, 81 points, sphères affinées
+//  d'un facteur 1,5 pour faire la place) et abandonné : les sphères ne
+//  bougeant que verticalement, plus le pas est serré, plus l'œil apparie une
+//  sphère avec la mauvaise voisine — l'onde semble alors reculer (effet
+//  stroboscopique perceptif, aucun pixel n'est faux). Le pas de 10 cm est la
+//  densité au-delà de laquelle l'illusion s'installe.
 var CORDE_BEAD_STEP_M = 0.10;
 var MU_DEFAULT        = 1.0;    // masse linéique par défaut (kg/m)
 var T_DEFAULT         = 4.0;    // tension par défaut (N)
