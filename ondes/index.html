@@ -610,10 +610,10 @@
           <div class="param-row">
             <label>
               Fréquence
-              <span class="param-value"><span id="lbl-freq-vagues">3,0</span> Hz</span>
+              <span class="param-value"><span id="lbl-freq-vagues">1,5</span> Hz</span>
             </label>
             <input type="range" id="sl-freq-vagues"
-                   min="0.5" max="5" step="0.1" value="3.0"
+                   min="0.5" max="5" step="0.1" value="1.5"
                    oninput="onSliderFreqVagues(this.value)">
             <span class="input-hint">Fréquence des vagues émises par S.</span>
           </div>
@@ -641,7 +641,7 @@
               <span class="param-value"><span id="lbl-h-vagues">3,0</span> mm</span>
             </label>
             <input type="range" id="sl-h-vagues"
-                   min="0.001" max="0.010" step="0.001" value="0.003"
+                   min="0.002" max="0.010" step="0.001" value="0.003"
                    oninput="onSliderHVagues(this.value)">
             <span class="input-hint">Eau peu profonde (h ≪ λ).</span>
           </div>
@@ -652,7 +652,7 @@
               <span class="param-value"><span id="lbl-g-vagues">9,81</span> m/s²</span>
             </label>
             <input type="range" id="sl-g-vagues"
-                   min="1.0" max="25.0" step="0.1" value="9.81"
+                   min="5.0" max="25.0" step="0.1" value="9.81"
                    list="g-vagues-ticks"
                    oninput="onSliderGVagues(this.value)">
             <datalist id="g-vagues-ticks">

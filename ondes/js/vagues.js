@@ -152,12 +152,12 @@ var simVagues = {
     // ── Source ──────────────────────────────────────────────────────
     sourceX   : 0,   // position canvas (px)
     sourceY   : 0,
-    freq      : 3.0, // Hz
+    freq      : 1.5, // Hz
     amplitude : 1.0, // relative
 
     // ── Milieu ──────────────────────────────────────────────────────
     g              : 9.81,  // m/s²
-    h              : 0.003, // m (profondeur) — bornes 1mm–10mm pour λ_max=1m
+    h              : 0.003, // m (profondeur) — bornes 2mm–10mm
     attenuation    : 0.0,
     geoAttenuation : false, // atténuation en 1/√r (désactivée par défaut)
 
@@ -260,9 +260,12 @@ function resizeVagues() {
     simVagues.canvasW = w;
     simVagues.canvasH = h;
 
-    // Calibration : vue par défaut ±30 cm (g=9.81, h=0.003, f=3 Hz)
-    var c_ms_def = Math.sqrt(9.81 * 0.003);         // ≈ 0,171 m/s
-    C_BASE_VAGUES = (w / 12.0 * 3.0) / c_ms_def;   // px/(m/s), calibré sur les réglages par défaut
+    // Calibration : vue par défaut ±51 cm (g=9.81, h=0.003, f=1,5 Hz)
+    //   (w / N_λ * f_def) / c_déf  →  N_λ longueurs d'onde visibles sur la largeur.
+    //   N_λ = 9 : compromis « crêtes assez lentes » (c_px = λ_px × f) sans trop
+    //   resserrer le motif — cf. l'ancien réglage 12 λ à 3 Hz, deux fois plus nerveux.
+    var c_ms_def = Math.sqrt(9.81 * 0.003);        // ≈ 0,171 m/s
+    C_BASE_VAGUES = (w / 9.0 * 1.5) / c_ms_def;   // px/(m/s), calibré sur les réglages par défaut
 
     // Source fixe au centre
     simVagues.sourceX = Math.round(w / 2);
