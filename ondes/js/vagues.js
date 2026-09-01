@@ -1961,8 +1961,9 @@ function _drawVaguesTransition(ctx, W, H, PW, PH, dpr) {
 //
 // Deux paramètres de fondu pilotent tous les décors, et c'est ce qui rend
 // les deux raccords (départ et arrivée) invisibles :
-//   sinT      (rotation)     → ciel, dégradé d'eau, écume, labels Air/Eau,
-//                              élévation de la flèche λ, style des balises
+//   sinT      (rotation)     → ciel, dégradé d'eau, écume, fond marin,
+//                              labels Air/Eau, élévation de la flèche λ,
+//                              style des balises
 //   bandAlpha (panoramique)  → bandeau/tige de source, repli de l'axe et
 //                              des graduations vers le demi-axe x > 0
 function _render3DWaveView(ctx, W, H, theta, panOffset, PW, PH, dpr) {
@@ -2164,6 +2165,20 @@ function _render3DWaveView(ctx, W, H, theta, panOffset, PW, PH, dpr) {
     // ══ Décors, dans l'ordre de _drawVaguesCoupe ══════════════════════
 
     _draw3DFoamLine(ctx, prevSyArr, PW, dpr, srcXs * bandAlpha, sinT);
+
+    // ── Fond marin ────────────────────────────────────────────────────
+    // Il n'a aucun sens vu du dessus : il se lève avec la ROTATION, en sinT²
+    // comme l'écume, pour que les deux décors propres à la coupe
+    // apparaissent ensemble. Son bord gauche suit le rideau de la source
+    // (srcXs·bandAlpha, comme l'axe) et arrive donc exactement sur le srcX
+    // de _drawVaguesCoupe — le raccord de fin reste invisible.
+    if (sinT > 0.02) {
+        ctx.save();
+        ctx.globalAlpha = sinT * sinT;
+        _drawSeabedVagues(ctx, W, H, srcXs * bandAlpha, H - ORBIT_SEABED_PAD);
+        ctx.restore();
+    }
+
     _draw3DSourceZone(ctx, W, H, srcXs, yLevel, ampPx, sinT, bandAlpha);
     _draw3DAirWaterLabels(ctx, H, srcXs, sinT);
     _draw3DAxis(ctx, W, H, srcXs, yLevel, sinT, bandAlpha);
@@ -2306,7 +2321,8 @@ function _draw3DAirWaterLabels(ctx, H, srcXs, sinT) {
     ctx.fillText('Air', srcXs + 10, 8);
     ctx.fillStyle    = 'rgba(200, 235, 255, 0.70)';
     ctx.textBaseline = 'bottom';
-    ctx.fillText('Eau', srcXs + 10, H - 8);
+    // Même calage que _drawVaguesCoupe : au-dessus du sable, pas sur lui.
+    ctx.fillText('Eau', srcXs + 10, H - ORBIT_SEABED_PAD - 6);
     ctx.restore();
 }
 
@@ -2551,16 +2567,22 @@ function _drawVaguesCoupe(ctx, W, H) {
     ctx.lineWidth   = 2;
     ctx.stroke();
 
-    // ── 4. Trajectoire des molécules d'eau (option) ───────────────────
+    // ── 4. Fond marin ─────────────────────────────────────────────────
+    //  Toujours visible en vue de profil (cf. _drawSeabedVagues), qu'on ait
+    //  ou non demandé les trajectoires : c'est lui qui donne sa profondeur à
+    //  la colonne d'eau.
+    _drawSeabedVagues(ctx, W, H, srcX, H - ORBIT_SEABED_PAD);
+
+    // ── 5. Trajectoire des molécules d'eau (option) ───────────────────
     //  Après l'écume, pour que la molécule de la rangée de surface se voie
     //  SUR la ligne blanche qu'elle suit exactement ; avant la source, l'axe
     //  et les balises, qui restent au premier plan.
     _drawOrbitesCoupeVagues(ctx, W, H, srcX, yLevel, ampPx);
 
-    // ── 5. Zone source ────────────────────────────────────────────────
+    // ── 6. Zone source ────────────────────────────────────────────────
     _drawSourceCoupeVagues(ctx, W, H, srcX, yLevel, ampPx);
 
-    // ── 6. Labels Air / Eau ───────────────────────────────────────────
+    // ── 7. Labels Air / Eau ───────────────────────────────────────────
     ctx.save();
     ctx.font      = 'italic 12px "Segoe UI", Arial, sans-serif';
     ctx.textAlign = 'left';
@@ -2569,16 +2591,18 @@ function _drawVaguesCoupe(ctx, W, H) {
     ctx.fillText('Air', srcX + 10, 8);
     ctx.fillStyle = 'rgba(200, 235, 255, 0.70)';
     ctx.textBaseline = 'bottom';
-    ctx.fillText('Eau', srcX + 10, H - 8);
+    // Juste au-dessus du sable : le fond marin étant désormais toujours
+    // dessiné, un label calé sur le bas du canvas tomberait dessus.
+    ctx.fillText('Eau', srcX + 10, H - ORBIT_SEABED_PAD - 6);
     ctx.restore();
 
-    // ── 7. Axe x et graduations ───────────────────────────────────────
+    // ── 8. Axe x et graduations ───────────────────────────────────────
     _drawAxisCoupeVagues(ctx, W, H, srcX, yLevel);
 
-    // ── 8. Flèche de longueur d'onde ───────────────────────────────────
+    // ── 9. Flèche de longueur d'onde ───────────────────────────────────
     _drawLambdaArrowCoupeVagues(ctx, W, H, srcX, yLevel);
 
-    // ── 9. Balises (bouées flottantes) ────────────────────────────────
+    // ── 10. Balises (bouées flottantes) ────────────────────────────────
     _drawBeaconsCoupeVagues(ctx, W, H, srcX, yLevel, ampPx);
 }
 
@@ -2656,21 +2680,30 @@ function _drawVaguesCoupe(ctx, W, H) {
 //  l'amplitude DESSINÉE, plus la boucle est étroite et verticale. Une
 //  boucle large et plate suppose une vague plate — c'est le compromis
 //  inverse, celui qui aurait demandé d'aplatir la houle.
-//   • Nombre de RANGÉES adapté à l'amplitude, pour qu'elles ne
-//     s'interpénètrent pas : à échelle verticale exacte, une ellipse de
-//     surface haute de 2a ne tient qu'entre des rangées espacées de plus
-//     de 1,1·a.
-//   • Les colonnes sont espacées d'un multiple IMPAIR de λ/2, ce qui met
-//     les colonnes voisines en ANTIPHASE : à un instant donné, une
-//     molécule est au sommet de sa boucle (sous la crête) pendant que sa
-//     voisine est au fond de la sienne (sous le creux). C'est ce qui rend
-//     le lien avec l'avancement de la vague immédiatement lisible.
+//   • RANGÉES à espacement VARIABLE, chaque écart étant calculé sur les
+//     deux ellipses qu'il sépare : le non-chevauchement est structurel,
+//     et non le fruit d'un plafond calé sur la seule ellipse de surface.
+//     Aucune rangée sur le fond marin — l'ellipse y dégénère en segment
+//     horizontal, un trait mort. La plus basse s'arrête à 0,70·h.
+//   • Les colonnes remplissent d'abord la LARGEUR ; leur pas est ensuite
+//     ajusté, quand c'est possible sans laisser de marge, vers un multiple
+//     IMPAIR de λ/2, ce qui met les colonnes voisines en ANTIPHASE : à un
+//     instant donné, une molécule est au sommet de sa boucle (sous la
+//     crête) pendant que sa voisine est au fond de la sienne (sous le
+//     creux). L'ordre des priorités compte : caler l'antiphase d'abord
+//     groupait deux ou trois colonnes au centre de l'écran aux grandes λ.
 
 var ORBIT_TARGET_STEP  = 150;  // px — espacement visé entre deux colonnes
 var ORBIT_SEABED_PAD   = 16;   // px — eau laissée sous le fond marin dessiné
 var ORBIT_LAMBDA_FRAC  = 0.27; // demi-axe horizontal max, en λ (borne : 1/π)
 var ORBIT_MAX_ROWS     = 4;
 var ORBIT_DOT_R        = 4.3;  // px — rayon de la bille « molécule »
+var ORBIT_MAX_DEPTH_FRAC = 0.70; // profondeur de la rangée la plus basse, en h
+var ORBIT_ROW_GAP        = 1.15; // marge de non-chevauchement entre deux rangées
+var ORBIT_TRAIL_ARC      = 1.15; // rad — longueur d'arc de la traînée de la bille
+var ORBIT_TRAIL_COL      = ['rgba(255,255,255,0.16)',
+                            'rgba(255,255,255,0.32)',
+                            'rgba(255,255,255,0.55)'];
 
 // Couple (F, Q) du champ de la coupe en x. DOIT rester aligné sur
 // _waveFieldCoupeAt : out[0] en est la copie exacte, out[1] sa quadrature.
@@ -2692,6 +2725,7 @@ function _coupeFieldPairAt(x_canvas, srcX, out) {
 
 var _orbitFP   = [0, 0];   // tampon réutilisé (pas d'allocation par frame)
 var _orbitCols = [];       // idem pour les colonnes
+var _orbitRows = [];       // idem pour les profondeurs des rangées (fraction de h)
 
 // ── Sprite de la molécule ─────────────────────────────────────────────
 //  Une bille d'eau : dégradé radial avec un reflet en haut à gauche, cerné
@@ -2732,10 +2766,12 @@ function _orbitBeadSprite() {
 }
 
 // ── Fond marin ────────────────────────────────────────────────────────
-//  Sans lui, l'ellipse écrasée en segment de la rangée du bas n'aurait pas
-//  de sens visible. Bande de sable dégradée, ligne de crête claire et
-//  quelques galets — positions DÉTERMINISTES : un Math.random dans une
-//  boucle de rendu ferait grésiller le fond d'une frame à l'autre.
+//  Dessiné dès la vue en coupe, et non plus seulement avec l'option
+//  trajectoires : il matérialise la profondeur h et ferme la colonne d'eau,
+//  sans quoi la scène est un aplat bleu sans repère de fond. Bande de sable
+//  dégradée, ligne de crête claire et quelques galets — positions
+//  DÉTERMINISTES : un Math.random dans une boucle de rendu ferait grésiller
+//  le fond d'une frame à l'autre.
 function _drawSeabedVagues(ctx, W, H, srcX, seabedY) {
     var top   = seabedY - 3;
     var sand  = ctx.createLinearGradient(0, top, 0, H);
@@ -2764,6 +2800,16 @@ function _drawSeabedVagues(ctx, W, H, srcX, seabedY) {
     }
 }
 
+// Demi-axe VERTICAL d'une rangée, en px, pour une profondeur df exprimée en
+// fraction de h (0 = surface, 1 = fond marin). aPx est le demi-axe de la
+// rangée de surface. Sert au placement des rangées (cf. plus bas) autant qu'à
+// leur tracé.
+function _orbitRvAt(df, kh, shKh, aPx) {
+    var kz = kh * (1 - df);
+    if (kz < 0) kz = 0;
+    return (Math.sinh(kz) / shKh) * aPx;
+}
+
 function _drawOrbitesCoupeVagues(ctx, W, H, srcX, yLevel, ampPx) {
     var s = simVagues;
     if (!s.showOrbits) return;
@@ -2771,34 +2817,34 @@ function _drawOrbitesCoupeVagues(ctx, W, H, srcX, yLevel, ampPx) {
 
     var seabedY = H - ORBIT_SEABED_PAD;
     var colH    = seabedY - yLevel;          // hauteur DESSINÉE de la colonne d'eau
-    if (colH < 60) return;                   // canvas trop plat : illisible
+    if (colH < 40) return;                   // canvas trop plat : illisible
 
     var kh = 2 * Math.PI * s.freq * s.h / s.c_ms;
     if (!(kh > 1e-4)) return;
     var shKh = Math.sinh(kh);
 
     // ── Colonnes ──────────────────────────────────────────────────────
-    // Espacement = multiple IMPAIR de λ/2, pris aussi près que possible de
-    // ORBIT_TARGET_STEP : colonnes voisines en antiphase (cf. en-tête). Repli
-    // sur l'espacement nu quand λ est trop grand ou trop petit pour que ce
-    // calage donne un nombre de colonnes exploitable.
+    // Le nombre de colonnes est fixé par la LARGEUR disponible, puis le pas
+    // est ajusté vers un multiple impair de λ/2 (antiphase entre voisines,
+    // cf. en-tête) — mais seulement s'il reste à moins de 25 % du pas idéal,
+    // et toujours vers le BAS pour que la rangée continue de tenir dans
+    // l'espace disponible. La priorité inverse — antiphase d'abord — groupait
+    // deux ou trois colonnes au centre de l'écran dès que λ était grande.
     var xLeft = srcX + 10, xRight = W - 12;
     var avail = xRight - xLeft;
-    if (avail < 140) return;
+    if (avail < 90) return;
 
     var lamPx   = s.c_sim / s.freq;
-    var colStep = ORBIT_TARGET_STEP;
+    var nCols   = Math.max(3, Math.min(9, Math.round(avail / ORBIT_TARGET_STEP) + 1));
+    var colStep = avail / (nCols - 1);
     if (lamPx > 0) {
-        var m = Math.round(ORBIT_TARGET_STEP / (lamPx / 2));
-        if (m % 2 === 0) m += 1;             // impair → antiphase d'une colonne à l'autre
-        if (m < 1) m = 1;
+        var m = Math.floor(colStep / (lamPx / 2));
+        if (m % 2 === 0) m -= 1;             // impair, et ≤ pas idéal
         var cand = m * lamPx / 2;
-        if (cand >= 70 && cand <= avail / 2.2) colStep = cand;
+        if (m >= 1 && cand >= 0.75 * colStep) colStep = cand;
     }
-    var nCols = Math.max(2, Math.min(8, Math.floor(avail / colStep)));
-    // Reste réparti en marges égales : chaque colonne dispose d'au moins une
-    // demi-case de part et d'autre, l'ellipse (bornée à 42 %) ne déborde donc
-    // ni sur sa voisine ni sur le bandeau de la source.
+    // Reste réparti en marges égales, nécessairement petites : la rangée
+    // occupe au minimum 75 % de la largeur disponible.
     var xFirst = xLeft + (avail - (nCols - 1) * colStep) / 2;
 
     var envMax = 0;
@@ -2814,39 +2860,100 @@ function _drawOrbitesCoupeVagues(ctx, W, H, srcX, yLevel, ampPx) {
     if (envMax <= 0) return;                 // le front n'a atteint aucune colonne
 
     // ── Rangées ───────────────────────────────────────────────────────
-    // La première est SUR la surface moyenne (d = 0), la dernière sur le fond
-    // marin (d = h). Leur nombre est dicté par le non-chevauchement : à
-    // échelle verticale exacte, l'ellipse de surface est haute de 2·rvSurf.
-    var rvSurf = envMax * ampPx;             // demi-axe vertical en surface (fV = 1)
-    var nRows  = Math.max(2, Math.min(ORBIT_MAX_ROWS,
-                          Math.floor(colH / (1.1 * Math.max(1, rvSurf))) + 1));
-    var rowStep = colH / (nRows - 1);
+    // La première est SUR la surface moyenne (d = 0) ; il n'y en a AUCUNE sur
+    // le fond marin, où l'ellipse dégénère en segment horizontal — un trait
+    // mort qui n'apprend rien. La dernière s'arrête à ORBIT_MAX_DEPTH_FRAC·h,
+    // profondeur à laquelle l'ellipse est encore franchement une ellipse.
+    //
+    // Les rangées ne sont PAS équidistantes. On descend la colonne en plaçant
+    // chaque rangée juste sous la précédente, à une distance calculée sur les
+    // demi-axes verticaux RÉELS des deux ellipses concernées (plus une garde
+    // de trois rayons de bille, pour que deux rangées restent distinctes même
+    // quand leurs ellipses sont minuscules). Le non-chevauchement devient
+    // ainsi structurel. L'ancien espacement uniforme, dimensionné par la
+    // seule ellipse de SURFACE, ne garantissait rien dès que le plancher de
+    // deux rangées passait outre la contrainte.
+    var aPx = envMax * ampPx;                // demi-axe vertical en surface (fV = 1)
+    _orbitRows.length = 0;
+    var df = 0;
+    for (var ri = 0; ri < ORBIT_MAX_ROWS; ri++) {
+        _orbitRows.push(df);
+        var rvPrev = _orbitRvAt(df, kh, shKh, aPx);
+        // Point fixe : rv décroît avec la profondeur, la suite converge en
+        // deux ou trois tours depuis la borne haute (deux fois rvPrev).
+        var next = df + (ORBIT_ROW_GAP * 2 * rvPrev + 3 * ORBIT_DOT_R) / colH;
+        for (var it = 0; it < 3; it++) {
+            next = df + (ORBIT_ROW_GAP * (rvPrev + _orbitRvAt(next, kh, shKh, aPx))
+                         + 3 * ORBIT_DOT_R) / colH;
+        }
+        if (next > ORBIT_MAX_DEPTH_FRAC) break;
+        df = next;
+    }
+    var nRows = _orbitRows.length;
+
+    // Étalement. Les écarts minimaux se resserrent vers le bas (les ellipses y
+    // sont minuscules) : les rangées s'entasseraient sous la surface en
+    // laissant toute la moitié basse de la colonne d'eau vide. On dilate donc
+    // les profondeurs pour que la dernière tombe pile sur ORBIT_MAX_DEPTH_FRAC.
+    // Dilater ne peut pas recréer de chevauchement : chaque écart est
+    // multiplié par un facteur ≥ 1 pendant que descendre une rangée ne fait
+    // que rapetisser son ellipse.
+    var lastDf = _orbitRows[nRows - 1];
+    if (nRows > 1 && lastDf > 1e-3 && lastDf < ORBIT_MAX_DEPTH_FRAC) {
+        var kStretch = ORBIT_MAX_DEPTH_FRAC / lastDf;
+        for (var rj = 1; rj < nRows; rj++) _orbitRows[rj] *= kStretch;
+    }
 
     // ── Compression horizontale ───────────────────────────────────────
     // Seule entorse au rapport exact (cf. en-tête). Le facteur est calculé
     // sur la rangée de SURFACE et appliqué tel quel à toutes les autres : la
     // largeur reste ainsi quasi constante avec la profondeur — c'est bien la
-    // physique — pendant que la hauteur, elle, décroît jusqu'à s'annuler.
-    // Le plafond DÉTERMINANT est ORBIT_LAMBDA_FRAC·λ (borne β ≤ 2, cf.
-    // en-tête) : c'est lui qui garantit que la molécule ne double jamais la
-    // forme de la vague. Le plafond par case ne joue qu'aux très grandes λ.
-    var rhTrue = (Math.cosh(kh) / shKh) * rvSurf;
+    // physique — pendant que la hauteur, elle, décroît. Le plafond
+    // DÉTERMINANT est ORBIT_LAMBDA_FRAC·λ (borne β ≤ 2, cf. en-tête) : c'est
+    // lui qui garantit que la molécule ne double jamais la forme de la vague.
+    // Le plafond par case ne joue qu'aux très grandes λ.
+    var rhTrue = (Math.cosh(kh) / shKh) * aPx;
     var capPx  = Math.min(colStep * 0.42, ORBIT_LAMBDA_FRAC * lamPx);
     var hScale = Math.min(1, capPx / Math.max(1, rhTrue));
 
     ctx.save();
-
-    _drawSeabedVagues(ctx, W, H, srcX, seabedY);
     var bead = _orbitBeadSprite();
 
+    // ── Filet vertical ────────────────────────────────────────────────
+    // Relie les positions MOYENNES d'une même colonne : sans lui, la grille se
+    // lit comme un semis de billes indépendantes au lieu d'une sonde plantée
+    // dans l'eau, et l'écrasement des ellipses avec la profondeur ne saute pas
+    // aux yeux.
+    if (nRows > 1) {
+        ctx.strokeStyle = 'rgba(200, 232, 255, 0.20)';
+        ctx.lineWidth   = 1;
+        ctx.setLineDash([2, 5]);
+        ctx.beginPath();
+        var yBot = yLevel + _orbitRows[nRows - 1] * colH;
+        for (var cl = 0; cl < nCols; cl++) {
+            if (_orbitCols[cl].env <= 0) continue;
+            ctx.moveTo(_orbitCols[cl].x, yLevel);
+            ctx.lineTo(_orbitCols[cl].x, yBot);
+        }
+        ctx.stroke();
+        ctx.setLineDash([]);
+    }
+
     // Rangées à l'extérieur : fV et fH ne dépendent que de la profondeur.
-    for (var ri = 0; ri < nRows; ri++) {
-        var cy = yLevel + ri * rowStep;
-        var df = ri / (nRows - 1);           // profondeur en fraction de h
-        var kz = kh * (1 - df);              // k(h − d) ; nul sur le fond marin
+    for (var ri2 = 0; ri2 < nRows; ri2++) {
+        var dfr = _orbitRows[ri2];
+        var cy  = yLevel + dfr * colH;
+        var kz  = kh * (1 - dfr);            // k(h − d)
         if (kz < 0) kz = 0;
-        var fV = Math.sinh(kz) / shKh;                // V/a — échelle EXACTE
-        var fH = (Math.cosh(kz) / shKh) * hScale;     // Hz/a — comprimé
+        var fV  = Math.sinh(kz) / shKh;                // V/a — échelle EXACTE
+        var fH  = (Math.cosh(kz) / shKh) * hScale;     // Hz/a — comprimé
+
+        // Estompage et bille rétrécie avec la profondeur : la colonne se lit
+        // comme une atténuation, et non comme quatre copies du même dessin.
+        var dNorm = dfr / ORBIT_MAX_DEPTH_FRAC;
+        ctx.globalAlpha = 1 - 0.45 * dNorm;
+        var bSize = bead.size * (1 - 0.28 * dNorm);
+        var bHalf = bSize / 2;
 
         for (var ci = 0; ci < nCols; ci++) {
             var col = _orbitCols[ci];
@@ -2862,15 +2969,37 @@ function _drawOrbitesCoupeVagues(ctx, W, H, srcX, yLevel, ampPx) {
             // crêtes, elle traverse donc des zones de ciel clair autant que
             // d'eau profonde — un trait d'une seule couleur y disparaît
             // forcément d'un côté ou de l'autre. Le halo règle les deux cas
-            // d'un coup, et coûte un stroke.
+            // d'un coup, et coûte un stroke. Trait FIN : l'orbite est le
+            // décor, la traînée et la bille sont le sujet.
             ctx.beginPath();
             ctx.ellipse(col.x, cy, rxD, ryD, 0, 0, Math.PI * 2);
-            ctx.strokeStyle = 'rgba(8, 42, 72, 0.38)';
-            ctx.lineWidth   = 2.8;
+            ctx.strokeStyle = 'rgba(8, 42, 72, 0.30)';
+            ctx.lineWidth   = 2.2;
             ctx.stroke();
-            ctx.strokeStyle = 'rgba(216, 246, 255, 0.62)';
-            ctx.lineWidth   = 1.1;
+            ctx.strokeStyle = 'rgba(216, 246, 255, 0.45)';
+            ctx.lineWidth   = 1;
             ctx.stroke();
+
+            // ── Traînée ───────────────────────────────────────────────
+            // Le chemin parcouru pendant la dernière fraction de période, en
+            // trois arcs de plus en plus clairs et épais. Sans elle, RIEN
+            // n'indique le sens de rotation — or c'est tout le propos : la
+            // molécule avance sur la crête et recule dans le creux.
+            // Angle canvas de la bille : elle est en (x − rh·cos φ,
+            // y − rv·sin φ) et le paramétrage de ctx.ellipse en
+            // (x + rx·cos t, y + ry·sin t), d'où t = atan2(−F, −Q).
+            if (rxD > 3 && ryD > 3) {
+                var tAng = Math.atan2(-col.F, -col.Q);
+                for (var k = 0; k < 3; k++) {
+                    ctx.beginPath();
+                    ctx.ellipse(col.x, cy, rxD, ryD, 0,
+                                tAng - ORBIT_TRAIL_ARC * (3 - k) / 3,
+                                tAng - ORBIT_TRAIL_ARC * (2 - k) / 3);
+                    ctx.strokeStyle = ORBIT_TRAIL_COL[k];
+                    ctx.lineWidth   = 1.4 + 0.7 * k;
+                    ctx.stroke();
+                }
+            }
 
             var px = col.x - fH * col.Q * ampPx;
             var py = cy    - fV * col.F * ampPx;
@@ -2883,11 +3012,10 @@ function _drawOrbitesCoupeVagues(ctx, W, H, srcX, yLevel, ampPx) {
             // la surface, jamais masquée), escamotage pour les autres.
             _coupeFieldPairAt(px, srcX, _orbitFP);
             var ySurf = yLevel - _orbitFP[0] * ampPx;
-            if (ri === 0) { if (py < ySurf) py = ySurf; }
+            if (ri2 === 0) { if (py < ySurf) py = ySurf; }
             else if (py < ySurf) continue;
 
-            ctx.drawImage(bead.canvas, px - bead.half, py - bead.half,
-                          bead.size, bead.size);
+            ctx.drawImage(bead.canvas, px - bHalf, py - bHalf, bSize, bSize);
         }
     }
     ctx.restore();
