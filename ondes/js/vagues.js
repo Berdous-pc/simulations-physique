@@ -1747,13 +1747,13 @@ function _applyWavePropsVagues() {
 
 function _updateCReadoutVagues() {
     var el = document.getElementById('ro-c-vagues');
-    if (el) el.innerHTML = fmtSciHTML(simVagues.c_ms, 2);
+    if (el) el.textContent = (simVagues.c_ms * 100).toFixed(1).replace('.', ',');
 }
 
 function _updateWavePropsVagues() {
     if (!simVagues.wavePropsVisible) return;
     var elC = document.getElementById('ro-c-ext-vagues');
-    if (elC) elC.innerHTML = fmtSciHTML(simVagues.c_ms, 2);
+    if (elC) elC.textContent = (simVagues.c_ms * 100).toFixed(1).replace('.', ',');
     var f = simVagues.freq;
     var T = (f > 0) ? 1 / f : 0;
     var elF = document.getElementById('ro-f-vagues');
@@ -1762,7 +1762,7 @@ function _updateWavePropsVagues() {
     if (elT) elT.textContent = T.toFixed(3).replace('.', ',');
     var lambda = simVagues.c_ms * T;
     var elL    = document.getElementById('ro-lambda-vagues');
-    if (elL) elL.innerHTML = fmtSciHTML(lambda, 2);
+    if (elL) elL.textContent = (lambda * 100).toFixed(1).replace('.', ',');
 }
 
 // ══════════════════════════════════════════════════════════════════════
