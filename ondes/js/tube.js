@@ -23,14 +23,40 @@ var MEM_THICKNESS = 14;
 
 // ── Bande basse (règle graduée + position des balises) ────────────────
 // RULER_FONT_MIN : plancher de lisibilité des étiquettes, en px.
+// RULER_TICK_MAJ : hauteur d'un tick principal, plafond de la fraction de
+//   bande qui lui est allouée.
 // RULER_LABEL_MIN_PX : place qu'une étiquette réclame sous la ligne de base
-//   — tick principal (6) + 1 px d'écart + la police à son plancher. En deçà,
+//   — tick principal + 2 px d'écart + la police à son plancher. En deçà,
 //   on renonce aux étiquettes plutôt que de les laisser déborder du canvas.
 // RULER_BAND_MIN_PX : ce même besoin, plus 2 px de garde ; c'est la hauteur
 //   que resizeTube réserve à la bande tant que le tube peut se le permettre.
-var RULER_FONT_MIN     = 13;
-var RULER_LABEL_MIN_PX = 6 + 1 + RULER_FONT_MIN;
+var RULER_FONT_MIN     = 15;
+var RULER_FONT_MAX     = 22;
+var RULER_TICK_MAJ     = 9;
+var RULER_LABEL_MIN_PX = RULER_TICK_MAJ + 2 + RULER_FONT_MIN;
 var RULER_BAND_MIN_PX  = RULER_LABEL_MIN_PX + 2;
+
+// Métriques communes à la règle corde et aux étiquettes de position des
+// balises, qui se posent sur la même ligne de base : les calculer deux fois
+// les désalignait dès que la bande basse était rognée. Mêmes constantes que
+// la règle du tube — les deux bandes ont la même contrainte de lisibilité.
+function _cordeRulerMetrics(H, bottom) {
+    var yRoom = H - bottom;
+    if (yRoom < 6) return null;
+    var tickMaj = Math.min(yRoom * 0.40, RULER_TICK_MAJ);
+    var room    = yRoom - tickMaj - 2;
+    return {
+        yRoom    : yRoom,
+        tickMaj  : tickMaj,
+        tickMin  : tickMaj * 0.55,
+        textY    : bottom + tickMaj + 2,
+        labels   : room >= RULER_FONT_MIN,
+        fontSize : Math.max(RULER_FONT_MIN,
+                            Math.min(RULER_FONT_MAX,
+                                     Math.round(yRoom * 0.75),
+                                     Math.floor(room)))
+    };
+}
 
 // Hauteur de canvas en dessous de laquelle le tube n'est plus dessinable :
 // la bande basse étant plafonnée à 0,34 h, il reste 0,66 h − 4 au tube, et
@@ -67,7 +93,12 @@ function resizeTube() {
     tubeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     // ── Géométrie interne du tube ─────────────────────────────────────
-    var marginH      = 13;   // 5 px de plus de chaque côté → labels règle non croppés
+    // Marges dissymétriques. À droite, il suffit de loger la moitié du
+    // dernier nombre de la règle (« 40 », centré sur tubeRight). À gauche il
+    // faut en plus l'unité « cm », écrite avant la graduation 0 : sous ~26 px
+    // elle chevauchait ce 0 ou se faisait rogner par le bord du canvas.
+    var marginLeft   = 26;
+    var marginRight  = 13;
     var marginTop    = 4;
     // Bande basse : elle porte la règle graduée et les étiquettes de position
     // des balises. Strictement proportionnelle, elle passait sous la place
@@ -81,10 +112,10 @@ function resizeTube() {
     // hauteur — le tube reste le sujet, et sous ~65 px de zone il vaut mieux
     // rogner la règle que le tube. C'est _drawTubeRuler qui décide alors de
     // s'abréger, plutôt que de déborder (cf. RULER_LABEL_MIN_PX).
-    var marginBottom = Math.round(Math.min(Math.max(h * 0.12, RULER_BAND_MIN_PX),
+    var marginBottom = Math.round(Math.min(Math.max(h * 0.13, RULER_BAND_MIN_PX),
                                            h * 0.34));
-    sim.tubeLeft   = marginH + MEM_THICKNESS;
-    sim.tubeRight  = w - marginH;
+    sim.tubeLeft   = marginLeft + MEM_THICKNESS;
+    sim.tubeRight  = w - marginRight;
     sim.tubeTop    = marginTop;
     sim.tubeBottom = Math.max(sim.tubeTop + 20, h - marginBottom);
     sim.tubeLength = sim.tubeRight - sim.tubeLeft;
@@ -1098,7 +1129,7 @@ function _drawTubeRuler(ctx) {
     var mant      = rough / mag;
     var step      = mant < 1.5 ? mag : mant < 3.5 ? 2 * mag : mant < 7.5 ? 5 * mag : 10 * mag;
 
-    var tickMaj   = Math.min(yRoom * 0.40, 6);   // hauteur tick principal
+    var tickMaj   = Math.min(yRoom * 0.40, RULER_TICK_MAJ);   // hauteur tick principal
     var tickMin   = tickMaj * 0.55;               // hauteur tick secondaire
 
     // La police se cale sur la place RESTANTE sous les ticks, et plus
@@ -1108,28 +1139,29 @@ function _drawTubeRuler(ctx) {
     // quoi tenir ; `labels` couvre le cas où la bande a malgré tout été
     // sacrifiée au tube (zone d'animation très basse) — mieux vaut une règle
     // réduite à ses ticks qu'une rangée de chiffres tronqués.
-    var room      = yRoom - tickMaj - 1;
+    var room      = yRoom - tickMaj - 2;
     var labels    = room >= RULER_FONT_MIN;
     var fontSize  = Math.max(RULER_FONT_MIN,
-                             Math.min(18, Math.round(yRoom * 0.75), Math.floor(room)));
+                             Math.min(RULER_FONT_MAX,
+                                      Math.round(yRoom * 0.75), Math.floor(room)));
 
     ctx.save();
-    ctx.font         = fontSize + 'px monospace';
+    ctx.font         = 'bold ' + fontSize + 'px monospace';
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'top';
 
     // Ligne de base horizontale (depuis la membrane jusqu'à la fin du tube)
-    ctx.strokeStyle = '#8a9aaa';
-    ctx.lineWidth   = 1;
+    ctx.strokeStyle = '#5c6f7e';
+    ctx.lineWidth   = 1.5;
     ctx.beginPath();
     ctx.moveTo(sim.tubeLeft, yBase);
     ctx.lineTo(sim.tubeRight, yBase);
     ctx.stroke();
 
     // Ticks principaux et labels
-    ctx.strokeStyle = '#5a6a78';
-    ctx.lineWidth   = 1;
-    ctx.fillStyle   = '#5a6a78';
+    ctx.strokeStyle = '#243039';
+    ctx.lineWidth   = 2;
+    ctx.fillStyle   = '#243039';
 
     for (var cm = 0; cm <= xMaxCm + step * 0.01; cm += step) {
         var xc = sim.tubeLeft + cm / cmPerPx;
@@ -1143,12 +1175,12 @@ function _drawTubeRuler(ctx) {
         // Label : "0" à l'origine, sinon valeur en cm
         if (!labels) continue;
         var lbl = cm === 0 ? '0' : cm.toFixed(0);
-        ctx.fillText(lbl, xc, yBase + tickMaj + 1);
+        ctx.fillText(lbl, xc, yBase + tickMaj + 2);
     }
 
     // Ticks secondaires (mi-pas)
-    ctx.strokeStyle = '#a0b0bc';
-    ctx.lineWidth   = 0.8;
+    ctx.strokeStyle = '#63767f';
+    ctx.lineWidth   = 1.4;
     var halfStep = step / 2;
     for (var cm2 = halfStep; cm2 <= xMaxCm + halfStep * 0.01; cm2 += step) {
         var xc2 = sim.tubeLeft + cm2 / cmPerPx;
@@ -1163,11 +1195,13 @@ function _drawTubeRuler(ctx) {
     // Même condition que les chiffres : elle est écrite sur la même ligne de
     // base, elle serait donc coupée exactement en même temps.
     if (labels) {
-        ctx.fillStyle    = '#7a8a96';
-        ctx.font         = Math.max(12, fontSize - 1) + 'px monospace';
+        ctx.fillStyle    = '#37474f';
+        ctx.font         = 'bold ' + Math.max(13, fontSize - 1) + 'px monospace';
         ctx.textAlign    = 'right';
         ctx.textBaseline = 'top';
-        ctx.fillText('cm', sim.tubeLeft - 8, yBase + tickMaj + 1);
+        // Écrit avant la graduation 0 ; c'est marginLeft (cf. resizeTube) qui
+        // garantit la place, entre le bord du canvas et ce 0.
+        ctx.fillText('cm', sim.tubeLeft - 8, yBase + tickMaj + 2);
     }
 
     ctx.restore();
@@ -1586,18 +1620,18 @@ function _drawOneBeacon(ctx, x, color, label) {
     var yRoom    = H - y2;
     if (yRoom < 6) return;
 
-    var tickMaj   = Math.min(yRoom * 0.40, 6);
+    var tickMaj   = Math.min(yRoom * 0.40, RULER_TICK_MAJ);
     // Même calcul que _drawTubeRuler : l'étiquette est écrite sur la même
     // ligne de base, dans la même bande, avec le même plancher de police —
     // elle débordait donc du canvas au même moment. Sous la place
     // nécessaire, on la tait plutôt que de la laisser tronquée.
-    var room      = yRoom - tickMaj - 1;
+    var room      = yRoom - tickMaj - 2;
     if (room < RULER_FONT_MIN) return;
     var fontSize  = Math.max(RULER_FONT_MIN,
                              Math.min(24, Math.round(yRoom * 0.95), Math.floor(room)));
 
     var txt = fmtFR(xCm, 1);
-    var ty  = y2 + tickMaj + 1;
+    var ty  = y2 + tickMaj + 2;
 
     ctx.save();
     ctx.font         = 'bold ' + fontSize + 'px monospace';
@@ -2206,7 +2240,7 @@ function resizeCorde() {
     // faisait couper par le bord du canvas (cf. RULER_BAND_MIN_PX).
     var marginH      = CORDE_MARGIN_H;
     var marginTop    = 10;
-    var marginBottom = Math.round(Math.min(Math.max(h * 0.12, RULER_BAND_MIN_PX),
+    var marginBottom = Math.round(Math.min(Math.max(h * 0.13, RULER_BAND_MIN_PX),
                                            h * 0.34));
 
     simCorde.cordeTop    = marginTop;
@@ -2914,25 +2948,18 @@ function _drawOneCordeBeacon(ctx, x, color, label) {
     if (L <= 0) return;
     var mPerPx   = CORDE_LENGTH_M / L;
     var xM       = (x - simCorde.cordeLeft) * mPerPx;
-    var H        = tubeCanvas.clientHeight;
-    var yRoom    = H - bottom;
-    if (yRoom < 6) return;
-
-    var tickMaj  = Math.min(yRoom * 0.40, 6);
-    // Même règle que côté Son : la police se cale sur la place restante sous
-    // les ticks, et l'étiquette est tue plutôt que tronquée si la bande a été
-    // sacrifiée à la corde.
-    var room     = yRoom - tickMaj - 1;
-    if (room < RULER_FONT_MIN) return;
-    var fontSize = Math.max(RULER_FONT_MIN,
-                            Math.min(18, Math.round(yRoom * 0.75), Math.floor(room)));
+    var H  = tubeCanvas.clientHeight;
+    // Mêmes métriques que la règle elle-même : l'étiquette est tue plutôt
+    // que tronquée si la bande a été sacrifiée à la corde.
+    var rm = _cordeRulerMetrics(H, bottom);
+    if (!rm || !rm.labels) return;
 
     ctx.save();
     ctx.fillStyle    = color;
-    ctx.font         = 'bold ' + fontSize + 'px monospace';
+    ctx.font         = 'bold ' + rm.fontSize + 'px monospace';
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'top';
-    ctx.fillText(fmtFR(xM, 2), x, bottom + tickMaj + 1);
+    ctx.fillText(fmtFR(xM, 2), x, rm.textY);
     ctx.restore();
 }
 
@@ -2944,8 +2971,8 @@ function _drawCordeRuler(ctx) {
 
     var H        = tubeCanvas.clientHeight;
     var yBase    = simCorde.cordeBottom;
-    var yRoom    = H - yBase;
-    if (yRoom < 6) return;
+    var rm       = _cordeRulerMetrics(H, yBase);
+    if (!rm) return;
 
     var mPerPx   = CORDE_LENGTH_M / L;
     var xMaxM    = CORDE_LENGTH_M;
@@ -2957,32 +2984,28 @@ function _drawCordeRuler(ctx) {
     var step     = mant < 1.5 ? mag : mant < 3.5 ? 2 * mag : mant < 7.5 ? 5 * mag : 10 * mag;
     var decimals = step < 1 ? 1 : 0;
 
-    var tickMaj  = Math.min(yRoom * 0.40, 6);
-    var tickMin  = tickMaj * 0.55;
-    // Cf. _drawTubeRuler : police calée sur la place restante, étiquettes
-    // tues plutôt que tronquées.
-    var room     = yRoom - tickMaj - 1;
-    var labels   = room >= RULER_FONT_MIN;
-    var fontSize = Math.max(RULER_FONT_MIN,
-                            Math.min(18, Math.round(yRoom * 0.75), Math.floor(room)));
+    var tickMaj  = rm.tickMaj;
+    var tickMin  = rm.tickMin;
+    var labels   = rm.labels;
+    var fontSize = rm.fontSize;
 
     ctx.save();
-    ctx.font         = fontSize + 'px monospace';
+    ctx.font         = 'bold ' + fontSize + 'px monospace';
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'top';
 
     // Ligne de base
-    ctx.strokeStyle = '#8a9aaa';
-    ctx.lineWidth   = 1;
+    ctx.strokeStyle = '#5c6f7e';
+    ctx.lineWidth   = 1.5;
     ctx.beginPath();
     ctx.moveTo(simCorde.cordeLeft, yBase);
     ctx.lineTo(simCorde.cordeRight, yBase);
     ctx.stroke();
 
     // Ticks principaux
-    ctx.strokeStyle = '#5a6a78';
-    ctx.lineWidth   = 1;
-    ctx.fillStyle   = '#5a6a78';
+    ctx.strokeStyle = '#243039';
+    ctx.lineWidth   = 2;
+    ctx.fillStyle   = '#243039';
 
     for (var m_ = 0; m_ <= xMaxM + step * 0.01; m_ += step) {
         var xc = simCorde.cordeLeft + m_ / mPerPx;
@@ -2991,12 +3014,12 @@ function _drawCordeRuler(ctx) {
         ctx.moveTo(xc, yBase);
         ctx.lineTo(xc, yBase + tickMaj);
         ctx.stroke();
-        if (labels) ctx.fillText(m_ === 0 ? '0' : fmtFR(m_, decimals), xc, yBase + tickMaj + 1);
+        if (labels) ctx.fillText(m_ === 0 ? '0' : fmtFR(m_, decimals), xc, rm.textY);
     }
 
     // Ticks secondaires
-    ctx.strokeStyle = '#a0b0bc';
-    ctx.lineWidth   = 0.8;
+    ctx.strokeStyle = '#63767f';
+    ctx.lineWidth   = 1.4;
     var halfStep = step / 2;
     for (var m2 = halfStep; m2 <= xMaxM + halfStep * 0.01; m2 += step) {
         var xc2 = simCorde.cordeLeft + m2 / mPerPx;
@@ -3009,10 +3032,10 @@ function _drawCordeRuler(ctx) {
 
     // Unité — même ligne de base que les chiffres, donc même condition
     if (labels) {
-        ctx.fillStyle    = '#7a8a96';
-        ctx.font         = Math.max(12, fontSize - 1) + 'px monospace';
+        ctx.fillStyle    = '#37474f';
+        ctx.font         = 'bold ' + Math.max(13, fontSize - 1) + 'px monospace';
         ctx.textAlign    = 'right';
-        ctx.fillText('m', simCorde.cordeLeft - 8, yBase + tickMaj + 1);
+        ctx.fillText('m', simCorde.cordeLeft - 8, rm.textY);
     }
 
     ctx.restore();
