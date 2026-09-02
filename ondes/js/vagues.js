@@ -108,6 +108,18 @@ var COUPE_STEEP_EXP  = 0.35;
 // du graphe y(x). À garder synchronisée avec le max du slider.
 var VAGUES_AMPL_MAX = 3.0;
 
+// Grossissement final de la vue en coupe. Appliqué à la SORTIE de
+// _coupeAmpPx, et non à sa `base` : la compression de raideur se calibre sur
+// base × VAGUES_AMPL_MAX, si bien que grossir la base n'en ressortirait qu'à
+// la puissance COUPE_STEEP_EXP (1,5 → ×1,15 seulement). En sortie, le facteur
+// est exact dans les deux régimes.
+//
+// Contrepartie assumée : le garde-fou de raideur est relâché d'autant — la
+// crête maximale dessinée passe de COUPE_STEEP_FRAC·λ à 1,5·COUPE_STEEP_FRAC·λ,
+// soit ~0,24 λ à fond de course. On reste sous la borne λ/π des trajectoires
+// de molécules (cf. ORBIT_LAMBDA_FRAC).
+var COUPE_AMP_BOOST = 1.5;
+
 // Amplitude visuelle de la vue de profil, en px pour une enveloppe de 1.
 // Point d'entrée UNIQUE : la vue en coupe, la transition 3D et le hit-test
 // des balises doivent impérativement partager la même valeur, sinon la
@@ -117,11 +129,11 @@ var VAGUES_AMPL_MAX = 3.0;
 function _coupeAmpPx(H) {
     var base = Math.min(H * 0.18, 55) * VAGUES_VIS_AMP_SCALE;
     var lam  = (simVagues.freq > 0) ? simVagues.c_sim / simVagues.freq : 0;
-    if (!(lam > 0)) return base;
+    if (!(lam > 0)) return base * COUPE_AMP_BOOST;
     var aMax = base * VAGUES_AMPL_MAX;       // crête demandée à fond de course (px)
     var aRef = COUPE_STEEP_FRAC * lam;       // seuil de compression (px)
-    if (aMax <= aRef || aMax < 1e-6) return base;   // sous le seuil : identité
-    return base * Math.pow(aRef / aMax, 1 - COUPE_STEEP_EXP);
+    if (aMax <= aRef || aMax < 1e-6) return base * COUPE_AMP_BOOST;  // sous le seuil : identité
+    return base * Math.pow(aRef / aMax, 1 - COUPE_STEEP_EXP) * COUPE_AMP_BOOST;
 }
 
 // ── Transition vue du dessus ↔ vue en coupe ───────────────────────────

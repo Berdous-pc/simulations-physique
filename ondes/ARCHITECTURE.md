@@ -1094,6 +1094,15 @@ f = 1 Hz et h = 10 mm (λ ≈ 410 px) la houle est rendue à l'identique.
 L'amplitude reste par ailleurs lisible quantitativement sur le graphe
 y(x), gradué en cm et auto-échelonné.
 
+Un dernier facteur, `COUPE_AMP_BOOST` (1,5), grossit le résultat. Il est
+appliqué à la **sortie** de la fonction et non à sa `base` : la compression se
+calibrant sur `base × VAGUES_AMPL_MAX`, grossir la base n'en ressortirait qu'à
+la puissance `COUPE_STEEP_EXP` (×1,5 donnerait ×1,15 à l'écran). En sortie, le
+facteur est exact dans les deux régimes — mais il relâche d'autant le garde-fou
+de raideur : la crête maximale passe de `COUPE_STEEP_FRAC·λ` à
+`1,5·COUPE_STEEP_FRAC·λ`, soit ~0,24 λ à fond de course, ce qui reste sous la
+borne λ/π des trajectoires de molécules.
+
 ### Trajectoire des molécules d'eau (vue en coupe)
 
 Option `simVagues.showOrbits`, rendue par `_drawOrbitesCoupeVagues()` en
