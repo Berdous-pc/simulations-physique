@@ -1128,10 +1128,11 @@ la source, l'axe et les balises.
 Objectif pédagogique : montrer qu'il n'y a **pas de transport de matière**
 — la molécule décrit une boucle fermée pendant que la forme, elle, avance.
 
-L'option marche dans les **deux modes de source**, mais ne dessine pas la même
-chose : une *orbite* en Sinusoïdale, une *trace* en Impulsion (cf. les deux
-sous-sections en fin de section). Ce qui leur est commun — colonnes, rangées,
-facteurs d'Airy, borne λ/π — est décrit d'abord.
+L'option marche dans les **deux modes de source**, et y dessine la même chose :
+la bille, et derrière elle la **traînée** du chemin qu'elle vient de parcourir.
+Aucune courbe n'est peinte. L'ellipse d'Airy reste la physique du tracé — tout
+ce qui suit la décrit — mais elle n'apparaît jamais à l'écran. Cf. « Une
+traînée, pas l'ellipse » en fin de section.
 
 Le modèle est la **théorie d'Airy à profondeur finie**, celle qui
 correspond au `c = √(gh)` de l'onglet — et non le cas eau profonde des
@@ -1158,13 +1159,12 @@ segment de la rangée du bas n'aurait pas de sens visible.
 
 Deux détails de rendu à ne pas défaire :
 
-- **Orbite et molécule sont doublées d'un halo sombre.** L'orbite de la
+- **Traînée et molécule sont doublées d'un halo sombre.** La traînée de la
   rangée de surface monte jusqu'au niveau des crêtes : elle traverse donc
   des zones de ciel clair autant que d'eau profonde, et un trait d'une
-  seule couleur y disparaît forcément d'un côté ou de l'autre. L'ellipse
-  est tracée deux fois (halo large sombre, puis trait clair fin) et la
-  bille porte un liseré sombre appuyé. Un essai antérieur avec un sillage
-  en arcs dégressifs a été abandonné : segmenté, il rendait mal.
+  seule couleur y disparaît forcément d'un côté ou de l'autre. Un halo
+  sombre est donc passé d'abord sur toute sa longueur, puis les trois
+  tronçons clairs par-dessus ; la bille porte un liseré sombre appuyé.
 - **La molécule est un sprite mis en cache** (`_orbitBeadSprite`), pas un
   dégradé radial recréé à chaque frame — il y en aurait une trentaine par
   image. Les galets du fond ont des positions **déterministes** : un
@@ -1178,16 +1178,18 @@ l'échelle **verticale** devant l'horizontale ; c'est `COUPE_STEEP_FRAC`
 qui suit ne tiendrait.
 
 Même borné, il reste **impossible** d'avoir simultanément (a) la molécule
-de surface collée à l'écume, (b) le rapport d'aplatissement exact et (c)
-une orbite plus étroite que λ. L'objectif étant de montrer l'absence de
-transport de matière, **on garde (a), on lâche (b)** :
+de surface à l'échelle exacte de la houle, (b) le rapport d'aplatissement
+exact et (c) une boucle plus étroite que λ. L'objectif étant de montrer
+l'absence de transport de matière, **on garde (a), on lâche (b)** :
 
 - **Demi-axe vertical : échelle exacte de la surface.** La molécule du
-  haut est rigoureusement sur l'écume, d'où la synchronisation visible
-  avec l'avancement de la vague. L'ellipse de cette rangée couvre
-  exactement la bande balayée par la houle — il est donc *normal* qu'une
-  partie de son tracé soit momentanément au-dessus de la surface locale :
-  c'est la trajectoire, pas de l'eau.
+  haut monte exactement à la crête quand la crête arrive, et descend au
+  creux dans le creux, d'où la synchronisation visible avec l'avancement
+  de la vague ; sa boucle couvre exactement la bande balayée par la houle.
+  Elle n'est pas *collée* à l'écume pour autant — son abscisse est décalée
+  de `ξ` tandis que l'écume est tracée en eulérien — et il est donc
+  *normal* qu'une partie de son tracé soit momentanément au-dessus de la
+  surface locale : c'est la trajectoire, pas de l'eau.
 - **Demi-axe horizontal : comprimé par un `hScale` global**, calculé sur
   la rangée de surface et appliqué tel quel aux autres. La largeur reste
   ainsi quasi constante avec la profondeur — c'est la physique — pendant
@@ -1223,27 +1225,52 @@ confondre les deux était précisément le bug d'origine.
   puissent être en opposition, seulement une bosse qui passe.
 
 Les rangées gardent leur profondeur moyenne **exacte** (une orbite ne
-dérive pas avec la vague). Un garde-fou saute la molécule d'une rangée
-intermédiaire qui se retrouverait au-dessus de la surface locale — cas
-possible aux très fortes amplitudes seulement ; la rangée de surface, qui
-*est* la surface, n'est jamais masquée.
+dérive pas avec la vague).
+
+**La rangée de surface est posée sur l'écume, les autres non.** C'est le point
+qu'il faut comprendre avant de retoucher le placement des billes, parce qu'il
+n'est pas symétrique.
+
+La bille est **lagrangienne** : elle est en `(x₀ + ξ, y₀ + ζ)`. La surface
+dessinée est **eulérienne** : `ζ(x)`, tracé à l'abscisse non déplacée. En
+théorie linéaire les deux coïncident au premier ordre — mais la vue en coupe
+exagère le vertical d'un facteur ~35 et comprime l'horizontal, si bien qu'elles
+**divergent visiblement à l'écran**. Prendre l'abscisse de l'une et la hauteur
+de l'autre, comme on le faisait, n'a de sens dans aucune des deux descriptions.
+
+- **Rangée de surface** : sa hauteur est celle de la surface dessinée *à
+  l'abscisse où la bille est peinte* (`_waveFieldCoupeAt(px)`), et sa traînée
+  est posée de la même façon (`snapSurf`), sans quoi la bille flotterait à côté
+  de son propre tracé. Elle suit donc l'écume exactement, monte au sommet de la
+  crête et descend au fond du creux, tout en gardant son va-et-vient
+  horizontal. En sinusoïdal cela ne change presque rien (`Q = 0` quand `F` est
+  maximal, la bille était déjà sur la crête) ; en **Impulsion** c'est
+  déterminant, car `ξ` ne s'annule pas au sommet de la crête et la bille
+  flottait à droite de l'impulsion, à la bonne hauteur mais décalée.
+- **Rangées profondes** : lagrangien pur. Elles n'ont aucune courbe où se
+  poser, et n'en ont pas besoin.
+
+**Aucun test conditionnel ne doit revenir.** Il y en a eu un — molécule
+comparée à la surface puis rabattue dessus ou escamotée quand elle passait
+au-dessus. Un test qui ne se déclenche qu'une partie du cycle introduit
+forcément une discontinuité : en sinusoïdal il précipitait la molécule au fond
+au quart de période, alors qu'elle devait passer à mi-hauteur. La borne λ/π et
+l'espacement des rangées suffisent à garder les rangées profondes sous l'eau.
 
 La phase ne coûte rien : le champ de la coupe vaut `F = env·sin(φ)` et la
 composante horizontale est sa **quadrature** `Q = env·cos(φ)`, les deux
 renvoyées par `_coupeFieldPairAt()` — dont `out[0]` doit rester la copie
-exacte de `_waveFieldCoupeAt`. `√(F² + Q²)` redonne l'amplitude locale
-sans ré-évaluer les atténuations, si bien que les orbites rétrécissent
-aussi avec la distance à S, gratuitement. `ζ = +(V/a)·F` et
-`ξ = −(Hz/a)·Q` : la molécule avance sur la crête et recule dans le creux,
-sens de rotation correct pour une onde allant vers +x.
+exacte de `_waveFieldCoupeAt`. `ζ = +(V/a)·F` et `ξ = −(Hz/a)·Q` : la
+molécule avance sur la crête et recule dans le creux, sens de rotation
+correct pour une onde allant vers +x. Les deux atténuations étant déjà dans
+`F` et `Q`, les boucles rétrécissent avec la distance à S gratuitement.
 
 #### Mise en page nominale, et molécules au repos
 
 La **mise en page** — profondeur des rangées, `hScale` — est calculée sur
 l'amplitude **nominale** : celle que les curseurs promettent, rendue par
 `_coupeEnvNomAt()`, qui n'est que `_coupeFieldPairAt` privée de sa lecture
-d'historique. Seule la **taille dessinée** des orbites suit l'enveloppe
-instantanée `√(F² + Q²)`.
+d'historique.
 
 Cette séparation porte trois choses d'un coup, et c'est pour cela qu'il ne faut
 pas revenir à l'ancien maximum instantané :
@@ -1252,32 +1279,57 @@ pas revenir à l'ancien maximum instantané :
   recalculée à chaque frame sur une enveloppe qui grandissait ;
 - **les molécules existent avant l'onde.** Source coupée, la grille et le
   filet vertical sont en place, les billes posées sur leur position moyenne, et
-  c'est l'onde qui vient les mettre en mouvement quand elle arrive. Les orbites,
-  elles, n'apparaissent qu'avec le front : dessiner la boucle d'avance
-  donnerait la réponse à la place de l'élève ;
+  c'est l'onde qui vient les mettre en mouvement quand elle arrive ;
 - le mode Impulsion devient représentable, puisqu'il n'a aucune enveloppe
   stationnaire à mesurer.
 
-#### Mode Impulsion — la trace, pas l'orbite
+#### Une traînée, pas l'ellipse
 
-Sans période, pas d'orbite fermée. `_orbitFillTrace()` échantillonne à la place
-le **chemin réellement parcouru**, et `_orbitStrokeTrace()` le trace.
+`_orbitFillTrace()` échantillonne le **chemin réellement parcouru** par la
+molécule sur la dernière fraction de période (`ORBIT_TRAIL_ARC`),
+`_orbitStrokeTrace()` le peint en trois tronçons de plus en plus vifs vers la
+bille. C'est vrai des **deux modes** : l'ellipse d'Airy donne les demi-axes qui
+mettent ce chemin à l'échelle de sa rangée, et rien de plus.
+
+**Aucune courbe fermée n'est peinte, et il ne faut pas en réintroduire.** Deux
+tentatives ont échoué :
+
+- l'**ellipse pré-dessinée** surgissait d'un coup, complète, dès que le front
+  touchait la colonne — avant que la molécule n'en ait parcouru le moindre arc
+  — et disparaissait aussi sèchement au passage de l'arrière du train ;
+- la **boucle tracée au fur et à mesure** (balayage d'une période entière)
+  réglait ce point mais en créait un pire : tant qu'une partie du passé balayé
+  est au repos, la polyligne tire un segment droit de l'arc parcouru jusqu'au
+  point de repos. C'est le « rayon » qui vibrait au centre de l'ellipse
+  jusqu'à ce qu'elle se referme, et qui rendait le mode Impulsion illisible —
+  lui n'a jamais de boucle achevée, le défaut y était donc permanent.
+
+La traînée courte n'a ni l'un ni l'autre défaut, et elle porte déjà la seule
+information que la courbe ajoutait : le sens de parcours.
 
 Le mécanisme tient en une remarque : la position d'une molécule à l'instant
 `t − Δ` est le champ lu à la distance `r + c·Δ`, aux **mêmes** échantillons
 d'historique. Le passé d'une molécule est donc littéralement la forme de l'onde
-devant elle, et la trace se lit d'un seul balayage vers la droite — sans rien
+devant elle, et la traînée se lit d'un seul balayage vers la droite — sans rien
 mémoriser, donc sans rien à réinitialiser au resize, à la pause ou au
-changement de curseur. Longueur balayée : `c·T_IMPULSE`, l'étendue du motif,
-soit exactement une boucle. Les points au-delà du front ressortent à `(0, 0)`,
-c'est-à-dire à la position de repos — où la molécule était : il n'y a aucune
+changement de curseur. Longueur balayée : `λ·ORBIT_TRAIL_ARC/2π`. Les points
+au-delà du front — ou en deçà de l'arrière du train — ressortent à `(0, 0)`,
+c'est-à-dire à la position de repos, où la molécule était effectivement : la
+traînée naît et meurt donc toute seule avec le passage de l'onde, sans aucune
 condition d'arrêt à écrire.
 
-Une trace par **colonne** (≤ 9 × `ORBIT_TRACE_PTS`), partagée par les quatre
-rangées qui ne font que la mettre à l'échelle par `fV` et `fH` : ~360 lectures
+Une traînée par **colonne** (≤ 9 × `ORBIT_TRACE_PTS`), partagée par les quatre
+rangées qui ne font que la mettre à l'échelle par `fV` et `fH` : ~150 lectures
 par frame, contre les ~120 000 points du rendu de la vue de dessus.
 
-Ce que la trace montre est plus fort que l'ellipse : la molécule boucle et
+L'atténuation appliquée est celle de la **colonne**, pas celle du point lu :
+`_orbitFillTrace` lit le déplacement émis nu (`_vaguesSrcPairAtR`) et
+l'atténue une fois, en `r`. Passer par `_coupeFieldPairAt` reviendrait à
+atténuer le passé de la molécule comme s'il appartenait au point plus lointain
+où on est allé le chercher, et la traînée rapetissait vers sa queue d'un
+facteur sans contenu physique.
+
+En **Impulsion**, la molécule boucle et
 revient **exactement** à son point de départ, une fois, sous les yeux de
 l'élève. C'est une propriété du motif, pas un effet de dessin — le déplacement
 horizontal étant l'intégrale du déplacement vertical (en eau peu profonde
@@ -1296,6 +1348,31 @@ ne se distinguent qu'ici, hors bande étroite. Seule l'intégrale est juste.
 Sa crête vaut `IMPULSE_Q_PEAK` (= `IMPULSE_V_NORM` ≈ 1,54) là où celle du
 déplacement vaut 1 : la compression horizontale en tient compte, sans quoi la
 trace franchirait la borne λ/π de 54 %.
+
+#### Rampe de la quadrature (sinusoïdal)
+
+`simVagues.sinQRamp`, dans `stepSourceVagues`. Le déplacement démarre à zéro
+tout seul (`sin(0) = 0`) et finit à zéro (motifs entiers) ; **pas la
+quadrature**, puisque `cos(0) = 1`. Gravée nue, elle saute de 0 à 1 au premier
+échantillon émis et retombe de 1 à 0 au dernier — deux discontinuités qui
+**téléportent latéralement la molécule** au passage du front puis de l'arrière
+du train, son déplacement horizontal étant porté par ce canal.
+
+La quadrature est donc fondue sur une période au démarrage, et ramenée à zéro
+sur ce qu'il reste du dernier motif à l'arrêt (d'où le `min` avec la fraction
+de période restante, sans quoi la rampe n'aurait pas le temps d'atteindre zéro
+si l'on coupe en fin de motif). Le facteur ne dépend que du temps d'émission,
+jamais de la phase : il n'altère pas la forme de la boucle, il l'ouvre puis la
+referme.
+
+**Pourquoi pas la vraie primitive**, qui vaudrait `cos φ − 1` pour une source
+partie du repos : elle est bien continue, mais son terme constant décale le
+*centre* de la boucle d'un demi-axe vers l'aval — la molécule tournerait à côté
+de son filet au lieu d'autour, exactement l'inverse de ce que l'option montre.
+Ce terme est le transitoire de démarrage d'un batteur, que le retour
+d'écoulement (non modélisé) annule dans la réalité. L'impulsion, elle, n'a
+besoin d'aucune rampe : sa quadrature est nulle aux deux bouts par
+construction.
 
 Le bouton vit dans une **seconde bande** `#orbites-btns`, posée sous
 `#tube-top-btns` — même dispositif que le bouton « Décomposer » de la page
