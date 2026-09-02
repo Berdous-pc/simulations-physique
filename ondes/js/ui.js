@@ -317,6 +317,12 @@ function onSourceModeChangeSon() {
     _dptClear(1);
     _dptClear(2);
 
+    // Le chronomètre suit la même règle que le graphe ci-dessus : il
+    // mesure une émission, et changer de mode y met fin. Le laisser
+    // courir afficherait une durée sans rapport avec ce que montrent
+    // désormais les graphes.
+    resetChrono('son');
+
     if (wasContinuous) _stopEmissionSon();
 
     _applySourceModeSon();
@@ -885,6 +891,9 @@ function onSourceModeChangeCorde() {
     simCorde.ytTimeOrigin = null;
     _ytClearCorde(1);
     _ytClearCorde(2);
+
+    // Même règle que pour le graphe ci-dessus (cf. onSourceModeChangeSon).
+    resetChrono('corde');
 
     if (wasContinuous) _stopEmissionCorde();
 
