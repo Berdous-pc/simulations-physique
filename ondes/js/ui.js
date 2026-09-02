@@ -186,6 +186,7 @@ function loop(ts) {
         if (!simVagues.paused) {
             var dtSimV = dtReal * (simVagues.speedFactor || 1.0);
             simVagues.simTime += dtSimV;
+            chronoTick('vagues', dtSimV);
             addSourceSampleVagues(simVagues.simTime);
 
             while (simVagues.simTime - lastYtUpdateV >= VAGUES_YT_SAMPLE_DT) {
@@ -206,6 +207,7 @@ function loop(ts) {
         if (!simVagues.paused) {
             _updateCReadoutVagues();
             _updateWavePropsVagues();
+            _updateChrono('vagues');
         }
     }
 }
@@ -636,6 +638,15 @@ var CHRONO_DEFS = {
         sim         : function() { return simCorde; },
         noPeriod    : function() { return _cordeModeIsImpulseOrFree(); },
         linkDefault : function(mode) { return mode === 'sinus' || mode === 'periodic'; }
+    },
+    vagues: {
+        sim         : function() { return simVagues; },
+        //  La source Vagues est sinusoïdale et toujours en marche : le
+        //  comptage en T a donc toujours un sens. Cela changera avec le
+        //  mode Impulsion, qui apportera aussi la case « Lier » et le
+        //  linkDefault correspondant.
+        noPeriod    : function() { return false; },
+        linkDefault : function()  { return false; }
     }
 };
 
@@ -644,7 +655,8 @@ var CHRONO_DEFS = {
 //  doit avoir lieu que si la valeur a changé.
 var chronos = {
     son   : { running: false, elapsed: 0, periods: 0, unit: 's', lastTxt: '' },
-    corde : { running: false, elapsed: 0, periods: 0, unit: 's', lastTxt: '' }
+    corde : { running: false, elapsed: 0, periods: 0, unit: 's', lastTxt: '' },
+    vagues: { running: false, elapsed: 0, periods: 0, unit: 's', lastTxt: '' }
 };
 
 //  Icônes marche/arrêt dessinées en SVG plutôt qu'avec les caractères ▶ et
@@ -1293,11 +1305,11 @@ function setMainTab(tab) {
     if (srcCorde)  srcCorde.style.display  = (tab === 'corde') ? '' : 'none';
     if (srcVagues) srcVagues.style.display = (tab === 'vagues') ? '' : 'none';
 
-    // Chronomètre : une box par onglet (Son, Corde) — aucune en Vagues
-    var chronoC = document.getElementById('chrono-corde');
-    var chronoS = document.getElementById('chrono-son');
-    if (chronoC) chronoC.style.display = (tab === 'corde') ? '' : 'none';
-    if (chronoS) chronoS.style.display = (tab === 'son')   ? '' : 'none';
+    // Chronomètre : une box par onglet, une seule visible à la fois
+    ['son', 'corde', 'vagues'].forEach(function(t) {
+        var box = document.getElementById('chrono-' + t);
+        if (box) box.style.display = (t === tab) ? '' : 'none';
+    });
 
     // ── Boutons son-only / vagues-only au-dessus du canvas ───────────
     var sonOnlyBtns = document.querySelectorAll('.son-only');

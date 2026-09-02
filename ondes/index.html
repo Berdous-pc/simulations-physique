@@ -146,6 +146,32 @@
           </div>
         </div>
 
+        <!-- Vagues : pas de case « Lier » pour l'instant — l'onglet n'a pas
+             encore de bouton Activer à quoi la lier. Elle arrivera avec la
+             box source. -->
+        <div class="chrono-box" id="chrono-vagues" style="display:none;">
+          <div class="chrono-display">
+            <span class="chrono-value" id="chrono-value-vagues">0,00</span>
+            <span class="chrono-unit-lbl" id="chrono-unit-lbl-vagues">s</span>
+          </div>
+          <div class="chrono-ctrl">
+            <button class="chrono-btn" id="btn-chrono-start-vagues"
+                    onclick="toggleChrono('vagues')" title="Démarrer le chronomètre"><svg
+                    class="chrono-ico" viewBox="0 0 12 12" aria-hidden="true"><polygon
+                    points="3.5,2 10,6 3.5,10"/></svg></button>
+            <button class="chrono-btn" id="btn-chrono-reset-vagues"
+                    onclick="resetChrono('vagues')" title="Remettre le chronomètre à zéro">⟲</button>
+            <span class="chrono-units">
+              <button class="chrono-unit active" id="btn-chrono-unit-s-vagues"
+                      onclick="setChronoUnit('vagues', 's')"
+                      title="Compter en secondes">s</button>
+              <button class="chrono-unit" id="btn-chrono-unit-T-vagues"
+                      onclick="setChronoUnit('vagues', 'T')"
+                      title="Compter en multiples de la période T">T</button>
+            </span>
+          </div>
+        </div>
+
       <div id="source-box">
         <!-- Source Son (visible quand tab Son actif) -->
         <div id="source-son">

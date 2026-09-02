@@ -18,7 +18,48 @@ var BLOCK_V               = 2;     // taille des blocs de rendu (px) — 2 pour 
 var VAGUES_AMP_GAIN       = 1.0;   // gain visuel appliqué au champ calculé (aligné sur surfaces.js — pas de sur-contraste)
 var VAGUES_VIS_AMP_SCALE  = 5/6;   // réduit l'amplitude visuelle animation (3→équivalent 2.5)
 var C_BASE_VAGUES         = 150;   // px/s par m/s — recalibré au resize
-var COUPE_LEFT_MARGIN     = 70;    // px réservés à gauche pour la source en vue coupe
+var COUPE_LEFT_MARGIN     = 70;    // px réservés à gauche en vue coupe — recalculé
+                                   // au resize par _syncCoupeLeftMargin
+var COUPE_LEFT_MARGIN_MIN = 70;    // plancher : la place de la source seule
+var COUPE_LEFT_BOX_GAP    = 10;    // jeu entre la colonne source et ce qui est dessiné
+var COUPE_LEFT_MAX_FRAC   = 0.38;  // part maximale de la largeur concédée à la bande
+
+// Flèche d'oscillation de la source, dessinée à GAUCHE de celle-ci : posée à
+// −COUPE_SRC_ARROW_DX, pointe large de ±COUPE_SRC_ARROW_HALF. Son bord gauche
+// est donc à srcX − (DX + HALF), et c'est cette avancée-là — et non la seule
+// position de la source — que la bande de gauche doit dégager, sans quoi la
+// flèche passe sous la colonne source. Les deux sites de dessin (coupe et
+// transition) lisent ces constantes, pour qu'elles ne puissent pas diverger du
+// calcul de marge.
+var COUPE_SRC_ARROW_DX    = 22;
+var COUPE_SRC_ARROW_HALF  = 4;
+
+// La colonne source (chronomètre, puis box source) est posée en overlay sur le
+// canvas, au bord gauche (cf. style.css, .vagues-layout #source-col). En vue du
+// dessus elle recouvre de l'onde, c'est assumé ; en vue de coupe on élargit la
+// bande de gauche pour que l'onde commence à sa droite.
+//
+// Le prix à payer est direct : `max_r_coupe = canvasW − COUPE_LEFT_MARGIN` est
+// la distance de propagation exploitable, donc élargir la bande RACCOURCIT
+// l'onde visible en coupe. D'où le plafond COUPE_LEFT_MAX_FRAC, qui rend la
+// main au canvas plutôt qu'à la colonne sur les fenêtres étroites.
+//
+// La mesure se fait sur #source-col : sa largeur de MISE EN PAGE est fixe, mais
+// getBoundingClientRect() rend la largeur PEINTE, donc déjà multipliée par
+// --src-s (transform: scale) — c'est bien la place réellement occupée.
+function _syncCoupeLeftMargin(w) {
+    var need = COUPE_LEFT_MARGIN_MIN;
+    var col  = document.getElementById('source-col');
+    if (col && col.offsetParent !== null) {
+        var cs = getComputedStyle(col);
+        var ml = parseFloat(cs.marginLeft)  || 0;
+        var mr = parseFloat(cs.marginRight) || 0;
+        need = Math.max(need,
+                        col.getBoundingClientRect().width + ml + mr +
+                        COUPE_SRC_ARROW_DX + COUPE_SRC_ARROW_HALF + COUPE_LEFT_BOX_GAP);
+    }
+    COUPE_LEFT_MARGIN = Math.round(Math.min(need, w * COUPE_LEFT_MAX_FRAC));
+}
 
 // ── Raideur maximale dessinée en vue de profil ────────────────────────
 //  La vue en coupe exagère massivement l'échelle verticale devant
@@ -274,6 +315,11 @@ function resizeVagues() {
     canvas.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
     simVagues.canvasW = w;
     simVagues.canvasH = h;
+
+    // Bande de gauche en vue de coupe : dépend de la place prise par la colonne
+    // source en overlay, dont la largeur peinte suit --src-s. À réévaluer à
+    // chaque resize, donc, et avant tout usage de COUPE_LEFT_MARGIN ci-dessous.
+    _syncCoupeLeftMargin(w);
 
     // Calibration : vue par défaut ±51 cm (g=9.81, h=0.003, f=1,5 Hz)
     //   (w / N_λ * f_def) / c_déf  →  N_λ longueurs d'onde visibles sur la largeur.
@@ -1680,6 +1726,10 @@ function resetVagues() {
     simVagues.graphYxYMin = -0.1;
     simVagues.graphYxYMax =  0.1;
     simVagues.peakAmpCm   =  0.1;
+    // Le chronomètre mesure le temps de simulation : remettre celle-ci à zéro
+    // sans l'arrêter laisserait une durée qui ne correspond plus à rien.
+    // (Défini dans ui.js, chargé après : d'où le garde.)
+    if (typeof resetChrono === 'function') resetChrono('vagues');
     updateCeleriteVagues();
 }
 
@@ -2278,14 +2328,14 @@ function _draw3DSourceZone(ctx, W, H, srcXs, yLevel, ampPx, sinT, bandAlpha) {
         ctx.fillRect(srcXs - 3, 0, 6, H);
 
         var arrowDir = osc >= 0 ? -1 : 1;
-        var ax = srcXs - 22, ay1 = dotY, ay2 = dotY + arrowDir * 14;
+        var ax = srcXs - COUPE_SRC_ARROW_DX, ay1 = dotY, ay2 = dotY + arrowDir * 14;
         ctx.strokeStyle = 'rgba(255, 215, 80, 0.80)';
         ctx.lineWidth   = 1.5;
         ctx.beginPath(); ctx.moveTo(ax, ay1); ctx.lineTo(ax, ay2); ctx.stroke();
         ctx.beginPath();
-        ctx.moveTo(ax - 4, ay2 - arrowDir * 6);
+        ctx.moveTo(ax - COUPE_SRC_ARROW_HALF, ay2 - arrowDir * 6);
         ctx.lineTo(ax,     ay2);
-        ctx.lineTo(ax + 4, ay2 - arrowDir * 6);
+        ctx.lineTo(ax + COUPE_SRC_ARROW_HALF, ay2 - arrowDir * 6);
         ctx.stroke();
 
         ctx.restore();
@@ -3051,14 +3101,14 @@ function _drawSourceCoupeVagues(ctx, W, H, srcX, yLevel, ampPx) {
     // aux instants où la source change effectivement de sens.
     var vel      = Math.cos(2 * Math.PI * simVagues.freq * t);
     var arrowDir = vel >= 0 ? -1 : 1;
-    var ax = srcX - 22, ay1 = dotY, ay2 = dotY + arrowDir * 14;
+    var ax = srcX - COUPE_SRC_ARROW_DX, ay1 = dotY, ay2 = dotY + arrowDir * 14;
     ctx.strokeStyle = 'rgba(255, 215, 80, 0.80)';
     ctx.lineWidth   = 1.5;
     ctx.beginPath(); ctx.moveTo(ax, ay1); ctx.lineTo(ax, ay2); ctx.stroke();
     ctx.beginPath();
-    ctx.moveTo(ax - 4, ay2 - arrowDir * 6);
+    ctx.moveTo(ax - COUPE_SRC_ARROW_HALF, ay2 - arrowDir * 6);
     ctx.lineTo(ax,     ay2);
-    ctx.lineTo(ax + 4, ay2 - arrowDir * 6);
+    ctx.lineTo(ax + COUPE_SRC_ARROW_HALF, ay2 - arrowDir * 6);
     ctx.stroke();
 
     ctx.restore();

@@ -361,7 +361,30 @@ main {
   position: relative;
 }
 #anim-area.vagues-layout #anim-source-spacer { display: none; }
-#anim-area.vagues-layout #source-col         { display: none; }
+
+/* Colonne source en OVERLAY, et non en colonne de grille.
+   La grille n'a ici qu'une seule cellule : y empiler la colonne source et le
+   canvas suffit à poser la première PAR-DESSUS le second, sans position
+   absolue. Elle garde donc sa place à l'écran des deux autres onglets — bord
+   gauche, centrée verticalement (`align-self: center` et la largeur fixe de
+   #source-col s'appliquent telles quelles) — pendant que le canvas occupe
+   toute la largeur.
+
+   Ce qui disparaît en Vagues, c'est la négociation de LARGEUR : la colonne ne
+   prend plus de place au canvas. La contrainte de HAUTEUR reste entière —
+   `.src-hidden #source-col { display: none }` continue de s'appliquer, et
+   _applySourceScale rapetissse puis escamote la colonne comme ailleurs.
+
+   En vue de coupe, c'est le CONTENU du canvas qui s'écarte : vagues.js
+   élargit COUPE_LEFT_MARGIN d'après la largeur peinte de cette colonne, si
+   bien que l'onde commence à sa droite. Rien à animer pendant la transition,
+   la colonne ne bougeant pas d'une vue à l'autre. */
+#anim-area.vagues-layout #source-col {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: start;
+  z-index: 12;   /* au-dessus du canvas, et de #tube-top-btns (z-index: 10) */
+}
 #anim-area.vagues-layout #tube-canvas-wrap {
   grid-column: 1;
   grid-row: 1;

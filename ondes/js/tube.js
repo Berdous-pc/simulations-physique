@@ -221,7 +221,7 @@ var _srcNat = { key: '', full: 0, noTitle: 0, chrono: 0 };
 function _sourceNatural(animArea) {
     var srcCol = document.getElementById('source-col');
     var tab    = (typeof activeTab !== 'undefined') ? activeTab : '';
-    var chrono = document.getElementById(tab === 'corde' ? 'chrono-corde' : 'chrono-son');
+    var chrono = document.getElementById('chrono-' + (tab || 'son'));
     if (!srcCol) return _srcNat;
 
     var key = Math.round(animArea.getBoundingClientRect().width) + '|' +
@@ -277,7 +277,7 @@ function _sourceNatural(animArea) {
 //      Si non, `gone`.
 function _srcFitFor(animH, btnH, H, B) {
     var row2H = animH - btnH;
-    if (H <= 0)     return { s: 1, gone: false };   // Vagues : pas de colonne
+    if (H <= 0)     return { s: 1, gone: false };   // colonne vide : rien à faire tenir
     if (row2H <= 0) return { s: SRC_S_MIN, gone: true };
 
     var s    = Math.min(1, Math.max(SRC_MAX_FILL * row2H / H, SRC_S_MIN));
@@ -295,7 +295,7 @@ function _srcFitFor(animH, btnH, H, B) {
 // (SRC_MAX_FILL) y est toujours inférieur au plancher.
 function _srcMinAnimH(nat, btnH) {
     var H = nat.noTitle, B = nat.chrono;
-    if (H <= 0) return -Infinity;   // Vagues : la colonne ne fait jamais loi
+    if (H <= 0) return -Infinity;   // colonne vide : elle ne fait jamais loi
 
     var row2Min = Math.max(H * SRC_S_MIN,
                            2 * B * SRC_S_MIN - 2 * btnH + H * SRC_S_MIN);

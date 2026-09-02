@@ -89,6 +89,26 @@ Tout le CSS. Sections : reset et grille principale, `#anim-area`, `#source-box`,
 (`.panel-main-tabs`, `.btn`, `.param-row`, `.readout`), bandeau `.panel-hint`
 repliable (même motif que les pages titrage et radioactivité).
 
+**Colonne source en Vagues : overlay, pas colonne.** En `.vagues-layout` la
+grille de `#anim-area` se réduit à une cellule ; `#source-col` y est **empilé
+avec le canvas** (`grid-column: 1; grid-row: 1; justify-self: start;
+z-index: 12`) plutôt que masqué. Il garde donc la place qu'il occupe à l'écran
+dans les deux autres onglets — bord gauche, centré verticalement — pendant que
+le canvas reste en pleine largeur.
+
+Ce qui disparaît ainsi, c'est la négociation de **largeur** : la colonne ne
+prend plus rien au canvas. La contrainte de **hauteur** reste entière —
+`.src-hidden #source-col { display: none }` s'applique toujours, et
+`_applySourceScale` rapetisse puis escamote la colonne comme ailleurs. C'est
+d'ailleurs le seul endroit où `.src-hidden` et `.vagues-layout` peuvent
+coexister sur le même élément : `.src-hidden` est déclaré **avant**
+`.vagues-layout` pour que celle-ci garde la priorité à spécificité égale sur
+`grid-template-columns`.
+
+En vue de coupe, c'est le **contenu du canvas** qui s'écarte, pas la colonne :
+`_syncCoupeLeftMargin` (vagues.js) élargit `COUPE_LEFT_MARGIN` d'après la
+largeur peinte de la colonne. Rien n'est donc à animer pendant la transition.
+
 **Échelle de la colonne source** : `#source-col` porte un
 `transform: scale(var(--src-s))` et une **largeur de mise en page fixe**
 (`clamp(132px, 14vw, 177px) − 12px`, indépendante du facteur), avec
@@ -847,6 +867,26 @@ Spécificités de l'onglet : balises draggables dans le plan (et non sur un axe)
 flèche λ draggable, et une **vue en coupe** (`viewMode`, avec animation de
 transition `transAnim`).
 
+### Largeur de la bande de gauche en vue de coupe
+
+`COUPE_LEFT_MARGIN` n'est plus une constante : `_syncCoupeLeftMargin(w)`, en
+tête de `resizeVagues`, la recalcule d'après la largeur **peinte** de
+`#source-col` (donc déjà multipliée par `--src-s`), afin que la colonne source
+posée en overlay ne recouvre pas l'onde en vue de profil.
+
+Ce qu'il faut dégager n'est pas la position de la source mais **l'avancée de sa
+flèche d'oscillation**, dessinée à sa gauche : `COUPE_SRC_ARROW_DX` (22 px) plus
+la demi-pointe `COUPE_SRC_ARROW_HALF` (4 px). Les deux sites de dessin — la
+coupe stabilisée et la transition — lisent ces constantes, pour qu'elles ne
+puissent pas diverger du calcul de marge.
+
+Le prix est direct : `max_r_coupe = canvasW − COUPE_LEFT_MARGIN` est la
+distance de propagation exploitable, si bien qu'élargir la bande **raccourcit
+l'onde visible** en coupe. `COUPE_LEFT_MAX_FRAC` (0,38) plafonne donc la part de
+largeur concédée ; en dessous d'environ 660 px de canvas c'est lui qui décide,
+et la flèche peut repasser sous la colonne. Le remède serait alors de faire
+rapetisser la colonne, pas de rogner davantage la bande.
+
 ### Transition vue du dessus ↔ vue en coupe
 
 Deux phases enchaînées (`VAGUES_TRANS_ROT` puis `VAGUES_TRANS_SLIDE`,
@@ -1091,7 +1131,10 @@ Deux points de comportement à ne pas défaire :
 
 Ajouter un onglet au chronomètre se réduit donc à trois gestes : recopier le
 gabarit HTML avec le bon suffixe, ajouter une entrée à `CHRONO_DEFS` et une à
-`chronos`, brancher `chronoTick` et `_updateChrono` dans sa branche de `loop`.
+`chronos`, brancher `chronoTick` et `_updateChrono` dans sa branche de `loop`
+(et `resetChrono` dans sa remise à zéro). C'est ce qu'a fait l'onglet Vagues,
+au détail près de la case « Lier » : elle n'apparaîtra qu'avec le bouton
+Activer de sa box source, faute de quoi elle serait un contrôle mort.
 
 ### Conventions à respecter
 
