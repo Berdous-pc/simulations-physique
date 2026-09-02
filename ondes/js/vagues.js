@@ -116,8 +116,8 @@ var VAGUES_AMPL_MAX = 3.0;
 //
 // Contrepartie assumée : le garde-fou de raideur est relâché d'autant — la
 // crête maximale dessinée passe de COUPE_STEEP_FRAC·λ à 1,5·COUPE_STEEP_FRAC·λ,
-// soit ~0,24 λ à fond de course. On reste sous la borne λ/π des trajectoires
-// de molécules (cf. ORBIT_LAMBDA_FRAC).
+// soit ~0,24 λ à fond de course. Les trajectoires de molécules n'en dépendent
+// plus : leur mise en page est géométrique, elle ne borne plus rien en λ.
 var COUPE_AMP_BOOST = 1.5;
 
 // Amplitude visuelle de la vue de profil, en px pour une enveloppe de 1.
@@ -2351,31 +2351,22 @@ function toggleViewVagues() {
 //  coupe, transition terminée (pendant la rotation, la scène n'est pas
 //  encore une coupe et _drawOrbitesCoupeVagues n'est pas appelée).
 
-// ── OPTION DÉSACTIVÉE, EN ATTENTE DE REFONTE ──────────────────────────
-//  Le tracé des trajectoires est faux à l'écran — nettement en Impulsion et
-//  sur les rangées profondes. Le bouton est donc retiré de l'interface et
-//  rien n'est dessiné, plutôt que de laisser en place une figure qui
-//  raconterait n'importe quoi à l'élève.
+// ── OPTION TOUJOURS RETIRÉE DE L'INTERFACE ────────────────────────────
+//  Le drapeau à false enlève le bouton de l'écran et coupe tout le tracé :
+//  rien de faux ne peut être montré à un élève.
 //
-//  TOUT LE CODE EST CONSERVÉ TEL QUEL : la refonte repartira de là, et il n'y
-//  a qu'à repasser ce drapeau à true pour le remettre à l'écran.
+//  Le code, lui, a été entièrement refondu (cf. l'en-tête de
+//  _drawOrbitesCoupeVagues) : profil de profondeur linéaire au lieu des
+//  demi-axes d'Airy, mise en page purement géométrique, et traînée
+//  ENREGISTRÉE au lieu d'être reconstruite en relisant l'historique de la
+//  source. C'est cette reconstruction qui portait les deux défauts identifiés
+//  — amplitude comptée deux fois, écume lue au temps présent pour un point
+//  passé — et elle n'existe plus.
 //
-//  Deux défauts avaient été identifiés avant l'arrêt ; ils sont réels mais ne
-//  suffisaient pas, la figure restait fausse une fois corrigés. À reprendre
-//  comme pistes, pas comme solution :
-//    • _orbitFillTrace multiplie le couple rendu par _vaguesSrcPairAtR par
-//      col.envNom — or ce couple porte DÉJÀ l'amplitude d'émission (canal
-//      srcB, depuis que le curseur Amplitude est causal). L'amplitude est donc
-//      comptée deux fois : la traînée sort à l'échelle « amplitude × » celle
-//      de la bille, qui flotte au milieu de son propre chemin ; l'espacement
-//      des rangées, lui, est calculé sur l'amplitude simple, d'où le
-//      recouvrement des traînées des rangées profondes, les plus resserrées.
-//    • dans _orbitStrokeTrace, la rangée de surface lit l'écume au temps
-//      PRÉSENT (_waveFieldCoupeAt(xs[i])) alors que le point a l'âge Δ : la
-//      surface en x à t − Δ est la surface actuelle en x + c·Δ. Sans ce
-//      décalage, ce qui est peint n'est pas un chemin mais un morceau du
-//      profil instantané de la vague — invisible en sinusoïdal établi, où le
-//      profil est périodique, flagrant en Impulsion où il n'y a qu'une bosse.
+//  Ça ne suffit pas encore à l'écran : le rendu reste trop bugué pour être
+//  montré. La refonte est donc à reprendre depuis cet état, qui est
+//  nettement plus simple à déboguer que le précédent, et non depuis zéro.
+//  Il n'y a qu'à repasser ce drapeau à true pour retrouver le bouton.
 var VAGUES_ORBITS_ENABLED = false;
 
 function syncBtnOrbitesVagues() {
@@ -2414,6 +2405,10 @@ function syncBtnOrbitesVagues() {
 function toggleOrbitesVagues() {
     if (!VAGUES_ORBITS_ENABLED) return;
     simVagues.showOrbits = !simVagues.showOrbits;
+    // Les traînées sont des positions écran empilées ; celles d'avant
+    // l'extinction n'ont plus de rapport avec l'onde du moment. On repart
+    // d'une trace vide, et elle se reconstitue en une demi-seconde.
+    _orbitTrailsClear();
     syncBtnOrbitesVagues();
 }
 
@@ -3132,205 +3127,130 @@ function _drawVaguesCoupe(ctx, W, H) {
 // ══════════════════════════════════════════════════════════════════════
 //  Trajectoire des molécules d'eau (option de la vue en coupe)
 // ══════════════════════════════════════════════════════════════════════
-//  Théorie d'Airy à profondeur FINIE — c'est bien celle du modèle simulé
-//  ici (c = √(gh), donc eau peu profonde), et non le cas « eau profonde »
-//  des cercles qui rétrécissent. Une particule dont la position moyenne
-//  est à la profondeur d sous la surface (fond marin en d = h) décrit une
-//  ELLIPSE de demi-axes
-//      vertical    V(d) = a · sinh(k(h−d)) / sinh(kh)
-//      horizontal  Hz(d) = a · cosh(k(h−d)) / sinh(kh)
-//  où a est l'amplitude LOCALE de la surface. En surface V = a ; au fond
-//  V = 0 : il ne reste qu'un va-et-vient horizontal — c'est le point
-//  pédagogique de l'option. Le rapport Hz/V = coth(k(h−d)) tend vers 1
-//  (cercles) quand kh ≫ 1 et explose quand kh ≪ 1 ; les deux régimes sont
-//  atteignables avec les curseurs, cf. plus bas.
+//  CE QUE L'OPTION MONTRE, et rien de plus : l'eau ne se DÉPLACE pas avec la
+//  vague. Chaque molécule décrit une petite boucle et revient d'où elle vient,
+//  pendant que la forme, elle, avance. Plus on descend, moins elle bouge,
+//  jusqu'au simple va-et-vient horizontal du fond.
 //
-//  kh est le nombre d'onde PHYSIQUE fois la profondeur PHYSIQUE :
-//      kh = 2π·h/λ = 2π·f·h/c = 2π·f·√(h/g)      (puisque c = √(gh))
-//  soit ≈ 0,02 (h=1 mm, g=25, f=0,5 Hz) à ≈ 3,1 (h=10 mm, g=1, f=5 Hz)
-//  sur la plage des curseurs : du segment quasi horizontal jusqu'au
-//  quasi-cercle. Noter que kh ne dépend PAS du pixel : la colonne d'eau
-//  dessinée (surface → fond marin) représente h, seul cadrage cohérent
-//  avec des ellipses qui s'écrasent en arrivant au fond.
+//  ── UN PROFIL LINÉAIRE, ET NON LA THÉORIE D'AIRY ──────────────────
+//  Les demi-axes exacts d'Airy (sinh/cosh de kh) ont été essayés puis retirés.
+//  Ils faisaient dépendre TOUTE la mise en page — profondeur des rangées,
+//  compression horizontale, non-chevauchement — des curseurs f, g et h : la
+//  grille se réorganisait sous les doigts de l'élève pendant qu'il tournait un
+//  bouton, et le moindre défaut de tracé demandait de démêler la géométrie de
+//  la physique. Ce qui les remplace tient en deux lignes :
+//      demi-axe vertical    fV = 1 − df   (df = profondeur, en fraction de la
+//                                          colonne d'eau DESSINÉE)
+//      demi-axe horizontal  fH = 1        (constant avec la profondeur)
+//  fV = 0 sur le fond marin : l'ellipse y dégénère en segment horizontal —
+//  c'est le point pédagogique, il est conservé. Et fH constant est justement
+//  la limite « eau peu profonde », le régime que cette page simule (c = √(gh)).
 //
-//  Phase : le champ de la coupe vaut F = env·sin(φ) avec φ = ωt − kr
-//  (cf. _waveFieldCoupeAt). La composante horizontale est sa QUADRATURE
-//  Q = env·cos(φ), d'où
-//      ζ = +(V/a)·F     déplacement vertical, compté vers le haut
-//      ξ = −(Hz/a)·Q    déplacement horizontal, compté vers +x
-//  ce qui donne une molécule qui avance sur la crête et recule dans le
-//  creux — le sens de rotation correct pour une onde allant vers +x.
-//  Enfin |env| = √(F² + Q²) : l'amplitude locale sort du couple (F, Q)
-//  sans avoir à ré-évaluer les deux atténuations.
+//  Le RAPPORT d'aplatissement affiché n'est donc pas mesurable. Il ne l'a
+//  jamais été : la vue en coupe exagère le vertical d'un facteur ~35 devant
+//  l'horizontal, et l'ancienne version le rattrapait déjà par un `hScale`
+//  global appliqué à toutes les rangées. Rien n'est perdu à l'écran, une
+//  centaine de lignes disparaissent.
 //
-//  ── LE CADRAGE, sans quoi le tracé n'a aucun sens à l'écran ─────────
-//  La vue en coupe exagère massivement l'échelle VERTICALE devant
-//  l'horizontale : par défaut l'amplitude dessinée fait 46 px pour λ = 75
-//  px, soit une vague haute de 0,6 λ là où une vraie vague est cent fois
-//  plus plate. Facteur d'exagération verticale : ~35.
+//  ── LA MISE EN PAGE EST PUREMENT GÉOMÉTRIQUE ──────────────────────
+//  Elle ne lit pas l'onde : uniquement la taille du canvas, ampPx et
+//  l'amplitude NOMINALE du curseur. Colonnes à pas uniforme (plus de calage en
+//  antiphase sur λ/2, qui faisait sauter les colonnes dès qu'on touchait f) ;
+//  rangée de surface sur l'écume ; rangées profondes réparties dans la bande
+//  qui reste SOUS LE CREUX, jusqu'au fond marin — là où il y a de l'eau en
+//  permanence. Le non-chevauchement tient en une ligne (l'excursion verticale
+//  d'une rangée est plafonnée à une fraction de l'écart entre rangées), et non
+//  plus en un placement par point fixe suivi d'un étalement.
 //
-//  Conséquence : on ne peut pas avoir à la fois (a) la molécule de surface
-//  collée à l'écume, (b) le rapport d'aplatissement exact et (c) une orbite
-//  plus étroite que λ. À l'échelle exacte des deux axes, l'ellipse de
-//  surface ferait 288 px de large pour λ = 75 px — la molécule aurait l'air
-//  de traverser quatre crêtes.
+//  Conséquence directe, et c'était l'objectif : bouger un curseur pendant
+//  l'animation ne réorganise plus rien. Seul ampPx dépend encore de f, g et h
+//  (cf. _coupeAmpPx), et il varie continûment.
 //
-//  Arbitrage retenu (l'objectif étant de montrer qu'il n'y a PAS de
-//  transport de matière) : on garde (a), on lâche (b).
+//  ── PLUS DE BORNE λ/π ─────────────────────────────────────────────
+//  Elle existait pour empêcher la bille de surface de « doubler » la forme de
+//  la vague et de se retrouver en l'air. Elle n'a plus d'objet : la rangée de
+//  surface est POSÉE sur l'écume (sa hauteur est celle de la surface dessinée
+//  à l'abscisse où elle est peinte), elle est donc sous l'eau par
+//  construction, quelle que soit son excursion horizontale. Les rangées
+//  profondes, elles, vivent sous le creux. Le plafond horizontal qui reste
+//  n'est plus qu'un confort visuel : empêcher deux colonnes de se toucher.
 //
-//   • Demi-axe VERTICAL : échelle exacte de la surface. La molécule de la
-//     rangée du haut monte donc exactement à la crête quand la crête arrive
-//     et descend au creux dans le creux, et sa boucle couvre exactement la
-//     bande balayée par la houle. Elle n'est pas COLLÉE à l'écume pour
-//     autant : son abscisse est décalée de ξ, et l'écume est tracée en
-//     eulérien (cf. l'absence de recadrage, plus bas).
-//   • Demi-axe HORIZONTAL : comprimé par un `hScale` GLOBAL (calé sur la
-//     rangée de surface, donc identique pour toutes les rangées — la
-//     largeur reste constante avec la profondeur, comme le veut la
-//     physique, seule la hauteur décroît). L'aplatissement affiché n'est
-//     donc pas mesurable.
+//  ── CE QUI EST PEINT : LA TRAÎNÉE RÉELLEMENT PARCOURUE ────────────
+//  Aucune ellipse n'est tracée. Chaque bille laisse derrière elle la trace des
+//  positions ÉCRAN où elle a effectivement été, empilées dans un tampon
+//  circulaire — un point tous les ORBIT_TRAIL_DT de temps simulé, sur
+//  ORBIT_TRAIL_SEC.
 //
-//  ── LA BORNE λ/π, la contrainte dure du tracé ───────────────────────
-//  La molécule est dessinée en px = x₀ − Hz·cos φ, mais sa HAUTEUR est
-//  celle de sa propre trajectoire. Pour qu'elle reste sous la surface, il
-//  faut que la surface en px soit au-dessus d'elle, soit
-//      sin(φ + β·cos φ) ≤ sin φ  pour tout φ,  avec β = k·Hz
-//  Le développement au voisinage de φ = π/2 (le cas critique) donne
-//  1 − (1 − β)² ≥ 0, c'est-à-dire **β ≤ 2**, soit **Hz ≤ λ/π**.
+//  C'est un ENREGISTREMENT, pas une reconstruction. La version précédente
+//  rejouait le passé en relisant l'historique de la source plus loin (le passé
+//  de Δ est le champ à c·Δ) — élégant, mais il fallait alors reconstituer à la
+//  main l'amplitude et les atténuations de ce passé, et traiter à part la
+//  rangée de surface, dont la hauteur ne sort pas du même calcul. C'est de là
+//  que venaient les deux défauts identifiés : amplitude comptée deux fois, et
+//  écume lue au temps présent pour un point d'âge Δ. Empiler ce qu'on vient de
+//  dessiner n'a aucun de ces problèmes — dans aucun mode, et sous n'importe
+//  quel coup de curseur : la traînée EST l'histoire.
 //
-//  Au-delà, la molécule « double » la forme de la vague et se retrouve en
-//  l'air : c'est exactement ce qui arrivait aux petites longueurs d'onde,
-//  invisible aux grandes. Hz est donc plafonné à ORBIT_LAMBDA_FRAC·λ,
-//  sous la borne. Conséquence assumée : plus λ est petite devant
-//  l'amplitude DESSINÉE, plus la boucle est étroite et verticale. Une
-//  boucle large et plate suppose une vague plate — c'est le compromis
-//  inverse, celui qui aurait demandé d'aplatir la houle.
-//   • RANGÉES à espacement VARIABLE, chaque écart étant calculé sur les
-//     deux ellipses qu'il sépare : le non-chevauchement est structurel,
-//     et non le fruit d'un plafond calé sur la seule ellipse de surface.
-//     Aucune rangée sur le fond marin — l'ellipse y dégénère en segment
-//     horizontal, un trait mort. La plus basse s'arrête à 0,70·h.
-//   • Les colonnes remplissent d'abord la LARGEUR ; leur pas est ensuite
-//     ajusté, quand c'est possible sans laisser de marge, vers un multiple
-//     IMPAIR de λ/2, ce qui met les colonnes voisines en ANTIPHASE : à un
-//     instant donné, une molécule est au sommet de sa boucle (sous la
-//     crête) pendant que sa voisine est au fond de la sienne (sous le
-//     creux). L'ordre des priorités compte : caler l'antiphase d'abord
-//     groupait deux ou trois colonnes au centre de l'écran aux grandes λ.
+//  Elle porte aussi mieux le message qu'une orbite pré-dessinée : elle naît
+//  avec le front, se referme sous les yeux de l'élève, et s'éteint quand
+//  l'onde est passée. C'est ce qui rend le mode IMPULSION représentable — une
+//  impulsion n'a pas de période, donc pas d'orbite fermée, mais elle a bien un
+//  chemin parcouru, et la molécule y revient EXACTEMENT à son point de départ,
+//  une fois (le déplacement horizontal est l'intégrale du vertical, et le
+//  motif est à intégrale nulle, cf. stepSourceVagues).
 //
-//  ── CE QUI EST DESSINÉ : UNE TRAÎNÉE, PAS L'ELLIPSE ─────────────────
-//  Tout ce qui précède décrit la GÉOMÉTRIE de l'ellipse d'Airy — elle reste
-//  la physique du tracé. Mais AUCUNE courbe n'est peinte : ce que l'on voit
-//  est la bille, et derrière elle la traînée du chemin qu'elle vient de
-//  parcourir (_orbitFillTrace). Les demi-axes V et Hz ne servent plus qu'à
-//  mettre ce chemin à l'échelle de sa rangée.
+//  Les points sont des positions écran : ils ne veulent plus rien dire si la
+//  mise en page a bougé sous eux. Une signature de mise en page et un saut de
+//  l'horloge simulée les purgent — ce sont les deux seules conditions à
+//  écrire, contre l'invalidation implicite qu'exigeait la reconstruction.
 //
-//  L'ellipse a été peinte en courbe fermée, et c'était son défaut : elle
-//  surgissait d'un coup, complète, dès que le front touchait la colonne —
-//  avant que la molécule n'en ait parcouru le moindre arc — et disparaissait
-//  aussi sèchement au passage de l'arrière du train. La tracer au fur et à
-//  mesure ne suffisait pas : tant qu'une partie de la période balayée est au
-//  repos, la polyligne tire un segment droit jusqu'au point de repos, d'où le
-//  « rayon » qui vibrait au centre de l'ellipse jusqu'à ce qu'elle se referme.
-//  La traînée courte n'a ni l'un ni l'autre défaut, et elle porte déjà la
-//  seule information que la courbe ajoutait : le sens de parcours.
-//
-//  C'est aussi ce qui rend le mode IMPULSION représentable : une impulsion n'a
-//  pas de période, donc pas d'orbite fermée à dessiner, mais elle a bien un
-//  chemin parcouru. Et il dit même plus que l'ellipse — la molécule boucle et
-//  revient EXACTEMENT à son point de départ, une fois, sous les yeux de
-//  l'élève, le déplacement horizontal étant l'intégrale du déplacement
-//  vertical et le motif d'impulsion étant à intégrale nulle (cf. la quadrature
-//  dans stepSourceVagues).
-//
-//  En Impulsion, les facteurs d'Airy sont évalués à f = 1/T_IMPULSE, fréquence
-//  centrale du motif. Ce n'est pas une approximation de plus : le modèle
-//  simulé est déjà non dispersif (c = √(gh) pour toutes les fréquences).
-//
-//  ── CE QUI NE DÉPEND PAS DE L'ONDE ──────────────────────────────────
-//  La MISE EN PAGE (profondeur des rangées, compression horizontale) est
-//  calculée sur l'amplitude NOMINALE — celle que les curseurs promettent,
-//  connue avant qu'aucune onde n'existe (cf. _coupeEnvNomAt) — et non sur
-//  l'enveloppe instantanée des colonnes, comme c'était le cas.
-//
-//  Cette séparation porte trois choses d'un coup :
-//   • la grille ne se replace plus pendant que le front arrive ;
-//   • les molécules sont dessinées AU REPOS, source coupée : la grille et le
-//     filet vertical attendent l'onde, les billes posées sur leur position
-//     moyenne, et c'est l'onde qui vient les mettre en mouvement ;
-//   • le mode Impulsion devient représentable.
+//  ── SOURCE COUPÉE ─────────────────────────────────────────────────
+//  F = Q = 0 posent les billes d'elles-mêmes sur leur position de repos : la
+//  grille et le filet vertical attendent l'onde, sans aucun cas particulier.
 
 var ORBIT_TARGET_STEP  = 150;  // px — espacement visé entre deux colonnes
 var ORBIT_SEABED_PAD   = 16;   // px — eau laissée sous le fond marin dessiné
-var ORBIT_LAMBDA_FRAC  = 0.27; // demi-axe horizontal max, en λ (borne : 1/π)
-var ORBIT_MAX_ROWS     = 4;
+var ORBIT_MAX_ROWS     = 4;    // rangée de surface comprise
 var ORBIT_DOT_R        = 4.3;  // px — rayon de la bille « molécule »
-var ORBIT_MAX_DEPTH_FRAC = 0.70; // profondeur de la rangée la plus basse, en h
-var ORBIT_ROW_GAP        = 1.15; // marge de non-chevauchement entre deux rangées
-var ORBIT_TRAIL_ARC      = 1.15; // rad — arc de trace repris en clair, sous la bille
-var ORBIT_TRAIL_COL      = ['rgba(255,255,255,0.16)',
-                            'rgba(255,255,255,0.32)',
-                            'rgba(255,255,255,0.55)'];
-var ORBIT_TRACE_PTS      = 16;   // points de la traînée
+var ORBIT_SURF_CLEAR   = 1.15; // creux (en amplitude nominale) laissé libre
+                               // au-dessus de la première rangée profonde
+var ORBIT_LAY_AMP_CAP  = 0.40; // ... ce creux ne mange jamais plus que cette
+                               // fraction de la colonne d'eau, sans quoi le
+                               // curseur Amplitude à fond ne laisserait plus
+                               // aucune rangée profonde
+var ORBIT_ROW_FILL     = 0.42; // excursion verticale max d'une rangée, en écart
+                               // entre rangées (garantit le non-chevauchement)
+var ORBIT_H_AMP        = 0.90; // demi-axe horizontal, en px d'amplitude verticale
+var ORBIT_H_STEP_CAP   = 0.30; // ... plafonné à cette fraction du pas des colonnes
+var ORBIT_TRAIL_SEC    = 0.60; // s de temps simulé — longueur de la traînée
+var ORBIT_TRAIL_DT     = 0.025;// s — pas d'échantillonnage de la traînée
+var ORBIT_TRAIL_PTS    = Math.ceil(ORBIT_TRAIL_SEC / ORBIT_TRAIL_DT) + 1;
+var ORBIT_TRAIL_COL    = ['rgba(255,255,255,0.16)',
+                          'rgba(255,255,255,0.32)',
+                          'rgba(255,255,255,0.55)'];
 
 // Crête de la quadrature du motif d'impulsion : |q|max = IMPULSE_V_NORM,
 // atteint en u = π (cf. stepSourceVagues), là où |d|max vaut 1 par
-// construction de IMPULSE_V_NORM. L'excursion HORIZONTALE de la molécule est
-// donc 1,54 fois la nominale verticale — la compression horizontale doit en
-// tenir compte, sans quoi la borne λ/π serait franchie d'autant.
-var IMPULSE_Q_PEAK       = IMPULSE_V_NORM;
-
-// Fréquence qui donne son sens aux trajectoires. En sinusoïdal c'est celle du
-// curseur ; en Impulsion, le motif est une oscillation unique de durée
-// T_IMPULSE, dont c'est la fréquence centrale. Prendre une fréquence unique
-// pour une impulsion large bande n'ajoute AUCUNE approximation à celles que la
-// page fait déjà : le modèle est non dispersif (c = √(gh), identique à toutes
-// les fréquences), les facteurs cosh/sinh d'Airy sont donc évalués là où toute
-// la page évalue déjà sa physique.
-function _vaguesOrbitFreq() {
-    var isImpulse = (typeof _vaguesModeIsImpulse === 'function') && _vaguesModeIsImpulse();
-    return isImpulse ? (1 / T_IMPULSE) : simVagues.freq;
-}
-
-// Enveloppe NOMINALE au point x : l'amplitude que la molécule atteindra quand
-// l'onde sera passée, connue sans qu'aucune onde n'existe. Ce sont exactement
-// les facteurs de _coupeFieldPairAt, privés du déplacement lu dans
-// l'historique.
-//
-// C'est elle qui dimensionne la MISE EN PAGE (profondeur des rangées,
-// compression horizontale), là où l'ancienne version utilisait le maximum
-// INSTANTANÉ des colonnes. Trois conséquences, et c'est le même correctif qui
-// les porte toutes les trois :
-//   • la grille ne « respire » plus quand le front arrive — elle était jusqu'ici
-//     recalculée à chaque frame sur une enveloppe qui grandissait ;
-//   • les molécules peuvent être dessinées AU REPOS, source coupée : leur
-//     géométrie est définie avant même que l'onde n'existe ;
-//   • le mode Impulsion devient possible, puisqu'il n'y a chez lui aucune
-//     enveloppe stationnaire à mesurer.
-// La taille DESSINÉE de l'orbite, elle, continue de suivre l'enveloppe
-// instantanée : c'est ce qui la fait naître avec le front au lieu d'apparaître
-// d'un coup à taille pleine.
-function _coupeEnvNomAt(x_canvas, srcX) {
-    var r_px = x_canvas - srcX;
-    if (r_px < 0) return 0;
-    var env = simVagues.amplitude;
-    if (simVagues.geoAttenuation) env *= Math.sqrt(40 / (40 + r_px));
-    if (simVagues.attenuation > 0)
-        env *= Math.exp(-simVagues.attenuation * 5 * r_px / simVagues.canvasW);
-    return env;
-}
+// construction. L'excursion HORIZONTALE de la molécule est donc 1,54 fois la
+// verticale en Impulsion : sans ce correctif, la boucle y serait 54 % plus
+// large qu'en sinusoïdal pour la même amplitude affichée.
+var IMPULSE_Q_PEAK     = IMPULSE_V_NORM;
 
 // Couple (F, Q) du champ de la coupe en x. DOIT rester aligné sur
 // _waveFieldCoupeAt : out[0] en est la copie exacte, out[1] sa quadrature.
 //
 // Les DEUX sont lus dans l'historique de la source, au même échantillon : la
-// bille suit exactement la surface dessinée, et son ellipse reste calée
-// dessus. La quadrature était auparavant recalculée analytiquement, en
-// cos(2πf·(t − r/c)) — ce qui supposait une source ayant toujours oscillé
-// depuis t = 0 avec la phase 0. Couper puis relancer la source (ou passer par
-// le mode Impulsion) remet `sinPhase` à zéro : la quadrature reconstituée
-// n'avait alors plus aucun rapport avec le déplacement réel, l'enveloppe
-// √(F² + Q²) devenait n'importe quoi et les orbites partaient en vrille.
+// bille suit exactement la surface dessinée. La quadrature était auparavant
+// recalculée analytiquement, en cos(2πf·(t − r/c)) — ce qui supposait une
+// source ayant toujours oscillé depuis t = 0 avec la phase 0. Couper puis
+// relancer la source (ou passer par le mode Impulsion) remet `sinPhase` à
+// zéro : la quadrature reconstituée n'avait alors plus aucun rapport avec le
+// déplacement réel, et les trajectoires partaient en vrille.
+//
+// L'amplitude est déjà portée par l'échantillon (canal srcB, depuis que le
+// curseur Amplitude est causal) : il ne reste ici que les atténuations,
+// fonctions de la seule distance. C'est LE point où l'ancienne traînée se
+// trompait, en remultipliant par une enveloppe nominale déjà comptée.
 function _coupeFieldPairAt(x_canvas, srcX, out) {
     out[0] = 0; out[1] = 0;
     var r_px = x_canvas - srcX;
@@ -3338,8 +3258,6 @@ function _coupeFieldPairAt(x_canvas, srcX, out) {
     if (simVagues.c_sim <= 0) return;
     _vaguesSrcPairAtR(r_px, undefined, out);
     if (out[0] === 0 && out[1] === 0) return;   // front pas encore arrivé
-    // L'amplitude est déjà dans le couple, portée par l'échantillon : il ne
-    // reste que les atténuations, qui sont bien fonction de la seule distance.
     var env = 1;
     if (simVagues.geoAttenuation) env *= Math.sqrt(40 / (40 + r_px));
     if (simVagues.attenuation > 0)
@@ -3349,23 +3267,46 @@ function _coupeFieldPairAt(x_canvas, srcX, out) {
 }
 
 var _orbitFP   = [0, 0];   // tampon réutilisé (pas d'allocation par frame)
-var _orbitCols = [];       // idem pour les colonnes (liste de la frame)
-var _orbitPool = [];       // réservoir persistant des objets colonne
-// Points écran de la traînée en cours de tracé : calculés une fois, relus par
-// le halo puis par les trois tronçons clairs.
-var _orbitTrX  = [];
-var _orbitTrY  = [];
-var _orbitRows = [];       // idem pour les profondeurs des rangées (fraction de h)
+var _orbitColX = [];       // abscisses de repos des colonnes
+var _orbitRowY = [];       // ordonnées de repos des rangées
+var _orbitRowV = [];       // px par unité de champ, pour chaque rangée
+
+// ── Traînées : un tampon circulaire par (rangée, colonne) ─────────────
+//  Indexés par ri·nCols + ci, ce qui reste stable tant que la signature de
+//  mise en page ne change pas — et quand elle change, tout est purgé.
+var _orbitTrails = [];
+var _orbitSig    = '';
+var _orbitLastT  = -1;
+
+function _orbitTrailPush(k, x, y) {
+    var tr = _orbitTrails[k];
+    if (!tr) {
+        tr = _orbitTrails[k] = { x: new Float32Array(ORBIT_TRAIL_PTS),
+                                 y: new Float32Array(ORBIT_TRAIL_PTS),
+                                 n: 0, head: 0 };
+    }
+    tr.x[tr.head] = x;
+    tr.y[tr.head] = y;
+    tr.head = (tr.head + 1) % ORBIT_TRAIL_PTS;
+    if (tr.n < ORBIT_TRAIL_PTS) tr.n++;
+}
+
+function _orbitTrailsClear() {
+    for (var i = 0; i < _orbitTrails.length; i++) {
+        var tr = _orbitTrails[i];
+        if (tr) { tr.n = 0; tr.head = 0; }
+    }
+    _orbitLastT = -1;
+}
 
 // ── Sprite de la molécule ─────────────────────────────────────────────
 //  Une bille d'eau : dégradé radial avec un reflet en haut à gauche, cerné
 //  d'un liseré sombre APPUYÉ. Ce liseré n'est pas décoratif : la rangée de
 //  surface passe alternativement sur l'eau profonde, sur l'écume blanche et
-//  sur le ciel clair (son orbite monte au niveau des crêtes), où une bille
-//  claire seule devenait invisible. Le dégradé est peint UNE FOIS hors
-//  écran puis recopié (même principe que _chromeVagues) : en créer un par
-//  molécule et par frame, c'était une trentaine de createRadialGradient à
-//  chaque image.
+//  sur le ciel clair, où une bille claire seule devenait invisible. Le dégradé
+//  est peint UNE FOIS hors écran puis recopié (même principe que
+//  _chromeVagues) : en créer un par molécule et par frame, c'était une
+//  trentaine de createRadialGradient à chaque image.
 var _orbitBead = null;
 function _orbitBeadSprite() {
     var dpr = window.devicePixelRatio || 1;
@@ -3430,363 +3371,216 @@ function _drawSeabedVagues(ctx, W, H, srcX, seabedY) {
     }
 }
 
-// Demi-axe VERTICAL d'une rangée, en px, pour une profondeur df exprimée en
-// fraction de h (0 = surface, 1 = fond marin). aPx est le demi-axe de la
-// rangée de surface. Sert au placement des rangées (cf. plus bas) autant qu'à
-// leur tracé.
-// Colonnes réutilisées d'une frame à l'autre : les tampons de trace sont des
-// Float32Array, en allouer trente par seconde ferait travailler le GC pendant
-// l'animation.
-function _orbitColSlot(i) {
-    var col = _orbitPool[i] || (_orbitPool[i] = {});
-    if (!col.trF) {
-        col.trF = new Float32Array(ORBIT_TRACE_PTS);
-        col.trQ = new Float32Array(ORBIT_TRACE_PTS);
-    }
-    return col;
-}
+// ── Tracé d'une traînée ───────────────────────────────────────────────
+//  Un halo sombre continu sur toute sa longueur, puis trois tronçons de plus
+//  en plus vifs et épais vers la bille. La rangée de surface traverse
+//  alternativement l'eau, l'écume et le ciel : un trait d'une seule couleur y
+//  disparaîtrait forcément d'un côté ou de l'autre.
+//
+//  Le tampon est circulaire : `head` pointe la prochaine case à écrire, donc
+//  le point le plus ANCIEN des n disponibles est en (head − n).
+function _orbitStrokeTrail(ctx, tr) {
+    if (!tr || tr.n < 3) return;
+    var P    = ORBIT_TRAIL_PTS;
+    var n    = tr.n;
+    var base = (tr.head - n + P) % P;
+    var j, k;
 
-// ── Traînée : le chemin parcouru, LES DEUX MODES ──────────────────────
-//  Rien n'est pré-dessiné — ni ellipse, ni boucle. Ce qui est peint est le
-//  chemin que la molécule vient RÉELLEMENT de parcourir, sur la dernière
-//  fraction de période (ORBIT_TRAIL_ARC).
-//
-//  Aucun état n'est accumulé pour autant. La position de la molécule à
-//  l'instant t − Δ est le champ lu à la distance r + c·Δ : ce sont les MÊMES
-//  échantillons d'historique, simplement plus loin de la source. Le passé
-//  d'une molécule est donc littéralement la forme de l'onde devant elle, et
-//  la traînée se lit d'un seul balayage vers la droite.
-//
-//  Ce n'est pas qu'une économie : rien à réinitialiser au resize, à la pause,
-//  au changement de h ou d'amplitude — la traînée est une fonction pure de
-//  l'historique, comme tout le reste du rendu de cet onglet.
-//
-//  Les points situés au-delà du front (ou en deçà de l'arrière du train)
-//  ressortent à (0, 0), c'est-à-dire à la position de repos — où la molécule
-//  était effectivement. La traînée naît et meurt donc toute seule avec le
-//  passage de l'onde : il n'y a aucune condition d'arrêt à écrire.
-//
-//  Le balayage est court À DESSEIN. Il a couvert une période entière, pour
-//  refermer la boucle, et c'était un défaut : tant qu'une partie du passé est
-//  encore au repos, la polyligne tire un segment droit de l'arc parcouru
-//  jusqu'au point de repos — le « rayon » qui vibrait dans l'ellipse en
-//  sinusoïdal jusqu'à ce qu'elle soit complète, et qui rendait le mode
-//  Impulsion illisible, lui qui n'a jamais de boucle achevée.
-//
-//  Une seule traînée est calculée PAR COLONNE et partagée par les quatre
-//  rangées, qui ne font que la mettre à l'échelle par fV et fH : neuf colonnes
-//  de ORBIT_TRACE_PTS points, ~150 lectures par frame, contre les ~120 000
-//  points du rendu de la vue de dessus.
-//
-//  L'atténuation appliquée est celle de la COLONNE, pas celle du point lu.
-//  Passer par _coupeFieldPairAt reviendrait à atténuer le passé de la molécule
-//  comme s'il appartenait au point plus lointain où on est allé le chercher :
-//  la traînée rapetissait vers sa queue, d'un facteur qui n'a rien de physique.
-//  On lit donc le déplacement émis nu, et on l'atténue une fois, en r.
-function _orbitFillTrace(col, srcX, spanPx) {
-    var dx  = spanPx / (ORBIT_TRACE_PTS - 1);
-    var mx  = 0;
-    var r0  = col.x - srcX;
-    if (r0 < 0 || simVagues.c_sim <= 0) { col.trMax = 0; return; }
-    for (var j = 0; j < ORBIT_TRACE_PTS; j++) {
-        _vaguesSrcPairAtR(r0 + j * dx, undefined, _orbitFP);
-        var F = _orbitFP[0] * col.envNom, Q = _orbitFP[1] * col.envNom;
-        col.trF[j] = F;
-        col.trQ[j] = Q;
-        var m = Math.abs(F) > Math.abs(Q) ? Math.abs(F) : Math.abs(Q);
-        if (m > mx) mx = m;
-    }
-    col.trMax = mx;
-}
-
-// Tracé de la traînée d'une colonne, à l'échelle d'une rangée.
-//
-//  UNE TRAÎNÉE, PAS UNE COURBE COMPLÈTE. La boucle entière a été tracée, et
-//  c'est ce qui cassait le mode Impulsion : tant qu'une partie du passé
-//  balayé est encore au repos, la polyligne tire un long segment droit depuis
-//  l'arc déjà parcouru jusqu'au point de repos, puis y stagne. En sinusoïdal
-//  établi le cas ne se présente pas — tous les points sont sur la boucle — si
-//  bien que le défaut ne se voyait qu'en Impulsion, où il est permanent.
-//
-//  La traînée seule n'a pas ce problème : elle ne couvre que la dernière
-//  fraction de période, elle suit la bille comme une comète, elle naît quand
-//  l'onde arrive et s'éteint quand l'onde s'en va. Et elle suffit — c'est elle
-//  qui portait déjà le sens de parcours, seule information que la courbe
-//  fermée ajoutait par-dessus.
-//
-//  Trois segments de plus en plus vifs et épais vers la bille, sur un halo
-//  sombre commun : la traînée de la rangée de surface monte au niveau des
-//  crêtes et traverse donc l'eau, l'écume et le ciel, où un trait d'une seule
-//  couleur disparaîtrait forcément d'un côté ou de l'autre.
-//
-//  snapSurf : rangée de surface, dont la traînée est posée sur l'écume comme
-//  la bille elle-même (cf. le calcul de py). Sans cela la bille flotterait à
-//  côté de sa propre traînée.
-function _orbitStrokeTrace(ctx, col, cy, fV, fH, ampPx, snapSurf, srcX, yLevel) {
-    if (col.trMax * Math.max(fV, fH) * ampPx < 1.5) return;
-
-    var n = ORBIT_TRACE_PTS;
-    var xs = _orbitTrX, ys = _orbitTrY;
-    for (var i = 0; i < n; i++) {
-        xs[i] = col.x - fH * col.trQ[i] * ampPx;
-        ys[i] = snapSurf
-              ? yLevel - _waveFieldCoupeAt(xs[i], srcX) * ampPx
-              : cy     - fV * col.trF[i] * ampPx;
-    }
-
-    // Halo, en un seul stroke sur toute la traînée.
     ctx.beginPath();
-    for (var j = 0; j < n; j++) {
-        if (j === 0) ctx.moveTo(xs[j], ys[j]); else ctx.lineTo(xs[j], ys[j]);
+    for (j = 0; j < n; j++) {
+        k = (base + j) % P;
+        if (j === 0) ctx.moveTo(tr.x[k], tr.y[k]); else ctx.lineTo(tr.x[k], tr.y[k]);
     }
     ctx.strokeStyle = 'rgba(8, 42, 72, 0.30)';
     ctx.lineWidth   = 3;
     ctx.stroke();
 
-    // k = 0 est le tronçon le plus ancien, k = 2 celui qui touche la bille.
-    for (var k = 0; k < 3; k++) {
-        var j0 = Math.round((n - 1) * (2 - k) / 3);
-        var j1 = Math.round((n - 1) * (3 - k) / 3);
+    // seg = 0 est le tronçon le plus ancien, seg = 2 celui qui touche la bille.
+    for (var seg = 0; seg < 3; seg++) {
+        var j0 = Math.round((n - 1) * seg / 3);
+        var j1 = Math.round((n - 1) * (seg + 1) / 3);
         if (j1 <= j0) continue;
         ctx.beginPath();
-        for (var jj = j0; jj <= j1; jj++) {
-            if (jj === j0) ctx.moveTo(xs[jj], ys[jj]); else ctx.lineTo(xs[jj], ys[jj]);
+        for (j = j0; j <= j1; j++) {
+            k = (base + j) % P;
+            if (j === j0) ctx.moveTo(tr.x[k], tr.y[k]); else ctx.lineTo(tr.x[k], tr.y[k]);
         }
-        ctx.strokeStyle = ORBIT_TRAIL_COL[k];
-        ctx.lineWidth   = 1.4 + 0.7 * k;
+        ctx.strokeStyle = ORBIT_TRAIL_COL[seg];
+        ctx.lineWidth   = 1.4 + 0.7 * seg;
         ctx.stroke();
     }
-}
-
-function _orbitRvAt(df, kh, shKh, aPx) {
-    var kz = kh * (1 - df);
-    if (kz < 0) kz = 0;
-    return (Math.sinh(kz) / shKh) * aPx;
 }
 
 function _drawOrbitesCoupeVagues(ctx, W, H, srcX, yLevel, ampPx) {
     var s = simVagues;
     if (!VAGUES_ORBITS_ENABLED || !s.showOrbits) return;
-    var fOrb = _vaguesOrbitFreq();
-    if (s.c_ms <= 0 || s.c_sim <= 0 || !(fOrb > 0)) return;
-    var isImpulse = (typeof _vaguesModeIsImpulse === 'function') && _vaguesModeIsImpulse();
+    if (s.c_sim <= 0) return;
 
     var seabedY = H - ORBIT_SEABED_PAD;
     var colH    = seabedY - yLevel;          // hauteur DESSINÉE de la colonne d'eau
     if (colH < 40) return;                   // canvas trop plat : illisible
 
-    var kh = 2 * Math.PI * fOrb * s.h / s.c_ms;
-    if (!(kh > 1e-4)) return;
-    var shKh = Math.sinh(kh);
+    // Amplitude NOMINALE de la houle, en px : celle que le curseur promet,
+    // connue avant qu'aucune onde n'existe. C'est elle qui dimensionne toute
+    // la mise en page — d'où des billes dessinées AU REPOS, source coupée.
+    // Le champ lu vaut jusqu'à `aSl` en unités de champ ; toute conversion
+    // entre une excursion EN PIXELS et une échelle « px par unité de champ »
+    // passe donc par lui, et c'est là que l'ancienne version comptait
+    // l'amplitude deux fois.
+    var aSl  = Math.max(0.5, s.amplitude);
+    var aNom = ampPx * aSl;
 
-    // ── Colonnes ──────────────────────────────────────────────────────
-    // Le nombre de colonnes est fixé par la LARGEUR disponible, puis le pas
-    // est ajusté vers un multiple impair de λ/2 (antiphase entre voisines,
-    // cf. en-tête) — mais seulement s'il reste à moins de 25 % du pas idéal,
-    // et toujours vers le BAS pour que la rangée continue de tenir dans
-    // l'espace disponible. La priorité inverse — antiphase d'abord — groupait
-    // deux ou trois colonnes au centre de l'écran dès que λ était grande.
-    var xLeft = srcX + 10, xRight = W - 12;
+    // ── Colonnes : pas uniforme, et rien d'autre ─────────────────────
+    // La marge de gauche tient compte de l'excursion horizontale MAXIMALE
+    // possible : sans elle, la bille de la première colonne pourrait passer
+    // à gauche de la source, où _waveFieldCoupeAt renvoie 0 — la rangée de
+    // surface y sauterait d'un coup sur la ligne d'équilibre.
+    var hMax  = ORBIT_H_AMP * aNom;
+    var xLeft = srcX + 12 + hMax, xRight = W - 12;
     var avail = xRight - xLeft;
     if (avail < 90) return;
-
-    // En Impulsion, lamPx est l'ÉTENDUE SPATIALE du motif (c·T_IMPULSE) : elle
-    // continue de borner la compression horizontale (borne λ/π), mais le calage
-    // en antiphase n'a plus d'objet — il n'y a pas de train dont les colonnes
-    // puissent être en opposition, seulement une bosse qui passe.
-    var lamPx   = s.c_sim / fOrb;
     var nCols   = Math.max(3, Math.min(9, Math.round(avail / ORBIT_TARGET_STEP) + 1));
     var colStep = avail / (nCols - 1);
-    if (lamPx > 0 && !isImpulse) {
-        var m = Math.floor(colStep / (lamPx / 2));
-        if (m % 2 === 0) m -= 1;             // impair, et ≤ pas idéal
-        var cand = m * lamPx / 2;
-        if (m >= 1 && cand >= 0.75 * colStep) colStep = cand;
+
+    _orbitColX.length = 0;
+    for (var c0 = 0; c0 < nCols; c0++) _orbitColX.push(xLeft + c0 * colStep);
+
+    // ── Rangées ──────────────────────────────────────────────────────
+    // La première EST la surface. Les suivantes se répartissent dans la bande
+    // qui reste sous le creux le plus bas : de l'eau en permanence, quelle que
+    // soit la vague. Le creux libéré au-dessus de la première rangée profonde
+    // est plafonné : à fond de course, l'amplitude nominale dévorerait sinon
+    // toute la colonne d'eau et il ne resterait plus une seule rangée. Le prix
+    // est qu'aux amplitudes extrêmes un creux profond peut frôler cette
+    // rangée — largement préférable à ne plus rien montrer.
+    var aLay  = Math.min(aNom, colH * ORBIT_LAY_AMP_CAP);
+    var yTop  = yLevel + ORBIT_SURF_CLEAR * aLay;
+    var yBot  = seabedY - 6;
+
+    var nDeep = 0, rowGap = 0;
+    if (yBot - yTop > 3 * ORBIT_DOT_R) {
+        nDeep  = ORBIT_MAX_ROWS - 1;
+        // Les rangées profondes occupent toute la bande, de yTop à yBot. On en
+        // retire tant qu'elles sont trop serrées pour rester distinctes.
+        while (nDeep > 1 && (yBot - yTop) / (nDeep - 1) < 4 * ORBIT_DOT_R) nDeep--;
+        rowGap = (nDeep > 1) ? (yBot - yTop) / (nDeep - 1) : (yBot - yTop);
     }
-    // Reste réparti en marges égales, nécessairement petites : la rangée
-    // occupe au minimum 75 % de la largeur disponible.
-    var xFirst = xLeft + (avail - (nCols - 1) * colStep) / 2;
 
-    // Longueur balayée par la traînée : la fraction de période que fixe
-    // ORBIT_TRAIL_ARC, convertie en px (le passé de Δ est le champ à c·Δ).
-    var trailPx = lamPx * ORBIT_TRAIL_ARC / (2 * Math.PI);
-
-    var envNomMax = 0;
-    _orbitCols.length = 0;
-    for (var i = 0; i < nCols; i++) {
-        var x0 = xFirst + i * colStep;
-        _coupeFieldPairAt(x0, srcX, _orbitFP);
-        var col = _orbitColSlot(i);
-        col.x      = x0;
-        col.F      = _orbitFP[0];
-        col.Q      = _orbitFP[1];
-        col.envNom = _coupeEnvNomAt(x0, srcX);
-        _orbitFillTrace(col, srcX, trailPx);
-        _orbitCols.push(col);
-        if (col.envNom > envNomMax) envNomMax = col.envNom;
+    _orbitRowY.length = 0;
+    _orbitRowV.length = 0;
+    // Rangée de surface : son échelle verticale est celle de la houle, mais
+    // elle ne servira pas — sa hauteur est prise sur l'écume elle-même.
+    _orbitRowY.push(yLevel);
+    _orbitRowV.push(ampPx);
+    for (var ri0 = 0; ri0 < nDeep; ri0++) {
+        var y  = yTop + ri0 * rowGap;
+        var df = (y - yLevel) / colH;                  // 0 en surface, 1 au fond
+        // fV = 1 − df, plafonné pour que l'excursion DESSINÉE — l'échelle
+        // multipliée par le champ, dont la crête vaut aSl — reste sous une
+        // fraction de l'écart entre rangées. Le non-chevauchement devient
+        // structurel, en une ligne, là où il demandait un placement par point
+        // fixe suivi d'un étalement.
+        var vs  = ampPx * (1 - df);
+        var cap = ORBIT_ROW_FILL * rowGap / aSl;
+        _orbitRowY.push(y);
+        _orbitRowV.push(Math.min(vs, cap));
     }
-    // Plus de sortie anticipée sur le champ : les colonnes existent, et leurs
-    // molécules sont dessinées au repos, tant que la scène a une géométrie.
-    if (envNomMax <= 0) return;
+    var nRows = _orbitRowY.length;
 
-    // ── Rangées ───────────────────────────────────────────────────────
-    // La première est SUR la surface moyenne (d = 0) ; il n'y en a AUCUNE sur
-    // le fond marin, où l'ellipse dégénère en segment horizontal — un trait
-    // mort qui n'apprend rien. La dernière s'arrête à ORBIT_MAX_DEPTH_FRAC·h,
-    // profondeur à laquelle l'ellipse est encore franchement une ellipse.
+    // ── Excursion horizontale ────────────────────────────────────────
+    // Constante avec la profondeur (limite eau peu profonde), et calibrée sur
+    // l'amplitude verticale : la boucle est donc à peu près aussi large que
+    // haute, ce qui la fait LIRE comme une boucle. Elle est plafonnée pour que
+    // deux colonnes voisines ne se touchent pas — c'est tout ce qui reste de
+    // l'ancienne compression, et ce plafond-là ne dépend d'aucun curseur de
+    // physique.
     //
-    // Les rangées ne sont PAS équidistantes. On descend la colonne en plaçant
-    // chaque rangée juste sous la précédente, à une distance calculée sur les
-    // demi-axes verticaux RÉELS des deux ellipses concernées (plus une garde
-    // de trois rayons de bille, pour que deux rangées restent distinctes même
-    // quand leurs ellipses sont minuscules). Le non-chevauchement devient
-    // ainsi structurel. L'ancien espacement uniforme, dimensionné par la
-    // seule ellipse de SURFACE, ne garantissait rien dès que le plancher de
-    // deux rangées passait outre la contrainte.
-    // Demi-axe vertical en surface (fV = 1), pris sur l'amplitude NOMINALE :
-    // la mise en page est ainsi fixée une fois pour toutes par les curseurs,
-    // et non par l'onde du moment (cf. _coupeEnvNomAt).
-    var aPx = envNomMax * ampPx;
-    _orbitRows.length = 0;
-    var df = 0;
-    for (var ri = 0; ri < ORBIT_MAX_ROWS; ri++) {
-        _orbitRows.push(df);
-        var rvPrev = _orbitRvAt(df, kh, shKh, aPx);
-        // Point fixe : rv décroît avec la profondeur, la suite converge en
-        // deux ou trois tours depuis la borne haute (deux fois rvPrev).
-        var next = df + (ORBIT_ROW_GAP * 2 * rvPrev + 3 * ORBIT_DOT_R) / colH;
-        for (var it = 0; it < 3; it++) {
-            next = df + (ORBIT_ROW_GAP * (rvPrev + _orbitRvAt(next, kh, shKh, aPx))
-                         + 3 * ORBIT_DOT_R) / colH;
-        }
-        if (next > ORBIT_MAX_DEPTH_FRAC) break;
-        df = next;
-    }
-    var nRows = _orbitRows.length;
+    // Le raisonnement se fait EN PIXELS d'excursion, puis se convertit une
+    // seule fois en « px par unité de champ » (division par aSl) : mélanger
+    // les deux, c'était l'erreur de l'ancienne traînée.
+    //
+    // En Impulsion, la crête de la quadrature vaut IMPULSE_Q_PEAK là où celle
+    // du déplacement vaut 1 : sans ce facteur la boucle y serait 54 % plus
+    // large qu'en sinusoïdal.
+    var isImpulse = (typeof _vaguesModeIsImpulse === 'function') && _vaguesModeIsImpulse();
+    var hExc = Math.min(hMax, ORBIT_H_STEP_CAP * colStep);
+    var hPx  = hExc / aSl / (isImpulse ? IMPULSE_Q_PEAK : 1);
 
-    // Étalement. Les écarts minimaux se resserrent vers le bas (les ellipses y
-    // sont minuscules) : les rangées s'entasseraient sous la surface en
-    // laissant toute la moitié basse de la colonne d'eau vide. On dilate donc
-    // les profondeurs pour que la dernière tombe pile sur ORBIT_MAX_DEPTH_FRAC.
-    // Dilater ne peut pas recréer de chevauchement : chaque écart est
-    // multiplié par un facteur ≥ 1 pendant que descendre une rangée ne fait
-    // que rapetisser son ellipse.
-    var lastDf = _orbitRows[nRows - 1];
-    if (nRows > 1 && lastDf > 1e-3 && lastDf < ORBIT_MAX_DEPTH_FRAC) {
-        var kStretch = ORBIT_MAX_DEPTH_FRAC / lastDf;
-        for (var rj = 1; rj < nRows; rj++) _orbitRows[rj] *= kStretch;
-    }
+    // ── Purge des traînées ───────────────────────────────────────────
+    // Les points empilés sont des positions ÉCRAN : ils ne veulent plus rien
+    // dire si la mise en page a changé sous eux (resize, bascule de vue, ampPx
+    // qui suit f/g/h, curseur Amplitude). Un saut de l'horloge simulée — reset,
+    // retour sur l'onglet, transition 3D pendant laquelle rien n'est appelé —
+    // les invalide de la même façon.
+    var sig = nCols + '|' + nRows + '|' + Math.round(colStep) + '|' +
+              Math.round(xLeft) + '|' + Math.round(yLevel) + '|' +
+              Math.round(seabedY) + '|' + Math.round(ampPx) + '|' +
+              Math.round(aLay);
+    if (sig !== _orbitSig) { _orbitSig = sig; _orbitTrailsClear(); }
 
-    // ── Compression horizontale ───────────────────────────────────────
-    // Seule entorse au rapport exact (cf. en-tête). Le facteur est calculé
-    // sur la rangée de SURFACE et appliqué tel quel à toutes les autres : la
-    // largeur reste ainsi quasi constante avec la profondeur — c'est bien la
-    // physique — pendant que la hauteur, elle, décroît. Le plafond
-    // DÉTERMINANT est ORBIT_LAMBDA_FRAC·λ (borne β ≤ 2, cf. en-tête) : c'est
-    // lui qui garantit que la molécule ne double jamais la forme de la vague.
-    // Le plafond par case ne joue qu'aux très grandes λ.
-    // En Impulsion, l'excursion horizontale de la molécule est celle de la
-    // quadrature du motif, dont la crête vaut IMPULSE_Q_PEAK là où celle du
-    // déplacement vaut 1 : sans ce facteur, la trace déborderait la borne λ/π
-    // de 54 %.
-    var rhTrue = (Math.cosh(kh) / shKh) * aPx * (isImpulse ? IMPULSE_Q_PEAK : 1);
-    var capPx  = Math.min(colStep * 0.42, ORBIT_LAMBDA_FRAC * lamPx);
-    var hScale = Math.min(1, capPx / Math.max(1, rhTrue));
+    var t = s.simTime;
+    if (_orbitLastT < 0 || t < _orbitLastT || t - _orbitLastT > 0.5) {
+        _orbitTrailsClear();
+        _orbitLastT = t;
+    }
+    var sample = (t - _orbitLastT >= ORBIT_TRAIL_DT);
+    if (sample) _orbitLastT = t;
 
     ctx.save();
     var bead = _orbitBeadSprite();
 
-    // ── Filet vertical ────────────────────────────────────────────────
+    // ── Filet vertical ───────────────────────────────────────────────
     // Relie les positions MOYENNES d'une même colonne : sans lui, la grille se
     // lit comme un semis de billes indépendantes au lieu d'une sonde plantée
-    // dans l'eau, et l'écrasement des ellipses avec la profondeur ne saute pas
+    // dans l'eau, et l'écrasement des boucles avec la profondeur ne saute pas
     // aux yeux.
     if (nRows > 1) {
         ctx.strokeStyle = 'rgba(200, 232, 255, 0.20)';
         ctx.lineWidth   = 1;
         ctx.setLineDash([2, 5]);
         ctx.beginPath();
-        var yBot = yLevel + _orbitRows[nRows - 1] * colH;
         for (var cl = 0; cl < nCols; cl++) {
-            ctx.moveTo(_orbitCols[cl].x, yLevel);
-            ctx.lineTo(_orbitCols[cl].x, yBot);
+            ctx.moveTo(_orbitColX[cl], yLevel);
+            ctx.lineTo(_orbitColX[cl], _orbitRowY[nRows - 1]);
         }
         ctx.stroke();
         ctx.setLineDash([]);
     }
 
-    // Rangées à l'extérieur : fV et fH ne dépendent que de la profondeur.
-    for (var ri2 = 0; ri2 < nRows; ri2++) {
-        var dfr = _orbitRows[ri2];
-        var cy  = yLevel + dfr * colH;
-        var kz  = kh * (1 - dfr);            // k(h − d)
-        if (kz < 0) kz = 0;
-        var fV  = Math.sinh(kz) / shKh;                // V/a — échelle EXACTE
-        var fH  = (Math.cosh(kz) / shKh) * hScale;     // Hz/a — comprimé
+    for (var ri = 0; ri < nRows; ri++) {
+        var cy    = _orbitRowY[ri];
+        var vPx   = _orbitRowV[ri];
+        var dNorm = (cy - yLevel) / colH;
 
         // Estompage et bille rétrécie avec la profondeur : la colonne se lit
         // comme une atténuation, et non comme quatre copies du même dessin.
-        var dNorm = dfr / ORBIT_MAX_DEPTH_FRAC;
-        ctx.globalAlpha = 1 - 0.45 * dNorm;
+        ctx.globalAlpha = 1 - 0.40 * dNorm;
         var bSize = bead.size * (1 - 0.28 * dNorm);
         var bHalf = bSize / 2;
 
         for (var ci = 0; ci < nCols; ci++) {
-            var col = _orbitCols[ci];
+            var x0 = _orbitColX[ci];
+            _coupeFieldPairAt(x0, srcX, _orbitFP);
 
-            // La bille est dessinée dans tous les cas, y compris avant que le
-            // front n'arrive : F = Q = 0 la posent d'eux-mêmes sur l'axe de la
-            // rangée, c'est-à-dire au repos.
-            //
-            // Aucune COURBE n'est peinte, dans aucun des deux modes : juste la
-            // traînée du chemin qu'elle vient de parcourir
-            // (cf. _orbitFillTrace), qui naît et meurt avec le passage de
-            // l'onde.
-            _orbitStrokeTrace(ctx, col, cy, fV, fH, ampPx,
-                              ri2 === 0, srcX, yLevel);
+            // Avant l'arrivée du front, et une fois la source coupée, F et Q
+            // sont nuls : la bille se pose d'elle-même sur sa position de
+            // repos. Aucun cas particulier à écrire.
+            var px = x0 - hPx * _orbitFP[1];
 
-            var px = col.x - fH * col.Q * ampPx;
-
-            // ── Rangée de surface : posée SUR l'écume ─────────────────
-            // Sa hauteur est celle de la surface dessinée à l'abscisse où la
-            // bille est peinte, et non le ζ de sa position moyenne.
-            //
-            // C'est une réconciliation de rendu, pas de la physique. La bille
-            // est LAGRANGIENNE (elle est en x₀ + ξ) tandis que la surface est
-            // tracée en EULÉRIEN (ζ(x), à l'abscisse non déplacée) : mélanger
-            // l'abscisse de l'une et la hauteur de l'autre n'a de sens dans
-            // aucune des deux descriptions. En théorie linéaire les deux
-            // coïncident au premier ordre — mais la vue en coupe exagère le
-            // vertical d'un facteur ~35 et comprime l'horizontal, si bien
-            // qu'elles divergent visiblement à l'écran.
-            //
-            // Le symptôme : en Impulsion, ξ ne s'annule pas au sommet de la
-            // crête (contrairement au sinusoïdal, où Q = 0 quand F est
-            // maximal), donc la bille flottait à la bonne HAUTEUR mais à
-            // droite de la crête, décalée par rapport à l'allure de
-            // l'impulsion. Posée sur l'écume, elle la suit exactement, monte
-            // au sommet de la crête et descend au fond du creux, tout en
-            // gardant son va-et-vient horizontal.
-            //
-            // Les rangées profondes n'ont, elles, aucune courbe où se poser :
-            // elles restent en lagrangien pur.
-            var py = (ri2 === 0)
+            // Rangée de surface : posée SUR l'écume, à l'abscisse où la bille
+            // est peinte. C'est une réconciliation de rendu, pas de physique —
+            // la bille est lagrangienne (elle est en x₀ + ξ) tandis que la
+            // surface est tracée en eulérien, et la vue exagère trop le
+            // vertical pour que les deux coïncident. Posée dessus, elle monte
+            // au sommet de la crête, descend au fond du creux, et ne peut
+            // jamais se retrouver en l'air.
+            var py = (ri === 0)
                    ? yLevel - _waveFieldCoupeAt(px, srcX) * ampPx
-                   : cy     - fV * col.F * ampPx;
+                   : cy     - vPx * _orbitFP[0];
 
-            // ── Aucun rabattage conditionnel ──────────────────────────
-            // Il y en a eu un : la molécule était COMPARÉE à la surface prise
-            // à son abscisse déplacée, puis rabattue dessus (rangée de
-            // surface) ou escamotée (rangées profondes) quand elle passait
-            // au-dessus. Un test qui ne se déclenche qu'une partie du cycle
-            // introduit forcément une discontinuité : en sinusoïdal, il
-            // précipitait la molécule au fond au quart de période, alors
-            // qu'elle devait passer à mi-hauteur.
-            //
-            // La rangée de surface est désormais posée sur l'écume EN
-            // PERMANENCE (ci-dessus), ce qui est continu ; les rangées
-            // profondes ne sont plus testées du tout, la borne λ/π et
-            // l'espacement des rangées suffisant à les garder sous l'eau.
+            var k = ri * nCols + ci;
+            if (sample) _orbitTrailPush(k, px, py);
+            _orbitStrokeTrail(ctx, _orbitTrails[k]);
             ctx.drawImage(bead.canvas, px - bHalf, py - bHalf, bSize, bSize);
         }
     }
