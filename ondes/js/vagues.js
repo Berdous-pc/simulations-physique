@@ -501,11 +501,31 @@ function stepSourceVagues(t) {
     // membrane décrit une bosse unipolaire, mais ce que l'élève voit est ΔP,
     // sa dérivée — compression puis dépression. Ici l'observable EST le
     // déplacement, il doit donc porter les deux.
+    //
+    // ── Quadrature de l'impulsion ─────────────────────────────────────
+    // Pour la sinusoïde, la quadrature cos φ vaut exactement −ω·∫d dt. C'est
+    // CETTE écriture-là qui se généralise à une forme d'onde quelconque, et
+    // c'est la bonne physique : en eau peu profonde la vitesse horizontale
+    // est proportionnelle à l'élévation (u = c·ζ/h), donc le déplacement
+    // horizontal d'une molécule est l'INTÉGRALE de son déplacement vertical.
+    // (La dérivée coïnciderait elle aussi avec cos φ pour une sinusoïde —
+    // c'est le piège : les deux ne se distinguent qu'ici, hors bande étroite,
+    // et seule l'intégrale est juste.)
+    //
+    // Le motif s'intègre en fermé. Avec ω = 2π/T_IMPULSE :
+    //     q(τ) = (A/2)·[cos u − ¼·cos 2u − ¾]
+    // la constante étant fixée par q(0) = 0. Elle est aussi nulle en u = 2π :
+    // la molécule part du repos et Y REVIENT EXACTEMENT — le fait que
+    // l'option est censée montrer, ici démontré et non plus suggéré. Entre
+    // les deux q reste négative, donc ξ = −(Hz/a)·Q > 0 : la molécule avance
+    // sous la crête, recule sous le creux, et referme sa boucle. Même sens de
+    // rotation qu'en sinusoïdal.
     for (var i = 0; i < s.impulses.length; i++) {
         var tau = t - s.impulses[i].startTime;
         if (tau >= 0 && tau <= T_IMPULSE) {
             var u = 2 * Math.PI * tau / T_IMPULSE;
             d += IMPULSE_V_NORM * Math.sin(u) * (1 - Math.cos(u)) / 2;
+            q += IMPULSE_V_NORM * (Math.cos(u) - Math.cos(2 * u) / 4 - 0.75) / 2;
         }
     }
 
@@ -2313,13 +2333,14 @@ function syncBtnOrbitesVagues() {
     var btn = document.getElementById('btn-orbites-vagues');
     if (!btn) return;
 
-    // Les orbites sortent de la théorie d'Airy, qui suppose une onde
-    // MONOCHROMATIQUE : sans période définie, elles n'ont pas de sens. Le
-    // bouton se verrouille donc en mode Impulsion. (_vaguesModeIsImpulse est
-    // défini dans ui.js, chargé après : d'où le garde, comme pour activeTab.)
-    var isImpulse = (typeof _vaguesModeIsImpulse === 'function') && _vaguesModeIsImpulse();
-    btn.disabled = isImpulse;
-    if (isImpulse && simVagues.showOrbits) simVagues.showOrbits = false;
+    // Le bouton n'est plus verrouillé en Impulsion. Il l'a été tant que
+    // l'option ne savait dessiner qu'une ORBITE FERMÉE, laquelle suppose bien
+    // une onde monochromatique. Ce que le mode Impulsion affiche désormais
+    // n'est pas une orbite mais la TRACE du chemin parcouru
+    // (cf. _orbitFillTrace) — un tracé qui, lui, ne suppose aucune période, et
+    // qui montre même mieux l'absence de transport de matière : la molécule
+    // boucle et revient exactement à son point de départ, une fois, sous les
+    // yeux de l'élève.
     btn.classList.toggle('active', simVagues.showOrbits);
 }
 
@@ -3126,6 +3147,35 @@ function _drawVaguesCoupe(ctx, W, H) {
 //     crête) pendant que sa voisine est au fond de la sienne (sous le
 //     creux). L'ordre des priorités compte : caler l'antiphase d'abord
 //     groupait deux ou trois colonnes au centre de l'écran aux grandes λ.
+//
+//  ── CE QUI NE DÉPEND PAS DE L'ONDE ──────────────────────────────────
+//  La MISE EN PAGE (profondeur des rangées, compression horizontale) est
+//  calculée sur l'amplitude NOMINALE — celle que les curseurs promettent,
+//  connue avant qu'aucune onde n'existe (cf. _coupeEnvNomAt) — et non sur
+//  l'enveloppe instantanée des colonnes, comme c'était le cas. Seule la
+//  TAILLE DESSINÉE des orbites suit l'enveloppe instantanée.
+//
+//  Cette séparation porte trois choses d'un coup :
+//   • la grille ne se replace plus pendant que le front arrive ;
+//   • les molécules sont dessinées AU REPOS, source coupée : la grille et le
+//     filet vertical attendent l'onde, les billes posées sur leur position
+//     moyenne, et c'est l'onde qui vient les mettre en mouvement. Les orbites,
+//     elles, n'apparaissent qu'avec le front — dessiner la boucle avant que
+//     l'onde n'arrive donnerait la réponse à la place de l'élève ;
+//   • le mode Impulsion devient représentable.
+//
+//  ── MODE IMPULSION ──────────────────────────────────────────────────
+//  Une impulsion n'a pas de période, donc pas d'orbite fermée. Ce qui est
+//  tracé est la TRACE du chemin réellement parcouru (_orbitFillTrace), lue
+//  dans l'historique sans rien mémoriser. Elle dit plus que l'ellipse : la
+//  molécule décrit une boucle et revient EXACTEMENT à son point de départ,
+//  une fois, sous les yeux de l'élève — le déplacement horizontal étant
+//  l'intégrale du déplacement vertical, et le motif d'impulsion étant à
+//  intégrale nulle (cf. la quadrature dans stepSourceVagues).
+//
+//  Les facteurs d'Airy sont évalués à f = 1/T_IMPULSE, fréquence centrale du
+//  motif. Ce n'est pas une approximation de plus : le modèle simulé est déjà
+//  non dispersif (c = √(gh) pour toutes les fréquences).
 
 var ORBIT_TARGET_STEP  = 150;  // px — espacement visé entre deux colonnes
 var ORBIT_SEABED_PAD   = 16;   // px — eau laissée sous le fond marin dessiné
@@ -3138,6 +3188,54 @@ var ORBIT_TRAIL_ARC      = 1.15; // rad — longueur d'arc de la traînée de la
 var ORBIT_TRAIL_COL      = ['rgba(255,255,255,0.16)',
                             'rgba(255,255,255,0.32)',
                             'rgba(255,255,255,0.55)'];
+var ORBIT_TRACE_PTS      = 40;   // points de la trace, en mode Impulsion
+
+// Crête de la quadrature du motif d'impulsion : |q|max = IMPULSE_V_NORM,
+// atteint en u = π (cf. stepSourceVagues), là où |d|max vaut 1 par
+// construction de IMPULSE_V_NORM. L'excursion HORIZONTALE de la molécule est
+// donc 1,54 fois la nominale verticale — la compression horizontale doit en
+// tenir compte, sans quoi la borne λ/π serait franchie d'autant.
+var IMPULSE_Q_PEAK       = IMPULSE_V_NORM;
+
+// Fréquence qui donne son sens aux trajectoires. En sinusoïdal c'est celle du
+// curseur ; en Impulsion, le motif est une oscillation unique de durée
+// T_IMPULSE, dont c'est la fréquence centrale. Prendre une fréquence unique
+// pour une impulsion large bande n'ajoute AUCUNE approximation à celles que la
+// page fait déjà : le modèle est non dispersif (c = √(gh), identique à toutes
+// les fréquences), les facteurs cosh/sinh d'Airy sont donc évalués là où toute
+// la page évalue déjà sa physique.
+function _vaguesOrbitFreq() {
+    var isImpulse = (typeof _vaguesModeIsImpulse === 'function') && _vaguesModeIsImpulse();
+    return isImpulse ? (1 / T_IMPULSE) : simVagues.freq;
+}
+
+// Enveloppe NOMINALE au point x : l'amplitude que la molécule atteindra quand
+// l'onde sera passée, connue sans qu'aucune onde n'existe. Ce sont exactement
+// les facteurs de _coupeFieldPairAt, privés du déplacement lu dans
+// l'historique.
+//
+// C'est elle qui dimensionne la MISE EN PAGE (profondeur des rangées,
+// compression horizontale), là où l'ancienne version utilisait le maximum
+// INSTANTANÉ des colonnes. Trois conséquences, et c'est le même correctif qui
+// les porte toutes les trois :
+//   • la grille ne « respire » plus quand le front arrive — elle était jusqu'ici
+//     recalculée à chaque frame sur une enveloppe qui grandissait ;
+//   • les molécules peuvent être dessinées AU REPOS, source coupée : leur
+//     géométrie est définie avant même que l'onde n'existe ;
+//   • le mode Impulsion devient possible, puisqu'il n'y a chez lui aucune
+//     enveloppe stationnaire à mesurer.
+// La taille DESSINÉE de l'orbite, elle, continue de suivre l'enveloppe
+// instantanée : c'est ce qui la fait naître avec le front au lieu d'apparaître
+// d'un coup à taille pleine.
+function _coupeEnvNomAt(x_canvas, srcX) {
+    var r_px = x_canvas - srcX;
+    if (r_px < 0) return 0;
+    var env = simVagues.amplitude;
+    if (simVagues.geoAttenuation) env *= Math.sqrt(40 / (40 + r_px));
+    if (simVagues.attenuation > 0)
+        env *= Math.exp(-simVagues.attenuation * 5 * r_px / simVagues.canvasW);
+    return env;
+}
 
 // Couple (F, Q) du champ de la coupe en x. DOIT rester aligné sur
 // _waveFieldCoupeAt : out[0] en est la copie exacte, out[1] sa quadrature.
@@ -3168,7 +3266,8 @@ function _coupeFieldPairAt(x_canvas, srcX, out) {
 }
 
 var _orbitFP   = [0, 0];   // tampon réutilisé (pas d'allocation par frame)
-var _orbitCols = [];       // idem pour les colonnes
+var _orbitCols = [];       // idem pour les colonnes (liste de la frame)
+var _orbitPool = [];       // réservoir persistant des objets colonne
 var _orbitRows = [];       // idem pour les profondeurs des rangées (fraction de h)
 
 // ── Sprite de la molécule ─────────────────────────────────────────────
@@ -3248,6 +3347,97 @@ function _drawSeabedVagues(ctx, W, H, srcX, seabedY) {
 // fraction de h (0 = surface, 1 = fond marin). aPx est le demi-axe de la
 // rangée de surface. Sert au placement des rangées (cf. plus bas) autant qu'à
 // leur tracé.
+// Colonnes réutilisées d'une frame à l'autre : les tampons de trace sont des
+// Float32Array, en allouer trente par seconde ferait travailler le GC pendant
+// l'animation.
+function _orbitColSlot(i) {
+    var col = _orbitPool[i] || (_orbitPool[i] = {});
+    if (!col.trF) {
+        col.trF = new Float32Array(ORBIT_TRACE_PTS);
+        col.trQ = new Float32Array(ORBIT_TRACE_PTS);
+    }
+    return col;
+}
+
+// ── Trace du chemin parcouru (mode Impulsion) ─────────────────────────
+//  Sans période, il n'y a pas d'orbite fermée à pré-calculer : ce qu'on
+//  montre est le chemin que la molécule a RÉELLEMENT parcouru.
+//
+//  Aucun état n'est accumulé pour autant. La position de la molécule à
+//  l'instant t − Δ est le champ lu à la distance r + c·Δ : ce sont les MÊMES
+//  échantillons d'historique, simplement plus loin de la source. Le passé
+//  d'une molécule est donc littéralement la forme de l'onde devant elle, et
+//  la trace se lit d'un seul balayage vers la droite.
+//
+//  Ce n'est pas qu'une économie : rien à réinitialiser au resize, à la pause,
+//  au changement de h ou d'amplitude — la trace est une fonction pure de
+//  l'historique, comme tout le reste du rendu de cet onglet.
+//
+//  Longueur balayée : c·T_IMPULSE, l'étendue du motif, donc exactement une
+//  boucle complète. Les points situés au-delà du front ressortent à (0, 0),
+//  c'est-à-dire à la position de repos — où la molécule était effectivement :
+//  il n'y a aucune condition d'arrêt à écrire.
+//
+//  Une seule trace est calculée PAR COLONNE et partagée par les quatre
+//  rangées, qui ne font que la mettre à l'échelle par fV et fH. Neuf colonnes
+//  de quarante points, soit ~360 lectures par frame, contre les ~120 000 points
+//  du rendu de la vue de dessus.
+function _orbitFillTrace(col, srcX) {
+    var dx  = simVagues.c_sim * T_IMPULSE / (ORBIT_TRACE_PTS - 1);
+    var mx  = 0;
+    for (var j = 0; j < ORBIT_TRACE_PTS; j++) {
+        _coupeFieldPairAt(col.x + j * dx, srcX, _orbitFP);
+        var F = _orbitFP[0], Q = _orbitFP[1];
+        col.trF[j] = F;
+        col.trQ[j] = Q;
+        var m = Math.abs(F) > Math.abs(Q) ? Math.abs(F) : Math.abs(Q);
+        if (m > mx) mx = m;
+    }
+    col.trMax = mx;
+}
+
+// Tracé de la trace d'une colonne, à l'échelle d'une rangée. Même langage
+// visuel que l'orbite sinusoïdale : halo sombre puis trait clair (la trace de
+// la rangée de surface traverse l'eau, l'écume et le ciel), et la portion la
+// plus RÉCENTE reprise en trois segments de plus en plus vifs — c'est elle qui
+// donne le sens de parcours, exactement comme la traînée de l'orbite.
+function _orbitStrokeTrace(ctx, col, cy, fV, fH, ampPx) {
+    if (col.trMax * Math.max(fV, fH) * ampPx < 1.5) return;
+
+    var n = ORBIT_TRACE_PTS;
+    ctx.beginPath();
+    for (var j = 0; j < n; j++) {
+        var x = col.x - fH * col.trQ[j] * ampPx;
+        var y = cy    - fV * col.trF[j] * ampPx;
+        if (j === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = 'rgba(8, 42, 72, 0.30)';
+    ctx.lineWidth   = 2.2;
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(216, 246, 255, 0.45)';
+    ctx.lineWidth   = 1;
+    ctx.stroke();
+
+    // Portion récente : même fraction de motif que ORBIT_TRAIL_ARC pour
+    // l'orbite, ramenée en nombre de points de la trace.
+    var nHot = Math.max(3, Math.round(n * ORBIT_TRAIL_ARC / (2 * Math.PI)));
+    if (nHot > n - 1) nHot = n - 1;
+    for (var k = 2; k >= 0; k--) {
+        var j0 = Math.round(nHot * k / 3);
+        var j1 = Math.round(nHot * (k + 1) / 3);
+        if (j1 <= j0) continue;
+        ctx.beginPath();
+        for (var jj = j0; jj <= j1; jj++) {
+            var hx = col.x - fH * col.trQ[jj] * ampPx;
+            var hy = cy    - fV * col.trF[jj] * ampPx;
+            if (jj === j0) ctx.moveTo(hx, hy); else ctx.lineTo(hx, hy);
+        }
+        ctx.strokeStyle = ORBIT_TRAIL_COL[2 - k];
+        ctx.lineWidth   = 2.1 - 0.7 * k;
+        ctx.stroke();
+    }
+}
+
 function _orbitRvAt(df, kh, shKh, aPx) {
     var kz = kh * (1 - df);
     if (kz < 0) kz = 0;
@@ -3257,13 +3447,15 @@ function _orbitRvAt(df, kh, shKh, aPx) {
 function _drawOrbitesCoupeVagues(ctx, W, H, srcX, yLevel, ampPx) {
     var s = simVagues;
     if (!s.showOrbits) return;
-    if (s.c_ms <= 0 || s.c_sim <= 0 || s.freq <= 0) return;
+    var fOrb = _vaguesOrbitFreq();
+    if (s.c_ms <= 0 || s.c_sim <= 0 || !(fOrb > 0)) return;
+    var isImpulse = (typeof _vaguesModeIsImpulse === 'function') && _vaguesModeIsImpulse();
 
     var seabedY = H - ORBIT_SEABED_PAD;
     var colH    = seabedY - yLevel;          // hauteur DESSINÉE de la colonne d'eau
     if (colH < 40) return;                   // canvas trop plat : illisible
 
-    var kh = 2 * Math.PI * s.freq * s.h / s.c_ms;
+    var kh = 2 * Math.PI * fOrb * s.h / s.c_ms;
     if (!(kh > 1e-4)) return;
     var shKh = Math.sinh(kh);
 
@@ -3278,10 +3470,14 @@ function _drawOrbitesCoupeVagues(ctx, W, H, srcX, yLevel, ampPx) {
     var avail = xRight - xLeft;
     if (avail < 90) return;
 
-    var lamPx   = s.c_sim / s.freq;
+    // En Impulsion, lamPx est l'ÉTENDUE SPATIALE du motif (c·T_IMPULSE) : elle
+    // continue de borner la compression horizontale (borne λ/π), mais le calage
+    // en antiphase n'a plus d'objet — il n'y a pas de train dont les colonnes
+    // puissent être en opposition, seulement une bosse qui passe.
+    var lamPx   = s.c_sim / fOrb;
     var nCols   = Math.max(3, Math.min(9, Math.round(avail / ORBIT_TARGET_STEP) + 1));
     var colStep = avail / (nCols - 1);
-    if (lamPx > 0) {
+    if (lamPx > 0 && !isImpulse) {
         var m = Math.floor(colStep / (lamPx / 2));
         if (m % 2 === 0) m -= 1;             // impair, et ≤ pas idéal
         var cand = m * lamPx / 2;
@@ -3291,17 +3487,24 @@ function _drawOrbitesCoupeVagues(ctx, W, H, srcX, yLevel, ampPx) {
     // occupe au minimum 75 % de la largeur disponible.
     var xFirst = xLeft + (avail - (nCols - 1) * colStep) / 2;
 
-    var envMax = 0;
+    var envNomMax = 0;
     _orbitCols.length = 0;
     for (var i = 0; i < nCols; i++) {
         var x0 = xFirst + i * colStep;
         _coupeFieldPairAt(x0, srcX, _orbitFP);
-        var F = _orbitFP[0], Q = _orbitFP[1];
-        var env = Math.sqrt(F * F + Q * Q);
-        _orbitCols.push({ x: x0, F: F, Q: Q, env: env });
-        if (env > envMax) envMax = env;
+        var col = _orbitColSlot(i);
+        col.x      = x0;
+        col.F      = _orbitFP[0];
+        col.Q      = _orbitFP[1];
+        col.env    = Math.sqrt(col.F * col.F + col.Q * col.Q);
+        col.envNom = _coupeEnvNomAt(x0, srcX);
+        if (isImpulse) _orbitFillTrace(col, srcX);
+        _orbitCols.push(col);
+        if (col.envNom > envNomMax) envNomMax = col.envNom;
     }
-    if (envMax <= 0) return;                 // le front n'a atteint aucune colonne
+    // Plus de sortie anticipée sur le champ : les colonnes existent, et leurs
+    // molécules sont dessinées au repos, tant que la scène a une géométrie.
+    if (envNomMax <= 0) return;
 
     // ── Rangées ───────────────────────────────────────────────────────
     // La première est SUR la surface moyenne (d = 0) ; il n'y en a AUCUNE sur
@@ -3317,7 +3520,10 @@ function _drawOrbitesCoupeVagues(ctx, W, H, srcX, yLevel, ampPx) {
     // ainsi structurel. L'ancien espacement uniforme, dimensionné par la
     // seule ellipse de SURFACE, ne garantissait rien dès que le plancher de
     // deux rangées passait outre la contrainte.
-    var aPx = envMax * ampPx;                // demi-axe vertical en surface (fV = 1)
+    // Demi-axe vertical en surface (fV = 1), pris sur l'amplitude NOMINALE :
+    // la mise en page est ainsi fixée une fois pour toutes par les curseurs,
+    // et non par l'onde du moment (cf. _coupeEnvNomAt).
+    var aPx = envNomMax * ampPx;
     _orbitRows.length = 0;
     var df = 0;
     for (var ri = 0; ri < ORBIT_MAX_ROWS; ri++) {
@@ -3356,7 +3562,11 @@ function _drawOrbitesCoupeVagues(ctx, W, H, srcX, yLevel, ampPx) {
     // DÉTERMINANT est ORBIT_LAMBDA_FRAC·λ (borne β ≤ 2, cf. en-tête) : c'est
     // lui qui garantit que la molécule ne double jamais la forme de la vague.
     // Le plafond par case ne joue qu'aux très grandes λ.
-    var rhTrue = (Math.cosh(kh) / shKh) * aPx;
+    // En Impulsion, l'excursion horizontale de la molécule est celle de la
+    // quadrature du motif, dont la crête vaut IMPULSE_Q_PEAK là où celle du
+    // déplacement vaut 1 : sans ce facteur, la trace déborderait la borne λ/π
+    // de 54 %.
+    var rhTrue = (Math.cosh(kh) / shKh) * aPx * (isImpulse ? IMPULSE_Q_PEAK : 1);
     var capPx  = Math.min(colStep * 0.42, ORBIT_LAMBDA_FRAC * lamPx);
     var hScale = Math.min(1, capPx / Math.max(1, rhTrue));
 
@@ -3375,7 +3585,6 @@ function _drawOrbitesCoupeVagues(ctx, W, H, srcX, yLevel, ampPx) {
         ctx.beginPath();
         var yBot = yLevel + _orbitRows[nRows - 1] * colH;
         for (var cl = 0; cl < nCols; cl++) {
-            if (_orbitCols[cl].env <= 0) continue;
             ctx.moveTo(_orbitCols[cl].x, yLevel);
             ctx.lineTo(_orbitCols[cl].x, yBot);
         }
@@ -3401,47 +3610,64 @@ function _drawOrbitesCoupeVagues(ctx, W, H, srcX, yLevel, ampPx) {
 
         for (var ci = 0; ci < nCols; ci++) {
             var col = _orbitCols[ci];
-            if (col.env <= 0) continue;      // colonne pas encore atteinte
 
-            var rv = fV * col.env * ampPx;
-            var rh = fH * col.env * ampPx;
-            if (rh < 1.2 && rv < 1.2) continue;
-            var rxD = Math.max(rh, 0.5), ryD = Math.max(rv, 0.5);
+            // Colonne pas encore atteinte : la bille reste dessinée, à sa
+            // position de repos (F = Q = 0 la posent d'eux-mêmes sur l'axe de
+            // la rangée). Seule la COURBE attend le front — annoncer l'orbite
+            // avant l'onde donnerait la réponse à la place de l'élève.
+            if (isImpulse) {
+                // Pas d'orbite fermée sans période : ce qui est tracé est le
+                // chemin réellement parcouru (cf. _orbitFillTrace).
+                _orbitStrokeTrace(ctx, col, cy, fV, fH, ampPx);
+            } else if (col.env > 0) {
+                var rv  = fV * col.env * ampPx;
+                var rh  = fH * col.env * ampPx;
+                var rxD = Math.max(rh, 0.5), ryD = Math.max(rv, 0.5);
 
-            // Orbite, tracée DEUX FOIS : un halo sombre puis le trait clair.
-            // L'orbite de la rangée de surface monte jusqu'au niveau des
-            // crêtes, elle traverse donc des zones de ciel clair autant que
-            // d'eau profonde — un trait d'une seule couleur y disparaît
-            // forcément d'un côté ou de l'autre. Le halo règle les deux cas
-            // d'un coup, et coûte un stroke. Trait FIN : l'orbite est le
-            // décor, la traînée et la bille sont le sujet.
-            ctx.beginPath();
-            ctx.ellipse(col.x, cy, rxD, ryD, 0, 0, Math.PI * 2);
-            ctx.strokeStyle = 'rgba(8, 42, 72, 0.30)';
-            ctx.lineWidth   = 2.2;
-            ctx.stroke();
-            ctx.strokeStyle = 'rgba(216, 246, 255, 0.45)';
-            ctx.lineWidth   = 1;
-            ctx.stroke();
-
-            // ── Traînée ───────────────────────────────────────────────
-            // Le chemin parcouru pendant la dernière fraction de période, en
-            // trois arcs de plus en plus clairs et épais. Sans elle, RIEN
-            // n'indique le sens de rotation — or c'est tout le propos : la
-            // molécule avance sur la crête et recule dans le creux.
-            // Angle canvas de la bille : elle est en (x − rh·cos φ,
-            // y − rv·sin φ) et le paramétrage de ctx.ellipse en
-            // (x + rx·cos t, y + ry·sin t), d'où t = atan2(−F, −Q).
-            if (rxD > 3 && ryD > 3) {
-                var tAng = Math.atan2(-col.F, -col.Q);
-                for (var k = 0; k < 3; k++) {
+                // Orbite, tracée DEUX FOIS : un halo sombre puis le trait
+                // clair. L'orbite de la rangée de surface monte jusqu'au
+                // niveau des crêtes, elle traverse donc des zones de ciel
+                // clair autant que d'eau profonde — un trait d'une seule
+                // couleur y disparaît forcément d'un côté ou de l'autre. Le
+                // halo règle les deux cas d'un coup, et coûte un stroke.
+                // Trait FIN : l'orbite est le décor, la traînée et la bille
+                // sont le sujet.
+                //
+                // Sa TAILLE suit l'enveloppe instantanée, alors que la mise en
+                // page suit l'enveloppe nominale : l'orbite naît donc avec le
+                // front et grandit avec lui, au lieu d'apparaître d'un coup à
+                // taille pleine sur une grille déjà en place.
+                if (rh >= 1.2 || rv >= 1.2) {
                     ctx.beginPath();
-                    ctx.ellipse(col.x, cy, rxD, ryD, 0,
-                                tAng - ORBIT_TRAIL_ARC * (3 - k) / 3,
-                                tAng - ORBIT_TRAIL_ARC * (2 - k) / 3);
-                    ctx.strokeStyle = ORBIT_TRAIL_COL[k];
-                    ctx.lineWidth   = 1.4 + 0.7 * k;
+                    ctx.ellipse(col.x, cy, rxD, ryD, 0, 0, Math.PI * 2);
+                    ctx.strokeStyle = 'rgba(8, 42, 72, 0.30)';
+                    ctx.lineWidth   = 2.2;
                     ctx.stroke();
+                    ctx.strokeStyle = 'rgba(216, 246, 255, 0.45)';
+                    ctx.lineWidth   = 1;
+                    ctx.stroke();
+                }
+
+                // ── Traînée ───────────────────────────────────────────
+                // Le chemin parcouru pendant la dernière fraction de période,
+                // en trois arcs de plus en plus clairs et épais. Sans elle,
+                // RIEN n'indique le sens de rotation — or c'est tout le
+                // propos : la molécule avance sur la crête et recule dans le
+                // creux. Angle canvas de la bille : elle est en
+                // (x − rh·cos φ, y − rv·sin φ) et le paramétrage de
+                // ctx.ellipse en (x + rx·cos t, y + ry·sin t), d'où
+                // t = atan2(−F, −Q).
+                if (rxD > 3 && ryD > 3) {
+                    var tAng = Math.atan2(-col.F, -col.Q);
+                    for (var k = 0; k < 3; k++) {
+                        ctx.beginPath();
+                        ctx.ellipse(col.x, cy, rxD, ryD, 0,
+                                    tAng - ORBIT_TRAIL_ARC * (3 - k) / 3,
+                                    tAng - ORBIT_TRAIL_ARC * (2 - k) / 3);
+                        ctx.strokeStyle = ORBIT_TRAIL_COL[k];
+                        ctx.lineWidth   = 1.4 + 0.7 * k;
+                        ctx.stroke();
+                    }
                 }
             }
 

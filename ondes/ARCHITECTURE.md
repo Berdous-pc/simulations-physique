@@ -901,13 +901,16 @@ et **non** `sourceMode`, lequel ne reflète que l'émission en cours :
 | curseur f | `_applySourceModeVagues` |
 | flèche λ (et son drag, gardé par `lambdaVisible`) | `_syncLambdaBtnStateVagues` |
 | readout étendu (f, T, λ) | `_syncWavePropsBtnStateVagues` |
-| trajectoires des molécules d'eau | `syncBtnOrbitesVagues` |
 | unité T du chronomètre | `CHRONO_DEFS.vagues.noPeriod` |
 
 Chacun *éteint* aussi l'option si elle était active, plutôt que de laisser un
-affichage faux à l'écran. Les orbites méritent leur place ici pour une raison
-propre : elles sortent de la théorie d'Airy, qui suppose une onde
-monochromatique — un `k = 2πf/c` unique, que l'historique ne garantit plus.
+affichage faux à l'écran.
+
+Les **trajectoires de molécules** ont figuré dans ce tableau et n'y sont plus.
+Elles y étaient parce que l'option ne savait dessiner qu'une *orbite fermée*,
+laquelle suppose bien une onde monochromatique. En Impulsion elle trace
+désormais autre chose — le chemin réellement parcouru — qui ne suppose aucune
+période. Cf. la section « Trajectoire des molécules d'eau ».
 
 #### Forme de l'impulsion — pourquoi un creux
 
@@ -1125,6 +1128,11 @@ la source, l'axe et les balises.
 Objectif pédagogique : montrer qu'il n'y a **pas de transport de matière**
 — la molécule décrit une boucle fermée pendant que la forme, elle, avance.
 
+L'option marche dans les **deux modes de source**, mais ne dessine pas la même
+chose : une *orbite* en Sinusoïdale, une *trace* en Impulsion (cf. les deux
+sous-sections en fin de section). Ce qui leur est commun — colonnes, rangées,
+facteurs d'Airy, borne λ/π — est décrit d'abord.
+
 Le modèle est la **théorie d'Airy à profondeur finie**, celle qui
 correspond au `c = √(gh)` de l'onglet — et non le cas eau profonde des
 cercles en `e^(−kd)`. Une particule de position moyenne à la profondeur
@@ -1135,6 +1143,13 @@ fond `V = 0` (va-et-vient purement horizontal). Le rapport
 `Hz/V = coth(k(h−d))` couvre tout le spectre sur la plage des curseurs,
 `kh = 2π·f·√(h/g)` allant de ≈ 0,02 à ≈ 3,1 : du segment quasi horizontal
 jusqu'au quasi-cercle.
+
+La fréquence qui entre dans `kh` sort de `_vaguesOrbitFreq()` : le curseur en
+Sinusoïdale, `1/T_IMPULSE` en Impulsion — la fréquence centrale du motif, qui
+est une oscillation unique. Évaluer les facteurs d'Airy à une fréquence unique
+pour une impulsion large bande n'ajoute **aucune** approximation à celles que
+la page fait déjà : le modèle est non dispersif, `c = √(gh)` valant pour toutes
+les fréquences.
 
 **La colonne d'eau dessinée représente h.** Le fond marin est posé à
 `H − ORBIT_SEABED_PAD` et matérialisé par `_drawSeabedVagues()` (bande de
@@ -1203,7 +1218,9 @@ confondre les deux était précisément le bug d'origine.
   antiphase : à un instant donné une molécule est au sommet de sa boucle
   sous la crête pendant que sa voisine est au fond de la sienne sous le
   creux. Repli sur `ORBIT_TARGET_STEP` nu quand λ est trop grand ou trop
-  petit pour que ce calage donne un nombre de colonnes exploitable.
+  petit pour que ce calage donne un nombre de colonnes exploitable — et
+  calage désactivé en Impulsion, où il n'y a pas de train dont les colonnes
+  puissent être en opposition, seulement une bosse qui passe.
 
 Les rangées gardent leur profondeur moyenne **exacte** (une orbite ne
 dérive pas avec la vague). Un garde-fou saute la molécule d'une rangée
@@ -1219,6 +1236,66 @@ sans ré-évaluer les atténuations, si bien que les orbites rétrécissent
 aussi avec la distance à S, gratuitement. `ζ = +(V/a)·F` et
 `ξ = −(Hz/a)·Q` : la molécule avance sur la crête et recule dans le creux,
 sens de rotation correct pour une onde allant vers +x.
+
+#### Mise en page nominale, et molécules au repos
+
+La **mise en page** — profondeur des rangées, `hScale` — est calculée sur
+l'amplitude **nominale** : celle que les curseurs promettent, rendue par
+`_coupeEnvNomAt()`, qui n'est que `_coupeFieldPairAt` privée de sa lecture
+d'historique. Seule la **taille dessinée** des orbites suit l'enveloppe
+instantanée `√(F² + Q²)`.
+
+Cette séparation porte trois choses d'un coup, et c'est pour cela qu'il ne faut
+pas revenir à l'ancien maximum instantané :
+
+- la grille ne se replace plus pendant que le front arrive — elle était
+  recalculée à chaque frame sur une enveloppe qui grandissait ;
+- **les molécules existent avant l'onde.** Source coupée, la grille et le
+  filet vertical sont en place, les billes posées sur leur position moyenne, et
+  c'est l'onde qui vient les mettre en mouvement quand elle arrive. Les orbites,
+  elles, n'apparaissent qu'avec le front : dessiner la boucle d'avance
+  donnerait la réponse à la place de l'élève ;
+- le mode Impulsion devient représentable, puisqu'il n'a aucune enveloppe
+  stationnaire à mesurer.
+
+#### Mode Impulsion — la trace, pas l'orbite
+
+Sans période, pas d'orbite fermée. `_orbitFillTrace()` échantillonne à la place
+le **chemin réellement parcouru**, et `_orbitStrokeTrace()` le trace.
+
+Le mécanisme tient en une remarque : la position d'une molécule à l'instant
+`t − Δ` est le champ lu à la distance `r + c·Δ`, aux **mêmes** échantillons
+d'historique. Le passé d'une molécule est donc littéralement la forme de l'onde
+devant elle, et la trace se lit d'un seul balayage vers la droite — sans rien
+mémoriser, donc sans rien à réinitialiser au resize, à la pause ou au
+changement de curseur. Longueur balayée : `c·T_IMPULSE`, l'étendue du motif,
+soit exactement une boucle. Les points au-delà du front ressortent à `(0, 0)`,
+c'est-à-dire à la position de repos — où la molécule était : il n'y a aucune
+condition d'arrêt à écrire.
+
+Une trace par **colonne** (≤ 9 × `ORBIT_TRACE_PTS`), partagée par les quatre
+rangées qui ne font que la mettre à l'échelle par `fV` et `fH` : ~360 lectures
+par frame, contre les ~120 000 points du rendu de la vue de dessus.
+
+Ce que la trace montre est plus fort que l'ellipse : la molécule boucle et
+revient **exactement** à son point de départ, une fois, sous les yeux de
+l'élève. C'est une propriété du motif, pas un effet de dessin — le déplacement
+horizontal étant l'intégrale du déplacement vertical (en eau peu profonde
+`u = c·ζ/h`), et le motif d'impulsion étant à intégrale nulle. D'où la
+quadrature émise par `stepSourceVagues` :
+
+```
+q(τ) = (A/2)·[cos u − ¼·cos 2u − ¾]        u = 2πτ/T_IMPULSE
+```
+
+primitive du motif normalisée en `−ω·∫d dt`, la constante étant fixée par
+`q(0) = 0` — et `q(2π/ω) = 0` par-dessus le marché. Attention au piège :
+`−ω·∫d dt` **et** `(1/ω)·dd/dt` valent tous deux `cos φ` pour une sinusoïde, et
+ne se distinguent qu'ici, hors bande étroite. Seule l'intégrale est juste.
+
+Sa crête vaut `IMPULSE_Q_PEAK` (= `IMPULSE_V_NORM` ≈ 1,54) là où celle du
+déplacement vaut 1 : la compression horizontale en tient compte, sans quoi la
+trace franchirait la borne λ/π de 54 %.
 
 Le bouton vit dans une **seconde bande** `#orbites-btns`, posée sous
 `#tube-top-btns` — même dispositif que le bouton « Décomposer » de la page
