@@ -43,7 +43,14 @@ function loop(ts) {
             var dtSim = dtReal * (sim.speedFactor !== undefined ? sim.speedFactor : 1.0);
             sim.simTime += dtSim;
 
-            if (chronoSon.running) chronoSon.elapsed += dtSim;
+            // Le comptage en périodes est cumulé pas à pas (comme la phase de
+            // la source), et non recalculé en t x f : sinon changer la
+            // fréquence — donc la longueur d'onde — en cours de route
+            // requalifierait rétroactivement tout le temps déjà écoulé.
+            if (chronoSon.running) {
+                chronoSon.elapsed += dtSim;
+                chronoSon.periods += dtSim * sim.freq;
+            }
 
             pruneImpulses();
 
@@ -89,7 +96,12 @@ function loop(ts) {
             var dtSimC = dtReal * (simCorde.speedFactor !== undefined ? simCorde.speedFactor : 1.0);
             simCorde.simTime += dtSimC;
 
-            if (chronoCorde.running) chronoCorde.elapsed += dtSimC;
+            // Voir le commentaire côté Son : les périodes sont cumulées au fil
+            // de l'eau pour rester justes si la fréquence change.
+            if (chronoCorde.running) {
+                chronoCorde.elapsed += dtSimC;
+                chronoCorde.periods += dtSimC * simCorde.freq;
+            }
 
             pruneImpulsesCorde();
 
@@ -374,6 +386,7 @@ function resetSimAnim() {
     // zéro sans l'arrêter laisserait une durée qui ne correspond plus à rien.
     chronoSon.running = false;
     chronoSon.elapsed = 0;
+    chronoSon.periods = 0;
     _syncChronoBtnSon();
     _updateChronoSon();
     // resetAnim remet sourceMode à null : on réapplique la sélection du
@@ -590,7 +603,7 @@ function _syncLambdaBtnStateSon() {
 //  désactivé en mode Impulsion. La conversion utilise la fréquence
 //  COURANTE : changer f en cours de chronométrage réinterprète l'ensemble
 //  de la durée écoulée.
-var chronoSon = { running: false, elapsed: 0, unit: 's' };
+var chronoSon = { running: false, elapsed: 0, periods: 0, unit: 's' };
 
 //  Case « Lier » : quand elle est cochée, activer la source déclenche le
 //  chronomètre. Elle est recochée/décochée à chaque changement de mode
@@ -627,6 +640,7 @@ function toggleChronoSon() {
 //  à l'arrêt sur 0 plutôt que de le voir redémarrer aussitôt.
 function resetChronoSon() {
     chronoSon.elapsed = 0;
+    chronoSon.periods = 0;
     chronoSon.running = false;
     _syncChronoBtnSon();
     _updateChronoSon();
@@ -674,9 +688,10 @@ function _syncChronoUnitsSon() {
 function _updateChronoSon() {
     var el = document.getElementById('chrono-value-son');
     if (!el) return;
-    // En T, la durée est comptée en nombre de périodes : t x f.
+    // En T, on lit le compteur de périodes cumulé dans la boucle : il reste
+    // juste même si la fréquence a changé pendant le comptage.
     var inT = (chronoSon.unit === 'T' && sim.freq > 0);
-    var txt = inT ? fmtFR(chronoSon.elapsed * sim.freq, 2)
+    var txt = inT ? fmtFR(chronoSon.periods, 2)
                   : fmtFR(chronoSon.elapsed, 2);
     // Écriture conditionnelle : la fonction est appelée à chaque frame.
     if (txt !== _chronoLastTxtSon) { el.textContent = txt; _chronoLastTxtSon = txt; }
@@ -913,6 +928,7 @@ function resetSimAnimCorde() {
     // zéro sans l'arrêter laisserait une durée qui ne correspond plus à rien.
     chronoCorde.running = false;
     chronoCorde.elapsed = 0;
+    chronoCorde.periods = 0;
     _syncChronoBtnCorde();
     _updateChronoCorde();
     // resetAnimCorde remet sourceMode à null : on réapplique la sélection
@@ -942,7 +958,7 @@ function resetSimAnimCorde() {
 //  désactivé en mode Impulsion et Libre (cf. _cordeModeIsImpulseOrFree).
 //  La conversion utilise la fréquence COURANTE : changer f en cours de
 //  chronométrage réinterprète l'ensemble de la durée écoulée.
-var chronoCorde = { running: false, elapsed: 0, unit: 's' };
+var chronoCorde = { running: false, elapsed: 0, periods: 0, unit: 's' };
 
 //  Case « Lier » : quand elle est cochée, activer la source déclenche le
 //  chronomètre. Elle est recochée/décochée à chaque changement de mode
@@ -971,6 +987,7 @@ function toggleChronoCorde() {
 //  à l'arrêt sur 0 plutôt que de le voir redémarrer aussitôt.
 function resetChronoCorde() {
     chronoCorde.elapsed = 0;
+    chronoCorde.periods = 0;
     chronoCorde.running = false;
     _syncChronoBtnCorde();
     _updateChronoCorde();
@@ -1021,9 +1038,10 @@ function _syncChronoUnitsCorde() {
 function _updateChronoCorde() {
     var el = document.getElementById('chrono-value');
     if (!el) return;
-    // En T, la durée est comptée en nombre de périodes : t x f.
+    // En T, on lit le compteur de périodes cumulé dans la boucle : il reste
+    // juste même si la fréquence a changé pendant le comptage.
     var inT = (chronoCorde.unit === 'T' && simCorde.freq > 0);
-    var txt = inT ? fmtFR(chronoCorde.elapsed * simCorde.freq, 2)
+    var txt = inT ? fmtFR(chronoCorde.periods, 2)
                   : fmtFR(chronoCorde.elapsed, 2);
     // Écriture conditionnelle : la fonction est appelée à chaque frame.
     if (txt !== _chronoLastTxt) { el.textContent = txt; _chronoLastTxt = txt; }
