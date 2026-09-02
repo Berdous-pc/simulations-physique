@@ -1154,6 +1154,17 @@ function _drawTubeRuler(ctx) {
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'top';
 
+    // Étiquettes de position des balises : elles se posent sur la même ligne
+    // de base que les graduations. La balise prime — c'est la mesure que
+    // l'utilisateur vient de placer — et la graduation qu'elle recouvrirait
+    // est simplement tue (son trait, lui, reste tracé).
+    var busy = _tubeBeaconLabelSpans(ctx);
+    function labelFree(xc, halfW) {
+        for (var i = 0; i < busy.length; i++)
+            if (Math.abs(xc - busy[i].x) < halfW + busy[i].half + 4) return false;
+        return true;
+    }
+
     // Ligne de base horizontale (depuis la membrane jusqu'à la fin du tube)
     ctx.strokeStyle = RULER_COLOR;
     ctx.lineWidth   = 1.5;
@@ -1179,7 +1190,8 @@ function _drawTubeRuler(ctx) {
         // Label : "0" à l'origine, sinon valeur en cm
         if (!labels) continue;
         var lbl = cm === 0 ? '0' : cm.toFixed(0);
-        ctx.fillText(lbl, xc, yBase + tickMaj + 2);
+        if (labelFree(xc, ctx.measureText(lbl).width / 2))
+            ctx.fillText(lbl, xc, yBase + tickMaj + 2);
     }
 
     // Ticks secondaires (mi-pas)
@@ -1205,7 +1217,11 @@ function _drawTubeRuler(ctx) {
         ctx.textBaseline = 'top';
         // Écrit avant la graduation 0 ; c'est marginLeft (cf. resizeTube) qui
         // garantit la place, entre le bord du canvas et ce 0.
-        ctx.fillText('cm', sim.tubeLeft - 8, yBase + tickMaj + 2);
+        // Aligné à droite : son centre est décalé d'une demi-largeur à gauche.
+        // Une balise posée en 0 cm déborde jusque-là, d'où le même test.
+        var wU = ctx.measureText('cm').width;
+        if (labelFree(sim.tubeLeft - 8 - wU / 2, wU / 2))
+            ctx.fillText('cm', sim.tubeLeft - 8, yBase + tickMaj + 2);
     }
 
     ctx.restore();
@@ -1614,47 +1630,68 @@ function _drawOneBeacon(ctx, x, color, label) {
     ctx.restore();
 
     // ── Label de position sur la règle graduée ────────────────────────
-    // Converti en cm (même échelle que la règle : 40 cm sur tubeLength px)
-    var L = sim.tubeLength;
-    if (L <= 0) return;
-    var cmPerPx  = 40 / L;
-    var xCm      = (x - sim.tubeLeft) * cmPerPx;
-    var W        = tubeCanvas.clientWidth;
-    var H        = tubeCanvas.clientHeight;
-    var yRoom    = H - y2;
-    if (yRoom < 6) return;
-
-    var tickMaj   = Math.min(yRoom * 0.40, RULER_TICK_MAJ);
-    // Même calcul que _drawTubeRuler : l'étiquette est écrite sur la même
-    // ligne de base, dans la même bande, avec le même plancher de police —
-    // elle débordait donc du canvas au même moment. Sous la place
-    // nécessaire, on la tait plutôt que de la laisser tronquée.
-    var room      = yRoom - tickMaj - 2;
-    if (room < RULER_FONT_MIN) return;
-    var fontSize  = Math.max(RULER_FONT_MIN,
-                             Math.min(24, Math.round(yRoom * 0.95), Math.floor(room)));
-
-    var txt = fmtFR(xCm, 1);
-    var ty  = y2 + tickMaj + 2;
+    var rm = _tubeBeaconLabelMetrics();
+    if (!rm) return;
 
     ctx.save();
-    ctx.font         = 'bold ' + fontSize + 'px monospace';
+    ctx.font         = 'bold ' + rm.fontSize + 'px monospace';
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'top';
-
-    // Cache opaque : la valeur de la balise s'écrit sur la même ligne que les
-    // nombres de la règle. Un simple liseré les laissait transparaître entre
-    // les chiffres ; on efface donc la bande allant du bas du tube au bas du
-    // texte — traits de graduation compris, sinon ils dépassent au-dessus du
-    // cache. On s'arrête à la hauteur du texte, sans descendre jusqu'en bas.
-    var boxW = ctx.measureText(txt).width + fontSize * 0.4;
-    var boxB = Math.min(ty + fontSize + 1, H);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(x - boxW / 2, y2 + 1, boxW, boxB - y2 - 1);
-
-    ctx.fillStyle = color;
-    ctx.fillText(txt, x, ty);
+    ctx.fillStyle    = color;
+    ctx.fillText(_tubeBeaconLabelText(x), x, rm.textY);
     ctx.restore();
+}
+
+// ── Étiquette de position des balises du tube ─────────────────────────
+//
+//  Elle s'écrit sur la même ligne de base que les nombres de la règle, mais
+//  avec sa police propre. Métriques et texte sont sortis ici pour que la
+//  règle sache exactement où l'étiquette se pose : elle tait alors la
+//  graduation qui serait recouverte (cf. _drawTubeRuler), au lieu de laisser
+//  la balise plaquer un cache blanc opaque par-dessus la règle.
+
+function _tubeBeaconLabelText(x) {
+    // Converti en cm (même échelle que la règle : 40 cm sur tubeLength px)
+    return fmtFR((x - sim.tubeLeft) * (40 / sim.tubeLength), 1);
+}
+
+function _tubeBeaconLabelMetrics() {
+    if (sim.tubeLength <= 0) return null;
+    var y2    = sim.tubeBottom;
+    var yRoom = tubeCanvas.clientHeight - y2;
+    if (yRoom < 6) return null;
+
+    // Même découpage de la bande que _drawTubeRuler : sous la place
+    // nécessaire, on tait l'étiquette plutôt que de la laisser tronquée.
+    var tickMaj = Math.min(yRoom * 0.40, RULER_TICK_MAJ);
+    var room    = yRoom - tickMaj - 2;
+    if (room < RULER_FONT_MIN) return null;
+
+    return {
+        fontSize : Math.max(RULER_FONT_MIN,
+                            Math.min(24, Math.round(yRoom * 0.95), Math.floor(room))),
+        textY    : y2 + tickMaj + 2
+    };
+}
+
+// Emprise horizontale (centre + demi-largeur) des étiquettes des balises
+// actives, telle que la règle doit l'éviter.
+
+function _tubeBeaconLabelSpans(ctx) {
+    var spans = [];
+    var rm    = _tubeBeaconLabelMetrics();
+    if (!rm) return spans;
+
+    var beacons = [sim.beacon1, sim.beacon2];
+    ctx.save();
+    ctx.font = 'bold ' + rm.fontSize + 'px monospace';
+    for (var i = 0; i < beacons.length; i++) {
+        if (!beacons[i].active) continue;
+        var txt = _tubeBeaconLabelText(beacons[i].x);
+        spans.push({ x: beacons[i].x, half: ctx.measureText(txt).width / 2 });
+    }
+    ctx.restore();
+    return spans;
 }
 
 // ── Flèche de longueur d'onde (Son) ────────────────────────────────────
@@ -2342,6 +2379,10 @@ function drawCorde() {
     // mode Libre, la première sphère du chapelet en aspect Discret.
     _drawCordeFreeHandle(ctx);
     _drawCordeFirstBead(ctx);
+
+    // ── Balise posée sur cette première sphère ────────────────────────
+    // Repassée par-dessus, sinon elle disparaîtrait sous la sphère.
+    _drawCordeBeaconsOverFirstBead(ctx);
 }
 
 // ── Grille de la corde : repères verticaux (mètres) + ligne du zéro ───
@@ -2927,33 +2968,30 @@ function _drawCordeBeacons(ctx) {
     if (simCorde.beacon2.active) _drawOneCordeBeacon(ctx, simCorde.beacon2.x, '#2a8a50', 'B2');
 }
 
-function _drawOneCordeBeacon(ctx, x, color, label) {
-    var top    = simCorde.cordeTop;
-    var bottom = simCorde.cordeBottom;
-    // Indexé sur la largeur de la zone (cordeLength), pas sur sa hauteur :
-    // sinon l'étiquette grossit artificiellement dans une fenêtre haute et
-    // étroite alors que rien n'a changé horizontalement.
-    var fSize  = Math.max(11, Math.round(simCorde.cordeLength * 0.045));
+// Taille de police des balises : indexée sur la largeur de la zone
+// (cordeLength), pas sur sa hauteur — sinon l'étiquette grossit
+// artificiellement dans une fenêtre haute et étroite alors que rien n'a
+// changé horizontalement.
+function _cordeBeaconFontSize() {
+    return Math.max(11, Math.round(simCorde.cordeLength * 0.045));
+}
 
-    // Position verticale actuelle du point d'attache : suit le déplacement
-    // transversal de la corde à cette abscisse (comme un point matériel posé
-    // sur le fil). Signe inversé, cf. _drawCordeWire (y positif vers le haut).
-    var xRel = x - simCorde.cordeLeft;
-    var disp = cordeDisplacement(xRel, simCorde.simTime) * simCorde.pxPerCmAmpl;
-    var y    = Math.max(top, Math.min(bottom, simCorde.cordeMiddleY - disp));
+// Position verticale actuelle de la balise : elle suit le déplacement
+// transversal de la corde à cette abscisse (comme un point matériel posé
+// sur le fil). Signe inversé, cf. _drawCordeWire (y positif vers le haut).
+function _cordeBeaconY(x) {
+    var disp = cordeDisplacement(x - simCorde.cordeLeft, simCorde.simTime) * simCorde.pxPerCmAmpl;
+    return Math.max(simCorde.cordeTop,
+                    Math.min(simCorde.cordeBottom, simCorde.cordeMiddleY - disp));
+}
 
-    // Ligne pointillée vers le bas uniquement, jusqu'à la règle graduée
-    ctx.save();
-    ctx.strokeStyle = color;
-    ctx.lineWidth   = 1.5;
-    ctx.setLineDash([5, 4]);
-    ctx.globalAlpha = 0.8;
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(x, bottom);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.restore();
+// Pastille de la balise et son étiquette, isolées du reste du tracé pour
+// pouvoir être repassées seules par-dessus la première sphère du chapelet
+// (cf. _drawCordeBeaconsOverFirstBead) sans redoubler les pointillés.
+
+function _drawCordeBeaconDot(ctx, x, color, label) {
+    var fSize = _cordeBeaconFontSize();
+    var y     = _cordeBeaconY(x);
 
     // Point matérialisant la balise (toujours dragable horizontalement,
     // cf. nearBeacon() dans initTubeInteractions — basé uniquement sur x)
@@ -2979,6 +3017,40 @@ function _drawOneCordeBeacon(ctx, x, color, label) {
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'bottom';
     ctx.fillText(label, x, labelY);
+}
+
+// Balise posée sur la toute première sphère (aspect Discret) : celle-ci est
+// tracée en tout dernier, hors clip (cf. _drawCordeFirstBead), et recouvrirait
+// entièrement la pastille. On repasse donc la pastille par-dessus la sphère.
+
+function _drawCordeBeaconsOverFirstBead(ctx) {
+    if (simCorde.aspect !== 'discret' || simCorde.freeActive) return;
+    var tol = cordeBeadR() + 1;
+    if (simCorde.beacon1.active && Math.abs(simCorde.beacon1.x - simCorde.cordeLeft) <= tol)
+        _drawCordeBeaconDot(ctx, simCorde.beacon1.x, '#e07020', 'B1');
+    if (simCorde.beacon2.active && Math.abs(simCorde.beacon2.x - simCorde.cordeLeft) <= tol)
+        _drawCordeBeaconDot(ctx, simCorde.beacon2.x, '#2a8a50', 'B2');
+}
+
+function _drawOneCordeBeacon(ctx, x, color, label) {
+    var bottom = simCorde.cordeBottom;
+    var y      = _cordeBeaconY(x);
+
+    // Ligne pointillée vers le bas uniquement, jusqu'à la règle graduée
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth   = 1.5;
+    ctx.setLineDash([5, 4]);
+    ctx.globalAlpha = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x, bottom);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+
+    // Pastille + étiquette
+    _drawCordeBeaconDot(ctx, x, color, label);
 
     // Label de position sur la règle graduée
     var L = simCorde.cordeLength;
@@ -3001,6 +3073,30 @@ function _drawOneCordeBeacon(ctx, x, color, label) {
 }
 
 // ── Règle graduée corde ───────────────────────────────────────────────
+
+// Emprise horizontale des étiquettes de position des balises, exprimée en
+// centre + demi-largeur. Elles se posent sur la même ligne de base que les
+// graduations (cf. _cordeRulerMetrics) : la règle s'en sert pour taire la
+// graduation qui viendrait se superposer.
+
+function _cordeBeaconLabelSpans(ctx, rm) {
+    var spans = [];
+    if (!rm || !rm.labels) return spans;
+    var L = simCorde.cordeLength;
+    if (L <= 0) return spans;
+
+    var mPerPx  = CORDE_LENGTH_M / L;
+    var beacons = [simCorde.beacon1, simCorde.beacon2];
+    ctx.save();
+    ctx.font = 'bold ' + rm.fontSize + 'px monospace';
+    for (var i = 0; i < beacons.length; i++) {
+        if (!beacons[i].active) continue;
+        var txt = fmtFR((beacons[i].x - simCorde.cordeLeft) * mPerPx, 2);
+        spans.push({ x: beacons[i].x, half: ctx.measureText(txt).width / 2 });
+    }
+    ctx.restore();
+    return spans;
+}
 
 function _drawCordeRuler(ctx) {
     var L = simCorde.cordeLength;
@@ -3031,6 +3127,17 @@ function _drawCordeRuler(ctx) {
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'top';
 
+    // Étiquettes de position des balises : posées sur la même ligne de base
+    // que les graduations, elles se chevauchaient. La balise prime — c'est la
+    // mesure que l'utilisateur vient de placer — et la graduation trop proche
+    // est simplement tue (son trait, lui, reste tracé).
+    var busy = _cordeBeaconLabelSpans(ctx, rm);
+    function labelFree(xc, halfW) {
+        for (var i = 0; i < busy.length; i++)
+            if (Math.abs(xc - busy[i].x) < halfW + busy[i].half + 4) return false;
+        return true;
+    }
+
     // Ligne de base
     ctx.strokeStyle = RULER_COLOR;
     ctx.lineWidth   = 1.5;
@@ -3051,7 +3158,11 @@ function _drawCordeRuler(ctx) {
         ctx.moveTo(xc, yBase);
         ctx.lineTo(xc, yBase + tickMaj);
         ctx.stroke();
-        if (labels) ctx.fillText(m_ === 0 ? '0' : fmtFR(m_, decimals), xc, rm.textY);
+        if (labels) {
+            var txt = m_ === 0 ? '0' : fmtFR(m_, decimals);
+            if (labelFree(xc, ctx.measureText(txt).width / 2))
+                ctx.fillText(txt, xc, rm.textY);
+        }
     }
 
     // Ticks secondaires
@@ -3072,7 +3183,11 @@ function _drawCordeRuler(ctx) {
         ctx.fillStyle    = RULER_COLOR;
         ctx.font         = 'bold ' + Math.max(13, fontSize - 1) + 'px monospace';
         ctx.textAlign    = 'right';
-        ctx.fillText('m', simCorde.cordeLeft - 8, rm.textY);
+        // Aligné à droite : son centre est décalé d'une demi-largeur à gauche.
+        // Une balise posée en 0 m déborde jusque-là, d'où le même test.
+        var wU = ctx.measureText('m').width;
+        if (labelFree(simCorde.cordeLeft - 8 - wU / 2, wU / 2))
+            ctx.fillText('m', simCorde.cordeLeft - 8, rm.textY);
     }
 
     ctx.restore();
