@@ -934,11 +934,17 @@ première vague. L'arrêter ne fait pas disparaître l'onde — elle vit dans
 l'historique et poursuit sa route jusqu'au bord. C'est précisément ce que le
 bouton donne à voir.
 
-À savoir sur le curseur d'**amplitude** : la vue du dessus code la phase en
-couleur et non en relief, le champ n'y est donc pas multiplié par `amplitude`
-(cf. `drawVagues`) — l'animation y est insensible au curseur. Les graphes
-*y(x)* et *y(t)*, eux, sont gradués en centimètres et le suivent : le griser en
-vue du dessus les figerait aussi, ce qui a fait renoncer à l'idée.
+Le curseur d'**amplitude** est **causal**, comme la fréquence : sa valeur est
+gravée à l'émission dans le canal `srcB` de l'historique et relue au même
+échantillon que le déplacement (cf. `_vaguesFieldAtR`). Bouger le curseur ne
+change donc que l'onde émise **à partir de cet instant** ; le train déjà parti
+garde la hauteur qu'il avait en quittant S, et le changement se propage à la
+célérité de l'onde comme tout le reste. `srcD`, lui, reste **normalisé** dans
+[−1, 1] : la vue du dessus y code la phase en couleur et non en relief, elle a
+besoin d'un champ non mis à l'échelle (cf. `drawVagues`) — d'où le canal
+séparé plutôt qu'une amplitude multipliée dans `srcD`. C'est aussi pourquoi
+l'animation vue du dessus reste insensible au curseur, alors que les graphes
+*y(x)* et *y(t)*, gradués en centimètres, le suivent.
 
 Contrairement au Son, la source Vagues n'a **pas d'enveloppe de fondu** : elle
 émet des **motifs élémentaires entiers**, à pleine amplitude dès le premier.
@@ -979,6 +985,12 @@ dépend que de `r`, `_vaguesRadLUT(t)` tabule `d(r)` une seule fois par frame,
 au quart de pixel, d'un seul balayage (r croissant ⇔ S décroissant : un curseur
 descend l'historique sans jamais revenir). Chaque point interpole ensuite entre
 deux entrées.
+
+**Deux** tables sortent de ce balayage : `_radD`, le déplacement normalisé, et
+`_radA`, l'amplitude qui régnait à l'émission. Les lecteurs qui dessinent un
+déplacement (graphe *y(x)*, rendu 3D) multiplient l'une par l'autre ; ceux qui
+n'en veulent que la forme — la couleur de la vue du dessus — lisent `_radD`
+seul.
 
 Le cache de `_rebuildVaguesFieldCache` survit mais s'allège : il ne garde plus
 que ce qui ne dépend pas du temps — `gridR` (la distance à la source) et

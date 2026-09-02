@@ -124,8 +124,8 @@ var COUPE_AMP_BOOST = 1.5;
 // Point d'entrée UNIQUE : la vue en coupe, la transition 3D et le hit-test
 // des balises doivent impérativement partager la même valeur, sinon la
 // transition n'arrive plus exactement sur la coupe.
-// Ne dépend PAS de simVagues.amplitude (les appelants multiplient par elle) :
-// la valeur est stable d'un coup de curseur à l'autre.
+// Ne dépend PAS de l'amplitude, que porte le champ lui-même : la valeur est
+// stable d'un coup de curseur à l'autre.
 function _coupeAmpPx(H) {
     var base = Math.min(H * 0.18, 55) * VAGUES_VIS_AMP_SCALE;
     var lam  = (simVagues.freq > 0) ? simVagues.c_sim / simVagues.freq : 0;
@@ -242,8 +242,11 @@ var simVagues = {
     //  Même machinerie que le Son et la Corde, à ceci près que la source
     //  Vagues est FIXE et le milieu isotrope : la distance parcourue ne
     //  dépend que de r, un seul historique 1D suffit donc pour tout le plan.
-    //  srcD est enregistré normalisé (∈ [−1, 1]) : l'amplitude est appliquée
-    //  à la lecture, pour que le curseur agisse aussi sur l'onde déjà émise.
+    //  srcD est enregistré normalisé (∈ [−1, 1]) — la vue du dessus code la
+    //  phase en couleur et a besoin d'un champ dans [−1, 1]. L'AMPLITUDE
+    //  voyage à part, dans le canal srcB, gravée à l'émission : elle est donc
+    //  causale comme la fréquence, et bouger le curseur ne réécrit pas l'onde
+    //  déjà partie (cf. _vaguesFieldAtR).
     //  srcS progresse en PIXELS CSS, l'unité de longueur de cet onglet.
     //
     //  C'est lui qui porte désormais l'enveloppe causale : le front n'est plus
@@ -252,7 +255,8 @@ var simVagues = {
     //  plus rétroactivement l'onde déjà partie.
     srcD    : null,
     srcS    : null,
-    srcA    : null,
+    srcA    : null,   // quadrature de la source (cf. stepSourceVagues)
+    srcB    : null,   // amplitude du curseur à l'émission
     srcN    : 0,
     srcHead : 0,
     srcTNew : 0,
@@ -513,7 +517,14 @@ function stepSourceVagues(t) {
     // onglet : elle subit exactement le même retard que le déplacement, ce qui
     // la garde en phase avec lui quoi qu'il arrive entre-temps — coupure et
     // relance de la source, changement de mode, changement de fréquence.
-    _srcPush(s, t, d, s.c_sim, q);
+    //
+    // L'AMPLITUDE part avec elle, dans le second canal (srcB). srcD reste
+    // normalisé — la vue du dessus code la phase en couleur et lit la table
+    // radiale telle quelle, il lui faut un champ dans [−1, 1] — mais tout
+    // lecteur du champ PHYSIQUE multiplie désormais par l'amplitude LUE, et
+    // non par celle du curseur : bouger le curseur ne réécrit plus l'onde déjà
+    // partie, exactement comme pour la fréquence.
+    _srcPush(s, t, d, s.c_sim, q, s.amplitude);
 }
 
 // Une impulsion est « terminée » quand elle a fini d'être émise ET a fini de
@@ -561,7 +572,9 @@ function _vaguesFrontR(t) {
     return _srcSAtTime(s, t, s.c_sim) - s.srcS[_srcIdx(s, 0)];
 }
 
-// Déplacement normalisé émis, lu à la distance r (px CSS) et à l'instant t.
+// Déplacement normalisé émis, lu à la distance r (px CSS) et à l'instant t —
+// SANS l'amplitude, qui est portée par l'échantillon lui-même (cf.
+// _vaguesFieldAtR). Ne sert plus qu'aux lecteurs de forme pure.
 // Lecture unitaire : les rendus pleine surface passent par la table radiale
 // ci-dessous, qui fait le même calcul une fois pour toutes.
 function _vaguesSrcDAtR(r, t) {
@@ -571,17 +584,30 @@ function _vaguesSrcDAtR(r, t) {
     return _srcDAtS(s, _srcSAtTime(s, t, s.c_sim) - r);
 }
 
-// Couple (déplacement, quadrature) émis, lu à la distance r. Les deux sortent
-// du MÊME échantillon d'historique : ils restent donc en quadrature exacte,
-// y compris après une coupure de la source (cf. stepSourceVagues).
+// Champ PHYSIQUE (hors atténuations) à la distance r : déplacement normalisé
+// multiplié par l'amplitude qui régnait à l'ÉMISSION. C'est par là que passent
+// tous les lecteurs qui dessinent un déplacement — coupe, 3D, graphes, point
+// source. Le curseur Amplitude devient ainsi causal comme la fréquence.
+function _vaguesFieldAtR(r, t) {
+    var s = simVagues;
+    if (s.c_sim <= 0 || s.srcN === 0) return 0;
+    if (t === undefined) t = s.simTime;
+    var smp = _srcSampleAtS(s, _srcSAtTime(s, t, s.c_sim) - r);
+    return smp.d * smp.b;
+}
+
+// Couple (déplacement, quadrature) émis, lu à la distance r, tous deux DÉJÀ
+// mis à l'échelle de l'amplitude d'émission. Les trois sortent du MÊME
+// échantillon d'historique : le couple reste en quadrature exacte, y compris
+// après une coupure de la source (cf. stepSourceVagues).
 function _vaguesSrcPairAtR(r, t, out) {
     var s = simVagues;
     out[0] = 0; out[1] = 0;
     if (s.c_sim <= 0 || s.srcN === 0) return;
     if (t === undefined) t = s.simTime;
     var smp = _srcSampleAtS(s, _srcSAtTime(s, t, s.c_sim) - r);
-    out[0] = smp.d;
-    out[1] = smp.a;
+    out[0] = smp.d * smp.b;
+    out[1] = smp.a * smp.b;
 }
 
 // ── Table radiale du déplacement, reconstruite une fois par frame ─────
@@ -590,6 +616,12 @@ function _vaguesSrcPairAtR(r, t, out) {
 //  dépend que de r, on tabule d(r) une seule fois, en sous-pixel, puis chaque
 //  point interpole. La table se construit d'un seul balayage : r croissant
 //  ⇔ S décroissant, un curseur descend l'historique sans jamais revenir.
+//
+//  DEUX tables sortent du même balayage : `_radD`, le déplacement NORMALISÉ —
+//  la vue du dessus y code la phase en couleur et a besoin d'un champ dans
+//  [−1, 1] — et `_radA`, l'amplitude qui régnait à l'émission. Les lecteurs
+//  qui dessinent un déplacement (graphe y(x), rendu 3D) multiplient l'une par
+//  l'autre ; ceux qui n'en veulent que la forme lisent `_radD` seul.
 var VAGUES_RAD_SUB = 4;    // échantillons par pixel CSS (cf. VAGUES_YX_CACHE_SUB)
 
 function _vaguesRadLUT(t) {
@@ -606,13 +638,15 @@ function _vaguesRadLUT(t) {
     if (s._radSig === sig && s._radD && s._radD.length === nSub) return s._radD;
 
     var radD = (s._radD && s._radD.length === nSub) ? s._radD : new Float32Array(nSub);
+    var radA = (s._radA && s._radA.length === nSub) ? s._radA : new Float32Array(nSub);
     s._radD   = radD;
+    s._radA   = radA;
     s._radSig = sig;
     s._radLen = nSub;
 
     var n = s.srcN;
     if (n === 0 || s.c_sim <= 0) {
-        for (var z = 0; z < nSub; z++) radD[z] = 0;
+        for (var z = 0; z < nSub; z++) { radD[z] = 0; radA[z] = 0; }
         return radD;
     }
 
@@ -627,13 +661,15 @@ function _vaguesRadLUT(t) {
         if (sT <= sFirst) {
             // Au-delà du front : l'onde n'est pas encore arrivée. Tout le
             // reste de la table est nul, inutile de continuer.
-            for (var zz = ri; zz < nSub; zz++) radD[zz] = 0;
+            for (var zz = ri; zz < nSub; zz++) { radD[zz] = 0; radA[zz] = 0; }
             break;
         }
         if (sT >= sLast) {
             // Tout près de la source, entre le dernier échantillon gravé et
             // l'instant courant : prolongement confié à _srcSampleAtS.
-            radD[ri] = _srcDAtS(s, sT);
+            var smp  = _srcSampleAtS(s, sT);
+            radD[ri] = smp.d;
+            radA[ri] = smp.b;
             continue;
         }
         while (k > 0 && s.srcS[_srcIdx(s, k)] > sT) k--;
@@ -641,6 +677,7 @@ function _vaguesRadLUT(t) {
         var span = s.srcS[iB] - s.srcS[iA];
         var fr   = (span > 0) ? (sT - s.srcS[iA]) / span : 0;
         radD[ri] = s.srcD[iA] + (s.srcD[iB] - s.srcD[iA]) * fr;
+        radA[ri] = s.srcB[iA] + (s.srcB[iB] - s.srcB[iA]) * fr;
     }
     return radD;
 }
@@ -658,9 +695,9 @@ function _vaguesSourceMotion() {
     var s  = simVagues;
     var t  = s.simTime;
     var h  = 2 * SRC_DT;
-    var d0 = _vaguesSrcDAtR(0, t);
-    var d1 = _vaguesSrcDAtR(0, t - h);
-    _srcMotionV.y = d0 * s.amplitude;
+    var d0 = _vaguesFieldAtR(0, t);
+    var d1 = _vaguesFieldAtR(0, t - h);
+    _srcMotionV.y = d0;
     _srcMotionV.v = (d0 - d1) / h;
     // Seuil très bas devant la vitesse d'une source en marche (2πf ≈ 9 à
     // 1,5 Hz) : il ne distingue que le repos franc.
@@ -807,11 +844,11 @@ function _waveFieldRaw(px, py, tOverride) {
 
     // L'enveloppe causale n'est plus un test : au-delà du front, l'historique
     // n'a rien à donner et renvoie 0 de lui-même.
-    var field = _vaguesSrcDAtR(r, t);
+    var field = _vaguesFieldAtR(r, t);
     if (field === 0) return 0;
     if (geo) field *= Math.sqrt(40 / (40 + r));
     if (a5 > 0) field *= Math.exp(-a5 * r / maxR);
-    return field * simVagues.amplitude;
+    return field;
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -1306,9 +1343,10 @@ function updateYxDataVagues() {
     // anti-rebond en attente).
     var cEnv = s.yxCacheEnv, cLen = s.yxCacheLen | 0;
     var useCache = !!cEnv && cLen > 1;
-    var radD, radLast, rFrontAbs, sub;
+    var radD, radA, radLast, rFrontAbs, sub;
     if (useCache) {
         radD      = _vaguesRadLUT(s.simTime);
+        radA      = s._radA;
         radLast   = radD.length - 1;
         rFrontAbs = _vaguesFrontR(s.simTime);
         sub       = s.yxCacheSub || 1;
@@ -1332,9 +1370,14 @@ function updateYxDataVagues() {
                 var en = cEnv[ridx] + (cEnv[ridx + 1] - cEnv[ridx]) * fr;
                 var rs2 = r * VAGUES_RAD_SUB;
                 var j0  = rs2 | 0;
+                var frR = rs2 - j0;
                 var d   = (j0 >= radLast) ? 0
-                        : radD[j0] + (radD[j0 + 1] - radD[j0]) * (rs2 - j0);
-                yCm = d * en * VAGUES_AMP_CM * s.amplitude;
+                        : radD[j0] + (radD[j0 + 1] - radD[j0]) * frR;
+                // Amplitude À L'ÉMISSION, et non celle du curseur : l'onde
+                // déjà partie garde la hauteur qu'elle avait en quittant S.
+                var ampR = (j0 >= radLast) ? 0
+                        : radA[j0] + (radA[j0 + 1] - radA[j0]) * frR;
+                yCm = d * ampR * en * VAGUES_AMP_CM;
             }
         } else {
             yCm = _waveFieldRaw(sx + x_px, sy) * VAGUES_AMP_CM;
@@ -2365,6 +2408,7 @@ function _render3DWaveView(ctx, W, H, theta, panOffset, PW, PH, dpr) {
     var a5       = simVagues.attenuation * 5;
     var geo      = simVagues.geoAttenuation;
     var radD     = _vaguesRadLUT(t);
+    var radA     = simVagues._radA;
     var r_front  = _vaguesFrontR(t);
     var rfSq     = r_front * r_front;
 
@@ -2445,11 +2489,12 @@ function _render3DWaveView(ctx, W, H, theta, panOffset, PW, PH, dpr) {
             var dx          = (wx + panOffset) - srcX;
             var effectiveDz = dz * cosT;
             var rSq         = dx * dx + effectiveDz * effectiveDz;
-            var raw = 0, env = 1.0;
+            var raw = 0, rawA = 0, env = 1.0;
 
             if (rfSq > 0 && rSq <= rfSq) {
                 var r = Math.sqrt(rSq);
                 raw   = _radAt(radD, r);
+                rawA  = _radAt(radA, r);
                 // Enveloppe interpolée entre la formule de la vue du dessus
                 // (cache de champ) et celle de la vue en coupe : sans cela les
                 // deux profils n'avaient pas la même amplitude et le raccord
@@ -2472,8 +2517,11 @@ function _render3DWaveView(ctx, W, H, theta, panOffset, PW, PH, dpr) {
                 env = 0;
             }
 
-            // Déplacement vertical de la surface (en pixels CSS), converti en pixels physiques
-            var wy  = raw * env * simVagues.amplitude * ampPx;
+            // Déplacement vertical de la surface (en pixels CSS), converti en
+            // pixels physiques. L'amplitude est celle de l'ÉMISSION (rawA), pas
+            // celle du curseur — la couleur, elle, reste calée sur `raw` seul,
+            // qui code la phase dans [−1, 1].
+            var wy  = raw * rawA * env * ampPx;
             var sy  = Math.round((screenYbase - wy * sinT) * dpr);
             var syP = prevSyArr[px];
 
@@ -2903,12 +2951,12 @@ function _waveFieldCoupeAt(x_canvas, srcX) {
     if (r_px < 0) return 0;
     var c = simVagues.c_sim;
     if (c <= 0) return 0;
-    var field = _vaguesSrcDAtR(r_px);
+    var field = _vaguesFieldAtR(r_px);
     if (field === 0) return 0;
     if (simVagues.geoAttenuation) field *= Math.sqrt(40 / (40 + r_px));
     if (simVagues.attenuation > 0)
         field *= Math.exp(-simVagues.attenuation * 5 * r_px / simVagues.canvasW);
-    return field * simVagues.amplitude;
+    return field;
 }
 
 function _drawVaguesCoupe(ctx, W, H) {
@@ -3109,7 +3157,9 @@ function _coupeFieldPairAt(x_canvas, srcX, out) {
     if (simVagues.c_sim <= 0) return;
     _vaguesSrcPairAtR(r_px, undefined, out);
     if (out[0] === 0 && out[1] === 0) return;   // front pas encore arrivé
-    var env = simVagues.amplitude;
+    // L'amplitude est déjà dans le couple, portée par l'échantillon : il ne
+    // reste que les atténuations, qui sont bien fonction de la seule distance.
+    var env = 1;
     if (simVagues.geoAttenuation) env *= Math.sqrt(40 / (40 + r_px));
     if (simVagues.attenuation > 0)
         env *= Math.exp(-simVagues.attenuation * 5 * r_px / simVagues.canvasW);

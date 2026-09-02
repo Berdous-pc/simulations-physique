@@ -103,6 +103,7 @@ function _srcAlloc(s) {
         s.srcD = new Float32Array(SRC_CAP);
         s.srcS = new Float64Array(SRC_CAP);
         s.srcA = new Float32Array(SRC_CAP);
+        s.srcB = new Float32Array(SRC_CAP);
     }
 }
 
@@ -123,15 +124,18 @@ function _srcClear(s) {
 
 // Écrit un échantillon : d = déplacement émis, cAdvance = célérité courante
 // dans l'unité de longueur de l'onglet (m/s pour la Corde, cm/s pour le Son).
-// aux = grandeur auxiliaire figée à l'émission, propre à l'onglet (le Son y
-// range le nombre d'onde, cf. stepSourceSon ; la Corde n'en a pas l'usage).
-function _srcPush(s, t, d, cAdvance, aux) {
+// aux / aux2 = grandeurs auxiliaires figées à l'émission, propres à l'onglet.
+// Le Son range le nombre d'onde dans aux (cf. stepSourceSon) ; les Vagues y
+// rangent la quadrature de la source et, dans aux2, l'amplitude du curseur au
+// moment de l'émission (cf. stepSourceVagues). La Corde n'en a pas l'usage.
+function _srcPush(s, t, d, cAdvance, aux, aux2) {
     _srcAlloc(s);
     if (d !== 0) s.lastEmitT = t;
     s.srcSCur += cAdvance * SRC_DT;
     s.srcD[s.srcHead] = d;
     s.srcS[s.srcHead] = s.srcSCur;
-    s.srcA[s.srcHead] = aux || 0;
+    s.srcA[s.srcHead] = aux  || 0;
+    s.srcB[s.srcHead] = aux2 || 0;
     s.srcHead = (s.srcHead + 1) % SRC_CAP;
     if (s.srcN < SRC_CAP) s.srcN++;
     s.srcTNew = t;
@@ -165,7 +169,7 @@ function _srcSAtTime(s, t, cNow) {
 // Objet de sortie réutilisé d'un appel à l'autre : la fonction est appelée
 // quelques milliers de fois par frame, allouer y serait coûteux. La valeur
 // renvoyée doit donc être consommée immédiatement.
-var _srcOut = { d: 0, a: 0 };
+var _srcOut = { d: 0, a: 0, b: 0 };
 
 // Lecture brute du déplacement, sans extrapolation et sans toucher à _srcOut :
 // c'est le point miroir dont _srcSampleAtS a besoin pour prolonger au-delà du
@@ -194,6 +198,7 @@ function _srcDLookup(s, sT) {
 function _srcSampleAtS(s, sT) {
     _srcOut.d = 0;
     _srcOut.a = 0;
+    _srcOut.b = 0;
 
     var n = s.srcN;
     if (n === 0) return _srcOut;
@@ -214,6 +219,7 @@ function _srcSampleAtS(s, sT) {
         var e = sT - s.srcS[iLast];
         _srcOut.d = 2 * s.srcD[iLast] - _srcDLookup(s, s.srcS[iLast] - e);
         _srcOut.a = s.srcA[iLast];
+        _srcOut.b = s.srcB[iLast];
         return _srcOut;
     }
 
@@ -231,6 +237,7 @@ function _srcSampleAtS(s, sT) {
 
     _srcOut.d = s.srcD[iA] + (s.srcD[iB] - s.srcD[iA]) * f;
     _srcOut.a = s.srcA[iA] + (s.srcA[iB] - s.srcA[iA]) * f;
+    _srcOut.b = s.srcB[iA] + (s.srcB[iB] - s.srcB[iA]) * f;
     return _srcOut;
 }
 
