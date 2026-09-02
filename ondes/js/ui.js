@@ -192,7 +192,11 @@ function loop(ts) {
 
             if (simVagues.impulsePropagating && simVagues.impulses.length === 0) {
                 simVagues.impulsePropagating = false;
-                simVagues.sourceMode         = null;
+                // Une impulsion lancée AVANT de passer en Sinusoïdale peut
+                // finir sa route alors que l'émission continue tourne : ne pas
+                // effacer alors le mode d'émission en cours, sinon le bouton
+                // Activer s'éteint pendant que la source émet toujours.
+                if (simVagues.sourceMode === 'impulse') simVagues.sourceMode = null;
             }
 
             // Le bouton Activer dépend de simTime (source encore en mouvement
