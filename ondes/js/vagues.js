@@ -2222,7 +2222,16 @@ function syncBtnOrbitesVagues() {
     if (top && top.offsetHeight > 0) bar.style.top = (6 + top.offsetHeight + 4) + 'px';
 
     var btn = document.getElementById('btn-orbites-vagues');
-    if (btn) btn.classList.toggle('active', simVagues.showOrbits);
+    if (!btn) return;
+
+    // Les orbites sortent de la théorie d'Airy, qui suppose une onde
+    // MONOCHROMATIQUE : sans période définie, elles n'ont pas de sens. Le
+    // bouton se verrouille donc en mode Impulsion. (_vaguesModeIsImpulse est
+    // défini dans ui.js, chargé après : d'où le garde, comme pour activeTab.)
+    var isImpulse = (typeof _vaguesModeIsImpulse === 'function') && _vaguesModeIsImpulse();
+    btn.disabled = isImpulse;
+    if (isImpulse && simVagues.showOrbits) simVagues.showOrbits = false;
+    btn.classList.toggle('active', simVagues.showOrbits);
 }
 
 function toggleOrbitesVagues() {

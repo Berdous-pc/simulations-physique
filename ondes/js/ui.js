@@ -654,10 +654,7 @@ var CHRONO_DEFS = {
     },
     vagues: {
         sim         : function() { return simVagues; },
-        //  Le seul mode disponible est sinusoïdal : le comptage en T a donc
-        //  toujours un sens. Cela changera avec le mode Impulsion, où
-        //  noPeriod devra lire le sélecteur comme ses deux jumeaux.
-        noPeriod    : function() { return false; },
+        noPeriod    : function() { return _vaguesModeIsImpulse(); },
         linkDefault : function(mode) { return mode === 'sinus'; }
     }
 };
@@ -1268,10 +1265,54 @@ function _vaguesSourceMode() {
     return sel ? sel.value : 'sinus';
 }
 
+//  Une impulsion n'a ni période ni longueur d'onde : le curseur f, le comptage
+//  en T, la flèche λ, le readout étendu (f, T, λ) et les trajectoires de
+//  molécules d'eau — la théorie d'Airy suppose une onde monochromatique — n'y
+//  ont aucun sens. On se base sur le SÉLECTEUR de mode, pas sur `sourceMode`
+//  (qui ne reflète que l'émission en cours) : le verrouillage doit s'appliquer
+//  dès que le mode est choisi, même avant toute activation de la source.
+//  Jumeau de _sonModeIsImpulse et de _cordeModeIsImpulseOrFree.
+function _vaguesModeIsImpulse() {
+    return _vaguesSourceMode() === 'impulse';
+}
+
+function _syncLambdaBtnStateVagues() {
+    var btn = document.getElementById('btn-lambda-vagues');
+    if (!btn) return;
+    var isImpulse = _vaguesModeIsImpulse();
+    btn.disabled = isImpulse;
+    if (isImpulse && simVagues.lambdaVisible) {
+        simVagues.lambdaVisible = false;
+        _applyLambdaVagues();
+    }
+}
+
+function _syncWavePropsBtnStateVagues() {
+    var btn = document.getElementById('btn-wave-props-vagues');
+    if (!btn) return;
+    var isImpulse = _vaguesModeIsImpulse();
+    btn.disabled = isImpulse;
+    if (isImpulse && simVagues.wavePropsVisible) {
+        simVagues.wavePropsVisible = false;
+        _applyWavePropsVagues();
+    }
+}
+
 function _applySourceModeVagues() {
-    var mode = _vaguesSourceMode();
+    var mode      = _vaguesSourceMode();
+    var isImpulse = (mode === 'impulse');
+
+    // Le curseur f est verrouillé dès le choix du mode, avant même toute
+    // activation de la source — comme au Son.
+    var rowF = document.getElementById('freq-row-vagues');
+    var slF  = document.getElementById('sl-freq-vagues');
+    if (rowF) rowF.classList.toggle('disabled', isImpulse);
+    if (slF)  slF.disabled = isImpulse;
 
     _syncSourceButtonsVagues();
+    _syncLambdaBtnStateVagues();
+    _syncWavePropsBtnStateVagues();
+    syncBtnOrbitesVagues();
     _syncChronoLink('vagues', mode);
     _syncChronoUnits('vagues');
     _updateChrono('vagues');

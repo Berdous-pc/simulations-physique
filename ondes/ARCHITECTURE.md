@@ -889,6 +889,26 @@ l'historique. `pruneImpulsesVagues` les oublie une fois qu'elles ont fini d'êtr
 émises **et** de sortir du champ — la diagonale du canvas est la plus grande
 distance qu'elles aient à parcourir.
 
+#### Ce qui se verrouille en mode Impulsion
+
+Une impulsion n'a **ni période ni longueur d'onde**. Tout ce qui en suppose une
+se verrouille dès que le mode est choisi dans le sélecteur — donc sur
+`_vaguesModeIsImpulse()` (jumeau de `_sonModeIsImpulse`), qui lit le sélecteur
+et **non** `sourceMode`, lequel ne reflète que l'émission en cours :
+
+| verrouillé | par |
+|---|---|
+| curseur f | `_applySourceModeVagues` |
+| flèche λ (et son drag, gardé par `lambdaVisible`) | `_syncLambdaBtnStateVagues` |
+| readout étendu (f, T, λ) | `_syncWavePropsBtnStateVagues` |
+| trajectoires des molécules d'eau | `syncBtnOrbitesVagues` |
+| unité T du chronomètre | `CHRONO_DEFS.vagues.noPeriod` |
+
+Chacun *éteint* aussi l'option si elle était active, plutôt que de laisser un
+affichage faux à l'écran. Les orbites méritent leur place ici pour une raison
+propre : elles sortent de la théorie d'Airy, qui suppose une onde
+monochromatique — un `k = 2πf/c` unique, que l'historique ne garantit plus.
+
 #### Forme de l'impulsion — pourquoi un creux
 
 `d(τ) = sin(2πτ/T) × (1 − cos(2πτ/T)) / 2`, normalisée par `IMPULSE_V_NORM`
@@ -1275,13 +1295,17 @@ index.html
 
 ## Points ouverts
 
-- **Vagues : la flèche λ et la graduation en λ du graphe y(x) restent calées
-  sur la fréquence courante.** Depuis le portage sur l'historique, l'onde déjà
-  émise garde la longueur d'onde qu'elle avait à l'émission : après un coup de
-  curseur sur f, g ou h, ces repères ne décrivent plus que la portion la plus
-  proche de la source. C'est le prix — assumé — de la fin de la réécriture
-  rétroactive. Ils devront être grisés en mode impulsion, où ils n'auront plus
-  de sens du tout.
+- **Vagues : la flèche λ et le readout λ restent calés sur la fréquence
+  courante.** Depuis le portage sur l'historique, l'onde déjà émise garde la
+  longueur d'onde qu'elle avait à l'émission : après un coup de curseur sur f,
+  g ou h, ces repères ne décrivent plus que la portion la plus proche de la
+  source. C'est le prix — assumé — de la fin de la réécriture rétroactive. (En
+  mode Impulsion la question ne se pose pas : ils y sont verrouillés.)
+- **Vagues : `_coupeFieldPairAt` garde une quadrature analytique** en `cos(φ)`
+  calculée sur la fréquence courante, alors que sa composante en phase sort de
+  l'historique. Sans effet visible tant que les orbites ne s'affichent qu'en
+  sinusoïdal — mais après un changement de f en cours de route, le mouvement
+  horizontal des billes ne suit plus exactement le vertical loin de la source.
 - Reste calé sur les réglages courants côté Son : `aEff` dans `waveDeltaP`
   (facteur 1/2 en mode impulsion). Il ne change qu'au basculement de
   `sourceMode`, jamais au glissement d'un curseur, et ce basculement n'a lieu
