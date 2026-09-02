@@ -247,6 +247,16 @@ var simVagues = {
     // Phase accumulée de la source sinusoïdale (cf. stepSourceVagues)
     sinPhase : 0,
 
+    // ── Source : mise en marche ──────────────────────────────────────
+    //  La source démarre en marche : l'onglet s'ouvre donc sur le bassin
+    //  déjà animé, comme avant qu'elle ne devienne commutable.
+    //  vaguesEnv / vaguesEmitMode : enveloppe demi-cosinus de démarrage et
+    //  d'arrêt, étalée sur une période (cf. stepSourceVagues).
+    sourceMode       : 'sinus',
+    sinusoidalActive : true,
+    vaguesEmitMode   : null,
+    vaguesEnv        : 0,
+
     // ── Balises (points draggables dans le canvas 2D) ────────────────
     beacon1 : { active: false, x: 0, y: 0, snapped: false },
     beacon2 : { active: false, x: 0, y: 0, snapped: false },
@@ -394,12 +404,41 @@ var lastSrcUpdateVagues = 0;
 
 function stepSourceVagues(t) {
     var s = simVagues;
-    // Phase accumulée, et non 2πf·t recalculé : c'est ce qui fait que changer
-    // la fréquence n'introduit pas de saut de phase et n'affecte que l'onde
-    // émise à partir de cet instant.
-    s.sinPhase += 2 * Math.PI * s.freq * SRC_DT;
-    if (s.sinPhase > 2 * Math.PI) s.sinPhase -= 2 * Math.PI;
-    _srcPush(s, t, Math.sin(s.sinPhase), s.c_sim);
+
+    // ── Enveloppe de démarrage / d'arrêt ──────────────────────────────
+    // Même raison qu'au Son (cf. stepSourceSon) : une sinusoïde allumée
+    // brutalement produit un front franc, ici un anneau net qui se détache du
+    // reste de la houle. On module donc l'amplitude par un demi-cosinus étalé
+    // sur exactement une période — la source met une oscillation à s'établir,
+    // et autant à se taire. Passé ce délai le signal est une sinusoïde pure :
+    // la longueur d'onde reste mesurable partout ailleurs.
+    var wantMode = s.sinusoidalActive ? 'sinus' : null;
+    if (wantMode && wantMode !== s.vaguesEmitMode) {
+        s.vaguesEmitMode = wantMode;
+        s.vaguesEnv      = 0;
+    }
+    var envStep = Math.max(0.2, s.freq) * SRC_DT;   // 1 période pour 0 → 1
+    if (wantMode) {
+        s.vaguesEnv = Math.min(1, s.vaguesEnv + envStep);
+    } else if (s.vaguesEmitMode) {
+        s.vaguesEnv = Math.max(0, s.vaguesEnv - envStep);
+        if (s.vaguesEnv === 0) s.vaguesEmitMode = null;
+    }
+    var env = (1 - Math.cos(Math.PI * s.vaguesEnv)) / 2;
+
+    var d = 0;
+    if (s.vaguesEmitMode === 'sinus') {
+        // Phase accumulée, et non 2πf·t recalculé : c'est ce qui fait que
+        // changer la fréquence n'introduit pas de saut de phase et n'affecte
+        // que l'onde émise à partir de cet instant.
+        s.sinPhase += 2 * Math.PI * s.freq * SRC_DT;
+        if (s.sinPhase > 2 * Math.PI) s.sinPhase -= 2 * Math.PI;
+        d = env * Math.sin(s.sinPhase);
+    }
+
+    // Gravé même quand d vaut 0 : c'est ce silence qui, en s'éloignant,
+    // dessine l'arrière du train d'ondes quand on coupe la source.
+    _srcPush(s, t, d, s.c_sim);
 }
 
 function addSourceSampleVagues(t) {
@@ -1868,9 +1907,11 @@ function resetVagues() {
     // pour la faire disparaître. La phase repart de 0 pour que la source réémette
     // à l'identique.
     _srcClear(simVagues);
-    simVagues.sinPhase   = 0;
-    simVagues._radSig    = null;
-    lastSrcUpdateVagues  = 0;
+    simVagues.sinPhase       = 0;
+    simVagues.vaguesEnv      = 0;
+    simVagues.vaguesEmitMode = null;
+    simVagues._radSig        = null;
+    lastSrcUpdateVagues      = 0;
     _ytClear(1);
     _ytClear(2);
     // Horloge d'échantillonnage y(t) : sans ce recalage, simTime repart de 0 alors

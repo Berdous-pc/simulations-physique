@@ -641,12 +641,11 @@ var CHRONO_DEFS = {
     },
     vagues: {
         sim         : function() { return simVagues; },
-        //  La source Vagues est sinusoïdale et toujours en marche : le
-        //  comptage en T a donc toujours un sens. Cela changera avec le
-        //  mode Impulsion, qui apportera aussi la case « Lier » et le
-        //  linkDefault correspondant.
+        //  Le seul mode disponible est sinusoïdal : le comptage en T a donc
+        //  toujours un sens. Cela changera avec le mode Impulsion, où
+        //  noPeriod devra lire le sélecteur comme ses deux jumeaux.
         noPeriod    : function() { return false; },
-        linkDefault : function()  { return false; }
+        linkDefault : function(mode) { return mode === 'sinus'; }
     }
 };
 
@@ -1228,6 +1227,70 @@ function _syncWavePropsBtnStateCorde() {
 }
 
 // ══════════════════════════════════════════════════════════════════════
+//  Source Vagues
+// ══════════════════════════════════════════════════════════════════════
+//  Même box que le Son et la Corde : un bouton Activer et un sélecteur de
+//  mode. La source est en marche au chargement — l'onglet s'ouvre donc sur le
+//  bassin déjà animé, comme du temps où elle ne pouvait pas être coupée.
+//
+//  L'arrêt ne fait pas disparaître l'onde : elle vit dans l'historique de la
+//  source (cf. stepSourceVagues) et poursuit sa route jusqu'au bord. C'est
+//  précisément ce que le bouton donne à voir.
+// ══════════════════════════════════════════════════════════════════════
+
+function _syncSourceButtonsVagues() {
+    var btn = document.getElementById('btn-source-active-vagues');
+    if (!btn) return;
+    btn.classList.toggle('active', simVagues.sinusoidalActive);
+}
+
+function _vaguesSourceMode() {
+    var sel = document.getElementById('sel-mode-vagues');
+    return sel ? sel.value : 'sinus';
+}
+
+function _applySourceModeVagues() {
+    var mode = _vaguesSourceMode();
+    simVagues.sourceMode = mode;
+
+    _syncSourceButtonsVagues();
+    _syncChronoLink('vagues', mode);
+    _syncChronoUnits('vagues');
+    _updateChrono('vagues');
+}
+
+function toggleSourceActiveVagues() {
+    var wasOn = simVagues.sinusoidalActive;
+    simVagues.sinusoidalActive = !wasOn;
+
+    // Rallumage alors que l'enveloppe d'arrêt n'a pas fini de descendre : la
+    // source émet encore, remettre la phase à zéro y créerait le saut que
+    // l'enveloppe est censée éviter. On laisse alors la phase courir et
+    // l'enveloppe remonter (cf. stepSourceVagues) — même règle qu'au Son.
+    if (simVagues.sinusoidalActive && simVagues.vaguesEmitMode !== 'sinus') {
+        simVagues.sinPhase = 0;
+    }
+    // Activer alors que tout est en pause ne montrerait rien.
+    if (simVagues.sinusoidalActive && simVagues.paused) togglePauseVagues();
+
+    _syncSourceButtonsVagues();
+
+    // Chronomètre lié : mettre la source en marche le lance s'il est à
+    // l'arrêt. L'arrêter ne l'arrête pas — l'onde déjà émise reste
+    // chronométrable jusqu'au bord du bassin.
+    if (!wasOn && simVagues.sinusoidalActive) _startChronoIfLinked('vagues');
+}
+
+function onSourceModeChangeVagues() {
+    // Un seul mode disponible pour l'instant : la fonction est là pour que le
+    // sélecteur soit déjà câblé quand le mode Impulsion arrivera. Le
+    // chronomètre suit la règle des deux autres onglets — il mesure une
+    // émission, changer de mode y met fin.
+    resetChrono('vagues');
+    _applySourceModeVagues();
+}
+
+// ══════════════════════════════════════════════════════════════════════
 //  Balises — communes (routées selon activeTab)
 // ══════════════════════════════════════════════════════════════════════
 
@@ -1491,6 +1554,7 @@ function _syncUIToSim() {
     _applyShowGraphVagues();
     updateCeleriteVagues();
     _updateCReadoutVagues();
+    _applySourceModeVagues();
     var btnV = document.getElementById('btn-playpause-vagues');
     if (btnV) { btnV.textContent = '⏸ Pause'; btnV.className = 'btn btn-pause'; }
 

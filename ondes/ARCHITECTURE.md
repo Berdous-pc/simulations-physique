@@ -868,6 +868,34 @@ l'historique n'a rien à donner et renvoie 0 de lui-même. `_vaguesFrontR()` en
 lit le rayon (la distance couverte par l'historique) pour les rendus qui ont
 besoin de savoir où s'arrête l'onde.
 
+### Box source
+
+Même gabarit que les deux autres onglets : bouton **Activer** et sélecteur de
+mode (`#source-vagues`), avec les curseurs de fréquence et d'amplitude dans la
+box — ce sont des réglages de la source, pas du milieu, et ils ont donc quitté
+le panneau de droite, dont la section « Source » a disparu.
+`Impulsion` figure déjà dans le sélecteur mais **désactivée** : le mode arrive
+au commit suivant, et la laisser visible évite que le sélecteur change de forme
+d'une version à l'autre.
+
+La source est **en marche au chargement** : l'onglet s'ouvre sur le bassin déjà
+animé, comme du temps où elle ne pouvait pas être coupée. L'arrêter ne fait pas
+disparaître l'onde — elle vit dans l'historique et poursuit sa route jusqu'au
+bord. C'est précisément ce que le bouton donne à voir.
+
+À savoir sur le curseur d'**amplitude** : la vue du dessus code la phase en
+couleur et non en relief, le champ n'y est donc pas multiplié par `amplitude`
+(cf. `drawVagues`) — l'animation y est insensible au curseur. Les graphes
+*y(x)* et *y(t)*, eux, sont gradués en centimètres et le suivent : le griser en
+vue du dessus les figerait aussi, ce qui a fait renoncer à l'idée.
+
+Comme au Son, le démarrage et l'arrêt sont adoucis par une **enveloppe
+demi-cosinus étalée sur une période** (`vaguesEnv` / `vaguesEmitMode`) : une
+sinusoïde allumée brutalement produirait un anneau franc se détachant du reste
+de la houle. `stepSourceVagues` grave un échantillon **même quand la source se
+tait** — c'est ce silence qui, en s'éloignant, dessine l'arrière du train
+d'ondes.
+
 ### Une table radiale par frame
 
 La vue du dessus lit le champ en ~120 000 points par frame : une recherche
@@ -1171,8 +1199,8 @@ Ajouter un onglet au chronomètre se réduit donc à trois gestes : recopier le
 gabarit HTML avec le bon suffixe, ajouter une entrée à `CHRONO_DEFS` et une à
 `chronos`, brancher `chronoTick` et `_updateChrono` dans sa branche de `loop`
 (et `resetChrono` dans sa remise à zéro). C'est ce qu'a fait l'onglet Vagues,
-au détail près de la case « Lier » : elle n'apparaîtra qu'avec le bouton
-Activer de sa box source, faute de quoi elle serait un contrôle mort.
+en deux temps : la box d'abord, puis la case « Lier » une fois sa box source
+pourvue d'un bouton Activer — avant quoi elle aurait été un contrôle mort.
 
 ### Conventions à respecter
 

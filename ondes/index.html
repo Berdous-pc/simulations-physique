@@ -146,9 +146,6 @@
           </div>
         </div>
 
-        <!-- Vagues : pas de case « Lier » pour l'instant — l'onglet n'a pas
-             encore de bouton Activer à quoi la lier. Elle arrivera avec la
-             box source. -->
         <div class="chrono-box" id="chrono-vagues" style="display:none;">
           <div class="chrono-display">
             <span class="chrono-value" id="chrono-value-vagues">0,00</span>
@@ -161,6 +158,10 @@
                     points="3.5,2 10,6 3.5,10"/></svg></button>
             <button class="chrono-btn" id="btn-chrono-reset-vagues"
                     onclick="resetChrono('vagues')" title="Remettre le chronomètre à zéro">⟲</button>
+            <label class="chrono-link"
+                   title="Lier le déclenchement du chronomètre à l'activation de la source.">
+              <input type="checkbox" id="chk-chrono-link-vagues">Lier
+            </label>
             <span class="chrono-units">
               <button class="chrono-unit active" id="btn-chrono-unit-s-vagues"
                       onclick="setChronoUnit('vagues', 's')"
@@ -234,8 +235,42 @@
           </div>
         </div><!-- fin #source-corde -->
 
-        <!-- Source Vagues (invisible — source pilotée par drag dans le canvas) -->
-        <div id="source-vagues" style="display:none;"></div>
+        <!-- Source Vagues -->
+        <!-- « Impulsion » est déjà là mais désactivée : le mode arrive au
+             commit suivant. La laisser visible évite que le sélecteur change
+             de forme entre deux versions. -->
+        <div id="source-vagues" style="display:none;">
+          <div class="section-title">Source</div>
+          <div class="source-btns">
+            <button class="btn btn-toggle-one" id="btn-source-active-vagues"
+                    onclick="toggleSourceActiveVagues()">
+              Activer
+            </button>
+            <select class="select-mode" id="sel-mode-vagues"
+                    onchange="onSourceModeChangeVagues()">
+              <option value="impulse" disabled>Impulsion</option>
+              <option value="sinus" selected>Sinusoïdale</option>
+            </select>
+          </div>
+          <div class="param-row" id="freq-row-vagues">
+            <label>
+              Fréquence
+              <span class="param-value"><span id="lbl-freq-vagues">1,5</span> Hz</span>
+            </label>
+            <input type="range" id="sl-freq-vagues"
+                   min="0.5" max="5" step="0.1" value="1.5"
+                   oninput="onSliderFreqVagues(this.value)">
+          </div>
+          <div class="param-row" id="ampl-row-vagues">
+            <label>
+              Amplitude
+              <span class="param-value"><span id="lbl-ampl-vagues">1,0</span></span>
+            </label>
+            <input type="range" id="sl-ampl-vagues"
+                   min="0.5" max="3.0" step="0.1" value="1.0"
+                   oninput="onSliderAmplVagues(this.value)">
+          </div>
+        </div><!-- fin #source-vagues -->
 
       </div><!-- fin #source-box -->
 
@@ -632,32 +667,9 @@
 
         <div class="sep"></div>
 
-        <!-- Source -->
-        <div class="panel-section">
-          <div class="section-title">Source</div>
-          <div class="param-row">
-            <label>
-              Fréquence
-              <span class="param-value"><span id="lbl-freq-vagues">1,5</span> Hz</span>
-            </label>
-            <input type="range" id="sl-freq-vagues"
-                   min="0.5" max="5" step="0.1" value="1.5"
-                   oninput="onSliderFreqVagues(this.value)">
-            <span class="input-hint">Fréquence des vagues émises par S.</span>
-          </div>
-          <div class="param-row">
-            <label>
-              Amplitude
-              <span class="param-value"><span id="lbl-ampl-vagues">1,0</span></span>
-            </label>
-            <input type="range" id="sl-ampl-vagues"
-                   min="0.5" max="3.0" step="0.1" value="1.0"
-                   oninput="onSliderAmplVagues(this.value)">
-            <span class="input-hint">Amplitude relative de la source.</span>
-          </div>
-        </div>
-
-        <div class="sep"></div>
+        <!-- La section Source a entièrement rejoint la box source (fréquence
+             et amplitude), comme dans les deux autres onglets : ce sont des
+             réglages de la source, pas du milieu. -->
 
         <!-- Propriétés du milieu -->
         <div class="panel-section">
@@ -819,10 +831,11 @@
                 title="Afficher les instructions">▲</button>
       </div>
       <div class="panel-hint-body" id="panel-hint-vagues-body">
-        <strong>Vagues :</strong> la source S émet des ondes circulaires en continu.
+        <strong>Vagues :</strong> la source S, fixe au centre, émet des ondes
+        circulaires. Le bouton <strong>Activer</strong> la met en marche et
+        l'arrête — les vagues déjà émises poursuivent leur route.
         La ligne pointillée horizontale est l'axe x passant par S — le graphe
         <em>y(x)</em> montre l'amplitude le long de cet axe.
-        Faites glisser S pour déplacer la source (les vagues déjà émises ne bougent pas).
         Activez les <strong>balises</strong> puis faites-les glisser dans le plan pour
         observer le graphe <em>y(t)</em> en un point.
         Ajustez h et g pour modifier la célérité c = √(g·h).
