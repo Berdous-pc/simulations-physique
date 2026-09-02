@@ -221,10 +221,31 @@ var simVagues = {
     c_sim : 0,   // px/s
     c_ms  : 0,   // m/s (affiché)
 
-    // ── Enveloppe causale ────────────────────────────────────────────
-    // Remis à zéro (= simTime courant) quand la source est déplacée.
-    // Les ondes s'étendent depuis cette position jusqu'à r = c*(t-resetTime).
-    sourceResetTime : 0,
+    // ── Historique de la source (cf. _srcPush / _srcDAtS dans sim.js) ─
+    //  Même machinerie que le Son et la Corde, à ceci près que la source
+    //  Vagues est FIXE et le milieu isotrope : la distance parcourue ne
+    //  dépend que de r, un seul historique 1D suffit donc pour tout le plan.
+    //  srcD est enregistré normalisé (∈ [−1, 1]) : l'amplitude est appliquée
+    //  à la lecture, pour que le curseur agisse aussi sur l'onde déjà émise.
+    //  srcS progresse en PIXELS CSS, l'unité de longueur de cet onglet.
+    //
+    //  C'est lui qui porte désormais l'enveloppe causale : le front n'est plus
+    //  c·(t − t_reset) mais la distance couverte par l'historique
+    //  (cf. _vaguesFrontR). Conséquence voulue : changer f, g ou h ne réécrit
+    //  plus rétroactivement l'onde déjà partie.
+    srcD    : null,
+    srcS    : null,
+    srcA    : null,
+    srcN    : 0,
+    srcHead : 0,
+    srcTNew : 0,
+    srcSCur : 0,
+    srcSeq  : 0,
+    srcKMin : Infinity,
+    lastEmitT : -1e9,
+
+    // Phase accumulée de la source sinusoïdale (cf. stepSourceVagues)
+    sinPhase : 0,
 
     // ── Balises (points draggables dans le canvas 2D) ────────────────
     beacon1 : { active: false, x: 0, y: 0, snapped: false },
@@ -360,7 +381,138 @@ function resizeVagues() {
     syncBtnOrbitesVagues();
 }
 
-function addSourceSampleVagues(t) { /* no-op — historique supprimé */ }
+// ══════════════════════════════════════════════════════════════════════
+//  Source : émission dans l'historique
+//
+//  La source grave un échantillon tous les SRC_DT de temps simulé, comme la
+//  membrane du Son (cf. stepSourceSon). Le rattrapage à pas fixe se fait ici
+//  et non dans la boucle de ui.js : cet onglet n'a rien d'autre à cadencer
+//  sur ce pas.
+// ══════════════════════════════════════════════════════════════════════
+
+var lastSrcUpdateVagues = 0;
+
+function stepSourceVagues(t) {
+    var s = simVagues;
+    // Phase accumulée, et non 2πf·t recalculé : c'est ce qui fait que changer
+    // la fréquence n'introduit pas de saut de phase et n'affecte que l'onde
+    // émise à partir de cet instant.
+    s.sinPhase += 2 * Math.PI * s.freq * SRC_DT;
+    if (s.sinPhase > 2 * Math.PI) s.sinPhase -= 2 * Math.PI;
+    _srcPush(s, t, Math.sin(s.sinPhase), s.c_sim);
+}
+
+function addSourceSampleVagues(t) {
+    // Avant le premier resize la célérité vaut 0 : graver maintenant empilerait
+    // des échantillons à distance nulle, que le front ne pourrait plus séparer.
+    if (simVagues.c_sim <= 0) { lastSrcUpdateVagues = t; return; }
+    // Onglet resté en arrière-plan, ou reprise après une longue pause : on ne
+    // grave pas les milliers d'échantillons du retard, on recale l'horloge.
+    if (t - lastSrcUpdateVagues > 1.0) lastSrcUpdateVagues = t - SRC_DT;
+    while (t - lastSrcUpdateVagues >= SRC_DT) {
+        lastSrcUpdateVagues += SRC_DT;
+        stepSourceVagues(lastSrcUpdateVagues);
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Lecture du champ : un seul point d'entrée
+//
+//  Le déplacement au point situé à la distance r de la source est celui que
+//  la source a émis quand le front avait parcouru S(t) − r. Toutes les vues
+//  (dessus, coupe, transition 3D) et tous les graphes passent par là : c'est
+//  la condition pour qu'ils continuent de montrer la même onde.
+// ══════════════════════════════════════════════════════════════════════
+
+// Rayon atteint par le front : distance couverte par l'historique. Remplace
+// l'ancien c·(t − sourceResetTime), qu'il vaut exactement tant que c ne change
+// pas — mais qui reste juste, lui, quand la célérité varie en cours de route.
+function _vaguesFrontR(t) {
+    var s = simVagues;
+    if (s.srcN === 0 || s.c_sim <= 0) return 0;
+    if (t === undefined) t = s.simTime;
+    return _srcSAtTime(s, t, s.c_sim) - s.srcS[_srcIdx(s, 0)];
+}
+
+// Déplacement normalisé émis, lu à la distance r (px CSS) et à l'instant t.
+// Lecture unitaire : les rendus pleine surface passent par la table radiale
+// ci-dessous, qui fait le même calcul une fois pour toutes.
+function _vaguesSrcDAtR(r, t) {
+    var s = simVagues;
+    if (s.c_sim <= 0 || s.srcN === 0) return 0;
+    if (t === undefined) t = s.simTime;
+    return _srcDAtS(s, _srcSAtTime(s, t, s.c_sim) - r);
+}
+
+// ── Table radiale du déplacement, reconstruite une fois par frame ─────
+//  Le rendu de la vue du dessus lit le champ en ~120 000 points par frame ;
+//  une recherche dichotomique par point serait ruineuse. Comme le champ ne
+//  dépend que de r, on tabule d(r) une seule fois, en sous-pixel, puis chaque
+//  point interpole. La table se construit d'un seul balayage : r croissant
+//  ⇔ S décroissant, un curseur descend l'historique sans jamais revenir.
+var VAGUES_RAD_SUB = 4;    // échantillons par pixel CSS (cf. VAGUES_YX_CACHE_SUB)
+
+function _vaguesRadLUT(t) {
+    var s = simVagues;
+    if (t === undefined) t = s.simTime;
+
+    // Diagonale du canvas, plus le panoramique de la transition 3D qui décale
+    // le repère vers la droite et fait donc lire plus loin que la diagonale.
+    var maxR = Math.ceil(Math.sqrt(s.canvasW * s.canvasW + s.canvasH * s.canvasH)
+                         + Math.max(0, _vaguesMaxPan())) + 4;
+    var nSub = maxR * VAGUES_RAD_SUB + 2;
+
+    var sig = t + '|' + s.srcSeq + '|' + s.c_sim + '|' + nSub;
+    if (s._radSig === sig && s._radD && s._radD.length === nSub) return s._radD;
+
+    var radD = (s._radD && s._radD.length === nSub) ? s._radD : new Float32Array(nSub);
+    s._radD   = radD;
+    s._radSig = sig;
+    s._radLen = nSub;
+
+    var n = s.srcN;
+    if (n === 0 || s.c_sim <= 0) {
+        for (var z = 0; z < nSub; z++) radD[z] = 0;
+        return radD;
+    }
+
+    var sNow   = _srcSAtTime(s, t, s.c_sim);
+    var invSub = 1 / VAGUES_RAD_SUB;
+    var sFirst = s.srcS[_srcIdx(s, 0)];
+    var sLast  = s.srcS[_srcIdx(s, n - 1)];
+    var k      = n - 1;   // curseur : plus grand indice tel que S[k] ≤ sT
+
+    for (var ri = 0; ri < nSub; ri++) {
+        var sT = sNow - ri * invSub;
+        if (sT <= sFirst) {
+            // Au-delà du front : l'onde n'est pas encore arrivée. Tout le
+            // reste de la table est nul, inutile de continuer.
+            for (var zz = ri; zz < nSub; zz++) radD[zz] = 0;
+            break;
+        }
+        if (sT >= sLast) {
+            // Tout près de la source, entre le dernier échantillon gravé et
+            // l'instant courant : prolongement confié à _srcSampleAtS.
+            radD[ri] = _srcDAtS(s, sT);
+            continue;
+        }
+        while (k > 0 && s.srcS[_srcIdx(s, k)] > sT) k--;
+        var iA = _srcIdx(s, k), iB = _srcIdx(s, k + 1);
+        var span = s.srcS[iB] - s.srcS[iA];
+        var fr   = (span > 0) ? (sT - s.srcS[iA]) / span : 0;
+        radD[ri] = s.srcD[iA] + (s.srcD[iB] - s.srcD[iA]) * fr;
+    }
+    return radD;
+}
+
+// Lecture interpolée de la table radiale. r au-delà de la table = hors champ.
+function _radAt(radD, r) {
+    var rs = r * VAGUES_RAD_SUB;
+    var i0 = rs | 0;
+    if (i0 < 0 || i0 >= radD.length - 1) return 0;
+    var d0 = radD[i0];
+    return d0 + (radD[i0 + 1] - d0) * (rs - i0);
+}
 
 // ══════════════════════════════════════════════════════════════════════
 //  Rebuild du cache de champ (vue du dessus) — cf. discussion en tête de
@@ -393,14 +545,15 @@ function _rebuildVaguesFieldCache() {
     if (neededGw > gw) gw = Math.min(VAGUES_GRID_W_MAX, neededGw);
     if (neededGh > gh) gh = Math.min(VAGUES_GRID_H_MAX, neededGh);
 
-    var k    = 2 * Math.PI / lambda_px;
     var maxR = Math.sqrt(s.canvasW * s.canvasW + s.canvasH * s.canvasH);
     var a5   = s.attenuation * 5;
     var geo  = s.geoAttenuation;
     var sx   = s.sourceX, sy = s.sourceY;
 
-    var gridCos = new Float32Array(gw * gh); // cos(k·r)
-    var gridSin = new Float32Array(gw * gh); // sin(k·r)
+    // Ne subsistent ici que les grandeurs indépendantes du temps : la distance
+    // à la source et l'enveloppe d'atténuation. La phase, elle, vient de
+    // l'historique de la source via la table radiale (cf. _vaguesRadLUT) —
+    // c'est ce qui autorise une forme d'onde quelconque.
     var gridEnv = new Float32Array(gw * gh); // enveloppe géo/atténuation (sans le gain visuel)
     var gridR   = new Float32Array(gw * gh); // r (px CSS) — déclenche le front causal
 
@@ -417,16 +570,13 @@ function _rebuildVaguesFieldCache() {
             if (geo) env = Math.min(1, Math.sqrt(50 / Math.max(1, r)));
             if (a5 > 0) env *= Math.exp(-a5 * r / maxR);
 
-            var kr = k * r;
-            gridCos[idx] = Math.cos(kr);
-            gridSin[idx] = Math.sin(kr);
             gridEnv[idx] = env;
             gridR[idx]   = r;
         }
     }
 
     s.gridW = gw; s.gridH = gh;
-    s.gridCos = gridCos; s.gridSin = gridSin; s.gridEnv = gridEnv; s.gridR = gridR;
+    s.gridEnv = gridEnv; s.gridR = gridR;
 
     if (!s._offCanvas) s._offCanvas = document.createElement('canvas');
     s._offCanvas.width  = gw;
@@ -438,34 +588,27 @@ function _rebuildVaguesFieldCache() {
 
     // ── Cache 1D le long de l'axe horizontal (courbe y(x), cf. updateYxDataVagues) ──
     // Même principe que ci-dessus, mais indexé directement par r = distance à la source.
-    // Échantillonné en SOUS-PIXEL (VAGUES_YX_CACHE_SUB points par px CSS) et relu par
-    // interpolation linéaire : à un point par pixel entier, la courbe devenait un escalier
-    // dont les marches valaient A·2π/λ_px sur les flancs — soit ~16 % de l'amplitude pour
-    // λ = 40 px, bien visible. Le sous-échantillonnage borne en plus l'erreur de corde de
-    // l'interpolation (~(k/SUB)²/8) à une valeur négligeable même aux courtes longueurs
-    // d'onde. Formule d'enveloppe identique à _waveFieldRaw (légèrement différente de celle
-    // du rendu 2D ci-dessus, qui utilise une autre constante — incohérence déjà présente
-    // entre les deux avant cette optimisation, conservée à l'identique ici pour ne pas
-    // changer le résultat affiché).
+    // Ne reste ici que l'enveloppe : la phase vient de la table radiale, échantillonnée
+    // au même pas sous-pixel. Ce sous-échantillonnage n'est pas un luxe : lu au pixel
+    // entier tronqué, le champ devenait un escalier dont les marches valaient A·2π/λ_px
+    // sur les flancs — soit ~16 % de l'amplitude pour λ = 40 px, bien visible.
+    // Formule d'enveloppe identique à _waveFieldRaw (légèrement différente de celle du
+    // rendu 2D ci-dessus, qui utilise une autre constante — incohérence déjà présente
+    // entre les deux, conservée à l'identique pour ne pas changer le résultat affiché).
     var maxRpx = Math.ceil(s.canvasW) + 2;
     var nSub   = maxRpx * VAGUES_YX_CACHE_SUB + 2;
     var invSub = 1 / VAGUES_YX_CACHE_SUB;
     // Réutilise les tampons si la taille n'a pas changé (le rebuild est déclenché par un
     // resize ou un changement de réglage, pas à chaque frame, mais autant éviter le churn).
-    var yxCos = (s.yxCacheCos && s.yxCacheCos.length === nSub) ? s.yxCacheCos : new Float32Array(nSub);
-    var yxSin = (s.yxCacheSin && s.yxCacheSin.length === nSub) ? s.yxCacheSin : new Float32Array(nSub);
     var yxEnv = (s.yxCacheEnv && s.yxCacheEnv.length === nSub) ? s.yxCacheEnv : new Float32Array(nSub);
     for (var ri = 0; ri < nSub; ri++) {
         var rPx   = ri * invSub;
         var envYx = 1.0;
         if (geo) envYx = Math.sqrt(40 / (40 + rPx));
         if (a5 > 0) envYx *= Math.exp(-a5 * rPx / maxR);
-        var kr2 = k * rPx;
-        yxCos[ri] = Math.cos(kr2);
-        yxSin[ri] = Math.sin(kr2);
         yxEnv[ri] = envYx;
     }
-    s.yxCacheCos = yxCos; s.yxCacheSin = yxSin; s.yxCacheEnv = yxEnv;
+    s.yxCacheEnv = yxEnv;
     s.yxCacheLen = nSub;  s.yxCacheSub = VAGUES_YX_CACHE_SUB;
     s.yxSig      = null;  // force le recalcul de la courbe avec le nouveau cache
 }
@@ -491,7 +634,6 @@ function _waveFieldRaw(px, py, tOverride) {
     if (c <= 0) return 0;
 
     var t    = (tOverride === undefined) ? simVagues.simTime : tOverride;
-    var f    = simVagues.freq;
     var maxR = Math.sqrt(simVagues.canvasW * simVagues.canvasW + simVagues.canvasH * simVagues.canvasH);
     var a5   = simVagues.attenuation * 5;
     var geo  = simVagues.geoAttenuation;
@@ -500,9 +642,10 @@ function _waveFieldRaw(px, py, tOverride) {
     var dy = py - simVagues.sourceY;
     var r  = Math.sqrt(dx * dx + dy * dy);
 
-    if (r > c * (t - simVagues.sourceResetTime)) return 0;
-
-    var field = Math.sin(2 * Math.PI * f * (t - r / c));
+    // L'enveloppe causale n'est plus un test : au-delà du front, l'historique
+    // n'a rien à donner et renvoie 0 de lui-même.
+    var field = _vaguesSrcDAtR(r, t);
+    if (field === 0) return 0;
     if (geo) field *= Math.sqrt(40 / (40 + r));
     if (a5 > 0) field *= Math.exp(-a5 * r / maxR);
     return field * simVagues.amplitude;
@@ -535,7 +678,7 @@ function drawVagues() {
 
     // ── Rendu via le cache basse résolution (cf. _rebuildVaguesFieldCache) ──
     var s = simVagues;
-    if (!s.gridCos || s.gridW * s.gridH !== s.gridCos.length) {
+    if (!s.gridR || s.gridW * s.gridH !== s.gridR.length) {
         // Cache pas encore prêt (juste après un resize/changement de réglage, rebuild
         // anti-rebond en attente, cf. _scheduleVaguesRebuild) : fond uni le temps qu'il arrive.
         ctx.fillStyle = 'rgb(' + COL_BG_R + ',' + COL_BG_G + ',' + COL_BG_B + ')';
@@ -547,34 +690,42 @@ function drawVagues() {
     }
 
     var t        = s.simTime;
-    var sinWt    = Math.sin(2 * Math.PI * s.freq * t);
-    var cosWt    = Math.cos(2 * Math.PI * s.freq * t);
-    var r_front  = s.c_sim * (t - s.sourceResetTime); // enveloppe causale
+    var radD     = _vaguesRadLUT(t);
+    var radLast  = radD.length - 1;
+    var r_front  = _vaguesFrontR(t);   // enveloppe causale, portée par l'historique
     // Largeur de la zone de lissage du front (px CSS), calquée sur surfaces.js — évite la
     // coupure nette en anneau qui apparaissait auparavant à la limite atteinte par l'onde.
+    // Le fondu se fait désormais VERS L'INTÉRIEUR : l'historique est vide au-delà du front,
+    // il n'y a plus rien à estomper de ce côté (avant, le rendu prolongeait la sinusoïde
+    // hors du cône causal pour l'y faire décroître).
     var frontFeather = Math.max(1, s.c_sim / Math.max(1, s.freq) * 0.15);
+    var featherFrom  = r_front - frontFeather;
 
     var gw = s.gridW, gh = s.gridH;
-    var gridCos = s.gridCos, gridSin = s.gridSin, gridEnv = s.gridEnv, gridR = s.gridR;
+    var gridEnv = s.gridEnv, gridR = s.gridR;
     var img  = s._imgData; // buffer réutilisé (cf. _rebuildVaguesFieldCache), pas de réallocation par frame
     var data = img.data;
 
     for (var idx = 0, n = gw * gh; idx < n; idx++) {
         var p = idx * 4;
         var r = gridR[idx];
-        if (r > r_front + frontFeather) {
+        if (r > r_front) {
             data[p] = COL_BG_R; data[p + 1] = COL_BG_G; data[p + 2] = COL_BG_B; data[p + 3] = 255;
             continue;
         }
-        // sin(ωt - k·r) = sin(ωt)·cos(k·r) - cos(ωt)·sin(k·r) — aucune trigonométrie ici,
-        // juste la combinaison des valeurs cachées avec les 2 scalaires de la frame.
-        var raw = sinWt * gridCos[idx] - cosWt * gridSin[idx];
+        // Déplacement émis, relu à la distance r dans la table radiale de la frame.
+        // Interpolation linéaire : lue au sous-échantillon entier, la table ferait
+        // apparaître des marches sur les flancs de l'onde.
+        var rs = r * VAGUES_RAD_SUB;
+        var i0 = rs | 0;
+        var raw = (i0 >= radLast) ? 0
+                : radD[i0] + (radD[i0 + 1] - radD[i0]) * (rs - i0);
         var env = gridEnv[idx] * VAGUES_AMP_GAIN;
         if (env > 1) env = 1;
-        // Fondu progressif à l'approche du front (au lieu d'une coupure nette) — atténue
-        // l'onde sur frontFeather px avant r_front pour un bord doux, comme surfaces.js.
-        if (r > r_front) {
-            env *= 1 - (r - r_front) / frontFeather;
+        // Fondu progressif sur les frontFeather derniers px avant le front (au lieu d'une
+        // coupure nette) — bord doux, comme surfaces.js.
+        if (r > featherFrom) {
+            env *= (r_front - r) / frontFeather;
         }
         var t01 = (raw * env + 1) * 0.5;
         data[p]     = (COL_TROUGH_R + t01 * (COL_CREST_R - COL_TROUGH_R)) | 0;
@@ -934,7 +1085,7 @@ function _yxSignatureVagues() {
     var s = simVagues;
     return s.simTime + '|' + s.sourceX + '|' + s.sourceY + '|' + s.freq + '|' +
            s.c_sim + '|' + s.amplitude + '|' + s.attenuation + '|' +
-           (s.geoAttenuation ? 1 : 0) + '|' + s.sourceResetTime + '|' +
+           (s.geoAttenuation ? 1 : 0) + '|' + s.srcSeq + '|' +
            s.canvasW + '|' + s.viewMode + '|' + (s.transAnim ? 1 : 0) + '|' +
            s.graphMode;
 }
@@ -984,21 +1135,19 @@ function updateYxDataVagues() {
     }
     var outX = s.yxX, outY = s.yxY;
 
-    // Cache 1D (cf. _rebuildVaguesFieldCache) : évite un Math.sin/Math.sqrt par point et par
-    // frame — sin(ωt - k·r) = sin(ωt)·cos(k·r) - cos(ωt)·sin(k·r), avec cos(k·r)/sin(k·r)/
-    // enveloppe(r) précalculés, seuls sin(ωt)/cos(ωt) (2 scalaires) restent à évaluer par
-    // frame. Le cache est échantillonné en sous-pixel et lu par interpolation linéaire : lu
-    // au pixel entier tronqué, il transformait la courbe en escalier de marches hautes de
-    // A·2π/λ_px sur les flancs (d'où un tracé visiblement bosselé). Repli sur le calcul
-    // direct si le cache n'est pas encore prêt (rebuild anti-rebond en attente).
-    var cCos = s.yxCacheCos, cSin = s.yxCacheSin, cEnv = s.yxCacheEnv, cLen = s.yxCacheLen | 0;
-    var useCache = !!cCos && cLen > 1;
-    var sinWt, cosWt, rFrontAbs, sub;
+    // Deux tables lues par interpolation : l'enveloppe (cf. _rebuildVaguesFieldCache,
+    // reconstruite seulement quand un réglage change) et le déplacement radial de la
+    // frame (cf. _vaguesRadLUT). Sans elles, chaque point coûterait une recherche
+    // dichotomique dans l'historique, plusieurs milliers de fois par frame.
+    // Repli sur le calcul direct si l'enveloppe n'est pas encore prête (rebuild
+    // anti-rebond en attente).
+    var cEnv = s.yxCacheEnv, cLen = s.yxCacheLen | 0;
+    var useCache = !!cEnv && cLen > 1;
+    var radD, radLast, rFrontAbs, sub;
     if (useCache) {
-        var omega = 2 * Math.PI * s.freq;
-        sinWt     = Math.sin(omega * s.simTime);
-        cosWt     = Math.cos(omega * s.simTime);
-        rFrontAbs = s.c_sim * (s.simTime - s.sourceResetTime);
+        radD      = _vaguesRadLUT(s.simTime);
+        radLast   = radD.length - 1;
+        rFrontAbs = _vaguesFrontR(s.simTime);
         sub       = s.yxCacheSub || 1;
     }
 
@@ -1017,10 +1166,12 @@ function updateYxDataVagues() {
                 var fr;
                 if (ridx >= cLen - 1) { ridx = cLen - 2; fr = 1; }   // borne : pas d'extrapolation
                 else                  { fr = rs - ridx; }
-                var co = cCos[ridx] + (cCos[ridx + 1] - cCos[ridx]) * fr;
-                var si = cSin[ridx] + (cSin[ridx + 1] - cSin[ridx]) * fr;
                 var en = cEnv[ridx] + (cEnv[ridx + 1] - cEnv[ridx]) * fr;
-                yCm = (sinWt * co - cosWt * si) * en * VAGUES_AMP_CM * s.amplitude;
+                var rs2 = r * VAGUES_RAD_SUB;
+                var j0  = rs2 | 0;
+                var d   = (j0 >= radLast) ? 0
+                        : radD[j0] + (radD[j0 + 1] - radD[j0]) * (rs2 - j0);
+                yCm = d * en * VAGUES_AMP_CM * s.amplitude;
             }
         } else {
             yCm = _waveFieldRaw(sx + x_px, sy) * VAGUES_AMP_CM;
@@ -1712,8 +1863,14 @@ function _drawCrosshairVagues(ctx, W, H) {
 function resetVagues() {
     simVagues.simTime         = 0;
     simVagues.paused          = false;
-    simVagues.sourceResetTime = 0;
     simVagues.transAnim       = null;
+    // L'onde en vol vit désormais dans l'historique : c'est lui qu'il faut vider
+    // pour la faire disparaître. La phase repart de 0 pour que la source réémette
+    // à l'identique.
+    _srcClear(simVagues);
+    simVagues.sinPhase   = 0;
+    simVagues._radSig    = null;
+    lastSrcUpdateVagues  = 0;
     _ytClear(1);
     _ytClear(2);
     // Horloge d'échantillonnage y(t) : sans ce recalage, simTime repart de 0 alors
@@ -2027,13 +2184,12 @@ function _render3DWaveView(ctx, W, H, theta, panOffset, PW, PH, dpr) {
     var srcXs    = srcX - panOffset;   // abscisse écran de la source (px CSS)
     var c        = simVagues.c_sim;
     var t        = simVagues.simTime;
-    var f        = simVagues.freq;
     var ampPx    = _coupeAmpPx(H);
-    var TWO_PI_F = 2 * Math.PI * f;
     var maxR     = Math.sqrt(W * W + H * H);
     var a5       = simVagues.attenuation * 5;
     var geo      = simVagues.geoAttenuation;
-    var r_front  = (c > 0) ? c * (t - simVagues.sourceResetTime) : 0;
+    var radD     = _vaguesRadLUT(t);
+    var r_front  = _vaguesFrontR(t);
     var rfSq     = r_front * r_front;
 
     var maxPan    = _vaguesMaxPan();
@@ -2117,7 +2273,7 @@ function _render3DWaveView(ctx, W, H, theta, panOffset, PW, PH, dpr) {
 
             if (rfSq > 0 && rSq <= rfSq) {
                 var r = Math.sqrt(rSq);
-                raw   = Math.sin(TWO_PI_F * (t - r / c));
+                raw   = _radAt(radD, r);
                 // Enveloppe interpolée entre la formule de la vue du dessus
                 // (cache de champ) et celle de la vue en coupe : sans cela les
                 // deux profils n'avaient pas la même amplitude et le raccord
@@ -2515,13 +2671,13 @@ function _renderTopDown(ctx, W, H) {
     var imgData = ctx.createImageData(W, H);
     var data    = imgData.data;
     var B = BLOCK_V, BH = B >> 1;
-    var t = simVagues.simTime, c = simVagues.c_sim, f = simVagues.freq;
-    var TWO_PI_F = 2 * Math.PI * f;
+    var t = simVagues.simTime, c = simVagues.c_sim;
     var maxR = Math.sqrt(W * W + H * H);
     var a5   = simVagues.attenuation * 5;
     var geo  = simVagues.geoAttenuation;
     var sx   = simVagues.sourceX, sy = simVagues.sourceY;
-    var r_front = c * (t - simVagues.sourceResetTime);
+    var radD    = _vaguesRadLUT(t);
+    var r_front = _vaguesFrontR(t);
 
     for (var bj = 0; bj < H; bj += B) {
         var cy = bj + BH;
@@ -2533,7 +2689,7 @@ function _renderTopDown(ctx, W, H) {
             if (r > r_front) {
                 rc = COL_BG_R; gc = COL_BG_G; bc = COL_BG_B;
             } else {
-                var raw = Math.sin(TWO_PI_F * (t - r / c));
+                var raw = _radAt(radD, r);
                 var env = 1.0;
                 if (geo) env = Math.min(1, Math.sqrt(50 / Math.max(1, r)));
                 if (a5 > 0) env *= Math.exp(-a5 * r / maxR);
@@ -2567,8 +2723,8 @@ function _waveFieldCoupeAt(x_canvas, srcX) {
     if (r_px < 0) return 0;
     var c = simVagues.c_sim;
     if (c <= 0) return 0;
-    if (r_px > c * (simVagues.simTime - simVagues.sourceResetTime)) return 0;
-    var field = Math.sin(2 * Math.PI * simVagues.freq * (simVagues.simTime - r_px / c));
+    var field = _vaguesSrcDAtR(r_px);
+    if (field === 0) return 0;
     if (simVagues.geoAttenuation) field *= Math.sqrt(40 / (40 + r_px));
     if (simVagues.attenuation > 0)
         field *= Math.exp(-simVagues.attenuation * 5 * r_px / simVagues.canvasW);
@@ -2757,19 +2913,26 @@ var ORBIT_TRAIL_COL      = ['rgba(255,255,255,0.16)',
 
 // Couple (F, Q) du champ de la coupe en x. DOIT rester aligné sur
 // _waveFieldCoupeAt : out[0] en est la copie exacte, out[1] sa quadrature.
+//
+// out[0] est lu dans l'historique, comme partout ailleurs : la bille suit donc
+// exactement la surface dessinée. out[1] reste analytique — la quadrature d'un
+// signal quelconque n'a pas d'expression locale, et la théorie d'Airy dont
+// sortent ces orbites suppose de toute façon une onde monochromatique. C'est
+// la raison pour laquelle l'option sera grisée en mode impulsion.
 function _coupeFieldPairAt(x_canvas, srcX, out) {
     out[0] = 0; out[1] = 0;
     var r_px = x_canvas - srcX;
     if (r_px < 0) return;
     var c = simVagues.c_sim;
     if (c <= 0) return;
-    if (r_px > c * (simVagues.simTime - simVagues.sourceResetTime)) return;
+    var d = _vaguesSrcDAtR(r_px);
+    if (d === 0) return;
     var phi = 2 * Math.PI * simVagues.freq * (simVagues.simTime - r_px / c);
     var env = simVagues.amplitude;
     if (simVagues.geoAttenuation) env *= Math.sqrt(40 / (40 + r_px));
     if (simVagues.attenuation > 0)
         env *= Math.exp(-simVagues.attenuation * 5 * r_px / simVagues.canvasW);
-    out[0] = Math.sin(phi) * env;
+    out[0] = d * env;
     out[1] = Math.cos(phi) * env;
 }
 

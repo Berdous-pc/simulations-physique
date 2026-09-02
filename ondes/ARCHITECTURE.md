@@ -60,10 +60,12 @@ onglets **ne suivent pas la même stratégie** de calcul du champ.
 | Relancer la source | efface l'onde encore en vol | l'onde en vol poursuit sa route |
 | Superposer deux impulsions | — (source continue) | oui |
 
-Son et Corde partagent la même mécanique d'historique (`_srcPush`, `_srcDAtS`,
-etc., en tête de `sim.js`), au détail près de l'unité enregistrée. **Vagues n'a
-pas encore été porté dessus**, mais son enveloppe causale (`sourceResetTime`)
-lui évite déjà le défaut le plus visible.
+Les trois onglets partagent la même mécanique d'historique (`_srcPush`,
+`_srcDAtS`, etc., en tête de `sim.js`), au détail près de l'unité enregistrée :
+centimètres pour le Son, mètres pour la Corde, pixels CSS pour les Vagues. Ce
+dernier est un cas plus simple qu'il n'y paraît : sa source est **fixe** et le
+milieu **isotrope**, si bien que la distance parcourue ne dépend que de `r` —
+un seul historique 1D décrit tout le plan.
 
 ---
 
@@ -182,9 +184,11 @@ fichiers :
   remplace `push()` + `shift()`, dont le décalage en O(n) à 300 échantillons/s
   pesait lourd sur la durée.
 - **`_srcPush / _srcSAtTime / _srcDAtS / _srcClear / _srcIsQuiet`** — la
-  mécanique d'historique de source, décrite plus bas, partagée par Son et
-  Corde. Chaque fonction prend l'objet d'état en premier argument.
-  `SRC_DT` = 1/600 s, `SRC_CAP` = 40 s d'historique.
+  mécanique d'historique de source, décrite plus bas, partagée par les trois
+  onglets. Chaque fonction prend l'objet d'état en premier argument.
+  `SRC_DT` = 1/600 s, `SRC_CAP` = 40 s d'historique — largement de quoi couvrir
+  la traversée du canvas en Vagues, où l'onde met ~6 s à parcourir la largeur
+  quels que soient les réglages (`C_BASE_VAGUES` est recalibré au resize).
 
 ### Onglet Son — objet `sim`
 
@@ -851,14 +855,48 @@ Champ scalaire 2D échantillonné sur une grille, rendu par blocs de `BLOCK_V`
 pixels, avec cache reconstruit à la demande (`_rebuildVaguesFieldCache`).
 
 ```
-y(r, t) = A · sin(2π f (t − r/c))   pour r ≤ c·(t − sourceResetTime), sinon 0
+y(r, t) = A · d_émis(S(t) − r) × enveloppe(r)
 ```
 
-avec `c = √(g·h)`. La condition sur `r` forme l'**enveloppe causale** :
-`sourceResetTime` marque l'instant où la source a commencé à émettre, si bien
-qu'au démarrage l'onde part de la source au lieu d'emplir le bassin d'un coup.
-Seul `resetVagues()` la remet à jour ; la source, elle, est **fixe au centre du
-canvas** (`resizeVagues`) et n'est pas déplaçable.
+avec `c = √(g·h)`, `S(t)` la distance cumulée par le front et `d_émis` le
+déplacement lu dans l'historique de la source (cf. `stepSourceVagues`). La
+source est **fixe au centre du canvas** (`resizeVagues`) et n'est pas
+déplaçable ; le champ ne dépend donc que de `r`.
+
+L'**enveloppe causale** n'est plus une condition à part : au-delà du front,
+l'historique n'a rien à donner et renvoie 0 de lui-même. `_vaguesFrontR()` en
+lit le rayon (la distance couverte par l'historique) pour les rendus qui ont
+besoin de savoir où s'arrête l'onde.
+
+### Une table radiale par frame
+
+La vue du dessus lit le champ en ~120 000 points par frame : une recherche
+dichotomique dans l'historique par point serait ruineuse. Comme le champ ne
+dépend que de `r`, `_vaguesRadLUT(t)` tabule `d(r)` une seule fois par frame,
+au quart de pixel, d'un seul balayage (r croissant ⇔ S décroissant : un curseur
+descend l'historique sans jamais revenir). Chaque point interpole ensuite entre
+deux entrées.
+
+Le cache de `_rebuildVaguesFieldCache` survit mais s'allège : il ne garde plus
+que ce qui ne dépend pas du temps — `gridR` (la distance à la source) et
+`gridEnv` / `yxCacheEnv` (les enveloppes d'atténuation). Les tables `cos(k·r)` /
+`sin(k·r)` ont disparu : elles supposaient un `k` unique, ce qu'une forme d'onde
+quelconque n'a pas.
+
+**Tous** les lecteurs du champ passent par là — `_waveFieldRaw`,
+`_waveFieldCoupeAt`, le rendu de la vue du dessus, `_renderTopDown`,
+`_render3DWaveView`, `updateYxDataVagues`, `rebuildYtDataVagues`. C'est la
+condition pour que la vue du dessus, la coupe et la transition entre les deux
+montrent la même onde. Seule exception assumée : la **quadrature** du couple
+rendu par `_coupeFieldPairAt` (mouvement horizontal des molécules d'eau), qui
+reste analytique — un signal quelconque n'a pas de quadrature locale, et la
+théorie d'Airy dont sortent ces orbites suppose de toute façon une onde
+monochromatique.
+
+Le fondu du front (`frontFeather`, qui évite la coupure nette en anneau) se
+fait désormais **vers l'intérieur** : l'ancien rendu prolongeait la sinusoïde
+hors du cône causal pour l'y faire décroître, ce que l'historique ne permet
+plus.
 
 Deux atténuations distinctes : `attenuation` (exponentielle) et
 `geoAttenuation` (en 1/√r, désactivée par défaut).
@@ -1168,15 +1206,13 @@ index.html
 
 ## Points ouverts
 
-- **Vagues utilise encore le modèle analytique rétroactif.** Bouger g ou h
-  réécrit rétroactivement toute l'onde présente, et le tampon y(t) n'est pas
-  vidé au déplacement d'une balise. Le portage sur l'historique de source est
-  mécanique, désormais que la mécanique est factorisée : la source étant fixe
-  et le champ isotrope, un **seul** historique 1D indexé par `r` suffit — pas
-  de S par direction. Le coût est ailleurs : tous les lecteurs du champ
-  (`_waveFieldRaw`, `_waveFieldCoupeAt`, la LUT du cache, `updateYxDataVagues`,
-  `rebuildYtDataVagues`, la quadrature des orbites) doivent passer par la même
-  fonction, sans quoi la coupe et la transition 3D cessent de converger.
+- **Vagues : la flèche λ et la graduation en λ du graphe y(x) restent calées
+  sur la fréquence courante.** Depuis le portage sur l'historique, l'onde déjà
+  émise garde la longueur d'onde qu'elle avait à l'émission : après un coup de
+  curseur sur f, g ou h, ces repères ne décrivent plus que la portion la plus
+  proche de la source. C'est le prix — assumé — de la fin de la réécriture
+  rétroactive. Ils devront être grisés en mode impulsion, où ils n'auront plus
+  de sens du tout.
 - Reste calé sur les réglages courants côté Son : `aEff` dans `waveDeltaP`
   (facteur 1/2 en mode impulsion). Il ne change qu'au basculement de
   `sourceMode`, jamais au glissement d'un curseur, et ce basculement n'a lieu
