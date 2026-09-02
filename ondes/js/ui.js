@@ -187,6 +187,19 @@ function loop(ts) {
             var dtSimV = dtReal * (simVagues.speedFactor || 1.0);
             simVagues.simTime += dtSimV;
             chronoTick('vagues', dtSimV);
+
+            pruneImpulsesVagues();
+
+            if (simVagues.impulsePropagating && simVagues.impulses.length === 0) {
+                simVagues.impulsePropagating = false;
+                simVagues.sourceMode         = null;
+            }
+
+            // Le bouton Activer dépend de simTime (source encore en mouvement
+            // ou non) : on le réévalue à chaque frame plutôt qu'aux seuls
+            // changements d'état — cf. la même ligne côté Corde.
+            _syncSourceButtonsVagues();
+
             addSourceSampleVagues(simVagues.simTime);
 
             while (simVagues.simTime - lastYtUpdateV >= VAGUES_YT_SAMPLE_DT) {
@@ -1238,10 +1251,16 @@ function _syncWavePropsBtnStateCorde() {
 //  précisément ce que le bouton donne à voir.
 // ══════════════════════════════════════════════════════════════════════
 
+//  Le bouton reflète l'état DE LA SOURCE elle-même, pas celui de l'onde dans
+//  le bassin : en impulsion, il s'éteint dès que la source a fini son
+//  mouvement (sourceActiveUntil), bien avant que la crête n'ait atteint le
+//  bord.
 function _syncSourceButtonsVagues() {
     var btn = document.getElementById('btn-source-active-vagues');
     if (!btn) return;
-    btn.classList.toggle('active', simVagues.sinusoidalActive);
+    var active = (simVagues.sourceMode === 'impulse' && simVagues.simTime < simVagues.sourceActiveUntil) ||
+                 (simVagues.sourceMode === 'sinus'   && simVagues.sinusoidalActive);
+    btn.classList.toggle('active', active);
 }
 
 function _vaguesSourceMode() {
@@ -1251,7 +1270,6 @@ function _vaguesSourceMode() {
 
 function _applySourceModeVagues() {
     var mode = _vaguesSourceMode();
-    simVagues.sourceMode = mode;
 
     _syncSourceButtonsVagues();
     _syncChronoLink('vagues', mode);
@@ -1259,9 +1277,41 @@ function _applySourceModeVagues() {
     _updateChrono('vagues');
 }
 
+//  Chaque appui envoie une NOUVELLE impulsion : celles qui parcourent déjà le
+//  bassin poursuivent leur route et se superposent, au lieu d'être effacées.
+function sendImpulseVagues() {
+    if (simVagues.paused) togglePauseVagues();
+
+    simVagues.sinusoidalActive   = false;   // les modes restent exclusifs
+    simVagues.impulses.push({ startTime: simVagues.simTime });
+    simVagues.impulsePropagating = true;
+    simVagues.sourceMode         = 'impulse';
+    simVagues.sourceActiveUntil  = Math.max(simVagues.sourceActiveUntil,
+                                            simVagues.simTime + T_IMPULSE);
+    _syncSourceButtonsVagues();
+}
+
+function _stopEmissionVagues() {
+    simVagues.sinusoidalActive = false;
+    _syncSourceButtonsVagues();
+}
+
+//  Bouton unique Activer/Désactiver : son effet dépend du mode choisi dans le
+//  sélecteur. En Impulsion, chaque appui relance une crête et le bouton se
+//  rallume tout seul le temps que la source bouge. En Sinusoïdale, il bascule
+//  l'émission continue on/off.
 function toggleSourceActiveVagues() {
+    var mode = _vaguesSourceMode();
+
+    if (mode === 'impulse') {
+        sendImpulseVagues();
+        _startChronoIfLinked('vagues');
+        return;
+    }
+
     var wasOn = simVagues.sinusoidalActive;
     simVagues.sinusoidalActive = !wasOn;
+    simVagues.sourceMode       = 'sinus';
 
     // Rallumage alors que l'enveloppe d'arrêt n'a pas fini de descendre : la
     // source émet encore, remettre la phase à zéro y créerait le saut que
@@ -1281,12 +1331,15 @@ function toggleSourceActiveVagues() {
     if (!wasOn && simVagues.sinusoidalActive) _startChronoIfLinked('vagues');
 }
 
+//  Changement de mode dans le sélecteur : coupe l'émission continue en cours,
+//  quel que soit le mode visé — il faut rappuyer sur Activer pour repartir
+//  dans le nouveau mode. Une impulsion déjà lancée, elle, va à son terme.
 function onSourceModeChangeVagues() {
-    // Un seul mode disponible pour l'instant : la fonction est là pour que le
-    // sélecteur soit déjà câblé quand le mode Impulsion arrivera. Le
-    // chronomètre suit la règle des deux autres onglets — il mesure une
+    // Le chronomètre suit la règle des deux autres onglets : il mesure une
     // émission, changer de mode y met fin.
     resetChrono('vagues');
+
+    if (simVagues.sinusoidalActive) _stopEmissionVagues();
     _applySourceModeVagues();
 }
 

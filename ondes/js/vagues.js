@@ -31,6 +31,11 @@ var COUPE_LEFT_MAX_FRAC   = 0.38;  // part maximale de la largeur concédée à 
 // flèche passe sous la colonne source. Les deux sites de dessin (coupe et
 // transition) lisent ces constantes, pour qu'elles ne puissent pas diverger du
 // calcul de marge.
+// Crête de sin(u)·(1 − cos u)/2, atteinte en u = 2π/3 : 3√3/8. On divise par
+// elle pour que l'impulsion culmine à 1, comme la sinusoïde (cf.
+// stepSourceVagues).
+var IMPULSE_V_NORM        = 8 / (3 * Math.sqrt(3));
+
 var COUPE_SRC_ARROW_DX    = 22;
 var COUPE_SRC_ARROW_HALF  = 4;
 
@@ -252,10 +257,19 @@ var simVagues = {
     //  déjà animé, comme avant qu'elle ne devienne commutable.
     //  vaguesEnv / vaguesEmitMode : enveloppe demi-cosinus de démarrage et
     //  d'arrêt, étalée sur une période (cf. stepSourceVagues).
+    //  sourceMode décrit l'ÉMISSION EN COURS et non le mode choisi dans le
+    //  sélecteur (que lit `_vaguesSourceMode`) — même convention qu'au Son.
     sourceMode       : 'sinus',
     sinusoidalActive : true,
     vaguesEmitMode   : null,
     vaguesEnv        : 0,
+
+    // ── Source — impulsions (superposables) ─────────────────────────
+    // Chaque entrée : { startTime }. Une impulsion n'efface pas les
+    // précédentes : elles se superposent dans l'historique.
+    impulses           : [],
+    impulsePropagating : false,
+    sourceActiveUntil  : 0,   // fin du mouvement de la source (mode Impulsion)
 
     // ── Balises (points draggables dans le canvas 2D) ────────────────
     beacon1 : { active: false, x: 0, y: 0, snapped: false },
@@ -433,12 +447,52 @@ function stepSourceVagues(t) {
         // que l'onde émise à partir de cet instant.
         s.sinPhase += 2 * Math.PI * s.freq * SRC_DT;
         if (s.sinPhase > 2 * Math.PI) s.sinPhase -= 2 * Math.PI;
-        d = env * Math.sin(s.sinPhase);
+        d += env * Math.sin(s.sinPhase);
+    }
+
+    // ── Composantes impulsions (superposables) ────────────────────────
+    // Une oscillation unique, fenêtrée :
+    //     d(τ) = sin(2π·τ/T) × (1 − cos(2π·τ/T)) / 2
+    // Elle part de 0 avec une pente nulle, monte en crête, redescend en creux
+    // et revient à 0 sans à-coup — d'où une crête circulaire suivie d'un
+    // sillon, et non une bosse isolée.
+    //
+    // Le creux n'est pas décoratif : la source monte puis REVIENT à sa
+    // position de repos, elle n'injecte donc aucun volume d'eau net. Une onde
+    // purement positive ferait apparaître de l'eau venue de nulle part. (Une
+    // vraie vague solitaire — le soliton de Russell — est bien une bosse sans
+    // creux, mais elle demande une source qui pousse l'eau et reste avancée,
+    // et une physique non linéaire que ce modèle n'a pas.)
+    //
+    // C'est aussi l'analogue visuel de l'impulsion du Son : là-bas la
+    // membrane décrit une bosse unipolaire, mais ce que l'élève voit est ΔP,
+    // sa dérivée — compression puis dépression. Ici l'observable EST le
+    // déplacement, il doit donc porter les deux.
+    for (var i = 0; i < s.impulses.length; i++) {
+        var tau = t - s.impulses[i].startTime;
+        if (tau >= 0 && tau <= T_IMPULSE) {
+            var u = 2 * Math.PI * tau / T_IMPULSE;
+            d += IMPULSE_V_NORM * Math.sin(u) * (1 - Math.cos(u)) / 2;
+        }
     }
 
     // Gravé même quand d vaut 0 : c'est ce silence qui, en s'éloignant,
-    // dessine l'arrière du train d'ondes quand on coupe la source.
+    // dessine l'arrière du train d'ondes quand on coupe la source — et qui
+    // sépare deux impulsions successives.
     _srcPush(s, t, d, s.c_sim);
+}
+
+// Une impulsion est « terminée » quand elle a fini d'être émise ET a fini de
+// sortir du champ visible. On mesure la diagonale du canvas : c'est la plus
+// grande distance qu'elle ait à parcourir avant de disparaître.
+function pruneImpulsesVagues() {
+    var s = simVagues;
+    if (s.c_sim <= 0 || s.impulses.length === 0) return;
+    var diag   = Math.sqrt(s.canvasW * s.canvasW + s.canvasH * s.canvasH);
+    var cutoff = s.simTime - T_IMPULSE - diag / s.c_sim - 0.5;
+    s.impulses = s.impulses.filter(function(imp) {
+        return imp.startTime > cutoff;
+    });
 }
 
 function addSourceSampleVagues(t) {
@@ -542,6 +596,29 @@ function _vaguesRadLUT(t) {
         radD[ri] = s.srcD[iA] + (s.srcD[iB] - s.srcD[iA]) * fr;
     }
     return radD;
+}
+
+// ── Mouvement réel de la source ───────────────────────────────────────
+//  Position et vitesse du point S, LUES DANS L'HISTORIQUE plutôt que
+//  recalculées en sin(2πf·t). C'est la seule façon qu'elles décrivent ce que
+//  la source fait vraiment : elle est immobile entre deux impulsions, et une
+//  fois désactivée. La vitesse sort d'une différence finie sur deux pas
+//  d'échantillonnage — c'est elle qui oriente la flèche, la position seule
+//  la ferait pointer dans le même sens pendant toute une demi-période.
+var _srcMotionV = { y: 0, v: 0, moving: false };
+
+function _vaguesSourceMotion() {
+    var s  = simVagues;
+    var t  = s.simTime;
+    var h  = 2 * SRC_DT;
+    var d0 = _vaguesSrcDAtR(0, t);
+    var d1 = _vaguesSrcDAtR(0, t - h);
+    _srcMotionV.y = d0 * s.amplitude;
+    _srcMotionV.v = (d0 - d1) / h;
+    // Seuil très bas devant la vitesse d'une source en marche (2πf ≈ 9 à
+    // 1,5 Hz) : il ne distingue que le repos franc.
+    _srcMotionV.moving = Math.abs(_srcMotionV.v) > 0.01;
+    return _srcMotionV;
 }
 
 // Lecture interpolée de la table radiale. r au-delà de la table = hors champ.
@@ -1907,11 +1984,14 @@ function resetVagues() {
     // pour la faire disparaître. La phase repart de 0 pour que la source réémette
     // à l'identique.
     _srcClear(simVagues);
-    simVagues.sinPhase       = 0;
-    simVagues.vaguesEnv      = 0;
-    simVagues.vaguesEmitMode = null;
-    simVagues._radSig        = null;
-    lastSrcUpdateVagues      = 0;
+    simVagues.sinPhase           = 0;
+    simVagues.vaguesEnv          = 0;
+    simVagues.vaguesEmitMode     = null;
+    simVagues.impulses           = [];
+    simVagues.impulsePropagating = false;
+    simVagues.sourceActiveUntil  = 0;
+    simVagues._radSig            = null;
+    lastSrcUpdateVagues          = 0;
     _ytClear(1);
     _ytClear(2);
     // Horloge d'échantillonnage y(t) : sans ce recalage, simTime repart de 0 alors
@@ -2504,8 +2584,8 @@ function _draw3DFoamLine(ctx, prevSyArr, PW, dpr, xLeft, sinT) {
 // rideau par la gauche pendant le panoramique (bandAlpha), puis le point S,
 // dont le style converge de la vue du dessus vers celui de la coupe (sinT).
 function _draw3DSourceZone(ctx, W, H, srcXs, yLevel, ampPx, sinT, bandAlpha) {
-    var osc  = Math.sin(2 * Math.PI * simVagues.freq * simVagues.simTime) * simVagues.amplitude;
-    var dotY = yLevel - osc * ampPx * sinT;
+    var mot  = _vaguesSourceMotion();
+    var dotY = yLevel - mot.y * ampPx * sinT;
 
     if (bandAlpha > 0.005 && srcXs > 0) {
         ctx.save();
@@ -2524,16 +2604,20 @@ function _draw3DSourceZone(ctx, W, H, srcXs, yLevel, ampPx, sinT, bandAlpha) {
         ctx.fillStyle = '#8aa4c0';
         ctx.fillRect(srcXs - 3, 0, 6, H);
 
-        var arrowDir = osc >= 0 ? -1 : 1;
-        var ax = srcXs - COUPE_SRC_ARROW_DX, ay1 = dotY, ay2 = dotY + arrowDir * 14;
-        ctx.strokeStyle = 'rgba(255, 215, 80, 0.80)';
-        ctx.lineWidth   = 1.5;
-        ctx.beginPath(); ctx.moveTo(ax, ay1); ctx.lineTo(ax, ay2); ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(ax - COUPE_SRC_ARROW_HALF, ay2 - arrowDir * 6);
-        ctx.lineTo(ax,     ay2);
-        ctx.lineTo(ax + COUPE_SRC_ARROW_HALF, ay2 - arrowDir * 6);
-        ctx.stroke();
+        // Même règle qu'en coupe stabilisée : la flèche suit la VITESSE, et
+        // disparaît quand la source est au repos.
+        if (mot.moving) {
+            var arrowDir = mot.v >= 0 ? -1 : 1;
+            var ax = srcXs - COUPE_SRC_ARROW_DX, ay1 = dotY, ay2 = dotY + arrowDir * 14;
+            ctx.strokeStyle = 'rgba(255, 215, 80, 0.80)';
+            ctx.lineWidth   = 1.5;
+            ctx.beginPath(); ctx.moveTo(ax, ay1); ctx.lineTo(ax, ay2); ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(ax - COUPE_SRC_ARROW_HALF, ay2 - arrowDir * 6);
+            ctx.lineTo(ax,     ay2);
+            ctx.lineTo(ax + COUPE_SRC_ARROW_HALF, ay2 - arrowDir * 6);
+            ctx.stroke();
+        }
 
         ctx.restore();
     }
@@ -3276,9 +3360,8 @@ function _drawOrbitesCoupeVagues(ctx, W, H, srcX, yLevel, ampPx) {
 }
 
 function _drawSourceCoupeVagues(ctx, W, H, srcX, yLevel, ampPx) {
-    var t    = simVagues.simTime;
-    var osc  = Math.sin(2 * Math.PI * simVagues.freq * t) * simVagues.amplitude;
-    var dotY = yLevel - osc * ampPx;
+    var mot  = _vaguesSourceMotion();
+    var dotY = yLevel - mot.y * ampPx;
 
     ctx.save();
 
@@ -3299,21 +3382,21 @@ function _drawSourceCoupeVagues(ctx, W, H, srcX, yLevel, ampPx) {
     ctx.fillRect(srcX - 3, 0, 6, H);
 
     // ── Petite flèche indiquant le sens d'oscillation ─────────────────
-    // Sens du mouvement réel de la source = signe de la vitesse (dérivée de
-    // la position), pas de la position elle-même : sinon la flèche pointe
-    // dans le même sens pendant toute une demi-période au lieu de s'inverser
-    // aux instants où la source change effectivement de sens.
-    var vel      = Math.cos(2 * Math.PI * simVagues.freq * t);
-    var arrowDir = vel >= 0 ? -1 : 1;
-    var ax = srcX - COUPE_SRC_ARROW_DX, ay1 = dotY, ay2 = dotY + arrowDir * 14;
-    ctx.strokeStyle = 'rgba(255, 215, 80, 0.80)';
-    ctx.lineWidth   = 1.5;
-    ctx.beginPath(); ctx.moveTo(ax, ay1); ctx.lineTo(ax, ay2); ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(ax - COUPE_SRC_ARROW_HALF, ay2 - arrowDir * 6);
-    ctx.lineTo(ax,     ay2);
-    ctx.lineTo(ax + COUPE_SRC_ARROW_HALF, ay2 - arrowDir * 6);
-    ctx.stroke();
+    // Sens du mouvement réel de la source = signe de la vitesse (cf.
+    // _vaguesSourceMotion). Source au repos : pas de flèche du tout — entre
+    // deux impulsions, ou une fois la source coupée, elle ne bouge plus.
+    if (mot.moving) {
+        var arrowDir = mot.v >= 0 ? -1 : 1;
+        var ax = srcX - COUPE_SRC_ARROW_DX, ay1 = dotY, ay2 = dotY + arrowDir * 14;
+        ctx.strokeStyle = 'rgba(255, 215, 80, 0.80)';
+        ctx.lineWidth   = 1.5;
+        ctx.beginPath(); ctx.moveTo(ax, ay1); ctx.lineTo(ax, ay2); ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(ax - COUPE_SRC_ARROW_HALF, ay2 - arrowDir * 6);
+        ctx.lineTo(ax,     ay2);
+        ctx.lineTo(ax + COUPE_SRC_ARROW_HALF, ay2 - arrowDir * 6);
+        ctx.stroke();
+    }
 
     ctx.restore();
 

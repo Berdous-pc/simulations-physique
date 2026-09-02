@@ -235,10 +235,8 @@
           </div>
         </div><!-- fin #source-corde -->
 
-        <!-- Source Vagues -->
-        <!-- « Impulsion » est déjà là mais désactivée : le mode arrive au
-             commit suivant. La laisser visible évite que le sélecteur change
-             de forme entre deux versions. -->
+        <!-- Source Vagues — Sinusoïdale sélectionnée par défaut : c'est la
+             houle continue qui fait l'identité de l'onglet. -->
         <div id="source-vagues" style="display:none;">
           <div class="section-title">Source</div>
           <div class="source-btns">
@@ -248,7 +246,7 @@
             </button>
             <select class="select-mode" id="sel-mode-vagues"
                     onchange="onSourceModeChangeVagues()">
-              <option value="impulse" disabled>Impulsion</option>
+              <option value="impulse">Impulsion</option>
               <option value="sinus" selected>Sinusoïdale</option>
             </select>
           </div>

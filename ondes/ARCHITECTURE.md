@@ -873,10 +873,40 @@ besoin de savoir où s'arrête l'onde.
 Même gabarit que les deux autres onglets : bouton **Activer** et sélecteur de
 mode (`#source-vagues`), avec les curseurs de fréquence et d'amplitude dans la
 box — ce sont des réglages de la source, pas du milieu, et ils ont donc quitté
-le panneau de droite, dont la section « Source » a disparu.
-`Impulsion` figure déjà dans le sélecteur mais **désactivée** : le mode arrive
-au commit suivant, et la laisser visible évite que le sélecteur change de forme
-d'une version à l'autre.
+le panneau de droite, dont la section « Source » a disparu. Deux modes,
+`Impulsion` et `Sinusoïdale`, cette dernière sélectionnée par défaut : c'est la
+houle continue qui fait l'identité de l'onglet.
+
+Comme au Son, `sourceMode` décrit l'**émission en cours** et non le mode choisi
+dans le sélecteur — que lit `_vaguesSourceMode()`. Le bouton Activer reflète
+l'état de la source elle-même : en impulsion il s'éteint dès qu'elle a fini son
+mouvement (`sourceActiveUntil`, un `T_IMPULSE` après l'appui), bien avant que la
+crête n'ait atteint le bord. Il est réévalué à chaque frame, comme côté Corde.
+
+Chaque appui en mode Impulsion envoie une **nouvelle** crête : celles qui
+parcourent déjà le bassin poursuivent leur route et se superposent dans
+l'historique. `pruneImpulsesVagues` les oublie une fois qu'elles ont fini d'être
+émises **et** de sortir du champ — la diagonale du canvas est la plus grande
+distance qu'elles aient à parcourir.
+
+#### Forme de l'impulsion — pourquoi un creux
+
+`d(τ) = sin(2πτ/T) × (1 − cos(2πτ/T)) / 2`, normalisée par `IMPULSE_V_NORM`
+(= 8/3√3, l'inverse de sa crête, atteinte en 2π/3). Elle part de 0 avec une
+pente nulle, monte en crête, redescend en creux et revient à 0 — **de moyenne
+nulle**.
+
+Le creux n'est pas décoratif. La source monte puis **revient à sa position de
+repos** : elle n'injecte aucun volume d'eau net, et une onde purement positive
+ferait donc apparaître de l'eau venue de nulle part. Une vraie vague solitaire
+— le soliton de Russell — *est* bien une bosse `sech²` sans creux, mais elle
+suppose une source qui pousse l'eau et reste avancée, et une physique non
+linéaire que ce modèle n'a pas.
+
+C'est aussi l'analogue visuel de l'impulsion du Son : là-bas la membrane décrit
+une bosse unipolaire, mais l'observable est ΔP, sa **dérivée** — compression
+puis dépression. Ici l'observable est le déplacement lui-même : il doit porter
+les deux.
 
 La source est **en marche au chargement** : l'onglet s'ouvre sur le bassin déjà
 animé, comme du temps où elle ne pouvait pas être coupée. L'arrêter ne fait pas
@@ -895,6 +925,17 @@ sinusoïde allumée brutalement produirait un anneau franc se détachant du rest
 de la houle. `stepSourceVagues` grave un échantillon **même quand la source se
 tait** — c'est ce silence qui, en s'éloignant, dessine l'arrière du train
 d'ondes.
+
+### Le point S suit l'historique, pas l'horloge
+
+`_vaguesSourceMotion()` donne la position et la vitesse réelles de la source,
+**lues dans l'historique** (différence finie sur deux pas pour la vitesse) et
+non recalculées en `sin(2πf·t)`. C'est la seule façon que le dessin décrive ce
+que la source fait vraiment : elle est immobile entre deux impulsions, et une
+fois désactivée — auparavant elle continuait de s'agiter dans le vide. La
+flèche jaune suit la **vitesse** (la position seule la ferait pointer dans le
+même sens une demi-période durant) et disparaît au repos. Les deux sites de
+dessin, coupe stabilisée et transition 3D, lisent la même fonction.
 
 ### Une table radiale par frame
 
