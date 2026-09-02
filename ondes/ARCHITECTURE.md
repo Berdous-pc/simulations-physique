@@ -1120,6 +1120,14 @@ borne λ/π des trajectoires de molécules.
 
 ### Trajectoire des molécules d'eau (vue en coupe)
 
+> **DÉSACTIVÉE, EN ATTENTE DE REFONTE.** Le tracé est faux à l'écran —
+> nettement en Impulsion et sur les rangées profondes. `VAGUES_ORBITS_ENABLED`
+> (juste au-dessus de `syncBtnOrbitesVagues`) retire le bouton de l'interface
+> et coupe le rendu ; tout le code est conservé tel quel, la refonte repartira
+> de là. Deux défauts identifiés — réels, mais insuffisants à eux seuls — sont
+> notés en commentaire à côté du drapeau, à reprendre comme pistes.
+> **Tout ce qui suit décrit l'état gelé**, pas un rendu visible aujourd'hui.
+
 Option `simVagues.showOrbits`, rendue par `_drawOrbitesCoupeVagues()` en
 étape 4 de `_drawVaguesCoupe` — après l'écume, pour que la molécule de la
 rangée de surface se voie **sur** la ligne blanche qu'elle suit, et avant

@@ -2351,9 +2351,42 @@ function toggleViewVagues() {
 //  coupe, transition terminée (pendant la rotation, la scène n'est pas
 //  encore une coupe et _drawOrbitesCoupeVagues n'est pas appelée).
 
+// ── OPTION DÉSACTIVÉE, EN ATTENTE DE REFONTE ──────────────────────────
+//  Le tracé des trajectoires est faux à l'écran — nettement en Impulsion et
+//  sur les rangées profondes. Le bouton est donc retiré de l'interface et
+//  rien n'est dessiné, plutôt que de laisser en place une figure qui
+//  raconterait n'importe quoi à l'élève.
+//
+//  TOUT LE CODE EST CONSERVÉ TEL QUEL : la refonte repartira de là, et il n'y
+//  a qu'à repasser ce drapeau à true pour le remettre à l'écran.
+//
+//  Deux défauts avaient été identifiés avant l'arrêt ; ils sont réels mais ne
+//  suffisaient pas, la figure restait fausse une fois corrigés. À reprendre
+//  comme pistes, pas comme solution :
+//    • _orbitFillTrace multiplie le couple rendu par _vaguesSrcPairAtR par
+//      col.envNom — or ce couple porte DÉJÀ l'amplitude d'émission (canal
+//      srcB, depuis que le curseur Amplitude est causal). L'amplitude est donc
+//      comptée deux fois : la traînée sort à l'échelle « amplitude × » celle
+//      de la bille, qui flotte au milieu de son propre chemin ; l'espacement
+//      des rangées, lui, est calculé sur l'amplitude simple, d'où le
+//      recouvrement des traînées des rangées profondes, les plus resserrées.
+//    • dans _orbitStrokeTrace, la rangée de surface lit l'écume au temps
+//      PRÉSENT (_waveFieldCoupeAt(xs[i])) alors que le point a l'âge Δ : la
+//      surface en x à t − Δ est la surface actuelle en x + c·Δ. Sans ce
+//      décalage, ce qui est peint n'est pas un chemin mais un morceau du
+//      profil instantané de la vague — invisible en sinusoïdal établi, où le
+//      profil est périodique, flagrant en Impulsion où il n'y a qu'une bosse.
+var VAGUES_ORBITS_ENABLED = false;
+
 function syncBtnOrbitesVagues() {
     var bar = document.getElementById('orbites-btns');
     if (!bar) return;
+
+    if (!VAGUES_ORBITS_ENABLED) {
+        simVagues.showOrbits = false;
+        bar.classList.remove('visible');
+        return;
+    }
 
     var show = (typeof activeTab !== 'undefined') && activeTab === 'vagues' &&
                simVagues.viewMode === 'coupe' && !simVagues.transAnim;
@@ -2379,6 +2412,7 @@ function syncBtnOrbitesVagues() {
 }
 
 function toggleOrbitesVagues() {
+    if (!VAGUES_ORBITS_ENABLED) return;
     simVagues.showOrbits = !simVagues.showOrbits;
     syncBtnOrbitesVagues();
 }
@@ -3532,7 +3566,7 @@ function _orbitRvAt(df, kh, shKh, aPx) {
 
 function _drawOrbitesCoupeVagues(ctx, W, H, srcX, yLevel, ampPx) {
     var s = simVagues;
-    if (!s.showOrbits) return;
+    if (!VAGUES_ORBITS_ENABLED || !s.showOrbits) return;
     var fOrb = _vaguesOrbitFreq();
     if (s.c_ms <= 0 || s.c_sim <= 0 || !(fOrb > 0)) return;
     var isImpulse = (typeof _vaguesModeIsImpulse === 'function') && _vaguesModeIsImpulse();
