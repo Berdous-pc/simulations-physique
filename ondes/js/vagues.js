@@ -214,7 +214,7 @@ var simVagues = {
     sourceX   : 0,   // position canvas (px)
     sourceY   : 0,
     freq      : 1.5, // Hz
-    amplitude : 1.0, // relative
+    amplitude : 2.0, // relative
 
     // ── Milieu ──────────────────────────────────────────────────────
     g              : 9.81,  // m/s²
@@ -253,16 +253,16 @@ var simVagues = {
     sinPhase : 0,
 
     // ── Source : mise en marche ──────────────────────────────────────
-    //  La source démarre en marche : l'onglet s'ouvre donc sur le bassin
-    //  déjà animé, comme avant qu'elle ne devienne commutable.
-    //  vaguesEnv / vaguesEmitMode : enveloppe demi-cosinus de démarrage et
-    //  d'arrêt, étalée sur une période (cf. stepSourceVagues).
+    //  La source démarre À L'ARRÊT, en mode Impulsion : l'onglet s'ouvre sur
+    //  un bassin au repos et c'est l'utilisateur qui déclenche la première
+    //  vague. `sourceMode` suit donc le sélecteur dès le départ.
+    //  vaguesEmitMode : mode réellement émis — il survit à la coupure le
+    //  temps que le motif élémentaire en cours s'achève (cf. stepSourceVagues).
     //  sourceMode décrit l'ÉMISSION EN COURS et non le mode choisi dans le
     //  sélecteur (que lit `_vaguesSourceMode`) — même convention qu'au Son.
-    sourceMode       : 'sinus',
-    sinusoidalActive : true,
+    sourceMode       : 'impulse',
+    sinusoidalActive : false,
     vaguesEmitMode   : null,
-    vaguesEnv        : 0,
 
     // ── Source — impulsions (superposables) ─────────────────────────
     // Chaque entrée : { startTime }. Une impulsion n'efface pas les
@@ -419,35 +419,52 @@ var lastSrcUpdateVagues = 0;
 function stepSourceVagues(t) {
     var s = simVagues;
 
-    // ── Enveloppe de démarrage / d'arrêt ──────────────────────────────
-    // Même raison qu'au Son (cf. stepSourceSon) : une sinusoïde allumée
-    // brutalement produit un front franc, ici un anneau net qui se détache du
-    // reste de la houle. On module donc l'amplitude par un demi-cosinus étalé
-    // sur exactement une période — la source met une oscillation à s'établir,
-    // et autant à se taire. Passé ce délai le signal est une sinusoïde pure :
-    // la longueur d'onde reste mesurable partout ailleurs.
+    // ── Émission par MOTIFS ÉLÉMENTAIRES ENTIERS ──────────────────────
+    // La source attaque sa première période à PLEINE amplitude : dès le
+    // premier motif, la vague émise a la forme et la hauteur de toutes les
+    // suivantes. La version précédente modulait le démarrage par un
+    // demi-cosinus étalé sur une période (comme le Son) pour adoucir le front
+    // — mais cette période d'échauffement se lisait à l'écran comme un petit
+    // aller-retour parasite devant le train d'ondes, au lieu d'une première
+    // crête franche.
+    //
+    // La contrepartie normalement redoutée — le saut — n'existe pas ici :
+    // sin(0) = 0, la source part donc de sa position de repos. Seule sa
+    // VITESSE est discontinue, ce qu'un vrai vibreur fait aussi quand on
+    // l'allume, et ce que la vue en coupe montre comme un front net.
+    //
+    // À l'arrêt, en revanche, couper au milieu d'une période téléporterait la
+    // source de sa position courante au repos — une discontinuité de POSITION,
+    // celle-là bien visible. On termine donc le motif en cours : le train émis
+    // est toujours un nombre ENTIER de périodes, il commence et finit à zéro.
     var wantMode = s.sinusoidalActive ? 'sinus' : null;
-    if (wantMode && wantMode !== s.vaguesEmitMode) {
-        s.vaguesEmitMode = wantMode;
-        s.vaguesEnv      = 0;
-    }
-    var envStep = Math.max(0.2, s.freq) * SRC_DT;   // 1 période pour 0 → 1
-    if (wantMode) {
-        s.vaguesEnv = Math.min(1, s.vaguesEnv + envStep);
-    } else if (s.vaguesEmitMode) {
-        s.vaguesEnv = Math.max(0, s.vaguesEnv - envStep);
-        if (s.vaguesEnv === 0) s.vaguesEmitMode = null;
-    }
-    var env = (1 - Math.cos(Math.PI * s.vaguesEnv)) / 2;
+    if (wantMode) s.vaguesEmitMode = 'sinus';
 
     var d = 0;
+    // Quadrature émise, gravée en même temps que le déplacement (cf. plus bas
+    // et _coupeFieldPairAt) : c'est le cos qui accompagne le sin, et il ne se
+    // reconstitue pas après coup à partir de simTime.
+    var q = 0;
     if (s.vaguesEmitMode === 'sinus') {
         // Phase accumulée, et non 2πf·t recalculé : c'est ce qui fait que
         // changer la fréquence n'introduit pas de saut de phase et n'affecte
         // que l'onde émise à partir de cet instant.
         s.sinPhase += 2 * Math.PI * s.freq * SRC_DT;
-        if (s.sinPhase > 2 * Math.PI) s.sinPhase -= 2 * Math.PI;
-        d += env * Math.sin(s.sinPhase);
+        var wrapped = false;
+        if (s.sinPhase >= 2 * Math.PI) {
+            s.sinPhase -= 2 * Math.PI;
+            wrapped = true;              // un motif élémentaire vient de finir
+        }
+        if (!wantMode && wrapped) {
+            // Arrêt demandé et motif achevé : on s'arrête PILE dessus. La
+            // source est alors exactement à sa position de repos, il n'y a
+            // rien à faire décroître.
+            s.sinPhase       = 0;
+            s.vaguesEmitMode = null;
+        } else {
+            d += Math.sin(s.sinPhase);
+            q  = Math.cos(s.sinPhase);
+        }
     }
 
     // ── Composantes impulsions (superposables) ────────────────────────
@@ -479,7 +496,12 @@ function stepSourceVagues(t) {
     // Gravé même quand d vaut 0 : c'est ce silence qui, en s'éloignant,
     // dessine l'arrière du train d'ondes quand on coupe la source — et qui
     // sépare deux impulsions successives.
-    _srcPush(s, t, d, s.c_sim);
+    //
+    // La quadrature voyage dans le canal auxiliaire (srcA), inutilisé par cet
+    // onglet : elle subit exactement le même retard que le déplacement, ce qui
+    // la garde en phase avec lui quoi qu'il arrive entre-temps — coupure et
+    // relance de la source, changement de mode, changement de fréquence.
+    _srcPush(s, t, d, s.c_sim, q);
 }
 
 // Une impulsion est « terminée » quand elle a fini d'être émise ET a fini de
@@ -535,6 +557,19 @@ function _vaguesSrcDAtR(r, t) {
     if (s.c_sim <= 0 || s.srcN === 0) return 0;
     if (t === undefined) t = s.simTime;
     return _srcDAtS(s, _srcSAtTime(s, t, s.c_sim) - r);
+}
+
+// Couple (déplacement, quadrature) émis, lu à la distance r. Les deux sortent
+// du MÊME échantillon d'historique : ils restent donc en quadrature exacte,
+// y compris après une coupure de la source (cf. stepSourceVagues).
+function _vaguesSrcPairAtR(r, t, out) {
+    var s = simVagues;
+    out[0] = 0; out[1] = 0;
+    if (s.c_sim <= 0 || s.srcN === 0) return;
+    if (t === undefined) t = s.simTime;
+    var smp = _srcSampleAtS(s, _srcSAtTime(s, t, s.c_sim) - r);
+    out[0] = smp.d;
+    out[1] = smp.a;
 }
 
 // ── Table radiale du déplacement, reconstruite une fois par frame ─────
@@ -1985,7 +2020,6 @@ function resetVagues() {
     // à l'identique.
     _srcClear(simVagues);
     simVagues.sinPhase           = 0;
-    simVagues.vaguesEnv          = 0;
     simVagues.vaguesEmitMode     = null;
     simVagues.impulses           = [];
     simVagues.impulsePropagating = false;
@@ -3048,26 +3082,27 @@ var ORBIT_TRAIL_COL      = ['rgba(255,255,255,0.16)',
 // Couple (F, Q) du champ de la coupe en x. DOIT rester aligné sur
 // _waveFieldCoupeAt : out[0] en est la copie exacte, out[1] sa quadrature.
 //
-// out[0] est lu dans l'historique, comme partout ailleurs : la bille suit donc
-// exactement la surface dessinée. out[1] reste analytique — la quadrature d'un
-// signal quelconque n'a pas d'expression locale, et la théorie d'Airy dont
-// sortent ces orbites suppose de toute façon une onde monochromatique. C'est
-// la raison pour laquelle l'option sera grisée en mode impulsion.
+// Les DEUX sont lus dans l'historique de la source, au même échantillon : la
+// bille suit exactement la surface dessinée, et son ellipse reste calée
+// dessus. La quadrature était auparavant recalculée analytiquement, en
+// cos(2πf·(t − r/c)) — ce qui supposait une source ayant toujours oscillé
+// depuis t = 0 avec la phase 0. Couper puis relancer la source (ou passer par
+// le mode Impulsion) remet `sinPhase` à zéro : la quadrature reconstituée
+// n'avait alors plus aucun rapport avec le déplacement réel, l'enveloppe
+// √(F² + Q²) devenait n'importe quoi et les orbites partaient en vrille.
 function _coupeFieldPairAt(x_canvas, srcX, out) {
     out[0] = 0; out[1] = 0;
     var r_px = x_canvas - srcX;
     if (r_px < 0) return;
-    var c = simVagues.c_sim;
-    if (c <= 0) return;
-    var d = _vaguesSrcDAtR(r_px);
-    if (d === 0) return;
-    var phi = 2 * Math.PI * simVagues.freq * (simVagues.simTime - r_px / c);
+    if (simVagues.c_sim <= 0) return;
+    _vaguesSrcPairAtR(r_px, undefined, out);
+    if (out[0] === 0 && out[1] === 0) return;   // front pas encore arrivé
     var env = simVagues.amplitude;
     if (simVagues.geoAttenuation) env *= Math.sqrt(40 / (40 + r_px));
     if (simVagues.attenuation > 0)
         env *= Math.exp(-simVagues.attenuation * 5 * r_px / simVagues.canvasW);
-    out[0] = d * env;
-    out[1] = Math.cos(phi) * env;
+    out[0] *= env;
+    out[1] *= env;
 }
 
 var _orbitFP   = [0, 0];   // tampon réutilisé (pas d'allocation par frame)

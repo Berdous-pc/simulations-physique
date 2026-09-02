@@ -928,10 +928,11 @@ une bosse unipolaire, mais l'observable est ΔP, sa **dérivée** — compressio
 puis dépression. Ici l'observable est le déplacement lui-même : il doit porter
 les deux.
 
-La source est **en marche au chargement** : l'onglet s'ouvre sur le bassin déjà
-animé, comme du temps où elle ne pouvait pas être coupée. L'arrêter ne fait pas
-disparaître l'onde — elle vit dans l'historique et poursuit sa route jusqu'au
-bord. C'est précisément ce que le bouton donne à voir.
+La source est **à l'arrêt au chargement**, sélecteur sur **Impulsion** :
+l'onglet s'ouvre sur un bassin au repos et c'est l'utilisateur qui déclenche la
+première vague. L'arrêter ne fait pas disparaître l'onde — elle vit dans
+l'historique et poursuit sa route jusqu'au bord. C'est précisément ce que le
+bouton donne à voir.
 
 À savoir sur le curseur d'**amplitude** : la vue du dessus code la phase en
 couleur et non en relief, le champ n'y est donc pas multiplié par `amplitude`
@@ -939,12 +940,25 @@ couleur et non en relief, le champ n'y est donc pas multiplié par `amplitude`
 *y(x)* et *y(t)*, eux, sont gradués en centimètres et le suivent : le griser en
 vue du dessus les figerait aussi, ce qui a fait renoncer à l'idée.
 
-Comme au Son, le démarrage et l'arrêt sont adoucis par une **enveloppe
-demi-cosinus étalée sur une période** (`vaguesEnv` / `vaguesEmitMode`) : une
-sinusoïde allumée brutalement produirait un anneau franc se détachant du reste
-de la houle. `stepSourceVagues` grave un échantillon **même quand la source se
-tait** — c'est ce silence qui, en s'éloignant, dessine l'arrière du train
-d'ondes.
+Contrairement au Son, la source Vagues n'a **pas d'enveloppe de fondu** : elle
+émet des **motifs élémentaires entiers**, à pleine amplitude dès le premier.
+L'enveloppe demi-cosinus étalée sur une période, reprise du Son, faisait passer
+devant le train d'ondes une période d'échauffement de faible amplitude qui se
+lisait comme un aller-retour parasite. Rien ne la justifiait vraiment ici :
+`sin(0) = 0`, la source part de sa position de repos, seule sa **vitesse** est
+discontinue — comme celle d'un vibreur qu'on allume.
+
+L'arrêt, lui, demande une précaution : couper au milieu d'une période
+téléporterait la source à sa position de repos, discontinuité de **position**
+bien visible celle-là. `stepSourceVagues` **termine donc le motif en cours**
+(d'où `vaguesEmitMode`, qui survit à la coupure jusqu'au prochain passage de
+`sinPhase` par 2π). Le train émis est toujours un nombre entier de périodes,
+il commence et finit à zéro. Relancer avant la fin du motif ne coupe rien : la
+phase court, `toggleSourceActiveVagues` ne la remet à zéro que si
+`vaguesEmitMode` s'est effectivement éteint entre-temps.
+
+`stepSourceVagues` grave un échantillon **même quand la source se tait** —
+c'est ce silence qui, en s'éloignant, dessine l'arrière du train d'ondes.
 
 ### Le point S suit l'historique, pas l'horloge
 
@@ -976,11 +990,14 @@ quelconque n'a pas.
 `_waveFieldCoupeAt`, le rendu de la vue du dessus, `_renderTopDown`,
 `_render3DWaveView`, `updateYxDataVagues`, `rebuildYtDataVagues`. C'est la
 condition pour que la vue du dessus, la coupe et la transition entre les deux
-montrent la même onde. Seule exception assumée : la **quadrature** du couple
-rendu par `_coupeFieldPairAt` (mouvement horizontal des molécules d'eau), qui
-reste analytique — un signal quelconque n'a pas de quadrature locale, et la
-théorie d'Airy dont sortent ces orbites suppose de toute façon une onde
-monochromatique.
+montrent la même onde. La **quadrature** du couple rendu par
+`_coupeFieldPairAt` (mouvement horizontal des molécules d'eau) en fait partie :
+elle est gravée à l'émission dans le canal auxiliaire `srcA` et relue au même
+échantillon que le déplacement, donc soumise au même retard. La reconstituer
+analytiquement en `cos(2πf·(t − r/c))` supposait une source ayant oscillé
+depuis `t = 0` sans jamais s'interrompre ; couper puis relancer la source, ou
+passer par le mode Impulsion, remet `sinPhase` à zéro et faisait alors partir
+les orbites en vrille.
 
 Le fondu du front (`frontFeather`, qui évite la coupure nette en anneau) se
 fait désormais **vers l'intérieur** : l'ancien rendu prolongeait la sinusoïde
@@ -1301,11 +1318,6 @@ index.html
   g ou h, ces repères ne décrivent plus que la portion la plus proche de la
   source. C'est le prix — assumé — de la fin de la réécriture rétroactive. (En
   mode Impulsion la question ne se pose pas : ils y sont verrouillés.)
-- **Vagues : `_coupeFieldPairAt` garde une quadrature analytique** en `cos(φ)`
-  calculée sur la fréquence courante, alors que sa composante en phase sort de
-  l'historique. Sans effet visible tant que les orbites ne s'affichent qu'en
-  sinusoïdal — mais après un changement de f en cours de route, le mouvement
-  horizontal des billes ne suit plus exactement le vertical loin de la source.
 - Reste calé sur les réglages courants côté Son : `aEff` dans `waveDeltaP`
   (facteur 1/2 en mode impulsion). Il ne change qu'au basculement de
   `sourceMode`, jamais au glissement d'un curseur, et ce basculement n'a lieu

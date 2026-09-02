@@ -235,8 +235,9 @@
           </div>
         </div><!-- fin #source-corde -->
 
-        <!-- Source Vagues — Sinusoïdale sélectionnée par défaut : c'est la
-             houle continue qui fait l'identité de l'onglet. -->
+        <!-- Source Vagues — Impulsion sélectionnée par défaut, source à l'arrêt :
+             l'onglet s'ouvre sur un bassin au repos, c'est l'utilisateur qui
+             déclenche la première vague. -->
         <div id="source-vagues" style="display:none;">
           <div class="section-title">Source</div>
           <div class="source-btns">
@@ -246,8 +247,8 @@
             </button>
             <select class="select-mode" id="sel-mode-vagues"
                     onchange="onSourceModeChangeVagues()">
-              <option value="impulse">Impulsion</option>
-              <option value="sinus" selected>Sinusoïdale</option>
+              <option value="impulse" selected>Impulsion</option>
+              <option value="sinus">Sinusoïdale</option>
             </select>
           </div>
           <div class="param-row" id="freq-row-vagues">
@@ -262,10 +263,10 @@
           <div class="param-row" id="ampl-row-vagues">
             <label>
               Amplitude
-              <span class="param-value"><span id="lbl-ampl-vagues">1,0</span></span>
+              <span class="param-value"><span id="lbl-ampl-vagues">2,0</span></span>
             </label>
             <input type="range" id="sl-ampl-vagues"
-                   min="0.5" max="3.0" step="0.1" value="1.0"
+                   min="0.5" max="3.0" step="0.1" value="2.0"
                    oninput="onSliderAmplVagues(this.value)">
           </div>
         </div><!-- fin #source-vagues -->

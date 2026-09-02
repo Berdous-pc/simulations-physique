@@ -1240,8 +1240,8 @@ function _syncWavePropsBtnStateCorde() {
 //  Source Vagues
 // ══════════════════════════════════════════════════════════════════════
 //  Même box que le Son et la Corde : un bouton Activer et un sélecteur de
-//  mode. La source est en marche au chargement — l'onglet s'ouvre donc sur le
-//  bassin déjà animé, comme du temps où elle ne pouvait pas être coupée.
+//  mode. La source est À L'ARRÊT au chargement, en mode Impulsion : le bassin
+//  s'ouvre au repos et c'est l'utilisateur qui déclenche la première vague.
 //
 //  L'arrêt ne fait pas disparaître l'onde : elle vit dans l'historique de la
 //  source (cf. stepSourceVagues) et poursuit sa route jusqu'au bord. C'est
