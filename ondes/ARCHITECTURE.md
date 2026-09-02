@@ -1055,6 +1055,44 @@ initial des trois objets, puis ouvre l'onglet indiqué par le hash de l'URL
 (`#corde`, `#son`, `#vagues`), Son par défaut. `setMainTab` met le hash à jour
 par `history.replaceState` : un onglet est donc partageable par lien.
 
+### Chronomètre — un seul module pour tous les onglets
+
+`chronos[tab]` porte l'état (`running`, `elapsed`, `periods`, `unit`), et un
+seul jeu de fonctions le manipule : `chronoTick`, `toggleChrono`,
+`resetChrono`, `setChronoUnit`, `_syncChronoBtn`, `_syncChronoUnits`,
+`_updateChrono`, `_chronoLinked`, `_syncChronoLink`, `_startChronoIfLinked`.
+Toutes prennent l'onglet en premier argument.
+
+Ce qui distingue un onglet tient dans **`CHRONO_DEFS[tab]`**, et nulle part
+ailleurs :
+
+| | rôle |
+|---|---|
+| `sim()` | l'objet d'état d'où sort `freq` (conversion en T) |
+| `noPeriod()` | le mode courant a-t-il une période définie ? |
+| `linkDefault(mode)` | la case « Lier » est-elle cochée par défaut pour ce mode ? |
+
+Côté HTML, **un seul gabarit** de box, au suffixe d'id près : tous les
+éléments d'un onglet s'appellent `<base>-<tab>` (`chrono-value-son`,
+`btn-chrono-start-corde`, …), ce que résout `_chronoEl(base, tab)`. Le style
+passe par des **classes** (`.chrono-box`, `.chrono-display`, `.chrono-value`,
+`.chrono-ctrl`, `.chrono-link`, `.chrono-units`) : elles se répètent d'une box
+à l'autre, ce qu'un id ne peut pas faire — les deux premières versions
+dupliquaient d'ailleurs `#chrono-display` et `#chrono-ctrl` en HTML invalide.
+
+Deux points de comportement à ne pas défaire :
+
+- Le chrono compte le temps de **simulation** : il se fige avec la pause et
+  suit le facteur de vitesse, sinon les durées lues ne correspondraient plus à
+  celles des graphes.
+- Les périodes sont **cumulées pas à pas** dans `chronoTick`, jamais
+  recalculées en `t × f` : changer la fréquence en cours de chronométrage
+  requalifierait sinon rétroactivement tout le temps déjà écoulé.
+
+Ajouter un onglet au chronomètre se réduit donc à trois gestes : recopier le
+gabarit HTML avec le bon suffixe, ajouter une entrée à `CHRONO_DEFS` et une à
+`chronos`, brancher `chronoTick` et `_updateChrono` dans sa branche de `loop`.
+
 ### Conventions à respecter
 
 - Les readouts sont rafraîchis **dans les gestionnaires de curseur** et pas

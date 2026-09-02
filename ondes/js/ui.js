@@ -47,10 +47,7 @@ function loop(ts) {
             // la source), et non recalculé en t x f : sinon changer la
             // fréquence — donc la longueur d'onde — en cours de route
             // requalifierait rétroactivement tout le temps déjà écoulé.
-            if (chronoSon.running) {
-                chronoSon.elapsed += dtSim;
-                chronoSon.periods += dtSim * sim.freq;
-            }
+            chronoTick('son', dtSim);
 
             pruneImpulses();
 
@@ -87,7 +84,7 @@ function loop(ts) {
         if (!sim.paused) {
             _updateCReadout();
             _updateWaveProps();
-            _updateChronoSon();
+            _updateChrono('son');
         }
 
     } else if (activeTab === 'corde') {
@@ -98,10 +95,7 @@ function loop(ts) {
 
             // Voir le commentaire côté Son : les périodes sont cumulées au fil
             // de l'eau pour rester justes si la fréquence change.
-            if (chronoCorde.running) {
-                chronoCorde.elapsed += dtSimC;
-                chronoCorde.periods += dtSimC * simCorde.freq;
-            }
+            chronoTick('corde', dtSimC);
 
             pruneImpulsesCorde();
 
@@ -185,7 +179,7 @@ function loop(ts) {
         if (!simCorde.paused) {
             _updateCReadoutCorde();
             _updateWavePropsCorde();
-            _updateChronoCorde();
+            _updateChrono('corde');
         }
     } else {
         // ── Avancement temps Vagues ───────────────────────────────────
@@ -285,9 +279,9 @@ function _applySourceModeSon() {
     _syncSourceButtons();
     _syncWavePropsBtnState();
     _syncLambdaBtnStateSon();
-    _syncChronoLinkSon(mode);
-    _syncChronoUnitsSon();
-    _updateChronoSon();
+    _syncChronoLink('son', mode);
+    _syncChronoUnits('son');
+    _updateChrono('son');
 }
 
 //  Bouton unique Activer/Désactiver : son effet dépend du mode choisi dans
@@ -307,7 +301,7 @@ function toggleSourceActiveSon() {
     // à l'arrêt, sans toucher à la valeur affichée. Désactiver la source ne
     // l'arrête pas non plus : l'onde déjà émise reste chronométrable.
     var isOn = sim.sinusoidalActive;
-    if (mode === 'impulse' || (!wasOn && isOn)) _startChronoIfLinkedSon();
+    if (mode === 'impulse' || (!wasOn && isOn)) _startChronoIfLinked('son');
 }
 
 //  Changement de mode dans le sélecteur : coupe systématiquement l'émission
@@ -384,11 +378,7 @@ function resetSimAnim() {
     _srcTickSon      = 0;
     // Le chronomètre mesure le temps de simulation : remettre celle-ci à
     // zéro sans l'arrêter laisserait une durée qui ne correspond plus à rien.
-    chronoSon.running = false;
-    chronoSon.elapsed = 0;
-    chronoSon.periods = 0;
-    _syncChronoBtnSon();
-    _updateChronoSon();
+    resetChrono('son');
     // resetAnim remet sourceMode à null : on réapplique la sélection du
     // menu déroulant, qui elle n'est pas remise à zéro.
     _applySourceModeSon();
@@ -425,7 +415,7 @@ function onSliderFreq(v) {
     if (lbl) lbl.textContent = sim.freq.toFixed(1).replace('.', ',');
     initCols();
     _updateWaveProps();
-    _updateChronoSon();   // l'affichage en T dépend de f
+    _updateChrono('son');   // l'affichage en T dépend de f
 }
 
 function onSliderRho(v) {
@@ -496,6 +486,16 @@ function _updateWaveProps() {
     var lambda = sim.c_cms * T;
     var elL    = document.getElementById('ro-lambda');
     if (elL) elL.innerHTML = fmtSciHTML(lambda, 2);
+}
+
+//  Impulsion n'a pas de fréquence définie : le comptage en T, l'affichage de
+//  λ et le curseur f n'y ont aucun sens. On se base sur le SÉLECTEUR de mode,
+//  pas sur sourceMode (qui ne reflète que l'émission en cours) : le
+//  verrouillage doit s'appliquer dès que le mode est choisi, même avant toute
+//  activation de la source. Jumeau de _cordeModeIsImpulseOrFree.
+function _sonModeIsImpulse() {
+    var sel = document.getElementById('sel-mode-son');
+    return !sel || sel.value === 'impulse';
 }
 
 function _syncWavePropsBtnState() {
@@ -592,114 +592,162 @@ function _syncLambdaBtnStateSon() {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-//  Chronomètre (onglet Son)
+//  Chronomètre — module commun à tous les onglets
 // ══════════════════════════════════════════════════════════════════════
 //  Il compte le temps de SIMULATION et non le temps réel : il se fige donc
 //  avec la pause et suit le facteur de vitesse, sans quoi les durées lues
 //  ne correspondraient pas à celles des graphes.
 //
-//  Deux unités : la seconde, ou la période T de la source. Le comptage en
-//  T n'a de sens que pour un signal périodique — le bouton reste donc
-//  désactivé en mode Impulsion. La conversion utilise la fréquence
-//  COURANTE : changer f en cours de chronométrage réinterprète l'ensemble
-//  de la durée écoulée.
-var chronoSon = { running: false, elapsed: 0, periods: 0, unit: 's' };
+//  Deux unités : la seconde, ou la période T de la source. Le comptage en T
+//  n'a de sens que pour un signal périodique — le bouton reste donc désactivé
+//  dans les modes sans période (Impulsion partout, plus Libre côté Corde). La
+//  conversion utilise la fréquence COURANTE : changer f en cours de
+//  chronométrage réinterprète l'ensemble de la durée écoulée.
+//
+//  UN SEUL jeu de fonctions pour tous les onglets. Chaque onglet apporte
+//  seulement ce qui le distingue (CHRONO_DEFS ci-dessous) ; le reste — la
+//  marche, la remise à zéro, la bascule d'unité, l'affichage — est écrit une
+//  fois. Le gabarit HTML est lui aussi commun, au suffixe d'id près : tous
+//  les éléments d'un onglet s'appellent « <base>-<tab> » (cf. index.html).
 
-//  Case « Lier » : quand elle est cochée, activer la source déclenche le
-//  chronomètre. Elle est recochée/décochée à chaque changement de mode
-//  (cf. _syncChronoLinkSon), l'utilisateur restant libre de la modifier
-//  ensuite pour le mode courant.
-function _chronoLinkedSon() {
-    var chk = document.getElementById('chk-chrono-link-son');
-    return !!(chk && chk.checked);
+//  Ce qui change d'un onglet à l'autre, et rien d'autre :
+//   — sim         : l'objet d'état d'où sortent freq (conversion en T) ;
+//   — noPeriod    : le mode courant a-t-il une période définie ? Se base sur
+//                   le SÉLECTEUR de mode et non sur l'état d'émission, pour
+//                   que le verrouillage s'applique dès le choix du mode ;
+//   — linkDefault : la case « Lier » est-elle cochée par défaut pour ce mode ?
+//                   Liée pour les émissions continues, où le chrono compte des
+//                   périodes depuis le début de l'émission ; déliée sinon, le
+//                   déclenchement se faisant plutôt à la main au passage
+//                   devant un repère.
+var CHRONO_DEFS = {
+    son: {
+        sim         : function() { return sim; },
+        noPeriod    : function() { return _sonModeIsImpulse(); },
+        linkDefault : function(mode) { return mode === 'sinus'; }
+    },
+    corde: {
+        sim         : function() { return simCorde; },
+        noPeriod    : function() { return _cordeModeIsImpulseOrFree(); },
+        linkDefault : function(mode) { return mode === 'sinus' || mode === 'periodic'; }
+    }
+};
+
+//  État par onglet. `lastTxt` mémorise le dernier texte écrit dans
+//  l'afficheur : _updateChrono est appelée à chaque frame, l'écriture DOM ne
+//  doit avoir lieu que si la valeur a changé.
+var chronos = {
+    son   : { running: false, elapsed: 0, periods: 0, unit: 's', lastTxt: '' },
+    corde : { running: false, elapsed: 0, periods: 0, unit: 's', lastTxt: '' }
+};
+
+//  Icônes marche/arrêt dessinées en SVG plutôt qu'avec les caractères ▶ et
+//  ⏸ : ces glyphes sont rendus par la police emoji, dont les métriques
+//  décalent visiblement le symbole dans le bouton.
+var CHRONO_ICO_PLAY  = '<svg class="chrono-ico" viewBox="0 0 12 12" aria-hidden="true">' +
+                       '<polygon points="3.5,2 10,6 3.5,10"/></svg>';
+var CHRONO_ICO_PAUSE = '<svg class="chrono-ico" viewBox="0 0 12 12" aria-hidden="true">' +
+                       '<rect x="3" y="2" width="2.5" height="8"/>' +
+                       '<rect x="6.5" y="2" width="2.5" height="8"/></svg>';
+
+function _chronoEl(base, tab) { return document.getElementById(base + '-' + tab); }
+
+//  Avance du chronomètre, appelée par la boucle avec le pas de temps de
+//  SIMULATION de l'onglet. Les périodes sont cumulées pas à pas plutôt que
+//  recalculées en fin de course : le compte reste juste même si la fréquence
+//  a changé pendant le chronométrage.
+function chronoTick(tab, dtSim) {
+    var c = chronos[tab];
+    if (!c || !c.running) return;
+    c.elapsed += dtSim;
+    c.periods += dtSim * CHRONO_DEFS[tab].sim().freq;
 }
 
-//  Par défaut : liée pour l'émission continue (Sinusoïdale), où le chrono
-//  sert à compter des périodes depuis le début de l'émission ; déliée en
-//  Impulsion, où le déclenchement se fait plutôt à la main, au passage
-//  devant un repère.
-function _syncChronoLinkSon(mode) {
-    var chk = document.getElementById('chk-chrono-link-son');
-    if (chk) chk.checked = (mode === 'sinus');
-}
-
-//  Démarrage du chronomètre lié. Appelé à la mise en marche de la source
-//  (Impulsion ou passage en Sinusoïdale).
-function _startChronoIfLinkedSon() {
-    if (!_chronoLinkedSon() || chronoSon.running) return;
-    chronoSon.running = true;
-    _syncChronoBtnSon();
-}
-
-function toggleChronoSon() {
-    chronoSon.running = !chronoSon.running;
-    _syncChronoBtnSon();
+function toggleChrono(tab) {
+    chronos[tab].running = !chronos[tab].running;
+    _syncChronoBtn(tab);
 }
 
 //  Remise à zéro : arrête aussi le comptage, pour repartir d'un chronomètre
-//  à l'arrêt sur 0 plutôt que de le voir redémarrer aussitôt.
-function resetChronoSon() {
-    chronoSon.elapsed = 0;
-    chronoSon.periods = 0;
-    chronoSon.running = false;
-    _syncChronoBtnSon();
-    _updateChronoSon();
+//  à l'arrêt sur 0 plutôt que de le voir redémarrer aussitôt. C'est aussi ce
+//  qu'appelle la remise à zéro générale de l'onglet.
+function resetChrono(tab) {
+    var c = chronos[tab];
+    c.elapsed = 0;
+    c.periods = 0;
+    c.running = false;
+    _syncChronoBtn(tab);
+    _updateChrono(tab);
 }
 
-function setChronoUnitSon(unit) {
-    var btn = document.getElementById('btn-chrono-unit-' + unit + '-son');
+function setChronoUnit(tab, unit) {
+    var btn = _chronoEl('btn-chrono-unit-' + unit, tab);
     if (btn && btn.disabled) return;
-    chronoSon.unit = (unit === 'T') ? 'T' : 's';
-    _syncChronoUnitsSon();
-    _updateChronoSon();
+    chronos[tab].unit = (unit === 'T') ? 'T' : 's';
+    _syncChronoUnits(tab);
+    _updateChrono(tab);
 }
 
-function _syncChronoBtnSon() {
-    var btn = document.getElementById('btn-chrono-start-son');
+//  Case « Lier » : quand elle est cochée, activer la source déclenche le
+//  chronomètre. Elle est recochée/décochée à chaque changement de mode (cf.
+//  _syncChronoLink), l'utilisateur restant libre de la modifier ensuite pour
+//  le mode courant.
+function _chronoLinked(tab) {
+    var chk = _chronoEl('chk-chrono-link', tab);
+    return !!(chk && chk.checked);
+}
+
+function _syncChronoLink(tab, mode) {
+    var chk = _chronoEl('chk-chrono-link', tab);
+    if (chk) chk.checked = CHRONO_DEFS[tab].linkDefault(mode);
+}
+
+//  Démarrage du chronomètre lié. Appelé à la mise en marche de la source :
+//  par le bouton Activer, et — côté Corde — par la saisie de la boule en mode
+//  Libre (cf. onDown dans tube.js), où le geste EST la source.
+function _startChronoIfLinked(tab) {
+    if (!_chronoLinked(tab) || chronos[tab].running) return;
+    chronos[tab].running = true;
+    _syncChronoBtn(tab);
+}
+
+function _syncChronoBtn(tab) {
+    var btn = _chronoEl('btn-chrono-start', tab);
     if (!btn) return;
-    btn.innerHTML = chronoSon.running ? CHRONO_ICO_PAUSE : CHRONO_ICO_PLAY;
-    btn.title     = chronoSon.running ? 'Arrêter le chronomètre'
-                                       : 'Démarrer le chronomètre';
-    btn.classList.toggle('running', chronoSon.running);
+    var run = chronos[tab].running;
+    btn.innerHTML = run ? CHRONO_ICO_PAUSE : CHRONO_ICO_PLAY;
+    btn.title     = run ? 'Arrêter le chronomètre' : 'Démarrer le chronomètre';
+    btn.classList.toggle('running', run);
 }
 
-//  Impulsion n'a pas de fréquence définie : le comptage en T n'aurait aucun
-//  sens. On se base sur le SÉLECTEUR de mode, pas sur sourceMode (qui ne
-//  reflète que l'émission en cours) : le verrouillage doit s'appliquer dès
-//  que le mode est choisi, même avant toute activation de la source.
-function _sonModeIsImpulse() {
-    var sel = document.getElementById('sel-mode-son');
-    return !sel || sel.value === 'impulse';
-}
+//  Appelée aussi au changement de mode de source : passer dans un mode sans
+//  période alors que l'affichage est en T le ramène aux secondes.
+function _syncChronoUnits(tab) {
+    var c        = chronos[tab];
+    var noPeriod = CHRONO_DEFS[tab].noPeriod();
+    if (noPeriod && c.unit === 'T') c.unit = 's';
 
-function _syncChronoUnitsSon() {
-    var noPeriod = _sonModeIsImpulse();
-    if (noPeriod && chronoSon.unit === 'T') chronoSon.unit = 's';
-
-    var btnT = document.getElementById('btn-chrono-unit-T-son');
+    var btnT = _chronoEl('btn-chrono-unit-T', tab);
     if (btnT) {
         btnT.disabled = noPeriod;
-        btnT.classList.toggle('active', chronoSon.unit === 'T');
+        btnT.classList.toggle('active', c.unit === 'T');
     }
-    var btnS = document.getElementById('btn-chrono-unit-s-son');
-    if (btnS) btnS.classList.toggle('active', chronoSon.unit === 's');
+    var btnS = _chronoEl('btn-chrono-unit-s', tab);
+    if (btnS) btnS.classList.toggle('active', c.unit === 's');
 }
 
-function _updateChronoSon() {
-    var el = document.getElementById('chrono-value-son');
+function _updateChrono(tab) {
+    var el = _chronoEl('chrono-value', tab);
     if (!el) return;
-    // En T, on lit le compteur de périodes cumulé dans la boucle : il reste
-    // juste même si la fréquence a changé pendant le comptage.
-    var inT = (chronoSon.unit === 'T' && sim.freq > 0);
-    var txt = inT ? fmtFR(chronoSon.periods, 2)
-                  : fmtFR(chronoSon.elapsed, 2);
+    var c   = chronos[tab];
+    var inT = (c.unit === 'T' && CHRONO_DEFS[tab].sim().freq > 0);
+    var txt = inT ? fmtFR(c.periods, 2) : fmtFR(c.elapsed, 2);
     // Écriture conditionnelle : la fonction est appelée à chaque frame.
-    if (txt !== _chronoLastTxtSon) { el.textContent = txt; _chronoLastTxtSon = txt; }
+    if (txt !== c.lastTxt) { el.textContent = txt; c.lastTxt = txt; }
 
-    var lbl = document.getElementById('chrono-unit-lbl-son');
+    var lbl = _chronoEl('chrono-unit-lbl', tab);
     if (lbl) lbl.textContent = inT ? 'T' : 's';
 }
-var _chronoLastTxtSon = '';
 
 // ══════════════════════════════════════════════════════════════════════
 //  ─────────────── TAB CORDE ─────────────────────────────────────────
@@ -789,9 +837,9 @@ function _applySourceModeCorde() {
     _syncSourceButtonsCorde();
     _syncWavePropsBtnStateCorde();
     _syncLambdaBtnStateCorde();
-    _syncChronoLinkCorde(mode);
-    _syncChronoUnitsCorde();
-    _updateChronoCorde();
+    _syncChronoLink('corde', mode);
+    _syncChronoUnits('corde');
+    _updateChrono('corde');
 }
 
 //  Bouton unique Activer/Désactiver : son effet dépend du mode choisi dans
@@ -818,16 +866,7 @@ function toggleSourceActiveCorde() {
     // Désactiver la source ne l'arrête pas non plus : l'onde déjà émise
     // continue de se propager et reste chronométrable.
     var isOn = simCorde.sinusoidalActive || simCorde.periodicActive;
-    if (mode === 'impulse' || (!wasOn && isOn)) _startChronoIfLinkedCorde();
-}
-
-//  Démarrage du chronomètre lié. Appelé à la mise en marche de la source :
-//  par le bouton Activer, et par la saisie de la boule en mode Libre (cf.
-//  onDown dans tube.js), où le geste EST la source.
-function _startChronoIfLinkedCorde() {
-    if (!_chronoLinkedCorde() || chronoCorde.running) return;
-    chronoCorde.running = true;
-    _syncChronoBtnCorde();
+    if (mode === 'impulse' || (!wasOn && isOn)) _startChronoIfLinked('corde');
 }
 
 //  Changement de mode dans le sélecteur : basculer entre Sinusoïdale et
@@ -926,11 +965,7 @@ function resetSimAnimCorde() {
     _srcTickCorde = 0;
     // Le chronomètre mesure le temps de simulation : remettre celle-ci à
     // zéro sans l'arrêter laisserait une durée qui ne correspond plus à rien.
-    chronoCorde.running = false;
-    chronoCorde.elapsed = 0;
-    chronoCorde.periods = 0;
-    _syncChronoBtnCorde();
-    _updateChronoCorde();
+    resetChrono('corde');
     // resetAnimCorde remet sourceMode à null : on réapplique la sélection
     // du menu déroulant, qui elle n'est pas remise à zéro.
     _applySourceModeCorde();
@@ -946,111 +981,6 @@ function resetSimAnimCorde() {
     if (tip) tip.style.display = 'none';
 }
 
-// ══════════════════════════════════════════════════════════════════════
-//  Chronomètre (onglet Corde)
-// ══════════════════════════════════════════════════════════════════════
-//  Il compte le temps de SIMULATION et non le temps réel : il se fige donc
-//  avec la pause et suit le facteur de vitesse, sans quoi les durées lues
-//  ne correspondraient pas à celles des graphes.
-//
-//  Deux unités : la seconde, ou la période T de la source. Le comptage en
-//  T n'a de sens que pour un signal périodique — le bouton reste donc
-//  désactivé en mode Impulsion et Libre (cf. _cordeModeIsImpulseOrFree).
-//  La conversion utilise la fréquence COURANTE : changer f en cours de
-//  chronométrage réinterprète l'ensemble de la durée écoulée.
-var chronoCorde = { running: false, elapsed: 0, periods: 0, unit: 's' };
-
-//  Case « Lier » : quand elle est cochée, activer la source déclenche le
-//  chronomètre. Elle est recochée/décochée à chaque changement de mode
-//  (cf. _syncChronoLinkCorde), l'utilisateur restant libre de la modifier
-//  ensuite pour le mode courant.
-function _chronoLinkedCorde() {
-    var chk = document.getElementById('chk-chrono-link');
-    return !!(chk && chk.checked);
-}
-
-//  Par défaut : liée pour les émissions continues (Sinusoïdale, Périodique),
-//  où le chrono sert à compter des périodes depuis le début de l'émission ;
-//  déliée en Impulsion et Libre, où le déclenchement se fait plutôt à la
-//  main, au passage devant un repère.
-function _syncChronoLinkCorde(mode) {
-    var chk = document.getElementById('chk-chrono-link');
-    if (chk) chk.checked = (mode === 'sinus' || mode === 'periodic');
-}
-
-function toggleChronoCorde() {
-    chronoCorde.running = !chronoCorde.running;
-    _syncChronoBtnCorde();
-}
-
-//  Remise à zéro : arrête aussi le comptage, pour repartir d'un chronomètre
-//  à l'arrêt sur 0 plutôt que de le voir redémarrer aussitôt.
-function resetChronoCorde() {
-    chronoCorde.elapsed = 0;
-    chronoCorde.periods = 0;
-    chronoCorde.running = false;
-    _syncChronoBtnCorde();
-    _updateChronoCorde();
-}
-
-function setChronoUnitCorde(unit) {
-    var btn = document.getElementById('btn-chrono-unit-' + unit);
-    if (btn && btn.disabled) return;
-    chronoCorde.unit = (unit === 'T') ? 'T' : 's';
-    _syncChronoUnitsCorde();
-    _updateChronoCorde();
-}
-
-//  Icônes marche/arrêt dessinées en SVG plutôt qu'avec les caractères ▶ et
-//  ⏸ : ces glyphes sont rendus par la police emoji, dont les métriques
-//  décalent visiblement le symbole dans le bouton.
-var CHRONO_ICO_PLAY  = '<svg class="chrono-ico" viewBox="0 0 12 12" aria-hidden="true">' +
-                       '<polygon points="3.5,2 10,6 3.5,10"/></svg>';
-var CHRONO_ICO_PAUSE = '<svg class="chrono-ico" viewBox="0 0 12 12" aria-hidden="true">' +
-                       '<rect x="3" y="2" width="2.5" height="8"/>' +
-                       '<rect x="6.5" y="2" width="2.5" height="8"/></svg>';
-
-function _syncChronoBtnCorde() {
-    var btn = document.getElementById('btn-chrono-start');
-    if (!btn) return;
-    btn.innerHTML = chronoCorde.running ? CHRONO_ICO_PAUSE : CHRONO_ICO_PLAY;
-    btn.title     = chronoCorde.running ? 'Arrêter le chronomètre'
-                                        : 'Démarrer le chronomètre';
-    btn.classList.toggle('running', chronoCorde.running);
-}
-
-//  Appelé aussi au changement de mode de source : repasser en Impulsion ou
-//  Libre alors que l'affichage est en T le ramène aux secondes, faute de
-//  période définie.
-function _syncChronoUnitsCorde() {
-    var noPeriod = _cordeModeIsImpulseOrFree();
-    if (noPeriod && chronoCorde.unit === 'T') chronoCorde.unit = 's';
-
-    var btnT = document.getElementById('btn-chrono-unit-T');
-    if (btnT) {
-        btnT.disabled = noPeriod;
-        btnT.classList.toggle('active', chronoCorde.unit === 'T');
-    }
-    var btnS = document.getElementById('btn-chrono-unit-s');
-    if (btnS) btnS.classList.toggle('active', chronoCorde.unit === 's');
-}
-
-function _updateChronoCorde() {
-    var el = document.getElementById('chrono-value');
-    if (!el) return;
-    // En T, on lit le compteur de périodes cumulé dans la boucle : il reste
-    // juste même si la fréquence a changé pendant le comptage.
-    var inT = (chronoCorde.unit === 'T' && simCorde.freq > 0);
-    var txt = inT ? fmtFR(chronoCorde.periods, 2)
-                  : fmtFR(chronoCorde.elapsed, 2);
-    // Écriture conditionnelle : la fonction est appelée à chaque frame.
-    if (txt !== _chronoLastTxt) { el.textContent = txt; _chronoLastTxt = txt; }
-
-    var lbl = document.getElementById('chrono-unit-lbl');
-    if (lbl) lbl.textContent = inT ? 'T' : 's';
-}
-var _chronoLastTxt = '';
-
 // ── Sliders Corde ─────────────────────────────────────────────────────
 //  Les readouts sont rafraîchis ICI et pas seulement dans la boucle : celle-ci
 //  ne les met à jour que si l'animation tourne, si bien qu'en pause les
@@ -1060,7 +990,7 @@ function onSliderFreqCorde(v) {
     var lbl = document.getElementById('lbl-freq-corde');
     if (lbl) lbl.textContent = simCorde.freq.toFixed(1).replace('.', ',');
     _updateWavePropsCorde();
-    _updateChronoCorde();   // l'affichage en T dépend de f
+    _updateChrono('corde');   // l'affichage en T dépend de f
 }
 
 function onSliderAmplCorde(v) {

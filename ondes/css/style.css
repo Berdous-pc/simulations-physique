@@ -109,12 +109,15 @@ main {
   grid-row: 1;
 }
 
-/* ── Chronomètre (onglets Son + Corde) — box propre, au-dessus de la source ──
+/* ── Chronomètre — box propre, au-dessus de la source ─────────────────
+   Une box par onglet, même gabarit pour toutes (cf. index.html) : le style
+   passe donc par des CLASSES, les ids ne servant plus qu'à désigner la box
+   d'un onglet et ses champs pour le module générique de ui.js.
    Habillage métal gris/noir repris du pot vibrant / de la membrane dessinés
    sur le canvas (mêmes gris bleutés #8a9aaa → #4a5a6a, contour #3a4a58).
    Afficheur clair (valeur + unité) sur la première ligne, commandes sur la
    seconde : marche/zéro à gauche, bascule d'unité s/T à droite. */
-#chrono-corde, #chrono-son {
+.chrono-box {
   position: absolute;
   left: 0;
   right: 0;
@@ -133,7 +136,7 @@ main {
 
 /* Afficheur : nombre en gros (lisible au vidéoprojecteur) + unité.
    Légèrement creusé dans le boîtier (ombre interne). */
-#chrono-display {
+.chrono-display {
   display: flex;
   align-items: baseline;
   justify-content: center;
@@ -144,7 +147,7 @@ main {
   border-radius: 4px;
   box-shadow: inset 0 1px 3px rgba(20,30,40,0.35);
 }
-#chrono-value, #chrono-value-son {
+.chrono-value {
   font-variant-numeric: tabular-nums;
   font-size: clamp(21px, 2.6vw, 36px);
   font-weight: 700;
@@ -152,7 +155,7 @@ main {
   color: #16222c;
   white-space: nowrap;
 }
-#chrono-unit-lbl, #chrono-unit-lbl-son {
+.chrono-unit-lbl {
   font-size: clamp(16px, 2vw, 27px);
   font-weight: 600;
   color: #55636e;
@@ -161,14 +164,14 @@ main {
 /* Ligne de commandes : marche/zéro puis « Lier » à gauche, bascule d'unité
    à droite. Tout tient sur UNE ligne quelle que soit la largeur de colonne :
    les commandes rétrécissent (clamp) au lieu de passer à la ligne. */
-#chrono-ctrl {
+.chrono-ctrl {
   display: flex;
   align-items: center;
   gap: clamp(2px, 0.3vw, 4px);
 }
 
 /* Case « Lier » : déclenchement du chrono à l'activation de la source */
-#chrono-link, #chrono-link-son {
+.chrono-link {
   display: flex;
   align-items: center;
   gap: 3px;
@@ -179,7 +182,7 @@ main {
   cursor: pointer;
   user-select: none;
 }
-#chk-chrono-link, #chk-chrono-link-son {
+.chrono-link input {
   flex: 0 0 auto;
   width: clamp(10px, 1.1vw, 13px);
   height: clamp(10px, 1.1vw, 13px);
@@ -189,7 +192,7 @@ main {
 }
 
 /* Bascule s / T : deux demi-boutons accolés, calés à droite */
-#chrono-units {
+.chrono-units {
   display: flex;
   flex: 0 0 auto;
   margin-left: auto;

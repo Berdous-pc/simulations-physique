@@ -84,61 +84,63 @@
       <!-- Ligne 2 col 1 : colonne chronomètre + box source, centrée verticalement -->
       <div id="source-col">
 
-        <!-- Chronomètre (onglet Son) : sa propre box, afficheur blanc
-             (valeur + unité) et, en dessous, marche/zéro à gauche et
-             bascule d'unité s/T à droite -->
-        <div id="chrono-son">
-          <div id="chrono-display">
-            <span id="chrono-value-son">0,00</span>
-            <span id="chrono-unit-lbl-son">s</span>
+        <!-- Chronomètre : une box par onglet, même gabarit pour toutes.
+             Afficheur clair (valeur + unité) sur la première ligne, commandes
+             sur la seconde : marche/zéro à gauche, bascule d'unité s/T à
+             droite. Seul l'id de la box et le suffixe des ids internes
+             changent d'un onglet à l'autre — c'est ce que lit le module
+             générique de ui.js (cf. CHRONO_DEFS). Le reste passe par des
+             CLASSES et non des ids : elles se répètent d'une box à l'autre,
+             ce qu'un id ne peut pas faire. -->
+        <div class="chrono-box" id="chrono-son">
+          <div class="chrono-display">
+            <span class="chrono-value" id="chrono-value-son">0,00</span>
+            <span class="chrono-unit-lbl" id="chrono-unit-lbl-son">s</span>
           </div>
-          <div id="chrono-ctrl">
+          <div class="chrono-ctrl">
             <button class="chrono-btn" id="btn-chrono-start-son"
-                    onclick="toggleChronoSon()" title="Démarrer le chronomètre"><svg
+                    onclick="toggleChrono('son')" title="Démarrer le chronomètre"><svg
                     class="chrono-ico" viewBox="0 0 12 12" aria-hidden="true"><polygon
                     points="3.5,2 10,6 3.5,10"/></svg></button>
             <button class="chrono-btn" id="btn-chrono-reset-son"
-                    onclick="resetChronoSon()" title="Remettre le chronomètre à zéro">⟲</button>
-            <label id="chrono-link-son"
+                    onclick="resetChrono('son')" title="Remettre le chronomètre à zéro">⟲</button>
+            <label class="chrono-link"
                    title="Lier le déclenchement du chronomètre à l'activation de la source.">
               <input type="checkbox" id="chk-chrono-link-son">Lier
             </label>
-            <span id="chrono-units">
+            <span class="chrono-units">
               <button class="chrono-unit active" id="btn-chrono-unit-s-son"
-                      onclick="setChronoUnitSon('s')"
+                      onclick="setChronoUnit('son', 's')"
                       title="Compter en secondes">s</button>
               <button class="chrono-unit" id="btn-chrono-unit-T-son"
-                      onclick="setChronoUnitSon('T')"
+                      onclick="setChronoUnit('son', 'T')"
                       title="Compter en multiples de la période T">T</button>
             </span>
           </div>
         </div>
 
-        <!-- Chronomètre (onglet Corde) : sa propre box, afficheur blanc
-             (valeur + unité) et, en dessous, marche/zéro à gauche et
-             bascule d'unité s/T à droite -->
-        <div id="chrono-corde" style="display:none;">
-          <div id="chrono-display">
-            <span id="chrono-value">0,00</span>
-            <span id="chrono-unit-lbl">s</span>
+        <div class="chrono-box" id="chrono-corde" style="display:none;">
+          <div class="chrono-display">
+            <span class="chrono-value" id="chrono-value-corde">0,00</span>
+            <span class="chrono-unit-lbl" id="chrono-unit-lbl-corde">s</span>
           </div>
-          <div id="chrono-ctrl">
-            <button class="chrono-btn" id="btn-chrono-start"
-                    onclick="toggleChronoCorde()" title="Démarrer le chronomètre"><svg
+          <div class="chrono-ctrl">
+            <button class="chrono-btn" id="btn-chrono-start-corde"
+                    onclick="toggleChrono('corde')" title="Démarrer le chronomètre"><svg
                     class="chrono-ico" viewBox="0 0 12 12" aria-hidden="true"><polygon
                     points="3.5,2 10,6 3.5,10"/></svg></button>
-            <button class="chrono-btn" id="btn-chrono-reset"
-                    onclick="resetChronoCorde()" title="Remettre le chronomètre à zéro">⟲</button>
-            <label id="chrono-link"
+            <button class="chrono-btn" id="btn-chrono-reset-corde"
+                    onclick="resetChrono('corde')" title="Remettre le chronomètre à zéro">⟲</button>
+            <label class="chrono-link"
                    title="Lier le déclenchement du chronomètre à l'activation de la source.">
-              <input type="checkbox" id="chk-chrono-link">Lier
+              <input type="checkbox" id="chk-chrono-link-corde">Lier
             </label>
-            <span id="chrono-units">
-              <button class="chrono-unit active" id="btn-chrono-unit-s"
-                      onclick="setChronoUnitCorde('s')"
+            <span class="chrono-units">
+              <button class="chrono-unit active" id="btn-chrono-unit-s-corde"
+                      onclick="setChronoUnit('corde', 's')"
                       title="Compter en secondes">s</button>
-              <button class="chrono-unit" id="btn-chrono-unit-T"
-                      onclick="setChronoUnitCorde('T')"
+              <button class="chrono-unit" id="btn-chrono-unit-T-corde"
+                      onclick="setChronoUnit('corde', 'T')"
                       title="Compter en multiples de la période T">T</button>
             </span>
           </div>

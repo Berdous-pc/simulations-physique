@@ -1920,7 +1920,7 @@ function _drawSonLambdaArrow(ctx) {
             if (typeof _armYtWindowCorde === 'function') _armYtWindowCorde();
             // Mode Libre : la source, c'est le geste. Si le chronomètre est
             // lié, la saisie de la boule joue donc le rôle du bouton Activer.
-            if (typeof _startChronoIfLinkedCorde === 'function') _startChronoIfLinkedCorde();
+            if (typeof _startChronoIfLinked === 'function') _startChronoIfLinked('corde');
             tubeCanvas.setPointerCapture(e.pointerId);
             return;
         }
