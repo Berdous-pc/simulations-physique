@@ -834,16 +834,18 @@ pixels, avec cache reconstruit à la demande (`_rebuildVaguesFieldCache`).
 y(r, t) = A · sin(2π f (t − r/c))   pour r ≤ c·(t − sourceResetTime), sinon 0
 ```
 
-avec `c = √(g·h)`. La condition sur `r` forme l'**enveloppe causale** : déplacer
-la source remet `sourceResetTime` à l'instant courant, si bien que les vagues
-déjà émises ne bougent pas.
+avec `c = √(g·h)`. La condition sur `r` forme l'**enveloppe causale** :
+`sourceResetTime` marque l'instant où la source a commencé à émettre, si bien
+qu'au démarrage l'onde part de la source au lieu d'emplir le bassin d'un coup.
+Seul `resetVagues()` la remet à jour ; la source, elle, est **fixe au centre du
+canvas** (`resizeVagues`) et n'est pas déplaçable.
 
 Deux atténuations distinctes : `attenuation` (exponentielle) et
 `geoAttenuation` (en 1/√r, désactivée par défaut).
 
-Spécificités de l'onglet : source draggable dans le canvas, balises draggables
-dans le plan (et non sur un axe), et une **vue en coupe** (`viewMode`,
-avec animation de transition `transAnim`).
+Spécificités de l'onglet : balises draggables dans le plan (et non sur un axe),
+flèche λ draggable, et une **vue en coupe** (`viewMode`, avec animation de
+transition `transAnim`).
 
 ### Transition vue du dessus ↔ vue en coupe
 
@@ -1088,9 +1090,12 @@ index.html
 - **Vagues utilise encore le modèle analytique rétroactif.** Bouger g ou h
   réécrit rétroactivement toute l'onde présente, et le tampon y(t) n'est pas
   vidé au déplacement d'une balise. Le portage sur l'historique de source est
-  mécanique, désormais que la mécanique est factorisée — mais la source y est
-  continue et déplaçable dans le plan, ce qui demande un S par direction ou une
-  approximation à documenter.
+  mécanique, désormais que la mécanique est factorisée : la source étant fixe
+  et le champ isotrope, un **seul** historique 1D indexé par `r` suffit — pas
+  de S par direction. Le coût est ailleurs : tous les lecteurs du champ
+  (`_waveFieldRaw`, `_waveFieldCoupeAt`, la LUT du cache, `updateYxDataVagues`,
+  `rebuildYtDataVagues`, la quadrature des orbites) doivent passer par la même
+  fonction, sans quoi la coupe et la transition 3D cessent de converger.
 - Reste calé sur les réglages courants côté Son : `aEff` dans `waveDeltaP`
   (facteur 1/2 en mode impulsion). Il ne change qu'au basculement de
   `sourceMode`, jamais au glissement d'un curseur, et ce basculement n'a lieu
