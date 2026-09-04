@@ -87,7 +87,20 @@ que pendant l'animation d'éclatement (et un `rAF` ponctuel pendant le drag).
   inverse (« ↺ Rassembler »). Les positions de départ sont figées en unités
   de rayon de bille (`_freeze`) → insensibles au redimensionnement. Fin
   d'animation signalée à `ui.js` par le hook `onNucAnimEnd()` (réactive le
-  bouton) ; changement d'élément → `resetNucVue()`.
+  bouton).
+  **Changement d'élément → `syncNucVue()`, pas `resetNucVue()`** : la vue
+  éclatée **reste ouverte** si elle l'était et ses colonnes se reconstruisent
+  pour le nouvel élément (le cadre et les emplacements sont recalculés à
+  chaque rendu depuis l'élément courant — `getFrameGeom()`/`slotPos()`, et
+  `_freeze` n'est lu qu'en cours de vol), donc le bouton « Disperser le
+  noyau » n'est pas remis à zéro. `syncNucVue()` coupe seulement l'animation
+  en cours et vide `_freeze` (positions figées de l'**ancien** noyau, dont le
+  nombre de nucléons diffère) : la vue saute à son état stable, que
+  `state.eclate` porte déjà, même en pleine animation. Vaut pour **tous** les
+  changements d'élément (tableau périodique, flèches de navigation, sélecteur
+  « Comparer avec »), les deux passant par `selectElement()`/`setCompareZ()`.
+  `resetNucVue()` (qui force `state.eclate = false`) ne sert plus qu'aux
+  entrées/sorties du mode test.
 - **Vue charge** (`state.charge`, bouton « ⚡ Visualiser la charge » du
   panneau, fonction `startChargeAnim(dir)`) : même mécanique que la vue
   éclatée, mais deux colonnes **protons/électrons** (réutilise
@@ -101,8 +114,12 @@ que pendant l'animation d'éclatement (et un `rAF` ponctuel pendant le drag).
   même cadence accélérée que `nucProgress`. **Mutuellement exclusive** avec la vue
   éclatée du noyau (`toggleEclate()`/`toggleCharge()` dans `ui.js`) : activer
   l'une referme l'autre **instantanément** (pas de contre-animation) avant de
-  lancer sa propre animation. Fin d'animation → hook `onChargeAnimEnd()` ;
-  changement d'élément → `resetChargeVue()`.
+  lancer sa propre animation. Fin d'animation → hook `onChargeAnimEnd()`.
+  Changement d'élément → `syncChargeVue()`, pendant exact de `syncNucVue()`
+  ci-dessus : la vue reste ouverte et ses deux colonnes se reconstruisent
+  pour le nouvel élément (`nE` repartant de Z, `state.ionQ` étant remis à 0),
+  le bouton n'est pas remis à zéro. `resetChargeVue()` ne sert plus qu'au
+  mode test.
 - **Sous-couches** : cercles concentriques à **échelle commune à tous les
   atomes** (`rStep = Rmax / 5`, le nombre total de sous-couches de la page) :
   une sous-couche donnée a le même rayon quel que soit l'élément, et le rayon

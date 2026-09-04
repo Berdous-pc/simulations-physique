@@ -459,11 +459,25 @@ function nucTick() {
   requestAnimationFrame(nucTick);
 }
 
-/* Réinitialisation immédiate (changement d'élément) */
+/* Fermeture immédiate, sans contre-animation (sortie du mode test) */
 function resetNucVue() {
   _nucAnim.running = false;
   _freeze = { main: null, cmp: null };
   state.eclate = false;
+}
+
+/* Changement d'élément, la vue éclatée restant telle quelle : ouverte, elle
+   le reste et ses colonnes se reconstruisent pour le nouvel élément (le
+   cadre et les emplacements sont recalculés à chaque rendu à partir de
+   l'élément courant — cf. drawVueEclatee/getFrameGeom). On coupe seulement
+   l'animation en cours et les positions figées : elles portent sur l'ancien
+   noyau (nombre de nucléons différent), et les trajectoires partiraient de
+   points qui n'ont plus de sens. La vue saute donc à son état stable —
+   assemblé ou éclaté selon `state.eclate`, qui porte déjà la cible même en
+   cours d'animation. */
+function syncNucVue() {
+  _nucAnim.running = false;
+  _freeze = { main: null, cmp: null };
 }
 
 /* ─────────────────────────────────────────────────
@@ -547,11 +561,22 @@ function chargeTick() {
   requestAnimationFrame(chargeTick);
 }
 
-/* Réinitialisation immédiate (changement d'élément) */
+/* Fermeture immédiate, sans contre-animation (sortie du mode test) */
 function resetChargeVue() {
   _chargeAnim.running = false;
   _freezeCharge = { main: null, cmp: null };
   state.charge = false;
+}
+
+/* Pendant de syncNucVue() pour la vue charge : au changement d'élément, la
+   vue ouverte le reste et ses deux colonnes se reconstruisent pour le nouvel
+   élément (drawVueCharge repart de l'élément courant — cadre via
+   getFrameGeom() sur { Z, A: Z + nE }, électrons via getElectronLayout()).
+   Seuls l'animation en cours et les positions figées des protons sautent :
+   elles portent sur l'ancien noyau. */
+function syncChargeVue() {
+  _chargeAnim.running = false;
+  _freezeCharge = { main: null, cmp: null };
 }
 
 /* ─────────────────────────────────────────────────

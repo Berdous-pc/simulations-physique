@@ -87,9 +87,12 @@ function buildTP() {
 function selectElement(Z) {
   state.Z = Z;
   state.ionQ = 0;
-  /* Changement d'élément : on revient à la vue assemblée du noyau */
-  resetNucVue();
-  resetChargeVue();
+  /* Changement d'élément : la vue éclatée du noyau, si elle est ouverte, le
+     reste et se recompose pour le nouvel élément (cf. syncNucVue) — le bouton
+     « Disperser le noyau » n'est donc pas remis à zéro. Idem pour la vue
+     charge (syncChargeVue / « Visualiser la charge »). */
+  syncNucVue();
+  syncChargeVue();
   resetIonVue();
   majBtnEclate();
   majBtnCharge();
@@ -178,11 +181,11 @@ function setCompareZ(v) {
      de la demi-zone de droite. */
   var sel = document.getElementById('cmp-select');
   if (sel && sel.value !== String(state.Zcmp)) sel.value = String(state.Zcmp);
-  /* Changement de l'élément comparé : on revient à la vue assemblée du
-     noyau (le figé de la vue éclatée ne correspondrait plus au nouvel
-     élément). */
-  resetNucVue();
-  resetChargeVue();
+  /* Changement de l'élément comparé : comme pour l'élément sélectionné, la
+     vue éclatée du noyau reste ouverte si elle l'était et se recompose pour
+     le nouvel élément (cf. syncNucVue), la vue charge de même. */
+  syncNucVue();
+  syncChargeVue();
   resetIonVue();
   majBtnEclate();
   majBtnCharge();
