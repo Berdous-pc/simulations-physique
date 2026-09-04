@@ -98,8 +98,34 @@ function selectElement(Z) {
   for (var i = 0; i < cells.length; i++) cells[i].classList.remove('selected');
   var cell = document.getElementById('tp-cell-' + Z);
   if (cell) cell.classList.add('selected');
+  majBtnNav();
   render();
   majInfos();
+}
+
+/* ─────────────────────────────────────────────────
+   Navigation rapide (boutons dans les coins hauts du schéma)
+   `which` = 'main' (élément du tableau périodique) ou 'cmp' (élément du
+   sélecteur « Comparer avec », qui suit). `dir` = -1 / +1.
+───────────────────────────────────────────────── */
+function navElement(which, dir) {
+  if (testBloqueControles()) return;
+  var Z = ZOf(which) + dir;
+  if (Z < 1 || Z > ELEMENTS.length) return;
+  if (which === 'cmp') setCompareZ(Z);
+  else                 selectElement(Z);
+}
+
+/* Boutons désactivés aux deux bouts de la série (H et Ar) — même parti pris
+   que les flèches d'ionisation : pas de bouclage. */
+function majBtnNav() {
+  ['main', 'cmp'].forEach(function (which) {
+    var Z = ZOf(which);
+    var prev = document.getElementById('btn-nav-prev-' + which);
+    var next = document.getElementById('btn-nav-next-' + which);
+    if (prev) prev.disabled = testBloqueControles() || Z <= 1;
+    if (next) next.disabled = testBloqueControles() || Z >= ELEMENTS.length;
+  });
 }
 
 /* ─────────────────────────────────────────────────
@@ -138,6 +164,7 @@ function toggleCompare() {
   btn.classList.toggle('active', state.compare);
   btn.setAttribute('aria-pressed', String(state.compare));
 
+  majBtnNav();
   majCompareTP();
   majInfos();
   render();
@@ -146,6 +173,11 @@ function toggleCompare() {
 function setCompareZ(v) {
   state.Zcmp = parseInt(v, 10);
   state.ionQCmp = 0;
+  /* Le sélecteur suit : appelé depuis son propre onchange c'est déjà le cas,
+     mais pas quand la valeur vient des boutons « Élément précédent/suivant »
+     de la demi-zone de droite. */
+  var sel = document.getElementById('cmp-select');
+  if (sel && sel.value !== String(state.Zcmp)) sel.value = String(state.Zcmp);
   /* Changement de l'élément comparé : on revient à la vue assemblée du
      noyau (le figé de la vue éclatée ne correspondrait plus au nouvel
      élément). */
@@ -156,6 +188,7 @@ function setCompareZ(v) {
   majBtnCharge();
   majBtnIon();
   majSelectNoble();
+  majBtnNav();
   majCompareTP();
   majInfos();
   render();

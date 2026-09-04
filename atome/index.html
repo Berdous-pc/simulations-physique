@@ -42,6 +42,36 @@
           <canvas id="atom-canvas"></canvas>
         </div>
 
+        <!-- Navigation rapide entre éléments, dans les coins hauts de la zone
+             (laissés libres par le schéma, inscrit dans un cercle centré).
+             En mode comparaison, un jeu de boutons par demi-zone : à gauche
+             l'élément sélectionné dans le tableau périodique, à droite celui
+             du sélecteur « Comparer avec » — que ces boutons mettent à jour
+             en même temps que l'affichage. -->
+        <div class="atom-nav" id="atom-nav-main">
+          <button type="button" class="atom-nav-btn" id="btn-nav-prev-main"
+                  title="Élément précédent" onclick="navElement('main', -1)"><span
+            class="atom-nav-chev">◀</span><span
+            class="atom-nav-lab">Élément précédent</span></button>
+          <button type="button" class="atom-nav-btn" id="btn-nav-next-main"
+                  title="Élément suivant" onclick="navElement('main', 1)"><span
+            class="atom-nav-lab">Élément suivant</span><span
+            class="atom-nav-chev">▶</span></button>
+        </div>
+
+        <div class="atom-nav" id="atom-nav-cmp">
+          <button type="button" class="atom-nav-btn" id="btn-nav-prev-cmp"
+                  title="Élément précédent (atome comparé)"
+                  onclick="navElement('cmp', -1)"><span
+            class="atom-nav-chev">◀</span><span
+            class="atom-nav-lab">Élément précédent</span></button>
+          <button type="button" class="atom-nav-btn" id="btn-nav-next-cmp"
+                  title="Élément suivant (atome comparé)"
+                  onclick="navElement('cmp', 1)"><span
+            class="atom-nav-lab">Élément suivant</span><span
+            class="atom-nav-chev">▶</span></button>
+        </div>
+
         <!-- Progression du mode test (atome n/5 + score) -->
         <div id="test-progress-bar"></div>
 
@@ -275,7 +305,9 @@
       </div>
       <div class="panel-hint-body">
         Cliquez sur un <strong>élément</strong> du tableau périodique pour afficher
-        la structure électronique de son atome.<br>
+        la structure électronique de son atome, ou utilisez les boutons
+        <strong>Élément précédent / suivant</strong> dans les coins hauts du
+        schéma pour parcourir la série (un jeu par atome en comparaison).<br>
         <strong>Noyau</strong> : protons (rouge) et neutrons (blanc) de l'isotope
         le plus abondant — faites-le <strong>tourner</strong> en le faisant glisser
         avec la souris.<br>

@@ -111,6 +111,77 @@ body.compare #atom-title-b { display: block; }
   height: 100%;
 }
 
+/* ── Navigation rapide entre éléments (coins hauts du schéma) ──
+   Superposée au canvas : le schéma est un cercle centré, les coins hauts
+   sont donc libres. Le conteneur laisse passer la souris (pointer-events),
+   seuls les boutons la captent. En comparaison, chaque jeu se cale sur sa
+   demi-zone, comme les deux moitiés de #atom-title. */
+.atom-nav {
+  position: absolute;
+  top: clamp(4px, 0.8vh, 10px);
+  left: clamp(4px, 0.7vw, 12px);
+  right: clamp(4px, 0.7vw, 12px);
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  pointer-events: none;
+  z-index: 12;
+}
+#atom-nav-cmp { display: none; }
+body.compare #atom-nav-main { right: calc(50% + clamp(4px, 0.7vw, 12px)); }
+body.compare #atom-nav-cmp  {
+  display: flex;
+  left: calc(50% + clamp(4px, 0.7vw, 12px));
+}
+/* Mode test : l'élément est imposé par le tirage — pas de navigation
+   (le coin haut gauche est d'ailleurs pris par #test-progress-bar). */
+body.test .atom-nav { display: none; }
+
+/* Même pastille bleue que #tp-toggle (charte du site) */
+.atom-nav-btn {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #eaf2fa;
+  border: 1.5px solid #2a6aaa;
+  border-radius: 6px;
+  color: #2a6aaa;
+  font-family: inherit;
+  font-size: clamp(10px, 1.2vh, 14px);
+  font-weight: 700;
+  line-height: 1.2;
+  padding: clamp(3px, 0.5vh, 6px) clamp(6px, 0.7vw, 10px);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, opacity 0.15s;
+}
+.atom-nav-btn:hover:not(:disabled)  { background: #2a6aaa; color: #fff; }
+.atom-nav-btn:active:not(:disabled) { transform: scale(0.97); }
+.atom-nav-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+/* Triangles pleins (mêmes glyphes que les flèches d'ionisation ▲▼) plutôt
+   que des chevrons ‹ › : ceux-ci sont des signes typographiques posés sur la
+   ligne de base, donc visuellement décalés vers le haut dans le cadre. Les
+   formes géométriques, elles, sont centrées sur le cadratin. Le `display:
+   flex` + `line-height: 1` neutralise en plus la demi-interligne résiduelle,
+   pour un centrage vertical exact quelle que soit la police. */
+.atom-nav-chev {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.78em;
+  line-height: 1;
+}
+/* Demi-zones trop étroites pour le libellé : chevrons seuls, l'intitulé
+   complet restant dans l'infobulle (title). */
+body.compare .atom-nav-lab { display: none; }
+/* Réduit au seul triangle, le bouton garde une cible carrée confortable */
+body.compare .atom-nav-btn {
+  justify-content: center;
+  min-width: clamp(26px, 2.6vw, 34px);
+}
+
 /* ── Légende (neutron / proton / électron / s / p) ──
    Affichée dans le panneau de droite, section Affichage
    (masquable via la case à cocher associée). */

@@ -153,6 +153,18 @@ que pendant l'animation d'éclatement (et un `rAF` ponctuel pendant le drag).
   le second nom d'élément `#atom-title-b`), referme la vue éclatée et
   désactive son bouton. `majCompareTP()` pose un liseré orangé
   (`.tp-cell.compared`) sur la case de l'élément comparé.
+- **Navigation rapide** : deux boutons « Élément précédent / suivant »
+  (`.atom-nav-btn`) superposés aux coins hauts de `#atom-main` — le schéma étant
+  un cercle centré, ces coins sont libres. `navElement(which, dir)` décale Z de
+  ±1 et appelle `selectElement()` (`'main'`) ou `setCompareZ()` (`'cmp'`) ;
+  `majBtnNav()` désactive les boutons aux deux bouts de la série (H, Ar) — pas
+  de bouclage, même parti pris que les flèches d'ionisation. En comparaison
+  (`body.compare`), le second jeu `#atom-nav-cmp` apparaît au-dessus de la
+  demi-zone de droite et pilote l'élément comparé, `#cmp-select` suivant la
+  valeur (mis à jour dans `setCompareZ()`). Demi-zones étroites : le libellé est
+  masqué, seuls restent les chevrons (intitulé complet dans le `title`).
+  `body.test` masque les deux jeux (l'élément est imposé par le tirage, et
+  `#test-progress-bar` occupe le coin haut gauche).
 - Options : `toggleEmpty()` (sous-couches vides), `toggleStable()` (pastille de
   stabilité), `toggleLegend()` (légende).
 - Élément par défaut au chargement : oxygène (Z = 8), comparé à l'argon (Z = 18).

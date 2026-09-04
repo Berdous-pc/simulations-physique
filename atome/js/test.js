@@ -162,7 +162,7 @@ function setTestUI(actif) {
     btn.onclick = ouvrirConfirmTest;
     /* Les états « disabled » légitimes (limites d'ionisation, animation en
        cours…) sont recalculés par les fonctions du panneau. */
-    majBtnEclate(); majBtnCharge(); majBtnIon();
+    majBtnEclate(); majBtnCharge(); majBtnIon(); majBtnNav();
   }
 }
 
