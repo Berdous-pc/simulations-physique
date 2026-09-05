@@ -2512,9 +2512,38 @@ function _drawCordeWire(ctx) {
 //  déplace jamais horizontalement — il ne fait que reproduire, avec un
 //  retard, le mouvement du point qui le précède.
 
-// Nombre de points (bornes incluses) — 51 pour 5 m au pas de 10 cm.
+// ── Pas effectif du chapelet ──────────────────────────────────────────
+//
+//  En source Sinusoïdale, le pas nominal (10 cm) est ajusté au plus près
+//  pour que λ/2 tombe exactement sur un point matériel — et donc λ, 3λ/2,
+//  etc. aussi, puisque ce sont des multiples de λ/2. Sans cet ajustement,
+//  repérer deux points en phase ou en opposition de phase revenait à
+//  espérer que le pas fixe de 10 cm tombe par hasard sur un multiple de λ/2,
+//  ce qui n'arrive presque jamais.
+//
+//  L'ajustement ne porte que sur le nombre de subdivisions de λ/2 (`n`,
+//  arrondi à l'entier le plus proche de la cible 10 cm) : le pas obtenu,
+//  λ/(2n), reste donc toujours un sous-multiple exact de λ/2. `CORDE_BEAD_STEP_MIN`
+//  empêche seulement n de grimper trop haut aux hautes fréquences (petite λ),
+//  où resserrer le chapelet réintroduirait l'illusion stroboscopique.
+//
+//  Sans fréquence définie (Impulsion, Libre, source éteinte), pas de λ à
+//  caler dessus : on retombe sur le pas nominal fixe.
+function _cordeBeadStepM() {
+    var hasFreq = simCorde.sourceMode === 'sinus' || simCorde.sourceMode === 'periodic';
+    var lambda = (hasFreq && simCorde.freq > 0 && simCorde.c_cms > 0)
+        ? simCorde.c_cms / simCorde.freq : 0;
+    if (!(lambda > 0)) return CORDE_BEAD_STEP_M;
+
+    var half = lambda / 2;
+    var n    = Math.max(1, Math.round(half / CORDE_BEAD_STEP_M));
+    return Math.max(CORDE_BEAD_STEP_MIN, half / n);
+}
+
+// Nombre de points (bornes incluses) — 51 pour 5 m au pas nominal de 10 cm ;
+// ajusté autour de cette valeur en source Sinusoïdale (cf. _cordeBeadStepM).
 function cordeBeadCount() {
-    return Math.round(CORDE_LENGTH_M / CORDE_BEAD_STEP_M) + 1;
+    return Math.round(CORDE_LENGTH_M / _cordeBeadStepM()) + 1;
 }
 
 // ── Rayon des sphères (px) ────────────────────────────────────────────
@@ -2572,9 +2601,16 @@ function _drawCordeFirstBead(ctx) {
 }
 
 // Abscisse écran (px) du point d'indice i.
+//
+//  Positionné à `i` pas exacts depuis la source (et non par simple division
+//  de `cordeLength` par le nombre de points) : c'est ce qui garantit que les
+//  points tombant sur un multiple de λ/2 le font *exactement*, y compris loin
+//  de la source. Seul le tout dernier point est ramené sur le bord droit,
+//  quitte à raccourcir légèrement le dernier lien.
 function cordeBeadX(i) {
-    var n = cordeBeadCount() - 1;
-    return simCorde.cordeLeft + (i / n) * simCorde.cordeLength;
+    var stepFrac = _cordeBeadStepM() / CORDE_LENGTH_M;
+    var frac = Math.min(1, i * stepFrac);
+    return simCorde.cordeLeft + frac * simCorde.cordeLength;
 }
 
 function _drawCordeBeads(ctx) {
@@ -2594,8 +2630,11 @@ function _drawCordeBeads(ctx) {
     // (cf. _cordeAttachY), exactement comme le départ du fil continu.
     var xs = new Float32Array(nBeads);
     var ys = new Float32Array(nBeads);
+    var stepFrac = _cordeBeadStepM() / CORDE_LENGTH_M;
     for (var i = 0; i < nBeads; i++) {
-        var xPx = (i / (nBeads - 1)) * L;
+        // Même règle que cordeBeadX : pas exact depuis la source, dernier
+        // point ramené sur le bord droit.
+        var xPx = Math.min(1, i * stepFrac) * L;
         xs[i] = simCorde.cordeLeft + xPx;
         ys[i] = (i === 0)
                     ? _cordeAttachY()

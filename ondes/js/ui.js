@@ -801,6 +801,7 @@ function _stopEmissionCorde() {
     _syncSourceButtonsCorde();
     _syncWavePropsBtnStateCorde();
     _syncLambdaBtnStateCorde();
+    _resnapCordeBeaconsToLambda();   // plus de λ définie : le chapelet revient au pas fixe
 }
 
 //  Horloge du graphe y(t) : reste en attente (ytTimeOrigin = null) tant que
@@ -923,6 +924,7 @@ function onSourceModeChangeCorde() {
     if (wasContinuous) _stopEmissionCorde();
 
     _applySourceModeCorde();
+    _resnapCordeBeaconsToLambda();   // le sélecteur seul conditionne _syncLambdaBtnStateCorde
 }
 
 //  Chaque appui envoie une NOUVELLE impulsion : celles qui sont déjà sur la
@@ -941,6 +943,7 @@ function sendImpulseCorde() {
     _syncSourceButtonsCorde();
     _syncWavePropsBtnStateCorde();
     _syncLambdaBtnStateCorde();
+    _resnapCordeBeaconsToLambda();   // impulsion : plus de λ, retour au pas fixe
 }
 
 function toggleSinusoidalCorde() {
@@ -958,6 +961,7 @@ function toggleSinusoidalCorde() {
         _syncSourceButtonsCorde();
         _syncWavePropsBtnStateCorde();
         _syncLambdaBtnStateCorde();
+        _resnapCordeBeaconsToLambda();
     }
 }
 
@@ -979,6 +983,7 @@ function togglePeriodicCorde() {
         _syncSourceButtonsCorde();
         _syncWavePropsBtnStateCorde();
         _syncLambdaBtnStateCorde();
+        _resnapCordeBeaconsToLambda();
     }
 }
 
@@ -1025,6 +1030,7 @@ function onSliderFreqCorde(v) {
     if (lbl) lbl.textContent = simCorde.freq.toFixed(1).replace('.', ',');
     _updateWavePropsCorde();
     _updateChrono('corde');   // l'affichage en T dépend de f
+    _resnapCordeBeaconsToLambda();
 }
 
 function onSliderAmplCorde(v) {
@@ -1040,6 +1046,7 @@ function onSliderMu(v) {
     updateCeleriteCorde();
     _updateCReadoutCorde();
     _updateWavePropsCorde();
+    _resnapCordeBeaconsToLambda();
 }
 
 function onSliderTension(v) {
@@ -1049,6 +1056,7 @@ function onSliderTension(v) {
     updateCeleriteCorde();
     _updateCReadoutCorde();
     _updateWavePropsCorde();
+    _resnapCordeBeaconsToLambda();
 }
 
 function onSliderAttenCorde(v) {
@@ -1079,16 +1087,31 @@ function setCordeAspect(mode) {
     if (btnC) btnC.classList.toggle('active', mode === 'continu');
     if (btnD) btnD.classList.toggle('active', mode === 'discret');
 
-    if (mode === 'discret') {
-        // Le graphe y(t) enregistré jusqu'ici décrit un point qui n'est plus
-        // celui suivi : on recalcule la trace pour la nouvelle position, comme
-        // après un drag (cf. _markBeaconMoved dans tube.js).
-        var moved1 = simCorde.beacon1.x, moved2 = simCorde.beacon2.x;
-        snapCordeBeacon(simCorde.beacon1);
-        snapCordeBeacon(simCorde.beacon2);
-        if (simCorde.beacon1.active && simCorde.beacon1.x !== moved1) _ytMarkMovedCorde(1);
-        if (simCorde.beacon2.active && simCorde.beacon2.x !== moved2) _ytMarkMovedCorde(2);
-    }
+    if (mode === 'discret') _resnapCordeBeacons();
+}
+
+// Recale les deux balises sur le point matériel le plus proche (aspect
+// Discret uniquement — no-op en Continu, cf. snapCordeBeacon). Partagé par
+// le passage Continu → Discret et par tout ce qui bouge le pas du chapelet
+// en cours de route (cf. _resnapCordeBeaconsToLambda ci-dessous).
+//
+// Le graphe y(t) enregistré jusqu'ici décrit un point qui n'est plus celui
+// suivi dès que la balise se déplace : on recalcule la trace pour la
+// nouvelle position, comme après un drag (cf. _markBeaconMoved dans tube.js).
+function _resnapCordeBeacons() {
+    var moved1 = simCorde.beacon1.x, moved2 = simCorde.beacon2.x;
+    snapCordeBeacon(simCorde.beacon1);
+    snapCordeBeacon(simCorde.beacon2);
+    if (simCorde.beacon1.active && simCorde.beacon1.x !== moved1) _ytMarkMovedCorde(1);
+    if (simCorde.beacon2.active && simCorde.beacon2.x !== moved2) _ytMarkMovedCorde(2);
+}
+
+// f, μ et T changent tous λ = c/f, donc le pas du chapelet en aspect Discret
+// (cf. _cordeBeadStepM dans tube.js, ajusté pour caler sur λ/2) : sans ce
+// recalage, une balise posée en Discret resterait à l'ancienne abscisse,
+// qui ne correspond plus forcément à un point matériel du nouveau chapelet.
+function _resnapCordeBeaconsToLambda() {
+    if (simCorde.aspect === 'discret') _resnapCordeBeacons();
 }
 
 // ── Bouton "Afficher graphe" (Corde) ────────────────────────────────

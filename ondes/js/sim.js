@@ -1007,6 +1007,10 @@ var CORDE_LENGTH_M    = 5.0;    // longueur physique de la corde (m)
 //  stroboscopique perceptif, aucun pixel n'est faux). Le pas de 10 cm est la
 //  densité au-delà de laquelle l'illusion s'installe.
 var CORDE_BEAD_STEP_M = 0.10;
+// Pas plancher (m) : garde-fou contre l'illusion stroboscopique ci-dessus
+// quand l'ajustement à λ (cf. _cordeBeadStepM dans tube.js) resserrerait le
+// chapelet au-delà de la densité jugée sûre.
+var CORDE_BEAD_STEP_MIN = 0.08;
 var MU_DEFAULT        = 1.0;    // masse linéique par défaut (kg/m)
 var T_DEFAULT         = 4.0;    // tension par défaut (N)
 // C_BASE_CORDE : px/s par unité de célérité (m/s) — recalibré dans tube.js resize
