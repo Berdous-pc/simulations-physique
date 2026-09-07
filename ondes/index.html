@@ -401,8 +401,11 @@
                  avec KAPPA_DEFAULT (sim.js), sans quoi le navigateur
                  clamperait le curseur et il serait en désaccord au
                  chargement. -->
+            <!-- Pas fin (0,01) et non 0,05 : le réseau ne se forme que dans
+                 le dernier dixième de la course (cf. LAT_Q, sim.js), qui
+                 n'aurait sinon que deux crans. -->
             <input type="range" id="sl-kappa"
-                   min="0" max="1" step="0.05" value="0.35"
+                   min="0" max="1" step="0.01" value="0.35"
                    oninput="onSliderKappa(this.value)">
             <span class="input-hint">De 0 (gaz : molécules libres) à 1 (solide : molécules quasi figées en réseau).
               Module de compressibilité correspondant : K = <span id="ro-K">6,2</span> Pa.</span>

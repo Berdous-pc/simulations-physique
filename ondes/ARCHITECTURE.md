@@ -317,9 +317,9 @@ quoi on recréerait le saut que l'enveloppe est censée supprimer.
 | `impulses[]` | impulsions actives `{startTime}`, superposables |
 | `srcD/srcS/srcA/srcN/srcHead/srcTNew/srcSCur/srcSeq` | historique de la membrane |
 | `srcKMin` | plus petit k émis — dimensionne les zones virtuelles |
-| `freq`, `rho`, `K`, `attenuation` | paramètres du milieu |
+| `freq`, `rho`, `kappa`, `K`, `attenuation` | paramètres du milieu (`K` dérivé de `kappa`) |
 | `c_sim`, `c_cms` | célérité (px/s et cm/s) |
-| `cols[]` | colonnes de particules `{x0, selected, ry}` |
+| `cols[]` | colonnes de particules `{x0, ry, offX, offY, selected, wx, wy}` |
 | `selectionMode`, `selectionRadius` | sélection par proximité |
 | `beacon1/2` | balises `{active, x, frac}` |
 | `pressureColorMode` | coloriage des particules selon ΔP |
@@ -328,7 +328,8 @@ quoi on recréerait le saut que l'enveloppe est censée supprimer.
 Fonctions : `updateCelerite`, `stepSourceSon`, `waveDisplacement`,
 `waveDisplacementDisplay`, `waveDeltaP`, `sonIsQuiet`, `_sonDisplayGain`,
 `sonMaxDisplayPx`, `particleCount`, `particleSpacingPx`, `particleRadius`,
-`initCols`, `updateDpxData`,
+`kappaToK`, `particleGrid`, `initCols`, `latDisorderFactor`, `colRestX`, `colRestRy`,
+`updateDpxData`,
 
 **ρ pilote la taille des points, pas leur nombre.** Historiquement `N ∝ ρ` et
 le rayon était tenu à l'écart de ρ. Ce partage avait deux défauts :
@@ -726,8 +727,184 @@ le gaz reste vivant sans scintiller. L'errance est exactement isotrope ; elle
 ne se resserre qu'en haut de la plage de fréquence, où λ devient petite — et
 le nuage s'y calme sur les **deux** axes, ce qui est cohérent à l'œil et
 profite en prime à la lecture des bandes, devenues fines. `WANDER_MIN` empêche
-le gaz de figer tout à fait.
+le nuage de figer tout à fait.
 L'errance n'entre pas dans la sélection, qui travaille sur `x0`.
+
+**κ pilote l'agitation, en amplitude et en fréquence.** L'amplitude est tenue
+en unités d'**espacement** et non en pixels, via le critère de Lindemann — un
+solide fond quand l'excursion quadratique moyenne atteint ~0,1 fois
+l'espacement du réseau :
+
+| | `σ/a` | `σ` (px, défaut) | rappel | relaxation |
+|---|---|---|---|---|
+| `κ = 0` (gaz) | 0,32 * | 3,8 | 0,014 | 1,19 s |
+| `κ = 0,35` (défaut) | 0,24 | 2,9 | 0,053 | 0,31 s |
+| `κ = 1` (solide) | 0,040 | 0,48 | 0,126 | 0,13 s |
+
+<small>\* la loi vise 0,35 ; c'est le budget de flou `λ/52` qui prend la main à
+`κ = 0`, où λ est courte — le garde-fou joue exactement son rôle.</small>
+
+Les deux bouts encadrent donc le seuil de fusion : très au-dessus à `κ = 0`
+(désordre entretenu, les points se croisent et se touchent), très en dessous à
+`κ = 1` (le réseau tient, mais frémit — il reste de l'agitation thermique, ce
+qui est le point à ne pas perdre pédagogiquement). Le **rappel** suit
+`(1 + 8κ)` : gaz lent et ample, solide rapide et minuscule. C'est la différence
+entre un transport quasi balistique et un oscillateur d'Einstein, et c'est ce
+qui fait lire « ça vibre encore, mais ça ne se déplace plus » plutôt que « ça
+s'est arrêté ».
+
+> **Ce que κ ne doit surtout pas réduire : le déplacement dû à l'ONDE.** Un
+> milieu rigide ne fait pas moins bouger ses molécules au passage d'un son ;
+> l'amplitude est fixée par la source. Ce que la rigidité change, c'est `c`,
+> `λ` et `ΔP` à déplacement égal. Croire l'inverse est une fausse idée coriace
+> — d'où le fait que κ n'agisse que sur l'errance désordonnée, jamais sur
+> `waveDisplacementDisplay`.
+
+**Le désordre est une amplitude, pas un morph** (`particleGrid`, `initCols`,
+`latDisorderFactor`, `_latDisorderPx`, `colRestX`, `colRestRy`). Les particules
+sont construites **sur** un réseau : chacune porte un site (`x0` = abscisse de
+colonne, `ry` = rangée) et un décalage aléatoire figé, normalisé (`offX`,
+`offY`, écart-type 1, borné à ±3). La position de repos affichée vaut
+
+```
+repos = site + d(κ) × décalage        d : 0,70 a (gaz) → 0 (solide)
+```
+
+Deux versions ont échoué avant celle-ci, et pour la même raison de fond :
+elles interpolaient les positions entre deux **configurations** — un nuage
+aléatoire d'un côté, un réseau de l'autre. Tout intermédiaire était alors une
+chimère, un réseau à moitié effondré qui ne correspond à aucun matériau. La
+seconde tentative échelonnait les particules par des seuils individuels
+(nucléation puis croissance) : ça remplaçait « tout le monde à mi-chemin » par
+« certains arrivés, d'autres pas », soit un réseau à défauts et à traînards —
+toujours pas un matériau — et, quand les seuils étaient spatialement corrélés,
+ça cassait en prime l'homogénéité du milieu, alors que la page affiche **une**
+célérité pour tout le tube.
+
+Avec une amplitude, il n'y a plus deux configurations à relier mais une seule
+famille continue. Chaque κ est une structure légitime — « réseau + désordre
+d'amplitude `d` » — jamais un réseau à moitié formé : à `d` grand c'est
+statistiquement un nuage aléatoire, à `d = 0` le réseau parfait, et entre les
+deux la description standard d'un liquide dense (ordre à courte distance, pas
+d'ordre à grande distance). Bénéfice gratuit : plus aucun mouvement d'ensemble
+en manipulant le curseur, puisque les décalages pointent dans toutes les
+directions et se contractent chacun vers **son** site, isotropiquement.
+
+**Où placer l'apparition du réseau.** La visibilité d'un ordre périodique
+brouillé par un désordre d'amplitude `d` suit le facteur de Debye-Waller,
+`exp(−2π²(d/a)²)`. L'ordre devient perceptible vers `d/a ≈ 0,3` et domine sous
+0,2 ; pour que le milieu de course ne montre pas de pseudo-ordre, il **faut**
+donc que `d` y reste au-dessus de ~0,35 a. D'où `d(κ) = LAT_D0·a·(1 − κ)^LAT_Q`
+avec `LAT_Q = 0,40` :
+
+| κ | 0 | 0,5 | 0,8 | 0,85 | 0,9 | 0,95 | 1 |
+|---|---|---|---|---|---|---|---|
+| `d/a` | 0,70 | 0,53 | 0,37 | 0,33 | 0,28 | 0,21 | 0 |
+| ordre perçu | 0 % | 0,4 % | 7 % | 12 % | 22 % | 42 % | 100 % |
+
+Le réseau n'apparaît donc que dans le dernier dixième de la course. Le curseur
+n'y est pas muet pour autant sur le reste : il agit visiblement sur `c`, sur λ
+et sur l'agitation. C'est aussi pourquoi son pas est à **0,01** et non 0,05 —
+sans quoi la cristallisation n'aurait que deux crans.
+
+**Deux courbes, et pas une seule.** Une première version faisait suivre à
+l'agitation la même courbe tardive que le désordre statique. Résultat : **rien
+ne bougeait à l'œil sur les trois premiers quarts du curseur**, qui paraissait
+mort. Or le désordre statique ne *peut pas* porter ce signal — au-dessus de
+`d/a ≈ 0,4` l'ordre perçu est nul quelle que soit la valeur exacte, donc y
+faire varier `d` ne se voit pas, par construction.
+
+C'est donc **l'agitation** qui porte le continu, en interpolant `σ`
+**linéairement** en κ (`latDisorderFactor` pour l'ordre, κ nu pour l'errance) :
+
+| κ | 0 | 0,2 | 0,35 | 0,5 | 0,7 | 0,8 | 0,9 | 1 |
+|---|---|---|---|---|---|---|---|---|
+| `σ` (px) | 6,6 | 5,4 | 4,5 | 3,5 | 2,3 | 1,7 | 1,1 | 0,5 |
+| relaxation (s) | 1,19 | 0,46 | 0,31 | 0,24 | 0,18 | 0,16 | 0,15 | 0,13 |
+| ordre perçu | 0 % | 0 % | 0 % | 0,1 % | 1,2 % | 5 % | 18 % | 97 % |
+
+`σ` est divisé par 14 sur la course, avec un pas visible partout, et le
+*caractère* du mouvement change surtout dans la première moitié — d'une
+ébullition lente et ample à un frémissement rapide. C'est la bonne lecture
+physique de la suite gaz → liquide → solide à densité constante : ce qui
+distingue ces états, c'est l'excursion des atomes rapportée à leur espacement.
+
+Baisser `σ` ne révèle pas le réseau pour autant : ce qui le brouille est le
+déplacement quadratique **total** `√(d² + σ²)`, où `d` domine tant qu'il vaut
+plusieurs dixièmes d'espacement — d'où la dernière ligne du tableau. Et ce
+n'est pas un verre : à κ = 0,5, `σ` vaut encore 56 % de `d`, les atomes
+continuent de visiter le voisinage de leur site, ce qui est bien le régime
+liquide.
+
+**Les deux plafonds de `σ` ont dû être desserrés** pour que la loi de Lindemann
+puisse s'exprimer. Le budget de flou passe de `λ/52` à **`λ/30`** : le coût est
+chiffrable, `exp(−2π²σ²/λ²)` vaut 0,7 % de perte de contraste à `λ/52` et 2,2 %
+à `λ/30` — on payait trois quarts du budget pour rien, et le gaz plafonnait à
+`0,31 a` au lieu des `0,55 a` demandés. Le plafond par la hauteur de bande
+passe de 4,5 px à **9 px** (`WANDER_BAND_MAX`) : à 4,5 il mordait avant même la
+loi sur un tube de hauteur courante, alors que 3σ = 13 px d'excursion dans une
+bande de 245 px est très loin des parois. Le terme `H × 0,028`, lui, garde tout
+son sens et continue de protéger les tubes réellement écrasés.
+
+**L'agitation doit être maximale à κ = 0** — elle passait par un maximum au
+milieu de la course, ce qui se voit immédiatement et n'a aucun sens. Trois
+causes, toutes venant de ce que `c`, donc `λ`, **croît** avec κ :
+
+1. *Le budget de flou remontait avec κ*, puisqu'il se calculait sur la λ
+   courante, trois fois plus grande à κ = 1. Il montait plus vite que la loi de
+   Lindemann ne descendait, et σ **suivait le plafond** au lieu de suivre la
+   loi. Il se calcule donc désormais sur la λ du milieu le plus souple
+   (`_wanderFeaturePx`, à `K_GAZ`) : indépendant de κ, et conservateur puisque
+   c'est la plus petite λ de la plage. À ne pas confondre avec `_sonFeaturePx`,
+   qui rend la λ réellement affichée et sert, lui, au voile de densité — où
+   c'est bien la structure courante qui compte.
+2. *Le rappel montait trop vite.* Ce que l'œil lit comme « ça s'agite » est le
+   **pas par frame**, `σ·√(24·pull)` ; un rappel ×9 faisait croître `√pull`
+   trois fois plus vite que σ ne décroissait au départ. Le rappel suit
+   maintenant la physique : `ω = √(k/m)`, donc `ω ∝ √K` à masse fixée, d'où
+   `pull ∝ √(K/K_GAZ)` — soit ×3 sur la course, le même facteur que `c`, ce qui
+   est cohérent puisque `c ∝ √K` lui aussi.
+3. *Les plafonds écrêtaient au lieu d'échelonner.* Écrire `σ = min(loi(κ),
+   plafonds)` paraît naturel et ne l'est pas : dès qu'un plafond mord, σ s'y
+   colle et cesse de suivre κ, pendant que le rappel continue de monter — à
+   f = 5 Hz, où le budget de flou mordait jusqu'à κ ≈ 0,7, le pas remontait de
+   1,14 à 1,68 px. Les plafonds fixent donc l'agitation de **l'état gaz**
+   (`_wanderSigmaGaz`), une bonne fois, et κ ne fait plus que l'atténuer par un
+   facteur ≤ 1. σ et le pas sont alors décroissants **par construction**, à
+   toute fréquence et toute géométrie, et le garde-fou garde le même pouvoir
+   puisqu'il s'applique à la plus grande valeur de la plage.
+
+Seul défaut de monotonie résiduel : `WANDER_MIN` reste un plancher **absolu**,
+de sorte que le solide frémisse encore même quand le budget de flou a beaucoup
+rabaissé le gaz. Quand σ le touche — hautes fréquences, tout en haut de la
+course — le pas remonte de 4 %, soit un centième de pixel sur les deux derniers
+centièmes du curseur. L'atténuer aussi supprimerait le défaut mais réduirait le
+frémissement du solide à 0,14 px à f = 5 Hz : arbitrage fait en faveur du
+frémissement.
+
+Le réseau est **carré, colonnes alignées** : une quinconce ressemblerait
+davantage à un empilement compact mais brouillerait les colonnes, or c'est le
+rapprochement et l'écartement des colonnes qui donne à lire une onde
+longitudinale. À `κ = 1` toutes les particules d'une colonne partagent la même
+abscisse, donc le même `u` : la colonne reste une droite franche. C'est aussi
+un **amplificateur de contraste** — l'œil lit un écart à une trame régulière
+bien mieux qu'un écart à un désordre — et il le devient là où l'autre voie
+faiblit, aux grandes λ (cf. `sonDisplayAkAt`). Les deux effets sont
+anti-corrélés dans le bon sens. Maille au réglage par défaut : 20 rangées ×
+69 colonnes, soit 11,7 × 12,3 px. `particleGrid` arrondit l'effectif à
+`nX × nY` pour qu'aucune colonne ne soit incomplète, et les colonnes sont
+poussées de gauche à droite — `cols` reste donc rempli par `x0` croissant, ce
+dont dépend `_colsSelectionSnapshot`.
+
+Le tirage des décalages est **borné à ±3σ** (somme de trois uniformes) et non
+gaussien : une gaussienne vraie produirait quelques particules très loin de
+leur site, lues comme des intrus. `colRestRy` ramène en outre la hauteur dans
+`[0,1]`, un décalage de 3σ sortant de la bande à fort désordre.
+
+La sélection compare le clic à la position de repos **effective** (`colRestX`)
+— à faible κ la particule n'est plus sur sa colonne — mais définit le paquet
+sur le site canonique. La sélection porte donc sur des **colonnes entières**,
+et sa composition ne change pas quand on bouge le curseur Rigidité.
 
 L'errance est ramenée dans la bande **à l'affichage** et non en lui réservant
 sa place dans la bande utile : lui réserver l'excursion maximale laissait le

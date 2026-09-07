@@ -964,13 +964,25 @@ function _colsDomainPx() {
 //  au vidéoprojecteur.
 // ══════════════════════════════════════════════════════════════════════
 
-function particleCount() {
+// Trame du milieu : nX colonnes × nY rangées. C'est le réseau sur lequel les
+// particules sont construites — à κ = 1 elles s'y rangent exactement, en deçà
+// elles s'en écartent d'un désordre figé (cf. _latDisorderPx). L'effectif est
+// arrondi à nX × nY pour qu'aucune colonne ne soit incomplète.
+function particleGrid() {
     var H = sim.tubeBottom - sim.tubeTop;
     var domain = _colsDomainPx();
-    if (H <= 0 || domain <= 0) return 0;
+    if (H <= 0 || domain <= 0) return { nX: 0, nY: 0, n: 0 };
     var slotGeom = COL_SLOT_PX2 * H / _particleHRef();
-    return Math.min(PARTICLE_N_MAX,
-                    Math.max(50, Math.round(domain * H / slotGeom)));
+    var nRaw = Math.min(PARTICLE_N_MAX,
+                        Math.max(50, Math.round(domain * H / slotGeom)));
+    // Maille aussi carrée que possible : nY² × (domaine/H) ≈ N.
+    var nY = Math.max(1, Math.round(Math.sqrt(nRaw * H / domain)));
+    var nX = Math.max(1, Math.round(nRaw / nY));
+    return { nX: nX, nY: nY, n: nX * nY };
+}
+
+function particleCount() {
+    return particleGrid().n;
 }
 
 // Espacement moyen entre particules, en px : la racine de l'aire réellement
@@ -1077,26 +1089,20 @@ function initCols() {
     // Zone virtuelle gauche et droite : doivent couvrir le déplacement max
     // d'une particule. Celui-ci est désormais borné en dur par
     // sonMaxDisplayPx(), qui ne dépend QUE de la géométrie du tube — le
-    // domaine est donc insensible à f, K et ρ, et N ne dépend plus de ρ non
-    // plus. C'est ce qui permet la garde ci-dessous : bouger le curseur
+    // domaine est donc insensible à f, K et ρ, et l'effectif ne dépend ni de
+    // ρ ni de κ. C'est ce qui permet la garde ci-dessous : bouger le curseur
     // Fréquence, Rigidité OU Masse volumique ne reconstruit plus les
     // particules, et n'efface donc plus la sélection.
     var extraLeft  = _colsExtraLeftPx();
     var domain     = _colsDomainPx();
-    var N          = particleCount();
+    var grid       = particleGrid();
+    var N          = grid.n;
 
-    // Distribution jittered (grille régulière + bruit uniforme dans chaque case).
-    // Borne la lacune maximale à ~2 × slot au lieu de ~7 × slot avec Math.random() pur,
-    // ce qui élimine les bandes verticales blanches visibles au repos.
-    // Les ry sont aussi jitterés pour éviter les alignements horizontaux.
-    var slot = domain / N;
-
-    // ── Rayon de sélection adaptatif à la densité ─────────────────────
-    // Le rayon s'adapte à l'espacement moyen des colonnes pour rester cohérent
-    // quelle que soit la résolution. Depuis que N ne dépend plus de ρ, cet
-    // espacement ne dépend plus que de la géométrie du tube.
-    // Formule : rayon = 1.5 × dx0, borné entre 20 et 40 px
-    sim.selectionRadius = Math.max(20, Math.min(40, 1.5 * slot));
+    // ── Rayon de sélection ────────────────────────────────────────────
+    // Un peu plus d'une largeur de colonne : le clic prend le paquet de
+    // colonnes voisines, et le geste reste le même à toute résolution.
+    var colW = domain / Math.max(1, grid.nX);
+    sim.selectionRadius = Math.max(20, Math.min(40, 1.6 * colW));
 
     // ── Garde : rien de géométrique n'a changé, on ne reconstruit pas ──
     // Reconstruire, c'est retirer aux particules leur position de repos et
@@ -1110,25 +1116,148 @@ function initCols() {
     sim.colsL   = L;
     sim.cols    = [];
 
-    // Tableau d'indices mélangés pour que les ry ne suivent pas l'ordre des x0
-    var ryOrder = [];
-    for (var j = 0; j < N; j++) ryOrder.push(j);
-    for (var j = N - 1; j > 0; j--) {
-        var k = Math.floor(Math.random() * (j + 1));
-        var tmp = ryOrder[j]; ryOrder[j] = ryOrder[k]; ryOrder[k] = tmp;
-    }
-
-    for (var i = 0; i < N; i++) {
-        sim.cols.push({
-            x0      : (i + Math.random()) * slot - extraLeft,  // jittered, domaine [-extraLeft, L+extraRight]
-            selected: false,
-            ry      : (ryOrder[i] + Math.random()) / N, // jittered en Y aussi
-            wx      : 0,                                // errance thermique (cf. _wander)
-            wy      : 0
-        });
+    // ── Construction : réseau + décalage figé ─────────────────────────
+    // x0 et ry sont le SITE ; offX et offY le décalage, tiré une fois pour
+    // toutes et normalisé (écart-type 1). La position de repos affichée vaut
+    // site + d(κ)·décalage — cf. colRestX/colRestRy.
+    //
+    // Les colonnes sont poussées de gauche à droite : sim.cols reste donc
+    // rempli par x0 croissant, ce dont dépend _colsSelectionSnapshot.
+    for (var ci = 0; ci < grid.nX; ci++) {
+        var xl = (ci + 0.5) * colW - extraLeft;
+        for (var k = 0; k < grid.nY; k++) {
+            sim.cols.push({
+                x0      : xl,                       // site : abscisse de colonne
+                ry      : (k + 0.5) / grid.nY,      // site : rangée, en [0,1]
+                offX    : _latGauss(),              // décalage figé, σ = 1
+                offY    : _latGauss(),
+                selected: false,
+                wx      : 0,                        // errance thermique (cf. _wander)
+                wy      : 0
+            });
+        }
     }
 
     _colsSelectionRestore(keep);
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Désordre : une AMPLITUDE, pas un morph
+//
+//  ── Ce qui n'a pas marché ────────────────────────────────────────────
+//  Les deux premières versions interpolaient les positions entre deux
+//  CONFIGURATIONS : un nuage aléatoire d'un côté, un réseau de l'autre.
+//  Tout intermédiaire était alors une chimère — un réseau à moitié
+//  effondré, qui ne correspond à aucun matériau. Échelonner les particules
+//  n'y changeait rien : ça remplaçait « tout le monde à mi-chemin » par
+//  « certains arrivés, d'autres pas », soit un réseau à défauts et à
+//  traînards. Toujours pas un matériau.
+//
+//  ── Le bon paramètre ─────────────────────────────────────────────────
+//  La position de repos est TOUJOURS un site de réseau, plus un décalage
+//  aléatoire figé dont seule l'AMPLITUDE d varie :
+//
+//      repos = site + d(κ) × décalage,   d : 0,70 a (gaz) → 0 (solide)
+//
+//  Il n'y a donc plus deux configurations à relier, mais une seule famille
+//  continue. Chaque valeur de κ est une structure légitime — « réseau +
+//  désordre d'amplitude d » — jamais un réseau à moitié formé. À d grand
+//  c'est statistiquement un nuage aléatoire ; à d = 0 c'est le réseau
+//  parfait ; entre les deux, c'est la description standard d'un liquide
+//  dense : ordre à courte distance, pas d'ordre à grande distance.
+//
+//  Bénéfice secondaire, gratuit : plus aucun mouvement d'ensemble. Les
+//  décalages pointent dans toutes les directions et se contractent vers
+//  zéro — chaque atome rentre vers SON site, isotropiquement. C'est ce qui
+//  faisait coulisser le nuage verticalement dans les versions précédentes.
+//
+//  ── Où placer l'apparition du réseau ─────────────────────────────────
+//  La visibilité d'un ordre périodique brouillé par un désordre d'amplitude
+//  d suit le facteur de Debye-Waller, exp(−2π²(d/a)²) :
+//
+//      d/a   0,70   0,50   0,40   0,35   0,25   0,15   0,04
+//      ordre  0,006%  0,7%    4%     9%    29%    64%    97%
+//
+//  L'ordre devient perceptible vers d/a ≈ 0,3 et domine sous 0,2. Pour que
+//  le milieu de course ne montre pas de pseudo-ordre, il FAUT donc que d y
+//  reste au-dessus de ~0,35 a. D'où l'exposant :
+//
+//      d(κ) = LAT_D0 × a × (1 − κ)^LAT_Q,   LAT_Q = 0,4
+//
+//      κ      0     0,5    0,8    0,9    0,95   1
+//      d/a   0,70   0,53   0,37   0,28   0,21   0
+//      ordre 0,006%  0,4%   6%    21%    42%   97%
+//
+//  Le réseau n'apparaît donc que dans le dernier dixième de la course, ce
+//  qui est le comportement demandé. Le curseur n'est pas muet pour autant
+//  sur le reste : il y agit visiblement sur c, sur λ et sur l'agitation.
+// ══════════════════════════════════════════════════════════════════════
+
+var LAT_D0 = 0.70;   // amplitude du désordre à κ = 0, en espacements
+var LAT_Q  = 0.40;   // exposant : plus il est petit, plus le réseau tarde
+
+// Tirage normalisé (écart-type 1) et BORNÉ à ±3 : somme de trois uniformes,
+// de variance 3/12. Le bornage est voulu — une gaussienne vraie produirait
+// quelques particules très loin de leur site, lues comme des intrus.
+function _latGauss() {
+    return (Math.random() + Math.random() + Math.random() - 1.5) * 2;
+}
+
+// ── Deux courbes, et pourquoi elles doivent différer ──────────────────
+//
+//  L'ORDRE (désordre statique d) suit (1−κ)^LAT_Q : tardif, pour que le
+//  réseau n'apparaisse qu'en fin de course.
+//
+//  L'AGITATION, elle, suit κ LINÉAIREMENT (cf. _wanderSigma, tube.js).
+//  Les avoir d'abord fait suivre la même courbe tardive était une erreur :
+//  rien ne bougeait à l'œil sur les trois premiers quarts du curseur, qui
+//  paraissait mort. Or le désordre statique ne PEUT PAS porter ce signal —
+//  au-dessus de d/a ≈ 0,4, l'ordre perçu est nul quelle que soit la valeur
+//  exacte (cf. le tableau de Debye-Waller ci-dessus), donc faire varier d
+//  dans cette plage ne se voit par construction pas.
+//
+//  C'est donc l'agitation qui porte le continu : le nuage passe d'une
+//  ébullition lente et ample à un frémissement rapide et minuscule, de bout
+//  en bout de la course. C'est d'ailleurs la bonne lecture physique de la
+//  suite gaz → liquide → solide, à densité constante : ce qui distingue ces
+//  états, c'est l'excursion des atomes rapportée à leur espacement.
+//
+//  Le réseau reste caché pendant ce temps : ce qui le brouille est le
+//  déplacement quadratique TOTAL, √(d² + σ²), et d y domine tant qu'il
+//  vaut plusieurs dixièmes d'espacement. Baisser σ seul ne le révèle donc
+//  pas — vérifié dans le tableau de _wanderSigma.
+//
+//  Et ce n'est pas un verre : à κ = 0,5, σ vaut encore 56 % de d. Les
+//  atomes continuent de visiter le voisinage de leur site, ce qui est bien
+//  le régime liquide. Le verre serait σ ≈ 0 avec d grand, qu'on n'atteint
+//  qu'au tout dernier centième — où d s'annule aussi.
+
+// Facteur d'ordre : 1 = gaz (désordre plein), 0 = réseau parfait.
+function latDisorderFactor() {
+    var k = Math.max(0, Math.min(1, sim.kappa));
+    return Math.pow(1 - k, LAT_Q);
+}
+
+// Amplitude du désordre statique, en px.
+function _latDisorderPx() {
+    return LAT_D0 * particleSpacingPx() * latDisorderFactor();
+}
+
+// Position de repos EFFECTIVE. C'est elle qu'il faut passer à
+// waveDisplacementDisplay et waveDeltaP : à κ = 1 toutes les particules d'une
+// colonne partagent la même abscisse, donc le même déplacement, et la colonne
+// reste une droite franche.
+function colRestX(c) {
+    return c.x0 + _latDisorderPx() * c.offX;
+}
+
+// La hauteur est ramenée dans [0,1] : à fort désordre, un décalage de 3σ
+// sortirait de la bande.
+function colRestRy(c) {
+    var H = sim.tubeBottom - sim.tubeTop;
+    if (H <= 0) return c.ry;
+    var v = c.ry + _latDisorderPx() * c.offY / H;
+    return v < 0 ? 0 : (v > 1 ? 1 : v);
 }
 
 // Alias pour compatibilité ascendante
@@ -1813,10 +1942,13 @@ function selectNearbyParticles(xScreen, modifiers) {
 
     // ── Position de repos visée : celle de la particule affichée la plus
     //    proche du clic.
+    // On compare le clic à la position de repos EFFECTIVE (morph du réseau
+    // compris, cf. colRestX) : à κ élevé, la particule n'est plus là où son
+    // x0 jitteré la place.
     var t = sim.simTime, best = -1, bestD = Infinity;
     for (var i = 0; i < sim.cols.length; i++) {
-        var xd = sim.tubeLeft + sim.cols[i].x0
-               + waveDisplacementDisplay(sim.cols[i].x0, t);
+        var xr = colRestX(sim.cols[i]);
+        var xd = sim.tubeLeft + xr + waveDisplacementDisplay(xr, t);
         var dd = Math.abs(xd - xScreen);
         if (dd < bestD) { bestD = dd; best = i; }
     }
@@ -1826,6 +1958,9 @@ function selectNearbyParticles(xScreen, modifiers) {
     // membrane) : on ne sélectionne rien — le reset éventuel a déjà eu lieu.
     if (bestD > sim.selectionRadius) return;
 
+    // Le PAQUET, lui, reste défini sur le x0 canonique et non sur la position
+    // effective : la composition de la sélection ne change donc pas quand on
+    // bouge le curseur Rigidité, elle se contente de suivre le morph.
     var x0_click = sim.cols[best].x0;
 
     // Itérer sur toutes les particules et tester la proximité

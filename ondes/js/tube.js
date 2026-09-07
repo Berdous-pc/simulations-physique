@@ -1389,25 +1389,186 @@ function _drawMembrane(ctx) {
 //  l'œil et profite en prime à la lecture des bandes, devenues fines.
 //
 //  L'errance n'entre pas dans la sélection, qui travaille sur x0.
-var WANDER_PULL  = 0.014;   // rappel vers la position de repos
+var WANDER_PULL  = 0.014;   // rappel vers la position de repos, à κ = 0
 var WANDER_CLAMP = 3.0;     // borne dure, en multiples de σ
-var WANDER_LAM   = 1 / 52;  // budget de flou : σ ≤ λ/52
-var WANDER_MIN   = 0.6;     // px — plancher, pour que le gaz ne fige jamais
+// ── Budget de flou : σ ≤ λ/30, et non plus λ/52 ───────────────────────
+// Le coût est chiffrable : une errance d'écart-type σ réduit le contraste
+// d'une sinusoïde de longueur d'onde λ d'un facteur exp(−2π²σ²/λ²), soit
+// 0,7 % à λ/52 et 2,2 % à λ/30. On payait donc trois quarts du budget pour
+// rien. Le desserrer est ce qui permet au gaz d'atteindre réellement les
+// 0,55 a de la loi de Lindemann : à λ/52 il plafonnait à 0,31 a au réglage
+// par défaut, et le bas de la course du curseur ne montrait plus rien.
+var WANDER_LAM   = 1 / 30;
+var WANDER_MIN   = 0.25;    // px — plancher, pour que le solide ne fige jamais tout à fait
+// Plafond de l'errance par la hauteur de bande, en px. Valait 4,5 — un
+// héritage, qui mordait avant même la loi de Lindemann sur un tube de hauteur
+// courante (3σ = 13 px d'excursion dans une bande de 245, on est très loin des
+// parois). Porté à 9, il ne joue plus que sur les tubes réellement écrasés,
+// via le terme H × 0,028 qui, lui, garde tout son sens.
+var WANDER_BAND_MAX = 9.0;
 
-// Écart-type stationnaire de l'errance (px). Borné aussi par la hauteur de
-// bande : sur un tube écrasé, une errance calée sur λ seule sortirait des
-// parois en permanence et le repliement ferait tout le travail.
+// ══════════════════════════════════════════════════════════════════════
+//  L'agitation est pilotée par la rigidité κ
+//
+//  ── Amplitude : le critère de Lindemann ──────────────────────────────
+//  Un solide fond quand l'excursion quadratique moyenne des atomes atteint
+//  environ 0,1 fois l'espacement du réseau. On tient donc σ en unités
+//  d'ESPACEMENT et non en pixels absolus :
+//
+//    κ = 0 : σ = 0,55 a — très au-dessus du seuil de fusion. Le désordre
+//            est entretenu, les points se croisent et se touchent : c'est
+//            un gaz.
+//    κ = 1 : σ = 0,04 a — bien en dessous. Le réseau tient, mais frémit :
+//            il reste de l'agitation thermique, ce qui est le point à ne
+//            pas perdre pédagogiquement.
+//
+//  L'interpolation est LINÉAIRE en κ, et c'est délibéré : l'agitation est
+//  le seul canal capable de porter un changement visible sur TOUTE la
+//  course du curseur. Le désordre statique, lui, ne se voit pas varier
+//  au-dessus de d/a ≈ 0,4 (cf. latDisorderFactor, sim.js), et la longueur
+//  d'onde ne se lit qu'onde émise. Sans ce découplage, les trois premiers
+//  quarts du curseur paraissaient morts.
+//
+//  ── Fréquence : gaz lent et ample, solide rapide et minuscule ────────
+//  Le rappel suit ω ∝ √K (cf. _wanderPull), soit un temps de relaxation qui
+//  passe de ~71 frames (1,19 s) à ~24 frames (0,40 s). C'est la différence
+//  entre un transport quasi balistique et un oscillateur d'Einstein — et
+//  c'est ce qui fait lire « ça vibre encore, mais ça ne se déplace plus »,
+//  plutôt que « ça s'est arrêté ».
+//
+//  ── Ça ne révèle pas le réseau ───────────────────────────────────────
+//  Ce qui brouille le réseau est le déplacement quadratique TOTAL,
+//  √(d² + σ²), et d y domine tant qu'il vaut plusieurs dixièmes
+//  d'espacement. Baisser σ seul sur la première moitié de la course laisse
+//  donc l'ordre perçu sous 1 % :
+//
+//      κ        0     0,3    0,5    0,7    0,8    0,9    0,95    1
+//      d/a    0,70   0,61   0,53   0,43   0,37   0,28   0,21     0
+//      σ/a    0,55   0,40   0,30   0,19   0,14   0,09   0,07   0,04
+//      total  0,89   0,73   0,61   0,47   0,39   0,29   0,22   0,04
+//      ordre    0%     0%   0,1%   1,2%   4,6%    18%    38%    97%
+//
+//  ── Ce que κ ne doit SURTOUT pas réduire ─────────────────────────────
+//  Le déplacement dû à l'ONDE. Un milieu rigide ne fait pas moins bouger
+//  ses molécules au passage d'un son : l'amplitude est fixée par la source.
+//  Ce que la rigidité change, c'est c, λ et ΔP à déplacement égal. Croire
+//  l'inverse est une fausse idée coriace, et c'est pourquoi κ n'agit ici
+//  QUE sur l'errance désordonnée, jamais sur waveDisplacementDisplay.
+// ══════════════════════════════════════════════════════════════════════
+
+function _clamp01(v) {
+    return v < 0 ? 0 : (v > 1 ? 1 : v);
+}
+
+var WANDER_LIND_GAZ    = 0.55;  // σ/espacement à κ = 0
+var WANDER_LIND_SOLIDE = 0.04;  // ... et à κ = 1
+
+// ══════════════════════════════════════════════════════════════════════
+//  L'agitation doit être MAXIMALE à κ = 0, et décroître ensuite
+//
+//  Elle passait par un maximum vers le milieu de la course, ce qui se voit
+//  immédiatement et n'a aucun sens : le gaz est l'état le plus agité. Deux
+//  causes, toutes deux venant du fait que c — donc λ — CROÎT avec κ.
+//
+//  ── 1. Le budget de flou remontait avec κ ────────────────────────────
+//  Le plafond σ ≤ λ/30 est calculé sur la longueur d'onde COURANTE, et λ
+//  est trois fois plus grande à κ = 1 qu'à κ = 0. Le plafond montait donc
+//  avec le curseur, plus vite que la loi de Lindemann ne descendait : à
+//  f = 5 Hz, σ passait de 1,97 px à κ = 0 à 3,41 px à κ = 0,5 avant de
+//  redescendre. L'agitation SUIVAIT le plafond au lieu de suivre la loi.
+//
+//  Le plafond est donc calculé sur la longueur d'onde qu'aurait le milieu
+//  le plus SOUPLE (_wanderFeaturePx, à K_GAZ), pas sur la courante. Il
+//  devient ainsi indépendant de κ, et σ est monotone par construction. Le
+//  garde-fou n'y perd rien : il retient la plus petite λ de la plage, donc
+//  il protège au moins autant qu'avant. Là où il mord — hautes fréquences
+//  — il aplatit la réponse du curseur, ce qui est le prix honnête d'une
+//  structure d'onde fine à préserver.
+//
+//  ── 2. Le rappel montait trop vite ───────────────────────────────────
+//  Ce que l'œil lit comme « ça s'agite », c'est le PAS PAR FRAME, et
+//  step = σ·√(24·pull). Un rappel multiplié par 9 sur la course faisait
+//  croître √pull trois fois plus vite que σ ne décroissait au départ : le
+//  pas montait de 3,8 à 5,0 px sur le premier tiers avant de redescendre.
+//
+//  Le rappel suit désormais la physique plutôt qu'un facteur choisi : la
+//  pulsation d'un oscillateur vaut ω = √(k/m), donc ω ∝ √K à masse fixée.
+//  D'où pull ∝ √(K/K_GAZ), soit exactement ×3 sur la course — le même
+//  facteur que c, ce qui est cohérent puisque c ∝ √K lui aussi. Le pas est
+//  alors strictement décroissant, et le solide garde son caractère de
+//  frémissement rapide (relaxation 1,19 s → 0,40 s).
+// ══════════════════════════════════════════════════════════════════════
+
+// Taille caractéristique servant AU SEUL garde-fou d'errance : la longueur
+// d'onde qu'aurait le milieu le plus souple, à f et ρ courants. Volontairement
+// insensible à κ — cf. ci-dessus. À ne pas confondre avec _sonFeaturePx, qui
+// rend la longueur d'onde réellement affichée et sert, lui, à doser le voile
+// de densité, où c'est bien la structure courante qui compte.
+function _wanderFeaturePx() {
+    if (sim.rho <= 0 || sim.tubeLength <= 0) return sim.tubeLength;
+    var cGaz = Math.sqrt(K_GAZ / sim.rho) * C_BASE;   // px/s
+    var lam;
+    if (sim.sourceMode === 'impulse') lam = cGaz * T_IMPULSE;
+    else                              lam = (sim.freq > 0) ? cGaz / sim.freq : 0;
+    if (!(lam > 0)) lam = sim.tubeLength;
+    return Math.min(lam, sim.tubeLength);
+}
+
+// ── Les plafonds ÉCHELONNENT la courbe, ils ne l'écrêtent pas ─────────
+//
+//  Écrire σ = min(loi(κ), plafonds) paraît naturel et ne l'est pas : dès
+//  qu'un plafond mord, σ s'y colle et cesse de suivre κ. Le pas par frame,
+//  lui, vaut σ·√(24·pull) et le rappel, lui, continue de monter — le pas
+//  REMONTAIT donc au milieu de la course. À f = 5 Hz, où le budget de flou
+//  mord jusqu'à κ ≈ 0,7, il montait de 1,14 à 1,68 px avant de redescendre.
+//
+//  Les plafonds fixent donc l'agitation de l'ÉTAT GAZ, une bonne fois, et
+//  κ ne fait plus que l'atténuer par un facteur ≤ 1. σ et le pas sont alors
+//  décroissants par construction, à toute fréquence et toute géométrie —
+//  et le garde-fou garde exactement le même pouvoir, puisqu'il s'applique
+//  à la valeur la plus grande de la plage.
+
+// Agitation de l'état gaz, en px : la plus petite des trois bornes.
+//   • la loi de Lindemann à κ = 0 ;
+//   • le budget de flou, qui protège la structure de l'onde aux petites λ ;
+//   • la hauteur de bande — sur un tube écrasé, une errance calée sur λ
+//     seule sortirait des parois en permanence et le repliement ferait tout
+//     le travail.
+function _wanderSigmaGaz(H) {
+    var parBande = Math.max(1.0, Math.min(WANDER_BAND_MAX, H * 0.028));
+    return Math.min(particleSpacingPx() * WANDER_LIND_GAZ,
+                    parBande,
+                    _wanderFeaturePx() * WANDER_LAM);
+}
+
+// Écart-type stationnaire de l'errance (px), à la rigidité courante.
+//
+// Le plancher WANDER_MIN reste ABSOLU, et non atténué lui aussi : il garantit
+// que le solide frémit encore, y compris quand le budget de flou a déjà
+// beaucoup rabaissé le gaz. Contrepartie, seul défaut de monotonie qui
+// subsiste : quand σ touche ce plancher — hautes fréquences, tout en haut de
+// la course — le rappel continue de croître et le pas remonte de 4 %, soit un
+// centième de pixel sur les deux derniers centièmes du curseur. L'atténuer
+// aussi supprimerait le défaut mais réduirait le frémissement du solide à
+// 0,14 px à f = 5 Hz, ce qui ne se verrait plus du tout : l'arbitrage est fait
+// en faveur du frémissement.
 function _wanderSigma(H) {
-    var parBande = Math.max(1.0, Math.min(4.5, H * 0.028));
-    return Math.max(WANDER_MIN,
-                    Math.min(parBande, _sonFeaturePx() * WANDER_LAM));
+    var k   = Math.max(0, Math.min(1, sim.kappa));
+    var att = 1 - (1 - WANDER_LIND_SOLIDE / WANDER_LIND_GAZ) * k;
+    return Math.max(WANDER_MIN, _wanderSigmaGaz(H) * att);
+}
+
+// Rappel : ω ∝ √K (cf. ci-dessus), soit ×3 sur la course du curseur.
+function _wanderPull() {
+    var K = Math.max(K_GAZ, sim.K);
+    return WANDER_PULL * Math.sqrt(K / K_GAZ);
 }
 
 // Largeur du tirage uniforme par frame donnant l'écart-type stationnaire
 // voulu : σ_pas = σ_stat·√(2·pull), et un tirage uniforme de largeur w a pour
 // écart-type w/√12, d'où w = σ_stat·√(24·pull).
-function _wanderStep(sigma) {
-    return sigma * Math.sqrt(24 * WANDER_PULL);
+function _wanderStep(sigma, pull) {
+    return sigma * Math.sqrt(24 * pull);
 }
 
 // Taille caractéristique, en px, de ce que la source est en train d'émettre :
@@ -1435,8 +1596,8 @@ function _sonFeaturePx() {
 // facteur linéaire suffit ici : c'est un rendu, pas une intégration
 // physique) et au rappel, pour que le régime stationnaire (σ, temps de
 // relaxation) reste cohérent au ralenti.
-function _wander(c, step, max, spd) {
-    var pull = WANDER_PULL * spd;
+function _wander(c, step, max, spd, pull0) {
+    var pull = pull0 * spd;
     c.wy += (Math.random() - 0.5) * step * spd - c.wy * pull;
     if      (c.wy >  max) c.wy =  max;
     else if (c.wy < -max) c.wy = -max;
@@ -1482,10 +1643,17 @@ function _drawParticles(ctx) {
 
     // ── Paramètres d'errance de la frame (cf. calibration ci-dessus) ──
     // Un seul jeu de valeurs : l'errance est isotrope, le bornage par λ est
-    // déjà intégré à _wanderSigma.
+    // déjà intégré à _wanderSigma. Le milieu étant homogène, ces valeurs sont
+    // les mêmes pour toutes les particules.
     var wSig   = _wanderSigma(H);
-    var wStep  = _wanderStep(wSig);
+    var wPull  = _wanderPull();
+    var wStep  = _wanderStep(wSig, wPull);
     var wMax   = wSig * WANDER_CLAMP;
+
+    // Amplitude du désordre statique, hissée hors des boucles : elle ne
+    // dépend que de κ et de la géométrie (cf. _latDisorderPx).
+    var dPx    = _latDisorderPx();
+    var dRy    = (H > 0) ? dPx / H : 0;
     var moving = !sim.paused;
     var spd    = (sim.speedFactor !== undefined) ? sim.speedFactor : 1.0;
 
@@ -1516,12 +1684,13 @@ function _drawParticles(ctx) {
         // pas de contour blanc pour les sélectionnées (trop visuellement chargé).
         for (var i = 0; i < N; i++) {
             var c  = sim.cols[i];
-            var x0 = c.x0;
+            var x0 = c.x0 + dPx * c.offX;
             var u  = waveDisplacementDisplay(x0, sim.simTime);
 
-            if (moving) _wander(c, wStep, wMax, spd);
+            if (moving) _wander(c, wStep, wMax, spd, wPull);
             var px = sim.tubeLeft + x0 + u + c.wx;
-            var py = sim.tubeTop + yPad + c.ry * yBand + c.wy;
+            var ry = _clamp01(c.ry + dRy * c.offY);
+            var py = sim.tubeTop + yPad + ry * yBand + c.wy;
             if (py < yMin || py > yMax) py = _foldY(py, yMin, yMax);
 
             // Remplissage couleur ΔP
@@ -1544,14 +1713,16 @@ function _drawParticles(ctx) {
                 var c = sim.cols[i];
                 if (c.selected !== wantSelected) continue;
 
-                var x0 = c.x0;
+                var x0 = c.x0 + dPx * c.offX;
                 var u  = waveDisplacementDisplay(x0, sim.simTime);
 
                 // Agitation thermique : errance 2D autour de la position de
-                // repos, figée en pause (cf. _wander).
-                if (moving) _wander(c, wStep, wMax, spd);
+                // repos, figée en pause (cf. _wander). Son amplitude et sa
+                // fréquence suivent la solidité du milieu.
+                if (moving) _wander(c, wStep, wMax, spd, wPull);
                 var px = sim.tubeLeft + x0 + u + c.wx;
-                var py = sim.tubeTop + yPad + c.ry * yBand + c.wy;
+                var ry = _clamp01(c.ry + dRy * c.offY);
+                var py = sim.tubeTop + yPad + ry * yBand + c.wy;
                 if (py < yMin || py > yMax) py = _foldY(py, yMin, yMax);
 
                 ctx.moveTo(px + r, py);     // moveTo évite les lignes parasites entre arcs
