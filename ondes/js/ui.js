@@ -239,6 +239,14 @@ function _updateCReadout() {
     if (el) el.innerHTML = fmtSciHTML(sim.c_cms, 2);
 }
 
+// κ sur le curseur, K dérivé dans le hint.
+function _updateKappaLabels() {
+    var lbl = document.getElementById('lbl-kappa');
+    if (lbl) lbl.textContent = sim.kappa.toFixed(2).replace('.', ',');
+    var ro  = document.getElementById('ro-K');
+    if (ro)  ro.textContent  = sim.K.toFixed(1).replace('.', ',');
+}
+
 // ── Utilitaires source Son ────────────────────────────────────────────
 //  Arrête l'ÉMISSION sans toucher à ce qui est déjà parti : la liste des
 //  impulsions est conservée (une impulsion encore en cours d'émission doit
@@ -453,10 +461,12 @@ function onSliderRho(v) {
     _updateWaveProps();
 }
 
-function onSliderK(v) {
-    sim.K = parseFloat(v);
-    var lbl = document.getElementById('lbl-K');
-    if (lbl) lbl.textContent = sim.K.toFixed(1).replace('.', ',');
+// Le curseur porte κ ; K en est dérivé (cf. kappaToK, sim.js). Les deux sont
+// affichés : κ pour la manipulation, K pour que c = √(K/ρ) reste vérifiable.
+function onSliderKappa(v) {
+    sim.kappa = parseFloat(v);
+    sim.K     = kappaToK(sim.kappa);
+    _updateKappaLabels();
     updateCelerite();
     _updateCReadout();
     initCols();
@@ -1613,7 +1623,9 @@ function _syncUIToSim() {
     // ── Son ────────────────────────────────────────────────────────────
     _setSlider('sl-freq',  sim.freq,        'lbl-freq',  1);
     _setSlider('sl-rho',   sim.rho,         'lbl-rho',   1);
-    _setSlider('sl-K',     sim.K,           'lbl-K',     1);
+    var slKappa = document.getElementById('sl-kappa');
+    if (slKappa) slKappa.value = sim.kappa;
+    _updateKappaLabels();
     _setSlider('sl-atten', sim.attenuation, 'lbl-atten', 2);
     sim.speedFactor = 1.00;
     var slSpeed = document.getElementById('sl-speed');

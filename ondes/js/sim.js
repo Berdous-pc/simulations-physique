@@ -272,15 +272,82 @@ function fmtSciHTML(v, decimals) {
     return fmtFR(mant, decimals) + ' × 10<sup>' + String(exp).replace('-', '−') + '</sup>';
 }
 
+// ══════════════════════════════════════════════════════════════════════
+//  Rigidité κ → module de compressibilité K
+//
+//  Le curseur du panneau n'affiche plus K directement mais une RIGIDITÉ
+//  κ ∈ [0, 1], dont K est dérivé. Trois raisons.
+//
+//  ── 1. L'ancien curseur était numériquement muet ─────────────────────
+//  Il allait de K = 5 à K = 10 : à ρ fixé, c = √(K/ρ) variait donc de ×1,41
+//  sur toute sa course, quand le curseur ρ en donnait ×2,45. Le paramètre
+//  le plus important physiquement était le plus timide à l'écran, et on ne
+//  voyait pratiquement rien bouger en le manipulant.
+//
+//  ── 2. κ dit ce que K est, microscopiquement ─────────────────────────
+//  K est la manifestation macroscopique des interactions intermoléculaires.
+//  Dans un gaz il vaut γP — faible, dominé par l'agitation thermique ; dans
+//  un liquide ou un solide il est énorme, dominé par la branche répulsive
+//  du potentiel de paire. L'axe « souple → rigide » est donc le bon axe, et
+//  c'est celui que le nuage de particules pourra illustrer (cf. bloc 3 :
+//  agitation et ordre positionnel pilotés par κ).
+//
+//  ── 3. Mais κ = 0 n'est PAS K = 0 ────────────────────────────────────
+//  Un gaz parfait n'a pas un module de compressibilité nul : il vaut γP, et
+//  le son s'y propage très bien — c'est le cas d'école à 340 m/s. À K = 0 il
+//  n'y aurait plus d'onde du tout. La correspondance est donc affine en
+//  log, entre deux bornes toutes deux non nulles :
+//
+//      K(κ) = K_GAZ × (K_SOLIDE / K_GAZ)^κ
+//
+//  Géométrique et non linéaire, pour que le curseur soit régulier en log c
+//  — donc perceptivement régulier, puisque c ∝ √K.
+//
+//  ── Pourquoi un rapport de 9 et non de 400 ───────────────────────────
+//  Gaz → acier, c'est ×20 sur c dans la réalité. Le prendre au pied de la
+//  lettre casserait l'affichage : monter c monte λ, et le contraste des
+//  bandes de compression se lit sur ak = A·k = 2πA/λ. À κ = 1 il ne
+//  resterait qu'une fraction de longueur d'onde dans le tube et le gain
+//  d'affichage (cf. _sonDisplayGain) travaillerait à fond, donc de façon
+//  entièrement artificielle. Le rapport 9 sur K donne ×3 sur c : le double
+//  de l'ancien curseur, dans le domaine où le rendu tient encore. Le
+//  curseur est qualitatif, et c'est assumé.
+//
+//  Budget de longueurs d'onde, en λ/L (L = longueur du tube) :
+//
+//                                         avant (K 5→10)   après (κ 0→1)
+//    défaut ρ=1, f=1,5                         0,41            0,41
+//    curseur au mini, reste par défaut         0,37            0,28
+//    curseur au maxi, reste par défaut         0,53            0,84
+//    beaucoup de λ    (ρ=3, f=5)               0,06            0,05
+//    une seule onde   (ρ=1, f=0,5)             1,58            2,53
+//    coin extrême     (ρ=0,5, f=0,5)           2,24            3,58
+//
+//  Le défaut est conservé au centième, et les deux régimes qui comptent —
+//  « plein de λ à l'écran » et « à peine une onde » — restent atteignables.
+//  Ce qui se dégrade est le COIN où l'on empile κ maxi, ρ mini et f mini :
+//  il n'y montre plus qu'un peu plus du quart d'une onde, contre presque la
+//  moitié avant. Ce coin était déjà dégénéré ; il l'est un peu plus. C'est
+//  le prix du rapport 9, et le seul moyen de le réduire serait de resserrer
+//  ce rapport — au détriment de la course du curseur, qui est justement ce
+//  qu'on cherchait à récupérer.
+// ══════════════════════════════════════════════════════════════════════
+
+var K_GAZ         = 2.85;   // κ = 0 — gaz : K = γP, faible mais NON NUL
+var K_SOLIDE      = 25.6;   // κ = 1 — matière condensée (rapport 9 → c ×3)
+var KAPPA_DEFAULT = 0.35;   // → K ≈ 6,15, soit l'ancien K_DEFAULT de 6,0
+
+function kappaToK(kappa) {
+    var k = Math.max(0, Math.min(1, kappa));
+    return K_GAZ * Math.pow(K_SOLIDE / K_GAZ, k);
+}
+
 // ── Constantes de calibration ─────────────────────────────────────────
 // Valeurs par défaut des paramètres (pour calibrer C_BASE à la resize)
-// K_DEFAULT doit rester DANS la plage du curseur (index.html, min 5,0) :
-// une valeur en dehors serait clampée par le navigateur à l'affichage,
-// laissant sim.K et le curseur en désaccord au chargement.
-var K_DEFAULT        = 6.0;   // compressibilité par défaut
+var K_DEFAULT        = kappaToK(KAPPA_DEFAULT);   // ≈ 6,15
 var RHO_DEFAULT      = 1.0;   // masse volumique par défaut
 // C_DISPLAY_FACTOR : c_norm * C_DISPLAY_FACTOR = célérité affichée en cm/s
-// sqrt(K_DEFAULT/RHO_DEFAULT) * 10 = sqrt(6) * 10 ≈ 24,5 cm/s par défaut
+// sqrt(K_DEFAULT/RHO_DEFAULT) * 10 = sqrt(6,15) * 10 ≈ 24,8 cm/s par défaut
 var C_DISPLAY_FACTOR = 10.0;
 // Longueur physique du tube représentée par tubeLength pixels
 var TUBE_LENGTH_CM   = 40.0;
@@ -347,7 +414,9 @@ var sim = {
     // ── Paramètres physiques du milieu ───────────────────────────────
     freq        : 1.5,            // fréquence de la sinusoïdale (Hz)
     rho         : RHO_DEFAULT,    // masse volumique (u.s.)
-    K           : K_DEFAULT,      // module de compressibilité (u.s.)
+    kappa       : KAPPA_DEFAULT,  // rigidité du milieu ∈ [0,1] — CE QUE PORTE
+                                  //   le curseur ; K en est dérivé
+    K           : K_DEFAULT,      // module de compressibilité (u.s.), = kappaToK(kappa)
     attenuation : 0.0,            // coefficient d'atténuation (0 = aucun, 1 = fort)
 
     // ── Propriétés dérivées (recalculées par updateCelerite) ─────────
@@ -1010,7 +1079,7 @@ function initCols() {
     // sonMaxDisplayPx(), qui ne dépend QUE de la géométrie du tube — le
     // domaine est donc insensible à f, K et ρ, et N ne dépend plus de ρ non
     // plus. C'est ce qui permet la garde ci-dessous : bouger le curseur
-    // Fréquence, Compressibilité OU Masse volumique ne reconstruit plus les
+    // Fréquence, Rigidité OU Masse volumique ne reconstruit plus les
     // particules, et n'efface donc plus la sélection.
     var extraLeft  = _colsExtraLeftPx();
     var domain     = _colsDomainPx();
@@ -1662,7 +1731,7 @@ function pruneImpulses() {
 
 // ══════════════════════════════════════════════════════════════════════
 //  Remise à zéro de l'animation
-//  Ne réinitialise PAS les paramètres physiques (K, rho, freq, attenuation)
+//  Ne réinitialise PAS les paramètres physiques (kappa/K, rho, freq, attenuation)
 //  ni la position des balises.
 // ══════════════════════════════════════════════════════════════════════
 
