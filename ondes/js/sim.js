@@ -292,9 +292,12 @@ var C_BASE           = 43.0;
 var T_IMPULSE        = 0.6;   // secondes de temps simulé
 // Nombre max de points enregistrés pour ΔP(t)
 var DP_MAX_POINTS    = 1600;  // 300 pts/s × 5 s + marge → courbes lisses sur la fenêtre entière
-// Aire disponible par particule à ρ = 1, en px² : fixe le nombre de particules
-// dans initCols, et le seuil de saturation dans particleRadius.
-var COL_SLOT_PX2     = 113;   // ≈ 25 % de remplissage à ρ = 1
+// Aire disponible par particule à la hauteur de référence H_ref, en px² : fixe
+// le nombre de particules (cf. particleCount) et, par là, le grain du nuage.
+// Ne dépend plus de ρ, qui pilote désormais le rayon (cf. particleRadius).
+var COL_SLOT_PX2     = 113;   // → espacement ≈ 10,6 px à H_ref ; c'est le levier
+                              //   à bouger pour densifier le nuage sans
+                              //   regrossir les points (cf. particleRadius)
 
 // ── État global de la simulation ──────────────────────────────────────
 var sim = {
@@ -357,7 +360,7 @@ var sim = {
     // ── Particules — modèle lagrangien continu ───────────────────────
     // Chaque particule : { x0 (position de repos en px depuis tubeLeft),
     //                      selected, ry (position y en [0,1], gelée en pause) }
-    // N ∝ ρ (linéaire). Domaine [0, tubeLength + 2×memAmplitude].
+    // N indépendant de ρ (ρ pilote le rayon). Domaine [0, tubeLength + 2×memAmplitude].
     // Position affichée : tubeLeft + x0 + waveDisplacementDisplay(x0, t)
     cols              : [],
     colsSig           : null,    // géométrie pour laquelle cols a été construit
@@ -738,127 +741,212 @@ function waveDeltaP(x_px, t_sim) {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-//  Rayon adaptatif des points
+//  Effectif, grain et rayon des points
 //
-//  La densité visuelle est portée par N ∝ ρ. Le rayon était pour cette
-//  raison rendu indépendant de ρ — mais l'aire occupée vaut alors N·πr²,
-//  elle aussi ∝ ρ : le taux de remplissage passait de ~25 % à ρ = 1 à
-//  100 % à ρ = 4. Le tube devenait un aplat, et une compression n'est plus
-//  lisible dans ce qui est déjà plein : c'est pourquoi les fronts d'onde
-//  disparaissaient aux fortes masses volumiques.
+//  ── Le partage des rôles a changé ────────────────────────────────────
+//  Historiquement, ρ pilotait le NOMBRE de particules (N ∝ ρ) et le rayon
+//  était tenu à l'écart de ρ. Ce partage avait deux défauts, l'un de
+//  lecture et l'autre de rendu :
 //
-//  Le rayon ne doit donc dépendre QUE de la hauteur du tube, jamais de ρ.
-//  Toute dépendance en ρ, même à sens unique, revient au même défaut vu à
-//  l'envers : un rayon qui rétrécit quand ρ monte est un rayon qui GROSSIT
-//  quand ρ descend, et voir une parcelle de fluide enfler parce que le
-//  milieu se raréfie n'a aucun sens.
+//    • sur une grande fenêtre, N butait sur son plafond dès ρ = 1 : bouger
+//      le curseur ne changeait alors plus rien du tout à l'écran. Le
+//      curseur le plus utilisé de la section était muet là où la page est
+//      le plus souvent projetée.
+//    • le grain du nuage suivait ρ : à ρ = 0,5 les bandes de compression
+//      étaient dessinées par deux fois moins de points qu'à ρ = 1, donc
+//      deux fois moins bien résolues. La densité faible était punie deux
+//      fois — moins d'encre ET moins de résolution.
 //
-//  On dimensionne donc le rayon une fois pour toutes sur le cas le plus
-//  défavorable — ρ au maximum du curseur — de sorte que le nuage ne sature
-//  nulle part sur la plage :
+//  ρ pilote désormais la TAILLE des points, à effectif constant. C'est un
+//  choix de représentation, pas un abus : ρ = n·m, et on choisit ici de
+//  faire varier m à n fixé — des molécules plus LOURDES, pas plus
+//  nombreuses. C'est d'ailleurs la lecture la plus directe du ρ de
+//  c = √(K/ρ) : ce qui ralentit l'onde, c'est l'inertie.
 //
-//      πr² ≤ PARTICLE_FILL_MAX × (aire par particule à ρ_max)
+//  Réserve à garder en tête : la taille d'un atome vient de son cortège
+//  électronique, pas de sa masse (Li est plus gros que Ne tout en étant
+//  plus léger). Le rayon est donc ici un SYMBOLE de masse, et le libellé
+//  du curseur doit le dire — cf. index.html.
 //
-//  l'aire par particule valant COL_SLOT_PX2/ρ (cf. initCols).
+//  ── Ce qui est conservé ──────────────────────────────────────────────
+//  Le grain devient indépendant de ρ : les bandes de compression sont
+//  aussi bien résolues à ρ = 0,5 qu'à ρ = 3. Et comme N ne dépend plus de
+//  ρ, la signature d'initCols non plus : bouger ρ ne reconstruit plus les
+//  particules et n'efface donc plus la sélection de l'élève.
+//
+//  ── Ce qui est perdu ─────────────────────────────────────────────────
+//  L'encre totale valait exactement ∝ ρ (N ∝ ρ × aire constante). La
+//  conserver demanderait des points énormes à ρ = 3 (φ → 1), qui ne se
+//  lisent plus comme une texture : les disques fusionnent en pâtés. La loi
+//  retenue (cf. PARTICLE_S_AT_RHO_MIN/MAX plus bas) est nettement plus
+//  plate — φ va de 0,11 à 0,38 — et le nuage porte donc globalement moins
+//  d'encre qu'au calibrage historique. Le maximum de contraste ΔC(φ) étant
+//  vers φ ≈ 0,9, toute la plage reste sur le flanc montant : le contraste
+//  croît encore avec ρ de bout en bout, mais plus bas sur la courbe
+//  qu'avant. C'est l'arbitrage assumé au profit de la taille des marques.
 //
 //  ── Où placer PARTICLE_FILL_MAX ? ────────────────────────────────────
-//  « Ne pas saturer » ne dit pas où se placer, et la valeur d'origine
-//  (0,50) plaçait le nuage BEAUCOUP trop bas. Le calcul se pose : dans un
-//  semis aléatoire de taux de remplissage φ, la couverture perçue vaut
-//  C = 1 − e^(−φ). Une compression de taux ak porte localement φ à
-//  φ/(1−ak), une détente à φ/(1+ak), et ce qui se VOIT est l'écart
+//  « Ne pas saturer » ne dit pas où se placer. Dans un semis aléatoire de
+//  taux de remplissage φ, la couverture perçue vaut C = 1 − e^(−φ). Une
+//  compression de taux ak porte localement φ à φ/(1−ak), une détente à
+//  φ/(1+ak), et ce qui se VOIT est l'écart
 //
 //      ΔC(φ) = e^(−φ/(1+ak)) − e^(−φ/(1−ak))
 //
-//  qui est nul aux deux bouts — nuage vide, nuage saturé — et maximal
-//  quelque part au milieu. À ak = 0,45 (le régime courant, cf. AK_MIN) le
-//  maximum tombe vers φ ≈ 0,9. Or l'ancien réglage donnait φ = 0,167 à
-//  ρ = 1 : on travaillait à un cinquième de l'optimum, et le contraste
-//  perdu là ne se rattrape par aucun fond ni aucune couleur.
-//
-//  Avec PARTICLE_FILL_MAX = 1,00 le remplissage va de 0,17 (ρ = 0,5) à
-//  1,00 (ρ = 3), et l'écart de couverture compression/détente passe de
-//  0,15 à 0,25 aux réglages par défaut — il double, à géométrie et à
-//  physique inchangées.
-//
-//  La crainte de l'aplat ne se vérifie pas à cette valeur : à ρ = 3 la
-//  couverture vaut 50 % en détente contre 84 % en compression. Le nuage
-//  est dense, mais il reste modulé — c'est φ = 2 ou 3 qui aplatirait.
-//  En revanche les points se touchent franchement à ρ élevé : c'est le
-//  prix assumé, et le curseur ρ reste là pour qui veut compter les points
-//  plutôt que lire les fronts.
+//  nul aux deux bouts — nuage vide, nuage saturé — et maximal vers φ ≈ 0,9
+//  à ak = 0,45 (le régime courant, cf. AK_MIN). PARTICLE_FILL_MAX = 1,00
+//  fixe ici l'ÉCHELLE du rayon (φ_ref = 1/3, cf. PARTICLE_FILL_REF), le
+//  remplissage réellement obtenu étant celui de la loi s(ρ).
 // ══════════════════════════════════════════════════════════════════════
 
 var PARTICLE_FILL_MAX = 1.00;   // part de l'aire disponible qu'un point peut couvrir
-var RHO_MAX_UI        = 3.0;    // doit suivre le max du curseur ρ (index.html)
+var RHO_MIN_UI        = 0.5;    // doivent suivre les bornes du curseur ρ
+var RHO_MAX_UI        = 3.0;    //   (index.html)
+var PARTICLE_N_MAX    = 8000;   // plafond de performance
 
-// Hauteur de tube au-delà de laquelle le rayon sature : c'est celle où
-// l'ancienne loi linéaire H × 0,018 atteignait rSat. Les tubes hauts gardent
-// donc EXACTEMENT le rendu calibré jusqu'ici ; seuls les tubes écrasés
-// changent. ≈ 192 px.
+// Taux de remplissage de RÉFÉRENCE : celui qui définit le rayon géométrique
+// r_geom = espacement × √(φ_ref/π), lequel vaut exactement le rSat historique
+// à la hauteur de référence. C'est une unité de mesure du rayon, PAS le
+// remplissage réellement obtenu — celui-ci dépend de s(ρ) ci-dessous.
+var PARTICLE_FILL_REF = PARTICLE_FILL_MAX / RHO_MAX_UI;   // = 1/3
+
+// ── Loi rayon ↔ masse volumique ───────────────────────────────────────
+//
+//  r(ρ) = r_geom × s(ρ),  s interpolé LINÉAIREMENT entre les deux bornes
+//  du curseur.
+//
+//  ── Pourquoi linéaire et non en puissance ────────────────────────────
+//  La première version suivait r ∝ ρ^0,35. Une loi concave grossit vite au
+//  début de la course puis s'aplatit : à l'usage, le point devenait « trop
+//  vite trop gros » dans le premier tiers du curseur, puis ne répondait
+//  presque plus dans le dernier. L'interpolation linéaire répartit la
+//  variation à taux constant sur toute la course — ce qu'on attend d'un
+//  curseur qu'on manipule devant une classe.
+//
+//  ── Calage des deux bornes ───────────────────────────────────────────
+//  Le maximum a été jugé à l'écran : à ρ = 3 le point doit valoir ce que la
+//  loi en puissance donnait à ρ = 1,2, soit 1,2^0,35 = 1,066 × r_geom. Le
+//  minimum descend d'autant qu'il faut pour que l'écart reste lisible : on
+//  conserve le rapport max/min ≈ 1,87 de la loi précédente, ce qui donne
+//  0,57 × r_geom.
+//
+//  ── Contrepartie assumée ─────────────────────────────────────────────
+//  Le nuage porte donc moins d'encre qu'au calibrage historique sur presque
+//  toute la plage : φ passe de 0,11 (ρ = 0,5) à 0,38 (ρ = 3), là où le
+//  calibrage visait φ = 1/3 au réglage par défaut. C'est un arbitrage de
+//  lisibilité tranché à l'œil, et il se paie sur le contraste des bandes —
+//  cf. ΔC(φ) plus haut, dont on s'éloigne. Si le nuage devait redevenir
+//  plus dense sans regrossir les points, le levier est COL_SLOT_PX2 (plus
+//  de particules, grain plus fin), pas cette loi-ci.
+var PARTICLE_S_AT_RHO_MIN = 0.57;
+var PARTICLE_S_AT_RHO_MAX = 1.066;   // = 1,2^0,35, le rendu jugé bon à l'écran
+
+// Hauteur de tube de référence : celle où l'ancienne loi linéaire H × 0,018
+// atteignait le rayon de saturation rSat = √(FILL_MAX·COL_SLOT_PX2/(π·ρ_max)).
+// ≈ 192 px. Le rendu à cette hauteur et à ρ = 1 est calé au pixel près sur le
+// calibrage historique.
 function _particleHRef() {
     return Math.sqrt(PARTICLE_FILL_MAX * COL_SLOT_PX2 /
                      (Math.PI * RHO_MAX_UI)) / 0.018;
 }
 
-function particleRadius() {
-    // Rayon au-delà duquel le nuage saturerait à ρ_max. Constante de fait :
-    // ne dépend d'aucun réglage, seulement des bornes du curseur.
-    var rSat = Math.sqrt(PARTICLE_FILL_MAX * COL_SLOT_PX2 / (Math.PI * RHO_MAX_UI));
+// ══════════════════════════════════════════════════════════════════════
+//  Domaine des particules, en px
+//
+//  Le nuage déborde du tube des deux côtés pour que le milieu reste
+//  continu : lors d'une raréfaction au bord droit, les particules
+//  « extérieures » entrent naturellement dans le tube. Le débordement est
+//  dimensionné par sonMaxDisplayPx(), purement géométrique — c'est ce qui
+//  rend le domaine insensible à f, K et ρ, et donc ce qui permet la garde
+//  de non-reconstruction d'initCols.
+// ══════════════════════════════════════════════════════════════════════
 
-    // ── Pourquoi √H et non H ? ────────────────────────────────────────
-    // La case allouée à une particule suit πr² (cf. particleSlotPx2), donc
-    //     N = (domaine × H × ρ) / (π r² ρ_max / φ_max)
-    // Faire varier r comme H (ou le borner par un plancher, ce qui revient à
-    // le figer) laisse N ∝ H : le tube écrasé garde le bon TAUX de
-    // remplissage, mais contient physiquement moins de molécules — le gaz
-    // semble s'être vidé au lieu d'avoir été redessiné plus petit.
-    //
-    // En r ∝ √H, la case suit H et le facteur H se simplifie :
-    //     r = rSat × √(H/H_ref)  ⟹  N = domaine × ρ × H_ref / COL_SLOT_PX2
-    // N ne dépend PLUS de la hauteur du tube — un tube écrasé montre le même
-    // nombre de molécules que le tube plein, simplement dessinées plus
-    // petites et plus serrées, exactement comme une vue dézoomée. Et comme
-    // la case suit r², le taux de remplissage, lui, reste constant.
-    //
-    // Corollaire sur les performances : N est plafonné par sa valeur à
-    // H_ref, donc aplatir le tube ne peut plus faire exploser le compte. Le
-    // plafond de 8000 dans initCols joue au même moment qu'avant.
-    var H = sim.tubeBottom - sim.tubeTop;
-    var r = rSat * Math.sqrt(Math.min(1, H / _particleHRef()));
+function _colsExtraLeftPx()  { return sonMaxDisplayPx() + 4; }
+// La zone droite doit rester peuplée même quand une raréfaction tire les
+// particules vers la gauche sur toute l'amplitude : d'où le facteur 2.
+function _colsExtraRightPx() { return sonMaxDisplayPx() * 2 + 4; }
 
-    // Plancher de lisibilité pur : en deçà de ~41 px de tube, un point
-    // descendrait sous 1,6 px et deviendrait invisible. N recommence alors à
-    // diminuer, mais un tube de 40 px n'est plus exploitable de toute façon.
-    return Math.max(1.6, r);
+function _colsDomainPx() {
+    return sim.tubeLength + _colsExtraLeftPx() + _colsExtraRightPx();
 }
 
 // ══════════════════════════════════════════════════════════════════════
-//  Aire de « case » allouée à une particule à ρ = 1, en px²
+//  Nombre de particules — indépendant de ρ
 //
-//  COL_SLOT_PX2 est une constante en pixels : la grille des particules a
-//  donc longtemps gardé le même pas (≈ 10,6 px à ρ = 1) quelle que soit la
-//  hauteur du tube, alors que le RAYON des points, lui, suit cette hauteur.
-//  Le taux de remplissage φ = πr²ρ/slot dépendait donc de H comme r² : un
-//  tube écrasé (petite fenêtre, ou graphe affiché) contenait bien le même
-//  nombre de points par px², mais des points deux fois plus petits — d'où
-//  l'impression, parfaitement fondée, d'un gaz beaucoup trop raréfié.
+//  La case allouée à une particule suit πr², donc la hauteur du tube :
+//  slot = COL_SLOT_PX2 × H/H_ref. Le facteur H de l'aire du domaine se
+//  simplifie et il reste
 //
-//  La case suit donc πr² : quand le rayon diminue, la grille se resserre
-//  dans le même rapport, et φ ne dépend plus que de ρ. Au rayon de
-//  saturation rSat la formule redonne EXACTEMENT COL_SLOT_PX2 — le
-//  calibrage historique est donc conservé tel quel pour les tubes hauts,
-//  et seuls les tubes écrasés voient leur nuage se densifier.
+//      N = domaine × H_ref / COL_SLOT_PX2
 //
-//  Combinée à r ∝ √H (cf. particleRadius), la case vaut COL_SLOT_PX2 × H/H_ref
-//  et le facteur H de l'aire du tube se simplifie : le NOMBRE de particules
-//  ne dépend plus de la hauteur du tube non plus. Densité et effectif sont
-//  alors tous deux invariants — seule l'échelle du dessin change.
+//  N ne dépend donc NI de ρ NI de la hauteur du tube : un tube écrasé
+//  montre le même nombre de molécules, simplement dessinées plus petites
+//  et plus serrées — exactement une vue dézoomée.
+//
+//  ── Pourquoi le min(1, H/H_ref) a disparu ────────────────────────────
+//  L'ancien rayon saturait au-delà de H_ref (r = rSat, constant). La case
+//  cessait alors de suivre H, le facteur H ne se simplifiait plus et
+//  N ∝ domaine × H repartait à la hausse — d'où le plafond atteint sur les
+//  grandes fenêtres, précisément le cas où la page est projetée. En
+//  laissant r croître comme √H au-delà aussi, N redevient ∝ domaine seul :
+//  il faudrait un tube de plus de 4 500 px de large pour toucher le
+//  plafond. Contrepartie assumée : sur un grand écran les points sont plus
+//  GROS qu'avant (r ∝ √H sans borne) — ce qui est exactement ce qu'on veut
+//  au vidéoprojecteur.
 // ══════════════════════════════════════════════════════════════════════
 
-function particleSlotPx2() {
-    var r = particleRadius();
-    return Math.PI * r * r * RHO_MAX_UI / PARTICLE_FILL_MAX;
+function particleCount() {
+    var H = sim.tubeBottom - sim.tubeTop;
+    var domain = _colsDomainPx();
+    if (H <= 0 || domain <= 0) return 0;
+    var slotGeom = COL_SLOT_PX2 * H / _particleHRef();
+    return Math.min(PARTICLE_N_MAX,
+                    Math.max(50, Math.round(domain * H / slotGeom)));
+}
+
+// Espacement moyen entre particules, en px : la racine de l'aire réellement
+// disponible par particule. Passe par N plutôt que par la formule théorique,
+// de sorte que le plafond PARTICLE_N_MAX — s'il venait à jouer — soit pris en
+// compte au lieu d'être ignoré.
+function particleSpacingPx() {
+    var H = sim.tubeBottom - sim.tubeTop;
+    var N = particleCount();
+    if (H <= 0 || N <= 0) return Math.sqrt(COL_SLOT_PX2);
+    return Math.sqrt(_colsDomainPx() * H / N);
+}
+
+// Facteur de taille porté par la masse volumique : 1 = rayon géométrique de
+// référence. Linéaire entre les deux bornes du curseur, et constant au-delà si
+// ρ venait à en sortir.
+function _particleSizeFactor() {
+    var span = RHO_MAX_UI - RHO_MIN_UI;
+    if (span <= 0) return PARTICLE_S_AT_RHO_MAX;
+    var t = (sim.rho - RHO_MIN_UI) / span;
+    t = Math.max(0, Math.min(1, t));
+    return PARTICLE_S_AT_RHO_MIN +
+           (PARTICLE_S_AT_RHO_MAX - PARTICLE_S_AT_RHO_MIN) * t;
+}
+
+// Rayon du point, en px.
+//
+//   r = espacement × √(φ_ref/π) × s(ρ)
+//
+// Le premier facteur est le rayon géométrique de référence : il vaut
+// exactement rSat × √(H/H_ref) tant que le plafond d'effectif ne joue pas,
+// donc l'échelle historique. Le second porte la masse volumique.
+function particleRadius() {
+    var sp = particleSpacingPx();
+    var r  = sp * Math.sqrt(PARTICLE_FILL_REF / Math.PI) * _particleSizeFactor();
+
+    // Garde-fou : un diamètre supérieur à l'espacement moyen ferait un aplat
+    // au repos, dans lequel une compression ne se lit plus. La plage actuelle
+    // du curseur en est loin (d/espacement ≈ 0,69 à ρ = 3) ; la borne est là
+    // pour qu'un futur relèvement de PARTICLE_S_AT_RHO_MAX ne puisse pas
+    // casser le rendu en silence.
+    r = Math.min(r, 0.5 * sp);
+
+    // Plancher de lisibilité pur : en deçà, un point deviendrait invisible.
+    return Math.max(1.6, r);
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -875,9 +963,8 @@ function particleSlotPx2() {
 //  le domaine est insensible à f et K — cf. la garde de non-reconstruction
 //  plus bas.
 //
-//  N ∝ ρ : doubler ρ double le nombre de particules → densité visuelle
-//  directement proportionnelle à la masse volumique du milieu.
-//  N = min(8000, round((L + extraRight) × H × ρ / particleSlotPx2()))
+//  N ne dépend PAS de ρ : c'est la TAILLE des points qui porte la masse
+//  volumique (cf. particleRadius). N = domaine × H_ref / COL_SLOT_PX2.
 // ══════════════════════════════════════════════════════════════════════
 
 // Relevé de la sélection courante, sous forme d'intervalles de x0 exprimés
@@ -921,18 +1008,13 @@ function initCols() {
     // Zone virtuelle gauche et droite : doivent couvrir le déplacement max
     // d'une particule. Celui-ci est désormais borné en dur par
     // sonMaxDisplayPx(), qui ne dépend QUE de la géométrie du tube — le
-    // domaine est donc insensible à f, K et ρ. C'est ce qui permet la garde
-    // ci-dessous : bouger le curseur Fréquence ou Compressibilité ne
-    // reconstruit plus les particules, et n'efface donc plus la sélection.
-    var aMax       = sonMaxDisplayPx();
-    var extraLeft  = aMax + 4;        // +4 px de marge sécurité
-    // La zone droite doit rester peuplée même quand une raréfaction tire les
-    // particules vers la gauche sur toute l'amplitude : d'où le facteur 2.
-    var extraRight = aMax * 2 + 4;
-    var domain     = L + extraRight + extraLeft;
-    var N = Math.min(8000,
-                Math.max(50,
-                    Math.round(domain * H * Math.max(0.1, sim.rho) / particleSlotPx2())));
+    // domaine est donc insensible à f, K et ρ, et N ne dépend plus de ρ non
+    // plus. C'est ce qui permet la garde ci-dessous : bouger le curseur
+    // Fréquence, Compressibilité OU Masse volumique ne reconstruit plus les
+    // particules, et n'efface donc plus la sélection.
+    var extraLeft  = _colsExtraLeftPx();
+    var domain     = _colsDomainPx();
+    var N          = particleCount();
 
     // Distribution jittered (grille régulière + bruit uniforme dans chaque case).
     // Borne la lacune maximale à ~2 × slot au lieu de ~7 × slot avec Math.random() pur,
@@ -942,7 +1024,8 @@ function initCols() {
 
     // ── Rayon de sélection adaptatif à la densité ─────────────────────
     // Le rayon s'adapte à l'espacement moyen des colonnes pour rester cohérent
-    // quelle que soit la résolution et la densité (ρ).
+    // quelle que soit la résolution. Depuis que N ne dépend plus de ρ, cet
+    // espacement ne dépend plus que de la géométrie du tube.
     // Formule : rayon = 1.5 × dx0, borné entre 20 et 40 px
     sim.selectionRadius = Math.max(20, Math.min(40, 1.5 * slot));
 

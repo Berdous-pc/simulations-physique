@@ -327,49 +327,85 @@ quoi on recréerait le saut que l'enveloppe est censée supprimer.
 
 Fonctions : `updateCelerite`, `stepSourceSon`, `waveDisplacement`,
 `waveDisplacementDisplay`, `waveDeltaP`, `sonIsQuiet`, `_sonDisplayGain`,
-`sonMaxDisplayPx`, `particleRadius`, `initCols`, `updateDpxData`,
+`sonMaxDisplayPx`, `particleCount`, `particleSpacingPx`, `particleRadius`,
+`initCols`, `updateDpxData`,
 
-**`particleRadius` compense partiellement ρ.** Le rayon était volontairement
-indépendant de ρ, la densité visuelle étant censée être portée par `N ∝ ρ`.
-Mais l'aire occupée vaut `N·πr²`, elle aussi `∝ ρ` : le taux de remplissage
-passait de ~25 % à ρ = 1 à **100 % à ρ = 4**. Le tube devenait un aplat, et
-une compression n'est plus lisible dans ce qui est déjà plein — c'est ce qui
-faisait disparaître les fronts d'onde aux fortes masses volumiques.
+**ρ pilote la taille des points, pas leur nombre.** Historiquement `N ∝ ρ` et
+le rayon était tenu à l'écart de ρ. Ce partage avait deux défauts :
 
-Le rayon ne dépend **que de la hauteur du tube, jamais de ρ**. Deux tentatives
-ont échoué avant d'en arriver là, pour la même raison : une loi en `ρ^(−1/4)`,
-puis un plafond `πr² ≤ PARTICLE_FILL_MAX × COL_SLOT_PX2/ρ`. Toute dépendance
-en ρ, même à sens unique, est le même défaut vu à l'envers — un rayon qui
-rétrécit quand ρ monte est un rayon qui *grossit* quand ρ descend, et voir une
-parcelle de fluide enfler parce que le milieu se raréfie n'a aucun sens.
+- sur une grande fenêtre, `N` butait sur son plafond de 8000 **dès ρ = 1** :
+  bouger le curseur ne changeait alors plus rien à l'écran. Le curseur était
+  muet là où la page est le plus souvent projetée.
+- le grain du nuage suivait ρ : à ρ = 0,5 les bandes de compression étaient
+  dessinées par deux fois moins de points, donc deux fois moins bien résolues.
+  La faible densité était punie deux fois — moins d'encre **et** moins de
+  résolution.
 
-Le rayon est donc dimensionné une fois pour toutes sur le cas le plus
-défavorable, `ρ = RHO_MAX_UI` (à tenir synchronisé avec le max du curseur dans
-`index.html`).
+Désormais `N` est indépendant de ρ et c'est le **rayon** qui le porte :
+`r = espacement × √(φ_ref/π) × s(ρ)`, avec `φ_ref = PARTICLE_FILL_MAX/RHO_MAX_UI
+= 1/3` qui fixe l'**échelle** du rayon (le premier facteur vaut exactement le
+`rSat` historique à `H_ref`) et `s(ρ)` qui porte la masse volumique. C'est un
+choix de représentation assumé : `ρ = n·m`, et on fait varier
+`m` à `n` fixé — des molécules plus **lourdes**, pas plus nombreuses. C'est la
+lecture la plus directe du ρ de `c = √(K/ρ)` : ce qui ralentit l'onde, c'est
+l'inertie. Réserve à garder en tête : la taille d'un atome vient de son cortège
+électronique, pas de sa masse ; le rayon est ici un **symbole** de masse, et le
+libellé du curseur le dit.
 
-**`particleSlotPx2` : la grille suit le rayon.** `COL_SLOT_PX2` est une
-constante en pixels, alors que le rayon, lui, suit la hauteur du tube : le
-remplissage `φ = πr²ρ/slot` dépendait donc de `H` comme `r²`. Un tube écrasé
-(petite fenêtre, ou graphe affiché) contenait le même nombre de points par px²
-mais des points bien plus petits, d'où un gaz visuellement beaucoup trop
-raréfié. L'aire de case allouée à une particule suit donc `πr²` : la grille se
-resserre exactement dans le rapport où le rayon diminue, et `φ` ne dépend plus
-que de `ρ`. Au rayon de saturation la formule redonne `COL_SLOT_PX2` — le
-calibrage historique des tubes hauts est intact.
+Conséquences favorables : le grain devient indépendant de ρ (bandes aussi bien
+résolues à ρ = 0,5 qu'à ρ = 3) ; et comme `N` ne dépend plus de ρ, la
+signature d'`initCols` non plus — bouger ρ ne reconstruit plus les particules
+et **n'efface plus la sélection de l'élève**.
 
-**Le rayon varie en `√H`, pas en `H`.** La case suivant `πr²`, on a
-`N = domaine × H × ρ / (πr²ρ_max/φ_max)`. Une loi `r ∝ H` — ou un simple
-plancher, qui revient à figer `r` — laisse `N ∝ H` : le taux de remplissage
-est bon, mais le tube écrasé contient réellement **moins de molécules**, il
-semble s'être vidé. Avec `r = rSat·√(H/H_ref)`, la case vaut
-`COL_SLOT_PX2·H/H_ref`, le facteur `H` se simplifie et
-`N = domaine × ρ × H_ref / COL_SLOT_PX2` : **ni la densité ni l'effectif ne
-dépendent plus de la hauteur du tube**, seule l'échelle du dessin change.
-`H_ref ≈ 192 px` est la hauteur où l'ancienne loi `H × 0,018` atteignait
-`rSat` — au-delà, rendu strictement inchangé. `N` étant plafonné par sa valeur
-à `H_ref`, aplatir le tube ne peut pas faire exploser le compte : le plafond
-de 8000 de `initCols` joue exactement au même moment qu'avant. Le plancher
-résiduel de 1,6 px est purement une garantie de lisibilité (tube < 41 px).
+**`s(ρ)` est linéaire, pas une loi de puissance.** La première version suivait
+`r ∝ ρ^0,35`. Une loi concave grossit vite au début de la course puis
+s'aplatit : à l'usage le point devenait *trop vite trop gros* dans le premier
+tiers du curseur, puis ne répondait presque plus dans le dernier.
+`s` est donc interpolé **linéairement** entre les deux bornes du curseur —
+variation à taux constant sur toute la course, ce qu'on attend d'un curseur
+qu'on manipule devant une classe. (`RHO_MIN_UI`/`RHO_MAX_UI` sont à tenir
+synchronisés avec `index.html`.)
+
+Les deux bornes ont été calées à l'écran, pas calculées : `PARTICLE_S_AT_RHO_MAX
+= 1,066` — à ρ = 3 le point vaut ce que l'ancienne loi donnait à ρ = 1,2 — et
+`PARTICLE_S_AT_RHO_MIN = 0,57`, choisi pour conserver le rapport max/min ≈ 1,87
+de la loi précédente. Un garde-fou `r ≤ espacement/2` empêche un futur
+relèvement du maximum de créer un aplat en silence (à ρ = 3,
+`d/espacement ≈ 0,69` — la borne est loin de jouer).
+
+**Contrepartie assumée : moins d'encre.** `φ` va de 0,11 (ρ = 0,5) à 0,38
+(ρ = 3), là où le calibrage historique visait `φ = 1/3` au réglage par défaut.
+Le maximum de `ΔC(φ)` étant vers `φ ≈ 0,9`, toute la plage reste sur le flanc
+montant — le contraste croît encore avec ρ de bout en bout — mais plus bas sur
+la courbe qu'avant. Si le nuage devait redevenir plus dense **sans** regrossir
+les points, le levier est `COL_SLOT_PX2` (plus de particules, grain plus fin),
+pas cette loi-ci. Sur un tube très écrasé (H ≈ 120 px), `r` à ρ = 0,5 touche le
+plancher de lisibilité de 1,6 px : le bas du curseur y perd un peu de sa course.
+
+**`particleCount` : `N` ne dépend ni de ρ ni de `H`.** La case allouée à une
+particule suit `πr²`, donc `slot = COL_SLOT_PX2 × H/H_ref` ; le facteur `H` de
+l'aire du domaine se simplifie et il reste
+`N = domaine × H_ref / COL_SLOT_PX2`. Un tube écrasé (petite fenêtre, ou graphe
+affiché) montre le **même nombre** de molécules, simplement dessinées plus
+petites et plus serrées — exactement une vue dézoomée. `H_ref ≈ 192 px` est la
+hauteur où l'ancienne loi `H × 0,018` atteignait
+`rSat = √(FILL_MAX·COL_SLOT_PX2/(π·ρ_max)) ≈ 3,46 px`.
+
+**Pourquoi le `min(1, H/H_ref)` a disparu.** L'ancien rayon *saturait* au-delà
+de `H_ref`. La case cessait alors de suivre `H`, le facteur `H` ne se
+simplifiait plus et `N ∝ domaine × H` repartait à la hausse — d'où le plafond
+atteint sur les grandes fenêtres. En laissant `r` croître comme `√H` au-delà
+aussi, `N` redevient `∝ domaine` seul : il faudrait un tube de plus de 4 500 px
+de large pour toucher le plafond (à 3 400 px, `N ≈ 6 600`). Contrepartie
+assumée : sur un grand écran les points sont plus **gros** qu'avant — ce qui est
+exactement ce qu'on veut au vidéoprojecteur. Cela corrige au passage un second
+défaut : avec `N` plafonné, `φ` tombait à 0,16 sur un tube de 2 200 px, soit un
+gaz deux fois trop raréfié ; il vaut maintenant 1/3 partout.
+
+`particleSpacingPx` passe par le `N` réellement construit plutôt que par la
+formule théorique, de sorte que le plafond — s'il venait à jouer — soit pris en
+compte au lieu d'être ignoré. Le plancher résiduel de 1,6 px sur le rayon est
+purement une garantie de lisibilité.
 
 **Où placer `PARTICLE_FILL_MAX` ?** « Ne pas saturer » ne dit pas *où* se
 placer, et la valeur d'origine (0,50) plaçait le nuage beaucoup trop bas. Dans
@@ -378,21 +414,9 @@ un semis aléatoire de taux de remplissage `φ`, la couverture perçue vaut
 `φ/(1−ak)`, une détente à `φ/(1+ak)`, et ce qui se **voit** est l'écart
 `ΔC(φ) = e^(−φ/(1+ak)) − e^(−φ/(1−ak))`. Nul aux deux bouts — nuage vide,
 nuage saturé — il est maximal vers `φ ≈ 0,9` à `ak = 0,45` (le régime courant,
-cf. `AK_MIN`). Or l'ancien réglage donnait `φ = 0,167` à ρ = 1 : on travaillait
+cf. `AK_MIN`). Le réglage d'origine donnait `φ = 0,167` à ρ = 1 : on travaillait
 à un cinquième de l'optimum, et le contraste perdu là ne se rattrape par aucun
 fond ni aucune couleur.
-
-`PARTICLE_FILL_MAX = 1,00` porte le remplissage de 0,17 (ρ = 0,5) à 1,00
-(ρ = 3), et l'écart de couverture compression/détente de 0,15 à 0,25 aux
-réglages par défaut — il double, à géométrie et à physique inchangées. La
-crainte de l'aplat ne se vérifie pas à cette valeur : à ρ = 3 la couverture
-vaut 50 % en détente contre 84 % en compression. Le nuage est dense mais reste
-modulé — c'est `φ = 2` ou 3 qui aplatirait.
-
-La fenêtre de `base` (le rayon « esthétique » tiré de la hauteur du tube) suit
-`PARTICLE_FILL_MAX` : la laisser à son ancien calibrage `1,5 … 3,0 px` en
-aurait fait la borne active, le rayon aurait plafonné à 3,0 px au lieu des
-3,46 px visés, et les deux tiers du gain seraient restés sur la table.
 
 `updateDptData`, `pruneImpulses`, `resetAnim`, `selectNearbyParticles`.
 
@@ -400,8 +424,9 @@ aurait fait la borne active, le rayon aurait plafonné à 3,0 px au lieu des
 retirer aux particules leur position de repos, donc effacer la sélection de
 l'élève — ce qui arrivait à chaque `input` des curseurs f, ρ et K, et à chaque
 resize. Une signature `L|H|N` court-circuite désormais l'appel quand rien de
-géométrique n'a bougé (cas de f et K, le domaine ne dépendant plus d'eux) ; et
-quand la reconstruction est inévitable (ρ, resize), la sélection est relevée
+géométrique n'a bougé — soit les **trois** curseurs, le domaine ne dépendant ni
+de f ni de K et `N` ne dépendant plus de ρ ; et quand la reconstruction est
+inévitable (resize), la sélection est relevée
 sous forme d'intervalles de `x0` **en fraction de `colsL`** puis réappliquée,
 si bien qu'elle se transpose à la nouvelle largeur.
 

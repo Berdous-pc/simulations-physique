@@ -8,7 +8,8 @@
 //  tube.js — Rendu du canvas d'animation
 //  Responsabilités : tube, membrane, particules, balises, sélection,
 //  splitter draggable, resize.
-//  Dépend de : sim.js (sim, waveDisplacement, particleRadius, initCols,
+//  Dépend de : sim.js (sim, waveDisplacement, particleRadius,
+//               particleSpacingPx, initCols,
 //               updateCelerite, C_BASE, K_DEFAULT, RHO_DEFAULT)
 // ══════════════════════════════════════════════════════════════════════
 
@@ -895,35 +896,48 @@ function _drawTubePressureBg(ctx) {
 //  bandes régulières, qui se lisent comme un décor.
 var DENS_BLUE      = [42, 106, 170];  // #2a6aaa — la couleur des particules
 
-// ── Bornes de l'arm de résolution, en GRAIN et non en pixels ──────────
+// ── Bornes de l'arm de résolution, en GRAIN et non en pixels ─────────
 //
 //  Ces bornes ont d'abord été des pixels : 140 px « les particules
 //  suffisent », 45 px « le voile porte tout ». Elles ont été calées sur ce
-//  que le nuage savait montrer à ρ = 1 — donc sans le dire, elles étaient
-//  déjà une mesure du GRAIN du nuage, mais figée à une seule valeur de ρ.
+//  que le nuage savait montrer au réglage par défaut — donc sans le dire,
+//  elles étaient déjà une mesure du GRAIN du nuage, mais figée à une seule
+//  géométrie.
 //
-//  Or ce grain suit ρ : l'aire par particule vaut particleSlotPx2()/ρ, donc
-//  l'espacement moyen vaut √(slot/ρ) — dans un tube haut (slot = COL_SLOT_PX2),
-//  10,6 px à ρ = 1, mais 15,0 px
-//  à ρ = 0,5 et 6,1 px à ρ = 3. Un nuage dense résout des bandes deux fois
-//  plus fines qu'un nuage clairsemé, et des bornes en pixels absolus le
-//  ignoraient : le voile s'appuyait autant sur un nuage qui n'en avait pas
-//  besoin qu'il s'abstenait sur un nuage incapable de suivre.
+//  Or ce grain varie : l'espacement moyen vaut √(domaine × H / N), et
+//  comme le rayon des points suit √H, la case suit H et l'espacement aussi
+//  — 10,6 px à la hauteur de référence, mais 12,0 px sur un tube plein
+//  écran et davantage encore au vidéoprojecteur. Un nuage à grain fin
+//  résout des bandes plus fines qu'un nuage à gros grain, et des bornes en
+//  pixels absolus l'ignoraient : le voile s'appuyait autant sur un nuage
+//  qui n'en avait pas besoin qu'il s'abstenait sur un nuage incapable de
+//  suivre.
 //
 //  Les bornes sont donc exprimées en ESPACEMENTS. Les valeurs reprennent
-//  très exactement les anciennes à ρ = 1 (13,2 × 10,6 ≈ 140 px, 4,2 × 10,6
-//  ≈ 45 px) : rien ne change au réglage par défaut, seule la réponse au
-//  curseur ρ apparaît.
+//  très exactement les anciennes à H_ref (13,2 × 10,6 ≈ 140 px, 4,2 × 10,6
+//  ≈ 45 px) : rien ne change au calibrage historique, seule la réponse à la
+//  géométrie apparaît.
 //
-//  ── Pourquoi le grain et non le NOMBRE de particules par bande ───────
+//  ── Ce que ρ ne fait plus ───────────────────────────────────────────
+//  Tant que ρ pilotait le NOMBRE de particules, il pilotait aussi le grain,
+//  et cet arm lui répondait. Depuis que ρ pilote la TAILLE des points à
+//  effectif constant (cf. particleRadius), le grain n'en dépend plus : les
+//  bandes de compression sont aussi bien RÉSOLUES à ρ = 0,5 qu'à ρ = 3, et
+//  il n'y a donc plus de manque de résolution à compenser de ce côté. Ce
+//  n'est pas une perte — c'est le défaut que le nouveau partage supprime :
+//  la faible densité n'est plus punie deux fois, moins d'encre ET moins de
+//  points.
+//
+//  ── Pourquoi le grain et non le NOMBRE de particules par bande ──────
 //  Le critère complet serait le comptage : une bande λ/2 × H contient
-//  n = (λ/2)·H·ρ/COL_SLOT_PX2 particules, de bruit relatif 1/√n — ce qui
-//  ferait aussi dépendre l'arm de la HAUTEUR du tube. On s'en garde, et pas
-//  par paresse : la hauteur est déjà l'affaire de l'AUTRE arm, puisque
+//  n = (λ/2)·H/slot particules, de bruit relatif 1/√n — ce qui ferait
+//  dépendre l'arm de la HAUTEUR du tube une seconde fois. On s'en garde, et
+//  pas par paresse : la hauteur est déjà l'affaire de l'AUTRE arm, puisque
 //  ak_disp ≤ 0,817·H/λ (cf. sonDisplayAkAt). Écraser le volet d'animation
 //  fait donc déjà monter le renfort par la voie du contraste ; le faire
 //  monter une seconde fois par la voie de la résolution le compterait deux
-//  fois. Chaque arm sa variable : le contraste porte H, la résolution ρ.
+//  fois. Chaque arm sa variable : le contraste porte H, la résolution le
+//  rapport λ/grain.
 var DENS_LAM_COMFY_SP = 13.2;         // espacements : au-delà, les particules suffisent
 var DENS_LAM_TIGHT_SP = 4.2;          // ... en deçà, le voile porte tout
 var DENS_KNEE_LO   = 0.55;            // seuil ΔP en régime confortable
@@ -971,12 +985,11 @@ function _smoothstep01(u) {
     return u * u * (3 - 2 * u);
 }
 
-// Espacement moyen des particules, en px : l'aire par particule vaut
-// particleSlotPx2()/ρ (cf. initCols, même écrêtage de ρ). Cette case suit
-// πr², donc la hauteur du tube : le grain lu ici reste bien celui du nuage
-// réellement dessiné, y compris quand le tube est écrasé.
+// Espacement moyen des particules, en px. Depuis que N ne dépend plus de ρ,
+// le grain non plus : il ne suit que la géométrie du tube. Le calcul est
+// délégué à sim.js, qui le tire du N réellement construit.
 function _densGrainPx() {
-    return Math.sqrt(particleSlotPx2() / Math.max(0.1, sim.rho));
+    return particleSpacingPx();
 }
 
 // Manque de résolution : 0 = confortable, 1 = aussi serré que possible.
