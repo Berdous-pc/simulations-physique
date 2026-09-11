@@ -362,7 +362,37 @@ var DP_MAX_POINTS    = 1600;  // 300 pts/s × 5 s + marge → courbes lisses sur
 // Aire disponible par particule à la hauteur de référence H_ref, en px² : fixe
 // le nombre de particules (cf. particleCount) et, par là, le grain du nuage.
 // Ne dépend plus de ρ, qui pilote désormais le rayon (cf. particleRadius).
-var COL_SLOT_PX2     = 113;   // → espacement ≈ 10,6 px à H_ref ; c'est le levier
+//
+// ── Pourquoi 32 et non 113 ────────────────────────────────────────────
+// À 113, le nuage comptait 2,84 espacements par longueur d'onde au coin le
+// plus serré du domaine (κ = 0, ρ = 3, f = 5 Hz, λ ≈ 34 px) : moins d'une
+// colonne et demie par demi-onde. Il n'y avait tout simplement pas assez de
+// colonnes pour DESSINER une bande de compression, et le diamètre des points
+// atteignait le quart de λ. Le seuil déclaré ailleurs dans le code est de
+// 4,2 espacements par λ (DENS_LAM_TIGHT_SP, tube.js) : on était dessous.
+// 32 le ramène à 3,90 espacements, tout près du seuil ; 24 l'y amènerait
+// exactement (4,19), mais au prix d'un effectif ×2,2 et d'un rayon qui touche
+// le plancher de 1,6 px sur un tube écrasé. Arbitrage tranché à l'œil.
+//
+// Les deux symptômes ont le même remède, et c'est celui-ci : à φ constant
+// (φ = FILL_REF × s(ρ)², l'effectif s'y simplifie exactement), densifier
+// rétrécit les points ET resserre le grain. 32 porte le coin serré à 3,90
+// espacements par λ et ramène le diamètre à λ/5, sans toucher d'un pouce à
+// l'encre — donc sans rien rendre du contraste gagné par s(ρ).
+//
+// Effet de bord heureux : à ρ = 1 le rayon revient à 2,6 px, exactement la
+// taille d'avant le relèvement de φ. Le nuage a doublé d'encre sans
+// que les points aient grossi.
+//
+// Limite basse atteinte ici : sur un tube très écrasé (H ≈ 120 px) et à
+// ρ = 0,5, r tombe à 1,68 px et frôle le plancher de lisibilité de 1,6 px. On
+// ne peut donc plus guère densifier sans revoir ce plancher : à slot = 24 il
+// prend déjà la main, et φ y dépasse alors la loi s(ρ).
+//
+// Pourquoi ρ = 3 était le coin fautif : ρ fait grossir les points ET
+// raccourcir la longueur d'onde, puisque c = √(K/ρ) donne λ ∝ 1/√ρ. Les
+// deux effets conspirent, et c'est pour ça que la limite se voit là.
+var COL_SLOT_PX2     = 32;    // → espacement ≈ 8,7 px à H = 245 ; c'est le levier
                               //   à bouger pour densifier le nuage sans
                               //   regrossir les points (cf. particleRadius)
 
@@ -848,11 +878,10 @@ function waveDeltaP(x_px, t_sim) {
 //  conserver demanderait des points énormes à ρ = 3 (φ → 1), qui ne se
 //  lisent plus comme une texture : les disques fusionnent en pâtés. La loi
 //  retenue (cf. PARTICLE_S_AT_RHO_MIN/MAX plus bas) est nettement plus
-//  plate — φ va de 0,11 à 0,38 — et le nuage porte donc globalement moins
-//  d'encre qu'au calibrage historique. Le maximum de contraste ΔC(φ) étant
-//  vers φ ≈ 0,9, toute la plage reste sur le flanc montant : le contraste
-//  croît encore avec ρ de bout en bout, mais plus bas sur la courbe
-//  qu'avant. C'est l'arbitrage assumé au profit de la taille des marques.
+//  plate — φ va de 0,24 à 0,50. Le maximum de contraste ΔC(φ) étant vers
+//  φ ≈ 0,9, toute la plage reste sur le flanc montant : le contraste croît
+//  encore avec ρ de bout en bout, mais plus bas sur la courbe qu'avant.
+//  C'est l'arbitrage assumé au profit de la taille des marques.
 //
 //  ── Où placer PARTICLE_FILL_MAX ? ────────────────────────────────────
 //  « Ne pas saturer » ne dit pas où se placer. Dans un semis aléatoire de
@@ -871,7 +900,14 @@ function waveDeltaP(x_px, t_sim) {
 var PARTICLE_FILL_MAX = 1.00;   // part de l'aire disponible qu'un point peut couvrir
 var RHO_MIN_UI        = 0.5;    // doivent suivre les bornes du curseur ρ
 var RHO_MAX_UI        = 3.0;    //   (index.html)
-var PARTICLE_N_MAX    = 8000;   // plafond de performance
+// Plafond de performance. Relevé en même temps que COL_SLOT_PX2 descendait à
+// 32, sans quoi la densification n'aurait pas lieu sur les grandes fenêtres.
+// Il reste sans danger pour le rendu : particleSpacingPx lit l'effectif APRÈS
+// écrêtage, donc φ = FILL_REF × s(ρ)² tient même quand le plafond joue — le
+// grain se contente de grossir. Et il joue là où il coûte le moins : sur un
+// grand écran λ croît comme la longueur du tube alors que l'espacement ne
+// croît que comme √H, donc le nombre d'espacements par λ y est déjà meilleur.
+var PARTICLE_N_MAX    = 12000;
 
 // Taux de remplissage de RÉFÉRENCE : celui qui définit le rayon géométrique
 // r_geom = espacement × √(φ_ref/π), lequel vaut exactement le rSat historique
@@ -893,27 +929,54 @@ var PARTICLE_FILL_REF = PARTICLE_FILL_MAX / RHO_MAX_UI;   // = 1/3
 //  curseur qu'on manipule devant une classe.
 //
 //  ── Calage des deux bornes ───────────────────────────────────────────
-//  Le maximum a été jugé à l'écran : à ρ = 3 le point doit valoir ce que la
-//  loi en puissance donnait à ρ = 1,2, soit 1,2^0,35 = 1,066 × r_geom. Le
-//  minimum descend d'autant qu'il faut pour que l'écart reste lisible : on
-//  conserve le rapport max/min ≈ 1,87 de la loi précédente, ce qui donne
-//  0,57 × r_geom.
+//  Premier calage, jugé à l'écran : à ρ = 3 le point valait ce que la loi
+//  en puissance donnait à ρ = 1,2, soit 1,066 × r_geom, et le minimum
+//  descendait à 0,57 pour conserver le rapport max/min ≈ 1,87 de la loi
+//  précédente. Les deux bornes ont depuis été relevées — cf. ci-dessous.
+//
+//  ── Relèvement du remplissage (contraste des bandes) ─────────────────
+//  Ce calage laissait φ à 0,15 seulement au réglage par défaut (ρ = 1).
+//  Dans un semis à φ = 0,15, les disques ne se touchent jamais : une zone
+//  comprimée reste un semis un peu plus serré, jamais une bande. Or ce qui
+//  fait sauter le contraste aux yeux, c'est la FUSION des disques, et elle
+//  s'amorce vers φ ≈ 0,5 — un seuil qu'il faut atteindre LOCALEMENT, dans
+//  la compression, pas en moyenne. Une compression de taux ak porte φ à
+//  φ/(1−ak) ; à ak = 0,45 (le régime courant, cf. AK_MIN) le facteur vaut
+//  1,8, donc viser 0,5 en compression demande φ ≈ 0,28 en moyenne.
+//
+//  D'où le relèvement des deux bornes à 0,84 / 1,225 :
+//
+//      ρ      0,5     1,0     2,0     3,0
+//      φ     0,235   0,280   0,382   0,500
+//      φ en compression
+//            0,43    0,51    0,70    0,91
+//
+//  Le haut de plage est borné par l'autre bout de la courbe ΔC : à φ = 0,5
+//  le diamètre vaut 0,80 espacement, les points se touchent presque au
+//  repos, et au-delà le nuage tournerait à l'aplat. C'est la borne dure de
+//  ce levier-ci.
 //
 //  ── Contrepartie assumée ─────────────────────────────────────────────
-//  Le nuage porte donc moins d'encre qu'au calibrage historique sur presque
-//  toute la plage : φ passe de 0,11 (ρ = 0,5) à 0,38 (ρ = 3), là où le
-//  calibrage visait φ = 1/3 au réglage par défaut. C'est un arbitrage de
-//  lisibilité tranché à l'œil, et il se paie sur le contraste des bandes —
-//  cf. ΔC(φ) plus haut, dont on s'éloigne. Si le nuage devait redevenir
-//  plus dense sans regrossir les points, le levier est COL_SLOT_PX2 (plus
-//  de particules, grain plus fin), pas cette loi-ci.
-var PARTICLE_S_AT_RHO_MIN = 0.57;
-var PARTICLE_S_AT_RHO_MAX = 1.066;   // = 1,2^0,35, le rendu jugé bon à l'écran
+//  Le haut de la course ne pouvant pas suivre, la course de ρ se comprime :
+//  le rapport de rayon max/min passe de 1,87 à 1,46. ρ se lit toujours
+//  comme un curseur de taille, mais moins franchement qu'avant. C'est
+//  contraste des bandes CONTRE expressivité de ρ : les deux tirent sur le
+//  même bouton, et on a tranché pour le contraste, qui sert toute la classe
+//  là où ρ ne sert qu'un point du cours.
+//
+//  Si le haut de plage devait redevenir plus expressif sans virer à
+//  l'aplat, le levier n'est pas cette loi-ci mais COL_SLOT_PX2 : plus de
+//  particules à φ constant, donc des points plus petits en pixels absolus,
+//  ce qui rend de la marge pour remonter s_max.
+var PARTICLE_S_AT_RHO_MIN = 0.84;
+var PARTICLE_S_AT_RHO_MAX = 1.225;   // φ = 0,50 à ρ = 3 — cf. relèvement ci-dessus
 
 // Hauteur de tube de référence : celle où l'ancienne loi linéaire H × 0,018
 // atteignait le rayon de saturation rSat = √(FILL_MAX·COL_SLOT_PX2/(π·ρ_max)).
-// ≈ 192 px. Le rendu à cette hauteur et à ρ = 1 est calé au pixel près sur le
-// calibrage historique.
+// ≈ 102 px depuis que COL_SLOT_PX2 vaut 32 (H_ref ∝ √slot ; c'était 192 px à
+// slot = 113). Ce n'est plus qu'une unité d'échelle interne : le calage au
+// pixel près sur le rendu historique a été délibérément abandonné en montant
+// le remplissage puis en densifiant.
 function _particleHRef() {
     return Math.sqrt(PARTICLE_FILL_MAX * COL_SLOT_PX2 /
                      (Math.PI * RHO_MAX_UI)) / 0.018;
@@ -1021,7 +1084,7 @@ function particleRadius() {
 
     // Garde-fou : un diamètre supérieur à l'espacement moyen ferait un aplat
     // au repos, dans lequel une compression ne se lit plus. La plage actuelle
-    // du curseur en est loin (d/espacement ≈ 0,69 à ρ = 3) ; la borne est là
+    // du curseur s'en approche (d/espacement ≈ 0,80 à ρ = 3) ; la borne est là
     // pour qu'un futur relèvement de PARTICLE_S_AT_RHO_MAX ne puisse pas
     // casser le rendu en silence.
     r = Math.min(r, 0.5 * sp);

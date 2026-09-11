@@ -334,7 +334,7 @@ Fonctions : `updateCelerite`, `stepSourceSon`, `waveDisplacement`,
 **ρ pilote la taille des points, pas leur nombre.** Historiquement `N ∝ ρ` et
 le rayon était tenu à l'écart de ρ. Ce partage avait deux défauts :
 
-- sur une grande fenêtre, `N` butait sur son plafond de 8000 **dès ρ = 1** :
+- sur une grande fenêtre, `N` butait sur son plafond **dès ρ = 1** :
   bouger le curseur ne changeait alors plus rien à l'écran. Le curseur était
   muet là où la page est le plus souvent projetée.
 - le grain du nuage suivait ρ : à ρ = 0,5 les bandes de compression étaient
@@ -367,30 +367,109 @@ variation à taux constant sur toute la course, ce qu'on attend d'un curseur
 qu'on manipule devant une classe. (`RHO_MIN_UI`/`RHO_MAX_UI` sont à tenir
 synchronisés avec `index.html`.)
 
-Les deux bornes ont été calées à l'écran, pas calculées : `PARTICLE_S_AT_RHO_MAX
-= 1,066` — à ρ = 3 le point vaut ce que l'ancienne loi donnait à ρ = 1,2 — et
-`PARTICLE_S_AT_RHO_MIN = 0,57`, choisi pour conserver le rapport max/min ≈ 1,87
-de la loi précédente. Un garde-fou `r ≤ espacement/2` empêche un futur
-relèvement du maximum de créer un aplat en silence (à ρ = 3,
-`d/espacement ≈ 0,69` — la borne est loin de jouer).
+Le premier calage était `PARTICLE_S_AT_RHO_MAX = 1,066` — à ρ = 3 le point
+valait ce que l'ancienne loi donnait à ρ = 1,2 — et `PARTICLE_S_AT_RHO_MIN =
+0,57`, pour conserver le rapport max/min ≈ 1,87 de la loi précédente. Les deux
+bornes ont depuis été **relevées à 0,84 / 1,225**, pour la raison suivante.
 
-**Contrepartie assumée : moins d'encre.** `φ` va de 0,11 (ρ = 0,5) à 0,38
-(ρ = 3), là où le calibrage historique visait `φ = 1/3` au réglage par défaut.
-Le maximum de `ΔC(φ)` étant vers `φ ≈ 0,9`, toute la plage reste sur le flanc
-montant — le contraste croît encore avec ρ de bout en bout — mais plus bas sur
-la courbe qu'avant. Si le nuage devait redevenir plus dense **sans** regrossir
-les points, le levier est `COL_SLOT_PX2` (plus de particules, grain plus fin),
-pas cette loi-ci. Sur un tube très écrasé (H ≈ 120 px), `r` à ρ = 0,5 touche le
-plancher de lisibilité de 1,6 px : le bas du curseur y perd un peu de sa course.
+**Pourquoi relever le remplissage.** Ce premier calage laissait `φ = 0,15` au
+réglage par défaut. À ce taux les disques ne se touchent jamais : une zone
+comprimée reste un semis un peu plus serré, jamais une bande. Ce qui fait
+sauter le contraste aux yeux, c'est la **fusion** des disques, et elle s'amorce
+vers `φ ≈ 0,5` — seuil à atteindre *localement*, dans la compression, pas en
+moyenne. Une compression de taux `ak` porte `φ` à `φ/(1−ak)` ; à `ak = 0,45`
+(le régime courant, cf. `AK_MIN`) le facteur vaut 1,8, donc viser 0,5 en
+compression demande `φ ≈ 0,28` en moyenne.
+
+| ρ | 0,5 | 1,0 | 2,0 | 3,0 |
+|---|---|---|---|---|
+| `φ` | 0,235 | 0,280 | 0,382 | 0,500 |
+| `φ` en compression | 0,43 | 0,51 | 0,70 | 0,91 |
+
+Le haut de plage est borné par l'autre bout de `ΔC(φ)` : à `φ = 0,5` le
+diamètre vaut 0,80 espacement, les points se touchent presque au repos, et
+au-delà le nuage tourne à l'aplat. Le garde-fou `r ≤ espacement/2` (soit
+`φ ≤ π/4`) reste en réserve derrière, pour qu'un relèvement ultérieur ne casse
+pas le rendu en silence.
+
+**Contrepartie assumée : la course de ρ se comprime.** Le haut ne pouvant pas
+suivre, le rapport de rayon max/min passe de 1,87 à 1,46. ρ se lit toujours
+comme un curseur de taille, mais moins franchement. C'est **contraste des
+bandes contre expressivité de ρ** : les deux tirent sur le même bouton, et on a
+tranché pour le contraste, qui sert toute la classe là où ρ ne sert qu'un point
+du cours. Si le haut de plage devait redevenir plus expressif sans virer à
+l'aplat, le levier n'est pas cette loi-ci mais `COL_SLOT_PX2` : plus de
+particules à `φ` constant, donc des points plus petits en pixels absolus, ce
+qui rend de la marge pour remonter `s_max`. Sur un tube très écrasé
+(H ≈ 120 px), `r` à ρ = 0,5 tombe à 1,68 px et frôle le plancher de lisibilité
+de 1,6 px. C'est la limite basse de la densification : à `slot = 24` le
+plancher prend la main et `φ` y dépasse la loi `s(ρ)`. On ne peut donc plus
+guère descendre `COL_SLOT_PX2` sans le revoir.
+
+**`COL_SLOT_PX2` : 113 → 32.** Le relèvement de φ a fait apparaître une limite
+au coin le plus serré du domaine — κ = 0, ρ = 3, f = 5 Hz, soit λ ≈ 34 px.
+Les points y atteignaient le quart de λ et, surtout, le nuage n'y comptait que
+**2,84 espacements par longueur d'onde** : moins d'une colonne et demie par
+demi-onde. Il n'y avait pas assez de colonnes pour *dessiner* une bande. Le
+seuil déclaré par ailleurs dans le code est de 4,2 espacements
+(`DENS_LAM_TIGHT_SP`) — on était dessous.
+
+Ce coin est fautif pour une raison structurelle : ρ fait grossir les points
+**et** raccourcir la longueur d'onde, puisque `c = √(K/ρ)` donne `λ ∝ 1/√ρ`.
+Les deux effets conspirent, et c'est toujours en haut du curseur ρ que la
+limite se voit.
+
+Densifier les traite tous les deux d'un coup, parce que `φ = FILL_REF × s(ρ)²`
+ne contient pas l'effectif : à `φ` constant, plus de particules donne des
+points plus petits *et* un grain plus fin, sans rendre un gramme de l'encre
+gagnée. `COL_SLOT_PX2 = 32` porte le coin serré à 3,90 espacements par λ et
+ramène le diamètre à λ/5 :
+
+| à H = 245 | espacement | `r` (ρ = 1) | `r` (ρ = 3) | esp./λ au coin serré |
+|---|---|---|---|---|
+| `slot = 113` | 12,0 px | 3,58 px | 4,79 px | 2,84 |
+| `slot = 32` | 8,7 px | **2,61 px** | **3,49 px** | **3,90** |
+| `slot = 24` | 8,1 px | 2,43 px | 3,25 px | 4,19 |
+
+Le rayon à ρ = 1 revient ainsi exactement à sa valeur d'avant le relèvement de
+φ : le nuage a doublé d'encre sans que les points aient grossi. Le coût est en
+effectif — `N` croît comme `1/√COL_SLOT_PX2`, soit ×1,9 — d'où le relèvement
+conjoint de `PARTICLE_N_MAX` (8000 → 12000), sans quoi la densification
+n'aurait pas lieu sur les grandes fenêtres. Ce plafond reste sans danger pour
+le rendu : `particleSpacingPx` lit l'effectif **après** écrêtage, donc
+`φ = FILL_REF × s(ρ)²` tient même quand il joue, et seul le grain grossit. Il
+joue d'ailleurs là où il coûte le moins : sur un grand écran `λ` croît comme la
+longueur du tube alors que l'espacement ne croît que comme `√H`, si bien que le
+nombre d'espacements par `λ` y est déjà meilleur.
+
+**Où va le coût en effectif.** Les deux modes de rendu ne le paient pas du tout
+au même prix, et il faut le savoir avant de redescendre `COL_SLOT_PX2`.
+
+- *Mode normal* : tous les disques sont accumulés dans **un seul chemin**, et
+  il n'y a que **deux `fill()` par frame**, quel que soit `N`. Par particule,
+  une recherche dichotomique dans l'historique, deux `Math.random` et un
+  `arc()`. Doubler `N` double un coût déjà modeste.
+- *Mode pression coloré* : `_drawParticles` y fait, **par particule et par
+  frame**, une allocation de chaîne `'rgb(r,g,b)'` (`_dpToColor`), une
+  affectation de `fillStyle` — que le canvas reparse — puis un `beginPath` et
+  un `fill()` à lui seul ; `waveDeltaP` ajoute deux recherches dichotomiques.
+  C'est `N` appels de dessin par frame au lieu de deux.
+
+C'est donc le mode pression qui décide, et il était déjà le point faible avant
+la densification. S'il devait ramer, le correctif n'est pas de remonter
+`COL_SLOT_PX2` mais de **quantifier `_dpToColor` sur ~24 teintes
+pré-construites** et de grouper les particules par palier : 24 `fill()` au lieu
+de `N`, et plus aucune chaîne reconstruite. À 24 niveaux, l'écart est invisible
+à l'œil.
 
 **`particleCount` : `N` ne dépend ni de ρ ni de `H`.** La case allouée à une
 particule suit `πr²`, donc `slot = COL_SLOT_PX2 × H/H_ref` ; le facteur `H` de
 l'aire du domaine se simplifie et il reste
 `N = domaine × H_ref / COL_SLOT_PX2`. Un tube écrasé (petite fenêtre, ou graphe
 affiché) montre le **même nombre** de molécules, simplement dessinées plus
-petites et plus serrées — exactement une vue dézoomée. `H_ref ≈ 192 px` est la
+petites et plus serrées — exactement une vue dézoomée. `H_ref ≈ 102 px` (∝ `√COL_SLOT_PX2`) est la
 hauteur où l'ancienne loi `H × 0,018` atteignait
-`rSat = √(FILL_MAX·COL_SLOT_PX2/(π·ρ_max)) ≈ 3,46 px`.
+`rSat = √(FILL_MAX·COL_SLOT_PX2/(π·ρ_max)) ≈ 1,84 px`.
 
 **Pourquoi le `min(1, H/H_ref)` a disparu.** L'ancien rayon *saturait* au-delà
 de `H_ref`. La case cessait alors de suivre `H`, le facteur `H` ne se
@@ -562,14 +641,21 @@ Ses bornes sont exprimées **en espacements et non en pixels**
 (`DENS_LAM_*_SP`, converties par `_densGrainPx`). Elles ont d'abord été des
 pixels absolus — 140 px et 45 px — calés sur ce que le nuage savait montrer à
 ρ = 1 : sans le dire, c'était déjà une mesure du grain, mais figée à une seule
-valeur de ρ. Or le grain suit ρ, l'aire par particule valant
-`COL_SLOT_PX2/ρ` : l'espacement moyen vaut 10,6 px à ρ = 1, mais **15,0 px à
+valeur de ρ. À l'époque le grain suivait ρ, l'aire par particule valant
+`COL_SLOT_PX2/ρ` : l'espacement moyen valait 10,6 px à ρ = 1, mais **15,0 px à
 ρ = 0,5 et 6,1 px à ρ = 3**. Un nuage dense résout des bandes deux fois plus
 fines qu'un nuage clairsemé, et des bornes en pixels absolus l'ignoraient — le
 voile s'appuyait autant sur un nuage qui n'en avait pas besoin qu'il
-s'abstenait sur un nuage incapable de suivre. Les valeurs (13,2 et 4,2)
-reprennent exactement les anciennes à ρ = 1 : rien ne change au réglage par
-défaut, seule la réponse au curseur ρ apparaît.
+s'abstenait sur un nuage incapable de suivre.
+
+Depuis, ρ pilote le rayon et non l'effectif : le grain ne dépend plus de ρ du
+tout. L'expression en espacements n'en est pas devenue inutile, elle a changé
+d'objet — elle suit maintenant `COL_SLOT_PX2` et la hauteur du tube. C'est ce
+qui a rendu la densification de `COL_SLOT_PX2` (113 → 32) indolore pour le
+voile : l'espacement tombant de 12,0 à 8,7 px, le seuil de 4,2 espacements
+passe tout seul de λ ≈ 50 px à λ ≈ 37 px. Le voile se retire exactement dans
+la mesure où le nuage s'est mis à résoudre mieux, sans qu'on ait à le
+retoucher.
 
 *Manque de contraste*, aux grandes λ (`_densTightAk`) : le déplacement affiché
 est plafonné par `sonMaxDisplayPx()`, donc `ak_disp = min(clamp(A·k, AK_MIN,
