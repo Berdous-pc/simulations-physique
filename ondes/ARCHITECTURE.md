@@ -276,7 +276,7 @@ tous deux `∂u/∂x`) :
   détente creusée sont **mutuellement exclusives** à pente bornée.
 - Deux calibrations du rendu, toutes deux établies sur une sinusoïde, se
   retournaient contre un motif à structure fine : le budget d'errance
-  thermique (`WANDER_LAM`, indexé sur λ) valait ~40 % de la largeur d'un pic
+  thermique (alors indexé sur λ) valait ~40 % de la largeur d'un pic
   et le floutait, et le nombre de color-stops du voile de fond
   (14 par λ) n'échantillonnait qu'environ 1,7 point par pic.
 
@@ -715,9 +715,11 @@ Le motif ne tenait pas, pour deux raisons superposées :
   accordait.
 
 Le réglage se pose donc à l'envers de l'ancien : **une seule amplitude pour
-les deux axes**, fixée par un budget de flou explicite — `σ ≤ λ/52`
-(`WANDER_LAM`), l'écart-type stationnaire étant visé directement et le pas par
-frame déduit de `σ_pas = σ_stat·√(2·pull)` (`_wanderSigma`, `_wanderStep`).
+les deux axes**. Elle a d'abord été fixée par un budget de flou en λ, depuis
+supprimé (cf. plus bas) ; elle l'est aujourd'hui par l'espacement du réseau,
+via la loi de Lindemann. L'écart-type stationnaire est visé directement et le
+pas par frame déduit de `σ_pas = σ_stat·√(2·pull)` (`_wanderSigma`,
+`_wanderStep`).
 C'est **exactement le réglage du gaz de l'onglet Principe des interférences**
 (`_prinGazWander`) : mêmes constantes, même calibration. Ce qui masque le
 mouvement d'ensemble du gaz n'est pas l'amplitude de l'errance mais son **pas
@@ -737,21 +739,18 @@ l'espacement du réseau :
 
 | | `σ/a` | `σ` (px, défaut) | rappel | relaxation |
 |---|---|---|---|---|
-| `κ = 0` (gaz) | 0,32 * | 3,8 | 0,014 | 1,19 s |
-| `κ = 0,35` (défaut) | 0,24 | 2,9 | 0,053 | 0,31 s |
-| `κ = 1` (solide) | 0,040 | 0,48 | 0,126 | 0,13 s |
-
-<small>\* la loi vise 0,35 ; c'est le budget de flou `λ/52` qui prend la main à
-`κ = 0`, où λ est courte — le garde-fou joue exactement son rôle.</small>
+| `κ = 0` (gaz) | 0,55 | 6,6 | 0,014 | 1,19 s |
+| `κ = 0,35` (défaut) | 0,37 | 4,5 | 0,021 | 0,81 s |
+| `κ = 1` (solide) | 0,040 | 0,48 | 0,042 | 0,40 s |
 
 Les deux bouts encadrent donc le seuil de fusion : très au-dessus à `κ = 0`
 (désordre entretenu, les points se croisent et se touchent), très en dessous à
 `κ = 1` (le réseau tient, mais frémit — il reste de l'agitation thermique, ce
-qui est le point à ne pas perdre pédagogiquement). Le **rappel** suit
-`(1 + 8κ)` : gaz lent et ample, solide rapide et minuscule. C'est la différence
-entre un transport quasi balistique et un oscillateur d'Einstein, et c'est ce
-qui fait lire « ça vibre encore, mais ça ne se déplace plus » plutôt que « ça
-s'est arrêté ».
+qui est le point à ne pas perdre pédagogiquement). Le **rappel** suit `√K`
+(cf. plus bas) : gaz lent et ample, solide rapide et minuscule. C'est la
+différence entre un transport quasi balistique et un oscillateur d'Einstein, et
+c'est ce qui fait lire « ça vibre encore, mais ça ne se déplace plus » plutôt
+que « ça s'est arrêté ».
 
 > **Ce que κ ne doit surtout pas réduire : le déplacement dû à l'ONDE.** Un
 > milieu rigide ne fait pas moins bouger ses molécules au passage d'un son ;
@@ -836,15 +835,34 @@ n'est pas un verre : à κ = 0,5, `σ` vaut encore 56 % de `d`, les atomes
 continuent de visiter le voisinage de leur site, ce qui est bien le régime
 liquide.
 
-**Les deux plafonds de `σ` ont dû être desserrés** pour que la loi de Lindemann
-puisse s'exprimer. Le budget de flou passe de `λ/52` à **`λ/30`** : le coût est
-chiffrable, `exp(−2π²σ²/λ²)` vaut 0,7 % de perte de contraste à `λ/52` et 2,2 %
-à `λ/30` — on payait trois quarts du budget pour rien, et le gaz plafonnait à
-`0,31 a` au lieu des `0,55 a` demandés. Le plafond par la hauteur de bande
-passe de 4,5 px à **9 px** (`WANDER_BAND_MAX`) : à 4,5 il mordait avant même la
-loi sur un tube de hauteur courante, alors que 3σ = 13 px d'excursion dans une
-bande de 245 px est très loin des parois. Le terme `H × 0,028`, lui, garde tout
-son sens et continue de protéger les tubes réellement écrasés.
+**L'agitation ne dépend NI de `f` NI de `ρ`.** C'est une propriété du milieu :
+bouger le pot vibrant ne doit rien changer à l'agitation thermique. Deux
+plafonds l'en empêchaient.
+
+Le **budget de flou en λ est supprimé**. Il valait `λ/52`, puis `λ/30`, et
+servait à ne pas brouiller la structure de l'onde aux petites longueurs
+d'onde — mais il faisait entrer la fréquence de la source dans l'aspect du
+milieu : à f = 5 Hz le gaz plafonnait à 1,97 px contre 6,6 px à f = 1,5 Hz. Le
+supprimer coûte peu, parce qu'il protégeait un régime où les particules ne
+portent déjà plus rien :
+
+| f (Hz) | 1,5 | 3 | 5 | 5 (ρ = 3) |
+|---|---|---|---|---|
+| λ (px) | 197 | 98 | 59 | 34 |
+| perte de contraste | 2,2 % | 8,6 % | 22 % | 53 % |
+
+À f = 5 Hz la bande ne fait plus que 4,9 espacements de large, et 2,8 à ρ = 3 —
+bien en deçà de `DENS_LAM_TIGHT_SP`, donc le voile de densité y est déjà à
+pleine intensité et c'est **lui** qui porte le signal ; ce qu'on dégrade là est
+une contribution résiduelle. Aux réglages où le nuage travaille vraiment, la
+perte est de quelques pour cent.
+
+Le plafond par la hauteur de bande passe de 4,5 px à **9 px**
+(`WANDER_BAND_MAX`) : à 4,5 il mordait avant même la loi de Lindemann sur un
+tube de hauteur courante, alors que 3σ = 13 px d'excursion dans une bande de
+245 px est très loin des parois. Le terme `H × 0,028` reste et continue de
+protéger les tubes réellement écrasés — c'est désormais la **seule** borne, et
+elle est purement géométrique.
 
 **L'agitation doit être maximale à κ = 0** — elle passait par un maximum au
 milieu de la course, ce qui se voit immédiatement et n'a aucun sens. Trois
@@ -853,34 +871,33 @@ causes, toutes venant de ce que `c`, donc `λ`, **croît** avec κ :
 1. *Le budget de flou remontait avec κ*, puisqu'il se calculait sur la λ
    courante, trois fois plus grande à κ = 1. Il montait plus vite que la loi de
    Lindemann ne descendait, et σ **suivait le plafond** au lieu de suivre la
-   loi. Il se calcule donc désormais sur la λ du milieu le plus souple
-   (`_wanderFeaturePx`, à `K_GAZ`) : indépendant de κ, et conservateur puisque
-   c'est la plus petite λ de la plage. À ne pas confondre avec `_sonFeaturePx`,
-   qui rend la λ réellement affichée et sert, lui, au voile de densité — où
-   c'est bien la structure courante qui compte.
+   loi. Ce plafond a depuis été supprimé tout court (cf. ci-dessus) : il
+   faisait de surcroît dépendre l'agitation de `f`.
 2. *Le rappel montait trop vite.* Ce que l'œil lit comme « ça s'agite » est le
    **pas par frame**, `σ·√(24·pull)` ; un rappel ×9 faisait croître `√pull`
    trois fois plus vite que σ ne décroissait au départ. Le rappel suit
    maintenant la physique : `ω = √(k/m)`, donc `ω ∝ √K` à masse fixée, d'où
    `pull ∝ √(K/K_GAZ)` — soit ×3 sur la course, le même facteur que `c`, ce qui
    est cohérent puisque `c ∝ √K` lui aussi.
-3. *Les plafonds écrêtaient au lieu d'échelonner.* Écrire `σ = min(loi(κ),
-   plafonds)` paraît naturel et ne l'est pas : dès qu'un plafond mord, σ s'y
+3. *Le plafond écrêtait au lieu d'échelonner.* Écrire `σ = min(loi(κ),
+   plafond)` paraît naturel et ne l'est pas : dès qu'un plafond mord, σ s'y
    colle et cesse de suivre κ, pendant que le rappel continue de monter — à
    f = 5 Hz, où le budget de flou mordait jusqu'à κ ≈ 0,7, le pas remontait de
-   1,14 à 1,68 px. Les plafonds fixent donc l'agitation de **l'état gaz**
+   1,14 à 1,68 px. Le plafond fixe donc l'agitation de **l'état gaz**
    (`_wanderSigmaGaz`), une bonne fois, et κ ne fait plus que l'atténuer par un
    facteur ≤ 1. σ et le pas sont alors décroissants **par construction**, à
-   toute fréquence et toute géométrie, et le garde-fou garde le même pouvoir
-   puisqu'il s'applique à la plus grande valeur de la plage.
+   toute géométrie, et le garde-fou garde le même pouvoir puisqu'il s'applique
+   à la plus grande valeur de la plage. Depuis la suppression du budget de
+   flou, la seule borne restante est géométrique et ne peut plus mordre qu'en
+   tube écrasé, mais l'échelonnement reste la bonne écriture : il rend la
+   propriété vraie par construction plutôt que par coïncidence de calibrage.
 
 Seul défaut de monotonie résiduel : `WANDER_MIN` reste un plancher **absolu**,
-de sorte que le solide frémisse encore même quand le budget de flou a beaucoup
-rabaissé le gaz. Quand σ le touche — hautes fréquences, tout en haut de la
-course — le pas remonte de 4 %, soit un centième de pixel sur les deux derniers
-centièmes du curseur. L'atténuer aussi supprimerait le défaut mais réduirait le
-frémissement du solide à 0,14 px à f = 5 Hz : arbitrage fait en faveur du
-frémissement.
+de sorte que le solide frémisse encore. Il ne mord plus que sur un tube très
+écrasé (`H ≈ 120 px`, où `σ` à `κ = 1` vaut 0,24 px) ; le pas y remonte alors de
+quelques pour cent sur les derniers centièmes du curseur, soit un centième de
+pixel. L'atténuer aussi supprimerait le défaut mais rendrait le frémissement du
+solide invisible : arbitrage fait en faveur du frémissement.
 
 Le réseau est **carré, colonnes alignées** : une quinconce ressemblerait
 davantage à un empilement compact mais brouillerait les colonnes, or c'est le

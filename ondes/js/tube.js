@@ -1351,9 +1351,9 @@ function _drawMembrane(ctx) {
 //  où la densité ne change pas — n'est pas l'amplitude de l'errance mais
 //  son PAS PAR FRAME, à comparer à la vitesse de l'onde. On règle donc les
 //  deux séparément, via σ_stationnaire = σ_pas/√(2·pull) : amplitude visée
-//  fixée par le budget de flou (σ ≤ λ/52), rappel lent (1/pull ≈ 71
-//  frames, ~1,2 s), pas déduit. Le gaz reste vivant sans scintiller, et le
-//  ballottement d'ensemble passe devant le bruit.
+//  fixée par l'espacement du réseau (loi de Lindemann), rappel lent au gaz
+//  (1/pull ≈ 71 frames, ~1,2 s), pas déduit. Le gaz reste vivant sans
+//  scintiller, et le ballottement d'ensemble passe devant le bruit.
 //
 //  ── L'errance est ISOTROPE ───────────────────────────────────────────
 //  L'errance est à deux dimensions, comme une vraie agitation thermique —
@@ -1382,23 +1382,40 @@ function _drawMembrane(ctx) {
 //      large que ce qu'on lui accordait.
 //
 //  Le réglage se pose donc à l'envers de l'ancien : UNE SEULE amplitude
-//  pour les deux axes, fixée par un budget de flou explicite (σ ≤ λ/52,
-//  cf. Calibration ci-dessus). L'errance est ainsi exactement isotrope ;
-//  elle ne se resserre qu'en haut de la plage de fréquence, là où λ devient
-//  petite — et le nuage s'y calme sur les DEUX axes, ce qui est cohérent à
-//  l'œil et profite en prime à la lecture des bandes, devenues fines.
+//  pour les deux axes. Elle a d'abord été fixée par un budget de flou en λ,
+//  depuis supprimé (cf. plus bas) ; elle l'est aujourd'hui par l'espacement
+//  du réseau, via la loi de Lindemann. L'errance est exactement isotrope.
 //
 //  L'errance n'entre pas dans la sélection, qui travaille sur x0.
 var WANDER_PULL  = 0.014;   // rappel vers la position de repos, à κ = 0
 var WANDER_CLAMP = 3.0;     // borne dure, en multiples de σ
-// ── Budget de flou : σ ≤ λ/30, et non plus λ/52 ───────────────────────
-// Le coût est chiffrable : une errance d'écart-type σ réduit le contraste
-// d'une sinusoïde de longueur d'onde λ d'un facteur exp(−2π²σ²/λ²), soit
-// 0,7 % à λ/52 et 2,2 % à λ/30. On payait donc trois quarts du budget pour
-// rien. Le desserrer est ce qui permet au gaz d'atteindre réellement les
-// 0,55 a de la loi de Lindemann : à λ/52 il plafonnait à 0,31 a au réglage
-// par défaut, et le bas de la course du curseur ne montrait plus rien.
-var WANDER_LAM   = 1 / 30;
+// ══════════════════════════════════════════════════════════════════════
+//  Le budget de flou en λ a été SUPPRIMÉ
+//
+//  L'errance était plafonnée à λ/52, puis λ/30, pour ne pas brouiller la
+//  structure de l'onde aux petites longueurs d'onde. C'était un garde-fou
+//  de rendu, et il faisait fuiter la FRÉQUENCE DE LA SOURCE dans l'aspect
+//  du MILIEU : à f = 5 Hz le gaz était plafonné à 1,97 px contre 6,6 px à
+//  f = 1,5 Hz. Autrement dit, bouger le pot vibrant changeait l'agitation
+//  thermique — ce qui n'a aucun sens, et se voyait.
+//
+//  Le supprimer est peu coûteux, parce qu'il protégeait un régime où les
+//  particules ne portent déjà plus rien. Le coût vaut exp(−2π²σ²/λ²) :
+//
+//      f (Hz)    1,5     3      5      5 (ρ = 3)
+//      λ (px)    197     98     59       34
+//      perte    2,2%   8,6%    22%      53%
+//
+//  Or à f = 5 Hz la bande ne fait plus que 4,9 espacements de large, et 2,8
+//  à ρ = 3 : bien en deçà de DENS_LAM_TIGHT_SP, donc le voile de densité y
+//  est déjà à pleine intensité et c'est LUI qui porte le signal. Ce qu'on
+//  dégrade là est une contribution résiduelle. Aux réglages où le nuage
+//  travaille vraiment, la perte est de quelques pour cent.
+//
+//  Ce qui borne encore σ ne dépend donc plus que du MILIEU et de la
+//  GÉOMÉTRIE : l'espacement du réseau (loi de Lindemann) et la hauteur de
+//  bande. Ni f ni ρ n'y entrent.
+// ══════════════════════════════════════════════════════════════════════
 var WANDER_MIN   = 0.25;    // px — plancher, pour que le solide ne fige jamais tout à fait
 // Plafond de l'errance par la hauteur de bande, en px. Valait 4,5 — un
 // héritage, qui mordait avant même la loi de Lindemann sur un tube de hauteur
@@ -1471,19 +1488,15 @@ var WANDER_LIND_SOLIDE = 0.04;  // ... et à κ = 1
 //  causes, toutes deux venant du fait que c — donc λ — CROÎT avec κ.
 //
 //  ── 1. Le budget de flou remontait avec κ ────────────────────────────
-//  Le plafond σ ≤ λ/30 est calculé sur la longueur d'onde COURANTE, et λ
-//  est trois fois plus grande à κ = 1 qu'à κ = 0. Le plafond montait donc
-//  avec le curseur, plus vite que la loi de Lindemann ne descendait : à
-//  f = 5 Hz, σ passait de 1,97 px à κ = 0 à 3,41 px à κ = 0,5 avant de
-//  redescendre. L'agitation SUIVAIT le plafond au lieu de suivre la loi.
+//  Ce plafond se calculait sur la longueur d'onde COURANTE, trois fois plus
+//  grande à κ = 1 qu'à κ = 0. Il montait donc avec le curseur, plus vite que
+//  la loi de Lindemann ne descendait : à f = 5 Hz, σ passait de 1,97 px à
+//  κ = 0 à 3,41 px à κ = 0,5 avant de redescendre. L'agitation SUIVAIT le
+//  plafond au lieu de suivre la loi.
 //
-//  Le plafond est donc calculé sur la longueur d'onde qu'aurait le milieu
-//  le plus SOUPLE (_wanderFeaturePx, à K_GAZ), pas sur la courante. Il
-//  devient ainsi indépendant de κ, et σ est monotone par construction. Le
-//  garde-fou n'y perd rien : il retient la plus petite λ de la plage, donc
-//  il protège au moins autant qu'avant. Là où il mord — hautes fréquences
-//  — il aplatit la réponse du curseur, ce qui est le prix honnête d'une
-//  structure d'onde fine à préserver.
+//  Ce plafond a depuis été supprimé tout court — cf. plus haut : il faisait
+//  aussi dépendre l'agitation thermique de la fréquence de la source, ce qui
+//  n'a aucun sens. Plus rien de ce qui borne σ ne dépend de κ, de f ni de ρ.
 //
 //  ── 2. Le rappel montait trop vite ───────────────────────────────────
 //  Ce que l'œil lit comme « ça s'agite », c'est le PAS PAR FRAME, et
@@ -1499,46 +1512,34 @@ var WANDER_LIND_SOLIDE = 0.04;  // ... et à κ = 1
 //  frémissement rapide (relaxation 1,19 s → 0,40 s).
 // ══════════════════════════════════════════════════════════════════════
 
-// Taille caractéristique servant AU SEUL garde-fou d'errance : la longueur
-// d'onde qu'aurait le milieu le plus souple, à f et ρ courants. Volontairement
-// insensible à κ — cf. ci-dessus. À ne pas confondre avec _sonFeaturePx, qui
-// rend la longueur d'onde réellement affichée et sert, lui, à doser le voile
-// de densité, où c'est bien la structure courante qui compte.
-function _wanderFeaturePx() {
-    if (sim.rho <= 0 || sim.tubeLength <= 0) return sim.tubeLength;
-    var cGaz = Math.sqrt(K_GAZ / sim.rho) * C_BASE;   // px/s
-    var lam;
-    if (sim.sourceMode === 'impulse') lam = cGaz * T_IMPULSE;
-    else                              lam = (sim.freq > 0) ? cGaz / sim.freq : 0;
-    if (!(lam > 0)) lam = sim.tubeLength;
-    return Math.min(lam, sim.tubeLength);
-}
-
-// ── Les plafonds ÉCHELONNENT la courbe, ils ne l'écrêtent pas ─────────
+// ── Le plafond ÉCHELONNE la courbe, il ne l'écrête pas ───────────────
 //
-//  Écrire σ = min(loi(κ), plafonds) paraît naturel et ne l'est pas : dès
+//  Écrire σ = min(loi(κ), plafond) paraît naturel et ne l'est pas : dès
 //  qu'un plafond mord, σ s'y colle et cesse de suivre κ. Le pas par frame,
 //  lui, vaut σ·√(24·pull) et le rappel, lui, continue de monter — le pas
-//  REMONTAIT donc au milieu de la course. À f = 5 Hz, où le budget de flou
-//  mord jusqu'à κ ≈ 0,7, il montait de 1,14 à 1,68 px avant de redescendre.
+//  REMONTAIT donc au milieu de la course.
 //
-//  Les plafonds fixent donc l'agitation de l'ÉTAT GAZ, une bonne fois, et
-//  κ ne fait plus que l'atténuer par un facteur ≤ 1. σ et le pas sont alors
-//  décroissants par construction, à toute fréquence et toute géométrie —
-//  et le garde-fou garde exactement le même pouvoir, puisqu'il s'applique
-//  à la valeur la plus grande de la plage.
+//  Le plafond fixe donc l'agitation de l'ÉTAT GAZ, une bonne fois, et κ ne
+//  fait plus que l'atténuer par un facteur ≤ 1. σ et le pas sont alors
+//  décroissants par construction, quelle que soit la géométrie — et le
+//  garde-fou garde exactement le même pouvoir, puisqu'il s'applique à la
+//  valeur la plus grande de la plage.
+//
+//  Depuis la suppression du budget de flou, la seule borne restante est
+//  géométrique et ne peut plus mordre qu'en tube écrasé ; l'échelonnement
+//  reste néanmoins la bonne écriture, et c'est ce qui garde la propriété
+//  vraie par construction plutôt que par coïncidence de calibrage.
 
-// Agitation de l'état gaz, en px : la plus petite des trois bornes.
-//   • la loi de Lindemann à κ = 0 ;
-//   • le budget de flou, qui protège la structure de l'onde aux petites λ ;
-//   • la hauteur de bande — sur un tube écrasé, une errance calée sur λ
-//     seule sortirait des parois en permanence et le repliement ferait tout
-//     le travail.
+// Agitation de l'état gaz, en px : la plus petite des deux bornes.
+//   • la loi de Lindemann à κ = 0 — l'espacement du réseau ;
+//   • la hauteur de bande : sur un tube écrasé, une errance calée sur le
+//     seul espacement sortirait des parois en permanence et le repliement
+//     ferait tout le travail.
+// Ni f ni ρ n'y entrent : l'agitation ne dépend que du milieu (κ) et de la
+// géométrie du tube.
 function _wanderSigmaGaz(H) {
     var parBande = Math.max(1.0, Math.min(WANDER_BAND_MAX, H * 0.028));
-    return Math.min(particleSpacingPx() * WANDER_LIND_GAZ,
-                    parBande,
-                    _wanderFeaturePx() * WANDER_LAM);
+    return Math.min(particleSpacingPx() * WANDER_LIND_GAZ, parBande);
 }
 
 // Écart-type stationnaire de l'errance (px), à la rigidité courante.
