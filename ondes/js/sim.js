@@ -277,24 +277,6 @@ function _srcIsQuiet(s, length, c) {
     return (s.simTime - s.lastEmitT) > length / c;
 }
 
-// Écriture scientifique : mantisse à `decimals` décimales × 10^exposant.
-// Renvoie du HTML (exposant en <sup>, signe moins typographique) — à injecter
-// via innerHTML, pas textContent.
-function fmtSciHTML(v, decimals) {
-    if (!isFinite(v) || v === 0) return fmtFR(0, decimals);
-
-    var exp  = Math.floor(Math.log10(Math.abs(v)));
-    var mant = v / Math.pow(10, exp);
-    // L'arrondi peut faire basculer la mantisse à 10,00 (ex. 9,999 → 10,00) :
-    // on recale d'une décade pour rester dans [1 ; 10[.
-    if (Math.abs(Number(mant.toFixed(decimals))) >= 10) { mant /= 10; exp += 1; }
-
-    // Puissance 0 : pas d'intérêt à afficher « × 10^0 ».
-    if (exp === 0) return fmtFR(mant, decimals);
-
-    return fmtFR(mant, decimals) + ' × 10<sup>' + String(exp).replace('-', '−') + '</sup>';
-}
-
 // ══════════════════════════════════════════════════════════════════════
 //  Rigidité κ → module de compressibilité K
 //

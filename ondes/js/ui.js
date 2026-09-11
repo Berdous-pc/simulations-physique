@@ -236,7 +236,7 @@ function loop(ts) {
 // ── Afficheur c (Son) ─────────────────────────────────────────────────
 function _updateCReadout() {
     var el = document.getElementById('ro-c');
-    if (el) el.innerHTML = fmtSciHTML(sim.c_cms, 2);
+    if (el) el.textContent = fmtFRRound(sim.c_cms, 1);
 }
 
 // κ sur le curseur, K dérivé dans le hint.
@@ -515,7 +515,7 @@ function _applyWavePropsState() {
 function _updateWaveProps() {
     if (!sim.wavePropsVisible) return;
     var elC = document.getElementById('ro-c-ext');
-    if (elC) elC.innerHTML = fmtSciHTML(sim.c_cms, 2);
+    if (elC) elC.textContent = fmtFRRound(sim.c_cms, 1);
     var f   = sim.freq;
     var T   = (f > 0) ? 1 / f : 0;
     var elF = document.getElementById('ro-f');
@@ -524,7 +524,7 @@ function _updateWaveProps() {
     if (elT) elT.textContent = T.toFixed(3).replace('.', ',');
     var lambda = sim.c_cms * T;
     var elL    = document.getElementById('ro-lambda');
-    if (elL) elL.innerHTML = fmtSciHTML(lambda, 2);
+    if (elL) elL.textContent = fmtFRRound(lambda, 1);
 }
 
 //  Impulsion n'a pas de fréquence définie : le comptage en T, l'affichage de
