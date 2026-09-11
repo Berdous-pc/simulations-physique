@@ -393,17 +393,18 @@ var T_IMPULSE        = 0.6;   // secondes de temps simulé
 //  Depuis que c est divisée par 2, garder T = 0,6 s rétrécirait le paquet de
 //  moitié (0,19 L) ; le doubler à 1,2 s le laisserait à sa largeur d'avant,
 //  mais aussi à son contraste mou. On prend le point intermédiaire qui
-//  SATURE le plafond de contraste : T tel que c × T ≈ 0,24 L, ce qui amène
-//  ak_disp sur AK_CAP = 0,75, sa valeur maximale. Le paquet fait alors
-//  ≈ 0,25 L — une dizaine d'espacements de particules, donc encore bien
-//  résolu par le nuage — avec des zones de compression et de dilatation au
-//  contraste maximal que le rendu autorise. Descendre plus bas ne gagnerait
-//  plus rien (l'écrêtage par AK_CAP a déjà pris la main) et ne ferait que
-//  rétrécir le paquet.
+//  SATURE le plafond de contraste : T tel que c × T ≈ 0,20 L, ce qui amène
+//  ak_disp sur AK_CAP = 0,90, sa valeur maximale. Le paquet fait alors
+//  ≈ 0,20 L, soit environ huit espacements de particules : encore résolu par
+//  le nuage, et juste sous DENS_LAM_COMFY_SP, si bien que le voile de
+//  densité apporte en prime un peu de teinte là où la compression est la
+//  plus forte. Descendre plus bas ne gagnerait plus rien sur l'intensité
+//  (l'écrêtage par AK_CAP a déjà pris la main) et ne ferait que rétrécir le
+//  paquet.
 //
 //  Constante distincte de T_IMPULSE, qui reste celle de la corde et des
 //  vagues : leur calibrage n'a aucune raison de suivre celui du tube.
-var T_IMPULSE_SON    = 0.8;   // secondes de temps simulé
+var T_IMPULSE_SON    = 0.65;  // secondes de temps simulé
 // Nombre max de points enregistrés pour ΔP(t)
 var DP_MAX_POINTS    = 1600;  // 300 pts/s × 5 s + marge → courbes lisses sur la fenêtre entière
 // Aire disponible par particule à la hauteur de référence H_ref, en px² : fixe
@@ -688,8 +689,21 @@ function stepSourceSon(t) {
 // valeurs d'origine (0,55 / 0,90), le plafond absolu ci-dessous ayant pris
 // en charge le cas qui les rendait disgracieuses — les grandes longueurs
 // d'onde, où l'amplitude devenait énorme.
+//
+// AK_CAP est revenu à sa valeur d'origine, 0,90 : à 0,75 le paquet
+// d'impulsion — qui est précisément le cas où l'écrêtage par le haut mord —
+// affichait une surpression et une dépression trop molles. Ce qui avait
+// motivé la descente à 0,75 était le chevauchement des colonnes aux grandes
+// amplitudes, mais c'est le plafond ABSOLU ci-dessous qui prend désormais
+// ce cas en charge, et 0,90 reste franchement sous le seuil de croisement
+// des trajectoires (A·k = 1, où la densité devient singulière).
+//
+// Le relèvement ne touche QUE les portions d'onde écrêtées par le haut,
+// c'est-à-dire les petites étendues spatiales : en sinusoïdale aux réglages
+// par défaut c'est le plafond absolu qui décide, et l'affichage y est
+// inchangé au pixel près.
 var AK_MIN = 0.45;
-var AK_CAP = 0.75;
+var AK_CAP = 0.90;
 
 // ── Plafond absolu d'amplitude affichée ───────────────────────────────
 // A·k doit rester dans [AK_MIN, AK_CAP], donc l'amplitude affichée est

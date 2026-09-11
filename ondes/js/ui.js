@@ -442,20 +442,14 @@ function resetSimAnim() {
 //  Les readouts sont rafraîchis ICI et pas seulement dans la boucle : celle-ci
 //  ne les met à jour que si l'animation tourne, si bien qu'en pause les valeurs
 //  de T et λ restaient figées sur les anciens réglages.
-// Le pas du curseur f vaut 0,05 Hz depuis que la plage a été divisée par 2 :
-// une seule décimale arrondirait un cran sur deux (0,75 → « 0,8 »). On en
-// affiche donc deux, en retirant le zéro final pour que les crans entiers
-// restent écrits comme avant (1,50 → « 1,5 »).
-function _fmtFreqSon(f) {
-    var s = f.toFixed(2);
-    if (s.charAt(s.length - 1) === '0') s = s.slice(0, -1);
-    return s.replace('.', ',');
-}
-
 function onSliderFreq(v) {
     sim.freq = parseFloat(v);
     var lbl = document.getElementById('lbl-freq');
-    if (lbl) lbl.textContent = _fmtFreqSon(sim.freq);
+    // Deux décimales TOUJOURS, y compris « 2,50 » : le pas du curseur vaut
+    // 0,05 Hz depuis que la plage a été divisée par 2, donc une seule
+    // arrondirait un cran sur deux (0,75 → « 0,8 »). Les garder toutes les
+    // deux évite en prime que la largeur du readout saute d'un cran à l'autre.
+    if (lbl) lbl.textContent = sim.freq.toFixed(2).replace('.', ',');
     initCols();
     _updateWaveProps();
     _updateChrono('son');   // l'affichage en T dépend de f
@@ -1632,10 +1626,6 @@ function init() {
 function _syncUIToSim() {
     // ── Son ────────────────────────────────────────────────────────────
     _setSlider('sl-freq',  sim.freq,        'lbl-freq',  2);
-    // Même format que le curseur (cf. _fmtFreqSon) : _setSlider ne sait pas
-    // retirer le zéro final.
-    var lblF = document.getElementById('lbl-freq');
-    if (lblF) lblF.textContent = _fmtFreqSon(sim.freq);
     _setSlider('sl-rho',   sim.rho,         'lbl-rho',   1);
     var slKappa = document.getElementById('sl-kappa');
     if (slKappa) slKappa.value = sim.kappa;
