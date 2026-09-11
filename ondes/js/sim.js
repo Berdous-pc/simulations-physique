@@ -149,7 +149,8 @@ function _srcClear(s) {
     s.srcTNew   = 0;
     s.srcSCur   = 0;
     s.lastEmitT = -1e9;
-    s.srcKMin   = Infinity;
+    s.srcKSmooth = 0;
+    s.srcKHi     = 0;
     s.srcSeq++;
 }
 
@@ -492,7 +493,8 @@ var sim = {
     srcA    : null,   // nombre d'onde figé à l'émission (rad/cm)
     srcSeq  : 0,
     lastEmitT : -1e9,
-    srcKMin   : Infinity,   // plus petit k émis — dimensionne les zones virtuelles
+    srcKHi     : 0,   // plus grand k encore présent dans le tube (cf. sonFinestFeaturePx)
+    srcKSmooth : 0,   // k émis, relaxé (cf. stepSourceSon) ; 0 = à recaler
 
     // ── Paramètres physiques du milieu ───────────────────────────────
     freq        : 0.75,           // fréquence de la sinusoïdale (Hz)
@@ -669,9 +671,52 @@ function stepSourceSon(t) {
     // d'un coup les zones de compression dans tout le tube dès qu'on touchait
     // au curseur f. En cm⁻¹ pour survivre aux redimensionnements de fenêtre.
     var freqEff = (sim.sourceMode === 'impulse') ? 1.0 / T_IMPULSE_SON : sim.freq;
-    var k_cm    = (sim.c_cms > 0) ? 2 * Math.PI * freqEff / sim.c_cms : 0;
+    var kTarget = (sim.c_cms > 0) ? 2 * Math.PI * freqEff / sim.c_cms : 0;
 
-    if (d !== 0 && k_cm > 0 && k_cm < sim.srcKMin) sim.srcKMin = k_cm;
+    // ── Pourquoi k est RELAXÉ et non pris à sa valeur instantanée ──────
+    // Aux réglages courants, A·k dépasse largement AK_CAP : le gain vaut donc
+    // AK_CAP/(A·k) et l'amplitude AFFICHÉE est proportionnelle à λ, c'est-à-dire
+    // à 1/k (cf. _sonDisplayGain). Écrire le k instantané faisait qu'un cran de
+    // curseur — f, κ ou ρ, tous trois passent par k — changeait cette amplitude
+    // d'un échantillon au suivant, soit sur c×SRC_DT ≈ 0,1 cm : une MARCHE dans
+    // u(x). Or ce que l'élève voit est ∂u/∂x (densité des points) : une marche y
+    // produit une dérivée quasi infinie, donc une fausse bande de compression,
+    // qui partait ensuite se promener le long du tube. Un glissement de curseur
+    // en écrivait une par frame. La même marche déchirait le voile de densité
+    // (sonDisplayAkAt) et l'échelle du graphe ΔP (waveDeltaP), qui lisent tous
+    // deux ce même k.
+    //
+    // On relaxe donc k vers sa cible avec une constante de temps de l'ordre de
+    // la période : la marche devient une rampe étalée sur ≈ λ, sous le seuil de
+    // visibilité de la dérivée. Ce qui est lissé n'est QUE le gain de
+    // lisibilité — la phase, la forme du signal et la longueur d'onde réellement
+    // mesurable à l'écran sont inchangées, puisqu'elles viennent de srcD et de
+    // l'odomètre srcS. L'écart au k vrai ne dure qu'une période.
+    var SRC_K_TAU = 0.30;   // s
+    if (!(sim.srcKSmooth > 0)) sim.srcKSmooth = kTarget;
+    // Silence : on RECALE au lieu de relaxer. Sans ça, une émission reprise
+    // après une pause héritait du k de la précédente et démarrait avec un gain
+    // faux le temps de la relaxation.
+    var emitting = (sim.sonEmitMode !== null) || (d !== 0);
+    if (!emitting) {
+        sim.srcKSmooth = kTarget;
+    } else if (kTarget > 0) {
+        sim.srcKSmooth += (kTarget - sim.srcKSmooth) *
+                          (1 - Math.exp(-SRC_DT / SRC_K_TAU));
+    }
+    var k_cm = sim.srcKSmooth;
+
+    // ── Enveloppe « attaque immédiate, relâchement lent » sur k ────────
+    // Dimensionne l'échantillonnage du dégradé de fond (cf.
+    // sonFinestFeaturePx). Le relâchement suit une traversée du tube, L/c :
+    // c'est le temps que met la structure la plus fine à quitter l'écran.
+    if (k_cm > sim.srcKHi) {
+        sim.srcKHi = k_cm;
+    } else if (sim.srcKHi > 0) {
+        var cross = (sim.c_cms > 0) ? sim.c_cms / TUBE_LENGTH_CM : 0;   // 1/s
+        sim.srcKHi += (k_cm - sim.srcKHi) * (1 - Math.exp(-SRC_DT * cross));
+    }
+
     _srcPush(sim, t, d, sim.c_cms, k_cm);
 }
 
@@ -809,7 +854,16 @@ function sonSNow(t_sim) {
     return _srcSAtTime(sim, t_sim, sim.c_cms);
 }
 
+// ── k lu au dernier appel de sonDisplayAkAt (rad/cm) ──────────────────
+//  Le voile de densité a besoin des DEUX grandeurs au même color-stop : le
+//  contraste affiché ak, et la longueur d'onde LOCALE qui dit si le nuage a
+//  encore assez de points pour la dessiner. Elles sortent de la même remontée
+//  dans l'historique ; la publier ici évite une seconde dichotomie par stop,
+//  sur le même principe que _srcOut. Valable jusqu'au prochain appel.
+var sonDisplayAkK = 0;
+
 function sonDisplayAkAt(x_px, t_sim, sNow) {
+    sonDisplayAkK = 0;
     if (sim.tubeLength <= 0) return 0;
 
     var S       = (sNow !== undefined) ? sNow : sonSNow(t_sim);
@@ -819,8 +873,39 @@ function sonDisplayAkAt(x_px, t_sim, sNow) {
     var k_cm = smp.a;
     if (k_cm <= 0) return 0;
 
+    sonDisplayAkK = k_cm;
     var ak = sim.memAmplitude * (k_cm * cmPerPx);
     return ak * _sonDisplayGain(k_cm);
+}
+
+// Étendue spatiale, en px, du morceau d'onde émis avec le nombre d'onde k_cm.
+// Renvoie 0 si rien n'a été émis à cet endroit — l'appelant retombe alors sur
+// ce que la source émet en ce moment (cf. _sonFeaturePx, tube.js).
+function sonFeaturePxFromK(k_cm) {
+    if (!(k_cm > 0) || sim.tubeLength <= 0) return 0;
+    var k_px = k_cm * TUBE_LENGTH_CM / sim.tubeLength;   // rad/px
+    var lam  = 2 * Math.PI / k_px;
+    return Math.min(lam, sim.tubeLength);
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Plus PETITE étendue spatiale encore présente dans le tube
+//
+//  Sert à dimensionner l'échantillonnage du dégradé de fond : le nombre de
+//  color-stops doit suivre la plus fine structure à rendre, faute de quoi
+//  elle rend un moiré. Le calculer sur la fréquence COURANTE ne marche pas :
+//  après un passage à f élevée, le tube contient encore des bandes serrées
+//  alors que la source, elle, est déjà revenue au calme — et le dégradé les
+//  sous-échantillonnait. Le lire stop par stop ne marche pas non plus : c'est
+//  précisément le nombre de stops que l'on cherche.
+//
+//  On tient donc un maximum de k à attaque immédiate et à relâchement lent :
+//  il monte d'un coup dès qu'une structure plus fine est émise, et redescend
+//  avec la constante de temps d'une traversée du tube (L/c) — c'est-à-dire
+//  exactement le temps qu'il faut à cette structure pour en sortir.
+// ══════════════════════════════════════════════════════════════════════
+function sonFinestFeaturePx() {
+    return sonFeaturePxFromK(sim.srcKHi);
 }
 
 // ══════════════════════════════════════════════════════════════════════

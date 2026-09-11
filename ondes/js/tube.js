@@ -956,7 +956,8 @@ var DENS_TINT_HI   = 0.22;            // ... et en régime serré
 //
 //    • manque de RÉSOLUTION, aux petites λ — la bande de compression
 //      devient comparable au grain du nuage. C'est l'arm historique,
-//      mesurée sur λ (_densTightLam), et elle reste inchangée.
+//      mesurée sur λ (_densTightLam) ; elle est désormais lue dans
+//      l'historique, à l'abscisse du color-stop, comme l'autre.
 //    • manque de CONTRASTE, aux grandes λ — le déplacement affiché est
 //      plafonné par la hauteur du tube (cf. sonDisplayAkAt), donc le
 //      rapport de densité s'écrase. À f = 0,5 Hz il tombe à 1,17 : les
@@ -995,9 +996,22 @@ function _densGrainPx() {
     return particleSpacingPx();
 }
 
-// Manque de résolution : 0 = confortable, 1 = aussi serré que possible.
-function _densTightLam() {
-    var lam   = _sonFeaturePx() / _densGrainPx();   // λ, en espacements
+// Manque de résolution à l'abscisse courante : 0 = confortable, 1 = aussi
+// serré que possible.
+//
+// La mesure est LOCALE, comme celle du contraste (cf. _densTightAk) : lam_px
+// est la longueur d'onde du morceau d'onde réellement présent à cet endroit,
+// tirée du k figé à l'émission. La version précédente lisait ce que la source
+// émet EN CE MOMENT (_sonFeaturePx) et requalifiait donc d'un coup la teinte
+// de tout le tube dès qu'un curseur bougeait — y compris les portions émises
+// à l'ancienne fréquence, exactement le travers que le reste du rendu du Son
+// prend soin d'éviter.
+//
+// lam_px = 0 signifie que l'onde n'est pas encore arrivée là : on retombe
+// alors sur ce que la source émet, qui est la meilleure prévision disponible.
+function _densTightLam(lam_px, grainPx) {
+    var px  = (lam_px > 0) ? lam_px : _sonFeaturePx();
+    var lam = px / grainPx;                        // λ, en espacements
     return _smoothstep01((DENS_LAM_COMFY_SP - lam) /
                          (DENS_LAM_COMFY_SP - DENS_LAM_TIGHT_SP));
 }
@@ -1022,25 +1036,29 @@ function _drawTubeDensityBg(ctx) {
     var xRight = sim.tubeLeft + L;
     var span   = xRight - xLeft;
 
-    // ── Dosage ────────────────────────────────────────────────────────
-    // L'arm de résolution ne dépend que de ce que la source émet : elle se
-    // calcule une fois. L'arm de contraste est lue dans l'historique, donc
-    // au color-stop (cf. plus haut).
-    var tightLam = _densTightLam();
-
     // ── Finesse d'échantillonnage ─────────────────────────────────────
     // Le nombre de color-stops doit suivre λ : à 300 stops sur 900 px, une
     // λ de 55 px ne recevrait que 3 points par alternance et le dégradé
     // rendrait un moiré au lieu des bandes. On vise ~14 stops par λ, borné
     // pour que le coût reste stable — chaque stop coûte une remontée dans
     // l'historique pour waveDeltaP et une pour sonDisplayAkAt.
-    var lam   = _sonFeaturePx();
+    //
+    // La référence est la plus FINE structure encore présente dans le tube
+    // (cf. sonFinestFeaturePx), pas ce que la source émet à l'instant : après
+    // un passage à f élevée, les bandes serrées sont encore à l'écran alors
+    // que la source est déjà revenue au calme, et les sous-échantillonner
+    // faisait battre le dégradé pendant toute leur sortie.
+    var lam   = sonFinestFeaturePx() || _sonFeaturePx();
     var nb    = N_PRESSURE_BANDS;
     if (lam > 0) {
         nb = Math.round(span / lam * 14);
         if (nb < N_PRESSURE_BANDS) nb = N_PRESSURE_BANDS;
         else if (nb > 1400)        nb = 1400;
     }
+
+    // Le grain du nuage ne dépend que de la géométrie : hissé hors de la
+    // boucle, il n'est calculé qu'une fois par frame.
+    var grainPx = _densGrainPx();
 
     // S(t) est le même pour tous les color-stops : une seule évaluation.
     var sNow = sonSNow(sim.simTime);
@@ -1055,12 +1073,16 @@ function _drawTubeDensityBg(ctx) {
         var dp   = _sonBgDeltaP(x_px, sNow);
 
         // Manque local : le pire des deux (résolution / contraste affiché).
+        // Les DEUX sont maintenant lus dans l'historique, à cette abscisse.
         // Même écrêtage de x que _sonBgDeltaP — dans la bande que la membrane
         // vient de découvrir, l'échantillon à lire est celui de sa face.
-        var tightAk = _densTightAk(sonDisplayAkAt(x_px > 0 ? x_px : 0, sim.simTime, sNow));
-        var tight   = (tightAk > tightLam) ? tightAk : tightLam;
-        var knee    = DENS_KNEE_LO + tight * (DENS_KNEE_HI - DENS_KNEE_LO);
-        var tint    = DENS_TINT_LO + tight * (DENS_TINT_HI - DENS_TINT_LO);
+        // sonDisplayAkAt publie au passage le k qu'il a lu (sonDisplayAkK) :
+        // la résolution s'en déduit sans seconde remontée dans l'historique.
+        var tightAk  = _densTightAk(sonDisplayAkAt(x_px > 0 ? x_px : 0, sim.simTime, sNow));
+        var tightLam = _densTightLam(sonFeaturePxFromK(sonDisplayAkK), grainPx);
+        var tight    = (tightAk > tightLam) ? tightAk : tightLam;
+        var knee     = DENS_KNEE_LO + tight * (DENS_KNEE_HI - DENS_KNEE_LO);
+        var tint     = DENS_TINT_LO + tight * (DENS_TINT_HI - DENS_TINT_LO);
 
         var a = 0;
         if (dp > knee) {

@@ -262,7 +262,6 @@ var simVagues = {
     srcTNew : 0,
     srcSCur : 0,
     srcSeq  : 0,
-    srcKMin : Infinity,
     lastEmitT : -1e9,
 
     // Phase accumulée de la source sinusoïdale (cf. stepSourceVagues)
