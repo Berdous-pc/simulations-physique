@@ -785,8 +785,8 @@ function _sonTubeFillLeft() {
 //  d'onde. Écrêter x à 0 y met la pression de la face de la membrane, ce
 //  qui est aussi la valeur juste : ce fluide est celui que la membrane
 //  vient d'emmener avec elle, il est dans son état de compression.
-function _sonBgDeltaP(x_px) {
-    return waveDeltaP(x_px > 0 ? x_px : 0, sim.simTime);
+function _sonBgDeltaP(x_px, sNow) {
+    return waveDeltaP(x_px > 0 ? x_px : 0, sim.simTime, sNow);
 }
 
 function _drawTubePressureBg(ctx) {
@@ -806,6 +806,9 @@ function _drawTubePressureBg(ctx) {
     var xRight = sim.tubeLeft + L;
 
     // Construire le gradient linéaire horizontal
+    // S(t) est le même pour tous les color-stops : une seule évaluation.
+    var sNow = sonSNow(sim.simTime);
+
     var grad = ctx.createLinearGradient(xLeft, 0, xRight, 0);
     var span = xRight - xLeft;
 
@@ -814,7 +817,7 @@ function _drawTubePressureBg(ctx) {
         // x_px est mesuré depuis tubeLeft (origine de l'onde) ; il est
         // négatif dans la bande découverte par la membrane — cf. _sonBgDeltaP.
         var x_px = xLeft - sim.tubeLeft + frac * span;
-        var dp   = Math.max(-1, Math.min(1, _sonBgDeltaP(x_px)));
+        var dp   = Math.max(-1, Math.min(1, _sonBgDeltaP(x_px, sNow)));
 
         var r, g, b;
         if (dp >= 0) {
@@ -1039,6 +1042,9 @@ function _drawTubeDensityBg(ctx) {
         else if (nb > 1400)        nb = 1400;
     }
 
+    // S(t) est le même pour tous les color-stops : une seule évaluation.
+    var sNow = sonSNow(sim.simTime);
+
     var grad = ctx.createLinearGradient(xLeft, 0, xRight, 0);
 
     for (var i = 0; i <= nb; i++) {
@@ -1046,12 +1052,12 @@ function _drawTubeDensityBg(ctx) {
         // x_px est mesuré depuis tubeLeft (origine de l'onde) ; il est
         // négatif dans la bande découverte par la membrane — cf. _sonBgDeltaP.
         var x_px = xLeft - sim.tubeLeft + frac * span;
-        var dp   = _sonBgDeltaP(x_px);
+        var dp   = _sonBgDeltaP(x_px, sNow);
 
         // Manque local : le pire des deux (résolution / contraste affiché).
         // Même écrêtage de x que _sonBgDeltaP — dans la bande que la membrane
         // vient de découvrir, l'échantillon à lire est celui de sa face.
-        var tightAk = _densTightAk(sonDisplayAkAt(x_px > 0 ? x_px : 0, sim.simTime));
+        var tightAk = _densTightAk(sonDisplayAkAt(x_px > 0 ? x_px : 0, sim.simTime, sNow));
         var tight   = (tightAk > tightLam) ? tightAk : tightLam;
         var knee    = DENS_KNEE_LO + tight * (DENS_KNEE_HI - DENS_KNEE_LO);
         var tint    = DENS_TINT_LO + tight * (DENS_TINT_HI - DENS_TINT_LO);
@@ -1099,6 +1105,42 @@ function _dpToColor(dp) {
         b = Math.round(b0 + t * ( 10 - b0));
     }
     return 'rgb(' + r + ',' + g + ',' + b + ')';
+}
+
+// ── Regroupement des remplissages en mode pression ────────────────────
+//
+//  Le mode pression donnait à CHAQUE particule son propre beginPath/fill :
+//  plusieurs milliers d'appels de remplissage par frame, là où le mode normal
+//  n'en fait que deux. Or _dpToColor arrondit ses trois canaux à l'entier, et
+//  ses deux rampes sont courtes : l'ensemble des couleurs qu'il peut produire
+//  compte environ 120 valeurs, quel que soit le nombre de particules.
+//
+//  On range donc les particules par couleur EXACTE — celle que _dpToColor leur
+//  donnait déjà, sans quantification supplémentaire — et on ne fait plus qu'un
+//  fill par couleur réellement présente.
+//
+//  Une seule chose change à l'image : l'ORDRE de dessin. Deux disques qui se
+//  recouvrent sont désormais peints dans l'ordre des couleurs et non plus de
+//  gauche à droite. Des particules qui se recouvrent sont voisines en x, donc
+//  de ΔP quasi identique : au point de recouvrement l'écart de teinte est de
+//  l'ordre de l'unité sur 255.
+//
+//  La table couleur → seau n'est jamais purgée : elle se remplit une fois pour
+//  toutes (une centaine d'entrées) et sert ensuite de cache. Seules les listes
+//  de points sont vidées à chaque frame, en gardant leur capacité.
+var _dpBucketOf  = Object.create(null);   // 'rgb(...)' → n° de seau
+var _dpBucketCol = [];                    // n° de seau → 'rgb(...)'
+var _dpBucketXY  = [];                    // n° de seau → [x, y, x, y, …]
+
+function _dpBucket(col) {
+    var b = _dpBucketOf[col];
+    if (b === undefined) {
+        b = _dpBucketCol.length;
+        _dpBucketOf[col] = b;
+        _dpBucketCol.push(col);
+        _dpBucketXY.push([]);
+    }
+    return b;
 }
 
 // ── Extrémité droite ouverte ──────────────────────────────────────────
@@ -1663,6 +1705,11 @@ function _drawParticles(ctx) {
     var moving = !sim.paused;
     var spd    = (sim.speedFactor !== undefined) ? sim.speedFactor : 1.0;
 
+    // S(t) ne dépend pas de x : une seule évaluation pour toute la frame, que
+    // l'on passe ensuite aux fonctions de champ (cf. sonSNow). Pure
+    // factorisation — les valeurs rendues sont les mêmes.
+    var sNow   = sonSNow(sim.simTime);
+
     // Bande utile : ry ∈ [0,1] est réparti entre les deux parois, en gardant
     // le rayon du point de chaque côté. L'errance est ramenée dans la bande
     // À L'AFFICHAGE (yMin/yMax, par repliement — cf. _foldY) plutôt qu'en lui
@@ -1686,12 +1733,15 @@ function _drawParticles(ctx) {
 
     if (sim.pressureColorMode) {
         // ── Mode pression : chaque particule colorée selon ΔP ────────
-        // Une seule passe : affichage couleur ΔP uniquement,
-        // pas de contour blanc pour les sélectionnées (trop visuellement chargé).
+        // Pas de contour blanc pour les sélectionnées (trop visuellement
+        // chargé). Les remplissages sont groupés par couleur — cf. _dpBucket.
+        var nb;
+        for (nb = 0; nb < _dpBucketXY.length; nb++) _dpBucketXY[nb].length = 0;
+
         for (var i = 0; i < N; i++) {
             var c  = sim.cols[i];
             var x0 = c.x0 + dPx * c.offX;
-            var u  = waveDisplacementDisplay(x0, sim.simTime);
+            var u  = waveDisplacementDisplay(x0, sim.simTime, sNow);
 
             if (moving) _wander(c, wStep, wMax, spd, wPull);
             var px = sim.tubeLeft + x0 + u + c.wx;
@@ -1699,11 +1749,22 @@ function _drawParticles(ctx) {
             var py = sim.tubeTop + yPad + ry * yBand + c.wy;
             if (py < yMin || py > yMax) py = _foldY(py, yMin, yMax);
 
-            // Remplissage couleur ΔP
-            var dp = waveDeltaP(x0, sim.simTime);
-            ctx.fillStyle = _dpToColor(dp);
+            // Couleur ΔP : la particule est mise de côté dans le seau de SA
+            // couleur, le tracé a lieu seau par seau juste après.
+            var xy = _dpBucketXY[_dpBucket(_dpToColor(waveDeltaP(x0, sim.simTime, sNow)))];
+            xy.push(px, py);
+        }
+
+        for (nb = 0; nb < _dpBucketCol.length; nb++) {
+            var pts = _dpBucketXY[nb];
+            if (pts.length === 0) continue;
+            ctx.fillStyle = _dpBucketCol[nb];
             ctx.beginPath();
-            ctx.arc(px, py, r, 0, Math.PI * 2);
+            for (var j = 0; j < pts.length; j += 2) {
+                var bx = pts[j], by = pts[j + 1];
+                ctx.moveTo(bx + r, by);   // évite les lignes parasites entre arcs
+                ctx.arc(bx, by, r, 0, Math.PI * 2);
+            }
             ctx.fill();
         }
     } else {
@@ -1720,7 +1781,7 @@ function _drawParticles(ctx) {
                 if (c.selected !== wantSelected) continue;
 
                 var x0 = c.x0 + dPx * c.offX;
-                var u  = waveDisplacementDisplay(x0, sim.simTime);
+                var u  = waveDisplacementDisplay(x0, sim.simTime, sNow);
 
                 // Agitation thermique : errance 2D autour de la position de
                 // repos, figée en pause (cf. _wander). Son amplitude et sa

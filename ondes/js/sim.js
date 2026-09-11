@@ -112,6 +112,37 @@ function _srcIdx(s, k) {
     return (s.srcHead - s.srcN + k + SRC_CAP) % SRC_CAP;
 }
 
+// Index physique de l'échantillon n° 0. Les boucles de recherche s'en servent
+// pour convertir un rang logique en index physique SANS modulo : la base est
+// dans [0, SRC_CAP[ et le rang dans [0, SRC_CAP], donc leur somme déborde d'au
+// plus un tour et une soustraction conditionnelle suffit. Le `%` de _srcIdx
+// coûtait une division entière à chaque tour de dichotomie, soit une quinzaine
+// par appel et quelques dizaines de milliers par frame (cf. _drawParticles).
+function _srcBase(s) {
+    var b = s.srcHead - s.srcN;
+    return (b < 0) ? b + SRC_CAP : b;
+}
+
+// Plus grand rang logique lo tel que S(lo) ≤ sT, avec hi = lo + 1 en sortie.
+// Dichotomie inchangée : même intervalle trouvé, mêmes valeurs interpolées —
+// seul le calcul d'index change.
+//
+// Les deux appelants ont déjà écarté les bords (sT ≤ S(0) et sT ≥ S(n−1)), ce
+// qui garantit n ≥ 2 ici : à n = 1 les deux tests portent sur le MÊME
+// échantillon et l'un des deux a forcément rendu la main. C'est ce qui autorise
+// les appelants à prendre iB = iA + 1 sans revalider.
+function _srcFindLo(s, sT, n, base) {
+    var lo = 0, hi = n - 1;
+    while (hi - lo > 1) {
+        var mid = (lo + hi) >> 1;
+        var i   = base + mid;
+        if (i >= SRC_CAP) i -= SRC_CAP;
+        if (s.srcS[i] <= sT) lo = mid;
+        else                 hi = mid;
+    }
+    return lo;
+}
+
 function _srcClear(s) {
     s.srcN      = 0;
     s.srcHead   = 0;
@@ -182,14 +213,10 @@ function _srcDLookup(s, sT) {
     var iLast = _srcIdx(s, n - 1);
     if (sT >= s.srcS[iLast]) return s.srcD[iLast];
 
-    var lo = 0, hi = n - 1;
-    while (hi - lo > 1) {
-        var mid = (lo + hi) >> 1;
-        if (s.srcS[_srcIdx(s, mid)] <= sT) lo = mid;
-        else                               hi = mid;
-    }
-    var iA = _srcIdx(s, lo);
-    var iB = _srcIdx(s, hi);
+    var base = _srcBase(s);
+    var lo   = _srcFindLo(s, sT, n, base);
+    var iA   = base + lo;      if (iA >= SRC_CAP) iA -= SRC_CAP;
+    var iB   = iA + 1;         if (iB >= SRC_CAP) iB -= SRC_CAP;
     var span = s.srcS[iB] - s.srcS[iA];
     var f    = (span > 0) ? (sT - s.srcS[iA]) / span : 0;
     return s.srcD[iA] + (s.srcD[iB] - s.srcD[iA]) * f;
@@ -224,14 +251,10 @@ function _srcSampleAtS(s, sT) {
     }
 
     // Plus grand k tel que S(k) ≤ sT
-    var lo = 0, hi = n - 1;
-    while (hi - lo > 1) {
-        var mid = (lo + hi) >> 1;
-        if (s.srcS[_srcIdx(s, mid)] <= sT) lo = mid;
-        else                               hi = mid;
-    }
-    var iA = _srcIdx(s, lo);
-    var iB = _srcIdx(s, hi);
+    var base = _srcBase(s);
+    var lo   = _srcFindLo(s, sT, n, base);
+    var iA   = base + lo;      if (iA >= SRC_CAP) iA -= SRC_CAP;
+    var iB   = iA + 1;         if (iB >= SRC_CAP) iB -= SRC_CAP;
     var span = s.srcS[iB] - s.srcS[iA];
     var f    = (span > 0) ? (sT - s.srcS[iA]) / span : 0;
 
@@ -793,11 +816,23 @@ function _sonDisplayGain(k_cm) {
 //  qui s'appuie là-dessus. Renvoie 0 là où l'onde n'est pas encore arrivée.
 // ══════════════════════════════════════════════════════════════════════
 
-function sonDisplayAkAt(x_px, t_sim) {
+// ── S(t) partagé ──────────────────────────────────────────────────────
+//  Les quatre fonctions de champ ci-dessous commencent toutes par la MÊME
+//  quantité, S(t) : elle ne dépend que du temps, jamais de x. Les boucles de
+//  rendu qui les appellent des milliers de fois à t constant (cf.
+//  _drawParticles, les dégradés de fond) peuvent donc la calculer une fois et
+//  la passer en paramètre sNow. Omis, il est recalculé — le comportement est
+//  identique, c'est une pure factorisation.
+function sonSNow(t_sim) {
+    return _srcSAtTime(sim, t_sim, sim.c_cms);
+}
+
+function sonDisplayAkAt(x_px, t_sim, sNow) {
     if (sim.tubeLength <= 0) return 0;
 
+    var S       = (sNow !== undefined) ? sNow : sonSNow(t_sim);
     var cmPerPx = TUBE_LENGTH_CM / sim.tubeLength;
-    var smp  = _srcSampleAtS(sim, _srcSAtTime(sim, t_sim, sim.c_cms) - x_px * cmPerPx);
+    var smp  = _srcSampleAtS(sim, S - x_px * cmPerPx);
     // Copie immédiate : _srcOut est réutilisé d'un appel à l'autre.
     var k_cm = smp.a;
     if (k_cm <= 0) return 0;
@@ -820,14 +855,19 @@ function sonDisplayAkAt(x_px, t_sim) {
 //  canvas.
 // ══════════════════════════════════════════════════════════════════════
 
-function waveDisplacement(x_px, t_sim) {
+function waveDisplacement(x_px, t_sim, sNow) {
     if (sim.tubeLength <= 0) return 0;
 
+    var S    = (sNow !== undefined) ? sNow : sonSNow(t_sim);
     var x_cm = x_px * TUBE_LENGTH_CM / sim.tubeLength;
-    var d    = _srcDAtS(sim, _srcSAtTime(sim, t_sim, sim.c_cms) - x_cm);
+    var d    = _srcDAtS(sim, S - x_cm);
     if (d === 0) return 0;
 
+    // α = 0 est le réglage par défaut et le plus courant : exp(0) vaut 1, et
+    // l'exponentielle est alors une opération transcendante par particule pour
+    // un facteur neutre. Le court-circuit donne le MÊME résultat.
     var alpha = sim.attenuation * 5;     // amortissement (×5 pour visibilité sur L)
+    if (alpha === 0) return d * sim.memAmplitude;
     return d * sim.memAmplitude * Math.exp(-alpha * x_cm / TUBE_LENGTH_CM);
 }
 
@@ -838,16 +878,19 @@ function waveDisplacement(x_px, t_sim) {
 //  waveDisplacement, qui n'est pas pondérée.
 // ══════════════════════════════════════════════════════════════════════
 
-function waveDisplacementDisplay(x_px, t_sim) {
+function waveDisplacementDisplay(x_px, t_sim, sNow) {
     if (sim.tubeLength <= 0) return 0;
 
+    var S    = (sNow !== undefined) ? sNow : sonSNow(t_sim);
     var x_cm = x_px * TUBE_LENGTH_CM / sim.tubeLength;
-    var smp  = _srcSampleAtS(sim, _srcSAtTime(sim, t_sim, sim.c_cms) - x_cm);
+    var smp  = _srcSampleAtS(sim, S - x_cm);
     if (smp.d === 0) return 0;
 
+    // Court-circuit à α = 0 — cf. waveDisplacement.
+    var u     = smp.d * sim.memAmplitude * _sonDisplayGain(smp.a);
     var alpha = sim.attenuation * 5;
-    return smp.d * sim.memAmplitude * _sonDisplayGain(smp.a)
-                 * Math.exp(-alpha * x_cm / TUBE_LENGTH_CM);
+    if (alpha === 0) return u;
+    return u * Math.exp(-alpha * x_cm / TUBE_LENGTH_CM);
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -855,8 +898,10 @@ function waveDisplacementDisplay(x_px, t_sim) {
 //  ΔP = −K × ∂u/∂x  → approximation par différences finies centrées
 // ══════════════════════════════════════════════════════════════════════
 
-function waveDeltaP(x_px, t_sim) {
+function waveDeltaP(x_px, t_sim, sNow) {
     if (sim.tubeLength <= 0) return 0;
+
+    var S = (sNow !== undefined) ? sNow : sonSNow(t_sim);
 
     // Nombre d'onde LOCAL, lu dans l'historique : comme le gain d'affichage,
     // la normalisation doit être calée sur ce qui a été émis à cet endroit et
@@ -864,7 +909,7 @@ function waveDeltaP(x_px, t_sim) {
     // toute la courbe, y compris la partie déjà propagée.
     // (On copie la valeur : _srcOut est réutilisé par les appels suivants.)
     var cmPerPx = TUBE_LENGTH_CM / sim.tubeLength;
-    var smp  = _srcSampleAtS(sim, _srcSAtTime(sim, t_sim, sim.c_cms) - x_px * cmPerPx);
+    var smp  = _srcSampleAtS(sim, S - x_px * cmPerPx);
     var k_cm = smp.a;
     if (k_cm <= 0) return 0;
 
@@ -883,8 +928,8 @@ function waveDeltaP(x_px, t_sim) {
     // qui garde la différence centrée valable jusqu'à la membrane. Rétrécir ou
     // décaler le stencil au bord, au contraire, y aplatissait ΔP et laissait
     // une marche visible en x = h.
-    var u_m = waveDisplacement(x_px - h, t_sim);
-    var u_p = waveDisplacement(x_px + h, t_sim);
+    var u_m = waveDisplacement(x_px - h, t_sim, S);
+    var u_p = waveDisplacement(x_px + h, t_sim, S);
     // ΔP = −K × ∂u/∂x  ≈  K × (u_m − u_p) / (2h)
     var dp  = sim.K * (u_m - u_p) / (2 * h);
 

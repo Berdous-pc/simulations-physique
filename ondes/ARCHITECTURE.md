@@ -449,18 +449,57 @@ au même prix, et il faut le savoir avant de redescendre `COL_SLOT_PX2`.
   il n'y a que **deux `fill()` par frame**, quel que soit `N`. Par particule,
   une recherche dichotomique dans l'historique, deux `Math.random` et un
   `arc()`. Doubler `N` double un coût déjà modeste.
-- *Mode pression coloré* : `_drawParticles` y fait, **par particule et par
+- *Mode pression coloré* : `_drawParticles` y faisait, **par particule et par
   frame**, une allocation de chaîne `'rgb(r,g,b)'` (`_dpToColor`), une
   affectation de `fillStyle` — que le canvas reparse — puis un `beginPath` et
   un `fill()` à lui seul ; `waveDeltaP` ajoute deux recherches dichotomiques.
-  C'est `N` appels de dessin par frame au lieu de deux.
+  C'était `N` appels de dessin par frame au lieu de deux.
 
 C'est donc le mode pression qui décide, et il était déjà le point faible avant
-la densification. S'il devait ramer, le correctif n'est pas de remonter
-`COL_SLOT_PX2` mais de **quantifier `_dpToColor` sur ~24 teintes
-pré-construites** et de grouper les particules par palier : 24 `fill()` au lieu
-de `N`, et plus aucune chaîne reconstruite. À 24 niveaux, l'écart est invisible
-à l'œil.
+la densification.
+
+**Le groupement par couleur (`_dpBucket`).** Le correctif envisagé ici était de
+quantifier `_dpToColor` sur ~24 teintes. Il s'est avéré inutile de quantifier :
+`_dpToColor` **arrondit déjà** ses trois canaux à l'entier, et ses deux rampes
+sont courtes (`g` : 100 → 30 et 100 → 150), si bien que l'ensemble des couleurs
+qu'il peut produire compte une **centaine de valeurs, quel que soit `N`**. On
+range donc les particules par couleur *exacte* — celle qu'elles avaient déjà —
+et on ne fait plus qu'un `fill()` par couleur présente. La table
+couleur → seau n'est jamais purgée : elle sert de cache d'une frame à l'autre,
+seules les listes de points sont vidées en gardant leur capacité.
+
+Une seule chose change à l'image : l'**ordre de dessin**. Deux disques qui se
+recouvrent sont peints dans l'ordre des couleurs et non plus de gauche à
+droite. Comme des particules qui se recouvrent sont voisines en `x`, donc de
+`ΔP` quasi identique, l'écart de teinte au point de recouvrement est de l'ordre
+de l'unité sur 255. C'est le seul écart de rendu de toute cette passe
+d'optimisation — le reste est à l'identique, au bit près.
+
+**Trois autres allègements, strictement sans effet sur l'image.**
+
+- *Dichotomie sans modulo.* `_srcIdx` calcule un index physique avec un `%`,
+  soit une division entière à chaque tour de dichotomie — une quinzaine par
+  appel, quelques dizaines de milliers par frame. `_srcBase` sort la base de la
+  boucle et `_srcFindLo` ne fait plus qu'une soustraction conditionnelle : la
+  somme `base + rang` déborde d'au plus un tour. Même intervalle trouvé, mêmes
+  valeurs interpolées.
+- *`S(t)` évalué une fois par frame.* Les quatre fonctions de champ
+  (`waveDisplacement`, `waveDisplacementDisplay`, `waveDeltaP`,
+  `sonDisplayAkAt`) commençaient chacune par `_srcSAtTime` — une quantité qui
+  ne dépend **que du temps**. Elles acceptent désormais un paramètre `sNow`
+  optionnel, que les boucles de rendu (`_drawParticles`, les deux dégradés de
+  fond) calculent une seule fois via `sonSNow`. En mode pression, cela retirait
+  quatre évaluations redondantes par particule. Omis, le paramètre est
+  recalculé : le comportement des autres appelants est inchangé.
+- *Court-circuit à `α = 0`.* L'atténuation vaut 0 par défaut, et
+  `Math.exp(−0·x/L)` vaut exactement 1 : c'était une transcendante par
+  particule pour un facteur neutre.
+
+Un quatrième a été envisagé puis écarté : sauter la seconde passe du mode
+normal quand rien n'est sélectionné. Détecter « rien n'est sélectionné » coûte
+le même parcours de `N` que la passe évitée — le gain net est nul, et il
+faudrait maintenir un compteur à travers les cinq points d'écriture de
+`.selected` pour qu'il en vaille la peine.
 
 **`particleCount` : `N` ne dépend ni de ρ ni de `H`.** La case allouée à une
 particule suit `πr²`, donc `slot = COL_SLOT_PX2 × H/H_ref` ; le facteur `H` de
