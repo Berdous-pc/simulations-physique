@@ -192,10 +192,15 @@
           <div class="param-row" id="freq-row">
             <label>
               Fréquence
-              <span class="param-value"><span id="lbl-freq">1,5</span> Hz</span>
+              <span class="param-value"><span id="lbl-freq">0,75</span> Hz</span>
             </label>
+            <!-- Plage divisée par 2 en même temps que la célérité (cf. K_GAZ /
+                 K_SOLIDE dans sim.js) : λ = c/f garde ainsi exactement son
+                 budget d'avant, borne pour borne, et seul le temps de
+                 propagation est ralenti. Pas de 0,05 (la moitié de l'ancien
+                 0,1) pour conserver le même nombre de crans. -->
             <input type="range" id="sl-freq"
-                   min="0.5" max="5" step="0.1" value="1.5"
+                   min="0.25" max="2.5" step="0.05" value="0.75"
                    oninput="onSliderFreq(this.value)">
           </div>
         </div><!-- fin #source-son -->

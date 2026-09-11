@@ -88,11 +88,11 @@ function _cbufRebuild(buf, fn) {
 //  inverser S revient à remonter au temps d'émission, ce qui reste exact même
 //  si c a changé entre-temps.
 //
-//    • pas : 1/600 s de temps simulé → 120 points par période à la fréquence
-//      max (5 Hz), tracé lisse en toutes circonstances
+//    • pas : 1/600 s de temps simulé → 240 points par période à la fréquence
+//      max du tube (2,5 Hz), tracé lisse en toutes circonstances
 //    • capacité : 40 s, soit largement le temps de trajet le plus long
-//      (Corde : c_min ≈ 0,35 m/s sur 5 m ≈ 14 s ; Son : c_min ≈ 3,5 cm/s
-//      sur 40 cm ≈ 11 s)
+//      (Corde : c_min ≈ 0,35 m/s sur 5 m ≈ 14 s ; Son : c_min ≈ 4,9 cm/s
+//      sur 40 cm ≈ 8 s depuis le recalibrage ×½ de la célérité)
 // ══════════════════════════════════════════════════════════════════════
 
 var SRC_DT  = 1 / 600;
@@ -316,12 +316,17 @@ function fmtSciHTML(v, decimals) {
 //  Budget de longueurs d'onde, en λ/L (L = longueur du tube) :
 //
 //                                         avant (K 5→10)   après (κ 0→1)
-//    défaut ρ=1, f=1,5                         0,41            0,41
+//    défaut ρ=1, f au défaut                   0,41            0,41
 //    curseur au mini, reste par défaut         0,37            0,28
 //    curseur au maxi, reste par défaut         0,53            0,84
-//    beaucoup de λ    (ρ=3, f=5)               0,06            0,05
-//    une seule onde   (ρ=1, f=0,5)             1,58            2,53
-//    coin extrême     (ρ=0,5, f=0,5)           2,24            3,58
+//    beaucoup de λ    (ρ=3, f maxi)            0,06            0,05
+//    une seule onde   (ρ=1, f mini)            1,58            2,53
+//    coin extrême     (ρ=0,5, f mini)          2,24            3,58
+//
+//  (Table écrite à l'époque où f allait de 0,5 à 5 Hz avec un défaut à
+//  1,5 Hz. Le recalibrage ×½ de la célérité, plus bas, a divisé par 2 à la
+//  fois c et la plage de f : λ = c/f est donc inchangée, et la table reste
+//  valable telle quelle.)
 //
 //  Le défaut est conservé au centième, et les deux régimes qui comptent —
 //  « plein de λ à l'écran » et « à peine une onde » — restent atteignables.
@@ -333,9 +338,24 @@ function fmtSciHTML(v, decimals) {
 //  qu'on cherchait à récupérer.
 // ══════════════════════════════════════════════════════════════════════
 
-var K_GAZ         = 2.85;   // κ = 0 — gaz : K = γP, faible mais NON NUL
-var K_SOLIDE      = 25.6;   // κ = 1 — matière condensée (rapport 9 → c ×3)
-var KAPPA_DEFAULT = 0.35;   // → K ≈ 6,15, soit l'ancien K_DEFAULT de 6,0
+//  ── Recalibrage ×½ de la célérité ────────────────────────────────────
+//  Les deux bornes ont été divisées par 4 (2,85 → 0,7125 et 25,6 → 6,4) :
+//  c = √(K/ρ) est donc divisée par 2 sur TOUTE la plage, et l'onde traverse
+//  le tube en ~3,2 s au lieu de ~1,6 s. Le rapport 9 est conservé, donc la
+//  course du curseur κ vaut toujours ×3 sur c.
+//
+//  À fréquence inchangée, λ = c/f aurait été divisée par 2 partout : au
+//  réglage par défaut la bande serait tombée de 16 à 8 espacements de
+//  particules, sous DENS_LAM_COMFY_SP, et tout le haut du curseur f serait
+//  passé sous DENS_LAM_TIGHT_SP — du voile bleu sans structure lisible dans
+//  le nuage. La plage de f a donc été divisée par 2 elle aussi (index.html :
+//  0,25–2,5 Hz, défaut 0,75) : λ retrouve exactement son budget d'avant,
+//  borne pour borne, et seul le TEMPS de propagation est ralenti. Ce qui est
+//  perdu, ce sont les fréquences au-delà de 2,5 Hz, qui étaient déjà dans le
+//  régime où les particules ne montraient plus rien.
+var K_GAZ         = 0.7125; // κ = 0 — gaz : K = γP, faible mais NON NUL
+var K_SOLIDE      = 6.4;    // κ = 1 — matière condensée (rapport 9 → c ×3)
+var KAPPA_DEFAULT = 0.35;   // → K ≈ 1,54, soit le quart de l'ancien 6,15
 
 function kappaToK(kappa) {
     var k = Math.max(0, Math.min(1, kappa));
@@ -344,10 +364,10 @@ function kappaToK(kappa) {
 
 // ── Constantes de calibration ─────────────────────────────────────────
 // Valeurs par défaut des paramètres (pour calibrer C_BASE à la resize)
-var K_DEFAULT        = kappaToK(KAPPA_DEFAULT);   // ≈ 6,15
+var K_DEFAULT        = kappaToK(KAPPA_DEFAULT);   // ≈ 1,54
 var RHO_DEFAULT      = 1.0;   // masse volumique par défaut
 // C_DISPLAY_FACTOR : c_norm * C_DISPLAY_FACTOR = célérité affichée en cm/s
-// sqrt(K_DEFAULT/RHO_DEFAULT) * 10 = sqrt(6,15) * 10 ≈ 24,8 cm/s par défaut
+// sqrt(K_DEFAULT/RHO_DEFAULT) * 10 = sqrt(1,54) * 10 ≈ 12,4 cm/s par défaut
 var C_DISPLAY_FACTOR = 10.0;
 // Longueur physique du tube représentée par tubeLength pixels
 var TUBE_LENGTH_CM   = 40.0;
@@ -357,6 +377,33 @@ var C_BASE           = 43.0;
 // Durée de l'impulsion = 1 période complète (aller-retour membrane)
 // Valeur réduite (0.6 s) pour un paquet d'onde compact et bien visible
 var T_IMPULSE        = 0.6;   // secondes de temps simulé
+
+// ── Durée d'impulsion propre au tube (son) ────────────────────────────
+//  Le paquet d'impulsion n'a pas de fréquence : son étendue spatiale vaut
+//  c × T, et c'est elle qui joue le rôle de λ pour tout le rendu — nombre
+//  d'onde figé à l'émission, gain d'affichage, finesse du dégradé.
+//
+//  Le contraste réellement affiché vaut ak_disp = min(clamp(A·k), maxPx·k)
+//  (cf. _sonDisplayGain) : aux étendues larges c'est le plafond absolu
+//  maxPx·k qui mord, donc ak_disp y est INVERSEMENT proportionnel à c × T.
+//  Avec l'ancien couple (c pleine vitesse, T = 0,6 s) le paquet faisait
+//  ≈ 0,37 L et n'affichait qu'ak ≈ 0,49 — soit à peine au-dessus d'AK_MIN :
+//  des zones de compression et de dilatation molles.
+//
+//  Depuis que c est divisée par 2, garder T = 0,6 s rétrécirait le paquet de
+//  moitié (0,19 L) ; le doubler à 1,2 s le laisserait à sa largeur d'avant,
+//  mais aussi à son contraste mou. On prend le point intermédiaire qui
+//  SATURE le plafond de contraste : T tel que c × T ≈ 0,24 L, ce qui amène
+//  ak_disp sur AK_CAP = 0,75, sa valeur maximale. Le paquet fait alors
+//  ≈ 0,25 L — une dizaine d'espacements de particules, donc encore bien
+//  résolu par le nuage — avec des zones de compression et de dilatation au
+//  contraste maximal que le rendu autorise. Descendre plus bas ne gagnerait
+//  plus rien (l'écrêtage par AK_CAP a déjà pris la main) et ne ferait que
+//  rétrécir le paquet.
+//
+//  Constante distincte de T_IMPULSE, qui reste celle de la corde et des
+//  vagues : leur calibrage n'a aucune raison de suivre celui du tube.
+var T_IMPULSE_SON    = 0.8;   // secondes de temps simulé
 // Nombre max de points enregistrés pour ΔP(t)
 var DP_MAX_POINTS    = 1600;  // 300 pts/s × 5 s + marge → courbes lisses sur la fenêtre entière
 // Aire disponible par particule à la hauteur de référence H_ref, en px² : fixe
@@ -422,7 +469,7 @@ var sim = {
     sonEnv      : 0,
 
     // ── Source — impulsions (superposables) ─────────────────────────
-    // Chaque entrée : { startTime }  (1 période de sinus = T_IMPULSE)
+    // Chaque entrée : { startTime }  (1 période de sinus = T_IMPULSE_SON)
     impulses : [],
 
     // ── Historique de la source (cf. _srcPush / _srcDAtS) ────────────
@@ -442,7 +489,7 @@ var sim = {
     srcKMin   : Infinity,   // plus petit k émis — dimensionne les zones virtuelles
 
     // ── Paramètres physiques du milieu ───────────────────────────────
-    freq        : 1.5,            // fréquence de la sinusoïdale (Hz)
+    freq        : 0.75,           // fréquence de la sinusoïdale (Hz)
     rho         : RHO_DEFAULT,    // masse volumique (u.s.)
     kappa       : KAPPA_DEFAULT,  // rigidité du milieu ∈ [0,1] — CE QUE PORTE
                                   //   le curseur ; K en est dérivé
@@ -604,8 +651,8 @@ function stepSourceSon(t) {
     // compression (+) puis détente (−), exactement 1 période propre.
     for (var i = 0; i < sim.impulses.length; i++) {
         var tau = t - sim.impulses[i].startTime;
-        if (tau >= 0 && tau <= T_IMPULSE) {
-            d += (1 - Math.cos(2 * Math.PI * tau / T_IMPULSE)) / 2;
+        if (tau >= 0 && tau <= T_IMPULSE_SON) {
+            d += (1 - Math.cos(2 * Math.PI * tau / T_IMPULSE_SON)) / 2;
         }
     }
 
@@ -615,7 +662,7 @@ function stepSourceSon(t) {
     // un gain global recalculé à partir de la fréquence COURANTE redimensionnait
     // d'un coup les zones de compression dans tout le tube dès qu'on touchait
     // au curseur f. En cm⁻¹ pour survivre aux redimensionnements de fenêtre.
-    var freqEff = (sim.sourceMode === 'impulse') ? 1.0 / T_IMPULSE : sim.freq;
+    var freqEff = (sim.sourceMode === 'impulse') ? 1.0 / T_IMPULSE_SON : sim.freq;
     var k_cm    = (sim.c_cms > 0) ? 2 * Math.PI * freqEff / sim.c_cms : 0;
 
     if (d !== 0 && k_cm > 0 && k_cm < sim.srcKMin) sim.srcKMin = k_cm;
@@ -1839,7 +1886,7 @@ function updateDpxData() {
     sim.dpxN = 0;
     if (L <= 0) return;
 
-    var freqEff = (sim.sourceMode === 'impulse') ? 1.0 / T_IMPULSE : sim.freq;
+    var freqEff = (sim.sourceMode === 'impulse') ? 1.0 / T_IMPULSE_SON : sim.freq;
     var lambda  = (sim.c_sim > 0) ? sim.c_sim / freqEff : L;  // px tube
 
     // Nombre de points calé sur la résolution d'affichage du graphe (pas sur λ) :
@@ -1910,7 +1957,7 @@ function pruneImpulses() {
     // Une impulsion est « terminée » quand elle a fini d'être émise ET a fini
     // de traverser le tube (durée en grandeurs physiques, donc insensible à la
     // taille du canvas).
-    var cutoff = sim.simTime - T_IMPULSE - TUBE_LENGTH_CM / sim.c_cms - 0.5;
+    var cutoff = sim.simTime - T_IMPULSE_SON - TUBE_LENGTH_CM / sim.c_cms - 0.5;
     sim.impulses = sim.impulses.filter(function(imp) {
         return imp.startTime > cutoff;
     });

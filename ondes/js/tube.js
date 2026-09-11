@@ -1402,6 +1402,11 @@ var WANDER_CLAMP = 3.0;     // borne dure, en multiples de σ
 //  Le supprimer est peu coûteux, parce qu'il protégeait un régime où les
 //  particules ne portent déjà plus rien. Le coût vaut exp(−2π²σ²/λ²) :
 //
+//  (Ce bloc a été écrit quand f allait de 0,5 à 5 Hz. Le recalibrage ×½ de
+//  la célérité a divisé par 2 à la fois c et la plage de f, donc λ = c/f est
+//  inchangée : lire « f » ci-dessous comme la même position de curseur, et
+//  les λ restent exactes.)
+//
 //      f (Hz)    1,5     3      5      5 (ρ = 3)
 //      λ (px)    197     98     59       34
 //      perte    2,2%   8,6%    22%      53%
@@ -1579,7 +1584,7 @@ function _wanderStep(sigma, pull) {
 // fréquence donnerait une valeur sans rapport avec ce qui est affiché.
 function _sonFeaturePx() {
     var lam;
-    if (sim.sourceMode === 'impulse') lam = sim.c_sim * T_IMPULSE;
+    if (sim.sourceMode === 'impulse') lam = sim.c_sim * T_IMPULSE_SON;
     else                              lam = (sim.freq > 0) ? sim.c_sim / sim.freq : 0;
     if (!(lam > 0)) lam = sim.tubeLength;
     return Math.min(lam, sim.tubeLength);
