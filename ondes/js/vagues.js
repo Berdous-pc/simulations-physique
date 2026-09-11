@@ -2264,19 +2264,19 @@ function toggleWavePropsVagues() {
     _applyWavePropsVagues();
 }
 
+// Jumeau de _applyWavePropsState (cf. le commentaire dans ui.js).
 function _applyWavePropsVagues() {
-    var btn      = document.getElementById('btn-wave-props-vagues');
-    var simple   = document.getElementById('readout-simple-vagues');
-    var extended = document.getElementById('readout-props-vagues');
-    if (simVagues.wavePropsVisible) {
-        if (btn)      btn.classList.add('active');
-        if (simple)   simple.style.display = 'none';
-        if (extended) extended.style.display = '';
-        _updateWavePropsVagues();
-    } else {
-        if (btn)      btn.classList.remove('active');
-        if (simple)   simple.style.display = '';
-        if (extended) extended.style.display = 'none';
+    var btn       = document.getElementById('btn-wave-props-vagues');
+    var simple    = document.getElementById('readout-simple-vagues');
+    var extended  = document.getElementById('readout-props-vagues');
+    var isImpulse = _vaguesModeIsImpulse();
+    var on        = simVagues.wavePropsVisible;
+    if (btn)      btn.classList.toggle('active', on);
+    if (simple)   simple.style.display   = (on &&  isImpulse) ? '' : 'none';
+    if (extended) extended.style.display = (on && !isImpulse) ? '' : 'none';
+    if (on) {
+        if (isImpulse) _updateCReadoutVagues();
+        else           _updateWavePropsVagues();
     }
 }
 
@@ -2294,7 +2294,7 @@ function _updateWavePropsVagues() {
     var elF = document.getElementById('ro-f-vagues');
     var elT = document.getElementById('ro-T-vagues');
     if (elF) elF.textContent = f.toFixed(2).replace('.', ',');
-    if (elT) elT.textContent = T.toFixed(3).replace('.', ',');
+    if (elT) elT.textContent = fmtFRRound(T, 2);
     var lambda = simVagues.c_ms * T;
     var elL    = document.getElementById('ro-lambda-vagues');
     if (elL) elL.textContent = (lambda * 100).toFixed(1).replace('.', ',');

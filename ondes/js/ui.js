@@ -496,19 +496,22 @@ function toggleWaveProps() {
     _applyWavePropsState();
 }
 
+//  Rien n'est affiché tant que le bouton n'est pas activé : la célérité ne
+//  s'impose plus d'entrée de jeu. Une fois le bouton actif, le détail dépend
+//  du mode — en Impulsion il n'y a ni f, ni T, ni λ, on s'en tient donc à la
+//  seule célérité.
 function _applyWavePropsState() {
-    var btn      = document.getElementById('btn-wave-props');
-    var simple   = document.getElementById('readout-simple');
-    var extended = document.getElementById('readout-props');
-    if (sim.wavePropsVisible) {
-        if (btn)      btn.classList.add('active');
-        if (simple)   simple.style.display = 'none';
-        if (extended) extended.style.display = '';
-        _updateWaveProps();
-    } else {
-        if (btn)      btn.classList.remove('active');
-        if (simple)   simple.style.display = '';
-        if (extended) extended.style.display = 'none';
+    var btn       = document.getElementById('btn-wave-props');
+    var simple    = document.getElementById('readout-simple');
+    var extended  = document.getElementById('readout-props');
+    var isImpulse = _sonModeIsImpulse();
+    var on        = sim.wavePropsVisible;
+    if (btn)      btn.classList.toggle('active', on);
+    if (simple)   simple.style.display   = (on &&  isImpulse) ? '' : 'none';
+    if (extended) extended.style.display = (on && !isImpulse) ? '' : 'none';
+    if (on) {
+        if (isImpulse) _updateCReadout();
+        else           _updateWaveProps();
     }
 }
 
@@ -521,7 +524,7 @@ function _updateWaveProps() {
     var elF = document.getElementById('ro-f');
     var elT = document.getElementById('ro-T');
     if (elF) elF.textContent = f.toFixed(2).replace('.', ',');
-    if (elT) elT.textContent = T.toFixed(3).replace('.', ',');
+    if (elT) elT.textContent = fmtFRRound(T, 2);
     var lambda = sim.c_cms * T;
     var elL    = document.getElementById('ro-lambda');
     if (elL) elL.textContent = fmtFRRound(lambda, 1);
@@ -537,15 +540,10 @@ function _sonModeIsImpulse() {
     return !sel || sel.value === 'impulse';
 }
 
+//  Le bouton reste utilisable dans les deux modes : c'est le CONTENU de la
+//  box qui suit le mode, pas la disponibilité du bouton.
 function _syncWavePropsBtnState() {
-    var btn = document.getElementById('btn-wave-props');
-    if (!btn) return;
-    var isImpulse = _sonModeIsImpulse();
-    btn.disabled = isImpulse;
-    if (isImpulse && sim.wavePropsVisible) {
-        sim.wavePropsVisible = false;
-        _applyWavePropsState();
-    }
+    _applyWavePropsState();
 }
 
 // ── Boutons au-dessus du tube — Son ───────────────────────────────────
@@ -1166,19 +1164,19 @@ function toggleWavePropsCorde() {
     _applyWavePropsCorde();
 }
 
+// Jumeau de _applyWavePropsState (cf. le commentaire là-bas).
 function _applyWavePropsCorde() {
-    var btn      = document.getElementById('btn-wave-props-corde');
-    var simple   = document.getElementById('readout-simple-corde');
-    var extended = document.getElementById('readout-props-corde');
-    if (simCorde.wavePropsVisible) {
-        if (btn)      btn.classList.add('active');
-        if (simple)   simple.style.display = 'none';
-        if (extended) extended.style.display = '';
-        _updateWavePropsCorde();
-    } else {
-        if (btn)      btn.classList.remove('active');
-        if (simple)   simple.style.display = '';
-        if (extended) extended.style.display = 'none';
+    var btn       = document.getElementById('btn-wave-props-corde');
+    var simple    = document.getElementById('readout-simple-corde');
+    var extended  = document.getElementById('readout-props-corde');
+    var isImpulse = _cordeModeIsImpulseOrFree();
+    var on        = simCorde.wavePropsVisible;
+    if (btn)      btn.classList.toggle('active', on);
+    if (simple)   simple.style.display   = (on &&  isImpulse) ? '' : 'none';
+    if (extended) extended.style.display = (on && !isImpulse) ? '' : 'none';
+    if (on) {
+        if (isImpulse) _updateCReadoutCorde();
+        else           _updateWavePropsCorde();
     }
 }
 
@@ -1191,7 +1189,7 @@ function _updateWavePropsCorde() {
     var elF = document.getElementById('ro-f-corde');
     var elT = document.getElementById('ro-T-corde');
     if (elF) elF.textContent = f.toFixed(2).replace('.', ',');
-    if (elT) elT.textContent = T.toFixed(3).replace('.', ',');
+    if (elT) elT.textContent = fmtFRRound(T, 2);
     var lambda = simCorde.c_cms * T;   // m (c en m/s × T en s)
     var elL    = document.getElementById('ro-lambda-corde');
     if (elL) elL.textContent = fmtFRRound(lambda, 2);
@@ -1267,14 +1265,7 @@ function _applyLambdaVagues() {
 }
 
 function _syncWavePropsBtnStateCorde() {
-    var btn = document.getElementById('btn-wave-props-corde');
-    if (!btn) return;
-    var isImpulse = _cordeModeIsImpulseOrFree();
-    btn.disabled = isImpulse;
-    if (isImpulse && simCorde.wavePropsVisible) {
-        simCorde.wavePropsVisible = false;
-        _applyWavePropsCorde();
-    }
+    _applyWavePropsCorde();
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -1332,14 +1323,7 @@ function _syncLambdaBtnStateVagues() {
 }
 
 function _syncWavePropsBtnStateVagues() {
-    var btn = document.getElementById('btn-wave-props-vagues');
-    if (!btn) return;
-    var isImpulse = _vaguesModeIsImpulse();
-    btn.disabled = isImpulse;
-    if (isImpulse && simVagues.wavePropsVisible) {
-        simVagues.wavePropsVisible = false;
-        _applyWavePropsVagues();
-    }
+    _applyWavePropsVagues();
 }
 
 function _applySourceModeVagues() {
