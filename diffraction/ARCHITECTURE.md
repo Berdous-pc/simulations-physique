@@ -237,8 +237,8 @@ concerné plutôt que centralisé, pilote l'échange x/y dans `scene.js` :
   la position VERTICALE (y) plutôt qu'horizontale (x).
 
 **Non généralisé à cette forme (limitation connue)** : le bouton « Adapter l'échelle à l'angle
-de diffraction » (`sim.echelleAngleTop`) reste strictement lié à la vue Dessus (`zEcranAffiche`,
-`x1Affiche`, `facteurLargeurEchelle`) — pour la fente horizontale, cet effet reste donc sans
+de diffraction » (`sim.echelleAngleTop`) reste strictement lié à la vue Dessus (`x1Affiche`,
+`facteurLargeurEchelle`) — pour la fente horizontale, cet effet reste donc sans
 utilité visible en vue Dessus (l'écran/le graphe ne sont, eux, jamais concernés).
 
 Le bouton « Lien figure » (`graph.js`), lui, est explicitement DÉSACTIVÉ pour cette forme (
@@ -390,7 +390,13 @@ indirecte, pouvait donner un signe incohérent près du seuil).
     n'est jamais contraignante : c'est l'axe z qui fixe le cadrage. **Sans exception** : le
     bouton « Adapter l'échelle à l'angle de diffraction » n'a aucun effet caméra (il avait un
     cadrage dédié, supprimé — un zoom n'exagère aucun angle, et il poussait le bout de la table
-    hors champ), le clic laisse donc la caméra strictement immobile.
+    hors champ), le clic laisse donc la caméra strictement immobile. Ce mode exagère l'angle
+    **uniquement en largeur** (`ECHELLE_ANGLE_FACTEUR` = 9, appliqué à `x1`, à l'enveloppe, à
+    l'écran et à la table) : `D` garde sa vraie valeur, donc le banc occupe toute la longueur de
+    table et le cône est tracé 3× plus long qu'avec l'ancienne compression `D`÷3 + `x1`×3, à
+    angle apparent identique. La table et l'écran élargis débordent latéralement du cadre :
+    assumé. `TABLE_WIDTH` est donc passé à `fitOrtho` **sans** ce facteur — sinon la table ×9
+    (±193 cm) dépasserait le demi-span en z (179 cm) et ferait reculer la caméra au clic.
   - **Écran** : caméra alignée avec l'axe du graphe I(x) en bas. Figure et montage
     **symétriques par rapport à x = 0** pour cette simulation.
   - **Écran — zoom molette** (`screenViewZoom`, 1 à `SCREEN_VIEW_ZOOM_MAX`=15) : centré sur (0,0),

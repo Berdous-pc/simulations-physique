@@ -246,10 +246,10 @@ function setView(view) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-//  Bascule le grossissement de l'angle de diffraction (vue Dessus uniquement). La caméra se
-//  recale toute seule dès la prochaine frame (renderScene() → updateOrthoCamera()), mais
-//  l'écran/l'enveloppe/les rayons (cf. scene.js → zEcranAffiche) doivent, eux, être
-//  repositionnés explicitement (updateSceneParams() n'est pas rappelée à chaque frame).
+//  Bascule le grossissement de l'angle de diffraction (vue Dessus uniquement). La caméra ne
+//  bouge pas (le mode n'a aucun effet caméra, cf. scene.js → ECHELLE_ANGLE_FACTEUR) ; l'écran,
+//  la table, l'enveloppe et les rayons (cf. scene.js → facteurLargeurEchelle) doivent, eux,
+//  être reconstruits explicitement (updateSceneParams() n'est pas rappelée à chaque frame).
 //  Se désactive automatiquement en cas de changement de vue, cf. scene.js →
 //  syncBoutonEchelleAngle.
 // ─────────────────────────────────────────────────────────────────────
