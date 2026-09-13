@@ -21,38 +21,58 @@ const SOURCE_Z = -15;           // cm — position FIXE du laser sur le banc (ja
 // atteindrait ainsi la fin de la table, D est réduit à la place (cf. sim.js → dMaxPourPetitD,
 // appliquerBorneD dans ui.js). Mise à jour dans updateSceneParams().
 let SLIT_Z = 0;
-// Distance fente-écran (cm) en dessous de laquelle le cadrage des vues Dessus/Profil
-// (updateOrthoCamera) cesse de se resserrer : au-delà, réduire D ne fait que rapprocher
-// l'écran dans un cadre fixe, plutôt que de zoomer sur tout le banc — cf. commentaire à
-// updateOrthoCamera.
+// Distance fente-écran (cm) de référence du cadrage « serré » d'autrefois : les vues
+// Dessus/Profil suivaient le banc et se resserraient jusqu'à ce plancher, et les labels d/D/L
+// étaient dimensionnés pour être lisibles à ce cadrage-là. Ces vues sont désormais cadrées une
+// fois pour toutes sur la table entière (cf. TABLE_Z_START/TABLE_CADRAGE_MARGE), donc cette
+// constante ne sert plus qu'à la compensation de taille des labels (updateLengthsGroup →
+// zoomCompense), comme dénominateur de CADRAGE_D_REF_CM.
 const D_CADRAGE_MIN_CM = 140;
 
 // Bouton "Adapter l'échelle à l'angle de diffraction" (vue Dessus uniquement, cf.
 // sim.echelleAngleTop, syncBoutonEchelleAngle) : PAS un effet caméra (cf. discussions de
-// conception précédentes, abandonnées — déformaient ou rognaient l'écran réel). Principe
-// du schéma "pas à l'échelle" que trace un professeur au tableau : on RAPPROCHE réellement
-// l'écran de la fente dans la scène 3D (cf. zEcranAffiche ci-dessous, utilisée à la place de
-// SLIT_Z + D_cm partout où l'écran est positionné/le banc est cadré en vue Dessus), sans
-// changer la taille d'aucun objet — seule sa position le long de l'axe optique change. En
-// vue Dessus, la texture de l'écran (la figure de diffraction) n'est de toute façon jamais
-// visible (écran vu par la tranche), donc aucun impact sur elle. La double flèche de mesure
-// L (largeur de la tache centrale), elle, est en plus dilatée par son propre facteur — cf.
-// ECHELLE_ANGLE_FACTEUR_L dans updateLengthsGroup — SANS changer x1 ailleurs (rayons,
-// enveloppe) ni la valeur numérique affichée dans son label (toujours la vraie valeur de L).
-const ECHELLE_ANGLE_FACTEUR_D = 3;  // D affiché = D réel / ce facteur
-const ECHELLE_ANGLE_FACTEUR_L = 3;  // dilatation purement visuelle de la flèche L (vue Dessus) — l'écran (cf. updateSceneParams) est élargi du même facteur, pour que la tache garde la même place relative sur l'écran
-
-// ─────────────────────────────────────────────────────────────────────
-//  Position Z de l'écran à utiliser pour le POSITIONNEMENT (jamais pour la physique/texture,
-//  toujours calculée séparément à partir de sim.D réel) : comprimée en vue Dessus quand le
-//  bouton "Adapter l'échelle" est actif (cf. ECHELLE_ANGLE_FACTEUR_D ci-dessus), sinon la
-//  vraie position fente+D. Centralisé ici car réutilisé par updateSceneParams(),
-//  updateLengthsGroup(), reconstruireEnveloppesBlanche() et updateOrthoCamera().
-// ─────────────────────────────────────────────────────────────────────
-function zEcranAffiche(D_cm) {
-  const D_affiche = (sim.view === 'top' && sim.echelleAngleTop) ? D_cm / ECHELLE_ANGLE_FACTEUR_D : D_cm;
-  return SLIT_Z + D_affiche;
-}
+// conception précédentes, abandonnées — déformaient ou rognaient l'écran réel), et depuis la
+// suppression de son cadrage dédié (cf. updateOrthoCamera) AUCUN effet caméra du tout : un
+// zoom n'exagère aucun angle, celui-ci vient entièrement de la scène (ci-dessous), et le
+// cadrage dédié ne faisait que pousser le bout de la table hors champ, privant la vue de tout
+// repère. Le clic sur le bouton laisse donc la caméra strictement immobile.
+//
+// Principe du schéma "pas à l'échelle" que trace un professeur au tableau, appliqué UNIQUEMENT
+// EN LARGEUR : l'angle apparent vaut x1_affiché / D_affiché, et on l'exagère en dilatant le
+// seul numérateur — x1 (rayons, flèche L), l'enveloppe du faisceau, l'écran et la table sous
+// lui, tous du même facteur (cf. x1Affiche/facteurLargeurEchelle plus bas). RIEN ne
+// bouge le long de l'axe optique : D garde sa vraie valeur, l'écran reste à sa vraie place au
+// bout du banc.
+//
+// Une version précédente exagérait aussi en longueur (D comprimé ÷3, x1 ×3 — même angle, ×9
+// dans les deux cas). Abandonné : le banc comprimé n'occupait plus que ~26 % de la longueur de
+// table, laissant les trois quarts du cadre vides, et la seule façon de masquer ce vide était
+// un zoom — celui-là même qui poussait le bout de la table hors champ. À angle apparent
+// identique, tout mettre sur le levier transverse triple la longueur sur laquelle le cône est
+// tracé (100 cm de table au lieu de 33 à D = 1 m), donc une figure PLUS grande que celle de
+// l'ancien mode zoomé, sans mouvement de caméra et avec le bout de table toujours visible.
+//
+// L'écran est élargi du même facteur que la tache pour que celle-ci garde exactement la même
+// place relative sur l'écran qu'à l'échelle réelle, la table pour ne pas laisser l'écran
+// surplomber le vide. En vue Dessus, la texture de l'écran (la figure de diffraction) n'est de
+// toute façon jamais visible (écran vu par la tranche), donc aucun impact sur elle. La valeur
+// numérique affichée dans le label de L reste elle aussi toujours la vraie valeur, jamais la
+// valeur dilatée.
+//
+// Le facteur n'est PAS une constante : il est calculé (cf. facteurLargeurEchelle) pour que la
+// table élargie remplisse la hauteur du cadre à ECHELLE_TABLE_REMPLISSAGE près — ses bordures
+// haute et basse restent ainsi tout juste visibles, ce qui conserve le repère de la table dans
+// les deux directions (demande explicite de l'utilisateur). Un facteur fixe ne peut pas tenir
+// cette promesse : la hauteur visible vaut TABLE_CADRAGE_HALF_SPAN/aspect, donc elle dépend de
+// la forme de la fenêtre. Plafonné à ECHELLE_ANGLE_FACTEUR_MAX pour qu'une fenêtre très haute
+// et étroite ne produise pas une exagération délirante.
+const ECHELLE_ANGLE_FACTEUR_MAX = 9;
+const ECHELLE_TABLE_REMPLISSAGE = 0.92; // fraction de la demi-hauteur visible occupée par la demi-largeur de table
+// Aspect (largeur/hauteur) du canvas au dernier recadrage ortho, mémorisé par updateOrthoCamera
+// pour facteurLargeurEchelle ci-dessous. Valeur initiale sans importance (updateOrthoCamera est
+// appelée à chaque frame sur les vues ortho, et resizeScene la rappelle avant tout rendu), mais
+// non nulle pour ne jamais diviser par zéro au tout premier calcul.
+let orthoAspect = 16 / 9;
 
 // ─────────────────────────────────────────────────────────────────────
 //  Écart transverse (x1, cm) à utiliser pour tout ce qui doit visuellement pointer vers la
@@ -61,7 +81,7 @@ function zEcranAffiche(D_cm) {
 //  la vraie valeur physique partout ailleurs (texte des labels, enveloppe, graphe, encarts).
 // ─────────────────────────────────────────────────────────────────────
 function x1Affiche(x1_cm) {
-  return (sim.view === 'top' && sim.echelleAngleTop) ? x1_cm * ECHELLE_ANGLE_FACTEUR_L : x1_cm;
+  return x1_cm * facteurLargeurEchelle();
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -71,9 +91,17 @@ function x1Affiche(x1_cm) {
 //  cohérents avec x1Affiche : sans ça, l'enveloppe (dont la silhouette vient du champ FFT
 //  réel) continuerait de pointer vers les vraies premières extinctions au lieu de la tache
 //  dilatée que la scène montre partout ailleurs (rayons, flèche L, écran élargi).
+//
+//  Calculé à partir de l'aspect COURANT du canvas (orthoAspect, cf. updateOrthoCamera) pour que
+//  la table élargie remplisse la hauteur du cadre sans la dépasser — cf. docstring à
+//  ECHELLE_ANGLE_FACTEUR_MAX. Comme il dépend donc de la taille de la fenêtre, resizeScene()
+//  doit rappeler updateSceneParams() tant que ce mode est actif (elle ne le fait pas autrement).
 // ─────────────────────────────────────────────────────────────────────
 function facteurLargeurEchelle() {
-  return (sim.view === 'top' && sim.echelleAngleTop) ? ECHELLE_ANGLE_FACTEUR_L : 1;
+  if (sim.view !== 'top' || !sim.echelleAngleTop) return 1;
+  const demiHauteurVisible = TABLE_CADRAGE_HALF_SPAN / orthoAspect;
+  const facteur = demiHauteurVisible * ECHELLE_TABLE_REMPLISSAGE / (TABLE_WIDTH / 2);
+  return Math.max(1, Math.min(ECHELLE_ANGLE_FACTEUR_MAX, facteur));
 }
 
 // Zoom (molette) de la vue Écran, centré sur le centre de l'écran (0,0) — jamais sur le
@@ -240,6 +268,29 @@ const TABLE_WIDTH = 40;         // cm — largeur de la table (dépasse la large
 // contre le laser, d minimal) : doit rester cohérente avec sim.js → BANC_LONGUEUR_M et
 // PETIT_D_MIN_M (D_MAX_CM = 100·(BANC_LONGUEUR_M) - 15, avec SOURCE_Z=-15 fixe).
 const D_MAX_CM = 300;
+// Bornes longitudinales (z, cm) de la table : du laser jusqu'au-delà de la position d'écran
+// la plus éloignée (D_MAX_CM). Longueur FIXE, indépendante de D et d — la table ne rétrécit
+// pas quand on rapproche l'écran, comme une vraie table. Constantes de module (et non locales
+// à construireObjets) parce que updateOrthoCamera cadre les vues Dessus/Profil dessus.
+const TABLE_Z_START = SOURCE_Z - LASER_LENGTH - 5;
+const TABLE_Z_END = D_MAX_CM + 10;
+// Marge de cadrage des vues Dessus/Profil autour de la table (cf. updateOrthoCamera) : la
+// table n'atteint jamais le bord du cadre. Valeur calée pour que le cadrage FIXE reproduise le
+// cadrage que l'ancienne caméra (qui suivait D) donnait à D ≈ 2,60 m — demi-span 167.5×1.07
+// ≈ 179 cm, contre 178 cm autrefois à ce D, soit la même vue à l'œil.
+const TABLE_CADRAGE_MARGE = 1.07;
+// Cadrage effectif des vues Dessus/Profil, dérivé des bornes ci-dessus : centre et demi-span
+// longitudinaux, constants. Hissés ici (plutôt que calculés dans updateOrthoCamera) parce que
+// facteurLargeurEchelle en a besoin pour dimensionner l'élargissement de la table sur la
+// hauteur réellement visible du cadre.
+const TABLE_CADRAGE_Z_CENTER = (TABLE_Z_START + TABLE_Z_END) / 2;
+const TABLE_CADRAGE_HALF_SPAN = (TABLE_Z_END - TABLE_Z_START) / 2 * TABLE_CADRAGE_MARGE;
+// D (cm) dont le cadrage sert de référence au cadrage fixe des vues Dessus/Profil : c'est à ce
+// D que l'ancienne caméra (qui suivait D) donnait la même vue, cf. TABLE_CADRAGE_MARGE. Sert à
+// figer de la même façon la compensation de taille des labels d/D/L (cf. updateLengthsGroup →
+// zoomCompense) : le cadre ne bougeant plus, cette compensation ne doit plus dépendre de D,
+// sinon les labels grossiraient sans raison à mesure que D augmente.
+const CADRAGE_D_REF_CM = 260;
 const LEG_LENGTH = 75;          // cm — hauteur de table classique (pieds table/paillasse)
 const LEG_SECTION = 3;          // cm — section carrée des pieds
 const FLOOR_Y = TABLE_Y - PLATEAU_EPAISSEUR - TABLE_THICK - LEG_LENGTH; // dessus du sol
@@ -264,10 +315,10 @@ const RENDU_W_MIN_CM = 0.2;
 // la largeur réelle (fine, cf. discussion de conception initiale sur uPlancherAlpha).
 const TOP_VIEW_PLANCHER_GAIN = 6;
 const TOP_VIEW_FLARE_LONGUEUR_CM = SLIDE_SIZE; // ≈ taille de la lame porte-fente/son support
-// Fraction MAX de la distance fente→écran réellement affichée que le flare peut occuper (cf.
+// Fraction MAX de la distance fente→écran que le flare peut occuper (cf.
 // appliquerXLimiteUniforms) : sans ce plafond relatif, TOP_VIEW_FLARE_LONGUEUR_CM (fixe)
-// occupe une fraction disproportionnée du faisceau quand D est petit (D réel <~1,6 m, ou D
-// comprimé par le bouton "Adapter l'échelle"), et le plancher élargi (×TOP_VIEW_PLANCHER_GAIN)
+// occupe une fraction disproportionnée du faisceau quand D est petit (<~1,6 m), et le
+// plancher élargi (×TOP_VIEW_PLANCHER_GAIN)
 // ne redescend jamais à sa largeur réelle avant l'écran — un « bulbe » élargi se superpose
 // alors en permanence au cône réel (bug observé par l'utilisateur).
 const TOP_VIEW_FLARE_FRACTION_MAX = 0.15;
@@ -901,7 +952,13 @@ const LEN_DASH_SIZE = 0.8, LEN_GAP_SIZE = 0.6;
 const LEN_DASH_THICK = 0.18; // cm — épaisseur visible, dans le plan de la surface
 const LEN_DASH_THICK_L_ECRAN = 0.06; // cm — épaisseur réduite, uniquement pour les pointillés de L en vue 3D/Écran
 const LEN_DASH_PLAT = 0.02;  // cm — épaisseur quasi nulle, perpendiculaire à la surface (décalque)
-const LEN_DASH_MAX_TICKS = 12; // assez pour les plus longs segments utilisés (cf. placerMesureTable)
+// Réserve de tirets par segment. 24 couvre 24×(0.8+0.6) = 33,6 cm, assez pour tous les segments
+// à l'échelle 1 ; au-delà (mode "Adapter l'échelle", où les flèches d/D sont déportées d'autant
+// que la table est élargie), placerPointilleSegment étire le motif au lieu de tronquer le trait
+// — cf. sa docstring. Avant, ce plafond valait 12 (16,8 cm) SANS étirement : les pointillés de d/D
+// s'arrêtaient en chemin au lieu de rejoindre le laser/la fente/l'écran (bug constaté par
+// l'utilisateur dès que le déport a dépassé 16,8 cm).
+const LEN_DASH_MAX_TICKS = 24;
 function creerPointilleSegment(color, maxTicks = LEN_DASH_MAX_TICKS) {
   const group = new THREE.Group();
   const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, depthTest: false, depthWrite: false });
@@ -932,7 +989,11 @@ function placerPointilleSegmentLibre(group, p1, p2, dashSize, gapSize, epaisseur
   const quat = new THREE.Quaternion().setFromUnitVectors(
     new THREE.Vector3(1, 0, 0), new THREE.Vector3(ux, uy, uz)
   );
-  const cycle = dashSize + gapSize;
+  // Même garde-fou qu'en bas dans placerPointilleSegment : plutôt étirer le motif que rendre un
+  // trait tronqué, si jamais la réserve de tirets ne couvrait pas le segment.
+  const etirement = Math.max(1, longueur / (ticks.length * (dashSize + gapSize)));
+  dashSize *= etirement;
+  const cycle = (dashSize + gapSize * etirement);
   let d = 0, i = 0;
   for (; i < ticks.length && d < longueur; i++) {
     const dashLen = Math.min(dashSize, longueur - d);
@@ -954,10 +1015,15 @@ function placerPointilleSegment(group, p1, p2, axePlat, epaisseurVisible = LEN_D
   const ux = dx / longueur, uy = dy / longueur, uz = dz / longueur;
   const epaisseur = { x: epaisseurVisible, y: epaisseurVisible, z: epaisseurVisible };
   epaisseur[axePlat] = LEN_DASH_PLAT;
-  const cycle = LEN_DASH_SIZE + LEN_GAP_SIZE;
+  // Motif étiré si la réserve de tirets ne suffit pas à couvrir le segment : un pointillé plus
+  // gros vaut mieux qu'un trait qui s'arrête en chemin (il doit toujours RELIER ses deux
+  // extrémités — le bord de la flèche et l'objet mesuré). Facteur 1 dans tous les cas normaux.
+  const etirement = Math.max(1, longueur / (ticks.length * (LEN_DASH_SIZE + LEN_GAP_SIZE)));
+  const dashSize = LEN_DASH_SIZE * etirement;
+  const cycle = (LEN_DASH_SIZE + LEN_GAP_SIZE) * etirement;
   let d = 0, i = 0;
   for (; i < ticks.length && d < longueur; i++) {
-    const dashLen = Math.min(LEN_DASH_SIZE, longueur - d);
+    const dashLen = Math.min(dashSize, longueur - d);
     const centre = d + dashLen / 2;
     const tick = ticks[i];
     tick.visible = true;
@@ -1188,10 +1254,9 @@ function initZoomVersCurseur() {
 // ─────────────────────────────────────────────────────────────────────
 function construireObjets() {
   // Table : plan fixe sous tous les plateaux de support, du laser jusqu'au-delà de la
-  // position d'écran la plus éloignée (D_MAX_CM) — longueur fixe, ne dépend pas de D
-  // courant (la table ne rétrécit pas quand on rapproche l'écran, comme une vraie table).
-  const tableZStart = SOURCE_Z - LASER_LENGTH - 5;
-  const tableZEnd = D_MAX_CM + 10;
+  // position d'écran la plus éloignée — cf. TABLE_Z_START/TABLE_Z_END.
+  const tableZStart = TABLE_Z_START;
+  const tableZEnd = TABLE_Z_END;
   tableMesh = new THREE.Mesh(
     new THREE.BoxGeometry(TABLE_WIDTH, TABLE_THICK, tableZEnd - tableZStart),
     new THREE.MeshStandardMaterial({ color: 0x5a4632 })
@@ -1638,7 +1703,7 @@ function dessinerTextureEcranBlanche(t) {
 //  (planifierEnveloppesBlanche ci-dessous), jamais appelée directement en dehors de ce fichier.
 // ─────────────────────────────────────────────────────────────────────
 function reconstruireEnveloppesBlanche() {
-  const screenZ = zEcranAffiche(sim.D * 100);
+  const screenZ = SLIT_Z + sim.D * 100;
   const facteurLargeur = facteurLargeurEchelle();
   x1CmCourantCouleurs = ENVELOPPE_COULEURS_TEST.map((c, k) => {
     const champC = construireChampOuverture(c.lambda, sim.a, sim.D);
@@ -1734,7 +1799,7 @@ function updateSceneParams() {
   // dans ui.js → appliquerBorneD) a déjà réduit D. Le faisceau laser→fente est reconstruit
   // (sa longueur dépend de d), comme l'enveloppe diffractée plus bas.
   SLIT_Z = SOURCE_Z + sim.d * 100;
-  const screenZ = zEcranAffiche(D_cm); // position d'affichage de l'écran (fente + D, comprimée en vue Dessus si le bouton "Adapter l'échelle" est actif, cf. zEcranAffiche)
+  const screenZ = SLIT_Z + D_cm;
   beamMesh.geometry.dispose();
   beamMesh.geometry = new THREE.CylinderGeometry(BEAM_DIAMETER / 2, BEAM_DIAMETER / 2, SLIT_Z - SOURCE_Z, 12);
   beamMesh.geometry.rotateX(Math.PI / 2);
@@ -1951,7 +2016,7 @@ function updateLengthsGroup(x1_cm, w_cm) {
   lengthsGroup.visible = true;
 
   const D_cm = sim.D * 100;
-  const screenZ = zEcranAffiche(D_cm); // position d'affichage de l'écran (comprimée en vue Dessus si le bouton "Adapter l'échelle" est actif, cf. zEcranAffiche)
+  const screenZ = SLIT_Z + D_cm;
   const d_cm = SLIT_Z - SOURCE_Z; // dépend de sim.d, mis à jour dans updateSceneParams()
   const view = sim.view;
   // Dilatation purement visuelle de la flèche L (vue Dessus, bouton "Adapter l'échelle") —
@@ -1960,19 +2025,16 @@ function updateLengthsGroup(x1_cm, w_cm) {
   // (enveloppe, graphe, encarts, texte du label ci-dessous).
   const x1AfficheL = x1Affiche(x1_cm);
 
-  // Vues Dessus/Profil : la caméra ortho recule à mesure que D grandit au-delà de
-  // D_CADRAGE_MIN_CM (cf. updateOrthoCamera → D_cadrage), ce qui réduit d'autant la taille
-  // apparente à l'écran de tout ce qui a une taille fixe en cm — dont nos labels. On
-  // compense en agrandissant leur géométrie dans les mêmes proportions, pour qu'ils gardent
-  // toujours leur taille apparente MAXIMALE (celle qu'ils ont pour D ≤ D_CADRAGE_MIN_CM),
-  // jamais plus petits quel que soit D. Vue 3D et vue Écran : pas concernées (pas de ce
-  // mécanisme de cadrage), donc facteur neutre (1).
-  const D_cadrage = Math.max(D_cm, D_CADRAGE_MIN_CM);
-  // Le bouton "Adapter l'échelle" cadre la vue Dessus tout autrement (cf. updateOrthoCamera),
-  // sans rapport avec le plancher D_CADRAGE_MIN_CM ci-dessus (pensé pour un D réel) : pas de
-  // compensation ici dans ce mode, facteur neutre.
-  const zoomCompense = (view === 'top' && sim.echelleAngleTop) ? 1
-    : (view === 'top' || view === 'side') ? (D_cadrage / D_CADRAGE_MIN_CM) : 1;
+  // Vues Dessus/Profil : la caméra ortho est reculée pour cadrer toute la table (cf.
+  // updateOrthoCamera), ce qui réduit d'autant la taille apparente à l'écran de tout ce qui a
+  // une taille fixe en cm — dont nos labels. On compense en agrandissant leur géométrie dans
+  // les mêmes proportions, pour qu'ils gardent la taille apparente prévue à la conception
+  // (celle du cadrage serré de référence, cf. D_CADRAGE_MIN_CM). Ce cadrage ne dépendant plus
+  // de D, le facteur est CONSTANT : sinon les labels grossiraient sans raison à mesure que D
+  // augmente, alors que rien ne bouge à l'écran. Le bouton "Adapter l'échelle" ne change rien
+  // ici : il n'a aucun effet caméra (cf. updateOrthoCamera), donc même compensation. Vue 3D et
+  // vue Écran : pas concernées (pas de ce mécanisme de cadrage), donc facteur neutre (1).
+  const zoomCompense = (view === 'top' || view === 'side') ? (CADRAGE_D_REF_CM / D_CADRAGE_MIN_CM) : 1;
 
   // d, D : masquées en vue Écran (profondeur nulle de face, cf. raysLine).
   const showTableArrows = (view !== 'screen');
@@ -1992,7 +2054,9 @@ function updateLengthsGroup(x1_cm, w_cm) {
       // gardent leur géométrie normale, cf. setFlecheDoubleLongueur plus bas dans
       // placerMesureTable) est élargi du même facteur que la table/l'écran (cf.
       // facteurLargeurEchelle), sinon elles resteraient à leur place habituelle alors que la
-      // table/l'écran, eux, se sont élargis sous elles.
+      // table/l'écran, eux, se sont élargis sous elles. Pas besoin de plafonner : le décalage
+      // reste à 13/20 de la demi-largeur de table quel que soit le facteur, et la table élargie
+      // tient dans le cadre par construction (cf. facteurLargeurEchelle).
       const offsetXArrows = LEN_OFFSET_X * facteurLargeurEchelle();
       placerMesureTable(mesurePetitD, offsetXArrows, LEN_ARROW_Y_TABLE, LEN_LABEL_Y_TABLE, SOURCE_Z, SLIT_Z, false);
       placerMesureTable(mesureGrandD, offsetXArrows, LEN_ARROW_Y_TABLE, LEN_LABEL_Y_TABLE, SLIT_Z, screenZ, false);
@@ -2131,10 +2195,10 @@ function appliquerXLimiteUniforms(u, x1Cm) {
     u.uXLimiteExagere.value = Math.min(x2Cm * TOP_VIEW_PLANCHER_GAIN, SCREEN_WIDTH / 2 * 0.5);
     u.uYLimiteExagere.value = symetrique ? Math.min(y2Cm * TOP_VIEW_PLANCHER_GAIN, SCREEN_WIDTH / 2 * 0.5) : y1Reel;
     u.uZNear.value = SLIT_Z;
-    // Plafonné à une fraction de la distance fente→écran réellement affichée (D_affiche, cf.
-    // zEcranAffiche) — cf. TOP_VIEW_FLARE_FRACTION_MAX pour le bug que ce plafond évite.
-    const D_affiche = Math.max(zEcranAffiche(sim.D * 100) - SLIT_Z, 1);
-    u.uFlareLongueur.value = Math.min(TOP_VIEW_FLARE_LONGUEUR_CM, D_affiche * TOP_VIEW_FLARE_FRACTION_MAX);
+    // Plafonné à une fraction de la distance fente→écran — cf. TOP_VIEW_FLARE_FRACTION_MAX
+    // pour le bug que ce plafond évite.
+    const D_cm = Math.max(sim.D * 100, 1);
+    u.uFlareLongueur.value = Math.min(TOP_VIEW_FLARE_LONGUEUR_CM, D_cm * TOP_VIEW_FLARE_FRACTION_MAX);
   } else {
     u.uXLimiteExagere.value = x1Reel;
     u.uYLimiteExagere.value = y1Reel;
@@ -2188,8 +2252,8 @@ function setSceneView(view) {
   sim.view = view;
   syncBoutonDecompose();
   syncBoutonEchelleAngle();
-  // Repositionne écran/enveloppe/rayons (cf. zEcranAffiche) : leur position dépend maintenant
-  // de sim.view (bouton "Adapter l'échelle", vue Dessus), contrairement à avant ce bouton où
+  // Reconstruit écran/enveloppe/rayons : leur LARGEUR dépend de sim.view (bouton "Adapter
+  // l'échelle", vue Dessus — cf. facteurLargeurEchelle), contrairement à avant ce bouton où
   // rien ne dépendait de la vue — nécessaire ici en plus des recalculs habituels plus bas.
   updateSceneParams();
   controls.enabled = (view === '3d');
@@ -2223,53 +2287,56 @@ function reset3DCamera() {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-//  Recadre la caméra orthographique (Dessus / Profil / Écran) sur le
-//  banc courant. Appelée à chaque frame tant qu'une de ces vues est
-//  active, pour rester juste si D change entre-temps (cf. ARCHITECTURE.md).
+//  Recadre la caméra orthographique (Dessus / Profil / Écran). Appelée à chaque frame tant
+//  qu'une de ces vues est active, pour suivre l'aspect du canvas et le zoom de la vue Écran ;
+//  les vues Dessus/Profil, elles, ont un cadrage FIXE sur la table, indépendant de D, de d et
+//  du bouton "Adapter l'échelle" (cf. ci-dessous et ARCHITECTURE.md).
 // ─────────────────────────────────────────────────────────────────────
 function updateOrthoCamera(aspect) {
   const D_cm = sim.D * 100;
   const screenZ = SLIT_Z + D_cm;
-  // Cadrage figé en dessous de D_CADRAGE_MIN_CM : sous ce seuil, réduire D ne fait plus
-  // « zoomer » les vues Dessus/Profil (recentrage + rétrécissement du cadre à chaque
-  // frame, gênant pour observer l'écran se rapprocher) — seul D_cadrage reste borné, la
-  // position réelle de l'écran (updateSceneParams, D_cm non modifié) continue de suivre D.
-  const D_cadrage = Math.max(D_cm, D_CADRAGE_MIN_CM);
-  const screenZCadrage = SLIT_Z + D_cadrage;
-  const zCenter = (SOURCE_Z + screenZCadrage) / 2;
-  const halfSpanZ = (screenZCadrage - SOURCE_Z) / 2 * 1.15;
+  // Cadrage longitudinal FIXE des vues Dessus et Profil : toute la table, toujours, quelles que
+  // soient les valeurs de D, d, a, λ (demande explicite de l'utilisateur). Ces deux vues ne
+  // suivent plus le banc — seuls les objets POSÉS sur la table bougent, comme si on regardait
+  // la paillasse depuis un point de vue fixe. Cf. TABLE_Z_START/TABLE_Z_END/TABLE_CADRAGE_MARGE
+  // (marge calée sur l'ancien cadrage à D ≈ 2,60 m). Sans exception : le mode « Adapter
+  // l'échelle à l'angle de diffraction » est cadré pareil, cf. ci-dessous. Les deux valeurs sont
+  // des constantes de module (facteurLargeurEchelle s'en sert aussi).
+  // Mémorisé pour facteurLargeurEchelle, qui dimensionne l'élargissement de la table sur la
+  // hauteur réellement visible du cadre — laquelle dépend de l'aspect du canvas.
+  orthoAspect = aspect;
 
   if (sim.view === 'top') {
-    if (sim.echelleAngleTop) {
-      // Cadrage dédié au schéma "pas à l'échelle" (cf. zEcranAffiche/ECHELLE_ANGLE_FACTEUR_D) :
-      // ne cadre QUE fente↔écran comprimé (le laser sort volontairement du champ, sa distance
-      // d n'étant elle pas comprimée) — le plancher D_CADRAGE_MIN_CM ci-dessus ne s'applique
-      // pas ici (pensé pour un D réel, il resterait quasi toujours au plancher une fois D
-      // comprimé, empêchant la caméra de suivre le banc resserré). fitOrtho normal (pas de
-      // déformation anisotrope) : l'écran garde toujours sa taille réelle, jamais rogné ni
-      // étiré, cf. discussions de conception précédentes.
-      const screenZAff = zEcranAffiche(D_cm);
-      const zCenterAff = (SLIT_Z + screenZAff) / 2;
-      // Marge ×2 (pas ×1.15/1.3 comme ailleurs) : réglée à l'usage, le schéma comprimé
-      // paraissait trop serré dans le cadre avec une marge plus faible.
-      const halfSpanZAff = Math.max((screenZAff - SLIT_Z) / 2 * 2, 1);
-      camOrtho.position.set(0, 500, zCenterAff);
-      camOrtho.up.set(1, 0, 0);
-      camOrtho.lookAt(0, 0, zCenterAff);
-      // Demi-largeur transverse élargie du même facteur que l'écran (cf. updateSceneParams →
-      // screenMesh.scale.x), sinon l'écran élargi déborderait de ce cadre.
-      fitOrtho(camOrtho, halfSpanZAff, SCREEN_WIDTH / 2 * 1.3 * ECHELLE_ANGLE_FACTEUR_L, aspect);
-    } else {
-      camOrtho.position.set(0, 500, zCenter);
-      camOrtho.up.set(1, 0, 0);
-      camOrtho.lookAt(0, 0, zCenter);
-      fitOrtho(camOrtho, halfSpanZ, SCREEN_WIDTH / 2 * 1.3, aspect);
-    }
+    // Cadrage fixe sur la table (cf. TABLE_CADRAGE_Z_CENTER/TABLE_CADRAGE_HALF_SPAN ci-dessus), Y COMPRIS quand le
+    // bouton "Adapter l'échelle à l'angle de diffraction" est actif : ce mode n'a AUCUN effet
+    // caméra (cf. sa docstring à ECHELLE_ANGLE_FACTEUR_MAX). L'angle exagéré vient entièrement de
+    // la scène (x1, enveloppe, écran et table dilatés en largeur) et un zoom n'exagère aucun
+    // angle — le cadrage dédié qu'avait ce mode ne faisait que grossir l'image, en poussant le
+    // bout de la table hors champ : plus aucun bord de table n'était visible, on perdait tout
+    // repère. Sans lui, le clic sur le bouton ne bouge plus la caméra du tout : la scène
+    // s'élargit dans un cadre immobile, ce qui rend l'exagération explicite au lieu de la
+    // masquer derrière un changement de zoom simultané.
+    // Demi-hauteur transverse prise sur la largeur de la table à l'échelle 1 (40 cm) et non sur
+    // l'écran (25 cm) — c'est la table, plus large, qui ne doit pas être rognée. Surtout PAS
+    // multipliée par facteurLargeurEchelle() : ce serait circulaire, puisque ce facteur est
+    // justement calculé À PARTIR de ce cadrage pour que la table élargie y tienne (cf. sa
+    // docstring) ; le cadrage doit donc rester la référence fixe, jamais la conséquence.
+    // Cette demi-hauteur n'est de toute façon jamais contraignante : c'est l'axe z (179 cm) qui
+    // fixe le cadrage à tout aspect réaliste.
+    camOrtho.position.set(0, 500, TABLE_CADRAGE_Z_CENTER);
+    camOrtho.up.set(1, 0, 0);
+    camOrtho.lookAt(0, 0, TABLE_CADRAGE_Z_CENTER);
+    fitOrtho(camOrtho, TABLE_CADRAGE_HALF_SPAN, TABLE_WIDTH / 2 * TABLE_CADRAGE_MARGE, aspect);
   } else if (sim.view === 'side') {
-    camOrtho.position.set(-500, 0, zCenter);
+    // Même cadrage longitudinal fixe qu'en vue Dessus (cf. TABLE_CADRAGE_Z_CENTER/TABLE_CADRAGE_HALF_SPAN). La
+    // demi-hauteur passée à fitOrtho reste celle de l'écran : c'est la dimension verticale
+    // « utile » du banc, et elle n'est de toute façon jamais contraignante ici (TABLE_CADRAGE_HALF_SPAN
+    // ≈ 179 cm contre ~10 cm, donc c'est l'axe z qui fixe le cadrage à tout aspect réaliste —
+    // la table, ses pieds et le sol restent visibles comme avant).
+    camOrtho.position.set(-500, 0, TABLE_CADRAGE_Z_CENTER);
     camOrtho.up.set(0, 1, 0);
-    camOrtho.lookAt(0, 0, zCenter);
-    fitOrtho(camOrtho, halfSpanZ, SCREEN_HEIGHT / 2 * 1.3, aspect);
+    camOrtho.lookAt(0, 0, TABLE_CADRAGE_Z_CENTER);
+    fitOrtho(camOrtho, TABLE_CADRAGE_HALF_SPAN, SCREEN_HEIGHT / 2 * 1.3, aspect);
   } else if (sim.view === 'screen') {
     camOrtho.position.set(0, 0, SOURCE_Z - 300);
     camOrtho.up.set(0, 1, 0);
@@ -2338,6 +2405,11 @@ function resizeScene() {
   camPersp.aspect = w / h;
   camPersp.updateProjectionMatrix();
   updateOrthoCamera(w / h);
+  // Le facteur d'élargissement du mode "Adapter l'échelle" est calé sur la hauteur visible du
+  // cadre (cf. facteurLargeurEchelle), donc sur l'aspect que updateOrthoCamera vient de
+  // mémoriser : la scène doit être reconstruite pour en tenir compte. Uniquement dans ce mode —
+  // partout ailleurs rien de la scène ne dépend de la taille de la fenêtre.
+  if (sim.view === 'top' && sim.echelleAngleTop) updateSceneParams();
   syncGraphAvecVueEcran();
 }
 
