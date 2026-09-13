@@ -381,8 +381,15 @@ indirecte, pouvait donner un signe incohérent près du seuil).
   - **Dessus** : laser à **gauche**, écran à **droite** (`camOrtho.up = (1,0,0)`). L'évasement du
     faisceau diffracté n'est exagéré (`TOP_VIEW_PLANCHER_GAIN`, ×6) que sur les tout premiers
     `TOP_VIEW_FLARE_LONGUEUR_CM` (= `SLIDE_SIZE`) après la fente.
-  - **Dessus / Profil — cadrage figé sous `D_CADRAGE_MIN_CM`** (140 cm) : `updateOrthoCamera`
-    borne la distance utilisée pour le cadrage (`D_cadrage = max(D_cm, D_CADRAGE_MIN_CM)`).
+  - **Dessus / Profil — cadrage totalement fixe** : ces vues sont cadrées une fois pour toutes
+    sur **toute la table** (`TABLE_Z_START`/`TABLE_Z_END`, marge `TABLE_CADRAGE_MARGE`), jamais
+    sur le banc courant : changer `D`, `d`, `a` ou `λ` ne déplace ni ne redimensionne le cadre,
+    seuls les objets posés sur la table bougent. La marge est calée pour reproduire le cadrage
+    que l'ancienne caméra (qui suivait `D`) donnait à `D` ≈ 2,60 m (`CADRAGE_D_REF_CM`). La
+    demi-hauteur passée à `fitOrtho` (largeur de table en Dessus, hauteur d'écran en Profil)
+    n'est jamais contraignante : c'est l'axe z qui fixe le cadrage. Exception : le bouton
+    « Adapter l'échelle à l'angle de diffraction », qui a son propre cadrage (vue Dessus)
+    suivant l'écran comprimé.
   - **Écran** : caméra alignée avec l'axe du graphe I(x) en bas. Figure et montage
     **symétriques par rapport à x = 0** pour cette simulation.
   - **Écran — zoom molette** (`screenViewZoom`, 1 à `SCREEN_VIEW_ZOOM_MAX`=15) : centré sur (0,0),
@@ -483,8 +490,9 @@ de la tache centrale, `2·x1`). Chacune combine une double flèche (`creerFleche
 - **d/D** : positionnées sur la table (vue 3D/Dessus, décalées latéralement de `LEN_OFFSET_X`
   pour éviter les supports) ou dans la tranche de la table (vue Profil, `LEN_SIDE_Y`) —
   masquées en vue Écran (pas de profondeur visible de face). Labels compensés en taille
-  (`zoomCompense`) sous `D_CADRAGE_MIN_CM` pour rester lisibles quand la caméra Dessus/Profil
-  recule (cf. §Caméras).
+  (`zoomCompense`) pour rester lisibles avec la caméra reculée : facteur **constant** en vues
+  Dessus/Profil (`CADRAGE_D_REF_CM / D_CADRAGE_MIN_CM`), leur cadrage ne dépendant plus de `D`
+  (cf. §Caméras).
 - **L** : deux variantes selon la vue — `mesureL.fleche` (volumique, cônes) en vue Dessus, où
   la flèche est reportée légèrement derrière l'écran (`LEN_TOP_L_DECALAGE_Z`) car l'axe Y réel
   y est aplati ; `mesureL.flechePlate` (`creerFlecheDoublePlate`, strictement plate, aucune
