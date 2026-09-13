@@ -387,9 +387,10 @@ indirecte, pouvait donner un signe incohérent près du seuil).
     seuls les objets posés sur la table bougent. La marge est calée pour reproduire le cadrage
     que l'ancienne caméra (qui suivait `D`) donnait à `D` ≈ 2,60 m (`CADRAGE_D_REF_CM`). La
     demi-hauteur passée à `fitOrtho` (largeur de table en Dessus, hauteur d'écran en Profil)
-    n'est jamais contraignante : c'est l'axe z qui fixe le cadrage. Exception : le bouton
-    « Adapter l'échelle à l'angle de diffraction », qui a son propre cadrage (vue Dessus)
-    suivant l'écran comprimé.
+    n'est jamais contraignante : c'est l'axe z qui fixe le cadrage. **Sans exception** : le
+    bouton « Adapter l'échelle à l'angle de diffraction » n'a aucun effet caméra (il avait un
+    cadrage dédié, supprimé — un zoom n'exagère aucun angle, et il poussait le bout de la table
+    hors champ), le clic laisse donc la caméra strictement immobile.
   - **Écran** : caméra alignée avec l'axe du graphe I(x) en bas. Figure et montage
     **symétriques par rapport à x = 0** pour cette simulation.
   - **Écran — zoom molette** (`screenViewZoom`, 1 à `SCREEN_VIEW_ZOOM_MAX`=15) : centré sur (0,0),

@@ -31,11 +31,17 @@ const D_CADRAGE_MIN_CM = 140;
 
 // Bouton "Adapter l'échelle à l'angle de diffraction" (vue Dessus uniquement, cf.
 // sim.echelleAngleTop, syncBoutonEchelleAngle) : PAS un effet caméra (cf. discussions de
-// conception précédentes, abandonnées — déformaient ou rognaient l'écran réel). Principe
-// du schéma "pas à l'échelle" que trace un professeur au tableau : on RAPPROCHE réellement
+// conception précédentes, abandonnées — déformaient ou rognaient l'écran réel), et depuis la
+// suppression de son cadrage dédié (cf. updateOrthoCamera) AUCUN effet caméra du tout : un
+// zoom n'exagère aucun angle, celui-ci vient entièrement de la scène (ci-dessous), et le
+// cadrage dédié ne faisait que pousser le bout de la table hors champ, privant la vue de tout
+// repère. Le clic sur le bouton laisse donc la caméra strictement immobile. Principe du schéma
+// "pas à l'échelle" que trace un professeur au tableau : on RAPPROCHE réellement
 // l'écran de la fente dans la scène 3D (cf. zEcranAffiche ci-dessous, utilisée à la place de
-// SLIT_Z + D_cm partout où l'écran est positionné/le banc est cadré en vue Dessus), sans
-// changer la taille d'aucun objet — seule sa position le long de l'axe optique change. En
+// SLIT_Z + D_cm partout où l'écran est positionné en vue Dessus), sans
+// changer sa taille — seule sa position le long de l'axe optique change ; il est en revanche
+// ÉLARGI ×ECHELLE_ANGLE_FACTEUR_L (avec la table sous lui, cf. updateSceneParams) pour que la
+// tache dilatée garde la même place relative sur l'écran qu'à l'échelle réelle. En
 // vue Dessus, la texture de l'écran (la figure de diffraction) n'est de toute façon jamais
 // visible (écran vu par la tranche), donc aucun impact sur elle. La double flèche de mesure
 // L (largeur de la tache centrale), elle, est en plus dilatée par son propre facteur — cf.
@@ -1992,11 +1998,10 @@ function updateLengthsGroup(x1_cm, w_cm) {
   // les mêmes proportions, pour qu'ils gardent la taille apparente prévue à la conception
   // (celle du cadrage serré de référence, cf. D_CADRAGE_MIN_CM). Ce cadrage ne dépendant plus
   // de D, le facteur est CONSTANT : sinon les labels grossiraient sans raison à mesure que D
-  // augmente, alors que rien ne bouge à l'écran. Vue 3D et vue Écran : pas concernées (pas de
-  // ce mécanisme de cadrage), donc facteur neutre (1) — de même que le bouton "Adapter
-  // l'échelle", qui cadre la vue Dessus tout autrement.
-  const zoomCompense = (view === 'top' && sim.echelleAngleTop) ? 1
-    : (view === 'top' || view === 'side') ? (CADRAGE_D_REF_CM / D_CADRAGE_MIN_CM) : 1;
+  // augmente, alors que rien ne bouge à l'écran. Le bouton "Adapter l'échelle" ne change rien
+  // ici : il n'a aucun effet caméra (cf. updateOrthoCamera), donc même compensation. Vue 3D et
+  // vue Écran : pas concernées (pas de ce mécanisme de cadrage), donc facteur neutre (1).
+  const zoomCompense = (view === 'top' || view === 'side') ? (CADRAGE_D_REF_CM / D_CADRAGE_MIN_CM) : 1;
 
   // d, D : masquées en vue Écran (profondeur nulle de face, cf. raysLine).
   const showTableArrows = (view !== 'screen');
@@ -2292,9 +2297,9 @@ function reset3DCamera() {
 
 // ─────────────────────────────────────────────────────────────────────
 //  Recadre la caméra orthographique (Dessus / Profil / Écran). Appelée à chaque frame tant
-//  qu'une de ces vues est active, pour suivre l'aspect du canvas, le zoom de la vue Écran et
-//  le mode "Adapter l'échelle" ; les vues Dessus/Profil, elles, ont un cadrage FIXE sur la
-//  table, indépendant de D et d (cf. ci-dessous et ARCHITECTURE.md).
+//  qu'une de ces vues est active, pour suivre l'aspect du canvas et le zoom de la vue Écran ;
+//  les vues Dessus/Profil, elles, ont un cadrage FIXE sur la table, indépendant de D, de d et
+//  du bouton "Adapter l'échelle" (cf. ci-dessous et ARCHITECTURE.md).
 // ─────────────────────────────────────────────────────────────────────
 function updateOrthoCamera(aspect) {
   const D_cm = sim.D * 100;
@@ -2303,40 +2308,29 @@ function updateOrthoCamera(aspect) {
   // soient les valeurs de D, d, a, λ (demande explicite de l'utilisateur). Ces deux vues ne
   // suivent plus le banc — seuls les objets POSÉS sur la table bougent, comme si on regardait
   // la paillasse depuis un point de vue fixe. Cf. TABLE_Z_START/TABLE_Z_END/TABLE_CADRAGE_MARGE
-  // (marge calée sur l'ancien cadrage à D ≈ 2,60 m) ; le mode « Adapter l'échelle à l'angle de
-  // diffraction » (vue Dessus) fait exception, cf. ci-dessous.
+  // (marge calée sur l'ancien cadrage à D ≈ 2,60 m). Sans exception : le mode « Adapter
+  // l'échelle à l'angle de diffraction » est cadré pareil, cf. ci-dessous.
   const zCenterTable = (TABLE_Z_START + TABLE_Z_END) / 2;
   const halfSpanZTable = (TABLE_Z_END - TABLE_Z_START) / 2 * TABLE_CADRAGE_MARGE;
 
   if (sim.view === 'top') {
-    if (sim.echelleAngleTop) {
-      // Cadrage dédié au schéma "pas à l'échelle" (cf. zEcranAffiche/ECHELLE_ANGLE_FACTEUR_D) :
-      // ne cadre QUE fente↔écran comprimé (le laser sort volontairement du champ, sa distance
-      // d n'étant elle pas comprimée). Seul cadrage ortho du banc qui SUIT encore D : tout le
-      // principe du mode est de montrer l'écran rapproché, donc le cadrage fixe sur la table
-      // (cf. zCenterTable ci-dessus) ne s'applique pas ici. fitOrtho normal (pas de
-      // déformation anisotrope) : l'écran garde toujours sa taille réelle, jamais rogné ni
-      // étiré, cf. discussions de conception précédentes.
-      const screenZAff = zEcranAffiche(D_cm);
-      const zCenterAff = (SLIT_Z + screenZAff) / 2;
-      // Marge ×2 (pas ×1.15/1.3 comme ailleurs) : réglée à l'usage, le schéma comprimé
-      // paraissait trop serré dans le cadre avec une marge plus faible.
-      const halfSpanZAff = Math.max((screenZAff - SLIT_Z) / 2 * 2, 1);
-      camOrtho.position.set(0, 500, zCenterAff);
-      camOrtho.up.set(1, 0, 0);
-      camOrtho.lookAt(0, 0, zCenterAff);
-      // Demi-largeur transverse élargie du même facteur que l'écran (cf. updateSceneParams →
-      // screenMesh.scale.x), sinon l'écran élargi déborderait de ce cadre.
-      fitOrtho(camOrtho, halfSpanZAff, SCREEN_WIDTH / 2 * 1.3 * ECHELLE_ANGLE_FACTEUR_L, aspect);
-    } else {
-      // Cadrage fixe sur la table (cf. zCenterTable/halfSpanZTable ci-dessus). Demi-hauteur
-      // transverse prise sur la largeur de la table (40 cm) et non sur l'écran (25 cm) :
-      // c'est la table, plus large, qui ne doit pas être rognée.
-      camOrtho.position.set(0, 500, zCenterTable);
-      camOrtho.up.set(1, 0, 0);
-      camOrtho.lookAt(0, 0, zCenterTable);
-      fitOrtho(camOrtho, halfSpanZTable, TABLE_WIDTH / 2 * TABLE_CADRAGE_MARGE, aspect);
-    }
+    // Cadrage fixe sur la table (cf. zCenterTable/halfSpanZTable ci-dessus), Y COMPRIS quand le
+    // bouton "Adapter l'échelle à l'angle de diffraction" est actif : ce mode n'a AUCUN effet
+    // caméra (cf. sa docstring à ECHELLE_ANGLE_FACTEUR_D). L'angle exagéré vient entièrement de
+    // la scène (écran rapproché, x1/enveloppe dilatés) et un zoom n'exagère aucun angle — le
+    // cadrage dédié qu'avait ce mode ne faisait que grossir l'image, en poussant le bout de la
+    // table hors champ : plus aucun bord de table n'était visible, on perdait tout repère.
+    // Sans lui, le clic sur le bouton ne bouge plus la caméra du tout : on voit l'écran glisser
+    // vers la fente et la tache s'élargir dans un cadre immobile, ce qui rend l'exagération
+    // explicite au lieu de la masquer derrière un changement de zoom simultané.
+    // Demi-hauteur transverse prise sur la largeur de la table (40 cm) et non sur l'écran
+    // (25 cm) — c'est la table, plus large, qui ne doit pas être rognée — élargie du même
+    // facteur qu'elle dans ce mode (cf. updateSceneParams → tableMesh.scale.x). En pratique
+    // jamais contraignante : c'est l'axe z (179 cm) qui fixe le cadrage à tout aspect réaliste.
+    camOrtho.position.set(0, 500, zCenterTable);
+    camOrtho.up.set(1, 0, 0);
+    camOrtho.lookAt(0, 0, zCenterTable);
+    fitOrtho(camOrtho, halfSpanZTable, TABLE_WIDTH / 2 * TABLE_CADRAGE_MARGE * facteurLargeurEchelle(), aspect);
   } else if (sim.view === 'side') {
     // Même cadrage longitudinal fixe qu'en vue Dessus (cf. zCenterTable/halfSpanZTable). La
     // demi-hauteur passée à fitOrtho reste celle de l'écran : c'est la dimension verticale
