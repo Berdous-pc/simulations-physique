@@ -391,12 +391,16 @@ indirecte, pouvait donner un signe incohérent près du seuil).
     bouton « Adapter l'échelle à l'angle de diffraction » n'a aucun effet caméra (il avait un
     cadrage dédié, supprimé — un zoom n'exagère aucun angle, et il poussait le bout de la table
     hors champ), le clic laisse donc la caméra strictement immobile. Ce mode exagère l'angle
-    **uniquement en largeur** (`ECHELLE_ANGLE_FACTEUR` = 9, appliqué à `x1`, à l'enveloppe, à
+    **uniquement en largeur** (`facteurLargeurEchelle`, appliqué à `x1`, à l'enveloppe, à
     l'écran et à la table) : `D` garde sa vraie valeur, donc le banc occupe toute la longueur de
     table et le cône est tracé 3× plus long qu'avec l'ancienne compression `D`÷3 + `x1`×3, à
-    angle apparent identique. La table et l'écran élargis débordent latéralement du cadre :
-    assumé. `TABLE_WIDTH` est donc passé à `fitOrtho` **sans** ce facteur — sinon la table ×9
-    (±193 cm) dépasserait le demi-span en z (179 cm) et ferait reculer la caméra au clic.
+    angle apparent identique. Le facteur n'est pas constant : il est calculé pour que la table
+    élargie remplisse la hauteur du cadre à `ECHELLE_TABLE_REMPLISSAGE` près (bordures haute et
+    basse tout juste visibles), donc à partir de `TABLE_CADRAGE_HALF_SPAN / orthoAspect` et
+    plafonné à `ECHELLE_ANGLE_FACTEUR_MAX`. Comme il dépend de la forme de la fenêtre,
+    `resizeScene()` rappelle `updateSceneParams()` tant que ce mode est actif. `TABLE_WIDTH` est
+    passé à `fitOrtho` **sans** ce facteur : le cadrage est la référence dont le facteur dérive,
+    l'y réinjecter serait circulaire.
   - **Écran** : caméra alignée avec l'axe du graphe I(x) en bas. Figure et montage
     **symétriques par rapport à x = 0** pour cette simulation.
   - **Écran — zoom molette** (`screenViewZoom`, 1 à `SCREEN_VIEW_ZOOM_MAX`=15) : centré sur (0,0),
