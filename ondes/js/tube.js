@@ -1064,10 +1064,20 @@ function _drawTubeDensityBg(ctx) {
     // un passage à f élevée, les bandes serrées sont encore à l'écran alors
     // que la source est déjà revenue au calme, et les sous-échantillonner
     // faisait battre le dégradé pendant toute leur sortie.
+    //
+    // L'échantillonnage court sur la plage de REPOS, qui déborde de la fenêtre
+    // peinte des deux côtés : une particule au repos à gauche de xLeft peut
+    // s'afficher à sa droite, et réciproquement. Le débord vaut au plus
+    // l'amplitude affichée, que sonMaxDisplayPx borne par construction
+    // (cf. _sonDisplayGain).
+    var pad      = sonMaxDisplayPx();
+    var x0Left   = xLeft - sim.tubeLeft - pad;
+    var spanRest = span + 2 * pad;
+
     var lam   = sonFinestFeaturePx() || _sonFeaturePx();
     var nb    = N_PRESSURE_BANDS;
     if (lam > 0) {
-        nb = Math.round(span / lam * 14);
+        nb = Math.round(spanRest / lam * 14);
         if (nb < N_PRESSURE_BANDS) nb = N_PRESSURE_BANDS;
         else if (nb > 1400)        nb = 1400;
     }
@@ -1081,11 +1091,15 @@ function _drawTubeDensityBg(ctx) {
 
     var grad = ctx.createLinearGradient(xLeft, 0, xRight, 0);
 
+    // Abscisse du color-stop précédent, pour garantir une suite croissante
+    // (cf. le report en repère d'affichage plus bas).
+    var prevFrac = -1;
+
     for (var i = 0; i <= nb; i++) {
-        var frac = i / nb;
-        // x_px est mesuré depuis tubeLeft (origine de l'onde) ; il est
-        // négatif dans la bande découverte par la membrane — cf. _sonBgDeltaP.
-        var x_px = xLeft - sim.tubeLeft + frac * span;
+        // x_px est l'abscisse de REPOS, mesurée depuis tubeLeft (origine de
+        // l'onde) ; elle est négative dans la bande découverte par la
+        // membrane — cf. _sonBgDeltaP.
+        var x_px = x0Left + (i / nb) * spanRest;
         var dp   = _sonBgDeltaP(x_px, sNow);
 
         // Manque local : le pire des deux (résolution / contraste affiché).
@@ -1110,6 +1124,35 @@ function _drawTubeDensityBg(ctx) {
         var r = Math.round(r0 + a * (rB - r0));
         var g = Math.round(g0 + a * (gB - g0));
         var b = Math.round(b0 + a * (bB - b0));
+
+        // ── Report en repère d'AFFICHAGE ─────────────────────────────
+        // La couleur est calculée à l'abscisse de repos, mais elle doit être
+        // POSÉE là où la matière correspondante se voit — c'est-à-dire au même
+        // endroit que les particules, dessinées en x0 + u (cf. _drawParticles).
+        //
+        // Peindre à l'abscisse de repos revenait à superposer un champ
+        // eulérien à un nuage lagrangien. Le CENTRE de la bande tombait juste
+        // (u y est nul), mais ses BORDS non, puisque c'est précisément là que
+        // |u| est maximal : le voile gardait sa largeur au repos pendant que
+        // l'amas se contractait d'un facteur 1 − ak_disp. Aux réglages par
+        // défaut, 117 px de voile pour 58 px de nuage, soit ~30 px de débord
+        // de chaque côté, mordant sur les détentes voisines — le voile
+        // paraissait large, flou et mal accroché.
+        //
+        // Le report le resserre exactement sur l'amas, et lui redonne au
+        // passage du contraste sans toucher à la teinte : la même quantité
+        // d'encre sur moitié moins de largeur.
+        //
+        // La correspondance x0 → x0 + u est croissante tant qu'ak_disp < 1,
+        // ce qu'AK_CAP garantit. Le garde-fou sur prevFrac ne sert donc que
+        // sur les raccords d'historique, où deux échantillons voisins peuvent
+        // porter des gains d'affichage différents.
+        var frac = (x_px + waveDisplacementDisplay(x_px, sim.simTime, sNow)
+                    - (xLeft - sim.tubeLeft)) / span;
+        if (frac < 0)        frac = 0;
+        else if (frac > 1)   frac = 1;
+        if (frac < prevFrac) frac = prevFrac;
+        prevFrac = frac;
 
         grad.addColorStop(frac, 'rgb(' + r + ',' + g + ',' + b + ')');
     }
