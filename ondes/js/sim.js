@@ -752,7 +752,41 @@ function stepSourceSon(t) {
 // c'est-à-dire les petites étendues spatiales : en sinusoïdale aux réglages
 // par défaut c'est le plafond absolu qui décide, et l'affichage y est
 // inchangé au pixel près.
-var AK_MIN = 0.45;
+// ââ AK_MIN est le POINT DE FONCTIONNEMENT, pas un plancher de secours ââ
+//
+// RelevÃ© de 0,45 Ã  0,60. Le nom trompe : AÂ·k brut reste sous ce seuil sur
+// presque toute la plage de f, si bien qu'ak_disp vaut EXACTEMENT AK_MIN
+// partout sauf aux deux extrÃ©mitÃ©s. Aux rÃ©glages par dÃ©faut (Îº = 0,35,
+// Ï = 1, H/L â 0,37) :
+//
+//      f (Hz)            0,25   0,5   0,75   1,0    1,5    2,5
+//      AÂ·k brut          0,06  0,11   0,17  0,22   0,34   0,56
+//      plafond 0,817H/Î»  0,24  0,49   0,73  0,97   1,46   2,44
+//      ak_disp           0,24  0,49   0,60  0,60   0,60   0,60
+//
+// Ce n'est donc pas AK_CAP qui dÃ©cide de ce qu'on voit â il ne mord qu'en
+// impulsion â mais bien cette borne-ci.
+//
+// Ce que Ã§a rapporte : le contraste perÃ§u suit ÎC(Ï) = e^(âÏ/(1+ak)) â
+// e^(âÏ/(1âak)) (cf. PARTICLE_FILL_MAX). Ã Ï = 0,50, il passe de 0,305 Ã 
+// 0,445, soit +46 %. Pour mÃ©moire, jouer sur Ï ne pouvait rapporter que
+// +12 % au mieux : les deux leviers ne sont pas du mÃªme ordre.
+//
+// Ce que Ã§a ne casse pas :
+//   â¢ la membrane ne pompe pas davantage que ce que le plafond ABSOLU
+//     autorisait dÃ©jÃ  â gMax borne AÂ·g quoi qu'il arrive (cf.
+//     _sonDisplayGain). Le garde-fou qui avait motivÃ© SON_A_MAX_FRAC reste
+//     entiÃ¨rement en charge ;
+//   â¢ on reste loin du croisement des trajectoires (AÂ·k = 1, oÃ¹ la densitÃ©
+//     devient singuliÃ¨re), et sous AK_CAP ;
+//   â¢ le domaine de particules ne dÃ©pend que de sonMaxDisplayPx, pas d'ici :
+//     pas de reconstruction d'initCols, donc la sÃ©lection de l'Ã©lÃ¨ve survit.
+//
+// Ce que Ã§a coÃ»te : le plafond gÃ©omÃ©trique prend la main plus tÃ´t. Sous
+// ~0,62 Hz, ak_disp ne suit plus le relÃ¨vement (f = 0,5 Hz plafonne Ã  0,49).
+// Le bas du curseur f progresse donc moins que le reste. Si ce dÃ©crochage
+// devait se voir, le levier serait SON_A_MAX_FRAC, pas celui-ci.
+var AK_MIN = 0.60;
 var AK_CAP = 0.90;
 
 // ── Plafond absolu d'amplitude affichée ───────────────────────────────
@@ -1064,8 +1098,12 @@ function waveDeltaP(x_px, t_sim, sNow) {
 //
 //      ΔC(φ) = e^(−φ/(1+ak)) − e^(−φ/(1−ak))
 //
-//  nul aux deux bouts — nuage vide, nuage saturé — et maximal vers φ ≈ 0,9
-//  à ak = 0,45 (le régime courant, cf. AK_MIN). PARTICLE_FILL_MAX = 1,00
+//  nul aux deux bouts — nuage vide, nuage saturé — et maximal vers φ ≈ 0,74
+//  à ak = 0,60 (le régime courant, cf. AK_MIN ; c'était φ ≈ 0,9 du temps où
+//  AK_MIN valait 0,45 — l'optimum se déplace vers la gauche quand le
+//  contraste monte). La plage 0,235–0,50 reste sur le flanc MONTANT dans
+//  les deux cas, et φ = 0,50 capte 94 % du maximum atteignable.
+//  PARTICLE_FILL_MAX = 1,00
 //  fixe ici l'ÉCHELLE du rayon (φ_ref = 1/3, cf. PARTICLE_FILL_REF), le
 //  remplissage réellement obtenu étant celui de la loi s(ρ).
 // ══════════════════════════════════════════════════════════════════════
@@ -1114,8 +1152,16 @@ var PARTICLE_FILL_REF = PARTICLE_FILL_MAX / RHO_MAX_UI;   // = 1/3
 //  fait sauter le contraste aux yeux, c'est la FUSION des disques, et elle
 //  s'amorce vers φ ≈ 0,5 — un seuil qu'il faut atteindre LOCALEMENT, dans
 //  la compression, pas en moyenne. Une compression de taux ak porte φ à
-//  φ/(1−ak) ; à ak = 0,45 (le régime courant, cf. AK_MIN) le facteur vaut
-//  1,8, donc viser 0,5 en compression demande φ ≈ 0,28 en moyenne.
+//  φ/(1−ak) ; à ak = 0,45, le régime courant à l'époque de ce calage, le
+//  facteur valait 1,8, donc viser 0,5 en compression demandait φ ≈ 0,28 en
+//  moyenne — d'où les valeurs ci-dessous.
+//
+//  Depuis, AK_MIN est passé à 0,60 et le facteur vaut 2,5 : le seuil de
+//  fusion serait atteint dès φ ≈ 0,20. Le calage n'a pas été refait à la
+//  baisse pour autant, et délibérément — φ plus grand reste meilleur tant
+//  qu'on est sur le flanc montant de ΔC, et on y est. La ligne
+//  « φ en compression » ci-dessous est donc à lire comme historique : au
+//  facteur 2,5, elle vaut 0,59 / 0,70 / 0,96 / 1,25.
 //
 //  D'où le relèvement des deux bornes à 0,84 / 1,225 :
 //

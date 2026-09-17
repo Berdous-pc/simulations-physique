@@ -968,10 +968,10 @@ var DENS_TINT_HI   = 0.22;            // ... et en régime serré
 //  porter le plus. On dose donc sur le MAXIMUM des deux manques.
 //
 //  ── Pourquoi ça ne rend pas le fond plus visible ─────────────────────
-//  L'arm de contraste est ancrée sur AK_MIN — la valeur en dessous de
-//  laquelle le code considère déjà le contraste comme insuffisant. Elle ne
-//  contribue donc RIEN aux réglages par défaut et au-dessus (ak_disp ≈
-//  0,445 ≈ AK_MIN), et plafonne au même DENS_TINT_HI que l'arm de
+//  L'arm de contraste est ancrée sur la valeur en dessous de laquelle on a
+//  jugé le contraste insuffisant. Elle ne contribue donc RIEN aux réglages
+//  par défaut et au-dessus (ak_disp y vaut AK_MIN = 0,60, bien au-dessus du
+//  seuil), et plafonne au même DENS_TINT_HI que l'arm de
 //  résolution. L'intensité maximale du voile est inchangée : il devient
 //  seulement atteignable dans un cas où il ne l'était pas.
 //
@@ -980,7 +980,23 @@ var DENS_TINT_HI   = 0.22;            // ... et en régime serré
 //  bougé en cours de route, le tube contient des portions d'onde de nombres
 //  d'onde différents : chacune reçoit alors le renfort qui lui manque, au
 //  lieu d'un dosage global calé sur ce que la source émet en ce moment.
-var DENS_AK_FULL   = AK_MIN;          // ak affiché au-delà duquel le nuage suffit
+// ── Figé à 0,45, et non plus adossé à AK_MIN ──────────────────────
+//
+// Ce seuil a longtemps valu AK_MIN, ce qui se tenait tant que les deux
+// disaient la même chose. Ils ont divorcé quand AK_MIN est passé à 0,60 pour
+// gagner du contraste : le suivre aurait relevé la barre du voile en même
+// temps que le nuage s'améliorait.
+//
+// L'effet aurait été nul là où ak_disp est clampé à AK_MIN — les deux montent
+// ensemble — mais pervers aux GRANDES λ, où c'est le plafond géométrique qui
+// décide : ak_disp y reste où il était pendant que le seuil monte, donc plus
+// de voile précisément dans le régime que le relèvement d'AK_MIN n'a PAS
+// amélioré. On aurait repeint en bleu une partie du gain.
+//
+// 0,45 est donc gardé tel quel : le voile est un filet de sécurité, une
+// mesure ABSOLUE de « le nuage n'y arrive plus », pas une mesure relative à
+// ce que le nuage sait faire ailleurs.
+var DENS_AK_FULL   = 0.45;            // ak affiché au-delà duquel le nuage suffit
 var DENS_AK_DEAD   = 0.12;            // ... et en deçà duquel il ne montre plus rien
 
 function _smoothstep01(u) {
