@@ -1444,7 +1444,10 @@ function _latGauss() {
 //  L'ORDRE (désordre statique d) suit (1−κ)^LAT_Q : tardif, pour que le
 //  réseau n'apparaisse qu'en fin de course.
 //
-//  L'AGITATION, elle, suit κ LINÉAIREMENT (cf. _wanderSigma, tube.js).
+//  L'AGITATION, elle, se resserre GÉOMÉTRIQUEMENT en κ : la cage se
+//  referme d'un facteur 7 sur la course, à vitesse constante (modèle de
+//  caging, cf. _wanderCage, tube.js). Ce qui se voit varier de bout en
+//  bout est la FRÉQUENCE DE REBOND v/R, pas l'énergie.
 //  Les avoir d'abord fait suivre la même courbe tardive était une erreur :
 //  rien ne bougeait à l'œil sur les trois premiers quarts du curseur, qui
 //  paraissait mort. Or le désordre statique ne PEUT PAS porter ce signal —
@@ -1459,11 +1462,11 @@ function _latGauss() {
 //  états, c'est l'excursion des atomes rapportée à leur espacement.
 //
 //  Le réseau reste caché pendant ce temps : ce qui le brouille est le
-//  déplacement quadratique TOTAL, √(d² + σ²), et d y domine tant qu'il
-//  vaut plusieurs dixièmes d'espacement. Baisser σ seul ne le révèle donc
-//  pas — vérifié dans le tableau de _wanderSigma.
+//  déplacement quadratique TOTAL, √(d² + rms²), et d y domine tant qu'il
+//  vaut plusieurs dixièmes d'espacement. Resserrer la cage seule ne le
+//  révèle donc pas — vérifié dans le tableau de _wanderCage.
 //
-//  Et ce n'est pas un verre : à κ = 0,5, σ vaut encore 56 % de d. Les
+//  Et ce n'est pas un verre : à κ = 0,5, rms vaut encore 39 % de d. Les
 //  atomes continuent de visiter le voisinage de leur site, ce qui est bien
 //  le régime liquide. Le verre serait σ ≈ 0 avec d grand, qu'on n'atteint
 //  qu'au tout dernier centième — où d s'annule aussi.

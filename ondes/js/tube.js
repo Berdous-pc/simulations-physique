@@ -1405,19 +1405,25 @@ function _drawMembrane(ctx) {
 //  compression et rendait impossible le suivi d'une particule — donc
 //  l'essentiel de l'intérêt du bouton « Sélectionner des particules ».
 //
-//  Le terme de rappel (−w × WANDER_PULL) évite que la marche aléatoire
-//  finisse par plaquer toutes les particules contre leurs bornes.
+//  Ce qui évite que la marche aléatoire finisse par plaquer toutes les
+//  particules contre leurs bornes est la CAGE : une cellule de largeur
+//  finie dont les bords réfléchissent (cf. _wander, plus bas).
 //
 //  ── Calibration ──────────────────────────────────────────────────────
-//  Réglage COMMUN avec le gaz de l'onglet Principe des interférences
-//  (cf. _prinGazWander) : mêmes constantes, même façon de les poser.
+//  Le gaz de l'onglet Principe des interférences (cf. _prinGazWander) a
+//  longtemps partagé ces constantes. Il ne les partage plus : n'ayant pas de
+//  curseur de rigidité, il n'a pas le problème d'équipartition qui a fait
+//  passer celui-ci au modèle de cage, et il garde le rappel harmonique. Les
+//  deux gaz restent calés sur le même ASPECT — même amplitude, même pas par
+//  frame — mais plus sur les mêmes paramètres.
 //  Ce qui masque le mouvement d'ensemble du gaz — seul indice visible là
 //  où la densité ne change pas — n'est pas l'amplitude de l'errance mais
-//  son PAS PAR FRAME, à comparer à la vitesse de l'onde. On règle donc les
-//  deux séparément, via σ_stationnaire = σ_pas/√(2·pull) : amplitude visée
-//  fixée par l'espacement du réseau (loi de Lindemann), rappel lent au gaz
-//  (1/pull ≈ 71 frames, ~1,2 s), pas déduit. Le gaz reste vivant sans
-//  scintiller, et le ballottement d'ensemble passe devant le bruit.
+//  son PAS PAR FRAME, à comparer à la vitesse de l'onde. Les deux se règlent
+//  donc séparément, et ici ils le sont par construction : la CAGE fixe
+//  l'amplitude, la VITESSE fixe le pas, et ce sont deux réglages
+//  indépendants. Au gaz à ρ = 1, traverser la cage demande ~7 frames : le nuage
+//  reste vivant sans scintiller, et le ballottement d'ensemble passe devant
+//  le bruit.
 //
 //  ── L'errance est ISOTROPE ───────────────────────────────────────────
 //  L'errance est à deux dimensions, comme une vraie agitation thermique —
@@ -1447,12 +1453,12 @@ function _drawMembrane(ctx) {
 //
 //  Le réglage se pose donc à l'envers de l'ancien : UNE SEULE amplitude
 //  pour les deux axes. Elle a d'abord été fixée par un budget de flou en λ,
-//  depuis supprimé (cf. plus bas) ; elle l'est aujourd'hui par l'espacement
-//  du réseau, via la loi de Lindemann. L'errance est exactement isotrope.
+//  depuis supprimé (cf. plus bas), puis par la loi de Lindemann ; elle l'est
+//  aujourd'hui par la largeur de cage, elle-même calée sur l'espacement du
+//  réseau. L'errance est exactement isotrope — la cage est carrée et la
+//  direction du pas tirée uniformément sur le cercle.
 //
 //  L'errance n'entre pas dans la sélection, qui travaille sur x0.
-var WANDER_PULL  = 0.014;   // rappel vers la position de repos, à κ = 0
-var WANDER_CLAMP = 3.0;     // borne dure, en multiples de σ
 // ══════════════════════════════════════════════════════════════════════
 //  Le budget de flou en λ a été SUPPRIMÉ
 //
@@ -1481,58 +1487,88 @@ var WANDER_CLAMP = 3.0;     // borne dure, en multiples de σ
 //  dégrade là est une contribution résiduelle. Aux réglages où le nuage
 //  travaille vraiment, la perte est de quelques pour cent.
 //
-//  Ce qui borne encore σ ne dépend donc plus que du MILIEU et de la
-//  GÉOMÉTRIE : l'espacement du réseau (loi de Lindemann) et la hauteur de
-//  bande. Ni f ni ρ n'y entrent.
+//  Ce qui borne encore l'errance ne dépend donc plus que du MILIEU et de la
+//  GÉOMÉTRIE : l'espacement du réseau et la hauteur de bande. f n'y entre
+//  pas, et ρ non plus — à N constant l'espacement ne bouge pas avec la masse
+//  volumique. Ça ne vaut que pour la CAGE : la vitesse, elle, suit 1/√ρ
+//  (cf. _wanderSpeed).
 // ══════════════════════════════════════════════════════════════════════
-var WANDER_MIN   = 0.25;    // px — plancher, pour que le solide ne fige jamais tout à fait
-// Plafond de l'errance par la hauteur de bande, en px. Valait 4,5 — un
-// héritage, qui mordait avant même la loi de Lindemann sur un tube de hauteur
-// courante (3σ = 13 px d'excursion dans une bande de 245, on est très loin des
-// parois). Porté à 9, il ne joue plus que sur les tubes réellement écrasés,
-// via le terme H × 0,028 qui, lui, garde tout son sens.
+var WANDER_MIN   = 0.25;    // px — plancher sur la demi-largeur de cage, pour qu'elle reste visible
+// Plafond de l'errance par la hauteur de bande. Exprimé en σ équivalent (px),
+// et converti en demi-largeur de cage par ×√3 là où il sert. Valait 4,5 — un
+// héritage, qui mordait sur un tube de hauteur courante (3σ = 13 px
+// d'excursion dans une bande de 245, on est très loin des parois). Porté à 9,
+// il ne joue plus que sur les tubes réellement écrasés, via le terme
+// H × 0,028 qui, lui, garde tout son sens.
 var WANDER_BAND_MAX = 9.0;
 
 // ══════════════════════════════════════════════════════════════════════
-//  L'agitation est pilotée par la rigidité κ
+//  L'agitation est pilotée par la rigidité κ — à ÉNERGIE CONSTANTE
 //
-//  ── Amplitude : le critère de Lindemann ──────────────────────────────
-//  Un solide fond quand l'excursion quadratique moyenne des atomes atteint
-//  environ 0,1 fois l'espacement du réseau. On tient donc σ en unités
-//  d'ESPACEMENT et non en pixels absolus :
+//  ── Ce que dit l'équipartition ───────────────────────────────────────
+//  ½m⟨v²⟩ = 3/2 k_B T. À température fixée, durcir le milieu NE CHANGE PAS
+//  la vitesse quadratique moyenne des molécules. Rigidifier ne refroidit
+//  pas. C'est la seule chose que κ n'a pas le droit de toucher ici.
 //
-//    κ = 0 : σ = 0,55 a — très au-dessus du seuil de fusion. Le désordre
-//            est entretenu, les points se croisent et se touchent : c'est
-//            un gaz.
-//    κ = 1 : σ = 0,04 a — bien en dessous. Le réseau tient, mais frémit :
-//            il reste de l'agitation thermique, ce qui est le point à ne
-//            pas perdre pédagogiquement.
+//  L'ancien modèle le violait franchement. Il tenait deux lois calibrées
+//  sur des hypothèses incompatibles :
+//    • un rappel harmonique ω ∝ √K, soit ×3 sur la course (K ×9) ;
+//    • une amplitude σ suivant Lindemann, 0,55 a → 0,04 a, soit ÷13,75.
+//  Or à T fixée σ ∝ 1/√K impose σ ÷3, pas ÷13,75. La vitesse chutait donc
+//  d'un facteur 4,6 : le curseur « rigidité » refroidissait en douce.
 //
-//  L'interpolation est LINÉAIRE en κ, et c'est délibéré : l'agitation est
-//  le seul canal capable de porter un changement visible sur TOUTE la
-//  course du curseur. Le désordre statique, lui, ne se voit pas varier
-//  au-dessus de d/a ≈ 0,4 (cf. latDisorderFactor, sim.js), et la longueur
-//  d'onde ne se lit qu'onde émise. Sans ce découplage, les trois premiers
-//  quarts du curseur paraissaient morts.
+//  Le rapport K ×9 n'est pas négociable — il est choisi pour donner c ×3,
+//  donc λ ×3, qui est ce qui se lit à l'écran. Et σ ÷3 seulement laisserait
+//  le solide à σ/a = 0,18 : la bande ±3σ ferait 1,08 a, PLUS LARGE que
+//  l'espacement lui-même. Les colonnes fusionneraient et il n'y aurait plus
+//  de réseau à voir. Les deux voies « honnêtes » sont donc fermées.
 //
-//  ── Fréquence : gaz lent et ample, solide rapide et minuscule ────────
-//  Le rappel suit ω ∝ √K (cf. _wanderPull), soit un temps de relaxation qui
-//  passe de ~71 frames (1,19 s) à ~24 frames (0,40 s). C'est la différence
-//  entre un transport quasi balistique et un oscillateur d'Einstein — et
-//  c'est ce qui fait lire « ça vibre encore, mais ça ne se déplace plus »,
-//  plutôt que « ça s'est arrêté ».
+//  ── La cage ──────────────────────────────────────────────────────────
+//  La sortie est de changer de modèle, pas de calibrage. Ce qui borne
+//  l'excursion d'un atome dans un solide, ce ne sont pas des ressorts
+//  harmoniques : ce sont ses VOISINS. C'est le caging des sphères dures.
 //
-//  ── Ça ne révèle pas le réseau ───────────────────────────────────────
+//  Chaque particule se déplace donc à vitesse CONSTANTE v, indépendante de
+//  κ, et rebondit élastiquement sur les bords d'une cellule de demi-largeur
+//  R(κ). Un rebond élastique ne change pas |v| : l'énergie cinétique est
+//  conservée exactement, par construction et non par calibrage. κ ne fait
+//  plus que refermer la cage.
+//
+//      κ              0        0,5        1
+//      R/a         0,95       0,36     0,138
+//      rms/a       0,55       0,21      0,080     (uniforme : R/√3)
+//      v/a         0,13       0,13      0,13      ← invariant en κ
+//      rebonds    ~7 frames  ~3 fr.    ~1 fr.
+//
+//  Le gaz reproduit exactement l'aspect de l'ancien modèle (rms 0,55 a) ;
+//  le solide est délibérément deux fois plus ample que lui (0,080 contre
+//  0,040 a), l'ancienne valeur étant trop discrète à l'œil. Ce qui change
+//  vraiment de comportement est la VITESSE : elle ne bouge plus.
+//
+//  ── Le canal visible est retrouvé, sans tricher ──────────────────────
+//  C'était l'argument qui avait fait adopter l'ancienne loi : l'agitation
+//  était « le seul canal capable de porter un changement visible sur TOUTE
+//  la course ». Il tient toujours, autrement. La fréquence de rebond vaut
+//  v/R et v est fixe : elle monte donc comme 1/R, soit ×7 sur la course —
+//  bien plus que le ×3 de ω ∝ √K. L'œil lit une agitation qui s'exalte
+//  alors que l'énergie ne bouge pas, ce qui est exactement le point à faire
+//  passer. R suit κ géométriquement, comme K(κ) : la progression perçue est
+//  régulière d'un bout à l'autre.
+//
+//  ── Ça ne révèle pas le réseau trop tôt ──────────────────────────────
 //  Ce qui brouille le réseau est le déplacement quadratique TOTAL,
-//  √(d² + σ²), et d y domine tant qu'il vaut plusieurs dixièmes
-//  d'espacement. Baisser σ seul sur la première moitié de la course laisse
-//  donc l'ordre perçu sous 1 % :
+//  √(d² + rms²), et le désordre statique d y domine tant qu'il vaut
+//  plusieurs dixièmes d'espacement (cf. latDisorderFactor, sim.js) :
 //
 //      κ        0     0,3    0,5    0,7    0,8    0,9    0,95    1
 //      d/a    0,70   0,61   0,53   0,43   0,37   0,28   0,21     0
-//      σ/a    0,55   0,40   0,30   0,19   0,14   0,09   0,07   0,04
-//      total  0,89   0,73   0,61   0,47   0,39   0,29   0,22   0,04
-//      ordre    0%     0%   0,1%   1,2%   4,6%    18%    38%    97%
+//      rms/a  0,55   0,31   0,21   0,14   0,12   0,097  0,088  0,080
+//      total  0,89   0,68   0,57   0,45   0,39   0,30   0,23   0,080
+//
+//  Au solide d = 0 : le seul flou restant est rms = 0,080 a, soit une bande
+//  ±3rms de 0,48 a. Il reste 52 % d'intervalle vide entre colonnes et les
+//  rangées se lisent franchement. Le seuil de Lindemann (rms = 0,10 a, où un
+//  solide fond) n'est pas atteint : cf. WANDER_CAGE_RATIO.
 //
 //  ── Ce que κ ne doit SURTOUT pas réduire ─────────────────────────────
 //  Le déplacement dû à l'ONDE. Un milieu rigide ne fait pas moins bouger
@@ -1546,99 +1582,104 @@ function _clamp01(v) {
     return v < 0 ? 0 : (v > 1 ? 1 : v);
 }
 
-var WANDER_LIND_GAZ    = 0.55;  // σ/espacement à κ = 0
-var WANDER_LIND_SOLIDE = 0.04;  // ... et à κ = 1
+// Demi-largeur de cage de l'état gaz, en unités d'espacement. Un tirage
+// uniforme dans [−R, R] a pour écart-type R/√3 : 0,95/√3 = 0,55, soit
+// exactement l'amplitude que donnait l'ancienne loi de Lindemann à κ = 0.
+var WANDER_CAGE_GAZ    = 0.95;
+// ... et le rapport solide/gaz, qui fixe à lui seul l'amplitude au solide :
+// rms = 0,145 × 0,55 = 0,080 a. Valait 0,0727, la valeur de l'ancien modèle
+// (rms = 0,040 a), qui s'est avérée trop discrète à l'œil.
+//
+// La borne haute est 0,18 : rms y atteint 0,10 a, le seuil de Lindemann,
+// au-delà duquel un solide fond — le réseau ne devrait alors plus tenir. À
+// 0,145 la bande ±3rms fait 0,48 a : il reste 52 % d'intervalle vide entre
+// colonnes, les rangées se lisent encore franchement.
+//
+// Contrepartie : la dynamique de la fréquence de rebond v/R, qui est ce qui
+// porte la lecture sur la course, passe de ×14 à ×7. Toujours bien au-dessus
+// du ×3 de l'ancien ω ∝ √K.
+var WANDER_CAGE_RATIO  = 0.145;
+// Vitesse, en fraction de la demi-largeur de cage du GAZ, par frame. 0,1368
+// reproduit le pas de l'ancien modèle à κ = 0 (σ·√(2·pull) par axe, soit
+// 0,092 a). Elle ne dépend pas de κ : c'est tout l'objet du modèle.
+var WANDER_SPEED_REL   = 0.1368;
 
 // ══════════════════════════════════════════════════════════════════════
-//  L'agitation doit être MAXIMALE à κ = 0, et décroître ensuite
+//  Pourquoi la vitesse se cale sur la cage du GAZ et non sur l'espacement
 //
-//  Elle passait par un maximum vers le milieu de la course, ce qui se voit
-//  immédiatement et n'a aucun sens : le gaz est l'état le plus agité. Deux
-//  causes, toutes deux venant du fait que c — donc λ — CROÎT avec κ.
+//  La cage du gaz est elle-même bornée par la géométrie (cf. ci-dessous) :
+//  sur un volet d'animation très écrasé, elle est réduite pour que les
+//  particules ne passent pas leur temps à se replier sur les parois. Si la
+//  vitesse restait calée sur le seul espacement, elle deviendrait alors
+//  grande DEVANT la cage et le gaz se mettrait à crépiter comme un solide.
+//  En l'indexant sur R_gaz, le régime du gaz — dérive lente sur ~7 frames
+//  pour traverser sa cage — est le même quelle que soit la hauteur du tube.
 //
-//  ── 1. Le budget de flou remontait avec κ ────────────────────────────
-//  Ce plafond se calculait sur la longueur d'onde COURANTE, trois fois plus
-//  grande à κ = 1 qu'à κ = 0. Il montait donc avec le curseur, plus vite que
-//  la loi de Lindemann ne descendait : à f = 5 Hz, σ passait de 1,97 px à
-//  κ = 0 à 3,41 px à κ = 0,5 avant de redescendre. L'agitation SUIVAIT le
-//  plafond au lieu de suivre la loi.
+//  f n'entre nulle part, et c'est essentiel : faire fuiter la fréquence de
+//  la SOURCE dans l'aspect du MILIEU était le défaut du budget de flou en λ,
+//  supprimé depuis (cf. plus haut) ; on ne le réintroduit pas ici.
 //
-//  Ce plafond a depuis été supprimé tout court — cf. plus haut : il faisait
-//  aussi dépendre l'agitation thermique de la fréquence de la source, ce qui
-//  n'a aucun sens. Plus rien de ce qui borne σ ne dépend de κ, de f ni de ρ.
-//
-//  ── 2. Le rappel montait trop vite ───────────────────────────────────
-//  Ce que l'œil lit comme « ça s'agite », c'est le PAS PAR FRAME, et
-//  step = σ·√(24·pull). Un rappel multiplié par 9 sur la course faisait
-//  croître √pull trois fois plus vite que σ ne décroissait au départ : le
-//  pas montait de 3,8 à 5,0 px sur le premier tiers avant de redescendre.
-//
-//  Le rappel suit désormais la physique plutôt qu'un facteur choisi : la
-//  pulsation d'un oscillateur vaut ω = √(k/m), donc ω ∝ √K à masse fixée.
-//  D'où pull ∝ √(K/K_GAZ), soit exactement ×3 sur la course — le même
-//  facteur que c, ce qui est cohérent puisque c ∝ √K lui aussi. Le pas est
-//  alors strictement décroissant, et le solide garde son caractère de
-//  frémissement rapide (relaxation 1,19 s → 0,40 s).
+//  ρ, en revanche, entre — et doit entrer. C'est une propriété du milieu,
+//  pas un réglage de la source, et l'exclure avec f était une erreur
+//  d'amalgame : les deux étaient sortis ensemble parce que le budget de flou
+//  les portait tous les deux, alors que seule f n'avait rien à y faire.
 // ══════════════════════════════════════════════════════════════════════
 
-// ── Le plafond ÉCHELONNE la courbe, il ne l'écrête pas ───────────────
-//
-//  Écrire σ = min(loi(κ), plafond) paraît naturel et ne l'est pas : dès
-//  qu'un plafond mord, σ s'y colle et cesse de suivre κ. Le pas par frame,
-//  lui, vaut σ·√(24·pull) et le rappel, lui, continue de monter — le pas
-//  REMONTAIT donc au milieu de la course.
-//
-//  Le plafond fixe donc l'agitation de l'ÉTAT GAZ, une bonne fois, et κ ne
-//  fait plus que l'atténuer par un facteur ≤ 1. σ et le pas sont alors
-//  décroissants par construction, quelle que soit la géométrie — et le
-//  garde-fou garde exactement le même pouvoir, puisqu'il s'applique à la
-//  valeur la plus grande de la plage.
-//
-//  Depuis la suppression du budget de flou, la seule borne restante est
-//  géométrique et ne peut plus mordre qu'en tube écrasé ; l'échelonnement
-//  reste néanmoins la bonne écriture, et c'est ce qui garde la propriété
-//  vraie par construction plutôt que par coïncidence de calibrage.
-
-// Agitation de l'état gaz, en px : la plus petite des deux bornes.
-//   • la loi de Lindemann à κ = 0 — l'espacement du réseau ;
+// Demi-largeur de cage de l'état gaz, en px : la plus petite des deux bornes.
+//   • l'espacement du réseau ;
 //   • la hauteur de bande : sur un tube écrasé, une errance calée sur le
 //     seul espacement sortirait des parois en permanence et le repliement
 //     ferait tout le travail.
-// Ni f ni ρ n'y entrent : l'agitation ne dépend que du milieu (κ) et de la
-// géométrie du tube.
-function _wanderSigmaGaz(H) {
-    var parBande = Math.max(1.0, Math.min(WANDER_BAND_MAX, H * 0.028));
-    return Math.min(particleSpacingPx() * WANDER_LIND_GAZ, parBande);
+function _wanderCageGaz(H) {
+    var parBande = Math.max(1.0, Math.min(WANDER_BAND_MAX, H * 0.028)) * Math.sqrt(3);
+    return Math.min(particleSpacingPx() * WANDER_CAGE_GAZ, parBande);
 }
 
-// Écart-type stationnaire de l'errance (px), à la rigidité courante.
+// Demi-largeur de cage (px) à la rigidité courante.
 //
-// Le plancher WANDER_MIN reste ABSOLU, et non atténué lui aussi : il garantit
-// que le solide frémit encore, y compris quand le budget de flou a déjà
-// beaucoup rabaissé le gaz. Contrepartie, seul défaut de monotonie qui
-// subsiste : quand σ touche ce plancher — hautes fréquences, tout en haut de
-// la course — le rappel continue de croître et le pas remonte de 4 %, soit un
-// centième de pixel sur les deux derniers centièmes du curseur. L'atténuer
-// aussi supprimerait le défaut mais réduirait le frémissement du solide à
-// 0,14 px à f = 5 Hz, ce qui ne se verrait plus du tout : l'arbitrage est fait
-// en faveur du frémissement.
-function _wanderSigma(H) {
-    var k   = Math.max(0, Math.min(1, sim.kappa));
-    var att = 1 - (1 - WANDER_LIND_SOLIDE / WANDER_LIND_GAZ) * k;
-    return Math.max(WANDER_MIN, _wanderSigmaGaz(H) * att);
+// L'interpolation est GÉOMÉTRIQUE en κ, comme K(κ) l'est déjà (sim.js) :
+// c'est la fréquence de rebond v/R qui porte la lecture, et elle progresse
+// alors régulièrement d'un bout à l'autre de la course plutôt que de tout
+// jouer sur le dernier quart.
+//
+// Le plancher WANDER_MIN garde son rôle : sur un tube écrasé, une cage
+// réduite à une fraction de pixel ne se verrait plus bouger du tout. Il ne
+// crée plus le défaut de monotonie de l'ancien modèle, puisque la vitesse
+// ne dépend plus de κ — un plancher sur R plafonne la fréquence de rebond,
+// il ne la fait pas remonter.
+function _wanderCage(H) {
+    var k = Math.max(0, Math.min(1, sim.kappa));
+    return Math.max(WANDER_MIN, _wanderCageGaz(H) * Math.pow(WANDER_CAGE_RATIO, k));
 }
 
-// Rappel : ω ∝ √K (cf. ci-dessus), soit ×3 sur la course du curseur.
-function _wanderPull() {
-    var K = Math.max(K_GAZ, sim.K);
-    return WANDER_PULL * Math.sqrt(K / K_GAZ);
-}
-
-// Largeur du tirage uniforme par frame donnant l'écart-type stationnaire
-// voulu : σ_pas = σ_stat·√(2·pull), et un tirage uniforme de largeur w a pour
-// écart-type w/√12, d'où w = σ_stat·√(24·pull).
-function _wanderStep(sigma, pull) {
-    return sigma * Math.sqrt(24 * pull);
+// Vitesse d'errance, en px par frame.
+//
+// Invariante en κ : c'est l'équipartition, et c'est tout l'objet du modèle
+// de cage (cf. le bloc « à ÉNERGIE CONSTANTE » plus haut).
+//
+// ── Mais PAS invariante en ρ ──────────────────────────────
+// La même équipartition qui interdit à κ de changer v IMPOSE à ρ de le faire :
+// ½m'v²' = 3/2 k_B T donne v ∝ 1/√m, et ici m ∝ ρ. Le curseur de masse
+// volumique laisse en effet N constant et fait grossir les points (cf. le
+// bloc d'initialisation et particleRadius, sim.js) : chaque point est une
+// parcelle de volume fixe, donc sa masse suit ρ. Sur la plage [0,5 ; 3] du
+// curseur, v varie d'un facteur √6 ≈ 2,45.
+//
+// Cela va dans le même sens que c = √(K/ρ), qui suit exactement la même loi
+// en 1/√ρ : un milieu dense est lent des deux côtés à la fois, le son y va
+// moins vite et les particules s'y traînent.
+//
+// Réserve, parce que la lecture ne se généralise pas : pour de VRAIES
+// molécules, « plus dense » ne veut pas dire « plus lourdes » — ça peut vouloir
+// dire « plus serrées », et v ne dépend alors que de la température et de la
+// masse molaire. C'est la représentation choisie ici — N fixe, taille
+// variable — qui tranche pour la première, et elle seule.
+//
+// La cage, elle, ne bouge pas avec ρ : elle est calée sur l'espacement, qui
+// est constant à N fixe. C'est donc bien la fréquence de rebond qui tombe.
+function _wanderSpeed(H) {
+    var rho = (sim.rho > 0) ? sim.rho : RHO_DEFAULT;
+    return _wanderCageGaz(H) * WANDER_SPEED_REL * Math.sqrt(RHO_DEFAULT / rho);
 }
 
 // Taille caractéristique, en px, de ce que la source est en train d'émettre :
@@ -1654,27 +1695,33 @@ function _sonFeaturePx() {
     return Math.min(lam, sim.tubeLength);
 }
 
-// step = largeur du tirage uniforme par frame (cf. calibration), max = borne
-// dure. Les deux axes partagent les mêmes valeurs : l'errance est isotrope.
+// v = vitesse en px par frame, R = demi-largeur de la cage. Les deux axes
+// partagent les mêmes valeurs : l'errance est isotrope.
+//
+// La direction est retirée à chaque frame, la NORME jamais : c'est ce qui
+// conserve l'énergie cinétique quel que soit κ (cf. le bloc « à ÉNERGIE
+// CONSTANTE » plus haut). Le tirage se fait sur un angle et non par axe
+// indépendant, faute de quoi la norme fluctuerait d'un facteur √2 entre une
+// direction diagonale et une direction d'axe.
+//
+// Le bord de la cage RÉFLÉCHIT (_foldY, triangle itéré) au lieu de borner :
+// un rebond élastique ne change pas |v|, un écrêtage l'annulerait. Et sur un
+// solide la cage est plus étroite que le pas d'une frame — le repliement
+// itéré est alors ce qui fait tout le travail, exactement comme pour les
+// parois du tube.
 //
 // spd = sim.speedFactor : la boucle d'animation tourne toujours à ~60 fps
 // (requestAnimationFrame), que le ralenti soit actif ou non — seul dtSim,
 // le temps SIMULÉ, est ralenti. Sans ce facteur, l'agitation thermique
 // tirait un nouveau pas à chaque frame RÉELLE et restait donc à vitesse
-// normale même à ×0,10 : l'onde ralentissait, le nuage de gaz non. On
-// applique spd à la fois au pas de diffusion (∝ √dt physiquement, mais un
-// facteur linéaire suffit ici : c'est un rendu, pas une intégration
-// physique) et au rappel, pour que le régime stationnaire (σ, temps de
-// relaxation) reste cohérent au ralenti.
-function _wander(c, step, max, spd, pull0) {
-    var pull = pull0 * spd;
-    c.wy += (Math.random() - 0.5) * step * spd - c.wy * pull;
-    if      (c.wy >  max) c.wy =  max;
-    else if (c.wy < -max) c.wy = -max;
-
-    c.wx += (Math.random() - 0.5) * step * spd - c.wx * pull;
-    if      (c.wx >  max) c.wx =  max;
-    else if (c.wx < -max) c.wx = -max;
+// normale même à ×0,10 : l'onde ralentissait, le nuage de gaz non. Il
+// s'applique à la vitesse, et à elle seule : la cage est une longueur, elle
+// ne dépend pas du rythme auquel on regarde.
+function _wander(c, v, R, spd) {
+    var th = Math.random() * 2 * Math.PI;
+    var d  = v * spd;
+    c.wx = _foldY(c.wx + d * Math.cos(th), -R, R);
+    c.wy = _foldY(c.wy + d * Math.sin(th), -R, R);
 }
 
 // ── Rencontre d'une paroi : rebond, pas écrasement ────────────────────
@@ -1712,13 +1759,10 @@ function _drawParticles(ctx) {
     var r = particleRadius();
 
     // ── Paramètres d'errance de la frame (cf. calibration ci-dessus) ──
-    // Un seul jeu de valeurs : l'errance est isotrope, le bornage par λ est
-    // déjà intégré à _wanderSigma. Le milieu étant homogène, ces valeurs sont
-    // les mêmes pour toutes les particules.
-    var wSig   = _wanderSigma(H);
-    var wPull  = _wanderPull();
-    var wStep  = _wanderStep(wSig, wPull);
-    var wMax   = wSig * WANDER_CLAMP;
+    // Un seul jeu de valeurs : l'errance est isotrope. Le milieu étant
+    // homogène, ces valeurs sont les mêmes pour toutes les particules.
+    var wVel   = _wanderSpeed(H);
+    var wCage  = _wanderCage(H);
 
     // Amplitude du désordre statique, hissée hors des boucles : elle ne
     // dépend que de κ et de la géométrie (cf. _latDisorderPx).
@@ -1765,7 +1809,7 @@ function _drawParticles(ctx) {
             var x0 = c.x0 + dPx * c.offX;
             var u  = waveDisplacementDisplay(x0, sim.simTime, sNow);
 
-            if (moving) _wander(c, wStep, wMax, spd, wPull);
+            if (moving) _wander(c, wVel, wCage, spd);
             var px = sim.tubeLeft + x0 + u + c.wx;
             var ry = _clamp01(c.ry + dRy * c.offY);
             var py = sim.tubeTop + yPad + ry * yBand + c.wy;
@@ -1808,7 +1852,7 @@ function _drawParticles(ctx) {
                 // Agitation thermique : errance 2D autour de la position de
                 // repos, figée en pause (cf. _wander). Son amplitude et sa
                 // fréquence suivent la solidité du milieu.
-                if (moving) _wander(c, wStep, wMax, spd, wPull);
+                if (moving) _wander(c, wVel, wCage, spd);
                 var px = sim.tubeLeft + x0 + u + c.wx;
                 var ry = _clamp01(c.ry + dRy * c.offY);
                 var py = sim.tubeTop + yPad + ry * yBand + c.wy;
