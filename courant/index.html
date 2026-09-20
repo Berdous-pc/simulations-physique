@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<!-- ════════════════════════════════════════════════════
+     Simulation pédagogique — Physique-Chimie Lycée
+     Auteur  : Mathieu Berdous
+     Licence : CC BY-NC 4.0 — https://creativecommons.org/licenses/by-nc/4.0/
+════════════════════════════════════════════════════ -->
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Simulation — Courant électrique</title>
+  <meta name="author" content="Mathieu Berdous">
+  <meta name="copyright" content="Mathieu Berdous — CC BY-NC 4.0">
+  <meta name="description" content="Simulation interactive (Seconde/Terminale) : modèle microscopique du courant électrique, électrons libres dans un réseau d'ions positifs, vitesse de dérive et sens conventionnel.">
+  <link rel="canonical" href="https://berdouspc.com/courant/">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>⚛️</text></svg>">
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<h1 class="sr-only">Simulation du courant électrique — déplacement d'ensemble des électrons libres dans un fil conducteur</h1>
+
+<main>
+
+  <!-- ══════════════════════════════════════════════
+       COLONNE GAUCHE : schéma du circuit + fil agrandi
+  ══════════════════════════════════════════════ -->
+  <div id="left-col">
+    <div id="sim-area">
+      <canvas id="scene-canvas"></canvas>
+
+      <!-- Légende posée en overlay sur la zone de simulation. Dimensionnée
+           en cqmin : elle suit les DEUX dimensions du conteneur, qui n'a
+           pas la taille de la fenêtre (le panneau droit en est retranché). -->
+      <div id="legend">
+        <div class="legend-item">
+          <span class="legend-dot dot-cation" id="legend-ion">+</span>
+          <span>ion du réseau, fixe</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-dot dot-elec">–</span>
+          <span>électron libre</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       PANNEAU DROIT : contrôles
+  ══════════════════════════════════════════════ -->
+  <div id="panel">
+    <div id="panel-body">
+
+      <div class="panel-title">Courant électrique</div>
+
+      <!-- ── Générateur ─────────────────────────── -->
+      <div class="panel-section">
+        <div class="section-title">Générateur</div>
+
+        <button id="btn-circuit" class="btn btn-green" onclick="toggleCircuit()">Fermer le circuit</button>
+
+        <div class="param-row" style="margin-top: 8px;">
+          <label for="sl-U">Tension imposée
+            <span class="param-value" id="lbl-U">6,0 V</span>
+          </label>
+          <input type="range" id="sl-U" min="-12" max="12" step="0.5" value="6"
+                 oninput="onSliderU(this.value)">
+          <div class="slider-ticks">
+            <span>−12 V</span>
+            <span>0</span>
+            <span>+12 V</span>
+          </div>
+          <span class="input-hint">Le signe de U inverse le sens du courant.</span>
+        </div>
+      </div>
+
+      <div class="sep"></div>
+
+      <!-- ── Le matériau ────────────────────────── -->
+      <div class="panel-section">
+        <div class="section-title">Le matériau</div>
+
+        <div class="param-row">
+          <label for="sl-valence">Électrons libérés par atome
+            <span class="param-value" id="lbl-valence">1</span>
+          </label>
+          <input type="range" id="sl-valence" min="1" max="3" step="1" value="1"
+                 oninput="onSliderValence(this.value)">
+          <div class="slider-ticks">
+            <span>1 (cuivre)</span>
+            <span>2</span>
+            <span>3 (alu)</span>
+          </div>
+          <span class="input-hint" id="hint-valence">—</span>
+        </div>
+
+        <div class="param-row">
+          <label for="sl-gene">Gêne au déplacement
+            <span class="param-value" id="lbl-gene">Moyenne</span>
+          </label>
+          <input type="range" id="sl-gene" min="0" max="4" step="1" value="2"
+                 oninput="onSliderGene(this.value)">
+          <span class="input-hint">Encombrement des ions : plus ils sont gros, plus les chocs sont fréquents et plus les électrons avancent lentement.</span>
+        </div>
+      </div>
+
+      <div class="sep"></div>
+
+      <!-- ── Mesures ────────────────────────────── -->
+      <div class="panel-section">
+        <div class="section-title">Mesures</div>
+
+        <div id="measures">
+          <div class="readout">
+            <div class="ro-label">Tension aux bornes du fil</div>
+            <div class="ro-value" id="ro-U">0,0 V</div>
+          </div>
+          <div class="readout">
+            <div class="ro-label">Intensité du courant</div>
+            <div class="ro-value" id="ro-I">≈ 0 mA</div>
+          </div>
+          <div class="readout">
+            <div class="ro-label">Vitesse moyenne des électrons</div>
+            <div class="ro-value" id="ro-v">≈ 0 mm/s</div>
+          </div>
+        </div>
+
+        <button id="btn-measures" class="btn-toggle-one" onclick="toggleMeasures()">Masquer les mesures</button>
+      </div>
+
+      <div class="sep"></div>
+
+      <!-- ── Observation ────────────────────────── -->
+      <div class="panel-section">
+        <div class="section-title">Observation</div>
+
+        <button id="btn-trace" class="btn-toggle-one" onclick="toggleTrace()">Suivre un électron</button>
+
+        <button id="btn-playpause" class="btn btn-pause" onclick="togglePause()" style="margin-top: 8px;">⏸ Pause</button>
+
+        <div class="param-row param-row-speed">
+          <label for="sl-speed">Vitesse
+            <span class="param-value">×<span id="lbl-speed">1,00</span></span>
+          </label>
+          <input type="range" id="sl-speed" min="0" max="3" step="1" value="3"
+                 oninput="onSliderSpeed(this.value)">
+          <div class="speed-ticks">
+            <span>×0,10</span>
+            <span>×0,25</span>
+            <span>×0,50</span>
+            <span>×1,00</span>
+          </div>
+        </div>
+
+        <button class="btn btn-raz" onclick="resetSim()">■ Réinitialiser</button>
+      </div>
+
+    </div><!-- fin #panel-body -->
+
+    <!-- ── Bandeau Informations ────────────────── -->
+    <div class="panel-hint collapsed" id="panel-hint">
+      <div class="panel-hint-header">
+        <a class="panel-hint-menu-btn" href="../" title="Retour au menu principal">☰ Menu</a>
+        <span class="panel-hint-title">Informations</span>
+        <button class="panel-hint-toggle" onclick="toggleHint()" title="Afficher les informations">▲</button>
+      </div>
+      <div class="panel-hint-body">
+        Circuit ouvert, les électrons s'agitent en tous sens : leur
+        <strong>vitesse moyenne est nulle</strong>, pas de courant. Le générateur
+        superpose à cette agitation un lent <strong>déplacement d'ensemble</strong> :
+        c'est le courant. Le fil reste toujours <strong>neutre</strong> : chaque
+        atome qui libère k électrons devient un ion k+, et tout électron qui sort
+        est remplacé aussitôt par un autre qui entre à l'autre bout.
+        <br><strong>Échelles non respectées</strong> : dans un fil réel l'agitation
+        atteint 10⁵ m/s et la dérive 0,1 mm/s. Elle est ici très exagérée, sinon
+        elle serait invisible.
+        <br><strong>Raccourcis</strong> : Espace = pause, G = interrupteur,
+        E = suivre un électron, R = réinitialiser.
+      </div>
+    </div>
+
+  </div><!-- fin #panel -->
+
+</main>
+
+<!-- Ordre de chargement : sim (état + physique) → fil (rendu) → ui (boucle) -->
+<script src="js/sim.js"></script>
+<script src="js/fil.js"></script>
+<script src="js/ui.js"></script>
+<script data-goatcounter="https://berdous-pc.goatcounter.com/count"
+        async src="https://gc.zgo.at/count.js"></script>
+</body>
+</html>

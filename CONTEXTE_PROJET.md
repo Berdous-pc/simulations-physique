@@ -281,7 +281,7 @@ nom-simulation/
 
 Les anciennes simulations en fichier unique (`reaction.html`) conservent leur format d'origine. Toute **nouvelle** simulation adopte l'arborescence ci-dessus.
 
-> **Simulations déjà migrées en arborescence** : `lentille/`, `lunette/`, `radioactivite/`, `reaction/`, `titrage/`, `condensateur/`, `pression/`, `champ_uniforme/`, `ondes/`, `dissolution/`, `diffraction/`, `cinetique/`, `equilibre/`, `kepler/`, `interferences/`, `atome/`, `derivee/`.
+> **Simulations déjà migrées en arborescence** : `lentille/`, `lunette/`, `radioactivite/`, `reaction/`, `titrage/`, `condensateur/`, `pression/`, `champ_uniforme/`, `ondes/`, `dissolution/`, `diffraction/`, `cinetique/`, `equilibre/`, `kepler/`, `interferences/`, `atome/`, `derivee/`, `courant/`.
 
 ### Bibliothèques externes vendorées (`libs/`)
 
@@ -408,6 +408,7 @@ Toute page **HTML autonome** destinée à être publiée (page d'accueil `index.
 |---|---|---|---|---|
 | `derivee/` | La dérivée d'une fonction — taux de variation, sécante et tangente | Première/Terminale | **Arborescence** | `sim.js` + `courbe.js` + `graph.js` + `ui.js` ; page sans onglets. Catalogue de fonctions au choix (trajectoire verticale, oscillateur, décharge de condensateur, fonction cube) défini entièrement dans `FONCTIONS` (panneau et unités construits à partir de la définition) ; point M déplaçable sur la courbe, points A/B encadrants réglés par Δ (slider quadratique pour approcher 0 finement), sécante → tangente, animation « Δt → 0 », zoom logarithmique jusqu'à ×2000 recentré sur M (la courbe se confond avec sa tangente), cotes Δt/Δf, graphe optionnel de la fonction dérivée à axe des abscisses aligné sur le graphe principal, splitter draggable — voir `derivee/ARCHITECTURE.md` |
 | `condensateur/` | Circuit RC — charge/décharge condensateur plan | Terminale | **Arborescence** | Splitter draggable, zoom/pan/réticule sur graphes, animation courant et électrons |
+| `courant/` | Courant électrique — modèle microscopique dans un fil conducteur | Seconde/Terminale | **Arborescence** | `sim.js` + `fil.js` + `ui.js` ; page sans onglets, sans graphe. Modèle de Drude « lycée » : réseau d'ions FIXE en **empilement compact** (colonnes alternées 3 / 2 en quinconce, pas horizontal = √3/2 du pas vertical), électrons à énergie cinétique d'agitation constante dont la direction est entièrement redistribuée à chaque choc sur un ion — la vitesse de dérive se stabilise donc à v = a·τ, proportionnelle à U. **Neutralité assurée par la valence** : un atome libère k électrons (k = 1 cuivre, 2 zinc, 3 aluminium) et devient un ion k+ affiché comme tel dans le disque ; l'invariant `nElec = valence × nSites` tient à tout réglage ET à tout redimensionnement de fenêtre (le nombre de sites du réseau suit la largeur). L'intensité affichée suit la DENSITÉ de porteurs, pas l'effectif à l'écran — elle ne dépend donc pas de la taille de la fenêtre. Schéma du circuit fermé (générateur + interrupteur) relié par des traits de loupe au fil agrandi, flèche du sens conventionnel, cote de tension et repères de bornes, tous pilotés par un unique `currentSign()`. Curseurs tension signée / valence / « gêne au déplacement » (encombrement des ions, donc τ : la seconde cause de la conductivité σ = n·e²·τ/m), électron suivi à la trace, mesures U/I/vitesse de dérive masquables d'un bouton (projection en Seconde). Mesure lissée par une moyenne courante qui bascule en exponentielle — convergence immédiate après une commande, stabilité en régime établi — voir `courant/ARCHITECTURE.md` |
 | `lentille/` | Lentille mince convergente/divergente — construction géométrique | Seconde/Première | **Arborescence** | `sim.js` + `draw.js` + `ui.js` ; drag objet/lentille/écran, mode infini avec animation, multi-points, tableau conjugaison, cadres viewfinder avec `drawGlowLetter` |
 | `lunette/` | Lunette astronomique — deux lentilles, mode afocal | Terminale | **Arborescence** | `sim.js` + `draw.js` + `ui.js` ; drag/pan/zoom molette, animation propagation, réglage oculaire interactif |
 | `radioactivite/` | Décroissance radioactive — modèle des dés | Terminale | **Arborescence** | `sim.js` + `draw.js` + `ui.js` ; Mode Discret (Libre + Auto) et Mode Continu, zoom/pan/réticule/tangente/autoscale sur graphes, splitter draggable, overlay récipient agrandi, multi-séries avec légende |
@@ -493,6 +494,7 @@ Stockées dans `assets/previews/` au format **`.jpg`** (converties depuis les sc
 | Fichier | Carte |
 |---|---|
 | `condensateur.jpg` | Circuit RC |
+| `courant.jpg` | Courant électrique |
 | `lentille.jpg` | Lentille mince |
 | `lunette.jpg` | Lunette astronomique |
 | `radioactivite-continu.jpg` | Décroissance radioactive |
