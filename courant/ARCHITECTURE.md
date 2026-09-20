@@ -85,7 +85,6 @@ montrée change.
 | `RE_FRAC` | 0,11 | Rayon électron / pas du réseau |
 | `GENE_STEPS` | 0,105 → 0,30 | Rayon ion / pas, les 5 crans du curseur de gêne |
 | `LAT_JITTER` | 0,045 | Décalage résiduel des ions (cf. ci-dessous) |
-| `VALENCE_MIN/MAX` | 1 / 3 | Électrons libérés par atome |
 | `VTH_FRAC` | 0,90 | Vitesse d'agitation / hauteur intérieure, par seconde |
 | `ACC_FRAC` | 0,239 | Accélération par volt / hauteur intérieure |
 | `VMAX_FACTOR` | 6,0 | Plafond de vitesse (garde-fou anti-tunneling) |
@@ -120,21 +119,14 @@ pour toutes** (le réseau reste strictement immobile). Cette valeur est
 volontairement petite : à ±10 %, l'œil cessait de lire le quinconce et ne voyait
 plus qu'un semis d'ions.
 
-### Neutralité du fil : la valence
+### Neutralité du fil
 
-Le fil doit rester **neutre**. Faire varier librement le nombre d'électrons à
-réseau fixe le chargerait en permanence ; faire varier le nombre d'ions
-changerait du même coup la fréquence des chocs, et le curseur de densité se
-confondrait avec celui de gêne.
+Le fil doit rester **neutre**. La sortie retenue est celle de la physique réelle
+du cuivre : chaque atome du réseau libère **un** électron et devient un ion
+**+**. La compensation des charges est alors exacte, et le rendu l'affiche
+littéralement dans les disques (`+`).
 
-La sortie retenue est celle de la physique réelle : un atome du réseau libère
-**k** électrons et devient un ion **k+**, avec k = 1 (cuivre), 2 (zinc) ou 3
-(aluminium). La compensation des charges est alors exacte quel que soit k, et
-elle est portée par la **charge** des ions, pas par leur nombre — ce que le
-rendu affiche littéralement dans les disques (`+`, `2+`, `3+`, avec repli sur le
-seul `+` sous `CHARGE_TEXT_MIN_R` px, où deux caractères ne sont plus lisibles).
-
-L'invariant `nElec === valence × nSites` est maintenu par `updateGeometry()`,
+L'invariant `nElec === nSites` est maintenu par `updateGeometry()`,
 qui le recalcule à chaque changement de géométrie, et par `syncElectronCount()`,
 qui aligne le tableau sans réinitialiser les électrons déjà présents. Il tient
 donc aussi au redimensionnement de la fenêtre, qui fait varier le nombre de
@@ -145,7 +137,7 @@ d'électrons).
 
 La mesure brute est la moyenne des vitesses selon x, ramenée à une fraction de
 la vitesse d'agitation (`vdNorm`) — donc indépendante de la taille du canvas.
-Les réglages par défaut (U = 6 V, gêne « Moyenne », valence 1) donnent en régime
+Les réglages par défaut (U = 6 V, résistance « Moyenne ») donnent en régime
 établi `vdNorm ≈ 0,345` — mesuré sur 150 s et sur huit réseaux tirés
 indépendamment, dispersion ±4 % — calé sur **0,10 mm/s** et **150 mA**.
 
@@ -159,7 +151,7 @@ en rapetissant les ions — le rend **non monotone** : à `VTH_FRAC = 0,85`, pas
 de 6 V à 9 V fait *baisser* la dérive affichée. La loi d'Ohm prime ; pour rendre
 la dérive plus lisible, les bons outils sont la trace et les flèches de vitesse.
 
-L'intensité suit la **densité** de porteurs, donc la valence, et **non**
+L'intensité suit la **densité** de porteurs et **non**
 l'effectif affiché : une fenêtre plus large montre un plus long morceau de fil,
 donc plus d'électrons, sans que l'intensité doive changer. Vérifié : 135 à
 148 mA selon la taille de fenêtre, à réglages identiques.
@@ -190,8 +182,8 @@ exactement plutôt que de laisser transparaître le bruit résiduel.
 ### `index.html`
 
 Structure HTML pure : la grille `<main>`, le `<canvas id="scene-canvas">`, la
-légende en overlay, le panneau droit (Générateur / Le matériau / Mesures /
-Observation) et le bandeau Informations. Scripts dans l'ordre imposé.
+légende en overlay, le panneau droit (Contrôles / Circuit / Mesures /
+Options) et le bandeau Informations. Scripts dans l'ordre imposé.
 
 ### `css/style.css`
 
@@ -252,11 +244,11 @@ Raccourcis clavier (projection) : **Espace** pause, **G** interrupteur,
 |---|---|
 | Fermer / ouvrir le circuit | Bascule l'interrupteur du schéma ; ouvert, l'accélération est nulle |
 | Tension imposée (−12 → +12 V) | Accélération des électrons ; le signe inverse le sens du courant |
-| Électrons libérés par atome (1 → 3) | Valence : fixe la densité de porteurs à `k × densité d'ions`. Agit sur I, pas sur la vitesse de dérive, et laisse le fil neutre |
-| Gêne au déplacement (5 crans) | Encombrement des ions, donc fréquence des chocs, donc τ — la seconde cause de la conductivité (σ = n·e²·τ/m) |
+| Résistance (5 crans) | Encombrement des ions, donc fréquence des chocs, donc τ — la seconde cause de la conductivité (σ = n·e²·τ/m) |
 | Suivre un électron | Marque l'électron le plus central et trace sa trajectoire |
+| Sens des électrons | Une flèche par électron, dans le sens de son déplacement |
 | Masquer les mesures | Masque les afficheurs **et** les valeurs chiffrées du schéma : la page redevient entièrement qualitative pour une projection en Seconde |
-| Pause / Vitesse / Réinitialiser | Contrôle de l'animation |
+| Pause / Vitesse / RAZ | Contrôle de l'animation |
 
 ---
 
@@ -266,7 +258,6 @@ Raccourcis clavier (projection) : **Espace** pause, **G** interrupteur,
    **dans le même pas de temps** par un autre qui entre par l'extrémité opposée
    (position verticale retirée au sort, vitesse conservée). Le nombre de charges
    négatives dans le fil ne varie donc jamais.
-2. **À tout réglage** : le nombre d'électrons vaut `valence × nSites` et la
-   charge de chaque ion vaut `valence` (cf. « Neutralité du fil : la valence »).
-   La somme des charges est nulle quelle que soit la valence, et quelle que soit
-   la taille de la fenêtre.
+2. **À tout réglage** : le nombre d'électrons vaut `nSites` et la charge de
+   chaque ion vaut `+` (cf. « Neutralité du fil »). La somme des charges est
+   nulle quelle que soit la taille de la fenêtre.

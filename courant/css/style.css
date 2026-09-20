@@ -225,9 +225,26 @@ main {
   color: #5a6a78;
   font-size: clamp(12px, 1.2vw, 15px);
   padding: 9px 6px;
-  margin-top: 8px;
+  border: 1.5px solid #c8c0b4;
 }
 .btn-raz:hover { background: #ccc8c0; }
+
+/* Ligne de boutons côte à côte (Pause + RAZ) : chacun garde le style .btn
+   habituel, seule la largeur devient partagée au lieu de 100%. RAZ reste
+   étroit (texte court et fixe) pour laisser toute la place à Pause, dont le
+   texte change et ne doit pas passer à la ligne. */
+.btn-row {
+  display: flex;
+  gap: 6px;
+}
+.btn-row > .btn {
+  width: auto;
+  flex: 1 1 0;
+  white-space: nowrap;
+}
+.btn-row > .btn-raz {
+  flex: 0 0 auto;
+}
 
 /* Bascule d'option : fond orangé à l'état actif (charte du site) */
 .btn-toggle-one {
@@ -285,13 +302,6 @@ main {
 .param-row-speed {
   margin-top: 8px;
   margin-bottom: 0;
-}
-
-.input-hint {
-  font-size: clamp(10px, 0.9vw, 13px);
-  color: #7a8a96;
-  line-height: 1.4;
-  font-weight: 400;
 }
 
 .slider-ticks {

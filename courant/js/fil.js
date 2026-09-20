@@ -463,7 +463,7 @@ function _drawCations() {
   // remplissage, et alterner à chaque ion coûterait un changement d'état
   // du contexte par disque.
   for (var m = 0; m < sim.lattice.length; m++) {
-    _drawCharge(sim.lattice[m].x, sim.lattice[m].y, r, sim.valence);
+    _drawCharge(sim.lattice[m].x, sim.lattice[m].y, r, 1);
   }
 }
 

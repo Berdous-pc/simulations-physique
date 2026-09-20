@@ -28,9 +28,9 @@ var _el = {};
 
 var _EL_IDS = [
   'btn-circuit', 'btn-playpause', 'btn-trace', 'btn-arrows', 'btn-measures',
-  'sl-U', 'sl-valence', 'sl-gene', 'sl-speed',
-  'lbl-U', 'lbl-valence', 'lbl-gene', 'lbl-speed', 'hint-valence',
-  'measures', 'ro-U', 'ro-I', 'ro-v', 'legend-ion',
+  'sl-U', 'sl-gene', 'sl-speed',
+  'lbl-U', 'lbl-gene', 'lbl-speed',
+  'measures', 'ro-U', 'ro-I', 'ro-v',
   'panel-hint'
 ];
 
@@ -113,12 +113,10 @@ function _fmtNum(x, dec) {
 
 function syncUIToSim() {
   _el['sl-U'].value       = sim.U_V;
-  _el['sl-valence'].value = sim.valence;
   _el['sl-gene'].value    = sim.geneIdx;
   _el['sl-speed'].value = SPEED_STEPS.indexOf(sim.speedFactor);
 
   _updateLabelU();
-  _updateLabelValence();
   _updateLabelGene();
   _el['lbl-speed'].textContent = sim.speedFactor.toFixed(2).replace('.', ',');
 
@@ -132,19 +130,6 @@ function syncUIToSim() {
 
 function _updateLabelU() {
   _el['lbl-U'].textContent = _fmtNum(sim.U_V, 1) + ' V';
-}
-
-// L'aide sous le curseur énonce explicitement la compensation des charges :
-// c'est là que se lit la neutralité du fil.
-function _updateLabelValence() {
-  _el['lbl-valence'].textContent = sim.valence;
-  // La légende affiche la charge réelle des ions, pas un « + » générique :
-  // c'est elle qui doit correspondre à ce qu'on lit dans les disques.
-  _el['legend-ion'].textContent = (sim.valence > 1 ? sim.valence : '') + '+';
-  _el['hint-valence'].textContent =
-    sim.nSites + ' ion' + (sim.nSites > 1 ? 's' : '') + ' '
-    + (sim.valence > 1 ? sim.valence : '') + '+ et '
-    + sim.nElec + ' électrons libres : le fil est neutre.';
 }
 
 function _updateLabelGene() {
@@ -182,7 +167,7 @@ function _updateTraceBtn() {
 
 function _updateArrowsBtn() {
   var b = _el['btn-arrows'];
-  b.textContent = sim.showArrows ? 'Masquer les flèches' : 'Afficher les flèches';
+  b.textContent = sim.showArrows ? 'Masquer le sens' : 'Sens des électrons';
   b.classList.toggle('active', sim.showArrows);
 }
 
@@ -211,17 +196,6 @@ function onSliderU(val) {
   sim.U_V = parseFloat(val);
   sim.snapMeasure = true;
   _updateLabelU();
-  updateReadouts();
-  sim.needsRedraw = true;
-}
-
-// ── Valence : électrons libérés par atome ──
-function onSliderValence(val) {
-  sim.valence = parseInt(val, 10);
-  sim.nElec   = sim.valence * sim.nSites;
-  syncElectronCount();
-  sim.snapMeasure = true;
-  _updateLabelValence();
   updateReadouts();
   sim.needsRedraw = true;
 }

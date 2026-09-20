@@ -98,19 +98,11 @@ var GENE_DEFAULT = 2;
 // toutes, pas à chaque image — le réseau reste strictement immobile.
 var LAT_JITTER = 0.045;
 
-// ── Valence : neutralité du milieu ─────────────────────────────────────
-// Le fil doit rester NEUTRE. Faire varier librement le nombre d'électrons
-// à réseau fixe le chargerait en permanence ; faire varier le nombre
-// d'ions changerait du même coup la fréquence des chocs, et le curseur de
-// densité se confondrait avec celui de gêne.
-// La sortie est celle de la physique réelle : un atome du réseau libère
-// k électrons et devient un ion k+. Le réseau ne bouge pas, le nombre
-// d'électrons vaut k × (nombre d'ions), et la compensation des charges est
-// exacte quel que soit k — elle est portée par la CHARGE des ions, pas par
-// leur nombre. k = 1 (cuivre), 2 (zinc), 3 (aluminium).
-var VALENCE_MIN     = 1;
-var VALENCE_MAX     = 3;
-var VALENCE_DEFAULT = 1;
+// ── Neutralité du milieu ───────────────────────────────────────────────
+// Le fil doit rester NEUTRE. Chaque atome du réseau libère un électron et
+// devient un ion +, comme dans le cuivre : le réseau ne bouge pas, le
+// nombre d'électrons vaut exactement le nombre d'ions, et la compensation
+// des charges est exacte.
 
 // ── Vitesse d'agitation thermique ──────────────────────────────────────
 // Exprimée en fraction de la hauteur intérieure du fil parcourue par
@@ -168,7 +160,7 @@ var VMAX_FACTOR = 6.0;
 // d'ions étant fixée par la géométrie du réseau, elle vaut k × (densité
 // d'ions) — donc I ∝ k × vdNorm, indépendamment de la taille du canvas.
 var VD_MM_PER_NORM = 0.290;  // mm/s pour vdNorm = 1
-var K_I            = 435;    // mA par unité de valence et de vdNorm
+var K_I            = 435;    // mA par unité de vdNorm
 
 // Constante de temps du lissage des mesures, en régime établi (ms).
 // Longue à dessein : la moyenne instantanée des vitesses de quelques
@@ -199,12 +191,11 @@ var sim = {
   // ── Commandes ──
   U_V       : 6,      // tension imposée aux bornes du fil (V), signée
   circuitOn : false,  // interrupteur du circuit (false = ouvert)
-  valence   : VALENCE_DEFAULT,   // électrons libérés par atome du réseau
   geneIdx   : GENE_DEFAULT,
 
-  // Déduits de la valence et de la géométrie (cf. updateGeometry) :
+  // Déduits de la géométrie (cf. updateGeometry) :
   nSites : 0,   // nombre d'ions du réseau
-  nElec  : 0,   // nombre d'électrons = valence × nSites
+  nElec  : 0,   // nombre d'électrons = nSites (un électron libéré par ion)
 
   paused       : false,
   speedFactor  : 1,
@@ -294,8 +285,8 @@ function updateGeometry() {
 
   // Le nombre d'électrons découle du réseau : autant de charges négatives
   // que le réseau porte de charges positives. Le fil est neutre par
-  // construction, à toute valence et à toute taille de fenêtre.
-  sim.nElec = sim.valence * sim.nSites;
+  // construction, à toute taille de fenêtre.
+  sim.nElec = sim.nSites;
 }
 
 // ── Positions des ions ─────────────────────────────────────────────────
@@ -422,9 +413,8 @@ function initElectrons() {
 }
 
 // Ajuste l'effectif sur sim.nElec sans réinitialiser les électrons déjà
-// présents : la valence se change pendant l'animation, et un simple
-// redimensionnement de la fenêtre fait varier le nombre de sites du
-// réseau, donc le nombre d'électrons.
+// présents : un redimensionnement de la fenêtre fait varier le nombre de
+// sites du réseau, donc le nombre d'électrons.
 function syncElectronCount() {
   var n = sim.nElec;
   var list = sim.electrons;
@@ -629,10 +619,10 @@ function updateMeasures(dtRealMs) {
 
   sim.vd_mm = sim.vdNorm * VD_MM_PER_NORM;
   // L'intensité est comptée positive dans le sens conventionnel, donc à
-  // l'opposé du déplacement des électrons. Elle suit la valence — la
-  // densité de porteurs — et non l'effectif affiché, qui ne dépend que de
-  // la longueur de fil montrée à l'écran.
-  sim.I_mA  = -K_I * sim.valence * sim.vdNorm;
+  // l'opposé du déplacement des électrons. Elle suit la densité de
+  // porteurs, et non l'effectif affiché, qui ne dépend que de la longueur
+  // de fil montrée à l'écran.
+  sim.I_mA  = -K_I * sim.vdNorm;
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -642,7 +632,6 @@ function updateMeasures(dtRealMs) {
 function resetSim() {
   sim.U_V         = 6;
   sim.circuitOn   = false;
-  sim.valence     = VALENCE_DEFAULT;
   sim.geneIdx     = GENE_DEFAULT;
   sim.paused      = false;
   sim.speedFactor = 1;
