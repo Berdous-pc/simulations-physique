@@ -239,6 +239,14 @@ function currentSign() {
   return sim.U_V > 0 ? 1 : -1;
 }
 
+// Polarité du générateur : elle ne dépend que du signe de la tension
+// imposée, pas de l'interrupteur — ouvrir le circuit n'échange pas les
+// bornes. 0 : tension nulle, aucune borne n'est marquée.
+function polaritySign() {
+  if (sim.U_V === 0) return 0;
+  return sim.U_V > 0 ? 1 : -1;
+}
+
 // ══════════════════════════════════════════════════════════════════════
 //  1. Schéma du circuit fermé
 // ══════════════════════════════════════════════════════════════════════
@@ -291,7 +299,7 @@ function _drawSchematic() {
   // Le courant sort par la borne + : pour un courant orienté vers la
   // droite dans le fil étudié, il remonte la branche droite et parcourt la
   // branche haute vers la gauche — la borne + est donc à gauche du symbole.
-  var plusLeft = (s >= 0);
+  var plusLeft = (polaritySign() >= 0);
 
   ctx.fillStyle = C_BG;
   ctx.beginPath();
