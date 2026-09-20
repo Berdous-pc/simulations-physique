@@ -27,7 +27,7 @@ var READOUT_PERIOD = 100;   // ms
 var _el = {};
 
 var _EL_IDS = [
-  'btn-circuit', 'btn-playpause', 'btn-trace', 'btn-measures',
+  'btn-circuit', 'btn-playpause', 'btn-trace', 'btn-arrows', 'btn-measures',
   'sl-U', 'sl-valence', 'sl-gene', 'sl-speed',
   'lbl-U', 'lbl-valence', 'lbl-gene', 'lbl-speed', 'hint-valence',
   'measures', 'ro-U', 'ro-I', 'ro-v', 'legend-ion',
@@ -125,6 +125,7 @@ function syncUIToSim() {
   _updateCircuitBtn();
   _updatePlayPauseBtn();
   _updateTraceBtn();
+  _updateArrowsBtn();
   _updateMeasuresBtn();
   updateReadouts();
 }
@@ -177,6 +178,12 @@ function _updateTraceBtn() {
   var on = (sim.tracedIdx >= 0);
   b.textContent = on ? 'Ne plus suivre' : 'Suivre un électron';
   b.classList.toggle('active', on);
+}
+
+function _updateArrowsBtn() {
+  var b = _el['btn-arrows'];
+  b.textContent = sim.showArrows ? 'Masquer les flèches' : 'Afficher les flèches';
+  b.classList.toggle('active', sim.showArrows);
 }
 
 function _updateMeasuresBtn() {
@@ -248,6 +255,14 @@ function toggleTrace() {
   sim.needsRedraw = true;
 }
 
+// ── Flèches de vitesse ──
+// Une flèche par électron, orientée selon sa vitesse instantanée.
+function toggleArrows() {
+  sim.showArrows = !sim.showArrows;
+  _updateArrowsBtn();
+  sim.needsRedraw = true;
+}
+
 // ── Affichage des mesures ──
 // Masque à la fois les afficheurs du panneau et les valeurs chiffrées
 // portées par le schéma : en projection pour une classe de Seconde, la
@@ -300,6 +315,8 @@ document.addEventListener('keydown', function (e) {
     toggleCircuit();
   } else if (e.key === 'e' || e.key === 'E') {
     toggleTrace();
+  } else if (e.key === 'f' || e.key === 'F') {
+    toggleArrows();
   }
 });
 

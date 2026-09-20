@@ -167,6 +167,11 @@ var sim = {
   speedFactor  : 1,
   showMeasures : true,
 
+  // Flèches de vitesse portées par chaque électron : elles rendent
+  // visible le fait que chaque direction individuelle reste tirée au
+  // hasard, même quand l'ensemble dérive dans un sens.
+  showArrows   : false,
+
   // ── Électrons ──
   // Tableau d'objets {x, y, vx, vy} en pixels / pixels par seconde.
   electrons : [],

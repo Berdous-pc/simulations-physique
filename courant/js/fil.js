@@ -44,6 +44,7 @@ var C_MINUS     = 'rgba(40,80,180,1)';
 var C_TRACE     = 'rgba(122,58,208,0.72)';
 var C_TRACED    = '#7a3ad0';
 var C_TRACED_ED = '#4d1f8c';
+var C_ARROW     = 'rgba(28,76,125,0.95)';   // flèche de vitesse
 
 // ── Dimensions courantes ───────────────────────────────────────────────
 var _cw = 0, _ch = 0, _dpr = 1;
@@ -444,6 +445,7 @@ function _drawTube() {
   _drawCations();
   _drawTrace();
   _drawElectrons();
+  if (sim.showArrows) _drawArrows();
 
   ctx.restore();
 }
@@ -499,6 +501,53 @@ function _drawElectrons() {
     ctx.fill();
     ctx.stroke();
     _drawSign(e.x, e.y, rr, false);
+  }
+}
+
+// Flèche de vitesse d'un électron.
+// Elle montre le SENS, pas la valeur : sa longueur est fixe. Les modules
+// individuels sont tous voisins de la vitesse d'agitation — la dérive n'en
+// est qu'une petite fraction —, des flèches à l'échelle seraient donc
+// toutes de même longueur à l'œil. Ce qui se lit ici, ce sont les
+// DIRECTIONS : circuit ouvert, elles pointent en tous sens ; circuit
+// fermé, elles penchent en moyenne du côté opposé au courant.
+function _drawArrows() {
+  var r   = sim.rElec;
+  var len = Math.max(6, r * 5.2);      // longueur totale, du bord du disque
+  var hd  = Math.max(3, len * 0.34);   // longueur de la pointe
+  var hw  = hd * 0.52;                 // demi-largeur de la pointe
+
+  ctx.lineWidth = Math.max(1, r * 0.55);
+  ctx.lineCap   = 'butt';
+
+  for (var i = 0; i < sim.electrons.length; i++) {
+    var e = sim.electrons[i];
+    var v = Math.sqrt(e.vx * e.vx + e.vy * e.vy);
+    if (v < 1e-6) continue;            // vitesse nulle : aucun sens à montrer
+    var ux = e.vx / v, uy = e.vy / v;
+
+    // La hampe part du BORD du disque et non de son centre : le signe
+    // « − » porté par l'électron reste lisible.
+    var x0 = e.x + ux * r,  y0 = e.y + uy * r;
+    var x1 = x0 + ux * len, y1 = y0 + uy * len;
+    var xb = x1 - ux * hd,  yb = y1 - uy * hd;   // base de la pointe
+    var px = -uy, py = ux;                       // normale unitaire
+
+    var col = (i === sim.tracedIdx) ? C_TRACED_ED : C_ARROW;
+    ctx.strokeStyle = col;
+    ctx.fillStyle   = col;
+
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(xb, yb);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(xb + px * hw, yb + py * hw);
+    ctx.lineTo(xb - px * hw, yb - py * hw);
+    ctx.closePath();
+    ctx.fill();
   }
 }
 
