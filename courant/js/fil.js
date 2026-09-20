@@ -345,12 +345,15 @@ function _drawSchematic() {
   ctx.beginPath(); ctx.arc(x2, swY, lw * 0.9, 0, 2 * Math.PI); ctx.fill();
   ctx.beginPath(); ctx.arc(x2, swCY - swHalf, lw * 0.9, 0, 2 * Math.PI); ctx.fill();
 
-  // ── Sens du courant sur les quatre branches ──
+  // ── Sens du courant le long du circuit ──
   if (s !== 0) {
     var tip = Math.max(4, lw * 2.4);
-    _currentTip(cx - (x2 - x1) * 0.30, y1, -s, 0, tip);              // branche haute
+    // Branche haute : deux repères symétriques de part et d'autre du
+    // générateur. La branche droite n'en porte pas : le repère y tombait
+    // juste sous l'interrupteur.
+    _currentTip(cx - (x2 - x1) * 0.30, y1, -s, 0, tip);              // branche haute, gauche
+    _currentTip(cx + (x2 - x1) * 0.30, y1, -s, 0, tip);              // branche haute, droite
     _currentTip(x1, (y1 + y2) / 2,      0,  s, tip);                 // branche gauche
-    _currentTip(x2, (y1 + y2) * 0.5 + (y2 - y1) * 0.30, 0, -s, tip); // branche droite
     _currentTip(cx + (x2 - x1) * 0.38, y2, s, 0, tip);               // branche basse
   }
 }
