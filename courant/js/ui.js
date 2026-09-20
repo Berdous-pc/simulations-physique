@@ -61,6 +61,12 @@ function loop(ts) {
     stepPhysics(dt);
     updateMeasures(dtReal);
 
+    // Le suivi peut s'être interrompu de lui-même (électron sorti du
+    // fil) : le bouton doit alors reprendre son libellé d'origine.
+    if (sim.tracedIdx < 0 && _el['btn-trace'].classList.contains('active')) {
+      _updateTraceBtn();
+    }
+
     _readoutTimer += dtReal;
     if (_readoutTimer >= READOUT_PERIOD) {
       updateReadouts();

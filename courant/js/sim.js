@@ -179,8 +179,10 @@ var MEASURE_TAU = 6000;
 // pression/, qui portent déjà ce curseur.
 var SPEED_STEPS = [0.10, 0.25, 0.50, 1.00];
 
-// Longueur maximale de la trace de l'électron suivi (points).
-var TRACE_MAX = 2200;
+// Longueur maximale de la trace de l'électron suivi (points, un par image).
+// Quelques secondes suffisent : au-delà, la trace remplit le fil et on ne
+// distingue plus le trajet récent du fouillis déjà parcouru.
+var TRACE_MAX = 300;
 
 // ══════════════════════════════════════════════════════════════════════
 //  État global
@@ -212,7 +214,7 @@ var sim = {
 
   // Électron suivi (indice dans `electrons`, -1 si aucun) et sa trace.
   // La trace est une suite de points {x, y, b} ; `b` marque une rupture
-  // de tracé (l'électron vient d'être réinjecté à l'autre extrémité).
+  // de tracé. Le suivi s'arrête dès que l'électron quitte le fil.
   tracedIdx : -1,
   trace     : [],
 
@@ -564,15 +566,17 @@ function stepPhysics(dtMs) {
       // L'électron qui sort est remplacé à l'instant même par un autre qui
       // entre par l'extrémité opposée : le nombre de charges négatives
       // dans le fil ne varie jamais, le milieu reste neutre.
+      // L'électron suivi n'est plus le même une fois réinjecté à l'autre
+      // bout : on abandonne le suivi plutôt que de raccorder deux trajets.
       var isTraced = (i === sim.tracedIdx);
       if (e.x > sim.tx2 - sim.rElec) {
         e.x = sim.tx1 + sim.rElec;
         e.y = yMin + Math.random() * (yMax - yMin);
-        if (isTraced) _pushTracePoint(e, true);
+        if (isTraced) clearTrace();
       } else if (e.x < sim.tx1 + sim.rElec) {
         e.x = sim.tx2 - sim.rElec;
         e.y = yMin + Math.random() * (yMax - yMin);
-        if (isTraced) _pushTracePoint(e, true);
+        if (isTraced) clearTrace();
       }
     }
   }
