@@ -410,10 +410,7 @@ function _drawCurrentArrow() {
 
   ctx.fillStyle = C_CURRENT;
   ctx.font = '700 ' + (F * 1.55).toFixed(1) + 'px "Segoe UI", Arial, sans-serif';
-  ctx.fillText('I', cx - s * half * 1.30, y);
-
-  ctx.font = '700 ' + (F * 0.88).toFixed(1) + 'px "Segoe UI", Arial, sans-serif';
-  ctx.fillText('sens conventionnel du courant', cx, y - F * 1.35);
+  ctx.fillText('I', cx, y - F * 1.25);
 }
 
 // ══════════════════════════════════════════════════════════════════════
