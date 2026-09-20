@@ -106,7 +106,7 @@ function _doResize() {
   var hTube  = usableH * 0.38;
 
   var yTop = pad;
-  _L.sy1 = yTop + hSchem * 0.20;
+  _L.sy1 = yTop + hSchem * 0.28;
   _L.sy2 = yTop + hSchem * 0.94;
 
   _L.arrowCY = yTop + hSchem + hGap + hArrow * 0.52;
@@ -119,8 +119,10 @@ function _doResize() {
   _L.tubeX1 = sideM;
   _L.tubeX2 = _cw - sideM;
 
-  sim.tx1 = _L.tubeX1 + _L.wall;
-  sim.tx2 = _L.tubeX2 - _L.wall;
+  // Les côtés gauche et droit n'ont PAS de paroi : le fil se prolonge
+  // hors du cadre, et l'intérieur va donc jusqu'aux bords extérieurs.
+  sim.tx1 = _L.tubeX1;
+  sim.tx2 = _L.tubeX2;
   sim.ty1 = _L.tubeY1 + _L.wall;
   sim.ty2 = _L.tubeY2 - _L.wall;
 
@@ -248,7 +250,8 @@ function _drawSchematic() {
   var s  = currentSign();
 
   // ── Coupure du fil là où se placent le générateur et l'interrupteur ──
-  var genHalf = (x2 - x1) * 0.045;          // demi-largeur de la coupure haute
+  var genR    = Math.max((x2 - x1) * 0.055, (y2 - y1) * 0.11);  // rayon du générateur
+  var genHalf = genR;                       // demi-largeur de la coupure haute
   var swHalf  = (y2 - y1) * 0.14;           // demi-hauteur de la coupure droite
   var swCY    = (y1 + y2) / 2;
 
@@ -284,49 +287,41 @@ function _drawSchematic() {
   ctx.textBaseline = 'bottom';
   ctx.fillText('portion de fil étudiée', cx, y2 - lw * 2.6);
 
-  // ── Générateur ──
-  // Barre longue et fine du côté de la borne +, barre courte et épaisse du
-  // côté de la borne −. Le courant sort par la borne + : pour un courant
-  // orienté vers la droite dans le fil étudié, il remonte la branche
-  // droite et parcourt la branche haute vers la gauche — la borne + est
-  // donc à gauche du symbole.
+  // ── Générateur : un cercle marqué G ──
+  // Le courant sort par la borne + : pour un courant orienté vers la
+  // droite dans le fil étudié, il remonte la branche droite et parcourt la
+  // branche haute vers la gauche — la borne + est donc à gauche du symbole.
   var plusLeft = (s >= 0);
-  var hLong    = (y2 - y1) * 0.30;
-  var hShort   = (y2 - y1) * 0.15;
-  var gGap     = genHalf * 0.62;
 
+  ctx.fillStyle = C_BG;
+  ctx.beginPath();
+  ctx.arc(cx, y1, genR, 0, 2 * Math.PI);
+  ctx.fill();
   ctx.strokeStyle = C_WIRE_HL;
-  ctx.lineCap     = 'butt';
-
-  ctx.lineWidth = Math.max(1.6, lw * 0.85);
-  ctx.beginPath();
-  ctx.moveTo(cx + (plusLeft ? -gGap : gGap), y1 - hLong / 2);
-  ctx.lineTo(cx + (plusLeft ? -gGap : gGap), y1 + hLong / 2);
+  ctx.lineWidth   = Math.max(1.6, lw * 0.9);
   ctx.stroke();
 
-  ctx.lineWidth = Math.max(3, lw * 2.1);
-  ctx.beginPath();
-  ctx.moveTo(cx + (plusLeft ? gGap : -gGap), y1 - hShort / 2);
-  ctx.lineTo(cx + (plusLeft ? gGap : -gGap), y1 + hShort / 2);
-  ctx.stroke();
-  ctx.lineCap = 'round';
+  ctx.fillStyle    = C_WIRE_HL;
+  ctx.font         = '700 ' + (genR * 1.15).toFixed(1) + 'px "Segoe UI", Arial, sans-serif';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('G', cx, y1 + genR * 0.04);
 
   // Étiquettes des bornes, sous la branche haute : posées à hauteur du fil
-  // elles se superposaient au trait, la coupure du fil étant plus étroite
-  // que l'écartement des deux étiquettes.
-  ctx.font         = '700 ' + (F * 1.25).toFixed(1) + 'px "Segoe UI", Arial, sans-serif';
+  // elles se superposaient au trait.
+  ctx.font         = '700 ' + (F * 1.7).toFixed(1) + 'px "Segoe UI", Arial, sans-serif';
   ctx.textBaseline = 'top';
-  ctx.textAlign    = 'center';
-  var lblY = y1 + hLong * 0.60;
+  var lblX = genR + F * 0.9;
+  var lblY = y1 + lw;
   ctx.fillStyle    = C_PLUS;
-  ctx.fillText('+', cx + (plusLeft ? -gGap : gGap), lblY);
+  ctx.fillText('+', cx + (plusLeft ? -lblX : lblX), lblY);
   ctx.fillStyle    = C_MINUS;
-  ctx.fillText('–', cx + (plusLeft ? gGap : -gGap), lblY);
+  ctx.fillText('–', cx + (plusLeft ? lblX : -lblX), lblY);
 
   ctx.fillStyle    = C_TEXT_SOFT;
   ctx.font         = '600 ' + (F * 0.82).toFixed(1) + 'px "Segoe UI", Arial, sans-serif';
   ctx.textBaseline = 'bottom';
-  ctx.fillText('générateur', cx, y1 - hLong * 0.62);
+  ctx.fillText('générateur', cx, y1 - genR * 1.35);
 
   // ── Interrupteur ──
   var swY = swCY + swHalf;                    // pivot, en bas de la coupure
@@ -418,18 +413,29 @@ function _drawCurrentArrow() {
 // ══════════════════════════════════════════════════════════════════════
 
 function _drawTube() {
-  var w = _L.wall;
+  var w  = _L.wall;
+  var x1 = _L.tubeX1, x2 = _L.tubeX2;
 
-  // Parois : un cadre épais dessiné par-dessus un fond plein.
+  // Seules les parois HAUTE et BASSE existent : ce sont elles qui arrêtent
+  // les électrons. À gauche et à droite le fil est ouvert — il se prolonge
+  // hors du cadre, et c'est par là que les électrons entrent et sortent.
+  ctx.fillStyle = C_TUBE_IN;
+  ctx.fillRect(x1, sim.ty1, x2 - x1, sim.ty2 - sim.ty1);
+
   ctx.fillStyle = C_WALL;
-  _roundRect(_L.tubeX1, _L.tubeY1, _L.tubeX2 - _L.tubeX1, _L.tubeY2 - _L.tubeY1, w * 0.9);
-  ctx.fill();
+  ctx.fillRect(x1, _L.tubeY1, x2 - x1, w);
+  ctx.fillRect(x1, sim.ty2,   x2 - x1, w);
+
+  // Le liseré foncé souligne les deux parois, dessus et dessous ; aucun
+  // trait vertical ne vient fermer les extrémités.
   ctx.strokeStyle = C_WALL_EDGE;
   ctx.lineWidth   = Math.max(1, w * 0.22);
+  ctx.beginPath();
+  ctx.moveTo(x1, _L.tubeY1); ctx.lineTo(x2, _L.tubeY1);
+  ctx.moveTo(x1, sim.ty1);   ctx.lineTo(x2, sim.ty1);
+  ctx.moveTo(x1, sim.ty2);   ctx.lineTo(x2, sim.ty2);
+  ctx.moveTo(x1, _L.tubeY2); ctx.lineTo(x2, _L.tubeY2);
   ctx.stroke();
-
-  ctx.fillStyle = C_TUBE_IN;
-  ctx.fillRect(sim.tx1, sim.ty1, sim.tx2 - sim.tx1, sim.ty2 - sim.ty1);
 
   // Tout ce qui suit est découpé aux bords intérieurs : un électron à
   // cheval sur une paroi, ou une trace qui déborde, serait dessiné
@@ -557,18 +563,12 @@ function _drawCote() {
   var y = _L.coteCY;
   var s = currentSign();
 
-  // ── Repères des bornes aux deux extrémités du fil ──
-  // Le courant entre dans le fil par l'extrémité reliée à la borne + du
-  // générateur, qui est donc au potentiel le plus élevé.
   var chipR = Math.max(7, F * 0.62);
-  if (s !== 0) {
-    _drawTerminalChip(_L.tubeX1 + chipR * 1.3, y, chipR, s > 0);
-    _drawTerminalChip(_L.tubeX2 - chipR * 1.3, y, chipR, s < 0);
-  }
 
-  // ── Cote U entre les deux extrémités ──
-  var inset = Math.max(chipR * 3.4, (_L.tubeX2 - _L.tubeX1) * 0.13);
-  var x1 = _L.tubeX1 + inset, x2 = _L.tubeX2 - inset;
+  // ── Cote U, sur TOUTE la longueur du fil ──
+  // Tracée avant les repères de bornes : ceux-ci se posent par-dessus ses
+  // extrémités, qu'ils masquent proprement.
+  var x1 = _L.tubeX1, x2 = _L.tubeX2;
 
   ctx.strokeStyle = 'rgba(90,106,120,0.65)';
   ctx.lineWidth   = Math.max(1, F * 0.10);
@@ -593,6 +593,14 @@ function _drawCote() {
 
   ctx.fillStyle = sim.circuitOn ? C_TEXT : C_TEXT_SOFT;
   ctx.fillText(label, (x1 + x2) / 2, y);
+
+  // ── Repères des bornes aux deux extrémités du fil ──
+  // Le courant entre dans le fil par l'extrémité reliée à la borne + du
+  // générateur, qui est donc au potentiel le plus élevé.
+  if (s !== 0) {
+    _drawTerminalChip(x1 + chipR * 1.3, y, chipR, s > 0);
+    _drawTerminalChip(x2 - chipR * 1.3, y, chipR, s < 0);
+  }
 }
 
 function _drawTerminalChip(x, y, r, isPlus) {

@@ -101,38 +101,56 @@ main {
   pointer-events: none;
 }
 
+/* Grille plutôt que flex : la pastille occupe une colonne de largeur fixe
+   (celle du cation, la plus grosse) où elle est centrée. Les centres de
+   l'ion et de l'électron sont alors alignés, malgré leurs tailles
+   différentes. */
 .legend-item {
-  display: flex;
+  display: grid;
+  grid-template-columns: clamp(12px, 2.9cqmin, 22px) auto;
   align-items: center;
   gap: clamp(4px, 1cqmin, 9px);
   white-space: nowrap;
 }
 
+.legend-dot { justify-self: center; }
+
+/* Les signes + et − sont des images SVG, ni des glyphes ni des barres en
+   pixels. La police ne centre pas ses glyphes dans leur cadre (le « + »
+   monte, le « − » flotte à mi-hauteur d'x), et une barre de hauteur fixe
+   en `position: absolute` tombe entre deux pixels dès que le disque,
+   dimensionné en `cqmin`, a une taille fractionnaire — elle paraît alors
+   décalée. Un SVG mis à l'échelle du disque reste centré à n'importe
+   quelle taille, comme le fait `_drawSign()` sur le canvas. */
 .legend-dot {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-weight: 700;
-  line-height: 1;
+  display: inline-block;
   border-radius: 50%;
   flex-shrink: 0;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 100% 100%;
+}
+
+.dot-elec {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Crect x='4' y='8.8' width='12' height='2.4' rx='1.2' fill='%23fff'/%3E%3C/svg%3E");
+}
+
+.dot-cation {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Crect x='4' y='8.8' width='12' height='2.4' rx='1.2' fill='%23fff'/%3E%3Crect x='8.8' y='4' width='2.4' height='12' rx='1.2' fill='%23fff'/%3E%3C/svg%3E");
 }
 
 .dot-cation {
   width:  clamp(12px, 2.9cqmin, 22px);
   height: clamp(12px, 2.9cqmin, 22px);
-  background: rgba(180,80,40,0.75);
+  background-color: rgba(180,80,40,0.75);
   border: 1px solid rgba(140,55,25,0.9);
-  font-size: clamp(9px, 2cqmin, 15px);
 }
 
 .dot-elec {
   width:  clamp(8px, 1.9cqmin, 15px);
   height: clamp(8px, 1.9cqmin, 15px);
-  background: #2a6aaa;
+  background-color: #2a6aaa;
   border: 1px solid #1c4c7d;
-  font-size: clamp(7px, 1.5cqmin, 12px);
 }
 
 /* ── Panneau droit ───────────────────────────────── */

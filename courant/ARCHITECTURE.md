@@ -207,11 +207,11 @@ fraction de la hauteur du canvas (rien n'est fixé en pixels) :
 
 | Bande | Part de la hauteur utile | Contenu |
 |---|---|---|
-| 1 | 0,30 | Schéma du circuit fermé : générateur (branche haute), interrupteur (branche droite), portion étudiée en gras (branche basse), triangles du sens du courant |
+| 1 | 0,30 | Schéma du circuit fermé : générateur — un cercle marqué **G** — sur la branche haute, interrupteur (branche droite), portion étudiée en gras (branche basse), triangles du sens du courant |
 | 2 | 0,09 | Traits de loupe, en pointillés, de la portion étudiée vers les coins du fil |
 | 3 | 0,11 | Flèche du sens conventionnel du courant (ou « aucun courant ») |
-| 4 | 0,38 | Le fil : parois, réseau d'ions, trace, électrons |
-| 5 | reste | Cote de la tension U et repères des bornes |
+| 4 | 0,38 | Le fil : parois haute et basse **seules** (les côtés sont ouverts : le fil se prolonge hors du cadre, et rien ne doit suggérer que les électrons y buttent), réseau d'ions, trace, électrons |
+| 5 | reste | Cote de la tension U, sur toute la longueur du fil, et repères des bornes posés par-dessus ses extrémités |
 
 `currentSign()` centralise le sens du courant (+1 vers la droite, 0 si le
 circuit est ouvert ou la tension nulle) : schéma, flèche et repères de bornes en
