@@ -34,12 +34,31 @@
 // transformer le fil en mur d'obstacles, et laissent chaque ion assez gros
 // à l'écran.
 //
-// Le pas VERTICAL vaut hauteur intérieure / 3 ; le pas HORIZONTAL en
-// découle (√3/2 du pas vertical, l'écartement d'un empilement compact).
-// Tout le reste — rayons, vitesses, accélération — s'exprime par rapport à
-// eux : la simulation est donc identique à toute taille de canvas.
+// Le pas de RÉFÉRENCE vaut hauteur intérieure / 3 ; le pas HORIZONTAL en
+// découle (√3/2 du pas de référence, l'écartement d'un empilement
+// compact). Tout le reste — rayons, vitesses, accélération — s'exprime par
+// rapport à eux : la simulation est donc identique à toute taille de
+// canvas.
 var ROWS      = 3;
-var COL_RATIO = 0.866;   // √3/2 : pas horizontal / pas vertical
+var COL_RATIO = 0.866;   // √3/2 : pas horizontal / pas de référence
+
+// ── Marge aux parois ───────────────────────────────────────────────────
+// Distance entre le centre des ions extrêmes (ceux des colonnes à 3) et la
+// paroi la plus proche, en fraction de la hauteur intérieure.
+// Un réseau strictement régulier la fixerait à 1/(2·ROWS) = 1/6 : les ions
+// seraient alors aussi espacés entre eux qu'ils le sont des parois. Mais
+// une paroi n'arrête que d'un côté, là où un ion arrête des deux : à marge
+// égale, le passage le long du mur est deux fois plus large que ceux du
+// centre, et il s'ouvre en deux couloirs continus qui longent tout le fil.
+// C'est la même canalisation que celle décrite plus bas pour les rangées,
+// et elle est pire : ces couloirs-là sont parfaitement rectilignes et
+// bordés par la paroi, donc un électron couché sur l'axe par le champ y
+// file d'un bout à l'autre du fil sans heurter un seul ion.
+// On resserre donc cette marge d'un facteur 1,5 (1/6 -> 1/9) et on répartit
+// la place ainsi libérée entre les rangées, ce qui dégage le centre du fil.
+// Le réseau garde exactement sa structure : trois rangées régulièrement
+// espacées, colonnes à 2 ions au milieu des creux, quinconce intact.
+var EDGE_FRAC = 1 / 9;
 
 // Rayon d'un électron, en fraction du pas du réseau.
 var RE_FRAC = 0.055;
@@ -68,7 +87,11 @@ var GENE_DEFAULT = 2;
 // les rangées se succèdent tous les DEMI-pas verticaux. Aucune ligne
 // horizontale ne passe entre elles dès que le rayon de collision dépasse
 // un quart du pas — c'est le cas sur presque toute la plage du curseur de
-// gêne. Il ne reste qu'au cran le plus faible une fente étroite, que
+// gêne. La marge aux parois resserrée (EDGE_FRAC) écarte les rangées les
+// unes des autres et rogne donc cette marge de sécurité : au cran de gêne
+// le plus faible, le rayon de collision ne dépasse plus le quart du pas
+// que de 10 %, contre 28 % avec un réseau régulier. C'est le décalage
+// aléatoire ci-dessous qui fait le reste. Il ne reste qu'au cran le plus faible une fente étroite, que
 // referme un décalage minime de chaque ion autour de son site.
 // Ce décalage est volontairement PETIT : au-delà, l'œil cesse de lire le
 // quinconce et ne voit plus qu'un semis d'ions. Il est tiré une fois pour
@@ -99,15 +122,32 @@ var VTH_FRAC = 0.90;
 // ── Accélération imposée par le champ ──────────────────────────────────
 // a = ACC_FRAC × hauteur intérieure × U  (px·s⁻²).
 // Calibrée pour qu'à U = 12 V et gêne « Moyenne » la vitesse de dérive
-// atteigne environ la moitié de la vitesse d'agitation : le mouvement
+// atteigne environ 0,62 fois la vitesse d'agitation : le mouvement
 // d'ensemble devient alors franchement visible sans que le fourmillement
 // disparaisse.
+// C'est aussi un PLAFOND, et non un simple choix d'esthétique. La
+// fréquence des chocs est proportionnelle à la vitesse TOTALE de
+// l'électron ; dès que la dérive devient comparable à l'agitation, tau
+// diminue quand U augmente et v = a·tau cesse d'être proportionnelle à U.
+// Mesuré à gêne « Moyenne », vd/U est constant à 1 % près de 3 à 9 V avec
+// les réglages actuels et ne fléchit qu'à 12 V. Monter encore le rapport
+// vd/vth — en augmentant ACC_FRAC, en baissant VTH_FRAC ou en rapetissant
+// les ions — le rend non monotone : passer de 6 V à 9 V ferait alors
+// BAISSER la dérive affichée. La loi d'Ohm prime sur la lisibilité du
+// mouvement d'ensemble, pour lequel la trace et les flèches de vitesse
+// sont les bons outils.
 var ACC_FRAC = 0.239;
 
 // Plafond de vitesse, en multiples de la vitesse d'agitation. Sert de
 // garde-fou numérique (gêne très faible + tension maximale) et borne le
 // nombre de sous-pas nécessaires contre le tunneling à travers un cation.
-var VMAX_FACTOR = 3.0;
+// À 3,0 il ne jouait plus ce rôle de garde-fou : il écrêtait en régime
+// normal jusqu'à 11 % des électrons à gêne « Très faible » sous 12 V, ce
+// qui rabotait la dérive là où elle est la plus grande. À 6,0 l'écrêtage
+// tombe sous 1,5 % dans le pire cas et devient négligeable partout
+// ailleurs, sans changer la dérive mesurée aux réglages courants. Le
+// nombre de sous-pas reste très en deçà de son propre plafond de 12.
+var VMAX_FACTOR = 6.0;
 
 // ── Étalonnage des grandeurs affichées ─────────────────────────────────
 // La simulation mesure une dérive en pixels ; on la ramène d'abord à une
@@ -115,7 +155,10 @@ var VMAX_FACTOR = 3.0;
 // rend indépendante de la taille du canvas, puis on l'étalonne sur des
 // ordres de grandeur réels.
 // Les réglages par défaut (U = 6 V, gêne « Moyenne ») donnent en régime
-// établi vdNorm ≈ 0,28 ; les deux constantes ci-dessous y calent 0,10 mm/s
+// établi vdNorm ≈ 0,345 — valeur mesurée sur 150 s et sur huit réseaux
+// tirés indépendamment (dispersion ±4 %), et indépendante de la taille de
+// la fenêtre à 2 % près ; les
+// deux constantes ci-dessous y calent 0,10 mm/s
 // — valeur typique de la vitesse de dérive dans un fil de cuivre d'un
 // circuit de TP — et 150 mA. Les deux affichages étant proportionnels à la
 // même mesure, ils restent toujours cohérents entre eux (I = n·e·S·v).
@@ -124,8 +167,8 @@ var VMAX_FACTOR = 3.0;
 // de fil, donc plus d'électrons, sans que l'intensité change. La densité
 // d'ions étant fixée par la géométrie du réseau, elle vaut k × (densité
 // d'ions) — donc I ∝ k × vdNorm, indépendamment de la taille du canvas.
-var VD_MM_PER_NORM = 0.36;   // mm/s pour vdNorm = 1
-var K_I            = 535;    // mA par unité de valence et de vdNorm
+var VD_MM_PER_NORM = 0.290;  // mm/s pour vdNorm = 1
+var K_I            = 435;    // mA par unité de valence et de vdNorm
 
 // Constante de temps du lissage des mesures, en régime établi (ms).
 // Longue à dessein : la moyenne instantanée des vitesses de quelques
@@ -185,7 +228,8 @@ var sim = {
   // ── Géométrie du fil, en pixels (calculée par fil.js) ──
   tx1 : 0, tx2 : 0,   // bords intérieurs gauche / droit
   ty1 : 0, ty2 : 0,   // bords intérieurs haut / bas
-  ax  : 0, ay  : 0,   // pas du réseau selon x et y
+  ax  : 0, ay  : 0,   // pas de référence du réseau selon x et y
+  ayLat : 0,          // pas vertical réel entre deux rangées
   cols : 0,           // nombre de colonnes d'ions (alternance 3 / 2)
 
   // Positions des ions : `latCols` les groupe par colonne (c'est ainsi que
@@ -228,6 +272,9 @@ function updateGeometry() {
   var innerH = sim.ty2 - sim.ty1;
   if (innerW <= 0 || innerH <= 0) return;
 
+  // Pas de référence : il fixe les rayons et le nombre de colonnes, et
+  // reste volontairement indépendant de la marge aux parois, pour que
+  // celle-ci ne déplace pas le calibrage du curseur de gêne.
   sim.ay = innerH / ROWS;
 
   // Nombre IMPAIR de colonnes : le réseau commence et finit alors par une
@@ -259,6 +306,13 @@ function updateGeometry() {
 function buildLattice() {
   sim.nSites = Math.ceil(sim.cols / 2) * ROWS + Math.floor(sim.cols / 2) * (ROWS - 1);
 
+  // Pas vertical RÉEL entre deux rangées d'une même colonne à 3. Il est
+  // plus grand que le pas de référence sim.ay, puisque la marge aux parois
+  // est resserrée et que la place gagnée revient au centre du fil.
+  var innerH = sim.ty2 - sim.ty1;
+  var yEdge  = EDGE_FRAC * innerH;
+  sim.ayLat  = (innerH - 2 * yEdge) / (ROWS - 1);
+
   if (sim.latOff.length !== sim.nSites) {
     sim.latOff = [];
     for (var k = 0; k < sim.nSites; k++) {
@@ -279,14 +333,14 @@ function buildLattice() {
     var col = [];
 
     for (var j = 0; j < count; j++) {
-      // Colonne pleine : ions au milieu des trois rangées.
-      // Colonne creuse : ions aux frontières entre rangées, donc décalés
-      // d'un demi-pas — c'est le quinconce.
-      var yBase = full ? (j + 0.5) : (j + 1);
+      // Colonne pleine : les ROWS rangées, de la marge haute à la marge
+      // basse. Colonne creuse : ions à mi-chemin entre deux rangées, donc
+      // décalés d'un demi-pas — c'est le quinconce.
+      var yBase = full ? j : (j + 0.5);
       var o = sim.latOff[n++];
       var ion = {
         x : sim.tx1 + (i + 0.5 + o.ox) * sim.ax,
-        y : sim.ty1 + (yBase + o.oy) * sim.ay
+        y : sim.ty1 + yEdge + (yBase + o.oy) * sim.ayLat
       };
       col.push(ion);
       sim.lattice.push(ion);
@@ -348,10 +402,12 @@ function _freePosition(e) {
     var dx = x - c.x, dy = y - c.y;
     if (dx * dx + dy * dy > rColl * rColl) { e.x = x; e.y = y; return; }
   }
-  // Repli (réseau très encombrant) : on pose l'électron au coin d'une
-  // cellule, le point le plus éloigné des cations voisins.
+  // Repli (réseau très encombrant) : on pose l'électron au point le plus
+  // éloigné des cations voisins — à l'aplomb d'une frontière de colonnes,
+  // et à un quart de pas d'une rangée, donc à mi-chemin entre une rangée
+  // d'une colonne à 3 et la rangée voisine d'une colonne à 2.
   e.x = sim.tx1 + sim.ax;
-  e.y = sim.ty1 + sim.ay;
+  e.y = sim.ty1 + EDGE_FRAC * (sim.ty2 - sim.ty1) + 0.25 * sim.ayLat;
 }
 
 function initElectrons() {

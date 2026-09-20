@@ -57,10 +57,21 @@ U et d'autant plus faible que les chocs sont fréquents.
 
 Les ions ne forment pas une grille carrée mais un **empilement compact**, celui
 d'un vrai cristal métallique : colonnes alternées de 3 puis 2 ions, celles à 2
-se logeant dans les creux de leurs voisines. Le pas vertical vaut
+se logeant dans les creux de leurs voisines. Le pas de **référence** vaut
 `hauteur intérieure / 3` ; le pas horizontal en découle (`COL_RATIO = √3/2` du
-pas vertical). Le nombre de colonnes est forcé **impair**, pour que le réseau
-commence et finisse par une colonne à 3 et reste symétrique.
+pas de référence). Le nombre de colonnes est forcé **impair**, pour que le
+réseau commence et finisse par une colonne à 3 et reste symétrique.
+
+Les rangées ne sont pas posées sur ce pas de référence : c'est `EDGE_FRAC` qui
+fixe la distance des ions extrêmes à la paroi, et le pas vertical réel
+(`sim.ayLat`) se déduit de ce qui reste. Un réseau strictement régulier
+donnerait `EDGE_FRAC = 1/(2·ROWS) = 1/6`, mais une paroi n'arrête que d'un côté
+là où un ion arrête des deux : à marge égale, le passage le long du mur est deux
+fois plus large que ceux du centre et forme **deux couloirs rectilignes** sur
+toute la longueur du fil — la canalisation décrite plus bas, en pire. La marge
+est donc resserrée d'un facteur 1,5 (`EDGE_FRAC = 1/9`) et la place gagnée
+revient au centre du fil. La structure est inchangée : trois rangées
+régulièrement espacées, colonnes à 2 au milieu des creux.
 
 Rayons, vitesses et accélération s'expriment tous en fraction de ce pas : **la
 simulation est identique à toute taille de canvas**, seule la longueur de fil
@@ -69,16 +80,17 @@ montrée change.
 | Constante | Valeur | Rôle |
 |---|---|---|
 | `ROWS` | 3 | Rangées d'ions (colonnes pleines) |
-| `COL_RATIO` | 0,866 | √3/2 : pas horizontal / pas vertical |
+| `COL_RATIO` | 0,866 | √3/2 : pas horizontal / pas de référence |
+| `EDGE_FRAC` | 1/9 | Ions extrêmes ↔ paroi, en fraction de la hauteur |
 | `RE_FRAC` | 0,11 | Rayon électron / pas du réseau |
 | `GENE_STEPS` | 0,105 → 0,30 | Rayon ion / pas, les 5 crans du curseur de gêne |
 | `LAT_JITTER` | 0,045 | Décalage résiduel des ions (cf. ci-dessous) |
 | `VALENCE_MIN/MAX` | 1 / 3 | Électrons libérés par atome |
 | `VTH_FRAC` | 0,90 | Vitesse d'agitation / hauteur intérieure, par seconde |
 | `ACC_FRAC` | 0,239 | Accélération par volt / hauteur intérieure |
-| `VMAX_FACTOR` | 3,0 | Plafond de vitesse (garde-fou anti-tunneling) |
-| `VD_MM_PER_NORM` | 0,36 | Étalonnage de la vitesse affichée (mm/s) |
-| `K_I` | 535 | Étalonnage de l'intensité affichée (mA) |
+| `VMAX_FACTOR` | 6,0 | Plafond de vitesse (garde-fou anti-tunneling) |
+| `VD_MM_PER_NORM` | 0,290 | Étalonnage de la vitesse affichée (mm/s) |
+| `K_I` | 435 | Étalonnage de l'intensité affichée (mA) |
 | `MEASURE_TAU` | 6000 ms | Constante de temps du lissage en régime établi |
 
 `nearestCation()` balaie la colonne qui contient le point et ses deux voisines,
@@ -99,8 +111,11 @@ message de la page — et une vitesse de dérive **plus que** proportionnelle à
 Le quinconce y répond presque seul : les rangées se succédant tous les
 **demi-pas** verticaux, aucune ligne horizontale ne passe entre elles dès que le
 rayon de collision dépasse le quart du pas — c'est le cas sur presque toute la
-plage du curseur de gêne. Il ne subsiste qu'au cran le plus faible une fente
-étroite, que referme `LAT_JITTER`, un décalage de ±4,5 % du pas tiré **une fois
+plage du curseur de gêne. La marge aux parois resserrée écarte les rangées les
+unes des autres et rogne cette marge de sécurité : au cran de gêne le plus
+faible, le rayon de collision ne dépasse plus le quart du pas que de 10 %,
+contre 28 % avec un réseau régulier. Il subsiste donc au cran le plus faible une
+fente étroite, que referme `LAT_JITTER`, un décalage de ±4,5 % du pas tiré **une fois
 pour toutes** (le réseau reste strictement immobile). Cette valeur est
 volontairement petite : à ±10 %, l'œil cessait de lire le quinconce et ne voyait
 plus qu'un semis d'ions.
@@ -131,7 +146,18 @@ d'électrons).
 La mesure brute est la moyenne des vitesses selon x, ramenée à une fraction de
 la vitesse d'agitation (`vdNorm`) — donc indépendante de la taille du canvas.
 Les réglages par défaut (U = 6 V, gêne « Moyenne », valence 1) donnent en régime
-établi `vdNorm ≈ 0,28`, calé sur **0,10 mm/s** et **150 mA**.
+établi `vdNorm ≈ 0,345` — mesuré sur 150 s et sur huit réseaux tirés
+indépendamment, dispersion ±4 % — calé sur **0,10 mm/s** et **150 mA**.
+
+Ce rapport `vdNorm` est aussi ce qui **plafonne** la lisibilité du mouvement
+d'ensemble. La fréquence des chocs est proportionnelle à la vitesse *totale* de
+l'électron : dès que la dérive devient comparable à l'agitation, τ diminue quand
+U augmente et `v = a·τ` cesse d'être proportionnelle à U. Mesuré à gêne
+« Moyenne », `vd/U` est constant à 4 % près de 3 à 9 V et ne fléchit que de 13 %
+à 12 V. Monter le rapport — en augmentant `ACC_FRAC`, en baissant `VTH_FRAC` ou
+en rapetissant les ions — le rend **non monotone** : à `VTH_FRAC = 0,85`, passer
+de 6 V à 9 V fait *baisser* la dérive affichée. La loi d'Ohm prime ; pour rendre
+la dérive plus lisible, les bons outils sont la trace et les flèches de vitesse.
 
 L'intensité suit la **densité** de porteurs, donc la valence, et **non**
 l'effectif affiché : une fenêtre plus large montre un plus long morceau de fil,
