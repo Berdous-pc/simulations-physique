@@ -42,7 +42,7 @@ var ROWS      = 3;
 var COL_RATIO = 0.866;   // √3/2 : pas horizontal / pas vertical
 
 // Rayon d'un électron, en fraction du pas du réseau.
-var RE_FRAC = 0.11;
+var RE_FRAC = 0.055;
 
 // ── Curseur « gêne au déplacement » ────────────────────────────────────
 // Il règle l'encombrement des ions du réseau, donc la fréquence des chocs,
@@ -232,7 +232,7 @@ function updateGeometry() {
   sim.ax = innerW / sim.cols;
 
   var a = Math.min(sim.ax, sim.ay);   // pas de référence pour les rayons
-  sim.rElec   = Math.max(1.5, a * RE_FRAC);
+  sim.rElec   = Math.max(0.75, a * RE_FRAC);
   sim.rCation = Math.max(2.5, a * GENE_STEPS[sim.geneIdx]);
 
   sim.vth     = VTH_FRAC * innerH;
