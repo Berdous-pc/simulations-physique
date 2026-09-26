@@ -223,8 +223,19 @@ function drawGraph() {
     etiquettes.push({ f: f, fi: fi });
     traceTangente(ctx, g, f.idx, f.t, true);
   });
+  // Pendant l'animation, la tangente suit le point courant de chaque
+  // voiture (bout de crayon) ; à l'arrêt, elle suit le curseur.
+  var courantes = [];
+  if (sim.tangente && sim.play) {
+    sim.voitures.forEach(function (v, i) {
+      var tc = tTraceVoiture(v);
+      if (tc <= 0) return;
+      courantes.push({ idx: i, t: tc });
+      traceTangente(ctx, g, i, tc, false);
+    });
+  }
   var apercu = null;
-  if (sim.tangente && graphHover && hoverCrossIdx < 0) {
+  if (sim.tangente && !sim.play && graphHover && hoverCrossIdx < 0) {
     apercu = pointCourbeProche(g, graphHover.x, graphHover.y);
     if (apercu) traceTangente(ctx, g, apercu.idx, apercu.t, false);
   }
@@ -250,6 +261,9 @@ function drawGraph() {
   etiquettes.forEach(function (e) {
     var cz = etiquetteTangente(ctx, g, e.f.idx, e.f.t, hoverCrossIdx === e.fi);
     if (cz) tangenteCrossZones.push({ idx: e.fi, x: cz.x, y: cz.y, r: cz.r });
+  });
+  courantes.forEach(function (c) {
+    etiquetteTangente(ctx, g, c.idx, c.t, false, true);
   });
   if (apercu) etiquetteTangente(ctx, g, apercu.idx, apercu.t, false, true);
   if (lecture) etiquetteTangente(ctx, g, lecture.idx, lecture.t, false, true, true);
