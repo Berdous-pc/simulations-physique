@@ -142,10 +142,12 @@ function premiereRacine(A, B, C) {
   return best;
 }
 
-// Date à laquelle le centre de la voiture franchit la ligne d'arrivée.
+// Date à laquelle la voiture a entièrement franchi la ligne d'arrivée
+// (arrière sur la ligne) : elle s'y immobilise, sa courbe s'arrête.
+// Une voiture posée sur l'arrivée (x0 = L) a déjà fini.
 function tArrivee(v) {
   if (v.x0 >= sim.L) return 0;
-  return premiereRacine(0.5 * v.a, v.v0, v.x0 - sim.L);
+  return premiereRacine(0.5 * v.a, v.v0, v.x0 - sim.L - VOITURE_LONGUEUR / 2);
 }
 
 // Date à laquelle la voiture, en reculant, atteint le bas de la piste :
@@ -169,11 +171,15 @@ function dureeCourse() {
   return Math.max(DUREE_MIN, Math.min(DUREE_MAX, d));
 }
 
-// Date à laquelle la voiture cesse de bouger (sortie), bornée à la course.
-function tFinVoiture(v) { return Math.min(tSortie(v), dureeCourse()); }
+// Date à laquelle la voiture cesse de bouger (arrivée ou sortie), bornée
+// à la course.
+function tFinVoiture(v) {
+  return Math.min(tArrivee(v), tSortie(v), dureeCourse());
+}
 
-// Date effective d'une voiture à l'instant t : figée à sa sortie de piste.
-function tEffectif(v, t) { return Math.min(t, tSortie(v)); }
+// Date effective d'une voiture à l'instant t : figée à l'arrivée ou à sa
+// sortie de piste.
+function tEffectif(v, t) { return Math.min(t, tArrivee(v), tSortie(v)); }
 
 function estSortie(v, t) { return t >= tSortie(v); }
 

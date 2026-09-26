@@ -62,13 +62,12 @@ Page **sans onglets** : pas de deep-linking `#hash`.
 - `margePiste()` : espace visible sous O et au-delà de l'arrivée
   (`max(5 m ; 7 % de L)`). Il contient au moins une voiture posée en
   `x = 0`, qui dépasse de 2 m en arrière de la ligne.
-- `tArrivee(v)` : premier passage du centre en `x = L`.
+- `tArrivee(v)` : premier passage du centre en `x = L + 2 m` (voiture
+  entièrement passée).
   `tSortie(v)` : premier passage en `x = −marge` (voiture qui recule).
   Toutes deux par `premiereRacine()`, racine exacte du trinôme.
-- Une voiture sortie **s'immobilise** (`tEffectif()` fige sa date) et sa
-  courbe s'arrête. Une voiture arrivée, elle, **continue** : l'équation
-  horaire reste valable, elle sort par le haut de la piste et sa courbe
-  par le haut du graphe.
+- Une voiture arrivée ou sortie **s'immobilise** (`tEffectif()` fige sa
+  date) et sa courbe s'arrête.
 - `dureeCourse()` : la course s'arrête quand la **dernière** voiture a fini
   (arrivée ou sortie), bornée à `[DUREE_MIN ; DUREE_MAX] = [2 ; 90] s` (une
   voiture à l'arrêt n'arrive jamais).
