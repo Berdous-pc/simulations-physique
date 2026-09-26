@@ -166,14 +166,21 @@ function apresModif() {
 //  Graphe affiché et outils
 // ══════════════════════════════════════════════════════════════════════
 
-function setModeGraphe(m) {
-  if (m !== 'v' && m !== 'a') m = 'x';
-  sim.mode = m;
-  ['x', 'v', 'a'].forEach(function (k) {
-    _el('btn-mode-' + k).classList.toggle('active', k === m);
+// Chaque graphe s'affiche ou se masque indépendamment ; aucun n'est
+// obligatoire (masquer x(t) évite de dévoiler l'allure des courbes).
+function toggleGraphe(m) {
+  sim.graphes[m] = !sim.graphes[m];
+  // Une tangente disparaît avec le graphe sur lequel on l'a posée.
+  if (!sim.graphes[m]) {
+    sim.tangentesFig = sim.tangentesFig.filter(function (f) { return f.mode !== m; });
+  }
+  majBtnGraphes();
+}
+
+function majBtnGraphes() {
+  ORDRE_GRAPHES.forEach(function (k) {
+    _el('btn-mode-' + k).classList.toggle('active', sim.graphes[k]);
   });
-  // Une tangente appartient à la courbe sur laquelle on l'a posée.
-  sim.tangentesFig = [];
   requestDraw();
 }
 
@@ -295,7 +302,8 @@ function razTout() {
   _el('sl-longueur').value = sim.L;
   _el('num-longueur').value = sim.L;
   construitVoitures();
-  setModeGraphe('x');
+  sim.graphes = { x: true, v: false, a: false };
+  majBtnGraphes();
   sim.tangente = false;
   sim.reticule = false;
   majBtnOutils();
@@ -341,7 +349,7 @@ function loop(ts) {
   if (!needsDraw) return;
   needsDraw = false;
   drawGraph();
-  // Après drawGraph : la piste lit `geoGraph`, qui vient d'être remis à
+  // Après drawGraph : la piste lit `geoPiste`, qui vient d'être remis à
   // jour, pour aligner les voitures sur leur point de courbe.
   drawPiste();
 }
@@ -353,7 +361,7 @@ function loop(ts) {
 function init() {
   chargeDefaut();
   construitVoitures();
-  setModeGraphe('x');
+  majBtnGraphes();
   majBtnOutils();
   majBtnPlay();
   onSpeed(_el('sl-speed').value);

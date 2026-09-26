@@ -6,18 +6,17 @@
 
 // ══════════════════════════════════════════════════════════════════════
 //  piste.js — Piste de course vue du dessus, à droite du graphe
-//  Dépend de sim.js et de graph.js (il lit `geoGraph`).
+//  Dépend de sim.js et de graph.js (il lit `geoPiste`).
 //
 //  Tout l'enjeu tient en une ligne, comme pour la fusée de la page
 //  Dérivée : une voiture en x est posée à l'ordonnée écran que le graphe
 //  x(t) donne à x. Les deux canevas sont voisins : on convertit par la
 //  différence de leurs rectangles à l'écran.
 //
-//  Les marges du repère ne dépendent que de la taille du canevas du
-//  graphe (cf. dessineRepere) : l'échelle de la piste se déduit donc de
-//  `geoGraph` quel que soit le graphe affiché. En x(t) elle coïncide
-//  exactement avec celle des ordonnées ; en vₓ(t) et aₓ(t) la piste garde
-//  la même échelle, seule la lecture horizontale n'a plus de sens.
+//  L'échelle de la piste est celle d'un x(t) seul occupant tout le
+//  canevas du graphe (`geoPiste`), quels que soient les graphes affichés.
+//  Quand x(t) est effectivement seul, elle coïncide avec ses ordonnées ;
+//  sinon la piste ne bouge pas, seule la lecture horizontale disparaît.
 // ══════════════════════════════════════════════════════════════════════
 
 'use strict';
@@ -48,7 +47,7 @@ function drawPiste() {
   var W = canvas.clientWidth, H = canvas.clientHeight;
   ctx.clearRect(0, 0, W, H);
 
-  var g = geoGraph;
+  var g = geoPiste;
   if (!g) return;
 
   // ── Passage des positions x aux ordonnées de ce canevas ──
@@ -116,7 +115,7 @@ function drawPiste() {
     var te = tEffectif(v, Math.max(0, sim.t));
     var yc = y(posX(v, te));
     var xc = tx0 + laneW * (i + 0.5);
-    if (sim.mode === 'x' && yc > -20 && yc < H + 20) {
+    if (xSeul() && yc > -20 && yc < H + 20) {
       ctx.save();
       ctx.strokeStyle = COUL_VOITURES[i].coul;
       ctx.globalAlpha = 0.8;

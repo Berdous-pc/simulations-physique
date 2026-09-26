@@ -5,17 +5,12 @@
 // ═══════════════════════════════════════════════════
 
 // ══════════════════════════════════════════════════════════════════════
-//  graph.js — Graphe x(t), vₓ(t) ou aₓ(t) : courbes des voitures écrites
-//  au fil de la course, chronomètre, tangentes et réticule.
+//  graph.js — Graphes x(t), vₓ(t), aₓ(t) (un, deux ou trois à la fois) :
+//  courbes des voitures écrites au fil de la course, chronomètre, tangentes et réticule.
 //  Dépend de sim.js.
 // ══════════════════════════════════════════════════════════════════════
 
 'use strict';
-
-// Géométrie du dernier tracé : piste.js la lit pour aligner les voitures
-// sur leur point de courbe, et les interactions souris pour convertir
-// pixels → unités.
-var geoGraph = null;
 
 // ══════════════════════════════════════════════════════════════════════
 //  Repère (repris de la page Dérivée) : deux axes fléchés tracés DANS la
@@ -160,7 +155,60 @@ function chevauche(a, b) {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-//  Tracé du graphe
+//  Disposition des graphes affichés, dans un seul canevas
+//  1 graphe : toute la zone. 2 graphes : l'un sous l'autre. 3 graphes :
+//  x(t) sur toute la largeur en haut, vₓ(t) et aₓ(t) côte à côte dessous.
+// ══════════════════════════════════════════════════════════════════════
+
+var ORDRE_GRAPHES = ['x', 'v', 'a'];
+
+function graphesVisibles() {
+  return ORDRE_GRAPHES.filter(function (m) { return sim.graphes[m]; });
+}
+
+// L'alignement voiture ↔ point de courbe n'existe que si x(t) est seul :
+// c'est alors lui qui occupe la hauteur sur laquelle la piste est calée.
+function xSeul() {
+  var l = graphesVisibles();
+  return l.length === 1 && l[0] === 'x';
+}
+
+function disposition(W, H) {
+  var l = graphesVisibles();
+  if (l.length === 1) return [{ mode: l[0], ox: 0, oy: 0, w: W, h: H }];
+  if (l.length === 2) {
+    var h2 = Math.round(H / 2);
+    return [{ mode: l[0], ox: 0, oy: 0,  w: W, h: h2 },
+            { mode: l[1], ox: 0, oy: h2, w: W, h: H - h2 }];
+  }
+  if (l.length === 3) {
+    var hh = Math.round(H / 2), wd = Math.round(W / 2);
+    return [{ mode: 'x', ox: 0,  oy: 0,  w: W,      h: hh },
+            { mode: 'v', ox: 0,  oy: hh, w: wd,     h: H - hh },
+            { mode: 'a', ox: wd, oy: hh, w: W - wd, h: H - hh }];
+  }
+  return [];
+}
+
+// Géométrie de chaque graphe tracé (coordonnées locales + décalage ox, oy
+// dans le canevas), pour les interactions souris.
+var panneaux = [];
+
+// Géométrie sur laquelle la piste se cale : celle d'un x(t) seul occupant
+// tout le canevas, même quand d'autres graphes (ou aucun) sont affichés.
+// La piste ne bouge ainsi jamais quand on coche ou décoche un graphe.
+var geoPiste = null;
+
+function calcGeoPiste(W, H) {
+  var padT = Math.max(26, Math.min(48, H * 0.09));
+  var padB = Math.max(26, Math.min(46, H * 0.09));
+  geoPiste = { padT: padT, plotH: H - padT - padB, s: echelleTexte(W, H) };
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Tracé des graphes
+//  sim.mode est posé sur le graphe en cours de tracé : les fonctions de
+//  sim.js (valeurMode, nomMode, vueGraphe…) lisent la bonne grandeur.
 // ══════════════════════════════════════════════════════════════════════
 
 // Survol souris (pixels CSS du canevas) et croix de fermeture des
@@ -170,7 +218,7 @@ var tangenteCrossZones = [];
 var hoverCrossIdx = -1;
 
 // Date jusqu'à laquelle la courbe d'une voiture est écrite : la date de la
-// course, arrêtée à la sortie de piste pour une voiture qui recule.
+// course, arrêtée à l'arrivée ou à la sortie de piste.
 function tTraceVoiture(v) { return Math.max(0, tEffectif(v, sim.t)); }
 
 function drawGraph() {
@@ -179,14 +227,65 @@ function drawGraph() {
   var ctx = canvas.getContext('2d');
   var W = canvas.clientWidth, H = canvas.clientHeight;
   ctx.clearRect(0, 0, W, H);
+  calcGeoPiste(W, H);
 
+  document.getElementById('reticule-tooltip').style.display = 'none';
+  tangenteCrossZones = [];
+  panneaux = [];
+
+  var disp = disposition(W, H);
+  document.getElementById('graph-btns').style.display = disp.length ? '' : 'none';
+  if (!disp.length) {
+    ctx.fillStyle = COUL.label;
+    ctx.font = '600 ' + Math.round(18 * echelleTexte(W, H)) + 'px "Segoe UI", Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Aucun graphe sélectionné', W / 2, H / 2);
+    return;
+  }
+
+  var modeSauve = sim.mode;
+  disp.forEach(function (p, k) {
+    sim.mode = p.mode;
+    ctx.save();
+    ctx.translate(p.ox, p.oy);
+    var g = dessinePanneau(ctx, p, k === 0, canvas);
+    ctx.restore();
+    if (g) {
+      g.ox = p.ox; g.oy = p.oy; g.mode = p.mode;
+      panneaux.push(g);
+    }
+  });
+  sim.mode = modeSauve;
+
+  // Filets de séparation entre les graphes.
+  ctx.strokeStyle = COUL.grille;
+  ctx.lineWidth = 1;
+  disp.forEach(function (p) {
+    ctx.beginPath();
+    if (p.oy > 0) { ctx.moveTo(p.ox, p.oy + 0.5); ctx.lineTo(p.ox + p.w, p.oy + 0.5); }
+    if (p.ox > 0) { ctx.moveTo(p.ox + 0.5, p.oy); ctx.lineTo(p.ox + 0.5, p.oy + p.h); }
+    ctx.stroke();
+  });
+}
+
+// Un graphe dans sa case (contexte déjà translaté en ox, oy).
+function dessinePanneau(ctx, p, premier, canvas) {
+  var W = p.w, H = p.h;
   var o = vueGraphe();
   o.xLabel = 't (s)';
   o.yLabel = nomMode() + ' (' + uniteMode() + ')';
   var g = dessineRepere(ctx, W, H, o);
-  geoGraph = g;
-  if (!g) return;
+  if (!g) return null;
   var s = g.s;
+
+  // Survol ramené aux coordonnées de la case (null hors de la case).
+  var hov = null;
+  if (graphHover &&
+      graphHover.x >= p.ox && graphHover.x < p.ox + W &&
+      graphHover.y >= p.oy && graphHover.y < p.oy + H) {
+    hov = { x: graphHover.x - p.ox, y: graphHover.y - p.oy };
+  }
 
   // ── Courbes, découpées au cadre ──
   ctx.save();
@@ -213,22 +312,24 @@ function drawGraph() {
     ctx.stroke();
   });
 
-  // ── Tangentes : figées, puis celle qui suit le curseur ──
+  // ── Tangentes : figées sur ce graphe, puis courantes ou au curseur ──
   var etiquettes = [];
-  tangenteCrossZones = [];
   sim.tangentesFig.forEach(function (f, fi) {
+    if (f.mode !== p.mode) return;
     var v = sim.voitures[f.idx];
     // Rembobiner efface la courbe : la tangente attend qu'elle revienne.
     if (!v || f.t > tTraceVoiture(v) + 1e-9) return;
     etiquettes.push({ f: f, fi: fi });
     traceTangente(ctx, g, f.idx, f.t, true);
   });
-  // Course entamée (lecture, pause ou rembobinage) : la tangente suit le
-  // point courant de chaque voiture (bout de crayon). Avant le départ et
-  // course terminée, elle suit le curseur. _rewind est posé par ui.js.
+  // Course entamée (lecture, pause ou rembobinage) : sur x(t), la tangente
+  // suit le point courant de chaque voiture (bout de crayon). Ailleurs, et
+  // avant le départ ou course terminée, elle suit le curseur. _rewind est
+  // posé par ui.js.
   var enCours = sim.play || _rewind || (sim.t > 0 && !sim.fini);
+  var animee = enCours && p.mode === 'x';
   var courantes = [];
-  if (sim.tangente && enCours) {
+  if (sim.tangente && animee) {
     sim.voitures.forEach(function (v, i) {
       var tc = tTraceVoiture(v);
       if (tc <= 0) return;
@@ -237,43 +338,45 @@ function drawGraph() {
     });
   }
   var apercu = null;
-  if (sim.tangente && !enCours && graphHover && hoverCrossIdx < 0) {
-    apercu = pointCourbeProche(g, graphHover.x, graphHover.y);
+  if (sim.tangente && !animee && hov && hoverCrossIdx < 0) {
+    apercu = pointCourbeProche(g, hov.x, hov.y);
     if (apercu) traceTangente(ctx, g, apercu.idx, apercu.t, false);
   }
   // Sans outil actif : le survol d'une courbe lit les coordonnées du point.
   var lecture = null;
-  if (!sim.tangente && !sim.reticule && graphHover && hoverCrossIdx < 0) {
-    lecture = pointCourbeProche(g, graphHover.x, graphHover.y);
+  if (!sim.tangente && !sim.reticule && hov && hoverCrossIdx < 0) {
+    lecture = pointCourbeProche(g, hov.x, hov.y);
     if (lecture) projectionsPoint(ctx, g, lecture.idx, lecture.t);
   }
 
   ctx.restore();
 
-  // ── Bouts de crayon, et report horizontal vers la piste en x(t) ──
+  // ── Bouts de crayon, et report horizontal vers la piste (x(t) seul) ──
   sim.voitures.forEach(function (v, i) {
     var tEnd = tTraceVoiture(v);
     var x = g.gx(tEnd), y = g.gy(valeurMode(v, tEnd));
     if (y < g.padT - 1 || y > g.y0 + 1) return;
-    if (sim.mode === 'x') traitVersPiste(ctx, g, W, x, y, COUL_VOITURES[i].coul);
+    if (xSeul()) traitVersPiste(ctx, g, W, x, y, COUL_VOITURES[i].coul);
     pastille(ctx, x, y, 6 * s, COUL_VOITURES[i].coul);
   });
 
   // ── Étiquettes des tangentes, par-dessus tout ──
   etiqPosees = [];
+  var m = p.mode;
   etiquettes.forEach(function (e) {
     var cz = etiquetteTangente(ctx, g, e.f.idx, e.f.t, hoverCrossIdx === e.fi,
-                               false, false, 'f' + e.f.idx + '@' + e.f.t);
-    if (cz) tangenteCrossZones.push({ idx: e.fi, x: cz.x, y: cz.y, r: cz.r });
+                               false, false, m + 'f' + e.f.idx + '@' + e.f.t);
+    if (cz) tangenteCrossZones.push({ idx: e.fi, x: cz.x + p.ox, y: cz.y + p.oy, r: cz.r });
   });
   courantes.forEach(function (c) {
-    etiquetteTangente(ctx, g, c.idx, c.t, false, true, false, 'c' + c.idx);
+    etiquetteTangente(ctx, g, c.idx, c.t, false, true, false, m + 'c' + c.idx);
   });
-  if (apercu) etiquetteTangente(ctx, g, apercu.idx, apercu.t, false, true, false, 'apercu');
-  if (lecture) etiquetteTangente(ctx, g, lecture.idx, lecture.t, false, true, true, 'lecture');
+  if (apercu) etiquetteTangente(ctx, g, apercu.idx, apercu.t, false, true, false, m + 'apercu');
+  if (lecture) etiquetteTangente(ctx, g, lecture.idx, lecture.t, false, true, true, m + 'lecture');
 
-  dessineChronometre(ctx, g);
-  dessineReticule(ctx, g, canvas);
+  if (premier) dessineChronometre(ctx, g);
+  dessineReticule(ctx, g, canvas, hov, p);
+  return g;
 }
 
 // Pointillé du bout de la courbe jusqu'au bord droit du canevas, où la
@@ -532,14 +635,12 @@ function etiquetteTangente(ctx, g, idx, t, survol, apercu, sansPente, cle) {
 //  Réticule libre : lignes croisées et bulle de coordonnées
 // ══════════════════════════════════════════════════════════════════════
 
-function dessineReticule(ctx, g, canvas) {
+// h : survol en coordonnées de la case p. La bulle est masquée par
+// drawGraph avant le tracé ; seule la case survolée la rallume.
+function dessineReticule(ctx, g, canvas, h, p) {
   var tip = document.getElementById('reticule-tooltip');
-  var h = graphHover;
   if (!sim.reticule || !h ||
-      h.x < g.x0 || h.x > g.x0 + g.plotW || h.y < g.padT || h.y > g.y0) {
-    tip.style.display = 'none';
-    return;
-  }
+      h.x < g.x0 || h.x > g.x0 + g.plotW || h.y < g.padT || h.y > g.y0) return;
   ctx.save();
   ctx.setLineDash([5, 4]);
   ctx.strokeStyle = 'rgba(44,62,80,0.55)';
@@ -557,8 +658,8 @@ function dessineReticule(ctx, g, canvas) {
   tip.innerHTML = 't = ' + fmtSmart(t) + ' s<br>' +
                   nomMode() + ' = ' + fmtSmart(z) + ' ' + uniteMode();
   tip.style.display = 'block';
-  tip.style.left = (r.left + h.x + 14) + 'px';
-  tip.style.top  = (r.top + h.y - 10) + 'px';
+  tip.style.left = (r.left + p.ox + h.x + 14) + 'px';
+  tip.style.top  = (r.top + p.oy + h.y - 10) + 'px';
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -606,11 +707,20 @@ function initGraphSouris() {
         return;
       }
     }
-    if (!sim.tangente || !geoGraph) return;
-    var pt = pointCourbeProche(geoGraph, p.x, p.y);
-    if (pt) {
-      sim.tangentesFig.push({ idx: pt.idx, t: pt.t });
-      requestDraw();
-    }
+    if (!sim.tangente) return;
+    // Graphe cliqué : la tangente est posée sur sa courbe (sim.mode le
+    // temps de la recherche, pour que valeurMode lise la bonne grandeur).
+    panneaux.forEach(function (g) {
+      var lx = p.x - g.ox, ly = p.y - g.oy;
+      if (lx < g.x0 || lx > g.x0 + g.plotW || ly < g.padT || ly > g.y0) return;
+      var modeSauve = sim.mode;
+      sim.mode = g.mode;
+      var pt = pointCourbeProche(g, lx, ly);
+      sim.mode = modeSauve;
+      if (pt) {
+        sim.tangentesFig.push({ idx: pt.idx, t: pt.t, mode: g.mode });
+        requestDraw();
+      }
+    });
   });
 }

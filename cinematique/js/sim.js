@@ -62,7 +62,8 @@ var VOITURE_LARGEUR  = 1.8;
 var sim = {
   L: 40,                  // longueur de piste : position de la ligne d'arrivée (m)
   voitures: [],           // [{x0, v0, a}] — rempli par chargeDefaut()
-  mode: 'x',              // graphe affiché : 'x' | 'v' | 'a'
+  graphes: { x: true, v: false, a: false },   // graphes affichés
+  mode: 'x',              // graphe en cours de tracé (posé par drawGraph)
 
   t: 0,                   // date courante de la course (s)
   play: false,
@@ -71,7 +72,7 @@ var sim = {
 
   tangente: false,        // mode tangente (clic sur une courbe)
   reticule: false,        // réticule libre
-  tangentesFig: []        // tangentes figées : [{idx, t}]
+  tangentesFig: []        // tangentes figées : [{idx, t, mode}]
 };
 
 var needsDraw = true;

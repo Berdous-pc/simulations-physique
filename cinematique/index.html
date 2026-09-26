@@ -118,13 +118,13 @@
 
       <div class="sep"></div>
 
-      <!-- ═══ Graphe affiché ═══ -->
+      <!-- ═══ Graphes affichés : un, deux, trois ou aucun ═══ -->
       <div class="panel-section">
-        <div class="section-title">Graphe</div>
+        <div class="section-title">Graphes</div>
         <div class="seg-toggle">
-          <button class="seg-btn active" id="btn-mode-x"  onclick="setModeGraphe('x')">x(t)</button>
-          <button class="seg-btn" id="btn-mode-v" onclick="setModeGraphe('v')">v<sub>x</sub>(t)</button>
-          <button class="seg-btn" id="btn-mode-a" onclick="setModeGraphe('a')">a<sub>x</sub>(t)</button>
+          <button class="seg-btn active" id="btn-mode-x" onclick="toggleGraphe('x')">x(t)</button>
+          <button class="seg-btn" id="btn-mode-v" onclick="toggleGraphe('v')">v<sub>x</sub>(t)</button>
+          <button class="seg-btn" id="btn-mode-a" onclick="toggleGraphe('a')">a<sub>x</sub>(t)</button>
         </div>
       </div>
 

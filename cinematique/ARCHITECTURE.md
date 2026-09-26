@@ -13,8 +13,8 @@ Une à trois voitures roulent en ligne droite, chacune avec une
 initiales `x₀`, `vₓ₀`, `aₓ`, et l'équation horaire
 `x(t) = ½·aₓ·t² + vₓ₀·t + x₀` est affichée sous chaque voiture.
 
-Le graphe choisi (`x(t)`, `vₓ(t)` ou `aₓ(t)`) **s'écrit pendant la course**.
-En `x(t)`, chaque voiture est tenue à la hauteur de son point de courbe,
+Les graphes cochés (`x(t)`, `vₓ(t)`, `aₓ(t)`, un, plusieurs ou aucun)
+**s'écrivent pendant la course**. Avec `x(t)` seul, chaque voiture est tenue à la hauteur de son point de courbe,
 exactement comme la fusée du mode décollage de `derivee/` : la courbe
 n'est pas une image du mouvement, elle en est le relevé.
 
@@ -35,7 +35,7 @@ cinematique/
 ```
 
 Ordre de chargement critique (scope global) : `sim.js` → `graph.js` →
-`piste.js` → `ui.js`. `piste.js` lit `geoGraph`, posé par `drawGraph()` :
+`piste.js` → `ui.js`. `piste.js` lit `geoPiste`, posé par `drawGraph()` :
 la piste est donc tracée **après** le graphe à chaque image.
 
 Page **sans onglets** : pas de deep-linking `#hash`.
@@ -45,7 +45,8 @@ Page **sans onglets** : pas de deep-linking `#hash`.
 ## 3. `sim.js`
 
 - **État `sim`** : longueur `L`, tableau `voitures` (`{x0, v0, a}`),
-  graphe affiché `mode` (`'x' | 'v' | 'a'`), date `t`, `play`/`fini`,
+  graphes affichés `graphes` (`{x, v, a}`), graphe en cours de tracé
+  `mode` (posé par `drawGraph()` pour chaque case), date `t`, `play`/`fini`,
   vitesse d'animation, outils (`tangente`, `reticule`, `tangentesFig`).
 - **Couleurs** : `COUL_VOITURES[i]` est partagée par la voiture, sa courbe
   et sa carte dans le panneau. Couleur et file suivent l'**emplacement** :
@@ -91,6 +92,14 @@ donne `x(t) = 2t + 9`.
 
 ## 4. `graph.js`
 
+- **Disposition** (`disposition()`), dans un seul canevas : 1 graphe =
+  toute la zone ; 2 = l'un sous l'autre ; 3 = `x(t)` en haut sur toute la
+  largeur, `vₓ(t)` et `aₓ(t)` côte à côte dessous. Aucun : message
+  « Aucun graphe sélectionné ». Chaque case est tracée par
+  `dessinePanneau()`, contexte translaté ; `panneaux` garde leur géométrie
+  pour la souris. Chronomètre dans la première case.
+- Tangentes figées rattachées à leur graphe (`{idx, t, mode}`). La
+  tangente au point courant (course entamée) ne concerne que `x(t)`.
 - `dessineRepere()` : repris de `derivee/courbe.js` (axes fléchés dans la
   fenêtre, graduations portées par les axes). Les marges ne dépendent que
   de la taille du canevas, quel que soit le graphe affiché.
@@ -113,7 +122,10 @@ donne `x(t) = 2t + 9`.
 
 ## 5. `piste.js`
 
-- Échelle verticale lue sur `geoGraph` (`padT`, `plotH`) et étendue de la
+- Échelle verticale lue sur `geoPiste` : celle d'un `x(t)` seul occupant
+  tout le canevas (`padT`, `plotH`), quels que soient les graphes cochés —
+  la piste ne bouge jamais. Report pointillé graphe → piste seulement si
+  `x(t)` est seul. Étendue de la piste et étendue de la
   piste, translatée par la différence des `getBoundingClientRect()` des
   deux canevas (même principe que `derivee/fusee.js`).
 - Décor : herbe à bandes de tonte (repère de défilement), asphalte en
