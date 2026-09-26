@@ -137,7 +137,7 @@ donne `x(t) = 2t + 9`.
   retrait de voiture) appelle `apresModif()` : la course revient à `t = 0`
   et se met en pause. La course affichée est toujours celle des valeurs du
   panneau.
-- Commandes reprises du décollage : Lancer/Pause (« Rejouer » à
+- Section « Contrôles » (en tête du panneau), commandes reprises du décollage : Lancer/Pause (« Rejouer » à
   l'arrivée), RAZ, curseur de vitesse `VITESSES = [0,1 ; 0,5 ; 1 ; 2 ; 5]`
   (×5 en plus : une course dure bien plus longtemps qu'un vol) et
   rembobinage à maintenir appuyé.

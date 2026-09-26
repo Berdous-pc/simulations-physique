@@ -52,56 +52,11 @@
 
       <div class="panel-title">Cinématique en 1 dimension</div>
 
-      <!-- ═══ Piste ═══ -->
-      <div class="panel-section">
-        <div class="section-title">Piste</div>
-        <div class="param-row param-inline">
-          <label for="num-longueur" class="p-nom">Longueur</label>
-          <input type="range" id="sl-longueur" min="20" max="200" step="10" value="100"
-                 oninput="onLongueur(this.value)">
-          <span class="param-field">
-            <input type="text" inputmode="decimal" class="param-num" id="num-longueur" value="100"
-                   title="Entre 20 et 200 m"
-                   onchange="onLongueurSaisie(this.value)"
-                   onblur="onLongueurSaisie(this.value)"
-                   onkeydown="if (event.key === 'Enter') this.blur();">
-            <span class="p-unite">m</span>
-          </span>
-        </div>
-      </div>
-
-      <div class="sep"></div>
-
-      <!-- ═══ Voitures : conditions initiales et équation horaire ═══
-           Les cartes sont construites par construitVoitures() (ui.js). -->
-      <div class="panel-section">
-        <div class="section-title">Voitures</div>
-        <div id="voitures-box"></div>
-        <button class="btn btn-ajouter" id="btn-ajouter" onclick="ajouteVoiture()">+ Ajouter une voiture</button>
-        <div class="input-hint eq-generale">
-          Équation horaire : x(t) = ½·a<sub>x</sub>·t² + v<sub>x0</sub>·t + x<sub>0</sub>
-        </div>
-      </div>
-
-      <div class="sep"></div>
-
-      <!-- ═══ Graphe affiché ═══ -->
-      <div class="panel-section">
-        <div class="section-title">Graphe</div>
-        <div class="seg-toggle">
-          <button class="seg-btn active" id="btn-mode-x"  onclick="setModeGraphe('x')">x(t)</button>
-          <button class="seg-btn" id="btn-mode-v" onclick="setModeGraphe('v')">v<sub>x</sub>(t)</button>
-          <button class="seg-btn" id="btn-mode-a" onclick="setModeGraphe('a')">a<sub>x</sub>(t)</button>
-        </div>
-      </div>
-
-      <div class="sep"></div>
-
-      <!-- ═══ Course : commandes de l'animation ═══
+      <!-- ═══ Contrôles : commandes de l'animation ═══
            Mêmes commandes que le décollage de la page « Dérivée » :
            Lancer/Pause, RAZ, curseur de vitesse et rembobinage maintenu. -->
       <div class="panel-section">
-        <div class="section-title">Course</div>
+        <div class="section-title">Contrôles</div>
         <div class="btn-row">
           <button id="btn-play" class="btn btn-play" onclick="togglePlay()">▶ Lancer</button>
           <button class="btn btn-raz" onclick="razCourse()">↺ RAZ</button>
@@ -132,7 +87,49 @@
 
       <div class="sep"></div>
 
-      <button class="btn btn-raz" onclick="razTout()">↺ Réinitialiser</button>
+      <!-- ═══ Piste ═══ -->
+      <div class="panel-section">
+        <div class="section-title">Piste</div>
+        <div class="param-row param-inline">
+          <label for="num-longueur" class="p-nom">Longueur</label>
+          <input type="range" id="sl-longueur" min="20" max="200" step="10" value="100"
+                 oninput="onLongueur(this.value)">
+          <span class="param-field">
+            <input type="text" inputmode="decimal" class="param-num" id="num-longueur" value="100"
+                   title="Entre 20 et 200 m"
+                   onchange="onLongueurSaisie(this.value)"
+                   onblur="onLongueurSaisie(this.value)"
+                   onkeydown="if (event.key === 'Enter') this.blur();">
+            <span class="p-unite">m</span>
+          </span>
+        </div>
+      </div>
+
+      <div class="sep"></div>
+
+      <!-- ═══ Voitures : conditions initiales et équation horaire ═══
+           Les cartes sont construites par construitVoitures() (ui.js). -->
+      <div class="panel-section">
+        <div class="section-title">Voitures</div>
+        <div id="voitures-box"></div>
+        <button class="btn btn-ajouter" id="btn-ajouter" onclick="ajouteVoiture()">+ Ajouter une voiture</button>
+        <div class="input-hint eq-generale">
+          Équation horaire : x(t) = ½·a<sub>x</sub>·t² + v<sub>x0</sub>·t + x<sub>0</sub>
+        </div>
+        <button class="btn btn-raz" style="margin-top:10px;" onclick="razTout()">↺ Réinitialiser</button>
+      </div>
+
+      <div class="sep"></div>
+
+      <!-- ═══ Graphe affiché ═══ -->
+      <div class="panel-section">
+        <div class="section-title">Graphe</div>
+        <div class="seg-toggle">
+          <button class="seg-btn active" id="btn-mode-x"  onclick="setModeGraphe('x')">x(t)</button>
+          <button class="seg-btn" id="btn-mode-v" onclick="setModeGraphe('v')">v<sub>x</sub>(t)</button>
+          <button class="seg-btn" id="btn-mode-a" onclick="setModeGraphe('a')">a<sub>x</sub>(t)</button>
+        </div>
+      </div>
 
     </div><!-- fin #panel-body -->
 
