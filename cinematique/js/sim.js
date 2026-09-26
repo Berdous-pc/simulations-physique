@@ -60,7 +60,7 @@ var VOITURE_LARGEUR  = 1.8;
 // ══════════════════════════════════════════════════════════════════════
 
 var sim = {
-  L: 30,                  // longueur de piste : position de la ligne d'arrivée (m)
+  L: 40,                  // longueur de piste : position de la ligne d'arrivée (m)
   voitures: [],           // [{x0, v0, a}] — rempli par chargeDefaut()
   mode: 'x',              // graphe affiché : 'x' | 'v' | 'a'
 
@@ -78,7 +78,7 @@ var needsDraw = true;
 function requestDraw() { needsDraw = true; }
 
 function chargeDefaut() {
-  sim.L = 30;
+  sim.L = 40;
   sim.voitures = [clone(VOITURES_DEFAUT[0])];
 }
 
