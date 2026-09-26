@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<!-- ════════════════════════════════════════════════════
+     Simulation pédagogique — Physique-Chimie Lycée
+     Auteur  : Mathieu Berdous
+     Licence : CC BY-NC 4.0 — https://creativecommons.org/licenses/by-nc/4.0/
+════════════════════════════════════════════════════ -->
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Simulation — Cinématique en 1 dimension : position, vitesse et accélération</title>
+  <meta name="author" content="Mathieu Berdous">
+  <meta name="copyright" content="Mathieu Berdous — CC BY-NC 4.0">
+  <meta name="description" content="Simulation interactive (Terminale) : course de voitures en ligne droite et tracé simultané des graphes x(t), vx(t) et ax(t) — conditions initiales, équation horaire et lien entre position, vitesse et accélération.">
+  <link rel="canonical" href="https://berdouspc.com/cinematique/">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>⚛️</text></svg>">
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<h1 class="sr-only">Simulation de cinématique en une dimension — position, vitesse et accélération de voitures en mouvement rectiligne</h1>
+
+<main>
+
+  <!-- ══════════════════════════════════════════════
+       COLONNE GAUCHE : graphe + piste de course
+  ══════════════════════════════════════════════ -->
+  <div id="left-col">
+
+    <!-- Graphe x(t), vx(t) ou ax(t) : il s'écrit pendant la course -->
+    <div class="chart-wrap" id="wrap-graph">
+      <canvas id="canvas-graph"></canvas>
+      <div id="graph-btns">
+        <button id="btn-tangente" onclick="toggleTangente()" title="Tangente">Tangente</button>
+        <button id="btn-reticule" onclick="toggleReticule()" title="Réticule libre">+</button>
+      </div>
+      <div id="reticule-tooltip"></div>
+    </div>
+
+    <!-- Piste vue du dessus : l'ordonnée d'une voiture est celle que le
+         graphe x(t) donne à sa position. -->
+    <div class="chart-wrap" id="wrap-piste">
+      <canvas id="canvas-piste"></canvas>
+    </div>
+
+  </div><!-- fin #left-col -->
+
+  <!-- ══════════════════════════════════════════════
+       PANNEAU DROIT
+  ══════════════════════════════════════════════ -->
+  <div id="panel">
+    <div id="panel-body">
+
+      <div class="panel-title">Cinématique en 1 dimension</div>
+
+      <!-- ═══ Piste ═══ -->
+      <div class="panel-section">
+        <div class="section-title">Piste</div>
+        <div class="param-row param-inline">
+          <label for="num-longueur" class="p-nom">Longueur</label>
+          <input type="range" id="sl-longueur" min="20" max="200" step="10" value="100"
+                 oninput="onLongueur(this.value)">
+          <span class="param-field">
+            <input type="text" inputmode="decimal" class="param-num" id="num-longueur" value="100"
+                   title="Entre 20 et 200 m"
+                   onchange="onLongueurSaisie(this.value)"
+                   onblur="onLongueurSaisie(this.value)"
+                   onkeydown="if (event.key === 'Enter') this.blur();">
+            <span class="p-unite">m</span>
+          </span>
+        </div>
+      </div>
+
+      <div class="sep"></div>
+
+      <!-- ═══ Voitures : conditions initiales et équation horaire ═══
+           Les cartes sont construites par construitVoitures() (ui.js). -->
+      <div class="panel-section">
+        <div class="section-title">Voitures</div>
+        <div id="voitures-box"></div>
+        <button class="btn btn-ajouter" id="btn-ajouter" onclick="ajouteVoiture()">+ Ajouter une voiture</button>
+        <div class="input-hint eq-generale">
+          Équation horaire : x(t) = ½·a<sub>x</sub>·t² + v<sub>x0</sub>·t + x<sub>0</sub>
+        </div>
+      </div>
+
+      <div class="sep"></div>
+
+      <!-- ═══ Graphe affiché ═══ -->
+      <div class="panel-section">
+        <div class="section-title">Graphe</div>
+        <div class="seg-toggle">
+          <button class="seg-btn active" id="btn-mode-x"  onclick="setModeGraphe('x')">x(t)</button>
+          <button class="seg-btn" id="btn-mode-v" onclick="setModeGraphe('v')">v<sub>x</sub>(t)</button>
+          <button class="seg-btn" id="btn-mode-a" onclick="setModeGraphe('a')">a<sub>x</sub>(t)</button>
+        </div>
+      </div>
+
+      <div class="sep"></div>
+
+      <!-- ═══ Course : commandes de l'animation ═══
+           Mêmes commandes que le décollage de la page « Dérivée » :
+           Lancer/Pause, RAZ, curseur de vitesse et rembobinage maintenu. -->
+      <div class="panel-section">
+        <div class="section-title">Course</div>
+        <div class="btn-row">
+          <button id="btn-play" class="btn btn-play" onclick="togglePlay()">▶ Lancer</button>
+          <button class="btn btn-raz" onclick="razCourse()">↺ RAZ</button>
+        </div>
+        <div class="param-row" style="margin-top:8px;">
+          <label>
+            Vitesse d'animation
+            <span class="param-value"><span id="lbl-speed">×1,00</span></span>
+          </label>
+          <div class="speed-line">
+            <button id="btn-rewind" class="btn-rewind" type="button"
+                    title="Maintenir pour rembobiner">⏪</button>
+            <div class="speed-col">
+              <input type="range" id="sl-speed"
+                     min="0" max="4" step="1" value="2"
+                     oninput="onSpeed(this.value)">
+              <div class="speed-ticks">
+                <span>×0,1</span>
+                <span>×0,5</span>
+                <span>×1</span>
+                <span>×2</span>
+                <span>×5</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sep"></div>
+
+      <button class="btn btn-raz" onclick="razTout()">↺ Réinitialiser</button>
+
+    </div><!-- fin #panel-body -->
+
+    <!-- ── Bandeau Informations ─────────────────── -->
+    <div class="panel-hint collapsed" id="panel-hint">
+      <div class="panel-hint-header">
+        <a class="panel-hint-menu-btn" href="../" title="Retour au menu principal">☰ Menu</a>
+        <span class="panel-hint-title">Informations</span>
+        <button class="panel-hint-toggle"
+                onclick="toggleHint()"
+                title="Afficher les instructions">▲</button>
+      </div>
+      <div class="panel-hint-body">
+        Chaque voiture roule en ligne droite avec une <strong>accélération
+        constante</strong> a<sub>x</sub>, à partir de sa position x<sub>0</sub>
+        et de sa vitesse v<sub>x0</sub> à t = 0. La position est repérée par le
+        <strong>centre</strong> de la voiture ; l'origine O est la ligne de départ.<br>
+        Sur le graphe <strong>x(t)</strong>, chaque voiture est à la hauteur de
+        son point de courbe : on voit la courbe s'écrire pendant la course.<br>
+        La course s'arrête quand la dernière voiture franchit l'arrivée. Une
+        voiture qui recule au-delà de la piste s'y arrête.<br>
+        <strong>Tangente</strong> : cliquer sur une courbe fige la tangente et
+        affiche sa pente. <strong>+</strong> : réticule de lecture.
+      </div>
+    </div>
+
+  </div><!-- fin #panel -->
+
+</main>
+
+<!-- ════════════════════════════════════════════════
+     Ordre de chargement : sim → graph → piste → ui
+════════════════════════════════════════════════ -->
+<script src="js/sim.js"></script>
+<script src="js/graph.js"></script>
+<script src="js/piste.js"></script>
+<script src="js/ui.js"></script>
+
+<script data-goatcounter="https://berdous-pc.goatcounter.com/count"
+        async src="https://gc.zgo.at/count.js"></script>
+</body>
+</html>

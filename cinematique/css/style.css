@@ -1,0 +1,588 @@
+/* ══════════════════════════════════════════════════
+   Simulation pédagogique — Physique-Chimie Lycée
+   Auteur  : Mathieu Berdous
+   Licence : CC BY-NC 4.0 — https://creativecommons.org/licenses/by-nc/4.0/
+══════════════════════════════════════════════════ */
+
+/* ── Reset & base ────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  white-space: nowrap;
+  border: 0;
+}
+
+body {
+  font-family: 'Segoe UI', Arial, sans-serif;
+  background: #e8e4de;
+  color: #2c3e50;
+  /* dvh : suit la hauteur réellement visible (barres dynamiques du navigateur) ;
+     vh reste le repli pour les navigateurs sans support dvh. */
+  height: 100vh;
+  max-height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* ── Grille principale ───────────────────────────── */
+main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr clamp(200px, 22vw, 300px);
+  min-height: 0;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+/* ── Colonne gauche : graphe puis piste ──────────── */
+#left-col {
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  padding: 10px;
+  /* Graphe et piste sont ACCOLÉS : le pointillé qui relie le bout de
+     chaque courbe à sa voiture passe d'un canevas à l'autre, et le
+     moindre écart le couperait en deux (même choix que la fusée de
+     la page « Dérivée »). */
+  gap: 0;
+}
+
+/* ── Zones de graphe ─────────────────────────────── */
+.chart-wrap {
+  position: relative;
+  min-height: 0;
+  min-width: 0;
+  background: #faf9f6;
+  border: 1px solid #c8c0b4;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  overflow: hidden;
+}
+
+.chart-wrap canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+#wrap-graph {
+  flex: 1 1 0;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+/* La piste garde une largeur bornée : trop étroite les files se
+   confondent, trop large elle mange la lecture du graphe. */
+#wrap-piste {
+  flex: 0 0 clamp(150px, 17vw, 260px);
+  background: #9cb98a;
+  border-left: 0;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+/* ── Boutons en overlay sur le graphe (charte : radioactivité) ── */
+#graph-btns {
+  position: absolute;
+  top: 10px;
+  right: 16px;
+  z-index: 10;
+  display: flex;
+  flex-direction: row;
+  gap: 6px;
+  align-items: center;
+}
+#graph-btns button {
+  height: 30px;
+  padding: 0 12px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 30px;
+  background: #e8e4de;
+  color: #5a6a78;
+  border: 1px solid #b0a898;
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+#btn-reticule { font-size: 20px !important; padding: 0 10px !important; }
+#graph-btns button:hover { background: #d0ccc4; color: #2c3e50; }
+#graph-btns button.active { background: #2a6aaa; color: #fff; border-color: #1a5a9a; }
+#graph-btns button.active:hover { background: #1a5a9a; color: #fff; }
+
+#reticule-tooltip {
+  display: none;
+  position: fixed;
+  z-index: 50;
+  background: #2c3e50;
+  color: #fff;
+  font-size: 13px;
+  font-family: monospace;
+  padding: 5px 10px;
+  border-radius: 5px;
+  pointer-events: none;
+  white-space: nowrap;
+  line-height: 1.6;
+}
+
+/* ── Panneau droit ───────────────────────────────── */
+#panel {
+  background: #e8e4de;
+  border-left: 1.5px solid #c8c0b4;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  font-size: clamp(11px, 1.1vw, 14px);
+  overflow: hidden;
+}
+
+#panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: clamp(10px, 1.2vw, 16px) clamp(10px, 1.2vw, 14px);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.panel-title {
+  font-size: clamp(14px, 1.4vw, 17px);
+  font-weight: 700;
+  color: #2c3e50;
+  text-align: center;
+  padding-bottom: clamp(8px, 1vw, 12px);
+  border-bottom: 1.5px solid #c8c0b4;
+  margin-bottom: clamp(8px, 1vw, 12px);
+  letter-spacing: 0.3px;
+}
+
+/* ── Section ─────────────────────────────────────── */
+.panel-section { margin-bottom: 8px; }
+
+.section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #7a8a96;
+  margin-bottom: 7px;
+}
+
+.sep {
+  border: none;
+  border-top: 1px solid #c8c0b4;
+  margin: 8px 0;
+}
+
+/* ── Boutons ─────────────────────────────────────── */
+.btn {
+  width: 100%;
+  border: none;
+  border-radius: 6px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 0.1s, background 0.15s;
+}
+.btn:active { transform: scale(0.97); }
+
+.btn-pause {
+  background: #c08020;
+  color: #fff;
+  font-size: clamp(14px, 1.4vw, 18px);
+  padding: 11px 6px;
+}
+.btn-pause:hover { background: #a06010; }
+
+.btn-play {
+  background: #2a8a50;
+  color: #fff;
+  font-size: clamp(14px, 1.4vw, 18px);
+  padding: 11px 6px;
+}
+.btn-play:hover { background: #1a6a38; }
+
+.btn-raz {
+  background: #dedad2;
+  color: #5a6a78;
+  font-size: clamp(12px, 1.2vw, 15px);
+  padding: 9px 6px;
+  border: 1.5px solid #c8c0b4;
+}
+.btn-raz:hover { background: #ccc8c0; }
+
+.btn-ajouter {
+  background: #d0e8d8;
+  color: #1a4a2a;
+  font-size: clamp(13px, 1.3vw, 16px);
+  padding: 9px 6px;
+  border: 1px solid #a8ccb4;
+}
+.btn-ajouter:hover { background: #bcdcc6; }
+
+/* Deux boutons côte à côte (Lancer/Pause + RAZ) : chacun garde son style,
+   seule la largeur devient partagée. RAZ reste étroit — son texte ne
+   change pas — pour laisser la place à Lancer/Pause/Rejouer. */
+.btn-row { display: flex; gap: 6px; }
+.btn-row > .btn { width: auto; }
+.btn-row > .btn-play,
+.btn-row > .btn-pause { flex: 1 1 auto; }
+.btn-row > .btn-raz   { flex: 0 0 auto; }
+
+/* ── Ligne « vitesse d'animation » : rembobinage puis curseur ──
+      Le bouton garde sa largeur d'icône, le curseur prend tout le reste,
+      et les graduations partagent sa colonne pour rester sous les crans. */
+.speed-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+}
+.speed-col {
+  flex: 1 1 auto;
+  min-width: 0;   /* sans quoi le curseur refuse de se comprimer */
+}
+
+.btn-rewind {
+  flex: 0 0 auto;
+  border: 1px solid #c8c0b4;
+  border-radius: 6px;
+  background: #ede9e2;
+  color: #5a6a78;
+  font-family: inherit;
+  font-size: clamp(11px, 1.1vw, 14px);
+  line-height: 1;
+  padding: 5px 8px;
+  cursor: pointer;
+  opacity: 0.75;
+  transition: transform 0.1s, background 0.15s, opacity 0.15s;
+  touch-action: none;   /* l'appui maintenu ne doit pas faire défiler la page */
+}
+.btn-rewind:hover  { opacity: 1; background: #dedad2; }
+.btn-rewind:active { transform: scale(0.97); }
+.btn-rewind.active {
+  opacity: 1;
+  background: #fde8c8;
+  color: #7a3a10;
+  border-color: #d0a060;
+}
+
+/* Cinq crans : quatre intervalles égaux, la dernière graduation calée à
+   droite sous le dernier cran. */
+.speed-ticks {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr) 0fr;
+  font-size: clamp(9px, 0.85vw, 11px);
+  color: #7a8a96;
+  padding: 0 7px;
+  line-height: 1;
+  margin-top: 1px;
+}
+.speed-ticks span:not(:last-child) { text-align: left; }
+.speed-ticks span:last-child { text-align: right; white-space: nowrap; }
+
+/* ── Sélecteur segmenté (choix exclusifs : graphe affiché) ── */
+.seg-toggle {
+  display: flex;
+  border: 1px solid #c8c0b4;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.seg-btn {
+  flex: 1;
+  padding: 8px 4px;
+  font-size: clamp(13px, 1.25vw, 16px);
+  font-weight: 700;
+  font-family: 'Cambria', Georgia, serif;
+  border: none;
+  background: #ece8e0;
+  color: #5a6a78;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.seg-btn:not(:last-child) { border-right: 1px solid #c8c0b4; }
+.seg-btn:hover  { background: #ddd8ce; }
+.seg-btn.active { background: #2a6aaa; color: #fff; }
+
+/* ── Paramètres ──────────────────────────────────── */
+.param-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 10px;
+}
+
+.param-row label {
+  font-size: clamp(12px, 1.25vw, 15px);
+  color: #2c3e50;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.p-unite {
+  color: #7a8a96;
+  font-weight: 400;
+  font-size: 0.88em;
+}
+
+/* Paramètre sur une ligne : nom, slider, saisie et unité. */
+.param-inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+.param-inline .p-nom {
+  display: inline-block;
+  font-size: clamp(12px, 1.25vw, 15px);
+  color: #2c3e50;
+  font-weight: 600;
+  flex: 0 0 auto;
+}
+
+.param-inline input[type="range"] {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Champ de saisie + unité, en bout de ligne. */
+.param-field {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.param-num {
+  width: clamp(46px, 5vw, 62px);
+  padding: 2px 5px;
+  border: 1px solid #c3d0da;
+  border-radius: 5px;
+  background: #fff;
+  color: #2a5080;
+  font-family: inherit;
+  font-weight: 600;
+  font-size: clamp(12px, 1.25vw, 15px);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.param-num:focus {
+  outline: none;
+  border-color: #4a7aaa;
+  box-shadow: 0 0 0 2px rgba(74, 122, 170, 0.18);
+}
+
+.param-value {
+  color: #2a5080;
+  font-weight: 600;
+  white-space: nowrap;
+  font-size: clamp(12px, 1.25vw, 15px);
+  font-variant-numeric: tabular-nums;
+}
+
+.param-row input[type="range"] {
+  width: 100%;
+  accent-color: #4a7aaa;
+  cursor: pointer;
+}
+
+.input-hint {
+  font-size: clamp(10px, 0.9vw, 13px);
+  color: #7a8a96;
+  line-height: 1.4;
+  font-weight: 400;
+}
+
+/* ── Cartes des voitures ─────────────────────────────
+      Une carte par voiture, liserée de SA couleur : la même que celle de
+      la voiture sur la piste et de sa courbe sur le graphe. */
+.car-card {
+  background: #fff;
+  border: 1px solid #c8c0b4;
+  border-left: 5px solid var(--car-coul, #2a6aaa);
+  border-radius: 6px;
+  padding: 6px 9px 7px;
+  margin-bottom: 8px;
+}
+
+.car-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 5px;
+}
+
+.car-nom {
+  font-size: clamp(12px, 1.2vw, 15px);
+  font-weight: 700;
+  color: var(--car-coul, #2a6aaa);
+}
+
+.car-suppr {
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-size: clamp(12px, 1.2vw, 15px);
+  font-weight: 700;
+  color: #a0aab4;
+  cursor: pointer;
+  padding: 0 3px;
+  line-height: 1;
+}
+.car-suppr:hover { color: #b04020; }
+
+/* Les trois conditions initiales sur une grille : nom, saisie, unité,
+   alignés d'une ligne à l'autre. */
+.car-grid {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 4px 6px;
+}
+
+.car-lbl {
+  font-size: clamp(12px, 1.2vw, 15px);
+  font-weight: 600;
+  font-family: 'Cambria', Georgia, serif;
+  color: #2c3e50;
+  white-space: nowrap;
+}
+
+.car-grid .param-num { width: 100%; }
+
+.car-grid .p-unite { white-space: nowrap; }
+
+/* Équation horaire, recalculée à chaque saisie. */
+.car-eq {
+  margin-top: 6px;
+  padding-top: 5px;
+  border-top: 1px dashed #d8d2c8;
+  font-family: 'Cambria', Georgia, serif;
+  font-size: clamp(14px, 1.45vw, 18px);
+  font-weight: 700;
+  color: var(--car-coul, #2a6aaa);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.eq-generale {
+  margin-top: 6px;
+  font-family: 'Cambria', Georgia, serif;
+}
+
+/* ── Bandeau Informations ────────────────────────── */
+.panel-hint {
+  flex-shrink: 0;
+  color: #5a6a78;
+  line-height: 1.5;
+  background: #fff;
+  border: 1.5px solid #b0a898;
+  /* Pas de bordure gauche propre : #panel a déjà la sienne sur ce bord
+     (cf. CONTEXTE_PROJET.md §5, évite le décalage sous-pixel entre deux
+     bordures superposées quand la largeur du panneau est en clamp()). */
+  border-left: none;
+  overflow: hidden;
+  transition: padding 0.2s;
+}
+
+.panel-hint strong { color: #2c3e50; }
+
+.panel-hint-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+}
+
+.panel-hint-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #7a8a96;
+  margin-left: auto;
+  margin-right: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panel-hint-menu-btn {
+  /* Lien deguise en bouton : conserve le rendu d'origine.
+     font-family : un <button> n'herite pas de la police du body,
+     un <a> oui — on fixe explicitement pour un rendu identique
+     sur tous les navigateurs. */
+  font-family: inherit;
+  text-decoration: none;
+  display: inline-block;
+  background: #f0f4f7;
+  border: 1px solid #c8d4dc;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  color: #4a5a68;
+  padding: 4px 9px;
+  line-height: 1.2;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.panel-hint-menu-btn:hover { background: #dde6ec; color: #2a6aaa; }
+
+.panel-hint-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: #7a8a96;
+  padding: 0 2px;
+  line-height: 1;
+  transition: transform 0.2s;
+}
+.panel-hint-toggle:hover { color: #2a6aaa; }
+
+.panel-hint-body {
+  font-size: clamp(11px, 1vw, 14px);
+  padding: 0 10px 8px;
+  /* Le texte peut dépasser la hauteur allouée : on le rend défilable
+     plutôt que rogné (overflow-x caché pour éviter une barre parasite). */
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  transition: max-height 0.25s ease, padding 0.25s ease;
+  max-height: 300px;
+}
+
+/* Barre de défilement discrète du bandeau Informations. */
+.panel-hint-body::-webkit-scrollbar { width: 8px; }
+.panel-hint-body::-webkit-scrollbar-track { background: transparent; }
+.panel-hint-body::-webkit-scrollbar-thumb {
+  background: #c8d4dc;
+  border-radius: 4px;
+}
+.panel-hint-body::-webkit-scrollbar-thumb:hover { background: #a8b8c4; }
+.panel-hint-body { scrollbar-width: thin; scrollbar-color: #c8d4dc transparent; }
+
+.panel-hint.collapsed .panel-hint-body {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.panel-hint:not(.collapsed) .panel-hint-toggle { transform: rotate(180deg); }
