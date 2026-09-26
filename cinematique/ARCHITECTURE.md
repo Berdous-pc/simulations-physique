@@ -52,7 +52,7 @@ Page **sans onglets** : pas de deep-linking `#hash`.
   et sa carte dans le panneau. Couleur et file suivent l'**emplacement** :
   retirer la voiture 2 fait de la 3 la nouvelle « Voiture 2 », en orange.
 - **Valeurs par défaut** par emplacement (`VOITURES_DEFAUT`) : uniforme,
-  départ arrêté puis accéléré, départ lancé puis freiné.
+  départ lent puis fortement accéléré, départ lancé puis freiné.
 - **Bornes** : `x₀ ∈ [0 ; L]`, `vₓ₀ ∈ [−20 ; 20] m/s`,
   `aₓ ∈ [−5 ; 5] m/s²`, `L ∈ [20 ; 200] m`.
 

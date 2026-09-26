@@ -34,12 +34,12 @@ var COUL_VOITURES = [
 ];
 
 // Conditions initiales proposées pour chaque emplacement : la première
-// voiture roule à vitesse constante, la deuxième démarre arrêtée et
+// voiture roule à vitesse constante, la deuxième part lentement et
 // accélère, la troisième part vite et freine. Trois allures de courbe
 // différentes dès qu'on ajoute les voitures.
 var VOITURES_DEFAUT = [
-  { x0: 9, v0: 2, a: 0 },
-  { x0: 0, v0: 0, a: 0.5 },
+  { x0: 9, v0: 7, a: 0 },
+  { x0: 0, v0: 2, a: 4 },
   { x0: 0, v0: 5, a: -0.1 }
 ];
 
