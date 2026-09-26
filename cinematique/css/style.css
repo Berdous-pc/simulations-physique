@@ -481,11 +481,6 @@ main {
   text-overflow: ellipsis;
 }
 
-.eq-generale {
-  margin-top: 6px;
-  font-family: 'Cambria', Georgia, serif;
-}
-
 /* ── Bandeau Informations ────────────────────────── */
 .panel-hint {
   flex-shrink: 0;
