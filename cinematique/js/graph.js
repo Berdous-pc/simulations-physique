@@ -357,7 +357,8 @@ function dessinePanneau(ctx, p, premier, canvas) {
     var x = g.gx(tEnd), y = g.gy(valeurMode(v, tEnd));
     if (y < g.padT - 1 || y > g.y0 + 1) return;
     if (xSeul()) traitVersPiste(ctx, g, W, x, y, COUL_VOITURES[i].coul);
-    pastille(ctx, x, y, 6 * s, COUL_VOITURES[i].coul);
+    // Course terminée : plus de point courant, la courbe est complète.
+    if (!sim.fini) pastille(ctx, x, y, 6 * s, COUL_VOITURES[i].coul);
   });
 
   // ── Étiquettes des tangentes, par-dessus tout ──
