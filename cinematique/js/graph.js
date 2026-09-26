@@ -223,10 +223,12 @@ function drawGraph() {
     etiquettes.push({ f: f, fi: fi });
     traceTangente(ctx, g, f.idx, f.t, true);
   });
-  // Pendant l'animation, la tangente suit le point courant de chaque
-  // voiture (bout de crayon) ; à l'arrêt, elle suit le curseur.
+  // Course entamée (lecture, pause ou rembobinage) : la tangente suit le
+  // point courant de chaque voiture (bout de crayon). Avant le départ et
+  // course terminée, elle suit le curseur. _rewind est posé par ui.js.
+  var enCours = sim.play || _rewind || (sim.t > 0 && !sim.fini);
   var courantes = [];
-  if (sim.tangente && sim.play) {
+  if (sim.tangente && enCours) {
     sim.voitures.forEach(function (v, i) {
       var tc = tTraceVoiture(v);
       if (tc <= 0) return;
@@ -235,7 +237,7 @@ function drawGraph() {
     });
   }
   var apercu = null;
-  if (sim.tangente && !sim.play && graphHover && hoverCrossIdx < 0) {
+  if (sim.tangente && !enCours && graphHover && hoverCrossIdx < 0) {
     apercu = pointCourbeProche(g, graphHover.x, graphHover.y);
     if (apercu) traceTangente(ctx, g, apercu.idx, apercu.t, false);
   }
