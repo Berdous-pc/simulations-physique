@@ -228,6 +228,12 @@ function drawGraph() {
     apercu = pointCourbeProche(g, graphHover.x, graphHover.y);
     if (apercu) traceTangente(ctx, g, apercu.idx, apercu.t, false);
   }
+  // Sans outil actif : le survol d'une courbe lit les coordonnées du point.
+  var lecture = null;
+  if (!sim.tangente && !sim.reticule && graphHover && hoverCrossIdx < 0) {
+    lecture = pointCourbeProche(g, graphHover.x, graphHover.y);
+    if (lecture) projectionsPoint(ctx, g, lecture.idx, lecture.t);
+  }
 
   ctx.restore();
 
@@ -246,6 +252,7 @@ function drawGraph() {
     if (cz) tangenteCrossZones.push({ idx: e.fi, x: cz.x, y: cz.y, r: cz.r });
   });
   if (apercu) etiquetteTangente(ctx, g, apercu.idx, apercu.t, false, true);
+  if (lecture) etiquetteTangente(ctx, g, lecture.idx, lecture.t, false, true, true);
 
   dessineChronometre(ctx, g);
   dessineReticule(ctx, g, canvas);
@@ -346,13 +353,29 @@ function traceTangente(ctx, g, idx, t, figee) {
   ctx.setLineDash([]);
 }
 
+// Lecture d'un point de courbe : pointillés jusqu'aux deux axes, comme
+// on lit une coordonnée sur un graphe papier.
+function projectionsPoint(ctx, g, idx, t) {
+  var px = g.gx(t), py = g.gy(valeurMode(sim.voitures[idx], t));
+  ctx.save();
+  ctx.strokeStyle = COUL_VOITURES[idx].coul;
+  ctx.globalAlpha = 0.8;
+  ctx.lineWidth = 1.4 * g.s;
+  ctx.setLineDash([5 * g.s, 4 * g.s]);
+  ctx.beginPath();
+  ctx.moveTo(px, py); ctx.lineTo(px, g.xAxeY);
+  ctx.moveTo(px, py); ctx.lineTo(g.yAxeX, py);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function tanFontSize(gW) {
   return Math.max(11, Math.min(26, Math.round(26 * gW / 1500)));
 }
 
 // Étiquette : coordonnées du point et pente. Renvoie la zone de la croix
 // de fermeture (tangente figée uniquement).
-function etiquetteTangente(ctx, g, idx, t, survol, apercu) {
+function etiquetteTangente(ctx, g, idx, t, survol, apercu, sansPente) {
   var v = sim.voitures[idx];
   var coul = COUL_VOITURES[idx].coul;
   var px = g.gx(t), py = g.gy(valeurMode(v, t));
@@ -370,10 +393,11 @@ function etiquetteTangente(ctx, g, idx, t, survol, apercu) {
 
   var fs = tanFontSize(g.plotW);
   ctx.font = fs + 'px monospace';
-  var lw = Math.max(ctx.measureText(line1).width, ctx.measureText(line2).width);
+  var lw = sansPente ? ctx.measureText(line1).width
+                     : Math.max(ctx.measureText(line1).width, ctx.measureText(line2).width);
   var PAD = Math.round(fs * 0.3), LINE_H = Math.round(fs * 1.25);
   var CROSS_W = apercu ? 0 : Math.round(fs * 0.9);
-  var boxW = lw + PAD * 2 + CROSS_W, boxH = LINE_H * 2 + PAD * 2;
+  var boxW = lw + PAD * 2 + CROSS_W, boxH = LINE_H * (sansPente ? 1 : 2) + PAD * 2;
 
   var lx = px + 12;
   if (lx + boxW > g.x0 + g.plotW) lx = px - 12 - boxW;
@@ -387,8 +411,10 @@ function etiquetteTangente(ctx, g, idx, t, survol, apercu) {
 
   ctx.fillStyle = '#fff'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
   ctx.fillText(line1, lx + PAD, ly + PAD + LINE_H / 2);
-  ctx.fillStyle = 'rgba(255,255,255,0.78)';
-  ctx.fillText(line2, lx + PAD, ly + PAD + LINE_H * 1.5);
+  if (!sansPente) {
+    ctx.fillStyle = 'rgba(255,255,255,0.78)';
+    ctx.fillText(line2, lx + PAD, ly + PAD + LINE_H * 1.5);
+  }
 
   var zone = null;
   if (!apercu) {
@@ -466,7 +492,7 @@ function initGraphSouris() {
     }
     canvas.style.cursor = hoverCrossIdx >= 0 ? 'pointer'
                         : (sim.tangente || sim.reticule) ? 'crosshair' : 'default';
-    if (sim.tangente || sim.reticule || tangenteCrossZones.length) requestDraw();
+    requestDraw();
   });
 
   canvas.addEventListener('pointerleave', function () {
