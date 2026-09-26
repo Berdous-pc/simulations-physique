@@ -446,13 +446,19 @@ main {
 }
 .car-suppr:hover { color: #b04020; }
 
-/* Les trois conditions initiales sur une grille : nom, saisie, unité,
-   alignés d'une ligne à l'autre. */
+/* Les trois conditions initiales sur une seule ligne : trois colonnes,
+   nom et unité au-dessus, saisie en dessous. */
 .car-grid {
   display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 4px 6px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.car-champ {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
 .car-lbl {
@@ -463,9 +469,14 @@ main {
   white-space: nowrap;
 }
 
-.car-grid .param-num { width: 100%; }
+.car-unite {
+  font-family: "Segoe UI", Arial, sans-serif;
+  font-weight: 400;
+  font-size: 0.85em;
+  color: #6a7a88;
+}
 
-.car-grid .p-unite { white-space: nowrap; }
+.car-grid .param-num { width: 100%; min-width: 0; }
 
 /* Équation horaire, recalculée à chaque saisie. */
 .car-eq {

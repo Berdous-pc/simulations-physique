@@ -45,14 +45,15 @@ function construitVoitures() {
     CHAMPS.forEach(function (c) {
       var b = bornes(c.id);
       var id = 'num-' + c.id + '-' + i;
-      html += '<label class="car-lbl" for="' + id + '">' + c.label + '</label>' +
+      html += '<div class="car-champ"><label class="car-lbl" for="' + id + '">' + c.label +
+              ' <span class="car-unite">(' + c.unite + ')</span></label>' +
               '<input type="text" inputmode="decimal" class="param-num" id="' + id + '"' +
               ' value="' + fmtNombre(v[c.id]) + '"' +
               ' title="Entre ' + fmtNombre(b.min) + ' et ' + fmtNombre(b.max) + ' ' + c.unite + '"' +
               ' onchange="onSaisie(' + i + ', \'' + c.id + '\', this.value)"' +
               ' onblur="onSaisie(' + i + ', \'' + c.id + '\', this.value)"' +
               ' onkeydown="if (event.key === \'Enter\') this.blur();">' +
-              '<span class="p-unite">' + c.unite + '</span>';
+              '</div>';
     });
     html += '</div><div class="car-eq" id="eq-' + i + '"></div></div>';
   });
