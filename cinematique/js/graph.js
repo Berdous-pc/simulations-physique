@@ -260,15 +260,17 @@ function drawGraph() {
   });
 
   // ── Étiquettes des tangentes, par-dessus tout ──
+  etiqPosees = [];
   etiquettes.forEach(function (e) {
-    var cz = etiquetteTangente(ctx, g, e.f.idx, e.f.t, hoverCrossIdx === e.fi);
+    var cz = etiquetteTangente(ctx, g, e.f.idx, e.f.t, hoverCrossIdx === e.fi,
+                               false, false, 'f' + e.f.idx + '@' + e.f.t);
     if (cz) tangenteCrossZones.push({ idx: e.fi, x: cz.x, y: cz.y, r: cz.r });
   });
   courantes.forEach(function (c) {
-    etiquetteTangente(ctx, g, c.idx, c.t, false, true);
+    etiquetteTangente(ctx, g, c.idx, c.t, false, true, false, 'c' + c.idx);
   });
-  if (apercu) etiquetteTangente(ctx, g, apercu.idx, apercu.t, false, true);
-  if (lecture) etiquetteTangente(ctx, g, lecture.idx, lecture.t, false, true, true);
+  if (apercu) etiquetteTangente(ctx, g, apercu.idx, apercu.t, false, true, false, 'apercu');
+  if (lecture) etiquetteTangente(ctx, g, lecture.idx, lecture.t, false, true, true, 'lecture');
 
   dessineChronometre(ctx, g);
   dessineReticule(ctx, g, canvas);
@@ -399,7 +401,13 @@ function tanFontSize(gW) {
 // Position de l'étiquette qui recouvre le moins de courbe : on essaie les
 // quatre coins autour du point, de plus en plus loin, et on compte les
 // points des courbes écrites (et de la tangente) tombant dans la boîte.
-function placeEtiquette(g, idx, t, px, py, w, h, avecTangente) {
+// Étiquettes déjà posées dans l'image en cours (remis à zéro par
+// drawGraph), et dernier emplacement choisi par étiquette : on n'en change
+// que si l'ancien devient nettement moins bon, pour éviter les sauts.
+var etiqPosees = [];
+var etiqMemo = {};
+
+function placeEtiquette(g, idx, t, px, py, w, h, avecTangente, cle) {
   var pts = [];
   sim.voitures.forEach(function (v) {
     var tEnd = tTraceVoiture(v);
@@ -429,24 +437,40 @@ function placeEtiquette(g, idx, t, px, py, w, h, avecTangente) {
   }
   var xMin = g.x0 + 2, xMax = g.x0 + g.plotW - w - 2;
   var yMin = g.padT + 2, yMax = g.y0 - h - 2;
-  var best = null;
+  function gene(x, y) {
+    for (var i = 0; i < etiqPosees.length; i++) {
+      var b = etiqPosees[i];
+      if (x < b.x + b.w + M && x + w + M > b.x && y < b.y + b.h + M && y + h + M > b.y) return 1;
+    }
+    return 0;
+  }
+  var best = null, garde = null;
   [12, 40, 80, 130].forEach(function (d) {
-    [[1, -1], [-1, -1], [1, 1], [-1, 1]].forEach(function (c) {
+    [[1, -1], [-1, -1], [1, 1], [-1, 1]].forEach(function (c, ci) {
       var x = c[0] > 0 ? px + d : px - d - w;
       var y = c[1] < 0 ? py - d - h : py + d;
       x = Math.max(xMin, Math.min(xMax, x));
       y = Math.max(yMin, Math.min(yMax, y));
       // À score égal, on préfère la position la plus proche du point.
-      var sc = score(x, y) * 1000 + d;
-      if (!best || sc < best.sc) best = { x: x, y: y, sc: sc };
+      // Chevaucher une autre étiquette coûte plus que tout recouvrement de
+      // courbe.
+      var sc = gene(x, y) * 1e6 + score(x, y) * 1000 + d;
+      var cand = { x: x, y: y, sc: sc, id: d + '/' + ci };
+      if (!best || sc < best.sc) best = cand;
+      if (cle && etiqMemo[cle] === cand.id) garde = cand;
     });
   });
+  // Hystérésis : l'ancien emplacement est conservé tant qu'il ne recouvre
+  // pas nettement plus de courbe (5 points) et ne gêne aucune étiquette.
+  if (garde && garde.sc < 1e6 && garde.sc <= best.sc + 5000) best = garde;
+  if (cle) etiqMemo[cle] = best.id;
+  etiqPosees.push({ x: best.x, y: best.y, w: w, h: h });
   return best;
 }
 
 // Étiquette : coordonnées du point et pente. Renvoie la zone de la croix
 // de fermeture (tangente figée uniquement).
-function etiquetteTangente(ctx, g, idx, t, survol, apercu, sansPente) {
+function etiquetteTangente(ctx, g, idx, t, survol, apercu, sansPente, cle) {
   var v = sim.voitures[idx];
   var coul = COUL_VOITURES[idx].coul;
   var px = g.gx(t), py = g.gy(valeurMode(v, t));
@@ -470,7 +494,7 @@ function etiquetteTangente(ctx, g, idx, t, survol, apercu, sansPente) {
   var CROSS_W = apercu ? 0 : Math.round(fs * 0.9);
   var boxW = lw + PAD * 2 + CROSS_W, boxH = LINE_H * (sansPente ? 1 : 2) + PAD * 2;
 
-  var pos = placeEtiquette(g, idx, t, px, py, boxW, boxH, !sansPente);
+  var pos = placeEtiquette(g, idx, t, px, py, boxW, boxH, !sansPente, cle);
   var lx = pos.x, ly = pos.y;
 
   ctx.fillStyle = 'rgba(44,62,80,0.88)';
