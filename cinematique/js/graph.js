@@ -339,18 +339,25 @@ function pointCourbeProche(g, hx, hy) {
   return best;
 }
 
+// Demi-longueur de la tangente, en fraction de l'axe des temps.
+var DEMI_TANGENTE = 0.15;
+
 function traceTangente(ctx, g, idx, t, figee) {
   var v = sim.voitures[idx];
   var y0 = valeurMode(v, t), p = penteMode(v, t);
-  var demi = (g.tMax - g.tMin) * 0.25;
-  ctx.strokeStyle = COUL_VOITURES[idx].coul;
-  ctx.lineWidth = (figee ? 2 : 1.8) * g.s;
-  ctx.setLineDash([6 * g.s, 4 * g.s]);
-  ctx.beginPath();
-  ctx.moveTo(g.gx(t - demi), g.gy(y0 - p * demi));
-  ctx.lineTo(g.gx(t + demi), g.gy(y0 + p * demi));
-  ctx.stroke();
-  ctx.setLineDash([]);
+  var demi = (g.tMax - g.tMin) * DEMI_TANGENTE;
+  var ax = g.gx(t - demi), ay = g.gy(y0 - p * demi);
+  var bx = g.gx(t + demi), by = g.gy(y0 + p * demi);
+  var ep = (figee ? 3 : 2.6) * g.s;
+  // Tirets sombres : la tangente se distingue de sa courbe même quand elle
+  // se confond avec (mouvement uniforme en x(t)).
+  // La couleur de la voiture reste sur la pastille et l'étiquette.
+  ctx.save();
+  ctx.strokeStyle = figee ? '#2c3e50' : 'rgba(44,62,80,0.8)';
+  ctx.lineWidth = ep;
+  ctx.setLineDash([9 * g.s, 5 * g.s]);
+  ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+  ctx.restore();
 }
 
 // Lecture d'un point de courbe : pointillés jusqu'aux deux axes, comme
@@ -371,6 +378,54 @@ function projectionsPoint(ctx, g, idx, t) {
 
 function tanFontSize(gW) {
   return Math.max(11, Math.min(26, Math.round(26 * gW / 1500)));
+}
+
+// Position de l'étiquette qui recouvre le moins de courbe : on essaie les
+// quatre coins autour du point, de plus en plus loin, et on compte les
+// points des courbes écrites (et de la tangente) tombant dans la boîte.
+function placeEtiquette(g, idx, t, px, py, w, h, avecTangente) {
+  var pts = [];
+  sim.voitures.forEach(function (v) {
+    var tEnd = tTraceVoiture(v);
+    if (tEnd <= 0) return;
+    var N = Math.max(40, Math.ceil(g.plotW * tEnd / (g.tMax - g.tMin) / 3));
+    for (var k = 0; k <= N; k++) {
+      var tk = tEnd * k / N;
+      pts.push([g.gx(tk), g.gy(valeurMode(v, tk))]);
+    }
+  });
+  if (avecTangente) {
+    var v = sim.voitures[idx], y0 = valeurMode(v, t), p = penteMode(v, t);
+    var demi = (g.tMax - g.tMin) * DEMI_TANGENTE;
+    for (var j = -40; j <= 40; j++) {
+      var dt = demi * j / 40;
+      pts.push([g.gx(t + dt), g.gy(y0 + p * dt)]);
+    }
+  }
+  var M = 4;
+  function score(x, y) {
+    var n = 0;
+    for (var i = 0; i < pts.length; i++) {
+      var q = pts[i];
+      if (q[0] > x - M && q[0] < x + w + M && q[1] > y - M && q[1] < y + h + M) n++;
+    }
+    return n;
+  }
+  var xMin = g.x0 + 2, xMax = g.x0 + g.plotW - w - 2;
+  var yMin = g.padT + 2, yMax = g.y0 - h - 2;
+  var best = null;
+  [12, 40, 80, 130].forEach(function (d) {
+    [[1, -1], [-1, -1], [1, 1], [-1, 1]].forEach(function (c) {
+      var x = c[0] > 0 ? px + d : px - d - w;
+      var y = c[1] < 0 ? py - d - h : py + d;
+      x = Math.max(xMin, Math.min(xMax, x));
+      y = Math.max(yMin, Math.min(yMax, y));
+      // À score égal, on préfère la position la plus proche du point.
+      var sc = score(x, y) * 1000 + d;
+      if (!best || sc < best.sc) best = { x: x, y: y, sc: sc };
+    });
+  });
+  return best;
 }
 
 // Étiquette : coordonnées du point et pente. Renvoie la zone de la croix
@@ -399,10 +454,8 @@ function etiquetteTangente(ctx, g, idx, t, survol, apercu, sansPente) {
   var CROSS_W = apercu ? 0 : Math.round(fs * 0.9);
   var boxW = lw + PAD * 2 + CROSS_W, boxH = LINE_H * (sansPente ? 1 : 2) + PAD * 2;
 
-  var lx = px + 12;
-  if (lx + boxW > g.x0 + g.plotW) lx = px - 12 - boxW;
-  var ly = py - boxH - 6;
-  if (ly < g.padT) ly = py + 8;
+  var pos = placeEtiquette(g, idx, t, px, py, boxW, boxH, !sansPente);
+  var lx = pos.x, ly = pos.y;
 
   ctx.fillStyle = 'rgba(44,62,80,0.88)';
   ctx.beginPath(); ctx.roundRect(lx, ly, boxW, boxH, 4); ctx.fill();
