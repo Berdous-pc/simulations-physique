@@ -32,11 +32,25 @@ function resize() {
   canvas.height = Math.round(cssH * dpr);
   const ctx = canvas.getContext('2d');
   ctx.setTransform(cssW * dpr / STAGE_W, 0, 0, cssH * dpr / STAGE_H, 0, 0);   // dessin exprimé en unités de scène fixes
+  /* Portion de la scène visible dans le conteneur (le reste est rogné). */
+  const visW = Math.min(STAGE_W, wrapW / scale), visH = Math.min(STAGE_H, wrapH / scale);
+  stageView = {
+    x0: (STAGE_W - visW) / 2, x1: (STAGE_W + visW) / 2,
+    y0: (STAGE_H - visH) / 2, y1: (STAGE_H + visH) / 2,
+  };
   computeCrystalGeometry();
   drawScene();
   if (state.onglet === 'dissolution') dissResize();
 }
 window.addEventListener('resize', resize);
+/* Le conteneur peut changer de taille sans resize de fenêtre (repli d'un
+   bandeau, plein écran, mise en page) : on le surveille directement. */
+if (window.ResizeObserver) {
+  new ResizeObserver(() => {
+    const wrap = document.getElementById('anim-canvas-wrap');
+    if (wrap && wrap.clientWidth && state.onglet === 'mecanisme') resize();
+  }).observe(document.getElementById('anim-canvas-wrap'));
+}
 
 /* Convertit un événement souris sur le canvas (e.offsetX/offsetY, en pixels
    CSS réellement affichés) en unités de scène (0..STAGE_W / 0..STAGE_H) —

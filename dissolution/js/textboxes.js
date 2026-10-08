@@ -37,6 +37,12 @@ function wrapTextBoxLines(ctx, text, maxW) {
   return lines;
 }
 
+/* Zone de la scène réellement visible (unités de scène), tenue à jour par
+   resize() (ui.js) : en mode « cover », une fenêtre moins large que la scène
+   en rogne les bords gauche/droit (ou haut/bas). Les boîtes y sont recadrées. */
+let stageView = { x0: 0, y0: 0, x1: STAGE_W, y1: STAGE_H };
+const TEXT_BOX_MARGIN = 12;   // marge minimale entre une boîte et le bord visible
+
 function drawTextBoxes(ctx) {
   TEXT_BOXES.forEach(box => {
     const endMs = box.atMs + box.durationMs;
@@ -53,15 +59,43 @@ function drawTextBoxes(ctx) {
     ctx.save();
     ctx.globalAlpha = alpha;
 
+    /* Mise en page d'abord : la hauteur est déduite du texte mesuré avec la
+       police réellement utilisée (Segoe UI n'existe pas partout), jamais de
+       box.h, qui n'est valable que pour la police de calage. */
+    const view = stageView;
+    const w = Math.min(box.w, view.x1 - view.x0 - TEXT_BOX_MARGIN * 2);
+    const innerW = w - TEXT_BOX_PADDING * 2;
+    const titleSize = box.fontSize * TEXT_BOX_TITLE_SCALE;
+    const titleLineH = titleSize * 1.25;
+    const bodyLineH = box.fontSize * 1.3;
+    const titleFont = 'bold ' + titleSize + "px 'Segoe UI', Arial, sans-serif";
+    const bodyFont = (box.bold ? 'bold ' : '') + box.fontSize + "px 'Segoe UI', Arial, sans-serif";
+
+    let titleLines = [];
+    if (box.title) {
+      ctx.font = titleFont;
+      titleLines = wrapTextBoxLines(ctx, box.title, innerW);
+    }
+    ctx.font = bodyFont;
+    const bodyLines = wrapTextBoxLines(ctx, box.text, innerW);
+
+    const h = TEXT_BOX_PADDING * 2 + bodyLines.length * bodyLineH +
+      (titleLines.length ? titleLines.length * titleLineH + TEXT_BOX_TITLE_GAP : 0);
+
+    /* Recadrage dans la zone visible (si la boîte est plus haute que la zone,
+       elle reste collée en haut). */
+    const x = Math.max(view.x0 + TEXT_BOX_MARGIN, Math.min(box.x, view.x1 - TEXT_BOX_MARGIN - w));
+    const y = Math.max(view.y0 + TEXT_BOX_MARGIN, Math.min(box.y, view.y1 - TEXT_BOX_MARGIN - h));
+
     /* Fond arrondi semi-transparent, contraste suffisant sur le dégradé bleu
        de la scène quel que soit l'endroit où la boîte est placée. */
     const r = 10;
     ctx.beginPath();
-    ctx.moveTo(box.x + r, box.y);
-    ctx.arcTo(box.x + box.w, box.y, box.x + box.w, box.y + box.h, r);
-    ctx.arcTo(box.x + box.w, box.y + box.h, box.x, box.y + box.h, r);
-    ctx.arcTo(box.x, box.y + box.h, box.x, box.y, r);
-    ctx.arcTo(box.x, box.y, box.x + box.w, box.y, r);
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
     ctx.closePath();
     ctx.fillStyle = 'rgba(20, 30, 40, 0.82)';
     ctx.fill();
@@ -69,38 +103,22 @@ function drawTextBoxes(ctx) {
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    /* Texte, découpé pour tenir dans la largeur utile de la boîte. Titre
-       (optionnel, box.title) mis en avant — gras et légèrement plus grand —
-       par rapport au corps (box.text), pour bien distinguer nom de l'étape
-       et explication sans dupliquer la logique de mise en page. */
     ctx.fillStyle = '#ffffff';
     ctx.textBaseline = 'top';
     ctx.textAlign = box.align || 'left';
 
-    const innerW = box.w - TEXT_BOX_PADDING * 2;
-    let tx = box.x + TEXT_BOX_PADDING;
-    if (box.align === 'center') tx = box.x + box.w / 2;
-    else if (box.align === 'right') tx = box.x + box.w - TEXT_BOX_PADDING;
+    let tx = x + TEXT_BOX_PADDING;
+    if (box.align === 'center') tx = x + w / 2;
+    else if (box.align === 'right') tx = x + w - TEXT_BOX_PADDING;
 
-    let cy = box.y + TEXT_BOX_PADDING;
-
-    if (box.title) {
-      const titleSize = box.fontSize * TEXT_BOX_TITLE_SCALE;
-      const titleLineH = titleSize * 1.25;
-      ctx.font = 'bold ' + titleSize + "px 'Segoe UI', Arial, sans-serif";
-      wrapTextBoxLines(ctx, box.title, innerW).forEach(line => {
-        ctx.fillText(line, tx, cy);
-        cy += titleLineH;
-      });
+    let cy = y + TEXT_BOX_PADDING;
+    if (titleLines.length) {
+      ctx.font = titleFont;
+      titleLines.forEach(line => { ctx.fillText(line, tx, cy); cy += titleLineH; });
       cy += TEXT_BOX_TITLE_GAP;
     }
-
-    const bodyLineH = box.fontSize * 1.3;
-    ctx.font = (box.bold ? 'bold ' : '') + box.fontSize + "px 'Segoe UI', Arial, sans-serif";
-    wrapTextBoxLines(ctx, box.text, innerW).forEach(line => {
-      ctx.fillText(line, tx, cy);
-      cy += bodyLineH;
-    });
+    ctx.font = bodyFont;
+    bodyLines.forEach(line => { ctx.fillText(line, tx, cy); cy += bodyLineH; });
 
     ctx.restore();
   });
