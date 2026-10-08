@@ -782,8 +782,27 @@ function blendHexColors(colors) {
   return 'rgb(' + r + ',' + g + ',' + b + ')';
 }
 
+/* Le navigateur sait-il flouter via ctx.filter ? Safari l'ignore sans
+   erreur. Test par le rendu, pas par la propriété : un navigateur qui
+   ignore ctx.filter la crée comme simple propriété JS et la relit telle quelle. */
+var _canvasFilterOk = null;
+function canvasFilterOk() {
+  if (_canvasFilterOk === null) {
+    var t = document.createElement('canvas').getContext('2d');
+    t.filter = 'blur(2px)';
+    t.fillRect(4, 4, 1, 1);
+    _canvasFilterOk = t.getImageData(3, 4, 1, 1).data[3] > 0;
+  }
+  return _canvasFilterOk;
+}
+
 /* Halos diffus englobant chaque couche (regroupe les sous-couches de
-   même n), dessinés avant les cercles pour rester en arrière-plan. */
+   même n), dessinés avant les cercles pour rester en arrière-plan.
+   Sans ctx.filter (Safari), le flou passe par l'ombre portée : gaussienne
+   elle aussi, d'écart-type shadowBlur / 2 en pixels physiques, comme
+   blur(). L'anneau est tracé hors du canvas et seule son ombre, décalée
+   d'autant, retombe à sa place — fidèle car chaque halo est d'une seule couleur. */
+var HALO_BLUR_PX = 6;
 function drawShellHalos(cx, cy, shells, radii, rStep) {
   var groups = {};
   var order = [];
@@ -803,12 +822,20 @@ function drawShellHalos(cx, cy, shells, radii, rStep) {
     var inner = Math.max(0, grp.min - pad);
     var outer = grp.max + pad;
     var col = shellHaloColor(n);
-    _ctx.filter = 'blur(6px)';
+    var shift = 0;
+    if (canvasFilterOk()) {
+      _ctx.filter = 'blur(' + HALO_BLUR_PX + 'px)';
+    } else {
+      shift = _w + 2 * outer + 8 * HALO_BLUR_PX;
+      _ctx.shadowColor = col;
+      _ctx.shadowBlur = 2 * HALO_BLUR_PX;
+      _ctx.shadowOffsetX = shift * _ctx.getTransform().a;   /* en px physiques */
+    }
     _ctx.globalAlpha = 0.16;
     _ctx.fillStyle = col;
     _ctx.beginPath();
-    _ctx.arc(cx, cy, outer, 0, 2 * Math.PI);
-    _ctx.arc(cx, cy, inner, 0, 2 * Math.PI, true);
+    _ctx.arc(cx - shift, cy, outer, 0, 2 * Math.PI);
+    _ctx.arc(cx - shift, cy, inner, 0, 2 * Math.PI, true);
     _ctx.fill('evenodd');
   });
   _ctx.restore();
