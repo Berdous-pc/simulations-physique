@@ -713,6 +713,158 @@ function drawScaleBar() {
   reserveBox(0, y - tickH - fs(20), x0 + lenPx + fs(8), H);
 }
 
+/* ─────────────────────────────────────────────────
+   Flou gaussien — ctx.filter quand le navigateur le gère (Chrome, Firefox),
+   sinon (Safari) un flou calculé pixel par pixel qui le reproduit.
+   Sans ce repli, Safari ignore ctx.filter sans erreur : l'image sur écran
+   restait nette quelle que soit la position de l'écran.
+───────────────────────────────────────────────── */
+let _canvasFilterOk = null;   // null : pas encore testé
+
+function canvasFilterOk() {
+  if (_canvasFilterOk === null) {
+    // Test par le rendu, pas par la propriété : un navigateur qui ignore
+    // ctx.filter la crée comme simple propriété JS et la relit à l'identique.
+    const t = document.createElement('canvas').getContext('2d');
+    t.filter = 'blur(2px)';
+    t.fillRect(4, 4, 1, 1);
+    _canvasFilterOk = t.getImageData(3, 4, 1, 1).data[3] > 0;
+  }
+  return _canvasFilterOk;
+}
+
+let _blurCanvas = null, _blurCtx = null;
+
+// Dessine UNE opération de tracé (paint) floutée d'un écart-type sigma, avec
+// son ombre éventuelle : shadow = {color, blur}. Comme pour blur() dans
+// ctx.filter, sigma est en pixels physiques du canvas : la transformation
+// (devicePixelRatio, zoom) ne l'agrandit pas — vérifié dans Chrome.
+// box = {x0, y0, x1, y1} : emprise du tracé en coordonnées courantes, hors flou.
+// Une seule opération par appel, car ctx.filter floute chaque tracé
+// séparément : deux traits qui se croisent sont floutés puis superposés,
+// et l'ombre est calculée à partir du trait DÉJÀ flouté. Le repli suit le
+// même ordre, d'où un rendu fidèle à celui de Chrome (vérifié au pixel près).
+function drawBlurred(sigma, box, shadow, paint) {
+  if (canvasFilterOk()) {
+    ctx.save();
+    ctx.filter = `blur(${sigma.toFixed(1)}px)`;
+    if (shadow) { ctx.shadowColor = shadow.color; ctx.shadowBlur = shadow.blur; }
+    paint(ctx);
+    ctx.restore();
+    return;
+  }
+
+  // Emprise en pixels physiques, élargie de 3σ (au-delà, le flou est nul).
+  const m = ctx.getTransform();
+  const pad = Math.ceil(sigma * 3) + 2;
+  let dx0 = Infinity, dy0 = Infinity, dx1 = -Infinity, dy1 = -Infinity;
+  for (const x of [box.x0, box.x1]) for (const y of [box.y0, box.y1]) {
+    const p = m.transformPoint({ x, y });
+    dx0 = Math.min(dx0, p.x); dx1 = Math.max(dx1, p.x);
+    dy0 = Math.min(dy0, p.y); dy1 = Math.max(dy1, p.y);
+  }
+  // Comme ctx.filter, on garde ce qui déborde de cv : un halo coupé au bord
+  // du canvas paraîtrait plus sombre. Au-delà de 3σ hors de cv, le dessin
+  // n'influe plus sur aucun pixel visible.
+  const rx = Math.max(-pad, Math.floor(dx0) - pad);
+  const ry = Math.max(-pad, Math.floor(dy0) - pad);
+  const rw = Math.min(cv.width  + pad, Math.ceil(dx1) + pad) - rx;
+  const rh = Math.min(cv.height + pad, Math.ceil(dy1) + pad) - ry;
+  if (rw <= 0 || rh <= 0) return;
+
+  // Dès que le flou dépasse quelques pixels, le calcul se fait à résolution
+  // réduite (k fois moins de pixels par côté) : le résultat est lisse de
+  // toute façon, et le coût reste à peu près constant quel que soit le flou.
+  const k  = Math.max(1, sigma / 2.5);
+  const bw = Math.ceil(rw / k), bh = Math.ceil(rh / k);
+
+  if (!_blurCanvas) {
+    _blurCanvas = document.createElement('canvas');
+    _blurCtx = _blurCanvas.getContext('2d', { willReadFrequently: true });
+  }
+  if (_blurCanvas.width < bw || _blurCanvas.height < bh) {
+    _blurCanvas.width  = Math.max(_blurCanvas.width,  bw);
+    _blurCanvas.height = Math.max(_blurCanvas.height, bh);
+  }
+  const b = _blurCtx;
+  b.setTransform(1, 0, 0, 1, 0, 0);
+  b.clearRect(0, 0, _blurCanvas.width, _blurCanvas.height);
+  b.save();
+  b.scale(1 / k, 1 / k);
+  b.translate(-rx, -ry);
+  b.transform(m.a, m.b, m.c, m.d, m.e, m.f);
+  paint(b);
+  b.restore();
+
+  const img = b.getImageData(0, 0, bw, bh);
+  gaussianBlurRGBA(img.data, bw, bh, sigma / k);
+  b.putImageData(img, 0, 0);
+
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);   // le clip en cours reste actif
+  ctx.imageSmoothingEnabled = true;
+  // L'ombre portée par drawImage naît de l'image déjà floutée, comme avec ctx.filter.
+  if (shadow) { ctx.shadowColor = shadow.color; ctx.shadowBlur = shadow.blur; }
+  ctx.drawImage(_blurCanvas, 0, 0, bw, bh, rx, ry, bw * k, bh * k);
+  ctx.restore();
+}
+
+// Gaussienne approchée par trois flous en boîte successifs : c'est
+// l'approximation que la spécification de feGaussianBlur (et donc blur())
+// prescrit, d'où un rendu très proche de celui de ctx.filter.
+// Le calcul se fait en alpha prémultiplié, comme le navigateur, sinon les
+// bords transparents assombriraient le halo.
+function gaussianBlurRGBA(data, w, h, sigma) {
+  const n = w * h * 4;
+  let a = new Float32Array(n), t = new Float32Array(n);
+  for (let i = 0; i < n; i += 4) {
+    const al = data[i + 3] / 255;
+    a[i] = data[i] * al; a[i + 1] = data[i + 1] * al; a[i + 2] = data[i + 2] * al;
+    a[i + 3] = data[i + 3];
+  }
+  const d = Math.floor(sigma * 3 * Math.sqrt(2 * Math.PI) / 4 + 0.5);
+  if (d >= 1) {
+    // [recul, avance] des trois boîtes, cf. spécification de feGaussianBlur.
+    const passes = d % 2
+      ? [[(d - 1) / 2, (d - 1) / 2], [(d - 1) / 2, (d - 1) / 2], [(d - 1) / 2, (d - 1) / 2]]
+      : [[d / 2, d / 2 - 1], [d / 2 - 1, d / 2], [d / 2, d / 2]];
+    for (const horiz of [true, false]) {
+      for (const [lo, hi] of passes) {
+        boxBlurPass(a, t, w, h, horiz, lo, hi);
+        const s = a; a = t; t = s;
+      }
+    }
+  }
+  for (let i = 0; i < n; i += 4) {
+    const al = a[i + 3];
+    const k = al > 0 ? 255 / al : 0;
+    data[i] = a[i] * k; data[i + 1] = a[i + 1] * k; data[i + 2] = a[i + 2] * k;
+    data[i + 3] = al;
+  }
+}
+
+// Moyenne glissante sur [i − lo, i + hi] le long des lignes (horiz) ou des
+// colonnes ; hors de l'image, les pixels sont transparents. Les quatre
+// canaux avancent ensemble, en une seule passe.
+function boxBlurPass(src, dst, w, h, horiz, lo, hi) {
+  const inv = 1 / (lo + hi + 1);
+  const len = horiz ? w : h, lines = horiz ? h : w;
+  const step = horiz ? 4 : 4 * w;
+  for (let line = 0; line < lines; line++) {
+    const base = horiz ? line * w * 4 : line * 4;
+    let s0 = 0, s1 = 0, s2 = 0, s3 = 0;
+    for (let k = 0, j = base; k <= hi && k < len; k++, j += step) {
+      s0 += src[j]; s1 += src[j + 1]; s2 += src[j + 2]; s3 += src[j + 3];
+    }
+    let out = base, add = base + (hi + 1) * step, rem = base - lo * step;
+    for (let i = 0; i < len; i++, out += step, add += step, rem += step) {
+      dst[out] = s0 * inv; dst[out + 1] = s1 * inv; dst[out + 2] = s2 * inv; dst[out + 3] = s3 * inv;
+      if (i + hi + 1 < len) { s0 += src[add]; s1 += src[add + 1]; s2 += src[add + 2]; s3 += src[add + 3]; }
+      if (i - lo >= 0)      { s0 -= src[rem]; s1 -= src[rem + 1]; s2 -= src[rem + 2]; s3 -= src[rem + 3]; }
+    }
+  }
+}
+
 /* ═══════════════════════════════════════════════════
    CADRES DE VISUALISATION (Objet / Image sur écran)
 ════════════════════════════════════════════════════ */
@@ -774,40 +926,69 @@ function drawViewfinders() {
     const bumpy2   = flipV ? yBot         : yTop + bumpH;
     const arcCyVal = flipV ? yBot - bumpR : yTop + bumpR;
 
-    function strokeLetter() {
-      ctx.beginPath();
-      ctx.moveTo(futX, yTop); ctx.lineTo(futX, yBot); ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(futX, bumpy1); ctx.lineTo(arcCX, bumpy1);
-      ctx.arc(arcCX, arcCyVal, bumpR, -Math.PI / 2, Math.PI / 2, arcCCW);
-      ctx.lineTo(futX, bumpy2); ctx.stroke();
+    // c : contexte de dessin — cv, ou le canvas hors écran du flou de secours.
+    function stem(c) {
+      c.beginPath();
+      c.moveTo(futX, yTop); c.lineTo(futX, yBot); c.stroke();
+    }
+    function bump(c) {
+      c.beginPath();
+      c.moveTo(futX, bumpy1); c.lineTo(arcCX, bumpy1);
+      c.arc(arcCX, arcCyVal, bumpR, -Math.PI / 2, Math.PI / 2, arcCCW);
+      c.lineTo(futX, bumpy2); c.stroke();
     }
 
-    ctx.save();
-    if (blurPx > 0.5) {
-      ctx.filter = `blur(${blurPx.toFixed(1)}px)`;
-      const s = 1 + (blurPx / (hPx * 0.8)) * 1.6;
-      ctx.translate(cx, cy); ctx.scale(s, s); ctx.translate(-cx, -cy);
-    }
     const glowR = hPx * 0.9;
-    const glow  = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowR);
-    glow.addColorStop(0,   'rgba(255, 220, 120, 0.18)');
-    glow.addColorStop(0.5, 'rgba(255, 180,  60, 0.08)');
-    glow.addColorStop(1,   'rgba(0,0,0,0)');
-    ctx.fillStyle = glow;
-    ctx.fillRect(cx - glowR, cy - glowR, glowR * 2, glowR * 2);
-    ctx.save();
-    ctx.shadowColor = 'rgba(255, 200, 80, 0.9)'; ctx.shadowBlur = sw * 2.5;
-    ctx.strokeStyle = '#ffe090'; ctx.lineWidth = sw;
-    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    strokeLetter(); ctx.restore();
-    ctx.save();
-    ctx.shadowColor = 'rgba(255, 255, 200, 1)'; ctx.shadowBlur = sw * 1.2;
-    ctx.strokeStyle = 'rgba(255, 255, 220, 0.7)'; ctx.lineWidth = sw * 0.35;
-    ctx.lineCap = 'round';
-    strokeLetter(); ctx.restore();
-    ctx.filter = 'none';
-    ctx.restore();
+    function glow(c) {
+      const g = c.createRadialGradient(cx, cy, 0, cx, cy, glowR);
+      g.addColorStop(0,   'rgba(255, 220, 120, 0.18)');
+      g.addColorStop(0.5, 'rgba(255, 180,  60, 0.08)');
+      g.addColorStop(1,   'rgba(0,0,0,0)');
+      c.fillStyle = g;
+      c.fillRect(cx - glowR, cy - glowR, glowR * 2, glowR * 2);
+    }
+    // Trait large doré, puis cœur clair fin — chacun avec son ombre lumineuse.
+    function outer(c) {
+      c.strokeStyle = '#ffe090'; c.lineWidth = sw;
+      c.lineCap = 'round'; c.lineJoin = 'round';
+    }
+    function inner(c) {
+      c.strokeStyle = 'rgba(255, 255, 220, 0.7)'; c.lineWidth = sw * 0.35;
+      c.lineCap = 'round';
+    }
+    const outerShadow = { color: 'rgba(255, 200, 80, 0.9)', blur: sw * 2.5 };
+    const innerShadow = { color: 'rgba(255, 255, 200, 1)',  blur: sw * 1.2 };
+    // Une entrée par tracé, dans l'ordre de dessin.
+    const ops = [
+      [null,        glow],
+      [outerShadow, c => { outer(c); stem(c); }],
+      [outerShadow, c => { outer(c); bump(c); }],
+      [innerShadow, c => { inner(c); stem(c); }],
+      [innerShadow, c => { inner(c); bump(c); }],
+    ];
+
+    if (blurPx > 0.5) {
+      const s = 1 + (blurPx / (hPx * 0.8)) * 1.6;
+      // Emprises avant flou : le carré du halo pour lui, la lettre (épaisseur
+      // du trait comprise) pour les traits — leurs ombres sont ajoutées après
+      // le flou, elles n'en font pas partie.
+      const r = glowR * s, rl = (hPx * 0.5 + sw) * s;
+      const glowBox   = { x0: cx - r,  y0: cy - r,  x1: cx + r,  y1: cy + r };
+      const letterBox = { x0: cx - rl, y0: cy - rl, x1: cx + rl, y1: cy + rl };
+      for (const [shadow, paint] of ops) {
+        drawBlurred(blurPx, paint === glow ? glowBox : letterBox, shadow, c => {
+          c.translate(cx, cy); c.scale(s, s); c.translate(-cx, -cy);
+          paint(c);
+        });
+      }
+    } else {
+      for (const [shadow, paint] of ops) {
+        ctx.save();
+        if (shadow) { ctx.shadowColor = shadow.color; ctx.shadowBlur = shadow.blur; }
+        paint(ctx);
+        ctx.restore();
+      }
+    }
   }
 
   function drawBlurSpot(ix, iy, iw, ih, intensity) {
