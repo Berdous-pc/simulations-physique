@@ -1552,10 +1552,12 @@ function drawTitragePhGraph() {
     const kLo = Math.max(0, Math.floor(x0 / dDelta) - 1);
     const kHi = Math.min(Math.floor(vVerse / dDelta), Math.ceil(x1 / dDelta) + 1);
     const dpts = kHi > kLo ? _dphSmoothSeries(kLo, kHi, dDelta, dSigma, vVerse) : [];
-    // Normalisation : maximum de la courbe lissée sur TOUT [0, vVerse] (indépendant du
-    // défilement ; pas d'écrêtage). Pour un acide très faible (phénol…) il n'y a pas de
-    // saut à l'équivalence et le maximum est au début, pas à Veq.
-    const maxD = _dphMaxSmooth(dSigma, vVerse);
+    // Normalisation : maximum de la courbe lissée sur [4 % de l'axe, vVerse] (indépendant
+    // du défilement). On ignore le tout début : pour un acide/une base très faible
+    // (phénol, éthanoate…) la dérivée y diverge (le pH chute/monte dès la première
+    // goutte) et écraserait tout le reste. Pas d'écrêtage : ce début sort simplement
+    // du cadre par le haut au lieu de former un palier.
+    const maxD = _dphMaxSmooth(dSigma, xFull * 0.04, vVerse);
     if (maxD > 0 && dpts.length > 1) {
       // Sommet normalisé à 5 unités pH sur 14 (~36 % de la hauteur : garde le haut du graphe libre)
       const dScale = 5 / maxD;
@@ -1570,7 +1572,7 @@ function drawTitragePhGraph() {
       ctx.beginPath();
       let firstD = true;
       for (const p of dpts) {
-        const phNorm = Math.min(Math.abs(p.d), maxD) * dScale;  // écrêtage + valeur absolue
+        const phNorm = Math.abs(p.d) * dScale;   // valeur absolue (le cadre coupe ce qui dépasse)
         const px = pad.l + ((p.v - x0) / xSpan) * gw;
         const py = pad.t + gh - (phNorm / 14) * gh;   // repère propre (0..14), indépendant du zoom Y
         if (firstD) { ctx.moveTo(px, py); firstD = false; }
@@ -2367,15 +2369,16 @@ function _dphSmoothSeries(k0, k1, delta, sigma, vMax) {
   return out;
 }
 
-/** Maximum de |dpH/dV| lissée sur [0, vMax], mis en cache (le survol redessine sans cesse). */
+/** Maximum de |dpH/dV| lissée sur [vMin, vMax], mis en cache (le survol redessine sans cesse). */
 let _dphMaxCache = { key: '', val: 0 };
-function _dphMaxSmooth(sigma, vMax) {
+function _dphMaxSmooth(sigma, vMin, vMax) {
   const key = [state.titragePhRxnIdx, state.titrageConcTitree, state.titrageConcTitrante,
-               state.titrageV1, state.titrageVeau, sigma.toFixed(4), vMax.toFixed(3)].join('|');
+               state.titrageV1, state.titrageVeau, sigma.toFixed(4), vMin.toFixed(3), vMax.toFixed(3)].join('|');
   if (_dphMaxCache.key === key) return _dphMaxCache.val;
   const delta = Math.max(sigma / 4, vMax / 3000);
   let m = 0;
-  _dphSmoothSeries(0, Math.floor(vMax / delta), delta, sigma, vMax).forEach(p => { m = Math.max(m, Math.abs(p.d)); });
+  _dphSmoothSeries(Math.ceil(vMin / delta), Math.floor(vMax / delta), delta, sigma, vMax)
+    .forEach(p => { m = Math.max(m, Math.abs(p.d)); });
   _dphMaxCache = { key, val: m };
   return m;
 }
