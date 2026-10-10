@@ -1542,15 +1542,29 @@ function drawTitragePhGraph() {
   }
 
   // ── Courbe dérivée dpH/dV superposée ──
-  if (_phShowDerivee && pts.length >= 3) {
-    const dpts = _computeDerivee(pts);
-    // On travaille sur |dpH/dV| pour gérer les deux sens (acide→base et base→acide)
-    const vSeuil = xFull * 0.04;
+  if (_phShowDerivee && vVerse > 0) {
+    // |dpH/dV| LISSÉE (gaussienne de σ = 2 % de la largeur visible) : la vraie dérivée
+    // est un pic de quelques millièmes de mL, invisible à l'écran ; lissée, elle donne
+    // une cloche dont le sommet reste au volume équivalent. Valeur absolue pour gérer
+    // les deux sens (acide→base et base→acide).
+    const dSigma = Math.max(1e-4, xSpan * 0.02);
+    const dDelta = dSigma / 4;
+    const kLo = Math.max(0, Math.floor(x0 / dDelta) - 1);
+    const kHi = Math.min(Math.floor(vVerse / dDelta), Math.ceil(x1 / dDelta) + 1);
+    const dpts = kHi > kLo ? _dphSmoothSeries(kLo, kHi, dDelta, dSigma, vVerse) : [];
+    // Normalisation : sommet de la cloche (autour de Veq) — indépendante du défilement
+    const Ca_ = state.titrageConcTitree, Cb_ = state.titrageConcTitrante, V1_ = state.titrageV1;
+    const vEqD = (Cb_ > 0) ? (Ca_ * V1_ / Cb_) : null;
     let maxD = 0;
-    dpts.forEach(p => { const a = Math.abs(p.dphdv); if (p.v >= vSeuil && a > maxD) maxD = a; });
-    if (maxD === 0) dpts.forEach(p => { const a = Math.abs(p.dphdv); if (a > maxD) maxD = a; });
-    if (maxD > 0) {
-      // Pic normalisé à 5 unités pH sur 14 (~36 % de la hauteur : garde le haut du graphe libre)
+    if (vEqD !== null && vEqD > 0 && vEqD <= vVerse) {
+      const kc = Math.round(vEqD / dDelta), nk = Math.ceil(4 * dSigma / dDelta);
+      _dphSmoothSeries(Math.max(0, kc - nk), kc + nk, dDelta, dSigma, vVerse)
+        .forEach(p => { maxD = Math.max(maxD, Math.abs(p.d)); });
+    } else {
+      dpts.forEach(p => { maxD = Math.max(maxD, Math.abs(p.d)); });
+    }
+    if (maxD > 0 && dpts.length > 1) {
+      // Sommet normalisé à 5 unités pH sur 14 (~36 % de la hauteur : garde le haut du graphe libre)
       const dScale = 5 / maxD;
       ctx.save();
       ctx.strokeStyle = '#cc4400';
@@ -1563,7 +1577,7 @@ function drawTitragePhGraph() {
       ctx.beginPath();
       let firstD = true;
       for (const p of dpts) {
-        const phNorm = Math.min(Math.abs(p.dphdv), maxD) * dScale;  // écrêtage + valeur absolue
+        const phNorm = Math.min(Math.abs(p.d), maxD) * dScale;  // écrêtage + valeur absolue
         const px = pad.l + ((p.v - x0) / xSpan) * gw;
         const py = pad.t + gh - (phNorm / 14) * gh;   // repère propre (0..14), indépendant du zoom Y
         if (firstD) { ctx.moveTo(px, py); firstD = false; }
@@ -2331,6 +2345,33 @@ function togglePhCursor() {
     if (tooltip) tooltip.style.display = 'none';
   }
   _drawMainGraph();
+}
+
+/**
+ * dpH/dV lissée par une gaussienne d'écart-type `sigma` (mL), évaluée aux nœuds
+ * v = k·delta pour k ∈ [k0, k1]. On convolue la courbe pH (bornée, sans singularité)
+ * avec la dérivée de la gaussienne : le résultat ne dépend pas de la finesse
+ * d'échantillonnage du saut. Renvoie [{ v, d }] (d en pH/mL, signé).
+ * Les volumes sont bornés à [0, vMax] (prolongement par continuité aux bords).
+ */
+function _dphSmoothSeries(k0, k1, delta, sigma, vMax) {
+  const R = Math.ceil(4 * sigma / delta);
+  const s2 = sigma * sigma, norm = delta / (sigma * Math.sqrt(2 * Math.PI));
+  const ker = [];
+  for (let j = -R; j <= R; j++) {
+    const s = j * delta;
+    ker.push(-s / s2 * Math.exp(-s * s / (2 * s2)) * norm);   // g'(s)·δ
+  }
+  const ph = [];
+  for (let k = k0 - R; k <= k1 + R; k++) ph.push(calcPHAtVolume(Math.min(vMax, Math.max(0, k * delta))));
+  const out = [];
+  for (let k = k0; k <= k1; k++) {
+    const i = k - k0 + R;
+    let d = 0;
+    for (let j = -R; j <= R; j++) d += ker[j + R] * ph[i - j];
+    out.push({ v: k * delta, d });
+  }
+  return out;
 }
 
 /**

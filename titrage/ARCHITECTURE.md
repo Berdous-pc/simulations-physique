@@ -444,7 +444,8 @@ Zoom molette (ou pincement) et déplacement au glisser sur les trois graphes
 | `toggleMethodeTangentes()` | Active/désactive la méthode des tangentes. |
 | `togglePhCursor()` | Active/désactive le curseur interactif sur le graphe pH. |
 | `updatePhAnalysisBtns()` | Met à jour l'état des boutons d'analyse du graphe pH. |
-| `_computeDerivee(pts)` | Calcule la dérivée numérique dpH/dV sur un tableau de points. |
+| `_dphSmoothSeries(k0, k1, delta, sigma, vMax)` | dpH/dV lissée (gaussienne σ = 2 % de la largeur visible) aux nœuds k·δ : la vraie dérivée est un pic de quelques 10⁻³ mL, le lissage en fait une cloche centrée sur Veq. Normalisée sur le sommet à pH 5. |
+| `_computeDerivee(pts)` | Dérivée numérique dpH/dV sur un tableau de points (n'est plus utilisée pour l'affichage). |
 | `_drawTangentesMethode(...)` | Dessine les tangentes et leur intersection sur le canvas. |
 | `_phPxToVPh(mx, my)` | Convertit des coordonnées pixel en volume (hover graphe pH). |
 | `_phHandleTangenteClick(mx, my)` | Gestion du clic pour placer une tangente. |
