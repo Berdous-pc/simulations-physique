@@ -1778,3 +1778,29 @@ body.titrage-cond #btn-ph-indicateur {
   box-shadow: 0 2px 8px rgba(74,42,138,0.12);
   width: fit-content;
 }
+
+/* ── Zoom molette des graphes : indice + bouton de réinitialisation ── */
+#titrage-chart-panel { position: relative; }   /* ancrage du badge du graphe n=f(V) */
+.zoom-badge {
+  position: absolute;
+  transform: translate(-100%, -50%);   /* aligné à droite de la ligne du titre de l'axe X */
+  z-index: 10;
+  margin: 0;
+  padding: 2px 9px;
+  font: 600 12px/1.4 'Segoe UI', Arial, sans-serif;
+  color: #2c3e50;
+  background: #e8e4de;
+  border: 1px solid #b0a898;
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.zoom-badge:hover { background: #d0ccc4; }
+.zoom-badge--hint {                    /* hors zoom : simple indice discret, non cliquable */
+  background: none;
+  border-color: transparent;
+  color: #9a9288;
+  font-weight: 500;
+  cursor: default;
+  pointer-events: none;
+}

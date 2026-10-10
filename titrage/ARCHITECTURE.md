@@ -16,12 +16,13 @@ titrage/
 └── js/
     ├── data.js      ← réactions, couleurs, indicateurs colorés (chargé en premier)
     ├── sim.js       ← state global, calculs pH/σ, canvas molécules
+    ├── zoom.js      ← caméra 2D des graphes : zoom molette / pincement + glisser
     ├── graph.js     ← graphes n=f(V), pH=f(V), σ=f(V), hover, points expérimentaux
     └── ui.js        ← interface complète : modes Principe & Titrage, mode test (chargé en dernier)
 ```
 
 Ordre de chargement critique (scope global, pas de modules ES) :
-`data.js` → `sim.js` → `graph.js` → `ui.js`
+`data.js` → `sim.js` → `zoom.js` → `graph.js` → `ui.js`
 (`ui.js` se termine par l'appel à `init()`, tout doit être défini avant.)
 
 ---
@@ -392,6 +393,23 @@ Constante `TEST_REACTIONS` : `{ 1: [indices niveau 1], 2: [indices niveau 2] }`.
 | `BARREAU.OMEGA` | 2π × 2.5 | Vitesse angulaire (2,5 tours/s en rad/s) |
 | `FILET_X` | 88.668 − FILET_W/2 | Position x du filet de liquide |
 | `FILET_W` | 2.0 | Largeur du filet |
+
+---
+
+## `zoom.js` — Zoom des graphes
+
+Zoom molette (ou pincement) et déplacement au glisser sur les trois graphes
+(pH=f(V), σ=f(V), n=f(V)).
+
+- **Caméra 2D** (comme une carte) : fenêtre X `_zoomX = {min, max}` (mL) **partagée** par tous les graphes ; fenêtre Y `_zoomY[clé] = {lo, hi}` **propre** à chaque graphe (`'ph' | 'sigma' | 'n'`), en unités du graphe. Absence d'état = pas de zoom sur l'axe : plage complète avec l'autoscale historique (qui suit le volume versé). Une fois zoomée, la fenêtre est figée en données (verser ne la déplace pas).
+- **Pas d'autoscale en zoom** : la fenêtre Y ne dépend jamais des données affichées (c'est ce qui rendait la vue instable près du saut de pH). Seul l'utilisateur la change ; les graduations (`_niceStep`, `_decForStep`) s'adaptent à l'échelle affichée.
+- **Interactions** : molette / pincement = X **et** Y, même facteur, centrés sur le curseur (le point visé reste en place) ; **Maj + molette = Y seul** ; glisser = déplacement 2D. Bornes : X `[0, xFull]`, largeur min `ZOOM_MIN_SPAN` = 1 mL ; Y `[yFull.lo, yFull.hi]` (pH 0–14, σ/n plage complète courante), hauteur min = plage / `ZOOM_Y_MAX_FACTOR` (1000).
+- **API** : `_zoomView(xFull)` → `{x0, x1, zoomed}` ; `_zoomYView(key, yFull)` → `{lo, hi, zoomed, factor}` ; `_zoomSetRange` / `_zoomYSet(…, anchorData, anchorFrac, …)` (zoom centré curseur = déplacement) ; `_zoomReset()` (appelé par `initChartData`) ; `_zoomAttach(canvas, getLayout, grabbed, getYKey)` ; `_zoomAfterDraw(…, yFactor)` (curseur, `touch-action`, badge). Chaque layout (`_phLayout`, `_sigmaLayout`, `_chartLayout`) expose `{pad, gw, gh, xFull, yFull, vw}`.
+- Largeur des étiquettes Y **constante** (zoomé ou non) : pas de décalage horizontal du tracé au zoom.
+- **Projection** : tous les `draw*` utilisent `pad.l + ((v - x0) / xSpan) * gw`. Les outils reçoivent la fenêtre `vw = {x0, x1, yMin, yMax}` (`_condDataToPx/PxToData`, `_drawCondLines`, `_drawReticule`, `_drawTangentesMethode`, `_phPxToVPh`) ; les layouts `_phLayout`, `_sigmaLayout`, `_chartLayout` l'exposent.
+- **Conflits gérés** : molette uniquement au-dessus de la zone de tracé (marges = défilement de la page ; déjà dézoomé + molette vers le bas = défilement) ; un point de contrôle de droite σ prime sur le déplacement (`_condPointHit`) ; un glisser > 4 px annule le `click` suivant (placement de tangente / droite) ; courbe dérivée dessinée dans son propre repère 0–14 (indépendant du zoom Y) ; pas d'accrochage du survol 0,10 / 0,05 / 0,01 mL selon la largeur (`_hoverStep`).
+- **Tactile** : Pointer Events ; 2 doigts = pincement (zoom + déplacement), 1 doigt = déplacement quand zoomé. `touch-action: pan-y` hors zoom (la page défile), `none` zoomé.
+- **UI** : badge `.zoom-badge` sur la ligne du titre de l'axe X — indice « Molette : zoom » hors zoom, bouton « ⟲ Réinitialiser le zoom (×N) » zoomé.
 
 ---
 

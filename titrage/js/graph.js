@@ -15,6 +15,7 @@ let _chartVisible  = {};
 let _chartEspeces  = [];
 let _chartRxnEntry = null;
 let _chartHover    = null;  // { mx, my } coords canvas device pixels
+let _chartLayout   = null;  // layout du dernier dessin n=f(V) : { pad, gw, gh, xFull, vw }
 
 /* ── Utilitaires ────────────────────────────────────────────────────────── */
 
@@ -147,6 +148,7 @@ function initChartData() {
     _chartVisible[e.id] = (e.role !== 'spectateur');
   });
   _pushChartPoint(0);
+  _zoomReset();   // nouvelle réaction / réinitialisation : retour au dézoom maximal
   // Réinitialiser les points expérimentaux pH/σ (un point initial à V=0)
   if (typeof _resetExpPoints === 'function') _resetExpPoints();
 }
@@ -259,9 +261,12 @@ function drawTitrageSigmaGraph() {
 
   // ── Plages ──
   const vVerse = state.titrageVverse ?? 0;
-  let xMax = BURETTE.MAX_ML;
-  if (vVerse > xMax) xMax = vVerse;
-  xMax = Math.ceil(xMax / 5) * 5;
+  let xFull = BURETTE.MAX_ML;
+  if (vVerse > xFull) xFull = vVerse;
+  xFull = Math.ceil(xFull / 5) * 5;
+  // Fenêtre de vue (zoom molette) : x0..x1 ; sans zoom, tout l'axe [0, xFull]
+  const view  = _zoomView(xFull);
+  const x0 = view.x0, x1 = view.x1, xSpan = x1 - x0;
 
   // Échantillonnage de la courbe + détermination de yMax pour autoscale.
   // On échantillonne aussi sur toute la burette (pas seulement [0, vVerse])
@@ -272,19 +277,25 @@ function drawTitrageSigmaGraph() {
   // points effectivement tracés. La conductivité étant monotone par morceaux,
   // le max sur [0, xMax] est atteint soit à 0, soit à xMax.
   const sigma0  = calcSigmaAtVolume(0);
-  const sigmaXM = calcSigmaAtVolume(xMax);
+  const sigmaXM = calcSigmaAtVolume(xFull);
   let yMaxRaw = Math.max(sigma0, sigmaXM, 0.01);
   pts.forEach(p => { if (p.sigma > yMaxRaw) yMaxRaw = p.sigma; });
   yMaxRaw *= 1.10;  // marge 10 % en haut
-  const { step: yStep, max: yMax } = _niceYRange(yMaxRaw);
-  const yMin = 0;
+  const niceY = _niceYRange(yMaxRaw);
+  let yStep = niceY.step;
+  // Plage Y : autoscale historique sans zoom ; zoomée, fenêtre propre à l'utilisateur
+  // (jamais recalculée d'après les données : la vue reste stable).
+  const yFull = { lo: 0, hi: niceY.max };
+  const yz    = _zoomYView('sigma', yFull);
+  const yFit  = yz.zoomed;                  // graduations adaptées à l'échelle affichée
+  const yMin = yz.lo, yMax = yz.hi;
 
   // ── Tailles de police ──
   const dim = Math.min(W, H);
   const fs  = Math.max(9,  Math.round(dim * 0.040));
   const fst = Math.max(10, Math.round(dim * 0.044));
 
-  const tickLabelW = Math.round(fs * 2.8);  // un peu plus large pour σ (décimales)
+  const tickLabelW = Math.round(fs * 3.4);  // un peu plus large pour σ (décimales) ; constant : pas de décalage au zoom
   const padL = tickLabelW + 4 + 7 + Math.round(fst * 0.3);
   const padR = padL;
   const padB = 4 + 6 + fs + 6 + fst + 4;
@@ -295,13 +306,15 @@ function drawTitrageSigmaGraph() {
   if (gw < 40 || gh < 40) return;
 
   // Stocker le layout pour les handlers souris (clic, drag, mousemove)
-  _sigmaLayout = { pad, gw, gh, xMax, yMin, yMax, W, H };
+  const vw = { x0, x1, yMin, yMax };
+  _sigmaLayout = { pad, gw, gh, xFull, yFull, vw, W, H };
   // Partager pad.l avec _updateGraphBtnsSize (même panel que pH)
-  _phLayout = { pad, gw, gh, W, H };
+  _phLayout = { pad, gw, gh, W, H, xFull, yFull, vw };
   _updateGraphBtnsSize();
 
   const nTicksX = Math.max(3, Math.min(6, Math.round(gw / 80)));
-  const xStep   = _niceStep(xMax, nTicksX);
+  const xStep   = _niceStep(xSpan, nTicksX);
+  if (yFit) yStep = _niceStep(yMax - yMin, Math.max(3, Math.min(6, Math.round(gh / 60))));
 
   // ── Effacement + fond ──
   ctx.clearRect(0, 0, W, H);
@@ -314,11 +327,12 @@ function drawTitrageSigmaGraph() {
   ctx.save();
   ctx.strokeStyle = '#ece8e2';
   ctx.lineWidth   = 1;
-  for (let x = xStep; x <= xMax + xStep * 0.01; x += xStep) {
-    const px = pad.l + (x / xMax) * gw;
+  for (const x of _tickValues(x0, x1, xStep)) {
+    const px = pad.l + ((x - x0) / xSpan) * gw;
     ctx.beginPath(); ctx.moveTo(px, pad.t); ctx.lineTo(px, pad.t + gh); ctx.stroke();
   }
-  for (let y = yStep; y <= yMax - 0.01; y += yStep) {
+  for (const y of _tickValues(yMin, yMax, yStep)) {
+    if (y <= yMin + yStep * 1e-6 || y >= yMax - yStep * 1e-6) continue;
     const py = pad.t + gh - ((y - yMin) / (yMax - yMin)) * gh;
     ctx.beginPath(); ctx.moveTo(pad.l, py); ctx.lineTo(pad.l + gw, py); ctx.stroke();
   }
@@ -343,10 +357,10 @@ function drawTitrageSigmaGraph() {
   ctx.textBaseline = 'top';
   ctx.strokeStyle  = '#4a5568';
   ctx.lineWidth    = 1;
-  for (let x = 0; x <= xMax + xStep * 0.01; x += xStep) {
-    const px = pad.l + (x / xMax) * gw;
+  for (const x of _tickValues(x0, x1, xStep)) {
+    const px = pad.l + ((x - x0) / xSpan) * gw;
     ctx.beginPath(); ctx.moveTo(px, pad.t + gh); ctx.lineTo(px, pad.t + gh + 4); ctx.stroke();
-    ctx.fillText(x % 1 === 0 ? x.toFixed(0) : x.toFixed(1), px, pad.t + gh + 6);
+    ctx.fillText(_fmtXTick(x, xStep), px, pad.t + gh + 6);
   }
   ctx.font      = `bold ${fst}px 'Segoe UI', Arial, sans-serif`;
   ctx.fillStyle = '#2d3748';
@@ -363,8 +377,8 @@ function drawTitrageSigmaGraph() {
   ctx.strokeStyle  = '#4a5568';
   ctx.lineWidth    = 1;
   // Format des labels Y : nombre de décimales adapté au pas
-  const decY = yStep >= 1 ? 0 : yStep >= 0.1 ? 1 : 2;
-  for (let y = 0; y <= yMax + 0.01; y += yStep) {
+  const decY = _decForStep(yStep);
+  for (const y of _tickValues(yMin, yMax, yStep)) {
     const py = pad.t + gh - ((y - yMin) / (yMax - yMin)) * gh;
     ctx.beginPath(); ctx.moveTo(pad.l, py); ctx.lineTo(pad.l - 4, py); ctx.stroke();
     ctx.fillText(y.toFixed(decY), pad.l - 7, py);
@@ -396,7 +410,7 @@ function drawTitrageSigmaGraph() {
     ctx.beginPath();
     let firstM = true;
     for (const p of pts) {
-      const px = pad.l + (p.v / xMax) * gw;
+      const px = pad.l + ((p.v - x0) / xSpan) * gw;
       const py = pad.t + gh - ((p.sigma - yMin) / (yMax - yMin)) * gh;
       if (firstM) { ctx.moveTo(px, py); firstM = false; }
       else         { ctx.lineTo(px, py); }
@@ -419,8 +433,8 @@ function drawTitrageSigmaGraph() {
     const r     = Math.max(2, Math.round(Math.min(W, H) * 0.008));   // demi-longueur
     const lw    = Math.max(1.0, Math.min(W, H) * 0.0025);
     for (const p of _sigmaExpPoints) {
-      if (p.v < 0 || p.v > xMax) continue;
-      const px = pad.l + (p.v / xMax) * gw;
+      if (p.v < x0 - xSpan * 0.02 || p.v > x1 + xSpan * 0.02) continue;
+      const px = pad.l + ((p.v - x0) / xSpan) * gw;
       const py = pad.t + gh - ((p.sigma - yMin) / (yMax - yMin)) * gh;
       _drawExpCross(ctx, px, py, r, color, lw);
     }
@@ -437,20 +451,23 @@ function drawTitrageSigmaGraph() {
 
       if (_phShowModelCourbe) {
         // Mode courbe modélisée : snap sur la courbe théorique à 0,10 mL
-        const vMouse = ((mx - pad.l) / gw) * xMax;
+        const vMouse = x0 + ((mx - pad.l) / gw) * xSpan;
+        const hs     = _hoverStep(xSpan);
         const vSnap  = Math.max(0, Math.min(state.titrageVverse ?? 0,
-                         Math.round(vMouse / 0.10) * 0.10));
+                         Math.round(vMouse / hs) * hs));
         const sigmaSnap = calcSigmaAtVolume(vSnap);
-        const bx    = pad.l + (vSnap / xMax) * gw;
-        const by    = pad.t + gh - ((sigmaSnap - yMin) / (yMax - yMin)) * gh;
-        const label = `${vSnap.toFixed(2)} mL  |  σ = ${sigmaSnap.toFixed(2)} mS/cm`;
-        _drawHoverTooltip(ctx, pad, gw, gh, bx, by, label, '#2a8a50', W, H);
+        if (vSnap >= x0 - 1e-9 && vSnap <= x1 + 1e-9) {
+          const bx    = pad.l + ((vSnap - x0) / xSpan) * gw;
+          const by    = pad.t + gh - ((sigmaSnap - yMin) / (yMax - yMin)) * gh;
+          const label = `${vSnap.toFixed(2)} mL  |  σ = ${sigmaSnap.toFixed(2)} mS/cm`;
+          _drawHoverTooltip(ctx, pad, gw, gh, bx, by, label, '#2a8a50', W, H);
+        }
       } else if (_sigmaExpPoints && _sigmaExpPoints.length > 0) {
         // Mode points expérimentaux : point le plus proche (≤ 24 px)
         let best = null, bestDist = Infinity;
         for (const p of _sigmaExpPoints) {
-          if (p.v < 0 || p.v > xMax) continue;
-          const px = pad.l + (p.v / xMax) * gw;
+          if (p.v < x0 - xSpan * 0.02 || p.v > x1 + xSpan * 0.02) continue;
+          const px = pad.l + ((p.v - x0) / xSpan) * gw;
           const py = pad.t + gh - ((p.sigma - yMin) / (yMax - yMin)) * gh;
           const d  = Math.hypot(mx - px, my - py);
           if (d < bestDist) { bestDist = d; best = { px, py, p }; }
@@ -466,11 +483,11 @@ function drawTitrageSigmaGraph() {
   }
 
   // ── Réticule libre ──
-  _drawReticule(ctx, pad, gw, gh, xMax, yMin, yMax, W, H, 'σ (mS/cm)');
+  _drawReticule(ctx, pad, gw, gh, vw, W, H, 'σ (mS/cm)');
 
   // ── Droites (outil "Tracer des droites") ──
   if (_condLinesActive) {
-    _drawCondLines(ctx, pad, gw, gh, xMax, yMin, yMax, W, H);
+    _drawCondLines(ctx, pad, gw, gh, vw, W, H);
   }
 
   // ── Bordure ──
@@ -479,6 +496,8 @@ function drawTitrageSigmaGraph() {
   ctx.lineWidth   = 1;
   ctx.strokeRect(pad.l, pad.t, gw, gh);
   ctx.restore();
+
+  _zoomAfterDraw(canvas, pad, gw, pad.t + gh + 4 + 6 + fs + 6 + fst / 2, view, xFull, yz.factor);
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -501,7 +520,7 @@ let _phSampledPts    = [];      // derniers points échantillonnés par _sampleP
 // _drawCondLines pour animer la droite en cours même quand la souris est
 // immobile entre deux événements mousemove.
 let _condMousePx  = null;
-let _sigmaLayout  = null;  // layout courant du graphe σ (pad, gw, gh, xMax, …)
+let _sigmaLayout  = null;  // layout courant du graphe σ (pad, gw, gh, xFull, vw = fenêtre de vue)
 let _phLayout     = null;  // layout courant du graphe pH (pad, gw, gh, …)
 
 /* ── Points expérimentaux ─────────────────────────────────────────────────
@@ -567,18 +586,18 @@ function _condLinesInitCtx() {
 let _condLinesCtx = _condLinesInitCtx();
 
 /** Convertit des coordonnées data {v, sigma} en pixels canvas. */
-function _condDataToPx(v, sigma, pad, gw, gh, xMax, yMin, yMax) {
+function _condDataToPx(v, sigma, pad, gw, gh, vw) {
   return {
-    x: pad.l + (v / xMax) * gw,
-    y: pad.t + gh - ((sigma - yMin) / (yMax - yMin)) * gh,
+    x: pad.l + ((v - vw.x0) / (vw.x1 - vw.x0)) * gw,
+    y: pad.t + gh - ((sigma - vw.yMin) / (vw.yMax - vw.yMin)) * gh,
   };
 }
 
 /** Convertit des pixels canvas en coordonnées data {v, sigma}. */
-function _condPxToData(px, py, pad, gw, gh, xMax, yMin, yMax) {
+function _condPxToData(px, py, pad, gw, gh, vw) {
   return {
-    v:     ((px - pad.l) / gw) * xMax,
-    sigma: yMin + (1 - (py - pad.t) / gh) * (yMax - yMin),
+    v:     vw.x0 + ((px - pad.l) / gw) * (vw.x1 - vw.x0),
+    sigma: vw.yMin + (1 - (py - pad.t) / gh) * (vw.yMax - vw.yMin),
   };
 }
 
@@ -621,7 +640,7 @@ function _condLineClip(ax, ay, bx, by, pad, gw, gh) {
  * Dessine les droites et les points de contrôle par-dessus le graphe σ.
  * Appelé à la fin de drawTitrageSigmaGraph.
  */
-function _drawCondLines(ctx, pad, gw, gh, xMax, yMin, yMax, W, H) {
+function _drawCondLines(ctx, pad, gw, gh, vw, W, H) {
   const ctx2 = ctx;
   const phase = _condLinesCtx.phase;
   if (phase === 0) return;
@@ -630,11 +649,11 @@ function _drawCondLines(ctx, pad, gw, gh, xMax, yMin, yMax, W, H) {
 
   // ── Droite 1 complète ──
   if (phase >= 3 && lines[0].p1 && lines[0].p2) {
-    _renderCondLine(ctx2, lines[0], pad, gw, gh, xMax, yMin, yMax, false);
+    _renderCondLine(ctx2, lines[0], pad, gw, gh, vw, false);
   }
   // ── Droite 2 complète ──
   if (phase >= 5 && lines[1].p1 && lines[1].p2) {
-    _renderCondLine(ctx2, lines[1], pad, gw, gh, xMax, yMin, yMax, false);
+    _renderCondLine(ctx2, lines[1], pad, gw, gh, vw, false);
   }
 
   // ── Droite en cours de placement (pointillés) ──
@@ -645,8 +664,8 @@ function _drawCondLines(ctx, pad, gw, gh, xMax, yMin, yMax, W, H) {
   const mousePx = _condMousePx;   // { mx, my } ou null
 
   if (phase === 1) {
-    const vCenter = xMax / 2, sCenter = (yMin + yMax) / 2;
-    const pivot   = _condDataToPx(vCenter, sCenter, pad, gw, gh, xMax, yMin, yMax);
+    const vCenter = (vw.x0 + vw.x1) / 2, sCenter = (vw.yMin + vw.yMax) / 2;
+    const pivot   = _condDataToPx(vCenter, sCenter, pad, gw, gh, vw);
     const target  = mousePx ? { x: mousePx.mx, y: mousePx.my }
                              : { x: pivot.x + 60, y: pivot.y - 30 };
     const clip = _condLineClip(pivot.x, pivot.y, target.x, target.y, pad, gw, gh);
@@ -654,7 +673,7 @@ function _drawCondLines(ctx, pad, gw, gh, xMax, yMin, yMax, W, H) {
     _renderCtrlPt(ctx2, pivot.x, pivot.y, lines[0].color, false);
 
   } else if (phase === 2 && lines[0].p1) {
-    const pivot  = _condDataToPx(lines[0].p1.v, lines[0].p1.sigma, pad, gw, gh, xMax, yMin, yMax);
+    const pivot  = _condDataToPx(lines[0].p1.v, lines[0].p1.sigma, pad, gw, gh, vw);
     const target = mousePx ? { x: mousePx.mx, y: mousePx.my }
                             : { x: pivot.x + 60, y: pivot.y - 30 };
     const clip = _condLineClip(pivot.x, pivot.y, target.x, target.y, pad, gw, gh);
@@ -662,9 +681,9 @@ function _drawCondLines(ctx, pad, gw, gh, xMax, yMin, yMax, W, H) {
     _renderCtrlPt(ctx2, pivot.x, pivot.y, lines[0].color, true);
 
   } else if (phase === 3) {
-    _renderCondLine(ctx2, lines[0], pad, gw, gh, xMax, yMin, yMax, true);
-    const vCenter = xMax / 2, sCenter = (yMin + yMax) / 2;
-    const pivot   = _condDataToPx(vCenter, sCenter, pad, gw, gh, xMax, yMin, yMax);
+    _renderCondLine(ctx2, lines[0], pad, gw, gh, vw, true);
+    const vCenter = (vw.x0 + vw.x1) / 2, sCenter = (vw.yMin + vw.yMax) / 2;
+    const pivot   = _condDataToPx(vCenter, sCenter, pad, gw, gh, vw);
     const target  = mousePx ? { x: mousePx.mx, y: mousePx.my }
                              : { x: pivot.x + 60, y: pivot.y + 30 };
     const clip = _condLineClip(pivot.x, pivot.y, target.x, target.y, pad, gw, gh);
@@ -672,8 +691,8 @@ function _drawCondLines(ctx, pad, gw, gh, xMax, yMin, yMax, W, H) {
     _renderCtrlPt(ctx2, pivot.x, pivot.y, lines[1].color, false);
 
   } else if (phase === 4 && lines[1].p1) {
-    _renderCondLine(ctx2, lines[0], pad, gw, gh, xMax, yMin, yMax, true);
-    const pivot  = _condDataToPx(lines[1].p1.v, lines[1].p1.sigma, pad, gw, gh, xMax, yMin, yMax);
+    _renderCondLine(ctx2, lines[0], pad, gw, gh, vw, true);
+    const pivot  = _condDataToPx(lines[1].p1.v, lines[1].p1.sigma, pad, gw, gh, vw);
     const target = mousePx ? { x: mousePx.mx, y: mousePx.my }
                             : { x: pivot.x + 60, y: pivot.y + 30 };
     const clip = _condLineClip(pivot.x, pivot.y, target.x, target.y, pad, gw, gh);
@@ -681,15 +700,15 @@ function _drawCondLines(ctx, pad, gw, gh, xMax, yMin, yMax, W, H) {
     _renderCtrlPt(ctx2, pivot.x, pivot.y, lines[1].color, true);
 
   } else if (phase === 5) {
-    _renderCondLine(ctx2, lines[0], pad, gw, gh, xMax, yMin, yMax, true);
-    _renderCondLine(ctx2, lines[1], pad, gw, gh, xMax, yMin, yMax, true);
+    _renderCondLine(ctx2, lines[0], pad, gw, gh, vw, true);
+    _renderCondLine(ctx2, lines[1], pad, gw, gh, vw, true);
   }
 }
 
-function _renderCondLine(ctx, line, pad, gw, gh, xMax, yMin, yMax, withPts) {
+function _renderCondLine(ctx, line, pad, gw, gh, vw, withPts) {
   if (!line.p1 || !line.p2) return;
-  const a = _condDataToPx(line.p1.v, line.p1.sigma, pad, gw, gh, xMax, yMin, yMax);
-  const b = _condDataToPx(line.p2.v, line.p2.sigma, pad, gw, gh, xMax, yMin, yMax);
+  const a = _condDataToPx(line.p1.v, line.p1.sigma, pad, gw, gh, vw);
+  const b = _condDataToPx(line.p2.v, line.p2.sigma, pad, gw, gh, vw);
   const clip = _condLineClip(a.x, a.y, b.x, b.y, pad, gw, gh);
   if (clip) _renderClippedLine(ctx, clip, line.color, false);
   if (withPts) {
@@ -725,12 +744,12 @@ function _renderCtrlPt(ctx, cx, cy, color, fixed) {
 }
 
 /** Gère un clic gauche dans le graphe σ en mode "Tracer des droites". */
-function _condLinesHandleClick(mx, my, pad, gw, gh, xMax, yMin, yMax) {
+function _condLinesHandleClick(mx, my, pad, gw, gh, vw) {
   const phase = _condLinesCtx.phase;
   const lines  = _condLinesCtx.lines;
   if (phase === 0 || phase === 5) return;
 
-  const data = _condPxToData(mx, my, pad, gw, gh, xMax, yMin, yMax);
+  const data = _condPxToData(mx, my, pad, gw, gh, vw);
 
   if (phase === 1) {
     // Fige le 1er pivot de la droite 1 à la position courante de la souris
@@ -750,14 +769,14 @@ function _condLinesHandleClick(mx, my, pad, gw, gh, xMax, yMin, yMax) {
 }
 
 /** Tente de démarrer un drag sur un point de contrôle (phase 5). */
-function _condLinesHandleMousedown(mx, my, pad, gw, gh, xMax, yMin, yMax) {
+function _condLinesHandleMousedown(mx, my, pad, gw, gh, vw) {
   if (_condLinesCtx.phase !== 5) return false;
   const lines = _condLinesCtx.lines;
   for (let li = 0; li < 2; li++) {
     for (const key of ['p1', 'p2']) {
       const pt = lines[li][key];
       if (!pt) continue;
-      const px = _condDataToPx(pt.v, pt.sigma, pad, gw, gh, xMax, yMin, yMax);
+      const px = _condDataToPx(pt.v, pt.sigma, pad, gw, gh, vw);
       if (Math.hypot(mx - px.x, my - px.y) <= _DRAG_HIT_RADIUS) {
         _condLinesCtx.drag = { lineIdx: li, ptKey: key };
         return true;
@@ -767,14 +786,33 @@ function _condLinesHandleMousedown(mx, my, pad, gw, gh, xMax, yMin, yMax) {
   return false;
 }
 
-function _condLinesHandleMousemove(mx, my, pad, gw, gh, xMax, yMin, yMax) {
+/**
+ * Vrai si (mx, my) tombe sur un point de contrôle déplaçable d'une droite :
+ * le pointeur appartient alors à l'outil, pas au déplacement du graphe (zoom).
+ */
+function _condPointHit(mx, my) {
+  if (state.titrageType !== 'conductimetrique' || !_condLinesActive || !_sigmaLayout) return false;
+  if (_condLinesCtx.phase !== 5) return false;
+  const l = _sigmaLayout;
+  for (const line of _condLinesCtx.lines) {
+    for (const key of ['p1', 'p2']) {
+      const pt = line[key];
+      if (!pt) continue;
+      const px = _condDataToPx(pt.v, pt.sigma, l.pad, l.gw, l.gh, l.vw);
+      if (Math.hypot(mx - px.x, my - px.y) <= _DRAG_HIT_RADIUS) return true;
+    }
+  }
+  return false;
+}
+
+function _condLinesHandleMousemove(mx, my, pad, gw, gh, vw) {
   if (!_condLinesCtx.drag) return;
   const { lineIdx, ptKey } = _condLinesCtx.drag;
   // Contraindre mx/my aux bornes de la zone graphique pour empêcher
   // le point de sortir hors du canvas lors d'un drag rapide
   const mxC = Math.max(pad.l, Math.min(pad.l + gw, mx));
   const myC = Math.max(pad.t, Math.min(pad.t + gh, my));
-  _condLinesCtx.lines[lineIdx][ptKey] = _condPxToData(mxC, myC, pad, gw, gh, xMax, yMin, yMax);
+  _condLinesCtx.lines[lineIdx][ptKey] = _condPxToData(mxC, myC, pad, gw, gh, vw);
   drawTitrageSigmaGraph();
 }
 
@@ -795,7 +833,7 @@ function _condLinesDragMove(e) {
   const mx  = (e.clientX - r.left) * scX;
   const my  = (e.clientY - r.top)  * scY;
   const l   = _sigmaLayout;
-  _condLinesHandleMousemove(mx, my, l.pad, l.gw, l.gh, l.xMax, l.yMin, l.yMax);
+  _condLinesHandleMousemove(mx, my, l.pad, l.gw, l.gh, l.vw);
 }
 
 /** Active/désactive le mode "Tracer des droites". Reset si réactivation. */
@@ -1078,7 +1116,7 @@ function _drawHoverTooltip(ctx, pad, gw, gh, bx, by, label, color, W, H) {
  * Dessine le réticule libre sur le canvas pH/σ (partagé par les deux modes).
  * @param {string} unitLabel  - "pH" ou "σ (mS/cm)" selon le mode
  */
-function _drawReticule(ctx, pad, gw, gh, xMax, yMin, yMax, W, H, unitLabel) {
+function _drawReticule(ctx, pad, gw, gh, vw, W, H, unitLabel) {
   const tooltip = document.getElementById('ph-reticule-tooltip');
   if (_phCursorActive && _phChartHover && tooltip) {
     const { mx, my } = _phChartHover;
@@ -1093,8 +1131,8 @@ function _drawReticule(ctx, pad, gw, gh, xMax, yMin, yMax, W, H, unitLabel) {
       ctx.fillStyle = '#2c3e50';
       ctx.beginPath(); ctx.arc(mx, my, 3, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
-      const vCur   = ((mx - pad.l) / gw) * xMax;
-      const yCur   = yMin + (1 - (my - pad.t) / gh) * (yMax - yMin);
+      const vCur   = vw.x0 + ((mx - pad.l) / gw) * (vw.x1 - vw.x0);
+      const yCur   = vw.yMin + (1 - (my - pad.t) / gh) * (vw.yMax - vw.yMin);
       const ttFs   = Math.max(11, Math.round(Math.min(W, H) * 0.038));
       const decY   = unitLabel === 'pH' ? 2 : 2;
       tooltip.style.fontSize = ttFs + 'px';
@@ -1201,23 +1239,33 @@ function drawTitragePhGraph() {
 
   // ── Plages ──
   const vVerse = state.titrageVverse ?? 0;
-  let xMax = BURETTE.MAX_ML;
-  if (vVerse > xMax) xMax = vVerse;
-  xMax = Math.ceil(xMax / 5) * 5;
-  // Axe Y fixe : 0 à 14 (échelle pédagogique standard)
-  const yMin = 0, yMax = 14;
+  let xFull = BURETTE.MAX_ML;
+  if (vVerse > xFull) xFull = vVerse;
+  xFull = Math.ceil(xFull / 5) * 5;
+  // Fenêtre de vue (zoom molette) : x0..x1 ; sans zoom, tout l'axe [0, xFull]
+  const view  = _zoomView(xFull);
+  const x0 = view.x0, x1 = view.x1, xSpan = x1 - x0;
 
   // Échantillonnage dense de la courbe (à la volée, non stocké) :
   // grille de base + grille fine autour de l'équivalence et au tout début.
   const pts = _samplePhCurve(vVerse);
   _phSampledPts = pts;  // mémoriser pour le hover (recherche du point le plus proche)
 
+  // Axe Y : fixe 0 à 14 (échelle pédagogique standard) sans zoom ;
+  // recadré sur la fenêtre visible quand on zoome.
+  // Fenêtre Y propre à l'utilisateur (jamais recalculée d'après les données : la vue
+  // reste stable, y compris près du saut de pH).
+  const yFull = { lo: 0, hi: 14 };
+  const yz    = _zoomYView('ph', yFull);
+  const yFit  = yz.zoomed;                  // graduations adaptées à l'échelle affichée
+  const yMin = yz.lo, yMax = yz.hi;
+
   // ── Tailles de police adaptées ──
   const dim = Math.min(W, H);
   const fs  = Math.max(9,  Math.round(dim * 0.040));
   const fst = Math.max(10, Math.round(dim * 0.044));
 
-  const tickLabelW = Math.round(fs * 2.2);
+  const tickLabelW = Math.round(fs * 3.0);   // constant : pas de décalage horizontal au zoom
   const padL = tickLabelW + 4 + 7 + Math.round(fst * 0.3);
   const padR = padL;
   const padB = 4 + 6 + fs + 6 + fst + 4;
@@ -1234,13 +1282,17 @@ function drawTitragePhGraph() {
   const gw = W - pad.l - pad.r;
   const gh = H - pad.t - pad.b;
   if (gw < 40 || gh < 40) return;
-  _phLayout = { pad, gw, gh, W, H };
+  const vw = { x0, x1, yMin, yMax };
+  _phLayout = { pad, gw, gh, W, H, xFull, yFull, vw };
   _updateGraphBtnsSize();
 
   const nTicksX = Math.max(3, Math.min(6, Math.round(gw / 80)));
-  const xStep   = _niceStep(xMax, nTicksX);
-  // Axe Y : graduations entières par pas de 2 (0, 2, 4, …, 14)
-  const yStep = 2;
+  const xStep   = _niceStep(xSpan, nTicksX);
+  // Axe Y : graduations entières par pas de 2 (0, 2, 4, …, 14) ; en zoom, pas "joli"
+  const yStep = yFit
+    ? _niceStep(yMax - yMin, Math.max(3, Math.min(6, Math.round(gh / 60))))
+    : 2;
+  const decY = _decForStep(yStep);
 
   // ── Effacement + fond ──
   ctx.clearRect(0, 0, W, H);
@@ -1292,20 +1344,23 @@ function drawTitragePhGraph() {
   ctx.save();
   ctx.strokeStyle = '#ece8e2';
   ctx.lineWidth   = 1;
-  for (let x = xStep; x <= xMax + xStep * 0.01; x += xStep) {
-    const px = pad.l + (x / xMax) * gw;
+  for (const x of _tickValues(x0, x1, xStep)) {
+    const px = pad.l + ((x - x0) / xSpan) * gw;
     ctx.beginPath(); ctx.moveTo(px, pad.t); ctx.lineTo(px, pad.t + gh); ctx.stroke();
   }
-  for (let y = yStep; y <= yMax - 0.01; y += yStep) {
+  for (const y of _tickValues(yMin, yMax, yStep)) {
+    if (y <= yMin + yStep * 1e-6 || y >= yMax - yStep * 1e-6) continue;
     const py = pad.t + gh - ((y - yMin) / (yMax - yMin)) * gh;
     ctx.beginPath(); ctx.moveTo(pad.l, py); ctx.lineTo(pad.l + gw, py); ctx.stroke();
   }
   // Ligne pH=7 en pointillé léger pour la neutralité
-  const py7 = pad.t + gh - ((7 - yMin) / (yMax - yMin)) * gh;
-  ctx.setLineDash([4, 4]);
-  ctx.strokeStyle = 'rgba(120,140,160,0.45)';
-  ctx.beginPath(); ctx.moveTo(pad.l, py7); ctx.lineTo(pad.l + gw, py7); ctx.stroke();
-  ctx.setLineDash([]);
+  if (7 > yMin && 7 < yMax) {
+    const py7 = pad.t + gh - ((7 - yMin) / (yMax - yMin)) * gh;
+    ctx.setLineDash([4, 4]);
+    ctx.strokeStyle = 'rgba(120,140,160,0.45)';
+    ctx.beginPath(); ctx.moveTo(pad.l, py7); ctx.lineTo(pad.l + gw, py7); ctx.stroke();
+    ctx.setLineDash([]);
+  }
   ctx.restore();
 
   // ── Traits + labels indicateur (par-dessus la grille) ──
@@ -1362,10 +1417,10 @@ function drawTitragePhGraph() {
   ctx.textBaseline = 'top';
   ctx.strokeStyle  = '#4a5568';
   ctx.lineWidth    = 1;
-  for (let x = 0; x <= xMax + xStep * 0.01; x += xStep) {
-    const px = pad.l + (x / xMax) * gw;
+  for (const x of _tickValues(x0, x1, xStep)) {
+    const px = pad.l + ((x - x0) / xSpan) * gw;
     ctx.beginPath(); ctx.moveTo(px, pad.t + gh); ctx.lineTo(px, pad.t + gh + 4); ctx.stroke();
-    ctx.fillText(x % 1 === 0 ? x.toFixed(0) : x.toFixed(1), px, pad.t + gh + 6);
+    ctx.fillText(_fmtXTick(x, xStep), px, pad.t + gh + 6);
   }
   ctx.font      = `bold ${fst}px 'Segoe UI', Arial, sans-serif`;
   ctx.fillStyle = '#2d3748';
@@ -1381,10 +1436,10 @@ function drawTitragePhGraph() {
   ctx.textBaseline = 'middle';
   ctx.strokeStyle  = '#4a5568';
   ctx.lineWidth    = 1;
-  for (let y = 0; y <= yMax + 0.01; y += yStep) {
+  for (const y of _tickValues(yMin, yMax, yStep)) {
     const py = pad.t + gh - ((y - yMin) / (yMax - yMin)) * gh;
     ctx.beginPath(); ctx.moveTo(pad.l, py); ctx.lineTo(pad.l - 4, py); ctx.stroke();
-    ctx.fillText(y.toFixed(0), pad.l - 7, py);
+    ctx.fillText(y.toFixed(decY), pad.l - 7, py);
   }
   ctx.restore();
 
@@ -1411,7 +1466,7 @@ function drawTitragePhGraph() {
     ctx.beginPath();
     let firstM = true;
     for (const p of pts) {
-      const px = pad.l + (p.v / xMax) * gw;
+      const px = pad.l + ((p.v - x0) / xSpan) * gw;
       const py = pad.t + gh - ((p.ph - yMin) / (yMax - yMin)) * gh;
       if (firstM) { ctx.moveTo(px, py); firstM = false; }
       else         { ctx.lineTo(px, py); }
@@ -1435,8 +1490,8 @@ function drawTitragePhGraph() {
     const r     = Math.max(2, Math.round(Math.min(W, H) * 0.008));
     const lw    = Math.max(1.0, Math.min(W, H) * 0.0025);
     for (const p of _phExpPoints) {
-      if (p.v < 0 || p.v > xMax) continue;
-      const px = pad.l + (p.v / xMax) * gw;
+      if (p.v < x0 - xSpan * 0.02 || p.v > x1 + xSpan * 0.02) continue;
+      const px = pad.l + ((p.v - x0) / xSpan) * gw;
       const py = pad.t + gh - ((p.ph - yMin) / (yMax - yMin)) * gh;
       _drawExpCross(ctx, px, py, r, color, lw);
     }
@@ -1456,8 +1511,8 @@ function drawTitragePhGraph() {
         // ce qui assure un comportement correct dans la zone du saut de pH (courbe quasi verticale).
         let best = null, bestDist = Infinity;
         for (const p of _phSampledPts) {
-          if (p.v < 0 || p.v > xMax) continue;
-          const px = pad.l + (p.v / xMax) * gw;
+          if (p.v < x0 - xSpan * 0.02 || p.v > x1 + xSpan * 0.02) continue;
+          const px = pad.l + ((p.v - x0) / xSpan) * gw;
           const py = pad.t + gh - ((p.ph - yMin) / (yMax - yMin)) * gh;
           const d  = Math.hypot(mx - px, my - py);
           if (d < bestDist) { bestDist = d; best = { px, py, p }; }
@@ -1470,8 +1525,8 @@ function drawTitragePhGraph() {
         // Mode points expérimentaux : point le plus proche (≤ 24 px)
         let best = null, bestDist = Infinity;
         for (const p of _phExpPoints) {
-          if (p.v < 0 || p.v > xMax) continue;
-          const px = pad.l + (p.v / xMax) * gw;
+          if (p.v < x0 - xSpan * 0.02 || p.v > x1 + xSpan * 0.02) continue;
+          const px = pad.l + ((p.v - x0) / xSpan) * gw;
           const py = pad.t + gh - ((p.ph - yMin) / (yMax - yMin)) * gh;
           const d  = Math.hypot(mx - px, my - py);
           if (d < bestDist) { bestDist = d; best = { px, py, p }; }
@@ -1490,7 +1545,7 @@ function drawTitragePhGraph() {
   if (_phShowDerivee && pts.length >= 3) {
     const dpts = _computeDerivee(pts);
     // On travaille sur |dpH/dV| pour gérer les deux sens (acide→base et base→acide)
-    const vSeuil = xMax * 0.04;
+    const vSeuil = xFull * 0.04;
     let maxD = 0;
     dpts.forEach(p => { const a = Math.abs(p.dphdv); if (p.v >= vSeuil && a > maxD) maxD = a; });
     if (maxD === 0) dpts.forEach(p => { const a = Math.abs(p.dphdv); if (a > maxD) maxD = a; });
@@ -1509,8 +1564,8 @@ function drawTitragePhGraph() {
       let firstD = true;
       for (const p of dpts) {
         const phNorm = Math.min(Math.abs(p.dphdv), maxD) * dScale;  // écrêtage + valeur absolue
-        const px = pad.l + (p.v / xMax) * gw;
-        const py = pad.t + gh - ((phNorm - yMin) / (yMax - yMin)) * gh;
+        const px = pad.l + ((p.v - x0) / xSpan) * gw;
+        const py = pad.t + gh - (phNorm / 14) * gh;   // repère propre (0..14), indépendant du zoom Y
         if (firstD) { ctx.moveTo(px, py); firstD = false; }
         else        { ctx.lineTo(px, py); }
       }
@@ -1530,11 +1585,11 @@ function drawTitragePhGraph() {
 
   // ── Méthode des tangentes ──
   if (_phShowTangentes && pts.length >= 3) {
-    _drawTangentesMethode(ctx, pad, gw, gh, xMax, yMin, yMax, pts);
+    _drawTangentesMethode(ctx, pad, gw, gh, vw, pts);
   }
 
   // ── Réticule libre ──
-  _drawReticule(ctx, pad, gw, gh, xMax, yMin, yMax, W, H, 'pH');
+  _drawReticule(ctx, pad, gw, gh, vw, W, H, 'pH');
 
   // ── Bordure ──
   ctx.save();
@@ -1542,6 +1597,8 @@ function drawTitragePhGraph() {
   ctx.lineWidth   = 1;
   ctx.strokeRect(pad.l, pad.t, gw, gh);
   ctx.restore();
+
+  _zoomAfterDraw(canvas, pad, gw, pad.t + gh + 4 + 6 + fs + 6 + fst / 2, view, xFull, yz.factor);
 }
 
 /** Synchronise la taille du canvas pH avec son CSS et redessine. */
@@ -1589,6 +1646,11 @@ function initPhChartCanvas() {
   }
   _phCanvasInited = true;
 
+  // Zoom molette / pincement + glisser pour se déplacer. Doit être branché AVANT
+  // les autres listeners : son `click` en capture annule le faux clic d'un glisser.
+  _zoomAttach(canvas, () => _phLayout, _condPointHit,
+              () => state.titrageType === 'conductimetrique' ? 'sigma' : 'ph');
+
   canvas.addEventListener('mousemove', e => {
     const r   = canvas.getBoundingClientRect();
     const scX = canvas.clientWidth  / r.width;
@@ -1617,7 +1679,7 @@ function initPhChartCanvas() {
     const mx  = (e.clientX - r.left) * scX;
     const my  = (e.clientY - r.top)  * scY;
     const l   = _sigmaLayout;
-    const started = _condLinesHandleMousedown(mx, my, l.pad, l.gw, l.gh, l.xMax, l.yMin, l.yMax);
+    const started = _condLinesHandleMousedown(mx, my, l.pad, l.gw, l.gh, l.vw);
     if (started) {
       // Capturer le drag même hors du canvas
       document.addEventListener('mousemove', _condLinesDragMove);
@@ -1640,7 +1702,7 @@ function initPhChartCanvas() {
     if (state.titrageType === 'conductimetrique' && _condLinesActive && _sigmaLayout) {
       if (_condLinesCtx.phase >= 1 && _condLinesCtx.phase <= 4) {
         const l = _sigmaLayout;
-        _condLinesHandleClick(mx, my, l.pad, l.gw, l.gh, l.xMax, l.yMin, l.yMax);
+        _condLinesHandleClick(mx, my, l.pad, l.gw, l.gh, l.vw);
         return;
       }
     }
@@ -1674,14 +1736,11 @@ function _phPxToVPh(mx, my) {
   if (gw <= 0 || gh <= 0) return null;
   if (mx < pad.l || mx > pad.l + gw || my < pad.t || my > pad.t + gh) return null;
 
-  const vVerse = state.titrageVverse ?? 0;
-  let xMax = BURETTE.MAX_ML;
-  if (vVerse > xMax) xMax = vVerse;
-  xMax = Math.ceil(xMax / 5) * 5;
-  const yMin = 0, yMax = 14;
-
-  const v  = ((mx - pad.l) / gw) * xMax;
-  const ph = yMin + (1 - (my - pad.t) / gh) * (yMax - yMin);
+  // Fenêtre de vue (zoom) du dernier dessin : x0..x1, yMin..yMax
+  const vw = _phLayout.vw;
+  if (!vw) return null;
+  const v  = vw.x0 + ((mx - pad.l) / gw) * (vw.x1 - vw.x0);
+  const ph = vw.yMin + (1 - (my - pad.t) / gh) * (vw.yMax - vw.yMin);
   return { v, ph };
 }
 
@@ -1729,12 +1788,15 @@ function drawTitrageGraph() {
   const H   = canvas.clientHeight;
 
   // ── Plages ──
-  let xMax = BURETTE.MAX_ML; // 25 mL fixe par défaut
+  let xFull = BURETTE.MAX_ML; // 25 mL fixe par défaut
   _chartEspeces.forEach(e => {
     const pts = _chartPoints[e.id];
-    if (pts && pts.length) xMax = Math.max(xMax, pts[pts.length - 1].x);
+    if (pts && pts.length) xFull = Math.max(xFull, pts[pts.length - 1].x);
   });
-  xMax = Math.ceil(xMax / 5) * 5;
+  xFull = Math.ceil(xFull / 5) * 5;
+  // Fenêtre de vue (zoom molette) : x0..x1 ; sans zoom, tout l'axe [0, xFull]
+  const view  = _zoomView(xFull);
+  const x0 = view.x0, x1 = view.x1, xSpan = x1 - x0;
 
   const nTitreeInit = state.titrageConcTitree * (state.titrageV1 / 1000);
   let yMax = nTitreeInit * 2 || 0.002;
@@ -1743,6 +1805,13 @@ function drawTitrageGraph() {
     (_chartPoints[e.id] || []).forEach(p => { yMax = Math.max(yMax, p.n); });
   });
   yMax *= 1.08;
+  // Plage Y : autoscale historique sans zoom ; zoomée, fenêtre propre à l'utilisateur
+  // (jamais recalculée d'après les données : la vue reste stable).
+  const yFull = { lo: 0, hi: yMax };
+  const yz    = _zoomYView('n', yFull);
+  const yFit  = yz.zoomed;                  // graduations adaptées à l'échelle affichée
+  const yMin = yz.lo;
+  yMax = yz.hi;
 
   const { scale: yScale, label: yUnit } = _yScale(yMax);
 
@@ -1757,7 +1826,7 @@ function drawTitrageGraph() {
   // pad.r : symétrique de pad.l
   // pad.b : tick (4) + gap (6) + hauteur label X (fs) + gap (6) + titre X (fst) + marge (4)
   // pad.t : symétrique de pad.b  →  "n" + unité tiennent dans cet espace
-  const tickLabelW = Math.round(fs * 3.2);
+  const tickLabelW = Math.round(fs * 3.8);   // constant : pas de décalage horizontal au zoom
   const padL = tickLabelW + 4 + 7 + Math.round(fst * 0.3);
   const padR = padL;
   const padB = 4 + 6 + fs + 6 + fst + 4;   // tick + gap + label + gap + titre + marge
@@ -1770,8 +1839,10 @@ function drawTitrageGraph() {
   // ── Nombre de graduations (peu !) ──
   const nTicksX = Math.max(3, Math.min(6, Math.round(gw / 80)));
   const nTicksY = Math.max(3, Math.min(5, Math.round(gh / 70)));
-  const xStep   = _niceStep(xMax, nTicksX);
-  const yStep   = _niceStep(yMax / yScale, nTicksY) * yScale;
+  const xStep   = _niceStep(xSpan, nTicksX);
+  const yStep   = _niceStep((yMax - yMin) / yScale, nTicksY) * yScale;
+  const vw      = { x0, x1, yMin, yMax };
+  _chartLayout  = { pad, gw, gh, xFull, yFull, vw };
 
   // ── Effacement ──
   ctx.clearRect(0, 0, W, H);
@@ -1786,12 +1857,13 @@ function drawTitrageGraph() {
   ctx.save();
   ctx.strokeStyle = '#ece8e2';
   ctx.lineWidth   = 1;
-  for (let x = xStep; x <= xMax + xStep * 0.01; x += xStep) {
-    const px = pad.l + (x / xMax) * gw;
+  for (const x of _tickValues(x0, x1, xStep)) {
+    const px = pad.l + ((x - x0) / xSpan) * gw;
     ctx.beginPath(); ctx.moveTo(px, pad.t); ctx.lineTo(px, pad.t + gh); ctx.stroke();
   }
-  for (let y = yStep; y <= yMax + yStep * 0.01; y += yStep) {
-    const py = pad.t + gh - (y / yMax) * gh;
+  for (const y of _tickValues(yMin, yMax, yStep)) {
+    if (y <= yMin + yStep * 1e-6) continue;
+    const py = pad.t + gh - ((y - yMin) / (yMax - yMin)) * gh;
     ctx.beginPath(); ctx.moveTo(pad.l, py); ctx.lineTo(pad.l + gw, py); ctx.stroke();
   }
   ctx.restore();
@@ -1815,10 +1887,10 @@ function drawTitrageGraph() {
   ctx.textBaseline = 'top';
   ctx.strokeStyle  = '#4a5568';
   ctx.lineWidth    = 1;
-  for (let x = 0; x <= xMax + xStep * 0.01; x += xStep) {
-    const px = pad.l + (x / xMax) * gw;
+  for (const x of _tickValues(x0, x1, xStep)) {
+    const px = pad.l + ((x - x0) / xSpan) * gw;
     ctx.beginPath(); ctx.moveTo(px, pad.t + gh); ctx.lineTo(px, pad.t + gh + 4); ctx.stroke();
-    ctx.fillText(x % 1 === 0 ? x.toFixed(0) : x.toFixed(1), px, pad.t + gh + 6);
+    ctx.fillText(_fmtXTick(x, xStep), px, pad.t + gh + 6);
   }
   // Titre axe X : tick(4) + gap(6) + label(fs) + gap(6) + centré sur fst
   ctx.font      = `bold ${fst}px 'Segoe UI', Arial, sans-serif`;
@@ -1837,10 +1909,10 @@ function drawTitrageGraph() {
   ctx.textBaseline = 'middle';
   ctx.strokeStyle  = '#4a5568';
   ctx.lineWidth    = 1;
-  for (let y = 0; y <= yMax + yStep * 0.01; y += yStep) {
-    const py = pad.t + gh - (y / yMax) * gh;
+  for (const y of _tickValues(yMin, yMax, yStep)) {
+    const py = pad.t + gh - ((y - yMin) / (yMax - yMin)) * gh;
     ctx.beginPath(); ctx.moveTo(pad.l, py); ctx.lineTo(pad.l - 4, py); ctx.stroke();
-    ctx.fillText(_fmtY(y, yScale), pad.l - 7, py);
+    ctx.fillText(yFit ? (y / yScale).toFixed(_decForStep(yStep / yScale)) : _fmtY(y, yScale), pad.l - 7, py);
   }
   ctx.restore();
 
@@ -1874,8 +1946,8 @@ function drawTitrageGraph() {
     ctx.beginPath();
     let first = true;
     for (const p of pts) {
-      const px = pad.l + (p.x / xMax) * gw;
-      const py = pad.t + gh - (p.n  / yMax) * gh;
+      const px = pad.l + ((p.x - x0) / xSpan) * gw;
+      const py = pad.t + gh - ((p.n - yMin) / (yMax - yMin)) * gh;
       if (first) { ctx.moveTo(px, py); first = false; }
       else        { ctx.lineTo(px, py); }
     }
@@ -1890,11 +1962,11 @@ function drawTitrageGraph() {
         my >= pad.t  - 10 && my <= pad.t  + gh + 10) {
 
       // Convertir la position souris en volume (coordonnée X)
-      const vMouse = ((mx - pad.l) / gw) * xMax;
+      const vMouse = x0 + ((mx - pad.l) / gw) * xSpan;
 
-      // Snap au multiple de 0.10 mL le plus proche dans [0, xMax]
-      const STEP  = 0.10;
-      const vSnap = Math.max(0, Math.min(xMax, Math.round(vMouse / STEP) * STEP));
+      // Snap au multiple de 0.10 mL (0.05 / 0.01 en zoom) le plus proche dans la fenêtre
+      const STEP  = _hoverStep(xSpan);
+      const vSnap = Math.max(x0, Math.min(x1, Math.round(vMouse / STEP) * STEP));
 
       // Calculer les valeurs de toutes les espèces à ce volume
       const vals = _calcPointAt(vSnap);
@@ -1913,8 +1985,8 @@ function drawTitrageGraph() {
       _chartEspeces.forEach(e => {
         if (!_chartVisible[e.id]) return;
         const n  = vals[e.id] ?? 0;
-        const px = pad.l + (vSnap / xMax) * gw;
-        const py = pad.t + gh - (n / yMax) * gh;
+        const px = pad.l + ((vSnap - x0) / xSpan) * gw;
+        const py = pad.t + gh - ((n - yMin) / (yMax - yMin)) * gh;
         const d  = Math.hypot(px - mx, py - my);
         if (d < bestDist) {
           bestDist  = d;
@@ -1925,8 +1997,8 @@ function drawTitrageGraph() {
       });
 
       if (bestEsp && bestDist < 40) {
-        const bx = pad.l + (vSnap / xMax) * gw;
-        const by = Math.max(pad.t, Math.min(pad.t + gh, pad.t + gh - (bestN / yMax) * gh));
+        const bx = pad.l + ((vSnap - x0) / xSpan) * gw;
+        const by = Math.max(pad.t, Math.min(pad.t + gh, pad.t + gh - ((bestN - yMin) / (yMax - yMin)) * gh));
 
         // Lignes pointillées vers axes
         ctx.save();
@@ -1995,6 +2067,8 @@ function drawTitrageGraph() {
   ctx.lineWidth   = 1;
   ctx.strokeRect(pad.l, pad.t, gw, gh);
   ctx.restore();
+
+  _zoomAfterDraw(canvas, pad, gw, pad.t + gh + 4 + 6 + fs + 6 + fst / 2, view, xFull, yz.factor);
 }
 
 /* ── Légende ────────────────────────────────────────────────────────────── */
@@ -2110,6 +2184,9 @@ function initChartCanvas() {
     return;
   }
   _chartCanvasInited = true;
+
+  // ── Zoom molette / pincement + glisser (axe X partagé avec le graphe pH/σ) ──
+  _zoomAttach(canvas, () => _chartLayout, null, () => 'n');
 
   // ── Hover souris ──
   canvas.addEventListener('mousemove', e => {
@@ -2294,18 +2371,18 @@ function _computeDerivee(pts) {
  *             médiatrice/courbe pour lire Veq via le tooltip de point courant.
  * ───────────────────────────────────────────────────────────────────────── */
 
-function _drawTangentesMethode(ctx, pad, gw, gh, xMax, yMin, yMax, pts) {
+function _drawTangentesMethode(ctx, pad, gw, gh, vw, pts) {
   if (!_phShowTangentes) return;
   const phase = _phTanCtx.phase;
   if (phase < 1) return;
 
   // Helpers de conversion (V, pH) ↔ pixels canvas
-  const toX = v  => pad.l + (v  / xMax) * gw;
-  const toY = ph => pad.t + gh - ((ph - yMin) / (yMax - yMin)) * gh;
+  const toX = v  => pad.l + ((v - vw.x0) / (vw.x1 - vw.x0)) * gw;
+  const toY = ph => pad.t + gh - ((ph - vw.yMin) / (vw.yMax - vw.yMin)) * gh;
 
   // Échelles pixel pour la "perpendicularité visuelle"
-  const sx = gw / xMax;                 // px / mL
-  const sy = gh / (yMax - yMin);        // px / unité pH
+  const sx = gw / (vw.x1 - vw.x0);      // px / mL
+  const sy = gh / (vw.yMax - vw.yMin);  // px / unité pH
 
   // ── Tracé d''une droite math y = slope·V + b, clippée à la zone graphe ──
   function drawLineMath(slope, b, color, dash, lineWidth) {
@@ -2317,8 +2394,8 @@ function _drawTangentesMethode(ctx, pad, gw, gh, xMax, yMin, yMax, pts) {
     ctx.lineWidth   = lineWidth;
     ctx.setLineDash(dash);
     ctx.beginPath();
-    ctx.moveTo(toX(0),    toY(slope * 0    + b));
-    ctx.lineTo(toX(xMax), toY(slope * xMax + b));
+    ctx.moveTo(toX(vw.x0), toY(slope * vw.x0 + b));
+    ctx.lineTo(toX(vw.x1), toY(slope * vw.x1 + b));
     ctx.stroke();
     ctx.setLineDash([]);
     ctx.restore();
@@ -2348,10 +2425,11 @@ function _drawTangentesMethode(ctx, pad, gw, gh, xMax, yMin, yMax, pts) {
     const { mx, my } = _phChartHover;
     // Échantillonner la courbe finement et chercher le point le plus proche
     let bestV = null, bestD2 = Infinity;
-    const xMaxLoc = xMax;
+    // Balayage de la fenêtre visible (le point visé est forcément à l'écran)
+    const vLo = Math.max(0, vw.x0), vHi = vw.x1;
     const NSTEP = 600;
     for (let i = 0; i <= NSTEP; i++) {
-      const v  = (i / NSTEP) * xMaxLoc;
+      const v  = vLo + (i / NSTEP) * (vHi - vLo);
       const ph = calcPHAtVolume(v);
       const dx = toX(v) - mx;
       const dy = toY(ph) - my;
@@ -2360,12 +2438,12 @@ function _drawTangentesMethode(ctx, pad, gw, gh, xMax, yMin, yMax, pts) {
     }
     // Affinage : recherche locale autour du meilleur point
     if (bestV !== null) {
-      const dvFine = xMaxLoc / NSTEP;
+      const dvFine = (vHi - vLo) / NSTEP;
       for (let k = 0; k < 4; k++) {
         const step = dvFine / Math.pow(5, k);
         for (let s = -5; s <= 5; s++) {
           const v = bestV + s * step;
-          if (v < 0 || v > xMaxLoc) continue;
+          if (v < vLo || v > vHi) continue;
           const ph = calcPHAtVolume(v);
           const dx = toX(v) - mx;
           const dy = toY(ph) - my;
