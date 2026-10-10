@@ -160,6 +160,14 @@ function _zoomAfterDraw(canvas, pad, gw, rowY, view, xFull, yFactor) {
   const fy = yFactor || 1;
   const zoomed = view.zoomed || fy > 1 + 1e-9;
   canvas.style.cursor      = zoomed ? (_zoomPanning ? 'grabbing' : 'grab') : '';
+  // Réticule libre actif : on masque le curseur de la souris au-dessus du tracé,
+  // sinon il cache l'endroit visé (le réticule le remplace).
+  if (canvas.id === 'titrage-chart-ph' && _phCursorActive && _phChartHover && _phLayout && !_zoomPanning) {
+    const { mx, my } = _phChartHover;
+    if (mx >= pad.l && mx <= pad.l + gw && my >= _phLayout.pad.t && my <= _phLayout.pad.t + _phLayout.gh) {
+      canvas.style.cursor = 'none';
+    }
+  }
   // Hors zoom on laisse le défilement vertical de la page ; zoomé, le glisser est à nous.
   canvas.style.touchAction = zoomed ? 'none' : 'pan-y';
   canvas.title = 'Molette ou pincement : zoomer · Maj + molette : zoom vertical seul · Glisser : se déplacer';
