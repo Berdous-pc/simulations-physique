@@ -1552,17 +1552,10 @@ function drawTitragePhGraph() {
     const kLo = Math.max(0, Math.floor(x0 / dDelta) - 1);
     const kHi = Math.min(Math.floor(vVerse / dDelta), Math.ceil(x1 / dDelta) + 1);
     const dpts = kHi > kLo ? _dphSmoothSeries(kLo, kHi, dDelta, dSigma, vVerse) : [];
-    // Normalisation : sommet de la cloche (autour de Veq) — indépendante du défilement
-    const Ca_ = state.titrageConcTitree, Cb_ = state.titrageConcTitrante, V1_ = state.titrageV1;
-    const vEqD = (Cb_ > 0) ? (Ca_ * V1_ / Cb_) : null;
-    let maxD = 0;
-    if (vEqD !== null && vEqD > 0 && vEqD <= vVerse) {
-      const kc = Math.round(vEqD / dDelta), nk = Math.ceil(4 * dSigma / dDelta);
-      _dphSmoothSeries(Math.max(0, kc - nk), kc + nk, dDelta, dSigma, vVerse)
-        .forEach(p => { maxD = Math.max(maxD, Math.abs(p.d)); });
-    } else {
-      dpts.forEach(p => { maxD = Math.max(maxD, Math.abs(p.d)); });
-    }
+    // Normalisation : maximum de la courbe lissée sur TOUT [0, vVerse] (indépendant du
+    // défilement ; pas d'écrêtage). Pour un acide très faible (phénol…) il n'y a pas de
+    // saut à l'équivalence et le maximum est au début, pas à Veq.
+    const maxD = _dphMaxSmooth(dSigma, vVerse);
     if (maxD > 0 && dpts.length > 1) {
       // Sommet normalisé à 5 unités pH sur 14 (~36 % de la hauteur : garde le haut du graphe libre)
       const dScale = 5 / maxD;
@@ -2372,6 +2365,19 @@ function _dphSmoothSeries(k0, k1, delta, sigma, vMax) {
     out.push({ v: k * delta, d });
   }
   return out;
+}
+
+/** Maximum de |dpH/dV| lissée sur [0, vMax], mis en cache (le survol redessine sans cesse). */
+let _dphMaxCache = { key: '', val: 0 };
+function _dphMaxSmooth(sigma, vMax) {
+  const key = [state.titragePhRxnIdx, state.titrageConcTitree, state.titrageConcTitrante,
+               state.titrageV1, state.titrageVeau, sigma.toFixed(4), vMax.toFixed(3)].join('|');
+  if (_dphMaxCache.key === key) return _dphMaxCache.val;
+  const delta = Math.max(sigma / 4, vMax / 3000);
+  let m = 0;
+  _dphSmoothSeries(0, Math.floor(vMax / delta), delta, sigma, vMax).forEach(p => { m = Math.max(m, Math.abs(p.d)); });
+  _dphMaxCache = { key, val: m };
+  return m;
 }
 
 /**
