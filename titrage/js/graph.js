@@ -1550,11 +1550,11 @@ function drawTitragePhGraph() {
     dpts.forEach(p => { const a = Math.abs(p.dphdv); if (p.v >= vSeuil && a > maxD) maxD = a; });
     if (maxD === 0) dpts.forEach(p => { const a = Math.abs(p.dphdv); if (a > maxD) maxD = a; });
     if (maxD > 0) {
-      // Pic normalisé à 12 unités pH (laisse 0-1 libre en bas)
-      const dScale = 12 / maxD;
+      // Pic normalisé à 8 unités pH sur 14 (~57 % de la hauteur : garde le haut du graphe libre)
+      const dScale = 8 / maxD;
       ctx.save();
       ctx.strokeStyle = '#cc4400';
-      ctx.lineWidth   = Math.max(1.0, W * 0.0025);
+      ctx.lineWidth   = Math.max(1.0, W * 0.0017);   // trait fin (la courbe pH, elle, reste en croix)
       ctx.lineJoin    = 'round';
       ctx.lineCap     = 'round';
       ctx.beginPath();
