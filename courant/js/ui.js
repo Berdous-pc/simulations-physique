@@ -274,7 +274,7 @@ function onSliderGene(val) {
 
 // ── Température (semi-conducteur) ──
 function onSliderTemp(val) {
-  sim.tempIdx = parseInt(val, 10);
+  setTemperature(parseInt(val, 10));
   _updateLabelTemp();
   sim.needsRedraw = true;
 }

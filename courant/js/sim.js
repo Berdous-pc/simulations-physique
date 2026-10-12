@@ -220,15 +220,39 @@ var ISO_I_SHOW = 10;
 // Pour chaque cran : taux d'ionisation par atome neutre (s⁻¹) et force de
 // la recapture (multiple de SEMI_CAP_RATE). Réglés pour que la fraction
 // d'atomes ionisés, à l'équilibre, vaille environ 0 ; 8 ; 25 ; 55 ; 85 %
-// (cf. SEMI_F_EQ) — l'équilibre vérifie f² / (1 − f) ≈ taux / force.
+// (cf. SEMI_F_EQ). L'attraction (SEMI_ATT) renforce aussi la recapture à
+// froid : les taux d'ionisation ont été réglés avec elle, par mesure.
 var TEMP_LABELS  = ['Très basse', 'Basse', 'Ambiante', 'Élevée', 'Très élevée'];
 var TEMP_DEFAULT = 2;
-var SEMI_NU      = [0, 0.0067, 0.063, 0.32, 1.4];   // s⁻¹
+var SEMI_NU      = [0, 0.055, 0.075, 0.39, 1.78];   // s⁻¹
 var SEMI_CAP     = [1, 1,      0.8,   0.5,  0.3];
 // Fraction d'atomes ionisés à l'équilibre : elle sert à PARTIR de l'état
 // d'équilibre quand on choisit ce matériau, au lieu d'un cristal sans
 // porteur qui mettrait de longues secondes à se remplir.
 var SEMI_F_EQ    = [0, 0.08, 0.25, 0.55, 0.85];
+
+// Agitation thermique : la vitesse d'agitation croît comme √T. Facteurs par
+// cran, appliqués à la vitesse de référence (celle du conducteur) pour les
+// électrons libres, et à la vitesse de rotation des électrons liés. À champ
+// égal, un électron plus rapide subit plus de chocs par seconde : sa dérive
+// diminue avec T (baisse de la mobilité), mais le nombre de porteurs croît
+// bien plus vite, si bien que le courant total augmente quand même.
+var SEMI_VTH = [0.7, 0.85, 1.0, 1.2, 1.4];
+
+// Attraction d'un électron libre par l'ion + le plus proche. Elle accélère
+// la recapture, qu'un hasard seul rendrait très lente quand il ne reste que
+// quelques ions (par neutralité, autant d'ions que d'électrons libres). Elle
+// décroît avec T : à froid elle courbe nettement les trajectoires, à chaud
+// elle devient négligeable devant l'agitation, et le dernier cran n'en a plus.
+// Accélération à la distance SEMI_ATT_D0, en hauteurs de fil par s² ; elle
+// varie en 1/d, comme la force de Coulomb dans un plan (adoucie au contact).
+var SEMI_ATT    = [4, 1, 0.5, 0.2, 0];
+var SEMI_ATT_D0 = 0.30;   // hauteurs de fil
+// Sans frottement, un électron attiré ne ferait que tourner autour de l'ion
+// sans jamais s'en rapprocher (l'énergie se conserve). Près de l'ion, le
+// réseau lui en prend : amortissement de même forme que l'attraction
+// (s⁻¹ par unité d'attraction, à la distance SEMI_ATT_D0).
+var SEMI_ATT_DAMP = 0.1;
 
 // Étalonnage des grandeurs affichées : les noyaux sont dessinés plus petits
 // que les ions du conducteur, donc un électron libre y subit moins de chocs
@@ -527,10 +551,12 @@ function nearestCation(x, y) {
 // ══════════════════════════════════════════════════════════════════════
 
 // Vitesse d'agitation : module fixé, direction aléatoire.
-function _thermalVelocity(e) {
+// vth : module imposé (la vitesse de référence par défaut).
+function _thermalVelocity(e, vth) {
+  var v  = vth || sim.vth;
   var th = Math.random() * 2 * Math.PI;
-  e.vx = sim.vth * Math.cos(th);
-  e.vy = sim.vth * Math.sin(th);
+  e.vx = v * Math.cos(th);
+  e.vy = v * Math.sin(th);
 }
 
 // Position libre : tirée au hasard dans le fil, hors de tout cation.
@@ -671,10 +697,14 @@ function stepPhysics(dtMs) {
 // rE : rayon de l'électron. capture : dans un semi-conducteur, force de la
 // recapture (0 ou false : aucune) — un électron
 // qui passe près d'un ion peut être recapturé et disparaît de la liste.
-function stepFreeElectrons(list, dt, rNuc, rE, capture) {
+function stepFreeElectrons(list, dt, rNuc, rE, capture, vth, att) {
   var acc   = fieldAcceleration();
   var rColl = rNuc + rE;
-  var vmax  = VMAX_FACTOR * sim.vth;
+  vth = vth || sim.vth;
+  var vmax  = VMAX_FACTOR * vth;
+  att = att || 0;
+  var attH  = sim.ty2 - sim.ty1;
+  var attD0 = SEMI_ATT_D0 * attH;
 
   // ── Sous-pas : un électron ne doit jamais franchir un cation en une
   //    seule avance, sinon il le traverserait sans choc.
@@ -695,6 +725,29 @@ function stepFreeElectrons(list, dt, rNuc, rE, capture) {
 
       // ── Accélération par le champ, puis avance ──
       e.vx += acc * h;
+
+      // Semi-conducteur : attraction par l'ion + le plus proche (1/d²,
+      // adoucie à la distance de choc pour rester finie au contact).
+      if (att > 0) {
+        var bi = -1, bd2 = Infinity;
+        for (var q = 0; q < sim.atoms.length; q++) {
+          if (!sim.atoms[q].ion) continue;
+          var qx = sim.lattice[q].x - e.x, qy = sim.lattice[q].y - e.y;
+          var qd = qx * qx + qy * qy;
+          if (qd < bd2) { bd2 = qd; bi = q; }
+        }
+        if (bi >= 0) {
+          var dd = Math.sqrt(bd2);
+          var dm = Math.max(dd, rColl);
+          var shape = attD0 / dm;   // 1/d : loi de Coulomb dans un plan
+          var ga = att * shape;      // px/s²
+          e.vx += ga * (sim.lattice[bi].x - e.x) / dd * h;
+          e.vy += ga * (sim.lattice[bi].y - e.y) / dd * h;
+          var kd = Math.exp(-SEMI_ATT_DAMP * (att / attH) * shape * h);   // att/attH : sans dimension
+          e.vx *= kd;
+          e.vy *= kd;
+        }
+      }
 
       // Garde-fou : les chocs bornent déjà la vitesse, mais à gêne très
       // faible un vol libre peut durer longtemps.
@@ -736,7 +789,7 @@ function stepFreeElectrons(list, dt, rNuc, rE, capture) {
         // Redistribution complète de la direction, module ramené à la
         // vitesse d'agitation : c'est ici que l'énergie gagnée sur le
         // champ est cédée au réseau (effet Joule).
-        _thermalVelocity(e);
+        _thermalVelocity(e, vth);
         // …mais la nouvelle direction doit s'éloigner du cation, sinon
         // l'électron y replonge et reste collé.
         if (e.vx * nx + e.vy * ny < 0) { e.vx = -e.vx; e.vy = -e.vy; }
@@ -777,13 +830,30 @@ function boundPosition(k) {
   return { x: c.x + o.ox + o.A * Math.cos(ph), y: c.y + o.B * Math.sin(ph) };
 }
 
+// Vitesse d'agitation des électrons libres au cran de température courant.
+function semiVth() {
+  return sim.vth * SEMI_VTH[sim.tempIdx];
+}
+
+// Change le cran de température. Les électrons libres en vol gardent sinon
+// leur ancienne vitesse jusqu'au choc suivant : on la rééchelonne tout de
+// suite, pour que l'effet du curseur se voie immédiatement.
+function setTemperature(idx) {
+  var k = SEMI_VTH[idx] / SEMI_VTH[sim.tempIdx];
+  sim.tempIdx = idx;
+  for (var i = 0; i < sim.free.length; i++) {
+    sim.free[i].vx *= k;
+    sim.free[i].vy *= k;
+  }
+}
+
 // Ionise l'atome k : son électron quitte l'orbite et devient libre, avec une
 // vitesse d'agitation dirigée en s'éloignant du noyau.
 function ionise(k) {
   var at = sim.atoms[k];
   var p  = boundPosition(k);
   var e  = { x: p.x, y: p.y, vx: 0, vy: 0 };
-  _thermalVelocity(e);
+  _thermalVelocity(e, semiVth());
   var c = sim.lattice[k];
   if (e.vx * (p.x - c.x) + e.vy * (p.y - c.y) < 0) { e.vx = -e.vx; e.vy = -e.vy; }
   at.ion = true;
@@ -806,7 +876,7 @@ function seedSemi() {
 // Semi-conducteur : orbites des atomes neutres (déformées par le champ),
 // ionisation thermique, puis mouvement des électrons libres.
 function stepSemi(dt) {
-  stepInsulator(dt);
+  stepInsulator(dt, SEMI_VTH[sim.tempIdx]);
 
   var nNeutral = 0;
   for (var k = 0; k < sim.atoms.length; k++) if (!sim.atoms[k].ion) nNeutral++;
@@ -824,14 +894,15 @@ function stepSemi(dt) {
     ev -= 1;
   }
 
-  stepFreeElectrons(sim.free, dt, sim.rNucleus, sim.rElec, SEMI_CAP[sim.tempIdx]);
+  stepFreeElectrons(sim.free, dt, sim.rNucleus, sim.rElec, SEMI_CAP[sim.tempIdx],
+                    semiVth(), SEMI_ATT[sim.tempIdx] * (sim.ty2 - sim.ty1));
 }
 
 // Isolant : la déformation a rejoint sa valeur d'équilibre selon un
 // oscillateur amorti, et chaque électron avance sur son orbite.
 // dt en secondes. Sous-pas de 5 ms au plus, pour que l'intégration reste
 // stable même à la vitesse d'animation maximale.
-function stepInsulator(dt) {
+function stepInsulator(dt, speed) {
   var aeq = isoTarget();
   var n = Math.max(1, Math.ceil(dt / 0.005));
   var h = dt / n;
@@ -841,7 +912,7 @@ function stepInsulator(dt) {
     sim.isoA += sim.isoV * h;
   }
   for (var i = 0; i < sim.atoms.length; i++) {
-    sim.atoms[i].ph += sim.atoms[i].w * dt;
+    sim.atoms[i].ph += sim.atoms[i].w * dt * (speed || 1);
   }
 }
 

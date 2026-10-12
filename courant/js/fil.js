@@ -582,24 +582,22 @@ function _drawAtoms() {
   var N = 48;   // points par orbite
   var k, i, c;
 
-  // Orbites en pointillés, sous les noyaux et les électrons. Celle d'un ion
-  // est plus pâle : elle est vide, l'électron est parti.
-  ctx.lineWidth = Math.max(1, rE * 0.35);
+  // Orbites en pointillés, sous les noyaux et les électrons. Un ion n'a plus
+  // d'électron, donc plus d'orbite.
+  ctx.lineWidth   = Math.max(1, rE * 0.35);
+  ctx.strokeStyle = 'rgba(122,138,150,0.60)';
   ctx.setLineDash([Math.max(2, rE * 1.2), Math.max(2, rE * 1.2)]);
-  for (var pass = 0; pass < 2; pass++) {
-    ctx.strokeStyle = pass === 0 ? 'rgba(122,138,150,0.60)' : 'rgba(122,138,150,0.28)';
-    ctx.beginPath();
-    for (k = 0; k < sim.lattice.length; k++) {
-      if (sim.atoms[k].ion !== (pass === 1)) continue;
-      c = sim.lattice[k];
-      for (i = 0; i <= N; i++) {
-        var t  = 2 * Math.PI * i / N;
-        var px = c.x + o.ox + o.A * Math.cos(t), py = c.y + o.B * Math.sin(t);
-        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-      }
+  ctx.beginPath();
+  for (k = 0; k < sim.lattice.length; k++) {
+    if (sim.atoms[k].ion) continue;
+    c = sim.lattice[k];
+    for (i = 0; i <= N; i++) {
+      var t  = 2 * Math.PI * i / N;
+      var px = c.x + o.ox + o.A * Math.cos(t), py = c.y + o.B * Math.sin(t);
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
     }
-    ctx.stroke();
   }
+  ctx.stroke();
   ctx.setLineDash([]);
 
   // Noyaux : pâles tant que l'atome est neutre, pleins pour un ion.
