@@ -31,16 +31,8 @@
       <!-- Légende posée en overlay sur la zone de simulation. Dimensionnée
            en cqmin : elle suit les DEUX dimensions du conteneur, qui n'a
            pas la taille de la fenêtre (le panneau droit en est retranché). -->
-      <div id="legend">
-        <div class="legend-item">
-          <span class="legend-dot dot-cation"></span>
-          <span id="leg-1">ion du réseau, fixe</span>
-        </div>
-        <div class="legend-item">
-          <span class="legend-dot dot-elec"></span>
-          <span id="leg-2">électron libre</span>
-        </div>
-      </div>
+      <!-- Son contenu dépend du matériau : fil.js (renderLegend) le construit. -->
+      <div id="legend"></div>
     </div>
   </div>
 
@@ -85,6 +77,7 @@
         <div class="mat-row">
           <button id="btn-mat-cond" class="btn-toggle-one active" onclick="setMaterial('conducteur')">Conducteur</button>
           <button id="btn-mat-iso" class="btn-toggle-one" onclick="setMaterial('isolant')">Isolant</button>
+          <button id="btn-mat-semi" class="btn-toggle-one" onclick="setMaterial('semi')">Semi-conducteur</button>
         </div>
 
         <button id="btn-circuit" class="btn btn-green" onclick="toggleCircuit()">Fermer le circuit</button>
@@ -100,6 +93,14 @@
             <span>0</span>
             <span>+12 V</span>
           </div>
+        </div>
+
+        <div class="param-row" id="row-temp" hidden>
+          <label for="sl-temp">Température
+            <span class="param-value" id="lbl-temp">Ambiante</span>
+          </label>
+          <input type="range" id="sl-temp" min="0" max="4" step="1" value="2"
+                 oninput="onSliderTemp(this.value)">
         </div>
 
         <div class="param-row" id="row-gene">
@@ -129,6 +130,10 @@
           <div class="readout">
             <div class="ro-label">Vitesse moyenne des électrons</div>
             <div class="ro-value" id="ro-v">≈ 0 mm/s</div>
+          </div>
+          <div class="readout" id="row-free" hidden>
+            <div class="ro-label">Électrons libres</div>
+            <div class="ro-value" id="ro-n">0</div>
           </div>
         </div>
 

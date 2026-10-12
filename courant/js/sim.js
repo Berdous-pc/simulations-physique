@@ -203,6 +203,46 @@ var ISO_I_TAU = 100;   // ms
 // En dessous de cette intensité, le schéma n'indique plus de courant (mA).
 var ISO_I_SHOW = 10;
 
+// ── Semi-conducteur : l'agitation thermique libère des électrons ───────
+// À basse température il se comporte comme l'isolant. Quand T monte, un
+// atome neutre peut perdre son électron, qui devient libre et dérive comme
+// dans le conducteur ; l'atome, devenu ion +, peut le recapturer si l'électron
+// repasse à proximité. Le nombre d'électrons libres est un ÉQUILIBRE entre
+// ces deux processus, et il croît avec T — à l'opposé d'un métal.
+//
+// T agit sur les DEUX processus : elle accélère l'ionisation, et elle
+// affaiblit la recapture (un électron très agité se laisse moins retenir).
+// Sans cette seconde moitié, la fraction d'atomes ionisés ne croîtrait que
+// comme la racine du taux d'ionisation et n'approcherait jamais de 100 %.
+// À T très élevée la recapture reste non nulle : on garde quelques atomes
+// neutres, pour que ce cran ne se confonde pas avec un conducteur.
+//
+// Pour chaque cran : taux d'ionisation par atome neutre (s⁻¹) et force de
+// la recapture (multiple de SEMI_CAP_RATE). Réglés pour que la fraction
+// d'atomes ionisés, à l'équilibre, vaille environ 0 ; 8 ; 25 ; 55 ; 85 %
+// (cf. SEMI_F_EQ) — l'équilibre vérifie f² / (1 − f) ≈ taux / force.
+var TEMP_LABELS  = ['Très basse', 'Basse', 'Ambiante', 'Élevée', 'Très élevée'];
+var TEMP_DEFAULT = 2;
+var SEMI_NU      = [0, 0.0067, 0.063, 0.32, 1.4];   // s⁻¹
+var SEMI_CAP     = [1, 1,      0.8,   0.5,  0.3];
+// Fraction d'atomes ionisés à l'équilibre : elle sert à PARTIR de l'état
+// d'équilibre quand on choisit ce matériau, au lieu d'un cristal sans
+// porteur qui mettrait de longues secondes à se remplir.
+var SEMI_F_EQ    = [0, 0.08, 0.25, 0.55, 0.85];
+
+// Étalonnage des grandeurs affichées : les noyaux sont dessinés plus petits
+// que les ions du conducteur, donc un électron libre y subit moins de chocs
+// et dérive plus vite (mesuré : ×1,34 à champ égal). Sans correction, un
+// semi-conducteur dont 85 % des atomes sont ionisés porterait plus de
+// courant que le conducteur lui-même. On ramène donc la dérive et
+// l'intensité affichées à l'échelle du conducteur : 1/1,34.
+var SEMI_CAL = 0.75;
+
+// Recapture : zone de capture autour d'un ion (en multiples du rayon de
+// choc) et taux de capture de référence à l'intérieur (s⁻¹, par électron).
+var SEMI_CAP_R    = 1.6;
+var SEMI_CAP_RATE = 8;
+
 // Constante de temps du lissage des mesures, en régime établi (ms).
 // Longue à dessein : la moyenne instantanée des vitesses de quelques
 // dizaines d'électrons fluctue de près de 10 %, et il faut une fenêtre de
@@ -235,7 +275,8 @@ var sim = {
   U_V       : 6,      // tension imposée aux bornes du fil (V), signée
   circuitOn : false,  // interrupteur du circuit (false = ouvert)
   geneIdx   : GENE_DEFAULT,
-  material  : 'conducteur',   // 'conducteur' ou 'isolant'
+  material  : 'conducteur',   // 'conducteur', 'isolant' ou 'semi'
+  tempIdx   : TEMP_DEFAULT,   // semi-conducteur : cran de température
 
   // Déduits de la géométrie (cf. updateGeometry) :
   nSites : 0,   // nombre d'ions du réseau
@@ -287,8 +328,13 @@ var sim = {
   // angulaire de l'électron lié). isoA : déformation des orbites, isoV : sa
   // vitesse de variation (s⁻¹). rNucleus et isoR en pixels.
   atoms    : [],
+  free     : [],   // semi-conducteur : électrons libres {x, y, vx, vy}
+  reseed   : false,   // atomes reconstruits : refaire l'équilibre thermique
   isoA     : 0,
   isoV     : 0,
+  isoI     : 0,    // part transitoire de l'intensité (mA), lissée
+  semiVd   : 0,    // semi-conducteur : dérive moyenne des électrons libres
+  semiI    : 0,    //   et dérive rapportée au nombre d'atomes (∝ intensité)
   rNucleus : 0,
   isoR     : 0,
 
@@ -389,7 +435,8 @@ function buildLattice() {
       var o = sim.latOff[n++];
       var ion = {
         x : sim.tx1 + (i + 0.5 + o.ox) * sim.ax,
-        y : sim.ty1 + yEdge + (yBase + o.oy) * sim.ayLat
+        y : sim.ty1 + yEdge + (yBase + o.oy) * sim.ayLat,
+        k : n - 1                      // indice du site (cf. sim.atoms)
       };
       col.push(ion);
       sim.lattice.push(ion);
@@ -404,11 +451,14 @@ function buildLattice() {
 function buildAtoms() {
   if (sim.atoms.length === sim.nSites) return;
   sim.atoms = [];
+  sim.free  = [];   // les ions repartent à zéro : plus d'électron libre
+  sim.reseed = true; // le redimensionnement les re-sème (cf. _doResize)
   for (var k = 0; k < sim.nSites; k++) {
     var turns = ISO_TURN_MIN + Math.random() * (ISO_TURN_MAX - ISO_TURN_MIN);
     sim.atoms.push({
-      ph : Math.random() * 2 * Math.PI,
-      w  : 2 * Math.PI * turns
+      ph  : Math.random() * 2 * Math.PI,
+      w   : 2 * Math.PI * turns,
+      ion : false      // semi-conducteur : l'atome a perdu son électron
     });
   }
 }
@@ -538,12 +588,15 @@ function remapElectrons(ox1, oy1, ow, oh) {
   if (ow <= 0 || oh <= 0) return;
   var sx = (sim.tx2 - sim.tx1) / ow;
   var sy = (sim.ty2 - sim.ty1) / oh;
-  for (var i = 0; i < sim.electrons.length; i++) {
-    var e = sim.electrons[i];
-    e.x = sim.tx1 + (e.x - ox1) * sx;
-    e.y = sim.ty1 + (e.y - oy1) * sy;
-    e.vx *= sx;
-    e.vy *= sy;
+  var lists = [sim.electrons, sim.free];
+  for (var L = 0; L < lists.length; L++) {
+    for (var i = 0; i < lists[L].length; i++) {
+      var e = lists[L][i];
+      e.x = sim.tx1 + (e.x - ox1) * sx;
+      e.y = sim.ty1 + (e.y - oy1) * sy;
+      e.vx *= sx;
+      e.vy *= sy;
+    }
   }
   for (var k = 0; k < sim.trace.length; k++) {
     var p = sim.trace[k];
@@ -603,9 +656,24 @@ function stepPhysics(dtMs) {
   if (dt <= 0) return;
 
   if (sim.material === 'isolant') { stepInsulator(dt); return; }
+  if (sim.material === 'semi')    { stepSemi(dt);      return; }
 
+  stepFreeElectrons(sim.electrons, dt, sim.rCation, sim.rElec, false);
+
+  // ── Trace de l'électron suivi (un point par image) ──
+  if (sim.tracedIdx >= 0 && sim.tracedIdx < sim.electrons.length) {
+    _pushTracePoint(sim.electrons[sim.tracedIdx], false);
+  }
+}
+
+// Avance une liste d'électrons libres pendant dt (s) : champ, vol libre,
+// chocs sur les noyaux (rayon rNuc), parois, sortie et réinjection.
+// rE : rayon de l'électron. capture : dans un semi-conducteur, force de la
+// recapture (0 ou false : aucune) — un électron
+// qui passe près d'un ion peut être recapturé et disparaît de la liste.
+function stepFreeElectrons(list, dt, rNuc, rE, capture) {
   var acc   = fieldAcceleration();
-  var rColl = sim.rCation + sim.rElec;
+  var rColl = rNuc + rE;
   var vmax  = VMAX_FACTOR * sim.vth;
 
   // ── Sous-pas : un électron ne doit jamais franchir un cation en une
@@ -615,11 +683,15 @@ function stepPhysics(dtMs) {
   if (nsub > 12) nsub = 12;
   var h = dt / nsub;
 
-  var yMin = sim.ty1 + sim.rElec, yMax = sim.ty2 - sim.rElec;
+  var yMin = sim.ty1 + rE, yMax = sim.ty2 - rE;
+
+  var rCap = rColl * SEMI_CAP_R;
+  var pCap = 1 - Math.exp(-SEMI_CAP_RATE * (capture || 0) * h);
 
   for (var s = 0; s < nsub; s++) {
-    for (var i = 0; i < sim.electrons.length; i++) {
-      var e = sim.electrons[i];
+    for (var i = 0; i < list.length; i++) {
+      var e = list[i];
+      if (e.dead) continue;
 
       // ── Accélération par le champ, puis avance ──
       e.vx += acc * h;
@@ -643,6 +715,14 @@ function stepPhysics(dtMs) {
       var c  = nearestCation(e.x, e.y);
       var dx = e.x - c.x, dy = e.y - c.y;
       var d2 = dx * dx + dy * dy;
+
+      // Semi-conducteur : près d'un ion, l'électron peut être recapturé.
+      if (capture && d2 < rCap * rCap && sim.atoms[c.k].ion && Math.random() < pCap) {
+        sim.atoms[c.k].ion = false;
+        e.dead = true;
+        continue;
+      }
+
       if (d2 < rColl * rColl) {
         var d = Math.sqrt(d2);
         var nx, ny;
@@ -668,23 +748,83 @@ function stepPhysics(dtMs) {
       // dans le fil ne varie jamais, le milieu reste neutre.
       // L'électron suivi n'est plus le même une fois réinjecté à l'autre
       // bout : on abandonne le suivi plutôt que de raccorder deux trajets.
-      var isTraced = (i === sim.tracedIdx);
-      if (e.x > sim.tx2 - sim.rElec) {
-        e.x = sim.tx1 + sim.rElec;
+      var isTraced = (list === sim.electrons && i === sim.tracedIdx);
+      if (e.x > sim.tx2 - rE) {
+        e.x = sim.tx1 + rE;
         e.y = yMin + Math.random() * (yMax - yMin);
         if (isTraced) clearTrace();
-      } else if (e.x < sim.tx1 + sim.rElec) {
-        e.x = sim.tx2 - sim.rElec;
+      } else if (e.x < sim.tx1 + rE) {
+        e.x = sim.tx2 - rE;
         e.y = yMin + Math.random() * (yMax - yMin);
         if (isTraced) clearTrace();
       }
     }
   }
 
-  // ── Trace de l'électron suivi (un point par image) ──
-  if (sim.tracedIdx >= 0 && sim.tracedIdx < sim.electrons.length) {
-    _pushTracePoint(sim.electrons[sim.tracedIdx], false);
+  // Électrons recapturés : retirés de la liste, en place.
+  if (capture) {
+    var w = 0;
+    for (var j = 0; j < list.length; j++) {
+      if (!list[j].dead) list[w++] = list[j];
+    }
+    list.length = w;
   }
+}
+
+// Position de l'électron lié de l'atome k (sur son orbite déformée).
+function boundPosition(k) {
+  var o = isoOrbit(), c = sim.lattice[k], ph = sim.atoms[k].ph;
+  return { x: c.x + o.ox + o.A * Math.cos(ph), y: c.y + o.B * Math.sin(ph) };
+}
+
+// Ionise l'atome k : son électron quitte l'orbite et devient libre, avec une
+// vitesse d'agitation dirigée en s'éloignant du noyau.
+function ionise(k) {
+  var at = sim.atoms[k];
+  var p  = boundPosition(k);
+  var e  = { x: p.x, y: p.y, vx: 0, vy: 0 };
+  _thermalVelocity(e);
+  var c = sim.lattice[k];
+  if (e.vx * (p.x - c.x) + e.vy * (p.y - c.y) < 0) { e.vx = -e.vx; e.vy = -e.vy; }
+  at.ion = true;
+  sim.free.push(e);
+}
+
+// Part des atomes ionisés choisie au hasard parmi les atomes neutres, pour
+// partir de l'équilibre : appelé à l'entrée dans le mode semi-conducteur.
+function seedSemi() {
+  sim.free = [];
+  for (var k = 0; k < sim.atoms.length; k++) sim.atoms[k].ion = false;
+  var n = Math.round(SEMI_F_EQ[sim.tempIdx] * sim.atoms.length);
+  for (var i = 0; i < n; i++) {
+    var k2;
+    do { k2 = Math.floor(Math.random() * sim.atoms.length); } while (sim.atoms[k2].ion);
+    ionise(k2);
+  }
+}
+
+// Semi-conducteur : orbites des atomes neutres (déformées par le champ),
+// ionisation thermique, puis mouvement des électrons libres.
+function stepSemi(dt) {
+  stepInsulator(dt);
+
+  var nNeutral = 0;
+  for (var k = 0; k < sim.atoms.length; k++) if (!sim.atoms[k].ion) nNeutral++;
+
+  // Nombre d'ionisations attendues pendant dt : partie entière certaine,
+  // reste tiré au sort.
+  var ev = SEMI_NU[sim.tempIdx] * nNeutral * dt;
+  while (ev > 0 && nNeutral > 0) {
+    if (Math.random() < Math.min(1, ev)) {
+      var kk;
+      do { kk = Math.floor(Math.random() * sim.atoms.length); } while (sim.atoms[kk].ion);
+      ionise(kk);
+      nNeutral--;
+    }
+    ev -= 1;
+  }
+
+  stepFreeElectrons(sim.free, dt, sim.rNucleus, sim.rElec, SEMI_CAP[sim.tempIdx]);
 }
 
 // Isolant : la déformation a rejoint sa valeur d'équilibre selon un
@@ -716,13 +856,17 @@ function updateMeasures(dtRealMs) {
   // Isolant : aucun électron ne dérive. L'intensité n'est non nulle que
   // pendant la déformation des orbites — un électron poussé vers la borne +
   // équivaut à un courant conventionnel de sens opposé.
-  if (sim.material === 'isolant') {
+  if (sim.material !== 'conducteur') {
     var rawI = -K_ISO * sim.isoV;
-    sim.I_mA  += (rawI - sim.I_mA) * (1 - Math.exp(-dtRealMs / ISO_I_TAU));
+    sim.isoI += (rawI - sim.isoI) * (1 - Math.exp(-dtRealMs / ISO_I_TAU));
+  }
+  if (sim.material === 'isolant') {
+    sim.I_mA   = sim.isoI;
     sim.vdNorm = 0;
     sim.vd_mm  = 0;
     return;
   }
+  if (sim.material === 'semi') { _measureSemi(dtRealMs); return; }
 
   var n = sim.electrons.length;
   var raw = 0;
@@ -758,6 +902,33 @@ function updateMeasures(dtRealMs) {
   sim.I_mA  = -K_I * sim.vdNorm;
 }
 
+// Semi-conducteur : deux composantes. La dérive des électrons libres, lissée
+// longuement comme dans le conducteur, et le bref courant des orbites qui se
+// déforment (isoI). Le courant permanent est rapporté au nombre d'ATOMES et
+// non d'électrons libres : il croît donc avec le nombre de porteurs.
+function _measureSemi(dtRealMs) {
+  var nf = sim.free.length, sum = 0;
+  for (var i = 0; i < nf; i++) sum += sim.free[i].vx;
+  var rawVd = (nf > 0 && sim.vth > 0) ? (sum / nf) / sim.vth : 0;
+  var rawI  = (sim.nSites > 0 && sim.vth > 0) ? (sum / sim.nSites) / sim.vth : 0;
+
+  if (sim.snapMeasure) {
+    sim.measN = 0;
+    sim.semiVd = 0;
+    sim.semiI  = 0;
+    sim.snapMeasure = false;
+  }
+  sim.measN++;
+  var alpha = Math.max(1 / sim.measN, 1 - Math.exp(-dtRealMs / MEASURE_TAU));
+  sim.semiVd += (rawVd - sim.semiVd) * alpha;
+  sim.semiI  += (rawI  - sim.semiI)  * alpha;
+
+  var on = sim.circuitOn && sim.U_V !== 0;   // circuit ouvert : pas de dérive
+  sim.vdNorm = on ? sim.semiVd : 0;
+  sim.vd_mm  = sim.vdNorm * VD_MM_PER_NORM * SEMI_CAL;
+  sim.I_mA   = (on ? -K_I * SEMI_CAL * sim.semiI : 0) + sim.isoI;
+}
+
 // ══════════════════════════════════════════════════════════════════════
 //  Réinitialisation
 // ══════════════════════════════════════════════════════════════════════
@@ -767,6 +938,12 @@ function resetSim() {
   sim.circuitOn   = false;
   sim.geneIdx     = GENE_DEFAULT;
   sim.material    = 'conducteur';
+  sim.tempIdx     = TEMP_DEFAULT;
+  sim.free        = [];
+  for (var q = 0; q < sim.atoms.length; q++) sim.atoms[q].ion = false;
+  sim.isoI        = 0;
+  sim.semiVd      = 0;
+  sim.semiI       = 0;
   resetInsulator();
   sim.paused      = false;
   sim.speedFactor = 1;

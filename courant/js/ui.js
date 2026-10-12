@@ -33,7 +33,7 @@ var _EL_IDS = [
   'measures', 'ro-U', 'ro-I', 'ro-v',
   'panel-hint',
   'btn-mat-cond', 'btn-mat-iso', 'row-gene', 'sec-options', 'sep-options',
-  'leg-1', 'leg-2'
+  'btn-mat-semi', 'row-temp', 'sl-temp', 'lbl-temp', 'row-free', 'ro-n'
 ];
 
 function _cacheElements() {
@@ -97,10 +97,14 @@ function updateReadouts() {
 
   // Isolant : l'intensité n'est non nulle que le temps d'un changement de
   // tension, y compris à l'ouverture du circuit — on l'affiche telle quelle.
-  var I = (on || sim.material === 'isolant') ? sim.I_mA : 0;
+  var I = (on || sim.material !== 'conducteur') ? sim.I_mA : 0;
   _el['ro-I'].textContent = (Math.abs(I) < 5)
     ? '≈ 0 mA'
     : _fmtNum(I, 0) + ' mA';
+
+  if (sim.material === 'semi') {
+    _el['ro-n'].textContent = sim.free.length + ' sur ' + sim.nSites + ' atomes';
+  }
 
   var v = on ? sim.vd_mm : 0;
   if (Math.abs(v) < 0.005) {
@@ -124,10 +128,12 @@ function _fmtNum(x, dec) {
 function syncUIToSim() {
   _el['sl-U'].value       = sim.U_V;
   _el['sl-gene'].value    = sim.geneIdx;
+  _el['sl-temp'].value    = sim.tempIdx;
   _el['sl-speed'].value = SPEED_STEPS.indexOf(sim.speedFactor);
 
   _updateLabelU();
   _updateLabelGene();
+  _updateLabelTemp();
   _el['lbl-speed'].textContent = sim.speedFactor.toFixed(2).replace('.', ',');
 
   _updateMaterialUI();
@@ -147,17 +153,25 @@ function _updateLabelGene() {
   _el['lbl-gene'].textContent = GENE_LABELS[sim.geneIdx];
 }
 
-// Boutons du matériau, légende, et commandes qui n'ont de sens que pour des
-// électrons libres (gêne, suivi, flèches) : masquées pour un isolant.
+function _updateLabelTemp() {
+  _el['lbl-temp'].textContent = TEMP_LABELS[sim.tempIdx];
+}
+
+// Boutons du matériau, légende, et commandes propres à chaque matériau :
+// la gêne n'a de sens que pour le conducteur, le suivi et les flèches que
+// pour des électrons libres sans noyau lié, la température que pour le
+// semi-conducteur.
 function _updateMaterialUI() {
-  var iso = (sim.material === 'isolant');
-  _el['btn-mat-cond'].classList.toggle('active', !iso);
-  _el['btn-mat-iso'].classList.toggle('active', iso);
-  _el['row-gene'].hidden    = iso;
-  _el['sec-options'].hidden = iso;
-  _el['sep-options'].hidden = iso;
-  _el['leg-1'].textContent = iso ? 'noyau, fixe' : 'ion du réseau, fixe';
-  _el['leg-2'].textContent = iso ? 'électron lié à son atome' : 'électron libre';
+  var m = sim.material;
+  _el['btn-mat-cond'].classList.toggle('active', m === 'conducteur');
+  _el['btn-mat-iso'].classList.toggle('active',  m === 'isolant');
+  _el['btn-mat-semi'].classList.toggle('active', m === 'semi');
+  _el['row-gene'].hidden    = (m !== 'conducteur');
+  _el['sec-options'].hidden = (m !== 'conducteur');
+  _el['sep-options'].hidden = (m !== 'conducteur');
+  _el['row-temp'].hidden    = (m !== 'semi');
+  _el['row-free'].hidden    = (m !== 'semi');
+  renderLegend();
 }
 
 function _updateCircuitBtn() {
@@ -207,16 +221,20 @@ function _updateMeasuresBtn() {
 // ══════════════════════════════════════════════════════════════════════
 
 // ── Matériau du fil ──
+var MATERIALS = ['conducteur', 'isolant', 'semi'];
+
 function setMaterial(m) {
   if (m === sim.material) return;
   sim.material = m;
   clearTrace();
-  if (m === 'isolant') {
+  sim.isoI = 0;
+  sim.snapMeasure = true;
+  if (m !== 'conducteur') {
     resetInsulator();   // pas de faux courant au changement
     sim.I_mA = 0;
-  } else {
-    sim.snapMeasure = true;
   }
+  if (m === 'semi') seedSemi();   // on part de l'équilibre thermique
+  else              sim.free = [];
   _updateMaterialUI();
   _updateTraceBtn();
   updateReadouts();
@@ -224,7 +242,7 @@ function setMaterial(m) {
 }
 
 function toggleMaterial() {
-  setMaterial(sim.material === 'isolant' ? 'conducteur' : 'isolant');
+  setMaterial(MATERIALS[(MATERIALS.indexOf(sim.material) + 1) % MATERIALS.length]);
 }
 
 // ── Interrupteur du circuit ──
@@ -254,6 +272,13 @@ function onSliderGene(val) {
   sim.needsRedraw = true;
 }
 
+// ── Température (semi-conducteur) ──
+function onSliderTemp(val) {
+  sim.tempIdx = parseInt(val, 10);
+  _updateLabelTemp();
+  sim.needsRedraw = true;
+}
+
 // ── Vitesse d'animation ──
 function onSliderSpeed(val) {
   sim.speedFactor = SPEED_STEPS[parseInt(val, 10)];
@@ -268,7 +293,7 @@ function togglePause() {
 
 // ── Suivi d'un électron ──
 function toggleTrace() {
-  if (sim.material === 'isolant') return;
+  if (sim.material !== 'conducteur') return;
   if (sim.tracedIdx >= 0) clearTrace();
   else                    traceCentralElectron();
   _updateTraceBtn();
@@ -278,7 +303,7 @@ function toggleTrace() {
 // ── Flèches de vitesse ──
 // Une flèche par électron, orientée selon sa vitesse instantanée.
 function toggleArrows() {
-  if (sim.material === 'isolant') return;
+  if (sim.material !== 'conducteur') return;
   sim.showArrows = !sim.showArrows;
   _updateArrowsBtn();
   sim.needsRedraw = true;

@@ -35,16 +35,31 @@ var C_WIRE_HL   = '#2c3e50';
 var C_TEXT      = '#2c3e50';
 var C_TEXT_SOFT = '#7a8a96';
 var C_CURRENT   = '#cc2200';
-var C_ELEC      = '#2a6aaa';
-var C_ELEC_EDGE = '#1c4c7d';
-var C_CATION    = 'rgba(180,80,40,0.75)';
-var C_CATION_ED = 'rgba(140,55,25,0.90)';
 var C_PLUS      = 'rgba(210,100,20,1)';
 var C_MINUS     = 'rgba(40,80,180,1)';
 var C_TRACE     = 'rgba(122,58,208,0.72)';
 var C_TRACED    = '#7a3ad0';
 var C_TRACED_ED = '#4d1f8c';
 var C_ARROW     = 'rgba(28,76,125,0.95)';   // flèche de vitesse
+
+// ── Espèces de particules : un seul code couleur pour tous les modes ───
+// Deux axes indépendants :
+//  - la TEINTE donne le signe : orange = positif, bleu = négatif (c'est
+//    aussi la convention des repères de bornes + et –) ;
+//  - la SATURATION donne le statut de la charge : plein = charge libre ou
+//    non compensée ; pâle = charge liée ou compensée par sa voisine.
+// Le signe est blanc sur un fond plein, de la couleur foncée de l'espèce
+// sur un fond pâle (sinon il disparaît). Le rouge reste réservé au courant,
+// le gris à la structure (parois, orbites).
+// Scène et légende dessinent toutes deux avec drawParticle : elles ne
+// peuvent pas diverger.
+var SPECIES = {
+  elecFree   : { plus: false, fill: '#2a6aaa', edge: '#1c4c7d', sign: '#fff' },
+  elecBound  : { plus: false, fill: '#a9c9e8', edge: '#2a6aaa', sign: '#1c4c7d' },
+  ion        : { plus: true,  fill: 'rgba(180,80,40,0.75)', edge: 'rgba(140,55,25,0.90)', sign: '#fff' },
+  nucleus    : { plus: true,  fill: '#f2cdb0', edge: 'rgba(140,55,25,0.90)', sign: '#8c3719' },
+  elecTraced : { plus: false, fill: C_TRACED, edge: C_TRACED_ED, sign: '#fff' }
+};
 
 // ── Dimensions courantes ───────────────────────────────────────────────
 var _cw = 0, _ch = 0, _dpr = 1;
@@ -148,6 +163,15 @@ function _doResize() {
     initElectrons();
   }
 
+  // Semi-conducteur : le nombre d'atomes a changé, donc le cristal a été
+  // reconstruit sans ion. On repart de l'équilibre thermique, une fois les
+  // électrons reportés (seedSemi les crée à leur place définitive).
+  if (sim.reseed) {
+    sim.reseed = false;
+    if (sim.material === 'semi') seedSemi();
+  }
+
+  paintLegend();
   sim.needsRedraw = true;
 }
 
@@ -203,12 +227,78 @@ function _currentTip(x, y, dx, dy, size) {
   ctx.fill();
 }
 
-// Signe « − » ou « + » blanc, centré, dimensionné sur le rayon du disque.
-function _drawSign(x, y, r, plus) {
+// Signe « − » ou « + » centré, dimensionné sur le rayon du disque.
+// `g` : contexte de dessin (celui de la scène par défaut).
+function _drawSign(x, y, r, plus, color, g) {
+  g = g || ctx;
   var w = r * 1.15, t = Math.max(1.4, r * 0.28);
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(x - w / 2, y - t / 2, w, t);
-  if (plus) ctx.fillRect(x - t / 2, y - w / 2, t, w);
+  g.fillStyle = color || '#fff';
+  g.fillRect(x - w / 2, y - t / 2, w, t);
+  if (plus) g.fillRect(x - t / 2, y - w / 2, t, w);
+}
+
+// Une particule : disque, contour et signe, selon son espèce (cf. SPECIES).
+// Remplissage et contour sont posés à chaque appel : le signe change la
+// couleur de remplissage, et les disques suivants ne doivent pas en hériter.
+function drawParticle(sp, x, y, r, g) {
+  g = g || ctx;
+  g.lineWidth   = Math.max(1, r * (sp.plus ? 0.11 : 0.18));
+  g.fillStyle   = sp.fill;
+  g.strokeStyle = sp.edge;
+  g.beginPath();
+  g.arc(x, y, r, 0, 2 * Math.PI);
+  g.fill();
+  g.stroke();
+  _drawSign(x, y, r, sp.plus, sp.sign, g);
+}
+
+// ── Légende, propre à chaque matériau ──────────────────────────────────
+// [espèce, texte, taille] — « big » : pastille de la taille d'un noyau ou
+// d'un ion, « small » : pastille d'électron.
+var LEGEND = {
+  conducteur : [['ion',       'ion du réseau, fixe',        'big'],
+                ['elecFree',  'électron libre',             'small']],
+  isolant    : [['nucleus',   'noyau, fixe',                'big'],
+                ['elecBound', 'électron lié à son atome',   'small']],
+  semi       : [['nucleus',   'noyau (atome neutre)',       'big'],
+                ['ion',       'ion (atome sans électron)',  'big'],
+                ['elecBound', 'électron lié à son atome',   'small'],
+                ['elecFree',  'électron libre',             'small']]
+};
+
+function renderLegend() {
+  var box = document.getElementById('legend');
+  var items = LEGEND[sim.material];
+  box.textContent = '';
+  for (var i = 0; i < items.length; i++) {
+    var row = document.createElement('div');
+    row.className = 'legend-item';
+    var cv = document.createElement('canvas');
+    cv.className = 'legend-dot lg-' + items[i][2];
+    cv.setAttribute('data-sp', items[i][0]);
+    var tx = document.createElement('span');
+    tx.textContent = items[i][1];
+    row.appendChild(cv);
+    row.appendChild(tx);
+    box.appendChild(row);
+  }
+  paintLegend();
+}
+
+// Les pastilles sont de petits canvas : elles se redessinent après chaque
+// redimensionnement, leur taille suivant celle de la zone de simulation.
+function paintLegend() {
+  var cvs = document.querySelectorAll('#legend canvas');
+  var dpr = window.devicePixelRatio || 1;
+  for (var i = 0; i < cvs.length; i++) {
+    var cv = cvs[i];
+    var w = cv.clientWidth;
+    if (w === 0) continue;   // légende masquée (fenêtre étroite)
+    cv.width = cv.height = Math.round(w * dpr);
+    var g = cv.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawParticle(SPECIES[cv.getAttribute('data-sp')], w / 2, w / 2, w / 2 - 1, g);
+  }
 }
 
 // Charge d'un ion : « + », « 2+ » ou « 3+ ». Le chiffre rend visible la
@@ -235,8 +325,9 @@ function _drawCharge(x, y, r, z) {
 // ══════════════════════════════════════════════════════════════════════
 
 function currentSign() {
-  // Isolant : le courant n'existe que pendant la déformation des orbites.
-  if (sim.material === 'isolant') {
+  // Isolant et semi-conducteur : le courant est une grandeur mesurée, qui
+  // peut être nulle (isolant, ou semi-conducteur très froid) ou transitoire.
+  if (sim.material !== 'conducteur') {
     if (Math.abs(sim.I_mA) < ISO_I_SHOW) return 0;
     return sim.I_mA > 0 ? 1 : -1;
   }
@@ -305,6 +396,7 @@ function _drawSchematic() {
   ctx.textAlign    = 'center';
   ctx.textBaseline = 'bottom';
   ctx.fillText(sim.material === 'isolant' ? 'portion d’isolant étudiée'
+             : sim.material === 'semi'    ? 'portion de semi-conducteur étudiée'
                                           : 'portion de fil étudiée',
                cx, y2 - lw * 2.6);
 
@@ -469,8 +561,9 @@ function _drawTube() {
   ctx.rect(sim.tx1, sim.ty1, sim.tx2 - sim.tx1, sim.ty2 - sim.ty1);
   ctx.clip();
 
-  if (sim.material === 'isolant') {
+  if (sim.material !== 'conducteur') {
     _drawAtoms();
+    if (sim.material === 'semi') _drawFreeElectrons();
   } else {
     _drawCations();
     _drawTrace();
@@ -489,75 +582,52 @@ function _drawAtoms() {
   var N = 48;   // points par orbite
   var k, i, c;
 
-  // Orbites en pointillés, sous les noyaux et les électrons.
-  ctx.strokeStyle = 'rgba(122,138,150,0.60)';
-  ctx.lineWidth   = Math.max(1, rE * 0.35);
+  // Orbites en pointillés, sous les noyaux et les électrons. Celle d'un ion
+  // est plus pâle : elle est vide, l'électron est parti.
+  ctx.lineWidth = Math.max(1, rE * 0.35);
   ctx.setLineDash([Math.max(2, rE * 1.2), Math.max(2, rE * 1.2)]);
-  ctx.beginPath();
-  for (k = 0; k < sim.lattice.length; k++) {
-    c = sim.lattice[k];
-    for (i = 0; i <= N; i++) {
-      var t  = 2 * Math.PI * i / N;
-      var px = c.x + o.ox + o.A * Math.cos(t), py = c.y + o.B * Math.sin(t);
-      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  for (var pass = 0; pass < 2; pass++) {
+    ctx.strokeStyle = pass === 0 ? 'rgba(122,138,150,0.60)' : 'rgba(122,138,150,0.28)';
+    ctx.beginPath();
+    for (k = 0; k < sim.lattice.length; k++) {
+      if (sim.atoms[k].ion !== (pass === 1)) continue;
+      c = sim.lattice[k];
+      for (i = 0; i <= N; i++) {
+        var t  = 2 * Math.PI * i / N;
+        var px = c.x + o.ox + o.A * Math.cos(t), py = c.y + o.B * Math.sin(t);
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
     }
+    ctx.stroke();
   }
-  ctx.stroke();
   ctx.setLineDash([]);
 
-  // Noyaux. Les signes sont tracés en second : _drawSign change la couleur
-  // de remplissage, et les disques suivants sortiraient blancs.
-  ctx.lineWidth   = Math.max(1, rN * 0.11);
-  ctx.fillStyle   = C_CATION;
-  ctx.strokeStyle = C_CATION_ED;
+  // Noyaux : pâles tant que l'atome est neutre, pleins pour un ion.
   for (k = 0; k < sim.lattice.length; k++) {
     c = sim.lattice[k];
-    ctx.beginPath();
-    ctx.arc(c.x, c.y, rN, 0, 2 * Math.PI);
-    ctx.fill();
-    ctx.stroke();
-  }
-  for (k = 0; k < sim.lattice.length; k++) {
-    _drawSign(sim.lattice[k].x, sim.lattice[k].y, rN, true);
+    drawParticle(sim.atoms[k].ion ? SPECIES.ion : SPECIES.nucleus, c.x, c.y, rN);
   }
 
-  // Électrons liés, sur leur orbite
-  var ex = [], ey = [];
-  ctx.lineWidth   = Math.max(1, rE * 0.18);
-  ctx.fillStyle   = C_ELEC;
-  ctx.strokeStyle = C_ELEC_EDGE;
+  // Électrons liés, sur leur orbite (les ions n'en ont plus)
   for (k = 0; k < sim.lattice.length; k++) {
+    if (sim.atoms[k].ion) continue;
     c = sim.lattice[k];
     var ph = sim.atoms[k].ph;
-    ex.push(c.x + o.ox + o.A * Math.cos(ph));
-    ey.push(c.y + o.B * Math.sin(ph));
-    ctx.beginPath();
-    ctx.arc(ex[k], ey[k], rE, 0, 2 * Math.PI);
-    ctx.fill();
-    ctx.stroke();
+    drawParticle(SPECIES.elecBound,
+                 c.x + o.ox + o.A * Math.cos(ph), c.y + o.B * Math.sin(ph), rE);
   }
-  for (k = 0; k < ex.length; k++) {
-    _drawSign(ex[k], ey[k], rE, false);
+}
+
+// Semi-conducteur : électrons libres, dessinés par-dessus tout le reste.
+function _drawFreeElectrons() {
+  for (var i = 0; i < sim.free.length; i++) {
+    drawParticle(SPECIES.elecFree, sim.free[i].x, sim.free[i].y, sim.rElec);
   }
 }
 
 function _drawCations() {
-  var r = sim.rCation;
-  ctx.lineWidth   = Math.max(1, r * 0.11);
-  ctx.fillStyle   = C_CATION;
-  ctx.strokeStyle = C_CATION_ED;
   for (var k = 0; k < sim.lattice.length; k++) {
-    var c = sim.lattice[k];
-    ctx.beginPath();
-    ctx.arc(c.x, c.y, r, 0, 2 * Math.PI);
-    ctx.fill();
-    ctx.stroke();
-  }
-  // Les charges sont tracées en second : elles changent la couleur de
-  // remplissage, et alterner à chaque ion coûterait un changement d'état
-  // du contexte par disque.
-  for (var m = 0; m < sim.lattice.length; m++) {
-    _drawCharge(sim.lattice[m].x, sim.lattice[m].y, r, 1);
+    drawParticle(SPECIES.ion, sim.lattice[k].x, sim.lattice[k].y, sim.rCation);
   }
 }
 
@@ -579,19 +649,11 @@ function _drawTrace() {
 
 function _drawElectrons() {
   var r = sim.rElec;
-  ctx.lineWidth = Math.max(1, r * 0.18);
   for (var i = 0; i < sim.electrons.length; i++) {
     var e = sim.electrons[i];
     var traced = (i === sim.tracedIdx);
-    var rr = traced ? r * 1.25 : r;
-
-    ctx.fillStyle   = traced ? C_TRACED    : C_ELEC;
-    ctx.strokeStyle = traced ? C_TRACED_ED : C_ELEC_EDGE;
-    ctx.beginPath();
-    ctx.arc(e.x, e.y, rr, 0, 2 * Math.PI);
-    ctx.fill();
-    ctx.stroke();
-    _drawSign(e.x, e.y, rr, false);
+    drawParticle(traced ? SPECIES.elecTraced : SPECIES.elecFree,
+                 e.x, e.y, traced ? r * 1.25 : r);
   }
 }
 

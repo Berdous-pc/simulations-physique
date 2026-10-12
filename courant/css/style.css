@@ -113,44 +113,19 @@ main {
   white-space: nowrap;
 }
 
-.legend-dot { justify-self: center; }
+/* Pastilles de la légende : de petits canvas, dessinés par fil.js avec le
+   même code que la scène (drawParticle), donc au même rendu. Deux tailles :
+   noyau ou ion, électron. */
+.legend-dot { display: block; justify-self: center; }
 
-/* Les signes + et − sont des images SVG, ni des glyphes ni des barres en
-   pixels. La police ne centre pas ses glyphes dans leur cadre (le « + »
-   monte, le « − » flotte à mi-hauteur d'x), et une barre de hauteur fixe
-   en `position: absolute` tombe entre deux pixels dès que le disque,
-   dimensionné en `cqmin`, a une taille fractionnaire — elle paraît alors
-   décalée. Un SVG mis à l'échelle du disque reste centré à n'importe
-   quelle taille, comme le fait `_drawSign()` sur le canvas. */
-.legend-dot {
-  display: inline-block;
-  border-radius: 50%;
-  flex-shrink: 0;
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: 100% 100%;
-}
-
-.dot-elec {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Crect x='4' y='8.8' width='12' height='2.4' rx='1.2' fill='%23fff'/%3E%3C/svg%3E");
-}
-
-.dot-cation {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Crect x='4' y='8.8' width='12' height='2.4' rx='1.2' fill='%23fff'/%3E%3Crect x='8.8' y='4' width='2.4' height='12' rx='1.2' fill='%23fff'/%3E%3C/svg%3E");
-}
-
-.dot-cation {
+.lg-big {
   width:  clamp(12px, 2.9cqmin, 22px);
   height: clamp(12px, 2.9cqmin, 22px);
-  background-color: rgba(180,80,40,0.75);
-  border: 1px solid rgba(140,55,25,0.9);
 }
 
-.dot-elec {
+.lg-small {
   width:  clamp(8px, 1.9cqmin, 15px);
   height: clamp(8px, 1.9cqmin, 15px);
-  background-color: #2a6aaa;
-  border: 1px solid #1c4c7d;
 }
 
 /* ── Panneau droit ───────────────────────────────── */
@@ -296,6 +271,10 @@ main {
 .mat-row > .btn-toggle-one {
   width: auto;
   flex: 1 1 0;
+  min-width: 0;
+  padding: 7px 3px;
+  font-size: clamp(11px, 1vw, 13px);
+  line-height: 1.15;
 }
 
 /* Les règles d'affichage des composants (flex…) l'emportent sur la feuille
@@ -378,6 +357,15 @@ main {
   border-radius: 6px;
   padding: 7px 9px;
   margin-bottom: 8px;
+}
+
+/* Fenêtre peu haute : le panneau défile dès que le semi-conducteur ajoute
+   le nombre d'électrons libres. On resserre donc les afficheurs. */
+@media (max-height: 900px) {
+  .readout { padding: 4px 9px; margin-bottom: 5px; }
+  .param-row { margin-bottom: 6px; }
+  .sep { margin: 5px 0; }
+  .mat-row { margin-bottom: 6px; }
 }
 
 .ro-label {
