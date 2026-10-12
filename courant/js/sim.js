@@ -352,11 +352,27 @@ var sim = {
   // Tableau d'objets {x, y, vx, vy} en pixels / pixels par seconde.
   electrons : [],
 
-  // Électron suivi (indice dans `electrons`, -1 si aucun) et sa trace.
+  // Électron suivi (l'objet lui-même, null si aucun) et sa trace. On le suit
+  // par référence et non par indice : dans un semi-conducteur la liste des
+  // électrons libres se compacte à chaque recapture.
   // La trace est une suite de points {x, y, b} ; `b` marque une rupture
-  // de tracé. Le suivi s'arrête dès que l'électron quitte le fil.
-  tracedIdx : -1,
+  // de tracé. Le suivi s'arrête dès que l'électron quitte le fil — ou, dans
+  // un semi-conducteur, qu'il est recapturé.
+  tracedE   : null,
   trace     : [],
+
+  // Semi-conducteur : l'électron suivi garde son identité quand il change
+  // d'état. Il est dans l'un de ces trois états (un seul à la fois) :
+  //   libre              : tracedE (l'objet de sim.free) ;
+  //   lié à l'atome k    : tracedBound = k ;
+  //   en vol entre atomes: tracedHop (l'objet de sim.hops).
+  tracedBound : -1,
+  tracedHop   : null,
+
+  // Lacune suivie (semi-conducteur) : indice de l'atome qui est ion en ce
+  // moment (-1 si aucune), et son parcours d'atome en atome.
+  tracedHole : -1,
+  holeTrace  : [],
 
   // ── Géométrie du fil, en pixels (calculée par fil.js) ──
   tx1 : 0, tx2 : 0,   // bords intérieurs gauche / droit
@@ -654,8 +670,7 @@ function syncElectronCount() {
   var n = sim.nElec;
   var list = sim.electrons;
   while (list.length > n) {
-    list.pop();
-    if (sim.tracedIdx >= list.length) clearTrace();
+    if (list.pop() === sim.tracedE) clearTrace();
   }
   while (list.length < n) {
     var e = { x: 0, y: 0, vx: 0, vy: 0 };
@@ -673,6 +688,11 @@ function remapElectrons(ox1, oy1, ow, oh) {
   if (ow <= 0 || oh <= 0) return;
   var sx = (sim.tx2 - sim.tx1) / ow;
   var sy = (sim.ty2 - sim.ty1) / oh;
+  for (var h = 0; h < sim.holeTrace.length; h++) {
+    var hp = sim.holeTrace[h];
+    hp.x = sim.tx1 + (hp.x - ox1) * sx;
+    hp.y = sim.ty1 + (hp.y - oy1) * sy;
+  }
   var lists = [sim.electrons, sim.free];
   for (var L = 0; L < lists.length; L++) {
     for (var i = 0; i < lists[L].length; i++) {
@@ -695,26 +715,86 @@ function remapElectrons(ox1, oy1, ow, oh) {
 // ══════════════════════════════════════════════════════════════════════
 
 function clearTrace() {
-  sim.tracedIdx = -1;
+  sim.tracedE = null;
+  sim.tracedBound = -1;
+  sim.tracedHop = null;
   sim.trace = [];
 }
 
+// Un électron est-il suivi, quel que soit son état ?
+function traceActive() {
+  return !!sim.tracedE || sim.tracedBound >= 0 || !!sim.tracedHop;
+}
+
+// Position de l'électron suivi (libre, lié ou en vol), null s'il n'y en a pas.
+function tracedPosition() {
+  if (sim.tracedE) return sim.tracedE;
+  if (sim.tracedBound >= 0) return boundPosition(sim.tracedBound);
+  if (sim.tracedHop) return hopPosition(sim.tracedHop);
+  return null;
+}
+
 // Marque l'électron le plus proche du centre du fil : c'est celui qui
-// restera le plus longtemps visible avant d'être réinjecté.
+// restera le plus longtemps visible avant d'être réinjecté. Dans un
+// semi-conducteur, on préfère un électron libre ; s'il n'y en a pas (T très
+// basse), on suit un électron lié, qui pourra se libérer plus tard.
 function traceCentralElectron() {
+  var list = (sim.material === 'semi') ? sim.free : sim.electrons;
+  var cx = (sim.tx1 + sim.tx2) / 2, cy = (sim.ty1 + sim.ty2) / 2;
+  var best = null, bestD = Infinity;
+  for (var i = 0; i < list.length; i++) {
+    var e = list[i];
+    var d = (e.x - cx) * (e.x - cx) + (e.y - cy) * (e.y - cy);
+    if (d < bestD) { bestD = d; best = e; }
+  }
+  clearTrace();
+  if (best) {
+    sim.tracedE = best;
+  } else if (sim.material === 'semi') {
+    var bk = -1;
+    for (var k = 0; k < sim.atoms.length; k++) {
+      if (sim.atoms[k].ion || sim.atoms[k].busy) continue;
+      var c = sim.lattice[k];
+      var dk = (c.x - cx) * (c.x - cx) + (c.y - cy) * (c.y - cy);
+      if (dk < bestD) { bestD = dk; bk = k; }
+    }
+    if (bk >= 0) sim.tracedBound = bk;
+  }
+  var p0 = tracedPosition();
+  if (p0) sim.trace.push({ x: p0.x, y: p0.y, b: true });
+  sim.needsRedraw = true;
+}
+
+// ── Lacune suivie (semi-conducteur) ────────────────────────────────────
+// Une lacune est un ion : elle ne bouge pas, mais elle change d'atome à
+// chaque saut. On suit donc le site qui porte la lacune, et la trace relie
+// les noyaux successifs.
+function clearHoleTrace() {
+  sim.tracedHole = -1;
+  sim.holeTrace  = [];
+}
+
+// Marque l'ion libre de tout saut le plus proche du centre du fil.
+function traceCentralHole() {
   var cx = (sim.tx1 + sim.tx2) / 2, cy = (sim.ty1 + sim.ty2) / 2;
   var best = -1, bestD = Infinity;
-  for (var i = 0; i < sim.electrons.length; i++) {
-    var e = sim.electrons[i];
-    var d = (e.x - cx) * (e.x - cx) + (e.y - cy) * (e.y - cy);
-    if (d < bestD) { bestD = d; best = i; }
+  for (var k = 0; k < sim.atoms.length; k++) {
+    if (!sim.atoms[k].ion || sim.atoms[k].busy) continue;
+    var c = sim.lattice[k];
+    var d = (c.x - cx) * (c.x - cx) + (c.y - cy) * (c.y - cy);
+    if (d < bestD) { bestD = d; best = k; }
   }
-  sim.tracedIdx = best;
-  sim.trace = [];
-  if (best >= 0) {
-    sim.trace.push({ x: sim.electrons[best].x, y: sim.electrons[best].y, b: true });
-  }
+  clearHoleTrace();
+  if (best >= 0) _moveTracedHole(best, true);
   sim.needsRedraw = true;
+}
+
+// La lacune suivie passe à l'atome `to`. isBreak : rupture de tracé (la
+// lacune sort par un bord et réapparaît à l'autre).
+function _moveTracedHole(to, isBreak) {
+  sim.tracedHole = to;
+  sim.holeTrace.push({ x: sim.lattice[to].x, y: sim.lattice[to].y, b: !!isBreak });
+  if (sim.holeTrace.length > TRACE_MAX) sim.holeTrace.shift();
 }
 
 function _pushTracePoint(e, isBreak) {
@@ -746,9 +826,7 @@ function stepPhysics(dtMs) {
   stepFreeElectrons(sim.electrons, dt, sim.rCation, sim.rElec, false);
 
   // ── Trace de l'électron suivi (un point par image) ──
-  if (sim.tracedIdx >= 0 && sim.tracedIdx < sim.electrons.length) {
-    _pushTracePoint(sim.electrons[sim.tracedIdx], false);
-  }
+  if (sim.tracedE) _pushTracePoint(sim.tracedE, false);
 }
 
 // Avance une liste d'électrons libres pendant dt (s) : champ, vol libre,
@@ -831,6 +909,8 @@ function stepFreeElectrons(list, dt, rNuc, rE, capture, vth, att) {
       // Semi-conducteur : près d'un ion, l'électron peut être recapturé.
       if (capture && d2 < rCap * rCap && sim.atoms[c.k].ion && !sim.atoms[c.k].busy && Math.random() < pCap) {
         sim.atoms[c.k].ion = false;
+        if (c.k === sim.tracedHole) clearHoleTrace();   // la lacune a disparu
+        if (e === sim.tracedE) { sim.tracedE = null; sim.tracedBound = c.k; }   // il reste suivi, lié à l'atome
         e.dead = true;
         continue;
       }
@@ -860,15 +940,17 @@ function stepFreeElectrons(list, dt, rNuc, rE, capture, vth, att) {
       // dans le fil ne varie jamais, le milieu reste neutre.
       // L'électron suivi n'est plus le même une fois réinjecté à l'autre
       // bout : on abandonne le suivi plutôt que de raccorder deux trajets.
-      var isTraced = (list === sim.electrons && i === sim.tracedIdx);
+      // Semi-conducteur : on garde le même électron, qui réapparaît de l'autre
+      // côté avec une rupture de tracé (comme la lacune).
+      var isTraced = (e === sim.tracedE);
       if (e.x > sim.tx2 - rE) {
         e.x = sim.tx1 + rE;
         e.y = yMin + Math.random() * (yMax - yMin);
-        if (isTraced) clearTrace();
+        if (isTraced) { if (list === sim.free) _pushTracePoint(e, true); else clearTrace(); }
       } else if (e.x < sim.tx1 + rE) {
         e.x = sim.tx2 - rE;
         e.y = yMin + Math.random() * (yMax - yMin);
-        if (isTraced) clearTrace();
+        if (isTraced) { if (list === sim.free) _pushTracePoint(e, true); else clearTrace(); }
       }
     }
   }
@@ -946,6 +1028,7 @@ function ionise(k) {
   if (e.vx * (p.x - c.x) + e.vy * (p.y - c.y) < 0) { e.vx = -e.vx; e.vy = -e.vy; }
   at.ion = true;
   sim.free.push(e);
+  if (sim.tracedBound === k) { sim.tracedBound = -1; sim.tracedE = e; }   // l'électron suivi se libère
 }
 
 // Part des atomes ionisés choisie au hasard parmi les atomes neutres, pour
@@ -953,6 +1036,8 @@ function ionise(k) {
 function seedSemi() {
   sim.free = [];
   sim.hops = [];
+  clearTrace();
+  clearHoleTrace();
   for (var k = 0; k < sim.atoms.length; k++) { sim.atoms[k].ion = false; sim.atoms[k].busy = false; }
   var n = Math.round(SEMI_F_EQ[sim.tempIdx] * sim.atoms.length);
   for (var i = 0; i < n; i++) {
@@ -989,6 +1074,11 @@ function stepHops(dt) {
         sim.atoms[hp.dst].ph = orbitPhaseFacing(hp.alpha);
         sim.atoms[hp.dst].ion = false;
         sim.atoms[hp.dst].busy = false;
+      }
+      if (sim.tracedHop === hp) {
+        sim.tracedHop = null;
+        if (hp.dst >= 0) sim.tracedBound = hp.dst;   // il est arrivé : lié à son nouvel atome
+        else             clearTrace();               // il sort du morceau de fil
       }
       if (hp.src >= 0) sim.atoms[hp.src].busy = false;
       sim.hops.splice(h, 1);
@@ -1052,18 +1142,30 @@ function stepHops(dt) {
       sim.atoms[other].ion = true;
       sim.atoms[other].busy = true;
       sim.hopDx += c.x - sim.lattice[other].x;
-      sim.hops.push({ src: other, dst: k, sx: p0.x, sy: p0.y, ex: 0, ey: 0, t: 0,
-                      alpha: Math.atan2(sim.lattice[other].y - c.y, sim.lattice[other].x - c.x) });
+      if (sim.tracedHole === k) _moveTracedHole(other, false);   // la lacune passe au voisin
+      var hpa = { src: other, dst: k, sx: p0.x, sy: p0.y, ex: 0, ey: 0, t: 0,
+                  alpha: Math.atan2(sim.lattice[other].y - c.y, sim.lattice[other].x - c.x) };
+      sim.hops.push(hpa);
+      if (sim.tracedBound === other) { sim.tracedBound = -1; sim.tracedHop = hpa; }   // l'électron suivi saute
     } else {
       // De l'extérieur : l'électron entre par le bord, et un électron sort
       // par le bord opposé, d'un atome qui devient ion.
       var co = sim.lattice[opp];
       var pe = boundPosition(opp);
       sim.hopDx += -side * ax;
-      sim.hops.push({ src: -1, dst: k, sx: c.x + side * ax, sy: c.y, ex: 0, ey: 0, t: 0,
-                      alpha: side > 0 ? 0 : Math.PI });
+      var hin = { src: -1, dst: k, sx: c.x + side * ax, sy: c.y, ex: 0, ey: 0, t: 0,
+                  alpha: side > 0 ? 0 : Math.PI };
+      sim.hops.push(hin);
       sim.atoms[opp].ion = true;
       sim.atoms[opp].busy = true;
+      // L'électron suivi qui quitte le morceau de fil par un bord y rentre par
+      // l'autre : on le suit dans le vol d'entrée, avec une rupture de tracé.
+      if (sim.tracedBound === opp) {
+        sim.tracedBound = -1;
+        sim.tracedHop = hin;
+        _pushTracePoint({ x: hin.sx, y: hin.sy }, true);
+      }
+      if (sim.tracedHole === k) _moveTracedHole(opp, true);   // sortie, puis réapparition au bord opposé
       sim.hopDx += -side * ax;
       sim.hops.push({ src: opp, dst: -1, sx: pe.x, sy: pe.y, ex: co.x - side * ax, ey: co.y, t: 0, alpha: 0 });
     }
@@ -1106,6 +1208,11 @@ function stepSemi(dt) {
 
   stepFreeElectrons(sim.free, dt, sim.rNucleus, sim.rElec, SEMI_CAP[sim.tempIdx],
                     semiVth(), SEMI_ATT[sim.tempIdx] * (sim.ty2 - sim.ty1));
+
+  // Trace de l'électron suivi : il garde son identité d'un état à l'autre
+  // (libre, recapturé sur une orbite, en vol d'un atome à l'autre).
+  var tp = tracedPosition();
+  if (tp) _pushTracePoint(tp, false);
 }
 
 // Isolant : la déformation a rejoint sa valeur d'équilibre selon un
@@ -1226,6 +1333,7 @@ function resetSim() {
   sim.tempIdx     = TEMP_DEFAULT;
   sim.free        = [];
   sim.hops        = [];
+  clearHoleTrace();
   for (var q = 0; q < sim.atoms.length; q++) { sim.atoms[q].ion = false; sim.atoms[q].busy = false; }
   sim.isoI        = 0;
   sim.semiVd      = 0;

@@ -27,7 +27,7 @@ var READOUT_PERIOD = 100;   // ms
 var _el = {};
 
 var _EL_IDS = [
-  'btn-circuit', 'btn-playpause', 'btn-trace', 'btn-arrows', 'btn-measures',
+  'btn-circuit', 'btn-playpause', 'btn-trace', 'btn-hole', 'btn-arrows', 'btn-measures',
   'sl-U', 'sl-gene', 'sl-speed',
   'lbl-U', 'lbl-gene', 'lbl-speed',
   'measures', 'ro-U', 'ro-I', 'ro-v',
@@ -65,8 +65,11 @@ function loop(ts) {
 
     // Le suivi peut s'être interrompu de lui-même (électron sorti du
     // fil) : le bouton doit alors reprendre son libellé d'origine.
-    if (sim.tracedIdx < 0 && _el['btn-trace'].classList.contains('active')) {
+    if (!traceActive() && _el['btn-trace'].classList.contains('active')) {
       _updateTraceBtn();
+    }
+    if (sim.tracedHole < 0 && _el['btn-hole'].classList.contains('active')) {
+      _updateHoleBtn();
     }
 
     _readoutTimer += dtReal;
@@ -140,6 +143,7 @@ function syncUIToSim() {
   _updateCircuitBtn();
   _updatePlayPauseBtn();
   _updateTraceBtn();
+  _updateHoleBtn();
   _updateArrowsBtn();
   _updateMeasuresBtn();
   updateReadouts();
@@ -167,8 +171,9 @@ function _updateMaterialUI() {
   _el['btn-mat-iso'].classList.toggle('active',  m === 'isolant');
   _el['btn-mat-semi'].classList.toggle('active', m === 'semi');
   _el['row-gene'].hidden    = (m !== 'conducteur');
-  _el['sec-options'].hidden = (m !== 'conducteur');
-  _el['sep-options'].hidden = (m !== 'conducteur');
+  _el['sec-options'].hidden = (m === 'isolant');   // aucun électron libre à suivre
+  _el['sep-options'].hidden = (m === 'isolant');
+  _el['btn-hole'].hidden    = (m !== 'semi');
   _el['row-temp'].hidden    = (m !== 'semi');
   _el['row-free'].hidden    = (m !== 'semi');
   renderLegend();
@@ -198,8 +203,15 @@ function _updatePlayPauseBtn() {
 
 function _updateTraceBtn() {
   var b = _el['btn-trace'];
-  var on = (sim.tracedIdx >= 0);
+  var on = traceActive();
   b.textContent = on ? 'Ne plus suivre' : 'Suivre un électron';
+  b.classList.toggle('active', on);
+}
+
+function _updateHoleBtn() {
+  var b = _el['btn-hole'];
+  var on = (sim.tracedHole >= 0);
+  b.textContent = on ? 'Ne plus suivre' : 'Suivre une lacune';
   b.classList.toggle('active', on);
 }
 
@@ -227,6 +239,7 @@ function setMaterial(m) {
   if (m === sim.material) return;
   sim.material = m;
   clearTrace();
+  clearHoleTrace();
   sim.isoI = 0;
   sim.snapMeasure = true;
   if (m !== 'conducteur') {
@@ -244,6 +257,7 @@ function setMaterial(m) {
   }
   _updateMaterialUI();
   _updateTraceBtn();
+  _updateHoleBtn();
   updateReadouts();
   sim.needsRedraw = true;
 }
@@ -300,17 +314,26 @@ function togglePause() {
 
 // ── Suivi d'un électron ──
 function toggleTrace() {
-  if (sim.material !== 'conducteur') return;
-  if (sim.tracedIdx >= 0) clearTrace();
-  else                    traceCentralElectron();
+  if (sim.material === 'isolant') return;
+  if (traceActive()) clearTrace();
+  else               traceCentralElectron();
   _updateTraceBtn();
+  sim.needsRedraw = true;
+}
+
+// ── Suivi d'une lacune (semi-conducteur) ──
+function toggleHoleTrace() {
+  if (sim.material !== 'semi') return;
+  if (sim.tracedHole >= 0) clearHoleTrace();
+  else                     traceCentralHole();
+  _updateHoleBtn();
   sim.needsRedraw = true;
 }
 
 // ── Flèches de vitesse ──
 // Une flèche par électron, orientée selon sa vitesse instantanée.
 function toggleArrows() {
-  if (sim.material !== 'conducteur') return;
+  if (sim.material === 'isolant') return;
   sim.showArrows = !sim.showArrows;
   _updateArrowsBtn();
   sim.needsRedraw = true;
@@ -370,6 +393,8 @@ document.addEventListener('keydown', function (e) {
     toggleMaterial();
   } else if (e.key === 'e' || e.key === 'E') {
     toggleTrace();
+  } else if (e.key === 'l' || e.key === 'L') {
+    toggleHoleTrace();
   } else if (e.key === 'f' || e.key === 'F') {
     toggleArrows();
   }

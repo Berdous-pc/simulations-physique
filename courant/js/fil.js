@@ -40,6 +40,7 @@ var C_MINUS     = 'rgba(40,80,180,1)';
 var C_TRACE     = 'rgba(122,58,208,0.72)';
 var C_TRACED    = '#7a3ad0';
 var C_TRACED_ED = '#4d1f8c';
+var C_HOLE_TRACE = 'rgba(194,87,12,0.85)';   // trace d'une lacune : teinte orange, celle des charges +
 var C_ARROW     = 'rgba(28,76,125,0.95)';   // flèche de vitesse
 
 // ── Espèces de particules : un seul code couleur pour tous les modes ───
@@ -563,7 +564,13 @@ function _drawTube() {
 
   if (sim.material !== 'conducteur') {
     _drawAtoms();
-    if (sim.material === 'semi') { _drawHops(); _drawFreeElectrons(); }
+    if (sim.material === 'semi') {
+      _drawTrace();
+      _drawTracedBound();
+      _drawHops();
+      _drawFreeElectrons();
+      if (sim.showArrows) _drawArrows(sim.free);
+    }
   } else {
     _drawCations();
     _drawTrace();
@@ -600,10 +607,22 @@ function _drawAtoms() {
   ctx.stroke();
   ctx.setLineDash([]);
 
+  if (sim.material === 'semi') _drawHoleTrace();
+
   // Noyaux : pâles tant que l'atome est neutre, pleins pour un ion.
   for (k = 0; k < sim.lattice.length; k++) {
     c = sim.lattice[k];
     drawParticle(sim.atoms[k].ion ? SPECIES.ion : SPECIES.nucleus, c.x, c.y, rN);
+  }
+
+  // La lacune suivie est cerclée, pour se distinguer des autres ions.
+  if (sim.tracedHole >= 0) {
+    var th = sim.lattice[sim.tracedHole];
+    ctx.strokeStyle = C_HOLE_TRACE;
+    ctx.lineWidth   = Math.max(1.5, rN * 0.2);
+    ctx.beginPath();
+    ctx.arc(th.x, th.y, rN * 1.45, 0, 2 * Math.PI);
+    ctx.stroke();
   }
 
   // Électrons liés, sur leur orbite (les ions n'en ont plus)
@@ -611,23 +630,53 @@ function _drawAtoms() {
     if (sim.atoms[k].ion) continue;
     c = sim.lattice[k];
     var ph = sim.atoms[k].ph;
+    if (k === sim.tracedBound) continue;   // l'électron suivi se dessine par-dessus la trace
     drawParticle(SPECIES.elecBound,
                  c.x + o.ox + o.A * Math.cos(ph), c.y + o.B * Math.sin(ph), rE);
   }
+}
+
+// Électron suivi, lié à son atome : dessiné par-dessus sa trace.
+function _drawTracedBound() {
+  if (sim.tracedBound < 0) return;
+  var p = boundPosition(sim.tracedBound);
+  drawParticle(SPECIES.elecTraced, p.x, p.y, sim.rElec * 1.25);
+}
+
+// Parcours de la lacune suivie : les noyaux successifs, reliés.
+function _drawHoleTrace() {
+  if (sim.holeTrace.length < 2) return;
+  ctx.strokeStyle = C_HOLE_TRACE;
+  ctx.lineWidth   = Math.max(1.8, sim.rElec * 0.45);
+  ctx.lineJoin    = 'round';
+  ctx.lineCap     = 'round';
+  ctx.beginPath();
+  var pen = false;
+  for (var k = 0; k < sim.holeTrace.length; k++) {
+    var p = sim.holeTrace[k];
+    if (p.b || !pen) { ctx.moveTo(p.x, p.y); pen = true; }
+    else             { ctx.lineTo(p.x, p.y); }
+  }
+  ctx.stroke();
 }
 
 // Semi-conducteur : électrons liés en vol d'un atome à l'autre (sauts de lacune).
 function _drawHops() {
   for (var i = 0; i < sim.hops.length; i++) {
     var p = hopPosition(sim.hops[i]);
-    drawParticle(SPECIES.elecBound, p.x, p.y, sim.rElec);
+    var traced = (sim.hops[i] === sim.tracedHop);
+    drawParticle(traced ? SPECIES.elecTraced : SPECIES.elecBound, p.x, p.y,
+                 traced ? sim.rElec * 1.25 : sim.rElec);
   }
 }
 
 // Semi-conducteur : électrons libres, dessinés par-dessus tout le reste.
 function _drawFreeElectrons() {
   for (var i = 0; i < sim.free.length; i++) {
-    drawParticle(SPECIES.elecFree, sim.free[i].x, sim.free[i].y, sim.rElec);
+    var e = sim.free[i];
+    var traced = (e === sim.tracedE);
+    drawParticle(traced ? SPECIES.elecTraced : SPECIES.elecFree,
+                 e.x, e.y, traced ? sim.rElec * 1.25 : sim.rElec);
   }
 }
 
@@ -657,7 +706,7 @@ function _drawElectrons() {
   var r = sim.rElec;
   for (var i = 0; i < sim.electrons.length; i++) {
     var e = sim.electrons[i];
-    var traced = (i === sim.tracedIdx);
+    var traced = (e === sim.tracedE);
     drawParticle(traced ? SPECIES.elecTraced : SPECIES.elecFree,
                  e.x, e.y, traced ? r * 1.25 : r);
   }
@@ -670,7 +719,8 @@ function _drawElectrons() {
 // toutes de même longueur à l'œil. Ce qui se lit ici, ce sont les
 // DIRECTIONS : circuit ouvert, elles pointent en tous sens ; circuit
 // fermé, elles penchent en moyenne du côté opposé au courant.
-function _drawArrows() {
+function _drawArrows(list) {
+  list = list || sim.electrons;
   var r   = sim.rElec;
   var len = Math.max(6, r * 5.2);      // longueur totale, du bord du disque
   var hd  = Math.max(3, len * 0.34);   // longueur de la pointe
@@ -679,8 +729,8 @@ function _drawArrows() {
   ctx.lineWidth = Math.max(1, r * 0.55);
   ctx.lineCap   = 'butt';
 
-  for (var i = 0; i < sim.electrons.length; i++) {
-    var e = sim.electrons[i];
+  for (var i = 0; i < list.length; i++) {
+    var e = list[i];
     var v = Math.sqrt(e.vx * e.vx + e.vy * e.vy);
     if (v < 1e-6) continue;            // vitesse nulle : aucun sens à montrer
     var ux = e.vx / v, uy = e.vy / v;
@@ -692,7 +742,7 @@ function _drawArrows() {
     var xb = x1 - ux * hd,  yb = y1 - uy * hd;   // base de la pointe
     var px = -uy, py = ux;                       // normale unitaire
 
-    var col = (i === sim.tracedIdx) ? C_TRACED_ED : C_ARROW;
+    var col = (e === sim.tracedE) ? C_TRACED_ED : C_ARROW;
     ctx.strokeStyle = col;
     ctx.fillStyle   = col;
 
