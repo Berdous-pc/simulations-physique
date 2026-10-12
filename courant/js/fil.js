@@ -398,7 +398,7 @@ function _drawSchematic() {
   ctx.textBaseline = 'bottom';
   ctx.fillText(sim.material === 'isolant' ? 'portion d’isolant étudiée'
              : sim.material === 'semi'    ? 'portion de semi-conducteur étudiée'
-                                          : 'portion de fil étudiée',
+                                          : 'portion de conducteur étudiée',
                cx, y2 - lw * 2.6);
 
   // ── Générateur : un cercle marqué G ──
