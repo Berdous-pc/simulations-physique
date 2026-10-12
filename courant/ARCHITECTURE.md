@@ -234,7 +234,54 @@ reste calé sur le temps réel), afficheurs rafraîchis à 10 Hz, et pas de rede
 en pause tant que `sim.needsRedraw` n'est pas posé.
 
 Raccourcis clavier (projection) : **Espace** pause, **G** interrupteur,
-**E** suivre un électron, **R** réinitialiser.
+**E** suivre un électron, **L** suivre une lacune, **F** sens des électrons,
+**M** matériau suivant, **R** réinitialiser.
+
+---
+
+## Les trois matériaux (`sim.material`)
+
+Les boutons du bloc Circuit choisissent `'conducteur'` (modèle de Drude
+ci-dessus), `'isolant'` ou `'semi'`. `setMaterial()` (`ui.js`) efface les traces, remet l'isolant à l'équilibre de la tension courante (pas de faux courant)
+et amorce l'équilibre thermique du semi-conducteur (`seedSemi`) ; le schéma, la légende (`LEGEND[sim.material]`) et le libellé
+« portion de … étudiée » suivent le matériau.
+
+### Isolant
+
+Chaque atome garde son électron **lié** sur une orbite autour du noyau
+(constantes `ISO_*`). La tension déforme toutes les orbites de la même façon :
+`sim.isoA` (déformation) rejoint `isoTarget() = −ISO_K·U` selon un **oscillateur
+amorti** (`ISO_OMEGA`, `ISO_ZETA`, intégré en sous-pas de 5 ms par
+`stepInsulator`). `isoOrbit()` en tire l'ellipse décentrée (centre décalé vers
+la borne +, grand axe allongé, aire à peu près conservée). Aucun électron ne
+dérive : l'intensité `−K_ISO·isoV` n'est non nulle que **pendant** la
+déformation (courant transitoire), lissée avec la constante `ISO_I_TAU`.
+
+### Semi-conducteur
+
+Même cristal et mêmes orbites que l'isolant, plus l'**agitation thermique**
+(`stepSemi`), pilotée par un curseur de température à 8 crans (`TEMP_K` =
+100 → 1000 K, libellé en K et en °C par `tempLabel`) :
+
+- **ionisation** : à chaque pas, nombre d'événements tiré selon `SEMI_NU[T]` ;
+  l'électron quitte son orbite (`ionise`) et devient libre (`sim.free`), de
+  vitesse `SEMI_VTH[T]` ∝ √T ;
+- **recapture** : un électron libre proche d'un ion est attiré (`SEMI_ATT`,
+  `SEMI_CAP`, `SEMI_CAP_R`, `SEMI_CAP_RATE`) et retombe sur l'orbite ; les
+  électrons libres ne tournent plus autour des ions ;
+- **lacunes** : un atome ionisé est une lacune ; un voisin neutre peut lui
+  céder son électron (`stepHops`, taux `SEMI_HOP[T]`, vol de `SEMI_HOP_T`),
+  donc la lacune « saute » en sens inverse. Le tirage est biaisé par la tension
+  (`hopWeight`, `SEMI_HOP_BIAS`) et par l'orientation de l'électron sur son
+  orbite (`facing`, `SEMI_HOP_FACE`) ;
+- l'état d'équilibre initial est amorcé par `seedSemi()` (`SEMI_F_EQ[T]`), pour
+  ne pas attendre le remplissage du cristal ;
+- mesures : `_measureSemi`, calibrées par `SEMI_CAL`. Le bandeau « Électrons
+  libres » (`#row-free`) n'apparaît que dans ce mode.
+
+Suivi : « Suivre un électron » garde l'identité de l'électron d'un état à
+l'autre (libre, recapturé, en vol d'un atome à l'autre) ; « Suivre une lacune »
+(`btn-hole`, semi seulement) trace la lacune centrale.
 
 ---
 
@@ -242,6 +289,9 @@ Raccourcis clavier (projection) : **Espace** pause, **G** interrupteur,
 
 | Commande | Effet |
 |---|---|
+| Conducteur / Isolant / Semi-conducteur | Choix du matériau (voir ci-dessus) ; touche **M** pour passer au suivant (`toggleMaterial`) |
+| Température (8 crans, semi seulement) | 100 à 1000 K : ionisation, agitation, recapture et sauts de lacune |
+| Suivre une lacune (semi seulement) | Trace la lacune la plus centrale |
 | Fermer / ouvrir le circuit | Bascule l'interrupteur du schéma ; ouvert, l'accélération est nulle |
 | Tension imposée (−12 → +12 V) | Accélération des électrons ; le signe inverse le sens du courant |
 | Résistance (5 crans) | Encombrement des ions, donc fréquence des chocs, donc τ — la seconde cause de la conductivité (σ = n·e²·τ/m) |
