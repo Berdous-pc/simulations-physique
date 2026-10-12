@@ -254,6 +254,39 @@ var SEMI_ATT_D0 = 0.30;   // hauteurs de fil
 // (s⁻¹ par unité d'attraction, à la distance SEMI_ATT_D0).
 var SEMI_ATT_DAMP = 0.1;
 
+// ── Sauts de lacune ────────────────────────────────────────────────────
+// Un ion (atome qui a perdu son électron) peut combler son manque avec
+// l'électron lié d'un atome voisin : l'ion « se déplace » alors d'un atome
+// vers l'autre, en sens inverse de l'électron. C'est la conduction par
+// « trous ». Les noyaux ne bougent jamais : seul se décale le manque.
+//
+// Un saut n'est pas réservé à un sens. Sans champ, l'ion comble son manque
+// depuis n'importe quel voisin : le manque fait une marche au hasard, sans
+// dérive. Sous champ, l'électron saute plus volontiers vers la borne + que
+// dans l'autre sens, de sorte que le manque dérive en sens inverse — dans le
+// sens du courant conventionnel. Poids d'un saut de déplacement Δ (en pas
+// du réseau, selon x) : exp(−β·U·Δ).
+//
+// Aux extrémités du morceau de fil, le réseau se prolonge : un ion de la
+// colonne de bord peut recevoir un électron « de l'extérieur » — la lacune
+// sort du morceau. Comme pour les électrons libres, une lacune ne disparaît
+// pas : au même instant, un atome neutre de la colonne de bord OPPOSÉE cède
+// un électron à l'extérieur et devient un ion — une lacune entre. Le nombre
+// d'ions reste donc celui des électrons libres : le fil reste neutre.
+var SEMI_HOP      = [0.3, 0.4, 0.55, 0.8, 1.1];   // s⁻¹ : taux de saut d'une lacune, voisins tous disponibles
+var SEMI_HOP_BIAS = 0.12;   // β, par volt
+var SEMI_HOP_T    = 0.25;   // durée du vol de l'électron d'un atome à l'autre (s)
+var SEMI_NBR_D    = 0.45;   // distance maximale de deux voisins (hauteurs de fil)
+
+// Un électron ne peut sauter vers un ion que s'il est du côté de son orbite
+// qui regarde cet ion : à moins de SEMI_HOP_FACE degrés de la direction du
+// noyau voisin. Il n'est dans cette zone qu'une fraction du temps
+// (2·SEMI_HOP_FACE / 360) ; les taux de saut, définis en moyenne, sont donc
+// multipliés par l'inverse pendant qu'il y est.
+var SEMI_HOP_FACE  = 40;
+var SEMI_FACE_COS  = Math.cos(SEMI_HOP_FACE * Math.PI / 180);
+var SEMI_FACE_BOOST = 180 / SEMI_HOP_FACE;
+
 // Étalonnage des grandeurs affichées : les noyaux sont dessinés plus petits
 // que les ions du conducteur, donc un électron libre y subit moins de chocs
 // et dérive plus vite (mesuré : ×1,34 à champ égal). Sans correction, un
@@ -353,6 +386,10 @@ var sim = {
   // vitesse de variation (s⁻¹). rNucleus et isoR en pixels.
   atoms    : [],
   free     : [],   // semi-conducteur : électrons libres {x, y, vx, vy}
+  hops     : [],   // sauts en cours {src, dst, sx, sy, ex, ey, t} (src/dst : -1 = extérieur)
+  nbrs     : [],   // voisins de chaque site (indices)
+  hopDx    : 0,    // déplacement cumulé des électrons liés qui sautent (px, signé)
+  lastDt   : 0,    // dernier pas de temps simulé (s)
   reseed   : false,   // atomes reconstruits : refaire l'équilibre thermique
   isoA     : 0,
   isoV     : 0,
@@ -409,6 +446,7 @@ function updateGeometry() {
   sim.isoR     = ISO_R_FRAC * innerH;
 
   buildLattice();
+  buildNeighbours();
   buildAtoms();
 
   // Le nombre d'électrons découle du réseau : autant de charges négatives
@@ -460,12 +498,31 @@ function buildLattice() {
       var ion = {
         x : sim.tx1 + (i + 0.5 + o.ox) * sim.ax,
         y : sim.ty1 + yEdge + (yBase + o.oy) * sim.ayLat,
-        k : n - 1                      // indice du site (cf. sim.atoms)
+        k : n - 1,                     // indice du site (cf. sim.atoms)
+        col : i                        // colonne du réseau
       };
       col.push(ion);
       sim.lattice.push(ion);
     }
     sim.latCols.push(col);
+  }
+}
+
+// Voisins de chaque site : tous les sites à moins de SEMI_NBR_D hauteurs de fil.
+// Dans le quinconce, cela donne les sites des deux colonnes adjacentes et
+// ceux de la même colonne, pas ceux d'une colonne plus loin.
+function buildNeighbours() {
+  var innerH = sim.ty2 - sim.ty1;
+  var dmax2  = (SEMI_NBR_D * innerH) * (SEMI_NBR_D * innerH);
+  sim.nbrs = [];
+  for (var i = 0; i < sim.lattice.length; i++) {
+    var list = [];
+    for (var j = 0; j < sim.lattice.length; j++) {
+      if (i === j) continue;
+      var dx = sim.lattice[i].x - sim.lattice[j].x, dy = sim.lattice[i].y - sim.lattice[j].y;
+      if (dx * dx + dy * dy < dmax2) list.push(j);
+    }
+    sim.nbrs.push(list);
   }
 }
 
@@ -476,13 +533,15 @@ function buildAtoms() {
   if (sim.atoms.length === sim.nSites) return;
   sim.atoms = [];
   sim.free  = [];   // les ions repartent à zéro : plus d'électron libre
+  sim.hops  = [];
   sim.reseed = true; // le redimensionnement les re-sème (cf. _doResize)
   for (var k = 0; k < sim.nSites; k++) {
     var turns = ISO_TURN_MIN + Math.random() * (ISO_TURN_MAX - ISO_TURN_MIN);
     sim.atoms.push({
       ph  : Math.random() * 2 * Math.PI,
       w   : 2 * Math.PI * turns,
-      ion : false      // semi-conducteur : l'atome a perdu son électron
+      ion : false,     // semi-conducteur : l'atome a perdu son électron
+      busy: false      // un saut le concerne : il ne prend part à aucun autre événement
     });
   }
 }
@@ -770,7 +829,7 @@ function stepFreeElectrons(list, dt, rNuc, rE, capture, vth, att) {
       var d2 = dx * dx + dy * dy;
 
       // Semi-conducteur : près d'un ion, l'électron peut être recapturé.
-      if (capture && d2 < rCap * rCap && sim.atoms[c.k].ion && Math.random() < pCap) {
+      if (capture && d2 < rCap * rCap && sim.atoms[c.k].ion && !sim.atoms[c.k].busy && Math.random() < pCap) {
         sim.atoms[c.k].ion = false;
         e.dead = true;
         continue;
@@ -847,6 +906,35 @@ function setTemperature(idx) {
   }
 }
 
+// Point de l'orbite de l'atome k au paramètre t.
+function orbitPoint(k, t) {
+  var o = isoOrbit(), c = sim.lattice[k];
+  return { x: c.x + o.ox + o.A * Math.cos(t), y: c.y + o.B * Math.sin(t) };
+}
+
+// Paramètre t du point de l'orbite qui se trouve dans la direction alpha vue
+// du noyau (l'orbite est une ellipse décentrée : on résout l'intersection
+// avec la demi-droite issue du noyau).
+function orbitPhaseFacing(alpha) {
+  var o = isoOrbit(), ca = Math.cos(alpha), sa = Math.sin(alpha);
+  var Rr    = Math.sqrt(o.A * sa * o.A * sa + o.B * ca * o.B * ca);
+  var delta = Math.atan2(o.B * ca, o.A * sa);
+  var arg   = Math.max(-1, Math.min(1, -o.ox * sa / Rr));
+  var base  = Math.acos(arg);
+  var t1 = -delta + base, t2 = -delta - base;
+  // Des deux solutions, celle qui est du côté de alpha (l'autre est à l'opposé).
+  var x1 = o.ox + o.A * Math.cos(t1), y1 = o.B * Math.sin(t1);
+  return (x1 * ca + y1 * sa > 0) ? t1 : t2;
+}
+
+// L'électron de l'atome k est-il du côté de son orbite qui regarde la
+// direction (tx, ty), vue du noyau ?
+function facing(k, tx, ty) {
+  var p = boundPosition(k), c = sim.lattice[k];
+  var vx = p.x - c.x, vy = p.y - c.y;
+  return vx * tx + vy * ty >= SEMI_FACE_COS * Math.sqrt(vx * vx + vy * vy) * Math.sqrt(tx * tx + ty * ty);
+}
+
 // Ionise l'atome k : son électron quitte l'orbite et devient libre, avec une
 // vitesse d'agitation dirigée en s'éloignant du noyau.
 function ionise(k) {
@@ -864,7 +952,8 @@ function ionise(k) {
 // partir de l'équilibre : appelé à l'entrée dans le mode semi-conducteur.
 function seedSemi() {
   sim.free = [];
-  for (var k = 0; k < sim.atoms.length; k++) sim.atoms[k].ion = false;
+  sim.hops = [];
+  for (var k = 0; k < sim.atoms.length; k++) { sim.atoms[k].ion = false; sim.atoms[k].busy = false; }
   var n = Math.round(SEMI_F_EQ[sim.tempIdx] * sim.atoms.length);
   for (var i = 0; i < n; i++) {
     var k2;
@@ -873,10 +962,131 @@ function seedSemi() {
   }
 }
 
+// Poids d'un saut dont l'électron se déplace de delta pas du réseau selon x.
+function hopWeight(delta) {
+  var U = sim.circuitOn ? sim.U_V : 0;
+  return Math.exp(-SEMI_HOP_BIAS * U * delta);
+}
+
+// Côté du morceau de fil où le site touche l'extérieur : -1 (gauche), +1
+// (droite), 0 s'il est à l'intérieur.
+function edgeSide(k) {
+  var col = sim.lattice[k].col;
+  if (col === 0) return -1;
+  if (col === sim.cols - 1) return 1;
+  return 0;
+}
+
+// Fait avancer les sauts en cours, puis tire les nouveaux.
+function stepHops(dt) {
+  var h, hp;
+  for (h = sim.hops.length - 1; h >= 0; h--) {
+    hp = sim.hops[h];
+    hp.t += dt / SEMI_HOP_T;
+    if (hp.t >= 1) {
+      if (hp.dst >= 0) {
+        // L'électron entre sur l'orbite du côté d'où il vient, puis la parcourt.
+        sim.atoms[hp.dst].ph = orbitPhaseFacing(hp.alpha);
+        sim.atoms[hp.dst].ion = false;
+        sim.atoms[hp.dst].busy = false;
+      }
+      if (hp.src >= 0) sim.atoms[hp.src].busy = false;
+      sim.hops.splice(h, 1);
+    }
+  }
+
+  var lam = SEMI_HOP[sim.tempIdx];
+  var N = sim.atoms.length, ax = sim.ax;
+  var k, j, c, cj;
+
+  for (k = 0; k < N; k++) {
+    var at = sim.atoms[k];
+    if (at.busy) continue;
+    c = sim.lattice[k];
+    var side = edgeSide(k), nb = sim.nbrs[k];
+    var cand = [], rates = [], R = 0, W = 0, w;
+
+    if (!at.ion) continue;   // seul un ion peut recevoir un électron
+
+    // Ion : il peut recevoir l'électron d'un voisin neutre, ou de l'extérieur.
+    var opp = -1;   // atome neutre de la colonne de bord opposée, prêt à céder
+    for (j = 0; j < nb.length; j++) {
+      cj = sim.lattice[nb[j]];
+      w = hopWeight((c.x - cj.x) / ax);
+      W += w;
+      var aj = sim.atoms[nb[j]];
+      if (!aj.ion && !aj.busy && facing(nb[j], c.x - cj.x, c.y - cj.y)) {
+        cand.push(nb[j]); rates.push(lam * w * SEMI_FACE_BOOST); R += lam * w * SEMI_FACE_BOOST;
+      }
+    }
+    if (side !== 0) {
+      w = hopWeight(-side);
+      W += w;
+      // La lacune ne peut sortir que si l'autre bout peut en accueillir une.
+      var oppCol = (side < 0) ? sim.cols - 1 : 0, free = [];
+      for (j = 0; j < N; j++) {
+        if (sim.lattice[j].col === oppCol && !sim.atoms[j].ion && !sim.atoms[j].busy &&
+            facing(j, -side, 0)) free.push(j);
+      }
+      if (free.length > 0) {
+        opp = free[Math.floor(Math.random() * free.length)];
+        cand.push(-1); rates.push(lam * w); R += lam * w;
+      }
+    }
+    if (cand.length === 0 || W <= 0) continue;
+
+    // Un événement se produit pendant dt avec la probabilité 1 − exp(−R·dt/W).
+    R /= W;
+    if (Math.random() >= 1 - Math.exp(-R * dt)) continue;
+
+    // Choix du saut, proportionnel aux taux.
+    var pick = Math.random() * (R * W), acc = 0, q = 0;
+    for (q = 0; q < cand.length; q++) { acc += rates[q]; if (pick < acc) break; }
+    if (q >= cand.length) q = cand.length - 1;
+    var other = cand[q], p0;
+
+    // L'ion k reçoit un électron.
+    at.busy = true;
+    if (other >= 0) {
+      p0 = boundPosition(other);
+      sim.atoms[other].ion = true;
+      sim.atoms[other].busy = true;
+      sim.hopDx += c.x - sim.lattice[other].x;
+      sim.hops.push({ src: other, dst: k, sx: p0.x, sy: p0.y, ex: 0, ey: 0, t: 0,
+                      alpha: Math.atan2(sim.lattice[other].y - c.y, sim.lattice[other].x - c.x) });
+    } else {
+      // De l'extérieur : l'électron entre par le bord, et un électron sort
+      // par le bord opposé, d'un atome qui devient ion.
+      var co = sim.lattice[opp];
+      var pe = boundPosition(opp);
+      sim.hopDx += -side * ax;
+      sim.hops.push({ src: -1, dst: k, sx: c.x + side * ax, sy: c.y, ex: 0, ey: 0, t: 0,
+                      alpha: side > 0 ? 0 : Math.PI });
+      sim.atoms[opp].ion = true;
+      sim.atoms[opp].busy = true;
+      sim.hopDx += -side * ax;
+      sim.hops.push({ src: opp, dst: -1, sx: pe.x, sy: pe.y, ex: co.x - side * ax, ey: co.y, t: 0, alpha: 0 });
+    }
+  }
+}
+
+// Position de l'électron en vol d'un saut : il va de son point de départ au
+// point d'entrée sur l'orbite de l'atome d'arrivée, du côté d'où il vient —
+// il ne traverse jamais le noyau.
+function hopPosition(hp) {
+  var s = hp.t > 1 ? 1 : hp.t;
+  s = s * s * (3 - 2 * s);
+  var tx = hp.ex, ty = hp.ey;
+  if (hp.dst >= 0) { var p = orbitPoint(hp.dst, orbitPhaseFacing(hp.alpha)); tx = p.x; ty = p.y; }
+  return { x: hp.sx + (tx - hp.sx) * s, y: hp.sy + (ty - hp.sy) * s };
+}
+
 // Semi-conducteur : orbites des atomes neutres (déformées par le champ),
 // ionisation thermique, puis mouvement des électrons libres.
 function stepSemi(dt) {
   stepInsulator(dt, SEMI_VTH[sim.tempIdx]);
+  sim.lastDt = dt;
+  stepHops(dt);
 
   var nNeutral = 0;
   for (var k = 0; k < sim.atoms.length; k++) if (!sim.atoms[k].ion) nNeutral++;
@@ -981,7 +1191,11 @@ function _measureSemi(dtRealMs) {
   var nf = sim.free.length, sum = 0;
   for (var i = 0; i < nf; i++) sum += sim.free[i].vx;
   var rawVd = (nf > 0 && sim.vth > 0) ? (sum / nf) / sim.vth : 0;
-  var rawI  = (sim.nSites > 0 && sim.vth > 0) ? (sum / sim.nSites) / sim.vth : 0;
+  // Les électrons liés qui sautent d'un atome à l'autre portent aussi le
+  // courant : leur déplacement cumulé, rapporté au temps simulé écoulé.
+  var hopV = sim.hopDx / Math.max(sim.lastDt, 1e-6);
+  sim.hopDx = 0;
+  var rawI  = (sim.nSites > 0 && sim.vth > 0) ? ((sum + hopV) / sim.nSites) / sim.vth : 0;
 
   if (sim.snapMeasure) {
     sim.measN = 0;
@@ -1011,7 +1225,8 @@ function resetSim() {
   sim.material    = 'conducteur';
   sim.tempIdx     = TEMP_DEFAULT;
   sim.free        = [];
-  for (var q = 0; q < sim.atoms.length; q++) sim.atoms[q].ion = false;
+  sim.hops        = [];
+  for (var q = 0; q < sim.atoms.length; q++) { sim.atoms[q].ion = false; sim.atoms[q].busy = false; }
   sim.isoI        = 0;
   sim.semiVd      = 0;
   sim.semiI       = 0;

@@ -233,8 +233,15 @@ function setMaterial(m) {
     resetInsulator();   // pas de faux courant au changement
     sim.I_mA = 0;
   }
-  if (m === 'semi') seedSemi();   // on part de l'équilibre thermique
-  else              sim.free = [];
+  if (m === 'semi') {
+    seedSemi();   // on part de l'équilibre thermique
+  } else {
+    // Les autres matériaux n'ont ni ion ni électron libre : sans ce nettoyage,
+    // les ions du semi-conducteur resteraient affichés.
+    sim.free = [];
+    sim.hops = [];
+    for (var q = 0; q < sim.atoms.length; q++) { sim.atoms[q].ion = false; sim.atoms[q].busy = false; }
+  }
   _updateMaterialUI();
   _updateTraceBtn();
   updateReadouts();

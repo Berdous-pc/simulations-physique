@@ -563,7 +563,7 @@ function _drawTube() {
 
   if (sim.material !== 'conducteur') {
     _drawAtoms();
-    if (sim.material === 'semi') _drawFreeElectrons();
+    if (sim.material === 'semi') { _drawHops(); _drawFreeElectrons(); }
   } else {
     _drawCations();
     _drawTrace();
@@ -613,6 +613,14 @@ function _drawAtoms() {
     var ph = sim.atoms[k].ph;
     drawParticle(SPECIES.elecBound,
                  c.x + o.ox + o.A * Math.cos(ph), c.y + o.B * Math.sin(ph), rE);
+  }
+}
+
+// Semi-conducteur : électrons liés en vol d'un atome à l'autre (sauts de lacune).
+function _drawHops() {
+  for (var i = 0; i < sim.hops.length; i++) {
+    var p = hopPosition(sim.hops[i]);
+    drawParticle(SPECIES.elecBound, p.x, p.y, sim.rElec);
   }
 }
 
