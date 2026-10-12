@@ -34,11 +34,11 @@
       <div id="legend">
         <div class="legend-item">
           <span class="legend-dot dot-cation"></span>
-          <span>ion du réseau, fixe</span>
+          <span id="leg-1">ion du réseau, fixe</span>
         </div>
         <div class="legend-item">
           <span class="legend-dot dot-elec"></span>
-          <span>électron libre</span>
+          <span id="leg-2">électron libre</span>
         </div>
       </div>
     </div>
@@ -82,6 +82,11 @@
       <div class="panel-section">
         <div class="section-title">Circuit</div>
 
+        <div class="mat-row">
+          <button id="btn-mat-cond" class="btn-toggle-one active" onclick="setMaterial('conducteur')">Conducteur</button>
+          <button id="btn-mat-iso" class="btn-toggle-one" onclick="setMaterial('isolant')">Isolant</button>
+        </div>
+
         <button id="btn-circuit" class="btn btn-green" onclick="toggleCircuit()">Fermer le circuit</button>
 
         <div class="param-row" style="margin-top: 8px;">
@@ -97,7 +102,7 @@
           </div>
         </div>
 
-        <div class="param-row">
+        <div class="param-row" id="row-gene">
           <label for="sl-gene">Résistance
             <span class="param-value" id="lbl-gene">Moyenne</span>
           </label>
@@ -130,10 +135,10 @@
         <button id="btn-measures" class="btn-toggle-one" onclick="toggleMeasures()">Masquer les mesures</button>
       </div>
 
-      <div class="sep"></div>
+      <div class="sep" id="sep-options"></div>
 
       <!-- ── Options ────────────────────────────── -->
-      <div class="panel-section">
+      <div class="panel-section" id="sec-options">
         <div class="section-title">Options</div>
 
         <button id="btn-trace" class="btn-toggle-one" onclick="toggleTrace()">Suivre un électron</button>

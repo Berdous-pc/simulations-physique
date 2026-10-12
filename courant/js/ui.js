@@ -31,7 +31,9 @@ var _EL_IDS = [
   'sl-U', 'sl-gene', 'sl-speed',
   'lbl-U', 'lbl-gene', 'lbl-speed',
   'measures', 'ro-U', 'ro-I', 'ro-v',
-  'panel-hint'
+  'panel-hint',
+  'btn-mat-cond', 'btn-mat-iso', 'row-gene', 'sec-options', 'sep-options',
+  'leg-1', 'leg-2'
 ];
 
 function _cacheElements() {
@@ -93,7 +95,9 @@ function updateReadouts() {
 
   _el['ro-U'].textContent = sim.circuitOn ? _fmtNum(sim.U_V, 1) + ' V' : '0,0 V';
 
-  var I = on ? sim.I_mA : 0;
+  // Isolant : l'intensité n'est non nulle que le temps d'un changement de
+  // tension, y compris à l'ouverture du circuit — on l'affiche telle quelle.
+  var I = (on || sim.material === 'isolant') ? sim.I_mA : 0;
   _el['ro-I'].textContent = (Math.abs(I) < 5)
     ? '≈ 0 mA'
     : _fmtNum(I, 0) + ' mA';
@@ -126,6 +130,7 @@ function syncUIToSim() {
   _updateLabelGene();
   _el['lbl-speed'].textContent = sim.speedFactor.toFixed(2).replace('.', ',');
 
+  _updateMaterialUI();
   _updateCircuitBtn();
   _updatePlayPauseBtn();
   _updateTraceBtn();
@@ -140,6 +145,19 @@ function _updateLabelU() {
 
 function _updateLabelGene() {
   _el['lbl-gene'].textContent = GENE_LABELS[sim.geneIdx];
+}
+
+// Boutons du matériau, légende, et commandes qui n'ont de sens que pour des
+// électrons libres (gêne, suivi, flèches) : masquées pour un isolant.
+function _updateMaterialUI() {
+  var iso = (sim.material === 'isolant');
+  _el['btn-mat-cond'].classList.toggle('active', !iso);
+  _el['btn-mat-iso'].classList.toggle('active', iso);
+  _el['row-gene'].hidden    = iso;
+  _el['sec-options'].hidden = iso;
+  _el['sep-options'].hidden = iso;
+  _el['leg-1'].textContent = iso ? 'noyau, fixe' : 'ion du réseau, fixe';
+  _el['leg-2'].textContent = iso ? 'électron lié à son atome' : 'électron libre';
 }
 
 function _updateCircuitBtn() {
@@ -188,6 +206,27 @@ function _updateMeasuresBtn() {
 //  Gestionnaires de commandes (appelés depuis index.html)
 // ══════════════════════════════════════════════════════════════════════
 
+// ── Matériau du fil ──
+function setMaterial(m) {
+  if (m === sim.material) return;
+  sim.material = m;
+  clearTrace();
+  if (m === 'isolant') {
+    resetInsulator();   // pas de faux courant au changement
+    sim.I_mA = 0;
+  } else {
+    sim.snapMeasure = true;
+  }
+  _updateMaterialUI();
+  _updateTraceBtn();
+  updateReadouts();
+  sim.needsRedraw = true;
+}
+
+function toggleMaterial() {
+  setMaterial(sim.material === 'isolant' ? 'conducteur' : 'isolant');
+}
+
 // ── Interrupteur du circuit ──
 function toggleCircuit() {
   sim.circuitOn = !sim.circuitOn;
@@ -229,6 +268,7 @@ function togglePause() {
 
 // ── Suivi d'un électron ──
 function toggleTrace() {
+  if (sim.material === 'isolant') return;
   if (sim.tracedIdx >= 0) clearTrace();
   else                    traceCentralElectron();
   _updateTraceBtn();
@@ -238,6 +278,7 @@ function toggleTrace() {
 // ── Flèches de vitesse ──
 // Une flèche par électron, orientée selon sa vitesse instantanée.
 function toggleArrows() {
+  if (sim.material === 'isolant') return;
   sim.showArrows = !sim.showArrows;
   _updateArrowsBtn();
   sim.needsRedraw = true;
@@ -293,6 +334,8 @@ document.addEventListener('keydown', function (e) {
     resetSim();
   } else if (e.key === 'g' || e.key === 'G') {
     toggleCircuit();
+  } else if (e.key === 'm' || e.key === 'M') {
+    toggleMaterial();
   } else if (e.key === 'e' || e.key === 'E') {
     toggleTrace();
   } else if (e.key === 'f' || e.key === 'F') {

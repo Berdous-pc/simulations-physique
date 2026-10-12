@@ -287,6 +287,21 @@ main {
   border-color: #d0a060;
 }
 
+/* Choix du matériau : deux boutons de bascule côte à côte */
+.mat-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.mat-row > .btn-toggle-one {
+  width: auto;
+  flex: 1 1 0;
+}
+
+/* Les règles d'affichage des composants (flex…) l'emportent sur la feuille
+   du navigateur : sans ceci, l'attribut hidden resterait sans effet. */
+[hidden] { display: none !important; }
+
 /* ── Paramètres ──────────────────────────────────── */
 .param-row {
   display: flex;

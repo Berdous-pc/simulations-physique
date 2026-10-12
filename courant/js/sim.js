@@ -162,6 +162,47 @@ var VMAX_FACTOR = 6.0;
 var VD_MM_PER_NORM = 0.290;  // mm/s pour vdNorm = 1
 var K_I            = 435;    // mA par unité de vdNorm
 
+// ── Isolant : électrons liés à leur atome ──────────────────────────────
+// Dans un isolant, aucun électron n'est libre : chacun reste lié à son
+// noyau et tourne autour de lui. Sous tension, son orbite ne se décale pas
+// d'un bloc — le noyau doit rester À L'INTÉRIEUR : elle se DÉFORME. Un
+// cercle de rayon R devient une ellipse allongée dans le sens du fil, vers
+// la borne +, et un peu aplatie dans l'autre sens ; son centre se déplace
+// moins que son bout, si bien que le noyau reste franchement à l'intérieur.
+// Tous les atomes subissent la même déformation, qui se réduit à un seul
+// nombre signé a, proportionnel à U (cf. isoOrbit).
+//
+// Dimensions, en fraction de la hauteur intérieure du fil :
+//  - R : l'orbite doit tenir entre le noyau et la paroi (marge EDGE_FRAC,
+//    soit 0,111) en gardant la place de l'électron lui-même ;
+//  - noyau : plus petit que l'ion du conducteur, pour que l'électron ne
+//    touche jamais le noyau — les signes + et − ne se superposent alors
+//    jamais (à |a| maximal, l'orbite reste à plus de 0,9·R du noyau).
+var ISO_R_FRAC   = 0.090;  // rayon de l'orbite non déformée
+var ISO_RN_FRAC  = 0.15;    // rayon du noyau, en fraction du pas du réseau
+var ISO_A_MAX    = 0.30;    // déformation à |U| = 12 V
+var ISO_K        = ISO_A_MAX / 12;   // déformation par volt
+var ISO_STRETCH  = 0.70;    // allongement du grand axe par unité de |a|
+var ISO_SHIFT    = 1.00;    // décalage du centre, en R par unité de a
+
+// Réponse de la déformation à un changement de tension : oscillateur
+// amorti (pulsation ω, amortissement ζ). Elle s'établit en ~0,4 s, avec un
+// léger dépassement. Pendant ce court intervalle, les charges se déplacent :
+// c'est un bref courant, qui s'annule dès que la déformation est stable.
+var ISO_OMEGA = 12;    // rad/s
+var ISO_ZETA  = 0.7;
+
+// Tours par seconde de l'électron autour de son noyau (tirés par atome).
+var ISO_TURN_MIN = 0.35, ISO_TURN_MAX = 0.70;
+
+// Intensité = K_ISO × vitesse de variation de a (mA par s⁻¹) : à U = 6 V,
+// le pic atteint environ 150 mA, comme le régime établi du conducteur.
+var K_ISO = 210;
+// Lissage de l'intensité : court, pour que le pic reste lisible.
+var ISO_I_TAU = 100;   // ms
+// En dessous de cette intensité, le schéma n'indique plus de courant (mA).
+var ISO_I_SHOW = 10;
+
 // Constante de temps du lissage des mesures, en régime établi (ms).
 // Longue à dessein : la moyenne instantanée des vitesses de quelques
 // dizaines d'électrons fluctue de près de 10 %, et il faut une fenêtre de
@@ -194,6 +235,7 @@ var sim = {
   U_V       : 6,      // tension imposée aux bornes du fil (V), signée
   circuitOn : false,  // interrupteur du circuit (false = ouvert)
   geneIdx   : GENE_DEFAULT,
+  material  : 'conducteur',   // 'conducteur' ou 'isolant'
 
   // Déduits de la géométrie (cf. updateGeometry) :
   nSites : 0,   // nombre d'ions du réseau
@@ -240,6 +282,16 @@ var sim = {
   rCation : 0,   // rayon d'un cation (px)
   accPerV : 0,   // accélération par volt (px/s²)
 
+  // ── Isolant ──
+  // atoms : un élément {ph, w} par site du réseau (phase et vitesse
+  // angulaire de l'électron lié). isoA : déformation des orbites, isoV : sa
+  // vitesse de variation (s⁻¹). rNucleus et isoR en pixels.
+  atoms    : [],
+  isoA     : 0,
+  isoV     : 0,
+  rNucleus : 0,
+  isoR     : 0,
+
   // ── Mesures lissées ──
   vdNorm : 0,   // vitesse de dérive / vitesse d'agitation (signée)
   I_mA   : 0,   // intensité affichée (mA, signée)
@@ -283,7 +335,11 @@ function updateGeometry() {
   sim.vth     = VTH_FRAC * innerH;
   sim.accPerV = ACC_FRAC * innerH;
 
+  sim.rNucleus = Math.max(2.5, a * ISO_RN_FRAC);
+  sim.isoR     = ISO_R_FRAC * innerH;
+
   buildLattice();
+  buildAtoms();
 
   // Le nombre d'électrons découle du réseau : autant de charges négatives
   // que le réseau porte de charges positives. Le fil est neutre par
@@ -340,6 +396,48 @@ function buildLattice() {
     }
     sim.latCols.push(col);
   }
+}
+
+// ── Atomes de l'isolant ────────────────────────────────────────────────
+// Un électron lié par site : phase et sens de rotation tirés une fois, puis
+// conservés tant que le nombre de sites ne change pas.
+function buildAtoms() {
+  if (sim.atoms.length === sim.nSites) return;
+  sim.atoms = [];
+  for (var k = 0; k < sim.nSites; k++) {
+    var turns = ISO_TURN_MIN + Math.random() * (ISO_TURN_MAX - ISO_TURN_MIN);
+    sim.atoms.push({
+      ph : Math.random() * 2 * Math.PI,
+      w  : 2 * Math.PI * turns
+    });
+  }
+}
+
+// Déformation d'équilibre des orbites pour la tension imposée.
+// U > 0 : l'électron est poussé vers la borne +, à gauche du fil, donc a < 0
+// (rayon plus grand pour cos φ < 0).
+function isoTarget() {
+  return sim.circuitOn ? -ISO_K * sim.U_V : 0;
+}
+
+// Orbite déformée, relative au noyau : centre décalé de ox (négatif = vers
+// la gauche, donc vers la borne + pour U > 0), demi-axes A (selon le fil) et
+// B (perpendiculaire). B = R/√s garde à peu près la même aire à l'ellipse :
+// elle s'allonge d'un côté et s'aplatit de l'autre.
+function isoOrbit() {
+  var s = 1 + Math.abs(sim.isoA) * ISO_STRETCH;
+  return {
+    ox : sim.isoA * ISO_SHIFT * sim.isoR,
+    A  : sim.isoR * s,
+    B  : sim.isoR / Math.sqrt(s)
+  };
+}
+
+// Remet l'isolant au repos, à l'équilibre de la tension courante : un
+// changement de matériau ne doit pas produire de faux courant.
+function resetInsulator() {
+  sim.isoA = isoTarget();
+  sim.isoV = 0;
 }
 
 // ── Ion le plus proche d'un point ──────────────────────────────────────
@@ -504,6 +602,8 @@ function stepPhysics(dtMs) {
   var dt = dtMs / 1000;
   if (dt <= 0) return;
 
+  if (sim.material === 'isolant') { stepInsulator(dt); return; }
+
   var acc   = fieldAcceleration();
   var rColl = sim.rCation + sim.rElec;
   var vmax  = VMAX_FACTOR * sim.vth;
@@ -587,6 +687,24 @@ function stepPhysics(dtMs) {
   }
 }
 
+// Isolant : la déformation a rejoint sa valeur d'équilibre selon un
+// oscillateur amorti, et chaque électron avance sur son orbite.
+// dt en secondes. Sous-pas de 5 ms au plus, pour que l'intégration reste
+// stable même à la vitesse d'animation maximale.
+function stepInsulator(dt) {
+  var aeq = isoTarget();
+  var n = Math.max(1, Math.ceil(dt / 0.005));
+  var h = dt / n;
+  for (var s = 0; s < n; s++) {
+    var acc = ISO_OMEGA * ISO_OMEGA * (aeq - sim.isoA) - 2 * ISO_ZETA * ISO_OMEGA * sim.isoV;
+    sim.isoV += acc * h;
+    sim.isoA += sim.isoV * h;
+  }
+  for (var i = 0; i < sim.atoms.length; i++) {
+    sim.atoms[i].ph += sim.atoms[i].w * dt;
+  }
+}
+
 // ══════════════════════════════════════════════════════════════════════
 //  Mesures
 //  La vitesse de dérive est la moyenne des vitesses selon x. Sans
@@ -595,6 +713,17 @@ function stepPhysics(dtMs) {
 // ══════════════════════════════════════════════════════════════════════
 
 function updateMeasures(dtRealMs) {
+  // Isolant : aucun électron ne dérive. L'intensité n'est non nulle que
+  // pendant la déformation des orbites — un électron poussé vers la borne +
+  // équivaut à un courant conventionnel de sens opposé.
+  if (sim.material === 'isolant') {
+    var rawI = -K_ISO * sim.isoV;
+    sim.I_mA  += (rawI - sim.I_mA) * (1 - Math.exp(-dtRealMs / ISO_I_TAU));
+    sim.vdNorm = 0;
+    sim.vd_mm  = 0;
+    return;
+  }
+
   var n = sim.electrons.length;
   var raw = 0;
   if (n > 0 && sim.vth > 0) {
@@ -637,6 +766,8 @@ function resetSim() {
   sim.U_V         = 6;
   sim.circuitOn   = false;
   sim.geneIdx     = GENE_DEFAULT;
+  sim.material    = 'conducteur';
+  resetInsulator();
   sim.paused      = false;
   sim.speedFactor = 1;
   sim.vdNorm      = 0;

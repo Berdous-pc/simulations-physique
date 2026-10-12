@@ -235,6 +235,17 @@ function _drawCharge(x, y, r, z) {
 // ══════════════════════════════════════════════════════════════════════
 
 function currentSign() {
+  // Isolant : le courant n'existe que pendant la déformation des orbites.
+  if (sim.material === 'isolant') {
+    if (Math.abs(sim.I_mA) < ISO_I_SHOW) return 0;
+    return sim.I_mA > 0 ? 1 : -1;
+  }
+  return biasSign();
+}
+
+// Sens du champ imposé par le générateur (circuit fermé, tension non nulle),
+// indépendamment de tout courant : il fixe les repères de bornes du fil.
+function biasSign() {
   if (!sim.circuitOn || sim.U_V === 0) return 0;
   return sim.U_V > 0 ? 1 : -1;
 }
@@ -293,7 +304,9 @@ function _drawSchematic() {
   ctx.font         = '600 ' + (F * 0.82).toFixed(1) + 'px "Segoe UI", Arial, sans-serif';
   ctx.textAlign    = 'center';
   ctx.textBaseline = 'bottom';
-  ctx.fillText('portion de fil étudiée', cx, y2 - lw * 2.6);
+  ctx.fillText(sim.material === 'isolant' ? 'portion d’isolant étudiée'
+                                          : 'portion de fil étudiée',
+               cx, y2 - lw * 2.6);
 
   // ── Générateur : un cercle marqué G ──
   // Le courant sort par la borne + : pour un courant orienté vers la
@@ -456,12 +469,76 @@ function _drawTube() {
   ctx.rect(sim.tx1, sim.ty1, sim.tx2 - sim.tx1, sim.ty2 - sim.ty1);
   ctx.clip();
 
-  _drawCations();
-  _drawTrace();
-  _drawElectrons();
-  if (sim.showArrows) _drawArrows();
+  if (sim.material === 'isolant') {
+    _drawAtoms();
+  } else {
+    _drawCations();
+    _drawTrace();
+    _drawElectrons();
+    if (sim.showArrows) _drawArrows();
+  }
 
   ctx.restore();
+}
+
+// Isolant : noyaux fixes, orbites déformées, un électron lié par atome.
+// L'orbite est un cercle sans tension, une ellipse allongée vers la borne +
+// sinon (cf. isoOrbit). Le noyau reste à l'intérieur.
+function _drawAtoms() {
+  var o = isoOrbit(), rN = sim.rNucleus, rE = sim.rElec;
+  var N = 48;   // points par orbite
+  var k, i, c;
+
+  // Orbites en pointillés, sous les noyaux et les électrons.
+  ctx.strokeStyle = 'rgba(122,138,150,0.60)';
+  ctx.lineWidth   = Math.max(1, rE * 0.35);
+  ctx.setLineDash([Math.max(2, rE * 1.2), Math.max(2, rE * 1.2)]);
+  ctx.beginPath();
+  for (k = 0; k < sim.lattice.length; k++) {
+    c = sim.lattice[k];
+    for (i = 0; i <= N; i++) {
+      var t  = 2 * Math.PI * i / N;
+      var px = c.x + o.ox + o.A * Math.cos(t), py = c.y + o.B * Math.sin(t);
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Noyaux. Les signes sont tracés en second : _drawSign change la couleur
+  // de remplissage, et les disques suivants sortiraient blancs.
+  ctx.lineWidth   = Math.max(1, rN * 0.11);
+  ctx.fillStyle   = C_CATION;
+  ctx.strokeStyle = C_CATION_ED;
+  for (k = 0; k < sim.lattice.length; k++) {
+    c = sim.lattice[k];
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, rN, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.stroke();
+  }
+  for (k = 0; k < sim.lattice.length; k++) {
+    _drawSign(sim.lattice[k].x, sim.lattice[k].y, rN, true);
+  }
+
+  // Électrons liés, sur leur orbite
+  var ex = [], ey = [];
+  ctx.lineWidth   = Math.max(1, rE * 0.18);
+  ctx.fillStyle   = C_ELEC;
+  ctx.strokeStyle = C_ELEC_EDGE;
+  for (k = 0; k < sim.lattice.length; k++) {
+    c = sim.lattice[k];
+    var ph = sim.atoms[k].ph;
+    ex.push(c.x + o.ox + o.A * Math.cos(ph));
+    ey.push(c.y + o.B * Math.sin(ph));
+    ctx.beginPath();
+    ctx.arc(ex[k], ey[k], rE, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.stroke();
+  }
+  for (k = 0; k < ex.length; k++) {
+    _drawSign(ex[k], ey[k], rE, false);
+  }
 }
 
 function _drawCations() {
@@ -572,7 +649,7 @@ function _drawArrows() {
 function _drawCote() {
   var F = _L.F;
   var y = _L.coteCY;
-  var s = currentSign();
+  var s = biasSign();   // repères de bornes : fixés par le champ, pas par le courant
 
   var chipR = Math.max(7, F * 0.62);
 
