@@ -217,19 +217,34 @@ var ISO_I_SHOW = 10;
 // À T très élevée la recapture reste non nulle : on garde quelques atomes
 // neutres, pour que ce cran ne se confonde pas avec un conducteur.
 //
+// Un semi-conducteur pur, à température ambiante, se comporte presque comme
+// un isolant : très peu d'atomes sont ionisés. Il faut chauffer pour qu'il
+// conduise. Les crans de 100 à 300 K ne changent donc presque que
+// l'agitation (électrons liés qui tournent plus vite, rares électrons libres
+// plus rapides) ; l'ionisation ne monte qu'au-dessus (de façon exponentielle,
+// comme dans un vrai semi-conducteur). Les fractions sont volontairement
+// exagérées pour être visibles.
+//
 // Pour chaque cran : taux d'ionisation par atome neutre (s⁻¹) et force de
 // la recapture (multiple de SEMI_CAP_RATE). Réglés pour que la fraction
-// d'atomes ionisés, à l'équilibre, vaille environ 0 ; 8 ; 25 ; 55 ; 85 %
-// (cf. SEMI_F_EQ). L'attraction (SEMI_ATT) renforce aussi la recapture à
-// froid : les taux d'ionisation ont été réglés avec elle, par mesure.
-var TEMP_LABELS  = ['Très basse', 'Basse', 'Ambiante', 'Élevée', 'Très élevée'];
-var TEMP_DEFAULT = 2;
-var SEMI_NU      = [0, 0.055, 0.075, 0.39, 1.78];   // s⁻¹
-var SEMI_CAP     = [1, 1,      0.8,   0.5,  0.3];
+// d'atomes ionisés, à l'équilibre, vaille environ 0 ; 0,3 ; 1 ; 4 ; 12 ; 30 ;
+// 55 ; 85 % (cf. SEMI_F_EQ). L'attraction (SEMI_ATT) renforce aussi la
+// recapture à froid : les taux d'ionisation ont été réglés avec elle, par
+// mesure.
+var TEMP_K       = [100, 200, 300, 400, 500, 600, 800, 1000];
+var TEMP_DEFAULT = 2;   // 300 K : température ambiante
+var SEMI_NU      = [0, 0.0108, 0.0194, 0.0346, 0.0625, 0.108, 0.42, 2.14];   // s⁻¹
+var SEMI_CAP     = [1, 1,     1,      1,     1,    0.7, 0.5,  0.3];
 // Fraction d'atomes ionisés à l'équilibre : elle sert à PARTIR de l'état
 // d'équilibre quand on choisit ce matériau, au lieu d'un cristal sans
 // porteur qui mettrait de longues secondes à se remplir.
-var SEMI_F_EQ    = [0, 0.08, 0.25, 0.55, 0.85];
+var SEMI_F_EQ    = [0, 0.003, 0.01, 0.04, 0.12, 0.30, 0.55, 0.85];
+
+// Libellé du cran : kelvins, puis degrés Celsius entre parenthèses.
+function tempLabel(idx) {
+  var c = TEMP_K[idx] - 273;
+  return TEMP_K[idx] + '\u00a0K (' + (c < 0 ? '\u2212' + (-c) : c) + '\u00a0°C)';
+}
 
 // Agitation thermique : la vitesse d'agitation croît comme √T. Facteurs par
 // cran, appliqués à la vitesse de référence (celle du conducteur) pour les
@@ -237,7 +252,7 @@ var SEMI_F_EQ    = [0, 0.08, 0.25, 0.55, 0.85];
 // égal, un électron plus rapide subit plus de chocs par seconde : sa dérive
 // diminue avec T (baisse de la mobilité), mais le nombre de porteurs croît
 // bien plus vite, si bien que le courant total augmente quand même.
-var SEMI_VTH = [0.7, 0.85, 1.0, 1.2, 1.4];
+var SEMI_VTH = [0.58, 0.82, 1.0, 1.15, 1.29, 1.41, 1.63, 1.83];   // √(T / 300 K)
 
 // Attraction d'un électron libre par l'ion + le plus proche. Elle accélère
 // la recapture, qu'un hasard seul rendrait très lente quand il ne reste que
@@ -246,7 +261,7 @@ var SEMI_VTH = [0.7, 0.85, 1.0, 1.2, 1.4];
 // elle devient négligeable devant l'agitation, et le dernier cran n'en a plus.
 // Accélération à la distance SEMI_ATT_D0, en hauteurs de fil par s² ; elle
 // varie en 1/d, comme la force de Coulomb dans un plan (adoucie au contact).
-var SEMI_ATT    = [4, 1, 0.5, 0.2, 0];
+var SEMI_ATT    = [4, 4, 3, 2.5, 2, 1, 0.4, 0];
 var SEMI_ATT_D0 = 0.30;   // hauteurs de fil
 // Sans frottement, un électron attiré ne ferait que tourner autour de l'ion
 // sans jamais s'en rapprocher (l'énergie se conserve). Près de l'ion, le
@@ -273,7 +288,7 @@ var SEMI_ATT_DAMP = 0.1;
 // pas : au même instant, un atome neutre de la colonne de bord OPPOSÉE cède
 // un électron à l'extérieur et devient un ion — une lacune entre. Le nombre
 // d'ions reste donc celui des électrons libres : le fil reste neutre.
-var SEMI_HOP      = [0.3, 0.4, 0.55, 0.8, 1.1];   // s⁻¹ : taux de saut d'une lacune, voisins tous disponibles
+var SEMI_HOP      = [0.25, 0.3, 0.4, 0.5, 0.6, 0.75, 0.9, 1.1];   // s⁻¹ : taux de saut d'une lacune, voisins tous disponibles
 var SEMI_HOP_BIAS = 0.12;   // β, par volt
 var SEMI_HOP_T    = 0.25;   // durée du vol de l'électron d'un atome à l'autre (s)
 var SEMI_NBR_D    = 0.45;   // distance maximale de deux voisins (hauteurs de fil)
@@ -1039,7 +1054,8 @@ function seedSemi() {
   clearTrace();
   clearHoleTrace();
   for (var k = 0; k < sim.atoms.length; k++) { sim.atoms[k].ion = false; sim.atoms[k].busy = false; }
-  var n = Math.round(SEMI_F_EQ[sim.tempIdx] * sim.atoms.length);
+  // Arrondi tiré au sort : à 1 % de 43 atomes, on veut parfois 0, parfois 1.
+  var n = Math.floor(SEMI_F_EQ[sim.tempIdx] * sim.atoms.length + Math.random());
   for (var i = 0; i < n; i++) {
     var k2;
     do { k2 = Math.floor(Math.random() * sim.atoms.length); } while (sim.atoms[k2].ion);

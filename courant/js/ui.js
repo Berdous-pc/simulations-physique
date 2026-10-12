@@ -158,7 +158,7 @@ function _updateLabelGene() {
 }
 
 function _updateLabelTemp() {
-  _el['lbl-temp'].textContent = TEMP_LABELS[sim.tempIdx];
+  _el['lbl-temp'].textContent = tempLabel(sim.tempIdx);
 }
 
 // Boutons du matériau, légende, et commandes propres à chaque matériau :
