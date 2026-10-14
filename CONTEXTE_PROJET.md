@@ -501,6 +501,8 @@ Stockées dans `assets/previews/` au format **`.jpg`** (converties depuis les sc
 | `courant.jpg` | Courant électrique |
 | `lentille.jpg` | Lentille mince |
 | `lunette.jpg` | Lunette astronomique |
+| `refraction-snell.jpg` | Réfraction de la lumière |
+| `refraction-prisme.jpg` | Dispersion par un prisme |
 | `radioactivite-continu.jpg` | Décroissance radioactive |
 | `radioactivite-discret.jpg` | Lancers de dés |
 | `reaction-equilibrage.jpg` | Équilibrage |
