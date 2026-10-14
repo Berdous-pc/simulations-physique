@@ -262,11 +262,11 @@
           <div class="input-hint">La source tourne autour du point d'incidence sur la face d'entrée.</div>
         </div>
 
-        <button class="btn btn-primary" onclick="vueEnsemble()">Vue d'ensemble (sans zoom)</button>
-        <button class="btn btn-raz" style="margin-top:6px;" onclick="reinitialiserPrisme()">↺ Réinitialiser</button>
+        <button class="btn btn-raz" onclick="reinitialiserPrisme()">↺ Réinitialiser</button>
         <div class="input-hint" style="margin-top:6px;">
           Faire glisser la source pour la déplacer, sa poignée ronde pour l'orienter, le prisme pour le faire tourner.
-          Molette : zoom autour du pointeur ; en vue zoomée, le glisser déplace la vue.
+          Molette : zoom autour du pointeur ; en vue zoomée, le glisser déplace la vue,
+          le double-clic ramène à la vue d'ensemble.
         </div>
 
         <div class="sep"></div>
@@ -359,16 +359,11 @@
                 title="Afficher les informations">▲</button>
       </div>
       <div class="panel-hint-body">
-        <strong>Source</strong> : lumière blanche, ou monochromatique avec la longueur d'onde réglée au curseur.
-        Faites glisser la <strong>source</strong> pour la déplacer et sa <strong>poignée ronde</strong> pour l'orienter.<br>
-        <strong>Prisme</strong> : choisissez le matériau et l'angle au sommet ; faites tourner le prisme
-        en le faisant glisser ou avec le curseur.<br>
-        Le curseur <em>Angle d'incidence</em> fait tourner la source autour du point d'entrée.<br>
-        <strong>Zoom</strong> : la molette agrandit autour du pointeur (pour observer un dioptre) ;
-        en vue zoomée, faire glisser déplace la vue (la source et le prisme ne bougent plus) ;
-        double-cliquez pour revenir à la vue d'ensemble.<br>
-        <strong>Écran</strong> : l'encart de droite montre la partie éclairée de l'écran agrandie dix fois.
-        Le bouton <em>Spectre discret</em> limite la lumière blanche à six couleurs.
+        <strong>Source</strong> : faites-la glisser pour la déplacer, tirez sa <strong>poignée ronde</strong> pour l'orienter.<br>
+        <strong>Prisme</strong> : faites-le glisser pour le faire tourner ; matériau, angle au sommet
+        et incidence se règlent dans le panneau.<br>
+        <strong>Zoom</strong> : molette ; en vue zoomée, le glisser déplace la vue, le double-clic la réinitialise.<br>
+        <strong>Écran</strong> : l'encart de droite montre la tache agrandie dix fois.
       </div>
     </div>
 

@@ -175,7 +175,7 @@ d'ensemble (`_bornerVue`). Les points sont transformés avant le dessin
 segment est d'abord découpé à la zone visible élargie (`_decouper`,
 `_decouperPolygone`, en coordonnées monde) pour ne jamais envoyer au
 canvas des coordonnées démesurées. La loupe est masquée en vue zoomée.
-Double-clic, bouton « Vue d'ensemble », Réinitialiser ou
+Double-clic, Réinitialiser ou
 redimensionnement du canvas ramènent à z = 1.
 
 Le faisceau étant infiniment fin, l'éventail part d'un point au premier
