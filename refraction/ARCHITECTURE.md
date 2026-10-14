@@ -136,6 +136,10 @@ d'un multiple de 5.
 
 - Onglets principaux + deep-linking `#snell-descartes` / `#prisme`, mis à jour
   par `history.replaceState`.
-- La case « Valeurs des angles » masque à la fois les valeurs sur le canvas
-  (les arcs ne portent plus que i, i′, r) et le bloc « Mesures » du
-  panneau : utile pour faire mesurer les angles aux élèves.
+- La case « Valeurs des angles » masque les valeurs sur le canvas (les arcs
+  ne portent plus que i, i′, r) : utile pour faire mesurer les angles aux
+  élèves.
+- Le bloc « Mesures » (i, i′, r, angle limite) est **masqué au chargement** ;
+  le bouton « Afficher les mesures » (`toggleMesures`) le montre, comme sur
+  `courant/`. Une grandeur par ligne (`.ro-line`) : la valeur passe sous son
+  libellé plutôt que de déborder quand le panneau est étroit.

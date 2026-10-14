@@ -101,7 +101,7 @@
             <div class="input-hint">Indice libre entre 1,00 et 3,00 dans la case de droite.</div>
           </div>
 
-          <button class="btn btn-toggle-one" onclick="inverserMilieux()">⇅ Inverser les milieux</button>
+          <button class="btn btn-primary" onclick="inverserMilieux()">⇅ Inverser les milieux</button>
 
           <div class="sep"></div>
 
@@ -168,51 +168,36 @@
           </label>
         </div>
 
-        <!-- ── Mesures (masquées avec « Valeurs des angles ») ── -->
-        <div id="mesures-snell">
-          <div class="sep"></div>
-          <div class="panel-section">
-            <div class="section-title">Mesures</div>
+        <div class="sep"></div>
+
+        <!-- ── Mesures (masquées par défaut) ── -->
+        <div class="panel-section">
+          <div class="section-title">Mesures</div>
+          <div id="mesures-snell" hidden>
             <div class="readout">
               <div class="ro-label" id="ro-sens">—</div>
-              <div class="ro-grid ro-grid-3">
-                <div class="ro-item">
-                  <span class="ro-item-label">Incidence i</span>
-                  <span class="ro-item-val" id="ro-i">—</span>
-                </div>
-                <div class="ro-item">
-                  <span class="ro-item-label">Réflexion i′</span>
-                  <span class="ro-item-val" id="ro-ip">—</span>
-                </div>
-                <div class="ro-item">
-                  <span class="ro-item-label">Réfraction r</span>
-                  <span class="ro-item-val" id="ro-r">—</span>
-                </div>
+              <div class="ro-line">
+                <span class="ro-item-label">Incidence i</span>
+                <span class="ro-item-val" id="ro-i">—</span>
+              </div>
+              <div class="ro-line">
+                <span class="ro-item-label">Réflexion i′</span>
+                <span class="ro-item-val" id="ro-ip">—</span>
+              </div>
+              <div class="ro-line">
+                <span class="ro-item-label">Réfraction r</span>
+                <span class="ro-item-val" id="ro-r">—</span>
               </div>
               <div class="ro-tir" id="ro-tir" style="display:none;">Réflexion totale : pas de rayon réfracté</div>
             </div>
             <div class="readout">
-              <div class="ro-label">Loi de la réfraction</div>
-              <div class="ro-grid">
-                <div class="ro-item">
-                  <span class="ro-item-label">n₁ × sin i</span>
-                  <span class="ro-item-val" id="ro-n1sini">—</span>
-                </div>
-                <div class="ro-item">
-                  <span class="ro-item-label">n₂ × sin r</span>
-                  <span class="ro-item-val" id="ro-n2sinr">—</span>
-                </div>
-              </div>
-            </div>
-            <div class="readout">
-              <div class="ro-grid ro-grid-1col">
-                <div class="ro-item">
-                  <span class="ro-item-label">Angle limite</span>
-                  <span class="ro-item-val" id="ro-lim">—</span>
-                </div>
+              <div class="ro-line">
+                <span class="ro-item-label">Angle limite</span>
+                <span class="ro-item-val" id="ro-lim">—</span>
               </div>
             </div>
           </div>
+          <button id="btn-mesures" class="btn btn-toggle-one" onclick="toggleMesures()">Afficher les mesures</button>
         </div>
 
       </div><!-- fin #section-snell-descartes -->

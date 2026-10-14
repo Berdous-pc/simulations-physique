@@ -188,10 +188,15 @@ function reinitialiserDisque() {
 
 function toggleAffichage(cle, val) {
   affichage[cle] = val;
-  if (cle === 'valeurs') {
-    document.getElementById('mesures-snell').style.display = val ? '' : 'none';
-  }
   demanderRendu();
+}
+
+// Bloc « Mesures » : masqué au chargement, affiché à la demande
+function toggleMesures() {
+  var bloc = document.getElementById('mesures-snell');
+  bloc.hidden = !bloc.hidden;
+  document.getElementById('btn-mesures').textContent =
+    bloc.hidden ? 'Afficher les mesures' : 'Masquer les mesures';
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -218,10 +223,6 @@ function updateReadouts() {
   _setText('ro-i',  fmtFr(sc.i, 1) + '°');
   _setText('ro-ip', fmtFr(sc.i, 1) + '°');
   _setText('ro-r',  sc.tir ? '—' : fmtFr(sc.r, 1) + '°');
-
-  // Vérification de la loi de la réfraction
-  _setText('ro-n1sini', fmtFr(sc.n1 * Math.sin(sc.i * DEG), 3));
-  _setText('ro-n2sinr', sc.tir ? '—' : fmtFr(sc.n2 * Math.sin(sc.r * DEG), 3));
 
   // Angle limite (seulement si n1 > n2)
   var lim = angleLimite(sc.n1, sc.n2);
