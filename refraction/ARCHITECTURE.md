@@ -1,8 +1,7 @@
 # Architecture — Réfraction : lois de Snell-Descartes et prisme
 
 Page à **deux onglets** : *Snell-Descartes* (réflexion et réfraction d'un
-rayon laser) et *Prisme* (dispersion — **en préparation**, l'onglet n'affiche
-pour l'instant qu'un message).
+rayon laser) et *Prisme* (dispersion de la lumière blanche).
 
 ## Arborescence
 
@@ -15,11 +14,13 @@ refraction/
 └── js/
     ├── sim.js       milieux, état, lois de l'optique, géométrie des rayons
     ├── dioptre.js   rendu canvas de l'onglet Snell-Descartes + glisser-déposer
+    ├── prisme.js    rendu canvas de l'onglet Prisme + glisser-déposer
     └── ui.js        onglets, panneau, afficheurs, resize, init
 ```
 
 > Scope global (`var`, pas de modules ES). **Ordre de chargement critique** :
-> `sim → dioptre → ui`.
+> `sim → dioptre → prisme → ui` (prisme.js réutilise `sizeCanvas`, `_clamp`,
+> `_rectArrondi` et `_distSegment` de dioptre.js).
 
 ---
 
@@ -94,11 +95,111 @@ d'un multiple de 5.
 
 ---
 
+## Onglet Prisme (`simPR`)
+
+**Salle noire** (`.sim-area-sombre`, fond #14171c) : sur le noir, les couleurs
+s'additionnent (composition `'lighter'`), si bien que le faisceau est
+réellement blanc avant le prisme et se décompose ensuite.
+
+De gauche à droite : la source, le prisme (centre de gravité G), un écran
+vertical, puis la **loupe**, encart (vue d'ensemble seulement) qui montre l'écran agrandi ×10 autour
+de la tache (cadre pointillé et lignes de rappel sur l'écran).
+
+| Champ | Rôle | Réglage |
+|---|---|---|
+| `source` | `'blanche'` ou `'mono'` | sous-onglets du panneau |
+| `lambda` | longueur d'onde du laser (nm, 400–700) | curseur |
+| `milieu` | matériau (id de `MILIEUX`, liste `PR_MATERIAUX`) | sélecteur |
+| `A` | angle au sommet (10–90°) | curseur |
+| `rot` | rotation du prisme autour de G | curseur, ou glisser le prisme |
+| `sx`, `sy` | point d'émission, en unités m relatives à G | glisser le boîtier |
+| `dir` | direction du faisceau | glisser la poignée ronde |
+
+Positions en unités `m = min(W, H)/2` relatives à G : la scène se
+redimensionne avec le canvas. Le bouton Réinitialiser remet source,
+rotation et angle au sommet (pas le matériau ni le type de source).
+
+**Physique** : l'indice suit la loi de Cauchy `n(λ) = A + B/λ²`.
+`tracerRayon()` (sim.js) suit un rayon de face en face avec
+`construireRayons()` : réfraction à l'entrée, puis à la sortie, ou
+**réflexion totale** suivie (jusqu'à 12 rebonds ; au-delà le rayon est
+« prisonnier »). Les réflexions partielles sont ignorées. L'écran arrête
+la lumière.
+
+**Rendu de la lumière blanche, spectre continu** (`_dessinerLumiereBlanche`) :
+- 121 longueurs d'onde de 400 à 700 nm sont tracées ;
+- entre deux voisines qui suivent le même chemin (même `cle`), l'éventail
+  est rempli de leur couleur : c'est lui qui montre le spectre ;
+- 1 rayon sur 10 est aussi tracé en trait, avec des couleurs dont la
+  somme fait du blanc : il montre le faisceau tant que les couleurs sont
+  superposées. Chaque trait s'estompe selon l'**écart à l'écran** entre
+  les rayons extrêmes de son groupe (nul à 2,5 épaisseurs de faisceau),
+  segment par segment : en vue zoomée, la séparation apparaît donc aussi
+  dans le prisme ; sans dispersion, les traits restent blancs.
+
+**Spectre discret** (boutons Spectre continu / Spectre discret, rubrique Affichage,
+`affichagePR.spectre`) : la lumière blanche est réduite à six couleurs
+(`PR_DISCRET` : violet 420, bleu 460, vert 520, jaune 580, orange 610,
+rouge 650 nm), tracées en couleurs franches qui s'additionnent. Les
+mesures portent alors sur 650 et 420 nm. Ces boutons sont grisés avec
+une source monochromatique.
+
+**Écran** (`_lumiereEcran` puis `_profilEcran`) : la lumière reçue est une
+liste d'intervalles portant chacun la même quantité de lumière. En
+spectre continu, la lumière comprise entre deux longueurs d'onde voisines
+est étalée uniformément de l'une à l'autre (élargie de l'épaisseur du
+faisceau) : le spectre reste continu, sans bandes sombres, même très
+dispersé. Laser, spectre discret ou rayon isolé : une tache de la hauteur
+du faisceau. Les couleurs s'additionnent ligne par ligne (balance des
+blancs en continu : tout le spectre superposé fait du blanc), puis
+exposition automatique et relèvement des faibles luminosités (puissance
+0,45, teinte conservée). La loupe utilise le même
+profil, ×10.
+
+**Mesures** (masquées par défaut) : calculées dans `ui.js` en unités m
+(`_traceMonde`), sans écran, donc indépendantes de la taille du canvas —
+indices et déviations pour les extrémités rouge et violette du spectre
+affiché, ou pour λ en monochromatique, incidence sur la face d'entrée,
+message si le prisme est manqué ou en cas de réflexion totale.
+
+**Curseur d'incidence** (`onSliderIncidencePR`) : la source tourne autour
+du point d'incidence sur la face d'entrée, à distance constante, du côté
+de la normale où elle se trouve ; le faisceau frappe donc toujours le même
+point. Le curseur se resynchronise après chaque glissé et se grise si le
+prisme est manqué.
+
+**Zoom** (`vuePR`, molette, jusqu'à ×50) : écran = monde × z + o. Le zoom
+se fait autour du pointeur ; la vue reste dans le cadre de la vue
+d'ensemble (`_bornerVue`). Les points sont transformés avant le dessin
+(`_versEcran`) : épaisseurs, textes et source gardent leur taille. Chaque
+segment est d'abord découpé à la zone visible élargie (`_decouper`,
+`_decouperPolygone`, en coordonnées monde) pour ne jamais envoyer au
+canvas des coordonnées démesurées. La loupe est masquée en vue zoomée.
+Double-clic, bouton « Vue d'ensemble », Réinitialiser ou
+redimensionnement du canvas ramènent à z = 1.
+
+Le faisceau étant infiniment fin, l'éventail part d'un point au premier
+dioptre : son ouverture (0,75° pour le flint) ne change pas avec le zoom.
+C'est au second dioptre que le zoom montre la séparation des couleurs
+(choix de l'auteur : pas d'exagération de la dispersion).
+
+**Glisser-déposer** (`_cibleSousPR`) :
+- vue d'ensemble : poignée ronde → orientation de la source (aimantée à
+  5°), boîtier → déplacement (borné au canvas, à gauche de l'écran),
+  prisme → rotation autour de G (relative, aimantée à 5°) ;
+- vue zoomée : tout glisser **déplace la vue** ; la source et le prisme ne
+  bougent plus.
+
+---
+
 ## `sim.js`
 
 - `MILIEUX` : `{ id, nom, n, A, B }`. `n` est l'indice utilisé dans l'onglet
-  Snell-Descartes. `A` et `B` (loi de Cauchy `n(λ) = A + B/λ²`, λ en µm) sont
-  **réservés à l'onglet Prisme**, et calés pour que `n(0,589 µm) ≈ n`.
+  Snell-Descartes. `A` et `B` (loi de Cauchy `n(λ) = A + B/λ²`, λ en µm,
+  `indiceCauchy()`) servent à l'onglet Prisme, et sont calés pour que
+  `n(0,589 µm) ≈ n`.
+- `sommetsPrisme()`, `tracerRayon()` : géométrie de l'onglet Prisme, dans
+  n'importe quelle unité (pixels pour le dessin, unités m pour les mesures).
 - `refracter(n1, n2, i)` : loi de la réfraction, `{ tir, r }`.
 - `angleLimite(n1, n2)` : `null` si n1 ≤ n2.
 - `fresnelR(n1, n2, i)` : part d'énergie réfléchie (lumière non polarisée).

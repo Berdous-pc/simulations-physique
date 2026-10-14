@@ -6,7 +6,7 @@
 
 // ══════════════════════════════════════════════════════════════════════
 //  sim.js — État global, milieux et lois de l'optique (réflexion,
-//  réfraction, coefficients de Fresnel)
+//  réfraction, coefficients de Fresnel, dispersion et tracé dans le prisme)
 //  Chargé en PREMIER : ne dépend d'aucun autre fichier.
 // ══════════════════════════════════════════════════════════════════════
 
@@ -91,6 +91,46 @@ var affichage = {
   rayonRefr: true,
   angles:    true,
   valeurs:   true
+};
+
+// ── Onglet Prisme ─────────────────────────────────────────────────────
+// Positions en unités « m » (moitié du plus petit côté du canvas),
+// relatives au centre de gravité G du prisme ; angles en degrés, repère du
+// canvas (y vers le bas).
+// source : 'blanche' ou 'mono' ; lambda : longueur d'onde (nm) en mono
+// milieu : matériau du prisme (id de MILIEUX) ; A : angle au sommet
+// rot    : rotation du prisme autour de G (0 : sommet en haut)
+// sx, sy : point d'émission de la source ; dir : direction du faisceau
+// Par défaut, le faisceau frappe le milieu de la face gauche à peu près au
+// minimum de déviation du flint (sortie symétrique de l'entrée).
+var PR_DEFAUT = { A: 60, rot: 0, sx: -0.77, sy: 0.14, dir: -24 };
+var simPR = {
+  source: 'blanche',
+  lambda: 589,
+  milieu: 'flint',
+  A:   PR_DEFAUT.A,
+  rot: PR_DEFAUT.rot,
+  sx:  PR_DEFAUT.sx,
+  sy:  PR_DEFAUT.sy,
+  dir: PR_DEFAUT.dir
+};
+
+// Matériaux proposés pour le prisme (l'air et le vide ne dispersent pas)
+var PR_MATERIAUX = ['eau', 'ethanol', 'huile', 'plexiglas', 'verre', 'flint', 'diamant'];
+
+// Longueur des deux côtés égaux du prisme (unités m)
+var PR_COTE = 0.8;
+
+// Domaine visible retenu (nm)
+var LAMBDA_MIN = 400;
+var LAMBDA_MAX = 700;
+
+// Options d'affichage de l'onglet Prisme
+// spectre : 'continu' (toutes les couleurs) ou 'discret' (rouge, orange,
+// jaune, vert, bleu, violet) — pour la lumière blanche seulement
+var affichagePR = {
+  normales: false,
+  spectre:  'continu'
 };
 
 // ══════════════════════════════════════════════════════════════════════
@@ -225,12 +265,122 @@ function sceneDisque() {
 }
 
 // ══════════════════════════════════════════════════════════════════════
+//  Onglet Prisme : dispersion et tracé des rayons
+// ══════════════════════════════════════════════════════════════════════
+
+// Indice d'un milieu pour la longueur d'onde lambda (nm), loi de Cauchy
+function indiceCauchy(m, lambdaNm) {
+  var l = lambdaNm / 1000;
+  return m.A + m.B / (l * l);
+}
+
+// Sommets du prisme : sommet principal, puis base droite, puis base gauche
+// (avant rotation) — sens horaire à l'écran, y vers le bas.
+function sommetsPrisme(G, cote, Adeg, rotDeg) {
+  var a = Adeg * DEG / 2;
+  var h = cote * Math.cos(a), demiBase = cote * Math.sin(a);
+  // Centre de gravité aux 2/3 de la hauteur issue du sommet
+  var loc = [
+    { x: 0,         y: -2 * h / 3 },
+    { x:  demiBase, y:  h / 3 },
+    { x: -demiBase, y:  h / 3 }
+  ];
+  var c = Math.cos(rotDeg * DEG), s = Math.sin(rotDeg * DEG);
+  return loc.map(function (p) {
+    return { x: G.x + p.x * c - p.y * s, y: G.y + p.x * s + p.y * c };
+  });
+}
+
+// Intersection de la demi-droite S + t·d (t > 0) avec le segment [a, b] :
+// renvoie t, ou null
+function _interSegment(S, d, a, b) {
+  var ex = b.x - a.x, ey = b.y - a.y;
+  var den = d.x * ey - d.y * ex;
+  if (Math.abs(den) < 1e-12) return null;
+  var wx = a.x - S.x, wy = a.y - S.y;
+  var t = (wx * ey - wy * ex) / den;
+  var v = (wx * d.y - wy * d.x) / den;
+  if (t <= 1e-7 || v < 0 || v > 1) return null;
+  return t;
+}
+
+function _deviation(d0, d) {
+  return Math.acos(Math.max(-1, Math.min(1, vDot(d0, d)))) / DEG;
+}
+
+// Suit un rayon depuis la source S (direction unitaire d) à travers le
+// prisme d'indice n, jusqu'à l'écran ou jusqu'au loin.
+// sommets : triangle (sens horaire à l'écran) ; ecran : { x, y0, y1 },
+// segment vertical qui arrête la lumière ; loin : longueur du dernier
+// segment quand il n'atteint pas l'écran.
+// Les réflexions partielles sont ignorées ; la réflexion totale est
+// suivie (le rayon peut rebondir plusieurs fois dans le prisme).
+// Renvoie { pts, cle, i, D, tir, yEcran } :
+//  · cle : suite des faces rencontrées (+ 'r' à chaque réflexion totale,
+//    puis 'E' écran, 'X' au loin, 'P' prisonnier) — deux rayons de même
+//    clé suivent le même chemin, on peut remplir l'éventail entre eux ;
+//  · i : incidence sur la face d'entrée (null si le prisme est manqué) ;
+//  · D : déviation totale, angle entre rayons incident et émergent.
+function tracerRayon(S, d, n, sommets, ecran, loin) {
+  var pts = [{ x: S.x, y: S.y }];
+  var cle = '', dedans = false, i = null, tir = false;
+  var P = { x: S.x, y: S.y }, dir = { x: d.x, y: d.y };
+
+  for (var rebond = 0; rebond < 12; rebond++) {
+    // Face la plus proche
+    var tMin = Infinity, face = -1;
+    for (var k = 0; k < 3; k++) {
+      var t = _interSegment(P, dir, sommets[k], sommets[(k + 1) % 3]);
+      if (t !== null && t < tMin) { tMin = t; face = k; }
+    }
+    // L'écran (toujours hors du prisme) arrête la lumière s'il est avant
+    var tE = dedans ? null
+      : _interSegment(P, dir, { x: ecran.x, y: ecran.y0 }, { x: ecran.x, y: ecran.y1 });
+    if (tE !== null && tE < tMin) {
+      pts.push({ x: P.x + dir.x * tE, y: P.y + dir.y * tE });
+      return { pts: pts, cle: cle + 'E', i: i, tir: tir, yEcran: P.y + dir.y * tE,
+               D: i === null ? null : _deviation(d, dir) };
+    }
+    if (face < 0) break;
+
+    P = { x: P.x + dir.x * tMin, y: P.y + dir.y * tMin };
+    pts.push(P);
+    cle += face;
+
+    // Normale sortante de la face (sommets en sens horaire à l'écran)
+    var a = sommets[face], b = sommets[(face + 1) % 3];
+    var nOut = vNorm({ x: b.y - a.y, y: a.x - b.x });
+    var u = { x: -dir.x, y: -dir.y };       // vers le milieu d'incidence
+    var sc;
+    if (!dedans) {
+      sc = construireRayons(nOut, u, 1.00, n);
+      if (i === null) i = sc.i;
+      dir = sc.uRefr;
+      dedans = true;
+    } else {
+      sc = construireRayons({ x: -nOut.x, y: -nOut.y }, u, n, 1.00);
+      if (sc.tir) { dir = sc.uRefl; cle += 'r'; tir = true; }
+      else { dir = sc.uRefr; dedans = false; }
+    }
+  }
+
+  // Rayon prisonnier du prisme (rebonds en série) : on s'arrête là
+  if (dedans) return { pts: pts, cle: cle + 'P', i: i, tir: tir, yEcran: null, D: null };
+
+  pts.push({ x: P.x + dir.x * loin, y: P.y + dir.y * loin });
+  return { pts: pts, cle: cle + 'X', i: i, tir: tir, yEcran: null,
+           D: i === null ? null : _deviation(d, dir) };
+}
+
+// ══════════════════════════════════════════════════════════════════════
 //  Formatage
 // ══════════════════════════════════════════════════════════════════════
 
 // Nombre à la française (virgule décimale)
 function fmtFr(x, d) {
-  return x.toFixed(d).replace('.', ',').replace('-', '−');
+  var s = x.toFixed(d);
+  if (parseFloat(s) === 0) s = s.replace('-', '');   // pas de « −0,0 »
+  return s.replace('.', ',').replace('-', '−');
 }
 
 // Lecture d'un indice saisi au clavier (accepte la virgule)

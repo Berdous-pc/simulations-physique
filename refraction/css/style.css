@@ -81,16 +81,20 @@ main {
   touch-action: none;
 }
 
-/* Onglet Prisme en préparation : message centré */
-.sim-area-vide {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+/* Onglet Prisme : salle noire (les couleurs s'additionnent sur le noir) */
+.sim-area-sombre {
+  background: #14171c;
 }
-.a-venir {
-  font-size: clamp(16px, 2vw, 26px);
-  font-weight: 700;
-  color: #7a8a96;
+
+/* Pastille de la couleur du laser, devant la longueur d'onde */
+.sw-lambda {
+  display: inline-block;
+  width: 0.8em;
+  height: 0.8em;
+  margin-right: 5px;
+  border-radius: 50%;
+  border: 1px solid rgba(0,0,0,0.25);
+  vertical-align: -0.05em;
 }
 
 /* ── Panneau droit ───────────────────────────────── */
@@ -489,3 +493,8 @@ main {
   padding-bottom: 0;
 }
 .panel-hint:not(.collapsed) .panel-hint-toggle { transform: rotate(180deg); }
+
+/* ── Choix spectre continu / discret (rubrique Affichage) ── */
+.mode-tabs-spectre { margin: 6px 0 4px; }
+/* Inactif avec une source monochromatique */
+.mode-tabs.inactif { opacity: 0.45; pointer-events: none; }

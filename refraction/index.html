@@ -11,7 +11,7 @@
   <title>Simulation — Réfraction : lois de Snell-Descartes et prisme</title>
   <meta name="author" content="Mathieu Berdous">
   <meta name="copyright" content="Mathieu Berdous — CC BY-NC 4.0">
-  <meta name="description" content="Simulation interactive (Seconde) : lois de Snell-Descartes de la réflexion et de la réfraction, rayon laser entre deux milieux au choix, demi-disque en plexiglas sur rapporteur, angle limite et réflexion totale.">
+  <meta name="description" content="Simulation interactive (Seconde) : lois de Snell-Descartes de la réflexion et de la réfraction, rayon laser entre deux milieux au choix, demi-disque en plexiglas sur rapporteur, angle limite et réflexion totale, dispersion de la lumière blanche par un prisme.">
   <link rel="canonical" href="https://berdouspc.com/refraction/">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>⚛️</text></svg>">
   <link rel="stylesheet" href="css/style.css" />
@@ -33,10 +33,10 @@
       </div>
     </div>
 
-    <!-- ── Prisme (en préparation) ──────────────── -->
+    <!-- ── Prisme (salle noire) ─────────────────── -->
     <div class="tab-view" id="view-prisme" style="display:none;">
-      <div class="sim-area sim-area-vide">
-        <p class="a-venir">Onglet Prisme en préparation</p>
+      <div class="sim-area sim-area-sombre">
+        <canvas id="canvas-prisme"></canvas>
       </div>
     </div>
 
@@ -204,10 +204,127 @@
 
       <!-- ═══ Section PRISME ═══ -->
       <div class="panel-main-section" id="section-prisme" style="display:none;">
+
+        <!-- ── Source ── -->
+        <div class="panel-section">
+          <div class="section-title">Source</div>
+          <div class="mode-tabs">
+            <button class="mode-tab active" id="src-blanche" onclick="setSourcePrisme('blanche')">Lumière blanche</button>
+            <button class="mode-tab" id="src-mono" onclick="setSourcePrisme('mono')">Monochromatique</button>
+          </div>
+        </div>
+
+        <div class="param-row" id="ctrl-mono" style="display:none;">
+          <label>
+            Longueur d'onde λ
+            <span class="param-value"><span class="sw-lambda" id="sw-lambda"></span><span id="lbl-lambda">589 nm</span></span>
+          </label>
+          <input type="range" id="sl-lambda" class="sl-spectre" min="400" max="700" step="1" value="589"
+                 oninput="onSliderLambda(this.value)">
+        </div>
+
+        <div class="sep"></div>
+
+        <!-- ── Prisme ── -->
         <div class="panel-section">
           <div class="section-title">Prisme</div>
-          <div class="input-hint">Cet onglet montrera la dispersion de la lumière blanche par un prisme. Il est en cours de préparation.</div>
+          <div class="milieu-row">
+            <select class="milieu-select" id="sel-prisme"
+                    onchange="onSelectPrisme(this.value)"></select>
+          </div>
         </div>
+
+        <div class="param-row">
+          <label>
+            Angle au sommet A
+            <span class="param-value" id="lbl-angle-prisme">60°</span>
+          </label>
+          <input type="range" id="sl-angle-prisme" min="10" max="90" step="1" value="60"
+                 oninput="onSliderAnglePrisme(this.value)">
+        </div>
+
+        <div class="param-row">
+          <label>
+            Rotation du prisme
+            <span class="param-value" id="lbl-rot-prisme">0,0°</span>
+          </label>
+          <input type="range" id="sl-rot-prisme" min="-180" max="180" step="0.1" value="0"
+                 oninput="onSliderRotPrisme(this.value)">
+        </div>
+
+        <div class="param-row">
+          <label>
+            Angle d'incidence i
+            <span class="param-value" id="lbl-inc-prisme">—</span>
+          </label>
+          <input type="range" id="sl-inc-prisme" min="0" max="89.9" step="0.1" value="54"
+                 oninput="onSliderIncidencePR(this.value)">
+          <div class="input-hint">La source tourne autour du point d'incidence sur la face d'entrée.</div>
+        </div>
+
+        <button class="btn btn-primary" onclick="vueEnsemble()">Vue d'ensemble (sans zoom)</button>
+        <button class="btn btn-raz" style="margin-top:6px;" onclick="reinitialiserPrisme()">↺ Réinitialiser</button>
+        <div class="input-hint" style="margin-top:6px;">
+          Faire glisser la source pour la déplacer, sa poignée ronde pour l'orienter, le prisme pour le faire tourner.
+          Molette : zoom autour du pointeur ; en vue zoomée, le glisser déplace la vue.
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="panel-section">
+          <div class="section-title">Affichage</div>
+          <label class="check-row">
+            <input type="checkbox" onchange="toggleAffichagePR('normales', this.checked)">
+            <span class="cr-swatch cr-dash"></span>
+            Normales aux faces
+          </label>
+          <div class="mode-tabs mode-tabs-spectre" id="choix-spectre">
+            <button class="mode-tab active" id="spec-continu" onclick="setSpectrePR('continu')">Spectre continu</button>
+            <button class="mode-tab" id="spec-discret" onclick="setSpectrePR('discret')">Spectre discret</button>
+          </div>
+          <div class="input-hint" id="hint-spectre">Discret : rouge, orange, jaune, vert, bleu et violet seulement.</div>
+        </div>
+
+        <div class="sep"></div>
+
+        <!-- ── Mesures (masquées par défaut) ── -->
+        <div class="panel-section">
+          <div class="section-title">Mesures</div>
+          <div id="mesures-prisme" hidden>
+            <div class="readout">
+              <div class="ro-label" id="ro-pr-mat">—</div>
+              <div class="ro-line">
+                <span class="ro-item-label" id="lab-pr-n1">Indice n</span>
+                <span class="ro-item-val" id="ro-pr-n1">—</span>
+              </div>
+              <div class="ro-line" id="ligne-pr-n2">
+                <span class="ro-item-label" id="lab-pr-n2">Indice n (violet)</span>
+                <span class="ro-item-val" id="ro-pr-n2">—</span>
+              </div>
+            </div>
+            <div class="readout">
+              <div class="ro-line">
+                <span class="ro-item-label">Incidence i</span>
+                <span class="ro-item-val" id="ro-pr-i">—</span>
+              </div>
+              <div class="ro-line">
+                <span class="ro-item-label" id="lab-pr-d1">Déviation D</span>
+                <span class="ro-item-val" id="ro-pr-d1">—</span>
+              </div>
+              <div class="ro-line" id="ligne-pr-d2">
+                <span class="ro-item-label" id="lab-pr-d2">Déviation D (violet)</span>
+                <span class="ro-item-val" id="ro-pr-d2">—</span>
+              </div>
+              <div class="ro-line" id="ligne-pr-ecart">
+                <span class="ro-item-label">Écart violet − rouge</span>
+                <span class="ro-item-val" id="ro-pr-ecart">—</span>
+              </div>
+              <div class="ro-tir" id="ro-pr-msg" style="display:none;"></div>
+            </div>
+          </div>
+          <button id="btn-mesures-prisme" class="btn btn-toggle-one" onclick="toggleMesuresPrisme()">Afficher les mesures</button>
+        </div>
+
       </div><!-- fin #section-prisme -->
 
     </div><!-- fin #panel-body -->
@@ -242,7 +359,16 @@
                 title="Afficher les informations">▲</button>
       </div>
       <div class="panel-hint-body">
-        Onglet en préparation.
+        <strong>Source</strong> : lumière blanche, ou monochromatique avec la longueur d'onde réglée au curseur.
+        Faites glisser la <strong>source</strong> pour la déplacer et sa <strong>poignée ronde</strong> pour l'orienter.<br>
+        <strong>Prisme</strong> : choisissez le matériau et l'angle au sommet ; faites tourner le prisme
+        en le faisant glisser ou avec le curseur.<br>
+        Le curseur <em>Angle d'incidence</em> fait tourner la source autour du point d'entrée.<br>
+        <strong>Zoom</strong> : la molette agrandit autour du pointeur (pour observer un dioptre) ;
+        en vue zoomée, faire glisser déplace la vue (la source et le prisme ne bougent plus) ;
+        double-cliquez pour revenir à la vue d'ensemble.<br>
+        <strong>Écran</strong> : l'encart de droite montre la partie éclairée de l'écran agrandie dix fois.
+        Le bouton <em>Spectre discret</em> limite la lumière blanche à six couleurs.
       </div>
     </div>
 
@@ -251,10 +377,11 @@
 </main>
 
 <!-- ════════════════════════════════════════════════
-     Ordre de chargement : sim → dioptre → ui
+     Ordre de chargement : sim → dioptre → prisme → ui
 ════════════════════════════════════════════════ -->
 <script src="js/sim.js"></script>
 <script src="js/dioptre.js"></script>
+<script src="js/prisme.js"></script>
 <script src="js/ui.js"></script>
 
 <script data-goatcounter="https://berdous-pc.goatcounter.com/count"
