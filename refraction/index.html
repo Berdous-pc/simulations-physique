@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<!-- ════════════════════════════════════════════════════
+     Simulation pédagogique — Physique-Chimie Lycée
+     Auteur  : Mathieu Berdous
+     Licence : CC BY-NC 4.0 — https://creativecommons.org/licenses/by-nc/4.0/
+════════════════════════════════════════════════════ -->
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Simulation — Réfraction : lois de Snell-Descartes et prisme</title>
+  <meta name="author" content="Mathieu Berdous">
+  <meta name="copyright" content="Mathieu Berdous — CC BY-NC 4.0">
+  <meta name="description" content="Simulation interactive (Seconde) : lois de Snell-Descartes de la réflexion et de la réfraction, rayon laser entre deux milieux au choix, demi-disque en plexiglas sur rapporteur, angle limite et réflexion totale.">
+  <link rel="canonical" href="https://berdouspc.com/refraction/">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>⚛️</text></svg>">
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<h1 class="sr-only">Simulation des lois de Snell-Descartes — réflexion, réfraction, réflexion totale et dispersion par un prisme (Seconde)</h1>
+
+<main>
+
+  <!-- ══════════════════════════════════════════════
+       COLONNE GAUCHE : une vue par onglet
+  ══════════════════════════════════════════════ -->
+  <div id="left-col">
+
+    <!-- ── Snell-Descartes ──────────────────────── -->
+    <div class="tab-view" id="view-snell-descartes">
+      <div class="sim-area">
+        <canvas id="canvas-snell"></canvas>
+      </div>
+    </div>
+
+    <!-- ── Prisme (en préparation) ──────────────── -->
+    <div class="tab-view" id="view-prisme" style="display:none;">
+      <div class="sim-area sim-area-vide">
+        <p class="a-venir">Onglet Prisme en préparation</p>
+      </div>
+    </div>
+
+  </div><!-- fin #left-col -->
+
+  <!-- ══════════════════════════════════════════════
+       PANNEAU DROIT
+  ══════════════════════════════════════════════ -->
+  <div id="panel">
+
+    <!-- ── Onglets principaux ─────────────────── -->
+    <div class="panel-main-tabs">
+      <button class="panel-main-tab active" id="tab-snell-descartes"
+              onclick="setMainTab('snell-descartes')">
+        Snell-Descartes
+        <span class="tab-sub">Réfraction</span>
+      </button>
+      <button class="panel-main-tab" id="tab-prisme"
+              onclick="setMainTab('prisme')">
+        Prisme
+        <span class="tab-sub">Dispersion</span>
+      </button>
+    </div>
+
+    <!-- ── Corps du panneau ───────────────────── -->
+    <div id="panel-body">
+
+      <!-- ═══ Section SNELL-DESCARTES ═══ -->
+      <div class="panel-main-section" id="section-snell-descartes">
+
+        <div class="mode-tabs">
+          <button class="mode-tab active" id="mode-milieux" onclick="setModeSnell('milieux')">Deux milieux</button>
+          <button class="mode-tab" id="mode-disque" onclick="setModeSnell('disque')">Demi-disque</button>
+        </div>
+
+        <div class="sep"></div>
+
+        <!-- ── Contrôles du mode « Deux milieux » ── -->
+        <div id="ctrl-milieux">
+          <div class="panel-section">
+            <div class="section-title">Milieu 1 (haut)</div>
+            <div class="milieu-row">
+              <select class="milieu-select" id="sel-milieu-1"
+                      onchange="onSelectMilieu(1, this.value)"></select>
+              <input type="text" class="milieu-n" id="inp-n-1" inputmode="decimal"
+                     title="Indice n₁ (saisie libre)"
+                     oninput="onSaisieIndice(1, this.value)"
+                     onchange="onFinSaisieIndice(1)">
+            </div>
+          </div>
+
+          <div class="panel-section">
+            <div class="section-title">Milieu 2 (bas)</div>
+            <div class="milieu-row">
+              <select class="milieu-select" id="sel-milieu-2"
+                      onchange="onSelectMilieu(2, this.value)"></select>
+              <input type="text" class="milieu-n" id="inp-n-2" inputmode="decimal"
+                     title="Indice n₂ (saisie libre)"
+                     oninput="onSaisieIndice(2, this.value)"
+                     onchange="onFinSaisieIndice(2)">
+            </div>
+            <div class="input-hint">Indice libre entre 1,00 et 3,00 dans la case de droite.</div>
+          </div>
+
+          <button class="btn btn-toggle-one" onclick="inverserMilieux()">⇅ Inverser les milieux</button>
+
+          <div class="sep"></div>
+
+          <div class="param-row">
+            <label>
+              Angle d'incidence i
+              <span class="param-value" id="lbl-incidence">30,0°</span>
+            </label>
+            <input type="range" id="sl-incidence" min="0" max="90" step="0.1" value="30"
+                   oninput="onSliderIncidence(this.value)">
+            <div class="input-hint">Le laser s'oriente aussi en le faisant glisser dans le milieu 1.</div>
+          </div>
+        </div>
+
+        <!-- ── Contrôles du mode « Demi-disque » ── -->
+        <div id="ctrl-disque" style="display:none;">
+          <div class="param-row">
+            <label>
+              Indice du plexiglas n
+              <span class="param-value" id="lbl-n-disque">1,49</span>
+            </label>
+            <input type="range" id="sl-n-disque" min="1" max="2.5" step="0.01" value="1.49"
+                   oninput="onSliderIndiceDisque(this.value)">
+          </div>
+          <button class="btn btn-primary" onclick="alignerRapporteur()">Aligner le rapporteur sur la normale</button>
+          <button class="btn btn-raz" style="margin-top:6px;" onclick="reinitialiserDisque()">↺ Réinitialiser</button>
+          <div class="input-hint" style="margin-top:6px;">
+            Faire glisser le laser, le demi-disque ou la couronne du rapporteur pour les faire tourner.
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="panel-section">
+          <div class="section-title">Affichage</div>
+          <label class="check-row">
+            <input type="checkbox" checked onchange="toggleAffichage('normale', this.checked)">
+            <span class="cr-swatch cr-dash"></span>
+            Normale au dioptre
+          </label>
+          <label class="check-row">
+            <input type="checkbox" checked onchange="toggleAffichage('rayonInc', this.checked)">
+            <span class="cr-swatch" style="background:#e11414;"></span>
+            Rayon incident (et laser)
+          </label>
+          <label class="check-row">
+            <input type="checkbox" checked onchange="toggleAffichage('rayonRefl', this.checked)">
+            <span class="cr-swatch" style="background:#e11414;"></span>
+            Rayon réfléchi
+          </label>
+          <label class="check-row">
+            <input type="checkbox" checked onchange="toggleAffichage('rayonRefr', this.checked)">
+            <span class="cr-swatch" style="background:#e11414;"></span>
+            Rayon réfracté
+          </label>
+          <label class="check-row">
+            <input type="checkbox" checked onchange="toggleAffichage('angles', this.checked)">
+            <span class="cr-swatch" style="background:linear-gradient(90deg,#2a6aaa 33%,#7a4ab0 33% 66%,#2a8a50 66%);"></span>
+            Angles i, i′ et r
+          </label>
+          <label class="check-row">
+            <input type="checkbox" checked onchange="toggleAffichage('valeurs', this.checked)">
+            Valeurs des angles
+          </label>
+        </div>
+
+        <!-- ── Mesures (masquées avec « Valeurs des angles ») ── -->
+        <div id="mesures-snell">
+          <div class="sep"></div>
+          <div class="panel-section">
+            <div class="section-title">Mesures</div>
+            <div class="readout">
+              <div class="ro-label" id="ro-sens">—</div>
+              <div class="ro-grid ro-grid-3">
+                <div class="ro-item">
+                  <span class="ro-item-label">Incidence i</span>
+                  <span class="ro-item-val" id="ro-i">—</span>
+                </div>
+                <div class="ro-item">
+                  <span class="ro-item-label">Réflexion i′</span>
+                  <span class="ro-item-val" id="ro-ip">—</span>
+                </div>
+                <div class="ro-item">
+                  <span class="ro-item-label">Réfraction r</span>
+                  <span class="ro-item-val" id="ro-r">—</span>
+                </div>
+              </div>
+              <div class="ro-tir" id="ro-tir" style="display:none;">Réflexion totale : pas de rayon réfracté</div>
+            </div>
+            <div class="readout">
+              <div class="ro-label">Loi de la réfraction</div>
+              <div class="ro-grid">
+                <div class="ro-item">
+                  <span class="ro-item-label">n₁ × sin i</span>
+                  <span class="ro-item-val" id="ro-n1sini">—</span>
+                </div>
+                <div class="ro-item">
+                  <span class="ro-item-label">n₂ × sin r</span>
+                  <span class="ro-item-val" id="ro-n2sinr">—</span>
+                </div>
+              </div>
+            </div>
+            <div class="readout">
+              <div class="ro-grid ro-grid-1col">
+                <div class="ro-item">
+                  <span class="ro-item-label">Angle limite</span>
+                  <span class="ro-item-val" id="ro-lim">—</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- fin #section-snell-descartes -->
+
+      <!-- ═══ Section PRISME ═══ -->
+      <div class="panel-main-section" id="section-prisme" style="display:none;">
+        <div class="panel-section">
+          <div class="section-title">Prisme</div>
+          <div class="input-hint">Cet onglet montrera la dispersion de la lumière blanche par un prisme. Il est en cours de préparation.</div>
+        </div>
+      </div><!-- fin #section-prisme -->
+
+    </div><!-- fin #panel-body -->
+
+    <!-- ── Bandeau Informations Snell-Descartes ── -->
+    <div class="panel-hint collapsed" id="panel-hint-snell-descartes">
+      <div class="panel-hint-header">
+        <a class="panel-hint-menu-btn" href="../" title="Retour au menu principal">☰ Menu</a>
+        <span class="panel-hint-title">Informations</span>
+        <button class="panel-hint-toggle"
+                onclick="toggleHint('snell-descartes')"
+                title="Afficher les informations">▲</button>
+      </div>
+      <div class="panel-hint-body">
+        <strong>Réflexion</strong> : i′ = i.
+        <strong>Réfraction</strong> : n₁ × sin i = n₂ × sin r.<br>
+        Les angles se mesurent toujours <strong>par rapport à la normale</strong> au dioptre.<br>
+        La luminosité des rayons réfléchi et réfracté traduit la part de lumière que chacun emporte.<br>
+        Quand la lumière passe dans un milieu moins réfringent (n₁ &gt; n₂), au-delà de l'<strong>angle limite</strong> il n'y a plus de rayon réfracté : c'est la <strong>réflexion totale</strong>.
+      </div>
+    </div>
+
+    <!-- ── Bandeau Informations Prisme ─────────── -->
+    <div class="panel-hint collapsed" id="panel-hint-prisme" style="display:none;">
+      <div class="panel-hint-header">
+        <a class="panel-hint-menu-btn" href="../" title="Retour au menu principal">☰ Menu</a>
+        <span class="panel-hint-title">Informations</span>
+        <button class="panel-hint-toggle"
+                onclick="toggleHint('prisme')"
+                title="Afficher les informations">▲</button>
+      </div>
+      <div class="panel-hint-body">
+        Onglet en préparation.
+      </div>
+    </div>
+
+  </div><!-- fin #panel -->
+
+</main>
+
+<!-- ════════════════════════════════════════════════
+     Ordre de chargement : sim → dioptre → ui
+════════════════════════════════════════════════ -->
+<script src="js/sim.js"></script>
+<script src="js/dioptre.js"></script>
+<script src="js/ui.js"></script>
+
+<script data-goatcounter="https://berdous-pc.goatcounter.com/count"
+        async src="https://gc.zgo.at/count.js"></script>
+</body>
+</html>

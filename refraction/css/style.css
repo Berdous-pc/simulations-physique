@@ -1,0 +1,487 @@
+/* ══════════════════════════════════════════════════
+   Simulation pédagogique — Physique-Chimie Lycée
+   Auteur  : Mathieu Berdous
+   Licence : CC BY-NC 4.0 — https://creativecommons.org/licenses/by-nc/4.0/
+══════════════════════════════════════════════════ */
+
+/* ── Reset & base ────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  white-space: nowrap;
+  border: 0;
+}
+
+body {
+  font-family: 'Segoe UI', Arial, sans-serif;
+  background: #e8e4de;
+  color: #2c3e50;
+  /* dvh : suit la hauteur réellement visible (barres dynamiques du navigateur) ;
+     vh reste le repli pour les navigateurs sans support dvh. */
+  height: 100vh;
+  max-height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* ── Grille principale ───────────────────────────── */
+main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr clamp(200px, 22vw, 300px);
+  min-height: 0;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+/* ── Colonne gauche : une vue par onglet ─────────── */
+#left-col {
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  padding: 10px;
+}
+
+.tab-view {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+}
+
+/* ── Zone simulation ─────────────────────────────── */
+.sim-area {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  background: #fdf8f0;
+  border: 1px solid #c8c0b4;
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+
+.sim-area canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* Le glisser-déposer du laser, du disque et du rapporteur ne doit pas
+     faire défiler la page sur écran tactile */
+  touch-action: none;
+}
+
+/* Onglet Prisme en préparation : message centré */
+.sim-area-vide {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.a-venir {
+  font-size: clamp(16px, 2vw, 26px);
+  font-weight: 700;
+  color: #7a8a96;
+}
+
+/* ── Panneau droit ───────────────────────────────── */
+#panel {
+  background: #e8e4de;
+  border-left: 1.5px solid #c8c0b4;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  font-size: clamp(11px, 1.1vw, 14px);
+  overflow: hidden;
+}
+
+/* ── Onglets principaux (Snell-Descartes / Prisme) ── */
+.panel-main-tabs {
+  display: flex;
+  flex-shrink: 0;
+  border-bottom: 1.5px solid #b0a898;
+}
+
+.panel-main-tab {
+  flex: 1;
+  padding: 9px 4px;
+  font-size: clamp(12px, 1.2vw, 15px);
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: #d4d0c8;
+  color: #8a9aaa;
+  border-right: 1px solid #b0a898;
+  transition: background 0.12s, color 0.12s;
+  line-height: 1.25;
+}
+.panel-main-tab:last-child { border-right: none; }
+.panel-main-tab:hover { background: #ccc8c0; color: #2c3e50; }
+.panel-main-tab.active {
+  background: #e8e4de;
+  color: #2a6aaa;
+  border-bottom: 1.5px solid #e8e4de;
+  margin-bottom: -1.5px;
+}
+
+.tab-sub {
+  display: block;
+  font-size: 0.82em;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+/* ── Corps scrollable ────────────────────────────── */
+#panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: clamp(10px, 1.2vw, 16px) clamp(10px, 1.2vw, 14px);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* ── Sous-onglets (Deux milieux / Demi-disque) ───── */
+.mode-tabs {
+  display: flex;
+  flex-shrink: 0;
+  gap: 0;
+  border: 1px solid #c8c0b4;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.mode-tab {
+  flex: 1;
+  padding: 8px 4px;
+  font-size: clamp(12px, 1.2vw, 15px);
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: #dedad2;
+  color: #5a6a78;
+  text-align: center;
+  transition: background 0.15s, color 0.15s;
+}
+.mode-tab:not(:last-child) { border-right: 1px solid #c8c0b4; }
+.mode-tab:hover { background: #d4d0c8; }
+.mode-tab.active { background: #2a6aaa; color: #fff; }
+
+/* ── Section ─────────────────────────────────────── */
+.panel-section { margin-bottom: 8px; }
+
+.section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #7a8a96;
+  margin-bottom: 7px;
+}
+
+/* ── Séparateur ──────────────────────────────────── */
+.sep {
+  border: none;
+  border-top: 1px solid #c8c0b4;
+  margin: 8px 0;
+}
+
+/* ── Boutons ─────────────────────────────────────── */
+.btn {
+  width: 100%;
+  border: none;
+  border-radius: 6px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 0.1s, background 0.15s;
+}
+.btn:active { transform: scale(0.97); }
+
+.btn-raz {
+  background: #dedad2;
+  color: #5a6a78;
+  font-size: clamp(12px, 1.2vw, 15px);
+  padding: 9px 6px;
+  border: 1.5px solid #c8c0b4;
+}
+.btn-raz:hover { background: #ccc8c0; }
+
+.btn-primary {
+  background: #2a6aaa;
+  color: #fff;
+  font-size: clamp(13px, 1.3vw, 16px);
+  padding: 11px 6px;
+}
+.btn-primary:hover { background: #1a5a9a; }
+
+.btn-toggle-one {
+  background: #ece8e0;
+  color: #5a6a78;
+  border: 1px solid #c8c0b4;
+  font-size: clamp(12px, 1.2vw, 15px);
+  padding: 9px 6px;
+}
+.btn-toggle-one:hover { background: #ddd8ce; }
+
+/* ── Choix d'un milieu : liste + indice libre ────── */
+.milieu-row {
+  display: flex;
+  gap: 6px;
+}
+
+.milieu-select {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 7px 4px;
+  font-size: clamp(12px, 1.15vw, 15px);
+  font-weight: 700;
+  font-family: inherit;
+  border: 1px solid #c8c0b4;
+  border-radius: 6px;
+  background: #ece8e0;
+  color: #5a6a78;
+  cursor: pointer;
+}
+
+.milieu-n {
+  flex: 0 0 4.2em;
+  width: 4.2em;
+  padding: 5px 6px;
+  font-size: clamp(13px, 1.3vw, 16px);
+  font-weight: 700;
+  font-family: inherit;
+  color: #2a5080;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid #c8c0b4;
+  border-radius: 4px;
+  background: #fff;
+}
+/* Saisie hors bornes ou illisible : non appliquée tant qu'elle l'est */
+.milieu-n.invalide {
+  border-color: #c05020;
+  background: #fdeee6;
+}
+
+/* ── Paramètres ──────────────────────────────────── */
+.param-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 10px;
+}
+
+.param-row label {
+  font-size: clamp(12px, 1.25vw, 15px);
+  color: #2c3e50;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.param-value {
+  color: #2a5080;
+  font-weight: 600;
+  white-space: nowrap;
+  font-size: clamp(12px, 1.25vw, 15px);
+  font-variant-numeric: tabular-nums;
+}
+
+.param-row input[type="range"] {
+  width: 100%;
+  accent-color: #4a7aaa;
+  cursor: pointer;
+}
+
+.input-hint {
+  font-size: clamp(10px, 0.9vw, 13px);
+  color: #7a8a96;
+  line-height: 1.4;
+  font-weight: 400;
+  margin-top: 3px;
+}
+
+/* ── Cases à cocher d'affichage ──────────────────── */
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: clamp(12px, 1.15vw, 15px);
+  color: #2c3e50;
+  cursor: pointer;
+  user-select: none;
+  margin-bottom: 7px;
+  line-height: 1.3;
+}
+
+.check-row input[type="checkbox"] {
+  accent-color: #4a7aaa;
+  cursor: pointer;
+  width: 1.1em;
+  height: 1.1em;
+  flex: 0 0 auto;
+}
+
+/* Pastille reliant la case à la couleur de l'élément sur le canvas */
+.cr-swatch {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 13px;
+  height: 5px;
+  border-radius: 2px;
+}
+/* Pastille en tirets : la normale est tracée en pointillés */
+.cr-dash {
+  height: 0;
+  border-top: 2px dashed #5a6a78;
+  border-radius: 0;
+}
+
+/* ── Afficheurs valeur ───────────────────────────── */
+.readout {
+  background: #fff;
+  border: 1px solid #c8c0b4;
+  border-radius: 6px;
+  padding: 7px 9px;
+  margin-bottom: 8px;
+}
+
+.ro-label {
+  font-size: clamp(11px, 1vw, 13px);
+  color: #7a8a96;
+  margin-bottom: 4px;
+}
+
+.ro-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px 10px;
+}
+.ro-grid-3 { grid-template-columns: 1fr 1fr 1fr; gap: 5px 6px; }
+.ro-grid-1col { grid-template-columns: 1fr; }
+
+.ro-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.ro-item-label {
+  font-size: clamp(11px, 1vw, 13px);
+  color: #7a8a96;
+  white-space: nowrap;
+}
+
+.ro-item-val {
+  font-size: clamp(15px, 1.6vw, 20px);
+  font-weight: 700;
+  color: #2a5080;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Mention de réflexion totale (couleur alerte de la charte) */
+.ro-tir {
+  margin-top: 6px;
+  font-size: clamp(11px, 1.05vw, 14px);
+  font-weight: 700;
+  color: #b04020;
+}
+
+/* ── Bandeau Informations ────────────────────────── */
+.panel-hint {
+  flex-shrink: 0;
+  color: #5a6a78;
+  line-height: 1.5;
+  background: #fff;
+  border: 1.5px solid #b0a898;
+  /* Pas de bordure gauche propre : #panel a déjà la sienne sur ce bord
+     (cf. CONTEXTE_PROJET.md §5, évite le décalage sous-pixel entre deux
+     bordures superposées quand la largeur du panneau est en clamp()). */
+  border-left: none;
+  overflow: hidden;
+  transition: padding 0.2s;
+}
+
+.panel-hint strong { color: #2c3e50; }
+
+.panel-hint-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+}
+
+.panel-hint-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #7a8a96;
+  margin-left: auto;
+  margin-right: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panel-hint-menu-btn {
+  /* Lien déguisé en bouton : un <a> hérite de la police du body, on la
+     fixe explicitement pour un rendu identique partout. */
+  font-family: inherit;
+  text-decoration: none;
+  display: inline-block;
+  background: #f0f4f7;
+  border: 1px solid #c8d4dc;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  color: #4a5a68;
+  padding: 4px 9px;
+  line-height: 1.2;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.panel-hint-menu-btn:hover { background: #dde6ec; color: #2a6aaa; }
+
+.panel-hint-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: #7a8a96;
+  padding: 0 2px;
+  line-height: 1;
+  transition: transform 0.2s;
+}
+.panel-hint-toggle:hover { color: #2a6aaa; }
+
+.panel-hint-body {
+  font-size: clamp(12px, 1.15vw, 15px);
+  padding: 0 10px 8px;
+  overflow: hidden;
+  transition: max-height 0.25s ease, padding 0.25s ease;
+  max-height: 320px;
+}
+
+.panel-hint.collapsed .panel-hint-body {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.panel-hint:not(.collapsed) .panel-hint-toggle { transform: rotate(180deg); }
