@@ -430,6 +430,8 @@ main {
 /* Case à cocher sous un curseur ou sous la rangée de vecteurs */
 .param-row + .pin-coords-label { margin-top: 5px; }
 .vec-btn-row + .pin-coords-label { margin-top: 7px; }
+/* Bouton placé sous une case à cocher (frottements sous « Représenter le champ g ») */
+.pin-coords-label + .btn { margin-top: 8px; }
 /* Flèche du vecteur champ dans le libellé « Représenter le champ » */
 .field-arrow { color: #e67e22; font-style: normal; margin-left: 2px; }
 /* Aide courte sous un champ de saisie ou un bouton */
@@ -839,6 +841,8 @@ label:focus-visible {
   gap: 4px;
   margin-bottom: 8px;
 }
+/* Groupe de boutons sous un libellé de .param-row (ex. Armatures) : la marge vient de la ligne */
+.param-row > .btn-group { margin-bottom: 0; }
 .btn-group .btn-toggle-one {
   flex: 1;
   padding: 7px 4px;

@@ -211,22 +211,20 @@
 
         <div class="sep"></div>
 
-        <!-- ARMATURES -->
-        <div class="panel-section">
-          <div class="section-title">Armatures</div>
-          <div class="btn-group">
-            <button class="btn btn-toggle-one active" id="btn-e-arm-parallel"
-                    onclick="setArmatureModeE('parallel-x')">Parallèles à l'axe x</button>
-            <button class="btn btn-toggle-one" id="btn-e-arm-perp"
-                    onclick="setArmatureModeE('perp-x')">Perpendiculaires à l'axe x</button>
-          </div>
-        </div>
-
-        <div class="sep"></div>
-
         <!-- CONDITIONS INITIALES -->
         <div class="panel-section">
           <div class="section-title" data-repliable>Conditions initiales</div>
+
+          <!-- Orientation des armatures : pilote les curseurs L / e plus bas -->
+          <div class="param-row">
+            <label>Armatures</label>
+            <div class="btn-group">
+              <button class="btn btn-toggle-one active" id="btn-e-arm-parallel"
+                      onclick="setArmatureModeE('parallel-x')">Parallèles à l'axe x</button>
+              <button class="btn btn-toggle-one" id="btn-e-arm-perp"
+                      onclick="setArmatureModeE('perp-x')">Perpendiculaires à l'axe x</button>
+            </div>
+          </div>
 
           <div class="param-row">
             <label>Particule</label>
@@ -453,6 +451,13 @@
                    min="0" max="90" step="1" value="45"
                    oninput="onSliderAlpha(this.value)">
           </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <!-- FORCES EXTÉRIEURES -->
+        <div class="panel-section">
+          <div class="section-title" data-repliable>Forces extérieures</div>
 
           <div class="param-row">
             <label>
@@ -473,13 +478,6 @@
               <math><mover><mi>g</mi><mo>&#x2192;</mo></mover></math>
             </span>
           </label>
-        </div>
-
-        <div class="sep"></div>
-
-        <!-- FORCES EXTÉRIEURES -->
-        <div class="panel-section">
-          <div class="section-title" data-repliable>Forces extérieures</div>
           <button class="btn btn-toggle-one" id="btn-friction"
                   onclick="toggleFriction()">
             Activer les frottements (f = −kv)
