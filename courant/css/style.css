@@ -383,7 +383,6 @@ main {
 .speed-ticks span:last-child       { text-align: right; white-space: nowrap; }
 
 /* ── Afficheurs de valeur ────────────────────────── */
-#measures.hidden { display: none; }
 
 .readout {
   background: #fff;

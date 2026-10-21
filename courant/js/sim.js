@@ -356,7 +356,6 @@ var sim = {
 
   paused       : false,
   speedFactor  : 1,
-  showMeasures : true,
 
   // Flèches de vitesse portées par chaque électron : elles rendent
   // visible le fait que chaque direction individuelle reste tirée au

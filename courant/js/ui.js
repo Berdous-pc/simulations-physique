@@ -27,10 +27,10 @@ var READOUT_PERIOD = 100;   // ms
 var _el = {};
 
 var _EL_IDS = [
-  'btn-circuit', 'btn-playpause', 'btn-trace', 'btn-hole', 'btn-arrows', 'btn-measures',
+  'btn-circuit', 'btn-playpause', 'btn-trace', 'btn-hole', 'btn-arrows',
   'sl-U', 'sl-gene', 'sl-speed',
   'lbl-U', 'lbl-gene', 'lbl-speed',
-  'measures', 'ro-U', 'ro-I', 'ro-v',
+  'ro-U', 'ro-I', 'ro-v',
   'panel-hint',
   'btn-mat-cond', 'btn-mat-iso', 'row-gene', 'sec-options', 'sep-options',
   'btn-mat-semi', 'row-temp', 'sl-temp', 'lbl-temp', 'row-free', 'ro-n'
@@ -145,7 +145,6 @@ function syncUIToSim() {
   _updateTraceBtn();
   _updateHoleBtn();
   _updateArrowsBtn();
-  _updateMeasuresBtn();
   updateReadouts();
 }
 
@@ -219,13 +218,6 @@ function _updateArrowsBtn() {
   var b = _el['btn-arrows'];
   b.textContent = sim.showArrows ? 'Masquer le sens' : 'Sens des électrons';
   b.classList.toggle('active', sim.showArrows);
-}
-
-function _updateMeasuresBtn() {
-  var b = _el['btn-measures'];
-  b.textContent = sim.showMeasures ? 'Masquer les mesures' : 'Afficher les mesures';
-  b.classList.toggle('active', !sim.showMeasures);
-  _el['measures'].classList.toggle('hidden', !sim.showMeasures);
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -336,16 +328,6 @@ function toggleArrows() {
   if (sim.material === 'isolant') return;
   sim.showArrows = !sim.showArrows;
   _updateArrowsBtn();
-  sim.needsRedraw = true;
-}
-
-// ── Affichage des mesures ──
-// Masque à la fois les afficheurs du panneau et les valeurs chiffrées
-// portées par le schéma : en projection pour une classe de Seconde, la
-// page doit pouvoir rester entièrement qualitative.
-function toggleMeasures() {
-  sim.showMeasures = !sim.showMeasures;
-  _updateMeasuresBtn();
   sim.needsRedraw = true;
 }
 

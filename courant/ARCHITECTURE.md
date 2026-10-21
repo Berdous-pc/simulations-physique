@@ -196,7 +196,7 @@ Options) et le bandeau Informations. Scripts dans l'ordre imposé.
 | Légende `#legend` | Overlay en haut à gauche (le bas de la zone est pris par la cote de tension), dimensionnée en `cqmin` |
 | Panneau droit `#panel` | Fond `#e8e4de`, scrollable |
 | Boutons | `.btn-green`, `.btn-pause`, `.btn-play`, `.btn-raz`, `.btn-toggle-one` |
-| Afficheurs `.readout` | Masqués en bloc par `#measures.hidden` |
+| Afficheurs `.readout` | Dans la section repliable « Mesures » (pliée par défaut) ; la tension U reste toujours affichée sur le schéma |
 | Hint bas `.panel-hint` | Collé en bas hors scroll, `border-left: none` |
 | Fenêtre étroite / portrait | `@media (max-width: 720px), (max-aspect-ratio: 3/4)` : légende masquée |
 | Animations réduites | `@media (prefers-reduced-motion: reduce)` |

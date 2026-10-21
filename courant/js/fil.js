@@ -784,9 +784,7 @@ function _drawCote() {
   ctx.moveTo(x1, y); ctx.lineTo(x2, y);
   ctx.stroke();
 
-  var label = sim.showMeasures
-    ? 'U = ' + (sim.circuitOn ? _fmtU(sim.U_V) : '0,0 V')
-    : 'U';
+  var label = 'U = ' + (sim.circuitOn ? _fmtU(sim.U_V) : '0,0 V');
 
   ctx.font = '700 ' + (F * 1.25).toFixed(1) + 'px "Segoe UI", Arial, sans-serif';
   ctx.textAlign    = 'center';
