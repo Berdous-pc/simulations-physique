@@ -422,7 +422,7 @@ fait pas réapparaître tout le bassin — seul un nouveau front part de l'insta
 | Point de mesure M | `point {x, y, cmX, cmY}` + `dragging` — position **physique en cm**, donc invariante au zoom |
 | Axes de coupe | `cut` (vertical, graphe Amplitude(y)) et `cutH` (horizontal, graphe Amplitude(x)), tous deux draggables |
 | Vue | `viewMode` `'top'` \| `'plongeante'`, `tiltDeg` (10–75°, défaut 45°) |
-| Options d'affichage | `interfMode` (`none`/`constructive`/`destructive`/`both`), `distMode` (`none`/`cm`/`lambda`), `showValeurs` (S₁M, S₂M, δ) |
+| Options d'affichage | `interfMode` (`none`/`constructive`/`destructive`/`both`), `distMode` (`none`/`cm`/`lambda`); S₁M, S₂M, δ toujours calculés, affichés dans la section repliable Valeurs |
 | Graphes | `showGraph`, `graphMode` `'single'` \| `'dual'`, `graphTab1`/`graphTab2`, `ptData`, `ptTimeOrigin` |
 
 #### Vues et options
@@ -1179,7 +1179,7 @@ index.html
   │                             togglePauseSurfaces, onSliderSpeedSurf, onSliderZoomSurf,
   │                             onSliderTiltSurf, onSliderLambdaSurf, onSliderBSurf,
   │                             setSurfViewMode, toggleSurfSource, toggleSurfInterfMode,
-  │                             toggleSurfDistMode, toggleSurfValeurs, toggleGraphSurf,
+  │                             toggleSurfDistMode, toggleGraphSurf,
   │                             toggleSurfDualGraph, resetSurfaces
   │
   └── js/principe.js  dépend de : formatFr (js/scene.js) ; état `simPrin` autonome pour tout le reste
@@ -1197,7 +1197,7 @@ index.html
   └── js/ui.js        dépend de : tous les fichiers précédents
                        expose : updateParam, updateMaskShape, appliquerBorneD, setLightSource,
                                  toggleRays, toggleLengths, cycleBeamMode, toggleGraphIntensite,
-                                 toggleValeursExp, setView, setMainTab, updateReadouts, resetSim,
+                                 setView, setMainTab, updateReadouts, resetSim,
                                  toggleHint, resize, init
                        démarre : init() → requestAnimationFrame(loop)
 ```

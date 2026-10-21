@@ -214,13 +214,13 @@
       <!-- Blocs propres au mode 1D (seul mode existant, cf. setPrincipeMode) -->
       <div id="prin-1d-blocks">
 
-        <div>
+        <div class="panel-section">
           <div class="section-title">Contrôles</div>
           <div class="btn-row">
             <button class="btn btn-play" id="btn-playpause-prin" onclick="togglePausePrincipe()">▶ Lancer</button>
             <button class="btn btn-raz" onclick="resetPrincipe()">↺ RAZ</button>
           </div>
-          <div class="param-row" style="margin-top:8px;">
+          <div class="param-row param-row-after-btn">
             <label>
               Vitesse
               <span>×<span id="lbl-speed-prin">1,00</span></span>
@@ -237,13 +237,15 @@
           </div>
         </div>
 
-        <div>
+        <div class="sep"></div>
+
+        <div class="panel-section">
           <div class="section-title">Paramètres</div>
           <!-- Représentation de l'onde : courbe de surpression (Signal), gaz de
                particules (Particules), ou les deux superposés — cf. principe.js
                → setPrinRepresentation. Le basculement ne déplace RIEN dans la
                scène : seul le contenu des trois bandes change. -->
-          <div class="param-row" style="margin-bottom:12px;">
+          <div class="param-row">
             <label>Représentation</label>
             <div class="seg-toggle">
               <button class="seg-btn active" id="btn-repr-signal-prin"
@@ -271,7 +273,9 @@
           </div>
         </div>
 
-        <div>
+        <div class="sep"></div>
+
+        <div class="panel-section">
           <div class="section-title">Graphes temporels</div>
           <!-- Chaque bouton ouvre/ferme une fenêtre volante dans la zone de
                tracé (cf. #prin-win-* plus haut et principe.js). -->
@@ -282,9 +286,11 @@
           </div>
         </div>
 
-        <div>
+        <div class="sep"></div>
+
+        <div class="panel-section">
           <div class="section-title">Options</div>
-          <div style="display:flex; flex-direction:column; gap:8px;">
+          <div class="btn-stack">
             <button class="btn btn-toggle-one" id="btn-env-prin" onclick="togglePrinEnvOuSel()">Afficher l&#39;enveloppe</button>
             <button class="btn btn-toggle-one" id="btn-reperes-prin" onclick="togglePrinReperes()">Repérer les interférences</button>
             <button class="btn btn-toggle-one" id="btn-cotes-prin" onclick="togglePrinCotes()">Afficher S₁M et S₂M</button>
@@ -293,14 +299,16 @@
           </div>
         </div>
 
-        <div>
+        <div class="sep"></div>
+
+        <div class="panel-section">
           <div class="section-title">Valeurs</div>
           <button class="btn btn-toggle-one" id="btn-toggle-valeurs-prin" onclick="togglePrinValeurs()">Afficher les valeurs</button>
-          <div class="readouts" id="readouts-prin" style="display:none; margin-top:8px;">
+          <div class="readouts readouts-after-btn" id="readouts-prin" style="display:none;">
             <div class="readout full-width">
               <div class="ro-label">S₁M</div>
               <div class="ro-value"><span id="ro-prin-s1m">1,70</span> <span class="ro-unit">m</span></div>
-              <div class="ro-label" style="margin-top:6px;">S₂M</div>
+              <div class="ro-label ro-label-next">S₂M</div>
               <div class="ro-value"><span id="ro-prin-s2m">1,70</span> <span class="ro-unit">m</span></div>
             </div>
             <div class="readout full-width">
@@ -325,13 +333,13 @@
     <!-- ═══ Section ONDES DE SURFACES ═══ -->
     <div class="panel-main-section" id="section-surfaces" style="display:none;">
 
-      <div>
+      <div class="panel-section">
         <div class="section-title">Animation</div>
         <div class="btn-row">
           <button class="btn btn-pause" id="btn-playpause-surf" onclick="togglePauseSurfaces()">⏸ Pause</button>
           <button class="btn btn-raz" onclick="razSurfaces()">↺ RAZ</button>
         </div>
-        <div class="param-row" style="margin-top:8px;">
+        <div class="param-row param-row-after-btn">
           <label>
             Vitesse
             <span class="param-value">×<span id="lbl-speed-surf">1,00</span></span>
@@ -346,7 +354,7 @@
             <span>×1,00</span>
           </div>
         </div>
-        <div class="param-row" style="margin-top:8px;">
+        <div class="param-row">
           <label>Zoom <span>×<span id="lbl-zoom-surf">1,0</span></span></label>
           <!-- Slider en largeur de vue (cm), progression géométrique sur 240 crans : cf.
                SURF_VIEW_*_CM / SURF_ZOOM_STEPS dans js/surfaces.js. La position initiale est
@@ -356,14 +364,16 @@
         </div>
       </div>
 
-      <div>
+      <div class="sep"></div>
+
+      <div class="panel-section">
         <div class="section-title">Paramètres</div>
         <div class="surf-src-toggles">
-          <label class="surf-src-toggle" style="border-left-color:#e07020;">
+          <label class="surf-src-toggle surf-src-1">
             <input type="checkbox" id="chk-surf-s1" checked onchange="toggleSurfSource(1, this.checked)">
             Source 1
           </label>
-          <label class="surf-src-toggle" style="border-left-color:#e0397a;">
+          <label class="surf-src-toggle surf-src-2">
             <input type="checkbox" id="chk-surf-s2" checked onchange="toggleSurfSource(2, this.checked)">
             Source 2
           </label>
@@ -378,24 +388,29 @@
           <input type="range" id="sl-b-surf" min="1" max="30" step="0.1" value="8"
                  oninput="onSliderBSurf(this.value)">
         </div>
-        <button class="btn btn-reset" style="margin-top:4px;" onclick="resetSurfaces()">Par défaut</button>
+        <button class="btn btn-reset" onclick="resetSurfaces()">Par défaut</button>
       </div>
 
-      <div>
+      <div class="sep"></div>
+
+      <div class="panel-section">
         <div class="section-title">Options</div>
-        <button class="btn btn-toggle-one" id="btn-dist-surf" onclick="toggleSurfDistMode()">Distance depuis les sources :<br>Non</button>
-        <button class="btn btn-toggle-one" id="btn-interf-surf" onclick="toggleSurfInterfMode()" style="margin-top:8px;">Afficher les zones d'interférences :<br>Non</button>
-        <button class="btn btn-toggle-one" id="btn-graph-surf" onclick="toggleGraphSurf()" style="margin-top:8px;">Afficher graphe</button>
+        <div class="btn-stack">
+          <button class="btn btn-toggle-one" id="btn-dist-surf" onclick="toggleSurfDistMode()">Distance depuis les sources :<br>Non</button>
+          <button class="btn btn-toggle-one" id="btn-interf-surf" onclick="toggleSurfInterfMode()">Afficher les zones d'interférences :<br>Non</button>
+          <button class="btn btn-toggle-one" id="btn-graph-surf" onclick="toggleGraphSurf()">Afficher graphe</button>
+        </div>
       </div>
 
-      <div>
+      <div class="sep"></div>
+
+      <div class="panel-section">
         <div class="section-title">Valeurs</div>
-        <button class="btn btn-toggle-one" id="btn-toggle-valeurs-surf" onclick="toggleSurfValeurs()">Afficher les valeurs</button>
-        <div class="readouts" id="readouts-surf" style="display:none; margin-top:8px;">
+        <div class="readouts" id="readouts-surf">
           <div class="readout full-width">
             <div class="ro-label">S₁M</div>
             <div class="ro-value"><span id="ro-surf-s1m">0,00</span> <span class="ro-unit" id="ro-surf-unit1">cm</span></div>
-            <div class="ro-label" style="margin-top:6px;">S₂M</div>
+            <div class="ro-label ro-label-next">S₂M</div>
             <div class="ro-value"><span id="ro-surf-s2m">0,00</span> <span class="ro-unit" id="ro-surf-unit2">cm</span></div>
           </div>
           <div class="readout full-width">
@@ -414,9 +429,9 @@
     <div class="panel-main-section" id="section-lumineuses">
 
     <!-- Section : Paramètres expérimentaux -->
-    <div>
+    <div class="panel-section">
       <div class="section-title">Paramètres expérimentaux</div>
-      <div class="param-row" style="margin-bottom:8px;">
+      <div class="param-row">
         <label>Source lumineuse</label>
         <div class="light-source-toggle">
           <button class="light-source-btn active" id="btn-light-mono" onclick="setLightSource('mono')">Monochromatique</button>
@@ -455,13 +470,15 @@
         <input type="range" id="sl-d" min="0.15" max="2.5" step="0.01" value="0.50"
                oninput="updateParam('d', this.value)">
       </div>
-      <button class="btn btn-reset" style="margin-top:4px;" onclick="resetSim()">Par défaut</button>
+      <button class="btn btn-reset" onclick="resetSim()">Par défaut</button>
     </div>
 
+    <div class="sep"></div>
+
     <!-- Section : Options -->
-    <div>
+    <div class="panel-section">
       <div class="section-title">Options</div>
-      <div style="margin-top:8px; display:flex; flex-direction:column; gap:8px;">
+      <div class="btn-stack">
         <button class="btn btn-toggle-one" id="btn-beam-mode" onclick="cycleBeamMode()">Faisceau lumineux :<br>Non visible</button>
         <button class="btn btn-toggle-one" id="btn-rays" onclick="toggleRays()">Tracer l'angle de diffraction</button>
         <button class="btn btn-toggle-one" id="btn-lengths" onclick="toggleLengths()">Afficher les longueurs</button>
@@ -469,13 +486,14 @@
       </div>
     </div>
 
+    <div class="sep"></div>
+
     <!-- Section : Valeurs — encarts angle/largeur (enveloppe de diffraction, dépend de a) +
          interfrange (dépend de b) en monochromatique ; un tableau à 6 lignes (une par couleur
          de référence) en lumière blanche, cf. ui.js → updateReadouts / syncValeursExpUI -->
-    <div id="section-valeurs">
+    <div class="panel-section" id="section-valeurs">
       <div class="section-title">Valeurs</div>
-      <button class="btn btn-toggle-one" id="btn-toggle-valeurs-exp" onclick="toggleValeursExp()">Afficher les valeurs expérimentales</button>
-      <div class="readouts" id="readouts-exp" style="display:none; margin-top:8px;">
+      <div class="readouts" id="readouts-exp">
         <div class="readout full-width">
           <div class="ro-label">Interfrange<br>i = λ·D / b :</div>
           <div class="ro-value"><span id="ro-interfrange">0,00</span> <span class="ro-unit">mm</span></div>
@@ -492,7 +510,7 @@
           <div class="ro-value"><span id="ro-largeur">0.0</span> <span class="ro-unit">cm</span></div>
         </div>
       </div>
-      <div class="readouts" id="readouts-exp-blanche" style="display:none; margin-top:8px;"></div>
+      <div class="readouts" id="readouts-exp-blanche" style="display:none;"></div>
     </div>
 
     </div><!-- fin #section-lumineuses -->

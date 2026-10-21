@@ -257,9 +257,6 @@ var simSurf = {
     // ── Distances sources→M affichées, cf. toggleSurfDistMode ─────────────
     distMode     : 'none',  // 'none' | 'cm' | 'lambda'
 
-    // ── Section "Valeurs" (S₁M, S₂M, δ), cf. toggleSurfValeurs ────────────
-    showValeurs  : false,
-
     // ── Graphe(s) — mode 1 ou 2 graphes, cf. _buildSurfGraphCtrl ──────────
     showGraph    : false,
     graphMode    : 'single',  // 'single' | 'dual'
@@ -1374,7 +1371,6 @@ function _drawSurfPoint(ctx, is3D) {
 // "Distance depuis les sources" est "Non" ou "En centimètres", en multiples de λ sinon.
 function _updateSurfValues() {
     var s = simSurf;
-    if (!s.showValeurs) return;
     var p = s.point;
     var d1_cm = Math.hypot(p.x - s.s1.x, p.y - s.s1.y) / s.pxPerCm;
     var d2_cm = Math.hypot(p.x - s.s2.x, p.y - s.s2.y) / s.pxPerCm;
@@ -2523,17 +2519,6 @@ function _syncSurfDistBtn() {
     btn.classList.toggle('active', simSurf.distMode !== 'none');
 }
 
-// ── Section "Valeurs" (S₁M, S₂M, δ) ────────────────────────────────────
-
-function toggleSurfValeurs() {
-    simSurf.showValeurs = !simSurf.showValeurs;
-    var btn = document.getElementById('btn-toggle-valeurs-surf');
-    var box = document.getElementById('readouts-surf');
-    if (btn) btn.classList.toggle('active', simSurf.showValeurs);
-    if (box) box.style.display = simSurf.showValeurs ? '' : 'none';
-    if (simSurf.showValeurs) _updateSurfValues();
-}
-
 // ── RAZ de l'animation ────────────────────────────────────────────────
 //  Rembobine le bassin à t = 0 et le relance, en laissant intacts TOUS les
 //  réglages de l'utilisateur : λ, b, zoom, sources cochées ou non, vue de
@@ -2582,7 +2567,6 @@ function resetSurfaces() {
     simSurf.graphTab2 = 'amp-y';
     simSurf.interfMode = 'none';
     simSurf.distMode = 'none';
-    simSurf.showValeurs = false;
     simSurf.viewMode = 'top';
     simSurf.tiltDeg  = SURF_TILT_DEFAULT;
     simSurf.s1Enabled = true;
@@ -2624,10 +2608,6 @@ function resetSurfaces() {
 
     _syncSurfInterfBtn();
     _syncSurfDistBtn();
-    var btnValeurs = document.getElementById('btn-toggle-valeurs-surf');
-    var boxValeurs = document.getElementById('readouts-surf');
-    if (btnValeurs) btnValeurs.classList.remove('active');
-    if (boxValeurs) boxValeurs.style.display = 'none';
 
     // Remet le cadrage au défaut, met à jour slider + libellé, recalcule pxPerCm et la géométrie,
     // et programme le rebuild de la grille (cf. _surfSetViewCm → _surfApplyZoom).
