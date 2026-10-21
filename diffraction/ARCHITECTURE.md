@@ -14,7 +14,8 @@ diffraction/
     ├── scene.js
     ├── graph.js
     ├── surfaces.js  ← onglet "Ondes de surface" (état, rendu et graphe(s) propres)
-    └── ui.js
+    ├── ui.js
+    └── sections-repliables.js  ← copie de titrage/, sections du panneau repliables (chargé en dernier)
 ```
 
 > `surfaces.js` est **autonome** : il porte son propre état (`simSurf`), son propre rendu canvas

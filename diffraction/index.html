@@ -145,7 +145,7 @@
 
       <!-- Section : Paramètres expérimentaux -->
       <div class="panel-section">
-        <div class="section-title">Paramètres expérimentaux</div>
+        <div class="section-title" data-repliable>Paramètres expérimentaux</div>
         <div class="param-row">
           <label>Source lumineuse</label>
           <div class="light-source-toggle">
@@ -190,7 +190,7 @@
 
       <!-- Section : Options -->
       <div class="panel-section">
-        <div class="section-title">Options</div>
+        <div class="section-title" data-repliable>Options</div>
         <div class="btn-stack">
           <button class="btn btn-toggle-one" id="btn-beam-mode" onclick="cycleBeamMode()">Faisceau lumineux :<br>Non visible</button>
           <button class="btn btn-toggle-one" id="btn-rays" onclick="toggleRays()">Tracer l'angle de diffraction</button>
@@ -205,7 +205,7 @@
            à 6 lignes (une par couleur de référence) en lumière blanche, cf. ui.js →
            updateReadouts / syncValeursExpUI -->
       <div class="panel-section" id="section-valeurs">
-        <div class="section-title">Valeurs</div>
+        <div class="section-title" data-repliable>Valeurs</div>
         <div class="readouts" id="readouts-exp">
           <div class="readout full-width">
             <div class="ro-label" id="ro-theta-label">Angle de diffraction<br>sin θ ≈ θ = λ / a :</div>
@@ -261,7 +261,7 @@
       <div class="sep"></div>
 
       <div class="panel-section">
-        <div class="section-title">Paramètres</div>
+        <div class="section-title" data-repliable>Paramètres</div>
         <div class="param-row">
           <label>Longueur d'onde λ <span><span id="lbl-lambda-surf">4,0</span> cm</span></label>
           <input type="range" id="sl-lambda-surf" min="1" max="10" step="0.1" value="4"
@@ -278,7 +278,7 @@
       <div class="sep"></div>
 
       <div class="panel-section">
-        <div class="section-title">Options</div>
+        <div class="section-title" data-repliable>Options</div>
         <div class="btn-stack">
           <button class="btn btn-toggle-one" id="btn-angle-surf" onclick="toggleSurfAngle()">Tracer l'angle de diffraction</button>
           <button class="btn btn-toggle-one" id="btn-graph-surf" onclick="toggleGraphSurf()">Afficher graphe</button>
@@ -292,7 +292,7 @@
       <div class="sep"></div>
 
       <div class="panel-section" id="section-valeurs-surf">
-        <div class="section-title">Valeurs</div>
+        <div class="section-title" data-repliable>Valeurs</div>
         <div class="readouts" id="readouts-surf">
           <div class="readout full-width">
             <div class="ro-label">Rapport λ / a</div>
@@ -354,6 +354,7 @@
 <script src="js/graph.js"></script>
 <script src="js/surfaces.js"></script>
 <script src="js/ui.js"></script>
+<script src="js/sections-repliables.js"></script>
 <script data-goatcounter="https://berdous-pc.goatcounter.com/count"
         async src="https://gc.zgo.at/count.js"></script>
 </body>
