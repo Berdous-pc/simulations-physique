@@ -79,11 +79,12 @@ main {
 #panel-body {
   flex: 1;
   min-height: 0;
-  padding: clamp(8px, 1.2vw, 16px) clamp(6px, 1vw, 14px);
+  padding: clamp(8px, 1vw, 14px) clamp(8px, 1vw, 12px);
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 0;
   overflow-y: auto;
+  overflow-x: hidden;   /* pas de barre horizontale au moindre débordement */
 }
 
 /* Titre du panneau */
@@ -94,38 +95,79 @@ main {
   text-align: center;
   padding-bottom: clamp(8px, 1vw, 12px);
   border-bottom: 1.5px solid #c8c0b4;
+  margin-bottom: clamp(8px, 1vw, 12px);
   letter-spacing: 0.3px;
 }
 
 /* ════════════════════════════════════════════════════
-   TITRES DE SECTION
+   SECTIONS, TITRES, SÉPARATEURS (structure canonique)
 ════════════════════════════════════════════════════ */
+.panel-section { margin-bottom: 8px; }
+
 .section-title {
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 1px;
   color: #7a8a96;
-  border-bottom: 1px solid #c8c0b4;
-  padding-bottom: 4px;
+  margin-bottom: 7px;
 }
 
-/* Bouton collé directement sous un titre de section : il lui faut le même
-   dégagement que les blocs qui portent un margin-top:8px inline. */
-.section-title + .btn-toggle-one { margin-top: 10px; }
+.sep {
+  border: none;
+  border-top: 1px solid #c8c0b4;
+  margin: 8px 0;
+}
+
+/* Texte surligné (grandeurs algébriques : AB, OA…) */
+.overline { text-decoration: overline; }
 
 /* ════════════════════════════════════════════════════
    PARAMÈTRES (charte : .param-row)
 ════════════════════════════════════════════════════ */
-.param-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
 .param-row {
   display: flex;
   flex-direction: column;
   gap: 3px;
+  margin-bottom: 10px;
+}
+/* Contrôles de propagation sous les onglets de mode (dernier élément de la section) */
+.param-row-speed { margin-top: 8px; margin-bottom: 0; }
+#row-speed .mode-row { margin-bottom: 6px; }
+
+/* Curseur de vitesse maison (piste + remplissage + pouce, positionnés par ui.js) */
+#speed-wrap { user-select: none; }
+#speed-track {
+  position: relative;
+  height: 6px;
+  background: #c8c0b4;
+  border-radius: 3px;
+  cursor: pointer;
+}
+#speed-fill {
+  position: absolute;
+  left: 0; top: 0;
+  height: 100%;
+  width: 100%;
+  background: #2a6aaa;
+  border-radius: 3px;
+}
+#speed-thumb {
+  position: absolute;
+  top: 50%; left: 100%;
+  width: 14px; height: 14px;
+  background: #2a6aaa;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  cursor: grab;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+.speed-ticks-lbl {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: 0.75em;
+  color: #7a8a96;
 }
 .param-label {
   display: flex;
@@ -230,8 +272,28 @@ input[type=range] {
 }
 
 /* ════════════════════════════════════════════════════
-   BOUTONS BASCULE (charte : .btn-toggle-one)
+   BOUTONS (charte : .btn, .btn-stack, .btn-toggle-one)
 ════════════════════════════════════════════════════ */
+.btn {
+  width: 100%;
+  border: none;
+  border-radius: 6px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 0.1s, background 0.15s;
+}
+.btn:active { transform: scale(0.97); }
+
+/* Commandes empilées : l'écart est porté par le conteneur, pas par une
+   marge sur chaque élément. */
+.btn-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.btn-stack > .param-row { margin-bottom: 0; }
+
 .btn-toggle-one {
   width: 100%;
   background: #ece8e0;
@@ -276,6 +338,21 @@ input[type=range] {
   font-size: 0.87em;
   color: #2c3e50;
 }
+.legend-row-muted { color: #7a8a96; }
+
+/* Échantillon de trait devant chaque libellé (couleurs = celles du canvas) */
+.legend-swatch {
+  width: 28px;
+  flex-shrink: 0;
+  height: 3px;
+  border-radius: 2px;
+}
+.sw-parallele { background: #e05c00; }
+.sw-centre    { background: #2a6aaa; }
+.sw-foyer     { background: #2a9a4a; }
+.sw-infini    { background: #7a8a96; }
+.sw-virtuel   { height: 0; border-radius: 0; border-top: 2px dashed #7a8a96; }
+.sw-supp      { background: #7a8a96; opacity: 0.65; }
 
 /* ════════════════════════════════════════════════════
    TABLEAU RELATION DE CONJUGAISON (overlay bas-gauche du canvas)

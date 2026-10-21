@@ -54,55 +54,58 @@
   <div id="panel">
    <div id="panel-body">
 
-    <div class="panel-title">Lentilles minces</div>
+      <div class="panel-title">Lentilles minces</div>
 
-    <!-- Mode d'affichage des rayons -->
-    <div>
-      <div class="section-title">Mode d'affichage</div>
-      <div class="mode-tabs" style="margin-top:8px;">
-        <button class="mode-tab active" id="btn-instant" onclick="setMode('instant')">Instantané</button>
-        <button class="mode-tab" id="btn-anim" onclick="setMode('anim')">Propagation</button>
-      </div>
+      <!-- Mode d'affichage des rayons -->
+      <div class="panel-section">
+        <div class="section-title">Mode d'affichage</div>
+        <div class="mode-tabs">
+          <button class="mode-tab active" id="btn-instant" onclick="setMode('instant')">Instantané</button>
+          <button class="mode-tab" id="btn-anim" onclick="setMode('anim')">Propagation</button>
+        </div>
 
-      <!-- Contrôles de propagation (masqués en mode instantané) -->
-      <div class="param-row" id="row-speed" style="margin-top:8px;">
-        <div class="mode-row" style="margin-bottom:6px;">
-          <button id="speed-rewind" class="mode-btn" type="button" title="Maintenir pour rembobiner">⏪</button>
-          <button id="btn-pause-play" class="mode-btn" onclick="togglePausePlay()">▶ Lancer</button>
-          <button id="btn-reset-anim" class="mode-btn" onclick="resetAnim()">↺ RAZ</button>
-        </div>
-        <div class="param-label" style="display:flex;justify-content:space-between;">
-          <span>Vitesse</span><span id="lbl-speed">×1</span>
-        </div>
-        <div id="speed-wrap" style="user-select:none;">
-          <div id="speed-track" style="position:relative;height:6px;background:#c8c0b4;border-radius:3px;cursor:pointer;">
-            <div id="speed-fill"  style="position:absolute;left:0;top:0;height:100%;background:#2a6aaa;border-radius:3px;width:100%;"></div>
-            <div id="speed-thumb" style="position:absolute;top:50%;width:14px;height:14px;background:#2a6aaa;border-radius:50%;transform:translate(-50%,-50%);cursor:grab;box-shadow:0 1px 3px rgba(0,0,0,0.3);left:100%;"></div>
+        <!-- Contrôles de propagation (masqués en mode instantané) -->
+        <div class="param-row param-row-speed" id="row-speed">
+          <div class="mode-row">
+            <button id="speed-rewind" class="mode-btn" type="button" title="Maintenir pour rembobiner">⏪</button>
+            <button id="btn-pause-play" class="mode-btn" onclick="togglePausePlay()">▶ Lancer</button>
+            <button id="btn-reset-anim" class="mode-btn" onclick="resetAnim()">↺ RAZ</button>
           </div>
-          <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:0.75em;color:#7a8a96;">
-            <span>×0.1</span>
-            <span>×0.25</span>
-            <span>×0.5</span>
-            <span>×0.75</span>
-            <span>×1</span>
+          <div class="param-label">
+            <span>Vitesse</span><span id="lbl-speed">×1</span>
+          </div>
+          <div id="speed-wrap">
+            <div id="speed-track">
+              <div id="speed-fill"></div>
+              <div id="speed-thumb"></div>
+            </div>
+            <div class="speed-ticks-lbl">
+              <span>×0.1</span>
+              <span>×0.25</span>
+              <span>×0.5</span>
+              <span>×0.75</span>
+              <span>×1</span>
+            </div>
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- Choix de la lentille -->
-    <div>
-      <div class="section-title">Choix de la lentille</div>
-      <div class="mode-tabs" style="margin-top:8px;">
-        <button class="mode-tab active" id="btn-conv" onclick="setLensType('conv')">Convergente</button>
-        <button class="mode-tab" id="btn-div" onclick="setLensType('div')">Divergente</button>
+      <div class="sep"></div>
+
+      <!-- Choix de la lentille -->
+      <div class="panel-section">
+        <div class="section-title">Choix de la lentille</div>
+        <div class="mode-tabs">
+          <button class="mode-tab active" id="btn-conv" onclick="setLensType('conv')">Convergente</button>
+          <button class="mode-tab" id="btn-div" onclick="setLensType('div')">Divergente</button>
+        </div>
       </div>
-    </div>
 
-    <!-- Paramètres optiques -->
-    <div>
-      <div class="section-title">Paramètres optiques</div>
-      <div class="param-group" style="margin-top:8px;">
+      <div class="sep"></div>
+
+      <!-- Paramètres optiques -->
+      <div class="panel-section">
+        <div class="section-title">Paramètres optiques</div>
 
         <!-- Distance focale f' -->
         <div class="param-row">
@@ -117,7 +120,7 @@
         <!-- Taille algébrique AB -->
         <div class="param-row" id="row-h">
           <div class="param-label">
-            Taille objet <span style="text-decoration:overline">AB</span>
+            Taille objet <span class="overline">AB</span>
             <span id="lbl-h">+15,0 cm</span>
           </div>
           <input type="range" id="sl-h" min="-100" max="100" step="2" value="30"
@@ -133,105 +136,108 @@
           <input type="range" id="sl-nrays" min="3" max="10" step="1" value="3"
                  oninput="onSliderNRays(this.value)">
         </div>
-
       </div>
-    </div>
 
-    <!-- Objet à l'infini -->
-    <div>
-      <div class="section-title">Objet à l'infini</div>
-      <div style="margin-top:8px; display:flex; flex-direction:column; gap:8px;">
+      <div class="sep"></div>
 
-        <button id="btn-infini" class="btn-toggle-one" onclick="toggleInfini()">Objet à l'infini : NON</button>
+      <!-- Objet à l'infini -->
+      <div class="panel-section">
+        <div class="section-title">Objet à l'infini</div>
+        <div class="btn-stack">
+          <button id="btn-infini" class="btn btn-toggle-one" onclick="toggleInfini()">Objet à l'infini : NON</button>
 
-        <div class="mode-row" id="row-infini-anim">
-          <button class="mode-btn" id="btn-infini-anim" onclick="toggleInfiniAnim()">▶ Animation</button>
-          <button class="mode-btn" id="btn-infini-play" onclick="toggleInfiniPlay()" disabled>⏸ Pause</button>
-        </div>
-
-        <div class="param-row disabled" id="row-alpha">
-          <div class="param-label">
-            Angle α (rayons incidents)
-            <span id="lbl-alpha">0°</span>
+          <div class="mode-row" id="row-infini-anim">
+            <button class="mode-btn" id="btn-infini-anim" onclick="toggleInfiniAnim()">▶ Animation</button>
+            <button class="mode-btn" id="btn-infini-play" onclick="toggleInfiniPlay()" disabled>⏸ Pause</button>
           </div>
-          <input type="range" id="sl-alpha" min="-45" max="45" step="5" value="0"
-                 oninput="onSliderAlpha(this.value)" disabled>
-        </div>
 
-      </div>
-    </div>
-
-    <!-- Options de tracé -->
-    <div>
-      <div class="section-title">Options</div>
-      <div style="margin-top:8px; display:flex; flex-direction:column; gap:8px;">
-        <button id="btn-multipoints" class="btn-toggle-one" onclick="toggleMultiPoints()">Points sources sur tout l'objet : NON</button>
-        <button id="btn-conjugaison" class="btn-toggle-one" onclick="toggleConjugaison()">Relation de conjugaison : NON</button>
-      </div>
-    </div>
-
-    <!-- Valeurs calculées — masquées par défaut, cf. ui.js → toggleValeurs() -->
-    <div>
-      <div class="section-title">Valeurs</div>
-      <button id="btn-toggle-valeurs" class="btn-toggle-one" onclick="toggleValeurs()">Afficher les valeurs</button>
-      <div class="results-grid" id="results-grid" style="margin-top:8px; display:none;">
-        <div class="readout">
-          <div class="ro-label"><span style="text-decoration:overline">OA</span> (objet)</div>
-          <div class="ro-value" id="res-OA">—</div>
-        </div>
-        <div class="readout">
-          <div class="ro-label"><span style="text-decoration:overline">OA'</span> (image)</div>
-          <div class="ro-value" id="res-OA2">—</div>
-        </div>
-        <div class="readout">
-          <div class="ro-label">Grandissement <span style="text-decoration:overline">γ</span></div>
-          <div class="ro-value" id="res-gamma">—</div>
-        </div>
-        <div class="readout">
-          <div class="ro-label">Taille image <span style="text-decoration:overline">A'B'</span></div>
-          <div class="ro-value" id="res-h2">—</div>
-        </div>
-        <div class="readout wide">
-          <div class="ro-label">Nature de l'image</div>
-          <div class="ro-value" id="res-nature">—</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Légende des rayons -->
-    <div>
-      <div class="section-title">Légende des rayons</div>
-      <div class="legend" style="margin-top:8px;">
-        <!-- Rayons principaux colorés : uniquement hors mode « objet à l'infini »,
-             où tous les rayons incidents sont parallèles et tracés en gris. -->
-        <div id="legend-main">
-          <div class="legend-row">
-            <div style="width:28px;flex-shrink:0;height:3px;background:#e05c00;border-radius:2px;"></div>
-            Rayon parallèle à l'axe optique
-          </div>
-          <div class="legend-row">
-            <div style="width:28px;flex-shrink:0;height:3px;background:#2a6aaa;border-radius:2px;"></div>
-            Rayon passant par le centre optique O
-          </div>
-          <div class="legend-row">
-            <div style="width:28px;flex-shrink:0;height:3px;background:#2a9a4a;border-radius:2px;"></div>
-            Rayon passant par le foyer objet F
+          <div class="param-row disabled" id="row-alpha">
+            <div class="param-label">
+              Angle α (rayons incidents)
+              <span id="lbl-alpha">0°</span>
+            </div>
+            <input type="range" id="sl-alpha" min="-45" max="45" step="5" value="0"
+                   oninput="onSliderAlpha(this.value)" disabled>
           </div>
         </div>
-        <div class="legend-row" id="legend-infini" style="display:none;">
-          <div style="width:28px;flex-shrink:0;height:3px;background:#7a8a96;border-radius:2px;"></div>
-          Rayons incidents parallèles (objet à l'infini)
-        </div>
-        <div class="legend-row" style="color:#7a8a96;">
-          <div style="width:28px;flex-shrink:0;height:0;border-top:2px dashed #7a8a96;"></div>
-          Prolongement virtuel
-        </div>
-        <div class="legend-row" style="color:#7a8a96;">
-          <div style="width:28px;flex-shrink:0;height:3px;background:#7a8a96;border-radius:2px;opacity:0.65;"></div>
-          Rayons supplémentaires
+      </div>
+
+      <div class="sep"></div>
+
+      <!-- Options de tracé -->
+      <div class="panel-section">
+        <div class="section-title">Options</div>
+        <div class="btn-stack">
+          <button id="btn-multipoints" class="btn btn-toggle-one" onclick="toggleMultiPoints()">Points sources sur tout l'objet : NON</button>
+          <button id="btn-conjugaison" class="btn btn-toggle-one" onclick="toggleConjugaison()">Relation de conjugaison : NON</button>
         </div>
       </div>
-    </div>
+
+      <div class="sep"></div>
+
+      <!-- Valeurs calculées : affichées en dépliant la section -->
+      <div class="panel-section">
+        <div class="section-title">Valeurs</div>
+        <div class="results-grid" id="results-grid">
+          <div class="readout">
+            <div class="ro-label"><span class="overline">OA</span> (objet)</div>
+            <div class="ro-value" id="res-OA">—</div>
+          </div>
+          <div class="readout">
+            <div class="ro-label"><span class="overline">OA'</span> (image)</div>
+            <div class="ro-value" id="res-OA2">—</div>
+          </div>
+          <div class="readout">
+            <div class="ro-label">Grandissement <span class="overline">γ</span></div>
+            <div class="ro-value" id="res-gamma">—</div>
+          </div>
+          <div class="readout">
+            <div class="ro-label">Taille image <span class="overline">A'B'</span></div>
+            <div class="ro-value" id="res-h2">—</div>
+          </div>
+          <div class="readout wide">
+            <div class="ro-label">Nature de l'image</div>
+            <div class="ro-value" id="res-nature">—</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sep"></div>
+
+      <!-- Légende des rayons -->
+      <div class="panel-section">
+        <div class="section-title">Légende des rayons</div>
+        <div class="legend">
+          <!-- Rayons principaux colorés : uniquement hors mode « objet à l'infini »,
+               où tous les rayons incidents sont parallèles et tracés en gris. -->
+          <div id="legend-main">
+            <div class="legend-row">
+              <div class="legend-swatch sw-parallele"></div>
+              Rayon parallèle à l'axe optique
+            </div>
+            <div class="legend-row">
+              <div class="legend-swatch sw-centre"></div>
+              Rayon passant par le centre optique O
+            </div>
+            <div class="legend-row">
+              <div class="legend-swatch sw-foyer"></div>
+              Rayon passant par le foyer objet F
+            </div>
+          </div>
+          <div class="legend-row" id="legend-infini" style="display:none;">
+            <div class="legend-swatch sw-infini"></div>
+            Rayons incidents parallèles (objet à l'infini)
+          </div>
+          <div class="legend-row legend-row-muted">
+            <div class="legend-swatch sw-virtuel"></div>
+            Prolongement virtuel
+          </div>
+          <div class="legend-row legend-row-muted">
+            <div class="legend-swatch sw-supp"></div>
+            Rayons supplémentaires
+          </div>
+        </div>
+      </div>
 
    </div><!-- fin #panel-body -->
 

@@ -432,16 +432,6 @@ function toggleConjugaison() {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────
-//  (Dés)active l'affichage du tableau de valeurs (section Valeurs) —
-//  désactivé par défaut.
-// ─────────────────────────────────────────────────────────────────────
-function toggleValeurs() {
-  sim.showValeurs = !sim.showValeurs;
-  document.getElementById('results-grid').style.display = sim.showValeurs ? '' : 'none';
-  document.getElementById('btn-toggle-valeurs').classList.toggle('active', sim.showValeurs);
-}
-
 /* ═══════════════════════════════════════════════════
    ANIMATION "OBJET VERS L'INFINI"
 ════════════════════════════════════════════════════ */

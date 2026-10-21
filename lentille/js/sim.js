@@ -32,7 +32,6 @@ const sim = {
   alpha:  0,
 
   // ── Résultats calculés (mis à jour par compute()) ──
-  showValeurs: false, // affichage du tableau de valeurs — désactivé par défaut
   OA2:   0,
   h2:    0,
   gamma: 0,
