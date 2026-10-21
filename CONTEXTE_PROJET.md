@@ -234,7 +234,7 @@ Le reste (onglets, sous-onglets, variantes de boutons, `.param-row`, `.readout`,
 | `diffraction/` | ✅ terminée | Paramètres expérimentaux / Paramètres, Options, Valeurs (×2 onglets, boutons supprimés ; avertissement d'angle déplacé dans Options) |
 | `interferences/` | ✅ terminée | Paramètres, Graphes temporels, Options, Valeurs, Paramètres expérimentaux (×3 onglets) ; tous les boutons « Afficher les valeurs » supprimés — dans l'onglet 1D, déplier Valeurs affiche aussi les valeurs en M sur le canvas (événement `sectionrepliee`) |
 | `ondes/` | ✅ terminée | Propriétés du milieu / de la corde, Options, Propriétés de l'onde (×3 onglets) ; boutons « Propriétés de l'onde » remplacés par la section du même nom (événement `sectionrepliee`) |
-| `kepler/` | ✅ terminée | Paramètres de l'ellipse (1ʳᵉ loi), Affichage, Grandeurs, Mesures, Données du système ; Loi des aires (action principale) fixe |
+| `kepler/` | ✅ terminée | Paramètres de l'ellipse (1ʳᵉ loi), Affichage, Grandeurs, Mesures, Données du système, Loi des aires (**dépliée par défaut**, `data-repliable="ouvert"`) |
 | `champ_uniforme/` | ✅ terminée | Conditions initiales (sélecteur Armatures intégré, section Armatures supprimée), Forces extérieures (curseur g en tête), Vecteurs (×2 onglets) |
 | `derivee/` | ✅ terminée | Paramètres, Encadrement (**dépliée par défaut**, `data-repliable="ouvert"`), Options, Mesures |
 | `radioactivite/` | ✅ terminée | Paramètres (×2 onglets), Valeurs (bloc `#bloc-valeurs` masqué en mode automatique) |
