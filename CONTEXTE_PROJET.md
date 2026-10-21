@@ -106,7 +106,7 @@ Les pages les plus récentes (`ondes/`, `champ_uniforme/`, `dissolution/`) font 
 
 ### Structure canonique du panneau (modèle `ondes/`, `champ_uniforme/`, `pression/`)
 
-**Toutes les pages suivent cette structure** (uniformisation en cours, cf. « État de l'uniformisation » plus bas). Une seule écriture sur tout le site : c'est ce qui permet d'appliquer partout le même CSS et le même script de sections repliables sans réglage page par page.
+**Toutes les pages suivent cette structure** (uniformisation terminée en octobre 2026, cf. « État de l'uniformisation » plus bas). Une seule écriture sur tout le site : c'est ce qui permet d'appliquer partout le même CSS et le même script de sections repliables sans réglage page par page.
 
 ```
 #panel
@@ -232,8 +232,13 @@ Le reste (onglets, sous-onglets, variantes de boutons, `.param-row`, `.readout`,
 | `refraction/` | ✅ terminée | Affichage, Mesures (×2 onglets, boutons « Afficher les mesures » supprimés) |
 | `diffraction/` | ✅ terminée | Paramètres expérimentaux / Paramètres, Options, Valeurs (×2 onglets, boutons supprimés ; avertissement d'angle déplacé dans Options) |
 | `interferences/` | ✅ terminée | Paramètres, Graphes temporels, Options, Valeurs, Paramètres expérimentaux (×3 onglets) ; tous les boutons « Afficher les valeurs » supprimés — dans l'onglet 1D, déplier Valeurs affiche aussi les valeurs en M sur le canvas (événement `sectionrepliee`) |
-| `ondes/`, `champ_uniforme/`, `kepler/`, `cinetique/`, `derivee/`, `equilibre/` | déjà proches du modèle (`style=` en ligne, classes de boutons à reprendre) | à faire |
-| `titrage/`, `radioactivite/` | à restructurer (titres à plat, `<hr class="sep">`, `gap: 10px`, boutons en px fixes sur titrage) | titrage : déjà fait (Options, Paramètres) |
+| `ondes/` | ✅ terminée | Propriétés du milieu / de la corde, Options, Propriétés de l'onde (×3 onglets) ; boutons « Propriétés de l'onde » remplacés par la section du même nom (événement `sectionrepliee`) |
+| `kepler/` | ✅ terminée | Paramètres de l'ellipse (1ʳᵉ loi), Affichage, Grandeurs, Mesures, Données du système ; Loi des aires (action principale) fixe |
+| `champ_uniforme/` | ✅ terminée | Conditions initiales, Forces extérieures, Vecteurs (×2 onglets) |
+| `derivee/` | ✅ terminée | Options, Mesures ; Encadrement (action Δt → 0) fixe |
+| `radioactivite/` | ✅ terminée | Paramètres (×2 onglets), Valeurs (bloc `#bloc-valeurs` masqué en mode automatique) |
+| `cinetique/`, `equilibre/` | ✅ terminées | aucune pour l'instant (Paramètres = tout le contenu réglable ; à trancher) |
+| `titrage/` | ✅ terminée | Options (×2 onglets), Paramètres ; Mode Test sorti d'Options |
 
 **Classes utilitaires apparues pendant l'uniformisation** (à réutiliser plutôt qu'un `style=` en ligne) : `.param-row-speed { margin-top: 8px; margin-bottom: 0; }` pour le curseur de vitesse placé sous les boutons Lancer/Pause/RAZ ; `.param-row-after-btn { margin-top: 8px; }` pour un curseur placé juste sous un bouton ; `.progress-msg` pour un message texte sous des boutons d'action (`reaction/`) ; `.input-hint-after-btn { margin-top: 6px; }` pour une aide sous un bouton ; `.legend-swatch` + modificateurs `.sw-…` pour les échantillons de couleur d'une légende (`lentille/`), `.cr-…` pour ceux des cases à cocher (`refraction/`) ; `.overline` pour une grandeur algébrique surlignée.
 
@@ -267,7 +272,7 @@ Le reste (onglets, sous-onglets, variantes de boutons, `.param-row`, `.readout`,
 | `letter-spacing` | `1px` |
 | Couleur | `#7a8a96` |
 
-#### Sections repliables (validées sur `titrage/`, à généraliser à toutes les pages)
+#### Sections repliables (toutes les pages)
 
 But : alléger le panneau de droite. Un titre de section peut porter un petit chevron qui masque/affiche les commandes de la section. **Pliées par défaut.**
 
@@ -319,7 +324,7 @@ L'écouteur doit être posé **avant** le chargement de `sections-repliables.js`
 .section-body.collapsed { display: none; }
 ```
 
-`.section-body` n'a **pas** de style propre dans la structure canonique : c'est un simple bloc, les marges des composants (`.param-row`, `.readout`…) s'y comportent exactement comme directement dans `.panel-section`, le rendu déplié est donc identique à l'original. (Exception : `titrage/` et toute page encore à plat dans un conteneur flex avec `gap: 10px` gardent `.section-body { display: flex; flex-direction: column; gap: 10px; }` pour retrouver cet espacement.)
+`.section-body` n'a **pas** de style propre dans la structure canonique : c'est un simple bloc, les marges des composants (`.param-row`, `.readout`…) s'y comportent exactement comme directement dans `.panel-section`, le rendu déplié est donc identique à l'original.
 
 **Choix de design (itérations validées avec l'utilisateur) :** pas de barre/fond/bordure autour du titre (« trop voyant »), pas de bouton rond (« moche ») ; chevron gris discret à droite du titre, bleu `#2a6aaa` au survol. Le sens du chevron suit la direction du contenu : **bas = replié (le contenu va descendre), haut = déplié** — jamais une flèche vers la droite. L'état n'est pas mémorisé entre deux chargements.
 
