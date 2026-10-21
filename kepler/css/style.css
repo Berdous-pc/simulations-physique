@@ -249,8 +249,10 @@ main {
 /* ── Corps scrollable ────────────────────────────── */
 #panel-body {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: clamp(10px, 1.2vw, 16px) clamp(10px, 1.2vw, 14px);
+  overflow-x: hidden;   /* pas de barre horizontale au moindre débordement */
+  padding: clamp(8px, 1vw, 14px) clamp(8px, 1vw, 12px);
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -316,6 +318,14 @@ main {
    .btn habituel, seule la largeur devient partagée au lieu de 100%. RAZ
    reste étroit (texte court et fixe) pour laisser toute la place à
    Lancer/Pause/Reprendre, dont le texte change et ne doit pas passer à la ligne. */
+/* Boutons empilés : l'écart est porté par le conteneur, pas par une marge
+   sur chaque bouton. */
+.btn-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .btn-row {
   display: flex;
   gap: 6px;
@@ -364,6 +374,8 @@ main {
   gap: 3px;
   margin-bottom: 10px;
 }
+/* Curseur placé juste sous des boutons (vitesse sous Lancer/RAZ) */
+.param-row-after-btn { margin-top: 8px; }
 
 .param-row label {
   font-size: clamp(12px, 1.25vw, 15px);
@@ -451,6 +463,18 @@ main {
   border-radius: 50%;
   border: 1px solid rgba(0,0,0,0.2);
 }
+/* Couleurs des échantillons = couleurs du canvas */
+.cr-foyers   { background: #e87850; }
+.cr-grandaxe { background: #6aa2e0; }
+.cr-petitaxe { background: #58c088; }
+.cr-dist     { background: linear-gradient(90deg, #e08050 50%, #c088e8 50%); }
+.cr-rayon    { background: #e0a850; }
+.cr-vitesse  { background: #e86060; }
+.cr-accel    { background: #58c088; }
+/* Case à cocher placée juste sous des boutons ou des préréglages */
+.btn + .check-row,
+.btn-stack + .check-row,
+.sys-toggle-row + .check-row { margin-top: 8px; }
 
 /* ── Afficheurs valeur ───────────────────────────── */
 .readout {
@@ -483,6 +507,7 @@ main {
   flex-direction: column;
   gap: 1px;
 }
+.ro-item-full { grid-column: 1 / -1; }
 
 .ro-item-label {
   font-size: clamp(12px, 1.05vw, 14px);
