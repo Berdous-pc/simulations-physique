@@ -14,7 +14,8 @@ interferences/
     ├── graph.js     ← graphe I(x) de l'onglet "Ondes lumineuses"
     ├── surfaces.js  ← onglet "Ondes de surface" (état, rendu et graphes propres)
     ├── principe.js  ← onglet "Interférences en 1D" (état, physique et rendu propres — mode 1D)
-    └── ui.js
+    ├── ui.js
+    └── sections-repliables.js  ← copie de titrage/, sections du panneau repliables (chargé en dernier)
 ```
 
 > `surfaces.js` et `principe.js` sont **autonomes** : chacun porte son propre état (`simSurf`,
