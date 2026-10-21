@@ -160,9 +160,9 @@
             <button class="btn btn-raz"
                     onclick="resetSimAnimE()">↺ RAZ</button>
           </div>
-          <button id="btn-e-save" class="btn btn-save" style="margin-top:6px;"
+          <button id="btn-e-save" class="btn btn-save"
                   onclick="sauvegarderRunE()" disabled>✦ Sauvegarder</button>
-          <div class="param-row" style="margin-top:8px;">
+          <div class="param-row param-row-after-btn">
             <label>
               Vitesse d'animation
               <span class="param-value"><span id="lbl-e-speed">6 ns/s</span></span>
@@ -191,11 +191,11 @@
         <div class="panel-section">
           <div class="section-title">Trajectoire</div>
           <div class="btn-group">
-            <button class="btn-toggle-one active" id="btn-e-disp-chrono"
+            <button class="btn btn-toggle-one active" id="btn-e-disp-chrono"
                     onclick="setDisplayModeE('chrono')">Chronophoto.</button>
-            <button class="btn-toggle-one" id="btn-e-disp-both"
+            <button class="btn btn-toggle-one" id="btn-e-disp-both"
                     onclick="setDisplayModeE('both')">Les deux</button>
-            <button class="btn-toggle-one" id="btn-e-disp-trajectory"
+            <button class="btn btn-toggle-one" id="btn-e-disp-trajectory"
                     onclick="setDisplayModeE('trajectory')">Trajectoire</button>
           </div>
           <div class="param-row" id="e-deltat-row" style="display:none;">
@@ -215,9 +215,9 @@
         <div class="panel-section">
           <div class="section-title">Armatures</div>
           <div class="btn-group">
-            <button class="btn-toggle-one active" id="btn-e-arm-parallel"
+            <button class="btn btn-toggle-one active" id="btn-e-arm-parallel"
                     onclick="setArmatureModeE('parallel-x')">Parallèles à l'axe x</button>
-            <button class="btn-toggle-one" id="btn-e-arm-perp"
+            <button class="btn btn-toggle-one" id="btn-e-arm-perp"
                     onclick="setArmatureModeE('perp-x')">Perpendiculaires à l'axe x</button>
           </div>
         </div>
@@ -230,9 +230,7 @@
 
           <div class="param-row">
             <label>Particule</label>
-            <select id="sel-e-particle" onchange="onSelectParticleE(this.value)"
-                    style="width:100%;margin-top:4px;padding:4px 6px;border-radius:6px;
-                           border:1px solid #c8d4dc;background:#f8fbfd;font-size:clamp(10px,1vw,13px);">
+            <select id="sel-e-particle" class="select-particle" onchange="onSelectParticleE(this.value)">
               <option value="0">Électron  (q = −e, m = 9,11×10⁻³¹ kg)</option>
               <option value="1">Positon   (q = +e, m = 9,11×10⁻³¹ kg)</option>
               <option value="2">Proton    (q = +e, m = 1,67×10⁻²⁷ kg)</option>
@@ -241,7 +239,7 @@
             </select>
           </div>
 
-          <div class="param-row" style="margin-top:8px;">
+          <div class="param-row">
             <label>
               Vitesse initiale v₀
               <span class="param-value"><span id="lbl-e-v0">2,27</span> × 10⁷ m/s</span>
@@ -250,7 +248,7 @@
               <input type="range" id="sl-e-v0"
                      min="10" max="99.9" step="0.1" value="22.7"
                      oninput="onSliderEV0(this.value)">
-              <span class="slider-tick" style="left:14.1%"></span>
+              <span class="slider-tick tick-e-v0"></span>
             </div>
           </div>
 
@@ -278,7 +276,7 @@
               </select>
               <span class="sci-unit">V/m</span>
             </div>
-            <div style="font-size:clamp(9px,0.85vw,11px);color:#7a8a96;font-style:italic;margin-top:4px;line-height:1.4;">
+            <div class="field-hint field-hint-italic">
               Mettre un signe - pour inverser le sens du champ.
             </div>
           </div>
@@ -305,10 +303,10 @@
                    oninput="onSliderEGap(this.value)">
           </div>
 
-          <label class="pin-coords-label" style="margin-top:5px;">
+          <label class="pin-coords-label">
             <input type="checkbox" id="chk-e-field" onchange="toggleFieldECb(this.checked)">
             Représenter le champ
-            <span style="color:#e67e22;font-style:normal;margin-left:2px;">
+            <span class="field-arrow">
               <math><mover><mi>E</mi><mo>&#x2192;</mo></mover></math>
             </span>
           </label>
@@ -320,28 +318,28 @@
         <div class="panel-section">
           <div class="section-title">Vecteurs</div>
           <div class="vec-btn-row">
-            <button class="btn-vec-compact" id="btn-e-vec-pos" onclick="toggleVecPosE()" title="Vecteur position">
-              <span class="btn-vec-compact-dot" style="background:#2a6aaa;"></span>
-              <span class="vec-label" style="color:#2a6aaa;"><math><mover><mi>OM</mi><mo>&#x2192;</mo></mover></math></span>
+            <button class="btn-vec-compact vec-pos" id="btn-e-vec-pos" onclick="toggleVecPosE()" title="Vecteur position">
+              <span class="btn-vec-compact-dot"></span>
+              <span class="vec-label"><math><mover><mi>OM</mi><mo>&#x2192;</mo></mover></math></span>
             </button>
-            <button class="btn-vec-compact active" id="btn-e-vec-vit" onclick="toggleVecVitE()" title="Vecteur vitesse">
-              <span class="btn-vec-compact-dot" style="background:#c03030;"></span>
-              <span class="vec-label" style="color:#c03030;"><math><mover><mi>v</mi><mo>&#x2192;</mo></mover></math></span>
+            <button class="btn-vec-compact vec-vit active" id="btn-e-vec-vit" onclick="toggleVecVitE()" title="Vecteur vitesse">
+              <span class="btn-vec-compact-dot"></span>
+              <span class="vec-label"><math><mover><mi>v</mi><mo>&#x2192;</mo></mover></math></span>
             </button>
-            <button class="btn-vec-compact" id="btn-e-vec-acc" onclick="toggleVecAccE()" title="Vecteur accélération">
-              <span class="btn-vec-compact-dot" style="background:#2a8a50;"></span>
-              <span class="vec-label" style="color:#2a8a50;"><math><mover><mi>a</mi><mo>&#x2192;</mo></mover></math></span>
+            <button class="btn-vec-compact vec-acc" id="btn-e-vec-acc" onclick="toggleVecAccE()" title="Vecteur accélération">
+              <span class="btn-vec-compact-dot"></span>
+              <span class="vec-label"><math><mover><mi>a</mi><mo>&#x2192;</mo></mover></math></span>
             </button>
-            <button class="btn-vec-compact" id="btn-e-vec-forces" onclick="toggleVecForcesE()" title="Force électrique">
-              <span class="btn-vec-compact-dot" style="background:#8e44ad;"></span>
-              <span class="vec-label" style="color:#8e44ad;"><math><mover><msub><mi>F</mi><mi>E</mi></msub><mo>&#x2192;</mo></mover></math></span>
+            <button class="btn-vec-compact vec-forces" id="btn-e-vec-forces" onclick="toggleVecForcesE()" title="Force électrique">
+              <span class="btn-vec-compact-dot"></span>
+              <span class="vec-label"><math><mover><msub><mi>F</mi><mi>E</mi></msub><mo>&#x2192;</mo></mover></math></span>
             </button>
-            <button class="btn-vec-compact" id="btn-e-vec-sumf" onclick="toggleVecSumFE()" title="Somme des forces">
-              <span class="btn-vec-compact-dot" style="background:#8d4e20;"></span>
-              <span class="vec-label" style="color:#8d4e20;"><math><mover><mrow><mi mathvariant="normal">&#x3A3;</mi><mi>F</mi></mrow><mo>&#x2192;</mo></mover></math></span>
+            <button class="btn-vec-compact vec-sumf" id="btn-e-vec-sumf" onclick="toggleVecSumFE()" title="Somme des forces">
+              <span class="btn-vec-compact-dot"></span>
+              <span class="vec-label"><math><mover><mrow><mi mathvariant="normal">&#x3A3;</mi><mi>F</mi></mrow><mo>&#x2192;</mo></mover></math></span>
             </button>
           </div>
-          <label class="pin-coords-label" style="margin-top:7px;">
+          <label class="pin-coords-label">
             <input type="checkbox" id="chk-e-hover-coords" onchange="setHoverShowCoords(this.checked)">
             Afficher les coordonnées des vecteurs cinématiques
           </label>
@@ -361,9 +359,9 @@
             <button class="btn btn-raz"
                     onclick="resetSimAnim()">↺ RAZ</button>
           </div>
-          <button id="btn-save" class="btn btn-save" style="margin-top:6px;"
+          <button id="btn-save" class="btn btn-save"
                   onclick="sauvegarderRun()" disabled>✦ Sauvegarder</button>
-          <div class="param-row" style="margin-top:8px;">
+          <div class="param-row param-row-after-btn">
             <label>
               Vitesse d'animation
               <span class="param-value"><span id="lbl-speed">1,00</span></span>
@@ -392,11 +390,11 @@
         <div class="panel-section">
           <div class="section-title">Trajectoire</div>
           <div class="btn-group">
-            <button class="btn-toggle-one active" id="btn-disp-chrono"
+            <button class="btn btn-toggle-one active" id="btn-disp-chrono"
                     onclick="setDisplayMode('chrono')">Chronophoto.</button>
-            <button class="btn-toggle-one" id="btn-disp-both"
+            <button class="btn btn-toggle-one" id="btn-disp-both"
                     onclick="setDisplayMode('both')">Les deux</button>
-            <button class="btn-toggle-one" id="btn-disp-trajectory"
+            <button class="btn btn-toggle-one" id="btn-disp-trajectory"
                     onclick="setDisplayMode('trajectory')">Trajectoire</button>
           </div>
           <div class="param-row" id="deltat-row" style="display:none;">
@@ -465,13 +463,13 @@
               <input type="range" id="sl-g"
                      min="1" max="20" step="0.1" value="9.81"
                      oninput="onSliderG(this.value)">
-              <span class="slider-tick" style="left:46.4%"></span>
+              <span class="slider-tick tick-g"></span>
             </div>
           </div>
-          <label class="pin-coords-label" style="margin-top:5px;">
+          <label class="pin-coords-label">
             <input type="checkbox" id="chk-field-g" onchange="toggleFieldG(this.checked)">
             Représenter le champ
-            <span style="color:#e67e22;font-style:normal;margin-left:2px;">
+            <span class="field-arrow">
               <math><mover><mi>g</mi><mo>&#x2192;</mo></mover></math>
             </span>
           </label>
@@ -482,14 +480,14 @@
         <!-- FORCES EXTÉRIEURES -->
         <div class="panel-section">
           <div class="section-title">Forces extérieures</div>
-          <button class="btn-toggle-one" id="btn-friction"
+          <button class="btn btn-toggle-one" id="btn-friction"
                   onclick="toggleFriction()">
             Activer les frottements (f = −kv)
           </button>
-          <div style="font-size:clamp(9px,0.85vw,11px);color:#7a8a96;margin-top:4px;line-height:1.4;">
+          <div class="field-hint">
             Modèle linéaire, k = 0,15 N·s/m
           </div>
-          <div class="param-row" style="margin-top:8px;">
+          <div class="param-row">
             <label>
               Vent horizontal
               <span class="param-value"><span id="lbl-wind">0,0</span> N</span>
@@ -498,7 +496,7 @@
               <input type="range" id="sl-wind"
                      min="-5" max="5" step="0.1" value="0"
                      oninput="onSliderWind(this.value)">
-              <span class="slider-tick" style="left:50%"></span>
+              <span class="slider-tick tick-wind"></span>
             </div>
             <div class="wind-labels">
               <span>← gauche</span>
@@ -513,28 +511,28 @@
         <div class="panel-section">
           <div class="section-title">Vecteurs</div>
           <div class="vec-btn-row">
-            <button class="btn-vec-compact" id="btn-vec-pos" onclick="toggleVecPos()" title="Vecteur position">
-              <span class="btn-vec-compact-dot" style="background:#2a6aaa;"></span>
-              <span class="vec-label" style="color:#2a6aaa;"><math><mover><mi>OM</mi><mo>&#x2192;</mo></mover></math></span>
+            <button class="btn-vec-compact vec-pos" id="btn-vec-pos" onclick="toggleVecPos()" title="Vecteur position">
+              <span class="btn-vec-compact-dot"></span>
+              <span class="vec-label"><math><mover><mi>OM</mi><mo>&#x2192;</mo></mover></math></span>
             </button>
-            <button class="btn-vec-compact" id="btn-vec-vit" onclick="toggleVecVit()" title="Vecteur vitesse">
-              <span class="btn-vec-compact-dot" style="background:#c03030;"></span>
-              <span class="vec-label" style="color:#c03030;"><math><mover><mi>v</mi><mo>&#x2192;</mo></mover></math></span>
+            <button class="btn-vec-compact vec-vit" id="btn-vec-vit" onclick="toggleVecVit()" title="Vecteur vitesse">
+              <span class="btn-vec-compact-dot"></span>
+              <span class="vec-label"><math><mover><mi>v</mi><mo>&#x2192;</mo></mover></math></span>
             </button>
-            <button class="btn-vec-compact" id="btn-vec-acc" onclick="toggleVecAcc()" title="Vecteur accélération">
-              <span class="btn-vec-compact-dot" style="background:#2a8a50;"></span>
-              <span class="vec-label" style="color:#2a8a50;"><math><mover><mi>a</mi><mo>&#x2192;</mo></mover></math></span>
+            <button class="btn-vec-compact vec-acc" id="btn-vec-acc" onclick="toggleVecAcc()" title="Vecteur accélération">
+              <span class="btn-vec-compact-dot"></span>
+              <span class="vec-label"><math><mover><mi>a</mi><mo>&#x2192;</mo></mover></math></span>
             </button>
-            <button class="btn-vec-compact" id="btn-vec-forces" onclick="toggleVecForces()" title="Vecteurs des forces">
-              <span class="btn-vec-compact-dot" style="background:#8e44ad;"></span>
-              <span class="vec-label" style="color:#8e44ad;"><math><mover><mi>F</mi><mo>&#x2192;</mo></mover></math></span>
+            <button class="btn-vec-compact vec-forces" id="btn-vec-forces" onclick="toggleVecForces()" title="Vecteurs des forces">
+              <span class="btn-vec-compact-dot"></span>
+              <span class="vec-label"><math><mover><mi>F</mi><mo>&#x2192;</mo></mover></math></span>
             </button>
-            <button class="btn-vec-compact" id="btn-vec-sumf" onclick="toggleVecSumF()" title="Somme des forces">
-              <span class="btn-vec-compact-dot" style="background:#8d4e20;"></span>
-              <span class="vec-label" style="color:#8d4e20;"><math><mover><mrow><mi mathvariant="normal">&#x3A3;</mi><mi>F</mi></mrow><mo>&#x2192;</mo></mover></math></span>
+            <button class="btn-vec-compact vec-sumf" id="btn-vec-sumf" onclick="toggleVecSumF()" title="Somme des forces">
+              <span class="btn-vec-compact-dot"></span>
+              <span class="vec-label"><math><mover><mrow><mi mathvariant="normal">&#x3A3;</mi><mi>F</mi></mrow><mo>&#x2192;</mo></mover></math></span>
             </button>
           </div>
-          <label class="pin-coords-label" style="margin-top:7px;">
+          <label class="pin-coords-label">
             <input type="checkbox" id="chk-hover-coords" onchange="setHoverShowCoords(this.checked)">
             Afficher les coordonnées des vecteurs cinématiques
           </label>

@@ -427,6 +427,29 @@ main {
   cursor: pointer;
   line-height: 1.3;
 }
+/* Case à cocher sous un curseur ou sous la rangée de vecteurs */
+.param-row + .pin-coords-label { margin-top: 5px; }
+.vec-btn-row + .pin-coords-label { margin-top: 7px; }
+/* Flèche du vecteur champ dans le libellé « Représenter le champ » */
+.field-arrow { color: #e67e22; font-style: normal; margin-left: 2px; }
+/* Aide courte sous un champ de saisie ou un bouton */
+.field-hint {
+  font-size: clamp(9px, 0.85vw, 11px);
+  color: #7a8a96;
+  margin-top: 4px;
+  line-height: 1.4;
+}
+.field-hint-italic { font-style: italic; }
+/* Sélecteur de particule (champ électrique) */
+.select-particle {
+  width: 100%;
+  margin-top: 4px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: 1px solid #c8d4dc;
+  background: #f8fbfd;
+  font-size: clamp(10px, 1vw, 13px);
+}
 .pin-coords-label input[type="checkbox"] {
   margin: 0;
   flex-shrink: 0;
@@ -685,14 +708,16 @@ label:focus-visible {
 /* ── Corps scrollable ────────────────────────── */
 #panel-body {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: clamp(7px, 0.9vw, 12px) clamp(7px, 0.9vw, 11px);
+  overflow-x: hidden;   /* pas de barre horizontale au moindre débordement */
+  padding: clamp(8px, 1vw, 14px) clamp(8px, 1vw, 12px);
   display: flex;
   flex-direction: column;
   gap: 0;
 }
 
-.panel-main-section { display: flex; flex-direction: column; }
+.panel-main-section { display: block; }   /* affichée/masquée par le JS (style.display) ; bloc, comme ondes/ */
 
 .panel-section { margin-bottom: 8px; }
 
@@ -708,7 +733,7 @@ label:focus-visible {
 .sep {
   border: none;
   border-top: 1px solid #c8c0b4;
-  margin: 7px 0;
+  margin: 8px 0;
 }
 
 /* ── Boutons ─────────────────────────────────── */
@@ -849,6 +874,12 @@ label:focus-visible {
   opacity: 0.75;
   transition: opacity 0.12s;
 }
+/* Couleur de chaque vecteur (= couleur sur le canvas) : pastille et libellé */
+.vec-pos    .btn-vec-compact-dot { background: #2a6aaa; }  .vec-pos    .vec-label { color: #2a6aaa; }
+.vec-vit    .btn-vec-compact-dot { background: #c03030; }  .vec-vit    .vec-label { color: #c03030; }
+.vec-acc    .btn-vec-compact-dot { background: #2a8a50; }  .vec-acc    .vec-label { color: #2a8a50; }
+.vec-forces .btn-vec-compact-dot { background: #8e44ad; }  .vec-forces .vec-label { color: #8e44ad; }
+.vec-sumf   .btn-vec-compact-dot { background: #8d4e20; }  .vec-sumf   .vec-label { color: #8d4e20; }
 .btn-vec-compact:hover .vec-label { opacity: 1; }
 
 /* ── Paramètres ─────────────────────────────── */
@@ -856,8 +887,10 @@ label:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 3px;
-  margin-bottom: 9px;
+  margin-bottom: 10px;
 }
+/* Curseur placé juste sous des boutons (vitesse sous Lancer/RAZ/Sauvegarder) */
+.param-row-after-btn { margin-top: 8px; }
 
 .param-row label {
   font-size: clamp(11px, 1.1vw, 14px);
@@ -963,6 +996,10 @@ label:focus-visible {
   pointer-events: none;
   border-radius: 1px;
 }
+/* Position des repères = valeur de référence sur la plage du curseur */
+.tick-e-v0 { left: 14.1%; }   /* v₀ = 2,27×10⁷ m/s sur [10 ; 99,9] */
+.tick-g    { left: 46.4%; }   /* g = 9,81 m/s² sur [1 ; 20] */
+.tick-wind { left: 50%; }     /* vent nul sur [−5 ; 5] */
 
 .wind-labels {
   display: flex;
@@ -1169,6 +1206,8 @@ label:focus-visible {
    BOUTON SAUVEGARDER
 ══════════════════════════════════════════════════ */
 
+/* Sauvegarder : sous la rangée Lancer / RAZ */
+.btn-row + .btn-save { margin-top: 6px; }
 #btn-save, #btn-e-save {
   background: #1a5c3a;
   color: #fff;
