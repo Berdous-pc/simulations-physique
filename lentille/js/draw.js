@@ -345,14 +345,19 @@ function draw() {
 const GRID_MIN_PX = 9;
 const GRID_STEPS  = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
 
+// Pas (en cm) des lignes fines du quadrillage à l'échelle courante.
+// Partagé avec la barre d'échelle, qui doit tomber sur ces lignes.
+function gridStepCm() {
+  for (const s of GRID_STEPS) {
+    if (s * sim.scale >= GRID_MIN_PX) return s;
+  }
+  return GRID_STEPS[GRID_STEPS.length - 1];
+}
+
 function drawGrid() {
   const { W, H, scale, lensX, axisY } = sim;
 
-  let stepCm = GRID_STEPS[GRID_STEPS.length - 1];
-  for (const s of GRID_STEPS) {
-    if (s * scale >= GRID_MIN_PX) { stepCm = s; break; }
-  }
-  const minor = stepCm * scale;
+  const minor = gridStepCm() * scale;
 
   ctx.save();
   ctx.lineWidth = 0.5;
@@ -543,22 +548,33 @@ function drawLens() {
   ctx.restore();
 }
 
+/* ── Flèche verticale de A (sur l'axe) à B, pointe exactement en yB ──
+   Le trait de la tête a un joint en pointe (miter) dont le sommet dépasse du
+   sommet géométrique de (lw/2)/sin(demi-angle). On recule donc le sommet de
+   cette longueur : c'est l'extrémité visible de la pointe qui tombe en yB.
+   La tige s'arrête à ce sommet, sinon ses coins carrés déborderaient. */
+function traceArrow(x, yA, yB, halfW, depth) {
+  const dir  = yB < yA ? 1 : -1;   // sens de la tête, de la pointe vers la base
+  const miter = (ctx.lineWidth / 2) * Math.hypot(halfW, depth) / halfW;
+  const tipY = yB + dir * miter;
+  ctx.beginPath(); ctx.moveTo(x, yA); ctx.lineTo(x, tipY); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x - halfW, tipY + dir * depth);
+  ctx.lineTo(x, tipY);
+  ctx.lineTo(x + halfW, tipY + dir * depth);
+  ctx.stroke();
+}
+
 /* ── Objet AB (flèche terracotta, draggable) ── */
 function drawObject() {
   const { OA, h, axisY } = sim;
   const x  = cmToX(OA);
   const yA = axisY;
   const yB = cmToY(h);
-  const arrowDir = h > 0 ? 1 : -1;
 
   ctx.save();
   ctx.strokeStyle = '#c05020'; ctx.lineWidth = fs(3);
-  ctx.beginPath(); ctx.moveTo(x, yA); ctx.lineTo(x, yB); ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(x - fs(8), yB + arrowDir * fs(14));
-  ctx.lineTo(x, yB);
-  ctx.lineTo(x + fs(8), yB + arrowDir * fs(14));
-  ctx.stroke();
+  traceArrow(x, yA, yB, fs(8), fs(14));
   ctx.restore();
 
   // A est sur l'axe : son étiquette est posée par pushAxisPointLabels(),
@@ -583,18 +599,12 @@ function drawImage(alphaVal) {
   const isReal   = OA2 > 0;
   const col      = isReal ? '#2a6aaa' : '#b04020';
   const dash     = isReal ? [] : [5, 4];
-  const arrowDir = h2 >= 0 ? 1 : -1;
 
   ctx.save();
   ctx.globalAlpha = alphaVal;
   ctx.strokeStyle = col; ctx.lineWidth = fs(3);
   ctx.setLineDash(dash.map(d => fs(d)));
-  ctx.beginPath(); ctx.moveTo(x, yA); ctx.lineTo(x, yB); ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(x - fs(7), yB + arrowDir * fs(12));
-  ctx.lineTo(x, yB);
-  ctx.lineTo(x + fs(7), yB + arrowDir * fs(12));
-  ctx.stroke();
+  traceArrow(x, yA, yB, fs(7), fs(12));
   ctx.setLineDash([]);
 
   if (infini) {
@@ -659,20 +669,29 @@ const BAR_MAX_PX  = 170;
 const BAR_STEPS   = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000];
 
 function drawScaleBar() {
-  const { H, scale } = sim;
+  const { H, scale, lensX, axisY } = sim;
 
-  // Plus grande graduation ronde dont la longueur reste sous le plafond.
-  let stepCm = BAR_STEPS[0];
+  // Les extrémités de la barre doivent tomber sur des lignes du quadrillage :
+  // la longueur est donc un multiple du pas du quadrillage (en plus d'être
+  // ronde), et le départ est calé sur une ligne verticale.
+  // On s'aligne sur les grands carreaux (une ligne renforcée sur cinq).
+  const gridCm = gridStepCm() * 5;
+  let stepCm = gridCm;
   for (const s of BAR_STEPS) {
-    if (s * scale <= BAR_MAX_PX) stepCm = s; else break;
+    if (s * scale > BAR_MAX_PX) break;
+    const n = s / gridCm;
+    if (n >= 1 && Math.abs(n - Math.round(n)) < 1e-6) stepCm = s;
   }
   const lenPx = stepCm * scale;
 
-  const x0 = fs(16);
-  const y  = H - fs(20);
+  const gridPx = gridCm * scale;
+  // Première ligne verticale à droite de la marge, ligne horizontale la plus
+  // proche du bas du canvas (au moins 12 px au-dessus du bord).
+  const x0 = lensX + Math.ceil((fs(16) - lensX) / gridPx - 1e-9) * gridPx;
+  const y  = axisY + Math.floor((H - fs(12) - axisY) / gridPx + 1e-9) * gridPx;
   const tickH = fs(6);
 
-  const label = (stepCm < 1 ? stepCm.toFixed(1).replace('.', ',') : String(stepCm)) + ' cm';
+  const label = String(stepCm).replace('.', ',') + ' cm';
 
   ctx.save();
   ctx.strokeStyle = '#7a6a52';
