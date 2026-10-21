@@ -190,7 +190,7 @@ body.compare .atom-nav-btn {
   flex-direction: column;
   gap: clamp(3px, 0.5vh, 6px);
   padding: clamp(6px, 0.8vw, 10px) clamp(8px, 1vw, 12px);
-  margin-top: clamp(6px, 0.8vh, 10px);
+  margin-top: 0;   /* directement sous son titre de section (section Légende) */
   background: #fff;
   border: 1px solid rgba(200,192,180,0.7);
   border-radius: 6px;
