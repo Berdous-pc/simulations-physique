@@ -420,8 +420,10 @@ body.tp-collapsed #tp-toggle::after { transform: rotate(180deg); }
 /* ── Corps scrollable ────────────────────────── */
 #panel-body {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: clamp(7px, 0.9vw, 12px) clamp(7px, 0.9vw, 11px);
+  overflow-x: hidden;   /* pas de barre horizontale au moindre débordement */
+  padding: clamp(8px, 1vw, 14px) clamp(8px, 1vw, 12px);
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -453,7 +455,7 @@ body.tp-collapsed #tp-toggle::after { transform: rotate(180deg); }
 .sep {
   border: none;
   border-top: 1px solid #c8c0b4;
-  margin: 7px 0;
+  margin: 8px 0;
 }
 
 /* ── Boutons ─────────────────────────────────── */
@@ -482,6 +484,14 @@ body.tp-collapsed #tp-toggle::after { transform: rotate(180deg); }
 }
 
 /* ── Boutons de mode (toggle) ────────────────── */
+/* Boutons empilés : l'écart est porté par le conteneur, pas par une marge
+   sur chaque bouton. */
+.btn-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .btn-toggle-one {
   width: 100%;
   background: #ece8e0;

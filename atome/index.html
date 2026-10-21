@@ -193,7 +193,7 @@
       <!-- COMPARAISON -->
       <div class="panel-section">
         <div class="section-title">Comparaison</div>
-        <button class="btn-toggle-one" id="btn-comparer"
+        <button class="btn btn-toggle-one" id="btn-comparer"
                 aria-pressed="false"
                 onclick="toggleCompare()">Comparer</button>
         <label class="cmp-label" for="cmp-select">Comparer avec :</label>
@@ -209,14 +209,14 @@
       <div class="panel-section">
         <div class="section-title">Contrôles</div>
 
-        <button class="btn btn-primary" id="btn-eclater"
-                title="Faire sortir les nucléons un par un pour les compter"
-                onclick="toggleEclate()">Disperser le noyau</button>
-
-        <button class="btn btn-primary" id="btn-charge"
-                style="margin-top:6px;"
-                title="Faire sortir les protons et les électrons pour les compter"
-                onclick="toggleCharge()">Visualiser la charge</button>
+        <div class="btn-stack">
+          <button class="btn btn-primary" id="btn-eclater"
+                  title="Faire sortir les nucléons un par un pour les compter"
+                  onclick="toggleEclate()">Disperser le noyau</button>
+          <button class="btn btn-primary" id="btn-charge"
+                  title="Faire sortir les protons et les électrons pour les compter"
+                  onclick="toggleCharge()">Visualiser la charge</button>
+        </div>
 
         <div class="ion-title">Ioniser</div>
         <div class="ion-row" id="ion-row">
@@ -264,15 +264,15 @@
       <!-- OPTIONS -->
       <div class="panel-section">
         <div class="section-title">Options</div>
-        <button class="btn-toggle-one" id="btn-empty"
-                aria-pressed="false"
-                onclick="toggleEmpty()">Afficher les sous-couches vides</button>
-
-        <button class="btn-toggle-one" id="btn-stable"
-                style="margin-top:6px;"
-                aria-pressed="false"
-                title="Indiquer si la couche de valence est saturée (règle du duet/de l’octet)"
-                onclick="toggleStable()">Afficher la stabilité</button>
+        <div class="btn-stack">
+          <button class="btn btn-toggle-one" id="btn-empty"
+                  aria-pressed="false"
+                  onclick="toggleEmpty()">Afficher les sous-couches vides</button>
+          <button class="btn btn-toggle-one" id="btn-stable"
+                  aria-pressed="false"
+                  title="Indiquer si la couche de valence est saturée (règle du duet/de l’octet)"
+                  onclick="toggleStable()">Afficher la stabilité</button>
+        </div>
 
         <div id="atom-legend">
           <div class="leg-item"><span class="leg-dot leg-neutron"></span>Neutron</div>
