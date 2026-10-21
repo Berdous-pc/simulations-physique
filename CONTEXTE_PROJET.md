@@ -168,7 +168,7 @@ Les pages les plus récentes (`ondes/`, `champ_uniforme/`, `dissolution/`) font 
 
 - **Chaque section est un `<div class="panel-section">`** dont le premier enfant est le `.section-title`. Pas de titre « à plat » directement dans `.panel-main-section` ou `#panel-body`, pas de `<div>` anonyme comme bloc de section.
 - **Séparateur : `<div class="sep"></div>`**, placé entre deux `.panel-section` (pas de `<hr>`). Pas de séparateur avant la première section ni après la dernière.
-- **Blocs affichés/masqués par le JS** (commandes propres à un mode, ex. `#bloc-fusee`, `#ctrl-disque`, `#section-oeil`) : un `<div id="…">` qui enveloppe une ou plusieurs `.panel-section` complètes (et leurs `.sep`). On ne coupe jamais une section en deux avec un tel bloc ; un élément isolé masqué par le JS à l'intérieur d'une section reste possible (`style="display:none"` sur cet élément).
+- **Blocs affichés/masqués par le JS** (commandes propres à un mode, ex. `#bloc-fusee`, `#ctrl-disque`, `#section-oeil`) : un `<div id="…">` qui enveloppe une ou plusieurs `.panel-section` complètes (et leurs `.sep`). On ne coupe jamais une section en deux avec un tel bloc ; un élément isolé masqué par le JS à l'intérieur d'une section reste possible (`style="display:none"` sur cet élément). **Ce bloc est un simple conteneur** : pas de `display: flex`/`grid` ni de `gap` dans son CSS (sinon l'écart s'ajoute entre chaque section et chaque séparateur, cf. `#prin-1d-blocks` d'`interferences/`, qui ajoutait 12px partout). Son affichage est piloté par le JS via `style.display` (`''` / `'none'`).
 - **Espacements portés par le CSS des composants, pas par des `style=` en ligne.** Les marges sont en bas des éléments (`margin-bottom`) ; les conteneurs `#panel-body`, `.panel-main-section` et `.panel-section` sont des blocs sans `gap` (ou `gap: 0`). Seul `style="display:none"` reste toléré en ligne, pour l'état initial d'un élément piloté par le JS.
 - **Plusieurs boutons empilés** : les regrouper dans `.btn-stack` (au lieu de `style="margin-top:6px"` sur chacun). Boutons côte à côte : `.btn-row`.
 - **Tous les boutons portent la classe `btn`** en plus de leur variante (`class="btn btn-toggle-one"`, jamais `btn-toggle-one` seul).
@@ -215,6 +215,8 @@ Les pages les plus récentes (`ondes/`, `champ_uniforme/`, `dissolution/`) font 
 Le reste (onglets, sous-onglets, variantes de boutons, `.param-row`, `.readout`, `.panel-hint`) est détaillé dans les sous-sections suivantes.
 
 **État de l'uniformisation (octobre 2026).** Démarche : une page à la fois, un commit « uniformisation du panneau » (rendu quasi identique) puis un commit « sections repliables ».
+
+**Contrôle obligatoire à chaque page uniformisée — conteneurs intermédiaires.** Ne pas se limiter aux sélecteurs standards (`#panel-body`, `.panel-main-section`, `.panel-section`) : lister **tous** les éléments du panneau qui contiennent une `.panel-section` (blocs propres à un mode, sous-groupes, enveloppes d'onglet : `#prin-1d-blocks`, `#bloc-fusee`, `#zoom-section-3`, `#ctrl-milieux`…), retrouver **toutes** les règles CSS qui les visent (par id, par classe, dans les media queries), et vérifier qu'aucune ne leur donne `display: flex`/`grid` avec un `gap`, ni de `margin`/`padding` qui doublerait l'espacement canonique. Contrôle complémentaire : rechercher dans le CSS de la page toute règle `gap:` non nulle et s'assurer qu'elle ne vise pas un conteneur de sections.
 
 | Page | État | Sections repliables |
 |---|---|---|
