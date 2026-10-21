@@ -236,9 +236,9 @@ Le reste (onglets, sous-onglets, variantes de boutons, `.param-row`, `.readout`,
 | `ondes/` | ✅ terminée | Propriétés du milieu / de la corde, Options, Propriétés de l'onde (×3 onglets) ; boutons « Propriétés de l'onde » remplacés par la section du même nom (événement `sectionrepliee`) |
 | `kepler/` | ✅ terminée | Paramètres de l'ellipse (1ʳᵉ loi), Affichage, Grandeurs, Mesures, Données du système ; Loi des aires (action principale) fixe |
 | `champ_uniforme/` | ✅ terminée | Conditions initiales (sélecteur Armatures intégré, section Armatures supprimée), Forces extérieures (curseur g en tête), Vecteurs (×2 onglets) |
-| `derivee/` | ✅ terminée | Options, Mesures ; Encadrement (action Δt → 0) fixe |
+| `derivee/` | ✅ terminée | Paramètres, Encadrement (**dépliée par défaut**, `data-repliable="ouvert"`), Options, Mesures |
 | `radioactivite/` | ✅ terminée | Paramètres (×2 onglets), Valeurs (bloc `#bloc-valeurs` masqué en mode automatique) |
-| `cinetique/`, `equilibre/` | ✅ terminées | aucune pour l'instant (Paramètres = tout le contenu réglable ; à trancher) |
+| `cinetique/`, `equilibre/` | ✅ terminées | Paramètres, Quantités (nouvelle section : encarts « Quantités actuelles » des sims 1 et 2 sortis de Paramètres ; sur équilibre, avec le bouton « Quantités finales théoriques ») |
 | `titrage/` | ✅ terminée | Options (×2 onglets), Paramètres ; Mode Test sorti d'Options |
 
 **Classes utilitaires apparues pendant l'uniformisation** (à réutiliser plutôt qu'un `style=` en ligne) : `.param-row-speed { margin-top: 8px; margin-bottom: 0; }` pour le curseur de vitesse placé sous les boutons Lancer/Pause/RAZ ; `.param-row-after-btn { margin-top: 8px; }` pour un curseur placé juste sous un bouton ; `.progress-msg` pour un message texte sous des boutons d'action (`reaction/`) ; `.input-hint-after-btn { margin-top: 6px; }` pour une aide sous un bouton ; `.legend-swatch` + modificateurs `.sw-…` pour les échantillons de couleur d'une légende (`lentille/`), `.cr-…` pour ceux des cases à cocher (`refraction/`) ; `.overline` pour une grandeur algébrique surlignée.
@@ -277,7 +277,7 @@ Le reste (onglets, sous-onglets, variantes de boutons, `.param-row`, `.readout`,
 
 But : alléger le panneau de droite. Un titre de section peut porter un petit chevron qui masque/affiche les commandes de la section. **Pliées par défaut.**
 
-**Quelles sections ?** Seulement celles qui regroupent plusieurs commandes secondaires (typiquement « Options », « Paramètres »). **Ne pas** rendre repliable : une section à un seul élément (ex. slider « Vitesse d'animation », select « Réaction »), ni celles qui contiennent les boutons importants (Contrôles, Animation, Actions : Lancer / Pause / RAZ…), ni « Mode Test ». Chaque titre concerné est marqué à la main par l'attribut `data-repliable` ; les autres titres restent inchangés.
+**Quelles sections ?** Seulement celles qui regroupent plusieurs commandes secondaires (typiquement « Options », « Paramètres »). **Ne pas** rendre repliable : une section à un seul élément (ex. slider « Vitesse d'animation », select « Réaction »), ni celles qui contiennent les boutons importants (Contrôles, Animation, Actions : Lancer / Pause / RAZ…), ni « Mode Test ». Chaque titre concerné est marqué à la main par l'attribut `data-repliable` ; les autres titres restent inchangés. **Section importante mais volumineuse** (ex. Encadrement de `derivee/`, qui porte l'action Δt → 0) : on peut la rendre repliable en la laissant **dépliée au chargement** avec `data-repliable="ouvert"`.
 
 **Fonctionnement.** Le HTML du panneau n'est pas restructuré : au chargement, `js/sections-repliables.js` regroupe tout ce qui suit chaque `.section-title[data-repliable]` dans son `.panel-section` (structure canonique : le titre est le 1er enfant du bloc, donc tout le reste du bloc) dans un `<div class="section-body">`, ajoute un `<button class="section-toggle">` dans le titre, puis plie la section. Un clic sur le titre ou sur le chevron bascule. Les `id` des éléments déplacés sont conservés, donc le JS existant de la page n'est pas affecté.
 
@@ -298,7 +298,7 @@ L'écouteur doit être posé **avant** le chargement de `sections-repliables.js`
 
 **Implémentation sur une page** (après uniformisation du panneau) :
 
-1. Marquer les titres : `<div class="section-title" data-repliable>Options</div>`
+1. Marquer les titres : `<div class="section-title" data-repliable>Options</div>` — ou `data-repliable="ouvert"` pour une section dépliée au chargement.
 2. Copier `titrage/js/sections-repliables.js` dans le `js/` de la page et le charger **après** le script principal (`ui.js`/`main.js`…) : `<script src="js/sections-repliables.js"></script>`
 3. Ajouter ce CSS à la suite de `.section-title` / `.sep` :
 
