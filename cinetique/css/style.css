@@ -416,6 +416,10 @@ label.check-row {
   padding-top: 7px;
   margin-bottom: 6px;
 }
+/* Sous-titre placé juste sous le titre de section (section Quantités) : pas de filet
+   supplémentaire sous le titre (la section repliable enveloppe son contenu dans .section-body) */
+.section-title + .sim-group-title,
+.section-body > .sim-group-title:first-child { border-top: none; padding-top: 0; }
 
 /* ── Afficheurs valeur ───────────────────────────── */
 .readout {

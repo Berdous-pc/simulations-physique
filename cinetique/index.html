@@ -95,7 +95,7 @@
 
       <!-- ── Paramètres ─────────────────────────── -->
       <div class="panel-section">
-        <div class="section-title">Paramètres</div>
+        <div class="section-title" data-repliable>Paramètres</div>
 
         <!-- Nombre de simulations affichées (1 ou 2) -->
         <div class="param-row">
@@ -154,30 +154,6 @@
           </label>
         </div>
 
-        <div class="readout">
-          <div class="ro-label">Quantités actuelles</div>
-          <!-- Couleurs des pastilles A/B/C/D appliquées par ui.js depuis
-               SPECIES_COLORS (source unique, cf. js/sim.js) -->
-          <div class="ro-chocs-grid">
-            <div class="ro-choc-item">
-              <span class="ro-choc-label" id="ro-lbl-A-1">A</span>
-              <span class="ro-choc-val" id="ro-A-1">50</span>
-            </div>
-            <div class="ro-choc-item">
-              <span class="ro-choc-label" id="ro-lbl-B-1">B</span>
-              <span class="ro-choc-val" id="ro-B-1">50</span>
-            </div>
-            <div class="ro-choc-item">
-              <span class="ro-choc-label" id="ro-lbl-C-1">C</span>
-              <span class="ro-choc-val" id="ro-C-1">0</span>
-            </div>
-            <div class="ro-choc-item">
-              <span class="ro-choc-label" id="ro-lbl-D-1">D</span>
-              <span class="ro-choc-val" id="ro-D-1">0</span>
-            </div>
-          </div>
-        </div>
-
         <!-- ── Réglages de la simulation 2 (mode 2 simulations) ── -->
         <div class="duo-only">
           <div class="sim-group-title">Simulation 2</div>
@@ -218,7 +194,43 @@
               Afficher le rayon d'action
             </label>
           </div>
+        </div>
 
+      </div><!-- fin Paramètres -->
+
+      <div class="sep"></div>
+
+      <!-- ── Quantités ───────────────────────────── -->
+      <div class="panel-section">
+        <div class="section-title" data-repliable>Quantités</div>
+
+        <div class="sim-group-title duo-only">Simulation 1</div>
+        <div class="readout">
+          <div class="ro-label">Quantités actuelles</div>
+          <!-- Couleurs des pastilles A/B/C/D appliquées par ui.js depuis
+               SPECIES_COLORS (source unique, cf. js/sim.js) -->
+          <div class="ro-chocs-grid">
+            <div class="ro-choc-item">
+              <span class="ro-choc-label" id="ro-lbl-A-1">A</span>
+              <span class="ro-choc-val" id="ro-A-1">50</span>
+            </div>
+            <div class="ro-choc-item">
+              <span class="ro-choc-label" id="ro-lbl-B-1">B</span>
+              <span class="ro-choc-val" id="ro-B-1">50</span>
+            </div>
+            <div class="ro-choc-item">
+              <span class="ro-choc-label" id="ro-lbl-C-1">C</span>
+              <span class="ro-choc-val" id="ro-C-1">0</span>
+            </div>
+            <div class="ro-choc-item">
+              <span class="ro-choc-label" id="ro-lbl-D-1">D</span>
+              <span class="ro-choc-val" id="ro-D-1">0</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="duo-only">
+          <div class="sim-group-title">Simulation 2</div>
           <div class="readout">
             <div class="ro-label">Quantités actuelles</div>
             <div class="ro-chocs-grid">
@@ -241,8 +253,7 @@
             </div>
           </div>
         </div>
-
-      </div><!-- fin Paramètres -->
+      </div><!-- fin Quantités -->
 
     </div><!-- fin #panel-body -->
 
