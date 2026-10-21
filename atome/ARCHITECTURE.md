@@ -21,7 +21,8 @@ atome/
     ├── sim.js       ← données (ELEMENTS, SUBSHELLS) + état global (chargé en premier)
     ├── draw.js      ← rendu canvas du schéma de l'atome
     ├── ui.js        ← tableau périodique cliquable, panneau, resize, init
-    └── test.js      ← mode test (quiz) — chargé en dernier
+    ├── test.js      ← mode test (quiz)
+    └── sections-repliables.js ← copie de titrage/, sections du panneau repliables (chargé en dernier)
 ```
 
 Scope global (pas de modules ES) — l'ordre de chargement `sim → draw → ui → test`
