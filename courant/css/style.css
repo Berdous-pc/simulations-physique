@@ -145,9 +145,7 @@ main {
   overflow-y: auto;
   overflow-x: hidden;   /* pas de barre horizontale au moindre débordement */
   padding: clamp(8px, 1vw, 14px) clamp(8px, 1vw, 12px);
-  display: flex;
-  flex-direction: column;
-  gap: 0;
+  display: block;   /* bloc (pas flex) : les marges des sections et des .sep fusionnent comme dans les pages à onglets — même espacement partout */
 }
 
 /* ── Titre du panneau ────────────────────────────── */

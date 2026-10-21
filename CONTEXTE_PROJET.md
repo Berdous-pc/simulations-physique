@@ -170,6 +170,7 @@ Les pages les plus récentes (`ondes/`, `champ_uniforme/`, `dissolution/`) font 
 - **Séparateur : `<div class="sep"></div>`**, placé entre deux `.panel-section` (pas de `<hr>`). Pas de séparateur avant la première section ni après la dernière.
 - **Blocs affichés/masqués par le JS** (commandes propres à un mode, ex. `#bloc-fusee`, `#ctrl-disque`, `#section-oeil`) : un `<div id="…">` qui enveloppe une ou plusieurs `.panel-section` complètes (et leurs `.sep`). On ne coupe jamais une section en deux avec un tel bloc ; un élément isolé masqué par le JS à l'intérieur d'une section reste possible (`style="display:none"` sur cet élément). **Ce bloc est un simple conteneur** : pas de `display: flex`/`grid` ni de `gap` dans son CSS (sinon l'écart s'ajoute entre chaque section et chaque séparateur, cf. `#prin-1d-blocks` d'`interferences/`, qui ajoutait 12px partout). Son affichage est piloté par le JS via `style.display` (`''` / `'none'`).
 - **Espacements portés par le CSS des composants, pas par des `style=` en ligne.** Les marges sont en bas des éléments (`margin-bottom`) ; les conteneurs `#panel-body`, `.panel-main-section` et `.panel-section` sont des blocs sans `gap` (ou `gap: 0`). Seul `style="display:none"` reste toléré en ligne, pour l'état initial d'un élément piloté par le JS.
+- **Conteneurs en bloc, jamais en flex** : `#panel-body` (pages sans onglets), `.panel-main-section` (pages à onglets) et les blocs intermédiaires sont en `display: block`. En flex, les marges ne fusionnent pas (marge basse de la section + marge haute du `.sep` s'additionnent, la marge du dernier `.param-row` reste dans la section) : on obtenait ~35 px entre deux sections sur les pages sans onglets contre ~19 px sur les pages à onglets. En bloc, tout fusionne et l'espacement est identique partout. (`#panel-body` des pages à onglets peut rester flex : son seul enfant visible est la `.panel-main-section`, elle-même en bloc.)
 - **Plusieurs boutons empilés** : les regrouper dans `.btn-stack` (au lieu de `style="margin-top:6px"` sur chacun). Boutons côte à côte : `.btn-row`.
 - **Tous les boutons portent la classe `btn`** en plus de leur variante (`class="btn btn-toggle-one"`, jamais `btn-toggle-one` seul).
 - **`.panel-title`** : présent uniquement sur les pages sans onglets principaux (les onglets tiennent lieu de titre).
@@ -189,7 +190,7 @@ Les pages les plus récentes (`ondes/`, `champ_uniforme/`, `dissolution/`) font 
 #panel-body {
   flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden;
   padding: clamp(8px, 1vw, 14px) clamp(8px, 1vw, 12px);
-  display: flex; flex-direction: column; gap: 0;
+  display: block;   /* PAS flex : voir « Conteneurs en bloc » dans les règles */
 }
 .panel-title {                      /* pages sans onglets uniquement */
   font-size: clamp(14px, 1.4vw, 17px); font-weight: 700; color: #2c3e50;
