@@ -214,7 +214,22 @@ Les pages les plus récentes (`ondes/`, `champ_uniforme/`, `dissolution/`) font 
 
 Le reste (onglets, sous-onglets, variantes de boutons, `.param-row`, `.readout`, `.panel-hint`) est détaillé dans les sous-sections suivantes.
 
-**État de l'uniformisation (octobre 2026).** Déjà conformes, à quelques `style=` en ligne et classes de boutons près : `ondes/`, `champ_uniforme/`, `dissolution/`, `kepler/`, `pression/`, `atome/`, `cinematique/`, `cinetique/`, `condensateur/`, `courant/`, `derivee/`, `equilibre/`, `refraction/`. À restructurer : `titrage/`, `reaction/`, `radioactivite/` (titres à plat, `<hr class="sep">`, `gap: 10px`, boutons en px fixes sur titrage) ; `lentille/`, `lunette/`, `diffraction/`, `interferences/` (sections en `<div>` anonymes sans séparateur, titre souligné et `gap: 14px` sur lentille/lunette). Démarche : une page à la fois, un commit « uniformisation du panneau » (rendu quasi identique) puis un commit « sections repliables ». **Pages terminées (uniformisées + repliables) :** `pression/` (Paramètres repliable, curseur de pesanteur intégré, section Options supprimée).
+**État de l'uniformisation (octobre 2026).** Démarche : une page à la fois, un commit « uniformisation du panneau » (rendu quasi identique) puis un commit « sections repliables ».
+
+| Page | État | Sections repliables |
+|---|---|---|
+| `pression/` | ✅ terminée | Paramètres (curseur de pesanteur intégré, section Options supprimée) |
+| `condensateur/` | ✅ terminée | Paramètres (Options : un seul bouton ; Valeurs instantanées : fixe) |
+| `courant/` | ✅ terminée | Options (Circuit contient le bouton principal ; le bouton de Mesures agit aussi sur le canvas) |
+| `atome/` | ✅ terminée | Options |
+| `cinematique/` | ✅ terminée | aucune (Piste et Graphes : une seule commande ; Voitures : contenu principal) |
+| `dissolution/` | ✅ terminée | aucune (une seule commande par section) |
+| `reaction/` | ✅ terminée | Options (×2 onglets), Mode Test sorti dans sa propre section |
+| `ondes/`, `champ_uniforme/`, `kepler/`, `cinetique/`, `derivee/`, `equilibre/`, `refraction/` | déjà proches du modèle (`style=` en ligne, classes de boutons à reprendre) | à faire |
+| `titrage/`, `radioactivite/` | à restructurer (titres à plat, `<hr class="sep">`, `gap: 10px`, boutons en px fixes sur titrage) | titrage : déjà fait (Options, Paramètres) |
+| `lentille/`, `lunette/`, `diffraction/`, `interferences/` | à restructurer (sections en `<div>` anonymes sans séparateur, titre souligné et `gap: 14px` sur lentille/lunette) | à faire |
+
+**Classes utilitaires apparues pendant l'uniformisation** (à réutiliser plutôt qu'un `style=` en ligne) : `.param-row-speed { margin-top: 8px; margin-bottom: 0; }` pour le curseur de vitesse placé sous les boutons Lancer/Pause/RAZ ; `.param-row-after-btn { margin-top: 8px; }` pour un curseur placé juste sous un bouton ; `.progress-msg` pour un message texte sous des boutons d'action (`reaction/`).
 
 ### Onglets principaux (`.panel-main-tab`)
 
