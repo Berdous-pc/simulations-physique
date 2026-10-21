@@ -430,54 +430,74 @@
       <!-- ═══ Section Principe ═══ -->
       <div class="panel-main-section visible" id="section-principe">
 
-        <div class="section-title">Réaction de titrage</div>
-        <select class="reaction-select" id="sel-reaction" onchange="onReactionChange(this.value)"></select>
-
-        <hr class="sep">
-
-        <div class="section-title">Vitesse d'animation</div>
-        <div class="speed-slider-wrap">
-          <input type="range" id="speed-slider" min="0" max="3" step="1" value="0" class="speed-slider">
-          <div class="speed-labels" id="speed-labels">
-            <span>×1</span><span>×2</span><span>×3</span><span>Instantané</span>
-          </div>
+        <div class="panel-section">
+          <div class="section-title">Réaction de titrage</div>
+          <select class="reaction-select" id="sel-reaction" onchange="onReactionChange(this.value)"></select>
         </div>
 
-        <hr class="sep">
+        <div class="sep"></div>
 
-        <div class="section-title">Quantité de solution titrée</div>
-        <div id="qty-titre-wrap" style="position:relative; width:100%;">
-          <div class="qty-panel-widget">
-            <span class="qty-panel-label" id="qty-panel-lbl">nᵢ(B) =</span>
-            <div class="qty-panel-row">
-              <button class="qty-cell-btn" id="btn-qty-moins" onclick="changeQteTitre(-1)">−</button>
-              <input type="text" inputmode="numeric" class="qty-cell-input" id="qty-titre-val" value="10">
-              <button class="qty-cell-btn" id="btn-qty-plus" onclick="changeQteTitre(+1)">+</button>
-              <span class="qty-cell-unit">mol</span>
+        <div class="panel-section">
+          <div class="section-title">Vitesse d'animation</div>
+          <div class="speed-slider-wrap">
+            <input type="range" id="speed-slider" min="0" max="3" step="1" value="0" class="speed-slider">
+            <div class="speed-labels" id="speed-labels">
+              <span>×1</span><span>×2</span><span>×3</span><span>Instantané</span>
             </div>
           </div>
-          <div id="qty-mask" style="display:none;"></div>
         </div>
-        <button class="btn btn-toggle-one" onclick="randomQteTitre()">Valeur aléatoire</button>
 
-        <hr class="sep">
+        <div class="sep"></div>
 
-        <div class="section-title">Actions</div>
-        <button class="btn btn-primary" id="btn-avancer" onclick="avancerStep()">Augmenter l'avancement de 1 mol</button>
-        <button class="btn btn-raz" id="btn-raz" onclick="razPrincipe()">RAZ</button>
-
-        <hr class="sep">
-
-        <div class="section-title" data-repliable>Options</div>
-        <button class="btn btn-toggle-one" id="btn-prediction" onclick="togglePrediction()">Cacher la quantité d'espèce titrée</button>
-        <div id="cmp-btn-wrap" style="position:relative;">
-          <button class="btn btn-toggle-one" id="btn-comparaison" onclick="cycleComparaison()">
-            Comparaison<br><span id="btn-comparaison-label">Non</span>
-          </button>
-          <div id="cmp-mask" style="display:none;"></div>
+        <div class="panel-section">
+          <div class="section-title">Quantité de solution titrée</div>
+          <div id="qty-titre-wrap">
+            <div class="qty-panel-widget">
+              <span class="qty-panel-label" id="qty-panel-lbl">nᵢ(B) =</span>
+              <div class="qty-panel-row">
+                <button class="qty-cell-btn" id="btn-qty-moins" onclick="changeQteTitre(-1)">−</button>
+                <input type="text" inputmode="numeric" class="qty-cell-input" id="qty-titre-val" value="10">
+                <button class="qty-cell-btn" id="btn-qty-plus" onclick="changeQteTitre(+1)">+</button>
+                <span class="qty-cell-unit">mol</span>
+              </div>
+            </div>
+            <div id="qty-mask" style="display:none;"></div>
+          </div>
+          <button class="btn btn-toggle-one" onclick="randomQteTitre()">Valeur aléatoire</button>
         </div>
-        <button class="btn btn-toggle-one" id="btn-show-one" onclick="toggleShowCoeffOne()">Afficher les coefficients 1</button>
-        <button class="btn btn-test-mode" id="btn-test-mode" onclick="ouvrirConfirmTest()">&#9881; Mode Test</button>
+
+        <div class="sep"></div>
+
+        <div class="panel-section">
+          <div class="section-title">Actions</div>
+          <div class="btn-stack">
+            <button class="btn btn-primary" id="btn-avancer" onclick="avancerStep()">Augmenter l'avancement de 1 mol</button>
+            <button class="btn btn-raz" id="btn-raz" onclick="razPrincipe()">RAZ</button>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="panel-section">
+          <div class="section-title" data-repliable>Options</div>
+          <div class="btn-stack">
+            <button class="btn btn-toggle-one" id="btn-prediction" onclick="togglePrediction()">Cacher la quantité d'espèce titrée</button>
+            <div id="cmp-btn-wrap">
+              <button class="btn btn-toggle-one" id="btn-comparaison" onclick="cycleComparaison()">
+                Comparaison<br><span id="btn-comparaison-label">Non</span>
+              </button>
+              <div id="cmp-mask" style="display:none;"></div>
+            </div>
+            <button class="btn btn-toggle-one" id="btn-show-one" onclick="toggleShowCoeffOne()">Afficher les coefficients 1</button>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <!-- Mode Test : section sans titre, jamais repliable -->
+        <div class="panel-section">
+          <button class="btn btn-test-mode" id="btn-test-mode" onclick="ouvrirConfirmTest()">&#9881; Mode Test</button>
+        </div>
 
       </div>
 
@@ -485,59 +505,43 @@
       <div class="panel-main-section" id="section-titrage">
 
         <!-- ── 1. Choix du titrage ── -->
-        <div class="section-title">Choix du titrage</div>
+        <div class="panel-section">
+          <div class="section-title">Choix du titrage</div>
 
-        <div class="param-row">
-          <label for="sel-type-titrage">Type de titrage</label>
-          <select id="sel-type-titrage" class="titrage-select">
-            <option value="colorimetrique" selected>Colorimétrique</option>
-            <option value="phmetrique">pH-métrique</option>
-            <option value="conductimetrique">Conductimétrique</option>
-          </select>
-        </div>
-
-        <div class="param-row">
-          <label for="sel-rxn-titrage">Solution titrée</label>
-          <select id="sel-rxn-titrage" class="titrage-select" onchange="onTitrageRxnChange(this.value)"></select>
-        </div>
-
-        <div class="param-row">
-          <label>Solution titrante</label>
-          <span id="titrant-label">—</span>
-        </div>
-
-        <hr class="sep">
-
-        <!-- ── 2. Paramètres du titrage ── -->
-        <div class="section-title" data-repliable>Paramètres</div>
-
-        <!-- Concentration titrante -->
-        <div class="param-row">
-          <label>C<sub>titrante</sub> (mol/L)</label>
-          <div class="conc-row">
-            <span class="conc-prefix">C =</span>
-              <input type="number" id="conc-titrante-mantisse" class="conc-mantisse" min="1" max="9.9" step="0.1" value="2.00">
-            <span class="conc-times">× 10</span>
-            <select id="conc-titrante-exp" class="conc-exp-sel">
-              <option value="-1">⁻¹</option>
-              <option value="-2" selected>⁻²</option>
-              <option value="-3">⁻³</option>
-              <option value="-4">⁻⁴</option>
-              <option value="-5">⁻⁵</option>
+          <div class="param-row">
+            <label for="sel-type-titrage">Type de titrage</label>
+            <select id="sel-type-titrage" class="titrage-select">
+              <option value="colorimetrique" selected>Colorimétrique</option>
+              <option value="phmetrique">pH-métrique</option>
+              <option value="conductimetrique">Conductimétrique</option>
             </select>
-            <span class="conc-unit">mol/L</span>
+          </div>
+
+          <div class="param-row">
+            <label for="sel-rxn-titrage">Solution titrée</label>
+            <select id="sel-rxn-titrage" class="titrage-select" onchange="onTitrageRxnChange(this.value)"></select>
+          </div>
+
+          <div class="param-row">
+            <label>Solution titrante</label>
+            <span id="titrant-label">—</span>
           </div>
         </div>
 
-        <!-- Concentration titrée -->
-        <div class="param-row" id="conc-titre-row">
-          <div id="conc-titre-maskable" style="position:relative;">
-            <label>C<sub>titrée</sub> (mol/L)</label>
+        <div class="sep"></div>
+
+        <!-- ── 2. Paramètres du titrage ── -->
+        <div class="panel-section">
+          <div class="section-title" data-repliable>Paramètres</div>
+
+          <!-- Concentration titrante -->
+          <div class="param-row">
+            <label>C<sub>titrante</sub> (mol/L)</label>
             <div class="conc-row">
               <span class="conc-prefix">C =</span>
-              <input type="number" id="conc-titre-mantisse" class="conc-mantisse" min="1" max="9.9" step="0.1" value="1.00">
+                <input type="number" id="conc-titrante-mantisse" class="conc-mantisse" min="1" max="9.9" step="0.1" value="2.00">
               <span class="conc-times">× 10</span>
-              <select id="conc-titre-exp" class="conc-exp-sel">
+              <select id="conc-titrante-exp" class="conc-exp-sel">
                 <option value="-1">⁻¹</option>
                 <option value="-2" selected>⁻²</option>
                 <option value="-3">⁻³</option>
@@ -546,62 +550,89 @@
               </select>
               <span class="conc-unit">mol/L</span>
             </div>
-            <div id="titrage-conc-mask" style="display:none;"></div>
           </div>
-          <button class="btn btn-toggle-one" id="btn-alea-titre" onclick="titrageConcAlea()">Valeur aléatoire</button>
+
+          <!-- Concentration titrée -->
+          <div class="param-row" id="conc-titre-row">
+            <div id="conc-titre-maskable">
+              <label>C<sub>titrée</sub> (mol/L)</label>
+              <div class="conc-row">
+                <span class="conc-prefix">C =</span>
+                <input type="number" id="conc-titre-mantisse" class="conc-mantisse" min="1" max="9.9" step="0.1" value="1.00">
+                <span class="conc-times">× 10</span>
+                <select id="conc-titre-exp" class="conc-exp-sel">
+                  <option value="-1">⁻¹</option>
+                  <option value="-2" selected>⁻²</option>
+                  <option value="-3">⁻³</option>
+                  <option value="-4">⁻⁴</option>
+                  <option value="-5">⁻⁵</option>
+                </select>
+                <span class="conc-unit">mol/L</span>
+              </div>
+              <div id="titrage-conc-mask" style="display:none;"></div>
+            </div>
+            <button class="btn btn-toggle-one" id="btn-alea-titre" onclick="titrageConcAlea()">Valeur aléatoire</button>
+          </div>
+
+          <!-- Volumes -->
+          <div class="param-row">
+            <label for="sel-v1">V<sub>1</sub> — solution titrée</label>
+            <select id="sel-v1" class="titrage-select">
+              <option value="5">5,00 mL</option>
+              <option value="10">10,0 mL</option>
+              <option value="20" selected>20,0 mL</option>
+              <option value="25">25,0 mL</option>
+              <option value="50">50,0 mL</option>
+            </select>
+          </div>
+
+          <div class="param-row">
+            <label for="sel-veau">V<sub>eau</sub> — eau distillée</label>
+            <select id="sel-veau" class="titrage-select">
+              <option value="0" selected>0 mL</option>
+              <option value="10">10 mL</option>
+              <option value="20">20 mL</option>
+              <option value="50">50 mL</option>
+              <option value="100">100 mL</option>
+              <option value="250">250 mL</option>
+            </select>
+          </div>
+          <div class="param-row becher-indicator-row">
+            <span id="becher-indicator" class="becher-indicator">Bécher utilisé : 100 mL</span>
+          </div>
         </div>
 
-        <!-- Volumes -->
-        <div class="param-row">
-          <label for="sel-v1">V<sub>1</sub> — solution titrée</label>
-          <select id="sel-v1" class="titrage-select">
-            <option value="5">5,00 mL</option>
-            <option value="10">10,0 mL</option>
-            <option value="20" selected>20,0 mL</option>
-            <option value="25">25,0 mL</option>
-            <option value="50">50,0 mL</option>
-          </select>
-        </div>
-
-        <div class="param-row">
-          <label for="sel-veau">V<sub>eau</sub> — eau distillée</label>
-          <select id="sel-veau" class="titrage-select">
-            <option value="0" selected>0 mL</option>
-            <option value="10">10 mL</option>
-            <option value="20">20 mL</option>
-            <option value="50">50 mL</option>
-            <option value="100">100 mL</option>
-            <option value="250">250 mL</option>
-          </select>
-        </div>
-        <div class="param-row becher-indicator-row">
-          <span id="becher-indicator" class="becher-indicator">Bécher utilisé : 100 mL</span>
-        </div>
-
-        <hr class="sep">
+        <div class="sep"></div>
 
         <!-- ── 3. Options ── -->
-        <div class="section-title" data-repliable>Options</div>
-        <!-- Pas d'acquisition : visible uniquement en pH-métrique / conductimétrique
-             (géré par JS via #row-pas-acquisition.style.display) -->
-        <div class="param-row" id="row-pas-acquisition" style="display:none;">
-          <label for="sel-pas-acquisition">Pas d'acquisition</label>
-          <select id="sel-pas-acquisition" class="titrage-select" onchange="onPasAcquisitionChange(this.value)">
-            <option value="0.1">0,1 mL</option>
-            <option value="0.5">0,5 mL</option>
-            <option value="1.0" selected>1,0 mL</option>
-            <option value="2.0">2,0 mL</option>
-          </select>
+        <div class="panel-section">
+          <div class="section-title" data-repliable>Options</div>
+          <!-- Pas d'acquisition : visible uniquement en pH-métrique / conductimétrique
+               (géré par JS via #row-pas-acquisition.style.display) -->
+          <div class="param-row" id="row-pas-acquisition" style="display:none;">
+            <label for="sel-pas-acquisition">Pas d'acquisition</label>
+            <select id="sel-pas-acquisition" class="titrage-select" onchange="onPasAcquisitionChange(this.value)">
+              <option value="0.1">0,1 mL</option>
+              <option value="0.5">0,5 mL</option>
+              <option value="1.0" selected>1,0 mL</option>
+              <option value="2.0">2,0 mL</option>
+            </select>
+          </div>
+          <div class="btn-stack">
+            <button class="btn btn-toggle-one" id="btn-toggle-graph-n" onclick="toggleGraphN()">Afficher les quantités de matière</button>
+            <button class="btn btn-toggle-one active" id="btn-toggle-graph-ph" onclick="toggleGraphPH()" style="display:none;">Afficher l'évolution du pH</button>
+            <button class="btn btn-toggle-one" id="btn-zoom-becher" onclick="toggleZoomBecher()">Zoom bécher</button>
+            <button class="btn btn-toggle-one" id="btn-toggle-especes" onclick="toggleEspeces()">Représenter les espèces chimiques</button>
+            <button class="btn btn-toggle-one" id="btn-cacher-titre" onclick="toggleCacherTitreTitrage()">Cacher la concentration de la solution titrée</button>
+          </div>
         </div>
-        <button class="btn btn-toggle-one" id="btn-toggle-graph-n" onclick="toggleGraphN()">Afficher les quantités de matière</button>
-        <button class="btn btn-toggle-one active" id="btn-toggle-graph-ph" onclick="toggleGraphPH()" style="display:none;">Afficher l'évolution du pH</button>
-        <button class="btn btn-toggle-one" id="btn-zoom-becher" onclick="toggleZoomBecher()">Zoom bécher</button>
-        <button class="btn btn-toggle-one" id="btn-toggle-especes" onclick="toggleEspeces()">Représenter les espèces chimiques</button>
-        <button class="btn btn-toggle-one" id="btn-cacher-titre" onclick="toggleCacherTitreTitrage()">Cacher la concentration de la solution titrée</button>
 
-        <hr class="sep">
+        <div class="sep"></div>
 
-        <button class="btn btn-test-mode" id="btn-test-titrage" onclick="ouvrirModalTestTitrage()">&#9881; Mode Test</button>
+        <!-- Mode Test : section sans titre, jamais repliable -->
+        <div class="panel-section">
+          <button class="btn btn-test-mode" id="btn-test-titrage" onclick="ouvrirModalTestTitrage()">&#9881; Mode Test</button>
+        </div>
 
       </div>
 

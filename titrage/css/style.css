@@ -266,13 +266,14 @@ main {
      auto (règle CSS overflow) : le moindre contenu trop large ouvrait une
      barre horizontale, comportement qu'aucune autre page n'a. En hidden le
      clipping est le même, sans la barre. */
-  flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 14px;
-  display: flex; flex-direction: column; gap: 10px;
+  flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden;
+  padding: clamp(8px, 1vw, 14px) clamp(8px, 1vw, 12px);
+  display: flex; flex-direction: column; gap: 0;
   border: 1.5px solid #b0a898; border-top: none; background: #e8e4de;
 }
 .panel-main-tabs { display: flex; flex-shrink: 0; }
 .panel-main-tab {
-  flex: 1; padding: 9px 4px; font-size: 17px; font-weight: 700; cursor: pointer;
+  flex: 1; padding: 9px 4px; font-size: clamp(12px, 1.2vw, 15px); font-weight: 700; cursor: pointer;
   border: 1.5px solid transparent; border-bottom: none;
   background: #d4d0c8; color: #8a9aaa; text-align: center;
   transition: background 0.12s, color 0.12s;
@@ -284,17 +285,21 @@ main {
   border-color: #b0a898; border-bottom: 1.5px solid #e8e4de;
   position: relative; z-index: 1; margin-bottom: -1.5px;
 }
-.panel-main-section { display: none; flex-direction: column; gap: 10px; }
-.panel-main-section.visible { display: flex; }
-.section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #7a8a96; }
-.sep { border: none; border-top: 1px solid #c8c0b4; margin: 2px 0; }
+.panel-main-section { display: none; }
+.panel-main-section.visible { display: block; }
+.panel-section { margin-bottom: 8px; }
+.section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #7a8a96; margin-bottom: 7px; }
+.sep { border: none; border-top: 1px solid #c8c0b4; margin: 8px 0; }
+/* Boutons empilés : l'écart est porté par le conteneur */
+.btn-stack { display: flex; flex-direction: column; gap: 6px; }
 
-/* Sections repliables du panneau (test) : titre inchangé + petit chevron discret */
+/* Sections repliables du panneau : titre inchangé + petit chevron discret */
 .section-title[data-repliable] {
   display: flex; align-items: center; justify-content: space-between;
   cursor: pointer; user-select: none;
 }
 .section-title[data-repliable]:hover { color: #2a6aaa; }
+.section-title.section-repliee { margin-bottom: 0; }   /* pas de vide sous un titre plié */
 .section-toggle {
   flex: none; width: 18px; height: 18px; padding: 0; cursor: pointer;
   border: none; background: transparent; position: relative;
@@ -307,7 +312,6 @@ main {
 }
 .section-title[data-repliable]:hover .section-toggle::before { color: #2a6aaa; }
 .section-toggle[aria-expanded="false"]::before { transform: translate(-50%, -70%) rotate(45deg); }
-.section-body { display: flex; flex-direction: column; gap: 10px; }
 .section-body.collapsed { display: none; }
 
 /* Paramètre générique */
@@ -315,7 +319,7 @@ main {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  margin-bottom: 4px;
+  margin-bottom: 10px;
 }
 .becher-indicator-row {
   margin-top: 2px;
@@ -361,30 +365,35 @@ main {
 
 .btn {
   width: 100%; padding: 9px 6px; border: 1px solid transparent;
-  border-radius: 6px; font-size: 18px; font-weight: 700; cursor: pointer;
+  border-radius: 6px; font-size: clamp(12px, 1.2vw, 15px); font-weight: 700; cursor: pointer;
   transition: transform 0.1s; text-align: center; display: block;
   font-family: inherit;
 }
 .btn:active { transform: scale(0.97); }
 .btn-raz         { background: #dedad2; color: #5a6a78; border-color: #b0a898; }
 .btn-raz:hover   { background: #d0ccc4; color: #2c3e50; }
-.btn-primary     { background: #2a6aaa; color: #fff; border-color: #1a5a9a; font-size: 18px; padding: 10px 6px; }
+.btn-primary     { background: #2a6aaa; color: #fff; border-color: #1a5a9a; font-size: clamp(13px, 1.3vw, 16px); padding: 10px 6px; }
 .btn-primary:hover { background: #1a5a9a; }
 .btn-primary:disabled { background: #a0b8c8; border-color: #8098a8; cursor: not-allowed; }
 .btn-toggle-one:disabled { opacity: 0.45; cursor: not-allowed; pointer-events: none; }
-.btn-toggle-one  { background: #ece8e0; color: #5a6a78; border-color: #b0a898; font-size: 16px; padding: 7px 6px; }
+.btn-toggle-one  { background: #ece8e0; color: #5a6a78; border-color: #b0a898; font-size: clamp(12px, 1.2vw, 15px); padding: 7px 6px; }
 .btn-toggle-one:hover { background: #dedad2; color: #2c3e50; }
 .btn-toggle-one.active { background: #fde8c8; color: #a04010; border-color: #d08040; font-weight: 700; }
+/* Ancre du masque #cmp-mask posé sur le bouton Comparaison */
+#cmp-btn-wrap { position: relative; }
 #btn-comparaison { line-height: 1.3; text-align: center; }
-#btn-comparaison #btn-comparaison-label { font-size: 14px; font-style: italic; font-weight: 700; display: block; margin-top: 2px; }
+#btn-comparaison #btn-comparaison-label { font-size: clamp(10px, 1vw, 12px); font-style: italic; font-weight: 700; display: block; margin-top: 2px; }
 
 .reaction-select {
   width: 100%; padding: 7px 8px; border: 1px solid #c8c0b4; border-radius: 5px;
-  font-size: 17px; background: #fff; color: #2c3e50; font-family: inherit; cursor: pointer;
+  font-size: clamp(12px, 1.15vw, 14px); background: #fff; color: #2c3e50; font-family: inherit; cursor: pointer;
 }
 
 /* Widget quantité titré dans le panel */
 #qty-titre-wrap {
+  position: relative;          /* ancre du masque #qty-mask */
+  width: 100%;
+  margin-bottom: 8px;          /* écart avant « Valeur aléatoire » */
   container-type: inline-size;
   container-name: qty;
 }
@@ -1139,6 +1148,7 @@ body.titrage-cond #conductimetre-svg {
 
 /* Marge entre le widget de concentration titrée et le bouton Aléatoire */
 #conc-titre-maskable {
+  position: relative;          /* ancre du masque #titrage-conc-mask */
   margin-bottom: 8px;
 }
 
