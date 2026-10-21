@@ -41,55 +41,58 @@
   <div id="panel">
    <div id="panel-body">
 
-    <div class="panel-title">Lunette astronomique</div>
+      <div class="panel-title">Lunette astronomique</div>
 
-    <!-- Mode système : Libre / Lunette -->
-    <div>
-      <div class="section-title">Mode système</div>
-      <div class="mode-tabs" style="margin-top:8px;">
-        <button class="mode-tab active" id="btn-libre" onclick="setSystemMode('libre')">Libre</button>
-        <button class="mode-tab" id="btn-lunette" onclick="setSystemMode('lunette')">Lunette</button>
-      </div>
-    </div>
-
-    <!-- Mode d'affichage des rayons -->
-    <div>
-      <div class="section-title">Mode d'affichage</div>
-      <div class="mode-tabs" style="margin-top:8px;">
-        <button class="mode-tab active" id="btn-instant" onclick="setRayMode('instant')">Instantané</button>
-        <button class="mode-tab" id="btn-anim" onclick="setRayMode('anim')">Propagation</button>
+      <!-- Mode système : Libre / Lunette -->
+      <div class="panel-section">
+        <div class="section-title">Mode système</div>
+        <div class="mode-tabs">
+          <button class="mode-tab active" id="btn-libre" onclick="setSystemMode('libre')">Libre</button>
+          <button class="mode-tab" id="btn-lunette" onclick="setSystemMode('lunette')">Lunette</button>
+        </div>
       </div>
 
-      <!-- Contrôles animation (masqués en mode instantané) -->
-      <div id="row-speed" style="margin-top:8px; display:none;">
-        <div class="mode-row" style="margin-bottom:6px;">
-          <button id="speed-rewind" class="mode-btn" type="button" title="Maintenir pour rembobiner">⏪</button>
-          <button id="btn-pause-play" class="mode-btn" onclick="togglePausePlay()">▶ Lancer</button>
-          <button id="btn-reset-anim" class="mode-btn" onclick="resetAnim()">↺ RAZ</button>
+      <div class="sep"></div>
+
+      <!-- Mode d'affichage des rayons -->
+      <div class="panel-section">
+        <div class="section-title">Mode d'affichage</div>
+        <div class="mode-tabs">
+          <button class="mode-tab active" id="btn-instant" onclick="setRayMode('instant')">Instantané</button>
+          <button class="mode-tab" id="btn-anim" onclick="setRayMode('anim')">Propagation</button>
         </div>
-        <div class="param-label" style="display:flex;justify-content:space-between;">
-          <span>Vitesse</span><span id="lbl-speed">×1</span>
-        </div>
-        <div id="speed-wrap" style="user-select:none;">
-          <div id="speed-track" style="position:relative;height:6px;background:#c8c0b4;border-radius:3px;cursor:pointer;">
-            <div id="speed-fill"  style="position:absolute;left:0;top:0;height:100%;background:#2a6aaa;border-radius:3px;width:100%;"></div>
-            <div id="speed-thumb" style="position:absolute;top:50%;width:14px;height:14px;background:#2a6aaa;border-radius:50%;transform:translate(-50%,-50%);cursor:grab;box-shadow:0 1px 3px rgba(0,0,0,0.3);left:100%;"></div>
+
+        <!-- Contrôles animation (masqués en mode instantané) -->
+        <div class="param-row param-row-speed" id="row-speed" style="display:none;">
+          <div class="mode-row">
+            <button id="speed-rewind" class="mode-btn" type="button" title="Maintenir pour rembobiner">⏪</button>
+            <button id="btn-pause-play" class="mode-btn" onclick="togglePausePlay()">▶ Lancer</button>
+            <button id="btn-reset-anim" class="mode-btn" onclick="resetAnim()">↺ RAZ</button>
           </div>
-          <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:0.75em;color:#7a8a96;">
-            <span>×0.1</span>
-            <span>×0.25</span>
-            <span>×0.5</span>
-            <span>×0.75</span>
-            <span>×1</span>
+          <div class="param-label">
+            <span>Vitesse</span><span id="lbl-speed">×1</span>
+          </div>
+          <div id="speed-wrap">
+            <div id="speed-track">
+              <div id="speed-fill"></div>
+              <div id="speed-thumb"></div>
+            </div>
+            <div class="speed-ticks-lbl">
+              <span>×0.1</span>
+              <span>×0.25</span>
+              <span>×0.5</span>
+              <span>×0.75</span>
+              <span>×1</span>
+            </div>
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- Paramètres -->
-    <div>
-      <div class="section-title">Paramètres</div>
-      <div class="param-group" style="margin-top:8px;">
+      <div class="sep"></div>
+
+      <!-- Paramètres -->
+      <div class="panel-section">
+        <div class="section-title">Paramètres</div>
 
         <!-- Angle alpha -->
         <div class="param-row">
@@ -130,75 +133,78 @@
           <input type="range" id="sl-nrays" min="3" max="10" step="1" value="3"
                  oninput="onSliderNRays(this.value)">
         </div>
-
       </div>
-    </div>
 
-    <!-- Mode Oeil (uniquement en mode lunette) -->
-    <div id="section-oeil" style="display:none;">
-      <div class="section-title">Options</div>
-      <div style="margin-top:8px; display:flex; flex-direction:column; gap:6px;">
-        <button class="btn-toggle-one" id="btn-oeil" onclick="toggleOeil()">Ajouter un œil : NON</button>
-        <button class="btn-toggle-one" id="btn-legende" onclick="toggleLegende()">Légende : NON</button>
-      </div>
-    </div>
-
-    <!-- Valeurs calculées — masquées par défaut, cf. ui.js → toggleValeurs() -->
-    <div>
-      <div class="section-title">Valeurs</div>
-      <button id="btn-toggle-valeurs" class="btn-toggle-one" onclick="toggleValeurs()">Afficher les valeurs</button>
-      <div class="results-grid" id="results-grid" style="margin-top:8px; display:none;">
-        <div class="readout wide">
-          <div class="ro-label"><span style="text-decoration:overline">O₁O₂</span></div>
-          <div class="ro-value" id="res-dist">—</div>
-        </div>
-        <div class="readout">
-          <div class="ro-label"><span style="text-decoration:overline">O₁A₁</span></div>
-          <div class="ro-value" id="res-O1A1">—</div>
-        </div>
-        <div class="readout">
-          <div class="ro-label"><span style="text-decoration:overline">A₁B₁</span></div>
-          <div class="ro-value" id="res-h1">—</div>
-        </div>
-        <!-- Mode non afocal : image finale + grandissement -->
-        <!-- A₂B₂ et non A'B' : c'est le nom porté par l'image sur le schéma,
-             et A'B' y désigne déjà l'image formée sur la rétine. -->
-        <div class="readout" id="res-box-O2A2">
-          <div class="ro-label"><span style="text-decoration:overline">O₂A₂</span></div>
-          <div class="ro-value" id="res-O2A2">—</div>
-        </div>
-        <div class="readout" id="res-box-h2">
-          <div class="ro-label"><span style="text-decoration:overline">A₂B₂</span></div>
-          <div class="ro-value" id="res-h2">—</div>
-        </div>
-        <div class="readout wide" id="res-box-gamma">
-          <div class="ro-label">Grandissement γ (A₁B₁ → A₂B₂)</div>
-          <div class="ro-value" id="res-gamma">—</div>
-        </div>
-        <!-- Mode afocal : angle de sortie + O₂A'∞ + Grossissement G -->
-        <div class="readout" id="res-box-alpha2">
-          <div class="ro-label">Angle α'</div>
-          <div class="ro-value" id="res-alpha2">—</div>
-        </div>
-        <div class="readout" id="res-box-O2Ainf">
-          <div class="ro-label"><span style="text-decoration:overline">O₂A'</span>∞</div>
-          <div class="ro-value" id="res-O2Ainf">—</div>
-        </div>
-        <div class="readout wide" id="res-box-gross-afocal">
-          <div class="ro-label">Grossissement G</div>
-          <div class="ro-value" id="res-gross-afocal">—</div>
-        </div>
-        <div class="readout wide">
-          <div class="ro-label">Système</div>
-          <div class="ro-value" id="res-systeme">—</div>
+      <!-- Mode Oeil (uniquement en mode lunette) : bloc affiché/masqué par
+           setSystemMode() (ui.js), séparateur compris -->
+      <div id="section-oeil" style="display:none;">
+        <div class="sep"></div>
+        <div class="panel-section">
+          <div class="section-title">Options</div>
+          <div class="btn-stack">
+            <button class="btn btn-toggle-one" id="btn-oeil" onclick="toggleOeil()">Ajouter un œil : NON</button>
+            <button class="btn btn-toggle-one" id="btn-legende" onclick="toggleLegende()">Légende : NON</button>
+          </div>
         </div>
       </div>
 
-      <!-- Note grossissement — suit le tableau de valeurs qu'elle commente -->
-      <div id="note-grossissement" style="font-size:0.8em; color:#7a8a96; line-height:1.5; padding: 4px 2px; display:none;">
-        Calcul du grossissement à partir des distances focales. Attention, cela ne correspond donc au rapport entre α' et α que pour des petits angles, ce qui n'est pas le cas dans cette simulation.
+      <div class="sep"></div>
+
+      <!-- Valeurs calculées : affichées en dépliant la section -->
+      <div class="panel-section">
+        <div class="section-title">Valeurs</div>
+        <div class="results-grid" id="results-grid">
+          <div class="readout wide">
+            <div class="ro-label"><span class="overline">O₁O₂</span></div>
+            <div class="ro-value" id="res-dist">—</div>
+          </div>
+          <div class="readout">
+            <div class="ro-label"><span class="overline">O₁A₁</span></div>
+            <div class="ro-value" id="res-O1A1">—</div>
+          </div>
+          <div class="readout">
+            <div class="ro-label"><span class="overline">A₁B₁</span></div>
+            <div class="ro-value" id="res-h1">—</div>
+          </div>
+          <!-- Mode non afocal : image finale + grandissement -->
+          <!-- A₂B₂ et non A'B' : c'est le nom porté par l'image sur le schéma,
+               et A'B' y désigne déjà l'image formée sur la rétine. -->
+          <div class="readout" id="res-box-O2A2">
+            <div class="ro-label"><span class="overline">O₂A₂</span></div>
+            <div class="ro-value" id="res-O2A2">—</div>
+          </div>
+          <div class="readout" id="res-box-h2">
+            <div class="ro-label"><span class="overline">A₂B₂</span></div>
+            <div class="ro-value" id="res-h2">—</div>
+          </div>
+          <div class="readout wide" id="res-box-gamma">
+            <div class="ro-label">Grandissement γ (A₁B₁ → A₂B₂)</div>
+            <div class="ro-value" id="res-gamma">—</div>
+          </div>
+          <!-- Mode afocal : angle de sortie + O₂A'∞ + Grossissement G -->
+          <div class="readout" id="res-box-alpha2">
+            <div class="ro-label">Angle α'</div>
+            <div class="ro-value" id="res-alpha2">—</div>
+          </div>
+          <div class="readout" id="res-box-O2Ainf">
+            <div class="ro-label"><span class="overline">O₂A'</span>∞</div>
+            <div class="ro-value" id="res-O2Ainf">—</div>
+          </div>
+          <div class="readout wide" id="res-box-gross-afocal">
+            <div class="ro-label">Grossissement G</div>
+            <div class="ro-value" id="res-gross-afocal">—</div>
+          </div>
+          <div class="readout wide">
+            <div class="ro-label">Système</div>
+            <div class="ro-value" id="res-systeme">—</div>
+          </div>
+        </div>
+
+        <!-- Note grossissement — suit le tableau de valeurs qu'elle commente -->
+        <div id="note-grossissement">
+          Calcul du grossissement à partir des distances focales. Attention, cela ne correspond donc au rapport entre α' et α que pour des petits angles, ce qui n'est pas le cas dans cette simulation.
+        </div>
       </div>
-    </div>
 
    </div><!-- fin #panel-body -->
 

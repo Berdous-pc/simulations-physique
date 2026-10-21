@@ -50,7 +50,6 @@ const sim = {
   EYE_FLENS: 5,          // distance focale du cristallin (cm)
 
   // ── Résultats calculés ──
-  showValeurs: false, // affichage du tableau de valeurs — désactivé par défaut
 
   // Image intermédiaire par L1 (en cm depuis O1)
   O1A1: 0,   // position de A1 par rapport à O1
