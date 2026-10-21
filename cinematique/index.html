@@ -61,7 +61,7 @@
           <button id="btn-play" class="btn btn-play" onclick="togglePlay()">▶ Lancer</button>
           <button class="btn btn-raz" onclick="razCourse()">↺ RAZ</button>
         </div>
-        <div class="param-row" style="margin-top:8px;">
+        <div class="param-row param-row-speed">
           <label>
             Vitesse d'animation
             <span class="param-value"><span id="lbl-speed">×1,00</span></span>
@@ -112,8 +112,10 @@
       <div class="panel-section">
         <div class="section-title">Voitures</div>
         <div id="voitures-box"></div>
-        <button class="btn btn-ajouter" id="btn-ajouter" onclick="ajouteVoiture()">+ Ajouter une voiture</button>
-        <button class="btn btn-raz" style="margin-top:10px;" onclick="razTout()">↺ Réinitialiser</button>
+        <div class="btn-stack">
+          <button class="btn btn-ajouter" id="btn-ajouter" onclick="ajouteVoiture()">+ Ajouter une voiture</button>
+          <button class="btn btn-raz" onclick="razTout()">↺ Réinitialiser</button>
+        </div>
       </div>
 
       <div class="sep"></div>
