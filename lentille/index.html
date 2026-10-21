@@ -105,7 +105,7 @@
 
       <!-- Paramètres optiques -->
       <div class="panel-section">
-        <div class="section-title">Paramètres optiques</div>
+        <div class="section-title" data-repliable>Paramètres optiques</div>
 
         <!-- Distance focale f' -->
         <div class="param-row">
@@ -142,7 +142,7 @@
 
       <!-- Objet à l'infini -->
       <div class="panel-section">
-        <div class="section-title">Objet à l'infini</div>
+        <div class="section-title" data-repliable>Objet à l'infini</div>
         <div class="btn-stack">
           <button id="btn-infini" class="btn btn-toggle-one" onclick="toggleInfini()">Objet à l'infini : NON</button>
 
@@ -166,7 +166,7 @@
 
       <!-- Options de tracé -->
       <div class="panel-section">
-        <div class="section-title">Options</div>
+        <div class="section-title" data-repliable>Options</div>
         <div class="btn-stack">
           <button id="btn-multipoints" class="btn btn-toggle-one" onclick="toggleMultiPoints()">Points sources sur tout l'objet : NON</button>
           <button id="btn-conjugaison" class="btn btn-toggle-one" onclick="toggleConjugaison()">Relation de conjugaison : NON</button>
@@ -177,7 +177,7 @@
 
       <!-- Valeurs calculées : affichées en dépliant la section -->
       <div class="panel-section">
-        <div class="section-title">Valeurs</div>
+        <div class="section-title" data-repliable>Valeurs</div>
         <div class="results-grid" id="results-grid">
           <div class="readout">
             <div class="ro-label"><span class="overline">OA</span> (objet)</div>
@@ -206,7 +206,7 @@
 
       <!-- Légende des rayons -->
       <div class="panel-section">
-        <div class="section-title">Légende des rayons</div>
+        <div class="section-title" data-repliable>Légende des rayons</div>
         <div class="legend">
           <!-- Rayons principaux colorés : uniquement hors mode « objet à l'infini »,
                où tous les rayons incidents sont parallèles et tracés en gris. -->
@@ -266,6 +266,7 @@
 <script src="js/sim.js"></script>
 <script src="js/draw.js"></script>
 <script src="js/ui.js"></script>
+<script src="js/sections-repliables.js"></script>
 
 <script data-goatcounter="https://berdous-pc.goatcounter.com/count"
         async src="https://gc.zgo.at/count.js"></script>
