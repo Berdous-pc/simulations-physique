@@ -277,7 +277,7 @@ But : alléger le panneau de droite. Un titre de section peut porter un petit ch
 
 Le script reste compatible avec l'ancienne structure « à plat » (titres et commandes frères directs, sections délimitées par un `.sep`, cas de `titrage/` tant qu'il n'est pas uniformisé) : il s'arrête au premier `.sep`, au `.section-title` suivant ou à un élément qui contient un `.section-title`. Ces garde-fous évitent qu'une section repliable n'avale la suivante.
 
-**Le JS de la page ne doit pas masquer un titre repliable seul** (ex. `title-valeurs` dans `radioactivite/`) : le contenu, déplacé dans `.section-body`, resterait visible. Masquer la `.panel-section` entière à la place.
+**Le JS de la page ne doit pas masquer un titre repliable seul** (c'était le cas de `title-valeurs` dans `radioactivite/`, remplacé par le bloc `#bloc-valeurs`) : le contenu, déplacé dans `.section-body`, resterait visible. Masquer la `.panel-section` entière à la place.
 
 **Agir sur la simulation au dépliage.** À chaque bascule (y compris le pliage initial au chargement), le script émet sur le titre l'événement `sectionrepliee` (`detail.repliee` : `true` si la section vient d'être pliée), qui remonte jusqu'à la `.panel-section`. Une page peut s'y abonner quand déplier une section doit aussi changer l'affichage de la simulation, ce qui permet de supprimer un bouton « Afficher… » même s'il agissait aussi sur le canvas. Exemple (`interferences/js/principe.js`) :
 

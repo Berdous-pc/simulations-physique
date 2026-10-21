@@ -913,8 +913,7 @@ function setMode(mode) {
   document.getElementById('sec-auto').classList.toggle('visible',  mode === 'auto');
   document.getElementById('controls-libre').classList.toggle('visible', mode === 'libre');
   document.getElementById('controls-auto').classList.toggle('visible',  mode === 'auto');
-  document.getElementById('sep-valeurs').style.display   = (mode === 'auto') ? 'none' : '';
-  document.getElementById('title-valeurs').style.display = (mode === 'auto') ? 'none' : '';
+  document.getElementById('bloc-valeurs').style.display = (mode === 'auto') ? 'none' : '';   // séparateur + section Valeurs
   document.getElementById('params-libre').classList.toggle('visible', mode === 'libre');
   document.getElementById('params-auto').classList.toggle('visible',  mode === 'auto');
   document.getElementById('sim-area').classList.toggle('visible',       mode === 'libre');

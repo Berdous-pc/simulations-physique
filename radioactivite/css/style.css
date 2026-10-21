@@ -82,9 +82,9 @@ main {
   font-size: clamp(11px, 1.1vw, 14px);
 }
 #panel-body {
-  flex: 1; min-height: 0; overflow-y: auto;
-  padding: 14px 14px;
-  display: flex; flex-direction: column; gap: 10px;
+  flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden;
+  padding: clamp(8px, 1vw, 14px) clamp(8px, 1vw, 12px);
+  display: flex; flex-direction: column; gap: 0;
   border: 1.5px solid #b0a898; border-top: none;
   background: #e8e4de;
 }
@@ -383,9 +383,19 @@ main {
 
 .section-title {
   font-size: 11px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: 1px; color: #7a8a96; margin-bottom: 4px;
+  letter-spacing: 1px; color: #7a8a96; margin-bottom: 7px;
 }
-.param-row { display: flex; flex-direction: column; gap: 3px; margin-bottom: 6px; }
+.param-row { display: flex; flex-direction: column; gap: 3px; margin-bottom: 10px; }
+/* Curseur placé juste sous un bouton (Temps simulé sous Pause) */
+.param-row-after-btn { margin-top: 8px; }
+/* Libellé seul, aligné à gauche (pas de valeur à droite) */
+.param-row label.label-left { justify-content: flex-start; gap: 8px; }
+/* Sélecteur de noyau (mode continu) */
+.select-noyau {
+  width: 100%; padding: 6px 8px; border: 1px solid #c8c0b4; border-radius: 4px;
+  font-size: clamp(12px, 1.2vw, 15px); background: #fff; color: #2c3e50; font-family: inherit; cursor: pointer;
+}
+.input-mono { font-family: monospace; }
 .param-row label { display: flex; justify-content: space-between; font-size: clamp(12px, 1.15vw, 15px); color: #2c3e50; }
 .param-row label span { color: #2a5080; font-weight: 600; }
 input[type=range] { width: 100%; accent-color: #4a7aaa; cursor: pointer; }
@@ -437,14 +447,25 @@ input[type=number]:focus, input[type=text]:focus { outline: none; border-color: 
 .btn-toggle-graph.active { background: #d0dce8; color: #1a3a5a; border-color: #a0b8d0; }
 .btn-toggle-graph:hover { background: #d0ccc4; }
 
+/* Blocs propres à un mode (Libre / Automatique) : simples conteneurs, affichés
+   par la classe .visible (setMode) */
 .mode-section { display: none; }
-.mode-section.visible { display: flex; flex-direction: column; gap: 8px; }
+.mode-section.visible { display: block; }
 .panel-main-section { display: none; }
-.panel-main-section.visible { display: flex; flex-direction: column; gap: 10px; flex: 1; }
+.panel-main-section.visible { display: block; }
+
+/* Structure canonique : une .panel-section par section, .sep entre deux */
+.panel-section { margin-bottom: 8px; }
+
+/* Boutons empilés : l'écart est porté par le conteneur */
+.btn-stack { display: flex; flex-direction: column; gap: 6px; }
+.btn-row { display: flex; gap: 6px; }
+.btn-row > .btn { flex: 1 1 0; }
 
 .readout {
   background: #fff; border: 1px solid #c8c0b4; border-radius: 6px;
   padding: 7px 9px; display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 8px;
 }
 .readout .ro-label { font-size: clamp(11px, 1vw, 13px); color: #7a8a96; }
 .readout .ro-value { font-size: clamp(15px, 1.6vw, 20px); font-weight: 700; color: #2a5080; font-variant-numeric: tabular-nums; }
@@ -479,7 +500,7 @@ input[type=number]:focus, input[type=text]:focus { outline: none; border-color: 
 .panel-hint:not(.collapsed) .panel-hint-toggle { transform: rotate(180deg); }
 
 .input-hint { font-size: clamp(10px, 0.9vw, 13px); color: #7a8a96; margin-top: 2px; }
-.sep { border: none; border-top: 1px solid #c8c0b4; margin: 2px 0; }
+.sep { border: none; border-top: 1px solid #c8c0b4; margin: 8px 0; }
 
 /* Étiquettes tangentes figées */
 .tangente-label {
@@ -493,8 +514,8 @@ input[type=number]:focus, input[type=text]:focus { outline: none; border-color: 
 }
 .tangente-label .tan-close:hover { color: #fff; }
 
-#auto-progress { font-size: 14px; color: #2a6aaa; font-style: italic; text-align: center; }
-#auto-series-count { font-size: 14px; color: #7a8a96; text-align: center; }
+#auto-progress { margin-top: 8px; font-size: clamp(12px, 1.15vw, 14px); color: #2a6aaa; font-style: italic; text-align: center; }
+#auto-series-count { font-size: clamp(12px, 1.15vw, 14px); color: #7a8a96; text-align: center; }
 
 .speed-row { display: flex; align-items: center; gap: 8px; }
 .speed-label { font-size: 14px; color: #7a8a96; white-space: nowrap; }

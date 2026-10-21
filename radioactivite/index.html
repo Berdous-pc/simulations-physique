@@ -140,83 +140,101 @@
       <!-- ── SECTION DISCRET ── -->
       <div class="panel-main-section visible" id="section-discret">
 
-        <div class="section-title">Mode</div>
-        <div class="mode-tabs">
-          <button class="mode-tab active" id="tab-libre" onclick="setMode('libre')">Libre</button>
-          <button class="mode-tab"        id="tab-auto"  onclick="setMode('auto')">Automatique</button>
-        </div>
-
-        <hr class="sep">
-        <div class="section-title">Contrôles</div>
-
-        <div class="mode-section visible" id="controls-libre">
-          <button class="btn btn-lancer-tous" onclick="lancerTous()">Lancer tous les dés</button>
-          <button class="btn btn-lancer-gris" id="btn-lancer-gris" onclick="lancerGris()">
-            Lancer les dés aux faces grises
-          </button>
-          <button class="btn btn-raz"         onclick="razLibre()">RAZ</button>
-        </div>
-
-        <div class="mode-section" id="controls-auto">
-          <button class="btn btn-auto-run" onclick="simulerEtRemplacer()">Simuler et remplacer</button>
-          <button class="btn btn-ajouter"  id="btn-ajouter" onclick="simulerEtAjouter()">Simuler et ajouter</button>
-          <button class="btn btn-raz"      onclick="razAuto()">Tout effacer</button>
-        </div>
-
-        <hr class="sep">
-        <div class="section-title">Paramètres</div>
-
-        <div class="mode-section visible" id="params-libre">
-          <div class="param-row">
-            <label>Nombre de dés N₀</label>
-            <div class="input-hint">Entrer une valeur entre 1 et 1 000</div>
-            <input type="number" id="inp-ndice-libre" min="1" max="1000" value="100"
-                   oninput="onNdiceChange(this.value)">
-          </div>
-          <div class="param-row">
-            <label>Probabilité de faire 6 <span id="lbl-pip">1/6 ≈ 16,7 %</span></label>
-            <input type="range" id="sl-pip" min="0" max="5" step="1" value="2"
-                   oninput="onPipChange(this.value)">
+        <div class="panel-section">
+          <div class="section-title">Mode</div>
+          <div class="mode-tabs">
+            <button class="mode-tab active" id="tab-libre" onclick="setMode('libre')">Libre</button>
+            <button class="mode-tab"        id="tab-auto"  onclick="setMode('auto')">Automatique</button>
           </div>
         </div>
 
-        <div class="mode-section" id="params-auto">
-          <div class="param-row">
-            <label>Nombre de dés N₀</label>
-            <div class="input-hint">Entrer une valeur entre 1 et 10 000</div>
-            <input type="number" id="inp-ndice-auto" min="1" max="10000" value="100"
-                   oninput="onNdiceChangeAuto(this.value)">
+        <div class="sep"></div>
+
+        <div class="panel-section">
+          <div class="section-title">Contrôles</div>
+
+          <div class="mode-section visible" id="controls-libre">
+            <div class="btn-stack">
+              <button class="btn btn-lancer-tous" onclick="lancerTous()">Lancer tous les dés</button>
+              <button class="btn btn-lancer-gris" id="btn-lancer-gris" onclick="lancerGris()">
+                Lancer les dés aux faces grises
+              </button>
+              <button class="btn btn-raz"         onclick="razLibre()">RAZ</button>
+            </div>
           </div>
-          <div class="param-row">
-            <label>Probabilité de faire 6 <span id="lbl-pip-auto">1/6 ≈ 16,7 %</span></label>
-            <input type="range" id="sl-pip-auto" min="0" max="5" step="1" value="2"
-                   oninput="onPipAutoChange(this.value)">
+
+          <div class="mode-section" id="controls-auto">
+            <div class="btn-stack">
+              <button class="btn btn-auto-run" onclick="simulerEtRemplacer()">Simuler et remplacer</button>
+              <button class="btn btn-ajouter"  id="btn-ajouter" onclick="simulerEtAjouter()">Simuler et ajouter</button>
+              <button class="btn btn-raz"      onclick="razAuto()">Tout effacer</button>
+            </div>
           </div>
-          <div class="param-row">
-            <label>Nombre de simulations</label>
-            <div class="input-hint">Entrer une valeur entre 1 et 100</div>
-            <input type="number" id="inp-nsim" min="1" max="100" value="10"
-                   oninput="onNsimChange(this.value)">
+
+          <!-- Suivi des séries (mode automatique), sous les boutons qui les lancent -->
+          <div class="mode-section" id="sec-auto">
+            <div id="auto-progress"></div>
+            <div id="auto-series-count"></div>
           </div>
         </div>
 
-        <hr class="sep" id="sep-valeurs">
-        <div class="section-title" id="title-valeurs">Valeurs</div>
+        <div class="sep"></div>
 
-        <div class="mode-section visible" id="sec-libre">
-          <div class="readout">
-            <span class="ro-label">Dés à face grise</span>
-            <span class="ro-value" id="ro-grey">100</span>
+        <div class="panel-section">
+          <div class="section-title">Paramètres</div>
+
+          <div class="mode-section visible" id="params-libre">
+            <div class="param-row">
+              <label>Nombre de dés N₀</label>
+              <div class="input-hint">Entrer une valeur entre 1 et 1 000</div>
+              <input type="number" id="inp-ndice-libre" min="1" max="1000" value="100"
+                     oninput="onNdiceChange(this.value)">
+            </div>
+            <div class="param-row">
+              <label>Probabilité de faire 6 <span id="lbl-pip">1/6 ≈ 16,7 %</span></label>
+              <input type="range" id="sl-pip" min="0" max="5" step="1" value="2"
+                     oninput="onPipChange(this.value)">
+            </div>
           </div>
-          <div class="readout">
-            <span class="ro-label">Lancer n°</span>
-            <span class="ro-value" id="ro-lancer">0</span>
+
+          <div class="mode-section" id="params-auto">
+            <div class="param-row">
+              <label>Nombre de dés N₀</label>
+              <div class="input-hint">Entrer une valeur entre 1 et 10 000</div>
+              <input type="number" id="inp-ndice-auto" min="1" max="10000" value="100"
+                     oninput="onNdiceChangeAuto(this.value)">
+            </div>
+            <div class="param-row">
+              <label>Probabilité de faire 6 <span id="lbl-pip-auto">1/6 ≈ 16,7 %</span></label>
+              <input type="range" id="sl-pip-auto" min="0" max="5" step="1" value="2"
+                     oninput="onPipAutoChange(this.value)">
+            </div>
+            <div class="param-row">
+              <label>Nombre de simulations</label>
+              <div class="input-hint">Entrer une valeur entre 1 et 100</div>
+              <input type="number" id="inp-nsim" min="1" max="100" value="10"
+                     oninput="onNsimChange(this.value)">
+            </div>
           </div>
         </div>
 
-        <div class="mode-section" id="sec-auto">
-          <div id="auto-progress"></div>
-          <div id="auto-series-count"></div>
+        <!-- Valeurs (mode libre uniquement) : bloc masqué en entier, séparateur
+             compris, par setMode() en mode automatique -->
+        <div id="bloc-valeurs">
+          <div class="sep"></div>
+          <div class="panel-section">
+            <div class="section-title">Valeurs</div>
+            <div class="mode-section visible" id="sec-libre">
+              <div class="readout">
+                <span class="ro-label">Dés à face grise</span>
+                <span class="ro-value" id="ro-grey">100</span>
+              </div>
+              <div class="readout">
+                <span class="ro-label">Lancer n°</span>
+                <span class="ro-value" id="ro-lancer">0</span>
+              </div>
+            </div>
+          </div>
         </div>
 
       </div><!-- #section-discret -->
@@ -224,77 +242,85 @@
       <!-- ── SECTION CONTINU ── -->
       <div class="panel-main-section" id="section-continu">
 
-        <div class="section-title">Contrôles</div>
-
-        <button class="btn btn-auto-run" onclick="continuerEtRemplacer()">Simuler et remplacer</button>
-        <button class="btn btn-ajouter"  id="btn-ajouter-continu" onclick="continuerEtAjouter()">Simuler et ajouter</button>
-        <button class="btn btn-raz"      onclick="razContinu()">Tout effacer</button>
-
-        <hr class="sep">
-        <div class="section-title">Simulation</div>
-
-        <button class="btn btn-pause" id="btn-pause" onclick="pauseContinu()" disabled>⏸ Pause</button>
-
-        <div class="param-row">
-          <label>Temps simulé <span id="lbl-nthalf">10 t½</span></label>
-          <input type="range" id="sl-nthalf" min="1" max="12" step="1" value="10"
-                 oninput="onNthalfChange(this.value)">
-          <div class="input-hint">Durée totale simulée (en multiples de t½)</div>
+        <div class="panel-section">
+          <div class="section-title">Contrôles</div>
+          <div class="btn-stack">
+            <button class="btn btn-auto-run" onclick="continuerEtRemplacer()">Simuler et remplacer</button>
+            <button class="btn btn-ajouter"  id="btn-ajouter-continu" onclick="continuerEtAjouter()">Simuler et ajouter</button>
+            <button class="btn btn-raz"      onclick="razContinu()">Tout effacer</button>
+          </div>
         </div>
 
-        <div class="param-row">
-          <label>Durée de l'animation <span id="lbl-speed-continu">10 s</span></label>
-          <input type="range" id="sl-speed-continu" min="0" max="4" step="1" value="3"
-                 oninput="onSpeedContinuChange(this.value)">
-          <div class="input-hint">Durée réelle de l'animation</div>
+        <div class="sep"></div>
+
+        <div class="panel-section">
+          <div class="section-title">Simulation</div>
+
+          <button class="btn btn-pause" id="btn-pause" onclick="pauseContinu()" disabled>⏸ Pause</button>
+
+          <div class="param-row param-row-after-btn">
+            <label>Temps simulé <span id="lbl-nthalf">10 t½</span></label>
+            <input type="range" id="sl-nthalf" min="1" max="12" step="1" value="10"
+                   oninput="onNthalfChange(this.value)">
+            <div class="input-hint">Durée totale simulée (en multiples de t½)</div>
+          </div>
+
+          <div class="param-row">
+            <label>Durée de l'animation <span id="lbl-speed-continu">10 s</span></label>
+            <input type="range" id="sl-speed-continu" min="0" max="4" step="1" value="3"
+                   oninput="onSpeedContinuChange(this.value)">
+            <div class="input-hint">Durée réelle de l'animation</div>
+          </div>
+
+          <div id="continu-time-display">t = 0 s  |  N = —</div>
         </div>
 
-        <div id="continu-time-display">t = 0 s  |  N = —</div>
+        <div class="sep"></div>
 
-        <hr class="sep">
-        <div class="section-title">Paramètres</div>
+        <div class="panel-section">
+          <div class="section-title">Paramètres</div>
 
-        <div class="param-row">
-          <label style="justify-content:flex-start;gap:8px;">Exemples de noyaux</label>
-          <select id="sel-noyau" onchange="onNoyauSelect(this.value)"
-                  style="width:100%;padding:6px 8px;border:1px solid #c8c0b4;border-radius:4px;
-                         font-size:15px;background:#fff;color:#2c3e50;font-family:inherit;cursor:pointer;">
-            <option value="">— Choisir un noyau —</option>
-            <option value="U238">²³⁸U — Uranium 238  (λ = 4,92×10⁻¹⁸ s⁻¹)</option>
-            <option value="Pu239">²³⁹Pu — Plutonium 239  (λ = 9,11×10⁻¹³ s⁻¹)</option>
-            <option value="C14">¹⁴C — Carbone 14  (λ = 3,84×10⁻¹² s⁻¹)</option>
-            <option value="Ra226">²²⁶Ra — Radium 226  (λ = 1,37×10⁻¹¹ s⁻¹)</option>
-            <option value="H3">³H — Tritium  (λ = 1,78×10⁻⁹ s⁻¹)</option>
-            <option value="I131">¹³¹I — Iode 131  (λ = 1,00×10⁻⁶ s⁻¹)</option>
-            <option value="Fr223">²²³Fr — Francium 223  (λ = 5,25×10⁻⁴ s⁻¹)</option>
-            <option value="Po214">²¹⁴Po — Polonium 214  (λ = 4,23×10³ s⁻¹)</option>
-          </select>
+          <div class="param-row">
+            <label class="label-left">Exemples de noyaux</label>
+            <select id="sel-noyau" class="select-noyau" onchange="onNoyauSelect(this.value)">
+              <option value="">— Choisir un noyau —</option>
+              <option value="U238">²³⁸U — Uranium 238  (λ = 4,92×10⁻¹⁸ s⁻¹)</option>
+              <option value="Pu239">²³⁹Pu — Plutonium 239  (λ = 9,11×10⁻¹³ s⁻¹)</option>
+              <option value="C14">¹⁴C — Carbone 14  (λ = 3,84×10⁻¹² s⁻¹)</option>
+              <option value="Ra226">²²⁶Ra — Radium 226  (λ = 1,37×10⁻¹¹ s⁻¹)</option>
+              <option value="H3">³H — Tritium  (λ = 1,78×10⁻⁹ s⁻¹)</option>
+              <option value="I131">¹³¹I — Iode 131  (λ = 1,00×10⁻⁶ s⁻¹)</option>
+              <option value="Fr223">²²³Fr — Francium 223  (λ = 5,25×10⁻⁴ s⁻¹)</option>
+              <option value="Po214">²¹⁴Po — Polonium 214  (λ = 4,23×10³ s⁻¹)</option>
+            </select>
+          </div>
+
+          <div class="param-row">
+            <label>Constante λ (s⁻¹)</label>
+            <input type="text" id="inp-lambda" class="input-mono" value="1e-3"
+                   placeholder="ex : 2,0e-6 ou 3.5e-12"
+                   oninput="onLambdaInput(this.value)"
+                   onblur="onLambdaBlur(this.value)">
+            <div class="input-hint" id="hint-lambda">entre 10⁻¹⁹ et 10⁴ s⁻¹</div>
+          </div>
+
+          <div class="param-row">
+            <label>Quantité initiale N₀ <span id="lbl-n0-continu">1 mol</span></label>
+            <input type="range" id="sl-moles" min="0" max="11" step="1" value="2"
+                   oninput="onMolesChange(this.value)">
+            <div class="input-hint">1 mole = 6,02×10²³ noyaux</div>
+          </div>
         </div>
 
-        <div class="param-row">
-          <label>Constante λ (s⁻¹)</label>
-          <input type="text" id="inp-lambda" value="1e-3"
-                 placeholder="ex : 2,0e-6 ou 3.5e-12"
-                 oninput="onLambdaInput(this.value)"
-                 onblur="onLambdaBlur(this.value)"
-                 style="font-family:monospace;">
-          <div class="input-hint" id="hint-lambda" style="color:#7a8a96;">entre 10⁻¹⁹ et 10⁴ s⁻¹</div>
-        </div>
+        <div class="sep"></div>
 
-        <div class="param-row">
-          <label>Quantité initiale N₀ <span id="lbl-n0-continu">1 mol</span></label>
-          <input type="range" id="sl-moles" min="0" max="11" step="1" value="2"
-                 oninput="onMolesChange(this.value)">
-          <div class="input-hint">1 mole = 6,02×10²³ noyaux</div>
-        </div>
-
-        <div class="param-row">
-          <label style="justify-content:flex-start;gap:8px;">Graphe</label>
-          <div style="display:flex;gap:6px;">
+        <div class="panel-section">
+          <div class="section-title">Graphe</div>
+          <div class="btn-row">
             <button class="btn btn-toggle-graph active" id="btn-show-nt"
-                    onclick="setContinuGraphMode('N')" style="flex:1;">N(t)</button>
+                    onclick="setContinuGraphMode('N')">N(t)</button>
             <button class="btn btn-toggle-graph" id="btn-show-at"
-                    onclick="setContinuGraphMode('A')" style="flex:1;">A(t) = λN(t)</button>
+                    onclick="setContinuGraphMode('A')">A(t) = λN(t)</button>
           </div>
         </div>
 
