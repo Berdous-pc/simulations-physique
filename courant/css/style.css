@@ -141,7 +141,9 @@ main {
 
 #panel-body {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;   /* pas de barre horizontale au moindre débordement */
   padding: clamp(8px, 1vw, 14px) clamp(8px, 1vw, 12px);
   display: flex;
   flex-direction: column;
@@ -226,6 +228,17 @@ main {
    habituel, seule la largeur devient partagée au lieu de 100%. RAZ reste
    étroit (texte court et fixe) pour laisser toute la place à Pause, dont le
    texte change et ne doit pas passer à la ligne. */
+/* Boutons empilés (ex. options) : l'écart est porté par le conteneur,
+   pas par une marge sur chaque bouton. Un bouton [hidden] ne laisse pas de trou. */
+.btn-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Curseur placé juste sous un bouton (Tension imposée sous « Fermer le circuit ») */
+.param-row-after-btn { margin-top: 8px; }
+
 .btn-row {
   display: flex;
   gap: 6px;

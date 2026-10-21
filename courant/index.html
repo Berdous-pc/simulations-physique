@@ -75,14 +75,14 @@
         <div class="section-title">Circuit</div>
 
         <div class="mat-row">
-          <button id="btn-mat-cond" class="btn-toggle-one active" onclick="setMaterial('conducteur')">Conducteur</button>
-          <button id="btn-mat-iso" class="btn-toggle-one" onclick="setMaterial('isolant')">Isolant</button>
-          <button id="btn-mat-semi" class="btn-toggle-one" onclick="setMaterial('semi')">Semi-conducteur</button>
+          <button id="btn-mat-cond" class="btn btn-toggle-one active" onclick="setMaterial('conducteur')">Conducteur</button>
+          <button id="btn-mat-iso" class="btn btn-toggle-one" onclick="setMaterial('isolant')">Isolant</button>
+          <button id="btn-mat-semi" class="btn btn-toggle-one" onclick="setMaterial('semi')">Semi-conducteur</button>
         </div>
 
         <button id="btn-circuit" class="btn btn-green" onclick="toggleCircuit()">Fermer le circuit</button>
 
-        <div class="param-row" style="margin-top: 8px;">
+        <div class="param-row param-row-after-btn">
           <label for="sl-U">Tension imposée
             <span class="param-value" id="lbl-U">6,0 V</span>
           </label>
@@ -137,7 +137,7 @@
           </div>
         </div>
 
-        <button id="btn-measures" class="btn-toggle-one" onclick="toggleMeasures()">Masquer les mesures</button>
+        <button id="btn-measures" class="btn btn-toggle-one" onclick="toggleMeasures()">Masquer les mesures</button>
       </div>
 
       <div class="sep" id="sep-options"></div>
@@ -146,11 +146,11 @@
       <div class="panel-section" id="sec-options">
         <div class="section-title">Options</div>
 
-        <button id="btn-trace" class="btn-toggle-one" onclick="toggleTrace()">Suivre un électron</button>
-
-        <button id="btn-hole" class="btn-toggle-one" onclick="toggleHoleTrace()" style="margin-top: 8px;" hidden>Suivre une lacune</button>
-
-        <button id="btn-arrows" class="btn-toggle-one" onclick="toggleArrows()" style="margin-top: 8px;">Sens des électrons</button>
+        <div class="btn-stack">
+          <button id="btn-trace" class="btn btn-toggle-one" onclick="toggleTrace()">Suivre un électron</button>
+          <button id="btn-hole" class="btn btn-toggle-one" onclick="toggleHoleTrace()" hidden>Suivre une lacune</button>
+          <button id="btn-arrows" class="btn btn-toggle-one" onclick="toggleArrows()">Sens des électrons</button>
+        </div>
       </div>
 
     </div><!-- fin #panel-body -->
