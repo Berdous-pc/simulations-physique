@@ -468,7 +468,7 @@
 
         <hr class="sep">
 
-        <div class="section-title">Options</div>
+        <div class="section-title" data-repliable>Options</div>
         <button class="btn btn-toggle-one" id="btn-prediction" onclick="togglePrediction()">Cacher la quantité d'espèce titrée</button>
         <div id="cmp-btn-wrap" style="position:relative;">
           <button class="btn btn-toggle-one" id="btn-comparaison" onclick="cycleComparaison()">
@@ -509,7 +509,7 @@
         <hr class="sep">
 
         <!-- ── 2. Paramètres du titrage ── -->
-        <div class="section-title">Paramètres</div>
+        <div class="section-title" data-repliable>Paramètres</div>
 
         <!-- Concentration titrante -->
         <div class="param-row">
@@ -581,7 +581,7 @@
         <hr class="sep">
 
         <!-- ── 3. Options ── -->
-        <div class="section-title">Options</div>
+        <div class="section-title" data-repliable>Options</div>
         <!-- Pas d'acquisition : visible uniquement en pH-métrique / conductimétrique
              (géré par JS via #row-pas-acquisition.style.display) -->
         <div class="param-row" id="row-pas-acquisition" style="display:none;">
@@ -642,6 +642,7 @@
 <script src="js/zoom.js"></script>
 <script src="js/graph.js"></script>
 <script src="js/ui.js"></script>
+<script src="js/sections-repliables.js"></script>
 <script data-goatcounter="https://berdous-pc.goatcounter.com/count"
         async src="https://gc.zgo.at/count.js"></script>
 </body>

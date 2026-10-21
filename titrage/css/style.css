@@ -289,6 +289,27 @@ main {
 .section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #7a8a96; }
 .sep { border: none; border-top: 1px solid #c8c0b4; margin: 2px 0; }
 
+/* Sections repliables du panneau (test) : titre inchangé + petit chevron discret */
+.section-title[data-repliable] {
+  display: flex; align-items: center; justify-content: space-between;
+  cursor: pointer; user-select: none;
+}
+.section-title[data-repliable]:hover { color: #2a6aaa; }
+.section-toggle {
+  flex: none; width: 18px; height: 18px; padding: 0; cursor: pointer;
+  border: none; background: transparent; position: relative;
+}
+.section-toggle::before {            /* chevron vers le haut (déplié : un clic replie), vers le bas (replié : un clic déplie) */
+  content: ''; position: absolute; left: 50%; top: 50%;
+  width: 5px; height: 5px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+  color: #7a8a96;
+  transform: translate(-50%, -30%) rotate(-135deg); transition: transform .2s;
+}
+.section-title[data-repliable]:hover .section-toggle::before { color: #2a6aaa; }
+.section-toggle[aria-expanded="false"]::before { transform: translate(-50%, -70%) rotate(45deg); }
+.section-body { display: flex; flex-direction: column; gap: 10px; }
+.section-body.collapsed { display: none; }
+
 /* Paramètre générique */
 .param-row {
   display: flex;
