@@ -122,7 +122,7 @@
         <div class="sep"></div>
 
         <div class="panel-section">
-          <div class="section-title">Paramètres de l'ellipse</div>
+          <div class="section-title" data-repliable>Paramètres de l'ellipse</div>
           <div class="param-row">
             <label>
               Demi-grand axe a
@@ -145,7 +145,7 @@
         <div class="sep"></div>
 
         <div class="panel-section">
-          <div class="section-title">Affichage</div>
+          <div class="section-title" data-repliable>Affichage</div>
           <label class="check-row">
             <input type="checkbox" id="ck-foyers-1" checked
                    onchange="toggleAffichage1('showFoyers', this.checked)">
@@ -175,7 +175,7 @@
         <div class="sep"></div>
 
         <div class="panel-section">
-          <div class="section-title">Grandeurs</div>
+          <div class="section-title" data-repliable>Grandeurs</div>
           <div class="readout">
             <div class="ro-grid">
               <div class="ro-item">
@@ -298,7 +298,7 @@
         <div class="sep"></div>
 
         <div class="panel-section">
-          <div class="section-title">Mesures</div>
+          <div class="section-title" data-repliable>Mesures</div>
           <div class="readout">
             <div class="ro-label">Aires balayées</div>
             <div class="aires-list" id="aires-list"></div>
@@ -379,7 +379,7 @@
         <div class="sep"></div>
 
         <div class="panel-section">
-          <div class="section-title">Affichage</div>
+          <div class="section-title" data-repliable>Affichage</div>
           <button class="btn btn-toggle-one" id="btn-graph-3" onclick="toggleGraph3()">Afficher graphe</button>
           <label class="check-row">
             <input type="checkbox" id="ck-noms-3" checked onchange="toggleNoms3(this.checked)">
@@ -400,7 +400,7 @@
         <div class="sep"></div>
 
         <div class="panel-section">
-          <div class="section-title">Données du système</div>
+          <div class="section-title" data-repliable>Données du système</div>
           <div class="readout" id="sys-table-wrap"></div>
         </div>
 
@@ -476,6 +476,7 @@
 <script src="js/orbites.js"></script>
 <script src="js/graph.js"></script>
 <script src="js/ui.js"></script>
+<script src="js/sections-repliables.js"></script>
 
 <script data-goatcounter="https://berdous-pc.goatcounter.com/count"
         async src="https://gc.zgo.at/count.js"></script>

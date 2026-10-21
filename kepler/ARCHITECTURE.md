@@ -17,7 +17,8 @@ kepler/
     ├── sim.js       ← état global + données astronomiques + maths képlériennes
     ├── orbites.js   ← rendu canvas des 3 zones d'animation
     ├── graph.js     ← graphe T/a de la 3ᵉ loi (sélecteurs d'axes, tooltip)
-    └── ui.js        ← onglets, contrôles, boucle RAF (chargé en dernier)
+    ├── ui.js        ← onglets, contrôles, boucle RAF
+    └── sections-repliables.js ← copie de titrage/, sections du panneau repliables (chargé en dernier)
 ```
 
 ## Les trois onglets
