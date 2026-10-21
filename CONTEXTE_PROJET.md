@@ -151,6 +151,49 @@ Les pages les plus récentes (`ondes/`, `champ_uniforme/`, `dissolution/`) font 
 | `letter-spacing` | `1px` |
 | Couleur | `#7a8a96` |
 
+#### Sections repliables (test en cours — `titrage/`, branche `test-sections-repliables`)
+
+But : alléger le panneau de droite. Un titre de section peut porter un petit chevron qui masque/affiche les commandes de la section. **Pliées par défaut.**
+
+**Quelles sections ?** Seulement celles qui regroupent plusieurs commandes secondaires (typiquement « Options », « Paramètres »). **Ne pas** rendre repliable : une section à un seul élément (ex. slider « Vitesse d'animation », select « Réaction »), ni celles qui contiennent les boutons importants (Actions : Lancer / Avancer / RAZ…), ni « Mode Test ». Chaque titre concerné est marqué à la main par l'attribut `data-repliable` ; les autres titres restent inchangés.
+
+**Fonctionnement.** Le HTML du panneau n'est pas restructuré : au chargement, `js/sections-repliables.js` regroupe les éléments qui suivent chaque `.section-title[data-repliable]` (jusqu'au prochain `<hr class="sep">`, ou la fin du bloc) dans un `<div class="section-body">`, ajoute un `<button class="section-toggle">` dans le titre, puis plie la section. Un clic sur le titre ou sur le chevron bascule. Les `id` des éléments déplacés sont conservés, donc le JS existant de la page n'est pas affecté. Prérequis : titre et contenu doivent être **frères directs** dans `#panel-body`, la section étant délimitée par un `<hr class="sep">` (c'est le cas de `titrage/` ; vérifier la structure avant de l'appliquer à une autre page, sinon adapter le critère d'arrêt).
+
+**Implémentation sur une page :**
+
+1. Marquer les titres : `<div class="section-title" data-repliable>Options</div>`
+2. Copier `titrage/js/sections-repliables.js` dans le `js/` de la page et le charger **après** le script principal (`ui.js`/`main.js`…) : `<script src="js/sections-repliables.js"></script>`
+3. Ajouter ce CSS à la suite de `.section-title` / `.sep` :
+
+```css
+/* Sections repliables du panneau : titre inchangé + petit chevron discret */
+.section-title[data-repliable] {
+  display: flex; align-items: center; justify-content: space-between;
+  cursor: pointer; user-select: none;
+}
+.section-title[data-repliable]:hover { color: #2a6aaa; }
+.section-toggle {
+  flex: none; width: 18px; height: 18px; padding: 0; cursor: pointer;
+  border: none; background: transparent; position: relative;
+}
+.section-toggle::before {            /* chevron vers le haut (déplié : un clic replie), vers le bas (replié : un clic déplie) */
+  content: ''; position: absolute; left: 50%; top: 50%;
+  width: 5px; height: 5px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+  color: #7a8a96;
+  transform: translate(-50%, -30%) rotate(-135deg); transition: transform .2s;
+}
+.section-title[data-repliable]:hover .section-toggle::before { color: #2a6aaa; }
+.section-toggle[aria-expanded="false"]::before { transform: translate(-50%, -70%) rotate(45deg); }
+.section-body { display: flex; flex-direction: column; gap: 10px; }
+.section-body.collapsed { display: none; }
+```
+
+**Choix de design (itérations validées avec l'utilisateur) :** pas de barre/fond/bordure autour du titre (« trop voyant »), pas de bouton rond (« moche ») ; chevron gris discret à droite du titre, bleu `#2a6aaa` au survol. Le sens du chevron suit la direction du contenu : **bas = replié (le contenu va descendre), haut = déplié** — jamais une flèche vers la droite. L'état n'est pas mémorisé entre deux chargements.
+
+**Boutons « Afficher… » devenus inutiles.** Une section repliable remplit déjà la fonction des boutons de type « Afficher les valeurs », « Afficher les mesures », etc. dont le seul rôle est de montrer/cacher un bloc de commandes ou d'affichages du panneau : lors de l'implémentation sur une page, on peut les **supprimer**, en regroupant le bloc concerné sous un titre `data-repliable` (pliée par défaut = masqué, dépliée = affiché). Attention : cela ne vaut que pour un bouton qui masque un élément **du panneau**. Un bouton qui active/désactive un élément de la simulation ou du graphe (courbe, tangente, représentation des espèces, zoom…) reste nécessaire. Avant de supprimer un bouton, vérifier dans le JS de la page ce qu'il pilote et retirer proprement son `onclick`/ses références (`getElementById`) pour ne laisser aucune erreur JS.
+
+**Si `.section-body` perturbe le layout** (page où `.panel-main-section` n'est pas un flex column avec `gap: 10px`), ajuster le `gap` de `.section-body` pour retrouver l'espacement d'origine.
+
 ### Boutons (`.btn`)
 
 Tous les boutons partagent : `width: 100%`, `border-radius: 6px`, `font-weight: 700`, `font-family: inherit`, `transition: transform 0.1s`, `:active { transform: scale(0.97) }`.
