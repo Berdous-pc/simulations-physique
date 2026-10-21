@@ -225,11 +225,15 @@ Le reste (onglets, sous-onglets, variantes de boutons, `.param-row`, `.readout`,
 | `cinematique/` | ✅ terminée | aucune (Piste et Graphes : une seule commande ; Voitures : contenu principal) |
 | `dissolution/` | ✅ terminée | aucune (une seule commande par section) |
 | `reaction/` | ✅ terminée | Options (×2 onglets), Mode Test sorti dans sa propre section |
-| `ondes/`, `champ_uniforme/`, `kepler/`, `cinetique/`, `derivee/`, `equilibre/`, `refraction/` | déjà proches du modèle (`style=` en ligne, classes de boutons à reprendre) | à faire |
+| `lentille/` | ✅ terminée | Paramètres optiques, Objet à l'infini, Options, Valeurs (bouton « Afficher les valeurs » supprimé), Légende des rayons |
+| `lunette/` | ✅ terminée | Paramètres, Options, Valeurs (bouton supprimé) |
+| `refraction/` | ✅ terminée | Affichage, Mesures (×2 onglets, boutons « Afficher les mesures » supprimés) |
+| `diffraction/` | ✅ terminée | Paramètres expérimentaux / Paramètres, Options, Valeurs (×2 onglets, boutons supprimés ; avertissement d'angle déplacé dans Options) |
+| `interferences/` | ✅ terminée | Paramètres, Graphes temporels, Options, Valeurs, Paramètres expérimentaux (×3 onglets) ; bouton « Afficher les valeurs » de l'onglet 1D gardé (il affiche aussi les valeurs en M sur le canvas) |
+| `ondes/`, `champ_uniforme/`, `kepler/`, `cinetique/`, `derivee/`, `equilibre/` | déjà proches du modèle (`style=` en ligne, classes de boutons à reprendre) | à faire |
 | `titrage/`, `radioactivite/` | à restructurer (titres à plat, `<hr class="sep">`, `gap: 10px`, boutons en px fixes sur titrage) | titrage : déjà fait (Options, Paramètres) |
-| `lentille/`, `lunette/`, `diffraction/`, `interferences/` | à restructurer (sections en `<div>` anonymes sans séparateur, titre souligné et `gap: 14px` sur lentille/lunette) | à faire |
 
-**Classes utilitaires apparues pendant l'uniformisation** (à réutiliser plutôt qu'un `style=` en ligne) : `.param-row-speed { margin-top: 8px; margin-bottom: 0; }` pour le curseur de vitesse placé sous les boutons Lancer/Pause/RAZ ; `.param-row-after-btn { margin-top: 8px; }` pour un curseur placé juste sous un bouton ; `.progress-msg` pour un message texte sous des boutons d'action (`reaction/`).
+**Classes utilitaires apparues pendant l'uniformisation** (à réutiliser plutôt qu'un `style=` en ligne) : `.param-row-speed { margin-top: 8px; margin-bottom: 0; }` pour le curseur de vitesse placé sous les boutons Lancer/Pause/RAZ ; `.param-row-after-btn { margin-top: 8px; }` pour un curseur placé juste sous un bouton ; `.progress-msg` pour un message texte sous des boutons d'action (`reaction/`) ; `.input-hint-after-btn { margin-top: 6px; }` pour une aide sous un bouton ; `.legend-swatch` + modificateurs `.sw-…` pour les échantillons de couleur d'une légende (`lentille/`), `.cr-…` pour ceux des cases à cocher (`refraction/`) ; `.overline` pour une grandeur algébrique surlignée.
 
 ### Onglets principaux (`.panel-main-tab`)
 
