@@ -148,8 +148,10 @@ main {
 /* ── Corps scrollable ────────────────────────────── */
 #panel-body {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: clamp(10px, 1.2vw, 16px) clamp(10px, 1.2vw, 14px);
+  overflow-x: hidden;   /* pas de barre horizontale au moindre débordement */
+  padding: clamp(8px, 1vw, 14px) clamp(8px, 1vw, 12px);
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -201,6 +203,21 @@ main {
 }
 
 /* ── Boutons ─────────────────────────────────────── */
+/* Boutons empilés : l'écart est porté par le conteneur, pas par une marge
+   sur chaque bouton. */
+.btn-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Curseur placé juste sous un bouton ou des onglets (λ sous le choix de source) */
+.param-row-after-btn { margin-top: 8px; }
+/* Aide placée juste sous un bouton */
+.input-hint-after-btn { margin-top: 6px; }
+/* Sélecteur suivi de curseurs dans la même section (Prisme) */
+.milieu-row-spaced { margin-bottom: 10px; }
+
 .btn {
   width: 100%;
   border: none;
@@ -352,6 +369,9 @@ main {
   border-top: 2px dashed #5a6a78;
   border-radius: 0;
 }
+/* Couleurs des échantillons = couleurs du canvas */
+.cr-rayon  { background: #e11414; }
+.cr-angles { background: linear-gradient(90deg, #2a6aaa 33%, #7a4ab0 33% 66%, #2a8a50 66%); }
 
 /* ── Afficheurs valeur ───────────────────────────── */
 .readout {
@@ -396,10 +416,6 @@ main {
 /* Les règles d'affichage (display…) l'emportent sur la feuille du
    navigateur : sans ceci, l'attribut hidden resterait sans effet. */
 [hidden] { display: none !important; }
-
-/* Bouton « Afficher les mesures » : sous les afficheurs quand ils sont
-   visibles */
-#mesures-snell + .btn { margin-top: 2px; }
 
 /* Mention de réflexion totale (couleur alerte de la charte) */
 .ro-tir {

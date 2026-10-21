@@ -191,14 +191,6 @@ function toggleAffichage(cle, val) {
   demanderRendu();
 }
 
-// Bloc « Mesures » : masqué au chargement, affiché à la demande
-function toggleMesures() {
-  var bloc = document.getElementById('mesures-snell');
-  bloc.hidden = !bloc.hidden;
-  document.getElementById('btn-mesures').textContent =
-    bloc.hidden ? 'Afficher les mesures' : 'Masquer les mesures';
-}
-
 // ══════════════════════════════════════════════════════════════════════
 //  Afficheurs du panneau
 // ══════════════════════════════════════════════════════════════════════
@@ -346,13 +338,6 @@ function reinitialiserPrisme() {
 function toggleAffichagePR(cle, val) {
   affichagePR[cle] = val;
   demanderRenduPrisme();
-}
-
-function toggleMesuresPrisme() {
-  var bloc = document.getElementById('mesures-prisme');
-  bloc.hidden = !bloc.hidden;
-  document.getElementById('btn-mesures-prisme').textContent =
-    bloc.hidden ? 'Afficher les mesures' : 'Masquer les mesures';
 }
 
 function _syncPrismeUI() {

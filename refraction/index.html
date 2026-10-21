@@ -67,14 +67,17 @@
       <!-- ═══ Section SNELL-DESCARTES ═══ -->
       <div class="panel-main-section" id="section-snell-descartes">
 
-        <div class="mode-tabs">
-          <button class="mode-tab active" id="mode-milieux" onclick="setModeSnell('milieux')">Deux milieux</button>
-          <button class="mode-tab" id="mode-disque" onclick="setModeSnell('disque')">Demi-disque</button>
+        <!-- ── Choix du mode (sans titre) ── -->
+        <div class="panel-section">
+          <div class="mode-tabs">
+            <button class="mode-tab active" id="mode-milieux" onclick="setModeSnell('milieux')">Deux milieux</button>
+            <button class="mode-tab" id="mode-disque" onclick="setModeSnell('disque')">Demi-disque</button>
+          </div>
         </div>
 
         <div class="sep"></div>
 
-        <!-- ── Contrôles du mode « Deux milieux » ── -->
+        <!-- ── Contrôles du mode « Deux milieux » (bloc affiché/masqué par setModeSnell) ── -->
         <div id="ctrl-milieux">
           <div class="panel-section">
             <div class="section-title">Milieu 1 (haut)</div>
@@ -101,35 +104,43 @@
             <div class="input-hint">Indice libre entre 1,00 et 3,00 dans la case de droite.</div>
           </div>
 
-          <button class="btn btn-primary" onclick="inverserMilieux()">⇅ Inverser les milieux</button>
+          <div class="panel-section">
+            <button class="btn btn-primary" onclick="inverserMilieux()">⇅ Inverser les milieux</button>
+          </div>
 
           <div class="sep"></div>
 
-          <div class="param-row">
-            <label>
-              Angle d'incidence i
-              <span class="param-value" id="lbl-incidence">30,0°</span>
-            </label>
-            <input type="range" id="sl-incidence" min="0" max="90" step="0.1" value="30"
-                   oninput="onSliderIncidence(this.value)">
-            <div class="input-hint">Le laser s'oriente aussi en le faisant glisser dans le milieu 1.</div>
+          <div class="panel-section">
+            <div class="param-row">
+              <label>
+                Angle d'incidence i
+                <span class="param-value" id="lbl-incidence">30,0°</span>
+              </label>
+              <input type="range" id="sl-incidence" min="0" max="90" step="0.1" value="30"
+                     oninput="onSliderIncidence(this.value)">
+              <div class="input-hint">Le laser s'oriente aussi en le faisant glisser dans le milieu 1.</div>
+            </div>
           </div>
         </div>
 
-        <!-- ── Contrôles du mode « Demi-disque » ── -->
+        <!-- ── Contrôles du mode « Demi-disque » (bloc affiché/masqué par setModeSnell) ── -->
         <div id="ctrl-disque" style="display:none;">
-          <div class="param-row">
-            <label>
-              Indice du plexiglas n
-              <span class="param-value" id="lbl-n-disque">1,49</span>
-            </label>
-            <input type="range" id="sl-n-disque" min="1" max="2.5" step="0.01" value="1.49"
-                   oninput="onSliderIndiceDisque(this.value)">
-          </div>
-          <button class="btn btn-primary" onclick="alignerRapporteur()">Aligner le rapporteur sur la normale</button>
-          <button class="btn btn-raz" style="margin-top:6px;" onclick="reinitialiserDisque()">↺ Réinitialiser</button>
-          <div class="input-hint" style="margin-top:6px;">
-            Faire glisser le laser, le demi-disque ou la couronne du rapporteur pour les faire tourner.
+          <div class="panel-section">
+            <div class="param-row">
+              <label>
+                Indice du plexiglas n
+                <span class="param-value" id="lbl-n-disque">1,49</span>
+              </label>
+              <input type="range" id="sl-n-disque" min="1" max="2.5" step="0.01" value="1.49"
+                     oninput="onSliderIndiceDisque(this.value)">
+            </div>
+            <div class="btn-stack">
+              <button class="btn btn-primary" onclick="alignerRapporteur()">Aligner le rapporteur sur la normale</button>
+              <button class="btn btn-raz" onclick="reinitialiserDisque()">↺ Réinitialiser</button>
+            </div>
+            <div class="input-hint input-hint-after-btn">
+              Faire glisser le laser, le demi-disque ou la couronne du rapporteur pour les faire tourner.
+            </div>
           </div>
         </div>
 
@@ -144,22 +155,22 @@
           </label>
           <label class="check-row">
             <input type="checkbox" checked onchange="toggleAffichage('rayonInc', this.checked)">
-            <span class="cr-swatch" style="background:#e11414;"></span>
+            <span class="cr-swatch cr-rayon"></span>
             Rayon incident (et laser)
           </label>
           <label class="check-row">
             <input type="checkbox" checked onchange="toggleAffichage('rayonRefl', this.checked)">
-            <span class="cr-swatch" style="background:#e11414;"></span>
+            <span class="cr-swatch cr-rayon"></span>
             Rayon réfléchi
           </label>
           <label class="check-row">
             <input type="checkbox" checked onchange="toggleAffichage('rayonRefr', this.checked)">
-            <span class="cr-swatch" style="background:#e11414;"></span>
+            <span class="cr-swatch cr-rayon"></span>
             Rayon réfracté
           </label>
           <label class="check-row">
             <input type="checkbox" checked onchange="toggleAffichage('angles', this.checked)">
-            <span class="cr-swatch" style="background:linear-gradient(90deg,#2a6aaa 33%,#7a4ab0 33% 66%,#2a8a50 66%);"></span>
+            <span class="cr-swatch cr-angles"></span>
             Angles i, i′ et r
           </label>
           <label class="check-row">
@@ -170,10 +181,10 @@
 
         <div class="sep"></div>
 
-        <!-- ── Mesures (masquées par défaut) ── -->
+        <!-- ── Mesures : affichées en dépliant la section ── -->
         <div class="panel-section">
           <div class="section-title">Mesures</div>
-          <div id="mesures-snell" hidden>
+          <div id="mesures-snell">
             <div class="readout">
               <div class="ro-label" id="ro-sens">—</div>
               <div class="ro-line">
@@ -197,7 +208,6 @@
               </div>
             </div>
           </div>
-          <button id="btn-mesures" class="btn btn-toggle-one" onclick="toggleMesures()">Afficher les mesures</button>
         </div>
 
       </div><!-- fin #section-snell-descartes -->
@@ -212,15 +222,14 @@
             <button class="mode-tab active" id="src-blanche" onclick="setSourcePrisme('blanche')">Lumière blanche</button>
             <button class="mode-tab" id="src-mono" onclick="setSourcePrisme('mono')">Monochromatique</button>
           </div>
-        </div>
-
-        <div class="param-row" id="ctrl-mono" style="display:none;">
-          <label>
-            Longueur d'onde λ
-            <span class="param-value"><span class="sw-lambda" id="sw-lambda"></span><span id="lbl-lambda">589 nm</span></span>
-          </label>
-          <input type="range" id="sl-lambda" class="sl-spectre" min="400" max="700" step="1" value="589"
-                 oninput="onSliderLambda(this.value)">
+          <div class="param-row param-row-after-btn" id="ctrl-mono" style="display:none;">
+            <label>
+              Longueur d'onde λ
+              <span class="param-value"><span class="sw-lambda" id="sw-lambda"></span><span id="lbl-lambda">589 nm</span></span>
+            </label>
+            <input type="range" id="sl-lambda" class="sl-spectre" min="400" max="700" step="1" value="589"
+                   oninput="onSliderLambda(this.value)">
+          </div>
         </div>
 
         <div class="sep"></div>
@@ -228,45 +237,45 @@
         <!-- ── Prisme ── -->
         <div class="panel-section">
           <div class="section-title">Prisme</div>
-          <div class="milieu-row">
+          <div class="milieu-row milieu-row-spaced">
             <select class="milieu-select" id="sel-prisme"
                     onchange="onSelectPrisme(this.value)"></select>
           </div>
-        </div>
 
-        <div class="param-row">
-          <label>
-            Angle au sommet A
-            <span class="param-value" id="lbl-angle-prisme">60°</span>
-          </label>
-          <input type="range" id="sl-angle-prisme" min="10" max="90" step="1" value="60"
-                 oninput="onSliderAnglePrisme(this.value)">
-        </div>
+          <div class="param-row">
+            <label>
+              Angle au sommet A
+              <span class="param-value" id="lbl-angle-prisme">60°</span>
+            </label>
+            <input type="range" id="sl-angle-prisme" min="10" max="90" step="1" value="60"
+                   oninput="onSliderAnglePrisme(this.value)">
+          </div>
 
-        <div class="param-row">
-          <label>
-            Rotation du prisme
-            <span class="param-value" id="lbl-rot-prisme">0,0°</span>
-          </label>
-          <input type="range" id="sl-rot-prisme" min="-180" max="180" step="0.1" value="0"
-                 oninput="onSliderRotPrisme(this.value)">
-        </div>
+          <div class="param-row">
+            <label>
+              Rotation du prisme
+              <span class="param-value" id="lbl-rot-prisme">0,0°</span>
+            </label>
+            <input type="range" id="sl-rot-prisme" min="-180" max="180" step="0.1" value="0"
+                   oninput="onSliderRotPrisme(this.value)">
+          </div>
 
-        <div class="param-row">
-          <label>
-            Angle d'incidence i
-            <span class="param-value" id="lbl-inc-prisme">—</span>
-          </label>
-          <input type="range" id="sl-inc-prisme" min="0" max="89.9" step="0.1" value="54"
-                 oninput="onSliderIncidencePR(this.value)">
-          <div class="input-hint">La source tourne autour du point d'incidence sur la face d'entrée.</div>
-        </div>
+          <div class="param-row">
+            <label>
+              Angle d'incidence i
+              <span class="param-value" id="lbl-inc-prisme">—</span>
+            </label>
+            <input type="range" id="sl-inc-prisme" min="0" max="89.9" step="0.1" value="54"
+                   oninput="onSliderIncidencePR(this.value)">
+            <div class="input-hint">La source tourne autour du point d'incidence sur la face d'entrée.</div>
+          </div>
 
-        <button class="btn btn-raz" onclick="reinitialiserPrisme()">↺ Réinitialiser</button>
-        <div class="input-hint" style="margin-top:6px;">
-          Faire glisser la source pour la déplacer, sa poignée ronde pour l'orienter, le prisme pour le faire tourner.
-          Molette : zoom autour du pointeur ; en vue zoomée, le glisser déplace la vue,
-          le double-clic ramène à la vue d'ensemble.
+          <button class="btn btn-raz" onclick="reinitialiserPrisme()">↺ Réinitialiser</button>
+          <div class="input-hint input-hint-after-btn">
+            Faire glisser la source pour la déplacer, sa poignée ronde pour l'orienter, le prisme pour le faire tourner.
+            Molette : zoom autour du pointeur ; en vue zoomée, le glisser déplace la vue,
+            le double-clic ramène à la vue d'ensemble.
+          </div>
         </div>
 
         <div class="sep"></div>
@@ -287,10 +296,10 @@
 
         <div class="sep"></div>
 
-        <!-- ── Mesures (masquées par défaut) ── -->
+        <!-- ── Mesures : affichées en dépliant la section ── -->
         <div class="panel-section">
           <div class="section-title">Mesures</div>
-          <div id="mesures-prisme" hidden>
+          <div id="mesures-prisme">
             <div class="readout">
               <div class="ro-label" id="ro-pr-mat">—</div>
               <div class="ro-line">
@@ -322,7 +331,6 @@
               <div class="ro-tir" id="ro-pr-msg" style="display:none;"></div>
             </div>
           </div>
-          <button id="btn-mesures-prisme" class="btn btn-toggle-one" onclick="toggleMesuresPrisme()">Afficher les mesures</button>
         </div>
 
       </div><!-- fin #section-prisme -->

@@ -156,7 +156,7 @@ exposition automatique et relèvement des faibles luminosités (puissance
 0,45, teinte conservée). La loupe utilise le même
 profil, ×10.
 
-**Mesures** (masquées par défaut) : calculées dans `ui.js` en unités m
+**Mesures** (section repliable, pliée par défaut) : calculées dans `ui.js` en unités m
 (`_traceMonde`), sans écran, donc indépendantes de la taille du canvas —
 indices et déviations pour les extrémités rouge et violette du spectre
 affiché, ou pour λ en monochromatique, incidence sur la face d'entrée,
@@ -240,7 +240,7 @@ C'est au second dioptre que le zoom montre la séparation des couleurs
 - La case « Valeurs des angles » masque les valeurs sur le canvas (les arcs
   ne portent plus que i, i′, r) : utile pour faire mesurer les angles aux
   élèves.
-- Le bloc « Mesures » (i, i′, r, angle limite) est **masqué au chargement** ;
-  le bouton « Afficher les mesures » (`toggleMesures`) le montre, comme sur
-  `courant/`. Une grandeur par ligne (`.ro-line`) : la valeur passe sous son
+- Le bloc « Mesures » (i, i′, r, angle limite) est dans une **section repliable,
+  pliée au chargement** (`js/sections-repliables.js`, copie de `titrage/`) ;
+  plus de bouton « Afficher les mesures ». Une grandeur par ligne (`.ro-line`) : la valeur passe sous son
   libellé plutôt que de déborder quand le panneau est étroit.
