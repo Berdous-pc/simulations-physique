@@ -429,8 +429,10 @@ main {
 /* Message de progression sous les boutons d'action (texte posé par ui.js) */
 .progress-msg {
   font-size: clamp(11px, 1vw, 13px); font-style: italic; text-align: center;
-  min-height: 18px; margin-top: 6px;
+  margin-top: 6px;
 }
+/* Vide (aucune animation en cours) : ne réserve aucune place sous les boutons */
+.progress-msg:empty { display: none; }
 #eq-progress  { color: #2a6aaa; }
 #lim-progress { color: #2a8a50; }
 .btn-raz       { background: #dedad2; color: #5a6a78; border-color: #b0a898; }
