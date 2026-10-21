@@ -24,7 +24,6 @@ const sim = {
   echelleAngleTop: false, // vue Dessus uniquement : grossit l'angle de diffraction affiché (cf. scene.js → updateOrthoCamera)
   maskShape: 'fente', // 'fente' | 'carre' | 'cercle' | 'fil' — forme de l'ouverture de la diapositive
   showGraphIntensite: false, // afficher le graphe I(x) sous la scène 3D (avec splitter) — désactivé par défaut
-  showValeursExp: false, // afficher les cadres de valeurs expérimentales (angle, tache centrale) — désactivé par défaut
 
   // Demi-largeur physique de l'écran simulé (m) — fixe, écran réel de TP 25×15 cm, cf. ARCHITECTURE.md
   screenHalfWidth: 0.125
@@ -621,5 +620,4 @@ function resetParams() {
   sim.showLengths = false;
   sim.maskShape = 'fente';
   sim.showGraphIntensite = false;
-  sim.showValeursExp = false;
 }

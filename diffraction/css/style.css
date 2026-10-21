@@ -417,26 +417,33 @@ main {
 #panel-body {
   flex: 1;
   min-height: 0;
-  padding: clamp(8px, 1.2vw, 16px) clamp(6px, 1vw, 14px);
+  padding: clamp(8px, 1vw, 14px) clamp(8px, 1vw, 12px);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 0;
   overflow-y: auto;
+  overflow-x: hidden;   /* pas de barre horizontale au moindre débordement */
 }
 
-.panel-main-section {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+.panel-main-section { display: block; }   /* affichée/masquée par setMainTab() (style.display) */
+
+/* Structure canonique : une .panel-section par section, .sep entre deux */
+.panel-section { margin-bottom: 8px; }
+.sep {
+  border: none;
+  border-top: 1px solid #c8c0b4;
+  margin: 8px 0;
 }
 
 .section-title {
   font-size: 11px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: 1px; color: #7a8a96; margin-bottom: 4px;
+  letter-spacing: 1px; color: #7a8a96; margin-bottom: 7px;
 }
 
 /* Paramètres (label + slider) */
-.param-row { display: flex; flex-direction: column; gap: 3px; margin-bottom: 6px; }
+.param-row { display: flex; flex-direction: column; gap: 3px; margin-bottom: 10px; }
+/* Curseur placé juste sous des boutons (vitesse sous Pause/RAZ) */
+.param-row-after-btn { margin-top: 8px; }
 .param-row label { display: flex; justify-content: space-between; font-size: clamp(12px, 1.15vw, 15px); color: #2c3e50; }
 .param-row label span { color: #2a5080; font-weight: 600; }
 input[type=range] { width: 100%; accent-color: #4a7aaa; cursor: pointer; }
@@ -523,6 +530,17 @@ input[type=range]:disabled { accent-color: #b0aca4; cursor: not-allowed; }
    habituel, seule la largeur devient partagée au lieu de 100%. RAZ reste
    étroit (texte court et fixe) pour laisser toute la place à Pause/Reprendre,
    dont le texte change et ne doit pas passer à la ligne. */
+/* Boutons empilés : l'écart est porté par le conteneur, pas par une marge
+   sur chaque bouton. */
+.btn-stack { display: flex; flex-direction: column; gap: 6px; }
+
+/* Avertissement (section Options, ondes de surface) */
+#surf-angle-warning {
+  margin-top: 8px;
+  font-size: clamp(11px, 1vw, 13px);
+  color: #a05a10;
+}
+
 .btn-row { display: flex; gap: 6px; }
 .btn-row > .btn { width: auto; flex: 1 1 0; white-space: nowrap; }
 .btn-row > .btn-raz { flex: 0 0 auto; }

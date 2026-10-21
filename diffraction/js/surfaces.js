@@ -324,8 +324,7 @@ var simSurf = {
     //    hauteur du bassin).
     cut         : { x: 0, cmX: null, dragging: false },
 
-    // ── Affichage des valeurs (rapport λ/a, angle de diffraction) ─────
-    showValeurs  : false,
+    // ── Tracé de l'angle de diffraction ─────────────────────────────
     showAngle    : false,
 
     // ── Graphe(s) — mode 1 ou 2 graphes, cf. _buildSurfGraphCtrl ──────────
@@ -1802,19 +1801,6 @@ function _syncSurfAngleWarning() {
     warn.style.display = (fraunhoferDist > visibleDepth) ? '' : 'none';
 }
 
-function syncValeursSurfUI() {
-    var visible = simSurf.showValeurs;
-    var el = document.getElementById('readouts-surf');
-    if (el) el.style.display = visible ? '' : 'none';
-    var btn = document.getElementById('btn-toggle-valeurs-surf');
-    if (btn) btn.classList.toggle('active', visible);
-}
-
-function toggleValeursSurf() {
-    simSurf.showValeurs = !simSurf.showValeurs;
-    syncValeursSurfUI();
-}
-
 function syncSurfGraphUI() {
     var visible = simSurf.showGraph;
     var splitter = document.getElementById('surf-splitter');
@@ -1899,9 +1885,6 @@ function resetSurfaces() {
     simSurf.showGraph = false;
     syncSurfGraphUI();
 
-    simSurf.showValeurs = false;
-    syncValeursSurfUI();
-
     simSurf.showAngle = false;
     var btnAngle = document.getElementById('btn-angle-surf');
     if (btnAngle) btnAngle.classList.remove('active');
@@ -1921,6 +1904,5 @@ function initSurfaces() {
     initSurfWheelZoom();
     _surfSetViewCm(simSurf.viewCm, true); // aligne slider et libellé sur SURF_VIEW_DEFAULT_CM
     _updateSurfRatioReadout();
-    syncValeursSurfUI();
     syncSurfGraphUI();
 }

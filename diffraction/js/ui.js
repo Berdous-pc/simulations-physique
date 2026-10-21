@@ -220,21 +220,14 @@ function toggleGraphIntensite() {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-//  (Dés)active l'affichage des valeurs expérimentales (angle de diffraction, largeur de la
-//  tache centrale) sous la section Valeurs — désactivé par défaut. Bascule aussi entre le
-//  cadre unique (monochromatique) et le tableau à 6 lignes (lumière blanche), cf.
-//  updateReadouts().
+//  Valeurs expérimentales (angle de diffraction, largeur de la tache centrale) de la
+//  section Valeurs (repliable) : bascule entre le cadre unique (monochromatique) et le
+//  tableau à 6 lignes (lumière blanche), cf. updateReadouts().
 // ─────────────────────────────────────────────────────────────────────
 function syncValeursExpUI() {
-  const visible = sim.showValeursExp;
   const estBlanche = sim.lightSource === 'blanche';
-  document.getElementById('readouts-exp').style.display = (visible && !estBlanche) ? '' : 'none';
-  document.getElementById('readouts-exp-blanche').style.display = (visible && estBlanche) ? '' : 'none';
-  document.getElementById('btn-toggle-valeurs-exp').classList.toggle('active', visible);
-}
-function toggleValeursExp() {
-  sim.showValeursExp = !sim.showValeursExp;
-  syncValeursExpUI();
+  document.getElementById('readouts-exp').style.display = estBlanche ? 'none' : '';
+  document.getElementById('readouts-exp-blanche').style.display = estBlanche ? '' : 'none';
 }
 
 // ─────────────────────────────────────────────────────────────────────
