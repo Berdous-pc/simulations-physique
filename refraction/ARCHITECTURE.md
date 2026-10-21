@@ -15,7 +15,8 @@ refraction/
     ├── sim.js       milieux, état, lois de l'optique, géométrie des rayons
     ├── dioptre.js   rendu canvas de l'onglet Snell-Descartes + glisser-déposer
     ├── prisme.js    rendu canvas de l'onglet Prisme + glisser-déposer
-    └── ui.js        onglets, panneau, afficheurs, resize, init
+    ├── ui.js        onglets, panneau, afficheurs, resize, init
+    └── sections-repliables.js  copie de titrage/ : sections Affichage et Mesures repliables (chargé en dernier)
 ```
 
 > Scope global (`var`, pas de modules ES). **Ordre de chargement critique** :
