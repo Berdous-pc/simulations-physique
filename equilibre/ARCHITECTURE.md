@@ -13,7 +13,8 @@ equilibre/
     ├── recipient.js
     ├── graph.js
     ├── frise.js            ← propre à cette page (axe Qr)
-    └── ui.js
+    ├── ui.js
+    └── sections-repliables.js  ← copie de titrage/, sections du panneau repliables (chargé en dernier)
 ```
 
 Cette page est dérivée de `cinetique/` (même structure générale : récipient +
