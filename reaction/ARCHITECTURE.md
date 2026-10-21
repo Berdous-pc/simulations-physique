@@ -15,7 +15,8 @@ reaction/
 └── js/
     ├── data.js         Données statiques + constantes de layout
     ├── sim.js          État global, canvas, géométrie, layout, rendu
-    └── ui.js           Tableau HTML, onglets, animations, mode test, init
+    ├── ui.js           Tableau HTML, onglets, animations, mode test, init
+    └── sections-repliables.js  Copie de titrage/ : sections Options du panneau repliables
 ```
 
 ---
@@ -26,6 +27,7 @@ reaction/
 <script src="js/data.js"></script>   <!-- 1. constantes, REACTIONS, MOL_MODELS -->
 <script src="js/sim.js"></script>    <!-- 2. state, canvas, layout, drawXxx -->
 <script src="js/ui.js"></script>     <!-- 3. tableau, onglets, animations, init() -->
+<script src="js/sections-repliables.js"></script>  <!-- 4. sections repliables (autonome, en dernier) -->
 ```
 
 Tout est en scope global (pas de modules ES). L'ordre est impératif.
