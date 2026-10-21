@@ -7,6 +7,7 @@
    chaque .section-title sont regroupés dans un conteneur .section-body.
      - Structure canonique (.panel-section, cf. CONTEXTE_PROJET.md) :
        le titre est le 1er enfant du bloc, tout le reste du bloc est pris.
+     - data-repliable="ouvert" : section dépliée au chargement (sinon pliée).
      - Ancienne structure « à plat » (titres et commandes frères) :
        arrêt au prochain .sep, au titre suivant ou à un bloc qui
        contient un titre, pour ne jamais avaler la section suivante.
@@ -63,7 +64,7 @@
     btn.addEventListener('click', basculer);
     titre.addEventListener('click', function (e) { if (e.target !== btn) basculer(); });
 
-    // Sections repliées par défaut
-    basculer();
+    // Sections repliées par défaut, sauf data-repliable="ouvert" (dépliée au chargement)
+    if (titre.getAttribute('data-repliable') !== 'ouvert') basculer();
   });
 })();
