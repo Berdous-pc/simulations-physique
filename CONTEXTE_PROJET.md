@@ -312,7 +312,7 @@ Tous les boutons partagent : `width: 100%`, `border-radius: 6px`, `font-weight: 
 
 ### Paramètres (`.param-row`)
 
-- `display: flex; flex-direction: column; gap: 3px; margin-bottom: 10px` (valeur de `ondes/` et `kepler/` ; `dissolution/` utilise encore 6px)
+- `display: flex; flex-direction: column; gap: 3px; margin-bottom: 10px` (valeur de `ondes/` et `kepler/`)
 - `label` : `font-size: clamp(12px, 1.15vw, 15px)`, `color: #2c3e50` ; valeur actuelle en `span` : `color: #2a5080; font-weight: 600`
 - `input[type=range]` : `width: 100%; accent-color: #4a7aaa`
 - `input[type=number/text]` : `width: 100%; padding: 5px 8px; font-size: clamp(13px, 1.3vw, 16px); border: 1px solid #c8c0b4; border-radius: 4px`

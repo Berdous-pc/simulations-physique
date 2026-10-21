@@ -203,10 +203,12 @@
       <div class="panel-main-section" id="section-mecanisme">
         <div class="panel-section">
           <div class="section-title">Contrôles</div>
-          <button id="btn-playpause" class="btn btn-play"
-                  onclick="togglePause()">▶ Lancer</button>
-          <button class="btn btn-raz" style="margin-top:6px;"
-                  onclick="resetSimAnim()">↺ Remettre à zéro</button>
+          <div class="btn-stack">
+            <button id="btn-playpause" class="btn btn-play"
+                    onclick="togglePause()">▶ Lancer</button>
+            <button class="btn btn-raz"
+                    onclick="resetSimAnim()">↺ Remettre à zéro</button>
+          </div>
 
           <!-- Barre de progression + temps courant / durée totale -->
           <div class="progress-row">
@@ -227,7 +229,7 @@
             </select>
           </div>
 
-          <button class="btn btn-fullscreen" style="margin-top:8px;"
+          <button class="btn btn-fullscreen"
                   onclick="toggleFullscreen()">⛶ Plein écran</button>
         </div>
       </div><!-- fin #section-mecanisme -->
@@ -236,13 +238,15 @@
       <div class="panel-main-section" id="section-dissolution" style="display:none;">
         <div class="panel-section">
           <div class="section-title">Contrôles</div>
-          <button id="diss-btn-add" class="btn btn-primary" onclick="dissAddMole()">+ Ajouter 1 mmol de soluté</button>
-          <button id="diss-btn-playpause" class="btn btn-pause" style="margin-top:6px;"
-                  onclick="dissTogglePause()">⏸ Pause</button>
-          <button class="btn btn-raz" style="margin-top:6px;" onclick="dissReset()">↺ Remettre à zéro</button>
+          <div class="btn-stack">
+            <button id="diss-btn-add" class="btn btn-primary" onclick="dissAddMole()">+ Ajouter 1 mmol de soluté</button>
+            <button id="diss-btn-playpause" class="btn btn-pause"
+                    onclick="dissTogglePause()">⏸ Pause</button>
+            <button class="btn btn-raz" onclick="dissReset()">↺ Remettre à zéro</button>
+          </div>
         </div>
 
-        <hr class="sep">
+        <div class="sep"></div>
 
         <div class="panel-section">
           <div class="section-title">Soluté</div>
@@ -280,7 +284,7 @@
           </select>
         </div>
 
-        <hr class="sep">
+        <div class="sep"></div>
 
         <div class="panel-section">
           <div class="section-title">Volume de la solution</div>
@@ -291,7 +295,7 @@
           </div>
         </div>
 
-        <hr class="sep">
+        <div class="sep"></div>
 
         <div class="panel-section">
           <div class="section-title">Unité d'affichage</div>

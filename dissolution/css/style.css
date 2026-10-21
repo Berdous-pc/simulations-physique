@@ -337,7 +337,9 @@ body.dev-frame-edit #zoom-frame-handle { display: block; pointer-events: auto; }
 /* ── Corps scrollable du panneau ──────────────────── */
 #panel-body {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;   /* pas de barre horizontale au moindre débordement */
   padding: clamp(8px, 1vw, 14px) clamp(8px, 1vw, 12px);
   display: flex;
   flex-direction: column;
@@ -358,6 +360,14 @@ body.dev-frame-edit #zoom-frame-handle { display: block; pointer-events: auto; }
 .sep { border: none; border-top: 1px solid #c8c0b4; margin: 8px 0; }
 
 /* ── Boutons ──────────────────────────────────────── */
+/* Boutons empilés : l'écart est porté par le conteneur, pas par une marge
+   sur chaque bouton. */
+.btn-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .btn {
   width: 100%;
   border: none;
@@ -430,6 +440,7 @@ body.dev-frame-edit #zoom-frame-handle { display: block; pointer-events: auto; }
   font-size: clamp(12px, 1.2vw, 15px);
   padding: 9px 6px;
   border: 1.5px solid #c8c0b4;
+  margin-top: 8px;   /* sous le sélecteur de vitesse */
 }
 .btn-fullscreen:hover { background: #ccc8c0; }
 
@@ -935,7 +946,7 @@ body.dev-frame-edit #zoom-frame-handle { display: block; pointer-events: auto; }
 .diss-select:focus { outline: none; border-color: #2a6aaa; }
 
 /* ── Slider de volume (charte CONTEXTE_PROJET.md §5, cf. pression/) ── */
-.param-row { display: flex; flex-direction: column; gap: 3px; margin-bottom: 6px; }
+.param-row { display: flex; flex-direction: column; gap: 3px; margin-bottom: 10px; }
 .param-row label { display: flex; justify-content: space-between; align-items: baseline; font-size: 15px; color: #2c3e50; }
 .param-value { color: #2a5080; font-weight: 600; }
 .param-row input[type="range"] { width: 100%; accent-color: #4a7aaa; cursor: pointer; }
