@@ -514,8 +514,10 @@ body.duo .graph-area.view-frise .chart-wrap { display: none; }
 
 #panel-body {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: clamp(10px, 1.2vw, 16px) clamp(10px, 1.2vw, 14px);
+  overflow-x: hidden;   /* pas de barre horizontale au moindre débordement */
+  padding: clamp(8px, 1vw, 14px) clamp(8px, 1vw, 12px);
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -622,6 +624,8 @@ body.duo .graph-area.view-frise .chart-wrap { display: none; }
   font-size: clamp(12px, 1.2vw, 15px);
   padding: 9px 6px;
 }
+/* Bouton « Quantités finales théoriques » : écart avant l'encart des quantités */
+#btn-theo-1, #btn-theo-2 { margin-bottom: 10px; }
 .btn-toggle-one.active {
   background: #fde8c8;
   color: #7a3a10;
@@ -637,6 +641,8 @@ body.duo .graph-area.view-frise .chart-wrap { display: none; }
   gap: 3px;
   margin-bottom: 10px;
 }
+/* Curseur placé juste sous des boutons (vitesse sous Lancer/RAZ) */
+.param-row-after-btn { margin-top: 8px; }
 
 .param-row label {
   font-size: clamp(12px, 1.25vw, 15px);
