@@ -614,9 +614,6 @@ function toggleCacherTitreTitrage() {
 }
 
 function toggleGraphN() {
-  // Si le zoom bécher est actif, le clic sur ce bouton doit fermer le zoom
-  // sans restaurer l'état mémorisé : l'input de l'utilisateur prime.
-  if (state.titrageZoomBecher) _closeZoomBecherDiscardMemory();
   state.titrageShowGraphN = !state.titrageShowGraphN;
   const btn = document.getElementById('btn-toggle-graph-n');
   if (btn) btn.classList.toggle('active', state.titrageShowGraphN);
@@ -627,9 +624,6 @@ function toggleGraphN() {
  *  Pilote `titrageShowGraphPH` en mode pH-métrique et `titrageShowGraphSigma`
  *  en mode conductimétrique. */
 function toggleGraphPH() {
-  // Idem : réactiver ce bouton pendant que le zoom est actif ferme le zoom
-  // sans restaurer l'état mémorisé.
-  if (state.titrageZoomBecher) _closeZoomBecherDiscardMemory();
   const btn = document.getElementById('btn-toggle-graph-ph');
   if (state.titrageType === 'conductimetrique') {
     state.titrageShowGraphSigma = !state.titrageShowGraphSigma;
@@ -665,6 +659,11 @@ function _applyChartsLayout() {
 
   phPanel.style.display = showMain ? 'flex' : 'none';
   nPanel.style.display  = showN    ? 'flex' : 'none';
+
+  // En incrustation sur le zoom bécher : deux graphes → empilés (cf. CSS .avec-zoom)
+  const zoneCharts = document.getElementById('titrage-charts-zone');
+  if (zoneCharts) zoneCharts.classList.toggle('deux-graphes', showMain && showN);
+  _syncZoomOverlayVars();   // le bas des graphes dépend du mode (boîtier de mesure)
 
   // Les boutons dérivée et tangentes sont pertinents uniquement en
   // pH-métrique ; on les masque en conductimétrique. Le bouton
@@ -4623,54 +4622,89 @@ function _syncGraphButtonsActiveState() {
  * l'activation : utilisé quand l'utilisateur ré-active lui-même un des
  * boutons graphes pendant que le zoom est actif (son input prime).
  */
-function _closeZoomBecherDiscardMemory() {
-  state.titrageZoomBecher = false;
-  state._zoomBecherMemoireGraphes = null;
-  const panel = document.getElementById('zoom-becher-panel');
-  const btn   = document.getElementById('btn-zoom-becher');
-  if (panel) panel.style.display = 'none';
-  if (btn) { btn.classList.remove('active'); btn.innerHTML = 'Zoom bécher'; }
-}
-
-/**
- * Active / désactive le zoom bécher dans la zone centrale.
- * À l'activation : mémorise puis désactive les graphes n=f(V) et pH/σ=f(V).
- * À la désactivation (via ce bouton) : restaure l'état des graphes tel
- * qu'il était avant l'activation du zoom.
- */
 function toggleZoomBecher() {
   state.titrageZoomBecher = !state.titrageZoomBecher;
   const panel = document.getElementById('zoom-becher-panel');
   const btn   = document.getElementById('btn-zoom-becher');
+  const zone  = document.getElementById('titrage-charts-zone');
 
-  if (state.titrageZoomBecher) {
-    state._zoomBecherMemoireGraphes = {
-      n: state.titrageShowGraphN,
-      ph: state.titrageShowGraphPH,
-      sigma: state.titrageShowGraphSigma
-    };
-    state.titrageShowGraphN = false;
-    state.titrageShowGraphPH = false;
-    state.titrageShowGraphSigma = false;
-    _syncGraphButtonsActiveState();
-    if (panel) panel.style.display = '';
-    if (btn) { btn.classList.add('active'); btn.innerHTML = 'Fermer le zoom'; }
-  } else {
-    const mem = state._zoomBecherMemoireGraphes;
-    if (mem) {
-      // En mode test, le graphe n=f(V) reste verrouillé désactivé : ne pas
-      // le restaurer même s'il était affiché avant l'activation du zoom.
-      state.titrageShowGraphN = titrageTestState.actif ? false : mem.n;
-      state.titrageShowGraphPH = mem.ph;
-      state.titrageShowGraphSigma = mem.sigma;
-      state._zoomBecherMemoireGraphes = null;
-    }
-    _syncGraphButtonsActiveState();
-    if (panel) panel.style.display = 'none';
-    if (btn) { btn.classList.remove('active'); btn.innerHTML = 'Zoom bécher'; }
+  // Le zoom reste indépendant des graphes : ceux-ci passent simplement en
+  // incrustation (coin haut droit) grâce à la classe .avec-zoom.
+  if (panel) panel.style.display = state.titrageZoomBecher ? '' : 'none';
+  if (zone)  zone.classList.toggle('avec-zoom', state.titrageZoomBecher);
+  if (btn) {
+    btn.classList.toggle('active', state.titrageZoomBecher);
+    btn.innerHTML = state.titrageZoomBecher ? 'Fermer le zoom' : 'Zoom bécher';
   }
+  _fermerMenusGraphe();
+  _syncZoomOverlayVars();
+  _initZoomOverlayObserver();
   _applyChartsLayout();
 }
+
+/**
+ * Pose sur #titrage-charts-zone le rectangle réel du SVG de zoom
+ * (--zx, --zy, --zw, --zh, en px) : les graphes en incrustation sont
+ * positionnés par rapport au schéma (bécher), pas par rapport à la zone.
+ */
+function _syncZoomOverlayVars() {
+  const zone = document.getElementById('titrage-charts-zone');
+  const svg  = document.getElementById('zoom-becher-svg');
+  if (!zone || !svg || !state.titrageZoomBecher) return;
+  const zr = zone.getBoundingClientRect();
+  const sr = svg.getBoundingClientRect();
+  if (sr.width < 1 || sr.height < 1) return;
+  // Bas des graphes = juste au-dessus du boîtier de mesure, en fraction de la
+  // hauteur du viewBox du zoom (y de 169 à 279) : haut du pH-mètre y = 249,
+  // du conductimètre y = 242. En colorimétrie, pas d'appareil, mais on garde
+  // la même hauteur qu'en pH-métrie (sinon le graphe est trop étiré).
+  const ZBAS = { phmetrique: 0.70, conductimetrique: 0.635, colorimetrique: 0.70 };
+  zone.style.setProperty('--zbas', ZBAS[state.titrageType] ?? 0.635);
+  zone.style.setProperty('--zx', (sr.left - zr.left) + 'px');
+  zone.style.setProperty('--zy', (sr.top  - zr.top)  + 'px');
+  zone.style.setProperty('--zw', sr.width  + 'px');
+  zone.style.setProperty('--zh', sr.height + 'px');
+}
+
+let _zoomOverlayObserver = null;
+function _initZoomOverlayObserver() {
+  if (_zoomOverlayObserver) return;
+  const zone = document.getElementById('titrage-charts-zone');
+  if (!zone || typeof ResizeObserver === 'undefined') return;
+  _zoomOverlayObserver = new ResizeObserver(() => requestAnimationFrame(_syncZoomOverlayVars));
+  _zoomOverlayObserver.observe(zone);
+}
+
+/**
+ * Menus déroulants des graphes en incrustation : « Outils ▾ » (liste des
+ * boutons d'analyse #ph-analysis-btns) et « Légende ▾ » (#titrage-legende).
+ * Un seul menu ouvert à la fois.
+ */
+const _MENUS_GRAPHE = ['ph-analysis-btns', 'titrage-legende'];
+function toggleMenuGraphe(id, ev) {
+  if (ev) ev.stopPropagation();
+  const el = document.getElementById(id);
+  if (!el) return;
+  const ouvrir = !el.classList.contains('ouverte');
+  _fermerMenusGraphe();
+  el.classList.toggle('ouverte', ouvrir);
+}
+function _fermerMenusGraphe() {
+  _MENUS_GRAPHE.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove('ouverte');
+  });
+}
+// Un clic hors d'un menu le referme (un clic DANS le menu le laisse ouvert :
+// on peut activer plusieurs outils ou cocher plusieurs espèces d'affilée).
+document.addEventListener('click', e => {
+  _MENUS_GRAPHE.forEach(id => {
+    const el = document.getElementById(id);
+    if (el && el.classList.contains('ouverte') && !el.contains(e.target)) {
+      el.classList.remove('ouverte');
+    }
+  });
+});
 
 function toggleEspeces() {
   state.titrageShowEspeces = !state.titrageShowEspeces;

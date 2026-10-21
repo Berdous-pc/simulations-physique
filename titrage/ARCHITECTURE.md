@@ -748,6 +748,14 @@ en sphères, pour rester cohérent avec `_creerTrancheSpheres` :
 
 ---
 
+## Zoom bécher + graphes
+
+`toggleZoomBecher()` affiche `#zoom-becher-panel` (fond plein de `#titrage-charts-zone`) **sans toucher aux graphes** : zoom et graphes sont indépendants. Quand le zoom est actif, la classe `.avec-zoom` est posée sur `#titrage-charts-zone` et les panneaux graphes passent en incrustation (`position:absolute`), **ancrés sur le rectangle réel du SVG de zoom** (variables `--zx/--zy/--zw/--zh` posées par `_syncZoomOverlayVars`, rafraîchies par un `ResizeObserver`) : de 37,5 % à 98,5 % de la largeur du schéma (juste à droite du bécher), et en hauteur jusqu'à `--zbas` (juste au-dessus du boîtier de mesure : 0,70 en pH-métrie, 0,635 en conductimétrie, 0,70 en colorimétrie (pas d'appareil, mais même hauteur pour ne pas étirer le graphe) — fractions du viewBox du zoom, posées par `_syncZoomOverlayVars`, rappelée par `_applyChartsLayout`). Si pH/σ **et** n sont affichés, `_applyChartsLayout` ajoute `.deux-graphes` : ils sont empilés à parts égales. En incrustation :
+- la barre `#ph-analysis-btns` devient une liste déroulante ouverte par le petit bouton « Outils ▾ » (`#btn-outils-ph`), et la légende du graphe n une liste ouverte par « Légende ▾ » (`#btn-legende-n`) — `toggleMenuGraphe(id)`, un seul menu ouvert à la fois, clic extérieur = fermeture ;
+- `_chartCompact()` (graph.js) bascule les trois graphes en marges compactes `_compactPads()` : une seule ligne en haut (titre Y + unité sur la même ligne, `_drawYTitleCompact`, hauteur ≥ petit bouton de menu), une seule ligne en bas (titre « V versé (mL) » calé à droite sur la ligne des graduations, `_drawXAxisCompact`, graduations qui le chevauchent omises), padL/padR minimaux ; police proportionnelle au cadre `_compactFs(dim)` = 0,07 × min(W, H) bornée à [11, 18] px (titres : +1 px), pour suivre la taille du cadre du portable à la projection ; petits boutons et listes en `clamp()` jusqu'à 30 px de haut / 16–18 px de texte ; axe pH en 0/7/14 si le graphe est trop bas pour 8 étiquettes ; badge de zoom dans le coin haut droit du tracé, sans l'indice « Molette : zoom » ; `_updateGraphBtnsSize` ne rogne plus les boutons. Le câble sonde → appareil peut être masqué, le bécher et l'appareil restent visibles.
+
+---
+
 ## Hors-scope
 
 - Polyacides / acides faibles avec plusieurs pKa.

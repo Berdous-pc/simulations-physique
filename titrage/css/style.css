@@ -1358,17 +1358,108 @@ body.titrage-cond #conductimetre-svg {
   box-sizing: border-box;
   padding: 0;        /* pas de padding : le SVG remplit tout */
 }
-.zoom-becher-titre {
-  position: absolute;
-  top: 8px;
-  right: 10px;
-  font-size: 1.1em;
-  font-weight: 700;
-  color: #4a90d9;
-  letter-spacing: 0.5px;
-  pointer-events: none;
-  z-index: 1;
+/* ── Graphes en incrustation sur le zoom bécher ──
+   Ancrés sur le SCHÉMA (pas sur la zone) : --zx/--zy/--zw/--zh sont le
+   rectangle réel du SVG de zoom dans #titrage-charts-zone (posés par
+   _syncZoomOverlayVars). Les graphes occupent la partie droite du schéma,
+   juste à droite du bécher et au-dessus du boîtier de mesure ; deux graphes
+   sont empilés. Seul le câble de la sonde peut être masqué. */
+#titrage-charts-zone.avec-zoom {
+  overflow: hidden;
 }
+/* --zbas : fraction de la hauteur du schéma où s'arrêtent les graphes,
+   juste au-dessus du boîtier de mesure (dépend du mode, posée par JS). */
+#titrage-charts-zone.avec-zoom #titrage-chart-ph-panel,
+#titrage-charts-zone.avec-zoom #titrage-chart-panel {
+  position: absolute;
+  left:   calc(var(--zx, 0px) + var(--zw, 100%) * 0.375);
+  width:  calc(var(--zw, 100%) * 0.61);
+  top:    calc(var(--zy, 0px) + var(--zh, 100%) * 0.01);
+  height: calc(var(--zh, 100%) * (var(--zbas, 0.6) - 0.01));
+  min-height: 0;
+  flex: none;
+  z-index: 30;
+  background: rgba(250, 249, 246, 0.96);   /* fond graphes, quasi opaque */
+  border: 1.5px solid #b0a898;
+  border-radius: 6px;
+  padding: 3px;
+  box-sizing: border-box;
+}
+#titrage-charts-zone.avec-zoom.deux-graphes #titrage-chart-ph-panel,
+#titrage-charts-zone.avec-zoom.deux-graphes #titrage-chart-panel {
+  height: calc(var(--zh, 100%) * (var(--zbas, 0.6) - 0.022) / 2);
+}
+#titrage-charts-zone.avec-zoom.deux-graphes #titrage-chart-panel {
+  top: calc(var(--zy, 0px) + var(--zh, 100%) * (0.022 + (var(--zbas, 0.6) - 0.022) / 2));
+  border-top: 1.5px solid #b0a898;
+}
+/* Cadre déjà fourni par le panneau : pas de double bordure bleue */
+#titrage-charts-zone.avec-zoom #titrage-chart,
+#titrage-charts-zone.avec-zoom #titrage-chart-ph {
+  box-shadow: none;
+  border-radius: 4px;
+}
+/* Menus compacts (« Outils ▾ » du graphe pH/σ, « Légende ▾ » du graphe n) :
+   un seul petit bouton dans le coin haut droit, sur la ligne du titre de
+   l'axe Y — la barre de boutons et la légende deviennent des listes
+   déroulantes. Hors incrustation, ces boutons n'existent pas. */
+.btn-menu-compact { display: none; }
+#titrage-charts-zone.avec-zoom .btn-menu-compact {
+  display: inline-flex;
+  align-items: center;
+  position: absolute;
+  top: 4px;
+  right: 5px;
+  z-index: 35;
+  height: clamp(18px, 1.5vw, 30px);
+  padding: 0 clamp(5px, 0.5vw, 12px);
+  font: 700 clamp(11px, 0.85vw, 16px) 'Segoe UI', Arial, sans-serif;
+  color: #5a6a78;
+  background: #e8e4de;
+  border: 1px solid #b0a898;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+#titrage-charts-zone.avec-zoom .btn-menu-compact:hover { background: #d0ccc4; color: #2c3e50; }
+
+/* Liste déroulante commune (outils du graphe pH/σ, légende du graphe n) */
+#titrage-charts-zone.avec-zoom #ph-analysis-btns,
+#titrage-charts-zone.avec-zoom #titrage-legende {
+  display: none;
+  position: absolute;
+  top: calc(clamp(18px, 1.5vw, 30px) + 8px);
+  right: 6px;
+  width: max-content;
+  max-width: calc(100% - 12px);
+  z-index: 40;
+  background: #fff;
+  border: 1.5px solid #b0a898;
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0,0,0,.2);
+}
+#titrage-charts-zone.avec-zoom #ph-analysis-btns.ouverte {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  padding: 5px;
+}
+#titrage-charts-zone.avec-zoom #ph-analysis-btns .ph-analysis-btn {
+  width: auto !important;          /* annule le rognage de _updateGraphBtnsSize */
+  height: auto;
+  line-height: 1.3;
+  padding: 4px 10px;
+  font-size: clamp(11px, 0.95vw, 17px);
+  text-align: left;
+}
+/* Dans la liste, le « + » seul serait obscur : on le complète d'un libellé */
+#titrage-charts-zone.avec-zoom #btn-ph-cursor::after { content: '\00a0Réticule libre'; }
+#titrage-charts-zone.avec-zoom #titrage-legende.ouverte {
+  display: table;
+  font-size: clamp(11px, 1vw, 18px);
+}
+
 #zoom-becher-svg {
   /* viewBox fixe = "68 168 135 110" (ratio 135/110). On force le SVG à
      conserver ce ratio quelle que soit la fenêtre, en occupant la dimension

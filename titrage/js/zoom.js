@@ -174,7 +174,8 @@ function _zoomAfterDraw(canvas, pad, gw, rowY, view, xFull, yFactor) {
 
   const b = _zoomBadgeFor(canvas);
   if (!b) return;
-  const narrow = gw < 340;
+  // En incrustation sur le zoom bécher, badge réduit (pas d'indice « Molette : zoom »)
+  const narrow = gw < 340 || (typeof _chartCompact === 'function' && _chartCompact());
   if (zoomed) {
     // Un seul facteur s'ils sont proches ; sinon « X ×a · Y ×b »
     const same = Math.abs(fx - fy) <= 0.1 * Math.max(fx, fy);

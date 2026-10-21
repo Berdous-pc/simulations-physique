@@ -282,6 +282,10 @@
       <div id="titrage-charts-zone">
         <!-- Graphique pH=f(V) — visible uniquement en mode pH-métrique -->
         <div id="titrage-chart-ph-panel" class="chart-panel" style="display:none;">
+          <!-- Menu « Outils » : visible seulement en incrustation sur le zoom bécher,
+               il remplace la barre de boutons (déroulée en liste verticale) -->
+          <button id="btn-outils-ph" class="btn-menu-compact" onclick="toggleMenuGraphe('ph-analysis-btns', event)"
+                  title="Outils d'analyse du graphe">Outils ▾</button>
           <!-- Boutons overlay dans le cadre graphique -->
           <div id="ph-analysis-btns">
             <button class="ph-analysis-btn" id="btn-ph-cursor"
@@ -302,12 +306,14 @@
         </div>
         <!-- Graphique n=f(V) — masqué par défaut -->
         <div id="titrage-chart-panel" class="chart-panel" style="display:none;">
+          <!-- Bouton de légende déroulante (visible seulement en incrustation sur le zoom bécher) -->
+          <button id="btn-legende-n" class="btn-menu-compact" onclick="toggleMenuGraphe('titrage-legende', event)"
+                  title="Afficher / masquer la légende">Légende ▾</button>
           <canvas id="titrage-chart"></canvas>
           <div id="titrage-legende"></div>
         </div>
         <!-- Zoom bécher — masqué par défaut, actif si mode espèces + bouton zoom -->
         <div id="zoom-becher-panel" class="chart-panel" style="display:none;">
-          <div class="zoom-becher-titre">Vue bécher en temps réel</div>
           <svg id="zoom-becher-svg" viewBox="68 169 135 110" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
             <use href="#liquide-becher"/>
             <use href="#liquide-burette"/>

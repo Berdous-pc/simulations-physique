@@ -292,15 +292,17 @@ function drawTitrageSigmaGraph() {
 
   // ── Tailles de police ──
   const dim = Math.min(W, H);
-  const fs  = Math.max(9,  Math.round(dim * 0.040));
-  const fst = Math.max(10, Math.round(dim * 0.044));
+  const cpt = _chartCompact();
+  const fs  = cpt ? _compactFs(dim) : Math.max(9,  Math.round(dim * 0.040));
+  const fst = cpt ? fs + 1          : Math.max(10, Math.round(dim * 0.044));
 
-  const tickLabelW = Math.round(fs * 3.4);  // un peu plus large pour σ (décimales) ; constant : pas de décalage au zoom
+  const tickLabelW = Math.round(fs * (cpt ? 3.0 : 3.4));  // un peu plus large pour σ (décimales) ; constant : pas de décalage au zoom
   const padL = tickLabelW + 4 + 7 + Math.round(fst * 0.3);
   const padR = padL;
   const padB = 4 + 6 + fs + 6 + fst + 4;
   const padT = 2 + fst + 2 + fs + 4;
-  const pad  = { t: padT, r: padR, b: padB, l: padL };
+  const pad  = cpt ? _compactPads(fs, fst, tickLabelW, 'btn-outils-ph')
+                   : { t: padT, r: padR, b: padB, l: padL };
   const gw = W - pad.l - pad.r;
   const gh = H - pad.t - pad.b;
   if (gw < 40 || gh < 40) return;
@@ -350,6 +352,9 @@ function drawTitrageSigmaGraph() {
   ctx.restore();
 
   // ── Ticks + labels axe X ──
+  if (cpt) {
+    _drawXAxisCompact(ctx, pad, gw, gh, x0, xSpan, xStep, x1, fs, fst);
+  } else {
   ctx.save();
   ctx.fillStyle    = '#4a5568';
   ctx.font         = `${fs}px 'Segoe UI', Arial, sans-serif`;
@@ -367,6 +372,7 @@ function drawTitrageSigmaGraph() {
   const titleXY = pad.t + gh + 4 + 6 + fs + 6;
   ctx.fillText('V versé (mL)', pad.l + gw / 2, titleXY);
   ctx.restore();
+  }
 
   // ── Ticks + labels axe Y ──
   ctx.save();
@@ -381,11 +387,13 @@ function drawTitrageSigmaGraph() {
   for (const y of _tickValues(yMin, yMax, yStep)) {
     const py = pad.t + gh - ((y - yMin) / (yMax - yMin)) * gh;
     ctx.beginPath(); ctx.moveTo(pad.l, py); ctx.lineTo(pad.l - 4, py); ctx.stroke();
-    ctx.fillText(y.toFixed(decY), pad.l - 7, py);
+    ctx.fillText(y.toFixed(decY), pad.l - (cpt ? 5 : 7), py);
   }
   ctx.restore();
 
   // ── Label axe Y : "σ" + unité ──
+  if (cpt) _drawYTitleCompact(ctx, pad, fs, fst, 'σ', '(mS/cm)');
+  else {
   ctx.save();
   ctx.textAlign    = 'left';
   ctx.textBaseline = 'top';
@@ -396,6 +404,7 @@ function drawTitrageSigmaGraph() {
   ctx.fillStyle = '#4a5568';
   ctx.fillText('(mS/cm)', pad.l, 2 + fst + 2);
   ctx.restore();
+  }
 
   // ── Courbe modélisée σ (optionnelle) ──
   if (_phShowModelCourbe && pts.length >= 2) {
@@ -497,7 +506,8 @@ function drawTitrageSigmaGraph() {
   ctx.strokeRect(pad.l, pad.t, gw, gh);
   ctx.restore();
 
-  _zoomAfterDraw(canvas, pad, gw, pad.t + gh + 4 + 6 + fs + 6 + fst / 2, view, xFull, yz.factor);
+  // En incrustation, le titre X occupe la ligne des graduations : badge dans le coin haut droit du tracé
+  _zoomAfterDraw(canvas, pad, gw, cpt ? pad.t + 12 : pad.t + gh + 4 + 6 + fs + 6 + fst / 2, view, xFull, yz.factor);
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -1170,6 +1180,8 @@ function _updateGraphBtnsSize() {
     .filter(b => b.style.display !== 'none');
   btns.forEach(b => { b.style.width = ''; });
   if (!btns.length) return;
+  // En incrustation, les boutons sont dans le menu « Outils ▾ » : pas de rognage
+  if (_chartCompact()) return;
 
   // Largeur disponible :
   // panelW (hors padding CSS 12×2) − padL (axe Y gauche) − padR (marge droite) − right:20px
@@ -1262,10 +1274,11 @@ function drawTitragePhGraph() {
 
   // ── Tailles de police adaptées ──
   const dim = Math.min(W, H);
-  const fs  = Math.max(9,  Math.round(dim * 0.040));
-  const fst = Math.max(10, Math.round(dim * 0.044));
+  const cpt = _chartCompact();
+  const fs  = cpt ? _compactFs(dim) : Math.max(9,  Math.round(dim * 0.040));
+  const fst = cpt ? fs + 1          : Math.max(10, Math.round(dim * 0.044));
 
-  const tickLabelW = Math.round(fs * 3.0);   // constant : pas de décalage horizontal au zoom
+  const tickLabelW = Math.round(fs * (cpt ? 2.2 : 3.0));   // constant : pas de décalage horizontal au zoom
   const padL = tickLabelW + 4 + 7 + Math.round(fst * 0.3);
   const padR = padL;
   const padB = 4 + 6 + fs + 6 + fst + 4;
@@ -1278,7 +1291,9 @@ function drawTitragePhGraph() {
   const btnsH  = btnsEl ? btnsEl.offsetHeight : 30;
   const BTN_OFFSET_IN_CANVAS = 8;   // top:20px panel - padding:12px = 8px dans canvas
   const padT = Math.max(padTBase, BTN_OFFSET_IN_CANVAS + btnsH + 8);
-  const pad  = { t: padT, r: padR, b: padB, l: padL };
+  // En incrustation, la barre est remplacée par le petit bouton « Outils ▾ »
+  const pad  = cpt ? _compactPads(fs, fst, tickLabelW, 'btn-outils-ph')
+                   : { t: padT, r: padR, b: padB, l: padL };
   const gw = W - pad.l - pad.r;
   const gh = H - pad.t - pad.b;
   if (gw < 40 || gh < 40) return;
@@ -1288,10 +1303,11 @@ function drawTitragePhGraph() {
 
   const nTicksX = Math.max(3, Math.min(6, Math.round(gw / 80)));
   const xStep   = _niceStep(xSpan, nTicksX);
-  // Axe Y : graduations entières par pas de 2 (0, 2, 4, …, 14) ; en zoom, pas "joli"
+  // Axe Y : graduations entières par pas de 2 (0, 2, 4, …, 14) ; en zoom, pas "joli".
+  // Graphe trop bas pour 8 étiquettes lisibles (incrustation) : 0, 7, 14.
   const yStep = yFit
     ? _niceStep(yMax - yMin, Math.max(3, Math.min(6, Math.round(gh / 60))))
-    : 2;
+    : (gh >= 7 * (fs + 3) ? 2 : 7);
   const decY = _decForStep(yStep);
 
   // ── Effacement + fond ──
@@ -1410,6 +1426,9 @@ function drawTitragePhGraph() {
   ctx.restore();
 
   // ── Ticks + labels axe X ──
+  if (cpt) {
+    _drawXAxisCompact(ctx, pad, gw, gh, x0, xSpan, xStep, x1, fs, fst);
+  } else {
   ctx.save();
   ctx.fillStyle    = '#4a5568';
   ctx.font         = `${fs}px 'Segoe UI', Arial, sans-serif`;
@@ -1427,6 +1446,7 @@ function drawTitragePhGraph() {
   const titleXY = pad.t + gh + 4 + 6 + fs + 6;
   ctx.fillText('V versé (mL)', pad.l + gw / 2, titleXY);
   ctx.restore();
+  }
 
   // ── Ticks + labels axe Y ──
   ctx.save();
@@ -1439,7 +1459,7 @@ function drawTitragePhGraph() {
   for (const y of _tickValues(yMin, yMax, yStep)) {
     const py = pad.t + gh - ((y - yMin) / (yMax - yMin)) * gh;
     ctx.beginPath(); ctx.moveTo(pad.l, py); ctx.lineTo(pad.l - 4, py); ctx.stroke();
-    ctx.fillText(y.toFixed(decY), pad.l - 7, py);
+    ctx.fillText(y.toFixed(decY), pad.l - (cpt ? 5 : 7), py);
   }
   ctx.restore();
 
@@ -1607,7 +1627,90 @@ function drawTitragePhGraph() {
   ctx.strokeRect(pad.l, pad.t, gw, gh);
   ctx.restore();
 
-  _zoomAfterDraw(canvas, pad, gw, pad.t + gh + 4 + 6 + fs + 6 + fst / 2, view, xFull, yz.factor);
+  // En incrustation, le titre X occupe la ligne des graduations : badge dans le coin haut droit du tracé
+  _zoomAfterDraw(canvas, pad, gw, cpt ? pad.t + 12 : pad.t + gh + 4 + 6 + fs + 6 + fst / 2, view, xFull, yz.factor);
+}
+
+/** Vrai quand les graphes sont incrustés sur le zoom bécher (cadre réduit :
+ *  marges internes resserrées, police avec un plancher plus lisible). */
+function _chartCompact() {
+  const z = document.getElementById('titrage-charts-zone');
+  return !!(z && z.classList.contains('avec-zoom'));
+}
+
+/**
+ * Police des graduations en incrustation : proportionnelle au cadre
+ * (dim = plus petite dimension du canvas), bornée entre 11 px (lisible sur
+ * petite fenêtre) et 18 px (projection sur grand écran). Le coefficient est
+ * plus fort qu'en pleine zone (0,04) car le cadre incrusté est bien plus petit.
+ */
+function _compactFs(dim) {
+  return Math.min(18, Math.max(11, Math.round(dim * 0.07)));
+}
+
+/**
+ * Marges compactes communes aux trois graphes en incrustation :
+ *  - padT : une seule ligne (titre Y + unité sur la même ligne), et au moins
+ *    la hauteur du petit bouton de menu (« Outils ▾ » / « Légende ▾ ») ;
+ *  - padB : une seule ligne (graduations X + titre X sur la même ligne) ;
+ *  - padL : étiquettes Y + tick + petit écart ; padR : demi-étiquette X.
+ */
+function _compactPads(fs, fst, tickLabelW, btnId) {
+  const btn  = document.getElementById(btnId);
+  const hBtn = btn ? btn.offsetHeight : 20;
+  return {
+    t: Math.max(2 + fst + 4, 3 + hBtn + 3),
+    r: Math.round(fs * 1.2),
+    b: 4 + 3 + fs + 3,
+    l: tickLabelW + 4 + 5,
+  };
+}
+
+/**
+ * Axe X compact : graduations, et titre « V versé (mL) » calé à droite sur
+ * la MÊME ligne que les graduations (gain d'une ligne de hauteur). Les
+ * graduations qui chevaucheraient le titre ne sont pas écrites.
+ */
+function _drawXAxisCompact(ctx, pad, gw, gh, x0, xSpan, xStep, x1, fs, fst) {
+  const yRow  = pad.t + gh + 4 + 3;
+  const titre = 'V versé (mL)';
+  ctx.save();
+  ctx.font = `bold ${fst}px 'Segoe UI', Arial, sans-serif`;
+  const xTitre = pad.l + gw - ctx.measureText(titre).width - 6;   // bord gauche du titre
+  ctx.fillStyle    = '#2d3748';
+  ctx.textAlign    = 'right';
+  ctx.textBaseline = 'top';
+  ctx.fillText(titre, pad.l + gw, yRow);
+
+  ctx.font         = `${fs}px 'Segoe UI', Arial, sans-serif`;
+  ctx.fillStyle    = '#4a5568';
+  ctx.strokeStyle  = '#4a5568';
+  ctx.lineWidth    = 1;
+  ctx.textAlign    = 'center';
+  for (const x of _tickValues(x0, x1, xStep)) {
+    const px = pad.l + ((x - x0) / xSpan) * gw;
+    ctx.beginPath(); ctx.moveTo(px, pad.t + gh); ctx.lineTo(px, pad.t + gh + 4); ctx.stroke();
+    const lbl = _fmtXTick(x, xStep);
+    if (px + ctx.measureText(lbl).width / 2 < xTitre) ctx.fillText(lbl, px, yRow);
+  }
+  ctx.restore();
+}
+
+/** Titre de l'axe Y compact : grandeur en gras + unité sur la même ligne. */
+function _drawYTitleCompact(ctx, pad, fs, fst, grandeur, unite) {
+  ctx.save();
+  ctx.textAlign    = 'left';
+  ctx.textBaseline = 'top';
+  ctx.font         = `bold ${fst}px 'Segoe UI', Arial, sans-serif`;
+  ctx.fillStyle    = '#2d3748';
+  ctx.fillText(grandeur, pad.l, 2);
+  if (unite) {
+    const w = ctx.measureText(grandeur).width;
+    ctx.font      = `${fs}px 'Segoe UI', Arial, sans-serif`;
+    ctx.fillStyle = '#4a5568';
+    ctx.fillText(unite, pad.l + w + 5, 2 + (fst - fs));
+  }
+  ctx.restore();
 }
 
 /** Synchronise la taille du canvas pH avec son CSS et redessine. */
@@ -1826,8 +1929,9 @@ function drawTitrageGraph() {
 
   // ── Taille de police : basée sur la plus petite dimension ──
   const dim = Math.min(W, H);
-  const fs  = Math.max(9,  Math.round(dim * 0.040));  // labels ticks
-  const fst = Math.max(10, Math.round(dim * 0.044));  // titre axe
+  const cpt = _chartCompact();
+  const fs  = cpt ? _compactFs(dim) : Math.max(9,  Math.round(dim * 0.040));  // labels ticks
+  const fst = cpt ? fs + 1          : Math.max(10, Math.round(dim * 0.044));  // titre axe
 
   // ── Padding calculé depuis les besoins réels ──
   //
@@ -1835,12 +1939,13 @@ function drawTitrageGraph() {
   // pad.r : symétrique de pad.l
   // pad.b : tick (4) + gap (6) + hauteur label X (fs) + gap (6) + titre X (fst) + marge (4)
   // pad.t : symétrique de pad.b  →  "n" + unité tiennent dans cet espace
-  const tickLabelW = Math.round(fs * 3.8);   // constant : pas de décalage horizontal au zoom
+  const tickLabelW = Math.round(fs * (cpt ? 2.8 : 3.8));   // constant : pas de décalage horizontal au zoom
   const padL = tickLabelW + 4 + 7 + Math.round(fst * 0.3);
   const padR = padL;
   const padB = 4 + 6 + fs + 6 + fst + 4;   // tick + gap + label + gap + titre + marge
   const padT = 2 + fst + 2 + fs + 4;        // top marge + "n" + gap + unité + marge bas
-  const pad  = { t: padT, r: padR, b: padB, l: padL };
+  const pad  = cpt ? _compactPads(fs, fst, tickLabelW, 'btn-legende-n')
+                   : { t: padT, r: padR, b: padB, l: padL };
   const gw = W - pad.l - pad.r;
   const gh = H - pad.t - pad.b;
   if (gw < 40 || gh < 40) return;
@@ -1889,6 +1994,9 @@ function drawTitrageGraph() {
   ctx.restore();
 
   // ── Ticks + labels axe X ──
+  if (cpt) {
+    _drawXAxisCompact(ctx, pad, gw, gh, x0, xSpan, xStep, x1, fs, fst);
+  } else {
   ctx.save();
   ctx.fillStyle    = '#4a5568';
   ctx.font         = `${fs}px 'Segoe UI', Arial, sans-serif`;
@@ -1909,6 +2017,7 @@ function drawTitrageGraph() {
   const titleXY = pad.t + gh + 4 + 6 + fs + 6;
   ctx.fillText('V versé (mL)', pad.l + gw / 2, titleXY);
   ctx.restore();
+  }
 
   // ── Ticks + labels axe Y ──
   ctx.save();
@@ -1921,11 +2030,14 @@ function drawTitrageGraph() {
   for (const y of _tickValues(yMin, yMax, yStep)) {
     const py = pad.t + gh - ((y - yMin) / (yMax - yMin)) * gh;
     ctx.beginPath(); ctx.moveTo(pad.l, py); ctx.lineTo(pad.l - 4, py); ctx.stroke();
-    ctx.fillText(yFit ? (y / yScale).toFixed(_decForStep(yStep / yScale)) : _fmtY(y, yScale), pad.l - 7, py);
+    ctx.fillText(yFit ? (y / yScale).toFixed(_decForStep(yStep / yScale)) : _fmtY(y, yScale), pad.l - (cpt ? 5 : 7), py);
   }
   ctx.restore();
 
   // ── Label axe Y : "n" + unité dans pad.t, alignés à gauche sur l'axe Y ──
+  // (en incrustation : sur une seule ligne, « n (×10⁻⁴ mol) »)
+  if (cpt) _drawYTitleCompact(ctx, pad, fs, fst, 'n', '(' + yUnit + ')');
+  else {
   ctx.save();
   ctx.textAlign    = 'left';
   ctx.textBaseline = 'top';
@@ -1936,6 +2048,7 @@ function drawTitrageGraph() {
   ctx.fillStyle = '#4a5568';
   ctx.fillText(yUnit, pad.l, 2 + fst + 2);
   ctx.restore();
+  }
 
   // ── Courbes ──
   _chartEspeces.forEach(e => {
@@ -2077,7 +2190,8 @@ function drawTitrageGraph() {
   ctx.strokeRect(pad.l, pad.t, gw, gh);
   ctx.restore();
 
-  _zoomAfterDraw(canvas, pad, gw, pad.t + gh + 4 + 6 + fs + 6 + fst / 2, view, xFull, yz.factor);
+  // En incrustation, le titre X occupe la ligne des graduations : badge dans le coin haut droit du tracé
+  _zoomAfterDraw(canvas, pad, gw, cpt ? pad.t + 12 : pad.t + gh + 4 + 6 + fs + 6 + fst / 2, view, xFull, yz.factor);
 }
 
 /* ── Légende ────────────────────────────────────────────────────────────── */
