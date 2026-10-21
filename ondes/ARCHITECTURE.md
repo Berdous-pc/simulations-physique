@@ -1758,7 +1758,7 @@ while (simCorde.simTime - lastSrcUpdate >= SRC_DT) {
 ```
 
 Contrôles : `sendImpulse*`, `toggleSinusoidal*`, `togglePause*`,
-`resetSimAnim*`, `onSlider*`, `toggleWaveProps*`, `toggleBeaconActive`,
+`resetSimAnim*`, `onSlider*`, `toggleBeaconActive`,
 `toggleSelect`, `togglePressureColor`, `setMainTab`, `toggleHint`.
 
 `_syncUIToSim()` recale au chargement tous les curseurs et readouts sur l'état

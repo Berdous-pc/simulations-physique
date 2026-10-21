@@ -734,7 +734,9 @@ html.init-graph-hidden #left-splitter {
 /* ── Corps scrollable du panneau ─────────────────── */
 #panel-body {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;   /* pas de barre horizontale au moindre débordement */
   padding: clamp(8px, 1vw, 14px) clamp(8px, 1vw, 12px);
   display: flex;
   flex-direction: column;
@@ -815,6 +817,14 @@ html.init-graph-hidden #left-splitter {
 }
 .btn-row > .btn-raz {
   flex: 0 0 auto;
+}
+
+/* Boutons empilés : l'écart est porté par le conteneur, pas par une marge
+   sur chaque bouton. */
+.btn-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 /* Bouton bascule option */
@@ -907,6 +917,8 @@ html.init-graph-hidden #left-splitter {
   gap: 3px;
   margin-bottom: 10px;
 }
+/* Curseur placé juste sous des boutons (vitesse sous Pause/RAZ) */
+.param-row-after-btn { margin-top: 8px; }
 
 .param-row label {
   font-size: clamp(12px, 1.15vw, 15px);
@@ -983,6 +995,9 @@ html.init-graph-hidden #left-splitter {
 }
 
 /* Titre de section dans le readout étendu */
+/* Sous-titres successifs d'un même encart : écart avant chaque nouveau groupe */
+.ro-props-row + .ro-label-section { margin-top: 8px; }
+
 .ro-label-section {
   font-size: clamp(12px, 1.15vw, 15px);
   font-weight: 700;

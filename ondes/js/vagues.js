@@ -2258,19 +2258,12 @@ function toggleGeoAttenVagues() {
     _scheduleVaguesRebuild();
 }
 
-function toggleWavePropsVagues() {
-    simVagues.wavePropsVisible = !simVagues.wavePropsVisible;
-    _applyWavePropsVagues();
-}
-
 // Jumeau de _applyWavePropsState (cf. le commentaire dans ui.js).
 function _applyWavePropsVagues() {
-    var btn       = document.getElementById('btn-wave-props-vagues');
     var simple    = document.getElementById('readout-simple-vagues');
     var extended  = document.getElementById('readout-props-vagues');
     var isImpulse = _vaguesModeIsImpulse();
     var on        = simVagues.wavePropsVisible;
-    if (btn)      btn.classList.toggle('active', on);
     if (simple)   simple.style.display   = (on &&  isImpulse) ? '' : 'none';
     if (extended) extended.style.display = (on && !isImpulse) ? '' : 'none';
     if (on) {

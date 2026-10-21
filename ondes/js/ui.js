@@ -490,23 +490,37 @@ function onSliderSpeed(v) {
     if (lbl) lbl.textContent = sim.speedFactor.toFixed(2).replace('.', ',');
 }
 
-// ── Propriétés de l'onde Son ──────────────────────────────────────────
-function toggleWaveProps() {
-    sim.wavePropsVisible = !sim.wavePropsVisible;
-    _applyWavePropsState();
-}
+// ── Propriétés de l'onde (3 onglets) ──────────────────────────────────
+//  Section repliable « Propriétés de l'onde » (js/sections-repliables.js) :
+//  la déplier remplace l'ancien bouton du même nom. Le script émet
+//  « sectionrepliee » à chaque bascule (y compris le pliage initial, sans
+//  effet ici puisque l'état vaut déjà false).
+[
+    ['section-props-son',    function () { return sim; },       function () { _applyWavePropsState(); }],
+    ['section-props-corde',  function () { return simCorde; },  function () { _applyWavePropsCorde(); }],
+    ['section-props-vagues', function () { return simVagues; }, function () { _applyWavePropsVagues(); }]
+].forEach(function (cfg) {
+    var sec = document.getElementById(cfg[0]);
+    if (!sec) return;
+    sec.addEventListener('sectionrepliee', function (e) {
+        var etat = cfg[1]();
+        var visible = !e.detail.repliee;
+        if (etat.wavePropsVisible === visible) return;
+        etat.wavePropsVisible = visible;
+        cfg[2]();
+    });
+});
 
-//  Rien n'est affiché tant que le bouton n'est pas activé : la célérité ne
-//  s'impose plus d'entrée de jeu. Une fois le bouton actif, le détail dépend
-//  du mode — en Impulsion il n'y a ni f, ni T, ni λ, on s'en tient donc à la
-//  seule célérité.
+// ── Propriétés de l'onde Son ──────────────────────────────────────────
+//  Rien n'est affiché tant que la section n'est pas dépliée : la célérité ne
+//  s'impose plus d'entrée de jeu. Une fois la section dépliée, le détail
+//  dépend du mode — en Impulsion il n'y a ni f, ni T, ni λ, on s'en tient
+//  donc à la seule célérité.
 function _applyWavePropsState() {
-    var btn       = document.getElementById('btn-wave-props');
     var simple    = document.getElementById('readout-simple');
     var extended  = document.getElementById('readout-props');
     var isImpulse = _sonModeIsImpulse();
     var on        = sim.wavePropsVisible;
-    if (btn)      btn.classList.toggle('active', on);
     if (simple)   simple.style.display   = (on &&  isImpulse) ? '' : 'none';
     if (extended) extended.style.display = (on && !isImpulse) ? '' : 'none';
     if (on) {
@@ -1159,19 +1173,12 @@ function _applyShowGraphCorde() {
     resizeGraph();
 }
 
-function toggleWavePropsCorde() {
-    simCorde.wavePropsVisible = !simCorde.wavePropsVisible;
-    _applyWavePropsCorde();
-}
-
 // Jumeau de _applyWavePropsState (cf. le commentaire là-bas).
 function _applyWavePropsCorde() {
-    var btn       = document.getElementById('btn-wave-props-corde');
     var simple    = document.getElementById('readout-simple-corde');
     var extended  = document.getElementById('readout-props-corde');
     var isImpulse = _cordeModeIsImpulseOrFree();
     var on        = simCorde.wavePropsVisible;
-    if (btn)      btn.classList.toggle('active', on);
     if (simple)   simple.style.display   = (on &&  isImpulse) ? '' : 'none';
     if (extended) extended.style.display = (on && !isImpulse) ? '' : 'none';
     if (on) {
@@ -1620,7 +1627,6 @@ function _syncUIToSim() {
     if (slSpeed) slSpeed.value = 3;
     var lblSpeed = document.getElementById('lbl-speed');
     if (lblSpeed) lblSpeed.textContent = '1,00';
-    sim.wavePropsVisible = false;
     _applyWavePropsState();
     sim.lambdaVisible = false;
     _applyLambdaSon();
@@ -1643,7 +1649,6 @@ function _syncUIToSim() {
     if (slSpeedC) slSpeedC.value = 3;
     var lblSpeedC = document.getElementById('lbl-speed-corde');
     if (lblSpeedC) lblSpeedC.textContent = '1,00';
-    simCorde.wavePropsVisible = false;
     _applyWavePropsCorde();
     _syncWavePropsBtnStateCorde();
     simCorde.lambdaVisible = false;
@@ -1670,7 +1675,6 @@ function _syncUIToSim() {
     if (slSpeedV) slSpeedV.value = 3;
     var lblSpeedV = document.getElementById('lbl-speed-vagues');
     if (lblSpeedV) lblSpeedV.textContent = '1,00';
-    simVagues.wavePropsVisible = false;
     _applyWavePropsVagues();
     simVagues.lambdaVisible = false;
     _applyLambdaVagues();
