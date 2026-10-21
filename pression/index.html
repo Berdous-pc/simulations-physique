@@ -108,8 +108,10 @@
       <!-- ── Contrôle du temps ──────────────────── -->
       <div class="panel-section">
         <div class="section-title">Contrôle</div>
-        <button id="btn-playpause" class="btn btn-pause" onclick="togglePause()">&#9646;&#9646; Pause</button>
-        <button class="btn btn-raz" onclick="resetSim()">&#9632; Réinitialiser</button>
+        <div class="btn-stack">
+          <button id="btn-playpause" class="btn btn-pause" onclick="togglePause()">&#9646;&#9646; Pause</button>
+          <button class="btn btn-raz" onclick="resetSim()">&#9632; Réinitialiser</button>
+        </div>
 
         <!-- Vitesse d'animation : le ralenti permet de suivre un choc isolé.
              Mêmes crans, mêmes étiquettes et même mise en forme que ondes/. -->

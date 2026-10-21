@@ -250,7 +250,9 @@ main {
 
 #panel-body {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;   /* pas de barre horizontale au moindre débordement */
   padding: clamp(8px, 1vw, 14px) clamp(8px, 1vw, 12px);
   display: flex;
   flex-direction: column;
@@ -327,10 +329,15 @@ main {
 }
 .btn-raz:hover { background: #ccc8c0; }
 
-/* Espacements de la section Contrôle (auparavant en style inline).
-   8px sous les boutons : même valeur que le curseur de vitesse de ondes/. */
-.btn-raz { margin-top: 6px; }
+/* Boutons empilés (ex. Pause + Réinitialiser) : l'écart est porté par le
+   conteneur, pas par une marge sur chaque bouton. */
+.btn-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
 
+/* 8px sous les boutons : même valeur que le curseur de vitesse de ondes/. */
 .param-row-speed {
   margin-top: 8px;
   margin-bottom: 0;
