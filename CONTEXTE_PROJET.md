@@ -219,9 +219,9 @@ Le reste (onglets, sous-onglets, variantes de boutons, `.param-row`, `.readout`,
 | Page | État | Sections repliables |
 |---|---|---|
 | `pression/` | ✅ terminée | Paramètres (curseur de pesanteur intégré, section Options supprimée) |
-| `condensateur/` | ✅ terminée | Paramètres (Options : un seul bouton ; Valeurs instantanées : fixe) |
-| `courant/` | ✅ terminée | Options (Circuit contient le bouton principal ; le bouton de Mesures agit aussi sur le canvas) |
-| `atome/` | ✅ terminée | Options |
+| `condensateur/` | ✅ terminée | Paramètres, Valeurs instantanées (Options : un seul bouton) |
+| `courant/` | ✅ terminée | Mesures (bouton « Masquer les mesures » supprimé, U toujours affichée sur le schéma), Options (Circuit contient le bouton principal) |
+| `atome/` | ✅ terminée | Contrôles, Comparaison (dans cet ordre), Options, Légende (sortie d'Options dans sa propre section) |
 | `cinematique/` | ✅ terminée | aucune (Piste et Graphes : une seule commande ; Voitures : contenu principal) |
 | `dissolution/` | ✅ terminée | aucune (une seule commande par section) |
 | `reaction/` | ✅ terminée | Options (×2 onglets), Mode Test sorti dans sa propre section |
@@ -229,7 +229,7 @@ Le reste (onglets, sous-onglets, variantes de boutons, `.param-row`, `.readout`,
 | `lunette/` | ✅ terminée | Paramètres, Options, Valeurs (bouton supprimé) |
 | `refraction/` | ✅ terminée | Affichage, Mesures (×2 onglets, boutons « Afficher les mesures » supprimés) |
 | `diffraction/` | ✅ terminée | Paramètres expérimentaux / Paramètres, Options, Valeurs (×2 onglets, boutons supprimés ; avertissement d'angle déplacé dans Options) |
-| `interferences/` | ✅ terminée | Paramètres, Graphes temporels, Options, Valeurs, Paramètres expérimentaux (×3 onglets) ; bouton « Afficher les valeurs » de l'onglet 1D gardé (il affiche aussi les valeurs en M sur le canvas) |
+| `interferences/` | ✅ terminée | Paramètres, Graphes temporels, Options, Valeurs, Paramètres expérimentaux (×3 onglets) ; tous les boutons « Afficher les valeurs » supprimés — dans l'onglet 1D, déplier Valeurs affiche aussi les valeurs en M sur le canvas (événement `sectionrepliee`) |
 | `ondes/`, `champ_uniforme/`, `kepler/`, `cinetique/`, `derivee/`, `equilibre/` | déjà proches du modèle (`style=` en ligne, classes de boutons à reprendre) | à faire |
 | `titrage/`, `radioactivite/` | à restructurer (titres à plat, `<hr class="sep">`, `gap: 10px`, boutons en px fixes sur titrage) | titrage : déjà fait (Options, Paramètres) |
 
@@ -277,6 +277,17 @@ Le script reste compatible avec l'ancienne structure « à plat » (titres et co
 
 **Le JS de la page ne doit pas masquer un titre repliable seul** (ex. `title-valeurs` dans `radioactivite/`) : le contenu, déplacé dans `.section-body`, resterait visible. Masquer la `.panel-section` entière à la place.
 
+**Agir sur la simulation au dépliage.** À chaque bascule (y compris le pliage initial au chargement), le script émet sur le titre l'événement `sectionrepliee` (`detail.repliee` : `true` si la section vient d'être pliée), qui remonte jusqu'à la `.panel-section`. Une page peut s'y abonner quand déplier une section doit aussi changer l'affichage de la simulation, ce qui permet de supprimer un bouton « Afficher… » même s'il agissait aussi sur le canvas. Exemple (`interferences/js/principe.js`) :
+
+```js
+document.getElementById('section-valeurs-prin').addEventListener('sectionrepliee', function (e) {
+  simPrin.showValeurs = !e.detail.repliee;   // encarts du panneau + valeurs en M sur le canvas
+  _prinUpdateValeurs();
+});
+```
+
+L'écouteur doit être posé **avant** le chargement de `sections-repliables.js` (script de la page chargé avant, comme d'habitude).
+
 **Implémentation sur une page** (après uniformisation du panneau) :
 
 1. Marquer les titres : `<div class="section-title" data-repliable>Options</div>`
@@ -310,7 +321,7 @@ Le script reste compatible avec l'ancienne structure « à plat » (titres et co
 
 **Choix de design (itérations validées avec l'utilisateur) :** pas de barre/fond/bordure autour du titre (« trop voyant »), pas de bouton rond (« moche ») ; chevron gris discret à droite du titre, bleu `#2a6aaa` au survol. Le sens du chevron suit la direction du contenu : **bas = replié (le contenu va descendre), haut = déplié** — jamais une flèche vers la droite. L'état n'est pas mémorisé entre deux chargements.
 
-**Boutons « Afficher… » devenus inutiles.** Une section repliable remplit déjà la fonction des boutons de type « Afficher les valeurs », « Afficher les mesures », etc. dont le seul rôle est de montrer/cacher un bloc de commandes ou d'affichages du panneau : lors de l'implémentation sur une page, on peut les **supprimer**, en regroupant le bloc concerné sous un titre `data-repliable` (pliée par défaut = masqué, dépliée = affiché). Attention : cela ne vaut que pour un bouton qui masque un élément **du panneau**. Un bouton qui active/désactive un élément de la simulation ou du graphe (courbe, tangente, représentation des espèces, zoom…) reste nécessaire. Avant de supprimer un bouton, vérifier dans le JS de la page ce qu'il pilote et retirer proprement son `onclick`/ses références (`getElementById`) pour ne laisser aucune erreur JS. Le bloc qu'il masquait doit alors être visible par défaut (retirer son `style="display:none"`), c'est la section repliée qui le cache.
+**Boutons « Afficher… » devenus inutiles.** Une section repliable remplit déjà la fonction des boutons de type « Afficher les valeurs », « Afficher les mesures », etc. dont le seul rôle est de montrer/cacher un bloc de commandes ou d'affichages du panneau : lors de l'implémentation sur une page, on peut les **supprimer**, en regroupant le bloc concerné sous un titre `data-repliable` (pliée par défaut = masqué, dépliée = affiché). Attention : cela ne vaut que pour un bouton qui masque un élément **du panneau**. Un bouton qui active/désactive un élément de la simulation ou du graphe (courbe, tangente, représentation des espèces, zoom…) reste nécessaire. Avant de supprimer un bouton, vérifier dans le JS de la page ce qu'il pilote et retirer proprement son `onclick`/ses références (`getElementById`) pour ne laisser aucune erreur JS. Le bloc qu'il masquait doit alors être visible par défaut (retirer son `style="display:none"`), c'est la section repliée qui le cache. **Cas mixte** (bouton « Afficher les valeurs/mesures » qui montre des valeurs à la fois dans le panneau et sur le canvas) : le supprimer quand même (choix de l'utilisateur), soit en laissant la valeur toujours affichée sur le canvas (`courant/` : U reste sur le schéma), soit en liant l'affichage canvas au dépliage de la section via l'événement `sectionrepliee` (`interferences/`, onglet 1D).
 
 ### Boutons (`.btn`)
 
@@ -570,7 +581,7 @@ Toute page **HTML autonome** destinée à être publiée (page d'accueil `index.
 |---|---|---|---|---|
 | `derivee/` | La dérivée d'une fonction — taux de variation, sécante et tangente | Première/Terminale | **Arborescence** | `sim.js` + `courbe.js` + `graph.js` + `ui.js` ; page sans onglets. Catalogue de fonctions au choix (trajectoire verticale, oscillateur, décharge de condensateur, fonction cube) défini entièrement dans `FONCTIONS` (panneau et unités construits à partir de la définition) ; point M déplaçable sur la courbe, points A/B encadrants réglés par Δ (slider quadratique pour approcher 0 finement), sécante → tangente, animation « Δt → 0 », zoom logarithmique jusqu'à ×2000 recentré sur M (la courbe se confond avec sa tangente), cotes Δt/Δf, graphe optionnel de la fonction dérivée à axe des abscisses aligné sur le graphe principal, splitter draggable — voir `derivee/ARCHITECTURE.md` |
 | `condensateur/` | Circuit RC — charge/décharge condensateur plan | Terminale | **Arborescence** | Splitter draggable, zoom/pan/réticule sur graphes, animation courant et électrons |
-| `courant/` | Courant électrique — modèle microscopique dans un fil (conducteur, isolant, semi-conducteur) | Seconde/Première | **Arborescence** | `sim.js` + `fil.js` + `ui.js` ; page sans onglets, sans graphe. Trois matériaux au choix (boutons Conducteur / Isolant / Semi-conducteur). **Conducteur** : modèle de Drude « lycée », réseau d'ions FIXE en empilement compact (colonnes alternées 3 / 2 en quinconce), électrons à énergie cinétique d'agitation constante dont la direction est redistribuée à chaque choc — vitesse de dérive v = a·τ proportionnelle à U ; un électron libre par atome, neutralité tenue à tout réglage et à tout redimensionnement. **Isolant** : électrons liés en orbite autour de leur noyau, orbites déformées en ellipses par la tension (oscillateur amorti), courant seulement transitoire. **Semi-conducteur** : ionisation thermique (électrons libres + lacunes), recapture par attraction, sauts de lacune sous tension, température à 8 crans (100 à 1000 K, affichée en K et en °C). Schéma du circuit fermé (générateur + interrupteur) relié par des traits de loupe au fil agrandi, flèche du sens conventionnel, cote de tension, tous pilotés par un unique `currentSign()`. Curseurs tension signée / résistance (conducteur) / température (semi-conducteur), suivi d'un électron (et d'une lacune), flèches du sens des électrons, mesures U/I/vitesse de dérive masquables (projection en Seconde) — voir `courant/ARCHITECTURE.md` |
+| `courant/` | Courant électrique — modèle microscopique dans un fil (conducteur, isolant, semi-conducteur) | Seconde/Première | **Arborescence** | `sim.js` + `fil.js` + `ui.js` ; page sans onglets, sans graphe. Trois matériaux au choix (boutons Conducteur / Isolant / Semi-conducteur). **Conducteur** : modèle de Drude « lycée », réseau d'ions FIXE en empilement compact (colonnes alternées 3 / 2 en quinconce), électrons à énergie cinétique d'agitation constante dont la direction est redistribuée à chaque choc — vitesse de dérive v = a·τ proportionnelle à U ; un électron libre par atome, neutralité tenue à tout réglage et à tout redimensionnement. **Isolant** : électrons liés en orbite autour de leur noyau, orbites déformées en ellipses par la tension (oscillateur amorti), courant seulement transitoire. **Semi-conducteur** : ionisation thermique (électrons libres + lacunes), recapture par attraction, sauts de lacune sous tension, température à 8 crans (100 à 1000 K, affichée en K et en °C). Schéma du circuit fermé (générateur + interrupteur) relié par des traits de loupe au fil agrandi, flèche du sens conventionnel, cote de tension, tous pilotés par un unique `currentSign()`. Curseurs tension signée / résistance (conducteur) / température (semi-conducteur), suivi d'un électron (et d'une lacune), flèches du sens des électrons, mesures U/I/vitesse de dérive dans une section repliable du panneau (U toujours affichée sur le schéma) — voir `courant/ARCHITECTURE.md` |
 | `lentille/` | Lentille mince convergente/divergente — construction géométrique | Seconde/Première | **Arborescence** | `sim.js` + `draw.js` + `ui.js` ; drag objet/lentille/écran, mode infini avec animation, multi-points, tableau conjugaison, cadres viewfinder avec `drawGlowLetter` |
 | `lunette/` | Lunette astronomique — deux lentilles, mode afocal | Terminale | **Arborescence** | `sim.js` + `draw.js` + `ui.js` ; drag/pan/zoom molette, animation propagation, réglage oculaire interactif |
 | `radioactivite/` | Décroissance radioactive — modèle des dés | Terminale | **Arborescence** | `sim.js` + `draw.js` + `ui.js` ; Mode Discret (Libre + Auto) et Mode Continu, zoom/pan/réticule/tangente/autoscale sur graphes, splitter draggable, overlay récipient agrandi, multi-séries avec légende |

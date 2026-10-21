@@ -214,7 +214,7 @@ var simPrin = {
     showReperes : false,   // positions constructives / destructives
     showCotes   : false,   // doubles flèches cotées S₁M et S₂M
     showDelta   : false,   // étiquette δ = |S₁M − S₂M| sous le micro
-    showValeurs : false,   // encarts du panneau
+    showValeurs : false,   // section Valeurs dépliée : encarts du panneau + valeurs en M sur le canvas
     // Masque, sur les lignes 1 (y₁ seule) et 2 (y₂ seule), la portion du signal
     // au-delà de la position du micro — la ligne 3 (somme) n'est jamais
     // affectée. cf. _prinRowBoundsM.
@@ -3497,12 +3497,19 @@ function togglePrinCotes()     { _prinToggleOption('showCotes', 'btn-cotes-prin'
 function togglePrinDelta()     { _prinToggleOption('showDelta', 'btn-delta-prin'); }
 function togglePrinHideBeyondMic() { _prinToggleOption('hideBeyondMic', 'btn-hide-beyond-mic-prin'); }
 
-function togglePrinValeurs() {
-    _prinToggleOption('showValeurs', 'btn-toggle-valeurs-prin');
-    var box = document.getElementById('readouts-prin');
-    if (box) box.style.display = simPrin.showValeurs ? '' : 'none';
-    _prinUpdateValeurs();
-}
+// Section « Valeurs » repliable (js/sections-repliables.js) : la déplier ou la
+// replier joue le rôle de l'ancien bouton « Afficher les valeurs » — encarts du
+// panneau ET valeurs lues en M sur le canvas. Le script des sections repliables
+// émet « sectionrepliee » sur le titre à chaque bascule (y compris le pliage
+// initial au chargement) ; l'événement remonte jusqu'à la section.
+(function () {
+    var sec = document.getElementById('section-valeurs-prin');
+    if (!sec) return;
+    sec.addEventListener('sectionrepliee', function (e) {
+        simPrin.showValeurs = !e.detail.repliee;
+        _prinUpdateValeurs();
+    });
+})();
 
 // ── Section "Valeurs" ─────────────────────────────────────────────────
 // La classification constructif / destructif / intermédiaire vit désormais

@@ -102,14 +102,11 @@ main {
    liseré discret plutôt que le contour par défaut du navigateur, très épais. */
 #principe-canvas:focus { outline: none; box-shadow: inset 0 0 0 2px rgba(42, 106, 170, 0.35); }
 #principe-canvas:focus-visible { outline: none; box-shadow: inset 0 0 0 2px rgba(42, 106, 170, 0.55); }
-/* Blocs de réglages propres au mode 1D de l'onglet Principe : la mise en page
-   est ici et non en style inline, car setPrincipeMode() les réaffiche en
-   remettant style.display à '' — un display:flex inline serait alors perdu. */
-#prin-1d-blocks {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
+/* Blocs de réglages propres au mode 1D de l'onglet Principe : simple conteneur
+   de .panel-section (structure canonique, espacements portés par les sections
+   et les .sep, pas de gap). setPrincipeMode() le réaffiche en remettant
+   style.display à ''. */
+#prin-1d-blocks { display: block; }
 
 .tab-placeholder {
   display: flex;
@@ -774,8 +771,6 @@ input[type=range]:disabled { accent-color: #b0aca4; cursor: not-allowed; }
 
 /* Encarts de valeurs instantanées */
 .readouts { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
-/* Encarts affichés sous un bouton (section Valeurs de l'onglet 1D) */
-.readouts-after-btn { margin-top: 8px; }
 /* Second libellé dans un même encart (S₂M sous S₁M) */
 .ro-label-next { margin-top: 6px; }
 .readout { background: #fff; border: 1px solid #c8c0b4; border-radius: 6px; padding: 7px 9px; }

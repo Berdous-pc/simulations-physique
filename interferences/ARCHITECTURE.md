@@ -1189,7 +1189,7 @@ index.html
   │                             onSliderSpeedPrin, onSliderLambdaPrin, onSliderA1Prin,
   │                             onSliderX1Prin, onSliderXMPrin, onSliderX2Prin,
   │                             onSliderA2Prin, resetParamsPrincipe, togglePrinEnveloppe,
-  │                             togglePrinReperes, togglePrinCotes, togglePrinValeurs,
+  │                             togglePrinReperes, togglePrinCotes,
   │                             togglePrinDelta, togglePrinHideBeyondMic,
   │                             togglePrinGraph, setPrinGraphOverlay,
   │                             setPrinRepresentation, togglePrinEnvOuSel,

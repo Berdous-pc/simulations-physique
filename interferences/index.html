@@ -301,10 +301,11 @@
 
         <div class="sep"></div>
 
-        <div class="panel-section">
+        <!-- Valeurs : déplier/replier la section affiche/masque aussi les valeurs lues
+             en M sur le canvas (cf. principe.js, écouteur « sectionrepliee ») -->
+        <div class="panel-section" id="section-valeurs-prin">
           <div class="section-title" data-repliable>Valeurs</div>
-          <button class="btn btn-toggle-one" id="btn-toggle-valeurs-prin" onclick="togglePrinValeurs()">Afficher les valeurs</button>
-          <div class="readouts readouts-after-btn" id="readouts-prin" style="display:none;">
+          <div class="readouts" id="readouts-prin">
             <div class="readout full-width">
               <div class="ro-label">S₁M</div>
               <div class="ro-value"><span id="ro-prin-s1m">1,70</span> <span class="ro-unit">m</span></div>

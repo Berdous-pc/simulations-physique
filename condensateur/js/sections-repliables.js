@@ -52,6 +52,13 @@
       btn.title = replie ? 'Afficher les commandes de cette section'
                          : 'Masquer les commandes de cette section';
       btn.setAttribute('aria-expanded', String(!replie));
+      // Prévient la page (l'événement remonte jusqu'à la section) : utile quand
+      // déplier une section doit aussi changer l'affichage de la simulation
+      // (ex. interferences/ : valeurs lues en M sur le canvas).
+      titre.dispatchEvent(new CustomEvent('sectionrepliee', {
+        bubbles: true,
+        detail: { repliee: replie }
+      }));
     }
     btn.addEventListener('click', basculer);
     titre.addEventListener('click', function (e) { if (e.target !== btn) basculer(); });
