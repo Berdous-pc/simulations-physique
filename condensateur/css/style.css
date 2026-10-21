@@ -296,6 +296,27 @@ main {
 /* Section */
 .panel-section { margin-bottom: 8px; }
 
+/* Sections repliables du panneau : titre inchangé + petit chevron discret */
+.section-title[data-repliable] {
+  display: flex; align-items: center; justify-content: space-between;
+  cursor: pointer; user-select: none;
+}
+.section-title[data-repliable]:hover { color: #2a6aaa; }
+.section-title.section-repliee { margin-bottom: 0; }   /* pas de vide sous un titre plié */
+.section-toggle {
+  flex: none; width: 18px; height: 18px; padding: 0; cursor: pointer;
+  border: none; background: transparent; position: relative;
+}
+.section-toggle::before {            /* chevron vers le haut (déplié : un clic replie), vers le bas (replié : un clic déplie) */
+  content: ''; position: absolute; left: 50%; top: 50%;
+  width: 5px; height: 5px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+  color: #7a8a96;
+  transform: translate(-50%, -30%) rotate(-135deg); transition: transform .2s;
+}
+.section-title[data-repliable]:hover .section-toggle::before { color: #2a6aaa; }
+.section-toggle[aria-expanded="false"]::before { transform: translate(-50%, -70%) rotate(45deg); }
+.section-body.collapsed { display: none; }
+
 /* Séparateur */
 .sep {
   border: none;
