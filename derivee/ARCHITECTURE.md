@@ -44,11 +44,12 @@ derivee/
     ├── courbe.js      ← graphe principal + interactions souris
     ├── graph.js       ← graphe de la fonction dérivée
     ├── fusee.js       ← panneau du décollage (fusée, sol, alignement)
-    └── ui.js          ← contrôles du panneau, animation, boucle (dernier)
+    ├── ui.js          ← contrôles du panneau, animation, boucle
+    └── sections-repliables.js ← copie de titrage/, sections du panneau repliables (chargé en dernier)
 ```
 
 Ordre de chargement critique (scope global, pas de modules ES) :
-`sim.js` → `courbe.js` → `graph.js` → `fusee.js` → `ui.js`.
+`sim.js` → `courbe.js` → `graph.js` → `fusee.js` → `ui.js` → `sections-repliables.js`.
 `fusee.js` lit `geoCourbe`, posé par `courbe.js` : il doit donc être tracé
 APRÈS `drawCourbe()` à chaque image.
 
