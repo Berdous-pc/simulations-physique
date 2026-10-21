@@ -17,7 +17,8 @@ ondes/
     ├── tube.js      rendu canvas + interactions — Son et Corde
     ├── graph.js     graphes — Son et Corde, + chrome commun aux 3 onglets
     ├── vagues.js    état + physique + rendu + graphes — Vagues (autonome)
-    └── ui.js        boucle d'animation, contrôles, onglets
+    ├── ui.js        boucle d'animation, contrôles, onglets
+    └── sections-repliables.js  copie de titrage/ : sections du panneau repliables (chargé en dernier)
 ```
 
 > Tous les fichiers travaillent dans le scope global (`var`, pas de modules ES).
