@@ -11,7 +11,8 @@ courant/
 └── js/
     ├── sim.js              ← état global + physique (chargé en premier)
     ├── fil.js              ← rendu canvas
-    └── ui.js               ← contrôles + boucle d'animation (chargé en dernier)
+    ├── ui.js               ← contrôles + boucle d'animation
+    └── sections-repliables.js ← copie de titrage/, sections du panneau repliables (chargé en dernier)
 ```
 
 Page **sans onglets**, donc sans deep-linking : une seule vue, un seul canvas,
