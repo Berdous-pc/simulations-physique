@@ -104,22 +104,117 @@ Les tailles sont **volontairement grandes** pour la lisibilité en projection. L
 
 Les pages les plus récentes (`ondes/`, `champ_uniforme/`, `dissolution/`) font référence pour le panneau droit. Toutes les tailles de police du panneau utilisent `clamp()` (jamais de px fixe pour un texte du panneau).
 
-### Structure du panneau
+### Structure canonique du panneau (modèle `ondes/`, `champ_uniforme/`, `pression/`)
+
+**Toutes les pages suivent cette structure** (uniformisation en cours, cf. « État de l'uniformisation » plus bas). Une seule écriture sur tout le site : c'est ce qui permet d'appliquer partout le même CSS et le même script de sections repliables sans réglage page par page.
 
 ```
 #panel
-  ├── .panel-main-tabs          ← onglets principaux (Discret/Continu, Équilibrage/Limitant…)
-  └── #panel-body               ← corps scrollable
-        ├── .panel-main-section ← sections associées aux onglets
-        │     ├── .section-title
-        │     ├── .mode-tabs    ← sous-onglets (Libre/Auto…) si applicable
-        │     ├── .param-row    ← rangée paramètre (label + slider ou input)
-        │     ├── .readout      ← afficheur valeur instantanée
-        │     ├── .btn          ← bouton action
-        │     └── .sep          ← séparateur horizontal
-        └── (fin section)
-  └── .panel-hint               ← hint collé en bas, hors scroll
+  ├── .panel-main-tabs              ← onglets principaux, seulement si la page en a
+  ├── #panel-body                   ← corps scrollable
+  │     ├── .panel-title            ← titre de la page, seulement si PAS d'onglets principaux
+  │     └── .panel-main-section     ← un par onglet (absent si pas d'onglets : les .panel-section sont alors directement dans #panel-body)
+  │           ├── .panel-section    ← UNE section = un bloc
+  │           │     ├── .section-title          ← toujours le 1er enfant du bloc
+  │           │     └── contenu : .mode-tabs, .param-row, .btn-row, .btn…, .readout, .check-row…
+  │           ├── .sep              ← séparateur, ENTRE deux .panel-section (jamais dedans)
+  │           └── .panel-section …
+  └── .panel-hint                   ← « Informations », collé en bas, hors scroll
 ```
+
+**HTML type :**
+
+```html
+<div id="panel">
+  <div class="panel-main-tabs">…</div>          <!-- si onglets -->
+  <div id="panel-body">
+    <div class="panel-main-section" id="section-xxx">
+
+      <div class="panel-section">
+        <div class="section-title">Contrôles</div>
+        <div class="btn-row">
+          <button class="btn btn-pause" id="btn-playpause" onclick="togglePause()">⏸ Pause</button>
+          <button class="btn btn-raz" onclick="resetSim()">↺ RAZ</button>
+        </div>
+      </div>
+
+      <div class="sep"></div>
+
+      <div class="panel-section">
+        <div class="section-title" data-repliable>Paramètres</div>
+        <div class="param-row">
+          <label>Masse <span class="param-value"><span id="lbl-m">1,0</span> kg</span></label>
+          <input type="range" id="sl-m" min="0.1" max="5" step="0.1" value="1" oninput="onSliderM(this.value)">
+        </div>
+      </div>
+
+      <div class="sep"></div>
+
+      <div class="panel-section">
+        <div class="section-title" data-repliable>Options</div>
+        <div class="btn-stack">
+          <button class="btn btn-toggle-one" id="btn-graph" onclick="toggleGraph()">Afficher graphe</button>
+          <button class="btn btn-toggle-one" id="btn-lambda" onclick="toggleLambda()">Afficher la longueur d'onde</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+  <div class="panel-hint">…</div>
+</div>
+```
+
+**Règles :**
+
+- **Chaque section est un `<div class="panel-section">`** dont le premier enfant est le `.section-title`. Pas de titre « à plat » directement dans `.panel-main-section` ou `#panel-body`, pas de `<div>` anonyme comme bloc de section.
+- **Séparateur : `<div class="sep"></div>`**, placé entre deux `.panel-section` (pas de `<hr>`). Pas de séparateur avant la première section ni après la dernière.
+- **Blocs affichés/masqués par le JS** (commandes propres à un mode, ex. `#bloc-fusee`, `#ctrl-disque`, `#section-oeil`) : un `<div id="…">` qui enveloppe une ou plusieurs `.panel-section` complètes (et leurs `.sep`). On ne coupe jamais une section en deux avec un tel bloc ; un élément isolé masqué par le JS à l'intérieur d'une section reste possible (`style="display:none"` sur cet élément).
+- **Espacements portés par le CSS des composants, pas par des `style=` en ligne.** Les marges sont en bas des éléments (`margin-bottom`) ; les conteneurs `#panel-body`, `.panel-main-section` et `.panel-section` sont des blocs sans `gap` (ou `gap: 0`). Seul `style="display:none"` reste toléré en ligne, pour l'état initial d'un élément piloté par le JS.
+- **Plusieurs boutons empilés** : les regrouper dans `.btn-stack` (au lieu de `style="margin-top:6px"` sur chacun). Boutons côte à côte : `.btn-row`.
+- **Tous les boutons portent la classe `btn`** en plus de leur variante (`class="btn btn-toggle-one"`, jamais `btn-toggle-one` seul).
+- **`.panel-title`** : présent uniquement sur les pages sans onglets principaux (les onglets tiennent lieu de titre).
+- **Onglets principaux** : chaque `.panel-main-section` est affichée/masquée par le JS (`style.display`, comme `ondes/`) ; les pages qui utilisent la classe `.visible` (titrage, reaction, radioactivite) peuvent la garder, c'est équivalent.
+
+**CSS de référence (d'après `ondes/css/style.css`, plus `min-height: 0` et `overflow-x: hidden` sur `#panel-body`, repris de `titrage/`) :**
+
+```css
+#panel {
+  background: #e8e4de;
+  border-left: 1.5px solid #c8c0b4;
+  display: flex; flex-direction: column;
+  height: 100%;
+  font-size: clamp(11px, 1.1vw, 14px);
+  overflow: hidden;
+}
+#panel-body {
+  flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden;
+  padding: clamp(8px, 1vw, 14px) clamp(8px, 1vw, 12px);
+  display: flex; flex-direction: column; gap: 0;
+}
+.panel-title {                      /* pages sans onglets uniquement */
+  font-size: clamp(14px, 1.4vw, 17px); font-weight: 700; color: #2c3e50;
+  text-align: center; letter-spacing: 0.3px;
+  padding-bottom: clamp(8px, 1vw, 12px);
+  border-bottom: 1.5px solid #c8c0b4;
+  margin-bottom: clamp(8px, 1vw, 12px);
+}
+.panel-section { margin-bottom: 8px; }
+.section-title {
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 1px; color: #7a8a96; margin-bottom: 7px;
+}
+.sep { border: none; border-top: 1px solid #c8c0b4; margin: 8px 0; }
+.btn-row { display: flex; gap: 6px; }
+.btn-row > .btn { width: auto; flex: 1 1 0; white-space: nowrap; }
+.btn-row > .btn-raz { flex: 0 0 auto; }
+.btn-stack { display: flex; flex-direction: column; gap: 6px; }
+.param-row { display: flex; flex-direction: column; gap: 3px; margin-bottom: 10px; }
+.readout { /* … */ margin-bottom: 8px; }
+```
+
+Le reste (onglets, sous-onglets, variantes de boutons, `.param-row`, `.readout`, `.panel-hint`) est détaillé dans les sous-sections suivantes.
+
+**État de l'uniformisation (octobre 2026).** Déjà conformes, à quelques `style=` en ligne et classes de boutons près : `ondes/`, `champ_uniforme/`, `dissolution/`, `kepler/`, `pression/`, `atome/`, `cinematique/`, `cinetique/`, `condensateur/`, `courant/`, `derivee/`, `equilibre/`, `refraction/`. À restructurer : `titrage/`, `reaction/`, `radioactivite/` (titres à plat, `<hr class="sep">`, `gap: 10px`, boutons en px fixes sur titrage) ; `lentille/`, `lunette/`, `diffraction/`, `interferences/` (sections en `<div>` anonymes sans séparateur, titre souligné et `gap: 14px` sur lentille/lunette). Démarche : une page à la fois, un commit « uniformisation du panneau » (rendu quasi identique) puis un commit « sections repliables ».
 
 ### Onglets principaux (`.panel-main-tab`)
 
@@ -151,15 +246,19 @@ Les pages les plus récentes (`ondes/`, `champ_uniforme/`, `dissolution/`) font 
 | `letter-spacing` | `1px` |
 | Couleur | `#7a8a96` |
 
-#### Sections repliables (test en cours — `titrage/`, branche `test-sections-repliables`)
+#### Sections repliables (validées sur `titrage/`, à généraliser à toutes les pages)
 
 But : alléger le panneau de droite. Un titre de section peut porter un petit chevron qui masque/affiche les commandes de la section. **Pliées par défaut.**
 
-**Quelles sections ?** Seulement celles qui regroupent plusieurs commandes secondaires (typiquement « Options », « Paramètres »). **Ne pas** rendre repliable : une section à un seul élément (ex. slider « Vitesse d'animation », select « Réaction »), ni celles qui contiennent les boutons importants (Actions : Lancer / Avancer / RAZ…), ni « Mode Test ». Chaque titre concerné est marqué à la main par l'attribut `data-repliable` ; les autres titres restent inchangés.
+**Quelles sections ?** Seulement celles qui regroupent plusieurs commandes secondaires (typiquement « Options », « Paramètres »). **Ne pas** rendre repliable : une section à un seul élément (ex. slider « Vitesse d'animation », select « Réaction »), ni celles qui contiennent les boutons importants (Contrôles, Animation, Actions : Lancer / Pause / RAZ…), ni « Mode Test ». Chaque titre concerné est marqué à la main par l'attribut `data-repliable` ; les autres titres restent inchangés.
 
-**Fonctionnement.** Le HTML du panneau n'est pas restructuré : au chargement, `js/sections-repliables.js` regroupe les éléments qui suivent chaque `.section-title[data-repliable]` (jusqu'au prochain `<hr class="sep">`, ou la fin du bloc) dans un `<div class="section-body">`, ajoute un `<button class="section-toggle">` dans le titre, puis plie la section. Un clic sur le titre ou sur le chevron bascule. Les `id` des éléments déplacés sont conservés, donc le JS existant de la page n'est pas affecté. Prérequis : titre et contenu doivent être **frères directs** dans `#panel-body`, la section étant délimitée par un `<hr class="sep">` (c'est le cas de `titrage/` ; vérifier la structure avant de l'appliquer à une autre page, sinon adapter le critère d'arrêt).
+**Fonctionnement.** Le HTML du panneau n'est pas restructuré : au chargement, `js/sections-repliables.js` regroupe tout ce qui suit chaque `.section-title[data-repliable]` dans son `.panel-section` (structure canonique : le titre est le 1er enfant du bloc, donc tout le reste du bloc) dans un `<div class="section-body">`, ajoute un `<button class="section-toggle">` dans le titre, puis plie la section. Un clic sur le titre ou sur le chevron bascule. Les `id` des éléments déplacés sont conservés, donc le JS existant de la page n'est pas affecté.
 
-**Implémentation sur une page :**
+Le script reste compatible avec l'ancienne structure « à plat » (titres et commandes frères directs, sections délimitées par un `.sep`, cas de `titrage/` tant qu'il n'est pas uniformisé) : il s'arrête au premier `.sep`, au `.section-title` suivant ou à un élément qui contient un `.section-title`. Ces garde-fous évitent qu'une section repliable n'avale la suivante.
+
+**Le JS de la page ne doit pas masquer un titre repliable seul** (ex. `title-valeurs` dans `radioactivite/`) : le contenu, déplacé dans `.section-body`, resterait visible. Masquer la `.panel-section` entière à la place.
+
+**Implémentation sur une page** (après uniformisation du panneau) :
 
 1. Marquer les titres : `<div class="section-title" data-repliable>Options</div>`
 2. Copier `titrage/js/sections-repliables.js` dans le `js/` de la page et le charger **après** le script principal (`ui.js`/`main.js`…) : `<script src="js/sections-repliables.js"></script>`
@@ -172,6 +271,7 @@ But : alléger le panneau de droite. Un titre de section peut porter un petit ch
   cursor: pointer; user-select: none;
 }
 .section-title[data-repliable]:hover { color: #2a6aaa; }
+.section-title.section-repliee { margin-bottom: 0; }   /* pas de vide sous un titre plié */
 .section-toggle {
   flex: none; width: 18px; height: 18px; padding: 0; cursor: pointer;
   border: none; background: transparent; position: relative;
@@ -184,15 +284,14 @@ But : alléger le panneau de droite. Un titre de section peut porter un petit ch
 }
 .section-title[data-repliable]:hover .section-toggle::before { color: #2a6aaa; }
 .section-toggle[aria-expanded="false"]::before { transform: translate(-50%, -70%) rotate(45deg); }
-.section-body { display: flex; flex-direction: column; gap: 10px; }
 .section-body.collapsed { display: none; }
 ```
 
+`.section-body` n'a **pas** de style propre dans la structure canonique : c'est un simple bloc, les marges des composants (`.param-row`, `.readout`…) s'y comportent exactement comme directement dans `.panel-section`, le rendu déplié est donc identique à l'original. (Exception : `titrage/` et toute page encore à plat dans un conteneur flex avec `gap: 10px` gardent `.section-body { display: flex; flex-direction: column; gap: 10px; }` pour retrouver cet espacement.)
+
 **Choix de design (itérations validées avec l'utilisateur) :** pas de barre/fond/bordure autour du titre (« trop voyant »), pas de bouton rond (« moche ») ; chevron gris discret à droite du titre, bleu `#2a6aaa` au survol. Le sens du chevron suit la direction du contenu : **bas = replié (le contenu va descendre), haut = déplié** — jamais une flèche vers la droite. L'état n'est pas mémorisé entre deux chargements.
 
-**Boutons « Afficher… » devenus inutiles.** Une section repliable remplit déjà la fonction des boutons de type « Afficher les valeurs », « Afficher les mesures », etc. dont le seul rôle est de montrer/cacher un bloc de commandes ou d'affichages du panneau : lors de l'implémentation sur une page, on peut les **supprimer**, en regroupant le bloc concerné sous un titre `data-repliable` (pliée par défaut = masqué, dépliée = affiché). Attention : cela ne vaut que pour un bouton qui masque un élément **du panneau**. Un bouton qui active/désactive un élément de la simulation ou du graphe (courbe, tangente, représentation des espèces, zoom…) reste nécessaire. Avant de supprimer un bouton, vérifier dans le JS de la page ce qu'il pilote et retirer proprement son `onclick`/ses références (`getElementById`) pour ne laisser aucune erreur JS.
-
-**Si `.section-body` perturbe le layout** (page où `.panel-main-section` n'est pas un flex column avec `gap: 10px`), ajuster le `gap` de `.section-body` pour retrouver l'espacement d'origine.
+**Boutons « Afficher… » devenus inutiles.** Une section repliable remplit déjà la fonction des boutons de type « Afficher les valeurs », « Afficher les mesures », etc. dont le seul rôle est de montrer/cacher un bloc de commandes ou d'affichages du panneau : lors de l'implémentation sur une page, on peut les **supprimer**, en regroupant le bloc concerné sous un titre `data-repliable` (pliée par défaut = masqué, dépliée = affiché). Attention : cela ne vaut que pour un bouton qui masque un élément **du panneau**. Un bouton qui active/désactive un élément de la simulation ou du graphe (courbe, tangente, représentation des espèces, zoom…) reste nécessaire. Avant de supprimer un bouton, vérifier dans le JS de la page ce qu'il pilote et retirer proprement son `onclick`/ses références (`getElementById`) pour ne laisser aucune erreur JS. Le bloc qu'il masquait doit alors être visible par défaut (retirer son `style="display:none"`), c'est la section repliée qui le cache.
 
 ### Boutons (`.btn`)
 
@@ -213,7 +312,7 @@ Tous les boutons partagent : `width: 100%`, `border-radius: 6px`, `font-weight: 
 
 ### Paramètres (`.param-row`)
 
-- `display: flex; flex-direction: column; gap: 3px; margin-bottom: 6px`
+- `display: flex; flex-direction: column; gap: 3px; margin-bottom: 10px` (valeur de `ondes/` et `kepler/` ; `dissolution/` utilise encore 6px)
 - `label` : `font-size: clamp(12px, 1.15vw, 15px)`, `color: #2c3e50` ; valeur actuelle en `span` : `color: #2a5080; font-weight: 600`
 - `input[type=range]` : `width: 100%; accent-color: #4a7aaa`
 - `input[type=number/text]` : `width: 100%; padding: 5px 8px; font-size: clamp(13px, 1.3vw, 16px); border: 1px solid #c8c0b4; border-radius: 4px`
@@ -221,7 +320,7 @@ Tous les boutons partagent : `width: 100%`, `border-radius: 6px`, `font-weight: 
 
 ### Afficheurs valeur (`.readout`)
 
-- Fond blanc, bordure `#c8c0b4`, `border-radius: 6px`, `padding: 7px 9px`
+- Fond blanc, bordure `#c8c0b4`, `border-radius: 6px`, `padding: 7px 9px`, `margin-bottom: 8px`
 - `.ro-label` : `font-size: clamp(11px, 1vw, 13px); color: #7a8a96`
 - `.ro-value` : `font-size: clamp(15px, 1.6vw, 20px); font-weight: 700; color: #2a5080; font-variant-numeric: tabular-nums`
 

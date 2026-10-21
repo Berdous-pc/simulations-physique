@@ -1,20 +1,32 @@
 /* ══════════════════════════════════════════════════════════════════
-   sections-repliables.js — TEST (branche test-sections-repliables)
+   sections-repliables.js
    Associe aux titres de section marqués data-repliable un bouton
    masquer/afficher qui replie les commandes de la section
    (les sections essentielles ou à un seul élément restent fixes).
    Aucune modification du HTML : au chargement, les éléments qui suivent
-   chaque .section-title (jusqu'au prochain <hr class="sep">) sont
-   regroupés dans un conteneur .section-body.
+   chaque .section-title sont regroupés dans un conteneur .section-body.
+     - Structure canonique (.panel-section, cf. CONTEXTE_PROJET.md) :
+       le titre est le 1er enfant du bloc, tout le reste du bloc est pris.
+     - Ancienne structure « à plat » (titres et commandes frères) :
+       arrêt au prochain .sep, au titre suivant ou à un bloc qui
+       contient un titre, pour ne jamais avaler la section suivante.
+   Copier ce fichier tel quel dans le js/ de chaque page.
    Auteur : Mathieu Berdous — berdouspc.com
    ══════════════════════════════════════════════════════════════════ */
 (function () {
   'use strict';
 
+  // Vrai si el marque le début de la section suivante
+  function finDeSection(el) {
+    return el.classList.contains('sep') ||
+           el.classList.contains('section-title') ||
+           el.querySelector('.section-title') !== null;
+  }
+
   document.querySelectorAll('#panel-body .section-title[data-repliable]').forEach(function (titre) {
-    // Récupère les frères suivants jusqu'au séparateur (ou la fin du bloc)
+    // Récupère les frères suivants jusqu'à la fin de la section (ou du bloc)
     var suivants = [];
-    for (var el = titre.nextElementSibling; el && !el.classList.contains('sep'); el = el.nextElementSibling) {
+    for (var el = titre.nextElementSibling; el && !finDeSection(el); el = el.nextElementSibling) {
       suivants.push(el);
     }
     if (!suivants.length) return;
@@ -35,6 +47,8 @@
 
     function basculer() {
       var replie = corps.classList.toggle('collapsed');
+      // Classe sur le titre : permet de supprimer sa marge basse une fois plié
+      titre.classList.toggle('section-repliee', replie);
       btn.title = replie ? 'Afficher les commandes de cette section'
                          : 'Masquer les commandes de cette section';
       btn.setAttribute('aria-expanded', String(!replie));
