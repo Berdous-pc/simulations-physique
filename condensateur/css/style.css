@@ -105,11 +105,12 @@ main {
 #panel-body {
   flex: 1;
   min-height: 0;
-  padding: clamp(8px, 1.2vw, 16px) clamp(6px, 1vw, 14px);
+  padding: clamp(8px, 1vw, 14px) clamp(8px, 1vw, 12px);
   display: flex;
   flex-direction: column;
   gap: 0;
   overflow-y: auto;
+  overflow-x: hidden;   /* pas de barre horizontale au moindre débordement */
 }
 
 /* Zone graphes.
@@ -304,11 +305,13 @@ main {
 
 .section-title {
   font-size: 11px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: 1px; color: #7a8a96; margin-bottom: 4px;
+  letter-spacing: 1px; color: #7a8a96; margin-bottom: 7px;
 }
 
 /* Lignes de paramètres (label + slider) */
-.param-row { display: flex; flex-direction: column; gap: 3px; margin-bottom: 6px; }
+.param-row { display: flex; flex-direction: column; gap: 3px; margin-bottom: 10px; }
+/* Curseur de vitesse sous les boutons Pause/RAZ (dernier élément de la section) */
+.param-row-speed { margin-top: 8px; margin-bottom: 0; }
 .param-row label { display: flex; justify-content: space-between; font-size: clamp(12px, 1.15vw, 15px); color: #2c3e50; }
 .param-row label span { color: #2a5080; font-weight: 600; }
 input[type=range] { width: 100%; accent-color: #4a7aaa; cursor: pointer; }
@@ -434,9 +437,9 @@ input[type=range] { width: 100%; accent-color: #4a7aaa; cursor: pointer; }
 
 /* Indicateur d'état de la phase */
 #state-indicator {
-  text-align: center; font-size: 14px; padding: 6px;
+  text-align: center; font-size: clamp(12px, 1.15vw, 15px); padding: 6px;
   border-radius: 5px; background: #fff; border: 1px solid #c8c0b4;
-  margin-bottom: 8px;
+  margin-top: 8px;   /* sous les boutons CHARGE / DÉCHARGE, dans la section Phase */
 }
 
 /* Bloc d'explication des modes */
