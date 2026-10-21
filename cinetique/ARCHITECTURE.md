@@ -12,7 +12,8 @@ cinetique/
     ├── sim.js
     ├── recipient.js
     ├── graph.js
-    └── ui.js
+    ├── ui.js
+    └── sections-repliables.js  ← copie de titrage/, sections du panneau repliables (chargé en dernier)
 ```
 
 ---
