@@ -11,7 +11,8 @@ pression/
 └── js/
     ├── sim.js
     ├── recipient.js
-    └── ui.js
+    ├── ui.js
+    └── sections-repliables.js   ← copie de titrage/, sections du panneau repliables
 ```
 
 ---
@@ -137,7 +138,7 @@ Tout le CSS de la page. Suit la charte graphique du projet.
 
 ### `js/ui.js` — Contrôles UI et boucle d'animation
 
-**Chargé en dernier.** Orchestre tout.
+**Chargé après sim.js et recipient.js** (seul sections-repliables.js vient après). Orchestre tout.
 
 #### Contrôles
 
@@ -203,6 +204,9 @@ index.html
                                                 onSliderV, onSliderGravity, onSliderSpeed,
                                                 syncUIToSim, updateReadouts
                                        démarre : init() → requestAnimationFrame(loop)
+  │
+  └── <script src="js/sections-repliables.js">  autonome (aucune dépendance) : rend repliables
+                                       les titres data-repliable du panneau (Paramètres)
 ```
 
 ---

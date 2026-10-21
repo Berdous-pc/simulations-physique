@@ -134,7 +134,7 @@
 
       <!-- ── Paramètres ─────────────────────────── -->
       <div class="panel-section">
-        <div class="section-title">Paramètres</div>
+        <div class="section-title" data-repliable>Paramètres</div>
 
         <!-- Température -->
         <div class="param-row">
@@ -210,10 +210,11 @@
 
 </main>
 
-<!-- Ordre de chargement : sim (état + physique) → recipient (rendu) → ui (boucle) -->
+<!-- Ordre de chargement : sim (état + physique) → recipient (rendu) → ui (boucle) → sections repliables (en dernier) -->
 <script src="js/sim.js"></script>
 <script src="js/recipient.js"></script>
 <script src="js/ui.js"></script>
+<script src="js/sections-repliables.js"></script>
 <script data-goatcounter="https://berdous-pc.goatcounter.com/count"
         async src="https://gc.zgo.at/count.js"></script>
 </body>
