@@ -161,8 +161,10 @@ main {
 
 #panel-body {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: clamp(10px, 1.2vw, 16px) clamp(10px, 1.2vw, 14px);
+  overflow-x: hidden;   /* pas de barre horizontale au moindre débordement */
+  padding: clamp(8px, 1vw, 14px) clamp(8px, 1vw, 12px);
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -317,6 +319,17 @@ main {
 /* Deux boutons côte à côte (Lancer/Pause + RAZ) : chacun garde son style,
    seule la largeur devient partagée. RAZ reste étroit — son texte ne
    change pas — pour laisser la place à Lancer/Pause/Reprendre. */
+/* Boutons empilés : l'écart est porté par le conteneur, pas par une marge
+   sur chaque bouton (la marge haute de .btn-toggle-one est neutralisée).
+   Un bouton masqué (display:none) ne laisse pas de trou. */
+.btn-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+.btn-stack > .btn-toggle-one { margin-top: 0; }
+
 .btn-row { display: flex; gap: 6px; }
 .btn-row > .btn { width: auto; }
 .btn-row > .btn-play,
@@ -403,6 +416,8 @@ main {
   gap: 3px;
   margin-bottom: 10px;
 }
+/* Curseur placé juste sous des boutons (vitesse sous Lancer/RAZ) */
+.param-row-after-btn { margin-top: 8px; }
 
 .param-row label {
   font-size: clamp(12px, 1.25vw, 15px);
@@ -517,6 +532,10 @@ main {
   height: 5px;
   border-radius: 2px;
 }
+/* Couleurs des échantillons = couleurs du graphe */
+.cr-tangente { background: #2a8a50; }
+.cr-cotes    { background: #2a6aaa; }
+.cr-coords   { background: #2a8a50; }
 
 /* ── Afficheurs valeur ───────────────────────────── */
 .readout {
