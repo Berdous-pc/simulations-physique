@@ -520,6 +520,10 @@ input[type=number]:focus, input[type=text]:focus { outline: none; border-color: 
 .section-title[data-repliable]:hover .section-toggle::before { color: #2a6aaa; }
 .section-toggle[aria-expanded="false"]::before { transform: translate(-50%, -70%) rotate(45deg); }
 .section-body.collapsed { display: none; }
+/* Avant l'exécution de sections-repliables.js (1er chargement, scripts pas encore
+   en cache) : masque déjà le contenu des sections qui seront pliées, pour qu'elles
+   n'apparaissent pas dépliées une fraction de seconde. */
+html:not(.sections-pretes) .section-title[data-repliable]:not([data-repliable="ouvert"]) ~ * { display: none; }
 
 .sep { border: none; border-top: 1px solid #c8c0b4; margin: 8px 0; }
 

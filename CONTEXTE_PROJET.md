@@ -323,9 +323,15 @@ L'écouteur doit être posé **avant** le chargement de `sections-repliables.js`
 .section-title[data-repliable]:hover .section-toggle::before { color: #2a6aaa; }
 .section-toggle[aria-expanded="false"]::before { transform: translate(-50%, -70%) rotate(45deg); }
 .section-body.collapsed { display: none; }
+/* Avant l'exécution de sections-repliables.js (1er chargement, scripts pas encore
+   en cache) : masque déjà le contenu des sections qui seront pliées, pour qu'elles
+   n'apparaissent pas dépliées une fraction de seconde. */
+html:not(.sections-pretes) .section-title[data-repliable]:not([data-repliable="ouvert"]) ~ * { display: none; }
 ```
 
 `.section-body` n'a **pas** de style propre dans la structure canonique : c'est un simple bloc, les marges des composants (`.param-row`, `.readout`…) s'y comportent exactement comme directement dans `.panel-section`, le rendu déplié est donc identique à l'original.
+
+**Pas de « flash » au chargement.** Le script est chargé en fin de page : au tout premier chargement (fichiers pas encore en cache), le navigateur peut afficher le panneau avant de l'exécuter, et les sections apparaissaient dépliées une image avant de se replier. La dernière règle CSS ci-dessus masque d'emblée le contenu des sections qui seront pliées ; le script ajoute la classe `sections-pretes` sur `<html>` une fois la mise en place terminée, ce qui lève ce masquage.
 
 **Choix de design (itérations validées avec l'utilisateur) :** pas de barre/fond/bordure autour du titre (« trop voyant »), pas de bouton rond (« moche ») ; chevron gris discret à droite du titre, bleu `#2a6aaa` au survol. Le sens du chevron suit la direction du contenu : **bas = replié (le contenu va descendre), haut = déplié** — jamais une flèche vers la droite. L'état n'est pas mémorisé entre deux chargements.
 

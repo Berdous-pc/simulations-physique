@@ -67,4 +67,9 @@
     // Sections repliées par défaut, sauf data-repliable="ouvert" (dépliée au chargement)
     if (titre.getAttribute('data-repliable') !== 'ouvert') basculer();
   });
+
+  // Fin de la mise en place : lève le masquage CSS provisoire qui évitait
+  // d'afficher les sections dépliées pendant le chargement (premier affichage
+  // avant l'exécution de ce script, cf. html:not(.sections-pretes) dans le CSS).
+  document.documentElement.classList.add('sections-pretes');
 })();
