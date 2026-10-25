@@ -12,26 +12,33 @@
 //  toujours identique, pour que l'élève sache où regarder :
 //
 //    1. approche    : l'ion oxydant (Cu²⁺), mis en avant, arrive par le
-//                     haut à droite et vient se coller contre l'atome de
-//                     la lame (Zn) avec lequel il va réagir ;
-//    2. contact     : l'ion et l'atome sont signalés ;
-//    3. transfert   : les électrons passent directement de l'atome à l'ion
-//                     collé contre lui (visibles sur option) ;
+//                     haut à droite et vient se coller contre la lame (Zn)
+//                     ou contre un grain du dépôt (Cu) ;
+//    2. contact     : l'ion et l'atome qui va s'oxyder sont signalés ;
+//    3. transfert   : les électrons (visibles sur option) vont de l'atome
+//                     à l'ion à travers le métal : en ligne droite s'il le
+//                     touche, sinon par la lame puis d'atome en atome dans
+//                     le dépôt (lame et dépôt sont conducteurs) ;
 //    4. transformation : Cu²⁺ devient Cu, Zn devient Zn²⁺, sur place ;
-//    5. départ      : Zn²⁺ quitte la lame en glissant derrière le Cu formé
+//    5. départ      : Zn²⁺ quitte la lame en glissant derrière le dépôt
 //                     (la scène est la projection d'un volume), puis part
 //                     en diagonale vers le bas à droite ; l'atome Cu reste
 //                     là où l'ion s'est collé (dépôt hors grille).
 //
-//  Un cycle correspond à l'équation de la réaction et met en jeu une
-//  seule ZONE de la lame : les atomes qui s'oxydent sont voisins, et les
-//  ions se posent côte à côte contre eux (Cu + 2 Ag⁺ : les deux Ag⁺
-//  encadrent l'atome Cu). Un ion ne se pose jamais sur le dépôt : seulement
-//  contre des atomes de la lame.
+//  Un cycle correspond à l'équation de la réaction : les atomes qui
+//  s'oxydent sont voisins (une ZONE de la lame) ; chaque ion se pose sur
+//  son SITE, contre la lame (nouveau grain) ou contre le dépôt (le grain
+//  grossit), de préférence près de la zone. Le dépôt, poreux, laisse les
+//  ions passer derrière lui pour atteindre la lame.
 //
-//  La surface de la lame se couvre ainsi peu à peu de dépôt, avec des
-//  creux derrière lui. Quand plus aucune zone n'est disponible, le dépôt
-//  se détache d'un bloc et tombe ; si la lame a reculé, la vue la suit.
+//  Le dépôt pousse ainsi en GRUMEAUX vers la solution. La lame se ronge de
+//  façon un peu irrégulière (petits creux bornés), plus volontiers au
+//  contact du dépôt. Un amas tient tant qu'il touche un atome de la lame :
+//  quand ceux qui le retenaient se sont oxydés, il est DÉCHAUSSÉ ; trop
+//  lourd pour ses accroches, il casse et son morceau externe part. Il
+//  tombe alors dans le liquide (vitesse limite, légère dérive, rotation
+//  lente) jusqu'à sortir par le bas de la loupe. Quand la couche externe
+//  est entièrement rongée, la vue suit la lame.
 //
 //  Le cycle suivant commence dès le départ du précédent : au plus deux
 //  cycles visibles, légèrement décalés. Sans transformation possible,
@@ -56,9 +63,8 @@ var COL_INIT = 4;                // colonnes de métal au départ
 // jamais rongées et dépasseraient quand la vue suit la lame), mais celles
 // qui sont bien visibles dans le cercle sont choisies en priorité.
 var LIGNE_CENTRE_MIN = 2, LIGNE_CENTRE_MAX = 8;
-// Décalages verticaux essayés pour les ions quand la surface est accidentée
-var DECALAGES_IONS = [0, 0.15, -0.15, 0.3, -0.3, 0.45, -0.45];
 var U_COULOIR = 7.7;             // abscisse du couloir libre longé par les ions
+var U_MAX_DEPOT = U_COULOIR - 1.4; // le dépôt ne pousse pas jusqu'au couloir
 
 // ── Tailles des particules (en cases) ─────────────────────────────────
 // L'ion métallique est plus petit que l'atome (il a perdu ses électrons
@@ -88,7 +94,42 @@ var D_TRANSFERT = 0.4;
 var D_TRANSFO   = 1.0;
 var D_DEPART    = 2.6;           // trajet de l'ion formé jusqu'au bord
 var D_REBOND    = 2.6;
-var D_PLAQUE    = 2.2;
+
+// ── Relief de la surface et dépôt en îlots ────────────────────────────
+// Une zone peut puiser jusqu'à TOL_RUGO couches sous la couche la plus
+// externe : la surface se creuse un peu par endroits (creux bornés, pour
+// que toute la couche externe finisse rongée et que la vue suive la lame).
+var TOL_RUGO = 2;
+// Le dépôt croît sur lui-même : l'ion oxydant peut se réduire contre un
+// atome du dépôt, les électrons venant d'un atome de la lame à travers
+// le métal (lame et dépôt sont conducteurs). Le dépôt pousse ainsi en
+// grumeaux ; au-delà de TAILLE_ILOT_MAX atomes, un amas grossit moins.
+var TAILLE_ILOT_MAX = 6;
+var MALUS_GROS_AMAS = 3.5;
+var MALUS_GERME = 1.6;           // nouveau germe sur la lame plutôt que croissance
+var POIDS_SAUTS = 0.45;          // préférence pour un trajet d'électrons court
+var BONUS_GALVA = 1.2;           // le zinc au contact du dépôt s'oxyde plus volontiers
+var D_SITE_DEPOT = 2 * R_ATOME - 0.04;   // ion posé contre un atome du dépôt
+var D_VOISINS = 2 * R_ATOME + 0.15;      // deux atomes du dépôt soudés
+var D_PROCHE_DEPOT = 2 * R_ATOME - 0.06; // ion au plus près du dépôt (il deviendra atome)
+var V_ELECTRON = 6;              // vitesse des électrons dans le métal (cases/s)
+
+// ── Détachement par déchaussement ─────────────────────────────────────
+// Un amas du dépôt tient tant qu'un de ses atomes touche (à ANCRAGE près)
+// un atome de la lame. Quand les atomes de la lame qui le retenaient se
+// sont oxydés, il se détache et tombe dans la solution.
+var ANCRAGE = 1.4;               // distance de centre à centre
+var D_ANCRAGE = 1.2;             // un atome qui vient de se former tient (s)
+var RAPPORT_POIDS = 2.5;         // atomes par accroche au-delà desquels l'amas casse
+var TAILLE_MORCEAU = 4;          // atomes au plus dans le morceau qui casse
+var D_ENTRE_CASSES = 1.5;        // délai minimal entre deux cassures (s)
+
+// ── Chute d'un amas dans le liquide ───────────────────────────────────
+// Frottement visqueux : la vitesse atteint vite une valeur limite ; légère
+// dérive latérale et rotation lente de l'amas, qui reste soudé.
+var V_LIM_CHUTE = 2.0;           // vitesse limite (cases/s)
+var TAU_CHUTE = 0.45;            // temps de mise en vitesse (s)
+var D_DECOLLE = 0.6;             // décollement de la lame avant la chute (s)
 
 // Couleurs des rôles (mêmes teintes que les demi-équations du bloc HTML)
 var COUL_OX  = [176, 64, 32];    // oxydation : atome de la lame qui perd des électrons
@@ -100,16 +141,18 @@ var COUL_RED = [42, 106, 170];   // réduction : ion oxydant qui en gagne
 
 var loupe = {
   grille: [],
-  depots: [],          // atomes déposés, hors grille : { u, v } (coordonnées du réseau)
+  depots: [],          // atomes déposés, hors grille : { u, v, age } (coordonnées du réseau)
   fond: [],            // ions estompés : { u, v, vu, vv, type, sym, r, vis, etat }
                        //   vis : visibilité 0 → 1 ; etat : '' | 'entre' | 'sort'
   cycles: [],
-  plaque: null,        // { atomes: [{u, v, sym}], t, dy, du, vv }
+  chutes: [],          // amas détachés qui tombent (coordonnées de la loupe) :
+                       //   { atomes: [{du, dv}], u, v, vu, vv, ang, om, phi, t, sym }
   fantomes: [],        // ions d'un cycle interrompu, qui s'effacent
   offX: 0, offY: -NR - 2,
   presente: false,     // réseau visible (lame dans le bécher)
   enPlace: false,      // lame plongée à sa place : les cycles peuvent tourner
-  tArrivee: 0
+  tArrivee: 0,
+  tCasse: 0            // délai avant la prochaine cassure d'amas
 };
 
 function _gauss() {
@@ -130,7 +173,8 @@ function resetLoupe() {
   loupe.depots = [];
   loupe.fond = [];
   loupe.cycles = [];
-  loupe.plaque = null;
+  loupe.chutes = [];
+  loupe.tCasse = 0;
   loupe.fantomes = [];
   loupe.offX = 0;
   loupe.offY = -NR - 2;
@@ -339,12 +383,16 @@ function majLoupe(dtSim) {
       loupe.offX *= Math.exp(-dtSim / 0.3);
       if (Math.abs(loupe.offX) < 0.002) loupe.offX = 0;
     }
-    if (loupe.plaque) _majPlaque(dtSim);
+    for (var d = 0; d < loupe.depots.length; d++) loupe.depots[d].age += dtSim;
+    _majChutes(dtSim);
     for (var i = loupe.cycles.length - 1; i >= 0; i--) {
       _majCycle(loupe.cycles[i], dtSim);
       if (loupe.cycles[i].phase === 'fini') loupe.cycles.splice(i, 1);
     }
-    if (enPlace) _ordonnancer(dtSim);
+    if (enPlace) {
+      _detacherAmas(dtSim);
+      _ordonnancer(dtSim);
+    }
   }
 
   // Même en pause, la lame peut bouger : les ions de fond qu'elle
@@ -355,41 +403,167 @@ function majLoupe(dtSim) {
 // ── Lancement des cycles ──────────────────────────────────────────────
 function _ordonnancer(dt) {
   if (loupe.tArrivee > 0) { loupe.tArrivee -= dt; return; }
-  if (loupe.plaque || loupe.offX !== 0) return;
+  if (loupe.offX !== 0) return;
   // Un seul cycle à la surface à la fois : le suivant démarre quand le
   // précédent en est au départ de ses ions.
   for (var i = 0; i < loupe.cycles.length; i++) {
     var ph = loupe.cycles[i].phase;
     if (ph !== 'depart' && ph !== 'rebond') return;
   }
+  // La couche externe est entièrement rongée : la vue suit la lame pour
+  // garder la surface en place (aucun cycle n'occupe alors la grille)
+  var front = _fronts(), fmax = -1;
+  for (i = 0; i < NR; i++) fmax = Math.max(fmax, front[i]);
+  var recul = (COL_INIT - 1) - fmax;
+  if (recul > 0) { _glisser(recul); return; }
+
   var cy = _nouveauCycle();
   if (cy) { loupe.cycles.push(cy); return; }
-  // Plus de zone disponible : la couche de dépôt se détache
-  if (loupe.cycles.length === 0 && loupe.depots.length > 0) _lancerPlaque();
+  // Plus de zone disponible (le dépôt masque les atomes de surface) :
+  // l'amas le moins bien accroché finit par se détacher
+  if (loupe.cycles.length === 0 && loupe.depots.length > 0) _detacherPlusFaible();
 }
 
-// Zone de la lame pour un cycle : les nA atomes les plus saillants d'une
-// courte fenêtre de lignes (nA à nA + 2 lignes : ils sont voisins, sans
-// être forcément sur des lignes consécutives), tous en surface (place
-// libre à leur droite pour les ions). Le dépôt est vérifié ensuite, ion
-// par ion (_placerIons).
-function _choisirZone(nA, nI) {
-  // Érosion couche par couche : on prend d'abord des atomes de la couche
-  // la plus externe ; la surface reste plane, et toutes les lignes finissent
-  // rongées (la vue peut alors suivre la lame). Si les derniers atomes
-  // d'une couche ne suffisent plus pour une zone (3 atomes de Mg pour
-  // 2 Al³⁺), on puise dans les couches juste en dessous.
-  for (var tol = 0; tol <= 3; tol++) {
-    var z = _choisirZoneTol(nA, nI, tol);
-    if (z) return z;
+// ── Amas du dépôt ─────────────────────────────────────────────────────
+// Regroupe les atomes du dépôt soudés entre eux (distance < D_VOISINS).
+// Renvoie la liste des amas (tableaux d'indices dans loupe.depots) et,
+// pour chaque atome, l'indice de son amas.
+function _amas() {
+  var D = loupe.depots, n = D.length, id = [], liste = [], i, j;
+  for (i = 0; i < n; i++) id.push(-1);
+  for (i = 0; i < n; i++) {
+    if (id[i] >= 0) continue;
+    var a = [i], pile = [i];
+    id[i] = liste.length;
+    while (pile.length) {
+      var k = pile.pop();
+      for (j = 0; j < n; j++) {
+        if (id[j] >= 0) continue;
+        if (Math.hypot(D[j].u - D[k].u, D[j].v - D[k].v) < D_VOISINS) {
+          id[j] = liste.length; a.push(j); pile.push(j);
+        }
+      }
+    }
+    liste.push(a);
+  }
+  return { liste: liste, id: id };
+}
+
+// Nombre de points d'accroche d'un amas : couples (atome du dépôt, atome
+// de la lame) à moins d'ANCRAGE. Un atome tout juste formé compte comme
+// accroché (sinon il pourrait tomber à l'instant même où il apparaît).
+// (lameSeule : sans compter les atomes tout juste formés)
+function _accroches(amas, lameSeule) {
+  var n = 0;
+  for (var k = 0; k < amas.length; k++) {
+    var d = loupe.depots[amas[k]];
+    if (!lameSeule && d.age < D_ANCRAGE) n++;
+    var r0 = Math.floor(d.v), c0 = Math.floor(d.u);
+    for (var r = r0 - 2; r <= r0 + 2; r++) {
+      if (r < 0 || r >= NR) continue;
+      for (var c = c0 - 2; c <= c0 + 2; c++) {
+        if (c < 0 || c >= NC || loupe.grille[r][c] === '') continue;
+        if (Math.hypot(c + 0.5 - d.u, r + 0.5 - d.v) < ANCRAGE) n++;
+      }
+    }
+  }
+  return n;
+}
+
+// Déchaussement : tout amas qui ne touche plus la lame se détache. Un
+// amas trop lourd pour ses accroches (dépôt spongieux, peu adhérent) se
+// casse : seul son morceau le plus éloigné de la lame tombe.
+function _detacherAmas(dt) {
+  if (loupe.tCasse > 0) loupe.tCasse -= dt;
+  if (!loupe.depots.length) return;
+  var A = _amas().liste, partants = [];
+  for (var i = 0; i < A.length; i++) {
+    if (_accroches(A[i]) === 0) partants.push(A[i]);
+    else if (loupe.tCasse <= 0 && A[i].length >= TAILLE_ILOT_MAX &&
+             A[i].length > RAPPORT_POIDS * _accroches(A[i], true)) {
+      var m = _morceauExterne(A[i]);
+      if (m.length) { partants.push(m); loupe.tCasse = D_ENTRE_CASSES; }
+    }
+  }
+  _lancerChutes(partants);
+}
+
+// Morceau d'un amas le plus éloigné de la lame : on part de l'atome le
+// plus loin (en sauts) des atomes accrochés et on lui adjoint ses voisins
+// non accrochés les plus éloignés, jusqu'à TAILLE_MORCEAU atomes
+function _morceauExterne(amas) {
+  var D = loupe.depots, dist = {}, file = [], i, j, k;
+  for (i = 0; i < amas.length; i++) {
+    if (_accroches([amas[i]], true) > 0) { dist[amas[i]] = 0; file.push(amas[i]); }
+  }
+  for (var t = 0; t < file.length; t++) {
+    for (i = 0; i < amas.length; i++) {
+      k = amas[i];
+      if (dist[k] !== undefined) continue;
+      if (Math.hypot(D[k].u - D[file[t]].u, D[k].v - D[file[t]].v) < D_VOISINS) {
+        dist[k] = dist[file[t]] + 1; file.push(k);
+      }
+    }
+  }
+  var loin = file[file.length - 1];
+  if (loin === undefined || !dist[loin]) return [];
+  var morceau = [loin];
+  while (morceau.length < TAILLE_MORCEAU) {
+    var best = -1;
+    for (i = 0; i < amas.length; i++) {
+      k = amas[i];
+      if (!dist[k] || morceau.indexOf(k) >= 0) continue;
+      var voisin = false;
+      for (j = 0; j < morceau.length; j++) {
+        if (Math.hypot(D[k].u - D[morceau[j]].u, D[k].v - D[morceau[j]].v) < D_VOISINS) voisin = true;
+      }
+      if (voisin && (best < 0 || dist[k] > dist[best])) best = k;
+    }
+    if (best < 0) break;
+    morceau.push(best);
+  }
+  return morceau;
+}
+
+// Secours (aucune zone disponible) : l'amas le moins accroché se détache
+function _detacherPlusFaible() {
+  var A = _amas().liste, choisi = null, min = Infinity;
+  for (var i = 0; i < A.length; i++) {
+    var n = _accroches(A[i]) + Math.random() * 0.5;
+    if (n < min) { min = n; choisi = A[i]; }
+  }
+  if (choisi) _lancerChutes([choisi]);
+}
+
+// Zone d'un cycle : les nA atomes de la lame qui s'oxydent (voisins, en
+// surface : _zonesAtomes) et les nI sites où se posent les ions oxydants
+// (_choisirSites). Un site est contre un atome de la lame (germe d'un
+// nouveau grain) ou contre un atome du dépôt (le grain grossit) : les
+// électrons vont de l'atome qui s'oxyde à l'ion à travers le métal.
+function _choisirZone(nA, nI, reagit) {
+  // Érosion irrégulière mais bornée : la zone peut puiser jusqu'à TOL_RUGO
+  // couches sous la couche la plus externe (petits creux), les atomes
+  // saillants restant favorisés ; toutes les lignes finissent rongées (la
+  // vue peut alors suivre la lame). Si cela ne suffit pas pour une zone
+  // (3 atomes de Mg pour 2 Al³⁺), on puise une couche plus bas.
+  var am = _amas(), g = _reseauMetal();
+  for (var tol = TOL_RUGO; tol <= TOL_RUGO + 1; tol++) {
+    var zones = _zonesAtomes(nA, tol);
+    // Premières zones dans l'ordre de préférence, jusqu'à trouver des sites
+    for (var i = 0; i < zones.length && i < 8; i++) {
+      var ions = _choisirSites(zones[i].atomes, nI, reagit, g, am);
+      if (ions) return { atomes: zones[i].atomes, ions: ions, graphe: g };
+    }
   }
   return null;
 }
 
+// Fenêtres de nA à nA + 2 lignes (atomes voisins, sans être forcément sur
+// des lignes consécutives) dont on prend les nA atomes de surface plutôt
+// saillants. Rangées de la plus à la moins favorable.
 // tol : nombre de couches sous la couche externe où la zone peut puiser
-// (0 = couche externe seulement)
-function _choisirZoneTol(nA, nI, tol) {
-  var front = _fronts(), zones = [], i, r, c, L, s;
+function _zonesAtomes(nA, tol) {
+  var front = _fronts(), zones = [], i, k, r, c, L, s;
   var couche = -1;
   for (i = 0; i < NR; i++) couche = Math.max(couche, front[i]);
   var parSaillie = function (a, b) { return b.k - a.k; };
@@ -402,82 +576,194 @@ function _choisirZoneTol(nA, nI, tol) {
       for (r = s; r < s + L; r++) {
         c = front[r];
         if (c < 0 || c + 2 >= NC || loupe.grille[r][c] !== 'M' || c < couche - tol) continue;
-        cand.push({ c: c, r: r, k: c + Math.random() * 0.1 });
+        // (tirage : un atome un peu en retrait est parfois préféré)
+        cand.push({ c: c, r: r, k: c + Math.random() * 0.9 });
       }
       if (cand.length < nA) continue;
       cand.sort(parSaillie);
       var atomes = cand.slice(0, nA).sort(parLigne);
       // Fenêtre au plus juste (sinon la même zone serait comptée plusieurs fois)
       if (atomes[nA - 1].r - atomes[0].r + 1 !== L) continue;
-      var cmin = NC, cmax = -1;
-      for (i = 0; i < nA; i++) { cmin = Math.min(cmin, atomes[i].c); cmax = Math.max(cmax, atomes[i].c); }
+      var cmin = NC, cmax = -1, galva = 0;
+      for (i = 0; i < nA; i++) {
+        cmin = Math.min(cmin, atomes[i].c); cmax = Math.max(cmax, atomes[i].c);
+        // Zinc au contact du dépôt : la pile locale Zn/Cu l'oxyde plus vite
+        // (c'est ce qui finit par déchausser les grains)
+        for (k = 0; k < loupe.depots.length; k++) {
+          var d = loupe.depots[k];
+          if (Math.hypot(atomes[i].c + 0.5 - d.u, atomes[i].r + 0.5 - d.v) < ANCRAGE) { galva += BONUS_GALVA; break; }
+        }
+      }
       if (cmax - cmin > tol) continue;
       var penal = (L - nA) * 1.5;               // atomes non contigus : moins lisible
       // Lignes du bord du cercle : légèrement moins prioritaires (une forte
       // pénalité ferait creuser le centre avant de finir la couche au bord)
       if (s < LIGNE_CENTRE_MIN || s + L - 1 > LIGNE_CENTRE_MAX) penal += 1;
-      // Priorité aux atomes les plus saillants : c'est ce qui garde la
-      // surface plane
+      // Les atomes saillants restent favorisés (la surface ne se creuse
+      // pas trop), mais le tirage laisse se former des creux
       zones.push({
         atomes: atomes,
-        score: -3 * cmax - cmin + penal + Math.abs(s + L / 2 - CV) * 0.25 + Math.random() * 1.6
+        score: -1.2 * cmax - 0.6 * cmin + penal - galva + Math.abs(s + L / 2 - CV) * 0.25 + Math.random() * 2.4
       });
     }
   }
   zones.sort(function (a, b) { return a.score - b.score; });
-  // Première zone où les ions trouvent leur place (en décalant au besoin
-  // le groupe d'ions vers le haut ou le bas)
-  for (i = 0; i < zones.length; i++) {
-    for (var j = 0; j < DECALAGES_IONS.length; j++) {
-      var places = _placerIons(zones[i].atomes, nI, DECALAGES_IONS[j]);
-      if (places) return { atomes: zones[i].atomes, ions: places };
-    }
-  }
-  return null;
+  return zones;
 }
 
-// Points de contact des nI ions, côte à côte (écart ESPACE_IONS) autour
-// des atomes de la zone. Chaque ion est poussé contre la surface jusqu'à
-// toucher l'atome le plus saillant à sa hauteur ; la zone est refusée si
-// cet atome n'est pas l'un des siens, si l'ion frôle le dépôt, ou si un
-// atome du dépôt lui barre l'arrivée (il se glisserait dans un creux
-// derrière le dépôt).
-function _placerIons(atomes, nI, decal) {
-  var vMoy = 0, i, k, r, c;
-  for (k = 0; k < atomes.length; k++) vMoy += (atomes[k].r + 0.5) / atomes.length;
-  var res = [];
-  for (i = 0; i < nI; i++) {
-    var v = vMoy + decal + (i - (nI - 1) / 2) * ESPACE_IONS;
-    // (un ion peut déborder un peu de la grille aux lignes extrêmes : il
-    // est alors au bord du cercle de la loupe)
-    if (v < -0.2 || v > NR + 0.2) return null;
-    var u = -1, contre = null;
-    for (r = Math.floor(v) - 1; r <= Math.floor(v) + 1; r++) {
-      if (r < 0 || r >= NR) continue;
-      for (c = 0; c < NC; c++) {
-        if (loupe.grille[r][c] === '') continue;
-        var dv = Math.abs(r + 0.5 - v);
-        if (dv >= DIST_CONTACT) continue;
-        var uc = c + 0.5 + Math.sqrt(DIST_CONTACT * DIST_CONTACT - dv * dv);
-        if (uc > u) { u = uc; contre = { c: c, r: r }; }
+// ── Réseau conducteur : lame + dépôt ──────────────────────────────────
+// Nœuds : atomes de la lame (cases pleines) puis atomes du dépôt ; liens :
+// cases voisines de la lame, dépôt accroché à la lame (ANCRAGE), atomes
+// du dépôt soudés (D_VOISINS). Sert au trajet des électrons.
+function _reseauMetal() {
+  var N = [], adj = [], idx = {}, r, c, k, j;
+  for (r = 0; r < NR; r++) for (c = 0; c < NC; c++) {
+    if (loupe.grille[r][c] === '') continue;
+    idx[r + ',' + c] = N.length;
+    N.push({ u: c + 0.5, v: r + 0.5, lame: true });
+    adj.push([]);
+  }
+  var d0 = N.length;
+  for (k = 0; k < loupe.depots.length; k++) {
+    N.push({ u: loupe.depots[k].u, v: loupe.depots[k].v, lame: false, k: k });
+    adj.push([]);
+  }
+  var lier = function (a, b) { adj[a].push(b); adj[b].push(a); };
+  for (r = 0; r < NR; r++) for (c = 0; c < NC; c++) {
+    var a = idx[r + ',' + c];
+    if (a === undefined) continue;
+    if (idx[r + ',' + (c + 1)] !== undefined) lier(a, idx[r + ',' + (c + 1)]);
+    if (idx[(r + 1) + ',' + c] !== undefined) lier(a, idx[(r + 1) + ',' + c]);
+  }
+  for (k = d0; k < N.length; k++) {
+    var r0 = Math.floor(N[k].v), c0 = Math.floor(N[k].u);
+    for (r = r0 - 2; r <= r0 + 2; r++) for (c = c0 - 2; c <= c0 + 2; c++) {
+      var b = idx[r + ',' + c];
+      if (b !== undefined && Math.hypot(N[b].u - N[k].u, N[b].v - N[k].v) < ANCRAGE) lier(k, b);
+    }
+    for (j = k + 1; j < N.length; j++) {
+      if (Math.hypot(N[j].u - N[k].u, N[j].v - N[k].v) < D_VOISINS) lier(k, j);
+    }
+  }
+  return { N: N, adj: adj, idx: idx, d0: d0 };
+}
+
+// Parcours en largeur depuis les nœuds sources : nombre de sauts et
+// prédécesseur de chaque nœud (−1 si inaccessible)
+function _parcours(g, sources) {
+  var dist = [], prec = [], file = [], i;
+  for (i = 0; i < g.N.length; i++) { dist.push(-1); prec.push(-1); }
+  for (i = 0; i < sources.length; i++) { dist[sources[i]] = 0; file.push(sources[i]); }
+  for (var t = 0; t < file.length; t++) {
+    var a = file[t];
+    for (i = 0; i < g.adj[a].length; i++) {
+      var b = g.adj[a][i];
+      if (dist[b] >= 0) continue;
+      dist[b] = dist[a] + 1; prec[b] = a; file.push(b);
+    }
+  }
+  return { dist: dist, prec: prec };
+}
+
+// Trajet d'un électron, de l'atome qui s'oxyde (nœud src) à l'ion posé
+// contre le nœud hote : en ligne droite dans la lame jusqu'au dernier
+// atome de la lame du trajet, puis d'atome en atome dans le dépôt
+function _trajetElectron(g, src, hote, site) {
+  var p = _parcours(g, [src]), noeuds = [], n = hote;
+  while (n >= 0) { noeuds.unshift(n); n = p.prec[n]; }
+  var pts = [{ u: g.N[src].u, v: g.N[src].v }], dernierLame = src;
+  for (var i = 1; i < noeuds.length; i++) {
+    if (g.N[noeuds[i]].lame) { dernierLame = noeuds[i]; continue; }
+    if (dernierLame >= 0) {
+      if (dernierLame !== src) pts.push({ u: g.N[dernierLame].u, v: g.N[dernierLame].v });
+      dernierLame = -1;
+    }
+    pts.push({ u: g.N[noeuds[i]].u, v: g.N[noeuds[i]].v });
+  }
+  if (dernierLame >= 0 && dernierLame !== src) pts.push({ u: g.N[dernierLame].u, v: g.N[dernierLame].v });
+  pts.push({ u: site.u, v: site.v });
+  return pts;
+}
+
+// ── Sites des ions oxydants ───────────────────────────────────────────
+// Candidats : contre l'atome de surface de chaque ligne de la lame, ou
+// contre un atome du dépôt (directions tournées vers la solution). Le
+// site est refusé s'il chevauche la lame ou le dépôt, ou si l'ion ne peut
+// pas l'atteindre sans traverser la lame ; s'il passe à travers le dépôt
+// (poreux, projection d'un volume), il est dessiné derrière lui.
+function _choisirSites(atomes, nI, reagit, g, am) {
+  var src = [], i, k, cand = [], front = _fronts();
+  for (i = 0; i < atomes.length; i++) src.push(g.idx[atomes[i].r + ',' + atomes[i].c]);
+  var sauts = _parcours(g, src).dist;
+
+  for (var r = 0; r < NR; r++) {
+    var c = front[r];
+    if (c < 0) continue;
+    var hl = g.idx[r + ',' + c];
+    // Sans réaction, l'ion vient seulement toucher un atome de la zone
+    if (!reagit && src.indexOf(hl) < 0) continue;
+    _ajouterSite(cand, g, { u: c + 0.5 + DIST_CONTACT, v: r + 0.5 }, 1, 0, hl, sauts,
+                 loupe.depots.length ? MALUS_GERME : 0);
+  }
+  if (reagit) {
+    for (k = 0; k < loupe.depots.length; k++) {
+      var d = loupe.depots[k], hd = g.d0 + k;
+      var malus = am.liste[am.id[k]].length >= TAILLE_ILOT_MAX ? MALUS_GROS_AMAS : 0;
+      for (var a = -90; a <= 90; a += 30) {
+        var cs = Math.cos(a * Math.PI / 180), sn = Math.sin(a * Math.PI / 180);
+        // Croissance vers la solution un peu favorisée : grumeaux
+        _ajouterSite(cand, g, { u: d.u + D_SITE_DEPOT * cs, v: d.v + D_SITE_DEPOT * sn }, cs, sn, hd, sauts,
+                     malus - 0.6 * cs);
       }
     }
-    if (!contre) return null;
-    var sienne = false;
-    for (k = 0; k < atomes.length; k++) {
-      if (atomes[k].c === contre.c && atomes[k].r === contre.r) sienne = true;
-    }
-    if (!sienne) return null;
-    for (k = 0; k < loupe.depots.length; k++) {
-      var d = loupe.depots[k];
-      // Atome du dépôt à portée de contact
-      if (Math.hypot(u - d.u, v - d.v) < DIST_CONTACT + 0.1) return null;
-      // Atome du dépôt devant l'ion, à sa hauteur : il bloque l'arrivée
-      if (Math.abs(d.v - v) < DIST_CONTACT + 0.05 && d.u > u - 0.3) return null;
-    }
-    res.push({ u: u, v: v });
   }
-  return res;
+  cand.sort(function (x, y) { return x.score - y.score; });
+
+  // Les nI meilleurs sites, assez écartés les uns des autres
+  var res = [];
+  for (i = 0; i < cand.length && res.length < nI; i++) {
+    var ok = true;
+    for (k = 0; k < res.length; k++) {
+      if (Math.hypot(res[k].u - cand[i].u, res[k].v - cand[i].v) < ESPACE_IONS) ok = false;
+    }
+    if (ok) res.push(cand[i]);
+  }
+  return res.length === nI ? res : null;
+}
+
+function _ajouterSite(cand, g, p, nu, nv, hote, sauts, malus) {
+  if (sauts[hote] < 0) return;                        // hors du métal relié à la zone
+  if (p.v < -0.2 || p.v > NR + 0.2) return;
+  if (!g.N[hote].lame) {
+    // Le dépôt ne pousse ni hors du cercle visible ni jusqu'au couloir
+    if (p.u > U_MAX_DEPOT || Math.hypot(p.u - CU, p.v - CV) > RC - 0.45) return;
+  }
+  var i, r, c, derriere = false;
+  // Ni sur la lame…
+  for (r = Math.floor(p.v) - 1; r <= Math.floor(p.v) + 1; r++) {
+    if (r < 0 || r >= NR) continue;
+    for (c = Math.floor(p.u) - 1; c <= Math.floor(p.u) + 1; c++) {
+      if (c < 0 || c >= NC || loupe.grille[r][c] === '') continue;
+      if (Math.hypot(c + 0.5 - p.u, r + 0.5 - p.v) < DIST_CONTACT - 0.02) return;
+    }
+  }
+  // … ni sur le dépôt (contre lui seulement)
+  for (i = 0; i < loupe.depots.length; i++) {
+    if (Math.hypot(loupe.depots[i].u - p.u, loupe.depots[i].v - p.v) < D_PROCHE_DEPOT) return;
+  }
+  // Arrivée de l'ion le long de la normale : la lame l'arrête, le dépôt non
+  for (var s = 0.35; s <= 1.8; s += 0.35) {
+    var qu = p.u + nu * s, qv = p.v + nv * s;
+    var cs = _caseSous(qu, qv);
+    for (r = cs.r - 1; r <= cs.r + 1; r++) for (c = cs.c - 1; c <= cs.c + 1; c++) {
+      if (_case(c, r) !== '' && Math.hypot(c + 0.5 - qu, r + 0.5 - qv) < DIST_CONTACT - 0.04) return;
+    }
+    for (i = 0; i < loupe.depots.length; i++) {
+      if (Math.hypot(loupe.depots[i].u - qu, loupe.depots[i].v - qv) < DIST_CONTACT) derriere = true;
+    }
+  }
+  cand.push({ u: p.u, v: p.v, nu: nu, nv: nv, hote: hote, derriere: derriere,
+              score: POIDS_SAUTS * sauts[hote] + malus + Math.random() * 1.8 });
 }
 
 function _nouveauCycle() {
@@ -488,10 +774,11 @@ function _nouveauCycle() {
     var st = stoechiometrie(X, Y);
     nI = st.coefIon; nA = st.coefMetal;
   }
-  var zone = _choisirZone(nA, nI);
+  var zone = _choisirZone(nA, nI, reagit);
   if (!zone) return null;
 
-  var cy = { phase: 'approche', t: 0, reagit: reagit, ions: [], atomes: [], electrons: [] };
+  var cy = { phase: 'approche', t: 0, reagit: reagit, ions: [], atomes: [], electrons: [],
+             dTransfert: D_TRANSFERT };
 
   // ── Atomes de la zone ──
   for (i = 0; i < zone.atomes.length; i++) {
@@ -500,14 +787,17 @@ function _nouveauCycle() {
     if (reagit) loupe.grille[za.r][za.c] = 'O';
   }
 
-  // ── Ions : côte à côte, collés aux atomes de la zone ──
+  // ── Ions : chacun à son site, contre la lame ou contre le dépôt ; il
+  //    arrive le long de la normale au site ──
   for (i = 0; i < nI; i++) {
-    var pu = zone.ions[i].u, pv = zone.ions[i].v;
+    var si = zone.ions[i], pu = si.u, pv = si.v;
     cy.ions.push({
       pu: pu, pv: pv,                 // position de contact
+      hote: si.hote,                  // nœud du réseau conducteur contre lequel il se pose
+      derriere: si.derriere,          // passe derrière le dépôt (dessiné dessous)
       chemin: [_bord(-0.55 - 0.18 * i - Math.random() * 0.15, 0.9),
                { u: U_COULOIR + 0.4, v: pv - 2.2 },
-               { u: pu + 1.6, v: pv },
+               { u: pu + 1.6 * si.nu, v: pv + 1.6 * si.nv },
                { u: pu, v: pv }],
       retard: i * D_DECALAGE,
       u: 0, v: 0, alpha: 0
@@ -520,20 +810,28 @@ function _nouveauCycle() {
   if (reagit) {
     // Électrons : chaque atome en cède b, chaque ion en reçoit a, dans
     // l'ordre (Al + Cu²⁺ : le 1er atome donne 2 e⁻ au 1er ion et 1 au 2e…).
-    // Trajet direct : l'ion est collé contre l'atome.
-    var b = METAUX[X].charge, a = METAUX[Y].charge, n = 0;
+    // Trajet dans le métal : en ligne droite si l'ion touche l'atome,
+    // sinon à travers la lame puis d'atome en atome dans le dépôt.
+    var b = METAUX[X].charge, a = METAUX[Y].charge, n = 0, g = zone.graphe, Lmax = 0;
     for (i = 0; i < cy.atomes.length; i++) {
+      var noeud = g.idx[cy.atomes[i].r + ',' + cy.atomes[i].c];
       for (var j = 0; j < b; j++) {
         var src = cy.atomes[i], dst = cy.ions[Math.floor(n / a)];
-        var sv = src.v + (j - (b - 1) / 2) * 0.2;
-        cy.electrons.push({
-          chemin: [{ u: src.u, v: sv }, { u: dst.pu, v: dst.pv }],
-          retard: n * 0.03,           // 6 électrons au plus : départs sur 0,15 s
-          s: 0
-        });
+        var ch = _trajetElectron(g, noeud, dst.hote, { u: dst.pu, v: dst.pv });
+        ch[0].v += (j - (b - 1) / 2) * 0.2;
+        var L = 0;
+        for (k = 1; k < ch.length; k++) L += Math.hypot(ch[k].u - ch[k - 1].u, ch[k].v - ch[k - 1].v);
+        Lmax = Math.max(Lmax, L);
+        cy.electrons.push({ chemin: ch, retard: 0, s: 0 });
         n++;
       }
     }
+    // Départs échelonnés (6 électrons au plus) ; durée du transfert à
+    // vitesse constante : 0,4 s quand l'ion touche l'atome, plus si les
+    // électrons traversent le dépôt
+    var ecart = Lmax > 1.5 ? 0.08 : 0.03;
+    for (i = 0; i < cy.electrons.length; i++) cy.electrons[i].retard = i * ecart;
+    cy.dTransfert = Math.max(D_TRANSFERT, 0.1 + Lmax / V_ELECTRON + (cy.electrons.length - 1) * ecart);
   }
   _majCycle(cy, 0);
   return cy;
@@ -572,11 +870,11 @@ function _majCycle(cy, dt) {
 
     case 'transfert':
       var N = cy.electrons.length;
-      var dureeE = D_TRANSFERT - 0.05 - (N > 0 ? cy.electrons[N - 1].retard : 0);
+      var dureeE = cy.dTransfert - 0.05 - (N > 0 ? cy.electrons[N - 1].retard : 0);
       for (i = 0; i < N; i++) {
         cy.electrons[i].s = Math.max(0, Math.min(1, (cy.t - cy.electrons[i].retard) / dureeE));
       }
-      if (cy.t >= D_TRANSFERT) _phase(cy, 'transfo');
+      if (cy.t >= cy.dTransfert) _phase(cy, 'transfo');
       break;
 
     case 'transfo':
@@ -639,7 +937,7 @@ function _phase(cy, ph) { cy.phase = ph; cy.t = 0; }
 // que réseau immobile, offX = offY = 0) : le dépôt suit la lame.
 function _deposer(cy) {
   for (var i = 0; i < cy.ions.length; i++) {
-    loupe.depots.push({ u: cy.ions[i].pu, v: cy.ions[i].pv });
+    loupe.depots.push({ u: cy.ions[i].pu, v: cy.ions[i].pv, age: 0 });
   }
 }
 
@@ -678,31 +976,96 @@ function _majFantomes(dt) {
   }
 }
 
-// ── Plaque de dépôt qui se détache et tombe ───────────────────────────
-function _lancerPlaque() {
-  var atomes = [], r, c, i;
-  for (i = 0; i < loupe.depots.length; i++) {
-    atomes.push({ u: loupe.depots[i].u + loupe.offX, v: loupe.depots[i].v + loupe.offY, sym: sim.solution });
+// ── Amas du dépôt qui se détachent et tombent ─────────────────────────
+// Seul le dépôt tombe : les atomes de la lame ne partent qu'en s'oxydant.
+// Chaque amas devient un solide rigide (positions relatives à son centre),
+// en coordonnées de la loupe : il ne suit plus la lame.
+function _lancerChutes(liste) {
+  if (!liste.length) return;
+  var retirer = {}, i, k;
+  for (i = 0; i < liste.length; i++) {
+    var a = liste[i], cu = 0, cv = 0;
+    for (k = 0; k < a.length; k++) {
+      cu += loupe.depots[a[k]].u / a.length;
+      cv += loupe.depots[a[k]].v / a.length;
+      retirer[a[k]] = true;
+    }
+    var atomes = [];
+    for (k = 0; k < a.length; k++) {
+      atomes.push({ du: loupe.depots[a[k]].u - cu, dv: loupe.depots[a[k]].v - cv });
+    }
+    loupe.chutes.push({
+      atomes: atomes, u: cu + loupe.offX, v: cv + loupe.offY,
+      vu: 0.5 + Math.random() * 0.3, vv: 0,        // s'écarte d'abord de la lame
+      ang: 0, om: (Math.random() < 0.5 ? -1 : 1) * (0.2 + Math.random() * 0.35),
+      phi: Math.random() * 6.28, t: 0, sym: sim.solution
+    });
   }
-  loupe.depots = [];
-  // Seul le dépôt tombe : les atomes de la lame ne partent qu'en s'oxydant
-  loupe.plaque = { atomes: atomes, t: 0, dy: 0, du: 0, vv: 0 };
+  var reste = [];
+  for (i = 0; i < loupe.depots.length; i++) if (!retirer[i]) reste.push(loupe.depots[i]);
+  loupe.depots = reste;
 }
 
-function _majPlaque(dt) {
-  var P = loupe.plaque;
-  P.t += dt;
-  // Bref décollement de la lame, puis chute
-  P.du = 0.35 * _lisse(P.t / 0.5);
-  if (P.t > 0.35) { P.vv += 3.2 * dt; P.dy += P.vv * dt; }
-  if (P.t >= D_PLAQUE) {
-    loupe.plaque = null;
-    // La lame a reculé sur toute sa hauteur : la vue la suit pour garder
-    // la surface en place
-    var front = _fronts(), fmax = -1;
-    for (var i = 0; i < NR; i++) fmax = Math.max(fmax, front[i]);
-    var recul = (COL_INIT - 1) - fmax;
-    if (recul > 0) _glisser(recul);
+// Position (coordonnées de la loupe) de l'atome k d'un amas qui tombe
+function _posChute(ch, k) {
+  var a = ch.atomes[k], cs = Math.cos(ch.ang), sn = Math.sin(ch.ang);
+  return { u: ch.u + a.du * cs - a.dv * sn, v: ch.v + a.du * sn + a.dv * cs };
+}
+
+function _majChutes(dt) {
+  var amort = Math.exp(-dt / TAU_CHUTE);
+  for (var i = loupe.chutes.length - 1; i >= 0; i--) {
+    var ch = loupe.chutes[i], k;
+    ch.t += dt;
+    var go = _lisse(ch.t / D_DECOLLE);         // 0 pendant le décollement → 1
+    // Vitesse limite atteinte en douceur (frottement visqueux) ; dérive
+    // latérale lente, qui oscille un peu
+    var cibleV = V_LIM_CHUTE * go, cibleU = 0.18 * go * Math.sin(1.6 * ch.t + ch.phi);
+    ch.vv = cibleV + (ch.vv - cibleV) * amort;
+    ch.vu = cibleU + (ch.vu - cibleU) * amort;
+    ch.u += ch.vu * dt;
+    ch.v += ch.vv * dt;
+    ch.ang += ch.om * go * dt;
+    _chuteHorsSolide(ch);
+    // Sorti par le bas de la loupe
+    var bas = true;
+    for (k = 0; k < ch.atomes.length; k++) {
+      if (_posChute(ch, k).v < CV + RC + R_ATOME + 0.2) { bas = false; break; }
+    }
+    if (bas || ch.t > 15) loupe.chutes.splice(i, 1);
+  }
+}
+
+// L'amas qui tombe glisse le long de la lame et du dépôt resté accroché
+// au lieu de les traverser : il est repoussé hors des atomes qu'il touche,
+// plutôt vers la solution (droite), pour ne jamais rester posé dessus.
+function _chuteHorsSolide(ch) {
+  var dmin = 2 * R_ATOME, j, k;
+  for (k = 0; k < ch.atomes.length; k++) {
+    var p = _posChute(ch, k);
+    var obst = [];
+    if (loupe.presente) {
+      var cs = _caseSous(p.u, p.v);
+      for (var r = cs.r - 1; r <= cs.r + 1; r++) {
+        for (var c = cs.c - 1; c <= cs.c + 1; c++) {
+          if (_case(c, r) !== '') obst.push({ u: c + 0.5 + loupe.offX, v: r + 0.5 + loupe.offY });
+        }
+      }
+      for (j = 0; j < loupe.depots.length; j++) {
+        obst.push({ u: loupe.depots[j].u + loupe.offX, v: loupe.depots[j].v + loupe.offY });
+      }
+    }
+    for (j = 0; j < obst.length; j++) {
+      var du = p.u - obst[j].u, dv = p.v - obst[j].v, d = Math.hypot(du, dv);
+      if (d >= dmin) continue;
+      var nu = d > 1e-6 ? du / d : 1, nv = d > 1e-6 ? dv / d : 0;
+      if (nu < 0.5) { nu = 0.5; var n = Math.hypot(nu, nv); nu /= n; nv /= n; }
+      ch.u += nu * (dmin - d);
+      ch.v += nv * (dmin - d);
+      p.u += nu * (dmin - d);
+      p.v += nv * (dmin - d);
+      ch.vu = Math.max(ch.vu, 0.3);
+    }
   }
 }
 
@@ -799,6 +1162,21 @@ function _sortirDuSolide(p) {
       if (vm < 0) { p.vu -= 2 * vm * mx; p.vv -= 2 * vm * my; }
     }
   }
+  _sortirDesChutes(p);
+}
+
+// Repousse un ion de fond hors des amas qui tombent
+function _sortirDesChutes(p) {
+  for (var i = 0; i < loupe.chutes.length; i++) {
+    var ch = loupe.chutes[i];
+    for (var k = 0; k < ch.atomes.length; k++) {
+      var q = _posChute(ch, k);
+      var ex = p.u - q.u, ey = p.v - q.v, de = Math.sqrt(ex * ex + ey * ey), dm = R_ATOME + p.r;
+      if (de < dm && de > 1e-6) {
+        p.u += ex / de * (dm - de); p.v += ey / de * (dm - de);
+      }
+    }
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -812,7 +1190,7 @@ function etapeEquation() {
   for (var i = 0; i < loupe.cycles.length; i++) {
     var cy = loupe.cycles[i];
     if (!cy.reagit) continue;
-    if (cy.phase === 'transfert') return cy.t < D_TRANSFERT / 2 ? 'ox' : 'red';
+    if (cy.phase === 'transfert') return cy.t < cy.dTransfert / 2 ? 'ox' : 'red';
     if (cy.phase === 'transfo') return 'bilan';
   }
   return null;
@@ -885,17 +1263,23 @@ function dessinerLoupe(ctx) {
         if (ch === 'M') _dessinerAtome(ctx, c + 0.5 + dx, r + 0.5 + dy, sim.metal, 1);
       }
     }
+    // Ions en approche qui se glissent derrière le dépôt (dépôt poreux,
+    // projection d'un volume) : dessinés sous lui
+    for (i = 0; i < loupe.cycles.length; i++) {
+      if (loupe.cycles[i].phase === 'approche') _dessinerIonsApproche(ctx, loupe.cycles[i], true);
+    }
     // Dépôt : atomes restés là où les ions se sont collés
     for (i = 0; i < loupe.depots.length; i++) {
       _dessinerAtome(ctx, loupe.depots[i].u + dx, loupe.depots[i].v + dy, sim.solution, 1);
     }
   }
 
-  // ── Plaque de dépôt qui tombe ──
-  if (loupe.plaque) {
-    var P = loupe.plaque, aP = 1 - Math.max(0, Math.min(1, (P.t - D_PLAQUE + 0.7) / 0.7));
-    for (i = 0; i < P.atomes.length; i++) {
-      _dessinerAtome(ctx, P.atomes[i].u + P.du, P.atomes[i].v + P.dy, P.atomes[i].sym, aP);
+  // ── Amas de dépôt qui tombent (ils sortent par le bas de la loupe) ──
+  for (i = 0; i < loupe.chutes.length; i++) {
+    var ch = loupe.chutes[i];
+    for (var a = 0; a < ch.atomes.length; a++) {
+      var pc = _posChute(ch, a);
+      _dessinerAtome(ctx, pc.u, pc.v, ch.sym, 1);
     }
   }
 
@@ -932,12 +1316,7 @@ function _dessinerCycle(ctx, cy) {
           _dessinerAtome(ctx, at.u + dx, at.v + dy, sim.metal, 1);
         }
       }
-      for (i = 0; i < cy.ions.length; i++) {
-        io = cy.ions[i];
-        if (io.alpha <= 0) continue;
-        _halo(ctx, io.u, io.v, R_ION, COUL_RED, io.alpha * 0.8, 0.5);
-        _dessinerIon(ctx, io.u, io.v, sim.solution, io.alpha, R_ION);
-      }
+      _dessinerIonsApproche(ctx, cy, false);
       break;
 
     case 'contact':
@@ -991,6 +1370,17 @@ function _dessinerCycle(ctx, cy) {
         _dessinerIon(ctx, io.u, io.v, sim.solution, io.alpha, R_ION);
       }
       break;
+  }
+}
+
+// Ions d'un cycle en approche : ceux qui passent derrière le dépôt
+// (derriere = true) ou les autres
+function _dessinerIonsApproche(ctx, cy, derriere) {
+  for (var i = 0; i < cy.ions.length; i++) {
+    var io = cy.ions[i];
+    if (io.alpha <= 0 || !!io.derriere !== derriere) continue;
+    _halo(ctx, io.u, io.v, R_ION, COUL_RED, io.alpha * 0.8, 0.5);
+    _dessinerIon(ctx, io.u, io.v, sim.solution, io.alpha, R_ION);
   }
 }
 
