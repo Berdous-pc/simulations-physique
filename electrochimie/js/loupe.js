@@ -74,10 +74,11 @@ var ESPACE_IONS = 0.9;                // écart vertical entre ions côte à cô
 // Leur nombre suit l'avancement macroscopique (macro.avancement) : au
 // départ, N_FOND_OX ions oxydants et aucun ion du métal (la lame n'a pas
 // encore réagi) ; les ions oxydants disparaissent peu à peu, les ions du
-// métal apparaissent dans le rapport stœchiométrique (Cu + 2 Ag⁺ : 8 Ag⁺
-// au départ, 4 Cu²⁺ à la fin). Les anions spectateurs restent en nombre
-// constant.
-var N_FOND_OX = 8, N_FOND_ANION = 6;
+// métal apparaissent dans le rapport stœchiométrique (Cu + 2 Ag⁺ : 14 Ag⁺
+// au départ, 7 Cu²⁺ à la fin). Assez d'ions pour que l'évolution des
+// concentrations se voie nettement. Les anions spectateurs restent en
+// nombre constant.
+var N_FOND_OX = 14, N_FOND_ANION = 10;
 var ALPHA_FOND = 0.42;
 var D_FONDU = 0.9;               // apparition / disparition d'un ion de fond (s)
 var GAMMA = 1.0, SIGMA = 1.2;    // mouvement brownien lent (Ornstein-Uhlenbeck)
@@ -685,13 +686,15 @@ function _ajouterSite(cand, g, p, nu, nv, hote) {
 }
 
 // ── Réseau conducteur : lame + dépôt ──────────────────────────────────
-// Nœuds : atomes de la lame (cases pleines) puis atomes du dépôt ; liens :
-// cases voisines de la lame, dépôt accroché à la lame (ANCRAGE), atomes
-// du dépôt soudés (D_VOISINS). Sert au trajet des électrons.
+// Nœuds : atomes de la lame (cases pleines, plus la colonne −1 : le métal
+// massif qui continue à gauche de la grille relie toutes les lignes, même
+// rongées jusqu'au bord) puis atomes du dépôt ; liens : cases voisines de
+// la lame, dépôt accroché à la lame (ANCRAGE), atomes du dépôt soudés
+// (D_VOISINS). Sert au trajet des électrons.
 function _reseauMetal() {
   var N = [], adj = [], idx = {}, r, c, k, j;
-  for (r = 0; r < NR; r++) for (c = 0; c < NC; c++) {
-    if (loupe.grille[r][c] === '') continue;
+  for (r = 0; r < NR; r++) for (c = -1; c < NC; c++) {
+    if (c >= 0 && loupe.grille[r][c] === '') continue;
     idx[r + ',' + c] = N.length;
     N.push({ u: c + 0.5, v: r + 0.5, lame: true });
     adj.push([]);
@@ -702,7 +705,7 @@ function _reseauMetal() {
     adj.push([]);
   }
   var lier = function (a, b) { adj[a].push(b); adj[b].push(a); };
-  for (r = 0; r < NR; r++) for (c = 0; c < NC; c++) {
+  for (r = 0; r < NR; r++) for (c = -1; c < NC; c++) {
     var a = idx[r + ',' + c];
     if (a === undefined) continue;
     if (idx[r + ',' + (c + 1)] !== undefined) lier(a, idx[r + ',' + (c + 1)]);
@@ -739,23 +742,38 @@ function _parcours(g, sources) {
 }
 
 // Trajet d'un électron, de l'atome qui s'oxyde (nœud src) à l'ion posé
-// contre le nœud hote : en ligne droite dans la lame jusqu'au dernier
-// atome de la lame du trajet, puis d'atome en atome dans le dépôt
+// contre le nœud hote : dans la lame, en lignes droites tant qu'elles
+// restent dans le métal (jamais à travers la solution), puis d'atome en
+// atome dans le dépôt
 function _trajetElectron(g, src, hote, site) {
   var p = _parcours(g, [src]), noeuds = [], n = hote;
   while (n >= 0) { noeuds.unshift(n); n = p.prec[n]; }
-  var pts = [{ u: g.N[src].u, v: g.N[src].v }], dernierLame = src;
-  for (var i = 1; i < noeuds.length; i++) {
-    if (g.N[noeuds[i]].lame) { dernierLame = noeuds[i]; continue; }
-    if (dernierLame >= 0) {
-      if (dernierLame !== src) pts.push({ u: g.N[dernierLame].u, v: g.N[dernierLame].v });
-      dernierLame = -1;
+  var pts = [{ u: g.N[src].u, v: g.N[src].v }], i = 0;
+  while (i < noeuds.length - 1) {
+    // Nœud de la lame le plus loin qu'on atteint en ligne droite
+    var j = i + 1;
+    if (g.N[noeuds[i]].lame) {
+      for (var k = i + 2; k < noeuds.length && g.N[noeuds[k]].lame; k++) {
+        if (_segmentDansLame(g.N[noeuds[i]], g.N[noeuds[k]])) j = k;
+      }
     }
-    pts.push({ u: g.N[noeuds[i]].u, v: g.N[noeuds[i]].v });
+    pts.push({ u: g.N[noeuds[j]].u, v: g.N[noeuds[j]].v });
+    i = j;
   }
-  if (dernierLame >= 0 && dernierLame !== src) pts.push({ u: g.N[dernierLame].u, v: g.N[dernierLame].v });
   pts.push({ u: site.u, v: site.v });
   return pts;
+}
+
+// Segment entièrement dans les cases pleines de la lame (coordonnées du
+// réseau ; la lame continue à gauche de la grille)
+function _segmentDansLame(a, b) {
+  var L = Math.hypot(b.u - a.u, b.v - a.v), n = Math.ceil(L / 0.2);
+  for (var s = 1; s < n; s++) {
+    var u = a.u + (b.u - a.u) * s / n, v = a.v + (b.v - a.v) * s / n;
+    var r = Math.floor(v), c = Math.floor(u);
+    if (r < 0 || r >= NR || (c >= 0 && (c >= NC || loupe.grille[r][c] === ''))) return false;
+  }
+  return true;
 }
 
 function _nouveauCycle() {
