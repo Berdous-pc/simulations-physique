@@ -68,8 +68,15 @@ var DIST_CONTACT = R_ATOME + R_ION;   // ion collé contre un atome
 var ESPACE_IONS = 0.9;                // écart vertical entre ions côte à côte
 
 // ── Ions de fond (estompés, ne participent pas aux cycles) ────────────
-var N_FOND_OX = 5, N_FOND_PROD = 3, N_FOND_ANION = 6;
-var ALPHA_FOND = 0.32;
+// Leur nombre suit l'avancement macroscopique (macro.avancement) : au
+// départ, N_FOND_OX ions oxydants et aucun ion du métal (la lame n'a pas
+// encore réagi) ; les ions oxydants disparaissent peu à peu, les ions du
+// métal apparaissent dans le rapport stœchiométrique (Cu + 2 Ag⁺ : 8 Ag⁺
+// au départ, 4 Cu²⁺ à la fin). Les anions spectateurs restent en nombre
+// constant.
+var N_FOND_OX = 8, N_FOND_ANION = 6;
+var ALPHA_FOND = 0.42;
+var D_FONDU = 0.9;               // apparition / disparition d'un ion de fond (s)
 var GAMMA = 1.0, SIGMA = 1.2;    // mouvement brownien lent (Ornstein-Uhlenbeck)
 
 // ── Durées des étapes (s de temps simulé, donc soumises à la vitesse) ──
@@ -94,7 +101,8 @@ var COUL_RED = [42, 106, 170];   // réduction : ion oxydant qui en gagne
 var loupe = {
   grille: [],
   depots: [],          // atomes déposés, hors grille : { u, v } (coordonnées du réseau)
-  fond: [],            // ions estompés : { u, v, vu, vv, type, sym, r }
+  fond: [],            // ions estompés : { u, v, vu, vv, type, sym, r, vis, etat }
+                       //   vis : visibilité 0 → 1 ; etat : '' | 'entre' | 'sort'
   cycles: [],
   plaque: null,        // { atomes: [{u, v, sym}], t, dy, du, vv }
   fantomes: [],        // ions d'un cycle interrompu, qui s'effacent
@@ -130,17 +138,88 @@ function resetLoupe() {
   loupe.enPlace = false;
   loupe.tArrivee = D_ARRIVEE;
 
-  for (i = 0; i < N_FOND_OX; i++) _ajouterFond('ox', sim.solution, R_ION);
-  if (reactionPossible(sim.metal, sim.solution)) {
-    for (i = 0; i < N_FOND_PROD; i++) _ajouterFond('prod', sim.metal, R_ION);
-  }
-  for (i = 0; i < N_FOND_ANION; i++) _ajouterFond('anion', METAUX[sim.solution].anion, R_ANION);
+  // Aucun ion du métal au départ : ils n'apparaissent qu'avec la réaction
+  for (i = 0; i < N_FOND_OX; i++) _ajouterFond('ox', sim.solution, R_ION, 1);
+  for (i = 0; i < N_FOND_ANION; i++) _ajouterFond('anion', METAUX[sim.solution].anion, R_ANION, 1);
 }
 
-function _ajouterFond(type, sym, r) {
+function _ajouterFond(type, sym, r, vis) {
   var pos = _positionLibre(r);
-  loupe.fond.push({ u: pos.u, v: pos.v, vu: _gauss() * 0.5, vv: _gauss() * 0.5,
-                    type: type, sym: sym, r: r });
+  var f = { u: pos.u, v: pos.v, vu: _gauss() * 0.5, vv: _gauss() * 0.5,
+            type: type, sym: sym, r: r, vis: vis, etat: vis < 1 ? 'entre' : '' };
+  loupe.fond.push(f);
+  return f;
+}
+
+// ── Nombre d'ions de fond imposé par l'avancement ─────────────────────
+function _ciblesFond() {
+  var p = macro.avancement, prod = 0;
+  if (reactionPossible(sim.metal, sim.solution)) {
+    var st = stoechiometrie(sim.metal, sim.solution);
+    prod = Math.round(N_FOND_OX * p * st.coefMetal / st.coefIon);
+  }
+  return { ox: Math.round(N_FOND_OX * (1 - p)), prod: prod };
+}
+
+// Ions de fond d'un type, sans compter ceux qui disparaissent
+function _compterFond(type) {
+  var n = 0;
+  for (var i = 0; i < loupe.fond.length; i++) {
+    if (loupe.fond[i].type === type && loupe.fond[i].etat !== 'sort') n++;
+  }
+  return n;
+}
+
+// Ions formés en route vers le fond (phase de départ d'un cycle)
+function _prodEnRoute() {
+  var n = 0;
+  for (var i = 0; i < loupe.cycles.length; i++) {
+    var cy = loupe.cycles[i];
+    if (cy.phase !== 'depart') continue;
+    for (var k = 0; k < cy.atomes.length; k++) if (cy.atomes[k].garder) n++;
+  }
+  return n;
+}
+
+// Ajuste la population du fond à l'avancement : un ion oxydant consommé
+// s'efface (le plus proche de la lame d'abord) ; un ion du métal formé
+// vient en général d'un cycle (il reste dans la solution au lieu de
+// sortir de la loupe, cf. phase 'transfo'), sinon il apparaît en fondu.
+function _majPopulation(dt) {
+  var cible = _ciblesFond(), i, f;
+  var nOx = _compterFond('ox');
+  while (nOx > cible.ox) {
+    var choisi = null;
+    for (i = 0; i < loupe.fond.length; i++) {
+      f = loupe.fond[i];
+      if (f.type === 'ox' && f.etat !== 'sort' && (!choisi || f.u < choisi.u)) choisi = f;
+    }
+    if (!choisi) break;
+    choisi.etat = 'sort';
+    nOx--;
+  }
+  // Les cycles fournissent l'essentiel des ions formés ; complément en
+  // fondu si la loupe ne tourne pas (lame à peine plongée) ou prend du retard
+  var nProd = _compterFond('prod') + _prodEnRoute();
+  var retard = loupe.enPlace ? 2 : 1;
+  if (cible.prod - nProd >= retard) _ajouterFond('prod', sim.metal, R_ION, 0);
+
+  for (i = loupe.fond.length - 1; i >= 0; i--) {
+    f = loupe.fond[i];
+    if (f.etat === 'entre') {
+      f.vis = Math.min(1, f.vis + dt / D_FONDU);
+      if (f.vis >= 1) f.etat = '';
+    } else if (f.etat === 'sort') {
+      f.vis -= dt / D_FONDU;
+      if (f.vis <= 0) loupe.fond.splice(i, 1);
+    }
+  }
+}
+
+// Un ion formé par un cycle rejoint les ions de fond, là où il est arrivé
+function _versFond(at) {
+  loupe.fond.push({ u: at.u, v: at.v, vu: _gauss() * 0.3, vv: _gauss() * 0.3,
+                    type: 'prod', sym: sim.metal, r: R_ION, vis: 1, etat: '' });
 }
 
 // Position tirée au hasard dans la partie « solution » de la loupe
@@ -254,6 +333,7 @@ function majLoupe(dtSim) {
 
   if (dtSim > 0) {
     _brownien(dtSim);
+    _majPopulation(dtSim);
     _majFantomes(dtSim);
     if (loupe.offX !== 0) {
       loupe.offX *= Math.exp(-dtSim / 0.3);
@@ -504,13 +584,19 @@ function _majCycle(cy, dt) {
         // Les atomes formés restent là où les ions se sont collés
         _deposer(cy);
         // Les ions formés quittent leur case : glissement vers la droite,
-        // derrière l'atome formé, puis diagonale vers le bas à droite
+        // derrière l'atome formé, puis diagonale vers le bas à droite.
+        // Tant que la solution en compte moins que ne le veut l'avancement,
+        // l'ion formé reste dans la loupe et rejoint les ions de fond (leur
+        // nombre augmente sous les yeux) ; sinon il sort de la loupe.
+        var manque = _ciblesFond().prod - _compterFond('prod') - _prodEnRoute();
         for (i = 0; i < cy.atomes.length; i++) {
           at = cy.atomes[i];
           loupe.grille[at.r][at.c] = '';
+          at.garder = i < manque;
+          var dest = at.garder ? _positionLibre(R_ION)
+                               : _bord(0.55 + 0.2 * i + Math.random() * 0.15, 1.0);
           at.chemin = [{ u: at.u, v: at.v }, { u: at.u + 1.5, v: at.v + 0.35 },
-                       { u: U_COULOIR, v: at.v + 1.3 },
-                       _bord(0.55 + 0.2 * i + Math.random() * 0.15, 1.0)];
+                       { u: U_COULOIR, v: at.v + 1.3 }, dest];
           at.retard = i * 0.3;
         }
         _phase(cy, 'depart');
@@ -524,10 +610,15 @@ function _majCycle(cy, dt) {
         s = (cy.t - at.retard) / D_DEPART;
         var q = _bezier(at.chemin, _lisse(s));
         at.u = q.u; at.v = q.v;
-        at.alpha = 1 - Math.max(0, Math.min(1, (s - 0.8) / 0.2));
+        var estompe = Math.max(0, Math.min(1, (s - 0.8) / 0.2));
+        // Ion gardé : s'estompe jusqu'à l'aspect des ions de fond
+        at.alpha = at.garder ? 1 - (1 - ALPHA_FOND) * estompe : 1 - estompe;
         fin = Math.max(fin, at.retard + D_DEPART);
       }
-      if (cy.t >= fin) _phase(cy, 'fini');
+      if (cy.t >= fin) {
+        for (i = 0; i < cy.atomes.length; i++) if (cy.atomes[i].garder) _versFond(cy.atomes[i]);
+        _phase(cy, 'fini');
+      }
       break;
 
     case 'rebond':
@@ -562,6 +653,7 @@ function _interrompre() {
       for (k = 0; k < cy.atomes.length; k++) {
         at = cy.atomes[k];
         if (cy.phase !== 'depart') loupe.grille[at.r][at.c] = '';
+        else if (at.garder) _versFond(at);
         else if (at.alpha > 0) loupe.fantomes.push({ u: at.u, v: at.v, sym: sim.metal, alpha: at.alpha });
       }
       if (cy.phase !== 'depart') _deposer(cy);   // en départ, c'est déjà fait
@@ -742,9 +834,10 @@ function dessinerLoupe(ctx) {
   ctx.arc(disp.lx, disp.ly, disp.lr, 0, Math.PI * 2);
   ctx.clip();
 
-  // Fond : la solution, légèrement teintée comme dans le bécher
+  // Fond : la solution, teintée comme dans le bécher mais plus clair (les
+  // ions doivent rester lisibles) ; bleu pâle si incolore
   var sol = couleurSolution();
-  ctx.fillStyle = rgbCss(melange([255, 255, 255], sol.rgb, 0.25));
+  ctx.fillStyle = rgbCss(melange([255, 255, 255], sol.rgb, 0.3 - 0.08 * sol.intensite));
   ctx.fillRect(disp.lx - disp.lr, disp.ly - disp.lr, 2 * disp.lr, 2 * disp.lr);
 
   ctx.translate(ox, oy);
@@ -754,9 +847,9 @@ function dessinerLoupe(ctx) {
   for (i = 0; i < loupe.fond.length; i++) {
     var f = loupe.fond[i];
     if (f.type === 'anion') {
-      if (sim.showSpectateurs) _dessinerAnion(ctx, f.u, f.v, f.sym, ALPHA_FOND + 0.1);
+      if (sim.showSpectateurs) _dessinerAnion(ctx, f.u, f.v, f.sym, ALPHA_FOND);
     } else {
-      _dessinerIon(ctx, f.u, f.v, f.sym, ALPHA_FOND, R_ION);
+      _dessinerIon(ctx, f.u, f.v, f.sym, ALPHA_FOND * f.vis, R_ION);
     }
   }
 

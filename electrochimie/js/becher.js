@@ -241,26 +241,43 @@ function majBecher(dtSim, dtReel) {
 //  dans le rapport des coefficients stœchiométriques (Cu + 2 Ag⁺ : la
 //  solution devient bleue, mais moitié moins concentrée en Cu²⁺ qu'elle ne
 //  l'était en Ag⁺).
+//  Seules les espèces colorées (METAUX[…].solution non nul) teintent la
+//  solution, avec les mêmes teintes que la page Dissolution : la couleur
+//  d'une espèce suit sa suite de teintes selon sa concentration c
+//  (rapportée à la concentration initiale de l'oxydant : c = 1 → dernière
+//  teinte). Aux très faibles concentrations (c < C_RAMPE), elle se fond
+//  dans l'eau au lieu d'y apparaître d'un coup. Deux espèces colorées
+//  (Fe + Cu²⁺) : moyenne de leurs teintes, pondérée par ces mêmes poids ;
+//  la solution passe du bleu au vert en transitant par le bleu-vert.
+//  Solution incolore : même bleu pâle plat #b8d4f0 que l'eau des pages
+//  Dissolution et Titrage (charte du site).
 // ══════════════════════════════════════════════════════════════════════
 
-var _EAU = [206, 226, 240];
+var _EAU = [184, 212, 240];          // #b8d4f0, eau « neutre » du site
+var C_RAMPE = 0.1;
+var ALPHA_VOILE = 0.4;               // solution vue devant la partie immergée de la lame
 
 function couleurSolution() {
-  var c = _EAU.slice(), intensite = 0;
   var p = macro.avancement;
   var especes = [{ sym: sim.solution, conc: 1 - p }];
   if (reactionPossible(sim.metal, sim.solution)) {
     var st = stoechiometrie(sim.metal, sim.solution);
     especes.push({ sym: sim.metal, conc: p * st.coefMetal / st.coefIon });
   }
+  var somme = [0, 0, 0], poids = 0;
   for (var i = 0; i < especes.length; i++) {
-    var col = METAUX[especes[i].sym].solution;
-    if (!col || especes[i].conc <= 0) continue;
-    var t = Math.min(1, especes[i].conc * 0.8);
-    c = melange(c, couleurRGB(col), t);
-    intensite = Math.max(intensite, t);
+    var stops = METAUX[especes[i].sym].solution;
+    if (!stops || especes[i].conc <= 0) continue;
+    var w = Math.min(1, especes[i].conc / C_RAMPE);
+    var rgb = couleurSuite(stops, especes[i].conc);
+    for (var k = 0; k < 3; k++) somme[k] += w * rgb[k];
+    poids += w;
   }
-  return { rgb: c, alpha: 0.42 + 0.33 * intensite };
+  var intensite = Math.min(1, poids);
+  var eau = Math.max(0, 1 - poids);
+  var c = [];
+  for (k = 0; k < 3; k++) c.push(Math.round((somme[k] + eau * _EAU[k]) / (poids + eau)));
+  return { rgb: c, intensite: intensite };
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -276,13 +293,17 @@ function dessinerBecher(ctx) {
   _dessinerTable(ctx);
   _dessinerSupport(ctx);
 
-  // Fond du bécher (verre), puis la lame, puis la solution semi-transparente
-  // par-dessus : la partie immergée de la lame paraît vue à travers le liquide.
-  ctx.fillStyle = 'rgba(255,255,255,0.35)';
-  ctx.fillRect(BECHER_L, BECHER_TOP, BECHER_W, BECHER_H);
+  // Solution opaque (couleur plate, comme la page Dissolution), puis la
+  // lame, puis un voile de la même couleur par-dessus : la partie immergée
+  // de la lame paraît vue à travers le liquide.
+  var sol = couleurSolution();
+  _cheminInterieur(ctx, SOL_TOP);
+  ctx.fillStyle = rgbCss(sol.rgb);
+  ctx.fill();
+  _dessinerVolume(ctx);
 
   _dessinerLame(ctx);
-  _dessinerSolution(ctx);
+  _dessinerSolution(ctx, sol);
   _dessinerVerre(ctx);
   _dessinerEtiquettes(ctx);
 
@@ -313,17 +334,56 @@ function _dessinerSupport(ctx) {
   ctx.fillRect(REPOS_X - LAME_W / 2 - 0.4, TABLE_Y - h, LAME_W + 0.8, 0.8);
 }
 
-function _dessinerSolution(ctx) {
-  var sol = couleurSolution();
-  var ep = 0.6;                         // épaisseur du verre
-  ctx.fillStyle = rgbCss(sol.rgb, sol.alpha);
-  ctx.fillRect(BECHER_L + ep, SOL_TOP, BECHER_W - 2 * ep, TABLE_Y - ep - SOL_TOP);
+// La solution remplit tout l'intérieur du bécher, jusqu'aux parois et aux
+// coins arrondis du fond (le trait du verre, dessiné ensuite, la recouvre
+// à moitié) : aucun vide entre le liquide et le verre. Ici, le voile
+// dessiné devant la lame (le fond opaque est déjà en place).
+function _dessinerSolution(ctx, sol) {
+  _cheminInterieur(ctx, SOL_TOP);
+  ctx.fillStyle = rgbCss(sol.rgb, ALPHA_VOILE);
+  ctx.fill();
   // Surface libre
-  ctx.strokeStyle = rgbCss(nuance(sol.rgb, -0.25), 0.8);
+  ctx.strokeStyle = rgbCss(nuance(sol.rgb, -0.3), 0.8);
   ctx.lineWidth = 0.35;
   ctx.beginPath();
-  ctx.moveTo(BECHER_L + ep, SOL_TOP); ctx.lineTo(BECHER_R - ep, SOL_TOP);
+  ctx.moveTo(BECHER_L, SOL_TOP); ctx.lineTo(BECHER_R, SOL_TOP);
   ctx.stroke();
+}
+
+// Modelé du liquide (bécher cylindrique) : la lumière traverse moins de
+// liquide près des parois, qui paraissent plus claires ; le fond est un
+// peu plus soutenu, la surface éclairée. Sans ce modelé, une couleur plate
+// donne un aplat de peinture plutôt qu'un liquide.
+function _dessinerVolume(ctx) {
+  _cheminInterieur(ctx, SOL_TOP);
+  var g = ctx.createLinearGradient(BECHER_L, 0, BECHER_R, 0);
+  g.addColorStop(0,    'rgba(255,255,255,0.38)');
+  g.addColorStop(0.18, 'rgba(255,255,255,0.10)');
+  g.addColorStop(0.5,  'rgba(255,255,255,0)');
+  g.addColorStop(0.82, 'rgba(255,255,255,0.10)');
+  g.addColorStop(1,    'rgba(255,255,255,0.38)');
+  ctx.fillStyle = g;
+  ctx.fill();
+  var h = ctx.createLinearGradient(0, SOL_TOP, 0, TABLE_Y);
+  h.addColorStop(0,    'rgba(255,255,255,0.22)');
+  h.addColorStop(0.15, 'rgba(255,255,255,0)');
+  h.addColorStop(0.7,  'rgba(0,30,60,0)');
+  h.addColorStop(1,    'rgba(0,30,60,0.12)');
+  ctx.fillStyle = h;
+  ctx.fill();
+}
+
+// Intérieur du bécher, de la hauteur yHaut jusqu'au fond (coins arrondis
+// comme le trait du verre)
+function _cheminInterieur(ctx, yHaut) {
+  ctx.beginPath();
+  ctx.moveTo(BECHER_L, yHaut);
+  ctx.lineTo(BECHER_L, TABLE_Y - 1);
+  ctx.quadraticCurveTo(BECHER_L, TABLE_Y, BECHER_L + 1, TABLE_Y);
+  ctx.lineTo(BECHER_R - 1, TABLE_Y);
+  ctx.quadraticCurveTo(BECHER_R, TABLE_Y, BECHER_R, TABLE_Y - 1);
+  ctx.lineTo(BECHER_R, yHaut);
+  ctx.closePath();
 }
 
 function _dessinerVerre(ctx) {
@@ -338,13 +398,6 @@ function _dessinerVerre(ctx) {
   ctx.lineTo(BECHER_R - 1, TABLE_Y);
   ctx.quadraticCurveTo(BECHER_R, TABLE_Y, BECHER_R, TABLE_Y - 1);
   ctx.lineTo(BECHER_R, BECHER_TOP);
-  ctx.stroke();
-  // Reflet
-  ctx.strokeStyle = 'rgba(255,255,255,0.75)';
-  ctx.lineWidth = 0.9;
-  ctx.beginPath();
-  ctx.moveTo(BECHER_R - 2.2, BECHER_TOP + 4);
-  ctx.lineTo(BECHER_R - 2.2, TABLE_Y - 6);
   ctx.stroke();
   // Graduations
   ctx.strokeStyle = 'rgba(111,127,140,0.7)';

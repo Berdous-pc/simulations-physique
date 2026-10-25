@@ -21,7 +21,11 @@
 //  atome    : couleur de l'atome (métal), dans la loupe et la lame.
 //  ion      : couleur de l'ion dans la loupe (teinte distincte par élément,
 //             y compris pour les ions incolores en solution).
-//  solution : couleur de la solution macroscopique (null = incolore).
+//  solution : progression de la couleur de la solution, de la plus diluée
+//             à la concentration initiale (teintes des colorStops de la
+//             page Dissolution, dissolution/js/diss-data.js ; bleu de Cu²⁺
+//             revu pour être réaliste) ;
+//             null = incolore (seuls Cu²⁺ et Fe²⁺ colorent la solution).
 //  anion    : ion spectateur de la solution usuelle. Nitrate pour Ag⁺ et
 //             Pb²⁺ (leurs sulfates sont peu solubles), sulfate sinon.
 //  depot    : aspect du dépôt sur la lame (cf. becher.js).
@@ -41,7 +45,7 @@ var METAUX = {
         nomIon: 'ions zinc', nomSolution: 'sulfate de zinc', anion: 'SO4',
         depot: 'gris' },
   Fe: { sym: 'Fe', nom: 'fer', de: 'de fer', le: 'le fer', du: 'du fer', charge: 2, E0: -0.44,
-        atome: '#77716b', ion: '#93c060', solution: 'rgb(150,195,95)',
+        atome: '#77716b', ion: '#93c060', solution: ['#e4f4d6', '#a4d488', '#5a9c40'],
         nomIon: 'ions fer(II)', nomSolution: 'sulfate de fer(II)', anion: 'SO4',
         depot: 'noir' },
   Pb: { sym: 'Pb', nom: 'plomb', de: 'de plomb', le: 'le plomb', du: 'du plomb', charge: 2, E0: -0.13,
@@ -49,7 +53,11 @@ var METAUX = {
         nomIon: 'ions plomb(II)', nomSolution: 'nitrate de plomb(II)', anion: 'NO3',
         depot: 'aiguilles' },
   Cu: { sym: 'Cu', nom: 'cuivre', de: 'de cuivre', le: 'le cuivre', du: 'du cuivre', charge: 2, E0: 0.34,
-        atome: '#c26a32', ion: '#3a80d4', solution: 'rgb(45,120,215)',
+        // Bleu azur vif, légèrement turquoise, d'une vraie solution de
+        // sulfate de cuivre (Cu²⁺ absorbe le rouge-orangé : il transmet le
+        // bleu et un peu de vert), du plus dilué au plus concentré. Le bleu
+        // de Dissolution ('#00d0ff' → '#0059ff') finissait trop violacé.
+        atome: '#c26a32', ion: '#3a80d4', solution: ['#a6e3fb', '#33bdf2', '#0096e2'],
         nomIon: 'ions cuivre(II)', nomSolution: 'sulfate de cuivre(II)', anion: 'SO4',
         depot: 'eponge' },
   Ag: { sym: 'Ag', nom: 'argent', de: 'd’argent', le: 'l’argent', du: 'de l’argent', charge: 1, E0: 0.80,
@@ -169,6 +177,15 @@ function couleurRGB(c) {
 // Mélange linéaire de deux couleurs [r,g,b] (t = 0 → a, t = 1 → b)
 function melange(a, b, t) {
   return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+}
+
+// Couleur le long d'une suite de teintes (2 ou plus), t ∈ [0, 1] couvrant
+// la suite à parts égales (même principe que _multiLerpHex de Dissolution)
+function couleurSuite(stops, t) {
+  if (stops.length === 1) return couleurRGB(stops[0]);
+  var seg = Math.max(0, Math.min(1, t)) * (stops.length - 1);
+  var i = Math.min(Math.floor(seg), stops.length - 2);
+  return melange(couleurRGB(stops[i]), couleurRGB(stops[i + 1]), seg - i);
 }
 
 function rgbCss(c, alpha) {
