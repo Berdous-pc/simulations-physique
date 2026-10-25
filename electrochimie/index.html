@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<!-- ════════════════════════════════════════════════════
+     Simulation pédagogique — Physique-Chimie Lycée
+     Auteur  : Mathieu Berdous
+     Licence : CC BY-NC 4.0 — https://creativecommons.org/licenses/by-nc/4.0/
+════════════════════════════════════════════════════ -->
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Simulation — Oxydoréduction, piles et électrolyse</title>
+  <meta name="author" content="Mathieu Berdous">
+  <meta name="copyright" content="Mathieu Berdous — CC BY-NC 4.0">
+  <meta name="description" content="Simulation interactive (Première) : une lame métallique plongée dans une solution d'ions, transfert d'électrons entre l'oxydant et le réducteur observé à l'échelle microscopique, demi-équations d'oxydoréduction.">
+  <link rel="canonical" href="https://berdouspc.com/electrochimie/">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>⚛️</text></svg>">
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<h1 class="sr-only">Simulation d'oxydoréduction : réaction entre un métal et une solution d'ions métalliques, piles et électrolyse</h1>
+
+<main>
+
+  <!-- ══════════════════════════════════════════════
+       COLONNE GAUCHE : scène (bécher + loupe) + équations
+  ══════════════════════════════════════════════ -->
+  <div id="left-col">
+
+    <div id="sim-area">
+      <canvas id="sim-canvas"></canvas>
+    </div>
+
+    <!-- Couples, demi-équations et équation de la réaction (onglet Oxydoréduction).
+         Masqué par défaut : l'élève observe d'abord, l'écriture vient ensuite.
+         Contenu construit par ui.js selon le métal et la solution choisis. -->
+    <div id="equations" style="display:none"></div>
+
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       PANNEAU DROIT : contrôles
+  ══════════════════════════════════════════════ -->
+  <div id="panel">
+
+    <div class="panel-main-tabs">
+      <button class="panel-main-tab active" id="tab-oxydoreduction"
+              onclick="setMainTab('oxydoreduction')">Oxydoréduction</button>
+      <button class="panel-main-tab" id="tab-pile-electrolyse"
+              onclick="setMainTab('pile-electrolyse')">Pile et électrolyse</button>
+    </div>
+
+    <div id="panel-body">
+
+      <!-- ════════════════ Onglet Oxydoréduction ════════════════ -->
+      <div class="panel-main-section" id="section-oxydoreduction">
+
+        <!-- ── Choix de l'expérience ──────────────── -->
+        <div class="panel-section">
+          <div class="section-title">Expérience</div>
+          <div class="param-row">
+            <label for="sel-metal">Lame métallique</label>
+            <select class="param-select" id="sel-metal" onchange="onSelectMetal(this.value)"></select>
+          </div>
+          <div class="param-row">
+            <label for="sel-solution">Solution</label>
+            <select class="param-select" id="sel-solution" onchange="onSelectSolution(this.value)"></select>
+            <span class="input-hint" id="lbl-solution-ions"></span>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <!-- ── Contrôle ───────────────────────────── -->
+        <div class="panel-section">
+          <div class="section-title">Contrôle</div>
+          <div class="btn-stack">
+            <button class="btn btn-primary" id="btn-plonger" onclick="togglePlonger()">⬇ Plonger la lame</button>
+            <div class="btn-row">
+              <button class="btn btn-pause" id="btn-playpause" onclick="togglePause()">⏸ Pause</button>
+              <button class="btn btn-raz" onclick="resetRedox()">↺ RAZ</button>
+            </div>
+          </div>
+
+          <!-- Vitesse d'animation : mêmes crans et étiquettes que ondes/ et pression/ -->
+          <div class="param-row param-row-speed">
+            <label for="sl-speed">Vitesse
+              <span class="param-value">×<span id="lbl-speed">1,00</span></span>
+            </label>
+            <input type="range" id="sl-speed" min="0" max="3" step="1" value="3"
+                   oninput="onSliderSpeed(this.value)">
+            <div class="speed-ticks">
+              <span>×0,10</span>
+              <span>×0,25</span>
+              <span>×0,50</span>
+              <span>×1,00</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <!-- ── Options d'affichage ────────────────── -->
+        <div class="panel-section">
+          <div class="section-title" data-repliable>Options</div>
+          <div class="btn-stack">
+            <button class="btn btn-toggle-one" id="btn-equations" onclick="toggleEquations()">Afficher les équations</button>
+            <button class="btn btn-toggle-one" id="btn-electrons" onclick="toggleElectrons()">Afficher les électrons</button>
+            <button class="btn btn-toggle-one" id="btn-spectateurs" onclick="toggleSpectateurs()">Afficher les ions spectateurs</button>
+          </div>
+        </div>
+
+      </div><!-- fin #section-oxydoreduction -->
+
+      <!-- ════════════════ Onglet Pile et électrolyse ════════════════ -->
+      <div class="panel-main-section" id="section-pile-electrolyse" style="display:none">
+        <div class="panel-section">
+          <div class="section-title">En préparation</div>
+          <p class="panel-text">Cet onglet permettra d'associer deux demi-piles (pile) ou d'imposer un courant (électrolyse).</p>
+        </div>
+      </div>
+
+    </div><!-- fin #panel-body -->
+
+    <!-- ── Bandeaux Informations (un par onglet) ── -->
+    <div class="panel-hint collapsed" id="panel-hint-oxydoreduction">
+      <div class="panel-hint-header">
+        <a class="panel-hint-menu-btn" href="../" title="Retour au menu principal">☰ Menu</a>
+        <span class="panel-hint-title">Informations</span>
+        <button class="panel-hint-toggle" onclick="toggleHint()" title="Afficher les informations">▲</button>
+      </div>
+      <div class="panel-hint-body">
+        Faire glisser la lame dans le bécher (ou bouton <strong>Plonger</strong>).
+        La loupe montre la surface de la lame : quand une transformation a lieu,
+        l'oxydant gagne des électrons et se dépose, le métal en perd et passe en solution.
+        <br><strong>Raccourcis</strong> : Espace = pause, R = RAZ.
+      </div>
+    </div>
+
+    <div class="panel-hint collapsed" id="panel-hint-pile-electrolyse" style="display:none">
+      <div class="panel-hint-header">
+        <a class="panel-hint-menu-btn" href="../" title="Retour au menu principal">☰ Menu</a>
+        <span class="panel-hint-title">Informations</span>
+        <button class="panel-hint-toggle" onclick="toggleHint()" title="Afficher les informations">▲</button>
+      </div>
+      <div class="panel-hint-body">
+        Onglet en préparation.
+      </div>
+    </div>
+
+  </div><!-- fin #panel -->
+
+</main>
+
+<!-- Ordre de chargement : sim (données + état) → becher (scène macroscopique)
+     → loupe (modèle microscopique) → ui (panneau, boucle) → sections repliables (en dernier) -->
+<script src="js/sim.js"></script>
+<script src="js/becher.js"></script>
+<script src="js/loupe.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/sections-repliables.js"></script>
+<script data-goatcounter="https://berdous-pc.goatcounter.com/count"
+        async src="https://gc.zgo.at/count.js"></script>
+</body>
+</html>
