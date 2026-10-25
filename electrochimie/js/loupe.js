@@ -88,7 +88,8 @@ var D_APPROCHE  = 2.4;
 var D_DECALAGE  = 0.45;          // entre deux ions d'un même cycle
 var D_CONTACT   = 0.8;
 var D_TRANSFERT = 0.4;
-var D_TRANSFO   = 1.0;
+var D_TRANSFO   = 1.0;           // réduction de l'ion, après l'arrivée des électrons
+var D_OXYDATION = 0.4;           // atome → ion, dès que ses électrons l'ont quitté
 var D_DEPART    = 2.6;           // trajet de l'ion formé jusqu'au bord
 var D_REBOND    = 2.6;
 
@@ -113,7 +114,7 @@ var V_ELECTRON = 6;              // vitesse des électrons dans le métal (cases
 // un atome de la lame. Quand les atomes de la lame qui le retenaient se
 // sont oxydés, il se détache et tombe dans la solution.
 var ANCRAGE = 1.4;               // distance de centre à centre
-var D_ANCRAGE = 1.2;             // un atome qui vient de se former tient (s)
+var N_POINT_UNIQUE = 3;          // amas tenu par un seul point : casse dès ce nombre d'atomes
 var RAPPORT_POIDS = 2.5;         // atomes par accroche au-delà desquels l'amas casse
 var TAILLE_MORCEAU = 4;          // atomes au plus dans le morceau qui casse
 var D_ENTRE_CASSES = 1.5;        // délai minimal entre deux cassures (s)
@@ -122,8 +123,8 @@ var D_ENTRE_CASSES = 1.5;        // délai minimal entre deux cassures (s)
 // Frottement visqueux : la vitesse atteint vite une valeur limite ; légère
 // dérive latérale et rotation lente de l'amas, qui reste soudé.
 var V_LIM_CHUTE = 2.0;           // vitesse limite (cases/s)
-var TAU_CHUTE = 0.45;            // temps de mise en vitesse (s)
-var D_DECOLLE = 0.6;             // décollement de la lame avant la chute (s)
+var TAU_CHUTE = 0.3;             // temps de mise en vitesse (s)
+var D_DECOLLE = 0.15;            // décollement de la lame avant la chute (s)
 
 // Couleurs des rôles (mêmes teintes que les demi-équations du bloc HTML)
 var COUL_OX  = [176, 64, 32];    // oxydation : atome de la lame qui perd des électrons
@@ -135,7 +136,7 @@ var COUL_RED = [42, 106, 170];   // réduction : ion oxydant qui en gagne
 
 var loupe = {
   grille: [],
-  depots: [],          // atomes déposés, hors grille : { u, v, age } (coordonnées du réseau)
+  depots: [],          // atomes déposés, hors grille : { u, v } (coordonnées du réseau)
   fond: [],            // ions estompés : { u, v, vu, vv, type, sym, r, vis, etat }
                        //   vis : visibilité 0 → 1 ; etat : '' | 'entre' | 'sort'
   cycles: [],
@@ -377,7 +378,6 @@ function majLoupe(dtSim) {
       loupe.offX *= Math.exp(-dtSim / 0.3);
       if (Math.abs(loupe.offX) < 0.002) loupe.offX = 0;
     }
-    for (var d = 0; d < loupe.depots.length; d++) loupe.depots[d].age += dtSim;
     _majChutes(dtSim);
     for (var i = loupe.cycles.length - 1; i >= 0; i--) {
       _majCycle(loupe.cycles[i], dtSim);
@@ -444,14 +444,11 @@ function _amas() {
 }
 
 // Nombre de points d'accroche d'un amas : couples (atome du dépôt, atome
-// de la lame) à moins d'ANCRAGE. Un atome tout juste formé compte comme
-// accroché (sinon il pourrait tomber à l'instant même où il apparaît).
-// (lameSeule : sans compter les atomes tout juste formés)
-function _accroches(amas, lameSeule) {
+// de la lame) à moins d'ANCRAGE
+function _accroches(amas) {
   var n = 0;
   for (var k = 0; k < amas.length; k++) {
     var d = loupe.depots[amas[k]];
-    if (!lameSeule && d.age < D_ANCRAGE) n++;
     var r0 = Math.floor(d.v), c0 = Math.floor(d.u);
     for (var r = r0 - 2; r <= r0 + 2; r++) {
       if (r < 0 || r >= NR) continue;
@@ -464,17 +461,28 @@ function _accroches(amas, lameSeule) {
   return n;
 }
 
-// Déchaussement : tout amas qui ne touche plus la lame se détache. Un
-// amas trop lourd pour ses accroches (dépôt spongieux, peu adhérent) se
-// casse : seul son morceau le plus éloigné de la lame tombe.
+// Déchaussement : tout amas qui ne touche plus la lame se détache aussitôt.
+// Un amas tenu par un seul point casse à ce point dès N_POINT_UNIQUE
+// atomes. Un amas trop lourd pour ses accroches (dépôt spongieux, peu
+// adhérent) se casse : seul son morceau le plus éloigné de la lame tombe.
+// Un amas contre lequel un ion est en train de se réduire attend la fin
+// de la réaction (l'atome formé en fera partie).
 function _detacherAmas(dt) {
   if (loupe.tCasse > 0) loupe.tCasse -= dt;
   if (!loupe.depots.length) return;
-  var A = _amas().liste, partants = [];
-  for (var i = 0; i < A.length; i++) {
-    if (_accroches(A[i]) === 0) partants.push(A[i]);
-    else if (loupe.tCasse <= 0 && A[i].length >= TAILLE_ILOT_MAX &&
-             A[i].length > RAPPORT_POIDS * _accroches(A[i], true)) {
+  var A = _amas().liste, partants = [], hotes = [], i, k;
+  for (i = 0; i < loupe.cycles.length; i++) {
+    var cy = loupe.cycles[i];
+    if (cy.phase === 'depart' || cy.phase === 'rebond') continue;
+    for (k = 0; k < cy.ions.length; k++) if (cy.ions[k].depotHote) hotes.push(cy.ions[k].depotHote);
+  }
+  for (i = 0; i < A.length; i++) {
+    var occupe = false;
+    for (k = 0; k < A[i].length; k++) if (hotes.indexOf(loupe.depots[A[i][k]]) >= 0) occupe = true;
+    if (occupe) continue;
+    var n = _accroches(A[i]);
+    if (n === 0 || (n === 1 && A[i].length >= N_POINT_UNIQUE)) partants.push(A[i]);
+    else if (loupe.tCasse <= 0 && A[i].length >= TAILLE_ILOT_MAX && A[i].length > RAPPORT_POIDS * n) {
       var m = _morceauExterne(A[i]);
       if (m.length) { partants.push(m); loupe.tCasse = D_ENTRE_CASSES; }
     }
@@ -488,7 +496,7 @@ function _detacherAmas(dt) {
 function _morceauExterne(amas) {
   var D = loupe.depots, dist = {}, file = [], i, j, k;
   for (i = 0; i < amas.length; i++) {
-    if (_accroches([amas[i]], true) > 0) { dist[amas[i]] = 0; file.push(amas[i]); }
+    if (_accroches([amas[i]]) > 0) { dist[amas[i]] = 0; file.push(amas[i]); }
   }
   for (var t = 0; t < file.length; t++) {
     for (i = 0; i < amas.length; i++) {
@@ -776,6 +784,7 @@ function _nouveauCycle() {
     cy.ions.push({
       pu: pu, pv: pv,                 // position de contact
       hote: si.hote,                  // nœud du réseau conducteur contre lequel il se pose
+      depotHote: zone.graphe.N[si.hote].lame ? null : loupe.depots[zone.graphe.N[si.hote].k],
       derriere: si.derriere,          // passe derrière le dépôt (dessiné dessous)
       chemin: [_bord(-0.55 - 0.18 * i - Math.random() * 0.15, 0.9),
                { u: U_COULOIR + 0.4, v: pv - 2.2 },
@@ -804,7 +813,7 @@ function _nouveauCycle() {
         var L = 0;
         for (k = 1; k < ch.length; k++) L += Math.hypot(ch[k].u - ch[k - 1].u, ch[k].v - ch[k - 1].v);
         Lmax = Math.max(Lmax, L);
-        cy.electrons.push({ chemin: ch, retard: 0, s: 0 });
+        cy.electrons.push({ chemin: ch, L: L, src: i, retard: 0, s: 0 });
         n++;
       }
     }
@@ -814,6 +823,15 @@ function _nouveauCycle() {
     var ecart = Lmax > 1.5 ? 0.08 : 0.03;
     for (i = 0; i < cy.electrons.length; i++) cy.electrons[i].retard = i * ecart;
     cy.dTransfert = Math.max(D_TRANSFERT, 0.1 + Lmax / V_ELECTRON + (cy.electrons.length - 1) * ecart);
+    // Instant (depuis le début du transfert) où le dernier électron de
+    // chaque atome en est sorti : l'atome devient ion à partir de là
+    var dureeE = _dureeElectrons(cy);
+    for (i = 0; i < cy.atomes.length; i++) cy.atomes[i].tOx = 0;
+    for (i = 0; i < cy.electrons.length; i++) {
+      var e = cy.electrons[i];
+      var sortie = e.retard + dureeE * _lisseInverse(Math.min(1, (R_ATOME + 0.05) / e.L));
+      cy.atomes[e.src].tOx = Math.max(cy.atomes[e.src].tOx, sortie);
+    }
   }
   _majCycle(cy, 0);
   return cy;
@@ -821,6 +839,38 @@ function _nouveauCycle() {
 
 // ── Déroulement d'un cycle ────────────────────────────────────────────
 function _dureeApproche(cy) { return D_APPROCHE + (cy.ions.length - 1) * D_DECALAGE; }
+
+// Durée du trajet de chaque électron (le dernier part plus tard)
+function _dureeElectrons(cy) {
+  var N = cy.electrons.length;
+  return cy.dTransfert - 0.05 - (N > 0 ? cy.electrons[N - 1].retard : 0);
+}
+
+// Réciproque de _lisse sur [0, 1] (dichotomie)
+function _lisseInverse(y) {
+  var a = 0, b = 1;
+  for (var i = 0; i < 20; i++) {
+    var m = (a + b) / 2;
+    if (_lisse(m) < y) a = m; else b = m;
+  }
+  return (a + b) / 2;
+}
+
+// Avancement 0 → 1 de l'oxydation d'un atome du cycle (atome → ion),
+// qui commence dès que ses électrons l'ont quitté. tTransfert : temps
+// écoulé depuis le début du transfert.
+function _kOx(cy, at, tTransfert) {
+  return Math.max(0, Math.min(1, (tTransfert - at.tOx) / D_OXYDATION));
+}
+
+// Atome devenu ion : il ne fait plus partie de la lame (le dépôt qu'il
+// retenait peut se détacher aussitôt)
+function _libererAtomesOxydes(cy, tTransfert) {
+  for (var i = 0; i < cy.atomes.length; i++) {
+    var at = cy.atomes[i];
+    if (_kOx(cy, at, tTransfert) >= 1 && loupe.grille[at.r][at.c] === 'O') loupe.grille[at.r][at.c] = '';
+  }
+}
 
 function _majCycle(cy, dt) {
   var i, s, io, at;
@@ -851,15 +901,16 @@ function _majCycle(cy, dt) {
       break;
 
     case 'transfert':
-      var N = cy.electrons.length;
-      var dureeE = cy.dTransfert - 0.05 - (N > 0 ? cy.electrons[N - 1].retard : 0);
-      for (i = 0; i < N; i++) {
+      var dureeE = _dureeElectrons(cy);
+      for (i = 0; i < cy.electrons.length; i++) {
         cy.electrons[i].s = Math.max(0, Math.min(1, (cy.t - cy.electrons[i].retard) / dureeE));
       }
+      _libererAtomesOxydes(cy, cy.t);
       if (cy.t >= cy.dTransfert) _phase(cy, 'transfo');
       break;
 
     case 'transfo':
+      _libererAtomesOxydes(cy, cy.dTransfert + cy.t);
       if (cy.t >= D_TRANSFO) {
         // Les atomes formés restent là où les ions se sont collés
         _deposer(cy);
@@ -919,7 +970,7 @@ function _phase(cy, ph) { cy.phase = ph; cy.t = 0; }
 // que réseau immobile, offX = offY = 0) : le dépôt suit la lame.
 function _deposer(cy) {
   for (var i = 0; i < cy.ions.length; i++) {
-    loupe.depots.push({ u: cy.ions[i].pu, v: cy.ions[i].pv, age: 0 });
+    loupe.depots.push({ u: cy.ions[i].pu, v: cy.ions[i].pv });
   }
 }
 
@@ -978,7 +1029,7 @@ function _lancerChutes(liste) {
     }
     loupe.chutes.push({
       atomes: atomes, u: cu + loupe.offX, v: cv + loupe.offY,
-      vu: 0.5 + Math.random() * 0.3, vv: 0,        // s'écarte d'abord de la lame
+      vu: 0.5 + Math.random() * 0.3, vv: 0.4 * V_LIM_CHUTE, // s'écarte de la lame en tombant
       ang: 0, om: (Math.random() < 0.5 ? -1 : 1) * (0.2 + Math.random() * 0.35),
       phi: Math.random() * 6.28, t: 0, sym: sim.solution
     });
@@ -1303,12 +1354,15 @@ function _dessinerCycle(ctx, cy) {
 
     case 'contact':
     case 'transfert':
-      // Ions collés contre la lame, atomes qui vont s'oxyder : signalés
+      // Ions collés contre le métal, atomes qui vont s'oxyder : signalés ;
+      // un atome devient ion dès que ses électrons l'ont quitté
       for (i = 0; i < cy.atomes.length; i++) {
         at = cy.atomes[i];
         if (cy.reagit) {
-          _halo(ctx, at.u + dx, at.v + dy, R_ATOME, COUL_OX, 0.9, pulse);
-          _dessinerAtome(ctx, at.u + dx, at.v + dy, sim.metal, 1);
+          var kOx = cy.phase === 'transfert' ? _kOx(cy, at, cy.t) : 0;
+          _halo(ctx, at.u + dx, at.v + dy, R_ATOME, COUL_OX, 0.9, kOx > 0 ? 1 : pulse);
+          if (kOx > 0) _dessinerTransition(ctx, at.u + dx, at.v + dy, sim.metal, kOx, true);
+          else _dessinerAtome(ctx, at.u + dx, at.v + dy, sim.metal, 1);
         }
       }
       for (i = 0; i < cy.ions.length; i++) {
@@ -1331,7 +1385,7 @@ function _dessinerCycle(ctx, cy) {
       for (i = 0; i < cy.atomes.length; i++) {
         at = cy.atomes[i];
         _halo(ctx, at.u + dx, at.v + dy, R_ATOME, COUL_OX, 0.9, 1);
-        _dessinerTransition(ctx, at.u + dx, at.v + dy, sim.metal, k, true);
+        _dessinerTransition(ctx, at.u + dx, at.v + dy, sim.metal, _kOx(cy, at, cy.dTransfert + cy.t), true);
       }
       for (i = 0; i < cy.ions.length; i++) {
         io = cy.ions[i];
