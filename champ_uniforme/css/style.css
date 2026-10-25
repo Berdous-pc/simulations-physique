@@ -540,6 +540,15 @@ main {
 
 
 
+/* ── Option « Afficher graphe » désactivée : zone graphes + splitter
+   masqués, l'animation occupe alors toute la colonne gauche ── */
+#left-col.graph-off #graph-area,
+#left-col.graph-off #left-splitter { display: none; }
+#left-col.graph-off #anim-area {
+  flex: 1 !important;
+  height: auto !important;
+}
+
 /* ── Splitter ────────────────────────────────── */
 #left-splitter {
   flex: 0 0 6px;

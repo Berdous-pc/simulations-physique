@@ -243,12 +243,9 @@ var _resizeRaf = null;
 
 function _onResize() {
     _resizeRaf = null;
-    /* Si le splitter avait fixé des hauteurs px, on les réinitialise
-       pour que le flex CSS reprenne le contrôle au nouveau viewport. */
-    var animArea  = document.getElementById('anim-area');
-    var graphArea = document.getElementById('graph-area');
-    if (animArea)  { animArea.style.flex  = ''; animArea.style.height  = ''; }
-    if (graphArea) { graphArea.style.flex = ''; graphArea.style.height = ''; }
+    /* La proportion choisie au splitter est portée par des flex-grow
+       (cf. initSplitter) : le navigateur la conserve tout seul au
+       redimensionnement ; on ne fait que recalculer les canvas. */
     resizeAnimCanvas();
     resizeGraphCanvas();
     _updateToolbarDensity();
@@ -260,6 +257,23 @@ function _onResize() {
 window.addEventListener('resize', function () {
     if (_resizeRaf === null) _resizeRaf = requestAnimationFrame(_onResize);
 });
+
+/* ─────────────────────────────────────────────────
+   Affichage de la zone graphes (masquée par défaut :
+   l'animation occupe alors toute la colonne gauche).
+   L'état est partagé par les boutons des deux onglets.
+───────────────────────────────────────────────── */
+var graphVisible = false;
+
+function toggleGraphVisible() {
+    graphVisible = !graphVisible;
+    document.getElementById('left-col').classList.toggle('graph-off', !graphVisible);
+    document.querySelectorAll('.btn-toggle-graph').forEach(function (btn) {
+        btn.classList.toggle('active', graphVisible);
+        btn.setAttribute('aria-pressed', String(graphVisible));
+    });
+    _onResize();
+}
 
 /* ─────────────────────────────────────────────────
    Changement de tab principal

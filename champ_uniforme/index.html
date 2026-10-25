@@ -24,7 +24,9 @@
   <!-- ══════════════════════════════════════════════
        COLONNE GAUCHE : animation + splitter + graphes
   ══════════════════════════════════════════════ -->
-  <div id="left-col">
+  <!-- Classe graph-off posée par défaut : zone graphes masquée
+       (cf. toggleGraphVisible() dans ui.js) -->
+  <div id="left-col" class="graph-off">
 
     <!-- ── Barre d'outils animation ─────────────── -->
     <div id="anim-toolbar">
@@ -343,6 +345,16 @@
           </label>
         </div>
 
+        <div class="sep"></div>
+
+        <!-- OPTIONS -->
+        <div class="panel-section">
+          <div class="section-title">Options</div>
+          <button class="btn btn-toggle-one btn-toggle-graph" id="btn-e-toggle-graph"
+                  aria-pressed="false"
+                  onclick="toggleGraphVisible()">Afficher graphe</button>
+        </div>
+
       </div><!-- fin #section-champ-electrique -->
 
       <!-- ═══ Section CHAMP DE PESANTEUR ═══ -->
@@ -536,6 +548,16 @@
           </label>
         </div>
 
+        <div class="sep"></div>
+
+        <!-- OPTIONS -->
+        <div class="panel-section">
+          <div class="section-title">Options</div>
+          <button class="btn btn-toggle-one btn-toggle-graph" id="btn-toggle-graph"
+                  aria-pressed="false"
+                  onclick="toggleGraphVisible()">Afficher graphe</button>
+        </div>
+
       </div><!-- fin #section-champ-pesanteur -->
 
     </div><!-- fin #panel-body -->
@@ -553,7 +575,7 @@
         Réglez les <strong>conditions initiales</strong>, puis cliquez sur <em>▶ Lancer</em>.<br>
         <strong>Vecteurs</strong> (position, vitesse, accélération, forces) : affichés
         au survol d'un point, ou en l'épinglant (📍).<br>
-        <strong>Graphes</strong> : position, vitesse, accélération, trajectoire et
+        <strong>Graphes</strong> (option <em>Afficher graphe</em>) : position, vitesse, accélération, trajectoire et
         énergies en fonction du temps.<br>
         <strong>Sauvegarde</strong> (✦) : jusqu'à 5 simulations comparables simultanément,
         sur l'animation et les graphes.<br>
@@ -576,7 +598,7 @@
         <strong>Vecteurs</strong> (vitesse, accélération, forces) : affichés au survol
         d'un point, ou en l'épinglant (📍).<br>
         <strong>Zoom</strong> : rapproche l'affichage des armatures.<br>
-        <strong>Graphes</strong> : position, vitesse, accélération, trajectoire et
+        <strong>Graphes</strong> (option <em>Afficher graphe</em>) : position, vitesse, accélération, trajectoire et
         énergies en fonction du temps.<br>
         <strong>Sauvegarde</strong> (✦) : jusqu'à 5 simulations comparables simultanément.<br>
         <strong>Raccourcis</strong> : Espace = lancer/pause, R = remise à zéro.

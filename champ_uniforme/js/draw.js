@@ -3626,6 +3626,9 @@ function _drawViewLabel(ctx) {
     }
 }
 
+/* Proportion anim / (anim + graphes) choisie au splitter ; null = défaut CSS */
+var _splitRatio = null;
+
 /* ── Splitter draggable ── */
 (function initSplitter() {
     document.addEventListener('DOMContentLoaded', function () {
@@ -3655,10 +3658,11 @@ function _drawViewLabel(ctx) {
             dy = Math.min(dy,   startGraphH - minGH);
             var newAH = startAnimH + dy;
             var newGH = startGraphH - dy;
-            animArea.style.flex  = 'none';
-            graphArea.style.flex = 'none';
-            animArea.style.height  = newAH + 'px';
-            graphArea.style.height = newGH + 'px';
+            /* On mémorise la proportion (et non des pixels) : elle est
+               conservée au redimensionnement de la fenêtre et en plein écran. */
+            _splitRatio = newAH / (newAH + newGH);
+            animArea.style.flex  = _splitRatio + ' 1 0';
+            graphArea.style.flex = (1 - _splitRatio) + ' 1 0';
             /* Redimensionner le bitmap des canvas pendant le glissé, et pas
                seulement au relâchement : sinon l'animation et les graphes
                restent étirés/flous tout le temps du déplacement, puis
