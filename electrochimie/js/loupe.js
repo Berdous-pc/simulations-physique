@@ -25,15 +25,16 @@
 //                     en diagonale vers le bas à droite ; l'atome Cu reste
 //                     là où l'ion s'est collé (dépôt hors grille).
 //
-//  Un cycle correspond à l'équation de la réaction : les atomes qui
-//  s'oxydent sont voisins (une ZONE de la lame) ; chaque ion se pose sur
-//  son SITE, contre la lame (nouveau grain) ou contre le dépôt (le grain
-//  grossit), de préférence près de la zone. Le dépôt, poreux, laisse les
-//  ions passer derrière lui pour atteindre la lame.
+//  Un cycle correspond à l'équation de la réaction. Les ions se posent
+//  sur des SITES tirés au hasard parmi les places libres de la surface
+//  métallique : contre la lame (nouveau grain) ou contre le dépôt (le
+//  grain grossit), sans préférence ; les ions d'un même cycle restent
+//  limitrophes (ou entourent une excroissance). Les atomes de la lame les
+//  plus proches des ions s'oxydent. Le dépôt, poreux, laisse les ions
+//  passer derrière lui pour atteindre la lame.
 //
-//  Le dépôt pousse ainsi en GRUMEAUX vers la solution. La lame se ronge de
-//  façon un peu irrégulière (petits creux bornés), plus volontiers au
-//  contact du dépôt. Un amas tient tant qu'il touche un atome de la lame :
+//  Le dépôt pousse ainsi en GRUMEAUX. La lame se ronge de façon
+//  irrégulière (creux bornés en profondeur). Un amas tient tant qu'il touche un atome de la lame :
 //  quand ceux qui le retenaient se sont oxydés, il est DÉCHAUSSÉ ; trop
 //  lourd pour ses accroches, il casse et son morceau externe part. Il
 //  tombe alors dans le liquide (vitesse limite, légère dérive, rotation
@@ -59,10 +60,6 @@ var NR = 11, NC = 11;            // lignes, colonnes du réseau
 var RC = 5.5;                    // rayon de la loupe
 var CU = 5.5, CV = 5.5;          // centre de la loupe
 var COL_INIT = 4;                // colonnes de métal au départ
-// Toutes les lignes peuvent réagir (sinon celles du bord ne seraient
-// jamais rongées et dépasseraient quand la vue suit la lame), mais celles
-// qui sont bien visibles dans le cercle sont choisies en priorité.
-var LIGNE_CENTRE_MIN = 2, LIGNE_CENTRE_MAX = 8;
 var U_COULOIR = 7.7;             // abscisse du couloir libre longé par les ions
 var U_MAX_DEPOT = U_COULOIR - 1.4; // le dépôt ne pousse pas jusqu'au couloir
 
@@ -103,12 +100,9 @@ var TOL_RUGO = 2;
 // Le dépôt croît sur lui-même : l'ion oxydant peut se réduire contre un
 // atome du dépôt, les électrons venant d'un atome de la lame à travers
 // le métal (lame et dépôt sont conducteurs). Le dépôt pousse ainsi en
-// grumeaux ; au-delà de TAILLE_ILOT_MAX atomes, un amas grossit moins.
+// grumeaux ; à partir de TAILLE_ILOT_MAX atomes, un amas peut casser.
 var TAILLE_ILOT_MAX = 6;
-var MALUS_GROS_AMAS = 3.5;
-var MALUS_GERME = 1.6;           // nouveau germe sur la lame plutôt que croissance
-var POIDS_SAUTS = 0.45;          // préférence pour un trajet d'électrons court
-var BONUS_GALVA = 1.2;           // le zinc au contact du dépôt s'oxyde plus volontiers
+var D_GROUPE = 1.35;             // ions d'un même cycle : limitrophes
 var D_SITE_DEPOT = 2 * R_ATOME - 0.04;   // ion posé contre un atome du dépôt
 var D_VOISINS = 2 * R_ATOME + 0.15;      // deux atomes du dépôt soudés
 var D_PROCHE_DEPOT = 2 * R_ATOME - 0.06; // ion au plus près du dépôt (il deviendra atome)
@@ -535,80 +529,149 @@ function _detacherPlusFaible() {
   if (choisi) _lancerChutes([choisi]);
 }
 
-// Zone d'un cycle : les nA atomes de la lame qui s'oxydent (voisins, en
-// surface : _zonesAtomes) et les nI sites où se posent les ions oxydants
-// (_choisirSites). Un site est contre un atome de la lame (germe d'un
-// nouveau grain) ou contre un atome du dépôt (le grain grossit) : les
-// électrons vont de l'atome qui s'oxyde à l'ion à travers le métal.
+// Zone d'un cycle : d'abord les nI sites où se posent les ions oxydants,
+// tirés AU HASARD parmi les places libres de la surface métallique (lame
+// ou dépôt, sans préférence) ; les ions d'un même cycle restent groupés.
+// Puis les nA atomes de la lame les PLUS PROCHES des ions (à vol d'oiseau)
+// s'oxydent ; les électrons vont de ces atomes aux ions à travers le métal.
 function _choisirZone(nA, nI, reagit) {
-  // Érosion irrégulière mais bornée : la zone peut puiser jusqu'à TOL_RUGO
-  // couches sous la couche la plus externe (petits creux), les atomes
-  // saillants restant favorisés ; toutes les lignes finissent rongées (la
-  // vue peut alors suivre la lame). Si cela ne suffit pas pour une zone
-  // (3 atomes de Mg pour 2 Al³⁺), on puise une couche plus bas.
-  var am = _amas(), g = _reseauMetal();
-  for (var tol = TOL_RUGO; tol <= TOL_RUGO + 1; tol++) {
-    var zones = _zonesAtomes(nA, tol);
-    // Premières zones dans l'ordre de préférence, jusqu'à trouver des sites
-    for (var i = 0; i < zones.length && i < 8; i++) {
-      var ions = _choisirSites(zones[i].atomes, nI, reagit, g, am);
-      if (ions) return { atomes: zones[i].atomes, ions: ions, graphe: g };
-    }
+  var g = _reseauMetal(), cand = _sitesLibres(g, reagit), i, k;
+  // Ordre de tirage du premier site
+  for (i = cand.length - 1; i > 0; i--) {
+    k = Math.floor(Math.random() * (i + 1));
+    var tmp = cand[i]; cand[i] = cand[k]; cand[k] = tmp;
+  }
+  for (i = 0; i < cand.length && i < 40; i++) {
+    var ions = _grouperSites(cand, cand[i], nI);
+    if (!ions) continue;
+    var atomes = _atomesProches(g, ions, nA);
+    if (atomes) return { atomes: atomes, ions: ions, graphe: g };
   }
   return null;
 }
 
-// Fenêtres de nA à nA + 2 lignes (atomes voisins, sans être forcément sur
-// des lignes consécutives) dont on prend les nA atomes de surface plutôt
-// saillants. Rangées de la plus à la moins favorable.
-// tol : nombre de couches sous la couche externe où la zone peut puiser
-function _zonesAtomes(nA, tol) {
-  var front = _fronts(), zones = [], i, k, r, c, L, s;
-  var couche = -1;
-  for (i = 0; i < NR; i++) couche = Math.max(couche, front[i]);
-  var parSaillie = function (a, b) { return b.k - a.k; };
-  var parLigne = function (a, b) { return a.r - b.r; };
+// Complète le groupe des nI ions autour du premier site : chaque nouvel
+// ion est tiré au hasard parmi les sites limitrophes d'un ion déjà placé
+// (à moins de D_GROUPE) ou posés contre le même atome (ions qui entourent
+// une excroissance), sans chevaucher les autres ions
+function _grouperSites(cand, premier, nI) {
+  var groupe = [premier];
+  while (groupe.length < nI) {
+    var options = [];
+    for (var i = 0; i < cand.length; i++) {
+      var s = cand[i], ok = true, proche = false;
+      for (var k = 0; k < groupe.length; k++) {
+        var d = Math.hypot(s.u - groupe[k].u, s.v - groupe[k].v);
+        if (d < ESPACE_IONS) { ok = false; break; }
+        if (d < D_GROUPE || s.hote === groupe[k].hote) proche = true;
+      }
+      if (ok && proche) options.push(s);
+    }
+    if (!options.length) return null;
+    groupe.push(options[Math.floor(Math.random() * options.length)]);
+  }
+  return groupe;
+}
 
-  for (L = nA; L <= nA + 2; L++) {
-    for (s = 0; s + L <= NR; s++) {
-      // Atomes de surface de la fenêtre, du plus saillant au moins saillant
-      var cand = [];
-      for (r = s; r < s + L; r++) {
-        c = front[r];
-        if (c < 0 || c + 2 >= NC || loupe.grille[r][c] !== 'M' || c < couche - tol) continue;
-        // (tirage : un atome un peu en retrait est parfois préféré)
-        cand.push({ c: c, r: r, k: c + Math.random() * 0.9 });
-      }
-      if (cand.length < nA) continue;
-      cand.sort(parSaillie);
-      var atomes = cand.slice(0, nA).sort(parLigne);
-      // Fenêtre au plus juste (sinon la même zone serait comptée plusieurs fois)
-      if (atomes[nA - 1].r - atomes[0].r + 1 !== L) continue;
-      var cmin = NC, cmax = -1, galva = 0;
-      for (i = 0; i < nA; i++) {
-        cmin = Math.min(cmin, atomes[i].c); cmax = Math.max(cmax, atomes[i].c);
-        // Zinc au contact du dépôt : la pile locale Zn/Cu l'oxyde plus vite
-        // (c'est ce qui finit par déchausser les grains)
-        for (k = 0; k < loupe.depots.length; k++) {
-          var d = loupe.depots[k];
-          if (Math.hypot(atomes[i].c + 0.5 - d.u, atomes[i].r + 0.5 - d.v) < ANCRAGE) { galva += BONUS_GALVA; break; }
-        }
-      }
-      if (cmax - cmin > tol) continue;
-      var penal = (L - nA) * 1.5;               // atomes non contigus : moins lisible
-      // Lignes du bord du cercle : légèrement moins prioritaires (une forte
-      // pénalité ferait creuser le centre avant de finir la couche au bord)
-      if (s < LIGNE_CENTRE_MIN || s + L - 1 > LIGNE_CENTRE_MAX) penal += 1;
-      // Les atomes saillants restent favorisés (la surface ne se creuse
-      // pas trop), mais le tirage laisse se former des creux
-      zones.push({
-        atomes: atomes,
-        score: -1.2 * cmax - 0.6 * cmin + penal - galva + Math.abs(s + L / 2 - CV) * 0.25 + Math.random() * 2.4
-      });
+// Les nA atomes de surface de la lame les plus proches du centre du
+// groupe d'ions, reliés à eux par le métal. Érosion bornée : seulement
+// jusqu'à TOL_RUGO couches sous la couche la plus externe (une de plus si
+// c'est impossible autrement), pour que le creux ne s'enfonce pas et que
+// toute la couche externe finisse rongée (la vue peut alors suivre la lame).
+function _atomesProches(g, ions, nA) {
+  var front = _fronts(), couche = -1, bu = 0, bv = 0, hotes = [], i, r, c;
+  for (r = 0; r < NR; r++) couche = Math.max(couche, front[r]);
+  for (i = 0; i < ions.length; i++) {
+    bu += ions[i].u / ions.length; bv += ions[i].v / ions.length;
+    hotes.push(ions[i].hote);
+  }
+  var relie = _parcours(g, hotes).dist;
+  for (var tol = TOL_RUGO; tol <= TOL_RUGO + 1; tol++) {
+    var cand = [];
+    for (r = 0; r < NR; r++) {
+      // Atome de surface de la ligne : son ion pourra quitter la lame
+      c = front[r];
+      if (c < 0 || c + 2 >= NC || loupe.grille[r][c] !== 'M' || c < couche - tol) continue;
+      if (relie[g.idx[r + ',' + c]] < 0) continue;
+      cand.push({ c: c, r: r, d: Math.hypot(c + 0.5 - bu, r + 0.5 - bv) });
+    }
+    if (cand.length < nA) continue;
+    cand.sort(function (a, b) { return a.d - b.d; });
+    return cand.slice(0, nA).sort(function (a, b) { return a.r - b.r; });
+  }
+  return null;
+}
+
+// ── Sites des ions oxydants ───────────────────────────────────────────
+// Toutes les places libres contre la surface métallique : contre chaque
+// atome de la lame qui touche la solution et contre chaque atome du dépôt,
+// dans 7 directions tournées vers la solution (deux places quasi
+// confondues ne comptent qu'une fois). Sans réaction, seulement contre la
+// lame (l'ion vient la toucher puis repart).
+function _sitesLibres(g, reagit) {
+  var cand = [], r, c, k, a;
+  for (r = 0; r < NR; r++) for (c = 0; c < NC; c++) {
+    if (loupe.grille[r][c] === '') continue;
+    // Atome au contact de la solution (case vide à droite, en haut ou en bas)
+    if (_case(c + 1, r) !== '' && _case(c, r - 1) !== '' && _case(c, r + 1) !== '') continue;
+    for (a = -90; a <= 90; a += 30) {
+      var cs = Math.cos(a * Math.PI / 180), sn = Math.sin(a * Math.PI / 180);
+      _ajouterSite(cand, g, { u: c + 0.5 + DIST_CONTACT * cs, v: r + 0.5 + DIST_CONTACT * sn },
+                   cs, sn, g.idx[r + ',' + c]);
     }
   }
-  zones.sort(function (a, b) { return a.score - b.score; });
-  return zones;
+  if (reagit) {
+    for (k = 0; k < loupe.depots.length; k++) {
+      var d = loupe.depots[k];
+      for (a = -90; a <= 90; a += 30) {
+        var cs2 = Math.cos(a * Math.PI / 180), sn2 = Math.sin(a * Math.PI / 180);
+        _ajouterSite(cand, g, { u: d.u + D_SITE_DEPOT * cs2, v: d.v + D_SITE_DEPOT * sn2 },
+                     cs2, sn2, g.d0 + k);
+      }
+    }
+  }
+  return cand;
+}
+
+// Ajoute le site p (normale nu, nv, posé contre le nœud hote) s'il est
+// libre. Refusé s'il chevauche la lame ou le dépôt, si l'ion ne peut pas
+// l'atteindre sans traverser la lame, ou (dépôt) s'il sort du cercle
+// visible ou empiète sur le couloir ; s'il traverse le dépôt (poreux,
+// projection d'un volume), l'ion est dessiné derrière lui.
+function _ajouterSite(cand, g, p, nu, nv, hote) {
+  if (p.v < -0.2 || p.v > NR + 0.2) return;
+  if (!g.N[hote].lame) {
+    if (p.u > U_MAX_DEPOT || Math.hypot(p.u - CU, p.v - CV) > RC - 0.45) return;
+  }
+  var i, r, c, derriere = false;
+  // Pas deux fois la même place
+  for (i = 0; i < cand.length; i++) {
+    if (Math.hypot(cand[i].u - p.u, cand[i].v - p.v) < 0.35) return;
+  }
+  // Ni sur la lame…
+  for (r = Math.floor(p.v) - 1; r <= Math.floor(p.v) + 1; r++) {
+    if (r < 0 || r >= NR) continue;
+    for (c = Math.floor(p.u) - 1; c <= Math.floor(p.u) + 1; c++) {
+      if (c < 0 || c >= NC || loupe.grille[r][c] === '') continue;
+      if (Math.hypot(c + 0.5 - p.u, r + 0.5 - p.v) < DIST_CONTACT - 0.02) return;
+    }
+  }
+  // … ni sur le dépôt (contre lui seulement)
+  for (i = 0; i < loupe.depots.length; i++) {
+    if (Math.hypot(loupe.depots[i].u - p.u, loupe.depots[i].v - p.v) < D_PROCHE_DEPOT) return;
+  }
+  // Arrivée de l'ion le long de la normale : la lame l'arrête, le dépôt non
+  for (var s = 0.35; s <= 1.8; s += 0.35) {
+    var qu = p.u + nu * s, qv = p.v + nv * s;
+    var cs = _caseSous(qu, qv);
+    for (r = cs.r - 1; r <= cs.r + 1; r++) for (c = cs.c - 1; c <= cs.c + 1; c++) {
+      if (_case(c, r) !== '' && Math.hypot(c + 0.5 - qu, r + 0.5 - qv) < DIST_CONTACT - 0.04) return;
+    }
+    for (i = 0; i < loupe.depots.length; i++) {
+      if (Math.hypot(loupe.depots[i].u - qu, loupe.depots[i].v - qv) < DIST_CONTACT) derriere = true;
+    }
+  }
+  cand.push({ u: p.u, v: p.v, nu: nu, nv: nv, hote: hote, derriere: derriere });
 }
 
 // ── Réseau conducteur : lame + dépôt ──────────────────────────────────
@@ -683,87 +746,6 @@ function _trajetElectron(g, src, hote, site) {
   if (dernierLame >= 0 && dernierLame !== src) pts.push({ u: g.N[dernierLame].u, v: g.N[dernierLame].v });
   pts.push({ u: site.u, v: site.v });
   return pts;
-}
-
-// ── Sites des ions oxydants ───────────────────────────────────────────
-// Candidats : contre l'atome de surface de chaque ligne de la lame, ou
-// contre un atome du dépôt (directions tournées vers la solution). Le
-// site est refusé s'il chevauche la lame ou le dépôt, ou si l'ion ne peut
-// pas l'atteindre sans traverser la lame ; s'il passe à travers le dépôt
-// (poreux, projection d'un volume), il est dessiné derrière lui.
-function _choisirSites(atomes, nI, reagit, g, am) {
-  var src = [], i, k, cand = [], front = _fronts();
-  for (i = 0; i < atomes.length; i++) src.push(g.idx[atomes[i].r + ',' + atomes[i].c]);
-  var sauts = _parcours(g, src).dist;
-
-  for (var r = 0; r < NR; r++) {
-    var c = front[r];
-    if (c < 0) continue;
-    var hl = g.idx[r + ',' + c];
-    // Sans réaction, l'ion vient seulement toucher un atome de la zone
-    if (!reagit && src.indexOf(hl) < 0) continue;
-    _ajouterSite(cand, g, { u: c + 0.5 + DIST_CONTACT, v: r + 0.5 }, 1, 0, hl, sauts,
-                 loupe.depots.length ? MALUS_GERME : 0);
-  }
-  if (reagit) {
-    for (k = 0; k < loupe.depots.length; k++) {
-      var d = loupe.depots[k], hd = g.d0 + k;
-      var malus = am.liste[am.id[k]].length >= TAILLE_ILOT_MAX ? MALUS_GROS_AMAS : 0;
-      for (var a = -90; a <= 90; a += 30) {
-        var cs = Math.cos(a * Math.PI / 180), sn = Math.sin(a * Math.PI / 180);
-        // Croissance vers la solution un peu favorisée : grumeaux
-        _ajouterSite(cand, g, { u: d.u + D_SITE_DEPOT * cs, v: d.v + D_SITE_DEPOT * sn }, cs, sn, hd, sauts,
-                     malus - 0.6 * cs);
-      }
-    }
-  }
-  cand.sort(function (x, y) { return x.score - y.score; });
-
-  // Les nI meilleurs sites, assez écartés les uns des autres
-  var res = [];
-  for (i = 0; i < cand.length && res.length < nI; i++) {
-    var ok = true;
-    for (k = 0; k < res.length; k++) {
-      if (Math.hypot(res[k].u - cand[i].u, res[k].v - cand[i].v) < ESPACE_IONS) ok = false;
-    }
-    if (ok) res.push(cand[i]);
-  }
-  return res.length === nI ? res : null;
-}
-
-function _ajouterSite(cand, g, p, nu, nv, hote, sauts, malus) {
-  if (sauts[hote] < 0) return;                        // hors du métal relié à la zone
-  if (p.v < -0.2 || p.v > NR + 0.2) return;
-  if (!g.N[hote].lame) {
-    // Le dépôt ne pousse ni hors du cercle visible ni jusqu'au couloir
-    if (p.u > U_MAX_DEPOT || Math.hypot(p.u - CU, p.v - CV) > RC - 0.45) return;
-  }
-  var i, r, c, derriere = false;
-  // Ni sur la lame…
-  for (r = Math.floor(p.v) - 1; r <= Math.floor(p.v) + 1; r++) {
-    if (r < 0 || r >= NR) continue;
-    for (c = Math.floor(p.u) - 1; c <= Math.floor(p.u) + 1; c++) {
-      if (c < 0 || c >= NC || loupe.grille[r][c] === '') continue;
-      if (Math.hypot(c + 0.5 - p.u, r + 0.5 - p.v) < DIST_CONTACT - 0.02) return;
-    }
-  }
-  // … ni sur le dépôt (contre lui seulement)
-  for (i = 0; i < loupe.depots.length; i++) {
-    if (Math.hypot(loupe.depots[i].u - p.u, loupe.depots[i].v - p.v) < D_PROCHE_DEPOT) return;
-  }
-  // Arrivée de l'ion le long de la normale : la lame l'arrête, le dépôt non
-  for (var s = 0.35; s <= 1.8; s += 0.35) {
-    var qu = p.u + nu * s, qv = p.v + nv * s;
-    var cs = _caseSous(qu, qv);
-    for (r = cs.r - 1; r <= cs.r + 1; r++) for (c = cs.c - 1; c <= cs.c + 1; c++) {
-      if (_case(c, r) !== '' && Math.hypot(c + 0.5 - qu, r + 0.5 - qv) < DIST_CONTACT - 0.04) return;
-    }
-    for (i = 0; i < loupe.depots.length; i++) {
-      if (Math.hypot(loupe.depots[i].u - qu, loupe.depots[i].v - qv) < DIST_CONTACT) derriere = true;
-    }
-  }
-  cand.push({ u: p.u, v: p.v, nu: nu, nv: nv, hote: hote, derriere: derriere,
-              score: POIDS_SAUTS * sauts[hote] + malus + Math.random() * 1.8 });
 }
 
 function _nouveauCycle() {
