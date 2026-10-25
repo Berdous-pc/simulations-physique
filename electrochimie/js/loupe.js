@@ -613,8 +613,10 @@ function _atomesProches(g, ions, nA) {
 // ── Sites des ions oxydants ───────────────────────────────────────────
 // Toutes les places libres contre la surface métallique : contre chaque
 // atome de la lame qui touche la solution et contre chaque atome du dépôt,
-// dans 7 directions tournées vers la solution (deux places quasi
-// confondues ne comptent qu'une fois). Sans réaction, seulement contre la
+// sur sa face droite, celle que voit arriver l'ion (5 directions de −60°
+// à +60° : jamais sur la moitié gauche, l'ion aurait l'air de contourner
+// l'atome pour s'accrocher derrière ; deux places quasi confondues ne
+// comptent qu'une fois). Sans réaction, seulement contre la
 // lame (l'ion vient la toucher puis repart).
 function _sitesLibres(g, reagit) {
   var cand = [], r, c, k, a;
@@ -622,7 +624,7 @@ function _sitesLibres(g, reagit) {
     if (loupe.grille[r][c] === '') continue;
     // Atome au contact de la solution (case vide à droite, en haut ou en bas)
     if (_case(c + 1, r) !== '' && _case(c, r - 1) !== '' && _case(c, r + 1) !== '') continue;
-    for (a = -90; a <= 90; a += 30) {
+    for (a = -60; a <= 60; a += 30) {
       var cs = Math.cos(a * Math.PI / 180), sn = Math.sin(a * Math.PI / 180);
       _ajouterSite(cand, g, { u: c + 0.5 + DIST_CONTACT * cs, v: r + 0.5 + DIST_CONTACT * sn },
                    cs, sn, g.idx[r + ',' + c]);
@@ -631,7 +633,7 @@ function _sitesLibres(g, reagit) {
   if (reagit) {
     for (k = 0; k < loupe.depots.length; k++) {
       var d = loupe.depots[k];
-      for (a = -90; a <= 90; a += 30) {
+      for (a = -60; a <= 60; a += 30) {
         var cs2 = Math.cos(a * Math.PI / 180), sn2 = Math.sin(a * Math.PI / 180);
         _ajouterSite(cand, g, { u: d.u + D_SITE_DEPOT * cs2, v: d.v + D_SITE_DEPOT * sn2 },
                      cs2, sn2, g.d0 + k);
@@ -1195,21 +1197,8 @@ function _sortirDuSolide(p) {
       if (vm < 0) { p.vu -= 2 * vm * mx; p.vv -= 2 * vm * my; }
     }
   }
-  _sortirDesChutes(p);
-}
-
-// Repousse un ion de fond hors des amas qui tombent
-function _sortirDesChutes(p) {
-  for (var i = 0; i < loupe.chutes.length; i++) {
-    var ch = loupe.chutes[i];
-    for (var k = 0; k < ch.atomes.length; k++) {
-      var q = _posChute(ch, k);
-      var ex = p.u - q.u, ey = p.v - q.v, de = Math.sqrt(ex * ex + ey * ey), dm = R_ATOME + p.r;
-      if (de < dm && de > 1e-6) {
-        p.u += ex / de * (dm - de); p.v += ey / de * (dm - de);
-      }
-    }
-  }
+  // (les amas qui tombent ne repoussent pas les ions de fond : ils passent
+  // devant eux, la scène étant la projection d'un volume)
 }
 
 // ══════════════════════════════════════════════════════════════════════
