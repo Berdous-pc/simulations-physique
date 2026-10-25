@@ -205,8 +205,8 @@ function syncGraphIntensiteUI() {
   const splitter = document.getElementById('left-splitter');
   const graphEl = document.getElementById('graph-area');
   const sceneEl = document.getElementById('scene-area');
-  splitter.style.display = visible ? '' : 'none';
-  graphEl.style.display = visible ? '' : 'none';
+  splitter.style.display = visible ? 'block' : 'none';
+  graphEl.style.display = visible ? 'flex' : 'none';
   sceneEl.style.flex = visible ? '' : '1';
   sceneEl.style.height = '';
   graphEl.style.flex = '';

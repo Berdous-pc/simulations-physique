@@ -429,6 +429,7 @@ main {
 
 /* ── Splitter draggable ── */
 #left-splitter {
+  display: none; /* affiché par syncGraphIntensiteUI() (ui.js) : évite le flash au chargement */
   flex: 0 0 6px;
   background: #c8c0b4;
   cursor: row-resize;
@@ -443,11 +444,11 @@ main {
 
 /* Zone graphe I(x) */
 #graph-area {
+  display: none; /* affiché par syncGraphIntensiteUI() (ui.js) : évite le flash au chargement */
   flex: 2;
   background: #faf9f6;
   border-top: 1px solid #c8c0b4;
   border-right: 1px solid #c8c0b4;
-  display: flex;
   flex-direction: column;
   min-height: clamp(80px, 14vh, 140px);
   overflow: hidden;
