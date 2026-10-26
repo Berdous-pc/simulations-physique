@@ -157,6 +157,7 @@ function toggleEquations() {
 }
 function toggleElectrons()   { _basculer('btn-electrons', 'showElectrons'); }
 function toggleSpectateurs() { _basculer('btn-spectateurs', 'showSpectateurs'); }
+function toggleTemoin()      { _basculer('btn-temoin', 'showTemoin'); }
 
 function _majVisibiliteEquations() {
   var vis = sim.showEquations && sim.onglet === 'oxydoreduction';

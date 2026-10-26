@@ -153,6 +153,7 @@ var sim = {
   showEquations:   false,
   showElectrons:   false,
   showSpectateurs: false,
+  showTemoin:      true,     // tube témoin de la solution initiale
 
   needsRedraw: true
 };

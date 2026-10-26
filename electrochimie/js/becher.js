@@ -479,8 +479,10 @@ var _EAU = [184, 212, 240];          // #b8d4f0, eau « neutre » du site
 var C_RAMPE = 0.1;
 var ALPHA_VOILE = 0.4;               // solution vue devant la partie immergée de la lame
 
-function couleurSolution() {
-  var p = macro.avancement;
+// p : avancement (par défaut, celui de la transformation en cours ; 0 pour
+// la solution initiale du tube témoin)
+function couleurSolution(p) {
+  if (p === undefined) p = macro.avancement;
   var especes = [{ sym: sim.solution, conc: 1 - p }];
   if (reactionPossible(sim.metal, sim.solution)) {
     var st = stoechiometrie(sim.metal, sim.solution);
@@ -514,6 +516,7 @@ function dessinerBecher(ctx) {
 
   _dessinerTable(ctx);
   _dessinerSupport(ctx);
+  if (sim.showTemoin) _dessinerTemoin(ctx);
 
   // Solution opaque (couleur plate, comme la page Dissolution), puis la
   // lame, puis un voile de la même couleur par-dessus : la partie immergée
@@ -790,6 +793,85 @@ function _dessinerPoudre(ctx) {
     ctx.arc(xc + t.u * L, y, t.r, 0, Math.PI * 2);
     ctx.fill();
   }
+}
+
+// ── Tube témoin ───────────────────────────────────────────────────────
+// Tube à essai dans un portoir, à droite du bécher : il garde la solution
+// initiale, pour comparer sa couleur à celle du bécher. Affiché dès que
+// l'option est active (par défaut), même sans changement de couleur : il
+// montre alors que rien ne change. Même teinte et même modelé que le bécher (on ne tient pas compte de
+// l'épaisseur plus faible du tube, qui le ferait paraître plus pâle).
+var TUBE_X = 90, TUBE_W = 4.4;
+var TUBE_TOP = TABLE_Y - 30;          // bord du tube
+var TUBE_BAS = TABLE_Y - 1.4;         // fond arrondi, posé sur le socle
+var TUBE_LIQ = TABLE_Y - 20;          // surface du liquide
+var PORTOIR_L = 83, PORTOIR_R = 97, PORTOIR_Y = TABLE_Y - 24;   // planche du haut
+
+// Contour du tube (fond en demi-cercle), du haut yHaut jusqu'au fond
+function _cheminTube(ctx, yHaut) {
+  var r = TUBE_W / 2;
+  ctx.beginPath();
+  ctx.moveTo(TUBE_X - r, yHaut);
+  ctx.lineTo(TUBE_X - r, TUBE_BAS - r);
+  ctx.arc(TUBE_X, TUBE_BAS - r, r, Math.PI, 0, true);
+  ctx.lineTo(TUBE_X + r, yHaut);
+}
+
+function _dessinerTemoin(ctx) {
+  var bois = '#c9a77c', trait = '#8a6a44';
+  ctx.lineWidth = 0.3;
+  ctx.fillStyle = bois; ctx.strokeStyle = trait;
+
+  // Portoir : montants et socle (derrière le tube)
+  ctx.beginPath();
+  ctx.rect(PORTOIR_L + 0.4, PORTOIR_Y, 1.1, TABLE_Y - PORTOIR_Y);
+  ctx.rect(PORTOIR_R - 1.5, PORTOIR_Y, 1.1, TABLE_Y - PORTOIR_Y);
+  ctx.fill(); ctx.stroke();
+  ctx.beginPath();
+  ctx.rect(PORTOIR_L, TABLE_Y - 1.2, PORTOIR_R - PORTOIR_L, 1.2);
+  ctx.fill(); ctx.stroke();
+
+  // Solution initiale, modelé comme dans le bécher
+  var sol = couleurSolution(0);
+  _cheminTube(ctx, TUBE_LIQ);
+  ctx.closePath();
+  ctx.fillStyle = rgbCss(sol.rgb);
+  ctx.fill();
+  var g = ctx.createLinearGradient(TUBE_X - TUBE_W / 2, 0, TUBE_X + TUBE_W / 2, 0);
+  g.addColorStop(0,    'rgba(255,255,255,0.38)');
+  g.addColorStop(0.25, 'rgba(255,255,255,0.08)');
+  g.addColorStop(0.5,  'rgba(255,255,255,0)');
+  g.addColorStop(0.75, 'rgba(255,255,255,0.08)');
+  g.addColorStop(1,    'rgba(255,255,255,0.38)');
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.strokeStyle = rgbCss(nuance(sol.rgb, -0.3), 0.8);
+  ctx.lineWidth = 0.3;
+  ctx.beginPath();
+  ctx.moveTo(TUBE_X - TUBE_W / 2, TUBE_LIQ); ctx.lineTo(TUBE_X + TUBE_W / 2, TUBE_LIQ);
+  ctx.stroke();
+
+  // Verre, avec un petit rebord en haut
+  _cheminTube(ctx, TUBE_TOP);
+  ctx.strokeStyle = '#6f7f8c';
+  ctx.lineWidth = 0.45;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(TUBE_X - TUBE_W / 2 - 0.5, TUBE_TOP); ctx.lineTo(TUBE_X - TUBE_W / 2, TUBE_TOP);
+  ctx.moveTo(TUBE_X + TUBE_W / 2, TUBE_TOP); ctx.lineTo(TUBE_X + TUBE_W / 2 + 0.5, TUBE_TOP);
+  ctx.stroke();
+
+  // Planche du haut, percée pour le tube : devant lui
+  ctx.fillStyle = bois; ctx.strokeStyle = trait; ctx.lineWidth = 0.3;
+  ctx.beginPath();
+  ctx.rect(PORTOIR_L, PORTOIR_Y, PORTOIR_R - PORTOIR_L, 1.4);
+  ctx.fill(); ctx.stroke();
+
+  // Étiquette au-dessus du tube
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = '#2c3e50';
+  texteEchelle(ctx, 'Témoin', TUBE_X, TUBE_TOP - 1.8, 3.1, '600', disp.k);
 }
 
 // ── Étiquettes ────────────────────────────────────────────────────────
