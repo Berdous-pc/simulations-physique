@@ -424,86 +424,70 @@ html:not(.sections-pretes) .section-title[data-repliable]:not([data-repliable="o
   margin-bottom: 0;
 }
 
-/* ── Carte « Circuit » (onglet Pile) : gabarit de la box Source de ondes/ ──
-   Posée en absolu dans le coin haut gauche, dans le vide au-dessus du bécher
-   de gauche. Largeur de mise en page FIXE : sa taille naturelle ne dépend
-   donc pas de l'appareil choisi, et ui.js (_placerCarteCircuit) la réduit
-   par un seul `transform: scale()` pour qu'elle ne déborde pas sur le
-   montage (même principe que la colonne source de ondes/). */
-#circuit-wrap {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  transform-origin: 0 0;
-}
-#circuit-box {
-  width: clamp(150px, 13vw, 190px);
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  padding: clamp(7px, 0.8vw, 12px) clamp(7px, 0.8vw, 11px);
-  background: #e8e4de;
-  border: 1px solid #c8c0b4;
-  border-radius: 8px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.07);
-  font-size: clamp(11px, 1.1vw, 14px);
-}
-#circuit-box .section-title { margin-bottom: 0; }
-.cb-contenu {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-}
-#circuit-box.replie .cb-contenu { display: none; }
+/* ── Circuit extérieur (onglet Pile, section Expérience) ──────────────
+   Un seul réglage à la même place (curseur grisé s'il n'y en a pas), K et
+   bornes grisés s'ils ne servent pas, note avec le générateur seulement. */
 
-/* Titre : « CIRCUIT » et le chevron qui réduit la carte */
-.cb-titre {
+/* Pictos des appareils (symboles normalisés) : sous-onglets de la page */
+.cb-dipoles .mode-tab {
+  padding: 5px 2px;
+  line-height: 0;
+}
+#bloc-circuit svg {
+  width: 100%;
+  max-width: 30px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* Lettre dans un symbole (A, G) : pleine, sans contour */
+#bloc-circuit svg text {
+  fill: currentColor;
+  stroke: none;
+  font-size: 8.5px;
+  font-weight: 700;
+  font-family: inherit;
+  text-anchor: middle;
+}
+
+/* Réglage : nom et valeur, puis K | curseur | bornes, puis la note */
+.cb-reglage { margin-bottom: 0; }
+.cb-reglage label.disabled { color: #a8b0b8; }
+.cb-ligne {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 6px;
 }
-.cb-replier {
-  position: relative;
-  width: 18px;
-  height: 18px;
+.param-row .cb-ligne input[type="range"] {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
+.cb-ligne input.disabled { opacity: 0.45; cursor: default; }
+
+/* Boutons-icônes K et bornes */
+.btn.cb-icone {
+  width: auto;
   flex: none;
-  border: none;
-  background: transparent;
-  cursor: pointer;
+  padding: 4px 7px;
+  line-height: 1;
+  font-size: clamp(14px, 1.25vw, 17px);
 }
-.cb-replier::before {               /* même chevron que les sections repliables */
-  content: '';
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 5px;
-  height: 5px;
-  border-right: 1.5px solid #7a8a96;
-  border-bottom: 1.5px solid #7a8a96;
-  transform: translate(-50%, -30%) rotate(-135deg);
-  transition: transform .2s;
+#bloc-circuit .cb-icone svg { width: 26px; height: 15px; display: block; }
+/* Levier de K : levé quand l'interrupteur est ouvert, couché une fois fermé */
+.k-levier {
+  transform-box: view-box;
+  transform-origin: 6px 10px;
+  transform: rotate(-28deg);
+  transition: transform .15s;
 }
-.cb-replier:hover::before { border-color: #2a6aaa; }
-#circuit-box.replie .cb-replier::before { transform: translate(-50%, -70%) rotate(45deg); }
+#btn-interrupteur.active .k-levier { transform: none; }
 
-/* Résumé : seulement la carte réduite */
-#cb-resume {
-  display: none;
-  font-size: clamp(12px, 1.15vw, 15px);
-  font-weight: 600;
-  color: #2a5080;
-  line-height: 1.35;
-  cursor: pointer;
-}
-#circuit-box.replie #cb-resume { display: block; }
-
-/* Réglage (curseur) : toujours une ligne présente ; grisé sans réglage */
-.cb-reglage { margin-bottom: 0; }
-.cb-reglage.disabled { opacity: 0.45; }
-.cb-reglage.disabled input[type="range"] { cursor: default; }
-
-/* Boutons de la carte inutiles pour l'appareil choisi : grisés, place gardée */
-#circuit-box .btn:disabled {
+/* Boutons inutiles pour l'appareil choisi : grisés, place gardée */
+#bloc-circuit .btn:disabled {
   background: #dedad2;
   color: #a8b0b8;
   border-color: #d0c8bc;
@@ -511,8 +495,13 @@ html:not(.sections-pretes) .section-title[data-repliable]:not([data-repliable="o
   transform: none;
 }
 
-/* Note sous les commandes : toujours la place de deux lignes */
-.cb-note { min-height: 2.8em; }
+/* Note (générateur seulement) : la place de deux lignes, ni plus ni moins */
+.cb-note {
+  height: 2.8em;
+  overflow: hidden;
+}
+/* Fin de la section Expérience : moins d'écart avec la section Contrôles */
+#bloc-circuit { margin-bottom: -4px; }
 
 /* ── Afficheurs de valeurs (repris de refraction/) ─ */
 .readout {
@@ -652,7 +641,7 @@ a:focus-visible {
 ══════════════════════════════════════════════════ */
 @media (prefers-reduced-motion: reduce) {
   .btn,
-  .cb-replier::before,
+  .k-levier,
   .panel-hint,
   .panel-hint-body,
   .panel-hint-toggle,

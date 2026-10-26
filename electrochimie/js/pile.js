@@ -989,13 +989,6 @@ function calculerDispositionPile(W, H) {
   dispP.my = (rh - P_SCENE_H * dispP.k) / 2;
 }
 
-// Coin haut gauche du montage laissé libre pour la carte « Circuit » (px
-// CSS, depuis le coin du canvas) : à gauche du fil de l'électrode de
-// gauche, au-dessus des étiquettes des électrodes (y = 47 environ)
-function coinLibrePile() {
-  return { w: dispP.mx + (lameX(0) - 3.5) * dispP.k, h: dispP.my + 46 * dispP.k };
-}
-
 function pileVersPx(x, y) { return { x: dispP.mx + dispP.k * x, y: dispP.my + dispP.k * y }; }
 function pxVersPile(px, py) { return { x: (px - dispP.mx) / dispP.k, y: (py - dispP.my) / dispP.k }; }
 

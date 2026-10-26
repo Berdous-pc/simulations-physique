@@ -28,59 +28,6 @@
 
     <div id="sim-area">
       <canvas id="sim-canvas"></canvas>
-      <!-- Onglet Pile : carte « Circuit » (même gabarit que la box Source de
-           ondes/), posée dans le coin haut gauche, dans le vide au-dessus du
-           bécher de gauche : le montage ne bouge pas. Taille constante quel
-           que soit l'appareil (réglage, K et bornes grisés s'ils ne servent
-           pas) ; ui.js la met à l'échelle pour qu'elle reste dans ce coin. -->
-      <div id="circuit-wrap" style="display:none">
-        <div id="circuit-box">
-          <div class="section-title cb-titre">
-            <span>Circuit</span>
-            <button class="cb-replier" id="btn-replier-circuit" aria-expanded="true"
-                    onclick="toggleCadreCircuit()" title="Réduire la carte Circuit"></button>
-          </div>
-          <!-- Carte réduite : une ligne de résumé, cliquable pour la déployer -->
-          <div id="cb-resume" onclick="toggleCadreCircuit()" title="Déployer la carte Circuit"></div>
-          <div class="cb-contenu">
-            <select class="param-select" id="sel-dipole" onchange="onSelectDipole(this.value)"
-                    aria-label="Branché entre les électrodes" title="Branché entre les électrodes">
-              <option value="aucun">Rien (circuit ouvert)</option>
-              <option value="voltmetre">Voltmètre</option>
-              <option value="resistance">Ampèremètre + résistance</option>
-              <option value="lampe">Ampèremètre + lampe</option>
-              <option value="generateur">Ampèremètre + générateur</option>
-            </select>
-            <!-- Interrupteur (aussi cliquable sur le schéma) ; grisé sans ampèremètre -->
-            <button class="btn btn-toggle-one" id="btn-interrupteur" disabled
-                    onclick="toggleInterrupteur()">Fermer K</button>
-            <!-- Un seul réglage affiché à la fois, à la même place -->
-            <div class="param-row cb-reglage" id="bloc-generateur" style="display:none">
-              <label for="sl-tension">Tension
-                <span class="param-value"><span id="lbl-tension">1,50</span> V</span>
-              </label>
-              <input type="range" id="sl-tension" min="0" max="60" step="1" value="30"
-                     oninput="onSliderTension(this.value)">
-            </div>
-            <div class="param-row cb-reglage" id="row-resistance" style="display:none">
-              <label for="sl-resistance">Résistance
-                <span class="param-value"><span id="lbl-resistance">100</span> Ω</span>
-              </label>
-              <input type="range" id="sl-resistance" min="0" max="6" step="1" value="3"
-                     oninput="onSliderResistance(this.value)">
-            </div>
-            <div class="param-row cb-reglage disabled" id="row-sans-reglage">
-              <label>Aucun réglage</label>
-              <input type="range" disabled aria-hidden="true" tabindex="-1">
-            </div>
-            <!-- Générateur seulement (grisé sinon) -->
-            <button class="btn btn-toggle-one" id="btn-polarite" disabled
-                    onclick="togglePolarite()">Inverser les bornes</button>
-            <!-- Ce que mesure l'appareil, ou seuil d'électrolyse (place de deux lignes) -->
-            <span class="input-hint cb-note" id="lbl-seuil"></span>
-          </div>
-        </div>
-      </div>
     </div>
 
     <!-- Couples, demi-équations et équation de la réaction (onglet Oxydoréduction).
@@ -206,11 +153,68 @@
           </div>
           <!-- Pile à combustible : description -->
           <p class="panel-text" id="lbl-cuve" style="display:none"></p>
+          <!-- Circuit extérieur : appareil branché entre les électrodes (pictos
+               des symboles normalisés, nom complet en title / aria-label) -->
+          <div id="bloc-circuit">
+            <div class="param-row">
+              <label>Entre les électrodes</label>
+              <div class="mode-tabs cb-dipoles" role="group" aria-label="Branché entre les électrodes">
+                <button class="mode-tab" data-dipole="aucun" onclick="onSelectDipole('aucun')"
+                        title="Rien (circuit ouvert)" aria-label="Rien (circuit ouvert)">
+                  <svg viewBox="0 0 24 14" aria-hidden="true"><path d="M1 7h7M16 7h7"/></svg>
+                </button>
+                <button class="mode-tab" data-dipole="voltmetre" onclick="onSelectDipole('voltmetre')"
+                        title="Voltmètre" aria-label="Voltmètre">
+                  <svg viewBox="0 0 24 14" aria-hidden="true"><path d="M1 7h5M18 7h5"/><circle cx="12" cy="7" r="6"/><path d="M9.6 4.4 12 9.8l2.4-5.4"/></svg>
+                </button>
+                <button class="mode-tab" data-dipole="resistance" onclick="onSelectDipole('resistance')"
+                        title="Ampèremètre + résistance" aria-label="Ampèremètre + résistance">
+                  <svg viewBox="0 0 24 14" aria-hidden="true"><path d="M1 7h5M18 7h5"/><circle cx="12" cy="7" r="6"/><text x="12" y="10.1">A</text></svg>
+                </button>
+                <button class="mode-tab" data-dipole="lampe" onclick="onSelectDipole('lampe')"
+                        title="Ampèremètre + lampe" aria-label="Ampèremètre + lampe">
+                  <svg viewBox="0 0 24 14" aria-hidden="true"><path d="M1 7h5M18 7h5"/><circle cx="12" cy="7" r="6"/><path d="m7.8 2.8 8.4 8.4M16.2 2.8l-8.4 8.4"/></svg>
+                </button>
+                <button class="mode-tab" data-dipole="generateur" onclick="onSelectDipole('generateur')"
+                        title="Ampèremètre + générateur" aria-label="Ampèremètre + générateur">
+                  <svg viewBox="0 0 24 14" aria-hidden="true"><path d="M1 7h5M18 7h5"/><circle cx="12" cy="7" r="6"/><text x="12" y="10.1">G</text></svg>
+                </button>
+              </div>
+            </div>
+            <!-- Un seul réglage à la fois, à la même place (curseur grisé s'il
+                 n'y en a pas), entre l'interrupteur K (aussi cliquable sur le
+                 schéma ; grisé sans ampèremètre) et l'inversion des bornes
+                 (générateur seulement) ; puis ce que mesure l'appareil ou le
+                 seuil d'électrolyse (place de deux lignes) -->
+            <div class="param-row cb-reglage">
+              <label for="sl-tension" data-reglage="generateur" style="display:none">Tension
+                <span class="param-value"><span id="lbl-tension">1,50</span> V</span>
+              </label>
+              <label for="sl-resistance" data-reglage="resistance" style="display:none">Résistance
+                <span class="param-value"><span id="lbl-resistance">100</span> Ω</span>
+              </label>
+              <label class="disabled" data-reglage="aucun">Aucun réglage</label>
+              <div class="cb-ligne">
+                <button class="btn btn-toggle-one cb-icone" id="btn-interrupteur" disabled
+                        onclick="toggleInterrupteur()" title="Fermer l'interrupteur K" aria-label="Interrupteur K">
+                  <svg viewBox="0 0 24 14" aria-hidden="true"><path d="M1 10h3M20 10h3"/><circle cx="5" cy="10" r="1.3"/><circle cx="19" cy="10" r="1.3"/><path class="k-levier" d="M6 10h12"/></svg>
+                </button>
+                <input type="range" id="sl-tension" min="0" max="60" step="1" value="30"
+                       data-reglage="generateur" style="display:none" oninput="onSliderTension(this.value)">
+                <input type="range" id="sl-resistance" min="0" max="6" step="1" value="3"
+                       data-reglage="resistance" style="display:none" oninput="onSliderResistance(this.value)">
+                <input type="range" class="disabled" disabled aria-hidden="true" tabindex="-1" data-reglage="aucun">
+                <button class="btn btn-toggle-one cb-icone" id="btn-polarite" disabled
+                        onclick="togglePolarite()" title="Inverser les bornes du générateur" aria-label="Inverser les bornes">⇄</button>
+              </div>
+              <span class="input-hint cb-note" id="lbl-seuil"></span>
+            </div>
+          </div>
         </div>
 
         <div class="sep"></div>
 
-        <!-- ── Contrôles (le circuit extérieur est dans le cadre posé sur le montage) ── -->
+        <!-- ── Contrôles ──────────────────────────── -->
         <div class="panel-section">
           <div class="section-title">Contrôles</div>
           <div class="btn-row">
@@ -327,8 +331,8 @@
       </div>
       <div class="panel-hint-body">
         Choisir un montage prédéfini, ou un montage libre : demi-piles (deux béchers) ou solution et électrodes
-        (électrolyse en cuve). Ce qui est branché entre les électrodes se choisit dans la carte
-        <strong>Circuit</strong>, en haut à gauche du montage (réductible avec son chevron).
+        (électrolyse en cuve). Ce qui est branché entre les électrodes se choisit en bas de la section
+        <strong>Expérience</strong> (survoler un picto pour le nom de l’appareil).
         Cliquer sur un cercle du montage (électrodes, pont salin ou membrane, fil) pour le voir à la loupe,
         sur l’interrupteur K pour l’ouvrir ou le fermer, et sur le pont salin pour le sortir des solutions
         ou l’y replonger.

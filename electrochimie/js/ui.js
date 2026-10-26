@@ -32,9 +32,6 @@ function setMainTab(tab) {
     if (hint) hint.style.display = (t === tab) ? '' : 'none';
     if (btn)  btn.classList.toggle('active', t === tab);
   });
-  // Carte « Circuit » posée sur le montage : onglet Pile seulement (mise à
-  // l'échelle au prochain redimensionnement, une fois affichée)
-  document.getElementById('circuit-wrap').style.display = tab === 'pile-electrolyse' ? '' : 'none';
   resize();
   // Le bloc des équations est commun aux deux onglets : on le reconstruit
   if (tab === 'oxydoreduction') majEquations(); else majEquationsPile(true);
@@ -304,7 +301,6 @@ function _synchroniserPanneauPile() {
     ? 'Accumulateur : acide sulfurique à 2 mol/L une fois chargé (100 mL), 0,05 mol de matière active par plaque.'
     : 'Concentration du cation (métal), du soluté (chlorure, sulfate de sodium) ou des ions H⁺ (acide). ' +
       'Volume de chaque solution : 100 mL. Un changement remet l’expérience à zéro.';
-  document.getElementById('sel-dipole').value = pile.dipole;
   document.getElementById('sl-resistance').value = pile.iR;
   document.getElementById('lbl-resistance').textContent = RESISTANCES[pile.iR];
   document.getElementById('sl-tension').value = pile.iU;
@@ -336,7 +332,6 @@ function onSelectExperience(v) {
   }
   pile.experience = v;
   _synchroniserPanneauPile();
-  _placerCarteCircuit();               // le coin libre dépend du montage (béchers, cuve)
   _majBoutonsZones();
   resetPile();
   _majPanneauCircuit();
@@ -406,7 +401,6 @@ function onSelectDipole(v) {
 function onSliderResistance(val) {
   pile.iR = parseInt(val, 10);
   document.getElementById('lbl-resistance').textContent = RESISTANCES[pile.iR];
-  _majResumeCircuit();
   sim.needsRedraw = true;
 }
 
@@ -437,15 +431,22 @@ function togglePont() {
 function _majPanneauCircuit() {
   var gen = pile.dipole === 'generateur';
   var res = pile.dipole === 'resistance';
-  // Carte « Circuit » à taille constante : un seul réglage à la même place
-  // (ligne grisée s'il n'y en a pas), K et bornes grisés s'ils ne servent pas
-  document.getElementById('row-resistance').style.display = res ? '' : 'none';
-  document.getElementById('bloc-generateur').style.display = gen ? '' : 'none';
-  document.getElementById('row-sans-reglage').style.display = gen || res ? 'none' : '';
+  // Circuit extérieur : picto de l’appareil choisi, un
+  // seul réglage à la même place (curseur grisé s'il n'y en a pas), K et
+  // bornes grisés s'ils ne servent pas
+  document.querySelectorAll('.cb-dipoles [data-dipole]').forEach(function (b) {
+    var choisi = b.dataset.dipole === pile.dipole;
+    b.classList.toggle('active', choisi);
+    b.setAttribute('aria-pressed', String(choisi));
+  });
+  var reglage = gen || res ? pile.dipole : 'aucun';
+  document.querySelectorAll('#bloc-circuit [data-reglage]').forEach(function (el) {
+    el.style.display = el.dataset.reglage === reglage ? '' : 'none';
+  });
   document.getElementById('btn-polarite').disabled = !gen;
   var btnK = document.getElementById('btn-interrupteur');
   btnK.disabled = !courantPossible();
-  btnK.textContent = pile.interrupteur ? 'Ouvrir K' : 'Fermer K';
+  btnK.title = pile.interrupteur ? 'Ouvrir l’interrupteur K' : 'Fermer l’interrupteur K';
   btnK.classList.toggle('active', pile.interrupteur && courantPossible());
   btnK.setAttribute('aria-pressed', String(pile.interrupteur));
   var btnP = document.getElementById('btn-pont');
@@ -457,69 +458,25 @@ function _majPanneauCircuit() {
   pile.E = femPile();
   pile.I = courantPile();
   _majSeuil();
-  _majResumeCircuit();
   sim.needsRedraw = true;
 }
 
-// Ligne de résumé de la carte « Circuit » réduite
-function _majResumeCircuit() {
-  var noms = {
-    aucun: 'Rien',
-    voltmetre: 'Voltmètre',
-    resistance: 'Résistance ' + RESISTANCES[pile.iR] + ' Ω',
-    lampe: 'Lampe',
-    generateur: 'Générateur ' + formatNombre(tensionGenerateur(), 2) + ' V'
-  };
-  var txt = noms[pile.dipole];
-  if (courantPossible()) txt += ' · K ' + (pile.interrupteur ? 'fermé' : 'ouvert');
-  document.getElementById('cb-resume').textContent = txt;
-}
-
-// Réduit la carte « Circuit » à son titre et au résumé (petites fenêtres)
-function toggleCadreCircuit() {
-  var box = document.getElementById('circuit-box');
-  var replie = box.classList.toggle('replie');
-  var btn = document.getElementById('btn-replier-circuit');
-  btn.setAttribute('aria-expanded', String(!replie));
-  btn.title = replie ? 'Déployer la carte Circuit' : 'Réduire la carte Circuit';
-  _placerCarteCircuit();
-}
-
-// Met la carte « Circuit » à l'échelle pour qu'elle tienne dans le coin
-// haut gauche laissé libre par le montage. Sa largeur de mise en page est
-// fixe : sa taille naturelle (offsetWidth/Height, que le transform ne
-// change pas) donne l'échelle en une division (cf. ondes/, colonne source).
-var CARTE_MARGE = 8;            // px, comme le top/left du CSS
-var CARTE_ECHELLE_MIN = 0.6;    // en dessous, illisible : on accepte de déborder
-function _placerCarteCircuit() {
-  var wrap = document.getElementById('circuit-wrap');
-  if (sim.onglet !== 'pile-electrolyse') return;
-  var box = document.getElementById('circuit-box');
-  var coin = coinLibrePile();
-  var s = Math.min(1, (coin.w - 2 * CARTE_MARGE) / box.offsetWidth,
-                      (coin.h - 2 * CARTE_MARGE) / box.offsetHeight);
-  wrap.style.transform = 'scale(' + Math.max(CARTE_ECHELLE_MIN, s).toFixed(3) + ')';
-}
-
-// Note sous les commandes de la carte : ce que mesure l'appareil, ou le
-// seuil d'électrolyse du générateur dans le sens où il pousse (il évolue
-// avec les concentrations et le pH, d'où l'appel à chaque image)
-var _noteAffichee = '';
+// Note sous les commandes du circuit, générateur seulement : seuil
+// d'électrolyse dans le sens où il pousse (il évolue avec les
+// concentrations et le pH, d'où l'appel à chaque image) ; masquée sinon
+var _noteAffichee = null;
 function _majSeuil() {
-  var txt;
-  switch (pile.dipole) {
-    case 'aucun':     txt = 'Circuit ouvert : aucun courant ne circule.'; break;
-    case 'voltmetre': txt = 'Le voltmètre mesure V(droite) − V(gauche).'; break;
-    case 'generateur':
-      var s = seuilElectrolyse();
-      txt = s === null ? 'Dans le sens de la pile : il l’aide à débiter.'
-                       : 'Électrolyse au-delà de ' + formatNombre(s, 2) + ' V environ.';
-      break;
-    default:          txt = 'L’ampèremètre mesure l’intensité I.';
+  var txt = '';
+  if (pile.dipole === 'generateur') {
+    var s = seuilElectrolyse();
+    txt = s === null ? 'Dans le sens de la pile : il l’aide à débiter.'
+                     : 'Électrolyse au-delà de ' + formatNombre(s, 2) + ' V environ.';
   }
   if (txt === _noteAffichee) return;
   _noteAffichee = txt;
-  document.getElementById('lbl-seuil').textContent = txt;
+  var note = document.getElementById('lbl-seuil');
+  note.textContent = txt;
+  note.style.display = txt ? '' : 'none';
 }
 
 // ── Loupe ─────────────────────────────────────────────────────────────
@@ -746,7 +703,6 @@ function _doResize() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   calculerDisposition(_cw, _ch);
   calculerDispositionPile(_cw, _ch);
-  _placerCarteCircuit();
   // Redessin immédiat : sinon une image blanche si la boucle est déjà passée
   // (pas avant la fin de l'initialisation : scènes pas encore prêtes)
   if (_initFaite) { _dessiner(); sim.needsRedraw = false; }
@@ -873,12 +829,10 @@ function init() {
   resetPile();
 
   // La zone du canvas change de taille avec la fenêtre, mais aussi quand
-  // le bloc des équations apparaît ou disparaît ; la carte « Circuit » est
-  // remise à l'échelle quand sa taille change (réduite, déployée).
+  // le bloc des équations apparaît ou disparaît.
   if (window.ResizeObserver) {
     var obs = new ResizeObserver(resize);
     obs.observe(document.getElementById('sim-area'));
-    obs.observe(document.getElementById('circuit-box'));
   }
   window.addEventListener('resize', resize);
 
