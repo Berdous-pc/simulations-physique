@@ -132,8 +132,9 @@ function togglePause() {
   btn.className   = 'btn ' + (sim.paused ? 'btn-play' : 'btn-pause');
 }
 
-// Crans, étiquettes et nom d'état repris de ondes/ et pression/
-var SPEED_STEPS = [0.10, 0.25, 0.50, 1.00];
+// Étiquettes et nom d'état repris de ondes/ et pression/ ; pas de cran ×0,25,
+// un cran ×2 pour laisser la transformation avancer plus vite
+var SPEED_STEPS = [0.10, 0.50, 1.00, 2.00];
 
 function onSliderSpeed(val) {
   sim.speedFactor = SPEED_STEPS[parseInt(val, 10)];
