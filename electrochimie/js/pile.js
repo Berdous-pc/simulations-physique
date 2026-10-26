@@ -67,7 +67,7 @@ var R_INTERNE = 20;           // résistance interne de la cellule (Ω), surtout
 var R_LAMPE = 15;             // résistance de la lampe (Ω)
 var R_GENERATEUR = 10;        // résistance de protection du générateur (Ω)
 var P_NOMINALE = 0.03;        // puissance pour laquelle la lampe brille à fond (W)
-var TEMPS_ACCEL = 3600;       // secondes de fonctionnement par seconde d'animation, à ×1
+var TEMPS_ACCEL = 1800;       // secondes de fonctionnement par seconde d'animation, à ×1 (30 min/s)
 var I_REF = 0.03;             // intensité (A) des animations les plus rapides
 var ETA = 0.15;               // surtension d'une transformation forcée (V) : seuil d'électrolyse
 var E_FORCE = 0.005;          // f.é.m. en dessous de laquelle un sens est forcé (V)
@@ -754,35 +754,52 @@ function _couleursIons(C) {
   return { cation: couleurRGB(cat), anion: C.anion ? couleurRGB(ANIONS[C.anion].couleur) : null };
 }
 
-// Ions du montage (option migration) : quelques ions par compartiment,
-// répartis dans la solution, et des ions K⁺ / NO₃⁻ le long du pont salin
+// Bande d'un compartiment où les ions migrent : entre les électrodes
+// seulement (rien à gauche de l'électrode de gauche ni à droite de celle
+// de droite), et entre les parois du récipient
+function _zoneIons(c) {
+  var R = recipients()[c], w = enPac() ? P_PAC.ep : P_LAME_W;
+  return { a: Math.max(R.L + 1.6, lameX(0) + w / 2 + 1.4),
+           b: Math.min(R.R - 1.6, lameX(1) - w / 2 - 1.4) };
+}
+
+// Ions du montage (option migration), rangés pour qu'on suive bien leur
+// mouvement : dans chaque compartiment, des files horizontales
+// régulièrement espacées, cations et anions en files alternées (décalées
+// d'une demi-maille) ; dans le pont salin, une seule file sur l'axe du
+// tube, K⁺ et NO₃⁻ alternés au départ
+var N_FILES_IONS = 4;          // files d'ions dans chaque compartiment
+var PAS_IONS = 5.5;            // espacement des ions d'une file (unités de scène)
+var N_IONS_PONT = 8;           // K⁺ du pont (autant de NO₃⁻)
+
 function _tirerParticules() {
-  var alea = creerAlea(20261027);
   var R = recipients(), comps = [];
   for (var c = 0; c < R.length; c++) {
     var coul = _couleursIons(pile.comp[c]), liste = [];
-    var nb = deuxBechers() ? 14 : 24;
-    for (var k = 0; k < nb; k++) {
-      var cation = k % 2 === 0 || !coul.anion;
-      liste.push({
-        x: R[c].L + 1.6 + alea() * (R[c].R - R[c].L - 3.2),
-        y: P_SOL_TOP + 3 + alea() * (P_TABLE_Y - P_SOL_TOP - 5.5),
-        signe: cation ? 1 : -1,
-        rgb: cation ? coul.cation : coul.anion,
-        phi: alea() * 6.28
-      });
+    var Z = _zoneIons(c), larg = Z.b - Z.a;
+    var n = Math.max(2, Math.round(larg / PAS_IONS));
+    for (var j = 0; j < N_FILES_IONS; j++) {
+      var cation = j % 2 === 0 || !coul.anion;
+      for (var k = 0; k < n; k++) {
+        liste.push({
+          x: Z.a + (k + (j % 2 ? 0.5 : 0)) * larg / n,
+          y: P_SOL_TOP + 4.5 + j * 5.5,
+          signe: cation ? 1 : -1,
+          rgb: cation ? coul.cation : coul.anion
+        });
+      }
     }
     comps.push(liste);
   }
   var pont = [], L = _longueurPont();
-  for (k = 0; k < 16; k++) {
-    pont.push({
-      s: alea() * L,
-      d: (alea() - 0.5) * 1.1,          // écart à l'axe du tube
-      signe: k % 2 === 0 ? 1 : -1,
-      rgb: couleurRGB(k % 2 === 0 ? K_PONT.couleur : ANIONS.NO3.couleur),
-      phi: alea() * 6.28
-    });
+  for (j = 0; j < 2; j++) {
+    for (k = 0; k < N_IONS_PONT; k++) {
+      pont.push({
+        s: (k + (j ? 0.5 : 0)) * L / N_IONS_PONT,
+        signe: j ? -1 : 1,
+        rgb: couleurRGB(j ? ANIONS.NO3.couleur : K_PONT.couleur)
+      });
+    }
   }
   pile.particules = { comps: comps, pont: pont };
 }
@@ -911,7 +928,7 @@ function majPile(dtSim) {
   var v = sgn * f * V_ION_MACRO * dtSim;
   var P = pile.particules, R = recipients();
   for (var c = 0; c < R.length; c++) {
-    var a = R[c].L + 1.6, b = R[c].R - 1.6;
+    var Z = _zoneIons(c), a = Z.a, b = Z.b;
     for (var k = 0; k < P.comps[c].length; k++) {
       var p = P.comps[c][k];
       p.x += p.signe * v;
@@ -1481,31 +1498,37 @@ function majPontLevee(dtReel) {
 }
 
 // ── Petits ions du montage (option migration) ─────────────────────────
-function _petitIon(ctx, x, y, rgb, signe, alpha) {
+// Contour foncé pour qu'ils se détachent de la solution et du pont ; signe
+// blanc sur un ion foncé, foncé sur un ion clair
+function _petitIon(ctx, x, y, rgb, signe, alpha, r) {
   if (alpha <= 0) return;
-  var r = 1.05;
+  r = r || 1.2;
   ctx.fillStyle = rgbCss(rgb, alpha);
+  ctx.strokeStyle = 'rgba(30,40,55,' + (0.85 * alpha) + ')';
+  ctx.lineWidth = 0.3;
   ctx.beginPath();
   ctx.arc(x, y, r, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,' + alpha + ')';
-  ctx.lineWidth = 0.26;
+  ctx.stroke();
+  var clair = 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2] > 170;
+  ctx.strokeStyle = clair ? 'rgba(30,40,55,' + alpha + ')' : 'rgba(255,255,255,' + alpha + ')';
+  ctx.lineWidth = 0.3;
+  var s = 0.5 * r;
   ctx.beginPath();
-  ctx.moveTo(x - 0.5, y); ctx.lineTo(x + 0.5, y);
-  if (signe > 0) { ctx.moveTo(x, y - 0.5); ctx.lineTo(x, y + 0.5); }
+  ctx.moveTo(x - s, y); ctx.lineTo(x + s, y);
+  if (signe > 0) { ctx.moveTo(x, y - s); ctx.lineTo(x, y + s); }
   ctx.stroke();
 }
 
 function _dessinerIonsComps(ctx) {
   var R = recipients();
   for (var c = 0; c < R.length; c++) {
-    var a = R[c].L + 1.6, b = R[c].R - 1.6;
+    var Z = _zoneIons(c), a = Z.a, b = Z.b;
     var liste = pile.particules.comps[c];
     for (var k = 0; k < liste.length; k++) {
       var p = liste[k];
       var alpha = Math.max(0, Math.min(1, Math.min(p.x - a, b - p.x) / 2.5));
-      var y = p.y + 0.5 * Math.sin(pile.horloge * 1.3 + p.phi);
-      _petitIon(ctx, p.x, y, p.rgb, p.signe, alpha * 0.95);
+      _petitIon(ctx, p.x, p.y, p.rgb, p.signe, alpha);
     }
   }
 }
@@ -1515,9 +1538,9 @@ function _dessinerIonsPont(ctx) {
   for (var k = 0; k < liste.length; k++) {
     var q = liste[k];
     var P = _pointLigne(_CHEMIN_PONT, q.s);
-    var d = q.d + 0.15 * Math.sin(pile.horloge * 1.7 + q.phi);
     var alpha = Math.max(0, Math.min(1, Math.min(q.s, L - q.s) / 3));
-    _petitIon(ctx, P.x - P.ty * d, P.y + P.tx * d + decalagePont(), q.rgb, q.signe, alpha);
+    // Une seule file sur l'axe : K⁺ et NO₃⁻ se croisent en se superposant
+    _petitIon(ctx, P.x, P.y + decalagePont(), q.rgb, q.signe, alpha, 1.1);
   }
 }
 

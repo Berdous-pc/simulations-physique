@@ -509,10 +509,15 @@ function toggleEquationsPile() {
 // ── Mesures (mises à jour à chaque image, seulement si elles changent) ─
 var _mesuresAffichees = {};
 
+// Durée de fonctionnement (s) → « 1 h 05 min » ou « 25 min »
+function formatDuree(t) {
+  var h = Math.floor(t / 3600), mn = Math.floor((t % 3600) / 60);
+  return h > 0 ? h + ' h ' + (mn < 10 ? '0' : '') + mn + ' min' : mn + ' min';
+}
+
 function _majMesures(force) {
-  var h = Math.floor(pile.t / 3600), mn = Math.floor((pile.t % 3600) / 60);
   var valeurs = {
-    'ro-duree': h > 0 ? h + ' h ' + (mn < 10 ? '0' : '') + mn + ' min' : mn + ' min',
+    'ro-duree': formatDuree(pile.t),
     'ro-intensite': formatNombre(pile.I * 1000, 1) + ' mA',
     'ro-charge': Math.round(pile.Q).toLocaleString('fr-FR') + ' C'
   };
@@ -738,7 +743,21 @@ function _dessiner() {
   } else {
     dessinerMontage(ctx);
     dessinerLoupePile(ctx);
+    _dessinerChrono(ctx);
   }
+}
+
+// Chronomètre « Δt = … » en haut à gauche de la zone d'animation (px CSS) :
+// durée de fonctionnement du montage, comme dans le panneau
+function _dessinerChrono(ctx) {
+  var taille = Math.max(26, 6.4 * dispP.k);
+  ctx.save();
+  ctx.font = '600 ' + taille.toFixed(1) + 'px "Segoe UI", Arial, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = '#2c3e50';
+  ctx.fillText('Δt = ' + formatDuree(pile.t), 10, 8);
+  ctx.restore();
 }
 
 // ══════════════════════════════════════════════════════════════════════
