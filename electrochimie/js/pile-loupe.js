@@ -65,7 +65,20 @@ var PL_ECART_E    = 0.25;         // entre les départs de deux électrons (s)
 var PL_X_SORTIE   = 1.5;          // colonne par laquelle les électrons rejoignent le fil
 var PL_FRONT_MIN  = 3, PL_FRONT_MAX = 6;   // bornes de la surface avant que la vue la suive
 var PL_V_DERIVE   = 0.75;         // dérive des ions de la solution à I_REF (cases/s)
-var PL_V_FIL      = 1.4;          // dérive des électrons du fil à I_REF (cases/s)
+var PL_V_FIL      = 3.0;          // dérive des électrons du fil à I_REF, ancienne loi (cases/s)
+// Pont, membrane et fil : dérive nettement plus forte que l'agitation, pour
+// que le sens d'ensemble se lise (choix de l'utilisateur), agitation
+// presque inchangée pour que les particules restent vives
+var PL_V_PONT     = 2.0;          // dérive des ions du pont (ou de la membrane) à I_REF, ancienne loi (cases/s)
+var PL_AGIT_PONT  = 0.75;         // agitation des ions du pont (1 : celle des solutions)
+var PL_AGIT_FIL   = 1.7;          // agitation des électrons du fil
+// Dérive du pont et du fil : la vitesse à 1,1 mA est celle qu'on avait à
+// 9,1 mA (choix de l'utilisateur) : même loi en racine du courant, mais
+// rapportée à PL_I_DERIVE = I_REF × 1,1 / 9,1 ≈ 3,6 mA ; plafond doux
+// (la vitesse tend vers PL_VMAX_PONT, PL_VMAX_FIL aux forts courants)
+var PL_I_DERIVE   = I_REF * 1.1 / 9.1;
+var PL_VMAX_PONT  = 4.0;          // cases/s
+var PL_VMAX_FIL   = 6.0;
 var PL_T_GLISSE   = 0.8;          // durée du glissement de la vue (s)
 var PL_N_BULLE    = 3;            // molécules de gaz d'une bulle avant qu'elle se détache
 var PL_V_BULLE    = 1.6;          // montée d'une bulle détachée (cases/s)
@@ -1072,12 +1085,19 @@ function _avancerElectrons(cy) {
 }
 
 // ── Pont salin (ou membrane) ──────────────────────────────────────────
+// Vitesse de dérive du pont et du fil (cases/s) : V × racine(I / PL_I_DERIVE),
+// adoucie par une tangente hyperbolique pour tendre vers vMax
+function _vitesseDerive(V, vMax) {
+  var v = V * Math.sqrt(Math.abs(pile.I) / PL_I_DERIVE), e = Math.exp(-2 * v / vMax);
+  return vMax * (1 - e) / (1 + e);
+}
+
 function _majPont(dt) {
-  var d = _signeI() * PL_V_DERIVE * 1.3 * facteurCourant();
+  var d = _signeI() * _vitesseDerive(PL_V_PONT, PL_VMAX_PONT);
   var h = enPac() ? 0.4 : 2.2, bas = enPac() ? 10.6 : 8.8;
   for (var i = 0; i < ploupe.fond.length; i++) {
     var f = ploupe.fond[i];
-    _agiter(f, dt, 1);
+    _agiter(f, dt, PL_AGIT_PONT);
     f.u += (f.vu + (f.type === 'cation' ? d : -d)) * dt;
     f.v += f.vv * dt;
     if (f.v < h + f.r) { f.v = h + f.r; f.vv = Math.abs(f.vv); }
@@ -1092,10 +1112,10 @@ function _majPont(dt) {
 // d'ensemble quand le courant passe (vers la droite si I > 0 : la zone
 // est sur le fil qui part de l'électrode de gauche)
 function _majFil(dt) {
-  var d = _signeI() * PL_V_FIL * facteurCourant();
+  var d = _signeI() * _vitesseDerive(PL_V_FIL, PL_VMAX_FIL);
   for (var i = 0; i < ploupe.fond.length; i++) {
     var f = ploupe.fond[i];
-    _agiter(f, dt, 2.2);
+    _agiter(f, dt, PL_AGIT_FIL);
     f.u += (f.vu + d) * dt;
     f.v += f.vv * dt;
     if (f.v < 2.7) { f.v = 2.7; f.vv = Math.abs(f.vv); }
