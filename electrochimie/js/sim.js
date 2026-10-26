@@ -76,7 +76,17 @@ var METAUX = {
   C:  { sym: 'C', nom: 'graphite', de: 'de graphite', le: 'le graphite', du: 'du graphite', inerte: true,
         atome: '#4b4f56', depot: 'gris' },
   Pt: { sym: 'Pt', nom: 'platine', de: 'de platine', le: 'le platine', du: 'du platine', inerte: true,
-        atome: '#cfd3d8', depot: 'gris' }
+        atome: '#cfd3d8', depot: 'gris' },
+
+  // Solides de l'accumulateur au plomb (plaque positive, sulfate formé sur
+  // les deux plaques) : jamais oxydés comme un métal ; formule écrite dans
+  // la loupe et les équations
+  PbO2:  { sym: 'PbO2', nom: 'dioxyde de plomb', de: 'de dioxyde de plomb', le: 'le dioxyde de plomb',
+           du: 'du dioxyde de plomb', inerte: true, formule: 'PbO₂', formuleHTML: 'PbO<sub>2</sub>',
+           atome: '#6b4330', depot: 'gris' },
+  PbSO4: { sym: 'PbSO4', nom: 'sulfate de plomb', de: 'de sulfate de plomb', le: 'le sulfate de plomb',
+           du: 'du sulfate de plomb', inerte: true, formule: 'PbSO₄', formuleHTML: 'PbSO<sub>4</sub>',
+           atome: '#ecebe2', depot: 'gris' }
 };
 
 // Ordre d'affichage dans les listes : du réducteur le plus fort au plus faible

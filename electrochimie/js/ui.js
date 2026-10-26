@@ -262,7 +262,7 @@ function _remplirListesPile() {
 // Recopie l'état de la pile dans les listes et les curseurs ; adapte le
 // panneau au montage (deux béchers, cuve unique, pile à combustible)
 function _synchroniserPanneauPile() {
-  var deux = deuxBechers(), cuve = enCuve(), pac = enPac();
+  var deux = deuxBechers(), cuve = enCuve(), pac = enPac(), plomb = enPlomb();
   document.getElementById('sel-experience').value = pile.experience;
   document.getElementById('bloc-demi-piles').style.display = deux ? '' : 'none';
   document.getElementById('bloc-cuve').style.display = cuve ? '' : 'none';
@@ -276,20 +276,27 @@ function _synchroniserPanneauPile() {
     document.getElementById('sel-elec-droite').value = pile.metaux[1];
   }
   var lc = document.getElementById('lbl-cuve');
-  lc.style.display = pac ? '' : 'none';
+  lc.style.display = pac || plomb ? '' : 'none';
   if (pac) {
     lc.innerHTML = 'Électrodes de platine poreuses, alimentées en continu en dihydrogène (à gauche) et en ' +
                    'dioxygène (à droite), séparées par un électrolyte acide (membrane échangeuse de protons).';
+  } else if (plomb) {
+    lc.innerHTML = 'Plaque de plomb (Pb, à gauche) et plaque de dioxyde de plomb (PbO<sub>2</sub>, à droite) ' +
+                   'dans l’acide sulfurique (2 H<sup>+</sup> + SO<sub>4</sub><sup>2−</sup>). ' +
+                   (pile.plombEtat === 'charge' ? 'Accumulateur chargé au départ.'
+                                                : 'Accumulateur déchargé au départ : sulfate de plomb sur les plaques.');
   }
   ['gauche', 'droite'].forEach(function (cote, i) {
     document.getElementById('sl-c-' + cote).value = pile.iC0[i];
     document.getElementById('lbl-c-' + cote).textContent = _formatC0(concInitiale(i));
   });
   document.getElementById('titre-c-gauche').textContent = cuve ? 'Concentration de la solution' : 'Concentration à gauche';
-  document.getElementById('row-c-gauche').style.display = pac ? 'none' : '';
+  document.getElementById('row-c-gauche').style.display = pac || plomb ? 'none' : '';
   document.getElementById('row-c-droite').style.display = deux ? '' : 'none';
   document.getElementById('lbl-parametres').textContent = pac
     ? 'Pile à combustible : électrolyte de concentration fixée ([H⁺] = 1 mol/L).'
+    : plomb
+    ? 'Accumulateur : acide sulfurique à 2 mol/L une fois chargé (100 mL), 0,05 mol de matière active par plaque.'
     : 'Concentration du cation (métal), du soluté (chlorure, sulfate de sodium) ou des ions H⁺ (acide). ' +
       'Volume de chaque solution : 100 mL. Un changement remet l’expérience à zéro.';
   document.getElementById('sel-dipole').value = pile.dipole;
@@ -307,6 +314,7 @@ function _experienceCorrespondante() {
     var X = EXPERIENCES[ORDRE_EXPERIENCES[i]], bac = X.bac || 'deux';
     if (!X.g || bac !== pile.bac) continue;
     if (bac === 'pac') return ORDRE_EXPERIENCES[i];
+    if (bac === 'plomb') { if (X.etat === pile.plombEtat) return ORDRE_EXPERIENCES[i]; continue; }
     if (bac === 'un' && X.solution !== pile.solution) continue;
     if (X.g === pile.metaux[0] && X.d === pile.metaux[1] && X.cg === pile.iC0[0] &&
         (bac === 'un' || X.cd === pile.iC0[1])) {
@@ -323,6 +331,7 @@ function onSelectExperience(v) {
     pile.metaux = [X.g, X.d];
     pile.iC0 = [X.cg, X.cd];
     if (X.solution) pile.solution = X.solution;
+    if (X.etat) pile.plombEtat = X.etat;
   } else if (pile.bac !== bacAvant) {
     // Montage libre d'un autre type : réglages de départ
     if (enCuve()) { pile.solution = 'Cu'; pile.metaux = ['C', 'C']; pile.iC0 = [3, 3]; }
@@ -381,7 +390,8 @@ function _majLibellesPile() {
         : 'Lame ' + METAUX[cle].de + ' dans ' + ionHTML(cle) + ' + ' + anionHTML(S.anion);
     }
     // Boutons de la loupe : nommés par l'électrode, sauf si c'est la même des deux côtés
-    var nom = enPac() ? (i === 0 ? 'H₂' : 'O₂') : G ? ESPECES[G.gaz].txt : METAUX[pile.lames[i].sym].sym;
+    var M = METAUX[pile.lames[i].sym];
+    var nom = enPac() ? (i === 0 ? 'H₂' : 'O₂') : G ? ESPECES[G.gaz].txt : M.formule || M.sym;
     var memes = !enPac() && pile.metaux[0] === pile.metaux[1];
     document.getElementById('zone-' + cote).textContent = memes ? 'Électrode ' + cote : 'Électrode ' + nom;
   });
@@ -465,7 +475,7 @@ function _majSeuil() {
 // ── Loupe ─────────────────────────────────────────────────────────────
 function setZonePile(z) {
   if (z === pile.zone) return;          // un clic sur la zone déjà vue ne remet pas la loupe à zéro
-  if (z === 'pont' && enCuve()) return;
+  if (z === 'pont' && sansPont()) return;
   pile.zone = z;
   _majBoutonsZones();
   resetLoupePile();
@@ -475,12 +485,12 @@ function setZonePile(z) {
 // Boutons des zones : zone active, pont salin indisponible dans la cuve,
 // membrane à sa place dans la pile à combustible
 function _majBoutonsZones() {
-  if (pile.zone === 'pont' && enCuve()) pile.zone = 'gauche';
+  if (pile.zone === 'pont' && sansPont()) pile.zone = 'gauche';
   ['gauche', 'droite', 'pont', 'fil'].forEach(function (n) {
     var b = document.getElementById('zone-' + n);
     b.classList.toggle('active', n === pile.zone);
     if (n === 'pont') {
-      b.disabled = enCuve();
+      b.disabled = sansPont();
       b.textContent = enPac() ? 'Membrane' : 'Pont salin';
     }
   });
@@ -604,7 +614,10 @@ function _equationsPileHTML() {
     forcee = false;
   } else {
     return '<div class="eq-rien">Aucune tension entre les électrodes.' +
-      '<span class="eq-sous">' + (deuxBechers()
+      '<span class="eq-sous">' + (enPlomb()
+        ? 'Accumulateur déchargé : les plaques sont couvertes de sulfate de plomb. Il se recharge avec un ' +
+          'générateur, borne + reliée à la plaque de dioxyde de plomb.'
+        : deuxBechers()
         ? 'Même couple et mêmes concentrations des deux côtés (ou pile usée) : la pile ne peut pas débiter.'
         : 'Les deux électrodes ne forment pas une pile : seul un générateur peut forcer une transformation.') +
       '</span></div>';

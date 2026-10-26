@@ -88,7 +88,7 @@ var ploupe = {
 
 function resetLoupePile() {
   var i, r;
-  if (pile.zone === 'pont' && enCuve()) pile.zone = 'gauche';
+  if (pile.zone === 'pont' && sansPont()) pile.zone = 'gauche';
   ploupe.zone = pile.zone;
   ploupe.rangs = []; ploupe.occupe = [];
   ploupe.offX = 0;
@@ -103,12 +103,20 @@ function resetLoupePile() {
     // Réseau : matériau de l'électrode, et une ou deux colonnes du dépôt s'il y en a
     var e = _indiceElectrode(), lame = pile.lames[e].sym;
     var nDep = depotTotal(e) > 0.01 ? 2 : depotTotal(e) > 1e-4 ? 1 : 0;
+    // Accumulateur : plaque poreuse, mailles de sulfate de plomb dans la
+    // proportion du modèle, plus nombreuses vers la surface
+    var P = pile.lames[e].plomb, fs = P ? P.s / (P.n + P.s) : 0;
     for (r = 0; r < NR; r++) {
       var ligne = [];
-      for (i = 0; i < COL_INIT; i++) ligne.push(i < COL_INIT - nDep ? lame : surfaceLame(e));
+      for (i = 0; i < COL_INIT; i++) {
+        var sym = i < COL_INIT - nDep ? lame : surfaceLame(e);
+        if (P && Math.random() < fs * (0.6 + 0.8 * i / (COL_INIT - 1))) sym = 'PbSO4';
+        ligne.push(sym);
+      }
       ploupe.rangs.push(ligne);
       ploupe.occupe.push(false);
     }
+    _completerBords();
     // Ions de la solution selon sa composition
     var pop = _populationSolution(compElectrode(e));
     _repartir(pop.cations, PL_N_CATIONS, 'cation', R_ION);
@@ -149,7 +157,7 @@ function _populationSolution(c) {
   }
   if (concH(c) > 1e-3) cat.push(['H', concH(c)]);
   if (C.spect) cat.push([C.spect, C.nSpect / P_VOLUME]);
-  if (C.anion && C.anion !== 'Cl') an.push([C.anion, concInitiale(c)]);
+  if (C.anion && C.anion !== 'Cl') an.push([C.anion, C.so4 !== undefined ? concSO4(c) : concInitiale(c)]);
   if (SOLUTIONS[C.sol].chlorure) an.push(['Cl', concCl(c)]);
   if (concOH(c) > 1e-3) an.push(['OH', concOH(c)]);
   return { cations: cat, anions: an };
@@ -417,6 +425,7 @@ function _particuleEspece(cle) {
   if (cle === 'H+') return { k: 'cation', sym: 'H', r: R_ION };
   if (cle === 'HO-') return { k: 'anion', sym: 'OH', r: R_ANION };
   if (cle === 'Cl-') return { k: 'anion', sym: 'Cl', r: R_ANION };
+  if (cle === 'SO42-') return { k: 'anion', sym: 'SO4', r: R_ANION };
   return { k: 'mol', sym: cle, r: cle === 'H2O' ? 0.42 : cle === 'H2' ? 0.42 : cle === 'O2' ? 0.55 : 0.62 };
 }
 
@@ -424,30 +433,61 @@ function _particuleEspece(cle) {
 // lignes voisines libres ; les produits se forment au même endroit
 function _cycleGaz(reac) {
   var e = _indiceElectrode(), d = demiEquation(reac, compElectrode(e));
-  var R = [], P = [], k, r;
-  d.gauche.forEach(function (p) { for (var j = 0; j < p[0]; j++) R.push(_particuleEspece(p[1])); });
-  d.droite.forEach(function (p) { for (var j = 0; j < p[0]; j++) P.push(_particuleEspece(p[1])); });
+  // Solides de la demi-équation ('M:…', accumulateur) : une maille du
+  // réseau qui se transforme sur place ; les autres espèces viennent de la
+  // solution ou y partent
+  var R = [], P = [], k, r, avant = null, apres = null;
+  d.gauche.forEach(function (p) {
+    if (p[1].charAt(1) === ':') { avant = p[1].slice(2); return; }
+    for (var j = 0; j < p[0]; j++) R.push(_particuleEspece(p[1]));
+  });
+  d.droite.forEach(function (p) {
+    if (p[1].charAt(1) === ':') { apres = p[1].slice(2); return; }
+    for (var j = 0; j < p[0]; j++) P.push(_particuleEspece(p[1]));
+  });
 
   // Hauteur du cycle : lignes libres sur toute la hauteur occupée
-  var span = (Math.max(R.length, P.length) - 1) * PL_ECART_V, vc = -1, r0 = 0, r1 = 0;
-  for (var essai = 0; essai < 25 && vc < 0; essai++) {
-    var v0 = 1.2 + span / 2 + Math.random() * (NR - 2.4 - span);
-    r0 = Math.max(0, Math.floor(v0 - span / 2 - 0.45));
-    r1 = Math.min(NR - 1, Math.floor(v0 + span / 2 + 0.45));
-    var libre = true;
-    for (r = r0; r <= r1; r++) if (ploupe.occupe[r]) libre = false;
-    if (libre) vc = v0;
+  var span = (Math.max(R.length, P.length, 1) - 1) * PL_ECART_V, vc = -1, r0 = 0, r1 = 0, maille = null;
+  var bornes = function (v) {
+    r0 = Math.max(0, Math.floor(v - span / 2 - 0.45));
+    r1 = Math.min(NR - 1, Math.floor(v + span / 2 + 0.45));
+    for (var q = r0; q <= r1; q++) if (ploupe.occupe[q]) return false;
+    return true;
+  };
+  if (avant) {
+    // Maille à transformer : la plus proche de la surface (la plaque est
+    // poreuse : l'acide atteint aussi les mailles plus profondes)
+    var cands = [];
+    for (r = 1; r < NR - 1; r++) {
+      var L = ploupe.rangs[r];
+      for (var c = L.length - 1; c >= 0; c--) {
+        if (L[c] === avant) { cands.push({ r: r, c: c, prof: L.length - 1 - c + Math.random() * 0.9 }); break; }
+      }
+    }
+    cands.sort(function (a, b) { return a.prof - b.prof; });
+    for (k = 0; k < cands.length && !maille; k++) {
+      var vm = Math.max(0.6 + span / 2, Math.min(NR - 0.6 - span / 2, cands[k].r + 0.5));
+      if (bornes(vm) && !ploupe.occupe[cands[k].r]) { maille = cands[k]; vc = vm; }
+    }
+    if (!maille) return null;
+    r0 = Math.min(r0, maille.r); r1 = Math.max(r1, maille.r);
+  } else {
+    for (var essai = 0; essai < 25 && vc < 0; essai++) {
+      var v0 = 1.2 + span / 2 + Math.random() * (NR - 2.4 - span);
+      if (bornes(v0)) vc = v0;
+    }
   }
   if (vc < 0) return null;
   for (r = r0; r <= r1; r++) ploupe.occupe[r] = true;
 
   var cy = { type: 'gaz', ox: reac.ox, phase: 'approche', t: 0, r0: r0, r1: r1, vc: vc,
-             reactifs: [], produits: [], electrons: [], gaz: gazDegage(reac) };
+             reactifs: [], produits: [], electrons: [], gaz: gazDegage(reac),
+             maille: maille ? { r: maille.r, c: maille.c, avant: avant, apres: apres } : null };
   var contre = function (v, rayon) {
     return { u: _bordMetal(v) - 0.5 + R_ATOME + rayon + 0.03, v: v };
   };
   for (k = 0; k < R.length; k++) {
-    var p = R[k], v = vc + (k - (R.length - 1) / 2) * PL_ECART_V;
+    var p = R[k], v = Math.max(0.6, Math.min(NR - 0.6, vc + (k - (R.length - 1) / 2) * PL_ECART_V));
     var cible = contre(v, p.r), dep, fondu = false;
     var io = p.k === 'mol' ? null : _prendreIon(p.k, p.sym, cible);
     if (io) dep = { u: io.u, v: io.v };
@@ -462,9 +502,16 @@ function _cycleGaz(reac) {
   }
   // Électrons : de chaque réactif vers le fil (oxydation), ou du fil vers
   // eux (réduction), à travers l'électrode
+  // (accumulateur : c'est la maille qui cède ou reçoit les électrons)
   for (k = 0; k < d.n; k++) {
-    var s = cy.reactifs[k % cy.reactifs.length], ve = s.cible.v;
-    var ch = [{ u: s.cible.u, v: ve }, { u: _bordMetal(ve) - 0.5, v: ve }, { u: PL_X_SORTIE, v: ve }, { u: PL_X_SORTIE, v: -1.5 }];
+    var ch;
+    if (cy.maille) {
+      var vm2 = cy.maille.r + 0.5;
+      ch = [{ u: cy.maille.c + 0.5, v: vm2 }, { u: PL_X_SORTIE, v: vm2 }, { u: PL_X_SORTIE, v: -1.5 }];
+    } else {
+      var s = cy.reactifs[k % cy.reactifs.length], ve = s.cible.v;
+      ch = [{ u: s.cible.u, v: ve }, { u: _bordMetal(ve) - 0.5, v: ve }, { u: PL_X_SORTIE, v: ve }, { u: PL_X_SORTIE, v: -1.5 }];
+    }
     if (!reac.ox) ch.reverse();
     cy.electrons.push({ chemin: ch, depart: k * PL_ECART_E, s: 0 });
   }
@@ -492,6 +539,11 @@ function _majCycleGaz(cy, dt) {
   } else if (cy.phase === 'transfo') {
     if (cy.t >= PL_D_TRANSFO) {
       cy.phase = 'depart'; cy.t = 0;
+      // La maille transformée fait désormais partie du réseau
+      if (cy.maille) {
+        ploupe.rangs[cy.maille.r][cy.maille.c] = cy.maille.apres;
+        _completerBords();
+      }
       // Bulle où vont les molécules de gaz formées
       if (cy.gaz && !ploupe.bulle) {
         ploupe.bulle = { v: Math.max(0.9, Math.min(NR - 0.9, cy.vc - 1.2)), n: 0, gaz: cy.gaz };
@@ -790,7 +842,7 @@ function _dessinerElectrodeL(ctx) {
   for (r = 0; r < NR; r++) {
     for (c = -2; c < _front(r); c++) {
       if (_atomeEnCycle(r, c)) continue;
-      _dessinerAtome(ctx, _mx(c + 0.5 + ploupe.offX), r + 0.5, c < 0 ? lame : ploupe.rangs[r][c], 1);
+      _dessinerAtomeP(ctx, _mx(c + 0.5 + ploupe.offX), r + 0.5, c < 0 ? lame : ploupe.rangs[r][c], 1);
     }
   }
 
@@ -806,12 +858,26 @@ function _dessinerElectrodeL(ctx) {
 }
 
 // Atome de la lame dessiné par son cycle (anode, avant son départ)
+// (accumulateur : maille qui se transforme)
 function _atomeEnCycle(r, c) {
   for (var i = 0; i < ploupe.cycles.length; i++) {
     var cy = ploupe.cycles[i];
     if (cy.type === 'anode' && cy.phase !== 'depart' && cy.r === r && cy.c === c) return true;
+    if (cy.maille && cy.phase !== 'depart' && cy.maille.r === r && cy.maille.c === c) return true;
   }
   return false;
+}
+
+// Atome du réseau, ou maille d'un solide écrit par sa formule (PbO₂, PbSO₄)
+function _dessinerAtomeP(ctx, x, y, sym, alpha) {
+  var M = METAUX[sym];
+  if (!M.formule) { _dessinerAtome(ctx, x, y, sym, alpha); return; }
+  var rgb = couleurRGB(M.atome);
+  _sphere(ctx, x, y, R_ATOME, rgb, alpha);
+  ctx.strokeStyle = rgbCss(nuance(rgb, -0.45), alpha * 0.8);
+  ctx.lineWidth = 0.03;
+  ctx.stroke();
+  _etiquette(ctx, x, y, M.formule, M.formule.length > 4 ? 0.21 : 0.27, rgb, alpha);
 }
 
 function _dessinerCycleP(ctx, cy, pulse) {
@@ -852,6 +918,13 @@ function _dessinerCycleP(ctx, cy, pulse) {
 function _dessinerCycleGaz(ctx, cy, pulse) {
   var k, coul = cy.ox ? COUL_OX : COUL_RED;
   var fondu = cy.phase === 'transfo' ? _lisse(cy.t / PL_D_TRANSFO) : cy.phase === 'depart' ? 1 : 0;
+  // Maille de l'accumulateur : signalée, puis fondu vers le solide formé
+  if (cy.maille && cy.phase !== 'depart') {
+    var xm = _mx(cy.maille.c + 0.5 + ploupe.offX), ym = cy.maille.r + 0.5;
+    if (cy.phase !== 'approche') _halo(ctx, xm, ym, R_ATOME, coul, 0.9 * (1 - fondu), pulse);
+    _dessinerAtomeP(ctx, xm, ym, cy.maille.avant, 1);
+    if (fondu > 0) _dessinerAtomeP(ctx, xm, ym, cy.maille.apres, fondu);
+  }
   if (fondu < 1) {
     for (k = 0; k < cy.reactifs.length; k++) {
       var a = cy.reactifs[k], x = _mx(a.u);

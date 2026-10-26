@@ -17,7 +17,10 @@
 //    - une cuve unique avec deux électrodes (métal, graphite ou platine)
 //      dans la même solution : électrolyses ;
 //    - la pile à combustible : électrodes de platine alimentées en
-//      dihydrogène et en dioxygène, séparées par un électrolyte acide.
+//      dihydrogène et en dioxygène, séparées par un électrolyte acide ;
+//    - l'accumulateur au plomb : plaque de plomb (−) et plaque de dioxyde
+//      de plomb (+) dans l'acide sulfurique ; le sulfate de plomb se forme
+//      sur les deux plaques à la décharge et disparaît à la charge.
 //  Entre les deux électrodes, le circuit extérieur au choix : rien, un
 //  voltmètre, un ampèremètre + une résistance, + une lampe ou + un
 //  générateur de tension réglable (avec interrupteur).
@@ -79,12 +82,21 @@ var E0_CL2 = 1.36;            // Cl₂/Cl⁻
 // avant l'eau : exception codée (en réalité, forte surtension de O₂)
 var C_CL_PRIORITE = 0.01;
 
+// Accumulateur au plomb : couples PbSO₄/Pb et PbO₂/PbSO₄ (V), matière
+// active de chaque plaque (mol), acide sulfurique de l'accumulateur chargé
+// (mol/L ; [H⁺] = 2c, [SO₄²⁻] = c)
+var E0_PBSO4 = -0.356;
+var E0_PBO2 = 1.685;
+var N_PLAQUE = 0.05;
+var C_ACIDE_PLOMB = 2.0;
+
 // Surtensions des couples gazeux (V) selon la surface de l'électrode :
 // platine, graphite, ou un métal (forte pour H₂ : c'est ce qui permet de
 // déposer du zinc plutôt que de réduire l'eau)
 var ETA_GAZ = {
   H2:    { Pt: 0.05, C: 0.25, metal: 0.50 },   // dégagement de dihydrogène
-  O2:    { Pt: 0.30, C: 0.35, metal: 0.40 },   // dégagement de dioxygène
+  O2:    { Pt: 0.30, C: 0.35, PbO2: 0.60, metal: 0.40 },   // dégagement de dioxygène (forte sur PbO₂ : la
+                                               // charge de l'accumulateur passe avant)
   Cl2:   { metal: 0.10 },                      // dégagement de dichlore
   H2ox:  { metal: 0.05 },                      // dihydrogène consommé (pile)
   O2red: { metal: 0.30 }                       // dioxygène consommé (pile)
@@ -127,7 +139,8 @@ var SOLUTIONS = {
   NaCl:   { nom: 'chlorure de sodium', court: 'NaCl', spect: 'Na', nSpect: 1, chlorure: true, anion: 'Cl' },
   Na2SO4: { nom: 'sulfate de sodium', court: 'Na₂SO₄', spect: 'Na', nSpect: 2, anion: 'SO4' },
   H2SO4:  { nom: 'acide sulfurique', court: 'H₂SO₄', acide: true, anion: 'SO4' },
-  PAC:    { nom: 'électrolyte acide (membrane échangeuse de protons)', acide: true, anion: null }
+  PAC:    { nom: 'électrolyte acide (membrane échangeuse de protons)', acide: true, anion: null },
+  PLOMB:  { nom: 'acide sulfurique', court: 'H₂SO₄', sulfurique: true, anion: 'SO4' }   // [H⁺] = 2c, [SO₄²⁻] = c
 };
 ORDRE_METAUX.forEach(function (sym) {
   var M = METAUX[sym];
@@ -170,6 +183,8 @@ var EXPERIENCES = {
   'h2-cu':     { groupe: 'Piles', nom: 'Pile dihydrogène – cuivre', g: 'H2', d: 'Cu', cg: 4, cd: 2 },
   'pac':       { groupe: 'Piles', nom: 'Pile à combustible (dihydrogène – dioxygène)', bac: 'pac',
                  g: 'H2', d: 'O2', cg: 4, cd: 4, dipole: 'resistance', iR: 3 },
+  'plomb-decharge': { groupe: 'Piles', nom: 'Accumulateur au plomb (décharge)', bac: 'plomb', etat: 'charge',
+                 g: 'Pb', d: 'PbO2', cg: 4, cd: 4, dipole: 'lampe' },
   'recharge':  { groupe: 'Électrolyses', nom: 'Recharge de la pile Daniell', g: 'Zn', d: 'Cu', cg: 2, cd: 2,
                  dipole: 'generateur', iU: 32, polarite: 1 },
   'affinage':  { groupe: 'Électrolyses', nom: 'Affinage du cuivre (anode soluble)', bac: 'un', solution: 'Cu',
@@ -182,11 +197,14 @@ var EXPERIENCES = {
                  g: 'C', d: 'C', cg: 3, cd: 3, dipole: 'generateur', iU: 32, polarite: -1 },
   'nacl':      { groupe: 'Électrolyses', nom: 'Électrolyse du chlorure de sodium', bac: 'un', solution: 'NaCl',
                  g: 'C', d: 'C', cg: 4, cd: 4, dipole: 'generateur', iU: 60, polarite: -1 },
+  'plomb-charge': { groupe: 'Électrolyses', nom: 'Charge de l’accumulateur au plomb', bac: 'plomb', etat: 'decharge',
+                 g: 'Pb', d: 'PbO2', cg: 4, cd: 4, dipole: 'generateur', iU: 54, polarite: 1 },
   'libre':     { groupe: '', nom: 'Montage libre (deux béchers)' },
   'libre-cuve': { groupe: '', nom: 'Électrolyse libre (cuve)', bac: 'un' }
 };
-var ORDRE_EXPERIENCES = ['daniell', 'cu-ag', 'fe-cu', 'zn-pb', 'conc-cu', 'h2-cu', 'pac',
-                         'recharge', 'affinage', 'zingage', 'eau', 'cuso4', 'nacl', 'libre', 'libre-cuve'];
+var ORDRE_EXPERIENCES = ['daniell', 'cu-ag', 'fe-cu', 'zn-pb', 'conc-cu', 'h2-cu', 'pac', 'plomb-decharge',
+                         'recharge', 'affinage', 'zingage', 'eau', 'cuso4', 'nacl', 'plomb-charge',
+                         'libre', 'libre-cuve'];
 
 // ══════════════════════════════════════════════════════════════════════
 //  Géométrie du montage, en unités logiques (repère 140 × 102)
@@ -226,7 +244,9 @@ var N_BULLES_S = 16;                      // bulles par seconde à I_REF, pour u
 
 var pile = {
   experience: 'daniell',
-  bac: 'deux',               // 'deux' : deux béchers + pont salin ; 'un' : cuve unique ; 'pac' : pile à combustible
+  bac: 'deux',               // 'deux' : deux béchers + pont salin ; 'un' : cuve unique ; 'pac' : pile à combustible ;
+                             // 'plomb' : accumulateur au plomb
+  plombEtat: 'charge',       // accumulateur au départ : 'charge' ou 'decharge'
   metaux: ['Zn', 'Cu'],      // demi-piles (deux béchers) ou électrodes (cuve) de gauche et de droite
   solution: 'Cu',            // cuve unique : clé de SOLUTIONS
   iC0: [2, 2],               // crans des concentrations initiales
@@ -245,7 +265,8 @@ var pile = {
 
   // ── Grandeurs ──
   comp: [],                  // compartiments : { n: {sym: mol} (cations métalliques), h, cl, spect, nSpect, anion, nom, sym0, sol }
-  lames: [],                 // { sym (métal, C ou Pt), reste (mol de métal), depots: [{sym, n}] (dernier = surface), gaz (amené) }
+  lames: [],                 // { sym (métal, C ou Pt), reste (mol de métal), depots: [{sym, n}] (dernier = surface), gaz (amené),
+                             //   plomb (accumulateur : { n matière active Pb ou PbO₂, s PbSO₄ } en mol) }
   gaz: [],                   // par électrode : { H2, O2, Cl2 } (mol), > 0 dégagé, < 0 consommé
   t: 0,                      // durée de fonctionnement (s, temps accéléré)
   Q: 0,                      // quantité d'électricité (C)
@@ -269,6 +290,9 @@ var pile = {
 function deuxBechers() { return pile.bac === 'deux'; }
 function enCuve() { return pile.bac === 'un'; }
 function enPac() { return pile.bac === 'pac'; }
+function enPlomb() { return pile.bac === 'plomb'; }
+// Cuve sans pont salin ni membrane (électrolyses, accumulateur)
+function sansPont() { return enCuve() || enPlomb(); }
 function lameX(i) { return deuxBechers() ? P_LAME_X_DEUX[i] : enPac() ? P_LAME_X_PAC[i] : P_LAME_X_UN[i]; }
 function compElectrode(i) { return deuxBechers() ? i : 0; }
 function pontPresent() { return deuxBechers() && pile.pont; }
@@ -277,8 +301,8 @@ function pontPresent() { return deuxBechers() && pile.pont; }
 // à combustible : l'électrolyte, entre les deux électrodes.
 function recipients() {
   if (enPac()) return [{ L: P_LAME_X_PAC[0] + P_PAC.ep / 2, R: P_LAME_X_PAC[1] - P_PAC.ep / 2, bec: 0 }];
-  return enCuve() ? [{ L: 34, R: 106, bec: 0 }]
-                  : [{ L: 23, R: 53, bec: -1 }, { L: 87, R: 117, bec: 1 }];
+  return deuxBechers() ? [{ L: 23, R: 53, bec: -1 }, { L: 87, R: 117, bec: 1 }]
+                       : [{ L: 34, R: 106, bec: 0 }];
 }
 
 // Tube d'arrivée du gaz d'une demi-pile gazeuse (deux béchers) : à côté
@@ -310,6 +334,32 @@ function concH(c) {
 function pH(c) { return -Math.log(concH(c)) / Math.LN10; }
 function concOH(c) { return KE / concH(c); }
 function concCl(c) { return Math.max(0, pile.comp[c].cl) / P_VOLUME; }
+// Ions sulfate de l'accumulateur (concentration de l'acide sulfurique)
+function concSO4(c) { return Math.max(0, pile.comp[c].so4 || 0) / P_VOLUME; }
+
+// ── Accumulateur au plomb ─────────────────────────────────────────────
+// Plaque négative (gauche) : PbSO₄ + 2 e⁻ = Pb + SO₄²⁻ ;
+// plaque positive (droite) : PbO₂ + 4 H⁺ + SO₄²⁻ + 2 e⁻ = PbSO₄ + 2 H₂O
+function plaquePositive(i) { return pile.lames[i].sym === 'PbO2'; }
+function potentielPlaque(i) {
+  var c = compElectrode(i), s = Math.max(concSO4(c), C_PLANCHER), h = concH(c);
+  var lg = function (x) { return Math.log(x) / Math.LN10; };
+  return plaquePositive(i) ? E0_PBO2 + PENTE_NERNST / 2 * lg(Math.pow(h, 4) * s)
+                           : E0_PBSO4 - PENTE_NERNST / 2 * lg(s);
+}
+// Facteurs d'épuisement : matière active (décharge), sulfate de plomb
+// (charge), acide (décharge)
+// (en dessous de N_TRACE_PLAQUE, le solide est épuisé : en fin de charge,
+// c'est alors l'eau qui est électrolysée)
+var N_TRACE_PLAQUE = 1e-5;
+function _fPlaque(n) { return n > N_TRACE_PLAQUE ? n / (n + N_COUDE) : 0; }
+function _fAcide(c) { var s = concSO4(c); return s / (s + C_COUDE); }
+// État de charge (0 à 1) : part de matière active sur les deux plaques
+function etatCharge() {
+  var e = 0;
+  for (var i = 0; i < 2; i++) { var P = pile.lames[i].plomb; e += P.n / (P.n + P.s) / 2; }
+  return e;
+}
 
 function estInerte(sym) { return !!METAUX[sym].inerte; }
 
@@ -352,6 +402,7 @@ function _eta(type, i) {
 
 function reductionsPossibles(i) {
   var c = compElectrode(i), C = pile.comp[c], liste = [];
+  if (enPlomb()) return _reactionsPlaque(i, false);
   if (!electrodePresente(i)) return liste;
   for (var sym in C.n) {
     var conc = concentrationC(c, sym);
@@ -368,8 +419,26 @@ function reductionsPossibles(i) {
   return liste;
 }
 
+// Plaques de l'accumulateur : leur couple (dans le sens de la décharge ou
+// de la charge, tant qu'il reste le réactif solide), et l'eau, qui
+// s'électrolyse en fin de charge
+function _reactionsPlaque(i, ox) {
+  var c = compElectrode(i), P = pile.lames[i].plomb, pos = plaquePositive(i), liste = [], ph = pH(c);
+  var E = potentielPlaque(i), type = pos ? 'PbO2' : 'PbSO4';
+  // Décharge : la matière active réagit (oxydation à la plaque −, réduction à la plaque +)
+  var decharge = ox !== pos;
+  var n = decharge ? P.n : P.s;
+  if (n > N_TRACE_PLAQUE) {
+    liste.push({ type: type, ox: ox, z: 2, E: E, eta: 0, f: _fPlaque(n) * (decharge ? _fAcide(c) : 1) });
+  }
+  if (ox) liste.push({ type: 'O2', ox: true, z: 4, E: E0_O2 - PENTE_NERNST * ph, eta: _eta('O2', i), f: 1 });
+  else liste.push({ type: 'H2', ox: false, z: 2, E: -PENTE_NERNST * ph, eta: _eta('H2', i), f: 1 });
+  return liste;
+}
+
 function oxydationsPossibles(i) {
   var c = compElectrode(i), liste = [];
+  if (enPlomb()) return _reactionsPlaque(i, true);
   if (!electrodePresente(i)) return liste;
   var s = surfaceLame(i), ph = pH(c), cl = concCl(c);
   if (!estInerte(s)) {
@@ -446,6 +515,12 @@ function _facteurVide(iA) {
 // d'épuisement du sens spontané (pile usée : 0) ; nulle si une électrode
 // inerte n'est le siège d'aucun couple
 function femPile() {
+  if (enPlomb()) {
+    // Plaque + à droite : la tension est positive tant qu'il reste de la
+    // matière active et de l'acide
+    var P0 = pile.lames[0].plomb, P1 = pile.lames[1].plomb;
+    return (potentielPlaque(1) - potentielPlaque(0)) * _fPlaque(P0.n) * _fPlaque(P1.n) * _fAcide(0);
+  }
   var V0 = potentielAVide(0), V1 = potentielAVide(1);
   if (V0 === null || V1 === null) return 0;
   var V = V1 - V0;
@@ -545,13 +620,15 @@ var ESPECES = {
   'H2':  { txt: 'H₂',  html: 'H<sub>2</sub>',  etat: 'g' },
   'O2':  { txt: 'O₂',  html: 'O<sub>2</sub>',  etat: 'g' },
   'Cl2': { txt: 'Cl₂', html: 'Cl<sub>2</sub>', etat: 'g' },
-  'Cl-': { txt: 'Cl⁻', html: 'Cl<sup>−</sup>', etat: 'aq' }
+  'Cl-': { txt: 'Cl⁻', html: 'Cl<sup>−</sup>', etat: 'aq' },
+  'SO42-': { txt: 'SO₄²⁻', html: 'SO<sub>4</sub><sup>2−</sup>', etat: 'aq' }
 };
 
+// 'M:' : solide (métal, PbO₂, PbSO₄) ; 'I:' : ion métallique
 function espece(cle) {
   if (cle.charAt(1) === ':') {
-    var sym = cle.slice(2);
-    return cle.charAt(0) === 'M' ? { txt: sym, html: sym, etat: 's' }
+    var sym = cle.slice(2), M = METAUX[sym];
+    return cle.charAt(0) === 'M' ? { txt: M.formule || sym, html: M.formuleHTML || sym, etat: 's' }
                                  : { txt: ionTexte(sym), html: ionHTML(sym), etat: 'aq' };
   }
   return ESPECES[cle];
@@ -576,6 +653,12 @@ function demiEquation(r, c) {
     case 'Cl2':   return { gauche: [[2, 'Cl-']], droite: [[1, 'Cl2']], n: 2 };
     case 'H2ox':  return { gauche: [[1, 'H2']], droite: [[2, 'H+']], n: 2 };
     case 'O2red': return { gauche: [[1, 'O2'], [4, 'H+']], droite: [[2, 'H2O']], n: 4 };
+    case 'PbSO4':
+      return r.ox ? { gauche: [[1, 'M:Pb'], [1, 'SO42-']], droite: [[1, 'M:PbSO4']], n: 2 }
+                  : { gauche: [[1, 'M:PbSO4']], droite: [[1, 'M:Pb'], [1, 'SO42-']], n: 2 };
+    case 'PbO2':
+      return r.ox ? { gauche: [[1, 'M:PbSO4'], [2, 'H2O']], droite: [[1, 'M:PbO2'], [4, 'H+'], [1, 'SO42-']], n: 2 }
+                  : { gauche: [[1, 'M:PbO2'], [4, 'H+'], [1, 'SO42-']], droite: [[1, 'M:PbSO4'], [2, 'H2O']], n: 2 };
   }
   return null;
 }
@@ -609,6 +692,7 @@ function _nouveauCompartiment(cle, c) {
   if (S.spect) C.nSpect = S.nSpect * c * P_VOLUME;
   if (S.chlorure) C.cl = c * P_VOLUME;
   if (S.acide) C.h = c * P_VOLUME;
+  if (S.sulfurique) { C.h = 2 * c * P_VOLUME; C.so4 = c * P_VOLUME; }
   return C;
 }
 
@@ -626,6 +710,16 @@ function resetPileModele() {
     pile.comp.push(_nouveauCompartiment('PAC', 1.0));
     elec = ['Pt', 'Pt'];
     gaz = ['H2', 'O2'];
+  } else if (enPlomb()) {
+    // Chargé : matière active seule, acide concentré. Déchargé à 90 % : le
+    // sulfate de plomb couvre les plaques, l'acide s'est dilué (2 SO₄²⁻
+    // et 4 H⁺ consommés pour 2 électrons)
+    var x = pile.plombEtat === 'charge' ? 0 : 0.9 * N_PLAQUE;
+    var C = _nouveauCompartiment('PLOMB', C_ACIDE_PLOMB);
+    C.so4 -= 2 * x;
+    C.h -= 4 * x;
+    pile.comp.push(C);
+    elec = ['Pb', 'PbO2'];
   } else {
     pile.comp.push(_nouveauCompartiment(pile.solution, concInitiale(0)));
     elec = pile.metaux.slice();
@@ -633,7 +727,8 @@ function resetPileModele() {
   pile.lames = [];
   pile.gaz = [];
   for (i = 0; i < 2; i++) {
-    pile.lames.push({ sym: elec[i], reste: N_LAME, depots: [], gaz: gaz[i] });
+    pile.lames.push({ sym: elec[i], reste: N_LAME, depots: [], gaz: gaz[i],
+                      plomb: enPlomb() ? { n: N_PLAQUE - x, s: x } : null });
     pile.gaz.push({ H2: 0, O2: 0, Cl2: 0 });
   }
   pile.t = 0;
@@ -742,6 +837,11 @@ function _pasMax(i, r) {
   }
   if (r.type === 'metal') return Math.min(0.05 * cationsTotal(c) * P_VOLUME, C.n[r.sym]) * r.z;
   if (r.type === 'Cl2') return 0.05 * C.cl;
+  if (r.type === 'PbSO4' || r.type === 'PbO2') {
+    // Décharge : matière active et acide ; charge : sulfate de plomb
+    var P = L.plomb, dech = r.ox !== (r.type === 'PbO2');
+    return 0.05 * 2 * (dech ? Math.min(P.n, C.so4) : P.s) + 1e-9;
+  }
   return Math.max(0.1 * Math.abs(C.h), 2e-6);     // H⁺ ou HO⁻ produits ou consommés
 }
 
@@ -769,6 +869,15 @@ function _appliquer(i, r, ne) {
     case 'O2':    C.h += ne; G.O2 += ne / 4; break;     // 2 H₂O → O₂ + 4 H⁺ + 4 e⁻
     case 'Cl2':   C.cl -= ne; G.Cl2 += ne / 2; break;   // 2 Cl⁻ → Cl₂ + 2 e⁻
     case 'H2ox':  C.h += ne; G.H2 -= ne / 2; break;     // H₂ → 2 H⁺ + 2 e⁻
+    case 'PbSO4':                                       // Pb + SO₄²⁻ ⇄ PbSO₄ + 2 e⁻
+    case 'PbO2': {                                      // PbO₂ + 4 H⁺ + SO₄²⁻ + 2 e⁻ ⇄ PbSO₄ + 2 H₂O
+      var P = L.plomb, k = ne / 2, dech = r.ox !== (r.type === 'PbO2') ? 1 : -1;
+      k = dech > 0 ? Math.min(k, P.n) : Math.min(k, P.s);
+      P.n -= dech * k; P.s += dech * k;
+      C.so4 -= dech * k;
+      if (r.type === 'PbO2') C.h -= dech * 4 * k;
+      break;
+    }
   }
 }
 
@@ -1264,6 +1373,25 @@ function _dessinerLameP(ctx, i) {
     ctx.stroke();
   }
 
+  // Accumulateur : sulfate de plomb blanc qui couvre la partie immergée,
+  // en taches de plus en plus serrées à mesure que la plaque se décharge
+  if (L.plomb) {
+    var fs = L.plomb.s / (L.plomb.n + L.plomb.s);
+    if (fs > 0.005) {
+      var Bp = pile.bruitDepot[i], H2 = yb - P_SOL_TOP, nb = Bp[0].length - 1;
+      ctx.fillStyle = 'rgba(240,239,230,' + (0.25 + 0.55 * fs) + ')';
+      for (var kk = 0; kk < nb; kk++) {
+        for (var cc = 0; cc < 2; cc++) {
+          if (Bp[cc][kk] > 0.55 + 0.45 * fs) continue;     // tache absente tant que la plaque est peu sulfatée
+          ctx.beginPath();
+          ctx.arc(x0 + 0.9 + cc * 2.2 + (Bp[1 - cc][kk] - 0.75) * 1.2, P_SOL_TOP + 1 + H2 * kk / nb,
+                  0.55 + 0.6 * fs, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+  }
+
   _dessinerPince(ctx, xc, top, P_LAME_W);
 }
 
@@ -1634,6 +1762,7 @@ function _flecheCourant(ctx, x, y, sens) {
 // Nom d'une électrode : lame de métal, ou électrode de graphite / platine
 function nomElectrode(i) {
   var M = METAUX[pile.lames[i].sym];
+  if (enPlomb()) return 'Plaque ' + M.de;
   return (M.inerte ? 'Électrode ' : 'Lame ') + M.de;
 }
 
@@ -1644,8 +1773,10 @@ function formatVolume(mL) {
 }
 
 // Gaz dégagés ou consommés à une électrode depuis la RAZ
+// (accumulateur : d'abord la part de sulfate de plomb sur la plaque)
 function texteGaz(i) {
-  var G = pile.gaz[i], morceaux = [];
+  var G = pile.gaz[i], morceaux = [], P = pile.lames[i].plomb;
+  if (P) morceaux.push('PbSO₄ : ' + Math.round(100 * P.s / (P.n + P.s)) + ' %');
   for (var g in G) {
     var mL = G[g] * V_MOLAIRE * 1000;
     if (Math.abs(mL) < 0.05) continue;
@@ -1705,6 +1836,10 @@ function _dessinerEtiquettesP(ctx) {
     }
     if (SOLUTIONS[C.sol].chlorure) morceaux.push('[Cl⁻] = ' + formatConcentration(concCl(c)) + ' mol/L');
     if (enPac()) morceaux.push('Alimentée en continu en dihydrogène et en dioxygène');
+    else if (enPlomb()) {
+      morceaux.push('c = ' + formatConcentration(concSO4(c)) + ' mol/L');
+      morceaux.push('État de charge : ' + Math.round(100 * etatCharge()) + ' %');
+    }
     else if (!C.sym0 || Math.abs(C.h) > 1e-6) morceaux.push('pH = ' + formatNombre(pH(c), 1));
     ctx.fillStyle = '#5a6a78';
     _texteBorne(ctx, morceaux.join('   '), xm, P_TABLE_Y + 10, 2.6, '400', deuxBechers() ? 46 : 100);
