@@ -22,11 +22,14 @@
 //                  électrons arrivent du fil à travers le métal, l'ion
 //                  devient atome et s'ajoute au réseau.
 //      Couples gazeux (eau, H⁺, Cl⁻, H₂ et O₂ amenés) : les réactifs de
-//      la demi-équation viennent contre la surface (ions de la solution,
-//      molécules d'eau ou de gaz), les électrons partent vers le fil ou en
-//      arrivent, puis les produits se forment : les molécules de gaz
-//      gonflent une bulle accrochée à l'électrode, qui se détache et
-//      monte ; les ions rejoignent la solution, l'eau formée s'y fond.
+//      la demi-équation se posent côte à côte contre la surface (ions et
+//      molécules de gaz dissoutes de la solution, molécules d'eau) ;
+//      pendant que les électrons partent vers le fil ou en arrivent,
+//      chaque atome glisse jusqu'à sa place dans les produits (atomes
+//      suivis, pas de fondu) ; les molécules de gaz formées rejoignent
+//      une bulle accrochée à l'électrode (on y voit les molécules), qui
+//      se détache et monte ; les ions rejoignent la solution, l'eau
+//      formée s'y fond.
 //      Le réseau garde l'élément de chaque atome : un dépôt d'un autre
 //      métal (zinc sur fer, cuivre sur graphite) se voit, et c'est lui
 //      qui s'oxyde d'abord.
@@ -48,6 +51,7 @@
 
 var PL_N_CATIONS = 8, PL_N_ANIONS = 7;
 var PL_D_SIGNAL   = 0.6;          // atome ou ion signalé avant l'échange (s)
+var PL_D_SIGNAL_COURT = 0.15;    // espèce arrivée contre la surface, avant le départ de ses électrons (oxydation)
 var PL_D_APPROCHE = 2.0;          // ion qui vient contre la surface (cathode)
 // Transformation (atome ↔ ion, réactifs → produits) synchronisée avec les
 // électrons : elle commence quand le premier électron quitte l'espèce
@@ -55,22 +59,23 @@ var PL_D_APPROCHE = 2.0;          // ion qui vient contre la surface (cathode)
 // quittée (ou l'a atteinte), plus PL_D_CHANGE ; au moins PL_D_TRANSFO_MIN
 var PL_D_CHANGE   = 0.12;
 var PL_D_TRANSFO_MIN = 0.3;
-var PL_D_DEPART   = 2.2;          // ion formé qui s'éloigne de l'anode, produits qui partent
+var PL_D_DEPART   = 1.6;          // ion formé qui s'éloigne de l'anode, produits qui partent
+var PL_N_CYCLES   = 3;            // cycles en cours à la fois, au plus
 var PL_ECART_E    = 0.25;         // entre les départs de deux électrons (s)
 var PL_X_SORTIE   = 1.5;          // colonne par laquelle les électrons rejoignent le fil
 var PL_FRONT_MIN  = 3, PL_FRONT_MAX = 6;   // bornes de la surface avant que la vue la suive
 var PL_V_DERIVE   = 0.75;         // dérive des ions de la solution à I_REF (cases/s)
 var PL_V_FIL      = 1.4;          // dérive des électrons du fil à I_REF (cases/s)
 var PL_T_GLISSE   = 0.8;          // durée du glissement de la vue (s)
-var PL_ECART_V    = 0.95;         // écart vertical entre les réactifs d'un cycle gazeux
 var PL_N_BULLE    = 3;            // molécules de gaz d'une bulle avant qu'elle se détache
 var PL_V_BULLE    = 1.6;          // montée d'une bulle détachée (cases/s)
+var PL_V_BULLE_HAUT = 1.5;        // la bulle se forme en haut de la loupe : les molécules de gaz y montent
 
 // Atomes des molécules : couleur et rayon (cases)
 var PL_ATOMES_MOL = {
-  H:  { couleur: '#eef1f4', r: 0.22 },
-  O:  { couleur: '#d9473b', r: 0.30 },
-  Cl: { couleur: '#6dbb48', r: 0.34 }
+  H:  { couleur: '#eef1f4', r: 0.33 },
+  O:  { couleur: '#d9473b', r: 0.33 },
+  Cl: { couleur: '#6dbb48', r: 0.38 }
 };
 
 var ploupe = {
@@ -125,6 +130,11 @@ function resetLoupePile() {
     var pop = _populationSolution(compElectrode(e));
     _repartir(pop.cations, PL_N_CATIONS, 'cation', R_ION);
     _repartir(pop.anions, PL_N_ANIONS, 'anion', R_ANION);
+    // Gaz amené (barbotage, pile à combustible) : quelques molécules
+    // dissoutes, qui viennent réagir sur l'électrode
+    if (pile.lames[e].gaz) {
+      for (i = 0; i < 3; i++) ploupe.fond.push(_nouvelIon('mol', pile.lames[e].gaz, PL_R_MOL));
+    }
   } else if (ploupe.zone === 'pont') {
     if (enPac()) {
       // Membrane : seuls les ions H⁺ sont mobiles
@@ -243,18 +253,19 @@ function _majElectrode(dt) {
   // Nouveau cycle selon la réaction qui a lieu sur l'électrode et l'intensité
   var role = roleElectrode(e);
   ploupe.attente -= dt;
-  if (role && ploupe.attente <= 0 && ploupe.cycles.length < 2 && ploupe.offX === 0) {
-    var reac = reactionEnCours(e), cy = null, nE = 2;
+  if (role && ploupe.attente <= 0 && ploupe.cycles.length < PL_N_CYCLES && ploupe.offX === 0) {
+    var reac = reactionEnCours(e), cy = null;
     if (reac && reac.type === 'metal') {
       if (!_suivreSurface(role)) cy = role === 'anode' ? _cycleAnode() : _cycleCathode(reac.sym);
-    } else if (reac) {
+    } else if (reac && !_etapesEnCours()) {
+      // Couples gazeux : un cycle à la fois (choix de l'utilisateur : la
+      // stœchiométrie reste lisible), le suivant pendant le départ des produits
       cy = _cycleGaz(reac);
-      nE = reac.z;
     }
     if (cy) ploupe.cycles.push(cy);
-    // Intervalle entre deux cycles : 1,6 s à I_REF, plus long si I est
-    // faible, et pour une réaction qui échange 4 électrons
-    ploupe.attente = Math.min(7, 1.6 / Math.max(0.23, facteurCourant())) * Math.max(1, nE / 2);
+    // Intervalle entre deux départs de cycle : 0,7 s à I_REF, plus long si
+    // I est faible ; pas de place libre : on réessaie bientôt
+    ploupe.attente = cy ? Math.min(3, 0.7 / Math.max(0.25, facteurCourant())) : 0.2;
   }
 
   for (i = ploupe.cycles.length - 1; i >= 0; i--) {
@@ -275,9 +286,13 @@ function _majElectrode(dt) {
     } else if (f.vis < 1) {
       f.vis = Math.min(1, f.vis + dt / D_FONDU);
     }
-    if (!f.sort) { if (f.type === 'cation') nCat++; else nAn++; }
+    if (!f.sort) { if (f.type === 'cation') nCat++; else if (f.type === 'anion') nAn++; }
     _agiter(f, dt, 1);
-    var d = f.type === 'cation' ? dir : -dir;
+    // Lente rotation (visible pour HO⁻ et les molécules de gaz dissoutes)
+    if (f.ang === undefined) { f.ang = Math.random() * 6.28; f.va = (Math.random() - 0.5) * 0.8; }
+    f.ang += f.va * dt;
+    // Les molécules de gaz dissoutes ne migrent pas
+    var d = f.type === 'cation' ? dir : f.type === 'anion' ? -dir : 0;
     f.u += (f.vu + d) * dt;
     f.v += f.vv * dt;
     if (f.v < f.r) { f.v = f.r; f.vv = Math.abs(f.vv); }
@@ -295,6 +310,12 @@ function _majElectrode(dt) {
   // réduite) : on garde des nombres stables
   if (nCat > PL_N_CATIONS + 2) _retirerLoin('cation');
   if (nAn > PL_N_ANIONS + 3) _retirerLoin('anion');
+}
+
+// Un cycle d'un couple gazeux est-il encore dans ses étapes ?
+function _etapesEnCours() {
+  for (var i = 0; i < ploupe.cycles.length; i++) if (ploupe.cycles[i].phase === 'etapes') return true;
+  return false;
 }
 
 // L'ion de ce type le plus éloigné de l'électrode s'efface
@@ -434,37 +455,231 @@ function _prendreIon(type, sym, cible) {
 }
 
 // ── Cycle d'un couple gazeux ──────────────────────────────────────────
-// Espèce d'une demi-équation → particule de la loupe
-function _particuleEspece(cle) {
-  if (cle === 'H+') return { k: 'cation', sym: 'H', r: R_ION };
-  if (cle === 'HO-') return { k: 'anion', sym: 'OH', r: R_ANION };
-  if (cle === 'Cl-') return { k: 'anion', sym: 'Cl', r: R_ANION };
-  if (cle === 'SO42-') return { k: 'anion', sym: 'SO4', r: R_ANION };
-  return { k: 'mol', sym: cle, r: cle === 'H2O' ? 0.42 : cle === 'H2' ? 0.42 : cle === 'O2' ? 0.55 : 0.62 };
+// Les espèces sont décrites par leurs atomes, suivis d'un bout à l'autre
+// (pas de fondu entre réactifs et produits) ; la réaction se fait en
+// étapes à un électron (PL_SCRIPTS). H⁺, Cl⁻ et SO₄²⁻ gardent leur aspect
+// d'ion et prennent celui d'un atome au moment du transfert (comme
+// l'atome ↔ ion des métaux).
+
+var PL_R_H_LIE = 0.26;         // H lié à un O (H₂O, HO⁻, OH), plus petit que dans H₂
+
+// Motifs : atomes (élément, position locale en cases, axe de la molécule
+// selon u, rayon s'il diffère de celui de l'élément), charge à afficher
+// (ions de plusieurs atomes), aspect d'ion
+// (ions d'un seul atome), espèce correspondante parmi les ions de la
+// solution (fond)
+var PL_MOTIFS = (function () {
+  var a = 52.25 * Math.PI / 180, dOH = 0.43;
+  var hx = dOH * Math.cos(a), hy = dOH * Math.sin(a);
+  return {
+    'H+':    { at: [['H', 0, 0]], ion: { k: 'cation', sym: 'H' }, fond: { k: 'cation', sym: 'H' } },
+    'Cl-':   { at: [['Cl', 0, 0]], ion: { k: 'anion', sym: 'Cl' }, fond: { k: 'anion', sym: 'Cl' } },
+    'SO42-': { at: [['SO4', 0, 0]], ion: { k: 'anion', sym: 'SO4' }, fond: { k: 'anion', sym: 'SO4' } },
+    'HO-':   { q: -1, at: [['O', -0.21, 0], ['H', 0.22, 0, PL_R_H_LIE]], fond: { k: 'anion', sym: 'OH' } },
+    'H2O':   { at: [['O', -hx * 0.4, 0], ['H', hx * 0.6, -hy, PL_R_H_LIE], ['H', hx * 0.6, hy, PL_R_H_LIE]] },
+    'H2':    { at: [['H', -0.27, 0], ['H', 0.27, 0]], fond: { k: 'mol', sym: 'H2' } },
+    'O2':    { at: [['O', -0.28, 0], ['O', 0.28, 0]], fond: { k: 'mol', sym: 'O2' } },
+    'Cl2':   { at: [['Cl', -0.32, 0], ['Cl', 0.32, 0]], fond: { k: 'mol', sym: 'Cl2' } },
+    // Intermédiaires accrochés à la surface
+    'Hads':  { at: [['H', 0, 0]] },
+    'Oads':  { at: [['O', 0, 0]] },
+    'Clads': { at: [['Cl', 0, 0]] },
+    'OHads': { at: [['O', -0.21, 0], ['H', 0.22, 0, PL_R_H_LIE]] }
+  };
+})();
+var PL_R_MOL = 0.6;            // rayon d'encombrement d'une molécule de gaz dissoute
+
+// Motif d'une particule de la solution (null : ion dessiné en sphère)
+function _cleFond(k, sym) {
+  if (k === 'mol') return sym;
+  if (k === 'anion' && sym === 'OH') return 'HO-';
+  return null;
 }
 
-// Les réactifs de la demi-équation viennent contre la surface, sur des
-// lignes voisines libres ; les produits se forment au même endroit
+// Rayon d'un atome d'un motif (aspect d'ion : rayon de l'ion)
+function _rAtomeL(el, ion) {
+  if (ion) return ion.k === 'cation' ? R_ION : R_ANION;
+  return PL_ATOMES_MOL[el].r;
+}
+
+// Atomes d'un motif centré en (u, v), tourné de ang : [{ el, du, dv, r }]
+function _atomesMotif(cle, ang) {
+  var M = PL_MOTIFS[cle], c = Math.cos(ang), s = Math.sin(ang), L = [];
+  for (var i = 0; i < M.at.length; i++) {
+    var A = M.at[i];
+    L.push({ el: A[0], du: A[1] * c - A[2] * s, dv: A[1] * s + A[2] * c, r: A[3] || _rAtomeL(A[0], M.ion) });
+  }
+  return L;
+}
+
+// Rectangle englobant d'un motif tourné (relatif à son centre)
+function _boiteMotif(cle, ang) {
+  var L = _atomesMotif(cle, ang), b = { u0: 9, u1: -9, v0: 9, v1: -9 };
+  for (var i = 0; i < L.length; i++) {
+    b.u0 = Math.min(b.u0, L[i].du - L[i].r); b.u1 = Math.max(b.u1, L[i].du + L[i].r);
+    b.v0 = Math.min(b.v0, L[i].dv - L[i].r); b.v1 = Math.max(b.v1, L[i].dv + L[i].r);
+  }
+  return b;
+}
+
+// ── Scripts des demi-équations : étapes à un électron ─────────────────
+// Choix de l'utilisateur : le mécanisme réel, simplifié, étape par étape,
+// avec des intermédiaires accrochés à la surface (H, O, OH, Cl). Chaque
+// étape : des espèces arrivent de la solution (arr), rejoignent des
+// espèces déjà accrochées (avec : leurs noms), et, pendant le passage de
+// n électrons (0 ou 1 ; 2 pour l'accumulateur), leurs atomes glissent
+// jusqu'à leur place dans les espèces formées (apres). Une espèce formée
+// reste accrochée sous un nom, ou part (P) : gaz vers la bulle, ions vers
+// la solution, eau qui s'y fond.
+// Espèce : [clé, orientation, décalage vertical depuis le centre du cycle,
+// éloignement de la surface au-delà du contact (, nom ou P (, true :
+// l'éloignement est celui du centre depuis la ligne de la surface))].
+// Les espèces formées prennent leurs atomes dans l'ordre de la liste (les
+// plus proches). ou : espèce formée par où passent les électrons. d :
+// lancement de l'étape après la précédente (PL_ECART_ETAPE par défaut) ;
+// les deux places d'une même réaction (deux H₂O, deux O…) sont traitées
+// presque en même temps.
+//   2 H⁺ + 2 e⁻ → H₂ : H⁺ + e⁻ → H accroché, deux fois ; H + H → H₂ ;
+//   2 H₂O + 2 e⁻ → H₂ + 2 HO⁻ : H₂O + e⁻ → H accroché + HO⁻, deux fois ;
+//     H + H → H₂ ;
+//   2 H₂O → O₂ + 4 H⁺ + 4 e⁻ : H₂O → OH accroché + H⁺ + e⁻ ; OH → O
+//     accroché + H⁺ + e⁻ ; deux fois ; O + O → O₂ ;
+//   4 HO⁻ → O₂ + 2 H₂O + 4 e⁻ : HO⁻ → OH accroché + e⁻ ; OH + HO⁻ → O
+//     accroché + H₂O + e⁻ ; deux fois ; O + O → O₂ ;
+//   2 Cl⁻ → Cl₂ + 2 e⁻ : Cl⁻ → Cl accroché + e⁻, deux fois ; Cl + Cl → Cl₂ ;
+//   H₂ → 2 H⁺ + 2 e⁻ : H₂ se scinde en deux H accrochés ; H → H⁺ + e⁻,
+//     deux fois ;
+//   O₂ + 4 H⁺ + 4 e⁻ → 2 H₂O : O₂ se scinde en deux O accrochés ; pour
+//     chaque O : O + H⁺ + e⁻ → OH, OH + H⁺ + e⁻ → H₂O ;
+//   accumulateur : une seule étape (le tableau n'en détaille pas) : SO₄²⁻
+//     entre dans la maille ou en sort, les O de PbO₂ en sortent et forment
+//     H₂O avec quatre H⁺ (ou l'inverse).
+var PL_SCRIPTS = (function () {
+  var V = Math.PI / 2, PI = Math.PI, P = 'part';
+  // Géométrie autour d'un O accroché (place vO) : centres donnés depuis la
+  // ligne de la surface (dernier élément true). O contre le métal, H de
+  // l'eau finale de part et d'autre (k = −1 en haut, +1 en bas), à la
+  // distance O–H et à l'angle de la molécule d'eau ; un H⁺ arrive ou part
+  // dans l'axe de sa liaison O–H.
+  var rO = 0.33, uO = 0.03 + rO, dOH = 0.43, a = 52.25 * Math.PI / 180;
+  var hx = dOH * Math.cos(a), hy = dOH * Math.sin(a), eH = 1 + 0.45 / dOH;
+  var VO = 0.85;                             // écart des deux places O au centre du cycle (les H⁺ du milieu se chevauchent un peu)
+  var eau = function (vO, p) { return ['H2O', 0, vO, uO + 0.4 * hx, p, true]; };
+  var oAds = function (vO, nom) { return ['Oads', 0, vO, uO, nom, true]; };
+  var ohVers = function (vO, k, nom) {       // OH accroché, H tourné vers la place k de l'eau
+    return ['OHads', Math.atan2(k * hy, hx), vO + 0.21 * k * hy / dOH, uO + 0.21 * hx / dOH, nom, true];
+  };
+  var hPlus = function (vO, k, p) { return ['H+', 0, vO + k * hy * eH, uO + hx * eH, p, true]; };
+  var quatreH = function (p) { return [['H+', 0, -1.18, 0.75, p], ['H+', 0, -0.42, 0.75, p], ['H+', 0, 0.42, 0.75, p], ['H+', 0, 1.18, 0.75, p]]; };
+  var deuxEau = function (p) { return [['H2O', 0, -0.8, 0, p], ['H2O', 0, 0.8, 0, p]]; };
+  var PRES = 0.2, SUITE = 0.5;               // départs quasi simultanés des deux places, puis étape suivante
+  return {
+    'H2-acide': [
+      { arr: [['H+', 0, -0.45, 0]], apres: [['Hads', 0, -0.45, 0, 'a']], n: 1 },
+      { d: PRES, arr: [['H+', 0, 0.45, 0]], apres: [['Hads', 0, 0.45, 0, 'b']], n: 1 },
+      { avec: ['a', 'b'], apres: [['H2', V, 0, 0, P]], n: 0 }
+    ],
+    'H2-eau': [
+      { arr: [['H2O', PI, -0.6, 0]], apres: [['Hads', 0, -0.45, 0, 'a'], ['HO-', 0, -0.85, 0.45, P]], n: 1 },
+      { d: PRES, arr: [['H2O', PI, 0.6, 0]], apres: [['Hads', 0, 0.45, 0, 'b'], ['HO-', 0, 0.85, 0.45, P]], n: 1 },
+      { avec: ['a', 'b'], apres: [['H2', V, 0, 0, P]], n: 0 }
+    ],
+    // 2 H₂O → O₂ + 4 H⁺ : chaque eau perd d'abord son H extérieur, puis l'autre
+    'O2-eau': [
+      { arr: [eau(-VO)], apres: [hPlus(-VO, -1, P), ohVers(-VO, 1, 'a')], n: 1, ou: 1 },
+      { d: PRES, arr: [eau(VO)], apres: [hPlus(VO, 1, P), ohVers(VO, -1, 'b')], n: 1, ou: 1 },
+      { d: SUITE, avec: ['a'], apres: [hPlus(-VO, 1, P), oAds(-VO, 'a')], n: 1, ou: 1 },
+      { d: PRES, avec: ['b'], apres: [hPlus(VO, -1, P), oAds(VO, 'b')], n: 1, ou: 1 },
+      { avec: ['a', 'b'], apres: [['O2', V, 0, 0, P]], n: 0 }
+    ],
+    // 4 HO⁻ → O₂ + 2 H₂O : HO⁻ → OH accroché ; un second HO⁻ lui prend son H
+    'O2-HO': [
+      { arr: [['HO-', 0, -VO, 0]], apres: [['OHads', 0, -VO, 0, 'a']], n: 1 },
+      { d: PRES, arr: [['HO-', 0, VO, 0]], apres: [['OHads', 0, VO, 0, 'b']], n: 1 },
+      { d: SUITE, avec: ['a'], arr: [['HO-', 0, -VO, 1.0]], apres: [['H2O', 0, -VO, 0.87, P], ['Oads', 0, -VO, 0, 'a']], n: 1, ou: 1 },
+      { d: PRES, avec: ['b'], arr: [['HO-', 0, VO, 1.0]], apres: [['H2O', 0, VO, 0.87, P], ['Oads', 0, VO, 0, 'b']], n: 1, ou: 1 },
+      { avec: ['a', 'b'], apres: [['O2', V, 0, 0, P]], n: 0 }
+    ],
+    'Cl2': [
+      { arr: [['Cl-', 0, -0.45, 0]], apres: [['Clads', 0, -0.45, 0, 'a']], n: 1 },
+      { d: PRES, arr: [['Cl-', 0, 0.45, 0]], apres: [['Clads', 0, 0.45, 0, 'b']], n: 1 },
+      { avec: ['a', 'b'], apres: [['Cl2', V, 0, 0, P]], n: 0 }
+    ],
+    'H2ox': [
+      { arr: [['H2', V, 0, 0]], apres: [['Hads', 0, -0.45, 0, 'a'], ['Hads', 0, 0.45, 0, 'b']], n: 0 },
+      { avec: ['a'], apres: [['H+', 0, -0.45, 0.3, P]], n: 1 },
+      { d: PRES, avec: ['b'], apres: [['H+', 0, 0.45, 0.3, P]], n: 1 }
+    ],
+    // O₂ + 4 H⁺ → 2 H₂O : O₂ se scinde ; chaque O reçoit un H⁺ dans l'axe de
+    // la future liaison O–H (OH), puis un second (H₂O) ; les deux O en même temps
+    'O2red': [
+      { arr: [['O2', V, 0, 0]], apres: [oAds(-VO, 'a'), oAds(VO, 'b')], n: 0 },
+      { avec: ['a'], arr: [hPlus(-VO, -1)], apres: [ohVers(-VO, -1, 'a')], n: 1 },
+      { d: PRES, avec: ['b'], arr: [hPlus(VO, 1)], apres: [ohVers(VO, 1, 'b')], n: 1 },
+      { d: SUITE, avec: ['a'], arr: [hPlus(-VO, 1)], apres: [eau(-VO, P)], n: 1 },
+      { d: PRES, avec: ['b'], arr: [hPlus(VO, -1)], apres: [eau(VO, P)], n: 1 }
+    ],
+    'PbSO4-ox':  [{ arr: [['SO42-', 0, 0, 0]], apres: [], n: 2 }],
+    'PbSO4-red': [{ apres: [['SO42-', 0, 0, 0, P]], n: 2 }],
+    'PbO2-red':  [{ arr: [['SO42-', 0, 0, 0]].concat(quatreH()), apres: deuxEau(P), n: 2 }],
+    'PbO2-ox':   [{ arr: [['H2O', 0, -0.8, 0], ['H2O', 0, 0.8, 0]], apres: quatreH(P).concat([['SO42-', 0, 0, 0, P]]), n: 2 }]
+  };
+})();
+
+// Script de la réaction (null : pas de cycle)
+function _scriptCycle(reac, d) {
+  var aGauche = function (cle) { return d.gauche.some(function (p) { return p[1] === cle; }); };
+  switch (reac.type) {
+    case 'H2':    return PL_SCRIPTS[aGauche('H+') ? 'H2-acide' : 'H2-eau'];
+    case 'O2':    return PL_SCRIPTS[aGauche('H2O') ? 'O2-eau' : 'O2-HO'];
+    case 'Cl2': case 'H2ox': case 'O2red': return PL_SCRIPTS[reac.type];
+    case 'PbSO4': case 'PbO2': return PL_SCRIPTS[reac.type + (reac.ox ? '-ox' : '-red')];
+  }
+  return null;
+}
+
+// Espèce d'un script placée autour de vc : contre la surface, plus
+// l'éloignement demandé
+function _placerSpec(S, vc) {
+  var B = _boiteMotif(S[0], S[1]), v = vc + S[2];
+  var surface = Math.max(_bordMetal(v + B.v0), _bordMetal(v + B.v1)) - 0.5 + R_ATOME;
+  var u = S[5] ? surface + S[3] : surface + 0.03 - B.u0 + S[3];
+  return { cle: S[0], ang: S[1], angC: S[1], pos: { u: u, v: v }, u: u, v: v,
+           atomes: _atomesMotif(S[0], S[1]), nom: S[4] };
+}
+
+// Hauteur occupée par un script (symétrique autour de son centre)
+function _hauteurScript(script) {
+  var h = 0;
+  var voir = function (L) {
+    for (var i = 0; L && i < L.length; i++) {
+      var B = _boiteMotif(L[i][0], L[i][1]);
+      h = Math.max(h, Math.abs(L[i][2] + B.v0), Math.abs(L[i][2] + B.v1));
+    }
+  };
+  for (var k = 0; k < script.length; k++) { voir(script[k].arr); voir(script[k].apres); }
+  return 2 * h;
+}
+
+var PL_D_APPROCHE_E = 1.1;    // approche d'une espèce pour une étape (s)
+var PL_D_REARR      = 0.45;   // réarrangement sans électron (O + O → O₂, H₂ qui se scinde…)
+var PL_ECART_ETAPE  = 0.6;    // l'étape suivante est lancée (ses espèces approchent, ses électrons partent) 0,6 s après la courante
+
 function _cycleGaz(reac) {
   var e = _indiceElectrode(), d = demiEquation(reac, compElectrode(e));
-  // Solides de la demi-équation ('M:…', accumulateur) : une maille du
-  // réseau qui se transforme sur place ; les autres espèces viennent de la
-  // solution ou y partent
-  var R = [], P = [], k, r, avant = null, apres = null;
-  d.gauche.forEach(function (p) {
-    if (p[1].charAt(1) === ':') { avant = p[1].slice(2); return; }
-    for (var j = 0; j < p[0]; j++) R.push(_particuleEspece(p[1]));
-  });
-  d.droite.forEach(function (p) {
-    if (p[1].charAt(1) === ':') { apres = p[1].slice(2); return; }
-    for (var j = 0; j < p[0]; j++) P.push(_particuleEspece(p[1]));
-  });
+  var script = _scriptCycle(reac, d);
+  if (!script) return null;
+  // Solide de la demi-équation ('M:…', accumulateur) : une maille du
+  // réseau qui se transforme sur place
+  var avant = null, apres = null, k, r;
+  d.gauche.forEach(function (p) { if (p[1].charAt(1) === ':') avant = p[1].slice(2); });
+  d.droite.forEach(function (p) { if (p[1].charAt(1) === ':') apres = p[1].slice(2); });
 
   // Hauteur du cycle : lignes libres sur toute la hauteur occupée
-  var span = (Math.max(R.length, P.length, 1) - 1) * PL_ECART_V, vc = -1, r0 = 0, r1 = 0, maille = null;
+  var span = _hauteurScript(script), vc = -1, r0 = 0, r1 = 0, maille = null;
   var bornes = function (v) {
-    r0 = Math.max(0, Math.floor(v - span / 2 - 0.45));
-    r1 = Math.min(NR - 1, Math.floor(v + span / 2 + 0.45));
+    r0 = Math.max(0, Math.floor(v - span / 2));
+    r1 = Math.min(NR - 1, Math.floor(v + span / 2));
     for (var q = r0; q <= r1; q++) if (ploupe.occupe[q]) return false;
     return true;
   };
@@ -480,137 +695,270 @@ function _cycleGaz(reac) {
     }
     cands.sort(function (a, b) { return a.prof - b.prof; });
     for (k = 0; k < cands.length && !maille; k++) {
-      var vm = Math.max(0.6 + span / 2, Math.min(NR - 0.6 - span / 2, cands[k].r + 0.5));
+      var vm = Math.max(0.3 + span / 2, Math.min(NR - 0.3 - span / 2, cands[k].r + 0.5));
       if (bornes(vm) && !ploupe.occupe[cands[k].r]) { maille = cands[k]; vc = vm; }
     }
     if (!maille) return null;
     r0 = Math.min(r0, maille.r); r1 = Math.max(r1, maille.r);
   } else {
     for (var essai = 0; essai < 25 && vc < 0; essai++) {
-      var v0 = 1.2 + span / 2 + Math.random() * (NR - 2.4 - span);
+      // gaz formé : sous la bulle, qui se forme en haut de la loupe
+      var vMin = 0.8 + (gazDegage(reac) ? PL_V_BULLE_HAUT + 1.6 : 0);
+      var v0 = vMin + span / 2 + Math.random() * Math.max(0, NR - 0.8 - vMin - span);
       if (bornes(v0)) vc = v0;
     }
   }
   if (vc < 0) return null;
   for (r = r0; r <= r1; r++) ploupe.occupe[r] = true;
 
-  var cy = { type: 'gaz', ox: reac.ox, phase: 'approche', t: 0, r0: r0, r1: r1, vc: vc,
-             reactifs: [], produits: [], electrons: [], gaz: gazDegage(reac),
+  var cy = { type: 'gaz', ox: reac.ox, phase: 'etapes', t: 0, r0: r0, r1: r1, vc: vc,
+             gaz: gazDegage(reac), script: script, k: 0, etapes: [], accroches: {}, partants: [],
              maille: maille ? { r: maille.r, c: maille.c, avant: avant, apres: apres } : null };
-  var contre = function (v, rayon) {
-    return { u: _bordMetal(v) - 0.5 + R_ATOME + rayon + 0.03, v: v };
-  };
-  for (k = 0; k < R.length; k++) {
-    var p = R[k], v = Math.max(0.6, Math.min(NR - 0.6, vc + (k - (R.length - 1) / 2) * PL_ECART_V));
-    var cible = contre(v, p.r), dep, fondu = false;
-    var io = p.k === 'mol' ? null : _prendreIon(p.k, p.sym, cible);
-    if (io) dep = { u: io.u, v: io.v };
-    else { dep = { u: 2 * RC - 0.6 - Math.random() * 1.5, v: Math.max(0.6, Math.min(NR - 0.6, v + (Math.random() - 0.5) * 4)) }; fondu = true; }
-    cy.reactifs.push({ k: p.k, sym: p.sym, r: p.r, dep: dep, cible: cible, u: dep.u, v: dep.v, fondu: fondu });
-  }
-  for (k = 0; k < P.length; k++) {
-    var q = P[k], vq = Math.max(0.6, Math.min(NR - 0.6, vc + (k - (P.length - 1) / 2) * PL_ECART_V));
-    var pos = contre(vq, q.r);
-    cy.produits.push({ k: q.k, sym: q.sym, r: q.r, pos: pos, u: pos.u, v: pos.v,
-                       vers: { u: pos.u + 1.8 + Math.random() * 1.2, v: pos.v + (Math.random() - 0.5) * 2 } });
-  }
-  // Électrons : de chaque réactif vers le fil (oxydation), ou du fil vers
-  // eux (réduction), à travers l'électrode
-  // (accumulateur : c'est la maille qui cède ou reçoit les électrons)
-  for (k = 0; k < d.n; k++) {
-    var ch;
-    if (cy.maille) {
-      var vm2 = cy.maille.r + 0.5;
-      ch = [{ u: cy.maille.c + 0.5, v: vm2 }, { u: PL_X_SORTIE, v: vm2 }, { u: PL_X_SORTIE, v: -1.5 }];
-    } else {
-      var s = cy.reactifs[k % cy.reactifs.length], ve = s.cible.v;
-      ch = [{ u: s.cible.u, v: ve }, { u: _bordMetal(ve) - 0.5, v: ve }, { u: PL_X_SORTIE, v: ve }, { u: PL_X_SORTIE, v: -1.5 }];
-    }
-    if (!reac.ox) ch.reverse();
-    cy.electrons.push({ chemin: ch, depart: k * PL_ECART_E, s: 0 });
-  }
-  var Lmax = 0, arr0 = Infinity, arr1 = 0;
-  for (k = 0; k < cy.electrons.length; k++) {
-    var Lk = _longueurChemin(cy.electrons[k].chemin);
-    Lmax = Math.max(Lmax, Lk);
-    arr0 = Math.min(arr0, cy.electrons[k].depart + Lk / V_ELECTRON);   // arrivées (réduction)
-    arr1 = Math.max(arr1, cy.electrons[k].depart + Lk / V_ELECTRON);
-  }
-  cy.dElectrons = (d.n - 1) * PL_ECART_E + Lmax / V_ELECTRON;
-  // Oxydation : pendant que les électrons quittent les réactifs ;
-  // réduction : pendant qu'ils les atteignent
-  if (reac.ox) _horaireTransfo(cy, 0, (d.n - 1) * PL_ECART_E + 0.6 / V_ELECTRON);
-  else _horaireTransfo(cy, arr0, arr1);
+  cy.etapes.push(_creerEtape(cy, 0));
   return cy;
 }
 
-function _majCycleGaz(cy, dt) {
-  var k, s;
-  if (cy.phase === 'approche') {
-    s = _lisse(cy.t / PL_D_APPROCHE);
-    for (k = 0; k < cy.reactifs.length; k++) {
-      var a = cy.reactifs[k];
-      a.u = a.dep.u + (a.cible.u - a.dep.u) * s;
-      a.v = a.dep.v + (a.cible.v - a.dep.v) * s;
+// Étape k du cycle : arrivées tirées de la solution, espèces formées
+// placées, électrons (de l'espèce par où ils passent vers le fil, ou
+// l'inverse), horaire de la transformation
+function _creerEtape(cy, k) {
+  var D = cy.script[k], st = { k: k, def: D, arr: [], apres: [], phase: 'approche', tA: 0, t: 0,
+                               electrons: [], n: D.n, ox: cy.ox };
+  var i;
+  for (i = 0; D.arr && i < D.arr.length; i++) {
+    var a = _placerSpec(D.arr[i], cy.vc), F = PL_MOTIFS[a.cle].fond;
+    var io = F ? _prendreIon(F.k, F.sym, a.pos) : null;
+    if (io) { a.dep = { u: io.u, v: io.v }; a.ang0 = io.ang || 0; a.fondu = false; }
+    else {
+      a.dep = { u: 2 * RC - 0.6 - Math.random() * 1.5, v: Math.max(0.6, Math.min(NR - 0.6, a.pos.v + (Math.random() - 0.5) * 4)) };
+      a.ang0 = Math.random() * 6.28; a.fondu = true;
     }
-    if (cy.t >= PL_D_APPROCHE) { cy.phase = 'signal'; cy.t = 0; }
-  } else if (cy.phase === 'signal' && cy.t >= PL_D_SIGNAL * 0.6) {
-    _lancerElectrons(cy);
-  } else if (cy.phase === 'electrons') {
-    _debutTransfo(cy);
-  } else if (cy.phase === 'transfo') {
-    if (cy.t >= cy.dTransfo) {
-      cy.phase = 'depart'; cy.t = 0;
+    a.u = a.dep.u; a.v = a.dep.v; a.angC = a.ang0;
+    st.arr.push(a);
+  }
+  for (i = 0; D.apres && i < D.apres.length; i++) st.apres.push(_placerSpec(D.apres[i], cy.vc));
+  // Fin de l'approche dans l'axe où l'espèce va se lier : depuis le centre
+  // de l'espèce formée la plus proche vers sa place (H⁺ dans l'axe de la
+  // future liaison O–H) ; à défaut, perpendiculairement à la surface
+  for (i = 0; i < st.arr.length; i++) {
+    a = st.arr[i];
+    var axe = _axeDepuis(a.pos, st.apres);
+    a.via = { u: a.pos.u + 1.3 * axe.u, v: a.pos.v + 1.3 * axe.v };
+  }
+  st.dA = st.arr.length ? PL_D_APPROCHE_E : 0;
+
+  // Électrons : par la maille (accumulateur), ou par l'espèce formée `ou`
+  for (i = 0; i < D.n; i++) {
+    var ch;
+    if (cy.maille) {
+      var vm = cy.maille.r + 0.5;
+      ch = [{ u: cy.maille.c + 0.5, v: vm }, { u: PL_X_SORTIE, v: vm }, { u: PL_X_SORTIE, v: -1.5 }];
+    } else {
+      var S = st.apres[D.ou || 0] || st.arr[0], p = { u: S.pos.u, v: S.pos.v };
+      ch = [p, { u: _bordMetal(p.v) - 0.5, v: p.v }, { u: PL_X_SORTIE, v: p.v }, { u: PL_X_SORTIE, v: -1.5 }];
+    }
+    if (!cy.ox) ch.reverse();
+    st.electrons.push({ chemin: ch, depart: i * PL_ECART_E, s: 0 });
+  }
+  if (D.n) {
+    var L0 = _longueurChemin(st.electrons[0].chemin);
+    st.dElectrons = (D.n - 1) * PL_ECART_E + L0 / V_ELECTRON;
+    if (cy.ox) _horaireTransfo(st, 0, (D.n - 1) * PL_ECART_E + 0.6 / V_ELECTRON);
+    else _horaireTransfo(st, L0 / V_ELECTRON, st.dElectrons);
+  } else {
+    st.dElectrons = 0; st.tDeb = 0; st.dTransfo = PL_D_REARR;
+  }
+  // Réduction : les électrons partent du fil dès la création de l'étape ;
+  // l'espèce attend un peu dans la solution (retard) pour arriver avec eux
+  st.retard = st.n && !st.ox && st.dA ? Math.max(0, st.tDeb - st.dA) : 0;
+  st.fA = st.retard + st.dA;          // instant où les espèces sont arrivées
+  return st;
+}
+
+// Direction unitaire de p vu depuis le centre le plus proche des espèces
+// de L (vers la solution, +u, si p en est trop près : même place)
+function _axeDepuis(p, L) {
+  var best = null;
+  for (var i = 0; i < L.length; i++) {
+    var d = Math.hypot(p.u - L[i].pos.u, p.v - L[i].pos.v);
+    if (!best || d < best.d) best = { d: d, u: p.u - L[i].pos.u, v: p.v - L[i].pos.v };
+  }
+  if (!best || best.d < 0.3) return { u: 1, v: 0 };
+  return { u: best.u / best.d, v: best.v / best.d };
+}
+
+// Liens atome → atome entre les espèces qui réagissent et celles qui se
+// forment (même élément, le plus proche, dans l'ordre des espèces
+// formées) ; un atome sans correspondant sort de la maille ou y entre
+function _lierAtomes(avantL, apresL) {
+  var liens = [], pris = [], i, j, m;
+  for (j = 0; j < apresL.length; j++) {
+    for (m = 0; m < apresL[j].atomes.length; m++) {
+      var B = apresL[j].atomes[m], bu = apresL[j].pos.u + B.du, bv = apresL[j].pos.v + B.dv, best = null;
+      for (i = 0; i < avantL.length; i++) {
+        for (var n = 0; n < avantL[i].atomes.length; n++) {
+          var A = avantL[i].atomes[n];
+          if (A.el !== B.el || pris.indexOf(A) >= 0) continue;
+          var dist = Math.hypot(avantL[i].pos.u + A.du - bu, avantL[i].pos.v + A.dv - bv);
+          if (!best || dist < best.d) best = { d: dist, i: i, n: n, A: A };
+        }
+      }
+      if (best) { pris.push(best.A); liens.push({ el: B.el, ra: best.i, ma: best.n, pb: j, mb: m }); }
+      else liens.push({ el: B.el, ra: -1, pb: j, mb: m });
+    }
+  }
+  for (i = 0; i < avantL.length; i++) {
+    for (m = 0; m < avantL[i].atomes.length; m++) {
+      if (pris.indexOf(avantL[i].atomes[m]) < 0) liens.push({ el: avantL[i].atomes[m].el, ra: i, ma: m, pb: -1 });
+    }
+  }
+  return liens;
+}
+
+// Plus court chemin angulaire de a vers b, à la fraction s
+function _angVers(a, b, s) {
+  var d = Math.atan2(Math.sin(b - a), Math.cos(b - a));
+  return a + d * s;
+}
+
+// Une étape : approche des arrivées ; réduction : électrons partis du fil
+// pendant l'approche pour arriver avec l'espèce ; oxydation ou
+// réarrangement : peu après l'arrivée. La transformation attend la fin de
+// l'étape précédente (aMoi).
+function _majEtape(cy, st, dt, aMoi) {
+  var i, s;
+  st.tA += dt;
+  if (st.te !== undefined) {
+    st.te += dt;
+    _avancerElectrons({ electrons: st.electrons, te: st.te });
+  }
+  if (st.phase === 'approche') {
+    s = st.dA ? _lisse((st.tA - st.retard) / st.dA) : 1;
+    for (i = 0; i < st.arr.length; i++) {
+      var a = st.arr[i];
+      var q = _bezier([a.dep, a.via, a.pos], s);   // fin du trajet dans l'axe de la liaison
+      a.u = q.u; a.v = q.v;
+      a.angC = _angVers(a.ang0, a.ang, s);
+    }
+    if (st.te === undefined) {
+      if (st.n && !st.ox) { if (st.tA >= st.fA - st.tDeb) st.te = 0; }
+      else if (aMoi && st.tA >= st.fA + (st.dA ? PL_D_SIGNAL_COURT : 0.1)) st.te = 0;
+    }
+    if (aMoi && st.tA >= st.fA && st.te !== undefined && st.te >= st.tDeb) {
+      // Début de la transformation : espèces accrochées qui réagissent
+      st.avec = [];
+      for (i = 0; st.def.avec && i < st.def.avec.length; i++) st.avec.push(cy.accroches[st.def.avec[i]]);
+      st.liens = _lierAtomes(st.avec.concat(st.arr), st.apres);
+      st.phase = 'transfo'; st.t = 0;
+    }
+  } else if (st.phase === 'transfo') {
+    st.t += dt;
+    if (st.t >= st.dTransfo) {
+      st.phase = 'fini';
+      for (i = 0; i < st.avec.length; i++) delete cy.accroches[st.def.avec[i]];
+      for (i = 0; i < st.apres.length; i++) {
+        var p = st.apres[i];
+        if (p.nom !== 'part') { cy.accroches[p.nom] = p; continue; }
+        // Espèce formée qui part : le gaz vers la bulle, le reste vers la solution
+        p.t = 0;
+        // dans l'axe de la liaison rompue (H⁺ qui quitte OH…), sinon droit vers la solution
+        var axe = _axeDepuis(p.pos, st.avec.concat(st.arr)), lg = 1.8 + Math.random() * 1.0;
+        p.vers = { u: p.pos.u + lg * axe.u, v: p.pos.v + lg * axe.v + (Math.random() - 0.5) * 0.8 };
+        p.angV = p.ang + (Math.random() - 0.5) * 2;
+        if (p.cle === cy.gaz) {
+          if (!ploupe.bulle) ploupe.bulle = { v: PL_V_BULLE_HAUT, n: 0, gaz: cy.gaz };
+          p.rang = ploupe.bulle.n;
+        }
+        cy.partants.push(p);
+      }
       // La maille transformée fait désormais partie du réseau
-      if (cy.maille) {
+      if (cy.maille && st.k === cy.script.length - 1) {
         ploupe.rangs[cy.maille.r][cy.maille.c] = cy.maille.apres;
         _completerBords();
       }
-      // Bulle où vont les molécules de gaz formées
-      if (cy.gaz && !ploupe.bulle) {
-        ploupe.bulle = { v: Math.max(0.9, Math.min(NR - 0.9, cy.vc - 1.2)), n: 0, gaz: cy.gaz };
+    }
+  }
+}
+
+function _majCycleGaz(cy, dt) {
+  var i, s;
+  // Étapes : chacune est lancée (ses espèces approchent, ses électrons
+  // partent du fil) PL_ECART_ETAPE après la précédente ; elles se
+  // transforment dans l'ordre
+  for (i = 0; i < cy.etapes.length; i++) _majEtape(cy, cy.etapes[i], dt, i === cy.k);
+  var cur = cy.etapes[cy.k], der = cy.etapes[cy.etapes.length - 1];
+  var suiv = cy.script[cy.etapes.length];
+  if (suiv && der.tA >= (suiv.d !== undefined ? suiv.d : PL_ECART_ETAPE)) {
+    cy.etapes.push(_creerEtape(cy, cy.etapes.length));
+  }
+  if (cur && cur.phase === 'fini') cy.k++;
+  if (cy.k >= cy.script.length) cy.phase = 'depart';
+
+  // Espèces formées qui partent
+  for (i = cy.partants.length - 1; i >= 0; i--) {
+    var p = cy.partants[i], vers = p.vers, angV = p.angV;
+    p.t += dt;
+    if (p.cle === cy.gaz && ploupe.bulle) { var pl = _placeBulle(p.rang, p.rang + 1); vers = pl; angV = pl.ang; }
+    s = _lisse(p.t / PL_D_DEPART);
+    p.u = p.pos.u + (vers.u - p.pos.u) * s;
+    p.v = p.pos.v + (vers.v - p.pos.v) * s;
+    p.angC = _angVers(p.ang, angV, s);
+    if (p.t >= PL_D_DEPART) {
+      var F = PL_MOTIFS[p.cle].fond;
+      if (p.cle === cy.gaz) _gonflerBulle(cy.gaz);
+      else if (F && F.k !== 'mol') {
+        ploupe.fond.push({ type: F.k, sym: F.sym, r: F.k === 'cation' ? R_ION : R_ANION, u: p.u, v: p.v,
+                           ang: p.angC, vu: _gauss() * 0.3, vv: _gauss() * 0.3, vis: 1 });
       }
+      cy.partants.splice(i, 1);
     }
-  } else if (cy.phase === 'depart') {
-    s = _lisse(cy.t / PL_D_DEPART);
-    for (k = 0; k < cy.produits.length; k++) {
-      var p = cy.produits[k], vers = p.vers;
-      if (p.sym === cy.gaz && ploupe.bulle) vers = _centreBulle();
-      p.u = p.pos.u + (vers.u - p.pos.u) * s;
-      p.v = p.pos.v + (vers.v - p.pos.v) * s;
+  }
+
+  // Fin : toutes les étapes faites, produits partis, électrons arrivés
+  if (cy.phase === 'depart' && !cy.partants.length) {
+    for (i = 0; i < cy.etapes.length; i++) {
+      var st = cy.etapes[i];
+      if (st.n && st.te < st.dElectrons) return false;
     }
-    if (cy.t >= PL_D_DEPART && cy.te >= cy.dElectrons) {
-      for (k = 0; k < cy.produits.length; k++) {
-        var q = cy.produits[k];
-        if (q.sym === cy.gaz) _gonflerBulle(cy.gaz);
-        else if (q.k !== 'mol') {
-          ploupe.fond.push({ type: q.k, sym: q.sym, r: q.r, u: q.u, v: q.v,
-                             vu: _gauss() * 0.3, vv: _gauss() * 0.3, vis: 1 });
-        }
-      }
-      for (var r = cy.r0; r <= cy.r1; r++) ploupe.occupe[r] = false;
-      return true;
-    }
+    for (var r = cy.r0; r <= cy.r1; r++) ploupe.occupe[r] = false;
+    return true;
   }
   return false;
 }
 
 // ── Bulles de la loupe ────────────────────────────────────────────────
-function _rayonBulle(n) { return 0.38 + 0.3 * Math.sqrt(n); }
+// Une bulle est une enveloppe où l'on voit les molécules de gaz qu'elle
+// contient (même dessin que les molécules isolées)
+function _rayonBulle(n) { return 0.5 + 0.5 * Math.sqrt(n); }
 
-// Centre de la bulle accrochée : elle touche la face de l'électrode
-function _centreBulle() {
-  var b = ploupe.bulle, rb = _rayonBulle(Math.max(1, b.n));
+// Centre de la bulle accrochée, pour n molécules : elle touche la face de
+// l'électrode
+function _centreBulle(n) {
+  var b = ploupe.bulle, rb = _rayonBulle(Math.max(1, n === undefined ? b.n : n));
   return { u: _bordMetal(b.v) - 0.5 + R_ATOME + rb, v: b.v };
 }
 
+// Place de la i-ème des n molécules d'une bulle (relative à son centre),
+// axe de la molécule tangent au cercle des places
+function _placesBulle(i, n) {
+  if (n <= 1) return { du: 0, dv: 0, ang: Math.PI / 2 };
+  var th = -Math.PI / 2 + i * 2 * Math.PI / n, rp = 0.5 * _rayonBulle(n);
+  return { du: rp * Math.cos(th), dv: rp * Math.sin(th), ang: th + Math.PI / 2 };
+}
+
+// Place absolue dans la bulle accrochée (de n molécules)
+function _placeBulle(i, n) {
+  var c = _centreBulle(n), p = _placesBulle(i, n);
+  return { u: c.u + p.du, v: c.v + p.dv, ang: p.ang };
+}
+
 function _gonflerBulle(gaz) {
-  if (!ploupe.bulle) ploupe.bulle = { v: 3 + Math.random() * 5, n: 0, gaz: gaz };
+  if (!ploupe.bulle) ploupe.bulle = { v: PL_V_BULLE_HAUT, n: 0, gaz: gaz };
   ploupe.bulle.n++;
   if (ploupe.bulle.n >= PL_N_BULLE) {
     // Assez grosse : elle se détache et monte
     var c = _centreBulle();
-    ploupe.bullesLibres.push({ u: c.u, v: c.v, r: _rayonBulle(ploupe.bulle.n), gaz: gaz });
+    ploupe.bullesLibres.push({ u: c.u, v: c.v, n: ploupe.bulle.n, gaz: gaz });
     ploupe.bulle = null;
   }
 }
@@ -620,7 +968,7 @@ function _majBullesL(dt) {
   for (var k = B.length - 1; k >= 0; k--) {
     B[k].v -= PL_V_BULLE * dt;
     B[k].u += 0.35 * dt;
-    if (B[k].v < -B[k].r - 0.5) B.splice(k, 1);
+    if (B[k].v < -_rayonBulle(B[k].n) - 0.5) B.splice(k, 1);
   }
 }
 
@@ -658,8 +1006,9 @@ function _majCycleP(cy, dt) {
     if (cy.phase === 'approche') {
       var p = _bezier(cy.trajet, _lisse(cy.t / PL_D_APPROCHE));
       cy.u = p.u; cy.v = p.v;
-      if (cy.t >= PL_D_APPROCHE) { cy.phase = 'signal'; cy.t = 0; }
-    } else if (cy.phase === 'signal' && cy.t >= PL_D_SIGNAL * 0.6) {
+      _anticiperElectrons(cy);
+      _finApproche(cy);
+    } else if (cy.phase === 'signal' && cy.t >= PL_D_SIGNAL_COURT) {
       _lancerElectrons(cy);
     } else if (cy.phase === 'electrons') {
       _debutTransfo(cy);
@@ -681,6 +1030,21 @@ function _majCycleP(cy, dt) {
 function _completerBords() {
   ploupe.rangs[0] = ploupe.rangs[1].slice();
   ploupe.rangs[NR - 1] = ploupe.rangs[NR - 2].slice();
+}
+
+// Réduction : les électrons partent du fil pendant l'approche, pour
+// arriver au moment où l'espèce atteint sa place (cy.tDeb : durée du
+// trajet du premier) ; oxydation (tDeb nul) : ils partent peu après
+// l'arrivée (étape « signal » courte)
+function _anticiperElectrons(cy) {
+  if (cy.te === undefined && cy.tDeb > 0 && cy.t >= PL_D_APPROCHE - cy.tDeb) cy.te = 0;
+}
+
+function _finApproche(cy) {
+  if (cy.t < PL_D_APPROCHE) return;
+  cy.t = 0;
+  if (cy.te !== undefined) { cy.phase = 'electrons'; _debutTransfo(cy); }
+  else cy.phase = 'signal';
 }
 
 function _lancerElectrons(cy) {
@@ -776,11 +1140,13 @@ function dessinerLoupePile(ctx) {
 // Abscisse dessinée : en miroir pour l'électrode de droite
 function _mx(u) { return ploupe.zone === 'droite' ? 2 * RC - u : u; }
 
-// Ion ou molécule de la loupe, quel qu'il soit
-function _dessinerEspeceL(ctx, x, y, k, sym, alpha) {
+// Ion ou molécule de la loupe, quel qu'il soit (ang : orientation d'un
+// motif de plusieurs atomes : HO⁻, molécules)
+function _dessinerEspeceL(ctx, x, y, k, sym, alpha, ang) {
   if (alpha <= 0) return;
-  if (k === 'anion') _dessinerAnion(ctx, x, y, sym, alpha);
-  else if (k === 'mol') _dessinerMoleculeL(ctx, x, y, sym, alpha);
+  var cle = _cleFond(k, sym);
+  if (cle) _dessinerMotif(ctx, x, y, cle, ang || 0, alpha);
+  else if (k === 'anion') _dessinerAnion(ctx, x, y, sym, alpha);
   else if (METAUX[sym] && METAUX[sym].charge) _dessinerIon(ctx, x, y, sym, alpha, R_ION);
   else _dessinerIonSimple(ctx, x, y, sym, alpha);
 }
@@ -795,44 +1161,79 @@ function _dessinerIonSimple(ctx, x, y, sym, alpha) {
   _etiquette(ctx, x, y, I.texte, 0.27, rgb, alpha);
 }
 
-// Molécules : H₂O (coudée), H₂, O₂, Cl₂ (deux atomes côte à côte)
-function _dessinerMoleculeL(ctx, x, y, sym, alpha) {
-  var at = [];
-  if (sym === 'H2O') {
-    at = [['H', x - 0.2, y - 0.25], ['H', x - 0.2, y + 0.25], ['O', x + 0.1, y]];
-  } else {
-    var el = sym === 'H2' ? 'H' : sym === 'O2' ? 'O' : 'Cl';
-    var d = PL_ATOMES_MOL[el].r * 0.85;
-    at = [[el, x - d, y], [el, x + d, y]];
+// Atome d'un motif, à l'abscisse dessinée x ; ion : aspect de l'ion
+// (sphère des ions de la solution)
+function _dessinerAtomeL(ctx, x, y, el, ion, alpha, r) {
+  if (alpha <= 0) return;
+  if (ion) {
+    if (ion.k === 'cation') _dessinerIonSimple(ctx, x, y, ion.sym, alpha);
+    else _dessinerAnion(ctx, x, y, ion.sym, alpha);
+    return;
   }
-  for (var k = 0; k < at.length; k++) {
-    var A = PL_ATOMES_MOL[at[k][0]], rgb = couleurRGB(A.couleur);
-    _sphere(ctx, at[k][1], at[k][2], A.r, rgb, alpha);
-    ctx.strokeStyle = rgbCss(nuance(rgb, -0.4), 0.7 * alpha);
-    ctx.lineWidth = 0.025;
-    ctx.stroke();
-    _etiquette(ctx, at[k][1], at[k][2], at[k][0], A.r * 0.85, rgb, alpha);
+  var A = PL_ATOMES_MOL[el], rgb = couleurRGB(A.couleur);
+  r = r || A.r;
+  _sphere(ctx, x, y, r, rgb, alpha);
+  ctx.strokeStyle = rgbCss(nuance(rgb, -0.4), 0.7 * alpha);
+  ctx.lineWidth = 0.025;
+  ctx.stroke();
+  _etiquette(ctx, x, y, el, r * 0.85, rgb, alpha);
+}
+
+// Signe de la charge d'un ion de plusieurs atomes (HO⁻) : pastille
+function _dessinerChargeL(ctx, x, y, q, alpha) {
+  if (alpha <= 0) return;
+  var r = 0.13;
+  ctx.fillStyle = 'rgba(44,62,80,' + 0.9 * alpha + ')';
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,' + alpha + ')';
+  ctx.lineWidth = 0.035;
+  ctx.beginPath();
+  ctx.moveTo(x - r * 0.55, y); ctx.lineTo(x + r * 0.55, y);
+  if (q > 0) { ctx.moveTo(x, y - r * 0.55); ctx.lineTo(x, y + r * 0.55); }
+  ctx.stroke();
+}
+
+// Position dessinée de la pastille de charge d'un motif, au-dessus à
+// droite de ses atomes
+function _placeCharge(L) {
+  var u = -9, v = 9;
+  for (var i = 0; i < L.length; i++) { u = Math.max(u, L[i].du + L[i].r * 0.6); v = Math.min(v, L[i].dv - L[i].r * 0.6); }
+  return { du: u, dv: v };
+}
+
+// Motif (molécule, HO⁻, H⁺…) centré à l'abscisse dessinée x ; en miroir
+// pour l'électrode de droite
+function _dessinerMotif(ctx, x, y, cle, ang, alpha) {
+  if (alpha <= 0) return;
+  var M = PL_MOTIFS[cle], L = _atomesMotif(cle, ang), sx = ploupe.zone === 'droite' ? -1 : 1;
+  for (var i = 0; i < L.length; i++) _dessinerAtomeL(ctx, x + sx * L[i].du, y + L[i].dv, L[i].el, M.ion, alpha, L[i].r);
+  if (M.q) {
+    var c = _placeCharge(L);
+    _dessinerChargeL(ctx, x + sx * c.du, y + c.dv, M.q, alpha);
   }
 }
 
-// Bulle de gaz : disque clair (jaune-vert pour le dichlore), reflet, nom du gaz
-function _dessinerBulleL(ctx, x, y, r, gaz, alpha) {
-  var cl = gaz === 'Cl2';
-  ctx.fillStyle = cl ? 'rgba(215,235,120,' + 0.55 * alpha + ')' : 'rgba(255,255,255,' + 0.55 * alpha + ')';
+// Bulle de gaz : enveloppe claire (jaune-vert pour le dichlore) où l'on
+// voit ses molécules, reflet
+function _dessinerBulleL(ctx, x, y, n, gaz, alpha) {
+  var cl = gaz === 'Cl2', r = _rayonBulle(n), sx = ploupe.zone === 'droite' ? -1 : 1;
+  ctx.fillStyle = cl ? 'rgba(215,235,120,' + 0.45 * alpha + ')' : 'rgba(255,255,255,' + 0.5 * alpha + ')';
   ctx.strokeStyle = cl ? 'rgba(120,150,40,' + 0.85 * alpha + ')' : 'rgba(70,100,130,' + 0.75 * alpha + ')';
   ctx.lineWidth = 0.05;
   ctx.beginPath();
   ctx.arc(x, y, r, 0, Math.PI * 2);
   ctx.fill(); ctx.stroke();
+  for (var i = 0; i < n; i++) {
+    var p = _placesBulle(i, n);
+    _dessinerMotif(ctx, x + sx * p.du, y + p.dv, gaz, p.ang, alpha);
+  }
   ctx.strokeStyle = 'rgba(255,255,255,' + 0.9 * alpha + ')';
   ctx.lineWidth = 0.06;
   ctx.beginPath();
-  ctx.arc(x, y, r * 0.72, -2.6, -1.8);
+  ctx.arc(x, y, r * 0.86, -2.6, -1.8);
   ctx.stroke();
-  ctx.fillStyle = 'rgba(44,62,80,' + 0.85 * alpha + ')';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  texteEchelle(ctx, ESPECES[gaz].txt, x, y, Math.min(0.42, r * 0.7), '700', echelleParticules);
 }
 
 function _dessinerElectrodeL(ctx) {
@@ -848,13 +1249,13 @@ function _dessinerElectrodeL(ctx) {
   for (i = 0; i < ploupe.fond.length; i++) {
     var f = ploupe.fond[i];
     var a = Math.max(0, Math.min(1, f.vis));
-    _dessinerEspeceL(ctx, _mx(f.u), f.v, f.type, f.sym, (f.type === 'anion' ? ALPHA_ANION : 0.55) * a);
+    _dessinerEspeceL(ctx, _mx(f.u), f.v, f.type, f.sym, (f.type === 'anion' ? ALPHA_ANION : 0.55) * a, f.ang);
   }
 
   // Bulles détachées qui montent
   for (i = 0; i < ploupe.bullesLibres.length; i++) {
     var b = ploupe.bullesLibres[i];
-    _dessinerBulleL(ctx, _mx(b.u), b.v, b.r, b.gaz, Math.max(0, Math.min(1, (b.v + b.r + 0.5) / 1.5)));
+    _dessinerBulleL(ctx, _mx(b.u), b.v, b.n, b.gaz, Math.max(0, Math.min(1, (b.v + _rayonBulle(b.n) + 0.5) / 1.5)));
   }
 
   // Ions formés à l'anode qui s'éloignent : derrière le réseau
@@ -884,11 +1285,13 @@ function _dessinerElectrodeL(ctx) {
   // Bulle accrochée à l'électrode
   if (ploupe.bulle && ploupe.bulle.n > 0) {
     var cb = _centreBulle();
-    _dessinerBulleL(ctx, _mx(cb.u), cb.v, _rayonBulle(ploupe.bulle.n), ploupe.bulle.gaz, 1);
+    _dessinerBulleL(ctx, _mx(cb.u), cb.v, ploupe.bulle.n, ploupe.bulle.gaz, 1);
   }
 
   // Acteurs des cycles
-  var pulse = 0.5 + 0.5 * Math.sin(performance.now() / 170);
+  // Halos fixes autour des espèces qui réagissent (choix de l'utilisateur :
+  // pas de pulsation) : rouge pour une oxydation, bleu pour une réduction
+  var pulse = 0.5;
   for (i = 0; i < ploupe.cycles.length; i++) _dessinerCycleP(ctx, ploupe.cycles[i], pulse);
 }
 
@@ -923,7 +1326,7 @@ function _dessinerCycleP(ctx, cy, pulse) {
     if (cy.phase !== 'depart') {     // en partant, l'ion est dessiné derrière le réseau
       var x = _mx(cy.u + dx);
       var kOx = cy.phase === 'transfo' ? Math.min(1, cy.t / cy.dTransfo) : 0;
-      _halo(ctx, x, cy.v, R_ATOME, COUL_OX, 0.9, kOx > 0 ? 1 : pulse);
+      _halo(ctx, x, cy.v, R_ATOME, COUL_OX, 0.9, pulse);
       if (kOx > 0) _dessinerTransition(ctx, x, cy.v, sym, kOx, true);
       else _dessinerAtome(ctx, x, cy.v, sym, 1);
     }
@@ -931,10 +1334,10 @@ function _dessinerCycleP(ctx, cy, pulse) {
     var xi = _mx(cy.u + dx);
     if (cy.phase === 'transfo') {
       var kRed = Math.min(1, cy.t / cy.dTransfo);
-      _halo(ctx, xi, cy.v, R_ION, COUL_RED, 0.9 * (1 - kRed), 1);
+      _halo(ctx, xi, cy.v, R_ION, COUL_RED, 0.9 * (1 - kRed), pulse);
       _dessinerTransition(ctx, xi, cy.v, sym, kRed, false);
     } else {
-      _halo(ctx, xi, cy.v, R_ION, COUL_RED, cy.phase === 'approche' ? 0.8 : 0.9, cy.phase === 'approche' ? 0.5 : pulse);
+      _halo(ctx, xi, cy.v, R_ION, COUL_RED, cy.phase === 'approche' ? 0.8 : 0.9, pulse);
       _dessinerIon(ctx, xi, cy.v, sym, 1, R_ION);
     }
   }
@@ -950,35 +1353,106 @@ function _dessinerCycleP(ctx, cy, pulse) {
   }
 }
 
-// Réactifs signalés (rouge : oxydés, bleu : réduits), puis fondu vers les
-// produits, qui partent : le gaz dans la bulle, les ions dans la solution,
-// l'eau s'y fond
+// Rayon d'encombrement d'un motif (pour son halo)
+function _rayonMotif(cle) {
+  var L = _atomesMotif(cle, 0), r = 0;
+  for (var i = 0; i < L.length; i++) r = Math.max(r, Math.hypot(L[i].du, L[i].dv) + L[i].r);
+  return r;
+}
+
+// Cycle d'un couple gazeux ou de l'accumulateur : maille, espèces
+// accrochées, étapes en cours (espèces qui arrivent, atomes qui glissent
+// pendant la transformation), espèces formées qui partent, électrons.
+// Halos fixes (rouge : oxydation, bleu : réduction) autour des espèces
+// d'une étape à électron, une fois arrivées.
 function _dessinerCycleGaz(ctx, cy, pulse) {
-  var k, coul = cy.ox ? COUL_OX : COUL_RED;
-  var fondu = cy.phase === 'transfo' ? _lisse(Math.min(1, cy.t / cy.dTransfo)) : cy.phase === 'depart' ? 1 : 0;
-  // Maille de l'accumulateur : signalée, puis fondu vers le solide formé
-  if (cy.maille && cy.phase !== 'depart') {
-    var xm = _mx(cy.maille.c + 0.5 + ploupe.offX), ym = cy.maille.r + 0.5;
-    if (cy.phase !== 'approche') _halo(ctx, xm, ym, R_ATOME, coul, 0.9 * (1 - fondu), pulse);
-    _dessinerAtomeP(ctx, xm, ym, cy.maille.avant, 1);
-    if (fondu > 0) _dessinerAtomeP(ctx, xm, ym, cy.maille.apres, fondu);
+  var i, k, coul = cy.ox ? COUL_OX : COUL_RED, sx = ploupe.zone === 'droite' ? -1 : 1;
+  var enCours = {};                     // espèces accrochées dessinées par une transformation
+  for (i = 0; i < cy.etapes.length; i++) {
+    var st = cy.etapes[i];
+    if (st.phase === 'transfo') for (k = 0; k < st.avec.length; k++) enCours[st.def.avec[k]] = true;
   }
-  if (fondu < 1) {
-    for (k = 0; k < cy.reactifs.length; k++) {
-      var a = cy.reactifs[k], x = _mx(a.u);
-      var alpha = (a.fondu && cy.phase === 'approche' ? Math.min(1, cy.t / 0.6) : 1) * (1 - fondu);
-      var rh = a.k === 'mol' ? a.r * 0.75 : a.r;
-      if (cy.phase !== 'approche') _halo(ctx, x, a.v, rh, coul, 0.9 * (1 - fondu), pulse);
-      _dessinerEspeceL(ctx, x, a.v, a.k, a.sym, alpha);
+
+  // Maille de l'accumulateur : signalée, puis elle devient le solide formé
+  var xm = 0, ym = 0;
+  if (cy.maille) {
+    xm = cy.maille.c + 0.5 + ploupe.offX; ym = cy.maille.r + 0.5;
+    if (cy.phase !== 'depart') {
+      var st0 = cy.etapes[0], kM = st0.phase === 'transfo' ? _lisse(Math.min(1, st0.t / st0.dTransfo)) : 0;
+      if (st0.tA >= st0.fA) _halo(ctx, _mx(xm), ym, R_ATOME, coul, 0.9 * (1 - kM), pulse);
+      _dessinerAtomeP(ctx, _mx(xm), ym, cy.maille.avant, 1);
+      if (kM > 0) _dessinerAtomeP(ctx, _mx(xm), ym, cy.maille.apres, kM);
     }
   }
-  if (fondu > 0) {
-    for (k = 0; k < cy.produits.length; k++) {
-      var p = cy.produits[k];
-      var ap = fondu;
-      if (cy.phase === 'depart' && p.k === 'mol' && p.sym !== cy.gaz) ap = 1 - _lisse(cy.t / PL_D_DEPART);   // eau formée : se fond dans la solution
-      if (cy.phase === 'depart' && p.sym === cy.gaz) ap = 1 - 0.6 * _lisse((cy.t / PL_D_DEPART - 0.7) / 0.3);
-      _dessinerEspeceL(ctx, _mx(p.u), p.v, p.k, p.sym, ap);
+
+  // Espèces formées qui partent (derrière les autres)
+  for (i = 0; i < cy.partants.length; i++) {
+    var p = cy.partants[i];
+    var ap = p.cle === 'H2O' ? 1 - _lisse(p.t / PL_D_DEPART) : 1;   // eau formée : se fond dans la solution
+    _dessinerMotif(ctx, _mx(p.u), p.v, p.cle, p.angC, ap);
+  }
+
+  // Espèces accrochées, en attente de l'étape suivante
+  var cour = cy.etapes[cy.k];
+  for (var nom in cy.accroches) {
+    if (enCours[nom]) continue;
+    var A = cy.accroches[nom];
+    var signale = cour && cour.n && cour.phase === 'approche' && cour.tA >= cour.fA &&
+                  cour.def.avec && cour.def.avec.indexOf(nom) >= 0;
+    if (signale) _halo(ctx, _mx(A.pos.u), A.pos.v, _rayonMotif(A.cle) * 0.8, coul, 0.9, pulse);
+    _dessinerMotif(ctx, _mx(A.pos.u), A.pos.v, A.cle, A.ang, 1);
+  }
+
+  for (i = 0; i < cy.etapes.length; i++) {
+    st = cy.etapes[i];
+    if (st.phase === 'approche') {
+      // Espèces qui arrivent (halo une fois arrivées, si l'étape échange un électron)
+      for (k = 0; k < st.arr.length; k++) {
+        var a = st.arr[k];
+        var al = a.fondu ? Math.min(1, (st.tA - st.retard) / 0.6) : 1;
+        if (st.n && st.tA >= st.fA) _halo(ctx, _mx(a.u), a.v, _rayonMotif(a.cle) * 0.8, coul, 0.9, pulse);
+        _dessinerMotif(ctx, _mx(a.u), a.v, a.cle, a.angC, al);
+      }
+    } else if (st.phase === 'transfo') {
+      var kT = _lisse(Math.min(1, st.t / st.dTransfo)), R = st.avec.concat(st.arr), P = st.apres;
+      if (st.n) {
+        for (k = 0; k < R.length; k++) _halo(ctx, _mx(R[k].pos.u), R[k].pos.v, _rayonMotif(R[k].cle) * 0.8, coul, 0.9 * (1 - kT), pulse);
+      }
+      // Atomes : de leur place dans les espèces qui réagissent à leur place
+      // dans les espèces formées (ou depuis la maille, ou vers elle) ; un
+      // ion d'un seul atome prend l'aspect d'un atome, ou l'inverse
+      for (k = 0; k < st.liens.length; k++) {
+        var l = st.liens[k];
+        var At = l.ra >= 0 ? R[l.ra].atomes[l.ma] : null, Bt = l.pb >= 0 ? P[l.pb].atomes[l.mb] : null;
+        var au = At ? R[l.ra].pos.u + At.du : xm, av = At ? R[l.ra].pos.v + At.dv : ym;
+        var bu = Bt ? P[l.pb].pos.u + Bt.du : xm, bv = Bt ? P[l.pb].pos.v + Bt.dv : ym;
+        var u = au + (bu - au) * kT, v = av + (bv - av) * kT;
+        var alpha = !At ? kT : !Bt ? 1 - kT : 1;
+        var ionA = At ? PL_MOTIFS[R[l.ra].cle].ion : null, ionB = Bt ? PL_MOTIFS[P[l.pb].cle].ion : null;
+        var rr = At && Bt ? At.r + (Bt.r - At.r) * kT : (At || Bt).r;   // rayon : de celui du réactif à celui du produit
+        if (ionA === ionB || !At || !Bt) _dessinerAtomeL(ctx, _mx(u), v, l.el, At ? ionA : ionB, alpha, rr);
+        else {
+          _dessinerAtomeL(ctx, _mx(u), v, l.el, ionA, alpha * (1 - kT), rr);
+          _dessinerAtomeL(ctx, _mx(u), v, l.el, ionB, alpha * kT, rr);
+        }
+      }
+      var charge = function (S, alq) {
+        var q = PL_MOTIFS[S.cle].q;
+        if (!q) return;
+        var c = _placeCharge(S.atomes);
+        _dessinerChargeL(ctx, _mx(S.pos.u) + sx * c.du, S.pos.v + c.dv, q, alq);
+      };
+      for (k = 0; k < R.length; k++) charge(R[k], 1 - kT);
+      for (k = 0; k < P.length; k++) charge(P[k], kT);
+    }
+    // Électrons de l'étape, jusqu'au bout de leur trajet
+    if (st.te !== undefined) {
+      for (k = 0; k < st.electrons.length; k++) {
+        var e = st.electrons[k];
+        if (st.te < e.depart || e.s >= 1) continue;
+        var q = _surLigne(e.chemin, e.s);
+        _dessinerElectron(ctx, _mx(q.u + ploupe.offX), q.v);
+      }
     }
   }
 }
