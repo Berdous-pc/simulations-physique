@@ -90,7 +90,7 @@ main {
   padding: 0.45em 0.9em;
   /* Suit la largeur ET la hauteur de la colonne : en fenêtre basse, le bloc
      ne doit pas manger la scène. */
-  font-size: clamp(12px, min(1.55cqw, 3.1cqh), 26px);
+  font-size: clamp(15px, min(2.1cqw, 4.2cqh), 34px);
   line-height: 1.45;
 }
 
