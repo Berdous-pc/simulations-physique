@@ -57,7 +57,9 @@ var METAUX = {
         // sulfate de cuivre (Cu²⁺ absorbe le rouge-orangé : il transmet le
         // bleu et un peu de vert), du plus dilué au plus concentré. Le bleu
         // de Dissolution ('#00d0ff' → '#0059ff') finissait trop violacé.
-        atome: '#c26a32', ion: '#3a80d4', solution: ['#a6e3fb', '#33bdf2', '#0096e2'],
+        // Teinte diluée assez soutenue pour qu'une solution presque épuisée
+        // se distingue encore de l'eau à l'œil nu.
+        atome: '#c26a32', ion: '#3a80d4', solution: ['#74cdf7', '#33bdf2', '#0096e2'],
         nomIon: 'ions cuivre(II)', nomSolution: 'sulfate de cuivre(II)', anion: 'SO4',
         depot: 'eponge' },
   Ag: { sym: 'Ag', nom: 'argent', de: 'd’argent', le: 'l’argent', du: 'de l’argent', charge: 1, E0: 0.80,

@@ -471,11 +471,14 @@ function majBecher(dtSim, dtReel) {
 //  dans l'eau au lieu d'y apparaître d'un coup. Deux espèces colorées
 //  (Fe + Cu²⁺) : moyenne de leurs teintes, pondérée par ces mêmes poids ;
 //  la solution passe du bleu au vert en transitant par le bleu-vert.
-//  Solution incolore : même bleu pâle plat #b8d4f0 que l'eau des pages
-//  Dissolution et Titrage (charte du site).
+//  Solution incolore : bleu ciel clair et franc #b4e2fa. Le bleu pâle
+//  #b8d4f0 des pages Dissolution et Titrage tirait ici vers le lavande
+//  grisé, un aqua (#c2e5ec) vers le vert, des bleus peu saturés (#c4e2f0,
+//  #bce0f2) vers le gris ; cette teinte se lit comme de l'eau et reste
+//  distincte du bleu azur, plus soutenu, des ions cuivre(II), même dilués.
 // ══════════════════════════════════════════════════════════════════════
 
-var _EAU = [184, 212, 240];          // #b8d4f0, eau « neutre » du site
+var _EAU = [180, 226, 250];          // #b4e2fa, eau « neutre » de la page
 var C_RAMPE = 0.1;
 var ALPHA_VOILE = 0.4;               // solution vue devant la partie immergée de la lame
 
