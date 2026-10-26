@@ -1572,7 +1572,8 @@ function _dessinerTraitsLoupeP(ctx) {
 // ── Titre au-dessus de la loupe, légende en dessous ───────────────────
 function _dessinerTextesLoupeP(ctx) {
   var fs = Math.max(11, dispP.lr * 0.075);
-  var largeur = Math.min(dispP.W, dispP.lr * 2.6);
+  // Textes centrés sur la loupe, sans dépasser le bord droit du canvas
+  var largeur = Math.min(dispP.W, dispP.lr * 2.6, 2 * (dispP.W - dispP.lx) - 8);
   var haut = dispP.ly - dispP.lr - fs * 0.4;
   var bas = dispP.ly + dispP.lr + fs * 1.3;
   var titre, lignes = [], cotes = null;

@@ -1030,11 +1030,15 @@ function calculerDispositionPile(W, H) {
   dispP.W = W; dispP.H = H;
   var rw, rh;
   if (W >= 1.15 * H) {
-    rw = W * 0.6; rh = H;
-    // Loupe un peu au-dessus du milieu : deux lignes de légende dessous
-    dispP.lx = W * 0.8;
-    dispP.ly = H * 0.47;
+    // Loupe un peu au-dessus du milieu : deux lignes de légende dessous ;
+    // sa bande, à droite, est juste assez large pour elle (diamètre et une
+    // petite marge de chaque côté) : le montage prend tout le reste (choix
+    // de l'utilisateur ; taille de la loupe inchangée)
     dispP.lr = Math.min(W * 0.2, H * 0.5) * 0.78;
+    var marge = Math.max(12, 0.06 * dispP.lr);
+    dispP.lx = W - marge - dispP.lr;
+    dispP.ly = H * 0.47;
+    rw = W - 2 * (dispP.lr + marge); rh = H;
   } else {
     rw = W; rh = H * 0.52;
     dispP.lx = W * 0.5;
