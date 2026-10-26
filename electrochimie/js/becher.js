@@ -9,7 +9,7 @@
 //  Dépend de sim.js.
 //  Disposition du canvas (bécher à gauche, loupe à droite), lame métallique
 //  déplaçable à la souris, couleur de la solution, dépôt et usure de la
-//  lame. L'avancement macroscopique tend vers 1 puis se stabilise ; la
+//  lame, poudre tombée au fond du bécher. L'avancement macroscopique tend vers 1 puis se stabilise ; la
 //  loupe (loupe.js) montre en continu le mécanisme à l'échelle des ions.
 // ══════════════════════════════════════════════════════════════════════
 
@@ -37,6 +37,7 @@ var LAME_W = 5, LAME_H = 40;       // lame (vue de face)
 var REPOS_X = 22, REPOS_YB = 88;   // lame posée dans son support
 var SLOT_X  = 58, IMM_YB = 86;     // lame plongée (bas de la lame)
 var HAUT_YB = 52;                  // passage au-dessus du bord du bécher
+var SUPPORT_W = 12, SUPPORT_H = 3.4;
 
 // Point visé par la loupe : face droite de la lame plongée, mi-profondeur
 var LOUPE_PX = SLOT_X + LAME_W / 2, LOUPE_PY = 74;
@@ -44,8 +45,22 @@ var LOUPE_PX = SLOT_X + LAME_W / 2, LOUPE_PY = 74;
 // Constante de temps de l'avancement macroscopique (s de temps simulé)
 var TAU_AVANCEMENT = 30;
 
-// Vitesse de déplacement automatique de la lame (unités/s, temps réel)
+// Aspect de la lame (usure, dépôt) et poudre au fond : 0 → 1, plus lent que
+// l'avancement. Avec 1 − (1 − avancement)^EXPOSANT_ASPECT, l'aspect suit la
+// même exponentielle qu'avec une constante de temps TAU_AVANCEMENT /
+// EXPOSANT_ASPECT (75 s au lieu de 30 s) : la lame continue de changer
+// après que la couleur de la solution s'est presque stabilisée.
+var EXPOSANT_ASPECT = 0.4;
+
+// Déplacement automatique de la lame (temps réel) : vitesse de croisière
+// VITESSE_LAME (unités/s), départ et arrivée en douceur (accélération
+// ACCEL_LAME, unités/s²), vitesse minimale V_MIN_LAME pour ne pas traîner
+// sur les derniers dixièmes ; les angles du trajet sont arrondis
+// (rayon RAYON_VIRAGE au plus).
 var VITESSE_LAME = 70;
+var ACCEL_LAME = 260;
+var V_MIN_LAME = 5;
+var RAYON_VIRAGE = 5;
 
 // ══════════════════════════════════════════════════════════════════════
 //  Disposition du canvas (calculée à chaque redimensionnement)
@@ -90,13 +105,15 @@ var lame = {
   x: REPOS_X, yb: REPOS_YB,
   dansBecher: false,    // vrai entre l'entrée par le haut du bécher et la sortie
   cible: 'repos',       // 'repos' | 'becher' : destination du dernier geste
-  chemin: null,         // déplacement automatique : liste de points {x, yb, entre}
+  chemin: null,         // déplacement automatique : liste de points {x, yb, entre, sort}
+  parcouru: 0,          // distance déjà parcourue sur ce chemin (accélération)
   mouillee: 0           // hauteur (depuis le bas) déjà mouillée par la solution
 };
 
 var macro = {
   avancement: 0,        // 0 → 1 : avancement de la transformation
-  motif: null           // taches et aiguilles du dépôt (tirées une fois par RAZ)
+  motif: null,          // aiguilles du dépôt et grains de la poudre (tirés une fois par RAZ)
+  texture: null         // texture du dépôt sur la lame (tirée une fois par RAZ)
 };
 
 function resetBecher() {
@@ -104,28 +121,23 @@ function resetBecher() {
   lame.dansBecher = false;
   lame.cible = 'repos';
   lame.chemin = null;
+  lame.parcouru = 0;
   lame.mouillee = 0;
   macro.avancement = 0;
   macro.motif = _tirerMotifDepot();
+  macro.texture = _tirerTextureDepot();
   _drag = null;
   _signalerEtatLame();
 }
 
-// Taches (dépôt spongieux ou poudreux) et aiguilles (cristaux d'argent, de
-// plomb) : positions relatives à la zone mouillée, seuil d'apparition dans
-// [0, 1] comparé à l'avancement.
+// Aiguilles (cristaux d'argent, de plomb) : positions relatives à la zone
+// mouillée, seuil d'apparition dans [0, 1] comparé à l'aspect.
+// Grains de la poudre tombée au fond : u position horizontale relative à la
+// demi-largeur du tas (au-delà de ±1 : grains épars sur le fond), v hauteur
+// relative dans le tas, seuil comparé à la quantité de poudre.
 function _tirerMotifDepot() {
   var alea = creerAlea(20261025);
-  var taches = [], aiguilles = [];
-  for (var i = 0; i < 90; i++) {
-    taches.push({
-      u: alea() * 1.16 - 0.08,       // un peu au-delà des bords : le dépôt déborde
-      v: alea(),
-      r: 0.35 + alea() * 0.75,
-      seuil: alea() * 0.75,
-      teinte: alea() * 0.3 - 0.15
-    });
-  }
+  var aiguilles = [], grains = [];
   for (var j = 0; j < 26; j++) {
     var gauche = alea() < 0.5;
     aiguilles.push({
@@ -137,7 +149,117 @@ function _tirerMotifDepot() {
       branches: 1 + Math.floor(alea() * 3)
     });
   }
-  return { taches: taches, aiguilles: aiguilles };
+  for (var i = 0; i < 170; i++) {
+    var epars = i % 4 === 0;           // un grain sur quatre roule autour du tas
+    grains.push({
+      u: epars ? (alea() < 0.5 ? -1 : 1) * (0.8 + alea() * 0.7) : alea() * 2 - 1,
+      v: epars ? 0 : alea(),
+      r: 0.16 + alea() * 0.2,
+      seuil: alea() * 0.9,
+      teinte: alea() * 0.4 - 0.2
+    });
+  }
+  return { aiguilles: aiguilles, grains: grains };
+}
+
+// ── Texture du dépôt sur la lame ──────────────────────────────────────
+// Une image de toute la hauteur de la lame, un peu plus large qu'elle (le
+// dépôt déborde des bords). Chaque pixel a son propre seuil d'apparition :
+// le dépôt envahit la surface point par point, de façon continue, au lieu
+// de taches qui poussent. Les seuils suivent un bruit en grumeaux (le dépôt
+// se forme par îlots qui grossissent et se rejoignent) plus un grain fin.
+// Sur la lame, ils sont ramenés à une répartition uniforme sur [0, 1] : la
+// fraction couverte vaut exactement l'aspect. Hors de la lame, ils sont
+// plus élevés, d'autant plus loin du bord (seul un dépôt épais déborde, en
+// bord déchiqueté ; certains n'apparaissent jamais).
+var PX_TEXTURE = 12;      // pixels de texture par unité de scène
+var DEBORD = 0.08;        // débord de chaque côté, en largeur de lame
+var FONDU_GRAIN = 0.05;   // chaque pixel apparaît en fondu sur cette plage d'aspect
+
+function _tirerTextureDepot() {
+  var alea = creerAlea(20261026);
+  var w = Math.round(LAME_W * (1 + 2 * DEBORD) * PX_TEXTURE);
+  var h = Math.round(LAME_H * PX_TEXTURE);
+  var n = w * h;
+  var grumeaux = _bruitValeur(alea, w, h, 1.4 * PX_TEXTURE);
+  var grain = _bruitValeur(alea, w, h, 0.4 * PX_TEXTURE);
+  var val = new Float32Array(n), seuils = new Float32Array(n), teintes = new Float32Array(n);
+  var surLame = [];
+  for (var i = 0; i < n; i++) {
+    var u = (i % w + 0.5) / w * (1 + 2 * DEBORD) - DEBORD;   // 0 → 1 sur la lame
+    var b = 0.6 * grumeaux[i] + 0.3 * grain[i] + 0.1 * alea();
+    var dehors = Math.max(-u, u - 1);
+    if (dehors > 0) seuils[i] = 0.55 + 0.7 * dehors / DEBORD + 0.5 * (b - 0.5);
+    else { val[i] = b; surLame.push(i); }
+    teintes[i] = (grain[i] - 0.5) * 0.35 + (alea() - 0.5) * 0.12;
+  }
+  // Rang → seuil uniforme
+  surLame.sort(function (p, q) { return val[p] - val[q]; });
+  for (var k = 0; k < surLame.length; k++) seuils[surLame[k]] = k / surLame.length;
+
+  var canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  return { w: w, h: h, seuils: seuils, teintes: teintes, canvas: canvas, cle: '' };
+}
+
+// Bruit de valeur : grille de valeurs aléatoires au pas `pas` (pixels),
+// interpolées en douceur. Valeurs dans [0, 1].
+function _bruitValeur(alea, w, h, pas) {
+  var gw = Math.ceil(w / pas) + 2, gh = Math.ceil(h / pas) + 2;
+  var g = new Float32Array(gw * gh);
+  for (var i = 0; i < g.length; i++) g[i] = alea();
+  var out = new Float32Array(w * h);
+  for (var y = 0; y < h; y++) {
+    var fy = y / pas, iy = Math.floor(fy), ty = fy - iy;
+    ty = ty * ty * (3 - 2 * ty);
+    for (var x = 0; x < w; x++) {
+      var fx = x / pas, ix = Math.floor(fx), tx = fx - ix;
+      tx = tx * tx * (3 - 2 * tx);
+      var a = g[iy * gw + ix], b = g[iy * gw + ix + 1];
+      var c = g[(iy + 1) * gw + ix], d = g[(iy + 1) * gw + ix + 1];
+      out[y * w + x] = (a + (b - a) * tx) * (1 - ty) + (c + (d - c) * tx) * ty;
+    }
+  }
+  return out;
+}
+
+// Redessine la texture pour l'aspect a (seulement s'il a assez changé, ou
+// si la solution, donc la couleur du dépôt, a changé)
+function _majTextureDepot(a) {
+  var T = macro.texture;
+  var cle = Math.round(a * 400) + '|' + sim.solution;
+  if (T.cle === cle) return;
+  T.cle = cle;
+  var col = _couleurDepot();
+  var cT = T.canvas.getContext('2d');
+  var img = cT.createImageData(T.w, T.h);
+  var d = img.data;
+  for (var i = 0; i < T.seuils.length; i++) {
+    var al = (a - T.seuils[i]) / FONDU_GRAIN;
+    if (al <= 0) continue;              // pixel transparent (déjà à 0)
+    var t = T.teintes[i];
+    for (var k = 0; k < 3; k++) {
+      d[4 * i + k] = t >= 0 ? col[k] + (255 - col[k]) * t : col[k] * (1 + t);
+    }
+    d[4 * i + 3] = 235 * Math.min(1, al);
+  }
+  cT.putImageData(img, 0, 0);
+}
+
+// Couleur du dépôt et de la poudre : plus sombre que le métal massif (le
+// cuivre déposé est rouge-brun, le fer noir…)
+function _couleurDepot() {
+  var D = METAUX[sim.solution];
+  var col = couleurRGB(D.atome);
+  return D.depot === 'eponge' ? [150, 72, 36]
+       : D.depot === 'noir'   ? nuance(col, -0.5)
+       : nuance(col, -0.28);
+}
+
+// Aspect de la lame et quantité de poudre (cf. EXPOSANT_ASPECT)
+function aspectDepot() {
+  if (!reactionPossible(sim.metal, sim.solution)) return 0;
+  return 1 - Math.pow(1 - macro.avancement, EXPOSANT_ASPECT);
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -164,29 +286,123 @@ function basLameDansLoupe() {
 //  Déplacements automatiques (bouton Plonger / Retirer)
 // ══════════════════════════════════════════════════════════════════════
 
+// Drapeaux d'un point : `entre` (la lame est alors au-dessus de l'ouverture
+// et entre dans le bécher), `sort` (elle en est sortie), appliqués quand la
+// lame atteint ce point.
+
 function plongerLame() {
   if (lame.dansBecher) {
-    lame.chemin = [{ x: SLOT_X, yb: IMM_YB }];
+    _lancerChemin([{ x: SLOT_X, yb: IMM_YB }]);
   } else {
-    lame.chemin = [
+    _lancerChemin([
       { x: lame.x,  yb: Math.min(lame.yb, HAUT_YB) },
-      { x: SLOT_X,  yb: HAUT_YB },
-      { x: SLOT_X,  yb: IMM_YB, entre: true }   // `entre` : franchit le bord du bécher
-    ];
+      { x: SLOT_X,  yb: HAUT_YB, entre: true },
+      { x: SLOT_X,  yb: IMM_YB }
+    ]);
   }
   lame.cible = 'becher';
   _signalerEtatLame();
 }
 
 function retirerLame() {
+  var dep = { x: lame.x, yb: lame.yb };
   var ch = [];
-  if (lame.dansBecher) ch.push({ x: SLOT_X, yb: HAUT_YB, sort: true });
-  else ch.push({ x: lame.x, yb: Math.min(lame.yb, HAUT_YB) });
-  ch.push({ x: REPOS_X, yb: HAUT_YB });
-  ch.push({ x: REPOS_X, yb: REPOS_YB });
-  lame.chemin = ch;
+  if (lame.dansBecher) {
+    dep = { x: SLOT_X, yb: HAUT_YB, sort: true };
+    ch.push(dep);
+  }
+  _lancerChemin(ch.concat(_cheminVersSupport(dep)));
   lame.cible = 'repos';
   _signalerEtatLame();
+}
+
+// Trajet de dep jusqu'au support : en ligne droite si le bécher n'est pas
+// sur le chemin, sinon en passant juste au-dessus de son bord (et non plus
+// toujours à la hauteur HAUT_YB : lâchée près du support, la lame y glisse
+// au lieu de remonter d'abord). Elle s'arrête un peu au-dessus de la fente
+// puis s'y enfonce verticalement.
+function _cheminVersSupport(dep) {
+  var yApproche = TABLE_Y - SUPPORT_H - 1.5;
+  var arrivee = { x: REPOS_X, yb: yApproche };
+  // À gauche de xLibre, la lame ne surplombe plus le bécher (bec verseur
+  // compris) ; au-dessus de yPassage, elle passe au-dessus de son bord.
+  // Marges élargies de RAYON_VIRAGE / 4 : l'arrondi d'un angle droit rogne
+  // le coin d'autant.
+  var xLibre = BECHER_L - 2.2 - RAYON_VIRAGE / 4 - LAME_W / 2;
+  var yPassage = BECHER_TOP - 1.3 - RAYON_VIRAGE / 4;
+  var ch = [];
+  var p = dep;
+  if (p.x > xLibre) {
+    if (p.yb > yPassage) {             // à droite du bécher, plus bas que son bord
+      p = { x: p.x, yb: yPassage };
+      ch.push(p);
+    }
+    // Hauteur du bas de la lame en xLibre sur la ligne droite p → arrivée
+    var ybLibre = p.yb + (arrivee.yb - p.yb) * (p.x - xLibre) / (p.x - arrivee.x);
+    if (ybLibre > yPassage) ch.push({ x: xLibre, yb: yPassage });
+  } else if (p.yb > yApproche) {
+    ch.push({ x: p.x, yb: yApproche }); // plus basse que la fente : petit soulèvement
+  }
+  ch.push(arrivee);
+  ch.push({ x: REPOS_X, yb: REPOS_YB });
+  return ch;
+}
+
+// Prépare le déplacement automatique vers la suite de points `points` :
+// points confondus fusionnés, angles arrondis (arc de parabole tangent aux
+// deux segments, de rayon RAYON_VIRAGE au plus), le tout en une suite dense
+// de points parcourue par majBecher.
+function _lancerChemin(points) {
+  var pts = [{ x: lame.x, yb: lame.yb }];
+  var i, k;
+  for (i = 0; i < points.length; i++) {
+    var q = pts[pts.length - 1], s = points[i];
+    if (Math.abs(s.x - q.x) + Math.abs(s.yb - q.yb) < 1e-3) {
+      q.entre = q.entre || s.entre; q.sort = q.sort || s.sort;
+    } else {
+      pts.push({ x: s.x, yb: s.yb, entre: s.entre, sort: s.sort });
+    }
+  }
+  // Drapeaux du point de départ : la lame y est déjà
+  if (pts[0].entre) lame.dansBecher = true;
+  if (pts[0].sort) lame.dansBecher = false;
+
+  var dense = [];
+  for (i = 1; i < pts.length; i++) {
+    var c = pts[i];
+    if (i === pts.length - 1) { dense.push(c); break; }
+    var a = pts[i - 1], b = pts[i + 1];
+    var la = Math.hypot(c.x - a.x, c.yb - a.yb), lb = Math.hypot(b.x - c.x, b.yb - c.yb);
+    var uax = (c.x - a.x) / la, uay = (c.yb - a.yb) / la;
+    var ubx = (b.x - c.x) / lb, uby = (b.yb - c.yb) / lb;
+    var r = Math.min(RAYON_VIRAGE, 0.45 * la, 0.45 * lb);
+    if (uax * ubx + uay * uby > 0.999 || r < 0.05) { dense.push(c); continue; }   // pas d'angle
+    var p0x = c.x - uax * r, p0y = c.yb - uay * r;
+    var p2x = c.x + ubx * r, p2y = c.yb + uby * r;
+    var N = 8;
+    for (k = 0; k <= N; k++) {
+      var t = k / N, m0 = (1 - t) * (1 - t), m1 = 2 * t * (1 - t), m2 = t * t;
+      dense.push({
+        x:  m0 * p0x + m1 * c.x  + m2 * p2x,
+        yb: m0 * p0y + m1 * c.yb + m2 * p2y,
+        sort:  k === 0 && c.sort,      // sortie dès le début du virage
+        entre: k === N && c.entre      // entrée à la fin du virage, à la verticale de la place
+      });
+    }
+  }
+  lame.chemin = dense.length ? dense : null;
+  lame.parcouru = 0;
+}
+
+// Longueur du chemin qui reste à parcourir
+function _longueurRestante() {
+  var L = 0, x = lame.x, y = lame.yb;
+  for (var i = 0; i < lame.chemin.length; i++) {
+    var p = lame.chemin[i];
+    L += Math.hypot(p.x - x, p.yb - y);
+    x = p.x; y = p.yb;
+  }
+  return L;
 }
 
 // Prévient ui.js (libellé du bouton Plonger / Retirer)
@@ -202,15 +418,21 @@ function _signalerEtatLame() {
 
 function majBecher(dtSim, dtReel) {
   // ── Déplacement automatique de la lame ──
+  // Vitesse limitée au départ et à l'arrivée (v² = 2·a·distance) : la lame
+  // accélère puis ralentit au lieu de démarrer et de s'arrêter d'un coup.
   if (lame.chemin && !_drag) {
-    var reste = VITESSE_LAME * dtReel;
+    var v = Math.min(VITESSE_LAME,
+                     V_MIN_LAME + Math.sqrt(2 * ACCEL_LAME * lame.parcouru),
+                     V_MIN_LAME + Math.sqrt(2 * ACCEL_LAME * _longueurRestante()));
+    var reste = v * dtReel;
+    lame.parcouru += reste;
     while (reste > 0 && lame.chemin.length) {
       var pt = lame.chemin[0];
-      if (pt.entre && !lame.dansBecher && lame.x === pt.x) lame.dansBecher = true;
       var dx = pt.x - lame.x, dy = pt.yb - lame.yb;
       var d = Math.sqrt(dx * dx + dy * dy);
       if (d <= reste) {
         lame.x = pt.x; lame.yb = pt.yb; reste -= d;
+        if (pt.entre) lame.dansBecher = true;
         if (pt.sort) lame.dansBecher = false;
         lame.chemin.shift();
       } else {
@@ -301,6 +523,7 @@ function dessinerBecher(ctx) {
   ctx.fillStyle = rgbCss(sol.rgb);
   ctx.fill();
   _dessinerVolume(ctx);
+  _dessinerPoudre(ctx);
 
   _dessinerLame(ctx);
   _dessinerSolution(ctx, sol);
@@ -322,7 +545,7 @@ function _dessinerTable(ctx) {
 
 // Socle en bois dans lequel la lame est posée au repos
 function _dessinerSupport(ctx) {
-  var w = 12, h = 3.4;
+  var w = SUPPORT_W, h = SUPPORT_H;
   ctx.fillStyle = '#c9a77c';
   ctx.strokeStyle = '#8a6a44';
   ctx.lineWidth = 0.3;
@@ -416,8 +639,7 @@ function _dessinerLame(ctx) {
   var base = couleurRGB(M.atome);
   var x0 = lame.x - LAME_W / 2;
   var top = lame.yb - LAME_H;
-  var reagit = reactionPossible(sim.metal, sim.solution);
-  var p = reagit ? macro.avancement : 0;
+  var p = aspectDepot();
   var hMouillee = Math.min(lame.mouillee, LAME_H - 6);
   var yMouillee = lame.yb - hMouillee;
 
@@ -446,7 +668,7 @@ function _dessinerLame(ctx) {
   ctx.lineWidth = 0.25;
   ctx.strokeRect(x0, top, LAME_W, LAME_H - hMouillee);
 
-  if (hMouillee > 0 && p > 0) _dessinerDepot(ctx, x0, yMouillee, hMouillee, p);
+  if (hMouillee > 0 && p > 0) _dessinerDepot(ctx, x0, top, yMouillee, hMouillee, p);
 
   // Pince (prise en main) en haut de la lame
   ctx.fillStyle = '#4a525c';
@@ -470,31 +692,22 @@ function _degradeMetal(ctx, x0, w, base, assomb) {
 }
 
 // ── Dépôt du métal formé (celui des ions de la solution) ──────────────
-function _dessinerDepot(ctx, x0, yHaut, h, p) {
+// p : aspect (aspectDepot). La texture couvre toute la hauteur de la lame ;
+// seule la partie mouillée est montrée.
+function _dessinerDepot(ctx, x0, top, yHaut, h, p) {
   var D = METAUX[sim.solution];
   var col = couleurRGB(D.atome);
   var motif = macro.motif;
   var i, t;
 
-  // Teinte du dépôt : poudre plus sombre que le métal massif (le cuivre
-  // déposé est rouge-brun, le fer noir…)
-  var foncee = D.depot === 'eponge' ? nuance([150, 72, 36], 0)
-             : D.depot === 'noir'   ? nuance(col, -0.5)
-             : nuance(col, -0.28);
-
-  for (i = 0; i < motif.taches.length; i++) {
-    t = motif.taches[i];
-    var a = (p - t.seuil) / 0.25;
-    if (a <= 0) continue;
-    a = Math.min(1, a);
-    var r = t.r * (0.5 + 0.5 * a) * (D.depot === 'aiguilles' ? 0.7 : 1);
-    var x = x0 + t.u * LAME_W;
-    var y = yHaut + 0.6 + t.v * (h - 1.2);
-    ctx.fillStyle = rgbCss(nuance(foncee, t.teinte), 0.9 * a);
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fill();
-  }
+  _majTextureDepot(p);
+  var xT = x0 - LAME_W * DEBORD, wT = LAME_W * (1 + 2 * DEBORD);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(xT, yHaut, wT, h);
+  ctx.clip();
+  ctx.drawImage(macro.texture.canvas, xT, top, wT, LAME_H);
+  ctx.restore();
 
   // Cristaux en aiguilles (« arbre de Diane » pour l'argent, « arbre de
   // Saturne » pour le plomb) qui poussent depuis les bords de la lame
@@ -526,6 +739,56 @@ function _dessinerDepot(ctx, x0, yHaut, h, p) {
         ctx.stroke();
       }
     }
+  }
+}
+
+// ── Poudre tombée au fond du bécher ───────────────────────────────────
+// Le dépôt peu adhérent se détache (comme les amas qui tombent dans la
+// loupe) et s'accumule sous la lame en un petit tas de la couleur du métal
+// formé. Il apparaît une fois que la lame porte du dépôt, grossit avec
+// l'aspect et reste quand la lame est retirée. Dessiné avant le voile : on
+// le voit à travers la solution.
+var POUDRE_DEBUT = 0.15;          // aspect à partir duquel de la poudre tombe
+var POUDRE_H = 2.2;               // hauteur du tas complet
+var POUDRE_L0 = 2.5, POUDRE_L1 = 6.5;   // demi-largeur du tas, au début et à la fin
+
+function _dessinerPoudre(ctx) {
+  var q = (aspectDepot() - POUDRE_DEBUT) / (1 - POUDRE_DEBUT);
+  if (q <= 0) return;
+  var col = _couleurDepot();
+  var xc = SLOT_X, base = TABLE_Y - 0.3;
+  var L = POUDRE_L0 + (POUDRE_L1 - POUDRE_L0) * q;
+  var H = POUDRE_H * Math.sqrt(q);
+  // Profil en cloche aplatie : y = base − H·(1 − u²)², u = (x − xc) / L
+  function haut(u) { var s = 1 - u * u; return s > 0 ? H * s * s : 0; }
+
+  if (H > 0.05) {
+    ctx.beginPath();
+    ctx.moveTo(xc - L, base);
+    for (var k = 1; k < 24; k++) {
+      var u = -1 + 2 * k / 24;
+      ctx.lineTo(xc + u * L, base - haut(u));
+    }
+    ctx.lineTo(xc + L, base);
+    ctx.closePath();
+    var g = ctx.createLinearGradient(0, base - H, 0, base);
+    g.addColorStop(0, rgbCss(nuance(col, 0.08)));
+    g.addColorStop(1, rgbCss(nuance(col, -0.18)));
+    ctx.fillStyle = g;
+    ctx.fill();
+  }
+
+  // Grains : dans le tas (relief) et épars autour
+  var grains = macro.motif.grains;
+  for (var i = 0; i < grains.length; i++) {
+    var t = grains[i];
+    var a = (q - t.seuil) / 0.1;
+    if (a <= 0) continue;
+    var y = base - t.v * haut(t.u) - t.r * 0.5;
+    ctx.fillStyle = rgbCss(nuance(col, t.teinte), Math.min(1, a));
+    ctx.beginPath();
+    ctx.arc(xc + t.u * L, y, t.r, 0, Math.PI * 2);
+    ctx.fill();
   }
 }
 

@@ -210,14 +210,26 @@ function _compterFond(type) {
   return n;
 }
 
-// Ions formés en route vers le fond (phase de départ d'un cycle)
-function _prodEnRoute() {
+// Ions du métal que les cycles en cours vont apporter au fond : ceux déjà
+// en route (phase de départ, s'ils sont gardés) et ceux dont l'atome est
+// encore dans la lame (comptés d'avance, pour que le fondu ne fasse pas
+// double emploi avec eux). sauf : cycle à ne pas compter.
+function _prodEnRoute(sauf) {
   var n = 0;
   for (var i = 0; i < loupe.cycles.length; i++) {
     var cy = loupe.cycles[i];
-    if (cy.phase !== 'depart') continue;
-    for (var k = 0; k < cy.atomes.length; k++) if (cy.atomes[k].garder) n++;
+    if (cy === sauf || !cy.reagit) continue;
+    for (var k = 0; k < cy.atomes.length; k++) {
+      if (cy.phase !== 'depart' || cy.atomes[k].garder) n++;
+    }
   }
+  return n;
+}
+
+// Ions oxydants de fond déjà réservés par un cycle (ils vont se réduire)
+function _oxReserves() {
+  var n = 0;
+  for (var i = 0; i < loupe.fond.length; i++) if (loupe.fond[i].pris) n++;
   return n;
 }
 
@@ -227,21 +239,21 @@ function _prodEnRoute() {
 // sortir de la loupe, cf. phase 'transfo'), sinon il apparaît en fondu.
 function _majPopulation(dt) {
   var cible = _ciblesFond(), i, f;
-  var nOx = _compterFond('ox');
-  while (nOx > cible.ox) {
+  // Les cycles consomment et fournissent l'essentiel des ions ; le fondu
+  // ne sert que si la loupe ne tourne pas (lame à peine plongée) ou si les
+  // cycles prennent du retard. Les ions déjà réservés par un cycle ne
+  // comptent plus dans le fond : ils sont déjà « consommés ».
+  var retard = loupe.enPlace ? 2 : 1;
+  var excesOx = _compterFond('ox') - _oxReserves() - cible.ox;
+  if (excesOx >= retard) {
     var choisi = null;
     for (i = 0; i < loupe.fond.length; i++) {
       f = loupe.fond[i];
-      if (f.type === 'ox' && f.etat !== 'sort' && (!choisi || f.u < choisi.u)) choisi = f;
+      if (f.type === 'ox' && f.etat === '' && !f.pris && (!choisi || f.u < choisi.u)) choisi = f;
     }
-    if (!choisi) break;
-    choisi.etat = 'sort';
-    nOx--;
+    if (choisi) choisi.etat = 'sort';
   }
-  // Les cycles fournissent l'essentiel des ions formés ; complément en
-  // fondu si la loupe ne tourne pas (lame à peine plongée) ou prend du retard
-  var nProd = _compterFond('prod') + _prodEnRoute();
-  var retard = loupe.enPlace ? 2 : 1;
+  var nProd = _compterFond('prod') + _prodEnRoute(null);
   if (cible.prod - nProd >= retard) _ajouterFond('prod', sim.metal, R_ION, 0);
 
   for (i = loupe.fond.length - 1; i >= 0; i--) {
@@ -811,12 +823,32 @@ function _nouveauCycle() {
                { u: pu + 1.6 * si.nu, v: pv + 1.6 * si.nv },
                { u: pu, v: pv }],
       retard: i * D_DECALAGE,
+      arrivee: { u: pu + 1.6 * si.nu, v: pv + 1.6 * si.nv },
+      fond: null,                     // ion de fond qui se réduit (sinon l'ion vient de l'extérieur)
       u: 0, v: 0, alpha: 0
     });
   }
   // Les ions se posent de haut en bas : leurs trajets ne se croisent pas
   cy.ions.sort(function (a, b) { return a.pv - b.pv; });
   for (i = 0; i < cy.ions.length; i++) cy.ions[i].retard = i * D_DECALAGE;
+
+  // Quand la réaction a lieu, l'ion qui se réduit est de préférence un ion
+  // oxydant de la solution (le plus proche de son site) ; s'il n'y en a
+  // plus, un ion arrive de l'extérieur : la réaction n'est jamais limitée.
+  if (reagit) {
+    for (i = 0; i < cy.ions.length; i++) {
+      var meilleur = null, dm = 1e9;
+      for (k = 0; k < loupe.fond.length; k++) {
+        var fo = loupe.fond[k];
+        if (fo.type !== 'ox' || fo.etat !== '' || fo.pris) continue;
+        var dd = Math.hypot(fo.u - cy.ions[i].pu, fo.v - cy.ions[i].pv);
+        if (dd < dm) { dm = dd; meilleur = fo; }
+      }
+      if (!meilleur) break;
+      meilleur.pris = true;
+      cy.ions[i].fond = meilleur;
+    }
+  }
 
   if (reagit) {
     // Électrons : chaque atome en cède b, chaque ion en reçoit a, dans
@@ -899,10 +931,20 @@ function _majCycle(cy, dt) {
     case 'approche':
       for (i = 0; i < cy.ions.length; i++) {
         io = cy.ions[i];
+        // L'ion de fond réservé quitte la solution et part de là où il est
+        if (io.fond && cy.t >= io.retard) {
+          var pf = loupe.fond.indexOf(io.fond);
+          if (pf >= 0) loupe.fond.splice(pf, 1);
+          io.chemin = [{ u: io.fond.u, v: io.fond.v }, io.arrivee, { u: io.pu, v: io.pv }];
+          io.depart = ALPHA_FOND;
+          io.fond = null;
+        }
         s = (cy.t - io.retard) / D_APPROCHE;
         var p = _bezier(io.chemin, _lisse(s));
         io.u = p.u; io.v = p.v;
-        io.alpha = Math.max(0, Math.min(1, (cy.t - io.retard) / 0.35));
+        var a0 = io.depart || 0;
+        io.alpha = a0 + (1 - a0) * Math.max(0, Math.min(1, (cy.t - io.retard) / 0.35));
+        if (cy.t < io.retard && io.fond) { io.u = io.fond.u; io.v = io.fond.v; io.alpha = 0; }
       }
       if (cy.t >= _dureeApproche(cy)) _phase(cy, 'contact');
       break;
@@ -939,7 +981,7 @@ function _majCycle(cy, dt) {
         // Tant que la solution en compte moins que ne le veut l'avancement,
         // l'ion formé reste dans la loupe et rejoint les ions de fond (leur
         // nombre augmente sous les yeux) ; sinon il sort de la loupe.
-        var manque = _ciblesFond().prod - _compterFond('prod') - _prodEnRoute();
+        var manque = _ciblesFond().prod - _compterFond('prod') - _prodEnRoute(cy);
         for (i = 0; i < cy.atomes.length; i++) {
           at = cy.atomes[i];
           loupe.grille[at.r][at.c] = '';
@@ -1011,7 +1053,8 @@ function _interrompre() {
     } else {
       for (k = 0; k < cy.ions.length; k++) {
         io = cy.ions[k];
-        if (io.alpha > 0) loupe.fantomes.push({ u: io.u, v: io.v, sym: sim.solution, alpha: io.alpha });
+        if (io.fond) io.fond.pris = false;          // ion de fond jamais parti : il reste
+        else if (io.alpha > 0) loupe.fantomes.push({ u: io.u, v: io.v, sym: sim.solution, alpha: io.alpha });
       }
       for (k = 0; k < cy.atomes.length; k++) {
         at = cy.atomes[k];
@@ -1217,23 +1260,6 @@ function _sortirDuSolide(p) {
   }
   // (les amas qui tombent ne repoussent pas les ions de fond : ils passent
   // devant eux, la scène étant la projection d'un volume)
-}
-
-// ══════════════════════════════════════════════════════════════════════
-//  Étape en cours (surlignage des équations)
-// ══════════════════════════════════════════════════════════════════════
-
-// Ligne du bloc des équations à surligner : 'ox' (l'atome cède ses
-// électrons), 'red' (l'ion les reçoit), 'bilan' (transformation) ou null
-function etapeEquation() {
-  if (!loupe.enPlace) return null;
-  for (var i = 0; i < loupe.cycles.length; i++) {
-    var cy = loupe.cycles[i];
-    if (!cy.reagit) continue;
-    if (cy.phase === 'transfert') return cy.t < cy.dTransfert / 2 ? 'ox' : 'red';
-    if (cy.phase === 'transfo') return 'bilan';
-  }
-  return null;
 }
 
 // ══════════════════════════════════════════════════════════════════════

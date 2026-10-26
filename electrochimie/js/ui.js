@@ -179,22 +179,6 @@ function majEquations() {
            ' dans une solution d’' + MX.nomIon + ').</span></div>';
   }
   document.getElementById('equations').innerHTML = html;
-  _etapeEq = null;
-}
-
-// Surligne la ligne qui correspond à l'étape du cycle montrée dans la
-// loupe : oxydation quand l'atome cède ses électrons, réduction quand
-// l'ion les reçoit, équation de la réaction pendant la transformation.
-var _etapeEq = null;
-
-function _majSurlignage() {
-  var e = sim.showEquations ? etapeEquation() : null;
-  if (e === _etapeEq) return;
-  _etapeEq = e;
-  ['ox', 'red', 'bilan'].forEach(function (k) {
-    var tr = document.getElementById('eq-ligne-' + k);
-    if (tr) tr.classList.toggle('eq-active', k === e);
-  });
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -236,7 +220,6 @@ function loop(ts) {
   if (sim.onglet === 'oxydoreduction') {
     majBecher(dtSim, dtReel);
     majLoupe(dtSim);
-    _majSurlignage();
     // En pause, on ne redessine que si quelque chose a changé (lame déplacée…)
     if (dtSim > 0 || sim.needsRedraw) {
       _dessiner();

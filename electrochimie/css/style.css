@@ -122,9 +122,6 @@ main {
 .eq-bilan .eq-val { color: #2a5080; font-weight: 700; }
 /* Ligne correspondant à l'étape montrée dans la loupe */
 .eq-table tr td { transition: background 0.25s; }
-.eq-table tr.eq-active td { background: #fde8c8; }
-.eq-table tr.eq-active td:first-child { border-radius: 6px 0 0 6px; }
-.eq-table tr.eq-active td:last-child  { border-radius: 0 6px 6px 0; }
 .eq-ox  { color: #b04020; }   /* oxydation : le réducteur perd des électrons */
 .eq-red { color: #2a6aaa; }   /* réduction : l'oxydant gagne des électrons */
 .eq-etat { font-size: 0.72em; color: #7a8a96; font-weight: 400; }
