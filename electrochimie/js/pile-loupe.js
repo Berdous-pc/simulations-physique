@@ -1258,20 +1258,12 @@ function _dessinerElectrodeL(ctx) {
     _dessinerBulleL(ctx, _mx(b.u), b.v, b.n, b.gaz, Math.max(0, Math.min(1, (b.v + _rayonBulle(b.n) + 0.5) / 1.5)));
   }
 
-  // Ions formés à l'anode qui s'éloignent : derrière le réseau
-  for (i = 0; i < ploupe.cycles.length; i++) {
-    var cy = ploupe.cycles[i];
-    if (cy.type === 'anode' && cy.phase === 'depart') {
-      _halo(ctx, _mx(cy.u + ploupe.offX), cy.v, R_ION, COUL_OX, Math.max(0, 1 - cy.t / 1.3), 0.5);
-      _dessinerIon(ctx, _mx(cy.u + ploupe.offX), cy.v, cy.sym, 1, R_ION);
-    }
-  }
-
-  // Réseau : masse claire derrière, puis les atomes (élément de chacun :
+  // Réseau : masse claire derrière (marge fine, qui s'arrête juste sous la
+  // surface des atomes de la face), puis les atomes (élément de chacun :
   // électrode ou dépôt)
   ctx.fillStyle = rgbCss(nuance(couleurRGB(METAUX[lame].atome), 0.55));
   for (r = 0; r < NR; r++) {
-    var x1 = _front(r) + ploupe.offX + 0.5;
+    var x1 = _front(r) + ploupe.offX + 0.38;
     var xa = _mx(-2), xb = _mx(x1);
     ctx.fillRect(Math.min(xa, xb), r, Math.abs(xb - xa), 1.02);
   }
@@ -1279,6 +1271,16 @@ function _dessinerElectrodeL(ctx) {
     for (c = -2; c < _front(r); c++) {
       if (_atomeEnCycle(r, c)) continue;
       _dessinerAtomeP(ctx, _mx(c + 0.5 + ploupe.offX), r + 0.5, c < 0 ? lame : ploupe.rangs[r][c], 1);
+    }
+  }
+
+  // Ions formés à l'anode qui s'éloignent : par-dessus la marge du réseau,
+  // pour qu'ils ne soient pas rognés
+  for (i = 0; i < ploupe.cycles.length; i++) {
+    var cy = ploupe.cycles[i];
+    if (cy.type === 'anode' && cy.phase === 'depart') {
+      _halo(ctx, _mx(cy.u + ploupe.offX), cy.v, R_ION, COUL_OX, Math.max(0, 1 - cy.t / 1.3), 0.5);
+      _dessinerIon(ctx, _mx(cy.u + ploupe.offX), cy.v, cy.sym, 1, R_ION);
     }
   }
 
@@ -1323,7 +1325,7 @@ function _dessinerCycleP(ctx, cy, pulse) {
   if (cy.type === 'gaz') {
     _dessinerCycleGaz(ctx, cy, pulse);
   } else if (cy.type === 'anode') {
-    if (cy.phase !== 'depart') {     // en partant, l'ion est dessiné derrière le réseau
+    if (cy.phase !== 'depart') {     // en partant, l'ion est dessiné à part, par-dessus le réseau
       var x = _mx(cy.u + dx);
       var kOx = cy.phase === 'transfo' ? Math.min(1, cy.t / cy.dTransfo) : 0;
       _halo(ctx, x, cy.v, R_ATOME, COUL_OX, 0.9, pulse);
