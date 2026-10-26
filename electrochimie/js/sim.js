@@ -117,6 +117,13 @@ function reactionPossible(metal, ion) {
   return metal !== ion && METAUX[ion].E0 > METAUX[metal].E0;
 }
 
+// Combinaison écartée : Mg dans Al³⁺. Le potentiel l'autoriserait, mais en
+// solution aqueuse le magnésium attaque surtout l'eau (H₂) et l'aluminium
+// ne se dépose pas : le dépôt montré serait faux.
+function combinaisonExclue(metal, ion) {
+  return metal === 'Mg' && ion === 'Al';
+}
+
 function _pgcd(a, b) { return b === 0 ? a : _pgcd(b, a % b); }
 
 // Coefficients de l'équation : nombre d'électrons échangés = PPCM des

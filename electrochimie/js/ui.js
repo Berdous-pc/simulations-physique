@@ -70,11 +70,40 @@ function _remplirListes() {
   selS.value = sim.solution;
 }
 
-function onSelectMetal(v)    { sim.metal = v;    resetRedox(); }
-function onSelectSolution(v) { sim.solution = v; resetRedox(); }
+// Grise dans chaque liste les choix incompatibles avec l'autre liste
+function _majOptionsExclues() {
+  var selM = document.getElementById('sel-metal');
+  var selS = document.getElementById('sel-solution');
+  Array.prototype.forEach.call(selM.options, function (o) {
+    o.disabled = combinaisonExclue(o.value, sim.solution);
+  });
+  Array.prototype.forEach.call(selS.options, function (o) {
+    o.disabled = combinaisonExclue(sim.metal, o.value);
+  });
+}
+
+function onSelectMetal(v) {
+  sim.metal = v;
+  // Choix incompatible avec la solution actuelle : on prend la solution par défaut
+  if (combinaisonExclue(sim.metal, sim.solution)) {
+    sim.solution = 'Cu';
+    document.getElementById('sel-solution').value = sim.solution;
+  }
+  resetRedox();
+}
+function onSelectSolution(v) {
+  sim.solution = v;
+  // Choix incompatible avec la lame actuelle : on prend la lame par défaut
+  if (combinaisonExclue(sim.metal, sim.solution)) {
+    sim.metal = 'Zn';
+    document.getElementById('sel-metal').value = sim.metal;
+  }
+  resetRedox();
+}
 
 // RAZ : lame neuve dans son support, solution fraîche
 function resetRedox() {
+  _majOptionsExclues();
   resetBecher();
   resetLoupe();
   var S = METAUX[sim.solution];
