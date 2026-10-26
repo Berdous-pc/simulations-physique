@@ -554,8 +554,9 @@ function _detacherPlusFaible() {
 // Zone d'un cycle : d'abord les nI sites où se posent les ions oxydants,
 // tirés AU HASARD parmi les places libres de la surface métallique (lame
 // ou dépôt, sans préférence) ; les ions d'un même cycle restent groupés.
-// Puis les nA atomes de la lame les PLUS PROCHES des ions (à vol d'oiseau)
-// s'oxydent ; les électrons vont de ces atomes aux ions à travers le métal.
+// Puis les nA atomes de la lame qui offrent aux électrons le trajet le plus
+// COURT jusqu'aux ions (longueur du trajet dans le métal, pas la distance
+// à vol d'oiseau) s'oxydent ; les électrons vont de ces atomes aux ions.
 function _choisirZone(nA, nI, reagit) {
   var g = _reseauMetal(), cand = _sitesLibres(g, reagit), i, k;
   // Ordre de tirage du premier site
@@ -595,18 +596,16 @@ function _grouperSites(cand, premier, nI) {
   return groupe;
 }
 
-// Les nA atomes de surface de la lame les plus proches du centre du
-// groupe d'ions, reliés à eux par le métal. Érosion bornée : seulement
+// Les nA atomes de surface de la lame dont le trajet des électrons vers le
+// groupe d'ions (le plus court des trajets vers l'un des ions, tel que le
+// dessine _trajetElectron) est le plus court. Érosion bornée : seulement
 // jusqu'à TOL_RUGO couches sous la couche la plus externe (une de plus si
 // c'est impossible autrement), pour que le creux ne s'enfonce pas et que
 // toute la couche externe finisse rongée (la vue peut alors suivre la lame).
 function _atomesProches(g, ions, nA) {
-  var front = _fronts(), couche = -1, bu = 0, bv = 0, hotes = [], i, r, c;
+  var front = _fronts(), couche = -1, hotes = [], i, r, c;
   for (r = 0; r < NR; r++) couche = Math.max(couche, front[r]);
-  for (i = 0; i < ions.length; i++) {
-    bu += ions[i].u / ions.length; bv += ions[i].v / ions.length;
-    hotes.push(ions[i].hote);
-  }
+  for (i = 0; i < ions.length; i++) hotes.push(ions[i].hote);
   var relie = _parcours(g, hotes).dist;
   for (var tol = TOL_RUGO; tol <= TOL_RUGO + 1; tol++) {
     var cand = [];
@@ -615,7 +614,12 @@ function _atomesProches(g, ions, nA) {
       c = front[r];
       if (c < 0 || c + 2 >= NC || loupe.grille[r][c] !== 'M' || c < couche - tol) continue;
       if (relie[g.idx[r + ',' + c]] < 0) continue;
-      cand.push({ c: c, r: r, d: Math.hypot(c + 0.5 - bu, r + 0.5 - bv) });
+      var src = g.idx[r + ',' + c], dmin = Infinity;
+      for (i = 0; i < ions.length; i++) {
+        var L = _longueurChemin(_trajetElectron(g, src, ions[i].hote, ions[i]));
+        if (L < dmin) dmin = L;
+      }
+      cand.push({ c: c, r: r, d: dmin });
     }
     if (cand.length < nA) continue;
     cand.sort(function (a, b) { return a.d - b.d; });
@@ -775,6 +779,13 @@ function _trajetElectron(g, src, hote, site) {
   }
   pts.push({ u: site.u, v: site.v });
   return pts;
+}
+
+// Longueur d'une ligne brisée de points {u, v}
+function _longueurChemin(pts) {
+  var L = 0;
+  for (var k = 1; k < pts.length; k++) L += Math.hypot(pts[k].u - pts[k - 1].u, pts[k].v - pts[k - 1].v);
+  return L;
 }
 
 // Segment entièrement dans les cases pleines de la lame (coordonnées du
