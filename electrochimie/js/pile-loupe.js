@@ -619,10 +619,13 @@ var PL_SCRIPTS = (function () {
       { d: SUITE, avec: ['a'], arr: [hPlus(-VO, 1)], apres: [eau(-VO, P)], n: 1 },
       { d: PRES, avec: ['b'], arr: [hPlus(VO, -1)], apres: [eau(VO, P)], n: 1 }
     ],
-    'PbSO4-ox':  [{ arr: [['SO42-', 0, 0, 0]], apres: [], n: 2 }],
-    'PbSO4-red': [{ apres: [['SO42-', 0, 0, 0, P]], n: 2 }],
-    'PbO2-red':  [{ arr: [['SO42-', 0, 0, 0]].concat(quatreH()), apres: deuxEau(P), n: 2 }],
-    'PbO2-ox':   [{ arr: [['H2O', 0, -0.8, 0], ['H2O', 0, 0.8, 0]], apres: quatreH(P).concat([['SO42-', 0, 0, 0, P]]), n: 2 }]
+    // Accumulateur : une seule étape où beaucoup d'espèces se réarrangent,
+    // deux fois plus lente (lent : approche, attente, transformation et
+    // départ ; choix de l'utilisateur)
+    'PbSO4-ox':  [{ arr: [['SO42-', 0, 0, 0]], apres: [], n: 2, lent: 2 }],
+    'PbSO4-red': [{ apres: [['SO42-', 0, 0, 0, P]], n: 2, lent: 2 }],
+    'PbO2-red':  [{ arr: [['SO42-', 0, 0, 0]].concat(quatreH()), apres: deuxEau(P), n: 2, lent: 2 }],
+    'PbO2-ox':   [{ arr: [['H2O', 0, -0.8, 0], ['H2O', 0, 0.8, 0]], apres: quatreH(P).concat([['SO42-', 0, 0, 0, P]]), n: 2, lent: 2 }]
   };
 })();
 
@@ -722,7 +725,7 @@ function _cycleGaz(reac) {
 // placées, électrons (de l'espèce par où ils passent vers le fil, ou
 // l'inverse), horaire de la transformation
 function _creerEtape(cy, k) {
-  var D = cy.script[k], st = { k: k, def: D, arr: [], apres: [], phase: 'approche', tA: 0, t: 0,
+  var D = cy.script[k], L = D.lent || 1, st = { k: k, def: D, lent: L, arr: [], apres: [], phase: 'approche', tA: 0, t: 0,
                                electrons: [], n: D.n, ox: cy.ox };
   var i;
   for (i = 0; D.arr && i < D.arr.length; i++) {
@@ -745,7 +748,7 @@ function _creerEtape(cy, k) {
     var axe = _axeDepuis(a.pos, st.apres);
     a.via = { u: a.pos.u + 1.3 * axe.u, v: a.pos.v + 1.3 * axe.v };
   }
-  st.dA = st.arr.length ? PL_D_APPROCHE_E : 0;
+  st.dA = st.arr.length ? PL_D_APPROCHE_E * L : 0;
 
   // Électrons : par la maille (accumulateur), ou par l'espèce formée `ou`
   for (i = 0; i < D.n; i++) {
@@ -765,6 +768,7 @@ function _creerEtape(cy, k) {
     st.dElectrons = (D.n - 1) * PL_ECART_E + L0 / V_ELECTRON;
     if (cy.ox) _horaireTransfo(st, 0, (D.n - 1) * PL_ECART_E + 0.6 / V_ELECTRON);
     else _horaireTransfo(st, L0 / V_ELECTRON, st.dElectrons);
+    st.dTransfo *= L;
   } else {
     st.dElectrons = 0; st.tDeb = 0; st.dTransfo = PL_D_REARR;
   }
@@ -842,7 +846,7 @@ function _majEtape(cy, st, dt, aMoi) {
     }
     if (st.te === undefined) {
       if (st.n && !st.ox) { if (st.tA >= st.fA - st.tDeb) st.te = 0; }
-      else if (aMoi && st.tA >= st.fA + (st.dA ? PL_D_SIGNAL_COURT : 0.1)) st.te = 0;
+      else if (aMoi && st.tA >= st.fA + (st.dA ? PL_D_SIGNAL_COURT * st.lent : 0.1)) st.te = 0;
     }
     if (aMoi && st.tA >= st.fA && st.te !== undefined && st.te >= st.tDeb) {
       // Début de la transformation : espèces accrochées qui réagissent
@@ -861,6 +865,7 @@ function _majEtape(cy, st, dt, aMoi) {
         if (p.nom !== 'part') { cy.accroches[p.nom] = p; continue; }
         // Espèce formée qui part : le gaz vers la bulle, le reste vers la solution
         p.t = 0;
+        p.dP = PL_D_DEPART * st.lent;      // durée du départ
         // dans l'axe de la liaison rompue (H⁺ qui quitte OH…), sinon droit vers la solution
         var axe = _axeDepuis(p.pos, st.avec.concat(st.arr)), lg = 1.8 + Math.random() * 1.0;
         p.vers = { u: p.pos.u + lg * axe.u, v: p.pos.v + lg * axe.v + (Math.random() - 0.5) * 0.8 };
@@ -899,11 +904,11 @@ function _majCycleGaz(cy, dt) {
     var p = cy.partants[i], vers = p.vers, angV = p.angV;
     p.t += dt;
     if (p.cle === cy.gaz && ploupe.bulle) { var pl = _placeBulle(p.rang, p.rang + 1); vers = pl; angV = pl.ang; }
-    s = _lisse(p.t / PL_D_DEPART);
+    s = _lisse(p.t / p.dP);
     p.u = p.pos.u + (vers.u - p.pos.u) * s;
     p.v = p.pos.v + (vers.v - p.pos.v) * s;
     p.angC = _angVers(p.ang, angV, s);
-    if (p.t >= PL_D_DEPART) {
+    if (p.t >= p.dP) {
       var F = PL_MOTIFS[p.cle].fond;
       if (p.cle === cy.gaz) _gonflerBulle(cy.gaz);
       else if (F && F.k !== 'mol') {
@@ -1390,7 +1395,7 @@ function _dessinerCycleGaz(ctx, cy, pulse) {
   // Espèces formées qui partent (derrière les autres)
   for (i = 0; i < cy.partants.length; i++) {
     var p = cy.partants[i];
-    var ap = p.cle === 'H2O' ? 1 - _lisse(p.t / PL_D_DEPART) : 1;   // eau formée : se fond dans la solution
+    var ap = p.cle === 'H2O' ? 1 - _lisse(p.t / p.dP) : 1;   // eau formée : se fond dans la solution
     _dessinerMotif(ctx, _mx(p.u), p.v, p.cle, p.angC, ap);
   }
 
