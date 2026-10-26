@@ -28,6 +28,7 @@ Ordre de chargement : `sim.js` → `becher.js` → `loupe.js` → `ui.js` → `s
 `METAUX` est **commune aux deux onglets** (l'onglet Pile réutilisera les mêmes couples). Pour chaque métal : potentiel standard `E0` (sert uniquement au sens spontané, non affiché), charge de l'ion, couleurs (atome, ion dans la loupe, solution macroscopique ou `null` si incolore), noms et articles (`de`, `le`, `du`), anion spectateur usuel (nitrate pour Ag⁺ et Pb²⁺, dont les sulfates sont peu solubles ; sulfate sinon), aspect du dépôt (`eponge`, `aiguilles`, `noir`, `gris`).
 
 - `reactionPossible(metal, ion)` : vrai si `E0(ion) > E0(metal)`.
+- `ORDRE_METAUX` (sept lames) et `ORDRE_SOLUTIONS` (six solutions) : pas de sulfate d'aluminium dans la liste des solutions (aucune lame ne réagit avec : le magnésium, seul métal plus réducteur, attaque l'eau au lieu de déposer de l'aluminium). Toutes les autres combinaisons lame/solution sont permises, aucune n'est exclue.
 - `stoechiometrie(metal, ion)` : nombre d'électrons échangés = PPCM des charges, coefficients du métal et de l'oxydant.
 - `ionTexte` / `ionHTML`, `anionTexte` / `anionHTML` : écriture Unicode (canvas) ou HTML (panneau).
 - `texteEchelle()` : écrit dans un repère `ctx.scale()` en repassant en pixels (une police de 0,3 px agrandie par la transformation est mal rendue par certains navigateurs).
@@ -67,7 +68,7 @@ Ordonnancement (`_ordonnancer`) : un seul cycle à la surface ; le suivant déma
 
 Fond : ions estompés (`ALPHA_FOND`), mouvement brownien lent, hors cycles ; ions spectateurs sur option, en nombre constant. **Leur nombre suit `macro.avancement`** (`_ciblesFond`, `_majPopulation`) : au départ `N_FOND_OX` (14, assez pour que l'évolution des concentrations se voie nettement) ions oxydants et aucun ion du métal ; un oxydant consommé s'efface en fondu (le plus proche de la lame d'abord) ; un ion du métal formé par un cycle reste dans la loupe et rejoint le fond (`at.garder`, `_versFond`) tant qu'il en manque, sinon il sort ; complément en fondu si les cycles prennent du retard ou ne tournent pas (lame à peine plongée). `etapeEquation()` : ligne du bloc des équations à surligner (`ox` puis `red` pendant le transfert, `bilan` pendant la transformation).
 
-Vérifié hors navigateur (JScript, 2 min simulées pour Zn/Cu, Cu/Ag, Mg/Al, avec les sites tirés au hasard) : aucun atome du dépôt n'en chevauche un autre ; jamais de blocage faute de zone (secours jamais sollicité) ; 9 à 19 chutes de 1 à 5 atomes en 2 min ; dépôt de 6 à 20 atomes au plus ; relief moyen de 1,3 à 2 cases, 3 au plus. À ×1 : 10 à 12 cycles par minute.
+Vérifié hors navigateur (JScript, 2 min simulées pour Zn/Cu, Cu/Ag, Mg/Al (combinaison retirée depuis), avec les sites tirés au hasard) : aucun atome du dépôt n'en chevauche un autre ; jamais de blocage faute de zone (secours jamais sollicité) ; 9 à 19 chutes de 1 à 5 atomes en 2 min ; dépôt de 6 à 20 atomes au plus ; relief moyen de 1,3 à 2 cases, 3 au plus. À ×1 : 10 à 12 cycles par minute.
 
 ## ui.js
 

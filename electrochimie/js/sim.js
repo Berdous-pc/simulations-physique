@@ -70,11 +70,14 @@ var METAUX = {
 
 // Ordre d'affichage dans les listes : du réducteur le plus fort au plus faible
 var ORDRE_METAUX = ['Mg', 'Al', 'Zn', 'Fe', 'Pb', 'Cu', 'Ag'];
+// Solutions proposées : pas de sulfate d'aluminium (aucune lame ne réagit
+// avec, le magnésium attaquant l'eau plutôt que de déposer de l'aluminium)
+var ORDRE_SOLUTIONS = ['Mg', 'Zn', 'Fe', 'Pb', 'Cu', 'Ag'];
 
 // Ions spectateurs (anions)
 var ANIONS = {
-  SO4: { formule: 'SO₄', html: 'SO<sub>4</sub>', charge: 2, couleur: '#8d9aa6' },
-  NO3: { formule: 'NO₃', html: 'NO<sub>3</sub>', charge: 1, couleur: '#a3a08f' }
+  SO4: { formule: 'SO₄', html: 'SO<sub>4</sub>', charge: 2, couleur: '#1f7a8c' },
+  NO3: { formule: 'NO₃', html: 'NO<sub>3</sub>', charge: 1, couleur: '#7a4b8c' }
 };
 
 // ══════════════════════════════════════════════════════════════════════
@@ -117,13 +120,6 @@ function anionHTML(cle) {
 // c'est-à-dire si son potentiel standard est plus élevé.
 function reactionPossible(metal, ion) {
   return metal !== ion && METAUX[ion].E0 > METAUX[metal].E0;
-}
-
-// Combinaison écartée : Mg dans Al³⁺. Le potentiel l'autoriserait, mais en
-// solution aqueuse le magnésium attaque surtout l'eau (H₂) et l'aluminium
-// ne se dépose pas : le dépôt montré serait faux.
-function combinaisonExclue(metal, ion) {
-  return metal === 'Mg' && ion === 'Al';
 }
 
 function _pgcd(a, b) { return b === 0 ? a : _pgcd(b, a % b); }

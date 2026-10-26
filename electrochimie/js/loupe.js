@@ -66,7 +66,7 @@ var U_MAX_DEPOT = U_COULOIR - 1.4; // le dépôt ne pousse pas jusqu'au couloir
 // ── Tailles des particules (en cases) ─────────────────────────────────
 // L'ion métallique est plus petit que l'atome (il a perdu ses électrons
 // les plus externes) : différence volontairement visible.
-var R_ATOME = 0.47, R_ION = 0.37, R_ANION = 0.36, R_ELECTRON = 0.17;
+var R_ATOME = 0.47, R_ION = 0.37, R_ANION = 0.42, R_ELECTRON = 0.17;
 var DIST_CONTACT = R_ATOME + R_ION;   // ion collé contre un atome
 var ESPACE_IONS = 0.9;                // écart vertical entre ions côte à côte
 
@@ -80,6 +80,7 @@ var ESPACE_IONS = 0.9;                // écart vertical entre ions côte à cô
 // nombre constant.
 var N_FOND_OX = 14, N_FOND_ANION = 10;
 var ALPHA_FOND = 0.42;
+var ALPHA_ANION = 0.85;          // spectateurs : plus opaques que les ions, pour que l’étiquette reste lisible
 var D_FONDU = 0.9;               // apparition / disparition d'un ion de fond (s)
 var GAMMA = 1.0, SIGMA = 1.2;    // mouvement brownien lent (Ornstein-Uhlenbeck)
 
@@ -1291,7 +1292,7 @@ function dessinerLoupe(ctx) {
   for (i = 0; i < loupe.fond.length; i++) {
     var f = loupe.fond[i];
     if (f.type === 'anion') {
-      if (sim.showSpectateurs) _dessinerAnion(ctx, f.u, f.v, f.sym, ALPHA_FOND);
+      if (sim.showSpectateurs) _dessinerAnion(ctx, f.u, f.v, f.sym, ALPHA_ANION);
     } else {
       _dessinerIon(ctx, f.u, f.v, f.sym, ALPHA_FOND * f.vis, R_ION);
     }
@@ -1550,7 +1551,7 @@ function _dessinerAnion(ctx, x, y, cle, alpha) {
   ctx.setLineDash([0.08, 0.06]);
   ctx.stroke();
   ctx.setLineDash([]);
-  _etiquette(ctx, x, y, anionTexte(cle), 0.22, rgb, alpha);
+  _etiquette(ctx, x, y, anionTexte(cle), 0.265, rgb, alpha);
 }
 
 // Électron : disque bleu marqué « − » (charte du site)
