@@ -765,18 +765,29 @@ function _couleursIons(C) {
 
 // Bande d'un compartiment où les ions migrent : entre les électrodes
 // seulement (rien à gauche de l'électrode de gauche ni à droite de celle
-// de droite), et entre les parois du récipient
+// de droite), et entre les parois du récipient ; deux béchers : entre
+// l'électrode et la branche du pont salin (les ions arrivent du pont ou y
+// partent, rien entre la branche et la paroi du bécher)
 function _zoneIons(c) {
   var R = recipients()[c], w = enPac() ? P_PAC.ep : P_LAME_W;
-  return { a: Math.max(R.L + 1.6, lameX(0) + w / 2 + 1.4),
-           b: Math.min(R.R - 1.6, lameX(1) - w / 2 - 1.4) };
+  var Z = { a: Math.max(R.L + 1.6, lameX(0) + w / 2 + 1.4),
+            b: Math.min(R.R - 1.6, lameX(1) - w / 2 - 1.4) };
+  if (deuxBechers()) {
+    if (c === 0) Z.b = Math.min(Z.b, P_PONT_X[0]);
+    else Z.a = Math.max(Z.a, P_PONT_X[1]);
+  }
+  return Z;
 }
 
 // Ions du montage (option migration), rangés pour qu'on suive bien leur
 // mouvement : dans chaque compartiment, des files horizontales
 // régulièrement espacées, cations et anions en files alternées (décalées
-// d'une demi-maille) ; dans le pont salin, une seule file sur l'axe du
-// tube, K⁺ et NO₃⁻ alternés au départ
+// d'une demi-maille) ; électroneutralité visible (choix de l'utilisateur) :
+// les anions sont placés en miroir des cations dans la bande (à 1/4 et 3/4
+// de maille), et vont en sens inverse : chaque cation a un anion symétrique
+// qui atteint le bord opposé au même instant, avec le même fondu, donc
+// autant de cations que d'anions visibles à chaque instant ; dans le
+// pont salin, une seule file sur l'axe du tube, K⁺ et NO₃⁻ alternés au départ
 var N_FILES_IONS = 4;          // files d'ions dans chaque compartiment
 var PAS_IONS = 5.5;            // espacement des ions d'une file (unités de scène)
 var N_IONS_PONT = 8;           // K⁺ du pont (autant de NO₃⁻)
@@ -786,12 +797,12 @@ function _tirerParticules() {
   for (var c = 0; c < R.length; c++) {
     var coul = _couleursIons(pile.comp[c]), liste = [];
     var Z = _zoneIons(c), larg = Z.b - Z.a;
-    var n = Math.max(2, Math.round(larg / PAS_IONS));
+    var n = Math.max(3, Math.round(larg / PAS_IONS));     // au moins 3 par file (béchers étroits entre lame et pont)
     for (var j = 0; j < N_FILES_IONS; j++) {
       var cation = j % 2 === 0 || !coul.anion;
       for (var k = 0; k < n; k++) {
         liste.push({
-          x: Z.a + (k + (j % 2 ? 0.5 : 0)) * larg / n,
+          x: Z.a + (k + (cation ? 0.25 : 0.75)) * larg / n,
           y: P_SOL_TOP + 4.5 + j * 5.5,
           signe: cation ? 1 : -1,
           rgb: cation ? coul.cation : coul.anion,
