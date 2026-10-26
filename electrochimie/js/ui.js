@@ -332,7 +332,7 @@ function onSelectExperience(v) {
   }
   pile.experience = v;
   _synchroniserPanneauPile();
-  _majBoutonsZones();
+  _verifierZonePile();
   resetPile();
   _majPanneauCircuit();
 }
@@ -376,11 +376,6 @@ function _majLibellesPile() {
           anionHTML(S.anion) + ')'
         : 'Lame ' + METAUX[cle].de + ' dans ' + ionHTML(cle) + ' + ' + anionHTML(S.anion);
     }
-    // Boutons de la loupe : nommés par l'électrode, sauf si c'est la même des deux côtés
-    var M = METAUX[pile.lames[i].sym];
-    var nom = enPac() ? (i === 0 ? 'H₂' : 'O₂') : G ? ESPECES[G.gaz].txt : M.formule || M.sym;
-    var memes = !enPac() && pile.metaux[0] === pile.metaux[1];
-    document.getElementById('zone-' + cote).textContent = memes ? 'Électrode ' + cote : 'Électrode ' + nom;
   });
   if (enCuve()) {
     var S = SOLUTIONS[pile.solution], ions = [];
@@ -484,23 +479,15 @@ function setZonePile(z) {
   if (z === pile.zone) return;          // un clic sur la zone déjà vue ne remet pas la loupe à zéro
   if (z === 'pont' && sansPont()) return;
   pile.zone = z;
-  _majBoutonsZones();
+  _verifierZonePile();
   resetLoupePile();
   sim.needsRedraw = true;
 }
 
-// Boutons des zones : zone active, pont salin indisponible dans la cuve,
-// membrane à sa place dans la pile à combustible
-function _majBoutonsZones() {
+// Zone de la loupe (choisie en cliquant sur un cercle du montage) : pas de
+// pont salin dans la cuve, on revient alors à l'électrode de gauche
+function _verifierZonePile() {
   if (pile.zone === 'pont' && sansPont()) pile.zone = 'gauche';
-  ['gauche', 'droite', 'pont', 'fil'].forEach(function (n) {
-    var b = document.getElementById('zone-' + n);
-    b.classList.toggle('active', n === pile.zone);
-    if (n === 'pont') {
-      b.disabled = sansPont();
-      b.textContent = enPac() ? 'Membrane' : 'Pont salin';
-    }
-  });
 }
 
 // ── Options ───────────────────────────────────────────────────────────

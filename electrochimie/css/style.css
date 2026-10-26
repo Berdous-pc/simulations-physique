@@ -410,20 +410,6 @@ html:not(.sections-pretes) .section-title[data-repliable]:not([data-repliable="o
 .mode-tab.active { background: #2a6aaa; color: #fff; }
 .mode-tab:disabled { color: #a8b0b8; cursor: not-allowed; background: #dedad2; }
 
-/* Zones de la loupe (onglet Pile) : grille 2 × 2, séparateurs fins */
-.mode-tabs-grille {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1px;
-  background: #c8c0b4;
-}
-
-/* Zones de la loupe, sous le curseur de vitesse (section Contrôles) */
-.param-row-loupe {
-  margin-top: 10px;
-  margin-bottom: 0;
-}
-
 /* ── Circuit extérieur (onglet Pile, section Expérience) ──────────────
    Un seul réglage à la même place (curseur grisé s'il n'y en a pas), K et
    bornes grisés s'ils ne servent pas, note avec le générateur seulement. */
@@ -500,7 +486,7 @@ html:not(.sections-pretes) .section-title[data-repliable]:not([data-repliable="o
   height: 2.8em;
   overflow: hidden;
 }
-/* Fin de la section Expérience : moins d'écart avec la section Contrôles */
+/* Fin de la section Expérience : moins d'écart avec la section suivante */
 #bloc-circuit { margin-bottom: -4px; }
 
 /* ── Afficheurs de valeurs (repris de refraction/) ─ */
