@@ -49,8 +49,12 @@
 var PL_N_CATIONS = 8, PL_N_ANIONS = 7;
 var PL_D_SIGNAL   = 0.6;          // atome ou ion signalé avant l'échange (s)
 var PL_D_APPROCHE = 2.0;          // ion qui vient contre la surface (cathode)
-var PL_D_TRANSFO  = 0.8;          // ion → atome à la cathode, réactifs → produits (gaz)
-var PL_D_OXYDATION = 0.4;         // atome → ion à l'anode, après le départ de ses électrons
+// Transformation (atome ↔ ion, réactifs → produits) synchronisée avec les
+// électrons : elle commence quand le premier électron quitte l'espèce
+// oxydée (ou atteint l'espèce réduite) et s'achève quand le dernier l'a
+// quittée (ou l'a atteinte), plus PL_D_CHANGE ; au moins PL_D_TRANSFO_MIN
+var PL_D_CHANGE   = 0.12;
+var PL_D_TRANSFO_MIN = 0.3;
 var PL_D_DEPART   = 2.2;          // ion formé qui s'éloigne de l'anode, produits qui partent
 var PL_ECART_E    = 0.25;         // entre les départs de deux électrons (s)
 var PL_X_SORTIE   = 1.5;          // colonne par laquelle les électrons rejoignent le fil
@@ -367,12 +371,12 @@ function _cycleAnode() {
   var z = METAUX[sym].charge;
   ploupe.occupe[r] = true;
   var cy = { type: 'anode', sym: sym, r: r, c: c, u: c + 0.5, v: r + 0.5, phase: 'signal', t: 0,
-             electrons: [], tOx: 0, du: 0, dv: 0 };
+             electrons: [], du: 0, dv: 0 };
   var ch = _cheminVersFil(cy.u, cy.v);
   for (var k = 0; k < z; k++) cy.electrons.push({ chemin: ch, depart: k * PL_ECART_E, s: 0 });
   var L = _longueurChemin(ch);
-  // L'atome devient ion dès que son dernier électron l'a quitté
-  cy.tOx = (z - 1) * PL_ECART_E + 0.6 / V_ELECTRON;
+  // L'atome devient ion pendant que ses électrons le quittent
+  _horaireTransfo(cy, 0, (z - 1) * PL_ECART_E + 0.6 / V_ELECTRON);
   cy.dElectrons = (z - 1) * PL_ECART_E + L / V_ELECTRON;
   cy.du = 2.6 + Math.random() * 1.2;
   cy.dv = (Math.random() - 0.5) * 2.4;
@@ -399,7 +403,17 @@ function _cycleCathode(sym) {
             { u: front - 0.5, v: r + 0.5 }, { u: cible.u, v: cible.v }];
   for (var k = 0; k < z; k++) cy.electrons.push({ chemin: ch, depart: k * PL_ECART_E, s: 0 });
   cy.dElectrons = (z - 1) * PL_ECART_E + _longueurChemin(ch) / V_ELECTRON;
+  // L'ion devient atome pendant que ses électrons l'atteignent
+  _horaireTransfo(cy, _longueurChemin(ch) / V_ELECTRON, cy.dElectrons);
   return cy;
+}
+
+// Début (tDeb) et durée (dTransfo) de la transformation, en temps compté
+// depuis le départ du premier électron (cy.te) ; tFin : dernier électron
+// parti de l'espèce oxydée ou arrivé sur l'espèce réduite
+function _horaireTransfo(cy, tDeb, tFin) {
+  cy.tDeb = tDeb;
+  cy.dTransfo = Math.max(PL_D_TRANSFO_MIN, tFin + PL_D_CHANGE - tDeb);
 }
 
 // Retire de la solution l'ion (type, sym) le plus proche de la cible, et
@@ -515,9 +529,18 @@ function _cycleGaz(reac) {
     if (!reac.ox) ch.reverse();
     cy.electrons.push({ chemin: ch, depart: k * PL_ECART_E, s: 0 });
   }
-  var Lmax = 0;
-  for (k = 0; k < cy.electrons.length; k++) Lmax = Math.max(Lmax, _longueurChemin(cy.electrons[k].chemin));
+  var Lmax = 0, arr0 = Infinity, arr1 = 0;
+  for (k = 0; k < cy.electrons.length; k++) {
+    var Lk = _longueurChemin(cy.electrons[k].chemin);
+    Lmax = Math.max(Lmax, Lk);
+    arr0 = Math.min(arr0, cy.electrons[k].depart + Lk / V_ELECTRON);   // arrivées (réduction)
+    arr1 = Math.max(arr1, cy.electrons[k].depart + Lk / V_ELECTRON);
+  }
   cy.dElectrons = (d.n - 1) * PL_ECART_E + Lmax / V_ELECTRON;
+  // Oxydation : pendant que les électrons quittent les réactifs ;
+  // réduction : pendant qu'ils les atteignent
+  if (reac.ox) _horaireTransfo(cy, 0, (d.n - 1) * PL_ECART_E + 0.6 / V_ELECTRON);
+  else _horaireTransfo(cy, arr0, arr1);
   return cy;
 }
 
@@ -532,12 +555,11 @@ function _majCycleGaz(cy, dt) {
     }
     if (cy.t >= PL_D_APPROCHE) { cy.phase = 'signal'; cy.t = 0; }
   } else if (cy.phase === 'signal' && cy.t >= PL_D_SIGNAL * 0.6) {
-    cy.phase = 'electrons'; cy.t = 0;
+    _lancerElectrons(cy);
   } else if (cy.phase === 'electrons') {
-    _avancerElectrons(cy);
-    if (cy.t >= cy.dElectrons + 0.05) { cy.phase = 'transfo'; cy.t = 0; }
+    _debutTransfo(cy);
   } else if (cy.phase === 'transfo') {
-    if (cy.t >= PL_D_TRANSFO) {
+    if (cy.t >= cy.dTransfo) {
       cy.phase = 'depart'; cy.t = 0;
       // La maille transformée fait désormais partie du réseau
       if (cy.maille) {
@@ -557,7 +579,7 @@ function _majCycleGaz(cy, dt) {
       p.u = p.pos.u + (vers.u - p.pos.u) * s;
       p.v = p.pos.v + (vers.v - p.pos.v) * s;
     }
-    if (cy.t >= PL_D_DEPART) {
+    if (cy.t >= PL_D_DEPART && cy.te >= cy.dElectrons) {
       for (k = 0; k < cy.produits.length; k++) {
         var q = cy.produits[k];
         if (q.sym === cy.gaz) _gonflerBulle(cy.gaz);
@@ -603,14 +625,17 @@ function _majBullesL(dt) {
 }
 
 // Avance un cycle ; renvoie true quand il est terminé
+// Les électrons, une fois partis, avancent jusqu'au bout (cy.te : temps
+// depuis le départ du premier), quelle que soit l'étape du cycle
 function _majCycleP(cy, dt) {
   cy.t += dt;
+  if (cy.te !== undefined) { cy.te += dt; _avancerElectrons(cy); }
   if (cy.type === 'gaz') return _majCycleGaz(cy, dt);
   if (cy.type === 'anode') {
-    if (cy.phase === 'signal' && cy.t >= PL_D_SIGNAL) { cy.phase = 'electrons'; cy.t = 0; }
-    else if (cy.phase === 'electrons') {
-      _avancerElectrons(cy);
-      if (cy.t >= Math.max(cy.dElectrons, cy.tOx + PL_D_OXYDATION)) {
+    if (cy.phase === 'signal' && cy.t >= PL_D_SIGNAL) _lancerElectrons(cy);
+    else if (cy.phase === 'electrons') _debutTransfo(cy);
+    else if (cy.phase === 'transfo') {
+      if (cy.t >= cy.dTransfo) {
         cy.phase = 'depart'; cy.t = 0;
         // L'ion quitte le réseau : la place reste libre
         ploupe.rangs[cy.r].length = Math.min(_front(cy.r), cy.c);
@@ -621,7 +646,7 @@ function _majCycleP(cy, dt) {
       var s = _lisse(cy.t / PL_D_DEPART);
       cy.u = cy.u0 + cy.du * s;
       cy.v = cy.v0 + cy.dv * s;
-      if (cy.t >= PL_D_DEPART) {
+      if (cy.t >= PL_D_DEPART && cy.te >= cy.dElectrons) {
         // Il rejoint les ions de la solution
         ploupe.fond.push({ type: 'cation', sym: cy.sym, r: R_ION, u: cy.u, v: cy.v,
                            vu: _gauss() * 0.3, vv: _gauss() * 0.3, vis: 1 });
@@ -635,14 +660,13 @@ function _majCycleP(cy, dt) {
       cy.u = p.u; cy.v = p.v;
       if (cy.t >= PL_D_APPROCHE) { cy.phase = 'signal'; cy.t = 0; }
     } else if (cy.phase === 'signal' && cy.t >= PL_D_SIGNAL * 0.6) {
-      cy.phase = 'electrons'; cy.t = 0;
+      _lancerElectrons(cy);
     } else if (cy.phase === 'electrons') {
-      _avancerElectrons(cy);
-      if (cy.t >= cy.dElectrons + 0.05) { cy.phase = 'transfo'; cy.t = 0; }
+      _debutTransfo(cy);
     } else if (cy.phase === 'transfo') {
-      var q = _lisse(cy.t / PL_D_TRANSFO);
+      var q = _lisse(cy.t / cy.dTransfo);
       cy.u = cy.cible.u + (cy.fin.u - cy.cible.u) * q;
-      if (cy.t >= PL_D_TRANSFO) {
+      if (cy.t >= cy.dTransfo && cy.te >= cy.dElectrons) {
         ploupe.rangs[cy.r].push(cy.sym);      // l'atome formé fait partie du réseau
         _completerBords();
         ploupe.occupe[cy.r] = false;
@@ -659,11 +683,22 @@ function _completerBords() {
   ploupe.rangs[NR - 1] = ploupe.rangs[NR - 2].slice();
 }
 
+function _lancerElectrons(cy) {
+  cy.phase = 'electrons'; cy.t = 0; cy.te = 0;
+  _debutTransfo(cy);
+}
+
+// La transformation commence avec le premier électron qui part ou arrive
+function _debutTransfo(cy) {
+  if (cy.te < cy.tDeb) return;
+  cy.phase = 'transfo'; cy.t = cy.te - cy.tDeb;
+}
+
 function _avancerElectrons(cy) {
   for (var k = 0; k < cy.electrons.length; k++) {
     var e = cy.electrons[k];
     var L = _longueurChemin(e.chemin);
-    e.s = Math.max(0, Math.min(1, (cy.t - e.depart) * V_ELECTRON / L));
+    e.s = Math.max(0, Math.min(1, (cy.te - e.depart) * V_ELECTRON / L));
   }
 }
 
@@ -885,27 +920,30 @@ function _dessinerCycleP(ctx, cy, pulse) {
   if (cy.type === 'gaz') {
     _dessinerCycleGaz(ctx, cy, pulse);
   } else if (cy.type === 'anode') {
-    if (cy.phase === 'depart') return;
-    var x = _mx(cy.u + dx);
-    var kOx = cy.phase === 'electrons' ? (cy.t - cy.tOx) / PL_D_OXYDATION : 0;
-    _halo(ctx, x, cy.v, R_ATOME, COUL_OX, 0.9, kOx > 0 ? 1 : pulse);
-    if (kOx > 0) _dessinerTransition(ctx, x, cy.v, sym, Math.min(1, kOx), true);
-    else _dessinerAtome(ctx, x, cy.v, sym, 1);
+    if (cy.phase !== 'depart') {     // en partant, l'ion est dessiné derrière le réseau
+      var x = _mx(cy.u + dx);
+      var kOx = cy.phase === 'transfo' ? Math.min(1, cy.t / cy.dTransfo) : 0;
+      _halo(ctx, x, cy.v, R_ATOME, COUL_OX, 0.9, kOx > 0 ? 1 : pulse);
+      if (kOx > 0) _dessinerTransition(ctx, x, cy.v, sym, kOx, true);
+      else _dessinerAtome(ctx, x, cy.v, sym, 1);
+    }
   } else {
     var xi = _mx(cy.u + dx);
     if (cy.phase === 'transfo') {
-      _halo(ctx, xi, cy.v, R_ION, COUL_RED, 0.9 * (1 - cy.t / PL_D_TRANSFO), 1);
-      _dessinerTransition(ctx, xi, cy.v, sym, cy.t / PL_D_TRANSFO, false);
+      var kRed = Math.min(1, cy.t / cy.dTransfo);
+      _halo(ctx, xi, cy.v, R_ION, COUL_RED, 0.9 * (1 - kRed), 1);
+      _dessinerTransition(ctx, xi, cy.v, sym, kRed, false);
     } else {
       _halo(ctx, xi, cy.v, R_ION, COUL_RED, cy.phase === 'approche' ? 0.8 : 0.9, cy.phase === 'approche' ? 0.5 : pulse);
       _dessinerIon(ctx, xi, cy.v, sym, 1, R_ION);
     }
   }
-  // Électrons dans l'électrode (toujours visibles : ils sont l'essentiel ici)
-  if (cy.phase === 'electrons') {
+  // Électrons dans l'électrode (toujours visibles : ils sont l'essentiel
+  // ici), jusqu'au bout de leur trajet, même si la transformation est finie
+  if (cy.te !== undefined) {
     for (k = 0; k < cy.electrons.length; k++) {
       var e = cy.electrons[k];
-      if (cy.t < e.depart || e.s >= 1) continue;
+      if (cy.te < e.depart || e.s >= 1) continue;
       var p = _surLigne(e.chemin, e.s);
       _dessinerElectron(ctx, _mx(p.u + dx), p.v);
     }
@@ -917,7 +955,7 @@ function _dessinerCycleP(ctx, cy, pulse) {
 // l'eau s'y fond
 function _dessinerCycleGaz(ctx, cy, pulse) {
   var k, coul = cy.ox ? COUL_OX : COUL_RED;
-  var fondu = cy.phase === 'transfo' ? _lisse(cy.t / PL_D_TRANSFO) : cy.phase === 'depart' ? 1 : 0;
+  var fondu = cy.phase === 'transfo' ? _lisse(Math.min(1, cy.t / cy.dTransfo)) : cy.phase === 'depart' ? 1 : 0;
   // Maille de l'accumulateur : signalée, puis fondu vers le solide formé
   if (cy.maille && cy.phase !== 'depart') {
     var xm = _mx(cy.maille.c + 0.5 + ploupe.offX), ym = cy.maille.r + 0.5;
