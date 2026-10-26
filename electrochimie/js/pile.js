@@ -228,6 +228,8 @@ var P_PONT_Y = 46;                        // axe de la partie horizontale du pon
 var P_PONT_X = [48, 92];                  // axes des deux branches du pont
 var P_PONT_BAS = 77;                      // bas des branches (dans les solutions)
 var P_PONT_W = 3.4;                       // diamètre extérieur du tube
+var P_PONT_LEVEE = 17;                    // course du pont levé : ses extrémités sortent des solutions
+var V_PONT = 1.6;                         // vitesse du pont qu'on lève ou baisse (course par seconde réelle)
 var P_Y_LOUPE = 74;                       // hauteur visée par la loupe sur les électrodes
 var P_TUBE_ECART = 5.5;                   // tube d'arrivée du gaz, à côté de l'électrode (côté du pont)
 
@@ -255,7 +257,9 @@ var pile = {
   iR: 3,                     // cran de la résistance (100 Ω)
   iU: 30,                    // cran du générateur (× U_PAS : 1,50 V)
   polarite: 1,               // +1 : borne + du générateur reliée à l'électrode de droite
-  pont: true,                // pont salin en place (deux béchers)
+  pont: true,                // pont salin en contact avec les deux solutions (deux béchers)
+  pontBaisse: true,          // position demandée : pont baissé dans les solutions, ou levé
+  levee: 0,                  // position du pont : 0 dans les solutions, 1 levé
   zone: 'gauche',            // zone vue dans la loupe : 'gauche' | 'droite' | 'pont' | 'fil'
 
   showCourant:   false,      // sens du courant et électrons dans les fils
@@ -280,7 +284,7 @@ var pile = {
   bulles: [],                // bulles de gaz qui montent dans les solutions
   accBulles: [0, 0, 0, 0],   // bulles en attente (dégagement à chaque électrode, barbotage à chaque tube)
   bruitDepot: null,          // contour irrégulier des dépôts
-  survol: null               // zone ou interrupteur sous la souris
+  survol: null               // zone, interrupteur ou tube du pont sous la souris
 };
 
 // ══════════════════════════════════════════════════════════════════════
@@ -985,6 +989,13 @@ function calculerDispositionPile(W, H) {
   dispP.my = (rh - P_SCENE_H * dispP.k) / 2;
 }
 
+// Coin haut gauche du montage laissé libre pour la carte « Circuit » (px
+// CSS, depuis le coin du canvas) : à gauche du fil de l'électrode de
+// gauche, au-dessus des étiquettes des électrodes (y = 47 environ)
+function coinLibrePile() {
+  return { w: dispP.mx + (lameX(0) - 3.5) * dispP.k, h: dispP.my + 46 * dispP.k };
+}
+
 function pileVersPx(x, y) { return { x: dispP.mx + dispP.k * x, y: dispP.my + dispP.k * y }; }
 function pxVersPile(px, py) { return { x: (px - dispP.mx) / dispP.k, y: (py - dispP.my) / dispP.k }; }
 
@@ -1053,7 +1064,7 @@ function zonesLoupe() {
   return Z;
 }
 
-// La zone est-elle visible (pont salin retiré : plus de zone du pont)
+// La zone est-elle visible (pont salin sorti des solutions : plus de zone du pont)
 function zoneDisponible(nom) { return nom !== 'pont' || enPac() || pontPresent(); }
 var R_ZONE = 2.4;
 
@@ -1105,7 +1116,7 @@ function _dessinerRecipients(ctx) {
   for (i = 0; i < 2; i++) if (pile.lames[i].gaz) _dessinerTubeGaz(ctx, i);
   for (i = 0; i < 2; i++) _dessinerLameP(ctx, i);
   _dessinerBulles(ctx);
-  if (pontPresent()) _dessinerPont(ctx);
+  if (deuxBechers()) _dessinerPont(ctx);
   for (c = 0; c < R.length; c++) {
     _cheminInterieurP(ctx, R[c], P_SOL_TOP);
     ctx.fillStyle = rgbCss(cols[c], ALPHA_VOILE);
@@ -1117,7 +1128,7 @@ function _dessinerRecipients(ctx) {
     ctx.stroke();
     _dessinerVerreP(ctx, R[c]);
   }
-  if (pontPresent() && pile.showMigration) _dessinerIonsPont(ctx);
+  if (deuxBechers() && pile.showMigration) _dessinerIonsPont(ctx);
 }
 
 // ── Pile à combustible ────────────────────────────────────────────────
@@ -1426,9 +1437,19 @@ function _cheminPont(ctx) {
 }
 
 function _dessinerPont(ctx) {
+  var surv = pile.survol === 'tube-pont';
+  ctx.save();
+  ctx.translate(0, decalagePont());
   ctx.lineCap = 'butt';
+  if (surv) {
+    // Halo : le pont se lève ou se baisse d'un clic
+    _cheminPont(ctx);
+    ctx.strokeStyle = 'rgba(42,106,170,0.25)';
+    ctx.lineWidth = P_PONT_W + 1.6;
+    ctx.stroke();
+  }
   _cheminPont(ctx);
-  ctx.strokeStyle = '#6f7f8c';
+  ctx.strokeStyle = surv ? '#2a6aaa' : '#6f7f8c';
   ctx.lineWidth = P_PONT_W;
   ctx.stroke();
   _cheminPont(ctx);
@@ -1445,6 +1466,25 @@ function _dessinerPont(ctx) {
     ctx.rect(P_PONT_X[i] - (P_PONT_W - 0.7) / 2, P_PONT_BAS - 2.2, P_PONT_W - 0.7, 2.4);
     ctx.fill(); ctx.stroke();
   }
+  ctx.restore();
+}
+
+// Décalage vertical du pont (négatif : vers le haut), course adoucie
+function decalagePont() {
+  var u = pile.levee;
+  return -P_PONT_LEVEE * u * u * (3 - 2 * u);
+}
+
+// Lève ou baisse le pont vers la position demandée (temps réel : marche
+// aussi en pause). Renvoie true quand le pont retouche les solutions.
+function majPontLevee(dtReel) {
+  var cible = pile.pontBaisse ? 0 : 1;
+  if (pile.levee === cible) return false;
+  var pas = V_PONT * dtReel;
+  pile.levee = cible > pile.levee ? Math.min(cible, pile.levee + pas) : Math.max(cible, pile.levee - pas);
+  sim.needsRedraw = true;
+  if (pile.levee === 0 && !pile.pont) { pile.pont = true; return true; }
+  return false;
 }
 
 // ── Petits ions du montage (option migration) ─────────────────────────
@@ -1484,7 +1524,7 @@ function _dessinerIonsPont(ctx) {
     var P = _pointLigne(_CHEMIN_PONT, q.s);
     var d = q.d + 0.15 * Math.sin(pile.horloge * 1.7 + q.phi);
     var alpha = Math.max(0, Math.min(1, Math.min(q.s, L - q.s) / 3));
-    _petitIon(ctx, P.x - P.ty * d, P.y + P.tx * d, q.rgb, q.signe, alpha);
+    _petitIon(ctx, P.x - P.ty * d, P.y + P.tx * d + decalagePont(), q.rgb, q.signe, alpha);
   }
 }
 
@@ -1847,8 +1887,8 @@ function _dessinerEtiquettesP(ctx) {
 
   if (deuxBechers()) {
     ctx.fillStyle = pile.pont ? '#2c3e50' : '#9aa6b0';
-    texteEchelle(ctx, pile.pont ? 'Pont salin (K⁺ + NO₃⁻)' : 'Pont salin retiré',
-                 (P_PONT_X[0] + P_PONT_X[1]) / 2, P_PONT_Y - 3.4, 2.6, '600', dispP.k);
+    texteEchelle(ctx, pile.pontBaisse ? 'Pont salin (K⁺ + NO₃⁻)' : 'Pont salin sorti des solutions',
+                 (P_PONT_X[0] + P_PONT_X[1]) / 2, P_PONT_Y - 3.4 + decalagePont(), 2.6, '600', dispP.k);
   }
 }
 
@@ -1886,10 +1926,22 @@ function _dessinerZones(ctx) {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-//  Souris : choix de la zone de la loupe, interrupteur
+//  Souris : choix de la zone de la loupe, interrupteur, pont salin
 // ══════════════════════════════════════════════════════════════════════
 
-// Élément sous le point (px CSS) : nom de zone, 'interrupteur' ou null
+// Le point (unités de scène) est-il sur le tube du pont, levé ou non ?
+function _surTubePont(p) {
+  var dy = decalagePont(), pts = _CHEMIN_PONT;
+  for (var i = 1; i < pts.length; i++) {
+    var ax = pts[i - 1][0], ay = pts[i - 1][1] + dy, bx = pts[i][0], by = pts[i][1] + dy;
+    var vx = bx - ax, vy = by - ay;
+    var t = Math.max(0, Math.min(1, ((p.x - ax) * vx + (p.y - ay) * vy) / (vx * vx + vy * vy)));
+    if (Math.hypot(p.x - ax - t * vx, p.y - ay - t * vy) < P_PONT_W / 2 + 0.8) return true;
+  }
+  return false;
+}
+
+// Élément sous le point (px CSS) : nom de zone, 'interrupteur', 'tube-pont' ou null
 function _cibleSous(px, py) {
   var p = pxVersPile(px, py);
   var Z = zonesLoupe();
@@ -1903,6 +1955,7 @@ function _cibleSous(px, py) {
     if (c.type === 'interrupteur' && p.x > c.x0 - 2 && p.x < c.x1 + 2 &&
         p.y > P_FIL_Y - 7 && p.y < P_FIL_Y + 3) return 'interrupteur';
   }
+  if (deuxBechers() && _surTubePont(p)) return 'tube-pont';
   return null;
 }
 
@@ -1911,6 +1964,7 @@ function pilePointerDown(px, py) {
   var cible = _cibleSous(px, py);
   if (!cible) return false;
   if (cible === 'interrupteur') toggleInterrupteur();
+  else if (cible === 'tube-pont') togglePont();
   else setZonePile(cible);
   return true;
 }

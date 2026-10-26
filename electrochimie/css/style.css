@@ -418,6 +418,102 @@ html:not(.sections-pretes) .section-title[data-repliable]:not([data-repliable="o
   background: #c8c0b4;
 }
 
+/* Zones de la loupe, sous le curseur de vitesse (section Contrôles) */
+.param-row-loupe {
+  margin-top: 10px;
+  margin-bottom: 0;
+}
+
+/* ── Carte « Circuit » (onglet Pile) : gabarit de la box Source de ondes/ ──
+   Posée en absolu dans le coin haut gauche, dans le vide au-dessus du bécher
+   de gauche. Largeur de mise en page FIXE : sa taille naturelle ne dépend
+   donc pas de l'appareil choisi, et ui.js (_placerCarteCircuit) la réduit
+   par un seul `transform: scale()` pour qu'elle ne déborde pas sur le
+   montage (même principe que la colonne source de ondes/). */
+#circuit-wrap {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  transform-origin: 0 0;
+}
+#circuit-box {
+  width: clamp(150px, 13vw, 190px);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: clamp(7px, 0.8vw, 12px) clamp(7px, 0.8vw, 11px);
+  background: #e8e4de;
+  border: 1px solid #c8c0b4;
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.07);
+  font-size: clamp(11px, 1.1vw, 14px);
+}
+#circuit-box .section-title { margin-bottom: 0; }
+.cb-contenu {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+#circuit-box.replie .cb-contenu { display: none; }
+
+/* Titre : « CIRCUIT » et le chevron qui réduit la carte */
+.cb-titre {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.cb-replier {
+  position: relative;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+.cb-replier::before {               /* même chevron que les sections repliables */
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  border-right: 1.5px solid #7a8a96;
+  border-bottom: 1.5px solid #7a8a96;
+  transform: translate(-50%, -30%) rotate(-135deg);
+  transition: transform .2s;
+}
+.cb-replier:hover::before { border-color: #2a6aaa; }
+#circuit-box.replie .cb-replier::before { transform: translate(-50%, -70%) rotate(45deg); }
+
+/* Résumé : seulement la carte réduite */
+#cb-resume {
+  display: none;
+  font-size: clamp(12px, 1.15vw, 15px);
+  font-weight: 600;
+  color: #2a5080;
+  line-height: 1.35;
+  cursor: pointer;
+}
+#circuit-box.replie #cb-resume { display: block; }
+
+/* Réglage (curseur) : toujours une ligne présente ; grisé sans réglage */
+.cb-reglage { margin-bottom: 0; }
+.cb-reglage.disabled { opacity: 0.45; }
+.cb-reglage.disabled input[type="range"] { cursor: default; }
+
+/* Boutons de la carte inutiles pour l'appareil choisi : grisés, place gardée */
+#circuit-box .btn:disabled {
+  background: #dedad2;
+  color: #a8b0b8;
+  border-color: #d0c8bc;
+  cursor: default;
+  transform: none;
+}
+
+/* Note sous les commandes : toujours la place de deux lignes */
+.cb-note { min-height: 2.8em; }
+
 /* ── Afficheurs de valeurs (repris de refraction/) ─ */
 .readout {
   background: #fff;
@@ -556,6 +652,7 @@ a:focus-visible {
 ══════════════════════════════════════════════════ */
 @media (prefers-reduced-motion: reduce) {
   .btn,
+  .cb-replier::before,
   .panel-hint,
   .panel-hint-body,
   .panel-hint-toggle,

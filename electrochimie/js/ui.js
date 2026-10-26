@@ -32,6 +32,10 @@ function setMainTab(tab) {
     if (hint) hint.style.display = (t === tab) ? '' : 'none';
     if (btn)  btn.classList.toggle('active', t === tab);
   });
+  // Carte « Circuit » posée sur le montage : onglet Pile seulement (mise à
+  // l'échelle au prochain redimensionnement, une fois affichée)
+  document.getElementById('circuit-wrap').style.display = tab === 'pile-electrolyse' ? '' : 'none';
+  resize();
   // Le bloc des équations est commun aux deux onglets : on le reconstruit
   if (tab === 'oxydoreduction') majEquations(); else majEquationsPile(true);
   _majVisibiliteEquations();
@@ -260,12 +264,13 @@ function _remplirListesPile() {
 }
 
 // Recopie l'état de la pile dans les listes et les curseurs ; adapte le
-// panneau au montage (deux béchers, cuve unique, pile à combustible)
+// panneau au montage (deux béchers, cuve unique, pile à combustible).
+// Demi-piles et électrodes ne se choisissent qu'en montage libre.
 function _synchroniserPanneauPile() {
   var deux = deuxBechers(), cuve = enCuve(), pac = enPac(), plomb = enPlomb();
   document.getElementById('sel-experience').value = pile.experience;
-  document.getElementById('bloc-demi-piles').style.display = deux ? '' : 'none';
-  document.getElementById('bloc-cuve').style.display = cuve ? '' : 'none';
+  document.getElementById('bloc-demi-piles').style.display = pile.experience === 'libre' ? '' : 'none';
+  document.getElementById('bloc-cuve').style.display = pile.experience === 'libre-cuve' ? '' : 'none';
   if (deux) {
     document.getElementById('sel-gauche').value = pile.metaux[0];
     document.getElementById('sel-droite').value = pile.metaux[1];
@@ -308,22 +313,6 @@ function _synchroniserPanneauPile() {
 
 function _formatC0(c) { return (c < 0.1 ? c.toFixed(2) : c.toFixed(c < 1 ? 2 : 1)).replace('.', ','); }
 
-// Expérience prédéfinie qui correspond aux réglages, sinon le montage libre
-function _experienceCorrespondante() {
-  for (var i = 0; i < ORDRE_EXPERIENCES.length; i++) {
-    var X = EXPERIENCES[ORDRE_EXPERIENCES[i]], bac = X.bac || 'deux';
-    if (!X.g || bac !== pile.bac) continue;
-    if (bac === 'pac') return ORDRE_EXPERIENCES[i];
-    if (bac === 'plomb') { if (X.etat === pile.plombEtat) return ORDRE_EXPERIENCES[i]; continue; }
-    if (bac === 'un' && X.solution !== pile.solution) continue;
-    if (X.g === pile.metaux[0] && X.d === pile.metaux[1] && X.cg === pile.iC0[0] &&
-        (bac === 'un' || X.cd === pile.iC0[1])) {
-      return ORDRE_EXPERIENCES[i];
-    }
-  }
-  return enCuve() ? 'libre-cuve' : 'libre';
-}
-
 function onSelectExperience(v) {
   var X = EXPERIENCES[v], bacAvant = pile.bac;
   pile.bac = X.bac || 'deux';
@@ -347,13 +336,16 @@ function onSelectExperience(v) {
   }
   pile.experience = v;
   _synchroniserPanneauPile();
+  _placerCarteCircuit();               // le coin libre dépend du montage (béchers, cuve)
   _majBoutonsZones();
   resetPile();
   _majPanneauCircuit();
 }
 
+// L'expérience choisie est conservée : un montage libre reste libre même
+// s'il reproduit un préréglage, et un préréglage dont on change la
+// concentration garde son nom (les sélecteurs ne disparaissent pas sous la souris)
 function _apresChangement() {
-  pile.experience = _experienceCorrespondante();
   _synchroniserPanneauPile();
   resetPile();
 }
@@ -414,6 +406,7 @@ function onSelectDipole(v) {
 function onSliderResistance(val) {
   pile.iR = parseInt(val, 10);
   document.getElementById('lbl-resistance').textContent = RESISTANCES[pile.iR];
+  _majResumeCircuit();
   sim.needsRedraw = true;
 }
 
@@ -433,42 +426,99 @@ function toggleInterrupteur() {
   _majPanneauCircuit();
 }
 
+// Le pont se lève ou se baisse (animation : majPontLevee) ; le contact
+// est rompu dès qu'il se lève, rétabli quand il retouche les solutions
 function togglePont() {
-  pile.pont = !pile.pont;
+  pile.pontBaisse = !pile.pontBaisse;
+  if (!pile.pontBaisse) pile.pont = false;
   _majPanneauCircuit();
 }
 
 function _majPanneauCircuit() {
   var gen = pile.dipole === 'generateur';
-  document.getElementById('row-resistance').style.display = pile.dipole === 'resistance' ? '' : 'none';
+  var res = pile.dipole === 'resistance';
+  // Carte « Circuit » à taille constante : un seul réglage à la même place
+  // (ligne grisée s'il n'y en a pas), K et bornes grisés s'ils ne servent pas
+  document.getElementById('row-resistance').style.display = res ? '' : 'none';
   document.getElementById('bloc-generateur').style.display = gen ? '' : 'none';
-  document.getElementById('btn-polarite').style.display = gen ? '' : 'none';
+  document.getElementById('row-sans-reglage').style.display = gen || res ? 'none' : '';
+  document.getElementById('btn-polarite').disabled = !gen;
   var btnK = document.getElementById('btn-interrupteur');
-  btnK.style.display = courantPossible() ? '' : 'none';
-  btnK.textContent = pile.interrupteur ? 'Ouvrir l’interrupteur' : 'Fermer l’interrupteur';
+  btnK.disabled = !courantPossible();
+  btnK.textContent = pile.interrupteur ? 'Ouvrir K' : 'Fermer K';
+  btnK.classList.toggle('active', pile.interrupteur && courantPossible());
+  btnK.setAttribute('aria-pressed', String(pile.interrupteur));
   var btnP = document.getElementById('btn-pont');
   btnP.style.display = deuxBechers() ? '' : 'none';
-  btnP.textContent = pile.pont ? 'Retirer le pont salin' : 'Remettre le pont salin';
-  btnP.classList.toggle('active', !pile.pont);
-  btnP.setAttribute('aria-pressed', String(!pile.pont));
+  btnP.textContent = pile.pontBaisse ? 'Sortir le pont salin' : 'Replonger le pont salin';
+  btnP.classList.toggle('active', !pile.pontBaisse);
+  btnP.setAttribute('aria-pressed', String(!pile.pontBaisse));
   // Le courant change aussitôt (même en pause)
   pile.E = femPile();
   pile.I = courantPile();
   _majSeuil();
+  _majResumeCircuit();
   sim.needsRedraw = true;
 }
 
-// Indication sous le curseur du générateur : seuil d'électrolyse dans le
-// sens où il pousse (il évolue avec les concentrations et le pH)
-var _seuilAffiche = '';
+// Ligne de résumé de la carte « Circuit » réduite
+function _majResumeCircuit() {
+  var noms = {
+    aucun: 'Rien',
+    voltmetre: 'Voltmètre',
+    resistance: 'Résistance ' + RESISTANCES[pile.iR] + ' Ω',
+    lampe: 'Lampe',
+    generateur: 'Générateur ' + formatNombre(tensionGenerateur(), 2) + ' V'
+  };
+  var txt = noms[pile.dipole];
+  if (courantPossible()) txt += ' · K ' + (pile.interrupteur ? 'fermé' : 'ouvert');
+  document.getElementById('cb-resume').textContent = txt;
+}
+
+// Réduit la carte « Circuit » à son titre et au résumé (petites fenêtres)
+function toggleCadreCircuit() {
+  var box = document.getElementById('circuit-box');
+  var replie = box.classList.toggle('replie');
+  var btn = document.getElementById('btn-replier-circuit');
+  btn.setAttribute('aria-expanded', String(!replie));
+  btn.title = replie ? 'Déployer la carte Circuit' : 'Réduire la carte Circuit';
+  _placerCarteCircuit();
+}
+
+// Met la carte « Circuit » à l'échelle pour qu'elle tienne dans le coin
+// haut gauche laissé libre par le montage. Sa largeur de mise en page est
+// fixe : sa taille naturelle (offsetWidth/Height, que le transform ne
+// change pas) donne l'échelle en une division (cf. ondes/, colonne source).
+var CARTE_MARGE = 8;            // px, comme le top/left du CSS
+var CARTE_ECHELLE_MIN = 0.6;    // en dessous, illisible : on accepte de déborder
+function _placerCarteCircuit() {
+  var wrap = document.getElementById('circuit-wrap');
+  if (sim.onglet !== 'pile-electrolyse') return;
+  var box = document.getElementById('circuit-box');
+  var coin = coinLibrePile();
+  var s = Math.min(1, (coin.w - 2 * CARTE_MARGE) / box.offsetWidth,
+                      (coin.h - 2 * CARTE_MARGE) / box.offsetHeight);
+  wrap.style.transform = 'scale(' + Math.max(CARTE_ECHELLE_MIN, s).toFixed(3) + ')';
+}
+
+// Note sous les commandes de la carte : ce que mesure l'appareil, ou le
+// seuil d'électrolyse du générateur dans le sens où il pousse (il évolue
+// avec les concentrations et le pH, d'où l'appel à chaque image)
+var _noteAffichee = '';
 function _majSeuil() {
-  if (pile.dipole !== 'generateur') return;
-  var s = seuilElectrolyse();
-  var txt = s === null
-    ? 'Branché dans le sens de la pile : il l’aide à débiter.'
-    : 'Électrolyse au-delà de ' + formatNombre(s, 2) + ' V environ.';
-  if (txt === _seuilAffiche) return;
-  _seuilAffiche = txt;
+  var txt;
+  switch (pile.dipole) {
+    case 'aucun':     txt = 'Circuit ouvert : aucun courant ne circule.'; break;
+    case 'voltmetre': txt = 'Le voltmètre mesure V(droite) − V(gauche).'; break;
+    case 'generateur':
+      var s = seuilElectrolyse();
+      txt = s === null ? 'Dans le sens de la pile : il l’aide à débiter.'
+                       : 'Électrolyse au-delà de ' + formatNombre(s, 2) + ' V environ.';
+      break;
+    default:          txt = 'L’ampèremètre mesure l’intensité I.';
+  }
+  if (txt === _noteAffichee) return;
+  _noteAffichee = txt;
   document.getElementById('lbl-seuil').textContent = txt;
 }
 
@@ -657,7 +707,7 @@ function _equationsPileHTML() {
 
   if (!sI) {
     var note;
-    if (deuxBechers() && !pile.pont) note = 'Pont salin retiré : le circuit est ouvert, aucun courant ne circule.';
+    if (deuxBechers() && !pile.pont) note = 'Pont salin sorti des solutions : le circuit est ouvert, aucun courant ne circule.';
     else if (!courantPossible()) note = 'Circuit ouvert : aucun courant, ces réactions n’ont pas lieu.';
     else if (!pile.interrupteur) note = 'Interrupteur ouvert : aucun courant, ces réactions n’ont pas lieu.';
     else if (gen && seuil !== null) note = 'Aucun courant : la tension du générateur n’atteint pas le seuil d’électrolyse (' +
@@ -675,6 +725,7 @@ function _equationsPileHTML() {
 // ══════════════════════════════════════════════════════════════════════
 
 var _resizeRAF = null;
+var _initFaite = false;
 
 function resize() {
   if (_resizeRAF !== null) return;
@@ -686,12 +737,20 @@ function _doResize() {
   var dpr = window.devicePixelRatio || 1;
   _cw = area.clientWidth;
   _ch = area.clientHeight;
-  canvas.width  = Math.round(_cw * dpr);
-  canvas.height = Math.round(_ch * dpr);
+  // Réaffecter width/height efface le canvas : seulement si la taille change
+  var w = Math.round(_cw * dpr), h = Math.round(_ch * dpr);
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width  = w;
+    canvas.height = h;
+  }
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   calculerDisposition(_cw, _ch);
   calculerDispositionPile(_cw, _ch);
-  sim.needsRedraw = true;
+  _placerCarteCircuit();
+  // Redessin immédiat : sinon une image blanche si la boucle est déjà passée
+  // (pas avant la fin de l'initialisation : scènes pas encore prêtes)
+  if (_initFaite) { _dessiner(); sim.needsRedraw = false; }
+  else sim.needsRedraw = true;
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -716,6 +775,7 @@ function loop(ts) {
       sim.needsRedraw = false;
     }
   } else {
+    if (majPontLevee(dtReel)) _majPanneauCircuit();   // pont replongé : le courant reprend
     majPile(dtSim);
     majLoupePile(dtSim);
     majEquationsPile(false);
@@ -813,10 +873,16 @@ function init() {
   resetPile();
 
   // La zone du canvas change de taille avec la fenêtre, mais aussi quand
-  // le bloc des équations apparaît ou disparaît.
-  if (window.ResizeObserver) new ResizeObserver(resize).observe(document.getElementById('sim-area'));
+  // le bloc des équations apparaît ou disparaît ; la carte « Circuit » est
+  // remise à l'échelle quand sa taille change (réduite, déployée).
+  if (window.ResizeObserver) {
+    var obs = new ResizeObserver(resize);
+    obs.observe(document.getElementById('sim-area'));
+    obs.observe(document.getElementById('circuit-box'));
+  }
   window.addEventListener('resize', resize);
 
+  _initFaite = true;
   requestAnimationFrame(loop);
 }
 

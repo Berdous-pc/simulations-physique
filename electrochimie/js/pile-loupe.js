@@ -1058,7 +1058,7 @@ function _dessinerTextesLoupeP(ctx) {
     cotes = ['côté H₂', 'côté O₂'];
   } else if (ploupe.zone === 'pont') {
     titre = 'Pont salin vu à l’échelle des ions';
-    if (!pile.pont) lignes.push({ txt: 'Pont salin retiré', col: '#5a6a78' });
+    if (!pile.pont) lignes.push({ txt: 'Pont salin sorti des solutions', col: '#5a6a78' });
     else if (I === 0) lignes.push({ txt: 'Pas de courant : agitation sans déplacement d’ensemble', col: '#5a6a78' });
     else {
       var cat = METAUX[pile.lames[I > 0 ? 1 : 0].sym].nom, an = METAUX[pile.lames[I > 0 ? 0 : 1].sym].nom;
