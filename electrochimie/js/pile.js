@@ -191,7 +191,7 @@ var EXPERIENCES = {
                  g: 'Cu', d: 'Cu', cg: 3, cd: 3, dipole: 'generateur', iU: 10, polarite: -1 },
   'zingage':   { groupe: 'Électrolyses', nom: 'Zingage d’une lame de fer', bac: 'un', solution: 'Zn',
                  g: 'Zn', d: 'Fe', cg: 3, cd: 3, dipole: 'generateur', iU: 20, polarite: -1 },
-  'eau':       { groupe: 'Électrolyses', nom: 'Électrolyse de l’eau (sulfate de sodium)', bac: 'un', solution: 'Na2SO4',
+  'eau':       { groupe: 'Électrolyses', nom: 'Électrolyse de l’eau', bac: 'un', solution: 'H2SO4',
                  g: 'C', d: 'C', cg: 3, cd: 3, dipole: 'generateur', iU: 52, polarite: -1 },
   'cuso4':     { groupe: 'Électrolyses', nom: 'Électrolyse du sulfate de cuivre (graphite)', bac: 'un', solution: 'Cu',
                  g: 'C', d: 'C', cg: 3, cd: 3, dipole: 'generateur', iU: 32, polarite: -1 },
