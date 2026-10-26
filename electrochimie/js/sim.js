@@ -45,7 +45,10 @@ var METAUX = {
         nomIon: 'ions zinc', nomSolution: 'sulfate de zinc', anion: 'SO4',
         depot: 'gris' },
   Fe: { sym: 'Fe', nom: 'fer', de: 'de fer', le: 'le fer', du: 'du fer', charge: 2, E0: -0.44,
-        atome: '#77716b', ion: '#93c060', solution: ['#e4f4d6', '#a4d488', '#5a9c40'],
+        // rampe : concentration en dessous de laquelle la teinte se fond
+        // dans l'eau (0,1 par défaut, cf. C_RAMPE de becher.js) ; plus
+        // longue ici pour que le vert s'installe progressivement
+        atome: '#77716b', ion: '#93c060', solution: ['#e4f4d6', '#a4d488', '#5a9c40'], rampe: 0.4,
         nomIon: 'ions fer(II)', nomSolution: 'sulfate de fer(II)', anion: 'SO4',
         depot: 'noir' },
   Pb: { sym: 'Pb', nom: 'plomb', de: 'de plomb', le: 'le plomb', du: 'du plomb', charge: 2, E0: -0.13,

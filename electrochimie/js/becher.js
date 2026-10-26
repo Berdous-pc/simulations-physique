@@ -467,10 +467,15 @@ function majBecher(dtSim, dtReel) {
 //  solution, avec les mêmes teintes que la page Dissolution : la couleur
 //  d'une espèce suit sa suite de teintes selon sa concentration c
 //  (rapportée à la concentration initiale de l'oxydant : c = 1 → dernière
-//  teinte). Aux très faibles concentrations (c < C_RAMPE), elle se fond
-//  dans l'eau au lieu d'y apparaître d'un coup. Deux espèces colorées
-//  (Fe + Cu²⁺) : moyenne de leurs teintes, pondérée par ces mêmes poids ;
-//  la solution passe du bleu au vert en transitant par le bleu-vert.
+//  teinte). Aux faibles concentrations (c < C_RAMPE, ou la rampe propre à
+//  l'espèce METAUX[…].rampe), elle se fond dans l'eau au lieu d'y
+//  apparaître d'un coup. Fe²⁺ a une rampe plus longue (0,4) : avec 0,1,
+//  l'eau virait au vert pâle en quelques secondes, puis la teinte ne
+//  bougeait presque plus. Deux espèces colorées (Fe + Cu²⁺) : moyenne de
+//  leurs teintes pondérée par leurs concentrations (avec des poids égaux,
+//  la solution restait turquoise presque jusqu'au bout puis virait d'un
+//  coup au vert) ; elle passe ainsi progressivement du bleu au vert par
+//  le bleu-vert, et se fond dans l'eau selon l'espèce la plus présente.
 //  Solution incolore : bleu ciel clair et franc #b4e2fa. Le bleu pâle
 //  #b8d4f0 des pages Dissolution et Titrage tirait ici vers le lavande
 //  grisé, un aqua (#c2e5ec) vers le vert, des bleus peu saturés (#c4e2f0,
@@ -491,20 +496,23 @@ function couleurSolution(p) {
     var st = stoechiometrie(sim.metal, sim.solution);
     especes.push({ sym: sim.metal, conc: p * st.coefMetal / st.coefIon });
   }
-  var somme = [0, 0, 0], poids = 0;
+  // presence : poids de la teinte face à l'eau ; poids : somme des
+  // pondérations du mélange des teintes
+  var somme = [0, 0, 0], poids = 0, presence = 0;
   for (var i = 0; i < especes.length; i++) {
-    var stops = METAUX[especes[i].sym].solution;
-    if (!stops || especes[i].conc <= 0) continue;
-    var w = Math.min(1, especes[i].conc / C_RAMPE);
-    var rgb = couleurSuite(stops, especes[i].conc);
-    for (var k = 0; k < 3; k++) somme[k] += w * rgb[k];
-    poids += w;
+    var m = METAUX[especes[i].sym], conc = especes[i].conc;
+    if (!m.solution || conc <= 0) continue;
+    var r = Math.min(1, conc / (m.rampe || C_RAMPE));
+    var rgb = couleurSuite(m.solution, conc);
+    for (var k = 0; k < 3; k++) somme[k] += r * conc * rgb[k];
+    poids += r * conc;
+    presence = Math.max(presence, r);
   }
-  var intensite = Math.min(1, poids);
-  var eau = Math.max(0, 1 - poids);
   var c = [];
-  for (k = 0; k < 3; k++) c.push(Math.round((somme[k] + eau * _EAU[k]) / (poids + eau)));
-  return { rgb: c, intensite: intensite };
+  for (k = 0; k < 3; k++) {
+    c.push(Math.round(poids > 0 ? presence * somme[k] / poids + (1 - presence) * _EAU[k] : _EAU[k]));
+  }
+  return { rgb: c, intensite: presence };
 }
 
 // ══════════════════════════════════════════════════════════════════════
