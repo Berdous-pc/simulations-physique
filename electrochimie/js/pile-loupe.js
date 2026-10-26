@@ -311,11 +311,18 @@ function _majElectrode(dt) {
     if (f.v < f.r) { f.v = f.r; f.vv = Math.abs(f.vv); }
     if (f.v > 2 * RC - f.r) { f.v = 2 * RC - f.r; f.vv = -Math.abs(f.vv); }
     var b = _bordMetal(f.v) + f.r + 0.05;
+    f.derriere = false;
     if (f.u < b) {
-      // Poussé contre le métal par la migration : il est remplacé par un
-      // ion venu du reste de la solution ; sinon il rebondit
-      if (d < -0.05 && !f.sort) { _placerDansSolution(f, true); f.vis = 0; }
-      else { f.u = b; f.vu = Math.abs(f.vu); }
+      // Poussé vers le métal par la migration : il passe derrière
+      // l'électrode (le fond est dessiné sous le réseau), et une fois
+      // caché par la masse du réseau, il est remplacé par un ion venu du
+      // reste de la solution (choix de l'utilisateur : pas de disparition
+      // au contact) ; sinon il rebondit
+      if (d < -0.05 && !f.sort) {
+        f.derriere = true;
+        var cache = Math.min(_bordMetal(f.v - f.r), _bordMetal(f.v + f.r)) + 0.3;
+        if (f.u + f.r < cache) { _placerDansSolution(f, true); f.vis = 0; f.derriere = false; }
+      } else { f.u = b; f.vu = Math.abs(f.vu); }
     }
     if (f.u > 2 * RC + 0.6) { _placerDansSolution(f, d > 0.05 ? false : true); f.vis = 0; }
   }
@@ -456,7 +463,7 @@ function _prendreIon(type, sym, cible) {
   var io = null;
   for (var i = 0; i < ploupe.fond.length; i++) {
     var f = ploupe.fond[i];
-    if (f.type !== type || f.sym !== sym || f.sort || f.vis < 1) continue;
+    if (f.type !== type || f.sym !== sym || f.sort || f.vis < 1 || f.derriere) continue;   // pas un ion passé derrière l'électrode
     if (!io || Math.hypot(f.u - cible.u, f.v - cible.v) < Math.hypot(io.u - cible.u, io.v - cible.v)) io = f;
   }
   if (!io) return null;
