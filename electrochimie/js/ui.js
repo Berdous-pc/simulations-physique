@@ -79,6 +79,8 @@ function _majOptionsExclues() {
   });
   Array.prototype.forEach.call(selS.options, function (o) {
     o.disabled = combinaisonExclue(sim.metal, o.value);
+    // En gras : les solutions qui réagissent avec la lame choisie
+    o.style.fontWeight = reactionPossible(sim.metal, o.value) && !o.disabled ? 'bold' : 'normal';
   });
 }
 
