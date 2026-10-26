@@ -171,20 +171,21 @@ function demiPile(cle) {
 //  électrodes (cuve) de gauche et de droite ; cg, cd : crans de
 //  concentration (indices dans CONCENTRATIONS) ; dipole, iR, iU (cran du
 //  générateur), polarite (+1 : borne + du générateur reliée à
-//  l'électrode de droite) : circuit imposé par l'expérience.
+//  l'électrode de droite) : circuit imposé par l'expérience. Piles :
+//  ampèremètre + résistance (100 Ω) par défaut (choix de l'utilisateur).
 // ══════════════════════════════════════════════════════════════════════
 
 var EXPERIENCES = {
-  'daniell':   { groupe: 'Piles', nom: 'Pile Daniell (zinc – cuivre)', g: 'Zn', d: 'Cu', cg: 2, cd: 2 },
-  'cu-ag':     { groupe: 'Piles', nom: 'Pile cuivre – argent', g: 'Cu', d: 'Ag', cg: 2, cd: 2 },
-  'fe-cu':     { groupe: 'Piles', nom: 'Pile fer – cuivre', g: 'Fe', d: 'Cu', cg: 2, cd: 2 },
-  'zn-pb':     { groupe: 'Piles', nom: 'Pile zinc – plomb', g: 'Zn', d: 'Pb', cg: 2, cd: 2 },
-  'conc-cu':   { groupe: 'Piles', nom: 'Pile de concentration (cuivre)', g: 'Cu', d: 'Cu', cg: 0, cd: 4 },
-  'h2-cu':     { groupe: 'Piles', nom: 'Pile dihydrogène – cuivre', g: 'H2', d: 'Cu', cg: 4, cd: 2 },
+  'daniell':   { groupe: 'Piles', nom: 'Pile Daniell (zinc – cuivre)', g: 'Zn', d: 'Cu', cg: 2, cd: 2, dipole: 'resistance', iR: 3 },
+  'cu-ag':     { groupe: 'Piles', nom: 'Pile cuivre – argent', g: 'Cu', d: 'Ag', cg: 2, cd: 2, dipole: 'resistance', iR: 3 },
+  'fe-cu':     { groupe: 'Piles', nom: 'Pile fer – cuivre', g: 'Fe', d: 'Cu', cg: 2, cd: 2, dipole: 'resistance', iR: 3 },
+  'zn-pb':     { groupe: 'Piles', nom: 'Pile zinc – plomb', g: 'Zn', d: 'Pb', cg: 2, cd: 2, dipole: 'resistance', iR: 3 },
+  'conc-cu':   { groupe: 'Piles', nom: 'Pile de concentration (cuivre)', g: 'Cu', d: 'Cu', cg: 0, cd: 4, dipole: 'resistance', iR: 3 },
+  'h2-cu':     { groupe: 'Piles', nom: 'Pile dihydrogène – cuivre', g: 'H2', d: 'Cu', cg: 4, cd: 2, dipole: 'resistance', iR: 3 },
   'pac':       { groupe: 'Piles', nom: 'Pile à combustible (dihydrogène – dioxygène)', bac: 'pac',
                  g: 'H2', d: 'O2', cg: 4, cd: 4, dipole: 'resistance', iR: 3 },
   'plomb-decharge': { groupe: 'Piles', nom: 'Accumulateur au plomb (décharge)', bac: 'plomb', etat: 'charge',
-                 g: 'Pb', d: 'PbO2', cg: 4, cd: 4, dipole: 'lampe' },
+                 g: 'Pb', d: 'PbO2', cg: 4, cd: 4, dipole: 'resistance', iR: 3 },
   'recharge':  { groupe: 'Électrolyses', nom: 'Recharge de la pile Daniell', g: 'Zn', d: 'Cu', cg: 2, cd: 2,
                  dipole: 'generateur', iU: 32, polarite: 1 },
   'affinage':  { groupe: 'Électrolyses', nom: 'Affinage du cuivre (anode soluble)', bac: 'un', solution: 'Cu',
@@ -252,7 +253,7 @@ var pile = {
   metaux: ['Zn', 'Cu'],      // demi-piles (deux béchers) ou électrodes (cuve) de gauche et de droite
   solution: 'Cu',            // cuve unique : clé de SOLUTIONS
   iC0: [2, 2],               // crans des concentrations initiales
-  dipole: 'voltmetre',       // 'aucun' | 'voltmetre' | 'resistance' | 'lampe' | 'generateur'
+  dipole: 'resistance',      // 'aucun' | 'voltmetre' | 'resistance' | 'lampe' | 'generateur'
   interrupteur: false,       // fermé ?
   iR: 3,                     // cran de la résistance (100 Ω)
   iU: 30,                    // cran du générateur (× U_PAS : 1,50 V)
