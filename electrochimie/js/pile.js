@@ -238,6 +238,12 @@ var P_TUBE_ECART = 5.5;                   // tube d'arrivée du gaz, à côté d
 // d'animation, à I = I_REF ; plus lentes quand I est plus faible)
 var V_ELEC_FIL = 9;
 var V_ION_MACRO = 2.6;
+// Sans courant, les ions du montage (option migration) s'agitent autour
+// de leur place (choix de l'utilisateur) ; l'agitation s'efface quand le
+// courant passe, au profit de la migration (et revient s'il s'arrête)
+var AGIT_IONS = 0.9;                      // amplitude dans les compartiments (unités de scène)
+var AGIT_IONS_PONT = 0.45;                // dans le pont (tube étroit)
+var T_AGIT_IONS = 0.4;                    // constante de temps de l'effacement (s d'animation)
 var ECART_ELECTRONS = 5;                  // espacement des électrons dans les fils
 var N_BULLES_S = 16;                      // bulles par seconde à I_REF, pour un gaz à 2 e⁻ par molécule
 
@@ -282,6 +288,7 @@ var pile = {
   horloge: 0,                // temps d'animation (s)
   phaseE: 0,                 // décalage des électrons le long des fils
   particules: null,          // ions du montage (option migration)
+  agitation: 1,              // poids de l'agitation des ions du montage (1 sans courant, 0 avec)
   bulles: [],                // bulles de gaz qui montent dans les solutions
   accBulles: [0, 0, 0, 0],   // bulles en attente (dégagement à chaque électrode, barbotage à chaque tube)
   bruitDepot: null,          // contour irrégulier des dépôts
@@ -745,6 +752,7 @@ function resetPileModele() {
   pile.E = femPile();
   pile.I = courantPile();
   _tirerParticules();
+  pile.agitation = pile.I ? 0 : 1;
   _tirerBruitDepot();
 }
 
@@ -786,7 +794,8 @@ function _tirerParticules() {
           x: Z.a + (k + (j % 2 ? 0.5 : 0)) * larg / n,
           y: P_SOL_TOP + 4.5 + j * 5.5,
           signe: cation ? 1 : -1,
-          rgb: cation ? coul.cation : coul.anion
+          rgb: cation ? coul.cation : coul.anion,
+          ag: _phasesAgitation()
         });
       }
     }
@@ -798,11 +807,28 @@ function _tirerParticules() {
       pont.push({
         s: (k + (j ? 0.5 : 0)) * L / N_IONS_PONT,
         signe: j ? -1 : 1,
-        rgb: couleurRGB(j ? ANIONS.NO3.couleur : K_PONT.couleur)
+        rgb: couleurRGB(j ? ANIONS.NO3.couleur : K_PONT.couleur),
+        ag: _phasesAgitation()
       });
     }
   }
   pile.particules = { comps: comps, pont: pont };
+}
+
+// Agitation d'un ion : somme de deux sinusoïdes par axe, de fréquences et
+// de phases tirées au hasard (mouvement irrégulier, qui reste près de sa place)
+function _phasesAgitation() {
+  var r = function (a, b) { return a + Math.random() * (b - a); };
+  return { wx: [r(1.6, 2.6), r(3.0, 4.4)], wy: [r(1.6, 2.6), r(3.0, 4.4)],
+           px: [r(0, 6.28), r(0, 6.28)], py: [r(0, 6.28), r(0, 6.28)] };
+}
+
+// Décalage d'agitation d'un ion à l'instant de l'horloge, pour l'amplitude A
+function _decalageAgitation(ag, A) {
+  var t = pile.horloge, k = A * pile.agitation;
+  if (k <= 0) return { x: 0, y: 0 };
+  return { x: k * (0.65 * Math.sin(ag.wx[0] * t + ag.px[0]) + 0.35 * Math.sin(ag.wx[1] * t + ag.px[1])),
+           y: k * (0.65 * Math.sin(ag.wy[0] * t + ag.py[0]) + 0.35 * Math.sin(ag.wy[1] * t + ag.py[1])) };
 }
 
 // Contour irrégulier des dépôts (fixe, tiré une fois)
@@ -919,6 +945,8 @@ function majPile(dtSim) {
   pile.horloge += dtSim;
   var sgn = pile.I > 0 ? 1 : pile.I < 0 ? -1 : 0;
   var f = facteurCourant();
+  // Agitation des ions : s'efface avec le courant, revient sans lui
+  pile.agitation += ((sgn ? 0 : 1) - pile.agitation) * Math.min(1, dtSim / T_AGIT_IONS);
 
   // Électrons des fils : de l'anode vers la cathode dans le circuit
   // extérieur, soit vers les s croissants (gauche → droite) si I > 0
@@ -1529,7 +1557,8 @@ function _dessinerIonsComps(ctx) {
     for (var k = 0; k < liste.length; k++) {
       var p = liste[k];
       var alpha = Math.max(0, Math.min(1, Math.min(p.x - a, b - p.x) / 2.5));
-      _petitIon(ctx, p.x, p.y, p.rgb, p.signe, alpha);
+      var dA = _decalageAgitation(p.ag, AGIT_IONS);
+      _petitIon(ctx, p.x + dA.x, p.y + dA.y, p.rgb, p.signe, alpha);
     }
   }
 }
@@ -1541,7 +1570,8 @@ function _dessinerIonsPont(ctx) {
     var P = _pointLigne(_CHEMIN_PONT, q.s);
     var alpha = Math.max(0, Math.min(1, Math.min(q.s, L - q.s) / 3));
     // Une seule file sur l'axe : K⁺ et NO₃⁻ se croisent en se superposant
-    _petitIon(ctx, P.x, P.y + decalagePont(), q.rgb, q.signe, alpha, 1.1);
+    var dA = _decalageAgitation(q.ag, AGIT_IONS_PONT);
+    _petitIon(ctx, P.x + dA.x, P.y + decalagePont() + dA.y, q.rgb, q.signe, alpha, 1.1);
   }
 }
 
