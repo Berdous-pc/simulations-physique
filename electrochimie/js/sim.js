@@ -68,7 +68,15 @@ var METAUX = {
   Ag: { sym: 'Ag', nom: 'argent', de: 'd’argent', le: 'l’argent', du: 'de l’argent', charge: 1, E0: 0.80,
         atome: '#c7ccd2', ion: '#dcc25e', solution: null,
         nomIon: 'ions argent', nomSolution: 'nitrate d’argent', anion: 'NO3',
-        depot: 'aiguilles' }
+        depot: 'aiguilles' },
+
+  // Électrodes inertes (onglet Pile et électrolyse) : jamais oxydées, elles
+  // portent les couples gazeux et reçoivent les dépôts. Absentes des listes
+  // de l'onglet Oxydoréduction (ORDRE_METAUX).
+  C:  { sym: 'C', nom: 'graphite', de: 'de graphite', le: 'le graphite', du: 'du graphite', inerte: true,
+        atome: '#4b4f56', depot: 'gris' },
+  Pt: { sym: 'Pt', nom: 'platine', de: 'de platine', le: 'le platine', du: 'du platine', inerte: true,
+        atome: '#cfd3d8', depot: 'gris' }
 };
 
 // Ordre d'affichage dans les listes : du réducteur le plus fort au plus faible
@@ -77,10 +85,13 @@ var ORDRE_METAUX = ['Mg', 'Al', 'Zn', 'Fe', 'Pb', 'Cu', 'Ag'];
 // avec, le magnésium attaquant l'eau plutôt que de déposer de l'aluminium)
 var ORDRE_SOLUTIONS = ['Mg', 'Zn', 'Fe', 'Pb', 'Cu', 'Ag'];
 
-// Ions spectateurs (anions)
+// Anions : spectateurs (sulfate, nitrate) ; chlorure et hydroxyde
+// interviennent dans les électrolyses de l'onglet Pile et électrolyse
 var ANIONS = {
   SO4: { formule: 'SO₄', html: 'SO<sub>4</sub>', charge: 2, couleur: '#1f7a8c' },
-  NO3: { formule: 'NO₃', html: 'NO<sub>3</sub>', charge: 1, couleur: '#7a4b8c' }
+  NO3: { formule: 'NO₃', html: 'NO<sub>3</sub>', charge: 1, couleur: '#7a4b8c' },
+  Cl:  { formule: 'Cl', html: 'Cl', charge: 1, couleur: '#4f9a3a' },
+  OH:  { formule: 'HO', html: 'HO', charge: 1, couleur: '#c8693a' }
 };
 
 // ══════════════════════════════════════════════════════════════════════

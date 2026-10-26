@@ -212,8 +212,15 @@ function majEquations() {
 //  Panneau — onglet Pile et électrolyse
 // ══════════════════════════════════════════════════════════════════════
 
+function _option(sel, val, txt) {
+  var o = document.createElement('option');
+  o.value = val;
+  o.textContent = txt;
+  sel.appendChild(o);
+}
+
 function _remplirListesPile() {
-  // Expériences regroupées (Piles, Électrolyses), montage libre à la fin
+  // Expériences regroupées (Piles, Électrolyses), montages libres à la fin
   var selX = document.getElementById('sel-experience');
   var groupes = {};
   ORDRE_EXPERIENCES.forEach(function (cle) {
@@ -226,81 +233,107 @@ function _remplirListesPile() {
       }
       parent = groupes[X.groupe];
     }
-    var o = document.createElement('option');
-    o.value = cle;
-    o.textContent = X.nom;
-    parent.appendChild(o);
+    _option(parent, cle, X.nom);
   });
+  // Demi-piles : couples Mⁿ⁺/M, puis couples gazeux
   ['sel-gauche', 'sel-droite'].forEach(function (id) {
     var sel = document.getElementById(id);
-    ORDRE_METAUX.forEach(function (sym) {
-      var o = document.createElement('option');
-      o.value = sym;
-      o.textContent = _majuscule(METAUX[sym].nom) + ' (' + ionTexte(sym) + '/' + sym + ')';
-      sel.appendChild(o);
+    ORDRE_DEMI_PILES.forEach(function (cle) {
+      var G = DEMI_PILES_GAZ[cle];
+      _option(sel, cle, G ? G.nom + ' (' + G.couple + ')'
+                          : _majuscule(METAUX[cle].nom) + ' (' + ionTexte(cle) + '/' + cle + ')');
+    });
+  });
+  // Cuve : solution et électrodes
+  var selS = document.getElementById('sel-solution-cuve');
+  ORDRE_SOLUTIONS_CUVE.forEach(function (cle) {
+    var S = SOLUTIONS[cle];
+    _option(selS, cle, _majuscule(S.nom) + (S.metal ? ' (' + ionTexte(S.metal) + ')' : ' (' + S.court + ')'));
+  });
+  ['sel-elec-gauche', 'sel-elec-droite'].forEach(function (id) {
+    var sel = document.getElementById(id);
+    ORDRE_ELECTRODES.forEach(function (sym) {
+      _option(sel, sym, _majuscule(METAUX[sym].nom));
     });
   });
   _synchroniserPanneauPile();
 }
 
 // Recopie l'état de la pile dans les listes et les curseurs ; adapte le
-// panneau au montage (deux béchers ou cuve unique)
+// panneau au montage (deux béchers, cuve unique, pile à combustible)
 function _synchroniserPanneauPile() {
-  var cuve = enCuve();
+  var deux = deuxBechers(), cuve = enCuve(), pac = enPac();
   document.getElementById('sel-experience').value = pile.experience;
-  document.getElementById('sel-gauche').value = pile.metaux[0];
-  document.getElementById('sel-droite').value = pile.metaux[1];
+  document.getElementById('bloc-demi-piles').style.display = deux ? '' : 'none';
+  document.getElementById('bloc-cuve').style.display = cuve ? '' : 'none';
+  if (deux) {
+    document.getElementById('sel-gauche').value = pile.metaux[0];
+    document.getElementById('sel-droite').value = pile.metaux[1];
+  }
+  if (cuve) {
+    document.getElementById('sel-solution-cuve').value = pile.solution;
+    document.getElementById('sel-elec-gauche').value = pile.metaux[0];
+    document.getElementById('sel-elec-droite').value = pile.metaux[1];
+  }
+  var lc = document.getElementById('lbl-cuve');
+  lc.style.display = pac ? '' : 'none';
+  if (pac) {
+    lc.innerHTML = 'Électrodes de platine poreuses, alimentées en continu en dihydrogène (à gauche) et en ' +
+                   'dioxygène (à droite), séparées par un électrolyte acide (membrane échangeuse de protons).';
+  }
   ['gauche', 'droite'].forEach(function (cote, i) {
     document.getElementById('sl-c-' + cote).value = pile.iC0[i];
     document.getElementById('lbl-c-' + cote).textContent = _formatC0(concInitiale(i));
   });
-  document.getElementById('bloc-demi-piles').style.display = cuve ? 'none' : '';
-  var lc = document.getElementById('lbl-cuve');
-  lc.style.display = cuve ? '' : 'none';
-  if (cuve) {
-    var S = METAUX[pile.solution];
-    lc.innerHTML = 'Cuve unique : solution de ' + S.nomSolution + ' (' + ionHTML(S.sym) + ' + ' +
-                   anionHTML(S.anion) + '), lame ' + METAUX[pile.metaux[0]].de + ' à gauche, lame ' +
-                   METAUX[pile.metaux[1]].de + ' à droite.';
-  }
   document.getElementById('titre-c-gauche').textContent = cuve ? 'Concentration de la solution' : 'Concentration à gauche';
-  document.getElementById('row-c-droite').style.display = cuve ? 'none' : '';
+  document.getElementById('row-c-gauche').style.display = pac ? 'none' : '';
+  document.getElementById('row-c-droite').style.display = deux ? '' : 'none';
+  document.getElementById('lbl-parametres').textContent = pac
+    ? 'Pile à combustible : électrolyte de concentration fixée ([H⁺] = 1 mol/L).'
+    : 'Concentration du cation (métal), du soluté (chlorure, sulfate de sodium) ou des ions H⁺ (acide). ' +
+      'Volume de chaque solution : 100 mL. Un changement remet l’expérience à zéro.';
   document.getElementById('sel-dipole').value = pile.dipole;
+  document.getElementById('sl-resistance').value = pile.iR;
+  document.getElementById('lbl-resistance').textContent = RESISTANCES[pile.iR];
   document.getElementById('sl-tension').value = pile.iU;
   document.getElementById('lbl-tension').textContent = formatNombre(tensionGenerateur(), 2);
 }
 
 function _formatC0(c) { return (c < 0.1 ? c.toFixed(2) : c.toFixed(c < 1 ? 2 : 1)).replace('.', ','); }
 
-// Expérience prédéfinie qui correspond aux réglages, sinon « Montage libre »
+// Expérience prédéfinie qui correspond aux réglages, sinon le montage libre
 function _experienceCorrespondante() {
   for (var i = 0; i < ORDRE_EXPERIENCES.length; i++) {
     var X = EXPERIENCES[ORDRE_EXPERIENCES[i]], bac = X.bac || 'deux';
     if (!X.g || bac !== pile.bac) continue;
+    if (bac === 'pac') return ORDRE_EXPERIENCES[i];
     if (bac === 'un' && X.solution !== pile.solution) continue;
     if (X.g === pile.metaux[0] && X.d === pile.metaux[1] && X.cg === pile.iC0[0] &&
         (bac === 'un' || X.cd === pile.iC0[1])) {
       return ORDRE_EXPERIENCES[i];
     }
   }
-  return 'libre';
+  return enCuve() ? 'libre-cuve' : 'libre';
 }
 
 function onSelectExperience(v) {
-  var X = EXPERIENCES[v];
+  var X = EXPERIENCES[v], bacAvant = pile.bac;
+  pile.bac = X.bac || 'deux';
   if (X.g) {
-    pile.bac = X.bac || 'deux';
     pile.metaux = [X.g, X.d];
     pile.iC0 = [X.cg, X.cd];
     if (X.solution) pile.solution = X.solution;
-  } else {
-    pile.bac = 'deux';                 // montage libre : deux béchers
+  } else if (pile.bac !== bacAvant) {
+    // Montage libre d'un autre type : réglages de départ
+    if (enCuve()) { pile.solution = 'Cu'; pile.metaux = ['C', 'C']; pile.iC0 = [3, 3]; }
+    else { pile.metaux = ['Zn', 'Cu']; pile.iC0 = [2, 2]; }
   }
-  // Circuit imposé par une électrolyse (interrupteur ouvert : l'élève le ferme)
+  // Circuit imposé par l'expérience (interrupteur ouvert : l'élève le ferme)
   if (X.dipole) {
     pile.dipole = X.dipole;
-    pile.iU = X.iU;
-    pile.polarite = X.polarite;
+    if (X.iU !== undefined) pile.iU = X.iU;
+    if (X.iR !== undefined) pile.iR = X.iR;
+    if (X.polarite !== undefined) pile.polarite = X.polarite;
     pile.interrupteur = false;
   }
   pile.experience = v;
@@ -310,23 +343,24 @@ function onSelectExperience(v) {
   _majPanneauCircuit();
 }
 
-function onSelectDemiPile(i, v) {
-  pile.metaux[i] = v;
+function _apresChangement() {
   pile.experience = _experienceCorrespondante();
   _synchroniserPanneauPile();
   resetPile();
 }
+
+function onSelectDemiPile(i, v) { pile.metaux[i] = v; _apresChangement(); }
+function onSelectElectrode(i, v) { pile.metaux[i] = v; _apresChangement(); }
+function onSelectSolutionCuve(v) { pile.solution = v; _apresChangement(); }
 
 function onSliderConcentration(i, val) {
   pile.iC0[i] = parseInt(val, 10);
-  if (enCuve()) pile.iC0[1] = pile.iC0[0];
-  pile.experience = _experienceCorrespondante();
-  _synchroniserPanneauPile();
-  resetPile();
+  if (!deuxBechers()) pile.iC0[1] = pile.iC0[0];
+  _apresChangement();
 }
 
-// RAZ : solutions et lames neuves, compteurs à zéro. Le circuit extérieur
-// (appareil, interrupteur, générateur, pont) est conservé.
+// RAZ : solutions et électrodes neuves, compteurs à zéro. Le circuit
+// extérieur (appareil, interrupteur, générateur, pont) est conservé.
 function resetPile() {
   resetPileModele();
   resetLoupePile();
@@ -338,13 +372,27 @@ function resetPile() {
 
 function _majLibellesPile() {
   ['gauche', 'droite'].forEach(function (cote, i) {
-    var M = METAUX[pile.metaux[i]];
-    document.getElementById('lbl-' + cote).innerHTML =
-      'Lame ' + M.de + ' dans ' + ionHTML(M.sym) + ' + ' + anionHTML(M.anion);
-    // Boutons de la loupe : nommés par le métal, sauf s'il est le même des deux côtés
-    document.getElementById('zone-' + cote).textContent =
-      pile.metaux[0] === pile.metaux[1] ? 'Électrode ' + cote : 'Électrode ' + M.sym;
+    var cle = pile.metaux[i], G = DEMI_PILES_GAZ[cle];
+    if (deuxBechers()) {
+      var S = SOLUTIONS[demiPile(cle).sol];
+      document.getElementById('lbl-' + cote).innerHTML = G
+        ? 'Électrode de platine où barbote le ' + G.nom.toLowerCase() + ', dans une solution acide (H<sup>+</sup> + ' +
+          anionHTML(S.anion) + ')'
+        : 'Lame ' + METAUX[cle].de + ' dans ' + ionHTML(cle) + ' + ' + anionHTML(S.anion);
+    }
+    // Boutons de la loupe : nommés par l'électrode, sauf si c'est la même des deux côtés
+    var nom = enPac() ? (i === 0 ? 'H₂' : 'O₂') : G ? ESPECES[G.gaz].txt : METAUX[pile.lames[i].sym].sym;
+    var memes = !enPac() && pile.metaux[0] === pile.metaux[1];
+    document.getElementById('zone-' + cote).textContent = memes ? 'Électrode ' + cote : 'Électrode ' + nom;
   });
+  if (enCuve()) {
+    var S = SOLUTIONS[pile.solution], ions = [];
+    if (S.metal) ions.push(ionHTML(S.metal));
+    if (S.spect) ions.push(S.spect + '<sup>+</sup>');
+    if (S.acide) ions.push('H<sup>+</sup>');
+    ions.push(anionHTML(S.anion));
+    document.getElementById('lbl-solution-cuve').innerHTML = 'Ions : ' + ions.join(' + ') + ' (et l’eau, H<sub>2</sub>O).';
+  }
 }
 
 // ── Circuit extérieur ─────────────────────────────────────────────────
@@ -389,7 +437,7 @@ function _majPanneauCircuit() {
   btnK.style.display = courantPossible() ? '' : 'none';
   btnK.textContent = pile.interrupteur ? 'Ouvrir l’interrupteur' : 'Fermer l’interrupteur';
   var btnP = document.getElementById('btn-pont');
-  btnP.style.display = enCuve() ? 'none' : '';
+  btnP.style.display = deuxBechers() ? '' : 'none';
   btnP.textContent = pile.pont ? 'Retirer le pont salin' : 'Remettre le pont salin';
   btnP.classList.toggle('active', !pile.pont);
   btnP.setAttribute('aria-pressed', String(!pile.pont));
@@ -401,7 +449,7 @@ function _majPanneauCircuit() {
 }
 
 // Indication sous le curseur du générateur : seuil d'électrolyse dans le
-// sens où il pousse (il évolue avec les concentrations)
+// sens où il pousse (il évolue avec les concentrations et le pH)
 var _seuilAffiche = '';
 function _majSeuil() {
   if (pile.dipole !== 'generateur') return;
@@ -424,13 +472,17 @@ function setZonePile(z) {
   sim.needsRedraw = true;
 }
 
-// Boutons des zones : zone active, pont salin indisponible dans la cuve
+// Boutons des zones : zone active, pont salin indisponible dans la cuve,
+// membrane à sa place dans la pile à combustible
 function _majBoutonsZones() {
   if (pile.zone === 'pont' && enCuve()) pile.zone = 'gauche';
   ['gauche', 'droite', 'pont', 'fil'].forEach(function (n) {
     var b = document.getElementById('zone-' + n);
     b.classList.toggle('active', n === pile.zone);
-    if (n === 'pont') b.disabled = enCuve();
+    if (n === 'pont') {
+      b.disabled = enCuve();
+      b.textContent = enPac() ? 'Membrane' : 'Pont salin';
+    }
   });
 }
 
@@ -473,21 +525,72 @@ function _majMesures(force) {
 // (pile, transformation spontanée) ou de l'électrolyse (transformation
 // forcée). Sans courant : celles du sens où la transformation aurait lieu
 // (sens spontané, ou sens imposé par le générateur s'il force), avec la
-// raison de l'absence de courant. Reconstruites quand la clé change.
-var _cleEqPile = '';
+// raison de l'absence de courant. Le bloc n'est réécrit que s'il change.
+var _htmlEqPile = '';
+
+// Membre d'équation en HTML : « 2&nbsp;H<sub>2</sub>O(l) + … »
+function _membreHTML(liste) {
+  return liste.map(function (p) {
+    var E = espece(p[1]);
+    return _coef(p[0]) + E.html + _etat(E.etat);
+  }).join(' + ');
+}
+
+function _demiEquationHTML(d, ox) {
+  return ox ? _membreHTML(d.gauche) + ' = ' + _membreHTML(d.droite) + ' + ' + _electrons(d.n)
+            : _membreHTML(d.gauche) + ' + ' + _electrons(d.n) + ' = ' + _membreHTML(d.droite);
+}
+
+// Équation de la réaction : demi-équations multipliées pour échanger le
+// même nombre d'électrons, ajoutées ; H⁺ et HO⁻ d'un même membre forment
+// de l'eau ; les espèces des deux membres se simplifient. null si tout se
+// simplifie (même couple aux deux électrodes).
+function _bilan(dOx, dRed) {
+  var N = dOx.n * dRed.n / _pgcd(dOx.n, dRed.n);
+  var R = {}, P = {}, ordreR = [], ordreP = [];
+  var ajouter = function (M, ordre, liste, k) {
+    liste.forEach(function (p) {
+      if (!M[p[1]]) { M[p[1]] = 0; ordre.push(p[1]); }
+      M[p[1]] += p[0] * k;
+    });
+  };
+  ajouter(R, ordreR, dOx.gauche, N / dOx.n); ajouter(R, ordreR, dRed.gauche, N / dRed.n);
+  ajouter(P, ordreP, dOx.droite, N / dOx.n); ajouter(P, ordreP, dRed.droite, N / dRed.n);
+  [[R, ordreR], [P, ordreP]].forEach(function (m) {
+    var M = m[0], n = Math.min(M['H+'] || 0, M['HO-'] || 0);
+    if (n > 0) {
+      M['H+'] -= n; M['HO-'] -= n;
+      if (!M.H2O) { M.H2O = 0; m[1].push('H2O'); }
+      M.H2O += n;
+    }
+  });
+  for (var cle in R) {
+    var m = Math.min(R[cle], P[cle] || 0);
+    if (m > 0) { R[cle] -= m; P[cle] -= m; }
+  }
+  var g = 0, k;
+  for (k in R) if (R[k] > 0) g = _pgcd(R[k], g);
+  for (k in P) if (P[k] > 0) g = _pgcd(P[k], g);
+  var liste = function (M, ordre) {
+    return ordre.filter(function (c) { return M[c] > 0; }).map(function (c) { return [M[c] / g, c]; });
+  };
+  var lr = liste(R, ordreR), lp = liste(P, ordreP);
+  return lr.length ? { gauche: lr, droite: lp } : null;
+}
 
 function majEquationsPile(force) {
+  if (sim.onglet !== 'pile-electrolyse') return;
+  var html = _equationsPileHTML();
+  if (!force && html === _htmlEqPile) return;
+  _htmlEqPile = html;
+  document.getElementById('equations').innerHTML = html;
+}
+
+function _equationsPileHTML() {
   var E = pile.E, I = pile.I;
   var sI = I > 0 ? 1 : I < 0 ? -1 : 0;
   var gen = pile.dipole === 'generateur';
   var seuil = gen ? seuilElectrolyse() : null;
-  var cle = [pile.bac, pile.metaux.join(), pile.solution, E > 1e-4 ? 1 : E < -1e-4 ? -1 : 0, sI,
-             surfaceLame(0), surfaceLame(1), cationReduit(0), cationReduit(1), pile.pont, pile.dipole,
-             pile.interrupteur, pile.polarite, seuil === null ? '' : seuil.toFixed(2)].join('|');
-  if (!force && cle === _cleEqPile) return;
-  _cleEqPile = cle;
-  if (sim.onglet !== 'pile-electrolyse') return;
-
   var cote = function (i) { return i === 0 ? 'gauche' : 'droite'; };
   var iA, forcee;
   if (sI) {
@@ -500,28 +603,29 @@ function majEquationsPile(force) {
     iA = E > 0 ? 0 : 1;                          // pôle − de la pile
     forcee = false;
   } else {
-    document.getElementById('equations').innerHTML =
-      '<div class="eq-rien">Aucune tension entre les électrodes.' +
-      '<span class="eq-sous">' + (enCuve()
-        ? 'Les deux électrodes sont faites du métal de la solution : seul un générateur peut forcer une transformation.'
-        : 'Même couple et mêmes concentrations des deux côtés : la pile ne peut pas débiter.') + '</span></div>';
-    return;
+    return '<div class="eq-rien">Aucune tension entre les électrodes.' +
+      '<span class="eq-sous">' + (deuxBechers()
+        ? 'Même couple et mêmes concentrations des deux côtés (ou pile usée) : la pile ne peut pas débiter.'
+        : 'Les deux électrodes ne forment pas une pile : seul un générateur peut forcer une transformation.') +
+      '</span></div>';
   }
-  var iC = 1 - iA;
-  var A = surfaceLame(iA), C = cationReduit(iC) || pile.lames[iC].sym;
-  var st = stoechiometrie(A, C);
+  var iC = 1 - iA, s = _sens(iA);
+  if (!s) {
+    return '<div class="eq-rien">Aucune réaction possible.' +
+      '<span class="eq-sous">Une lame est entièrement dissoute : elle ne plonge plus dans la solution.</span></div>';
+  }
+  var dOx = demiEquation(s.ox, compElectrode(iA)), dRed = demiEquation(s.red, compElectrode(iC));
+  var N = dOx.n * dRed.n / _pgcd(dOx.n, dRed.n);
   var mult = function (n) { return n > 1 ? '<td class="eq-mult">× ' + n + '</td>' : '<td></td>'; };
 
-  var bilan;
-  if (A !== C) {
-    bilan = _coef(st.coefMetal) + A + _etat('s') + ' + ' + _coef(st.coefIon) + ionHTML(C) + _etat('aq') +
-            ' → ' + _coef(st.coefMetal) + ionHTML(A) + _etat('aq') + ' + ' + _coef(st.coefIon) + C + _etat('s');
-  } else if (enCuve()) {
+  var b = _bilan(dOx, dRed), bilan;
+  if (b) bilan = _membreHTML(b.gauche) + ' → ' + _membreHTML(b.droite);
+  else if (!deuxBechers()) {
     // Anode soluble : le métal passe de l'anode à la cathode
-    bilan = A + _etat('s, anode') + ' → ' + A + _etat('s, cathode');
+    bilan = s.ox.sym + _etat('s, anode') + ' → ' + s.ox.sym + _etat('s, cathode');
   } else {
     // Pile de concentration : les ions passent d'un compartiment à l'autre
-    bilan = ionHTML(C) + _etat('aq, ' + cote(iC)) + ' → ' + ionHTML(C) + _etat('aq, ' + cote(iA));
+    bilan = ionHTML(s.red.sym) + _etat('aq, ' + cote(iC)) + ' → ' + ionHTML(s.red.sym) + _etat('aq, ' + cote(iA));
   }
   var lblA = forcee ? 'Anode (borne + du générateur, ' + cote(iA) + ') : oxydation'
                     : 'Pôle − (anode, ' + cote(iA) + ') : oxydation';
@@ -529,12 +633,10 @@ function majEquationsPile(force) {
                     : 'Pôle + (cathode, ' + cote(iC) + ') : réduction';
   var html =
     '<table class="eq-table">' +
-    '<tr><td class="eq-lbl eq-ox">' + lblA + '</td><td class="eq-val">' +
-      A + _etat('s') + ' = ' + ionHTML(A) + _etat('aq') + ' + ' + _electrons(METAUX[A].charge) +
-      '</td>' + mult(st.coefMetal) + '</tr>' +
-    '<tr><td class="eq-lbl eq-red">' + lblC + '</td><td class="eq-val">' +
-      ionHTML(C) + _etat('aq') + ' + ' + _electrons(METAUX[C].charge) + ' = ' + C + _etat('s') +
-      '</td>' + mult(st.coefIon) + '</tr>' +
+    '<tr><td class="eq-lbl eq-ox">' + lblA + '</td><td class="eq-val">' + _demiEquationHTML(dOx, true) +
+      '</td>' + mult(N / dOx.n) + '</tr>' +
+    '<tr><td class="eq-lbl eq-red">' + lblC + '</td><td class="eq-val">' + _demiEquationHTML(dRed, false) +
+      '</td>' + mult(N / dRed.n) + '</tr>' +
     '<tr class="eq-bilan"><td class="eq-lbl">' +
       (forcee ? 'Électrolyse (transformation forcée)' : 'Équation de fonctionnement') +
       '</td><td class="eq-val">' + bilan + '</td><td></td></tr>' +
@@ -542,15 +644,17 @@ function majEquationsPile(force) {
 
   if (!sI) {
     var note;
-    if (!enCuve() && !pile.pont) note = 'Pont salin retiré : le circuit est ouvert, aucun courant ne circule.';
+    if (deuxBechers() && !pile.pont) note = 'Pont salin retiré : le circuit est ouvert, aucun courant ne circule.';
     else if (!courantPossible()) note = 'Circuit ouvert : aucun courant, ces réactions n’ont pas lieu.';
     else if (!pile.interrupteur) note = 'Interrupteur ouvert : aucun courant, ces réactions n’ont pas lieu.';
     else if (gen && seuil !== null) note = 'Aucun courant : la tension du générateur n’atteint pas le seuil d’électrolyse (' +
                                             formatNombre(seuil, 2) + ' V environ).';
     else note = 'Aucun courant : un réactif est épuisé.';
     html += '<div class="eq-note">' + note + '</div>';
+  } else if (enPac() && !forcee) {
+    html += '<div class="eq-note">Les réactifs sont amenés en continu : la pile ne s’use pas tant qu’elle est alimentée.</div>';
   }
-  document.getElementById('equations').innerHTML = html;
+  return html;
 }
 
 // ══════════════════════════════════════════════════════════════════════

@@ -11,7 +11,7 @@
   <title>Simulation — Oxydoréduction, piles et électrolyse</title>
   <meta name="author" content="Mathieu Berdous">
   <meta name="copyright" content="Mathieu Berdous — CC BY-NC 4.0">
-  <meta name="description" content="Simulation interactive (Première, Terminale) : lame métallique dans une solution d'ions, transfert d'électrons observé à l'échelle microscopique ; piles (Daniell…) avec voltmètre, ampèremètre, pont salin, et loupe sur les électrodes, le pont salin et le fil.">
+  <meta name="description" content="Simulation interactive (Première, Terminale) : lame métallique dans une solution d'ions, transfert d'électrons observé à l'échelle microscopique ; piles (Daniell, pile à combustible…) et électrolyses (eau, chlorure de sodium, sulfate de cuivre…) avec voltmètre, ampèremètre, générateur, et loupe sur les électrodes, le pont salin et le fil.">
   <link rel="canonical" href="https://berdouspc.com/electrochimie/">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>⚛️</text></svg>">
   <link rel="stylesheet" href="css/style.css" />
@@ -119,7 +119,7 @@
         <div class="panel-section">
           <div class="section-title">Expérience</div>
           <div class="param-row">
-            <label for="sel-experience">Pile</label>
+            <label for="sel-experience">Montage</label>
             <select class="param-select" id="sel-experience" onchange="onSelectExperience(this.value)"></select>
           </div>
           <!-- Deux béchers : une demi-pile de chaque côté -->
@@ -135,7 +135,23 @@
               <span class="input-hint" id="lbl-droite"></span>
             </div>
           </div>
-          <!-- Cuve unique (électrolyses à anode soluble) : description -->
+          <!-- Cuve unique (électrolyses) : solution et électrodes -->
+          <div id="bloc-cuve" style="display:none">
+            <div class="param-row">
+              <label for="sel-solution-cuve">Solution</label>
+              <select class="param-select" id="sel-solution-cuve" onchange="onSelectSolutionCuve(this.value)"></select>
+              <span class="input-hint" id="lbl-solution-cuve"></span>
+            </div>
+            <div class="param-row">
+              <label for="sel-elec-gauche">Électrode de gauche</label>
+              <select class="param-select" id="sel-elec-gauche" onchange="onSelectElectrode(0, this.value)"></select>
+            </div>
+            <div class="param-row">
+              <label for="sel-elec-droite">Électrode de droite</label>
+              <select class="param-select" id="sel-elec-droite" onchange="onSelectElectrode(1, this.value)"></select>
+            </div>
+          </div>
+          <!-- Pile à combustible : description -->
           <p class="panel-text" id="lbl-cuve" style="display:none"></p>
         </div>
 
@@ -241,7 +257,7 @@
         <!-- ── Concentrations initiales ───────────── -->
         <div class="panel-section">
           <div class="section-title" data-repliable>Paramètres</div>
-          <div class="param-row">
+          <div class="param-row" id="row-c-gauche">
             <label for="sl-c-gauche"><span id="titre-c-gauche">Concentration à gauche</span>
               <span class="param-value"><span id="lbl-c-gauche">0,10</span> mol/L</span>
             </label>
@@ -255,7 +271,7 @@
             <input type="range" id="sl-c-droite" min="0" max="4" step="1" value="2"
                    oninput="onSliderConcentration(1, this.value)">
           </div>
-          <span class="input-hint">Volume de chaque solution : 100 mL. Un changement remet l’expérience à zéro.</span>
+          <span class="input-hint" id="lbl-parametres"></span>
         </div>
 
         <div class="sep"></div>
@@ -299,18 +315,24 @@
         <button class="panel-hint-toggle" onclick="toggleHint()" title="Afficher les informations">▲</button>
       </div>
       <div class="panel-hint-body">
-        Choisir les deux demi-piles et ce qui est branché entre les électrodes.
-        Cliquer sur un cercle du montage (électrodes, pont salin, fil) pour le voir à la loupe,
+        Choisir un montage prédéfini, ou les demi-piles (deux béchers) ou la solution et les électrodes
+        (électrolyse en cuve), et ce qui est branché entre les électrodes.
+        Cliquer sur un cercle du montage (électrodes, pont salin ou membrane, fil) pour le voir à la loupe,
         et sur l’interrupteur K pour l’ouvrir ou le fermer.
         Le voltmètre affiche V<sub>droite</sub> − V<sub>gauche</sub> (borne COM à gauche) ;
         l’ampèremètre compte positivement le courant qui entre par sa borne A, à droite.
         <br><strong>Générateur</strong> : opposé à la pile (borne + reliée au pôle +), il la laisse débiter
         tant que sa tension est inférieure à celle de la pile, puis force la transformation inverse
         (électrolyse) au-delà d’un seuil. L’électrode reliée à la borne + est alors l’anode.
+        <br><strong>Électrolyse</strong> : à la cathode, l’espèce la plus facile à réduire (cation métallique,
+        ou l’eau : dégagement de dihydrogène) ; à l’anode, la plus facile à oxyder (métal de l’électrode,
+        ions chlorure, ou l’eau : dégagement de dioxygène). Le graphite et le platine ne sont jamais oxydés.
         <br><strong>Modèle</strong> : solutions de 100 mL, résistance interne de 20 Ω (générateur : 10 Ω de plus),
-        surtension de 0,15 V pour une transformation forcée, temps accéléré (1 h de fonctionnement par seconde
-        à ×1). La tension baisse peu à peu, puis chute quand un réactif est épuisé. L’eau n’est ni oxydée
-        ni réduite (pas de dégagement gazeux).
+        surtension de 0,15 V pour une transformation forcée, et surtensions des dégagements gazeux (plus fortes
+        sur le graphite et les métaux que sur le platine) ; les ions chlorure s’oxydent avant l’eau.
+        Temps accéléré (1 h de fonctionnement par seconde à ×1), volumes de gaz à 24 L/mol.
+        La tension baisse peu à peu, puis chute quand un réactif est épuisé. La solution reste homogène
+        (pH uniforme) ; le dichlore formé ne réagit pas avec la solution.
         <br><strong>Raccourcis</strong> : Espace = pause, R = RAZ.
       </div>
     </div>

@@ -8,25 +8,34 @@
 //  pile-loupe.js — Onglet Pile et électrolyse : loupes microscopiques
 //  Dépend de sim.js, loupe.js (dimensions de la loupe NR, RC, CU, CV,
 //  rayons des particules, dessin des atomes, ions et électrons) et
-//  pile.js (état de la pile, disposition dispP).
+//  pile.js (état de la pile, réactions, disposition dispP).
 //
 //  Quatre endroits du montage, au choix (zones cliquables ou panneau) :
-//    - électrode de gauche ou de droite : réseau du métal et solution.
-//      Un CYCLE par atome, sur le modèle de l'onglet Oxydoréduction mais
-//      les électrons passent par le fil :
+//    - électrode de gauche ou de droite : réseau de l'électrode (métal,
+//      graphite ou platine) et solution. Un CYCLE par réaction, sur le
+//      modèle de l'onglet Oxydoréduction mais les électrons passent par
+//      le fil. Couples Mⁿ⁺/M :
 //        anode   : un atome de la surface est signalé, ses électrons
 //                  partent dans le métal vers le fil (haut de la loupe),
 //                  il devient ion et part dans la solution ;
 //        cathode : un ion de la solution vient contre la surface, des
 //                  électrons arrivent du fil à travers le métal, l'ion
 //                  devient atome et s'ajoute au réseau.
+//      Couples gazeux (eau, H⁺, Cl⁻, H₂ et O₂ amenés) : les réactifs de
+//      la demi-équation viennent contre la surface (ions de la solution,
+//      molécules d'eau ou de gaz), les électrons partent vers le fil ou en
+//      arrivent, puis les produits se forment : les molécules de gaz
+//      gonflent une bulle accrochée à l'électrode, qui se détache et
+//      monte ; les ions rejoignent la solution, l'eau formée s'y fond.
 //      Le réseau garde l'élément de chaque atome : un dépôt d'un autre
-//      métal (zinc sur fer) se voit, et c'est lui qui s'oxyde d'abord.
+//      métal (zinc sur fer, cuivre sur graphite) se voit, et c'est lui
+//      qui s'oxyde d'abord.
 //      Cadence des cycles réglée par l'intensité ; aucun cycle sans
 //      courant. Le réseau recule (anode) ou avance (cathode) et la vue le
 //      suit. Les ions de la solution migrent : cations dans le sens du
 //      courant, anions en sens inverse.
-//    - pont salin : K⁺ et NO₃⁻ dans le gel, qui migrent en sens inverses ;
+//    - pont salin : K⁺ et NO₃⁻ dans le gel, qui migrent en sens inverses
+//      (pile à combustible : ions H⁺ qui traversent la membrane) ;
 //    - fil : réseau du cuivre et électrons libres, agitation et dérive.
 //
 //  Coordonnées en « cases » comme loupe.js. Électrodes : calculs avec le
@@ -40,15 +49,25 @@
 var PL_N_CATIONS = 8, PL_N_ANIONS = 7;
 var PL_D_SIGNAL   = 0.6;          // atome ou ion signalé avant l'échange (s)
 var PL_D_APPROCHE = 2.0;          // ion qui vient contre la surface (cathode)
-var PL_D_TRANSFO  = 0.8;          // ion → atome à la cathode
+var PL_D_TRANSFO  = 0.8;          // ion → atome à la cathode, réactifs → produits (gaz)
 var PL_D_OXYDATION = 0.4;         // atome → ion à l'anode, après le départ de ses électrons
-var PL_D_DEPART   = 2.2;          // ion formé qui s'éloigne de l'anode
+var PL_D_DEPART   = 2.2;          // ion formé qui s'éloigne de l'anode, produits qui partent
 var PL_ECART_E    = 0.25;         // entre les départs de deux électrons (s)
 var PL_X_SORTIE   = 1.5;          // colonne par laquelle les électrons rejoignent le fil
 var PL_FRONT_MIN  = 3, PL_FRONT_MAX = 6;   // bornes de la surface avant que la vue la suive
 var PL_V_DERIVE   = 0.75;         // dérive des ions de la solution à I_REF (cases/s)
 var PL_V_FIL      = 1.4;          // dérive des électrons du fil à I_REF (cases/s)
 var PL_T_GLISSE   = 0.8;          // durée du glissement de la vue (s)
+var PL_ECART_V    = 0.95;         // écart vertical entre les réactifs d'un cycle gazeux
+var PL_N_BULLE    = 3;            // molécules de gaz d'une bulle avant qu'elle se détache
+var PL_V_BULLE    = 1.6;          // montée d'une bulle détachée (cases/s)
+
+// Atomes des molécules : couleur et rayon (cases)
+var PL_ATOMES_MOL = {
+  H:  { couleur: '#eef1f4', r: 0.22 },
+  O:  { couleur: '#d9473b', r: 0.30 },
+  Cl: { couleur: '#6dbb48', r: 0.34 }
+};
 
 var ploupe = {
   zone: '',
@@ -58,6 +77,8 @@ var ploupe = {
   cycles: [],
   attente: 0,         // délai avant le prochain cycle (s)
   fond: [],           // ions de la solution, du pont, ou électrons du fil
+  bulle: null,        // bulle de gaz accrochée à l'électrode { v, n, gaz }
+  bullesLibres: [],   // bulles détachées qui montent { u, v, r, gaz }
   horloge: 0
 };
 
@@ -74,10 +95,12 @@ function resetLoupePile() {
   ploupe.cycles = [];
   ploupe.attente = 0.5;
   ploupe.fond = [];
+  ploupe.bulle = null;
+  ploupe.bullesLibres = [];
   ploupe.horloge = 0;
 
   if (_estElectrode()) {
-    // Réseau : métal de la lame, et une ou deux colonnes du dépôt s'il y en a
+    // Réseau : matériau de l'électrode, et une ou deux colonnes du dépôt s'il y en a
     var e = _indiceElectrode(), lame = pile.lames[e].sym;
     var nDep = depotTotal(e) > 0.01 ? 2 : depotTotal(e) > 1e-4 ? 1 : 0;
     for (r = 0; r < NR; r++) {
@@ -86,21 +109,25 @@ function resetLoupePile() {
       ploupe.rangs.push(ligne);
       ploupe.occupe.push(false);
     }
-    // Cations de la solution selon la composition du compartiment
-    var c = compElectrode(e), tot = cationsTotal(c), n = pile.comp[c].n;
-    for (var sym in n) {
-      var part = tot > 0 ? concentrationC(c, sym) / tot : 0;
-      var nb = Math.round(PL_N_CATIONS * part);
-      if (!nb && part > 0.03) nb = 1;
-      for (i = 0; i < nb; i++) ploupe.fond.push(_nouvelIon('cation', sym, R_ION));
-    }
-    for (i = 0; i < PL_N_ANIONS; i++) ploupe.fond.push(_nouvelIon('anion', pile.comp[c].anion, R_ANION));
+    // Ions de la solution selon sa composition
+    var pop = _populationSolution(compElectrode(e));
+    _repartir(pop.cations, PL_N_CATIONS, 'cation', R_ION);
+    _repartir(pop.anions, PL_N_ANIONS, 'anion', R_ANION);
   } else if (ploupe.zone === 'pont') {
-    for (i = 0; i < 18; i++) {
-      var cat = i % 2 === 0;
-      ploupe.fond.push({ type: cat ? 'cation' : 'anion', sym: cat ? 'K' : 'NO3', r: cat ? R_ION : R_ANION,
-                         u: Math.random() * 2 * RC, v: 2.6 + Math.random() * 5.8,
-                         vu: _gauss() * 0.4, vv: _gauss() * 0.4, vis: 1 });
+    if (enPac()) {
+      // Membrane : seuls les ions H⁺ sont mobiles
+      for (i = 0; i < 14; i++) {
+        ploupe.fond.push({ type: 'cation', sym: 'H', r: R_ION,
+                           u: Math.random() * 2 * RC, v: 1 + Math.random() * 9,
+                           vu: _gauss() * 0.4, vv: _gauss() * 0.4, vis: 1 });
+      }
+    } else {
+      for (i = 0; i < 18; i++) {
+        var cat = i % 2 === 0;
+        ploupe.fond.push({ type: cat ? 'cation' : 'anion', sym: cat ? 'K' : 'NO3', r: cat ? R_ION : R_ANION,
+                           u: Math.random() * 2 * RC, v: 2.6 + Math.random() * 5.8,
+                           vu: _gauss() * 0.4, vv: _gauss() * 0.4, vis: 1 });
+      }
     }
   } else {
     for (i = 0; i < 18; i++) {
@@ -108,6 +135,36 @@ function resetLoupePile() {
                          u: Math.random() * 2 * RC, v: 2.8 + Math.random() * 5.4,
                          vu: _gauss() * 1.2, vv: _gauss() * 1.2, vis: 1 });
     }
+  }
+}
+
+// Ions de la solution d'un compartiment, avec leurs concentrations :
+// cations métalliques, H⁺ (solution acide), cation spectateur (Na⁺) ;
+// anion spectateur, Cl⁻, HO⁻ (solution basique)
+function _populationSolution(c) {
+  var C = pile.comp[c], cat = [], an = [];
+  for (var sym in C.n) {
+    var x = concentrationC(c, sym);
+    if (x > 0) cat.push([sym, x]);
+  }
+  if (concH(c) > 1e-3) cat.push(['H', concH(c)]);
+  if (C.spect) cat.push([C.spect, C.nSpect / P_VOLUME]);
+  if (C.anion && C.anion !== 'Cl') an.push([C.anion, concInitiale(c)]);
+  if (SOLUTIONS[C.sol].chlorure) an.push(['Cl', concCl(c)]);
+  if (concOH(c) > 1e-3) an.push(['OH', concOH(c)]);
+  return { cations: cat, anions: an };
+}
+
+// N ions répartis selon les concentrations (au moins un pour une espèce
+// qui n'est pas en traces)
+function _repartir(liste, N, type, r) {
+  var tot = 0, k, i;
+  for (k = 0; k < liste.length; k++) tot += liste[k][1];
+  for (k = 0; k < liste.length; k++) {
+    var part = tot > 0 ? liste[k][1] / tot : 0;
+    var nb = Math.round(N * part);
+    if (!nb && part > 0.03) nb = 1;
+    for (i = 0; i < nb; i++) ploupe.fond.push(_nouvelIon(type, liste[k][0], r));
   }
 }
 
@@ -123,7 +180,7 @@ function _nouvelIon(type, sym, r, vis) {
   return f;
 }
 
-// Bord de la surface métallique à la hauteur v (abscisse de la face)
+// Bord de la surface de l'électrode à la hauteur v (abscisse de la face)
 function _bordMetal(v) {
   var r = Math.max(0, Math.min(NR - 1, Math.floor(v)));
   return _front(r) + ploupe.offX;
@@ -164,34 +221,40 @@ function _signeI() { return pile.I > 0 ? 1 : pile.I < 0 ? -1 : 0; }
 
 // ── Électrode ─────────────────────────────────────────────────────────
 function _majElectrode(dt) {
-  var i;
+  var i, e = _indiceElectrode();
   // Glissement de la vue en cours
   if (ploupe.offX !== 0) {
     var pasG = dt / PL_T_GLISSE;
     ploupe.offX = Math.abs(ploupe.offX) <= pasG ? 0 : ploupe.offX - Math.sign(ploupe.offX) * pasG;
   }
 
-  // Nouveau cycle selon le rôle de l'électrode et l'intensité
-  var role = roleElectrode(_indiceElectrode());
+  // Nouveau cycle selon la réaction qui a lieu sur l'électrode et l'intensité
+  var role = roleElectrode(e);
   ploupe.attente -= dt;
   if (role && ploupe.attente <= 0 && ploupe.cycles.length < 2 && ploupe.offX === 0) {
-    if (!_suivreSurface(role)) {
-      var cy = role === 'anode' ? _cycleAnode() : _cycleCathode();
-      if (cy) ploupe.cycles.push(cy);
+    var reac = reactionEnCours(e), cy = null, nE = 2;
+    if (reac && reac.type === 'metal') {
+      if (!_suivreSurface(role)) cy = role === 'anode' ? _cycleAnode() : _cycleCathode(reac.sym);
+    } else if (reac) {
+      cy = _cycleGaz(reac);
+      nE = reac.z;
     }
-    // Intervalle entre deux cycles : 1,6 s à I_REF, plus long si I est faible
-    ploupe.attente = Math.min(7, 1.6 / Math.max(0.23, facteurCourant()));
+    if (cy) ploupe.cycles.push(cy);
+    // Intervalle entre deux cycles : 1,6 s à I_REF, plus long si I est
+    // faible, et pour une réaction qui échange 4 électrons
+    ploupe.attente = Math.min(7, 1.6 / Math.max(0.23, facteurCourant())) * Math.max(1, nE / 2);
   }
 
   for (i = ploupe.cycles.length - 1; i >= 0; i--) {
     if (_majCycleP(ploupe.cycles[i], dt)) ploupe.cycles.splice(i, 1);
   }
+  _majBullesL(dt);
 
   // Ions de la solution : agitation + migration. Cations dans le sens du
   // courant (vers la droite si I > 0), anions en sens inverse ; en miroir
   // pour l'électrode de droite.
   var dir = _signeI() * (ploupe.zone === 'gauche' ? 1 : -1) * PL_V_DERIVE * facteurCourant();
-  var nCat = 0;
+  var nCat = 0, nAn = 0;
   for (i = ploupe.fond.length - 1; i >= 0; i--) {
     var f = ploupe.fond[i];
     if (f.sort) {
@@ -200,7 +263,7 @@ function _majElectrode(dt) {
     } else if (f.vis < 1) {
       f.vis = Math.min(1, f.vis + dt / D_FONDU);
     }
-    if (f.type === 'cation' && !f.sort) nCat++;
+    if (!f.sort) { if (f.type === 'cation') nCat++; else nAn++; }
     _agiter(f, dt, 1);
     var d = f.type === 'cation' ? dir : -dir;
     f.u += (f.vu + d) * dt;
@@ -216,15 +279,20 @@ function _majElectrode(dt) {
     }
     if (f.u > 2 * RC + 0.6) { _placerDansSolution(f, d > 0.05 ? false : true); f.vis = 0; }
   }
-  // Les cycles de l'anode ajoutent des cations : on garde un nombre stable
-  if (nCat > PL_N_CATIONS + 2) {
-    var loin = null;
-    for (i = 0; i < ploupe.fond.length; i++) {
-      var g = ploupe.fond[i];
-      if (g.type === 'cation' && !g.sort && (!loin || g.u > loin.u)) loin = g;
-    }
-    if (loin) loin.sort = true;
+  // Les cycles ajoutent des ions (anode d'un métal, eau oxydée ou
+  // réduite) : on garde des nombres stables
+  if (nCat > PL_N_CATIONS + 2) _retirerLoin('cation');
+  if (nAn > PL_N_ANIONS + 3) _retirerLoin('anion');
+}
+
+// L'ion de ce type le plus éloigné de l'électrode s'efface
+function _retirerLoin(type) {
+  var loin = null;
+  for (var i = 0; i < ploupe.fond.length; i++) {
+    var g = ploupe.fond[i];
+    if (g.type === type && !g.sort && (!loin || g.u > loin.u)) loin = g;
   }
+  if (loin) loin.sort = true;
 }
 
 // Mouvement brownien lent (Ornstein-Uhlenbeck sur la vitesse)
@@ -287,6 +355,7 @@ function _cycleAnode() {
   if (r < 0) return null;
   var c = _front(r) - 1;
   var sym = ploupe.rangs[r][c];
+  if (estInerte(sym)) return null;              // graphite, platine : jamais oxydés
   var z = METAUX[sym].charge;
   ploupe.occupe[r] = true;
   var cy = { type: 'anode', sym: sym, r: r, c: c, u: c + 0.5, v: r + 0.5, phase: 'signal', t: 0,
@@ -302,10 +371,8 @@ function _cycleAnode() {
   return cy;
 }
 
-function _cycleCathode() {
-  var e = _indiceElectrode();
-  var sym = cationReduit(e);
-  if (!sym) return null;
+// sym : cation réduit d'après le modèle
+function _cycleCathode(sym) {
   var r = _ligneCandidate(false, null);
   if (r < 0) return null;
   var z = METAUX[sym].charge, front = _front(r);
@@ -314,22 +381,8 @@ function _cycleCathode() {
   var fin = { u: front + 0.5, v: r + 0.5 };                     // place de l'atome formé
   // L'ion qui vient se réduire : le plus proche des ions de cet élément ;
   // un autre arrive du reste de la solution pour le remplacer
-  var io = null;
-  for (var i = 0; i < ploupe.fond.length; i++) {
-    var f = ploupe.fond[i];
-    if (f.type !== 'cation' || f.sym !== sym || f.sort || f.vis < 1) continue;
-    if (!io || Math.hypot(f.u - cible.u, f.v - cible.v) < Math.hypot(io.u - cible.u, io.v - cible.v)) io = f;
-  }
-  var dep;
-  if (io) {
-    dep = { u: io.u, v: io.v };
-    ploupe.fond.splice(ploupe.fond.indexOf(io), 1);
-    var rempl = _nouvelIon('cation', sym, R_ION, 0);
-    _placerDansSolution(rempl, true);
-    ploupe.fond.push(rempl);
-  } else {
-    dep = { u: 2 * RC + 0.5, v: 1 + Math.random() * 9 };
-  }
+  var io = _prendreIon('cation', sym, cible);
+  var dep = io ? { u: io.u, v: io.v } : { u: 2 * RC + 0.5, v: 1 + Math.random() * 9 };
   var cy = { type: 'cathode', sym: sym, r: r, phase: 'approche', t: 0, cible: cible, fin: fin,
              trajet: [dep, { u: cible.u + 2.2, v: (dep.v + cible.v) / 2 }, { u: cible.u + 1.0, v: cible.v }, cible],
              u: dep.u, v: dep.v, electrons: [] };
@@ -341,9 +394,166 @@ function _cycleCathode() {
   return cy;
 }
 
+// Retire de la solution l'ion (type, sym) le plus proche de la cible, et
+// en fait arriver un autre du reste de la solution. null s'il n'y en a pas.
+function _prendreIon(type, sym, cible) {
+  var io = null;
+  for (var i = 0; i < ploupe.fond.length; i++) {
+    var f = ploupe.fond[i];
+    if (f.type !== type || f.sym !== sym || f.sort || f.vis < 1) continue;
+    if (!io || Math.hypot(f.u - cible.u, f.v - cible.v) < Math.hypot(io.u - cible.u, io.v - cible.v)) io = f;
+  }
+  if (!io) return null;
+  ploupe.fond.splice(ploupe.fond.indexOf(io), 1);
+  var rempl = _nouvelIon(type, sym, io.r, 0);
+  _placerDansSolution(rempl, true);
+  ploupe.fond.push(rempl);
+  return io;
+}
+
+// ── Cycle d'un couple gazeux ──────────────────────────────────────────
+// Espèce d'une demi-équation → particule de la loupe
+function _particuleEspece(cle) {
+  if (cle === 'H+') return { k: 'cation', sym: 'H', r: R_ION };
+  if (cle === 'HO-') return { k: 'anion', sym: 'OH', r: R_ANION };
+  if (cle === 'Cl-') return { k: 'anion', sym: 'Cl', r: R_ANION };
+  return { k: 'mol', sym: cle, r: cle === 'H2O' ? 0.42 : cle === 'H2' ? 0.42 : cle === 'O2' ? 0.55 : 0.62 };
+}
+
+// Les réactifs de la demi-équation viennent contre la surface, sur des
+// lignes voisines libres ; les produits se forment au même endroit
+function _cycleGaz(reac) {
+  var e = _indiceElectrode(), d = demiEquation(reac, compElectrode(e));
+  var R = [], P = [], k, r;
+  d.gauche.forEach(function (p) { for (var j = 0; j < p[0]; j++) R.push(_particuleEspece(p[1])); });
+  d.droite.forEach(function (p) { for (var j = 0; j < p[0]; j++) P.push(_particuleEspece(p[1])); });
+
+  // Hauteur du cycle : lignes libres sur toute la hauteur occupée
+  var span = (Math.max(R.length, P.length) - 1) * PL_ECART_V, vc = -1, r0 = 0, r1 = 0;
+  for (var essai = 0; essai < 25 && vc < 0; essai++) {
+    var v0 = 1.2 + span / 2 + Math.random() * (NR - 2.4 - span);
+    r0 = Math.max(0, Math.floor(v0 - span / 2 - 0.45));
+    r1 = Math.min(NR - 1, Math.floor(v0 + span / 2 + 0.45));
+    var libre = true;
+    for (r = r0; r <= r1; r++) if (ploupe.occupe[r]) libre = false;
+    if (libre) vc = v0;
+  }
+  if (vc < 0) return null;
+  for (r = r0; r <= r1; r++) ploupe.occupe[r] = true;
+
+  var cy = { type: 'gaz', ox: reac.ox, phase: 'approche', t: 0, r0: r0, r1: r1, vc: vc,
+             reactifs: [], produits: [], electrons: [], gaz: gazDegage(reac) };
+  var contre = function (v, rayon) {
+    return { u: _bordMetal(v) - 0.5 + R_ATOME + rayon + 0.03, v: v };
+  };
+  for (k = 0; k < R.length; k++) {
+    var p = R[k], v = vc + (k - (R.length - 1) / 2) * PL_ECART_V;
+    var cible = contre(v, p.r), dep, fondu = false;
+    var io = p.k === 'mol' ? null : _prendreIon(p.k, p.sym, cible);
+    if (io) dep = { u: io.u, v: io.v };
+    else { dep = { u: 2 * RC - 0.6 - Math.random() * 1.5, v: Math.max(0.6, Math.min(NR - 0.6, v + (Math.random() - 0.5) * 4)) }; fondu = true; }
+    cy.reactifs.push({ k: p.k, sym: p.sym, r: p.r, dep: dep, cible: cible, u: dep.u, v: dep.v, fondu: fondu });
+  }
+  for (k = 0; k < P.length; k++) {
+    var q = P[k], vq = Math.max(0.6, Math.min(NR - 0.6, vc + (k - (P.length - 1) / 2) * PL_ECART_V));
+    var pos = contre(vq, q.r);
+    cy.produits.push({ k: q.k, sym: q.sym, r: q.r, pos: pos, u: pos.u, v: pos.v,
+                       vers: { u: pos.u + 1.8 + Math.random() * 1.2, v: pos.v + (Math.random() - 0.5) * 2 } });
+  }
+  // Électrons : de chaque réactif vers le fil (oxydation), ou du fil vers
+  // eux (réduction), à travers l'électrode
+  for (k = 0; k < d.n; k++) {
+    var s = cy.reactifs[k % cy.reactifs.length], ve = s.cible.v;
+    var ch = [{ u: s.cible.u, v: ve }, { u: _bordMetal(ve) - 0.5, v: ve }, { u: PL_X_SORTIE, v: ve }, { u: PL_X_SORTIE, v: -1.5 }];
+    if (!reac.ox) ch.reverse();
+    cy.electrons.push({ chemin: ch, depart: k * PL_ECART_E, s: 0 });
+  }
+  var Lmax = 0;
+  for (k = 0; k < cy.electrons.length; k++) Lmax = Math.max(Lmax, _longueurChemin(cy.electrons[k].chemin));
+  cy.dElectrons = (d.n - 1) * PL_ECART_E + Lmax / V_ELECTRON;
+  return cy;
+}
+
+function _majCycleGaz(cy, dt) {
+  var k, s;
+  if (cy.phase === 'approche') {
+    s = _lisse(cy.t / PL_D_APPROCHE);
+    for (k = 0; k < cy.reactifs.length; k++) {
+      var a = cy.reactifs[k];
+      a.u = a.dep.u + (a.cible.u - a.dep.u) * s;
+      a.v = a.dep.v + (a.cible.v - a.dep.v) * s;
+    }
+    if (cy.t >= PL_D_APPROCHE) { cy.phase = 'signal'; cy.t = 0; }
+  } else if (cy.phase === 'signal' && cy.t >= PL_D_SIGNAL * 0.6) {
+    cy.phase = 'electrons'; cy.t = 0;
+  } else if (cy.phase === 'electrons') {
+    _avancerElectrons(cy);
+    if (cy.t >= cy.dElectrons + 0.05) { cy.phase = 'transfo'; cy.t = 0; }
+  } else if (cy.phase === 'transfo') {
+    if (cy.t >= PL_D_TRANSFO) {
+      cy.phase = 'depart'; cy.t = 0;
+      // Bulle où vont les molécules de gaz formées
+      if (cy.gaz && !ploupe.bulle) {
+        ploupe.bulle = { v: Math.max(0.9, Math.min(NR - 0.9, cy.vc - 1.2)), n: 0, gaz: cy.gaz };
+      }
+    }
+  } else if (cy.phase === 'depart') {
+    s = _lisse(cy.t / PL_D_DEPART);
+    for (k = 0; k < cy.produits.length; k++) {
+      var p = cy.produits[k], vers = p.vers;
+      if (p.sym === cy.gaz && ploupe.bulle) vers = _centreBulle();
+      p.u = p.pos.u + (vers.u - p.pos.u) * s;
+      p.v = p.pos.v + (vers.v - p.pos.v) * s;
+    }
+    if (cy.t >= PL_D_DEPART) {
+      for (k = 0; k < cy.produits.length; k++) {
+        var q = cy.produits[k];
+        if (q.sym === cy.gaz) _gonflerBulle(cy.gaz);
+        else if (q.k !== 'mol') {
+          ploupe.fond.push({ type: q.k, sym: q.sym, r: q.r, u: q.u, v: q.v,
+                             vu: _gauss() * 0.3, vv: _gauss() * 0.3, vis: 1 });
+        }
+      }
+      for (var r = cy.r0; r <= cy.r1; r++) ploupe.occupe[r] = false;
+      return true;
+    }
+  }
+  return false;
+}
+
+// ── Bulles de la loupe ────────────────────────────────────────────────
+function _rayonBulle(n) { return 0.38 + 0.3 * Math.sqrt(n); }
+
+// Centre de la bulle accrochée : elle touche la face de l'électrode
+function _centreBulle() {
+  var b = ploupe.bulle, rb = _rayonBulle(Math.max(1, b.n));
+  return { u: _bordMetal(b.v) - 0.5 + R_ATOME + rb, v: b.v };
+}
+
+function _gonflerBulle(gaz) {
+  if (!ploupe.bulle) ploupe.bulle = { v: 3 + Math.random() * 5, n: 0, gaz: gaz };
+  ploupe.bulle.n++;
+  if (ploupe.bulle.n >= PL_N_BULLE) {
+    // Assez grosse : elle se détache et monte
+    var c = _centreBulle();
+    ploupe.bullesLibres.push({ u: c.u, v: c.v, r: _rayonBulle(ploupe.bulle.n), gaz: gaz });
+    ploupe.bulle = null;
+  }
+}
+
+function _majBullesL(dt) {
+  var B = ploupe.bullesLibres;
+  for (var k = B.length - 1; k >= 0; k--) {
+    B[k].v -= PL_V_BULLE * dt;
+    B[k].u += 0.35 * dt;
+    if (B[k].v < -B[k].r - 0.5) B.splice(k, 1);
+  }
+}
+
 // Avance un cycle ; renvoie true quand il est terminé
 function _majCycleP(cy, dt) {
   cy.t += dt;
+  if (cy.type === 'gaz') return _majCycleGaz(cy, dt);
   if (cy.type === 'anode') {
     if (cy.phase === 'signal' && cy.t >= PL_D_SIGNAL) { cy.phase = 'electrons'; cy.t = 0; }
     else if (cy.phase === 'electrons') {
@@ -405,17 +615,17 @@ function _avancerElectrons(cy) {
   }
 }
 
-// ── Pont salin ────────────────────────────────────────────────────────
+// ── Pont salin (ou membrane) ──────────────────────────────────────────
 function _majPont(dt) {
   var d = _signeI() * PL_V_DERIVE * 1.3 * facteurCourant();
+  var h = enPac() ? 0.4 : 2.2, bas = enPac() ? 10.6 : 8.8;
   for (var i = 0; i < ploupe.fond.length; i++) {
     var f = ploupe.fond[i];
     _agiter(f, dt, 1);
     f.u += (f.vu + (f.type === 'cation' ? d : -d)) * dt;
     f.v += f.vv * dt;
-    var h = 2.2 + f.r, b = 8.8 - f.r;
-    if (f.v < h) { f.v = h; f.vv = Math.abs(f.vv); }
-    if (f.v > b) { f.v = b; f.vv = -Math.abs(f.vv); }
+    if (f.v < h + f.r) { f.v = h + f.r; f.vv = Math.abs(f.vv); }
+    if (f.v > bas - f.r) { f.v = bas - f.r; f.vv = -Math.abs(f.vv); }
     if (f.u > 2 * RC + 1) f.u -= 2 * RC + 2;
     if (f.u < -1) f.u += 2 * RC + 2;
   }
@@ -455,13 +665,13 @@ function dessinerLoupePile(ctx) {
   ctx.translate(dispP.lx - RC * s, dispP.ly - RC * s);
   ctx.scale(s, s);
 
-  if (ploupe.zone === 'pont' && !pile.pont) {
+  if (ploupe.zone === 'pont' && !zoneDisponible('pont')) {
     ctx.fillStyle = '#f4f1ea';
     ctx.fillRect(0, 0, 2 * RC, 2 * RC);
   } else if (_estElectrode()) {
     _dessinerElectrodeL(ctx);
   } else if (ploupe.zone === 'pont') {
-    _dessinerPontL(ctx);
+    if (enPac()) _dessinerMembraneL(ctx); else _dessinerPontL(ctx);
   } else {
     _dessinerFilL(ctx);
   }
@@ -479,6 +689,65 @@ function dessinerLoupePile(ctx) {
 // Abscisse dessinée : en miroir pour l'électrode de droite
 function _mx(u) { return ploupe.zone === 'droite' ? 2 * RC - u : u; }
 
+// Ion ou molécule de la loupe, quel qu'il soit
+function _dessinerEspeceL(ctx, x, y, k, sym, alpha) {
+  if (alpha <= 0) return;
+  if (k === 'anion') _dessinerAnion(ctx, x, y, sym, alpha);
+  else if (k === 'mol') _dessinerMoleculeL(ctx, x, y, sym, alpha);
+  else if (METAUX[sym] && METAUX[sym].charge) _dessinerIon(ctx, x, y, sym, alpha, R_ION);
+  else _dessinerIonSimple(ctx, x, y, sym, alpha);
+}
+
+// Cation sans métal de METAUX (H⁺, Na⁺, K⁺)
+function _dessinerIonSimple(ctx, x, y, sym, alpha) {
+  var I = IONS_SIMPLES[sym], rgb = couleurRGB(I.couleur);
+  _sphere(ctx, x, y, R_ION, rgb, alpha);
+  ctx.strokeStyle = 'rgba(255,255,255,' + 0.9 * alpha + ')';
+  ctx.lineWidth = 0.05;
+  ctx.stroke();
+  _etiquette(ctx, x, y, I.texte, 0.27, rgb, alpha);
+}
+
+// Molécules : H₂O (coudée), H₂, O₂, Cl₂ (deux atomes côte à côte)
+function _dessinerMoleculeL(ctx, x, y, sym, alpha) {
+  var at = [];
+  if (sym === 'H2O') {
+    at = [['H', x - 0.2, y - 0.25], ['H', x - 0.2, y + 0.25], ['O', x + 0.1, y]];
+  } else {
+    var el = sym === 'H2' ? 'H' : sym === 'O2' ? 'O' : 'Cl';
+    var d = PL_ATOMES_MOL[el].r * 0.85;
+    at = [[el, x - d, y], [el, x + d, y]];
+  }
+  for (var k = 0; k < at.length; k++) {
+    var A = PL_ATOMES_MOL[at[k][0]], rgb = couleurRGB(A.couleur);
+    _sphere(ctx, at[k][1], at[k][2], A.r, rgb, alpha);
+    ctx.strokeStyle = rgbCss(nuance(rgb, -0.4), 0.7 * alpha);
+    ctx.lineWidth = 0.025;
+    ctx.stroke();
+    _etiquette(ctx, at[k][1], at[k][2], at[k][0], A.r * 0.85, rgb, alpha);
+  }
+}
+
+// Bulle de gaz : disque clair (jaune-vert pour le dichlore), reflet, nom du gaz
+function _dessinerBulleL(ctx, x, y, r, gaz, alpha) {
+  var cl = gaz === 'Cl2';
+  ctx.fillStyle = cl ? 'rgba(215,235,120,' + 0.55 * alpha + ')' : 'rgba(255,255,255,' + 0.55 * alpha + ')';
+  ctx.strokeStyle = cl ? 'rgba(120,150,40,' + 0.85 * alpha + ')' : 'rgba(70,100,130,' + 0.75 * alpha + ')';
+  ctx.lineWidth = 0.05;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill(); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,' + 0.9 * alpha + ')';
+  ctx.lineWidth = 0.06;
+  ctx.beginPath();
+  ctx.arc(x, y, r * 0.72, -2.6, -1.8);
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(44,62,80,' + 0.85 * alpha + ')';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  texteEchelle(ctx, ESPECES[gaz].txt, x, y, Math.min(0.42, r * 0.7), '700', echelleParticules);
+}
+
 function _dessinerElectrodeL(ctx) {
   var i, r, c;
   var e = _indiceElectrode(), lame = pile.lames[e].sym;
@@ -492,8 +761,13 @@ function _dessinerElectrodeL(ctx) {
   for (i = 0; i < ploupe.fond.length; i++) {
     var f = ploupe.fond[i];
     var a = Math.max(0, Math.min(1, f.vis));
-    if (f.type === 'anion') _dessinerAnion(ctx, _mx(f.u), f.v, f.sym, ALPHA_ANION * a);
-    else _dessinerIon(ctx, _mx(f.u), f.v, f.sym, 0.55 * a, R_ION);
+    _dessinerEspeceL(ctx, _mx(f.u), f.v, f.type, f.sym, (f.type === 'anion' ? ALPHA_ANION : 0.55) * a);
+  }
+
+  // Bulles détachées qui montent
+  for (i = 0; i < ploupe.bullesLibres.length; i++) {
+    var b = ploupe.bullesLibres[i];
+    _dessinerBulleL(ctx, _mx(b.u), b.v, b.r, b.gaz, Math.max(0, Math.min(1, (b.v + b.r + 0.5) / 1.5)));
   }
 
   // Ions formés à l'anode qui s'éloignent : derrière le réseau
@@ -505,8 +779,8 @@ function _dessinerElectrodeL(ctx) {
     }
   }
 
-  // Réseau du métal : masse claire derrière, puis les atomes (élément de
-  // chacun : lame ou dépôt)
+  // Réseau : masse claire derrière, puis les atomes (élément de chacun :
+  // électrode ou dépôt)
   ctx.fillStyle = rgbCss(nuance(couleurRGB(METAUX[lame].atome), 0.55));
   for (r = 0; r < NR; r++) {
     var x1 = _front(r) + ploupe.offX + 0.5;
@@ -518,6 +792,12 @@ function _dessinerElectrodeL(ctx) {
       if (_atomeEnCycle(r, c)) continue;
       _dessinerAtome(ctx, _mx(c + 0.5 + ploupe.offX), r + 0.5, c < 0 ? lame : ploupe.rangs[r][c], 1);
     }
+  }
+
+  // Bulle accrochée à l'électrode
+  if (ploupe.bulle && ploupe.bulle.n > 0) {
+    var cb = _centreBulle();
+    _dessinerBulleL(ctx, _mx(cb.u), cb.v, _rayonBulle(ploupe.bulle.n), ploupe.bulle.gaz, 1);
   }
 
   // Acteurs des cycles
@@ -536,7 +816,9 @@ function _atomeEnCycle(r, c) {
 
 function _dessinerCycleP(ctx, cy, pulse) {
   var dx = ploupe.offX, k, sym = cy.sym;
-  if (cy.type === 'anode') {
+  if (cy.type === 'gaz') {
+    _dessinerCycleGaz(ctx, cy, pulse);
+  } else if (cy.type === 'anode') {
     if (cy.phase === 'depart') return;
     var x = _mx(cy.u + dx);
     var kOx = cy.phase === 'electrons' ? (cy.t - cy.tOx) / PL_D_OXYDATION : 0;
@@ -553,13 +835,39 @@ function _dessinerCycleP(ctx, cy, pulse) {
       _dessinerIon(ctx, xi, cy.v, sym, 1, R_ION);
     }
   }
-  // Électrons dans le métal (toujours visibles : ils sont l'essentiel ici)
+  // Électrons dans l'électrode (toujours visibles : ils sont l'essentiel ici)
   if (cy.phase === 'electrons') {
     for (k = 0; k < cy.electrons.length; k++) {
       var e = cy.electrons[k];
       if (cy.t < e.depart || e.s >= 1) continue;
       var p = _surLigne(e.chemin, e.s);
       _dessinerElectron(ctx, _mx(p.u + dx), p.v);
+    }
+  }
+}
+
+// Réactifs signalés (rouge : oxydés, bleu : réduits), puis fondu vers les
+// produits, qui partent : le gaz dans la bulle, les ions dans la solution,
+// l'eau s'y fond
+function _dessinerCycleGaz(ctx, cy, pulse) {
+  var k, coul = cy.ox ? COUL_OX : COUL_RED;
+  var fondu = cy.phase === 'transfo' ? _lisse(cy.t / PL_D_TRANSFO) : cy.phase === 'depart' ? 1 : 0;
+  if (fondu < 1) {
+    for (k = 0; k < cy.reactifs.length; k++) {
+      var a = cy.reactifs[k], x = _mx(a.u);
+      var alpha = (a.fondu && cy.phase === 'approche' ? Math.min(1, cy.t / 0.6) : 1) * (1 - fondu);
+      var rh = a.k === 'mol' ? a.r * 0.75 : a.r;
+      if (cy.phase !== 'approche') _halo(ctx, x, a.v, rh, coul, 0.9 * (1 - fondu), pulse);
+      _dessinerEspeceL(ctx, x, a.v, a.k, a.sym, alpha);
+    }
+  }
+  if (fondu > 0) {
+    for (k = 0; k < cy.produits.length; k++) {
+      var p = cy.produits[k];
+      var ap = fondu;
+      if (cy.phase === 'depart' && p.k === 'mol' && p.sym !== cy.gaz) ap = 1 - _lisse(cy.t / PL_D_DEPART);   // eau formée : se fond dans la solution
+      if (cy.phase === 'depart' && p.sym === cy.gaz) ap = 1 - 0.6 * _lisse((cy.t / PL_D_DEPART - 0.7) / 0.3);
+      _dessinerEspeceL(ctx, _mx(p.u), p.v, p.k, p.sym, ap);
     }
   }
 }
@@ -575,18 +883,29 @@ function _dessinerPontL(ctx) {
   ctx.fillRect(-1, 8.8, 2 * RC + 2, 0.6);
   for (var i = 0; i < ploupe.fond.length; i++) {
     var f = ploupe.fond[i];
-    if (f.type === 'anion') _dessinerAnion(ctx, f.u, f.v, 'NO3', 1);
-    else _dessinerIonK(ctx, f.u, f.v);
+    _dessinerEspeceL(ctx, f.u, f.v, f.type, f.sym, 1);
   }
 }
 
-function _dessinerIonK(ctx, x, y) {
-  var rgb = couleurRGB(K_PONT.couleur);
-  _sphere(ctx, x, y, R_ION, rgb, 1);
-  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-  ctx.lineWidth = 0.05;
-  ctx.stroke();
-  _etiquette(ctx, x, y, K_PONT.texte, 0.27, rgb, 1);
+// ── Membrane de la pile à combustible : chaînes du polymère, ions H⁺ ──
+function _dessinerMembraneL(ctx) {
+  ctx.fillStyle = rgbCss(nuance(COUL_MEMBRANE, 0.35));
+  ctx.fillRect(0, 0, 2 * RC, 2 * RC);
+  ctx.strokeStyle = rgbCss(nuance(COUL_MEMBRANE, -0.25), 0.6);
+  ctx.lineWidth = 0.08;
+  for (var j = 0; j < 6; j++) {
+    var y0 = 0.9 + j * 1.85;
+    ctx.beginPath();
+    for (var x = -0.5; x <= 2 * RC + 0.5; x += 0.25) {
+      var y = y0 + 0.25 * Math.sin(x * 1.7 + j * 1.3);
+      if (x === -0.5) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+  for (var i = 0; i < ploupe.fond.length; i++) {
+    var f = ploupe.fond[i];
+    _dessinerIonSimple(ctx, f.u, f.v, f.sym, 1);
+  }
 }
 
 // ── Fil : gaine isolante, réseau du cuivre et électrons libres ─────────
@@ -644,31 +963,35 @@ function _dessinerTextesLoupeP(ctx) {
   var largeur = Math.min(dispP.W, dispP.lr * 2.6);
   var haut = dispP.ly - dispP.lr - fs * 0.4;
   var bas = dispP.ly + dispP.lr + fs * 1.3;
-  var titre, lignes = [];
+  var titre, lignes = [], cotes = null;
   var I = pile.I;
 
   if (_estElectrode()) {
-    var i = _indiceElectrode(), role = roleElectrode(i);
+    var i = _indiceElectrode(), role = roleElectrode(i), r = reactionEnCours(i), c = compElectrode(i);
     titre = 'Électrode ' + METAUX[pile.lames[i].sym].de + ' vue à l’échelle des atomes';
-    var sym = role === 'cathode' ? (cationReduit(i) || pile.lames[i].sym) : surfaceLame(i);
-    var n = METAUX[sym].charge, e = (n > 1 ? n + ' ' : '') + 'e⁻';
-    if (role === 'anode') {
-      lignes.push({ txt: 'Anode : oxydation  ' + sym + ' → ' + ionTexte(sym) + ' + ' + e, col: '#b04020' });
+    if (role === 'anode' && r) {
+      lignes.push({ txt: 'Anode : oxydation  ' + texteDemiEquation(r, c), col: '#b04020' });
       lignes.push({ txt: 'Les électrons partent dans le fil' + (sensForce() ? ', vers le générateur' : ''), col: '#5a6a78' });
-    } else if (role === 'cathode') {
-      lignes.push({ txt: 'Cathode : réduction  ' + ionTexte(sym) + ' + ' + e + ' → ' + sym, col: '#2a6aaa' });
+    } else if (role === 'cathode' && r) {
+      lignes.push({ txt: 'Cathode : réduction  ' + texteDemiEquation(r, c), col: '#2a6aaa' });
       lignes.push({ txt: 'Les électrons arrivent par le fil' + (sensForce() ? ', venant du générateur' : ''), col: '#5a6a78' });
     } else {
       lignes.push({ txt: 'Pas de courant : aucun échange d’électrons', col: '#5a6a78' });
     }
+  } else if (ploupe.zone === 'pont' && enPac()) {
+    titre = 'Membrane vue à l’échelle des ions';
+    if (I === 0) lignes.push({ txt: 'Pas de courant : agitation sans déplacement d’ensemble', col: '#5a6a78' });
+    else lignes.push({ txt: 'Les ions H⁺ traversent la membrane vers la cathode (côté ' + (I > 0 ? 'O₂' : 'H₂') + ')', col: '#5a6a78' });
+    cotes = ['côté H₂', 'côté O₂'];
   } else if (ploupe.zone === 'pont') {
     titre = 'Pont salin vu à l’échelle des ions';
     if (!pile.pont) lignes.push({ txt: 'Pont salin retiré', col: '#5a6a78' });
     else if (I === 0) lignes.push({ txt: 'Pas de courant : agitation sans déplacement d’ensemble', col: '#5a6a78' });
     else {
-      var cat = pile.lames[I > 0 ? 1 : 0].sym, an = pile.lames[I > 0 ? 0 : 1].sym;
+      var cat = METAUX[pile.lames[I > 0 ? 1 : 0].sym].nom, an = METAUX[pile.lames[I > 0 ? 0 : 1].sym].nom;
       lignes.push({ txt: 'K⁺ vers la cathode (' + cat + '), NO₃⁻ vers l’anode (' + an + ')', col: '#5a6a78' });
     }
+    if (pile.pont) cotes = ['côté ' + METAUX[pile.lames[0].sym].nom, 'côté ' + METAUX[pile.lames[1].sym].nom];
   } else {
     titre = 'Fil de connexion en cuivre vu à l’échelle des atomes';
     if (I === 0) lignes.push({ txt: 'Pas de courant : les électrons s’agitent sans se déplacer dans l’ensemble', col: '#5a6a78' });
@@ -688,15 +1011,15 @@ function _dessinerTextesLoupeP(ctx) {
     _texteAjuste(ctx, lignes[k].txt, dispP.lx, y, fs, k === 0 ? '700' : '600', largeur);
   }
 
-  // Repères de côté sous la loupe (pont) : vers quelle demi-pile
-  if (ploupe.zone === 'pont' && pile.pont) {
+  // Repères de côté sous la loupe (pont, membrane) : vers quelle électrode
+  if (cotes) {
     var fs2 = fs * 0.85;
     ctx.font = '600 ' + fs2 + 'px "Segoe UI", Arial, sans-serif';
     ctx.fillStyle = '#7a8a96';
     ctx.textAlign = 'left';
-    ctx.fillText('← côté ' + METAUX[pile.lames[0].sym].nom, dispP.lx - dispP.lr, dispP.ly + dispP.lr + fs * 0.1);
+    ctx.fillText('← ' + cotes[0], dispP.lx - dispP.lr, dispP.ly + dispP.lr + fs * 0.1);
     ctx.textAlign = 'right';
-    ctx.fillText('côté ' + METAUX[pile.lames[1].sym].nom + ' →', dispP.lx + dispP.lr, dispP.ly + dispP.lr + fs * 0.1);
+    ctx.fillText(cotes[1] + ' →', dispP.lx + dispP.lr, dispP.ly + dispP.lr + fs * 0.1);
     ctx.textAlign = 'center';
   }
 }
