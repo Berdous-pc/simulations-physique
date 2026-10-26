@@ -324,6 +324,15 @@ function _fronts() {
   return f;
 }
 
+// Niveau de la couche externe : on ignore les N_RESTES lignes les plus en
+// avant (quelques atomes isolés qui n'ont pas été rongés ne doivent pas
+// retarder le recul de la lame quand tout le reste a été consommé).
+var N_RESTES = 2;
+function _niveauSurface(front) {
+  var tri = front.slice().sort(function (a, b) { return b - a; });
+  return tri[Math.min(N_RESTES, tri.length - 1)];
+}
+
 // ══════════════════════════════════════════════════════════════════════
 //  Courbes (trajets des ions et des électrons)
 // ══════════════════════════════════════════════════════════════════════
@@ -420,9 +429,7 @@ function _ordonnancer(dt) {
   }
   // La couche externe est entièrement rongée : la vue suit la lame pour
   // garder la surface en place (aucun cycle n'occupe alors la grille)
-  var front = _fronts(), fmax = -1;
-  for (i = 0; i < NR; i++) fmax = Math.max(fmax, front[i]);
-  var recul = (COL_INIT - 1) - fmax;
+  var recul = (COL_INIT - 1) - _niveauSurface(_fronts());
   if (recul > 0) { _glisser(recul); return; }
 
   var cy = _nouveauCycle();
@@ -603,8 +610,7 @@ function _grouperSites(cand, premier, nI) {
 // c'est impossible autrement), pour que le creux ne s'enfonce pas et que
 // toute la couche externe finisse rongée (la vue peut alors suivre la lame).
 function _atomesProches(g, ions, nA) {
-  var front = _fronts(), couche = -1, hotes = [], i, r, c;
-  for (r = 0; r < NR; r++) couche = Math.max(couche, front[r]);
+  var front = _fronts(), couche = _niveauSurface(front), hotes = [], i, r, c;
   for (i = 0; i < ions.length; i++) hotes.push(ions[i].hote);
   var relie = _parcours(g, hotes).dist;
   for (var tol = TOL_RUGO; tol <= TOL_RUGO + 1; tol++) {
