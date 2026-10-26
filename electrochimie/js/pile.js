@@ -7,26 +7,37 @@
 // ══════════════════════════════════════════════════════════════════════
 //  pile.js — Onglet Pile et électrolyse : modèle et montage macroscopique
 //  Dépend de sim.js (METAUX, utilitaires) et becher.js (_EAU,
-//  _degradeMetal).
+//  _degradeMetal, ALPHA_VOILE).
 //
-//  Deux demi-piles Mⁿ⁺/M (table METAUX) dans deux béchers reliés par un
-//  pont salin (K⁺ + NO₃⁻). Entre les deux électrodes, le circuit extérieur
-//  au choix : rien, un voltmètre, un ampèremètre + une résistance ou un
-//  ampèremètre + une lampe (avec interrupteur).
+//  Deux montages :
+//    - deux béchers (une demi-pile Mⁿ⁺/M chacun) reliés par un pont salin
+//      (K⁺ + NO₃⁻) : piles, et leur recharge par un générateur ;
+//    - une cuve unique avec deux lames dans la même solution : électrolyses
+//      à anode soluble (affinage du cuivre, zingage).
+//  Entre les deux électrodes, le circuit extérieur au choix : rien, un
+//  voltmètre, un ampèremètre + une résistance, + une lampe ou + un
+//  générateur de tension réglable (avec interrupteur).
 //
 //  Modèle (Terminale, semi-quantitatif) :
-//    - potentiel de chaque électrode par la loi de Nernst, calculée en
-//      coulisse et jamais affichée : E = E° + (0,059/n)·log[Mⁿ⁺] ;
-//    - tension à vide E = E(droite) − E(gauche), multipliée par un facteur
-//      d'épuisement qui l'annule quand le réactif limitant (ion de la
-//      cathode ou métal de l'anode) est épuisé : la pile usée ne débite
-//      plus et le voltmètre affiche alors 0 ;
-//    - intensité I = E / (R + r), r résistance interne (pont salin) ;
-//    - quantités : Q = I·Δt = n(e⁻)·F, concentrations et masses des lames
-//      tenues à jour. Le temps est accéléré (TEMPS_ACCEL).
-//  Convention de signe : I > 0 quand l'électrode de droite est le pôle +
-//  (courant de la droite vers la gauche dans le circuit extérieur, de la
-//  gauche vers la droite dans les solutions et le pont salin).
+//    - chaque compartiment contient une ou plusieurs espèces Mⁿ⁺ ; chaque
+//      lame porte des couches de dépôt (éventuellement d'un autre métal,
+//      ex. zinc sur fer), oxydées d'abord quand elle devient anode ;
+//    - potentiels par la loi de Nernst, en coulisse, jamais affichés :
+//      à l'anode, couple du métal de surface ; à la cathode, couple du
+//      cation le plus facile à réduire du compartiment ;
+//    - le courant est cherché dans les deux sens : f.é.m. du sens
+//      considéré, moins la tension du générateur s'il s'y oppose (plus s'il
+//      y pousse), moins une surtension ETA si la transformation est forcée
+//      (électrolyse), divisé par la résistance totale ; multiplié par un
+//      facteur d'épuisement des réactifs de ce sens. D'où un seuil
+//      d'électrolyse, et une pile qui débite contre un générateur trop
+//      faible puis se recharge quand U dépasse sa tension ;
+//    - quantités : Q = I·Δt = n(e⁻)·F, concentrations et lames tenues à
+//      jour, en temps accéléré (TEMPS_ACCEL).
+//  Convention de signe : I > 0 quand le courant va de l'électrode de
+//  droite vers celle de gauche dans le circuit extérieur (de la gauche
+//  vers la droite dans les solutions) : électrode de gauche anode, de
+//  droite cathode.
 // ══════════════════════════════════════════════════════════════════════
 
 'use strict';
@@ -37,19 +48,30 @@
 
 var FARADAY = 96500;          // C/mol
 var PENTE_NERNST = 0.059;     // V, à 25 °C
-var P_VOLUME = 0.100;         // volume de chaque solution (L)
+var P_VOLUME = 0.100;         // volume de chaque compartiment (L)
 var N_LAME = 0.05;            // quantité de métal de la partie immergée d'une lame (mol)
-var R_INTERNE = 20;           // résistance interne de la pile (Ω), surtout celle du pont salin
+var R_INTERNE = 20;           // résistance interne de la cellule (Ω), surtout celle de l'électrolyte
 var R_LAMPE = 15;             // résistance de la lampe (Ω)
+var R_GENERATEUR = 10;        // résistance de protection du générateur (Ω)
 var P_NOMINALE = 0.03;        // puissance pour laquelle la lampe brille à fond (W)
 var TEMPS_ACCEL = 3600;       // secondes de fonctionnement par seconde d'animation, à ×1
 var I_REF = 0.03;             // intensité (A) des animations les plus rapides
+var ETA = 0.15;               // surtension d'une transformation forcée (V) : seuil d'électrolyse
+var E_FORCE = 0.005;          // f.é.m. en dessous de laquelle un sens est forcé (V)
+var C_TRACE = 1e-7;           // concentration en dessous de laquelle un cation n'est plus réduit
+var C_PLANCHER = 1e-6;        // concentration prise pour un ion absent (loi de Nernst)
+var U_PAS = 0.05;             // pas du curseur du générateur (V)
 
-// Facteur d'épuisement : x / (x + coude). Négligeable tant que le réactif
-// limitant est abondant, il fait tomber la tension et le courant quand il
-// s'épuise (la loi de Nernst seule ne baisse que lentement, en logarithme).
-var C_COUDE = 0.0002;         // mol/L, ion réduit à la cathode
-var N_COUDE = 0.0002;         // mol, métal oxydé à l'anode
+// Facteur d'épuisement : x / (x + coude). Négligeable tant que les
+// réactifs sont abondants, il fait tomber le courant (et la tension à vide)
+// quand l'un d'eux s'épuise (la loi de Nernst seule ne baisse qu'en
+// logarithme).
+var C_COUDE = 0.0002;         // mol/L, cations réductibles à la cathode
+var N_COUDE = 0.0002;         // mol, métal oxydable à l'anode
+
+// En dessous de 1 µA (réactif épuisé : reste infime du facteur
+// d'épuisement), on considère qu'aucun courant ne circule
+var I_MIN = 1e-6;
 
 // Crans des curseurs
 var CONCENTRATIONS = [0.01, 0.05, 0.1, 0.5, 1.0];          // mol/L
@@ -59,34 +81,43 @@ var RESISTANCES = [10, 22, 47, 100, 220, 470, 1000];       // Ω
 var K_PONT = { texte: 'K⁺', couleur: '#c98a55' };
 
 // ══════════════════════════════════════════════════════════════════════
-//  Expériences prédéfinies (palier 1 : piles à deux béchers)
-//  g, d : métaux des demi-piles de gauche et de droite ; cg, cd : crans de
-//  concentration (indices dans CONCENTRATIONS).
+//  Expériences prédéfinies
+//  g, d : métaux des lames de gauche et de droite ; cg, cd : crans de
+//  concentration (indices dans CONCENTRATIONS) ; bac 'un' : cuve unique
+//  de la solution `solution` ; dipole, iU (cran du générateur), polarite
+//  (+1 : borne + du générateur reliée à l'électrode de droite) : circuit
+//  imposé par l'expérience.
 // ══════════════════════════════════════════════════════════════════════
 
 var EXPERIENCES = {
-  'daniell': { nom: 'Pile Daniell (zinc – cuivre)', g: 'Zn', d: 'Cu', cg: 2, cd: 2 },
-  'cu-ag':   { nom: 'Pile cuivre – argent', g: 'Cu', d: 'Ag', cg: 2, cd: 2 },
-  'fe-cu':   { nom: 'Pile fer – cuivre', g: 'Fe', d: 'Cu', cg: 2, cd: 2 },
-  'zn-pb':   { nom: 'Pile zinc – plomb', g: 'Zn', d: 'Pb', cg: 2, cd: 2 },
-  'conc-cu': { nom: 'Pile de concentration (cuivre)', g: 'Cu', d: 'Cu', cg: 0, cd: 4 },
-  'libre':   { nom: 'Montage libre' }
+  'daniell':   { groupe: 'Piles', nom: 'Pile Daniell (zinc – cuivre)', g: 'Zn', d: 'Cu', cg: 2, cd: 2 },
+  'cu-ag':     { groupe: 'Piles', nom: 'Pile cuivre – argent', g: 'Cu', d: 'Ag', cg: 2, cd: 2 },
+  'fe-cu':     { groupe: 'Piles', nom: 'Pile fer – cuivre', g: 'Fe', d: 'Cu', cg: 2, cd: 2 },
+  'zn-pb':     { groupe: 'Piles', nom: 'Pile zinc – plomb', g: 'Zn', d: 'Pb', cg: 2, cd: 2 },
+  'conc-cu':   { groupe: 'Piles', nom: 'Pile de concentration (cuivre)', g: 'Cu', d: 'Cu', cg: 0, cd: 4 },
+  'recharge':  { groupe: 'Électrolyses', nom: 'Recharge de la pile Daniell', g: 'Zn', d: 'Cu', cg: 2, cd: 2,
+                 dipole: 'generateur', iU: 32, polarite: 1 },
+  'affinage':  { groupe: 'Électrolyses', nom: 'Affinage du cuivre (anode soluble)', bac: 'un', solution: 'Cu',
+                 g: 'Cu', d: 'Cu', cg: 3, cd: 3, dipole: 'generateur', iU: 10, polarite: -1 },
+  'zingage':   { groupe: 'Électrolyses', nom: 'Zingage d’une lame de fer', bac: 'un', solution: 'Zn',
+                 g: 'Zn', d: 'Fe', cg: 3, cd: 3, dipole: 'generateur', iU: 20, polarite: -1 },
+  'libre':     { groupe: '', nom: 'Montage libre (deux béchers)' }
 };
-var ORDRE_EXPERIENCES = ['daniell', 'cu-ag', 'fe-cu', 'zn-pb', 'conc-cu', 'libre'];
+var ORDRE_EXPERIENCES = ['daniell', 'cu-ag', 'fe-cu', 'zn-pb', 'conc-cu', 'recharge', 'affinage', 'zingage', 'libre'];
 
 // ══════════════════════════════════════════════════════════════════════
 //  Géométrie du montage, en unités logiques (repère 140 × 102)
-//  Indice 0 = demi-pile de gauche, 1 = demi-pile de droite.
+//  Indice 0 = électrode de gauche, 1 = électrode de droite.
 // ══════════════════════════════════════════════════════════════════════
 
 var P_SCENE_W = 140, P_SCENE_H = 102;
 var P_TABLE_Y = 90;
-var P_BECHER_W = 30, P_BECHER_H = 34;
-var P_BECHER_CX = [38, 102];
+var P_BECHER_H = 34;
 var P_BECHER_TOP = P_TABLE_Y - P_BECHER_H;
 var P_SOL_TOP = 62;                       // surface libre des solutions
 var P_LAME_W = 4, P_LAME_H = 42;
-var P_LAME_X = [31, 109];                 // axes des lames
+var P_LAME_X_DEUX = [31, 109];            // axes des lames, deux béchers
+var P_LAME_X_UN = [41, 99];               // axes des lames, cuve unique
 var P_LAME_YB = 85;                       // bas des lames
 var P_LAME_TOP = P_LAME_YB - P_LAME_H;
 var P_FIL_Y = 16;                         // fil horizontal du circuit extérieur
@@ -108,12 +139,16 @@ var ECART_ELECTRONS = 5;                  // espacement des électrons dans les 
 
 var pile = {
   experience: 'daniell',
-  metaux: ['Zn', 'Cu'],      // demi-piles de gauche et de droite
+  bac: 'deux',               // 'deux' : deux béchers + pont salin ; 'un' : cuve unique
+  metaux: ['Zn', 'Cu'],      // métaux des lames de gauche et de droite
+  solution: 'Cu',            // cuve unique : cation de la solution
   iC0: [2, 2],               // crans des concentrations initiales
-  dipole: 'voltmetre',       // 'aucun' | 'voltmetre' | 'resistance' | 'lampe'
+  dipole: 'voltmetre',       // 'aucun' | 'voltmetre' | 'resistance' | 'lampe' | 'generateur'
   interrupteur: false,       // fermé ?
   iR: 3,                     // cran de la résistance (100 Ω)
-  pont: true,                // pont salin en place
+  iU: 30,                    // cran du générateur (× U_PAS : 1,50 V)
+  polarite: 1,               // +1 : borne + du générateur reliée à l'électrode de droite
+  pont: true,                // pont salin en place (deux béchers)
   zone: 'gauche',            // zone vue dans la loupe : 'gauche' | 'droite' | 'pont' | 'fil'
 
   showCourant:   false,      // sens du courant et électrons dans les fils
@@ -122,11 +157,11 @@ var pile = {
   showEquations: false,
 
   // ── Grandeurs ──
-  nIon: [0, 0],              // quantité d'ions Mⁿ⁺ de chaque solution (mol)
-  dLame: [0, 0],             // métal gagné (+, dépôt) ou perdu (−) par chaque lame (mol)
+  comp: [],                  // compartiments : { n: {sym: mol}, anion, nom, sym0 }
+  lames: [],                 // { sym, reste (mol de métal de la lame), depots: [{sym, n}] (dernier = surface) }
   t: 0,                      // durée de fonctionnement (s, temps accéléré)
-  Q: 0,                      // quantité d'électricité débitée (C)
-  E: 0,                      // tension à vide (V), signée
+  Q: 0,                      // quantité d'électricité (C)
+  E: 0,                      // tension à vide V(droite) − V(gauche) (V)
   I: 0,                      // intensité (A), signée
 
   // ── Animations ──
@@ -138,46 +173,155 @@ var pile = {
 };
 
 // ══════════════════════════════════════════════════════════════════════
-//  Grandeurs chimiques et électriques
+//  Géométrie selon le montage
+// ══════════════════════════════════════════════════════════════════════
+
+function enCuve() { return pile.bac === 'un'; }
+function lameX(i) { return enCuve() ? P_LAME_X_UN[i] : P_LAME_X_DEUX[i]; }
+function compElectrode(i) { return enCuve() ? 0 : i; }
+function pontPresent() { return !enCuve() && pile.pont; }
+
+// Récipients : bords intérieurs gauche et droit, côté du bec verseur
+function recipients() {
+  return enCuve() ? [{ L: 34, R: 106, bec: 0 }]
+                  : [{ L: 23, R: 53, bec: -1 }, { L: 87, R: 117, bec: 1 }];
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Grandeurs chimiques
 // ══════════════════════════════════════════════════════════════════════
 
 function concInitiale(i) { return CONCENTRATIONS[pile.iC0[i]]; }
-function concentration(i) { return Math.max(0, pile.nIon[i]) / P_VOLUME; }
-function resteLame(i) { return Math.max(0, N_LAME + pile.dLame[i]); }
 
-// Potentiel d'électrode (loi de Nernst, en coulisse)
-function potentielElectrode(i) {
-  var M = METAUX[pile.metaux[i]];
-  return M.E0 + PENTE_NERNST / M.charge * Math.log(Math.max(concentration(i), 1e-9)) / Math.LN10;
+// Concentration d'une espèce dans un compartiment (mol/L)
+function concentrationC(c, sym) { return Math.max(0, pile.comp[c].n[sym] || 0) / P_VOLUME; }
+
+// Concentration des ions du métal d'une lame dans son compartiment
+function concentration(i) { return concentrationC(compElectrode(i), pile.metaux[i]); }
+
+// Somme des concentrations des cations d'un compartiment
+function cationsTotal(c) {
+  var s = 0, n = pile.comp[c].n;
+  for (var sym in n) s += Math.max(0, n[sym]);
+  return s / P_VOLUME;
 }
 
-// Tension à vide signée : potentiel de droite − potentiel de gauche, avec
-// le facteur d'épuisement du réactif limitant du sens spontané.
-// Indépendante du pont salin (elle sert aussi à nommer les pôles).
+// Métal à la surface d'une lame : dernière couche de dépôt, sinon la lame
+function surfaceLame(i) {
+  var d = pile.lames[i].depots;
+  return d.length ? d[d.length - 1].sym : pile.lames[i].sym;
+}
+
+// Métal oxydable d'une lame (dépôts + partie immergée)
+function oxydable(i) {
+  var L = pile.lames[i], s = L.reste;
+  for (var k = 0; k < L.depots.length; k++) s += L.depots[k].n;
+  return s;
+}
+function depotTotal(i) { return oxydable(i) - pile.lames[i].reste; }
+
+function potentielCouple(sym, c) {
+  var M = METAUX[sym];
+  return M.E0 + PENTE_NERNST / M.charge * Math.log(Math.max(c, C_PLANCHER)) / Math.LN10;
+}
+
+// Potentiel de l'électrode i quand elle s'oxyde (et à vide) : couple du
+// métal de surface, avec la concentration de ses ions
+function potentielOx(i) {
+  var s = surfaceLame(i);
+  return potentielCouple(s, concentrationC(compElectrode(i), s));
+}
+
+// Cation réduit sur l'électrode i : le plus facile à réduire (potentiel le
+// plus élevé) parmi ceux de son compartiment ; null s'il n'y en a plus
+function cationReduit(i) {
+  var c = compElectrode(i), n = pile.comp[c].n, best = null, eBest = -Infinity;
+  for (var sym in n) {
+    var conc = concentrationC(c, sym);
+    if (conc < C_TRACE) continue;
+    var e = potentielCouple(sym, conc);
+    if (e > eBest) { eBest = e; best = sym; }
+  }
+  return best;
+}
+
+function potentielRed(i) {
+  var s = cationReduit(i);
+  return s ? potentielCouple(s, concentrationC(compElectrode(i), s)) : potentielOx(i);
+}
+
+// F.é.m. du sens où l'électrode iA est l'anode (l'autre la cathode) :
+// positive si ce sens est spontané
+function femSens(iA) { return potentielRed(1 - iA) - potentielOx(iA); }
+
+// Facteur d'épuisement des réactifs du sens où iA est l'anode
+function facteurSens(iA) {
+  var c = cationsTotal(compElectrode(1 - iA)), n = oxydable(iA);
+  return (c / (c + C_COUDE)) * (n / (n + N_COUDE));
+}
+
+// Tension à vide (voltmètre) : V(droite) − V(gauche), avec le facteur
+// d'épuisement du sens spontané (pile usée : 0)
 function femPile() {
-  var En = potentielElectrode(1) - potentielElectrode(0);
-  var iCat = En >= 0 ? 1 : 0, iAn = 1 - iCat;
-  var c = concentration(iCat), n = resteLame(iAn);
-  return En * (c / (c + C_COUDE)) * (n / (n + N_COUDE));
+  var V = potentielOx(1) - potentielOx(0);
+  return V * facteurSens(V >= 0 ? 0 : 1);
 }
 
-function chargeBranchee() { return pile.dipole === 'resistance' || pile.dipole === 'lampe'; }
-function resistanceCharge() { return pile.dipole === 'lampe' ? R_LAMPE : RESISTANCES[pile.iR]; }
-function circuitFerme() { return chargeBranchee() && pile.interrupteur && pile.pont; }
+// ══════════════════════════════════════════════════════════════════════
+//  Grandeurs électriques
+// ══════════════════════════════════════════════════════════════════════
 
-// En dessous de 1 µA (pile épuisée : reste infime du facteur
-// d'épuisement), on considère qu'aucun courant ne circule
-var I_MIN = 1e-6;
+function tensionGenerateur() { return pile.iU * U_PAS; }
+
+function courantPossible() {
+  return pile.dipole === 'resistance' || pile.dipole === 'lampe' || pile.dipole === 'generateur';
+}
+function resistanceCharge() {
+  return pile.dipole === 'lampe' ? R_LAMPE : pile.dipole === 'generateur' ? R_GENERATEUR : RESISTANCES[pile.iR];
+}
+function circuitFerme() { return courantPossible() && pile.interrupteur && (enCuve() || pile.pont); }
+
+// Tension que le générateur oppose au sens I > 0 (gauche anode)
+function _tensionOpposee() {
+  return pile.dipole === 'generateur' ? pile.polarite * tensionGenerateur() : 0;
+}
+
+// Pilote du courant dans chaque sens (V), avant division par la résistance
+function _pilote(iA) {
+  var e = femSens(iA);
+  var u = iA === 0 ? -_tensionOpposee() : _tensionOpposee();
+  return e + u - (e < E_FORCE ? ETA : 0);
+}
 
 function courantPile() {
   if (!circuitFerme()) return 0;
-  var I = femPile() / (resistanceCharge() + R_INTERNE);
+  var Rt = R_INTERNE + resistanceCharge();
+  var Jp = facteurSens(0) * _pilote(0) / Rt;     // gauche anode
+  var Jm = facteurSens(1) * _pilote(1) / Rt;     // droite anode
+  var I = 0;
+  if (Jp > 0 && Jp >= Jm) I = Jp;
+  else if (Jm > 0) I = -Jm;
   return Math.abs(I) < I_MIN ? 0 : I;
 }
 
 // Tension lue par le voltmètre (borne V à droite, COM à gauche). Sans pont
 // salin, le circuit est ouvert dans les solutions : rien à mesurer.
-function tensionVoltmetre() { return pile.pont ? femPile() : 0; }
+function tensionVoltmetre() { return (enCuve() || pile.pont) ? femPile() : 0; }
+
+// Le sens du courant actuel est-il forcé (électrolyse) ?
+function sensForce() {
+  if (pile.I === 0) return false;
+  return femSens(pile.I > 0 ? 0 : 1) < E_FORCE;
+}
+
+// Tension minimale du générateur pour forcer la transformation dans le
+// sens où il pousse ; null s'il pousse dans le sens spontané
+function seuilElectrolyse() {
+  var iA = pile.polarite > 0 ? 1 : 0;          // électrode reliée à la borne +
+  var e = femSens(iA);
+  if (e >= E_FORCE) return null;
+  return ETA - e;
+}
 
 // Rôle d'une électrode : 'anode' (oxydation), 'cathode' (réduction) ou ''
 // quand aucun courant ne circule
@@ -186,8 +330,10 @@ function roleElectrode(i) {
   return (pile.I > 0) === (i === 0) ? 'anode' : 'cathode';
 }
 
-// Pôle d'une électrode d'après la tension à vide : '+', '−' ou ''
+// Pôle d'une électrode : celui de la borne du générateur à laquelle elle
+// est reliée s'il y en a un, sinon celui de la pile (signe de E)
 function poleElectrode(i) {
+  if (pile.dipole === 'generateur') return (pile.polarite > 0) === (i === 1) ? '+' : '−';
   if (Math.abs(pile.E) < 1e-4) return '';
   return (pile.E > 0) === (i === 1) ? '+' : '−';
 }
@@ -201,10 +347,23 @@ function facteurCourant() { return Math.sqrt(Math.min(1, Math.abs(pile.I) / I_RE
 // ══════════════════════════════════════════════════════════════════════
 
 function resetPileModele() {
-  for (var i = 0; i < 2; i++) {
-    pile.nIon[i] = concInitiale(i) * P_VOLUME;
-    pile.dLame[i] = 0;
+  var i;
+  pile.comp = [];
+  if (enCuve()) {
+    var S = METAUX[pile.solution];
+    var n0 = {};
+    n0[pile.solution] = concInitiale(0) * P_VOLUME;
+    pile.comp.push({ n: n0, anion: S.anion, nom: S.nomSolution, sym0: pile.solution });
+  } else {
+    for (i = 0; i < 2; i++) {
+      var M = METAUX[pile.metaux[i]];
+      var n = {};
+      n[M.sym] = concInitiale(i) * P_VOLUME;
+      pile.comp.push({ n: n, anion: M.anion, nom: M.nomSolution, sym0: M.sym });
+    }
   }
+  pile.lames = [];
+  for (i = 0; i < 2; i++) pile.lames.push({ sym: pile.metaux[i], reste: N_LAME, depots: [] });
   pile.t = 0;
   pile.Q = 0;
   pile.horloge = 0;
@@ -215,23 +374,25 @@ function resetPileModele() {
   _tirerBruitDepot();
 }
 
-// Ions du montage (option migration) : quelques ions par bécher, répartis
-// dans la solution, et des ions K⁺ / NO₃⁻ le long du pont salin
+// Ions du montage (option migration) : quelques ions par compartiment,
+// répartis dans la solution, et des ions K⁺ / NO₃⁻ le long du pont salin
 function _tirerParticules() {
   var alea = creerAlea(20261027);
-  var bechers = [[], []];
-  for (var i = 0; i < 2; i++) {
-    var M = METAUX[pile.metaux[i]];
-    for (var k = 0; k < 14; k++) {
+  var R = recipients(), comps = [];
+  for (var c = 0; c < R.length; c++) {
+    var C = pile.comp[c], liste = [];
+    var nb = enCuve() ? 24 : 14;
+    for (var k = 0; k < nb; k++) {
       var cation = k % 2 === 0;
-      bechers[i].push({
-        x: _xMinIons(i) + alea() * (_xMaxIons(i) - _xMinIons(i)),
+      liste.push({
+        x: R[c].L + 1.6 + alea() * (R[c].R - R[c].L - 3.2),
         y: P_SOL_TOP + 3 + alea() * (P_TABLE_Y - P_SOL_TOP - 5.5),
         signe: cation ? 1 : -1,
-        rgb: couleurRGB(cation ? M.ion : ANIONS[M.anion].couleur),
+        rgb: couleurRGB(cation ? METAUX[C.sym0].ion : ANIONS[C.anion].couleur),
         phi: alea() * 6.28
       });
     }
+    comps.push(liste);
   }
   var pont = [], L = _longueurPont();
   for (k = 0; k < 16; k++) {
@@ -243,11 +404,8 @@ function _tirerParticules() {
       phi: alea() * 6.28
     });
   }
-  pile.particules = { bechers: bechers, pont: pont };
+  pile.particules = { comps: comps, pont: pont };
 }
-
-function _xMinIons(i) { return P_BECHER_CX[i] - P_BECHER_W / 2 + 1.6; }
-function _xMaxIons(i) { return P_BECHER_CX[i] + P_BECHER_W / 2 - 1.6; }
 
 // Contour irrégulier des dépôts (fixe, tiré une fois)
 function _tirerBruitDepot() {
@@ -266,31 +424,53 @@ function _tirerBruitDepot() {
 // ══════════════════════════════════════════════════════════════════════
 
 // Fonctionnement pendant dt secondes (temps accéléré). Pas adaptatifs : la
-// quantité d'électrons échangée à chaque pas reste petite devant ce qui
-// reste du réactif limitant, ce qui suit sans à-coup la chute finale.
+// quantité d'électrons échangée à chaque pas reste petite devant les
+// réactifs restants, et ne dépasse jamais la couche de surface de l'anode
+// ni le cation réduit à la cathode (on passe ensuite au suivant).
 function _integrerPile(dt) {
   var pas = 0;
   while (dt > 1e-9 && pas < 500) {
     pas++;
     var I = courantPile();
     if (Math.abs(I) < 1e-9) break;
-    var iCat = I > 0 ? 1 : 0, iAn = 1 - iCat;
-    var zC = METAUX[pile.metaux[iCat]].charge, zA = METAUX[pile.metaux[iAn]].charge;
-    var dispo = Math.min(Math.max(0, pile.nIon[iCat]) * zC, resteLame(iAn) * zA);
-    var h = dt;
-    var ne = Math.abs(I) * h / FARADAY;        // électrons échangés (mol)
-    if (ne > 0.05 * dispo) {
-      ne = 0.05 * dispo;
-      h = ne * FARADAY / Math.abs(I);
-      if (h < 1e-6) break;
-    }
-    pile.nIon[iAn]  += ne / zA;  pile.dLame[iAn]  -= ne / zA;   // anode : M → Mⁿ⁺ + n e⁻
-    pile.nIon[iCat] -= ne / zC;  pile.dLame[iCat] += ne / zC;   // cathode : Mⁿ⁺ + n e⁻ → M
+    var iA = I > 0 ? 0 : 1, iC = 1 - iA;
+    var cA = compElectrode(iA), cC = compElectrode(iC);
+    var Sa = surfaceLame(iA), Cc = cationReduit(iC);
+    if (!Cc) break;
+    var zA = METAUX[Sa].charge, zC = METAUX[Cc].charge;
+    var LA = pile.lames[iA];
+    var couche = LA.depots.length ? LA.depots[LA.depots.length - 1].n : LA.reste;
+    var nC = pile.comp[cC].n[Cc];
+    var limite = Math.min(cationsTotal(cC) * P_VOLUME * zC, oxydable(iA) * zA);
+
+    var ne = Math.abs(I) * dt / FARADAY;       // électrons échangés (mol)
+    ne = Math.min(ne, 0.05 * limite, couche * zA, nC * zC);
+    var h = ne * FARADAY / Math.abs(I);
+    if (!(ne > 0)) break;
+
+    // Anode : couche de surface → ions dans son compartiment
+    if (LA.depots.length) LA.depots[LA.depots.length - 1].n -= ne / zA;
+    else LA.reste -= ne / zA;
+    pile.comp[cA].n[Sa] = (pile.comp[cA].n[Sa] || 0) + ne / zA;
+    // Cathode : cation → nouvelle couche (ou couche de surface du même métal)
+    pile.comp[cC].n[Cc] -= ne / zC;
+    var LC = pile.lames[iC], top = LC.depots[LC.depots.length - 1];
+    if (top && top.sym === Cc) top.n += ne / zC;
+    else LC.depots.push({ sym: Cc, n: ne / zC });
+
+    _nettoyer(LA);
+    if (pile.comp[cC].n[Cc] < 1e-14) pile.comp[cC].n[Cc] = 0;
     pile.t += h;
     pile.Q += ne * FARADAY;
     dt -= h;
   }
   if (circuitFerme()) pile.t += Math.max(0, dt);
+}
+
+// Couches de dépôt épuisées retirées
+function _nettoyer(L) {
+  while (L.depots.length && L.depots[L.depots.length - 1].n < 1e-12) L.depots.pop();
+  if (L.reste < 1e-12) L.reste = 0;
 }
 
 // dtSim : temps d'animation (s), nul en pause
@@ -311,11 +491,11 @@ function majPile(dtSim) {
   // Ions : les cations suivent le courant dans les solutions et le pont
   // (gauche → droite si I > 0), les anions vont en sens inverse
   var v = sgn * f * V_ION_MACRO * dtSim;
-  var P = pile.particules;
-  for (var i = 0; i < 2; i++) {
-    var a = _xMinIons(i), b = _xMaxIons(i);
-    for (var k = 0; k < P.bechers[i].length; k++) {
-      var p = P.bechers[i][k];
+  var P = pile.particules, R = recipients();
+  for (var c = 0; c < R.length; c++) {
+    var a = R[c].L + 1.6, b = R[c].R - 1.6;
+    for (var k = 0; k < P.comps[c].length; k++) {
+      var p = P.comps[c][k];
       p.x += p.signe * v;
       if (p.x > b) p.x -= b - a;
       if (p.x < a) p.x += b - a;
@@ -362,30 +542,28 @@ function pxVersPile(px, py) { return { x: (px - dispP.mx) / dispP.k, y: (py - di
 
 // ══════════════════════════════════════════════════════════════════════
 //  Circuit extérieur : composants posés sur le fil du haut
-//  (x0, x1 : bornes de gauche et de droite)
+//  (x0, x1 : bornes de gauche et de droite), tous entre x = 48 et 92 pour
+//  laisser passer les fils verticaux des deux montages
 // ══════════════════════════════════════════════════════════════════════
 
 function composantsCircuit() {
+  var A = { type: 'multimetre', mode: 'A', x0: 49, x1: 65 };
+  var K = { type: 'interrupteur', x0: 69, x1: 76 };
   switch (pile.dipole) {
-    case 'voltmetre':
-      return [{ type: 'multimetre', mode: 'V', x0: 60, x1: 80 }];
-    case 'resistance':
-      return [{ type: 'multimetre', mode: 'A', x0: 50, x1: 70 },
-              { type: 'interrupteur', x0: 78, x1: 86 },
-              { type: 'resistance', x0: 93, x1: 103 }];
-    case 'lampe':
-      return [{ type: 'multimetre', mode: 'A', x0: 50, x1: 70 },
-              { type: 'interrupteur', x0: 78, x1: 86 },
-              { type: 'lampe', x0: 94, x1: 102 }];
-    default:
-      return [{ type: 'ouvert', x0: 62, x1: 78 }];
+    case 'voltmetre':  return [{ type: 'multimetre', mode: 'V', x0: 61, x1: 79 }];
+    case 'resistance': return [A, K, { type: 'resistance', x0: 81, x1: 91 }];
+    case 'lampe':      return [A, K, { type: 'lampe', x0: 82, x1: 90 }];
+    case 'generateur': return [A, K, { type: 'generateur', x0: 80, x1: 93 }];
+    default:           return [{ type: 'ouvert', x0: 62, x1: 78 }];
   }
 }
 
 // Fil de l'électrode de gauche à celle de droite (ligne brisée), parcouru
 // par les électrons
-var _CHEMIN_FIL = [[P_LAME_X[0], P_LAME_TOP - 1], [P_LAME_X[0], P_FIL_Y],
-                   [P_LAME_X[1], P_FIL_Y], [P_LAME_X[1], P_LAME_TOP - 1]];
+function _cheminFil() {
+  return [[lameX(0), P_LAME_TOP - 1], [lameX(0), P_FIL_Y],
+          [lameX(1), P_FIL_Y], [lameX(1), P_LAME_TOP - 1]];
+}
 
 // Axe du pont salin (ligne brisée), parcouru par les ions du pont
 var _CHEMIN_PONT = [[P_PONT_X[0], P_PONT_BAS - 1], [P_PONT_X[0], P_PONT_Y],
@@ -415,12 +593,13 @@ function _pointLigne(pts, s) {
 
 // Zones que la loupe peut grossir (cercles cliquables sur le montage)
 function zonesLoupe() {
-  return {
-    gauche: { x: P_LAME_X[0] + P_LAME_W / 2, y: P_Y_LOUPE },
-    droite: { x: P_LAME_X[1] - P_LAME_W / 2, y: P_Y_LOUPE },
-    pont:   { x: (P_PONT_X[0] + P_PONT_X[1]) / 2, y: P_PONT_Y },
-    fil:    { x: 40, y: P_FIL_Y }
+  var Z = {
+    gauche: { x: lameX(0) + P_LAME_W / 2, y: P_Y_LOUPE },
+    droite: { x: lameX(1) - P_LAME_W / 2, y: P_Y_LOUPE },
+    fil:    { x: lameX(0) + 3.6, y: P_FIL_Y }
   };
+  if (!enCuve()) Z.pont = { x: (P_PONT_X[0] + P_PONT_X[1]) / 2, y: P_PONT_Y };
+  return Z;
 }
 var R_ZONE = 2.4;
 
@@ -442,31 +621,32 @@ function dessinerMontage(ctx) {
   ctx.lineWidth = 0.3;
   ctx.beginPath(); ctx.moveTo(0, P_TABLE_Y); ctx.lineTo(P_SCENE_W, P_TABLE_Y); ctx.stroke();
 
-  var i, cols = [_couleurSolutionPile(0), _couleurSolutionPile(1)];
+  var R = recipients(), c, i, cols = [];
+  for (c = 0; c < R.length; c++) cols.push(_couleurCompartiment(c));
 
   // Solutions (couleur pleine + modelé), ions qui migrent, lames, pont,
   // puis voile de la solution devant ce qui est immergé, puis le verre
-  for (i = 0; i < 2; i++) {
-    _cheminInterieurP(ctx, i, P_SOL_TOP);
-    ctx.fillStyle = rgbCss(cols[i]);
+  for (c = 0; c < R.length; c++) {
+    _cheminInterieurP(ctx, R[c], P_SOL_TOP);
+    ctx.fillStyle = rgbCss(cols[c]);
     ctx.fill();
-    _dessinerVolumeP(ctx, i);
+    _dessinerVolumeP(ctx, R[c]);
   }
-  if (pile.showMigration) _dessinerIonsBechers(ctx);
+  if (pile.showMigration) _dessinerIonsComps(ctx);
   for (i = 0; i < 2; i++) _dessinerLameP(ctx, i);
-  if (pile.pont) _dessinerPont(ctx);
-  for (i = 0; i < 2; i++) {
-    _cheminInterieurP(ctx, i, P_SOL_TOP);
-    ctx.fillStyle = rgbCss(cols[i], ALPHA_VOILE);
+  if (pontPresent()) _dessinerPont(ctx);
+  for (c = 0; c < R.length; c++) {
+    _cheminInterieurP(ctx, R[c], P_SOL_TOP);
+    ctx.fillStyle = rgbCss(cols[c], ALPHA_VOILE);
     ctx.fill();
-    ctx.strokeStyle = rgbCss(nuance(cols[i], -0.3), 0.8);
+    ctx.strokeStyle = rgbCss(nuance(cols[c], -0.3), 0.8);
     ctx.lineWidth = 0.35;
     ctx.beginPath();
-    ctx.moveTo(_bordG(i), P_SOL_TOP); ctx.lineTo(_bordD(i), P_SOL_TOP);
+    ctx.moveTo(R[c].L, P_SOL_TOP); ctx.lineTo(R[c].R, P_SOL_TOP);
     ctx.stroke();
-    _dessinerVerreP(ctx, i);
+    _dessinerVerreP(ctx, R[c]);
   }
-  if (pile.pont && pile.showMigration) _dessinerIonsPont(ctx);
+  if (pontPresent() && pile.showMigration) _dessinerIonsPont(ctx);
 
   _dessinerCircuit(ctx);
   if (pile.showCourant) _dessinerCourant(ctx);
@@ -476,37 +656,46 @@ function dessinerMontage(ctx) {
   ctx.restore();
 }
 
-function _bordG(i) { return P_BECHER_CX[i] - P_BECHER_W / 2; }
-function _bordD(i) { return P_BECHER_CX[i] + P_BECHER_W / 2; }
-
-// ── Couleur d'une solution selon sa concentration ─────────────────────
+// ── Couleur d'un compartiment ─────────────────────────────────────────
 // Mêmes teintes que l'onglet Oxydoréduction (METAUX[…].solution), sur une
-// échelle logarithmique : 1 mol/L → teinte la plus soutenue, 0,005 mol/L
-// et moins → l'eau. Les ions incolores laissent l'eau.
-function _couleurSolutionPile(i) {
-  var M = METAUX[pile.metaux[i]], c = concentration(i);
-  if (!M.solution || c <= 0) return _EAU.slice();
-  var t = Math.max(0, Math.min(1, (Math.log(c) / Math.LN10 + 2.3) / 2.3));
-  return melange(_EAU, couleurSuite(M.solution, t), Math.min(1, t / 0.35));
+// échelle logarithmique de la concentration : 1 mol/L → teinte la plus
+// soutenue, 0,005 mol/L et moins → l'eau. Plusieurs espèces colorées :
+// moyenne pondérée par leurs concentrations. Ions incolores : l'eau.
+function _couleurCompartiment(c) {
+  var n = pile.comp[c].n, somme = [0, 0, 0], poids = 0, presence = 0;
+  for (var sym in n) {
+    var M = METAUX[sym], conc = concentrationC(c, sym);
+    if (!M.solution || conc <= 0) continue;
+    var t = Math.max(0, Math.min(1, (Math.log(conc) / Math.LN10 + 2.3) / 2.3));
+    var pres = Math.min(1, t / 0.35);
+    var rgb = couleurSuite(M.solution, t);
+    var w = conc * pres;
+    for (var k = 0; k < 3; k++) somme[k] += w * rgb[k];
+    poids += w;
+    presence = Math.max(presence, pres);
+  }
+  if (poids <= 0) return _EAU.slice();
+  return melange(_EAU, [somme[0] / poids, somme[1] / poids, somme[2] / poids], presence);
 }
 
-// ── Béchers (mêmes formes que becher.js, bec verseur côté extérieur) ──
-function _cheminInterieurP(ctx, i, yHaut) {
-  var L = _bordG(i), R = _bordD(i);
+// Couleur de la solution autour de l'électrode i (loupe)
+function couleurSolutionElectrode(i) { return _couleurCompartiment(compElectrode(i)); }
+
+// ── Récipients (mêmes formes que becher.js) ───────────────────────────
+function _cheminInterieurP(ctx, B, yHaut) {
   ctx.beginPath();
-  ctx.moveTo(L, yHaut);
-  ctx.lineTo(L, P_TABLE_Y - 1);
-  ctx.quadraticCurveTo(L, P_TABLE_Y, L + 1, P_TABLE_Y);
-  ctx.lineTo(R - 1, P_TABLE_Y);
-  ctx.quadraticCurveTo(R, P_TABLE_Y, R, P_TABLE_Y - 1);
-  ctx.lineTo(R, yHaut);
+  ctx.moveTo(B.L, yHaut);
+  ctx.lineTo(B.L, P_TABLE_Y - 1);
+  ctx.quadraticCurveTo(B.L, P_TABLE_Y, B.L + 1, P_TABLE_Y);
+  ctx.lineTo(B.R - 1, P_TABLE_Y);
+  ctx.quadraticCurveTo(B.R, P_TABLE_Y, B.R, P_TABLE_Y - 1);
+  ctx.lineTo(B.R, yHaut);
   ctx.closePath();
 }
 
-function _dessinerVolumeP(ctx, i) {
-  var L = _bordG(i), R = _bordD(i);
-  _cheminInterieurP(ctx, i, P_SOL_TOP);
-  var g = ctx.createLinearGradient(L, 0, R, 0);
+function _dessinerVolumeP(ctx, B) {
+  _cheminInterieurP(ctx, B, P_SOL_TOP);
+  var g = ctx.createLinearGradient(B.L, 0, B.R, 0);
   g.addColorStop(0,    'rgba(255,255,255,0.38)');
   g.addColorStop(0.18, 'rgba(255,255,255,0.10)');
   g.addColorStop(0.5,  'rgba(255,255,255,0)');
@@ -523,12 +712,13 @@ function _dessinerVolumeP(ctx, i) {
   ctx.fill();
 }
 
-function _dessinerVerreP(ctx, i) {
-  var L = _bordG(i), R = _bordD(i), T = P_BECHER_TOP;
+// Verre : bec verseur côté extérieur (bécher), aucun pour la cuve
+function _dessinerVerreP(ctx, B) {
+  var L = B.L, R = B.R, T = P_BECHER_TOP;
   ctx.strokeStyle = '#6f7f8c';
   ctx.lineWidth = 0.6;
   ctx.beginPath();
-  if (i === 0) {                                   // bec verseur à gauche
+  if (B.bec < 0) {
     ctx.moveTo(L - 1.6, T - 0.8);
     ctx.quadraticCurveTo(L, T, L, T + 2);
   } else {
@@ -538,30 +728,32 @@ function _dessinerVerreP(ctx, i) {
   ctx.quadraticCurveTo(L, P_TABLE_Y, L + 1, P_TABLE_Y);
   ctx.lineTo(R - 1, P_TABLE_Y);
   ctx.quadraticCurveTo(R, P_TABLE_Y, R, P_TABLE_Y - 1);
-  if (i === 1) {                                   // bec verseur à droite
+  if (B.bec > 0) {
     ctx.lineTo(R, T + 2);
     ctx.quadraticCurveTo(R, T, R + 1.6, T - 0.8);
   } else {
     ctx.lineTo(R, T);
   }
   ctx.stroke();
+  if (!B.bec) return;
   // Graduations, côté du bec
   ctx.strokeStyle = 'rgba(111,127,140,0.7)';
   ctx.lineWidth = 0.25;
   for (var k = 1; k <= 4; k++) {
     var y = P_TABLE_Y - k * 7.5, l = k % 2 ? 2 : 3.5;
     ctx.beginPath();
-    if (i === 0) { ctx.moveTo(L + 1, y); ctx.lineTo(L + 1 + l, y); }
-    else         { ctx.moveTo(R - 1, y); ctx.lineTo(R - 1 - l, y); }
+    if (B.bec < 0) { ctx.moveTo(L + 1, y); ctx.lineTo(L + 1 + l, y); }
+    else           { ctx.moveTo(R - 1, y); ctx.lineTo(R - 1 - l, y); }
     ctx.stroke();
   }
 }
 
-// ── Lames : partie immergée rongée (anode) ou couverte de dépôt (cathode)
+// ── Lames : partie immergée rongée (métal de la lame oxydé) et couverte
+//    de dépôt (couleur du métal de surface) ──
 function _dessinerLameP(ctx, i) {
-  var M = METAUX[pile.metaux[i]];
-  var base = couleurRGB(M.atome);
-  var x0 = P_LAME_X[i] - P_LAME_W / 2;
+  var L = pile.lames[i];
+  var base = couleurRGB(METAUX[L.sym].atome);
+  var xc = lameX(i), x0 = xc - P_LAME_W / 2;
   var top = P_LAME_TOP, yb = P_LAME_YB;
   var hSeche = P_SOL_TOP - top;
 
@@ -573,10 +765,10 @@ function _dessinerLameP(ctx, i) {
 
   // Partie immergée, amincie à mesure que le métal s'oxyde (elle
   // disparaît quand il est entièrement consommé)
-  var perdu = Math.min(1, Math.max(0, -pile.dLame[i]) / N_LAME);
+  var perdu = Math.min(1, Math.max(0, 1 - L.reste / N_LAME));
   var w = P_LAME_W * Math.pow(1 - perdu, 0.6);
   if (w > 0.05) {
-    var xa = P_LAME_X[i] - w / 2;
+    var xa = xc - w / 2;
     var arr = Math.min(w / 2, 0.8 * perdu + 0.2);
     ctx.fillStyle = _degradeMetal(ctx, xa, w, base, -0.2 * perdu);
     ctx.beginPath();
@@ -591,13 +783,13 @@ function _dessinerLameP(ctx, i) {
     ctx.stroke();
   }
 
-  // Dépôt du métal formé (même élément que la lame), en couche irrégulière
-  var gagne = Math.max(0, pile.dLame[i]);
+  // Dépôt, en couche irrégulière autour de la partie immergée
+  var gagne = depotTotal(i);
   if (gagne > 1e-6) {
     var e = 2.2 * Math.sqrt(Math.min(1.5, gagne / 0.02));
     var B = pile.bruitDepot[i], n = B[0].length - 1;
     var yH = P_SOL_TOP + 0.6, H = yb - yH;
-    var col = _couleurDepotP(pile.metaux[i]);
+    var col = _couleurDepotP(surfaceLame(i));
     ctx.fillStyle = rgbCss(col, 0.95);
     ctx.beginPath();
     for (var k = 0; k <= n; k++) ctx.lineTo(x0 - e * B[0][k], yH + H * k / n);
@@ -616,10 +808,10 @@ function _dessinerLameP(ctx, i) {
   ctx.strokeStyle = '#2c3238';
   ctx.lineWidth = 0.25;
   ctx.beginPath();
-  ctx.rect(P_LAME_X[i] - P_LAME_W / 2 - 0.6, top - 1.6, P_LAME_W + 1.2, 3.6);
+  ctx.rect(xc - P_LAME_W / 2 - 0.6, top - 1.6, P_LAME_W + 1.2, 3.6);
   ctx.fill(); ctx.stroke();
   ctx.fillStyle = '#8a929c';
-  ctx.fillRect(P_LAME_X[i] - P_LAME_W / 2 - 0.2, top - 1.1, P_LAME_W + 0.4, 0.6);
+  ctx.fillRect(xc - P_LAME_W / 2 - 0.2, top - 1.1, P_LAME_W + 0.4, 0.6);
 }
 
 // Couleur du métal déposé (plus sombre que la lame, cf. _couleurDepot)
@@ -678,10 +870,11 @@ function _petitIon(ctx, x, y, rgb, signe, alpha) {
   ctx.stroke();
 }
 
-function _dessinerIonsBechers(ctx) {
-  for (var i = 0; i < 2; i++) {
-    var a = _xMinIons(i), b = _xMaxIons(i);
-    var liste = pile.particules.bechers[i];
+function _dessinerIonsComps(ctx) {
+  var R = recipients();
+  for (var c = 0; c < R.length; c++) {
+    var a = R[c].L + 1.6, b = R[c].R - 1.6;
+    var liste = pile.particules.comps[c];
     for (var k = 0; k < liste.length; k++) {
       var p = liste[k];
       var alpha = Math.max(0, Math.min(1, Math.min(p.x - a, b - p.x) / 2.5));
@@ -705,23 +898,23 @@ function _dessinerIonsPont(ctx) {
 // ── Circuit extérieur ─────────────────────────────────────────────────
 function _dessinerCircuit(ctx) {
   var comps = composantsCircuit();
-  var xs = [P_LAME_X[0]];
+  var xs = [lameX(0)];
   var i;
   for (i = 0; i < comps.length; i++) xs.push(comps[i].x0, comps[i].x1);
-  xs.push(P_LAME_X[1]);
+  xs.push(lameX(1));
 
   // Fils : des pinces au fil du haut, puis entre les composants
   ctx.strokeStyle = '#3a3f45';
   ctx.lineWidth = 0.55;
   ctx.beginPath();
-  ctx.moveTo(P_LAME_X[0], P_LAME_TOP - 1.6);
-  ctx.lineTo(P_LAME_X[0], P_FIL_Y);
+  ctx.moveTo(lameX(0), P_LAME_TOP - 1.6);
+  ctx.lineTo(lameX(0), P_FIL_Y);
   ctx.lineTo(xs[1], P_FIL_Y);
   for (i = 2; i < xs.length - 1; i += 2) {
     ctx.moveTo(xs[i], P_FIL_Y);
     ctx.lineTo(xs[i + 1], P_FIL_Y);
   }
-  ctx.lineTo(P_LAME_X[1], P_LAME_TOP - 1.6);
+  ctx.lineTo(lameX(1), P_LAME_TOP - 1.6);
   ctx.stroke();
 
   for (i = 0; i < comps.length; i++) {
@@ -730,6 +923,7 @@ function _dessinerCircuit(ctx) {
     else if (c.type === 'interrupteur') _dessinerInterrupteur(ctx, c);
     else if (c.type === 'resistance') _dessinerResistance(ctx, c);
     else if (c.type === 'lampe') _dessinerLampe(ctx, c);
+    else if (c.type === 'generateur') _dessinerGenerateur(ctx, c);
     else _dessinerFichesOuvertes(ctx, c);
   }
 }
@@ -738,6 +932,17 @@ function _dessinerCircuit(ctx) {
 function formatNombre(x, dec) {
   var s = Math.abs(x).toFixed(dec).replace('.', ',');
   return (x < 0 && parseFloat(Math.abs(x).toFixed(dec)) > 0 ? '−' : '') + s;
+}
+
+// Afficheur à cristaux liquides d'un appareil : texte réduit pour tenir
+function _afficheur(ctx, x0, x1, y0, txt) {
+  ctx.fillStyle = '#c9d8b6';
+  ctx.fillRect(x0, y0, x1 - x0, 6.4);
+  var taille = Math.min(3.6, (x1 - x0 - 1.2) / (txt.length * 0.56));
+  ctx.fillStyle = '#1d2a1a';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  texteEchelle(ctx, txt, (x0 + x1) / 2, y0 + 3.3, taille, '700', dispP.k);
 }
 
 // Multimètre : boîtier, afficheur, bornes COM (à gauche) et V ou A (à
@@ -754,15 +959,9 @@ function _dessinerMultimetre(ctx, c) {
   ctx.fill(); ctx.stroke();
   ctx.fillStyle = '#3d4550';
   ctx.fillRect(c.x0 + 1, y0 + 1, w - 2, h - 2);
-  // Afficheur
-  ctx.fillStyle = '#c9d8b6';
-  ctx.fillRect(c.x0 + 2, y0 + 2, w - 4, 6.4);
-  var txt = c.mode === 'V' ? formatNombre(tensionVoltmetre(), 2) + ' V'
-                           : formatNombre(pile.I * 1000, 1) + ' mA';
-  ctx.fillStyle = '#1d2a1a';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  texteEchelle(ctx, txt, xm, y0 + 5.3, 3.6, '700', dispP.k);
+  _afficheur(ctx, c.x0 + 1.8, c.x1 - 1.8, y0 + 2,
+             c.mode === 'V' ? formatNombre(tensionVoltmetre(), 2) + ' V'
+                            : formatNombre(pile.I * 1000, 1) + ' mA');
   // Bornes
   ctx.fillStyle = '#ffffff';
   texteEchelle(ctx, 'COM', c.x0 + 3.4, P_FIL_Y + 1.9, 1.6, '700', dispP.k);
@@ -773,6 +972,31 @@ function _dessinerMultimetre(ctx, c) {
   ctx.fillStyle = '#2c3e50';
   ctx.textBaseline = 'alphabetic';
   texteEchelle(ctx, c.mode === 'V' ? 'Voltmètre' : 'Ampèremètre', xm, y0 - 1.1, 2.6, '600', dispP.k);
+}
+
+// Générateur de tension réglable : boîtier bleu-gris, afficheur de la
+// tension réglée, bornes + (rouge) et − (noire) du côté choisi
+function _dessinerGenerateur(ctx, c) {
+  var xm = (c.x0 + c.x1) / 2, w = c.x1 - c.x0;
+  var y0 = P_FIL_Y - 11, h = 16;
+  ctx.fillStyle = '#4f6a86';
+  ctx.strokeStyle = '#2c3e50';
+  ctx.lineWidth = 0.3;
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(c.x0, y0, w, h, 1.2); else ctx.rect(c.x0, y0, w, h);
+  ctx.fill(); ctx.stroke();
+  _afficheur(ctx, c.x0 + 1.4, c.x1 - 1.4, y0 + 2, formatNombre(tensionGenerateur(), 2) + ' V');
+  var plusDroite = pile.polarite > 0;
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  texteEchelle(ctx, plusDroite ? '−' : '+', c.x0 + 2.8, P_FIL_Y + 1.6, 2.6, '700', dispP.k);
+  texteEchelle(ctx, plusDroite ? '+' : '−', c.x1 - 2.8, P_FIL_Y + 1.6, 2.6, '700', dispP.k);
+  _borne(ctx, c.x0, P_FIL_Y, plusDroite ? '#20242a' : '#c0392b');
+  _borne(ctx, c.x1, P_FIL_Y, plusDroite ? '#c0392b' : '#20242a');
+  ctx.fillStyle = '#2c3e50';
+  ctx.textBaseline = 'alphabetic';
+  texteEchelle(ctx, 'Générateur', xm, y0 - 1.1, 2.6, '600', dispP.k);
 }
 
 function _borne(ctx, x, y, couleur) {
@@ -787,10 +1011,12 @@ function _borne(ctx, x, y, couleur) {
 // Interrupteur : levier entre deux plots, levé quand il est ouvert
 function _dessinerInterrupteur(ctx, c) {
   var surv = pile.survol === 'interrupteur';
-  ctx.fillStyle = surv ? 'rgba(42,106,170,0.15)' : 'rgba(0,0,0,0)';
-  ctx.beginPath();
-  ctx.rect(c.x0 - 1.8, P_FIL_Y - 6, c.x1 - c.x0 + 3.6, 8.2);
-  ctx.fill();
+  if (surv) {
+    ctx.fillStyle = 'rgba(42,106,170,0.15)';
+    ctx.beginPath();
+    ctx.rect(c.x0 - 1.8, P_FIL_Y - 6, c.x1 - c.x0 + 3.6, 8.2);
+    ctx.fill();
+  }
   var ang = pile.interrupteur ? 0 : -0.6;
   var L = c.x1 - c.x0;
   ctx.strokeStyle = surv ? '#2a6aaa' : '#3a3f45';
@@ -894,11 +1120,11 @@ function _dessinerFichesOuvertes(ctx, c) {
 
 // ── Sens du courant et électrons dans les fils ────────────────────────
 function _dessinerCourant(ctx) {
-  var comps = composantsCircuit(), L = _longueurLigne(_CHEMIN_FIL);
+  var comps = composantsCircuit(), chemin = _cheminFil(), L = _longueurLigne(chemin);
   // Électrons, sauf dans les appareils et entre les fiches ouvertes
   var s0 = ((pile.phaseE % ECART_ELECTRONS) + ECART_ELECTRONS) % ECART_ELECTRONS;
   for (var s = s0; s < L; s += ECART_ELECTRONS) {
-    var P = _pointLigne(_CHEMIN_FIL, s);
+    var P = _pointLigne(chemin, s);
     var cache = false;
     if (Math.abs(P.y - P_FIL_Y) < 0.01) {
       for (var i = 0; i < comps.length; i++) {
@@ -916,12 +1142,13 @@ function _dessinerCourant(ctx) {
     ctx.moveTo(P.x - 0.38, P.y); ctx.lineTo(P.x + 0.38, P.y);
     ctx.stroke();
   }
-  // Flèches du sens conventionnel : du pôle + vers le pôle − dans le
-  // circuit extérieur (descend vers la lame de gauche si I > 0)
+  // Flèches du sens conventionnel dans le circuit extérieur : de la
+  // cathode vers l'anode en passant par les fils (descend vers la lame de
+  // gauche si I > 0)
   if (pile.I === 0) return;
   var bas = pile.I > 0;
-  _flecheCourant(ctx, P_LAME_X[0] - 2.2, 30, bas ? 1 : -1);
-  _flecheCourant(ctx, P_LAME_X[1] + 2.2, 30, bas ? -1 : 1);
+  _flecheCourant(ctx, lameX(0) - 2.2, 30, bas ? 1 : -1);
+  _flecheCourant(ctx, lameX(1) + 2.2, 30, bas ? -1 : 1);
 }
 
 // Flèche verticale rouge (sens : +1 vers le bas), marquée I
@@ -940,37 +1167,48 @@ function _flecheCourant(ctx, x, y, sens) {
 
 // ── Étiquettes ────────────────────────────────────────────────────────
 function _dessinerEtiquettesP(ctx) {
+  var i, R = recipients();
   ctx.textBaseline = 'alphabetic';
-  for (var i = 0; i < 2; i++) {
-    var M = METAUX[pile.metaux[i]];
+  for (i = 0; i < 2; i++) {
+    var M = METAUX[pile.lames[i].sym];
     var gauche = i === 0;
-    var xl = gauche ? P_LAME_X[0] - P_LAME_W / 2 - 1.6 : P_LAME_X[1] + P_LAME_W / 2 + 1.6;
+    var xl = gauche ? lameX(0) - P_LAME_W / 2 - 1.6 : lameX(1) + P_LAME_W / 2 + 1.6;
     ctx.textAlign = gauche ? 'right' : 'left';
     ctx.fillStyle = '#2c3e50';
     texteEchelle(ctx, 'Lame ' + M.de, xl, 50.5, 2.9, '600', dispP.k);
 
     if (pile.showPoles) {
       var pole = poleElectrode(i), role = roleElectrode(i);
-      if (pole) {
-        var txt = 'Pôle ' + pole + (role ? ' · ' + role : '');
-        ctx.fillStyle = pole === '+' ? 'rgba(210,100,20,1)' : 'rgba(40,80,180,1)';
+      if (pole || role) {
+        var txt = (pole ? 'Pôle ' + pole : '') + (pole && role ? ' · ' : '') + role;
+        ctx.fillStyle = pole === '+' ? 'rgba(210,100,20,1)' : pole === '−' ? 'rgba(40,80,180,1)' : '#5a6a78';
         texteEchelle(ctx, txt, xl, 54.2, 2.9, '700', dispP.k);
       }
     }
-
-    // Solution : nom et concentration actuelle, sous le bécher
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#2c3e50';
-    texteEchelle(ctx, _majusculeP(M.nomSolution), P_BECHER_CX[i], P_TABLE_Y + 6.4, 2.9, '600', dispP.k);
-    ctx.fillStyle = '#5a6a78';
-    texteEchelle(ctx, '[' + ionTexte(M.sym) + '] = ' + formatConcentration(concentration(i)) + ' mol/L',
-                 P_BECHER_CX[i], P_TABLE_Y + 10, 2.6, '400', dispP.k);
   }
 
+  // Solutions : nom et concentrations actuelles, sous chaque récipient
   ctx.textAlign = 'center';
-  ctx.fillStyle = pile.pont ? '#2c3e50' : '#9aa6b0';
-  texteEchelle(ctx, pile.pont ? 'Pont salin (K⁺ + NO₃⁻)' : 'Pont salin retiré',
-               (P_PONT_X[0] + P_PONT_X[1]) / 2, P_PONT_Y - 3.4, 2.6, '600', dispP.k);
+  for (var c = 0; c < R.length; c++) {
+    var C = pile.comp[c], xm = (R[c].L + R[c].R) / 2;
+    ctx.fillStyle = '#2c3e50';
+    texteEchelle(ctx, _majusculeP(C.nom), xm, P_TABLE_Y + 6.4, 2.9, '600', dispP.k);
+    var morceaux = [];
+    for (var sym in C.n) {
+      var conc = concentrationC(c, sym);
+      if (sym === C.sym0 || conc >= 5e-4) {
+        morceaux.push('[' + ionTexte(sym) + '] = ' + formatConcentration(conc) + ' mol/L');
+      }
+    }
+    ctx.fillStyle = '#5a6a78';
+    texteEchelle(ctx, morceaux.join('   '), xm, P_TABLE_Y + 10, 2.6, '400', dispP.k);
+  }
+
+  if (!enCuve()) {
+    ctx.fillStyle = pile.pont ? '#2c3e50' : '#9aa6b0';
+    texteEchelle(ctx, pile.pont ? 'Pont salin (K⁺ + NO₃⁻)' : 'Pont salin retiré',
+                 (P_PONT_X[0] + P_PONT_X[1]) / 2, P_PONT_Y - 3.4, 2.6, '600', dispP.k);
+  }
 }
 
 function _majusculeP(s) { return s.charAt(0).toUpperCase() + s.slice(1); }

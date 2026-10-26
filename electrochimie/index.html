@@ -122,16 +122,21 @@
             <label for="sel-experience">Pile</label>
             <select class="param-select" id="sel-experience" onchange="onSelectExperience(this.value)"></select>
           </div>
-          <div class="param-row">
-            <label for="sel-gauche">Demi-pile de gauche</label>
-            <select class="param-select" id="sel-gauche" onchange="onSelectDemiPile(0, this.value)"></select>
-            <span class="input-hint" id="lbl-gauche"></span>
+          <!-- Deux béchers : une demi-pile de chaque côté -->
+          <div id="bloc-demi-piles">
+            <div class="param-row">
+              <label for="sel-gauche">Demi-pile de gauche</label>
+              <select class="param-select" id="sel-gauche" onchange="onSelectDemiPile(0, this.value)"></select>
+              <span class="input-hint" id="lbl-gauche"></span>
+            </div>
+            <div class="param-row">
+              <label for="sel-droite">Demi-pile de droite</label>
+              <select class="param-select" id="sel-droite" onchange="onSelectDemiPile(1, this.value)"></select>
+              <span class="input-hint" id="lbl-droite"></span>
+            </div>
           </div>
-          <div class="param-row">
-            <label for="sel-droite">Demi-pile de droite</label>
-            <select class="param-select" id="sel-droite" onchange="onSelectDemiPile(1, this.value)"></select>
-            <span class="input-hint" id="lbl-droite"></span>
-          </div>
+          <!-- Cuve unique (électrolyses à anode soluble) : description -->
+          <p class="panel-text" id="lbl-cuve" style="display:none"></p>
         </div>
 
         <div class="sep"></div>
@@ -146,7 +151,19 @@
               <option value="voltmetre">Voltmètre</option>
               <option value="resistance">Ampèremètre + résistance</option>
               <option value="lampe">Ampèremètre + lampe</option>
+              <option value="generateur">Ampèremètre + générateur</option>
             </select>
+          </div>
+          <!-- Générateur : tension réglable de 0 à 3 V, bornes inversables -->
+          <div id="bloc-generateur" style="display:none">
+            <div class="param-row">
+              <label for="sl-tension">Tension du générateur
+                <span class="param-value"><span id="lbl-tension">1,50</span> V</span>
+              </label>
+              <input type="range" id="sl-tension" min="0" max="60" step="1" value="30"
+                     oninput="onSliderTension(this.value)">
+              <span class="input-hint" id="lbl-seuil"></span>
+            </div>
           </div>
           <!-- Résistance : crans de 10 Ω à 1 kΩ -->
           <div class="param-row" id="row-resistance" style="display:none">
@@ -158,6 +175,7 @@
           </div>
           <div class="btn-stack">
             <button class="btn btn-primary" id="btn-interrupteur" style="display:none" onclick="toggleInterrupteur()">Fermer l’interrupteur</button>
+            <button class="btn btn-toggle-one" id="btn-polarite" style="display:none" onclick="togglePolarite()">Inverser les bornes du générateur</button>
             <button class="btn btn-toggle-one" id="btn-pont" onclick="togglePont()">Retirer le pont salin</button>
           </div>
         </div>
@@ -224,20 +242,20 @@
         <div class="panel-section">
           <div class="section-title" data-repliable>Paramètres</div>
           <div class="param-row">
-            <label for="sl-c-gauche">Concentration à gauche
+            <label for="sl-c-gauche"><span id="titre-c-gauche">Concentration à gauche</span>
               <span class="param-value"><span id="lbl-c-gauche">0,10</span> mol/L</span>
             </label>
             <input type="range" id="sl-c-gauche" min="0" max="4" step="1" value="2"
                    oninput="onSliderConcentration(0, this.value)">
           </div>
-          <div class="param-row">
+          <div class="param-row" id="row-c-droite">
             <label for="sl-c-droite">Concentration à droite
               <span class="param-value"><span id="lbl-c-droite">0,10</span> mol/L</span>
             </label>
             <input type="range" id="sl-c-droite" min="0" max="4" step="1" value="2"
                    oninput="onSliderConcentration(1, this.value)">
           </div>
-          <span class="input-hint">Volume de chaque solution : 100 mL. Un changement remet la pile à zéro.</span>
+          <span class="input-hint">Volume de chaque solution : 100 mL. Un changement remet l’expérience à zéro.</span>
         </div>
 
         <div class="sep"></div>
@@ -286,9 +304,13 @@
         et sur l’interrupteur K pour l’ouvrir ou le fermer.
         Le voltmètre affiche V<sub>droite</sub> − V<sub>gauche</sub> (borne COM à gauche) ;
         l’ampèremètre compte positivement le courant qui entre par sa borne A, à droite.
-        <br><strong>Modèle</strong> : solutions de 100 mL, résistance interne de 20 Ω, temps accéléré
-        (1 h de fonctionnement par seconde à ×1). La tension baisse peu à peu, puis chute quand le réactif
-        limitant est épuisé.
+        <br><strong>Générateur</strong> : opposé à la pile (borne + reliée au pôle +), il la laisse débiter
+        tant que sa tension est inférieure à celle de la pile, puis force la transformation inverse
+        (électrolyse) au-delà d’un seuil. L’électrode reliée à la borne + est alors l’anode.
+        <br><strong>Modèle</strong> : solutions de 100 mL, résistance interne de 20 Ω (générateur : 10 Ω de plus),
+        surtension de 0,15 V pour une transformation forcée, temps accéléré (1 h de fonctionnement par seconde
+        à ×1). La tension baisse peu à peu, puis chute quand un réactif est épuisé. L’eau n’est ni oxydée
+        ni réduite (pas de dégagement gazeux).
         <br><strong>Raccourcis</strong> : Espace = pause, R = RAZ.
       </div>
     </div>

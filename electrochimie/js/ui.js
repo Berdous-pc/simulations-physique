@@ -213,12 +213,23 @@ function majEquations() {
 // ══════════════════════════════════════════════════════════════════════
 
 function _remplirListesPile() {
+  // Expériences regroupées (Piles, Électrolyses), montage libre à la fin
   var selX = document.getElementById('sel-experience');
+  var groupes = {};
   ORDRE_EXPERIENCES.forEach(function (cle) {
+    var X = EXPERIENCES[cle], parent = selX;
+    if (X.groupe) {
+      if (!groupes[X.groupe]) {
+        groupes[X.groupe] = document.createElement('optgroup');
+        groupes[X.groupe].label = X.groupe;
+        selX.appendChild(groupes[X.groupe]);
+      }
+      parent = groupes[X.groupe];
+    }
     var o = document.createElement('option');
     o.value = cle;
-    o.textContent = EXPERIENCES[cle].nom;
-    selX.appendChild(o);
+    o.textContent = X.nom;
+    parent.appendChild(o);
   });
   ['sel-gauche', 'sel-droite'].forEach(function (id) {
     var sel = document.getElementById(id);
@@ -232,8 +243,10 @@ function _remplirListesPile() {
   _synchroniserPanneauPile();
 }
 
-// Recopie l'état de la pile dans les listes et les curseurs
+// Recopie l'état de la pile dans les listes et les curseurs ; adapte le
+// panneau au montage (deux béchers ou cuve unique)
 function _synchroniserPanneauPile() {
+  var cuve = enCuve();
   document.getElementById('sel-experience').value = pile.experience;
   document.getElementById('sel-gauche').value = pile.metaux[0];
   document.getElementById('sel-droite').value = pile.metaux[1];
@@ -241,6 +254,20 @@ function _synchroniserPanneauPile() {
     document.getElementById('sl-c-' + cote).value = pile.iC0[i];
     document.getElementById('lbl-c-' + cote).textContent = _formatC0(concInitiale(i));
   });
+  document.getElementById('bloc-demi-piles').style.display = cuve ? 'none' : '';
+  var lc = document.getElementById('lbl-cuve');
+  lc.style.display = cuve ? '' : 'none';
+  if (cuve) {
+    var S = METAUX[pile.solution];
+    lc.innerHTML = 'Cuve unique : solution de ' + S.nomSolution + ' (' + ionHTML(S.sym) + ' + ' +
+                   anionHTML(S.anion) + '), lame ' + METAUX[pile.metaux[0]].de + ' à gauche, lame ' +
+                   METAUX[pile.metaux[1]].de + ' à droite.';
+  }
+  document.getElementById('titre-c-gauche').textContent = cuve ? 'Concentration de la solution' : 'Concentration à gauche';
+  document.getElementById('row-c-droite').style.display = cuve ? 'none' : '';
+  document.getElementById('sel-dipole').value = pile.dipole;
+  document.getElementById('sl-tension').value = pile.iU;
+  document.getElementById('lbl-tension').textContent = formatNombre(tensionGenerateur(), 2);
 }
 
 function _formatC0(c) { return (c < 0.1 ? c.toFixed(2) : c.toFixed(c < 1 ? 2 : 1)).replace('.', ','); }
@@ -248,8 +275,11 @@ function _formatC0(c) { return (c < 0.1 ? c.toFixed(2) : c.toFixed(c < 1 ? 2 : 1
 // Expérience prédéfinie qui correspond aux réglages, sinon « Montage libre »
 function _experienceCorrespondante() {
   for (var i = 0; i < ORDRE_EXPERIENCES.length; i++) {
-    var X = EXPERIENCES[ORDRE_EXPERIENCES[i]];
-    if (X.g === pile.metaux[0] && X.d === pile.metaux[1] && X.cg === pile.iC0[0] && X.cd === pile.iC0[1]) {
+    var X = EXPERIENCES[ORDRE_EXPERIENCES[i]], bac = X.bac || 'deux';
+    if (!X.g || bac !== pile.bac) continue;
+    if (bac === 'un' && X.solution !== pile.solution) continue;
+    if (X.g === pile.metaux[0] && X.d === pile.metaux[1] && X.cg === pile.iC0[0] &&
+        (bac === 'un' || X.cd === pile.iC0[1])) {
       return ORDRE_EXPERIENCES[i];
     }
   }
@@ -259,12 +289,25 @@ function _experienceCorrespondante() {
 function onSelectExperience(v) {
   var X = EXPERIENCES[v];
   if (X.g) {
+    pile.bac = X.bac || 'deux';
     pile.metaux = [X.g, X.d];
     pile.iC0 = [X.cg, X.cd];
+    if (X.solution) pile.solution = X.solution;
+  } else {
+    pile.bac = 'deux';                 // montage libre : deux béchers
+  }
+  // Circuit imposé par une électrolyse (interrupteur ouvert : l'élève le ferme)
+  if (X.dipole) {
+    pile.dipole = X.dipole;
+    pile.iU = X.iU;
+    pile.polarite = X.polarite;
+    pile.interrupteur = false;
   }
   pile.experience = v;
   _synchroniserPanneauPile();
+  _majBoutonsZones();
   resetPile();
+  _majPanneauCircuit();
 }
 
 function onSelectDemiPile(i, v) {
@@ -276,13 +319,14 @@ function onSelectDemiPile(i, v) {
 
 function onSliderConcentration(i, val) {
   pile.iC0[i] = parseInt(val, 10);
+  if (enCuve()) pile.iC0[1] = pile.iC0[0];
   pile.experience = _experienceCorrespondante();
   _synchroniserPanneauPile();
   resetPile();
 }
 
-// RAZ de la pile : solutions et lames neuves, compteurs à zéro. Le circuit
-// extérieur (appareil, interrupteur, pont) est conservé.
+// RAZ : solutions et lames neuves, compteurs à zéro. Le circuit extérieur
+// (appareil, interrupteur, générateur, pont) est conservé.
 function resetPile() {
   resetPileModele();
   resetLoupePile();
@@ -315,6 +359,17 @@ function onSliderResistance(val) {
   sim.needsRedraw = true;
 }
 
+function onSliderTension(val) {
+  pile.iU = parseInt(val, 10);
+  document.getElementById('lbl-tension').textContent = formatNombre(tensionGenerateur(), 2);
+  _majPanneauCircuit();
+}
+
+function togglePolarite() {
+  pile.polarite = -pile.polarite;
+  _majPanneauCircuit();
+}
+
 function toggleInterrupteur() {
   pile.interrupteur = !pile.interrupteur;
   _majPanneauCircuit();
@@ -326,29 +381,57 @@ function togglePont() {
 }
 
 function _majPanneauCircuit() {
+  var gen = pile.dipole === 'generateur';
   document.getElementById('row-resistance').style.display = pile.dipole === 'resistance' ? '' : 'none';
+  document.getElementById('bloc-generateur').style.display = gen ? '' : 'none';
+  document.getElementById('btn-polarite').style.display = gen ? '' : 'none';
   var btnK = document.getElementById('btn-interrupteur');
-  btnK.style.display = chargeBranchee() ? '' : 'none';
+  btnK.style.display = courantPossible() ? '' : 'none';
   btnK.textContent = pile.interrupteur ? 'Ouvrir l’interrupteur' : 'Fermer l’interrupteur';
   var btnP = document.getElementById('btn-pont');
+  btnP.style.display = enCuve() ? 'none' : '';
   btnP.textContent = pile.pont ? 'Retirer le pont salin' : 'Remettre le pont salin';
   btnP.classList.toggle('active', !pile.pont);
   btnP.setAttribute('aria-pressed', String(!pile.pont));
   // Le courant change aussitôt (même en pause)
   pile.E = femPile();
   pile.I = courantPile();
+  _majSeuil();
   sim.needsRedraw = true;
+}
+
+// Indication sous le curseur du générateur : seuil d'électrolyse dans le
+// sens où il pousse (il évolue avec les concentrations)
+var _seuilAffiche = '';
+function _majSeuil() {
+  if (pile.dipole !== 'generateur') return;
+  var s = seuilElectrolyse();
+  var txt = s === null
+    ? 'Branché dans le sens de la pile : il l’aide à débiter.'
+    : 'Électrolyse au-delà de ' + formatNombre(s, 2) + ' V environ.';
+  if (txt === _seuilAffiche) return;
+  _seuilAffiche = txt;
+  document.getElementById('lbl-seuil').textContent = txt;
 }
 
 // ── Loupe ─────────────────────────────────────────────────────────────
 function setZonePile(z) {
   if (z === pile.zone) return;          // un clic sur la zone déjà vue ne remet pas la loupe à zéro
+  if (z === 'pont' && enCuve()) return;
   pile.zone = z;
-  ['gauche', 'droite', 'pont', 'fil'].forEach(function (n) {
-    document.getElementById('zone-' + n).classList.toggle('active', n === z);
-  });
+  _majBoutonsZones();
   resetLoupePile();
   sim.needsRedraw = true;
+}
+
+// Boutons des zones : zone active, pont salin indisponible dans la cuve
+function _majBoutonsZones() {
+  if (pile.zone === 'pont' && enCuve()) pile.zone = 'gauche';
+  ['gauche', 'droite', 'pont', 'fil'].forEach(function (n) {
+    var b = document.getElementById('zone-' + n);
+    b.classList.toggle('active', n === pile.zone);
+    if (n === 'pont') b.disabled = enCuve();
+  });
 }
 
 // ── Options ───────────────────────────────────────────────────────────
@@ -382,54 +465,90 @@ function _majMesures(force) {
     _mesuresAffichees[id] = valeurs[id];
     document.getElementById(id).textContent = valeurs[id];
   }
+  _majSeuil();
 }
 
-// ── Équations de fonctionnement ───────────────────────────────────────
-// Reconstruites quand les demi-piles, la polarité, l'état du circuit ou
-// le pont changent (clé comparée à chaque image).
+// ── Équations ─────────────────────────────────────────────────────────
+// Demi-équations à l'anode et à la cathode et équation de fonctionnement
+// (pile, transformation spontanée) ou de l'électrolyse (transformation
+// forcée). Sans courant : celles du sens où la transformation aurait lieu
+// (sens spontané, ou sens imposé par le générateur s'il force), avec la
+// raison de l'absence de courant. Reconstruites quand la clé change.
 var _cleEqPile = '';
 
 function majEquationsPile(force) {
   var E = pile.E, I = pile.I;
-  var cle = pile.metaux.join('|') + '|' + (E > 1e-4 ? 1 : E < -1e-4 ? -1 : 0) + '|' + (I !== 0) + '|' + pile.pont;
+  var sI = I > 0 ? 1 : I < 0 ? -1 : 0;
+  var gen = pile.dipole === 'generateur';
+  var seuil = gen ? seuilElectrolyse() : null;
+  var cle = [pile.bac, pile.metaux.join(), pile.solution, E > 1e-4 ? 1 : E < -1e-4 ? -1 : 0, sI,
+             surfaceLame(0), surfaceLame(1), cationReduit(0), cationReduit(1), pile.pont, pile.dipole,
+             pile.interrupteur, pile.polarite, seuil === null ? '' : seuil.toFixed(2)].join('|');
   if (!force && cle === _cleEqPile) return;
   _cleEqPile = cle;
   if (sim.onglet !== 'pile-electrolyse') return;
 
-  var html;
-  if (Math.abs(E) <= 1e-4) {
-    html = '<div class="eq-rien">Aucune tension entre les électrodes.' +
-           '<span class="eq-sous">Même couple et mêmes concentrations des deux côtés : la pile ne peut pas débiter.</span></div>';
+  var cote = function (i) { return i === 0 ? 'gauche' : 'droite'; };
+  var iA, forcee;
+  if (sI) {
+    iA = sI > 0 ? 0 : 1;
+    forcee = sensForce();
+  } else if (gen && seuil !== null) {
+    iA = pile.polarite > 0 ? 1 : 0;              // électrode reliée à la borne +
+    forcee = true;
+  } else if (Math.abs(E) > 1e-4) {
+    iA = E > 0 ? 0 : 1;                          // pôle − de la pile
+    forcee = false;
   } else {
-    var iM = E > 0 ? 0 : 1, iP = 1 - iM;          // électrodes − (anode) et + (cathode)
-    var A = pile.metaux[iM], C = pile.metaux[iP];
-    var st = stoechiometrie(A, C);
-    var cote = function (i) { return i === 0 ? 'gauche' : 'droite'; };
-    var mult = function (n) { return n > 1 ? '<td class="eq-mult">× ' + n + '</td>' : '<td></td>'; };
-    var bilan;
-    if (A !== C) {
-      bilan = _coef(st.coefMetal) + A + _etat('s') + ' + ' + _coef(st.coefIon) + ionHTML(C) + _etat('aq') +
-              ' → ' + _coef(st.coefMetal) + ionHTML(A) + _etat('aq') + ' + ' + _coef(st.coefIon) + C + _etat('s');
-    } else {
-      // Pile de concentration : les ions passent du côté concentré au côté dilué
-      bilan = ionHTML(C) + _etat('aq, ' + cote(iP)) + ' → ' + ionHTML(C) + _etat('aq, ' + cote(iM));
-    }
-    html =
-      '<table class="eq-table">' +
-      '<tr><td class="eq-lbl eq-ox">Pôle − (anode, ' + cote(iM) + ') : oxydation</td><td class="eq-val">' +
-        A + _etat('s') + ' = ' + ionHTML(A) + _etat('aq') + ' + ' + _electrons(METAUX[A].charge) +
-        '</td>' + mult(st.coefMetal) + '</tr>' +
-      '<tr><td class="eq-lbl eq-red">Pôle + (cathode, ' + cote(iP) + ') : réduction</td><td class="eq-val">' +
-        ionHTML(C) + _etat('aq') + ' + ' + _electrons(METAUX[C].charge) + ' = ' + C + _etat('s') +
-        '</td>' + mult(st.coefIon) + '</tr>' +
-      '<tr class="eq-bilan"><td class="eq-lbl">Équation de fonctionnement</td><td class="eq-val">' +
-        bilan + '</td><td></td></tr>' +
-      '</table>';
-    if (I === 0) {
-      html += '<div class="eq-note">' + (pile.pont
-        ? 'La pile ne débite pas : ces réactions n’ont lieu que lorsqu’un courant circule.'
-        : 'Pont salin retiré : le circuit est ouvert, la pile ne débite pas.') + '</div>';
-    }
+    document.getElementById('equations').innerHTML =
+      '<div class="eq-rien">Aucune tension entre les électrodes.' +
+      '<span class="eq-sous">' + (enCuve()
+        ? 'Les deux électrodes sont faites du métal de la solution : seul un générateur peut forcer une transformation.'
+        : 'Même couple et mêmes concentrations des deux côtés : la pile ne peut pas débiter.') + '</span></div>';
+    return;
+  }
+  var iC = 1 - iA;
+  var A = surfaceLame(iA), C = cationReduit(iC) || pile.lames[iC].sym;
+  var st = stoechiometrie(A, C);
+  var mult = function (n) { return n > 1 ? '<td class="eq-mult">× ' + n + '</td>' : '<td></td>'; };
+
+  var bilan;
+  if (A !== C) {
+    bilan = _coef(st.coefMetal) + A + _etat('s') + ' + ' + _coef(st.coefIon) + ionHTML(C) + _etat('aq') +
+            ' → ' + _coef(st.coefMetal) + ionHTML(A) + _etat('aq') + ' + ' + _coef(st.coefIon) + C + _etat('s');
+  } else if (enCuve()) {
+    // Anode soluble : le métal passe de l'anode à la cathode
+    bilan = A + _etat('s, anode') + ' → ' + A + _etat('s, cathode');
+  } else {
+    // Pile de concentration : les ions passent d'un compartiment à l'autre
+    bilan = ionHTML(C) + _etat('aq, ' + cote(iC)) + ' → ' + ionHTML(C) + _etat('aq, ' + cote(iA));
+  }
+  var lblA = forcee ? 'Anode (borne + du générateur, ' + cote(iA) + ') : oxydation'
+                    : 'Pôle − (anode, ' + cote(iA) + ') : oxydation';
+  var lblC = forcee ? 'Cathode (borne − du générateur, ' + cote(iC) + ') : réduction'
+                    : 'Pôle + (cathode, ' + cote(iC) + ') : réduction';
+  var html =
+    '<table class="eq-table">' +
+    '<tr><td class="eq-lbl eq-ox">' + lblA + '</td><td class="eq-val">' +
+      A + _etat('s') + ' = ' + ionHTML(A) + _etat('aq') + ' + ' + _electrons(METAUX[A].charge) +
+      '</td>' + mult(st.coefMetal) + '</tr>' +
+    '<tr><td class="eq-lbl eq-red">' + lblC + '</td><td class="eq-val">' +
+      ionHTML(C) + _etat('aq') + ' + ' + _electrons(METAUX[C].charge) + ' = ' + C + _etat('s') +
+      '</td>' + mult(st.coefIon) + '</tr>' +
+    '<tr class="eq-bilan"><td class="eq-lbl">' +
+      (forcee ? 'Électrolyse (transformation forcée)' : 'Équation de fonctionnement') +
+      '</td><td class="eq-val">' + bilan + '</td><td></td></tr>' +
+    '</table>';
+
+  if (!sI) {
+    var note;
+    if (!enCuve() && !pile.pont) note = 'Pont salin retiré : le circuit est ouvert, aucun courant ne circule.';
+    else if (!courantPossible()) note = 'Circuit ouvert : aucun courant, ces réactions n’ont pas lieu.';
+    else if (!pile.interrupteur) note = 'Interrupteur ouvert : aucun courant, ces réactions n’ont pas lieu.';
+    else if (gen && seuil !== null) note = 'Aucun courant : la tension du générateur n’atteint pas le seuil d’électrolyse (' +
+                                            formatNombre(seuil, 2) + ' V environ).';
+    else note = 'Aucun courant : un réactif est épuisé.';
+    html += '<div class="eq-note">' + note + '</div>';
   }
   document.getElementById('equations').innerHTML = html;
 }
