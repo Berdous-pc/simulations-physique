@@ -11,7 +11,7 @@
   <title>Simulation — Oxydoréduction, piles et électrolyse</title>
   <meta name="author" content="Mathieu Berdous">
   <meta name="copyright" content="Mathieu Berdous — CC BY-NC 4.0">
-  <meta name="description" content="Simulation interactive (Première) : une lame métallique plongée dans une solution d'ions, transfert d'électrons entre l'oxydant et le réducteur observé à l'échelle microscopique, demi-équations d'oxydoréduction.">
+  <meta name="description" content="Simulation interactive (Première, Terminale) : lame métallique dans une solution d'ions, transfert d'électrons observé à l'échelle microscopique ; piles (Daniell…) avec voltmètre, ampèremètre, pont salin, et loupe sur les électrodes, le pont salin et le fil.">
   <link rel="canonical" href="https://berdouspc.com/electrochimie/">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>⚛️</text></svg>">
   <link rel="stylesheet" href="css/style.css" />
@@ -114,11 +114,146 @@
 
       <!-- ════════════════ Onglet Pile et électrolyse ════════════════ -->
       <div class="panel-main-section" id="section-pile-electrolyse" style="display:none">
+
+        <!-- ── Choix de la pile ───────────────────── -->
         <div class="panel-section">
-          <div class="section-title">En préparation</div>
-          <p class="panel-text">Cet onglet permettra d'associer deux demi-piles (pile) ou d'imposer un courant (électrolyse).</p>
+          <div class="section-title">Expérience</div>
+          <div class="param-row">
+            <label for="sel-experience">Pile</label>
+            <select class="param-select" id="sel-experience" onchange="onSelectExperience(this.value)"></select>
+          </div>
+          <div class="param-row">
+            <label for="sel-gauche">Demi-pile de gauche</label>
+            <select class="param-select" id="sel-gauche" onchange="onSelectDemiPile(0, this.value)"></select>
+            <span class="input-hint" id="lbl-gauche"></span>
+          </div>
+          <div class="param-row">
+            <label for="sel-droite">Demi-pile de droite</label>
+            <select class="param-select" id="sel-droite" onchange="onSelectDemiPile(1, this.value)"></select>
+            <span class="input-hint" id="lbl-droite"></span>
+          </div>
         </div>
-      </div>
+
+        <div class="sep"></div>
+
+        <!-- ── Circuit extérieur ──────────────────── -->
+        <div class="panel-section">
+          <div class="section-title">Circuit extérieur</div>
+          <div class="param-row">
+            <label for="sel-dipole">Entre les électrodes</label>
+            <select class="param-select" id="sel-dipole" onchange="onSelectDipole(this.value)">
+              <option value="aucun">Rien (circuit ouvert)</option>
+              <option value="voltmetre">Voltmètre</option>
+              <option value="resistance">Ampèremètre + résistance</option>
+              <option value="lampe">Ampèremètre + lampe</option>
+            </select>
+          </div>
+          <!-- Résistance : crans de 10 Ω à 1 kΩ -->
+          <div class="param-row" id="row-resistance" style="display:none">
+            <label for="sl-resistance">Résistance
+              <span class="param-value"><span id="lbl-resistance">100</span> Ω</span>
+            </label>
+            <input type="range" id="sl-resistance" min="0" max="6" step="1" value="3"
+                   oninput="onSliderResistance(this.value)">
+          </div>
+          <div class="btn-stack">
+            <button class="btn btn-primary" id="btn-interrupteur" style="display:none" onclick="toggleInterrupteur()">Fermer l’interrupteur</button>
+            <button class="btn btn-toggle-one" id="btn-pont" onclick="togglePont()">Retirer le pont salin</button>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <!-- ── Zone grossie par la loupe ──────────── -->
+        <div class="panel-section">
+          <div class="section-title">Loupe</div>
+          <div class="mode-tabs mode-tabs-grille">
+            <button class="mode-tab active" id="zone-gauche" onclick="setZonePile('gauche')">Électrode gauche</button>
+            <button class="mode-tab" id="zone-droite" onclick="setZonePile('droite')">Électrode droite</button>
+            <button class="mode-tab" id="zone-pont" onclick="setZonePile('pont')">Pont salin</button>
+            <button class="mode-tab" id="zone-fil" onclick="setZonePile('fil')">Fil</button>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <!-- ── Contrôle ───────────────────────────── -->
+        <div class="panel-section">
+          <div class="section-title">Contrôle</div>
+          <div class="btn-row">
+            <button class="btn btn-pause" id="btn-playpause-pile" onclick="togglePause()">⏸ Pause</button>
+            <button class="btn btn-raz" onclick="resetPile()">↺ RAZ</button>
+          </div>
+          <div class="param-row param-row-speed">
+            <label for="sl-speed-pile">Vitesse
+              <span class="param-value">×<span id="lbl-speed-pile">1,00</span></span>
+            </label>
+            <input type="range" id="sl-speed-pile" min="0" max="3" step="1" value="2"
+                   oninput="onSliderSpeed(this.value)">
+            <div class="speed-ticks">
+              <span>×0,10</span>
+              <span>×0,50</span>
+              <span>×1,00</span>
+              <span>×2,00</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <!-- ── Mesures ────────────────────────────── -->
+        <div class="panel-section">
+          <div class="section-title" data-repliable>Mesures</div>
+          <div class="readout">
+            <div class="ro-label">Durée de fonctionnement</div>
+            <div class="ro-value" id="ro-duree">0 min</div>
+          </div>
+          <div class="readout">
+            <div class="ro-label">Intensité I</div>
+            <div class="ro-value" id="ro-intensite">0,0 mA</div>
+          </div>
+          <div class="readout">
+            <div class="ro-label">Quantité d’électricité Q = I·Δt</div>
+            <div class="ro-value" id="ro-charge">0 C</div>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <!-- ── Concentrations initiales ───────────── -->
+        <div class="panel-section">
+          <div class="section-title" data-repliable>Paramètres</div>
+          <div class="param-row">
+            <label for="sl-c-gauche">Concentration à gauche
+              <span class="param-value"><span id="lbl-c-gauche">0,10</span> mol/L</span>
+            </label>
+            <input type="range" id="sl-c-gauche" min="0" max="4" step="1" value="2"
+                   oninput="onSliderConcentration(0, this.value)">
+          </div>
+          <div class="param-row">
+            <label for="sl-c-droite">Concentration à droite
+              <span class="param-value"><span id="lbl-c-droite">0,10</span> mol/L</span>
+            </label>
+            <input type="range" id="sl-c-droite" min="0" max="4" step="1" value="2"
+                   oninput="onSliderConcentration(1, this.value)">
+          </div>
+          <span class="input-hint">Volume de chaque solution : 100 mL. Un changement remet la pile à zéro.</span>
+        </div>
+
+        <div class="sep"></div>
+
+        <!-- ── Options d'affichage ────────────────── -->
+        <div class="panel-section">
+          <div class="section-title" data-repliable>Options</div>
+          <div class="btn-stack">
+            <button class="btn btn-toggle-one" id="btn-equations-pile" onclick="toggleEquationsPile()">Afficher les équations</button>
+            <button class="btn btn-toggle-one" id="btn-courant" onclick="toggleOptionPile('btn-courant', 'showCourant')">Sens du courant et électrons</button>
+            <button class="btn btn-toggle-one" id="btn-migration" onclick="toggleOptionPile('btn-migration', 'showMigration')">Migration des ions</button>
+            <button class="btn btn-toggle-one" id="btn-poles" onclick="toggleOptionPile('btn-poles', 'showPoles')">Pôles, anode et cathode</button>
+          </div>
+        </div>
+
+      </div><!-- fin #section-pile-electrolyse -->
 
     </div><!-- fin #panel-body -->
 
@@ -146,7 +281,15 @@
         <button class="panel-hint-toggle" onclick="toggleHint()" title="Afficher les informations">▲</button>
       </div>
       <div class="panel-hint-body">
-        Onglet en préparation.
+        Choisir les deux demi-piles et ce qui est branché entre les électrodes.
+        Cliquer sur un cercle du montage (électrodes, pont salin, fil) pour le voir à la loupe,
+        et sur l’interrupteur K pour l’ouvrir ou le fermer.
+        Le voltmètre affiche V<sub>droite</sub> − V<sub>gauche</sub> (borne COM à gauche) ;
+        l’ampèremètre compte positivement le courant qui entre par sa borne A, à droite.
+        <br><strong>Modèle</strong> : solutions de 100 mL, résistance interne de 20 Ω, temps accéléré
+        (1 h de fonctionnement par seconde à ×1). La tension baisse peu à peu, puis chute quand le réactif
+        limitant est épuisé.
+        <br><strong>Raccourcis</strong> : Espace = pause, R = RAZ.
       </div>
     </div>
 
@@ -155,10 +298,13 @@
 </main>
 
 <!-- Ordre de chargement : sim (données + état) → becher (scène macroscopique)
-     → loupe (modèle microscopique) → ui (panneau, boucle) → sections repliables (en dernier) -->
+     → loupe (modèle microscopique) → pile, pile-loupe (onglet Pile)
+     → ui (panneau, boucle) → sections repliables (en dernier) -->
 <script src="js/sim.js"></script>
 <script src="js/becher.js"></script>
 <script src="js/loupe.js"></script>
+<script src="js/pile.js"></script>
+<script src="js/pile-loupe.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/sections-repliables.js"></script>
 <script data-goatcounter="https://berdous-pc.goatcounter.com/count"

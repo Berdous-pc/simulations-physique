@@ -136,6 +136,13 @@ main {
   font-size: 0.85em;
   color: #7a8a96;
 }
+/* Onglet Pile : rappel sous les équations quand la pile ne débite pas */
+.eq-note {
+  text-align: center;
+  font-size: 0.72em;
+  color: #7a8a96;
+  margin-top: 0.15em;
+}
 
 /* ── Panneau droit ───────────────────────────────── */
 #panel {
@@ -375,6 +382,60 @@ html:not(.sections-pretes) .section-title[data-repliable]:not([data-repliable="o
   color: #7a8a96;
   line-height: 1.4;
   font-weight: 400;
+}
+
+/* ── Sous-onglets (repris de refraction/) ────────── */
+.mode-tabs {
+  display: flex;
+  flex-shrink: 0;
+  gap: 0;
+  border: 1px solid #c8c0b4;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.mode-tab {
+  flex: 1;
+  padding: 8px 4px;
+  font-size: clamp(12px, 1.2vw, 15px);
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: #dedad2;
+  color: #5a6a78;
+  text-align: center;
+  transition: background 0.15s, color 0.15s;
+}
+.mode-tab:hover { background: #ccc8c0; color: #2c3e50; }
+.mode-tab.active { background: #2a6aaa; color: #fff; }
+.mode-tab:disabled { color: #a8b0b8; cursor: not-allowed; background: #dedad2; }
+
+/* Zones de la loupe (onglet Pile) : grille 2 × 2, séparateurs fins */
+.mode-tabs-grille {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: #c8c0b4;
+}
+
+/* ── Afficheurs de valeurs (repris de refraction/) ─ */
+.readout {
+  background: #fff;
+  border: 1px solid #c8c0b4;
+  border-radius: 6px;
+  padding: 7px 9px;
+  margin-bottom: 8px;
+}
+.ro-label {
+  font-size: clamp(11px, 1vw, 13px);
+  color: #7a8a96;
+  margin-bottom: 4px;
+}
+.ro-value {
+  font-size: clamp(15px, 1.6vw, 20px);
+  font-weight: 700;
+  color: #2a5080;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Étiquettes alignées sur les 4 crans du curseur de vitesse (repris de ondes/) */

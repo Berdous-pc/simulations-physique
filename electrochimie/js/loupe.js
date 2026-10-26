@@ -1288,6 +1288,7 @@ function dessinerLoupe(ctx) {
   var s = disp.lr / RC;                 // taille d'une case en px
   var ox = disp.lx - RC * s, oy = disp.ly - RC * s;
   var i;
+  echelleParticules = s;
 
   _dessinerTraitsLoupe(ctx);
 
@@ -1532,11 +1533,16 @@ function _couleurTexte(rgb, alpha) {
   return lum > 165 ? 'rgba(44,62,80,' + alpha + ')' : 'rgba(255,255,255,' + alpha + ')';
 }
 
+// Taille d'une case en px de la loupe en cours de dessin : les fonctions
+// de dessin des particules servent aussi aux loupes de l'onglet Pile
+// (pile-loupe.js), dont le rayon n'est pas celui de disp.
+var echelleParticules = 1;
+
 function _etiquette(ctx, x, y, txt, taille, rgb, alpha) {
   ctx.fillStyle = _couleurTexte(rgb, alpha);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  texteEchelle(ctx, txt, x, y + taille * 0.04, taille, '700', disp.lr / RC);
+  texteEchelle(ctx, txt, x, y + taille * 0.04, taille, '700', echelleParticules);
 }
 
 function _dessinerAtome(ctx, x, y, sym, alpha) {

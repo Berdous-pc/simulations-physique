@@ -5,7 +5,7 @@ Simulation « Oxydoréduction, piles et électrolyse ». Deux onglets principaux
 | Onglet | Hash | État |
 |---|---|---|
 | Oxydoréduction | `#oxydoreduction` | ✅ première version |
-| Pile et électrolyse | `#pile-electrolyse` | ⏳ en préparation (panneau et canvas provisoires) |
+| Pile et électrolyse | `#pile-electrolyse` | 🚧 palier 1 : piles Mⁿ⁺/M à deux béchers, appareils de mesure, loupes (électrolyse, piles à gaz et accumulateur au plomb à venir) |
 
 ## Fichiers
 
@@ -17,11 +17,15 @@ electrochimie/
     ├── sim.js               ← table METAUX (couples Mⁿ⁺/M), ANIONS, écriture chimique, réactivité, état `sim`
     ├── becher.js            ← scène macroscopique : disposition du canvas, lame déplaçable, solution, dépôt
     ├── loupe.js             ← modèle microscopique : réseau du métal, ions, électrons
+    ├── pile.js              ← onglet Pile : modèle électrique et chimique, montage (béchers, pont, circuit, appareils)
+    ├── pile-loupe.js        ← onglet Pile : loupes (électrodes, pont salin, fil)
     ├── ui.js                ← onglets, panneau, équations, redimensionnement, boucle RAF
     └── sections-repliables.js  ← copie conforme (pression/)
 ```
 
-Ordre de chargement : `sim.js` → `becher.js` → `loupe.js` → `ui.js` → `sections-repliables.js`.
+Ordre de chargement : `sim.js` → `becher.js` → `loupe.js` → `pile.js` → `pile-loupe.js` → `ui.js` → `sections-repliables.js`.
+
+`loupe.js` sert aussi aux loupes de l'onglet Pile : dimensions de la loupe (`NR`, `RC`, `CU`, `CV`, `COL_INIT`), rayons et dessin des particules (`_dessinerAtome`, `_dessinerIon`, `_dessinerAnion`, `_dessinerElectron`, `_dessinerTransition`, `_halo`, `_sphere`, `_etiquette`), courbes (`_bezier`, `_surLigne`, `_longueurChemin`). Les étiquettes des particules sont écrites à l'échelle `echelleParticules` (taille d'une case en px), posée par la loupe en cours de dessin.
 
 ## sim.js — données chimiques
 
@@ -70,10 +74,32 @@ Fond : ions estompés (`ALPHA_FOND`), mouvement brownien lent, hors cycles ; ion
 
 Vérifié hors navigateur (JScript, 2 min simulées pour Zn/Cu, Cu/Ag, Mg/Al (combinaison retirée depuis), avec les sites tirés au hasard) : aucun atome du dépôt n'en chevauche un autre ; jamais de blocage faute de zone (secours jamais sollicité) ; 9 à 19 chutes de 1 à 5 atomes en 2 min ; dépôt de 6 à 20 atomes au plus ; relief moyen de 1,3 à 2 cases, 3 au plus. À ×1 : 10 à 12 cycles par minute.
 
+## pile.js — onglet Pile : modèle et montage
+
+Choix de l'utilisateur (QCM du 2026-10-26) : Terminale, semi-quantitatif ; préréglages + montage libre ; appareils choisis dans le panneau ; usure jusqu'à épuisement ; pas de graphe ; pont salin qu'on peut retirer. Développement par paliers : **palier 1** = piles Mⁿ⁺/M (ce fichier), puis générateur et électrolyse, couples gazeux et pile à hydrogène, accumulateur au plomb.
+
+- **Demi-piles** : métaux de `ORDRE_METAUX` (table `METAUX` de `sim.js`), un à gauche (indice 0), un à droite (indice 1), concentrations initiales à crans (`CONCENTRATIONS`, 0,01 à 1 mol/L), 100 mL chacune (`P_VOLUME`) ; partie immergée d'une lame : `N_LAME` = 0,05 mol. **Expériences** (`EXPERIENCES`) : Daniell, Cu–Ag, Fe–Cu, Zn–Pb, pile de concentration (Cu 0,01 | Cu 1). Changer une demi-pile ou une concentration resélectionne l'expérience correspondante, sinon « Montage libre ».
+- **Modèle** : potentiel d'électrode par la loi de Nernst (`potentielElectrode`, en coulisse, jamais affiché). Tension à vide `femPile()` = V(droite) − V(gauche), multipliée par un **facteur d'épuisement** x / (x + coude) du réactif limitant du sens spontané (ion de la cathode, `C_COUDE` ; métal de l'anode, `N_COUDE`) : négligeable tant qu'il est abondant, il annule la tension à l'épuisement (la loi de Nernst seule ne la fait baisser qu'en logarithme). `I = E / (R + r)` (`R_INTERNE` = 20 Ω ; lampe `R_LAMPE` = 15 Ω, éclat selon P / `P_NOMINALE`), nul si le circuit est ouvert (rien ou voltmètre branché, interrupteur ouvert, pont retiré) ou sous `I_MIN` (1 µA, reste infime du facteur d'épuisement). Convention : **I > 0 quand l'électrode de droite est le pôle +**. `_integrerPile` : temps accéléré (`TEMPS_ACCEL` = 1 h de fonctionnement par seconde à ×1), pas adaptatifs (au plus 5 % du réactif limitant par pas) ; met à jour `nIon`, `dLame` (métal gagné ou perdu par chaque lame), la durée `t` et la charge `Q`.
+- Vérifié hors navigateur (JScript) : Daniell à 0,1 mol/L, R = 100 Ω : E = 1,09 V, I = 9 mA, épuisée en ~70 s d'animation (≈ 70 h), Q = 1 930 C = 2 × 0,01 mol × F ; Cu–Ag : Q = 965 C ; pile de concentration : E = 58 mV, qui décroît lentement ; plus aucun cycle dans la loupe après l'épuisement.
+- **Montage** (repère 140 × 102, disposition `dispP` ; paysage : montage sur 60 % de la largeur, loupe à droite ; portrait : montage en haut) : deux béchers (bec verseur côté extérieur, modelé du liquide de `becher.js`), couleur de chaque solution selon sa concentration sur une échelle logarithmique (`_couleurSolutionPile`), concentration actuelle écrite sous chaque bécher, lames avec pince, partie immergée amincie à l'anode, dépôt irrégulier à la cathode (`bruitDepot`), pont salin en U renversé (gel K⁺ + NO₃⁻, bouchons de coton) qui plonge sous le voile des solutions. Circuit extérieur (`composantsCircuit`) sur le fil du haut : multimètre (boîtier jaune, afficheur, bornes **COM à gauche**, V ou A à droite : le voltmètre lit V(droite) − V(gauche), l'ampèremètre le courant qui entre par A, signes conservés), interrupteur K cliquable, résistance (crans `RESISTANCES`, 10 Ω à 1 kΩ) ou lampe, ou deux fiches séparées (« Circuit ouvert »).
+- **Options** : électrons dans les fils (de l'anode vers la cathode, cachés dans les appareils) et flèches rouges du sens conventionnel ; ions qui migrent dans les béchers et le pont (cations dans le sens du courant, anions en sens inverse, fondu aux bords) ; pôles (d'après le signe de E, même en circuit ouvert) et anode / cathode (seulement quand le courant passe) ; équations.
+- **Zones de la loupe** (`zonesLoupe`) : face de chaque électrode tournée vers le pont, milieu du pont, fil de gauche. Cercles pointillés cliquables (bleus au survol) ; la zone active est reliée à la loupe.
+
+## pile-loupe.js — onglet Pile : loupes
+
+Choix de l'utilisateur : un cycle « comme Oxydoréduction », mais les électrons passent par le fil. Une loupe à la fois, remise à zéro à chaque changement de zone ou RAZ.
+
+- **Électrode** : réseau en lignes (`ploupe.front[r]` = nombre de colonnes de métal de la ligne r), calculé métal à gauche ; l'électrode de droite est dessinée en **miroir** (`_mx`), sa solution à gauche, face au pont salin, textes non retournés. Un cycle par atome, cadence réglée par l'intensité (`facteurCourant`), aucun sans courant, deux au plus. **Anode** (`_cycleAnode`) : un atome de la surface la plus avancée est signalé, ses électrons partent dans le métal jusqu'à la colonne `PL_X_SORTIE` puis vers le haut (le fil) ; il devient ion dès que le dernier l'a quitté, s'éloigne derrière le réseau et rejoint les ions de la solution. **Cathode** (`_cycleCathode`) : le cation de la solution le plus proche vient contre la surface la plus en retrait (un autre arrive du bord pour le remplacer), les électrons descendent du fil à travers le métal, l'ion devient atome et s'ajoute au réseau. **Suivi de la surface** (`_suivreSurface`) : quand elle a reculé (`PL_FRONT_MIN`) ou avancé (`PL_FRONT_MAX`) et qu'aucun cycle ne tourne, le réseau est décalé d'une colonne et glisse (`offX`). Ions de la solution : brownien lent + **migration** (cations dans le sens du courant, anions en sens inverse) ; un ion poussé contre le métal est remplacé par un ion venu du bord ; nombre de cations tenu stable.
+- **Pont salin** : gel entre deux parois de verre, K⁺ et NO₃⁻ en brownien, dérives opposées selon le courant ; repères « côté … » sous la loupe.
+- **Fil** : gaine, réseau du cuivre en quinconce, électrons libres à agitation rapide et dérive lente (vers la droite si I > 0) ; sous la loupe, flèches du sens du courant et du déplacement des électrons.
+- Légende sous la loupe : demi-équation de l'électrode (anode / cathode) ou « Pas de courant… » ; titre au-dessus. Textes réduits si besoin (`_texteAjuste`).
+
 ## ui.js
 
-- `setMainTab()` : sections, bandeaux Informations (un par onglet), bloc des équations, `history.replaceState`.
+- `setMainTab()` : sections, bandeaux Informations (un par onglet), bloc des équations (commun aux deux onglets, reconstruit à chaque changement ; `majEquations` n'écrit que dans l'onglet Oxydoréduction), `history.replaceState`.
+- Pause et vitesse communes aux deux onglets (deux boutons et deux curseurs synchronisés).
+- Onglet Pile : listes et curseurs (`_synchroniserPanneauPile`, `_experienceCorrespondante`), `resetPile()` (le circuit extérieur est conservé), `_majPanneauCircuit()` (résistance, interrupteur, pont), `setZonePile()`, mesures du panneau (durée, I, Q) mises à jour seulement quand elles changent, `majEquationsPile()` (pôle − anode / pôle + cathode, demi-équations, équation de fonctionnement ; pile de concentration écrite Cu²⁺(aq, côté +) → Cu²⁺(aq, côté −) ; rappel quand la pile ne débite pas), reconstruite quand la clé (métaux, polarité, courant, pont) change.
 - `majEquations()` (aucun surlignage de l'étape en cours) : couples, demi-équations (signe `=`, avec multiplicateurs), équation de la réaction (`→`), états physiques ; message explicatif si aucune transformation (même couple, ou sens non spontané avec rappel de la transformation inverse).
 - Canvas redimensionné via `ResizeObserver` sur `#sim-area` (le bloc des équations change sa hauteur) + `resize` de la fenêtre, avec `devicePixelRatio`.
 - Boucle RAF : `dtReel` (lame) et `dtSim = dtReel × vitesse` (transformation, loupe) ; en pause, rendu seulement si `sim.needsRedraw`.
-- Raccourcis : Espace = pause, R = RAZ.
+- Raccourcis (deux onglets) : Espace = pause, R = RAZ de l'onglet affiché.

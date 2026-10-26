@@ -32,6 +32,8 @@ function setMainTab(tab) {
     if (hint) hint.style.display = (t === tab) ? '' : 'none';
     if (btn)  btn.classList.toggle('active', t === tab);
   });
+  // Le bloc des équations est commun aux deux onglets : on le reconstruit
+  if (tab === 'oxydoreduction') majEquations(); else majEquationsPile(true);
   _majVisibiliteEquations();
   sim.needsRedraw = true;
   // replaceState : un rechargement reste sur l'onglet affiché, sans empiler
@@ -111,12 +113,14 @@ function majBoutonPlonger() {
   btn.textContent = lame.cible === 'becher' ? '⬆ Retirer la lame' : '⬇ Plonger la lame';
 }
 
-// ── Pause / vitesse ───────────────────────────────────────────────────
+// ── Pause / vitesse (communes aux deux onglets) ───────────────────────
 function togglePause() {
   sim.paused = !sim.paused;
-  var btn = document.getElementById('btn-playpause');
-  btn.textContent = sim.paused ? '▶ Reprendre' : '⏸ Pause';
-  btn.className   = 'btn ' + (sim.paused ? 'btn-play' : 'btn-pause');
+  ['btn-playpause', 'btn-playpause-pile'].forEach(function (id) {
+    var btn = document.getElementById(id);
+    btn.textContent = sim.paused ? '▶ Reprendre' : '⏸ Pause';
+    btn.className   = 'btn ' + (sim.paused ? 'btn-play' : 'btn-pause');
+  });
 }
 
 // Étiquettes et nom d'état repris de ondes/ et pression/ ; pas de cran ×0,25,
@@ -125,7 +129,11 @@ var SPEED_STEPS = [0.10, 0.50, 1.00, 2.00];
 
 function onSliderSpeed(val) {
   sim.speedFactor = SPEED_STEPS[parseInt(val, 10)];
-  document.getElementById('lbl-speed').textContent = sim.speedFactor.toFixed(2).replace('.', ',');
+  var txt = sim.speedFactor.toFixed(2).replace('.', ',');
+  document.getElementById('lbl-speed').textContent = txt;
+  document.getElementById('lbl-speed-pile').textContent = txt;
+  document.getElementById('sl-speed').value = val;
+  document.getElementById('sl-speed-pile').value = val;
 }
 
 // ── Options ───────────────────────────────────────────────────────────
@@ -148,7 +156,7 @@ function toggleSpectateurs() { _basculer('btn-spectateurs', 'showSpectateurs'); 
 function toggleTemoin()      { _basculer('btn-temoin', 'showTemoin'); }
 
 function _majVisibiliteEquations() {
-  var vis = sim.showEquations && sim.onglet === 'oxydoreduction';
+  var vis = sim.onglet === 'oxydoreduction' ? sim.showEquations : pile.showEquations;
   document.getElementById('equations').style.display = vis ? '' : 'none';
   // La zone du canvas change de hauteur : le ResizeObserver s'en charge.
 }
@@ -164,6 +172,7 @@ function _coef(n) { return n > 1 ? n + '&nbsp;' : ''; }
 function _electrons(n) { return (n > 1 ? n + '&nbsp;' : '') + 'e<sup>−</sup>'; }
 
 function majEquations() {
+  if (sim.onglet !== 'oxydoreduction') return;      // bloc occupé par l'onglet Pile
   var X = sim.metal, Y = sim.solution;
   var MX = METAUX[X], MY = METAUX[Y];
   var html;
@@ -200,6 +209,232 @@ function majEquations() {
 }
 
 // ══════════════════════════════════════════════════════════════════════
+//  Panneau — onglet Pile et électrolyse
+// ══════════════════════════════════════════════════════════════════════
+
+function _remplirListesPile() {
+  var selX = document.getElementById('sel-experience');
+  ORDRE_EXPERIENCES.forEach(function (cle) {
+    var o = document.createElement('option');
+    o.value = cle;
+    o.textContent = EXPERIENCES[cle].nom;
+    selX.appendChild(o);
+  });
+  ['sel-gauche', 'sel-droite'].forEach(function (id) {
+    var sel = document.getElementById(id);
+    ORDRE_METAUX.forEach(function (sym) {
+      var o = document.createElement('option');
+      o.value = sym;
+      o.textContent = _majuscule(METAUX[sym].nom) + ' (' + ionTexte(sym) + '/' + sym + ')';
+      sel.appendChild(o);
+    });
+  });
+  _synchroniserPanneauPile();
+}
+
+// Recopie l'état de la pile dans les listes et les curseurs
+function _synchroniserPanneauPile() {
+  document.getElementById('sel-experience').value = pile.experience;
+  document.getElementById('sel-gauche').value = pile.metaux[0];
+  document.getElementById('sel-droite').value = pile.metaux[1];
+  ['gauche', 'droite'].forEach(function (cote, i) {
+    document.getElementById('sl-c-' + cote).value = pile.iC0[i];
+    document.getElementById('lbl-c-' + cote).textContent = _formatC0(concInitiale(i));
+  });
+}
+
+function _formatC0(c) { return (c < 0.1 ? c.toFixed(2) : c.toFixed(c < 1 ? 2 : 1)).replace('.', ','); }
+
+// Expérience prédéfinie qui correspond aux réglages, sinon « Montage libre »
+function _experienceCorrespondante() {
+  for (var i = 0; i < ORDRE_EXPERIENCES.length; i++) {
+    var X = EXPERIENCES[ORDRE_EXPERIENCES[i]];
+    if (X.g === pile.metaux[0] && X.d === pile.metaux[1] && X.cg === pile.iC0[0] && X.cd === pile.iC0[1]) {
+      return ORDRE_EXPERIENCES[i];
+    }
+  }
+  return 'libre';
+}
+
+function onSelectExperience(v) {
+  var X = EXPERIENCES[v];
+  if (X.g) {
+    pile.metaux = [X.g, X.d];
+    pile.iC0 = [X.cg, X.cd];
+  }
+  pile.experience = v;
+  _synchroniserPanneauPile();
+  resetPile();
+}
+
+function onSelectDemiPile(i, v) {
+  pile.metaux[i] = v;
+  pile.experience = _experienceCorrespondante();
+  _synchroniserPanneauPile();
+  resetPile();
+}
+
+function onSliderConcentration(i, val) {
+  pile.iC0[i] = parseInt(val, 10);
+  pile.experience = _experienceCorrespondante();
+  _synchroniserPanneauPile();
+  resetPile();
+}
+
+// RAZ de la pile : solutions et lames neuves, compteurs à zéro. Le circuit
+// extérieur (appareil, interrupteur, pont) est conservé.
+function resetPile() {
+  resetPileModele();
+  resetLoupePile();
+  _majLibellesPile();
+  majEquationsPile(true);
+  _majMesures(true);
+  sim.needsRedraw = true;
+}
+
+function _majLibellesPile() {
+  ['gauche', 'droite'].forEach(function (cote, i) {
+    var M = METAUX[pile.metaux[i]];
+    document.getElementById('lbl-' + cote).innerHTML =
+      'Lame ' + M.de + ' dans ' + ionHTML(M.sym) + ' + ' + anionHTML(M.anion);
+    // Boutons de la loupe : nommés par le métal, sauf s'il est le même des deux côtés
+    document.getElementById('zone-' + cote).textContent =
+      pile.metaux[0] === pile.metaux[1] ? 'Électrode ' + cote : 'Électrode ' + M.sym;
+  });
+}
+
+// ── Circuit extérieur ─────────────────────────────────────────────────
+function onSelectDipole(v) {
+  pile.dipole = v;
+  _majPanneauCircuit();
+}
+
+function onSliderResistance(val) {
+  pile.iR = parseInt(val, 10);
+  document.getElementById('lbl-resistance').textContent = RESISTANCES[pile.iR];
+  sim.needsRedraw = true;
+}
+
+function toggleInterrupteur() {
+  pile.interrupteur = !pile.interrupteur;
+  _majPanneauCircuit();
+}
+
+function togglePont() {
+  pile.pont = !pile.pont;
+  _majPanneauCircuit();
+}
+
+function _majPanneauCircuit() {
+  document.getElementById('row-resistance').style.display = pile.dipole === 'resistance' ? '' : 'none';
+  var btnK = document.getElementById('btn-interrupteur');
+  btnK.style.display = chargeBranchee() ? '' : 'none';
+  btnK.textContent = pile.interrupteur ? 'Ouvrir l’interrupteur' : 'Fermer l’interrupteur';
+  var btnP = document.getElementById('btn-pont');
+  btnP.textContent = pile.pont ? 'Retirer le pont salin' : 'Remettre le pont salin';
+  btnP.classList.toggle('active', !pile.pont);
+  btnP.setAttribute('aria-pressed', String(!pile.pont));
+  // Le courant change aussitôt (même en pause)
+  pile.E = femPile();
+  pile.I = courantPile();
+  sim.needsRedraw = true;
+}
+
+// ── Loupe ─────────────────────────────────────────────────────────────
+function setZonePile(z) {
+  if (z === pile.zone) return;          // un clic sur la zone déjà vue ne remet pas la loupe à zéro
+  pile.zone = z;
+  ['gauche', 'droite', 'pont', 'fil'].forEach(function (n) {
+    document.getElementById('zone-' + n).classList.toggle('active', n === z);
+  });
+  resetLoupePile();
+  sim.needsRedraw = true;
+}
+
+// ── Options ───────────────────────────────────────────────────────────
+function toggleOptionPile(id, cle) {
+  pile[cle] = !pile[cle];
+  var btn = document.getElementById(id);
+  btn.classList.toggle('active', pile[cle]);
+  btn.setAttribute('aria-pressed', String(pile[cle]));
+  sim.needsRedraw = true;
+}
+
+function toggleEquationsPile() {
+  toggleOptionPile('btn-equations-pile', 'showEquations');
+  document.getElementById('btn-equations-pile').textContent =
+    pile.showEquations ? 'Masquer les équations' : 'Afficher les équations';
+  _majVisibiliteEquations();
+}
+
+// ── Mesures (mises à jour à chaque image, seulement si elles changent) ─
+var _mesuresAffichees = {};
+
+function _majMesures(force) {
+  var h = Math.floor(pile.t / 3600), mn = Math.floor((pile.t % 3600) / 60);
+  var valeurs = {
+    'ro-duree': h > 0 ? h + ' h ' + (mn < 10 ? '0' : '') + mn + ' min' : mn + ' min',
+    'ro-intensite': formatNombre(pile.I * 1000, 1) + ' mA',
+    'ro-charge': Math.round(pile.Q).toLocaleString('fr-FR') + ' C'
+  };
+  for (var id in valeurs) {
+    if (!force && _mesuresAffichees[id] === valeurs[id]) continue;
+    _mesuresAffichees[id] = valeurs[id];
+    document.getElementById(id).textContent = valeurs[id];
+  }
+}
+
+// ── Équations de fonctionnement ───────────────────────────────────────
+// Reconstruites quand les demi-piles, la polarité, l'état du circuit ou
+// le pont changent (clé comparée à chaque image).
+var _cleEqPile = '';
+
+function majEquationsPile(force) {
+  var E = pile.E, I = pile.I;
+  var cle = pile.metaux.join('|') + '|' + (E > 1e-4 ? 1 : E < -1e-4 ? -1 : 0) + '|' + (I !== 0) + '|' + pile.pont;
+  if (!force && cle === _cleEqPile) return;
+  _cleEqPile = cle;
+  if (sim.onglet !== 'pile-electrolyse') return;
+
+  var html;
+  if (Math.abs(E) <= 1e-4) {
+    html = '<div class="eq-rien">Aucune tension entre les électrodes.' +
+           '<span class="eq-sous">Même couple et mêmes concentrations des deux côtés : la pile ne peut pas débiter.</span></div>';
+  } else {
+    var iM = E > 0 ? 0 : 1, iP = 1 - iM;          // électrodes − (anode) et + (cathode)
+    var A = pile.metaux[iM], C = pile.metaux[iP];
+    var st = stoechiometrie(A, C);
+    var cote = function (i) { return i === 0 ? 'gauche' : 'droite'; };
+    var mult = function (n) { return n > 1 ? '<td class="eq-mult">× ' + n + '</td>' : '<td></td>'; };
+    var bilan;
+    if (A !== C) {
+      bilan = _coef(st.coefMetal) + A + _etat('s') + ' + ' + _coef(st.coefIon) + ionHTML(C) + _etat('aq') +
+              ' → ' + _coef(st.coefMetal) + ionHTML(A) + _etat('aq') + ' + ' + _coef(st.coefIon) + C + _etat('s');
+    } else {
+      // Pile de concentration : les ions passent du côté concentré au côté dilué
+      bilan = ionHTML(C) + _etat('aq, ' + cote(iP)) + ' → ' + ionHTML(C) + _etat('aq, ' + cote(iM));
+    }
+    html =
+      '<table class="eq-table">' +
+      '<tr><td class="eq-lbl eq-ox">Pôle − (anode, ' + cote(iM) + ') : oxydation</td><td class="eq-val">' +
+        A + _etat('s') + ' = ' + ionHTML(A) + _etat('aq') + ' + ' + _electrons(METAUX[A].charge) +
+        '</td>' + mult(st.coefMetal) + '</tr>' +
+      '<tr><td class="eq-lbl eq-red">Pôle + (cathode, ' + cote(iP) + ') : réduction</td><td class="eq-val">' +
+        ionHTML(C) + _etat('aq') + ' + ' + _electrons(METAUX[C].charge) + ' = ' + C + _etat('s') +
+        '</td>' + mult(st.coefIon) + '</tr>' +
+      '<tr class="eq-bilan"><td class="eq-lbl">Équation de fonctionnement</td><td class="eq-val">' +
+        bilan + '</td><td></td></tr>' +
+      '</table>';
+    if (I === 0) {
+      html += '<div class="eq-note">' + (pile.pont
+        ? 'La pile ne débite pas : ces réactions n’ont lieu que lorsqu’un courant circule.'
+        : 'Pont salin retiré : le circuit est ouvert, la pile ne débite pas.') + '</div>';
+    }
+  }
+  document.getElementById('equations').innerHTML = html;
+}
+
+// ══════════════════════════════════════════════════════════════════════
 //  Canvas : redimensionnement (devicePixelRatio, cf. CONTEXTE_PROJET.md §7)
 // ══════════════════════════════════════════════════════════════════════
 
@@ -219,6 +454,7 @@ function _doResize() {
   canvas.height = Math.round(_ch * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   calculerDisposition(_cw, _ch);
+  calculerDispositionPile(_cw, _ch);
   sim.needsRedraw = true;
 }
 
@@ -243,9 +479,15 @@ function loop(ts) {
       _dessiner();
       sim.needsRedraw = false;
     }
-  } else if (sim.needsRedraw) {
-    _dessiner();
-    sim.needsRedraw = false;
+  } else {
+    majPile(dtSim);
+    majLoupePile(dtSim);
+    majEquationsPile(false);
+    _majMesures(false);
+    if (dtSim > 0 || sim.needsRedraw) {
+      _dessiner();
+      sim.needsRedraw = false;
+    }
   }
 }
 
@@ -255,12 +497,8 @@ function _dessiner() {
     dessinerBecher(ctx);
     dessinerLoupe(ctx);
   } else {
-    var fs = Math.max(14, Math.min(_cw, _ch) * 0.045);
-    ctx.fillStyle = '#7a8a96';
-    ctx.font = '600 ' + fs + 'px "Segoe UI", Arial, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('Pile et électrolyse — onglet en préparation', _cw / 2, _ch / 2);
+    dessinerMontage(ctx);
+    dessinerLoupePile(ctx);
   }
 }
 
@@ -274,7 +512,11 @@ function _posCanvas(e) {
 }
 
 canvas.addEventListener('pointerdown', function (e) {
-  if (sim.onglet !== 'oxydoreduction') return;
+  if (sim.onglet !== 'oxydoreduction') {
+    var q = _posCanvas(e);
+    if (pilePointerDown(q.x, q.y)) e.preventDefault();
+    return;
+  }
   var p = _posCanvas(e);
   if (!becherPointerDown(p.x, p.y)) return;
   canvas.setPointerCapture(e.pointerId);
@@ -283,7 +525,11 @@ canvas.addEventListener('pointerdown', function (e) {
 });
 
 canvas.addEventListener('pointermove', function (e) {
-  if (sim.onglet !== 'oxydoreduction') return;
+  if (sim.onglet !== 'oxydoreduction') {
+    var q = _posCanvas(e);
+    canvas.style.cursor = pilePointerMove(q.x, q.y) ? 'pointer' : 'default';
+    return;
+  }
   var p = _posCanvas(e);
   var surLame = becherPointerMove(p.x, p.y);
   if (!canvas.hasPointerCapture(e.pointerId)) canvas.style.cursor = surLame ? 'grab' : 'default';
@@ -295,18 +541,21 @@ function _finGlisser(e) {
 }
 canvas.addEventListener('pointerup', _finGlisser);
 canvas.addEventListener('pointercancel', _finGlisser);
+// Onglet Pile : plus rien sous la souris quand elle quitte le canvas
+canvas.addEventListener('pointerleave', function () {
+  if (pile.survol !== null) { pile.survol = null; sim.needsRedraw = true; }
+});
 
 // ── Raccourcis clavier (projection) ───────────────────────────────────
 document.addEventListener('keydown', function (e) {
   if (e.ctrlKey || e.altKey || e.metaKey) return;
   var tag = e.target && e.target.tagName;
   if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || tag === 'BUTTON') return;
-  if (sim.onglet !== 'oxydoreduction') return;
   if (e.key === ' ' || e.key === 'Spacebar') {
     e.preventDefault();
     togglePause();
   } else if (e.key === 'r' || e.key === 'R') {
-    resetRedox();
+    if (sim.onglet === 'oxydoreduction') resetRedox(); else resetPile();
   }
 });
 
@@ -316,12 +565,16 @@ document.addEventListener('keydown', function (e) {
 
 function init() {
   _remplirListes();
+  _remplirListesPile();
+  resetPileModele();               // grandeurs de la pile prêtes avant le choix de l'onglet
 
   var hash = window.location.hash.replace('#', '');
   setMainTab(ONGLETS.indexOf(hash) !== -1 ? hash : 'oxydoreduction');
 
   _doResize();
   resetRedox();
+  _majPanneauCircuit();
+  resetPile();
 
   // La zone du canvas change de taille avec la fenêtre, mais aussi quand
   // le bloc des équations apparaît ou disparaît.
