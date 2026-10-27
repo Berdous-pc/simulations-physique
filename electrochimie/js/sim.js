@@ -53,8 +53,9 @@ var METAUX = {
         nomIon: 'ions fer(II)', nomSolution: 'sulfate de fer(II)', anion: 'SO4',
         depot: 'noir' },
 
-  // Cobalt, nickel, étain : onglet Pile et électrolyse seulement (montages
-  // libres), absents de ORDRE_METAUX. Solution rose de Co²⁺, vert émeraude
+  // Cobalt, nickel, étain : montages libres de l'onglet Pile et
+  // électrolyse ; nickel et étain aussi dans l'onglet Oxydoréduction
+  // (ORDRE_METAUX), pas le cobalt. Solution rose de Co²⁺, vert émeraude
   // de Ni²⁺ (plus bleuté que le vert de Fe²⁺) ; Sn²⁺ incolore (en vrai, la
   // solution doit être acidifiée pour ne pas s'hydrolyser : non modélisé)
   Co: { sym: 'Co', nom: 'cobalt', de: 'de cobalt', le: 'le cobalt', du: 'du cobalt', charge: 2, E0: -0.28,
@@ -115,14 +116,14 @@ var METAUX = {
 
 // Ordre d'affichage dans les listes : du réducteur le plus fort au plus faible
 // (onglet Oxydoréduction ; celui de l'onglet Pile est ORDRE_METAUX_PILE)
-var ORDRE_METAUX = ['Mg', 'Al', 'Zn', 'Fe', 'Pb', 'Cu', 'Ag'];
+var ORDRE_METAUX = ['Mg', 'Al', 'Zn', 'Fe', 'Ni', 'Sn', 'Pb', 'Cu', 'Ag'];
 // Solutions proposées, en deux groupes (listes déroulantes) : ions
 // métalliques, par E0 croissant, sans sulfate d'aluminium (aucune lame ne
 // réagit avec, le magnésium attaquant l'eau plutôt que de déposer de
 // l'aluminium) ; Fe³⁺ en fait partie (ion métallique, réduit en Fe²⁺ et
 // non en métal : pas de dépôt) ; autres oxydants (H⁺, I₂)
 var GROUPES_SOLUTIONS = [
-  { titre: 'Ions métalliques', cles: ['Mg', 'Zn', 'Fe', 'Pb', 'Cu', 'Fe3', 'Ag'] },
+  { titre: 'Ions métalliques', cles: ['Mg', 'Zn', 'Fe', 'Ni', 'Sn', 'Pb', 'Cu', 'Fe3', 'Ag'] },
   { titre: 'Autres oxydants',  cles: ['H', 'I2'] }
 ];
 var ORDRE_SOLUTIONS = GROUPES_SOLUTIONS[0].cles.concat(GROUPES_SOLUTIONS[1].cles);

@@ -165,8 +165,8 @@ var SOLUTIONS = {
   MNO4:   { nom: 'permanganate de potassium acidifié', court: 'KMnO₄', spect: 'K', nSpect: 1,
             sp: { 'MnO4-': 1 }, acidite: 8, anion: 'SO4' }
 };
-// Métaux de l'onglet : ceux de l'onglet Oxydoréduction, plus le cobalt,
-// le nickel et l'étain (montages libres seulement), du réducteur le plus
+// Métaux de l'onglet : ceux de l'onglet Oxydoréduction, plus le cobalt
+// (montages libres seulement), du réducteur le plus
 // fort au plus faible
 var ORDRE_METAUX_PILE = ['Mg', 'Al', 'Zn', 'Fe', 'Co', 'Ni', 'Sn', 'Pb', 'Cu', 'Ag'];
 ORDRE_METAUX_PILE.forEach(function (sym) {
