@@ -114,6 +114,7 @@ var macro = {
   avancement: 0,        // 0 → 1 : avancement de la transformation
   motif: null,          // aiguilles du dépôt et grains de la poudre (tirés une fois par RAZ)
   texture: null,        // texture du dépôt sur la lame (tirée une fois par RAZ)
+  erosion: null,        // creux de la lame rongée (tirés une fois par RAZ)
   bulles: [],           // dihydrogène (acide) : { dx, dy (accrochée : position sur la lame), x, y, r, rMax, t, accroche, ph }
   accBulles: 0          // fraction de bulle à faire naître
 };
@@ -129,6 +130,7 @@ function resetBecher() {
   macro.bulles = [];
   macro.accBulles = 0;
   macro.motif = _tirerMotifDepot();
+  macro.erosion = _tirerErosion();
   macro.texture = _tirerTextureDepot();
   _drag = null;
   _signalerEtatLame();
@@ -164,6 +166,24 @@ function _tirerMotifDepot() {
     });
   }
   return { aiguilles: aiguilles, grains: grains };
+}
+
+// ── Creux de la lame rongée ───────────────────────────────────────────
+// Profondeur relative des creux le long des deux côtés et du bas de la
+// partie mouillée (surtout des creux peu profonds, quelques piqûres
+// marquées), lissée avec les voisins : même tirage que l'onglet Pile
+// (_tirerBruitDepot de pile.js)
+var PERDU_MAX = 0.55;     // fraction de la largeur perdue au plus (plancher : la lame reste visible)
+
+function _tirerErosion() {
+  var alea = creerAlea(20261029), bords = [];
+  for (var c = 0; c < 3; c++) {
+    var nb = c < 2 ? 24 : 6, r = [], v = [], k;
+    for (k = 0; k <= nb; k++) r.push(Math.pow(alea(), 1.6));
+    for (k = 0; k <= nb; k++) v.push(0.5 * r[k] + 0.25 * (r[Math.max(0, k - 1)] + r[Math.min(nb, k + 1)]));
+    bords.push(v);
+  }
+  return bords;
 }
 
 // ── Texture du dépôt sur la lame ──────────────────────────────────────
@@ -739,10 +759,21 @@ function _dessinerLame(ctx) {
   ctx.fillStyle = _degradeMetal(ctx, x0, LAME_W, base, 0);
   ctx.fillRect(x0, top, LAME_W, LAME_H - hMouillee);
 
-  // Partie mouillée : rongée (plus étroite) à mesure que le métal s'oxyde,
-  // et ternie sous le dépôt (l'acide laisse le métal brillant). Bas
-  // légèrement arrondi par l'attaque.
-  if (hMouillee > 0) {
+  // Contour de la partie sèche
+  ctx.strokeStyle = rgbCss(nuance(base, -0.45));
+  ctx.lineWidth = 0.25;
+  ctx.strokeRect(x0, top, LAME_W, LAME_H - hMouillee);
+
+  // Partie mouillée : amincie à mesure que le métal s'oxyde et rongée de
+  // creux irréguliers, comme les lames de l'onglet Pile (_dessinerLameP),
+  // ternie sous le dépôt (l'acide laisse le métal brillant). La perte suit
+  // l'aspect de l'attaque (déjà rapide au départ, cf. EXPOSANT_ASPECT),
+  // plafonnée à PERDU_MAX : la lame ne disparaît jamais. Les creux se
+  // creusent dès les premiers instants. Seulement quand l'oxydant donne un
+  // gaz ou une espèce dissoute. Une lame qui se couvre d'un dépôt est
+  // seulement amincie, au bas légèrement arrondi par l'attaque (le dépôt
+  // la cache).
+  if (hMouillee > 0 && formeReduite(sim.solution) === 'depot') {
     var ins = LAME_W * 0.12 * pa;
     ctx.fillStyle = _degradeMetal(ctx, x0, LAME_W, base, -0.22 * p);
     ctx.beginPath();
@@ -754,12 +785,22 @@ function _dessinerLame(ctx) {
     ctx.quadraticCurveTo(x0 + ins, lame.yb, x0 + ins, lame.yb - ins);
     ctx.closePath();
     ctx.fill();
+  } else if (hMouillee > 0) {
+    var perdu = PERDU_MAX * pa;
+    var hw = LAME_W / 2 * Math.pow(1 - perdu, 0.6);
+    var ero = Math.min(0.7 * hw, 1.3 * Math.sqrt(Math.min(1, pa / 0.1)));
+    var Er = macro.erosion, ne = Er[0].length - 1, nf = Er[2].length - 1, j;
+    ctx.fillStyle = _degradeMetal(ctx, lame.x - hw, 2 * hw, base, -0.22 * p);
+    ctx.beginPath();
+    ctx.moveTo(lame.x - hw, yMouillee);
+    for (j = 1; j <= ne; j++) ctx.lineTo(lame.x - hw + ero * Er[0][j], yMouillee + hMouillee * j / ne);
+    for (j = 1; j < nf; j++) ctx.lineTo(lame.x - hw + 2 * hw * j / nf, lame.yb - ero * Er[2][j]);
+    for (j = ne; j >= 1; j--) ctx.lineTo(lame.x + hw - ero * Er[1][j], yMouillee + hMouillee * j / ne);
+    ctx.lineTo(lame.x + hw, yMouillee);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
   }
-
-  // Contour
-  ctx.strokeStyle = rgbCss(nuance(base, -0.45));
-  ctx.lineWidth = 0.25;
-  ctx.strokeRect(x0, top, LAME_W, LAME_H - hMouillee);
 
   if (hMouillee > 0 && p > 0) _dessinerDepot(ctx, x0, top, yMouillee, hMouillee, p);
 
