@@ -99,8 +99,6 @@ var ploupe = {
   offX: 0,            // décalage du réseau pendant un glissement
   cycles: [],
   attente: 0,         // délai avant le prochain cycle (s)
-  aLancer: 0,         // cycles du groupe en cours qui restent à lancer
-  nGroupe: 1,         // cycles du groupe en cours
   ligneGroupe: -1,    // ligne du premier cycle métallique du groupe
   bulle: null,        // bulle de gaz accrochée à l'électrode { v, n, attendus, gaz }
   fond: [],           // ions de la solution, du pont, ou électrons du fil
@@ -120,7 +118,7 @@ function resetLoupePile() {
   ploupe.offX = 0;
   ploupe.cycles = [];
   ploupe.attente = 0.5;
-  ploupe.aLancer = 0; ploupe.nGroupe = 1; ploupe.ligneGroupe = -1;
+  ploupe.ligneGroupe = -1;
   ploupe.fond = [];
   ploupe.bulle = null;
   ploupe.bullesLibres = [];
@@ -272,30 +270,52 @@ function _majElectrode(dt) {
   // Les cycles vont par GROUPES : la demi-équation autant de fois qu'elle
   // figure dans l'équation de fonctionnement (choix de l'utilisateur : on
   // voit autant d'électrons par groupe aux deux électrodes, ex. 2 H₂ pour
-  // 4 e⁻ quand l'autre électrode forme O₂), cycles lancés presque ensemble
+  // 4 e⁻ quand l'autre électrode forme O₂). Un groupe ne part que s'il y a
+  // de la place pour tous ses cycles, créés ensemble et démarrant à
+  // PL_ECART_GROUPE d'intervalle (sinon ils s'étalaient dans le temps et
+  // l'on ne voyait plus qu'une demi-équation à la fois)
   var role = roleElectrode(e);
   ploupe.attente -= dt;
   if (role && ploupe.attente <= 0 && ploupe.offX === 0) {
-    var reac = reactionEnCours(e), cy = null, metal = reac && reac.type === 'metal';
+    var reac = reactionEnCours(e), metal = reac && reac.type === 'metal', groupe = [], j;
+    var k = reac ? multiplicateurCycle(e) : 0;
     // Couples gazeux : un groupe à la fois (choix de l'utilisateur : la
     // stœchiométrie reste lisible), le suivant pendant le départ des produits
-    if (reac && !ploupe.aLancer && (metal || !_etapesEnCours())) {
-      ploupe.aLancer = ploupe.nGroupe = multiplicateurCycle(e);
-      ploupe.ligneGroupe = -1;
-    }
-    if (reac && ploupe.aLancer && ploupe.cycles.length < Math.max(PL_N_CYCLES, 2 * ploupe.nGroupe)) {
+    if (reac && ploupe.cycles.length + k <= Math.max(PL_N_CYCLES, 2 * k) && (metal || !_etapesEnCours())) {
       if (metal) {
-        if (!_suivreSurface(role)) cy = role === 'anode' ? _cycleAnode() : _cycleCathode(reac.sym);
-        if (cy && ploupe.ligneGroupe < 0) ploupe.ligneGroupe = cy.r;
+        if (!_suivreSurface(role)) {
+          ploupe.ligneGroupe = -1;
+          for (j = 0; j < k; j++) {
+            var cyM = role === 'anode' ? _cycleAnode() : _cycleCathode(reac.sym);
+            if (!cyM) break;
+            if (ploupe.ligneGroupe < 0) ploupe.ligneGroupe = cyM.r;
+            groupe.push(cyM);
+          }
+        }
       } else {
-        cy = _cycleGaz(reac);
+        // Places de tous les cycles du groupe, réservées le temps de la recherche
+        var places = [], q, P;
+        for (j = 0; j < k; j++) {
+          P = _placeGaz(reac);
+          if (!P) break;
+          for (q = P.r0; q <= P.r1; q++) ploupe.occupe[q] = true;
+          places.push(P);
+        }
+        for (j = 0; j < places.length; j++) {
+          for (q = places[j].r0; q <= places[j].r1; q++) ploupe.occupe[q] = false;
+        }
+        if (places.length === k) {
+          for (j = 0; j < k; j++) groupe.push(_cycleGaz(reac, places[j]));
+        }
       }
     }
-    if (cy) { ploupe.cycles.push(cy); ploupe.aLancer--; }
+    for (j = 0; j < groupe.length; j++) {
+      groupe[j].delai = j * PL_ECART_GROUPE;
+      ploupe.cycles.push(groupe[j]);
+    }
     // Intervalle entre deux groupes : 0,7 s par cycle à I_REF, plus long
     // si I est faible ; pas de place libre : on réessaie bientôt
-    ploupe.attente = !cy ? 0.2 : ploupe.aLancer ? PL_ECART_GROUPE
-                   : ploupe.nGroupe * Math.min(3, 0.7 / Math.max(0.25, facteurCourant()));
+    ploupe.attente = !groupe.length ? 0.2 : k * Math.min(3, 0.7 / Math.max(0.25, facteurCourant()));
   }
 
   for (i = ploupe.cycles.length - 1; i >= 0; i--) {
@@ -713,7 +733,9 @@ var PL_D_APPROCHE_E = 1.1;    // approche d'une espèce pour une étape (s)
 var PL_D_REARR      = 0.45;   // réarrangement sans électron (O + O → O₂, H₂ qui se scinde…)
 var PL_ECART_ETAPE  = 0.6;    // l'étape suivante est lancée (ses espèces approchent, ses électrons partent) 0,6 s après la courante
 
-function _cycleGaz(reac) {
+// Place d'un cycle d'un couple gazeux (ou de l'accumulateur), sans rien
+// réserver : { script, vc, r0, r1, maille }, null s'il n'y en a pas
+function _placeGaz(reac) {
   var e = _indiceElectrode(), d = demiEquation(reac, compElectrode(e));
   var script = _scriptCycle(reac, d);
   if (!script) return null;
@@ -757,11 +779,16 @@ function _cycleGaz(reac) {
     }
   }
   if (vc < 0) return null;
-  for (r = r0; r <= r1; r++) ploupe.occupe[r] = true;
+  return { script: script, vc: vc, r0: r0, r1: r1,
+           maille: maille ? { r: maille.r, c: maille.c, avant: avant, apres: apres } : null };
+}
 
-  var cy = { type: 'gaz', ox: reac.ox, phase: 'etapes', t: 0, r0: r0, r1: r1, vc: vc,
-             gaz: gazDegage(reac), script: script, k: 0, etapes: [], accroches: {}, partants: [],
-             maille: maille ? { r: maille.r, c: maille.c, avant: avant, apres: apres } : null };
+// Cycle d'un couple gazeux à la place P (_placeGaz), dont les lignes sont réservées
+function _cycleGaz(reac, P) {
+  for (var r = P.r0; r <= P.r1; r++) ploupe.occupe[r] = true;
+  var cy = { type: 'gaz', ox: reac.ox, phase: 'etapes', t: 0, r0: P.r0, r1: P.r1, vc: P.vc,
+             gaz: gazDegage(reac), script: P.script, k: 0, etapes: [], accroches: {}, partants: [],
+             maille: P.maille };
   cy.etapes.push(_creerEtape(cy, 0));
   return cy;
 }
@@ -1029,6 +1056,8 @@ function _majBullesL(dt) {
 // Les électrons, une fois partis, avancent jusqu'au bout (cy.te : temps
 // depuis le départ du premier), quelle que soit l'étape du cycle
 function _majCycleP(cy, dt) {
+  // Cycle d'un groupe qui attend son tour (léger décalage dans le groupe)
+  if (cy.delai > 0) { cy.delai -= dt; return false; }
   cy.t += dt;
   if (cy.te !== undefined) { cy.te += dt; _avancerElectrons(cy); }
   if (cy.type === 'gaz') return _majCycleGaz(cy, dt);
