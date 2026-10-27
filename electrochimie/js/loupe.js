@@ -145,6 +145,8 @@ var loupe = {
   chutes: [],          // amas détachés qui tombent (coordonnées de la loupe) :
                        //   { atomes: [{du, dv}], u, v, vu, vv, ang, om, phi, t, sym }
   fantomes: [],        // ions d'un cycle interrompu, qui s'effacent
+  bulleH2: null,       // acide : bulle accrochée à la lame { n, attendus }
+  bullesH2: [],        // bulles détachées qui montent (coordonnées de la loupe) { u, v, n }
   offX: 0, offY: -NR - 2,
   presente: false,     // réseau visible (lame dans le bécher)
   enPlace: false,      // lame plongée à sa place : les cycles peuvent tourner
@@ -173,6 +175,8 @@ function resetLoupe() {
   loupe.chutes = [];
   loupe.tCasse = 0;
   loupe.fantomes = [];
+  loupe.bulleH2 = null;
+  loupe.bullesH2 = [];
   loupe.offX = 0;
   loupe.offY = -NR - 2;
   loupe.presente = false;
@@ -181,7 +185,7 @@ function resetLoupe() {
 
   // Aucun ion du métal au départ : ils n'apparaissent qu'avec la réaction
   for (i = 0; i < N_FOND_OX; i++) _ajouterFond('ox', sim.solution, R_ION, 1);
-  for (i = 0; i < N_FOND_ANION; i++) _ajouterFond('anion', METAUX[sim.solution].anion, R_ANION, 1);
+  for (i = 0; i < N_FOND_ANION; i++) _ajouterFond('anion', oxydant(sim.solution).anion, R_ANION, 1);
 }
 
 function _ajouterFond(type, sym, r, vis) {
@@ -402,6 +406,7 @@ function majLoupe(dtSim) {
       if (Math.abs(loupe.offX) < 0.002) loupe.offX = 0;
     }
     _majChutes(dtSim);
+    _majBullesLoupe(dtSim);
     for (var i = loupe.cycles.length - 1; i >= 0; i--) {
       _majCycle(loupe.cycles[i], dtSim);
       if (loupe.cycles[i].phase === 'fini') loupe.cycles.splice(i, 1);
@@ -833,6 +838,7 @@ function _nouveauCycle() {
     var si = zone.ions[i], pu = si.u, pv = si.v;
     cy.ions.push({
       pu: pu, pv: pv,                 // position de contact
+      nu: si.nu, nv: si.nv,           // normale à la surface au site
       hote: si.hote,                  // nœud du réseau conducteur contre lequel il se pose
       depotHote: zone.graphe.N[si.hote].lame ? null : loupe.depots[zone.graphe.N[si.hote].k],
       derriere: si.derriere,          // passe derrière le dépôt (dessiné dessous)
@@ -853,8 +859,11 @@ function _nouveauCycle() {
   // Quand la réaction a lieu, l'ion qui se réduit est de préférence un ion
   // oxydant de la solution (le plus proche de son site) ; s'il n'y en a
   // plus, un ion arrive de l'extérieur : la réaction n'est jamais limitée.
+  // Le fond ne descend pas sous le nombre d'ions voulu par l'avancement
+  // (sinon, à 2 ions par cycle, Ag⁺ ou H⁺, il se vidait trop tôt).
   if (reagit) {
-    for (i = 0; i < cy.ions.length; i++) {
+    var dispo = _compterFond('ox') - _oxReserves() - _ciblesFond().ox;
+    for (i = 0; i < cy.ions.length && i < dispo; i++) {
       var meilleur = null, dm = 1e9;
       for (k = 0; k < loupe.fond.length; k++) {
         var fo = loupe.fond[k];
@@ -873,7 +882,7 @@ function _nouveauCycle() {
     // l'ordre (Al + Cu²⁺ : le 1er atome donne 2 e⁻ au 1er ion et 1 au 2e…).
     // Trajet dans le métal : en ligne droite si l'ion touche l'atome,
     // sinon à travers la lame puis d'atome en atome dans le dépôt.
-    var b = METAUX[X].charge, a = METAUX[Y].charge, n = 0, g = zone.graphe, Lmax = 0;
+    var b = METAUX[X].charge, a = oxydant(Y).charge, n = 0, g = zone.graphe, Lmax = 0;
     for (i = 0; i < cy.atomes.length; i++) {
       var noeud = g.idx[cy.atomes[i].r + ',' + cy.atomes[i].c];
       for (var j = 0; j < b; j++) {
@@ -992,8 +1001,10 @@ function _majCycle(cy, dt) {
     case 'transfo':
       _libererAtomesOxydes(cy, cy.dTransfert + cy.t);
       if (cy.t >= D_TRANSFO) {
-        // Les atomes formés restent là où les ions se sont collés
+        // Les atomes formés restent là où les ions se sont collés ; acide :
+        // les molécules de dihydrogène formées s'éloignent vers le haut
         _deposer(cy);
+        if (sim.solution === 'H') _lancerH2(cy);
         // Les ions formés quittent leur case : glissement vers la droite,
         // derrière l'atome formé, puis diagonale vers le bas à droite.
         // Tant que la solution en compte moins que ne le veut l'avancement,
@@ -1026,7 +1037,8 @@ function _majCycle(cy, dt) {
         at.alpha = at.garder ? 1 - (1 - ALPHA_FOND) * estompe : 1 - estompe;
         fin = Math.max(fin, at.retard + D_DEPART);
       }
-      if (cy.t >= fin) {
+      var h2Arrives = _majH2(cy, dt);
+      if (cy.t >= fin && h2Arrives) {
         for (i = 0; i < cy.atomes.length; i++) if (cy.atomes[i].garder) _versFond(cy.atomes[i]);
         _phase(cy, 'fini');
       }
@@ -1049,9 +1061,152 @@ function _phase(cy, ph) { cy.phase = ph; cy.t = 0; }
 // contact. Ce point est en coordonnées du réseau (un cycle ne démarre
 // que réseau immobile, offX = offY = 0) : le dépôt suit la lame.
 function _deposer(cy) {
+  if (sim.solution === 'H') return;          // acide : pas de dépôt (dihydrogène)
   for (var i = 0; i < cy.ions.length; i++) {
     loupe.depots.push({ u: cy.ions[i].pu, v: cy.ions[i].pv });
   }
+}
+
+// ── Acide : ions H⁺ réduits deux à deux en molécules H₂ ───────────────
+// Les ions du cycle sont rangés de haut en bas (sites limitrophes) : ils
+// s'associent par paires voisines, (0, 1), (2, 3)… Pendant la phase
+// 'transfo', chaque H⁺ devient un atome H (première moitié) puis les deux
+// atomes se rapprochent jusqu'à former la molécule (seconde moitié), un
+// peu écartée de la surface.
+var D_LIAISON_H2 = 0.27;            // demi-longueur de la molécule (cf. PL_MOTIFS.H2)
+function _pairesH2(cy) {
+  var L = [];
+  for (var i = 0; i + 1 < cy.ions.length; i += 2) {
+    var a = cy.ions[i], b = cy.ions[i + 1];
+    var du = b.pu - a.pu, dv = b.pv - a.pv, d = Math.hypot(du, dv) || 1;
+    // Écart de la surface : le long de la normale moyenne des deux sites
+    var nu = (a.nu || 1) + (b.nu || 1), nv = (a.nv || 0) + (b.nv || 0), n = Math.hypot(nu, nv) || 1;
+    L.push({ a: a, b: b, u: (a.pu + b.pu) / 2 + 0.3 * nu / n, v: (a.pv + b.pv) / 2 + 0.3 * nv / n,
+             eu: du / d, ev: dv / d, ang: Math.atan2(dv, du) });
+  }
+  return L;
+}
+// Position de l'ion io de la paire P à l'instant k (0 → 1) de la phase 'transfo'
+function _posTransfoH(P, io, k) {
+  var s = _lisse(Math.max(0, 2 * k - 1)), sg = io === P.a ? -1 : 1;
+  var cu = P.u + sg * D_LIAISON_H2 * P.eu, cv = P.v + sg * D_LIAISON_H2 * P.ev;
+  return { u: io.pu + (cu - io.pu) * s, v: io.pv + (cv - io.pv) * s };
+}
+// Molécules formées : elles remontent le long de la lame jusqu'à la bulle
+// accrochée en haut de la loupe, où une place leur est réservée (plusieurs
+// molécules d'un même cycle y vont en même temps)
+function _lancerH2(cy) {
+  var P = _pairesH2(cy);
+  cy.h2 = [];
+  if (!loupe.bulleH2) loupe.bulleH2 = { n: 0, attendus: 0 };
+  for (var i = 0; i < P.length; i++) {
+    cy.h2.push({ u0: P[i].u, v0: P[i].v, u: P[i].u, v: P[i].v, ang0: P[i].ang, ang: P[i].ang,
+                 retard: i * 0.25, t: 0, rang: loupe.bulleH2.n + loupe.bulleH2.attendus++, arrive: false,
+                 duree: Math.max(1.2, Math.abs(P[i].v - V_BULLE_LOUPE) / 2.2) });
+  }
+}
+
+// ── Bulle de dihydrogène accrochée à la lame (comme dans l'onglet Pile) ──
+// Elle se forme en haut de la loupe, contre la surface, et grossit à
+// chaque molécule reçue ; à N_BULLE_LOUPE molécules, plus aucune en route,
+// elle se détache et monte. On voit ses molécules à l'intérieur (même
+// dessin que les loupes de l'onglet Pile : _rayonBulle, _placesBulle).
+var N_BULLE_LOUPE = 3;
+var V_BULLE_LOUPE = 1.5;           // hauteur (cases) du centre de la bulle accrochée
+var V_MONTEE_LOUPE = 1.6;          // montée d'une bulle détachée (cases/s)
+
+// Centre de la bulle accrochée (n molécules), en coordonnées du réseau :
+// elle touche la surface de la lame à sa hauteur
+function _centreBulleH2(n) {
+  var f = _fronts(), r = Math.floor(V_BULLE_LOUPE);
+  return { u: Math.max(f[r], -1) + 0.5 + R_ATOME + _rayonBulle(Math.max(1, n)), v: V_BULLE_LOUPE };
+}
+function _placeBulleH2(i, n) {
+  var c = _centreBulleH2(n), p = _placesBulle(i, n);
+  return { u: c.u + p.du, v: c.v + p.dv, ang: p.ang };
+}
+function _gonflerBulleH2() {
+  var b = loupe.bulleH2;
+  b.n++;
+  b.attendus = Math.max(0, b.attendus - 1);
+  if (b.n >= N_BULLE_LOUPE && !b.attendus) _detacherBulleH2();
+}
+// La bulle part (assez grosse, ou lame retirée) : elle ne suit plus la lame
+function _detacherBulleH2() {
+  var b = loupe.bulleH2;
+  if (b && b.n > 0) {
+    var c = _centreBulleH2(b.n);
+    loupe.bullesH2.push({ u: c.u + loupe.offX, v: c.v + loupe.offY, n: b.n });
+  }
+  loupe.bulleH2 = null;
+}
+function _majBullesLoupe(dt) {
+  var B = loupe.bullesH2;
+  for (var k = B.length - 1; k >= 0; k--) {
+    B[k].v -= V_MONTEE_LOUPE * dt;
+    B[k].u += 0.35 * dt;
+    if (B[k].v < -_rayonBulle(B[k].n) - 0.5) B.splice(k, 1);
+  }
+}
+// Molécules d'un cycle qui rejoignent la bulle ; renvoie vrai quand
+// toutes y sont
+function _majH2(cy, dt) {
+  var fini = true;
+  for (var i = 0; i < (cy.h2 || []).length; i++) {
+    var m = cy.h2[i];
+    if (m.arrive) continue;
+    fini = false;
+    m.t += dt;
+    var s = _lisse((m.t - m.retard) / m.duree);
+    var pl = loupe.bulleH2 ? _placeBulleH2(m.rang, m.rang + 1) : { u: m.u0, v: m.v0, ang: m.ang0 };
+    m.u = m.u0 + (pl.u - m.u0) * s;
+    m.v = m.v0 + (pl.v - m.v0) * s;
+    m.ang = _angVers(m.ang0, pl.ang, s);
+    if (m.t - m.retard >= m.duree) {
+      m.arrive = true;
+      if (loupe.bulleH2) _gonflerBulleH2();
+    }
+  }
+  return fini;
+}
+
+// Bulle : enveloppe claire où l'on voit ses molécules, reflet (cf.
+// _dessinerBulleL de pile-loupe.js, sans le miroir des électrodes de droite)
+function _dessinerBulleH2(ctx, x, y, n, alpha) {
+  var r = _rayonBulle(n);
+  ctx.fillStyle = 'rgba(255,255,255,' + 0.5 * alpha + ')';
+  ctx.strokeStyle = 'rgba(70,100,130,' + 0.75 * alpha + ')';
+  ctx.lineWidth = 0.05;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill(); ctx.stroke();
+  for (var i = 0; i < n; i++) {
+    var p = _placesBulle(i, n);
+    _dessinerH2(ctx, x + p.du, y + p.dv, p.ang, alpha);
+  }
+  ctx.strokeStyle = 'rgba(255,255,255,' + 0.9 * alpha + ')';
+  ctx.lineWidth = 0.06;
+  ctx.beginPath();
+  ctx.arc(x, y, r * 0.86, -2.6, -1.8);
+  ctx.stroke();
+}
+
+// Atome H en cours de formation (t : 0 ion H⁺ → 1 atome H) et molécule H₂
+// (atomes dessinés comme dans les loupes de l'onglet Pile)
+function _dessinerTransitionH(ctx, x, y, t) {
+  var k = _lisse(t), A = PL_ATOMES_MOL.H;
+  var r = R_ION + (A.r - R_ION) * k;
+  var rgb = melange(couleurRGB(ACIDE.ion), couleurRGB(A.couleur), k);
+  _sphere(ctx, x, y, r, rgb, 1);
+  ctx.strokeStyle = k < 0.5 ? 'rgba(255,255,255,' + 0.9 * (1 - k) + ')' : rgbCss(nuance(rgb, -0.4), 0.7);
+  ctx.lineWidth = 0.04;
+  ctx.stroke();
+  _etiquette(ctx, x, y, k > 0.5 ? 'H' : 'H⁺', k > 0.5 ? A.r * 0.85 : 0.27, rgb, 1);
+}
+function _dessinerH2(ctx, x, y, ang, alpha) {
+  var cu = Math.cos(ang) * D_LIAISON_H2, cv = Math.sin(ang) * D_LIAISON_H2;
+  _dessinerAtomeL(ctx, x - cu, y - cv, 'H', null, alpha);
+  _dessinerAtomeL(ctx, x + cu, y + cv, 'H', null, alpha);
 }
 
 // Lame retirée pendant un cycle : un échange commencé est mené à son terme
@@ -1081,6 +1236,9 @@ function _interrompre() {
     }
   }
   loupe.cycles = [];
+  // Acide : la bulle accrochée part avec ce qu'elle contient (les
+  // molécules encore en route disparaissent avec leur cycle)
+  _detacherBulleH2();
 }
 
 function _majFantomes(dt) {
@@ -1316,6 +1474,12 @@ function dessinerLoupe(ctx) {
     }
   }
 
+  // ── Bulles de dihydrogène détachées qui montent (acide) ──
+  for (i = 0; i < loupe.bullesH2.length; i++) {
+    var bl = loupe.bullesH2[i];
+    _dessinerBulleH2(ctx, bl.u, bl.v, bl.n, Math.max(0, Math.min(1, (bl.v + _rayonBulle(bl.n) + 0.5) / 1.5)));
+  }
+
   // ── Ions formés qui quittent la lame : DERRIÈRE le réseau et les
   //    atomes formés (ils glissent derrière eux, comme dans un volume) ──
   for (i = 0; i < loupe.cycles.length; i++) {
@@ -1356,6 +1520,11 @@ function dessinerLoupe(ctx) {
     // Dépôt : atomes restés là où les ions se sont collés
     for (i = 0; i < loupe.depots.length; i++) {
       _dessinerAtome(ctx, loupe.depots[i].u + dx, loupe.depots[i].v + dy, sim.solution, 1);
+    }
+    // Bulle de dihydrogène accrochée à la lame (acide)
+    if (loupe.bulleH2 && loupe.bulleH2.n > 0) {
+      var cb = _centreBulleH2(loupe.bulleH2.n);
+      _dessinerBulleH2(ctx, cb.u + dx, cb.v + dy, loupe.bulleH2.n, 1);
     }
   }
 
@@ -1439,6 +1608,18 @@ function _dessinerCycle(ctx, cy) {
         _halo(ctx, at.u + dx, at.v + dy, R_ATOME, COUL_OX, 0.9, 1);
         _dessinerTransition(ctx, at.u + dx, at.v + dy, sim.metal, _kOx(cy, at, cy.dTransfert + cy.t), true);
       }
+      if (sim.solution === 'H') {
+        // H⁺ → H, puis les deux atomes de chaque paire se lient en H₂
+        var P = _pairesH2(cy);
+        for (i = 0; i < P.length; i++) {
+          [P[i].a, P[i].b].forEach(function (ioH) {
+            var q = _posTransfoH(P[i], ioH, k);
+            _halo(ctx, q.u + dx, q.v + dy, R_ION, COUL_RED, 0.9 * (1 - k), 1);
+            _dessinerTransitionH(ctx, q.u + dx, q.v + dy, Math.min(1, 2 * k));
+          });
+        }
+        break;
+      }
       for (i = 0; i < cy.ions.length; i++) {
         io = cy.ions[i];
         _halo(ctx, io.pu + dx, io.pv + dy, R_ION, COUL_RED, 0.9 * (1 - k), 1);
@@ -1447,8 +1628,13 @@ function _dessinerCycle(ctx, cy) {
       break;
 
     case 'depart':
-      // Rien ici : les ions formés sont dessinés derrière le réseau et les
-      // atomes formés font déjà partie du dépôt (cf. dessinerLoupe)
+      // Les ions formés sont dessinés derrière le réseau et les atomes
+      // formés font déjà partie du dépôt (cf. dessinerLoupe) ; acide : les
+      // molécules de dihydrogène remontent jusqu'à la bulle
+      for (i = 0; i < (cy.h2 || []).length; i++) {
+        var m = cy.h2[i];
+        if (!m.arrive) _dessinerH2(ctx, m.u + dx, m.v + dy, m.ang, 1);
+      }
       break;
 
     case 'rebond':
@@ -1558,7 +1744,7 @@ function _dessinerAtome(ctx, x, y, sym, alpha) {
 // Ion : plus petit que l'atome, liseré blanc, charge en exposant
 function _dessinerIon(ctx, x, y, sym, alpha, r) {
   if (alpha <= 0) return;
-  var rgb = couleurRGB(METAUX[sym].ion);
+  var rgb = couleurRGB(oxydant(sym).ion);
   _sphere(ctx, x, y, r, rgb, alpha);
   ctx.strokeStyle = 'rgba(255,255,255,' + 0.9 * alpha + ')';
   ctx.lineWidth = 0.05;

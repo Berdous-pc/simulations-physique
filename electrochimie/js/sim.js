@@ -117,8 +117,31 @@ var METAUX = {
 // (onglet Oxydoréduction ; celui de l'onglet Pile est ORDRE_METAUX_PILE)
 var ORDRE_METAUX = ['Mg', 'Al', 'Zn', 'Fe', 'Pb', 'Cu', 'Ag'];
 // Solutions proposées : pas de sulfate d'aluminium (aucune lame ne réagit
-// avec, le magnésium attaquant l'eau plutôt que de déposer de l'aluminium)
-var ORDRE_SOLUTIONS = ['Mg', 'Zn', 'Fe', 'Pb', 'Cu', 'Ag'];
+// avec, le magnésium attaquant l'eau plutôt que de déposer de l'aluminium) ;
+// l'acide chlorhydrique (clé 'H') en dernier
+var ORDRE_SOLUTIONS = ['Mg', 'Zn', 'Fe', 'Pb', 'Cu', 'Ag', 'H'];
+
+// ── Acide chlorhydrique (onglet Oxydoréduction) ───────────────────────
+// Oxydant H⁺ du couple H⁺/H₂ : 2 H⁺ + 2 e⁻ = H₂, le dihydrogène se dégage
+// (pas de dépôt). Mêmes champs que METAUX pour l'oxydant de la solution
+// (cf. oxydant()). Couleur de l'ion : celle de H⁺ dans l'onglet Pile
+// (IONS_SIMPLES.H de pile.js) ; atome : celle de H dans les molécules.
+var ACIDE = {
+  sym: 'H', nom: 'dihydrogène', charge: 1, E0: 0, acide: true,
+  atome: '#eef1f4', ion: '#e8879a', solution: null,
+  nomIon: 'ions hydrogène', nomSolution: 'acide chlorhydrique', deSolution: 'd’acide chlorhydrique',
+  anion: 'Cl'
+};
+// En dessous de ce potentiel seulement, le métal est attaqué de façon
+// visible : le plomb (−0,13 V) est en principe oxydé par H⁺, mais le
+// dihydrogène se forme si mal à sa surface que rien ne s'observe
+var E0_ATTAQUE_ACIDE = -0.2;
+
+// Oxydant de la solution `sym` (onglet Oxydoréduction) : ion métallique
+// de METAUX, ou H⁺ de l'acide chlorhydrique
+function oxydant(sym) {
+  return sym === 'H' ? ACIDE : METAUX[sym];
+}
 
 // Anions : spectateurs (sulfate, nitrate) ; chlorure, hydroxyde et iodure
 // interviennent dans les électrolyses de l'onglet Pile et électrolyse
@@ -140,14 +163,14 @@ function exposantCharge(n, signe) {
   return _EXPOSANTS[n] + (signe < 0 ? '⁻' : '⁺');
 }
 
-// Ion métallique en texte Unicode (canvas) : 'Cu' → « Cu²⁺ »
+// Ion métallique en texte Unicode (canvas) : 'Cu' → « Cu²⁺ » ('H' → « H⁺ »)
 function ionTexte(sym) {
-  return sym + exposantCharge(METAUX[sym].charge, +1);
+  return sym + exposantCharge(oxydant(sym).charge, +1);
 }
 
 // Ion métallique en HTML (panneau, équations) : 'Cu' → Cu<sup>2+</sup>
 function ionHTML(sym) {
-  var n = METAUX[sym].charge;
+  var n = oxydant(sym).charge;
   return sym + '<sup>' + (n > 1 ? n : '') + '+</sup>';
 }
 
@@ -168,20 +191,25 @@ function anionHTML(cle) {
 // Une lame de métal `metal` réagit-elle avec les ions de `ion` ?
 // Oui si l'oxydant (ion) est plus fort que l'oxydant conjugué du métal,
 // c'est-à-dire si son potentiel standard est plus élevé.
+// Acide : seuls les métaux sous E0_ATTAQUE_ACIDE sont attaqués.
 function reactionPossible(metal, ion) {
+  if (ion === 'H') return METAUX[metal].E0 < E0_ATTAQUE_ACIDE;
   return metal !== ion && METAUX[ion].E0 > METAUX[metal].E0;
 }
 
 function _pgcd(a, b) { return b === 0 ? a : _pgcd(b, a % b); }
 
 // Coefficients de l'équation : nombre d'électrons échangés = PPCM des
-// charges ; le métal (charge b) est multiplié par N/b, l'oxydant (charge a)
-// par N/a. Ex. Cu + 2 Ag⁺ : N = 2, coefMetal = 1, coefIon = 2.
+// électrons des deux demi-équations ; le métal (charge b) est multiplié
+// par N/b, l'oxydant par N/a (a : électrons par entité formée). Ex.
+// Cu + 2 Ag⁺ : N = 2, coefMetal = 1, coefIon = 2. Acide : 2 H⁺ + 2 e⁻ = H₂
+// (a = 2), coefIon ions H⁺ et coefProduit molécules H₂ (2 Al + 6 H⁺ →
+// 2 Al³⁺ + 3 H₂). Ion métallique : coefProduit = coefIon.
 function stoechiometrie(metal, ion) {
-  var b = METAUX[metal].charge;
-  var a = METAUX[ion].charge;
+  var b = METAUX[metal].charge, O = oxydant(ion);
+  var a = O.acide ? 2 : O.charge;
   var N = a * b / _pgcd(a, b);
-  return { electrons: N, coefMetal: N / b, coefIon: N / a };
+  return { electrons: N, coefMetal: N / b, coefIon: N / O.charge, coefProduit: N / a };
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -193,7 +221,7 @@ var sim = {
 
   // ── Onglet Oxydoréduction ──
   metal:    'Zn',        // lame plongée
-  solution: 'Cu',        // ion métallique de la solution (l'oxydant)
+  solution: 'Cu',        // ion métallique de la solution (l'oxydant), ou 'H' (acide chlorhydrique)
 
   paused: false,
   speedFactor: 1,

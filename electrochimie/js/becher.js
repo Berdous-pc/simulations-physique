@@ -113,7 +113,9 @@ var lame = {
 var macro = {
   avancement: 0,        // 0 → 1 : avancement de la transformation
   motif: null,          // aiguilles du dépôt et grains de la poudre (tirés une fois par RAZ)
-  texture: null         // texture du dépôt sur la lame (tirée une fois par RAZ)
+  texture: null,        // texture du dépôt sur la lame (tirée une fois par RAZ)
+  bulles: [],           // dihydrogène (acide) : { dx, dy (accrochée : position sur la lame), x, y, r, rMax, t, accroche, ph }
+  accBulles: 0          // fraction de bulle à faire naître
 };
 
 function resetBecher() {
@@ -124,6 +126,8 @@ function resetBecher() {
   lame.parcouru = 0;
   lame.mouillee = 0;
   macro.avancement = 0;
+  macro.bulles = [];
+  macro.accBulles = 0;
   macro.motif = _tirerMotifDepot();
   macro.texture = _tirerTextureDepot();
   _drag = null;
@@ -256,10 +260,15 @@ function _couleurDepot() {
        : nuance(col, -0.28);
 }
 
-// Aspect de la lame et quantité de poudre (cf. EXPOSANT_ASPECT)
-function aspectDepot() {
+// Lame rongée (cf. EXPOSANT_ASPECT), aspect du dépôt et quantité de poudre.
+// Acide chlorhydrique : la lame est rongée, mais sans dépôt (le
+// dihydrogène se dégage en bulles)
+function aspectAttaque() {
   if (!reactionPossible(sim.metal, sim.solution)) return 0;
   return 1 - Math.pow(1 - macro.avancement, EXPOSANT_ASPECT);
+}
+function aspectDepot() {
+  return sim.solution === 'H' ? 0 : aspectAttaque();
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -455,6 +464,67 @@ function majBecher(dtSim, dtReel) {
       macro.avancement += (1 - macro.avancement) * (1 - Math.exp(-dtSim * f / TAU_AVANCEMENT));
     }
   }
+  if (dtSim > 0) _majBullesH2(dtSim);
+}
+
+// ── Bulles de dihydrogène (lame attaquée par l'acide) ─────────────────
+// Elles naissent sur la partie immergée de la lame, d'autant plus vite que
+// la transformation est loin de son terme (H⁺ encore abondants), y
+// grossissent accrochées (elles suivent la lame), puis s'en détachent et
+// montent en oscillant jusqu'à la surface, où elles éclatent.
+var DEBIT_BULLES_H2 = 26;            // bulles par seconde au départ, lame plongée
+var N_BULLES_H2_MAX = 140;
+var V_BULLE_H2 = 9;                  // vitesse de montée (unités de scène / s)
+
+function _majBullesH2(dt) {
+  var i, b;
+  if (sim.solution === 'H' && reactionPossible(sim.metal, sim.solution) && lame.dansBecher) {
+    var yHaut = Math.max(SOL_TOP + 1, lame.yb - Math.min(lame.mouillee, LAME_H - 6));
+    var h = lame.yb - 0.4 - yHaut;
+    macro.accBulles += DEBIT_BULLES_H2 * (1 - macro.avancement) * fractionImmergee() * dt;
+    while (macro.accBulles >= 1) {
+      macro.accBulles -= 1;
+      if (h <= 0 || macro.bulles.length >= N_BULLES_H2_MAX) continue;
+      var rMax = 0.22 + Math.random() * 0.35;
+      macro.bulles.push({ dx: (Math.random() - 0.5) * (LAME_W + 0.6), dy: -0.4 - Math.random() * h,
+                          x: 0, y: 0, r: 0.05, rMax: rMax, t: 0.25 + Math.random() * 0.6,
+                          accroche: true, ph: Math.random() * 6.3 });
+    }
+  }
+  for (i = macro.bulles.length - 1; i >= 0; i--) {
+    b = macro.bulles[i];
+    if (b.accroche) {
+      b.x = lame.x + b.dx; b.y = lame.yb + b.dy;
+      b.r = Math.min(b.rMax, b.r + dt * b.rMax / 0.3);
+      b.t -= dt;
+      // Lame sortie de la solution : la bulle se détache
+      if (b.t <= 0 || !lame.dansBecher || b.y < SOL_TOP) b.accroche = false;
+    } else {
+      b.ph += dt * 7;
+      b.y -= V_BULLE_H2 * (0.7 + b.rMax) * dt;
+      b.x += Math.sin(b.ph) * 0.6 * dt;
+      if (b.y <= SOL_TOP + b.r * 0.5) macro.bulles.splice(i, 1);
+    }
+  }
+  if (macro.bulles.length) sim.needsRedraw = true;
+}
+
+function _dessinerBullesH2(ctx) {
+  for (var i = 0; i < macro.bulles.length; i++) {
+    var b = macro.bulles[i];
+    if (b.y < SOL_TOP) continue;
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.strokeStyle = 'rgba(70,100,130,0.7)';
+    ctx.lineWidth = 0.1;
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+    // Reflet
+    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+    ctx.beginPath();
+    ctx.arc(b.x - b.r * 0.35, b.y - b.r * 0.35, b.r * 0.28, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -500,7 +570,7 @@ function couleurSolution(p) {
   // pondérations du mélange des teintes
   var somme = [0, 0, 0], poids = 0, presence = 0;
   for (var i = 0; i < especes.length; i++) {
-    var m = METAUX[especes[i].sym], conc = especes[i].conc;
+    var m = oxydant(especes[i].sym), conc = especes[i].conc;
     if (!m.solution || conc <= 0) continue;
     var r = Math.min(1, conc / (m.rampe || C_RAMPE));
     var rgb = couleurSuite(m.solution, conc);
@@ -541,6 +611,7 @@ function dessinerBecher(ctx) {
 
   _dessinerLame(ctx);
   _dessinerSolution(ctx, sol);
+  _dessinerBullesH2(ctx);
   _dessinerVerre(ctx);
   _dessinerEtiquettes(ctx);
 
@@ -653,7 +724,7 @@ function _dessinerLame(ctx) {
   var base = couleurRGB(M.atome);
   var x0 = lame.x - LAME_W / 2;
   var top = lame.yb - LAME_H;
-  var p = aspectDepot();
+  var p = aspectDepot(), pa = aspectAttaque();
   var hMouillee = Math.min(lame.mouillee, LAME_H - 6);
   var yMouillee = lame.yb - hMouillee;
 
@@ -661,10 +732,11 @@ function _dessinerLame(ctx) {
   ctx.fillStyle = _degradeMetal(ctx, x0, LAME_W, base, 0);
   ctx.fillRect(x0, top, LAME_W, LAME_H - hMouillee);
 
-  // Partie mouillée : rongée (plus étroite) et ternie à mesure que le
-  // métal s'oxyde. Bas légèrement arrondi par l'attaque.
+  // Partie mouillée : rongée (plus étroite) à mesure que le métal s'oxyde,
+  // et ternie sous le dépôt (l'acide laisse le métal brillant). Bas
+  // légèrement arrondi par l'attaque.
   if (hMouillee > 0) {
-    var ins = LAME_W * 0.12 * p;
+    var ins = LAME_W * 0.12 * pa;
     ctx.fillStyle = _degradeMetal(ctx, x0, LAME_W, base, -0.22 * p);
     ctx.beginPath();
     ctx.moveTo(x0 + ins, yMouillee);
@@ -894,8 +966,8 @@ function _dessinerEtiquettes(ctx) {
   texteEchelle(ctx, 'Lame ' + METAUX[sim.metal].de, lame.x, lame.yb - LAME_H - 2.4, 3.1, '600', disp.k);
 
   // Solution : sous le bécher
-  var S = METAUX[sim.solution];
-  texteEchelle(ctx, 'Solution de ' + S.nomSolution, BECHER_CX, TABLE_Y + 6.8, 3.1, '600', disp.k);
+  var S = oxydant(sim.solution);
+  texteEchelle(ctx, 'Solution ' + (S.deSolution || 'de ' + S.nomSolution), BECHER_CX, TABLE_Y + 6.8, 3.1, '600', disp.k);
   ctx.fillStyle = '#7a8a96';
   texteEchelle(ctx, '(' + ionTexte(S.sym) + ' + ' + anionTexte(S.anion) + ')',
                BECHER_CX, TABLE_Y + 10.2, 2.7, '400', disp.k);

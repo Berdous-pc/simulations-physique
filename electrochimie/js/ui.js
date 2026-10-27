@@ -67,7 +67,7 @@ function _remplirListes() {
   ORDRE_SOLUTIONS.forEach(function (sym) {
     var o2 = document.createElement('option');
     o2.value = sym;
-    o2.textContent = _majuscule(METAUX[sym].nomSolution) + ' (' + ionTexte(sym) + ')';
+    o2.textContent = _majuscule(oxydant(sym).nomSolution) + ' (' + ionTexte(sym) + ')';
     selS.appendChild(o2);
   });
   selM.value = sim.metal;
@@ -96,7 +96,7 @@ function resetRedox() {
   _majSolutionsGras();
   resetBecher();
   resetLoupe();
-  var S = METAUX[sim.solution];
+  var S = oxydant(sim.solution);
   document.getElementById('lbl-solution-ions').innerHTML =
     'Ions ' + ionHTML(S.sym) + ' et ' + anionHTML(S.anion) + ' (spectateurs)';
   majEquations();
@@ -175,10 +175,11 @@ function _electrons(n) { return (n > 1 ? n + '&nbsp;' : '') + 'e<sup>−</sup>';
 function majEquations() {
   if (sim.onglet !== 'oxydoreduction') return;      // bloc occupé par l'onglet Pile
   var X = sim.metal, Y = sim.solution;
-  var MX = METAUX[X], MY = METAUX[Y];
+  var MX = METAUX[X], MY = oxydant(Y);
   var html;
 
-  if (reactionPossible(X, Y)) {
+  if (Y === 'H') html = _equationsAcide(X);
+  else if (reactionPossible(X, Y)) {
     var st = stoechiometrie(X, Y);
     var mult = function (n) { return n > 1 ? '<td class="eq-mult">× ' + n + '</td>' : '<td></td>'; };
     html =
@@ -207,6 +208,41 @@ function majEquations() {
            ' dans une solution d’' + MX.nomIon + ').</span></div>';
   }
   document.getElementById('equations').innerHTML = html;
+}
+
+// Lame dans l'acide chlorhydrique : couple H⁺/H₂, dihydrogène gazeux.
+// Cuivre, argent : aucune transformation ; plomb : en principe oxydé, mais
+// trop lentement pour que rien s'observe (cf. E0_ATTAQUE_ACIDE)
+function _equationsAcide(X) {
+  var MX = METAUX[X];
+  var couple = 'H<sup>+</sup>/H<sub>2</sub>';
+  if (!reactionPossible(X, 'H')) {
+    if (MX.E0 < 0) {
+      return '<div class="eq-rien">Aucune transformation observable entre ' + MX.le + ' et les ions hydrogène.' +
+             '<span class="eq-sous">Couples ' + couple + ' et ' + ionHTML(X) + '/' + X + ' : ' + MX.le +
+             ' devrait être oxydé par les ions H<sup>+</sup>, mais la transformation est si lente' +
+             ' qu’on n’observe rien.</span></div>';
+    }
+    return '<div class="eq-rien">Aucune transformation entre ' + MX.le + ' et les ions hydrogène.' +
+           '<span class="eq-sous">Couples ' + couple + ' et ' + ionHTML(X) + '/' + X + ' : ' + MX.le +
+           ' n’est pas attaqué par l’acide chlorhydrique.</span></div>';
+  }
+  var st = stoechiometrie(X, 'H');
+  var mult = function (n) { return n > 1 ? '<td class="eq-mult">× ' + n + '</td>' : '<td></td>'; };
+  return '<table class="eq-table">' +
+    '<tr><td class="eq-lbl">Couples</td><td class="eq-val">' +
+      couple + ' &nbsp;et&nbsp; ' + ionHTML(X) + '/' + X + '</td><td></td></tr>' +
+    '<tr id="eq-ligne-ox"><td class="eq-lbl eq-ox">Oxydation ' + MX.du + '</td><td class="eq-val">' +
+      X + _etat('s') + ' = ' + ionHTML(X) + _etat('aq') + ' + ' + _electrons(MX.charge) +
+      '</td>' + mult(st.coefMetal) + '</tr>' +
+    '<tr id="eq-ligne-red"><td class="eq-lbl eq-red">Réduction des ions hydrogène</td><td class="eq-val">' +
+      '2&nbsp;H<sup>+</sup>' + _etat('aq') + ' + ' + _electrons(2) + ' = H<sub>2</sub>' + _etat('g') +
+      '</td>' + mult(st.coefProduit) + '</tr>' +
+    '<tr class="eq-bilan" id="eq-ligne-bilan"><td class="eq-lbl">Équation de la réaction</td><td class="eq-val">' +
+      _coef(st.coefMetal) + X + _etat('s') + ' + ' + _coef(st.coefIon) + 'H<sup>+</sup>' + _etat('aq') +
+      ' → ' + _coef(st.coefMetal) + ionHTML(X) + _etat('aq') + ' + ' + _coef(st.coefProduit) + 'H<sub>2</sub>' + _etat('g') +
+      '</td><td></td></tr>' +
+    '</table>';
 }
 
 // ══════════════════════════════════════════════════════════════════════
