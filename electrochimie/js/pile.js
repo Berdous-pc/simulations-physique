@@ -292,6 +292,7 @@ var pile = {
   bulles: [],                // bulles de gaz qui montent dans les solutions
   accBulles: [0, 0, 0, 0],   // bulles en attente (dégagement à chaque électrode, barbotage à chaque tube)
   bruitDepot: null,          // contour irrégulier des dépôts
+  bruitErosion: null,        // creux de corrosion des lames qui s'oxydent
   survol: null               // zone, interrupteur ou tube du pont sous la souris
 };
 
@@ -865,6 +866,23 @@ function _tirerBruitDepot() {
     b.push(cotes);
   }
   pile.bruitDepot = b;
+
+  // Érosion : profondeur relative des creux le long des deux côtés et du
+  // bas de la partie immergée (surtout des creux peu profonds, quelques
+  // piqûres marquées), lissée avec les voisins
+  var e = [];
+  for (i = 0; i < 2; i++) {
+    var bords = [];
+    for (c = 0; c < 3; c++) {
+      var nb = c < 2 ? 24 : 6, r = [], v = [];
+      for (k = 0; k <= nb; k++) r.push(Math.pow(alea(), 1.6));
+      for (k = 0; k <= nb; k++)
+        v.push(0.5 * r[k] + 0.25 * (r[Math.max(0, k - 1)] + r[Math.min(nb, k + 1)]));
+      bords.push(v);
+    }
+    e.push(bords);
+  }
+  pile.bruitErosion = e;
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -1412,20 +1430,22 @@ function _dessinerLameP(ctx, i) {
   ctx.strokeRect(x0, top, P_LAME_W, hSeche);
 
   // Partie immergée, amincie à mesure que le métal s'oxyde (elle
-  // disparaît quand il est entièrement consommé)
+  // disparaît quand il est entièrement consommé) et rongée de creux
+  // irréguliers dont la profondeur suit la quantité de métal perdue :
+  // visibles dès le début, comme le dépôt sur l'autre électrode
   var perdu = Math.min(1, Math.max(0, 1 - L.reste / N_LAME));
-  var w = P_LAME_W * Math.pow(1 - perdu, 0.6);
-  if (w > 0.05) {
-    var xa = xc - w / 2;
-    var arr = Math.min(w / 2, 0.8 * perdu + 0.2);
-    ctx.fillStyle = _degradeMetal(ctx, xa, w, base, -0.2 * perdu);
+  var hw = P_LAME_W / 2 * Math.pow(1 - perdu, 0.6);
+  if (hw > 0.025) {
+    var ero = Math.min(0.7 * hw, 1.3 * Math.sqrt(Math.min(1, (N_LAME - L.reste) / 0.02)));
+    var Er = pile.bruitErosion[i], ne = Er[0].length - 1, nf = Er[2].length - 1;
+    var He = yb - P_SOL_TOP, j;
+    ctx.fillStyle = _degradeMetal(ctx, xc - hw, 2 * hw, base, -0.2 * perdu);
     ctx.beginPath();
-    ctx.moveTo(xa, P_SOL_TOP);
-    ctx.lineTo(xa + w, P_SOL_TOP);
-    ctx.lineTo(xa + w, yb - arr);
-    ctx.quadraticCurveTo(xa + w, yb, xa + w - arr, yb);
-    ctx.lineTo(xa + arr, yb);
-    ctx.quadraticCurveTo(xa, yb, xa, yb - arr);
+    ctx.moveTo(xc - hw, P_SOL_TOP);
+    for (j = 1; j <= ne; j++) ctx.lineTo(xc - hw + ero * Er[0][j], P_SOL_TOP + He * j / ne);
+    for (j = 1; j < nf; j++) ctx.lineTo(xc - hw + 2 * hw * j / nf, yb - ero * Er[2][j]);
+    for (j = ne; j >= 1; j--) ctx.lineTo(xc + hw - ero * Er[1][j], P_SOL_TOP + He * j / ne);
+    ctx.lineTo(xc + hw, P_SOL_TOP);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
