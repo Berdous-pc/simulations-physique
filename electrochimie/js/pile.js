@@ -142,14 +142,18 @@ var SOLUTIONS = {
   PAC:    { nom: 'électrolyte acide (membrane échangeuse de protons)', acide: true, anion: null },
   PLOMB:  { nom: 'acide sulfurique', court: 'H₂SO₄', sulfurique: true, anion: 'SO4' }   // [H⁺] = 2c, [SO₄²⁻] = c
 };
-ORDRE_METAUX.forEach(function (sym) {
+// Métaux de l'onglet : ceux de l'onglet Oxydoréduction, plus le cobalt,
+// le nickel et l'étain (montages libres seulement), du réducteur le plus
+// fort au plus faible
+var ORDRE_METAUX_PILE = ['Mg', 'Al', 'Zn', 'Fe', 'Co', 'Ni', 'Sn', 'Pb', 'Cu', 'Ag'];
+ORDRE_METAUX_PILE.forEach(function (sym) {
   var M = METAUX[sym];
   SOLUTIONS[sym] = { nom: M.nomSolution, metal: sym, anion: M.anion };
 });
 // Solutions proposées dans la cuve d'électrolyse libre
-var ORDRE_SOLUTIONS_CUVE = ['Cu', 'Zn', 'Fe', 'Pb', 'Ag', 'Mg', 'NaCl', 'Na2SO4', 'H2SO4'];
+var ORDRE_SOLUTIONS_CUVE = ['Cu', 'Zn', 'Fe', 'Pb', 'Ag', 'Mg', 'Ni', 'Co', 'Sn', 'NaCl', 'Na2SO4', 'H2SO4'];
 // Électrodes proposées dans la cuve : inertes d'abord, puis les métaux
-var ORDRE_ELECTRODES = ['C', 'Pt'].concat(ORDRE_METAUX);
+var ORDRE_ELECTRODES = ['C', 'Pt'].concat(ORDRE_METAUX_PILE);
 
 // Demi-piles des deux béchers : Mⁿ⁺/M (clé = symbole du métal), ou couple
 // gazeux sur électrode de platine, gaz amené par un tube (barbotage), dans
@@ -158,7 +162,7 @@ var DEMI_PILES_GAZ = {
   H2: { nom: 'Dihydrogène', couple: 'H⁺/H₂', electrode: 'Pt', gaz: 'H2', sol: 'H2SO4' },
   O2: { nom: 'Dioxygène', couple: 'O₂/H₂O', electrode: 'Pt', gaz: 'O2', sol: 'H2SO4' }
 };
-var ORDRE_DEMI_PILES = ORDRE_METAUX.concat(['H2', 'O2']);
+var ORDRE_DEMI_PILES = ORDRE_METAUX_PILE.concat(['H2', 'O2']);
 
 function demiPile(cle) {
   return DEMI_PILES_GAZ[cle] || { electrode: cle, gaz: null, sol: cle };

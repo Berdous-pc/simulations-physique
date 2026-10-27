@@ -25,7 +25,8 @@
 //             à la concentration initiale (teintes des colorStops de la
 //             page Dissolution, dissolution/js/diss-data.js ; bleu de Cu²⁺
 //             revu pour être réaliste) ;
-//             null = incolore (seuls Cu²⁺ et Fe²⁺ colorent la solution).
+//             null = incolore (seuls Cu²⁺, Fe²⁺, Co²⁺ et Ni²⁺ colorent la
+//             solution).
 //  anion    : ion spectateur de la solution usuelle. Nitrate pour Ag⁺ et
 //             Pb²⁺ (leurs sulfates sont peu solubles), sulfate sinon.
 //  depot    : aspect du dépôt sur la lame (cf. becher.js).
@@ -51,6 +52,24 @@ var METAUX = {
         atome: '#77716b', ion: '#93c060', solution: ['#e4f4d6', '#a4d488', '#5a9c40'], rampe: 0.4,
         nomIon: 'ions fer(II)', nomSolution: 'sulfate de fer(II)', anion: 'SO4',
         depot: 'noir' },
+
+  // Cobalt, nickel, étain : onglet Pile et électrolyse seulement (montages
+  // libres), absents de ORDRE_METAUX. Solution rose de Co²⁺, vert émeraude
+  // de Ni²⁺ (plus bleuté que le vert de Fe²⁺) ; Sn²⁺ incolore (en vrai, la
+  // solution doit être acidifiée pour ne pas s'hydrolyser : non modélisé)
+  Co: { sym: 'Co', nom: 'cobalt', de: 'de cobalt', le: 'le cobalt', du: 'du cobalt', charge: 2, E0: -0.28,
+        atome: '#8f99a8', ion: '#d4567f', solution: ['#f8e1e8', '#eeaac0', '#d8688e'],
+        nomIon: 'ions cobalt(II)', nomSolution: 'sulfate de cobalt(II)', anion: 'SO4',
+        depot: 'gris' },
+  Ni: { sym: 'Ni', nom: 'nickel', de: 'de nickel', le: 'le nickel', du: 'du nickel', charge: 2, E0: -0.25,
+        atome: '#b4b1a6', ion: '#3fae78', solution: ['#d9f2e3', '#8fd6ae', '#3cab78'],
+        nomIon: 'ions nickel(II)', nomSolution: 'sulfate de nickel(II)', anion: 'SO4',
+        depot: 'gris' },
+  Sn: { sym: 'Sn', nom: 'étain', de: 'd’étain', le: 'l’étain', du: 'de l’étain', charge: 2, E0: -0.14,
+        atome: '#bfc2c6', ion: '#e39a78', solution: null,
+        nomIon: 'ions étain(II)', nomSolution: 'sulfate d’étain(II)', anion: 'SO4',
+        depot: 'aiguilles' },
+
   Pb: { sym: 'Pb', nom: 'plomb', de: 'de plomb', le: 'le plomb', du: 'du plomb', charge: 2, E0: -0.13,
         atome: '#626977', ion: '#d2b37e', solution: null,
         nomIon: 'ions plomb(II)', nomSolution: 'nitrate de plomb(II)', anion: 'NO3',
@@ -90,6 +109,7 @@ var METAUX = {
 };
 
 // Ordre d'affichage dans les listes : du réducteur le plus fort au plus faible
+// (onglet Oxydoréduction ; celui de l'onglet Pile est ORDRE_METAUX_PILE)
 var ORDRE_METAUX = ['Mg', 'Al', 'Zn', 'Fe', 'Pb', 'Cu', 'Ag'];
 // Solutions proposées : pas de sulfate d'aluminium (aucune lame ne réagit
 // avec, le magnésium attaquant l'eau plutôt que de déposer de l'aluminium)
