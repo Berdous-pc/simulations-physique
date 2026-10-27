@@ -300,7 +300,7 @@ var EXPERIENCES = {
   'plomb-charge': { groupe: 'Électrolyses', nom: 'Charge de l’accumulateur au plomb', bac: 'plomb', etat: 'decharge',
                  g: 'Pb', d: 'PbO2', cg: 4, cd: 4, dipole: 'generateur', iU: 54, polarite: 1 },
   'libre':     { groupe: 'Montage libre', nom: 'Montage deux béchers' },
-  'libre-cuve': { groupe: 'Montage libre', nom: 'Électrolyseur', bac: 'un' }
+  'libre-cuve': { groupe: 'Montage libre', nom: 'Électrolyseur', bac: 'un', dipole: 'generateur', iU: 20, polarite: 1 }
 };
 var ORDRE_EXPERIENCES = ['daniell', 'cu-ag', 'fe-cu', 'zn-pb', 'conc-cu', 'h2-cu', 'pac', 'plomb-decharge',
                          'recharge', 'affinage', 'zingage', 'eau', 'cuso4', 'nacl', 'plomb-charge',
