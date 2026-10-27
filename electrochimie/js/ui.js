@@ -240,7 +240,7 @@ function _remplirListesPile() {
   ['sel-gauche', 'sel-droite'].forEach(function (id) {
     var sel = document.getElementById(id);
     ORDRE_DEMI_PILES.forEach(function (cle) {
-      var G = DEMI_PILES_GAZ[cle] || DEMI_PILES_SOL[cle];
+      var G = DEMI_PILES_GAZ[cle] || DEMI_PILES_SOL[cle] || DEMI_PILES_REF[cle];
       _option(sel, cle, G ? G.nom + ' (' + G.couple + ')'
                           : _majuscule(METAUX[cle].nom) + ' (' + ionTexte(cle) + '/' + cle + ')');
     });
@@ -293,8 +293,10 @@ function _synchroniserPanneauPile() {
     document.getElementById('lbl-c-' + cote).textContent = _formatC0(concInitiale(i));
   });
   document.getElementById('titre-c-gauche').textContent = cuve ? 'Concentration de la solution' : 'Concentration à gauche';
-  document.getElementById('row-c-gauche').style.display = pac || plomb ? 'none' : '';
-  document.getElementById('row-c-droite').style.display = deux ? '' : 'none';
+  // Pas de concentration à régler pour une électrode de référence (KCl saturé)
+  var ref = function (i) { return deux && !!DEMI_PILES_REF[pile.metaux[i]]; };
+  document.getElementById('row-c-gauche').style.display = pac || plomb || ref(0) ? 'none' : '';
+  document.getElementById('row-c-droite').style.display = deux && !ref(1) ? '' : 'none';
   document.getElementById('lbl-parametres').textContent = pac
     ? 'Pile à combustible : électrolyte de concentration fixée ([H⁺] = 1 mol/L).'
     : plomb
@@ -373,8 +375,11 @@ function _majLibellesPile() {
     if (deuxBechers()) {
       var S = SOLUTIONS[demiPile(cle).sol];
       document.getElementById('lbl-' + cote).innerHTML = G
-        ? 'Électrode de platine où barbote le ' + G.nom.toLowerCase() + ', dans une solution acide (H<sup>+</sup> + ' +
-          anionHTML(S.anion) + ')'
+        ? 'Électrode de platine où barbote le ' + G.nom.toLowerCase() + ', dans une solution (' +
+          _especesSolutionHTML(S).join(' + ') + ')'
+        : DEMI_PILES_REF[cle]
+        ? 'Électrode de référence, dans le chlorure de potassium saturé : potentiel fixe, ' +
+          formatNombre(REFERENCES[cle].E, 3) + ' V'
         : DEMI_PILES_SOL[cle]
         ? 'Électrode de platine dans ' + _especesSolutionHTML(S).join(' + ')
         : 'Lame ' + METAUX[cle].de + ' dans ' + ionHTML(cle) + ' + ' + anionHTML(S.anion);

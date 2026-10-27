@@ -96,6 +96,11 @@ var METAUX = {
         atome: '#4b4f56', depot: 'gris' },
   Pt: { sym: 'Pt', nom: 'platine', de: 'de platine', le: 'le platine', du: 'du platine', inerte: true,
         atome: '#cfd3d8', depot: 'gris' },
+  // Électrodes de référence (tube de verre, cf. pile.js) : jamais vues à la loupe
+  ECS:  { sym: 'ECS', nom: 'ECS', de: 'au calomel saturé (ECS)', le: 'l’ECS', du: 'de l’ECS', inerte: true,
+          atome: '#e9ecef', depot: 'gris' },
+  AgCl: { sym: 'AgCl', nom: 'Ag/AgCl', de: 'Ag/AgCl', le: 'l’électrode Ag/AgCl', du: 'de l’électrode Ag/AgCl',
+          inerte: true, atome: '#e9ecef', depot: 'gris' },
 
   // Solides de l'accumulateur au plomb (plaque positive, sulfate formé sur
   // les deux plaques) : jamais oxydés comme un métal ; formule écrite dans

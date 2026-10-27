@@ -116,6 +116,11 @@ var ploupe = {
 function resetLoupePile() {
   var i, r;
   if (pile.zone === 'pont' && sansPont()) pile.zone = 'gauche';
+  // Électrode de référence : pas de loupe, on montre l'autre électrode (ou le fil)
+  if ((pile.zone === 'gauche' || pile.zone === 'droite') && !zoneDisponible(pile.zone)) {
+    var autre = pile.zone === 'gauche' ? 'droite' : 'gauche';
+    pile.zone = zoneDisponible(autre) ? autre : 'fil';
+  }
   ploupe.zone = pile.zone;
   ploupe.rangs = []; ploupe.occupe = [];
   ploupe.offX = 0;
@@ -747,6 +752,13 @@ var PL_SCRIPTS = (function () {
       { d: PRES, arr: [['Cl-', 0, 0.45, 0]], apres: [['Clads', 0, 0.45, 0, 'b']], n: 1 },
       { avec: ['a', 'b'], apres: [['Cl2', V, 0, 0, P]], n: 0 }
     ],
+    // Cl₂ + 2 e⁻ → 2 Cl⁻ : Cl₂ se scinde en deux Cl accrochés, qui
+    // reçoivent chacun un électron
+    'Cl2red': [
+      { arr: [['Cl2', V, 0, 0]], apres: [['Clads', 0, -0.45, 0, 'a'], ['Clads', 0, 0.45, 0, 'b']], n: 0 },
+      { avec: ['a'], apres: [['Cl-', 0, -0.45, 0.3, P]], n: 1 },
+      { d: PRES, avec: ['b'], apres: [['Cl-', 0, 0.45, 0.3, P]], n: 1 }
+    ],
     'H2ox': [
       { arr: [['H2', V, 0, 0]], apres: [['Hads', 0, -0.45, 0, 'a'], ['Hads', 0, 0.45, 0, 'b']], n: 0 },
       { avec: ['a'], apres: [['H+', 0, -0.45, 0.3, P]], n: 1 },
@@ -799,7 +811,7 @@ function _scriptCycle(reac, d) {
   switch (reac.type) {
     case 'H2':    return PL_SCRIPTS[aGauche('H+') ? 'H2-acide' : 'H2-eau'];
     case 'O2':    return PL_SCRIPTS[aGauche('H2O') ? 'O2-eau' : 'O2-HO'];
-    case 'Cl2': case 'H2ox': case 'O2red': return PL_SCRIPTS[reac.type];
+    case 'Cl2': case 'H2ox': case 'O2red': case 'Cl2red': return PL_SCRIPTS[reac.type];
     case 'PbSO4': case 'PbO2': return PL_SCRIPTS[reac.type + (reac.ox ? '-ox' : '-red')];
     case 'redox': return PL_SCRIPTS[reac.sym + (reac.ox ? '-ox' : '-red')];
   }

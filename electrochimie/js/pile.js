@@ -98,6 +98,7 @@ var ETA_GAZ = {
   O2:    { Pt: 0.30, C: 0.35, PbO2: 0.60, metal: 0.40 },   // dégagement de dioxygène (forte sur PbO₂ : la
                                                // charge de l'accumulateur passe avant)
   Cl2:   { metal: 0.10 },                      // dégagement de dichlore
+  Cl2red: { metal: 0.05 },                     // dichlore consommé (pile)
   H2ox:  { metal: 0.05 },                      // dihydrogène consommé (pile)
   O2red: { metal: 0.30 }                       // dioxygène consommé (pile)
 };
@@ -154,6 +155,9 @@ var SOLUTIONS = {
   MNO4MN: { nom: 'permanganate de potassium et sulfate de manganèse(II), acidifiés', court: 'MnO₄⁻ + Mn²⁺',
             spect: 'K', nSpect: 1, sp: { 'MnO4-': 1, 'Mn2+': 1 }, acidite: 8, anion: 'SO4' },
   FE3:    { nom: 'sulfate de fer(III)', court: 'Fe³⁺', sp: { 'Fe3+': 1 }, anion: 'SO4' },
+  HCl:    { nom: 'acide chlorhydrique', court: 'HCl', acide: true, chlorure: true, anion: 'Cl' },
+  // Bécher des électrodes de référence : concentration fixée (C_KCL_SAT)
+  KCLSAT: { nom: 'chlorure de potassium saturé', court: 'KCl', spect: 'K', nSpect: 1, chlorure: true, anion: 'Cl' },
   KI:     { nom: 'iodure de potassium', court: 'KI', spect: 'K', nSpect: 1, sp: { 'I-': 1 }, anion: 'I' },
   MNO4:   { nom: 'permanganate de potassium acidifié', court: 'KMnO₄', spect: 'K', nSpect: 1,
             sp: { 'MnO4-': 1 }, acidite: 8, anion: 'SO4' }
@@ -168,7 +172,7 @@ ORDRE_METAUX_PILE.forEach(function (sym) {
 });
 // Solutions proposées dans la cuve d'électrolyse libre
 var ORDRE_SOLUTIONS_CUVE = ['Cu', 'Zn', 'Fe', 'Pb', 'Ag', 'Mg', 'Ni', 'Co', 'Sn', 'NaCl', 'Na2SO4', 'H2SO4',
-                            'KI', 'FE3', 'MNO4'];
+                            'HCl', 'KI', 'FE3', 'MNO4'];
 // Électrodes proposées dans la cuve : inertes d'abord, puis les métaux
 var ORDRE_ELECTRODES = ['C', 'Pt'].concat(ORDRE_METAUX_PILE);
 
@@ -177,8 +181,26 @@ var ORDRE_ELECTRODES = ['C', 'Pt'].concat(ORDRE_METAUX_PILE);
 // une solution acide
 var DEMI_PILES_GAZ = {
   H2: { nom: 'Dihydrogène', couple: 'H⁺/H₂', electrode: 'Pt', gaz: 'H2', sol: 'H2SO4' },
-  O2: { nom: 'Dioxygène', couple: 'O₂/H₂O', electrode: 'Pt', gaz: 'O2', sol: 'H2SO4' }
+  O2: { nom: 'Dioxygène', couple: 'O₂/H₂O', electrode: 'Pt', gaz: 'O2', sol: 'H2SO4' },
+  // Dichlore dans le chlorure de sodium (toxique : démonstration seulement)
+  Cl2: { nom: 'Dichlore', couple: 'Cl₂/Cl⁻', electrode: 'Pt', gaz: 'Cl2', sol: 'NaCl' }
 };
+
+// Électrodes de référence, dans leur bécher de chlorure de potassium
+// saturé (relié à l'autre par le pont salin) : potentiel fixe, quel que
+// soit le courant (électrode impolarisable, réactifs en large excès).
+// Couple : ox + z e⁻ = red. Pas de loupe sur ces électrodes.
+var REFERENCES = {
+  ECS:  { E: 0.244, z: 2, ox: [[1, 'Hg2Cl2']], red: [[2, 'Hg'], [2, 'Cl-']] },
+  AgCl: { E: 0.197, z: 1, ox: [[1, 'AgCl']], red: [[1, 'M:Ag'], [1, 'Cl-']] }
+};
+var DEMI_PILES_REF = {
+  ECS:  { nom: 'Électrode au calomel saturé', couple: 'ECS, Hg₂Cl₂/Hg : 0,244 V', electrode: 'ECS', gaz: null,
+          sol: 'KCLSAT', ref: 'ECS' },
+  AgCl: { nom: 'Électrode argent – chlorure d’argent', couple: 'AgCl/Ag : 0,197 V', electrode: 'AgCl', gaz: null,
+          sol: 'KCLSAT', ref: 'AgCl' }
+};
+var C_KCL_SAT = 4.2;          // mol/L, chlorure de potassium saturé à 25 °C
 // Couples dont l'oxydant et le réducteur sont tous deux dissous, sur
 // électrode de platine (mélange équimolaire à la concentration c)
 var DEMI_PILES_SOL = {
@@ -186,10 +208,10 @@ var DEMI_PILES_SOL = {
   I2:   { nom: 'Diiode et ions iodure', couple: 'I₂/I⁻', electrode: 'Pt', gaz: null, sol: 'I2I' },
   MnO4: { nom: 'Ions permanganate et manganèse(II)', couple: 'MnO₄⁻/Mn²⁺', electrode: 'Pt', gaz: null, sol: 'MNO4MN' }
 };
-var ORDRE_DEMI_PILES = ORDRE_METAUX_PILE.concat(['H2', 'O2', 'Fe3', 'I2', 'MnO4']);
+var ORDRE_DEMI_PILES = ORDRE_METAUX_PILE.concat(['H2', 'O2', 'Cl2', 'Fe3', 'I2', 'MnO4', 'ECS', 'AgCl']);
 
 function demiPile(cle) {
-  return DEMI_PILES_GAZ[cle] || DEMI_PILES_SOL[cle] || { electrode: cle, gaz: null, sol: cle };
+  return DEMI_PILES_GAZ[cle] || DEMI_PILES_SOL[cle] || DEMI_PILES_REF[cle] || { electrode: cle, gaz: null, sol: cle };
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -331,6 +353,7 @@ var pile = {
   comp: [],                  // compartiments : { n: {sym: mol} (cations métalliques), sp: {clé: mol} (espèces des
                              //   couples en solution), h, cl, spect, nSpect, anion, nom, sym0, sol }
   lames: [],                 // { sym (métal, C ou Pt), reste (mol de métal), depots: [{sym, n}] (dernier = surface), gaz (amené),
+                             //   ref (électrode de référence : clé de REFERENCES, sinon null),
                              //   plomb (accumulateur : { n matière active Pb ou PbO₂, s PbSO₄ } en mol) }
   gaz: [],                   // par électrode : { H2, O2, Cl2 } (mol), > 0 dégagé, < 0 consommé
   t: 0,                      // durée de fonctionnement (s, temps accéléré)
@@ -502,6 +525,7 @@ function _eta(type, i) {
 function reductionsPossibles(i) {
   var c = compElectrode(i), C = pile.comp[c], liste = [];
   if (enPlomb()) return _reactionsPlaque(i, false);
+  if (pile.lames[i].ref) return [_reactionRef(i, false)];
   if (!electrodePresente(i)) return liste;
   for (var sym in C.n) {
     var conc = concentrationC(c, sym);
@@ -513,6 +537,9 @@ function reductionsPossibles(i) {
   var ph = pH(c);
   if (pile.lames[i].gaz === 'O2') {
     liste.push({ type: 'O2red', ox: false, z: 4, E: E0_O2 - PENTE_NERNST * ph, eta: _eta('O2red', i), f: 1 });
+  }
+  if (pile.lames[i].gaz === 'Cl2') {
+    liste.push({ type: 'Cl2red', ox: false, z: 2, E: potentielCl2(c), eta: _eta('Cl2red', i), f: 1 });
   }
   // L'eau (ou les ions H⁺ d'une solution acide) : toujours présente
   liste.push({ type: 'H2', ox: false, z: 2, E: -PENTE_NERNST * ph, eta: _eta('H2', i), f: 1 });
@@ -539,6 +566,7 @@ function _reactionsPlaque(i, ox) {
 function oxydationsPossibles(i) {
   var c = compElectrode(i), liste = [];
   if (enPlomb()) return _reactionsPlaque(i, true);
+  if (pile.lames[i].ref) return [_reactionRef(i, true)];
   if (!electrodePresente(i)) return liste;
   var s = surfaceLame(i), ph = pH(c), cl = concCl(c);
   if (!estInerte(s)) {
@@ -551,8 +579,7 @@ function oxydationsPossibles(i) {
     liste.push({ type: 'H2ox', ox: true, z: 2, E: -PENTE_NERNST * ph, eta: _eta('H2ox', i), f: 1 });
   }
   if (cl > C_TRACE) {
-    liste.push({ type: 'Cl2', ox: true, z: 2, E: E0_CL2 - PENTE_NERNST * Math.log(cl) / Math.LN10,
-                 eta: _eta('Cl2', i), f: cl / (cl + C_COUDE) });
+    liste.push({ type: 'Cl2', ox: true, z: 2, E: potentielCl2(c), eta: _eta('Cl2', i), f: cl / (cl + C_COUDE) });
   }
   // Exception codée : tant qu'il reste assez d'ions chlorure, ce sont eux
   // qui s'oxydent, et non l'eau
@@ -560,6 +587,17 @@ function oxydationsPossibles(i) {
     liste.push({ type: 'O2', ox: true, z: 4, E: E0_O2 - PENTE_NERNST * ph, eta: _eta('O2', i), f: 1 });
   }
   return liste;
+}
+
+// Couple Cl₂/Cl⁻ (Nernst, dichlore à la pression de référence)
+function potentielCl2(c) {
+  return E0_CL2 - PENTE_NERNST * Math.log(Math.max(concCl(c), C_PLANCHER)) / Math.LN10;
+}
+
+// Électrode de référence : son couple, potentiel fixe, jamais épuisé
+function _reactionRef(i, ox) {
+  var R = REFERENCES[pile.lames[i].ref];
+  return { type: 'ref', ox: ox, sym: pile.lames[i].ref, z: R.z, E: R.E, eta: 0, f: 1 };
 }
 
 // Couples en solution du compartiment c dont le réactif est présent :
@@ -639,12 +677,14 @@ function femSens(iA) { var s = _sens(iA); return s ? s.fem : -Infinity; }
 // aucun couple.
 function _abandon(i) {
   var c = compElectrode(i), s = surfaceLame(i), g = pile.lames[i].gaz;
+  if (pile.lames[i].ref) return { E: REFERENCES[pile.lames[i].ref].E, fa: 1, fc: 1 };
   if (!estInerte(s)) {
     var n = oxydable(i), ct = cationsTotal(c);
     return { E: potentielCouple(s, concentrationC(c, s)), fa: n / (n + N_COUDE), fc: ct / (ct + C_COUDE) };
   }
   if (g === 'H2') return { E: -PENTE_NERNST * pH(c), fa: 1, fc: 1 };
   if (g === 'O2') return { E: E0_O2 - PENTE_NERNST * pH(c), fa: 1, fc: 1 };
+  if (g === 'Cl2') { var cl = concCl(c); return { E: potentielCl2(c), fa: cl / (cl + C_COUDE), fc: 1 }; }
   var best = null, mMax = C_TRACE;
   for (var cle in COUPLES_SOL) {
     var K = COUPLES_SOL[cle], ox = concEspece(c, K.ox), red = concEspece(c, K.red);
@@ -789,7 +829,10 @@ var ESPECES = {
   'I2':    { txt: 'I₂', html: 'I<sub>2</sub>', etat: 'aq' },
   'I-':    { txt: 'I⁻', html: 'I<sup>−</sup>', etat: 'aq' },
   'MnO4-': { txt: 'MnO₄⁻', html: 'MnO<sub>4</sub><sup>−</sup>', etat: 'aq' },
-  'Mn2+':  { txt: 'Mn²⁺', html: 'Mn<sup>2+</sup>', etat: 'aq' }
+  'Mn2+':  { txt: 'Mn²⁺', html: 'Mn<sup>2+</sup>', etat: 'aq' },
+  'Hg2Cl2': { txt: 'Hg₂Cl₂', html: 'Hg<sub>2</sub>Cl<sub>2</sub>', etat: 's' },
+  'Hg':    { txt: 'Hg', html: 'Hg', etat: 'l' },
+  'AgCl':  { txt: 'AgCl', html: 'AgCl', etat: 's' }
 };
 
 // 'M:' : solide (métal, PbO₂, PbSO₄) ; 'I:' : ion métallique
@@ -825,6 +868,11 @@ function demiEquation(r, c) {
       if (K.nEau) cRed.push([K.nEau, 'H2O']);
       return r.ox ? { gauche: cRed, droite: cOx, n: K.z } : { gauche: cOx, droite: cRed, n: K.z };
     }
+    case 'ref': {
+      var Rf = REFERENCES[r.sym];
+      return r.ox ? { gauche: Rf.red, droite: Rf.ox, n: Rf.z } : { gauche: Rf.ox, droite: Rf.red, n: Rf.z };
+    }
+    case 'Cl2red': return { gauche: [[1, 'Cl2']], droite: [[2, 'Cl-']], n: 2 };
     case 'Cl2':   return { gauche: [[2, 'Cl-']], droite: [[1, 'Cl2']], n: 2 };
     case 'H2ox':  return { gauche: [[1, 'H2']], droite: [[2, 'H+']], n: 2 };
     case 'O2red': return { gauche: [[1, 'O2'], [4, 'H+']], droite: [[2, 'H2O']], n: 4 };
@@ -874,14 +922,15 @@ function _nouveauCompartiment(cle, c) {
 }
 
 function resetPileModele() {
-  var i, elec = [], gaz = [null, null];
+  var i, elec = [], gaz = [null, null], refs = [null, null];
   pile.comp = [];
   if (deuxBechers()) {
     for (i = 0; i < 2; i++) {
       var D = demiPile(pile.metaux[i]);
-      pile.comp.push(_nouveauCompartiment(D.sol, concInitiale(i)));
+      pile.comp.push(_nouveauCompartiment(D.sol, D.ref ? C_KCL_SAT : concInitiale(i)));
       elec.push(D.electrode);
       gaz[i] = D.gaz;
+      refs[i] = D.ref || null;
     }
   } else if (enPac()) {
     pile.comp.push(_nouveauCompartiment('PAC', 1.0));
@@ -904,7 +953,7 @@ function resetPileModele() {
   pile.lames = [];
   pile.gaz = [];
   for (i = 0; i < 2; i++) {
-    pile.lames.push({ sym: elec[i], reste: N_LAME, depots: [], gaz: gaz[i],
+    pile.lames.push({ sym: elec[i], reste: N_LAME, depots: [], gaz: gaz[i], ref: refs[i],
                       plomb: enPlomb() ? { n: N_PLAQUE - x, s: x } : null });
     pile.gaz.push({ H2: 0, O2: 0, Cl2: 0 });
   }
@@ -1103,6 +1152,7 @@ function _pasMax(i, r) {
   }
   if (r.type === 'metal') return Math.min(0.05 * cationsTotal(c) * P_VOLUME, C.n[r.sym]) * r.z;
   if (r.type === 'Cl2') return 0.05 * C.cl;
+  if (r.type === 'ref' || r.type === 'Cl2red') return 1e-3;    // réactifs en excès (solide, gaz amené)
   if (r.type === 'redox') {
     // 5 % du réactif dissous ; permanganate : H⁺ consommés ou produits par petits pas
     var K = COUPLES_SOL[r.sym], m = 0.05 * nEspece(C, r.ox ? K.red : K.ox) / (r.ox ? K.nRed : K.nOx) * K.z;
@@ -1159,6 +1209,8 @@ function _appliquer(i, r, ne) {
       break;
     }
     case 'Cl2':   C.cl -= ne; G.Cl2 += ne / 2; break;   // 2 Cl⁻ → Cl₂ + 2 e⁻
+    case 'Cl2red': C.cl += ne; G.Cl2 -= ne / 2; break;  // Cl₂ + 2 e⁻ → 2 Cl⁻
+    case 'ref':   C.cl += r.ox ? -ne : ne; break;       // un Cl⁻ par électron (KCl saturé : sans effet visible)
     case 'H2ox':  C.h += ne; G.H2 -= ne / 2; break;     // H₂ → 2 H⁺ + 2 e⁻
     case 'PbSO4':                                       // Pb + SO₄²⁻ ⇄ PbSO₄ + 2 e⁻
     case 'PbO2': {                                      // PbO₂ + 4 H⁺ + SO₄²⁻ + 2 e⁻ ⇄ PbSO₄ + 2 H₂O
@@ -1351,7 +1403,14 @@ function zonesLoupe() {
 }
 
 // La zone est-elle visible (pont salin sorti des solutions : plus de zone du pont)
-function zoneDisponible(nom) { return nom !== 'pont' || enPac() || pontPresent(); }
+// Pas de loupe sur une électrode de référence
+function zoneDisponible(nom) {
+  if (nom === 'gauche' || nom === 'droite') {
+    var L = pile.lames[nom === 'gauche' ? 0 : 1];
+    return !(L && L.ref);
+  }
+  return nom !== 'pont' || enPac() || pontPresent();
+}
 var R_ZONE = 2.4;
 
 // ══════════════════════════════════════════════════════════════════════
@@ -1620,8 +1679,49 @@ function _dessinerVerreP(ctx, B) {
 
 // ── Lames : partie immergée rongée (métal de la lame oxydé) et couverte
 //    de dépôt (couleur du métal de surface) ──
+// Électrode de référence : tube de verre fermé par une pastille poreuse
+// en bas, rempli de chlorure de potassium saturé ; dedans, l'élément
+// actif (mercure et calomel : gris argenté et blanc ; fil d'argent couvert
+// de chlorure d'argent : gris brun)
+function _dessinerReference(ctx, i) {
+  var xc = lameX(i), w = P_LAME_W, x0 = xc - w / 2, top = P_LAME_TOP, yb = P_LAME_YB, ecs = pile.lames[i].ref === 'ECS';
+  ctx.fillStyle = 'rgba(236,244,248,0.9)';                 // KCl saturé, vu à travers le verre
+  ctx.fillRect(x0, top + 3, w, yb - top - 3);
+  ctx.strokeStyle = '#6f7f8c';                             // verre
+  ctx.lineWidth = 0.3;
+  ctx.beginPath();
+  ctx.moveTo(x0, top); ctx.lineTo(x0, yb - 0.6);
+  ctx.quadraticCurveTo(x0, yb, x0 + 0.6, yb); ctx.lineTo(x0 + w - 0.6, yb);
+  ctx.quadraticCurveTo(x0 + w, yb, x0 + w, yb - 0.6); ctx.lineTo(x0 + w, top);
+  ctx.stroke();
+  ctx.fillStyle = '#c9b48a';                               // pastille poreuse
+  ctx.fillRect(x0 + 0.3, yb - 1.4, w - 0.6, 1.2);
+  // Fil de contact puis élément actif
+  ctx.strokeStyle = '#8a929c';
+  ctx.lineWidth = 0.35;
+  ctx.beginPath(); ctx.moveTo(xc, top); ctx.lineTo(xc, P_SOL_TOP + 6); ctx.stroke();
+  if (ecs) {
+    ctx.fillStyle = '#b8bec6';                             // mercure
+    ctx.fillRect(xc - 0.8, P_SOL_TOP + 6, 1.6, 3);
+    ctx.fillStyle = '#f7f6f1';                             // calomel
+    ctx.fillRect(xc - 0.8, P_SOL_TOP + 9, 1.6, 4);
+    ctx.strokeStyle = '#9aa2aa';
+    ctx.lineWidth = 0.15;
+    ctx.strokeRect(xc - 0.8, P_SOL_TOP + 6, 1.6, 7);
+  } else {
+    ctx.strokeStyle = '#8c7a6a';                           // argent couvert de AgCl
+    ctx.lineWidth = 0.6;
+    ctx.beginPath(); ctx.moveTo(xc, P_SOL_TOP + 6); ctx.lineTo(xc, yb - 4); ctx.stroke();
+  }
+  // Cristaux de KCl au fond (solution saturée)
+  ctx.fillStyle = 'rgba(255,255,255,0.95)';
+  for (var k = 0; k < 4; k++) ctx.fillRect(x0 + 0.5 + k * 0.8, yb - 2.3 - (k % 2) * 0.3, 0.6, 0.6);
+  _dessinerPince(ctx, xc, top, w);
+}
+
 function _dessinerLameP(ctx, i) {
   var L = pile.lames[i];
+  if (L.ref) { _dessinerReference(ctx, i); return; }
   var base = couleurRGB(METAUX[L.sym].atome);
   var xc = lameX(i), x0 = xc - P_LAME_W / 2;
   var top = P_LAME_TOP, yb = P_LAME_YB;
