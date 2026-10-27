@@ -159,6 +159,9 @@ var SOLUTIONS = {
   // Bécher des électrodes de référence : concentration fixée (C_KCL_SAT)
   KCLSAT: { nom: 'chlorure de potassium saturé', court: 'KCl', spect: 'K', nSpect: 1, chlorure: true, anion: 'Cl' },
   KI:     { nom: 'iodure de potassium', court: 'KI', spect: 'K', nSpect: 1, sp: { 'I-': 1 }, anion: 'I' },
+  // Iodure de zinc (cuve) : Zn²⁺ se dépose à la cathode, I⁻ s'oxyde en I₂
+  // à l'anode inerte ; [I⁻] = 2c
+  ZNI2:   { nom: 'iodure de zinc', court: 'ZnI₂', metal: 'Zn', sp: { 'I-': 2 }, anion: 'I' },
   MNO4:   { nom: 'permanganate de potassium acidifié', court: 'KMnO₄', spect: 'K', nSpect: 1,
             sp: { 'MnO4-': 1 }, acidite: 8, anion: 'SO4' }
 };
@@ -170,11 +173,27 @@ ORDRE_METAUX_PILE.forEach(function (sym) {
   var M = METAUX[sym];
   SOLUTIONS[sym] = { nom: M.nomSolution, metal: sym, anion: M.anion };
 });
+// Listes déroulantes des montages libres : chaque groupe devient un
+// <optgroup> dont le titre s'affiche en gras ; ORDRE_* = liste aplatie
+function _aplatirGroupes(groupes) {
+  var l = [];
+  groupes.forEach(function (g) { l = l.concat(g.cles); });
+  return l;
+}
 // Solutions proposées dans la cuve d'électrolyse libre
-var ORDRE_SOLUTIONS_CUVE = ['Cu', 'Zn', 'Fe', 'Pb', 'Ag', 'Mg', 'Ni', 'Co', 'Sn', 'NaCl', 'Na2SO4', 'H2SO4',
-                            'HCl', 'KI', 'FE3', 'MNO4'];
+var GROUPES_SOLUTIONS_CUVE = [
+  { titre: 'Sels métalliques',              cles: ['Mg', 'Zn', 'ZNI2', 'Fe', 'Co', 'Ni', 'Sn', 'Pb', 'Cu', 'Ag'] },
+  { titre: 'Acides',                        cles: ['H2SO4', 'HCl'] },
+  { titre: 'Sels à cation non réductible',  cles: ['Na2SO4', 'NaCl', 'KI'] },
+  { titre: 'Oxydants en solution',          cles: ['FE3', 'MNO4'] }
+];
+var ORDRE_SOLUTIONS_CUVE = _aplatirGroupes(GROUPES_SOLUTIONS_CUVE);
 // Électrodes proposées dans la cuve : inertes d'abord, puis les métaux
-var ORDRE_ELECTRODES = ['C', 'Pt'].concat(ORDRE_METAUX_PILE);
+var GROUPES_ELECTRODES = [
+  { titre: 'Électrodes inertes',     cles: ['C', 'Pt'] },
+  { titre: 'Électrodes métalliques', cles: ORDRE_METAUX_PILE }
+];
+var ORDRE_ELECTRODES = _aplatirGroupes(GROUPES_ELECTRODES);
 
 // Demi-piles des deux béchers : Mⁿ⁺/M (clé = symbole du métal), ou couple
 // gazeux sur électrode de platine, gaz amené par un tube (barbotage), dans
@@ -208,7 +227,14 @@ var DEMI_PILES_SOL = {
   I2:   { nom: 'Diiode et ions iodure', couple: 'I₂/I⁻', electrode: 'Pt', gaz: null, sol: 'I2I' },
   MnO4: { nom: 'Ions permanganate et manganèse(II)', couple: 'MnO₄⁻/Mn²⁺', electrode: 'Pt', gaz: null, sol: 'MNO4MN' }
 };
-var ORDRE_DEMI_PILES = ORDRE_METAUX_PILE.concat(['H2', 'O2', 'Cl2', 'Fe3', 'I2', 'MnO4', 'ECS', 'AgCl']);
+// Demi-piles proposées dans les deux béchers, groupées par nature
+var GROUPES_DEMI_PILES = [
+  { titre: 'Métal / ion métallique',                    cles: ORDRE_METAUX_PILE },
+  { titre: 'Couples gazeux (électrode de platine)',     cles: ['H2', 'O2', 'Cl2'] },
+  { titre: 'Couples en solution (électrode de platine)', cles: ['Fe3', 'I2', 'MnO4'] },
+  { titre: 'Électrodes de référence',                   cles: ['ECS', 'AgCl'] }
+];
+var ORDRE_DEMI_PILES = _aplatirGroupes(GROUPES_DEMI_PILES);
 
 function demiPile(cle) {
   return DEMI_PILES_GAZ[cle] || DEMI_PILES_SOL[cle] || DEMI_PILES_REF[cle] || { electrode: cle, gaz: null, sol: cle };
@@ -273,8 +299,8 @@ var EXPERIENCES = {
                  g: 'C', d: 'C', cg: 4, cd: 4, dipole: 'generateur', iU: 60, polarite: -1 },
   'plomb-charge': { groupe: 'Électrolyses', nom: 'Charge de l’accumulateur au plomb', bac: 'plomb', etat: 'decharge',
                  g: 'Pb', d: 'PbO2', cg: 4, cd: 4, dipole: 'generateur', iU: 54, polarite: 1 },
-  'libre':     { groupe: '', nom: 'Montage libre (deux béchers)' },
-  'libre-cuve': { groupe: '', nom: 'Électrolyse libre (cuve)', bac: 'un' }
+  'libre':     { groupe: 'Montage libre', nom: 'Montage deux béchers' },
+  'libre-cuve': { groupe: 'Montage libre', nom: 'Électrolyseur', bac: 'un' }
 };
 var ORDRE_EXPERIENCES = ['daniell', 'cu-ag', 'fe-cu', 'zn-pb', 'conc-cu', 'h2-cu', 'pac', 'plomb-decharge',
                          'recharge', 'affinage', 'zingage', 'eau', 'cuso4', 'nacl', 'plomb-charge',
@@ -533,7 +559,7 @@ function reductionsPossibles(i) {
     liste.push({ type: 'metal', ox: false, sym: sym, z: METAUX[sym].charge, E: potentielCouple(sym, conc),
                  eta: 0, f: conc / (conc + C_COUDE) });
   }
-  _reactionsRedox(c, false, liste);
+  _reactionsRedox(i, false, liste);
   var ph = pH(c);
   if (pile.lames[i].gaz === 'O2') {
     liste.push({ type: 'O2red', ox: false, z: 4, E: E0_O2 - PENTE_NERNST * ph, eta: _eta('O2red', i), f: 1 });
@@ -574,7 +600,7 @@ function oxydationsPossibles(i) {
     liste.push({ type: 'metal', ox: true, sym: s, z: METAUX[s].charge, E: potentielCouple(s, concentrationC(c, s)),
                  eta: 0, f: n / (n + N_COUDE) });
   }
-  _reactionsRedox(c, true, liste);
+  _reactionsRedox(i, true, liste);
   if (pile.lames[i].gaz === 'H2') {
     liste.push({ type: 'H2ox', ox: true, z: 2, E: -PENTE_NERNST * ph, eta: _eta('H2ox', i), f: 1 });
   }
@@ -606,13 +632,22 @@ function _reactionRef(i, ox) {
 // C_COUDE_SOL : une espèce dissoute peu concentrée n'arrive pas assez vite
 // à l'électrode (diffusion) pour prendre tout le courant. Sans cela, dans
 // une cuve, le produit formé à une électrode (I₂, Fe³⁺…) était aussitôt
-// détruit à l'autre et ne s'accumulait jamais.
+// détruit à l'autre et ne s'accumulait jamais. Dans une cuve, de plus, le
+// produit formé contre une électrode (L.forme) reste surtout de son côté :
+// seule la fraction K_MELANGE en atteint l'autre électrode (ex. iodure de
+// zinc : le diiode formé à l'anode n'empêche pas le zinc de se déposer).
 var C_COUDE_SOL = 0.01;       // mol/L
-function _reactionsRedox(c, ox, liste) {
+var K_MELANGE = 0.05;
+function _reactionsRedox(i, ox, liste) {
+  var c = compElectrode(i), autre = 1 - i;
   for (var cle in COUPLES_SOL) {
-    var K = COUPLES_SOL[cle], x = concEspece(c, ox ? K.red : K.ox);
+    var K = COUPLES_SOL[cle], esp = ox ? K.red : K.ox, x = concEspece(c, esp);
     if (x < C_TRACE) continue;
-    var f = x / (x + C_COUDE_SOL);
+    var vu = x;
+    if (compElectrode(autre) === c && pile.lames[autre].forme[esp]) {
+      vu = Math.max(0, x - (1 - K_MELANGE) * pile.lames[autre].forme[esp] / P_VOLUME);
+    }
+    var f = vu / (vu + C_COUDE_SOL);
     if (!ox && K.nH) { var h = concH(c); f *= h / (h + C_COUDE); }
     liste.push({ type: 'redox', ox: ox, sym: cle, z: K.z, E: potentielRedox(cle, c), eta: 0, f: f });
   }
@@ -953,7 +988,7 @@ function resetPileModele() {
   pile.lames = [];
   pile.gaz = [];
   for (i = 0; i < 2; i++) {
-    pile.lames.push({ sym: elec[i], reste: N_LAME, depots: [], gaz: gaz[i], ref: refs[i],
+    pile.lames.push({ sym: elec[i], reste: N_LAME, depots: [], gaz: gaz[i], ref: refs[i], forme: {},
                       plomb: enPlomb() ? { n: N_PLAQUE - x, s: x } : null });
     pile.gaz.push({ H2: 0, O2: 0, Cl2: 0 });
   }
@@ -1206,6 +1241,13 @@ function _appliquer(i, r, ne) {
       _ajouterEspece(C, K.ox, -x * K.nOx);
       _ajouterEspece(C, K.red, x * K.nRed);
       C.h -= x * K.nH;
+      // Produit formé contre cette électrode (cf. _reactionsRedox) ; ce qui
+      // en a été consommé ne compte plus
+      var prod = r.ox ? K.ox : K.red, reac = r.ox ? K.red : K.ox;
+      L.forme[prod] = (L.forme[prod] || 0) + Math.abs(x) * (r.ox ? K.nOx : K.nRed);
+      pile.lames.forEach(function (Lk) {
+        if (Lk.forme[reac]) Lk.forme[reac] = Math.min(Lk.forme[reac], nEspece(C, reac));
+      });
       break;
     }
     case 'Cl2':   C.cl -= ne; G.Cl2 += ne / 2; break;   // 2 Cl⁻ → Cl₂ + 2 e⁻

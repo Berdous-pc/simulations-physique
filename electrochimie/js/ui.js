@@ -221,7 +221,7 @@ function _option(sel, val, txt) {
 }
 
 function _remplirListesPile() {
-  // Expériences regroupées (Piles, Électrolyses), montages libres à la fin
+  // Expériences regroupées (Piles, Électrolyses, Montage libre)
   var selX = document.getElementById('sel-experience');
   var groupes = {};
   ORDRE_EXPERIENCES.forEach(function (cle) {
@@ -236,28 +236,36 @@ function _remplirListesPile() {
     }
     _option(parent, cle, X.nom);
   });
-  // Demi-piles : couples Mⁿ⁺/M, puis couples gazeux et couples en solution
+  // Demi-piles : métal/ion, couples gazeux, couples en solution, références
   ['sel-gauche', 'sel-droite'].forEach(function (id) {
-    var sel = document.getElementById(id);
-    ORDRE_DEMI_PILES.forEach(function (cle) {
+    _remplirGroupes(document.getElementById(id), GROUPES_DEMI_PILES, function (cle) {
       var G = DEMI_PILES_GAZ[cle] || DEMI_PILES_SOL[cle] || DEMI_PILES_REF[cle];
-      _option(sel, cle, G ? G.nom + ' (' + G.couple + ')'
-                          : _majuscule(METAUX[cle].nom) + ' (' + ionTexte(cle) + '/' + cle + ')');
+      return G ? G.nom + ' (' + G.couple + ')'
+               : _majuscule(METAUX[cle].nom) + ' (' + ionTexte(cle) + '/' + cle + ')';
     });
   });
   // Cuve : solution et électrodes
-  var selS = document.getElementById('sel-solution-cuve');
-  ORDRE_SOLUTIONS_CUVE.forEach(function (cle) {
+  _remplirGroupes(document.getElementById('sel-solution-cuve'), GROUPES_SOLUTIONS_CUVE, function (cle) {
     var S = SOLUTIONS[cle];
-    _option(selS, cle, _majuscule(S.nom) + (S.metal ? ' (' + ionTexte(S.metal) + ')' : ' (' + S.court + ')'));
+    return _majuscule(S.nom) + (S.metal && !S.sp ? ' (' + ionTexte(S.metal) + ')' : ' (' + S.court + ')');
   });
   ['sel-elec-gauche', 'sel-elec-droite'].forEach(function (id) {
-    var sel = document.getElementById(id);
-    ORDRE_ELECTRODES.forEach(function (sym) {
-      _option(sel, sym, _majuscule(METAUX[sym].nom));
+    _remplirGroupes(document.getElementById(id), GROUPES_ELECTRODES, function (sym) {
+      return _majuscule(METAUX[sym].nom);
     });
   });
   _synchroniserPanneauPile();
+}
+
+// Remplit une liste déroulante par groupes : un <optgroup> par catégorie
+// (titre en gras, non sélectionnable), libellé de chaque option par texte(cle)
+function _remplirGroupes(sel, groupes, texte) {
+  groupes.forEach(function (g) {
+    var og = document.createElement('optgroup');
+    og.label = g.titre;
+    g.cles.forEach(function (cle) { _option(og, cle, texte(cle)); });
+    sel.appendChild(og);
+  });
 }
 
 // Recopie l'état de la pile dans les listes et les curseurs ; adapte le

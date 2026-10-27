@@ -376,6 +376,16 @@ html:not(.sections-pretes) .section-title[data-repliable]:not([data-repliable="o
   color: #2c3e50;
   cursor: pointer;
 }
+/* Liste dépliée : titres de groupe en gras, options en graisse normale */
+.param-select optgroup {
+  font-weight: 700;
+  font-style: normal;
+  color: #2a5080;
+}
+.param-select option {
+  font-weight: 400;
+  color: #2c3e50;
+}
 
 .input-hint {
   font-size: clamp(10px, 0.9vw, 13px);
