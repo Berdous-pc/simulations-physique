@@ -278,9 +278,7 @@ var EXPERIENCES = {
   'daniell':   { groupe: 'Piles', nom: 'Pile Daniell (zinc – cuivre)', g: 'Zn', d: 'Cu', cg: 2, cd: 2, dipole: 'resistance', iR: 3 },
   'cu-ag':     { groupe: 'Piles', nom: 'Pile cuivre – argent', g: 'Cu', d: 'Ag', cg: 2, cd: 2, dipole: 'resistance', iR: 3 },
   'fe-cu':     { groupe: 'Piles', nom: 'Pile fer – cuivre', g: 'Fe', d: 'Cu', cg: 2, cd: 2, dipole: 'resistance', iR: 3 },
-  'zn-pb':     { groupe: 'Piles', nom: 'Pile zinc – plomb', g: 'Zn', d: 'Pb', cg: 2, cd: 2, dipole: 'resistance', iR: 3 },
   'conc-cu':   { groupe: 'Piles', nom: 'Pile de concentration (cuivre)', g: 'Cu', d: 'Cu', cg: 0, cd: 4, dipole: 'resistance', iR: 3 },
-  'h2-cu':     { groupe: 'Piles', nom: 'Pile dihydrogène – cuivre', g: 'H2', d: 'Cu', cg: 4, cd: 2, dipole: 'resistance', iR: 3 },
   'pac':       { groupe: 'Piles', nom: 'Pile à combustible (dihydrogène – dioxygène)', bac: 'pac',
                  g: 'H2', d: 'O2', cg: 4, cd: 4, dipole: 'resistance', iR: 3 },
   'plomb-decharge': { groupe: 'Piles', nom: 'Accumulateur au plomb (décharge)', bac: 'plomb', etat: 'charge',
@@ -295,15 +293,15 @@ var EXPERIENCES = {
                  g: 'C', d: 'C', cg: 3, cd: 3, dipole: 'generateur', iU: 52, polarite: -1 },
   'cuso4':     { groupe: 'Électrolyses', nom: 'Électrolyse du sulfate de cuivre (graphite)', bac: 'un', solution: 'Cu',
                  g: 'C', d: 'C', cg: 3, cd: 3, dipole: 'generateur', iU: 32, polarite: -1 },
-  'nacl':      { groupe: 'Électrolyses', nom: 'Électrolyse du chlorure de sodium', bac: 'un', solution: 'NaCl',
-                 g: 'C', d: 'C', cg: 4, cd: 4, dipole: 'generateur', iU: 60, polarite: -1 },
+  'zni2':      { groupe: 'Électrolyses', nom: 'Électrolyse de l’iodure de zinc (graphite)', bac: 'un', solution: 'ZNI2',
+                 g: 'C', d: 'C', cg: 3, cd: 3, dipole: 'generateur', iU: 40, polarite: -1 },
   'plomb-charge': { groupe: 'Électrolyses', nom: 'Charge de l’accumulateur au plomb', bac: 'plomb', etat: 'decharge',
                  g: 'Pb', d: 'PbO2', cg: 4, cd: 4, dipole: 'generateur', iU: 54, polarite: 1 },
   'libre':     { groupe: 'Montage libre', nom: 'Montage deux béchers' },
   'libre-cuve': { groupe: 'Montage libre', nom: 'Électrolyseur', bac: 'un', dipole: 'generateur', iU: 20, polarite: 1 }
 };
-var ORDRE_EXPERIENCES = ['daniell', 'cu-ag', 'fe-cu', 'zn-pb', 'conc-cu', 'h2-cu', 'pac', 'plomb-decharge',
-                         'recharge', 'affinage', 'zingage', 'eau', 'cuso4', 'nacl', 'plomb-charge',
+var ORDRE_EXPERIENCES = ['daniell', 'cu-ag', 'fe-cu', 'conc-cu', 'pac', 'plomb-decharge',
+                         'recharge', 'affinage', 'zingage', 'eau', 'cuso4', 'zni2', 'plomb-charge',
                          'libre', 'libre-cuve'];
 
 // ══════════════════════════════════════════════════════════════════════
