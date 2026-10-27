@@ -377,10 +377,22 @@ function etatCharge() {
 function estInerte(sym) { return !!METAUX[sym].inerte; }
 
 // Matériau à la surface d'une électrode : dernière couche de dépôt, sinon
-// la lame (métal, graphite ou platine)
+// la lame (métal, graphite ou platine). Une dernière couche de traces
+// (métal minoritaire déposé en même temps qu'un autre, cf. _parts) ne
+// fait pas la surface : c'est celle d'en dessous
+var N_TRACE_DEPOT = 1e-6;     // mol
 function surfaceLame(i) {
-  var d = pile.lames[i].depots;
-  return d.length ? d[d.length - 1].sym : pile.lames[i].sym;
+  var d = pile.lames[i].depots, k = d.length - 1;
+  if (k >= 0 && d[k].n < N_TRACE_DEPOT) k--;
+  return k >= 0 ? d[k].sym : pile.lames[i].sym;
+}
+// Couche oxydée quand le métal sym de l'électrode s'oxyde : la sienne
+// parmi les deux dernières du dépôt, sinon la lame elle-même (null)
+function _coucheOx(L, sym) {
+  for (var k = L.depots.length - 1; k >= 0 && k >= L.depots.length - 2; k--) {
+    if (L.depots[k].sym === sym) return L.depots[k];
+  }
+  return null;
 }
 
 // Métal oxydable d'une électrode (dépôts + partie immergée d'une lame de métal)
@@ -496,10 +508,30 @@ function cationReduit(i) {
 // Sens où l'électrode iA est l'anode (l'autre la cathode) : réactions,
 // f.é.m. (positive si ce sens est spontané), f.é.m. diminuée des
 // surtensions, facteur d'épuisement. null si une électrode manque.
+// Couple de réactions retenu : le plus facile (potentiels, surtensions),
+// pondéré par l'épuisement des réactifs et compte tenu du générateur, et
+// non le seul plus facile : un réactif épuisé (f faible) laisse la place au
+// suivant (ex. zingage inversé : traces de Fe²⁺ face aux Zn²⁺ ; CuSO₄
+// inversé : cuivre redissous, puis O₂). Le seuil ETA des transformations
+// forcées n'entre pas dans ce choix (sinon le fer du zingage dégageait H₂,
+// réaction « spontanée », plutôt que de se couvrir de zinc). Sans réaction
+// possible, le plus facile parmi ceux dont le réactif n'est pas épuisé
+// (équations et seuil affichés).
 function _sens(iA) {
-  var ox = oxydationChoisie(iA), red = reductionChoisie(1 - iA);
-  if (!ox || !red) return null;
-  return { ox: ox, red: red, fem: red.E - ox.E, eff: red.E - red.eta - ox.E - ox.eta, f: ox.f * red.f };
+  var lo = oxydationsPossibles(iA), lr = reductionsPossibles(1 - iA);
+  var u = iA === 0 ? -_tensionOpposee() : _tensionOpposee();
+  var best = null, Jb = 0, repli = null;
+  for (var a = 0; a < lo.length; a++) {
+    for (var b = 0; b < lr.length; b++) {
+      var ox = lo[a], red = lr[b];
+      var s = { ox: ox, red: red, fem: red.E - ox.E, eff: red.E - red.eta - ox.E - ox.eta, f: ox.f * red.f };
+      var J = s.f * (s.eff + u);
+      if (J > Jb) { Jb = J; best = s; }
+      if (!repli || (s.f >= 0.5) > (repli.f >= 0.5) ||
+          ((s.f >= 0.5) === (repli.f >= 0.5) && s.eff > repli.eff)) repli = s;
+    }
+  }
+  return best || repli;
 }
 function femSens(iA) { var s = _sens(iA); return s ? s.fem : -Infinity; }
 
@@ -605,8 +637,8 @@ function roleElectrode(i) {
 
 // Réaction qui a lieu sur l'électrode i (null sans courant)
 function reactionEnCours(i) {
-  var r = roleElectrode(i);
-  return r === 'anode' ? oxydationChoisie(i) : r === 'cathode' ? reductionChoisie(i) : null;
+  var r = roleElectrode(i), s = r ? _sens(pile.I > 0 ? 0 : 1) : null;
+  return !s ? null : r === 'anode' ? s.ox : s.red;
 }
 
 // Nombre de fois que la demi-équation de l'électrode i figure dans
@@ -904,11 +936,11 @@ function _integrerPile(dt) {
     var s = _sens(iA);
     if (!s) break;
     var ne = Math.abs(I) * dt / FARADAY;       // électrons échangés (mol)
-    ne = Math.min(ne, _pasMax(iA, s.ox), _pasMax(iC, s.red));
+    var parts = _parts(iA, s.ox).concat(_parts(iC, s.red)), k;
+    for (k = 0; k < parts.length; k++) ne = Math.min(ne, _pasMax(parts[k].i, parts[k].r) / parts[k].p);
     if (!(ne > 0)) break;
     var h = ne * FARADAY / Math.abs(I);
-    _appliquer(iA, s.ox, ne);
-    _appliquer(iC, s.red, ne);
+    for (k = 0; k < parts.length; k++) _appliquer(parts[k].i, parts[k].r, ne * parts[k].p);
     _nettoyer(pile.lames[iA]);
     pile.t += h;
     pile.Q += ne * FARADAY;
@@ -917,12 +949,35 @@ function _integrerPile(dt) {
   if (circuitFerme()) pile.t += Math.max(0, dt);
 }
 
+// Parts des électrons échangés sur l'électrode i, où le couple retenu fait
+// réagir r : les réactions plus faciles que r, dont le réactif s'épuise
+// (sinon elles auraient été retenues), en prennent chacune la fraction f
+// de ce qui reste (la plus facile d'abord), r le reste. Elles continuent
+// ainsi jusqu'à épuisement au lieu de s'arrêter net quand r prend le
+// relais (Cu²⁺ en traces d'une pile Daniell aidée par le générateur :
+// H₂ se dégage et le cuivre finit de se déposer). Liste de { i, r, p }.
+function _parts(i, r) {
+  var cle = function (x) { return r.ox ? -(x.E + x.eta) : x.E - x.eta; };
+  var l = (r.ox ? oxydationsPossibles(i) : reductionsPossibles(i)).filter(function (x) {
+    return !(x.type === r.type && x.sym === r.sym) && cle(x) > cle(r) && x.f > 0;
+  });
+  l.sort(function (a, b) { return cle(b) - cle(a); });
+  var reste = 1, parts = [];
+  for (var k = 0; k < l.length && reste > 1e-9; k++) {
+    var p = reste * Math.min(1, l[k].f);
+    parts.push({ i: i, r: l[k], p: p });
+    reste -= p;
+  }
+  if (reste > 1e-9) parts.push({ i: i, r: r, p: reste });
+  return parts;
+}
+
 // Électrons (mol) au plus échangés en un pas par la réaction r sur
 // l'électrode i
 function _pasMax(i, r) {
   var c = compElectrode(i), C = pile.comp[c], L = pile.lames[i];
   if (r.type === 'metal' && r.ox) {
-    var couche = L.depots.length ? L.depots[L.depots.length - 1].n : L.reste;
+    var cch = _coucheOx(L, r.sym), couche = cch ? cch.n : L.reste;
     return Math.min(0.05 * oxydable(i), couche) * r.z;
   }
   if (r.type === 'metal') return Math.min(0.05 * cationsTotal(c) * P_VOLUME, C.n[r.sym]) * r.z;
@@ -942,16 +997,29 @@ function _appliquer(i, r, ne) {
     case 'metal':
       if (r.ox) {
         // Couche de surface → ions dans le compartiment
-        if (L.depots.length) L.depots[L.depots.length - 1].n -= ne / r.z;
+        var cOx = _coucheOx(L, r.sym);
+        if (cOx) cOx.n -= ne / r.z;
         else L.reste -= ne / r.z;
         C.n[r.sym] = (C.n[r.sym] || 0) + ne / r.z;
       } else {
-        // Cation → nouvelle couche (ou couche de surface du même métal)
-        C.n[r.sym] -= ne / r.z;
+        // Cation → nouvelle couche (ou couche de surface du même métal).
+        // Le métal de la lame qui se redépose sur la lame rongée (pile
+        // rechargée) en comble d'abord les creux
+        var nM = ne / r.z;
+        C.n[r.sym] -= nM;
         if (C.n[r.sym] < 1e-14) C.n[r.sym] = 0;
-        var top = L.depots[L.depots.length - 1];
-        if (top && top.sym === r.sym) top.n += ne / r.z;
-        else L.depots.push({ sym: r.sym, n: ne / r.z });
+        if (!L.depots.length && r.sym === L.sym && L.reste < N_LAME) {
+          var comble = Math.min(nM, N_LAME - L.reste);
+          L.reste += comble;
+          nM -= comble;
+        }
+        // Deux métaux déposés en même temps (_parts) : chacun rejoint sa
+        // couche parmi les deux dernières, sans empiler des couches alternées
+        if (nM <= 0) break;
+        var nd = L.depots.length, top = L.depots[nd - 1], sous = L.depots[nd - 2];
+        if (top && top.sym === r.sym) top.n += nM;
+        else if (sous && sous.sym === r.sym) sous.n += nM;
+        else L.depots.push({ sym: r.sym, n: nM });
       }
       break;
     case 'H2':    C.h -= ne; G.H2 += ne / 2; break;     // 2 H⁺ (ou 2 H₂O) + 2 e⁻ → H₂ (+ 2 HO⁻)
@@ -973,7 +1041,7 @@ function _appliquer(i, r, ne) {
 
 // Couches de dépôt épuisées retirées
 function _nettoyer(L) {
-  while (L.depots.length && L.depots[L.depots.length - 1].n < 1e-12) L.depots.pop();
+  L.depots = L.depots.filter(function (d) { return d.n >= 1e-12; });
   if (L.reste < 1e-12) L.reste = 0;
 }
 
