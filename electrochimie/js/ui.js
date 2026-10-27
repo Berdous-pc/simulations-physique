@@ -236,11 +236,11 @@ function _remplirListesPile() {
     }
     _option(parent, cle, X.nom);
   });
-  // Demi-piles : couples Mⁿ⁺/M, puis couples gazeux
+  // Demi-piles : couples Mⁿ⁺/M, puis couples gazeux et couples en solution
   ['sel-gauche', 'sel-droite'].forEach(function (id) {
     var sel = document.getElementById(id);
     ORDRE_DEMI_PILES.forEach(function (cle) {
-      var G = DEMI_PILES_GAZ[cle];
+      var G = DEMI_PILES_GAZ[cle] || DEMI_PILES_SOL[cle];
       _option(sel, cle, G ? G.nom + ' (' + G.couple + ')'
                           : _majuscule(METAUX[cle].nom) + ' (' + ionTexte(cle) + '/' + cle + ')');
     });
@@ -299,7 +299,8 @@ function _synchroniserPanneauPile() {
     ? 'Pile à combustible : électrolyte de concentration fixée ([H⁺] = 1 mol/L).'
     : plomb
     ? 'Accumulateur : acide sulfurique à 2 mol/L une fois chargé (100 mL), 0,05 mol de matière active par plaque.'
-    : 'Concentration du cation (métal), du soluté (chlorure, sulfate de sodium) ou des ions H⁺ (acide). ' +
+    : 'Concentration du cation (métal), du soluté (chlorure, sulfate de sodium, iodure, permanganate), ' +
+      'des ions H⁺ (acide), ou de chaque espèce d’un couple en solution (Fe³⁺ et Fe²⁺, I₂ et I⁻, MnO₄⁻ et Mn²⁺). ' +
       'Volume de chaque solution : 100 mL. Un changement remet l’expérience à zéro.';
   document.getElementById('sl-resistance').value = pile.iR;
   document.getElementById('lbl-resistance').textContent = RESISTANCES[pile.iR];
@@ -374,17 +375,29 @@ function _majLibellesPile() {
       document.getElementById('lbl-' + cote).innerHTML = G
         ? 'Électrode de platine où barbote le ' + G.nom.toLowerCase() + ', dans une solution acide (H<sup>+</sup> + ' +
           anionHTML(S.anion) + ')'
+        : DEMI_PILES_SOL[cle]
+        ? 'Électrode de platine dans ' + _especesSolutionHTML(S).join(' + ')
         : 'Lame ' + METAUX[cle].de + ' dans ' + ionHTML(cle) + ' + ' + anionHTML(S.anion);
     }
   });
   if (enCuve()) {
-    var S = SOLUTIONS[pile.solution], ions = [];
-    if (S.metal) ions.push(ionHTML(S.metal));
-    if (S.spect) ions.push(S.spect + '<sup>+</sup>');
-    if (S.acide) ions.push('H<sup>+</sup>');
-    ions.push(anionHTML(S.anion));
-    document.getElementById('lbl-solution-cuve').innerHTML = 'Ions : ' + ions.join(' + ') + ' (et l’eau, H<sub>2</sub>O).';
+    var S = SOLUTIONS[pile.solution];
+    document.getElementById('lbl-solution-cuve').innerHTML = 'Espèces : ' + _especesSolutionHTML(S).join(' + ') +
+      ' (et l’eau, H<sub>2</sub>O).';
   }
+}
+
+// Espèces dissoutes d'une solution, en HTML : espèces des couples en
+// solution, cation métallique, cation spectateur, H⁺, anion (l'iodure
+// n'est écrit qu'une fois)
+function _especesSolutionHTML(S) {
+  var l = [];
+  for (var e in S.sp || {}) l.push(ESPECES[e].html);
+  if (S.metal) l.push(ionHTML(S.metal));
+  if (S.spect) l.push(S.spect + '<sup>+</sup>');
+  if (S.acide || S.acidite) l.push('H<sup>+</sup>');
+  if (S.anion && !(S.sp && S.sp[S.anion + '-'])) l.push(anionHTML(S.anion));
+  return l;
 }
 
 // ── Circuit extérieur ─────────────────────────────────────────────────
@@ -633,7 +646,18 @@ function _equationsPileHTML() {
 
   var b = _bilan(dOx, dRed), bilan;
   if (b) bilan = _membreHTML(b.gauche) + ' → ' + _membreHTML(b.droite);
-  else if (!deuxBechers()) {
+  else if (s.red.type === 'redox') {
+    // Même couple en solution aux deux électrodes (pile de concentration,
+    // ou cuve) : l'oxydant est réduit d'un côté, reformé de l'autre
+    var lieu = function (liste, ou) {
+      return liste.map(function (p) {
+        var Es = espece(p[1]);
+        return _coef(p[0]) + Es.html + _etat(Es.etat + ', ' + ou);
+      }).join(' + ');
+    };
+    var lc = deuxBechers() ? cote(iC) : 'cathode', la = deuxBechers() ? cote(iA) : 'anode';
+    bilan = lieu(dRed.gauche, lc) + ' + ' + lieu(dOx.gauche, la) + ' → ' + lieu(dRed.droite, lc) + ' + ' + lieu(dOx.droite, la);
+  } else if (!deuxBechers()) {
     // Anode soluble : le métal passe de l'anode à la cathode
     bilan = s.ox.sym + _etat('s, anode') + ' → ' + s.ox.sym + _etat('s, cathode');
   } else {

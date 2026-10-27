@@ -89,7 +89,9 @@ var PL_V_BULLE_HAUT = 1.5;        // la bulle se forme en haut de la loupe : les
 var PL_ATOMES_MOL = {
   H:  { couleur: '#eef1f4', r: 0.33 },
   O:  { couleur: '#d9473b', r: 0.33 },
-  Cl: { couleur: '#6dbb48', r: 0.38 }
+  Cl: { couleur: '#6dbb48', r: 0.38 },
+  I:  { couleur: '#7b4a9e', r: 0.42 },
+  Mn: { couleur: '#a46aa8', r: 0.36 }
 };
 
 var ploupe = {
@@ -103,7 +105,8 @@ var ploupe = {
   bulle: null,        // bulle de gaz accrochée à l'électrode { v, n, attendus, gaz }
   fond: [],           // ions de la solution, du pont, ou électrons du fil
   bullesLibres: [],   // bulles détachées qui montent { u, v, r, gaz }
-  horloge: 0
+  horloge: 0,
+  tCompo: 0           // délai avant de rajuster les ions à la composition de la solution (s)
 };
 
 // ══════════════════════════════════════════════════════════════════════
@@ -123,6 +126,7 @@ function resetLoupePile() {
   ploupe.bulle = null;
   ploupe.bullesLibres = [];
   ploupe.horloge = 0;
+  ploupe.tCompo = PL_T_COMPO;
 
   if (_estElectrode()) {
     // Réseau : matériau de l'électrode, et une ou deux colonnes du dépôt s'il y en a
@@ -150,6 +154,10 @@ function resetLoupePile() {
     // dissoutes, qui viennent réagir sur l'électrode
     if (pile.lames[e].gaz) {
       for (i = 0; i < 3; i++) ploupe.fond.push(_nouvelIon('mol', pile.lames[e].gaz, PL_R_MOL));
+    }
+    // Diiode dissous : quelques molécules
+    if (concEspece(compElectrode(e), 'I2') >= PL_C_VISIBLE) {
+      for (i = 0; i < 3; i++) ploupe.fond.push(_nouvelIon('mol', 'I2', PL_R_MOL));
     }
   } else if (ploupe.zone === 'pont') {
     if (enPac()) {
@@ -187,23 +195,70 @@ function _populationSolution(c) {
   }
   if (concH(c) > 1e-3) cat.push(['H', concH(c)]);
   if (C.spect) cat.push([C.spect, C.nSpect / P_VOLUME]);
-  if (C.anion && C.anion !== 'Cl') an.push([C.anion, C.so4 !== undefined ? concSO4(c) : concInitiale(c)]);
+  // Espèces des couples en solution (le diiode, molécule, à part)
+  var SP = { 'Fe3+': ['cation', 'Fe3'], 'Mn2+': ['cation', 'Mn'], 'I-': ['anion', 'I'], 'MnO4-': ['anion', 'MnO4'] };
+  for (var e in C.sp) {
+    var xe = concEspece(c, e);
+    if (SP[e] && xe > 0) (SP[e][0] === 'cation' ? cat : an).push([SP[e][1], xe]);
+  }
+  if (C.anion && C.anion !== 'Cl' && C.anion !== 'I') an.push([C.anion, C.so4 !== undefined ? concSO4(c) : concInitiale(c)]);
   if (SOLUTIONS[C.sol].chlorure) an.push(['Cl', concCl(c)]);
   if (concOH(c) > 1e-3) an.push(['OH', concOH(c)]);
   return { cations: cat, anions: an };
 }
 
-// N ions répartis selon les concentrations (au moins un pour une espèce
-// qui n'est pas en traces)
-function _repartir(liste, N, type, r) {
-  var tot = 0, k, i;
-  for (k = 0; k < liste.length; k++) tot += liste[k][1];
+// Nombre d'ions de chaque espèce : N répartis selon les concentrations (au
+// moins un pour une espèce qui n'est pas en traces) ; aucun pour une
+// espèce sous PL_C_VISIBLE (choix de l'utilisateur : un ion épuisé ne
+// doit plus se voir dans la loupe)
+var PL_C_VISIBLE = 5e-4;      // mol/L, comme les concentrations écrites sous les béchers
+function _ciblesIons(liste, N) {
+  var tot = 0, k, cible = {};
+  for (k = 0; k < liste.length; k++) if (liste[k][1] >= PL_C_VISIBLE) tot += liste[k][1];
   for (k = 0; k < liste.length; k++) {
-    var part = tot > 0 ? liste[k][1] / tot : 0;
-    var nb = Math.round(N * part);
+    if (liste[k][1] < PL_C_VISIBLE) continue;
+    var part = liste[k][1] / tot, nb = Math.round(N * part);
     if (!nb && part > 0.03) nb = 1;
-    for (i = 0; i < nb; i++) ploupe.fond.push(_nouvelIon(type, liste[k][0], r));
+    cible[liste[k][0]] = (cible[liste[k][0]] || 0) + nb;
   }
+  return cible;
+}
+
+function _repartir(liste, N, type, r) {
+  var cible = _ciblesIons(liste, N);
+  for (var sym in cible) for (var i = 0; i < cible[sym]; i++) ploupe.fond.push(_nouvelIon(type, sym, r));
+}
+
+// Les ions de la loupe suivent la composition de la solution (toutes les
+// PL_T_COMPO s) : une espèce en excès perd son ion le plus éloigné de
+// l'électrode (fondu), une espèce qui manque en reçoit un, venu du reste
+// de la solution ; un ion à la fois par espèce, pour que l'évolution se
+// suive. Les ions formés par les cycles et ceux qu'ils consomment sont
+// ainsi compensés, et une espèce épuisée disparaît. Diiode : 3 molécules
+// tant qu'il y en a (les gaz amenés gardent les leurs).
+var PL_T_COMPO = 0.4;
+function _suivreComposition() {
+  var c = compElectrode(_indiceElectrode()), pop = _populationSolution(c);
+  var I2 = concEspece(c, 'I2') >= PL_C_VISIBLE ? { I2: 3 } : {};
+  [['cation', _ciblesIons(pop.cations, PL_N_CATIONS), R_ION],
+   ['anion', _ciblesIons(pop.anions, PL_N_ANIONS), R_ANION],
+   ['mol', I2, PL_R_MOL]].forEach(function (T) {
+    var type = T[0], cible = T[1], compte = {}, loin = {}, i, s;
+    for (i = 0; i < ploupe.fond.length; i++) {
+      var f = ploupe.fond[i];
+      if (f.type !== type || f.sort) continue;
+      if (type === 'mol' && f.sym !== 'I2') continue;
+      compte[f.sym] = (compte[f.sym] || 0) + 1;
+      if (!loin[f.sym] || f.u > loin[f.sym].u) loin[f.sym] = f;
+    }
+    for (s in compte) if (compte[s] > (cible[s] || 0)) loin[s].sort = true;
+    for (s in cible) {
+      if ((compte[s] || 0) >= cible[s]) continue;
+      var n = _nouvelIon(type, s, T[2], 0);
+      _placerDansSolution(n, true);
+      ploupe.fond.push(n);
+    }
+  });
 }
 
 function _estElectrode() { return ploupe.zone === 'gauche' || ploupe.zone === 'droite'; }
@@ -304,7 +359,10 @@ function _majElectrode(dt) {
         for (j = 0; j < places.length; j++) {
           for (q = places[j].r0; q <= places[j].r1; q++) ploupe.occupe[q] = false;
         }
-        if (places.length === k) {
+        // Groupe trop grand pour la loupe (4 MnO₄⁻ face au dioxygène) :
+        // ce qui tient, quand plus aucun cycle ne tourne
+        if (places.length === k || (places.length && !ploupe.cycles.length)) {
+          k = places.length;
           for (j = 0; j < k; j++) groupe.push(_cycleGaz(reac, places[j]));
         }
       }
@@ -327,7 +385,6 @@ function _majElectrode(dt) {
   // courant (vers la droite si I > 0), anions en sens inverse ; en miroir
   // pour l'électrode de droite.
   var dir = _signeI() * (ploupe.zone === 'gauche' ? 1 : -1) * PL_V_DERIVE * facteurCourant();
-  var nCat = 0, nAn = 0;
   for (i = ploupe.fond.length - 1; i >= 0; i--) {
     var f = ploupe.fond[i];
     if (f.sort) {
@@ -336,7 +393,6 @@ function _majElectrode(dt) {
     } else if (f.vis < 1) {
       f.vis = Math.min(1, f.vis + dt / D_FONDU);
     }
-    if (!f.sort) { if (f.type === 'cation') nCat++; else if (f.type === 'anion') nAn++; }
     _agiter(f, dt, 1);
     // Lente rotation (visible pour HO⁻ et les molécules de gaz dissoutes)
     if (f.ang === undefined) { f.ang = Math.random() * 6.28; f.va = (Math.random() - 0.5) * 0.8; }
@@ -363,26 +419,16 @@ function _majElectrode(dt) {
     }
     if (f.u > 2 * RC + 0.6) { _placerDansSolution(f, d > 0.05 ? false : true); f.vis = 0; }
   }
-  // Les cycles ajoutent des ions (anode d'un métal, eau oxydée ou
-  // réduite) : on garde des nombres stables
-  if (nCat > PL_N_CATIONS + 2) _retirerLoin('cation');
-  if (nAn > PL_N_ANIONS + 3) _retirerLoin('anion');
+  // Les cycles ajoutent ou prennent des ions (anode d'un métal, eau
+  // oxydée ou réduite…) : la population suit la composition de la solution
+  ploupe.tCompo -= dt;
+  if (ploupe.tCompo <= 0) { ploupe.tCompo = PL_T_COMPO; _suivreComposition(); }
 }
 
 // Un cycle d'un couple gazeux est-il encore dans ses étapes ?
 function _etapesEnCours() {
   for (var i = 0; i < ploupe.cycles.length; i++) if (ploupe.cycles[i].phase === 'etapes') return true;
   return false;
-}
-
-// L'ion de ce type le plus éloigné de l'électrode s'efface
-function _retirerLoin(type) {
-  var loin = null;
-  for (var i = 0; i < ploupe.fond.length; i++) {
-    var g = ploupe.fond[i];
-    if (g.type === type && !g.sort && (!loin || g.u > loin.u)) loin = g;
-  }
-  if (loin) loin.sort = true;
 }
 
 // Mouvement brownien lent (Ornstein-Uhlenbeck sur la vitesse)
@@ -502,8 +548,10 @@ function _horaireTransfo(cy, tDeb, tFin) {
   cy.dTransfo = Math.max(PL_D_TRANSFO_MIN, tFin + PL_D_CHANGE - tDeb);
 }
 
-// Retire de la solution l'ion (type, sym) le plus proche de la cible, et
-// en fait arriver un autre du reste de la solution. null s'il n'y en a pas.
+// Retire de la solution l'ion (type, sym) le plus proche de la cible.
+// null s'il n'y en a pas. Un ion consommé est remplacé par
+// _suivreComposition s'il en reste dans la solution ; une molécule d'un gaz
+// amené (barbotage) l'est tout de suite.
 function _prendreIon(type, sym, cible) {
   var io = null;
   for (var i = 0; i < ploupe.fond.length; i++) {
@@ -513,9 +561,11 @@ function _prendreIon(type, sym, cible) {
   }
   if (!io) return null;
   ploupe.fond.splice(ploupe.fond.indexOf(io), 1);
-  var rempl = _nouvelIon(type, sym, io.r, 0);
-  _placerDansSolution(rempl, true);
-  ploupe.fond.push(rempl);
+  if (type === 'mol' && sym !== 'I2') {
+    var rempl = _nouvelIon(type, sym, io.r, 0);
+    _placerDansSolution(rempl, true);
+    ploupe.fond.push(rempl);
+  }
   return io;
 }
 
@@ -527,6 +577,7 @@ function _prendreIon(type, sym, cible) {
 // l'atome ↔ ion des métaux).
 
 var PL_R_H_LIE = 0.26;         // H lié à un O (H₂O, HO⁻, OH), plus petit que dans H₂
+var MN_O = 0.42;               // distance Mn–O de MnO₄⁻ (cases)
 
 // Motifs : atomes (élément, position locale en cases, axe de la molécule
 // selon u, rayon s'il diffère de celui de l'élément), charge à afficher
@@ -545,10 +596,21 @@ var PL_MOTIFS = (function () {
     'H2':    { at: [['H', -0.27, 0], ['H', 0.27, 0]], fond: { k: 'mol', sym: 'H2' } },
     'O2':    { at: [['O', -0.28, 0], ['O', 0.28, 0]], fond: { k: 'mol', sym: 'O2' } },
     'Cl2':   { at: [['Cl', -0.32, 0], ['Cl', 0.32, 0]], fond: { k: 'mol', sym: 'Cl2' } },
+    // Couples en solution : Fe³⁺ et Fe²⁺ (aspect d'ion), I⁻ et I₂ (dissous),
+    // MnO₄⁻ (Mn au centre, quatre O en croix : tétraèdre vu de face) et Mn²⁺
+    'Fe3+':  { at: [['Fe', 0, 0]], ion: { k: 'cation', sym: 'Fe3' }, fond: { k: 'cation', sym: 'Fe3' } },
+    'Fe2+':  { at: [['Fe', 0, 0]], ion: { k: 'cation', sym: 'Fe' }, fond: { k: 'cation', sym: 'Fe' } },
+    'I-':    { at: [['I', 0, 0]], ion: { k: 'anion', sym: 'I' }, fond: { k: 'anion', sym: 'I' } },
+    'I2':    { at: [['I', -0.38, 0], ['I', 0.38, 0]], fond: { k: 'mol', sym: 'I2' } },
+    'MnO4-': { q: -1, at: [['Mn', 0, 0]].concat([-3, -1, 1, 3].map(function (k) {
+                 return ['O', MN_O * Math.cos(k * Math.PI / 4), MN_O * Math.sin(k * Math.PI / 4)];
+               })), fond: { k: 'anion', sym: 'MnO4' } },
+    'Mn2+':  { at: [['Mn', 0, 0]], ion: { k: 'cation', sym: 'Mn' }, fond: { k: 'cation', sym: 'Mn' } },
     // Intermédiaires accrochés à la surface
     'Hads':  { at: [['H', 0, 0]] },
     'Oads':  { at: [['O', 0, 0]] },
     'Clads': { at: [['Cl', 0, 0]] },
+    'Iads':  { at: [['I', 0, 0]] },
     'OHads': { at: [['O', -0.21, 0], ['H', 0.22, 0, PL_R_H_LIE]] }
   };
 })();
@@ -558,6 +620,7 @@ var PL_R_MOL = 0.6;            // rayon d'encombrement d'une molécule de gaz di
 function _cleFond(k, sym) {
   if (k === 'mol') return sym;
   if (k === 'anion' && sym === 'OH') return 'HO-';
+  if (k === 'anion' && sym === 'MnO4') return 'MnO4-';
   return null;
 }
 
@@ -638,6 +701,20 @@ var PL_SCRIPTS = (function () {
   var quatreH = function (p) { return [['H+', 0, -1.18, 0.75, p], ['H+', 0, -0.42, 0.75, p], ['H+', 0, 0.42, 0.75, p], ['H+', 0, 1.18, 0.75, p]]; };
   var deuxEau = function (p) { return [['H2O', 0, -0.8, 0, p], ['H2O', 0, 0.8, 0, p]]; };
   var PRES = 0.2, SUITE = 0.5;               // départs quasi simultanés des deux places, puis étape suivante
+  // Permanganate : centre de l'ion à C_MN de la surface ; deux H⁺ par O,
+  // de part et d'autre de son axe, à D_H du centre (ils forment avec lui
+  // l'eau, dont le centre est à D_EAU, H tournés vers l'extérieur)
+  var C_MN = 1.5, D_H = 1.2, D_EAU = 0.8, ANG_O = [-3, -1, 1, 3].map(function (k) { return k * PI / 4; });
+  var huitH = function (p) {
+    var l = [];
+    ANG_O.forEach(function (a) {
+      [-0.38, 0.38].forEach(function (s) { l.push(['H+', 0, D_H * Math.sin(a + s), C_MN + D_H * Math.cos(a + s), p, true]); });
+    });
+    return l;
+  };
+  var quatreEau = function (p) {
+    return ANG_O.map(function (a) { return ['H2O', a, D_EAU * Math.sin(a), C_MN + D_EAU * Math.cos(a), p, true]; });
+  };
   return {
     'H2-acide': [
       { arr: [['H+', 0, -0.45, 0]], apres: [['Hads', 0, -0.45, 0, 'a']], n: 1 },
@@ -690,7 +767,29 @@ var PL_SCRIPTS = (function () {
     'PbSO4-ox':  [{ arr: [['SO42-', 0, 0, 0]], apres: [], n: 2, lent: 2 }],
     'PbSO4-red': [{ apres: [['SO42-', 0, 0, 0, P]], n: 2, lent: 2 }],
     'PbO2-red':  [{ arr: [['SO42-', 0, 0, 0]].concat(quatreH()), apres: deuxEau(P), n: 2, lent: 2 }],
-    'PbO2-ox':   [{ arr: [['H2O', 0, -0.8, 0], ['H2O', 0, 0.8, 0]], apres: quatreH(P).concat([['SO42-', 0, 0, 0, P]]), n: 2, lent: 2 }]
+    'PbO2-ox':   [{ arr: [['H2O', 0, -0.8, 0], ['H2O', 0, 0.8, 0]], apres: quatreH(P).concat([['SO42-', 0, 0, 0, P]]), n: 2, lent: 2 }],
+    // Couples en solution : l'ion vient contre l'électrode et repart avec
+    // une charge de plus ou de moins (Fe³⁺/Fe²⁺) ; I⁻ comme Cl⁻, mais le
+    // diiode formé reste dissous ; I₂ réduit comme H₂ oxydé (il se scinde
+    // en deux I accrochés, qui reçoivent chacun un électron) ;
+    // permanganate : une seule étape à 5 e⁻, deux fois plus lente, où les
+    // quatre O forment de l'eau avec huit H⁺
+    'Fe3-red': [{ arr: [['Fe3+', 0, 0, 0]], apres: [['Fe2+', 0, 0, 0, P]], n: 1 }],
+    'Fe3-ox':  [{ arr: [['Fe2+', 0, 0, 0]], apres: [['Fe3+', 0, 0, 0, P]], n: 1 }],
+    'I2-ox': [
+      { arr: [['I-', 0, -0.5, 0]], apres: [['Iads', 0, -0.5, 0, 'a']], n: 1 },
+      { d: PRES, arr: [['I-', 0, 0.5, 0]], apres: [['Iads', 0, 0.5, 0, 'b']], n: 1 },
+      { avec: ['a', 'b'], apres: [['I2', V, 0, 0, P]], n: 0 }
+    ],
+    'I2-red': [
+      { arr: [['I2', V, 0, 0]], apres: [['Iads', 0, -0.5, 0, 'a'], ['Iads', 0, 0.5, 0, 'b']], n: 0 },
+      { avec: ['a'], apres: [['I-', 0, -0.5, 0.3, P]], n: 1 },
+      { d: PRES, avec: ['b'], apres: [['I-', 0, 0.5, 0.3, P]], n: 1 }
+    ],
+    'MnO4-red': [{ arr: [['MnO4-', 0, 0, C_MN, null, true]].concat(huitH()),
+                   apres: [['Mn2+', 0, 0, C_MN, P, true]].concat(quatreEau(P)), n: 5, lent: 2 }],
+    'MnO4-ox':  [{ arr: [['Mn2+', 0, 0, C_MN, null, true]].concat(quatreEau()),
+                   apres: [['MnO4-', 0, 0, C_MN, P, true]].concat(huitH(P)), n: 5, lent: 2 }]
   };
 })();
 
@@ -702,6 +801,7 @@ function _scriptCycle(reac, d) {
     case 'O2':    return PL_SCRIPTS[aGauche('H2O') ? 'O2-eau' : 'O2-HO'];
     case 'Cl2': case 'H2ox': case 'O2red': return PL_SCRIPTS[reac.type];
     case 'PbSO4': case 'PbO2': return PL_SCRIPTS[reac.type + (reac.ox ? '-ox' : '-red')];
+    case 'redox': return PL_SCRIPTS[reac.sym + (reac.ox ? '-ox' : '-red')];
   }
   return null;
 }
@@ -742,8 +842,9 @@ function _placeGaz(reac) {
   // Solide de la demi-équation ('M:…', accumulateur) : une maille du
   // réseau qui se transforme sur place
   var avant = null, apres = null, k, r;
-  d.gauche.forEach(function (p) { if (p[1].charAt(1) === ':') avant = p[1].slice(2); });
-  d.droite.forEach(function (p) { if (p[1].charAt(1) === ':') apres = p[1].slice(2); });
+  // (pas 'I:Fe' : Fe²⁺ est dissous)
+  d.gauche.forEach(function (p) { if (p[1].slice(0, 2) === 'M:') avant = p[1].slice(2); });
+  d.droite.forEach(function (p) { if (p[1].slice(0, 2) === 'M:') apres = p[1].slice(2); });
 
   // Hauteur du cycle : lignes libres sur toute la hauteur occupée
   var span = _hauteurScript(script), vc = -1, r0 = 0, r1 = 0, maille = null;
@@ -985,9 +1086,10 @@ function _majCycleGaz(cy, dt) {
     if (p.t >= p.dP) {
       var F = PL_MOTIFS[p.cle].fond;
       if (p.cle === cy.gaz) _gonflerBulle(cy.gaz);
-      else if (F && F.k !== 'mol') {
-        ploupe.fond.push({ type: F.k, sym: F.sym, r: F.k === 'cation' ? R_ION : R_ANION, u: p.u, v: p.v,
-                           ang: p.angC, vu: _gauss() * 0.3, vv: _gauss() * 0.3, vis: 1 });
+      else if (F) {
+        // Ion, ou molécule qui reste dissoute (diiode)
+        ploupe.fond.push({ type: F.k, sym: F.sym, r: F.k === 'cation' ? R_ION : F.k === 'anion' ? R_ANION : PL_R_MOL,
+                           u: p.u, v: p.v, ang: p.angC, vu: _gauss() * 0.3, vv: _gauss() * 0.3, vis: 1 });
       }
       cy.partants.splice(i, 1);
     }
@@ -1255,8 +1357,9 @@ function _dessinerIonSimple(ctx, x, y, sym, alpha) {
 function _dessinerAtomeL(ctx, x, y, el, ion, alpha, r) {
   if (alpha <= 0) return;
   if (ion) {
-    if (ion.k === 'cation') _dessinerIonSimple(ctx, x, y, ion.sym, alpha);
-    else _dessinerAnion(ctx, x, y, ion.sym, alpha);
+    if (ion.k === 'anion') _dessinerAnion(ctx, x, y, ion.sym, alpha);
+    else if (METAUX[ion.sym] && METAUX[ion.sym].charge) _dessinerIon(ctx, x, y, ion.sym, alpha, R_ION);   // Fe²⁺
+    else _dessinerIonSimple(ctx, x, y, ion.sym, alpha);
     return;
   }
   var A = PL_ATOMES_MOL[el], rgb = couleurRGB(A.couleur);

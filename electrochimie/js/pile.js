@@ -124,7 +124,9 @@ var K_PONT = { texte: 'K⁺', couleur: '#c98a55' };
 var IONS_SIMPLES = {
   H:  { texte: 'H⁺', couleur: '#e8879a' },
   Na: { texte: 'Na⁺', couleur: '#cf8fc7' },
-  K:  K_PONT
+  K:  K_PONT,
+  Fe3: { texte: 'Fe³⁺', couleur: '#d98a2b' },
+  Mn: { texte: 'Mn²⁺', couleur: '#e3a3c2' }
 };
 
 // ══════════════════════════════════════════════════════════════════════
@@ -140,7 +142,21 @@ var SOLUTIONS = {
   Na2SO4: { nom: 'sulfate de sodium', court: 'Na₂SO₄', spect: 'Na', nSpect: 2, anion: 'SO4' },
   H2SO4:  { nom: 'acide sulfurique', court: 'H₂SO₄', acide: true, anion: 'SO4' },
   PAC:    { nom: 'électrolyte acide (membrane échangeuse de protons)', acide: true, anion: null },
-  PLOMB:  { nom: 'acide sulfurique', court: 'H₂SO₄', sulfurique: true, anion: 'SO4' }   // [H⁺] = 2c, [SO₄²⁻] = c
+  PLOMB:  { nom: 'acide sulfurique', court: 'H₂SO₄', sulfurique: true, anion: 'SO4' },  // [H⁺] = 2c, [SO₄²⁻] = c
+  // Couples en solution (COUPLES_SOL) : sp = espèces dissoutes et leur
+  // concentration initiale en multiples de c ; Fe²⁺ est le cation
+  // métallique du fer (metal). acidite : [H⁺] initial = acidite × c +
+  // 0,5 mol/L, de quoi réduire tout le permanganate. Le diiode est en
+  // réalité dissous sous forme d'ions triiodure I₃⁻ (non modélisé).
+  FE3FE2: { nom: 'sulfate de fer(III) et de fer(II)', court: 'Fe³⁺ + Fe²⁺', metal: 'Fe', sp: { 'Fe3+': 1 }, anion: 'SO4' },
+  I2I:    { nom: 'diiode dans l’iodure de potassium', court: 'I₂ + I⁻', spect: 'K', nSpect: 1,
+            sp: { 'I2': 1, 'I-': 1 }, anion: 'I' },
+  MNO4MN: { nom: 'permanganate de potassium et sulfate de manganèse(II), acidifiés', court: 'MnO₄⁻ + Mn²⁺',
+            spect: 'K', nSpect: 1, sp: { 'MnO4-': 1, 'Mn2+': 1 }, acidite: 8, anion: 'SO4' },
+  FE3:    { nom: 'sulfate de fer(III)', court: 'Fe³⁺', sp: { 'Fe3+': 1 }, anion: 'SO4' },
+  KI:     { nom: 'iodure de potassium', court: 'KI', spect: 'K', nSpect: 1, sp: { 'I-': 1 }, anion: 'I' },
+  MNO4:   { nom: 'permanganate de potassium acidifié', court: 'KMnO₄', spect: 'K', nSpect: 1,
+            sp: { 'MnO4-': 1 }, acidite: 8, anion: 'SO4' }
 };
 // Métaux de l'onglet : ceux de l'onglet Oxydoréduction, plus le cobalt,
 // le nickel et l'étain (montages libres seulement), du réducteur le plus
@@ -151,7 +167,8 @@ ORDRE_METAUX_PILE.forEach(function (sym) {
   SOLUTIONS[sym] = { nom: M.nomSolution, metal: sym, anion: M.anion };
 });
 // Solutions proposées dans la cuve d'électrolyse libre
-var ORDRE_SOLUTIONS_CUVE = ['Cu', 'Zn', 'Fe', 'Pb', 'Ag', 'Mg', 'Ni', 'Co', 'Sn', 'NaCl', 'Na2SO4', 'H2SO4'];
+var ORDRE_SOLUTIONS_CUVE = ['Cu', 'Zn', 'Fe', 'Pb', 'Ag', 'Mg', 'Ni', 'Co', 'Sn', 'NaCl', 'Na2SO4', 'H2SO4',
+                            'KI', 'FE3', 'MNO4'];
 // Électrodes proposées dans la cuve : inertes d'abord, puis les métaux
 var ORDRE_ELECTRODES = ['C', 'Pt'].concat(ORDRE_METAUX_PILE);
 
@@ -162,11 +179,41 @@ var DEMI_PILES_GAZ = {
   H2: { nom: 'Dihydrogène', couple: 'H⁺/H₂', electrode: 'Pt', gaz: 'H2', sol: 'H2SO4' },
   O2: { nom: 'Dioxygène', couple: 'O₂/H₂O', electrode: 'Pt', gaz: 'O2', sol: 'H2SO4' }
 };
-var ORDRE_DEMI_PILES = ORDRE_METAUX_PILE.concat(['H2', 'O2']);
+// Couples dont l'oxydant et le réducteur sont tous deux dissous, sur
+// électrode de platine (mélange équimolaire à la concentration c)
+var DEMI_PILES_SOL = {
+  Fe3:  { nom: 'Ions fer(III) et fer(II)', couple: 'Fe³⁺/Fe²⁺', electrode: 'Pt', gaz: null, sol: 'FE3FE2' },
+  I2:   { nom: 'Diiode et ions iodure', couple: 'I₂/I⁻', electrode: 'Pt', gaz: null, sol: 'I2I' },
+  MnO4: { nom: 'Ions permanganate et manganèse(II)', couple: 'MnO₄⁻/Mn²⁺', electrode: 'Pt', gaz: null, sol: 'MNO4MN' }
+};
+var ORDRE_DEMI_PILES = ORDRE_METAUX_PILE.concat(['H2', 'O2', 'Fe3', 'I2', 'MnO4']);
 
 function demiPile(cle) {
-  return DEMI_PILES_GAZ[cle] || { electrode: cle, gaz: null, sol: cle };
+  return DEMI_PILES_GAZ[cle] || DEMI_PILES_SOL[cle] || { electrode: cle, gaz: null, sol: cle };
 }
+
+// ══════════════════════════════════════════════════════════════════════
+//  Couples en solution : ox + nH H⁺ + z e⁻ = red + nEau H₂O, coefficients
+//  nOx et nRed. Espèces : clés de ESPECES ('Fe3+', 'I2'…), Fe²⁺ étant le
+//  cation métallique du fer ('I:Fe', compté dans comp.n) ; les autres sont
+//  dans comp.sp (mol). Réduits ou oxydés sur toute électrode, dès que
+//  l'espèce est présente (Fe²⁺ d'une solution de sulfate de fer(II)
+//  compris), sans surtension.
+// ══════════════════════════════════════════════════════════════════════
+
+var COUPLES_SOL = {
+  Fe3:  { ox: 'Fe3+', red: 'I:Fe', nOx: 1, nRed: 1, nH: 0, nEau: 0, z: 1, E0: 0.77 },
+  I2:   { ox: 'I2', red: 'I-', nOx: 1, nRed: 2, nH: 0, nEau: 0, z: 2, E0: 0.54 },
+  MnO4: { ox: 'MnO4-', red: 'Mn2+', nOx: 1, nRed: 1, nH: 8, nEau: 4, z: 5, E0: 1.51 }
+};
+
+// Couleurs des espèces dissoutes colorées (même principe que
+// METAUX[…].solution) : Fe³⁺ jaune orangé, diiode brun, permanganate violet
+var COUL_SP = {
+  'Fe3+':  ['#f6e7b8', '#e6b956', '#c2801c'],
+  'I2':    ['#f2deb0', '#cf8f3a', '#7e3f12'],
+  'MnO4-': ['#ead0ea', '#ad55b2', '#5e1470']
+};
 
 // ══════════════════════════════════════════════════════════════════════
 //  Expériences prédéfinies
@@ -212,11 +259,13 @@ var ORDRE_EXPERIENCES = ['daniell', 'cu-ag', 'fe-cu', 'zn-pb', 'conc-cu', 'h2-cu
                          'libre', 'libre-cuve'];
 
 // ══════════════════════════════════════════════════════════════════════
-//  Géométrie du montage, en unités logiques (repère 140 × 102)
+//  Géométrie du montage, en unités logiques (repère 140 × 110)
 //  Indice 0 = électrode de gauche, 1 = électrode de droite.
 // ══════════════════════════════════════════════════════════════════════
 
-var P_SCENE_W = 140, P_SCENE_H = 102;
+// Bande sous la table (P_TABLE_Y à P_SCENE_H) : légendes des solutions,
+// sur plusieurs lignes
+var P_SCENE_W = 140, P_SCENE_H = 110;
 var P_TABLE_Y = 90;
 var P_BECHER_H = 34;
 var P_BECHER_TOP = P_TABLE_Y - P_BECHER_H;
@@ -279,7 +328,8 @@ var pile = {
   showEquations: false,
 
   // ── Grandeurs ──
-  comp: [],                  // compartiments : { n: {sym: mol} (cations métalliques), h, cl, spect, nSpect, anion, nom, sym0, sol }
+  comp: [],                  // compartiments : { n: {sym: mol} (cations métalliques), sp: {clé: mol} (espèces des
+                             //   couples en solution), h, cl, spect, nSpect, anion, nom, sym0, sol }
   lames: [],                 // { sym (métal, C ou Pt), reste (mol de métal), depots: [{sym, n}] (dernier = surface), gaz (amené),
                              //   plomb (accumulateur : { n matière active Pb ou PbO₂, s PbSO₄ } en mol) }
   gaz: [],                   // par électrode : { H2, O2, Cl2 } (mol), > 0 dégagé, < 0 consommé
@@ -351,6 +401,26 @@ function concH(c) {
 function pH(c) { return -Math.log(concH(c)) / Math.LN10; }
 function concOH(c) { return KE / concH(c); }
 function concCl(c) { return Math.max(0, pile.comp[c].cl) / P_VOLUME; }
+
+// Espèce d'un couple en solution : 'I:Fe' (cation métallique, comp.n) ou
+// clé de comp.sp. Quantité (mol), concentration, ajout (borné à 0)
+function nEspece(C, cle) {
+  return Math.max(0, cle.charAt(1) === ':' ? C.n[cle.slice(2)] || 0 : C.sp[cle] || 0);
+}
+function concEspece(c, cle) { return nEspece(pile.comp[c], cle) / P_VOLUME; }
+function _ajouterEspece(C, cle, dn) {
+  if (cle.charAt(1) === ':') { var s = cle.slice(2); C.n[s] = Math.max(0, (C.n[s] || 0) + dn); }
+  else C.sp[cle] = Math.max(0, (C.sp[cle] || 0) + dn);
+}
+
+// Potentiel d'un couple en solution (loi de Nernst, H⁺ compris ; espèce
+// absente : C_PLANCHER)
+function potentielRedox(cle, c) {
+  var K = COUPLES_SOL[cle];
+  var ox = Math.max(concEspece(c, K.ox), C_PLANCHER), red = Math.max(concEspece(c, K.red), C_PLANCHER);
+  var lq = K.nOx * Math.log(ox) + K.nH * Math.log(concH(c)) - K.nRed * Math.log(red);
+  return K.E0 + PENTE_NERNST / K.z * lq / Math.LN10;
+}
 // Ions sulfate de l'accumulateur (concentration de l'acide sulfurique)
 function concSO4(c) { return Math.max(0, pile.comp[c].so4 || 0) / P_VOLUME; }
 
@@ -439,6 +509,7 @@ function reductionsPossibles(i) {
     liste.push({ type: 'metal', ox: false, sym: sym, z: METAUX[sym].charge, E: potentielCouple(sym, conc),
                  eta: 0, f: conc / (conc + C_COUDE) });
   }
+  _reactionsRedox(c, false, liste);
   var ph = pH(c);
   if (pile.lames[i].gaz === 'O2') {
     liste.push({ type: 'O2red', ox: false, z: 4, E: E0_O2 - PENTE_NERNST * ph, eta: _eta('O2red', i), f: 1 });
@@ -475,6 +546,7 @@ function oxydationsPossibles(i) {
     liste.push({ type: 'metal', ox: true, sym: s, z: METAUX[s].charge, E: potentielCouple(s, concentrationC(c, s)),
                  eta: 0, f: n / (n + N_COUDE) });
   }
+  _reactionsRedox(c, true, liste);
   if (pile.lames[i].gaz === 'H2') {
     liste.push({ type: 'H2ox', ox: true, z: 2, E: -PENTE_NERNST * ph, eta: _eta('H2ox', i), f: 1 });
   }
@@ -488,6 +560,24 @@ function oxydationsPossibles(i) {
     liste.push({ type: 'O2', ox: true, z: 4, E: E0_O2 - PENTE_NERNST * ph, eta: _eta('O2', i), f: 1 });
   }
   return liste;
+}
+
+// Couples en solution du compartiment c dont le réactif est présent :
+// oxydant (réductions, ions H⁺ compris pour le permanganate) ou réducteur
+// (oxydations), ajoutés à liste. Facteur d'épuisement de coude
+// C_COUDE_SOL : une espèce dissoute peu concentrée n'arrive pas assez vite
+// à l'électrode (diffusion) pour prendre tout le courant. Sans cela, dans
+// une cuve, le produit formé à une électrode (I₂, Fe³⁺…) était aussitôt
+// détruit à l'autre et ne s'accumulait jamais.
+var C_COUDE_SOL = 0.01;       // mol/L
+function _reactionsRedox(c, ox, liste) {
+  for (var cle in COUPLES_SOL) {
+    var K = COUPLES_SOL[cle], x = concEspece(c, ox ? K.red : K.ox);
+    if (x < C_TRACE) continue;
+    var f = x / (x + C_COUDE_SOL);
+    if (!ox && K.nH) { var h = concH(c); f *= h / (h + C_COUDE); }
+    liste.push({ type: 'redox', ox: ox, sym: cle, z: K.z, E: potentielRedox(cle, c), eta: 0, f: f });
+  }
 }
 
 // Réduction la plus facile (potentiel, moins la surtension, le plus haut)
@@ -540,25 +630,36 @@ function _sens(iA) {
 function femSens(iA) { var s = _sens(iA); return s ? s.fem : -Infinity; }
 
 // ── Tension à vide ────────────────────────────────────────────────────
-// Potentiel d'une électrode à l'abandon : couple du métal de surface, ou
-// couple du gaz qui y est amené. Électrode inerte sans gaz : non défini.
-function potentielAVide(i) {
+// Couple d'une électrode à l'abandon : celui du métal de surface, du gaz
+// qui y est amené, ou (électrode inerte) le couple en solution dont les
+// deux espèces sont présentes (le plus abondant). { E, fa, fc } : potentiel,
+// facteurs d'épuisement si l'électrode est l'anode (réducteur : métal
+// oxydable, réducteur dissous) ou la cathode (oxydant : cations
+// réductibles, oxydant dissous) ; un gaz amené ne s'épuise pas. null si
+// aucun couple.
+function _abandon(i) {
   var c = compElectrode(i), s = surfaceLame(i), g = pile.lames[i].gaz;
-  if (!estInerte(s)) return potentielCouple(s, concentrationC(c, s));
-  if (g === 'H2') return -PENTE_NERNST * pH(c);
-  if (g === 'O2') return E0_O2 - PENTE_NERNST * pH(c);
-  return null;
+  if (!estInerte(s)) {
+    var n = oxydable(i), ct = cationsTotal(c);
+    return { E: potentielCouple(s, concentrationC(c, s)), fa: n / (n + N_COUDE), fc: ct / (ct + C_COUDE) };
+  }
+  if (g === 'H2') return { E: -PENTE_NERNST * pH(c), fa: 1, fc: 1 };
+  if (g === 'O2') return { E: E0_O2 - PENTE_NERNST * pH(c), fa: 1, fc: 1 };
+  var best = null, mMax = C_TRACE;
+  for (var cle in COUPLES_SOL) {
+    var K = COUPLES_SOL[cle], ox = concEspece(c, K.ox), red = concEspece(c, K.red);
+    if (Math.min(ox, red) <= mMax) continue;
+    mMax = Math.min(ox, red);
+    best = { E: potentielRedox(cle, c), fa: red / (red + C_COUDE), fc: ox / (ox + C_COUDE) };
+  }
+  return best;
 }
 
+// Potentiel d'une électrode à l'abandon (null : non défini)
+function potentielAVide(i) { var A = _abandon(i); return A ? A.E : null; }
+
 // Facteur d'épuisement de la pile qui débiterait avec iA pour anode
-// (cations réductibles de la cathode, métal oxydable de l'anode ; un gaz
-// amené ne s'épuise pas)
-function _facteurVide(iA) {
-  var iC = 1 - iA, n = oxydable(iA), c = cationsTotal(compElectrode(iC));
-  var fa = pile.lames[iA].gaz ? 1 : n / (n + N_COUDE);
-  var fc = pile.lames[iC].gaz ? 1 : c / (c + C_COUDE);
-  return fa * fc;
-}
+function _facteurVide(iA) { return _abandon(iA).fa * _abandon(1 - iA).fc; }
 
 // Tension à vide (voltmètre) : V(droite) − V(gauche), avec le facteur
 // d'épuisement du sens spontané (pile usée : 0) ; nulle si une électrode
@@ -683,7 +784,12 @@ var ESPECES = {
   'O2':  { txt: 'O₂',  html: 'O<sub>2</sub>',  etat: 'g' },
   'Cl2': { txt: 'Cl₂', html: 'Cl<sub>2</sub>', etat: 'g' },
   'Cl-': { txt: 'Cl⁻', html: 'Cl<sup>−</sup>', etat: 'aq' },
-  'SO42-': { txt: 'SO₄²⁻', html: 'SO<sub>4</sub><sup>2−</sup>', etat: 'aq' }
+  'SO42-': { txt: 'SO₄²⁻', html: 'SO<sub>4</sub><sup>2−</sup>', etat: 'aq' },
+  'Fe3+':  { txt: 'Fe³⁺', html: 'Fe<sup>3+</sup>', etat: 'aq' },
+  'I2':    { txt: 'I₂', html: 'I<sub>2</sub>', etat: 'aq' },
+  'I-':    { txt: 'I⁻', html: 'I<sup>−</sup>', etat: 'aq' },
+  'MnO4-': { txt: 'MnO₄⁻', html: 'MnO<sub>4</sub><sup>−</sup>', etat: 'aq' },
+  'Mn2+':  { txt: 'Mn²⁺', html: 'Mn<sup>2+</sup>', etat: 'aq' }
 };
 
 // 'M:' : solide (métal, PbO₂, PbSO₄) ; 'I:' : ion métallique
@@ -712,6 +818,13 @@ function demiEquation(r, c) {
     case 'O2':
       return ph > 7.5 ? { gauche: [[4, 'HO-']], droite: [[1, 'O2'], [2, 'H2O']], n: 4 }
                       : { gauche: [[2, 'H2O']], droite: [[1, 'O2'], [4, 'H+']], n: 4 };
+    case 'redox': {
+      // ox + nH H⁺ + z e⁻ → red + nEau H₂O, ou l'inverse
+      var K = COUPLES_SOL[r.sym], cOx = [[K.nOx, K.ox]], cRed = [[K.nRed, K.red]];
+      if (K.nH) cOx.push([K.nH, 'H+']);
+      if (K.nEau) cRed.push([K.nEau, 'H2O']);
+      return r.ox ? { gauche: cRed, droite: cOx, n: K.z } : { gauche: cOx, droite: cRed, n: K.z };
+    }
     case 'Cl2':   return { gauche: [[2, 'Cl-']], droite: [[1, 'Cl2']], n: 2 };
     case 'H2ox':  return { gauche: [[1, 'H2']], droite: [[2, 'H+']], n: 2 };
     case 'O2red': return { gauche: [[1, 'O2'], [4, 'H+']], droite: [[2, 'H2O']], n: 4 };
@@ -748,9 +861,11 @@ function gazDegage(r) {
 // Compartiment rempli de la solution `cle` à la concentration c
 function _nouveauCompartiment(cle, c) {
   var S = SOLUTIONS[cle];
-  var C = { n: {}, h: 0, cl: 0, spect: S.spect || null, nSpect: 0, anion: S.anion,
+  var C = { n: {}, sp: {}, h: 0, cl: 0, spect: S.spect || null, nSpect: 0, anion: S.anion,
             nom: S.nom, sym0: S.metal || null, sol: cle };
   if (S.metal) C.n[S.metal] = c * P_VOLUME;
+  for (var e in S.sp || {}) C.sp[e] = S.sp[e] * c * P_VOLUME;
+  if (S.acidite) C.h = (S.acidite * c + 0.5) * P_VOLUME;
   if (S.spect) C.nSpect = S.nSpect * c * P_VOLUME;
   if (S.chlorure) C.cl = c * P_VOLUME;
   if (S.acide) C.h = c * P_VOLUME;
@@ -809,7 +924,9 @@ function resetPileModele() {
 // Ion représentatif d'un compartiment (option migration) : couleurs du
 // cation et de l'anion de la solution (pas d'anion mobile dans la membrane)
 function _couleursIons(C) {
-  var cat = C.sym0 ? METAUX[C.sym0].ion : C.spect ? IONS_SIMPLES[C.spect].couleur : IONS_SIMPLES.H.couleur;
+  var fe3 = (SOLUTIONS[C.sol].sp || {})['Fe3+'];          // sulfate de fer(III) : Fe³⁺
+  var cat = C.sym0 ? METAUX[C.sym0].ion : fe3 ? IONS_SIMPLES.Fe3.couleur
+          : C.spect ? IONS_SIMPLES[C.spect].couleur : IONS_SIMPLES.H.couleur;
   return { cation: couleurRGB(cat), anion: C.anion ? couleurRGB(ANIONS[C.anion].couleur) : null };
 }
 
@@ -986,6 +1103,11 @@ function _pasMax(i, r) {
   }
   if (r.type === 'metal') return Math.min(0.05 * cationsTotal(c) * P_VOLUME, C.n[r.sym]) * r.z;
   if (r.type === 'Cl2') return 0.05 * C.cl;
+  if (r.type === 'redox') {
+    // 5 % du réactif dissous ; permanganate : H⁺ consommés ou produits par petits pas
+    var K = COUPLES_SOL[r.sym], m = 0.05 * nEspece(C, r.ox ? K.red : K.ox) / (r.ox ? K.nRed : K.nOx) * K.z;
+    return K.nH ? Math.min(m, Math.max(0.1 * Math.abs(C.h), 2e-6) * K.z / K.nH) : m;
+  }
   if (r.type === 'PbSO4' || r.type === 'PbO2') {
     // Décharge : matière active et acide ; charge : sulfate de plomb
     var P = L.plomb, dech = r.ox !== (r.type === 'PbO2');
@@ -1029,6 +1151,13 @@ function _appliquer(i, r, ne) {
     case 'H2':    C.h -= ne; G.H2 += ne / 2; break;     // 2 H⁺ (ou 2 H₂O) + 2 e⁻ → H₂ (+ 2 HO⁻)
     case 'O2red': C.h -= ne; G.O2 -= ne / 4; break;     // O₂ + 4 H⁺ + 4 e⁻ → 2 H₂O
     case 'O2':    C.h += ne; G.O2 += ne / 4; break;     // 2 H₂O → O₂ + 4 H⁺ + 4 e⁻
+    case 'redox': {                                     // ox + nH H⁺ + z e⁻ ⇄ red + nEau H₂O
+      var K = COUPLES_SOL[r.sym], x = ne / K.z * (r.ox ? -1 : 1);
+      _ajouterEspece(C, K.ox, -x * K.nOx);
+      _ajouterEspece(C, K.red, x * K.nRed);
+      C.h -= x * K.nH;
+      break;
+    }
     case 'Cl2':   C.cl -= ne; G.Cl2 += ne / 2; break;   // 2 Cl⁻ → Cl₂ + 2 e⁻
     case 'H2ox':  C.h += ne; G.H2 -= ne / 2; break;     // H₂ → 2 H⁺ + 2 e⁻
     case 'PbSO4':                                       // Pb + SO₄²⁻ ⇄ PbSO₄ + 2 e⁻
@@ -1400,13 +1529,16 @@ function _dessinerBulles(ctx) {
 // moyenne pondérée par leurs concentrations. Ions incolores : l'eau.
 function _couleurCompartiment(c) {
   if (enPac()) return COUL_MEMBRANE.slice();
-  var n = pile.comp[c].n, somme = [0, 0, 0], poids = 0, presence = 0;
-  for (var sym in n) {
-    var M = METAUX[sym], conc = concentrationC(c, sym);
-    if (!M.solution || conc <= 0) continue;
+  var C = pile.comp[c], somme = [0, 0, 0], poids = 0, presence = 0, teintes = [], cle;
+  // Teintes et concentrations : cations métalliques, espèces dissoutes colorées
+  for (cle in C.n) teintes.push([METAUX[cle].solution, concentrationC(c, cle)]);
+  for (cle in C.sp) teintes.push([COUL_SP[cle], concEspece(c, cle)]);
+  for (var k0 = 0; k0 < teintes.length; k0++) {
+    var stops = teintes[k0][0], conc = teintes[k0][1];
+    if (!stops || conc <= 0) continue;
     var t = Math.max(0, Math.min(1, (Math.log(conc) / Math.LN10 + 2.3) / 2.3));
     var pres = Math.min(1, t / 0.35);
-    var rgb = couleurSuite(M.solution, t);
+    var rgb = couleurSuite(stops, t);
     var w = conc * pres;
     for (var k = 0; k < 3; k++) somme[k] += w * rgb[k];
     poids += w;
@@ -2031,15 +2163,20 @@ function _dessinerEtiquettesP(ctx) {
   ctx.textAlign = 'center';
   for (var c = 0; c < R.length; c++) {
     var C = pile.comp[c], xm = (R[c].L + R[c].R) / 2;
-    ctx.fillStyle = '#2c3e50';
     var nom = enPac() ? 'Électrolyte acide (membrane échangeuse de protons)' : _majusculeP(C.nom);
-    _texteBorne(ctx, nom, xm, P_TABLE_Y + 6.4, 2.9, '600', deuxBechers() ? 44 : 100);
     var morceaux = [];
     for (var sym in C.n) {
       var conc = concentrationC(c, sym);
       if (sym === C.sym0 || conc >= 5e-4) {
         morceaux.push('[' + ionTexte(sym) + '] = ' + formatConcentration(conc) + ' mol/L');
       }
+    }
+    // Espèces dissoutes des couples en solution : celles de départ, et
+    // celles qui se sont formées
+    var sp0 = SOLUTIONS[C.sol].sp || {};
+    for (var e in C.sp) {
+      var ce = concEspece(c, e);
+      if (sp0[e] || ce >= 5e-4) morceaux.push('[' + ESPECES[e].txt + '] = ' + formatConcentration(ce) + ' mol/L');
     }
     if (SOLUTIONS[C.sol].chlorure) morceaux.push('[Cl⁻] = ' + formatConcentration(concCl(c)) + ' mol/L');
     if (enPac()) morceaux.push('Alimentée en continu en dihydrogène et en dioxygène');
@@ -2048,14 +2185,61 @@ function _dessinerEtiquettesP(ctx) {
       morceaux.push('État de charge : ' + Math.round(100 * etatCharge()) + ' %');
     }
     else if (!C.sym0 || Math.abs(C.h) > 1e-6) morceaux.push('pH = ' + formatNombre(pH(c), 1));
-    ctx.fillStyle = '#5a6a78';
-    _texteBorne(ctx, morceaux.join('   '), xm, P_TABLE_Y + 10, 2.6, '400', deuxBechers() ? 46 : 100);
+    _dessinerLegendeSolution(ctx, nom, morceaux, xm, deuxBechers() ? P_LEG_LARG_DEUX : P_LEG_LARG_UN);
   }
 
   if (deuxBechers()) {
     ctx.fillStyle = pile.pont ? '#2c3e50' : '#9aa6b0';
     texteEchelle(ctx, pile.pontBaisse ? 'Pont salin (K⁺ + NO₃⁻)' : 'Pont salin sorti des solutions',
                  (P_PONT_X[0] + P_PONT_X[1]) / 2, P_PONT_Y - 3.4 + decalagePont(), 2.6, '600', dispP.k);
+  }
+}
+
+// ── Légende d'une solution, sous son récipient ────────────────────────
+// Lisible au tableau (choix de l'utilisateur) : au lieu de réduire la
+// police pour tout faire tenir sur une ligne, le nom est coupé entre ses
+// mots et les concentrations (et le pH) passent à la ligne, à taille
+// fixe ; la police ne diminue que si les lignes débordent du bas de la
+// scène (bande de P_TABLE_Y à P_SCENE_H).
+var P_LEG_LARG_DEUX = 60;     // largeur d'une légende, deux béchers (elles ne se touchent pas)
+var P_LEG_LARG_UN = 110;      // cuve unique
+var P_LEG_NOM = 2.9, P_LEG_CONC = 2.6;     // tailles des polices
+var P_LEG_INTERL = 1.15;      // interligne, en multiple de la taille
+
+// Lignes formées de morceaux (séparés par sep) qui tiennent dans la
+// largeur à la taille donnée ; un morceau trop long reste seul sur sa ligne
+function _couperLignes(morceaux, sep, taille, largeur) {
+  var lignes = [], cour = '', max = largeur / (0.53 * taille);
+  for (var i = 0; i < morceaux.length; i++) {
+    var essai = cour ? cour + sep + morceaux[i] : morceaux[i];
+    if (cour && essai.length > max) { lignes.push(cour); cour = morceaux[i]; }
+    else cour = essai;
+  }
+  if (cour) lignes.push(cour);
+  return lignes;
+}
+
+function _dessinerLegendeSolution(ctx, nom, morceaux, xm, largeur) {
+  var k = 1, lN, lC, h;
+  // Réduction progressive seulement si la bande du bas ne suffit pas
+  for (var essai = 0; essai < 8; essai++) {
+    lN = _couperLignes(nom.split(' '), ' ', P_LEG_NOM * k, largeur);
+    lC = _couperLignes(morceaux, '    ', P_LEG_CONC * k, largeur);
+    h = (lN.length * P_LEG_NOM + lC.length * P_LEG_CONC) * P_LEG_INTERL * k + 0.6;
+    if (P_TABLE_Y + 2.6 + h <= P_SCENE_H - 0.6) break;
+    k *= 0.92;
+  }
+  var y = P_TABLE_Y + 2.6, i;
+  ctx.fillStyle = '#2c3e50';
+  for (i = 0; i < lN.length; i++) {
+    y += P_LEG_NOM * P_LEG_INTERL * k;
+    _texteBorne(ctx, lN[i], xm, y, P_LEG_NOM * k, '600', largeur);
+  }
+  y += 0.6;
+  ctx.fillStyle = '#5a6a78';
+  for (i = 0; i < lC.length; i++) {
+    y += P_LEG_CONC * P_LEG_INTERL * k;
+    _texteBorne(ctx, lC[i], xm, y, P_LEG_CONC * k, '400', largeur);
   }
 }
 

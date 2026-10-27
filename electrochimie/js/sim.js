@@ -115,13 +115,14 @@ var ORDRE_METAUX = ['Mg', 'Al', 'Zn', 'Fe', 'Pb', 'Cu', 'Ag'];
 // avec, le magnésium attaquant l'eau plutôt que de déposer de l'aluminium)
 var ORDRE_SOLUTIONS = ['Mg', 'Zn', 'Fe', 'Pb', 'Cu', 'Ag'];
 
-// Anions : spectateurs (sulfate, nitrate) ; chlorure et hydroxyde
+// Anions : spectateurs (sulfate, nitrate) ; chlorure, hydroxyde et iodure
 // interviennent dans les électrolyses de l'onglet Pile et électrolyse
 var ANIONS = {
   SO4: { formule: 'SO₄', html: 'SO<sub>4</sub>', charge: 2, couleur: '#1f7a8c' },
   NO3: { formule: 'NO₃', html: 'NO<sub>3</sub>', charge: 1, couleur: '#7a4b8c' },
   Cl:  { formule: 'Cl', html: 'Cl', charge: 1, couleur: '#4f9a3a' },
-  OH:  { formule: 'HO', html: 'HO', charge: 1, couleur: '#c8693a' }
+  OH:  { formule: 'HO', html: 'HO', charge: 1, couleur: '#c8693a' },
+  I:   { formule: 'I', html: 'I', charge: 1, couleur: '#5b6abf' }       // iodure (onglet Pile)
 };
 
 // ══════════════════════════════════════════════════════════════════════
