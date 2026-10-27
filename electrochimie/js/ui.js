@@ -390,6 +390,7 @@ function _majLibellesPile() {
 // ── Circuit extérieur ─────────────────────────────────────────────────
 function onSelectDipole(v) {
   pile.dipole = v;
+  pile.interrupteur = false;   // changer de dipôle rouvre toujours l'interrupteur
   _majPanneauCircuit();
 }
 
