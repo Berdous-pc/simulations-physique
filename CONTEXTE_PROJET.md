@@ -715,6 +715,8 @@ Stockées dans `assets/previews/` au format **`.jpg`** (converties depuis les sc
 | `kepler-loi2.jpg` | 2ᵉ loi de Kepler (loi des aires) |
 | `kepler-loi3.jpg` | 3ᵉ loi de Kepler (loi des périodes) |
 | `atomes.jpg` | Structure des atomes/ions |
+| `oxydoreduction.jpg` | Oxydoréduction (cadrage sur la scène, sans le panneau) |
+| `pile-electrolyse.jpg` | Piles et électrolyses (cadrage sur la scène, sans le panneau) |
 
 **Optimisation poids/performance (juillet 2026)** : les screenshots d'origine (PNG plein format, jusqu'à 2273×1268 px et 300+ Ko chacun) alourdissaient inutilement le chargement de la page d'accueil et pénalisaient les Core Web Vitals (LCP, CLS), donc le référencement. Conversion en `.jpg` redimensionné (800 px de large max, qualité ~82) : dossier `assets/previews/` passé de ~1,4 Mo à ~630 Ko. Toute **nouvelle** image de preview doit suivre ce format (JPEG, 800 px de large max) plutôt que déposer un screenshot PNG brut.
 
