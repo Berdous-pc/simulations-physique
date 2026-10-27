@@ -261,14 +261,15 @@ function _couleurDepot() {
 }
 
 // Lame rongée (cf. EXPOSANT_ASPECT), aspect du dépôt et quantité de poudre.
-// Acide chlorhydrique : la lame est rongée, mais sans dépôt (le
-// dihydrogène se dégage en bulles)
+// Autres oxydants (acide, fer(III), diiode) : la lame est rongée, mais
+// sans dépôt (le dihydrogène se dégage en bulles, ou la forme réduite reste
+// dissoute)
 function aspectAttaque() {
   if (!reactionPossible(sim.metal, sim.solution)) return 0;
   return 1 - Math.pow(1 - macro.avancement, EXPOSANT_ASPECT);
 }
 function aspectDepot() {
-  return sim.solution === 'H' ? 0 : aspectAttaque();
+  return formeReduite(sim.solution) === 'depot' ? aspectAttaque() : 0;
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -561,16 +562,22 @@ var ALPHA_VOILE = 0.4;               // solution vue devant la partie immergée 
 // la solution initiale du tube témoin)
 function couleurSolution(p) {
   if (p === undefined) p = macro.avancement;
-  var especes = [{ sym: sim.solution, conc: 1 - p }];
+  var O = oxydant(sim.solution);
+  var especes = [{ m: O, conc: 1 - p }];
   if (reactionPossible(sim.metal, sim.solution)) {
     var st = stoechiometrie(sim.metal, sim.solution);
-    especes.push({ sym: sim.metal, conc: p * st.coefMetal / st.coefIon });
+    var cM = p * st.coefMetal / st.coefIon, cR = p * st.coefProduit / st.coefIon;
+    // Forme réduite dissoute et colorée (Fe²⁺ des ions fer(III)) ; c'est
+    // aussi l'ion du métal pour une lame de fer : les deux s'ajoutent
+    if (O.red && O.red.sym === sim.metal) cM += cR;
+    else if (O.redSolution) especes.push({ m: { solution: O.redSolution, rampe: O.redRampe }, conc: cR });
+    especes.push({ m: METAUX[sim.metal], conc: cM });
   }
   // presence : poids de la teinte face à l'eau ; poids : somme des
   // pondérations du mélange des teintes
   var somme = [0, 0, 0], poids = 0, presence = 0;
   for (var i = 0; i < especes.length; i++) {
-    var m = oxydant(especes[i].sym), conc = especes[i].conc;
+    var m = especes[i].m, conc = especes[i].conc;
     if (!m.solution || conc <= 0) continue;
     var r = Math.min(1, conc / (m.rampe || C_RAMPE));
     var rgb = couleurSuite(m.solution, conc);
@@ -967,9 +974,10 @@ function _dessinerEtiquettes(ctx) {
 
   // Solution : sous le bécher
   var S = oxydant(sim.solution);
-  texteEchelle(ctx, 'Solution ' + (S.deSolution || 'de ' + S.nomSolution), BECHER_CX, TABLE_Y + 6.8, 3.1, '600', disp.k);
+  texteEchelle(ctx, S.titre || 'Solution ' + (S.deSolution || 'de ' + S.nomSolution),
+               BECHER_CX, TABLE_Y + 6.8, 3.1, '600', disp.k);
   ctx.fillStyle = '#7a8a96';
-  texteEchelle(ctx, '(' + ionTexte(S.sym) + ' + ' + anionTexte(S.anion) + ')',
+  texteEchelle(ctx, '(' + ionTexte(sim.solution) + (S.anion ? ' + ' + anionTexte(S.anion) : '') + ')',
                BECHER_CX, TABLE_Y + 10.2, 2.7, '400', disp.k);
 }
 

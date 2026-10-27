@@ -183,10 +183,15 @@ function resetLoupe() {
   loupe.enPlace = false;
   loupe.tArrivee = D_ARRIVEE;
 
-  // Aucun ion du métal au départ : ils n'apparaissent qu'avec la réaction
-  for (i = 0; i < N_FOND_OX; i++) _ajouterFond('ox', sim.solution, R_ION, 1);
-  for (i = 0; i < N_FOND_ANION; i++) _ajouterFond('anion', oxydant(sim.solution).anion, R_ANION, 1);
+  // Aucun ion du métal au départ : ils n'apparaissent qu'avec la réaction.
+  // Eau iodée : moins de molécules (chacune donne deux ions iodure), et
+  // aucun ion spectateur
+  var O = oxydant(sim.solution);
+  for (i = 0; i < _nFondOx(); i++) _ajouterFond('ox', sim.solution, O.molecule ? R_MOL_OX : R_ION, 1);
+  if (O.anion) for (i = 0; i < N_FOND_ANION; i++) _ajouterFond('anion', O.anion, R_ANION, 1);
 }
+function _nFondOx() { return oxydant(sim.solution).nFond || N_FOND_OX; }
+var R_MOL_OX = 0.75;               // encombrement d'une molécule oxydante (I₂) dans le fond
 
 function _ajouterFond(type, sym, r, vis) {
   var pos = _positionLibre(r);
@@ -197,13 +202,15 @@ function _ajouterFond(type, sym, r, vis) {
 }
 
 // ── Nombre d'ions de fond imposé par l'avancement ─────────────────────
+// red : forme réduite dissoute de l'oxydant (Fe²⁺, I⁻), s'il y en a une
 function _ciblesFond() {
-  var p = macro.avancement, prod = 0;
+  var p = macro.avancement, prod = 0, red = 0, n = _nFondOx();
   if (reactionPossible(sim.metal, sim.solution)) {
     var st = stoechiometrie(sim.metal, sim.solution);
-    prod = Math.round(N_FOND_OX * p * st.coefMetal / st.coefIon);
+    prod = Math.round(n * p * st.coefMetal / st.coefIon);
+    if (formeReduite(sim.solution) === 'dissous') red = Math.round(n * p * st.coefProduit / st.coefIon);
   }
-  return { ox: Math.round(N_FOND_OX * (1 - p)), prod: prod };
+  return { ox: Math.round(n * (1 - p)), prod: prod, red: red };
 }
 
 // Ions de fond d'un type, sans compter ceux qui disparaissent
@@ -227,6 +234,18 @@ function _prodEnRoute(sauf) {
     for (var k = 0; k < cy.atomes.length; k++) {
       if (cy.phase !== 'depart' || cy.atomes[k].garder) n++;
     }
+  }
+  return n;
+}
+// Même chose pour la forme réduite dissoute de l'oxydant : cy.reduits,
+// créés à la fin de la phase 'transfo' (avant, cy.nRed sont attendus)
+function _redEnRoute(sauf) {
+  var n = 0;
+  for (var i = 0; i < loupe.cycles.length; i++) {
+    var cy = loupe.cycles[i];
+    if (cy === sauf || !cy.reagit) continue;
+    if (cy.phase !== 'depart') n += cy.nRed || 0;
+    else for (var k = 0; k < (cy.reduits || []).length; k++) if (cy.reduits[k].garder) n++;
   }
   return n;
 }
@@ -260,6 +279,8 @@ function _majPopulation(dt) {
   }
   var nProd = _compterFond('prod') + _prodEnRoute(null);
   if (cible.prod - nProd >= retard) _ajouterFond('prod', sim.metal, R_ION, 0);
+  var nRed = _compterFond('red') + _redEnRoute(null);
+  if (cible.red - nRed >= retard) _ajouterRed(null);
 
   for (i = loupe.fond.length - 1; i >= 0; i--) {
     f = loupe.fond[i];
@@ -277,6 +298,17 @@ function _majPopulation(dt) {
 function _versFond(at) {
   loupe.fond.push({ u: at.u, v: at.v, vu: _gauss() * 0.3, vv: _gauss() * 0.3,
                     type: 'prod', sym: sim.metal, r: R_ION, vis: 1, etat: '' });
+}
+
+// Forme réduite dissoute (Fe²⁺, I⁻) qui rejoint le fond là où elle est
+// arrivée (at), ou y apparaît en fondu (at nul) ; k : cation ou anion
+function _ajouterRed(at) {
+  var R = oxydant(sim.solution).red, r = R.k === 'anion' ? R_ANION : R_ION, f;
+  if (at) {
+    f = { u: at.u, v: at.v, vu: _gauss() * 0.3, vv: _gauss() * 0.3, type: 'red', sym: R.sym, r: r, vis: 1, etat: '' };
+    loupe.fond.push(f);
+  } else f = _ajouterFond('red', R.sym, r, 0);
+  f.k = R.k;
 }
 
 // Position tirée au hasard dans la partie « solution » de la loupe
@@ -588,17 +620,20 @@ function _choisirZone(nA, nI, reagit) {
 // Complète le groupe des nI ions autour du premier site : chaque nouvel
 // ion est tiré au hasard parmi les sites limitrophes d'un ion déjà placé
 // (à moins de D_GROUPE) ou posés contre le même atome (ions qui entourent
-// une excroissance), sans chevaucher les autres ions
+// une excroissance), sans chevaucher les autres ions. Molécules (I₂,
+// couchées contre la surface) : plus espacées
+var ESPACE_MOL = 1.75, D_GROUPE_MOL = 2.3;
 function _grouperSites(cand, premier, nI) {
-  var groupe = [premier];
+  var groupe = [premier], mol = oxydant(sim.solution).molecule;
+  var esp = mol ? ESPACE_MOL : ESPACE_IONS, dg = mol ? D_GROUPE_MOL : D_GROUPE;
   while (groupe.length < nI) {
     var options = [];
     for (var i = 0; i < cand.length; i++) {
       var s = cand[i], ok = true, proche = false;
       for (var k = 0; k < groupe.length; k++) {
         var d = Math.hypot(s.u - groupe[k].u, s.v - groupe[k].v);
-        if (d < ESPACE_IONS) { ok = false; break; }
-        if (d < D_GROUPE || s.hote === groupe[k].hote) proche = true;
+        if (d < esp) { ok = false; break; }
+        if (d < dg || s.hote === groupe[k].hote) proche = true;
       }
       if (ok && proche) options.push(s);
     }
@@ -822,8 +857,10 @@ function _nouveauCycle() {
   var zone = _choisirZone(nA, nI, reagit);
   if (!zone) return null;
 
+  // nRed : entités de la forme réduite dissoute que le cycle formera
   var cy = { phase: 'approche', t: 0, reagit: reagit, ions: [], atomes: [], electrons: [],
-             dTransfert: D_TRANSFERT };
+             dTransfert: D_TRANSFERT,
+             nRed: reagit && formeReduite(Y) === 'dissous' ? st.coefProduit : 0 };
 
   // ── Atomes de la zone ──
   for (i = 0; i < zone.atomes.length; i++) {
@@ -882,7 +919,7 @@ function _nouveauCycle() {
     // l'ordre (Al + Cu²⁺ : le 1er atome donne 2 e⁻ au 1er ion et 1 au 2e…).
     // Trajet dans le métal : en ligne droite si l'ion touche l'atome,
     // sinon à travers la lame puis d'atome en atome dans le dépôt.
-    var b = METAUX[X].charge, a = oxydant(Y).charge, n = 0, g = zone.graphe, Lmax = 0;
+    var b = METAUX[X].charge, a = st.eParOx, n = 0, g = zone.graphe, Lmax = 0;
     for (i = 0; i < cy.atomes.length; i++) {
       var noeud = g.idx[cy.atomes[i].r + ',' + cy.atomes[i].c];
       for (var j = 0; j < b; j++) {
@@ -1005,6 +1042,7 @@ function _majCycle(cy, dt) {
         // les molécules de dihydrogène formées s'éloignent vers le haut
         _deposer(cy);
         if (sim.solution === 'H') _lancerH2(cy);
+        if (formeReduite(sim.solution) === 'dissous') _lancerReduits(cy);
         // Les ions formés quittent leur case : glissement vers la droite,
         // derrière l'atome formé, puis diagonale vers le bas à droite.
         // Tant que la solution en compte moins que ne le veut l'avancement,
@@ -1037,9 +1075,19 @@ function _majCycle(cy, dt) {
         at.alpha = at.garder ? 1 - (1 - ALPHA_FOND) * estompe : 1 - estompe;
         fin = Math.max(fin, at.retard + D_DEPART);
       }
+      // Forme réduite dissoute : même trajet que les ions du métal
+      for (i = 0; i < (cy.reduits || []).length; i++) {
+        var rd = cy.reduits[i], sr = (cy.t - rd.retard) / D_DEPART;
+        var qr = _bezier(rd.chemin, _lisse(sr));
+        rd.u = qr.u; rd.v = qr.v;
+        var er = Math.max(0, Math.min(1, (sr - 0.8) / 0.2));
+        rd.alpha = rd.garder ? 1 - (1 - ALPHA_FOND) * er : 1 - er;
+        fin = Math.max(fin, rd.retard + D_DEPART);
+      }
       var h2Arrives = _majH2(cy, dt);
       if (cy.t >= fin && h2Arrives) {
         for (i = 0; i < cy.atomes.length; i++) if (cy.atomes[i].garder) _versFond(cy.atomes[i]);
+        for (i = 0; i < (cy.reduits || []).length; i++) if (cy.reduits[i].garder) _ajouterRed(cy.reduits[i]);
         _phase(cy, 'fini');
       }
       break;
@@ -1061,7 +1109,7 @@ function _phase(cy, ph) { cy.phase = ph; cy.t = 0; }
 // contact. Ce point est en coordonnées du réseau (un cycle ne démarre
 // que réseau immobile, offX = offY = 0) : le dépôt suit la lame.
 function _deposer(cy) {
-  if (sim.solution === 'H') return;          // acide : pas de dépôt (dihydrogène)
+  if (formeReduite(sim.solution) !== 'depot') return;   // dihydrogène, ou forme réduite dissoute
   for (var i = 0; i < cy.ions.length; i++) {
     loupe.depots.push({ u: cy.ions[i].pu, v: cy.ions[i].pv });
   }
@@ -1104,6 +1152,77 @@ function _lancerH2(cy) {
                  retard: i * 0.25, t: 0, rang: loupe.bulleH2.n + loupe.bulleH2.attendus++, arrive: false,
                  duree: Math.max(1.2, Math.abs(P[i].v - V_BULLE_LOUPE) / 2.2) });
   }
+}
+
+// ── Oxydant dont la forme réduite reste dissoute (Fe³⁺ → Fe²⁺, I₂ → 2 I⁻)
+// Pas de dépôt : en phase 'transfo', Fe³⁺ devient Fe²⁺ sur place ; la
+// molécule I₂, couchée contre la surface, se scinde en deux ions I⁻ qui
+// s'écartent. Puis, en phase 'depart', ces espèces quittent la lame comme
+// les ions du métal (cy.reduits) : elles restent dans la loupe tant que le
+// fond en compte moins que ne le veut l'avancement, sinon elles en sortent.
+var ECART_I = 0.38;                 // demi-longueur de la molécule I₂ (cf. PL_MOTIFS.I2)
+var ECART_I_FINAL = 0.7;            // ions iodure écartés en fin de transformation
+
+// Positions des entités réduites d'une entité oxydante io, à l'instant k
+// (0 → 1) de la phase 'transfo' ; molécule couchée le long de la surface
+function _posReduits(io, k) {
+  if (!oxydant(sim.solution).molecule) return [{ u: io.pu, v: io.pv }];
+  var e = ECART_I + (ECART_I_FINAL - ECART_I) * _lisse(k), tu = -(io.nv || 0), tv = io.nu || 1;
+  return [{ u: io.pu - e * tu, v: io.pv - e * tv }, { u: io.pu + e * tu, v: io.pv + e * tv }];
+}
+function _lancerReduits(cy) {
+  var manque = _ciblesFond().red - _compterFond('red') - _redEnRoute(cy), n = 0;
+  cy.reduits = [];
+  for (var i = 0; i < cy.ions.length; i++) {
+    var P = _posReduits(cy.ions[i], 1);
+    for (var j = 0; j < P.length; j++, n++) {
+      var garder = n < manque;
+      var dest = garder ? _positionLibre(R_ION) : _bord(0.4 + 0.18 * n + Math.random() * 0.15, 1.0);
+      cy.reduits.push({ u: P[j].u, v: P[j].v, alpha: 1, garder: garder, retard: 0.15 + n * 0.25,
+                        chemin: [{ u: P[j].u, v: P[j].v }, { u: P[j].u + 1.4, v: P[j].v + 0.2 },
+                                 { u: U_COULOIR + 0.2, v: P[j].v + 1.2 }, dest] });
+    }
+  }
+}
+
+// Oxydant de la solution, dessiné tel quel : ion, ou molécule I₂ (ang :
+// orientation ; par défaut couchée le long de la verticale)
+function _dessinerOxydant(ctx, x, y, alpha, ang) {
+  if (alpha <= 0) return;
+  if (!oxydant(sim.solution).molecule) { _dessinerIon(ctx, x, y, sim.solution, alpha, R_ION); return; }
+  var a = ang === undefined ? Math.PI / 2 : ang;
+  var cu = Math.cos(a) * ECART_I, cv = Math.sin(a) * ECART_I;
+  _dessinerAtomeL(ctx, x - cu, y - cv, 'I', null, alpha);
+  _dessinerAtomeL(ctx, x + cu, y + cv, 'I', null, alpha);
+}
+// Entité réduite dissoute (Fe²⁺ : ion du fer ; I⁻ : anion)
+function _dessinerReduit(ctx, x, y, alpha) {
+  var R = oxydant(sim.solution).red;
+  if (R.k === 'anion') _dessinerAnion(ctx, x, y, R.sym, alpha);
+  else _dessinerIon(ctx, x, y, R.sym, alpha, R_ION);
+}
+// Transformation sur place, k : 0 → 1 (Fe³⁺ → Fe²⁺ ; I₂ → 2 I⁻)
+function _dessinerTransfoReduit(ctx, io, k, dx, dy) {
+  var O = oxydant(sim.solution), P = _posReduits(io, k), s = _lisse(k), i;
+  if (O.molecule) {
+    // Atomes I qui deviennent ions iodure (couleur, étiquette)
+    var rgbA = couleurRGB(PL_ATOMES_MOL.I.couleur), rgbI = couleurRGB(ANIONS.I.couleur);
+    for (i = 0; i < P.length; i++) {
+      var rgb = melange(rgbA, rgbI, s), r = PL_ATOMES_MOL.I.r + (R_ANION - PL_ATOMES_MOL.I.r) * s;
+      _sphere(ctx, P[i].u + dx, P[i].v + dy, r, rgb, 1);
+      ctx.strokeStyle = rgbCss(nuance(rgb, -0.4), 0.7);
+      ctx.lineWidth = 0.03;
+      ctx.stroke();
+      _etiquette(ctx, P[i].u + dx, P[i].v + dy, s > 0.5 ? O.redTexte : 'I', 0.3, rgb, 1);
+    }
+    return;
+  }
+  var rgb2 = melange(couleurRGB(O.ion), couleurRGB(METAUX[O.red.sym].ion), s);
+  _sphere(ctx, P[0].u + dx, P[0].v + dy, R_ION, rgb2, 1);
+  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+  ctx.lineWidth = 0.05;
+  ctx.stroke();
+  _etiquette(ctx, P[0].u + dx, P[0].v + dy, s > 0.5 ? O.redTexte : O.texte, 0.27, rgb2, 1);
 }
 
 // ── Bulle de dihydrogène accrochée à la lame (comme dans l'onglet Pile) ──
@@ -1196,7 +1315,7 @@ function _dessinerBulleH2(ctx, x, y, n, alpha) {
 function _dessinerTransitionH(ctx, x, y, t) {
   var k = _lisse(t), A = PL_ATOMES_MOL.H;
   var r = R_ION + (A.r - R_ION) * k;
-  var rgb = melange(couleurRGB(ACIDE.ion), couleurRGB(A.couleur), k);
+  var rgb = melange(couleurRGB(AUTRES_OXYDANTS.H.ion), couleurRGB(A.couleur), k);
   _sphere(ctx, x, y, r, rgb, 1);
   ctx.strokeStyle = k < 0.5 ? 'rgba(255,255,255,' + 0.9 * (1 - k) + ')' : rgbCss(nuance(rgb, -0.4), 0.7);
   ctx.lineWidth = 0.04;
@@ -1469,6 +1588,10 @@ function dessinerLoupe(ctx) {
     var f = loupe.fond[i];
     if (f.type === 'anion') {
       if (sim.showSpectateurs) _dessinerAnion(ctx, f.u, f.v, f.sym, ALPHA_ANION);
+    } else if (f.type === 'ox') {
+      _dessinerOxydant(ctx, f.u, f.v, ALPHA_FOND * f.vis);
+    } else if (f.type === 'red') {
+      _dessinerReduit(ctx, f.u, f.v, ALPHA_FOND * f.vis);
     } else {
       _dessinerIon(ctx, f.u, f.v, f.sym, ALPHA_FOND * f.vis, R_ION);
     }
@@ -1539,7 +1662,8 @@ function dessinerLoupe(ctx) {
 
   for (i = 0; i < loupe.fantomes.length; i++) {
     var g = loupe.fantomes[i];
-    _dessinerIon(ctx, g.u, g.v, g.sym, Math.max(0, g.alpha), R_ION);
+    if (g.sym === sim.solution) _dessinerOxydant(ctx, g.u, g.v, Math.max(0, g.alpha));
+    else _dessinerIon(ctx, g.u, g.v, g.sym, Math.max(0, g.alpha), R_ION);
   }
 
   // ── Acteurs des cycles ──
@@ -1588,8 +1712,8 @@ function _dessinerCycle(ctx, cy) {
       }
       for (i = 0; i < cy.ions.length; i++) {
         io = cy.ions[i];
-        _halo(ctx, io.pu + dx, io.pv + dy, R_ION, COUL_RED, 0.9, pulse);
-        _dessinerIon(ctx, io.pu + dx, io.pv + dy, sim.solution, 1, R_ION);
+        _halo(ctx, io.pu + dx, io.pv + dy, _rOx(), COUL_RED, 0.9, pulse);
+        _dessinerOxydant(ctx, io.pu + dx, io.pv + dy, 1, _angContact(io));
       }
       if (cy.phase === 'transfert' && sim.showElectrons) {
         for (i = 0; i < cy.electrons.length; i++) {
@@ -1622,8 +1746,9 @@ function _dessinerCycle(ctx, cy) {
       }
       for (i = 0; i < cy.ions.length; i++) {
         io = cy.ions[i];
-        _halo(ctx, io.pu + dx, io.pv + dy, R_ION, COUL_RED, 0.9 * (1 - k), 1);
-        _dessinerTransition(ctx, io.pu + dx, io.pv + dy, sim.solution, k, false);
+        _halo(ctx, io.pu + dx, io.pv + dy, _rOx(), COUL_RED, 0.9 * (1 - k), 1);
+        if (formeReduite(sim.solution) === 'dissous') _dessinerTransfoReduit(ctx, io, k, dx, dy);
+        else _dessinerTransition(ctx, io.pu + dx, io.pv + dy, sim.solution, k, false);
       }
       break;
 
@@ -1635,13 +1760,20 @@ function _dessinerCycle(ctx, cy) {
         var m = cy.h2[i];
         if (!m.arrive) _dessinerH2(ctx, m.u + dx, m.v + dy, m.ang, 1);
       }
+      // Forme réduite dissoute (Fe²⁺, I⁻) qui s'éloigne
+      for (i = 0; i < (cy.reduits || []).length; i++) {
+        var rd = cy.reduits[i];
+        if (rd.alpha <= 0) continue;
+        _halo(ctx, rd.u, rd.v, R_ION, COUL_RED, Math.max(0, 1 - cy.t / 1.3) * rd.alpha, 0.5);
+        _dessinerReduit(ctx, rd.u, rd.v, rd.alpha);
+      }
       break;
 
     case 'rebond':
       io = cy.ions[0];
       if (io.alpha > 0) {
-        _halo(ctx, io.u, io.v, R_ION, COUL_RED, io.alpha * Math.max(0, 1 - cy.t / 1.3), 0.5);
-        _dessinerIon(ctx, io.u, io.v, sim.solution, io.alpha, R_ION);
+        _halo(ctx, io.u, io.v, _rOx(), COUL_RED, io.alpha * Math.max(0, 1 - cy.t / 1.3), 0.5);
+        _dessinerOxydant(ctx, io.u, io.v, io.alpha);
       }
       break;
   }
@@ -1653,10 +1785,15 @@ function _dessinerIonsApproche(ctx, cy, derriere) {
   for (var i = 0; i < cy.ions.length; i++) {
     var io = cy.ions[i];
     if (io.alpha <= 0 || !!io.derriere !== derriere) continue;
-    _halo(ctx, io.u, io.v, R_ION, COUL_RED, io.alpha * 0.8, 0.5);
-    _dessinerIon(ctx, io.u, io.v, sim.solution, io.alpha, R_ION);
+    _halo(ctx, io.u, io.v, _rOx(), COUL_RED, io.alpha * 0.8, 0.5);
+    _dessinerOxydant(ctx, io.u, io.v, io.alpha);
   }
 }
+
+// Rayon du halo autour de l'oxydant (une molécule I₂ est plus longue)
+function _rOx() { return oxydant(sim.solution).molecule ? 0.85 : R_ION; }
+// Orientation de la molécule posée : couchée le long de la surface
+function _angContact(io) { return Math.atan2(io.nu || 1, -(io.nv || 0)); }
 
 // Halo coloré autour d'un acteur du cycle (pulse : 0 → 1)
 function _halo(ctx, x, y, r, rgb, alpha, pulse) {

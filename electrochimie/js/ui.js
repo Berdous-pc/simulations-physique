@@ -64,11 +64,17 @@ function _remplirListes() {
     o.textContent = _majuscule(M.nom) + ' (' + sym + ')';
     selM.appendChild(o);
   });
-  ORDRE_SOLUTIONS.forEach(function (sym) {
-    var o2 = document.createElement('option');
-    o2.value = sym;
-    o2.textContent = _majuscule(oxydant(sym).nomSolution) + ' (' + ionTexte(sym) + ')';
-    selS.appendChild(o2);
+  // Solutions groupées (ions métalliques, autres oxydants) : titres en gras
+  GROUPES_SOLUTIONS.forEach(function (g) {
+    var og = document.createElement('optgroup');
+    og.label = g.titre;
+    g.cles.forEach(function (sym) {
+      var o2 = document.createElement('option');
+      o2.value = sym;
+      o2.textContent = _majuscule(oxydant(sym).nomSolution) + ' (' + ionTexte(sym) + ')';
+      og.appendChild(o2);
+    });
+    selS.appendChild(og);
   });
   selM.value = sim.metal;
   selS.value = sim.solution;
@@ -97,8 +103,9 @@ function resetRedox() {
   resetBecher();
   resetLoupe();
   var S = oxydant(sim.solution);
-  document.getElementById('lbl-solution-ions').innerHTML =
-    'Ions ' + ionHTML(S.sym) + ' et ' + anionHTML(S.anion) + ' (spectateurs)';
+  document.getElementById('lbl-solution-ions').innerHTML = S.anion
+    ? 'Ions ' + ionHTML(sim.solution) + ' et ' + anionHTML(S.anion) + ' (spectateurs)'
+    : 'Molécules ' + ionHTML(sim.solution) + ' dissoutes dans l’eau';
   majEquations();
   sim.needsRedraw = true;
 }
@@ -178,7 +185,7 @@ function majEquations() {
   var MX = METAUX[X], MY = oxydant(Y);
   var html;
 
-  if (Y === 'H') html = _equationsAcide(X);
+  if (formeReduite(Y) !== 'depot') html = _equationsAutreOxydant(X, Y);
   else if (reactionPossible(X, Y)) {
     var st = stoechiometrie(X, Y);
     var mult = function (n) { return n > 1 ? '<td class="eq-mult">× ' + n + '</td>' : '<td></td>'; };
@@ -210,37 +217,46 @@ function majEquations() {
   document.getElementById('equations').innerHTML = html;
 }
 
-// Lame dans l'acide chlorhydrique : couple H⁺/H₂, dihydrogène gazeux.
-// Cuivre, argent : aucune transformation ; plomb : en principe oxydé, mais
-// trop lentement pour que rien s'observe (cf. E0_ATTAQUE_ACIDE)
-function _equationsAcide(X) {
-  var MX = METAUX[X];
-  var couple = 'H<sup>+</sup>/H<sub>2</sub>';
-  if (!reactionPossible(X, 'H')) {
-    if (MX.E0 < 0) {
-      return '<div class="eq-rien">Aucune transformation observable entre ' + MX.le + ' et les ions hydrogène.' +
-             '<span class="eq-sous">Couples ' + couple + ' et ' + ionHTML(X) + '/' + X + ' : ' + MX.le +
+// Oxydant autre qu'un ion métallique (AUTRES_OXYDANTS) : sa demi-équation
+// (nOx oxydant + a e⁻ = nRed réduit), la forme réduite gazeuse (H₂) ou
+// dissoute (Fe²⁺, I⁻). Lame de fer dans le chlorure de fer(III) : les ions
+// Fe²⁺ formés des deux côtés sont réunis (Fe + 2 Fe³⁺ → 3 Fe²⁺). Sans
+// réaction : acide et plomb, en principe oxydé, mais trop lentement pour
+// que rien s'observe (cf. E0_ATTAQUE_ACIDE) ; sinon le métal n'est pas
+// oxydé (cuivre, argent dans l'acide ; argent avec Fe³⁺ ou I₂).
+function _equationsAutreOxydant(X, Y) {
+  var MX = METAUX[X], O = oxydant(Y), d = demiReduction(Y);
+  var couples = 'Couples ' + O.couple + ' et ' + ionHTML(X) + '/' + X;
+  if (!reactionPossible(X, Y)) {
+    if (Y === 'H' && MX.E0 < 0) {
+      return '<div class="eq-rien">Aucune transformation observable entre ' + MX.le + ' et les ' + O.nomIon + '.' +
+             '<span class="eq-sous">' + couples + ' : ' + MX.le +
              ' devrait être oxydé par les ions H<sup>+</sup>, mais la transformation est si lente' +
              ' qu’on n’observe rien.</span></div>';
     }
-    return '<div class="eq-rien">Aucune transformation entre ' + MX.le + ' et les ions hydrogène.' +
-           '<span class="eq-sous">Couples ' + couple + ' et ' + ionHTML(X) + '/' + X + ' : ' + MX.le +
-           ' n’est pas attaqué par l’acide chlorhydrique.</span></div>';
+    return '<div class="eq-rien">Aucune transformation entre ' + MX.le + ' et les ' + O.nomIon + '.' +
+           '<span class="eq-sous">' + couples + ' : ' + MX.le +
+           (Y === 'H' ? ' n’est pas attaqué par l’acide chlorhydrique.' : ' n’est pas oxydé par les ' + O.nomIon + '.') +
+           '</span></div>';
   }
-  var st = stoechiometrie(X, 'H');
+  var st = stoechiometrie(X, Y);
   var mult = function (n) { return n > 1 ? '<td class="eq-mult">× ' + n + '</td>' : '<td></td>'; };
+  var ox = ionHTML(Y) + _etat('aq'), red = O.redHTML + _etat(O.etatRed);
+  // Produits du bilan : ion du métal et forme réduite (réunis s'ils sont identiques)
+  var produits = O.red && O.red.sym === X
+    ? _coef(st.coefMetal + st.coefProduit) + red
+    : _coef(st.coefMetal) + ionHTML(X) + _etat('aq') + ' + ' + _coef(st.coefProduit) + red;
   return '<table class="eq-table">' +
     '<tr><td class="eq-lbl">Couples</td><td class="eq-val">' +
-      couple + ' &nbsp;et&nbsp; ' + ionHTML(X) + '/' + X + '</td><td></td></tr>' +
+      O.couple + ' &nbsp;et&nbsp; ' + ionHTML(X) + '/' + X + '</td><td></td></tr>' +
     '<tr id="eq-ligne-ox"><td class="eq-lbl eq-ox">Oxydation ' + MX.du + '</td><td class="eq-val">' +
       X + _etat('s') + ' = ' + ionHTML(X) + _etat('aq') + ' + ' + _electrons(MX.charge) +
       '</td>' + mult(st.coefMetal) + '</tr>' +
-    '<tr id="eq-ligne-red"><td class="eq-lbl eq-red">Réduction des ions hydrogène</td><td class="eq-val">' +
-      '2&nbsp;H<sup>+</sup>' + _etat('aq') + ' + ' + _electrons(2) + ' = H<sub>2</sub>' + _etat('g') +
-      '</td>' + mult(st.coefProduit) + '</tr>' +
+    '<tr id="eq-ligne-red"><td class="eq-lbl eq-red">' + O.reduction + '</td><td class="eq-val">' +
+      _coef(d.nOx) + ox + ' + ' + _electrons(d.a) + ' = ' + _coef(d.nRed) + red +
+      '</td>' + mult(st.multRed) + '</tr>' +
     '<tr class="eq-bilan" id="eq-ligne-bilan"><td class="eq-lbl">Équation de la réaction</td><td class="eq-val">' +
-      _coef(st.coefMetal) + X + _etat('s') + ' + ' + _coef(st.coefIon) + 'H<sup>+</sup>' + _etat('aq') +
-      ' → ' + _coef(st.coefMetal) + ionHTML(X) + _etat('aq') + ' + ' + _coef(st.coefProduit) + 'H<sub>2</sub>' + _etat('g') +
+      _coef(st.coefMetal) + X + _etat('s') + ' + ' + _coef(st.coefIon) + ox + ' → ' + produits +
       '</td><td></td></tr>' +
     '</table>';
 }

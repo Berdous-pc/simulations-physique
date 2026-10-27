@@ -116,31 +116,76 @@ var METAUX = {
 // Ordre d'affichage dans les listes : du réducteur le plus fort au plus faible
 // (onglet Oxydoréduction ; celui de l'onglet Pile est ORDRE_METAUX_PILE)
 var ORDRE_METAUX = ['Mg', 'Al', 'Zn', 'Fe', 'Pb', 'Cu', 'Ag'];
-// Solutions proposées : pas de sulfate d'aluminium (aucune lame ne réagit
-// avec, le magnésium attaquant l'eau plutôt que de déposer de l'aluminium) ;
-// l'acide chlorhydrique (clé 'H') en dernier
-var ORDRE_SOLUTIONS = ['Mg', 'Zn', 'Fe', 'Pb', 'Cu', 'Ag', 'H'];
+// Solutions proposées, en deux groupes (listes déroulantes) : ions
+// métalliques, par E0 croissant, sans sulfate d'aluminium (aucune lame ne
+// réagit avec, le magnésium attaquant l'eau plutôt que de déposer de
+// l'aluminium) ; Fe³⁺ en fait partie (ion métallique, réduit en Fe²⁺ et
+// non en métal : pas de dépôt) ; autres oxydants (H⁺, I₂)
+var GROUPES_SOLUTIONS = [
+  { titre: 'Ions métalliques', cles: ['Mg', 'Zn', 'Fe', 'Pb', 'Cu', 'Fe3', 'Ag'] },
+  { titre: 'Autres oxydants',  cles: ['H', 'I2'] }
+];
+var ORDRE_SOLUTIONS = GROUPES_SOLUTIONS[0].cles.concat(GROUPES_SOLUTIONS[1].cles);
 
-// ── Acide chlorhydrique (onglet Oxydoréduction) ───────────────────────
-// Oxydant H⁺ du couple H⁺/H₂ : 2 H⁺ + 2 e⁻ = H₂, le dihydrogène se dégage
-// (pas de dépôt). Mêmes champs que METAUX pour l'oxydant de la solution
-// (cf. oxydant()). Couleur de l'ion : celle de H⁺ dans l'onglet Pile
-// (IONS_SIMPLES.H de pile.js) ; atome : celle de H dans les molécules.
-var ACIDE = {
-  sym: 'H', nom: 'dihydrogène', charge: 1, E0: 0, acide: true,
-  atome: '#eef1f4', ion: '#e8879a', solution: null,
-  nomIon: 'ions hydrogène', nomSolution: 'acide chlorhydrique', deSolution: 'd’acide chlorhydrique',
-  anion: 'Cl'
+// ── Autres oxydants (onglet Oxydoréduction) ───────────────────────────
+// Oxydants dont la forme réduite n'est pas un métal déposé sur la lame.
+// Mêmes champs que METAUX pour l'oxydant de la solution (cf. oxydant()),
+// plus :
+//   forme   : 'gaz' (H₂ se dégage) ou 'dissous' (la forme réduite reste en
+//             solution) ; un ion de METAUX donne un 'depot' ;
+//   texte, html : écriture de l'oxydant (défaut : sym + charge) ;
+//   molecule : oxydant moléculaire (I₂), dessiné comme tel dans la loupe ;
+//   demi    : demi-équation de réduction, nOx oxydant + a e⁻ = nRed réduit ;
+//   red     : forme réduite dissoute, { sym, k: 'cation' | 'anion' }, son
+//             écriture (redTexte, redHTML), sa couleur en solution
+//             (redSolution, redRampe : cf. METAUX) ;
+//   couple, reduction : couple et intitulé de la demi-équation (HTML) ;
+//   nFond   : ions oxydants de la loupe au départ (défaut N_FOND_OX).
+// Couleurs des ions et des solutions : celles de l'onglet Pile (IONS_SIMPLES
+// et COUL_SP de pile.js, chargé après) ; atome H : celui des molécules.
+var AUTRES_OXYDANTS = {
+  // 2 H⁺ + 2 e⁻ = H₂ : le dihydrogène se dégage (pas de dépôt)
+  H: { sym: 'H', charge: 1, E0: 0, forme: 'gaz', demi: { nOx: 2, a: 2, nRed: 1 },
+       atome: '#eef1f4', ion: '#e8879a', solution: null,
+       nomIon: 'ions hydrogène', nomSolution: 'acide chlorhydrique', deSolution: 'd’acide chlorhydrique',
+       anion: 'Cl', etatRed: 'g', redHTML: 'H<sub>2</sub>',
+       couple: 'H<sup>+</sup>/H<sub>2</sub>', reduction: 'Réduction des ions hydrogène' },
+  // Fe³⁺ + e⁻ = Fe²⁺ : gravure du cuivre des circuits imprimés par le
+  // « perchlorure de fer » ; la solution passe du jaune-orangé au vert
+  Fe3: { sym: 'Fe3', charge: 3, E0: 0.77, forme: 'dissous', demi: { nOx: 1, a: 1, nRed: 1 },
+         texte: 'Fe³⁺', html: 'Fe<sup>3+</sup>',
+         ion: '#d98a2b', solution: ['#f6e7b8', '#e6b956', '#c2801c'],
+         nomIon: 'ions fer(III)', nomSolution: 'chlorure de fer(III)', anion: 'Cl',
+         red: { sym: 'Fe', k: 'cation' }, redTexte: 'Fe²⁺', redHTML: 'Fe<sup>2+</sup>', etatRed: 'aq',
+         redSolution: ['#e4f4d6', '#a4d488', '#5a9c40'], redRampe: 0.4,
+         couple: 'Fe<sup>3+</sup>/Fe<sup>2+</sup>', reduction: 'Réduction des ions fer(III)' },
+  // I₂ + 2 e⁻ = 2 I⁻ : l'eau iodée, jaune-brun, se décolore. Diiode
+  // dissous seul (pas d'iodure de potassium : aucun ion spectateur)
+  I2: { sym: 'I2', charge: 0, E0: 0.54, forme: 'dissous', demi: { nOx: 1, a: 2, nRed: 2 },
+        texte: 'I₂', html: 'I<sub>2</sub>', molecule: true,
+        ion: '#7b4a9e', solution: ['#f6e6b4', '#e8b45a', '#b8641e'],
+        nomIon: 'molécules de diiode', nomSolution: 'eau iodée', titre: 'Eau iodée', anion: null,
+        red: { sym: 'I', k: 'anion' }, redTexte: 'I⁻', redHTML: 'I<sup>−</sup>', etatRed: 'aq', redSolution: null,
+        couple: 'I<sub>2</sub>/I<sup>−</sup>', reduction: 'Réduction du diiode', nFond: 8 }
 };
-// En dessous de ce potentiel seulement, le métal est attaqué de façon
-// visible : le plomb (−0,13 V) est en principe oxydé par H⁺, mais le
+// Acide : en dessous de ce potentiel seulement, le métal est attaqué de
+// façon visible : le plomb (−0,13 V) est en principe oxydé par H⁺, mais le
 // dihydrogène se forme si mal à sa surface que rien ne s'observe
 var E0_ATTAQUE_ACIDE = -0.2;
 
 // Oxydant de la solution `sym` (onglet Oxydoréduction) : ion métallique
-// de METAUX, ou H⁺ de l'acide chlorhydrique
+// de METAUX, ou un des AUTRES_OXYDANTS
 function oxydant(sym) {
-  return sym === 'H' ? ACIDE : METAUX[sym];
+  return AUTRES_OXYDANTS[sym] || METAUX[sym];
+}
+// Ce que devient l'oxydant : 'depot' (métal), 'gaz' ou 'dissous'
+function formeReduite(sym) {
+  return oxydant(sym).forme || 'depot';
+}
+// Demi-équation de réduction { nOx, a, nRed } : Mⁿ⁺ + n e⁻ = M par défaut
+function demiReduction(sym) {
+  var O = oxydant(sym);
+  return O.demi || { nOx: 1, a: O.charge, nRed: 1 };
 }
 
 // Anions : spectateurs (sulfate, nitrate) ; chlorure, hydroxyde et iodure
@@ -163,15 +208,17 @@ function exposantCharge(n, signe) {
   return _EXPOSANTS[n] + (signe < 0 ? '⁻' : '⁺');
 }
 
-// Ion métallique en texte Unicode (canvas) : 'Cu' → « Cu²⁺ » ('H' → « H⁺ »)
+// Ion métallique en texte Unicode (canvas) : 'Cu' → « Cu²⁺ » ('H' → « H⁺ »,
+// 'Fe3' → « Fe³⁺ », 'I2' → « I₂ »)
 function ionTexte(sym) {
-  return sym + exposantCharge(oxydant(sym).charge, +1);
+  var O = oxydant(sym);
+  return O.texte || sym + exposantCharge(O.charge, +1);
 }
 
 // Ion métallique en HTML (panneau, équations) : 'Cu' → Cu<sup>2+</sup>
 function ionHTML(sym) {
-  var n = oxydant(sym).charge;
-  return sym + '<sup>' + (n > 1 ? n : '') + '+</sup>';
+  var O = oxydant(sym), n = O.charge;
+  return O.html || sym + '<sup>' + (n > 1 ? n : '') + '+</sup>';
 }
 
 // Anion en texte Unicode et en HTML
@@ -194,22 +241,23 @@ function anionHTML(cle) {
 // Acide : seuls les métaux sous E0_ATTAQUE_ACIDE sont attaqués.
 function reactionPossible(metal, ion) {
   if (ion === 'H') return METAUX[metal].E0 < E0_ATTAQUE_ACIDE;
-  return metal !== ion && METAUX[ion].E0 > METAUX[metal].E0;
+  return metal !== ion && oxydant(ion).E0 > METAUX[metal].E0;
 }
 
 function _pgcd(a, b) { return b === 0 ? a : _pgcd(b, a % b); }
 
-// Coefficients de l'équation : nombre d'électrons échangés = PPCM des
-// électrons des deux demi-équations ; le métal (charge b) est multiplié
-// par N/b, l'oxydant par N/a (a : électrons par entité formée). Ex.
-// Cu + 2 Ag⁺ : N = 2, coefMetal = 1, coefIon = 2. Acide : 2 H⁺ + 2 e⁻ = H₂
-// (a = 2), coefIon ions H⁺ et coefProduit molécules H₂ (2 Al + 6 H⁺ →
-// 2 Al³⁺ + 3 H₂). Ion métallique : coefProduit = coefIon.
+// Coefficients de l'équation : nombre d'électrons échangés N = PPCM des
+// électrons des deux demi-équations (métal : b = charge de son ion ;
+// oxydant : nOx oxydant + a e⁻ = nRed réduit). Le métal est multiplié par
+// N/b, la demi-équation de l'oxydant par multRed = N/a : coefIon entités
+// oxydantes, coefProduit entités réduites. eParOx : électrons reçus par
+// chaque entité oxydante. Ex. Cu + 2 Ag⁺ → Cu²⁺ + 2 Ag ; 2 Al + 6 H⁺ →
+// 2 Al³⁺ + 3 H₂ ; Cu + 2 Fe³⁺ → Cu²⁺ + 2 Fe²⁺ ; Zn + I₂ → Zn²⁺ + 2 I⁻.
 function stoechiometrie(metal, ion) {
-  var b = METAUX[metal].charge, O = oxydant(ion);
-  var a = O.acide ? 2 : O.charge;
-  var N = a * b / _pgcd(a, b);
-  return { electrons: N, coefMetal: N / b, coefIon: N / O.charge, coefProduit: N / a };
+  var b = METAUX[metal].charge, d = demiReduction(ion);
+  var N = d.a * b / _pgcd(d.a, b), k = N / d.a;
+  return { electrons: N, coefMetal: N / b, coefIon: k * d.nOx, coefProduit: k * d.nRed,
+           multRed: k, eParOx: d.a / d.nOx };
 }
 
 // ══════════════════════════════════════════════════════════════════════
