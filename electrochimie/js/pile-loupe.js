@@ -60,7 +60,8 @@ var PL_D_APPROCHE = 2.0;          // ion qui vient contre la surface (cathode)
 var PL_D_CHANGE   = 0.12;
 var PL_D_TRANSFO_MIN = 0.3;
 var PL_D_DEPART   = 1.6;          // ion formé qui s'éloigne de l'anode, produits qui partent
-var PL_N_CYCLES   = 3;            // cycles en cours à la fois, au plus
+var PL_N_CYCLES   = 3;            // cycles en cours à la fois, au plus (2 par membre d'un groupe s'il en a plus)
+var PL_ECART_GROUPE = 0.25;       // entre les départs de deux cycles d'un même groupe (s)
 var PL_ECART_E    = 0.25;         // entre les départs de deux électrons (s)
 var PL_X_SORTIE   = 1.5;          // colonne par laquelle les électrons rejoignent le fil
 var PL_FRONT_MIN  = 3, PL_FRONT_MAX = 6;   // bornes de la surface avant que la vue la suive
@@ -98,8 +99,11 @@ var ploupe = {
   offX: 0,            // décalage du réseau pendant un glissement
   cycles: [],
   attente: 0,         // délai avant le prochain cycle (s)
+  aLancer: 0,         // cycles du groupe en cours qui restent à lancer
+  nGroupe: 1,         // cycles du groupe en cours
+  ligneGroupe: -1,    // ligne du premier cycle métallique du groupe
+  bulle: null,        // bulle de gaz accrochée à l'électrode { v, n, attendus, gaz }
   fond: [],           // ions de la solution, du pont, ou électrons du fil
-  bulle: null,        // bulle de gaz accrochée à l'électrode { v, n, gaz }
   bullesLibres: [],   // bulles détachées qui montent { u, v, r, gaz }
   horloge: 0
 };
@@ -116,6 +120,7 @@ function resetLoupePile() {
   ploupe.offX = 0;
   ploupe.cycles = [];
   ploupe.attente = 0.5;
+  ploupe.aLancer = 0; ploupe.nGroupe = 1; ploupe.ligneGroupe = -1;
   ploupe.fond = [];
   ploupe.bulle = null;
   ploupe.bullesLibres = [];
@@ -263,22 +268,34 @@ function _majElectrode(dt) {
     ploupe.offX = Math.abs(ploupe.offX) <= pasG ? 0 : ploupe.offX - Math.sign(ploupe.offX) * pasG;
   }
 
-  // Nouveau cycle selon la réaction qui a lieu sur l'électrode et l'intensité
+  // Nouveau cycle selon la réaction qui a lieu sur l'électrode et l'intensité.
+  // Les cycles vont par GROUPES : la demi-équation autant de fois qu'elle
+  // figure dans l'équation de fonctionnement (choix de l'utilisateur : on
+  // voit autant d'électrons par groupe aux deux électrodes, ex. 2 H₂ pour
+  // 4 e⁻ quand l'autre électrode forme O₂), cycles lancés presque ensemble
   var role = roleElectrode(e);
   ploupe.attente -= dt;
-  if (role && ploupe.attente <= 0 && ploupe.cycles.length < PL_N_CYCLES && ploupe.offX === 0) {
-    var reac = reactionEnCours(e), cy = null;
-    if (reac && reac.type === 'metal') {
-      if (!_suivreSurface(role)) cy = role === 'anode' ? _cycleAnode() : _cycleCathode(reac.sym);
-    } else if (reac && !_etapesEnCours()) {
-      // Couples gazeux : un cycle à la fois (choix de l'utilisateur : la
-      // stœchiométrie reste lisible), le suivant pendant le départ des produits
-      cy = _cycleGaz(reac);
+  if (role && ploupe.attente <= 0 && ploupe.offX === 0) {
+    var reac = reactionEnCours(e), cy = null, metal = reac && reac.type === 'metal';
+    // Couples gazeux : un groupe à la fois (choix de l'utilisateur : la
+    // stœchiométrie reste lisible), le suivant pendant le départ des produits
+    if (reac && !ploupe.aLancer && (metal || !_etapesEnCours())) {
+      ploupe.aLancer = ploupe.nGroupe = multiplicateurCycle(e);
+      ploupe.ligneGroupe = -1;
     }
-    if (cy) ploupe.cycles.push(cy);
-    // Intervalle entre deux départs de cycle : 0,7 s à I_REF, plus long si
-    // I est faible ; pas de place libre : on réessaie bientôt
-    ploupe.attente = cy ? Math.min(3, 0.7 / Math.max(0.25, facteurCourant())) : 0.2;
+    if (reac && ploupe.aLancer && ploupe.cycles.length < Math.max(PL_N_CYCLES, 2 * ploupe.nGroupe)) {
+      if (metal) {
+        if (!_suivreSurface(role)) cy = role === 'anode' ? _cycleAnode() : _cycleCathode(reac.sym);
+        if (cy && ploupe.ligneGroupe < 0) ploupe.ligneGroupe = cy.r;
+      } else {
+        cy = _cycleGaz(reac);
+      }
+    }
+    if (cy) { ploupe.cycles.push(cy); ploupe.aLancer--; }
+    // Intervalle entre deux groupes : 0,7 s par cycle à I_REF, plus long
+    // si I est faible ; pas de place libre : on réessaie bientôt
+    ploupe.attente = !cy ? 0.2 : ploupe.aLancer ? PL_ECART_GROUPE
+                   : ploupe.nGroupe * Math.min(3, 0.7 / Math.max(0.25, facteurCourant()));
   }
 
   for (i = ploupe.cycles.length - 1; i >= 0; i--) {
@@ -392,6 +409,14 @@ function _ligneCandidate(plusAvancee, symSurface) {
     if (_front(r) === ref) cand.push(r);
   }
   if (candSym.length) cand = candSym;
+  // Cycle d'un groupe déjà commencé : les lignes les plus proches de son
+  // premier cycle (les espèces d'une même équation restent voisines)
+  var g = ploupe.ligneGroupe;
+  if (g >= 0 && cand.length) {
+    var dMin = 99;
+    for (r = 0; r < cand.length; r++) dMin = Math.min(dMin, Math.abs(cand[r] - g));
+    cand = cand.filter(function (q) { return Math.abs(q - g) === dMin; });
+  }
   return cand.length ? cand[Math.floor(Math.random() * cand.length)] : -1;
 }
 
@@ -891,8 +916,10 @@ function _majEtape(cy, st, dt, aMoi) {
         p.vers = { u: p.pos.u + lg * axe.u, v: p.pos.v + lg * axe.v + (Math.random() - 0.5) * 0.8 };
         p.angV = p.ang + (Math.random() - 0.5) * 2;
         if (p.cle === cy.gaz) {
-          if (!ploupe.bulle) ploupe.bulle = { v: PL_V_BULLE_HAUT, n: 0, gaz: cy.gaz };
-          p.rang = ploupe.bulle.n;
+          // Place réservée dans la bulle (plusieurs cycles d'un groupe y
+          // envoient leur molécule en même temps)
+          if (!ploupe.bulle) ploupe.bulle = { v: PL_V_BULLE_HAUT, n: 0, attendus: 0, gaz: cy.gaz };
+          p.rang = ploupe.bulle.n + ploupe.bulle.attendus++;
         }
         cy.partants.push(p);
       }
@@ -978,10 +1005,11 @@ function _placeBulle(i, n) {
 }
 
 function _gonflerBulle(gaz) {
-  if (!ploupe.bulle) ploupe.bulle = { v: PL_V_BULLE_HAUT, n: 0, gaz: gaz };
+  if (!ploupe.bulle) ploupe.bulle = { v: PL_V_BULLE_HAUT, n: 0, attendus: 1, gaz: gaz };
   ploupe.bulle.n++;
-  if (ploupe.bulle.n >= PL_N_BULLE) {
-    // Assez grosse : elle se détache et monte
+  ploupe.bulle.attendus = Math.max(0, ploupe.bulle.attendus - 1);
+  if (ploupe.bulle.n >= PL_N_BULLE && !ploupe.bulle.attendus) {
+    // Assez grosse, et plus aucune molécule en route : elle se détache et monte
     var c = _centreBulle();
     ploupe.bullesLibres.push({ u: c.u, v: c.v, n: ploupe.bulle.n, gaz: gaz });
     ploupe.bulle = null;
@@ -1589,11 +1617,13 @@ function _dessinerTextesLoupeP(ctx) {
   if (_estElectrode()) {
     var i = _indiceElectrode(), role = roleElectrode(i), r = reactionEnCours(i), c = compElectrode(i);
     titre = 'Électrode ' + METAUX[pile.lames[i].sym].de + ' vue à l’échelle des atomes';
+    // Facteur de la demi-équation dans l'équation de fonctionnement (cycles par groupe)
+    var k = multiplicateurCycle(i), fois = k > 1 ? '   (× ' + k + ')' : '';
     if (role === 'anode' && r) {
-      lignes.push({ txt: 'Anode : oxydation  ' + texteDemiEquation(r, c), col: '#b04020' });
+      lignes.push({ txt: 'Anode : oxydation  ' + texteDemiEquation(r, c) + fois, col: '#b04020' });
       lignes.push({ txt: 'Les électrons partent dans le fil' + (sensForce() ? ', vers le générateur' : ''), col: '#5a6a78' });
     } else if (role === 'cathode' && r) {
-      lignes.push({ txt: 'Cathode : réduction  ' + texteDemiEquation(r, c), col: '#2a6aaa' });
+      lignes.push({ txt: 'Cathode : réduction  ' + texteDemiEquation(r, c) + fois, col: '#2a6aaa' });
       lignes.push({ txt: 'Les électrons arrivent par le fil' + (sensForce() ? ', venant du générateur' : ''), col: '#5a6a78' });
     } else {
       lignes.push({ txt: 'Pas de courant : aucun échange d’électrons', col: '#5a6a78' });

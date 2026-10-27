@@ -608,6 +608,19 @@ function reactionEnCours(i) {
   return r === 'anode' ? oxydationChoisie(i) : r === 'cathode' ? reductionChoisie(i) : null;
 }
 
+// Nombre de fois que la demi-équation de l'électrode i figure dans
+// l'équation de fonctionnement (électrons échangés : PPCM des électrons
+// des deux demi-équations) ; 1 sans courant. Ex. électrolyse de l'eau :
+// 1 à l'anode (O₂, 4 e⁻), 2 à la cathode (2 H₂)
+function multiplicateurCycle(i) {
+  var role = roleElectrode(i);
+  if (!role) return 1;
+  var s = _sens(pile.I > 0 ? 0 : 1);
+  if (!s) return 1;
+  var N = s.ox.z * s.red.z / _pgcd(s.ox.z, s.red.z);
+  return N / (role === 'anode' ? s.ox.z : s.red.z);
+}
+
 // Pôle d'une électrode : celui de la borne du générateur à laquelle elle
 // est reliée s'il y en a un, sinon celui de la pile (signe de E)
 function poleElectrode(i) {
