@@ -241,6 +241,20 @@ main {
   color: #b04020;
 }
 
+/* Onglet Transformations : grandeur non définie (« ? » + intervalle des
+   tranches) et état d'équilibre */
+.tf-nd {
+  color: #b04020;
+  font-size: 1.15em;
+}
+.tf-plage {
+  color: #7a8a96;
+  font-weight: 500;
+  font-size: 0.72em;
+}
+.it-val.tf-etat-eq   { color: #2a8a50; }
+.it-val.tf-etat-hors { color: #b04020; }
+
 /* ── Panneau droit ───────────────────────────────── */
 #panel {
   background: #e8e4de;
@@ -414,6 +428,26 @@ html:not(.sections-pretes) .section-title[data-repliable]:not([data-repliable="o
   cursor: pointer;
 }
 .param-select:disabled { color: #a0a8b0; cursor: not-allowed; }
+
+/* Cases à cocher (même rendu que refraction/) */
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: clamp(12px, 1.15vw, 15px);
+  color: #2c3e50;
+  cursor: pointer;
+  user-select: none;
+  margin-bottom: 7px;
+  line-height: 1.3;
+}
+.check-row input[type="checkbox"] {
+  accent-color: #4a7aaa;
+  cursor: pointer;
+  width: 1.1em;
+  height: 1.1em;
+  flex: 0 0 auto;
+}
 
 /* Boutons empilés (ex. Pause + Réinitialiser) : l'écart est porté par le
    conteneur, pas par une marge sur chaque bouton. */

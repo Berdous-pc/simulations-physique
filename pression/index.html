@@ -128,6 +128,10 @@
           <td class="it-lbl it-wrap">Pression extérieure</td>
           <td class="it-val" id="tf-it-Pext">—</td>
         </tr>
+        <tr>
+          <td class="it-lbl">État</td>
+          <td class="it-val" id="tf-it-etat">—</td>
+        </tr>
       </table>
     </div>
 
@@ -298,6 +302,37 @@
           </div>
         </div>
 
+        <div class="sep"></div>
+
+        <!-- ── Affichage ──────────────────────────── -->
+        <div class="panel-section">
+          <div class="section-title" data-repliable>Affichage</div>
+          <label class="check-row">
+            <input type="checkbox" id="tf-ck-molecules" checked onchange="tfOnAffichage('molecules', this.checked)">
+            Molécules
+          </label>
+          <label class="check-row">
+            <input type="checkbox" id="tf-ck-trainees" onchange="tfOnAffichage('trainees', this.checked)">
+            Traînées des molécules (vitesse)
+          </label>
+          <label class="check-row">
+            <input type="checkbox" id="tf-ck-couleurT" checked onchange="tfOnAffichage('couleurT', this.checked)">
+            Couleur selon la température
+          </label>
+          <label class="check-row">
+            <input type="checkbox" id="tf-ck-sondes" onchange="tfOnAffichage('sondes', this.checked)">
+            Sondes (T et P à trois hauteurs)
+          </label>
+          <label class="check-row">
+            <input type="checkbox" id="tf-ck-profil" onchange="tfOnAffichage('profil', this.checked)">
+            Profil de pression
+          </label>
+          <label class="check-row">
+            <input type="checkbox" id="tf-ck-ondes" onchange="tfOnOndesExagerees(this.checked)">
+            Ondes exagérées (réinitialise)
+          </label>
+        </div>
+
       </div><!-- fin #section-transformations -->
 
     </div><!-- fin #panel-body -->
@@ -312,7 +347,10 @@
       <div class="panel-hint-body">
         Le <strong>loquet</strong> bloque le piston : posez la masse, puis libérez le loquet pour une compression brutale.
         Le curseur <strong>Vitesse</strong> descend jusqu'à ×1/5000 pour suivre les ondes dans le gaz.
-        Les lignes du gaz séparent des tranches de même masse.
+        Quand les tranches du gaz n'ont pas la même pression ou la même température, le tableau affiche <strong>?</strong> et l'écart entre tranches.
+        Couleur du gaz et des molécules : bleu plus froid que 20 °C, rouge plus chaud.
+        Les <strong>molécules</strong> restent dans leur région du gaz : plus serrées où il est dense, plus rapides où il est chaud (les traînées montrent leur vitesse). P et T sont calculées par tranches, pas à partir de leurs chocs.
+        <strong>Ondes exagérées</strong> ralentit le son pour rendre les écarts de pression visibles.
         Le cylindre est élargi sur le dessin (section réelle : 20 cm²).
         <br><strong>Raccourcis</strong> : Espace = pause, R = réinitialiser.
       </div>
@@ -337,11 +375,12 @@
 </main>
 
 <!-- Ordre de chargement : onglet Pression (sim → recipient), onglet
-     Transformations (tf-sim → tf-scene → tf-ui), puis ui (onglets, boucle,
+     Transformations (tf-sim → tf-molecules → tf-scene → tf-ui), puis ui (onglets, boucle,
      initialisation) et sections repliables (en dernier) -->
 <script src="js/sim.js"></script>
 <script src="js/recipient.js"></script>
 <script src="js/tf-sim.js"></script>
+<script src="js/tf-molecules.js"></script>
 <script src="js/tf-scene.js"></script>
 <script src="js/tf-ui.js"></script>
 <script src="js/ui.js"></script>

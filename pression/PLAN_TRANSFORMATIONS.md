@@ -13,25 +13,27 @@
 | Niveau | **CPGE** — première carte de ce niveau sur le site, assumé |
 | Gaz | Air diatomique par défaut (γ = 1,40), γ réglable par l'utilisateur |
 | Moteur physique | **Gaz découpé en tranches horizontales** (modèle 1D lagrangien), pas de dynamique moléculaire |
-| Molécules | Oui, **décoratives** : elles suivent la densité et la température des tranches, sans être le moteur |
+| Molécules | Oui, **pilotées par le modèle** : elles montrent ce que fait le gaz (densité, agitation thermique, mouvement d'ensemble, ondes) tranche par tranche ; ce ne sont pas elles qui calculent la pression (§3) |
 | Grandeurs | **Réalistes** (SI, pression atmosphérique incluse, masses en kg) |
 | Célérité du son | **Réelle par défaut** ; case « Ondes exagérées » en option pour la démonstration (§2.3) |
 | Ralenti | Jusqu'à ×1/5000 pour regarder l'équilibre mécanique s'établir (§5) |
+| Disposition | **Colonne de gauche** (celle du tableau actuel) : les graphes en haut, le tableau des valeurs en dessous ; scène à droite, contre le panneau (§4) |
+| Contraintes extérieures | **Pression de l'air au-dessus du piston** et **température extérieure** réglables, chacune en échelon (brutal) ou en rampe (pas à pas) ; masses et sable restent disponibles (§2.6) |
 
 ---
 
 ## 1. Dispositif et ordres de grandeur
 
-Cylindre vertical fermé par un piston mobile sans frottement ; au-dessus, l'atmosphère.
+Cylindre vertical fermé par un piston mobile sans frottement ; au-dessus, l'air d'une **enceinte** dont on règle la pression P_air (atmosphère par défaut, cf. §2.6).
 
 | Grandeur | Valeur | Commentaire |
 |---|---|---|
 | Section S | 20 cm² (Ø ≈ 5 cm) | Petite section : quelques dizaines de kg suffisent à doubler ou tripler la pression |
 | Hauteur initiale | 30 cm → V₀ = 0,60 L | |
 | Masse du piston | 1 kg | |
-| P_atm | 1,013·10⁵ Pa | |
+| P_air (au-dessus du piston) | 1,013·10⁵ Pa par défaut, réglable de 0 (vide) à 5·10⁵ Pa | |
 | T₀ | 293 K (20 °C) | |
-| P₀ | P_atm + Mg/S ≈ 1,062·10⁵ Pa | |
+| P_ext | P_air + (M + m)·g/S | P₀ = P_ext initiale ≈ 1,062·10⁵ Pa |
 | n | ≈ 0,026 mol (calculée, non réglée) | |
 | Masses « brutales » | 10 / 20 / 40 kg au choix | |
 | Grain de sable | 5 à 100 g (curseur), défaut 50 g | 50 g ↔ ΔP ≈ 245 Pa |
@@ -56,7 +58,8 @@ Ces valeurs servent de **cibles de validation** (§7).
 - Interfaces entre tranches : position z et vitesse u (grille décalée). L'interface du bas est le fond (fixe), celle du haut est le **piston**.
 - Équations : conservation de la quantité de mouvement par tranche, puis de l'énergie (de = −(P + q)·dv + conduction).
 - **Viscosité artificielle q** (type von Neumann–Richtmyer + terme linéaire) : c'est elle qui amortit les oscillations et qui **dissipe dans le gaz**. C'est indispensable pour que l'état final brutal soit celui du cours, n·Cv·(T_f − T₀) = −P_ext·(V_f − V₀). Un frottement solide sur le piston fausserait ce bilan (où irait la chaleur ?).
-- Piston : (M + m_ajoutée)·a = (P_tranche_haute − P_atm)·S − (M + m)·g. Loquet = vitesse du piston forcée à 0.
+- Piston : (M + m_ajoutée)·a = (P_tranche_haute − P_air)·S − (M + m)·g. Loquet = vitesse du piston forcée à 0.
+- P_air variable : le bilan d'énergie de contrôle (`tfEnergieTotale`) remplace le terme P_atm·S·z par le travail cumulé de l'enceinte, W_air = −∫P_air·S·dz.
 - Pesanteur dans le gaz : négligée (ρgh ≈ 4 Pa, sans intérêt ici).
 - Schéma explicite saute-mouton, sous-pas imposés par la condition CFL (dt < dz/c) et par la stabilité de la conduction. Coût : 40 tranches × quelques centaines de sous-pas par image, très en deçà de l'onglet molécules.
 
@@ -100,6 +103,20 @@ Ainsi, pendant les oscillations du piston en célérité réelle, P du gaz s'aff
 - Section repliable **Gaz** : boutons Monoatomique (5/3), Diatomique (7/5, défaut), Polyatomique (4/3), plus un curseur libre 1,05 à 1,67.
 - Cv = R/(γ − 1). Changer γ **réinitialise l'expérience** : changer de gaz en cours de route n'a pas de sens physique.
 
+### 2.6 Contraintes extérieures réglables
+
+Deux grandeurs imposées de l'extérieur, réglées de la même manière :
+
+| Grandeur | Plage | Échelon | Rampe |
+|---|---|---|---|
+| **P_air**, pression de l'air au-dessus du piston | 0 (vide) à 5·10⁵ Pa | saute d'un coup à la consigne : compression ou détente **brutale**, équivalente à poser ou retirer une masse | pas de 1 kPa (réglable) toutes les x s jusqu'à la consigne : transformation **quasi statique** quand x est grand devant l'amortissement du piston |
+| **T_ext**, température de la source sous le fond | 250 à 600 K | saut de température de la source : échauffement brutal, gradients de T dans le gaz | pas de 1 K toutes les x s : échauffement quasi statique (isobare si le piston est libre, isochore s'il est verrouillé) |
+
+- P_ext = P_air + (M + m)·g/S reste la grandeur affichée et tracée ; P_air est la commande.
+- La rampe de pression est l'équivalent « continu » du sable : même idée de succession de petites transformations brutales, réglable finement. Le sable garde son intérêt visuel (grain par grain).
+- Une rampe s'arrête à la consigne ; modifier la consigne en cours de rampe change seulement la cible.
+- Le piston a des butées (2 cm et 50 cm). Avec P_air = 0 et un gaz chaud, il peut atteindre la butée haute : l'afficher (« piston en butée ») plutôt que d'interdire le réglage.
+
 ---
 
 ## 3. Scène (canvas)
@@ -107,26 +124,41 @@ Ainsi, pendant les oscillations du piston en célérité réelle, P du gaz s'aff
 Rendu en colonne, de bas en haut :
 
 1. **Source thermique** sous le cylindre : rien (air ambiant à T_ext), plaque chauffante (rouge si T_ext > T₀) ou bain thermostaté (bleu si T_ext < T₀). La couleur suit T_ext. Le calorifugeage du fond est dessiné en hachures, plus épaisses si G est faible.
-2. **Cylindre** : gaz coloré en dégradé selon la T de chaque tranche (option), plus les **molécules décoratives**.
+2. **Cylindre** : gaz coloré en dégradé selon la T de chaque tranche (option), plus les **molécules** pilotées par le modèle.
 3. **Piston** + plateau ; **masses** empilées (disques marqués 10/20/40 kg) ; **tas de sable** qui grossit ; **entonnoir** au-dessus quand le versement est actif ; grains en chute.
 4. **Loquet** : deux goupilles qui traversent le cylindre au-dessus du piston, en surbrillance quand il est verrouillé.
 5. **Sondes** (option) : trois thermomètres et manomètres miniatures sur le flanc (haut / milieu / bas). Pendant une transformation brutale, **ils n'affichent pas la même valeur**. C'est la démonstration la plus directe que « la température du gaz » n'existe pas à cet instant.
 6. **Échelle verticale** en cm à côté du cylindre (le volume se lit en hauteur × S).
 7. **Loupe sur le profil de pression** (option) : à côté du cylindre, à la même hauteur, la courbe P(z) − P̄ tranche par tranche, axe horizontal centré sur 0, échelle amplifiée affichée en clair (« ×1000 » et graduations en Pa). C'est l'outil qui rend visibles, au ralenti, les ondes en célérité réelle.
+8. **Enceinte** au-dessus du cylindre : cloche transparente qui couvre le haut du cylindre, le plateau et les masses, reliée à un manomètre qui affiche P_air. L'air de la cloche est teinté d'autant plus que P_air est forte (vide : cloche claire, mention « vide »).
 
-**Molécules décoratives** : environ 150 points. Chacune est rattachée à une tranche et advectée avec elle ; leur nombre par tranche suit la masse volumique, leur agitation est proportionnelle à √T. Elles ne rebondissent pas entre elles et n'ont aucune influence sur la physique.
+**Molécules pilotées par le modèle** : 600 petits points (20 par tranche), qui rendent visible le comportement physique du gaz là où ils sont :
+- **libre parcours court** : chaque molécule vole sur quelques millimètres puis repart dans une direction au hasard ; elle reste dans sa région (un vol libre d'une paroi à l'autre mélangeait tout, version abandonnée) ;
+- **densité** : chaque molécule appartient à une tranche et en suit les limites ; comme chaque tranche a la même masse, les molécules se resserrent là où le gaz est comprimé ou froid ;
+- **mouvement d'ensemble** : elles sont entraînées à la vitesse locale du gaz (oscillations du piston, allers-retours des ondes) ;
+- **agitation thermique** : vitesse proportionnelle à √T de leur tranche ; **couleur** selon T ; **traînées** en option (longueur ∝ vitesse) ;
+- **chocs sur le piston et les parois** : les molécules qui les touchent rebondissent.
+
+Pas de loupes comparatives haut / bas (proposées puis écartées).
+
+Limite assumée, dite dans l'encart d'aide : la pression et la température viennent du modèle en tranches, pas du décompte des chocs de ces molécules (150 molécules donneraient des valeurs trop bruitées, cf. l'onglet Pression qui fait ce calcul). Les molécules ne se choquent pas entre elles ; leur agitation est ralentie d'un même facteur pour rester lisible (les vraies vitesses, ~500 m/s, sont invisibles à l'œil).
 
 ---
 
 ## 4. Graphes
 
-Disposition : la scène à gauche, la colonne de graphes à droite, avec un splitter horizontal entre le **diagramme PV** (en haut, le plus grand) et les **graphes temporels** (en bas, un seul canevas découpé en trois cases T(t), P(t), V(t), comme `cinematique/`).
+Disposition (de gauche à droite) : **colonne graphes + tableau** (la colonne du tableau du palier 1), **scène**, panneau.
+
+- Colonne de gauche, de haut en bas : le **diagramme PV**, puis les **graphes temporels** (un seul canevas découpé en trois cases T(t), P(t), V(t), comme `cinematique/`), puis le **tableau des valeurs** (t, P, T, V, P_ext, T_ext, badge d'équilibre ; compact, sur deux colonnes de valeurs si la place manque). Splitter horizontal entre le diagramme PV et les graphes temporels.
+- La colonne s'élargit par rapport au palier 1 pour que les graphes restent lisibles ; un splitter vertical entre cette colonne et la scène règle leur partage de largeur (par défaut ~50 / 50).
+- Fenêtre étroite ou portrait : scène en haut, graphes dessous (la scène garde au moins ~45 % de la hauteur, c'est l'élément central).
+- Le cylindre conserve sa règle de taille du palier 1 (aussi large que la place le permet, au plus 75 % de sa hauteur dessinée), sur une zone désormais plus étroite.
 
 ### 4.1 Graphes temporels
 
 - **V(t)** : toujours défini (position du piston) → courbe pleine.
 - **T(t), P(t)** : courbe pleine à l'équilibre. Hors équilibre, **bande min–max des tranches** hachurée, avec la mention « non définie ». La moyenne n'est pas tracée : ce serait suggérer qu'elle a un sens.
-- Repères en pointillés : **P_ext** = P_atm + (M + m)g/S sur P(t) ; **T_ext** sur T(t).
+- Repères en pointillés : **P_ext** = P_air + (M + m)g/S sur P(t) ; **T_ext** sur T(t). Ils suivent les échelons et les rampes.
 - Axe des temps : **fenêtre glissante dont la largeur suit le cran de vitesse** (de quelques ms au ralenti extrême à quelques dizaines de s aux crans rapides), unité ms ou s selon la fenêtre. L'historique complet reste enregistré : bouton « Adapter » pour tout revoir.
 - Les bandes min–max de P(t) sont minces en célérité réelle ; le zoom permet de les voir. Outils repris d'`ondes/` et `radioactivite/` : zoom rectangle, vue précédente, réticule.
 
@@ -145,14 +177,14 @@ Disposition : la scène à gauche, la colonne de graphes à droite, avec un spli
 Structure canonique (§5 de CONTEXTE_PROJET). « (R) » = section repliable.
 
 1. **Contrôle** : Pause / Réinitialiser ; curseur **Vitesse** élargi à crans (×1/5000 / ×1/1000 / ×1/100 / ×0,1 / ×1 / ×5 / ×20). Les crans lents servent à regarder l'équilibre mécanique s'établir, les crans rapides à attendre les équilibres thermiques et le versement de sable. Affichage du cran en clair (« ×1/1000 »).
-2. **Masses** : sélecteur 10 / 20 / 40 kg ; bouton **Poser la masse** (avec loquet fermé : l'expérience se prépare au repos) ; bouton **Loquet : verrouillé / libéré** ; bouton **Retirer les masses** (détente brutale, symétrique).
-3. **Sable** : curseur masse d'un grain (5 à 100 g) ; boutons **Un grain** et **Verser / Arrêter** (débit réglable) ; **Retirer le sable**. Afficheur : masse de sable posée.
-4. **Thermique** : curseur **Isolation** (calorifugé ↔ diathermane) ; curseur **T_ext** avec deux modes en sous-onglets : **Échelon** (T_ext saute à la valeur choisie) et **Rampe** (T_ext monte ou descend de 1 K toutes les x s jusqu'à la consigne).
+2. **Pression extérieure** : curseur **P_air** (0 à 5 bar) ; sous-onglets **Échelon** / **Rampe** (pas et durée du pas réglables) ; bouton **Appliquer** (lance l'échelon ou la rampe vers la consigne, pour qu'un simple glissement du curseur ne déclenche pas une transformation) ; afficheur P_ext.
+3. **Charges sur le piston** : sélecteur 10 / 20 / 40 kg ; bouton **Poser / Retirer la masse** ; bouton **Loquet : verrouillé / libéré** (l'expérience se prépare au repos) ; sable : masse d'un grain (5 à 100 g), boutons **Un grain**, **Verser / Arrêter** (débit réglable), **Retirer le sable**, masse de sable posée.
+4. **Thermique** : curseur **Isolation** (calorifugé ↔ diathermane) ; curseur **T_ext** avec les mêmes sous-onglets **Échelon** / **Rampe** et le même bouton **Appliquer** que la pression.
 5. **Gaz** (R) : γ (cf. 2.5) ; T₀, V₀ initiaux (pris en compte au Réinitialiser).
 6. **Affichage** (R) : molécules, dégradé de température, sondes, loupe sur le profil de pression, pression du piston sur PV, isotherme, adiabatique, **ondes exagérées** (réinitialise l'expérience).
 7. **Bilan** (R, niveau CPGE) : W reçu, Q reçu, ΔU (avec vérification ΔU = W + Q), et **entropie créée** S_c = ΔS − Q/T_ext. La comparaison brutal / sable en fait un résultat chiffré.
 
-Afficheurs permanents (overlay sur la scène, comme `#info-panel`) : **P, V, T** (« ? » hors équilibre, en terracotta), P_ext, T_ext, badge **À l'équilibre / Hors équilibre**.
+Afficheurs permanents (tableau en bas de la colonne de gauche, sous les graphes, §4) : **P, V, T** (« ? » hors équilibre, en terracotta), P_ext, T_ext, badge **À l'équilibre / Hors équilibre**.
 
 Bandeau **Informations** : mode d'emploi de la page (préparer avec le loquet, ralentir pour voir le piston et les ondes, verser le sable, régler l'isolation…), puis une phrase par compromis : échanges thermiques accélérés, ondes exagérées quand la case est cochée, origine réelle de l'amortissement.
 
@@ -177,7 +209,7 @@ pression/
 └── js/
     ├── sim.js, recipient.js         (onglet Pression, inchangés hors suspension de boucle)
     ├── tf-sim.js                    ← NOUVEAU : état tf, moteur en tranches, piston, thermique, critère d'équilibre, bilans
-    ├── tf-scene.js                  ← NOUVEAU : rendu cylindre, masses, sable, source, sondes, molécules décoratives
+    ├── tf-scene.js                  ← NOUVEAU : rendu cylindre, masses, sable, source, sondes, molécules pilotées par le modèle
     ├── tf-graph.js                  ← NOUVEAU : graphes temporels + diagramme PV, outils zoom/réticule
     ├── tf-ui.js                     ← NOUVEAU : commandes du panneau, boucle de l'onglet
     ├── ui.js                        ← + bascule d'onglets, deep-linking, suspension des boucles
@@ -206,6 +238,10 @@ Chaque test charge la page en `#transformations`, pilote les fonctions `tf…` e
 | Sable lent, diathermane | état final → isotherme |
 | Échelon de T_ext, piston libre | V_f/V₀ = T_ext/T₀ (isobare) |
 | Bilan | ΔU = W + Q à 10⁻³ ; S_c ≥ 0 toujours, → 0 pour le sable fin et lent |
+| Échelon de P_air (1,013 → 3 bar), calorifugé | même état final que la masse équivalente (formule du §1 avec P_ext) |
+| Rampe lente de P_air, calorifugé / diathermane | état final → Laplace / → isotherme |
+| P_air = 0 (vide) | équilibre à P_ext = Mg/S ; butée haute atteinte proprement si le gaz est chaud |
+| Bilan avec P_air variable | énergie totale (avec W_air) constante à 10⁻⁶ |
 | Changement de γ | états finaux recalculés justes pour 5/3 et 4/3 |
 | Célérité réelle | onde lancée par une petite impulsion du piston : aller-retour en 2L/c ≈ 1,75 ms à 5 % près |
 | Uniformité en célérité réelle | 40 kg posés brutalement : écart relatif de P entre tranches de l'ordre de 10⁻⁵ à 10⁻⁴ (confirme les estimations du §2.3) |
@@ -218,10 +254,10 @@ Chaque test charge la page en `#transformations`, pilote les fonctions `tf…` e
 ## 8. Paliers
 
 1. ✅ **Moteur + scène minimale** (terminé ; les onglets et le deep-linking du palier 7 ont été avancés ici pour pouvoir tester la page, résultats des tests dans `ARCHITECTURE.md`) : `tf-sim.js` complet en célérité réelle (tranches, piston, loquet, masses, Isolation), curseur Vitesse avec ralenti extrême, rendu simple du cylindre, afficheurs P, V, T. Tests du §7 lignes 1 à 4 et célérité réelle / uniformité / ralenti.
-2. **Mise en évidence du hors-équilibre** : critère à deux niveaux, « ? » dans les afficheurs, badge d'équilibre, dégradé de température, sondes, loupe sur le profil de pression, case Ondes exagérées (et son test), molécules décoratives.
-3. **Graphes** : T, P, V(t) avec bandes min–max, diagramme PV avec chemin non défini, pression du piston, courbes théoriques, outils de zoom.
-4. **Sable** : grain unique, versement continu, entonnoir et tas, escalier visible au zoom. Tests lignes 5 et 6.
-5. **Thermique** : source four/bain, échelon et rampe de T_ext. Test ligne 7.
+2. ✅ **Mise en évidence du hors-équilibre** (terminé ; facteur des ondes exagérées : 10⁴) : critère à deux niveaux, « ? » dans les afficheurs, badge d'équilibre, dégradé de température, sondes, loupe sur le profil de pression, case Ondes exagérées (et son test), molécules pilotées par le modèle.
+3. **Graphes et nouvelle disposition** : graphes puis tableau dans la colonne de gauche, splitters ; T, P, V(t) avec bandes min–max, diagramme PV avec chemin non défini, pression du piston, courbes théoriques, outils de zoom.
+4. **Contraintes extérieures** : P_air (enceinte, manomètre) et T_ext (source four / bain), échelon et rampe pour les deux, butées signalées. Tests : échelon de T_ext, échelon et rampes de P_air, vide, bilan avec W_air.
+5. **Sable** : grain unique, versement continu, entonnoir et tas, escalier visible au zoom. Tests sable fin calorifugé et sable lent diathermane.
 6. **γ et Bilan** : section Gaz, section Bilan (W, Q, ΔU, S_c). Tests lignes 8 et 9.
 7. **Intégration** : onglets dans `index.html`, adaptation de l'onglet existant (`.panel-title` → onglets, suspension de boucle), deep-linking, renommage visible « Gaz parfait », bandeau Informations, responsivité (fenêtre étroite : scène au-dessus des graphes).
 8. **Site** : niveau **CPGE** sur l'accueil (nouvelle case de filtre `data-value="cpge"`, badge `.level-cpge` d'une nouvelle couleur, `data-levels="cpge"`), carte « Transformations d'un gaz parfait » (thème Thermodynamique), aperçu `assets/previews/pression-transformations.jpg`, `meta description` et `<title>` de la page mis à jour, sitemap (`lastmod`), `ARCHITECTURE.md`, tableau §8 et §9 de CONTEXTE_PROJET, mention de CPGE dans la `meta description` de l'accueil.
@@ -232,7 +268,7 @@ Chaque palier se termine par un commit et peut être montré en classe tel quel 
 
 ## 9. Points encore ouverts
 
-- Valeur du facteur d'inertie de la case « Ondes exagérées » : à régler au palier 2 (cible : aller-retour ≈ 1/3 de la période du piston).
+- Facteur des ondes exagérées : 10⁴ (aller-retour ≈ 0,18 s), à revoir à l'usage en classe.
 - Gamme des masses (10 / 20 / 40 kg) et section 20 cm² : à valider visuellement dès le palier 1.
 - Dégradé de couleur : sur T (recommandé) ou sur la masse volumique ?
 - Titre de la carte d'accueil de l'onglet existant : garder « Pression d'un gaz » ou passer à « Modèle cinétique d'un gaz parfait » ?

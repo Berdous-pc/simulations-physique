@@ -12,6 +12,7 @@ pression/
     ├── sim.js               ← onglet Pression
     ├── recipient.js         ← onglet Pression
     ├── tf-sim.js            ← onglet Transformations : moteur en tranches
+    ├── tf-molecules.js      ← onglet Transformations : molécules pilotées par le modèle
     ├── tf-scene.js          ← onglet Transformations : rendu du cylindre
     ├── tf-ui.js             ← onglet Transformations : panneau et boucle
     ├── ui.js                ← onglets, boucle et initialisation de l'onglet Pression
@@ -251,7 +252,7 @@ index.html
 
 ## Onglet Transformations
 
-> Construit par paliers selon `PLAN_TRANSFORMATIONS.md` (palier 1 terminé : moteur, scène minimale, masse, loquet, isolation du fond, ralenti).
+> Construit par paliers selon `PLAN_TRANSFORMATIONS.md` (palier 1 terminé : moteur, scène minimale, masse, loquet, isolation du fond, ralenti ; palier 2 terminé : mise en évidence du hors-équilibre).
 
 ### Cohabitation avec l'onglet Pression
 
@@ -277,7 +278,9 @@ Gaz parfait découpé en `TF_N = 30` tranches de même masse (lagrangien 1D), so
 | Conduction | entre tranches, conductivité effective `TF_LAMBDA = 2,2 W·m⁻¹·K⁻¹` (≈ 15 s pour se mettre en équilibre) |
 | Fond | flux `G·(T_ext − T_tranche basse)`, G pris dans `TF_ISOLATIONS` (0 = calorifugé … 1 W/K) ; cumulé dans `tf.Qrecu` |
 
-Fonctions : `tfReset()`, `tfAvancer(dt)`, `tfSetMasse(kg)`, `tfSetLoquet(bool)`, `tfSetIsolation(G)`, `tfMesures()` (moyennes, extrêmes des tranches, critère `equilibre` du §2.4 du plan), `tfPext()`, `tfVolume()`, `tfEnergieTotale()` (constante aux erreurs de schéma près : sert aux tests).
+**Ondes exagérées** (`tf.ondesExagerees`) : l'inertie du gaz est multipliée par `TF_INERTIE_EXAGEREE = 10⁴`, dans l'équation du mouvement seulement. La célérité tombe à ~3,4 m/s (un aller-retour ≈ 0,18 s, environ le tiers de la période du piston). `tfSetOndesExagerees()` réinitialise l'expérience.
+
+Fonctions : `tfReset()`, `tfAvancer(dt)`, `tfSetMasse(kg)`, `tfSetLoquet(bool)`, `tfSetIsolation(G)`, `tfSetOndesExagerees(bool)`, `tfTTranche(j)`, `tfMesures()` (moyennes, extrêmes des tranches, critère `equilibre` du §2.4 du plan), `tfPext()`, `tfVolume()`, `tfEnergieTotale()` (constante aux erreurs de schéma près : sert aux tests).
 
 **Validation (Chrome headless, palier 1)** :
 
@@ -291,11 +294,33 @@ Fonctions : `tfReset()`, `tfAvancer(dt)`, `tfSetMasse(kg)`, `tfSetLoquet(bool)`,
 | Uniformité de P (40 kg brutal) | écart max entre tranches 2,7·10⁻⁵ |
 | Ralenti ×1/5000 contre ×20 | même position du piston à 0,4 µm près |
 | Coût | ~1,4 ms par image à ×1 ; ×20 plafonné (~10 ms par image) quand le gaz est comprimé et chaud |
+| Ondes exagérées, 10 / 20 / 40 kg brutaux | mêmes états finaux (447,81 K pour 447,84 K) ; écart de P entre tranches jusqu'à 19 à 27 % ; pic de l'impulsion au fond à 88,5 ms pour 87,5 ms attendues |
+| Molécules, moitié basse des tranches plus fine (×0,5), plus froide (×0,5) ou les deux | 49,7 / 49,8 / 50,1 % des molécules dans la moitié basse en masse (attendu 50 %), moyenne sur 18 000 images |
+| Molécules, gradient réel après compression et refroidissement par le fond (301 → 426 K) | 299 à 304 molécules sur 600 dans la moitié basse en masse, qui n'occupe que 45 % de la hauteur |
+
+### `js/tf-molecules.js` — Molécules pilotées par le modèle
+
+600 petites molécules (`TF_MOL_PAR_TRANCHE = 20` par tranche, rayon `TF_MOL_RAYON` = 0,75 % de la largeur dessinée, au moins 1,8 px). Chacune est repérée par sa tranche `j`, sa position relative `s` dans la tranche et son abscisse `x` (fraction de la largeur) : elle est donc entraînée avec le gaz (piston, ondes) sans calcul. Vitesse ∝ √T de sa tranche (`TF_MOL_VITESSE` à T0, à l'échelle du dessin), rebonds sur les parois, le fond et le piston.
+
+**Libre parcours court** (`TF_MOL_LPM` = 8 mm d'échelle, distances tirées selon une loi exponentielle) : après chaque vol, nouvelle direction au hasard, comme dans un gaz réel où les chocs sont incessants. Les molécules restent dans leur région. La première version (180 grosses molécules en vol libre d'une paroi à l'autre) mélangeait tout : on ne voyait aucune différence entre le haut et le bas. Le libre parcours est **constant** : le faire varier comme 1/ρ biaisait la règle de passage (+11 à +14 % de molécules dans le gaz dense, mesuré).
+
+**Dessin** (`tf-scene.js`) : molécules regroupées par tranche et colorées selon sa température (palette plus soutenue que le fond, lui-même atténué à 45 % quand les molécules sont affichées) ; traînées en option (case « Traînées »), segment derrière la molécule de longueur vitesse × `TF_MOL_TRAINEE` (0,09 s).
+
+**Densité** : un passage de la tranche a à la tranche b est accepté avec la probabilité min(1, ρ_b·v_b / (ρ_a·v_a)), sinon la molécule rebrousse chemin. Cette règle équilibre les flux de part et d'autre de chaque limite : en régime établi, le nombre de molécules par tranche est proportionnel à la masse de gaz (identique pour toutes), quelles que soient les températures. Sans elle, des vols libres se répartissent uniformément en hauteur et le gaz froid ou comprimé n'apparaît pas plus dense.
+
+**Temps** : agitation en temps d'affichage, multipliée par (min(1, vitesse))^(1/3) dans `tf-ui.js` : au ralenti extrême, elles dérivent lentement sans se figer ; elles ne sont jamais accélérées au-delà de ×1, où elles deviendraient illisibles. Elles ne servent à aucun calcul : P et T viennent des tranches (le bandeau Informations le dit).
 
 ### `js/tf-scene.js` — Rendu
+
+Options d'affichage dans `tfAff` (section Affichage du panneau) : molécules, traînées, couleur selon T (gaz et molécules), sondes, profil de pression.
+
+- **Couleur selon T** : chaque tranche est colorée du bleu (plus froide que T0) au rouge (plus chaude), en racine de l'écart saturée à ±150 K, pour que quelques kelvins se voient.
+- **Sondes** : T et P de trois tranches (`TF_SONDES` : haut, milieu, bas), dans des étiquettes contre la paroi droite ; P au pascal près (kPa à trois décimales). Une étiquette est omise si le gaz est trop écrasé pour la loger.
+- **Profil de pression** : P(z) − P̄ tranche par tranche, dans un cadre à droite du cylindre, à la hauteur du gaz. Échelle en Pa (1, 2, 5 × 10ⁿ, au moins 1 Pa : en deçà, ce n'est que du bruit numérique), agrandie aussitôt, resserrée après ~1 s de petits écarts. Sa largeur est retranchée de celle du cylindre (`_tfDoResize`).
+- **Mention « Ondes exagérées »** en haut à gauche de la scène tant que la case est cochée.
 
 Échelle verticale réelle (graduations en cm), cylindre **élargi** horizontalement : aussi large que la zone le permet, au plus `TF_LARG_MAX` (75 %) de sa hauteur dessinée. De bas en haut : isolant hachuré (d'autant plus épais que G est faible), paroi du fond (claire si conductrice), gaz et limites des tranches (elles se resserrent dans une compression : ondes visibles au ralenti), parois, graduations (à gauche, au-delà des goupilles), tige, plateau, masse, corps du piston hachuré, goupilles du loquet (enfoncées dans le piston : verrouillé ; reculées hors du cylindre : libéré). `tfResize()` avec anti-rebond, `window.resize` et `ResizeObserver` sur `#tf-sim-area`.
 
 ### `js/tf-ui.js` — Panneau et boucle
 
-Afficheurs `#tf-info` à 10 Hz (temps en ms aux crans < ×1/100, P en kPa, T, V, P_ext), curseur Vitesse à 7 crans `TF_VITESSES` (×1/5000 → ×20), sélecteur et bouton de masse, bouton du loquet, curseur Isolation. `tfInit()` est appelée par `ui.js`.
+Afficheurs `#tf-info` à 10 Hz (temps en ms aux crans < ×1/100, P en kPa, T, V, P_ext, État). P ou T non définies (critère de `tfMesures`) : « ? » suivi de l'intervalle couvert par les tranches, jamais la moyenne. État : « À l'équilibre » (vert) ou « Hors équilibre » (terracotta). Section Affichage (repliable) : cases `tf-ck-…`, resynchronisées sur `tfAff` au chargement (un navigateur peut conserver l'état des cases au rechargement). curseur Vitesse à 7 crans `TF_VITESSES` (×1/5000 → ×20), sélecteur et bouton de masse, bouton du loquet, curseur Isolation. `tfInit()` est appelée par `ui.js`.

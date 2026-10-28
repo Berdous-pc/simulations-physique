@@ -69,6 +69,13 @@ var TF_LAMBDA = 2.2;   // W·m⁻¹·K⁻¹
 // (0 = calorifugé ; au dernier cran, le fond ne limite plus les échanges).
 var TF_ISOLATIONS = [0, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1];
 
+// ── Ondes exagérées (case de la section Affichage) ──
+// Facteur appliqué à l'inertie du gaz, dans l'équation du mouvement
+// seulement : la célérité est divisée par √TF_INERTIE_EXAGEREE (343 → ~3,4
+// m/s), si bien qu'un aller-retour d'onde dure ~0,2 s, environ le tiers de
+// la période du piston. Équation d'état, bilans et équilibres inchangés.
+var TF_INERTIE_EXAGEREE = 1e4;
+
 // ── Commandes ──
 var TF_MASSES   = [10, 20, 40];                             // kg
 var TF_VITESSES = [1 / 5000, 1 / 1000, 1 / 100, 0.1, 1, 5, 20];
@@ -87,7 +94,8 @@ var tf = {
   gamma : 1.4,
   n     : 0,      // mol (calculée au reset)
   nTr   : 0,      // mol par tranche
-  mTr   : 0,      // kg par tranche (inertie)
+  mTr   : 0,      // kg par tranche (inertie, facteur des ondes exagérées compris)
+  ondesExagerees : false,
   Cv    : 0,      // J·K⁻¹·mol⁻¹
 
   // Tranches : interfaces z[0..N] (z[0] = fond, z[N] = face du piston) et
@@ -160,6 +168,9 @@ function tfEnergieTotale() {
        - tf.Qrecu;
 }
 
+// Température d'une tranche (K)
+function tfTTranche(j) { return tf.E[j] / (tf.nTr * tf.Cv); }
+
 // Mesures : moyennes, extrêmes des tranches et critère d'équilibre (§2.4)
 function tfMesures() {
   var g1 = tf.gamma - 1;
@@ -204,7 +215,7 @@ function tfReset() {
   var P0 = TF_P_ATM + TF_M_PISTON * TF_G / TF_S;
   tf.n   = P0 * TF_V0 / (TF_R * TF_T0);
   tf.nTr = tf.n / TF_N;
-  tf.mTr = tf.n * TF_M_AIR / TF_N;
+  tf.mTr = tf.n * TF_M_AIR / TF_N * (tf.ondesExagerees ? TF_INERTIE_EXAGEREE : 1);
 
   var h0 = TF_V0 / TF_S;
   for (var i = 0; i <= TF_N; i++) {
@@ -243,6 +254,13 @@ function tfSetLoquet(verrouille) {
   tf.loquet = verrouille;
   if (verrouille) tf.u[TF_N] = 0;
   tf.needsRedraw = true;
+}
+
+// Ondes exagérées : l'inertie du gaz change, l'expérience repart de zéro
+// (sans quoi l'énergie cinétique du gaz en mouvement changerait d'un coup).
+function tfSetOndesExagerees(oui) {
+  tf.ondesExagerees = oui;
+  tfReset();
 }
 
 function tfSetIsolation(G) {
