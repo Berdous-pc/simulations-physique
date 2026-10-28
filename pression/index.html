@@ -97,13 +97,62 @@
   </div>
 
   <!-- ══════════════════════════════════════════════
+       COLONNE GAUCHE (onglet Transformations) : cylindre
+       Même cellule de grille que #left-col ; un seul des deux est affiché.
+  ══════════════════════════════════════════════ -->
+  <div id="tf-left-col" style="display:none">
+
+    <div id="tf-info">
+      <table class="info-table">
+        <colgroup>
+          <col class="it-col-lbl">
+          <col class="it-col-val">
+        </colgroup>
+        <tr>
+          <td class="it-lbl">Temps</td>
+          <td class="it-val" id="tf-it-t">—</td>
+        </tr>
+        <tr>
+          <td class="it-lbl">Pression</td>
+          <td class="it-val" id="tf-it-P">—</td>
+        </tr>
+        <tr>
+          <td class="it-lbl">Température</td>
+          <td class="it-val" id="tf-it-T">—</td>
+        </tr>
+        <tr>
+          <td class="it-lbl">Volume</td>
+          <td class="it-val" id="tf-it-V">—</td>
+        </tr>
+        <tr>
+          <td class="it-lbl it-wrap">Pression extérieure</td>
+          <td class="it-val" id="tf-it-Pext">—</td>
+        </tr>
+      </table>
+    </div>
+
+    <div id="tf-sim-area">
+      <canvas id="tf-canvas"></canvas>
+    </div>
+
+  </div>
+
+  <!-- ══════════════════════════════════════════════
        PANNEAU DROIT : contrôles
   ══════════════════════════════════════════════ -->
   <div id="panel">
+
+    <div class="panel-main-tabs">
+      <button class="panel-main-tab active" id="tab-pression"
+              onclick="setMainTab('pression')">Pression</button>
+      <button class="panel-main-tab" id="tab-transformations"
+              onclick="setMainTab('transformations')">Transformations</button>
+    </div>
+
     <div id="panel-body">
 
-      <!-- ── Titre ─────────────────────────────── -->
-      <div class="panel-title">Pression d'un gaz</div>
+      <!-- ════════════════ Onglet Pression ════════════════ -->
+      <div class="panel-main-section" id="section-pression">
 
       <!-- ── Contrôle du temps ──────────────────── -->
       <div class="panel-section">
@@ -183,10 +232,93 @@
 
       </div><!-- fin Paramètres -->
 
+      </div><!-- fin #section-pression -->
+
+      <!-- ════════════════ Onglet Transformations ════════════════ -->
+      <div class="panel-main-section" id="section-transformations" style="display:none">
+
+        <!-- ── Contrôle du temps ──────────────────── -->
+        <div class="panel-section">
+          <div class="section-title">Contrôle</div>
+          <div class="btn-stack">
+            <button id="tf-btn-playpause" class="btn btn-pause" onclick="tfBasculerPause()">&#9646;&#9646; Pause</button>
+            <button class="btn btn-raz" onclick="tfReinitialiser()">&#9632; Réinitialiser</button>
+          </div>
+          <!-- Du ralenti extrême (ondes dans le gaz, ~1 ms) à l'accéléré
+               (attente des équilibres thermiques, ~10 s). -->
+          <div class="param-row param-row-speed">
+            <label for="tf-sl-vitesse">Vitesse
+              <span class="param-value">×<span id="tf-lbl-vitesse">1</span></span>
+            </label>
+            <input type="range" id="tf-sl-vitesse" min="0" max="6" step="1" value="4"
+                   oninput="tfOnVitesse(this.value)">
+            <div class="slider-ticks">
+              <span>ralenti</span>
+              <span>accéléré</span>
+            </div>
+            <span class="input-hint" id="tf-vitesse-limite" style="display:none">Calcul trop lourd : vitesse réelle inférieure</span>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <!-- ── Masse sur le piston ────────────────── -->
+        <div class="panel-section">
+          <div class="section-title">Masse sur le piston</div>
+          <div class="param-row">
+            <label for="tf-sel-masse">Masse à poser</label>
+            <select id="tf-sel-masse" class="param-select" onchange="tfOnMasse(this.value)">
+              <option value="10">10 kg</option>
+              <option value="20" selected>20 kg</option>
+              <option value="40">40 kg</option>
+            </select>
+          </div>
+          <div class="btn-stack">
+            <button id="tf-btn-masse" class="btn btn-primary" onclick="tfBasculerMasse()">Poser la masse</button>
+            <button id="tf-btn-loquet" class="btn btn-toggle-one active" onclick="tfBasculerLoquet()">🔒 Loquet verrouillé</button>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <!-- ── Échanges thermiques ────────────────── -->
+        <div class="panel-section">
+          <div class="section-title">Échanges thermiques</div>
+          <div class="param-row">
+            <label for="tf-sl-isolation">Fond du cylindre
+              <span class="param-value" id="tf-lbl-isolation">calorifugé</span>
+            </label>
+            <input type="range" id="tf-sl-isolation" min="0" max="7" step="1" value="0"
+                   oninput="tfOnIsolation(this.value)">
+            <div class="slider-ticks">
+              <span>calorifugé</span>
+              <span>diathermane</span>
+            </div>
+            <span class="input-hint">Air extérieur à 20 °C (293 K)</span>
+          </div>
+        </div>
+
+      </div><!-- fin #section-transformations -->
+
     </div><!-- fin #panel-body -->
 
-    <!-- ── Bandeau Instructions ────────────────── -->
-    <div class="panel-hint collapsed" id="panel-hint">
+    <!-- ── Bandeaux Informations (un par onglet) ── -->
+    <div class="panel-hint collapsed" id="panel-hint-transformations" style="display:none">
+      <div class="panel-hint-header">
+        <a class="panel-hint-menu-btn" href="../" title="Retour au menu principal">☰ Menu</a>
+        <span class="panel-hint-title">Informations</span>
+        <button class="panel-hint-toggle" onclick="toggleHint()" title="Afficher les informations">▲</button>
+      </div>
+      <div class="panel-hint-body">
+        Le <strong>loquet</strong> bloque le piston : posez la masse, puis libérez le loquet pour une compression brutale.
+        Le curseur <strong>Vitesse</strong> descend jusqu'à ×1/5000 pour suivre les ondes dans le gaz.
+        Les lignes du gaz séparent des tranches de même masse.
+        Le cylindre est élargi sur le dessin (section réelle : 20 cm²).
+        <br><strong>Raccourcis</strong> : Espace = pause, R = réinitialiser.
+      </div>
+    </div>
+
+    <div class="panel-hint collapsed" id="panel-hint-pression">
       <div class="panel-hint-header">
         <a class="panel-hint-menu-btn" href="../" title="Retour au menu principal">☰ Menu</a>
         <span class="panel-hint-title">Informations</span>
@@ -204,9 +336,14 @@
 
 </main>
 
-<!-- Ordre de chargement : sim (état + physique) → recipient (rendu) → ui (boucle) → sections repliables (en dernier) -->
+<!-- Ordre de chargement : onglet Pression (sim → recipient), onglet
+     Transformations (tf-sim → tf-scene → tf-ui), puis ui (onglets, boucle,
+     initialisation) et sections repliables (en dernier) -->
 <script src="js/sim.js"></script>
 <script src="js/recipient.js"></script>
+<script src="js/tf-sim.js"></script>
+<script src="js/tf-scene.js"></script>
+<script src="js/tf-ui.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/sections-repliables.js"></script>
 <script data-goatcounter="https://berdous-pc.goatcounter.com/count"

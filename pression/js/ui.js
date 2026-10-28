@@ -31,14 +31,49 @@ var PISTON_TAU = 110;
 //  Boucle d'animation (RAF)
 // ══════════════════════════════════════════════════════════════════════
 
-// ── Bandeau instructions ───────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════
+//  Onglets principaux (deep-linking #pression / #transformations)
+// ══════════════════════════════════════════════════════════════════════
+
+var ONGLETS = ['pression', 'transformations'];
+var ongletPrincipal = 'pression';
+
+function setMainTab(tab) {
+  if (ONGLETS.indexOf(tab) === -1) tab = 'pression';
+  ongletPrincipal = tab;
+  ONGLETS.forEach(function (t) {
+    var actif = (t === tab);
+    document.getElementById('section-' + t).style.display    = actif ? '' : 'none';
+    document.getElementById('panel-hint-' + t).style.display = actif ? '' : 'none';
+    document.getElementById('tab-' + t).classList.toggle('active', actif);
+  });
+  document.getElementById('left-col').style.display    = tab === 'pression' ? '' : 'none';
+  document.getElementById('tf-left-col').style.display = tab === 'transformations' ? '' : 'none';
+
+  // La zone de dessin de l'onglet affiché vient de reprendre sa taille
+  if (tab === 'pression') {
+    if (_initPressionEnAttente) _initPression();
+    else _doResize();
+  } else {
+    _tfDoResize();
+  }
+  // replaceState : un rechargement reste sur l'onglet affiché, sans empiler
+  // d'entrées d'historique (cf. CONTEXTE_PROJET.md §9)
+  history.replaceState(null, '', location.pathname + '#' + tab);
+}
+
+// ── Bandeau Informations (celui de l'onglet affiché) ───────────────────
 function toggleHint() {
-  var hint = _el['panel-hint'];
+  var hint = document.getElementById('panel-hint-' + ongletPrincipal);
   if (hint) hint.classList.toggle('collapsed');
 }
 
 function loop(ts) {
   requestAnimationFrame(loop);
+
+  // Onglet masqué : rien à calculer ni à dessiner. L'état reste figé et
+  // reprend tel quel au retour (dtReal est plafonné à la reprise).
+  if (ongletPrincipal !== 'pression') { _lastTs = null; return; }
 
   if (_lastTs === null) { _lastTs = ts; return; }
 
@@ -105,7 +140,7 @@ var _EL_IDS = [
   'it-T', 'it-n', 'it-V', 'it-top', 'it-bot', 'it-lft', 'it-rgt', 'it-mean',
   'sl-T', 'sl-n', 'sl-V', 'sl-gravity', 'sl-speed',
   'lbl-T', 'lbl-n', 'lbl-V', 'lbl-gravity', 'lbl-speed', 'lbl-n-molecules',
-  'btn-playpause', 'panel-hint'
+  'btn-playpause'
 ];
 
 function _cacheElements() {
@@ -346,8 +381,26 @@ canvas.addEventListener('pointerleave', function () {
 // ══════════════════════════════════════════════════════════════════════
 
 function init() {
-  // 0. Références du DOM (une fois pour toutes)
+  // Références du DOM (une fois pour toutes)
   _cacheElements();
+
+  // Onglet demandé par l'URL. setMainTab() démarre aussi l'onglet Pression
+  // s'il est affiché ; sinon son démarrage attend la première bascule.
+  var hash = window.location.hash.replace('#', '');
+  tfInit();
+  setMainTab(ONGLETS.indexOf(hash) !== -1 ? hash : 'pression');
+}
+
+// ── Démarrage de l'onglet Pression ─────────────────────────────────────
+// Il lui faut la taille de son canvas, nulle tant que l'onglet est masqué :
+// on attend alors la bascule (cf. setMainTab), plutôt que de réessayer à
+// chaque image.
+var _initPressionEnAttente = true;
+
+function _initPression() {
+  // Une seule fois, même si une bascule d'onglet relance pendant qu'un
+  // nouvel essai est déjà programmé
+  if (!_initPressionEnAttente) return;
 
   // 1. Dimensionner le canvas et calculer la géométrie.
   //    On appelle directement _doResize() (variante synchrone de resize(),
@@ -358,8 +411,13 @@ function init() {
   _doResize();
 
   // Mise en page pas encore effectuée (conteneur de largeur nulle) :
-  // réessayer à l'image suivante plutôt que de démarrer sur une boîte vide.
-  if (_cw === 0 || _ch === 0) { requestAnimationFrame(init); return; }
+  // réessayer à l'image suivante plutôt que de démarrer sur une boîte vide,
+  // sauf si l'onglet est masqué (setMainTab relancera).
+  if (_cw === 0 || _ch === 0) {
+    if (ongletPrincipal === 'pression') requestAnimationFrame(_initPression);
+    return;
+  }
+  _initPressionEnAttente = false;
 
   // 2. Initialiser les molécules (le piston est placé par _doResize())
   initMolecules();
@@ -385,11 +443,12 @@ document.addEventListener('keydown', function (e) {
   var tag = e.target && e.target.tagName;
   if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || tag === 'BUTTON') return;
 
+  var tfActif = (ongletPrincipal === 'transformations');
   if (e.key === ' ' || e.key === 'Spacebar') {
     e.preventDefault();   // sinon le navigateur tente de faire défiler
-    togglePause();
+    if (tfActif) tfBasculerPause(); else togglePause();
   } else if (e.key === 'r' || e.key === 'R') {
-    resetSim();
+    if (tfActif) tfReinitialiser(); else resetSim();
   }
 });
 

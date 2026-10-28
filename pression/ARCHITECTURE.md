@@ -9,11 +9,16 @@ pression/
 ├── css/
 │   └── style.css
 └── js/
-    ├── sim.js
-    ├── recipient.js
-    ├── ui.js
+    ├── sim.js               ← onglet Pression
+    ├── recipient.js         ← onglet Pression
+    ├── tf-sim.js            ← onglet Transformations : moteur en tranches
+    ├── tf-scene.js          ← onglet Transformations : rendu du cylindre
+    ├── tf-ui.js             ← onglet Transformations : panneau et boucle
+    ├── ui.js                ← onglets, boucle et initialisation de l'onglet Pression
     └── sections-repliables.js   ← copie de titrage/, sections du panneau repliables
 ```
+
+La page a deux onglets principaux : **Pression** (modèle cinétique, molécules) et **Transformations** (en construction, cf. `PLAN_TRANSFORMATIONS.md`). Deep-linking `#pression` / `#transformations`. Les deux onglets n'ont aucun code commun ; seuls `ui.js` (bascule) et la feuille de style sont partagés.
 
 ---
 
@@ -169,7 +174,7 @@ Appelée par RAF à ~60 fps :
 
 #### Initialisation `init()`
 
-Appelée une seule fois au `DOMContentLoaded` :
+Appelée une seule fois au `DOMContentLoaded` : `tfInit()` (onglet Transformations), puis `setMainTab()` sur l'onglet demandé par l'URL. L'onglet Pression démarre par `_initPression()` dès qu'il est affiché (tout de suite, ou à la première bascule si la page s'ouvre sur `#transformations`) :
 
 ```
 _doResize()  (géométrie synchrone)
@@ -179,7 +184,7 @@ _doResize()  (géométrie synchrone)
 → requestAnimationFrame(loop)
 ```
 
-> Note : `init()` appelle directement `_doResize()` (variante synchrone de `resize()`) pour que la géométrie soit connue avant le premier `initMolecules()`. Si le conteneur n'est pas encore mis en page (`_cw === 0`), `init()` se replanifie à l'image suivante.
+> Note : `_initPression()` appelle directement `_doResize()` (variante synchrone de `resize()`) pour que la géométrie soit connue avant le premier `initMolecules()`. Si le conteneur n'est pas encore mis en page (`_cw === 0`), `_initPression()` se replanifie à l'image suivante (seulement si l'onglet est affiché).
 
 ---
 
@@ -240,3 +245,57 @@ index.html
 - **`display: block` sur un `<td>`** : à proscrire. La cellule sort de l'algorithme de mise en page du tableau, cesse d'être contrainte par la largeur de sa colonne, et déborde silencieusement (c'est ce qui rognait la ligne « Moyenne » dès qu'elle passait à deux chiffres)
 - **Suivi des tailles** : `window.resize` ET un `ResizeObserver` sur `#sim-area` (la zone peut changer sans que la fenêtre bouge : bascule en colonne, barre de défilement du panneau) ; les deux convergent vers `resize()`, dont l'anti-rebond n'exécute qu'un `_doResize()` par image
 - **Performance** : collisions en `O(N)` via la grille spatiale (cellules d'un diamètre, voisinage 3×3) ; à N=300, ~2 700 consultations par sous-pas contre 44 850 comparaisons avec l'ancien double balayage `O(N²)`. Molécules dessinées par recopie d'un sprite hors écran plutôt que deux chemins Canvas chacune
+
+
+---
+
+## Onglet Transformations
+
+> Construit par paliers selon `PLAN_TRANSFORMATIONS.md` (palier 1 terminé : moteur, scène minimale, masse, loquet, isolation du fond, ralenti).
+
+### Cohabitation avec l'onglet Pression
+
+- **Noms globaux préfixés** `tf` / `TF_` / `_tf` : l'onglet Pression occupe déjà `sim`, `canvas`, `ctx`, `resize`, `drawScene`, `loop`, `init`, `resetSim`, `togglePause`…
+- **Deux colonnes gauches** dans la même cellule de grille : `#left-col` (Pression) et `#tf-left-col` (Transformations), une seule affichée. Leurs règles CSS sont communes (sélecteurs groupés).
+- **Deux boucles RAF** : chacune ne calcule et ne dessine que si son onglet est affiché (`ongletPrincipal`, défini dans `ui.js`).
+- **Démarrage différé de l'onglet Pression** : `_initPression()` a besoin de la taille de son canvas, nulle quand la page s'ouvre sur `#transformations`. `_initPressionEnAttente` reporte ce démarrage à la première bascule vers Pression (`setMainTab`).
+- **Bandeaux Informations** : un par onglet (`#panel-hint-pression`, `#panel-hint-transformations`), `toggleHint()` agit sur celui de l'onglet affiché. Raccourcis Espace / R aiguillés vers l'onglet affiché.
+
+### `js/tf-sim.js` — Modèle physique
+
+Gaz parfait découpé en `TF_N = 30` tranches de même masse (lagrangien 1D), sous un piston pesant, atmosphère au-dessus. Unités SI, temps simulé en s.
+
+| Élément | Choix |
+|---|---|
+| Dispositif | S = 20 cm², V₀ = 0,6 L, piston 1 kg, T₀ = 293,15 K, cylindre de 50 cm, butée basse 2 cm |
+| Inertie du gaz | masse molaire de l'air (0,029 kg/mol) : **célérité réelle** (343 m/s à 293 K) |
+| Schéma | saute-mouton sur grille décalée : vitesses des interfaces `u`, positions `z`, puis énergies `E` par `dE = −(P̄ + q)·dV` avec P̄ moyenne avant/après résolue exactement |
+| Pas de temps | `TF_CFL × min(dz/c)` (≈ 5–12 µs) ; au plus `TF_SOUS_PAS_MAX = 30 000` sous-pas par image, au-delà `tf.limite` (vitesse réelle inférieure à la demande) |
+| Viscosité artificielle | `q = −TF_CL·ρ·c·Δu` (dissipative dans les deux sens) : amortit les ondes |
+| Amortissement du piston | `−b·U`, b = `TF_AMORT` (8 %) de l'amortissement critique 2√(k·M), k = γ·P·S²/V, **recalculé à chaque sous-pas** ; la chaleur dissipée est rendue au gaz, répartie entre les tranches |
+| Butées | choc mou, énergie cinétique rendue au gaz |
+| Conduction | entre tranches, conductivité effective `TF_LAMBDA = 2,2 W·m⁻¹·K⁻¹` (≈ 15 s pour se mettre en équilibre) |
+| Fond | flux `G·(T_ext − T_tranche basse)`, G pris dans `TF_ISOLATIONS` (0 = calorifugé … 1 W/K) ; cumulé dans `tf.Qrecu` |
+
+Fonctions : `tfReset()`, `tfAvancer(dt)`, `tfSetMasse(kg)`, `tfSetLoquet(bool)`, `tfSetIsolation(G)`, `tfMesures()` (moyennes, extrêmes des tranches, critère `equilibre` du §2.4 du plan), `tfPext()`, `tfVolume()`, `tfEnergieTotale()` (constante aux erreurs de schéma près : sert aux tests).
+
+**Validation (Chrome headless, palier 1)** :
+
+| Test | Résultat |
+|---|---|
+| Repos 60 s | dérive < 10⁻¹¹ |
+| 10 / 20 / 40 kg brutaux, calorifugé | T_f = 331,82 / 370,50 / 447,85 K pour 331,82 / 370,50 / 447,84 K attendus ; V_f exact au 0,1 mL |
+| Conservation de l'énergie | écart relatif ≤ 1,2·10⁻⁶ |
+| 20 kg, diathermane, 150 s | T = 293,15 K, V = V_isotherme |
+| Célérité | pic de l'impulsion au fond à 0,892 ms pour H/c = 0,875 ms |
+| Uniformité de P (40 kg brutal) | écart max entre tranches 2,7·10⁻⁵ |
+| Ralenti ×1/5000 contre ×20 | même position du piston à 0,4 µm près |
+| Coût | ~1,4 ms par image à ×1 ; ×20 plafonné (~10 ms par image) quand le gaz est comprimé et chaud |
+
+### `js/tf-scene.js` — Rendu
+
+Échelle verticale réelle (graduations en cm), cylindre **élargi** horizontalement : aussi large que la zone le permet, au plus `TF_LARG_MAX` (75 %) de sa hauteur dessinée. De bas en haut : isolant hachuré (d'autant plus épais que G est faible), paroi du fond (claire si conductrice), gaz et limites des tranches (elles se resserrent dans une compression : ondes visibles au ralenti), parois, graduations (à gauche, au-delà des goupilles), tige, plateau, masse, corps du piston hachuré, goupilles du loquet (enfoncées dans le piston : verrouillé ; reculées hors du cylindre : libéré). `tfResize()` avec anti-rebond, `window.resize` et `ResizeObserver` sur `#tf-sim-area`.
+
+### `js/tf-ui.js` — Panneau et boucle
+
+Afficheurs `#tf-info` à 10 Hz (temps en ms aux crans < ×1/100, P en kPa, T, V, P_ext), curseur Vitesse à 7 crans `TF_VITESSES` (×1/5000 → ×20), sélecteur et bouton de masse, bouton du loquet, curseur Isolation. `tfInit()` est appelée par `ui.js`.
