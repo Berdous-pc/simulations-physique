@@ -33,6 +33,7 @@
 | Disposition | **Colonne de gauche** (celle du tableau actuel) : les graphes en haut, le tableau des valeurs en dessous ; scène à droite, contre le panneau (§4) |
 | Contraintes extérieures | **Pression de l'air au-dessus du piston** et **température extérieure** réglables, chacune en échelon (brutal) ou en rampe (pas à pas) ; masses et sable restent disponibles (§2.6) |
 | Taille du cylindre | 30 cm de gaz au départ, comme au palier 1 : l'agrandir ne change presque rien (§1) |
+| Masse du piston (R3) | **~1 g, une membrane plus légère que le gaz** (0,76 g), au lieu de 1 kg : un échelon de P_air rend alors la pression du gaz non définie ; la masse posée (en kg) reste l'exemple du gaz uniforme (§10.5) |
 
 ---
 
@@ -392,9 +393,64 @@ Transformation attendue : …
 
 - ✅ **R1** (terminé) : piston tenu / libre sans réinitialisation, pince et masses enfilées, carte unique, escaliers, masse visée (blocs et sable), vitesse adaptée.
 - ✅ **R2** (terminé, cf. ARCHITECTURE.md) : journal des étapes (A → B, B → C…), états d'équilibre étiquetés et étapes colorées sur le diagramme PV, « revenir à l'état B » (instantané), **chrono des graphes figé à l'équilibre** (option : l'axe des temps saute les attentes, coupures marquées). Ajouts demandés pendant R2 : flèche de sens de parcours au milieu de chaque étape, état actuel cerclé d'une couleur réservée (orange). Une action sans effet (piston tenu au repos, température avec un fond calorifugé…) n'est pas notée.
-- **R3** : file d'attente (Lancer pendant une action → « ensuite », enchaînement à l'équilibre), séquences enregistrées (localStorage, export JSON), préréglages (aller-retour, Carnot, Stirling, Lenoir).
-- **R4** (option) : viser en cliquant sur le diagramme de Clapeyron.
+- **R3** : trois boutons **Brutalement / Quasi statiquement / Réversiblement** à la place des curseurs de durée et de marches (§10.5). Deux commits : moteur (pression qui varie continûment en mode quasi statique), puis interface.
+- **R4** : file d'attente (action lancée pendant une autre → « ensuite », enchaînement à l'équilibre), séquences enregistrées (localStorage, export JSON), préréglages (aller-retour, Carnot, Stirling, Lenoir).
+- **R5** (option) : viser en cliquant sur le diagramme de Clapeyron.
+- Le **Bilan** (W, Q, ΔU, S_c : palier 7) vient après R3, à part : il chiffrera la différence entre les boutons du milieu et de droite (S_c > 0 contre S_c ≈ 0).
 
 **Mode quasi statique du moteur** (ajouté après R2) : au repos mécanique, pression uniforme et conduction seule, pas ~0,7 ms au lieu de ~1 µs ; les escaliers lents tiennent enfin le cran ×20 (avant : ×0,8 avec un gaz chaud et comprimé). Résultats identiques au calcul complet (ARCHITECTURE.md).
 
 Le palier 6 (sable) est absorbé par R1 pour la physique et le tas ; l'entonnoir et les grains en chute restent à faire.
+
+### 10.5 Palier R3 : trois boutons
+
+**Constat.** Durée et hauteur des marches restent trop complexes pour se promener dans le diagramme. Le cours ne distingue que trois manières de transformer : brutale, quasi statique, réversible. La page fixe elle-même les paramètres qui illustrent chacune.
+
+**Carte.**
+
+```
+Piston : 🔒 tenu / 🔓 libre
+Agir sur : [ Volume ] [ Pression ] [ Température ]   (Pression : [ Masse ] [ Air de l'enceinte ])
+Valeur visée : curseur
+[ Brutalement ]  [ Quasi statiquement ]  [ Réversiblement ]
+▸ Réglages fins (repliés) : durée et hauteur des marches, comme en R1, pour les démonstrations du professeur
+```
+
+Un clic lance l'action (plus de bouton Lancer) ; Interrompre reste disponible. Le journal dit « compression brutale », « chauffage isobare quasi statique »…
+
+**Où naît l'irréversibilité thermique.** La chaleur traverse deux obstacles : la paroi du fond (n·Cv/G : 0,5 s diathermane, 18 s à 0,03 W/K, 180 s à 0,003 W/K) et la conduction dans le gaz (4L²/(π²D) ≈ 15 s). L'écart de température se loge dans le plus lent :
+- fond peu conducteur (G ≲ 0,01 W/K) : dans la paroi. Le gaz reste uniforme, son chemin est défini, et de l'entropie est pourtant créée : **quasi statique mais irréversible**, au sens propre ;
+- fond très conducteur : dans le gaz. Assez rapide pour créer de l'entropie, la transformation le laisse non uniforme en température (T non définie, donc pas quasi statique) ; assez lente pour que T reste définie, elle est presque réversible.
+
+**Paramètres choisis par la page** (τ_int = 4L²/(π²D), conduction dans le gaz ; τ_th, mise en équilibre thermique totale, cf. `tfDurees`) :
+
+| Action | Brutalement | Quasi statiquement | Réversiblement |
+|---|---|---|---|
+| Volume (vérin) | τ = max(0,5 ms ; 2·\|Δz\| / 150 m/s) : vitesse de pointe ~150 m/s, la pression du gaz n'est **clairement pas définie** (30 → 15 cm : τ = 2 ms, Pmax/Pmin = 2,2 ; course de 1 cm : 0,5 ms) | τ = max(1 s ; 3·τ_int si le fond conduit) : lent devant le son et devant la conduction dans le gaz | τ = 10·τ_th (calorifugé : comme le bouton du milieu) |
+| Pression, masse | un bloc posé ou retiré d'un coup | sable versé ou retiré **en continu**, même durée que le bouton du milieu du volume | idem, en 10·τ_th |
+| Pression, air de l'enceinte | échelon de P_air (cf. note ci-dessous sur la pression non définie) | rampe **continue** de P_air | idem, en 10·τ_th |
+| Température de la source | échelon | rampe continue en 3·τ_int | rampe continue en 10·τ_th |
+
+**Demande de l'auteur : la transformation brutale doit montrer une pression non définie** dans le gaz, à volume imposé comme à pression imposée par l'air de l'enceinte (le cas de la masse, au contraire, illustre un gaz qui reste uniforme alors que le système est hors équilibre, §2.3).
+- **Volume imposé** : le paramétrage ci-dessus l'assure (vitesse de pointe fixée plutôt que la durée : une petite course reste brutale). La non-uniformité est d'autant plus marquée que la course est grande.
+- **Air de l'enceinte : impossible avec le piston actuel.** L'écart de pression dans le gaz vaut environ ΔP × (masse du gaz / masse du piston) ; le gaz pèse 0,76 g. Mesuré (P_air 101 → 200 kPa, calorifugé) :
+
+  | Piston | Pmax/Pmin | P non définie pendant |
+  |---|---|---|
+  | 1 kg (actuel) | 1,0007 | jamais |
+  | 100 g | 1,0065 | 29 ms |
+  | 10 g | 1,063 | 48 ms |
+
+  **Décidé : (a)**, un piston **plus léger que le gaz** (~1 g, une membrane) : l'air de l'enceinte lancerait alors un vrai front de compression (à mesurer ; P₀ ≈ P_atm, la masse posée en kg resterait l'exemple du gaz uniforme ; amortissement du piston et stabilité du schéma à revalider) ; plutôt que (b), garder le piston de 1 kg et réserver la pression non définie au volume imposé.
+
+  Mesure préliminaire, piston de 1 g (P_air 101 → 200 kPa, calorifugé) : Pmax/Pmin = 1,50, P non définie pendant 48 ms ; calcul stable ; état final 374,71 K (formule de la transformation brutale : 374,7 K) ; bilan d'énergie à 1,7·10⁻³ J (10⁻⁴ J avec 1 kg : à surveiller).
+
+  Conséquences à traiter dans R3 : P₀ ≈ P_atm (le poids du piston ne compte plus : 5 Pa) ; amortissement du piston (fraction de l'amortissement critique, presque nul pour 1 g : la viscosité du gaz amortit seule, à vérifier) ; libérer un piston tenu hors équilibre lance aussi un front ; les tests du §1 et de R1 refaits (les cibles de la masse posée changent de quelques dixièmes de kelvin, P₀ passant de 106,2 à 101,3 kPa) ; scène : piston dessiné plus mince ; masses de 10 à 40 kg sur une membrane : choix d'image assumé.
+
+**Messages quand deux boutons se confondent.** Calorifugé : « ici, quasi statique suffit pour être réversible : aucun échange thermique ». Fond très conducteur : « le fond ne limite pas les échanges : quasi statique et réversible se confondent ». Fond peu conducteur : les deux boutons, partis du même état, arrivent à des états différents.
+
+**Moteur (premier commit).** Le mode quasi statique suit une pression extérieure qui varie continûment (rampe de P_air, sable versé en continu) : à chaque sous-pas, chaque tranche est comprimée ou détendue de façon adiabatique jusqu'à la nouvelle pression, sans repasser par le calcul complet (aujourd'hui, chaque marche d'escalier piston libre le relance pendant que le piston oscille : ~1 min à l'écran pour 40 marches avec un fond conducteur). Validation contre les escaliers fins actuels : loi de Laplace (calorifugé), isotherme (diathermane, lent), bilan d'énergie.
+
+**Interface (second commit).** Trois boutons ; durées calculées à partir de `tfDurees` au moment du clic ; vitesse adaptée avec deux crans de plus, ×100 et ×500 (le bouton de droite, fond peu conducteur, dure jusqu'à 30 min simulées) ; réglages fins repliés ; bandeau Informations (la différence entre quasi statique et réversible dépend de l'isolation du fond).
+
+**Tests.** Pour chaque action et chaque isolation (calorifugé, 0,003 W/K, diathermane) : brutal → P non définie pendant l'action (volume ; air si (a) retenu) ; quasi statique → chemin défini (P et T définies tout du long) ; réversible → état final à 10⁻³ près de la loi de Laplace ou de l'isotherme ; quasi statique contre réversible, fond peu conducteur → états finaux différents (S_c > 0 contre S_c ≈ 0, mesurés par le banc en attendant la section Bilan) ; durée à l'écran avec la vitesse adaptée.
