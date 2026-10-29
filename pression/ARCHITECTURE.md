@@ -267,7 +267,7 @@ index.html
 Gaz parfait découpé en `TF_N = 80` tranches de même masse (lagrangien 1D), sous un piston. Unités SI, temps simulé en s. Deux **familles** de transformations (`tf.famille`, `tfSetFamille()` réinitialise) :
 
 - **pression imposée** (`'pression'`) : piston pesant et libre, atmosphère au-dessus, masse posée, loquet ;
-- **volume imposé** (`'volume'`) : un **vérin** mène le piston à la hauteur visée `tf.hVisee` (5 à 50 cm) en une durée `tf.tau` (crans `TF_DUREES`, 2 ms à 60 s). Le poids et l'atmosphère sont repris par le vérin.
+- **volume imposé** (`'volume'`) : un **vérin** mène le piston à la hauteur visée `tf.hVisee` (5 à 50 cm) en une durée `tf.tau` (crans `TF_DUREES`, 0,5 ms à 60 s ; les plus courtes donnent un piston plus rapide que le son). Le poids et l'atmosphère sont repris par le vérin.
 
 | Élément | Choix |
 |---|---|
@@ -313,6 +313,7 @@ Fonctions : `tfReset()`, `tfAvancer(dt)`, `tfSetFamille(f)`, `tfSetMasse(kg)`, `
 | Aller-retour 30 → 15 → 30 cm, calorifugé | τ = 1 s : retour à T₀ à 1 mK ; τ = 2 ms : retour 4,15 K plus chaud |
 | Volume imposé 30 → 15 cm, diathermane, τ = 10 ms / 1 / 5 / 20 / 60 s | état final isotherme exact (293,15 K, 212,46 kPa) ; W 50,9 / 50,3 / 49,4 / 48,0 / 46,4 J (isotherme réversible 44,2 J) ; S_c 23,0 / 20,8 / 17,8 / 13,0 / 7,5 mJ/K : la réversibilité n'est approchée que pour τ ≫ τ_th (15,6 s à 30 cm, 8 s à 15 cm) |
 | Course rapide de 50 à 13 cm (cas signalé : divergence à 370 m/s) | durée portée de 2 à 4,9 ms (150 m/s) ; P 173 à 247 kPa à mi-course, arrêt à 13,00 cm, T_f 412,6 K |
+| τ = 0,5 ms, 30 → 15 / 5 / 50 cm (durée portée à 0,75 / 1,25 / 1 ms, 400 m/s) | Pmax/Pmin 11,0 / 5,3 / 6,3 ; T_f 481,1 / 703,6 / 270,3 K (Laplace 386,8 / 602 / 238 K) ; énergie à 10⁻³ |
 | Coût | ~0,4–0,8 s de calcul par seconde simulée à 80 tranches : ×1 tenu, ×5 et ×20 plafonnés (`tf.limite`) à ~1,2–2,5 fois le temps réel |
 
 ### `js/tf-molecules.js` — Molécules par bandes de gaz
@@ -339,4 +340,4 @@ Options d'affichage dans `tfAff` (section Affichage du panneau) : molécules, ch
 
 ### `js/tf-ui.js` — Panneau et boucle
 
-Afficheurs `#tf-info` à 10 Hz (temps en ms aux crans < ×1/100, P en kPa, T, V, P_ext ou, à volume imposé, « Pression sur le piston » mesurée par le vérin, État). P ou T non définies (critère de `tfMesures`) : « ? » suivi de l'intervalle couvert par les tranches, jamais la moyenne. État : « À l'équilibre » (vert) ou « Hors équilibre » (terracotta). Section Affichage (repliable) : cases `tf-ck-…`, resynchronisées sur `tfAff` au chargement (un navigateur peut conserver l'état des cases au rechargement). curseur Vitesse à 7 crans `TF_VITESSES` (×1/5000 → ×20) ; section **Contrainte** à sous-onglets `.mode-tab` (`tfOnFamille`, réinitialise) : Pression imposée (sélecteur et bouton de masse, bouton du loquet) ou Volume imposé (curseurs Hauteur visée et Durée τ, afficheurs traversée L/c, équilibre thermique et transformation attendue — `_tfRegime` : brutale si τ < 5·L/c, sinon réversible si calorifugé, irréversible si τ < 10·τ_th, presque réversible au-delà —, boutons Lancer / Retour grisés pendant le mouvement ou quand le piston est déjà au but, travail reçu W_op) ; curseur Isolation. `tfInit()` est appelée par `ui.js`.
+Afficheurs `#tf-info` à 10 Hz (temps en ms aux crans < ×1/100, P en kPa, T, V, P_ext ou, à volume imposé, « Pression sur le piston » mesurée par le vérin, État). P ou T non définies (critère de `tfMesures`) : « ? » suivi de l'intervalle couvert par les tranches, jamais la moyenne. État : « À l'équilibre » (vert) ou « Hors équilibre » (terracotta). Section Affichage (repliable) : cases `tf-ck-…`, resynchronisées sur `tfAff` au chargement (un navigateur peut conserver l'état des cases au rechargement). curseur Vitesse à 7 crans `TF_VITESSES` (×1/5000 → ×20) ; section **Contrainte** à sous-onglets `.mode-tab` (`tfOnFamille`, réinitialise) : Pression imposée (sélecteur et bouton de masse, bouton du loquet) ou Volume imposé (curseurs Hauteur visée et Durée τ, afficheurs traversée L/c, équilibre thermique et transformation attendue — `_tfRegime` : « onde de choc » si la vitesse de pointe dépasse c, brutale si τ < 5·L/c, sinon réversible si calorifugé, irréversible si τ < 10·τ_th, presque réversible au-delà —, boutons Lancer / Retour grisés pendant le mouvement ou quand le piston est déjà au but, travail reçu W_op) ; curseur Isolation. `tfInit()` est appelée par `ui.js`.

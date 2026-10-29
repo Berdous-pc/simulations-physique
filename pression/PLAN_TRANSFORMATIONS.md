@@ -332,7 +332,7 @@ Chaque palier se termine par un commit et peut être montré en classe tel quel 
 
 ## 9. Points encore ouverts
 
-- **τ < 2 ms** (piston plus rapide que le son) : le portage Python du schéma diverge (réglé au palier 3 : la divergence venait d'un signe faux dans la viscosité ; le piston peut maintenant aller jusqu'à 400 m/s, au-delà de la célérité du son ; ouvrir τ < 2 ms reste à décider) ; il faudra des sous-pas plus fins près du piston ou une viscosité renforcée avant d'ouvrir ce régime, le plus spectaculaire.
+- **τ < 2 ms** (piston plus rapide que le son) : le portage Python du schéma diverge (réglé au palier 3 : la divergence venait d'un signe faux dans la viscosité ; le piston peut maintenant aller jusqu'à 400 m/s, au-delà de la célérité du son ; τ descend à 0,5 ms) ; il faudra des sous-pas plus fins près du piston ou une viscosité renforcée avant d'ouvrir ce régime, le plus spectaculaire.
 - ~~Viscosité linéaire~~ : réglé au palier 3, TF_CL = 0,5 et TF_CQ = 2 (à 0,15, le calcul diverge pour τ = 2 ms).
 - Gamme des masses (10 / 20 / 40 kg) et section 20 cm² : validées visuellement au palier 1, à revoir avec le nuage des tranches.
 - Dégradé de couleur : sur T (recommandé) ou sur la masse volumique ?

@@ -111,6 +111,9 @@ function _tfMajDureeAllongee() {
 // du gaz par le son (mécanique), puis à la mise en équilibre thermique avec
 // l'extérieur
 function _tfRegime(d, tau) {
+  // Vitesse de pointe du piston plus grande que la célérité du son : choc
+  var v = 2 * Math.abs(tf.hVisee - tf.z[TF_N]) / tau;
+  if (!tf.verin.actif && v > d.c) return 'Brutale : piston plus rapide que le son, onde de choc';
   if (tau < 5 * d.traversee)  return 'Brutale : un front traverse le gaz';
   if (!isFinite(d.thermique)) return 'Quasi statique et réversible (adiabatique)';
   // Seuil large : à 4·τ_th (60 s diathermane), l'entropie créée vaut encore
@@ -119,8 +122,9 @@ function _tfRegime(d, tau) {
   return 'Quasi statique et presque réversible (presque isotherme)';
 }
 
-// Libellé d'une durée τ : 2 ms, 500 ms, 1 s, 60 s
+// Libellé d'une durée τ : 0,5 ms, 2 ms, 500 ms, 1 s, 60 s
 function _tfLibelleDuree(t) {
+  if (t < 0.001) return _tfFmt(t * 1000, 1) + ' ms';
   return t < 1 ? Math.round(t * 1000) + ' ms' : String(t) + ' s';
 }
 

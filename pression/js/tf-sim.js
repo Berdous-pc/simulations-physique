@@ -85,10 +85,11 @@ var TF_MASSES   = [10, 20, 40];                             // kg
 var TF_VITESSES = [1 / 5000, 1 / 1000, 1 / 100, 0.1, 1, 5, 20];
 
 // ── Vérin (famille à volume imposé, PLAN §2.7) ──
-// Durées τ proposées (s), à pas à peu près logarithmiques. En deçà de 2 ms,
-// le piston irait presque aussi vite que le son et le schéma n'est plus
-// fiable (PLAN §9).
-var TF_DUREES      = [0.002, 0.003, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5,
+// Durées τ proposées (s), à pas à peu près logarithmiques. Les plus courtes
+// donnent un piston plus rapide que le son (choc) ; la limite de la
+// modélisation est sa vitesse de pointe, TF_V_VERIN_MAX, qui allonge au
+// besoin la durée des longues courses.
+var TF_DUREES      = [0.0005, 0.001, 0.002, 0.003, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5,
                       1, 2, 5, 10, 20, 60];
 // Vitesse de pointe du vérin (2·Δz/τ), au plus : le piston peut dépasser la
 // célérité du son (choc), mais au-delà l'erreur sur l'énergie grandit
