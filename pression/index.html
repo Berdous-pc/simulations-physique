@@ -469,8 +469,8 @@
           </label>
           <div class="tf-sous-titre">Diagramme de Clapeyron</div>
           <label class="check-row">
-            <input type="checkbox" id="tf-ckg-nuage" checked onchange="tfOnAffGraphe('nuage', this.checked)">
-            Nuage des tranches
+            <input type="checkbox" id="tf-ckg-tranches" checked onchange="tfOnAffGraphe('tranches', this.checked)">
+            Pression de chaque tranche
           </label>
           <label class="check-row">
             <input type="checkbox" id="tf-ckg-piston" onchange="tfOnAffGraphe('piston', this.checked)">
@@ -510,7 +510,7 @@
         Avec <strong>Chrono des graphes figé à l'équilibre</strong> coché, les graphes au cours du temps s'arrêtent tant que le gaz reste à l'équilibre et repartent à l'action suivante ; chaque attente retirée est marquée d'un trait pointillé vertical (le tableau garde le temps réel de la simulation).
         Le curseur <strong>Vitesse</strong> descend jusqu'à ×1/5000 pour suivre un front dans le gaz ; à ce cran, les molécules s'agitent à leur vitesse réelle.
         Quand les tranches du gaz n'ont pas la même pression ou la même température, le tableau affiche <strong>?</strong> et l'écart entre tranches.
-        Les <strong>graphes</strong> le montrent aussi : hors équilibre, T(t) et P(t) deviennent une bande hachurée (de la tranche la plus basse à la plus haute), et le diagramme de Clapeyron ne trace plus le gaz : un pointillé relie les états connus. Le <strong>nuage</strong> y donne un point par tranche (l'état qu'aurait le gaz entier s'il était partout comme elle) ; il se resserre en un seul point à l'équilibre.
+        Les <strong>graphes</strong> le montrent aussi : hors équilibre, T(t) et P(t) deviennent une bande hachurée (de la tranche la plus basse à la plus haute), et le diagramme de Clapeyron ne trace plus le gaz : un pointillé relie les états connus. Il y place aussi la <strong>pression de chaque tranche</strong>, au volume du gaz : hors équilibre, les points s'étalent sur une verticale (un volume, plusieurs pressions) et se rejoignent en un seul point à l'équilibre.
         Glisser sur un graphe zoome (↶ : vue précédente ; Suivre ou Auto : cadrage automatique) ; + affiche un réticule. Les séparations entre les graphes et le cylindre se déplacent à la souris.
         Couleur du gaz et des molécules : bleu plus froid que 20 °C, rouge plus chaud.
         Les <strong>molécules</strong> restent dans leur bande de gaz (pointillés) : une bande comprimée s'aplatit et ses molécules se serrent ; chacune va d'autant plus vite que le gaz est chaud là où elle se trouve. La pression se lit sur les sondes et le profil : P et T sont calculées par tranches, pas à partir des chocs des molécules.

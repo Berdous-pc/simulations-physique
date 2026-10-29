@@ -568,7 +568,7 @@ function tfOnAffichage(cle, coche) {
   // Le profil de pression prend de la place à droite du cylindre
   if (cle === 'profil') _tfDoResize();
   tf.needsRedraw = true;
-  tfGraph.sale = true;   // couleur du nuage des tranches
+  tfGraph.sale = true;   // couleur des points des tranches (diagramme PV)
 }
 
 // ══════════════════════════════════════════════════════════════════════

@@ -6,7 +6,7 @@
 
 // ══════════════════════════════════════════════════════════════════════
 //  tf-graph.js — Onglet Transformations : graphes temporels T, P, V(t),
-//  diagramme de Clapeyron (chemin, états d'équilibre, nuage des tranches,
+//  diagramme de Clapeyron (chemin, états d'équilibre, pression des tranches,
 //  courbes théoriques), zoom, réticule et splitters de la colonne gauche.
 //  Chargé après tf-scene.js (couleurs selon T), avant tf-ui.js.
 // ══════════════════════════════════════════════════════════════════════
@@ -43,7 +43,7 @@ var TF_G_SERIES = [
 
 // Options du diagramme PV (section Affichage)
 var tfGraphAff = {
-  nuage       : true,    // un point (N·V_tranche, P_tranche) par tranche
+  tranches    : true,    // un point (V du gaz, P_tranche) par tranche
   piston      : false,   // pression exercée sur le gaz par le piston
   isotherme   : false,
   adiabatique : false,
@@ -60,7 +60,7 @@ var TF_G_EQ_GEL      = 5;
 var tfGraph = {
   ech       : [],      // historique : un objet par échantillon
   ref       : null,    // état de départ de l'étape en cours (courbes théoriques)
-  env       : null,    // étendue du nuage depuis le départ (cadrage PV)
+  env       : null,    // étendue des points des tranches depuis le départ (cadrage PV)
   // Chrono des graphes : temps des graphes = temps simulé − decal (s), les
   // attentes à l'équilibre étant retirées quand l'option gel est cochée
   decal     : 0,
@@ -178,7 +178,7 @@ function tfGraphDegeler() {
   g.eqSuite = 0;
 }
 
-// Départ d'une étape : les courbes théoriques et le cadrage du nuage
+// Départ d'une étape : les courbes théoriques et le cadrage des tranches
 // repartent de l'état actuel (dernier échantillon)
 function tfGraphDepartEtape() {
   var g = tfGraph;
@@ -214,13 +214,13 @@ function tfGraphRevenir(ts, n) {
   g.sale = true;
 }
 
-// Étendue du nuage des tranches depuis le départ de la transformation : le
-// cadrage automatique ne fait que s'élargir pendant un choc, au lieu de
-// pomper à chaque image
+// Étendue des points des tranches depuis le départ de l'étape : le cadrage
+// automatique ne fait que s'élargir pendant un choc, au lieu de pomper à
+// chaque image
 function _tfgEnveloppe() {
   var g = tfGraph;
   if (!g.env) g.env = { V1: Infinity, V2: -Infinity, P1: Infinity, P2: -Infinity };
-  _tfgNuage(function (V, P) {
+  _tfgTranches(function (V, P) {
     if (V < g.env.V1) g.env.V1 = V;
     if (V > g.env.V2) g.env.V2 = V;
     if (P < g.env.P1) g.env.P1 = P;
@@ -228,13 +228,15 @@ function _tfgEnveloppe() {
   });
 }
 
-// Parcourt les tranches : volume qu'aurait le gaz entier s'il était partout
-// comme la tranche (L), pression (kPa), température (K)
-function _tfgNuage(fn) {
-  var k = TF_N * TF_S * 1e3;
-  for (var j = 0; j < TF_N; j++) {
-    fn(k * (tf.z[j + 1] - tf.z[j]), tf.P[j] * 1e-3, tfTTranche(j));
-  }
+// Parcourt les tranches : volume du gaz entier (L, le même pour toutes : le
+// gaz n'a qu'un volume), pression (kPa) et température (K) de la tranche.
+// Hors équilibre, les points s'étalent sur une verticale : un volume,
+// plusieurs pressions. (Version abandonnée : un point (N·V_tranche,
+// P_tranche) par tranche, dont l'abscisse n'était pas le volume du gaz porté
+// par l'axe.)
+function _tfgTranches(fn) {
+  var V = tfVolume() * 1e3;
+  for (var j = 0; j < TF_N; j++) fn(V, tf.P[j] * 1e-3, tfTTranche(j));
 }
 
 // Efface l'historique (Réinitialiser) et enregistre
@@ -646,7 +648,7 @@ function _tfgBoite(o, ser, x0, y0, w, h, i1, i2, xDe, gradT, unite, fs) {
 
 function _tfgSDef(s) { return s.Pdef && s.Tdef; }
 
-// Cadrage automatique : chemin défini, état de départ, nuage depuis le
+// Cadrage automatique : chemin défini, état de départ, tranches depuis le
 // départ, pression sur le piston si elle est tracée
 function _tfgCadragePV() {
   var e = tfGraph.ech, g = tfGraph;
@@ -663,7 +665,7 @@ function _tfgCadragePV() {
     if (tfGraphAff.piston) ajoute(s.V * 1e3, s.Pp * 1e-3);
   }
   if (g.ref) ajoute(g.ref.V * 1e3, g.ref.Pm * 1e-3);
-  if (tfGraphAff.nuage && g.env) { ajoute(g.env.V1, g.env.P1); ajoute(g.env.V2, g.env.P2); }
+  if (tfGraphAff.tranches && g.env) { ajoute(g.env.V1, g.env.P1); ajoute(g.env.V2, g.env.P2); }
   return { V1: V1, V2: V2, P1: P1, P2: P2 };
 }
 
@@ -826,11 +828,22 @@ function _tfgDessinerPV() {
   }
   c.globalAlpha = 1;
 
-  // Nuage des tranches, coloré selon T comme les molécules
-  if (tfGraphAff.nuage) {
+  // Pression de chaque tranche, au volume du gaz : trait vertical de la plus
+  // basse à la plus haute, puis un point par tranche coloré selon T comme
+  // les molécules
+  if (tfGraphAff.tranches) {
+    var mt = tfMesures(), xt = xDe(mt.V * 1e3);
+    c.strokeStyle = TF_G_ND;
+    c.globalAlpha = 0.5;
+    c.lineWidth = 1.5;
+    c.beginPath();
+    c.moveTo(xt, yDe(mt.Pmin * 1e-3));
+    c.lineTo(xt, yDe(mt.Pmax * 1e-3));
+    c.stroke();
+    c.globalAlpha = 1;
     c.lineWidth = 1;
     c.strokeStyle = 'rgba(255,253,249,0.9)';
-    _tfgNuage(function (V, P, T) {
+    _tfgTranches(function (V, P, T) {
       c.beginPath();
       c.arc(xDe(V), yDe(P), 3, 0, 2 * Math.PI);
       c.fillStyle = tfAff.couleurT ? _tfMelangeT(T, TF_COUL_MOL, 1) : '#4a627c';
@@ -1016,7 +1029,7 @@ function _tfgLegendePV(c, xd, y, fs, avecSans) {
                { type: 'point', coul: TF_G_CHEMIN, nom: 'état d’équilibre' },
                { type: 'actuel', nom: 'état actuel' }];
   if (avecSans) items.push({ type: 'tirets', coul: '#9aa4ac', nom: 'chemin non défini' });
-  if (tfGraphAff.nuage) items.push({ type: 'nuage', nom: 'tranches (N·V_tranche, P_tranche)' });
+  if (tfGraphAff.tranches) items.push({ type: 'tranches', nom: 'pression de chaque tranche (au volume du gaz)' });
   if (tfGraphAff.piston) items.push({ type: 'tirets', coul: TF_G_PISTON, nom: 'pression sur le piston' });
 
   c.font = _tfgPolice(fs, false);
@@ -1044,11 +1057,11 @@ function _tfgLegendePV(c, xd, y, fs, avecSans) {
       c.strokeStyle = TF_G_ACTUEL;
       c.lineWidth = 2.5;
       c.stroke();
-    } else if (it.type === 'nuage') {
+    } else if (it.type === 'tranches') {
       var cl = [[24, 88, 196], [74, 98, 124], [200, 52, 28]];
       for (var p = 0; p < 3; p++) {
         c.beginPath();
-        c.arc(xs + sw * (0.2 + 0.3 * p), yc, 2.6, 0, 2 * Math.PI);
+        c.arc(xs + sw / 2, yc + (p - 1) * fs * 0.38, 2.4, 0, 2 * Math.PI);
         c.fillStyle = 'rgb(' + cl[p].join(',') + ')';
         c.fill();
       }
