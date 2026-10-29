@@ -282,12 +282,13 @@ function updateConjugaison() {
   const OF_bar  = `<span style="text-decoration:overline">OF'</span>`;
 
   /* ── Cohérence des arrondis ─────────────────────────────────────────
-     Les lignes affichées doivent « tomber juste » entre elles : la somme
-     des inverses arrondis doit être exactement le résultat affiché, et
-     l'inverse de ce résultat doit donner OA'. On choisit donc un nombre
-     de décimales commun : 3 dans l'immense majorité des cas, et on n'en
-     ajoute que si le résultat n'aurait plus aucun chiffre significatif
-     (image très éloignée, |1/OA'| < 0,001). ── */
+     La somme des inverses arrondis doit être exactement le résultat
+     affiché. On choisit donc un nombre de décimales commun : 3 dans
+     l'immense majorité des cas, et on n'en ajoute que si le résultat
+     n'aurait plus aucun chiffre significatif (image très éloignée,
+     |1/OA'| < 0,001). OA' final, lui, est la valeur exacte : la même que
+     dans le panneau de droite, et non l'inverse d'un résultat arrondi
+     (1/0,083 = 12,05 alors que OA' = 12,0 cm pour f' = 3 et OA = −4). ── */
   let dec = 3;
   if (isFinite(invOA2) && Math.abs(invOA2) > 1e-12) {
     dec = Math.max(3, Math.min(5, -Math.floor(Math.log10(Math.abs(invOA2)))));
@@ -297,11 +298,7 @@ function updateConjugaison() {
   const rOF  = round(invOF);
   const rOA  = round(invOA);
   const rRes = round(rOF + rOA);
-  // Objet à l'infini : 1/OA = 0, donc OA' = f' exactement. On court-circuite
-  // l'inversion, qui ferait ressortir l'erreur d'arrondi sur 1/f'.
-  const oa2Aff = rOA === 0 ? ofVal
-               : rRes === 0 ? Infinity
-               : 1 / rRes;
+  const oa2Aff = oa2Val;
 
   function fmtInvVal(val) {
     if (!isFinite(val)) return val >= 0 ? '+∞' : '−∞';
@@ -355,5 +352,5 @@ function updateConjugaison() {
     lineTerms('', cOF((rOF < 0 ? '−' : '') + fmtInvAbs(rOF)), opNum, cOA(fmtInvAbs(rOA))) +
     line(lhs, cOA2(`${fmtInvVal(rRes)} cm⁻¹`)) +
     // Conclusion : on inverse pour obtenir la position de l'image.
-    line(cOA2(`⇒ ${OA2_bar}`), cOA2(`${fmtLenSigned(oa2Aff)} cm`), 'cj-gap');
+    line(cOA2(`⇒ ${OA2_bar}`), cOA2(fmtLenSigned(oa2Aff) + (Math.abs(oa2Aff) > FAR_CM ? '' : ' cm')), 'cj-gap');
 }

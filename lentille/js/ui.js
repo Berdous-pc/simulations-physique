@@ -122,6 +122,10 @@ function hitTest(mx, my) {
 const FOCUS_SNAP_PX = 7;
 
 function snapObjectAtFocus(oaCm) {
+  // Position calée au millimètre : c'est la précision affichée (panneau et
+  // tableau de conjugaison). Sans ce calage, un objet affiché à −4,0 cm
+  // pouvait valoir −4,04 cm, et 1/OA ressortait à 0,248 au lieu de 0,250.
+  oaCm = Math.round(oaCm * 10) / 10;
   const fEff   = sim.lensType === 'div' ? -sim.f : sim.f;
   const target = -fEff;
   // Pour une lentille divergente, le foyer objet est APRÈS la lentille :
