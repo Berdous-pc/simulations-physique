@@ -290,12 +290,16 @@ function tfMesures() {
   var butee = tfButee(Pmoy);
   var piston = tf.tenu ? !tf.verin.actif
              : butee !== null || Math.abs(Pmoy - Pext) / Pext < TF_SEUIL_P;
+  // Fond conducteur : plus d'échange avec la source. Sans cette condition,
+  // un gaz uniforme qui chauffe lentement à travers un fond peu conducteur
+  // passait pour « à l'équilibre » (chrono figé, lettre posée trop tôt)
+  var thermique = tf.G === 0 || Math.abs(Tmoy - tf.Text) < TF_SEUIL_T;
 
   return {
     V: V, Pmoy: Pmoy, Pmin: Pmin, Pmax: Pmax,
     Tmoy: Tmoy, Tmin: Tmin, Tmax: Tmax, Pext: Pext, Pface: tfPFace(),
     Pdef: Pdef, Tdef: Tdef, butee: butee,
-    equilibre: Pdef && Tdef && repos && piston
+    equilibre: Pdef && Tdef && repos && piston && thermique
   };
 }
 

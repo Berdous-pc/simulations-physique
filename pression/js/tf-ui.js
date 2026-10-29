@@ -144,6 +144,7 @@ var TF_AFF_PERIODE = 100;   // ms réelles (10 Hz)
 // l'intervalle couvert par les tranches. Afficher la moyenne laisserait
 // croire qu'elle a un sens.
 function tfMajAfficheurs() {
+  _tfVitesseRelax();
   var m = tfMesures();
   _tfEl['tf-it-t'].textContent    = _tfFmtTemps(tf.t);
   _tfEl['tf-it-P'].innerHTML      = m.Pdef ? _tfFmtPression(m.Pmoy)
@@ -347,6 +348,7 @@ function tfLancerManiere(man) {
     if (cle !== 'Text') tfSetTenu(false);
   }
   if (tfCarte.auto) _tfVitesseAdaptee(cle, p.duree);
+  _tfDemarrerRelax();
   tfGraphReprogrammer();
   tfGraph.sale = true;
   _tfMajBoutons();
@@ -556,6 +558,7 @@ function tfBasculerPause() {
 }
 
 function tfReinitialiser() {
+  _tfRelax = null;
   tfReset();
   tfMolInit();
   tfEtapesEffacer();
@@ -601,6 +604,7 @@ function tfOnIsolation(val) {
 function tfBasculerPiston() {
   _tfOuvrirEtape(tf.tenu ? 'Piston libéré' : 'Piston tenu');
   tfSetTenu(!tf.tenu);
+  _tfDemarrerRelax();
   _tfMajBoutons();
   tfMajAfficheurs();
 }
@@ -656,6 +660,7 @@ function tfLancer() {
     if (cle !== 'Text') tfSetTenu(false);
   }
   if (tfCarte.auto) _tfVitesseAdaptee(cle, duree);
+  _tfDemarrerRelax();
   tfGraphReprogrammer();
   tfGraph.sale = true;
   _tfMajBoutons();
@@ -674,6 +679,7 @@ function tfOnSelEtape(k) {
 }
 
 function tfOnRevenir(i) {
+  _tfRelax = null;
   tfEtapesRevenir(i);
   tfMolInit();
   _tfMajBoutons();
@@ -690,17 +696,62 @@ function _tfVitesseAdaptee(cle, duree) {
   var d = tfDurees(), D;
   if (cle === 'volume') D = tf.verin.actif ? tf.verin.tau : duree;
   else if (duree > 0) D = duree;
-  else if (cle === 'Text') D = d.thermique;
+  // Échelon de température : retour à l'équilibre, exponentiel, jusqu'à un
+  // écart de la moitié du seuil
+  else if (cle === 'Text') D = d.thermique * Math.log(Math.max(2, Math.abs(tf.Text - tfMesures().Tmoy) / (TF_SEUIL_T / 2)));
   // Échelon de P_air sur la membrane nue : le front traverse le gaz en
   // ~1 ms, c'est lui qu'on veut voir
   else if (cle === 'Pair' && tf.masse === 0) D = 10 * d.traversee;
   else D = 16 * d.piston;
   if (!isFinite(D) || D <= 0) return;
-  var cible = D / TF_ECRAN_ACTION, iMieux = 0;
+  var i = _tfCranPour(D / TF_ECRAN_ACTION);
+  if (TF_VITESSES[i] !== tf.vitesse) tfOnVitesse(i);
+}
+
+// Cran de vitesse le plus proche (en rapport) de v
+function _tfCranPour(v) {
+  var iMieux = 0;
   for (var i = 1; i < TF_VITESSES.length; i++) {
-    if (Math.abs(Math.log(TF_VITESSES[i] / cible)) < Math.abs(Math.log(TF_VITESSES[iMieux] / cible))) iMieux = i;
+    if (Math.abs(Math.log(TF_VITESSES[i] / v)) < Math.abs(Math.log(TF_VITESSES[iMieux] / v))) iMieux = i;
   }
-  if (TF_VITESSES[iMieux] !== tf.vitesse) tfOnVitesse(iMieux);
+  return iMieux;
+}
+
+// ── Vitesse adaptée pendant le retour à l'équilibre ──
+// Le cran choisi au lancement montre le phénomène rapide (front, ondes,
+// oscillations du piston) ; il resterait sinon pour l'amortissement des
+// ondes puis la mise en équilibre thermique, qui durent des secondes à des
+// heures simulées. Une fois l'action finie et TF_ECRAN_FRONT secondes
+// d'écran passées, le cran monte (jamais ne descend) pour que le reste du
+// retour à l'équilibre dure ~TF_ECRAN_ACTION à l'écran : ondes ou piston à
+// amortir tant que le calcul complet tourne, puis écart de température à
+// résorber (exponentiel, jusqu'à la moitié du seuil « T définie »).
+var TF_ECRAN_FRONT = 3;   // s réelles
+var _tfRelax = null;      // { ecran, tPrec } jusqu'au retour à l'équilibre
+
+function _tfDemarrerRelax() {
+  _tfRelax = tfCarte.auto ? { ecran: 0, tPrec: tf.t } : null;
+}
+
+function _tfVitesseRelax() {
+  var R = _tfRelax;
+  if (!R) return;
+  if (!tfCarte.auto) { _tfRelax = null; return; }
+  if (tfEnCours()) { R.ecran = 0; R.tPrec = tf.t; return; }
+  R.ecran += (tf.t - R.tPrec) / tf.vitesse;
+  R.tPrec = tf.t;
+  var m = tfMesures();
+  if (m.equilibre) { _tfRelax = null; return; }
+  if (R.ecran < TF_ECRAN_FRONT) return;
+  var d = tfDurees(), D = 0;
+  if (!tf.qs) D += tf.masse > 0.5 ? 16 * d.piston : 100 * d.traversee;
+  var ecart = Math.max(m.Tmax - m.Tmin, tf.G > 0 ? Math.abs(m.Tmoy - tf.Text) : 0);
+  if (ecart > TF_SEUIL_T / 2) {
+    D += (tf.G > 0 ? d.thermique : d.interne) * Math.log(Math.max(2, ecart / (TF_SEUIL_T / 2)));
+  }
+  if (D <= 0) return;
+  var i = _tfCranPour(D / TF_ECRAN_ACTION);
+  if (TF_VITESSES[i] > tf.vitesse) tfOnVitesse(i);
 }
 
 // ── Section Affichage ──

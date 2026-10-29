@@ -315,6 +315,10 @@ Fonctions : `tfReset()`, `tfAvancer(dt)`, `tfSetTenu(bool)`, `tfSetIsolation(G)`
 
 Le panneau affiche la vitesse réellement tenue quand le calcul plafonne encore (« Calcul trop lourd : ×0,8 atteint au lieu de ×20 », moyenne glissante `_tfVitesseAtteinte` sur ~1 s).
 
+**Conduction implicite en mode quasi statique** (R3, `TF_QS_IMPLICITE`) : Euler rétrograde, système tridiagonal résolu par l'algorithme de Thomas (`_tfConductionImplicite` ; capacité d'une tranche à pression constante piston libre, à volume constant piston tenu ; la somme des chaleurs reçues est exactement celle du fond). Stable quel que soit le pas : `_tfDtQS` ne le limite plus que pour la précision, τ_int/100, (n·Cv/G)/20, durée d'une rampe continue/400, au plus 0,1 s (0,7 ms en explicite). Comparé à l'explicite (isobare, isochore, vérin 20 s et 600 s, rampe continue de P_air) : mêmes températures à 0,01–0,08 K, 20 à 120 fois moins de sous-pas (vérin 600 s, G = 0,003 : 19 510 contre 2 409 974). Le calcul complet garde la conduction explicite : son pas, fixé par le son (~1 µs), est très en deçà de sa limite. Crans de vitesse jusqu'à ×10 000 (`TF_VITESSES`, fenêtres des graphes jusqu'à 200 000 s).
+
+**Équilibre et source** (R3) : avec un fond conducteur, `tfMesures` exige aussi |T_gaz − T_ext| < `TF_SEUIL_T`. Sans cela, un gaz uniforme qui chauffait lentement à travers un fond peu conducteur passait pour « à l'équilibre » : chrono des graphes figé et lettre du journal posée alors que le gaz évoluait encore.
+
 **Bilan d'énergie unique** : `tfEnergieTotale()` = U + Ec (+ Ec et (M + m)·g·z du piston s'il est libre) − Q − W_air − W_op + `tf.eDecal`. W_air ne varie que piston libre, W_op que piston tenu. `_tfRecaler(fn)` applique un changement discontinu de commande (tenir, libérer, poser ou retirer une masse, à la main ou à chaque marche d'escalier) et reporte l'écart dans `eDecal` : c'est le travail de l'opérateur, et le compte reste continu (constant aux erreurs de schéma près, il sert aux tests).
 
 **Validation (Chrome headless, palier 1)** :
@@ -427,6 +431,18 @@ Options d'affichage dans `tfAff` (section Affichage du panneau) : molécules, ch
 ### `js/tf-ui.js` — Panneau et boucle
 
 Afficheurs `#tf-info` (tableau sous les graphes, deux grandeurs par ligne) à 10 Hz (temps en ms aux crans < ×1/100, P en kPa, T, V, P_ext ou, piston tenu, « Pression sur le piston » mesurée par le vérin, État). P ou T non définies (critère de `tfMesures`) : « ? » suivi de l'intervalle couvert par les tranches, jamais la moyenne. État : « À l'équilibre » (vert) ou « Hors équilibre » (terracotta). Section Affichage (repliable) : cases `tf-ck-…`, resynchronisées sur `tfAff` au chargement (un navigateur peut conserver l'état des cases au rechargement).
+
+**Trois manières** (R3, PLAN §10.5) : boutons **Brutalement / Quasi statiquement / Réversiblement** (`tfLancerManiere`), la durée choisie par la page (`_tfParamsManiere`) écrite sur chacun, message sur ce que l'isolation fait des deux manières lentes (`_tfMajManieres`), journal en clair (`_tfDescManiere` : « Compression quasi statique (V → 0,300 L, en 2 h 18) »). Brutalement : vérin à vitesse de pointe `TF_V_BRUTAL` = 150 m/s (τ ≥ 0,5 ms), échelon ou bloc sinon. Les manières lentes partent de la chaleur Q de la transformation réversible et de deux résistances thermiques en série, le gaz (R_int = 0,72·π²·τ_int/(4·n·Cv), facteur mesuré) et la paroi (1/G) : quasi statiquement, lent devant le son et le piston (au moins 1 s ; 25 temps mécaniques pour une rampe de pression), et flux Q/durée laissant moins de `TF_QS_ECART` = 0,25 K entre tranches (sauf si la paroi limite seule le flux sous ce seuil) ; réversiblement, en plus, entropie créée Q²·(R_int + 1/G)/(T²·durée) sous `TF_REV_SC` = 0,2 mJ/K. Les anciens curseurs de durée et de marches sont dans **Réglages fins** (repliés, `<details>`), avec « Lancer avec ces réglages ».
+
+| Test (R3, interface ; compression 30 → 15 cm, air 101 → 200 kPa, source → 400 K) | Résultat |
+|---|---|
+| Brutalement | vérin : Pmax/Pmin = 2,21, gaz non défini 99 % de la course ; air : 1,50 |
+| Calorifugé, quasi statiquement = réversiblement | loi de Laplace exacte (386,81 K ; 356,01 K), S_c = 0 ; source désactivée (sans effet) |
+| G = 0,001 W/K | quasi statiquement (2 h 15 à 5 h 46 simulées) : gaz défini 100 % de l'action et de la relaxation, S_c = 2,3 à 3,7 mJ/K ; réversiblement (29 à 104 h) : S_c = 0,14 à 0,29 mJ/K |
+| G = 0,03 W/K et diathermane | les deux manières lentes presque identiques, gaz défini 100 %, S_c ≤ 0,19 mJ/K |
+| Brutalement, toutes isolations | S_c = 26 à 61 mJ/K |
+
+**Vitesse adaptée au retour à l'équilibre** (`_tfVitesseRelax`, à 10 Hz) : le cran choisi au lancement montre le phénomène rapide, puis, l'action finie et `TF_ECRAN_FRONT` = 3 s d'écran passées, il monte (jamais ne descend) pour que le reste du retour à l'équilibre dure ~5 s : ondes (100 L/c) ou piston chargé (16 quarts de période) tant que le calcul complet tourne, puis écart de température à résorber (τ_th, ou τ_int si calorifugé, × ln(écart / 0,25 K)). Après une action brutale, le cran restait sinon à ×1/5000 : l'équilibre n'était jamais atteint (plus de 10 min à l'écran). Mesuré, de l'action à l'équilibre : 4 à 22 s à l'écran selon l'action et l'isolation (compression brutale diathermane : ×1/5000 → ×5, 21,7 s ; G = 0,001 : → ×500).
 
 Panneau (refonte R1, PLAN §10.3) :
 - **Contrôle** : Pause, Réinitialiser, curseur Vitesse à 7 crans `TF_VITESSES` (×1/5000 → ×20), case **Vitesse adaptée** (`tfCarte.auto`) : à chaque Lancer, `_tfVitesseAdaptee` prend le cran qui fait durer l'action ~`TF_ECRAN_ACTION` = 5 s à l'écran (course du vérin, escalier, 16 quarts de période du piston pour une pression brutale, mise en équilibre thermique pour une température brutale).
