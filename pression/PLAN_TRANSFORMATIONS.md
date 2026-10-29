@@ -14,6 +14,11 @@
 > est **tenu** ou **libre**, on passe de l'un à l'autre à tout moment, et une carte unique
 > « Transformation » remplace les cinq façons de lancer une action. Le §10 fait foi là où
 > il contredit les §2.6, §2.7 et §5.
+>
+> **Révision après R3** : piston-membrane de 1 g (§0, §1), conduction implicite et mode quasi
+> statique du moteur, équilibre exigeant T_gaz = T_source si le fond conduit (§2.4), chemin PV
+> tracé dès que la pression du gaz est définie (§4.2). Le §10 fait foi pour l'interface ; les
+> prochains paliers sont au §10.4.
 
 ---
 
@@ -45,10 +50,10 @@ Cylindre vertical fermé par un piston mobile sans frottement ; au-dessus, l'air
 |---|---|---|
 | Section S | 20 cm² (Ø ≈ 5 cm) | Petite section : quelques dizaines de kg suffisent à doubler ou tripler la pression |
 | Hauteur initiale | 30 cm → V₀ = 0,60 L | |
-| Masse du piston | 1 kg | |
+| Masse du piston | **1 g** (membrane, depuis R3 ; 1 kg avant) | plus léger que le gaz (0,76 g) : un échelon de P_air rend la pression non définie (§10.5) |
 | P_air (au-dessus du piston) | 1,013·10⁵ Pa par défaut, réglable de 0 (vide) à 5·10⁵ Pa | |
 | T₀ | 293 K (20 °C) | |
-| P_ext | P_air + (M + m)·g/S | P₀ = P_ext initiale ≈ 1,062·10⁵ Pa |
+| P_ext | P_air + (M + m)·g/S | P₀ = P_ext initiale = 1,0133·10⁵ Pa (1,062·10⁵ Pa avec le piston de 1 kg) |
 | n | ≈ 0,026 mol (calculée, non réglée) | |
 | Masses « brutales » | 10 / 20 / 40 kg au choix | |
 | Grain de sable | 5 à 100 g (curseur), défaut 50 g | 50 g ↔ ΔP ≈ 245 Pa |
@@ -63,7 +68,7 @@ Cylindre vertical fermé par un piston mobile sans frottement ; au-dessus, l'air
 | 20 kg | 1,92 | 370 K, 0,394 L | 353 K, 0,376 L | 0,312 L | 0,53 s |
 | 40 kg | 2,85 | 448 K, 0,322 L | 395 K, 0,284 L | 0,211 L | 0,55 s |
 
-Ces valeurs servent de **cibles de validation** (§7).
+Ces valeurs (calculées avec le piston de 1 kg, P₀ = 106,2 kPa) ont servi de **cibles de validation** (§7). Avec la membrane, P₀ = 101,33 kPa et les cibles changent un peu : 20 kg brutaux, calorifugé → 374,24 K, 0,3892 L (formule brutale exacte au banc) ; sable continu → loi de Laplace, 355,72 K (ARCHITECTURE.md, tests R3).
 
 **Pourquoi ne pas agrandir le cylindre ?** Les rapports qui décident du hors-équilibre ne dépendent presque pas de la taille :
 - la section S n'intervient dans aucun (modèle 1D) ; elle ne fixe que la masse nécessaire pour une pression donnée ;
@@ -103,7 +108,7 @@ Le dessin, mis à l'échelle de la scène, serait d'ailleurs le même. Le régla
 
   M / m_gaz ≈ P / (ρ·g·L) = c² / (γ·g·L) ≈ 2,9·10⁴
 
-Section, pression et masse s'éliminent : le piston chargé met c/√(g·L) ≈ 170 fois plus de temps à bouger que le son à traverser le gaz, qui garde une pression uniforme. Baisser P_air n'y change rien (le gaz s'allège d'autant), donner une vitesse initiale à la masse non plus (pour un saut de pression de 10 %, il faut ~25 m/s, soit 6 kJ d'énergie cinétique contre 150 J d'énergie interne : on écrase le gaz). Il faudrait une colonne de ~12 km, l'échelle de hauteur de l'atmosphère.
+Section, pression et masse s'éliminent : le piston chargé met c/√(g·L) ≈ 170 fois plus de temps à bouger que le son à traverser le gaz, qui garde une pression uniforme. Baisser P_air n'y change rien (le gaz s'allège d'autant), donner une vitesse initiale à la masse non plus (pour un saut de pression de 10 %, il faut ~25 m/s, soit 6 kJ d'énergie cinétique contre 150 J d'énergie interne : on écrase le gaz). Il faudrait une colonne de ~12 km, l'échelle de hauteur de l'atmosphère. **Depuis R3 (membrane de 1 g)**, ce raisonnement ne vaut plus que pour la **masse posée** : un échelon de P_air sur la membrane nue lance un vrai front de compression (Pmax/Pmin = 1,50 mesuré), l'écart de pression dans le gaz valant environ ΔP × (masse du gaz / masse du piston).
 
 Message pour la **famille à pression imposée** : lors d'une transformation brutale, c'est le **système {gaz + piston}** qui est hors équilibre. Le piston oscille, P_gaz ≠ P_ext, l'état du système n'est pas un point du diagramme PV, et le travail se calcule avec P_ext, toujours définie. Le gaz, lui, reste presque uniforme ; c'est la thermique (échanges par le fond, dissipation sous le piston) qui le rend inhomogène.
 
@@ -134,7 +139,7 @@ Deux niveaux, puisque le gaz peut être quasi uniforme alors que le système ne 
 - **Grandeurs du gaz définies** (pilote les « ? » de P et T) :
   - P définie si l'écart relatif max entre tranches < 0,1 % ;
   - T définie si l'écart max entre tranches < 0,5 K.
-- **Système à l'équilibre** (pilote le badge « À l'équilibre / Hors équilibre » et le tracé PV) : P et T définies **et** gaz et piston au repos (énergie cinétique macroscopique < 10⁻⁴ de l'énergie interne ; volume imposé : vérin arrêté) **et**, piston libre, P_gaz = P_ext à 0,1 % près.
+- **Système à l'équilibre** (pilote le badge « À l'équilibre / Hors équilibre », les points d'équilibre du diagramme PV, l'arrivée des étapes du journal et le chrono figé) : P et T définies **et** gaz et piston au repos (énergie cinétique macroscopique < 10⁻⁴ de l'énergie interne ; piston tenu : vérin arrêté) **et**, piston libre, P_gaz = P_ext à 0,1 % près **et**, si le fond conduit, |T_gaz − T_source| < 0,5 K (ajouté après R3 : un gaz uniforme qui chauffait lentement à travers un fond peu conducteur passait sinon pour « à l'équilibre »).
 
 Ainsi, pendant les oscillations du piston chargé, P du gaz s'affiche mais le badge reste « Hors équilibre » ; pendant une compression rapide à volume imposé, P et T passent à « ? ». Seuils à régler à l'usage.
 
@@ -183,8 +188,8 @@ Rendu en colonne, de bas en haut :
 
 1. **Source thermique** sous le cylindre : rien (air ambiant à T_ext), plaque chauffante (rouge si T_ext > T₀) ou bain thermostaté (bleu si T_ext < T₀). La couleur suit T_ext. Le calorifugeage du fond est dessiné en hachures, plus épaisses si G est faible.
 2. **Cylindre** : gaz coloré en dégradé selon la T de chaque tranche (option), plus les **molécules** pilotées par le modèle.
-3. **Piston** + plateau ; **masses** empilées (disques marqués 10/20/40 kg) ; **tas de sable** qui grossit ; **entonnoir** au-dessus quand le versement est actif ; grains en chute. Volume imposé : à la place du plateau, la tige est prise dans un **vérin** fixé au bâti, et un repère marque la hauteur visée.
-4. **Loquet** : deux goupilles qui traversent le cylindre au-dessus du piston, en surbrillance quand il est verrouillé (famille à pression imposée).
+3. **Piston** + plateau ; **masses** empilées (disques marqués 10/20/40 kg) ; **tas de sable** qui grossit ; **entonnoir** au-dessus quand le versement est actif ; grains en chute. Volume imposé : à la place du plateau, la tige est prise dans un **vérin** fixé au bâti, et un repère marque la hauteur visée. **Depuis R1** : la tige traverse le plateau et la charge (blocs enfilés, sable par-dessus) ; le vérin, suspendu au plafond de l'enceinte, la saisit par une pince quand le piston est tenu (§10.2). Depuis R3, piston dessiné mince (membrane). Entonnoir et grains en chute : pas encore faits.
+4. **Loquet** : deux goupilles qui traversent le cylindre au-dessus du piston, en surbrillance quand il est verrouillé (famille à pression imposée). **Remplacé en R1** par la pince du vérin (§10.2).
 5. **Sondes** (option) : trois thermomètres et manomètres miniatures sur le flanc (haut / milieu / bas). Pendant une transformation brutale, **ils n'affichent pas la même valeur**. C'est la démonstration la plus directe que « la température du gaz » n'existe pas à cet instant.
 6. **Échelle verticale** en cm à côté du cylindre (le volume se lit en hauteur × S).
 7. **Profil de pression** (option) : à côté du cylindre, à la même hauteur, P(z) tranche par tranche. Échelle **absolue** par défaut (les écarts du volume imposé se lisent directement) ; échelle amplifiée P(z) − P̄ en option, pour voir les très petits écarts de la masse posée en lisant leur vraie valeur en Pa.
@@ -227,7 +232,7 @@ Disposition (de gauche à droite) : **colonne graphes + tableau** (la colonne du
 ### 4.2 Diagramme PV (Clapeyron)
 
 - Les **états d'équilibre** sont tracés en points pleins, reliés par une courbe pleine quand on passe de l'un à l'autre en restant à l'équilibre (quasi statique).
-- Hors équilibre, **aucun point du gaz n'est tracé**. Les états initial et final sont reliés par un pointillé gris avec la mention « chemin non défini ».
+- Tant que la **pression** du gaz n'est pas uniforme, **aucun point du gaz n'est tracé** : un pointillé gris relie les points connus, avec la mention « chemin non défini ». **Décision après R3** : une température seule non uniforme n'efface pas le point (V et P restent définis, P·V = nR·T_moy exactement, l'aire sous la courbe reste le travail). Ainsi, un piston chargé qui oscille trace le chemin du gaz autour de l'état final : le gaz a un état, c'est le système {gaz + piston} qui est hors équilibre. Pas de troisième style de trait (jugé trop chargé) : c'est le diagramme TS (§10.6) qui montrera qu'un tel état n'est pas un équilibre.
 - **Nuage des tranches** (option, activée par défaut ; **remplacé après R2** par la pression de chaque tranche au volume du gaz, sur une verticale : l'abscisse du nuage n'était pas le volume du gaz porté par l'axe) : chaque tranche est un petit point (N·V_tranche, P_tranche), c'est-à-dire l'état qu'aurait le gaz entier s'il était partout comme cette tranche. À l'équilibre, les points se confondent en un seul ; pendant une transformation brutale, le nuage éclate puis se resserre ; en quasi statique, un point unique glisse le long de la courbe. C'est l'image directe de « le gaz n'a pas UN état ». Couleur des points selon T, comme les molécules.
 - Option **« Pression sur le piston »** : trajectoire (V, P_piston) en tireté, P_piston étant la pression exercée par le piston (pression imposée) ou mesurée par le vérin (volume imposé). L'aire sous cette courbe est le travail reçu, juste même hors équilibre.
 - Options **courbes théoriques** passant par l'état initial de la transformation en cours : isotherme (PV = cte) et adiabatique réversible (PV^γ = cte).
@@ -327,11 +332,11 @@ Chaque test charge la page en `#transformations`, pilote les fonctions `tf…` e
 1. ✅ **Moteur + scène minimale** (terminé ; les onglets et le deep-linking du palier 8 ont été avancés ici pour pouvoir tester la page, résultats des tests dans `ARCHITECTURE.md`) : `tf-sim.js` complet en célérité réelle (tranches, piston, loquet, masses, Isolation), curseur Vitesse avec ralenti extrême, rendu simple du cylindre, afficheurs P, V, T.
 2. ✅ **Mise en évidence du hors-équilibre** (terminé) : critère à deux niveaux, « ? » dans les afficheurs, badge d'équilibre, dégradé de température, sondes, loupe sur le profil de pression, molécules pilotées par le modèle. Ajouts ensuite : curseur Vitesse du son, dissipation près du piston, molécules confinées dans 10 bandes.
 3. ✅ **Volume imposé** (terminé ; régime affiché à côté de τ avancé du palier 7, résultats des tests dans `ARCHITECTURE.md`) : passage à 80 tranches ; sous-onglets Pression imposée / Volume imposé ; vérin (moteur, scène, panneau), hauteur visée, durée τ, Lancer / Retour ; travail W_op ; profil de pression en échelle absolue ; **retrait du curseur Vitesse du son** et de sa mention ; molécules : vitesse et couleur selon la tranche locale, agitation à l'échelle réelle au cran ×1/5000, essai des éclats de chocs (§3). Tests : volume imposé (τ long, τ = 2 ms, aller-retour), bilan avec le vérin, stabilité à 2 ms, uniformité sous la masse posée revérifiée à 80 tranches.
-4. ✅ **Graphes et nouvelle disposition** (terminé ; le chemin PV est tracé plein tant que P et T sont définies, même piston en mouvement, cf. ARCHITECTURE.md) : graphes puis tableau dans la colonne de gauche, splitters ; T, P, V(t) avec bandes min–max, diagramme PV avec chemin non défini, **nuage des tranches**, pression sur le piston, courbes théoriques, outils de zoom.
+4. ✅ **Graphes et nouvelle disposition** (terminé ; le chemin PV est tracé plein tant que P et T sont définies, même piston en mouvement, cf. ARCHITECTURE.md) : graphes puis tableau dans la colonne de gauche, splitters ; T, P, V(t) avec bandes min–max, diagramme PV avec chemin non défini, **nuage des tranches**, pression sur le piston, courbes théoriques, outils de zoom. *Depuis : nuage remplacé par la pression de chaque tranche au volume du gaz ; chemin plein dès que P est définie (§4.2).*
 5. ✅ **Contraintes extérieures** (terminé, résultats des tests dans `ARCHITECTURE.md`) : P_air (enceinte, manomètre) et T_ext (source four / bain), échelon et rampe pour les deux, butées signalées. Tests : échelon de T_ext, échelon et rampes de P_air, vide, bilan avec W_air.
-6. **Sable** : grain unique, versement continu, entonnoir et tas, escalier visible au zoom. Tests sable fin calorifugé et sable lent diathermane.
-7. **γ et Bilan** : section Gaz, section Bilan (W, Q, ΔU, S_c), régime affiché à côté de τ. Tests γ et bilans, volume imposé diathermane (trois régimes).
-8. **Intégration** : renommage visible « Gaz parfait », bandeau Informations (dont l'argument c/√(g·L)), responsivité (fenêtre étroite : scène au-dessus des graphes).
+6. **Sable** (en grande partie fait : physique et tas en R1, versement continu en R3, un point d'équilibre par marche d'escalier sur le diagramme ; tests sable fin calorifugé faits) : reste **l'entonnoir et les grains en chute**, et le test sable lent diathermane.
+7. **γ et Bilan** (régime affiché, fait dès le palier 3 ; le reste à faire) : section **Gaz** (γ, T₀, V₀ ; changer γ réinitialise), section **Bilan** (W, Q, ΔU, S_c) ; à coupler au diagramme TS (§10.6). Tests γ et bilans, en particulier S_c des trois manières (au banc en R3 : brutal 26 à 61 mJ/K ; quasi statique, G = 0,001 W/K, 2,3 à 3,7 ; réversible < 0,3).
+8. **Intégration** : renommage visible « Gaz parfait », bandeau Informations (dont l'argument c/√(g·L)), responsivité (fenêtre étroite : scène au-dessus des graphes). Le bandeau Informations est déjà réécrit au fil de R1 à R3 ; la **responsivité est à revérifier** avec le nouveau panneau (trois boutons, journal, réglages fins).
 9. **Site** : niveau **CPGE** sur l'accueil (nouvelle case de filtre `data-value="cpge"`, badge `.level-cpge` d'une nouvelle couleur, `data-levels="cpge"`), carte « Transformations d'un gaz parfait » (thème Thermodynamique), aperçu `assets/previews/pression-transformations.jpg`, `meta description` et `<title>` de la page mis à jour, sitemap (`lastmod`), `ARCHITECTURE.md`, tableau §8 et §9 de CONTEXTE_PROJET, mention de CPGE dans la `meta description` de l'accueil.
 
 Chaque palier se termine par un commit et peut être montré en classe tel quel à partir du palier 3.
@@ -341,12 +346,15 @@ Chaque palier se termine par un commit et peut être montré en classe tel quel 
 ## 9. Points encore ouverts
 
 - **Masse retirée lentement** alors qu'il ne reste que des blocs : retirée par petits pas, dessinée comme un bloc dont l'étiquette décroît (§10.3).
-- **τ < 2 ms** (piston plus rapide que le son) : le portage Python du schéma diverge (réglé au palier 3 : la divergence venait d'un signe faux dans la viscosité ; le piston peut maintenant aller jusqu'à 400 m/s, au-delà de la célérité du son ; τ descend à 0,5 ms) ; il faudra des sous-pas plus fins près du piston ou une viscosité renforcée avant d'ouvrir ce régime, le plus spectaculaire.
+- ~~**τ < 2 ms**~~ : réglé au palier 3 (signe faux dans la viscosité) ; le vérin descend à 0,5 ms, piston jusqu'à 400 m/s.
 - ~~Viscosité linéaire~~ : réglé au palier 3, TF_CL = 0,5 et TF_CQ = 2 (à 0,15, le calcul diverge pour τ = 2 ms).
-- Gamme des masses (10 / 20 / 40 kg) et section 20 cm² : validées visuellement au palier 1, à revoir avec le nuage des tranches.
+- Gamme des masses (0 à 40 kg) et section 20 cm² : à revoir avec la membrane de 1 g (le nuage des tranches n'existe plus).
 - Dégradé de couleur : sur T (recommandé) ou sur la masse volumique ?
 - Titre de la carte d'accueil de l'onglet existant : garder « Pression d'un gaz » ou passer à « Modèle cinétique d'un gaz parfait » ?
 - Option future, hors de cet onglet : dynamique moléculaire réelle (disques durs) pour une thermalisation qui ne doit rien au modèle.
+- **Message sous les trois boutons** : avec G = 0,03 W/K et l'action température, il dit « fond peu conducteur » alors que les deux manières lentes sont presque identiques. Le seuil (rapport des durées réversible / quasi statique ≤ 1,5) est à affiner.
+- **Bilan d'énergie au choc de la membrane** : écart de 10⁻² J (≈ 10⁻⁴ en relatif) après un échelon de P_air, contre 10⁻⁴ J avec le piston de 1 kg. À surveiller.
+- **Essai à la souris** de R3 : validé au banc headless seulement.
 
 ---
 
@@ -367,6 +375,8 @@ Chaque palier se termine par un commit et peut être montré en classe tel quel 
 - Bilan d'énergie : un seul compte, U + Ec (+ Ec et énergie potentielle du piston s'il est libre) − Q − W_air − W_op, recalé à chaque changement discontinu de commande (tenir, libérer, poser une masse) pour rester continu.
 
 ### 10.3 Carte « Transformation »
+
+> *Depuis R3, la durée, les marches et le bouton Lancer décrits ici sont dans les **Réglages fins** (repliés) ; la carte principale porte les trois boutons du §10.5.*
 
 ```
 Piston : 🔒 tenu / 🔓 libre
@@ -396,7 +406,7 @@ Transformation attendue : …
 - ✅ **R3** (terminé, cf. ARCHITECTURE.md ; ajouts : conduction implicite en mode quasi statique et crans jusqu'à ×10 000, durées réglées sur la chaleur échangée et les résistances thermiques — les premières, 3 τ_int et 10 τ_th, laissaient le gaz non défini —, vitesse adaptée au retour à l'équilibre, équilibre exigeant T_gaz = T_source si le fond conduit) : trois boutons **Brutalement / Quasi statiquement / Réversiblement** à la place des curseurs de durée et de marches (§10.5). Deux commits : moteur (pression qui varie continûment en mode quasi statique), puis interface.
 - **R4** : file d'attente (action lancée pendant une autre → « ensuite », enchaînement à l'équilibre), séquences enregistrées (localStorage, export JSON), préréglages (aller-retour, Carnot, Stirling, Lenoir).
 - **R5** (option) : viser en cliquant sur le diagramme de Clapeyron.
-- Le **Bilan** (W, Q, ΔU, S_c : palier 7) vient après R3, à part : il chiffrera la différence entre les boutons du milieu et de droite (S_c > 0 contre S_c ≈ 0).
+- **Prochain palier proposé : diagramme TS et Bilan** (§10.6, palier 7) : le TS montre l'entropie créée, le Bilan la chiffre. Puis R4, R5, et les paliers 8 (intégration) et 9 (site).
 
 **Mode quasi statique du moteur** (ajouté après R2) : au repos mécanique, pression uniforme et conduction seule, pas ~0,7 ms au lieu de ~1 µs ; les escaliers lents tiennent enfin le cran ×20 (avant : ×0,8 avec un gaz chaud et comprimé). Résultats identiques au calcul complet (ARCHITECTURE.md).
 
@@ -451,6 +461,23 @@ Un clic lance l'action (plus de bouton Lancer) ; Interrompre reste disponible. L
 
 **Moteur (premier commit)** ✅ (fait, résultats dans ARCHITECTURE.md ; piston de 1 g compris). Le mode quasi statique suit une pression extérieure qui varie continûment (rampe de P_air, sable versé en continu) : à chaque sous-pas, chaque tranche est comprimée ou détendue de façon adiabatique jusqu'à la nouvelle pression, sans repasser par le calcul complet (aujourd'hui, chaque marche d'escalier piston libre le relance pendant que le piston oscille : ~1 min à l'écran pour 40 marches avec un fond conducteur). Validation contre les escaliers fins actuels : loi de Laplace (calorifugé), isotherme (diathermane, lent), bilan d'énergie.
 
-**Interface (second commit).** Trois boutons ; durées calculées à partir de `tfDurees` au moment du clic ; vitesse adaptée avec deux crans de plus, ×100 et ×500 (le bouton de droite, fond peu conducteur, dure jusqu'à 30 min simulées) ; réglages fins repliés ; bandeau Informations (la différence entre quasi statique et réversible dépend de l'isolation du fond).
+**Interface (second commit).** Trois boutons ; durées calculées à partir de `tfDurees` au moment du clic ; vitesse adaptée avec deux crans de plus, ×100 et ×500 (le bouton de droite, fond peu conducteur, dure jusqu'à 30 min simulées) ; réglages fins repliés ; bandeau Informations (la différence entre quasi statique et réversible dépend de l'isolation du fond). *Fait : crans jusqu'à ×10 000 (et non ×500), grâce à la conduction implicite ; les durées des manières lentes ne sont pas 3 τ_int et 10 τ_th, qui laissaient le gaz non défini, mais réglées sur la chaleur échangée et les résistances thermiques du gaz et de la paroi (ARCHITECTURE.md).*
 
 **Tests.** Pour chaque action et chaque isolation (calorifugé, 0,003 W/K, diathermane) : brutal → P non définie pendant l'action (volume ; air si (a) retenu) ; quasi statique → chemin défini (P et T définies tout du long) ; réversible → état final à 10⁻³ près de la loi de Laplace ou de l'isotherme ; quasi statique contre réversible, fond peu conducteur → états finaux différents (S_c > 0 contre S_c ≈ 0, mesurés par le banc en attendant la section Bilan) ; durée à l'écran avec la vitesse adaptée.
+
+
+### 10.6 Diagramme TS (proposé, avec le Bilan)
+
+**Idée** (de l'auteur) : un état d'équilibre d'un gaz parfait, fixé par deux variables, est un point dans **tous** les diagrammes (PV, TS…). Si l'un ne peut pas le placer, le système n'est pas à l'équilibre, même si un autre le peut. Exemple : gaz à pression uniforme mais température non uniforme (couche chaude, chauffage par le fond) → point en PV (V et P définis), pas de point en TS (S défini, T non).
+
+| Situation | PV | TS |
+|---|---|---|
+| Équilibre | point | point |
+| P uniforme, T non uniforme | point | segment vertical (températures des tranches) au S du gaz |
+| Choc (P non uniforme) | segment vertical (pressions des tranches) au V du gaz | segment vertical |
+
+- **Entropie** : chaque tranche est localement en équilibre, s_j = n_j·[Cv·ln T_j + R·ln(V_j/n_j)] + cte ; S du gaz = somme des tranches, toujours définie. Afficher ΔS en J/K, S = 0 à l'état initial. Coût : 80 logarithmes par échantillon.
+- **Ce que le TS montrera** : compression brutale calorifugée qui dérive vers la droite (S augmente sans chaleur) face à la réversible verticale ; résorption d'une couche chaude à volume constant, point qui glisse horizontalement ; quasi statique contre réversible avec un fond peu conducteur (écart en S = entropie créée dans la paroi) ; aire sous la courbe = Q seulement si T est défini et la transformation réversible.
+- **Courbes de référence** : isotherme horizontale, adiabatique réversible verticale, isochore T ∝ e^(S/Cv), isobare T ∝ e^(S/Cp).
+- **Affichage** : onglets PV / TS sur la case du diagramme (ou les deux l'un sous l'autre, en option). Le tracé du PV (chemin coloré par étape, lettres, flèches, état actuel, segment des tranches, zoom, réticule) est généralisé en un tracé de diagramme paramétré par ses axes.
+- **Tests** : S_c lu sur le TS égal à celui du Bilan ; réversible calorifugé vertical à 10⁻³ près ; isotherme diathermane horizontale ; segment TS présent exactement quand T n'est pas définie.
