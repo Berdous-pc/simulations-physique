@@ -15,6 +15,8 @@
 > « Transformation » remplace les cinq façons de lancer une action. Le §10 fait foi là où
 > il contredit les §2.6, §2.7 et §5.
 >
+> **Palier 7 fait** (diagramme T(S), sections Bilan et Gaz) : le prochain palier est R4 (§10.4).
+>
 > **Révision après R3** : piston-membrane de 1 g (§0, §1), conduction implicite et mode quasi
 > statique du moteur, équilibre exigeant T_gaz = T_source si le fond conduit (§2.4), chemin PV
 > tracé dès que la pression du gaz est définie (§4.2). Le §10 fait foi pour l'interface ; les
@@ -335,7 +337,7 @@ Chaque test charge la page en `#transformations`, pilote les fonctions `tf…` e
 4. ✅ **Graphes et nouvelle disposition** (terminé ; le chemin PV est tracé plein tant que P et T sont définies, même piston en mouvement, cf. ARCHITECTURE.md) : graphes puis tableau dans la colonne de gauche, splitters ; T, P, V(t) avec bandes min–max, diagramme PV avec chemin non défini, **nuage des tranches**, pression sur le piston, courbes théoriques, outils de zoom. *Depuis : nuage remplacé par la pression de chaque tranche au volume du gaz ; chemin plein dès que P est définie (§4.2).*
 5. ✅ **Contraintes extérieures** (terminé, résultats des tests dans `ARCHITECTURE.md`) : P_air (enceinte, manomètre) et T_ext (source four / bain), échelon et rampe pour les deux, butées signalées. Tests : échelon de T_ext, échelon et rampes de P_air, vide, bilan avec W_air.
 6. **Sable** (en grande partie fait : physique et tas en R1, versement continu en R3, un point d'équilibre par marche d'escalier sur le diagramme ; tests sable fin calorifugé faits) : reste **l'entonnoir et les grains en chute**, et le test sable lent diathermane.
-7. **γ et Bilan** (régime affiché, fait dès le palier 3 ; le reste à faire) : section **Gaz** (γ, T₀, V₀ ; changer γ réinitialise), section **Bilan** (W, Q, ΔU, S_c) ; à coupler au diagramme TS (§10.6). Tests γ et bilans, en particulier S_c des trois manières (au banc en R3 : brutal 26 à 61 mJ/K ; quasi statique, G = 0,001 W/K, 2,3 à 3,7 ; réversible < 0,3).
+7. ✅ **γ, Bilan et diagramme TS** (terminé, résultats des tests dans `ARCHITECTURE.md`) : section **Gaz** (γ, T₀, V₀ ; tout changement réinitialise), section **Bilan** (W, Q, ΔU, W + Q, ΔS, Σ δQ/T_source, S_c ; dernière étape et depuis A), diagramme **T(S)** (§10.6) avec boutons P(V) / T(S) / Les deux, courbes isochore et isobare ajoutées dans les deux diagrammes.
 8. **Intégration** : renommage visible « Gaz parfait », bandeau Informations (dont l'argument c/√(g·L)), responsivité (fenêtre étroite : scène au-dessus des graphes). Le bandeau Informations est déjà réécrit au fil de R1 à R3 ; la **responsivité est à revérifier** avec le nouveau panneau (trois boutons, journal, réglages fins).
 9. **Site** : niveau **CPGE** sur l'accueil (nouvelle case de filtre `data-value="cpge"`, badge `.level-cpge` d'une nouvelle couleur, `data-levels="cpge"`), carte « Transformations d'un gaz parfait » (thème Thermodynamique), aperçu `assets/previews/pression-transformations.jpg`, `meta description` et `<title>` de la page mis à jour, sitemap (`lastmod`), `ARCHITECTURE.md`, tableau §8 et §9 de CONTEXTE_PROJET, mention de CPGE dans la `meta description` de l'accueil.
 
@@ -406,7 +408,7 @@ Transformation attendue : …
 - ✅ **R3** (terminé, cf. ARCHITECTURE.md ; ajouts : conduction implicite en mode quasi statique et crans jusqu'à ×10 000, durées réglées sur la chaleur échangée et les résistances thermiques — les premières, 3 τ_int et 10 τ_th, laissaient le gaz non défini —, vitesse adaptée au retour à l'équilibre, équilibre exigeant T_gaz = T_source si le fond conduit) : trois boutons **Brutalement / Quasi statiquement / Réversiblement** à la place des curseurs de durée et de marches (§10.5). Deux commits : moteur (pression qui varie continûment en mode quasi statique), puis interface.
 - **R4** : file d'attente (action lancée pendant une autre → « ensuite », enchaînement à l'équilibre), séquences enregistrées (localStorage, export JSON), préréglages (aller-retour, Carnot, Stirling, Lenoir).
 - **R5** (option) : viser en cliquant sur le diagramme de Clapeyron.
-- **Prochain palier proposé : diagramme TS et Bilan** (§10.6, palier 7) : le TS montre l'entropie créée, le Bilan la chiffre. Puis R4, R5, et les paliers 8 (intégration) et 9 (site).
+- ✅ **Diagramme TS et Bilan** (§10.6, palier 7) : terminé. **Prochain palier proposé : R4**, puis R5, et les paliers 8 (intégration) et 9 (site).
 
 **Mode quasi statique du moteur** (ajouté après R2) : au repos mécanique, pression uniforme et conduction seule, pas ~0,7 ms au lieu de ~1 µs ; les escaliers lents tiennent enfin le cran ×20 (avant : ×0,8 avec un gaz chaud et comprimé). Résultats identiques au calcul complet (ARCHITECTURE.md).
 
@@ -466,7 +468,9 @@ Un clic lance l'action (plus de bouton Lancer) ; Interrompre reste disponible. L
 **Tests.** Pour chaque action et chaque isolation (calorifugé, 0,003 W/K, diathermane) : brutal → P non définie pendant l'action (volume ; air si (a) retenu) ; quasi statique → chemin défini (P et T définies tout du long) ; réversible → état final à 10⁻³ près de la loi de Laplace ou de l'isotherme ; quasi statique contre réversible, fond peu conducteur → états finaux différents (S_c > 0 contre S_c ≈ 0, mesurés par le banc en attendant la section Bilan) ; durée à l'écran avec la vitesse adaptée.
 
 
-### 10.6 Diagramme TS (proposé, avec le Bilan)
+### 10.6 Diagramme TS (fait, avec le Bilan : palier 7)
+
+> *Réalisé comme décrit ci-dessous ; ΔS affiché en mJ/K. Écarts : la légende du T(S) est en bas à droite (en haut, elle cachait les tranches pendant un choc) ; l'entropie échangée est Σ δQ / T_source, si bien que S_c compte aussi l'entropie créée dans la paroi du fond.*
 
 **Idée** (de l'auteur) : un état d'équilibre d'un gaz parfait, fixé par deux variables, est un point dans **tous** les diagrammes (PV, TS…). Si l'un ne peut pas le placer, le système n'est pas à l'équilibre, même si un autre le peut. Exemple : gaz à pression uniforme mais température non uniforme (couche chaude, chauffage par le fond) → point en PV (V et P définis), pas de point en TS (S défini, T non).
 

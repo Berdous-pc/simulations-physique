@@ -107,7 +107,14 @@
 
       <div class="tf-graphe" id="tf-pv-zone">
         <div class="tf-graphe-barre">
-          <span class="tf-graphe-titre">Diagramme de Clapeyron</span>
+          <!-- Diagramme d'état : Clapeyron, entropique, ou les deux -->
+          <div class="tf-graphe-btns tf-diag-choix">
+            <button id="tf-diag-pv" class="active" onclick="tfGraphMode('pv')"
+                    title="Diagramme de Clapeyron : pression en fonction du volume">P(V)</button>
+            <button id="tf-diag-ts" onclick="tfGraphMode('ts')"
+                    title="Diagramme entropique : température en fonction de l’entropie">T(S)</button>
+            <button id="tf-diag-deux" onclick="tfGraphMode('deux')" title="Les deux diagrammes">Les deux</button>
+          </div>
           <div class="tf-graphe-btns">
             <button onclick="tfGraphPrecedente('pv')" title="Vue précédente">↶</button>
             <button onclick="tfGraphAutoPV()" title="Cadrage automatique">Auto</button>
@@ -115,7 +122,7 @@
           </div>
         </div>
         <div class="tf-graphe-zone">
-          <canvas id="tf-canvas-pv" aria-label="Diagramme de Clapeyron : pression en fonction du volume"></canvas>
+          <canvas id="tf-canvas-pv" aria-label="Diagrammes d’état : pression en fonction du volume, température en fonction de l’entropie"></canvas>
         </div>
       </div>
 
@@ -453,6 +460,17 @@
 
         <div class="sep"></div>
 
+        <!-- ── Bilan ───────────────────────────────── -->
+        <!-- Premier principe et entropie créée, pour la dernière étape et
+             depuis l'état initial A (tf-ui.js, _tfMajBilan) -->
+        <div class="panel-section">
+          <div class="section-title" data-repliable="ouvert">Bilan</div>
+          <table class="tf-bilan" id="tf-bilan"></table>
+          <span class="input-hint" id="tf-bilan-note"></span>
+        </div>
+
+        <div class="sep"></div>
+
         <!-- ── Affichage ──────────────────────────── -->
         <div class="panel-section">
           <div class="section-title" data-repliable>Affichage</div>
@@ -480,15 +498,16 @@
             <input type="checkbox" id="tf-ck-amplifie" onchange="tfOnAffichage('amplifie', this.checked)">
             Profil amplifié (écart à la moyenne)
           </label>
-          <div class="tf-sous-titre">Diagramme de Clapeyron</div>
+          <div class="tf-sous-titre">Diagrammes d’état</div>
           <label class="check-row">
             <input type="checkbox" id="tf-ckg-tranches" checked onchange="tfOnAffGraphe('tranches', this.checked)">
-            Pression de chaque tranche
+            Chaque tranche (P en P(V), T en T(S))
           </label>
           <label class="check-row">
             <input type="checkbox" id="tf-ckg-piston" onchange="tfOnAffGraphe('piston', this.checked)">
-            Pression sur le piston
+            Pression sur le piston (P(V))
           </label>
+          <div class="tf-sous-titre">Courbes par l’état de départ</div>
           <label class="check-row">
             <input type="checkbox" id="tf-ckg-isotherme" onchange="tfOnAffGraphe('isotherme', this.checked)">
             Isotherme
@@ -497,6 +516,49 @@
             <input type="checkbox" id="tf-ckg-adiabatique" onchange="tfOnAffGraphe('adiabatique', this.checked)">
             Adiabatique réversible
           </label>
+          <label class="check-row">
+            <input type="checkbox" id="tf-ckg-isochore" onchange="tfOnAffGraphe('isochore', this.checked)">
+            Isochore
+          </label>
+          <label class="check-row">
+            <input type="checkbox" id="tf-ckg-isobare" onchange="tfOnAffGraphe('isobare', this.checked)">
+            Isobare
+          </label>
+        </div>
+
+        <div class="sep"></div>
+
+        <!-- ── Gaz ────────────────────────────────── -->
+        <!-- γ et état initial : en changer réinitialise l'expérience -->
+        <div class="panel-section">
+          <div class="section-title" data-repliable>Gaz</div>
+          <div class="mode-tabs tf-mini-tabs">
+            <button class="mode-tab" id="tf-gaz-mono" onclick="tfOnGamma(5 / 3)">Monoatomique</button>
+            <button class="mode-tab active" id="tf-gaz-di" onclick="tfOnGamma(1.4)">Diatomique</button>
+            <button class="mode-tab" id="tf-gaz-poly" onclick="tfOnGamma(4 / 3)">Polyatomique</button>
+          </div>
+          <div class="param-row">
+            <label for="tf-sl-gamma">γ = Cp / Cv
+              <span class="param-value" id="tf-lbl-gamma">1,40</span>
+            </label>
+            <input type="range" id="tf-sl-gamma" min="1.05" max="1.67" step="0.01" value="1.4"
+                   oninput="tfOnGamma(parseFloat(this.value))">
+          </div>
+          <div class="param-row">
+            <label for="tf-sl-T0">Température initiale
+              <span class="param-value" id="tf-lbl-T0">293 K</span>
+            </label>
+            <input type="range" id="tf-sl-T0" min="250" max="600" step="1" value="293"
+                   oninput="tfOnEtatInitial('T0', this.value)">
+          </div>
+          <div class="param-row">
+            <label for="tf-sl-V0">Hauteur initiale du gaz
+              <span class="param-value" id="tf-lbl-V0">30 cm</span>
+            </label>
+            <input type="range" id="tf-sl-V0" min="10" max="45" step="1" value="30"
+                   oninput="tfOnEtatInitial('V0', this.value)">
+          </div>
+          <span class="input-hint">Changer le gaz ou l’état initial réinitialise l’expérience. Le gaz est à la pression atmosphérique au départ.</span>
         </div>
 
       </div><!-- fin #section-transformations -->
@@ -524,6 +586,9 @@
         Le curseur <strong>Vitesse</strong> descend jusqu'à ×1/5000 pour suivre un front dans le gaz ; à ce cran, les molécules s'agitent à leur vitesse réelle.
         Quand les tranches du gaz n'ont pas la même pression ou la même température, le tableau affiche <strong>?</strong> et l'écart entre tranches.
         Les <strong>graphes</strong> le montrent aussi : hors équilibre, T(t) et P(t) deviennent une bande hachurée (de la tranche la plus basse à la plus haute), et, quand la pression du gaz n'est pas uniforme, le diagramme de Clapeyron ne trace plus le gaz : un pointillé relie les points connus (une température seule non uniforme n'efface pas le point : V et P restent définis). Il y place aussi la <strong>pression de chaque tranche</strong>, au volume du gaz : hors équilibre, les points s'étalent sur une verticale (un volume, plusieurs pressions) et se rejoignent en un seul point à l'équilibre.
+        Au-dessus du diagramme, <strong>P(V)</strong>, <strong>T(S)</strong> ou <strong>Les deux</strong> choisit le diagramme affiché. Le diagramme entropique porte la température en fonction de la variation d'entropie du gaz depuis l'état initial (ΔS, en mJ/K) : l'entropie du gaz est toujours connue, mais son point n'est tracé que si sa température est uniforme ; sinon, les températures des tranches s'étalent sur une verticale. Un état d'équilibre est un point dans les deux diagrammes. Les courbes isotherme, adiabatique réversible, isochore et isobare (section Affichage) passent par l'état de départ de la transformation en cours, dans les deux diagrammes.
+        La section <strong>Bilan</strong> donne, pour la dernière étape et depuis l'état initial A, le travail W et la chaleur Q reçus par le gaz, ΔU (égale à W + Q), la variation d'entropie du gaz, l'entropie échangée avec la source (somme des δQ / T_source) et l'entropie créée, nulle pour une transformation réversible.
+        La section <strong>Gaz</strong> règle γ (monoatomique, diatomique, polyatomique, ou valeur libre), la température et la hauteur initiales du gaz ; les changer réinitialise l'expérience.
         Glisser sur un graphe zoome (↶ : vue précédente ; Suivre ou Auto : cadrage automatique) ; + affiche un réticule. Les séparations entre les graphes et le cylindre se déplacent à la souris.
         Couleur du gaz et des molécules : bleu plus froid que 20 °C, rouge plus chaud.
         Les <strong>molécules</strong> restent dans leur bande de gaz (pointillés) : une bande comprimée s'aplatit et ses molécules se serrent ; chacune va d'autant plus vite que le gaz est chaud là où elle se trouve. La pression se lit sur les sondes et le profil : P et T sont calculées par tranches, pas à partir des chocs des molécules.

@@ -6,8 +6,9 @@
 
 // ══════════════════════════════════════════════════════════════════════
 //  tf-graph.js — Onglet Transformations : graphes temporels T, P, V(t),
-//  diagramme de Clapeyron (chemin, états d'équilibre, pression des tranches,
-//  courbes théoriques), zoom, réticule et splitters de la colonne gauche.
+//  diagrammes d'état de Clapeyron (P, V) et entropique (T, S) (chemin,
+//  états d'équilibre, tranches, courbes de référence), zoom, réticule et
+//  splitters de la colonne gauche.
 //  Chargé après tf-scene.js (couleurs selon T), avant tf-ui.js.
 // ══════════════════════════════════════════════════════════════════════
 
@@ -30,7 +31,9 @@ var TF_G_CHEMIN = '#2a5080';
 var TF_G_PISTON = '#c08020';
 var TF_G_ISOT   = '#4a8a9a';
 var TF_G_ADIA   = '#a0603a';
-var TF_G_ACTUEL = '#e06020';     // état actuel du gaz (diagramme PV)
+var TF_G_ISOC   = '#6a5aa0';
+var TF_G_ISOB   = '#5a8a30';
+var TF_G_ACTUEL = '#e06020';     // état actuel du gaz (diagrammes d'état)
 
 // Grandeurs des graphes temporels : clé de la moyenne, des extrêmes des
 // tranches et du critère « définie » dans un échantillon ; facteur d'unité ;
@@ -41,12 +44,14 @@ var TF_G_SERIES = [
   { titre: 'V (L)',   coul: '#2a8a50', m: 'V',  min: 'V',    max: 'V',    def: null,   f: 1e3,  span: 0.02 }
 ];
 
-// Options du diagramme PV (section Affichage)
+// Options des diagrammes d'état (section Affichage)
 var tfGraphAff = {
-  tranches    : true,    // un point (V du gaz, P_tranche) par tranche
-  piston      : false,   // pression exercée sur le gaz par le piston
-  isotherme   : false,
+  tranches    : true,    // un point par tranche, à l'abscisse du gaz
+  piston      : false,   // pression exercée sur le gaz par le piston (Clapeyron)
+  isotherme   : false,   // courbes de référence, dans les deux diagrammes
   adiabatique : false,
+  isochore    : false,
+  isobare     : false,
   gel         : true     // chrono des graphes figé à l'équilibre
 };
 
@@ -59,8 +64,9 @@ var TF_G_EQ_GEL      = 5;
 
 var tfGraph = {
   ech       : [],      // historique : un objet par échantillon
-  ref       : null,    // état de départ de l'étape en cours (courbes théoriques)
-  env       : null,    // étendue des points des tranches depuis le départ (cadrage PV)
+  ref       : null,    // état de départ de l'étape en cours (courbes de référence)
+  env       : null,    // étendue des tranches depuis le départ, par diagramme (cadrage)
+  mode      : 'pv',    // diagramme d'état affiché : 'pv', 'ts' ou 'deux'
   // Chrono des graphes : temps des graphes = temps simulé − decal (s), les
   // attentes à l'équilibre étant retirées quand l'option gel est cochée
   decal     : 0,
@@ -71,10 +77,10 @@ var tfGraph = {
   coupure   : false,   // le prochain échantillon suit une attente retirée
   vueT      : null,    // null : fenêtre glissante ; sinon {t1, t2}
   pileT     : [],
-  vuePV     : null,    // null : cadrage automatique ; sinon {V1, V2, P1, P2}
-  pilePV    : [],
+  vue       : { pv: null, ts: null },   // null : cadrage automatique ; sinon {x1, x2, y1, y2}
+  pileD     : [],      // vues précédentes des diagrammes d'état : {d, vue}
   geoT      : null,    // géométrie du dernier tracé (souris)
-  geoPV     : null,
+  geoD      : { pv: null, ts: null },
   reticule  : false,
   souris    : null,    // {cible, x, y}
   glisse    : null,    // zoom rectangle en cours {cible, x0, y0, x1, y1}
@@ -111,7 +117,7 @@ function tfGraphTemps() {
 }
 
 // avantMarche : échantillon forcé juste avant une marche d'escalier (il clôt
-// le séjour à l'équilibre en cours, cf. _tfgDessinerPV).
+// le séjour à l'équilibre en cours, cf. _tfgDessinerDiag).
 // Chrono figé : à l'équilibre, sans action en cours, l'échantillon n'est pas
 // enregistré et l'attente est retirée du temps des graphes ; le chrono
 // repart dès que le gaz quitte l'équilibre ou qu'une action est lancée
@@ -136,6 +142,7 @@ function _tfgEchantillon(avantMarche) {
     t: tf.t - g.decal, ts: tf.t, V: m.V,
     Pm: m.Pmoy, Pmin: m.Pmin, Pmax: m.Pmax, Pdef: m.Pdef,
     Tm: m.Tmoy, Tmin: m.Tmin, Tmax: m.Tmax, Tdef: m.Tdef,
+    S: tfEntropie(),
     eq: m.equilibre,
     // Pression exercée par le piston : P_ext piston libre, celle que
     // mesure le vérin piston tenu
@@ -159,7 +166,7 @@ function _tfgEchantillon(avantMarche) {
   // La marche qui suit cet échantillon dérange le gaz : l'équilibre se
   // recompte après elle
   if (avantMarche) g.eqSuite = 0;
-  _tfgEnveloppe();
+  _tfgEnveloppe(m, s.S);
   g.sale = true;
 }
 
@@ -207,36 +214,29 @@ function tfGraphRevenir(ts, n) {
   g.coupure = false;
   g.ref = e[e.length - 1];
   g.env = null;
-  g.vueT = g.vuePV = null;
+  g.vueT = null;
+  g.vue = { pv: null, ts: null };
   g.pileT = [];
-  g.pilePV = [];
+  g.pileD = [];
   tf.tEchant = tf.t;
   g.sale = true;
 }
 
-// Étendue des points des tranches depuis le départ de l'étape : le cadrage
-// automatique ne fait que s'élargir pendant un choc, au lieu de pomper à
-// chaque image
-function _tfgEnveloppe() {
+// Étendue des tranches depuis le départ de l'étape, dans chaque diagramme
+// d'état : le cadrage automatique ne fait que s'élargir pendant un choc, au
+// lieu de pomper à chaque image
+function _tfgEnveloppe(m, S) {
   var g = tfGraph;
-  if (!g.env) g.env = { V1: Infinity, V2: -Infinity, P1: Infinity, P2: -Infinity };
-  _tfgTranches(function (V, P) {
-    if (V < g.env.V1) g.env.V1 = V;
-    if (V > g.env.V2) g.env.V2 = V;
-    if (P < g.env.P1) g.env.P1 = P;
-    if (P > g.env.P2) g.env.P2 = P;
-  });
-}
-
-// Parcourt les tranches : volume du gaz entier (L, le même pour toutes : le
-// gaz n'a qu'un volume), pression (kPa) et température (K) de la tranche.
-// Hors équilibre, les points s'étalent sur une verticale : un volume,
-// plusieurs pressions. (Version abandonnée : un point (N·V_tranche,
-// P_tranche) par tranche, dont l'abscisse n'était pas le volume du gaz porté
-// par l'axe.)
-function _tfgTranches(fn) {
-  var V = tfVolume() * 1e3;
-  for (var j = 0; j < TF_N; j++) fn(V, tf.P[j] * 1e-3, tfTTranche(j));
+  if (!g.env) g.env = {};
+  m.S = S;
+  for (var d in TF_G_DIAGS) {
+    var D = TF_G_DIAGS[d], x = D.x(m), e = g.env[d];
+    if (!e) e = g.env[d] = { x1: Infinity, x2: -Infinity, y1: Infinity, y2: -Infinity };
+    if (x < e.x1) e.x1 = x;
+    if (x > e.x2) e.x2 = x;
+    if (D.yMin(m) < e.y1) e.y1 = D.yMin(m);
+    if (D.yMax(m) > e.y2) e.y2 = D.yMax(m);
+  }
 }
 
 // Efface l'historique (Réinitialiser) et enregistre
@@ -247,9 +247,10 @@ function tfGraphEffacer() {
   g.ref = g.env = null;
   g.decal = g.tGel = g.blocage = g.eqSuite = 0;
   g.gele = g.coupure = false;
-  g.vueT = g.vuePV = null;
+  g.vueT = null;
+  g.vue = { pv: null, ts: null };
   g.pileT = [];
-  g.pilePV = [];
+  g.pileD = [];
   _tfgEchantillon();
 }
 
@@ -643,107 +644,191 @@ function _tfgBoite(o, ser, x0, y0, w, h, i1, i2, xDe, gradT, unite, fs) {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-//  Diagramme de Clapeyron
+//  Diagrammes d'état : Clapeyron (P, V) et entropique (T, S)
+//  Un état d'équilibre d'un gaz parfait est un point dans tous les
+//  diagrammes ; si l'un ne peut pas le placer, le système n'est pas à
+//  l'équilibre, même si l'autre le peut (PLAN §10.6). Le gaz garde toujours
+//  un volume et une entropie : hors équilibre, ses tranches s'étalent sur une
+//  verticale (plusieurs pressions, plusieurs températures).
 // ══════════════════════════════════════════════════════════════════════
 
-// Le point (V, P) du gaz existe dès que sa pression est uniforme : V et P
-// sont alors définis (et P·V = nR·T_moy exactement), même si la température
-// ne l'est pas encore (couche chaude, chauffage par le fond)
-function _tfgSDef(s) { return s.Pdef; }
+// Chaque diagramme lit ses deux axes dans un échantillon (s), une lettre du
+// journal (L) ou les mesures actuelles (m, entropie comprise) ; l'ordonnée
+// n'est définie que si la grandeur est uniforme dans le gaz. Unités
+// d'affichage : L, kPa ; mJ/K (S = 0 à l'état initial), K.
+var TF_G_DIAGS = {
+  pv: {
+    titreX: 'V (L)', titreY: 'P (kPa)', spanX: 0.05, spanY: 5,
+    x: function (o) { return o.V * 1e3; },
+    y: function (s) { return s.Pm * 1e-3; },
+    def: function (s) { return s.Pdef; },
+    yL: function (L) { return L.P * 1e-3; },
+    yM: function (m) { return m.Pmoy * 1e-3; },
+    defM: function (m) { return m.Pdef; },
+    yMin: function (m) { return m.Pmin * 1e-3; },
+    yMax: function (m) { return m.Pmax * 1e-3; },
+    tranche: function (j) { return tf.P[j] * 1e-3; },
+    nd: 'Pression du gaz non définie',
+    chemin: 'chemin, pression définie (couleur de l’étape)',
+    tranches: 'pression de chaque tranche (au volume du gaz)',
+    lu: function (x, y) { return ['V = ' + _tfgNbLu(x) + ' L', 'P = ' + _tfgNbLu(y) + ' kPa']; }
+  },
+  ts: {
+    titreX: 'ΔS (mJ/K)', titreY: 'T (K)', spanX: 2, spanY: 5,
+    x: function (o) { return o.S * 1e3; },
+    y: function (s) { return s.Tm; },
+    def: function (s) { return s.Tdef; },
+    yL: function (L) { return L.T; },
+    yM: function (m) { return m.Tmoy; },
+    defM: function (m) { return m.Tdef; },
+    yMin: function (m) { return m.Tmin; },
+    yMax: function (m) { return m.Tmax; },
+    tranche: function (j) { return tfTTranche(j); },
+    nd: 'Température du gaz non définie',
+    chemin: 'chemin, température définie (couleur de l’étape)',
+    tranches: 'température de chaque tranche (à l’entropie du gaz)',
+    lu: function (x, y) { return ['ΔS = ' + _tfgNbLu(x) + ' mJ/K', 'T = ' + _tfgNbLu(y) + ' K']; }
+  }
+};
+
+// Courbes de référence par l'état de départ de la transformation en cours
+// (ref, échantillon), dans les unités du diagramme. Une courbe est une
+// fonction y(x), une verticale (vert) ou une horizontale (horiz).
+//   Clapeyron : isotherme P = Pr·Vr/V, adiabatique réversible
+//   P = Pr·(Vr/V)^γ, isochore verticale, isobare horizontale.
+//   Entropique : isotherme horizontale, adiabatique réversible verticale,
+//   isochore T = Tr·e^(ΔS/(n·Cv)), isobare T = Tr·e^(ΔS/(n·Cp)).
+function _tfgCourbesRef(d, ref) {
+  var c = [], A = tfGraphAff, n = tf.n, Cv = tf.Cv, g = tf.gamma;
+  if (d === 'pv') {
+    var Vr = ref.V * 1e3, Pr = ref.Pm * 1e-3;
+    if (A.isotherme)   c.push({ f: function (V) { return Pr * Vr / V; }, coul: TF_G_ISOT, nom: 'isotherme' });
+    if (A.adiabatique) c.push({ f: function (V) { return Pr * Math.pow(Vr / V, g); }, coul: TF_G_ADIA, nom: 'adiabatique réversible' });
+    if (A.isochore)    c.push({ vert: Vr, coul: TF_G_ISOC, nom: 'isochore' });
+    if (A.isobare)     c.push({ horiz: Pr, coul: TF_G_ISOB, nom: 'isobare' });
+  } else {
+    var Sr = ref.S * 1e3, Tr = ref.Tm;
+    if (A.isotherme)   c.push({ horiz: Tr, coul: TF_G_ISOT, nom: 'isotherme' });
+    if (A.adiabatique) c.push({ vert: Sr, coul: TF_G_ADIA, nom: 'adiabatique réversible' });
+    if (A.isochore)    c.push({ f: function (S) { return Tr * Math.exp((S - Sr) * 1e-3 / (n * Cv)); }, coul: TF_G_ISOC, nom: 'isochore' });
+    if (A.isobare)     c.push({ f: function (S) { return Tr * Math.exp((S - Sr) * 1e-3 / (n * Cv * g)); }, coul: TF_G_ISOB, nom: 'isobare' });
+  }
+  return c;
+}
 
 // Cadrage automatique : chemin défini, état de départ, tranches depuis le
-// départ, pression sur le piston si elle est tracée
-function _tfgCadragePV() {
-  var e = tfGraph.ech, g = tfGraph;
-  var V1 = Infinity, V2 = -Infinity, P1 = Infinity, P2 = -Infinity;
-  function ajoute(V, P) {
-    if (V < V1) V1 = V;
-    if (V > V2) V2 = V;
-    if (P < P1) P1 = P;
-    if (P > P2) P2 = P;
+// départ, pression sur le piston si elle est tracée (Clapeyron)
+function _tfgCadrage(d) {
+  var D = TF_G_DIAGS[d], e = tfGraph.ech, g = tfGraph;
+  var x1 = Infinity, x2 = -Infinity, y1 = Infinity, y2 = -Infinity;
+  function ajoute(x, y) {
+    if (x < x1) x1 = x;
+    if (x > x2) x2 = x;
+    if (y < y1) y1 = y;
+    if (y > y2) y2 = y;
   }
   for (var k = 0; k < e.length; k++) {
     var s = e[k];
-    if (_tfgSDef(s)) ajoute(s.V * 1e3, s.Pm * 1e-3);
-    if (tfGraphAff.piston) ajoute(s.V * 1e3, s.Pp * 1e-3);
+    if (D.def(s)) ajoute(D.x(s), D.y(s));
+    if (d === 'pv' && tfGraphAff.piston) ajoute(s.V * 1e3, s.Pp * 1e-3);
   }
-  if (g.ref) ajoute(g.ref.V * 1e3, g.ref.Pm * 1e-3);
-  if (tfGraphAff.tranches && g.env) { ajoute(g.env.V1, g.env.P1); ajoute(g.env.V2, g.env.P2); }
-  return { V1: V1, V2: V2, P1: P1, P2: P2 };
+  if (g.ref) ajoute(D.x(g.ref), D.y(g.ref));
+  var env = g.env && g.env[d];
+  if (tfGraphAff.tranches && env) { ajoute(env.x1, env.y1); ajoute(env.x2, env.y2); }
+  return { x1: x1, x2: x2, y1: y1, y2: y2 };
 }
 
-function _tfgDessinerPV() {
+// Cases des diagrammes affichés : un seul, ou les deux, côte à côte si la
+// zone est large, l'un sous l'autre sinon
+function _tfgCases(W, H) {
+  var m = tfGraph.mode;
+  if (m !== 'deux') return [{ d: m, x: 0, y: 0, w: W, h: H }];
+  if (W > 1.8 * H) return [{ d: 'pv', x: 0, y: 0, w: W / 2, h: H }, { d: 'ts', x: W / 2, y: 0, w: W / 2, h: H }];
+  return [{ d: 'pv', x: 0, y: 0, w: W, h: H / 2 }, { d: 'ts', x: 0, y: H / 2, w: W, h: H / 2 }];
+}
+
+function _tfgDessinerDiagrammes() {
   var o = tfGraph.cv.pv;
   _tfgTaille(o);
   if (!o.w) return;
-  var c = o.ctx, W = o.w, H = o.h, e = tfGraph.ech, g = tfGraph;
+  var c = o.ctx;
   c.fillStyle = '#fdf8f0';
-  c.fillRect(0, 0, W, H);
+  c.fillRect(0, 0, o.w, o.h);
+  tfGraph.geoD = { pv: null, ts: null };
+  var mes = tfMesures();
+  mes.S = tfEntropie();
+  var cases = _tfgCases(o.w, o.h);
+  for (var i = 0; i < cases.length; i++) _tfgDessinerDiag(o, cases[i], mes);
+}
+
+function _tfgDessinerDiag(o, cs, mes) {
+  var d = cs.d, D = TF_G_DIAGS[d];
+  var c = o.ctx, W = cs.w, H = cs.h, X = cs.x, Y = cs.y, e = tfGraph.ech, g = tfGraph;
 
   var fs = Math.max(10, Math.min(14, Math.round(Math.min(H * 0.045, W * 0.03))));
   var ML = Math.round(fs * 4.4), MR = 12, MT = Math.round(fs * 0.7), MB = Math.round(fs * 2.9);
   var pw = W - ML - MR, ph = H - MT - MB;
-  if (pw < 60 || ph < 40 || e.length === 0) { g.geoPV = null; return; }
+  if (pw < 60 || ph < 40 || e.length === 0) return;
+  var x0 = X + ML, y0 = Y + MT;
 
   var nX = Math.max(2, Math.floor(pw / (fs * 6))), nY = Math.max(2, Math.floor(ph / (fs * 2.6)));
-  var vue = g.vuePV;
+  var vue = g.vue[d];
   if (!vue) {
-    var cad = _tfgCadragePV();
-    var bx = _tfgBornes(cad.V1, cad.V2, 0.05, nX), by = _tfgBornes(cad.P1, cad.P2, 5, nY);
-    vue = { V1: bx.lo, V2: bx.hi, P1: by.lo, P2: by.hi };
+    var cad = _tfgCadrage(d);
+    var bx = _tfgBornes(cad.x1, cad.x2, D.spanX, nX), by = _tfgBornes(cad.y1, cad.y2, D.spanY, nY);
+    vue = { x1: bx.lo, x2: bx.hi, y1: by.lo, y2: by.hi };
   }
-  var pasV = _tfgPas(vue.V2 - vue.V1, nX), pasP = _tfgPas(vue.P2 - vue.P1, nY);
-  var xDe = function (V) { return ML + (V - vue.V1) / (vue.V2 - vue.V1) * pw; };
-  var yDe = function (P) { return MT + ph - (P - vue.P1) / (vue.P2 - vue.P1) * ph; };
-  g.geoPV = { x0: ML, y0: MT, pw: pw, ph: ph, V1: vue.V1, V2: vue.V2, P1: vue.P1, P2: vue.P2 };
+  var pasX = _tfgPas(vue.x2 - vue.x1, nX), pasY = _tfgPas(vue.y2 - vue.y1, nY);
+  var xDe = function (x) { return x0 + (x - vue.x1) / (vue.x2 - vue.x1) * pw; };
+  var yDe = function (y) { return y0 + ph - (y - vue.y1) / (vue.y2 - vue.y1) * ph; };
+  g.geoD[d] = { x0: x0, y0: y0, pw: pw, ph: ph, x1: vue.x1, x2: vue.x2, y1: vue.y1, y2: vue.y2 };
+  var px = function (s) { return xDe(D.x(s)); };
+  var py = function (s) { return yDe(D.y(s)); };
 
   // Fond, grille, graduations, titres d'axes
   c.fillStyle = TF_G_FOND;
-  c.fillRect(ML, MT, pw, ph);
-  var gx = _tfgGraduations(vue.V1, vue.V2, pasV), gy = _tfgGraduations(vue.P1, vue.P2, pasP), k;
+  c.fillRect(x0, y0, pw, ph);
+  var gx = _tfgGraduations(vue.x1, vue.x2, pasX), gy = _tfgGraduations(vue.y1, vue.y2, pasY), k;
   c.strokeStyle = TF_G_GRILLE;
   c.lineWidth = 1;
   c.beginPath();
-  for (k = 0; k < gx.length; k++) { var xx = Math.round(xDe(gx[k])) + 0.5; c.moveTo(xx, MT); c.lineTo(xx, MT + ph); }
-  for (k = 0; k < gy.length; k++) { var yy = Math.round(yDe(gy[k])) + 0.5; c.moveTo(ML, yy); c.lineTo(ML + pw, yy); }
+  for (k = 0; k < gx.length; k++) { var xx = Math.round(xDe(gx[k])) + 0.5; c.moveTo(xx, y0); c.lineTo(xx, y0 + ph); }
+  for (k = 0; k < gy.length; k++) { var yy = Math.round(yDe(gy[k])) + 0.5; c.moveTo(x0, yy); c.lineTo(x0 + pw, yy); }
   c.stroke();
   c.fillStyle = TF_G_ENCRE;
   c.font = _tfgPolice(fs, false);
   c.textAlign = 'center';
   c.textBaseline = 'top';
-  for (k = 0; k < gx.length; k++) c.fillText(_tfgNb(gx[k], pasV), xDe(gx[k]), MT + ph + 3);
+  for (k = 0; k < gx.length; k++) c.fillText(_tfgNb(gx[k], pasX), xDe(gx[k]), y0 + ph + 3);
   c.textAlign = 'right';
   c.textBaseline = 'middle';
-  for (k = 0; k < gy.length; k++) c.fillText(_tfgNb(gy[k], pasP), ML - 4, yDe(gy[k]));
+  for (k = 0; k < gy.length; k++) c.fillText(_tfgNb(gy[k], pasY), x0 - 4, yDe(gy[k]));
   c.font = _tfgPolice(fs, true);
   c.textBaseline = 'top';
-  c.fillText('V (L)', ML + pw, MT + ph + fs * 1.45);
+  c.fillText(D.titreX, x0 + pw, y0 + ph + fs * 1.45);
   c.save();
-  c.translate(fs * 0.2, MT);
+  c.translate(X + fs * 0.2, y0);
   c.rotate(-Math.PI / 2);
   c.textAlign = 'right';
   c.textBaseline = 'top';
-  c.fillText('P (kPa)', 0, 0);
+  c.fillText(D.titreY, 0, 0);
   c.restore();
 
   c.save();
   c.beginPath();
-  c.rect(ML, MT, pw, ph);
+  c.rect(x0, y0, pw, ph);
   c.clip();
 
-  // Courbes théoriques par l'état de départ de la transformation en cours
-  var ref = g.ref, etiq = [];
-  if (ref && (tfGraphAff.isotherme || tfGraphAff.adiabatique)) {
-    var Vr = ref.V * 1e3, Pr = ref.Pm * 1e-3;
-    if (tfGraphAff.isotherme)   etiq.push(_tfgCourbe(c, xDe, yDe, vue, function (V) { return Pr * Vr / V; },
-                                                     TF_G_ISOT, 'isotherme'));
-    if (tfGraphAff.adiabatique) etiq.push(_tfgCourbe(c, xDe, yDe, vue, function (V) { return Pr * Math.pow(Vr / V, tf.gamma); },
-                                                     TF_G_ADIA, 'adiabatique réversible'));
+  // Courbes de référence par l'état de départ de la transformation en cours
+  var etiq = [];
+  if (g.ref) {
+    var cr = _tfgCourbesRef(d, g.ref);
+    for (k = 0; k < cr.length; k++) etiq.push(_tfgCourbe(c, xDe, yDe, vue, cr[k], d === 'pv'));
   }
 
   // Pression exercée par le piston : l'aire sous ce tracé est le travail
   // reçu par le gaz, juste même hors équilibre
-  if (tfGraphAff.piston) {
+  if (d === 'pv' && tfGraphAff.piston) {
     c.strokeStyle = TF_G_PISTON;
     c.lineWidth = 1.5;
     c.setLineDash([6, 4]);
@@ -756,10 +841,10 @@ function _tfgDessinerPV() {
     c.setLineDash([]);
   }
 
-  // Chemin : plein tant que le gaz a un état, d'un tronçon défini au
-  // suivant pointillé « chemin non défini » ; une couleur par étape (celle
-  // de l'échantillon d'arrivée de chaque segment). Une étape mise en
-  // évidence dans le journal laisse les autres en retrait.
+  // Chemin : plein tant que la grandeur en ordonnée est définie, d'un
+  // tronçon défini au suivant pointillé « chemin non défini » ; une couleur
+  // par étape (celle de l'échantillon d'arrivée de chaque segment). Une
+  // étape mise en évidence dans le journal laisse les autres en retrait.
   var sel = tfEtapes.sel >= 0 ? tfEtapes.sel + 1 : -1;
   var alpha = function (n) { return sel < 0 || n === sel ? 1 : 0.22; };
   var sans = [], prec = null, q;
@@ -769,19 +854,19 @@ function _tfgDessinerPV() {
   k = 0;
   while (k < e.length) {
     var j = k;
-    if (!_tfgSDef(e[k])) {
-      while (j + 1 < e.length && !_tfgSDef(e[j + 1])) j++;
+    if (!D.def(e[k])) {
+      while (j + 1 < e.length && !D.def(e[j + 1])) j++;
       k = j + 1;
       continue;
     }
-    while (j + 1 < e.length && _tfgSDef(e[j + 1])) j++;
+    while (j + 1 < e.length && D.def(e[j + 1])) j++;
     if (prec) sans.push([prec, e[k]]);
     for (q = k + 1; q <= j; q++) {
       c.globalAlpha = alpha(e[q].etape);
       c.strokeStyle = tfCouleurEtape(e[q].etape);
       c.beginPath();
-      c.moveTo(xDe(e[q - 1].V * 1e3), yDe(e[q - 1].Pm * 1e-3));
-      c.lineTo(xDe(e[q].V * 1e3), yDe(e[q].Pm * 1e-3));
+      c.moveTo(px(e[q - 1]), py(e[q - 1]));
+      c.lineTo(px(e[q]), py(e[q]));
       c.stroke();
     }
     prec = e[j];
@@ -793,8 +878,8 @@ function _tfgDessinerPV() {
     c.globalAlpha = alpha(sans[k][1].etape) * 0.8;
     c.strokeStyle = tfCouleurEtape(sans[k][1].etape);
     c.beginPath();
-    c.moveTo(xDe(sans[k][0].V * 1e3), yDe(sans[k][0].Pm * 1e-3));
-    c.lineTo(xDe(sans[k][1].V * 1e3), yDe(sans[k][1].Pm * 1e-3));
+    c.moveTo(px(sans[k][0]), py(sans[k][0]));
+    c.lineTo(px(sans[k][1]), py(sans[k][1]));
     c.stroke();
   }
   c.setLineDash([]);
@@ -802,7 +887,7 @@ function _tfgDessinerPV() {
 
   // Sens de parcours : une flèche au milieu (en longueur) du chemin de
   // chaque étape, chemin non défini compris
-  _tfgFleches(c, e, xDe, yDe, alpha);
+  _tfgFleches(c, e, D, px, py, alpha);
 
   // États d'équilibre : fin de chaque séjour à l'équilibre. Son début n'est
   // pas fiable : un échantillon pris à l'extrémité d'une oscillation du
@@ -824,45 +909,45 @@ function _tfgDessinerPV() {
   for (k = 0; k < etats.length; k++) {
     c.globalAlpha = alpha(etats[k].etape);
     c.beginPath();
-    c.arc(xDe(etats[k].V * 1e3), yDe(etats[k].Pm * 1e-3), 3.5, 0, 2 * Math.PI);
+    c.arc(px(etats[k]), py(etats[k]), 3.5, 0, 2 * Math.PI);
     c.fillStyle = tfCouleurEtape(etats[k].etape);
     c.fill();
     c.stroke();
   }
   c.globalAlpha = 1;
 
-  // Pression de chaque tranche, au volume du gaz : trait vertical de la plus
-  // basse à la plus haute, puis un point par tranche coloré selon T comme
-  // les molécules
+  // Chaque tranche, à l'abscisse du gaz (son volume, son entropie) : trait
+  // vertical de la plus basse à la plus haute, puis un point par tranche
+  // coloré selon T comme les molécules
   if (tfGraphAff.tranches) {
-    var mt = tfMesures(), xt = xDe(mt.V * 1e3);
+    var xt = xDe(D.x(mes));
     c.strokeStyle = TF_G_ND;
     c.globalAlpha = 0.5;
     c.lineWidth = 1.5;
     c.beginPath();
-    c.moveTo(xt, yDe(mt.Pmin * 1e-3));
-    c.lineTo(xt, yDe(mt.Pmax * 1e-3));
+    c.moveTo(xt, yDe(D.yMin(mes)));
+    c.lineTo(xt, yDe(D.yMax(mes)));
     c.stroke();
     c.globalAlpha = 1;
     c.lineWidth = 1;
     c.strokeStyle = 'rgba(255,253,249,0.9)';
-    _tfgTranches(function (V, P, T) {
+    for (var jt = 0; jt < TF_N; jt++) {
       c.beginPath();
-      c.arc(xDe(V), yDe(P), 3, 0, 2 * Math.PI);
-      c.fillStyle = tfAff.couleurT ? _tfMelangeT(T, TF_COUL_MOL, 1) : '#4a627c';
+      c.arc(xt, yDe(D.tranche(jt)), 3, 0, 2 * Math.PI);
+      c.fillStyle = tfAff.couleurT ? _tfMelangeT(tfTTranche(jt), TF_COUL_MOL, 1) : '#4a627c';
       c.fill();
       c.stroke();
-    });
+    }
   }
 
   // États repérés par une lettre (départs et arrivées des étapes)
-  _tfgLettres(c, xDe, yDe, fs, alpha);
+  _tfgLettres(c, D, xDe, yDe, fs, alpha);
 
-  // État actuel, si sa pression est définie : halo et anneau d'une couleur
-  // réservée, par-dessus tout le reste
-  var mes = tfMesures();
-  if (mes.Pdef) {
-    var xa0 = xDe(mes.V * 1e3), ya0 = yDe(mes.Pmoy * 1e-3);
+  // État actuel, s'il est défini : halo et anneau d'une couleur réservée,
+  // par-dessus tout le reste
+  var defM = D.defM(mes);
+  if (defM) {
+    var xa0 = xDe(D.x(mes)), ya0 = yDe(D.yM(mes));
     c.beginPath();
     c.arc(xa0, ya0, 13, 0, 2 * Math.PI);
     c.fillStyle = 'rgba(232,96,32,0.18)';
@@ -883,31 +968,29 @@ function _tfgDessinerPV() {
 
   c.strokeStyle = TF_G_CADRE;
   c.lineWidth = 1;
-  c.strokeRect(ML + 0.5, MT + 0.5, pw - 1, ph - 1);
+  c.strokeRect(x0 + 0.5, y0 + 0.5, pw - 1, ph - 1);
 
-  // Étiquettes directes
+  // Étiquettes directes, en quinconce au-dessus et au-dessous des courbes
   for (k = 0; k < etiq.length; k++) {
     if (!etiq[k]) continue;
-    var ye = etiq[k].y + (k === 0 ? -fs * 0.8 : fs * 0.8);
-    ye = Math.max(MT + fs * 0.8, Math.min(MT + ph - fs * 0.8, ye));
+    var ye = etiq[k].y + (k % 2 === 0 ? -fs * 0.8 : fs * 0.8);
+    ye = Math.max(y0 + fs * 0.8, Math.min(y0 + ph - fs * 0.8, ye));
     _tfgEtiquette(c, etiq[k].nom, etiq[k].x, ye, fs - 1, etiq[k].coul, 'right');
   }
   for (k = 0; k < sans.length; k++) {
-    var xa = xDe(sans[k][0].V * 1e3), ya = yDe(sans[k][0].Pm * 1e-3);
-    var xb = xDe(sans[k][1].V * 1e3), yb = yDe(sans[k][1].Pm * 1e-3);
+    var xa = px(sans[k][0]), ya = py(sans[k][0]);
+    var xb = px(sans[k][1]), yb = py(sans[k][1]);
     if (Math.hypot(xb - xa, yb - ya) > fs * 9) {
       // Au tiers du segment : le milieu porte la flèche de sens
       _tfgEtiquette(c, 'chemin non défini', xa + (xb - xa) / 3, ya + (yb - ya) / 3, fs - 1, TF_G_MUET, 'center');
     }
   }
-  if (!mes.Pdef) {
-    _tfgEtiquette(c, 'Pression du gaz non définie', ML + 8, MT + ph - fs, fs, TF_G_ND, 'left');
-  }
-  _tfgLegendePV(c, ML + pw - 6, MT + 6, fs - 1, sans.length > 0);
+  if (!defM) _tfgEtiquette(c, D.nd, x0 + 8, y0 + ph - fs, fs, TF_G_ND, 'left');
+  _tfgLegende(c, d, x0 + pw - 6, d === 'pv' ? y0 + 6 : -(y0 + ph - 6), fs - 1, sans.length > 0);
 
   // Zoom en cours
   var gl = g.glisse;
-  if (gl && gl.cible === 'pv') {
+  if (gl && gl.cible === 'pv' && gl.d === d) {
     c.fillStyle = 'rgba(42,106,170,0.12)';
     c.strokeStyle = '#2a6aaa';
     c.lineWidth = 1;
@@ -919,31 +1002,31 @@ function _tfgDessinerPV() {
   // Réticule
   var so = g.souris;
   if (g.reticule && so && so.cible === 'pv' && !gl
-      && so.x >= ML && so.x <= ML + pw && so.y >= MT && so.y <= MT + ph) {
+      && so.x >= x0 && so.x <= x0 + pw && so.y >= y0 && so.y <= y0 + ph) {
     c.strokeStyle = '#2a6aaa';
     c.lineWidth = 1;
     c.setLineDash([4, 3]);
     c.beginPath();
-    c.moveTo(so.x, MT); c.lineTo(so.x, MT + ph);
-    c.moveTo(ML, so.y); c.lineTo(ML + pw, so.y);
+    c.moveTo(so.x, y0); c.lineTo(so.x, y0 + ph);
+    c.moveTo(x0, so.y); c.lineTo(x0 + pw, so.y);
     c.stroke();
     c.setLineDash([]);
-    var V = vue.V1 + (so.x - ML) / pw * (vue.V2 - vue.V1);
-    var P = vue.P1 + (MT + ph - so.y) / ph * (vue.P2 - vue.P1);
-    _tfgBulle(c, ['V = ' + _tfgNbLu(V) + ' L', 'P = ' + _tfgNbLu(P) + ' kPa'], so.x, so.y, W, H, fs);
+    var xv = vue.x1 + (so.x - x0) / pw * (vue.x2 - vue.x1);
+    var yv = vue.y1 + (y0 + ph - so.y) / ph * (vue.y2 - vue.y1);
+    _tfgBulle(c, D.lu(xv, yv), so.x, so.y, X + W, Y + H, fs);
   }
 }
 
 // Flèche de sens au milieu de chaque étape : le chemin d'une étape est la
 // suite de ses échantillons définis, précédée du dernier échantillon défini
 // d'avant (départ). Rien si l'étape est trop courte à l'écran.
-function _tfgFleches(c, e, xDe, yDe, alpha) {
+function _tfgFleches(c, e, D, px, py, alpha) {
   var pts = {}, dernier = null, k, n;
   for (k = 0; k < e.length; k++) {
-    if (!_tfgSDef(e[k])) continue;
+    if (!D.def(e[k])) continue;
     n = e[k].etape;
     if (!pts[n]) pts[n] = dernier ? [dernier] : [];
-    pts[n].push([xDe(e[k].V * 1e3), yDe(e[k].Pm * 1e-3)]);
+    pts[n].push([px(e[k]), py(e[k])]);
     dernier = pts[n][pts[n].length - 1];
   }
   for (n in pts) {
@@ -952,9 +1035,9 @@ function _tfgFleches(c, e, xDe, yDe, alpha) {
     if (L < 24) continue;
     var cible = L / 2, cumul = 0;
     for (i = 1; i < p.length; i++) {
-      var d = Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1]);
-      if (cumul + d >= cible && d > 0) {
-        var f = (cible - cumul) / d;
+      var dd = Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1]);
+      if (cumul + dd >= cible && dd > 0) {
+        var f = (cible - cumul) / dd;
         var x = p[i - 1][0] + f * (p[i][0] - p[i - 1][0]);
         var y = p[i - 1][1] + f * (p[i][1] - p[i - 1][1]);
         var a = Math.atan2(p[i][1] - p[i - 1][1], p[i][0] - p[i - 1][0]);
@@ -971,7 +1054,7 @@ function _tfgFleches(c, e, xDe, yDe, alpha) {
         c.stroke();
         break;
       }
-      cumul += d;
+      cumul += dd;
     }
   }
   c.globalAlpha = 1;
@@ -979,7 +1062,7 @@ function _tfgFleches(c, e, xDe, yDe, alpha) {
 
 // Lettres des états d'équilibre du journal : pastille blanche cerclée de la
 // couleur de l'étape qui y arrive, lettre à côté
-function _tfgLettres(c, xDe, yDe, fs, alpha) {
+function _tfgLettres(c, D, xDe, yDe, fs, alpha) {
   var E = tfEtapes, arrivee = {};
   for (var k = 0; k < E.liste.length; k++) {
     if (E.liste[k].arrivee !== null) arrivee[E.liste[k].arrivee] = k + 1;
@@ -989,7 +1072,7 @@ function _tfgLettres(c, xDe, yDe, fs, alpha) {
   c.textBaseline = 'middle';
   for (var i = 0; i < E.etats.length; i++) {
     var L = E.etats[i], n = arrivee[i] || 0;
-    var x = xDe(L.V * 1e3), y = yDe(L.P * 1e-3);
+    var x = xDe(D.x(L)), y = yDe(D.yL(L));
     c.globalAlpha = alpha(n) < 1 && !(E.sel >= 0 && E.liste[E.sel].depart === i) ? 0.35 : 1;
     c.beginPath();
     c.arc(x, y, 5, 0, 2 * Math.PI);
@@ -1008,38 +1091,57 @@ function _tfgLettres(c, xDe, yDe, fs, alpha) {
   c.globalAlpha = 1;
 }
 
-// Trace P(V) sur la largeur de la vue ; renvoie où poser son étiquette (le
-// point visible le plus à droite)
-function _tfgCourbe(c, xDe, yDe, vue, Pde, coul, nom) {
-  var n = 160, dern = null;
-  c.strokeStyle = coul;
+// Trace une courbe de référence sur la vue ; renvoie où poser son
+// étiquette : point visible le plus à droite d'une courbe y(x), haut d'une
+// verticale (bas si basVert : la légende occupe le haut), droite d'une
+// horizontale
+function _tfgCourbe(c, xDe, yDe, vue, cr, basVert) {
+  var dern = null;
+  c.strokeStyle = cr.coul;
   c.lineWidth = 1.5;
   c.beginPath();
-  for (var i = 0; i <= n; i++) {
-    var V = vue.V1 + (vue.V2 - vue.V1) * i / n, P = Pde(V);
-    var x = xDe(V), y = yDe(P);
-    if (i === 0) c.moveTo(x, y); else c.lineTo(x, y);
-    if (P >= vue.P1 && P <= vue.P2 && i < n * 0.97) dern = { x: x, y: y };
+  if (cr.vert !== undefined) {
+    var xv = xDe(cr.vert);
+    c.moveTo(xv, yDe(vue.y1));
+    c.lineTo(xv, yDe(vue.y2));
+    if (cr.vert >= vue.x1 && cr.vert <= vue.x2) dern = { x: xv - 4, y: basVert ? yDe(vue.y1) - 34 : yDe(vue.y2) + 14 };
+  } else if (cr.horiz !== undefined) {
+    var yh = yDe(cr.horiz);
+    c.moveTo(xDe(vue.x1), yh);
+    c.lineTo(xDe(vue.x2), yh);
+    if (cr.horiz >= vue.y1 && cr.horiz <= vue.y2) dern = { x: xDe(vue.x2) - 6, y: yh };
+  } else {
+    var n = 160;
+    for (var i = 0; i <= n; i++) {
+      var X = vue.x1 + (vue.x2 - vue.x1) * i / n, Yc = cr.f(X);
+      var x = xDe(X), y = yDe(Yc);
+      if (i === 0) c.moveTo(x, y); else c.lineTo(x, y);
+      if (Yc >= vue.y1 && Yc <= vue.y2 && i < n * 0.97) dern = { x: x, y: y };
+    }
   }
   c.stroke();
-  return dern ? { x: dern.x, y: dern.y, nom: nom, coul: coul } : null;
+  return dern ? { x: dern.x, y: dern.y, nom: cr.nom, coul: cr.coul } : null;
 }
 
-// Légende en haut à droite (zone vide pour les transformations usuelles,
-// où P décroît quand V croît)
-function _tfgLegendePV(c, xd, y, fs, avecSans) {
-  var items = [{ type: 'ligne', coul: TF_G_CHEMIN, nom: 'chemin, pression définie (couleur de l’étape)' },
+// Légende dans un coin vide pour les transformations usuelles : en haut à
+// droite du diagramme de Clapeyron (P décroît quand V croît), en bas à
+// droite du diagramme entropique (T croît avec S, compressions et
+// chauffages montent vers la droite). y < 0 : −y est le bas de la légende.
+function _tfgLegende(c, d, xd, y, fs, avecSans) {
+  var D = TF_G_DIAGS[d];
+  var items = [{ type: 'ligne', coul: TF_G_CHEMIN, nom: D.chemin },
                { type: 'point', coul: TF_G_CHEMIN, nom: 'état d’équilibre' },
                { type: 'actuel', nom: 'état actuel' }];
   if (avecSans) items.push({ type: 'tirets', coul: '#9aa4ac', nom: 'chemin non défini' });
-  if (tfGraphAff.tranches) items.push({ type: 'tranches', nom: 'pression de chaque tranche (au volume du gaz)' });
-  if (tfGraphAff.piston) items.push({ type: 'tirets', coul: TF_G_PISTON, nom: 'pression sur le piston' });
+  if (tfGraphAff.tranches) items.push({ type: 'tranches', nom: D.tranches });
+  if (d === 'pv' && tfGraphAff.piston) items.push({ type: 'tirets', coul: TF_G_PISTON, nom: 'pression sur le piston' });
 
   c.font = _tfgPolice(fs, false);
   var w = 0;
   for (var i = 0; i < items.length; i++) w = Math.max(w, c.measureText(items[i].nom).width);
   var lh = fs * 1.35, sw = fs * 1.8, bw = w + sw + 14, bh = items.length * lh + 6;
   var x0 = xd - bw;
+  if (y < 0) y = -y - bh;
   c.fillStyle = 'rgba(255,253,249,0.9)';
   c.fillRect(x0, y, bw, bh);
   c.strokeStyle = TF_G_GRILLE;
@@ -1091,7 +1193,7 @@ function _tfgLegendePV(c, xd, y, fs, avecSans) {
 function tfGraphDessiner() {
   if (!tfGraph.cv || !tfGraph.sale) return;
   tfGraph.sale = false;
-  _tfgDessinerPV();
+  _tfgDessinerDiagrammes();
   _tfgDessinerTemps();
 }
 
@@ -1101,8 +1203,12 @@ function tfGraphDessiner() {
 
 function tfGraphPrecedente(cible) {
   var g = tfGraph;
-  if (cible === 'pv') g.vuePV = g.pilePV.length ? g.pilePV.pop() : null;
-  else                g.vueT  = g.pileT.length  ? g.pileT.pop()  : null;
+  if (cible === 'pv') {
+    var p = g.pileD.pop();
+    if (p) g.vue[p.d] = p.vue;
+  } else {
+    g.vueT = g.pileT.length ? g.pileT.pop() : null;
+  }
   g.sale = true;
 }
 
@@ -1121,9 +1227,27 @@ function tfGraphToutVoir() {
 }
 
 function tfGraphAutoPV() {
-  tfGraph.vuePV = null;
-  tfGraph.pilePV = [];
+  tfGraph.vue = { pv: null, ts: null };
+  tfGraph.pileD = [];
   tfGraph.sale = true;
+}
+
+// Diagramme d'état affiché : 'pv' (Clapeyron), 'ts' (entropique) ou 'deux'
+function tfGraphMode(m) {
+  tfGraph.mode = m;
+  ['pv', 'ts', 'deux'].forEach(function (x) {
+    document.getElementById('tf-diag-' + x).classList.toggle('active', x === m);
+  });
+  tfGraph.sale = true;
+}
+
+// Diagramme d'état sous le point (x, y) du canvas, ou null
+function _tfgDiagSous(p) {
+  for (var d in tfGraph.geoD) {
+    var q = tfGraph.geoD[d];
+    if (q && p.x >= q.x0 && p.x <= q.x0 + q.pw && p.y >= q.y0 && p.y <= q.y0 + q.ph) return d;
+  }
+  return null;
 }
 
 function tfGraphReticule() {
@@ -1148,11 +1272,15 @@ function _tfgPos(o, ev) {
 function _tfgSouris(o, cible) {
   var g = tfGraph;
   o.c.addEventListener('pointerdown', function (ev) {
-    var geo = cible === 'pv' ? g.geoPV : g.geoT;
-    if (!geo) return;
-    var p = _tfgPos(o, ev);
-    if (p.x < geo.x0 || p.x > geo.x0 + geo.pw) return;
-    g.glisse = { cible: cible, x0: p.x, y0: p.y, x1: p.x, y1: p.y };
+    var p = _tfgPos(o, ev), d = null;
+    if (cible === 'pv') {
+      d = _tfgDiagSous(p);
+      if (!d) return;
+    } else {
+      var geo = g.geoT;
+      if (!geo || p.x < geo.x0 || p.x > geo.x0 + geo.pw) return;
+    }
+    g.glisse = { cible: cible, d: d, x0: p.x, y0: p.y, x1: p.x, y1: p.y };
     try { o.c.setPointerCapture(ev.pointerId); } catch (x) { /* pointeur déjà relâché */ }
     ev.preventDefault();
   });
@@ -1175,13 +1303,13 @@ function _tfgSouris(o, cible) {
       g.pileT.push(g.vueT);
       g.vueT = { t1: tDe(Math.min(gl.x0, gl.x1)), t2: tDe(Math.max(gl.x0, gl.x1)) };
     } else {
-      var gp = g.geoPV;
+      var gp = g.geoD[gl.d];
       if (!gp || dx < 6 || dy < 6) return;
-      var VDe = function (x) { return gp.V1 + (x - gp.x0) / gp.pw * (gp.V2 - gp.V1); };
-      var PDe = function (y) { return gp.P1 + (gp.y0 + gp.ph - y) / gp.ph * (gp.P2 - gp.P1); };
-      g.pilePV.push(g.vuePV);
-      g.vuePV = { V1: VDe(Math.min(gl.x0, gl.x1)), V2: VDe(Math.max(gl.x0, gl.x1)),
-                  P1: PDe(Math.max(gl.y0, gl.y1)), P2: PDe(Math.min(gl.y0, gl.y1)) };
+      var xDe = function (x) { return gp.x1 + (x - gp.x0) / gp.pw * (gp.x2 - gp.x1); };
+      var yDe = function (y) { return gp.y1 + (gp.y0 + gp.ph - y) / gp.ph * (gp.y2 - gp.y1); };
+      g.pileD.push({ d: gl.d, vue: g.vue[gl.d] });
+      g.vue[gl.d] = { x1: xDe(Math.min(gl.x0, gl.x1)), x2: xDe(Math.max(gl.x0, gl.x1)),
+                      y1: yDe(Math.max(gl.y0, gl.y1)), y2: yDe(Math.min(gl.y0, gl.y1)) };
     }
   });
   o.c.addEventListener('pointerleave', function () {

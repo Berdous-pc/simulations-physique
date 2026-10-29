@@ -24,9 +24,10 @@ var TF_COUL_SANS_ETAPE = '#7a8a96';
 
 var tfEtapes = {
   liste   : [],     // {desc, couleur, depart, arrivee (indices de lettres ou null), statut}
-  etats   : [],     // lettres : {lettre, V, P, T, snap}
+  etats   : [],     // lettres : {lettre, V, P, T, S, snap}
   suivie  : null,   // lettre mise à jour tant que dure l'équilibre
   sel     : -1,     // étape mise en évidence sur le diagramme (-1 : aucune)
+  bilanA  : null,   // compteurs du bilan à l'état initial A (tfBilan)
   version : 0       // incrémentée à chaque changement du journal (panneau)
 };
 
@@ -47,7 +48,7 @@ function _tfLettre(i) {
 // ── Instantané du système, et retour à un instantané ──
 var _TF_SNAP_TABLEAUX = ['z', 'u', 'E', 'P', 'q'];
 var _TF_SNAP_SCALAIRES = ['tenu', 'masse', 'blocs', 'sable', 'Pair', 'Text', 'Wop', 'Wair',
-                          'Qrecu', 'eDecal', 't'];
+                          'Qrecu', 'QsurT', 'Wgaz', 'eDecal', 't'];
 
 function _tfInstantane(snap) {
   snap = snap || {};
@@ -72,7 +73,7 @@ function _tfRestaurerInstantane(snap) {
 }
 
 function _tfMajLettre(L, m) {
-  L.V = m.V; L.P = m.Pmoy; L.T = m.Tmoy;
+  L.V = m.V; L.P = m.Pmoy; L.T = m.Tmoy; L.S = tfEntropie();
   L.snap = _tfInstantane(L.snap);
 }
 
@@ -84,6 +85,7 @@ function tfEtapesEffacer() {
   _tfMajLettre(A, tfMesures());
   tfEtapes.liste = [];
   tfEtapes.etats = [A];
+  tfEtapes.bilanA = tfBilan();
   tfEtapes.suivie = 0;
   tfEtapes.sel = -1;
   tfEtapes.version++;
@@ -99,7 +101,8 @@ function tfEtapeNouvelle(desc) {
   E.liste.push({
     desc: desc,
     couleur: TF_COUL_ETAPES[E.liste.length % TF_COUL_ETAPES.length],
-    depart: depart, arrivee: null, statut: 'en cours'
+    depart: depart, arrivee: null, statut: 'en cours',
+    bilan0: tfBilan()     // compteurs au départ (section Bilan)
   });
   E.suivie = null;
   E.version++;

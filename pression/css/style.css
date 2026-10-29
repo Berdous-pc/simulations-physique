@@ -321,6 +321,26 @@ main {
 .tf-graphe-btns button:hover { background: #d0ccc4; color: #2c3e50; }
 .tf-graphe-btns button.active { background: #2a6aaa; color: #fff; border-color: #1a5a9a; }
 .tf-graphe-btns button.active:hover { background: #1a5a9a; color: #fff; }
+/* Choix du diagramme d'état : boutons accolés, comme des onglets */
+.tf-diag-choix { gap: 0; min-width: 0; }
+.tf-diag-choix button { border-radius: 0; }
+.tf-diag-choix button + button { border-left: none; }
+.tf-diag-choix button:first-child { border-radius: 5px 0 0 5px; }
+.tf-diag-choix button:last-child { border-radius: 0 5px 5px 0; }
+
+/* Section Bilan : une ligne par grandeur, une colonne par intervalle */
+.tf-bilan {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: clamp(11px, 0.95vw, 13px);
+  margin-bottom: 6px;
+}
+.tf-bilan th { font-weight: 600; color: #5a6a78; text-align: right; padding: 2px 4px; }
+.tf-bilan td { padding: 2px 4px; text-align: right; white-space: nowrap; color: #2c3e50; }
+.tf-bilan td:first-child { text-align: left; color: #5a6a78; white-space: normal; }
+.tf-bilan tr + tr td { border-top: 1px solid #e4ded4; }
+.tf-bilan tr.tf-bilan-sc td { font-weight: 700; }
+.tf-bilan tr.tf-bilan-sc td:first-child { color: #2c3e50; }
 
 .tf-graphe-zone {
   flex: 1;

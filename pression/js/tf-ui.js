@@ -24,7 +24,8 @@ var _TF_EL_IDS = [
   'tf-ro-regime', 'tf-durees-car', 'tf-btn-lancer', 'tf-btn-interrompre', 'tf-en-cours',
   'tf-journal', 'tf-ckg-gel',
   'tf-btn-brutal', 'tf-btn-qs', 'tf-btn-rev', 'tf-duree-brutal', 'tf-duree-qs', 'tf-duree-rev',
-  'tf-hint-manieres'
+  'tf-hint-manieres', 'tf-bilan', 'tf-bilan-note',
+  'tf-sl-gamma', 'tf-lbl-gamma', 'tf-sl-T0', 'tf-lbl-T0', 'tf-sl-V0', 'tf-lbl-V0'
 ];
 
 // Vrai une fois tfInit terminée : les réglages initiaux du panneau
@@ -169,6 +170,53 @@ function tfMajAfficheurs() {
 
   _tfMajCarte();
   _tfMajJournal();
+  _tfMajBilan();
+}
+
+// ── Bilan (PLAN §10.6) ──
+// Reçus par le gaz, pour la dernière étape (de son départ à maintenant) et
+// depuis l'état initial A : W, Q, ΔU (premier principe : ΔU = W + Q, à
+// l'énergie cinétique du gaz près tant qu'il bouge), variation d'entropie du
+// gaz, entropie échangée avec la source Σ δQ / T_source, et entropie créée
+// S_c = ΔS − Σ δQ / T_source.
+var _tfBilanHtml = '';
+
+function _tfFmtJ(x) { return (x < 0 ? '−' : '') + _tfFmt(Math.abs(x), 2) + ' J'; }
+function _tfFmtmJK(x) {
+  if (Math.abs(x) < 0.005e-3) x = 0;
+  return (x < 0 ? '−' : '') + _tfFmt(Math.abs(x) * 1e3, 2) + ' mJ/K';
+}
+
+function _tfMajBilan() {
+  var E = tfEtapes, b = tfBilan(), cols = [];
+  var et = E.liste[E.liste.length - 1];
+  if (et) {
+    var dep = et.depart !== null ? E.etats[et.depart].lettre : '?';
+    var arr = et.arrivee !== null ? E.etats[et.arrivee].lettre : et.statut === 'en cours' ? '…' : '✕';
+    cols.push({ titre: 'Étape ' + dep + ' → ' + arr, b0: et.bilan0 });
+  }
+  if (E.bilanA) cols.push({ titre: 'Depuis A', b0: E.bilanA });
+  var lignes = [
+    ['W reçu', function (b0) { return _tfFmtJ(b.W - b0.W); }],
+    ['Q reçue', function (b0) { return _tfFmtJ(b.Q - b0.Q); }],
+    ['ΔU', function (b0) { return _tfFmtJ(b.U - b0.U); }],
+    ['W + Q', function (b0) { return _tfFmtJ(b.W - b0.W + b.Q - b0.Q); }],
+    ['ΔS du gaz', function (b0) { return _tfFmtmJK(b.S - b0.S); }],
+    ['Σ δQ / T_source', function (b0) { return _tfFmtmJK(b.Se - b0.Se); }],
+    ['S créée', function (b0) { return _tfFmtmJK(b.S - b0.S - (b.Se - b0.Se)); }, 'tf-bilan-sc']
+  ];
+  var h = '<tr><th></th>' + cols.map(function (c) { return '<th>' + c.titre + '</th>'; }).join('') + '</tr>';
+  lignes.forEach(function (l) {
+    h += '<tr' + (l[2] ? ' class="' + l[2] + '"' : '') + '><td>' + l[0] + '</td>'
+       + cols.map(function (c) { return '<td>' + l[1](c.b0) + '</td>'; }).join('') + '</tr>';
+  });
+  if (h !== _tfBilanHtml) {
+    _tfBilanHtml = h;
+    _tfEl['tf-bilan'].innerHTML = h;
+  }
+  var enCours = et && et.statut === 'en cours';
+  _tfEl['tf-bilan-note'].textContent = (enCours ? 'Étape en cours : valeurs à cet instant. ' : '')
+    + 'Grandeurs reçues par le gaz. S créée = ΔS − Σ δQ / T_source : nulle pour une transformation réversible, positive sinon.';
 }
 
 // ── Journal des étapes (tf-etapes.js) ──
@@ -754,6 +802,37 @@ function _tfVitesseRelax() {
   if (TF_VITESSES[i] > tf.vitesse) tfOnVitesse(i);
 }
 
+// ── Section Gaz : γ et état initial (en changer réinitialise) ──
+function tfOnGamma(g) {
+  g = Math.round(g * 1e6) / 1e6;
+  if (Math.abs(g - tf.gamma) < 1e-9) return;
+  tf.gamma = g;
+  _tfMajGaz();
+  tfReinitialiser();
+}
+
+function tfOnEtatInitial(cle, val) {
+  var v = parseFloat(val);
+  if (cle === 'T0') tf.T0 = Math.abs(v - TF_T0) < 0.5 ? TF_T0 : v;
+  else tf.V0 = TF_S * v / 100;
+  _tfMajGaz();
+  tfReinitialiser();
+}
+
+function _tfMajGaz() {
+  var g = tf.gamma;
+  _tfEl['tf-sl-gamma'].value = g;
+  _tfEl['tf-lbl-gamma'].textContent = _tfFmt(g, Math.abs(g * 100 - Math.round(g * 100)) > 1e-6 ? 3 : 2);
+  [['mono', 5 / 3], ['di', 1.4], ['poly', 4 / 3]].forEach(function (x) {
+    document.getElementById('tf-gaz-' + x[0]).classList.toggle('active', Math.abs(g - x[1]) < 2e-3);
+  });
+  _tfEl['tf-sl-T0'].value = Math.round(tf.T0);
+  _tfEl['tf-lbl-T0'].textContent = _tfFmtValeur('Text', tf.T0);
+  var h = tf.V0 / TF_S;
+  _tfEl['tf-sl-V0'].value = Math.round(h * 100);
+  _tfEl['tf-lbl-V0'].textContent = _tfFmtValeur('volume', h);
+}
+
 // ── Section Affichage ──
 function tfOnAffichage(cle, coche) {
   tfAff[cle] = coche;
@@ -825,6 +904,7 @@ function tfInit() {
   for (var cle in tfAff) {
     document.getElementById('tf-ck-' + cle).checked = tfAff[cle];
   }
+  _tfMajGaz();
   ['volume', 'masse', 'Pair', 'Text'].forEach(function (c) {
     var v = tfCarte[c].vise;
     var pos = c === 'volume' ? v * 100 : c === 'Pair' ? v / 1000 : v;

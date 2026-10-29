@@ -116,8 +116,10 @@ var TF_SEUIL_EC = 1e-4;   // énergie cinétique macroscopique / énergie intern
 // ══════════════════════════════════════════════════════════════════════
 
 var tf = {
-  // Gaz
+  // Gaz, et état initial (section Gaz : le changer réinitialise)
   gamma : 1.4,
+  T0    : TF_T0,  // K
+  V0    : TF_V0,  // m³
   n     : 0,      // mol (calculée au reset)
   nTr   : 0,      // mol par tranche
   mTr   : 0,      // kg par tranche
@@ -174,6 +176,8 @@ var tf = {
   t      : 0,            // s simulées
   dtCfl  : 1e-6,         // s, pas limite calculé au sous-pas précédent
   Qrecu  : 0,            // J reçus par le fond
+  QsurT  : 0,            // J/K, entropie reçue avec cette chaleur, Σ δQ / T_ext
+  Wgaz   : 0,            // J, travail reçu par le gaz par la face du piston
   limite : false,        // la dernière image a atteint TF_SOUS_PAS_MAX
 
   // Enregistrement des graphes : fonction appelée dès que tf.t atteint
@@ -264,6 +268,26 @@ function tfButee(Pmoy) {
 // Température d'une tranche (K)
 function tfTTranche(j) { return tf.E[j] / (tf.nTr * tf.Cv); }
 
+// Entropie du gaz depuis l'état initial (J/K). Chaque tranche est localement
+// à l'équilibre : s_j = n_j·[Cv·ln(T_j/T0) + R·ln(V_j/V_j0)] ; leur somme
+// est définie même quand T et P du gaz ne le sont pas (PLAN §10.6).
+function tfEntropie() {
+  var s = 0, cTr = tf.nTr * tf.Cv, V0Tr = tf.V0 / (TF_S * TF_N);
+  for (var j = 0; j < TF_N; j++) {
+    s += tf.Cv * Math.log(tf.E[j] / (cTr * tf.T0))
+       + TF_R * Math.log((tf.z[j + 1] - tf.z[j]) / V0Tr);
+  }
+  return tf.nTr * s;
+}
+
+// Compteurs du bilan (section Bilan) : énergie interne, travail reçu par le
+// gaz, chaleur reçue, entropie échangée avec la source (Σ δQ / T_ext),
+// entropie du gaz. Entre deux instants : ΔU = W + Q, et l'entropie créée
+// S_c = ΔS − Σ δQ / T_ext.
+function tfBilan() {
+  return { U: _tfU(), W: tf.Wgaz, Q: tf.Qrecu, Se: tf.QsurT, S: tfEntropie() };
+}
+
 // Mesures : moyennes, extrêmes des tranches et critère d'équilibre (§2.4)
 function tfMesures() {
   var g1 = tf.gamma - 1;
@@ -308,21 +332,22 @@ function tfMesures() {
 // ══════════════════════════════════════════════════════════════════════
 
 // Gaz au repos à T0 sous le piston seul, volume V0 ; piston tenu, pas de
-// masse, vérin arrêté. Les réglages (isolation, vitesse, γ) sont conservés.
+// masse, vérin arrêté, source à T0. Les réglages (isolation, vitesse, γ,
+// T0, V0) sont conservés.
 function tfReset() {
   tf.Cv  = TF_R / (tf.gamma - 1);
   var P0 = TF_P_ATM + TF_M_PISTON * TF_G / TF_S;
-  tf.n   = P0 * TF_V0 / (TF_R * TF_T0);
+  tf.n   = P0 * tf.V0 / (TF_R * tf.T0);
   tf.nTr = tf.n / TF_N;
   tf.mTr = tf.n * TF_M_AIR / TF_N;
 
-  var h0 = TF_V0 / TF_S;
+  var h0 = tf.V0 / TF_S;
   for (var i = 0; i <= TF_N; i++) {
     tf.z[i] = h0 * i / TF_N;
     tf.u[i] = 0;
   }
   for (var j = 0; j < TF_N; j++) {
-    tf.E[j] = tf.nTr * tf.Cv * TF_T0;
+    tf.E[j] = tf.nTr * tf.Cv * tf.T0;
     tf.P[j] = P0;
     tf.q[j] = 0;
   }
@@ -333,12 +358,14 @@ function tfReset() {
   tf.Wop    = 0;
   tf.Pair   = TF_P_ATM;
   tf.Wair   = 0;
-  tf.Text   = TF_T0;
+  tf.Text   = tf.T0;
   for (var cle in tf.rampes) tf.rampes[cle].actif = false;
   tf.eDecal = 0;
   tf.qs     = false;
   tf.t      = 0;
   tf.Qrecu  = 0;
+  tf.QsurT  = 0;
+  tf.Wgaz   = 0;
   tf.limite = false;
   tf.dtCfl  = 1e-6;
   tf.tEchant = 0;
@@ -761,6 +788,7 @@ function _tfSousPasQS(dt) {
   var Vc = tf.tenu ? TF_S * (tf.verin.actif ? _tfZVerin(tf.t + dt) : z[N]) : null;
   if (!_tfQSAppliquer(Q, Vc)) return false;
   tf.Qrecu += Qfond;
+  if (Qfond !== 0) tf.QsurT += Qfond / tf.Text;
   tf.t += dt;
   if (tf.verin.actif && tf.t >= tf.verin.t0 + tf.verin.tau - 1e-12) tf.verin.actif = false;
   return true;
@@ -853,6 +881,11 @@ function _tfQSAppliquer(Q, Vc) {
     }
     tf.Wop += Eapres - Eavant;
   }
+  // Travail reçu par le gaz : variation d'énergie interne moins la chaleur
+  // apportée
+  var dW = 0;
+  for (j = 0; j < N; j++) dW += Ef[j] - E[j] - Q[j];
+  tf.Wgaz += dW;
   var zc = 0;
   for (j = 0; j < N; j++) {
     E[j] = Ef[j];
@@ -931,14 +964,17 @@ function _tfSousPas(dt) {
     var Vn  = S * dzN;
     E[j] = (E[j] - (0.5 * P[j] + q[j]) * dV) / (1 + 0.5 * g1 * dV / Vn);
   }
-  // Travail du vérin : celui que la tranche du haut reçoit par la face du
-  // piston, avec la même pression moyenne qu'à l'étape 4, plus la variation
-  // d'énergie cinétique de la demi-tranche portée par la face
-  if (tenu) {
-    var Ptop = 0.5 * P[N - 1] + q[N - 1]
-             + 0.5 * g1 * E[N - 1] / (S * (z[N] - z[N - 1]));
-    tf.Wop += -Ptop * S * u[N] * dt + 0.25 * mTr * (u[N] * u[N] - uAvant * uAvant);
-  }
+  // Travail reçu par le gaz : celui que la tranche du haut reçoit par la
+  // face du piston, avec la même pression moyenne qu'à l'étape 4, plus la
+  // variation d'énergie cinétique de la demi-tranche portée par la face ;
+  // piston libre, la chaleur dissipée par son amortissement (frottement
+  // rendu au gaz, étape 5) en fait partie. Piston tenu, c'est le travail du
+  // vérin.
+  var Ptop = 0.5 * P[N - 1] + q[N - 1]
+           + 0.5 * g1 * E[N - 1] / (S * (z[N] - z[N - 1]));
+  var dWface = -Ptop * S * u[N] * dt + 0.25 * mTr * (u[N] * u[N] - uAvant * uAvant);
+  tf.Wgaz += dWface + chaleur;
+  if (tenu) tf.Wop += dWface;
 
   // 5. Chaleur : dissipation rendue au gaz, conduction entre tranches,
   //    échange par le fond. La dissipation liée au mouvement du piston est
@@ -962,6 +998,7 @@ function _tfSousPas(dt) {
     var Q = tf.G * (tf.Text - T[0]) * dt;
     E[0]     += Q;
     tf.Qrecu += Q;
+    tf.QsurT += Q / tf.Text;
   }
 
   // 6. Pressions, et amortissement du sous-pas suivant
