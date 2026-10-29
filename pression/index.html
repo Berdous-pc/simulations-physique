@@ -97,43 +97,77 @@
   </div>
 
   <!-- ══════════════════════════════════════════════
-       COLONNE GAUCHE (onglet Transformations) : cylindre
-       Même cellule de grille que #left-col ; un seul des deux est affiché.
+       COLONNE GAUCHE (onglet Transformations) : graphes et tableau, puis
+       le cylindre. Même cellule de grille que #left-col ; un seul des deux
+       est affiché. Splitters : largeur des graphes, hauteur du diagramme PV.
   ══════════════════════════════════════════════ -->
   <div id="tf-left-col" style="display:none">
 
-    <div id="tf-info">
-      <table class="info-table">
-        <colgroup>
-          <col class="it-col-lbl">
-          <col class="it-col-val">
-        </colgroup>
-        <tr>
-          <td class="it-lbl">Temps</td>
-          <td class="it-val" id="tf-it-t">—</td>
-        </tr>
-        <tr>
-          <td class="it-lbl">Pression</td>
-          <td class="it-val" id="tf-it-P">—</td>
-        </tr>
-        <tr>
-          <td class="it-lbl">Température</td>
-          <td class="it-val" id="tf-it-T">—</td>
-        </tr>
-        <tr>
-          <td class="it-lbl">Volume</td>
-          <td class="it-val" id="tf-it-V">—</td>
-        </tr>
-        <tr>
-          <td class="it-lbl it-wrap" id="tf-it-Pext-lbl">Pression extérieure</td>
-          <td class="it-val" id="tf-it-Pext">—</td>
-        </tr>
-        <tr>
-          <td class="it-lbl">État</td>
-          <td class="it-val" id="tf-it-etat">—</td>
-        </tr>
-      </table>
+    <div id="tf-graph-col">
+
+      <div class="tf-graphe" id="tf-pv-zone">
+        <div class="tf-graphe-barre">
+          <span class="tf-graphe-titre">Diagramme de Clapeyron</span>
+          <div class="tf-graphe-btns">
+            <button onclick="tfGraphPrecedente('pv')" title="Vue précédente">↶</button>
+            <button onclick="tfGraphAutoPV()" title="Cadrage automatique">Auto</button>
+            <button class="tf-btn-reticule" onclick="tfGraphReticule()" title="Réticule">+</button>
+          </div>
+        </div>
+        <div class="tf-graphe-zone">
+          <canvas id="tf-canvas-pv" aria-label="Diagramme de Clapeyron : pression en fonction du volume"></canvas>
+        </div>
+      </div>
+
+      <div class="tf-split-h" id="tf-hsplit" title="Glisser pour partager la hauteur"></div>
+
+      <div class="tf-graphe" id="tf-temps-zone">
+        <div class="tf-graphe-barre">
+          <span class="tf-graphe-titre">Au cours du temps</span>
+          <div class="tf-graphe-btns">
+            <button onclick="tfGraphPrecedente('t')" title="Vue précédente">↶</button>
+            <button onclick="tfGraphSuivre()" title="Revenir à la fenêtre glissante">Suivre</button>
+            <button onclick="tfGraphToutVoir()" title="Tout l’historique">Tout voir</button>
+            <button class="tf-btn-reticule" onclick="tfGraphReticule()" title="Réticule">+</button>
+          </div>
+        </div>
+        <div class="tf-graphe-zone">
+          <canvas id="tf-canvas-temps" aria-label="Température, pression et volume en fonction du temps"></canvas>
+        </div>
+      </div>
+
+      <div id="tf-info">
+        <table class="info-table tf-info-table">
+          <colgroup>
+            <col class="tf-col-lbl">
+            <col class="tf-col-val">
+            <col class="tf-col-lbl">
+            <col class="tf-col-val">
+          </colgroup>
+          <tr>
+            <td class="it-lbl">Temps</td>
+            <td class="it-val" id="tf-it-t">—</td>
+            <td class="it-lbl">État</td>
+            <td class="it-val" id="tf-it-etat">—</td>
+          </tr>
+          <tr>
+            <td class="it-lbl">Pression</td>
+            <td class="it-val" id="tf-it-P">—</td>
+            <td class="it-lbl">Volume</td>
+            <td class="it-val" id="tf-it-V">—</td>
+          </tr>
+          <tr>
+            <td class="it-lbl">Température</td>
+            <td class="it-val" id="tf-it-T">—</td>
+            <td class="it-lbl it-wrap" id="tf-it-Pext-lbl">Pression extérieure</td>
+            <td class="it-val" id="tf-it-Pext">—</td>
+          </tr>
+        </table>
+      </div>
+
     </div>
+
+    <div class="tf-split-v" id="tf-vsplit" title="Glisser pour partager la largeur"></div>
 
     <div id="tf-sim-area">
       <canvas id="tf-canvas"></canvas>
@@ -386,6 +420,23 @@
             <input type="checkbox" id="tf-ck-amplifie" onchange="tfOnAffichage('amplifie', this.checked)">
             Profil amplifié (écart à la moyenne)
           </label>
+          <div class="tf-sous-titre">Diagramme de Clapeyron</div>
+          <label class="check-row">
+            <input type="checkbox" id="tf-ckg-nuage" checked onchange="tfOnAffGraphe('nuage', this.checked)">
+            Nuage des tranches
+          </label>
+          <label class="check-row">
+            <input type="checkbox" id="tf-ckg-piston" onchange="tfOnAffGraphe('piston', this.checked)">
+            Pression sur le piston
+          </label>
+          <label class="check-row">
+            <input type="checkbox" id="tf-ckg-isotherme" onchange="tfOnAffGraphe('isotherme', this.checked)">
+            Isotherme
+          </label>
+          <label class="check-row">
+            <input type="checkbox" id="tf-ckg-adiabatique" onchange="tfOnAffGraphe('adiabatique', this.checked)">
+            Adiabatique réversible
+          </label>
         </div>
 
       </div><!-- fin #section-transformations -->
@@ -405,6 +456,8 @@
         <strong>Volume imposé</strong> : réglez la hauteur visée et la durée τ, puis <strong>Lancer</strong> ; <strong>Retour</strong> ramène le piston à son départ avec la même durée (aller-retour).
         Le curseur <strong>Vitesse</strong> descend jusqu'à ×1/5000 pour suivre un front dans le gaz ; à ce cran, les molécules s'agitent à leur vitesse réelle.
         Quand les tranches du gaz n'ont pas la même pression ou la même température, le tableau affiche <strong>?</strong> et l'écart entre tranches.
+        Les <strong>graphes</strong> le montrent aussi : hors équilibre, T(t) et P(t) deviennent une bande hachurée (de la tranche la plus basse à la plus haute), et le diagramme de Clapeyron ne trace plus le gaz : un pointillé relie les états connus. Le <strong>nuage</strong> y donne un point par tranche (l'état qu'aurait le gaz entier s'il était partout comme elle) ; il se resserre en un seul point à l'équilibre.
+        Glisser sur un graphe zoome (↶ : vue précédente ; Suivre ou Auto : cadrage automatique) ; + affiche un réticule. Les séparations entre les graphes et le cylindre se déplacent à la souris.
         Couleur du gaz et des molécules : bleu plus froid que 20 °C, rouge plus chaud.
         Les <strong>molécules</strong> restent dans leur bande de gaz (pointillés) : une bande comprimée s'aplatit et ses molécules se serrent ; chacune va d'autant plus vite que le gaz est chaud là où elle se trouve. La pression se lit sur les sondes et le profil : P et T sont calculées par tranches, pas à partir des chocs des molécules.
         Sous la masse posée, le gaz reste presque uniforme en pression : le piston chargé bouge environ 170 fois plus lentement que le son ne traverse le gaz.
@@ -433,13 +486,14 @@
 </main>
 
 <!-- Ordre de chargement : onglet Pression (sim → recipient), onglet
-     Transformations (tf-sim → tf-molecules → tf-scene → tf-ui), puis ui (onglets, boucle,
+     Transformations (tf-sim → tf-molecules → tf-scene → tf-graph → tf-ui), puis ui (onglets, boucle,
      initialisation) et sections repliables (en dernier) -->
 <script src="js/sim.js"></script>
 <script src="js/recipient.js"></script>
 <script src="js/tf-sim.js"></script>
 <script src="js/tf-molecules.js"></script>
 <script src="js/tf-scene.js"></script>
+<script src="js/tf-graph.js"></script>
 <script src="js/tf-ui.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/sections-repliables.js"></script>

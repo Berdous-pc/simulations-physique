@@ -14,6 +14,7 @@ pression/
     ├── tf-sim.js            ← onglet Transformations : moteur en tranches
     ├── tf-molecules.js      ← onglet Transformations : molécules pilotées par le modèle
     ├── tf-scene.js          ← onglet Transformations : rendu du cylindre
+    ├── tf-graph.js          ← onglet Transformations : graphes T, P, V(t) et diagramme de Clapeyron
     ├── tf-ui.js             ← onglet Transformations : panneau et boucle
     ├── ui.js                ← onglets, boucle et initialisation de l'onglet Pression
     └── sections-repliables.js   ← copie de titrage/, sections du panneau repliables
@@ -252,7 +253,7 @@ index.html
 
 ## Onglet Transformations
 
-> Construit par paliers selon `PLAN_TRANSFORMATIONS.md` (palier 1 terminé : moteur, scène minimale, masse, loquet, isolation du fond, ralenti ; palier 2 terminé : mise en évidence du hors-équilibre ; palier 3 terminé : famille à volume imposé, 80 tranches, retrait du son ralenti, molécules selon la tranche locale).
+> Construit par paliers selon `PLAN_TRANSFORMATIONS.md` (palier 1 terminé : moteur, scène minimale, masse, loquet, isolation du fond, ralenti ; palier 2 terminé : mise en évidence du hors-équilibre ; palier 3 terminé : famille à volume imposé, 80 tranches, retrait du son ralenti, molécules selon la tranche locale ; palier 4 terminé : graphes, diagramme de Clapeyron et nouvelle disposition).
 
 ### Cohabitation avec l'onglet Pression
 
@@ -338,6 +339,24 @@ Options d'affichage dans `tfAff` (section Affichage du panneau) : molécules, ch
 
 Échelle verticale réelle (graduations en cm), cylindre **élargi** horizontalement : aussi large que la zone le permet, au plus `TF_LARG_MAX` (75 %) de sa hauteur dessinée. De bas en haut : isolant hachuré (d'autant plus épais que G est faible), paroi du fond (claire si conductrice), gaz et limites des tranches (elles se resserrent dans une compression : ondes visibles au ralenti), parois, graduations (à gauche, au-delà des goupilles), tige, plateau, masse, corps du piston hachuré, goupilles du loquet (enfoncées dans le piston : verrouillé ; reculées hors du cylindre : libéré). `tfResize()` avec anti-rebond, `window.resize` et `ResizeObserver` sur `#tf-sim-area`.
 
+### `js/tf-graph.js` — Graphes et disposition de la colonne gauche
+
+**Disposition** : `#tf-left-col` = `#tf-graph-col` (diagramme PV, splitter `#tf-hsplit`, graphes temporels, tableau `#tf-info` sur deux colonnes de valeurs), splitter `#tf-vsplit`, `#tf-sim-area`. Les splitters écrivent des **pourcentages** dans les variables CSS `--tf-larg-graphes` (sur `#tf-left-col`, 25 à 70 %, défaut 48 %) et `--tf-haut-pv` (sur `#tf-graph-col`, défaut 46 %) : ils tiennent seuls au redimensionnement, et la disposition étroite (cylindre en haut, graphes dessous, splitter vertical masqué) les ignore. Un `ResizeObserver` sur les deux zones de graphe et sur `#tf-sim-area` redessine tout ce qui change de taille.
+
+**Enregistrement** : `tfAvancer` appelle `tf.echantillon` (= `_tfgEchantillon`) dès que `tf.t` atteint `tf.tEchant`. Pas d'échantillonnage = fenêtre affichée / 500, ramené à τ/200 pendant un mouvement du vérin (une compression de 2 ms reste décrite au cran ×1) ; `tfGraphReprogrammer()` rapproche l'échéance après un changement de cran, Lancer ou Retour. Un échantillon garde t, V, moyennes et extrêmes de P et T, `Pdef`, `Tdef`, `eq`, la pression exercée par le piston (P_ext, ou `Pface` à volume imposé) et T_ext. Au-delà de 20 000 échantillons, l'historique est éclairci de moitié. `tfGraphEffacer()` (Réinitialiser, changement de famille) repart de l'état initial.
+
+**Graphes temporels** (un canvas, trois cases T, P, V partageant l'axe des temps) : courbe pleine quand la grandeur est définie (`Pdef`, `Tdef`) ; sinon **bande hachurée** entre les extrêmes des tranches, sans moyenne, et mention « non définie ». Repères pointillés : T_ext si le fond échange de la chaleur ; P_ext à pression imposée ; pression mesurée par le vérin si l'option « Pression sur le piston » est cochée. Fenêtre glissante `TF_G_FENETRES` alignée sur les crans (5 ms à ×1/5000, 20 s à ×1, 400 s à ×20), en ms sous 1 s. Une bande de titre est réservée en haut de chaque case.
+
+**Diagramme de Clapeyron** :
+- chemin plein tant que le gaz a un état (`Pdef && Tdef`, et non `eq` : un vérin lent laisse le gaz uniforme mais n'est pas « à l'équilibre », le piston bougeant) ; d'un tronçon défini au suivant, pointillé gris « chemin non défini » ;
+- états d'équilibre en points pleins (début et fin de chaque séjour à l'équilibre) ; état actuel cerclé s'il est défini, sinon mention « État du gaz non défini » ;
+- **nuage des tranches** (option, activée) : (N·V_tranche, P_tranche), coloré selon T avec la palette des molécules ;
+- options pression sur le piston (tireté orangé : l'aire dessous est le travail reçu), isotherme et adiabatique réversible passant par `tfGraph.ref`, le dernier état d'équilibre avant que le gaz n'en sorte (départ de la transformation en cours ; elles restent en place à l'arrivée, pour comparer) ;
+- cadrage automatique sur le chemin défini, l'état de départ, la pression sur le piston si tracée, et l'**enveloppe du nuage depuis le départ** (`tfGraph.env`) : pendant un choc, le cadre s'élargit au lieu de pomper à chaque image ;
+- légende en haut à droite (zone vide pour les transformations usuelles), courbes théoriques étiquetées directement.
+
+**Outils** : glisser = zoom (rectangle sur le diagramme PV, intervalle de temps sur les graphes temporels) ; ↶ vue précédente (piles `pileT`, `pilePV`) ; Suivre (fenêtre glissante) ; Tout voir (historique complet) ; Auto (cadrage automatique du PV) ; + réticule commun aux deux canvas, avec bulle de valeurs (graphes temporels : « non définie (… à …) » hors équilibre). Options dans `tfGraphAff` (cases `tf-ckg-…` de la section Affichage). Tracé dans la boucle (`tfGraphDessiner`) seulement si `tfGraph.sale`.
+
 ### `js/tf-ui.js` — Panneau et boucle
 
-Afficheurs `#tf-info` à 10 Hz (temps en ms aux crans < ×1/100, P en kPa, T, V, P_ext ou, à volume imposé, « Pression sur le piston » mesurée par le vérin, État). P ou T non définies (critère de `tfMesures`) : « ? » suivi de l'intervalle couvert par les tranches, jamais la moyenne. État : « À l'équilibre » (vert) ou « Hors équilibre » (terracotta). Section Affichage (repliable) : cases `tf-ck-…`, resynchronisées sur `tfAff` au chargement (un navigateur peut conserver l'état des cases au rechargement). curseur Vitesse à 7 crans `TF_VITESSES` (×1/5000 → ×20) ; section **Contrainte** à sous-onglets `.mode-tab` (`tfOnFamille`, réinitialise) : Pression imposée (sélecteur et bouton de masse, bouton du loquet) ou Volume imposé (curseurs Hauteur visée et Durée τ, afficheurs traversée L/c, équilibre thermique et transformation attendue — `_tfRegime` : « onde de choc » si la vitesse de pointe dépasse c, brutale si τ < 5·L/c, sinon réversible si calorifugé, irréversible si τ < 10·τ_th, presque réversible au-delà —, boutons Lancer / Retour grisés pendant le mouvement ou quand le piston est déjà au but, travail reçu W_op) ; curseur Isolation. `tfInit()` est appelée par `ui.js`.
+Afficheurs `#tf-info` (tableau sous les graphes, deux grandeurs par ligne) à 10 Hz (temps en ms aux crans < ×1/100, P en kPa, T, V, P_ext ou, à volume imposé, « Pression sur le piston » mesurée par le vérin, État). P ou T non définies (critère de `tfMesures`) : « ? » suivi de l'intervalle couvert par les tranches, jamais la moyenne. État : « À l'équilibre » (vert) ou « Hors équilibre » (terracotta). Section Affichage (repliable) : cases `tf-ck-…`, resynchronisées sur `tfAff` au chargement (un navigateur peut conserver l'état des cases au rechargement). curseur Vitesse à 7 crans `TF_VITESSES` (×1/5000 → ×20) ; section **Contrainte** à sous-onglets `.mode-tab` (`tfOnFamille`, réinitialise) : Pression imposée (sélecteur et bouton de masse, bouton du loquet) ou Volume imposé (curseurs Hauteur visée et Durée τ, afficheurs traversée L/c, équilibre thermique et transformation attendue — `_tfRegime` : « onde de choc » si la vitesse de pointe dépasse c, brutale si τ < 5·L/c, sinon réversible si calorifugé, irréversible si τ < 10·τ_th, presque réversible au-delà —, boutons Lancer / Retour grisés pendant le mouvement ou quand le piston est déjà au but, travail reçu W_op) ; curseur Isolation. `tfInit()` est appelée par `ui.js`.

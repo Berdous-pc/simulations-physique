@@ -255,6 +255,137 @@ main {
 .it-val.tf-etat-eq   { color: #2a8a50; }
 .it-val.tf-etat-hors { color: #b04020; }
 
+/* ── Onglet Transformations : colonne des graphes ── */
+/* De gauche à droite : graphes et tableau, splitter, cylindre. Les
+   partages sont des variables CSS en %, réglées par les splitters
+   (tf-graph.js) ; la disposition étroite les ignore. */
+#tf-left-col {
+  align-items: stretch;
+  gap: 0;
+}
+
+#tf-graph-col {
+  flex: 0 0 var(--tf-larg-graphes, 48%);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.tf-graphe {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: #fdf8f0;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  overflow: hidden;
+}
+#tf-pv-zone    { flex: 0 0 var(--tf-haut-pv, 46%); }
+#tf-temps-zone { flex: 1 1 0; }
+
+.tf-graphe-barre {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 4px 8px 2px;
+}
+.tf-graphe-titre {
+  font-weight: 700;
+  font-size: clamp(11px, 1.05vw, 14px);
+  color: #2c3e50;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tf-graphe-btns {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+/* Boutons repris des outils de graphe d'ondes/ */
+.tf-graphe-btns button {
+  height: clamp(22px, 2.6vh, 28px);
+  padding: 0 clamp(5px, 0.6vw, 9px);
+  font-weight: 700;
+  font-size: clamp(11px, 1vw, 13px);
+  background: #e8e4de;
+  color: #5a6a78;
+  border: 1px solid #b0a898;
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tf-graphe-btns button:hover { background: #d0ccc4; color: #2c3e50; }
+.tf-graphe-btns button.active { background: #2a6aaa; color: #fff; border-color: #1a5a9a; }
+.tf-graphe-btns button.active:hover { background: #1a5a9a; color: #fff; }
+
+.tf-graphe-zone {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+.tf-graphe-zone canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;   /* glisser = zoom, y compris au doigt */
+  cursor: crosshair;
+}
+
+/* Splitters : une poignée discrète, bleue au survol */
+.tf-split-h,
+.tf-split-v {
+  flex: 0 0 10px;
+  position: relative;
+  touch-action: none;
+}
+.tf-split-h { cursor: row-resize; }
+.tf-split-v { cursor: col-resize; align-self: stretch; }
+.tf-split-h::after,
+.tf-split-v::after {
+  content: '';
+  position: absolute;
+  background: #b8b0a4;
+  border-radius: 2px;
+  transition: background 0.15s;
+}
+.tf-split-h::after { left: 35%; right: 35%; top: 4px; height: 2px; }
+.tf-split-v::after { top: 35%; bottom: 35%; left: 4px; width: 2px; }
+.tf-split-h:hover::after, .tf-split-h.dragging::after,
+.tf-split-v:hover::after, .tf-split-v.dragging::after { background: #2a6aaa; }
+.tf-split-h:hover::after, .tf-split-h.dragging::after { left: 10%; right: 10%; }
+.tf-split-v:hover::after, .tf-split-v.dragging::after { top: 10%; bottom: 10%; }
+
+/* Tableau compact sous les graphes : deux grandeurs par ligne. La plage
+   des tranches (« ? (… à …) ») passe à la ligne plutôt que d'être coupée. */
+#tf-graph-col #tf-info {
+  flex-shrink: 0;
+  width: auto;
+  max-width: none;
+  margin-top: 8px;
+  font-size: clamp(11px, min(1.05cqw, 2.2cqh), 15px);
+}
+.tf-col-lbl { width: 21%; }
+.tf-col-val { width: 29%; }
+.tf-info-table .it-val {
+  white-space: normal;
+  line-height: 1.15;
+}
+.tf-info-table .tf-plage { font-size: 0.85em; }
+
+/* Sous-titre dans une section du panneau (options du diagramme PV) */
+.tf-sous-titre {
+  font-size: 11px;
+  font-weight: 600;
+  color: #7a8a96;
+  margin: 10px 0 6px;
+}
+
 /* Sous-onglets (repris de electrochimie/ et refraction/) : famille de
    transformations de l'onglet Transformations */
 .mode-tabs {
@@ -779,13 +910,22 @@ html:not(.sections-pretes) .section-title[data-repliable]:not([data-repliable="o
   #it-macro { width: 14em; }
   #it-chocs { width: 16em; }
 
-  /* Onglet Transformations : un seul tableau, sous le cylindre */
-  #tf-info {
+  /* Onglet Transformations : le cylindre en haut (élément central, au
+     moins ~45 % de la hauteur), les graphes et le tableau dessous */
+  #tf-sim-area {
+    flex: 1 1 52%;
+    width: 100%;
+    min-height: 45%;
+  }
+  #tf-vsplit { display: none; }
+  #tf-graph-col {
     order: 1;
-    flex-shrink: 0;
-    font-size: clamp(10px, min(3.2cqw, 2.3cqh), 20px);
-    width: 20em;
-    max-width: 100%;
+    flex: 0 0 48%;
+    width: 100%;
+    margin-top: 8px;
+  }
+  #tf-graph-col #tf-info {
+    font-size: clamp(10px, min(2.2cqw, 1.5cqh), 13px);
   }
 }
 

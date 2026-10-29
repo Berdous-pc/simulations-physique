@@ -6,7 +6,7 @@
 
 // ══════════════════════════════════════════════════════════════════════
 //  tf-ui.js — Onglet Transformations : commandes du panneau et boucle
-//  Chargé après tf-sim.js et tf-scene.js, avant ui.js (qui gère les
+//  Chargé après tf-sim.js, tf-scene.js et tf-graph.js, avant ui.js (qui gère les
 //  onglets et appelle tfInit()).
 // ══════════════════════════════════════════════════════════════════════
 
@@ -181,6 +181,7 @@ function tfBasculerPause() {
 function tfReinitialiser() {
   tfReset();
   tfMolInit();
+  tfGraphEffacer();
   _tfMajBoutons();
   tfMajAfficheurs();
 }
@@ -188,6 +189,8 @@ function tfReinitialiser() {
 function tfOnVitesse(val) {
   tf.vitesse = TF_VITESSES[parseInt(val, 10)];
   _tfEl['tf-lbl-vitesse'].textContent = _tfLibelleVitesse(tf.vitesse);
+  tfGraph.sale = true;   // la fenêtre des graphes temporels suit le cran
+  tfGraphReprogrammer();
   tfMajAfficheurs();
 }
 
@@ -196,6 +199,7 @@ function tfOnFamille(f) {
   if (f === tf.famille) return;
   tfSetFamille(f);
   tfMolInit();
+  tfGraphEffacer();
   _tfMajBoutons();
   tfMajAfficheurs();
 }
@@ -218,11 +222,13 @@ function tfOnDuree(val) {
 
 function tfLancer() {
   tfLancerVerin();
+  tfGraphReprogrammer();
   _tfMajBoutonsVerin();
 }
 
 function tfRetour() {
   tfRetourVerin();
+  tfGraphReprogrammer();
   _tfMajBoutonsVerin();
 }
 
@@ -257,6 +263,7 @@ function tfOnAffichage(cle, coche) {
   // Le profil de pression prend de la place à droite du cylindre
   if (cle === 'profil') _tfDoResize();
   tf.needsRedraw = true;
+  tfGraph.sale = true;   // couleur du nuage des tranches
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -298,6 +305,7 @@ function _tfLoop(ts) {
     tfDessiner();
     tf.needsRedraw = false;
   }
+  tfGraphDessiner();
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -325,6 +333,7 @@ function tfInit() {
 
   tfReset();
   tfMolInit();
+  tfGraphInit();
   _tfDoResize();
   _tfMajBoutons();
   tfMajAfficheurs();

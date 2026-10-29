@@ -152,6 +152,11 @@ var tf = {
   Qrecu  : 0,            // J reçus par le fond
   limite : false,        // la dernière image a atteint TF_SOUS_PAS_MAX
 
+  // Enregistrement des graphes : fonction appelée dès que tf.t atteint
+  // tEchant (tf-graph.js la fournit et fixe l'échéance suivante)
+  echantillon : null,
+  tEchant     : 0,
+
   // Animation
   paused      : false,
   vitesse     : 1,
@@ -282,6 +287,7 @@ function tfReset() {
   tf.Qrecu  = 0;
   tf.limite = false;
   tf.dtCfl  = 1e-6;
+  tf.tEchant = 0;
   _tfMajAmortissement();
   tf.needsRedraw = true;
 }
@@ -416,6 +422,7 @@ function tfAvancer(dt) {
       if (fin > 1e-12 && fin < h) h = fin;
     }
     _tfSousPas(h);
+    if (tf.echantillon && tf.t >= tf.tEchant) tf.echantillon();
     reste -= h;
     n++;
   }
