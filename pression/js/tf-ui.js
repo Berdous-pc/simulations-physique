@@ -14,11 +14,14 @@
 
 var _tfEl = {};
 var _TF_EL_IDS = [
-  'tf-it-t', 'tf-it-P', 'tf-it-T', 'tf-it-V', 'tf-it-Pext', 'tf-it-etat',
+  'tf-it-t', 'tf-it-P', 'tf-it-T', 'tf-it-V', 'tf-it-Pext', 'tf-it-Pext-lbl', 'tf-it-etat',
   'tf-btn-playpause', 'tf-sl-vitesse', 'tf-lbl-vitesse', 'tf-vitesse-limite',
+  'tf-tab-pression', 'tf-tab-volume', 'tf-bloc-pression', 'tf-bloc-volume',
   'tf-sel-masse', 'tf-btn-masse', 'tf-btn-loquet',
-  'tf-sl-isolation', 'tf-lbl-isolation',
-  'tf-sl-son', 'tf-lbl-son', 'tf-ro-traversee', 'tf-ro-piston'
+  'tf-sl-visee', 'tf-lbl-visee', 'tf-sl-duree', 'tf-lbl-duree',
+  'tf-ro-traversee', 'tf-ro-thermique', 'tf-ro-regime', 'tf-ro-travail',
+  'tf-btn-lancer', 'tf-btn-retour', 'tf-duree-allongee',
+  'tf-sl-isolation', 'tf-lbl-isolation'
 ];
 
 // ══════════════════════════════════════════════════════════════════════
@@ -61,7 +64,11 @@ function tfMajAfficheurs() {
   _tfEl['tf-it-T'].innerHTML      = m.Tdef ? _tfFmt(m.Tmoy, 1) + ' K'
     : _tfNonDefini(_tfFmt(m.Tmin, 1) + ' à ' + _tfFmt(m.Tmax, 1) + ' K');
   _tfEl['tf-it-V'].textContent    = _tfFmt(m.V * 1000, 3) + ' L';
-  _tfEl['tf-it-Pext'].textContent = _tfFmtPression(m.Pext);
+  // Volume imposé : pas de pression extérieure qui fixe l'équilibre ; le
+  // vérin mesure la pression du gaz sur le piston
+  var volume = tf.famille === 'volume';
+  _tfEl['tf-it-Pext-lbl'].textContent = volume ? 'Pression sur le piston' : 'Pression extérieure';
+  _tfEl['tf-it-Pext'].textContent = _tfFmtPression(volume ? m.Pface : m.Pext);
 
   var etat = _tfEl['tf-it-etat'];
   etat.textContent = m.equilibre ? 'À l’équilibre' : 'Hors équilibre';
@@ -69,9 +76,52 @@ function tfMajAfficheurs() {
 
   _tfEl['tf-vitesse-limite'].style.display = tf.limite ? '' : 'none';
 
-  var d = tfDurees();
-  _tfEl['tf-ro-traversee'].textContent = _tfFmtDuree(d.traversee);
-  _tfEl['tf-ro-piston'].textContent    = _tfFmtDuree(d.piston);
+  if (volume) {
+    var d = tfDurees();
+    _tfEl['tf-ro-traversee'].textContent = _tfFmtDuree(d.traversee);
+    _tfEl['tf-ro-thermique'].textContent = isFinite(d.thermique)
+      ? _tfFmtDuree(d.thermique) : 'aucune (calorifugé)';
+    _tfEl['tf-ro-regime'].textContent  = _tfRegime(d, _tfTauProchain());
+    _tfEl['tf-ro-travail'].textContent = _tfFmt(tf.Wop, 2) + ' J';
+    _tfMajBoutonsVerin();
+    _tfMajDureeAllongee();
+  }
+}
+
+// Durée du mouvement en cours, ou de celui que lancerait le bouton Lancer
+// (durée choisie, allongée si la course l'exige : tfTauEffectif)
+function _tfTauProchain() {
+  return tf.verin.actif ? tf.verin.tau : tfTauEffectif(tf.z[TF_N], tf.hVisee);
+}
+
+// Signale une durée allongée pour que le piston reste sous TF_V_VERIN_MAX
+function _tfMajDureeAllongee() {
+  var el = _tfEl['tf-duree-allongee'];
+  var tau = tfTauEffectif(tf.z[TF_N], tf.hVisee);
+  if (tau > tf.tau * 1.0001) {
+    el.textContent = 'Course trop longue pour cette durée : portée à ' + _tfFmtDuree(tau)
+                   + ' (piston limité à ' + TF_V_VERIN_MAX + ' m/s)';
+    el.style.display = '';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+// Régime attendu pour la durée tau (PLAN §2.7) : comparée à la traversée
+// du gaz par le son (mécanique), puis à la mise en équilibre thermique avec
+// l'extérieur
+function _tfRegime(d, tau) {
+  if (tau < 5 * d.traversee)  return 'Brutale : un front traverse le gaz';
+  if (!isFinite(d.thermique)) return 'Quasi statique et réversible (adiabatique)';
+  // Seuil large : à 4·τ_th (60 s diathermane), l'entropie créée vaut encore
+  // le tiers de celle d'une compression rapide
+  if (tau < 10 * d.thermique) return 'Quasi statique mais irréversible : échanges thermiques avec un gaz non uniforme en température';
+  return 'Quasi statique et presque réversible (presque isotherme)';
+}
+
+// Libellé d'une durée τ : 2 ms, 500 ms, 1 s, 60 s
+function _tfLibelleDuree(t) {
+  return t < 1 ? Math.round(t * 1000) + ' ms' : String(t) + ' s';
 }
 
 // Durée à deux ou trois chiffres significatifs, en ms ou en s
@@ -98,6 +148,21 @@ function _tfMajBoutons() {
   var bl = _tfEl['tf-btn-loquet'];
   bl.textContent = tf.loquet ? '🔒 Loquet verrouillé' : '🔓 Loquet libéré';
   bl.classList.toggle('active', tf.loquet);
+
+  var volume = tf.famille === 'volume';
+  _tfEl['tf-tab-pression'].classList.toggle('active', !volume);
+  _tfEl['tf-tab-volume'].classList.toggle('active', volume);
+  _tfEl['tf-bloc-pression'].style.display = volume ? 'none' : '';
+  _tfEl['tf-bloc-volume'].style.display   = volume ? '' : 'none';
+  _tfMajBoutonsVerin();
+}
+
+// Lancer et Retour : indisponibles pendant le mouvement, et quand le piston
+// est déjà à la position visée
+function _tfMajBoutonsVerin() {
+  var v = tf.verin, zN = tf.z[TF_N];
+  _tfEl['tf-btn-lancer'].disabled = v.actif || Math.abs(zN - tf.hVisee) < 1e-6;
+  _tfEl['tf-btn-retour'].disabled = v.actif || Math.abs(zN - v.zAller) < 1e-6;
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -120,6 +185,41 @@ function tfOnVitesse(val) {
   tf.vitesse = TF_VITESSES[parseInt(val, 10)];
   _tfEl['tf-lbl-vitesse'].textContent = _tfLibelleVitesse(tf.vitesse);
   tfMajAfficheurs();
+}
+
+// ── Contrainte : famille de transformations (réinitialise l'expérience) ──
+function tfOnFamille(f) {
+  if (f === tf.famille) return;
+  tfSetFamille(f);
+  tfMolInit();
+  _tfMajBoutons();
+  tfMajAfficheurs();
+}
+
+// ── Volume imposé : hauteur visée (cm), durée τ (cran), Lancer, Retour ──
+function tfOnVisee(val) {
+  var cm = parseInt(val, 10);
+  tf.hVisee = cm / 100;
+  _tfEl['tf-lbl-visee'].textContent = cm + ' cm (' + _tfFmt(TF_S * tf.hVisee * 1000, 2) + ' L)';
+  _tfMajBoutonsVerin();
+  if (tf.famille === 'volume') tfMajAfficheurs();
+  tf.needsRedraw = true;
+}
+
+function tfOnDuree(val) {
+  tf.tau = TF_DUREES[parseInt(val, 10)];
+  _tfEl['tf-lbl-duree'].textContent = _tfLibelleDuree(tf.tau);
+  if (tf.famille === 'volume') tfMajAfficheurs();
+}
+
+function tfLancer() {
+  tfLancerVerin();
+  _tfMajBoutonsVerin();
+}
+
+function tfRetour() {
+  tfRetourVerin();
+  _tfMajBoutonsVerin();
 }
 
 function tfOnMasse(val) {
@@ -155,16 +255,6 @@ function tfOnAffichage(cle, coche) {
   tf.needsRedraw = true;
 }
 
-// ── Vitesse du son (réinitialise l'expérience) ──
-function tfOnRalentiSon(val) {
-  var r = TF_RALENTIS[parseInt(val, 10)];
-  _tfEl['tf-lbl-son'].textContent = r === 1 ? 'réelle' : r + ' fois plus lente';
-  tfSetRalentiSon(r);
-  tfMolInit();
-  _tfMajBoutons();
-  tfMajAfficheurs();
-}
-
 // ══════════════════════════════════════════════════════════════════════
 //  Boucle d'animation
 //  Ne calcule que si l'onglet est affiché (ongletPrincipal, défini par
@@ -182,13 +272,15 @@ function _tfLoop(ts) {
   _tfLastTs = ts;
 
   if (!tf.paused) {
-    tfAvancer(dtReel / 1000 * tf.vitesse);
+    var dtSim = tfAvancer(dtReel / 1000 * tf.vitesse);
     // Agitation des molécules en temps d'affichage, freinée au ralenti
-    // (racine cubique du cran : à ×1/5000 elles dérivent lentement, sans se
-    // figer) et jamais accélérée au-delà de ×1, où elle deviendrait illisible.
+    // (racine cubique du cran) et jamais accélérée au-delà de ×1, où elle
+    // deviendrait illisible ; au cran le plus lent, elle suit le temps
+    // simulé, à l'échelle réelle (tfMolReel).
     if (tfAff.molecules) {
       var f = Math.pow(Math.min(1, tf.vitesse), 1 / 3);
-      tfMolAvancer(dtReel / 1000 * f, tfLargeurDessinee(), tfRayonMolecule() / (_tfX2 - _tfX1));
+      tfMolAvancer(dtReel / 1000, dtReel / 1000 * f, dtSim, tfLargeurDessinee(),
+                   tfRayonMolecule() / (_tfX2 - _tfX1), tfAff.chocs);
     }
   }
 
@@ -222,8 +314,10 @@ function tfInit() {
   for (var cle in tfAff) {
     document.getElementById('tf-ck-' + cle).checked = tfAff[cle];
   }
-  _tfEl['tf-sl-son'].value = TF_RALENTIS.indexOf(tf.ralentiSon);
-  _tfEl['tf-lbl-son'].textContent = 'réelle';
+  _tfEl['tf-sl-visee'].value = Math.round(tf.hVisee * 100);
+  tfOnVisee(_tfEl['tf-sl-visee'].value);
+  _tfEl['tf-sl-duree'].value = TF_DUREES.indexOf(tf.tau);
+  tfOnDuree(_tfEl['tf-sl-duree'].value);
 
   tfReset();
   tfMolInit();

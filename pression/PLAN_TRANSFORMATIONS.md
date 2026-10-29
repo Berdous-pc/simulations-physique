@@ -318,7 +318,7 @@ Chaque test charge la page en `#transformations`, pilote les fonctions `tf…` e
 
 1. ✅ **Moteur + scène minimale** (terminé ; les onglets et le deep-linking du palier 8 ont été avancés ici pour pouvoir tester la page, résultats des tests dans `ARCHITECTURE.md`) : `tf-sim.js` complet en célérité réelle (tranches, piston, loquet, masses, Isolation), curseur Vitesse avec ralenti extrême, rendu simple du cylindre, afficheurs P, V, T.
 2. ✅ **Mise en évidence du hors-équilibre** (terminé) : critère à deux niveaux, « ? » dans les afficheurs, badge d'équilibre, dégradé de température, sondes, loupe sur le profil de pression, molécules pilotées par le modèle. Ajouts ensuite : curseur Vitesse du son, dissipation près du piston, molécules confinées dans 10 bandes.
-3. **Volume imposé** : passage à 80 tranches ; sous-onglets Pression imposée / Volume imposé ; vérin (moteur, scène, panneau), hauteur visée, durée τ, Lancer / Retour ; travail W_op ; profil de pression en échelle absolue ; **retrait du curseur Vitesse du son** et de sa mention ; molécules : vitesse et couleur selon la tranche locale, agitation à l'échelle réelle au cran ×1/5000, essai des éclats de chocs (§3). Tests : volume imposé (τ long, τ = 2 ms, aller-retour), bilan avec le vérin, stabilité à 2 ms, uniformité sous la masse posée revérifiée à 80 tranches.
+3. ✅ **Volume imposé** (terminé ; régime affiché à côté de τ avancé du palier 7, résultats des tests dans `ARCHITECTURE.md`) : passage à 80 tranches ; sous-onglets Pression imposée / Volume imposé ; vérin (moteur, scène, panneau), hauteur visée, durée τ, Lancer / Retour ; travail W_op ; profil de pression en échelle absolue ; **retrait du curseur Vitesse du son** et de sa mention ; molécules : vitesse et couleur selon la tranche locale, agitation à l'échelle réelle au cran ×1/5000, essai des éclats de chocs (§3). Tests : volume imposé (τ long, τ = 2 ms, aller-retour), bilan avec le vérin, stabilité à 2 ms, uniformité sous la masse posée revérifiée à 80 tranches.
 4. **Graphes et nouvelle disposition** : graphes puis tableau dans la colonne de gauche, splitters ; T, P, V(t) avec bandes min–max, diagramme PV avec chemin non défini, **nuage des tranches**, pression sur le piston, courbes théoriques, outils de zoom.
 5. **Contraintes extérieures** : P_air (enceinte, manomètre) et T_ext (source four / bain), échelon et rampe pour les deux, butées signalées. Tests : échelon de T_ext, échelon et rampes de P_air, vide, bilan avec W_air.
 6. **Sable** : grain unique, versement continu, entonnoir et tas, escalier visible au zoom. Tests sable fin calorifugé et sable lent diathermane.
@@ -332,8 +332,8 @@ Chaque palier se termine par un commit et peut être montré en classe tel quel 
 
 ## 9. Points encore ouverts
 
-- **τ < 2 ms** (piston plus rapide que le son) : le portage Python du schéma diverge ; il faudra des sous-pas plus fins près du piston ou une viscosité renforcée avant d'ouvrir ce régime, le plus spectaculaire.
-- Viscosité linéaire : TF_CL = 0,15 suffit-il pour des fronts propres à 80 tranches ? Le calcul à 2 ms a été fait avec 0,5.
+- **τ < 2 ms** (piston plus rapide que le son) : le portage Python du schéma diverge (réglé au palier 3 : la divergence venait d'un signe faux dans la viscosité ; le piston peut maintenant aller jusqu'à 400 m/s, au-delà de la célérité du son ; ouvrir τ < 2 ms reste à décider) ; il faudra des sous-pas plus fins près du piston ou une viscosité renforcée avant d'ouvrir ce régime, le plus spectaculaire.
+- ~~Viscosité linéaire~~ : réglé au palier 3, TF_CL = 0,5 et TF_CQ = 2 (à 0,15, le calcul diverge pour τ = 2 ms).
 - Gamme des masses (10 / 20 / 40 kg) et section 20 cm² : validées visuellement au palier 1, à revoir avec le nuage des tranches.
 - Dégradé de couleur : sur T (recommandé) ou sur la masse volumique ?
 - Titre de la carte d'accueil de l'onglet existant : garder « Pression d'un gaz » ou passer à « Modèle cinétique d'un gaz parfait » ?

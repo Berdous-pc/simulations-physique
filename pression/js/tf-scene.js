@@ -7,7 +7,8 @@
 // ══════════════════════════════════════════════════════════════════════
 //  tf-scene.js — Onglet Transformations : rendu du cylindre
 //  Chargé après tf-sim.js. Dessine, de bas en haut : isolant du fond,
-//  gaz et tranches, parois et graduations, piston, loquet, plateau et masse.
+//  gaz et tranches, parois et graduations, piston, puis loquet, plateau et
+//  masse (pression imposée) ou tige et vérin (volume imposé).
 //
 //  Échelle verticale réelle (graduations en cm). Le cylindre, lui, est
 //  ÉLARGI sur le dessin : à l'échelle, ses 5 cm de diamètre pour 50 cm de
@@ -42,9 +43,11 @@ var TF_Z_HAUT = TF_H_CYL + TF_EP_PISTON + TF_H_TIGE + TF_EP_PLATEAU
 // ── Options d'affichage (section Affichage du panneau) ──
 var tfAff = {
   molecules : true,    // molécules pilotées par le modèle
+  chocs     : false,   // éclats des chocs de molécules sur les parois
   couleurT  : true,    // gaz et molécules colorés selon la température
   sondes    : false,   // trois sondes T et P sur le flanc du cylindre
-  profil    : false    // profil de pression P(z) − P̄ à droite du cylindre
+  profil    : false,   // profil de pression P(z) à droite du cylindre
+  amplifie  : false    // profil en écart à la moyenne, P(z) − P̄
 };
 
 // Tranches lues par les sondes (haut, milieu, bas)
@@ -124,12 +127,14 @@ function tfDessiner() {
   _tfDessinerFond();
   _tfDessinerGaz();
   if (tfAff.molecules) _tfDessinerMolecules();
+  if (tfAff.molecules && tfAff.chocs) _tfDessinerChocs();
   _tfDessinerParois();
   _tfDessinerGraduations();
+  if (tf.famille === 'volume') _tfDessinerVisee();
   _tfDessinerPiston();
   if (tfAff.sondes) _tfDessinerSondes();
   if (tfAff.profil) _tfDessinerProfil();
-  if (tf.ralentiSon > 1) _tfDessinerMentionOndes();
+  if (tfAff.molecules && tfMolReel()) _tfDessinerMention('Vitesses réelles');
 }
 
 // Largeur intérieure dessinée, en m d'échelle verticale (pour les molécules)
@@ -234,11 +239,18 @@ function _tfDessinerGraduations() {
   c.fillText('cm', x - 13, _tfY(TF_H_CYL) - police * 0.9);
 }
 
-// ── Piston, loquet, tige, plateau et masse ──
+// ── Piston, puis loquet, tige, plateau et masse (pression imposée) ou tige
+//    et vérin (volume imposé) ──
 function _tfDessinerPiston() {
   var c = tfCtx;
   var zP = tf.z[TF_N];
   var x1 = _tfX1, x2 = _tfX2, w = x2 - x1, cx = (x1 + x2) / 2;
+
+  if (tf.famille === 'volume') {
+    _tfDessinerVerin(zP);
+    _tfDessinerCorpsPiston(zP);
+    return;
+  }
 
   // Tige
   var yTigeB = _tfY(zP + TF_EP_PISTON);
@@ -268,14 +280,8 @@ function _tfDessinerPiston() {
     c.fillText(tf.masse + ' kg', cx, yM + hm / 2);
   }
 
-  // Corps du piston (hachuré, comme l'onglet Pression)
+  _tfDessinerCorpsPiston(zP);
   var yH = _tfY(zP + TF_EP_PISTON), yB = _tfY(zP);
-  c.fillStyle = '#8a9aaa';
-  c.fillRect(x1, yH, w, yB - yH);
-  _tfHachures(x1, yH, w, yB - yH, 'rgba(44,62,80,0.35)', 8);
-  c.strokeStyle = '#2c3e50';
-  c.lineWidth = 2;
-  c.strokeRect(x1, yH, w, yB - yH);
 
   // Loquet : deux goupilles qui traversent la paroi et pénètrent dans le
   // piston (verrouillé), ou retirées à l'extérieur (libéré).
@@ -295,6 +301,90 @@ function _tfDessinerPiston() {
     var xt = g[1] > 0 ? xg - hg * 0.6 : xg + lg;
     c.fillRect(xt, yg - hg * 0.4, hg * 0.6, hg * 1.8);
   });
+}
+
+// Corps du piston (hachuré, comme l'onglet Pression)
+function _tfDessinerCorpsPiston(zP) {
+  var c = tfCtx, w = _tfX2 - _tfX1;
+  var yH = _tfY(zP + TF_EP_PISTON), yB = _tfY(zP);
+  c.fillStyle = '#8a9aaa';
+  c.fillRect(_tfX1, yH, w, yB - yH);
+  _tfHachures(_tfX1, yH, w, yB - yH, 'rgba(44,62,80,0.35)', 8);
+  c.strokeStyle = '#2c3e50';
+  c.lineWidth = 2;
+  c.strokeRect(_tfX1, yH, w, yB - yH);
+}
+
+// ── Vérin (volume imposé) ──
+// Corps fixé à un bâti au-dessus du cylindre ; la tige en sort et tient le
+// piston, quelle que soit sa hauteur. Corps teinté pendant le mouvement.
+var TF_Z_VERIN_BAS = TF_H_CYL + TF_EP_PISTON + 0.014;   // bas du corps (m)
+
+function _tfDessinerVerin(zP) {
+  var c = tfCtx;
+  var w = _tfX2 - _tfX1, cx = (_tfX1 + _tfX2) / 2;
+  var yBati = _tfY(TF_Z_HAUT) + 2;
+  var yCorpsB = _tfY(TF_Z_VERIN_BAS);
+  var hBati = Math.max(6, (yCorpsB - yBati) * 0.18);
+
+  // Tige, du piston au corps
+  var lt = Math.max(6, w * 0.10);
+  var yTigeB = _tfY(zP + TF_EP_PISTON);
+  c.fillStyle = '#6a7a88';
+  c.fillRect(cx - lt / 2, yCorpsB, lt, yTigeB - yCorpsB);
+  c.strokeStyle = '#4a5a68';
+  c.lineWidth = 1;
+  c.strokeRect(cx - lt / 2 + 0.5, yCorpsB, lt - 1, yTigeB - yCorpsB);
+
+  // Corps du vérin
+  var lc = w * 0.42;
+  var yCorpsH = yBati + hBati;
+  c.fillStyle = tf.verin.actif ? '#c08020' : '#5a6a78';
+  _tfRectArrondi(cx - lc / 2, yCorpsH, lc, yCorpsB - yCorpsH, 4);
+  c.fill();
+  c.strokeStyle = '#2c3e50';
+  c.lineWidth = 1.5;
+  c.stroke();
+  // Presse-étoupe, d'où sort la tige
+  c.fillStyle = '#2c3e50';
+  c.fillRect(cx - lt * 0.9, yCorpsB - 3, lt * 1.8, 4);
+  // Nom
+  var police = Math.max(10, Math.min(14, Math.round(lc * 0.16)));
+  c.fillStyle = '#fff';
+  c.font = 'bold ' + police + 'px "Segoe UI", Arial, sans-serif';
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+  c.fillText('vérin', cx, (yCorpsH + yCorpsB) / 2);
+
+  // Bâti (support fixe, hachuré)
+  var lb = w * 1.1;
+  c.fillStyle = '#7a8a96';
+  c.fillRect(cx - lb / 2, yBati, lb, hBati);
+  _tfHachures(cx - lb / 2, yBati, lb, hBati, 'rgba(44,62,80,0.45)', 6);
+}
+
+// ── Hauteur visée (volume imposé) : trait pointillé dans le cylindre et
+//    repère sur les graduations ──
+function _tfDessinerVisee() {
+  var c = tfCtx;
+  var y = Math.round(_tfY(tf.hVisee)) + 0.5;
+  c.strokeStyle = 'rgba(192,128,32,0.9)';
+  c.lineWidth = 1.5;
+  c.setLineDash([6, 4]);
+  c.beginPath();
+  c.moveTo(_tfX1, y);
+  c.lineTo(_tfX2, y);
+  c.stroke();
+  c.setLineDash([]);
+  // Triangle contre les graduations
+  var x = _tfX1 - _tfParoi - _tfLongGoupille() - 8;
+  c.fillStyle = '#c08020';
+  c.beginPath();
+  c.moveTo(x + 2, y);
+  c.lineTo(x + 11, y - 6);
+  c.lineTo(x + 11, y + 6);
+  c.closePath();
+  c.fill();
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -320,34 +410,53 @@ function _tfMelangeT(T, pal, intensite) {
 function _tfCouleurT(T, intensite) { return _tfMelangeT(T, TF_COUL_FOND, intensite); }
 
 // ── Molécules ──
-// Dessinées par bande, d'une seule couleur par bande (celle de sa
-// température moyenne), en un seul chemin chacune.
+// Couleur de chaque molécule selon la température à son altitude (tranche
+// locale), arrondie à TF_MOL_NUANCES nuances de chaque côté de T0 : les
+// molécules d'une même nuance sont dessinées en un seul chemin.
+var TF_MOL_NUANCES = 16;
+
 function tfRayonMolecule() {
   return Math.max(1.3, (_tfX2 - _tfX1) * TF_MOL_RAYON);
 }
 
-var _tfMolParBande = [];
+var _tfMolParNuance = [];
 
 function _tfDessinerMolecules() {
   var c = tfCtx, r = tfRayonMolecule();
-  var w = _tfX2 - _tfX1, b, k, m, x, y;
+  var w = _tfX2 - _tfX1, n, k, m, x, y;
+  var nb = 2 * TF_MOL_NUANCES + 1;
 
-  // Regroupement par bande (une couleur par bande)
-  for (b = 0; b < TF_BANDES; b++) {
-    if (!_tfMolParBande[b]) _tfMolParBande[b] = [];
-    _tfMolParBande[b].length = 0;
+  // Regroupement par nuance : indice 0 → 2·NUANCES, T0 au milieu, même
+  // échelle en racine que _tfMelangeT
+  for (n = 0; n < nb; n++) {
+    if (!_tfMolParNuance[n]) _tfMolParNuance[n] = [];
+    _tfMolParNuance[n].length = 0;
   }
-  for (k = 0; k < tfMol.length; k++) _tfMolParBande[tfMol[k].b].push(tfMol[k]);
+  for (k = 0; k < tfMol.length; k++) {
+    n = TF_MOL_NUANCES;
+    if (tfAff.couleurT) {
+      var d = (tfMolT(tfMol[k]) - TF_T0) / 150;
+      if (d > 1) d = 1; else if (d < -1) d = -1;
+      n += Math.round((d < 0 ? -1 : 1) * Math.sqrt(Math.abs(d)) * TF_MOL_NUANCES);
+    }
+    _tfMolParNuance[n].push(tfMol[k]);
+  }
 
   // Les molécules collées au piston ou au fond ne débordent pas du gaz
   c.save();
   c.beginPath();
   c.rect(_tfX1, _tfY(tf.z[TF_N]), w, _tfY(0) - _tfY(tf.z[TF_N]));
   c.clip();
-  for (b = 0; b < TF_BANDES; b++) {
-    var liste = _tfMolParBande[b];
+  for (n = 0; n < nb; n++) {
+    var liste = _tfMolParNuance[n];
     if (!liste.length) continue;
-    c.fillStyle = tfAff.couleurT ? _tfMelangeT(tfTBande(b), TF_COUL_MOL, 1) : '#2a6aaa';
+    if (tfAff.couleurT) {
+      // Température qui redonne exactement cette nuance
+      var f = (n - TF_MOL_NUANCES) / TF_MOL_NUANCES;
+      c.fillStyle = _tfMelangeT(TF_T0 + (f < 0 ? -1 : 1) * f * f * 150, TF_COUL_MOL, 1);
+    } else {
+      c.fillStyle = '#2a6aaa';
+    }
     c.beginPath();
     for (k = 0; k < liste.length; k++) {
       m = liste[k];
@@ -358,6 +467,34 @@ function _tfDessinerMolecules() {
     c.fill();
   }
   c.restore();
+}
+
+// ── Éclats des chocs sur les parois, le fond et le piston (option) ──
+// Un court trait clair contre la paroi, qui s'efface en TF_CHOC_VIE : leur
+// fréquence suit la densité et l'agitation, donc la pression.
+function _tfDessinerChocs() {
+  if (!tfChocs.length) return;
+  var c = tfCtx, w = _tfX2 - _tfX1;
+  var l = Math.max(4, tfRayonMolecule() * 2.5);
+  c.lineCap = 'round';
+  c.lineWidth = 2;
+  for (var i = 0; i < tfChocs.length; i++) {
+    var s = tfChocs[i];
+    var a = 1 - s.age / TF_CHOC_VIE;
+    if (a <= 0) continue;
+    c.strokeStyle = 'rgba(255,190,40,' + (0.9 * a).toFixed(3) + ')';
+    c.beginPath();
+    if (s.cote === 'g' || s.cote === 'd') {
+      var x = s.cote === 'g' ? _tfX1 + 1 : _tfX2 - 1, y = _tfY(s.z);
+      c.moveTo(x, y - l / 2); c.lineTo(x, y + l / 2);
+    } else {
+      var yb = s.cote === 'piston' ? _tfY(tf.z[TF_N]) + 1 : _tfY(0) - 1;
+      var xb = _tfX1 + s.x * w;
+      c.moveTo(xb - l / 2, yb); c.lineTo(xb + l / 2, yb);
+    }
+    c.stroke();
+  }
+  c.lineCap = 'butt';
 }
 
 // ── Sondes : T et P de trois tranches, lues sur le flanc droit ──
@@ -392,44 +529,56 @@ function _tfDessinerSondes() {
 
 function _tfVirgule(x, d) { return x.toFixed(d).replace('.', ','); }
 
-// ── Profil de pression P(z) − P̄ à droite du cylindre ──
-// Échelle automatique en Pa (1, 2, 5 × 10ⁿ), agrandie aussitôt, mais
-// resserrée seulement après ~1 s de petits écarts : pas de va-et-vient.
-var _tfProfEch = 1, _tfProfPetit = 0;
+// ── Profil de pression à droite du cylindre ──
+// Échelle absolue par défaut (axe de 0 à Pmax arrondi, en kPa) : les écarts
+// d'une compression rapide se lisent tels quels. Échelle amplifiée en
+// option, P(z) − P̄ en Pa, pour voir les très petits écarts de la masse
+// posée. Échelle ronde (1, 2, 5 × 10ⁿ), agrandie aussitôt, mais resserrée
+// seulement après ~1 s de petites valeurs : pas de va-et-vient.
+var _tfProfEch = 1, _tfProfPetit = 0, _tfProfAmplifie = null;
 var TF_PROF_ECH_MIN = 1;   // Pa : en deçà, ce n'est que du bruit numérique
 
 function _tfDessinerProfil() {
   var c = tfCtx;
   var x1 = _tfProfX1, x2 = _tfProfX2;
   if (x2 - x1 < 40) return;
+  var amp = tfAff.amplifie;
   var xc = (x1 + x2) / 2, demi = (x2 - x1) / 2 - 6;
+  var x0 = x1 + 6, larg = x2 - x1 - 12;   // échelle absolue : axe de 0 à l'échelle
   var yH = _tfY(tf.z[TF_N]), yB = _tfY(0);
 
-  // Pression moyenne (en volume) et plus grand écart
-  var Pm = tfMesures().Pmoy, ecart = 0, j;
-  for (j = 0; j < TF_N; j++) ecart = Math.max(ecart, Math.abs(tf.P[j] - Pm));
-
-  if (ecart > _tfProfEch) {
-    _tfProfEch = _tfEchelleRonde(ecart);
+  // Valeur à loger : plus grand écart à la moyenne (en volume), ou plus
+  // grande pression
+  var Pm = tfMesures().Pmoy, val = 0, j;
+  for (j = 0; j < TF_N; j++) {
+    val = Math.max(val, amp ? Math.abs(tf.P[j] - Pm) : tf.P[j]);
+  }
+  if (_tfProfAmplifie !== amp) {          // changement d'échelle : repartir
+    _tfProfAmplifie = amp;
+    _tfProfEch = Math.max(TF_PROF_ECH_MIN, _tfEchelleRonde(val));
+  }
+  if (val > _tfProfEch) {
+    _tfProfEch = _tfEchelleRonde(val);
     _tfProfPetit = 0;
-  } else if (ecart < _tfProfEch / 10 && _tfProfEch > TF_PROF_ECH_MIN) {
+  } else if (val < _tfProfEch / (amp ? 10 : 2.5) && _tfProfEch > TF_PROF_ECH_MIN) {
     if (++_tfProfPetit > 60) {
-      _tfProfEch = Math.max(TF_PROF_ECH_MIN, _tfEchelleRonde(ecart));
+      _tfProfEch = Math.max(TF_PROF_ECH_MIN, _tfEchelleRonde(val));
       _tfProfPetit = 0;
     }
   } else {
     _tfProfPetit = 0;
   }
 
-  // Cadre et axe du zéro
+  // Cadre, et axe du zéro (amplifié) ou de la moyenne (absolu)
   c.fillStyle = 'rgba(255,255,255,0.7)';
   c.fillRect(x1, yH, x2 - x1, yB - yH);
   c.strokeStyle = '#c8c0b4';
   c.lineWidth = 1;
   c.strokeRect(x1 + 0.5, yH + 0.5, x2 - x1 - 1, yB - yH - 1);
+  var xRef = amp ? xc : x0 + Pm / _tfProfEch * larg;
   c.strokeStyle = '#7a8a96';
   c.setLineDash([3, 3]);
-  c.beginPath(); c.moveTo(xc, yH); c.lineTo(xc, yB); c.stroke();
+  c.beginPath(); c.moveTo(xRef, yH); c.lineTo(xRef, yB); c.stroke();
   c.setLineDash([]);
 
   // Courbe, au centre de chaque tranche
@@ -437,7 +586,8 @@ function _tfDessinerProfil() {
   c.lineWidth = 2;
   c.beginPath();
   for (j = 0; j < TF_N; j++) {
-    var x = xc + (tf.P[j] - Pm) / _tfProfEch * demi;
+    var x = amp ? xc + (tf.P[j] - Pm) / _tfProfEch * demi
+                : x0 + tf.P[j] / _tfProfEch * larg;
     var y = _tfY((tf.z[j] + tf.z[j + 1]) / 2);
     if (j === 0) c.moveTo(x, y); else c.lineTo(x, y);
   }
@@ -449,14 +599,19 @@ function _tfDessinerProfil() {
   c.font = 'bold ' + police + 'px "Segoe UI", Arial, sans-serif';
   c.textAlign = 'center';
   c.textBaseline = 'bottom';
-  c.fillText('P − P̄ (Pa)', xc, yH - 4);
+  c.fillText(amp ? 'P − P̄ (Pa)' : 'P (kPa)', xc, yH - 4);
   c.font = police + 'px "Segoe UI", Arial, sans-serif';
   c.fillStyle = '#5a6a78';
   c.textBaseline = 'top';
-  var lib = _tfFmtPa(_tfProfEch);
-  c.textAlign = 'left';   c.fillText('−' + lib, x1 + 2, yB + 3);
-  c.textAlign = 'right';  c.fillText('+' + lib, x2 - 2, yB + 3);
-  c.textAlign = 'center'; c.fillText('0', xc, yB + 3);
+  if (amp) {
+    var lib = _tfFmtPa(_tfProfEch);
+    c.textAlign = 'left';   c.fillText('−' + lib, x1 + 2, yB + 3);
+    c.textAlign = 'right';  c.fillText('+' + lib, x2 - 2, yB + 3);
+    c.textAlign = 'center'; c.fillText('0', xc, yB + 3);
+  } else {
+    c.textAlign = 'left';   c.fillText('0', x0, yB + 3);
+    c.textAlign = 'right';  c.fillText(_tfFmtPa(_tfProfEch / 1000), x0 + larg, yB + 3);
+  }
 }
 
 // Plus petite valeur 1, 2 ou 5 × 10ⁿ supérieure ou égale à x
@@ -472,14 +627,13 @@ function _tfFmtPa(x) {
   return String(Math.round(x)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 }
 
-// ── Mention permanente quand le son est ralenti ──
-function _tfDessinerMentionOndes() {
+// ── Mention en haut à gauche de la scène (« Vitesses réelles ») ──
+function _tfDessinerMention(txt) {
   var c = tfCtx;
-  var police = Math.max(12, Math.round(_tfEch * 0.024));
+  var police = Math.max(12, Math.min(16, Math.round(_tfEch * 0.018)));
   c.font = 'bold ' + police + 'px "Segoe UI", Arial, sans-serif';
   c.textAlign = 'left';
   c.textBaseline = 'top';
-  var txt = 'Son ' + tf.ralentiSon + ' fois plus lent';
   var lw = c.measureText(txt).width + 14;
   c.fillStyle = '#fde8c8';
   c.strokeStyle = '#d0a060';

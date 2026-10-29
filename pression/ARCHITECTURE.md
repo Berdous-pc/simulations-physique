@@ -252,7 +252,7 @@ index.html
 
 ## Onglet Transformations
 
-> Construit par paliers selon `PLAN_TRANSFORMATIONS.md` (palier 1 terminé : moteur, scène minimale, masse, loquet, isolation du fond, ralenti ; palier 2 terminé : mise en évidence du hors-équilibre).
+> Construit par paliers selon `PLAN_TRANSFORMATIONS.md` (palier 1 terminé : moteur, scène minimale, masse, loquet, isolation du fond, ralenti ; palier 2 terminé : mise en évidence du hors-équilibre ; palier 3 terminé : famille à volume imposé, 80 tranches, retrait du son ralenti, molécules selon la tranche locale).
 
 ### Cohabitation avec l'onglet Pression
 
@@ -264,23 +264,29 @@ index.html
 
 ### `js/tf-sim.js` — Modèle physique
 
-Gaz parfait découpé en `TF_N = 30` tranches de même masse (lagrangien 1D), sous un piston pesant, atmosphère au-dessus. Unités SI, temps simulé en s.
+Gaz parfait découpé en `TF_N = 80` tranches de même masse (lagrangien 1D), sous un piston. Unités SI, temps simulé en s. Deux **familles** de transformations (`tf.famille`, `tfSetFamille()` réinitialise) :
+
+- **pression imposée** (`'pression'`) : piston pesant et libre, atmosphère au-dessus, masse posée, loquet ;
+- **volume imposé** (`'volume'`) : un **vérin** mène le piston à la hauteur visée `tf.hVisee` (5 à 50 cm) en une durée `tf.tau` (crans `TF_DUREES`, 2 ms à 60 s). Le poids et l'atmosphère sont repris par le vérin.
 
 | Élément | Choix |
 |---|---|
 | Dispositif | S = 20 cm², V₀ = 0,6 L, piston 1 kg, T₀ = 293,15 K, cylindre de 50 cm, butée basse 2 cm |
 | Inertie du gaz | masse molaire de l'air (0,029 kg/mol) : **célérité réelle** (343 m/s à 293 K) |
 | Schéma | saute-mouton sur grille décalée : vitesses des interfaces `u`, positions `z`, puis énergies `E` par `dE = −(P̄ + q)·dV` avec P̄ moyenne avant/après résolue exactement |
-| Pas de temps | `TF_CFL × min(dz/c)` (≈ 5–12 µs) ; au plus `TF_SOUS_PAS_MAX = 30 000` sous-pas par image, au-delà `tf.limite` (vitesse réelle inférieure à la demande) |
-| Viscosité artificielle | `q = −cl·ρ·c·Δu − TF_CQ·ρ·Δu²` (terme quadratique en compression seulement, pour les fronts raides) ; `cl` va de `TF_CL` = 0,15 (son réel) à `TF_CL_LENT` = 0,6 (son 300 fois plus lent) selon le logarithme du ralentissement ; elle entre aussi dans le pas de temps stable |
+| Pas de temps | `TF_CFL × min(dz/c)` (≈ 2–4 µs à 80 tranches) ; au plus `TF_SOUS_PAS_MAX = 12 000` sous-pas par image (~10 ms de calcul), au-delà `tf.limite` (vitesse réelle inférieure à la demande). Vérin en marche : au plus τ/400, et un sous-pas finit pile à l'arrivée |
+| Viscosité artificielle | `q = −TF_CL·ρ·c·Δu + TF_CQ·ρ·Δu²` (terme quadratique en compression seulement, pour les fronts raides), `TF_CL = 0,5`, `TF_CQ = 2`  (énergie mieux conservée sur les chocs forts). **Bug corrigé au palier 3** : le terme quadratique était soustrait, ce qui « aspirait » les tranches en compression forte et faisait diverger les chocs (50 → 13 cm en 2 ms). Elle entre aussi dans le pas de temps stable |
+| Vérin | position imposée calculée exactement, z(s) = z_dép + Δz·(s − sin 2πs / 2π), s = (t − t₀)/τ (vitesse (Δz/τ)(1 − cos 2πs), nulle au départ et à l'arrivée) ; `u[N]` en est déduit à chaque sous-pas. Travail reçu par le gaz `tf.Wop` : celui de la face du piston sur la tranche du haut, avec la même pression moyenne que la mise à jour de son énergie, plus l'énergie cinétique de la demi-tranche portée par la face. `tfLancerVerin()` (vers la hauteur visée, départ retenu dans `verin.zAller`), `tfRetourVerin()` (vers ce départ, même τ). **Vitesse de pointe bornée** à `TF_V_VERIN_MAX` = 400 m/s (piston supersonique possible) : `tfTauEffectif()` allonge une durée trop courte pour la course ; toutes les courses essayées (5 ↔ 50 cm) passent jusqu'à 700 m/s, énergie à 2·10⁻³ à 400 m/s. Le panneau le signale sous le curseur Durée |
 | Amortissement du piston | `−b·U`, b = `TF_AMORT` (8 %) de l'amortissement critique 2√(k·M), k = γ·P·S²/V, **recalculé à chaque sous-pas** ; la chaleur dissipée est rendue au gaz **près du piston** (poids ∝ j + 1 : double de la moyenne sous le piston, presque rien au fond), là où le gaz est brassé ; une compression brutale laisse ainsi une couche chaude sous le piston (jusqu'à ~65 K d'écart pour 40 kg), qui s'uniformise en ~15 s |
 | Butées | choc mou, énergie cinétique rendue au gaz |
 | Conduction | entre tranches, conductivité effective `TF_LAMBDA = 2,2 W·m⁻¹·K⁻¹` (≈ 15 s pour se mettre en équilibre) |
 | Fond | flux `G·(T_ext − T_tranche basse)`, G pris dans `TF_ISOLATIONS` (0 = calorifugé … 1 W/K) ; cumulé dans `tf.Qrecu` |
 
-**Vitesse du son** (`tf.ralentiSon`, crans `TF_RALENTIS` = 1, 3, 10, 30, 100, 300) : ralentir le son d'un facteur r revient à multiplier l'inertie du gaz par r², dans l'équation du mouvement seulement (comme des molécules plus lourdes). `tfSetRalentiSon()` réinitialise l'expérience. Un front de compression n'est net que si le son traverse le gaz plus lentement que le piston ne se met en mouvement ; ce rapport vaut environ √(M_piston / m_gaz inertielle), d'où un front visible pour r ≳ 100 avec 40 kg. `tfDurees()` donne les deux durées (traversée, quart de période du piston), évaluées au voisinage de l'équilibre visé pour ne pas sauter pendant les oscillations.
+**Célérité toujours réelle.** Le curseur « Vitesse du son » du palier 2 bis (inertie du gaz multipliée par r²) est retiré : sous une masse posée, le piston est de toute façon ~170 fois plus lent que le son (c/√(gL)), et c'est la famille à volume imposé qui montre le gaz inhomogène (PLAN §2.3).
 
-Fonctions : `tfReset()`, `tfAvancer(dt)`, `tfSetMasse(kg)`, `tfSetLoquet(bool)`, `tfSetIsolation(G)`, `tfSetRalentiSon(r)`, `tfDurees()`, `tfTTranche(j)`, `tfMesures()` (moyennes, extrêmes des tranches, critère `equilibre` du §2.4 du plan), `tfPext()`, `tfVolume()`, `tfEnergieTotale()` (constante aux erreurs de schéma près : sert aux tests).
+`tfDurees()` : traversée du gaz par le son L/c (L hauteur actuelle), mise en équilibre thermique 4L²/(π²D) + n·Cv/G (infinie si calorifugé ; ~15,6 s diathermane à 30 cm), mise en mouvement du piston pesant.
+
+Fonctions : `tfReset()`, `tfAvancer(dt)`, `tfSetFamille(f)`, `tfSetMasse(kg)`, `tfSetLoquet(bool)`, `tfSetIsolation(G)`, `tfLancerVerin()`, `tfRetourVerin()`, `tfDurees()`, `tfTTranche(j)`, `tfMesures()` (moyennes, extrêmes des tranches, `Pface`, critère `equilibre` du §2.4 du plan : loquet verrouillé ou vérin arrêté), `tfPext()`, `tfPFace()` (pression sur le piston, viscosité comprise : celle que mesure le vérin), `tfVolume()`, `tfEnergieTotale()` (constante aux erreurs de schéma près : sert aux tests ; famille volume : U + Ec du gaz − Q − W_op).
 
 **Validation (Chrome headless, palier 1)** :
 
@@ -295,27 +301,42 @@ Fonctions : `tfReset()`, `tfAvancer(dt)`, `tfSetMasse(kg)`, `tfSetLoquet(bool)`,
 | Ralenti ×1/5000 contre ×20 | même position du piston à 0,4 µm près |
 | Coût | ~1,4 ms par image à ×1 ; ×20 plafonné (~10 ms par image) quand le gaz est comprimé et chaud |
 | Son ralenti ×100, 10 / 20 / 40 kg brutaux | mêmes états finaux (447,82 K pour 447,84 K) ; écart de P entre tranches 18 à 26 % ; pic de l'impulsion au fond à 88,0 ms pour 87,5 ms attendues |
-| 40 kg brutaux, son réel / ×30 / ×100 / ×300 | écart de P max 0,0 / 2,7 / 25,5 / 91 % (front net à ×300) ; états finaux exacts dans tous les cas, énergie conservée à 5·10⁻⁵ près |
+| 40 kg brutaux, son réel / ×30 / ×100 / ×300 | écart de P max 0,0 / 2,7 / 25,5 / 91 % (front net à ×300) ; états finaux exacts dans tous les cas, énergie conservée à 5·10⁻⁵ près (son ralenti retiré au palier 3) |
+
+**Validation (palier 3, 80 tranches)** :
+
+| Test | Résultat |
+|---|---|
+| 10 / 20 / 40 kg brutaux, calorifugé, 15 s | T_f = 331,82 / 370,50 / 447,84 K (inchangé) ; énergie à 2·10⁻⁷ ; écart de P max entre tranches 2,1–2,3·10⁻⁵ (gaz uniforme sous la masse) |
+| Volume imposé 30 → 15 cm, calorifugé, τ = 2 / 3 / 5 / 10 / 100 / 1000 ms | Pmax/Pmin pendant la course 2,22 / 1,32 / 1,10 / 1,02 / 1,000 / 1,000 ; écart de T entre tranches 83 / 27 / 8 / 1,4 / 0 / 0 K ; T_f 390,23 / 387,36 / 386,93 / 386,87 / 386,82 / 386,81 K (Laplace 386,81) ; S_c 4,8 / 0,8 / 0,2 / 0,1 / 0 / 0 mJ/K |
+| Bilan avec le vérin | W_op = ΔU à 0,01 J ; énergie (U + Ec − Q − W_op) constante à 6·10⁻⁶ (τ = 2 ms), 10⁻¹¹ (τ long) |
+| Aller-retour 30 → 15 → 30 cm, calorifugé | τ = 1 s : retour à T₀ à 1 mK ; τ = 2 ms : retour 4,15 K plus chaud |
+| Volume imposé 30 → 15 cm, diathermane, τ = 10 ms / 1 / 5 / 20 / 60 s | état final isotherme exact (293,15 K, 212,46 kPa) ; W 50,9 / 50,3 / 49,4 / 48,0 / 46,4 J (isotherme réversible 44,2 J) ; S_c 23,0 / 20,8 / 17,8 / 13,0 / 7,5 mJ/K : la réversibilité n'est approchée que pour τ ≫ τ_th (15,6 s à 30 cm, 8 s à 15 cm) |
+| Course rapide de 50 à 13 cm (cas signalé : divergence à 370 m/s) | durée portée de 2 à 4,9 ms (150 m/s) ; P 173 à 247 kPa à mi-course, arrêt à 13,00 cm, T_f 412,6 K |
+| Coût | ~0,4–0,8 s de calcul par seconde simulée à 80 tranches : ×1 tenu, ×5 et ×20 plafonnés (`tf.limite`) à ~1,2–2,5 fois le temps réel |
 
 ### `js/tf-molecules.js` — Molécules par bandes de gaz
 
-Pour l'affichage, les 30 tranches du calcul sont regroupées en `TF_BANDES = 10` bandes de 3 tranches (même masse de gaz chacune). Chaque bande est une petite boîte de gaz de `TF_MOL_PAR_BANDE = 60` molécules : elles volent en ligne droite et rebondissent sur les parois, le fond, le piston et **les limites de leur bande, qu'elles ne franchissent jamais**. Leur position verticale est relative à la bande (`zr`), si bien qu'une bande comprimée s'aplatit et que ses molécules se serrent : densité juste par construction, front de compression visible comme des bandes écrasées l'une après l'autre. Vitesse ∝ √T moyenne de la bande (`tfTBande`), `TF_MOL_VITESSE` = 0,12 m/s d'échelle à T0 (une bande au repos traversée en ~0,25 s). Le calcul garde ses 30 tranches : seule l'image est découpée.
+Pour l'affichage, les 80 tranches du calcul sont regroupées en `TF_BANDES = 10` bandes de 8 tranches (même masse de gaz chacune). Chaque bande est une petite boîte de gaz de `TF_MOL_PAR_BANDE = 60` molécules : elles volent en ligne droite et rebondissent sur les parois, le fond, le piston et **les limites de leur bande, qu'elles ne franchissent jamais**. Leur position verticale est relative à la bande (`zr`), si bien qu'une bande comprimée s'aplatit et que ses molécules se serrent : densité juste par construction, front de compression visible comme des bandes écrasées l'une après l'autre. Vitesse ∝ √T **de la tranche où se trouve la molécule** (`tfMolT` : tranche cherchée dans la bande, T interpolée entre centres de tranches), et non la moyenne de la bande : un front, épais de quelques tranches, serait lissé. Aux crans conventionnels, `TF_MOL_VITESSE` = 0,12 m/s d'échelle à T0 (une bande au repos traversée en ~0,25 s), multipliée par (min(1, vitesse))^(1/3). **Au cran ×1/5000** (`tfMolReel()`), agitation à l'échelle réelle, √(3RT/M) × temps simulé (~500 m/s → 0,10 m/s à l'écran), comme la dérive du gaz ; mention « Vitesses réelles » sur la scène. Le calcul garde ses 80 tranches : seule l'image est découpée.
+
+**Éclats de chocs** (option `tfAff.chocs`, essai) : chaque rebond sur une paroi, le fond (bande du bas) ou le piston (bande du haut) laisse un court trait clair qui s'efface en `TF_CHOC_VIE` = 0,15 s réelle (au plus `TF_CHOC_MAX` = 400) ; leur fréquence suit densité × agitation, donc la pression.
 
 **Versions abandonnées** : (1) vols libres d'une paroi à l'autre, avec règle de passage entre tranches : tout se mélangeait ; (2) libre parcours court : l'onde restait noyée dans le bruit des positions aléatoires ; (3) molécules ancrées dans le gaz qui frémissaient autour de leur point (une puis deux rangées par tranche) : le frémissement (~1 px) laissait l'image d'un gaz figé, l'agitation thermique était invisible. Réduire les tranches du calcul lui-même a été écarté : front, gradient de T, profil et sondes seraient devenus grossiers.
 
-**Dessin** (`tf-scene.js`) : molécules regroupées par bande et colorées selon sa température moyenne ; limites des bandes en pointillé léger (à la place des 29 lignes de tranches). **Temps** : agitation en temps d'affichage, multipliée par (min(1, vitesse))^(1/3) dans `tf-ui.js`. Elles ne servent à aucun calcul : P et T viennent des tranches (le bandeau Informations le dit).
+**Dessin** (`tf-scene.js`) : chaque molécule a la couleur de la température à son altitude, arrondie à `TF_MOL_NUANCES` = 16 nuances de chaque côté de T0 (un chemin par nuance) ; limites des bandes en pointillé léger (à la place des 79 lignes de tranches). Elles ne servent à aucun calcul : P et T viennent des tranches (le bandeau Informations le dit).
 
 ### `js/tf-scene.js` — Rendu
 
-Options d'affichage dans `tfAff` (section Affichage du panneau) : molécules, couleur selon T (gaz et molécules), sondes, profil de pression.
+Options d'affichage dans `tfAff` (section Affichage du panneau) : molécules, chocs sur les parois, couleur selon T (gaz et molécules), sondes, profil de pression, profil amplifié.
 
 - **Couleur selon T** : chaque tranche est colorée du bleu (plus froide que T0) au rouge (plus chaude), en racine de l'écart saturée à ±150 K, pour que quelques kelvins se voient.
 - **Sondes** : T et P de trois tranches (`TF_SONDES` : haut, milieu, bas), dans des étiquettes contre la paroi droite ; P au pascal près (kPa à trois décimales). Une étiquette est omise si le gaz est trop écrasé pour la loger.
-- **Profil de pression** : P(z) − P̄ tranche par tranche, dans un cadre à droite du cylindre, à la hauteur du gaz. Échelle en Pa (1, 2, 5 × 10ⁿ, au moins 1 Pa : en deçà, ce n'est que du bruit numérique), agrandie aussitôt, resserrée après ~1 s de petits écarts. Sa largeur est retranchée de celle du cylindre (`_tfDoResize`).
-- **Mention « Son N fois plus lent »** en haut à gauche de la scène dès que le son est ralenti.
+- **Profil de pression** : P(z) tranche par tranche, dans un cadre à droite du cylindre, à la hauteur du gaz. Par défaut en **échelle absolue** (axe de 0 à une valeur ronde en kPa, moyenne en pointillé) : les écarts d'une compression rapide se lisent tels quels. Option **amplifiée** : P(z) − P̄ en Pa (au moins 1 Pa : en deçà, ce n'est que du bruit numérique), pour les très petits écarts de la masse posée. Échelle ronde (1, 2, 5 × 10ⁿ) agrandie aussitôt, resserrée après ~1 s de petites valeurs. Sa largeur est retranchée de celle du cylindre (`_tfDoResize`).
+- **Mention « Vitesses réelles »** en haut à gauche de la scène au cran ×1/5000 (molécules affichées).
+- **Volume imposé** : à la place du plateau et du loquet, la tige monte jusqu'au corps du **vérin** (orangé pendant le mouvement), suspendu à un bâti hachuré au-dessus du cylindre ; la **hauteur visée** est marquée d'un trait pointillé orangé dans le cylindre et d'un triangle sur les graduations.
 
 Échelle verticale réelle (graduations en cm), cylindre **élargi** horizontalement : aussi large que la zone le permet, au plus `TF_LARG_MAX` (75 %) de sa hauteur dessinée. De bas en haut : isolant hachuré (d'autant plus épais que G est faible), paroi du fond (claire si conductrice), gaz et limites des tranches (elles se resserrent dans une compression : ondes visibles au ralenti), parois, graduations (à gauche, au-delà des goupilles), tige, plateau, masse, corps du piston hachuré, goupilles du loquet (enfoncées dans le piston : verrouillé ; reculées hors du cylindre : libéré). `tfResize()` avec anti-rebond, `window.resize` et `ResizeObserver` sur `#tf-sim-area`.
 
 ### `js/tf-ui.js` — Panneau et boucle
 
-Afficheurs `#tf-info` à 10 Hz (temps en ms aux crans < ×1/100, P en kPa, T, V, P_ext, État). P ou T non définies (critère de `tfMesures`) : « ? » suivi de l'intervalle couvert par les tranches, jamais la moyenne. État : « À l'équilibre » (vert) ou « Hors équilibre » (terracotta). Section Affichage (repliable) : cases `tf-ck-…`, resynchronisées sur `tfAff` au chargement (un navigateur peut conserver l'état des cases au rechargement). curseur Vitesse à 7 crans `TF_VITESSES` (×1/5000 → ×20), sélecteur et bouton de masse, bouton du loquet, curseur Isolation. `tfInit()` est appelée par `ui.js`.
+Afficheurs `#tf-info` à 10 Hz (temps en ms aux crans < ×1/100, P en kPa, T, V, P_ext ou, à volume imposé, « Pression sur le piston » mesurée par le vérin, État). P ou T non définies (critère de `tfMesures`) : « ? » suivi de l'intervalle couvert par les tranches, jamais la moyenne. État : « À l'équilibre » (vert) ou « Hors équilibre » (terracotta). Section Affichage (repliable) : cases `tf-ck-…`, resynchronisées sur `tfAff` au chargement (un navigateur peut conserver l'état des cases au rechargement). curseur Vitesse à 7 crans `TF_VITESSES` (×1/5000 → ×20) ; section **Contrainte** à sous-onglets `.mode-tab` (`tfOnFamille`, réinitialise) : Pression imposée (sélecteur et bouton de masse, bouton du loquet) ou Volume imposé (curseurs Hauteur visée et Durée τ, afficheurs traversée L/c, équilibre thermique et transformation attendue — `_tfRegime` : brutale si τ < 5·L/c, sinon réversible si calorifugé, irréversible si τ < 10·τ_th, presque réversible au-delà —, boutons Lancer / Retour grisés pendant le mouvement ou quand le piston est déjà au but, travail reçu W_op) ; curseur Isolation. `tfInit()` est appelée par `ui.js`.
