@@ -154,7 +154,11 @@ function tfMajAfficheurs() {
   etat.textContent = m.equilibre ? 'À l’équilibre' : 'Hors équilibre';
   etat.className = 'it-val ' + (m.equilibre ? 'tf-etat-eq' : 'tf-etat-hors');
 
-  _tfEl['tf-vitesse-limite'].style.display = tf.limite ? '' : 'none';
+  // Vitesse réellement tenue quand le calcul plafonne (TF_SOUS_PAS_MAX)
+  var lim = _tfEl['tf-vitesse-limite'];
+  lim.style.display = tf.limite ? '' : 'none';
+  if (tf.limite) lim.textContent = 'Calcul trop lourd : ×' + _tfLibelleVitesse(+_tfVitesseAtteinte.toPrecision(2))
+                                 + ' atteint au lieu de ×' + _tfLibelleVitesse(tf.vitesse);
 
   _tfMajCarte();
   _tfMajJournal();
@@ -574,6 +578,7 @@ function tfOnAffichage(cle, coche) {
 // ══════════════════════════════════════════════════════════════════════
 
 var _tfLastTs = null;
+var _tfVitesseAtteinte = 1;   // temps simulé / temps réel, lissé sur ~1 s
 
 function _tfLoop(ts) {
   requestAnimationFrame(_tfLoop);
@@ -585,6 +590,7 @@ function _tfLoop(ts) {
 
   if (!tf.paused) {
     var dtSim = tfAvancer(dtReel / 1000 * tf.vitesse);
+    if (dtReel > 0) _tfVitesseAtteinte += (dtSim / (dtReel / 1000) - _tfVitesseAtteinte) * Math.min(1, dtReel / 1000);
     // Agitation des molécules en temps d'affichage, freinée au ralenti
     // (racine cubique du cran) et jamais accélérée au-delà de ×1, où elle
     // deviendrait illisible ; au cran le plus lent, elle suit le temps

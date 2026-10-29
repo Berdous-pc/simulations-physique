@@ -153,6 +153,8 @@ var tf = {
     Text  : { actif: false, cible: 0, pas: 0, periode: 1, tProchain: 0 },
     masse : { actif: false, cible: 0, pas: 0, periode: 1, tProchain: 0 }
   },
+  // Mode quasi statique (cf. tfAvancer) : pression uniforme, conduction seule
+  qs     : false,
   // Recalage du bilan d'énergie aux changements discontinus de commande
   // (tenir, libérer, poser une masse), pour que tfEnergieTotale reste continue
   eDecal : 0,            // J
@@ -323,6 +325,7 @@ function tfReset() {
   tf.Text   = TF_T0;
   for (var cle in tf.rampes) tf.rampes[cle].actif = false;
   tf.eDecal = 0;
+  tf.qs     = false;
   tf.t      = 0;
   tf.Qrecu  = 0;
   tf.limite = false;
@@ -343,7 +346,7 @@ function tfSetTenu(tenir) {
   _tfRecaler(function () {
     tf.tenu = tenir;
     if (tenir) tf.u[TF_N] = 0;
-    else tf.verin.actif = false;
+    else { tf.verin.actif = false; _tfQuitterQS(); }
   });
   tf.needsRedraw = true;
 }
@@ -380,6 +383,9 @@ function _tfChangerMasse(cible, lent) {
 // Fixe une contrainte extérieure : P_air ('Pair'), T_ext ('Text') ou masse
 // posée ('masse')
 function _tfFixer(cle, valeur, lent) {
+  // Pression ou masse sur le piston libre : le piston va bouger, retour au
+  // calcul complet (la température de la source, elle, n'agit que par le fond)
+  if (cle !== 'Text' && !tf.tenu) _tfQuitterQS();
   if (cle === 'masse') _tfChangerMasse(valeur, lent);
   else tf[cle] = valeur;
   tf.needsRedraw = true;
@@ -447,6 +453,7 @@ function tfLancerVerin(zArr, tau) {
   v.t0    = tf.t;
   v.tau   = tfTauEffectif(v.zDep, zArr, tau);
   v.actif = Math.abs(zArr - v.zDep) > 1e-6;
+  if (v.actif && !_tfVerinLent()) _tfQuitterQS();
   tf.needsRedraw = true;
 }
 
@@ -519,13 +526,17 @@ function _tfMajAmortissement(U) {
   tf.bAmort = 2 * TF_AMORT * Math.sqrt(k * M);
 }
 
-// Avance le temps simulé de dt secondes, en sous-pas limités par la
-// condition CFL. Renvoie le temps effectivement simulé (inférieur à dt si
-// le plafond de sous-pas est atteint).
+// Avance le temps simulé de dt secondes, en sous-pas : limités par la
+// condition CFL en calcul complet, par la conduction en mode quasi statique.
+// Une marche d'escalier tombe toujours au début d'un sous-pas. Renvoie le
+// temps effectivement simulé (inférieur à dt si le plafond de sous-pas est
+// atteint).
 function tfAvancer(dt) {
-  var reste = dt, n = 0;
+  var reste = dt, n = 0, nEssai = 0;
+  if (!tf.qs) _tfEssayerQS();
   while (reste > 1e-12 && n < TF_SOUS_PAS_MAX) {
-    var h = Math.min(reste, tf.dtCfl);
+    _tfAvancerRampes();   // peut faire quitter le mode quasi statique
+    var h = Math.min(reste, tf.qs ? _tfDtQS() : tf.dtCfl);
     // Vérin en marche : profil de vitesse suivi finement, et arrivée sur
     // une fin de sous-pas
     if (tf.verin.actif) {
@@ -533,8 +544,18 @@ function tfAvancer(dt) {
       var fin = tf.verin.t0 + tf.verin.tau - tf.t;
       if (fin > 1e-12 && fin < h) h = fin;
     }
-    _tfAvancerRampes();
-    _tfSousPas(h);
+    for (var cle in tf.rampes) {
+      var r = tf.rampes[cle], av = r.tProchain - tf.t;
+      if (r.actif && av > 1e-12 && av < h) h = av;
+    }
+    if (tf.qs) {
+      // Piston libre arrivé en butée : retour au calcul complet, sans
+      // avancer le temps
+      if (!_tfSousPasQS(h)) { _tfQuitterQS(); continue; }
+    } else {
+      _tfSousPas(h);
+      if (++nEssai >= TF_QS_ESSAI) { nEssai = 0; _tfEssayerQS(); }
+    }
     if (tf.echantillon && tf.t >= tf.tEchant) tf.echantillon();
     reste -= h;
     n++;
@@ -543,6 +564,171 @@ function tfAvancer(dt) {
   tf.needsRedraw = true;
   return dt - reste;
 }
+
+// ══════════════════════════════════════════════════════════════════════
+//  Mode quasi statique
+//  Quand le gaz est au repos mécanique (aucune onde, pression uniforme,
+//  piston immobile ou mené lentement par le vérin), le son n'a plus rien à
+//  montrer : la pression est tenue uniforme et seule la conduction est
+//  suivie, tranche par tranche. Le pas n'est plus limité que par la
+//  conduction (~0,7 ms au lieu de ~1 µs) : un échauffement lent tient enfin
+//  le cran ×20. Toute action qui dérange la mécanique (marche de pression ou
+//  de masse sur le piston libre, piston libéré, vérin rapide, butée) ramène
+//  au calcul complet ; il est réessayé tous les TF_QS_ESSAI sous-pas.
+// ══════════════════════════════════════════════════════════════════════
+
+// Repos mécanique exigé pour entrer : énergie cinétique macroscopique
+// rapportée à l'énergie interne, écarts relatifs de pression entre tranches
+// et avec la pression extérieure (piston libre). Le vérin doit être lent :
+// τ ≥ TF_QS_VERIN fois la traversée du gaz par le son.
+var TF_QS        = true;
+var TF_QS_EC     = 1e-7;
+var TF_QS_P      = 2e-5;
+var TF_QS_VERIN  = 200;
+var TF_QS_ESSAI  = 2000;
+var TF_QS_DT_MAX = 0.02;    // s
+
+function _tfVerinLent() {
+  var v = tf.verin;
+  var Tm = _tfU() / (tf.n * tf.Cv);
+  var c = Math.sqrt(tf.gamma * TF_R * Tm / TF_M_AIR);
+  return v.tau / (Math.max(v.zDep, v.zArr) / c) >= TF_QS_VERIN;
+}
+
+function _tfEssayerQS() {
+  if (!TF_QS || tf.qs) return;
+  if (tf.verin.actif && !_tfVerinLent()) return;
+  var U = _tfU();
+  if (_tfEc() > TF_QS_EC * U) return;
+  var Pmin = Infinity, Pmax = -Infinity;
+  for (var j = 0; j < TF_N; j++) {
+    if (tf.P[j] < Pmin) Pmin = tf.P[j];
+    if (tf.P[j] > Pmax) Pmax = tf.P[j];
+  }
+  var Pmoy = (tf.gamma - 1) * U / tfVolume();
+  if ((Pmax - Pmin) / Pmoy > TF_QS_P) return;
+  if (!tf.tenu) {
+    if (tfButee(Pmoy)) return;
+    var Pext = tfPext();
+    if (Math.abs(Pmoy - Pext) / Pext > TF_QS_P) return;
+  }
+  _tfEntrerQS();
+}
+
+// Entrée : l'énergie cinétique résiduelle passe en chaleur, la pression est
+// rendue uniforme (et égale à P_ext, piston libre), puis l'écart d'énergie
+// de cette mise au repos est rendu au gaz : le bilan reste exact.
+function _tfEntrerQS() {
+  var e0 = tfEnergieTotale(), j;
+  tf.u.fill(0);
+  tf.q.fill(0);
+  var Q = tf._T;   // tableau de travail
+  Q.fill(0);
+  tf.qs = true;
+  if (!_tfQSAppliquer(Q, tf.tenu ? tfVolume() : null)) { tf.qs = false; return; }
+  var d = (e0 - tfEnergieTotale()) / TF_N;
+  for (j = 0; j < TF_N; j++) Q[j] = d;
+  if (!_tfQSAppliquer(Q, tf.tenu ? tfVolume() : null)) tf.qs = false;
+  tf.needsRedraw = true;
+}
+
+function _tfQuitterQS() {
+  if (!tf.qs) return;
+  tf.qs = false;
+  tf.dtCfl = 1e-7;   // recalculé au premier sous-pas complet
+  _tfMajAmortissement();
+}
+
+// Pas de la conduction explicite : stabilité entre tranches voisines (à
+// volume constant, le cas le plus contraignant) et par le fond
+function _tfDtQS() {
+  var cTr = tf.nTr * tf.Cv, dmin = Infinity, z = tf.z;
+  for (var j = 0; j < TF_N - 1; j++) {
+    var d = (z[j + 2] - z[j]) / 2;
+    if (d < dmin) dmin = d;
+  }
+  var dt = 0.4 * cTr * dmin / (2 * TF_LAMBDA * TF_S);
+  if (tf.G > 0) dt = Math.min(dt, 0.4 * cTr / tf.G);
+  return Math.min(dt, TF_QS_DT_MAX);
+}
+
+// Un sous-pas quasi statique : chaleur échangée (conduction entre tranches,
+// fond), puis volumes à pression uniforme. Renvoie false, sans rien
+// changer, si le piston libre sortirait de sa course.
+function _tfSousPasQS(dt) {
+  var N = TF_N, E = tf.E, z = tf.z, T = tf._T, j;
+  var cTr = tf.nTr * tf.Cv;
+  var Q = _tfQS_Q || (_tfQS_Q = new Float64Array(TF_N));
+  for (j = 0; j < N; j++) { T[j] = E[j] / cTr; Q[j] = 0; }
+  var kc = TF_LAMBDA * TF_S * dt * 2;
+  for (j = 0; j < N - 1; j++) {
+    var flux = kc * (T[j] - T[j + 1]) / (z[j + 2] - z[j]);
+    Q[j]     -= flux;
+    Q[j + 1] += flux;
+  }
+  var Qfond = tf.G > 0 ? tf.G * (tf.Text - T[0]) * dt : 0;
+  Q[0] += Qfond;
+  var Vc = tf.tenu ? TF_S * (tf.verin.actif ? _tfZVerin(tf.t + dt) : z[N]) : null;
+  if (!_tfQSAppliquer(Q, Vc)) return false;
+  tf.Qrecu += Qfond;
+  tf.t += dt;
+  if (tf.verin.actif && tf.t >= tf.verin.t0 + tf.verin.tau - 1e-12) tf.verin.actif = false;
+  return true;
+}
+var _tfQS_Q = null;
+
+// Ajoute la chaleur Q[j] à chaque tranche et place les interfaces à
+// pression uniforme.
+//   - Piston libre (Vc null) : pression P_ext. Chaque tranche reçoit sa
+//     chaleur à pression constante (dE = dQ/γ, le reste pousse le piston) ;
+//     travail de l'air de l'enceinte compté. Exact pour le bilan.
+//   - Piston tenu (Vc : volume imposé) : chaleur à volume constant, puis
+//     détente ou compression adiabatique de chaque tranche jusqu'à la
+//     pression commune P' qui donne le volume total Vc,
+//     P'^(1/γ) = Σ V_j·P_j^(1/γ) / Vc ; la variation d'énergie de cette
+//     étape est le travail reçu du vérin.
+function _tfQSAppliquer(Q, Vc) {
+  var N = TF_N, E = tf.E, z = tf.z, P = tf.P, S = TF_S;
+  var g = tf.gamma, g1 = g - 1, j;
+  var V = _tfQS_V || (_tfQS_V = new Float64Array(TF_N));
+  var Pc, Ef = _tfQS_E || (_tfQS_E = new Float64Array(TF_N));
+  if (Vc === null) {
+    Pc = tfPext();
+    var tot = 0;
+    for (j = 0; j < N; j++) {
+      Ef[j] = E[j] + Q[j] / g;
+      V[j] = g1 * Ef[j] / Pc;
+      tot += V[j];
+    }
+    var zN = tot / S;
+    if (zN > TF_H_CYL || zN < TF_Z_BUTEE) return false;
+    tf.Wair -= tf.Pair * S * (zN - z[N]);
+  } else {
+    var somme = 0, Eavant = 0, Eapres = 0;
+    for (j = 0; j < N; j++) {
+      Ef[j] = E[j] + Q[j];
+      V[j] = S * (z[j + 1] - z[j]);
+      somme += V[j] * Math.pow(g1 * Ef[j] / V[j], 1 / g);
+      Eavant += Ef[j];
+    }
+    Pc = Math.pow(somme / Vc, g);
+    for (j = 0; j < N; j++) {
+      V[j] *= Math.pow(g1 * Ef[j] / V[j] / Pc, 1 / g);
+      Ef[j] = Pc * V[j] / g1;
+      Eapres += Ef[j];
+    }
+    tf.Wop += Eapres - Eavant;
+  }
+  var zc = 0;
+  for (j = 0; j < N; j++) {
+    E[j] = Ef[j];
+    P[j] = Pc;
+    zc += V[j] / S;
+    z[j + 1] = zc;
+  }
+  return true;
+}
+var _tfQS_V = null, _tfQS_E = null;
 
 // ── Un sous-pas (saute-mouton : vitesses, positions, puis énergies) ──
 function _tfSousPas(dt) {

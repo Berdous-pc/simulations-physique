@@ -290,6 +290,19 @@ Gaz parfait découpé en `TF_N = 80` tranches de même masse (lagrangien 1D), so
 
 Fonctions : `tfReset()`, `tfAvancer(dt)`, `tfSetTenu(bool)`, `tfSetIsolation(G)`, `tfAppliquer(cle, cible, duree, pasMax)`, `tfNbMarches()`, `tfLancerVerin(zArr, tau)`, `tfEnCours()`, `tfInterrompre()`, `tfDurees()`, `tfTTranche(j)`, `tfMesures()` (moyennes, extrêmes des tranches, `Pface`, critère `equilibre` du §2.4 du plan : piston tenu et vérin arrêté, ou butée, ou P_gaz = P_ext), `tfPext()`, `tfPFace()` (pression sur le piston, viscosité comprise : celle que mesure le vérin), `tfVolume()`, `tfEnergieTotale()`.
 
+**Mode quasi statique** (`tf.qs`) : le calcul complet doit suivre les ondes sonores, pas CFL ~1 µs quand le gaz est chaud et comprimé ; au plafond `TF_SOUS_PAS_MAX`, le cran ×20 ne tenait que ×0,8 (escalier de T_ext de 500 s : 10 min à l'écran). Quand le gaz est au repos mécanique — Ec < `TF_QS_EC` = 10⁻⁷ U, écarts de P entre tranches et, piston libre, avec P_ext sous `TF_QS_P` = 2·10⁻⁵, pas en butée, vérin arrêté ou lent (τ ≥ `TF_QS_VERIN` = 200 L/c) —, `_tfEssayerQS` (au début de `tfAvancer`, puis tous les `TF_QS_ESSAI` = 2000 sous-pas) passe en mode quasi statique : pression uniforme, conduction seule, pas limité par la stabilité de la conduction explicite (`_tfDtQS`, ~0,7 ms, au plus 20 ms). `_tfQSAppliquer` : piston libre, chaque tranche reçoit sa chaleur à P_ext constante (dE = dQ/γ, volumes (γ−1)E/P_ext, travail de l'air compté) ; piston tenu (immobile ou vérin lent), chaleur à volume constant puis ajustement adiabatique de chaque tranche à la pression commune P' qui donne le volume imposé, P'^(1/γ) = Σ V_j·P_j^(1/γ) / V, la variation d'énergie de cet ajustement allant dans W_op. Entrée (`_tfEntrerQS`) : vitesses mises à zéro, pression rendue uniforme, l'écart d'énergie rendu au gaz en chaleur. Sortie (`_tfQuitterQS`) : marche ou échelon de pression ou de masse piston libre (`_tfFixer`), piston libéré, vérin rapide, butée atteinte, retour à un instantané. Une marche d'escalier tombe toujours au début d'un sous-pas. Rien ne l'affiche : c'est une optimisation, sans effet sur les résultats.
+
+| Test (mode quasi statique contre calcul complet, `TF_QS` coupé) | Résultat |
+|---|---|
+| Isobare, T_ext 400 K, diathermane, 60 s | V 0,7990 L, T 390,37 K (385,02–399,74) identiques ; 46 503 sous-pas contre 25 234 454 ; énergie à 4·10⁻¹¹ J |
+| Isochore, T_ext 400 K, 60 s | P 144,130 kPa, T 397,74 K identiques ; 55 817 contre 31 572 903 sous-pas |
+| Escalier de T_ext jusqu'à 400 K en 40 s, piston libre | V 0,7608 L, T 371,72 K identiques ; 42 709 contre 22 022 151 sous-pas |
+| Vérin 30 → 15 cm en 20 s, diathermane | P 214,218 kPa, T 295,58 K identiques ; 63 870 contre 33 007 900 sous-pas |
+| Masse 20 kg brutale ; sable en 40 marches (calorifugé) | 370,50 K ; 354,19 K, identiques (calcul complet pendant les oscillations, quasi statique 63 % et 22 % du temps) |
+| Gaz chaud et comprimé (0,374 L, 427 K), escalier de T_ext, cran ×20 | 0,3333 s simulées par image, plafond jamais atteint (avant : 0,0135 s, ×0,8) |
+
+Le panneau affiche la vitesse réellement tenue quand le calcul plafonne encore (« Calcul trop lourd : ×0,8 atteint au lieu de ×20 », moyenne glissante `_tfVitesseAtteinte` sur ~1 s).
+
 **Bilan d'énergie unique** : `tfEnergieTotale()` = U + Ec (+ Ec et (M + m)·g·z du piston s'il est libre) − Q − W_air − W_op + `tf.eDecal`. W_air ne varie que piston libre, W_op que piston tenu. `_tfRecaler(fn)` applique un changement discontinu de commande (tenir, libérer, poser ou retirer une masse, à la main ou à chaque marche d'escalier) et reporte l'écart dans `eDecal` : c'est le travail de l'opérateur, et le compte reste continu (constant aux erreurs de schéma près, il sert aux tests).
 
 **Validation (Chrome headless, palier 1)** :
