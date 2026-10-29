@@ -42,7 +42,6 @@ var TF_Z_HAUT = TF_H_CYL + TF_EP_PISTON + TF_H_TIGE + TF_EP_PLATEAU
 // ── Options d'affichage (section Affichage du panneau) ──
 var tfAff = {
   molecules : true,    // molécules pilotées par le modèle
-  trainees  : false,   // traînée derrière chaque molécule, longueur ∝ vitesse
   couleurT  : true,    // gaz et molécules colorés selon la température
   sondes    : false,   // trois sondes T et P sur le flanc du cylindre
   profil    : false    // profil de pression P(z) − P̄ à droite du cylindre
@@ -181,17 +180,19 @@ function _tfDessinerGaz() {
     }
   }
 
-  // Limites des tranches (même masse de gaz dans chacune) : elles se
-  // resserrent dans une compression et rendent les ondes visibles au ralenti.
-  c.strokeStyle = 'rgba(42,106,170,0.16)';
+  // Limites des bandes de molécules (même masse de gaz dans chacune), en
+  // pointillé léger : elles se resserrent dans une compression.
+  c.strokeStyle = 'rgba(44,62,80,0.28)';
   c.lineWidth = 1;
+  c.setLineDash([4, 4]);
   c.beginPath();
-  for (var i = 1; i < TF_N; i++) {
-    var y = Math.round(_tfY(tf.z[i])) + 0.5;
+  for (var b = 1; b < TF_BANDES; b++) {
+    var y = Math.round(_tfY(tfBandeBas(b))) + 0.5;
     c.moveTo(_tfX1, y);
     c.lineTo(_tfX2, y);
   }
   c.stroke();
+  c.setLineDash([]);
 }
 
 // ── Parois latérales ──
@@ -319,56 +320,34 @@ function _tfMelangeT(T, pal, intensite) {
 function _tfCouleurT(T, intensite) { return _tfMelangeT(T, TF_COUL_FOND, intensite); }
 
 // ── Molécules ──
-// Petites et nombreuses : dessinées par tranche, d'une seule couleur par
-// tranche (celle de sa température), en un seul chemin chacune.
-var TF_MOL_TRAINEE = 0.09;   // s : longueur de la traînée = vitesse × durée
-
+// Dessinées par bande, d'une seule couleur par bande (celle de sa
+// température moyenne), en un seul chemin chacune.
 function tfRayonMolecule() {
-  return Math.max(1.8, (_tfX2 - _tfX1) * TF_MOL_RAYON);
+  return Math.max(1.3, (_tfX2 - _tfX1) * TF_MOL_RAYON);
 }
 
-var _tfMolParTranche = [];
+var _tfMolParBande = [];
 
 function _tfDessinerMolecules() {
   var c = tfCtx, r = tfRayonMolecule();
-  var w = _tfX2 - _tfX1, j, k, m, x, y;
+  var w = _tfX2 - _tfX1, b, k, m, x, y;
 
-  // Regroupement par tranche (une couleur par tranche)
-  for (j = 0; j < TF_N; j++) {
-    if (!_tfMolParTranche[j]) _tfMolParTranche[j] = [];
-    _tfMolParTranche[j].length = 0;
+  // Regroupement par bande (une couleur par bande)
+  for (b = 0; b < TF_BANDES; b++) {
+    if (!_tfMolParBande[b]) _tfMolParBande[b] = [];
+    _tfMolParBande[b].length = 0;
   }
-  for (k = 0; k < tfMol.length; k++) _tfMolParTranche[tfMol[k].j].push(tfMol[k]);
+  for (k = 0; k < tfMol.length; k++) _tfMolParBande[tfMol[k].b].push(tfMol[k]);
 
   // Les molécules collées au piston ou au fond ne débordent pas du gaz
   c.save();
   c.beginPath();
   c.rect(_tfX1, _tfY(tf.z[TF_N]), w, _tfY(0) - _tfY(tf.z[TF_N]));
   c.clip();
-  c.lineCap = 'round';
-  for (j = 0; j < TF_N; j++) {
-    var liste = _tfMolParTranche[j];
+  for (b = 0; b < TF_BANDES; b++) {
+    var liste = _tfMolParBande[b];
     if (!liste.length) continue;
-    var coul = tfAff.couleurT ? _tfMelangeT(tfTTranche(j), TF_COUL_MOL, 1) : '#2a6aaa';
-
-    // Traînées : segment derrière la molécule, longueur ∝ vitesse
-    if (tfAff.trainees) {
-      var l = tfMolVitesse(j) * TF_MOL_TRAINEE * _tfEch;
-      c.strokeStyle = coul;
-      c.globalAlpha = 0.45;
-      c.lineWidth = r;
-      c.beginPath();
-      for (k = 0; k < liste.length; k++) {
-        m = liste[k];
-        x = _tfX1 + m.x * w; y = _tfY(tfMolZ(m));
-        c.moveTo(x, y);
-        c.lineTo(x - m.ux * l, y + m.uz * l);
-      }
-      c.stroke();
-      c.globalAlpha = 1;
-    }
-
-    c.fillStyle = coul;
+    c.fillStyle = tfAff.couleurT ? _tfMelangeT(tfTBande(b), TF_COUL_MOL, 1) : '#2a6aaa';
     c.beginPath();
     for (k = 0; k < liste.length; k++) {
       m = liste[k];

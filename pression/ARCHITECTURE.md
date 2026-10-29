@@ -296,24 +296,18 @@ Fonctions : `tfReset()`, `tfAvancer(dt)`, `tfSetMasse(kg)`, `tfSetLoquet(bool)`,
 | Coût | ~1,4 ms par image à ×1 ; ×20 plafonné (~10 ms par image) quand le gaz est comprimé et chaud |
 | Son ralenti ×100, 10 / 20 / 40 kg brutaux | mêmes états finaux (447,82 K pour 447,84 K) ; écart de P entre tranches 18 à 26 % ; pic de l'impulsion au fond à 88,0 ms pour 87,5 ms attendues |
 | 40 kg brutaux, son réel / ×30 / ×100 / ×300 | écart de P max 0,0 / 2,7 / 25,5 / 91 % (front net à ×300) ; états finaux exacts dans tous les cas, énergie conservée à 5·10⁻⁵ près |
-| Molécules, moitié basse des tranches plus fine (×0,5), plus froide (×0,5) ou les deux | 49,7 / 49,8 / 50,1 % des molécules dans la moitié basse en masse (attendu 50 %), moyenne sur 18 000 images |
-| Molécules, gradient réel après compression et refroidissement par le fond (301 → 426 K) | 299 à 304 molécules sur 600 dans la moitié basse en masse, qui n'occupe que 45 % de la hauteur |
 
-### `js/tf-molecules.js` — Molécules pilotées par le modèle
+### `js/tf-molecules.js` — Molécules par bandes de gaz
 
-600 petites molécules (`TF_MOL_PAR_TRANCHE = 20` par tranche, rayon `TF_MOL_RAYON` = 0,75 % de la largeur dessinée, au moins 1,8 px). Chacune est repérée par sa tranche `j`, sa position relative `s` dans la tranche et son abscisse `x` (fraction de la largeur) : elle est donc entraînée avec le gaz (piston, ondes) sans calcul. Vitesse ∝ √T de sa tranche (`TF_MOL_VITESSE` à T0, à l'échelle du dessin), rebonds sur les parois, le fond et le piston.
+Pour l'affichage, les 30 tranches du calcul sont regroupées en `TF_BANDES = 10` bandes de 3 tranches (même masse de gaz chacune). Chaque bande est une petite boîte de gaz de `TF_MOL_PAR_BANDE = 60` molécules : elles volent en ligne droite et rebondissent sur les parois, le fond, le piston et **les limites de leur bande, qu'elles ne franchissent jamais**. Leur position verticale est relative à la bande (`zr`), si bien qu'une bande comprimée s'aplatit et que ses molécules se serrent : densité juste par construction, front de compression visible comme des bandes écrasées l'une après l'autre. Vitesse ∝ √T moyenne de la bande (`tfTBande`), `TF_MOL_VITESSE` = 0,12 m/s d'échelle à T0 (une bande au repos traversée en ~0,25 s). Le calcul garde ses 30 tranches : seule l'image est découpée.
 
-**Libre parcours court** (`TF_MOL_LPM` = 8 mm d'échelle, distances tirées selon une loi exponentielle) : après chaque vol, nouvelle direction au hasard, comme dans un gaz réel où les chocs sont incessants. Les molécules restent dans leur région. La première version (180 grosses molécules en vol libre d'une paroi à l'autre) mélangeait tout : on ne voyait aucune différence entre le haut et le bas. Le libre parcours est **constant** : le faire varier comme 1/ρ biaisait la règle de passage (+11 à +14 % de molécules dans le gaz dense, mesuré).
+**Versions abandonnées** : (1) vols libres d'une paroi à l'autre, avec règle de passage entre tranches : tout se mélangeait ; (2) libre parcours court : l'onde restait noyée dans le bruit des positions aléatoires ; (3) molécules ancrées dans le gaz qui frémissaient autour de leur point (une puis deux rangées par tranche) : le frémissement (~1 px) laissait l'image d'un gaz figé, l'agitation thermique était invisible. Réduire les tranches du calcul lui-même a été écarté : front, gradient de T, profil et sondes seraient devenus grossiers.
 
-**Dessin** (`tf-scene.js`) : molécules regroupées par tranche et colorées selon sa température (palette plus soutenue que le fond, lui-même atténué à 45 % quand les molécules sont affichées) ; traînées en option (case « Traînées »), segment derrière la molécule de longueur vitesse × `TF_MOL_TRAINEE` (0,09 s).
-
-**Densité** : un passage de la tranche a à la tranche b est accepté avec la probabilité min(1, ρ_b·v_b / (ρ_a·v_a)), sinon la molécule rebrousse chemin. Cette règle équilibre les flux de part et d'autre de chaque limite : en régime établi, le nombre de molécules par tranche est proportionnel à la masse de gaz (identique pour toutes), quelles que soient les températures. Sans elle, des vols libres se répartissent uniformément en hauteur et le gaz froid ou comprimé n'apparaît pas plus dense.
-
-**Temps** : agitation en temps d'affichage, multipliée par (min(1, vitesse))^(1/3) dans `tf-ui.js` : au ralenti extrême, elles dérivent lentement sans se figer ; elles ne sont jamais accélérées au-delà de ×1, où elles deviendraient illisibles. Elles ne servent à aucun calcul : P et T viennent des tranches (le bandeau Informations le dit).
+**Dessin** (`tf-scene.js`) : molécules regroupées par bande et colorées selon sa température moyenne ; limites des bandes en pointillé léger (à la place des 29 lignes de tranches). **Temps** : agitation en temps d'affichage, multipliée par (min(1, vitesse))^(1/3) dans `tf-ui.js`. Elles ne servent à aucun calcul : P et T viennent des tranches (le bandeau Informations le dit).
 
 ### `js/tf-scene.js` — Rendu
 
-Options d'affichage dans `tfAff` (section Affichage du panneau) : molécules, traînées, couleur selon T (gaz et molécules), sondes, profil de pression.
+Options d'affichage dans `tfAff` (section Affichage du panneau) : molécules, couleur selon T (gaz et molécules), sondes, profil de pression.
 
 - **Couleur selon T** : chaque tranche est colorée du bleu (plus froide que T0) au rouge (plus chaude), en racine de l'écart saturée à ±150 K, pour que quelques kelvins se voient.
 - **Sondes** : T et P de trois tranches (`TF_SONDES` : haut, milieu, bas), dans des étiquettes contre la paroi droite ; P au pascal près (kPa à trois décimales). Une étiquette est omise si le gaz est trop écrasé pour la loger.

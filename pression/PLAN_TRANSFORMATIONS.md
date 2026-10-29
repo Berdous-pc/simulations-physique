@@ -133,12 +133,12 @@ Rendu en colonne, de bas en haut :
 7. **Loupe sur le profil de pression** (option) : à côté du cylindre, à la même hauteur, la courbe P(z) − P̄ tranche par tranche, axe horizontal centré sur 0, échelle amplifiée affichée en clair (« ×1000 » et graduations en Pa). C'est l'outil qui rend visibles, au ralenti, les ondes en célérité réelle.
 8. **Enceinte** au-dessus du cylindre : cloche transparente qui couvre le haut du cylindre, le plateau et les masses, reliée à un manomètre qui affiche P_air. L'air de la cloche est teinté d'autant plus que P_air est forte (vide : cloche claire, mention « vide »).
 
-**Molécules pilotées par le modèle** : 600 petits points (20 par tranche), qui rendent visible le comportement physique du gaz là où ils sont :
-- **libre parcours court** : chaque molécule vole sur quelques millimètres puis repart dans une direction au hasard ; elle reste dans sa région (un vol libre d'une paroi à l'autre mélangeait tout, version abandonnée) ;
-- **densité** : chaque molécule appartient à une tranche et en suit les limites ; comme chaque tranche a la même masse, les molécules se resserrent là où le gaz est comprimé ou froid ;
-- **mouvement d'ensemble** : elles sont entraînées à la vitesse locale du gaz (oscillations du piston, allers-retours des ondes) ;
-- **agitation thermique** : vitesse proportionnelle à √T de leur tranche ; **couleur** selon T ; **traînées** en option (longueur ∝ vitesse) ;
-- **chocs sur le piston et les parois** : les molécules qui les touchent rebondissent.
+**Molécules par bandes de gaz** : les 30 tranches sont regroupées à l'affichage en 10 bandes de même masse, chacune contenant 60 molécules en vol libre qui ne quittent jamais leur bande :
+- une bande comprimée s'aplatit et ses molécules se serrent ; un front se voit comme des bandes écrasées l'une après l'autre ;
+- vitesse ∝ √T moyenne de la bande, **couleur** selon T ; limites des bandes en pointillé ;
+- les molécules de la bande du haut frappent le piston.
+
+Versions abandonnées : vols libres d'une paroi à l'autre, libre parcours court, molécules ancrées qui frémissaient (agitation invisible). Pas de traînées.
 
 Pas de loupes comparatives haut / bas (proposées puis écartées).
 
@@ -182,7 +182,7 @@ Structure canonique (§5 de CONTEXTE_PROJET). « (R) » = section repliable.
 3. **Charges sur le piston** : sélecteur 10 / 20 / 40 kg ; bouton **Poser / Retirer la masse** ; bouton **Loquet : verrouillé / libéré** (l'expérience se prépare au repos) ; sable : masse d'un grain (5 à 100 g), boutons **Un grain**, **Verser / Arrêter** (débit réglable), **Retirer le sable**, masse de sable posée.
 4. **Thermique** : curseur **Isolation** (calorifugé ↔ diathermane) ; curseur **T_ext** avec les mêmes sous-onglets **Échelon** / **Rampe** et le même bouton **Appliquer** que la pression.
 5. **Gaz** (R) : γ (cf. 2.5) ; T₀, V₀ initiaux (pris en compte au Réinitialiser).
-6. **Affichage** (R) : molécules, dégradé de température, sondes, loupe sur le profil de pression, pression du piston sur PV, isotherme, adiabatique, traînées des molécules. Section à part **Ondes dans le gaz** (R) : curseur Vitesse du son et les deux durées comparées.
+6. **Affichage** (R) : molécules, dégradé de température, sondes, loupe sur le profil de pression, pression du piston sur PV, isotherme, adiabatique. Section à part **Ondes dans le gaz** (R) : curseur Vitesse du son et les deux durées comparées.
 7. **Bilan** (R, niveau CPGE) : W reçu, Q reçu, ΔU (avec vérification ΔU = W + Q), et **entropie créée** S_c = ΔS − Q/T_ext. La comparaison brutal / sable en fait un résultat chiffré.
 
 Afficheurs permanents (tableau en bas de la colonne de gauche, sous les graphes, §4) : **P, V, T** (« ? » hors équilibre, en terracotta), P_ext, T_ext, badge **À l'équilibre / Hors équilibre**.

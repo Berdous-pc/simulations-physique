@@ -312,10 +312,6 @@
             Molécules
           </label>
           <label class="check-row">
-            <input type="checkbox" id="tf-ck-trainees" onchange="tfOnAffichage('trainees', this.checked)">
-            Traînées des molécules (vitesse)
-          </label>
-          <label class="check-row">
             <input type="checkbox" id="tf-ck-couleurT" checked onchange="tfOnAffichage('couleurT', this.checked)">
             Couleur selon la température
           </label>
@@ -375,7 +371,7 @@
         Le curseur <strong>Vitesse</strong> descend jusqu'à ×1/5000 pour suivre les ondes dans le gaz.
         Quand les tranches du gaz n'ont pas la même pression ou la même température, le tableau affiche <strong>?</strong> et l'écart entre tranches.
         Couleur du gaz et des molécules : bleu plus froid que 20 °C, rouge plus chaud.
-        Les <strong>molécules</strong> restent dans leur région du gaz : plus serrées où il est dense, plus rapides où il est chaud (les traînées montrent leur vitesse). P et T sont calculées par tranches, pas à partir de leurs chocs.
+        Les <strong>molécules</strong> sont réparties en bandes de gaz (pointillés) qu'elles ne quittent pas : une bande comprimée s'aplatit et ses molécules se serrent ; elles vont d'autant plus vite que la bande est chaude. P et T sont calculées par tranches, pas à partir de leurs chocs.
         Dans <strong>Ondes dans le gaz</strong>, ralentir le son fait apparaître un front de compression qui part du piston : il faut pour cela que le son traverse le gaz plus lentement que le piston ne se met en mouvement (comparer les deux durées).
         Le cylindre est élargi sur le dessin (section réelle : 20 cm²).
         <br><strong>Raccourcis</strong> : Espace = pause, R = réinitialiser.
