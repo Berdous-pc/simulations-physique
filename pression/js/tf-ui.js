@@ -21,8 +21,13 @@ var _TF_EL_IDS = [
   'tf-moyens', 'tf-tab-masse', 'tf-tab-Pair', 'tf-hint-actuel',
   'tf-sl-duree', 'tf-lbl-duree', 'tf-duree-allongee',
   'tf-row-pas', 'tf-sl-pas', 'tf-lbl-pas', 'tf-hint-escalier',
-  'tf-ro-regime', 'tf-durees-car', 'tf-btn-lancer', 'tf-btn-interrompre', 'tf-en-cours'
+  'tf-ro-regime', 'tf-durees-car', 'tf-btn-lancer', 'tf-btn-interrompre', 'tf-en-cours',
+  'tf-journal', 'tf-ckg-gel'
 ];
+
+// Vrai une fois tfInit terminée : les réglages initiaux du panneau
+// n'ouvrent pas d'étape
+var _tfPret = false;
 
 // ══════════════════════════════════════════════════════════════════════
 //  Carte « Transformation » (PLAN_TRANSFORMATIONS.md §10.3)
@@ -152,6 +157,75 @@ function tfMajAfficheurs() {
   _tfEl['tf-vitesse-limite'].style.display = tf.limite ? '' : 'none';
 
   _tfMajCarte();
+  _tfMajJournal();
+}
+
+// ── Journal des étapes (tf-etapes.js) ──
+// Reconstruit seulement quand son contenu change (les clics ne se perdent
+// pas) ; défile jusqu'à la dernière étape quand une étape s'ajoute.
+var _tfJournalHtml = '', _tfJournalNb = 0;
+
+function _tfFmtEtat(L) {
+  return '<span class="tf-etat-val">' + _tfFmt(L.V * 1000, 3) + ' L · ' + _tfFmt(L.P / 1000, 1) + ' kPa · '
+       + _tfFmt(L.T, 1) + ' K</span>';
+}
+
+function _tfBoutonRevenir(i) {
+  var l = tfEtapes.etats[i].lettre;
+  return '<button class="tf-revenir" title="Revenir à l’état ' + l + '" '
+       + 'onclick="event.stopPropagation(); tfOnRevenir(' + i + ')">↺ ' + l + '</button>';
+}
+
+function _tfMajJournal() {
+  var E = tfEtapes, h = '';
+  if (E.etats.length) {
+    h += '<div class="tf-etape tf-etape-depart"><span class="tf-pastille" style="background:' + TF_COUL_SANS_ETAPE + '"></span>'
+       + '<span class="tf-etape-txt"><b>A</b> état initial<br>' + _tfFmtEtat(E.etats[0]) + '</span>'
+       + _tfBoutonRevenir(0) + '</div>';
+  }
+  for (var k = 0; k < E.liste.length; k++) {
+    var et = E.liste[k];
+    var dep = et.depart !== null ? E.etats[et.depart].lettre : '?';
+    var arr = et.arrivee !== null ? E.etats[et.arrivee].lettre : et.statut === 'en cours' ? '…' : '✕';
+    var suite = et.arrivee !== null ? _tfFmtEtat(E.etats[et.arrivee])
+              : et.statut === 'en cours' ? '<span class="tf-etat-val">en cours…</span>'
+              : '<span class="tf-etat-val">interrompue avant l’équilibre</span>';
+    h += '<div class="tf-etape' + (E.sel === k ? ' sel' : '') + '" onclick="tfOnSelEtape(' + k + ')" '
+       + 'title="Mettre en évidence sur le diagramme">'
+       + '<span class="tf-pastille" style="background:' + et.couleur + '"></span>'
+       + '<span class="tf-etape-txt"><b>' + dep + ' → ' + arr + '</b> ' + et.desc + '<br>' + suite + '</span>'
+       + (et.arrivee !== null ? _tfBoutonRevenir(et.arrivee) : '') + '</div>';
+  }
+  if (h === _tfJournalHtml) return;
+  _tfJournalHtml = h;
+  var j = _tfEl['tf-journal'];
+  j.innerHTML = h;
+  if (E.liste.length > _tfJournalNb) j.scrollTop = j.scrollHeight;
+  _tfJournalNb = E.liste.length;
+}
+
+// Texte du journal pour l'action de la carte
+function _tfDescAction(cle, duree) {
+  var k = tfCarte[cle], d;
+  if (cle === 'volume') {
+    d = 'Volume → ' + _tfFmt(TF_S * k.vise * 1000, 3) + ' L en '
+      + _tfFmtDuree(tfTauEffectif(tf.z[TF_N], k.vise, duree));
+  } else {
+    var nom = cle === 'masse' ? 'Masse' : cle === 'Pair' ? 'P_air' : 'T_source';
+    d = nom + ' → ' + _tfFmtValeur(cle, k.vise).replace(/ \(.*\)$/, '') + ', '
+      + (duree === 0 ? (cle === 'masse' ? 'd’un coup' : 'échelon')
+                     : (cle === 'masse' ? 'sable' : 'escalier') + ' en ' + _tfFmtDuree(duree));
+    if (cle === 'Text') d += tf.tenu ? ', piston tenu' : ', piston libre';
+  }
+  return d + (tf.G === 0 ? ' · calorifugé' : ' · fond conducteur');
+}
+
+// Ouvre une étape avant une action : le chrono des graphes repart et l'état
+// de départ est enregistré
+function _tfOuvrirEtape(desc) {
+  tfGraphDegeler();
+  tfEtapeNouvelle(desc);
+  tfGraphDepartEtape();
 }
 
 // Partie de la carte qui suit l'état du gaz : valeur actuelle, escalier,
@@ -231,12 +305,26 @@ function _tfMajBoutonsCarte() {
 
 // Régime attendu d'une action sur le volume, de durée tau (PLAN §2.7) :
 // comparée à la traversée du gaz par le son (mécanique), puis à la mise en
-// équilibre thermique avec l'extérieur
+// équilibre thermique avec l'extérieur. Seuils mécaniques en τ / (L/c), L
+// étant la plus grande des hauteurs de départ et d'arrivée (mesures du
+// palier 3, 30 → 15 cm) : sous 5, un front raide (Pmax/Pmin ≥ 1,1) ; de 5 à
+// 50, des ondes laissent le gaz non uniforme pendant la course (1,10 à 5,7 ;
+// 1,02 à 11), état final pourtant proche du réversible ; au-delà, écarts
+// sous le seuil de 0,1 % où P est définie : quasi statique.
+var TF_TAU_FRONT = 5, TF_TAU_QS = 50;
+
 function _tfRegime(d, tau) {
   // Vitesse de pointe du piston plus grande que la célérité du son : choc
-  var v = 2 * Math.abs(tfCarte.volume.vise - tf.z[TF_N]) / tau;
+  var zN = tf.z[TF_N], vise = tfCarte.volume.vise;
+  var v = 2 * Math.abs(vise - zN) / tau;
   if (!tf.verin.actif && v > d.c) return 'Brutale : piston plus rapide que le son, onde de choc';
-  if (tau < 5 * d.traversee)  return 'Brutale : un front traverse le gaz';
+  var r = tau / (Math.max(zN, vise) / d.c);
+  if (r < TF_TAU_FRONT) return 'Brutale : un front traverse le gaz';
+  if (r < TF_TAU_QS) {
+    return 'Rapide, non quasi statique : des ondes parcourent le gaz, non uniforme pendant la course'
+         + (isFinite(d.thermique) ? ' ; échanges thermiques avec un gaz non uniforme : irréversible'
+                                  : ' ; état final proche de l’adiabatique réversible');
+  }
   if (!isFinite(d.thermique)) return 'Quasi statique et réversible (adiabatique)';
   // Seuil large : à 4·τ_th (60 s diathermane), l'entropie créée vaut encore
   // le tiers de celle d'une compression rapide
@@ -328,6 +416,7 @@ function tfBasculerPause() {
 function tfReinitialiser() {
   tfReset();
   tfMolInit();
+  tfEtapesEffacer();
   tfGraphEffacer();
   _tfMajBoutons();
   tfMajAfficheurs();
@@ -346,6 +435,17 @@ function tfOnVitesseAuto(coche) { tfCarte.auto = coche; }
 
 function tfOnIsolation(val) {
   var idx = parseInt(val, 10);
+  // Le fond devient conducteur ou isolant : des échanges peuvent commencer
+  // (étape retirée du journal si rien ne change)
+  if (_tfPret && TF_ISOLATIONS[idx] !== tf.G) {
+    var nom = idx === 0 ? 'calorifugé' : idx === TF_ISOLATIONS.length - 1 ? 'diathermane' : 'G = ' + String(TF_ISOLATIONS[idx]).replace('.', ',') + ' W/K';
+    // En faisant glisser le curseur, une seule étape « Fond » tant que le gaz
+    // n'a pas atteint l'équilibre
+    var der = tfEtapes.liste[tfEtapes.liste.length - 1];
+    if (tfEnCours()) tfGraphDegeler();
+    else if (der && der.fond && der.statut === 'en cours') { der.desc = 'Fond ' + nom; tfEtapes.version++; tfGraphDegeler(); }
+    else { _tfOuvrirEtape('Fond ' + nom); tfEtapes.liste[tfEtapes.liste.length - 1].fond = true; }
+  }
   tfSetIsolation(TF_ISOLATIONS[idx]);
   var G = TF_ISOLATIONS[idx];
   _tfEl['tf-lbl-isolation'].textContent =
@@ -357,6 +457,7 @@ function tfOnIsolation(val) {
 
 // Tenir ou libérer le piston, à tout moment (libérer arrête le vérin)
 function tfBasculerPiston() {
+  _tfOuvrirEtape(tf.tenu ? 'Piston libéré' : 'Piston tenu');
   tfSetTenu(!tf.tenu);
   _tfMajBoutons();
   tfMajAfficheurs();
@@ -405,6 +506,7 @@ function tfOnPas(val) {
 function tfLancer() {
   if (tfEnCours()) return;
   var cle = _tfCle(), k = tfCarte[cle], duree = _tfDuree(cle);
+  _tfOuvrirEtape(_tfDescAction(cle, duree));
   if (cle === 'volume') {
     tfLancerVerin(k.vise, duree);
   } else {
@@ -420,6 +522,19 @@ function tfLancer() {
 
 function tfOnInterrompre() {
   tfInterrompre();
+  tfMajAfficheurs();
+}
+
+// ── Journal : mise en évidence d'une étape, retour à un état ──
+function tfOnSelEtape(k) {
+  tfEtapesSelectionner(k);
+  _tfMajJournal();
+}
+
+function tfOnRevenir(i) {
+  tfEtapesRevenir(i);
+  tfMolInit();
+  _tfMajBoutons();
   tfMajAfficheurs();
 }
 
@@ -520,9 +635,11 @@ function tfInit() {
   });
 
   tfMolInit();
+  tfEtapesEffacer();
   tfGraphInit();
   _tfDoResize();
   _tfMajBoutons();
   tfMajAfficheurs();
+  _tfPret = true;
   requestAnimationFrame(_tfLoop);
 }

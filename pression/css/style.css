@@ -440,6 +440,43 @@ main {
 .tf-duree-car span:last-child { color: #2c3e50; font-weight: 600; white-space: nowrap; }
 #tf-en-cours { display: block; margin-top: 6px; color: #7a4a10; }
 
+/* Journal des étapes : une ligne par étape (pastille de sa couleur, lettres,
+   action, état d'arrivée, retour) ; défile au-delà d'une dizaine */
+.tf-journal {
+  max-height: 16em;
+  overflow-y: auto;
+  margin-bottom: 6px;
+  font-size: clamp(11px, 0.95vw, 13px);
+}
+.tf-etape {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 4px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  line-height: 1.3;
+}
+.tf-etape:hover { background: #dedad2; }
+.tf-etape.sel { background: #d4dde8; }
+.tf-etape-depart { cursor: default; }
+.tf-etape-depart:hover { background: none; }
+.tf-pastille { flex: 0 0 10px; height: 10px; border-radius: 50%; margin-top: 3px; }
+.tf-etape-txt { flex: 1; color: #2c3e50; }
+.tf-etat-val { color: #5a6a78; }
+.tf-revenir {
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 0.92em;
+  padding: 1px 6px;
+  border: 1px solid #c8c0b4;
+  border-radius: 4px;
+  background: #f4f1ec;
+  color: #2c3e50;
+  cursor: pointer;
+}
+.tf-revenir:hover { background: #2a6aaa; border-color: #1a5a9a; color: #fff; }
+
 /* ── Panneau droit ───────────────────────────────── */
 #panel {
   background: #e8e4de;

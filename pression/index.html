@@ -300,6 +300,10 @@
             <input type="checkbox" id="tf-ck-vitesse-auto" checked onchange="tfOnVitesseAuto(this.checked)">
             Vitesse adaptée à chaque transformation
           </label>
+          <label class="check-row">
+            <input type="checkbox" id="tf-ckg-gel" checked onchange="tfOnAffGraphe('gel', this.checked)">
+            Chrono des graphes figé à l’équilibre
+          </label>
         </div>
 
         <div class="sep"></div>
@@ -425,6 +429,17 @@
 
         <div class="sep"></div>
 
+        <!-- ── Étapes ───────────────────────────── -->
+        <!-- Journal (tf-etapes.js) : une ligne par étape, de l'état de départ
+             à l'état d'arrivée ; clic = mise en évidence, ↺ = retour -->
+        <div class="panel-section">
+          <div class="section-title">Étapes</div>
+          <div class="tf-journal" id="tf-journal"></div>
+          <span class="input-hint">Cliquer sur une étape la met en évidence sur le diagramme ; ↺ revient à son état d’arrivée.</span>
+        </div>
+
+        <div class="sep"></div>
+
         <!-- ── Affichage ──────────────────────────── -->
         <div class="panel-section">
           <div class="section-title" data-repliable>Affichage</div>
@@ -491,6 +506,8 @@
         Le bouton <strong>Piston tenu / libre</strong> saisit ou lâche le piston à tout moment ; le lâcher alors que le gaz ne l'équilibre pas donne une transformation brutale.
         <strong>Durée</strong> : « brutale » applique la valeur visée d'un coup ; une durée non nulle monte un escalier de marches égales, d'autant plus proche d'une transformation quasi statique que les marches sont petites et espacées. Pour la masse, une marche est un grain de sable versé (ou retiré) ; posée d'un coup, la masse est un bloc. Le régime attendu s'affiche sous la durée.
         Avec <strong>Vitesse adaptée</strong> cochée, chaque Lancer choisit le cran de vitesse qui fait durer l'action quelques secondes à l'écran.
+        Le journal des <strong>Étapes</strong> note chaque transformation, de son état de départ à son état d'arrivée (A, B, C…, le premier équilibre atteint une fois l'action finie). Sur le diagramme de Clapeyron, chaque étape a sa couleur, une flèche donne le sens de parcours et l'état actuel est cerclé d'orange. Cliquer sur une étape la met en évidence ; ↺ revient à son état d'arrivée (les étapes suivantes sont effacées). Une action sans effet n'est pas notée.
+        Avec <strong>Chrono des graphes figé à l'équilibre</strong> coché, les graphes au cours du temps s'arrêtent tant que le gaz reste à l'équilibre et repartent à l'action suivante ; chaque attente retirée est marquée d'un trait pointillé vertical (le tableau garde le temps réel de la simulation).
         Le curseur <strong>Vitesse</strong> descend jusqu'à ×1/5000 pour suivre un front dans le gaz ; à ce cran, les molécules s'agitent à leur vitesse réelle.
         Quand les tranches du gaz n'ont pas la même pression ou la même température, le tableau affiche <strong>?</strong> et l'écart entre tranches.
         Les <strong>graphes</strong> le montrent aussi : hors équilibre, T(t) et P(t) deviennent une bande hachurée (de la tranche la plus basse à la plus haute), et le diagramme de Clapeyron ne trace plus le gaz : un pointillé relie les états connus. Le <strong>nuage</strong> y donne un point par tranche (l'état qu'aurait le gaz entier s'il était partout comme elle) ; il se resserre en un seul point à l'équilibre.
@@ -523,7 +540,7 @@
 </main>
 
 <!-- Ordre de chargement : onglet Pression (sim → recipient), onglet
-     Transformations (tf-sim → tf-molecules → tf-scene → tf-graph → tf-ui), puis ui (onglets, boucle,
+     Transformations (tf-sim → tf-molecules → tf-scene → tf-graph → tf-etapes → tf-ui), puis ui (onglets, boucle,
      initialisation) et sections repliables (en dernier) -->
 <script src="js/sim.js"></script>
 <script src="js/recipient.js"></script>
@@ -531,6 +548,7 @@
 <script src="js/tf-molecules.js"></script>
 <script src="js/tf-scene.js"></script>
 <script src="js/tf-graph.js"></script>
+<script src="js/tf-etapes.js"></script>
 <script src="js/tf-ui.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/sections-repliables.js"></script>

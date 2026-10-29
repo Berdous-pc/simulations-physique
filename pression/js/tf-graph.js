@@ -30,6 +30,7 @@ var TF_G_CHEMIN = '#2a5080';
 var TF_G_PISTON = '#c08020';
 var TF_G_ISOT   = '#4a8a9a';
 var TF_G_ADIA   = '#a0603a';
+var TF_G_ACTUEL = '#e06020';     // état actuel du gaz (diagramme PV)
 
 // Grandeurs des graphes temporels : clé de la moyenne, des extrêmes des
 // tranches et du critère « définie » dans un échantillon ; facteur d'unité ;
@@ -45,15 +46,29 @@ var tfGraphAff = {
   nuage       : true,    // un point (N·V_tranche, P_tranche) par tranche
   piston      : false,   // pression exercée sur le gaz par le piston
   isotherme   : false,
-  adiabatique : false
+  adiabatique : false,
+  gel         : true     // chrono des graphes figé à l'équilibre
 };
+
+// Chrono figé : après une action, le gel attend que le gaz ait quitté
+// l'équilibre, ou au plus ce nombre d'échantillons (action sans effet) ; il
+// demande aussi quelques échantillons d'équilibre de suite, un échantillon
+// pris à l'extrémité d'une oscillation du piston passant le critère
+var TF_G_BLOCAGE_GEL = 20;
+var TF_G_EQ_GEL      = 5;
 
 var tfGraph = {
   ech       : [],      // historique : un objet par échantillon
-  ref       : null,    // état de départ de la transformation en cours
-  dernierEq : null,
-  etaitEq   : true,
+  ref       : null,    // état de départ de l'étape en cours (courbes théoriques)
   env       : null,    // étendue du nuage depuis le départ (cadrage PV)
+  // Chrono des graphes : temps des graphes = temps simulé − decal (s), les
+  // attentes à l'équilibre étant retirées quand l'option gel est cochée
+  decal     : 0,
+  gele      : false,   // chrono figé (aucun échantillon enregistré)
+  tGel      : 0,       // temps simulé au début du gel
+  blocage   : 0,       // échantillons avant qu'un gel soit permis
+  eqSuite   : 0,       // échantillons d'équilibre consécutifs
+  coupure   : false,   // le prochain échantillon suit une attente retirée
   vueT      : null,    // null : fenêtre glissante ; sinon {t1, t2}
   pileT     : [],
   vuePV     : null,    // null : cadrage automatique ; sinon {V1, V2, P1, P2}
@@ -90,14 +105,35 @@ function tfGraphReprogrammer() {
   tf.tEchant = Math.min(tf.tEchant, tf.t + _tfgPasEchant());
 }
 
+// Temps des graphes (s) : temps simulé, attentes à l'équilibre retirées
+function tfGraphTemps() {
+  return (tfGraph.gele ? tfGraph.tGel : tf.t) - tfGraph.decal;
+}
+
 // avantMarche : échantillon forcé juste avant une marche d'escalier (il clôt
-// le séjour à l'équilibre en cours, cf. _tfgDessinerPV)
+// le séjour à l'équilibre en cours, cf. _tfgDessinerPV).
+// Chrono figé : à l'équilibre, sans action en cours, l'échantillon n'est pas
+// enregistré et l'attente est retirée du temps des graphes ; le chrono
+// repart dès que le gaz quitte l'équilibre ou qu'une action est lancée
+// (tfGraphDegeler).
 function _tfgEchantillon(avantMarche) {
   tf.tEchant = tf.t + _tfgPasEchant();
 
-  var m = tfMesures();
+  var m = tfMesures(), g = tfGraph;
+  tfEtapesSuivre(m);
+  if (!m.equilibre) g.blocage = g.eqSuite = 0;
+  else { g.eqSuite++; if (g.blocage > 0) g.blocage--; }
+  var figer = tfGraphAff.gel && m.equilibre && !tfEnCours() && g.blocage === 0
+           && g.eqSuite >= TF_G_EQ_GEL && g.ech.length > 0;
+  if (g.gele) {
+    if (figer) return;
+    g.decal += tf.t - g.tGel;
+    g.gele = false;
+    g.coupure = true;
+  }
+
   var s = {
-    t: tf.t, V: m.V,
+    t: tf.t - g.decal, ts: tf.t, V: m.V,
     Pm: m.Pmoy, Pmin: m.Pmin, Pmax: m.Pmax, Pdef: m.Pdef,
     Tm: m.Tmoy, Tmin: m.Tmin, Tmax: m.Tmax, Tdef: m.Tdef,
     eq: m.equilibre,
@@ -105,23 +141,76 @@ function _tfgEchantillon(avantMarche) {
     // mesure le vérin piston tenu
     Pp: tf.tenu ? m.Pface : m.Pext,
     Text: tf.Text,
-    marche: avantMarche === true
+    marche: avantMarche === true,
+    coupure: g.coupure,
+    etape: tfEtapeCourante()
   };
-  var g = tfGraph;
+  g.coupure = false;
   g.ech.push(s);
   if (g.ech.length > TF_G_MAX) {
     var e = g.ech, garde = [];
-    for (var k = 0; k < e.length; k++) if (k % 2 === 0 || e[k].marche || k === e.length - 1) garde.push(e[k]);
+    for (var k = 0; k < e.length; k++) {
+      if (k % 2 === 0 || e[k].marche || e[k].coupure || k === e.length - 1) garde.push(e[k]);
+    }
     g.ech = garde;
   }
-
-  // Les courbes théoriques partent du dernier état d'équilibre avant que le
-  // gaz n'en sorte ; elles restent en place après l'arrivée, pour comparer
   if (!g.ref) g.ref = s;
-  if (s.eq) g.dernierEq = s;
-  else if (g.etaitEq && g.dernierEq) { g.ref = g.dernierEq; g.env = null; }
-  g.etaitEq = s.eq;
+  if (figer) { g.gele = true; g.tGel = tf.t; }
+  // La marche qui suit cet échantillon dérange le gaz : l'équilibre se
+  // recompte après elle
+  if (avantMarche) g.eqSuite = 0;
   _tfgEnveloppe();
+  g.sale = true;
+}
+
+// Avant une action (Lancer, bascule du piston, isolation) : le chrono
+// repart, l'état d'avant l'action est enregistré, et le gel attend que le
+// gaz ait quitté l'équilibre
+function tfGraphDegeler() {
+  var g = tfGraph;
+  if (g.gele) {
+    g.decal += tf.t - g.tGel;
+    g.gele = false;
+    g.coupure = true;
+  }
+  g.blocage = TF_G_BLOCAGE_GEL;
+  _tfgEchantillon();
+  g.eqSuite = 0;
+}
+
+// Départ d'une étape : les courbes théoriques et le cadrage du nuage
+// repartent de l'état actuel (dernier échantillon)
+function tfGraphDepartEtape() {
+  var g = tfGraph;
+  if (g.ech.length) g.ref = g.ech[g.ech.length - 1];
+  g.env = null;
+  g.sale = true;
+}
+
+// Étape retirée du journal (sans effet) : ses échantillons reviennent à la
+// précédente
+function tfGraphRetirerEtape(n) {
+  var e = tfGraph.ech;
+  for (var k = e.length - 1; k >= 0 && e[k].etape >= n; k--) e[k].etape = n - 1;
+  tfGraph.sale = true;
+}
+
+// Retour à un état (instantané de date ts) : l'historique postérieur est
+// effacé, le chrono reprend au dernier échantillon gardé
+function tfGraphRevenir(ts, n) {
+  var g = tfGraph, e = g.ech;
+  while (e.length > 1 && e[e.length - 1].ts > ts + 1e-12) e.pop();
+  for (var k = 0; k < e.length; k++) if (e[k].etape > n) e[k].etape = n;
+  g.gele = false;
+  g.decal = tf.t - e[e.length - 1].t;
+  g.blocage = 0;
+  g.coupure = false;
+  g.ref = e[e.length - 1];
+  g.env = null;
+  g.vueT = g.vuePV = null;
+  g.pileT = [];
+  g.pilePV = [];
+  tf.tEchant = tf.t;
   g.sale = true;
 }
 
@@ -153,8 +242,9 @@ function _tfgNuage(fn) {
 function tfGraphEffacer() {
   var g = tfGraph;
   g.ech = [];
-  g.ref = g.dernierEq = g.env = null;
-  g.etaitEq = true;
+  g.ref = g.env = null;
+  g.decal = g.tGel = g.blocage = g.eqSuite = 0;
+  g.gele = g.coupure = false;
   g.vueT = g.vuePV = null;
   g.pileT = [];
   g.pilePV = [];
@@ -315,7 +405,7 @@ function _tfgDessinerTemps() {
 
   var t1, t2;
   if (tfGraph.vueT) { t1 = tfGraph.vueT.t1; t2 = tfGraph.vueT.t2; }
-  else { var fen = _tfgFenetre(); t2 = Math.max(tf.t, fen); t1 = t2 - fen; }
+  else { var fen = _tfgFenetre(); t2 = Math.max(tfGraphTemps(), fen); t1 = t2 - fen; }
   var i1 = Math.max(0, _tfgIndice(e, t1) - 1);
   var i2 = Math.min(e.length - 1, _tfgIndice(e, t2));
   var xDe = function (t) { return ML + (t - t1) / (t2 - t1) * pw; };
@@ -343,6 +433,13 @@ function _tfgDessinerTemps() {
   c.textAlign = 'right';
   c.font = _tfgPolice(fs, true);
   c.fillText(unite === 1000 ? 't (ms)' : 't (s)', ML + pw, yAxe + fs * 1.45);
+  if (tfGraphAff.gel && !tfGraph.vueT) {
+    var tw = c.measureText(unite === 1000 ? 't (ms)' : 't (s)').width;
+    c.font = _tfgPolice(fs, false);
+    c.fillStyle = TF_G_MUET;
+    c.fillText((tfGraph.gele ? 'chrono figé (équilibre) · ' : '') + 'attentes à l’équilibre retirées (┊)  ',
+               ML + pw - tw, yAxe + fs * 1.45);
+  }
   if (tfGraph.vueT) {
     c.textAlign = 'left';
     c.font = _tfgPolice(fs, false);
@@ -452,6 +549,19 @@ function _tfgBoite(o, ser, x0, y0, w, h, i1, i2, xDe, gradT, unite, fs) {
   c.beginPath();
   c.rect(x0, y0, w, h);
   c.clip();
+
+  // Attentes à l'équilibre retirées (chrono figé) : trait vertical discret
+  c.strokeStyle = TF_G_CADRE;
+  c.lineWidth = 1;
+  c.setLineDash([2, 3]);
+  c.beginPath();
+  for (k = i1; k <= i2; k++) {
+    if (!e[k].coupure) continue;
+    var xc = Math.round(xDe(e[k].t)) + 0.5;
+    c.moveTo(xc, y0); c.lineTo(xc, y0 + h);
+  }
+  c.stroke();
+  c.setLineDash([]);
 
   // Repère en pointillé
   if (rep) {
@@ -641,12 +751,16 @@ function _tfgDessinerPV() {
     c.setLineDash([]);
   }
 
-  // Chemin : plein tant que le gaz a un état ; d'un tronçon défini au
-  // suivant, pointillé gris « chemin non défini »
-  var sans = [], prec = null;
-  c.strokeStyle = TF_G_CHEMIN;
-  c.lineWidth = 2;
+  // Chemin : plein tant que le gaz a un état, d'un tronçon défini au
+  // suivant pointillé « chemin non défini » ; une couleur par étape (celle
+  // de l'échantillon d'arrivée de chaque segment). Une étape mise en
+  // évidence dans le journal laisse les autres en retrait.
+  var sel = tfEtapes.sel >= 0 ? tfEtapes.sel + 1 : -1;
+  var alpha = function (n) { return sel < 0 || n === sel ? 1 : 0.22; };
+  var sans = [], prec = null, q;
+  c.lineWidth = 2.2;
   c.lineJoin = 'round';
+  c.lineCap = 'round';
   k = 0;
   while (k < e.length) {
     var j = k;
@@ -657,23 +771,33 @@ function _tfgDessinerPV() {
     }
     while (j + 1 < e.length && _tfgSDef(e[j + 1])) j++;
     if (prec) sans.push([prec, e[k]]);
-    c.beginPath();
-    c.moveTo(xDe(e[k].V * 1e3), yDe(e[k].Pm * 1e-3));
-    for (var q = k + 1; q <= j; q++) c.lineTo(xDe(e[q].V * 1e3), yDe(e[q].Pm * 1e-3));
-    c.stroke();
+    for (q = k + 1; q <= j; q++) {
+      c.globalAlpha = alpha(e[q].etape);
+      c.strokeStyle = tfCouleurEtape(e[q].etape);
+      c.beginPath();
+      c.moveTo(xDe(e[q - 1].V * 1e3), yDe(e[q - 1].Pm * 1e-3));
+      c.lineTo(xDe(e[q].V * 1e3), yDe(e[q].Pm * 1e-3));
+      c.stroke();
+    }
     prec = e[j];
     k = j + 1;
   }
-  c.strokeStyle = '#9aa4ac';
-  c.lineWidth = 1.5;
+  c.lineWidth = 1.6;
   c.setLineDash([3, 4]);
   for (k = 0; k < sans.length; k++) {
+    c.globalAlpha = alpha(sans[k][1].etape) * 0.8;
+    c.strokeStyle = tfCouleurEtape(sans[k][1].etape);
     c.beginPath();
     c.moveTo(xDe(sans[k][0].V * 1e3), yDe(sans[k][0].Pm * 1e-3));
     c.lineTo(xDe(sans[k][1].V * 1e3), yDe(sans[k][1].Pm * 1e-3));
     c.stroke();
   }
   c.setLineDash([]);
+  c.lineCap = 'butt';
+
+  // Sens de parcours : une flèche au milieu (en longueur) du chemin de
+  // chaque étape, chemin non défini compris
+  _tfgFleches(c, e, xDe, yDe, alpha);
 
   // États d'équilibre : fin de chaque séjour à l'équilibre. Son début n'est
   // pas fiable : un échantillon pris à l'extrémité d'une oscillation du
@@ -690,15 +814,17 @@ function _tfgDessinerPV() {
     etats.push(e[f]);
     k = f + 1;
   }
+  c.lineWidth = 1.2;
+  c.strokeStyle = TF_G_FOND;
   for (k = 0; k < etats.length; k++) {
+    c.globalAlpha = alpha(etats[k].etape);
     c.beginPath();
-    c.arc(xDe(etats[k].V * 1e3), yDe(etats[k].Pm * 1e-3), 4.5, 0, 2 * Math.PI);
-    c.fillStyle = TF_G_CHEMIN;
+    c.arc(xDe(etats[k].V * 1e3), yDe(etats[k].Pm * 1e-3), 3.5, 0, 2 * Math.PI);
+    c.fillStyle = tfCouleurEtape(etats[k].etape);
     c.fill();
-    c.strokeStyle = TF_G_FOND;
-    c.lineWidth = 1.5;
     c.stroke();
   }
+  c.globalAlpha = 1;
 
   // Nuage des tranches, coloré selon T comme les molécules
   if (tfGraphAff.nuage) {
@@ -713,14 +839,29 @@ function _tfgDessinerPV() {
     });
   }
 
-  // État actuel, s'il est défini
+  // États repérés par une lettre (départs et arrivées des étapes)
+  _tfgLettres(c, xDe, yDe, fs, alpha);
+
+  // État actuel, s'il est défini : halo et anneau d'une couleur réservée,
+  // par-dessus tout le reste
   var mes = tfMesures();
   if (mes.Pdef && mes.Tdef) {
+    var xa0 = xDe(mes.V * 1e3), ya0 = yDe(mes.Pmoy * 1e-3);
     c.beginPath();
-    c.arc(xDe(mes.V * 1e3), yDe(mes.Pmoy * 1e-3), 7, 0, 2 * Math.PI);
-    c.strokeStyle = TF_G_ENCRE;
-    c.lineWidth = 2;
+    c.arc(xa0, ya0, 13, 0, 2 * Math.PI);
+    c.fillStyle = 'rgba(232,96,32,0.18)';
+    c.fill();
+    c.beginPath();
+    c.arc(xa0, ya0, 7.5, 0, 2 * Math.PI);
+    c.fillStyle = '#fff';
+    c.fill();
+    c.strokeStyle = TF_G_ACTUEL;
+    c.lineWidth = 3;
     c.stroke();
+    c.beginPath();
+    c.arc(xa0, ya0, 2.5, 0, 2 * Math.PI);
+    c.fillStyle = TF_G_ACTUEL;
+    c.fill();
   }
   c.restore();
 
@@ -739,7 +880,8 @@ function _tfgDessinerPV() {
     var xa = xDe(sans[k][0].V * 1e3), ya = yDe(sans[k][0].Pm * 1e-3);
     var xb = xDe(sans[k][1].V * 1e3), yb = yDe(sans[k][1].Pm * 1e-3);
     if (Math.hypot(xb - xa, yb - ya) > fs * 9) {
-      _tfgEtiquette(c, 'chemin non défini', (xa + xb) / 2, (ya + yb) / 2, fs - 1, TF_G_MUET, 'center');
+      // Au tiers du segment : le milieu porte la flèche de sens
+      _tfgEtiquette(c, 'chemin non défini', xa + (xb - xa) / 3, ya + (yb - ya) / 3, fs - 1, TF_G_MUET, 'center');
     }
   }
   if (!(mes.Pdef && mes.Tdef)) {
@@ -776,6 +918,80 @@ function _tfgDessinerPV() {
   }
 }
 
+// Flèche de sens au milieu de chaque étape : le chemin d'une étape est la
+// suite de ses échantillons définis, précédée du dernier échantillon défini
+// d'avant (départ). Rien si l'étape est trop courte à l'écran.
+function _tfgFleches(c, e, xDe, yDe, alpha) {
+  var pts = {}, dernier = null, k, n;
+  for (k = 0; k < e.length; k++) {
+    if (!_tfgSDef(e[k])) continue;
+    n = e[k].etape;
+    if (!pts[n]) pts[n] = dernier ? [dernier] : [];
+    pts[n].push([xDe(e[k].V * 1e3), yDe(e[k].Pm * 1e-3)]);
+    dernier = pts[n][pts[n].length - 1];
+  }
+  for (n in pts) {
+    var p = pts[n], L = 0, i;
+    for (i = 1; i < p.length; i++) L += Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1]);
+    if (L < 24) continue;
+    var cible = L / 2, cumul = 0;
+    for (i = 1; i < p.length; i++) {
+      var d = Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1]);
+      if (cumul + d >= cible && d > 0) {
+        var f = (cible - cumul) / d;
+        var x = p[i - 1][0] + f * (p[i][0] - p[i - 1][0]);
+        var y = p[i - 1][1] + f * (p[i][1] - p[i - 1][1]);
+        var a = Math.atan2(p[i][1] - p[i - 1][1], p[i][0] - p[i - 1][0]);
+        c.globalAlpha = alpha(+n);
+        c.fillStyle = tfCouleurEtape(+n);
+        c.strokeStyle = TF_G_FOND;
+        c.lineWidth = 1.2;
+        c.beginPath();
+        c.moveTo(x + 9 * Math.cos(a), y + 9 * Math.sin(a));
+        c.lineTo(x + 7 * Math.cos(a + 2.5), y + 7 * Math.sin(a + 2.5));
+        c.lineTo(x + 7 * Math.cos(a - 2.5), y + 7 * Math.sin(a - 2.5));
+        c.closePath();
+        c.fill();
+        c.stroke();
+        break;
+      }
+      cumul += d;
+    }
+  }
+  c.globalAlpha = 1;
+}
+
+// Lettres des états d'équilibre du journal : pastille blanche cerclée de la
+// couleur de l'étape qui y arrive, lettre à côté
+function _tfgLettres(c, xDe, yDe, fs, alpha) {
+  var E = tfEtapes, arrivee = {};
+  for (var k = 0; k < E.liste.length; k++) {
+    if (E.liste[k].arrivee !== null) arrivee[E.liste[k].arrivee] = k + 1;
+  }
+  c.font = _tfgPolice(fs + 1, true);
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+  for (var i = 0; i < E.etats.length; i++) {
+    var L = E.etats[i], n = arrivee[i] || 0;
+    var x = xDe(L.V * 1e3), y = yDe(L.P * 1e-3);
+    c.globalAlpha = alpha(n) < 1 && !(E.sel >= 0 && E.liste[E.sel].depart === i) ? 0.35 : 1;
+    c.beginPath();
+    c.arc(x, y, 5, 0, 2 * Math.PI);
+    c.fillStyle = '#fff';
+    c.fill();
+    c.strokeStyle = tfCouleurEtape(n);
+    c.lineWidth = 2.5;
+    c.stroke();
+    var tx = x - fs * 0.9, ty = y - fs * 0.9;
+    var w = c.measureText(L.lettre).width + 6;
+    c.fillStyle = 'rgba(255,253,249,0.9)';
+    c.fillRect(tx - w / 2, ty - fs * 0.65, w, fs * 1.3);
+    c.fillStyle = tfCouleurEtape(n);
+    c.fillText(L.lettre, tx, ty + 0.5);
+  }
+  c.globalAlpha = 1;
+}
+
 // Trace P(V) sur la largeur de la vue ; renvoie où poser son étiquette (le
 // point visible le plus à droite)
 function _tfgCourbe(c, xDe, yDe, vue, Pde, coul, nom) {
@@ -796,8 +1012,9 @@ function _tfgCourbe(c, xDe, yDe, vue, Pde, coul, nom) {
 // Légende en haut à droite (zone vide pour les transformations usuelles,
 // où P décroît quand V croît)
 function _tfgLegendePV(c, xd, y, fs, avecSans) {
-  var items = [{ type: 'ligne', coul: TF_G_CHEMIN, nom: 'gaz à l’état défini' },
-               { type: 'point', coul: TF_G_CHEMIN, nom: 'état d’équilibre' }];
+  var items = [{ type: 'ligne', coul: TF_G_CHEMIN, nom: 'chemin défini (couleur de l’étape)' },
+               { type: 'point', coul: TF_G_CHEMIN, nom: 'état d’équilibre' },
+               { type: 'actuel', nom: 'état actuel' }];
   if (avecSans) items.push({ type: 'tirets', coul: '#9aa4ac', nom: 'chemin non défini' });
   if (tfGraphAff.nuage) items.push({ type: 'nuage', nom: 'tranches (N·V_tranche, P_tranche)' });
   if (tfGraphAff.piston) items.push({ type: 'tirets', coul: TF_G_PISTON, nom: 'pression sur le piston' });
@@ -816,9 +1033,17 @@ function _tfgLegendePV(c, xd, y, fs, avecSans) {
     var it = items[i], yc = y + 3 + lh * (i + 0.5), xs = x0 + 5;
     if (it.type === 'point') {
       c.beginPath();
-      c.arc(xs + sw / 2, yc, 4, 0, 2 * Math.PI);
+      c.arc(xs + sw / 2, yc, 3.5, 0, 2 * Math.PI);
       c.fillStyle = it.coul;
       c.fill();
+    } else if (it.type === 'actuel') {
+      c.beginPath();
+      c.arc(xs + sw / 2, yc, 4.5, 0, 2 * Math.PI);
+      c.fillStyle = '#fff';
+      c.fill();
+      c.strokeStyle = TF_G_ACTUEL;
+      c.lineWidth = 2.5;
+      c.stroke();
     } else if (it.type === 'nuage') {
       var cl = [[24, 88, 196], [74, 98, 124], [200, 52, 28]];
       for (var p = 0; p < 3; p++) {
@@ -894,6 +1119,7 @@ function tfGraphReticule() {
 
 function tfOnAffGraphe(cle, coche) {
   tfGraphAff[cle] = coche;
+  if (cle === 'gel' && !coche && tfGraph.gele) tfGraphDegeler();
   tfGraph.sale = true;
 }
 

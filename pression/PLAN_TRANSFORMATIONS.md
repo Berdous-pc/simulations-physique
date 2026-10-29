@@ -390,8 +390,8 @@ Transformation attendue : …
 
 ### 10.4 Paliers de la refonte
 
-- **R1** : piston tenu / libre sans réinitialisation, pince et masses enfilées, carte unique, escaliers, masse visée (blocs et sable), vitesse adaptée.
-- **R2** : journal des étapes (A → B, B → C…), états d'équilibre étiquetés et étapes colorées sur le diagramme PV, « revenir à l'état B » (instantané), **chrono des graphes figé à l'équilibre** (option : l'axe des temps saute les attentes, coupures marquées).
+- ✅ **R1** (terminé) : piston tenu / libre sans réinitialisation, pince et masses enfilées, carte unique, escaliers, masse visée (blocs et sable), vitesse adaptée.
+- ✅ **R2** (terminé, cf. ARCHITECTURE.md) : journal des étapes (A → B, B → C…), états d'équilibre étiquetés et étapes colorées sur le diagramme PV, « revenir à l'état B » (instantané), **chrono des graphes figé à l'équilibre** (option : l'axe des temps saute les attentes, coupures marquées). Ajouts demandés pendant R2 : flèche de sens de parcours au milieu de chaque étape, état actuel cerclé d'une couleur réservée (orange). Une action sans effet (piston tenu au repos, température avec un fond calorifugé…) n'est pas notée.
 - **R3** : file d'attente (Lancer pendant une action → « ensuite », enchaînement à l'équilibre), séquences enregistrées (localStorage, export JSON), préréglages (aller-retour, Carnot, Stirling, Lenoir).
 - **R4** (option) : viser en cliquant sur le diagramme de Clapeyron.
 
