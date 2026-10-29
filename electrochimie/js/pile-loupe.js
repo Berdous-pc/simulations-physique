@@ -150,7 +150,6 @@ function resetLoupePile() {
       ploupe.rangs.push(ligne);
       ploupe.occupe.push(false);
     }
-    _completerBords();
     // Ions de la solution selon sa composition
     var pop = _populationSolution(compElectrode(e));
     _repartir(pop.cations, PL_N_CATIONS, 'cation', R_ION);
@@ -449,7 +448,7 @@ function _agiter(f, dt, sigma) {
 // Renvoie true si un glissement a été lancé (ou est attendu).
 function _suivreSurface(role) {
   var r, mn = 99, mx = 0;
-  for (r = 1; r < NR - 1; r++) { mn = Math.min(mn, _front(r)); mx = Math.max(mx, _front(r)); }
+  for (r = 0; r < NR; r++) { mn = Math.min(mn, _front(r)); mx = Math.max(mx, _front(r)); }
   var sens = role === 'anode' && mx <= PL_FRONT_MIN ? 1 : role === 'cathode' && mn >= PL_FRONT_MAX ? -1 : 0;
   if (!sens) return false;
   if (ploupe.cycles.length) return true;
@@ -469,11 +468,11 @@ function _suivreSurface(role) {
 // d'après le modèle (le dépôt avant la lame).
 function _ligneCandidate(plusAvancee, symSurface) {
   var r, ref = plusAvancee ? 0 : 99, cand = [], candSym = [];
-  for (r = 1; r < NR - 1; r++) {
+  for (r = 0; r < NR; r++) {
     if (ploupe.occupe[r]) continue;
     ref = plusAvancee ? Math.max(ref, _front(r)) : Math.min(ref, _front(r));
   }
-  for (r = 1; r < NR - 1; r++) {
+  for (r = 0; r < NR; r++) {
     if (ploupe.occupe[r]) continue;
     var R = ploupe.rangs[r];
     if (symSurface && R.length >= 2 && R[R.length - 1] === symSurface && _front(r) >= ref - 1) candSym.push(r);
@@ -516,7 +515,8 @@ function _cycleAnode() {
   _horaireTransfo(cy, 0, (z - 1) * PL_ECART_E + 0.6 / V_ELECTRON);
   cy.dElectrons = (z - 1) * PL_ECART_E + L / V_ELECTRON;
   cy.du = 2.6 + Math.random() * 1.2;
-  cy.dv = (Math.random() - 0.5) * 2.4;
+  // (vers l'intérieur de la loupe depuis les lignes du haut et du bas)
+  cy.dv = Math.max(0.6 - cy.v, Math.min(NR - 0.6 - cy.v, (Math.random() - 0.5) * 2.4));
   return cy;
 }
 
@@ -870,7 +870,7 @@ function _placeGaz(reac) {
     // Maille à transformer : la plus proche de la surface (la plaque est
     // poreuse : l'acide atteint aussi les mailles plus profondes)
     var cands = [];
-    for (r = 1; r < NR - 1; r++) {
+    for (r = 0; r < NR; r++) {
       var L = ploupe.rangs[r];
       for (var c = L.length - 1; c >= 0; c--) {
         if (L[c] === avant) { cands.push({ r: r, c: c, prof: L.length - 1 - c + Math.random() * 0.9 }); break; }
@@ -1066,7 +1066,6 @@ function _majEtape(cy, st, dt, aMoi) {
       // La maille transformée fait désormais partie du réseau
       if (cy.maille && st.k === cy.script.length - 1) {
         ploupe.rangs[cy.maille.r][cy.maille.c] = cy.maille.apres;
-        _completerBords();
       }
     }
   }
@@ -1183,7 +1182,6 @@ function _majCycleP(cy, dt) {
         cy.phase = 'depart'; cy.t = 0;
         // L'ion quitte le réseau : la place reste libre
         ploupe.rangs[cy.r].length = Math.min(_front(cy.r), cy.c);
-        _completerBords();
         cy.u0 = cy.u; cy.v0 = cy.v;
       }
     } else if (cy.phase === 'depart') {
@@ -1213,19 +1211,12 @@ function _majCycleP(cy, dt) {
       cy.u = cy.cible.u + (cy.fin.u - cy.cible.u) * q;
       if (cy.t >= cy.dTransfo && cy.te >= cy.dElectrons) {
         ploupe.rangs[cy.r].push(cy.sym);      // l'atome formé fait partie du réseau
-        _completerBords();
         ploupe.occupe[cy.r] = false;
         return true;
       }
     }
   }
   return false;
-}
-
-// Lignes du haut et du bas, hors des cycles : comme leurs voisines
-function _completerBords() {
-  ploupe.rangs[0] = ploupe.rangs[1].slice();
-  ploupe.rangs[NR - 1] = ploupe.rangs[NR - 2].slice();
 }
 
 // Réduction : les électrons partent du fil pendant l'approche, pour
