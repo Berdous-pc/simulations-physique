@@ -288,7 +288,7 @@
             <label for="tf-sl-vitesse">Vitesse
               <span class="param-value">×<span id="tf-lbl-vitesse">1</span></span>
             </label>
-            <input type="range" id="tf-sl-vitesse" min="0" max="6" step="1" value="4"
+            <input type="range" id="tf-sl-vitesse" min="0" max="10" step="1" value="4"
                    oninput="tfOnVitesse(this.value)">
             <div class="slider-ticks">
               <span>ralenti</span>
@@ -389,42 +389,55 @@
           </div>
           <span class="input-hint tf-actuel" id="tf-hint-actuel"></span>
 
-          <div class="param-row">
-            <label for="tf-sl-duree">Durée
-              <span class="param-value" id="tf-lbl-duree">—</span>
-            </label>
-            <input type="range" id="tf-sl-duree" min="0" max="16" step="1" value="8"
-                   oninput="tfOnDuree(this.value)">
-            <div class="slider-ticks">
-              <span>brutale</span>
-              <span>lente</span>
-            </div>
-            <span class="input-hint" id="tf-duree-allongee" style="display:none"></span>
+          <!-- Trois manières (PLAN §10.5) : la page choisit la durée selon
+               l'isolation du fond ; un clic lance l'action -->
+          <div class="tf-manieres">
+            <button id="tf-btn-brutal" class="btn btn-primary tf-maniere" onclick="tfLancerManiere('brutal')">
+              Brutalement<span class="tf-maniere-duree" id="tf-duree-brutal"></span></button>
+            <button id="tf-btn-qs" class="btn btn-primary tf-maniere" onclick="tfLancerManiere('qs')">
+              Quasi statiquement<span class="tf-maniere-duree" id="tf-duree-qs"></span></button>
+            <button id="tf-btn-rev" class="btn btn-primary tf-maniere" onclick="tfLancerManiere('rev')">
+              Réversiblement<span class="tf-maniere-duree" id="tf-duree-rev"></span></button>
           </div>
-          <div class="param-row" id="tf-row-pas" style="display:none">
-            <label for="tf-sl-pas">Hauteur des marches
-              <span class="param-value" id="tf-lbl-pas">—</span>
-            </label>
-            <input type="range" id="tf-sl-pas" min="0" max="4" step="1" value="2"
-                   oninput="tfOnPas(this.value)">
-            <div class="slider-ticks">
-              <span>fines</span>
-              <span>grosses</span>
-            </div>
-            <span class="input-hint" id="tf-hint-escalier"></span>
-          </div>
-
-          <div class="tf-btn-ligne">
-            <button id="tf-btn-lancer" class="btn btn-primary" onclick="tfLancer()">Lancer</button>
-            <button id="tf-btn-interrompre" class="btn btn-toggle-one" onclick="tfOnInterrompre()" disabled>Interrompre</button>
-          </div>
+          <span class="input-hint tf-hint-manieres" id="tf-hint-manieres"></span>
+          <button id="tf-btn-interrompre" class="btn btn-toggle-one tf-interrompre" onclick="tfOnInterrompre()" disabled>Interrompre</button>
           <span class="input-hint" id="tf-en-cours"></span>
 
-          <div class="readout">
-            <div class="ro-label">Transformation attendue</div>
-            <div class="ro-value tf-regime" id="tf-ro-regime">—</div>
-          </div>
-          <div class="tf-durees-car" id="tf-durees-car"></div>
+          <!-- Réglages fins : durée et marches au choix, pour les
+               démonstrations (convergence vers le réversible, choc…) -->
+          <details class="tf-fins" id="tf-fins">
+            <summary>Réglages fins</summary>
+            <div class="param-row">
+              <label for="tf-sl-duree">Durée
+                <span class="param-value" id="tf-lbl-duree">—</span>
+              </label>
+              <input type="range" id="tf-sl-duree" min="0" max="16" step="1" value="8"
+                     oninput="tfOnDuree(this.value)">
+              <div class="slider-ticks">
+                <span>brutale</span>
+                <span>lente</span>
+              </div>
+              <span class="input-hint" id="tf-duree-allongee" style="display:none"></span>
+            </div>
+            <div class="param-row" id="tf-row-pas" style="display:none">
+              <label for="tf-sl-pas">Hauteur des marches
+                <span class="param-value" id="tf-lbl-pas">—</span>
+              </label>
+              <input type="range" id="tf-sl-pas" min="0" max="4" step="1" value="2"
+                     oninput="tfOnPas(this.value)">
+              <div class="slider-ticks">
+                <span>fines</span>
+                <span>grosses</span>
+              </div>
+              <span class="input-hint" id="tf-hint-escalier"></span>
+            </div>
+            <button id="tf-btn-lancer" class="btn btn-primary" onclick="tfLancer()">Lancer avec ces réglages</button>
+            <div class="readout" style="margin-top:8px">
+              <div class="ro-label">Transformation attendue</div>
+              <div class="ro-value tf-regime" id="tf-ro-regime">—</div>
+            </div>
+            <div class="tf-durees-car" id="tf-durees-car"></div>
+          </details>
         </div>
 
         <div class="sep"></div>
@@ -499,12 +512,12 @@
       </div>
       <div class="panel-hint-body">
         Les transformations s'enchaînent : chacune part de l'état laissé par la précédente, ce qui permet de parcourir un chemin, ou un cycle, dans le diagramme de Clapeyron.
-        Dans la carte <strong>Transformation</strong>, choisissez sur quoi agir, la valeur visée et la durée, puis <strong>Lancer</strong> ; <strong>Interrompre</strong> arrête l'action en cours.
+        Dans la carte <strong>Transformation</strong>, choisissez sur quoi agir et la valeur visée, puis la manière : <strong>Brutalement</strong>, <strong>Quasi statiquement</strong> ou <strong>Réversiblement</strong> (la page choisit la durée, écrite sur le bouton) ; <strong>Interrompre</strong> arrête l'action en cours.
         <strong>Volume</strong> : le vérin tient le piston et le mène à la hauteur visée (repère orange sur le cylindre).
         <strong>Pression</strong> : par la masse posée sur le piston ou par l'air de l'enceinte (P_air, lue sur le manomètre, jusqu'au vide) ; Lancer libère le piston.
         <strong>Température</strong> de la source sous le fond : le piston garde son état (libre : pression constante ; tenu : volume constant). Seul le fond du cylindre échange de la chaleur, avec cette source : elle n'agit que s'il n'est pas calorifugé.
         Le bouton <strong>Piston tenu / libre</strong> saisit ou lâche le piston à tout moment ; le lâcher alors que le gaz ne l'équilibre pas donne une transformation brutale.
-        <strong>Durée</strong> : « brutale » applique la valeur visée d'un coup ; une durée non nulle monte un escalier de marches égales, d'autant plus proche d'une transformation quasi statique que les marches sont petites et espacées. Pour la masse, une marche est un grain de sable versé (ou retiré) ; posée d'un coup, la masse est un bloc. Le régime attendu s'affiche sous la durée.
+        <strong>Brutalement</strong> : la valeur visée est appliquée d'un coup (vérin très rapide, bloc posé, échelon) ; à volume imposé ou par l'air de l'enceinte, la pression du gaz n'est plus définie pendant un moment. <strong>Quasi statiquement</strong> : assez lentement pour que le gaz reste uniforme ; avec un fond peu conducteur, l'échange de chaleur à travers le fond crée pourtant de l'entropie. <strong>Réversiblement</strong> : assez lentement, en plus, pour que le gaz reste à la température de la source. Avec un fond calorifugé, ou très conducteur, ces deux dernières manières se confondent : la carte le signale. Pour la masse, la manière lente verse du sable ; d'un coup, c'est un bloc. Les <strong>Réglages fins</strong> (repliés) laissent choisir la durée et la hauteur des marches d'un escalier.
         Avec <strong>Vitesse adaptée</strong> cochée, chaque Lancer choisit le cran de vitesse qui fait durer l'action quelques secondes à l'écran.
         Le journal des <strong>Étapes</strong> note chaque transformation, de son état de départ à son état d'arrivée (A, B, C…, le premier équilibre atteint une fois l'action finie). Sur le diagramme de Clapeyron, chaque étape a sa couleur, une flèche donne le sens de parcours et l'état actuel est cerclé d'orange. Cliquer sur une étape la met en évidence ; ↺ revient à son état d'arrivée (les étapes suivantes sont effacées). Une action sans effet n'est pas notée.
         Avec <strong>Chrono des graphes figé à l'équilibre</strong> coché, les graphes au cours du temps s'arrêtent tant que le gaz reste à l'équilibre et repartent à l'action suivante ; chaque attente retirée est marquée d'un trait pointillé vertical (le tableau garde le temps réel de la simulation).

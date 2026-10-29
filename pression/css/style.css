@@ -440,6 +440,16 @@ main {
 .tf-duree-car span:last-child { color: #2c3e50; font-weight: 600; white-space: nowrap; }
 #tf-en-cours { display: block; margin-top: 6px; color: #7a4a10; }
 
+/* Trois manières de transformer : boutons empilés, durée choisie par la
+   page à droite ; réglages fins repliés */
+.tf-manieres { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.btn.tf-maniere { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.tf-maniere-duree { font-size: 0.82em; font-weight: 400; opacity: 0.85; white-space: nowrap; }
+.input-hint.tf-hint-manieres { display: block; margin: 6px 0; }
+.btn.tf-interrompre { width: 100%; }
+.tf-fins { margin-top: 10px; border-top: 1px solid #d4cec4; padding-top: 6px; }
+.tf-fins summary { cursor: pointer; color: #5a6a78; font-size: clamp(11px, 0.95vw, 13px); margin-bottom: 6px; }
+
 /* Journal des étapes : une ligne par étape (pastille de sa couleur, lettres,
    action, état d'arrivée, retour) ; défile au-delà d'une dizaine */
 .tf-journal {

@@ -15,7 +15,7 @@
 
 // Fenêtre glissante des graphes temporels (s), alignée sur TF_VITESSES :
 // une même durée réelle à l'écran (~20 s) quel que soit le cran
-var TF_G_FENETRES    = [0.005, 0.02, 0.2, 2, 20, 100, 400];
+var TF_G_FENETRES    = [0.005, 0.02, 0.2, 2, 20, 100, 400, 2000, 10000, 40000, 200000];
 var TF_G_PAR_FENETRE = 500;     // échantillons par fenêtre
 var TF_G_MAX         = 20000;   // au-delà, l'historique est éclairci de moitié
 

@@ -21,7 +21,7 @@ var tfCanvas = document.getElementById('tf-canvas');
 var tfCtx    = tfCanvas.getContext('2d');
 
 // ── Habillage (m, repère du gaz : z = 0 au fond intérieur) ──
-var TF_EP_PISTON  = 0.022;   // épaisseur dessinée du corps du piston
+var TF_EP_PISTON  = 0.010;   // épaisseur dessinée du piston-membrane (1 g)
 var TF_H_TIGE     = 0.045;   // tige entre piston et plateau
 var TF_H_TIGE_HAUT = 0.075;  // tige au-dessus du plateau (charge enfilée, pince)
 var TF_EP_PLATEAU = 0.008;

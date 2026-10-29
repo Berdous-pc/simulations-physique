@@ -85,7 +85,10 @@ var TF_ISOLATIONS = [0, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1];
 
 // ── Commandes ──
 var TF_MASSE_MAX = 40;                                      // kg, masse totale posée
-var TF_VITESSES  = [1 / 5000, 1 / 1000, 1 / 100, 0.1, 1, 5, 20];
+// ×100 à ×10 000 : transformations quasi statiques et réversibles avec un
+// fond conducteur (de l'heure à la journée simulées), calculées en mode
+// quasi statique, conduction implicite
+var TF_VITESSES  = [1 / 5000, 1 / 1000, 1 / 100, 0.1, 1, 5, 20, 100, 500, 2000, 10000];
 // Durées d'un escalier (s) : 0 = échelon (brutal)
 var TF_DUREES_ESC = [0, 1, 2, 5, 10, 20, 50, 100, 200, 500];
 
@@ -633,7 +636,8 @@ var TF_QS_P      = 2e-5;
 var TF_QS_VERIN  = 200;
 var TF_QS_ESSAI  = 2000;
 var TF_QS_RAMPE  = 20;      // rampe continue lente : ≥ 20 temps mécaniques
-var TF_QS_DT_MAX = 0.02;    // s
+var TF_QS_DT_MAX = 0.1;     // s (implicite)
+var TF_QS_DT_EXPL_MAX = 0.02;  // s (explicite)
 
 function _tfVerinLent() {
   var v = tf.verin;
@@ -693,17 +697,39 @@ function _tfQuitterQS() {
   _tfMajAmortissement();
 }
 
-// Pas de la conduction explicite : stabilité entre tranches voisines (à
-// volume constant, le cas le plus contraignant) et par le fond
+// Conduction en mode quasi statique : implicite (Euler rétrograde), stable
+// quel que soit le pas ; celui-ci n'est plus limité que par la précision,
+// une petite fraction de la conduction dans le gaz et du passage par le
+// fond (~0,1 s au lieu de ~0,7 ms en explicite). TF_QS_IMPLICITE à false
+// redonne le schéma explicite (tests de comparaison).
+var TF_QS_IMPLICITE  = true;
+var TF_QS_FRAC_INT   = 100;   // pas ≤ τ_int / 100
+var TF_QS_FRAC_PAROI = 20;    // pas ≤ (n·Cv/G) / 20
+var TF_QS_FRAC_RAMPE = 400;   // pas ≤ durée d'une rampe continue / 400
+
 function _tfDtQS() {
-  var cTr = tf.nTr * tf.Cv, dmin = Infinity, z = tf.z;
+  var cTr = tf.nTr * tf.Cv, z = tf.z, dt;
+  if (TF_QS_IMPLICITE) {
+    // Conduction dans le gaz : 4L²/(π²D), D = λ·S·L/(n·Cv)
+    var tInt = 4 * z[TF_N] * tf.n * tf.Cv / (Math.PI * Math.PI * TF_LAMBDA * TF_S);
+    dt = tInt / TF_QS_FRAC_INT;
+    if (tf.G > 0) dt = Math.min(dt, tf.n * tf.Cv / tf.G / TF_QS_FRAC_PAROI);
+    for (var cle in tf.rampes) {
+      var r = tf.rampes[cle];
+      if (r.actif && r.continu) dt = Math.min(dt, r.duree / TF_QS_FRAC_RAMPE);
+    }
+    return Math.min(dt, TF_QS_DT_MAX);
+  }
+  // Explicite : stabilité entre tranches voisines (à volume constant, le cas
+  // le plus contraignant) et par le fond
+  var dmin = Infinity;
   for (var j = 0; j < TF_N - 1; j++) {
     var d = (z[j + 2] - z[j]) / 2;
     if (d < dmin) dmin = d;
   }
-  var dt = 0.4 * cTr * dmin / (2 * TF_LAMBDA * TF_S);
+  dt = 0.4 * cTr * dmin / (2 * TF_LAMBDA * TF_S);
   if (tf.G > 0) dt = Math.min(dt, 0.4 * cTr / tf.G);
-  return Math.min(dt, TF_QS_DT_MAX);
+  return Math.min(dt, TF_QS_DT_EXPL_MAX);
 }
 
 // Un sous-pas quasi statique : chaleur échangée (conduction entre tranches,
@@ -713,15 +739,21 @@ function _tfSousPasQS(dt) {
   var N = TF_N, E = tf.E, z = tf.z, T = tf._T, j;
   var cTr = tf.nTr * tf.Cv;
   var Q = _tfQS_Q || (_tfQS_Q = new Float64Array(TF_N));
-  for (j = 0; j < N; j++) { T[j] = E[j] / cTr; Q[j] = 0; }
-  var kc = TF_LAMBDA * TF_S * dt * 2;
-  for (j = 0; j < N - 1; j++) {
-    var flux = kc * (T[j] - T[j + 1]) / (z[j + 2] - z[j]);
-    Q[j]     -= flux;
-    Q[j + 1] += flux;
+  var Qfond;
+  for (j = 0; j < N; j++) T[j] = E[j] / cTr;
+  if (TF_QS_IMPLICITE) {
+    Qfond = _tfConductionImplicite(dt, Q);
+  } else {
+    for (j = 0; j < N; j++) Q[j] = 0;
+    var kc = TF_LAMBDA * TF_S * dt * 2;
+    for (j = 0; j < N - 1; j++) {
+      var flux = kc * (T[j] - T[j + 1]) / (z[j + 2] - z[j]);
+      Q[j]     -= flux;
+      Q[j + 1] += flux;
+    }
+    Qfond = tf.G > 0 ? tf.G * (tf.Text - T[0]) * dt : 0;
+    Q[0] += Qfond;
   }
-  var Qfond = tf.G > 0 ? tf.G * (tf.Text - T[0]) * dt : 0;
-  Q[0] += Qfond;
   var Vc = tf.tenu ? TF_S * (tf.verin.actif ? _tfZVerin(tf.t + dt) : z[N]) : null;
   if (!_tfQSAppliquer(Q, Vc)) return false;
   tf.Qrecu += Qfond;
@@ -730,6 +762,44 @@ function _tfSousPasQS(dt) {
   return true;
 }
 var _tfQS_Q = null;
+
+// Conduction implicite sur dt : températures finales T' solutions de
+//   C·(T'_j − T_j) = dt·[k_{j−1}·(T'_{j−1} − T'_j) + k_j·(T'_{j+1} − T'_j)]
+//                    (+ dt·G·(T_ext − T'_0) pour la tranche du fond),
+// système tridiagonal résolu par l'algorithme de Thomas. C est la capacité
+// d'une tranche à pression constante (n·Cp/N) piston libre, à volume
+// constant piston tenu ; k_j = λ·S / (distance des centres). Écrit dans Q la
+// chaleur reçue par chaque tranche (leur somme est exactement celle reçue
+// par le fond) et renvoie cette dernière. tf._T contient les températures
+// de départ.
+function _tfConductionImplicite(dt, Q) {
+  var N = TF_N, T = tf._T, z = tf.z, j;
+  var C = tf.nTr * tf.Cv * (tf.tenu ? 1 : tf.gamma);
+  var cp = _tfQS_cp || (_tfQS_cp = new Float64Array(TF_N));
+  var dp = _tfQS_dp || (_tfQS_dp = new Float64Array(TF_N));
+  var kPrec = 0, k, a, b, c, d, m;
+  for (j = 0; j < N; j++) {
+    k = j < N - 1 ? dt * TF_LAMBDA * TF_S * 2 / (z[j + 2] - z[j]) : 0;
+    a = -kPrec; c = -k;
+    b = C + kPrec + k;
+    d = C * T[j];
+    if (j === 0 && tf.G > 0) { b += dt * tf.G; d += dt * tf.G * tf.Text; }
+    m = j > 0 ? b - a * cp[j - 1] : b;
+    cp[j] = c / m;
+    dp[j] = (j > 0 ? d - a * dp[j - 1] : d) / m;
+    kPrec = k;
+  }
+  var Tn = dp[N - 1];
+  Q[N - 1] = C * (Tn - T[N - 1]);
+  var T0n = Tn;
+  for (j = N - 2; j >= 0; j--) {
+    Tn = dp[j] - cp[j] * Tn;
+    Q[j] = C * (Tn - T[j]);
+    T0n = Tn;
+  }
+  return tf.G > 0 ? dt * tf.G * (tf.Text - T0n) : 0;
+}
+var _tfQS_cp = null, _tfQS_dp = null;
 
 // Ajoute la chaleur Q[j] à chaque tranche et place les interfaces à
 // pression uniforme.

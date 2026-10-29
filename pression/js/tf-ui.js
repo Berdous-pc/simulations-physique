@@ -22,7 +22,9 @@ var _TF_EL_IDS = [
   'tf-sl-duree', 'tf-lbl-duree', 'tf-duree-allongee',
   'tf-row-pas', 'tf-sl-pas', 'tf-lbl-pas', 'tf-hint-escalier',
   'tf-ro-regime', 'tf-durees-car', 'tf-btn-lancer', 'tf-btn-interrompre', 'tf-en-cours',
-  'tf-journal', 'tf-ckg-gel'
+  'tf-journal', 'tf-ckg-gel',
+  'tf-btn-brutal', 'tf-btn-qs', 'tf-btn-rev', 'tf-duree-brutal', 'tf-duree-qs', 'tf-duree-rev',
+  'tf-hint-manieres'
 ];
 
 // Vrai une fois tfInit terminée : les réglages initiaux du panneau
@@ -120,7 +122,11 @@ function _tfFmtDuree(t) {
   if (t < 0.01) return _tfFmt(t * 1000, 1) + ' ms';
   if (t < 1)    return Math.round(t * 1000) + ' ms';
   if (t < 100)  return _tfFmt(t, t < 10 ? 2 : 1) + ' s';
-  return Math.round(t) + ' s';
+  if (t < 600)  return Math.round(t) + ' s';
+  if (t < 3600) return Math.round(t / 60) + ' min';
+  var h = Math.floor(t / 3600), mn = Math.round((t - 3600 * h) / 60);
+  if (mn === 60) { h++; mn = 0; }
+  return h + ' h' + (mn ? ' ' + (mn < 10 ? '0' : '') + mn : '');
 }
 
 function _tfNonDefini(plage) {
@@ -224,6 +230,129 @@ function _tfDescAction(cle, duree) {
   return d + (tf.G === 0 ? ' · calorifugé' : ' · fond conducteur');
 }
 
+// ══════════════════════════════════════════════════════════════════════
+//  Trois manières (PLAN §10.5) : la page choisit les paramètres
+// ══════════════════════════════════════════════════════════════════════
+
+// Brutalement : vérin à vitesse de pointe fixée (une petite course reste
+// brutale, la pression du gaz n'est clairement pas définie), échelon sinon.
+//
+// Les deux manières lentes sont réglées sur la chaleur Q qu'échangerait la
+// transformation réversible (isotherme pour le volume et la pression,
+// isobare ou isochore pour la température) et sur deux résistances
+// thermiques en série : le gaz, R_int = TF_R_INT·π²·τ_int / (4·n·Cv) (le
+// facteur, mesuré, donne l'écart de température entre tranches pour un flux
+// donné ; τ_int sur la plus haute des colonnes de départ et d'arrivée), et
+// la paroi du fond, 1/G.
+//   - Quasi statiquement : lent devant le son et le piston (au moins
+//     TF_QS_MIN, et 1,25 × TF_QS_RAMPE temps mécaniques pour une rampe de
+//     pression : le mode quasi statique la suit) ; et assez lent pour que le
+//     flux Q/durée laisse entre tranches moins de TF_QS_ECART (seuil de
+//     « T définie » : 0,5 K). Pour le volume et la pression, si la paroi
+//     limite seule le flux à G·ΔT_adiabatique sous ce seuil, la course
+//     mécanique suffit : le gaz reste uniforme, l'écart de température se
+//     loge dans la paroi.
+//   - Réversiblement : en plus, entropie créée Q²·(R_int + 1/G) / (T²·durée)
+//     sous TF_REV_SC.
+// Mesures (vérin 30 → 15 cm, PLAN §10.5) : diathermane, il faut ~6000 s
+// pour que T reste définie (S_c 0,09 mJ/K) ; G = 0,001 W/K, 6000 s laissent
+// T définie mais S_c = 5 mJ/K : quasi statique mais irréversible.
+var TF_V_BRUTAL = 150;        // m/s
+var TF_QS_MIN = 1;            // s
+var TF_QS_ECART = 0.25;       // K
+var TF_REV_SC = 2e-4;         // J/K
+var TF_R_INT = 0.72;
+
+function _tfParamsManiere(cle, man) {
+  var d = tfDurees(), m = tfMesures(), vise = tfCarte[cle].vise, L = tf.z[TF_N];
+  if (man === 'brutal') {
+    return { duree: cle === 'volume' ? Math.max(5e-4, 2 * Math.abs(vise - L) / TF_V_BRUTAL) : 0 };
+  }
+  var meca = cle === 'Pair' || cle === 'masse'
+           ? Math.max(TF_QS_MIN, 1.25 * TF_QS_RAMPE * _tfTempsMeca(cle, vise)) : TF_QS_MIN;
+  if (tf.G === 0) return { duree: meca };
+
+  var T = m.Tmoy, nCv = tf.n * tf.Cv, Lf, Q, dTad;
+  if (cle === 'volume') {
+    Lf = vise;
+    Q = tf.n * TF_R * T * Math.abs(Math.log(L / vise));
+    dTad = T * Math.abs(Math.pow(L / vise, tf.gamma - 1) - 1);
+  } else if (cle === 'Text') {
+    Lf = tf.tenu ? L : L * vise / T;
+    Q = Math.abs(vise - T) * (nCv + (tf.tenu ? 0 : tf.n * TF_R));
+    dTad = Infinity;   // la source elle-même change : pas de limite par la paroi
+  } else {
+    var P = tf.tenu ? m.Pmoy : m.Pext, Pf = _tfPextVisee(cle, vise);
+    Lf = L * P / Pf;
+    Q = tf.n * TF_R * T * Math.abs(Math.log(Pf / P));
+    dTad = T * Math.abs(Math.pow(Pf / P, (tf.gamma - 1) / tf.gamma) - 1);
+  }
+  var Rint = TF_R_INT * Math.PI * Math.PI * d.interne * Math.max(1, Lf / L) / (4 * nCv);
+  var qs = tf.G * dTad * Rint <= TF_QS_ECART ? meca : Math.max(meca, Q * Rint / TF_QS_ECART);
+  if (man === 'qs') return { duree: qs };
+  return { duree: Math.max(qs, Q * Q * (Rint + 1 / tf.G) / (T * T * TF_REV_SC)) };
+}
+
+// Pression extérieure une fois la masse ou P_air visée appliquée
+function _tfPextVisee(cle, vise) {
+  if (cle === 'Pair') return vise + (TF_M_PISTON + tf.masse) * TF_G / TF_S;
+  return tf.Pair + (TF_M_PISTON + vise) * TF_G / TF_S;
+}
+
+// Texte du journal : nature de la transformation, manière, consigne, durée
+function _tfDescManiere(cle, man, p) {
+  var vise = tfCarte[cle].vise, f, txt;
+  var adjF = { brutal: 'brutale', qs: 'quasi statique', rev: 'réversible' }[man];
+  var adjM = { brutal: 'brutal', qs: 'quasi statique', rev: 'réversible' }[man];
+  if (cle === 'volume') {
+    txt = (vise < tf.z[TF_N] ? 'Compression ' : 'Détente ') + adjF + ' (V → ' + _tfFmt(TF_S * vise * 1000, 3) + ' L';
+  } else if (cle === 'Text') {
+    txt = (vise > tf.Text ? 'Chauffage ' : 'Refroidissement ') + (tf.tenu ? 'isochore ' : 'isobare ') + adjM
+        + ' (T_source → ' + Math.round(vise) + ' K';
+  } else {
+    f = tf.tenu ? tfMesures().Pmoy : tfPext();
+    txt = (_tfPextVisee(cle, vise) > f ? 'Compression ' : 'Détente ') + adjF + ' ('
+        + (cle === 'masse' ? 'masse → ' : 'P_air → ') + _tfFmtValeur(cle, vise).replace(/ \(.*\)$/, '');
+  }
+  txt += p.duree > 0 ? ', en ' + _tfFmtDuree(p.duree) + ')' : ')';
+  return txt + (tf.G === 0 ? ' · calorifugé' : ' · fond conducteur');
+}
+
+// Durées écrites sur les boutons, et ce que l'isolation du fond fait des
+// deux manières lentes
+function _tfMajManieres() {
+  var cle = _tfCle(), d = tfDurees();
+  ['brutal', 'qs', 'rev'].forEach(function (man) {
+    var p = _tfParamsManiere(cle, man);
+    _tfEl['tf-duree-' + man].textContent = p.duree > 0 ? _tfFmtDuree(p.duree)
+      : cle === 'masse' ? 'd’un coup' : 'échelon';
+  });
+  var h, qs = _tfParamsManiere(cle, 'qs').duree, rev = _tfParamsManiere(cle, 'rev').duree;
+  if (cle === 'Text' && tf.G === 0) h = 'Fond calorifugé : la source n’agit pas sur le gaz.';
+  else if (tf.G === 0) h = 'Fond calorifugé : quasi statique et réversible se confondent (aucun échange thermique).';
+  else if (rev <= 1.5 * qs) h = 'Fond très conducteur : quasi statique et réversible se confondent presque (assez lente pour garder le gaz uniforme, la transformation l’est aussi pour le garder à la température de la source).';
+  else h = 'Fond peu conducteur : quasi statiquement, le gaz reste uniforme mais la chaleur traverse le fond sous un écart de température : de l’entropie est créée ; réversiblement, presque pas.';
+  _tfEl['tf-hint-manieres'].textContent = h;
+}
+
+// Lance l'action de la carte de la manière choisie : 'brutal', 'qs' ou 'rev'
+function tfLancerManiere(man) {
+  if (tfEnCours()) return;
+  var cle = _tfCle(), vise = tfCarte[cle].vise, p = _tfParamsManiere(cle, man);
+  _tfOuvrirEtape(_tfDescManiere(cle, man, p));
+  if (cle === 'volume') {
+    tfLancerVerin(vise, p.duree);
+  } else {
+    tfAppliquer(cle, vise, p.duree, _tfPas(cle), p.duree > 0);
+    if (cle !== 'Text') tfSetTenu(false);
+  }
+  if (tfCarte.auto) _tfVitesseAdaptee(cle, p.duree);
+  tfGraphReprogrammer();
+  tfGraph.sale = true;
+  _tfMajBoutons();
+  tfMajAfficheurs();
+}
+
 // Ouvre une étape avant une action : le chrono des graphes repart et l'état
 // de départ est enregistré
 function _tfOuvrirEtape(desc) {
@@ -268,6 +397,7 @@ function _tfMajCarte() {
   }
 
   _tfEl['tf-ro-regime'].textContent = cle === 'volume' ? _tfRegime(d, tau) : _tfRegimeEscalier(cle, d, duree);
+  _tfMajManieres();
 
   // Durées caractéristiques auxquelles comparer la durée choisie
   var lignes = [];
@@ -290,6 +420,10 @@ function _tfMajBoutonsCarte() {
           && !((cle === 'masse' || cle === 'Pair') && tf.tenu);
   _tfEl['tf-btn-lancer'].disabled = enCours || rien;
   _tfEl['tf-btn-interrompre'].disabled = !enCours;
+  var sansEffet = cle === 'Text' && tf.G === 0;
+  ['brutal', 'qs', 'rev'].forEach(function (man) {
+    _tfEl['tf-btn-' + man].disabled = enCours || rien || sansEffet;
+  });
 
   var info = '';
   if (tf.verin.actif) {
@@ -298,6 +432,10 @@ function _tfMajBoutonsCarte() {
     for (var c in tf.rampes) {
       var r = tf.rampes[c];
       if (!r.actif) continue;
+      if (r.continu) {
+        info = 'En cours : encore ' + _tfFmtDuree(Math.max(0, r.t0 + r.duree - tf.t)) + ', vers ' + _tfFmtValeur(c, r.cible);
+        continue;
+      }
       var reste = Math.round(Math.abs(r.cible - tf[c]) / r.pas);
       info = 'Escalier en cours : encore ' + reste + (reste > 1 ? ' marches' : ' marche')
            + ', vers ' + _tfFmtValeur(c, r.cible);
@@ -553,6 +691,9 @@ function _tfVitesseAdaptee(cle, duree) {
   if (cle === 'volume') D = tf.verin.actif ? tf.verin.tau : duree;
   else if (duree > 0) D = duree;
   else if (cle === 'Text') D = d.thermique;
+  // Échelon de P_air sur la membrane nue : le front traverse le gaz en
+  // ~1 ms, c'est lui qu'on veut voir
+  else if (cle === 'Pair' && tf.masse === 0) D = 10 * d.traversee;
   else D = 16 * d.piston;
   if (!isFinite(D) || D <= 0) return;
   var cible = D / TF_ECRAN_ACTION, iMieux = 0;
