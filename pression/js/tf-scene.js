@@ -7,8 +7,8 @@
 // ══════════════════════════════════════════════════════════════════════
 //  tf-scene.js — Onglet Transformations : rendu du cylindre
 //  Chargé après tf-sim.js. Dessine, de bas en haut : isolant du fond,
-//  gaz et tranches, parois et graduations, piston, puis loquet, plateau et
-//  masse (pression imposée) ou tige et vérin (volume imposé).
+//  gaz et tranches, parois et graduations, piston, tige, plateau et charge,
+//  vérin et sa pince, enceinte.
 //
 //  Échelle verticale réelle (graduations en cm). Le cylindre, lui, est
 //  ÉLARGI sur le dessin : à l'échelle, ses 5 cm de diamètre pour 50 cm de
@@ -23,11 +23,11 @@ var tfCtx    = tfCanvas.getContext('2d');
 // ── Habillage (m, repère du gaz : z = 0 au fond intérieur) ──
 var TF_EP_PISTON  = 0.022;   // épaisseur dessinée du corps du piston
 var TF_H_TIGE     = 0.045;   // tige entre piston et plateau
+var TF_H_TIGE_HAUT = 0.075;  // tige au-dessus du plateau (charge enfilée, pince)
 var TF_EP_PLATEAU = 0.008;
 var TF_EP_FOND    = 0.010;   // paroi du fond
 var TF_EP_ISOLANT = 0.045;   // isolant du fond, au plus épais (calorifugé)
 var TF_EP_SOURCE  = 0.030;   // source thermique sous le fond (four ou bain)
-var TF_MARGE_CLOCHE = 0.025; // enceinte : au-dessus de la plus grosse masse
 var TF_Z_CLOCHE = TF_H_CYL - 0.07;   // bas de l'enceinte, scellée sur le cylindre
 
 // Largeur intérieure dessinée, au plus, en fraction de la hauteur dessinée
@@ -38,11 +38,10 @@ var TF_LARG_MAX = 0.75;
 function _tfHauteurMasse(kg) { return 0.022 + kg * 0.0008; }
 
 // Étendue verticale à loger : sous le fond (paroi + isolant + source),
-// au-dessus du cylindre (piston en butée haute + tige + plateau + plus
-// grosse masse, sous l'enceinte).
+// au-dessus du cylindre (piston en butée haute + tige, puis vérin suspendu
+// au plafond de l'enceinte).
 var TF_Z_BAS  = -(TF_EP_FOND + TF_EP_ISOLANT + TF_EP_SOURCE + 0.005);
-var TF_Z_HAUT = TF_H_CYL + TF_EP_PISTON + TF_H_TIGE + TF_EP_PLATEAU
-              + _tfHauteurMasse(TF_MASSES[TF_MASSES.length - 1]) + TF_MARGE_CLOCHE;
+var TF_Z_HAUT = TF_H_CYL + TF_EP_PISTON + TF_H_TIGE + TF_EP_PLATEAU + TF_H_TIGE_HAUT + 0.072;
 
 // ── Options d'affichage (section Affichage du panneau) ──
 var tfAff = {
@@ -53,6 +52,10 @@ var tfAff = {
   profil    : false,   // profil de pression P(z) à droite du cylindre
   amplifie  : false    // profil en écart à la moyenne, P(z) − P̄
 };
+
+// Repère de la hauteur visée (tf.hVisee), affiché quand l'action choisie
+// porte sur le volume
+var tfRepereVisee = false;
 
 // Tranches lues par les sondes (haut, milieu, bas)
 var TF_SONDES = [TF_N - 2, Math.floor(TF_N / 2), 1];
@@ -96,16 +99,16 @@ function _tfDoResize() {
   _tfYBas = _tfCh - marge;
 
   // Largeur : la plus grande possible, dans la limite de TF_LARG_MAX. Il faut
-  // loger de part et d'autre les parois et les goupilles du loquet
+  // loger de part et d'autre les parois et une marge (l'enceinte l'occupe)
   // (0,16·w + 2 parois ≈ 0,23·w chacune), plus à gauche les graduations
-  // (~60 px) et à droite la tête des goupilles (~15 px), et le profil de
+  // (~60 px) et à droite ~15 px, et le profil de
   // pression s'il est affiché.
   var profil = tfAff.profil ? Math.max(110, Math.min(190, _tfCw * 0.24)) : 0;
   var hCyl = TF_H_CYL * _tfEch;
   var larg = Math.min(TF_LARG_MAX * hCyl, (_tfCw - 2 * marge - 75 - profil) / 1.46);
   larg = Math.max(40, larg);
   _tfParoi = Math.max(4, Math.round(larg * 0.035));
-  var cote = 0.16 * larg + 2 * _tfParoi;           // paroi + goupille
+  var cote = 0.16 * larg + 2 * _tfParoi;           // paroi + marge
   var libre = _tfCw - 2 * marge - (larg + 2 * cote + 75 + profil);
   _tfX1 = marge + Math.max(0, libre) / 2 + 60 + cote;
   _tfX2 = _tfX1 + larg;
@@ -128,17 +131,16 @@ function tfDessiner() {
   c.fillStyle = '#fdf8f0';
   c.fillRect(0, 0, _tfCw, _tfCh);
 
-  var enceinte = tf.famille === 'pression';
   _tfDessinerFond();
   _tfDessinerGaz();
   if (tfAff.molecules) _tfDessinerMolecules();
   if (tfAff.molecules && tfAff.chocs) _tfDessinerChocs();
-  if (enceinte) _tfDessinerAirEnceinte();
+  _tfDessinerAirEnceinte();
   _tfDessinerParois();
   _tfDessinerGraduations();
-  if (tf.famille === 'volume') _tfDessinerVisee();
+  if (tfRepereVisee) _tfDessinerVisee();
   _tfDessinerPiston();
-  if (enceinte) _tfDessinerEnceinte();
+  _tfDessinerEnceinte();
   _tfDessinerButee();
   if (tfAff.sondes) _tfDessinerSondes();
   if (tfAff.profil) _tfDessinerProfil();
@@ -196,7 +198,7 @@ function _tfDessinerFond() {
 // Couleurs de la source, de la même famille que celles du gaz
 var TF_COUL_SOURCE = { neutre: [196, 188, 176], chaud: [206, 64, 36], froid: [52, 112, 196] };
 
-// ── Enceinte (pression imposée) : cloche scellée sur le haut du cylindre,
+// ── Enceinte : cloche scellée sur le haut du cylindre,
 //    reliée à un manomètre. Son air, comme celui qui surmonte le piston, est
 //    teinté d'autant plus que P_air est forte. ──
 function _tfClocheX() {
@@ -356,10 +358,10 @@ function _tfDessinerParois() {
   c.fillRect(_tfX2 - p, yH, 2 * p, p);
 }
 
-// ── Graduations (cm) à gauche du cylindre, au-delà des goupilles ──
+// ── Graduations (cm) à gauche du cylindre, au-delà de la marge ──
 function _tfDessinerGraduations() {
   var c = tfCtx;
-  var x = _tfX1 - _tfParoi - _tfLongGoupille() - 8;
+  var x = _tfX1 - _tfParoi - _tfMargeCote() - 8;
   var police = Math.max(10, Math.round(_tfEch * 0.022));
   c.strokeStyle = '#7a8a96';
   c.fillStyle   = '#5a6a78';
@@ -383,68 +385,88 @@ function _tfDessinerGraduations() {
   c.fillText('cm', x - 13, _tfY(TF_H_CYL) - police * 0.9);
 }
 
-// ── Piston, puis loquet, tige, plateau et masse (pression imposée) ou tige
-//    et vérin (volume imposé) ──
+// ── Piston, tige, plateau et charge (blocs, puis sable), vérin ──
+// La tige traverse le plateau et la charge ; le vérin, suspendu au plafond
+// de l'enceinte, la saisit par le haut quand le piston est tenu.
 function _tfDessinerPiston() {
   var c = tfCtx;
   var zP = tf.z[TF_N];
-  var x1 = _tfX1, x2 = _tfX2, w = x2 - x1, cx = (x1 + x2) / 2;
-
-  if (tf.famille === 'volume') {
-    _tfDessinerVerin(zP);
-    _tfDessinerCorpsPiston(zP);
-    return;
-  }
-
-  // Tige
-  var yTigeB = _tfY(zP + TF_EP_PISTON);
-  var yTigeH = _tfY(zP + TF_EP_PISTON + TF_H_TIGE);
+  var w = _tfX2 - _tfX1, cx = (_tfX1 + _tfX2) / 2;
   var lt = Math.max(6, w * 0.10);
+
+  _tfDessinerVerin(zP);
+
+  // Tige, du piston jusqu'au-dessus de la charge
+  var yTigeB = _tfY(zP + TF_EP_PISTON);
+  var yTigeH = _tfY(_tfZHautTige(zP));
   c.fillStyle = '#6a7a88';
   c.fillRect(cx - lt / 2, yTigeH, lt, yTigeB - yTigeH);
 
   // Plateau
   var lp = w * 0.95;
-  var yPlH = _tfY(zP + TF_EP_PISTON + TF_H_TIGE + TF_EP_PLATEAU);
+  var zPl = zP + TF_EP_PISTON + TF_H_TIGE;
+  var yPlB = _tfY(zPl), yPlH = _tfY(zPl + TF_EP_PLATEAU);
   c.fillStyle = '#5a6a78';
-  c.fillRect(cx - lp / 2, yPlH, lp, yTigeH - yPlH);
+  c.fillRect(cx - lp / 2, yPlH, lp, yPlB - yPlH);
 
-  // Masse posée
-  if (tf.masse > 0) {
-    var hm  = _tfHauteurMasse(tf.masse) * _tfEch;
-    var lm  = w * 0.78;
-    var yM  = yPlH - hm;
+  // Blocs : disque fendu enfilé sur la tige, masse écrite à droite de la tige
+  var y = yPlH;
+  if (tf.blocs > 0) {
+    var hm = _tfHauteurMasse(tf.blocs) * _tfEch;
+    var lm = w * 0.78;
     c.fillStyle = '#3a4a58';
-    _tfRectArrondi(cx - lm / 2, yM, lm, hm, Math.min(6, hm * 0.2));
+    _tfRectArrondi(cx - lm / 2, y - hm, lm, hm, Math.min(6, hm * 0.2));
     c.fill();
+    c.fillStyle = '#6a7a88';
+    c.fillRect(cx - lt / 2, y - hm, lt, hm);
     c.fillStyle = '#fff';
-    c.font = 'bold ' + Math.max(11, Math.round(Math.min(hm * 0.45, lm * 0.22))) + 'px "Segoe UI", Arial, sans-serif';
+    c.font = 'bold ' + Math.max(10, Math.round(Math.min(hm * 0.45, lm * 0.15))) + 'px "Segoe UI", Arial, sans-serif';
     c.textAlign = 'center';
     c.textBaseline = 'middle';
-    c.fillText(tf.masse + ' kg', cx, yM + hm / 2);
+    c.fillText(_tfVirguleCourte(tf.blocs) + ' kg', cx + lt / 2 + (lm / 2 - lt / 2) / 2, y - hm / 2);
+    y -= hm;
+  }
+
+  // Sable : tas trapézoïdal autour de la tige, qui grossit avec la masse
+  if (tf.sable > 0) {
+    var hs = _tfHauteurSable(tf.sable) * _tfEch;
+    var lb = w * 0.80, lh = w * (0.30 + 0.25 * Math.min(1, tf.sable / 20));
+    c.fillStyle = '#d8b878';
+    c.strokeStyle = '#a08040';
+    c.lineWidth = 1;
+    c.beginPath();
+    c.moveTo(cx - lb / 2, y);
+    c.lineTo(cx - lh / 2, y - hs);
+    c.lineTo(cx + lh / 2, y - hs);
+    c.lineTo(cx + lb / 2, y);
+    c.closePath();
+    c.fill();
+    c.stroke();
+    c.fillStyle = '#6a7a88';
+    c.fillRect(cx - lt / 2, y - hs, lt, hs);
+    if (hs > 11) {
+      c.fillStyle = '#5a4010';
+      c.font = Math.max(10, Math.min(13, Math.round(hs * 0.6))) + 'px "Segoe UI", Arial, sans-serif';
+      c.textAlign = 'left';
+      c.textBaseline = 'middle';
+      c.fillText(_tfVirgule(tf.sable, tf.sable < 10 ? 2 : 1) + ' kg', cx + lt / 2 + 3, y - hs / 2);
+    }
   }
 
   _tfDessinerCorpsPiston(zP);
-  var yH = _tfY(zP + TF_EP_PISTON), yB = _tfY(zP);
+}
 
-  // Loquet : deux goupilles qui traversent la paroi et pénètrent dans le
-  // piston (verrouillé), ou retirées à l'extérieur (libéré).
-  // Libéré, chaque goupille recule juste assez pour dégager le cylindre.
-  var hg = Math.max(4, (yB - yH) * 0.4);
-  var yg = (yH + yB) / 2 - hg / 2;
-  var lg = _tfLongGoupille();
-  var sortie = tf.loquet ? 0 : lg - _tfParoi + 2;
-  c.fillStyle   = tf.loquet ? '#c08020' : '#a0a8b0';
-  c.strokeStyle = tf.loquet ? '#7a4a10' : '#6a7a88';
-  c.lineWidth = 1;
-  [[x1 - _tfParoi - sortie, 1], [x2 + _tfParoi + sortie, -1]].forEach(function (g) {
-    var xg = g[1] > 0 ? g[0] : g[0] - lg;
-    c.fillRect(xg, yg, lg, hg);
-    c.strokeRect(xg + 0.5, yg + 0.5, lg - 1, hg - 1);
-    // Tête de la goupille, côté extérieur
-    var xt = g[1] > 0 ? xg - hg * 0.6 : xg + lg;
-    c.fillRect(xt, yg - hg * 0.4, hg * 0.6, hg * 1.8);
-  });
+// Haut de la tige du piston (m)
+function _tfZHautTige(zP) {
+  return zP + TF_EP_PISTON + TF_H_TIGE + TF_EP_PLATEAU + TF_H_TIGE_HAUT;
+}
+
+// Hauteur dessinée du tas de sable (m d'échelle)
+function _tfHauteurSable(kg) { return 0.004 + kg * 0.0008; }
+
+// Masse sans décimale inutile : 20, 12,5
+function _tfVirguleCourte(x) {
+  return Math.abs(x - Math.round(x)) < 1e-6 ? String(Math.round(x)) : _tfVirgule(x, 1);
 }
 
 // Corps du piston (hachuré, comme l'onglet Pression)
@@ -459,26 +481,43 @@ function _tfDessinerCorpsPiston(zP) {
   c.strokeRect(_tfX1, yH, w, yB - yH);
 }
 
-// ── Vérin (volume imposé) ──
-// Corps fixé à un bâti au-dessus du cylindre ; la tige en sort et tient le
-// piston, quelle que soit sa hauteur. Corps teinté pendant le mouvement.
-var TF_Z_VERIN_BAS = TF_H_CYL + TF_EP_PISTON + 0.014;   // bas du corps (m)
+// ── Vérin ──
+// Corps suspendu au plafond de l'enceinte. Piston tenu : sa tige descend et
+// sa pince, fermée, saisit le haut de la tige du piston ; libre : tige
+// rétractée, pince ouverte. Corps teinté pendant un mouvement.
+var TF_Z_VERIN_BAS = TF_H_CYL + TF_EP_PISTON + TF_H_TIGE + TF_EP_PLATEAU + TF_H_TIGE_HAUT + 0.022;
+var TF_H_PINCE     = 0.014;
 
 function _tfDessinerVerin(zP) {
   var c = tfCtx;
   var w = _tfX2 - _tfX1, cx = (_tfX1 + _tfX2) / 2;
   var yBati = _tfY(TF_Z_HAUT) + 2;
   var yCorpsB = _tfY(TF_Z_VERIN_BAS);
-  var hBati = Math.max(6, (yCorpsB - yBati) * 0.18);
+  var hBati = Math.max(5, (yCorpsB - yBati) * 0.16);
 
-  // Tige, du piston au corps
+  // Tige du vérin, jusqu'à la pince
+  var zPince = tf.tenu ? _tfZHautTige(zP) - TF_H_PINCE * 0.7 : TF_Z_VERIN_BAS - TF_H_PINCE - 0.004;
+  var yPinceH = _tfY(zPince + TF_H_PINCE), yPinceB = _tfY(zPince);
+  var lv = Math.max(4, w * 0.06);
+  c.fillStyle = '#4a5a68';
+  c.fillRect(cx - lv / 2, yCorpsB, lv, yPinceH - yCorpsB);
+
+  // Pince : une traverse et deux mâchoires, serrées sur la tige du piston
+  // ou écartées
   var lt = Math.max(6, w * 0.10);
-  var yTigeB = _tfY(zP + TF_EP_PISTON);
-  c.fillStyle = '#6a7a88';
-  c.fillRect(cx - lt / 2, yCorpsB, lt, yTigeB - yCorpsB);
-  c.strokeStyle = '#4a5a68';
+  var ecart = tf.tenu ? lt / 2 : lt / 2 + Math.max(4, w * 0.04);
+  var lj = Math.max(4, w * 0.045);
+  var ht = Math.max(3, (yPinceB - yPinceH) * 0.3);
+  c.fillStyle   = tf.tenu ? '#c08020' : '#a0a8b0';
+  c.strokeStyle = tf.tenu ? '#7a4a10' : '#6a7a88';
   c.lineWidth = 1;
-  c.strokeRect(cx - lt / 2 + 0.5, yCorpsB, lt - 1, yTigeB - yCorpsB);
+  c.fillRect(cx - ecart - lj, yPinceH, 2 * (ecart + lj), ht);
+  c.strokeRect(cx - ecart - lj + 0.5, yPinceH + 0.5, 2 * (ecart + lj) - 1, ht - 1);
+  [-1, 1].forEach(function (s) {
+    var x = s < 0 ? cx - ecart - lj : cx + ecart;
+    c.fillRect(x, yPinceH, lj, yPinceB - yPinceH);
+    c.strokeRect(x + 0.5, yPinceH + 0.5, lj - 1, yPinceB - yPinceH - 1);
+  });
 
   // Corps du vérin
   var lc = w * 0.42;
@@ -489,25 +528,23 @@ function _tfDessinerVerin(zP) {
   c.strokeStyle = '#2c3e50';
   c.lineWidth = 1.5;
   c.stroke();
-  // Presse-étoupe, d'où sort la tige
   c.fillStyle = '#2c3e50';
-  c.fillRect(cx - lt * 0.9, yCorpsB - 3, lt * 1.8, 4);
-  // Nom
-  var police = Math.max(10, Math.min(14, Math.round(lc * 0.16)));
+  c.fillRect(cx - lv * 0.9, yCorpsB - 3, lv * 1.8, 4);
+  var police = Math.max(9, Math.min(13, Math.round(Math.min(lc * 0.16, (yCorpsB - yCorpsH) * 0.5))));
   c.fillStyle = '#fff';
   c.font = 'bold ' + police + 'px "Segoe UI", Arial, sans-serif';
   c.textAlign = 'center';
   c.textBaseline = 'middle';
   c.fillText('vérin', cx, (yCorpsH + yCorpsB) / 2);
 
-  // Bâti (support fixe, hachuré)
-  var lb = w * 1.1;
+  // Bâti (fixé au plafond de l'enceinte, hachuré)
+  var lb = w * 0.7;
   c.fillStyle = '#7a8a96';
   c.fillRect(cx - lb / 2, yBati, lb, hBati);
   _tfHachures(cx - lb / 2, yBati, lb, hBati, 'rgba(44,62,80,0.45)', 6);
 }
 
-// ── Hauteur visée (volume imposé) : trait pointillé dans le cylindre et
+// ── Hauteur visée (action sur le volume) : trait pointillé dans le cylindre et
 //    repère sur les graduations ──
 function _tfDessinerVisee() {
   var c = tfCtx;
@@ -521,7 +558,7 @@ function _tfDessinerVisee() {
   c.stroke();
   c.setLineDash([]);
   // Triangle contre les graduations
-  var x = _tfX1 - _tfParoi - _tfLongGoupille() - 8;
+  var x = _tfX1 - _tfParoi - _tfMargeCote() - 8;
   c.fillStyle = '#c08020';
   c.beginPath();
   c.moveTo(x + 2, y);
@@ -792,9 +829,9 @@ function _tfDessinerMention(txt) {
 //  Utilitaires de dessin
 // ══════════════════════════════════════════════════════════════════════
 
-// Longueur d'une goupille du loquet (px) : traverse la paroi et pénètre
-// dans le piston
-function _tfLongGoupille() { return (_tfX2 - _tfX1) * 0.16 + _tfParoi; }
+// Marge entre la paroi et les graduations (px), de part et d'autre du
+// cylindre, sous l'enceinte
+function _tfMargeCote() { return (_tfX2 - _tfX1) * 0.16 + _tfParoi; }
 
 function _tfHachures(x, y, w, h, couleur, pas) {
   var c = tfCtx;

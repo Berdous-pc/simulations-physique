@@ -13,11 +13,11 @@
 //  énergie interne, donc sa pression et sa température : hors équilibre, le
 //  gaz n'a pas UNE pression ni UNE température.
 //
-//  Deux familles de transformations (PLAN_TRANSFORMATIONS.md §2.3) :
-//    - pression imposée : piston pesant, libre, surmonté de l'atmosphère,
-//      sur lequel on pose une masse ;
-//    - volume imposé : un vérin mène le piston à une hauteur visée en une
-//      durée τ ; le poids et l'atmosphère sont repris par le vérin.
+//  Le piston est tenu ou libre, et passe de l'un à l'autre à tout moment
+//  (PLAN_TRANSFORMATIONS.md §10.2) :
+//    - libre : piston pesant, chargé de masses, sous l'air de l'enceinte ;
+//    - tenu : la pince du vérin le maintient, ou le mène à une hauteur visée
+//      en une durée τ ; le poids et l'air de l'enceinte sont repris par elle.
 //
 //  Tout est en unités SI (m, kg, s, Pa, J, K) ; le temps est le temps
 //  simulé. Tous les noms globaux portent le préfixe tf / TF_ : les scripts
@@ -81,10 +81,12 @@ var TF_LAMBDA = 2.2;   // W·m⁻¹·K⁻¹
 var TF_ISOLATIONS = [0, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1];
 
 // ── Commandes ──
-var TF_MASSES   = [10, 20, 40];                             // kg
-var TF_VITESSES = [1 / 5000, 1 / 1000, 1 / 100, 0.1, 1, 5, 20];
+var TF_MASSE_MAX = 40;                                      // kg, masse totale posée
+var TF_VITESSES  = [1 / 5000, 1 / 1000, 1 / 100, 0.1, 1, 5, 20];
+// Durées d'un escalier (s) : 0 = échelon (brutal)
+var TF_DUREES_ESC = [0, 1, 2, 5, 10, 20, 50, 100, 200, 500];
 
-// ── Vérin (famille à volume imposé, PLAN §2.7) ──
+// ── Vérin (piston tenu, PLAN §2.7) ──
 // Durées τ proposées (s), à pas à peu près logarithmiques. Les plus courtes
 // donnent un piston plus rapide que le son (choc) ; la limite de la
 // modélisation est sa vitesse de pointe, TF_V_VERIN_MAX, qui allonge au
@@ -115,9 +117,6 @@ var tf = {
   mTr   : 0,      // kg par tranche
   Cv    : 0,      // J·K⁻¹·mol⁻¹
 
-  // Famille de transformations : 'pression' (masse posée) ou 'volume' (vérin)
-  famille : 'pression',
-
   // Tranches : interfaces z[0..N] (z[0] = fond, z[N] = face du piston) et
   // leurs vitesses u (décalées d'un demi-pas, schéma saute-mouton) ; énergie
   // interne E, pression P et viscosité q de chaque tranche.
@@ -129,29 +128,34 @@ var tf = {
   _dz: new Float64Array(TF_N),     // épaisseurs avant déplacement (calcul de dV)
   _T : new Float64Array(TF_N),     // températures (conduction)
 
-  // Piston (pression imposée)
-  masse        : 0,      // kg posés sur le plateau
-  masseChoisie : 20,     // kg, choix du sélecteur
-  loquet       : true,   // piston bloqué
-  bAmort       : 0,      // kg·s⁻¹, recalculé à chaque sous-pas
+  // Piston : tenu par la pince du vérin, ou libre (§10.2)
+  tenu   : true,
+  // Charge posée sur le plateau : blocs (posés d'un coup) et sable (versé
+  // grain à grain) ; masse = blocs + sable
+  masse  : 0,            // kg
+  blocs  : 0,            // kg
+  sable  : 0,            // kg
+  bAmort : 0,            // kg·s⁻¹, recalculé à chaque sous-pas
 
-  // Vérin (volume imposé) : mouvement de zDep à zArr, commencé à t0, de
-  // durée tau. zAller garde le départ du dernier Lancer, pour Retour.
-  verin  : { actif: false, zDep: 0, zArr: 0, t0: 0, tau: 0.1, zAller: 0 },
-  hVisee : 0.15,         // m, choix du curseur Hauteur visée
-  tau    : 0.1,          // s, choix du curseur Durée
+  // Vérin (piston tenu) : mouvement de zDep à zArr, commencé à t0, de durée tau
+  verin  : { actif: false, zDep: 0, zArr: 0, t0: 0, tau: 0.1 },
+  hVisee : 0.15,         // m, hauteur visée (repère de la scène)
   Wop    : 0,            // J, travail reçu par le gaz de la part du vérin
 
-  // Contraintes extérieures (§2.6) : pression de l'air de l'enceinte
-  // au-dessus du piston, température de la source sous le fond. Chacune
-  // change d'un coup (échelon) ou d'un pas toutes les `periode` s jusqu'à
-  // la cible (rampe).
+  // Contraintes extérieures : pression de l'air de l'enceinte au-dessus du
+  // piston, température de la source sous le fond, masse posée. Chacune
+  // change d'un coup (échelon) ou par un escalier de marches égales jusqu'à
+  // la cible (§10.3).
   Pair   : TF_P_ATM,     // Pa
   Wair   : 0,            // J, travail reçu par le système de la part de l'enceinte
   rampes : {
-    Pair : { actif: false, cible: 0, pas: 0, periode: 1, tProchain: 0 },
-    Text : { actif: false, cible: 0, pas: 0, periode: 1, tProchain: 0 }
+    Pair  : { actif: false, cible: 0, pas: 0, periode: 1, tProchain: 0 },
+    Text  : { actif: false, cible: 0, pas: 0, periode: 1, tProchain: 0 },
+    masse : { actif: false, cible: 0, pas: 0, periode: 1, tProchain: 0 }
   },
+  // Recalage du bilan d'énergie aux changements discontinus de commande
+  // (tenir, libérer, poser une masse), pour que tfEnergieTotale reste continue
+  eDecal : 0,            // J
 
   // Thermique
   G    : 0,              // W·K⁻¹, conductance du fond
@@ -179,7 +183,7 @@ var tf = {
 // ══════════════════════════════════════════════════════════════════════
 
 // Pression extérieure exercée sur le gaz à l'équilibre : air de l'enceinte
-// + poids (famille à pression imposée)
+// + poids (ce qui agit sur le piston libre)
 function tfPext() {
   return tf.Pair + (TF_M_PISTON + tf.masse) * TF_G / TF_S;
 }
@@ -208,30 +212,40 @@ function _tfEcGaz() {
 }
 
 // Énergie cinétique macroscopique : gaz, plus le piston et sa masse quand il
-// est libre (J). Mené par le vérin, le piston n'en fait pas partie : c'est
-// le vérin qui fournit son énergie.
+// est libre (J). Tenu, le piston n'en fait pas partie : c'est le vérin qui
+// fournit son énergie.
 function _tfEc() {
   var uN = tf.u[TF_N];
-  var piston = tf.famille === 'pression' ? TF_M_PISTON + tf.masse : 0;
+  var piston = tf.tenu ? 0 : TF_M_PISTON + tf.masse;
   return _tfEcGaz() + 0.5 * piston * uN * uN;
 }
 
 // Énergie totale, diminuée de la chaleur reçue et du travail reçu de
-// l'extérieur : elle doit rester constante (tests de validation). Pression
-// imposée : système {gaz + piston + masse}, qui reçoit le travail de l'air
-// de l'enceinte ; volume imposé : le gaz seul, qui reçoit celui du vérin.
+// l'extérieur : elle doit rester constante (tests de validation). Piston
+// libre : système {gaz + piston + masse}, qui reçoit le travail de l'air de
+// l'enceinte ; tenu : le gaz seul, qui reçoit celui du vérin. W_air ne
+// varie que piston libre, W_op que piston tenu ; eDecal recale le compte à
+// chaque bascule.
 function tfEnergieTotale() {
-  var zN = tf.z[TF_N];
-  var e = _tfU() + _tfEc() - tf.Qrecu;
-  if (tf.famille === 'volume') return e - tf.Wop;
-  return e + (TF_M_PISTON + tf.masse) * TF_G * zN - tf.Wair;
+  var e = _tfU() + _tfEc() - tf.Qrecu - tf.Wop - tf.Wair + tf.eDecal;
+  if (!tf.tenu) e += (TF_M_PISTON + tf.masse) * TF_G * tf.z[TF_N];
+  return e;
+}
+
+// Applique un changement discontinu de commande (fn) en gardant le bilan
+// d'énergie continu : l'écart est le travail de l'opérateur (masse posée à
+// une certaine hauteur, énergie cinétique perdue dans la pince…)
+function _tfRecaler(fn) {
+  var avant = tfEnergieTotale();
+  fn();
+  tf.eDecal += avant - tfEnergieTotale();
 }
 
 // Piston libre arrêté par une butée qui le retient (gaz trop chaud ou trop
 // peu chargé pour la butée haute, l'inverse pour la basse) : 'haute',
 // 'basse' ou null
 function tfButee(Pmoy) {
-  if (tf.famille !== 'pression' || tf.loquet) return null;
+  if (tf.tenu) return null;
   var zN = tf.z[TF_N], Pext = tfPext();
   if (zN >= TF_H_CYL - 1e-9 && Pmoy >= Pext) return 'haute';
   if (zN <= TF_Z_BUTEE + 1e-9 && Pmoy <= Pext) return 'basse';
@@ -262,11 +276,11 @@ function tfMesures() {
   var Pdef = (Pmax - Pmin) / Pmoy < TF_SEUIL_P;
   var Tdef = (Tmax - Tmin) < TF_SEUIL_T;
   var repos = _tfEc() < TF_SEUIL_EC * U;
-  // Loquet verrouillé, butée ou vérin arrêté : c'est lui qui assure
-  // l'équilibre mécanique du piston
+  // Vérin arrêté ou butée : c'est lui qui assure l'équilibre mécanique du
+  // piston
   var butee = tfButee(Pmoy);
-  var piston = tf.famille === 'volume' ? !tf.verin.actif
-             : tf.loquet || butee !== null || Math.abs(Pmoy - Pext) / Pext < TF_SEUIL_P;
+  var piston = tf.tenu ? !tf.verin.actif
+             : butee !== null || Math.abs(Pmoy - Pext) / Pext < TF_SEUIL_P;
 
   return {
     V: V, Pmoy: Pmoy, Pmin: Pmin, Pmax: Pmax,
@@ -280,10 +294,8 @@ function tfMesures() {
 //  Réinitialisation
 // ══════════════════════════════════════════════════════════════════════
 
-// Gaz au repos à T0 sous le piston seul, volume V0 ; loquet verrouillé,
-// pas de masse, vérin arrêté. Les réglages (famille, masse choisie, hauteur
-// visée, durée, isolation, vitesse, γ) sont conservés. Le gaz part du même
-// état dans les deux familles.
+// Gaz au repos à T0 sous le piston seul, volume V0 ; piston tenu, pas de
+// masse, vérin arrêté. Les réglages (isolation, vitesse, γ) sont conservés.
 function tfReset() {
   tf.Cv  = TF_R / (tf.gamma - 1);
   var P0 = TF_P_ATM + TF_M_PISTON * TF_G / TF_S;
@@ -302,15 +314,15 @@ function tfReset() {
     tf.q[j] = 0;
   }
 
-  tf.masse  = 0;
-  tf.loquet = true;
-  tf.verin.actif  = false;
-  tf.verin.zAller = h0;
+  tf.masse  = tf.blocs = tf.sable = 0;
+  tf.tenu   = true;
+  tf.verin.actif = false;
   tf.Wop    = 0;
   tf.Pair   = TF_P_ATM;
   tf.Wair   = 0;
   tf.Text   = TF_T0;
-  tf.rampes.Pair.actif = tf.rampes.Text.actif = false;
+  for (var cle in tf.rampes) tf.rampes[cle].actif = false;
+  tf.eDecal = 0;
   tf.t      = 0;
   tf.Qrecu  = 0;
   tf.limite = false;
@@ -324,24 +336,15 @@ function tfReset() {
 //  Commandes
 // ══════════════════════════════════════════════════════════════════════
 
-// Famille de transformations : en changer réinitialise l'expérience (le
-// piston passe de libre à tenu par le vérin, ou l'inverse).
-function tfSetFamille(f) {
-  tf.famille = f;
-  tfReset();
-}
-
-// Pose (kg > 0) ou retire (kg = 0) la masse. Loquet libéré, l'effet est
-// brutal : le poids change d'un coup, le piston est encore immobile.
-function tfSetMasse(kg) {
-  tf.masse = kg;
-  _tfMajAmortissement();
-  tf.needsRedraw = true;
-}
-
-function tfSetLoquet(verrouille) {
-  tf.loquet = verrouille;
-  if (verrouille) tf.u[TF_N] = 0;
+// Tenir (la pince saisit la tige et arrête net le piston) ou libérer le
+// piston. Libérer arrête le vérin.
+function tfSetTenu(tenir) {
+  if (tenir === tf.tenu) return;
+  _tfRecaler(function () {
+    tf.tenu = tenir;
+    if (tenir) tf.u[TF_N] = 0;
+    else tf.verin.actif = false;
+  });
   tf.needsRedraw = true;
 }
 
@@ -350,24 +353,61 @@ function tfSetIsolation(G) {
   tf.needsRedraw = true;
 }
 
-// ── Contraintes extérieures : P_air ('Pair') ou T_ext ('Text') ──
-// Échelon : la grandeur prend la cible d'un coup. Rampe : un premier pas
-// tout de suite, puis un toutes les `periode` s, jusqu'à la cible. Pendant
-// une rampe, une nouvelle consigne en rampe change seulement la cible (et
-// le pas), sans décaler le rythme.
-function tfAppliquer(cle, cible, enRampe, pas, periode) {
-  var r = tf.rampes[cle];
-  if (!enRampe) {
-    r.actif = false;
-    tf[cle] = cible;
-  } else {
-    if (!r.actif) r.tProchain = tf.t;
-    r.cible = cible;
-    r.pas = pas;
-    r.periode = periode;
-    r.actif = Math.abs(cible - tf[cle]) > 1e-9;
-  }
+// Masse posée portée à `cible` (kg). Ajoutée d'un coup, la différence est un
+// bloc ; ajoutée lentement (marche d'un escalier), du sable. Le retrait
+// brutal prend d'abord sur les blocs, le retrait lent d'abord sur le sable.
+function _tfChangerMasse(cible, lent) {
+  cible = Math.max(0, Math.min(TF_MASSE_MAX, cible));
+  var d = cible - tf.masse;
+  _tfRecaler(function () {
+    if (d > 0) {
+      if (lent) tf.sable += d; else tf.blocs += d;
+    } else {
+      var reste = -d;
+      var prem = lent ? 'sable' : 'blocs', sec = lent ? 'blocs' : 'sable';
+      var a = Math.min(reste, tf[prem]);
+      tf[prem] -= a;
+      tf[sec] = Math.max(0, tf[sec] - (reste - a));
+    }
+    // Au milligramme près : pas de reliquat d'arrondi dessiné comme du sable
+    tf.blocs = Math.round(tf.blocs * 1e6) / 1e6;
+    tf.sable = Math.round(tf.sable * 1e6) / 1e6;
+    tf.masse = tf.blocs + tf.sable;
+  });
+  _tfMajAmortissement();
+}
+
+// Fixe une contrainte extérieure : P_air ('Pair'), T_ext ('Text') ou masse
+// posée ('masse')
+function _tfFixer(cle, valeur, lent) {
+  if (cle === 'masse') _tfChangerMasse(valeur, lent);
+  else tf[cle] = valeur;
   tf.needsRedraw = true;
+}
+
+// ── Contraintes extérieures (§10.3) ──
+// Durée nulle : échelon, la grandeur prend la cible d'un coup. Sinon,
+// escalier de n marches égales, n = ⌈|Δ| / pasMax⌉ : une première marche
+// tout de suite, puis une toutes les duree / n secondes.
+function tfAppliquer(cle, cible, duree, pasMax) {
+  var r = tf.rampes[cle];
+  var d = cible - tf[cle];
+  r.actif = false;
+  if (duree <= 0 || Math.abs(d) < 1e-9) {
+    _tfFixer(cle, cible, false);
+    return;
+  }
+  var n = tfNbMarches(cle, cible, pasMax);
+  r.cible     = cible;
+  r.pas       = Math.abs(d) / n;
+  r.periode   = duree / n;
+  r.tProchain = tf.t;
+  r.actif     = true;
+}
+
+// Nombre de marches d'un escalier vers cible, de hauteur au plus pasMax
+function tfNbMarches(cle, cible, pasMax) {
+  return Math.max(1, Math.ceil(Math.abs(cible - tf[cle]) / pasMax - 1e-9));
 }
 
 function _tfAvancerRampes() {
@@ -376,45 +416,48 @@ function _tfAvancerRampes() {
     if (!r.actif || tf.t < r.tProchain) continue;
     var d = r.cible - tf[cle];
     if (Math.abs(d) <= r.pas * (1 + 1e-9)) {
-      tf[cle] = r.cible;
+      _tfFixer(cle, r.cible, true);
       r.actif = false;
     } else {
-      tf[cle] += d > 0 ? r.pas : -r.pas;
+      _tfFixer(cle, tf[cle] + (d > 0 ? r.pas : -r.pas), true);
       r.tProchain += r.periode;
     }
-    tf.needsRedraw = true;
   }
 }
 
 // ── Vérin ──
-// Durée effective d'une course de zDep à zArr : la durée choisie, allongée
-// si besoin pour que la vitesse de pointe 2·|Δz|/τ reste sous TF_V_VERIN_MAX
-function tfTauEffectif(zDep, zArr) {
-  return Math.max(tf.tau, 2 * Math.abs(zArr - zDep) / TF_V_VERIN_MAX);
+// Durée effective d'une course de zDep à zArr : la durée tau, allongée si
+// besoin pour que la vitesse de pointe 2·|Δz|/τ reste sous TF_V_VERIN_MAX
+function tfTauEffectif(zDep, zArr, tau) {
+  return Math.max(tau, 2 * Math.abs(zArr - zDep) / TF_V_VERIN_MAX);
 }
 
-// Mène le piston de sa position actuelle à zArr, en tfTauEffectif secondes
-function _tfLancerVerin(zArr) {
+// Tient le piston et le mène de sa position actuelle à zArr, en
+// tfTauEffectif secondes
+function tfLancerVerin(zArr, tau) {
+  tfSetTenu(true);
   var v = tf.verin;
   v.zDep  = tf.z[TF_N];
   v.zArr  = zArr;
   v.t0    = tf.t;
-  v.tau   = tfTauEffectif(v.zDep, zArr);
+  v.tau   = tfTauEffectif(v.zDep, zArr, tau);
   v.actif = Math.abs(zArr - v.zDep) > 1e-6;
   tf.needsRedraw = true;
 }
 
-// Lancer : vers la hauteur visée ; le départ est retenu pour Retour
-function tfLancerVerin() {
-  if (tf.famille !== 'volume' || tf.verin.actif) return;
-  tf.verin.zAller = tf.z[TF_N];
-  _tfLancerVerin(tf.hVisee);
+// Une action est-elle en cours (vérin en marche, escalier inachevé) ?
+function tfEnCours() {
+  if (tf.verin.actif) return true;
+  for (var cle in tf.rampes) if (tf.rampes[cle].actif) return true;
+  return false;
 }
 
-// Retour : même durée, vers le départ du dernier Lancer
-function tfRetourVerin() {
-  if (tf.famille !== 'volume' || tf.verin.actif) return;
-  _tfLancerVerin(tf.verin.zAller);
+// Interrompt l'action en cours : l'escalier s'arrête sur sa marche, le
+// vérin là où il est (le piston reste tenu)
+function tfInterrompre() {
+  tf.verin.actif = false;
+  for (var cle in tf.rampes) tf.rampes[cle].actif = false;
+  tf.needsRedraw = true;
 }
 
 // Position imposée du piston à l'instant t : profil de vitesse
@@ -480,7 +523,7 @@ function tfAvancer(dt) {
     var h = Math.min(reste, tf.dtCfl);
     // Vérin en marche : profil de vitesse suivi finement, et arrivée sur
     // une fin de sous-pas
-    if (tf.verin.actif && tf.famille === 'volume') {
+    if (tf.verin.actif) {
       h = Math.min(h, tf.verin.tau / 400);
       var fin = tf.verin.t0 + tf.verin.tau - tf.t;
       if (fin > 1e-12 && fin < h) h = fin;
@@ -501,7 +544,7 @@ function _tfSousPas(dt) {
   var N = TF_N, S = TF_S;
   var z = tf.z, u = tf.u, E = tf.E, P = tf.P, q = tf.q, dzA = tf._dz;
   var g = tf.gamma, g1 = g - 1, mTr = tf.mTr;
-  var volume = tf.famille === 'volume';
+  var tenu = tf.tenu;
   var j, i;
 
   // 1. Viscosité artificielle q = −cl·ρ·c·Δu (dissipative dans les deux
@@ -526,15 +569,13 @@ function _tfSousPas(dt) {
     u[i] += k * ((P[i - 1] + q[i - 1]) - (P[i] + q[i]));
   }
 
-  // Piston : mené par le vérin (volume imposé), bloqué par le loquet, ou
-  // soumis à la pression de la tranche du haut, à l'air de l'enceinte, à son
-  // poids et à l'amortissement (pression imposée)
+  // Piston : tenu (mené par le vérin, ou immobile), ou libre, soumis à la
+  // pression de la tranche du haut, à l'air de l'enceinte, à son poids et à
+  // l'amortissement
   var chaleur = 0;   // J dissipés à rendre au gaz
   var uAvant = u[N];
-  if (volume) {
+  if (tenu) {
     u[N] = tf.verin.actif ? (_tfZVerin(tf.t + dt) - z[N]) / dt : 0;
-  } else if (tf.loquet) {
-    u[N] = 0;
   } else {
     var M = TF_M_PISTON + tf.masse;
     var F = S * (P[N - 1] + q[N - 1] - tf.Pair) - M * TF_G - tf.bAmort * u[N];
@@ -548,13 +589,13 @@ function _tfSousPas(dt) {
 
   // Butées du piston libre : choc mou, l'énergie cinétique perdue passe au
   // gaz (le vérin, lui, reste dans la course permise)
-  if (!volume && ((z[N] > TF_H_CYL && u[N] > 0) || (z[N] < TF_Z_BUTEE && u[N] < 0))) {
+  if (!tenu && ((z[N] > TF_H_CYL && u[N] > 0) || (z[N] < TF_Z_BUTEE && u[N] < 0))) {
     chaleur += 0.5 * (TF_M_PISTON + tf.masse + mTr / 2) * uAvant * uAvant;
     u[N] = 0;
     z[N] = Math.min(TF_H_CYL, Math.max(TF_Z_BUTEE, z[N]));
   }
   // Travail reçu de l'air de l'enceinte (pression constante sur le sous-pas)
-  if (!volume) tf.Wair -= tf.Pair * S * (z[N] - zAvant);
+  if (!tenu) tf.Wair -= tf.Pair * S * (z[N] - zAvant);
 
   // 4. Énergies : dE = −(P̄ + q)·dV, avec P̄ moyenne de P avant et après
   //    (résolue exactement, P_après étant proportionnelle à E_après) : le
@@ -568,7 +609,7 @@ function _tfSousPas(dt) {
   // Travail du vérin : celui que la tranche du haut reçoit par la face du
   // piston, avec la même pression moyenne qu'à l'étape 4, plus la variation
   // d'énergie cinétique de la demi-tranche portée par la face
-  if (volume) {
+  if (tenu) {
     var Ptop = 0.5 * P[N - 1] + q[N - 1]
              + 0.5 * g1 * E[N - 1] / (S * (z[N] - z[N - 1]));
     tf.Wop += -Ptop * S * u[N] * dt + 0.25 * mTr * (u[N] * u[N] - uAvant * uAvant);

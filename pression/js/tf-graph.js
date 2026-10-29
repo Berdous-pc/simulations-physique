@@ -99,9 +99,9 @@ function _tfgEchantillon() {
     Pm: m.Pmoy, Pmin: m.Pmin, Pmax: m.Pmax, Pdef: m.Pdef,
     Tm: m.Tmoy, Tmin: m.Tmin, Tmax: m.Tmax, Tdef: m.Tdef,
     eq: m.equilibre,
-    // Pression exercée par le piston : P_ext à pression imposée, celle que
-    // mesure le vérin à volume imposé
-    Pp: tf.famille === 'volume' ? m.Pface : m.Pext,
+    // Pression exercée par le piston : P_ext piston libre, celle que
+    // mesure le vérin piston tenu
+    Pp: tf.tenu ? m.Pface : m.Pext,
     Text: tf.Text
   };
   var g = tfGraph;
@@ -145,7 +145,7 @@ function _tfgNuage(fn) {
   }
 }
 
-// Efface l'historique (Réinitialiser, changement de famille) et enregistre
+// Efface l'historique (Réinitialiser) et enregistre
 // l'état initial
 function tfGraphEffacer() {
   var g = tfGraph;
@@ -281,12 +281,12 @@ function _tfgBulle(c, lignes, x, y, W, H, fs) {
 function _tfgDef(s, ser) { return !ser.def || s[ser.def]; }
 
 // Repère en pointillé d'une grandeur temporelle : T_ext quand le fond
-// échange de la chaleur ; P_ext à pression imposée ; pression mesurée par
-// le vérin à volume imposé, si l'option est cochée
+// échange de la chaleur ; P_ext piston libre ; pression mesurée par
+// le vérin piston tenu, si l'option est cochée
 function _tfgRepere(ser) {
   if (ser.m === 'Tm') return tf.G > 0 ? { cle: 'Text', nom: 'T_ext' } : null;
   if (ser.m === 'Pm') {
-    if (tf.famille === 'pression') return { cle: 'Pp', nom: 'P_ext' };
+    if (!tf.tenu) return { cle: 'Pp', nom: 'P_ext' };
     return tfGraphAff.piston ? { cle: 'Pp', nom: 'sur le piston' } : null;
   }
   return null;

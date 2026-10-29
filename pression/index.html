@@ -296,126 +296,17 @@
             </div>
             <span class="input-hint" id="tf-vitesse-limite" style="display:none">Calcul trop lourd : vitesse réelle inférieure</span>
           </div>
-        </div>
-
-        <div class="sep"></div>
-
-        <!-- ── Contrainte ─────────────────────────── -->
-        <!-- Deux familles de transformations (PLAN_TRANSFORMATIONS.md §2.3) ;
-             en changer réinitialise l'expérience. -->
-        <div class="panel-section">
-          <div class="section-title">Contrainte</div>
-          <div class="mode-tabs">
-            <button class="mode-tab active" id="tf-tab-pression" onclick="tfOnFamille('pression')">Pression imposée</button>
-            <button class="mode-tab" id="tf-tab-volume" onclick="tfOnFamille('volume')">Volume imposé</button>
-          </div>
-
-          <!-- Pression imposée : air de l'enceinte (échelon ou rampe), masse
-               posée sur le piston libre, loquet -->
-          <div id="tf-bloc-pression">
-          <div class="tf-sous-titre">Air de l’enceinte</div>
-          <div class="param-row">
-            <label for="tf-sl-Pair">Consigne P_air
-              <span class="param-value" id="tf-lbl-Pair">—</span>
-            </label>
-            <input type="range" id="tf-sl-Pair" min="0" max="500" step="1" value="101"
-                   oninput="tfOnConsigne('Pair', this.value)">
-            <div class="slider-ticks">
-              <span>vide</span>
-              <span>500 kPa</span>
-            </div>
-          </div>
-          <div class="mode-tabs tf-mini-tabs">
-            <button class="mode-tab active" id="tf-tab-Pair-echelon" onclick="tfOnModeConsigne('Pair', false)">Échelon</button>
-            <button class="mode-tab" id="tf-tab-Pair-rampe" onclick="tfOnModeConsigne('Pair', true)">Rampe</button>
-          </div>
-          <div id="tf-rampe-Pair" style="display:none">
-            <div class="param-row">
-              <label for="tf-sl-Pair-pas">Pas
-                <span class="param-value" id="tf-lbl-Pair-pas">—</span>
-              </label>
-              <input type="range" id="tf-sl-Pair-pas" min="0" max="4" step="1" value="2"
-                     oninput="tfOnPasConsigne('Pair', this.value)">
-            </div>
-            <div class="param-row">
-              <label for="tf-sl-Pair-periode">Un pas toutes les
-                <span class="param-value" id="tf-lbl-Pair-periode">—</span>
-              </label>
-              <input type="range" id="tf-sl-Pair-periode" min="0" max="6" step="1" value="3"
-                     oninput="tfOnPeriodeConsigne('Pair', this.value)">
-              <span class="input-hint" id="tf-hint-Pair-duree"></span>
-            </div>
-          </div>
-          <button id="tf-btn-Pair" class="btn btn-primary" onclick="tfAppliquerConsigne('Pair')">Appliquer</button>
-          <div class="readout" style="margin-top:8px">
-            <div class="ro-label">Pression de l’air de l’enceinte</div>
-            <div class="ro-value" id="tf-ro-Pair">—</div>
-            <span class="input-hint" id="tf-ro-Pair-rampe" style="display:none"></span>
-          </div>
-          <div class="tf-sous-titre">Charges sur le piston</div>
-          <div class="param-row">
-            <label for="tf-sel-masse">Masse à poser</label>
-            <select id="tf-sel-masse" class="param-select" onchange="tfOnMasse(this.value)">
-              <option value="10">10 kg</option>
-              <option value="20" selected>20 kg</option>
-              <option value="40">40 kg</option>
-            </select>
-          </div>
-          <div class="btn-stack">
-            <button id="tf-btn-masse" class="btn btn-primary" onclick="tfBasculerMasse()">Poser la masse</button>
-            <button id="tf-btn-loquet" class="btn btn-toggle-one active" onclick="tfBasculerLoquet()">🔒 Loquet verrouillé</button>
-          </div>
-          </div>
-
-          <!-- Volume imposé : un vérin mène le piston à la hauteur visée en
-               une durée τ, à comparer à la traversée du gaz par le son et à
-               la mise en équilibre thermique -->
-          <div id="tf-bloc-volume" style="display:none">
-          <div class="param-row">
-            <label for="tf-sl-visee">Hauteur visée
-              <span class="param-value" id="tf-lbl-visee">15 cm</span>
-            </label>
-            <input type="range" id="tf-sl-visee" min="5" max="50" step="1" value="15"
-                   oninput="tfOnVisee(this.value)">
-          </div>
-          <div class="param-row">
-            <label for="tf-sl-duree">Durée τ
-              <span class="param-value" id="tf-lbl-duree">100 ms</span>
-            </label>
-            <input type="range" id="tf-sl-duree" min="0" max="16" step="1" value="8"
-                   oninput="tfOnDuree(this.value)">
-            <div class="slider-ticks">
-              <span>0,5 ms</span>
-              <span>60 s</span>
-            </div>
-            <span class="input-hint" id="tf-duree-allongee" style="display:none"></span>
-          </div>
-          <div class="readout">
-            <div class="ro-label">Traversée du gaz par le son</div>
-            <div class="ro-value" id="tf-ro-traversee">—</div>
-          </div>
-          <div class="readout">
-            <div class="ro-label">Mise en équilibre thermique</div>
-            <div class="ro-value" id="tf-ro-thermique">—</div>
-          </div>
-          <div class="readout">
-            <div class="ro-label">Transformation attendue</div>
-            <div class="ro-value tf-regime" id="tf-ro-regime">—</div>
-          </div>
-          <div class="tf-btn-ligne">
-            <button id="tf-btn-lancer" class="btn btn-primary" onclick="tfLancer()">Lancer</button>
-            <button id="tf-btn-retour" class="btn btn-toggle-one" onclick="tfRetour()">Retour</button>
-          </div>
-          <div class="readout" style="margin-top:8px">
-            <div class="ro-label">Travail reçu par le gaz</div>
-            <div class="ro-value" id="tf-ro-travail">—</div>
-          </div>
-          </div>
+          <label class="check-row">
+            <input type="checkbox" id="tf-ck-vitesse-auto" checked onchange="tfOnVitesseAuto(this.checked)">
+            Vitesse adaptée à chaque transformation
+          </label>
         </div>
 
         <div class="sep"></div>
 
         <!-- ── Échanges thermiques ────────────────── -->
+        <!-- Un état, pas une action : c'est lui qui décide si la
+             transformation est adiabatique -->
         <div class="panel-section">
           <div class="section-title">Échanges thermiques</div>
           <div class="param-row">
@@ -428,47 +319,108 @@
               <span>calorifugé</span>
               <span>diathermane</span>
             </div>
-            <span class="input-hint">Seul le fond échange de la chaleur, avec la source posée dessous.</span>
           </div>
-          <div class="tf-sous-titre">Source sous le fond</div>
-          <div class="param-row">
-            <label for="tf-sl-Text">Consigne T_ext
+        </div>
+
+        <div class="sep"></div>
+
+        <!-- ── Transformation ─────────────────────── -->
+        <!-- Carte unique (PLAN_TRANSFORMATIONS.md §10.3) : état du piston,
+             grandeur sur laquelle on agit, valeur visée, durée, Lancer -->
+        <div class="panel-section">
+          <div class="section-title">Transformation</div>
+          <button id="tf-btn-piston" class="btn btn-toggle-one active" onclick="tfBasculerPiston()">🔒 Piston tenu</button>
+
+          <div class="tf-sous-titre">Agir sur</div>
+          <div class="mode-tabs">
+            <button class="mode-tab active" id="tf-tab-volume" onclick="tfOnAction('volume')">Volume</button>
+            <button class="mode-tab" id="tf-tab-pression" onclick="tfOnAction('pression')">Pression</button>
+            <button class="mode-tab" id="tf-tab-temperature" onclick="tfOnAction('temperature')">Température</button>
+          </div>
+          <div class="mode-tabs tf-mini-tabs" id="tf-moyens" style="display:none">
+            <button class="mode-tab active" id="tf-tab-masse" onclick="tfOnMoyen('masse')">Masse posée</button>
+            <button class="mode-tab" id="tf-tab-Pair" onclick="tfOnMoyen('Pair')">Air de l’enceinte</button>
+          </div>
+
+          <!-- Valeur visée : un curseur par grandeur -->
+          <div class="param-row" id="tf-row-volume">
+            <label for="tf-sl-volume">Hauteur visée
+              <span class="param-value" id="tf-lbl-volume">—</span>
+            </label>
+            <input type="range" id="tf-sl-volume" min="5" max="50" step="1" value="15"
+                   oninput="tfOnVisee('volume', this.value)">
+          </div>
+          <div class="param-row" id="tf-row-masse" style="display:none">
+            <label for="tf-sl-masse">Masse posée visée
+              <span class="param-value" id="tf-lbl-masse">—</span>
+            </label>
+            <input type="range" id="tf-sl-masse" min="0" max="40" step="1" value="20"
+                   oninput="tfOnVisee('masse', this.value)">
+            <div class="slider-ticks">
+              <span>0 kg</span>
+              <span>40 kg</span>
+            </div>
+          </div>
+          <div class="param-row" id="tf-row-Pair" style="display:none">
+            <label for="tf-sl-Pair">P_air visée
+              <span class="param-value" id="tf-lbl-Pair">—</span>
+            </label>
+            <input type="range" id="tf-sl-Pair" min="0" max="500" step="1" value="200"
+                   oninput="tfOnVisee('Pair', this.value)">
+            <div class="slider-ticks">
+              <span>vide</span>
+              <span>500 kPa</span>
+            </div>
+          </div>
+          <div class="param-row" id="tf-row-Text" style="display:none">
+            <label for="tf-sl-Text">T_ext visée (source)
               <span class="param-value" id="tf-lbl-Text">—</span>
             </label>
-            <input type="range" id="tf-sl-Text" min="250" max="600" step="1" value="293"
-                   oninput="tfOnConsigne('Text', this.value)">
+            <input type="range" id="tf-sl-Text" min="250" max="600" step="1" value="400"
+                   oninput="tfOnVisee('Text', this.value)">
             <div class="slider-ticks">
               <span>250 K</span>
               <span>600 K</span>
             </div>
           </div>
-          <div class="mode-tabs tf-mini-tabs">
-            <button class="mode-tab active" id="tf-tab-Text-echelon" onclick="tfOnModeConsigne('Text', false)">Échelon</button>
-            <button class="mode-tab" id="tf-tab-Text-rampe" onclick="tfOnModeConsigne('Text', true)">Rampe</button>
-          </div>
-          <div id="tf-rampe-Text" style="display:none">
-            <div class="param-row">
-              <label for="tf-sl-Text-pas">Pas
-                <span class="param-value" id="tf-lbl-Text-pas">—</span>
-              </label>
-              <input type="range" id="tf-sl-Text-pas" min="0" max="4" step="1" value="2"
-                     oninput="tfOnPasConsigne('Text', this.value)">
+          <span class="input-hint tf-actuel" id="tf-hint-actuel"></span>
+
+          <div class="param-row">
+            <label for="tf-sl-duree">Durée
+              <span class="param-value" id="tf-lbl-duree">—</span>
+            </label>
+            <input type="range" id="tf-sl-duree" min="0" max="16" step="1" value="8"
+                   oninput="tfOnDuree(this.value)">
+            <div class="slider-ticks">
+              <span>brutale</span>
+              <span>lente</span>
             </div>
-            <div class="param-row">
-              <label for="tf-sl-Text-periode">Un pas toutes les
-                <span class="param-value" id="tf-lbl-Text-periode">—</span>
-              </label>
-              <input type="range" id="tf-sl-Text-periode" min="0" max="6" step="1" value="3"
-                     oninput="tfOnPeriodeConsigne('Text', this.value)">
-              <span class="input-hint" id="tf-hint-Text-duree"></span>
+            <span class="input-hint" id="tf-duree-allongee" style="display:none"></span>
+          </div>
+          <div class="param-row" id="tf-row-pas" style="display:none">
+            <label for="tf-sl-pas">Hauteur des marches
+              <span class="param-value" id="tf-lbl-pas">—</span>
+            </label>
+            <input type="range" id="tf-sl-pas" min="0" max="4" step="1" value="2"
+                   oninput="tfOnPas(this.value)">
+            <div class="slider-ticks">
+              <span>fines</span>
+              <span>grosses</span>
             </div>
+            <span class="input-hint" id="tf-hint-escalier"></span>
           </div>
-          <button id="tf-btn-Text" class="btn btn-primary" onclick="tfAppliquerConsigne('Text')">Appliquer</button>
-          <div class="readout" style="margin-top:8px">
-            <div class="ro-label">Température de la source</div>
-            <div class="ro-value" id="tf-ro-Text">—</div>
-            <span class="input-hint" id="tf-ro-Text-rampe" style="display:none"></span>
+
+          <div class="tf-btn-ligne">
+            <button id="tf-btn-lancer" class="btn btn-primary" onclick="tfLancer()">Lancer</button>
+            <button id="tf-btn-interrompre" class="btn btn-toggle-one" onclick="tfOnInterrompre()" disabled>Interrompre</button>
           </div>
+          <span class="input-hint" id="tf-en-cours"></span>
+
+          <div class="readout">
+            <div class="ro-label">Transformation attendue</div>
+            <div class="ro-value tf-regime" id="tf-ro-regime">—</div>
+          </div>
+          <div class="tf-durees-car" id="tf-durees-car"></div>
         </div>
 
         <div class="sep"></div>
@@ -531,10 +483,14 @@
         <button class="panel-hint-toggle" onclick="toggleHint()" title="Afficher les informations">▲</button>
       </div>
       <div class="panel-hint-body">
-        Choisissez la <strong>contrainte</strong> (en changer réinitialise l'expérience).
-        <strong>Pression imposée</strong> : le loquet bloque le piston ; posez la masse, puis libérez le loquet pour une compression brutale. On peut aussi changer la pression de l'air de l'enceinte (P_air, lue sur le manomètre), jusqu'au vide.
-        Pour P_air et pour la température de la source sous le fond (T_ext), le curseur règle une consigne, appliquée par le bouton <strong>Appliquer</strong> : d'un coup (<strong>Échelon</strong>, transformation brutale) ou pas à pas (<strong>Rampe</strong>, d'autant plus proche d'une transformation quasi statique que les pas sont petits et espacés). La source n'agit que si le fond n'est pas calorifugé.
-        <strong>Volume imposé</strong> : réglez la hauteur visée et la durée τ, puis <strong>Lancer</strong> ; <strong>Retour</strong> ramène le piston à son départ avec la même durée (aller-retour).
+        Les transformations s'enchaînent : chacune part de l'état laissé par la précédente, ce qui permet de parcourir un chemin, ou un cycle, dans le diagramme de Clapeyron.
+        Dans la carte <strong>Transformation</strong>, choisissez sur quoi agir, la valeur visée et la durée, puis <strong>Lancer</strong> ; <strong>Interrompre</strong> arrête l'action en cours.
+        <strong>Volume</strong> : le vérin tient le piston et le mène à la hauteur visée (repère orange sur le cylindre).
+        <strong>Pression</strong> : par la masse posée sur le piston ou par l'air de l'enceinte (P_air, lue sur le manomètre, jusqu'au vide) ; Lancer libère le piston.
+        <strong>Température</strong> de la source sous le fond : le piston garde son état (libre : pression constante ; tenu : volume constant). Seul le fond du cylindre échange de la chaleur, avec cette source : elle n'agit que s'il n'est pas calorifugé.
+        Le bouton <strong>Piston tenu / libre</strong> saisit ou lâche le piston à tout moment ; le lâcher alors que le gaz ne l'équilibre pas donne une transformation brutale.
+        <strong>Durée</strong> : « brutale » applique la valeur visée d'un coup ; une durée non nulle monte un escalier de marches égales, d'autant plus proche d'une transformation quasi statique que les marches sont petites et espacées. Pour la masse, une marche est un grain de sable versé (ou retiré) ; posée d'un coup, la masse est un bloc. Le régime attendu s'affiche sous la durée.
+        Avec <strong>Vitesse adaptée</strong> cochée, chaque Lancer choisit le cran de vitesse qui fait durer l'action quelques secondes à l'écran.
         Le curseur <strong>Vitesse</strong> descend jusqu'à ×1/5000 pour suivre un front dans le gaz ; à ce cran, les molécules s'agitent à leur vitesse réelle.
         Quand les tranches du gaz n'ont pas la même pression ou la même température, le tableau affiche <strong>?</strong> et l'écart entre tranches.
         Les <strong>graphes</strong> le montrent aussi : hors équilibre, T(t) et P(t) deviennent une bande hachurée (de la tranche la plus basse à la plus haute), et le diagramme de Clapeyron ne trace plus le gaz : un pointillé relie les états connus. Le <strong>nuage</strong> y donne un point par tranche (l'état qu'aurait le gaz entier s'il était partout comme elle) ; il se resserre en un seul point à l'équilibre.

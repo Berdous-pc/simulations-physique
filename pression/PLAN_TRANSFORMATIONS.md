@@ -7,6 +7,13 @@
 > transformations**, à pression imposée et à volume imposé (§2.3). Le curseur « Vitesse du
 > son » est abandonné : il tordait la physique pour montrer, sur la masse posée, une
 > inhomogénéité que ce dispositif ne produit pas (§2.3).
+>
+> **Révision après le palier 5 : refonte de l'interface (§10).** Le but de l'onglet est
+> de se promener dans le diagramme de Clapeyron en enchaînant des transformations. Les
+> deux familles ne sont plus deux modes exclusifs (en changer réinitialisait) : le piston
+> est **tenu** ou **libre**, on passe de l'un à l'autre à tout moment, et une carte unique
+> « Transformation » remplace les cinq façons de lancer une action. Le §10 fait foi là où
+> il contredit les §2.6, §2.7 et §5.
 
 ---
 
@@ -332,9 +339,60 @@ Chaque palier se termine par un commit et peut être montré en classe tel quel 
 
 ## 9. Points encore ouverts
 
+- **Masse retirée lentement** alors qu'il ne reste que des blocs : retirée par petits pas, dessinée comme un bloc dont l'étiquette décroît (§10.3).
 - **τ < 2 ms** (piston plus rapide que le son) : le portage Python du schéma diverge (réglé au palier 3 : la divergence venait d'un signe faux dans la viscosité ; le piston peut maintenant aller jusqu'à 400 m/s, au-delà de la célérité du son ; τ descend à 0,5 ms) ; il faudra des sous-pas plus fins près du piston ou une viscosité renforcée avant d'ouvrir ce régime, le plus spectaculaire.
 - ~~Viscosité linéaire~~ : réglé au palier 3, TF_CL = 0,5 et TF_CQ = 2 (à 0,15, le calcul diverge pour τ = 2 ms).
 - Gamme des masses (10 / 20 / 40 kg) et section 20 cm² : validées visuellement au palier 1, à revoir avec le nuage des tranches.
 - Dégradé de couleur : sur T (recommandé) ou sur la masse volumique ?
 - Titre de la carte d'accueil de l'onglet existant : garder « Pression d'un gaz » ou passer à « Modèle cinétique d'un gaz parfait » ?
 - Option future, hors de cet onglet : dynamique moléculaire réelle (disques durs) pour une thermalisation qui ne doit rien au modèle.
+
+---
+
+## 10. Refonte de l'interface : enchaîner les transformations
+
+### 10.1 Constat (après le palier 5)
+
+- Changer de famille réinitialisait : impossible d'enchaîner une isochore et une isobare, donc de parcourir un cycle.
+- Cinq façons de lancer une action (Appliquer P_air ; masse puis loquet ; Lancer / Retour du vérin ; Appliquer T_ext ; changer de famille), trois paires de sous-onglets, quatre curseurs pas / période.
+- Doublons : masse posée et échelon de P_air ; loquet et vérin à l'arrêt ; rampe (pas + période) et durée τ.
+
+### 10.2 Piston tenu ou libre
+
+- **Tenu** : une pince, au bout de la tige d'un vérin suspendu au plafond de l'enceinte, saisit le haut de la tige du piston. À l'arrêt, c'est l'ancien loquet ; en mouvement, l'ancien vérin. Le poids et P_air sont alors repris par la pince.
+- **Libre** : la tige du vérin se rétracte ; le piston est soumis à P_air, à son poids, à celui des masses et à la pression du gaz.
+- On passe de l'un à l'autre **à tout moment, sans réinitialiser** (bouton permanent en tête de la carte). Libérer un piston que le gaz n'équilibre pas est une transformation brutale ; tenir un piston en mouvement l'arrête net (son énergie cinétique est perdue, comme avec l'ancien loquet).
+- Les masses sont des disques fendus enfilés sur la tige, au-dessus du plateau : masses et pince coexistent.
+- Bilan d'énergie : un seul compte, U + Ec (+ Ec et énergie potentielle du piston s'il est libre) − Q − W_air − W_op, recalé à chaque changement discontinu de commande (tenir, libérer, poser une masse) pour rester continu.
+
+### 10.3 Carte « Transformation »
+
+```
+Piston : 🔒 tenu / 🔓 libre
+Agir sur :  [ Volume ]  [ Pression ]  [ Température ]
+            (Pression : [ Masse ] [ Air de l'enceinte ])
+Valeur visée : curseur (hauteur, masse totale, P_air, T_source)
+Durée :     brutale ───────── lente
+Pas de l'escalier (si durée > 0, sauf Volume) → « n marches, une toutes les x s »
+Transformation attendue : …
+[ Lancer ]   (pendant l'action : « En cours… » et [ Interrompre ])
+```
+
+- **Volume** : tient le piston et le mène à la hauteur visée en τ (profil lisse du §2.7, τ de 0,5 ms à 60 s).
+- **Pression** : applique la consigne **et libère** le piston. Deux moyens au choix de l'utilisateur :
+  - *Masse* (valeur visée = masse totale posée, 0 à 40 kg). Brutale : un bloc posé ou retiré d'un coup. Lente : du **sable**, versé ou retiré grain à grain (escalier dont le pas est la masse d'un grain). Le retrait brutal prend d'abord sur les blocs, le retrait lent d'abord sur le sable.
+  - *Air de l'enceinte* (P_air, du vide à 5 bar), échelon ou escalier.
+- **Température** de la source : échelon ou escalier ; le piston garde son état (libre → isobare, tenu → isochore), ce que la carte affiche.
+- **Durée** commune : « brutale » (échelon) puis des durées croissantes. Une durée non nulle donne un **escalier** de marches égales : n = ⌈|Δ| / pas⌉ marches, une toutes les durée / n. Faire tendre le pas vers 0 donne la transformation continue.
+- Une seule action à la fois ; elle peut être interrompue (l'escalier s'arrête sur sa marche, le vérin s'arrête là où il est).
+- L'isolation du fond reste un **état** (section Échanges thermiques, au-dessus de la carte) : c'est elle qui décide adiabatique ou non.
+- **Vitesse adaptée** (case cochée par défaut) : au Lancer, le cran de vitesse est choisi pour que l'action dure quelques secondes à l'écran (durée du vérin ou de l'escalier ; oscillations du piston pour une pression brutale ; mise en équilibre thermique pour une température brutale).
+
+### 10.4 Paliers de la refonte
+
+- **R1** : piston tenu / libre sans réinitialisation, pince et masses enfilées, carte unique, escaliers, masse visée (blocs et sable), vitesse adaptée.
+- **R2** : journal des étapes (A → B, B → C…), états d'équilibre étiquetés et étapes colorées sur le diagramme PV, « revenir à l'état B » (instantané), **chrono des graphes figé à l'équilibre** (option : l'axe des temps saute les attentes, coupures marquées).
+- **R3** : file d'attente (Lancer pendant une action → « ensuite », enchaînement à l'équilibre), séquences enregistrées (localStorage, export JSON), préréglages (aller-retour, Carnot, Stirling, Lenoir).
+- **R4** (option) : viser en cliquant sur le diagramme de Clapeyron.
+
+Le palier 6 (sable) est absorbé par R1 pour la physique et le tas ; l'entonnoir et les grains en chute restent à faire.

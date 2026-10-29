@@ -417,7 +417,7 @@ main {
 .mode-tab:hover { background: #ccc8c0; color: #2c3e50; }
 .mode-tab.active { background: #2a6aaa; color: #fff; }
 
-/* Deux boutons côte à côte (Lancer / Retour du vérin) */
+/* Deux boutons côte à côte (Lancer / Interrompre) */
 .tf-btn-ligne {
   display: flex;
   gap: 6px;
@@ -425,11 +425,20 @@ main {
 .tf-btn-ligne .btn { flex: 1; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* Régime de la transformation à volume imposé, selon τ */
+/* Régime attendu de la transformation, selon la durée choisie */
 .ro-value.tf-regime {
   font-size: clamp(12px, 1.2vw, 15px);
   line-height: 1.3;
 }
+
+/* Carte Transformation : bouton du piston, valeur actuelle, durées
+   caractéristiques (libellé à gauche, valeur à droite) */
+#tf-btn-piston { width: 100%; margin-bottom: 4px; }
+.input-hint.tf-actuel { display: block; margin: -4px 0 8px; }
+.tf-durees-car { margin: 6px 0 10px; font-size: clamp(11px, 0.95vw, 13px); color: #5a6a78; }
+.tf-duree-car { display: flex; justify-content: space-between; gap: 8px; padding: 1px 0; }
+.tf-duree-car span:last-child { color: #2c3e50; font-weight: 600; white-space: nowrap; }
+#tf-en-cours { display: block; margin-top: 6px; color: #7a4a10; }
 
 /* ── Panneau droit ───────────────────────────────── */
 #panel {
