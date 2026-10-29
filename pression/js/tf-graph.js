@@ -90,7 +90,9 @@ function tfGraphReprogrammer() {
   tf.tEchant = Math.min(tf.tEchant, tf.t + _tfgPasEchant());
 }
 
-function _tfgEchantillon() {
+// avantMarche : échantillon forcé juste avant une marche d'escalier (il clôt
+// le séjour à l'équilibre en cours, cf. _tfgDessinerPV)
+function _tfgEchantillon(avantMarche) {
   tf.tEchant = tf.t + _tfgPasEchant();
 
   var m = tfMesures();
@@ -102,13 +104,14 @@ function _tfgEchantillon() {
     // Pression exercée par le piston : P_ext piston libre, celle que
     // mesure le vérin piston tenu
     Pp: tf.tenu ? m.Pface : m.Pext,
-    Text: tf.Text
+    Text: tf.Text,
+    marche: avantMarche === true
   };
   var g = tfGraph;
   g.ech.push(s);
   if (g.ech.length > TF_G_MAX) {
     var e = g.ech, garde = [];
-    for (var k = 0; k < e.length; k++) if (k % 2 === 0 || k === e.length - 1) garde.push(e[k]);
+    for (var k = 0; k < e.length; k++) if (k % 2 === 0 || e[k].marche || k === e.length - 1) garde.push(e[k]);
     g.ech = garde;
   }
 
@@ -672,15 +675,19 @@ function _tfgDessinerPV() {
   }
   c.setLineDash([]);
 
-  // États d'équilibre : début et fin de chaque séjour à l'équilibre
+  // États d'équilibre : fin de chaque séjour à l'équilibre. Son début n'est
+  // pas fiable : un échantillon pris à l'extrémité d'une oscillation du
+  // piston (vitesse nulle, écart de pression sous le seuil) passe le critère
+  // avant le retour au repos. Une marche d'escalier clôt le séjour
+  // (échantillon `marche`), même si le gaz n'a pas été vu hors équilibre
+  // ensuite : un point par marche.
   var etats = [];
   k = 0;
   while (k < e.length) {
     if (!e[k].eq) { k++; continue; }
     var f = k;
-    while (f + 1 < e.length && e[f + 1].eq) f++;
-    etats.push(e[k]);
-    if (f > k) etats.push(e[f]);
+    while (f + 1 < e.length && e[f + 1].eq && !e[f].marche) f++;
+    etats.push(e[f]);
     k = f + 1;
   }
   for (k = 0; k < etats.length; k++) {

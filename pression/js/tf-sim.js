@@ -410,10 +410,15 @@ function tfNbMarches(cle, cible, pasMax) {
   return Math.max(1, Math.ceil(Math.abs(cible - tf[cle]) / pasMax - 1e-9));
 }
 
+// Avant chaque marche, un échantillon des graphes enregistre l'état atteint
+// à la fin du palier : un état d'équilibre par marche sur le diagramme PV,
+// même si le bref retour hors équilibre tombe entre deux échantillons
+// ordinaires (ou n'existe pas, marches plus petites que le seuil).
 function _tfAvancerRampes() {
   for (var cle in tf.rampes) {
     var r = tf.rampes[cle];
     if (!r.actif || tf.t < r.tProchain) continue;
+    if (tf.echantillon) tf.echantillon(true);
     var d = r.cible - tf[cle];
     if (Math.abs(d) <= r.pas * (1 + 1e-9)) {
       _tfFixer(cle, r.cible, true);
