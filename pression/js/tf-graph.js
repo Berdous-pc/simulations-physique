@@ -646,7 +646,10 @@ function _tfgBoite(o, ser, x0, y0, w, h, i1, i2, xDe, gradT, unite, fs) {
 //  Diagramme de Clapeyron
 // ══════════════════════════════════════════════════════════════════════
 
-function _tfgSDef(s) { return s.Pdef && s.Tdef; }
+// Le point (V, P) du gaz existe dès que sa pression est uniforme : V et P
+// sont alors définis (et P·V = nR·T_moy exactement), même si la température
+// ne l'est pas encore (couche chaude, chauffage par le fond)
+function _tfgSDef(s) { return s.Pdef; }
 
 // Cadrage automatique : chemin défini, état de départ, tranches depuis le
 // départ, pression sur le piston si elle est tracée
@@ -855,10 +858,10 @@ function _tfgDessinerPV() {
   // États repérés par une lettre (départs et arrivées des étapes)
   _tfgLettres(c, xDe, yDe, fs, alpha);
 
-  // État actuel, s'il est défini : halo et anneau d'une couleur réservée,
-  // par-dessus tout le reste
+  // État actuel, si sa pression est définie : halo et anneau d'une couleur
+  // réservée, par-dessus tout le reste
   var mes = tfMesures();
-  if (mes.Pdef && mes.Tdef) {
+  if (mes.Pdef) {
     var xa0 = xDe(mes.V * 1e3), ya0 = yDe(mes.Pmoy * 1e-3);
     c.beginPath();
     c.arc(xa0, ya0, 13, 0, 2 * Math.PI);
@@ -897,8 +900,8 @@ function _tfgDessinerPV() {
       _tfgEtiquette(c, 'chemin non défini', xa + (xb - xa) / 3, ya + (yb - ya) / 3, fs - 1, TF_G_MUET, 'center');
     }
   }
-  if (!(mes.Pdef && mes.Tdef)) {
-    _tfgEtiquette(c, 'État du gaz non défini', ML + 8, MT + ph - fs, fs, TF_G_ND, 'left');
+  if (!mes.Pdef) {
+    _tfgEtiquette(c, 'Pression du gaz non définie', ML + 8, MT + ph - fs, fs, TF_G_ND, 'left');
   }
   _tfgLegendePV(c, ML + pw - 6, MT + 6, fs - 1, sans.length > 0);
 
@@ -1025,7 +1028,7 @@ function _tfgCourbe(c, xDe, yDe, vue, Pde, coul, nom) {
 // Légende en haut à droite (zone vide pour les transformations usuelles,
 // où P décroît quand V croît)
 function _tfgLegendePV(c, xd, y, fs, avecSans) {
-  var items = [{ type: 'ligne', coul: TF_G_CHEMIN, nom: 'chemin défini (couleur de l’étape)' },
+  var items = [{ type: 'ligne', coul: TF_G_CHEMIN, nom: 'chemin, pression définie (couleur de l’étape)' },
                { type: 'point', coul: TF_G_CHEMIN, nom: 'état d’équilibre' },
                { type: 'actuel', nom: 'état actuel' }];
   if (avecSans) items.push({ type: 'tirets', coul: '#9aa4ac', nom: 'chemin non défini' });
