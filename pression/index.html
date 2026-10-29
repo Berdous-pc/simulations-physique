@@ -310,8 +310,49 @@
             <button class="mode-tab" id="tf-tab-volume" onclick="tfOnFamille('volume')">Volume imposé</button>
           </div>
 
-          <!-- Pression imposée : masse posée sur le piston libre -->
+          <!-- Pression imposée : air de l'enceinte (échelon ou rampe), masse
+               posée sur le piston libre, loquet -->
           <div id="tf-bloc-pression">
+          <div class="tf-sous-titre">Air de l’enceinte</div>
+          <div class="param-row">
+            <label for="tf-sl-Pair">Consigne P_air
+              <span class="param-value" id="tf-lbl-Pair">—</span>
+            </label>
+            <input type="range" id="tf-sl-Pair" min="0" max="500" step="1" value="101"
+                   oninput="tfOnConsigne('Pair', this.value)">
+            <div class="slider-ticks">
+              <span>vide</span>
+              <span>500 kPa</span>
+            </div>
+          </div>
+          <div class="mode-tabs tf-mini-tabs">
+            <button class="mode-tab active" id="tf-tab-Pair-echelon" onclick="tfOnModeConsigne('Pair', false)">Échelon</button>
+            <button class="mode-tab" id="tf-tab-Pair-rampe" onclick="tfOnModeConsigne('Pair', true)">Rampe</button>
+          </div>
+          <div id="tf-rampe-Pair" style="display:none">
+            <div class="param-row">
+              <label for="tf-sl-Pair-pas">Pas
+                <span class="param-value" id="tf-lbl-Pair-pas">—</span>
+              </label>
+              <input type="range" id="tf-sl-Pair-pas" min="0" max="4" step="1" value="2"
+                     oninput="tfOnPasConsigne('Pair', this.value)">
+            </div>
+            <div class="param-row">
+              <label for="tf-sl-Pair-periode">Un pas toutes les
+                <span class="param-value" id="tf-lbl-Pair-periode">—</span>
+              </label>
+              <input type="range" id="tf-sl-Pair-periode" min="0" max="6" step="1" value="3"
+                     oninput="tfOnPeriodeConsigne('Pair', this.value)">
+              <span class="input-hint" id="tf-hint-Pair-duree"></span>
+            </div>
+          </div>
+          <button id="tf-btn-Pair" class="btn btn-primary" onclick="tfAppliquerConsigne('Pair')">Appliquer</button>
+          <div class="readout" style="margin-top:8px">
+            <div class="ro-label">Pression de l’air de l’enceinte</div>
+            <div class="ro-value" id="tf-ro-Pair">—</div>
+            <span class="input-hint" id="tf-ro-Pair-rampe" style="display:none"></span>
+          </div>
+          <div class="tf-sous-titre">Charges sur le piston</div>
           <div class="param-row">
             <label for="tf-sel-masse">Masse à poser</label>
             <select id="tf-sel-masse" class="param-select" onchange="tfOnMasse(this.value)">
@@ -387,7 +428,46 @@
               <span>calorifugé</span>
               <span>diathermane</span>
             </div>
-            <span class="input-hint">Air extérieur à 20 °C (293 K)</span>
+            <span class="input-hint">Seul le fond échange de la chaleur, avec la source posée dessous.</span>
+          </div>
+          <div class="tf-sous-titre">Source sous le fond</div>
+          <div class="param-row">
+            <label for="tf-sl-Text">Consigne T_ext
+              <span class="param-value" id="tf-lbl-Text">—</span>
+            </label>
+            <input type="range" id="tf-sl-Text" min="250" max="600" step="1" value="293"
+                   oninput="tfOnConsigne('Text', this.value)">
+            <div class="slider-ticks">
+              <span>250 K</span>
+              <span>600 K</span>
+            </div>
+          </div>
+          <div class="mode-tabs tf-mini-tabs">
+            <button class="mode-tab active" id="tf-tab-Text-echelon" onclick="tfOnModeConsigne('Text', false)">Échelon</button>
+            <button class="mode-tab" id="tf-tab-Text-rampe" onclick="tfOnModeConsigne('Text', true)">Rampe</button>
+          </div>
+          <div id="tf-rampe-Text" style="display:none">
+            <div class="param-row">
+              <label for="tf-sl-Text-pas">Pas
+                <span class="param-value" id="tf-lbl-Text-pas">—</span>
+              </label>
+              <input type="range" id="tf-sl-Text-pas" min="0" max="4" step="1" value="2"
+                     oninput="tfOnPasConsigne('Text', this.value)">
+            </div>
+            <div class="param-row">
+              <label for="tf-sl-Text-periode">Un pas toutes les
+                <span class="param-value" id="tf-lbl-Text-periode">—</span>
+              </label>
+              <input type="range" id="tf-sl-Text-periode" min="0" max="6" step="1" value="3"
+                     oninput="tfOnPeriodeConsigne('Text', this.value)">
+              <span class="input-hint" id="tf-hint-Text-duree"></span>
+            </div>
+          </div>
+          <button id="tf-btn-Text" class="btn btn-primary" onclick="tfAppliquerConsigne('Text')">Appliquer</button>
+          <div class="readout" style="margin-top:8px">
+            <div class="ro-label">Température de la source</div>
+            <div class="ro-value" id="tf-ro-Text">—</div>
+            <span class="input-hint" id="tf-ro-Text-rampe" style="display:none"></span>
           </div>
         </div>
 
@@ -452,7 +532,8 @@
       </div>
       <div class="panel-hint-body">
         Choisissez la <strong>contrainte</strong> (en changer réinitialise l'expérience).
-        <strong>Pression imposée</strong> : le loquet bloque le piston ; posez la masse, puis libérez le loquet pour une compression brutale.
+        <strong>Pression imposée</strong> : le loquet bloque le piston ; posez la masse, puis libérez le loquet pour une compression brutale. On peut aussi changer la pression de l'air de l'enceinte (P_air, lue sur le manomètre), jusqu'au vide.
+        Pour P_air et pour la température de la source sous le fond (T_ext), le curseur règle une consigne, appliquée par le bouton <strong>Appliquer</strong> : d'un coup (<strong>Échelon</strong>, transformation brutale) ou pas à pas (<strong>Rampe</strong>, d'autant plus proche d'une transformation quasi statique que les pas sont petits et espacés). La source n'agit que si le fond n'est pas calorifugé.
         <strong>Volume imposé</strong> : réglez la hauteur visée et la durée τ, puis <strong>Lancer</strong> ; <strong>Retour</strong> ramène le piston à son départ avec la même durée (aller-retour).
         Le curseur <strong>Vitesse</strong> descend jusqu'à ×1/5000 pour suivre un front dans le gaz ; à ce cran, les molécules s'agitent à leur vitesse réelle.
         Quand les tranches du gaz n'ont pas la même pression ou la même température, le tableau affiche <strong>?</strong> et l'écart entre tranches.

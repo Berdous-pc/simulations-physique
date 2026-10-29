@@ -26,6 +26,9 @@ var TF_H_TIGE     = 0.045;   // tige entre piston et plateau
 var TF_EP_PLATEAU = 0.008;
 var TF_EP_FOND    = 0.010;   // paroi du fond
 var TF_EP_ISOLANT = 0.045;   // isolant du fond, au plus épais (calorifugé)
+var TF_EP_SOURCE  = 0.030;   // source thermique sous le fond (four ou bain)
+var TF_MARGE_CLOCHE = 0.025; // enceinte : au-dessus de la plus grosse masse
+var TF_Z_CLOCHE = TF_H_CYL - 0.07;   // bas de l'enceinte, scellée sur le cylindre
 
 // Largeur intérieure dessinée, au plus, en fraction de la hauteur dessinée
 // du cylindre : au-delà, le cylindre deviendrait une boîte trapue.
@@ -34,11 +37,12 @@ var TF_LARG_MAX = 0.75;
 // Hauteur dessinée d'une masse (m d'échelle) : croît avec la masse
 function _tfHauteurMasse(kg) { return 0.022 + kg * 0.0008; }
 
-// Étendue verticale à loger : sous le fond (paroi + isolant), au-dessus du
-// cylindre (piston en butée haute + tige + plateau + plus grosse masse).
-var TF_Z_BAS  = -(TF_EP_FOND + TF_EP_ISOLANT + 0.005);
+// Étendue verticale à loger : sous le fond (paroi + isolant + source),
+// au-dessus du cylindre (piston en butée haute + tige + plateau + plus
+// grosse masse, sous l'enceinte).
+var TF_Z_BAS  = -(TF_EP_FOND + TF_EP_ISOLANT + TF_EP_SOURCE + 0.005);
 var TF_Z_HAUT = TF_H_CYL + TF_EP_PISTON + TF_H_TIGE + TF_EP_PLATEAU
-              + _tfHauteurMasse(TF_MASSES[TF_MASSES.length - 1]);
+              + _tfHauteurMasse(TF_MASSES[TF_MASSES.length - 1]) + TF_MARGE_CLOCHE;
 
 // ── Options d'affichage (section Affichage du panneau) ──
 var tfAff = {
@@ -124,14 +128,18 @@ function tfDessiner() {
   c.fillStyle = '#fdf8f0';
   c.fillRect(0, 0, _tfCw, _tfCh);
 
+  var enceinte = tf.famille === 'pression';
   _tfDessinerFond();
   _tfDessinerGaz();
   if (tfAff.molecules) _tfDessinerMolecules();
   if (tfAff.molecules && tfAff.chocs) _tfDessinerChocs();
+  if (enceinte) _tfDessinerAirEnceinte();
   _tfDessinerParois();
   _tfDessinerGraduations();
   if (tf.famille === 'volume') _tfDessinerVisee();
   _tfDessinerPiston();
+  if (enceinte) _tfDessinerEnceinte();
+  _tfDessinerButee();
   if (tfAff.sondes) _tfDessinerSondes();
   if (tfAff.profil) _tfDessinerProfil();
   if (tfAff.molecules && tfMolReel()) _tfDessinerMention('Vitesses réelles');
@@ -164,6 +172,142 @@ function _tfDessinerFond() {
   var y1 = _tfY(0), y2 = _tfY(-TF_EP_FOND);
   c.fillStyle = f > 0 ? '#7a8a96' : '#2c3e50';
   c.fillRect(x1, y1, x2 - x1, y2 - y1);
+
+  // Source thermique, contre l'isolant (ou le fond) : four rouge plus chaud
+  // que T0, bain bleu plus froid, neutre à T0 ; sa température est écrite
+  var zS = -TF_EP_FOND - (ep > 0.002 ? ep : 0);
+  var mS = (x2 - x1) * 0.08;
+  var yS1 = _tfY(zS), yS2 = _tfY(zS - TF_EP_SOURCE);
+  c.fillStyle = _tfMelangeT(tf.Text, TF_COUL_SOURCE, 1);
+  _tfRectArrondi(x1 - mS, yS1, x2 - x1 + 2 * mS, yS2 - yS1, 3);
+  c.fill();
+  c.strokeStyle = 'rgba(44,62,80,0.5)';
+  c.lineWidth = 1;
+  c.stroke();
+  var nom = tf.Text > TF_T0 + 0.5 ? 'four' : tf.Text < TF_T0 - 0.5 ? 'bain' : 'source';
+  var police = Math.max(10, Math.min(14, Math.round((yS2 - yS1) * 0.62)));
+  c.font = '600 ' + police + 'px "Segoe UI", Arial, sans-serif';
+  c.fillStyle = Math.abs(tf.Text - TF_T0) > 40 ? '#fff' : '#2c3e50';
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+  c.fillText(nom + ' · ' + Math.round(tf.Text) + ' K', (x1 + x2) / 2, (yS1 + yS2) / 2);
+}
+
+// Couleurs de la source, de la même famille que celles du gaz
+var TF_COUL_SOURCE = { neutre: [196, 188, 176], chaud: [206, 64, 36], froid: [52, 112, 196] };
+
+// ── Enceinte (pression imposée) : cloche scellée sur le haut du cylindre,
+//    reliée à un manomètre. Son air, comme celui qui surmonte le piston, est
+//    teinté d'autant plus que P_air est forte. ──
+function _tfClocheX() {
+  var cote = 0.16 * (_tfX2 - _tfX1) + 2 * _tfParoi;
+  return [_tfX1 - cote - 3, _tfX2 + cote + 3];
+}
+
+function _tfDessinerAirEnceinte() {
+  var c = tfCtx, p = _tfParoi, xs = _tfClocheX();
+  var a = 0.02 + 0.22 * Math.min(1, tf.Pair / 5e5);
+  var yH = _tfY(TF_Z_HAUT), yB = _tfY(TF_Z_CLOCHE), yRebord = _tfY(TF_H_CYL) - p;
+  var yPiston = _tfY(tf.z[TF_N] + TF_EP_PISTON);
+  c.fillStyle = 'rgba(90,130,175,' + a.toFixed(3) + ')';
+  c.fillRect(xs[0], yH, _tfX1 - p - xs[0], yB - yH);              // à gauche du cylindre
+  c.fillRect(_tfX2 + p, yH, xs[1] - _tfX2 - p, yB - yH);          // à droite
+  c.fillRect(_tfX1 - p, yH, _tfX2 - _tfX1 + 2 * p, yRebord - yH); // au-dessus du rebord
+  if (yPiston > yRebord) c.fillRect(_tfX1, yRebord, _tfX2 - _tfX1, yPiston - yRebord);
+}
+
+function _tfDessinerEnceinte() {
+  var c = tfCtx, p = _tfParoi, xs = _tfClocheX();
+  var yH = _tfY(TF_Z_HAUT), yB = _tfY(TF_Z_CLOCHE);
+  // Paroi de verre, puis collerette qui la scelle sur le cylindre
+  c.strokeStyle = 'rgba(70,100,130,0.75)';
+  c.lineWidth = 2;
+  _tfRectArrondiOuvert(xs[0], yH, xs[1] - xs[0], yB - yH, Math.min(18, (xs[1] - xs[0]) * 0.08));
+  c.stroke();
+  c.fillStyle = '#4a5a68';
+  var hc = Math.max(4, p * 0.8);
+  c.fillRect(xs[0] - 2, yB - hc / 2, _tfX1 - p - xs[0] + 2, hc);
+  c.fillRect(_tfX2 + p, yB - hc / 2, xs[1] - _tfX2 - p + 2, hc);
+
+  var police = Math.max(10, Math.min(14, Math.round(_tfEch * 0.02)));
+  if (tf.Pair < 500) {
+    c.font = 'italic ' + police + 'px "Segoe UI", Arial, sans-serif';
+    c.fillStyle = '#5a6a78';
+    c.textAlign = 'right';
+    c.textBaseline = 'top';
+    c.fillText('vide', xs[1] - 8, yH + 6);
+  }
+
+  // Manomètre, à gauche, au-dessus des graduations, relié à la cloche
+  var R = Math.max(19, Math.min(28, _tfEch * 0.04));
+  var yM = yH + R + 4;
+  var xM = Math.max(R + 4, xs[0] - R - 18);
+  c.fillStyle = '#6a7a88';
+  c.fillRect(xM + R - 1, yM - 2, xs[0] - xM - R + 1, 4);
+  c.beginPath();
+  c.arc(xM, yM, R, 0, 2 * Math.PI);
+  c.fillStyle = '#fffdf9';
+  c.fill();
+  c.strokeStyle = '#2c3e50';
+  c.lineWidth = 2;
+  c.stroke();
+  // Cadran de 0 à 500 kPa sur 270°, aiguille
+  var a0 = 0.75 * Math.PI, a1 = 2.25 * Math.PI;
+  c.lineWidth = 1;
+  c.beginPath();
+  for (var k = 0; k <= 5; k++) {
+    var ak = a0 + (a1 - a0) * k / 5;
+    c.moveTo(xM + Math.cos(ak) * R * 0.78, yM + Math.sin(ak) * R * 0.78);
+    c.lineTo(xM + Math.cos(ak) * R * 0.95, yM + Math.sin(ak) * R * 0.95);
+  }
+  c.stroke();
+  var an = a0 + (a1 - a0) * Math.min(1, tf.Pair / 5e5);
+  c.strokeStyle = '#b04020';
+  c.lineWidth = 2;
+  c.beginPath();
+  c.moveTo(xM, yM);
+  c.lineTo(xM + Math.cos(an) * R * 0.8, yM + Math.sin(an) * R * 0.8);
+  c.stroke();
+  c.fillStyle = '#2c3e50';
+  c.beginPath();
+  c.arc(xM, yM, 2.5, 0, 2 * Math.PI);
+  c.fill();
+  c.font = '600 ' + Math.max(8, Math.round(R * 0.34)) + 'px "Segoe UI", Arial, sans-serif';
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+  c.fillText(Math.round(tf.Pair / 1000) + ' kPa', xM, yM + R * 0.55);
+}
+
+// Rectangle aux coins du haut arrondis, ouvert en bas (la cloche)
+function _tfRectArrondiOuvert(x, y, w, h, r) {
+  var c = tfCtx;
+  c.beginPath();
+  c.moveTo(x, y + h);
+  c.lineTo(x, y + r);
+  c.quadraticCurveTo(x, y, x + r, y);
+  c.lineTo(x + w - r, y);
+  c.quadraticCurveTo(x + w, y, x + w, y + r);
+  c.lineTo(x + w, y + h);
+}
+
+// ── Piston libre retenu par une butée ──
+function _tfDessinerButee() {
+  var b = tfButee((tf.gamma - 1) * _tfU() / tfVolume());
+  if (!b) return;
+  var c = tfCtx;
+  var police = Math.max(11, Math.min(15, Math.round(_tfEch * 0.02)));
+  var y = _tfY(tf.z[TF_N]) + police * 1.3;
+  var txt = b === 'haute' ? 'Piston en butée haute' : 'Piston en butée basse';
+  c.font = 'bold ' + police + 'px "Segoe UI", Arial, sans-serif';
+  var w = c.measureText(txt).width + 12;
+  var cx = (_tfX1 + _tfX2) / 2;
+  c.fillStyle = 'rgba(253,232,200,0.92)';
+  _tfRectArrondi(cx - w / 2, y - police * 0.75, w, police * 1.5, 4);
+  c.fill();
+  c.fillStyle = '#7a3a10';
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+  c.fillText(txt, cx, y);
 }
 
 // ── Gaz et limites des tranches ──

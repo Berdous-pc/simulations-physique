@@ -142,9 +142,20 @@ var tf = {
   tau    : 0.1,          // s, choix du curseur Durée
   Wop    : 0,            // J, travail reçu par le gaz de la part du vérin
 
+  // Contraintes extérieures (§2.6) : pression de l'air de l'enceinte
+  // au-dessus du piston, température de la source sous le fond. Chacune
+  // change d'un coup (échelon) ou d'un pas toutes les `periode` s jusqu'à
+  // la cible (rampe).
+  Pair   : TF_P_ATM,     // Pa
+  Wair   : 0,            // J, travail reçu par le système de la part de l'enceinte
+  rampes : {
+    Pair : { actif: false, cible: 0, pas: 0, periode: 1, tProchain: 0 },
+    Text : { actif: false, cible: 0, pas: 0, periode: 1, tProchain: 0 }
+  },
+
   // Thermique
   G    : 0,              // W·K⁻¹, conductance du fond
-  Text : TF_T0,          // K, température extérieure
+  Text : TF_T0,          // K, température de la source sous le fond
 
   // Temps et bilans
   t      : 0,            // s simulées
@@ -167,10 +178,10 @@ var tf = {
 //  Grandeurs dérivées
 // ══════════════════════════════════════════════════════════════════════
 
-// Pression extérieure exercée sur le gaz à l'équilibre : atmosphère + poids
-// (famille à pression imposée)
+// Pression extérieure exercée sur le gaz à l'équilibre : air de l'enceinte
+// + poids (famille à pression imposée)
 function tfPext() {
-  return TF_P_ATM + (TF_M_PISTON + tf.masse) * TF_G / TF_S;
+  return tf.Pair + (TF_M_PISTON + tf.masse) * TF_G / TF_S;
 }
 
 // Pression exercée par le gaz sur la face du piston (Pa), viscosité
@@ -205,14 +216,26 @@ function _tfEc() {
   return _tfEcGaz() + 0.5 * piston * uN * uN;
 }
 
-// Énergie totale, diminuée de la chaleur reçue (et du travail du vérin) :
-// elle doit rester constante (tests de validation). Pression imposée :
-// système {gaz + piston + masse + atmosphère} ; volume imposé : le gaz seul.
+// Énergie totale, diminuée de la chaleur reçue et du travail reçu de
+// l'extérieur : elle doit rester constante (tests de validation). Pression
+// imposée : système {gaz + piston + masse}, qui reçoit le travail de l'air
+// de l'enceinte ; volume imposé : le gaz seul, qui reçoit celui du vérin.
 function tfEnergieTotale() {
   var zN = tf.z[TF_N];
   var e = _tfU() + _tfEc() - tf.Qrecu;
   if (tf.famille === 'volume') return e - tf.Wop;
-  return e + (TF_M_PISTON + tf.masse) * TF_G * zN + TF_P_ATM * TF_S * zN;
+  return e + (TF_M_PISTON + tf.masse) * TF_G * zN - tf.Wair;
+}
+
+// Piston libre arrêté par une butée qui le retient (gaz trop chaud ou trop
+// peu chargé pour la butée haute, l'inverse pour la basse) : 'haute',
+// 'basse' ou null
+function tfButee(Pmoy) {
+  if (tf.famille !== 'pression' || tf.loquet) return null;
+  var zN = tf.z[TF_N], Pext = tfPext();
+  if (zN >= TF_H_CYL - 1e-9 && Pmoy >= Pext) return 'haute';
+  if (zN <= TF_Z_BUTEE + 1e-9 && Pmoy <= Pext) return 'basse';
+  return null;
 }
 
 // Température d'une tranche (K)
@@ -239,15 +262,16 @@ function tfMesures() {
   var Pdef = (Pmax - Pmin) / Pmoy < TF_SEUIL_P;
   var Tdef = (Tmax - Tmin) < TF_SEUIL_T;
   var repos = _tfEc() < TF_SEUIL_EC * U;
-  // Loquet verrouillé ou vérin arrêté : c'est lui qui assure l'équilibre
-  // mécanique du piston
+  // Loquet verrouillé, butée ou vérin arrêté : c'est lui qui assure
+  // l'équilibre mécanique du piston
+  var butee = tfButee(Pmoy);
   var piston = tf.famille === 'volume' ? !tf.verin.actif
-             : tf.loquet || Math.abs(Pmoy - Pext) / Pext < TF_SEUIL_P;
+             : tf.loquet || butee !== null || Math.abs(Pmoy - Pext) / Pext < TF_SEUIL_P;
 
   return {
     V: V, Pmoy: Pmoy, Pmin: Pmin, Pmax: Pmax,
     Tmoy: Tmoy, Tmin: Tmin, Tmax: Tmax, Pext: Pext, Pface: tfPFace(),
-    Pdef: Pdef, Tdef: Tdef,
+    Pdef: Pdef, Tdef: Tdef, butee: butee,
     equilibre: Pdef && Tdef && repos && piston
   };
 }
@@ -283,6 +307,10 @@ function tfReset() {
   tf.verin.actif  = false;
   tf.verin.zAller = h0;
   tf.Wop    = 0;
+  tf.Pair   = TF_P_ATM;
+  tf.Wair   = 0;
+  tf.Text   = TF_T0;
+  tf.rampes.Pair.actif = tf.rampes.Text.actif = false;
   tf.t      = 0;
   tf.Qrecu  = 0;
   tf.limite = false;
@@ -320,6 +348,42 @@ function tfSetLoquet(verrouille) {
 function tfSetIsolation(G) {
   tf.G = G;
   tf.needsRedraw = true;
+}
+
+// ── Contraintes extérieures : P_air ('Pair') ou T_ext ('Text') ──
+// Échelon : la grandeur prend la cible d'un coup. Rampe : un premier pas
+// tout de suite, puis un toutes les `periode` s, jusqu'à la cible. Pendant
+// une rampe, une nouvelle consigne en rampe change seulement la cible (et
+// le pas), sans décaler le rythme.
+function tfAppliquer(cle, cible, enRampe, pas, periode) {
+  var r = tf.rampes[cle];
+  if (!enRampe) {
+    r.actif = false;
+    tf[cle] = cible;
+  } else {
+    if (!r.actif) r.tProchain = tf.t;
+    r.cible = cible;
+    r.pas = pas;
+    r.periode = periode;
+    r.actif = Math.abs(cible - tf[cle]) > 1e-9;
+  }
+  tf.needsRedraw = true;
+}
+
+function _tfAvancerRampes() {
+  for (var cle in tf.rampes) {
+    var r = tf.rampes[cle];
+    if (!r.actif || tf.t < r.tProchain) continue;
+    var d = r.cible - tf[cle];
+    if (Math.abs(d) <= r.pas * (1 + 1e-9)) {
+      tf[cle] = r.cible;
+      r.actif = false;
+    } else {
+      tf[cle] += d > 0 ? r.pas : -r.pas;
+      r.tProchain += r.periode;
+    }
+    tf.needsRedraw = true;
+  }
 }
 
 // ── Vérin ──
@@ -421,6 +485,7 @@ function tfAvancer(dt) {
       var fin = tf.verin.t0 + tf.verin.tau - tf.t;
       if (fin > 1e-12 && fin < h) h = fin;
     }
+    _tfAvancerRampes();
     _tfSousPas(h);
     if (tf.echantillon && tf.t >= tf.tEchant) tf.echantillon();
     reste -= h;
@@ -462,8 +527,8 @@ function _tfSousPas(dt) {
   }
 
   // Piston : mené par le vérin (volume imposé), bloqué par le loquet, ou
-  // soumis à la pression de la tranche du haut, à l'atmosphère, à son poids
-  // et à l'amortissement (pression imposée)
+  // soumis à la pression de la tranche du haut, à l'air de l'enceinte, à son
+  // poids et à l'amortissement (pression imposée)
   var chaleur = 0;   // J dissipés à rendre au gaz
   var uAvant = u[N];
   if (volume) {
@@ -472,21 +537,24 @@ function _tfSousPas(dt) {
     u[N] = 0;
   } else {
     var M = TF_M_PISTON + tf.masse;
-    var F = S * (P[N - 1] + q[N - 1] - TF_P_ATM) - M * TF_G - tf.bAmort * u[N];
+    var F = S * (P[N - 1] + q[N - 1] - tf.Pair) - M * TF_G - tf.bAmort * u[N];
     u[N] += dt * F / (M + mTr / 2);
     chaleur += tf.bAmort * u[N] * u[N] * dt;
   }
 
   // 3. Positions
+  var zAvant = z[N];
   for (i = 1; i <= N; i++) z[i] += u[i] * dt;
 
   // Butées du piston libre : choc mou, l'énergie cinétique perdue passe au
   // gaz (le vérin, lui, reste dans la course permise)
   if (!volume && ((z[N] > TF_H_CYL && u[N] > 0) || (z[N] < TF_Z_BUTEE && u[N] < 0))) {
-    chaleur += 0.5 * (TF_M_PISTON + tf.masse + mTr / 2) * u[N] * u[N];
+    chaleur += 0.5 * (TF_M_PISTON + tf.masse + mTr / 2) * uAvant * uAvant;
     u[N] = 0;
     z[N] = Math.min(TF_H_CYL, Math.max(TF_Z_BUTEE, z[N]));
   }
+  // Travail reçu de l'air de l'enceinte (pression constante sur le sous-pas)
+  if (!volume) tf.Wair -= tf.Pair * S * (z[N] - zAvant);
 
   // 4. Énergies : dE = −(P̄ + q)·dV, avec P̄ moyenne de P avant et après
   //    (résolue exactement, P_après étant proportionnelle à E_après) : le

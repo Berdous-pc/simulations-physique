@@ -385,6 +385,9 @@ main {
   color: #7a8a96;
   margin: 10px 0 6px;
 }
+/* Sous-onglets Échelon / Rampe, plus discrets que ceux de la contrainte */
+.tf-mini-tabs { margin-bottom: 8px; }
+.tf-mini-tabs .mode-tab { padding: 5px 4px; font-size: clamp(11px, 1vw, 13px); }
 
 /* Sous-onglets (repris de electrochimie/ et refraction/) : famille de
    transformations de l'onglet Transformations */

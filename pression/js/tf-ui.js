@@ -76,6 +76,8 @@ function tfMajAfficheurs() {
 
   _tfEl['tf-vitesse-limite'].style.display = tf.limite ? '' : 'none';
 
+  _tfMajConsignes();
+
   if (volume) {
     var d = tfDurees();
     _tfEl['tf-ro-traversee'].textContent = _tfFmtDuree(d.traversee);
@@ -257,6 +259,89 @@ function tfOnIsolation(val) {
     : 'G = ' + String(G).replace('.', ',') + ' W/K';
 }
 
+// ── Contraintes extérieures : consignes de P_air et de T_ext (§2.6) ──
+// Le curseur règle une consigne ; elle ne s'applique qu'au bouton
+// Appliquer, d'un coup (échelon) ou pas à pas (rampe). Les afficheurs
+// donnent la valeur en vigueur.
+var TF_PAS_CONSIGNE = { Pair: [500, 1000, 2000, 5000, 10000], Text: [0.5, 1, 2, 5, 10] };
+var TF_PERIODES     = [0.1, 0.2, 0.5, 1, 2, 5, 10];   // s
+var tfConsignes = {
+  Pair: { cible: TF_P_ATM, rampe: false, iPas: 2, iPeriode: 3 },
+  Text: { cible: TF_T0,    rampe: false, iPas: 1, iPeriode: 3 }
+};
+
+// Valeur d'un curseur (kPa ou K entiers) ; la graduation la plus proche de
+// l'atmosphère ou de T0 redonne la valeur exacte de l'état initial
+function _tfValeurConsigne(cle, v) {
+  v = parseFloat(v);
+  if (cle === 'Pair') return Math.abs(v - TF_P_ATM / 1000) < 0.5 ? TF_P_ATM : v * 1000;
+  return Math.abs(v - TF_T0) < 0.5 ? TF_T0 : v;
+}
+
+function _tfFmtConsigne(cle, x) {
+  if (cle === 'Pair') {
+    if (x < 500) return 'vide';
+    return x === TF_P_ATM ? '101,3 kPa (atmosphère)' : _tfFmt(x / 1000, x % 1000 ? 1 : 0) + ' kPa';
+  }
+  return _tfFmt(x, x % 1 ? 1 : 0) + ' K (' + Math.round(x - 273.15) + ' °C)';
+}
+
+function _tfFmtPas(cle, x) {
+  return cle === 'Pair' ? _tfFmt(x / 1000, x < 1000 ? 1 : 0) + ' kPa' : _tfFmt(x, x < 1 ? 1 : 0) + ' K';
+}
+
+function tfOnConsigne(cle, val) {
+  tfConsignes[cle].cible = _tfValeurConsigne(cle, val);
+  document.getElementById('tf-lbl-' + cle).textContent = _tfFmtConsigne(cle, tfConsignes[cle].cible);
+  _tfMajConsignes();
+}
+
+function tfOnModeConsigne(cle, rampe) {
+  tfConsignes[cle].rampe = rampe;
+  document.getElementById('tf-tab-' + cle + '-echelon').classList.toggle('active', !rampe);
+  document.getElementById('tf-tab-' + cle + '-rampe').classList.toggle('active', rampe);
+  document.getElementById('tf-rampe-' + cle).style.display = rampe ? '' : 'none';
+  _tfMajConsignes();
+}
+
+function tfOnPasConsigne(cle, i) {
+  tfConsignes[cle].iPas = parseInt(i, 10);
+  document.getElementById('tf-lbl-' + cle + '-pas').textContent =
+    _tfFmtPas(cle, TF_PAS_CONSIGNE[cle][tfConsignes[cle].iPas]);
+  _tfMajConsignes();
+}
+
+function tfOnPeriodeConsigne(cle, i) {
+  tfConsignes[cle].iPeriode = parseInt(i, 10);
+  var T = TF_PERIODES[tfConsignes[cle].iPeriode];
+  document.getElementById('tf-lbl-' + cle + '-periode').textContent = _tfFmt(T, T < 1 ? 1 : 0) + ' s';
+  _tfMajConsignes();
+}
+
+function tfAppliquerConsigne(cle) {
+  var k = tfConsignes[cle];
+  tfAppliquer(cle, k.cible, k.rampe, TF_PAS_CONSIGNE[cle][k.iPas], TF_PERIODES[k.iPeriode]);
+  tfGraph.sale = true;
+  tfMajAfficheurs();
+}
+
+// Valeurs en vigueur, rampe en cours, durée d'une rampe depuis maintenant
+function _tfMajConsignes() {
+  ['Pair', 'Text'].forEach(function (cle) {
+    var k = tfConsignes[cle], r = tf.rampes[cle];
+    document.getElementById('tf-ro-' + cle).textContent = cle === 'Pair'
+      ? (tf.Pair < 500 ? 'vide (' + _tfFmt(tf.Pair / 1000, 2) + ' kPa)' : _tfFmt(tf.Pair / 1000, 1) + ' kPa')
+      : _tfFmt(tf.Text, 1) + ' K';
+    var enCours = document.getElementById('tf-ro-' + cle + '-rampe');
+    enCours.style.display = r.actif ? '' : 'none';
+    if (r.actif) enCours.textContent = 'Rampe en cours vers ' + _tfFmtConsigne(cle, r.cible);
+    var pas = TF_PAS_CONSIGNE[cle][k.iPas], T = TF_PERIODES[k.iPeriode];
+    var n = Math.ceil(Math.abs(k.cible - tf[cle]) / pas - 1e-9);
+    document.getElementById('tf-hint-' + cle + '-duree').textContent = n > 0
+      ? 'Durée de la rampe : ' + n + ' pas, ' + _tfFmtDuree(Math.max(0, n - 1) * T) : 'Déjà à la consigne';
+  });
+}
+
 // ── Section Affichage ──
 function tfOnAffichage(cle, coche) {
   tfAff[cle] = coche;
@@ -330,6 +415,16 @@ function tfInit() {
   tfOnVisee(_tfEl['tf-sl-visee'].value);
   _tfEl['tf-sl-duree'].value = TF_DUREES.indexOf(tf.tau);
   tfOnDuree(_tfEl['tf-sl-duree'].value);
+  ['Pair', 'Text'].forEach(function (cle) {
+    var k = tfConsignes[cle];
+    document.getElementById('tf-sl-' + cle).value = cle === 'Pair' ? Math.round(k.cible / 1000) : Math.round(k.cible);
+    document.getElementById('tf-sl-' + cle + '-pas').value = k.iPas;
+    document.getElementById('tf-sl-' + cle + '-periode').value = k.iPeriode;
+    tfOnModeConsigne(cle, k.rampe);
+    tfOnPasConsigne(cle, k.iPas);
+    tfOnPeriodeConsigne(cle, k.iPeriode);
+    tfOnConsigne(cle, document.getElementById('tf-sl-' + cle).value);
+  });
 
   tfReset();
   tfMolInit();
