@@ -60,6 +60,7 @@ var PL_D_APPROCHE = 2.0;          // ion qui vient contre la surface (cathode)
 var PL_D_CHANGE   = 0.12;
 var PL_D_TRANSFO_MIN = 0.3;
 var PL_D_DEPART   = 1.6;          // ion formé qui s'éloigne de l'anode, produits qui partent
+var PL_U_DEPART   = 0.7;          // composante vers la solution de la direction de départ des produits, au moins
 var PL_N_CYCLES   = 3;            // cycles en cours à la fois, au plus (2 par membre d'un groupe s'il en a plus)
 var PL_ECART_GROUPE = 0.25;       // entre les départs de deux cycles d'un même groupe (s)
 var PL_ECART_E    = 0.25;         // entre les départs de deux électrons (s)
@@ -517,6 +518,8 @@ function _cycleAnode() {
   cy.du = 2.6 + Math.random() * 1.2;
   // (vers l'intérieur de la loupe depuis les lignes du haut et du bas)
   cy.dv = Math.max(0.6 - cy.v, Math.min(NR - 0.6 - cy.v, (Math.random() - 0.5) * 2.4));
+  var fu = cy.u + cy.du, fv = cy.v + cy.dv, dC = Math.hypot(fu - CU, fv - CV), dMax = RC - 1;
+  if (dC > dMax) { cy.du = CU + (fu - CU) * dMax / dC - cy.u; cy.dv = CV + (fv - CV) * dMax / dC - cy.v; }
   return cy;
 }
 
@@ -1051,9 +1054,15 @@ function _majEtape(cy, st, dt, aMoi) {
         // Espèce formée qui part : le gaz vers la bulle, le reste vers la solution
         p.t = 0;
         p.dP = PL_D_DEPART * st.lent;      // durée du départ
-        // dans l'axe de la liaison rompue (H⁺ qui quitte OH…), sinon droit vers la solution
+        // dans l'axe de la liaison rompue (H⁺ qui quitte OH…), sinon droit
+        // vers la solution ; toujours en s'éloignant nettement de la surface
+        // (sinon l'eau formée contre PbO₂, le diiode… semblaient se fondre
+        // dans l'électrode ou la longer) et sans sortir de la loupe
         var axe = _axeDepuis(p.pos, st.avec.concat(st.arr)), lg = 1.8 + Math.random() * 1.0;
+        if (axe.u < PL_U_DEPART) axe = { u: PL_U_DEPART, v: (axe.v < 0 ? -1 : 1) * Math.sqrt(1 - PL_U_DEPART * PL_U_DEPART) };
         p.vers = { u: p.pos.u + lg * axe.u, v: p.pos.v + lg * axe.v + (Math.random() - 0.5) * 0.8 };
+        var dC = Math.hypot(p.vers.u - CU, p.vers.v - CV), dMax = RC - 1;
+        if (dC > dMax) { p.vers.u = CU + (p.vers.u - CU) * dMax / dC; p.vers.v = CV + (p.vers.v - CV) * dMax / dC; }
         p.angV = p.ang + (Math.random() - 0.5) * 2;
         if (p.cle === cy.gaz) {
           // Place réservée dans la bulle (plusieurs cycles d'un groupe y
