@@ -15,7 +15,7 @@
 | Moteur physique | **Gaz découpé en tranches horizontales** (modèle 1D lagrangien), pas de dynamique moléculaire |
 | Molécules | Oui, **pilotées par le modèle** : elles montrent ce que fait le gaz (densité, agitation thermique, mouvement d'ensemble, ondes) tranche par tranche ; ce ne sont pas elles qui calculent la pression (§3) |
 | Grandeurs | **Réalistes** (SI, pression atmosphérique incluse, masses en kg) |
-| Célérité du son | **Réelle par défaut** ; case « Ondes exagérées » en option pour la démonstration (§2.3) |
+| Célérité du son | **Réelle par défaut** ; curseur « Vitesse du son » (réelle → 300 fois plus lente) avec les deux durées comparées, pour voir apparaître un front de compression (§2.3) |
 | Ralenti | Jusqu'à ×1/5000 pour regarder l'équilibre mécanique s'établir (§5) |
 | Disposition | **Colonne de gauche** (celle du tableau actuel) : les graphes en haut, le tableau des valeurs en dessous ; scène à droite, contre le panneau (§4) |
 | Contraintes extérieures | **Pression de l'air au-dessus du piston** et **température extérieure** réglables, chacune en échelon (brutal) ou en rampe (pas à pas) ; masses et sable restent disponibles (§2.6) |
@@ -81,9 +81,10 @@ Ces valeurs servent de **cibles de validation** (§7).
 1. **Célérité réelle par défaut.** Aucune déformation de la mécanique du gaz.
 2. **Ralenti extrême** (curseur Vitesse jusqu'à ×1/5000, §5) : on regarde les petites ondes faire des allers-retours et la pression s'uniformiser. Coût de calcul : ~750 sous-pas par image à ×1 (CFL : dt < dz/c ≈ 20 µs), ~1 sous-pas par image au ralenti extrême ; dans les deux cas très léger.
 3. **Loupe sur le profil de pression** (§3, option d'affichage) : P(z) − P̄ tracé le long du cylindre avec une **échelle amplifiée** affichée (×100, ×1000…, choisie automatiquement), pour voir les écarts tout en lisant leur vraie valeur en Pa.
-4. **Case « Ondes exagérées »** (section Affichage, décochée par défaut) : ralentit les ondes par un **facteur d'inertie du gaz** dans l'équation du mouvement uniquement, pour que l'aller-retour dure environ un tiers de la période du piston. L'équation d'état, les bilans d'énergie et les états d'équilibre restent exacts. Une étiquette « ondes exagérées » reste affichée sur la scène tant que la case est cochée. Changer la case réinitialise l'expérience.
+4. **Curseur « Vitesse du son »** (section Ondes dans le gaz, à la place de l'ancienne case « Ondes exagérées ») : de réelle à 300 fois plus lente, par un **facteur d'inertie du gaz** (r²) dans l'équation du mouvement uniquement. Équation d'état, bilans et équilibres exacts. Le panneau affiche les deux durées dont le rapport décide de l'existence d'un front : traversée du gaz par le son et mise en mouvement du piston ; ce rapport vaut ≈ √(M_piston / m_gaz), ce qui explique pourquoi, en réalité (rapport ≈ 230), le gaz se comprime d'un bloc. Mention « Son N fois plus lent » sur la scène. Changer la vitesse réinitialise l'expérience. La viscosité croît avec le ralentissement pour que le front fasse quelques allers-retours puis s'éteigne.
 5. **Échanges thermiques accélérés** (diffusivité effective, cf. 2.2) : seul compromis permanent.
 6. Le **temps affiché** est le temps simulé, en ms aux crans de ralenti extrême, en s sinon.
+7. **Dissipation près du piston** : la chaleur de l'amortissement du piston est déposée surtout sous le piston ; une compression brutale y laisse une couche chaude qui s'uniformise par conduction (équilibre thermique interne visible même calorifugé).
 
 **Amortissement.** Avec la célérité réelle, la viscosité artificielle amortit à la fois les ondes et les oscillations du piston. Le réglage cible : piston amorti en 3 à 5 oscillations ; les ondes, plus rapides, s'éteignent bien avant. Dans la réalité, cet amortissement vient surtout des échanges thermiques avec les parois et des frottements : la phrase du bandeau Informations le dit, sans entrer dans la modélisation.
 
@@ -92,7 +93,7 @@ Ces valeurs servent de **cibles de validation** (§7).
 Deux niveaux, puisque le gaz peut être quasi uniforme alors que le système ne l'est pas (§2.3) :
 
 - **Grandeurs du gaz définies** (pilote les « ? » de P et T) :
-  - P définie si l'écart relatif max entre tranches < 0,1 % (seuil assez fin pour que les ondes exagérées le franchissent, assez large pour que le bruit numérique ne le déclenche pas) ;
+  - P définie si l'écart relatif max entre tranches < 0,1 % (seuil assez fin pour que les ondes du son ralenti le franchissent, assez large pour que le bruit numérique ne le déclenche pas) ;
   - T définie si l'écart max entre tranches < 0,5 K.
 - **Système à l'équilibre** (pilote le badge « À l'équilibre / Hors équilibre » et le tracé PV) : P et T définies **et** piston au repos (énergie cinétique macroscopique < 10⁻⁴ de l'énergie interne) **et** P_gaz = P_ext à 0,1 % près.
 
@@ -181,12 +182,12 @@ Structure canonique (§5 de CONTEXTE_PROJET). « (R) » = section repliable.
 3. **Charges sur le piston** : sélecteur 10 / 20 / 40 kg ; bouton **Poser / Retirer la masse** ; bouton **Loquet : verrouillé / libéré** (l'expérience se prépare au repos) ; sable : masse d'un grain (5 à 100 g), boutons **Un grain**, **Verser / Arrêter** (débit réglable), **Retirer le sable**, masse de sable posée.
 4. **Thermique** : curseur **Isolation** (calorifugé ↔ diathermane) ; curseur **T_ext** avec les mêmes sous-onglets **Échelon** / **Rampe** et le même bouton **Appliquer** que la pression.
 5. **Gaz** (R) : γ (cf. 2.5) ; T₀, V₀ initiaux (pris en compte au Réinitialiser).
-6. **Affichage** (R) : molécules, dégradé de température, sondes, loupe sur le profil de pression, pression du piston sur PV, isotherme, adiabatique, **ondes exagérées** (réinitialise l'expérience).
+6. **Affichage** (R) : molécules, dégradé de température, sondes, loupe sur le profil de pression, pression du piston sur PV, isotherme, adiabatique, traînées des molécules. Section à part **Ondes dans le gaz** (R) : curseur Vitesse du son et les deux durées comparées.
 7. **Bilan** (R, niveau CPGE) : W reçu, Q reçu, ΔU (avec vérification ΔU = W + Q), et **entropie créée** S_c = ΔS − Q/T_ext. La comparaison brutal / sable en fait un résultat chiffré.
 
 Afficheurs permanents (tableau en bas de la colonne de gauche, sous les graphes, §4) : **P, V, T** (« ? » hors équilibre, en terracotta), P_ext, T_ext, badge **À l'équilibre / Hors équilibre**.
 
-Bandeau **Informations** : mode d'emploi de la page (préparer avec le loquet, ralentir pour voir le piston et les ondes, verser le sable, régler l'isolation…), puis une phrase par compromis : échanges thermiques accélérés, ondes exagérées quand la case est cochée, origine réelle de l'amortissement.
+Bandeau **Informations** : mode d'emploi de la page (préparer avec le loquet, ralentir pour voir le piston et les ondes, verser le sable, régler l'isolation…), puis une phrase par compromis : échanges thermiques accélérés, son ralenti quand le curseur n'est pas sur « réelle », origine réelle de l'amortissement.
 
 ---
 
@@ -245,7 +246,7 @@ Chaque test charge la page en `#transformations`, pilote les fonctions `tf…` e
 | Changement de γ | états finaux recalculés justes pour 5/3 et 4/3 |
 | Célérité réelle | onde lancée par une petite impulsion du piston : aller-retour en 2L/c ≈ 1,75 ms à 5 % près |
 | Uniformité en célérité réelle | 40 kg posés brutalement : écart relatif de P entre tranches de l'ordre de 10⁻⁵ à 10⁻⁴ (confirme les estimations du §2.3) |
-| Ondes exagérées | mêmes états finaux qu'en célérité réelle (le facteur ne doit rien changer aux équilibres) |
+| Son ralenti | mêmes états finaux qu'en célérité réelle (le facteur ne doit rien changer aux équilibres) ; front net à ×300 |
 | Ralenti extrême | à ×1/5000 et à ×20, même trajectoire du piston pour un même temps simulé |
 | Stabilité | aucune valeur NaN, pas de tranche d'épaisseur négative, à ×20 et pour 40 kg |
 
@@ -268,7 +269,7 @@ Chaque palier se termine par un commit et peut être montré en classe tel quel 
 
 ## 9. Points encore ouverts
 
-- Facteur des ondes exagérées : 10⁴ (aller-retour ≈ 0,18 s), à revoir à l'usage en classe.
+- Ondes exagérées remplacées par le curseur Vitesse du son (×1 à ×300) ; viscosité `TF_CL_LENT` = 0,6 à revoir à l'usage en classe.
 - Gamme des masses (10 / 20 / 40 kg) et section 20 cm² : à valider visuellement dès le palier 1.
 - Dégradé de couleur : sur T (recommandé) ou sur la masse volumique ?
 - Titre de la carte d'accueil de l'onglet existant : garder « Pression d'un gaz » ou passer à « Modèle cinétique d'un gaz parfait » ?

@@ -327,10 +327,36 @@
             <input type="checkbox" id="tf-ck-profil" onchange="tfOnAffichage('profil', this.checked)">
             Profil de pression
           </label>
-          <label class="check-row">
-            <input type="checkbox" id="tf-ck-ondes" onchange="tfOnOndesExagerees(this.checked)">
-            Ondes exagérées (réinitialise)
-          </label>
+        </div>
+
+        <div class="sep"></div>
+
+        <!-- ── Ondes dans le gaz ──────────────────── -->
+        <!-- Ralentir le son montre quand une compression se propage en
+             front au lieu de comprimer le gaz d'un bloc : il faut que le son
+             traverse le gaz plus lentement que le piston ne se met en mouvement. -->
+        <div class="panel-section">
+          <div class="section-title" data-repliable>Ondes dans le gaz</div>
+          <div class="param-row">
+            <label for="tf-sl-son">Vitesse du son
+              <span class="param-value" id="tf-lbl-son">réelle</span>
+            </label>
+            <input type="range" id="tf-sl-son" min="0" max="5" step="1" value="0"
+                   oninput="tfOnRalentiSon(this.value)">
+            <div class="slider-ticks">
+              <span>réelle</span>
+              <span>300 fois plus lente</span>
+            </div>
+            <span class="input-hint">Changer la vitesse du son réinitialise l'expérience.</span>
+          </div>
+          <div class="readout">
+            <div class="ro-label">Traversée du gaz par le son</div>
+            <div class="ro-value" id="tf-ro-traversee">—</div>
+          </div>
+          <div class="readout">
+            <div class="ro-label">Mise en mouvement du piston</div>
+            <div class="ro-value" id="tf-ro-piston">—</div>
+          </div>
         </div>
 
       </div><!-- fin #section-transformations -->
@@ -350,7 +376,7 @@
         Quand les tranches du gaz n'ont pas la même pression ou la même température, le tableau affiche <strong>?</strong> et l'écart entre tranches.
         Couleur du gaz et des molécules : bleu plus froid que 20 °C, rouge plus chaud.
         Les <strong>molécules</strong> restent dans leur région du gaz : plus serrées où il est dense, plus rapides où il est chaud (les traînées montrent leur vitesse). P et T sont calculées par tranches, pas à partir de leurs chocs.
-        <strong>Ondes exagérées</strong> ralentit le son pour rendre les écarts de pression visibles.
+        Dans <strong>Ondes dans le gaz</strong>, ralentir le son fait apparaître un front de compression qui part du piston : il faut pour cela que le son traverse le gaz plus lentement que le piston ne se met en mouvement (comparer les deux durées).
         Le cylindre est élargi sur le dessin (section réelle : 20 cm²).
         <br><strong>Raccourcis</strong> : Espace = pause, R = réinitialiser.
       </div>

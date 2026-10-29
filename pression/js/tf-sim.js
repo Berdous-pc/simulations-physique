@@ -51,9 +51,15 @@ var TF_CFL = 0.4;    // fraction du pas de temps limite dz/c
 var TF_SOUS_PAS_MAX = 30000;
 
 // ── Dissipation ──
-// Viscosité artificielle linéaire des tranches : amortit les ondes acoustiques
-// (et le bruit de grille) en quelques dizaines d'allers-retours.
-var TF_CL = 0.15;
+// Viscosité des tranches, q = −cl·ρ·c·Δu − cq·ρ·Δu² (le terme quadratique
+// n'agit qu'en compression) : amortit les ondes et donne aux fronts raides
+// (son très ralenti) une épaisseur de quelques tranches au lieu d'oscillations
+// numériques. cl va de TF_CL (son réel : une vingtaine d'allers-retours, de
+// toute façon invisibles) à TF_CL_LENT (son le plus lent : 3 à 5 allers-retours
+// visibles puis extinction), en suivant le logarithme du ralentissement.
+var TF_CL      = 0.15;
+var TF_CL_LENT = 0.6;
+var TF_CQ      = 1.5;
 // Amortissement du piston, en fraction de l'amortissement critique. Il
 // représente les pertes réelles (échanges thermiques avec les parois pendant
 // les oscillations, frottements) : ~5 oscillations visibles. La chaleur
@@ -69,12 +75,14 @@ var TF_LAMBDA = 2.2;   // W·m⁻¹·K⁻¹
 // (0 = calorifugé ; au dernier cran, le fond ne limite plus les échanges).
 var TF_ISOLATIONS = [0, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1];
 
-// ── Ondes exagérées (case de la section Affichage) ──
-// Facteur appliqué à l'inertie du gaz, dans l'équation du mouvement
-// seulement : la célérité est divisée par √TF_INERTIE_EXAGEREE (343 → ~3,4
-// m/s), si bien qu'un aller-retour d'onde dure ~0,2 s, environ le tiers de
-// la période du piston. Équation d'état, bilans et équilibres inchangés.
-var TF_INERTIE_EXAGEREE = 1e4;
+// ── Vitesse du son (curseur de la section Ondes dans le gaz) ──
+// Facteurs de ralentissement proposés. Ralentir le son d'un facteur r revient
+// à alourdir chaque morceau de gaz d'un facteur r² dans l'équation du
+// mouvement seulement (comme des molécules plus lourdes : c ∝ 1/√M_molaire).
+// Équation d'état, bilans et équilibres inchangés. Un front de compression
+// ne devient net que si le son traverse le gaz plus lentement que le piston
+// ne se met en mouvement, soit environ r > 100 avec 40 kg sur le piston.
+var TF_RALENTIS = [1, 3, 10, 30, 100, 300];
 
 // ── Commandes ──
 var TF_MASSES   = [10, 20, 40];                             // kg
@@ -94,8 +102,9 @@ var tf = {
   gamma : 1.4,
   n     : 0,      // mol (calculée au reset)
   nTr   : 0,      // mol par tranche
-  mTr   : 0,      // kg par tranche (inertie, facteur des ondes exagérées compris)
-  ondesExagerees : false,
+  mTr   : 0,      // kg par tranche (inertie, ralentissement du son compris)
+  ralentiSon : 1, // facteur de ralentissement du son (1 = réel)
+  cl    : TF_CL,  // viscosité linéaire, selon ralentiSon
   Cv    : 0,      // J·K⁻¹·mol⁻¹
 
   // Tranches : interfaces z[0..N] (z[0] = fond, z[N] = face du piston) et
@@ -215,7 +224,10 @@ function tfReset() {
   var P0 = TF_P_ATM + TF_M_PISTON * TF_G / TF_S;
   tf.n   = P0 * TF_V0 / (TF_R * TF_T0);
   tf.nTr = tf.n / TF_N;
-  tf.mTr = tf.n * TF_M_AIR / TF_N * (tf.ondesExagerees ? TF_INERTIE_EXAGEREE : 1);
+  var r  = tf.ralentiSon;
+  tf.mTr = tf.n * TF_M_AIR / TF_N * r * r;
+  var maxR = TF_RALENTIS[TF_RALENTIS.length - 1];
+  tf.cl  = TF_CL + (TF_CL_LENT - TF_CL) * Math.log(r) / Math.log(maxR);
 
   var h0 = TF_V0 / TF_S;
   for (var i = 0; i <= TF_N; i++) {
@@ -256,11 +268,28 @@ function tfSetLoquet(verrouille) {
   tf.needsRedraw = true;
 }
 
-// Ondes exagérées : l'inertie du gaz change, l'expérience repart de zéro
+// Vitesse du son : l'inertie du gaz change, l'expérience repart de zéro
 // (sans quoi l'énergie cinétique du gaz en mouvement changerait d'un coup).
-function tfSetOndesExagerees(oui) {
-  tf.ondesExagerees = oui;
+function tfSetRalentiSon(r) {
+  tf.ralentiSon = r;
   tfReset();
+}
+
+// Les deux durées dont le rapport décide si un front de compression est
+// visible : traversée du gaz par le son, et mise en mouvement du piston
+// (quart de période de l'oscillation du piston sur le « ressort à gaz »,
+// inertie du gaz comprise). En s.
+// Évaluées au voisinage de l'équilibre visé (pression P_ext, volume
+// nRT/P_ext à la température moyenne) et non sur l'état instantané : sans
+// quoi elles varieraient du simple au triple pendant les oscillations.
+function tfDurees() {
+  var m = tfMesures();
+  var Pe = m.Pext;
+  var V  = tf.n * TF_R * m.Tmoy / Pe;
+  var c  = Math.sqrt(tf.gamma * TF_R * m.Tmoy / TF_M_AIR) / tf.ralentiSon;
+  var k  = tf.gamma * Pe * TF_S * TF_S / V;
+  var M  = TF_M_PISTON + tf.masse + TF_N * tf.mTr / 3;
+  return { traversee: V / TF_S / c, piston: Math.PI / 2 * Math.sqrt(M / k), c: c };
 }
 
 function tfSetIsolation(G) {
@@ -317,9 +346,11 @@ function _tfSousPas(dt) {
     var dz  = z[j + 1] - z[j];
     var rho = mTr / (S * dz);
     var c   = Math.sqrt(g * P[j] / rho);
-    q[j]   = -TF_CL * rho * c * (u[j + 1] - u[j]);
+    var du  = u[j + 1] - u[j];
+    q[j]   = -tf.cl * rho * c * du - (du < 0 ? TF_CQ * rho * du * du : 0);
     dzA[j] = dz;
-    var inv = c / dz;
+    // La viscosité raccourcit aussi le pas stable : vitesse effective
+    var inv = (c * (1 + 2 * tf.cl) + 2 * TF_CQ * Math.abs(du)) / dz;
     if (inv > invDtMin) invDtMin = inv;
   }
   tf.dtCfl = TF_CFL / invDtMin;
@@ -361,11 +392,15 @@ function _tfSousPas(dt) {
     E[j] = (E[j] - (0.5 * P[j] + q[j]) * dV) / (1 + 0.5 * g1 * dV / Vn);
   }
 
-  // 5. Chaleur : dissipation rendue au gaz (répartie, pour ne pas créer de
-  //    gradient artificiel), conduction entre tranches, échange par le fond.
+  // 5. Chaleur : dissipation rendue au gaz, conduction entre tranches,
+  //    échange par le fond. La dissipation liée au mouvement du piston est
+  //    déposée près de lui (poids ∝ j + 1 : du double de la moyenne sous le
+  //    piston à presque rien au fond) : c'est là que le gaz est brassé. Une
+  //    compression brutale laisse ainsi une couche chaude sous le piston, qui
+  //    s'uniformise ensuite par conduction.
   if (chaleur > 0) {
-    var parTr = chaleur / N;
-    for (j = 0; j < N; j++) E[j] += parTr;
+    var parPoids = chaleur * 2 / (N * (N + 1));
+    for (j = 0; j < N; j++) E[j] += parPoids * (j + 1);
   }
   var T = tf._T, cTr = tf.nTr * tf.Cv;
   for (j = 0; j < N; j++) T[j] = E[j] / cTr;

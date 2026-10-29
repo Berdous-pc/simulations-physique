@@ -272,15 +272,15 @@ Gaz parfait découpé en `TF_N = 30` tranches de même masse (lagrangien 1D), so
 | Inertie du gaz | masse molaire de l'air (0,029 kg/mol) : **célérité réelle** (343 m/s à 293 K) |
 | Schéma | saute-mouton sur grille décalée : vitesses des interfaces `u`, positions `z`, puis énergies `E` par `dE = −(P̄ + q)·dV` avec P̄ moyenne avant/après résolue exactement |
 | Pas de temps | `TF_CFL × min(dz/c)` (≈ 5–12 µs) ; au plus `TF_SOUS_PAS_MAX = 30 000` sous-pas par image, au-delà `tf.limite` (vitesse réelle inférieure à la demande) |
-| Viscosité artificielle | `q = −TF_CL·ρ·c·Δu` (dissipative dans les deux sens) : amortit les ondes |
-| Amortissement du piston | `−b·U`, b = `TF_AMORT` (8 %) de l'amortissement critique 2√(k·M), k = γ·P·S²/V, **recalculé à chaque sous-pas** ; la chaleur dissipée est rendue au gaz, répartie entre les tranches |
+| Viscosité artificielle | `q = −cl·ρ·c·Δu − TF_CQ·ρ·Δu²` (terme quadratique en compression seulement, pour les fronts raides) ; `cl` va de `TF_CL` = 0,15 (son réel) à `TF_CL_LENT` = 0,6 (son 300 fois plus lent) selon le logarithme du ralentissement ; elle entre aussi dans le pas de temps stable |
+| Amortissement du piston | `−b·U`, b = `TF_AMORT` (8 %) de l'amortissement critique 2√(k·M), k = γ·P·S²/V, **recalculé à chaque sous-pas** ; la chaleur dissipée est rendue au gaz **près du piston** (poids ∝ j + 1 : double de la moyenne sous le piston, presque rien au fond), là où le gaz est brassé ; une compression brutale laisse ainsi une couche chaude sous le piston (jusqu'à ~65 K d'écart pour 40 kg), qui s'uniformise en ~15 s |
 | Butées | choc mou, énergie cinétique rendue au gaz |
 | Conduction | entre tranches, conductivité effective `TF_LAMBDA = 2,2 W·m⁻¹·K⁻¹` (≈ 15 s pour se mettre en équilibre) |
 | Fond | flux `G·(T_ext − T_tranche basse)`, G pris dans `TF_ISOLATIONS` (0 = calorifugé … 1 W/K) ; cumulé dans `tf.Qrecu` |
 
-**Ondes exagérées** (`tf.ondesExagerees`) : l'inertie du gaz est multipliée par `TF_INERTIE_EXAGEREE = 10⁴`, dans l'équation du mouvement seulement. La célérité tombe à ~3,4 m/s (un aller-retour ≈ 0,18 s, environ le tiers de la période du piston). `tfSetOndesExagerees()` réinitialise l'expérience.
+**Vitesse du son** (`tf.ralentiSon`, crans `TF_RALENTIS` = 1, 3, 10, 30, 100, 300) : ralentir le son d'un facteur r revient à multiplier l'inertie du gaz par r², dans l'équation du mouvement seulement (comme des molécules plus lourdes). `tfSetRalentiSon()` réinitialise l'expérience. Un front de compression n'est net que si le son traverse le gaz plus lentement que le piston ne se met en mouvement ; ce rapport vaut environ √(M_piston / m_gaz inertielle), d'où un front visible pour r ≳ 100 avec 40 kg. `tfDurees()` donne les deux durées (traversée, quart de période du piston), évaluées au voisinage de l'équilibre visé pour ne pas sauter pendant les oscillations.
 
-Fonctions : `tfReset()`, `tfAvancer(dt)`, `tfSetMasse(kg)`, `tfSetLoquet(bool)`, `tfSetIsolation(G)`, `tfSetOndesExagerees(bool)`, `tfTTranche(j)`, `tfMesures()` (moyennes, extrêmes des tranches, critère `equilibre` du §2.4 du plan), `tfPext()`, `tfVolume()`, `tfEnergieTotale()` (constante aux erreurs de schéma près : sert aux tests).
+Fonctions : `tfReset()`, `tfAvancer(dt)`, `tfSetMasse(kg)`, `tfSetLoquet(bool)`, `tfSetIsolation(G)`, `tfSetRalentiSon(r)`, `tfDurees()`, `tfTTranche(j)`, `tfMesures()` (moyennes, extrêmes des tranches, critère `equilibre` du §2.4 du plan), `tfPext()`, `tfVolume()`, `tfEnergieTotale()` (constante aux erreurs de schéma près : sert aux tests).
 
 **Validation (Chrome headless, palier 1)** :
 
@@ -294,7 +294,8 @@ Fonctions : `tfReset()`, `tfAvancer(dt)`, `tfSetMasse(kg)`, `tfSetLoquet(bool)`,
 | Uniformité de P (40 kg brutal) | écart max entre tranches 2,7·10⁻⁵ |
 | Ralenti ×1/5000 contre ×20 | même position du piston à 0,4 µm près |
 | Coût | ~1,4 ms par image à ×1 ; ×20 plafonné (~10 ms par image) quand le gaz est comprimé et chaud |
-| Ondes exagérées, 10 / 20 / 40 kg brutaux | mêmes états finaux (447,81 K pour 447,84 K) ; écart de P entre tranches jusqu'à 19 à 27 % ; pic de l'impulsion au fond à 88,5 ms pour 87,5 ms attendues |
+| Son ralenti ×100, 10 / 20 / 40 kg brutaux | mêmes états finaux (447,82 K pour 447,84 K) ; écart de P entre tranches 18 à 26 % ; pic de l'impulsion au fond à 88,0 ms pour 87,5 ms attendues |
+| 40 kg brutaux, son réel / ×30 / ×100 / ×300 | écart de P max 0,0 / 2,7 / 25,5 / 91 % (front net à ×300) ; états finaux exacts dans tous les cas, énergie conservée à 5·10⁻⁵ près |
 | Molécules, moitié basse des tranches plus fine (×0,5), plus froide (×0,5) ou les deux | 49,7 / 49,8 / 50,1 % des molécules dans la moitié basse en masse (attendu 50 %), moyenne sur 18 000 images |
 | Molécules, gradient réel après compression et refroidissement par le fond (301 → 426 K) | 299 à 304 molécules sur 600 dans la moitié basse en masse, qui n'occupe que 45 % de la hauteur |
 
@@ -317,7 +318,7 @@ Options d'affichage dans `tfAff` (section Affichage du panneau) : molécules, tr
 - **Couleur selon T** : chaque tranche est colorée du bleu (plus froide que T0) au rouge (plus chaude), en racine de l'écart saturée à ±150 K, pour que quelques kelvins se voient.
 - **Sondes** : T et P de trois tranches (`TF_SONDES` : haut, milieu, bas), dans des étiquettes contre la paroi droite ; P au pascal près (kPa à trois décimales). Une étiquette est omise si le gaz est trop écrasé pour la loger.
 - **Profil de pression** : P(z) − P̄ tranche par tranche, dans un cadre à droite du cylindre, à la hauteur du gaz. Échelle en Pa (1, 2, 5 × 10ⁿ, au moins 1 Pa : en deçà, ce n'est que du bruit numérique), agrandie aussitôt, resserrée après ~1 s de petits écarts. Sa largeur est retranchée de celle du cylindre (`_tfDoResize`).
-- **Mention « Ondes exagérées »** en haut à gauche de la scène tant que la case est cochée.
+- **Mention « Son N fois plus lent »** en haut à gauche de la scène dès que le son est ralenti.
 
 Échelle verticale réelle (graduations en cm), cylindre **élargi** horizontalement : aussi large que la zone le permet, au plus `TF_LARG_MAX` (75 %) de sa hauteur dessinée. De bas en haut : isolant hachuré (d'autant plus épais que G est faible), paroi du fond (claire si conductrice), gaz et limites des tranches (elles se resserrent dans une compression : ondes visibles au ralenti), parois, graduations (à gauche, au-delà des goupilles), tige, plateau, masse, corps du piston hachuré, goupilles du loquet (enfoncées dans le piston : verrouillé ; reculées hors du cylindre : libéré). `tfResize()` avec anti-rebond, `window.resize` et `ResizeObserver` sur `#tf-sim-area`.
 

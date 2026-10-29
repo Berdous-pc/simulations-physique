@@ -429,6 +429,25 @@ html:not(.sections-pretes) .section-title[data-repliable]:not([data-repliable="o
 }
 .param-select:disabled { color: #a0a8b0; cursor: not-allowed; }
 
+/* Afficheurs de valeur (charte du site, CONTEXTE_PROJET §5) */
+.readout {
+  background: #fff;
+  border: 1px solid #c8c0b4;
+  border-radius: 6px;
+  padding: 7px 9px;
+  margin-bottom: 8px;
+}
+.ro-label {
+  font-size: clamp(11px, 1vw, 13px);
+  color: #7a8a96;
+}
+.ro-value {
+  font-size: clamp(15px, 1.6vw, 20px);
+  font-weight: 700;
+  color: #2a5080;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Cases à cocher (même rendu que refraction/) */
 .check-row {
   display: flex;

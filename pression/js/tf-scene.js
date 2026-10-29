@@ -130,7 +130,7 @@ function tfDessiner() {
   _tfDessinerPiston();
   if (tfAff.sondes) _tfDessinerSondes();
   if (tfAff.profil) _tfDessinerProfil();
-  if (tf.ondesExagerees) _tfDessinerMentionOndes();
+  if (tf.ralentiSon > 1) _tfDessinerMentionOndes();
 }
 
 // Largeur intérieure dessinée, en m d'échelle verticale (pour les molécules)
@@ -493,14 +493,14 @@ function _tfFmtPa(x) {
   return String(Math.round(x)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 }
 
-// ── Mention permanente quand les ondes sont exagérées ──
+// ── Mention permanente quand le son est ralenti ──
 function _tfDessinerMentionOndes() {
   var c = tfCtx;
   var police = Math.max(12, Math.round(_tfEch * 0.024));
   c.font = 'bold ' + police + 'px "Segoe UI", Arial, sans-serif';
   c.textAlign = 'left';
   c.textBaseline = 'top';
-  var txt = 'Ondes exagérées';
+  var txt = 'Son ' + tf.ralentiSon + ' fois plus lent';
   var lw = c.measureText(txt).width + 14;
   c.fillStyle = '#fde8c8';
   c.strokeStyle = '#d0a060';

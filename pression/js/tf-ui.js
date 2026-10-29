@@ -17,7 +17,8 @@ var _TF_EL_IDS = [
   'tf-it-t', 'tf-it-P', 'tf-it-T', 'tf-it-V', 'tf-it-Pext', 'tf-it-etat',
   'tf-btn-playpause', 'tf-sl-vitesse', 'tf-lbl-vitesse', 'tf-vitesse-limite',
   'tf-sel-masse', 'tf-btn-masse', 'tf-btn-loquet',
-  'tf-sl-isolation', 'tf-lbl-isolation'
+  'tf-sl-isolation', 'tf-lbl-isolation',
+  'tf-sl-son', 'tf-lbl-son', 'tf-ro-traversee', 'tf-ro-piston'
 ];
 
 // ══════════════════════════════════════════════════════════════════════
@@ -67,6 +68,17 @@ function tfMajAfficheurs() {
   etat.className = 'it-val ' + (m.equilibre ? 'tf-etat-eq' : 'tf-etat-hors');
 
   _tfEl['tf-vitesse-limite'].style.display = tf.limite ? '' : 'none';
+
+  var d = tfDurees();
+  _tfEl['tf-ro-traversee'].textContent = _tfFmtDuree(d.traversee);
+  _tfEl['tf-ro-piston'].textContent    = _tfFmtDuree(d.piston);
+}
+
+// Durée à deux ou trois chiffres significatifs, en ms ou en s
+function _tfFmtDuree(t) {
+  if (t < 0.01) return _tfFmt(t * 1000, 1) + ' ms';
+  if (t < 1)    return Math.round(t * 1000) + ' ms';
+  return _tfFmt(t, 2) + ' s';
 }
 
 function _tfNonDefini(plage) {
@@ -143,8 +155,11 @@ function tfOnAffichage(cle, coche) {
   tf.needsRedraw = true;
 }
 
-function tfOnOndesExagerees(coche) {
-  tfSetOndesExagerees(coche);
+// ── Vitesse du son (réinitialise l'expérience) ──
+function tfOnRalentiSon(val) {
+  var r = TF_RALENTIS[parseInt(val, 10)];
+  _tfEl['tf-lbl-son'].textContent = r === 1 ? 'réelle' : r + ' fois plus lente';
+  tfSetRalentiSon(r);
   tfMolInit();
   _tfMajBoutons();
   tfMajAfficheurs();
@@ -207,7 +222,8 @@ function tfInit() {
   for (var cle in tfAff) {
     document.getElementById('tf-ck-' + cle).checked = tfAff[cle];
   }
-  document.getElementById('tf-ck-ondes').checked = tf.ondesExagerees;
+  _tfEl['tf-sl-son'].value = TF_RALENTIS.indexOf(tf.ralentiSon);
+  _tfEl['tf-lbl-son'].textContent = 'réelle';
 
   tfReset();
   tfMolInit();
