@@ -40,7 +40,10 @@ var TF_M_AIR = 0.029;      // kg·mol⁻¹ — fixe l'inertie du gaz, donc la c�
 // Petite section : quelques dizaines de kg suffisent à doubler ou tripler la
 // pression, sans quoi les états finaux brutal / réversible seraient confondus.
 var TF_S          = 20e-4;   // m² (Ø ≈ 5 cm)
-var TF_M_PISTON   = 1;       // kg
+// Piston-membrane, plus léger que le gaz (0,76 g) : un échelon de P_air
+// lance un vrai front de compression (avec 1 kg, l'écart de pression dans le
+// gaz restait sous 0,1 % : PLAN §10.5). Son poids ne compte plus (5 Pa).
+var TF_M_PISTON   = 0.001;   // kg
 var TF_T0         = 293.15;  // K
 var TF_V0         = 0.6e-3;  // m³ (hauteur initiale 30 cm)
 var TF_H_CYL      = 0.50;    // m — hauteur intérieure du cylindre (butée haute)
@@ -149,12 +152,13 @@ var tf = {
   Pair   : TF_P_ATM,     // Pa
   Wair   : 0,            // J, travail reçu par le système de la part de l'enceinte
   rampes : {
-    Pair  : { actif: false, cible: 0, pas: 0, periode: 1, tProchain: 0 },
-    Text  : { actif: false, cible: 0, pas: 0, periode: 1, tProchain: 0 },
-    masse : { actif: false, cible: 0, pas: 0, periode: 1, tProchain: 0 }
+    Pair  : { actif: false, cible: 0, pas: 0, periode: 1, tProchain: 0, continu: false, lente: false },
+    Text  : { actif: false, cible: 0, pas: 0, periode: 1, tProchain: 0, continu: false, lente: false },
+    masse : { actif: false, cible: 0, pas: 0, periode: 1, tProchain: 0, continu: false, lente: false }
   },
   // Mode quasi statique (cf. tfAvancer) : pression uniforme, conduction seule
   qs     : false,
+  _PairQS: null,         // P_air au sous-pas quasi statique précédent
   // Recalage du bilan d'énergie aux changements discontinus de commande
   // (tenir, libérer, poser une masse), pour que tfEnergieTotale reste continue
   eDecal : 0,            // J
@@ -381,26 +385,41 @@ function _tfChangerMasse(cible, lent) {
 }
 
 // Fixe une contrainte extérieure : P_air ('Pair'), T_ext ('Text') ou masse
-// posée ('masse')
-function _tfFixer(cle, valeur, lent) {
+// posée ('masse'). continu : pas d'une rampe continue.
+function _tfFixer(cle, valeur, lent, continu) {
   // Pression ou masse sur le piston libre : le piston va bouger, retour au
-  // calcul complet (la température de la source, elle, n'agit que par le fond)
-  if (cle !== 'Text' && !tf.tenu) _tfQuitterQS();
+  // calcul complet (la température de la source, elle, n'agit que par le
+  // fond) ; sauf rampe continue assez lente pour que le piston la suive sans
+  // osciller, que le mode quasi statique sait suivre
+  if (cle !== 'Text' && !tf.tenu && !(continu && tf.rampes[cle].lente)) _tfQuitterQS();
   if (cle === 'masse') _tfChangerMasse(valeur, lent);
   else tf[cle] = valeur;
   tf.needsRedraw = true;
 }
 
-// ── Contraintes extérieures (§10.3) ──
+// ── Contraintes extérieures (§10.3, §10.5) ──
 // Durée nulle : échelon, la grandeur prend la cible d'un coup. Sinon,
 // escalier de n marches égales, n = ⌈|Δ| / pasMax⌉ : une première marche
-// tout de suite, puis une toutes les duree / n secondes.
-function tfAppliquer(cle, cible, duree, pasMax) {
+// tout de suite, puis une toutes les duree / n secondes ; ou, continu
+// (boutons Quasi statiquement et Réversiblement), rampe linéaire en duree
+// secondes (la masse est alors du sable versé en continu).
+function tfAppliquer(cle, cible, duree, pasMax, continu) {
   var r = tf.rampes[cle];
   var d = cible - tf[cle];
   r.actif = false;
+  r.continu = false;
   if (duree <= 0 || Math.abs(d) < 1e-9) {
     _tfFixer(cle, cible, false);
+    return;
+  }
+  if (continu) {
+    r.continu = true;
+    r.depart  = tf[cle];
+    r.cible   = cible;
+    r.t0      = tf.t;
+    r.duree   = duree;
+    r.lente   = cle === 'Text' || duree >= TF_QS_RAMPE * _tfTempsMeca(cle, cible);
+    r.actif   = true;
     return;
   }
   var n = tfNbMarches(cle, cible, pasMax);
@@ -423,6 +442,12 @@ function tfNbMarches(cle, cible, pasMax) {
 function _tfAvancerRampes() {
   for (var cle in tf.rampes) {
     var r = tf.rampes[cle];
+    if (r.actif && r.continu) {
+      var f = Math.min(1, (tf.t - r.t0) / r.duree);
+      _tfFixer(cle, r.depart + (r.cible - r.depart) * f, true, true);
+      if (f >= 1) r.actif = false;
+      continue;
+    }
     if (!r.actif || tf.t < r.tProchain) continue;
     if (tf.echantillon) tf.echantillon(true);
     var d = r.cible - tf[cle];
@@ -484,6 +509,21 @@ function _tfZVerin(t) {
   return v.zDep + (v.zArr - v.zDep) * (s - Math.sin(2 * Math.PI * s) / (2 * Math.PI));
 }
 
+// Temps mécanique le plus long pendant une rampe de pression ou de masse
+// vers cible : période d'oscillation du piston libre (masse la plus grande
+// et pression la plus forte de la rampe) ou traversée du gaz par le son. Une
+// rampe continue d'au moins TF_QS_RAMPE fois ce temps est suivie sans
+// oscillation : le mode quasi statique peut la calculer.
+function _tfTempsMeca(cle, cible) {
+  var m = tfMesures();
+  var M = TF_M_PISTON + Math.max(tf.masse, cle === 'masse' ? cible : 0) + TF_N * tf.mTr / 3;
+  var P = Math.max(m.Pext, cle === 'Pair' ? cible + (TF_M_PISTON + tf.masse) * TF_G / TF_S
+                                          : tf.Pair + M * TF_G / TF_S);
+  var k = tf.gamma * P * TF_S * TF_S / m.V;
+  var c = Math.sqrt(tf.gamma * TF_R * m.Tmoy / TF_M_AIR);
+  return Math.max(2 * Math.PI * Math.sqrt(M / k), tf.z[TF_N] / c);
+}
+
 // Durées caractéristiques (s), à la température moyenne :
 //   - traversee : traversée du gaz par le son, L/c ;
 //   - thermique : mise en équilibre thermique avec l'extérieur, conduction
@@ -504,7 +544,13 @@ function tfDurees() {
   var Ve = tf.n * TF_R * m.Tmoy / Pe;
   var k  = tf.gamma * Pe * TF_S * TF_S / Ve;
   var M  = TF_M_PISTON + tf.masse + TF_N * tf.mTr / 3;
-  return { traversee: L / c, thermique: th, piston: Math.PI / 2 * Math.sqrt(M / k), c: c };
+  // Les deux étapes de la mise en équilibre thermique : conduction dans le
+  // gaz (interne) et passage par le fond (paroi). L'écart de température,
+  // donc l'entropie créée, se loge dans la plus lente (PLAN §10.5).
+  var interne = 4 * L * L / (Math.PI * Math.PI * D);
+  var paroi = tf.G > 0 ? tf.n * tf.Cv / tf.G : Infinity;
+  return { traversee: L / c, thermique: th, piston: Math.PI / 2 * Math.sqrt(M / k), c: c,
+           interne: interne, paroi: paroi };
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -546,7 +592,7 @@ function tfAvancer(dt) {
     }
     for (var cle in tf.rampes) {
       var r = tf.rampes[cle], av = r.tProchain - tf.t;
-      if (r.actif && av > 1e-12 && av < h) h = av;
+      if (r.actif && !r.continu && av > 1e-12 && av < h) h = av;
     }
     if (tf.qs) {
       // Piston libre arrivé en butée : retour au calcul complet, sans
@@ -586,6 +632,7 @@ var TF_QS_EC     = 1e-7;
 var TF_QS_P      = 2e-5;
 var TF_QS_VERIN  = 200;
 var TF_QS_ESSAI  = 2000;
+var TF_QS_RAMPE  = 20;      // rampe continue lente : ≥ 20 temps mécaniques
 var TF_QS_DT_MAX = 0.02;    // s
 
 function _tfVerinLent() {
@@ -598,6 +645,12 @@ function _tfVerinLent() {
 function _tfEssayerQS() {
   if (!TF_QS || tf.qs) return;
   if (tf.verin.actif && !_tfVerinLent()) return;
+  if (!tf.tenu) {
+    for (var cle in tf.rampes) {
+      var r = tf.rampes[cle];
+      if (r.actif && cle !== 'Text' && !(r.continu && r.lente)) return;
+    }
+  }
   var U = _tfU();
   if (_tfEc() > TF_QS_EC * U) return;
   var Pmin = Infinity, Pmax = -Infinity;
@@ -622,6 +675,7 @@ function _tfEntrerQS() {
   var e0 = tfEnergieTotale(), j;
   tf.u.fill(0);
   tf.q.fill(0);
+  tf._PairQS = tf.Pair;
   var Q = tf._T;   // tableau de travail
   Q.fill(0);
   tf.qs = true;
@@ -679,9 +733,12 @@ var _tfQS_Q = null;
 
 // Ajoute la chaleur Q[j] à chaque tranche et place les interfaces à
 // pression uniforme.
-//   - Piston libre (Vc null) : pression P_ext. Chaque tranche reçoit sa
-//     chaleur à pression constante (dE = dQ/γ, le reste pousse le piston) ;
-//     travail de l'air de l'enceinte compté. Exact pour le bilan.
+//   - Piston libre (Vc null) : pression P_ext. Si P_ext a changé depuis le
+//     sous-pas précédent (rampe continue), chaque tranche est d'abord
+//     comprimée ou détendue de façon adiabatique jusqu'à elle
+//     (E ∝ P^((γ−1)/γ) à entropie fixée) ; puis elle reçoit sa chaleur à
+//     pression constante (dE = dQ/γ, le reste pousse le piston). Travail de
+//     l'air de l'enceinte compté avec la moyenne de P_air sur le sous-pas.
 //   - Piston tenu (Vc : volume imposé) : chaleur à volume constant, puis
 //     détente ou compression adiabatique de chaque tranche jusqu'à la
 //     pression commune P' qui donne le volume total Vc,
@@ -694,15 +751,18 @@ function _tfQSAppliquer(Q, Vc) {
   var Pc, Ef = _tfQS_E || (_tfQS_E = new Float64Array(TF_N));
   if (Vc === null) {
     Pc = tfPext();
+    var fad = P[0] > 0 && P[0] !== Pc ? Math.pow(Pc / P[0], g1 / g) : 1;
     var tot = 0;
     for (j = 0; j < N; j++) {
-      Ef[j] = E[j] + Q[j] / g;
+      Ef[j] = E[j] * fad + Q[j] / g;
       V[j] = g1 * Ef[j] / Pc;
       tot += V[j];
     }
     var zN = tot / S;
     if (zN > TF_H_CYL || zN < TF_Z_BUTEE) return false;
-    tf.Wair -= tf.Pair * S * (zN - z[N]);
+    var PairPrec = tf._PairQS === null ? tf.Pair : tf._PairQS;
+    tf.Wair -= 0.5 * (tf.Pair + PairPrec) * S * (zN - z[N]);
+    tf._PairQS = tf.Pair;
   } else {
     var somme = 0, Eavant = 0, Eapres = 0;
     for (j = 0; j < N; j++) {

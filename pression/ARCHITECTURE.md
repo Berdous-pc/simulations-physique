@@ -273,7 +273,7 @@ Gaz parfait découpé en `TF_N = 80` tranches de même masse (lagrangien 1D), so
 
 | Élément | Choix |
 |---|---|
-| Dispositif | S = 20 cm², V₀ = 0,6 L, piston 1 kg, T₀ = 293,15 K, cylindre de 50 cm, butée basse 2 cm |
+| Dispositif | S = 20 cm², V₀ = 0,6 L, piston-membrane de 1 g (1 kg jusqu'à R3 : PLAN §10.5), T₀ = 293,15 K, P₀ = 101,33 kPa, cylindre de 50 cm, butée basse 2 cm |
 | Inertie du gaz | masse molaire de l'air (0,029 kg/mol) : **célérité réelle** (343 m/s à 293 K) |
 | Schéma | saute-mouton sur grille décalée : vitesses des interfaces `u`, positions `z`, puis énergies `E` par `dE = −(P̄ + q)·dV` avec P̄ moyenne avant/après résolue exactement |
 | Pas de temps | `TF_CFL × min(dz/c)` (≈ 2–4 µs à 80 tranches) ; au plus `TF_SOUS_PAS_MAX = 12 000` sous-pas par image (~10 ms de calcul), au-delà `tf.limite` (vitesse réelle inférieure à la demande). Vérin en marche : au plus τ/400, et un sous-pas finit pile à l'arrivée |
@@ -291,6 +291,18 @@ Gaz parfait découpé en `TF_N = 80` tranches de même masse (lagrangien 1D), so
 Fonctions : `tfReset()`, `tfAvancer(dt)`, `tfSetTenu(bool)`, `tfSetIsolation(G)`, `tfAppliquer(cle, cible, duree, pasMax)`, `tfNbMarches()`, `tfLancerVerin(zArr, tau)`, `tfEnCours()`, `tfInterrompre()`, `tfDurees()`, `tfTTranche(j)`, `tfMesures()` (moyennes, extrêmes des tranches, `Pface`, critère `equilibre` du §2.4 du plan : piston tenu et vérin arrêté, ou butée, ou P_gaz = P_ext), `tfPext()`, `tfPFace()` (pression sur le piston, viscosité comprise : celle que mesure le vérin), `tfVolume()`, `tfEnergieTotale()`.
 
 **Mode quasi statique** (`tf.qs`) : le calcul complet doit suivre les ondes sonores, pas CFL ~1 µs quand le gaz est chaud et comprimé ; au plafond `TF_SOUS_PAS_MAX`, le cran ×20 ne tenait que ×0,8 (escalier de T_ext de 500 s : 10 min à l'écran). Quand le gaz est au repos mécanique — Ec < `TF_QS_EC` = 10⁻⁷ U, écarts de P entre tranches et, piston libre, avec P_ext sous `TF_QS_P` = 2·10⁻⁵, pas en butée, vérin arrêté ou lent (τ ≥ `TF_QS_VERIN` = 200 L/c) —, `_tfEssayerQS` (au début de `tfAvancer`, puis tous les `TF_QS_ESSAI` = 2000 sous-pas) passe en mode quasi statique : pression uniforme, conduction seule, pas limité par la stabilité de la conduction explicite (`_tfDtQS`, ~0,7 ms, au plus 20 ms). `_tfQSAppliquer` : piston libre, chaque tranche reçoit sa chaleur à P_ext constante (dE = dQ/γ, volumes (γ−1)E/P_ext, travail de l'air compté) ; piston tenu (immobile ou vérin lent), chaleur à volume constant puis ajustement adiabatique de chaque tranche à la pression commune P' qui donne le volume imposé, P'^(1/γ) = Σ V_j·P_j^(1/γ) / V, la variation d'énergie de cet ajustement allant dans W_op. Entrée (`_tfEntrerQS`) : vitesses mises à zéro, pression rendue uniforme, l'écart d'énergie rendu au gaz en chaleur. Sortie (`_tfQuitterQS`) : marche ou échelon de pression ou de masse piston libre (`_tfFixer`), piston libéré, vérin rapide, butée atteinte, retour à un instantané. Une marche d'escalier tombe toujours au début d'un sous-pas. Rien ne l'affiche : c'est une optimisation, sans effet sur les résultats.
+
+**Rampes continues** (R3, `tfAppliquer(cle, cible, duree, pasMax, true)`) : la grandeur suit une droite de `depart` à `cible` en `duree` (`_tfAvancerRampes`, à chaque sous-pas ; la masse est du sable versé en continu). Une rampe de pression ou de masse est **lente** (`r.lente`, fixé au lancement) si elle dure au moins `TF_QS_RAMPE` = 20 fois le temps mécanique `_tfTempsMeca` (période du piston libre avec la plus grande masse et la plus forte pression de la rampe, ou traversée du gaz par le son) : le piston la suit sans osciller, et le mode quasi statique la calcule — à chaque sous-pas, `_tfQSAppliquer` comprime ou détend chaque tranche de façon adiabatique de son ancienne pression à la nouvelle P_ext (E ∝ P^((γ−1)/γ)) avant d'ajouter la chaleur ; travail de l'air avec la moyenne de P_air sur le sous-pas (`tf._PairQS`). Une rampe rapide reste en calcul complet. `tfDurees()` donne aussi les deux étapes de la mise en équilibre thermique, `interne` (4L²/(π²D)) et `paroi` (n·Cv/G).
+
+| Test (R3, moteur ; piston de 1 g, P₀ = 101,33 kPa) | Résultat |
+|---|---|
+| Échelon de P_air 101 → 200 kPa, calorifugé | **Pmax/Pmin = 1,50**, P non définie 48 ms (1,0007 et jamais avec le piston de 1 kg) ; T_f 374,71 K (formule brutale 374,71) ; quasi statique dès 0,10 s ; énergie à 1,2·10⁻² J (choc fort : ~10⁻⁴ en relatif) |
+| Rampe continue de P_air en 30 s, calorifugé | 356,01 K, 0,3692 L (Laplace 356,01 K, 0,3692 L) ; 100 % quasi statique, 40 456 sous-pas ; énergie à 2·10⁻⁹ J |
+| Rampe continue de P_air en 10 τ_th (148 s), diathermane | 0,3044 L (isotherme 0,3040 L) ; énergie à 2·10⁻⁵ J |
+| Sable versé en continu, 20 kg en 30 s, calorifugé | 355,72 K (Laplace 355,72 K) |
+| Bloc de 20 kg brutal | 374,24 K (formule brutale 374,24 K) |
+| Sable continu en 0,5 s (temps mécanique 0,65 s : rampe rapide) | calcul complet pendant la rampe, 356,88 K |
+| Rampe continue de T_ext → 400 K en 10 τ_th, piston libre | 395,0 K et 0,8085 L en fin de rampe (isobare à 400 K : 0,8187 L) : la colonne qui s'allonge s'équilibre plus lentement, τ_th est à évaluer sur l'état final |
 
 | Test (mode quasi statique contre calcul complet, `TF_QS` coupé) | Résultat |
 |---|---|
