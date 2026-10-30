@@ -15,20 +15,20 @@
 var _tfEl = {};
 var _TF_EL_IDS = [
   'tf-it-t', 'tf-it-P', 'tf-it-T', 'tf-it-V', 'tf-it-Pext', 'tf-it-Pext-lbl', 'tf-it-etat',
-  'tf-btn-playpause', 'tf-sl-vitesse', 'tf-lbl-vitesse', 'tf-vitesse-limite', 'tf-ck-vitesse-auto',
+  'tf-btn-playpause', 'tf-sl-vitesse', 'tf-lbl-vitesse', 'tf-vitesse-limite', 'tf-btn-auto',
   'tf-piston-tenu', 'tf-piston-libre',
-  'tf-fond-isolant', 'tf-fond-chaude', 'tf-fond-froide', 'tf-in-chaude', 'tf-in-froide',
-  'tf-tgaz-chaude', 'tf-tgaz-froide', 'tf-hint-fond',
+  'tf-fond-isolant', 'tf-fond-1', 'tf-fond-2', 'tf-t-1', 'tf-t-2', 'tf-fleche-1', 'tf-fleche-2',
+  'tf-pop-source', 'tf-pop-nom', 'tf-in-source', 'tf-pop-moins', 'tf-pop-plus', 'tf-pop-tgaz', 'tf-pop-note',
   'tf-tab-volume', 'tf-tab-pression', 'tf-tab-temperature', 'tf-hint-actuel',
   'tf-lbl-vise', 'tf-in-vise', 'tf-unite-vise', 'tf-sel-etat', 'tf-prevu',
-  'tf-pap', 'tf-pap-moins', 'tf-pap-plus', 'tf-btn-annuler', 'tf-nom-pas',
+  'tf-pm-moins', 'tf-pm-plus', 'tf-btn-pap', 'tf-pas-pap', 'tf-btn-annuler', 'tf-nom-pas',
   'tf-montage-Pair', 'tf-montage-masse',
   'tf-sl-duree', 'tf-lbl-duree', 'tf-duree-allongee',
   'tf-row-pas', 'tf-sl-pas', 'tf-lbl-pas', 'tf-hint-escalier',
   'tf-ro-regime', 'tf-durees-car', 'tf-btn-lancer', 'tf-btn-interrompre', 'tf-en-cours',
   'tf-journal', 'tf-ckg-gel',
   'tf-btn-brutal', 'tf-btn-qs', 'tf-btn-rev', 'tf-duree-brutal', 'tf-duree-qs', 'tf-duree-rev',
-  'tf-hint-manieres', 'tf-bilan', 'tf-bilan-note',
+  'tf-bilan', 'tf-bilan-note',
   'tf-sl-gamma', 'tf-lbl-gamma', 'tf-sl-T0', 'tf-lbl-T0', 'tf-sl-V0', 'tf-lbl-V0'
 ];
 
@@ -47,6 +47,7 @@ var _tfPret = false;
 // ══════════════════════════════════════════════════════════════════════
 
 var TF_PAS_ESC = {
+  volume: [0.002, 0.005, 0.01, 0.02, 0.05],      // m : pas à pas du vérin
   masse : [0.005, 0.01, 0.02, 0.05, 0.1],        // kg : masse d'un grain de sable (pas à pas)
   Pair  : [500, 1000, 2000, 5000, 10000],        // Pa
   Text  : [0.5, 1, 2, 5, 10]                     // K
@@ -54,6 +55,7 @@ var TF_PAS_ESC = {
 
 var tfCarte = {
   action : 'volume',     // onglet : 'volume', 'pression' ou 'temperature'
+  pap    : false,        // manière Pas à pas : − et + agissent à chaque clic
   moyen  : 'Pair',       // montage : pression par 'Pair' (enceinte) ou 'masse'
   auto   : true,         // vitesse adaptée à chaque transformation
   // Valeur visée (SI), suivie de la valeur actuelle tant qu'on n'y touche
@@ -139,6 +141,7 @@ function _tfFmtValeur(cle, x) {
 }
 
 function _tfFmtPas(cle, x) {
+  if (cle === 'volume') return _tfFmtChamp(x * 100, 1) + ' cm';
   if (cle === 'masse') return Math.round(x * 1000) + ' g';
   if (cle === 'Pair')  return _tfFmt(x / 1000, x < 1000 ? 1 : 0) + ' kPa';
   return _tfFmt(x, x < 1 ? 1 : 0) + ' K';
@@ -408,26 +411,19 @@ function _tfDescManiere(cle, man, p) {
   return txt + _tfSuffixeFond();
 }
 
-// Durées écrites sur les boutons, et ce que l'isolation du fond fait des
-// deux manières lentes
+// Durées écrites sur les boutons. Quand réversiblement ne fait rien de plus
+// que quasi statiquement (isolant, ou même durée), le bouton le dit d'un
+// signe « = » plutôt que par une phrase.
 function _tfMajManieres() {
-  var cle = _tfCle(), d = tfDurees();
+  var cle = _tfCle(), txt = {};
   ['brutal', 'qs', 'rev'].forEach(function (man) {
     var p = _tfParamsManiere(cle, man);
-    _tfEl['tf-duree-' + man].textContent = p.duree > 0 ? _tfFmtDuree(p.duree)
-      : cle === 'masse' ? 'd’un coup' : 'échelon';
+    txt[man] = p.duree > 0 ? _tfFmtDuree(p.duree) : cle === 'masse' ? 'd’un coup' : 'échelon';
   });
-  // « Se confondent » seulement si les deux boutons affichent la même
-  // durée. Sinon, le message dépend de ce qui freine la chaleur : le gaz
-  // lui-même (résistance interne R_int plus grande que celle du fond, 1/G)
-  // ou le fond.
-  var h, pq = _tfParamsManiere(cle, 'qs'), qs = pq.duree, rev = _tfParamsManiere(cle, 'rev').duree;
-  if (cle === 'Text' && tf.G === 0) h = 'Posé sur l’isolant, le gaz ne voit aucune source : posez le cylindre sur une source pour agir sur sa température.';
-  else if (tf.G === 0) h = 'Posé sur l’isolant : quasi statique et réversible se confondent (aucun échange thermique).';
-  else if (_tfFmtDuree(rev) === _tfFmtDuree(qs)) h = 'Fond très conducteur : quasi statique et réversible se confondent (assez lente pour garder le gaz uniforme, la transformation l’est aussi pour le garder à la température de la source).';
-  else if (tf.G * pq.Rint >= 1) h = 'Fond conducteur : quasi statiquement, le gaz reste uniforme et la transformation crée déjà peu d’entropie (le petit écart de température se loge dans le gaz, pas dans le fond) ; réversiblement, la transformation est ' + _tfFmt(rev / qs, 1) + ' fois plus lente pour en créer encore moins.';
-  else h = 'Fond peu conducteur : quasi statiquement, le gaz reste uniforme mais la chaleur traverse le fond sous un écart de température : de l’entropie est créée ; réversiblement, presque pas.';
-  _tfEl['tf-hint-manieres'].textContent = h;
+  if (cle !== 'Text' && (tf.G === 0 || txt.rev === txt.qs)) txt.rev = '= quasi statiquement';
+  ['brutal', 'qs', 'rev'].forEach(function (man) { _tfEl['tf-duree-' + man].textContent = txt[man]; });
+  var lib = cle === 'masse' ? '1 grain' : _tfFmtPas(cle, _tfPas(cle));
+  _tfEl['tf-pas-pap'].textContent = lib + ' par clic';
 }
 
 // Lance l'action de la carte de la manière choisie : 'brutal', 'qs' ou 'rev'
@@ -514,21 +510,10 @@ function _tfMajCarte() {
   var cle = _tfCle(), k = tfCarte[cle], duree = _tfDuree(cle);
   var d = tfDurees();
 
-  // Valeur actuelle, et ce que fera l'action au piston
+  // Champ de la valeur visée ; un mot seulement si l'action est impossible
   _tfMajChampVise();
-  var txt = 'Actuellement : ' + _tfFmtValeur(cle, _tfActuelle(cle));
-  if (cle === 'masse' && tf.masse > 0) {
-    txt += ' (' + (tf.blocs > 0 ? _tfFmtValeur('masse', tf.blocs) + ' en bloc' : '')
-         + (tf.blocs > 0 && tf.sable > 0 ? ', ' : '')
-         + (tf.sable > 0 ? _tfFmtValeur('masse', tf.sable) + ' de sable' : '') + ')';
-  }
-  if (cle === 'masse' || cle === 'Pair') txt += tf.tenu ? '. Agir libère le piston.' : '.';
-  if (cle === 'Text') {
-    txt = tf.fond === 'isolant' ? 'Aucune source sous le fond.'
-        : 'Source ' + tf.fond + ' : ' + _tfFmtValeur('Text', tf.Text)
-          + (tf.tenu ? '. Piston tenu : volume constant.' : '. Piston libre : pression constante.');
-  }
-  _tfEl['tf-hint-actuel'].textContent = txt;
+  _tfEl['tf-hint-actuel'].textContent = cle === 'Text' && tf.fond === 'isolant'
+    ? 'Posez le cylindre sur une source pour agir sur sa température.' : '';
   _tfMajPrevu(cle);
   _tfMajSelEtat(cle);
   _tfMajFond();
@@ -577,10 +562,10 @@ function _tfMajBoutonsCarte() {
   _tfEl['tf-btn-interrompre'].disabled = !enCours;
   var sansEffet = cle === 'Text' && tf.G === 0;
   ['brutal', 'qs', 'rev'].forEach(function (man) {
-    _tfEl['tf-btn-' + man].disabled = enCours || rien || sansEffet;
+    _tfEl['tf-btn-' + man].disabled = enCours || rien || sansEffet || tfCarte.pap;
   });
-  _tfEl['tf-pap-moins'].disabled = _tfEl['tf-pap-plus'].disabled = enCours;
-  if (enCours) tfPapFin();
+  _tfEl['tf-btn-pap'].disabled = sansEffet;
+  _tfEl['tf-pm-moins'].disabled = _tfEl['tf-pm-plus'].disabled = sansEffet && tfCarte.pap;
   _tfEl['tf-btn-annuler'].disabled = tfEtapesEtatAnnuler() === null;
 
   var info = '';
@@ -681,17 +666,19 @@ function _tfMajBoutons() {
   _tfEl['tf-unite-vise'].textContent = V.unite;
   _tfMajChampVise(true);
 
-  // Pas à pas : pression seulement, un grain de sable ou un pas de P_air
-  _tfEl['tf-pap'].style.display = a === 'pression' ? '' : 'none';
-  if (a === 'pression') {
-    var lib = cle === 'masse' ? '1 grain' : _tfFmtPas(cle, _tfPas(cle));
-    _tfEl['tf-pap-moins'].textContent = '− ' + lib;
-    _tfEl['tf-pap-plus'].textContent = '+ ' + lib;
-    _tfEl['tf-pap-plus'].title = cle === 'masse' ? 'Verser un grain de sable (' + _tfFmtPas('masse', _tfPas('masse'))
-                                 + ') ; maintenir pour en verser plusieurs' : 'Maintenir pour répéter';
-    _tfEl['tf-pap-moins'].title = cle === 'masse' ? 'Retirer un grain de sable ; maintenir pour en retirer plusieurs'
-                                  : 'Maintenir pour répéter';
-  }
+  // Pas à pas : − et + portent le pas, le champ suit la valeur actuelle
+  var pap = tfCarte.pap;
+  var lib = cle === 'masse' ? '1 grain' : _tfFmtPas(cle, _tfPas(cle));
+  _tfEl['tf-btn-pap'].classList.toggle('active', pap);
+  _tfEl['tf-in-vise'].readOnly = pap;
+  _tfEl['tf-sel-etat'].style.display = pap ? 'none' : '';
+  _tfEl['tf-lbl-vise'].textContent = pap ? V.nom.replace(/ visée?$/, '').replace(' visée', '') + ' (actuelle)' : V.nom;
+  [['tf-pm-moins', '−'], ['tf-pm-plus', '+']].forEach(function (x) {
+    var b = _tfEl[x[0]];
+    b.classList.toggle('pap', pap);
+    b.textContent = pap ? x[1] + ' ' + lib : x[1];
+    b.title = pap ? 'Agit à chaque clic ; maintenir pour répéter' : 'Maintenir pour répéter';
+  });
 
   // Curseur de durée : crans de la grandeur visée
   var sl = _tfEl['tf-sl-duree'];
@@ -712,15 +699,12 @@ function _tfMajDuree() {
   _tfEl['tf-lbl-duree'].textContent = cle !== 'volume' && duree === 0 ? 'brutale (échelon)'
     : _tfLibelleDuree(duree);
   var esc = cle !== 'volume' && duree > 0;
-  var montre = esc || cle === 'masse' || cle === 'Pair';
-  _tfEl['tf-row-pas'].style.display = montre ? '' : 'none';
+  _tfEl['tf-row-pas'].style.display = '';
   _tfEl['tf-hint-escalier'].style.display = esc ? '' : 'none';
-  if (montre) {
-    _tfEl['tf-nom-pas'].textContent = cle === 'masse' ? 'Grain de sable (pas à pas, escalier)'
-      : cle === 'Pair' ? 'Pas de P_air (pas à pas, escalier)' : 'Hauteur des marches';
-    _tfEl['tf-sl-pas'].value = tfCarte[cle].iPas;
-    _tfEl['tf-lbl-pas'].textContent = _tfFmtPas(cle, _tfPas(cle));
-  }
+  _tfEl['tf-nom-pas'].textContent = cle === 'masse' ? 'Grain de sable (pas à pas, escalier)'
+    : cle === 'volume' ? 'Pas (pas à pas)' : 'Pas (pas à pas, escalier)';
+  _tfEl['tf-sl-pas'].value = tfCarte[cle].iPas;
+  _tfEl['tf-lbl-pas'].textContent = _tfFmtPas(cle, _tfPas(cle));
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -754,8 +738,11 @@ function tfOnVitesse(val) {
   tfMajAfficheurs();
 }
 
+function tfBasculerAuto() { tfOnVitesseAuto(!tfCarte.auto); }
+
 function tfOnVitesseAuto(coche) {
   tfCarte.auto = coche;
+  _tfEl['tf-btn-auto'].classList.toggle('active', coche);
   if (!coche) {
     _tfArreterRampeV();
     _tfFixerVitesse(TF_VITESSES[tfCranVitesse(tf.vitesse)]);
@@ -800,39 +787,76 @@ function tfOnFond(f) {
   tfMajAfficheurs();
 }
 
-// Température d'une source, saisie au clavier : seulement quand le cylindre
-// n'est pas posé dessus (sinon, Agir sur Température)
-function tfOnTSource(f, val) {
-  var x = _tfLireNombre(val);
-  if (f !== tf.fond && !isNaN(x)) tf['T' + f] = _tfBorner(x, TF_T_SOURCE_MIN, TF_T_SOURCE_MAX);
-  _tfMajFond(true);
+// Température d'une source : la flèche ▾ de son onglet déroule un menu
+// (− champ +, « = T gaz »), refermé par la flèche, Échap ou un clic
+// ailleurs. Chaque réglage s'applique aussitôt. La source sous le cylindre
+// ne s'y règle pas (Agir sur Température) : son champ est grisé.
+// « = T gaz » prend la température exacte du gaz : y poser le cylindre
+// n'amène aucun saut.
+var TF_PAS_T_SOURCE = 10;   // K, boutons − et +
+var _tfPopSource = null;    // source dont le menu est déroulé
+
+function tfBasculerSource(f, ev) {
+  if (ev) ev.stopPropagation();
+  if (_tfPopSource === f) { tfFermerSource(); return; }
+  _tfPopSource = f;
+  _tfEl['tf-pop-source'].style.display = '';
+  _tfMajPopSource(true);
+  _tfMajFond();
+  if (tf.fond !== f) { _tfEl['tf-in-source'].focus(); _tfEl['tf-in-source'].select(); }
+}
+
+function tfFermerSource() {
+  if (!_tfPopSource) return;
+  _tfPopSource = null;
+  _tfEl['tf-pop-source'].style.display = 'none';
+  _tfMajFond();
+}
+
+function _tfFixerTSource(T) {
+  var f = _tfPopSource;
+  if (!f || f === tf.fond || isNaN(T)) return;
+  tf['T' + f] = _tfBorner(T, TF_T_SOURCE_MIN, TF_T_SOURCE_MAX);
+  _tfMajPopSource(true);
   tfMajAfficheurs();
 }
 
-// « = T gaz » : la source prend la température du gaz (exacte ; le champ
-// l'arrondit) : le poser dessus n'amènera pas de saut de température
-function tfOnSourceTgaz(f) {
-  if (f === tf.fond) return;
-  tf['T' + f] = _tfBorner(tfMesures().Tmoy, TF_T_SOURCE_MIN, TF_T_SOURCE_MAX);
-  _tfMajFond(true);
-  tfMajAfficheurs();
+function tfOnTSourceSaisie(val) {
+  _tfFixerTSource(_tfLireNombre(val));
+  _tfMajPopSource(true);
 }
 
-// Boutons du fond, températures des sources (champ verrouillé sous le
-// cylindre : il suit alors Text, que l'action Température fait varier)
-function _tfMajFond(force) {
-  ['isolant', 'chaude', 'froide'].forEach(function (f) {
+// − et + : vers la dizaine de kelvins voisine
+function tfOnTSourcePM(sens) {
+  if (!_tfPopSource) return;
+  var v = tfTSource(_tfPopSource) / TF_PAS_T_SOURCE;
+  _tfFixerTSource(TF_PAS_T_SOURCE * (sens > 0 ? Math.floor(v + 1e-6) + 1 : Math.ceil(v - 1e-6) - 1));
+}
+
+function tfOnSourceTgaz() { _tfFixerTSource(tfMesures().Tmoy); }
+
+function _tfMajPopSource(force) {
+  var f = _tfPopSource;
+  if (!f) return;
+  var dessous = tf.fond === f, inp = _tfEl['tf-in-source'];
+  _tfEl['tf-pop-nom'].textContent = 'Source ' + f;
+  inp.disabled = _tfEl['tf-pop-moins'].disabled = _tfEl['tf-pop-plus'].disabled
+    = _tfEl['tf-pop-tgaz'].disabled = dessous;
+  if (force || document.activeElement !== inp) inp.value = _tfFmtChamp(tfTSource(f), 2);
+  _tfEl['tf-pop-note'].textContent = dessous ? 'Sous le cylindre : agir sur Température pour la changer.' : '';
+}
+
+// Onglets du fond et températures des sources (celle sous le cylindre suit
+// Text, que l'action Température fait varier)
+function _tfMajFond() {
+  ['isolant', '1', '2'].forEach(function (f) {
     _tfEl['tf-fond-' + f].classList.toggle('active', tf.fond === f);
     if (f === 'isolant') return;
-    var inp = _tfEl['tf-in-' + f], dessous = tf.fond === f;
-    inp.disabled = dessous;
-    _tfEl['tf-tgaz-' + f].disabled = dessous;
-    inp.title = dessous ? 'Cylindre posé sur cette source : agir sur Température pour la changer' : '';
-    if (force || document.activeElement !== inp) inp.value = _tfFmtChamp(tfTSource(f), 2);
+    _tfEl['tf-t-' + f].textContent = _tfFmtChamp(tfTSource(f), 2) + ' K';
+    _tfEl['tf-fleche-' + f].classList.toggle('active', tf.fond === f);
+    _tfEl['tf-fleche-' + f].classList.toggle('ouvert', _tfPopSource === f);
   });
-  _tfEl['tf-hint-fond'].textContent = tf.fond === 'isolant'
-    ? 'Fond calorifugé : aucun échange de chaleur.'
-    : 'Fond diatherme : le gaz échange de la chaleur avec la source ' + tf.fond + '.';
+  _tfMajPopSource();
 }
 
 // Tenir ou libérer le piston, à tout moment (libérer arrête le vérin)
@@ -854,11 +878,13 @@ function tfOnAction(a) {
   tfMajAfficheurs();
 }
 
-// Montage (section Montage et gaz) : la pression passe par l'air de
-// l'enceinte ou par les masses posées ; en changer réinitialise
+// Montage (en tête de la carte) : la pression passe par l'air de
+// l'enceinte ou par les masses posées, à l'air libre ; en changer
+// réinitialise (confirmation si des étapes seraient perdues)
 function tfOnMontage(m) {
   if (m === tfCarte.moyen) return;
-  tfCarte.moyen = m;
+  if (tfEtapes.liste.length && !window.confirm('Changer de montage recommence l’expérience. Continuer ?')) return;
+  tfCarte.moyen = tf.montage = m;
   tfReinitialiser();
 }
 
@@ -894,11 +920,24 @@ function tfOnSaisieVise(val, fin) {
   tfMajAfficheurs();
 }
 
-// − et + : vers la graduation voisine (1 cm, 5 kg, 10 kPa, 10 K)
+// − et + : vers la graduation voisine (1 cm, 5 kg, 10 kPa, 10 K) ; en pas à
+// pas, un pas de la transformation (_tfPapPas)
 function tfOnPlusMoins(sens) {
+  if (tfCarte.pap) return _tfPapPas(sens);
   var cle = _tfCle(), V = TF_VISEE[cle], v = tfCarte[cle].vise / V.pas;
   _tfViser(V.pas * (sens > 0 ? Math.floor(v + 1e-6) + 1 : Math.ceil(v - 1e-6) - 1));
   _tfMajChampVise(true);
+  tfMajAfficheurs();
+  return true;
+}
+
+// Manière Pas à pas : − et + agissent à chaque clic ; le champ montre la
+// valeur actuelle. Recliquer en sort.
+function tfBasculerPap() {
+  tfCarte.pap = !tfCarte.pap;
+  tfPapFin();
+  if (tfCarte.pap) tfCarte[_tfCle()].suit = true;
+  _tfMajBoutons();
   tfMajAfficheurs();
 }
 
@@ -986,20 +1025,17 @@ function _tfPrevoir(cle) {
 function _tfMajPrevu(cle) {
   var k = tfCarte[cle], enCours = tfEnCours() || !!_tfEnAttente;
   var rien = Math.abs(k.vise - _tfActuelle(cle)) < 1e-6 * Math.max(1, Math.abs(k.vise));
-  var P = enCours || rien ? [] : _tfPrevoir(cle);
+  var P = enCours || rien || tfCarte.pap ? [] : _tfPrevoir(cle);
   var fmt = function (p) {
     return '<b>' + _tfFmt(p.V * 1000, 3) + ' L · ' + _tfFmt(p.P / 1000, 1) + ' kPa · ' + _tfFmt(p.T, 1) + ' K</b>';
   };
+  // Une ligne : l'arrivée (réversible si elle dépend de la manière), puis
+  // l'arrivée brutale quand elle est chiffrée
   var h = '';
-  if (P.length === 1 && !P[0].nom) {
-    h = 'Arrivée prévue, quelle que soit la manière : ' + fmt(P[0]);
-  } else if (P.length) {
-    h = 'Arrivée prévue réversiblement : ' + fmt(P[0]);
-    if (P[1]) h += '<br>Brutalement : ' + fmt(P[1]);
-    else if (cle === 'volume') h += '<br>Brutalement : un peu plus chaud.';
-    if (P[0].V >= TF_S * TF_H_CYL * (1 - 1e-9)) h += '<br>Le piston s’arrête en butée haute.';
+  if (P.length) {
+    h = '→ ' + fmt(P[0]);
+    if (P[1]) h += '<br>brutalement → ' + fmt(P[1]);
   }
-  if (cle === 'volume' && h && tf.fond !== 'isolant') h += '<br><span class="input-hint">(après la mise en équilibre thermique avec la source)</span>';
   var sig = h;
   if (sig === _tfPrevuSig) return;
   _tfPrevuSig = sig;
@@ -1010,21 +1046,25 @@ function _tfMajPrevu(cle) {
   tfGraph.sale = true;
 }
 
-// ── Pas à pas (pression) : un grain de sable ou un pas de P_air par clic ──
-// Chaque clic agit aussitôt (une petite transformation brutale) ; maintenu,
-// le bouton répète. Les clics successifs du même sens de pas font une
-// seule étape du journal, même si le gaz atteint l'équilibre entre deux.
+// ── − et + maintenus : répétés ; en pas à pas, chaque clic agit ──
+// Pas à pas : un grain de sable, un pas de P_air, un pas du vérin (rapide)
+// ou un échelon de la source sous le cylindre. Chaque clic est une petite
+// transformation brutale ; les clics successifs sur la même grandeur font
+// une seule étape du journal, même si le gaz atteint l'équilibre entre deux.
 var TF_PAP_DELAI = 400, TF_PAP_PERIODE = 150;   // ms réelles
 var _tfPap = null;   // {minuterie}
 
-function tfPapDebut(sens, ev) {
+function tfPmDebut(sens, ev) {
   if (ev && ev.button) return;   // bouton principal seulement
   if (ev) ev.preventDefault();   // ni focus ni sélection de texte
   tfPapFin();
-  if (!_tfPapPas(sens)) return;
+  if (!tfOnPlusMoins(sens)) return;
   _tfPap = { t: setTimeout(function () {
     if (!_tfPap) return;
-    _tfPap.t = setInterval(function () { if (!_tfPapPas(sens)) tfPapFin(); }, TF_PAP_PERIODE);
+    // Un pas refusé pendant que le vérin finit le précédent : on réessaie
+    _tfPap.t = setInterval(function () {
+      if (!tfOnPlusMoins(sens) && !tf.verin.actif) tfPapFin();
+    }, TF_PAP_PERIODE);
   }, TF_PAP_DELAI) };
 }
 
@@ -1035,17 +1075,18 @@ function tfPapFin() {
   _tfPap = null;
 }
 
-// Clavier (Entrée, Espace sur le bouton) : un pas ; le clic de la souris,
-// lui, est déjà compté au pointerdown
-function tfPapClavier(sens, ev) {
+// Clavier (Entrée, Espace sur le bouton) : une fois ; le clic de la
+// souris, lui, est déjà compté au pointerdown
+function tfPmClavier(sens, ev) {
   if (ev && ev.detail !== 0) return;
-  _tfPapPas(sens);
+  tfOnPlusMoins(sens);
 }
 
 function _tfPapPas(sens) {
   if (tfEnCours() || _tfEnAttente) return false;
-  var cle = tfCarte.moyen, pas = _tfPas(cle), v = tf[cle];
-  var cible = Math.round(_tfBorner(v + sens * pas, 0, TF_VISEE[cle].max) * 1e6) / 1e6;
+  var cle = _tfCle(), pas = _tfPas(cle), V = TF_VISEE[cle], v = _tfActuelle(cle);
+  if (cle === 'Text' && tf.fond === 'isolant') return false;
+  var cible = Math.round(_tfBorner(v + sens * pas, V.min, V.max) * 1e6) / 1e6;
   if (Math.abs(cible - v) < 1e-9) return false;
   var E = tfEtapes, der = E.liste[E.liste.length - 1];
   if (der && der.pap === cle) {
@@ -1057,8 +1098,14 @@ function _tfPapPas(sens) {
     der.pap = cle;
     der.v0 = v;
   }
-  _tfFixer(cle, cible, true);   // un grain : du sable, pas un bloc
-  tfSetTenu(false);
+  if (cle === 'volume') {
+    tfLancerVerin(cible, Math.max(5e-4, 2 * Math.abs(cible - v) / TF_V_BRUTAL));
+  } else if (cle === 'Text') {
+    tfAppliquer('Text', cible, 0);
+  } else {
+    _tfFixer(cle, cible, true);   // un grain : du sable, pas un bloc
+    tfSetTenu(false);
+  }
   der.desc = _tfDescPap(cle, der.v0, cible);
   E.version++;
   tfCarte[cle].suit = true;
@@ -1076,7 +1123,9 @@ function _tfDescPap(cle, v0, v) {
     d = 'Sable ' + (v >= v0 ? 'versé' : 'retiré') + ' grain à grain (' + nb + (nb > 1 ? ' grains' : ' grain')
       + ' de ' + _tfFmtPas('masse', _tfPas('masse')) + ')';
   } else {
-    d = 'P_air pas à pas (' + (v >= v0 ? '+' : '−') + _tfFmt(Math.abs(v - v0) / 1000, 1) + ' kPa)';
+    var nom = { volume: 'Hauteur', Pair: 'P_air', Text: 'T_source' }[cle];
+    d = nom + ' pas à pas (' + (v >= v0 ? '+' : '−') + _tfFmtPas(cle, Math.abs(v - v0)) + ')';
+    if (cle === 'Text') d += tf.tenu ? ', piston tenu' : ', piston libre';
   }
   return d + _tfSuffixeFond();
 }
@@ -1398,13 +1447,23 @@ function tfInit() {
   // d'anciennes positions des curseurs)
   tfReset();
   tfOnVitesse(TF_VITESSES.indexOf(1));
-  _tfEl['tf-ck-vitesse-auto'].checked = tfCarte.auto;
+  _tfEl['tf-btn-auto'].classList.toggle('active', tfCarte.auto);
+  tf.montage = tfCarte.moyen;
   for (var cle in tfAff) {
     document.getElementById('tf-ck-' + cle).checked = tfAff[cle];
   }
   _tfMajGaz();
-  _tfMajFond(true);
+  _tfMajFond();
   window.addEventListener('pointerup', tfPapFin);
+  // Un clic hors du menu d'une source le referme (pas sur une flèche ▾ :
+  // elle le bascule elle-même) ; Échap aussi
+  document.addEventListener('pointerdown', function (ev) {
+    if (_tfPopSource && !_tfEl['tf-pop-source'].contains(ev.target)
+        && !(ev.target.closest && ev.target.closest('.tf-fleche'))) tfFermerSource();
+  });
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape') tfFermerSource();
+  });
   window.addEventListener('pointercancel', tfPapFin);
   window.addEventListener('blur', tfPapFin);
 

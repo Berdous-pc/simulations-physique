@@ -51,7 +51,7 @@ var _TF_SNAP_TABLEAUX = ['z', 'u', 'E', 'P', 'q'];
 // Le fond (isolant ou source, et la température des sources) fait partie
 // de l'état : revenir à un état remet le cylindre où il était
 var _TF_SNAP_SCALAIRES = ['tenu', 'masse', 'blocs', 'sable', 'Pair', 'Text', 'Wop', 'Wair',
-                          'Qrecu', 'QsurT', 'Wgaz', 'eDecal', 't', 'fond', 'Tchaude', 'Tfroide', 'G'];
+                          'Qrecu', 'QsurT', 'Wgaz', 'eDecal', 't', 'fond', 'T1', 'T2', 'G'];
 
 function _tfInstantane(snap) {
   snap = snap || {};

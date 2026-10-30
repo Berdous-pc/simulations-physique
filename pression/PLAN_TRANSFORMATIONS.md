@@ -407,6 +407,7 @@ Transformation attendue : …
 - ✅ **R2** (terminé, cf. ARCHITECTURE.md) : journal des étapes (A → B, B → C…), états d'équilibre étiquetés et étapes colorées sur le diagramme PV, « revenir à l'état B » (instantané), **chrono des graphes figé à l'équilibre** (option : l'axe des temps saute les attentes, coupures marquées). Ajouts demandés pendant R2 : flèche de sens de parcours au milieu de chaque étape, état actuel cerclé d'une couleur réservée (orange). Une action sans effet (piston tenu au repos, température avec un fond calorifugé…) n'est pas notée.
 - ✅ **R3** (terminé, cf. ARCHITECTURE.md ; ajouts : conduction implicite en mode quasi statique et crans jusqu'à ×10 000, durées réglées sur la chaleur échangée et les résistances thermiques — les premières, 3 τ_int et 10 τ_th, laissaient le gaz non défini —, vitesse adaptée au retour à l'équilibre, équilibre exigeant T_gaz = T_source si le fond conduit) : trois boutons **Brutalement / Quasi statiquement / Réversiblement** à la place des curseurs de durée et de marches (§10.5). Deux commits : moteur (pression qui varie continûment en mode quasi statique), puis interface.
 - ✅ **R4a** (terminé, §10.7) : montage enceinte ou masses, fond sur l'isolant ou l'une de deux sources à température saisie, valeur visée en champ avec arrivée prévue, pas à pas, annuler l'étape.
+- ✅ **R4b** (terminé, §10.8) : panneau épuré, montage en tête de carte et visible sur la scène, vitesse sur une ligne, pas à pas comme quatrième manière pour les trois grandeurs.
 - **R4** : file d'attente (action lancée pendant une autre → « ensuite », enchaînement à l'équilibre), séquences enregistrées (localStorage, export JSON), préréglages (aller-retour, Carnot, Stirling, Lenoir).
 - **R5** (option) : viser en cliquant sur le diagramme de Clapeyron.
 - ✅ **Diagramme TS et Bilan** (§10.6, palier 7) : terminé. **Prochain palier proposé : R4**, puis R5, et les paliers 8 (intégration) et 9 (site).
@@ -516,3 +517,26 @@ Section Montage et gaz : Pression par [ Air de l'enceinte ] [ Masses posées ] (
 - **Courbes de référence** : par l'état de la ligne sélectionnée du journal (A compris), sinon par le départ de l'étape en cours.
 
 Test (banc Chrome headless) : cycle de Carnot complet en quatre manières réversibles (adiabatique jusqu'à 400 K visée par l'arrivée prévue, source chaude « = T gaz », isotherme, adiabatique jusqu'à 293 K, source froide, isotherme jusqu'au volume de A par le menu) : retour à A à 0,05 K et 0,02 kPa près, S créée 0,07 mJ/K depuis A.
+
+### 10.8 Palier R4b : panneau épuré (fait)
+
+**Constat de l'auteur après R4a.** Encore trop fouillis : trop de texte, le choix enceinte / masses introuvable (en bas, dans Montage et gaz), la scène identique dans les deux montages, la vitesse repliée, le pas à pas peu ergonomique. Exigence : **tout centralisé dans la carte**, aucune commande sur la scène.
+
+```
+[ ⏸ Pause ] [ ↺ RAZ ]
+Vitesse ──────●────── ×1 [Auto]
+[ Air de l'enceinte ] [ Masses posées ]          ← en tête ; recommence (confirmation si étapes)
+Piston [ Tenu ] [ Libre ]
+Fond   [ Isolant ] [ Chaude 400 K ] [ Froide 293 K ]   ← clic sur la température : saisie, = T gaz
+[ Volume ] [ Pression ] [ Température ]
+[−] [ 15 ] cm [+] [État ▾]
+→ 0,300 L · 264 kPa · 387 K
+[ Brutalement ] [ Quasi statiquement ] [ Réversiblement  = quasi statiquement ] [ Pas à pas  1 cm par clic ]
+[ Interrompre ] [ ↶ Annuler l'étape ]
+▸ Réglages fins
+```
+
+- **Scène selon le montage** (`tf.montage`) : enceinte, fond crème, cloche, manomètre, air teinté, pas de plateau ; masses, fond bleu clair d'air libre, portique qui porte le vérin, « air libre · 1 atm », plateau épais.
+- **Pas à pas = quatrième manière**, un mode : − et + du champ agissent à chaque clic (grain de sable, 1 kPa, 1 cm de vérin à 150 m/s, échelon de 1 K de la source), maintenus ils répètent ; le champ, en lecture seule, montre la valeur actuelle ; les trois autres manières sont grisées. Les − et + ne sont jamais désactivés pendant une action (un bouton désactivé sous le doigt n'enverrait pas le pointerup qui arrête la répétition).
+- **Texte retiré** : phrases sous les manières (remplacées par « = quasi statiquement » sur le bouton Réversiblement), sous le fond, « Actuellement… » ; arrivée prévue en une ligne (→, puis « brutalement → » quand elle est chiffrée). Seule phrase restante : agir sur la température avec le cylindre sur l'isolant.
+- **Sources 1 et 2** (demande de l'auteur, après R4b) : plus de « chaude » ni de « froide » (`tf.fond` = '1' ou '2', `tf.T1`, `tf.T2`). Chaque onglet de source porte une flèche ▾ qui déroule, par-dessus la carte, le réglage de sa température : − champ + (10 K), « = T gaz » ; chaque réglage s'applique aussitôt ; un clic ailleurs, Échap ou la flèche le referment. Source sous le cylindre : réglage grisé (Agir sur Température).

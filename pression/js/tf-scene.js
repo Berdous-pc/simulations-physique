@@ -129,7 +129,9 @@ function tfDessiner() {
   if (_tfCw === 0 || _tfCh === 0) return;
   var c = tfCtx;
 
-  c.fillStyle = '#fdf8f0';
+  // Fond : crème sous l'enceinte ; bleu clair d'air libre avec les masses
+  // (le montage se voit au premier coup d'œil)
+  c.fillStyle = tf.montage === 'masse' ? '#e8f0f6' : '#fdf8f0';
   c.fillRect(0, 0, _tfCw, _tfCh);
 
   _tfDessinerFond();
@@ -186,7 +188,8 @@ function _tfDessinerFond() {
   c.fillRect(x1, y1, x2 - x1, y2 - y1);
 
   // Source thermique, contre le fond : rouge plus chaude que T0, bleue plus
-  // froide, neutre à T0 ; son nom et sa température sont écrits. Posé sur
+  // froide, neutre à T0 ; son nom (source 1, source 2) et sa température
+  // sont écrits. Posé sur
   // l'isolant, le cylindre n'a pas de source dessous.
   if (tf.fond === 'isolant') return;
   var zS = -TF_EP_FOND - (ep > 0.002 ? ep : 0);
@@ -219,6 +222,7 @@ function _tfClocheX() {
 }
 
 function _tfDessinerAirEnceinte() {
+  if (tf.montage === 'masse') return;   // air libre : rien à teinter
   var c = tfCtx, p = _tfParoi, xs = _tfClocheX();
   var a = 0.02 + 0.22 * Math.min(1, tf.Pair / 5e5);
   var yH = _tfY(TF_Z_HAUT), yB = _tfY(TF_Z_CLOCHE), yRebord = _tfY(TF_H_CYL) - p;
@@ -233,6 +237,7 @@ function _tfDessinerAirEnceinte() {
 function _tfDessinerEnceinte() {
   var c = tfCtx, p = _tfParoi, xs = _tfClocheX();
   var yH = _tfY(TF_Z_HAUT), yB = _tfY(TF_Z_CLOCHE);
+  if (tf.montage === 'masse') { _tfDessinerPortique(xs, yH, yB); return; }
   // Paroi de verre, puis collerette qui la scelle sur le cylindre
   c.strokeStyle = 'rgba(70,100,130,0.75)';
   c.lineWidth = 2;
@@ -290,6 +295,28 @@ function _tfDessinerEnceinte() {
   c.textAlign = 'center';
   c.textBaseline = 'middle';
   c.fillText(Math.round(tf.Pair / 1000) + ' kPa', xM, yM + R * 0.55);
+}
+
+// Montage à masses : pas d'enceinte. Un portique métallique porte le vérin
+// au-dessus du cylindre, à l'air libre (1 atm)
+function _tfDessinerPortique(xs, yH, yB) {
+  var c = tfCtx, p = _tfParoi;
+  var e = Math.max(4, p * 0.9);
+  c.fillStyle = '#5a6a78';
+  c.fillRect(xs[0], yH, e, yB - yH);
+  c.fillRect(xs[1] - e, yH, e, yB - yH);
+  c.fillRect(xs[0], yH, xs[1] - xs[0], e);
+  _tfHachures(xs[0], yH, xs[1] - xs[0], e, 'rgba(44,62,80,0.45)', 6);
+  var hc = Math.max(4, p * 0.8);
+  c.fillStyle = '#4a5a68';
+  c.fillRect(xs[0] - 2, yB - hc / 2, _tfX1 - p - xs[0] + 2, hc);
+  c.fillRect(_tfX2 + p, yB - hc / 2, xs[1] - _tfX2 - p + 2, hc);
+  var police = Math.max(10, Math.min(14, Math.round(_tfEch * 0.02)));
+  c.font = 'italic ' + police + 'px "Segoe UI", Arial, sans-serif';
+  c.fillStyle = '#4a6a88';
+  c.textAlign = 'left';
+  c.textBaseline = 'top';
+  c.fillText('air libre · 1 atm', xs[0] + e + 6, yH + e + 6);   // le coin droit est au compteur de temps
 }
 
 // Rectangle aux coins du haut arrondis, ouvert en bas (la cloche)
@@ -415,12 +442,16 @@ function _tfDessinerPiston() {
   c.fillStyle = '#6a7a88';
   c.fillRect(cx - lt / 2, yTigeH, lt, yTigeB - yTigeH);
 
-  // Plateau
-  var lp = w * 0.95;
+  // Plateau, qui porte la charge : seulement dans le montage à masses
   var zPl = zP + TF_EP_PISTON + TF_H_TIGE;
   var yPlB = _tfY(zPl), yPlH = _tfY(zPl + TF_EP_PLATEAU);
-  c.fillStyle = '#5a6a78';
-  c.fillRect(cx - lp / 2, yPlH, lp, yPlB - yPlH);
+  if (tf.montage === 'masse') {
+    var lp = w * 0.95, ep = 2 * (yPlB - yPlH);
+    yPlH = yPlB - ep;
+    c.fillStyle = '#3a4a58';
+    _tfRectArrondi(cx - lp / 2, yPlH, lp, ep, 3);
+    c.fill();
+  }
 
   // Blocs : disque fendu enfilé sur la tige, masse écrite à droite de la tige
   var y = yPlH;

@@ -354,89 +354,95 @@
       <div class="panel-main-section" id="section-transformations" style="display:none">
 
         <!-- ── Contrôle du temps ──────────────────── -->
-        <!-- Pause et RAZ ; la vitesse, adaptée d'elle-même à chaque
-             transformation, est repliée sous son libellé -->
+        <!-- Pause et RAZ, puis la vitesse sur une ligne ; Auto : vitesse
+             adaptée à chaque transformation -->
         <div class="panel-section">
           <div class="section-title">Contrôle</div>
           <div class="btn-row">
             <button id="tf-btn-playpause" class="btn btn-pause" onclick="tfBasculerPause()">&#9646;&#9646; Pause</button>
             <button class="btn btn-raz" onclick="tfReinitialiser()">↺ RAZ</button>
           </div>
+          <div class="tf-vitesse-ligne">
+            <label class="tf-vit-lbl" for="tf-sl-vitesse">Vitesse</label>
+            <input type="range" id="tf-sl-vitesse" min="0" max="10" step="1" value="4"
+                   oninput="tfOnVitesse(this.value)">
+            <span class="tf-vit-val">×<span id="tf-lbl-vitesse">1</span></span>
+            <button class="tf-mini-btn tf-auto active" id="tf-btn-auto" onclick="tfBasculerAuto()"
+                    title="Vitesse adaptée à chaque transformation">Auto</button>
+          </div>
           <span class="input-hint" id="tf-vitesse-limite" style="display:none"></span>
-          <details class="tf-fins tf-det-vitesse">
-            <summary>Vitesse ×<span id="tf-lbl-vitesse">1</span></summary>
-            <!-- Du ralenti extrême (ondes dans le gaz, ~1 ms) à l'accéléré
-                 (attente des équilibres thermiques) -->
-            <div class="param-row param-row-speed">
-              <input type="range" id="tf-sl-vitesse" min="0" max="10" step="1" value="4"
-                     aria-label="Vitesse" oninput="tfOnVitesse(this.value)">
-              <div class="slider-ticks">
-                <span>ralenti</span>
-                <span>accéléré</span>
-              </div>
-            </div>
-            <label class="check-row check-row-petit">
-              <input type="checkbox" id="tf-ck-vitesse-auto" checked onchange="tfOnVitesseAuto(this.checked)">
-              Vitesse adaptée à la transformation
-            </label>
-          </details>
         </div>
 
         <div class="sep"></div>
 
         <!-- ── Transformation ─────────────────────── -->
-        <!-- Deux blocs : l'état du montage (piston, fond), puis l'action
-             (grandeur, valeur visée, manière ; pas à pas pour la pression) -->
+        <!-- Le montage d'abord (il réinitialise), puis l'état (piston, fond),
+             puis l'action : grandeur, valeur visée, manière -->
         <div class="panel-section">
           <div class="section-title">Transformation</div>
-
-          <div class="tf-sous-titre">Piston</div>
-          <div class="mode-tabs tf-mini-tabs">
-            <button class="mode-tab" id="tf-piston-tenu" onclick="tfOnPiston(true)">🔒 Tenu</button>
-            <button class="mode-tab" id="tf-piston-libre" onclick="tfOnPiston(false)">🔓 Libre</button>
-          </div>
-
-          <!-- Le fond est un état, pas une action : posé sur l'isolant, la
-               transformation est adiabatique ; sur une source, il conduit -->
-          <div class="tf-sous-titre">Fond posé sur</div>
-          <div class="tf-fonds">
-            <button class="tf-fond" id="tf-fond-isolant" onclick="tfOnFond('isolant')">Isolant</button>
-            <div class="tf-source">
-              <button class="tf-fond" id="tf-fond-chaude" onclick="tfOnFond('chaude')">Source chaude</button>
-              <span class="tf-champ tf-champ-court"><input id="tf-in-chaude" class="tf-saisie" inputmode="decimal"
-                     aria-label="Température de la source chaude" onchange="tfOnTSource('chaude', this.value)"
-                     onkeydown="if (event.key === 'Enter') this.blur()"><span class="tf-unite">K</span></span>
-              <button class="tf-mini-btn" id="tf-tgaz-chaude" onclick="tfOnSourceTgaz('chaude')"
-                      title="Mettre la source à la température du gaz">= T gaz</button>
-            </div>
-            <div class="tf-source">
-              <button class="tf-fond" id="tf-fond-froide" onclick="tfOnFond('froide')">Source froide</button>
-              <span class="tf-champ tf-champ-court"><input id="tf-in-froide" class="tf-saisie" inputmode="decimal"
-                     aria-label="Température de la source froide" onchange="tfOnTSource('froide', this.value)"
-                     onkeydown="if (event.key === 'Enter') this.blur()"><span class="tf-unite">K</span></span>
-              <button class="tf-mini-btn" id="tf-tgaz-froide" onclick="tfOnSourceTgaz('froide')"
-                      title="Mettre la source à la température du gaz">= T gaz</button>
-            </div>
-          </div>
-          <span class="input-hint tf-hint-fond" id="tf-hint-fond"></span>
-
-          <div class="tf-sous-titre">Agir sur</div>
           <div class="mode-tabs">
+            <button class="mode-tab active" id="tf-montage-Pair" onclick="tfOnMontage('Pair')">Air de l’enceinte</button>
+            <button class="mode-tab" id="tf-montage-masse" onclick="tfOnMontage('masse')">Masses posées</button>
+          </div>
+
+          <div class="tf-ligne-etat">
+            <span class="tf-etat-lbl">Piston</span>
+            <div class="mode-tabs tf-mini-tabs">
+              <button class="mode-tab" id="tf-piston-tenu" onclick="tfOnPiston(true)">Tenu</button>
+              <button class="mode-tab" id="tf-piston-libre" onclick="tfOnPiston(false)">Libre</button>
+            </div>
+          </div>
+          <!-- Fond : un clic sur un onglet pose le cylindre ; la flèche ▾
+               d'une source déroule le réglage de sa température -->
+          <div class="tf-ligne-etat tf-ligne-fond">
+            <span class="tf-etat-lbl">Fond</span>
+            <div class="mode-tabs tf-mini-tabs tf-fonds">
+              <button class="mode-tab" id="tf-fond-isolant" onclick="tfOnFond('isolant')"
+                      title="Aucun échange de chaleur">Isolant</button>
+              <button class="mode-tab tf-fond-src" id="tf-fond-1" onclick="tfOnFond('1')">Source 1
+                <span class="tf-t-source" id="tf-t-1"></span></button>
+              <button class="mode-tab tf-fleche" id="tf-fleche-1" onclick="tfBasculerSource('1', event)"
+                      aria-label="Température de la source 1" title="Régler la température de la source 1">▾</button>
+              <button class="mode-tab tf-fond-src" id="tf-fond-2" onclick="tfOnFond('2')">Source 2
+                <span class="tf-t-source" id="tf-t-2"></span></button>
+              <button class="mode-tab tf-fleche" id="tf-fleche-2" onclick="tfBasculerSource('2', event)"
+                      aria-label="Température de la source 2" title="Régler la température de la source 2">▾</button>
+            </div>
+            <!-- Menu déroulé sous les onglets : − champ + et « = T gaz » ;
+                 un clic ailleurs ou Échap le referme -->
+            <div class="tf-pop-source" id="tf-pop-source" style="display:none">
+              <div class="tf-pop-titre" id="tf-pop-nom">Source 1</div>
+              <div class="tf-visee-ligne">
+                <button class="tf-pm" id="tf-pop-moins" onclick="tfOnTSourcePM(-1)" aria-label="Diminuer">−</button>
+                <span class="tf-champ"><input id="tf-in-source" class="tf-saisie" inputmode="decimal"
+                       aria-label="Température de la source" onchange="tfOnTSourceSaisie(this.value)"
+                       onkeydown="if (event.key === 'Enter') this.blur(); else if (event.key === 'Escape') tfFermerSource()"><span class="tf-unite">K</span></span>
+                <button class="tf-pm" id="tf-pop-plus" onclick="tfOnTSourcePM(1)" aria-label="Augmenter">+</button>
+                <button class="tf-mini-btn" id="tf-pop-tgaz" onclick="tfOnSourceTgaz()"
+                        title="Mettre la source à la température du gaz">= T gaz</button>
+              </div>
+              <span class="input-hint" id="tf-pop-note"></span>
+            </div>
+          </div>
+
+          <div class="mode-tabs tf-agir">
             <button class="mode-tab active" id="tf-tab-volume" onclick="tfOnAction('volume')">Volume</button>
             <button class="mode-tab" id="tf-tab-pression" onclick="tfOnAction('pression')">Pression</button>
             <button class="mode-tab" id="tf-tab-temperature" onclick="tfOnAction('temperature')">Température</button>
           </div>
 
-          <!-- Valeur visée : un champ (valeur actuelle tant qu'on n'y touche
-               pas), − et +, et les valeurs des états du journal -->
+          <!-- Valeur visée : − champ +, menu des états. En pas à pas, − et +
+               agissent à chaque clic et le champ montre la valeur actuelle -->
           <div class="tf-visee">
             <label class="tf-visee-lbl" for="tf-in-vise" id="tf-lbl-vise">Hauteur visée</label>
             <div class="tf-visee-ligne">
-              <button class="tf-pm" onclick="tfOnPlusMoins(-1)" aria-label="Diminuer">−</button>
+              <button class="tf-pm" id="tf-pm-moins" onpointerdown="tfPmDebut(-1, event)"
+                      onclick="tfPmClavier(-1, event)" aria-label="Diminuer">−</button>
               <span class="tf-champ"><input id="tf-in-vise" class="tf-saisie" inputmode="decimal"
                      oninput="tfOnSaisieVise(this.value, false)" onchange="tfOnSaisieVise(this.value, true)"
                      onkeydown="if (event.key === 'Enter') this.blur()"><span class="tf-unite" id="tf-unite-vise">cm</span></span>
-              <button class="tf-pm" onclick="tfOnPlusMoins(1)" aria-label="Augmenter">+</button>
+              <button class="tf-pm" id="tf-pm-plus" onpointerdown="tfPmDebut(1, event)"
+                      onclick="tfPmClavier(1, event)" aria-label="Augmenter">+</button>
               <select class="tf-etats" id="tf-sel-etat" onchange="tfOnCopierEtat(this.value)"
                       title="Reprendre la valeur d’un état du journal"></select>
             </div>
@@ -444,8 +450,8 @@
             <div class="tf-prevu" id="tf-prevu"></div>
           </div>
 
-          <!-- Trois manières (PLAN §10.5) : la page choisit la durée ; un clic
-               lance l'action -->
+          <!-- Manières : trois lancements (la page choisit la durée), et le pas
+               à pas, un mode où − et + agissent directement -->
           <div class="tf-manieres">
             <button id="tf-btn-brutal" class="btn btn-primary tf-maniere" onclick="tfLancerManiere('brutal')">
               Brutalement<span class="tf-maniere-duree" id="tf-duree-brutal"></span></button>
@@ -453,17 +459,8 @@
               Quasi statiquement<span class="tf-maniere-duree" id="tf-duree-qs"></span></button>
             <button id="tf-btn-rev" class="btn btn-primary tf-maniere" onclick="tfLancerManiere('rev')">
               Réversiblement<span class="tf-maniere-duree" id="tf-duree-rev"></span></button>
-          </div>
-          <span class="input-hint tf-hint-manieres" id="tf-hint-manieres"></span>
-
-          <!-- Pas à pas (pression) : chaque clic agit aussitôt, un grain de
-               sable ou un kPa ; maintenir le bouton répète -->
-          <div class="tf-pap" id="tf-pap">
-            <span class="tf-pap-lbl">Pas à pas</span>
-            <button class="btn btn-toggle-one tf-pap-btn" id="tf-pap-moins"
-                    onpointerdown="tfPapDebut(-1, event)" onclick="tfPapClavier(-1, event)"></button>
-            <button class="btn btn-toggle-one tf-pap-btn" id="tf-pap-plus"
-                    onpointerdown="tfPapDebut(1, event)" onclick="tfPapClavier(1, event)"></button>
+            <button id="tf-btn-pap" class="btn btn-toggle-one tf-maniere" onclick="tfBasculerPap()">
+              Pas à pas<span class="tf-maniere-duree" id="tf-pas-pap"></span></button>
           </div>
 
           <div class="tf-btn-ligne tf-ligne-arret">
@@ -569,17 +566,10 @@
 
         <div class="sep"></div>
 
-        <!-- ── Montage ────────────────────────────── -->
-        <!-- Moyen d'agir sur la pression, γ et état initial : en changer
-             réinitialise l'expérience -->
+        <!-- ── Gaz ────────────────────────────────── -->
+        <!-- γ et état initial : en changer réinitialise l'expérience -->
         <div class="panel-section">
-          <div class="section-title" data-repliable>Montage et gaz</div>
-          <div class="tf-sous-titre">Pression par</div>
-          <div class="mode-tabs tf-mini-tabs">
-            <button class="mode-tab active" id="tf-montage-Pair" onclick="tfOnMontage('Pair')">Air de l’enceinte</button>
-            <button class="mode-tab" id="tf-montage-masse" onclick="tfOnMontage('masse')">Masses posées</button>
-          </div>
-          <div class="tf-sous-titre">Gaz</div>
+          <div class="section-title" data-repliable>Gaz</div>
           <div class="mode-tabs tf-mini-tabs">
             <button class="mode-tab" id="tf-gaz-mono" onclick="tfOnGamma(5 / 3)">Monoatomique</button>
             <button class="mode-tab active" id="tf-gaz-di" onclick="tfOnGamma(1.4)">Diatomique</button>
@@ -606,7 +596,7 @@
             <input type="range" id="tf-sl-V0" min="10" max="45" step="1" value="30"
                    oninput="tfOnEtatInitial('V0', this.value)">
           </div>
-          <span class="input-hint">Changer le montage, le gaz ou l’état initial réinitialise l’expérience. Le gaz est à la pression atmosphérique au départ.</span>
+          <span class="input-hint">Changer le gaz ou l’état initial réinitialise l’expérience. Le gaz est à la pression atmosphérique au départ.</span>
         </div>
 
       </div><!-- fin #section-transformations -->
@@ -622,15 +612,15 @@
       </div>
       <div class="panel-hint-body">
         Les transformations s'enchaînent : chacune part de l'état laissé par la précédente, ce qui permet de parcourir un chemin, ou un cycle, dans le diagramme de Clapeyron.
-        La carte <strong>Transformation</strong> a deux parties. D'abord l'état du montage : <strong>Piston</strong> tenu (par le vérin) ou libre, et <strong>Fond posé sur</strong> l'isolant (aucun échange de chaleur) ou sur l'une des deux sources. La température de chaque source se tape dans son champ (250 à 600 K), sauf celle de la source sous le cylindre ; <strong>= T gaz</strong> lui donne la température actuelle du gaz, pour l'y poser sans saut de température (isotherme d'un cycle de Carnot, par exemple). Changer de support compte comme une étape s'il change l'état du gaz.
-        Ensuite l'action : <strong>Agir sur</strong> Volume, Pression ou Température, la valeur visée, puis la manière, <strong>Brutalement</strong>, <strong>Quasi statiquement</strong> ou <strong>Réversiblement</strong> (la page choisit la durée, écrite sur le bouton). Le champ montre la valeur actuelle tant qu'on n'y touche pas : on y tape une valeur (Entrée pour valider), ou on la change avec <strong>−</strong> et <strong>+</strong> (1 cm, 5 kg, 10 kPa, 10 K) ; le menu <strong>État</strong> reprend la valeur d'un état du journal (température : celle du gaz dans cet état). Sous le champ, l'<strong>arrivée prévue</strong> (volume, pression, température) est aussi marquée d'un cercle pointillé orange sur les diagrammes : on ajuste la valeur visée jusqu'à l'état voulu avant de lancer.
-        <strong>Volume</strong> : le vérin tient le piston et le mène à la hauteur visée (repère orange sur le cylindre).
-        <strong>Pression</strong> : par l'air de l'enceinte (P_air, lue sur le manomètre, jusqu'au vide) ou par les masses posées, selon le montage choisi dans <strong>Montage et gaz</strong> ; agir libère le piston. <strong>Pas à pas</strong> agit à chaque clic, sans choisir de manière : un kPa de P_air, ou un grain de sable ; maintenir le bouton répète, et les clics qui se suivent forment une seule étape du journal.
-        <strong>Température</strong> de la source sous le cylindre : le piston garde son état (libre : pression constante ; tenu : volume constant) ; sans effet sur l'isolant.
-        <strong>Interrompre</strong> arrête l'action en cours ; <strong>↶ Annuler l'étape</strong> ramène à l'état de départ de la dernière étape.
-        <strong>Brutalement</strong> : la valeur visée est appliquée d'un coup (vérin très rapide, bloc posé, échelon) ; à volume imposé ou par l'air de l'enceinte, la pression du gaz n'est plus définie pendant un moment. <strong>Quasi statiquement</strong> : assez lentement pour que le gaz reste uniforme. <strong>Réversiblement</strong> : assez lentement, en plus, pour que le gaz reste à la température de la source. Sur l'isolant, ces deux dernières manières se confondent : la carte le signale. Pour la masse, la manière lente verse du sable ; d'un coup, c'est un bloc. Les <strong>Réglages fins</strong> (repliés) laissent choisir la durée, la hauteur des marches d'un escalier et la taille du pas à pas (grain de sable, pas de P_air).
+        En tête de la carte <strong>Transformation</strong>, le montage : la pression passe par l'<strong>air de l'enceinte</strong> (cloche et manomètre, P_air jusqu'au vide) ou par des <strong>masses posées</strong> sur le plateau, à l'air libre. En changer recommence l'expérience.
+        <strong>Piston</strong> : tenu par le vérin, ou libre. <strong>Fond</strong> : posé sur l'isolant (aucun échange de chaleur), sur la <strong>source 1</strong> ou sur la <strong>source 2</strong>. La flèche <strong>▾</strong> à droite d'une source déroule le réglage de sa température (taper la valeur, ou − et + par 10 K, de 250 à 600 K) ; <strong>= T gaz</strong> lui donne la température actuelle du gaz, pour y poser le cylindre sans saut de température (isotherme d'un cycle de Carnot, par exemple). Un clic ailleurs ou Échap referme le menu. La source sous le cylindre se change par Agir sur Température.
+        <strong>Agir sur</strong> Volume, Pression ou Température : la valeur visée se tape dans le champ (Entrée pour valider) ou se règle avec <strong>−</strong> et <strong>+</strong> (maintenir pour répéter) ; le menu <strong>État</strong> reprend la valeur d'un état du journal (température : celle du gaz). Tant qu'on n'y touche pas, le champ montre la valeur actuelle. Dessous, la flèche <strong>→</strong> donne l'état d'arrivée prévu (volume, pression, température), aussi marqué d'un cercle pointillé orange sur les diagrammes.
+        Puis la manière : <strong>Brutalement</strong>, <strong>Quasi statiquement</strong> ou <strong>Réversiblement</strong> (la page choisit la durée, écrite sur le bouton ; « = quasi statiquement » quand les deux manières lentes reviennent au même).
+        <strong>Pas à pas</strong> est un mode : tant que le bouton est enfoncé, <strong>−</strong> et <strong>+</strong> agissent à chaque clic (un grain de sable, 1 kPa d'air, 1 cm de vérin, 1 K de la source) et le champ montre la valeur actuelle ; maintenir répète, et les clics qui se suivent forment une seule étape du journal. Recliquer sur Pas à pas en sort.
+        <strong>Volume</strong> : le vérin tient le piston et le mène à la hauteur visée (repère orange sur le cylindre). <strong>Pression</strong> : agir libère le piston. <strong>Température</strong> de la source sous le cylindre : le piston garde son état (libre : pression constante ; tenu : volume constant).
+        <strong>Interrompre</strong> arrête l'action en cours ; <strong>↶ Annuler l'étape</strong> ramène à l'état de départ de la dernière étape. Les <strong>Réglages fins</strong> (repliés) laissent choisir la durée, la hauteur des marches d'un escalier et la taille d'un pas.
         En haut à droite de la scène, <strong>Δt</strong> donne le temps écoulé depuis le début de l'étape, le même que sur les graphes au cours du temps (il s'arrête et grise avec eux quand le chrono est figé à l'équilibre) ; dessous, la vitesse d'écoulement du temps (×1/100 : ralenti cent fois ; ×500 : accéléré cinq cents fois).
-        La <strong>Vitesse</strong> est repliée sous Pause et RAZ (cliquer sur « Vitesse » pour l'ouvrir). Avec <strong>Vitesse adaptée</strong> cochée, chaque action choisit la vitesse qui la fait durer quelques secondes à l'écran, puis le temps accélère pour la suite du retour à l'équilibre (la mise en équilibre thermique est souvent bien plus lente que le mouvement du piston). Ces changements sont progressifs : ▲ s'affiche devant la vitesse quand le temps accélère, ▼ quand il ralentit. S'il faut ralentir pour voir une action, le ralentissement se fait d'abord, l'action part ensuite ; Interrompre l'annule.
+        Avec <strong>Auto</strong> enfoncé, à droite du curseur Vitesse, chaque action choisit la vitesse qui la fait durer quelques secondes à l'écran, puis le temps accélère pour la suite du retour à l'équilibre (la mise en équilibre thermique est souvent bien plus lente que le mouvement du piston). Ces changements sont progressifs : ▲ s'affiche devant la vitesse quand le temps accélère, ▼ quand il ralentit. S'il faut ralentir pour voir une action, le ralentissement se fait d'abord, l'action part ensuite ; Interrompre l'annule.
         Le journal des <strong>Étapes</strong> note chaque transformation, de son état de départ à son état d'arrivée (A, B, C…, le premier équilibre atteint une fois l'action finie). Sur le diagramme de Clapeyron, chaque étape a sa couleur, une flèche donne le sens de parcours et l'état actuel est cerclé d'orange. Cliquer sur une étape la met en évidence, et fait passer les courbes de référence par son état d'arrivée (cliquer sur la ligne A : par l'état initial) ; ↺ revient à son état d'arrivée (les étapes suivantes sont effacées), avec le cylindre sur le support qu'il avait alors. Une action sans effet n'est pas notée.
         Avec <strong>Chrono figé à l'équilibre</strong> coché (menu <strong>Options</strong> des graphes), les graphes au cours du temps s'arrêtent tant que le gaz reste à l'équilibre et repartent à l'action suivante ; chaque attente retirée est marquée d'un trait pointillé vertical. Le temps du tableau s'arrête avec eux (attentes retirées), et Δt, dans la scène, compte depuis le début de l'étape.
         Le curseur <strong>Vitesse</strong> descend jusqu'à ×1/5000 pour suivre un front dans le gaz ; l'agitation des molécules garde la même vitesse à tous les crans, pour rester lisible.
@@ -639,7 +629,7 @@
         En haut de la colonne de gauche, les boutons <strong>P = f(V)</strong>, <strong>T = f(S)</strong>, <strong>T, P, V = f(t)</strong> et <strong>Tableau</strong> affichent ou masquent chacun leur encart (de aucun à tous les quatre) ; sans aucun encart, le cylindre prend toute la place. Le diagramme entropique porte la température en fonction de la variation d'entropie du gaz depuis l'état initial (ΔS, en mJ/K) : l'entropie du gaz est toujours connue, mais son point n'est tracé que si sa température est uniforme ; sinon, les températures des tranches s'étalent sur une verticale. Un état d'équilibre est un point dans les deux diagrammes. Le menu <strong>Options ▾</strong>, à droite de ces boutons, règle ce que montrent les graphes : la convention de tracé des diagrammes (un point dès que le gaz est uniforme, ou seulement quand il est en équilibre avec l'extérieur : pression égale à celle qu'exerce le piston, température égale à celle de la source si le fond conduit ; seuls les chemins réversibles sont alors tracés), pression de chaque tranche, pression sur le piston, courbes isotherme, adiabatique réversible, isochore et isobare (elles passent par l'état de départ de la transformation en cours, ou par l'état de la ligne sélectionnée dans le journal, dans les deux diagrammes), chrono figé.
         Les deux diagrammes partent de zéro (l'aire sous P(V) est le travail, l'aire sous T(S) la chaleur) et gardent un champ fixe ; quand l'état du gaz approche du bord, le champ s'agrandit en le suivant, pendant la transformation, et ne se resserre plus (sauf à Réinitialiser ou au retour à un état). Une tranche hors du champ est signalée par une marque au bord. Les graphes au cours du temps montrent l'étape en cours, depuis son départ (temps compté à partir de la lettre de départ) ; leurs axes s'agrandissent par crans au fil de l'étape, quel que soit le curseur Vitesse.
         La section <strong>Bilan</strong> donne, pour la dernière étape et depuis l'état initial A, le travail W et la chaleur Q reçus par le gaz, ΔU (égale à W + Q), la variation d'entropie du gaz, l'entropie échangée avec la source (somme des δQ / T_source) et l'entropie créée, nulle pour une transformation réversible.
-        La section <strong>Montage et gaz</strong> choisit comment agir sur la pression (air de l'enceinte ou masses posées) et règle γ (monoatomique, diatomique, polyatomique, ou valeur libre), la température et la hauteur initiales du gaz ; les changer réinitialise l'expérience. RAZ remet le cylindre sur l'isolant si la source qui le porte n'est pas à la température initiale.
+        La section <strong>Gaz</strong> règle γ (monoatomique, diatomique, polyatomique, ou valeur libre), la température et la hauteur initiales du gaz ; les changer réinitialise l'expérience. RAZ remet le cylindre sur l'isolant si la source qui le porte n'est pas à la température initiale.
         Sur chaque graphe, glisser déplace la vue et la molette zoome autour du curseur (↶ : vue précédente ; Ajuster : cadrer au plus près du chemin ; Champ : revenir au champ fixe ; Étape : revenir à l'étape en cours ; Tout voir : tout l'historique) ; + affiche un réticule. Les séparations entre les graphes et le cylindre se déplacent à la souris.
         Couleur du gaz et des molécules : bleu plus froid que 20 °C, rouge plus chaud.
         Les <strong>molécules</strong> restent dans leur bande de gaz (pointillés) et se serrent là où le gaz est comprimé : un front se voit comme une zone de molécules serrées qui traverse le cylindre. Chaque molécule va d'autant plus vite que le gaz est chaud là où elle se trouve. La pression se lit sur les sondes et le profil : P et T sont calculées par tranches, pas à partir des chocs des molécules.

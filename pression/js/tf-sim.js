@@ -166,6 +166,9 @@ var tf = {
   // change d'un coup (échelon) ou par un escalier de marches égales jusqu'à
   // la cible (§10.3).
   Pair   : TF_P_ATM,     // Pa
+  // Montage : pression par l'air de l'enceinte ('Pair') ou par les masses
+  // posées, à l'air libre ('masse') ; en changer réinitialise (tf-ui.js)
+  montage: 'Pair',
   Wair   : 0,            // J, travail reçu par le système de la part de l'enceinte
   rampes : {
     Pair  : { actif: false, cible: 0, pas: 0, periode: 1, tProchain: 0, continu: false, lente: false },
@@ -181,13 +184,13 @@ var tf = {
 
   // Thermique : le fond est posé sur un isolant ou sur l'une des deux
   // sources (fond diatherme). Text est la température de la source en
-  // contact ; Tchaude et Tfroide gardent celles des deux sources (celle de
+  // contact ; T1 et T2 gardent celles des deux sources (celle de
   // la source en contact suit Text quand on la quitte).
   G      : 0,            // W·K⁻¹, conductance du fond
   Text   : TF_T0,        // K, température de la source sous le fond
-  fond   : 'isolant',    // 'isolant', 'chaude' ou 'froide'
-  Tchaude: 400,          // K
-  Tfroide: TF_T0,        // K
+  fond   : 'isolant',    // 'isolant', '1' ou '2' (source 1, source 2)
+  T1     : 400,          // K
+  T2     : TF_T0,        // K
 
   // Temps et bilans
   t      : 0,            // s simulées
@@ -427,8 +430,8 @@ function tfSetIsolation(G) {
   tf.needsRedraw = true;
 }
 
-// Pose le fond sur l'isolant ('isolant') ou sur une source ('chaude',
-// 'froide') : fond calorifugé, ou diatherme à la température de la source.
+// Pose le fond sur l'isolant ('isolant') ou sur une source ('1', '2') :
+// fond calorifugé, ou diatherme à la température de la source.
 // La source quittée garde la température atteinte (rampe comprise) ; une
 // rampe de la source s'arrête.
 function tfSetFond(f) {
@@ -439,7 +442,7 @@ function tfSetFond(f) {
   tfSetIsolation(f === 'isolant' ? 0 : TF_ISOLATIONS[TF_ISOLATIONS.length - 1]);
 }
 
-// Température d'une source ('chaude' ou 'froide')
+// Température d'une source ('1' ou '2')
 function tfTSource(f) { return f === tf.fond ? tf.Text : tf['T' + f]; }
 
 // Masse posée portée à `cible` (kg). Ajoutée d'un coup, la différence est un
