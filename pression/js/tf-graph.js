@@ -87,6 +87,7 @@ var tfGraph = {
   tGel      : 0,       // temps simulé au début du gel
   blocage   : 0,       // échantillons avant qu'un gel soit permis
   eqSuite   : 0,       // échantillons d'équilibre consécutifs
+  repos     : true,    // aucune action depuis Réinitialiser ou un retour à un état
   coupure   : false,   // le prochain échantillon suit une attente retirée
   // Axe des temps de l'étape en cours : départ t0 (temps des graphes),
   // durée L, plages des trois cases ; L et les plages ne font que
@@ -151,8 +152,12 @@ function _tfgEchantillon(avantMarche) {
   tfEtapesSuivre(m);
   if (!m.equilibre) g.blocage = g.eqSuite = 0;
   else { g.eqSuite++; if (g.blocage > 0) g.blocage--; }
+  // Au repos (aucune action depuis Réinitialiser ou un retour à un état),
+  // le gaz est à l'équilibre d'emblée : le chrono se fige dès le premier
+  // échantillon, sans attendre les TF_G_EQ_GEL échantillons qui écartent
+  // l'extrémité d'une oscillation du piston
   var figer = tfGraphAff.gel && m.equilibre && !tfEnCours() && g.blocage === 0
-           && g.eqSuite >= TF_G_EQ_GEL && g.ech.length > 0;
+           && (g.repos || (g.eqSuite >= TF_G_EQ_GEL && g.ech.length > 0));
   if (g.gele) {
     if (figer) return;
     g.decal += tf.t - g.tGel;
@@ -203,6 +208,7 @@ function tfGraphDegeler() {
     g.coupure = true;
   }
   g.blocage = TF_G_BLOCAGE_GEL;
+  g.repos = false;
   _tfgEchantillon();
   g.eqSuite = 0;
 }
@@ -254,6 +260,7 @@ function tfGraphRevenir(ts, n) {
   g.gele = false;
   g.decal = tf.t - e[e.length - 1].t;
   g.blocage = 0;
+  g.repos = true;
   g.coupure = false;
   g.ref = e[e.length - 1];
   g.env = null;
@@ -291,6 +298,7 @@ function tfGraphEffacer() {
   g.ech = [];
   g.ref = g.env = null;
   g.decal = g.tGel = g.blocage = g.eqSuite = 0;
+  g.repos = true;
   g.gele = g.coupure = false;
   _tfgAxeT(0, 1);
   g.champ = { pv: null, ts: null };
