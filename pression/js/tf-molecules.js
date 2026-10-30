@@ -14,9 +14,18 @@
 //    - ses molécules volent en ligne droite et rebondissent sur les parois,
 //      le fond, le piston et les LIMITES DE LEUR BANDE, qu'elles ne
 //      franchissent jamais : le haut et le bas ne se mélangent pas ;
-//    - les limites de bande suivent le gaz : une bande comprimée s'aplatit et
-//      ses molécules se serrent (densité juste par construction), un front
-//      de compression se voit comme des bandes écrasées l'une après l'autre ;
+//    - leur position verticale est une coordonnée de MASSE dans la bande
+//      (zr), placée dans les tranches là où elles se trouvent : une tranche
+//      comprimée serre ses molécules, densité juste par construction à la
+//      résolution des tranches ; un front de compression se voit comme une
+//      zone de molécules serrées qui traverse le gaz, et les molécules
+//      suivent le mouvement d'ensemble de leur tranche. (Avant : position
+//      proportionnelle à la hauteur de la bande, densité uniforme dans la
+//      bande, où le front, épais de ~3 tranches sur 8, ne se voyait pas.)
+//      zr avance à vitesse uniforme en masse, sans quoi les molécules
+//      s'accumuleraient dans les tranches épaisses : la vitesse verticale
+//      vue est donc multipliée par ρ̄/ρ de la tranche (écart de quelques %
+//      dans une onde ordinaire) ;
 //    - vitesse et couleur selon T de la TRANCHE où se trouve la molécule
 //      (interpolée entre centres de tranches) et non de la moyenne de sa
 //      bande : un front, épais de quelques tranches, tombe à l'intérieur
@@ -71,8 +80,8 @@ var TF_MOL_RAYON       = 0.0055;                // fraction de la largeur dessin
 var TF_CHOC_VIE = 0.15;
 var TF_CHOC_MAX = 400;
 
-var tfMol = [];   // { b, zr, x, ux, uz } : bande, position relative dans la
-                  // bande (0 → 1), abscisse (fraction de la largeur),
+var tfMol = [];   // { b, zr, x, ux, uz } : bande, coordonnée de masse dans
+                  // la bande (0 → 1), abscisse (fraction de la largeur),
                   // direction unitaire du vol
 var tfChocs = []; // { x, z, cote, age } : point d'impact (fraction de la
                   // largeur, m), paroi touchée ('g', 'd', 'fond', 'piston')
@@ -84,25 +93,41 @@ function _tfMolTr() { return TF_N / tfMolNb; }
 function tfBandeBas(b)  { return tf.z[b * _tfMolTr()]; }
 function tfBandeHaut(b) { return tf.z[(b + 1) * _tfMolTr()]; }
 
-// Altitude (m) d'une molécule
-function tfMolZ(m) {
-  var z0 = tfBandeBas(m.b);
-  return z0 + m.zr * (tfBandeHaut(m.b) - z0);
+// Tranche d'une molécule et sa position dans la tranche (0 → 1), en masse :
+// zr est une coordonnée de masse dans la bande, dont les tranches ont la
+// même masse
+function _tfMolTranche(m) {
+  var nTr = _tfMolTr(), s = m.zr * nTr;
+  var i = Math.min(nTr - 1, Math.max(0, Math.floor(s)));
+  return { j: m.b * nTr + i, f: s - i };
 }
 
-// Température du gaz à l'altitude d'une molécule (K) : tranche qui la
-// contient (cherchée dans sa bande), interpolée linéairement entre les
-// centres de cette tranche et de sa voisine
+// Altitude (m) d'une molécule : dans sa tranche, là où celle-ci se trouve.
+// Une tranche comprimée serre ses molécules, à la résolution des tranches
+// et non plus des bandes : un front, épais de ~3 tranches, se voit.
+function tfMolZ(m) {
+  var t = _tfMolTranche(m), zz = tf.z;
+  return zz[t.j] + t.f * (zz[t.j + 1] - zz[t.j]);
+}
+
+// Coordonnée de masse (zr) de l'altitude z dans la bande b
+function _tfMolZr(b, z) {
+  var nTr = _tfMolTr(), j0 = b * nTr, zz = tf.z, i = 0;
+  if (z <= zz[j0]) return 0;
+  if (z >= zz[j0 + nTr]) return 1;
+  while (i < nTr - 1 && zz[j0 + i + 1] < z) i++;
+  var dz = zz[j0 + i + 1] - zz[j0 + i];
+  return (i + (dz > 0 ? (z - zz[j0 + i]) / dz : 0.5)) / nTr;
+}
+
+// Température du gaz à l'altitude d'une molécule (K) : celle de sa
+// tranche, interpolée linéairement entre les centres de cette tranche et
+// de sa voisine
 function tfMolT(m) {
-  var z = tfMolZ(m), zz = tf.z, nTr = _tfMolTr();
-  var j = m.b * nTr, jFin = j + nTr - 1;
-  while (j < jFin && zz[j + 1] < z) j++;
-  var c = 0.5 * (zz[j] + zz[j + 1]);
-  var k = z > c ? j + 1 : j - 1;
+  var t = _tfMolTranche(m), j = t.j;
+  var k = t.f > 0.5 ? j + 1 : j - 1;
   if (k < 0 || k >= TF_N) return tfTTranche(j);
-  var ck = 0.5 * (zz[k] + zz[k + 1]);
-  var a = (z - c) / (ck - c);
-  return tfTTranche(j) + a * (tfTTranche(k) - tfTTranche(j));
+  return tfTTranche(j) + Math.abs(t.f - 0.5) * (tfTTranche(k) - tfTTranche(j));
 }
 
 // Même nombre de molécules par bande, positions et directions au hasard
@@ -144,9 +169,8 @@ function _tfMolRegrouper(nb) {
   var parBande = TF_MOL_TOTAL / nb;
   for (var r = 0; r < ordre.length; r++) {
     var m = tfMol[ordre[r]], b = Math.floor(r / parBande);
-    var z0 = tfBandeBas(b), h = tfBandeHaut(b) - z0;
     m.b = b;
-    m.zr = h > 0 ? Math.min(1, Math.max(0, (z[ordre[r]] - z0) / h)) : 0.5;
+    m.zr = _tfMolZr(b, z[ordre[r]]);
   }
 }
 
