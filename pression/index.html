@@ -105,30 +105,47 @@
 
     <div id="tf-graph-col">
 
-      <div class="tf-graphe" id="tf-pv-zone">
+      <!-- Encarts affichés : boutons activables, de 0 à 4 (tf-graph.js) -->
+      <div class="tf-graphe-btns tf-choix-vues" id="tf-choix-vues">
+        <button id="tf-vue-pv" onclick="tfGraphBasculerVue('pv')" title="Diagramme de Clapeyron">P = f(V)</button>
+        <button id="tf-vue-ts" onclick="tfGraphBasculerVue('ts')" title="Diagramme entropique">T = f(S)</button>
+        <button id="tf-vue-temps" onclick="tfGraphBasculerVue('temps')" title="Température, pression et volume au cours du temps">T, P, V = f(t)</button>
+        <button id="tf-vue-tableau" onclick="tfGraphBasculerVue('tableau')" title="Tableau des valeurs">Tableau</button>
+      </div>
+
+      <div class="tf-graphe" id="tf-pv-zone" data-vue="pv">
         <div class="tf-graphe-barre">
-          <!-- Diagramme d'état : Clapeyron, entropique, ou les deux -->
-          <div class="tf-graphe-btns tf-diag-choix">
-            <button id="tf-diag-pv" class="active" onclick="tfGraphMode('pv')"
-                    title="Diagramme de Clapeyron : pression en fonction du volume">P(V)</button>
-            <button id="tf-diag-ts" onclick="tfGraphMode('ts')"
-                    title="Diagramme entropique : température en fonction de l’entropie">T(S)</button>
-            <button id="tf-diag-deux" onclick="tfGraphMode('deux')" title="Les deux diagrammes">Les deux</button>
-          </div>
+          <span class="tf-graphe-titre">Diagramme de Clapeyron</span>
           <div class="tf-graphe-btns">
             <button onclick="tfGraphPrecedente('pv')" title="Vue précédente">↶</button>
-            <button onclick="tfGraphAutoPV()" title="Cadrage automatique">Auto</button>
+            <button onclick="tfGraphAuto('pv')" title="Cadrage automatique">Auto</button>
             <button class="tf-btn-reticule" onclick="tfGraphReticule()" title="Réticule">+</button>
           </div>
         </div>
         <div class="tf-graphe-zone">
-          <canvas id="tf-canvas-pv" aria-label="Diagrammes d’état : pression en fonction du volume, température en fonction de l’entropie"></canvas>
+          <canvas id="tf-canvas-pv" aria-label="Diagramme de Clapeyron : pression en fonction du volume"></canvas>
         </div>
       </div>
 
-      <div class="tf-split-h" id="tf-hsplit" title="Glisser pour partager la hauteur"></div>
+      <div class="tf-split-h" id="tf-hsplit-pv" title="Glisser pour partager la hauteur"></div>
 
-      <div class="tf-graphe" id="tf-temps-zone">
+      <div class="tf-graphe" id="tf-ts-zone" data-vue="ts">
+        <div class="tf-graphe-barre">
+          <span class="tf-graphe-titre">Diagramme entropique</span>
+          <div class="tf-graphe-btns">
+            <button onclick="tfGraphPrecedente('ts')" title="Vue précédente">↶</button>
+            <button onclick="tfGraphAuto('ts')" title="Cadrage automatique">Auto</button>
+            <button class="tf-btn-reticule" onclick="tfGraphReticule()" title="Réticule">+</button>
+          </div>
+        </div>
+        <div class="tf-graphe-zone">
+          <canvas id="tf-canvas-ts" aria-label="Diagramme entropique : température en fonction de l’entropie"></canvas>
+        </div>
+      </div>
+
+      <div class="tf-split-h" id="tf-hsplit-ts" title="Glisser pour partager la hauteur"></div>
+
+      <div class="tf-graphe" id="tf-temps-zone" data-vue="temps">
         <div class="tf-graphe-barre">
           <span class="tf-graphe-titre">Au cours du temps</span>
           <div class="tf-graphe-btns">
@@ -586,7 +603,7 @@
         Le curseur <strong>Vitesse</strong> descend jusqu'à ×1/5000 pour suivre un front dans le gaz ; à ce cran, les molécules s'agitent à leur vitesse réelle.
         Quand les tranches du gaz n'ont pas la même pression ou la même température, le tableau affiche <strong>?</strong> et l'écart entre tranches.
         Les <strong>graphes</strong> le montrent aussi : hors équilibre, T(t) et P(t) deviennent une bande hachurée (de la tranche la plus basse à la plus haute), et, quand la pression du gaz n'est pas uniforme, le diagramme de Clapeyron ne trace plus le gaz : un pointillé relie les points connus (une température seule non uniforme n'efface pas le point : V et P restent définis). Il y place aussi la <strong>pression de chaque tranche</strong>, au volume du gaz : hors équilibre, les points s'étalent sur une verticale (un volume, plusieurs pressions) et se rejoignent en un seul point à l'équilibre.
-        Au-dessus du diagramme, <strong>P(V)</strong>, <strong>T(S)</strong> ou <strong>Les deux</strong> choisit le diagramme affiché. Le diagramme entropique porte la température en fonction de la variation d'entropie du gaz depuis l'état initial (ΔS, en mJ/K) : l'entropie du gaz est toujours connue, mais son point n'est tracé que si sa température est uniforme ; sinon, les températures des tranches s'étalent sur une verticale. Un état d'équilibre est un point dans les deux diagrammes. Les courbes isotherme, adiabatique réversible, isochore et isobare (section Affichage) passent par l'état de départ de la transformation en cours, dans les deux diagrammes.
+        En haut de la colonne de gauche, les boutons <strong>P = f(V)</strong>, <strong>T = f(S)</strong>, <strong>T, P, V = f(t)</strong> et <strong>Tableau</strong> affichent ou masquent chacun leur encart (de aucun à tous les quatre) ; sans aucun encart, le cylindre prend toute la place. Le diagramme entropique porte la température en fonction de la variation d'entropie du gaz depuis l'état initial (ΔS, en mJ/K) : l'entropie du gaz est toujours connue, mais son point n'est tracé que si sa température est uniforme ; sinon, les températures des tranches s'étalent sur une verticale. Un état d'équilibre est un point dans les deux diagrammes. Les courbes isotherme, adiabatique réversible, isochore et isobare (section Affichage) passent par l'état de départ de la transformation en cours, dans les deux diagrammes.
         La section <strong>Bilan</strong> donne, pour la dernière étape et depuis l'état initial A, le travail W et la chaleur Q reçus par le gaz, ΔU (égale à W + Q), la variation d'entropie du gaz, l'entropie échangée avec la source (somme des δQ / T_source) et l'entropie créée, nulle pour une transformation réversible.
         La section <strong>Gaz</strong> règle γ (monoatomique, diatomique, polyatomique, ou valeur libre), la température et la hauteur initiales du gaz ; les changer réinitialise l'expérience.
         Glisser sur un graphe zoome (↶ : vue précédente ; Suivre ou Auto : cadrage automatique) ; + affiche un réticule. Les séparations entre les graphes et le cylindre se déplacent à la souris.

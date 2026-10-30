@@ -281,8 +281,28 @@ main {
   box-shadow: 0 1px 4px rgba(0,0,0,0.08);
   overflow: hidden;
 }
-#tf-pv-zone    { flex: 0 0 var(--tf-haut-pv, 46%); }
-#tf-temps-zone { flex: 1 1 0; }
+/* Encarts de graphe : hauteur partagée selon leurs poids (splitters) */
+#tf-pv-zone    { flex: var(--tf-poids-pv, 0.85) 1 0; }
+#tf-ts-zone    { flex: var(--tf-poids-ts, 0.85) 1 0; }
+#tf-temps-zone { flex: var(--tf-poids-temps, 1) 1 0; }
+
+/* Barre des encarts affichés, en tête de la colonne */
+/* Boutons accolés, comme des onglets, à leur largeur naturelle */
+.tf-graphe-btns.tf-choix-vues { gap: 0; align-self: flex-start; flex-wrap: wrap; margin-bottom: 8px; }
+.tf-graphe-btns.tf-choix-vues button { border-radius: 0; }
+.tf-graphe-btns.tf-choix-vues button + button { border-left: none; }
+.tf-graphe-btns.tf-choix-vues button:first-child { border-radius: 5px 0 0 5px; }
+.tf-graphe-btns.tf-choix-vues button:last-child { border-radius: 0 5px 5px 0; }
+/* Tableau seul : en haut de la colonne */
+#tf-graph-col.tf-sans-graphe { justify-content: flex-start; }
+/* Aucun encart : la colonne se réduit à la barre, boutons empilés */
+#tf-left-col.tf-sans-encart #tf-graph-col { flex: 0 0 auto; }
+#tf-left-col.tf-sans-encart .tf-choix-vues { flex-direction: column; align-self: stretch; }
+#tf-left-col.tf-sans-encart .tf-graphe-btns.tf-choix-vues button + button { border-left: 1px solid #b0a898; border-top: none; }
+#tf-left-col.tf-sans-encart .tf-graphe-btns.tf-choix-vues button:first-child { border-radius: 5px 5px 0 0; }
+#tf-left-col.tf-sans-encart .tf-graphe-btns.tf-choix-vues button:last-child { border-radius: 0 0 5px 5px; }
+#tf-left-col.tf-sans-encart #tf-vsplit { pointer-events: none; }
+#tf-left-col.tf-sans-encart #tf-vsplit::after { display: none; }
 
 .tf-graphe-barre {
   flex-shrink: 0;
@@ -321,12 +341,6 @@ main {
 .tf-graphe-btns button:hover { background: #d0ccc4; color: #2c3e50; }
 .tf-graphe-btns button.active { background: #2a6aaa; color: #fff; border-color: #1a5a9a; }
 .tf-graphe-btns button.active:hover { background: #1a5a9a; color: #fff; }
-/* Choix du diagramme d'état : boutons accolés, comme des onglets */
-.tf-diag-choix { gap: 0; min-width: 0; }
-.tf-diag-choix button { border-radius: 0; }
-.tf-diag-choix button + button { border-left: none; }
-.tf-diag-choix button:first-child { border-radius: 5px 0 0 5px; }
-.tf-diag-choix button:last-child { border-radius: 0 5px 5px 0; }
 
 /* Section Bilan : une ligne par grandeur, une colonne par intervalle */
 .tf-bilan {
@@ -1006,6 +1020,11 @@ html:not(.sections-pretes) .section-title[data-repliable]:not([data-repliable="o
   #tf-graph-col #tf-info {
     font-size: clamp(10px, min(2.2cqw, 1.5cqh), 13px);
   }
+  #tf-left-col.tf-sans-encart .tf-choix-vues { flex-direction: row; align-self: flex-start; }
+  #tf-left-col.tf-sans-encart .tf-graphe-btns.tf-choix-vues button + button { border-left: none; border-top: 1px solid #b0a898; }
+  #tf-left-col.tf-sans-encart .tf-graphe-btns.tf-choix-vues button:first-child { border-radius: 5px 0 0 5px; }
+  #tf-left-col.tf-sans-encart .tf-graphe-btns.tf-choix-vues button:last-child { border-radius: 0 5px 5px 0; }
+  #tf-graph-col.tf-sans-graphe { flex: 0 0 auto; }
 }
 
 /* ══════════════════════════════════════════════════

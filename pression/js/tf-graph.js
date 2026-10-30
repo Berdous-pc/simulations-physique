@@ -66,7 +66,9 @@ var tfGraph = {
   ech       : [],      // historique : un objet par échantillon
   ref       : null,    // état de départ de l'étape en cours (courbes de référence)
   env       : null,    // étendue des tranches depuis le départ, par diagramme (cadrage)
-  mode      : 'pv',    // diagramme d'état affiché : 'pv', 'ts' ou 'deux'
+  // Encarts affichés dans la colonne gauche (barre de boutons activables,
+  // de 0 à 4)
+  vues      : { pv: true, ts: false, temps: true, tableau: true },
   // Chrono des graphes : temps des graphes = temps simulé − decal (s), les
   // attentes à l'équilibre étant retirées quand l'option gel est cochée
   decal     : 0,
@@ -78,7 +80,7 @@ var tfGraph = {
   vueT      : null,    // null : fenêtre glissante ; sinon {t1, t2}
   pileT     : [],
   vue       : { pv: null, ts: null },   // null : cadrage automatique ; sinon {x1, x2, y1, y2}
-  pileD     : [],      // vues précédentes des diagrammes d'état : {d, vue}
+  pileD     : { pv: [], ts: [] },   // vues précédentes de chaque diagramme d'état
   geoT      : null,    // géométrie du dernier tracé (souris)
   geoD      : { pv: null, ts: null },
   reticule  : false,
@@ -217,7 +219,7 @@ function tfGraphRevenir(ts, n) {
   g.vueT = null;
   g.vue = { pv: null, ts: null };
   g.pileT = [];
-  g.pileD = [];
+  g.pileD = { pv: [], ts: [] };
   tf.tEchant = tf.t;
   g.sale = true;
 }
@@ -250,7 +252,7 @@ function tfGraphEffacer() {
   g.vueT = null;
   g.vue = { pv: null, ts: null };
   g.pileT = [];
-  g.pileD = [];
+  g.pileD = { pv: [], ts: [] };
   _tfgEchantillon();
 }
 
@@ -738,27 +740,19 @@ function _tfgCadrage(d) {
   return { x1: x1, x2: x2, y1: y1, y2: y2 };
 }
 
-// Cases des diagrammes affichés : un seul, ou les deux, côte à côte si la
-// zone est large, l'un sous l'autre sinon
-function _tfgCases(W, H) {
-  var m = tfGraph.mode;
-  if (m !== 'deux') return [{ d: m, x: 0, y: 0, w: W, h: H }];
-  if (W > 1.8 * H) return [{ d: 'pv', x: 0, y: 0, w: W / 2, h: H }, { d: 'ts', x: W / 2, y: 0, w: W / 2, h: H }];
-  return [{ d: 'pv', x: 0, y: 0, w: W, h: H / 2 }, { d: 'ts', x: 0, y: H / 2, w: W, h: H / 2 }];
-}
-
+// Chaque diagramme d'état dans son encart (rien si l'encart est masqué)
 function _tfgDessinerDiagrammes() {
-  var o = tfGraph.cv.pv;
-  _tfgTaille(o);
-  if (!o.w) return;
-  var c = o.ctx;
-  c.fillStyle = '#fdf8f0';
-  c.fillRect(0, 0, o.w, o.h);
-  tfGraph.geoD = { pv: null, ts: null };
   var mes = tfMesures();
   mes.S = tfEntropie();
-  var cases = _tfgCases(o.w, o.h);
-  for (var i = 0; i < cases.length; i++) _tfgDessinerDiag(o, cases[i], mes);
+  ['pv', 'ts'].forEach(function (d) {
+    var o = tfGraph.cv[d];
+    tfGraph.geoD[d] = null;
+    _tfgTaille(o);
+    if (!o.w) return;
+    o.ctx.fillStyle = '#fdf8f0';
+    o.ctx.fillRect(0, 0, o.w, o.h);
+    _tfgDessinerDiag(o, { d: d, x: 0, y: 0, w: o.w, h: o.h }, mes);
+  });
 }
 
 function _tfgDessinerDiag(o, cs, mes) {
@@ -985,12 +979,13 @@ function _tfgDessinerDiag(o, cs, mes) {
       _tfgEtiquette(c, 'chemin non défini', xa + (xb - xa) / 3, ya + (yb - ya) / 3, fs - 1, TF_G_MUET, 'center');
     }
   }
-  if (!defM) _tfgEtiquette(c, D.nd, x0 + 8, y0 + ph - fs, fs, TF_G_ND, 'left');
+  // Mention « non définie » dans le coin opposé à la légende
+  if (!defM) _tfgEtiquette(c, D.nd, x0 + 8, d === 'pv' ? y0 + ph - fs : y0 + fs, fs, TF_G_ND, 'left');
   _tfgLegende(c, d, x0 + pw - 6, d === 'pv' ? y0 + 6 : -(y0 + ph - 6), fs - 1, sans.length > 0);
 
   // Zoom en cours
   var gl = g.glisse;
-  if (gl && gl.cible === 'pv' && gl.d === d) {
+  if (gl && gl.cible === d) {
     c.fillStyle = 'rgba(42,106,170,0.12)';
     c.strokeStyle = '#2a6aaa';
     c.lineWidth = 1;
@@ -1001,7 +996,7 @@ function _tfgDessinerDiag(o, cs, mes) {
 
   // Réticule
   var so = g.souris;
-  if (g.reticule && so && so.cible === 'pv' && !gl
+  if (g.reticule && so && so.cible === d && !gl
       && so.x >= x0 && so.x <= x0 + pw && so.y >= y0 && so.y <= y0 + ph) {
     c.strokeStyle = '#2a6aaa';
     c.lineWidth = 1;
@@ -1104,7 +1099,7 @@ function _tfgCourbe(c, xDe, yDe, vue, cr, basVert) {
     var xv = xDe(cr.vert);
     c.moveTo(xv, yDe(vue.y1));
     c.lineTo(xv, yDe(vue.y2));
-    if (cr.vert >= vue.x1 && cr.vert <= vue.x2) dern = { x: xv - 4, y: basVert ? yDe(vue.y1) - 34 : yDe(vue.y2) + 14 };
+    if (cr.vert >= vue.x1 && cr.vert <= vue.x2) dern = { x: xv - 4, y: basVert ? yDe(vue.y1) - 34 : yDe(vue.y2) + 34 };
   } else if (cr.horiz !== undefined) {
     var yh = yDe(cr.horiz);
     c.moveTo(xDe(vue.x1), yh);
@@ -1203,12 +1198,8 @@ function tfGraphDessiner() {
 
 function tfGraphPrecedente(cible) {
   var g = tfGraph;
-  if (cible === 'pv') {
-    var p = g.pileD.pop();
-    if (p) g.vue[p.d] = p.vue;
-  } else {
-    g.vueT = g.pileT.length ? g.pileT.pop() : null;
-  }
+  if (cible === 't') g.vueT = g.pileT.length ? g.pileT.pop() : null;
+  else if (g.pileD[cible].length) g.vue[cible] = g.pileD[cible].pop();
   g.sale = true;
 }
 
@@ -1226,28 +1217,42 @@ function tfGraphToutVoir() {
   g.sale = true;
 }
 
-function tfGraphAutoPV() {
-  tfGraph.vue = { pv: null, ts: null };
-  tfGraph.pileD = [];
+// Cadrage automatique d'un diagramme d'état ('pv' ou 'ts')
+function tfGraphAuto(d) {
+  tfGraph.vue[d] = null;
+  tfGraph.pileD[d] = [];
   tfGraph.sale = true;
 }
 
-// Diagramme d'état affiché : 'pv' (Clapeyron), 'ts' (entropique) ou 'deux'
-function tfGraphMode(m) {
-  tfGraph.mode = m;
-  ['pv', 'ts', 'deux'].forEach(function (x) {
-    document.getElementById('tf-diag-' + x).classList.toggle('active', x === m);
+// ── Encarts de la colonne gauche ──
+// Barre de quatre boutons activables : P = f(V), T = f(S), graphes au cours
+// du temps, tableau ; de 0 à 4 encarts. Les encarts de graphe affichés se
+// partagent la hauteur selon leurs poids (variables CSS --tf-poids-…,
+// réglées par les splitters) ; sans aucun encart, la colonne se réduit à la
+// barre, et le cylindre prend la place.
+var TF_G_VUES = ['pv', 'ts', 'temps', 'tableau'];
+
+function tfGraphBasculerVue(v) {
+  tfGraph.vues[v] = !tfGraph.vues[v];
+  _tfgMajVues();
+}
+
+function _tfgMajVues() {
+  var V = tfGraph.vues, aucun = true;
+  TF_G_VUES.forEach(function (v) {
+    document.getElementById('tf-vue-' + v).classList.toggle('active', V[v]);
+    document.getElementById(v === 'tableau' ? 'tf-info' : 'tf-' + v + '-zone').style.display = V[v] ? '' : 'none';
+    if (V[v]) aucun = false;
   });
+  // Splitter entre deux encarts de graphe affichés : celui qui suit pv
+  // (vers ts ou, ts masqué, vers temps), celui qui suit ts
+  document.getElementById('tf-hsplit-pv').style.display = V.pv && (V.ts || V.temps) ? '' : 'none';
+  document.getElementById('tf-hsplit-ts').style.display = V.ts && V.temps ? '' : 'none';
+  // Le tableau seul se range en haut de la colonne
+  document.getElementById('tf-graph-col').classList.toggle('tf-sans-graphe', !V.pv && !V.ts && !V.temps);
+  document.getElementById('tf-left-col').classList.toggle('tf-sans-encart', aucun);
   tfGraph.sale = true;
-}
-
-// Diagramme d'état sous le point (x, y) du canvas, ou null
-function _tfgDiagSous(p) {
-  for (var d in tfGraph.geoD) {
-    var q = tfGraph.geoD[d];
-    if (q && p.x >= q.x0 && p.x <= q.x0 + q.pw && p.y >= q.y0 && p.y <= q.y0 + q.ph) return d;
-  }
-  return null;
+  if (typeof tfResize === 'function') tfResize();
 }
 
 function tfGraphReticule() {
@@ -1272,15 +1277,10 @@ function _tfgPos(o, ev) {
 function _tfgSouris(o, cible) {
   var g = tfGraph;
   o.c.addEventListener('pointerdown', function (ev) {
-    var p = _tfgPos(o, ev), d = null;
-    if (cible === 'pv') {
-      d = _tfgDiagSous(p);
-      if (!d) return;
-    } else {
-      var geo = g.geoT;
-      if (!geo || p.x < geo.x0 || p.x > geo.x0 + geo.pw) return;
-    }
-    g.glisse = { cible: cible, d: d, x0: p.x, y0: p.y, x1: p.x, y1: p.y };
+    var p = _tfgPos(o, ev);
+    var geo = cible === 't' ? g.geoT : g.geoD[cible];
+    if (!geo || p.x < geo.x0 || p.x > geo.x0 + geo.pw) return;
+    g.glisse = { cible: cible, x0: p.x, y0: p.y, x1: p.x, y1: p.y };
     try { o.c.setPointerCapture(ev.pointerId); } catch (x) { /* pointeur déjà relâché */ }
     ev.preventDefault();
   });
@@ -1303,13 +1303,13 @@ function _tfgSouris(o, cible) {
       g.pileT.push(g.vueT);
       g.vueT = { t1: tDe(Math.min(gl.x0, gl.x1)), t2: tDe(Math.max(gl.x0, gl.x1)) };
     } else {
-      var gp = g.geoD[gl.d];
+      var gp = g.geoD[cible];
       if (!gp || dx < 6 || dy < 6) return;
       var xDe = function (x) { return gp.x1 + (x - gp.x0) / gp.pw * (gp.x2 - gp.x1); };
       var yDe = function (y) { return gp.y1 + (gp.y0 + gp.ph - y) / gp.ph * (gp.y2 - gp.y1); };
-      g.pileD.push({ d: gl.d, vue: g.vue[gl.d] });
-      g.vue[gl.d] = { x1: xDe(Math.min(gl.x0, gl.x1)), x2: xDe(Math.max(gl.x0, gl.x1)),
-                      y1: yDe(Math.max(gl.y0, gl.y1)), y2: yDe(Math.min(gl.y0, gl.y1)) };
+      g.pileD[cible].push(g.vue[cible]);
+      g.vue[cible] = { x1: xDe(Math.min(gl.x0, gl.x1)), x2: xDe(Math.max(gl.x0, gl.x1)),
+                    y1: yDe(Math.max(gl.y0, gl.y1)), y2: yDe(Math.min(gl.y0, gl.y1)) };
     }
   });
   o.c.addEventListener('pointerleave', function () {
@@ -1322,7 +1322,43 @@ function _tfgSouris(o, cible) {
 //  Splitters de la colonne gauche
 //  Les partages sont des pourcentages (variables CSS) : ils tiennent d'eux-
 //  mêmes au redimensionnement, et la disposition étroite peut les ignorer.
+//  Entre deux encarts de graphe, le splitter partage la hauteur des deux
+//  encarts affichés qui l'entourent (poids --tf-poids-…, leur somme gardée).
 // ══════════════════════════════════════════════════════════════════════
+
+function _tfgSplitterH(sp) {
+  function voisin(el, sens) {
+    for (el = el[sens]; el; el = el[sens]) {
+      if (el.classList.contains('tf-graphe') && el.style.display !== 'none') return el;
+    }
+    return null;
+  }
+  sp.addEventListener('pointerdown', function (ev) {
+    var a = voisin(sp, 'previousElementSibling'), b = voisin(sp, 'nextElementSibling');
+    if (!a || !b) return;
+    ev.preventDefault();
+    try { sp.setPointerCapture(ev.pointerId); } catch (x) { /* pointeur déjà relâché */ }
+    sp.classList.add('dragging');
+    var col = sp.parentElement.style;
+    var pa = parseFloat(getComputedStyle(a).flexGrow) || 1, pb = parseFloat(getComputedStyle(b).flexGrow) || 1;
+    var bouge = function (e2) {
+      var ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
+      var f = (e2.clientY - ra.top) / (rb.bottom - ra.top);
+      f = Math.max(0.15, Math.min(0.85, f));
+      col.setProperty('--tf-poids-' + a.dataset.vue, ((pa + pb) * f).toFixed(3));
+      col.setProperty('--tf-poids-' + b.dataset.vue, ((pa + pb) * (1 - f)).toFixed(3));
+    };
+    var fin = function () {
+      sp.classList.remove('dragging');
+      sp.removeEventListener('pointermove', bouge);
+      sp.removeEventListener('pointerup', fin);
+      sp.removeEventListener('pointercancel', fin);
+    };
+    sp.addEventListener('pointermove', bouge);
+    sp.addEventListener('pointerup', fin);
+    sp.addEventListener('pointercancel', fin);
+  });
+}
 
 function _tfgSplitter(id, conteneur, cible, variable, axe, fMin, fMax) {
   var sp = document.getElementById(id);
@@ -1357,20 +1393,23 @@ function tfGraphInit() {
     var c = document.getElementById(id);
     return { c: c, ctx: c.getContext('2d'), w: 0, h: 0, dpr: 0 };
   }
-  tfGraph.cv = { pv: cv('tf-canvas-pv'), t: cv('tf-canvas-temps') };
+  tfGraph.cv = { pv: cv('tf-canvas-pv'), ts: cv('tf-canvas-ts'), t: cv('tf-canvas-temps') };
   _tfgSouris(tfGraph.cv.pv, 'pv');
+  _tfgSouris(tfGraph.cv.ts, 'ts');
   _tfgSouris(tfGraph.cv.t, 't');
 
   var col = document.getElementById('tf-left-col');
-  var gcol = document.getElementById('tf-graph-col');
   _tfgSplitter('tf-vsplit', col, col, '--tf-larg-graphes', 'x', 0.25, 0.7);
-  _tfgSplitter('tf-hsplit', gcol, gcol, '--tf-haut-pv', 'y', 0.2, 0.7);
+  _tfgSplitterH(document.getElementById('tf-hsplit-pv'));
+  _tfgSplitterH(document.getElementById('tf-hsplit-ts'));
+  _tfgMajVues();
 
   // Toute zone qui change de taille (fenêtre, splitters, bascule d'onglet)
   // est redessinée ; la scène garde sa propre mise à l'échelle
   if (window.ResizeObserver) {
     var ro = new ResizeObserver(function () { tfGraph.sale = true; tfResize(); });
     ro.observe(tfGraph.cv.pv.c.parentElement);
+    ro.observe(tfGraph.cv.ts.c.parentElement);
     ro.observe(tfGraph.cv.t.c.parentElement);
     ro.observe(document.getElementById('tf-sim-area'));
   }
