@@ -836,6 +836,7 @@ function _tfMajGaz() {
 // ── Section Affichage ──
 function tfOnAffichage(cle, coche) {
   tfAff[cle] = coche;
+  if (cle === 'exagere') tfMolExagere = coche;
   // Le profil de pression prend de la place à droite du cylindre
   if (cle === 'profil') _tfDoResize();
   tf.needsRedraw = true;
@@ -862,14 +863,11 @@ function _tfLoop(ts) {
   if (!tf.paused) {
     var dtSim = tfAvancer(dtReel / 1000 * tf.vitesse);
     if (dtReel > 0) _tfVitesseAtteinte += (dtSim / (dtReel / 1000) - _tfVitesseAtteinte) * Math.min(1, dtReel / 1000);
-    // Agitation des molécules en temps d'affichage, freinée au ralenti
-    // (racine cubique du cran) et jamais accélérée au-delà de ×1, où elle
-    // deviendrait illisible ; au cran le plus lent, elle suit le temps
-    // simulé, à l'échelle réelle (tfMolReel).
+    // Agitation des molécules en temps d'affichage, la même à tous les
+    // crans (tf-molecules.js)
     if (tfAff.molecules) {
-      var f = Math.pow(Math.min(1, tf.vitesse), 1 / 3);
-      tfMolAvancer(dtReel / 1000, dtReel / 1000 * f, dtSim, tfLargeurDessinee(),
-                   tfRayonMolecule() / (_tfX2 - _tfX1), tfAff.chocs);
+      tfMolAvancer(dtReel / 1000, tfLargeurDessinee(),
+                   tfRayonMolecule() / (_tfX2 - _tfX1), _tfEch, tfAff.chocs);
     }
   }
 

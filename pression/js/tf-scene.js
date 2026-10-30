@@ -46,6 +46,7 @@ var TF_Z_HAUT = TF_H_CYL + TF_EP_PISTON + TF_H_TIGE + TF_EP_PLATEAU + TF_H_TIGE_
 // ── Options d'affichage (section Affichage du panneau) ──
 var tfAff = {
   molecules : true,    // molécules pilotées par le modèle
+  exagere   : true,    // écarts d'agitation exagérés (tfMolExagere)
   chocs     : false,   // éclats des chocs de molécules sur les parois
   couleurT  : true,    // gaz et molécules colorés selon la température
   sondes    : false,   // trois sondes T et P sur le flanc du cylindre
@@ -144,7 +145,6 @@ function tfDessiner() {
   _tfDessinerButee();
   if (tfAff.sondes) _tfDessinerSondes();
   if (tfAff.profil) _tfDessinerProfil();
-  if (tfAff.molecules && tfMolReel()) _tfDessinerMention('Vitesses réelles');
 }
 
 // Largeur intérieure dessinée, en m d'échelle verticale (pour les molécules)
@@ -331,14 +331,15 @@ function _tfDessinerGaz() {
     }
   }
 
-  // Limites des bandes de molécules (même masse de gaz dans chacune), en
-  // pointillé léger : elles se resserrent dans une compression.
+  // Limites des 10 bandes de repère (même masse de gaz dans chacune), en
+  // pointillé léger : elles se resserrent dans une compression. Elles
+  // restent quand les molécules sont regroupées en moins de bandes.
   c.strokeStyle = 'rgba(44,62,80,0.28)';
   c.lineWidth = 1;
   c.setLineDash([4, 4]);
   c.beginPath();
   for (var b = 1; b < TF_BANDES; b++) {
-    var y = Math.round(_tfY(tfBandeBas(b))) + 0.5;
+    var y = Math.round(_tfY(tf.z[b * TF_TR_PAR_BANDE])) + 0.5;
     c.moveTo(_tfX1, y);
     c.lineTo(_tfX2, y);
   }
@@ -806,23 +807,6 @@ function _tfEchelleRonde(x) {
 // Écriture d'une échelle en Pa avec espace des milliers : 5, 20, 1 000…
 function _tfFmtPa(x) {
   return String(Math.round(x)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-}
-
-// ── Mention en haut à gauche de la scène (« Vitesses réelles ») ──
-function _tfDessinerMention(txt) {
-  var c = tfCtx;
-  var police = Math.max(12, Math.min(16, Math.round(_tfEch * 0.018)));
-  c.font = 'bold ' + police + 'px "Segoe UI", Arial, sans-serif';
-  c.textAlign = 'left';
-  c.textBaseline = 'top';
-  var lw = c.measureText(txt).width + 14;
-  c.fillStyle = '#fde8c8';
-  c.strokeStyle = '#d0a060';
-  c.lineWidth = 1.5;
-  _tfRectArrondi(8, 8, lw, police + 10, 5);
-  c.fill(); c.stroke();
-  c.fillStyle = '#7a3a10';
-  c.fillText(txt, 15, 13);
 }
 
 // ══════════════════════════════════════════════════════════════════════
