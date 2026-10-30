@@ -343,6 +343,9 @@ function tfMesures() {
     Tmoy: Tmoy, Tmin: Tmin, Tmax: Tmax, Pext: Pext, Pface: tfPFace(),
     Pdef: Pdef, Tdef: Tdef, butee: butee,
     ext: Pdef && Tdef && mecaExt && thermique,
+    // Équilibre mécanique seul : pression uniforme, gaz et piston au repos
+    // (la température peut encore évoluer)
+    meca: Pdef && repos && piston,
     equilibre: Pdef && Tdef && repos && piston && thermique
   };
 }

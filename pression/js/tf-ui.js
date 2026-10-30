@@ -918,14 +918,17 @@ function _tfDureeAction(cle, duree) {
 // ondes puis la mise en équilibre thermique, qui durent des secondes à des
 // heures simulées. Une fois l'action finie et TF_ECRAN_FRONT secondes
 // d'écran passées, le cran monte (jamais ne descend) pour que le reste du
-// retour à l'équilibre dure ~TF_ECRAN_ACTION à l'écran : ondes ou piston à
-// amortir tant que le calcul complet tourne, puis écart de température à
+// retour à l'équilibre dure ~TF_ECRAN_ACTION à l'écran, en deux temps :
+// d'abord les ondes ou le piston à amortir, tant que le gaz n'est pas à
+// l'équilibre mécanique ; puis, une fois celui-ci atteint et vu à l'écran
+// TF_ECRAN_MECA secondes (le piston s'est arrêté), l'écart de température à
 // résorber (exponentiel, jusqu'à la moitié du seuil « T définie »).
 var TF_ECRAN_FRONT = 3;   // s réelles
-var _tfRelax = null;      // { ecran, tPrec } jusqu'au retour à l'équilibre
+var TF_ECRAN_MECA  = 1;   // s réelles
+var _tfRelax = null;      // { ecran, tPrec, meca } jusqu'au retour à l'équilibre
 
 function _tfDemarrerRelax() {
-  _tfRelax = tfCarte.auto ? { ecran: 0, tPrec: tf.t } : null;
+  _tfRelax = tfCarte.auto ? { ecran: 0, tPrec: tf.t, meca: 0 } : null;
 }
 
 function _tfVitesseRelax() {
@@ -933,17 +936,31 @@ function _tfVitesseRelax() {
   if (!R) return;
   if (!tfCarte.auto) { _tfRelax = null; return; }
   if (_tfEnAttente) return;   // une action attend la fin d'un ralentissement
-  if (tfEnCours()) { R.ecran = 0; R.tPrec = tf.t; return; }
-  R.ecran += (tf.t - R.tPrec) / tf.vitesse;
+  if (tfEnCours()) { R.ecran = 0; R.meca = 0; R.tPrec = tf.t; return; }
+  var dEcran = (tf.t - R.tPrec) / tf.vitesse;
+  R.ecran += dEcran;
   R.tPrec = tf.t;
   var m = tfMesures();
   if (m.equilibre) { _tfRelax = null; return; }
+  // Temps d'écran passé à l'équilibre mécanique. Pendant la mise en
+  // équilibre thermique, le piston suit lentement le gaz qui se dilate ou se
+  // contracte : le critère strict clignote. Seul un écart net (cinq fois les
+  // seuils : le piston oscille encore) remet le compte à zéro.
+  var presque = (m.Pmax - m.Pmin) / m.Pmoy < 5 * TF_SEUIL_P
+             && (tf.tenu || m.butee !== null || Math.abs(m.Pmoy - m.Pext) / m.Pext < 5 * TF_SEUIL_P);
+  if (m.meca) R.meca += dEcran;
+  else if (!presque) R.meca = 0;
   if (R.ecran < TF_ECRAN_FRONT) return;
   var d = tfDurees(), D = 0;
-  if (!tf.qs) D += tf.masse > 0.5 ? 16 * d.piston : 100 * d.traversee;
-  var ecart = Math.max(m.Tmax - m.Tmin, tf.G > 0 ? Math.abs(m.Tmoy - tf.Text) : 0);
-  if (ecart > TF_SEUIL_T / 2) {
-    D += (tf.G > 0 ? d.thermique : d.interne) * Math.log(Math.max(2, ecart / (TF_SEUIL_T / 2)));
+  if (R.meca === 0) {
+    // Ondes ou piston à amortir : rien de thermique encore
+    if (!tf.qs) D = tf.masse > 0.5 ? 16 * d.piston : 100 * d.traversee;
+  } else {
+    if (R.meca < TF_ECRAN_MECA) return;
+    var ecart = Math.max(m.Tmax - m.Tmin, tf.G > 0 ? Math.abs(m.Tmoy - tf.Text) : 0);
+    if (ecart > TF_SEUIL_T / 2) {
+      D = (tf.G > 0 ? d.thermique : d.interne) * Math.log(Math.max(2, ecart / (TF_SEUIL_T / 2)));
+    }
   }
   if (D <= 0) return;
   // Jamais plus lent que la vitesse visée (celle d'un passage en cours)
