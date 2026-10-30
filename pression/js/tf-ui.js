@@ -338,8 +338,8 @@ function _tfParamsManiere(cle, man) {
   }
   var Rint = TF_R_INT * Math.PI * Math.PI * d.interne * Math.max(1, Lf / L) / (4 * nCv);
   var qs = tf.G * dTad * Rint <= TF_QS_ECART ? meca : Math.max(meca, Q * Rint / TF_QS_ECART);
-  if (man === 'qs') return { duree: qs };
-  return { duree: Math.max(qs, Q * Q * (Rint + 1 / tf.G) / (T * T * TF_REV_SC)) };
+  if (man === 'qs') return { duree: qs, Rint: Rint };
+  return { duree: Math.max(qs, Q * Q * (Rint + 1 / tf.G) / (T * T * TF_REV_SC)), Rint: Rint };
 }
 
 // Pression extérieure une fois la masse ou P_air visée appliquée
@@ -376,10 +376,15 @@ function _tfMajManieres() {
     _tfEl['tf-duree-' + man].textContent = p.duree > 0 ? _tfFmtDuree(p.duree)
       : cle === 'masse' ? 'd’un coup' : 'échelon';
   });
-  var h, qs = _tfParamsManiere(cle, 'qs').duree, rev = _tfParamsManiere(cle, 'rev').duree;
+  // « Se confondent » seulement si les deux boutons affichent la même
+  // durée. Sinon, le message dépend de ce qui freine la chaleur : le gaz
+  // lui-même (résistance interne R_int plus grande que celle du fond, 1/G)
+  // ou le fond.
+  var h, pq = _tfParamsManiere(cle, 'qs'), qs = pq.duree, rev = _tfParamsManiere(cle, 'rev').duree;
   if (cle === 'Text' && tf.G === 0) h = 'Fond calorifugé : la source n’agit pas sur le gaz.';
   else if (tf.G === 0) h = 'Fond calorifugé : quasi statique et réversible se confondent (aucun échange thermique).';
-  else if (rev <= 1.5 * qs) h = 'Fond très conducteur : quasi statique et réversible se confondent presque (assez lente pour garder le gaz uniforme, la transformation l’est aussi pour le garder à la température de la source).';
+  else if (_tfFmtDuree(rev) === _tfFmtDuree(qs)) h = 'Fond très conducteur : quasi statique et réversible se confondent (assez lente pour garder le gaz uniforme, la transformation l’est aussi pour le garder à la température de la source).';
+  else if (tf.G * pq.Rint >= 1) h = 'Fond conducteur : quasi statiquement, le gaz reste uniforme et la transformation crée déjà peu d’entropie (le petit écart de température se loge dans le gaz, pas dans le fond) ; réversiblement, la transformation est ' + _tfFmt(rev / qs, 1) + ' fois plus lente pour en créer encore moins.';
   else h = 'Fond peu conducteur : quasi statiquement, le gaz reste uniforme mais la chaleur traverse le fond sous un écart de température : de l’entropie est créée ; réversiblement, presque pas.';
   _tfEl['tf-hint-manieres'].textContent = h;
 }
