@@ -488,7 +488,6 @@ main {
 
 /* Carte Transformation : bouton du piston, valeur actuelle, durées
    caractéristiques (libellé à gauche, valeur à droite) */
-#tf-btn-piston { width: 100%; margin-bottom: 4px; }
 .input-hint.tf-actuel { display: block; margin: -4px 0 8px; }
 .tf-durees-car { margin: 6px 0 10px; font-size: clamp(11px, 0.95vw, 13px); color: #5a6a78; }
 .tf-duree-car { display: flex; justify-content: space-between; gap: 8px; padding: 1px 0; }
@@ -504,6 +503,120 @@ main {
 .btn.tf-interrompre { width: 100%; }
 .tf-fins { margin-top: 10px; border-top: 1px solid #d4cec4; padding-top: 6px; }
 .tf-fins summary { cursor: pointer; color: #5a6a78; font-size: clamp(11px, 0.95vw, 13px); margin-bottom: 6px; }
+/* Vitesse repliée sous Pause et RAZ : pas de filet, le libellé suffit */
+.tf-fins.tf-det-vitesse { margin-top: 8px; border-top: none; padding-top: 0; }
+.tf-det-vitesse .param-row-speed { margin-top: 0; }
+
+/* Fond posé sur : l'isolant, ou une source (bouton, température saisie,
+   « = T gaz ») ; le choix actif est en bleu, comme un onglet */
+.tf-fonds { display: flex; flex-direction: column; gap: 5px; }
+.tf-source { display: flex; align-items: center; gap: 5px; }
+.tf-fond {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 6px 6px;
+  font: inherit;
+  font-size: clamp(12px, 1.1vw, 14px);
+  font-weight: 700;
+  border: 1px solid #c8c0b4;
+  border-radius: 6px;
+  background: #dedad2;
+  color: #5a6a78;
+  cursor: pointer;
+  text-align: left;
+}
+.tf-fond:hover { background: #ccc8c0; color: #2c3e50; }
+.tf-fond.active { background: #2a6aaa; border-color: #1a5a9a; color: #fff; }
+#tf-fond-chaude.active { background: #c0503a; border-color: #a03a28; }
+#tf-fond-froide.active { background: #3470c4; border-color: #2a5aa0; }
+.tf-mini-btn {
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: clamp(10px, 0.9vw, 12px);
+  padding: 4px 6px;
+  border: 1px solid #c8c0b4;
+  border-radius: 4px;
+  background: #f4f1ec;
+  color: #2c3e50;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tf-mini-btn:hover:not(:disabled) { background: #2a6aaa; border-color: #1a5a9a; color: #fff; }
+.tf-mini-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.input-hint.tf-hint-fond { display: block; margin-top: 4px; }
+
+/* Champ de saisie avec son unité (valeur visée, température d'une source) */
+.tf-champ {
+  display: inline-flex;
+  align-items: baseline;
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 1px solid #c8c0b4;
+  border-radius: 6px;
+  background: #fff;
+  padding: 4px 6px;
+}
+.tf-champ:focus-within { border-color: #2a6aaa; box-shadow: 0 0 0 2px rgba(42,106,170,0.2); }
+.tf-champ-court { flex: 0 0 6.4em; }
+.tf-saisie {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-size: clamp(13px, 1.2vw, 15px);
+  font-weight: 700;
+  color: #2c3e50;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.tf-saisie:disabled { color: #7a8a96; }
+.tf-unite { flex: 0 0 auto; margin-left: 4px; color: #7a8a96; font-size: 0.9em; }
+
+/* Valeur visée : − champ + et menu des états du journal */
+.tf-visee { margin-bottom: 8px; }
+.tf-visee-lbl { display: block; font-size: clamp(12px, 1.15vw, 15px); color: #2c3e50; margin-bottom: 4px; }
+.tf-visee-ligne { display: flex; align-items: stretch; gap: 4px; margin-bottom: 4px; }
+.tf-pm {
+  flex: 0 0 2.2em;
+  font: inherit;
+  font-size: 1.15em;
+  font-weight: 700;
+  border: 1px solid #c8c0b4;
+  border-radius: 6px;
+  background: #ece8e0;
+  color: #2c3e50;
+  cursor: pointer;
+}
+.tf-pm:hover { background: #dedad2; }
+.tf-etats {
+  flex: 0 0 3.6em;
+  min-width: 0;
+  font: inherit;
+  font-size: clamp(11px, 1vw, 13px);
+  border: 1px solid #c8c0b4;
+  border-radius: 6px;
+  background: #f4f1ec;
+  color: #2c3e50;
+  cursor: pointer;
+}
+.tf-visee .input-hint.tf-actuel { margin: 0 0 4px; }
+.tf-prevu {
+  font-size: clamp(11px, 0.95vw, 13px);
+  color: #7a3a10;
+  line-height: 1.35;
+}
+.tf-prevu:empty { display: none; }
+.tf-prevu b { font-weight: 600; }
+
+/* Pas à pas : libellé, puis − et + */
+.tf-pap { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.tf-pap-lbl { flex: 0 0 auto; font-size: clamp(11px, 1vw, 13px); color: #5a6a78; font-weight: 600; }
+.btn.tf-pap-btn { flex: 1 1 0; padding: 7px 4px; touch-action: manipulation; user-select: none; }
+.tf-ligne-arret { margin-top: 8px; }
+.tf-ligne-arret .btn { padding: 7px 4px; font-size: clamp(11px, 1.05vw, 14px); }
 
 /* Journal des étapes : une ligne par étape (pastille de sa couleur, lettres,
    action, état d'arrivée, retour) ; défile au-delà d'une dizaine */
@@ -524,8 +637,6 @@ main {
 }
 .tf-etape:hover { background: #dedad2; }
 .tf-etape.sel { background: #d4dde8; }
-.tf-etape-depart { cursor: default; }
-.tf-etape-depart:hover { background: none; }
 .tf-pastille { flex: 0 0 10px; height: 10px; border-radius: 50%; margin-top: 3px; }
 .tf-etape-txt { flex: 1; color: #2c3e50; }
 .tf-etat-val { color: #5a6a78; }

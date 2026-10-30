@@ -27,6 +27,7 @@ var tfEtapes = {
   etats   : [],     // lettres : {lettre, V, P, T, S, snap}
   suivie  : null,   // lettre mise à jour tant que dure l'équilibre
   sel     : -1,     // étape mise en évidence sur le diagramme (-1 : aucune)
+  selA    : false,  // état initial A sélectionné (courbes de référence)
   bilanA  : null,   // compteurs du bilan à l'état initial A (tfBilan)
   version : 0       // incrémentée à chaque changement du journal (panneau)
 };
@@ -47,8 +48,10 @@ function _tfLettre(i) {
 
 // ── Instantané du système, et retour à un instantané ──
 var _TF_SNAP_TABLEAUX = ['z', 'u', 'E', 'P', 'q'];
+// Le fond (isolant ou source, et la température des sources) fait partie
+// de l'état : revenir à un état remet le cylindre où il était
 var _TF_SNAP_SCALAIRES = ['tenu', 'masse', 'blocs', 'sable', 'Pair', 'Text', 'Wop', 'Wair',
-                          'Qrecu', 'QsurT', 'Wgaz', 'eDecal', 't'];
+                          'Qrecu', 'QsurT', 'Wgaz', 'eDecal', 't', 'fond', 'Tchaude', 'Tfroide', 'G'];
 
 function _tfInstantane(snap) {
   snap = snap || {};
@@ -88,6 +91,7 @@ function tfEtapesEffacer() {
   tfEtapes.bilanA = tfBilan();
   tfEtapes.suivie = 0;
   tfEtapes.sel = -1;
+  tfEtapes.selA = false;
   tfEtapes.version++;
 }
 
@@ -116,9 +120,12 @@ function tfEtapesSuivre(m) {
   if (et && et.statut === 'en cours' && !tfEnCours()) {
     var D = et.depart !== null ? E.etats[et.depart] : null;
     // Rien n'a changé (piston tenu alors qu'il était immobile, libéré alors
-    // que le gaz l'équilibrait…) : l'étape est retirée du journal
+    // que le gaz l'équilibrait…) : l'étape est retirée du journal. Une
+    // charge ou une pression de l'air changée la garde : un grain de sable
+    // peut déplacer l'état de moins que ces seuils.
     if (D && Math.abs(m.V - D.V) < 1e-4 * D.V && Math.abs(m.Pmoy - D.P) < 1e-4 * D.P
-          && Math.abs(m.Tmoy - D.T) < 0.01) {
+          && Math.abs(m.Tmoy - D.T) < 0.01
+          && Math.abs(tf.masse - D.snap.masse) < 1e-9 && Math.abs(tf.Pair - D.snap.Pair) < 1e-6) {
       E.liste.pop();
       tfGraphRetirerEtape(E.liste.length + 1);
       E.suivie = et.depart;
@@ -153,6 +160,50 @@ function tfEtapesRevenir(i) {
 
 function tfEtapesSelectionner(k) {
   tfEtapes.sel = tfEtapes.sel === k ? -1 : k;
+  tfEtapes.selA = false;
   tfEtapes.version++;
   tfGraph.sale = true;
+}
+
+// Sélection de l'état initial A (sa ligne du journal) : les courbes de
+// référence passent par lui
+function tfEtapesSelectionnerA() {
+  tfEtapes.selA = !tfEtapes.selA;
+  tfEtapes.sel = -1;
+  tfEtapes.version++;
+  tfGraph.sale = true;
+}
+
+// État par lequel passent les courbes de référence : celui de la ligne
+// sélectionnée (arrivée de l'étape, ou A) ; null : départ de l'étape en
+// cours
+function tfEtapesEtatRef() {
+  var E = tfEtapes;
+  if (E.selA) return E.etats[0];
+  if (E.sel >= 0 && E.liste[E.sel] && E.liste[E.sel].arrivee !== null) return E.etats[E.liste[E.sel].arrivee];
+  return null;
+}
+
+// Rouvre la dernière étape, arrivée (pas à pas : les clics successifs
+// forment une seule étape, même si le gaz a atteint l'équilibre entre deux)
+// : sa lettre d'arrivée est retirée, elle sera reposée au prochain
+// équilibre
+function tfEtapeRouvrir() {
+  var E = tfEtapes, et = E.liste[E.liste.length - 1];
+  if (!et || et.statut !== 'arrivee') return;
+  if (et.arrivee === E.etats.length - 1) E.etats.pop();
+  et.arrivee = null;
+  et.statut = 'en cours';
+  E.suivie = null;
+  E.version++;
+}
+
+// État auquel ramène « Annuler la dernière étape » (null : rien à annuler) :
+// départ de la dernière étape, ou, si elle partait d'un état hors
+// équilibre, la dernière lettre qui la précède
+function tfEtapesEtatAnnuler() {
+  var E = tfEtapes, et = E.liste[E.liste.length - 1];
+  if (!et) return null;
+  if (et.depart !== null) return et.depart;
+  return et.arrivee !== null ? et.arrivee - 1 : E.etats.length - 1;
 }

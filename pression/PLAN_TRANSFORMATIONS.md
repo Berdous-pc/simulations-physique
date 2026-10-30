@@ -406,6 +406,7 @@ Transformation attendue : …
 - ✅ **R1** (terminé) : piston tenu / libre sans réinitialisation, pince et masses enfilées, carte unique, escaliers, masse visée (blocs et sable), vitesse adaptée.
 - ✅ **R2** (terminé, cf. ARCHITECTURE.md) : journal des étapes (A → B, B → C…), états d'équilibre étiquetés et étapes colorées sur le diagramme PV, « revenir à l'état B » (instantané), **chrono des graphes figé à l'équilibre** (option : l'axe des temps saute les attentes, coupures marquées). Ajouts demandés pendant R2 : flèche de sens de parcours au milieu de chaque étape, état actuel cerclé d'une couleur réservée (orange). Une action sans effet (piston tenu au repos, température avec un fond calorifugé…) n'est pas notée.
 - ✅ **R3** (terminé, cf. ARCHITECTURE.md ; ajouts : conduction implicite en mode quasi statique et crans jusqu'à ×10 000, durées réglées sur la chaleur échangée et les résistances thermiques — les premières, 3 τ_int et 10 τ_th, laissaient le gaz non défini —, vitesse adaptée au retour à l'équilibre, équilibre exigeant T_gaz = T_source si le fond conduit) : trois boutons **Brutalement / Quasi statiquement / Réversiblement** à la place des curseurs de durée et de marches (§10.5). Deux commits : moteur (pression qui varie continûment en mode quasi statique), puis interface.
+- ✅ **R4a** (terminé, §10.7) : montage enceinte ou masses, fond sur l'isolant ou l'une de deux sources à température saisie, valeur visée en champ avec arrivée prévue, pas à pas, annuler l'étape.
 - **R4** : file d'attente (action lancée pendant une autre → « ensuite », enchaînement à l'équilibre), séquences enregistrées (localStorage, export JSON), préréglages (aller-retour, Carnot, Stirling, Lenoir).
 - **R5** (option) : viser en cliquant sur le diagramme de Clapeyron.
 - ✅ **Diagramme TS et Bilan** (§10.6, palier 7) : terminé. **Prochain palier proposé : R4**, puis R5, et les paliers 8 (intégration) et 9 (site).
@@ -485,3 +486,33 @@ Un clic lance l'action (plus de bouton Lancer) ; Interrompre reste disponible. L
 - **Courbes de référence** : isotherme horizontale, adiabatique réversible verticale, isochore T ∝ e^(S/Cv), isobare T ∝ e^(S/Cp).
 - **Affichage** : onglets PV / TS sur la case du diagramme (ou les deux l'un sous l'autre, en option). Le tracé du PV (chemin coloré par étape, lettres, flèches, état actuel, segment des tranches, zoom, réticule) est généralisé en un tracé de diagramme paramétré par ses axes.
 - **Tests** : S_c lu sur le TS égal à celui du Bilan ; réversible calorifugé vertical à 10⁻³ près ; isotherme diathermane horizontale ; segment TS présent exactement quand T n'est pas définie.
+### 10.7 Palier R4a : se promener entre les états (fait)
+
+**Constat de l'auteur.** Enchaîner restait difficile : l'isotherme réversible d'un cycle de Carnot était impossible (la température de la source ne se réglait qu'en lançant une transformation), la masse passait par une consigne abstraite, et le sable ne se versait pas à la main.
+
+**Principes.** Une commande par geste ; on ne voit que ce qui sert ; on sait où l'on va avant de cliquer.
+
+```
+Contrôle :      [ Pause ] [ RAZ ]      ▸ Vitesse ×1 (replié : curseur, vitesse adaptée)
+Piston :        [ 🔒 Tenu ] [ 🔓 Libre ]
+Fond posé sur : [ Isolant ]
+                [ Source chaude ] [ 400 ] K [= T gaz]
+                [ Source froide ] [ 293,15 ] K [= T gaz]
+Agir sur :      [ Volume ] [ Pression ] [ Température ]
+Valeur visée :  [−] [ 15 ] cm [+] [État ▾]
+Arrivée prévue réversiblement : 0,300 L · 264 kPa · 387 K   (+ cercle pointillé sur P(V) et T(S))
+[ Brutalement ] [ Quasi statiquement ] [ Réversiblement ]
+Pas à pas :     [ − 1 grain ] [ + 1 grain ]   (pression ; ± 1 kPa en mode enceinte)
+[ Interrompre ] [ ↶ Annuler l'étape ]
+▸ Réglages fins
+Section Montage et gaz : Pression par [ Air de l'enceinte ] [ Masses posées ] (réinitialise)
+```
+
+- **Montage** : la pression passe par l'air de l'enceinte (défaut, tout le diagramme accessible) ou par les masses (jamais sous 1 atm) ; plus de sous-onglets dans la carte.
+- **Fond** : trois supports. Chaque source garde sa température (`tf.Tchaude`, `tf.Tfroide`), saisie au clavier quand le cylindre n'est pas dessus ; « = T gaz » la recopie. La source sous le cylindre est `tf.Text`, que l'action Température fait varier. Le fond (support, températures, G) fait partie des instantanés : revenir à un état remet le cylindre où il était. RAZ remet le cylindre sur l'isolant si la source qui le porte n'est pas à T0.
+- **Valeur visée** : un seul champ, la valeur actuelle tant qu'on n'y touche pas (elle la suit de nouveau après chaque action, un retour ou RAZ), − et + vers la graduation voisine, menu des états du journal.
+- **Arrivée prévue** : fond sur une source, même état final quelle que soit la manière ; isolant, loi de Laplace (réversible) et premier principe sous pression finale constante (pression brutale) ; volume brutal : « un peu plus chaud », non chiffré.
+- **Pas à pas** : un grain de sable (50 g par défaut, ΔP ≈ 245 Pa : au-dessus du seuil d'équilibre de 0,1 %, un grain de 20 g passait inaperçu) ou un pas de P_air (1 kPa) par clic, répété si le bouton est maintenu ; les clics successifs forment une seule étape (`tfEtapeRouvrir` retire la lettre d'arrivée si le gaz l'a atteinte entre deux). Une étape dont la charge ou P_air a changé n'est jamais retirée du journal comme « sans effet ».
+- **Courbes de référence** : par l'état de la ligne sélectionnée du journal (A compris), sinon par le départ de l'étape en cours.
+
+Test (banc Chrome headless) : cycle de Carnot complet en quatre manières réversibles (adiabatique jusqu'à 400 K visée par l'arrivée prévue, source chaude « = T gaz », isotherme, adiabatique jusqu'à 293 K, source froide, isotherme jusqu'au volume de A par le menu) : retour à A à 0,05 K et 0,02 kPa près, S créée 0,07 mJ/K depuis A.

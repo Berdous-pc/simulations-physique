@@ -81,6 +81,9 @@ var TF_G_EQ_GEL      = 5;
 var tfGraph = {
   ech       : [],      // historique : un objet par échantillon
   ref       : null,    // état de départ de l'étape en cours (courbes de référence)
+  // Arrivées prévues de l'action préparée dans la carte Transformation
+  // (tf-ui.js) : [{V, P, T, S, nom}], cercles pointillés
+  prevu     : [],
   env       : null,    // étendue des tranches depuis le départ, par diagramme (cadrage)
   // Encarts affichés dans la colonne gauche (barre de boutons activables,
   // de 0 à 4)
@@ -1073,10 +1076,12 @@ function _tfgDessinerDiag(o, cs, mes) {
   c.rect(x0, y0, pw, ph);
   c.clip();
 
-  // Courbes de référence par l'état de départ de la transformation en cours
-  var etiq = [];
-  if (g.ref) {
-    var cr = _tfgCourbesRef(d, g.ref);
+  // Courbes de référence par l'état de départ de la transformation en cours,
+  // ou par l'état de la ligne sélectionnée dans le journal
+  var etiq = [], Lr = tfEtapesEtatRef();
+  var ref = Lr ? { V: Lr.V, Pm: Lr.P, Tm: Lr.T, S: Lr.S } : g.ref;
+  if (ref) {
+    var cr = _tfgCourbesRef(d, ref);
     for (k = 0; k < cr.length; k++) etiq.push(_tfgCourbe(c, xDe, yDe, vue, cr[k]));
   }
 
@@ -1196,6 +1201,9 @@ function _tfgDessinerDiag(o, cs, mes) {
   // États repérés par une lettre (départs et arrivées des étapes)
   _tfgLettres(c, D, xDe, yDe, fs, alpha);
 
+  // Arrivées prévues de l'action préparée : cercle pointillé, nom à côté
+  _tfgPrevus(c, D, xDe, yDe, fs);
+
   // État actuel, s'il est défini : halo et anneau d'une couleur réservée,
   // par-dessus tout le reste
   var defM = D.defM(mes);
@@ -1254,6 +1262,23 @@ function _tfgDessinerDiag(o, cs, mes) {
     var xv = vue.x1 + (so.x - x0) / pw * (vue.x2 - vue.x1);
     var yv = vue.y1 + (y0 + ph - so.y) / ph * (vue.y2 - vue.y1);
     _tfgBulle(c, D.lu(xv, yv), so.x, so.y, X + W, Y + H, fs);
+  }
+}
+
+function _tfgPrevus(c, D, xDe, yDe, fs) {
+  var P = tfGraph.prevu;
+  for (var k = 0; k < P.length; k++) {
+    var x = xDe(D.x(P[k])), y = yDe(D.yL(P[k]));
+    c.beginPath();
+    c.arc(x, y, 7, 0, 2 * Math.PI);
+    c.fillStyle = 'rgba(255,255,255,0.7)';
+    c.fill();
+    c.strokeStyle = TF_G_ACTUEL;
+    c.lineWidth = 2;
+    c.setLineDash([3, 3]);
+    c.stroke();
+    c.setLineDash([]);
+    if (P[k].nom) _tfgEtiquette(c, P[k].nom, x + 11, y, fs - 1, TF_G_ACTUEL, 'left');
   }
 }
 

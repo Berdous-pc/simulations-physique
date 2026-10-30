@@ -179,9 +179,15 @@ var tf = {
   // (tenir, libérer, poser une masse), pour que tfEnergieTotale reste continue
   eDecal : 0,            // J
 
-  // Thermique
-  G    : 0,              // W·K⁻¹, conductance du fond
-  Text : TF_T0,          // K, température de la source sous le fond
+  // Thermique : le fond est posé sur un isolant ou sur l'une des deux
+  // sources (fond diatherme). Text est la température de la source en
+  // contact ; Tchaude et Tfroide gardent celles des deux sources (celle de
+  // la source en contact suit Text quand on la quitte).
+  G      : 0,            // W·K⁻¹, conductance du fond
+  Text   : TF_T0,        // K, température de la source sous le fond
+  fond   : 'isolant',    // 'isolant', 'chaude' ou 'froide'
+  Tchaude: 400,          // K
+  Tfroide: TF_T0,        // K
 
   // Temps et bilans
   t      : 0,            // s simulées
@@ -381,7 +387,10 @@ function tfReset() {
   tf.Wop    = 0;
   tf.Pair   = TF_P_ATM;
   tf.Wair   = 0;
-  tf.Text   = tf.T0;
+  // L'état initial est un équilibre : posé sur une source qui n'est pas à
+  // T0, le cylindre revient sur l'isolant
+  if (tf.fond !== 'isolant' && Math.abs(tf.Text - tf.T0) > 0.01) tfSetFond('isolant');
+  tf.Text   = tf.fond === 'isolant' ? tf.T0 : tf.Text;
   for (var cle in tf.rampes) tf.rampes[cle].actif = false;
   tf.eDecal = 0;
   tf.qs     = false;
@@ -417,6 +426,21 @@ function tfSetIsolation(G) {
   tf.G = G;
   tf.needsRedraw = true;
 }
+
+// Pose le fond sur l'isolant ('isolant') ou sur une source ('chaude',
+// 'froide') : fond calorifugé, ou diatherme à la température de la source.
+// La source quittée garde la température atteinte (rampe comprise) ; une
+// rampe de la source s'arrête.
+function tfSetFond(f) {
+  if (tf.fond !== 'isolant') tf['T' + tf.fond] = tf.Text;
+  tf.fond = f;
+  if (f !== 'isolant') tf.Text = tf['T' + f];
+  tf.rampes.Text.actif = false;
+  tfSetIsolation(f === 'isolant' ? 0 : TF_ISOLATIONS[TF_ISOLATIONS.length - 1]);
+}
+
+// Température d'une source ('chaude' ou 'froide')
+function tfTSource(f) { return f === tf.fond ? tf.Text : tf['T' + f]; }
 
 // Masse posée portée à `cible` (kg). Ajoutée d'un coup, la différence est un
 // bloc ; ajoutée lentement (marche d'un escalier), du sable. Le retrait

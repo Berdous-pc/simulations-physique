@@ -151,7 +151,7 @@ function tfDessiner() {
 // Largeur intérieure dessinée, en m d'échelle verticale (pour les molécules)
 function tfLargeurDessinee() { return (_tfX2 - _tfX1) / _tfEch; }
 
-// ── Paroi du fond et isolant (plus épais quand l'isolation est forte) ──
+// ── Paroi du fond, posée sur l'isolant ou sur une source (tf.fond) ──
 function _tfDessinerFond() {
   var c = tfCtx, p = _tfParoi;
   var x1 = _tfX1 - p, x2 = _tfX2 + p;
@@ -160,6 +160,7 @@ function _tfDessinerFond() {
   var idx = TF_ISOLATIONS.indexOf(tf.G);
   var f   = idx < 0 ? 0 : idx / (TF_ISOLATIONS.length - 1);   // 0 calorifugé → 1 diathermane
   var ep  = TF_EP_ISOLANT * (1 - f);
+  var police;
   if (ep > 0.002) {
     var yH = _tfY(-TF_EP_FOND), yB = _tfY(-TF_EP_FOND - ep);
     var m  = (x2 - x1) * 0.08;
@@ -169,6 +170,14 @@ function _tfDessinerFond() {
     c.strokeStyle = '#b0a080';
     c.lineWidth = 1;
     c.strokeRect(x1 - m, yH, x2 - x1 + 2 * m, yB - yH);
+    if (tf.fond === 'isolant') {
+      police = Math.max(10, Math.min(14, Math.round((yB - yH) * 0.5)));
+      c.font = '600 ' + police + 'px "Segoe UI", Arial, sans-serif';
+      c.fillStyle = '#6a5030';
+      c.textAlign = 'center';
+      c.textBaseline = 'middle';
+      c.fillText('isolant', (x1 + x2) / 2, (yH + yB) / 2);
+    }
   }
 
   // Paroi du fond : métal clair si conductrice, sombre sinon
@@ -176,8 +185,10 @@ function _tfDessinerFond() {
   c.fillStyle = f > 0 ? '#7a8a96' : '#2c3e50';
   c.fillRect(x1, y1, x2 - x1, y2 - y1);
 
-  // Source thermique, contre l'isolant (ou le fond) : four rouge plus chaud
-  // que T0, bain bleu plus froid, neutre à T0 ; sa température est écrite
+  // Source thermique, contre le fond : rouge plus chaude que T0, bleue plus
+  // froide, neutre à T0 ; son nom et sa température sont écrits. Posé sur
+  // l'isolant, le cylindre n'a pas de source dessous.
+  if (tf.fond === 'isolant') return;
   var zS = -TF_EP_FOND - (ep > 0.002 ? ep : 0);
   var mS = (x2 - x1) * 0.08;
   var yS1 = _tfY(zS), yS2 = _tfY(zS - TF_EP_SOURCE);
@@ -187,8 +198,8 @@ function _tfDessinerFond() {
   c.strokeStyle = 'rgba(44,62,80,0.5)';
   c.lineWidth = 1;
   c.stroke();
-  var nom = tf.Text > TF_T0 + 0.5 ? 'four' : tf.Text < TF_T0 - 0.5 ? 'bain' : 'source';
-  var police = Math.max(10, Math.min(14, Math.round((yS2 - yS1) * 0.62)));
+  var nom = 'source ' + tf.fond;
+  police = Math.max(10, Math.min(14, Math.round((yS2 - yS1) * 0.62)));
   c.font = '600 ' + police + 'px "Segoe UI", Arial, sans-serif';
   c.fillStyle = Math.abs(tf.Text - TF_T0) > 40 ? '#fff' : '#2c3e50';
   c.textAlign = 'center';
