@@ -1015,53 +1015,43 @@ function _tfgDessinerDiag(o, cs, mes) {
     c.setLineDash([]);
   }
 
-  // Chemin : plein tant que la grandeur en ordonnée est définie, d'un
-  // tronçon défini au suivant pointillé « chemin non défini » ; une couleur
-  // par étape (celle de l'échantillon d'arrivée de chaque segment). Une
-  // étape mise en évidence dans le journal laisse les autres en retrait.
+  // Chemin : plein tant que la grandeur en ordonnée est définie ; ailleurs,
+  // pointillé le long de l'état moyen du gaz (P = (γ − 1)·U/V, T = U/(n·Cv),
+  // toujours connus, comme V et S), et non une corde d'un état défini au
+  // suivant : une corde inventait un parcours (après une étape interrompue,
+  // elle partait d'un état bien antérieur). La géométrie ne dépend donc pas
+  // de la convention de tracé, seul le style change. Une couleur par étape
+  // (celle de l'échantillon d'arrivée de chaque segment) ; une étape mise en
+  // évidence dans le journal laisse les autres en retrait.
   var sel = tfEtapes.sel >= 0 ? tfEtapes.sel + 1 : -1;
   var alpha = function (n) { return sel < 0 || n === sel ? 1 : 0.22; };
-  var sans = [], prec = null, q;
-  c.lineWidth = 2.2;
+  var q;
   c.lineJoin = 'round';
   c.lineCap = 'round';
-  k = 0;
+  k = 1;
   while (k < e.length) {
-    var j = k;
-    if (!D.def(e[k])) {
-      while (j + 1 < e.length && !D.def(e[j + 1])) j++;
-      k = j + 1;
-      continue;
-    }
-    while (j + 1 < e.length && D.def(e[j + 1])) j++;
-    if (prec) sans.push([prec, e[k]]);
-    for (q = k + 1; q <= j; q++) {
-      c.globalAlpha = alpha(e[q].etape);
-      c.strokeStyle = tfCouleurEtape(e[q].etape);
-      c.beginPath();
-      c.moveTo(px(e[q - 1]), py(e[q - 1]));
-      c.lineTo(px(e[q]), py(e[q]));
-      c.stroke();
-    }
-    prec = e[j];
+    // Suite de segments de même style et de même étape : un seul tracé
+    // (les tirets restent continus)
+    var plein = D.def(e[k - 1]) && D.def(e[k]), n = e[k].etape, j = k;
+    while (j + 1 < e.length && e[j + 1].etape === n
+           && (D.def(e[j]) && D.def(e[j + 1])) === plein) j++;
+    c.globalAlpha = alpha(n) * (plein ? 1 : 0.8);
+    c.strokeStyle = tfCouleurEtape(n);
+    c.lineWidth = plein ? 2.2 : 1.6;
+    c.setLineDash(plein ? [] : [3, 4]);
+    c.beginPath();
+    c.moveTo(px(e[k - 1]), py(e[k - 1]));
+    for (q = k; q <= j; q++) c.lineTo(px(e[q]), py(e[q]));
+    c.stroke();
     k = j + 1;
   }
-  c.lineWidth = 1.6;
-  c.setLineDash([3, 4]);
-  for (k = 0; k < sans.length; k++) {
-    c.globalAlpha = alpha(sans[k][1].etape) * 0.8;
-    c.strokeStyle = tfCouleurEtape(sans[k][1].etape);
-    c.beginPath();
-    c.moveTo(px(sans[k][0]), py(sans[k][0]));
-    c.lineTo(px(sans[k][1]), py(sans[k][1]));
-    c.stroke();
-  }
+  c.globalAlpha = 1;
   c.setLineDash([]);
   c.lineCap = 'butt';
 
   // Sens de parcours : une flèche au milieu (en longueur) du chemin de
   // chaque étape, chemin non défini compris
-  _tfgFleches(c, e, D, px, py, alpha);
+  _tfgFleches(c, e, px, py, alpha);
 
   // États d'équilibre : fin de chaque séjour à l'équilibre. Son début n'est
   // pas fiable : un échantillon pris à l'extrémité d'une oscillation du
@@ -1183,12 +1173,12 @@ function _tfgDessinerDiag(o, cs, mes) {
 }
 
 // Flèche de sens au milieu de chaque étape : le chemin d'une étape est la
-// suite de ses échantillons définis, précédée du dernier échantillon défini
-// d'avant (départ). Rien si l'étape est trop courte à l'écran.
-function _tfgFleches(c, e, D, px, py, alpha) {
+// suite de ses échantillons, définis ou non (état moyen), précédée du
+// dernier échantillon d'avant (départ). Rien si l'étape est trop courte à
+// l'écran.
+function _tfgFleches(c, e, px, py, alpha) {
   var pts = {}, dernier = null, k, n;
   for (k = 0; k < e.length; k++) {
-    if (!D.def(e[k])) continue;
     n = e[k].etape;
     if (!pts[n]) pts[n] = dernier ? [dernier] : [];
     pts[n].push([px(e[k]), py(e[k])]);
