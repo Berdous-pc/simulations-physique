@@ -692,11 +692,26 @@ function _tfgBoite(o, ser, b, x0, y0, w, h, i1, i2, xDe, gradT, xGrad, fs) {
     c.setLineDash([]);
   }
 
-  // Tronçons définis / non définis
-  k = i1;
-  while (k <= i2) {
-    var def = _tfgDef(e[k], ser), j = k, q;
-    while (j < i2 && _tfgDef(e[j + 1], ser) === def) j++;
+  // Tronçons définis / non définis. Près du seuil, la grandeur passe d'un
+  // échantillon à l'autre de définie à non définie : un tronçon défini de
+  // moins de 2 px entre deux tronçons non définis rejoint la bande (jamais
+  // l'inverse : rien n'est montré défini qui ne l'est pas), sinon des bouts
+  // de courbe pleine s'intercalent dans la bande et l'épaississent.
+  var tr = [], r, j, q;
+  for (k = i1; k <= i2; k++) {
+    var dk = _tfgDef(e[k], ser);
+    r = tr[tr.length - 1];
+    if (r && r.def === dk) r.j = k; else tr.push({ def: dk, k: k, j: k });
+  }
+  for (q = 1; q < tr.length - 1; q++) {
+    if (tr[q].def && xDe(e[tr[q].j].t) - xDe(e[tr[q].k].t) < 2) tr[q].def = false;
+  }
+  for (q = tr.length - 1; q > 0; q--) {
+    if (tr[q].def === tr[q - 1].def) { tr[q - 1].j = tr[q].j; tr.splice(q, 1); }
+  }
+  for (var it = 0; it < tr.length; it++) {
+    var def = tr[it].def;
+    k = tr[it].k; j = tr[it].j;
     if (def) {
       c.strokeStyle = ser.coul;
       c.lineWidth = 2;
@@ -710,14 +725,27 @@ function _tfgBoite(o, ser, b, x0, y0, w, h, i1, i2, xDe, gradT, xGrad, fs) {
       c.stroke();
     } else {
       // La bande déborde d'un échantillon de chaque côté pour se raccorder
-      // aux tronçons définis voisins
-      var a = Math.max(i1, k - 1), z = Math.min(i2, j + 1);
-      c.beginPath();
+      // aux tronçons définis voisins. Les échantillons d'un même pixel sont
+      // regroupés (enveloppe des extrêmes) : sinon, les extrêmes qui
+      // oscillent d'un échantillon à l'autre font un contour en zigzag
+      // serré, une tache sombre plus épaisse que la courbe pleine. Les bords
+      // restent écartés d'au moins 1 px : avec leur trait de 1 px, la bande
+      // n'est jamais plus fine que la courbe pleine (2 px), qui la prolonge
+      // sans bourrelet quand l'écart entre tranches s'éteint.
+      var a = Math.max(i1, k - 1), z = Math.min(i2, j + 1), pts = [], pt;
       for (q = a; q <= z; q++) {
-        if (q === a) c.moveTo(xDe(e[q].t), yDe(e[q][ser.max] * ser.f));
-        else c.lineTo(xDe(e[q].t), yDe(e[q][ser.max] * ser.f));
+        var xq = xDe(e[q].t), yh = yDe(e[q][ser.max] * ser.f), yb = yDe(e[q][ser.min] * ser.f);
+        pt = pts[pts.length - 1];
+        if (pt && xq - pt.x < 1 && q < z) { pt.h = Math.min(pt.h, yh); pt.b = Math.max(pt.b, yb); }
+        else pts.push({ x: xq, h: yh, b: yb });
       }
-      for (q = z; q >= a; q--) c.lineTo(xDe(e[q].t), yDe(e[q][ser.min] * ser.f));
+      c.beginPath();
+      for (q = 0; q < pts.length; q++) {
+        pt = pts[q];
+        if (pt.b - pt.h < 1) { var ym = (pt.h + pt.b) / 2; pt.h = ym - 0.5; pt.b = ym + 0.5; }
+        if (q === 0) c.moveTo(pt.x, pt.h); else c.lineTo(pt.x, pt.h);
+      }
+      for (q = pts.length - 1; q >= 0; q--) c.lineTo(pts[q].x, pts[q].b);
       c.closePath();
       c.fillStyle = _tfgHachure(o, ser.coul);
       c.fill();
@@ -727,7 +755,6 @@ function _tfgBoite(o, ser, b, x0, y0, w, h, i1, i2, xDe, gradT, xGrad, fs) {
       c.stroke();
       c.globalAlpha = 1;
     }
-    k = j + 1;
   }
   c.restore();
 
