@@ -184,6 +184,9 @@ var tf = {
   // tEchant (tf-graph.js la fournit et fixe l'échéance suivante)
   echantillon : null,
   tEchant     : 0,
+  // Suivi entre deux échantillons (moyennes dans le temps, extrêmes) : cf.
+  // _tfAccumuler ; null = rien depuis le dernier échantillon
+  acc         : null,
 
   // Animation
   paused      : false,
@@ -375,6 +378,7 @@ function tfReset() {
   tf.limite = false;
   tf.dtCfl  = 1e-6;
   tf.tEchant = 0;
+  tf.acc    = null;
   _tfMajAmortissement();
   tf.needsRedraw = true;
 }
@@ -642,13 +646,59 @@ function tfAvancer(dt) {
       _tfSousPas(h);
       if (++nEssai >= TF_QS_ESSAI) { nEssai = 0; _tfEssayerQS(); }
     }
-    if (tf.echantillon && tf.t >= tf.tEchant) tf.echantillon();
+    if (tf.echantillon) {
+      _tfAccumuler(h);
+      if (tf.t >= tf.tEchant) tf.echantillon();
+    }
     reste -= h;
     n++;
   }
   tf.limite = reste > 1e-12;
   tf.needsRedraw = true;
   return dt - reste;
+}
+
+// Suivi des grandeurs entre deux échantillons des graphes, après chaque
+// sous-pas de durée h : moyennes dans le temps de P, T, V et de la pression
+// exercée par le piston, extrêmes de leurs valeurs et de celles des
+// tranches. Une oscillation plus rapide que le pas d'échantillonnage (la
+// colonne de gaz sous la membrane oscille en ~4 ms) se trace alors comme une
+// bande autour de sa moyenne, et non comme une fausse courbe lente
+// (repliement : à ×0,1, un point toutes les 4 ms).
+function _tfAccumuler(h) {
+  var E = tf.E, P = tf.P, cTr = tf.nTr * tf.Cv, j;
+  var U = 0, Pmin = Infinity, Pmax = -Infinity, Emin = Infinity, Emax = -Infinity;
+  for (j = 0; j < TF_N; j++) {
+    U += E[j];
+    if (P[j] < Pmin) Pmin = P[j];
+    if (P[j] > Pmax) Pmax = P[j];
+    if (E[j] < Emin) Emin = E[j];
+    if (E[j] > Emax) Emax = E[j];
+  }
+  var V = tfVolume();
+  var Pm = (tf.gamma - 1) * U / V, Tm = U / (tf.n * tf.Cv);
+  var Pp = tf.tenu ? tfPFace() : tfPext();
+  var a = tf.acc;
+  if (!a) {
+    a = tf.acc = { dt: 0, P: 0, T: 0, V: 0, Pp: 0,
+                   P1: Pm, P2: Pm, T1: Tm, T2: Tm, V1: V, V2: V,
+                   Pmin: Pmin, Pmax: Pmax, Tmin: Emin / cTr, Tmax: Emax / cTr };
+  }
+  a.dt += h;
+  a.P  += Pm * h;
+  a.T  += Tm * h;
+  a.V  += V * h;
+  a.Pp += Pp * h;
+  if (Pm < a.P1) a.P1 = Pm;
+  if (Pm > a.P2) a.P2 = Pm;
+  if (Tm < a.T1) a.T1 = Tm;
+  if (Tm > a.T2) a.T2 = Tm;
+  if (V < a.V1) a.V1 = V;
+  if (V > a.V2) a.V2 = V;
+  if (Pmin < a.Pmin) a.Pmin = Pmin;
+  if (Pmax > a.Pmax) a.Pmax = Pmax;
+  if (Emin / cTr < a.Tmin) a.Tmin = Emin / cTr;
+  if (Emax / cTr > a.Tmax) a.Tmax = Emax / cTr;
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -952,9 +1002,11 @@ function _tfSousPas(dt) {
   for (i = 1; i <= N; i++) z[i] += u[i] * dt;
 
   // Butées du piston libre : choc mou, l'énergie cinétique perdue passe au
-  // gaz (le vérin, lui, reste dans la course permise)
+  // gaz (le vérin, lui, reste dans la course permise). Elle remplace la
+  // chaleur d'amortissement du sous-pas, calculée avec une vitesse que le
+  // piston n'a pas eue : en butée, celle-ci chauffait le gaz sans cause.
   if (!tenu && ((z[N] > TF_H_CYL && u[N] > 0) || (z[N] < TF_Z_BUTEE && u[N] < 0))) {
-    chaleur += 0.5 * (TF_M_PISTON + tf.masse + mTr / 2) * uAvant * uAvant;
+    chaleur = 0.5 * (TF_M_PISTON + tf.masse + mTr / 2) * uAvant * uAvant;
     u[N] = 0;
     z[N] = Math.min(TF_H_CYL, Math.max(TF_Z_BUTEE, z[N]));
   }

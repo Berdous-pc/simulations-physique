@@ -42,13 +42,18 @@ var TF_G_ISOC   = '#6a5aa0';
 var TF_G_ISOB   = '#5a8a30';
 var TF_G_ACTUEL = '#e06020';     // état actuel du gaz (diagrammes d'état)
 
-// Grandeurs des graphes temporels : clé de la moyenne, des extrêmes des
-// tranches et du critère « définie » dans un échantillon ; facteur d'unité ;
-// étendue minimale de l'axe (évite de grossir le bruit numérique au repos)
+// Grandeurs des graphes temporels : clés, dans un échantillon, de la valeur
+// instantanée (m), de sa moyenne sur l'intervalle et de ses extrêmes (t, lo,
+// hi), des extrêmes des tranches et du critère « définie » ; facteur
+// d'unité ; étendue minimale de l'axe (évite de grossir le bruit numérique
+// au repos)
 var TF_G_SERIES = [
-  { titre: 'T (K)',   coul: '#c0503a', m: 'Tm', min: 'Tmin', max: 'Tmax', def: 'Tdef', f: 1,    span: 10 },
-  { titre: 'P (kPa)', coul: '#2a6aaa', m: 'Pm', min: 'Pmin', max: 'Pmax', def: 'Pdef', f: 1e-3, span: 10 },
-  { titre: 'V (L)',   coul: '#2a8a50', m: 'V',  min: 'V',    max: 'V',    def: null,   f: 1e3,  span: 0.05 }
+  { titre: 'T (K)',   coul: '#c0503a', m: 'Tm', t: 'Tt', lo: 'Tlo', hi: 'Thi',
+    min: 'Tmin', max: 'Tmax', def: 'Tdef', f: 1,    span: 10 },
+  { titre: 'P (kPa)', coul: '#2a6aaa', m: 'Pm', t: 'Pt', lo: 'Plo', hi: 'Phi',
+    min: 'Pmin', max: 'Pmax', def: 'Pdef', f: 1e-3, span: 10 },
+  { titre: 'V (L)',   coul: '#2a8a50', m: 'V',  t: 'Vt', lo: 'Vlo', hi: 'Vhi',
+    min: 'Vlo',  max: 'Vhi',  def: null,   f: 1e3,  span: 0.05 }
 ];
 
 // Options des graphes (menu Options de la barre des encarts)
@@ -147,6 +152,10 @@ function tfGraphTemps() {
 // (tfGraphDegeler).
 function _tfgEchantillon(avantMarche) {
   tf.tEchant = tf.t + _tfgPasEchant();
+  // Suivi depuis l'échantillon précédent (tf-sim.js, _tfAccumuler) : vidé
+  // même si cet échantillon n'est pas gardé (chrono figé)
+  var a = tf.acc;
+  tf.acc = null;
 
   var m = tfMesures(), g = tfGraph;
   tfEtapesSuivre(m);
@@ -165,15 +174,29 @@ function _tfgEchantillon(avantMarche) {
     g.coupure = true;
   }
 
+  // Graphes temporels : moyennes sur l'intervalle écoulé depuis
+  // l'échantillon précédent, et extrêmes atteints pendant cet intervalle
+  // (l'instant de l'échantillon compris). Les diagrammes d'état gardent les
+  // valeurs instantanées : un état est un point, pas une moyenne.
+  var Pp = tf.tenu ? m.Pface : m.Pext;
+  var moy = function (cle, v) { return a ? a[cle] / a.dt : v; };
+  var bas = function (cle, v) { return a ? Math.min(a[cle], v) : v; };
+  var haut = function (cle, v) { return a ? Math.max(a[cle], v) : v; };
   var s = {
     t: tf.t - g.decal, ts: tf.t, V: m.V,
-    Pm: m.Pmoy, Pmin: m.Pmin, Pmax: m.Pmax, Pdef: m.Pdef,
-    Tm: m.Tmoy, Tmin: m.Tmin, Tmax: m.Tmax, Tdef: m.Tdef, ext: m.ext,
+    Pm: m.Pmoy, Pdef: m.Pdef,
+    Tm: m.Tmoy, Tdef: m.Tdef, ext: m.ext,
+    Pt: moy('P', m.Pmoy), Plo: bas('P1', m.Pmoy), Phi: haut('P2', m.Pmoy),
+    Tt: moy('T', m.Tmoy), Tlo: bas('T1', m.Tmoy), Thi: haut('T2', m.Tmoy),
+    Vt: moy('V', m.V),    Vlo: bas('V1', m.V),    Vhi: haut('V2', m.V),
+    Pmin: bas('Pmin', m.Pmin), Pmax: haut('Pmax', m.Pmax),
+    Tmin: bas('Tmin', m.Tmin), Tmax: haut('Tmax', m.Tmax),
+    Ppt: moy('Pp', Pp),
     S: tfEntropie(),
     eq: m.equilibre,
     // Pression exercée par le piston : P_ext piston libre, celle que
     // mesure le vérin piston tenu
-    Pp: tf.tenu ? m.Pface : m.Pext,
+    Pp: Pp,
     Text: tf.Text,
     marche: avantMarche === true,
     coupure: g.coupure,
@@ -271,6 +294,7 @@ function tfGraphRevenir(ts, n) {
   g.pileT = [];
   g.pileD = { pv: [], ts: [] };
   tf.tEchant = tf.t;
+  tf.acc = null;
   g.sale = true;
 }
 
@@ -469,8 +493,8 @@ function _tfgDef(s, ser) { return !ser.def || s[ser.def]; }
 function _tfgRepere(ser) {
   if (ser.m === 'Tm') return tf.G > 0 ? { cle: 'Text', nom: 'T_ext' } : null;
   if (ser.m === 'Pm') {
-    if (!tf.tenu) return { cle: 'Pp', nom: 'P_ext' };
-    return tfGraphAff.piston ? { cle: 'Pp', nom: 'sur le piston' } : null;
+    if (!tf.tenu) return { cle: 'Ppt', nom: 'P_ext' };
+    return tfGraphAff.piston ? { cle: 'Ppt', nom: 'sur le piston' } : null;
   }
   return null;
 }
@@ -562,8 +586,12 @@ function _tfgDessinerTemps() {
     for (b = 0; b < 3; b++) {
       var ser = TF_G_SERIES[b], nom = ser.titre.split(' ')[0];
       var uni = ser.titre.replace(/^.*\((.*)\)$/, '$1');
+      // Valeur moyenne sur l'intervalle ; s'il y a oscillation, son étendue
+      var osc = (s[ser.hi] - s[ser.lo]) * ser.f > ser.span / 100;
       lignes.push(_tfgDef(s, ser)
-        ? nom + ' = ' + _tfgNbLu(s[ser.m] * ser.f) + ' ' + uni
+        ? nom + ' = ' + _tfgNbLu(s[ser.t] * ser.f) + ' ' + uni
+          + (osc ? ' (oscille de ' + _tfgNbLu(s[ser.lo] * ser.f) + ' à '
+                   + _tfgNbLu(s[ser.hi] * ser.f) + ')' : '')
         : nom + ' non définie (' + _tfgNbLu(s[ser.min] * ser.f) + ' à '
           + _tfgNbLu(s[ser.max] * ser.f) + ' ' + uni + ')');
     }
@@ -612,9 +640,8 @@ function _tfgBoite(o, ser, b, x0, y0, w, h, i1, i2, xDe, gradT, xGrad, fs) {
   for (k = i1; k <= i2; k++) {
     s = e[k];
     if (_tfgDef(s, ser)) {
-      v = s[ser.m] * ser.f;
-      if (v < lo) lo = v;
-      if (v > hi) hi = v;
+      if (s[ser.lo] * ser.f < lo) lo = s[ser.lo] * ser.f;
+      if (s[ser.hi] * ser.f > hi) hi = s[ser.hi] * ser.f;
     } else {
       nd = true;
       if (s[ser.min] * ser.f < lo) lo = s[ser.min] * ser.f;
@@ -697,7 +724,7 @@ function _tfgBoite(o, ser, b, x0, y0, w, h, i1, i2, xDe, gradT, xGrad, fs) {
   // moins de 2 px entre deux tronçons non définis rejoint la bande (jamais
   // l'inverse : rien n'est montré défini qui ne l'est pas), sinon des bouts
   // de courbe pleine s'intercalent dans la bande et l'épaississent.
-  var tr = [], r, j, q;
+  var tr = [], r, j, q, oscil = false;
   for (k = i1; k <= i2; k++) {
     var dk = _tfgDef(e[k], ser);
     r = tr[tr.length - 1];
@@ -713,15 +740,51 @@ function _tfgBoite(o, ser, b, x0, y0, w, h, i1, i2, xDe, gradT, xGrad, fs) {
     var def = tr[it].def;
     k = tr[it].k; j = tr[it].j;
     if (def) {
+      // Oscillation plus rapide que les échantillons : bande pleine et
+      // claire entre les extrêmes atteints (regroupés par pixel), sous la
+      // courbe des moyennes. Un extrême n'est gardé que s'il dépasse de plus
+      // de 2 px ce que la courbe couvre déjà autour de l'échantillon (une
+      // pente raide mais bien échantillonnée ne fait pas de bande).
+      var bpts = [], bp, large = false;
+      for (q = k; q <= j; q++) {
+        var cMin = Infinity, cMax = -Infinity;
+        for (var qq = Math.max(k, q - 1); qq <= Math.min(j, q + 1); qq++) {
+          var yc = yDe(e[qq][ser.t] * ser.f);
+          if (yc < cMin) cMin = yc;
+          if (yc > cMax) cMax = yc;
+        }
+        var xb = xDe(e[q].t), yhb = yDe(e[q][ser.hi] * ser.f), ybb = yDe(e[q][ser.lo] * ser.f);
+        if (yhb > cMin - 2) yhb = cMin;
+        if (ybb < cMax + 2) ybb = cMax;
+        bp = bpts[bpts.length - 1];
+        if (bp && xb - bp.x < 1) { bp.h = Math.min(bp.h, yhb); bp.b = Math.max(bp.b, ybb); }
+        else bpts.push(bp = { x: xb, h: yhb, b: ybb });
+        // Mention en titre seulement pour une bande bien visible
+        if (yhb < cMin - 4 || ybb > cMax + 4) large = true;
+      }
+      if (large) oscil = true;
+      if (bpts.length) {
+        c.beginPath();
+        for (q = 0; q < bpts.length; q++) {
+          if (q === 0) c.moveTo(bpts[q].x, bpts[q].h); else c.lineTo(bpts[q].x, bpts[q].h);
+        }
+        if (bpts.length === 1) c.lineTo(bpts[0].x + 1, bpts[0].h);
+        for (q = bpts.length - 1; q >= 0; q--) c.lineTo(bpts[q].x + (bpts.length === 1 ? 1 : 0), bpts[q].b);
+        c.closePath();
+        c.fillStyle = ser.coul;
+        c.globalAlpha = 0.25;
+        c.fill();
+        c.globalAlpha = 1;
+      }
       c.strokeStyle = ser.coul;
       c.lineWidth = 2;
       c.lineJoin = 'round';
       c.beginPath();
       for (q = k; q <= j; q++) {
-        if (q === k) c.moveTo(xDe(e[q].t), yDe(e[q][ser.m] * ser.f));
-        else c.lineTo(xDe(e[q].t), yDe(e[q][ser.m] * ser.f));
+        if (q === k) c.moveTo(xDe(e[q].t), yDe(e[q][ser.t] * ser.f));
+        else c.lineTo(xDe(e[q].t), yDe(e[q][ser.t] * ser.f));
       }
-      if (j === k) c.lineTo(xDe(e[k].t) + 1, yDe(e[k][ser.m] * ser.f));
+      if (j === k) c.lineTo(xDe(e[k].t) + 1, yDe(e[k][ser.t] * ser.f));
       c.stroke();
     } else {
       // La bande déborde d'un échantillon de chaque côté pour se raccorder
@@ -773,6 +836,8 @@ function _tfgBoite(o, ser, b, x0, y0, w, h, i1, i2, xDe, gradT, xGrad, fs) {
   c.fillText(ser.titre, x0 + 6, y0 + 2 + fs * 0.65);
   if (nd) _tfgEtiquette(c, 'hachures : non définie (étendue des tranches)',
                         x0 + w - 6, y0 + 2 + fs * 0.65, fs - 1, TF_G_ND, 'right');
+  if (oscil) _tfgEtiquette(c, 'bande claire : oscillation trop rapide pour l\'échelle',
+                           x0 + w - 6, y0 + 2 + fs * (nd ? 1.95 : 0.65), fs - 1, TF_G_MUET, 'right');
   if (rep && i2 >= i1) {
     var yr = yDe(e[i2][rep.cle] * ser.f);
     _tfgEtiquette(c, rep.nom, x0 + w - 6, Math.max(y0 + fs * 2, Math.min(y0 + h - fs, yr - fs * 0.8)),
