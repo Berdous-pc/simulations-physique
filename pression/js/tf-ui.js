@@ -148,7 +148,9 @@ var TF_AFF_PERIODE = 100;   // ms réelles (10 Hz)
 function tfMajAfficheurs() {
   _tfVitesseRelax();
   var m = tfMesures();
-  _tfEl['tf-it-t'].textContent    = _tfFmtTemps(tf.t);
+  // Temps des graphes : il s'arrête avec eux quand le chrono est figé à
+  // l'équilibre (attentes retirées)
+  _tfEl['tf-it-t'].textContent    = _tfFmtTemps(Math.max(0, tfGraphTemps()));
   _tfEl['tf-it-P'].innerHTML      = m.Pdef ? _tfFmtPression(m.Pmoy)
     : _tfNonDefini(_tfFmt(m.Pmin / 1000, 2) + ' à ' + _tfFmtPression(m.Pmax));
   _tfEl['tf-it-T'].innerHTML      = m.Tdef ? _tfFmt(m.Tmoy, 1) + ' K'
