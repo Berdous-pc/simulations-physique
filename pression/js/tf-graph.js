@@ -768,19 +768,29 @@ function _tfgBoite(o, ser, b, x0, y0, w, h, i1, i2, xDe, gradT, xGrad, fs) {
         if (yhb < cMin - 4 || ybb > cMax + 4) large = true;
       }
       if (large) oscil = true;
-      if (bpts.length) {
+      // Un polygone par suite de pixels voisins (écart de 2 px au plus) :
+      // d'un pixel au suivant éloigné, la bande s'interrompt au lieu de
+      // s'étirer. Sinon, juste avant un saut (vérin brutal) groupé dans un
+      // seul pixel, la bande de ce pixel était reliée à l'échantillon
+      // précédent, lointain (chrono figé à l'équilibre) : un triangle là où
+      // rien n'a bougé.
+      c.fillStyle = ser.coul;
+      c.globalAlpha = 0.25;
+      for (q = 0; q < bpts.length; q++) {
+        var q1 = q, u;
+        while (q1 + 1 < bpts.length && bpts[q1 + 1].x - bpts[q1].x <= 2) q1++;
+        var seul = q1 === q;
         c.beginPath();
-        for (q = 0; q < bpts.length; q++) {
-          if (q === 0) c.moveTo(bpts[q].x, bpts[q].h); else c.lineTo(bpts[q].x, bpts[q].h);
+        for (u = q; u <= q1; u++) {
+          if (u === q) c.moveTo(bpts[u].x, bpts[u].h); else c.lineTo(bpts[u].x, bpts[u].h);
         }
-        if (bpts.length === 1) c.lineTo(bpts[0].x + 1, bpts[0].h);
-        for (q = bpts.length - 1; q >= 0; q--) c.lineTo(bpts[q].x + (bpts.length === 1 ? 1 : 0), bpts[q].b);
+        if (seul) c.lineTo(bpts[q].x + 1, bpts[q].h);
+        for (u = q1; u >= q; u--) c.lineTo(bpts[u].x + (seul ? 1 : 0), bpts[u].b);
         c.closePath();
-        c.fillStyle = ser.coul;
-        c.globalAlpha = 0.25;
         c.fill();
-        c.globalAlpha = 1;
+        q = q1;
       }
+      c.globalAlpha = 1;
       c.strokeStyle = ser.coul;
       c.lineWidth = 2;
       c.lineJoin = 'round';
