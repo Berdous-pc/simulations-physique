@@ -121,8 +121,7 @@ var tfGraph = {
 // ══════════════════════════════════════════════════════════════════════
 
 function _tfgFenetre() {
-  var i = TF_VITESSES.indexOf(tf.vitesse);
-  return TF_G_FENETRES[i >= 0 ? i : 4];
+  return TF_G_FENETRES[tfCranVitesse(tf.vitesse)];
 }
 
 // Appelé par tfAvancer dès que tf.t atteint tf.tEchant. Le pas suit la

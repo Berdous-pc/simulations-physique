@@ -89,10 +89,11 @@ function _tfFmtTemps(t) {
 
 function _tfFmtPression(P) { return _tfFmt(P / 1000, 2) + ' kPa'; }
 
-// Libellé d'un cran de vitesse : ×1/5000, ×0,1, ×20…
+// Libellé d'une vitesse : ×1/5000, ×0,1, ×20… ; deux chiffres significatifs
+// pendant un passage progressif d'un cran à l'autre (×1/140, ×3,5, ×1400)
 function _tfLibelleVitesse(v) {
-  if (v < 0.1) return '1/' + Math.round(1 / v);
-  return String(v).replace('.', ',');
+  if (v < 0.1) return '1/' + (+(1 / v).toPrecision(2));
+  return String(+v.toPrecision(2)).replace('.', ',');
 }
 
 // Valeur d'une grandeur visée, en clair
@@ -391,21 +392,62 @@ function _tfMajManieres() {
 
 // Lance l'action de la carte de la manière choisie : 'brutal', 'qs' ou 'rev'
 function tfLancerManiere(man) {
-  if (tfEnCours()) return;
+  if (tfEnCours() || _tfEnAttente) return;
   var cle = _tfCle(), vise = tfCarte[cle].vise, p = _tfParamsManiere(cle, man);
-  _tfOuvrirEtape(_tfDescManiere(cle, man, p));
-  if (cle === 'volume') {
-    tfLancerVerin(vise, p.duree);
-  } else {
-    tfAppliquer(cle, vise, p.duree, _tfPas(cle), p.duree > 0);
-    if (cle !== 'Text') tfSetTenu(false);
-  }
-  _tfApresLancer(cle, p.duree);
+  var desc = _tfDescManiere(cle, man, p), pas = _tfPas(cle);
+  _tfLancerApresRalenti(cle, vise, p.duree, function () {
+    _tfOuvrirEtape(desc);
+    if (cle === 'volume') {
+      tfLancerVerin(vise, p.duree);
+    } else {
+      tfAppliquer(cle, vise, p.duree, pas, p.duree > 0);
+      if (cle !== 'Text') tfSetTenu(false);
+    }
+    _tfApresLancer(cle, p.duree);
+  });
+}
+
+// Fin commune des lancements : relaxation suivie, graphes, panneau
+function _tfApresLancerCommun() {
   _tfDemarrerRelax();
   tfGraphReprogrammer();
   tfGraph.sale = true;
   _tfMajBoutons();
   tfMajAfficheurs();
+}
+
+// Vitesse adaptée : s'il faut ralentir le temps pour voir l'action, le
+// ralentissement se fait d'abord, progressivement, et l'action part
+// ensuite (rien ne serait vu des premiers instants à l'ancienne vitesse).
+// Accélérer, en revanche, se fait pendant l'action.
+function _tfLancerApresRalenti(cle, vise, duree, lancer) {
+  var go = function () { lancer(); _tfApresLancerCommun(); };
+  if (!tfCarte.auto || tf.paused) { go(); return; }
+  var D = _tfDureePrevue(cle, vise, duree);
+  if (!isFinite(D) || D <= 0) { go(); return; }
+  var i = tfCranVitesse(D / TF_ECRAN_ACTION);
+  if (TF_VITESSES[i] < tf.vitesse * (1 - 1e-9)) {
+    _tfVersCran(i, go);
+    _tfMajBoutons();
+  } else {
+    go();
+  }
+}
+
+// Durée de l'action avant de la lancer (_tfDureeAction l'évalue une fois
+// lancée) : course du vérin, ou consigne appliquée le temps du calcul
+function _tfDureePrevue(cle, vise, duree) {
+  if (cle === 'volume') {
+    var z = tf.z[TF_N];
+    return Math.abs(vise - z) > 1e-6 ? tfTauEffectif(z, vise, duree) : duree;
+  }
+  var sauve = tf[cle], tenu = tf.tenu;
+  tf[cle] = vise;
+  if (cle !== 'Text') tf.tenu = false;
+  var D = _tfDureeAction(cle, duree);
+  tf[cle] = sauve;
+  tf.tenu = tenu;
+  return D;
 }
 
 // Ouvre une étape avant une action : le chrono des graphes repart et l'état
@@ -479,7 +521,7 @@ function _tfMajCarte() {
 // (une action sur la pression libère aussi le piston tenu). Interrompre :
 // pendant une action.
 function _tfMajBoutonsCarte() {
-  var cle = _tfCle(), enCours = tfEnCours();
+  var cle = _tfCle(), enCours = tfEnCours() || !!_tfEnAttente;
   var rien = Math.abs(tfCarte[cle].vise - _tfActuelle(cle)) < 1e-6
           && !((cle === 'masse' || cle === 'Pair') && tf.tenu);
   _tfEl['tf-btn-lancer'].disabled = enCours || rien;
@@ -490,7 +532,9 @@ function _tfMajBoutonsCarte() {
   });
 
   var info = '';
-  if (tf.verin.actif) {
+  if (_tfEnAttente) {
+    info = 'Le temps ralentit avant l’action…';
+  } else if (tf.verin.actif) {
     info = 'Vérin en marche : encore ' + _tfFmtDuree(Math.max(0, tf.verin.t0 + tf.verin.tau - tf.t));
   } else {
     for (var c in tf.rampes) {
@@ -621,6 +665,8 @@ function tfBasculerPause() {
 
 function tfReinitialiser() {
   _tfRelax = null;
+  _tfAnnulerAttente();
+  tfHorloge.tours = 0;
   tfReset();
   tfMolInit();
   tfEtapesEffacer();
@@ -629,16 +675,34 @@ function tfReinitialiser() {
   tfMajAfficheurs();
 }
 
+// Curseur Vitesse : le cran choisi s'applique aussitôt (un passage
+// progressif en cours s'arrête, une action qui attendait part)
 function tfOnVitesse(val) {
-  tf.vitesse = TF_VITESSES[parseInt(val, 10)];
-  _tfEl['tf-sl-vitesse'].value = val;
-  _tfEl['tf-lbl-vitesse'].textContent = _tfLibelleVitesse(tf.vitesse);
+  _tfArreterRampeV();
+  _tfFixerVitesse(TF_VITESSES[parseInt(val, 10)]);
   tfGraph.sale = true;
-  tfGraphReprogrammer();   // pas d'échantillonnage (l'axe des temps, lui, ne dépend pas du cran)
   tfMajAfficheurs();
 }
 
-function tfOnVitesseAuto(coche) { tfCarte.auto = coche; }
+function tfOnVitesseAuto(coche) {
+  tfCarte.auto = coche;
+  if (!coche) {
+    _tfArreterRampeV();
+    _tfFixerVitesse(TF_VITESSES[tfCranVitesse(tf.vitesse)]);
+    tfMajAfficheurs();
+  }
+}
+
+// Vitesse effective : libellé, curseur au cran le plus proche, pas
+// d'échantillonnage des graphes (l'axe des temps, lui, ne dépend pas du cran)
+function _tfFixerVitesse(v) {
+  var i = tfCranVitesse(v), changeCran = i !== tfCranVitesse(tf.vitesse);
+  tf.vitesse = v;
+  _tfEl['tf-sl-vitesse'].value = i;
+  _tfEl['tf-lbl-vitesse'].textContent = _tfLibelleVitesse(v);
+  if (changeCran) { tfGraph.sale = true; tfGraphReprogrammer(); }
+  tf.needsRedraw = true;   // horloge
+}
 
 function tfOnIsolation(val) {
   var idx = parseInt(val, 10);
@@ -712,25 +776,27 @@ function tfOnPas(val) {
 // à la hauteur visée. Pression : la consigne s'applique et le piston est
 // libéré. Température : le piston garde son état.
 function tfLancer() {
-  if (tfEnCours()) return;
-  var cle = _tfCle(), k = tfCarte[cle], duree = _tfDuree(cle);
-  _tfOuvrirEtape(_tfDescAction(cle, duree));
-  if (cle === 'volume') {
-    tfLancerVerin(k.vise, duree);
-  } else {
-    tfAppliquer(cle, k.vise, duree, _tfPas(cle));
-    if (cle !== 'Text') tfSetTenu(false);
-  }
-  _tfApresLancer(cle, duree);
-  _tfDemarrerRelax();
-  tfGraphReprogrammer();
-  tfGraph.sale = true;
-  _tfMajBoutons();
-  tfMajAfficheurs();
+  if (tfEnCours() || _tfEnAttente) return;
+  var cle = _tfCle(), vise = tfCarte[cle].vise, duree = _tfDuree(cle);
+  var desc = _tfDescAction(cle, duree), pas = _tfPas(cle);
+  _tfLancerApresRalenti(cle, vise, duree, function () {
+    _tfOuvrirEtape(desc);
+    if (cle === 'volume') {
+      tfLancerVerin(vise, duree);
+    } else {
+      tfAppliquer(cle, vise, duree, pas);
+      if (cle !== 'Text') tfSetTenu(false);
+    }
+    _tfApresLancer(cle, duree);
+  });
 }
 
+// Interrompre pendant le ralentissement qui précède une action : elle ne
+// part pas
 function tfOnInterrompre() {
+  if (_tfEnAttente) _tfAnnulerAttente();
   tfInterrompre();
+  _tfMajBoutons();
   tfMajAfficheurs();
 }
 
@@ -742,6 +808,7 @@ function tfOnSelEtape(k) {
 
 function tfOnRevenir(i) {
   _tfRelax = null;
+  _tfAnnulerAttente();
   tfEtapesRevenir(i);
   tfMolInit();
   _tfMajBoutons();
@@ -756,8 +823,74 @@ var TF_ECRAN_ACTION = 5;   // s réelles visées
 
 function _tfVitesseAdaptee(D) {
   if (!isFinite(D) || D <= 0) return;
-  var i = _tfCranPour(D / TF_ECRAN_ACTION);
-  if (TF_VITESSES[i] !== tf.vitesse) tfOnVitesse(i);
+  _tfVersCran(tfCranVitesse(D / TF_ECRAN_ACTION));
+}
+
+// ── Passage progressif d'une vitesse à l'autre ──
+// Passer d'un coup de ×1/1000 (oscillations du piston) à ×500 (équilibre
+// thermique) ne se voit pas. La vitesse va donc de l'une à l'autre en
+// progression géométrique adoucie (logarithme lissé, départ et arrivée en
+// douceur), d'autant plus longtemps que l'écart compte de
+// décades : ~0,7 s par décade pour accélérer (de 0,8 à 3,5 s), ~0,45 s pour
+// ralentir avant une action (de 0,8 à 2 s), qui attend la fin du
+// ralentissement. L'horloge de la scène (tf-scene.js) montre l'un et l'autre.
+var TF_RAMPE_MONTE   = { parDecade: 0.7,  min: 0.8, max: 3.5 };   // s réelles
+var TF_RAMPE_DESCEND = { parDecade: 0.45, min: 0.8, max: 2 };
+var _tfRampeV = null;      // { v0, v1, t, duree } (t et duree en s réelles)
+var _tfEnAttente = null;   // action lancée à la fin du ralentissement
+
+// Vers le cran i, progressivement ; apres : appelée une fois la vitesse
+// atteinte. En pause, la vitesse change d'un coup (rien ne défile).
+function _tfVersCran(i, apres) {
+  var v1 = TF_VITESSES[i];
+  if (_tfRampeV && _tfRampeV.v1 === v1 && !apres) return;
+  var r = Math.abs(Math.log(v1 / tf.vitesse)) / Math.LN10;   // décades
+  if (tf.paused || r < 1e-6) {
+    _tfRampeV = null;
+    tfHorloge.sens = 0;
+    _tfFixerVitesse(v1);
+    if (apres) apres();
+    return;
+  }
+  var p = v1 > tf.vitesse ? TF_RAMPE_MONTE : TF_RAMPE_DESCEND;
+  _tfRampeV = { v0: tf.vitesse, v1: v1, t: 0,
+                duree: Math.max(p.min, Math.min(p.max, p.parDecade * r)) };
+  _tfEnAttente = apres || null;
+  tfHorloge.sens = v1 > tf.vitesse ? 1 : -1;
+}
+
+// Appelée à chaque image hors pause, avec la durée réelle écoulée (s)
+function _tfAvancerRampeV(dt) {
+  var R = _tfRampeV;
+  if (!R) return;
+  R.t += dt;
+  var s = Math.min(1, R.t / R.duree);
+  if (s < 1) {
+    // Lissage : 0 → 1, pentes nulles aux deux bouts
+    var e = s * s * (3 - 2 * s);
+    _tfFixerVitesse(R.v0 * Math.pow(R.v1 / R.v0, e));
+    return;
+  }
+  _tfFixerVitesse(R.v1);
+  _tfArreterRampeV();
+  tfMajAfficheurs();
+}
+
+// Fin (ou arrêt) du passage progressif : l'action qui attendait part
+function _tfArreterRampeV() {
+  _tfRampeV = null;
+  tfHorloge.sens = 0;
+  var f = _tfEnAttente;
+  _tfEnAttente = null;
+  if (f) f();
+}
+
+// Réinitialisation, retour à un état : l'action qui attendait ne part pas
+// (le passage de vitesse, lui, se poursuit)
+function _tfAnnulerAttente() {
+  if (!_tfEnAttente) return;
+  _tfEnAttente = null;
+  _tfMajBoutons();
 }
 
 // Durée simulée de ce qu'il y a à voir d'une action lancée (s). cle null :
@@ -775,15 +908,6 @@ function _tfDureeAction(cle, duree) {
   else if (cle === 'Pair' && tf.masse === 0) D = 10 * d.traversee;
   else D = 16 * d.piston;
   return D;
-}
-
-// Cran de vitesse le plus proche (en rapport) de v
-function _tfCranPour(v) {
-  var iMieux = 0;
-  for (var i = 1; i < TF_VITESSES.length; i++) {
-    if (Math.abs(Math.log(TF_VITESSES[i] / v)) < Math.abs(Math.log(TF_VITESSES[iMieux] / v))) iMieux = i;
-  }
-  return iMieux;
 }
 
 // ── Vitesse adaptée pendant le retour à l'équilibre ──
@@ -806,6 +930,7 @@ function _tfVitesseRelax() {
   var R = _tfRelax;
   if (!R) return;
   if (!tfCarte.auto) { _tfRelax = null; return; }
+  if (_tfEnAttente) return;   // une action attend la fin d'un ralentissement
   if (tfEnCours()) { R.ecran = 0; R.tPrec = tf.t; return; }
   R.ecran += (tf.t - R.tPrec) / tf.vitesse;
   R.tPrec = tf.t;
@@ -819,8 +944,9 @@ function _tfVitesseRelax() {
     D += (tf.G > 0 ? d.thermique : d.interne) * Math.log(Math.max(2, ecart / (TF_SEUIL_T / 2)));
   }
   if (D <= 0) return;
-  var i = _tfCranPour(D / TF_ECRAN_ACTION);
-  if (TF_VITESSES[i] > tf.vitesse) tfOnVitesse(i);
+  // Jamais plus lent que la vitesse visée (celle d'un passage en cours)
+  var i = tfCranVitesse(D / TF_ECRAN_ACTION);
+  if (TF_VITESSES[i] > (_tfRampeV ? _tfRampeV.v1 : tf.vitesse)) _tfVersCran(i);
 }
 
 // ── Section Gaz : γ et état initial (en changer réinitialise) ──
@@ -882,7 +1008,9 @@ function _tfLoop(ts) {
   _tfLastTs = ts;
 
   if (!tf.paused) {
+    _tfAvancerRampeV(dtReel / 1000);
     var dtSim = tfAvancer(dtReel / 1000 * tf.vitesse);
+    tfHorlogeAvancer(dtSim);
     if (dtReel > 0) _tfVitesseAtteinte += (dtSim / (dtReel / 1000) - _tfVitesseAtteinte) * Math.min(1, dtReel / 1000);
     // Agitation des molécules en temps d'affichage, la même à tous les
     // crans (tf-molecules.js)

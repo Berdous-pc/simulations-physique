@@ -89,6 +89,17 @@ var TF_MASSE_MAX = 40;                                      // kg, masse totale 
 // fond conducteur (de l'heure à la journée simulées), calculées en mode
 // quasi statique, conduction implicite
 var TF_VITESSES  = [1 / 5000, 1 / 1000, 1 / 100, 0.1, 1, 5, 20, 100, 500, 2000, 10000];
+
+// Cran le plus proche (en rapport) de la vitesse v. La vitesse adaptée passe
+// progressivement d'un cran à l'autre : tf.vitesse prend alors des valeurs
+// intermédiaires.
+function tfCranVitesse(v) {
+  var iMieux = 0;
+  for (var i = 1; i < TF_VITESSES.length; i++) {
+    if (Math.abs(Math.log(TF_VITESSES[i] / v)) < Math.abs(Math.log(TF_VITESSES[iMieux] / v))) iMieux = i;
+  }
+  return iMieux;
+}
 // Durées d'un escalier (s) : 0 = échelon (brutal)
 var TF_DUREES_ESC = [0, 1, 2, 5, 10, 20, 50, 100, 200, 500];
 
