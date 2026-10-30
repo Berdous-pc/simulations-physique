@@ -68,7 +68,6 @@ var TF_SONDES = [TF_N - 2, Math.floor(TF_N / 2), 1];
 var _tfCw = 0, _tfCh = 0, _tfDpr = 1;
 var _tfEch = 1;           // px par m
 var _tfYBas = 0;          // ordonnée px de z = TF_Z_BAS
-var _tfHBande = 0;        // hauteur du bandeau de l'horloge, sous la scène (px)
 var _tfX1 = 0, _tfX2 = 0; // bords intérieurs du cylindre
 var _tfParoi = 6;         // épaisseur des parois (px)
 var _tfProfX1 = 0, _tfProfX2 = 0;   // cadre du profil de pression (px)
@@ -97,10 +96,8 @@ function _tfDoResize() {
   tfCtx.setTransform(_tfDpr, 0, 0, _tfDpr, 0, 0);
 
   var marge = Math.max(8, Math.round(Math.min(_tfCw, _tfCh) * 0.03));
-  // Bandeau de l'horloge sous le cylindre
-  _tfHBande = Math.round(Math.max(40, Math.min(50, _tfCh * 0.06)));
-  _tfEch  = (_tfCh - 2 * marge - _tfHBande) / (TF_Z_HAUT - TF_Z_BAS);
-  _tfYBas = _tfCh - marge - _tfHBande;
+  _tfEch  = (_tfCh - 2 * marge) / (TF_Z_HAUT - TF_Z_BAS);
+  _tfYBas = _tfCh - marge;
 
   // Largeur : la plus grande possible, dans la limite de TF_LARG_MAX. Il faut
   // loger de part et d'autre les parois et une marge (l'enceinte l'occupe)
@@ -148,7 +145,7 @@ function tfDessiner() {
   _tfDessinerButee();
   if (tfAff.sondes) _tfDessinerSondes();
   if (tfAff.profil) _tfDessinerProfil();
-  _tfDessinerHorloge();
+  _tfDessinerChrono();
 }
 
 // Largeur intérieure dessinée, en m d'échelle verticale (pour les molécules)
@@ -239,9 +236,9 @@ function _tfDessinerEnceinte() {
   if (tf.Pair < 500) {
     c.font = 'italic ' + police + 'px "Segoe UI", Arial, sans-serif';
     c.fillStyle = '#5a6a78';
-    c.textAlign = 'right';
+    c.textAlign = 'left';
     c.textBaseline = 'top';
-    c.fillText('vide', xs[1] - 8, yH + 6);
+    c.fillText('vide', xs[0] + 8, yH + 6);   // le coin droit est au compteur de temps
   }
 
   // Manomètre, à gauche, au-dessus des graduations, relié à la cloche
@@ -814,197 +811,86 @@ function _tfFmtPa(x) {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-//  Horloge : temps simulé et vitesse de son écoulement
-//  Bandeau sous le cylindre : un cadran dont la trotteuse tourne avec le
-//  temps simulé, le temps écrit, la vitesse (×1/100, ×500…) et sa place sur
-//  une échelle logarithmique du ralenti à l'accéléré. Pendant un passage
-//  progressif d'une vitesse à l'autre (vitesse adaptée, tf-ui.js), la
-//  vitesse défile et une flèche dit si le temps accélère ou ralentit.
+//  Compteur de temps : Δt de l'étape et vitesse de son écoulement
+//  Dans le coin haut droit de l'enceinte, à droite du vérin : le temps
+//  écoulé depuis le départ de l'étape, celui des graphes au cours du temps
+//  (arrêté avec eux quand le chrono est figé à l'équilibre), et la vitesse
+//  (×1/100, ×500…). Pendant un passage progressif d'une vitesse à l'autre
+//  (vitesse adaptée, tf-ui.js), la vitesse défile, précédée de ▲ ou ▼.
 // ══════════════════════════════════════════════════════════════════════
 
-// Durée d'un tour de trotteuse : en temps simulé, choisie pour qu'un tour
-// dure ~3 s à l'écran ; changée seulement hors de 1 à 8 s (pas de
-// va-et-vient), la trotteuse gardant sa position.
-var TF_HORLOGE_TOURS = (function () {
-  var l = [];
-  for (var e = -4; e <= 0; e++) [1, 2, 5].forEach(function (f) { l.push(f * Math.pow(10, e)); });
-  return l.concat([10, 20, 30, 60, 120, 300, 600, 1200, 1800, 3600, 7200,
-                   10800, 21600, 43200, 86400]);
-})();
-var TF_HORLOGE_ECRAN = 3;   // s réelles par tour, visées
+var tfChrono = { sens: 0 };   // +1 le temps accélère, −1 il ralentit (tf-ui.js)
 
-var tfHorloge = {
-  tours  : 0,   // position de la trotteuse (fraction de tour)
-  periode: 1,   // s simulées par tour
-  sens   : 0    // +1 le temps accélère, −1 il ralentit (tf-ui.js)
-};
-
-function _tfHorlogePeriode() {
-  var H = tfHorloge, ecran = H.periode / tf.vitesse;
-  if (ecran >= 1 && ecran <= 8) return;
-  var mieux = TF_HORLOGE_TOURS[0];
-  TF_HORLOGE_TOURS.forEach(function (p) {
-    if (Math.abs(Math.log(p / tf.vitesse / TF_HORLOGE_ECRAN))
-      < Math.abs(Math.log(mieux / tf.vitesse / TF_HORLOGE_ECRAN))) mieux = p;
-  });
-  H.periode = mieux;
+// Δt avec assez de chiffres pour défiler : 1,84 ms, 712,9 ms, 12,35 s,
+// 4 min 05 s, 2 h 05 min
+function _tfFmtDeltaT(t) {
+  if (t < 0.01) return _tfVirgule(t * 1000, 2) + ' ms';
+  if (t < 1)    return _tfVirgule(t * 1000, 1) + ' ms';
+  if (t < 60)   return _tfVirgule(t, 2) + ' s';
+  var deux = function (n) { return (n < 10 ? '0' : '') + n; };
+  if (t < 3600) {
+    var mn = Math.floor(t / 60);
+    return mn + ' min ' + deux(Math.floor(t - 60 * mn)) + ' s';
+  }
+  var h = Math.floor(t / 3600);
+  return h + ' h ' + deux(Math.floor((t - 3600 * h) / 60)) + ' min';
 }
 
-// Appelée par la boucle avec le temps simulé de l'image (s)
-function tfHorlogeAvancer(dtSim) {
-  _tfHorlogePeriode();
-  tfHorloge.tours = (tfHorloge.tours + dtSim / tfHorloge.periode) % 1;
-}
-
-// Durée d'un tour, en clair : 0,5 ms, 20 ms, 2 s, 5 min, 3 h
-function _tfFmtTour(p) {
-  if (p < 1)    return _tfVirguleCourte(p * 1000) + ' ms';
-  if (p < 60)   return p + ' s';
-  if (p < 3600) return p / 60 + ' min';
-  return p / 3600 + ' h';
-}
-
-// Échelle des vitesses : du plus lent au plus rapide des crans
-var TF_V_MIN = TF_VITESSES[0], TF_V_MAX = TF_VITESSES[TF_VITESSES.length - 1];
-function _tfPosVitesse(v) {
-  return Math.log(v / TF_V_MIN) / Math.log(TF_V_MAX / TF_V_MIN);
-}
-
-function _tfDessinerHorloge() {
-  var c = tfCtx, H = tfHorloge, v = tf.vitesse;
-  _tfHorlogePeriode();
-  var xs = _tfClocheX();
-  var marge = _tfCh - _tfYBas - _tfHBande;
-  var W = Math.min(440, xs[1] - xs[0], _tfCw - 2 * marge);
-  var h = _tfHBande - 6;
-  var x = Math.max(marge, (_tfX1 + _tfX2) / 2 - W / 2), y = _tfYBas + 6;
+function _tfDessinerChrono() {
+  var c = tfCtx, v = tf.vitesse, xs = _tfClocheX();
+  var w = _tfX2 - _tfX1, cx = (_tfX1 + _tfX2) / 2;
+  // Place libre : entre le corps du vérin (0,42·w de large) et la paroi de
+  // la cloche, sous le bâti
+  var xD = xs[1] - 8, xG = cx + 0.21 * w + 8, dispo = xD - xG;
+  var yBati = _tfY(TF_Z_HAUT) + 2;
+  var y = yBati + Math.max(5, (_tfY(TF_Z_VERIN_BAS) - yBati) * 0.16) + 8;
   var police = '"Segoe UI", Arial, sans-serif';
-  var f1 = h >= 42 ? 14 : 13, f2 = h >= 42 ? 11 : 10;
-
-  c.save();
-  _tfRectArrondi(x, y, W, h, 7);
-  c.fillStyle = '#fffdf9';
-  c.fill();
-  c.strokeStyle = 'rgba(44,62,80,0.25)';
-  c.lineWidth = 1;
-  c.stroke();
-
-  // Cadran et trotteuse
-  var R = (h - 8) / 2, cx = x + 6 + R, cy = y + h / 2;
-  c.beginPath();
-  c.arc(cx, cy, R, 0, 2 * Math.PI);
-  c.fillStyle = '#fff';
-  c.fill();
-  c.strokeStyle = '#2c3e50';
-  c.lineWidth = 1.5;
-  c.stroke();
-  c.lineWidth = 1;
-  c.beginPath();
-  for (var k = 0; k < 12; k++) {
-    var ak = k * Math.PI / 6, r1 = k % 3 ? 0.8 : 0.68;
-    c.moveTo(cx + Math.cos(ak) * R * r1, cy + Math.sin(ak) * R * r1);
-    c.lineTo(cx + Math.cos(ak) * R * 0.92, cy + Math.sin(ak) * R * 0.92);
-  }
-  c.stroke();
-  var a = -Math.PI / 2 + 2 * Math.PI * H.tours;
-  c.strokeStyle = '#b04020';
-  c.lineWidth = 2;
-  c.lineCap = 'round';
-  c.beginPath();
-  c.moveTo(cx - Math.cos(a) * R * 0.2, cy - Math.sin(a) * R * 0.2);
-  c.lineTo(cx + Math.cos(a) * R * 0.85, cy + Math.sin(a) * R * 0.85);
-  c.stroke();
-  c.fillStyle = '#2c3e50';
-  c.beginPath();
-  c.arc(cx, cy, 2.2, 0, 2 * Math.PI);
-  c.fill();
-
-  // Temps simulé, durée d'un tour
-  var xT = cx + R + 9, y1 = cy - f2 * 0.62, y2 = cy + f1 * 0.62;
-  var large = W >= 250;
-  c.textAlign = 'left';
-  c.textBaseline = 'middle';
-  c.fillStyle = '#2c3e50';
-  c.font = '600 ' + f1 + 'px ' + police;
-  var txtT = 't = ' + _tfFmtTemps(tf.t);
-  c.fillText(txtT, xT, y1);
-  // Largeur stable tant que le temps garde son nombre de chiffres
-  var wT = Math.max(c.measureText('t = 00,000 ms').width, c.measureText('t = 000,00 s').width,
-                    c.measureText(txtT).width);
-  c.font = f2 + 'px ' + police;
-  c.fillStyle = '#6a7a88';
-
-  // Vitesse : couleur du ralenti (bleu) ou de l'accéléré (orange)
-  var coul = v < 0.999 ? '#2f6fb0' : v > 1.001 ? '#c0602a' : '#2c3e50';
-  var mot = H.sens > 0 ? 'accélère' : H.sens < 0 ? 'ralentit'
+  var d = tfGraphChrono();
+  var txtT = 'Δt = ' + _tfFmtDeltaT(Math.max(0, d.dt));
+  var fleche = tfChrono.sens > 0 ? '▲ ' : tfChrono.sens < 0 ? '▼ ' : '';
+  var txtV = fleche + '×' + _tfLibelleVitesse(v);
+  var mot = tfChrono.sens > 0 ? 'accélère' : tfChrono.sens < 0 ? 'ralentit'
           : v < 0.999 ? 'ralenti' : v > 1.001 ? 'accéléré' : 'temps réel';
-  var fleche = H.sens > 0 ? '▲ ' : H.sens < 0 ? '▼ ' : '';
-  var txtV = '×' + _tfLibelleVitesse(v);
 
-  if (!large) {
-    // Bandeau étroit : la vitesse remplace la durée d'un tour
-    c.font = '600 ' + f2 + 'px ' + police;
-    c.fillStyle = coul;
-    c.fillText(fleche + txtV + ' ' + mot, xT, y2);
-    c.restore();
-    return;
-  }
-  c.fillText('1 tour = ' + _tfFmtTour(H.periode), xT, y2);
-
-  // Bloc vitesse, à droite
-  var xV = xT + wT + 18, xFin = x + W - 10;
-  c.strokeStyle = 'rgba(44,62,80,0.15)';
-  c.beginPath();
-  c.moveTo(xV - 9, y + 6);
-  c.lineTo(xV - 9, y + h - 6);
-  c.stroke();
-  c.font = '600 ' + f1 + 'px ' + police;
-  c.fillStyle = coul;
-  c.fillText(fleche + txtV, xV, y1);
-  var wV = c.measureText(fleche + txtV).width;
+  // Police la plus grande (20 px au plus) qui tient dans la place libre ;
+  // largeur mesurée sur un gabarit, pour ne pas varier quand les chiffres
+  // défilent
+  c.save();
+  c.font = '700 20px ' + police;
+  var gabarit = Math.max(c.measureText('Δt = 000,0 ms').width, c.measureText(txtT).width);
+  var f1 = Math.max(12, Math.min(20, Math.floor(20 * dispo / gabarit)));
+  var f2 = Math.round(f1 * 0.8);
+  c.font = '700 ' + f2 + 'px ' + police;
+  var wV = c.measureText(txtV).width;
   c.font = f2 + 'px ' + police;
-  c.fillStyle = H.sens ? coul : '#6a7a88';
-  c.fillText(mot, xV + wV + 6, y1);
+  var avecMot = wV + c.measureText(' ' + mot).width <= dispo;
 
-  // Échelle logarithmique des vitesses, repère à ×1
-  var g1 = xV + 2, g2 = xFin, gy = y2 + 1;
-  if (g2 - g1 > 50) {
-    var gx = function (u) { return g1 + (g2 - g1) * Math.max(0, Math.min(1, _tfPosVitesse(u))); };
-    c.lineCap = 'round';
-    c.lineWidth = 4;
-    c.strokeStyle = 'rgba(47,111,176,0.25)';
-    c.beginPath(); c.moveTo(g1, gy); c.lineTo(gx(1), gy); c.stroke();
-    c.strokeStyle = 'rgba(192,96,42,0.25)';
-    c.beginPath(); c.moveTo(gx(1), gy); c.lineTo(g2, gy); c.stroke();
-    c.lineWidth = 1;
-    c.strokeStyle = 'rgba(44,62,80,0.35)';
-    c.beginPath();
-    TF_VITESSES.forEach(function (u) {
-      var e = u === 1 ? 5 : 2.5;
-      c.moveTo(gx(u), gy - e); c.lineTo(gx(u), gy + e);
-    });
-    c.stroke();
-    // Passage en cours : de la vitesse actuelle vers la vitesse visée
-    if (H.sens && typeof _tfRampeV !== 'undefined' && _tfRampeV) {
-      c.strokeStyle = coul;
-      c.lineWidth = 2;
-      c.setLineDash([3, 3]);
-      c.beginPath(); c.moveTo(gx(v), gy); c.lineTo(gx(_tfRampeV.v1), gy); c.stroke();
-      c.setLineDash([]);
-      c.beginPath();
-      c.arc(gx(_tfRampeV.v1), gy, 3, 0, 2 * Math.PI);
-      c.strokeStyle = coul;
-      c.lineWidth = 1.5;
-      c.stroke();
-    }
-    c.beginPath();
-    c.arc(gx(v), gy, 4.5, 0, 2 * Math.PI);
-    c.fillStyle = coul;
-    c.fill();
-    c.strokeStyle = '#fff';
-    c.lineWidth = 1.5;
-    c.stroke();
+  // Fond clair : lisible sur l'air teinté de l'enceinte
+  c.font = '700 ' + f1 + 'px ' + police;
+  var larg = Math.max(gabarit * f1 / 20, c.measureText(txtT).width,
+                      wV + (avecMot ? c.measureText(' ' + mot).width * f2 / f1 : 0));
+  var h = f1 * 1.25 + f2 * 1.3 + 8;
+  _tfRectArrondi(xD - larg - 8, y - 4, larg + 12, h, 5);
+  c.fillStyle = 'rgba(255,253,249,0.85)';
+  c.fill();
+
+  c.textAlign = 'right';
+  c.textBaseline = 'top';
+  // Grisé quand le chrono des graphes est figé (équilibre)
+  c.fillStyle = d.gele ? '#8a96a0' : '#2c3e50';
+  c.fillText(txtT, xD, y);
+
+  var coul = v < 0.999 ? '#2f6fb0' : v > 1.001 ? '#c0602a' : '#2c3e50';
+  var y2 = y + f1 * 1.25 + 2, xV = xD;
+  if (avecMot) {
+    c.font = f2 + 'px ' + police;
+    c.fillStyle = tfChrono.sens ? coul : '#6a7a88';
+    c.fillText(' ' + mot, xD, y2);
+    xV -= c.measureText(' ' + mot).width;
   }
+  c.font = '700 ' + f2 + 'px ' + police;
+  c.fillStyle = coul;
+  c.fillText(txtV, xV, y2);
   c.restore();
 }
 

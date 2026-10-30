@@ -143,6 +143,12 @@ function tfGraphTemps() {
   return (tfGraph.gele ? tfGraph.tGel : tf.t) - tfGraph.decal;
 }
 
+// Compteur de temps de la scène (tf-scene.js) : temps écoulé depuis le
+// départ de l'étape, lu comme sur l'axe des graphes au cours du temps
+function tfGraphChrono() {
+  return { dt: tfGraphTemps() - tfGraph.axeT.t0, gele: tfGraph.gele };
+}
+
 // avantMarche : échantillon forcé juste avant une marche d'escalier (il clôt
 // le séjour à l'équilibre en cours, cf. _tfgDessinerDiag).
 // Chrono figé : à l'équilibre, sans action en cours, l'échantillon n'est pas

@@ -666,7 +666,6 @@ function tfBasculerPause() {
 function tfReinitialiser() {
   _tfRelax = null;
   _tfAnnulerAttente();
-  tfHorloge.tours = 0;
   tfReset();
   tfMolInit();
   tfEtapesEffacer();
@@ -701,7 +700,7 @@ function _tfFixerVitesse(v) {
   _tfEl['tf-sl-vitesse'].value = i;
   _tfEl['tf-lbl-vitesse'].textContent = _tfLibelleVitesse(v);
   if (changeCran) { tfGraph.sale = true; tfGraphReprogrammer(); }
-  tf.needsRedraw = true;   // horloge
+  tf.needsRedraw = true;   // compteur de temps de la scène
 }
 
 function tfOnIsolation(val) {
@@ -833,7 +832,8 @@ function _tfVitesseAdaptee(D) {
 // douceur), d'autant plus longtemps que l'écart compte de
 // décades : ~0,7 s par décade pour accélérer (de 0,8 à 3,5 s), ~0,45 s pour
 // ralentir avant une action (de 0,8 à 2 s), qui attend la fin du
-// ralentissement. L'horloge de la scène (tf-scene.js) montre l'un et l'autre.
+// ralentissement. Le compteur de temps de la scène (tf-scene.js) montre
+// l'un et l'autre.
 var TF_RAMPE_MONTE   = { parDecade: 0.7,  min: 0.8, max: 3.5 };   // s réelles
 var TF_RAMPE_DESCEND = { parDecade: 0.45, min: 0.8, max: 2 };
 var _tfRampeV = null;      // { v0, v1, t, duree } (t et duree en s réelles)
@@ -847,7 +847,7 @@ function _tfVersCran(i, apres) {
   var r = Math.abs(Math.log(v1 / tf.vitesse)) / Math.LN10;   // décades
   if (tf.paused || r < 1e-6) {
     _tfRampeV = null;
-    tfHorloge.sens = 0;
+    tfChrono.sens = 0;
     _tfFixerVitesse(v1);
     if (apres) apres();
     return;
@@ -856,7 +856,7 @@ function _tfVersCran(i, apres) {
   _tfRampeV = { v0: tf.vitesse, v1: v1, t: 0,
                 duree: Math.max(p.min, Math.min(p.max, p.parDecade * r)) };
   _tfEnAttente = apres || null;
-  tfHorloge.sens = v1 > tf.vitesse ? 1 : -1;
+  tfChrono.sens = v1 > tf.vitesse ? 1 : -1;
 }
 
 // Appelée à chaque image hors pause, avec la durée réelle écoulée (s)
@@ -879,7 +879,7 @@ function _tfAvancerRampeV(dt) {
 // Fin (ou arrêt) du passage progressif : l'action qui attendait part
 function _tfArreterRampeV() {
   _tfRampeV = null;
-  tfHorloge.sens = 0;
+  tfChrono.sens = 0;
   var f = _tfEnAttente;
   _tfEnAttente = null;
   if (f) f();
@@ -1010,7 +1010,6 @@ function _tfLoop(ts) {
   if (!tf.paused) {
     _tfAvancerRampeV(dtReel / 1000);
     var dtSim = tfAvancer(dtReel / 1000 * tf.vitesse);
-    tfHorlogeAvancer(dtSim);
     if (dtReel > 0) _tfVitesseAtteinte += (dtSim / (dtReel / 1000) - _tfVitesseAtteinte) * Math.min(1, dtReel / 1000);
     // Agitation des molécules en temps d'affichage, la même à tous les
     // crans (tf-molecules.js)
