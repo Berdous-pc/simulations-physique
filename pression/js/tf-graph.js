@@ -14,10 +14,17 @@
 
 'use strict';
 
-// Fenêtre glissante des graphes temporels (s), alignée sur TF_VITESSES :
-// une même durée réelle à l'écran (~20 s) quel que soit le cran
+// Durée simulée que montrent ~20 s d'écran à chaque cran de TF_VITESSES :
+// elle ne règle plus que le pas d'échantillonnage (l'axe des temps suit
+// l'étape, cf. tfGraph.axeT)
 var TF_G_FENETRES    = [0.005, 0.02, 0.2, 2, 20, 100, 400, 2000, 10000, 40000, 200000];
 var TF_G_PAR_FENETRE = 500;     // échantillons par fenêtre
+// Crans des champs des diagrammes d'état (1, 1,5, 2, 3, 5, 7,5 × 10ⁿ) et
+// de la durée de l'axe des temps (1, 2, 5 × 10ⁿ) ; durée des transitions
+// quand un champ s'agrandit (ms)
+var TF_G_CRANS   = [1, 1.5, 2, 3, 5, 7.5];
+var TF_G_CRANS_T = [1, 2, 5];
+var TF_G_ANIM    = 350;
 var TF_G_MAX         = 20000;   // au-delà, l'historique est éclairci de moitié
 
 // Couleurs : encre et grille du site ; une teinte par grandeur
@@ -39,12 +46,12 @@ var TF_G_ACTUEL = '#e06020';     // état actuel du gaz (diagrammes d'état)
 // tranches et du critère « définie » dans un échantillon ; facteur d'unité ;
 // étendue minimale de l'axe (évite de grossir le bruit numérique au repos)
 var TF_G_SERIES = [
-  { titre: 'T (K)',   coul: '#c0503a', m: 'Tm', min: 'Tmin', max: 'Tmax', def: 'Tdef', f: 1,    span: 2 },
-  { titre: 'P (kPa)', coul: '#2a6aaa', m: 'Pm', min: 'Pmin', max: 'Pmax', def: 'Pdef', f: 1e-3, span: 2 },
-  { titre: 'V (L)',   coul: '#2a8a50', m: 'V',  min: 'V',    max: 'V',    def: null,   f: 1e3,  span: 0.02 }
+  { titre: 'T (K)',   coul: '#c0503a', m: 'Tm', min: 'Tmin', max: 'Tmax', def: 'Tdef', f: 1,    span: 10 },
+  { titre: 'P (kPa)', coul: '#2a6aaa', m: 'Pm', min: 'Pmin', max: 'Pmax', def: 'Pdef', f: 1e-3, span: 10 },
+  { titre: 'V (L)',   coul: '#2a8a50', m: 'V',  min: 'V',    max: 'V',    def: null,   f: 1e3,  span: 0.05 }
 ];
 
-// Options des diagrammes d'état (section Affichage)
+// Options des graphes (menu Options de la barre des encarts)
 var tfGraphAff = {
   tranches    : true,    // un point par tranche, à l'abscisse du gaz
   piston      : false,   // pression exercée sur le gaz par le piston (Clapeyron)
@@ -77,9 +84,17 @@ var tfGraph = {
   blocage   : 0,       // échantillons avant qu'un gel soit permis
   eqSuite   : 0,       // échantillons d'équilibre consécutifs
   coupure   : false,   // le prochain échantillon suit une attente retirée
-  vueT      : null,    // null : fenêtre glissante ; sinon {t1, t2}
+  // Axe des temps de l'étape en cours : départ t0 (temps des graphes),
+  // durée L, plages des trois cases ; L et les plages ne font que
+  // s'agrandir au fil de l'étape
+  axeT      : { t0: 0, L: 1, y: [null, null, null] },
+  vueT      : null,    // null : étape en cours ; sinon {t1, t2, o (origine), lt (lettre)}
   pileT     : [],
-  vue       : { pv: null, ts: null },   // null : cadrage automatique ; sinon {x1, x2, y1, y2}
+  // Champ fixe de chaque diagramme d'état : il ne fait que s'agrandir, par
+  // crans (null : à recalculer)
+  champ     : { pv: null, ts: null },
+  anim      : {},      // transitions d'un champ ou d'un axe qui s'agrandit
+  vue       : { pv: null, ts: null },   // null : champ fixe ; sinon zoom {x1, x2, y1, y2}
   pileD     : { pv: [], ts: [] },   // vues précédentes de chaque diagramme d'état
   geoT      : null,    // géométrie du dernier tracé (souris)
   geoD      : { pv: null, ts: null },
@@ -103,7 +118,7 @@ function _tfgFenetre() {
 // fenêtre affichée, et se resserre pendant un mouvement du vérin pour que
 // les compressions brèves soient décrites même aux crans rapides.
 function _tfgPasEchant() {
-  var dt = _tfgFenetre() / TF_G_PAR_FENETRE;
+  var dt = Math.min(_tfgFenetre(), tfGraph.axeT.L) / TF_G_PAR_FENETRE;
   return tf.verin.actif ? Math.min(dt, tf.verin.tau / 200) : dt;
 }
 
@@ -188,12 +203,33 @@ function tfGraphDegeler() {
 }
 
 // Départ d'une étape : les courbes théoriques et le cadrage des tranches
-// repartent de l'état actuel (dernier échantillon)
+// repartent de l'état actuel (dernier échantillon) ; l'axe des temps aussi,
+// pour une durée provisoire (précisée par tfGraphDureeAttendue au lancement
+// de l'action)
 function tfGraphDepartEtape() {
   var g = tfGraph;
   if (g.ech.length) g.ref = g.ech[g.ech.length - 1];
   g.env = null;
+  _tfgAxeT(g.ref ? g.ref.t : 0, 1);
+  g.vueT = null;
+  g.pileT = [];
   g.sale = true;
+}
+
+// Durée attendue de l'action qui vient d'être lancée (s) : premier cran de
+// l'axe des temps ; il s'agrandit ensuite si le retour à l'équilibre dure
+function tfGraphDureeAttendue(D) {
+  if (!isFinite(D) || D <= 0) return;
+  tfGraph.axeT.L = _tfgCran(1.2 * D, TF_G_CRANS_T);
+  delete tfGraph.anim.t;
+  tfGraphReprogrammer();
+  tfGraph.sale = true;
+}
+
+function _tfgAxeT(t0, L) {
+  var g = tfGraph;
+  g.axeT = { t0: t0, L: L, y: [null, null, null] };
+  ['t', 't0', 't1', 't2'].forEach(function (k) { delete g.anim[k]; });
 }
 
 // Étape retirée du journal (sans effet) : ses échantillons reviennent à la
@@ -216,6 +252,8 @@ function tfGraphRevenir(ts, n) {
   g.coupure = false;
   g.ref = e[e.length - 1];
   g.env = null;
+  _tfgAxeT(g.ref.t, 1);
+  g.champ = { pv: null, ts: null };
   g.vueT = null;
   g.vue = { pv: null, ts: null };
   g.pileT = [];
@@ -249,6 +287,8 @@ function tfGraphEffacer() {
   g.ref = g.env = null;
   g.decal = g.tGel = g.blocage = g.eqSuite = 0;
   g.gele = g.coupure = false;
+  _tfgAxeT(0, 1);
+  g.champ = { pv: null, ts: null };
   g.vueT = null;
   g.vue = { pv: null, ts: null };
   g.pileT = [];
@@ -288,6 +328,38 @@ function _tfgBornes(lo, hi, span, n) {
   lo -= marge; hi += marge;
   var pas = _tfgPas(hi - lo, n);
   return { lo: Math.floor(lo / pas) * pas, hi: Math.ceil(hi / pas) * pas };
+}
+
+// Plus petit cran ≥ v (v > 0), crans pris dans la suite c × 10ⁿ
+function _tfgCran(v, crans) {
+  var p = Math.pow(10, Math.floor(Math.log10(v)));
+  for (var i = 0; i < crans.length; i++) if (crans[i] * p >= v * (1 - 1e-9)) return crans[i] * p;
+  return 10 * p;
+}
+
+// Borne haute d'un champ : un cran de plus quand v approche du bord (marge
+// de 8 %) ; la borne ne descend jamais
+function _tfgBorneSup(hi, v) {
+  return v > hi * 0.92 ? Math.max(hi, _tfgCran(v / 0.92, TF_G_CRANS)) : hi;
+}
+
+// Transition d'un champ (ou d'un axe) vers sa nouvelle étendue : renvoie les
+// bornes à dessiner maintenant, et redemande un tracé tant qu'elle dure
+function _tfgAnimer(cle, cible) {
+  var g = tfGraph, a = g.anim[cle], now = performance.now(), k;
+  var meme = function (u, v) { for (var q in v) if (u[q] !== v[q]) return false; return true; };
+  var actuel = function () {
+    var f = Math.min(1, (now - a.t0) / TF_G_ANIM), r = {};
+    f = 1 - Math.pow(1 - f, 3);
+    for (var q in a.vers) r[q] = a.de[q] + (a.vers[q] - a.de[q]) * f;
+    return r;
+  };
+  if (!a) a = g.anim[cle] = { de: cible, vers: cible, t0: 0 };
+  else if (!meme(a.vers, cible)) { a.de = actuel(); a.vers = cible; a.t0 = now; }
+  if (now - a.t0 < TF_G_ANIM) g.sale = true;
+  var r = actuel();
+  for (k in cible) if (!isFinite(r[k])) return cible;
+  return r;
 }
 
 // Nombre au format français, avec les décimales qu'appelle le pas
@@ -408,21 +480,32 @@ function _tfgDessinerTemps() {
   var pw = W - ML - MR, bh = (H - MT - MB - 2 * GAP) / 3;
   if (pw < 40 || bh < 18 || e.length === 0) { tfGraph.geoT = null; return; }
 
-  var t1, t2;
-  if (tfGraph.vueT) { t1 = tfGraph.vueT.t1; t2 = tfGraph.vueT.t2; }
-  else { var fen = _tfgFenetre(); t2 = Math.max(tfGraphTemps(), fen); t1 = t2 - fen; }
+  // Étape en cours (sans zoom) : de son départ t0 à t0 + L, un peu de
+  // l'état d'avant à gauche ; L passe au cran suivant quand le temps des
+  // graphes approche du bord droit. Les temps se lisent depuis t0 (origine
+  // org), marquée de la lettre de départ.
+  var t1, t2, org, lt, vT = tfGraph.vueT, A = tfGraph.axeT;
+  if (vT) { t1 = vT.t1; t2 = vT.t2; org = vT.o; lt = vT.lt; }
+  else {
+    var ecoule = tfGraphTemps() - A.t0;
+    if (ecoule > 0.95 * A.L) A.L = _tfgCran(ecoule / 0.95, TF_G_CRANS_T);
+    var L = _tfgAnimer('t', { L: A.L }).L;
+    org = A.t0; lt = _tfgLettreDepart();
+    t1 = org - L / 25; t2 = org + L;
+  }
   var i1 = Math.max(0, _tfgIndice(e, t1) - 1);
   var i2 = Math.min(e.length - 1, _tfgIndice(e, t2));
   var xDe = function (t) { return ML + (t - t1) / (t2 - t1) * pw; };
 
   var unite = (t2 - t1) < 1 ? 1000 : 1;
   var pasT = _tfgPas((t2 - t1) * unite, Math.max(2, Math.floor(pw / (fs * 5.5))));
-  var gradT = _tfgGraduations(t1 * unite, t2 * unite, pasT);
+  var gradT = _tfgGraduations((t1 - org) * unite, (t2 - org) * unite, pasT);
+  var xGrad = function (gt) { return xDe(org + gt / unite); };
 
-  var geo = { x0: ML, pw: pw, t1: t1, t2: t2, boites: [] };
+  var geo = { x0: ML, pw: pw, t1: t1, t2: t2, o: org, lt: lt, boites: [] };
   for (var b = 0; b < 3; b++) {
     var y0 = MT + b * (bh + GAP);
-    geo.boites.push(_tfgBoite(o, TF_G_SERIES[b], ML, y0, pw, bh, i1, i2, xDe, gradT, unite, fs));
+    geo.boites.push(_tfgBoite(o, TF_G_SERIES[b], b, ML, y0, pw, bh, i1, i2, xDe, gradT, xGrad, fs));
   }
   tfGraph.geoT = geo;
 
@@ -433,24 +516,16 @@ function _tfgDessinerTemps() {
   c.textAlign = 'center';
   c.textBaseline = 'top';
   for (var k = 0; k < gradT.length; k++) {
-    c.fillText(_tfgNb(gradT[k], pasT), ML + (gradT[k] / unite - t1) / (t2 - t1) * pw, yAxe + 3);
+    c.fillText(_tfgNb(gradT[k], pasT), xGrad(gradT[k]), yAxe + 3);
   }
   c.textAlign = 'right';
   c.font = _tfgPolice(fs, true);
-  c.fillText(unite === 1000 ? 't (ms)' : 't (s)', ML + pw, yAxe + fs * 1.45);
-  if (tfGraphAff.gel && !tfGraph.vueT) {
-    var tw = c.measureText(unite === 1000 ? 't (ms)' : 't (s)').width;
-    c.font = _tfgPolice(fs, false);
-    c.fillStyle = TF_G_MUET;
-    c.fillText((tfGraph.gele ? 'chrono figé (équilibre) · ' : '') + 'attentes à l’équilibre retirées (┊)  ',
-               ML + pw - tw, yAxe + fs * 1.45);
-  }
-  if (tfGraph.vueT) {
-    c.textAlign = 'left';
-    c.font = _tfgPolice(fs, false);
-    c.fillStyle = TF_G_MUET;
-    c.fillText('vue figée (« Suivre » pour revenir)', ML, yAxe + fs * 1.45);
-  }
+  c.fillText((unite === 1000 ? 't (ms)' : 't (s)') + (lt ? ' depuis ' + lt : ''), ML + pw, yAxe + fs * 1.45);
+  c.textAlign = 'left';
+  c.font = _tfgPolice(fs, false);
+  c.fillStyle = TF_G_MUET;
+  if (vT) c.fillText('vue figée (« Étape » pour revenir)', ML, yAxe + fs * 1.45);
+  else if (tfGraph.gele) c.fillText('chrono figé (équilibre)', ML, yAxe + fs * 1.45);
 
   // Zoom en cours : bande sur toute la hauteur
   var gl = tfGraph.glisse;
@@ -478,7 +553,8 @@ function _tfgDessinerTemps() {
     c.lineTo(so.x, yAxe);
     c.stroke();
     c.setLineDash([]);
-    var lignes = ['t = ' + _tfgNbLu(s.t * unite) + (unite === 1000 ? ' ms' : ' s')];
+    var lignes = ['t = ' + _tfgNbLu((s.t - org) * unite) + (unite === 1000 ? ' ms' : ' s')
+                  + (lt ? ' depuis ' + lt : '')];
     for (b = 0; b < 3; b++) {
       var ser = TF_G_SERIES[b], nom = ser.titre.split(' ')[0];
       var uni = ser.titre.replace(/^.*\((.*)\)$/, '$1');
@@ -491,10 +567,40 @@ function _tfgDessinerTemps() {
   }
 }
 
+// Lettre de l'état de départ de l'étape en cours ('' avant toute étape)
+function _tfgLettreDepart() {
+  var L = tfEtapes.liste, dep = L.length ? L[L.length - 1].depart : null;
+  return dep !== null && tfEtapes.etats[dep] ? tfEtapes.etats[dep].lettre : '';
+}
+
+// Plage verticale d'une case pendant l'étape : elle ne change pas tant que
+// les données y tiennent (marge de 4 %) ; sinon elle s'agrandit, avec une
+// réserve d'un cinquième de son étendue du côté qui déborde, pour ne pas
+// recommencer à chaque image. Transition animée vers la nouvelle plage.
+function _tfgPlageEtape(b, lo, hi, span, n) {
+  var A = tfGraph.axeT, r = A.y[b];
+  if (!isFinite(lo) || !isFinite(hi)) return r || _tfgBornes(lo, hi, span, n);
+  var m = r ? (r.hi - r.lo) * 0.04 : 0;
+  if (!r || lo < r.lo + m || hi > r.hi - m) {
+    if (r) {
+      var e = Math.max(hi, r.hi) - Math.min(lo, r.lo);
+      lo = lo < r.lo + m ? lo - e * 0.2 : r.lo;
+      hi = hi > r.hi - m ? hi + e * 0.2 : r.hi;
+    } else {
+      var e0 = (hi - lo) * 0.1;
+      lo -= e0; hi += e0;
+    }
+    if (hi - lo < span) { var c = (lo + hi) / 2; lo = c - span / 2; hi = c + span / 2; }
+    var pas = _tfgPas(hi - lo, n);
+    r = A.y[b] = { lo: Math.floor(lo / pas) * pas, hi: Math.ceil(hi / pas) * pas };
+  }
+  return _tfgAnimer('t' + b, r);
+}
+
 // Une case : courbe pleine quand la grandeur est définie ; hors équilibre,
 // bande hachurée entre les extrêmes des tranches (la moyenne n'est pas
 // tracée : ce serait lui prêter un sens)
-function _tfgBoite(o, ser, x0, y0, w, h, i1, i2, xDe, gradT, unite, fs) {
+function _tfgBoite(o, ser, b, x0, y0, w, h, i1, i2, xDe, gradT, xGrad, fs) {
   var c = o.ctx, e = tfGraph.ech;
   var rep = _tfgRepere(ser);
 
@@ -519,7 +625,7 @@ function _tfgBoite(o, ser, x0, y0, w, h, i1, i2, xDe, gradT, unite, fs) {
   // Les données laissent en haut une bande au titre de la case
   var hD = h - fs * 1.5;
   var nY = Math.max(2, Math.floor(hD / (fs * 1.8)));
-  var bo = _tfgBornes(lo, hi, ser.span, nY);
+  var bo = tfGraph.vueT ? _tfgBornes(lo, hi, ser.span, nY) : _tfgPlageEtape(b, lo, hi, ser.span, nY);
   var pasY = _tfgPas(bo.hi - bo.lo, nY);
   var yDe = function (val) { return y0 + h - (val - bo.lo) / (bo.hi - bo.lo) * hD; };
 
@@ -535,7 +641,7 @@ function _tfgBoite(o, ser, x0, y0, w, h, i1, i2, xDe, gradT, unite, fs) {
     c.moveTo(x0, yy); c.lineTo(x0 + w, yy);
   }
   for (k = 0; k < gradT.length; k++) {
-    var xx = Math.round(xDe(gradT[k] / unite)) + 0.5;
+    var xx = Math.round(xGrad(gradT[k])) + 0.5;
     c.moveTo(xx, y0); c.lineTo(xx, y0 + h);
   }
   c.stroke();
@@ -671,8 +777,6 @@ var TF_G_DIAGS = {
     yMax: function (m) { return m.Pmax * 1e-3; },
     tranche: function (j) { return tf.P[j] * 1e-3; },
     nd: 'Pression du gaz non définie',
-    chemin: 'chemin, pression définie (couleur de l’étape)',
-    tranches: 'pression de chaque tranche (au volume du gaz)',
     lu: function (x, y) { return ['V = ' + _tfgNbLu(x) + ' L', 'P = ' + _tfgNbLu(y) + ' kPa']; }
   },
   ts: {
@@ -687,8 +791,6 @@ var TF_G_DIAGS = {
     yMax: function (m) { return m.Tmax; },
     tranche: function (j) { return tfTTranche(j); },
     nd: 'Température du gaz non définie',
-    chemin: 'chemin, température définie (couleur de l’étape)',
-    tranches: 'température de chaque tranche (à l’entropie du gaz)',
     lu: function (x, y) { return ['ΔS = ' + _tfgNbLu(x) + ' mJ/K', 'T = ' + _tfgNbLu(y) + ' K']; }
   }
 };
@@ -718,8 +820,40 @@ function _tfgCourbesRef(d, ref) {
   return c;
 }
 
-// Cadrage automatique : chemin défini, état de départ, tranches depuis le
-// départ, pression sur le piston si elle est tracée (Clapeyron)
+// Champ de départ : cylindre plein et 0 à 300 kPa en P(V) ; en T(S), ΔS de
+// part et d'autre de 0 sur une étendue suivant n·R, et 0 à 500 K. Les
+// origines à zéro font lire les aires : travail sous P(V), chaleur sous
+// T(S).
+function _tfgChampBase(d) {
+  if (d === 'pv') return { x1: 0, x2: TF_S * TF_H_CYL * 1e3, y1: 0, y2: 300 };
+  var a = _tfgCran(1.5 * tf.n * TF_R * 1e3, TF_G_CRANS);
+  return { x1: -a, x2: a, y1: 0, y2: 500 };
+}
+
+// Champ fixe d'un diagramme : il ne fait que s'agrandir, d'un cran à la
+// fois, pour contenir le chemin défini, les états repérés et l'état actuel
+// (son abscisse toujours, son ordonnée si elle est définie). Les tranches
+// et la pression sur le piston n'agrandissent pas le champ : un choc le
+// ferait dézoomer pour quelques images (marque au bord à la place).
+function _tfgChamp(d, mes) {
+  var g = tfGraph, D = TF_G_DIAGS[d], e = g.ech, k;
+  var b = g.champ[d] || _tfgChampBase(d);
+  var ch = { x1: b.x1, x2: b.x2, y1: b.y1, y2: b.y2 };
+  function ajoute(x, y) {
+    ch.x2 = _tfgBorneSup(ch.x2, x);
+    ch.x1 = -_tfgBorneSup(-ch.x1, -x);
+    if (y === null) return;
+    ch.y2 = _tfgBorneSup(ch.y2, y);
+    ch.y1 = -_tfgBorneSup(-ch.y1, -y);
+  }
+  for (k = 0; k < e.length; k++) ajoute(D.x(e[k]), D.def(e[k]) ? D.y(e[k]) : null);
+  for (k = 0; k < tfEtapes.etats.length; k++) ajoute(D.x(tfEtapes.etats[k]), D.yL(tfEtapes.etats[k]));
+  ajoute(D.x(mes), D.defM(mes) ? D.yM(mes) : null);
+  return (g.champ[d] = ch);
+}
+
+// Cadrage au plus près (bouton Ajuster) : chemin défini, état de départ,
+// tranches depuis le départ, pression sur le piston si elle est tracée
 function _tfgCadrage(d) {
   var D = TF_G_DIAGS[d], e = tfGraph.ech, g = tfGraph;
   var x1 = Infinity, x2 = -Infinity, y1 = Infinity, y2 = -Infinity;
@@ -759,19 +893,17 @@ function _tfgDessinerDiag(o, cs, mes) {
   var d = cs.d, D = TF_G_DIAGS[d];
   var c = o.ctx, W = cs.w, H = cs.h, X = cs.x, Y = cs.y, e = tfGraph.ech, g = tfGraph;
 
+  // La légende occupe une bande au-dessus du tracé (une ou deux lignes)
   var fs = Math.max(10, Math.min(14, Math.round(Math.min(H * 0.045, W * 0.03))));
-  var ML = Math.round(fs * 4.4), MR = 12, MT = Math.round(fs * 0.7), MB = Math.round(fs * 2.9);
+  var ML = Math.round(fs * 4.4), MR = 12, MB = Math.round(fs * 2.9);
+  var hLeg = _tfgLegende(c, d, X + ML, Y + 4, W - ML - MR, fs - 1, false);
+  var MT = Math.round(hLeg + 8);
   var pw = W - ML - MR, ph = H - MT - MB;
   if (pw < 60 || ph < 40 || e.length === 0) return;
   var x0 = X + ML, y0 = Y + MT;
 
   var nX = Math.max(2, Math.floor(pw / (fs * 6))), nY = Math.max(2, Math.floor(ph / (fs * 2.6)));
-  var vue = g.vue[d];
-  if (!vue) {
-    var cad = _tfgCadrage(d);
-    var bx = _tfgBornes(cad.x1, cad.x2, D.spanX, nX), by = _tfgBornes(cad.y1, cad.y2, D.spanY, nY);
-    vue = { x1: bx.lo, x2: bx.hi, y1: by.lo, y2: by.hi };
-  }
+  var vue = g.vue[d] || _tfgAnimer(d, _tfgChamp(d, mes));
   var pasX = _tfgPas(vue.x2 - vue.x1, nX), pasY = _tfgPas(vue.y2 - vue.y1, nY);
   var xDe = function (x) { return x0 + (x - vue.x1) / (vue.x2 - vue.x1) * pw; };
   var yDe = function (y) { return y0 + ph - (y - vue.y1) / (vue.y2 - vue.y1) * ph; };
@@ -817,7 +949,7 @@ function _tfgDessinerDiag(o, cs, mes) {
   var etiq = [];
   if (g.ref) {
     var cr = _tfgCourbesRef(d, g.ref);
-    for (k = 0; k < cr.length; k++) etiq.push(_tfgCourbe(c, xDe, yDe, vue, cr[k], d === 'pv'));
+    for (k = 0; k < cr.length; k++) etiq.push(_tfgCourbe(c, xDe, yDe, vue, cr[k]));
   }
 
   // Pression exercée par le piston : l'aire sous ce tracé est le travail
@@ -932,6 +1064,10 @@ function _tfgDessinerDiag(o, cs, mes) {
       c.fill();
       c.stroke();
     }
+    // Tranches hors du champ : un triangle au bord, pointé vers elles
+    c.fillStyle = TF_G_ND;
+    if (D.yMax(mes) > vue.y2) _tfgMarqueBord(c, xt, y0 + 1, 1);
+    if (D.yMin(mes) < vue.y1) _tfgMarqueBord(c, xt, y0 + ph - 1, -1);
   }
 
   // États repérés par une lettre (départs et arrivées des étapes)
@@ -971,17 +1107,11 @@ function _tfgDessinerDiag(o, cs, mes) {
     ye = Math.max(y0 + fs * 0.8, Math.min(y0 + ph - fs * 0.8, ye));
     _tfgEtiquette(c, etiq[k].nom, etiq[k].x, ye, fs - 1, etiq[k].coul, 'right');
   }
-  for (k = 0; k < sans.length; k++) {
-    var xa = px(sans[k][0]), ya = py(sans[k][0]);
-    var xb = px(sans[k][1]), yb = py(sans[k][1]);
-    if (Math.hypot(xb - xa, yb - ya) > fs * 9) {
-      // Au tiers du segment : le milieu porte la flèche de sens
-      _tfgEtiquette(c, 'chemin non défini', xa + (xb - xa) / 3, ya + (yb - ya) / 3, fs - 1, TF_G_MUET, 'center');
-    }
-  }
-  // Mention « non définie » dans le coin opposé à la légende
-  if (!defM) _tfgEtiquette(c, D.nd, x0 + 8, d === 'pv' ? y0 + ph - fs : y0 + fs, fs, TF_G_ND, 'left');
-  _tfgLegende(c, d, x0 + pw - 6, d === 'pv' ? y0 + 6 : -(y0 + ph - 6), fs - 1, sans.length > 0);
+  // Mention « non définie » en bas à gauche, coin vide pour les
+  // transformations usuelles (basse pression à petit volume, basse
+  // température), et légende fixe au-dessus du tracé
+  if (!defM) _tfgEtiquette(c, D.nd, x0 + 8, y0 + ph - fs, fs, TF_G_ND, 'left');
+  _tfgLegende(c, d, x0, Y + 4, pw, fs - 1, true);
 
   // Zoom en cours
   var gl = g.glisse;
@@ -1088,9 +1218,8 @@ function _tfgLettres(c, D, xDe, yDe, fs, alpha) {
 
 // Trace une courbe de référence sur la vue ; renvoie où poser son
 // étiquette : point visible le plus à droite d'une courbe y(x), haut d'une
-// verticale (bas si basVert : la légende occupe le haut), droite d'une
-// horizontale
-function _tfgCourbe(c, xDe, yDe, vue, cr, basVert) {
+// verticale, droite d'une horizontale
+function _tfgCourbe(c, xDe, yDe, vue, cr) {
   var dern = null;
   c.strokeStyle = cr.coul;
   c.lineWidth = 1.5;
@@ -1099,7 +1228,7 @@ function _tfgCourbe(c, xDe, yDe, vue, cr, basVert) {
     var xv = xDe(cr.vert);
     c.moveTo(xv, yDe(vue.y1));
     c.lineTo(xv, yDe(vue.y2));
-    if (cr.vert >= vue.x1 && cr.vert <= vue.x2) dern = { x: xv - 4, y: basVert ? yDe(vue.y1) - 34 : yDe(vue.y2) + 34 };
+    if (cr.vert >= vue.x1 && cr.vert <= vue.x2) dern = { x: xv - 4, y: yDe(vue.y2) + 20 };
   } else if (cr.horiz !== undefined) {
     var yh = yDe(cr.horiz);
     c.moveTo(xDe(vue.x1), yh);
@@ -1118,32 +1247,32 @@ function _tfgCourbe(c, xDe, yDe, vue, cr, basVert) {
   return dern ? { x: dern.x, y: dern.y, nom: cr.nom, coul: cr.coul } : null;
 }
 
-// Légende dans un coin vide pour les transformations usuelles : en haut à
-// droite du diagramme de Clapeyron (P décroît quand V croît), en bas à
-// droite du diagramme entropique (T croît avec S, compressions et
-// chauffages montent vers la droite). y < 0 : −y est le bas de la légende.
-function _tfgLegende(c, d, xd, y, fs, avecSans) {
-  var D = TF_G_DIAGS[d];
-  var items = [{ type: 'ligne', coul: TF_G_CHEMIN, nom: D.chemin },
-               { type: 'point', coul: TF_G_CHEMIN, nom: 'état d’équilibre' },
-               { type: 'actuel', nom: 'état actuel' }];
-  if (avecSans) items.push({ type: 'tirets', coul: '#9aa4ac', nom: 'chemin non défini' });
-  if (tfGraphAff.tranches) items.push({ type: 'tranches', nom: D.tranches });
-  if (d === 'pv' && tfGraphAff.piston) items.push({ type: 'tirets', coul: TF_G_PISTON, nom: 'pression sur le piston' });
+// Légende fixe, en bande au-dessus du tracé : toujours les mêmes éléments
+// (seules les options du menu en ajoutent), sur une ligne, ou deux si la
+// largeur manque. dessiner faux : renvoie seulement la hauteur de la bande.
+function _tfgLegende(c, d, x0, y0, largeur, fs, dessiner) {
+  var items = [{ type: 'ligne', coul: TF_G_CHEMIN, nom: 'chemin' },
+               { type: 'tirets', coul: '#9aa4ac', nom: 'non défini' },
+               { type: 'point', coul: TF_G_CHEMIN, nom: 'équilibre' },
+               { type: 'actuel', nom: 'actuel' }];
+  if (tfGraphAff.tranches) items.push({ type: 'tranches', nom: 'tranches' });
+  if (d === 'pv' && tfGraphAff.piston) items.push({ type: 'tirets', coul: TF_G_PISTON, nom: 'P piston' });
 
   c.font = _tfgPolice(fs, false);
-  var w = 0;
-  for (var i = 0; i < items.length; i++) w = Math.max(w, c.measureText(items[i].nom).width);
-  var lh = fs * 1.35, sw = fs * 1.8, bw = w + sw + 14, bh = items.length * lh + 6;
-  var x0 = xd - bw;
-  if (y < 0) y = -y - bh;
-  c.fillStyle = 'rgba(255,253,249,0.9)';
-  c.fillRect(x0, y, bw, bh);
-  c.strokeStyle = TF_G_GRILLE;
-  c.lineWidth = 1;
-  c.strokeRect(x0 + 0.5, y + 0.5, bw - 1, bh - 1);
+  var sw = fs * 1.5, lh = fs * 1.35, ecart = fs * 1.1;
+  var x = x0, y = y0, lignes = 1, i, it, wi;
   for (i = 0; i < items.length; i++) {
-    var it = items[i], yc = y + 3 + lh * (i + 0.5), xs = x0 + 5;
+    it = items[i];
+    wi = sw + 4 + c.measureText(it.nom).width;
+    if (x > x0 && x + wi > x0 + largeur) { x = x0; y += lh; lignes++; }
+    it.x = x; it.y = y + lh / 2;
+    x += wi + ecart;
+  }
+  if (!dessiner) return lignes * lh;
+
+  for (i = 0; i < items.length; i++) {
+    it = items[i];
+    var xs = it.x, yc = it.y;
     if (it.type === 'point') {
       c.beginPath();
       c.arc(xs + sw / 2, yc, 3.5, 0, 2 * Math.PI);
@@ -1161,7 +1290,7 @@ function _tfgLegende(c, d, xd, y, fs, avecSans) {
       var cl = [[24, 88, 196], [74, 98, 124], [200, 52, 28]];
       for (var p = 0; p < 3; p++) {
         c.beginPath();
-        c.arc(xs + sw / 2, yc + (p - 1) * fs * 0.38, 2.4, 0, 2 * Math.PI);
+        c.arc(xs + sw / 2, yc + (p - 1) * fs * 0.36, 2.2, 0, 2 * Math.PI);
         c.fillStyle = 'rgb(' + cl[p].join(',') + ')';
         c.fill();
       }
@@ -1177,8 +1306,19 @@ function _tfgLegende(c, d, xd, y, fs, avecSans) {
     c.fillStyle = TF_G_ENCRE;
     c.textAlign = 'left';
     c.textBaseline = 'middle';
-    c.fillText(it.nom, xs + sw + 5, yc);
+    c.fillText(it.nom, xs + sw + 4, yc);
   }
+  return lignes * lh;
+}
+
+// Triangle au bord du tracé, pointé vers le haut (sens 1) ou le bas (−1)
+function _tfgMarqueBord(c, x, y, sens) {
+  c.beginPath();
+  c.moveTo(x, y);
+  c.lineTo(x - 5, y + sens * 8);
+  c.lineTo(x + 5, y + sens * 8);
+  c.closePath();
+  c.fill();
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -1193,7 +1333,7 @@ function tfGraphDessiner() {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-//  Outils : vue précédente, suivre, tout voir, cadrage automatique, réticule
+//  Outils : vue précédente, étape, tout voir, ajuster, champ, réticule
 // ══════════════════════════════════════════════════════════════════════
 
 function tfGraphPrecedente(cible) {
@@ -1203,6 +1343,7 @@ function tfGraphPrecedente(cible) {
   g.sale = true;
 }
 
+// Retour à l'étape en cours (bouton Étape)
 function tfGraphSuivre() {
   tfGraph.vueT = null;
   tfGraph.pileT = [];
@@ -1213,15 +1354,36 @@ function tfGraphToutVoir() {
   var g = tfGraph, e = g.ech;
   if (e.length < 2) return;
   g.pileT.push(g.vueT);
-  g.vueT = { t1: e[0].t, t2: Math.max(e[e.length - 1].t, e[0].t + 1e-4) };
+  g.vueT = { t1: e[0].t, t2: Math.max(e[e.length - 1].t, e[0].t + 1e-4), o: 0, lt: '' };
   g.sale = true;
 }
 
-// Cadrage automatique d'un diagramme d'état ('pv' ou 'ts')
-function tfGraphAuto(d) {
+// Diagramme d'état ('pv' ou 'ts') cadré au plus près du chemin : une vue
+// figée, comme un zoom (↶ pour revenir)
+function tfGraphAjuster(d) {
+  var g = tfGraph, D = TF_G_DIAGS[d], cad = _tfgCadrage(d);
+  if (!isFinite(cad.x1) || !isFinite(cad.y1)) return;
+  var bx = _tfgBornes(cad.x1, cad.x2, D.spanX, 5), by = _tfgBornes(cad.y1, cad.y2, D.spanY, 4);
+  g.pileD[d].push(g.vue[d]);
+  g.vue[d] = { x1: bx.lo, x2: bx.hi, y1: by.lo, y2: by.hi };
+  g.sale = true;
+}
+
+// Retour au champ fixe
+function tfGraphChamp(d) {
   tfGraph.vue[d] = null;
   tfGraph.pileD[d] = [];
   tfGraph.sale = true;
+}
+
+// Menu Options des graphes : s'ouvre sous son bouton, se ferme par un
+// second clic, un clic ailleurs ou Échap
+function tfGraphMenu(ouvrir) {
+  var m = document.getElementById('tf-options-menu');
+  if (ouvrir === undefined) ouvrir = m.hidden;
+  m.hidden = !ouvrir;
+  document.getElementById('tf-btn-options').classList.toggle('active', ouvrir);
+  document.getElementById('tf-btn-options').setAttribute('aria-expanded', ouvrir ? 'true' : 'false');
 }
 
 // ── Encarts de la colonne gauche ──
@@ -1301,7 +1463,7 @@ function _tfgSouris(o, cible) {
       if (!gt || dx < 6) return;
       var tDe = function (x) { return gt.t1 + (x - gt.x0) / gt.pw * (gt.t2 - gt.t1); };
       g.pileT.push(g.vueT);
-      g.vueT = { t1: tDe(Math.min(gl.x0, gl.x1)), t2: tDe(Math.max(gl.x0, gl.x1)) };
+      g.vueT = { t1: tDe(Math.min(gl.x0, gl.x1)), t2: tDe(Math.max(gl.x0, gl.x1)), o: gt.o, lt: gt.lt };
     } else {
       var gp = g.geoD[cible];
       if (!gp || dx < 6 || dy < 6) return;
@@ -1418,6 +1580,13 @@ function tfGraphInit() {
   for (var cle in tfGraphAff) {
     document.getElementById('tf-ckg-' + cle).checked = tfGraphAff[cle];
   }
+  var opt = document.getElementById('tf-options');
+  document.addEventListener('pointerdown', function (ev) {
+    if (!opt.contains(ev.target)) tfGraphMenu(false);
+  });
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape') tfGraphMenu(false);
+  });
   tf.echantillon = _tfgEchantillon;
   tfGraphEffacer();
 }

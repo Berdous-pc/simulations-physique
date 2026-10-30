@@ -106,11 +106,54 @@
     <div id="tf-graph-col">
 
       <!-- Encarts affichés : boutons activables, de 0 à 4 (tf-graph.js) -->
-      <div class="tf-graphe-btns tf-choix-vues" id="tf-choix-vues">
-        <button id="tf-vue-pv" onclick="tfGraphBasculerVue('pv')" title="Diagramme de Clapeyron">P = f(V)</button>
-        <button id="tf-vue-ts" onclick="tfGraphBasculerVue('ts')" title="Diagramme entropique">T = f(S)</button>
-        <button id="tf-vue-temps" onclick="tfGraphBasculerVue('temps')" title="Température, pression et volume au cours du temps">T, P, V = f(t)</button>
-        <button id="tf-vue-tableau" onclick="tfGraphBasculerVue('tableau')" title="Tableau des valeurs">Tableau</button>
+      <div class="tf-barre-vues">
+        <div class="tf-graphe-btns tf-choix-vues" id="tf-choix-vues">
+          <button id="tf-vue-pv" onclick="tfGraphBasculerVue('pv')" title="Diagramme de Clapeyron">P = f(V)</button>
+          <button id="tf-vue-ts" onclick="tfGraphBasculerVue('ts')" title="Diagramme entropique">T = f(S)</button>
+          <button id="tf-vue-temps" onclick="tfGraphBasculerVue('temps')" title="Température, pression et volume au cours du temps">T, P, V = f(t)</button>
+          <button id="tf-vue-tableau" onclick="tfGraphBasculerVue('tableau')" title="Tableau des valeurs">Tableau</button>
+        </div>
+        <!-- Options des graphes : menu déroulant (tf-graph.js, tfGraphMenu) -->
+        <div class="tf-options" id="tf-options">
+          <div class="tf-graphe-btns">
+            <button id="tf-btn-options" onclick="tfGraphMenu()" title="Options des graphes" aria-haspopup="true" aria-expanded="false">Options ▾</button>
+          </div>
+          <div class="tf-options-menu" id="tf-options-menu" hidden>
+            <div class="tf-sous-titre">Diagrammes P(V) et T(S)</div>
+            <label class="check-row">
+              <input type="checkbox" id="tf-ckg-tranches" checked onchange="tfOnAffGraphe('tranches', this.checked)">
+              Chaque tranche (P en P(V), T en T(S))
+            </label>
+            <label class="check-row">
+              <input type="checkbox" id="tf-ckg-piston" onchange="tfOnAffGraphe('piston', this.checked)">
+              Pression sur le piston (P(V))
+            </label>
+            <div class="tf-sous-titre">Courbes par l’état de départ</div>
+            <div class="tf-options-grille">
+              <label class="check-row">
+                <input type="checkbox" id="tf-ckg-isotherme" onchange="tfOnAffGraphe('isotherme', this.checked)">
+                Isotherme
+              </label>
+              <label class="check-row">
+                <input type="checkbox" id="tf-ckg-adiabatique" onchange="tfOnAffGraphe('adiabatique', this.checked)">
+                Adiabatique rév.
+              </label>
+              <label class="check-row">
+                <input type="checkbox" id="tf-ckg-isochore" onchange="tfOnAffGraphe('isochore', this.checked)">
+                Isochore
+              </label>
+              <label class="check-row">
+                <input type="checkbox" id="tf-ckg-isobare" onchange="tfOnAffGraphe('isobare', this.checked)">
+                Isobare
+              </label>
+            </div>
+            <div class="tf-sous-titre">Au cours du temps</div>
+            <label class="check-row">
+              <input type="checkbox" id="tf-ckg-gel" checked onchange="tfOnAffGraphe('gel', this.checked)">
+              Chrono figé à l’équilibre (┊ : attente retirée)
+            </label>
+          </div>
+        </div>
       </div>
 
       <div class="tf-graphe" id="tf-pv-zone" data-vue="pv">
@@ -118,7 +161,8 @@
           <span class="tf-graphe-titre">Diagramme de Clapeyron</span>
           <div class="tf-graphe-btns">
             <button onclick="tfGraphPrecedente('pv')" title="Vue précédente">↶</button>
-            <button onclick="tfGraphAuto('pv')" title="Cadrage automatique">Auto</button>
+            <button onclick="tfGraphAjuster('pv')" title="Cadrer au plus près du chemin">Ajuster</button>
+            <button onclick="tfGraphChamp('pv')" title="Revenir au champ fixe">Champ</button>
             <button class="tf-btn-reticule" onclick="tfGraphReticule()" title="Réticule">+</button>
           </div>
         </div>
@@ -134,7 +178,8 @@
           <span class="tf-graphe-titre">Diagramme entropique</span>
           <div class="tf-graphe-btns">
             <button onclick="tfGraphPrecedente('ts')" title="Vue précédente">↶</button>
-            <button onclick="tfGraphAuto('ts')" title="Cadrage automatique">Auto</button>
+            <button onclick="tfGraphAjuster('ts')" title="Cadrer au plus près du chemin">Ajuster</button>
+            <button onclick="tfGraphChamp('ts')" title="Revenir au champ fixe">Champ</button>
             <button class="tf-btn-reticule" onclick="tfGraphReticule()" title="Réticule">+</button>
           </div>
         </div>
@@ -150,7 +195,7 @@
           <span class="tf-graphe-titre">Au cours du temps</span>
           <div class="tf-graphe-btns">
             <button onclick="tfGraphPrecedente('t')" title="Vue précédente">↶</button>
-            <button onclick="tfGraphSuivre()" title="Revenir à la fenêtre glissante">Suivre</button>
+            <button onclick="tfGraphSuivre()" title="Revenir à l’étape en cours">Étape</button>
             <button onclick="tfGraphToutVoir()" title="Tout l’historique">Tout voir</button>
             <button class="tf-btn-reticule" onclick="tfGraphReticule()" title="Réticule">+</button>
           </div>
@@ -323,10 +368,6 @@
           <label class="check-row">
             <input type="checkbox" id="tf-ck-vitesse-auto" checked onchange="tfOnVitesseAuto(this.checked)">
             Vitesse adaptée à chaque transformation
-          </label>
-          <label class="check-row">
-            <input type="checkbox" id="tf-ckg-gel" checked onchange="tfOnAffGraphe('gel', this.checked)">
-            Chrono des graphes figé à l’équilibre
           </label>
         </div>
 
@@ -519,32 +560,6 @@
             <input type="checkbox" id="tf-ck-amplifie" onchange="tfOnAffichage('amplifie', this.checked)">
             Profil amplifié (écart à la moyenne)
           </label>
-          <div class="tf-sous-titre">Diagrammes d’état</div>
-          <label class="check-row">
-            <input type="checkbox" id="tf-ckg-tranches" checked onchange="tfOnAffGraphe('tranches', this.checked)">
-            Chaque tranche (P en P(V), T en T(S))
-          </label>
-          <label class="check-row">
-            <input type="checkbox" id="tf-ckg-piston" onchange="tfOnAffGraphe('piston', this.checked)">
-            Pression sur le piston (P(V))
-          </label>
-          <div class="tf-sous-titre">Courbes par l’état de départ</div>
-          <label class="check-row">
-            <input type="checkbox" id="tf-ckg-isotherme" onchange="tfOnAffGraphe('isotherme', this.checked)">
-            Isotherme
-          </label>
-          <label class="check-row">
-            <input type="checkbox" id="tf-ckg-adiabatique" onchange="tfOnAffGraphe('adiabatique', this.checked)">
-            Adiabatique réversible
-          </label>
-          <label class="check-row">
-            <input type="checkbox" id="tf-ckg-isochore" onchange="tfOnAffGraphe('isochore', this.checked)">
-            Isochore
-          </label>
-          <label class="check-row">
-            <input type="checkbox" id="tf-ckg-isobare" onchange="tfOnAffGraphe('isobare', this.checked)">
-            Isobare
-          </label>
         </div>
 
         <div class="sep"></div>
@@ -603,14 +618,15 @@
         <strong>Brutalement</strong> : la valeur visée est appliquée d'un coup (vérin très rapide, bloc posé, échelon) ; à volume imposé ou par l'air de l'enceinte, la pression du gaz n'est plus définie pendant un moment. <strong>Quasi statiquement</strong> : assez lentement pour que le gaz reste uniforme ; avec un fond peu conducteur, l'échange de chaleur à travers le fond crée pourtant de l'entropie. <strong>Réversiblement</strong> : assez lentement, en plus, pour que le gaz reste à la température de la source. Avec un fond calorifugé, ou très conducteur, ces deux dernières manières se confondent : la carte le signale. Pour la masse, la manière lente verse du sable ; d'un coup, c'est un bloc. Les <strong>Réglages fins</strong> (repliés) laissent choisir la durée et la hauteur des marches d'un escalier.
         Avec <strong>Vitesse adaptée</strong> cochée, chaque Lancer choisit le cran de vitesse qui fait durer l'action quelques secondes à l'écran.
         Le journal des <strong>Étapes</strong> note chaque transformation, de son état de départ à son état d'arrivée (A, B, C…, le premier équilibre atteint une fois l'action finie). Sur le diagramme de Clapeyron, chaque étape a sa couleur, une flèche donne le sens de parcours et l'état actuel est cerclé d'orange. Cliquer sur une étape la met en évidence ; ↺ revient à son état d'arrivée (les étapes suivantes sont effacées). Une action sans effet n'est pas notée.
-        Avec <strong>Chrono des graphes figé à l'équilibre</strong> coché, les graphes au cours du temps s'arrêtent tant que le gaz reste à l'équilibre et repartent à l'action suivante ; chaque attente retirée est marquée d'un trait pointillé vertical (le tableau garde le temps réel de la simulation).
+        Avec <strong>Chrono figé à l'équilibre</strong> coché (menu <strong>Options</strong> des graphes), les graphes au cours du temps s'arrêtent tant que le gaz reste à l'équilibre et repartent à l'action suivante ; chaque attente retirée est marquée d'un trait pointillé vertical (le tableau garde le temps réel de la simulation).
         Le curseur <strong>Vitesse</strong> descend jusqu'à ×1/5000 pour suivre un front dans le gaz ; l'agitation des molécules garde la même vitesse à tous les crans, pour rester lisible.
         Quand les tranches du gaz n'ont pas la même pression ou la même température, le tableau affiche <strong>?</strong> et l'écart entre tranches.
         Les <strong>graphes</strong> le montrent aussi : hors équilibre, T(t) et P(t) deviennent une bande hachurée (de la tranche la plus basse à la plus haute), et, quand la pression du gaz n'est pas uniforme, le diagramme de Clapeyron ne trace plus le gaz : un pointillé relie les points connus (une température seule non uniforme n'efface pas le point : V et P restent définis). Il y place aussi la <strong>pression de chaque tranche</strong>, au volume du gaz : hors équilibre, les points s'étalent sur une verticale (un volume, plusieurs pressions) et se rejoignent en un seul point à l'équilibre.
-        En haut de la colonne de gauche, les boutons <strong>P = f(V)</strong>, <strong>T = f(S)</strong>, <strong>T, P, V = f(t)</strong> et <strong>Tableau</strong> affichent ou masquent chacun leur encart (de aucun à tous les quatre) ; sans aucun encart, le cylindre prend toute la place. Le diagramme entropique porte la température en fonction de la variation d'entropie du gaz depuis l'état initial (ΔS, en mJ/K) : l'entropie du gaz est toujours connue, mais son point n'est tracé que si sa température est uniforme ; sinon, les températures des tranches s'étalent sur une verticale. Un état d'équilibre est un point dans les deux diagrammes. Les courbes isotherme, adiabatique réversible, isochore et isobare (section Affichage) passent par l'état de départ de la transformation en cours, dans les deux diagrammes.
+        En haut de la colonne de gauche, les boutons <strong>P = f(V)</strong>, <strong>T = f(S)</strong>, <strong>T, P, V = f(t)</strong> et <strong>Tableau</strong> affichent ou masquent chacun leur encart (de aucun à tous les quatre) ; sans aucun encart, le cylindre prend toute la place. Le diagramme entropique porte la température en fonction de la variation d'entropie du gaz depuis l'état initial (ΔS, en mJ/K) : l'entropie du gaz est toujours connue, mais son point n'est tracé que si sa température est uniforme ; sinon, les températures des tranches s'étalent sur une verticale. Un état d'équilibre est un point dans les deux diagrammes. Le menu <strong>Options ▾</strong>, à droite de ces boutons, règle ce que montrent les graphes : pression de chaque tranche, pression sur le piston, courbes isotherme, adiabatique réversible, isochore et isobare (elles passent par l'état de départ de la transformation en cours, dans les deux diagrammes), chrono figé.
+        Les deux diagrammes partent de zéro (l'aire sous P(V) est le travail, l'aire sous T(S) la chaleur) et gardent un champ fixe ; quand le chemin en sort, le champ s'agrandit d'un cran et ne se resserre plus (sauf à Réinitialiser ou au retour à un état). Une tranche hors du champ est signalée par une marque au bord. Les graphes au cours du temps montrent l'étape en cours, depuis son départ (temps compté à partir de la lettre de départ) ; leurs axes s'agrandissent par crans au fil de l'étape, quel que soit le curseur Vitesse.
         La section <strong>Bilan</strong> donne, pour la dernière étape et depuis l'état initial A, le travail W et la chaleur Q reçus par le gaz, ΔU (égale à W + Q), la variation d'entropie du gaz, l'entropie échangée avec la source (somme des δQ / T_source) et l'entropie créée, nulle pour une transformation réversible.
         La section <strong>Gaz</strong> règle γ (monoatomique, diatomique, polyatomique, ou valeur libre), la température et la hauteur initiales du gaz ; les changer réinitialise l'expérience.
-        Glisser sur un graphe zoome (↶ : vue précédente ; Suivre ou Auto : cadrage automatique) ; + affiche un réticule. Les séparations entre les graphes et le cylindre se déplacent à la souris.
+        Glisser sur un graphe zoome (↶ : vue précédente ; Ajuster : cadrer au plus près du chemin ; Champ : revenir au champ fixe ; Étape : revenir à l'étape en cours ; Tout voir : tout l'historique) ; + affiche un réticule. Les séparations entre les graphes et le cylindre se déplacent à la souris.
         Couleur du gaz et des molécules : bleu plus froid que 20 °C, rouge plus chaud.
         Les <strong>molécules</strong> restent dans leur bande de gaz (pointillés) et se serrent là où le gaz est comprimé : un front se voit comme une zone de molécules serrées qui traverse le cylindre. Chaque molécule va d'autant plus vite que le gaz est chaud là où elle se trouve. La pression se lit sur les sondes et le profil : P et T sont calculées par tranches, pas à partir des chocs des molécules.
         Sous la masse posée, le gaz reste presque uniforme en pression : le piston chargé bouge environ 170 fois plus lentement que le son ne traverse le gaz.

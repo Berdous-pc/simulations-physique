@@ -395,7 +395,7 @@ function tfLancerManiere(man) {
     tfAppliquer(cle, vise, p.duree, _tfPas(cle), p.duree > 0);
     if (cle !== 'Text') tfSetTenu(false);
   }
-  if (tfCarte.auto) _tfVitesseAdaptee(cle, p.duree);
+  _tfApresLancer(cle, p.duree);
   _tfDemarrerRelax();
   tfGraphReprogrammer();
   tfGraph.sale = true;
@@ -409,6 +409,15 @@ function _tfOuvrirEtape(desc) {
   tfGraphDegeler();
   tfEtapeNouvelle(desc);
   tfGraphDepartEtape();
+  tfGraphDureeAttendue(_tfDureeAction(null, 0));
+}
+
+// Action lancée : l'axe des temps des graphes prend sa durée attendue (quel
+// que soit le cran), le cran de vitesse s'y adapte si la case est cochée
+function _tfApresLancer(cle, duree) {
+  var D = _tfDureeAction(cle, duree);
+  tfGraphDureeAttendue(D);
+  if (tfCarte.auto) _tfVitesseAdaptee(D);
 }
 
 // Partie de la carte qui suit l'état du gaz : valeur actuelle, escalier,
@@ -619,8 +628,8 @@ function tfOnVitesse(val) {
   tf.vitesse = TF_VITESSES[parseInt(val, 10)];
   _tfEl['tf-sl-vitesse'].value = val;
   _tfEl['tf-lbl-vitesse'].textContent = _tfLibelleVitesse(tf.vitesse);
-  tfGraph.sale = true;   // la fenêtre des graphes temporels suit le cran
-  tfGraphReprogrammer();
+  tfGraph.sale = true;
+  tfGraphReprogrammer();   // pas d'échantillonnage (l'axe des temps, lui, ne dépend pas du cran)
   tfMajAfficheurs();
 }
 
@@ -707,7 +716,7 @@ function tfLancer() {
     tfAppliquer(cle, k.vise, duree, _tfPas(cle));
     if (cle !== 'Text') tfSetTenu(false);
   }
-  if (tfCarte.auto) _tfVitesseAdaptee(cle, duree);
+  _tfApresLancer(cle, duree);
   _tfDemarrerRelax();
   tfGraphReprogrammer();
   tfGraph.sale = true;
@@ -740,7 +749,16 @@ function tfOnRevenir(i) {
 // ou mise en équilibre thermique (température brutale).
 var TF_ECRAN_ACTION = 5;   // s réelles visées
 
-function _tfVitesseAdaptee(cle, duree) {
+function _tfVitesseAdaptee(D) {
+  if (!isFinite(D) || D <= 0) return;
+  var i = _tfCranPour(D / TF_ECRAN_ACTION);
+  if (TF_VITESSES[i] !== tf.vitesse) tfOnVitesse(i);
+}
+
+// Durée simulée de ce qu'il y a à voir d'une action lancée (s). cle null :
+// action sans consigne (piston saisi ou lâché, fond changé), le retour au
+// repos du piston.
+function _tfDureeAction(cle, duree) {
   var d = tfDurees(), D;
   if (cle === 'volume') D = tf.verin.actif ? tf.verin.tau : duree;
   else if (duree > 0) D = duree;
@@ -751,9 +769,7 @@ function _tfVitesseAdaptee(cle, duree) {
   // ~1 ms, c'est lui qu'on veut voir
   else if (cle === 'Pair' && tf.masse === 0) D = 10 * d.traversee;
   else D = 16 * d.piston;
-  if (!isFinite(D) || D <= 0) return;
-  var i = _tfCranPour(D / TF_ECRAN_ACTION);
-  if (TF_VITESSES[i] !== tf.vitesse) tfOnVitesse(i);
+  return D;
 }
 
 // Cran de vitesse le plus proche (en rapport) de v

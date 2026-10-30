@@ -288,7 +288,8 @@ main {
 
 /* Barre des encarts affichés, en tête de la colonne */
 /* Boutons accolés, comme des onglets, à leur largeur naturelle */
-.tf-graphe-btns.tf-choix-vues { gap: 0; align-self: flex-start; flex-wrap: wrap; margin-bottom: 8px; }
+.tf-barre-vues { display: flex; align-items: flex-start; gap: 6px; flex-wrap: wrap; flex-shrink: 0; margin-bottom: 8px; }
+.tf-graphe-btns.tf-choix-vues { gap: 0; flex-wrap: wrap; }
 .tf-graphe-btns.tf-choix-vues button { border-radius: 0; }
 .tf-graphe-btns.tf-choix-vues button + button { border-left: none; }
 .tf-graphe-btns.tf-choix-vues button:first-child { border-radius: 5px 0 0 5px; }
@@ -297,12 +298,32 @@ main {
 #tf-graph-col.tf-sans-graphe { justify-content: flex-start; }
 /* Aucun encart : la colonne se réduit à la barre, boutons empilés */
 #tf-left-col.tf-sans-encart #tf-graph-col { flex: 0 0 auto; }
-#tf-left-col.tf-sans-encart .tf-choix-vues { flex-direction: column; align-self: stretch; }
+#tf-left-col.tf-sans-encart .tf-barre-vues { flex-direction: column; align-items: stretch; }
+#tf-left-col.tf-sans-encart .tf-choix-vues { flex-direction: column; }
+#tf-left-col.tf-sans-encart .tf-options .tf-graphe-btns button { width: 100%; }
 #tf-left-col.tf-sans-encart .tf-graphe-btns.tf-choix-vues button + button { border-left: 1px solid #b0a898; border-top: none; }
 #tf-left-col.tf-sans-encart .tf-graphe-btns.tf-choix-vues button:first-child { border-radius: 5px 5px 0 0; }
 #tf-left-col.tf-sans-encart .tf-graphe-btns.tf-choix-vues button:last-child { border-radius: 0 0 5px 5px; }
 #tf-left-col.tf-sans-encart #tf-vsplit { pointer-events: none; }
 #tf-left-col.tf-sans-encart #tf-vsplit::after { display: none; }
+
+/* Menu Options des graphes, déroulé sous son bouton, par-dessus les encarts */
+.tf-options { position: relative; }
+.tf-options-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  width: max-content;
+  max-width: min(320px, 80vw);
+  padding: 2px 12px 10px;
+  background: #fffdf9;
+  border: 1px solid #b0a898;
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.15);
+}
+.tf-options-menu[hidden] { display: none; }
+.tf-options-grille { display: grid; grid-template-columns: auto auto; column-gap: 14px; }
 
 .tf-graphe-barre {
   flex-shrink: 0;
@@ -1020,7 +1041,9 @@ html:not(.sections-pretes) .section-title[data-repliable]:not([data-repliable="o
   #tf-graph-col #tf-info {
     font-size: clamp(10px, min(2.2cqw, 1.5cqh), 13px);
   }
-  #tf-left-col.tf-sans-encart .tf-choix-vues { flex-direction: row; align-self: flex-start; }
+  #tf-left-col.tf-sans-encart .tf-barre-vues { flex-direction: row; align-items: flex-start; }
+  #tf-left-col.tf-sans-encart .tf-choix-vues { flex-direction: row; }
+  #tf-left-col.tf-sans-encart .tf-options .tf-graphe-btns button { width: auto; }
   #tf-left-col.tf-sans-encart .tf-graphe-btns.tf-choix-vues button + button { border-left: none; border-top: 1px solid #b0a898; }
   #tf-left-col.tf-sans-encart .tf-graphe-btns.tf-choix-vues button:first-child { border-radius: 5px 0 0 5px; }
   #tf-left-col.tf-sans-encart .tf-graphe-btns.tf-choix-vues button:last-child { border-radius: 0 5px 5px 0; }
