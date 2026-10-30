@@ -394,7 +394,7 @@ function _tfMajManieres() {
 function tfLancerManiere(man) {
   if (tfEnCours() || _tfEnAttente) return;
   var cle = _tfCle(), vise = tfCarte[cle].vise, p = _tfParamsManiere(cle, man);
-  var desc = _tfDescManiere(cle, man, p), pas = _tfPas(cle);
+  var desc = _tfDescManiere(cle, man, p), pas = cle === 'volume' ? 0 : _tfPas(cle);   // pas de marches pour le vérin
   _tfLancerApresRalenti(cle, vise, p.duree, function () {
     _tfOuvrirEtape(desc);
     if (cle === 'volume') {
@@ -777,7 +777,7 @@ function tfOnPas(val) {
 function tfLancer() {
   if (tfEnCours() || _tfEnAttente) return;
   var cle = _tfCle(), vise = tfCarte[cle].vise, duree = _tfDuree(cle);
-  var desc = _tfDescAction(cle, duree), pas = _tfPas(cle);
+  var desc = _tfDescAction(cle, duree), pas = cle === 'volume' ? 0 : _tfPas(cle);   // pas de marches pour le vérin
   _tfLancerApresRalenti(cle, vise, duree, function () {
     _tfOuvrirEtape(desc);
     if (cle === 'volume') {

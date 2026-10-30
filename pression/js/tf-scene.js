@@ -812,7 +812,7 @@ function _tfFmtPa(x) {
 
 // ══════════════════════════════════════════════════════════════════════
 //  Compteur de temps : Δt de l'étape et vitesse de son écoulement
-//  Dans le coin haut droit de l'enceinte, à droite du vérin : le temps
+//  Dans un cadre en haut de l'enceinte, à droite du vérin : le temps
 //  écoulé depuis le départ de l'étape, celui des graphes au cours du temps
 //  (arrêté avec eux quand le chrono est figé à l'équilibre), et la vitesse
 //  (×1/100, ×500…). Pendant un passage progressif d'une vitesse à l'autre
@@ -839,11 +839,15 @@ function _tfFmtDeltaT(t) {
 function _tfDessinerChrono() {
   var c = tfCtx, v = tf.vitesse, xs = _tfClocheX();
   var w = _tfX2 - _tfX1, cx = (_tfX1 + _tfX2) / 2;
-  // Place libre : entre le corps du vérin (0,42·w de large) et la paroi de
-  // la cloche, sous le bâti
-  var xD = xs[1] - 8, xG = cx + 0.21 * w + 8, dispo = xD - xG;
+  // Cadre entre le corps du vérin (0,42·w de large) et la paroi de la
+  // cloche, à égale distance des deux, son haut aligné sur celui du corps
+  // du vérin (sous le bâti)
+  var g = Math.max(8, Math.round(w * 0.03));
+  var x0 = Math.round(cx + 0.21 * w + g) + 0.5, x1 = Math.round(xs[1] - 1 - g) - 0.5;
   var yBati = _tfY(TF_Z_HAUT) + 2;
-  var y = yBati + Math.max(5, (_tfY(TF_Z_VERIN_BAS) - yBati) * 0.16) + 8;
+  var y0 = Math.round(yBati + Math.max(5, (_tfY(TF_Z_VERIN_BAS) - yBati) * 0.16)) + 0.5;
+  var pad = 8, dispo = x1 - x0 - 2 * pad;
+  if (dispo < 40) return;
   var police = '"Segoe UI", Arial, sans-serif';
   var d = tfGraphChrono();
   var txtT = 'Δt = ' + _tfFmtDeltaT(Math.max(0, d.dt));
@@ -852,9 +856,8 @@ function _tfDessinerChrono() {
   var mot = tfChrono.sens > 0 ? 'accélère' : tfChrono.sens < 0 ? 'ralentit'
           : v < 0.999 ? 'ralenti' : v > 1.001 ? 'accéléré' : 'temps réel';
 
-  // Police la plus grande (20 px au plus) qui tient dans la place libre ;
-  // largeur mesurée sur un gabarit, pour ne pas varier quand les chiffres
-  // défilent
+  // Police la plus grande (20 px au plus) qui tient dans le cadre ; largeur
+  // mesurée sur un gabarit, pour ne pas varier quand les chiffres défilent
   c.save();
   c.font = '700 20px ' + police;
   var gabarit = Math.max(c.measureText('Δt = 000,0 ms').width, c.measureText(txtT).width);
@@ -863,34 +866,37 @@ function _tfDessinerChrono() {
   c.font = '700 ' + f2 + 'px ' + police;
   var wV = c.measureText(txtV).width;
   c.font = f2 + 'px ' + police;
-  var avecMot = wV + c.measureText(' ' + mot).width <= dispo;
+  var wMot = c.measureText(' ' + mot).width;
+  if (wV + wMot > dispo) wMot = 0;   // trop étroit : la vitesse seule
 
-  // Fond clair : lisible sur l'air teinté de l'enceinte
-  c.font = '700 ' + f1 + 'px ' + police;
-  var larg = Math.max(gabarit * f1 / 20, c.measureText(txtT).width,
-                      wV + (avecMot ? c.measureText(' ' + mot).width * f2 / f1 : 0));
-  var h = f1 * 1.25 + f2 * 1.3 + 8;
-  _tfRectArrondi(xD - larg - 8, y - 4, larg + 12, h, 5);
-  c.fillStyle = 'rgba(255,253,249,0.85)';
+  // Cadre : fond clair (lisible sur l'air teinté de l'enceinte), bordure
+  var h = Math.round(2 * pad + f1 * 1.2 + 4 + f2 * 1.2);
+  _tfRectArrondi(x0, y0, x1 - x0, h, 6);
+  c.fillStyle = '#fffdf9';
   c.fill();
+  c.strokeStyle = 'rgba(70,100,130,0.75)';   // comme la paroi de la cloche
+  c.lineWidth = 1.5;
+  c.stroke();
 
-  c.textAlign = 'right';
+  var xm = (x0 + x1) / 2;
   c.textBaseline = 'top';
+  c.textAlign = 'center';
+  c.font = '700 ' + f1 + 'px ' + police;
   // Grisé quand le chrono des graphes est figé (équilibre)
   c.fillStyle = d.gele ? '#8a96a0' : '#2c3e50';
-  c.fillText(txtT, xD, y);
+  c.fillText(txtT, xm, y0 + pad);
 
   var coul = v < 0.999 ? '#2f6fb0' : v > 1.001 ? '#c0602a' : '#2c3e50';
-  var y2 = y + f1 * 1.25 + 2, xV = xD;
-  if (avecMot) {
-    c.font = f2 + 'px ' + police;
-    c.fillStyle = tfChrono.sens ? coul : '#6a7a88';
-    c.fillText(' ' + mot, xD, y2);
-    xV -= c.measureText(' ' + mot).width;
-  }
+  var y2 = y0 + pad + f1 * 1.2 + 4, xV = xm - (wV + wMot) / 2;
+  c.textAlign = 'left';
   c.font = '700 ' + f2 + 'px ' + police;
   c.fillStyle = coul;
   c.fillText(txtV, xV, y2);
+  if (wMot) {
+    c.font = f2 + 'px ' + police;
+    c.fillStyle = tfChrono.sens ? coul : '#6a7a88';
+    c.fillText(' ' + mot, xV + wV, y2);
+  }
   c.restore();
 }
 
