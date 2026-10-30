@@ -1081,32 +1081,37 @@ function _tfgDessinerDiag(o, cs, mes) {
   }
 
   // Chemin : plein tant que la grandeur en ordonnée est définie ; ailleurs,
-  // pointillé le long de l'état moyen du gaz (P = (γ − 1)·U/V, T = U/(n·Cv),
-  // toujours connus, comme V et S), et non une corde d'un état défini au
-  // suivant : une corde inventait un parcours (après une étape interrompue,
-  // elle partait d'un état bien antérieur). La géométrie ne dépend donc pas
-  // de la convention de tracé, seul le style change. Une couleur par étape
-  // (celle de l'échantillon d'arrivée de chaque segment) ; une étape mise en
+  // corde pointillée d'un point du squelette au suivant. Le squelette est
+  // fait des échantillons définis et, à chaque changement d'étape, du
+  // dernier échantillon de l'étape finie, pris à l'état moyen du gaz s'il
+  // n'est pas défini (P = (γ − 1)·U/V, T = U/(n·Cv), toujours connus) : une
+  // corde ne traverse donc jamais une frontière d'étape. Sans ce point
+  // d'ancrage, après une étape interrompue avant l'équilibre, la corde de
+  // l'étape suivante partait du dernier état défini, bien antérieur, et la
+  // géométrie dépendait de la convention de tracé. Une couleur par étape
+  // (celle du point d'arrivée de chaque segment) ; une étape mise en
   // évidence dans le journal laisse les autres en retrait.
   var sel = tfEtapes.sel >= 0 ? tfEtapes.sel + 1 : -1;
   var alpha = function (n) { return sel < 0 || n === sel ? 1 : 0.22; };
-  var q;
+  var sq = _tfgSquelette(e, D), q;
   c.lineJoin = 'round';
   c.lineCap = 'round';
   k = 1;
-  while (k < e.length) {
+  while (k < sq.length) {
     // Suite de segments de même style et de même étape : un seul tracé
-    // (les tirets restent continus)
-    var plein = D.def(e[k - 1]) && D.def(e[k]), n = e[k].etape, j = k;
-    while (j + 1 < e.length && e[j + 1].etape === n
-           && (D.def(e[j]) && D.def(e[j + 1])) === plein) j++;
+    // (les tirets restent continus). Plein : deux échantillons définis
+    // consécutifs.
+    var plein = sq[k] === sq[k - 1] + 1 && D.def(e[sq[k - 1]]) && D.def(e[sq[k]]);
+    var n = e[sq[k]].etape, j = k;
+    while (j + 1 < sq.length && e[sq[j + 1]].etape === n
+           && (sq[j + 1] === sq[j] + 1 && D.def(e[sq[j]]) && D.def(e[sq[j + 1]])) === plein) j++;
     c.globalAlpha = alpha(n) * (plein ? 1 : 0.8);
     c.strokeStyle = tfCouleurEtape(n);
     c.lineWidth = plein ? 2.2 : 1.6;
     c.setLineDash(plein ? [] : [3, 4]);
     c.beginPath();
-    c.moveTo(px(e[k - 1]), py(e[k - 1]));
-    for (q = k; q <= j; q++) c.lineTo(px(e[q]), py(e[q]));
+    c.moveTo(px(e[sq[k - 1]]), py(e[sq[k - 1]]));
+    for (q = k; q <= j; q++) c.lineTo(px(e[sq[q]]), py(e[sq[q]]));
     c.stroke();
     k = j + 1;
   }
@@ -1115,8 +1120,8 @@ function _tfgDessinerDiag(o, cs, mes) {
   c.lineCap = 'butt';
 
   // Sens de parcours : une flèche au milieu (en longueur) du chemin de
-  // chaque étape, chemin non défini compris
-  _tfgFleches(c, e, px, py, alpha);
+  // chaque étape, cordes comprises
+  _tfgFleches(c, e, sq, px, py, alpha);
 
   // États d'équilibre : fin de chaque séjour à l'équilibre. Son début n'est
   // pas fiable : un échantillon pris à l'extrémité d'une oscillation du
@@ -1237,16 +1242,27 @@ function _tfgDessinerDiag(o, cs, mes) {
   }
 }
 
-// Flèche de sens au milieu de chaque étape : le chemin d'une étape est la
-// suite de ses échantillons, définis ou non (état moyen), précédée du
-// dernier échantillon d'avant (départ). Rien si l'étape est trop courte à
-// l'écran.
-function _tfgFleches(c, e, px, py, alpha) {
-  var pts = {}, dernier = null, k, n;
+// Squelette du chemin (indices dans e) : échantillons définis, plus le
+// premier et, à chaque changement d'étape, le dernier de l'étape finie,
+// définis ou non (état moyen du gaz). L'étape en cours n'a pas d'ancrage
+// final : sa corde s'arrête au dernier état défini.
+function _tfgSquelette(e, D) {
+  var sq = [], k;
   for (k = 0; k < e.length; k++) {
-    n = e[k].etape;
+    if (k === 0 || D.def(e[k]) || (k + 1 < e.length && e[k + 1].etape !== e[k].etape)) sq.push(k);
+  }
+  return sq;
+}
+
+// Flèche de sens au milieu de chaque étape : le chemin d'une étape est la
+// suite de ses points du squelette, précédée du dernier point d'avant
+// (départ). Rien si l'étape est trop courte à l'écran.
+function _tfgFleches(c, e, sq, px, py, alpha) {
+  var pts = {}, dernier = null, k, n;
+  for (k = 0; k < sq.length; k++) {
+    n = e[sq[k]].etape;
     if (!pts[n]) pts[n] = dernier ? [dernier] : [];
-    pts[n].push([px(e[k]), py(e[k])]);
+    pts[n].push([px(e[sq[k]]), py(e[sq[k]])]);
     dernier = pts[n][pts[n].length - 1];
   }
   for (n in pts) {
