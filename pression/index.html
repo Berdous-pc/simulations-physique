@@ -356,9 +356,9 @@
         <!-- ── Contrôle du temps ──────────────────── -->
         <div class="panel-section">
           <div class="section-title">Contrôle</div>
-          <div class="btn-stack">
+          <div class="btn-row">
             <button id="tf-btn-playpause" class="btn btn-pause" onclick="tfBasculerPause()">&#9646;&#9646; Pause</button>
-            <button class="btn btn-raz" onclick="tfReinitialiser()">&#9632; Réinitialiser</button>
+            <button class="btn btn-raz" onclick="tfReinitialiser()">↺ RAZ</button>
           </div>
           <!-- Du ralenti extrême (ondes dans le gaz, ~1 ms) à l'accéléré
                (attente des équilibres thermiques, ~10 s). -->
@@ -374,30 +374,10 @@
             </div>
             <span class="input-hint" id="tf-vitesse-limite" style="display:none"></span>
           </div>
-          <label class="check-row">
+          <label class="check-row check-row-petit">
             <input type="checkbox" id="tf-ck-vitesse-auto" checked onchange="tfOnVitesseAuto(this.checked)">
-            Vitesse adaptée à chaque transformation
+            Vitesse adaptée à la transformation
           </label>
-        </div>
-
-        <div class="sep"></div>
-
-        <!-- ── Échanges thermiques ────────────────── -->
-        <!-- Un état, pas une action : c'est lui qui décide si la
-             transformation est adiabatique -->
-        <div class="panel-section">
-          <div class="section-title">Échanges thermiques</div>
-          <div class="param-row">
-            <label for="tf-sl-isolation">Fond du cylindre
-              <span class="param-value" id="tf-lbl-isolation">calorifugé</span>
-            </label>
-            <input type="range" id="tf-sl-isolation" min="0" max="7" step="1" value="0"
-                   oninput="tfOnIsolation(this.value)">
-            <div class="slider-ticks">
-              <span>calorifugé</span>
-              <span>diathermane</span>
-            </div>
-          </div>
         </div>
 
         <div class="sep"></div>
@@ -407,7 +387,12 @@
              grandeur sur laquelle on agit, valeur visée, durée, Lancer -->
         <div class="panel-section">
           <div class="section-title">Transformation</div>
-          <button id="tf-btn-piston" class="btn btn-toggle-one active" onclick="tfBasculerPiston()">🔒 Piston tenu</button>
+          <!-- Le fond est un état, pas une action : c'est lui qui décide si
+               la transformation est adiabatique -->
+          <div class="btn-stack">
+            <button id="tf-btn-piston" class="btn btn-toggle-one active" onclick="tfBasculerPiston()">🔒 Piston tenu</button>
+            <button id="tf-btn-isolation" class="btn btn-toggle-one" onclick="tfBasculerIsolation()">Fond calorifugé</button>
+          </div>
 
           <div class="tf-sous-titre">Agir sur</div>
           <div class="mode-tabs">

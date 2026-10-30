@@ -755,7 +755,23 @@ html:not(.sections-pretes) .section-title[data-repliable]:not([data-repliable="o
   flex: 0 0 auto;
 }
 
-/* Boutons empilés (ex. Pause + Réinitialiser) : l'écart est porté par le
+/* Case secondaire, en plus petit (Vitesse adaptée) */
+.check-row-petit { font-size: clamp(11px, 1vw, 13px); }
+
+/* Ligne de boutons côte à côte (Pause + RAZ, même règle que
+   champ_uniforme/) : RAZ reste étroit, Pause/Reprendre prend le reste. */
+.btn-row {
+  display: flex;
+  gap: 6px;
+}
+.btn-row > .btn {
+  width: auto;
+  flex: 1 1 0;
+  white-space: nowrap;
+}
+.btn-row > .btn-raz { flex: 0 0 auto; padding-left: 12px; padding-right: 12px; }
+
+/* Boutons empilés (ex. Piston + Fond) : l'écart est porté par le
    conteneur, pas par une marge sur chaque bouton. */
 .btn-stack {
   display: flex;

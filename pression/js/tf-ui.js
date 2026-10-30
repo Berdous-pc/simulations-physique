@@ -16,7 +16,7 @@ var _tfEl = {};
 var _TF_EL_IDS = [
   'tf-it-t', 'tf-it-P', 'tf-it-T', 'tf-it-V', 'tf-it-Pext', 'tf-it-Pext-lbl', 'tf-it-etat',
   'tf-btn-playpause', 'tf-sl-vitesse', 'tf-lbl-vitesse', 'tf-vitesse-limite', 'tf-ck-vitesse-auto',
-  'tf-sl-isolation', 'tf-lbl-isolation',
+  'tf-btn-isolation',
   'tf-btn-piston', 'tf-tab-volume', 'tf-tab-pression', 'tf-tab-temperature',
   'tf-moyens', 'tf-tab-masse', 'tf-tab-Pair', 'tf-hint-actuel',
   'tf-sl-duree', 'tf-lbl-duree', 'tf-duree-allongee',
@@ -705,25 +705,27 @@ function _tfFixerVitesse(v) {
   tf.needsRedraw = true;   // compteur de temps de la scène
 }
 
-function tfOnIsolation(val) {
-  var idx = parseInt(val, 10);
+// Bouton à deux états : fond calorifugé ou diatherme
+function tfBasculerIsolation() {
+  tfOnIsolation(tf.G === 0);
+}
+
+function tfOnIsolation(diatherme) {
+  var G   = diatherme ? TF_ISOLATIONS[TF_ISOLATIONS.length - 1] : 0;
+  var nom = diatherme ? 'diatherme' : 'calorifugé';
   // Le fond devient conducteur ou isolant : des échanges peuvent commencer
   // (étape retirée du journal si rien ne change)
-  if (_tfPret && TF_ISOLATIONS[idx] !== tf.G) {
-    var nom = idx === 0 ? 'calorifugé' : idx === TF_ISOLATIONS.length - 1 ? 'diathermane' : 'G = ' + String(TF_ISOLATIONS[idx]).replace('.', ',') + ' W/K';
-    // En faisant glisser le curseur, une seule étape « Fond » tant que le gaz
-    // n'a pas atteint l'équilibre
+  if (_tfPret && G !== tf.G) {
+    // Rebasculé avant l'équilibre : une seule étape « Fond »
     var der = tfEtapes.liste[tfEtapes.liste.length - 1];
     if (tfEnCours()) tfGraphDegeler();
     else if (der && der.fond && der.statut === 'en cours') { der.desc = 'Fond ' + nom; tfEtapes.version++; tfGraphDegeler(); }
     else { _tfOuvrirEtape('Fond ' + nom); tfEtapes.liste[tfEtapes.liste.length - 1].fond = true; }
   }
-  tfSetIsolation(TF_ISOLATIONS[idx]);
-  var G = TF_ISOLATIONS[idx];
-  _tfEl['tf-lbl-isolation'].textContent =
-    idx === 0 ? 'calorifugé'
-    : idx === TF_ISOLATIONS.length - 1 ? 'diathermane'
-    : 'G = ' + String(G).replace('.', ',') + ' W/K';
+  tfSetIsolation(G);
+  var b = _tfEl['tf-btn-isolation'];
+  b.textContent = 'Fond ' + nom;
+  b.classList.toggle('active', diatherme);
   tfMajAfficheurs();
 }
 
@@ -1064,8 +1066,7 @@ function tfInit() {
   tfReset();
   tfOnVitesse(TF_VITESSES.indexOf(1));
   _tfEl['tf-ck-vitesse-auto'].checked = tfCarte.auto;
-  _tfEl['tf-sl-isolation'].value = 0;
-  tfOnIsolation(0);
+  tfOnIsolation(false);
   for (var cle in tfAff) {
     document.getElementById('tf-ck-' + cle).checked = tfAff[cle];
   }
