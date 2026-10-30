@@ -388,7 +388,7 @@ main {
   display: block;
   width: 100%;
   height: 100%;
-  touch-action: none;   /* glisser = zoom, y compris au doigt */
+  touch-action: none;   /* glisser = déplacer la vue, y compris au doigt */
   cursor: crosshair;
 }
 

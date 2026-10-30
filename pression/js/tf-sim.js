@@ -318,11 +318,17 @@ function tfMesures() {
   // un gaz uniforme qui chauffe lentement à travers un fond peu conducteur
   // passait pour « à l'équilibre » (chrono figé, lettre posée trop tôt)
   var thermique = tf.G === 0 || Math.abs(Tmoy - tf.Text) < TF_SEUIL_T;
+  // Équilibre avec l'extérieur (convention de tracé des diagrammes d'état) :
+  // gaz uniforme, pression égale à celle qu'exerce le piston libre (le
+  // vérin, lui, exerce celle du gaz), température égale à celle de la
+  // source si le fond conduit ; le piston peut bouger (quasi statique)
+  var mecaExt = tf.tenu || butee !== null || Math.abs(Pmoy - Pext) / Pext < TF_SEUIL_P;
 
   return {
     V: V, Pmoy: Pmoy, Pmin: Pmin, Pmax: Pmax,
     Tmoy: Tmoy, Tmin: Tmin, Tmax: Tmax, Pext: Pext, Pface: tfPFace(),
     Pdef: Pdef, Tdef: Tdef, butee: butee,
+    ext: Pdef && Tdef && mecaExt && thermique,
     equilibre: Pdef && Tdef && repos && piston && thermique
   };
 }
