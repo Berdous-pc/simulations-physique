@@ -840,13 +840,13 @@ function _tfDessinerChrono() {
   var c = tfCtx, v = tf.vitesse, xs = _tfClocheX();
   var w = _tfX2 - _tfX1, cx = (_tfX1 + _tfX2) / 2;
   // Cadre entre le corps du vérin (0,42·w de large) et la paroi de la
-  // cloche, à égale distance des deux, son haut aligné sur celui du corps
-  // du vérin (sous le bâti)
+  // cloche, à égale distance des deux, et à la même distance sous le bâti
+  // (qui le surplombe en partie)
   var g = Math.max(8, Math.round(w * 0.03));
   var x0 = Math.round(cx + 0.21 * w + g) + 0.5, x1 = Math.round(xs[1] - 1 - g) - 0.5;
   var yBati = _tfY(TF_Z_HAUT) + 2;
-  var y0 = Math.round(yBati + Math.max(5, (_tfY(TF_Z_VERIN_BAS) - yBati) * 0.16)) + 0.5;
-  var pad = 8, dispo = x1 - x0 - 2 * pad;
+  var y0 = Math.round(yBati + Math.max(5, (_tfY(TF_Z_VERIN_BAS) - yBati) * 0.16) + g) + 0.5;
+  var pad = 6, dispo = x1 - x0 - 2 * pad;
   if (dispo < 40) return;
   var police = '"Segoe UI", Arial, sans-serif';
   var d = tfGraphChrono();
@@ -856,12 +856,12 @@ function _tfDessinerChrono() {
   var mot = tfChrono.sens > 0 ? 'accélère' : tfChrono.sens < 0 ? 'ralentit'
           : v < 0.999 ? 'ralenti' : v > 1.001 ? 'accéléré' : 'temps réel';
 
-  // Police la plus grande (20 px au plus) qui tient dans le cadre ; largeur
+  // Police la plus grande (24 px au plus) qui tient dans le cadre ; largeur
   // mesurée sur un gabarit, pour ne pas varier quand les chiffres défilent
   c.save();
   c.font = '700 20px ' + police;
   var gabarit = Math.max(c.measureText('Δt = 000,0 ms').width, c.measureText(txtT).width);
-  var f1 = Math.max(12, Math.min(20, Math.floor(20 * dispo / gabarit)));
+  var f1 = Math.max(13, Math.min(24, Math.floor(20 * dispo / gabarit)));
   var f2 = Math.round(f1 * 0.8);
   c.font = '700 ' + f2 + 'px ' + police;
   var wV = c.measureText(txtV).width;
