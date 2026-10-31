@@ -116,7 +116,9 @@ var tfGraph = {
   geoD      : { pv: null, ts: null },
   reticule  : false,
   souris    : null,    // {cible, x, y}
-  glisse    : null,    // déplacement en cours {cible, x0, y0, vue0, bouge}
+  glisse    : null,    // déplacement en cours {cible, x0, y0, vue0, bouge}, ou
+                       // rectangle de zoom en cours {cible, cadre, x0, y0, x, y}
+  zoomZone  : { pv: false, ts: false, t: false },   // mode Zoom (rectangle) de chaque graphe
   empile    : {},      // date du dernier empilement de vue, par graphe (molette)
   cv        : null,    // {pv, t} : canvas, contexte, taille
   sale      : true
@@ -622,7 +624,7 @@ function _tfgDessinerTemps() {
   var gradT = _tfgGraduations((t1 - org) * unite, (t2 - org) * unite, pasT);
   var xGrad = function (gt) { return xDe(org + gt / unite); };
 
-  var geo = { x0: ML, pw: pw, t1: t1, t2: t2, o: org, lt: lt, boites: [] };
+  var geo = { x0: ML, pw: pw, yH: MT, yB: MT + 3 * bh + 2 * GAP, t1: t1, t2: t2, o: org, lt: lt, boites: [] };
   for (var b = 0; b < 3; b++) {
     var y0 = MT + b * (bh + GAP);
     geo.boites.push(_tfgBoite(o, TF_G_SERIES[b], b, ML, y0, pw, bh, i1, i2, xDe, gradT, xGrad, fs));
@@ -1599,6 +1601,27 @@ function tfGraphDessiner() {
   tfGraph.sale = false;
   _tfgDessinerDiagrammes();
   _tfgDessinerTemps();
+  _tfgDessinerCadre();
+}
+
+// Rectangle de zoom en cours, par-dessus son graphe (en temps : une bande
+// sur toute la hauteur des trois cases)
+function _tfgDessinerCadre() {
+  var g = tfGraph, gl = g.glisse;
+  if (!gl || !gl.cadre) return;
+  var t = gl.cible === 't', geo = t ? g.geoT : g.geoD[gl.cible], o = g.cv[gl.cible];
+  if (!geo || !o.w) return;
+  var c = o.ctx;
+  var x = Math.min(gl.x0, gl.x), w = Math.abs(gl.x - gl.x0);
+  var y = t ? geo.yH : Math.min(gl.y0, gl.y), h = t ? geo.yB - geo.yH : Math.abs(gl.y - gl.y0);
+  c.save();
+  c.fillStyle = 'rgba(42, 106, 170, 0.10)';
+  c.fillRect(x, y, w, h);
+  c.strokeStyle = '#2a6aaa';
+  c.lineWidth = 1;
+  c.setLineDash([4, 3]);
+  c.strokeRect(Math.round(x) + 0.5, Math.round(y) + 0.5, Math.round(w), Math.round(h));
+  c.restore();
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -1689,6 +1712,34 @@ function _tfgMajVues() {
   if (typeof tfResize === 'function') tfResize();
 }
 
+// Mode Zoom d'un graphe ('pv', 'ts' ou 't') : glisser trace un rectangle
+// qui devient la vue (en temps, seul l'intervalle de temps compte) ; il
+// reste actif jusqu'au clic suivant sur le bouton
+function tfGraphZoomZone(cible) {
+  var g = tfGraph, on = g.zoomZone[cible] = !g.zoomZone[cible];
+  document.getElementById('tf-btn-zoom-' + cible).classList.toggle('active', on);
+  g.cv[cible].c.style.cursor = on ? 'crosshair' : 'grab';
+}
+
+// Vue cadrée sur le rectangle de zoom (pixels → valeurs, d'après la vue
+// tracée à la dernière image) ; un rectangle de moins de 6 px est ignoré
+function _tfgZoomCadre(gl) {
+  var g = tfGraph, cible = gl.cible, v = _tfgVueAffichee(cible);
+  var geo = cible === 't' ? g.geoT : g.geoD[cible];
+  if (!v || !geo || Math.abs(gl.x - gl.x0) < 6) return;
+  var fx1 = (Math.min(gl.x0, gl.x) - geo.x0) / geo.pw, fx2 = (Math.max(gl.x0, gl.x) - geo.x0) / geo.pw;
+  if (cible === 't') {
+    g.pileT.push(g.vueT);
+    g.vueT = { t1: v.t1 + fx1 * (v.t2 - v.t1), t2: v.t1 + fx2 * (v.t2 - v.t1), o: v.o, lt: v.lt };
+  } else {
+    if (Math.abs(gl.y - gl.y0) < 6) return;
+    var fy1 = (geo.y0 + geo.ph - Math.max(gl.y0, gl.y)) / geo.ph, fy2 = (geo.y0 + geo.ph - Math.min(gl.y0, gl.y)) / geo.ph;
+    g.pileD[cible].push(g.vue[cible]);
+    g.vue[cible] = { x1: v.x1 + fx1 * (v.x2 - v.x1), x2: v.x1 + fx2 * (v.x2 - v.x1),
+                     y1: v.y1 + fy1 * (v.y2 - v.y1), y2: v.y1 + fy2 * (v.y2 - v.y1) };
+  }
+}
+
 function tfGraphReticule() {
   tfGraph.reticule = !tfGraph.reticule;
   var b = document.querySelectorAll('.tf-btn-reticule');
@@ -1702,8 +1753,8 @@ function tfOnAffGraphe(cle, coche) {
   tfGraph.sale = true;
 }
 
-// ── Souris : glisser = déplacer la vue, molette = zoomer autour du
-// curseur, réticule. Chaque graphe a sa vue : déplacer ou zoomer la fige
+// ── Souris : glisser = déplacer la vue (en mode Zoom : tracer le
+// rectangle à agrandir), molette = zoomer autour du curseur, réticule. Chaque graphe a sa vue : déplacer ou zoomer la fige
 // (↶ revient à la précédente ; Champ ou Étape, à la vue automatique).
 function _tfgPos(o, ev) {
   var r = o.c.getBoundingClientRect();
@@ -1735,15 +1786,27 @@ function _tfgSouris(o, cible) {
     var p = _tfgPos(o, ev);
     var geo = cible === 't' ? g.geoT : g.geoD[cible];
     if (!geo || p.x < geo.x0 || p.x > geo.x0 + geo.pw) return;
-    g.glisse = { cible: cible, x0: p.x, y0: p.y, vue0: _tfgVueAffichee(cible), bouge: false };
+    if (g.zoomZone[cible]) {
+      if (cible !== 't' && (p.y < geo.y0 || p.y > geo.y0 + geo.ph)) return;
+      g.glisse = { cible: cible, cadre: true, x0: p.x, y0: p.y, x: p.x, y: p.y };
+    } else {
+      g.glisse = { cible: cible, x0: p.x, y0: p.y, vue0: _tfgVueAffichee(cible), bouge: false };
+      o.c.style.cursor = 'grabbing';
+    }
     try { o.c.setPointerCapture(ev.pointerId); } catch (x) { /* pointeur déjà relâché */ }
-    o.c.style.cursor = 'grabbing';
     ev.preventDefault();
   });
   o.c.addEventListener('pointermove', function (ev) {
     var p = _tfgPos(o, ev), gl = g.glisse;
     g.souris = { cible: cible, x: p.x, y: p.y };
-    if (gl && gl.cible === cible && gl.vue0) {
+    if (gl && gl.cible === cible && gl.cadre) {
+      // Rectangle borné au tracé
+      var gz = cible === 't' ? g.geoT : g.geoD[cible];
+      if (gz) {
+        gl.x = Math.max(gz.x0, Math.min(gz.x0 + gz.pw, p.x));
+        if (cible !== 't') gl.y = Math.max(gz.y0, Math.min(gz.y0 + gz.ph, p.y));
+      }
+    } else if (gl && gl.cible === cible && gl.vue0) {
       var dx = p.x - gl.x0, dy = p.y - gl.y0;
       if (!gl.bouge && Math.abs(dx) + Math.abs(dy) > 3) { gl.bouge = true; _tfgEmpiler(cible); }
       if (gl.bouge) {
@@ -1760,9 +1823,11 @@ function _tfgSouris(o, cible) {
     }
     g.sale = true;
   });
-  var fin = function () {
+  var fin = function (ev) {
+    var gl = g.glisse;
+    if (gl && gl.cadre && gl.cible === cible && ev.type === 'pointerup') _tfgZoomCadre(gl);
     g.glisse = null;
-    o.c.style.cursor = 'grab';
+    o.c.style.cursor = g.zoomZone[cible] ? 'crosshair' : 'grab';
     g.sale = true;
   };
   o.c.addEventListener('pointerup', fin);
@@ -1902,7 +1967,9 @@ function tfGraphInit() {
     if (!opt.contains(ev.target)) tfGraphMenu(false);
   });
   document.addEventListener('keydown', function (ev) {
-    if (ev.key === 'Escape') tfGraphMenu(false);
+    if (ev.key !== 'Escape') return;
+    tfGraphMenu(false);
+    if (tfGraph.glisse && tfGraph.glisse.cadre) { tfGraph.glisse = null; tfGraph.sale = true; }   // rectangle abandonné
   });
   tf.echantillon = _tfgEchantillon;
   tfGraphEffacer();

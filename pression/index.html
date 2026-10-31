@@ -172,6 +172,7 @@
             <button onclick="tfGraphPrecedente('pv')" title="Vue précédente">↶</button>
             <button onclick="tfGraphAjuster('pv')" title="Cadrer au plus près du chemin">Ajuster</button>
             <button onclick="tfGraphChamp('pv')" title="Revenir au champ fixe">Champ</button>
+            <button id="tf-btn-zoom-pv" onclick="tfGraphZoomZone('pv')" title="Zoom : tracer sur le graphe le rectangle à agrandir">Zoom</button>
             <button class="tf-btn-reticule" onclick="tfGraphReticule()" title="Réticule">+</button>
           </div>
         </div>
@@ -189,6 +190,7 @@
             <button onclick="tfGraphPrecedente('ts')" title="Vue précédente">↶</button>
             <button onclick="tfGraphAjuster('ts')" title="Cadrer au plus près du chemin">Ajuster</button>
             <button onclick="tfGraphChamp('ts')" title="Revenir au champ fixe">Champ</button>
+            <button id="tf-btn-zoom-ts" onclick="tfGraphZoomZone('ts')" title="Zoom : tracer sur le graphe le rectangle à agrandir">Zoom</button>
             <button class="tf-btn-reticule" onclick="tfGraphReticule()" title="Réticule">+</button>
           </div>
         </div>
@@ -206,6 +208,7 @@
             <button onclick="tfGraphPrecedente('t')" title="Vue précédente">↶</button>
             <button onclick="tfGraphSuivre()" title="Revenir à l’étape en cours">Étape</button>
             <button onclick="tfGraphToutVoir()" title="Tout l’historique">Tout voir</button>
+            <button id="tf-btn-zoom-t" onclick="tfGraphZoomZone('t')" title="Zoom : tracer sur le graphe l’intervalle de temps à agrandir">Zoom</button>
             <button class="tf-btn-reticule" onclick="tfGraphReticule()" title="Réticule">+</button>
           </div>
         </div>
@@ -731,7 +734,7 @@
         Les deux diagrammes partent de zéro (l'aire sous P(V) est le travail, l'aire sous T(S) la chaleur) et gardent un champ fixe ; quand l'état du gaz approche du bord, le champ s'agrandit en le suivant, pendant la transformation, et ne se resserre plus (sauf à Réinitialiser ou au retour à un état). Une tranche hors du champ est signalée par une marque au bord. Les graphes au cours du temps montrent l'étape en cours, depuis son départ (temps compté à partir de la lettre de départ) ; leurs axes s'agrandissent par crans au fil de l'étape, quel que soit le curseur Vitesse.
         La section <strong>Bilan</strong> donne, pour l'étape cliquée dans la frise (la dernière sinon) et depuis l'état initial A (ou, une fois un cycle fermé, pour ce cycle), le travail W et la chaleur Q reçus par le gaz, ΔU (égale à W + Q), la variation d'entropie du gaz, l'entropie échangée avec la source (somme des δQ / T_source) et l'entropie créée, nulle pour une transformation réversible.
         RAZ remet le cylindre sur l'isolant si la source qui le porte n'est pas à la température initiale.
-        Sur chaque graphe, glisser déplace la vue et la molette zoome autour du curseur (↶ : vue précédente ; Ajuster : cadrer au plus près du chemin ; Champ : revenir au champ fixe ; Étape : revenir à l'étape en cours ; Tout voir : tout l'historique) ; + affiche un réticule. Les séparations entre les graphes et le cylindre se déplacent à la souris.
+        Sur chaque graphe, glisser déplace la vue et la molette zoome autour du curseur (↶ : vue précédente ; Ajuster : cadrer au plus près du chemin et du cycle choisi ; Champ : revenir au champ fixe ; Étape : revenir à l'étape en cours ; Tout voir : tout l'historique) ; avec Zoom enfoncé, glisser trace le rectangle à agrandir (sur les graphes au cours du temps, l'intervalle de temps) ; + affiche un réticule. Les séparations entre les graphes et le cylindre se déplacent à la souris.
         Couleur du gaz et des molécules : bleu plus froid que 20 °C, rouge plus chaud.
         Les <strong>molécules</strong> restent dans leur bande de gaz (pointillés) et se serrent là où le gaz est comprimé : un front se voit comme une zone de molécules serrées qui traverse le cylindre. Chaque molécule va d'autant plus vite que le gaz est chaud là où elle se trouve. La pression se lit sur les sondes et le profil : P et T sont calculées par tranches, pas à partir des chocs des molécules.
         Sous la masse posée, le gaz reste presque uniforme en pression : le piston chargé bouge environ 170 fois plus lentement que le son ne traverse le gaz.
