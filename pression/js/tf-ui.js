@@ -34,7 +34,8 @@ var _TF_EL_IDS = [
   'tf-journal', 'tf-ckg-gel',
   'tf-btn-brutal', 'tf-btn-qs', 'tf-btn-rev', 'tf-duree-brutal', 'tf-duree-qs', 'tf-duree-rev',
   'tf-bilan', 'tf-bilan-note',
-  'tf-sl-gamma', 'tf-lbl-gamma', 'tf-sl-T0', 'tf-lbl-T0', 'tf-sl-V0', 'tf-lbl-V0'
+  'tf-gamma', 'tf-in-P0', 'tf-in-V0', 'tf-in-T0', 'tf-moins-P0', 'tf-moins-V0', 'tf-moins-T0',
+  'tf-plus-P0', 'tf-plus-V0', 'tf-plus-T0', 'tf-dep-info', 'tf-dep-attente'
 ];
 
 // Vrai une fois tfInit terminée : les réglages initiaux du panneau
@@ -92,7 +93,7 @@ function _tfLireNombre(txt) {
   return /^[-+]?(\d+\.?\d*|\.\d+)$/.test(t) ? parseFloat(t) : NaN;
 }
 
-// Valeur d'un champ : virgule décimale, sans zéros inutiles (30 ; 101,3)
+// Valeur d'un champ : virgule décimale, sans zéros inutiles (30 ; 0,6)
 function _tfFmtChamp(x, dec) {
   return String(+x.toFixed(dec)).replace('.', ',');
 }
@@ -152,7 +153,7 @@ function _tfFmtValeur(cle, x) {
   if (cle === 'masse')  return (x < 0.0005 ? '0' : _tfFmt(x, x % 1 ? 2 : 0)) + ' kg';
   if (cle === 'Pair') {
     if (x < 500) return 'vide';
-    return Math.abs(x - TF_P_ATM) < 1 ? '101,3 kPa (atmosphère)' : _tfFmt(x / 1000, x % 1000 ? 1 : 0) + ' kPa';
+    return Math.abs(x - TF_P_ATM) < 1 ? '100 kPa (atmosphère)' : _tfFmt(x / 1000, x % 1000 ? 1 : 0) + ' kPa';
   }
   return _tfFmt(x, x % 1 ? 1 : 0) + ' K (' + Math.round(x - 273.15) + ' °C)';
 }
@@ -577,8 +578,6 @@ function _tfMajBoutons() {
   _tfEl['tf-piston-libre'].classList.toggle('active', !tf.tenu);
 
   var cle = _tfCle(), o = _tfOrgane(), viser = tfCarte.mode === 'viser';
-  _tfEl['tf-montage-Pair'].classList.toggle('active', tfCarte.moyen === 'Pair');
-  _tfEl['tf-montage-masse'].classList.toggle('active', tfCarte.moyen === 'masse');
   _tfMajResume();
 
   // Mode : Viser une valeur ou À la main
@@ -622,6 +621,10 @@ function tfBasculerPause() {
 }
 
 function tfReinitialiser() {
+  // Dispositif et point de départ A réglés dans la section État initial
+  tf.gamma = tfDepart.gamma;
+  tf.P0 = tfDepart.P0; tf.V0 = tfDepart.V0; tf.T0 = tfDepart.T0;
+  tfCarte.moyen = tf.montage = tfDepart.montage;
   _tfRelax = null;
   _tfAnnulerAttente();
   tfPapFin();
@@ -631,6 +634,7 @@ function tfReinitialiser() {
   tfEtapesEffacer();
   tfGraphEffacer();
   _tfMajBoutons();
+  _tfMajDepart(true);
   tfMajAfficheurs();
 }
 
@@ -791,16 +795,6 @@ function tfOnMode(m) {
   tfPapFin();
   _tfMajBoutons();
   tfMajAfficheurs();
-}
-
-// Montage (section État initial) : la pression passe par l'air de
-// l'enceinte ou par les masses posées, à l'air libre ; en changer
-// réinitialise (confirmation si des étapes seraient perdues)
-function tfOnMontage(m) {
-  if (m === tfCarte.moyen) return;
-  if (tfEtapes.liste.length && !window.confirm('Changer de montage recommence l’expérience. Continuer ?')) return;
-  tfCarte.moyen = tf.montage = m;
-  tfReinitialiser();
 }
 
 // ── Valeur visée : champ, − et +, valeurs des états du journal ──
@@ -1312,44 +1306,106 @@ function _tfVitesseRelax() {
   if (TF_VITESSES[i] > (_tfRampeV ? _tfRampeV.v1 : tf.vitesse)) _tfVersCran(i);
 }
 
-// ── Section État initial : montage, γ, T0, hauteur (en changer réinitialise) ──
+// ── Section État initial : dispositif (montage : air de l'enceinte ou
+// masses posées ; gaz) et point de départ A (P0, V0, T0, d'où n). Les
+// réglages forment un brouillon, tfDepart, appliqué aussitôt tant que le
+// journal est vide, sinon au clic sur « Recommencer depuis A »
+// (tfReinitialiser) : rien n'est effacé avant ──
+var tfDepart = { montage: 'Pair', gamma: 1.4, P0: TF_P0, V0: TF_V0, T0: TF_T0 };
+// Champs : facteur d'affichage, décimales, pas des boutons − et +
+var TF_DEPART = {
+  P0 : { f: 1e-3, dec: 1, pas: 10e3 },      // kPa
+  V0 : { f: 1e3,  dec: 3, pas: 0.05e-3 },   // L
+  T0 : { f: 1,    dec: 2, pas: 10 }         // K
+};
+
+function _tfBornesDepart(cle) {
+  if (cle === 'P0') return tfBornesP0(tfDepart.montage);
+  if (cle === 'V0') return [0.10 * TF_S, 0.45 * TF_S];   // hauteur 10 à 45 cm
+  return [250, 600];
+}
+
+function _tfDepartModifie() {
+  var D = tfDepart;
+  return D.montage !== tf.montage || Math.abs(D.gamma - tf.gamma) > 1e-9
+    || Math.abs(D.P0 - tf.P0) > 1e-6 || Math.abs(D.V0 - tf.V0) > 1e-12 || Math.abs(D.T0 - tf.T0) > 1e-9;
+}
+
+// Brouillon changé (P0 ramenée dans les bornes du montage) : appliqué tout
+// de suite si aucune étape n'est faite
+function _tfDepartChange() {
+  var b = _tfBornesDepart('P0');
+  tfDepart.P0 = _tfBorner(tfDepart.P0, b[0], b[1]);
+  if (!tfEtapes.liste.length && !tfEnCours()) tfReinitialiser();
+  else _tfMajDepart(true);
+}
+
+function tfOnMontage(m) {
+  if (m === tfDepart.montage) return;
+  tfDepart.montage = m;
+  _tfDepartChange();
+}
+
 function tfOnGamma(g) {
   g = Math.round(g * 1e6) / 1e6;
-  if (Math.abs(g - tf.gamma) < 1e-9) return;
-  tf.gamma = g;
-  _tfMajGaz();
-  tfReinitialiser();
+  if (Math.abs(g - tfDepart.gamma) < 1e-9) return;
+  tfDepart.gamma = g;
+  _tfDepartChange();
 }
 
-function tfOnEtatInitial(cle, val) {
-  var v = parseFloat(val);
-  if (cle === 'T0') tf.T0 = Math.abs(v - TF_T0) < 0.5 ? TF_T0 : v;
-  else tf.V0 = TF_S * v / 100;
-  _tfMajGaz();
-  tfReinitialiser();
+function tfOnDepartSaisie(cle, txt) {
+  var v = _tfLireNombre(txt), b = _tfBornesDepart(cle);
+  if (!isNaN(v)) {
+    tfDepart[cle] = _tfBorner(v / TF_DEPART[cle].f, b[0], b[1]);
+    _tfDepartChange();
+  }
+  _tfMajDepart(true);
 }
 
-function _tfMajGaz() {
-  var g = tf.gamma;
-  _tfEl['tf-sl-gamma'].value = g;
-  _tfEl['tf-lbl-gamma'].textContent = _tfFmt(g, Math.abs(g * 100 - Math.round(g * 100)) > 1e-6 ? 3 : 2);
+// − et + : vers le multiple du pas voisin, dans les bornes
+function tfOnDepartPas(cle, sens) {
+  var p = TF_DEPART[cle].pas, b = _tfBornesDepart(cle), v = tfDepart[cle] / p;
+  tfDepart[cle] = _tfBorner(p * (sens > 0 ? Math.floor(v + 1e-6) + 1 : Math.ceil(v - 1e-6) - 1), b[0], b[1]);
+  _tfDepartChange();
+}
+
+// Rétablir : le brouillon revient aux réglages de l'expérience en cours
+function tfDepartRetablir() {
+  tfDepart = { montage: tf.montage, gamma: tf.gamma, P0: tf.P0, V0: tf.V0, T0: tf.T0 };
+  _tfMajDepart(true);
+}
+
+function _tfMajDepart(force) {
+  var D = tfDepart, g = D.gamma;
+  _tfEl['tf-montage-Pair'].classList.toggle('active', D.montage === 'Pair');
+  _tfEl['tf-montage-masse'].classList.toggle('active', D.montage === 'masse');
   [['mono', 5 / 3], ['di', 1.4], ['poly', 4 / 3]].forEach(function (x) {
     document.getElementById('tf-gaz-' + x[0]).classList.toggle('active', Math.abs(g - x[1]) < 2e-3);
   });
-  _tfEl['tf-sl-T0'].value = Math.round(tf.T0);
-  _tfEl['tf-lbl-T0'].textContent = _tfFmtValeur('Text', tf.T0);
-  var h = tf.V0 / TF_S;
-  _tfEl['tf-sl-V0'].value = Math.round(h * 100);
-  _tfEl['tf-lbl-V0'].textContent = _tfFmtValeur('volume', h);
+  _tfEl['tf-gamma'].textContent = 'γ = ' + _tfFmt(g, 2);
+  ['P0', 'V0', 'T0'].forEach(function (cle) {
+    var inp = _tfEl['tf-in-' + cle], F = TF_DEPART[cle], b = _tfBornesDepart(cle);
+    if (force || document.activeElement !== inp) inp.value = _tfFmtChamp(D[cle] * F.f, F.dec);
+    _tfEl['tf-moins-' + cle].disabled = D[cle] <= b[0] * (1 + 1e-9);
+    _tfEl['tf-plus-' + cle].disabled = D[cle] >= b[1] * (1 - 1e-9);
+  });
+  var n = D.P0 * D.V0 / (TF_R * D.T0);
+  _tfEl['tf-dep-info'].textContent = 'n = ' + _tfFmt(n * 1000, 1) + ' mmol · hauteur '
+    + _tfFmtChamp(D.V0 / TF_S * 100, 1) + ' cm'
+    + (D.montage === 'masse' ? ' · masse posée ' + _tfFmtChamp(tfMasseDepart(D.P0), 2) + ' kg' : '');
+  _tfEl['tf-dep-attente'].style.display = _tfDepartModifie() ? '' : 'none';
   _tfMajResume();
 }
 
-// Résumé de l'état initial, dans le titre de la section repliée
+// Résumé de l'expérience en cours, dans le titre de la section repliée
+// (✎ : réglages changés, pas encore appliqués)
 function _tfMajResume() {
   var g = tf.gamma, nom = Math.abs(g - 5 / 3) < 2e-3 ? 'mono' : Math.abs(g - 1.4) < 2e-3 ? 'di'
     : Math.abs(g - 4 / 3) < 2e-3 ? 'poly' : 'γ ' + _tfFmt(g, 2);
-  _tfEl['tf-resume-init'].textContent = (tfCarte.moyen === 'Pair' ? 'enceinte' : 'masses') + ' · ' + nom
-    + ' · ' + Math.round(tf.T0) + ' K · ' + _tfFmtChamp(tf.V0 / TF_S * 100, 0) + ' cm';
+  _tfEl['tf-resume-init'].textContent = (_tfDepartModifie() ? '✎ ' : '')
+    + (tf.montage === 'masse' ? 'masses' : 'enceinte') + ' · ' + nom
+    + ' · ' + _tfFmtChamp(tf.P0 / 1000, 0) + ' kPa · ' + _tfFmtChamp(tf.V0 * 1000, 2) + ' L · '
+    + Math.round(tf.T0) + ' K';
 }
 
 // ── Section Affichage ──
@@ -1417,11 +1473,11 @@ function tfInit() {
   tfReset();
   tfOnVitesse(TF_VITESSES.indexOf(1));
   _tfEl['tf-btn-auto'].classList.toggle('active', tfCarte.auto);
-  tf.montage = tfCarte.moyen;
+  tf.montage = tfDepart.montage = tfCarte.moyen;
   for (var cle in tfAff) {
     document.getElementById('tf-ck-' + cle).checked = tfAff[cle];
   }
-  _tfMajGaz();
+  _tfMajDepart(true);
   _tfMajFond();
   window.addEventListener('pointerup', tfPapFin);
   // Un clic hors du menu d'une source le referme (pas sur une flèche ▾ :

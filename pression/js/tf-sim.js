@@ -32,7 +32,7 @@
 // ══════════════════════════════════════════════════════════════════════
 
 var TF_R     = 8.314;      // J·K⁻¹·mol⁻¹
-var TF_P_ATM = 101325;     // Pa
+var TF_P_ATM = 1e5;        // Pa (1 bar : pression de départ ronde, même à l'air libre)
 var TF_G     = 9.81;       // m·s⁻²
 var TF_M_AIR = 0.029;      // kg·mol⁻¹ — fixe l'inertie du gaz, donc la célérité du son
 
@@ -44,8 +44,10 @@ var TF_S          = 20e-4;   // m² (Ø ≈ 5 cm)
 // lance un vrai front de compression (avec 1 kg, l'écart de pression dans le
 // gaz restait sous 0,1 % : PLAN §10.5). Son poids ne compte plus (5 Pa).
 var TF_M_PISTON   = 0.001;   // kg
-var TF_T0         = 293.15;  // K
+var TF_T0         = 293;     // K (aussi la source 2 au départ)
 var TF_V0         = 0.6e-3;  // m³ (hauteur initiale 30 cm)
+var TF_P_LIBRE    = TF_P_ATM + TF_M_PISTON * TF_G / TF_S;   // Pa, piston seul à l'air libre
+var TF_P0         = TF_P_LIBRE;   // Pa, pression de départ par défaut (≈ 100 kPa)
 var TF_H_CYL      = 0.50;    // m — hauteur intérieure du cylindre (butée haute)
 var TF_Z_BUTEE    = 0.02;    // m — butée basse du piston
 
@@ -123,6 +125,7 @@ var tf = {
   gamma : 1.4,
   T0    : TF_T0,  // K
   V0    : TF_V0,  // m³
+  P0    : TF_P0,  // Pa
   n     : 0,      // mol (calculée au reset)
   nTr   : 0,      // mol par tranche
   mTr   : 0,      // kg par tranche
@@ -355,12 +358,25 @@ function tfMesures() {
 //  Réinitialisation
 // ══════════════════════════════════════════════════════════════════════
 
-// Gaz au repos à T0 sous le piston seul, volume V0 ; piston tenu, pas de
-// masse, vérin arrêté, source à T0. Les réglages (isolation, vitesse, γ,
-// T0, V0) sont conservés.
+// Bornes de la pression de départ P0 selon le montage : l'air de l'enceinte
+// de 20 à 500 kPa ; avec les masses, à l'air libre, du piston seul à
+// TF_MASSE_MAX posées
+function tfBornesP0(montage) {
+  return montage === 'masse' ? [TF_P_LIBRE, TF_P_LIBRE + TF_MASSE_MAX * TF_G / TF_S] : [20e3, 5e5];
+}
+
+// Masse posée (kg) qui équilibre P0 à l'air libre, au milligramme près
+function tfMasseDepart(P0) {
+  return Math.max(0, Math.round((P0 - TF_P_LIBRE) * TF_S / TF_G * 1e6) / 1e6);
+}
+
+// Gaz au repos dans l'état A (P0, V0, T0, d'où n), équilibré par l'air de
+// l'enceinte ou par des masses posées (un bloc) selon le montage ; piston
+// tenu, vérin arrêté, source à T0. Les réglages (isolation, vitesse, γ, état
+// A) sont conservés.
 function tfReset() {
   tf.Cv  = TF_R / (tf.gamma - 1);
-  var P0 = TF_P_ATM + TF_M_PISTON * TF_G / TF_S;
+  var P0 = tf.P0;
   tf.n   = P0 * tf.V0 / (TF_R * tf.T0);
   tf.nTr = tf.n / TF_N;
   tf.mTr = tf.n * TF_M_AIR / TF_N;
@@ -376,11 +392,12 @@ function tfReset() {
     tf.q[j] = 0;
   }
 
-  tf.masse  = tf.blocs = tf.sable = 0;
+  tf.sable  = 0;
+  tf.masse  = tf.blocs = tf.montage === 'masse' ? tfMasseDepart(P0) : 0;
   tf.tenu   = true;
   tf.verin.actif = false;
   tf.Wop    = 0;
-  tf.Pair   = TF_P_ATM;
+  tf.Pair   = tf.montage === 'masse' ? TF_P_ATM : P0 - TF_M_PISTON * TF_G / TF_S;
   tf.Wair   = 0;
   // L'état initial est un équilibre : posé sur une source qui n'est pas à
   // T0, le cylindre revient sur l'isolant

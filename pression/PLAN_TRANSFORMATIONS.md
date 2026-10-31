@@ -409,6 +409,7 @@ Transformation attendue : …
 - ✅ **R4a** (terminé, §10.7) : montage enceinte ou masses, fond sur l'isolant ou l'une de deux sources à température saisie, valeur visée en champ avec arrivée prévue, pas à pas, annuler l'étape.
 - ✅ **R4b** (terminé, §10.8) : panneau épuré, montage en tête de carte et visible sur la scène, vitesse sur une ligne, pas à pas comme quatrième manière pour les trois grandeurs.
 - ✅ **R4c** (terminé, §10.9) : panneau en État initial / Conditions / Transformation ; grandeur réglée déduite des conditions (organe piston ou source) ; deux modes, Viser une valeur et À la main (voyant d'équilibre, cartes d'organes, pas 1-2-5) ; réglages fins supprimés.
+- ✅ **R4d** (terminé, §10.10) : section État initial en Dispositif (montage, gaz) et Point de départ A (P₀, V₀, T₀ réglables, n déduite) ; réglages en brouillon, appliqués aussitôt sans étape, sinon par « Recommencer depuis A ».
 - **R4** : file d'attente (action lancée pendant une autre → « ensuite », enchaînement à l'équilibre), séquences enregistrées (localStorage, export JSON), préréglages (aller-retour, Carnot, Stirling, Lenoir).
 - **R5** (option) : viser en cliquant sur le diagramme de Clapeyron.
 - ✅ **Diagramme TS et Bilan** (§10.6, palier 7) : terminé. **Prochain palier proposé : R4**, puis R5, et les paliers 8 (intégration) et 9 (site).
@@ -572,3 +573,25 @@ Transformation  [ Viser une valeur ] [ À la main ]
 - **Progression** (`_tfMajProgres`, `_tfLance`) : vérin ou rampe continue ; ■ = Interrompre.
 - **Réglages fins supprimés** (après R4c) : la durée libre et l'escalier automatique faisaient double emploi avec les trois manières et le mode À la main, et les textes « Transformation attendue » et durées caractéristiques avec les graphes et la nature affichée. Seul se perd le régime intermédiaire du vérin (τ de quelques ms : ondes pendant la course, état final proche du réversible), à retrouver autrement si besoin. Le moteur garde ses escaliers (`tfAppliquer` avec un pas), inutilisés par le panneau.
 
+### 10.10 Palier R4d : état initial = point de départ A (fait)
+
+```
+ÉTAT INITIAL                  enceinte · di · 100 kPa · 0,6 L · 293 K  ›
+  Dispositif
+    Pression exercée par  [ Air de l'enceinte | Masses posées ]
+    Gaz                   [ Mono | Di | Poly ]          γ = 1,40
+  Point de départ A
+    P₀  [−][  100 kPa  ][+]
+    V₀  [−][   0,6 L   ][+]
+    T₀  [−][   293 K   ][+]
+    n = 24,6 mmol · hauteur 30 cm (· masse posée … kg)
+  [ Pas encore appliqué : des étapes sont faites.
+    ↺ Recommencer depuis A   Rétablir ]
+```
+
+- **Deux natures de réglages** : le dispositif (ce qui ne change pas pendant l'expérience) et le point A, premier point des diagrammes PV et TS et première ligne des Étapes : pour un cycle, on part de n'importe quel point du plan.
+- **Valeurs par défaut rondes** : P_atm = 100 kPa (1 bar, au lieu de 101,325 kPa), d'où P₀ = 100 kPa avec les deux montages (P_atm + 5 Pa de piston), T₀ = 293 K, source 2 à 293 K. Les cibles de validation plus haut (P₀ = 101,33 kPa, 293,15 K) datent d'avant.
+- **P₀ réglable** ; n = P₀V₀/(RT₀) s'en déduit. Air de l'enceinte : P_air = P₀ (au poids du piston près), de 20 à 500 kPa. Masses posées : à l'air libre, P₀ fixe la masse posée au départ (un bloc), de P_atm à 40 kg posés (≈ 298 kPa) ; changer de montage ramène P₀ dans ces bornes.
+- **Plus de curseurs** : champs − valeur + comme la valeur visée (pas 10 kPa, 0,05 L, 10 K, vers le multiple voisin), saisie au clavier ; γ seulement par les trois onglets, affiché à droite.
+- **Brouillon** : sans étape, un réglage s'applique aussitôt ; avec des étapes, rien n'est effacé, un encart propose « Recommencer depuis A » (= RAZ, qui applique toujours le brouillon) ou « Rétablir » ; le résumé du titre replié commence alors par ✎. Remplace la confirmation au changement de montage.
+- **Reste ouvert** : faire glisser le point A sur le diagramme de Clapeyron quand la section est ouverte.

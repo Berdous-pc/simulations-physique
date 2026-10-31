@@ -380,39 +380,56 @@
              l'expérience. Replié (par défaut), le titre les résume -->
         <div class="panel-section">
           <div class="section-title" data-repliable><span>État initial</span><span class="tf-resume" id="tf-resume-init"></span></div>
-          <div class="tf-sous-titre">Pression exercée par</div>
+          <div class="tf-sous-titre">Dispositif</div>
+          <div class="tf-dep-sous">Pression exercée par</div>
           <div class="mode-tabs tf-mini-tabs">
             <button class="mode-tab active" id="tf-montage-Pair" onclick="tfOnMontage('Pair')">Air de l’enceinte</button>
             <button class="mode-tab" id="tf-montage-masse" onclick="tfOnMontage('masse')">Masses posées</button>
           </div>
-          <div class="tf-sous-titre">Gaz</div>
+          <div class="tf-dep-sous">Gaz <span class="tf-dep-gamma" id="tf-gamma"></span></div>
           <div class="mode-tabs tf-mini-tabs">
             <button class="mode-tab" id="tf-gaz-mono" onclick="tfOnGamma(5 / 3)">Mono&shy;atomique</button>
             <button class="mode-tab active" id="tf-gaz-di" onclick="tfOnGamma(1.4)">Di&shy;atomique</button>
             <button class="mode-tab" id="tf-gaz-poly" onclick="tfOnGamma(4 / 3)">Poly&shy;atomique</button>
           </div>
-          <div class="param-row">
-            <label for="tf-sl-gamma">γ = Cp / Cv
-              <span class="param-value" id="tf-lbl-gamma">1,40</span>
-            </label>
-            <input type="range" id="tf-sl-gamma" min="1.05" max="1.67" step="0.01" value="1.4"
-                   oninput="tfOnGamma(parseFloat(this.value))">
+          <div class="tf-sous-titre">Point de départ A</div>
+          <div class="tf-dep-ligne">
+            <span class="tf-dep-lbl">P₀</span>
+            <div class="tf-visee-ligne">
+              <button class="tf-pm" id="tf-moins-P0" onclick="tfOnDepartPas('P0', -1)" aria-label="Diminuer"><span class="tf-signe" aria-hidden="true">−</span></button>
+              <span class="tf-champ"><input id="tf-in-P0" class="tf-saisie" inputmode="decimal" aria-label="Pression de départ"
+                     onchange="tfOnDepartSaisie('P0', this.value)" onkeydown="if (event.key === 'Enter') this.blur()"><span class="tf-unite">kPa</span></span>
+              <button class="tf-pm" id="tf-plus-P0" onclick="tfOnDepartPas('P0', 1)" aria-label="Augmenter"><span class="tf-signe" aria-hidden="true">+</span></button>
+            </div>
           </div>
-          <div class="param-row">
-            <label for="tf-sl-T0">Température initiale
-              <span class="param-value" id="tf-lbl-T0">293 K</span>
-            </label>
-            <input type="range" id="tf-sl-T0" min="250" max="600" step="1" value="293"
-                   oninput="tfOnEtatInitial('T0', this.value)">
+          <div class="tf-dep-ligne">
+            <span class="tf-dep-lbl">V₀</span>
+            <div class="tf-visee-ligne">
+              <button class="tf-pm" id="tf-moins-V0" onclick="tfOnDepartPas('V0', -1)" aria-label="Diminuer"><span class="tf-signe" aria-hidden="true">−</span></button>
+              <span class="tf-champ"><input id="tf-in-V0" class="tf-saisie" inputmode="decimal" aria-label="Volume de départ"
+                     onchange="tfOnDepartSaisie('V0', this.value)" onkeydown="if (event.key === 'Enter') this.blur()"><span class="tf-unite">L</span></span>
+              <button class="tf-pm" id="tf-plus-V0" onclick="tfOnDepartPas('V0', 1)" aria-label="Augmenter"><span class="tf-signe" aria-hidden="true">+</span></button>
+            </div>
           </div>
-          <div class="param-row">
-            <label for="tf-sl-V0">Hauteur initiale du gaz
-              <span class="param-value" id="tf-lbl-V0">30 cm</span>
-            </label>
-            <input type="range" id="tf-sl-V0" min="10" max="45" step="1" value="30"
-                   oninput="tfOnEtatInitial('V0', this.value)">
+          <div class="tf-dep-ligne">
+            <span class="tf-dep-lbl">T₀</span>
+            <div class="tf-visee-ligne">
+              <button class="tf-pm" id="tf-moins-T0" onclick="tfOnDepartPas('T0', -1)" aria-label="Diminuer"><span class="tf-signe" aria-hidden="true">−</span></button>
+              <span class="tf-champ"><input id="tf-in-T0" class="tf-saisie" inputmode="decimal" aria-label="Température de départ"
+                     onchange="tfOnDepartSaisie('T0', this.value)" onkeydown="if (event.key === 'Enter') this.blur()"><span class="tf-unite">K</span></span>
+              <button class="tf-pm" id="tf-plus-T0" onclick="tfOnDepartPas('T0', 1)" aria-label="Augmenter"><span class="tf-signe" aria-hidden="true">+</span></button>
+            </div>
           </div>
-          <span class="input-hint">Changer un de ces réglages recommence l’expérience. Le gaz est à la pression atmosphérique au départ.</span>
+          <span class="input-hint tf-dep-info" id="tf-dep-info"></span>
+          <!-- Réglages changés alors que des étapes sont faites : appliqués
+               seulement au clic (rien n'est effacé avant) -->
+          <div class="tf-dep-attente" id="tf-dep-attente" style="display:none">
+            <span class="input-hint">Pas encore appliqué : des étapes sont faites.</span>
+            <div class="tf-btn-ligne">
+              <button class="tf-dep-recommencer" onclick="tfReinitialiser()">↺ Recommencer depuis A</button>
+              <button class="tf-mini-btn" onclick="tfDepartRetablir()">Rétablir</button>
+            </div>
+          </div>
         </div>
 
         <div class="sep"></div>
@@ -640,7 +657,7 @@
       </div>
       <div class="panel-hint-body">
         Les transformations s'enchaînent : chacune part de l'état laissé par la précédente, ce qui permet de parcourir un chemin, ou un cycle, dans le diagramme de Clapeyron.
-        La section <strong>État initial</strong> (repliée ; son titre en donne le résumé) choisit le montage : la pression passe par l'<strong>air de l'enceinte</strong> (cloche et manomètre, P_air jusqu'au vide) ou par des <strong>masses posées</strong> sur le plateau, à l'air libre ; elle règle aussi le gaz (γ : monoatomique, diatomique, polyatomique, ou valeur libre), sa température et sa hauteur de départ. Changer un de ces réglages recommence l'expérience.
+        La section <strong>État initial</strong> (repliée ; son titre en donne le résumé) règle le <strong>dispositif</strong> : la pression passe par l'<strong>air de l'enceinte</strong> (cloche et manomètre) ou par des <strong>masses posées</strong> sur le plateau, à l'air libre, et le gaz est monoatomique, diatomique ou polyatomique. Elle règle aussi le <strong>point de départ A</strong> : P₀, V₀ et T₀, avec − et + ou au clavier ; la quantité de gaz n s'en déduit (avec les masses posées, P₀ fixe la masse posée au départ). Tant qu'aucune étape n'est faite, un réglage s'applique aussitôt ; sinon, rien n'est effacé avant un clic sur <strong>↺ Recommencer depuis A</strong> (<strong>Rétablir</strong> revient aux réglages en cours).
         La section <strong>Conditions</strong> dit comment le gaz est contraint, et se change à tout moment. <strong>Piston</strong> : tenu par le vérin, ou libre. <strong>Fond</strong> : posé sur l'isolant (aucun échange de chaleur), sur la <strong>source 1</strong> ou sur la <strong>source 2</strong>. La flèche <strong>▾</strong> à droite d'une source déroule le réglage de sa température (taper la valeur, ou − et + par 10 K, de 250 à 600 K) ; <strong>= T gaz</strong> lui donne la température actuelle du gaz, pour y poser le cylindre sans saut de température (isotherme d'un cycle de Carnot, par exemple). Un clic ailleurs ou Échap referme le menu.
         La section <strong>Transformation</strong> agit sur le <strong>piston</strong> ou sur la <strong>source</strong> sous le cylindre. Ce que l'on règle découle des conditions : piston tenu, sa hauteur (par le vérin) ; piston libre, la pression de l'air ou la masse de sable ; source, sa température. Sur l'isolant, seul le piston peut agir : <strong>Agir sur la source</strong> est grisé. La nature de la transformation obtenue (adiabatique, isotherme, isochore, isobare) est rappelée à côté.
         <strong>Viser une valeur</strong> : choisir d'abord <strong>Agir sur le piston</strong> ou <strong>Agir sur la source</strong>. La valeur visée se tape dans le champ (Entrée pour valider) ou se règle avec <strong>−</strong> et <strong>+</strong> (maintenir pour répéter) ; le menu <strong>État</strong> reprend la valeur d'un état du journal (température : celle du gaz). Tant qu'on n'y touche pas, le champ montre la valeur actuelle. Dessous, la nature de la transformation et l'état d'arrivée prévu (volume, pression, température), aussi marqué d'un cercle pointillé orange sur les diagrammes ; le repère orange sur le cylindre marque la hauteur visée.

@@ -440,6 +440,22 @@ main {
   color: #7a8a96;
   margin: 10px 0 6px;
 }
+/* État initial : libellés au-dessus des onglets du dispositif, γ à droite ;
+   lignes P0 V0 T0 du point de départ A (nom à gauche, − champ + à droite) */
+.tf-dep-sous { display: flex; justify-content: space-between; font-size: clamp(11px, 1vw, 13px); color: #5a6a78; margin-bottom: 4px; }
+.tf-dep-gamma { color: #2a5080; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tf-dep-ligne { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.tf-dep-lbl { flex: 0 0 1.8em; font-weight: 700; color: #2c3e50; font-size: clamp(12px, 1.15vw, 15px); }
+.tf-dep-ligne .tf-visee-ligne { flex: 1 1 auto; min-width: 0; margin-bottom: 0; }
+.input-hint.tf-dep-info { display: block; margin-top: 2px; }
+.tf-dep-attente { margin-top: 8px; padding: 6px 8px; border-radius: 6px; background: #fbeedb; }
+.tf-dep-attente .input-hint { display: block; margin: 0 0 6px; color: #8a5a20; }
+.tf-dep-attente .tf-btn-ligne { flex-wrap: wrap; }
+.tf-dep-recommencer {
+  flex: 1 1 auto; padding: 6px 8px; font: inherit; font-weight: 700; font-size: clamp(11px, 1vw, 13px);
+  color: #fff; background: #2a6aaa; border: 1px solid #1a5a9a; border-radius: 6px; cursor: pointer;
+}
+.tf-dep-recommencer:hover { background: #1a5a9a; }
 /* Sous-onglets Échelon / Rampe, plus discrets que ceux de la contrainte */
 .tf-mini-tabs { margin-bottom: 8px; }
 .tf-mini-tabs .mode-tab { padding: 5px 4px; font-size: clamp(11px, 1vw, 13px); }
