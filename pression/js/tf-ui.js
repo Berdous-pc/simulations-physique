@@ -1211,6 +1211,7 @@ function _tfPapPas(o, sens) {
   }
   der.nbPas++;
   if (!eq) der.nbHors++;
+  tfGraphMarche();
   if (cle === 'volume') {
     tfLancerVerin(cible, Math.max(5e-4, 2 * Math.abs(cible - v) / TF_V_BRUTAL));
   } else if (cle === 'Text') {

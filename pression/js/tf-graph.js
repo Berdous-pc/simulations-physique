@@ -288,6 +288,15 @@ function tfGraphDegeler() {
   g.eqSuite = 0;
 }
 
+// Pas à la main (tf-ui.js, _tfPapPas), juste avant de l'appliquer : le
+// dernier échantillon clôt le palier comme une marche d'escalier (un point
+// d'équilibre par pas sur les diagrammes)
+function tfGraphMarche() {
+  var e = tfGraph.ech;
+  if (e.length) e[e.length - 1].marche = true;
+  tfGraph.eqSuite = 0;
+}
+
 // Départ d'une étape : les courbes théoriques et le cadrage des tranches
 // repartent de l'état actuel (dernier échantillon) ; l'axe des temps aussi,
 // pour une durée provisoire (précisée par tfGraphDureeAttendue au lancement
@@ -1338,20 +1347,17 @@ function _tfgDessinerDiag(o, cs, mes) {
   // chaque étape, cordes comprises
   _tfgFleches(c, e, sq, px, py, alpha);
 
-  // États d'équilibre : fin de chaque séjour à l'équilibre. Son début n'est
-  // pas fiable : un échantillon pris à l'extrémité d'une oscillation du
-  // piston (vitesse nulle, écart de pression sous le seuil) passe le critère
-  // avant le retour au repos. Une marche d'escalier clôt le séjour
-  // (échantillon `marche`), même si le gaz n'a pas été vu hors équilibre
-  // ensuite : un point par marche.
+  // États d'équilibre : un point par marche d'escalier ou par pas à la
+  // main, et un par étape, au dernier échantillon avant ce qui dérange le
+  // gaz (échantillon `marche`, ou changement d'étape), s'il est à
+  // l'équilibre. Pas un point par séjour à l'équilibre : le piston qui
+  // oscille après un petit pas repasse plusieurs fois sous les seuils, et
+  // semait plusieurs points par pas. Pas de point au dernier échantillon :
+  // le chrono s'est figé dès que l'oscillation est passée sous les seuils,
+  // ce peut être un bout d'oscillation, et l'état actuel est déjà marqué.
   var etats = [];
-  k = 0;
-  while (k < e.length) {
-    if (!e[k].eq) { k++; continue; }
-    var f = k;
-    while (f + 1 < e.length && e[f + 1].eq && !e[f].marche) f++;
-    etats.push(e[f]);
-    k = f + 1;
+  for (k = 0; k < e.length - 1; k++) {
+    if ((e[k].marche || e[k + 1].etape !== e[k].etape) && e[k].eq) etats.push(e[k]);
   }
   c.lineWidth = 1.2;
   c.strokeStyle = TF_G_FOND;
@@ -1536,6 +1542,11 @@ function _tfgFleches(c, e, sq, px, py, alpha) {
         var x = p[i - 1][0] + f * (p[i][0] - p[i - 1][0]);
         var y = p[i - 1][1] + f * (p[i][1] - p[i - 1][1]);
         var a = Math.atan2(p[i][1] - p[i - 1][1], p[i][0] - p[i - 1][0]);
+        // Le piston qui oscille (pas à la main, marches) fait aller et venir
+        // le chemin : un segment à contre-sens de l'étape, du départ à
+        // l'arrivée, est retourné
+        var cx = p[p.length - 1][0] - p[0][0], cy = p[p.length - 1][1] - p[0][1];
+        if (Math.hypot(cx, cy) > 6 && cx * Math.cos(a) + cy * Math.sin(a) < 0) a += Math.PI;
         c.globalAlpha = alpha(+n);
         c.fillStyle = tfCouleurEtape(+n);
         c.strokeStyle = TF_G_FOND;

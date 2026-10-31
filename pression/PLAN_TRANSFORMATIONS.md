@@ -22,8 +22,8 @@
 > tracé dès que la pression du gaz est définie (§4.2). Le §10 fait foi pour l'interface ; les
 > prochains paliers sont au §10.4.
 >
-> **Point au 31 octobre 2026** : refonte terminée (R1 à R4g) et finitions (§10.14). Restent
-> l'essai à la souris, la fin du palier 6 (sable) et les paliers 8 (intégration) et 9 (site).
+> **Point au 31 octobre 2026** : refonte terminée (R1 à R4g), finitions (§10.14) et palier 6
+> (sable) terminés. Restent l'essai à la souris et les paliers 8 (intégration) et 9 (site).
 
 ---
 
@@ -193,7 +193,7 @@ Rendu en colonne, de bas en haut :
 
 1. **Source thermique** sous le cylindre : rien (air ambiant à T_ext), plaque chauffante (rouge si T_ext > T₀) ou bain thermostaté (bleu si T_ext < T₀). La couleur suit T_ext. Le calorifugeage du fond est dessiné en hachures, plus épaisses si G est faible.
 2. **Cylindre** : gaz coloré en dégradé selon la T de chaque tranche (option), plus les **molécules** pilotées par le modèle.
-3. **Piston** + plateau ; **masses** empilées (disques marqués 10/20/40 kg) ; **tas de sable** qui grossit ; **entonnoir** au-dessus quand le versement est actif ; grains en chute. Volume imposé : à la place du plateau, la tige est prise dans un **vérin** fixé au bâti, et un repère marque la hauteur visée. **Depuis R1** : la tige traverse le plateau et la charge (blocs enfilés, sable par-dessus) ; le vérin, suspendu au plafond de l'enceinte, la saisit par une pince quand le piston est tenu (§10.2). Depuis R3, piston dessiné mince (membrane). Entonnoir et grains en chute : pas encore faits.
+3. **Piston** + plateau ; **masses** empilées (disques marqués 10/20/40 kg) ; **tas de sable** qui grossit ; **entonnoir** au-dessus quand le versement est actif ; grains en chute. Volume imposé : à la place du plateau, la tige est prise dans un **vérin** fixé au bâti, et un repère marque la hauteur visée. **Depuis R1** : la tige traverse le plateau et la charge (blocs enfilés, sable par-dessus) ; le vérin, suspendu au plafond de l'enceinte, la saisit par une pince quand le piston est tenu (§10.2). Depuis R3, piston dessiné mince (membrane). **Palier 6 (fait)** : ni entonnoir ni grains en chute (choix de l'auteur) ; le tas est fait de grains (un pour 50 g) qui apparaissent ou disparaissent d'un coup sur le plateau.
 4. **Loquet** : deux goupilles qui traversent le cylindre au-dessus du piston, en surbrillance quand il est verrouillé (famille à pression imposée). **Remplacé en R1** par la pince du vérin (§10.2).
 5. **Sondes** (option) : trois thermomètres et manomètres miniatures sur le flanc (haut / milieu / bas). Pendant une transformation brutale, **ils n'affichent pas la même valeur**. C'est la démonstration la plus directe que « la température du gaz » n'existe pas à cet instant.
 6. **Échelle verticale** en cm à côté du cylindre (le volume se lit en hauteur × S).
@@ -313,7 +313,7 @@ Chaque test charge la page en `#transformations`, pilote les fonctions `tf…` e
 | Masse brutale, diathermane | V_f = nRT₀/P_ext, T_f = T₀ |
 | Uniformité sous la masse posée | 40 kg posés brutalement : écart relatif de P entre tranches de l'ordre de 10⁻⁵ à 10⁻⁴ (confirme §2.3) |
 | Sable fin, calorifugé | état final → Laplace (écart décroissant quand le grain diminue) |
-| Sable lent, diathermane | état final → isotherme |
+| Sable lent, diathermane | état final → isotherme ✅ (palier 6 : T 293,000 K, P·V constant à 10⁻⁵, S_c 28 µJ/K en quasi statique, 1 µJ/K en réversible) |
 | Échelon de T_ext, piston libre | V_f/V₀ = T_ext/T₀ (isobare) |
 | Bilan | ΔU = W + Q à 10⁻³ ; S_c ≥ 0 toujours, → 0 pour le sable fin et lent |
 | Échelon de P_air (1,013 → 3 bar), calorifugé | même état final que la masse équivalente (formule du §1 avec P_ext) |
@@ -339,7 +339,7 @@ Chaque test charge la page en `#transformations`, pilote les fonctions `tf…` e
 3. ✅ **Volume imposé** (terminé ; régime affiché à côté de τ avancé du palier 7, résultats des tests dans `ARCHITECTURE.md`) : passage à 80 tranches ; sous-onglets Pression imposée / Volume imposé ; vérin (moteur, scène, panneau), hauteur visée, durée τ, Lancer / Retour ; travail W_op ; profil de pression en échelle absolue ; **retrait du curseur Vitesse du son** et de sa mention ; molécules : vitesse et couleur selon la tranche locale, agitation à l'échelle réelle au cran ×1/5000, essai des éclats de chocs (§3). Tests : volume imposé (τ long, τ = 2 ms, aller-retour), bilan avec le vérin, stabilité à 2 ms, uniformité sous la masse posée revérifiée à 80 tranches.
 4. ✅ **Graphes et nouvelle disposition** (terminé ; le chemin PV est tracé plein tant que P et T sont définies, même piston en mouvement, cf. ARCHITECTURE.md) : graphes puis tableau dans la colonne de gauche, splitters ; T, P, V(t) avec bandes min–max, diagramme PV avec chemin non défini, **nuage des tranches**, pression sur le piston, courbes théoriques, outils de zoom. *Depuis : nuage remplacé par la pression de chaque tranche au volume du gaz ; chemin plein dès que P est définie (§4.2).*
 5. ✅ **Contraintes extérieures** (terminé, résultats des tests dans `ARCHITECTURE.md`) : P_air (enceinte, manomètre) et T_ext (source four / bain), échelon et rampe pour les deux, butées signalées. Tests : échelon de T_ext, échelon et rampes de P_air, vide, bilan avec W_air.
-6. **Sable** (en grande partie fait : physique et tas en R1, versement continu en R3, un point d'équilibre par marche d'escalier sur le diagramme ; tests sable fin calorifugé faits) : reste **l'entonnoir et les grains en chute**, et le test sable lent diathermane.
+6. ✅ **Sable** (terminé : physique et tas en R1, versement continu en R3, un point d'équilibre par marche d'escalier ou par pas sur le diagramme ; tests sable fin calorifugé, puis sable lent diatherme) : l'entonnoir et les grains en chute sont abandonnés (choix de l'auteur) ; le tas est dessiné grain à grain, un grain pour 50 g (≈ 5 px, devant la tige), qui apparaît ou disparaît d'un coup. Sur les diagrammes PV et TS, un seul point d'équilibre par pas (il y en avait plusieurs : le piston qui oscille après un petit pas repassait sous les seuils d'équilibre).
 7. ✅ **γ, Bilan et diagramme TS** (terminé, résultats des tests dans `ARCHITECTURE.md`) : section **Gaz** (γ, T₀, V₀ ; tout changement réinitialise ; devenue **État initial** en R4c puis R4d), section **Bilan** (W, Q, ΔU, W + Q, ΔS, Σ δQ/T_source, S_c ; dernière étape et depuis A ; depuis R4e, l'étape cliquée dans la frise, et en R4f le cycle), diagramme **T(S)** (§10.6) dans son propre encart ; colonne gauche réglée par quatre boutons activables, P = f(V), T = f(S), T, P, V = f(t), Tableau (de 0 à 4 encarts ; remplace les onglets P(V) / T(S) / Les deux d'un premier essai) ; courbes isochore et isobare ajoutées dans les deux diagrammes.
 8. **Intégration** : renommage visible « Gaz parfait », bandeau Informations (dont l'argument c/√(g·L)), responsivité (fenêtre étroite : scène au-dessus des graphes). Le bandeau Informations est réécrit au fil des paliers (à relire en entier) ; la largeur étroite du **panneau** a été reprise (onglets du fond, des gaz et Viser une valeur, juste après R4c), mais la **responsivité de la page** est à revérifier (fenêtre étroite : scène au-dessus des graphes, panneau rogné).
 9. **Site** : niveau **CPGE** sur l'accueil (nouvelle case de filtre `data-value="cpge"`, badge `.level-cpge` d'une nouvelle couleur, `data-levels="cpge"`), carte « Transformations d'un gaz parfait » (thème Thermodynamique), aperçu `assets/previews/pression-transformations.jpg`, `meta description` et `<title>` de la page mis à jour, sitemap (`lastmod`), `ARCHITECTURE.md`, tableau §8 et §9 de CONTEXTE_PROJET, mention de CPGE dans la `meta description` de l'accueil.
@@ -420,11 +420,11 @@ Transformation attendue : …
 - ~~**R4** file d'attente et séquences enregistrées~~ (abandonnés) : « Tout le cycle d'un coup » couvre l'enchaînement ; l'export JSON n'apporte rien en classe.
 - ✅ **Diagramme TS et Bilan** (§10.6, palier 7) : terminé.
 - ~~**R5**~~ (abandonné) : viser en cliquant sur le diagramme de Clapeyron, ou y faire glisser le point A ; écarté par choix.
-- **Ensuite** : la fin du palier 6 (sable), et les paliers 8 (intégration) et 9 (site). Avant : un essai à la souris de tout ce qui a été fait depuis R3, cycles et finitions du §10.14 compris (validé au banc headless seulement).
+- **Ensuite** : les paliers 8 (intégration) et 9 (site) ; le palier 6 (sable) est terminé. Avant : un essai à la souris de tout ce qui a été fait depuis R3, cycles et finitions du §10.14 compris (validé au banc headless seulement).
 
 **Mode quasi statique du moteur** (ajouté après R2) : au repos mécanique, pression uniforme et conduction seule, pas ~0,7 ms au lieu de ~1 µs ; les escaliers lents tiennent enfin le cran ×20 (avant : ×0,8 avec un gaz chaud et comprimé). Résultats identiques au calcul complet (ARCHITECTURE.md).
 
-Le palier 6 (sable) est absorbé par R1 pour la physique et le tas ; l'entonnoir et les grains en chute restent à faire.
+Le palier 6 (sable) est absorbé par R1 pour la physique et le tas ; il s'est terminé par le tas grain à grain (sans entonnoir) et le test du sable lent diatherme.
 
 ### 10.5 Palier R3 : trois boutons
 

@@ -471,29 +471,32 @@ function _tfDessinerPiston() {
     y -= hm;
   }
 
-  // Sable : tas trapézoïdal autour de la tige, qui grossit avec la masse
+  // Sable : tas de grains devant la tige, un grain dessiné par
+  // TF_GRAIN_DESSIN de sable ; un grain versé apparaît, un grain retiré
+  // disparaît, d'un coup
   if (tf.sable > 0) {
-    var hs = _tfHauteurSable(tf.sable) * _tfEch;
-    var lb = w * 0.80, lh = w * (0.30 + 0.25 * Math.min(1, tf.sable / 20));
-    c.fillStyle = '#d8b878';
-    c.strokeStyle = '#a08040';
-    c.lineWidth = 1;
-    c.beginPath();
-    c.moveTo(cx - lb / 2, y);
-    c.lineTo(cx - lh / 2, y - hs);
-    c.lineTo(cx + lh / 2, y - hs);
-    c.lineTo(cx + lb / 2, y);
-    c.closePath();
-    c.fill();
-    c.stroke();
-    c.fillStyle = '#6a7a88';
-    c.fillRect(cx - lt / 2, y - hs, lt, hs);
+    var nb = Math.min(_tfGrains.length, Math.ceil(tf.sable / TF_GRAIN_DESSIN - 1e-6));
+    var g = w * TF_GRAIN_LARG, rangs = 0;
+    for (var i = 0; i < nb; i++) {
+      var gr = _tfGrains[i];
+      c.fillStyle = TF_GRAIN_TEINTES[gr.t];
+      c.fillRect(cx + (gr.col + gr.dx) * g, y - (gr.rang + 1 + gr.dy) * g, g, g);
+      if (gr.rang + 1 > rangs) rangs = gr.rang + 1;
+    }
+    var hs = rangs * g;
+    // Masse écrite sur une étiquette claire, lisible sur les grains
     if (hs > 11) {
+      var fsS = Math.max(10, Math.min(13, Math.round(hs * 0.6)));
+      var txtS = _tfVirgule(tf.sable, tf.sable < 10 ? 2 : 1) + ' kg';
+      c.font = fsS + 'px "Segoe UI", Arial, sans-serif';
+      var lS = c.measureText(txtS).width + 8, xS = cx + lt / 2 + 3;
+      c.fillStyle = 'rgba(255, 250, 238, 0.85)';
+      _tfRectArrondi(xS, y - hs / 2 - fsS * 0.7, lS, fsS * 1.4, 3);
+      c.fill();
       c.fillStyle = '#5a4010';
-      c.font = Math.max(10, Math.min(13, Math.round(hs * 0.6))) + 'px "Segoe UI", Arial, sans-serif';
       c.textAlign = 'left';
       c.textBaseline = 'middle';
-      c.fillText(_tfVirgule(tf.sable, tf.sable < 10 ? 2 : 1) + ' kg', cx + lt / 2 + 3, y - hs / 2);
+      c.fillText(txtS, xS + 4, y - hs / 2);
     }
   }
 
@@ -505,8 +508,41 @@ function _tfZHautTige(zP) {
   return zP + TF_EP_PISTON + TF_H_TIGE + TF_EP_PLATEAU + TF_H_TIGE_HAUT;
 }
 
-// Hauteur dessinée du tas de sable (m d'échelle)
-function _tfHauteurSable(kg) { return 0.004 + kg * 0.0008; }
+// ── Grains du tas de sable ──
+// Cases d'une grille (colonne, rang ; en largeurs de grain, colonne 0 à
+// droite de l'axe), rangées dans l'ordre où le tas se remplit : la clé
+// rang + pente·(écart au plateau central) fait croître un tas à sommet plat
+// et à flancs inclinés, qui garde sa forme ; le bruit de la clé (moins d'un
+// rang) rend la surface irrégulière sans laisser de grain en l'air. Le
+// dernier grain versé, à la surface, est le premier retiré.
+var TF_GRAIN_DESSIN = 0.05;    // kg de sable par grain dessiné
+var TF_GRAIN_LARG   = 0.016;   // côté d'un grain, en fraction de la largeur du cylindre ;
+                               // 40 kg de sable laissent voir le haut de la tige
+var TF_GRAIN_TEINTES = ['#e2c084', '#c49a52', '#edd3a0', '#a97f3c'];
+var _tfGrains = (function () {
+  var demi = Math.floor(0.47 / TF_GRAIN_LARG);   // base : 0,94 de la largeur
+  var plat = Math.floor(0.30 / TF_GRAIN_LARG);   // demi-sommet plat
+  var pente = 2.5;                               // colonnes par rang sur les flancs
+  var graine = 12345;
+  function hasard() {                            // déterministe : même tas à chaque fois
+    graine = (graine * 1103515245 + 12345) % 2147483648;
+    return graine / 2147483648;
+  }
+  var cases = [];
+  for (var rang = 0; rang < 60; rang++) {
+    for (var col = -demi; col < demi; col++) {
+      var ecart = Math.max(0, Math.abs(col + 0.5) - plat);
+      cases.push({
+        col: col, rang: rang,
+        cle: rang + ecart / pente + 0.9 * hasard(),
+        dx: 0.3 * (hasard() - 0.5), dy: 0.2 * hasard(),
+        t: Math.floor(hasard() * TF_GRAIN_TEINTES.length)
+      });
+    }
+  }
+  cases.sort(function (a, b) { return a.cle - b.cle; });
+  return cases.slice(0, Math.ceil(TF_MASSE_MAX / TF_GRAIN_DESSIN) + 1);
+})();
 
 // Masse sans décimale inutile : 20, 12,5
 function _tfVirguleCourte(x) {
