@@ -457,6 +457,7 @@ main {
 }
 .mode-tab {
   flex: 1;
+  min-width: 0;   /* rétrécit avec le panneau : le libellé passe à la ligne */
   padding: 8px 4px;
   font-size: clamp(12px, 1.2vw, 15px);
   font-weight: 700;
@@ -490,6 +491,7 @@ main {
   color: #8a9aaa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .section-title:not(.section-repliee) .tf-resume { visibility: hidden; }
+.section-title > span:has(+ .tf-resume) { flex: none; white-space: nowrap; }
 .section-title.tf-titre-etapes { display: flex; align-items: center; justify-content: space-between; }
 .tf-titre-etapes .tf-mini-btn { text-transform: none; letter-spacing: 0; font-weight: 400; }
 
@@ -585,7 +587,22 @@ main {
 .tf-ligne-etat { display: flex; align-items: center; gap: 8px; }
 .tf-etat-lbl { flex: 0 0 3.4em; font-size: clamp(11px, 1vw, 13px); color: #5a6a78; font-weight: 600; }
 .tf-ligne-etat .mode-tabs { flex: 1 1 auto; min-width: 0; margin-bottom: 6px; }
-.tf-fonds .mode-tab { padding: 4px 2px; line-height: 1.2; white-space: nowrap; font-size: clamp(11px, 1vw, 13px); }
+.tf-fonds .mode-tab { flex: 1 1 auto; padding: 4px 2px; line-height: 1.2; font-size: clamp(11px, 1vw, 13px); }   /* largeur selon le nom */
+/* Panneau étroit : libellé au-dessus des onglets, qui prennent toute la
+   largeur (Source 1 et Source 2 ne tiennent pas à côté de « Fond ») */
+.tf-conditions { container-type: inline-size; }
+@container (max-width: 300px) {
+  .tf-ligne-etat { flex-wrap: wrap; row-gap: 2px; }
+  .tf-ligne-etat .mode-tabs { flex-basis: 100%; }
+  /* (préfixe .tf-conditions : l'emporter sur les règles écrites plus bas) */
+  .tf-conditions .tf-fonds .mode-tab { padding: 4px 1px; }
+  .tf-conditions .tf-fonds .mode-tab.tf-fleche { flex: 0 0 1.3em; }
+  /* Menu de la température : « = T gaz » passe sous − champ + */
+  .tf-conditions .tf-pop-source { left: 0; }
+  .tf-conditions .tf-pop-source .tf-visee-ligne { flex-wrap: wrap; }
+  .tf-conditions .tf-pop-source .tf-champ { flex-basis: 3em; }
+  .tf-conditions .tf-pop-source #tf-pop-tgaz { flex-basis: 100%; }
+}
 /* Température d'une source, sous son nom ; flèche ▾ collée à l'onglet de
    sa source (même couleur quand elle est active) */
 .tf-t-source { display: block; font-weight: 400; font-size: 0.88em; }
