@@ -420,10 +420,47 @@ function _tfgCran(v, crans) {
   return 10 * p;
 }
 
-// Borne haute d'un champ : elle suit v quand v approche du bord (marge de
-// 8 %) et ne descend jamais
-function _tfgBorneSup(hi, v) {
-  return v > hi * 0.92 ? v / 0.92 : hi;
+// Bornes d'un axe de diagramme cadré sur [lo, hi] : étendue minimale span,
+// marge relative, puis arrondi vers l'extérieur au dixième de l'étendue
+// (crans 1, 2, 5), assez fin pour ne pas laisser de vide. zero : grandeur
+// positive (V, P, T) ; le zéro est pris quand il agrandit l'étendue du
+// double au plus (l'aire sous la courbe se lit alors : travail sous P(V),
+// chaleur sous T(S)), et la marge ne passe jamais sous zéro.
+function _tfgAxe(lo, hi, span, marge, zero) {
+  if (!isFinite(lo) || !isFinite(hi)) { lo = 0; hi = 1; }
+  if (hi - lo < span) { var c = (lo + hi) / 2; lo = c - span / 2; hi = c + span / 2; }
+  var m = (hi - lo) * marge;
+  lo = zero && lo < hi - lo ? 0 : lo - m;
+  hi += m;
+  if (zero) lo = Math.max(0, lo);
+  var pas = _tfgPas(hi - lo, 10);
+  return { lo: Math.floor(lo / pas + 1e-9) * pas, hi: Math.ceil(hi / pas - 1e-9) * pas };
+}
+
+// Un champ suit v quand v approche d'un bord à moins de 8 % de l'étendue :
+// le bord recule pour laisser v à 8 %, l'autre ne bouge pas. positif :
+// grandeur positive (V, P, T), la borne basse ne passe pas sous zéro.
+function _tfgSuivre(b, k1, k2, v, positif) {
+  var lo = b[k1], hi = b[k2];
+  if (v > hi - 0.08 * (hi - lo)) b[k2] = (v - 0.08 * lo) / 0.92;
+  else if (v < lo + 0.08 * (hi - lo)) {
+    lo = (v - 0.08 * hi) / 0.92;
+    b[k1] = positif ? Math.max(0, lo) : lo;
+  }
+}
+
+// Boîte englobante de points (x, y) ; y null : l'abscisse seule
+function _tfgEnglobe() {
+  var b = { x1: Infinity, x2: -Infinity, y1: Infinity, y2: -Infinity };
+  b.ajoute = function (x, y) {
+    if (!isFinite(x)) return;
+    if (x < b.x1) b.x1 = x;
+    if (x > b.x2) b.x2 = x;
+    if (y === null || !isFinite(y)) return;
+    if (y < b.y1) b.y1 = y;
+    if (y > b.y2) b.y2 = y;
+  };
+  return b;
 }
 
 // Transition d'un champ (ou d'un axe) vers sa nouvelle étendue : renvoie les
@@ -972,41 +1009,66 @@ function _tfgCourbesRef(d, ref) {
   return c;
 }
 
-// Champ de départ : cylindre plein et 0 à 300 kPa en P(V) ; en T(S), ΔS de
-// part et d'autre de 0 sur une étendue suivant n·R, et 0 à 500 K. Les
-// origines à zéro font lire les aires : travail sous P(V), chaleur sous
-// T(S).
-function _tfgChampBase(d) {
-  if (d === 'pv') return { x1: 0, x2: TF_S * TF_H_CYL * 1e3, y1: 0, y2: 300 };
-  var a = _tfgCran(1.5 * tf.n * TF_R * 1e3, TF_G_CRANS);
-  return { x1: -a, x2: a, y1: 0, y2: 500 };
+// Ce que montre un diagramme : chemin défini, états repérés, cycle idéal
+// choisi, état actuel (son abscisse toujours, son ordonnée si elle est
+// tracée : un état non défini n'est pas sur le diagramme, et ses
+// oscillations feraient dézoomer pour rien)
+function _tfgContenu(d, mes, b) {
+  var g = tfGraph, D = TF_G_DIAGS[d], e = g.ech, k;
+  for (k = 0; k < e.length; k++) b.ajoute(D.x(e[k]), D.def(e[k]) ? D.y(e[k]) : null);
+  for (k = 0; k < tfEtapes.etats.length; k++) b.ajoute(D.x(tfEtapes.etats[k]), D.yL(tfEtapes.etats[k]));
+  if (g.fantome) g.fantome.segs.forEach(function (pts) { pts.forEach(function (p) { b.ajoute(D.x(p), D.yL(p)); }); });
+  if (mes) b.ajoute(D.x(mes), D.defM(mes) ? D.yM(mes) : null);
+  return b;
 }
 
-// Champ fixe d'un diagramme : il ne fait que s'agrandir, en suivant l'état
-// actuel dès qu'il approche du bord (fenêtre glissante, pendant la
-// transformation et non à son arrivée), pour contenir le chemin défini, les
-// états repérés et l'état actuel (son abscisse toujours, son ordonnée si
-// elle est tracée : un état non défini n'est pas sur le diagramme, et ses
-// oscillations feraient dézoomer pour rien). Les tranches et la pression
-// sur le piston n'agrandissent pas
+// Champ de départ, cadré sur ce que le diagramme aura à montrer :
+//   - un cycle choisi : le cycle idéal, au plus près (marge 10 %, plus
+//     que celle de la fenêtre glissante, qui ne part pas aussitôt) ;
+//   - sinon, un voisinage de l'état initial : cylindre entier et jusqu'au
+//     double de la pression en P(V) ; en T(S), ΔS sur ±1,5·n·R et les
+//     températures du gaz et des deux sources.
+// Le zéro de V, P et T est pris quand il ne fait au plus que doubler
+// l'étendue (_tfgAxe) : l'aire sous la courbe se lit alors (travail sous
+// P(V), chaleur sous T(S)), sans écraser un cycle resserré.
+function _tfgChampBase(d) {
+  var g = tfGraph, D = TF_G_DIAGS[d], A = g.ech[0], bx, by, b;
+  var nR = tf.n * TF_R * 1e3;   // mJ/K
+  if (g.fantome) {
+    b = _tfgEnglobe();
+    g.fantome.segs.forEach(function (pts) { pts.forEach(function (p) { b.ajoute(D.x(p), D.yL(p)); }); });
+    bx = _tfgAxe(b.x1, b.x2, d === 'pv' ? D.spanX : Math.max(D.spanX, 0.5 * nR), 0.1, d === 'pv');
+    by = _tfgAxe(b.y1, b.y2, D.spanY, 0.1, true);
+    return { x1: bx.lo, x2: bx.hi, y1: by.lo, y2: by.hi };
+  }
+  if (d === 'pv') {
+    by = _tfgAxe(D.y(A) / 2, 2 * D.y(A), D.spanY, 0, true);
+    return { x1: 0, x2: TF_S * TF_H_CYL * 1e3, y1: by.lo, y2: by.hi };
+  }
+  var a = _tfgCran(1.5 * nR, TF_G_CRANS);
+  var T = [D.y(A), tfTSource('1'), tfTSource('2')];
+  by = _tfgAxe(Math.min.apply(null, T), Math.max.apply(null, T), D.spanY, 0.1, true);
+  return { x1: -a, x2: a, y1: by.lo, y2: by.hi };
+}
+
+// Champ fixe d'un diagramme : il part de _tfgChampBase et ne fait que
+// s'agrandir, en suivant le contenu (_tfgContenu) dès qu'il approche d'un
+// bord (fenêtre glissante, pendant la transformation et non à son
+// arrivée). Les tranches et la pression sur le piston n'agrandissent pas
 // le champ : un choc le ferait dézoomer pour quelques images (marque au
-// bord à la place).
+// bord à la place). Un autre cycle choisi (ou plus de cycle) le recadre.
 function _tfgChamp(d, mes) {
-  var g = tfGraph, D = TF_G_DIAGS[d], e = g.ech, k;
+  var g = tfGraph;
+  if (g.champF !== g.fantome) { g.champ = { pv: null, ts: null }; g.champF = g.fantome; }
   var b = g.champ[d] || _tfgChampBase(d);
   var ch = { x1: b.x1, x2: b.x2, y1: b.y1, y2: b.y2 };
-  function ajoute(x, y) {
-    ch.x2 = _tfgBorneSup(ch.x2, x);
-    ch.x1 = -_tfgBorneSup(-ch.x1, -x);
-    if (y === null) return;
-    ch.y2 = _tfgBorneSup(ch.y2, y);
-    ch.y1 = -_tfgBorneSup(-ch.y1, -y);
-  }
-  for (k = 0; k < e.length; k++) ajoute(D.x(e[k]), D.def(e[k]) ? D.y(e[k]) : null);
-  for (k = 0; k < tfEtapes.etats.length; k++) ajoute(D.x(tfEtapes.etats[k]), D.yL(tfEtapes.etats[k]));
-  if (g.fantome) g.fantome.segs.forEach(function (pts) { pts.forEach(function (p) { ajoute(D.x(p), D.yL(p)); }); });
-  ajoute(D.x(mes), D.defM(mes) ? D.yM(mes) : null);
-  return (g.champ[d] = ch);
+  ch.ajoute = function (x, y) {
+    if (!isFinite(x)) return;
+    _tfgSuivre(ch, 'x1', 'x2', x, d === 'pv');
+    if (y !== null && isFinite(y)) _tfgSuivre(ch, 'y1', 'y2', y, true);
+  };
+  _tfgContenu(d, mes, ch);
+  return (g.champ[d] = { x1: ch.x1, x2: ch.x2, y1: ch.y1, y2: ch.y2 });
 }
 
 // Transition vers le champ : animée pour un saut (retour à un état,
@@ -1022,26 +1084,17 @@ function _tfgAnimerChamp(d, ch) {
   return _tfgAnimer(d, ch);
 }
 
-// Cadrage au plus près (bouton Ajuster) : chemin défini, état de départ,
-// tranches depuis le départ, pression sur le piston si elle est tracée
+// Cadrage au plus près (bouton Ajuster) : tout le contenu du diagramme,
+// cycle idéal compris, plus les tranches depuis le départ de l'étape et la
+// pression sur le piston si elles sont tracées
 function _tfgCadrage(d) {
-  var D = TF_G_DIAGS[d], e = tfGraph.ech, g = tfGraph;
-  var x1 = Infinity, x2 = -Infinity, y1 = Infinity, y2 = -Infinity;
-  function ajoute(x, y) {
-    if (x < x1) x1 = x;
-    if (x > x2) x2 = x;
-    if (y < y1) y1 = y;
-    if (y > y2) y2 = y;
-  }
-  for (var k = 0; k < e.length; k++) {
-    var s = e[k];
-    if (D.def(s)) ajoute(D.x(s), D.y(s));
-    if (d === 'pv' && tfGraphAff.piston) ajoute(s.V * 1e3, s.Pp * 1e-3);
-  }
-  if (g.ref) ajoute(D.x(g.ref), D.y(g.ref));
+  var g = tfGraph, e = g.ech, mes = tfMesures();
+  mes.S = tfEntropie();
+  var b = _tfgContenu(d, mes, _tfgEnglobe());
+  if (d === 'pv' && tfGraphAff.piston) for (var k = 0; k < e.length; k++) b.ajoute(e[k].V * 1e3, e[k].Pp * 1e-3);
   var env = g.env && g.env[d];
-  if (tfGraphAff.tranches && env) { ajoute(env.x1, env.y1); ajoute(env.x2, env.y2); }
-  return { x1: x1, x2: x2, y1: y1, y2: y2 };
+  if (tfGraphAff.tranches && env) { b.ajoute(env.x1, env.y1); b.ajoute(env.x2, env.y2); }
+  return b;
 }
 
 // Chaque diagramme d'état dans son encart (rien si l'encart est masqué)
@@ -1574,20 +1627,23 @@ function tfGraphToutVoir() {
   g.sale = true;
 }
 
-// Diagramme d'état ('pv' ou 'ts') cadré au plus près du chemin : une vue
-// figée, comme un zoom (↶ pour revenir)
+// Diagramme d'état ('pv' ou 'ts') cadré au plus près du chemin et du cycle
+// idéal, sans chercher le zéro : une vue figée, comme un zoom (↶ pour
+// revenir)
 function tfGraphAjuster(d) {
   var g = tfGraph, D = TF_G_DIAGS[d], cad = _tfgCadrage(d);
   if (!isFinite(cad.x1) || !isFinite(cad.y1)) return;
-  var bx = _tfgBornes(cad.x1, cad.x2, D.spanX, 5), by = _tfgBornes(cad.y1, cad.y2, D.spanY, 4);
+  var bx = _tfgAxe(cad.x1, cad.x2, D.spanX, 0.05, false), by = _tfgAxe(cad.y1, cad.y2, D.spanY, 0.05, false);
   g.pileD[d].push(g.vue[d]);
   g.vue[d] = { x1: bx.lo, x2: bx.hi, y1: by.lo, y2: by.hi };
   g.sale = true;
 }
 
-// Retour au champ fixe
+// Retour au champ fixe, recadré sur le contenu actuel (il perd l'avance
+// qu'a pu prendre la fenêtre glissante)
 function tfGraphChamp(d) {
   tfGraph.vue[d] = null;
+  tfGraph.champ[d] = null;
   tfGraph.pileD[d] = [];
   tfGraph.sale = true;
 }
