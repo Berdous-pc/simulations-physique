@@ -361,19 +361,27 @@ main {
 .tf-graphe-btns button.active { background: #2a6aaa; color: #fff; border-color: #1a5a9a; }
 .tf-graphe-btns button.active:hover { background: #1a5a9a; color: #fff; }
 
-/* Section Bilan : une ligne par grandeur, une colonne par intervalle */
+/* Section Bilan : chaque principe écrit comme une égalité, les valeurs sous
+   ses termes, sur fond blanc comme la frise ; verdict sur S créée */
 .tf-bilan {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: clamp(11px, 0.95vw, 13px);
-  margin-bottom: 6px;
+  margin-bottom: 6px; padding: 6px 8px;
+  background: #fff; border: 1px solid #c8c0b4; border-radius: 8px;
+  font-size: clamp(11px, 0.95vw, 13px); color: #2c3e50;
 }
-.tf-bilan th { font-weight: 600; color: #5a6a78; text-align: right; padding: 2px 4px; }
-.tf-bilan td { padding: 2px 4px; text-align: right; white-space: nowrap; color: #2c3e50; }
-.tf-bilan td:first-child { text-align: left; color: #5a6a78; white-space: normal; }
-.tf-bilan tr + tr td { border-top: 1px solid #e4ded4; }
-.tf-bilan tr.tf-bilan-sc td { font-weight: 700; }
-.tf-bilan tr.tf-bilan-sc td:first-child { color: #2c3e50; }
+.tf-bil-nom { font-size: 0.85em; font-weight: 600; color: #7a8a96; margin: 2px 0 1px; }
+.tf-bil-eq { width: 100%; border-collapse: collapse; table-layout: fixed; margin-bottom: 4px; }
+.tf-bil-eq td { padding: 0 1px; text-align: center; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tf-bil-eq td.op { width: 1.2em; color: #7a8a96; }
+.tf-bil-eq tr.sym td { font-weight: 700; font-size: 1.05em; }
+.tf-bil-eq tr.val td { color: #2a5080; font-weight: 600; }
+.tf-bil-eq td.sc { color: #2c3e50; }
+.tf-bil-unite { font-size: 0.85em; color: #7a8a96; text-align: right; margin-top: -2px; }
+.tf-bil-verdict {
+  margin-top: 4px; padding: 3px 8px; border-radius: 6px; font-weight: 700; text-align: center;
+}
+.tf-bil-verdict.rev { color: #2a7a4a; background: #e6f4ea; }
+.tf-bil-verdict.irr { color: #b06010; background: #fbf1de; }
+.tf-bil-vide { color: #8a9aaa; text-align: center; }
 /* Bilan d'un cycle fermé, en phrases sous le tableau */
 .tf-bilan-cycle {
   margin: 6px 0; padding: 6px 8px; border-radius: 6px;

@@ -34,7 +34,7 @@ var _TF_EL_IDS = [
   'tf-main-moins-source', 'tf-main-plus-source', 'tf-main-sl-source',
   'tf-journal', 'tf-ckg-gel',
   'tf-btn-brutal', 'tf-btn-qs', 'tf-btn-rev', 'tf-duree-brutal', 'tf-duree-qs', 'tf-duree-rev',
-  'tf-bilan', 'tf-bilan-note', 'tf-bilan-cycle',
+  'tf-bilan', 'tf-bilan-note', 'tf-bilan-cycle', 'tf-bil-etape', 'tf-bil-A', 'tf-bil-cycle',
   'tf-gamma', 'tf-in-P0', 'tf-in-V0', 'tf-in-T0', 'tf-moins-P0', 'tf-moins-V0', 'tf-moins-T0',
   'tf-plus-P0', 'tf-plus-V0', 'tf-plus-T0', 'tf-dep-info', 'tf-dep-attente'
 ];
@@ -264,41 +264,77 @@ function _tfFmtmJK(x) {
   return (x < 0 ? '−' : '') + _tfFmt(Math.abs(x) * 1e3, 2) + ' mJ/K';
 }
 
-// Colonnes : l'étape sélectionnée dans la frise (la dernière sinon), de
-// son départ à son arrivée (à maintenant si elle est en cours), et depuis A
+// Vue du Bilan : 'etape' (l'étape cliquée dans la frise, la dernière
+// sinon, de son départ à son arrivée ou à maintenant), 'A' (depuis l'état initial) ou 'cycle' (le dernier cycle fermé,
+// ou celui de l'étape cliquée ; choisie d'elle-même quand un cycle se ferme)
+var tfBilanVue = 'etape';
+var _tfBilanCycleSig = '';
+var TF_SC_REV = 2e-4;   // J/K : en dessous, S créée est tenue pour nulle (TF_REV_SC)
+
+function tfOnBilanVue(v) {
+  tfBilanVue = v;
+  _tfMajBilan();
+}
+
+// Égalité d'un principe : symboles, puis valeurs sous chacun
+function _tfBilanEgalite(nom, sym, val, unite, classeDer) {
+  var ligne = function (cells, cl) {
+    return '<tr class="' + cl + '">' + cells.map(function (x, k) {
+      return '<td' + (k % 2 ? ' class="op"' : k === 4 && classeDer ? ' class="' + classeDer + '"' : '') + '>' + x + '</td>';
+    }).join('') + '</tr>';
+  };
+  return '<div class="tf-bil-nom">' + nom + '</div>'
+       + '<table class="tf-bil-eq">' + ligne([sym[0], '=', sym[1], '+', sym[2]], 'sym')
+       + ligne([val[0], '', val[1], '', val[2]], 'val') + '</table>'
+       + '<div class="tf-bil-unite">' + unite + '</div>';
+}
+
 function _tfMajBilan() {
-  var E = tfEtapes, b = tfBilan(), cols = [];
+  var E = tfEtapes, b = tfBilan(), b0 = null, b1 = null, titreEtape = 'Étape';
   var et = E.liste[E.sel >= 0 ? E.sel : E.liste.length - 1];
   if (et) {
     var dep = et.depart !== null ? E.etats[et.depart].lettre : '?';
     var arr = et.arrivee !== null ? E.etats[et.arrivee].lettre : et.statut === 'en cours' ? '…' : '✕';
-    cols.push({ titre: 'Étape ' + dep + ' → ' + arr, b0: et.bilan0, b1: et.bilan1 || b });
+    titreEtape = 'Étape ' + dep + ' → ' + arr;
   }
   var cy = tfEtapesCycle();
-  if (cy) cols.push({ titre: 'Cycle', b0: E.liste[cy.debut].bilan0, b1: E.liste[cy.fin].bilan1 });
-  else if (E.bilanA) cols.push({ titre: 'Depuis A', b0: E.bilanA, b1: b });
-  var lignes = [
-    ['W reçu', function (b0, b1) { return _tfFmtJ(b1.W - b0.W); }],
-    ['Q reçue', function (b0, b1) { return _tfFmtJ(b1.Q - b0.Q); }],
-    ['ΔU', function (b0, b1) { return _tfFmtJ(b1.U - b0.U); }],
-    ['W + Q', function (b0, b1) { return _tfFmtJ(b1.W - b0.W + b1.Q - b0.Q); }],
-    ['ΔS du gaz', function (b0, b1) { return _tfFmtmJK(b1.S - b0.S); }],
-    ['Σ δQ / T_source', function (b0, b1) { return _tfFmtmJK(b1.Se - b0.Se); }],
-    ['S créée', function (b0, b1) { return _tfFmtmJK(_tfScree(b0, b1)); }, 'tf-bilan-sc']
-  ];
-  var h = '<tr><th></th>' + cols.map(function (c) { return '<th>' + c.titre + '</th>'; }).join('') + '</tr>';
-  lignes.forEach(function (l) {
-    h += '<tr' + (l[2] ? ' class="' + l[2] + '"' : '') + '><td>' + l[0] + '</td>'
-       + cols.map(function (c) { return '<td>' + l[1](c.b0, c.b1) + '</td>'; }).join('') + '</tr>';
+  // Un cycle qui se ferme passe au premier plan
+  var sigCy = cy ? cy.debut + '-' + cy.fin : '';
+  if (sigCy !== _tfBilanCycleSig) { if (cy) tfBilanVue = 'cycle'; _tfBilanCycleSig = sigCy; }
+  if (tfBilanVue === 'cycle' && !cy) tfBilanVue = 'etape';
+  if (tfBilanVue === 'etape' && et) { b0 = et.bilan0; b1 = et.bilan1 || b; }
+  else if (tfBilanVue === 'A' && E.bilanA) { b0 = E.bilanA; b1 = b; }
+  else if (tfBilanVue === 'cycle') { b0 = E.liste[cy.debut].bilan0; b1 = E.liste[cy.fin].bilan1; }
+
+  _tfEl['tf-bil-etape'].textContent = titreEtape;
+  _tfEl['tf-bil-cycle'].disabled = !cy;
+  _tfEl['tf-bil-cycle'].title = cy ? '' : 'Aucun cycle fermé : revenir à un état déjà noté';
+  ['etape', 'A', 'cycle'].forEach(function (v) {
+    _tfEl['tf-bil-' + v].classList.toggle('active', tfBilanVue === v);
   });
+
+  var h;
+  if (!b0 || !b1) {
+    h = '<div class="tf-bil-vide">Aucune étape pour l’instant.</div>';
+  } else {
+    var W = b1.W - b0.W, Q = b1.Q - b0.Q, dU = b1.U - b0.U;
+    var dS = b1.S - b0.S, Se = b1.Se - b0.Se, Sc = _tfScree(b0, b1);
+    var J = function (x) { return _tfFmtJ(x).replace(' J', ''); };
+    var mJK = function (x) { return _tfFmtmJK(x).replace(' mJ/K', ''); };
+    var rev = Sc < TF_SC_REV;
+    h = _tfBilanEgalite('1<sup>er</sup> principe', ['ΔU', 'W', 'Q'], [J(dU), J(W), J(Q)], 'en J')
+      + _tfBilanEgalite('2<sup>e</sup> principe', ['ΔS', 'S<sub>e</sub>', 'S<sub>c</sub>'],
+                        [mJK(dS), mJK(Se), mJK(Sc)], 'en mJ/K', 'sc')
+      + '<div class="tf-bil-verdict ' + (rev ? 'rev' : 'irr') + '">'
+      + (rev ? 'S<sub>c</sub> ≈ 0 : réversible' : 'S<sub>c</sub> &gt; 0 : irréversible') + '</div>';
+  }
   if (h !== _tfBilanHtml) {
     _tfBilanHtml = h;
     _tfEl['tf-bilan'].innerHTML = h;
   }
-  _tfMajBilanCycle(cy);
-  var enCours = et && et.statut === 'en cours';
-  _tfEl['tf-bilan-note'].textContent = (enCours ? 'Étape en cours : valeurs à cet instant. ' : '')
-    + 'Grandeurs reçues par le gaz. S créée = ΔS − Σ δQ / T_source : nulle pour une transformation réversible, positive sinon.';
+  _tfMajBilanCycle(tfBilanVue === 'cycle' ? cy : null);
+  var enCours = tfBilanVue === 'etape' && et && et.statut === 'en cours';
+  _tfEl['tf-bilan-note'].textContent = enCours ? 'Étape en cours : valeurs à cet instant.' : '';
 }
 
 // Bilan d'un cycle fermé, en phrases : moteur (W < 0) et son rendement,
@@ -1256,6 +1292,7 @@ function tfOnInterrompre() {
 // ── Journal : mise en évidence d'une étape, retour à un état ──
 function tfOnSelEtape(k) {
   tfEtapesSelectionner(k);
+  tfBilanVue = 'etape';
   _tfMajJournal();
   _tfMajBilan();
 }
