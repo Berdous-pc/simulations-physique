@@ -485,6 +485,9 @@ main {
 .tf-dep-ligne { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 .tf-dep-lbl { flex: 0 0 1.8em; font-weight: 700; color: #2c3e50; font-size: clamp(12px, 1.15vw, 15px); }
 .tf-dep-ligne .tf-visee-ligne { flex: 1 1 auto; min-width: 0; margin-bottom: 0; }
+/* Cycles : étiquettes plus longues (P_max, V_min…) ; largeur commune pour
+   que les deux lignes − champ + restent alignées */
+#tf-cy-corps .tf-dep-lbl { flex-basis: 2.6em; white-space: nowrap; }
 .input-hint.tf-dep-info { display: block; margin-top: 2px; }
 .tf-dep-attente { margin-top: 8px; padding: 6px 8px; border-radius: 6px; background: #fbeedb; }
 .tf-dep-attente .input-hint { display: block; margin: 0 0 6px; color: #8a5a20; }
