@@ -17,16 +17,34 @@
 
 'use strict';
 
-// Volumes réglables : ceux du point de départ (hauteur 10 à 45 cm)
+// Volumes possibles : ceux du point de départ (hauteur 10 à 45 cm) ;
+// pressions : celles de l'air de l'enceinte
 var TF_CY_VMIN = 0.10 * TF_S, TF_CY_VMAX = 0.45 * TF_S;   // m³
-var TF_CY_PAS  = 0.05e-3;                                 // m³, boutons − et +
-var TF_CY_ATTEINT = 0.005;                                // écart relatif sur P et V
+var TF_CY_PMIN = 20e3, TF_CY_PMAX = 5e5;                  // Pa
+var TF_CY_ATTEINT = 0.005;                                // écart relatif sur P
+// Cycles réglés en pressions : leur plus grand volume (place laissée à une
+// détente brutale, qui finit plus chaude donc plus loin)
+var TF_CY_VGRAND = 0.75e-3;                               // m³
 
+// Champs de réglage : libellé, unité et son facteur (SI × f), décimales,
+// pas des boutons − et +, bornes (SI)
+var TF_CY_CHAMPS = {
+  Vmin : { nom: 'V<sub>min</sub>', unite: 'L',   f: 1e3,  dec: 3, pas: 0.05e-3, min: TF_CY_VMIN, max: TF_CY_VMAX },
+  Vmax : { nom: 'V<sub>max</sub>', unite: 'L',   f: 1e3,  dec: 3, pas: 0.05e-3, min: TF_CY_VMIN, max: TF_CY_VMAX },
+  Pmin : { nom: 'P<sub>min</sub>', unite: 'kPa', f: 1e-3, dec: 1, pas: 10e3,    min: TF_CY_PMIN, max: TF_CY_PMAX },
+  Pmax : { nom: 'P<sub>max</sub>', unite: 'kPa', f: 1e-3, dec: 1, pas: 10e3,    min: TF_CY_PMIN, max: TF_CY_PMAX },
+  PA   : { nom: 'P<sub>A</sub>',   unite: 'kPa', f: 1e-3, dec: 1, pas: 10e3,    min: TF_CY_PMIN, max: TF_CY_PMAX }
+};
+
+// Chaque cycle se règle par les grandeurs que ses étapes imposent :
+// pressions quand le piston est libre (Carnot, aller-retour), volumes des
+// isochores (Stirling), volume de l'isochore et pression de l'isobare
+// (Lenoir, les deux coordonnées de A)
 var TF_CYCLES = {
-  allerretour : { nom: 'Aller-retour', Vmin: 0.3e-3, Vmax: 0.6e-3 },   // place pour le retour, plus chaud
-  carnot      : { nom: 'Carnot',       Vmin: 0.2e-3, Vmax: 0.9e-3 },
-  stirling    : { nom: 'Stirling',     Vmin: 0.3e-3, Vmax: 0.6e-3 },
-  lenoir      : { nom: 'Lenoir',       Vmin: 0.3e-3, Vmax: null }   // V max déduit
+  allerretour : { nom: 'Aller-retour', champs: ['Pmin', 'Pmax'], defaut: { Pmin: 100e3, Pmax: 250e3 } },
+  carnot      : { nom: 'Carnot',       champs: ['Pmin', 'Pmax'], defaut: { Pmin: 20e3, Pmax: 100e3 } },
+  stirling    : { nom: 'Stirling',     champs: ['Vmin', 'Vmax'], defaut: { Vmin: 0.3e-3, Vmax: 0.6e-3 } },
+  lenoir      : { nom: 'Lenoir',       champs: ['Vmin', 'PA'],   defaut: { Vmin: 0.3e-3, PA: 100e3 } }
 };
 
 // cle : cycle choisi (null : aucun) ; k : étape à faire ; faits : manière de
@@ -34,15 +52,16 @@ var TF_CYCLES = {
 // atteint (Annuler la dernière y revient) ; tour : le dernier tour est complet ; run : étapes
 // enchaînées {man, seul (une seule étape), fermer (retour aux conditions de
 // A)} ; Tnom : températures des sources au lancement (une étape de contact
-// lente fait varier celle de sa source) ; def : cycle calculé ; sigA :
-// réglages qui ont fixé A
-var tfCycle = { cle: null, Vmin: 0, Vmax: 0, k: 0, faits: [], etatsFaits: [], tour: false, run: null, Tnom: null,
+// lente fait varier celle de sa source) ; v : valeurs des réglages ; def :
+// cycle calculé ; sigA : réglages qui ont fixé A
+var tfCycle = { cle: null, v: {}, k: 0, faits: [], etatsFaits: [], tour: false, run: null, Tnom: null,
                 def: null, sigA: '', sigF: '' };
 
 var _tfCyEl = {};
 var _tfCyHtml = '';
 
 function _tfCyFmtV(V) { return _tfFmt(V * 1e3, 3) + ' L'; }
+function _tfCyFmtP(P) { return _tfFmt(P / 1e3, 1) + ' kPa'; }
 
 // Température d'une source pour le cycle : celle du lancement tant que des
 // étapes s'enchaînent
@@ -58,11 +77,12 @@ function _tfCyTSource(f) { return tfCycle.run && tfCycle.Tnom ? tfCycle.Tnom[f] 
 // la pression extérieure passe d'un coup à sa valeur finale) ; il n'est
 // tenu que pour les isochores.
 function _tfCyCalculer() {
-  var C = tfCycle, g = tfDepart.gamma;
+  var C = tfCycle, v = C.v, g = tfDepart.gamma;
   var T1 = _tfCyTSource('1'), T2 = _tfCyTSource('2');
   var ch = T1 >= T2 ? '1' : '2', fr = ch === '1' ? '2' : '1';
-  var Th = Math.max(T1, T2), Tc = Math.min(T1, T2), Vmin = C.Vmin, Vmax = C.Vmax;
+  var Th = Math.max(T1, T2), Tc = Math.min(T1, T2), n, k;
   var d = { A: null, etapes: [], erreur: null, ch: ch, fr: fr, Th: Th, Tc: Tc };
+  // Étape d'arrivée (V, T) ; la pression en découle (n fixé par A)
   var et = function (titre, type, tenu, fond, loi, V, T) {
     d.etapes.push({ titre: titre, type: type, tenu: tenu, fond: fond, loi: loi, V: V, T: T });
   };
@@ -71,39 +91,52 @@ function _tfCyCalculer() {
     return d;
   }
   if (C.cle === 'allerretour') {
-    var T0 = tfDepart.T0;
-    if (Vmax < 1.2 * Vmin) d.erreur = 'V max doit dépasser ' + _tfCyFmtV(1.2 * Vmin) + '.';
-    d.A = { V: Vmax, T: T0 };
-    et('Compression adiabatique', 'P', false, 'isolant', 'adia', Vmin, T0 * Math.pow(Vmax / Vmin, g - 1));
-    et('Détente adiabatique', 'P', false, 'isolant', 'adia', Vmax, T0);
+    // A : plus grand volume, à P min ; compression jusqu'à P max
+    var T0 = tfDepart.T0, VB = TF_CY_VGRAND * Math.pow(v.Pmin / v.Pmax, 1 / g);
+    if (v.Pmax < 1.2 * v.Pmin) d.erreur = 'P max doit dépasser ' + _tfCyFmtP(1.2 * v.Pmin) + '.';
+    d.A = { V: TF_CY_VGRAND, T: T0, P: v.Pmin };
+    et('Compression adiabatique', 'P', false, 'isolant', 'adia', VB, T0 * Math.pow(TF_CY_VGRAND / VB, g - 1));
+    et('Détente adiabatique', 'P', false, 'isolant', 'adia', TF_CY_VGRAND, T0);
   } else if (C.cle === 'carnot') {
-    // Adiabatiques entre Th et Tc : V·T^(1/(γ−1)) constant
-    var r = Math.pow(Th / Tc, 1 / (g - 1));
-    if (Vmax < 1.05 * r * Vmin) d.erreur = 'Pour ces deux sources, V max doit dépasser ' + _tfCyFmtV(1.05 * r * Vmin) + '.';
-    d.A = { V: Vmin, T: Th };
-    et('Détente isotherme', 'P', false, ch, 'isoT', Vmax / r, Th);
-    et('Détente adiabatique', 'P', false, 'isolant', 'adia', Vmax, Tc);
-    et('Compression isotherme', 'P', false, fr, 'isoT', Vmin * r, Tc);
-    et('Compression adiabatique', 'P', false, 'isolant', 'adia', Vmin, Th);
+    // A à P max et T chaude, C à P min et T froide (plus grand volume) ;
+    // adiabatiques entre Th et Tc : P·T^(−γ/(γ−1)) constant
+    var rP = Math.pow(Th / Tc, g / (g - 1));
+    if (v.Pmax < 1.05 * rP * v.Pmin) d.erreur = 'Pour ces deux sources, P max doit dépasser ' + _tfCyFmtP(1.05 * rP * v.Pmin) + '.';
+    n = v.Pmin * TF_CY_VGRAND / (TF_R * Tc);
+    d.A = { V: n * TF_R * Th / v.Pmax, T: Th, P: v.Pmax };
+    et('Détente isotherme', 'P', false, ch, 'isoT', n * TF_R * Th / (v.Pmin * rP), Th);
+    et('Détente adiabatique', 'P', false, 'isolant', 'adia', TF_CY_VGRAND, Tc);
+    et('Compression isotherme', 'P', false, fr, 'isoT', n * TF_R * Tc / (v.Pmax / rP), Tc);
+    et('Compression adiabatique', 'P', false, 'isolant', 'adia', d.A.V, Th);
   } else if (C.cle === 'stirling') {
-    if (Vmax < 1.2 * Vmin) d.erreur = 'V max doit dépasser ' + _tfCyFmtV(1.2 * Vmin) + '.';
-    d.A = { V: Vmin, T: Th };
-    et('Détente isotherme', 'P', false, ch, 'isoT', Vmax, Th);
-    et('Refroidissement isochore', 'fond', true, fr, 'isoV', Vmax, Tc);
-    et('Compression isotherme', 'P', false, fr, 'isoT', Vmin, Tc);
-    et('Chauffage isochore', 'fond', true, ch, 'isoV', Vmin, Th);
+    // Pression de A : celle du point de départ
+    if (v.Vmax < 1.2 * v.Vmin) d.erreur = 'V max doit dépasser ' + _tfCyFmtV(1.2 * v.Vmin) + '.';
+    d.A = { V: v.Vmin, T: Th, P: tfDepart.P0 };
+    et('Détente isotherme', 'P', false, ch, 'isoT', v.Vmax, Th);
+    et('Refroidissement isochore', 'fond', true, fr, 'isoV', v.Vmax, Tc);
+    et('Compression isotherme', 'P', false, fr, 'isoT', v.Vmin, Tc);
+    et('Chauffage isochore', 'fond', true, ch, 'isoV', v.Vmin, Th);
   } else {
     // Lenoir : chauffage à volume constant, détente adiabatique jusqu'à la
-    // pression de départ, refroidissement à pression constante (piston libre)
-    var Vc = Vmin * Math.pow(Th / Tc, 1 / g);
-    if (Vc > TF_CY_VMAX) d.erreur = 'Le gaz sortirait du cylindre : baissez V min ou la source chaude.';
-    d.A = { V: Vmin, T: Tc };
-    et('Chauffage isochore', 'fond', true, ch, 'isoV', Vmin, Th);
-    et('Détente adiabatique', 'P', false, 'isolant', 'adia', Vc, Th * Math.pow(Vmin / Vc, g - 1));
-    et('Refroidissement isobare', 'fond', false, fr, 'isoP', Vmin, Tc);
+    // pression de A, refroidissement à pression constante (piston libre)
+    var Vc = v.Vmin * Math.pow(Th / Tc, 1 / g);
+    d.A = { V: v.Vmin, T: Tc, P: v.PA };
+    et('Chauffage isochore', 'fond', true, ch, 'isoV', v.Vmin, Th);
+    et('Détente adiabatique', 'P', false, 'isolant', 'adia', Vc, Th * Math.pow(v.Vmin / Vc, g - 1));
+    et('Refroidissement isobare', 'fond', false, fr, 'isoP', v.Vmin, Tc);
   }
-  var n = tfDepart.P0 * d.A.V / (TF_R * d.A.T);
+  n = d.A.P * d.A.V / (TF_R * d.A.T);
   d.etapes.forEach(function (s) { s.P = n * TF_R * s.T / s.V; });
+  // Le cycle doit tenir dans le cylindre et dans la plage de l'enceinte
+  var pts = [d.A].concat(d.etapes);
+  for (k = 0; k < pts.length && !d.erreur; k++) {
+    if (pts[k].V > TF_CY_VMAX * (1 + 1e-9) || pts[k].V < TF_CY_VMIN * (1 - 1e-9)) {
+      d.erreur = 'Le cycle sortirait du cylindre (' + _tfCyFmtV(TF_CY_VMIN) + ' à ' + _tfCyFmtV(TF_CY_VMAX)
+               + ') : rapprochez les réglages.';
+    } else if (pts[k].P > TF_CY_PMAX * (1 + 1e-9)) {
+      d.erreur = 'La pression dépasserait ' + _tfCyFmtP(TF_CY_PMAX) + ' : baissez les réglages.';
+    }
+  }
   return d;
 }
 
@@ -111,7 +144,7 @@ function _tfCyCalculer() {
 // depuis l'état initial de l'expérience (comme tfEntropie)
 function _tfCyFantome(d) {
   var g = tfDepart.gamma, Cv = TF_R / (g - 1);
-  var n = tfDepart.P0 * d.A.V / (TF_R * d.A.T), N = 32, segs = [], de = d.A;
+  var n = d.A.P * d.A.V / (TF_R * d.A.T), N = 32, segs = [], de = d.A;
   d.etapes.forEach(function (e) {
     var pts = [];
     for (var i = 0; i <= N; i++) {
@@ -129,11 +162,11 @@ function _tfCyFantome(d) {
   return segs;
 }
 
-// Réglages qui fixent A : le cycle, ses volumes, les sources
+// Réglages qui fixent A : le cycle, ses réglages, les sources
 function _tfCySigA() {
   var C = tfCycle;
   if (!C.cle) return '';
-  return [C.cle, C.Vmin, C.Vmax, _tfCyTSource('1').toFixed(3), _tfCyTSource('2').toFixed(3)].join('|');
+  return [C.cle, JSON.stringify(C.v), _tfCyTSource('1').toFixed(3), _tfCyTSource('2').toFixed(3)].join('|');
 }
 
 // Cycle recalculé ; si les réglages qui fixent A ont changé, A passe dans
@@ -147,8 +180,10 @@ function _tfCyMettreAJour() {
   if (sig !== C.sigA && C.def.A && !C.def.erreur && !C.run && !tfEnCours()) {
     C.sigA = sig;
     var A = C.def.A;
-    if (Math.abs(tfDepart.V0 - A.V) > 1e-12 || Math.abs(tfDepart.T0 - A.T) > 1e-9 || tfDepart.montage !== 'Pair') {
+    if (Math.abs(tfDepart.V0 - A.V) > 1e-12 || Math.abs(tfDepart.T0 - A.T) > 1e-9
+        || Math.abs(tfDepart.P0 - A.P) > 1e-6 || tfDepart.montage !== 'Pair') {
       tfDepart.montage = 'Pair';   // les masses ne descendent pas sous P_atm
+      tfDepart.P0 = A.P;
       tfDepart.V0 = A.V;
       tfDepart.T0 = _tfBorner(A.T, 250, 600);
       _tfDepartChange();
@@ -164,39 +199,40 @@ function tfOnCycle(cle) {
   var C = tfCycle;
   tfCyArreter();
   C.cle = C.cle === cle ? null : cle;
-  if (C.cle) {
-    C.Vmin = TF_CYCLES[cle].Vmin;
-    C.Vmax = TF_CYCLES[cle].Vmax || 0;
-  }
+  C.v = {};
+  if (C.cle) for (var c in TF_CYCLES[cle].defaut) C.v[c] = TF_CYCLES[cle].defaut[c];
   C.k = 0; C.faits = []; C.etatsFaits = []; C.tour = false; C.sigA = C.sigF = '';
   _tfCyMettreAJour();
   _tfMajCycle(true);
   tfMajAfficheurs();
 }
 
-function _tfCyFixerV(cle, V) {
-  var C = tfCycle;
-  C[cle] = _tfBorner(V, TF_CY_VMIN, TF_CY_VMAX);
-  if (C.Vmax && C.Vmin > C.Vmax - TF_CY_PAS) {
-    if (cle === 'Vmin') C.Vmax = Math.min(TF_CY_VMAX, C.Vmin + TF_CY_PAS);
-    else C.Vmin = Math.max(TF_CY_VMIN, C.Vmax - TF_CY_PAS);
-  }
+// Réglage i du cycle (0 ou 1) porté à x (SI), dans ses bornes ; un minimum
+// reste sous le maximum
+function _tfCyFixer(i, x) {
+  var C = tfCycle, cle = TF_CYCLES[C.cle].champs[i], F = TF_CY_CHAMPS[cle], v = C.v;
+  v[cle] = _tfBorner(x, F.min, F.max);
+  ['V', 'P'].forEach(function (q) {
+    if (!(q + 'min' in v) || !(q + 'max' in v) || v[q + 'min'] <= v[q + 'max'] - F.pas) return;
+    if (cle === q + 'min') v[q + 'max'] = Math.min(F.max, v[q + 'min'] + F.pas);
+    else v[q + 'min'] = Math.max(F.min, v[q + 'max'] - F.pas);
+  });
   C.k = 0; C.faits = []; C.etatsFaits = []; C.tour = false;
   _tfCyMettreAJour();
   _tfMajCycle(true);
   tfMajAfficheurs();
 }
 
-function tfCySaisie(cle, txt) {
-  var v = _tfLireNombre(txt);
-  if (!isNaN(v)) _tfCyFixerV(cle, v * 1e-3);
+function tfCySaisie(i, txt) {
+  var x = _tfLireNombre(txt);
+  if (!isNaN(x)) _tfCyFixer(i, x / TF_CY_CHAMPS[TF_CYCLES[tfCycle.cle].champs[i]].f);
   else _tfMajCycle(true);
 }
 
 // − et + : vers le multiple du pas voisin
-function tfCyPas(cle, sens) {
-  var v = tfCycle[cle] / TF_CY_PAS;
-  _tfCyFixerV(cle, TF_CY_PAS * (sens > 0 ? Math.floor(v + 1e-6) + 1 : Math.ceil(v - 1e-6) - 1));
+function tfCyPas(i, sens) {
+  var cle = TF_CYCLES[tfCycle.cle].champs[i], p = TF_CY_CHAMPS[cle].pas, v = tfCycle.v[cle] / p;
+  _tfCyFixer(i, p * (sens > 0 ? Math.floor(v + 1e-6) + 1 : Math.ceil(v - 1e-6) - 1));
 }
 
 function _tfCyLancer(man, seul) {
@@ -381,13 +417,13 @@ function _tfMajCycle(force) {
   if (!C.cle) return;
   var d = C.def, pret = _tfCyPret(), repos = !C.run && !tfEnCours() && !_tfEnAttente;
 
-  // Volumes
-  E.ligneVmax.style.display = C.cle === 'lenoir' ? 'none' : '';
-  ['Vmin', 'Vmax'].forEach(function (c) {
-    var inp = E['in-' + c];
-    if (force || document.activeElement !== inp) inp.value = _tfFmtChamp(C[c] * 1e3, 3);
-    E['moins-' + c].disabled = C[c] <= TF_CY_VMIN + 1e-12;
-    E['plus-' + c].disabled = C[c] >= TF_CY_VMAX - 1e-12;
+  // Réglages du cycle : libellé, unité, valeur, − et + dans les bornes
+  TF_CYCLES[C.cle].champs.forEach(function (cle, i) {
+    var F = TF_CY_CHAMPS[cle], x = C.v[cle], inp = E['in-' + i];
+    if (force) { E['lbl-' + i].innerHTML = F.nom; E['unite-' + i].textContent = F.unite; }
+    if (force || document.activeElement !== inp) inp.value = _tfFmtChamp(x * F.f, F.dec);
+    E['moins-' + i].disabled = x <= F.min * (1 + 1e-9);
+    E['plus-' + i].disabled = x >= F.max * (1 - 1e-9);
   });
 
   var info = d.erreur ? d.erreur
@@ -397,7 +433,7 @@ function _tfMajCycle(force) {
 
   // Étapes : faites (manière), à faire (boutons), à venir
   var h = '<div class="tf-cy-et tf-cy-a"><span class="tf-cy-num">A</span><span class="tf-f-detail">'
-        + (d.A ? _tfCyFmtV(d.A.V) + ' · ' + Math.round(d.A.T) + ' K · ' + _tfFmt(tfDepart.P0 / 1e3, 0) + ' kPa' : '')
+        + (d.A ? _tfCyFmtP(d.A.P) + ' · ' + _tfCyFmtV(d.A.V) + ' · ' + Math.round(d.A.T) + ' K' : '')
         + '</span></div>';
   d.etapes.forEach(function (s, i) {
     var fait = C.faits[i], courant = i === C.k && !d.erreur;
@@ -439,16 +475,15 @@ function tfCyclesInit() {
   ['allerretour', 'carnot', 'stirling', 'lenoir'].forEach(function (c) {
     _tfCyEl['ong-' + c] = document.getElementById('tf-cy-' + c);
   });
-  ['Vmin', 'Vmax'].forEach(function (c) {
-    _tfCyEl['in-' + c] = document.getElementById('tf-cy-in-' + c);
-    _tfCyEl['moins-' + c] = document.getElementById('tf-cy-moins-' + c);
-    _tfCyEl['plus-' + c] = document.getElementById('tf-cy-plus-' + c);
+  [0, 1].forEach(function (i) {
+    ['lbl', 'in', 'unite', 'moins', 'plus'].forEach(function (q) {
+      _tfCyEl[q + '-' + i] = document.getElementById('tf-cy-' + q + '-' + i);
+    });
   });
   ['brutal', 'qs', 'rev'].forEach(function (man) {
     _tfCyEl['tout-' + man] = document.getElementById('tf-cy-tout-' + man);
   });
   _tfCyEl.corps = document.getElementById('tf-cy-corps');
-  _tfCyEl.ligneVmax = document.getElementById('tf-cy-ligne-Vmax');
   _tfCyEl.info = document.getElementById('tf-cy-info');
   _tfCyEl.attente = document.getElementById('tf-cy-attente');
   _tfCyEl.liste = document.getElementById('tf-cy-liste');
