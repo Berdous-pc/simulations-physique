@@ -1087,12 +1087,14 @@ function _tfgAnimerChamp(d, ch) {
 }
 
 // Cadrage au plus près (bouton Ajuster) : tout le contenu du diagramme,
-// cycle idéal compris, plus les tranches depuis le départ de l'étape et la
-// pression sur le piston si elles sont tracées
+// cycle idéal compris, les arrivées prévues de l'action préparée, plus les
+// tranches depuis le départ de l'étape et la pression sur le piston si
+// elles sont tracées
 function _tfgCadrage(d) {
-  var g = tfGraph, e = g.ech, mes = tfMesures();
+  var g = tfGraph, D = TF_G_DIAGS[d], e = g.ech, mes = tfMesures();
   mes.S = tfEntropie();
   var b = _tfgContenu(d, mes, _tfgEnglobe());
+  g.prevu.forEach(function (p) { b.ajoute(D.x(p), D.yL(p)); });
   if (d === 'pv' && tfGraphAff.piston) for (var k = 0; k < e.length; k++) b.ajoute(e[k].V * 1e3, e[k].Pp * 1e-3);
   var env = g.env && g.env[d];
   if (tfGraphAff.tranches && env) { b.ajoute(env.x1, env.y1); b.ajoute(env.x2, env.y2); }
