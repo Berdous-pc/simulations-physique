@@ -25,7 +25,7 @@ var TF_G_PAR_FENETRE = 500;     // échantillons par fenêtre
 var TF_G_CRANS   = [1, 1.5, 2, 3, 5, 7.5];
 var TF_G_CRANS_T = [1, 2, 5];
 var TF_G_ANIM    = 350;
-var TF_G_MAX         = 20000;   // au-delà, l'historique est éclairci de moitié
+var TF_G_MAX         = 20000;   // au-delà, l'historique est éclairci de moitié (_tfgEclaircir)
 
 // Couleurs : encre et grille du site ; une teinte par grandeur
 var TF_G_ENCRE  = '#2c3e50';
@@ -212,13 +212,7 @@ function _tfgEchantillon(avantMarche) {
   };
   g.coupure = false;
   g.ech.push(s);
-  if (g.ech.length > TF_G_MAX) {
-    var e = g.ech, garde = [];
-    for (var k = 0; k < e.length; k++) {
-      if (k % 2 === 0 || e[k].marche || e[k].coupure || k === e.length - 1) garde.push(e[k]);
-    }
-    g.ech = garde;
-  }
+  if (g.ech.length > TF_G_MAX) _tfgEclaircir();
   if (!g.ref) g.ref = s;
   if (figer) { g.gele = true; g.tGel = tf.t; }
   // La marche qui suit cet échantillon dérange le gaz : l'équilibre se
@@ -226,6 +220,47 @@ function _tfgEchantillon(avantMarche) {
   if (avantMarche) g.eqSuite = 0;
   _tfgEnveloppe(m, s.S);
   g.sale = true;
+}
+
+// Historique trop long : ramené à TF_G_MAX / 2 étape par étape. Les étapes
+// courtes restent entières, les longues sont éclaircies jusqu'à un même
+// quota, le plus grand qui tient : moitié sur une grille en temps (densité
+// uniforme le long de l'étape), moitié par rang (le détail des phases
+// brèves, échantillonnées serré, comme une action brutale). Éclaircir tout
+// l'historique de moitié, par rang, à chaque débordement effaçait peu à peu
+// ce qui était déjà éclairci : les premières étapes d'un long cycle, et le
+// début d'une longue étape (une isotherme tracée en ligne droite).
+// Toujours gardés : début et fin de chaque étape (ancrages du squelette),
+// passages défini ↔ non défini, bornes des séjours à l'équilibre (points
+// d'état), marches et coupures.
+function _tfgEclaircir() {
+  var e = tfGraph.ech, groupes = [], debut = 0, k;
+  for (k = 1; k <= e.length; k++) {
+    if (k === e.length || e[k].etape !== e[k - 1].etape) { groupes.push([debut, k]); debut = k; }
+  }
+  var tailles = groupes.map(function (gr) { return gr[1] - gr[0]; }).sort(function (a, b) { return a - b; });
+  var reste = TF_G_MAX / 2, quota = Infinity;
+  for (k = 0; k < tailles.length; k++) {
+    var r = tailles.length - k;
+    if (tailles[k] * r > reste) { quota = Math.max(2, Math.floor(reste / r)); break; }
+    reste -= tailles[k];
+  }
+  var garde = [];
+  groupes.forEach(function (gr) {
+    var n = gr[1] - gr[0], t0 = e[gr[0]].ts, duree = e[gr[1] - 1].ts - t0;
+    var pas = n > quota ? 2 * n / quota : 1, prochain = gr[0];
+    var pasT = n > quota ? 2 * duree / quota : 0, prochainT = t0;
+    for (var k = gr[0]; k < gr[1]; k++) {
+      var s = e[k], av = e[k - 1], ap = e[k + 1];
+      var garder = k === gr[0] || k === gr[1] - 1 || s.marche || s.coupure
+        || (av && (av.Pdef !== s.Pdef || av.Tdef !== s.Tdef || av.eq !== s.eq))
+        || (ap && (ap.Pdef !== s.Pdef || ap.Tdef !== s.Tdef || ap.eq !== s.eq));
+      if (k >= prochain) { garder = true; while (prochain <= k) prochain += pas; }
+      if (pasT > 0 && s.ts >= prochainT) { garder = true; while (prochainT <= s.ts) prochainT += pasT; }
+      if (garder) garde.push(s);
+    }
+  });
+  tfGraph.ech = garde;
 }
 
 // Avant une action (Lancer, bascule du piston, isolation) : le chrono
