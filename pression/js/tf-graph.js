@@ -498,11 +498,52 @@ function _tfgNbLu(v) {
   return v.toFixed(d).replace('.', ',').replace('-', '−');
 }
 
-// Graduations comprises dans [lo, hi]
+// Graduations comprises dans [lo, hi] (comptées par indice : v += pas
+// n'avancerait plus si le pas passait sous la précision des nombres)
 function _tfgGraduations(lo, hi, pas) {
-  var g = [];
-  for (var v = Math.ceil(lo / pas - 1e-9) * pas; v <= hi + pas * 1e-9; v += pas) g.push(v);
+  var g = [], i1 = Math.floor(hi / pas + 1e-9);
+  for (var i = Math.ceil(lo / pas - 1e-9); i <= i1 && g.length < 200; i++) g.push(i * pas);
   return g;
+}
+
+// Tracé borné au cadre (x0, y0, w, h), agrandi de 20 px : chaque segment y
+// est coupé avant d'aller au canvas. Zoomé fort, un chemin s'étend sur des
+// millions de pixels hors du tracé ; le clip n'empêche pas le navigateur
+// d'en calculer chaque tiret, et la page rame. S'emploie comme le contexte
+// (moveTo, lineTo) entre beginPath et stroke.
+function _tfgBorne(c, x0, y0, w, h) {
+  var xa = x0 - 20, xb = x0 + w + 20, ya = y0 - 20, yb = y0 + h + 20;
+  var px = NaN, py = NaN, pose = false, t0, t1;
+  // Liang–Barsky : resserre [t0, t1] sur un bord ; faux si tout est dehors
+  var bord = function (p, q) {
+    if (p === 0) return q >= 0;
+    var r = q / p;
+    if (p < 0) { if (r > t1) return false; if (r > t0) t0 = r; }
+    else { if (r < t0) return false; if (r < t1) t1 = r; }
+    return true;
+  };
+  return {
+    moveTo: function (x, y) { px = x; py = y; pose = false; },
+    lineTo: function (x, y) {
+      var ax = px, ay = py, dx = x - ax, dy = y - ay;
+      px = x; py = y;
+      t0 = 0; t1 = 1;
+      if (!isFinite(dx) || !isFinite(dy)
+          || !bord(-dx, ax - xa) || !bord(dx, xb - ax) || !bord(-dy, ay - ya) || !bord(dy, yb - ay)) {
+        pose = false;
+        return;
+      }
+      if (!pose) c.moveTo(ax + t0 * dx, ay + t0 * dy);
+      c.lineTo(ax + t1 * dx, ay + t1 * dy);
+      pose = t1 === 1;
+    }
+  };
+}
+
+// Vue trop fine pour être zoomée davantage : étendue sous 10⁻⁴ de la
+// valeur (les graduations n'ont plus que six décimales)
+function _tfgTropFin(a, b) {
+  return b - a < 1e-4 * Math.max(Math.abs(a), Math.abs(b), 1e-3);
 }
 
 // Hachures d'une bande « non définie », dans la teinte de la grandeur
@@ -796,9 +837,10 @@ function _tfgBoite(o, ser, b, x0, y0, w, h, i1, i2, xDe, gradT, xGrad, fs) {
     c.lineWidth = 1.5;
     c.setLineDash([5, 4]);
     c.beginPath();
+    var T = _tfgBorne(c, x0, y0, w, h);
     for (k = i1; k <= i2; k++) {
       var px = xDe(e[k].t), py = yDe(e[k][rep.cle] * ser.f);
-      if (k === i1) c.moveTo(px, py); else c.lineTo(px, py);
+      if (k === i1) T.moveTo(px, py); else T.lineTo(px, py);
     }
     c.stroke();
     c.setLineDash([]);
@@ -1174,13 +1216,13 @@ function _tfgDessinerDiag(o, cs, mes) {
 
   // Courbes de référence par l'état de départ de la transformation en cours,
   // ou par l'état de la ligne sélectionnée dans le journal
-  var etiq = [], Lr = tfEtapesEtatRef();
+  var etiq = [], Lr = tfEtapesEtatRef(), T = _tfgBorne(c, x0, y0, pw, ph);
   var ref = Lr ? { V: Lr.V, Pm: Lr.P, Tm: Lr.T, S: Lr.S } : g.ref;
   if (ref) {
     var cr = _tfgCourbesRef(d, ref);
-    for (k = 0; k < cr.length; k++) etiq.push(_tfgCourbe(c, xDe, yDe, vue, cr[k]));
+    for (k = 0; k < cr.length; k++) etiq.push(_tfgCourbe(c, T, xDe, yDe, vue, cr[k]));
   }
-  _tfgFantome(c, D, xDe, yDe);
+  _tfgFantome(c, T, D, xDe, yDe);
 
   // Pression exercée par le piston : l'aire sous ce tracé est le travail
   // reçu par le gaz, juste même hors équilibre
@@ -1190,8 +1232,8 @@ function _tfgDessinerDiag(o, cs, mes) {
     c.setLineDash([6, 4]);
     c.beginPath();
     for (k = 0; k < e.length; k++) {
-      if (k === 0) c.moveTo(xDe(e[k].V * 1e3), yDe(e[k].Pp * 1e-3));
-      else c.lineTo(xDe(e[k].V * 1e3), yDe(e[k].Pp * 1e-3));
+      if (k === 0) T.moveTo(xDe(e[k].V * 1e3), yDe(e[k].Pp * 1e-3));
+      else T.lineTo(xDe(e[k].V * 1e3), yDe(e[k].Pp * 1e-3));
     }
     c.stroke();
     c.setLineDash([]);
@@ -1227,8 +1269,8 @@ function _tfgDessinerDiag(o, cs, mes) {
     c.lineWidth = plein ? 2.2 : 1.6;
     c.setLineDash(plein ? [] : [3, 4]);
     c.beginPath();
-    c.moveTo(px(e[sq[k - 1]]), py(e[sq[k - 1]]));
-    for (q = k; q <= j; q++) c.lineTo(px(e[sq[q]]), py(e[sq[q]]));
+    T.moveTo(px(e[sq[k - 1]]), py(e[sq[k - 1]]));
+    for (q = k; q <= j; q++) T.lineTo(px(e[sq[q]]), py(e[sq[q]]));
     c.stroke();
     k = j + 1;
   }
@@ -1383,7 +1425,7 @@ function _tfgPrevus(c, D, xDe, yDe, fs) {
 // chemin ; l'étape à faire, plus foncée
 var TF_G_FANTOME = '#aab4be', TF_G_FANTOME_K = '#5a6a7a';
 
-function _tfgFantome(c, D, xDe, yDe) {
+function _tfgFantome(c, T, D, xDe, yDe) {
   var F = tfGraph.fantome;
   if (!F) return;
   c.save();
@@ -1396,7 +1438,7 @@ function _tfgFantome(c, D, xDe, yDe) {
     c.beginPath();
     pts.forEach(function (p, j) {
       var x = xDe(D.x(p)), y = yDe(D.yL(p));
-      if (j) c.lineTo(x, y); else c.moveTo(x, y);
+      if (j) T.lineTo(x, y); else T.moveTo(x, y);
     });
     c.stroke();
   });
@@ -1492,27 +1534,27 @@ function _tfgLettres(c, D, xDe, yDe, fs, alpha) {
 // Trace une courbe de référence sur la vue ; renvoie où poser son
 // étiquette : point visible le plus à droite d'une courbe y(x), haut d'une
 // verticale, droite d'une horizontale
-function _tfgCourbe(c, xDe, yDe, vue, cr) {
+function _tfgCourbe(c, T, xDe, yDe, vue, cr) {
   var dern = null;
   c.strokeStyle = cr.coul;
   c.lineWidth = 1.5;
   c.beginPath();
   if (cr.vert !== undefined) {
     var xv = xDe(cr.vert);
-    c.moveTo(xv, yDe(vue.y1));
-    c.lineTo(xv, yDe(vue.y2));
+    T.moveTo(xv, yDe(vue.y1));
+    T.lineTo(xv, yDe(vue.y2));
     if (cr.vert >= vue.x1 && cr.vert <= vue.x2) dern = { x: xv - 4, y: yDe(vue.y2) + 20 };
   } else if (cr.horiz !== undefined) {
     var yh = yDe(cr.horiz);
-    c.moveTo(xDe(vue.x1), yh);
-    c.lineTo(xDe(vue.x2), yh);
+    T.moveTo(xDe(vue.x1), yh);
+    T.lineTo(xDe(vue.x2), yh);
     if (cr.horiz >= vue.y1 && cr.horiz <= vue.y2) dern = { x: xDe(vue.x2) - 6, y: yh };
   } else {
     var n = 160;
     for (var i = 0; i <= n; i++) {
       var X = vue.x1 + (vue.x2 - vue.x1) * i / n, Yc = cr.f(X);
       var x = xDe(X), y = yDe(Yc);
-      if (i === 0) c.moveTo(x, y); else c.lineTo(x, y);
+      if (i === 0) T.moveTo(x, y); else T.lineTo(x, y);
       if (Yc >= vue.y1 && Yc <= vue.y2 && i < n * 0.97) dern = { x: x, y: y };
     }
   }
@@ -1731,14 +1773,18 @@ function _tfgZoomCadre(gl) {
   if (!v || !geo || Math.abs(gl.x - gl.x0) < 6) return;
   var fx1 = (Math.min(gl.x0, gl.x) - geo.x0) / geo.pw, fx2 = (Math.max(gl.x0, gl.x) - geo.x0) / geo.pw;
   if (cible === 't') {
+    var nt = { t1: v.t1 + fx1 * (v.t2 - v.t1), t2: v.t1 + fx2 * (v.t2 - v.t1), o: v.o, lt: v.lt };
+    if (_tfgTropFin(nt.t1 - v.o, nt.t2 - v.o)) return;
     g.pileT.push(g.vueT);
-    g.vueT = { t1: v.t1 + fx1 * (v.t2 - v.t1), t2: v.t1 + fx2 * (v.t2 - v.t1), o: v.o, lt: v.lt };
+    g.vueT = nt;
   } else {
     if (Math.abs(gl.y - gl.y0) < 6) return;
     var fy1 = (geo.y0 + geo.ph - Math.max(gl.y0, gl.y)) / geo.ph, fy2 = (geo.y0 + geo.ph - Math.min(gl.y0, gl.y)) / geo.ph;
+    var nv = { x1: v.x1 + fx1 * (v.x2 - v.x1), x2: v.x1 + fx2 * (v.x2 - v.x1),
+               y1: v.y1 + fy1 * (v.y2 - v.y1), y2: v.y1 + fy2 * (v.y2 - v.y1) };
+    if (_tfgTropFin(nv.x1, nv.x2) || _tfgTropFin(nv.y1, nv.y2)) return;
     g.pileD[cible].push(g.vue[cible]);
-    g.vue[cible] = { x1: v.x1 + fx1 * (v.x2 - v.x1), x2: v.x1 + fx2 * (v.x2 - v.x1),
-                     y1: v.y1 + fy1 * (v.y2 - v.y1), y2: v.y1 + fy2 * (v.y2 - v.y1) };
+    g.vue[cible] = nv;
   }
 }
 
@@ -1849,6 +1895,8 @@ function _tfgSouris(o, cible) {
     var dy = ev.deltaMode === 1 ? ev.deltaY * 33 : ev.deltaY;
     var f = Math.exp(Math.max(-300, Math.min(300, dy)) * 0.0015);
     _tfgEmpiler(cible);
+    if (f < 1 && (cible === 't' ? _tfgTropFin(v.t1 - v.o, v.t2 - v.o)
+                                : _tfgTropFin(v.x1, v.x2) || _tfgTropFin(v.y1, v.y2))) return;
     var fx = (p.x - geo.x0) / geo.pw;
     if (cible === 't') {
       var tc = v.t1 + fx * (v.t2 - v.t1);
