@@ -454,8 +454,10 @@ function _tfSuffixeFond() {
 //  Trois manières (PLAN §10.5) : la page choisit les paramètres
 // ══════════════════════════════════════════════════════════════════════
 
-// Brutalement : vérin à vitesse de pointe fixée (une petite course reste
-// brutale, la pression du gaz n'est clairement pas définie), échelon sinon.
+// Brutalement : vérin à la vitesse de pointe la plus haute que tient le
+// moteur (TF_V_VERIN_MAX) : la course dure moins qu'une traversée du son, un
+// front de compression net part du piston (à 150 m/s, la course durait deux
+// traversées et le gaz se comprimait presque d'un bloc). Échelon sinon.
 //
 // Les deux manières lentes sont réglées sur la chaleur Q qu'échangerait la
 // transformation réversible (isotherme pour le volume et la pression,
@@ -480,7 +482,7 @@ function _tfSuffixeFond() {
 // Mesures (vérin 30 → 15 cm, PLAN §10.5) : diathermane, il faut ~6000 s
 // pour que T reste définie (S_c 0,09 mJ/K) ; G = 0,001 W/K, 6000 s laissent
 // T définie mais S_c = 5 mJ/K : quasi statique mais irréversible.
-var TF_V_BRUTAL = 150;        // m/s
+var TF_V_BRUTAL = TF_V_VERIN_MAX;   // m/s
 var TF_QS_MIN = 1;            // s
 var TF_QS_ECART = 0.25;       // K
 var TF_REV_SC = 2.5e-6;       // J/K estimés par étape (~1 µJ/K mesuré)
@@ -1450,8 +1452,11 @@ function _tfDureeAction(cle, duree) {
   // écart de la moitié du seuil
   else if (cle === 'Text') D = d.thermique * Math.log(Math.max(2, Math.abs(tf.Text - tfMesures().Tmoy) / (TF_SEUIL_T / 2)));
   // Échelon de P_air sur la membrane nue : le front traverse le gaz en
-  // ~1 ms, c'est lui qu'on veut voir
-  else if (cle === 'Pair' && tf.masse === 0) D = 10 * d.traversee;
+  // ~1 ms, c'est lui qu'on veut voir. Une traversée : le cran le plus lent
+  // (×1/5000) quelle que soit la hauteur, même gaz froid sous 50 cm, ~4 s
+  // d'écran par traversée à 30 cm (avec 10 traversées, ×1/1000 : moins
+  // d'une seconde)
+  else if (cle === 'Pair' && tf.masse === 0) D = d.traversee;
   else D = 16 * d.piston;
   return D;
 }
