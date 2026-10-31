@@ -554,7 +554,7 @@ Contrôle        [ Pause ] [ RAZ ]   Vitesse ──●── ×1 [Auto]
 Conditions      Piston [ Tenu ] [ Libre ]
                 Fond   [ Isolant ] [ Source 1 ▾ ] [ Source 2 ▾ ]
 Transformation  [ Viser une valeur ] [ À la main ]
-  Viser :       [ Agir sur le piston ] [ Agir sur la source ]   ← sur une source seulement
+  Viser :       [ Agir sur le piston ] [ Agir sur la source ]   ← la source grisée sur l'isolant
                 Hauteur visée du piston  [−] [ 15 ] cm [+] [État ▾]
                 Compression adiabatique → 0,300 L · 264 kPa · 387 K
                 ▌Brutalement 0,5 ms   ▌Quasi statiquement 1 s   ▌Réversiblement   (liseré rouge, ambre, vert)

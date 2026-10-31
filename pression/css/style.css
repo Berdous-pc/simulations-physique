@@ -471,6 +471,7 @@ main {
 .mode-tab:not(:last-child) { border-right: 1px solid #c8c0b4; }
 .mode-tab:hover { background: #ccc8c0; color: #2c3e50; }
 .mode-tab.active { background: #2a6aaa; color: #fff; }
+.mode-tab:disabled, .mode-tab:disabled:hover { background: #dedad2; color: #a8b0b8; cursor: not-allowed; }
 
 /* Deux boutons côte à côte (Lancer / Interrompre) */
 .tf-btn-ligne {

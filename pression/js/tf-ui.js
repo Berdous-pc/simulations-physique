@@ -701,9 +701,11 @@ function _tfMajBoutons() {
   _tfEl['tf-viser'].style.display = viser ? '' : 'none';
   _tfEl['tf-main'].style.display = viser ? 'none' : '';
 
-  // Choix de l'organe : seulement si le cylindre est sur une source (sur
-  // l'isolant, seul le piston peut agir)
-  _tfEl['tf-organes'].style.display = tf.fond === 'isolant' ? 'none' : '';
+  // Choix de l'organe, toujours visible ; sur l'isolant, seul le piston
+  // peut agir : la source est grisée
+  var isolant = tf.fond === 'isolant', bs = _tfEl['tf-organe-source'];
+  bs.disabled = isolant;
+  bs.title = isolant ? 'Posez le cylindre sur une source (Conditions)' : '';
   _tfEl['tf-organe-piston'].classList.toggle('active', o === 'piston');
   _tfEl['tf-organe-source'].classList.toggle('active', o === 'source');
 
