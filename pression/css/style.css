@@ -486,21 +486,103 @@ main {
   line-height: 1.3;
 }
 
-/* Carte Transformation : bouton du piston, valeur actuelle, durées
-   caractéristiques (libellé à gauche, valeur à droite) */
-.input-hint.tf-actuel { display: block; margin: -4px 0 8px; }
+/* Réglages fins : durées caractéristiques (libellé à gauche, valeur à droite) */
 .tf-durees-car { margin: 6px 0 10px; font-size: clamp(11px, 0.95vw, 13px); color: #5a6a78; }
 .tf-duree-car { display: flex; justify-content: space-between; gap: 8px; padding: 1px 0; }
 .tf-duree-car span:last-child { color: #2c3e50; font-weight: 600; white-space: nowrap; }
-#tf-en-cours { display: block; margin-top: 6px; color: #7a4a10; }
 
-/* Trois manières de transformer : boutons empilés, durée choisie par la
+/* Titres : résumé de l'état initial (section repliée seulement), bouton
+   Annuler des étapes */
+.section-title .tf-resume {
+  flex: 1 1 auto; min-width: 0; margin: 0 6px 0 10px;
+  text-align: right; text-transform: none; letter-spacing: 0; font-weight: 400;
+  color: #8a9aaa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.section-title:not(.section-repliee) .tf-resume { visibility: hidden; }
+.section-title.tf-titre-etapes { display: flex; align-items: center; justify-content: space-between; }
+.tf-titre-etapes .tf-mini-btn { text-transform: none; letter-spacing: 0; font-weight: 400; }
+
+/* Viser une valeur / À la main */
+.mode-tabs.tf-modes .mode-tab { padding: 7px 4px; }
+
+/* Trois manières de transformer, de la plus brutale à la plus lente : un
+   liseré de couleur à gauche (rouge, ambre, vert), la durée choisie par la
    page à droite ; réglages fins repliés */
-.tf-manieres { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
-.btn.tf-maniere { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-.tf-maniere-duree { font-size: 0.82em; font-weight: 400; opacity: 0.85; white-space: nowrap; }
-.input-hint.tf-hint-manieres { display: block; margin: 6px 0; }
-.btn.tf-interrompre { width: 100%; }
+.tf-manieres { display: flex; flex-direction: column; gap: 5px; margin-top: 6px; }
+.tf-maniere {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+  width: 100%; padding: 8px 10px 8px 9px;
+  font: inherit; font-size: clamp(12px, 1.2vw, 15px); font-weight: 700;
+  color: #2c3e50; background: #fff; cursor: pointer;
+  border: 1px solid #c8c0b4; border-left: 5px solid; border-radius: 0 6px 6px 0;
+  transition: background 0.15s;
+}
+.tf-maniere:active:not(:disabled) { transform: scale(0.98); }
+.tf-m-brutal { border-left-color: #c0503a; }
+.tf-m-qs     { border-left-color: #d09a30; }
+.tf-m-rev    { border-left-color: #3a9a5a; }
+.tf-m-brutal:hover:not(:disabled) { background: #fbeae6; }
+.tf-m-qs:hover:not(:disabled)     { background: #fbf1de; }
+.tf-m-rev:hover:not(:disabled)    { background: #e6f4ea; }
+.tf-maniere:disabled { opacity: 0.45; cursor: not-allowed; }
+.tf-maniere-duree { font-size: 0.82em; font-weight: 400; color: #5a6a78; white-space: nowrap; }
+
+/* Action en cours : barre de progression et bouton ■ */
+.tf-progres { display: flex; gap: 6px; margin-top: 6px; }
+.tf-progres-barre {
+  position: relative; flex: 1 1 auto; min-width: 0; height: 2.4em;
+  border: 1px solid #c8c0b4; border-radius: 6px; background: #fff; overflow: hidden;
+}
+.tf-progres-rempli { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: #cfe0f0; }
+.tf-progres-txt {
+  position: absolute; inset: 0; display: flex; align-items: center; padding: 0 10px;
+  font-weight: 700; color: #2a5080; font-size: clamp(11px, 1.05vw, 14px); white-space: nowrap;
+}
+.tf-stop {
+  flex: 0 0 2.6em; font: inherit; font-size: 1em; cursor: pointer;
+  border: 1px solid #c0503a; border-radius: 6px; background: #fbeae6; color: #a03a28;
+}
+.tf-stop:hover { background: #c0503a; color: #fff; }
+.tf-prevu .tf-nature { font-weight: 700; color: #2c3e50; }
+
+/* À la main : voyant d'équilibre (orange, puis vert), une carte par organe */
+.tf-voyant {
+  display: flex; align-items: center; gap: 8px; padding: 7px 10px; margin-bottom: 8px;
+  border-radius: 6px; background: #fbeedb; color: #8a4a10; font-weight: 700;
+  font-size: clamp(11px, 1.05vw, 14px); transition: background 0.2s, color 0.2s;
+}
+.tf-voyant-pt { flex: 0 0 10px; height: 10px; border-radius: 50%; background: #e09030; }
+.tf-voyant.eq { background: #e2f2e6; color: #23703c; }
+.tf-voyant.eq .tf-voyant-pt { background: #3a9a5a; }
+.tf-organe {
+  border: 1px solid #c8c0b4; border-radius: 8px; background: #fff;
+  padding: 8px 10px; margin-bottom: 6px;
+}
+.tf-organe.inactif { background: #f2efea; }
+.tf-organe.inactif .tf-organe-btns, .tf-organe.inactif .tf-organe-pas { opacity: 0.4; }
+.tf-organe-tete { display: flex; align-items: baseline; gap: 6px; margin-bottom: 6px; }
+.tf-organe-nom { font-weight: 700; color: #2c3e50; }
+.tf-organe-nature { flex: 1 1 auto; min-width: 0; font-size: 0.85em; color: #7a8a96; font-style: italic; }
+.tf-organe-val {
+  font-size: clamp(14px, 1.45vw, 18px); font-weight: 700; color: #2a5080;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.tf-organe-btns { display: flex; gap: 6px; }
+.tf-pas-btn {
+  flex: 1 1 0; min-width: 0; padding: 7px 4px;
+  font: inherit; font-weight: 700; font-size: clamp(12px, 1.15vw, 15px); white-space: nowrap;
+  border: 1px solid #c8c0b4; border-radius: 6px; background: #ece8e0; color: #2c3e50;
+  cursor: pointer; touch-action: manipulation; user-select: none;
+}
+.tf-pas-btn:hover:not(:disabled) { background: #dedad2; }
+.tf-pas-btn:active:not(:disabled) { background: #cfe0f0; }
+.tf-pas-btn:disabled { cursor: not-allowed; }
+.tf-organe-pas { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.tf-organe-pas label { flex: 0 0 auto; font-size: 0.85em; color: #7a8a96; }
+.tf-organe-pas input[type="range"] { flex: 1 1 auto; min-width: 0; accent-color: #4a7aaa; cursor: pointer; }
+.tf-organe-note { display: block; margin-top: 4px; font-size: 0.85em; color: #7a8a96; }
+.input-hint.tf-main-compte { display: block; }
+.input-hint.tf-main-compte:empty { display: none; }
 .tf-fins { margin-top: 10px; border-top: 1px solid #d4cec4; padding-top: 6px; }
 .tf-fins summary { cursor: pointer; color: #5a6a78; font-size: clamp(11px, 0.95vw, 13px); margin-bottom: 6px; }
 /* Vitesse : libellé, curseur, valeur, bouton Auto sur une ligne */
@@ -542,7 +624,6 @@ main {
 .tf-pop-source .tf-visee-ligne { margin-bottom: 0; }
 .tf-pop-source .input-hint:empty { display: none; }
 .tf-pop-source .input-hint { display: block; margin-top: 4px; }
-.mode-tabs.tf-agir { margin-top: 6px; }
 .tf-mini-btn {
   flex: 0 0 auto;
   font: inherit;
@@ -615,8 +696,6 @@ main {
   color: #2c3e50;
   cursor: pointer;
 }
-.tf-visee .input-hint.tf-actuel { margin: 0 0 4px; }
-.tf-visee .input-hint.tf-actuel:empty { display: none; }
 .tf-prevu {
   font-size: clamp(11px, 0.95vw, 13px);
   color: #7a3a10;
@@ -625,15 +704,8 @@ main {
 .tf-prevu:empty { display: none; }
 .tf-prevu b { font-weight: 600; }
 
-/* Pas à pas : − et + portent le pas et agissent ; le champ, en lecture
-   seule, suit la valeur actuelle */
+/* − et + maintenus : répétés */
 .tf-pm { touch-action: manipulation; user-select: none; }
-.tf-pm.pap { flex: 0 0 auto; padding: 0 8px; font-size: clamp(11px, 1vw, 13px); background: #fde8c8; border-color: #d0a060; color: #7a3a10; }
-.tf-pm.pap:hover { background: #fbd8a8; }
-.tf-saisie[readonly] { color: #7a3a10; }
-.btn.tf-maniere:disabled { opacity: 0.4; }
-.tf-ligne-arret { margin-top: 8px; }
-.tf-ligne-arret .btn { padding: 7px 4px; font-size: clamp(11px, 1.05vw, 14px); }
 
 /* Journal des étapes : une ligne par étape (pastille de sa couleur, lettres,
    action, état d'arrivée, retour) ; défile au-delà d'une dizaine */

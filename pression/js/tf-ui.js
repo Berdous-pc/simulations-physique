@@ -19,13 +19,20 @@ var _TF_EL_IDS = [
   'tf-piston-tenu', 'tf-piston-libre',
   'tf-fond-isolant', 'tf-fond-1', 'tf-fond-2', 'tf-t-1', 'tf-t-2', 'tf-fleche-1', 'tf-fleche-2',
   'tf-pop-source', 'tf-pop-nom', 'tf-in-source', 'tf-pop-moins', 'tf-pop-plus', 'tf-pop-tgaz', 'tf-pop-note',
-  'tf-tab-volume', 'tf-tab-pression', 'tf-tab-temperature', 'tf-hint-actuel',
+  'tf-mode-viser', 'tf-mode-main', 'tf-viser', 'tf-main',
+  'tf-organes', 'tf-organe-piston', 'tf-organe-source',
   'tf-lbl-vise', 'tf-in-vise', 'tf-unite-vise', 'tf-sel-etat', 'tf-prevu',
-  'tf-pm-moins', 'tf-pm-plus', 'tf-btn-pap', 'tf-pas-pap', 'tf-btn-annuler', 'tf-nom-pas',
-  'tf-montage-Pair', 'tf-montage-masse',
+  'tf-pm-moins', 'tf-pm-plus', 'tf-btn-annuler', 'tf-nom-pas',
+  'tf-montage-Pair', 'tf-montage-masse', 'tf-resume-init',
   'tf-sl-duree', 'tf-lbl-duree', 'tf-duree-allongee',
   'tf-row-pas', 'tf-sl-pas', 'tf-lbl-pas', 'tf-hint-escalier',
-  'tf-ro-regime', 'tf-durees-car', 'tf-btn-lancer', 'tf-btn-interrompre', 'tf-en-cours',
+  'tf-ro-regime', 'tf-durees-car', 'tf-btn-lancer', 'tf-btn-interrompre',
+  'tf-manieres', 'tf-progres', 'tf-progres-rempli', 'tf-progres-txt',
+  'tf-voyant', 'tf-voyant-txt', 'tf-main-compte', 'tf-carte-source', 'tf-main-note-source',
+  'tf-main-nom-piston', 'tf-main-nature-piston', 'tf-main-val-piston',
+  'tf-main-moins-piston', 'tf-main-plus-piston', 'tf-main-sl-piston',
+  'tf-main-nom-source', 'tf-main-nature-source', 'tf-main-val-source',
+  'tf-main-moins-source', 'tf-main-plus-source', 'tf-main-sl-source',
   'tf-journal', 'tf-ckg-gel',
   'tf-btn-brutal', 'tf-btn-qs', 'tf-btn-rev', 'tf-duree-brutal', 'tf-duree-qs', 'tf-duree-rev',
   'tf-bilan', 'tf-bilan-note',
@@ -37,31 +44,33 @@ var _TF_EL_IDS = [
 var _tfPret = false;
 
 // ══════════════════════════════════════════════════════════════════════
-//  Carte « Transformation » (PLAN_TRANSFORMATIONS.md §10.3, §10.7)
-//  Une grandeur visée parmi quatre : hauteur du piston ('volume'), masse
-//  posée ('masse'), pression de l'air de l'enceinte ('Pair'), température de
-//  la source en contact ('Text'). Le montage (section Montage et gaz) décide
-//  si la pression passe par la masse ou par l'air de l'enceinte. Chacune
-//  garde sa valeur visée, sa durée et la hauteur de ses marches ; tant
-//  qu'on n'y touche pas (suit), la valeur visée est la valeur actuelle.
+//  Carte « Transformation » (PLAN_TRANSFORMATIONS.md §10.3, §10.7, §10.9)
+//  On agit sur l'un de deux organes : le piston ou la source sous le
+//  cylindre. La grandeur réglée découle des conditions : piston tenu, sa
+//  hauteur ('volume', par le vérin) ; libre, la masse posée ('masse') ou la
+//  pression de l'air de l'enceinte ('Pair') selon le montage ; source, sa
+//  température ('Text'). Chaque grandeur garde sa valeur visée, sa durée et
+//  son pas ; tant qu'on n'y touche pas (suit), la valeur visée est la
+//  valeur actuelle.
 // ══════════════════════════════════════════════════════════════════════
 
+// Pas (à la main, et marches des escaliers des réglages fins), en 1-2-5
 var TF_PAS_ESC = {
-  volume: [0.002, 0.005, 0.01, 0.02, 0.05],      // m : pas à pas du vérin
-  masse : [0.005, 0.01, 0.02, 0.05, 0.1],        // kg : masse d'un grain de sable (pas à pas)
-  Pair  : [500, 1000, 2000, 5000, 10000],        // Pa
-  Text  : [0.5, 1, 2, 5, 10]                     // K
+  volume: [0.001, 0.002, 0.005, 0.01, 0.02, 0.05],   // m : course du vérin
+  masse : [0.01, 0.02, 0.05, 0.1, 0.2, 0.5],         // kg : masse d'un grain de sable
+  Pair  : [500, 1000, 2000, 5000, 10000, 20000],     // Pa
+  Text  : [0.5, 1, 2, 5, 10, 20]                     // K
 };
 
 var tfCarte = {
-  action : 'volume',     // onglet : 'volume', 'pression' ou 'temperature'
-  pap    : false,        // manière Pas à pas : − et + agissent à chaque clic
+  mode   : 'viser',      // 'viser' (valeur visée, trois manières) ou 'main' (pas à pas)
+  organe : 'piston',     // organe visé : 'piston' ou 'source' (sur une source seulement)
   moyen  : 'Pair',       // montage : pression par 'Pair' (enceinte) ou 'masse'
   auto   : true,         // vitesse adaptée à chaque transformation
   // Valeur visée (SI), suivie de la valeur actuelle tant qu'on n'y touche
-  // pas, cran de durée, cran de la hauteur des marches (et du pas à pas)
-  volume : { vise: 0.15,     suit: true, iDuree: 8, iPas: 2 },
-  masse  : { vise: 20,       suit: true, iDuree: 0, iPas: 3 },
+  // pas, cran de durée, cran du pas
+  volume : { vise: 0.15,     suit: true, iDuree: 8, iPas: 3 },
+  masse  : { vise: 20,       suit: true, iDuree: 0, iPas: 2 },
   Pair   : { vise: 2e5,      suit: true, iDuree: 0, iPas: 1 },
   Text   : { vise: 400,      suit: true, iDuree: 0, iPas: 1 }
 };
@@ -69,10 +78,10 @@ var tfCarte = {
 // Champ de la valeur visée, par grandeur : libellé, unité affichée et son
 // facteur (SI × f), décimales, pas des boutons − et +, bornes (SI)
 var TF_VISEE = {
-  volume : { nom: 'Hauteur visée', unite: 'cm', f: 100, dec: 1, pas: 0.01,
+  volume : { nom: 'Hauteur visée du piston', unite: 'cm', f: 100, dec: 1, pas: 0.01,
              min: TF_H_VISEE_MIN, max: TF_H_VISEE_MAX },
   masse  : { nom: 'Masse posée visée', unite: 'kg', f: 1, dec: 2, pas: 5, min: 0, max: TF_MASSE_MAX },
-  Pair   : { nom: 'Pression de l’air de l’enceinte visée', unite: 'kPa', f: 1e-3, dec: 1, pas: 1e4, min: 0, max: 5e5 },
+  Pair   : { nom: 'Pression de l’air visée', unite: 'kPa', f: 1e-3, dec: 1, pas: 1e4, min: 0, max: 5e5 },
   Text   : { nom: 'Température visée de la source', unite: 'K', f: 1, dec: 1, pas: 10, min: 250, max: 600 }
 };
 var TF_T_SOURCE_MIN = 250, TF_T_SOURCE_MAX = 600;   // K
@@ -90,11 +99,25 @@ function _tfFmtChamp(x, dec) {
   return String(+x.toFixed(dec)).replace('.', ',');
 }
 
-// Grandeur visée par l'action choisie
-function _tfCle() {
-  if (tfCarte.action === 'volume') return 'volume';
-  if (tfCarte.action === 'temperature') return 'Text';
-  return tfCarte.moyen;
+// Organe visé : la source seulement si le cylindre est posé sur l'une d'elles
+function _tfOrgane() {
+  return tfCarte.organe === 'source' && tf.fond !== 'isolant' ? 'source' : 'piston';
+}
+
+// Grandeur réglée par un organe, selon l'état du piston et le montage
+function _tfCleOrgane(o) {
+  if (o === 'source') return 'Text';
+  return tf.tenu ? 'volume' : tfCarte.moyen;
+}
+
+// Grandeur visée
+function _tfCle() { return _tfCleOrgane(_tfOrgane()); }
+
+// Nature de la transformation obtenue en agissant sur un organe : elle
+// découle des conditions
+function _tfNature(o) {
+  if (o === 'source') return tf.tenu ? 'isochore' : 'isobare';
+  return tf.fond === 'isolant' ? 'adiabatique' : 'isotherme si lente';
 }
 
 // Durées proposées pour cette grandeur : celles du vérin pour le volume,
@@ -422,16 +445,21 @@ function _tfMajManieres() {
   });
   if (cle !== 'Text' && (tf.G === 0 || txt.rev === txt.qs)) txt.rev = '= quasi statiquement';
   ['brutal', 'qs', 'rev'].forEach(function (man) { _tfEl['tf-duree-' + man].textContent = txt[man]; });
-  var lib = cle === 'masse' ? '1 grain' : _tfFmtPas(cle, _tfPas(cle));
-  _tfEl['tf-pas-pap'].textContent = lib + ' par clic';
 }
+
+// Dernière action lancée, pour la barre de progression : manière, grandeur,
+// valeur de départ
+var _tfLance = null;
+var TF_NOM_MANIERE = { brutal: 'Brutale', qs: 'Quasi statique', rev: 'Réversible', fins: 'En cours' };
 
 // Lance l'action de la carte de la manière choisie : 'brutal', 'qs' ou 'rev'
 function tfLancerManiere(man) {
   if (tfEnCours() || _tfEnAttente) return;
   var cle = _tfCle(), vise = tfCarte[cle].vise, p = _tfParamsManiere(cle, man);
   var desc = _tfDescManiere(cle, man, p), pas = cle === 'volume' ? 0 : _tfPas(cle);   // pas de marches pour le vérin
+  _tfLance = { man: man, cle: cle, v0: _tfActuelle(cle) };
   _tfLancerApresRalenti(cle, vise, p.duree, function () {
+    _tfLance.v0 = _tfActuelle(cle);
     _tfOuvrirEtape(desc);
     if (cle === 'volume') {
       tfLancerVerin(vise, p.duree);
@@ -510,11 +538,9 @@ function _tfMajCarte() {
   var cle = _tfCle(), k = tfCarte[cle], duree = _tfDuree(cle);
   var d = tfDurees();
 
-  // Champ de la valeur visée ; un mot seulement si l'action est impossible
   _tfMajChampVise();
-  _tfEl['tf-hint-actuel'].textContent = cle === 'Text' && tf.fond === 'isolant'
-    ? 'Posez le cylindre sur une source pour agir sur sa température.' : '';
   _tfMajPrevu(cle);
+  _tfMajMain();
   _tfMajSelEtat(cle);
   _tfMajFond();
 
@@ -551,43 +577,54 @@ function _tfMajCarte() {
   _tfMajBoutonsCarte();
 }
 
-// Lancer : une action à la fois, et seulement si elle change quelque chose
-// (une action sur la pression libère aussi le piston tenu). Interrompre :
-// pendant une action.
+// Lancer : une action à la fois, et seulement si elle change quelque chose.
+// Pendant une action (lancée en mode Viser), les trois manières laissent
+// place à une barre de progression et au bouton ■ qui l'interrompt.
 function _tfMajBoutonsCarte() {
   var cle = _tfCle(), enCours = tfEnCours() || !!_tfEnAttente;
-  var rien = Math.abs(tfCarte[cle].vise - _tfActuelle(cle)) < 1e-6
-          && !((cle === 'masse' || cle === 'Pair') && tf.tenu);
+  var rien = Math.abs(tfCarte[cle].vise - _tfActuelle(cle)) < 1e-6;
   _tfEl['tf-btn-lancer'].disabled = enCours || rien;
-  _tfEl['tf-btn-interrompre'].disabled = !enCours;
   var sansEffet = cle === 'Text' && tf.G === 0;
   ['brutal', 'qs', 'rev'].forEach(function (man) {
-    _tfEl['tf-btn-' + man].disabled = enCours || rien || sansEffet || tfCarte.pap;
+    _tfEl['tf-btn-' + man].disabled = enCours || rien || sansEffet;
   });
-  _tfEl['tf-btn-pap'].disabled = sansEffet;
-  _tfEl['tf-pm-moins'].disabled = _tfEl['tf-pm-plus'].disabled = sansEffet && tfCarte.pap;
   _tfEl['tf-btn-annuler'].disabled = tfEtapesEtatAnnuler() === null;
+  _tfMajProgres(enCours);
+}
 
-  var info = '';
+// Barre de progression : fraction faite, manière, temps (simulé) restant
+function _tfMajProgres(enCours) {
+  var visible = enCours && tfCarte.mode === 'viser';
+  _tfEl['tf-progres'].style.display = visible ? '' : 'none';
+  _tfEl['tf-manieres'].style.display = visible ? 'none' : '';
+  if (!visible) return;
+  var frac = 0, reste = null, L = _tfLance;
   if (_tfEnAttente) {
-    info = 'Le temps ralentit avant l’action…';
-  } else if (tf.verin.actif) {
-    info = 'Vérin en marche : encore ' + _tfFmtDuree(Math.max(0, tf.verin.t0 + tf.verin.tau - tf.t));
+    _tfEl['tf-progres-txt'].textContent = 'Le temps ralentit avant l’action…';
+    _tfEl['tf-progres-rempli'].style.width = '0%';
+    return;
+  }
+  if (tf.verin.actif) {
+    frac = (tf.t - tf.verin.t0) / tf.verin.tau;
+    reste = tf.verin.t0 + tf.verin.tau - tf.t;
   } else {
     for (var c in tf.rampes) {
       var r = tf.rampes[c];
       if (!r.actif) continue;
       if (r.continu) {
-        info = 'En cours : encore ' + _tfFmtDuree(Math.max(0, r.t0 + r.duree - tf.t)) + ', vers ' + _tfFmtValeur(c, r.cible);
-        continue;
+        frac = (tf.t - r.t0) / r.duree;
+        reste = r.t0 + r.duree - tf.t;
+      } else {
+        var v0 = L && L.cle === c ? L.v0 : tf[c];
+        frac = Math.abs(r.cible - v0) > 1e-12 ? 1 - Math.abs(r.cible - tf[c]) / Math.abs(r.cible - v0) : 1;
+        reste = (Math.round(Math.abs(r.cible - tf[c]) / r.pas)) * r.periode;
       }
-      var reste = Math.round(Math.abs(r.cible - tf[c]) / r.pas);
-      info = 'Escalier en cours : encore ' + reste + (reste > 1 ? ' marches' : ' marche')
-           + ', vers ' + _tfFmtValeur(c, r.cible);
     }
   }
-  _tfEl['tf-en-cours'].textContent = info;
-  _tfEl['tf-en-cours'].style.display = info ? '' : 'none';
+  frac = _tfBorner(frac, 0, 1);
+  _tfEl['tf-progres-rempli'].style.width = (100 * frac).toFixed(1) + '%';
+  _tfEl['tf-progres-txt'].textContent = (L ? TF_NOM_MANIERE[L.man] : 'En cours')
+    + (reste !== null ? ' · reste ' + _tfFmtDuree(Math.max(0, reste)) : '');
 }
 
 // Régime attendu d'une action sur le volume, de durée tau (PLAN §2.7) :
@@ -653,12 +690,22 @@ function _tfMajBoutons() {
   _tfEl['tf-piston-tenu'].classList.toggle('active', tf.tenu);
   _tfEl['tf-piston-libre'].classList.toggle('active', !tf.tenu);
 
-  var a = tfCarte.action, cle = _tfCle();
-  ['volume', 'pression', 'temperature'].forEach(function (x) {
-    _tfEl['tf-tab-' + x].classList.toggle('active', a === x);
-  });
+  var cle = _tfCle(), o = _tfOrgane(), viser = tfCarte.mode === 'viser';
   _tfEl['tf-montage-Pair'].classList.toggle('active', tfCarte.moyen === 'Pair');
   _tfEl['tf-montage-masse'].classList.toggle('active', tfCarte.moyen === 'masse');
+  _tfMajResume();
+
+  // Mode : Viser une valeur ou À la main
+  _tfEl['tf-mode-viser'].classList.toggle('active', viser);
+  _tfEl['tf-mode-main'].classList.toggle('active', !viser);
+  _tfEl['tf-viser'].style.display = viser ? '' : 'none';
+  _tfEl['tf-main'].style.display = viser ? 'none' : '';
+
+  // Choix de l'organe : seulement si le cylindre est sur une source (sur
+  // l'isolant, seul le piston peut agir)
+  _tfEl['tf-organes'].style.display = tf.fond === 'isolant' ? 'none' : '';
+  _tfEl['tf-organe-piston'].classList.toggle('active', o === 'piston');
+  _tfEl['tf-organe-source'].classList.toggle('active', o === 'source');
 
   // Champ de la valeur visée : libellé et unité de la grandeur
   var V = TF_VISEE[cle];
@@ -666,43 +713,30 @@ function _tfMajBoutons() {
   _tfEl['tf-unite-vise'].textContent = V.unite;
   _tfMajChampVise(true);
 
-  // Pas à pas : − et + portent le pas, le champ suit la valeur actuelle
-  var pap = tfCarte.pap;
-  var lib = cle === 'masse' ? '1 grain' : _tfFmtPas(cle, _tfPas(cle));
-  _tfEl['tf-btn-pap'].classList.toggle('active', pap);
-  _tfEl['tf-in-vise'].readOnly = pap;
-  _tfEl['tf-sel-etat'].style.display = pap ? 'none' : '';
-  _tfEl['tf-lbl-vise'].textContent = pap ? V.nom.replace(/ visée?$/, '').replace(' visée', '') + ' (actuelle)' : V.nom;
-  [['tf-pm-moins', '−'], ['tf-pm-plus', '+']].forEach(function (x) {
-    var b = _tfEl[x[0]];
-    b.classList.toggle('pap', pap);
-    b.textContent = pap ? x[1] + ' ' + lib : x[1];
-    b.title = pap ? 'Agit à chaque clic ; maintenir pour répéter' : 'Maintenir pour répéter';
-  });
-
-  // Curseur de durée : crans de la grandeur visée
+  // Curseurs : durée (réglages fins) et pas des organes, crans de leur grandeur
   var sl = _tfEl['tf-sl-duree'];
   sl.max = _tfDureesDe(cle).length - 1;
   sl.value = tfCarte[cle].iDuree;
   _tfMajDuree();
+  _tfEl['tf-main-sl-piston'].value = tfCarte[_tfCleOrgane('piston')].iPas;
+  _tfEl['tf-main-sl-source'].value = tfCarte.Text.iPas;
+  _tfMajMain();
 
-  tfRepereVisee = cle === 'volume';
+  tfRepereVisee = viser && cle === 'volume';
   tf.hVisee = tfCarte.volume.vise;
   tf.needsRedraw = true;
   _tfMajBoutonsCarte();
 }
 
-// Libellé de la durée, curseur des marches : escalier, et pas à pas de la
-// pression (grain de sable, pas de P_air)
+// Libellé de la durée, curseur des marches d'un escalier (le même pas que
+// celui de l'organe, à la main)
 function _tfMajDuree() {
   var cle = _tfCle(), duree = _tfDuree(cle);
   _tfEl['tf-lbl-duree'].textContent = cle !== 'volume' && duree === 0 ? 'brutale (échelon)'
     : _tfLibelleDuree(duree);
   var esc = cle !== 'volume' && duree > 0;
-  _tfEl['tf-row-pas'].style.display = '';
-  _tfEl['tf-hint-escalier'].style.display = esc ? '' : 'none';
-  _tfEl['tf-nom-pas'].textContent = cle === 'masse' ? 'Grain de sable (pas à pas, escalier)'
-    : cle === 'volume' ? 'Pas (pas à pas)' : 'Pas (pas à pas, escalier)';
+  _tfEl['tf-row-pas'].style.display = esc ? '' : 'none';
+  _tfEl['tf-nom-pas'].textContent = cle === 'masse' ? 'Grain de sable' : 'Hauteur des marches';
   _tfEl['tf-sl-pas'].value = tfCarte[cle].iPas;
   _tfEl['tf-lbl-pas'].textContent = _tfFmtPas(cle, _tfPas(cle));
 }
@@ -843,7 +877,7 @@ function _tfMajPopSource(force) {
   inp.disabled = _tfEl['tf-pop-moins'].disabled = _tfEl['tf-pop-plus'].disabled
     = _tfEl['tf-pop-tgaz'].disabled = dessous;
   if (force || document.activeElement !== inp) inp.value = _tfFmtChamp(tfTSource(f), 2);
-  _tfEl['tf-pop-note'].textContent = dessous ? 'Sous le cylindre : agir sur Température pour la changer.' : '';
+  _tfEl['tf-pop-note'].textContent = dessous ? 'Sous le cylindre : elle se règle dans Transformation (agir sur la source).' : '';
 }
 
 // Onglets du fond et températures des sources (celle sous le cylindre suit
@@ -872,13 +906,23 @@ function tfBasculerPiston() {
   tfMajAfficheurs();
 }
 
-function tfOnAction(a) {
-  tfCarte.action = a;
+// Organe visé (mode Viser) : le piston ou la source sous le cylindre
+function tfOnOrgane(o) {
+  tfCarte.organe = o;
   _tfMajBoutons();
   tfMajAfficheurs();
 }
 
-// Montage (en tête de la carte) : la pression passe par l'air de
+// Mode : viser une valeur, ou agir à la main pas à pas
+function tfOnMode(m) {
+  if (m === tfCarte.mode) return;
+  tfCarte.mode = m;
+  tfPapFin();
+  _tfMajBoutons();
+  tfMajAfficheurs();
+}
+
+// Montage (section État initial) : la pression passe par l'air de
 // l'enceinte ou par les masses posées, à l'air libre ; en changer
 // réinitialise (confirmation si des étapes seraient perdues)
 function tfOnMontage(m) {
@@ -920,25 +964,13 @@ function tfOnSaisieVise(val, fin) {
   tfMajAfficheurs();
 }
 
-// − et + : vers la graduation voisine (1 cm, 5 kg, 10 kPa, 10 K) ; en pas à
-// pas, un pas de la transformation (_tfPapPas)
+// − et + : vers la graduation voisine (1 cm, 5 kg, 10 kPa, 10 K)
 function tfOnPlusMoins(sens) {
-  if (tfCarte.pap) return _tfPapPas(sens);
   var cle = _tfCle(), V = TF_VISEE[cle], v = tfCarte[cle].vise / V.pas;
   _tfViser(V.pas * (sens > 0 ? Math.floor(v + 1e-6) + 1 : Math.ceil(v - 1e-6) - 1));
   _tfMajChampVise(true);
   tfMajAfficheurs();
   return true;
-}
-
-// Manière Pas à pas : − et + agissent à chaque clic ; le champ montre la
-// valeur actuelle. Recliquer en sort.
-function tfBasculerPap() {
-  tfCarte.pap = !tfCarte.pap;
-  tfPapFin();
-  if (tfCarte.pap) tfCarte[_tfCle()].suit = true;
-  _tfMajBoutons();
-  tfMajAfficheurs();
 }
 
 // Valeur d'une grandeur dans un état du journal (température : celle du
@@ -1025,15 +1057,19 @@ function _tfPrevoir(cle) {
 function _tfMajPrevu(cle) {
   var k = tfCarte[cle], enCours = tfEnCours() || !!_tfEnAttente;
   var rien = Math.abs(k.vise - _tfActuelle(cle)) < 1e-6 * Math.max(1, Math.abs(k.vise));
-  var P = enCours || rien || tfCarte.pap ? [] : _tfPrevoir(cle);
+  var P = enCours || rien || tfCarte.mode !== 'viser' ? [] : _tfPrevoir(cle);
   var fmt = function (p) {
     return '<b>' + _tfFmt(p.V * 1000, 3) + ' L · ' + _tfFmt(p.P / 1000, 1) + ' kPa · ' + _tfFmt(p.T, 1) + ' K</b>';
   };
-  // Une ligne : l'arrivée (réversible si elle dépend de la manière), puis
-  // l'arrivée brutale quand elle est chiffrée
+  // La nature de la transformation (elle découle des conditions), puis
+  // l'arrivée (réversible si elle dépend de la manière) et l'arrivée
+  // brutale quand elle est chiffrée
   var h = '';
   if (P.length) {
-    h = '→ ' + fmt(P[0]);
+    var o = _tfOrgane(), m = tfMesures();
+    var sens = o === 'source' ? (k.vise > tf.Text ? 'Chauffage ' : 'Refroidissement ')
+             : (P[0].V < m.V ? 'Compression ' : 'Détente ');
+    h = '<span class="tf-nature">' + sens + _tfNature(o) + '</span><br>→ ' + fmt(P[0]);
     if (P[1]) h += '<br>brutalement → ' + fmt(P[1]);
   }
   var sig = h;
@@ -1046,26 +1082,47 @@ function _tfMajPrevu(cle) {
   tfGraph.sale = true;
 }
 
-// ── − et + maintenus : répétés ; en pas à pas, chaque clic agit ──
-// Pas à pas : un grain de sable, un pas de P_air, un pas du vérin (rapide)
-// ou un échelon de la source sous le cylindre. Chaque clic est une petite
-// transformation brutale ; les clics successifs sur la même grandeur font
-// une seule étape du journal, même si le gaz atteint l'équilibre entre deux.
+// ── Boutons maintenus : répétés ──
+// − et + de la valeur visée ; boutons d'un pas, à la main : un grain de
+// sable, un pas de P_air, un pas du vérin (rapide) ou un échelon de la
+// source sous le cylindre. Chaque pas est une petite transformation
+// brutale ; les pas successifs sur la même grandeur font une seule étape du
+// journal, même si le gaz atteint l'équilibre entre deux.
 var TF_PAP_DELAI = 400, TF_PAP_PERIODE = 150;   // ms réelles
 var _tfPap = null;   // {minuterie}
 
-function tfPmDebut(sens, ev) {
+function _tfRepeter(agir, ev) {
   if (ev && ev.button) return;   // bouton principal seulement
   if (ev) ev.preventDefault();   // ni focus ni sélection de texte
   tfPapFin();
-  if (!tfOnPlusMoins(sens)) return;
+  if (!agir()) return;
   _tfPap = { t: setTimeout(function () {
     if (!_tfPap) return;
     // Un pas refusé pendant que le vérin finit le précédent : on réessaie
     _tfPap.t = setInterval(function () {
-      if (!tfOnPlusMoins(sens) && !tf.verin.actif) tfPapFin();
+      if (!agir() && !tf.verin.actif) tfPapFin();
     }, TF_PAP_PERIODE);
   }, TF_PAP_DELAI) };
+}
+
+function tfPmDebut(sens, ev) {
+  _tfRepeter(function () { return tfOnPlusMoins(sens); }, ev);
+}
+
+function tfMainDebut(o, sens, ev) {
+  _tfRepeter(function () { return _tfPapPas(o, sens); }, ev);
+}
+
+function tfMainClavier(o, sens, ev) {
+  if (ev && ev.detail !== 0) return;
+  _tfPapPas(o, sens);
+}
+
+// Curseur du pas d'un organe (crans 1-2-5)
+function tfOnPasMain(o, val) {
+  tfCarte[_tfCleOrgane(o)].iPas = parseInt(val, 10);
+  _tfMajMain();
+  _tfMajDuree();
 }
 
 function tfPapFin() {
@@ -1082,12 +1139,15 @@ function tfPmClavier(sens, ev) {
   tfOnPlusMoins(sens);
 }
 
-function _tfPapPas(sens) {
+// Un pas sur l'organe o ('piston' ou 'source'). Compte les pas de l'étape
+// et ceux faits sans attendre l'équilibre (affichés sous les organes).
+function _tfPapPas(o, sens) {
   if (tfEnCours() || _tfEnAttente) return false;
-  var cle = _tfCle(), pas = _tfPas(cle), V = TF_VISEE[cle], v = _tfActuelle(cle);
-  if (cle === 'Text' && tf.fond === 'isolant') return false;
+  if (o === 'source' && tf.fond === 'isolant') return false;
+  var cle = _tfCleOrgane(o), pas = _tfPas(cle), V = TF_VISEE[cle], v = _tfActuelle(cle);
   var cible = Math.round(_tfBorner(v + sens * pas, V.min, V.max) * 1e6) / 1e6;
   if (Math.abs(cible - v) < 1e-9) return false;
+  var eq = tfMesures().equilibre;
   var E = tfEtapes, der = E.liste[E.liste.length - 1];
   if (der && der.pap === cle) {
     tfEtapeRouvrir();
@@ -1097,7 +1157,10 @@ function _tfPapPas(sens) {
     der = E.liste[E.liste.length - 1];
     der.pap = cle;
     der.v0 = v;
+    der.nbPas = der.nbHors = 0;
   }
+  der.nbPas++;
+  if (!eq) der.nbHors++;
   if (cle === 'volume') {
     tfLancerVerin(cible, Math.max(5e-4, 2 * Math.abs(cible - v) / TF_V_BRUTAL));
   } else if (cle === 'Text') {
@@ -1114,6 +1177,53 @@ function _tfPapPas(sens) {
   _tfMajBoutons();
   tfMajAfficheurs();
   return true;
+}
+
+// ── Mode À la main : voyant d'équilibre et cartes des organes ──
+// Le voyant dit quand faire le pas suivant : un pas fait avant l'équilibre
+// rend le chemin non défini (la transformation n'est plus quasi statique).
+var TF_NOM_ORGANE = { volume: 'Vérin', masse: 'Sable', Pair: 'Air de l’enceinte' };
+
+function _tfMajMain() {
+  if (tfCarte.mode !== 'main') return;
+  var m = tfMesures(), eq = m.equilibre;
+  var voy = _tfEl['tf-voyant'];
+  voy.classList.toggle('eq', eq);
+  _tfEl['tf-voyant-txt'].textContent = eq ? 'Équilibre : pas suivant possible'
+                                          : 'Hors équilibre : attendre le vert';
+
+  // Piston : vérin (tenu), air ou sable (libre)
+  var cle = _tfCleOrgane('piston'), pas = _tfPas(cle), lib = _tfFmtPas(cle, pas);
+  _tfEl['tf-main-nom-piston'].textContent = TF_NOM_ORGANE[cle];
+  _tfEl['tf-main-nature-piston'].textContent = _tfNature('piston');
+  _tfEl['tf-main-val-piston'].textContent = cle === 'volume' ? _tfFmt(tf.z[TF_N] * 100, 1) + ' cm'
+    : cle === 'Pair' ? _tfFmt(tf.Pair / 1000, 1) + ' kPa' : _tfFmt(tf.masse, 2) + ' kg';
+  _tfEl['tf-main-moins-piston'].textContent = (cle === 'volume' ? '▼ ' : '− ') + lib;
+  _tfEl['tf-main-plus-piston'].textContent = (cle === 'volume' ? '▲ ' : '+ ') + lib;
+  _tfEl['tf-main-moins-piston'].title = cle === 'volume' ? 'Descendre le piston (compression)'
+    : cle === 'masse' ? 'Retirer un grain de sable' : 'Diminuer la pression de l’air';
+  _tfEl['tf-main-plus-piston'].title = cle === 'volume' ? 'Monter le piston (détente)'
+    : cle === 'masse' ? 'Verser un grain de sable' : 'Augmenter la pression de l’air';
+
+  // Source : seulement si le cylindre est posé sur l'une d'elles
+  var src = tf.fond !== 'isolant', libT = _tfFmtPas('Text', _tfPas('Text'));
+  _tfEl['tf-carte-source'].classList.toggle('inactif', !src);
+  _tfEl['tf-main-nom-source'].textContent = src ? 'Source ' + tf.fond : 'Source';
+  _tfEl['tf-main-nature-source'].textContent = src ? _tfNature('source') : '';
+  _tfEl['tf-main-val-source'].textContent = src ? _tfFmt(tf.Text, 1) + ' K' : '';
+  _tfEl['tf-main-moins-source'].textContent = '− ' + libT;
+  _tfEl['tf-main-plus-source'].textContent = '+ ' + libT;
+  _tfEl['tf-main-moins-source'].disabled = _tfEl['tf-main-plus-source'].disabled = !src;
+  _tfEl['tf-main-sl-source'].disabled = !src;
+  _tfEl['tf-main-note-source'].style.display = src ? 'none' : '';
+
+  // Pas de l'étape en cours
+  var E = tfEtapes, der = E.liste[E.liste.length - 1], txt = '';
+  if (der && der.pap && der.nbPas) {
+    txt = 'Étape en cours : ' + der.nbPas + ' pas';
+    if (der.nbHors) txt += ', dont ' + der.nbHors + ' sans attendre l’équilibre';
+  }
+  _tfEl['tf-main-compte'].textContent = txt;
 }
 
 function _tfDescPap(cle, v0, v) {
@@ -1149,7 +1259,9 @@ function tfLancer() {
   if (tfEnCours() || _tfEnAttente) return;
   var cle = _tfCle(), vise = tfCarte[cle].vise, duree = _tfDuree(cle);
   var desc = _tfDescAction(cle, duree), pas = cle === 'volume' ? 0 : _tfPas(cle);   // pas de marches pour le vérin
+  _tfLance = { man: 'fins', cle: cle, v0: _tfActuelle(cle) };
   _tfLancerApresRalenti(cle, vise, duree, function () {
+    _tfLance.v0 = _tfActuelle(cle);
     _tfOuvrirEtape(desc);
     if (cle === 'volume') {
       tfLancerVerin(vise, duree);
@@ -1352,7 +1464,7 @@ function _tfVitesseRelax() {
   if (TF_VITESSES[i] > (_tfRampeV ? _tfRampeV.v1 : tf.vitesse)) _tfVersCran(i);
 }
 
-// ── Section Gaz : γ et état initial (en changer réinitialise) ──
+// ── Section État initial : montage, γ, T0, hauteur (en changer réinitialise) ──
 function tfOnGamma(g) {
   g = Math.round(g * 1e6) / 1e6;
   if (Math.abs(g - tf.gamma) < 1e-9) return;
@@ -1381,6 +1493,15 @@ function _tfMajGaz() {
   var h = tf.V0 / TF_S;
   _tfEl['tf-sl-V0'].value = Math.round(h * 100);
   _tfEl['tf-lbl-V0'].textContent = _tfFmtValeur('volume', h);
+  _tfMajResume();
+}
+
+// Résumé de l'état initial, dans le titre de la section repliée
+function _tfMajResume() {
+  var g = tf.gamma, nom = Math.abs(g - 5 / 3) < 2e-3 ? 'mono' : Math.abs(g - 1.4) < 2e-3 ? 'di'
+    : Math.abs(g - 4 / 3) < 2e-3 ? 'poly' : 'γ ' + _tfFmt(g, 2);
+  _tfEl['tf-resume-init'].textContent = (tfCarte.moyen === 'Pair' ? 'enceinte' : 'masses') + ' · ' + nom
+    + ' · ' + Math.round(tf.T0) + ' K · ' + _tfFmtChamp(tf.V0 / TF_S * 100, 0) + ' cm';
 }
 
 // ── Section Affichage ──
