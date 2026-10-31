@@ -269,7 +269,10 @@ function _tfFmtmJK(x) {
 // ou celui de l'étape cliquée ; choisie d'elle-même quand un cycle se ferme)
 var tfBilanVue = 'etape';
 var _tfBilanCycleSig = '';
-var TF_SC_REV = 2e-4;   // J/K : en dessous, S créée est tenue pour nulle (TF_REV_SC)
+// J/K : en dessous, S créée est tenue pour nulle ; c'est aussi ce que
+// l'affichage arrondit à 0,00 mJ/K (_tfFmtmJK) : le verdict ne dit pas
+// « réversible » à côté d'une valeur non nulle
+var TF_SC_REV = 5e-6;
 
 function tfOnBilanVue(v) {
   tfBilanVue = v;
@@ -466,14 +469,17 @@ function _tfSuffixeFond() {
 //     mécanique suffit : le gaz reste uniforme, l'écart de température se
 //     loge dans la paroi.
 //   - Réversiblement : en plus, entropie créée Q²·(R_int + 1/G) / (T²·durée)
-//     sous TF_REV_SC.
+//     sous TF_REV_SC. Mesuré, S_c décroît bien comme 1/durée, et vaut ~2,6
+//     fois moins que cette estimation : une étape crée ~1 µJ/K, un cycle de
+//     quatre étapes reste sous TF_SC_REV (affiché 0,00 mJ/K). Quasi
+//     statiquement, un Carnot crée 0,016 mJ/K, un Stirling 0,07.
 // Mesures (vérin 30 → 15 cm, PLAN §10.5) : diathermane, il faut ~6000 s
 // pour que T reste définie (S_c 0,09 mJ/K) ; G = 0,001 W/K, 6000 s laissent
 // T définie mais S_c = 5 mJ/K : quasi statique mais irréversible.
 var TF_V_BRUTAL = 150;        // m/s
 var TF_QS_MIN = 1;            // s
 var TF_QS_ECART = 0.25;       // K
-var TF_REV_SC = 2e-4;         // J/K
+var TF_REV_SC = 2.5e-6;       // J/K estimés par étape (~1 µJ/K mesuré)
 var TF_R_INT = 0.72;
 
 function _tfParamsManiere(cle, man) {
