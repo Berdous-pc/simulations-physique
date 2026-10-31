@@ -153,6 +153,7 @@ var tf = {
   masse  : 0,            // kg
   blocs  : 0,            // kg
   sable  : 0,            // kg
+  sableMain : 0,         // kg, part du sable posée à la main (dessin seulement)
   bAmort : 0,            // kg·s⁻¹, recalculé à chaque sous-pas
 
   // Vérin (piston tenu) : mouvement de zDep à zArr, commencé à t0, de durée tau
@@ -397,7 +398,7 @@ function tfReset() {
     tf.q[j] = 0;
   }
 
-  tf.sable  = 0;
+  tf.sable  = tf.sableMain = 0;
   tf.masse  = tf.blocs = tf.montage === 'masse' ? tfMasseDepart(P0) : 0;
   tf.tenu   = false;   // piston libre, en équilibre sous P0 (Pair ou masse ci-dessous)
   tf.verin.actif = false;
@@ -463,36 +464,44 @@ function tfTSource(f) { return f === tf.fond ? tf.Text : tf['T' + f]; }
 // Masse posée portée à `cible` (kg). Ajoutée d'un coup, la différence est un
 // bloc ; ajoutée lentement (marche d'un escalier), du sable. Le retrait
 // brutal prend d'abord sur les blocs, le retrait lent d'abord sur le sable.
-function _tfChangerMasse(cible, lent) {
+// main : pas à la main ; la part du sable posée à la main (tf.sableMain) ne
+// sert qu'au dessin, où ses grains sont plus fins. Un retrait à la main la
+// prend d'abord sur elle, tout autre retrait d'abord sur le sable versé.
+function _tfChangerMasse(cible, lent, main) {
   cible = Math.max(0, Math.min(TF_MASSE_MAX, cible));
   var d = cible - tf.masse;
   _tfRecaler(function () {
+    var sable0 = tf.sable;
     if (d > 0) {
       if (lent) tf.sable += d; else tf.blocs += d;
+      if (lent && main) tf.sableMain += d;
     } else {
       var reste = -d;
       var prem = lent ? 'sable' : 'blocs', sec = lent ? 'blocs' : 'sable';
       var a = Math.min(reste, tf[prem]);
       tf[prem] -= a;
       tf[sec] = Math.max(0, tf[sec] - (reste - a));
+      var retire = sable0 - tf.sable, verse = sable0 - tf.sableMain;
+      tf.sableMain -= main ? Math.min(retire, tf.sableMain) : Math.max(0, retire - verse);
     }
     // Au milligramme près : pas de reliquat d'arrondi dessiné comme du sable
     tf.blocs = Math.round(tf.blocs * 1e6) / 1e6;
     tf.sable = Math.round(tf.sable * 1e6) / 1e6;
+    tf.sableMain = Math.min(tf.sable, Math.max(0, Math.round(tf.sableMain * 1e6) / 1e6));
     tf.masse = tf.blocs + tf.sable;
   });
   _tfMajAmortissement();
 }
 
 // Fixe une contrainte extérieure : P_air ('Pair'), T_ext ('Text') ou masse
-// posée ('masse'). continu : pas d'une rampe continue.
-function _tfFixer(cle, valeur, lent, continu) {
+// posée ('masse'). continu : pas d'une rampe continue ; main : pas à la main.
+function _tfFixer(cle, valeur, lent, continu, main) {
   // Pression ou masse sur le piston libre : le piston va bouger, retour au
   // calcul complet (la température de la source, elle, n'agit que par le
   // fond) ; sauf rampe continue assez lente pour que le piston la suive sans
   // osciller, que le mode quasi statique sait suivre
   if (cle !== 'Text' && !tf.tenu && !(continu && tf.rampes[cle].lente)) _tfQuitterQS();
-  if (cle === 'masse') _tfChangerMasse(valeur, lent);
+  if (cle === 'masse') _tfChangerMasse(valeur, lent, main);
   else tf[cle] = valeur;
   tf.needsRedraw = true;
 }

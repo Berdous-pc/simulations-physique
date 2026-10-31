@@ -472,10 +472,13 @@ function _tfDessinerPiston() {
   }
 
   // Sable : tas de grains devant la tige, un grain dessiné par
-  // TF_GRAIN_DESSIN de sable ; un grain versé apparaît, un grain retiré
-  // disparaît, d'un coup
+  // TF_GRAIN_MAIN de sable posé à la main (chaque pas se voit), par
+  // TF_GRAIN_DESSIN de sable versé ; un grain apparaît ou disparaît d'un
+  // coup. Au-delà de TF_GRAINS_MAX, la masse croît, le tas non.
   if (tf.sable > 0) {
-    var nb = Math.min(_tfGrains.length, Math.ceil(tf.sable / TF_GRAIN_DESSIN - 1e-6));
+    var nb = Math.min(TF_GRAINS_MAX,
+      Math.ceil(tf.sableMain / TF_GRAIN_MAIN - 1e-6)
+      + Math.ceil((tf.sable - tf.sableMain) / TF_GRAIN_DESSIN - 1e-6));
     var g = w * TF_GRAIN_LARG, rangs = 0;
     for (var i = 0; i < nb; i++) {
       var gr = _tfGrains[i];
@@ -515,7 +518,9 @@ function _tfZHautTige(zP) {
 // et à flancs inclinés, qui garde sa forme ; le bruit de la clé (moins d'un
 // rang) rend la surface irrégulière sans laisser de grain en l'air. Le
 // dernier grain versé, à la surface, est le premier retiré.
-var TF_GRAIN_DESSIN = 0.05;    // kg de sable par grain dessiné
+var TF_GRAIN_DESSIN = 0.05;    // kg de sable versé par grain dessiné (40 kg : 800 grains)
+var TF_GRAIN_MAIN   = 0.01;    // kg de sable posé à la main par grain dessiné (8 kg : 800)
+var TF_GRAINS_MAX   = 800;     // tas plein : le haut de la tige reste visible
 var TF_GRAIN_LARG   = 0.016;   // côté d'un grain, en fraction de la largeur du cylindre ;
                                // 40 kg de sable laissent voir le haut de la tige
 var TF_GRAIN_TEINTES = ['#e2c084', '#c49a52', '#edd3a0', '#a97f3c'];
@@ -541,7 +546,7 @@ var _tfGrains = (function () {
     }
   }
   cases.sort(function (a, b) { return a.cle - b.cle; });
-  return cases.slice(0, Math.ceil(TF_MASSE_MAX / TF_GRAIN_DESSIN) + 1);
+  return cases.slice(0, TF_GRAINS_MAX);
 })();
 
 // Masse sans décimale inutile : 20, 12,5

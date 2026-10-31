@@ -1217,7 +1217,7 @@ function _tfPapPas(o, sens) {
   } else if (cle === 'Text') {
     tfAppliquer('Text', cible, 0);
   } else {
-    _tfFixer(cle, cible, true);   // un grain : du sable, pas un bloc
+    _tfFixer(cle, cible, true, false, true);   // un grain : du sable, pas un bloc
     tfSetTenu(false);
   }
   var dsc = _tfDescPap(cle, der.v0, cible, der.nbHors);
