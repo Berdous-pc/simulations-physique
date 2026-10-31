@@ -58,7 +58,7 @@ var _tfPret = false;
 var TF_PAS_ESC = {
   volume: [0.001, 0.002, 0.005, 0.01, 0.02, 0.05],   // m : course du vérin
   masse : [0.01, 0.02, 0.05, 0.1, 0.2, 0.5],         // kg : masse d'un grain de sable
-  Pair  : [500, 1000, 2000, 5000, 10000, 20000],     // Pa
+  Pair  : [100, 200, 500, 1000, 2000, 5000, 10000, 20000],   // Pa ; 0,1 kPa : vers le réversible
   Text  : [0.1, 0.2, 0.5, 1, 2, 5, 10, 20]           // K ; 0,1 K : vers le réversible
 };
 
@@ -71,7 +71,7 @@ var tfCarte = {
   // pas, cran du pas
   volume : { vise: 0.15,     suit: true, iPas: 3 },
   masse  : { vise: 20,       suit: true, iPas: 2 },
-  Pair   : { vise: 2e5,      suit: true, iPas: 1 },
+  Pair   : { vise: 2e5,      suit: true, iPas: 3 },
   Text   : { vise: 400,      suit: true, iPas: 3 }
 };
 
@@ -266,17 +266,25 @@ function _tfScree(b0, b1) { return b1.S - b0.S - (b1.Se - b0.Se); }
 // Signe « − » seulement devant une valeur affichée non nulle (pas de « −0,00 »)
 function _tfSigne(x, s) { return (x < 0 && /[1-9]/.test(s) ? '−' : '') + s; }
 function _tfFmtJ(x) { return _tfSigne(x, _tfFmt(Math.abs(x), 2)) + ' J'; }
-function _tfFmtmJK(x) { return _tfSigne(x, _tfFmt(Math.abs(x) * 1e3, 2)) + ' mJ/K'; }
+// Entropies à la résolution de l'expérience, TF_RESOL_S (0,1 mJ/K) ; le
+// calcul, lui, garde toute sa précision
+function _tfFmtmJK(x) { return _tfSigne(x, _tfFmt(Math.abs(x) * 1e3, 1)) + ' mJ/K'; }
 
 // Vue du Bilan : 'etape' (l'étape cliquée dans la frise, la dernière
 // sinon, de son départ à son arrivée ou à maintenant), 'A' (depuis l'état initial) ou 'cycle' (le dernier cycle fermé,
 // ou celui de l'étape cliquée ; choisie d'elle-même quand un cycle se ferme)
 var tfBilanVue = 'etape';
 var _tfBilanCycleSig = '';
-// J/K : en dessous, S créée est tenue pour nulle ; c'est aussi ce que
-// l'affichage arrondit à 0,00 mJ/K (_tfFmtmJK) : le verdict ne dit pas
-// « réversible » à côté d'une valeur non nulle
-var TF_SC_REV = 5e-6;
+// Résolution de l'expérience sur l'entropie (J/K) : en dessous, une
+// irréversibilité ne se voit pas. Le cran le plus fin de chaque organe, sur
+// une transformation entière, y passe (sable 10 g, 100 → 200 kPa :
+// 0,02 mJ/K ; source 0,1 K, +100 K : 0,04 ; air 0,1 kPa, 100 → 200 kPa :
+// 0,04) ; un bloc de 20 kg posé d'un coup crée 37 mJ/K. S créée est tenue
+// pour nulle sous la moitié, ce que l'affichage arrondit à 0,0 mJ/K
+// (_tfFmtmJK) : le verdict ne dit pas « réversible » à côté d'une valeur
+// non nulle.
+var TF_RESOL_S = 1e-4;
+var TF_SC_REV = TF_RESOL_S / 2;
 
 function tfOnBilanVue(v) {
   tfBilanVue = v;
@@ -476,16 +484,19 @@ function _tfSuffixeFond() {
 //     loge dans la paroi.
 //   - Réversiblement : en plus, entropie créée Q²·(R_int + 1/G) / (T²·durée)
 //     sous TF_REV_SC. Mesuré, S_c décroît bien comme 1/durée, et vaut ~2,6
-//     fois moins que cette estimation : une étape crée ~1 µJ/K, un cycle de
-//     quatre étapes reste sous TF_SC_REV (affiché 0,00 mJ/K). Quasi
-//     statiquement, un Carnot crée 0,016 mJ/K, un Stirling 0,07.
+//     fois moins que cette estimation : une étape crée ~6 µJ/K, un cycle de
+//     quatre étapes reste sous TF_SC_REV (affiché 0,0 mJ/K). Quasi
+//     statiquement, un Carnot crée 0,016 mJ/K, un Stirling 0,07. (Avant la
+//     résolution de 0,1 mJ/K, TF_REV_SC valait 2,5 µJ/K : cycles de 7 à 57 h
+//     simulées, six fois plus longs.)
 // Mesures (vérin 30 → 15 cm, PLAN §10.5) : diathermane, il faut ~6000 s
 // pour que T reste définie (S_c 0,09 mJ/K) ; G = 0,001 W/K, 6000 s laissent
 // T définie mais S_c = 5 mJ/K : quasi statique mais irréversible.
 var TF_V_BRUTAL = TF_V_VERIN_MAX;   // m/s
 var TF_QS_MIN = 1;            // s
 var TF_QS_ECART = 0.25;       // K
-var TF_REV_SC = 2.5e-6;       // J/K estimés par étape (~1 µJ/K mesuré)
+var TF_PAS_VERIN_TRAV = 3;    // durée minimale d'un pas du vérin, en traversées du son
+var TF_REV_SC = 1.5e-5;       // J/K estimés par étape (~6 µJ/K mesuré)
 var TF_R_INT = 0.72;
 
 function _tfParamsManiere(cle, man) {
@@ -769,7 +780,9 @@ function _tfMajBoutons() {
   _tfMajChampVise(true);
 
   // Curseurs du pas des organes, crans de leur grandeur
-  _tfEl['tf-main-sl-piston'].value = tfCarte[_tfCleOrgane('piston')].iPas;
+  var clePiston = _tfCleOrgane('piston');
+  _tfEl['tf-main-sl-piston'].max = TF_PAS_ESC[clePiston].length - 1;
+  _tfEl['tf-main-sl-piston'].value = tfCarte[clePiston].iPas;
   _tfEl['tf-main-sl-source'].value = tfCarte.Text.iPas;
   _tfMajMain();
 
@@ -1213,7 +1226,10 @@ function _tfPapPas(o, sens) {
   if (!eq) der.nbHors++;
   tfGraphMarche();
   if (cle === 'volume') {
-    tfLancerVerin(cible, Math.max(5e-4, 2 * Math.abs(cible - v) / TF_V_BRUTAL));
+    // Au moins une traversée du gaz par le son : un pas plus bref lançait
+    // une onde qui créait quatre fois l'entropie d'un pas de pression
+    // équivalent ; un grand pas reste rapide, donc irréversible
+    tfLancerVerin(cible, Math.max(5e-4, TF_PAS_VERIN_TRAV * tfDurees().traversee, 2 * Math.abs(cible - v) / TF_V_BRUTAL));
   } else if (cle === 'Text') {
     tfAppliquer('Text', cible, 0);
     tfPasSource();
