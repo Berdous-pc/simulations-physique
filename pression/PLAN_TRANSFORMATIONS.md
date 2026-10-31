@@ -408,7 +408,7 @@ Transformation attendue : …
 - ✅ **R3** (terminé, cf. ARCHITECTURE.md ; ajouts : conduction implicite en mode quasi statique et crans jusqu'à ×10 000, durées réglées sur la chaleur échangée et les résistances thermiques — les premières, 3 τ_int et 10 τ_th, laissaient le gaz non défini —, vitesse adaptée au retour à l'équilibre, équilibre exigeant T_gaz = T_source si le fond conduit) : trois boutons **Brutalement / Quasi statiquement / Réversiblement** à la place des curseurs de durée et de marches (§10.5). Deux commits : moteur (pression qui varie continûment en mode quasi statique), puis interface.
 - ✅ **R4a** (terminé, §10.7) : montage enceinte ou masses, fond sur l'isolant ou l'une de deux sources à température saisie, valeur visée en champ avec arrivée prévue, pas à pas, annuler l'étape.
 - ✅ **R4b** (terminé, §10.8) : panneau épuré, montage en tête de carte et visible sur la scène, vitesse sur une ligne, pas à pas comme quatrième manière pour les trois grandeurs.
-- ✅ **R4c** (terminé, §10.9) : panneau en État initial / Conditions / Transformation ; grandeur réglée déduite des conditions (organe piston ou source) ; deux modes, Viser une valeur et À la main (voyant d'équilibre, cartes d'organes, pas 1-2-5).
+- ✅ **R4c** (terminé, §10.9) : panneau en État initial / Conditions / Transformation ; grandeur réglée déduite des conditions (organe piston ou source) ; deux modes, Viser une valeur et À la main (voyant d'équilibre, cartes d'organes, pas 1-2-5) ; réglages fins supprimés.
 - **R4** : file d'attente (action lancée pendant une autre → « ensuite », enchaînement à l'équilibre), séquences enregistrées (localStorage, export JSON), préréglages (aller-retour, Carnot, Stirling, Lenoir).
 - **R5** (option) : viser en cliquant sur le diagramme de Clapeyron.
 - ✅ **Diagramme TS et Bilan** (§10.6, palier 7) : terminé. **Prochain palier proposé : R4**, puis R5, et les paliers 8 (intégration) et 9 (site).
@@ -559,7 +559,6 @@ Transformation  [ Viser une valeur ] [ À la main ]
                 Compression adiabatique → 0,300 L · 264 kPa · 387 K
                 ▌Brutalement 0,5 ms   ▌Quasi statiquement 1 s   ▌Réversiblement   (liseré rouge, ambre, vert)
                 pendant l'action : [████░░ Quasi statique · reste 0,6 s] [■]
-                ▸ Réglages fins
   À la main :   ● Équilibre : pas suivant possible   (orange : attendre le vert)
                 Vérin  adiabatique          28,0 cm  [▼ 1 cm] [▲ 1 cm]  Pas ──●──
                 Source 1  isochore           400 K   [− 1 K] [+ 1 K]    Pas ──●──
@@ -570,5 +569,6 @@ Transformation  [ Viser une valeur ] [ À la main ]
 - **Grandeur déduite des conditions** (`_tfOrgane`, `_tfCleOrgane`) : piston tenu → hauteur (vérin) ; libre → P_air ou masse de sable selon le montage ; source → T_source. Plus de « Volume / Pression / Température » : cliquer Volume tenait le piston à la place de l'élève, qui ne voyait pas que c'est tenir le piston qui rend la transformation isochore. Agir sur la pression d'un piston tenu passe désormais par Libre (lui-même une transformation brutale s'il n'est pas équilibré).
 - **Nature** (`_tfNature`) : piston sur l'isolant, adiabatique ; piston sur une source, « isotherme si lente » ; source, isochore (tenu) ou isobare (libre). Écrite dans l'arrivée prévue (« Compression adiabatique ») et sur chaque carte d'organe.
 - **À la main** : le voyant reprend `tfMesures().equilibre`. Chaque pas compte (`nbPas`) et, s'il part hors équilibre, `nbHors` : c'est la différence entre quasi statique et brutal en petits morceaux. Pas en 1-2-5 (`TF_PAS_ESC`, six crans) : 1 mm à 5 cm, grains de 10 à 500 g, 0,5 à 20 kPa, 0,5 à 20 K ; le même pas sert aux marches des escaliers des réglages fins.
-- **Progression** (`_tfMajProgres`, `_tfLance`) : vérin, rampe continue, ou escalier (fraction de l'écart parcouru) ; ■ = Interrompre.
+- **Progression** (`_tfMajProgres`, `_tfLance`) : vérin ou rampe continue ; ■ = Interrompre.
+- **Réglages fins supprimés** (après R4c) : la durée libre et l'escalier automatique faisaient double emploi avec les trois manières et le mode À la main, et les textes « Transformation attendue » et durées caractéristiques avec les graphes et la nature affichée. Seul se perd le régime intermédiaire du vérin (τ de quelques ms : ondes pendant la course, état final proche du réversible), à retrouver autrement si besoin. Le moteur garde ses escaliers (`tfAppliquer` avec un pas), inutilisés par le panneau.
 

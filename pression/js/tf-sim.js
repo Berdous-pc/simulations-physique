@@ -100,16 +100,8 @@ function tfCranVitesse(v) {
   }
   return iMieux;
 }
-// Durées d'un escalier (s) : 0 = échelon (brutal)
-var TF_DUREES_ESC = [0, 1, 2, 5, 10, 20, 50, 100, 200, 500];
 
 // ── Vérin (piston tenu, PLAN §2.7) ──
-// Durées τ proposées (s), à pas à peu près logarithmiques. Les plus courtes
-// donnent un piston plus rapide que le son (choc) ; la limite de la
-// modélisation est sa vitesse de pointe, TF_V_VERIN_MAX, qui allonge au
-// besoin la durée des longues courses.
-var TF_DUREES      = [0.0005, 0.001, 0.002, 0.003, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5,
-                      1, 2, 5, 10, 20, 60];
 // Vitesse de pointe du vérin (2·Δz/τ), au plus : le piston peut dépasser la
 // célérité du son (choc), mais au-delà l'erreur sur l'énergie grandit
 // (7·10⁻³ à 700 m/s). Une durée trop courte pour la course est allongée.

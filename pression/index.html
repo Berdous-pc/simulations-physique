@@ -519,42 +519,6 @@
               <button class="tf-stop" id="tf-btn-interrompre" onclick="tfOnInterrompre()"
                       title="Interrompre" aria-label="Interrompre">■</button>
             </div>
-
-            <!-- Réglages fins : durée et marches au choix, pour les
-                 démonstrations (convergence vers le réversible, choc…) -->
-            <details class="tf-fins" id="tf-fins">
-              <summary>Réglages fins</summary>
-              <div class="param-row">
-                <label for="tf-sl-duree">Durée
-                  <span class="param-value" id="tf-lbl-duree">—</span>
-                </label>
-                <input type="range" id="tf-sl-duree" min="0" max="16" step="1" value="8"
-                       oninput="tfOnDuree(this.value)">
-                <div class="slider-ticks">
-                  <span>brutale</span>
-                  <span>lente</span>
-                </div>
-                <span class="input-hint" id="tf-duree-allongee" style="display:none"></span>
-              </div>
-              <div class="param-row" id="tf-row-pas" style="display:none">
-                <label for="tf-sl-pas"><span id="tf-nom-pas">Hauteur des marches</span>
-                  <span class="param-value" id="tf-lbl-pas">—</span>
-                </label>
-                <input type="range" id="tf-sl-pas" min="0" max="5" step="1" value="2"
-                       oninput="tfOnPas(this.value)">
-                <div class="slider-ticks">
-                  <span>fines</span>
-                  <span>grosses</span>
-                </div>
-                <span class="input-hint" id="tf-hint-escalier"></span>
-              </div>
-              <button id="tf-btn-lancer" class="btn btn-primary" onclick="tfLancer()">Lancer avec ces réglages</button>
-              <div class="readout" style="margin-top:8px">
-                <div class="ro-label">Transformation attendue</div>
-                <div class="ro-value tf-regime" id="tf-ro-regime">—</div>
-              </div>
-              <div class="tf-durees-car" id="tf-durees-car"></div>
-            </details>
           </div>
 
           <!-- À la main : voyant d'équilibre, puis une carte par organe
@@ -682,7 +646,7 @@
         <strong>Viser une valeur</strong> : choisir d'abord <strong>Agir sur le piston</strong> ou <strong>Agir sur la source</strong>. La valeur visée se tape dans le champ (Entrée pour valider) ou se règle avec <strong>−</strong> et <strong>+</strong> (maintenir pour répéter) ; le menu <strong>État</strong> reprend la valeur d'un état du journal (température : celle du gaz). Tant qu'on n'y touche pas, le champ montre la valeur actuelle. Dessous, la nature de la transformation et l'état d'arrivée prévu (volume, pression, température), aussi marqué d'un cercle pointillé orange sur les diagrammes ; le repère orange sur le cylindre marque la hauteur visée.
         Puis la manière : <strong>Brutalement</strong>, <strong>Quasi statiquement</strong> ou <strong>Réversiblement</strong> (la page choisit la durée, écrite sur le bouton ; « = quasi statiquement » quand les deux manières lentes reviennent au même). Pendant l'action, une barre montre son avancement et le temps restant ; <strong>■</strong> l'interrompt.
         <strong>À la main</strong> : une carte par organe, avec sa valeur actuelle et deux boutons qui font chacun un pas (▼ ▲ du vérin, − + de l'air, du sable ou de la source ; maintenir répète). Le curseur <strong>Pas</strong> de chaque carte règle la taille d'un pas (de 1 mm à 5 cm, de 10 g à 500 g de sable, de 0,5 à 20 kPa, de 0,5 à 20 K). Le voyant du haut passe à l'orange après chaque pas et revient au vert quand le gaz a retrouvé l'équilibre : attendre le vert entre deux pas pour une transformation quasi statique. Les pas qui se suivent forment une seule étape du journal ; sous les cartes, leur nombre, et combien ont été faits sans attendre l'équilibre.
-        <strong>↶ Annuler la dernière</strong>, en face du titre Étapes, ramène à l'état de départ de la dernière étape. Les <strong>Réglages fins</strong> (repliés, sous les trois manières) laissent choisir la durée et la hauteur des marches d'un escalier.
+        <strong>↶ Annuler la dernière</strong>, en face du titre Étapes, ramène à l'état de départ de la dernière étape.
         En haut à droite de la scène, <strong>Δt</strong> donne le temps écoulé depuis le début de l'étape, le même que sur les graphes au cours du temps (il s'arrête et grise avec eux quand le chrono est figé à l'équilibre) ; dessous, la vitesse d'écoulement du temps (×1/100 : ralenti cent fois ; ×500 : accéléré cinq cents fois).
         Avec <strong>Auto</strong> enfoncé, à droite du curseur Vitesse, chaque action choisit la vitesse qui la fait durer quelques secondes à l'écran, puis le temps accélère pour la suite du retour à l'équilibre (la mise en équilibre thermique est souvent bien plus lente que le mouvement du piston). Ces changements sont progressifs : ▲ s'affiche devant la vitesse quand le temps accélère, ▼ quand il ralentit. S'il faut ralentir pour voir une action, le ralentissement se fait d'abord, l'action part ensuite ; Interrompre l'annule.
         Le journal des <strong>Étapes</strong> note chaque transformation, de son état de départ à son état d'arrivée (A, B, C…, le premier équilibre atteint une fois l'action finie). Sur le diagramme de Clapeyron, chaque étape a sa couleur, une flèche donne le sens de parcours et l'état actuel est cerclé d'orange. Cliquer sur une étape la met en évidence, et fait passer les courbes de référence par son état d'arrivée (cliquer sur la ligne A : par l'état initial) ; ↺ revient à son état d'arrivée (les étapes suivantes sont effacées), avec le cylindre sur le support qu'il avait alors. Une action sans effet n'est pas notée.

@@ -481,16 +481,6 @@ main {
 .tf-btn-ligne .btn { flex: 1; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* Régime attendu de la transformation, selon la durée choisie */
-.ro-value.tf-regime {
-  font-size: clamp(12px, 1.2vw, 15px);
-  line-height: 1.3;
-}
-
-/* Réglages fins : durées caractéristiques (libellé à gauche, valeur à droite) */
-.tf-durees-car { margin: 6px 0 10px; font-size: clamp(11px, 0.95vw, 13px); color: #5a6a78; }
-.tf-duree-car { display: flex; justify-content: space-between; gap: 8px; padding: 1px 0; }
-.tf-duree-car span:last-child { color: #2c3e50; font-weight: 600; white-space: nowrap; }
 
 /* Titres : résumé de l'état initial (section repliée seulement), bouton
    Annuler des étapes */
@@ -508,7 +498,7 @@ main {
 
 /* Trois manières de transformer, de la plus brutale à la plus lente : un
    liseré de couleur à gauche (rouge, ambre, vert), la durée choisie par la
-   page à droite ; réglages fins repliés */
+   page à droite */
 .tf-manieres { display: flex; flex-direction: column; gap: 5px; margin-top: 6px; }
 .tf-maniere {
   display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
@@ -584,8 +574,6 @@ main {
 .tf-organe-note { display: block; margin-top: 4px; font-size: 0.85em; color: #7a8a96; }
 .input-hint.tf-main-compte { display: block; }
 .input-hint.tf-main-compte:empty { display: none; }
-.tf-fins { margin-top: 10px; border-top: 1px solid #d4cec4; padding-top: 6px; }
-.tf-fins summary { cursor: pointer; color: #5a6a78; font-size: clamp(11px, 0.95vw, 13px); margin-bottom: 6px; }
 /* Vitesse : libellé, curseur, valeur, bouton Auto sur une ligne */
 .tf-vitesse-ligne { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
 .tf-vit-lbl { flex: 0 0 auto; font-size: clamp(12px, 1.15vw, 15px); color: #2c3e50; }
