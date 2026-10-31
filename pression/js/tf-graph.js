@@ -184,7 +184,7 @@ function _tfgEchantillon(avantMarche) {
   var figer = tfGraphAff.gel && m.equilibre && !tfEnCours() && g.blocage === 0
            && (g.repos || (g.eqSuite >= TF_G_EQ_GEL && g.ech.length > 0));
   if (g.gele) {
-    if (figer) return;
+    if (figer) { _tfgSuivreGele(m); return; }
     g.decal += tf.t - g.tGel;
     g.gele = false;
     g.coupure = true;
@@ -376,6 +376,24 @@ function tfGraphRevenir(ts, n) {
 // Étendue des tranches depuis le départ de l'étape, dans chaque diagramme
 // d'état : le cadrage automatique ne fait que s'élargir pendant un choc, au
 // lieu de pomper à chaque image
+// Chrono figé : le gaz, déclaré à l'équilibre, finit encore d'approcher
+// l'état final (écart sous les seuils : dixième d'un pas de la source,
+// oscillation résiduelle du piston). Le dernier échantillon suit son état,
+// à temps figé ; sinon le chemin s'arrêtait avant l'état actuel.
+function _tfgSuivreGele(m) {
+  var g = tfGraph, s = g.ech[g.ech.length - 1];
+  if (!s || s.marche) return;
+  var S = tfEntropie(), Pp = tf.tenu ? m.Pface : m.Pext;
+  s.V = s.Vt = s.Vlo = s.Vhi = m.V;
+  s.Pm = s.Pt = s.Plo = s.Phi = m.Pmoy;
+  s.Tm = s.Tt = s.Tlo = s.Thi = m.Tmoy;
+  s.Pmin = m.Pmin; s.Pmax = m.Pmax; s.Tmin = m.Tmin; s.Tmax = m.Tmax;
+  s.Pdef = m.Pdef; s.Tdef = m.Tdef; s.ext = m.ext; s.eq = m.equilibre;
+  s.S = S; s.Pp = s.Ppt = Pp; s.Text = tf.Text;
+  _tfgEnveloppe(m, S);
+  g.sale = true;
+}
+
 function _tfgEnveloppe(m, S) {
   var g = tfGraph;
   if (!g.env) g.env = {};

@@ -59,7 +59,7 @@ var TF_PAS_ESC = {
   volume: [0.001, 0.002, 0.005, 0.01, 0.02, 0.05],   // m : course du vérin
   masse : [0.01, 0.02, 0.05, 0.1, 0.2, 0.5],         // kg : masse d'un grain de sable
   Pair  : [500, 1000, 2000, 5000, 10000, 20000],     // Pa
-  Text  : [0.5, 1, 2, 5, 10, 20]                     // K
+  Text  : [0.1, 0.2, 0.5, 1, 2, 5, 10, 20]           // K ; 0,1 K : vers le réversible
 };
 
 var tfCarte = {
@@ -72,7 +72,7 @@ var tfCarte = {
   volume : { vise: 0.15,     suit: true, iPas: 3 },
   masse  : { vise: 20,       suit: true, iPas: 2 },
   Pair   : { vise: 2e5,      suit: true, iPas: 1 },
-  Text   : { vise: 400,      suit: true, iPas: 1 }
+  Text   : { vise: 400,      suit: true, iPas: 3 }
 };
 
 // Champ de la valeur visée, par grandeur : libellé, unité affichée et son
@@ -1216,6 +1216,7 @@ function _tfPapPas(o, sens) {
     tfLancerVerin(cible, Math.max(5e-4, 2 * Math.abs(cible - v) / TF_V_BRUTAL));
   } else if (cle === 'Text') {
     tfAppliquer('Text', cible, 0);
+    tfPasSource();
   } else {
     _tfFixer(cle, cible, true, false, true);   // un grain : du sable, pas un bloc
     tfSetTenu(false);
@@ -1533,6 +1534,9 @@ function _tfVitesseRelax() {
     if (ecart > TF_SEUIL_T / 2) {
       D = (tf.G > 0 ? d.thermique : d.interne) * Math.log(Math.max(2, ecart / (TF_SEUIL_T / 2)));
     }
+    // Pas de la source sous le seuil (0,1 K) : l'attente est celle de
+    // tfPasSource, sans quoi le cran restait à ×1
+    if (tf.t < tf.tThMin) D = Math.max(D, tf.tThMin - tf.t);
   }
   if (D <= 0) return;
   // Jamais plus lent que la vitesse visée (celle d'un passage en cours)

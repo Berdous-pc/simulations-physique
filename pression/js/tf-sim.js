@@ -155,6 +155,7 @@ var tf = {
   sable  : 0,            // kg
   sableMain : 0,         // kg, part du sable posée à la main (dessin seulement)
   tReposMin : 0,         // s, piston pas au repos avant (tfPasPiston)
+  tThMin : 0,            // s, pas d'équilibre thermique avant (tfPasSource)
   bAmort : 0,            // kg·s⁻¹, recalculé à chaque sous-pas
 
   // Vérin (piston tenu) : mouvement de zDep à zArr, commencé à t0, de durée tau
@@ -345,7 +346,9 @@ function tfMesures() {
   // Fond conducteur : plus d'échange avec la source. Sans cette condition,
   // un gaz uniforme qui chauffe lentement à travers un fond peu conducteur
   // passait pour « à l'équilibre » (chrono figé, lettre posée trop tôt)
-  var thermique = tf.G === 0 || Math.abs(Tmoy - tf.Text) < TF_SEUIL_T;
+  // Après un pas de la source, l'écart peut rester sous le seuil (0,1 K
+  // sous 0,5 K) : équilibre attendu jusqu'à tf.tThMin (tfPasSource)
+  var thermique = (tf.G === 0 || Math.abs(Tmoy - tf.Text) < TF_SEUIL_T) && tf.t >= tf.tThMin;
   // Équilibre avec l'extérieur (convention de tracé des diagrammes d'état) :
   // gaz uniforme, pression égale à celle qu'exerce le piston libre (le
   // vérin, lui, exerce celle du gaz), température égale à celle de la
@@ -422,7 +425,7 @@ function tfReset() {
   tf.Qabs   = 0;
   tf.Wgaz   = 0;
   tf.limite = false;
-  tf.tReposMin = 0;
+  tf.tReposMin = tf.tThMin = 0;
   tf.dtCfl  = 1e-6;
   tf.tEchant = 0;
   tf.acc    = null;
@@ -472,6 +475,14 @@ function tfSetFond(f) {
 function tfPasPiston() {
   var periode = 4 * tfDurees().piston;
   tf.tReposMin = tf.t + Math.log(10) * periode / (2 * Math.PI * TF_AMORT);
+}
+
+// Pas à la main de la source : le gaz suit la nouvelle température en
+// exponentielle de constante tfDurees().thermique ; l'écart d'un pas de
+// 0,1 K reste sous le seuil TF_SEUIL_T. Pas d'équilibre thermique avant
+// que l'écart soit tombé au dixième, ln 10 constantes de temps.
+function tfPasSource() {
+  tf.tThMin = tf.t + Math.log(10) * tfDurees().thermique;
 }
 
 // Température d'une source ('1' ou '2')
