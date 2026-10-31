@@ -741,27 +741,58 @@ main {
 /* − et + maintenus : répétés */
 .tf-pm { touch-action: manipulation; user-select: none; }
 
-/* Journal des étapes : une ligne par étape (pastille de sa couleur, lettres,
-   action, état d'arrivée, retour) ; défile au-delà d'une dizaine */
+/* Frise des étapes, sur fond blanc : des points (états, cercle blanc cerclé
+   de la couleur de l'étape qui y arrive, comme les lettres du diagramme)
+   reliés par des traits (étapes : plein si le chemin est défini, pointillé
+   sinon) ; défile au-delà d'une dizaine d'étapes */
 .tf-journal {
-  max-height: 16em;
+  max-height: 24em;
   overflow-y: auto;
   margin-bottom: 6px;
+  padding: 4px;
+  background: #fff;
+  border: 1px solid #c8c0b4;
+  border-radius: 8px;
   font-size: clamp(11px, 0.95vw, 13px);
-}
-.tf-etape {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  padding: 4px 4px;
-  border-radius: 4px;
-  cursor: pointer;
   line-height: 1.3;
 }
-.tf-etape:hover { background: #dedad2; }
-.tf-etape.sel { background: #d4dde8; }
-.tf-pastille { flex: 0 0 10px; height: 10px; border-radius: 50%; margin-top: 3px; }
-.tf-etape-txt { flex: 1; color: #2c3e50; }
+.tf-f-point {
+  position: relative;
+  display: flex; align-items: center; gap: 6px;
+  min-height: 22px; padding: 2px 4px 2px 26px;
+  border-radius: 4px; cursor: pointer;
+}
+.tf-f-noeud {
+  position: absolute; left: 7px; top: 50%;
+  width: 8px; height: 8px; margin-top: -6px;
+  border: 2px solid; border-radius: 50%; background: #fff;
+}
+.tf-f-lettre { flex: none; color: #2c3e50; }
+.tf-f-point .tf-etat-val { flex: 1; min-width: 0; }
+.tf-f-trait {
+  margin-left: 12px; padding: 4px 4px 5px 15px;
+  border-left: 3px solid; border-radius: 0 4px 4px 0; cursor: pointer;
+}
+.tf-f-trait.pointille { border-left-style: dashed; }
+.tf-f-point:hover, .tf-f-trait:hover { background: #f2efea; }
+.tf-f-point.sel, .tf-f-trait.sel { background: #e3ebf4; }
+.tf-f-titre { font-weight: 600; color: #2c3e50; }
+.tf-f-detail { color: #7a8a96; font-size: 0.92em; }
+/* Manière, aux couleurs des liserés des boutons */
+.tf-f-puce {
+  display: inline-block; padding: 0 6px; margin-left: 2px;
+  border: 1px solid; border-radius: 8px;
+  font-size: 0.85em; font-weight: 600; white-space: nowrap;
+}
+.tf-f-brutal { color: #b04030; background: #fbeae6; border-color: #e8b8ac; }
+.tf-f-qs     { color: #a07010; background: #fbf1de; border-color: #e8d0a0; }
+.tf-f-rev    { color: #2a7a4a; background: #e6f4ea; border-color: #a8d4b4; }
+.tf-f-main   { color: #4a5a68; background: #eef0f2; border-color: #c8d0d8; }
+.tf-f-interrompu .tf-f-noeud { border-style: dashed; }
+.tf-f-encours .tf-f-noeud { animation: tf-f-pulse 0.8s ease-in-out infinite alternate; }
+@keyframes tf-f-pulse { to { transform: scale(1.4); } }
+.tf-f-encours, .tf-f-interrompu { cursor: default; }
+.tf-f-encours:hover, .tf-f-interrompu:hover { background: none; }
 .tf-etat-val { color: #5a6a78; }
 .tf-revenir {
   flex: 0 0 auto;

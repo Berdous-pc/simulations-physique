@@ -23,11 +23,16 @@ var TF_COUL_ETAPES = ['#2a5080', '#c0503a', '#2a8a50', '#8a4aa0', '#c08020', '#1
 var TF_COUL_SANS_ETAPE = '#7a8a96';
 
 var tfEtapes = {
-  liste   : [],     // {desc, couleur, depart, arrivee (indices de lettres ou null), statut}
+  // Étapes : titre (nature), detail, man (manière : 'brutal', 'qs', 'rev',
+  // 'main' ou null), couleur, depart et arrivee (indices de lettres ou
+  // null), statut, nonDef (le gaz est passé par un état où P ou T n'est pas
+  // définie : trait pointillé dans la frise, comme sur le diagramme), bilan0
+  // et bilan1 (compteurs au départ et à l'arrivée)
+  liste   : [],
   etats   : [],     // lettres : {lettre, V, P, T, S, snap}
   suivie  : null,   // lettre mise à jour tant que dure l'équilibre
-  sel     : -1,     // étape mise en évidence sur le diagramme (-1 : aucune)
-  selA    : false,  // état initial A sélectionné (courbes de référence)
+  sel     : -1,     // étape mise en évidence sur le diagramme et au bilan (-1 : aucune)
+  selEtat : -1,     // état par lequel passent les courbes de référence (-1 : aucun)
   bilanA  : null,   // compteurs du bilan à l'état initial A (tfBilan)
   version : 0       // incrémentée à chaque changement du journal (panneau)
 };
@@ -91,7 +96,7 @@ function tfEtapesEffacer() {
   tfEtapes.bilanA = tfBilan();
   tfEtapes.suivie = 0;
   tfEtapes.sel = -1;
-  tfEtapes.selA = false;
+  tfEtapes.selEtat = -1;
   tfEtapes.version++;
 }
 
@@ -103,7 +108,7 @@ function tfEtapeNouvelle(desc) {
   var depart = E.suivie;
   if (prec && prec.statut === 'en cours') { prec.statut = 'interrompue'; depart = null; }
   E.liste.push({
-    desc: desc,
+    titre: desc.titre, detail: desc.detail, man: desc.man || null, nonDef: false,
     couleur: TF_COUL_ETAPES[E.liste.length % TF_COUL_ETAPES.length],
     depart: depart, arrivee: null, statut: 'en cours',
     bilan0: tfBilan()     // compteurs au départ (section Bilan)
@@ -116,6 +121,7 @@ function tfEtapeNouvelle(desc) {
 // mesures : arrivée de l'étape en cours, suivi de la dernière lettre
 function tfEtapesSuivre(m) {
   var E = tfEtapes, et = E.liste[E.liste.length - 1];
+  if (et && et.statut === 'en cours' && !(m.Pdef && m.Tdef) && !et.nonDef) { et.nonDef = true; E.version++; }
   if (!m.equilibre || !E.etats.length) return;
   if (et && et.statut === 'en cours' && !tfEnCours()) {
     var D = et.depart !== null ? E.etats[et.depart] : null;
@@ -136,6 +142,7 @@ function tfEtapesSuivre(m) {
     E.etats.push(L);
     et.arrivee = E.etats.length - 1;
     et.statut = 'arrivee';
+    et.bilan1 = tfBilan();
     E.suivie = et.arrivee;
     E.version++;
   }
@@ -154,34 +161,31 @@ function tfEtapesRevenir(i) {
   E.etats.length = i + 1;
   E.suivie = i;
   if (E.sel >= n) E.sel = -1;
+  if (E.selEtat > i) E.selEtat = -1;
   E.version++;
   tfGraphRevenir(L.snap.t, n);
 }
 
+// Trait de la frise : l'étape mise en évidence sur le diagramme, et dont la
+// section Bilan fait le bilan (un second clic la désélectionne)
 function tfEtapesSelectionner(k) {
   tfEtapes.sel = tfEtapes.sel === k ? -1 : k;
-  tfEtapes.selA = false;
   tfEtapes.version++;
   tfGraph.sale = true;
 }
 
-// Sélection de l'état initial A (sa ligne du journal) : les courbes de
-// référence passent par lui
-function tfEtapesSelectionnerA() {
-  tfEtapes.selA = !tfEtapes.selA;
-  tfEtapes.sel = -1;
+// Point de la frise : les courbes de référence passent par cet état
+function tfEtapesSelectionnerEtat(i) {
+  tfEtapes.selEtat = tfEtapes.selEtat === i ? -1 : i;
   tfEtapes.version++;
   tfGraph.sale = true;
 }
 
-// État par lequel passent les courbes de référence : celui de la ligne
-// sélectionnée (arrivée de l'étape, ou A) ; null : départ de l'étape en
-// cours
+// État par lequel passent les courbes de référence : le point sélectionné ;
+// null : départ de l'étape en cours
 function tfEtapesEtatRef() {
   var E = tfEtapes;
-  if (E.selA) return E.etats[0];
-  if (E.sel >= 0 && E.liste[E.sel] && E.liste[E.sel].arrivee !== null) return E.etats[E.liste[E.sel].arrivee];
-  return null;
+  return E.selEtat >= 0 && E.etats[E.selEtat] ? E.etats[E.selEtat] : null;
 }
 
 // Rouvre la dernière étape, arrivée (pas à pas : les clics successifs
@@ -192,7 +196,9 @@ function tfEtapeRouvrir() {
   var E = tfEtapes, et = E.liste[E.liste.length - 1];
   if (!et || et.statut !== 'arrivee') return;
   if (et.arrivee === E.etats.length - 1) E.etats.pop();
+  if (E.selEtat >= E.etats.length) E.selEtat = -1;
   et.arrivee = null;
+  et.bilan1 = null;
   et.statut = 'en cours';
   E.suivie = null;
   E.version++;

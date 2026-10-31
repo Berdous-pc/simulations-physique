@@ -410,6 +410,7 @@ Transformation attendue : …
 - ✅ **R4b** (terminé, §10.8) : panneau épuré, montage en tête de carte et visible sur la scène, vitesse sur une ligne, pas à pas comme quatrième manière pour les trois grandeurs.
 - ✅ **R4c** (terminé, §10.9) : panneau en État initial / Conditions / Transformation ; grandeur réglée déduite des conditions (organe piston ou source) ; deux modes, Viser une valeur et À la main (voyant d'équilibre, cartes d'organes, pas 1-2-5) ; réglages fins supprimés.
 - ✅ **R4d** (terminé, §10.10) : section État initial en Dispositif (montage, gaz) et Point de départ A (P₀, V₀, T₀ réglables, n déduite) ; réglages en brouillon, appliqués aussitôt sans étape, sinon par « Recommencer depuis A ».
+- ✅ **R4e** (terminé, §10.11) : journal des Étapes en frise sur fond blanc (points = états, traits = étapes, pointillés si le gaz est passé par un état non défini) ; titre = nature, puce de la manière, S créée ; clic sur un point = courbes de référence, sur un trait = mise en évidence et Bilan de cette étape.
 - **R4** : file d'attente (action lancée pendant une autre → « ensuite », enchaînement à l'équilibre), séquences enregistrées (localStorage, export JSON), préréglages (aller-retour, Carnot, Stirling, Lenoir).
 - **R5** (option) : viser en cliquant sur le diagramme de Clapeyron.
 - ✅ **Diagramme TS et Bilan** (§10.6, palier 7) : terminé. **Prochain palier proposé : R4**, puis R5, et les paliers 8 (intégration) et 9 (site).
@@ -595,3 +596,24 @@ Transformation  [ Viser une valeur ] [ À la main ]
 - **Plus de curseurs** : champs − valeur + comme la valeur visée (pas 10 kPa, 0,05 L, 10 K, vers le multiple voisin), saisie au clavier ; γ seulement par les trois onglets, affiché à droite.
 - **Brouillon** : sans étape, un réglage s'applique aussitôt ; avec des étapes, rien n'est effacé, un encart propose « Recommencer depuis A » (= RAZ, qui applique toujours le brouillon) ou « Rétablir » ; le résumé du titre replié commence alors par ✎. Remplace la confirmation au changement de montage.
 - **Reste ouvert** : faire glisser le point A sur le diagramme de Clapeyron quand la section est ouverte.
+
+### 10.11 Palier R4e : frise des étapes (fait)
+
+```
+ÉTAPES                                        ↶ Annuler la dernière
+┌──────────────────────────────────────────────────────────────┐
+│ ○ A  0,600 L · 100,0 kPa · 293,0 K                      ↺ A  │
+│ ┆  Compression adiabatique  (brutale)                        │
+│ ┆  P_air → 150 kPa · isolant · S créée 12,67 mJ/K            │
+│ ○ B  0,457 L · 150,0 kPa · 334,9 K                      ↺ B  │
+│ │  Compression adiabatique  (quasi statique)                 │
+│ │  P_air → 250 kPa · 1,00 s · isolant · S créée 0,00 mJ/K    │
+│ ○ C  …                                                       │
+└──────────────────────────────────────────────────────────────┘
+```
+
+- **Points et traits** : les états (cercle blanc cerclé de la couleur de l'étape qui y arrive, comme les lettres du diagramme) et les transformations (trait de la couleur de l'étape). Point « en cours… » qui pulse, ou cerclé en pointillés si l'étape a été interrompue avant l'équilibre.
+- **Trait plein ou pointillé** selon ce qui s'est passé, pas selon la manière : `nonDef` passe à vrai dès qu'un échantillon des graphes a P ou T non définie (`tfEtapesSuivre`), comme le chemin du diagramme. Une compression quasi statique reste pleine ; une brutale, une mise en contact avec une source plus chaude ou des pas faits hors équilibre sont pointillés.
+- **Titre = nature** (`_tfTitreEtape`) : Compression, Détente, Chauffage, Refroidissement + adiabatique (isolant), isotherme (piston sur une source, lentement), monotherme (piston sur une source, brutalement ou avec des pas hors équilibre), isochore ou isobare (source). Puce de la manière aux couleurs des boutons ; détail : consigne, durée, fond, pas hors équilibre, S créée (de `bilan0` à `bilan1`, relevé à l'arrivée).
+- **Deux clics** : point → courbes de référence par cet état (`selEtat`, remplace `selA`, valable pour toutes les lettres) ; trait → étape mise en évidence et Bilan de cette étape (de son départ à son arrivée). Plus de phrase d'aide sous la frise.
+- **Reste ouvert** (point 5 de la proposition) : reconnaître le retour à un état déjà visité (même lettre, cycle fermé) et ajouter au Bilan une colonne Cycle (W, Q par source, rendement).

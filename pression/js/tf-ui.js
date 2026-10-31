@@ -230,34 +230,39 @@ function tfMajAfficheurs() {
 // S_c = ΔS − Σ δQ / T_source.
 var _tfBilanHtml = '';
 
+// Entropie créée entre deux relevés du bilan : ΔS − Σ δQ / T_source
+function _tfScree(b0, b1) { return b1.S - b0.S - (b1.Se - b0.Se); }
+
 function _tfFmtJ(x) { return (x < 0 ? '−' : '') + _tfFmt(Math.abs(x), 2) + ' J'; }
 function _tfFmtmJK(x) {
   if (Math.abs(x) < 0.005e-3) x = 0;
   return (x < 0 ? '−' : '') + _tfFmt(Math.abs(x) * 1e3, 2) + ' mJ/K';
 }
 
+// Colonnes : l'étape sélectionnée dans la frise (la dernière sinon), de
+// son départ à son arrivée (à maintenant si elle est en cours), et depuis A
 function _tfMajBilan() {
   var E = tfEtapes, b = tfBilan(), cols = [];
-  var et = E.liste[E.liste.length - 1];
+  var et = E.liste[E.sel >= 0 ? E.sel : E.liste.length - 1];
   if (et) {
     var dep = et.depart !== null ? E.etats[et.depart].lettre : '?';
     var arr = et.arrivee !== null ? E.etats[et.arrivee].lettre : et.statut === 'en cours' ? '…' : '✕';
-    cols.push({ titre: 'Étape ' + dep + ' → ' + arr, b0: et.bilan0 });
+    cols.push({ titre: 'Étape ' + dep + ' → ' + arr, b0: et.bilan0, b1: et.bilan1 || b });
   }
-  if (E.bilanA) cols.push({ titre: 'Depuis A', b0: E.bilanA });
+  if (E.bilanA) cols.push({ titre: 'Depuis A', b0: E.bilanA, b1: b });
   var lignes = [
-    ['W reçu', function (b0) { return _tfFmtJ(b.W - b0.W); }],
-    ['Q reçue', function (b0) { return _tfFmtJ(b.Q - b0.Q); }],
-    ['ΔU', function (b0) { return _tfFmtJ(b.U - b0.U); }],
-    ['W + Q', function (b0) { return _tfFmtJ(b.W - b0.W + b.Q - b0.Q); }],
-    ['ΔS du gaz', function (b0) { return _tfFmtmJK(b.S - b0.S); }],
-    ['Σ δQ / T_source', function (b0) { return _tfFmtmJK(b.Se - b0.Se); }],
-    ['S créée', function (b0) { return _tfFmtmJK(b.S - b0.S - (b.Se - b0.Se)); }, 'tf-bilan-sc']
+    ['W reçu', function (b0, b1) { return _tfFmtJ(b1.W - b0.W); }],
+    ['Q reçue', function (b0, b1) { return _tfFmtJ(b1.Q - b0.Q); }],
+    ['ΔU', function (b0, b1) { return _tfFmtJ(b1.U - b0.U); }],
+    ['W + Q', function (b0, b1) { return _tfFmtJ(b1.W - b0.W + b1.Q - b0.Q); }],
+    ['ΔS du gaz', function (b0, b1) { return _tfFmtmJK(b1.S - b0.S); }],
+    ['Σ δQ / T_source', function (b0, b1) { return _tfFmtmJK(b1.Se - b0.Se); }],
+    ['S créée', function (b0, b1) { return _tfFmtmJK(_tfScree(b0, b1)); }, 'tf-bilan-sc']
   ];
   var h = '<tr><th></th>' + cols.map(function (c) { return '<th>' + c.titre + '</th>'; }).join('') + '</tr>';
   lignes.forEach(function (l) {
     h += '<tr' + (l[2] ? ' class="' + l[2] + '"' : '') + '><td>' + l[0] + '</td>'
-       + cols.map(function (c) { return '<td>' + l[1](c.b0) + '</td>'; }).join('') + '</tr>';
+       + cols.map(function (c) { return '<td>' + l[1](c.b0, c.b1) + '</td>'; }).join('') + '</tr>';
   });
   if (h !== _tfBilanHtml) {
     _tfBilanHtml = h;
@@ -284,27 +289,41 @@ function _tfBoutonRevenir(i) {
        + 'onclick="event.stopPropagation(); tfOnRevenir(' + i + ')">↺ ' + l + '</button>';
 }
 
+// Frise : des points (les états, comme les lettres du diagramme) reliés
+// par des traits (les étapes, de leur couleur sur le diagramme ; pointillés
+// si le gaz est passé par un état non défini). Un point fait passer les
+// courbes de référence par son état, ↺ y revient ; un trait met l'étape en
+// évidence et en fait le bilan.
+var TF_PUCE_MANIERE = { brutal: 'brutale', qs: 'quasi statique', rev: 'réversible', main: 'à la main' };
+
+function _tfPointFrise(i, coul) {
+  var E = tfEtapes, L = E.etats[i];
+  return '<div class="tf-f-point' + (E.selEtat === i ? ' sel' : '') + '" onclick="tfOnSelEtat(' + i + ')" '
+       + 'title="Faire passer les courbes de référence par l’état ' + L.lettre + '">'
+       + '<span class="tf-f-noeud" style="border-color:' + coul + '"></span>'
+       + '<b class="tf-f-lettre">' + L.lettre + '</b>' + _tfFmtEtat(L) + _tfBoutonRevenir(i) + '</div>';
+}
+
 function _tfMajJournal() {
   var E = tfEtapes, h = '';
-  if (E.etats.length) {
-    h += '<div class="tf-etape tf-etape-depart' + (E.selA ? ' sel' : '') + '" onclick="tfOnSelA()" '
-       + 'title="Faire passer les courbes de référence par l’état A">'
-       + '<span class="tf-pastille" style="background:' + TF_COUL_SANS_ETAPE + '"></span>'
-       + '<span class="tf-etape-txt"><b>A</b> état initial<br>' + _tfFmtEtat(E.etats[0]) + '</span>'
-       + _tfBoutonRevenir(0) + '</div>';
-  }
+  if (E.etats.length) h += _tfPointFrise(0, TF_COUL_SANS_ETAPE);
   for (var k = 0; k < E.liste.length; k++) {
-    var et = E.liste[k];
-    var dep = et.depart !== null ? E.etats[et.depart].lettre : '?';
-    var arr = et.arrivee !== null ? E.etats[et.arrivee].lettre : et.statut === 'en cours' ? '…' : '✕';
-    var suite = et.arrivee !== null ? _tfFmtEtat(E.etats[et.arrivee])
-              : et.statut === 'en cours' ? '<span class="tf-etat-val">en cours…</span>'
-              : '<span class="tf-etat-val">interrompue avant l’équilibre</span>';
-    h += '<div class="tf-etape' + (E.sel === k ? ' sel' : '') + '" onclick="tfOnSelEtape(' + k + ')" '
-       + 'title="Mettre en évidence sur le diagramme">'
-       + '<span class="tf-pastille" style="background:' + et.couleur + '"></span>'
-       + '<span class="tf-etape-txt"><b>' + dep + ' → ' + arr + '</b> ' + et.desc + '<br>' + suite + '</span>'
-       + (et.arrivee !== null ? _tfBoutonRevenir(et.arrivee) : '') + '</div>';
+    var et = E.liste[k], detail = et.detail;
+    if (et.man === 'main' && et.nbHors) detail += ' · ' + et.nbHors + ' pas hors équilibre';
+    if (et.bilan1) detail += ' · S créée ' + _tfFmtmJK(_tfScree(et.bilan0, et.bilan1)).replace(' ', ' ');
+    h += '<div class="tf-f-trait' + (et.nonDef || et.statut === 'interrompue' ? ' pointille' : '')
+       + (E.sel === k ? ' sel' : '') + '" style="border-left-color:' + et.couleur + '" onclick="tfOnSelEtape(' + k + ')" '
+       + 'title="Mettre l’étape en évidence sur le diagramme et en faire le bilan">'
+       + '<div class="tf-f-titre">' + et.titre
+       + (et.man ? ' <span class="tf-f-puce tf-f-' + et.man + '">' + TF_PUCE_MANIERE[et.man] + '</span>' : '') + '</div>'
+       + (detail ? '<div class="tf-f-detail">' + detail.replace(/^ · /, '') + '</div>' : '') + '</div>';
+    if (et.arrivee !== null) h += _tfPointFrise(et.arrivee, et.couleur);
+    else {
+      var enCours = et.statut === 'en cours';
+      h += '<div class="tf-f-point tf-f-' + (enCours ? 'encours' : 'interrompu') + '">'
+         + '<span class="tf-f-noeud" style="border-color:' + et.couleur + '"></span>'
+         + '<span class="tf-etat-val">' + (enCours ? 'en cours…' : 'interrompue avant l’équilibre') + '</span></div>';
+    }
   }
   if (h === _tfJournalHtml) return;
   _tfJournalHtml = h;
@@ -388,23 +407,32 @@ function _tfPextVisee(cle, vise) {
   return tf.Pair + (TF_M_PISTON + vise) * TF_G / TF_S;
 }
 
-// Texte du journal : nature de la transformation, manière, consigne, durée
+// Titre d'une étape de la frise : le sens (Compression, Chauffage…) et la
+// nature, qui découle des conditions ; sur une source, le piston ne donne
+// une isotherme que lentement (sinon : monotherme)
+function _tfTitreEtape(o, sens, lent) {
+  return sens + ' ' + (o === 'source' ? (tf.tenu ? 'isochore' : 'isobare')
+    : tf.fond === 'isolant' ? 'adiabatique' : lent ? 'isotherme' : 'monotherme');
+}
+
+// Étape d'une manière : titre, et en détail la consigne, la durée, le fond
 function _tfDescManiere(cle, man, p) {
-  var vise = tfCarte[cle].vise, f, txt;
-  var adjF = { brutal: 'brutale', qs: 'quasi statique', rev: 'réversible' }[man];
-  var adjM = { brutal: 'brutal', qs: 'quasi statique', rev: 'réversible' }[man];
+  var vise = tfCarte[cle].vise, sens, consigne;
   if (cle === 'volume') {
-    txt = (vise < tf.z[TF_N] ? 'Compression ' : 'Détente ') + adjF + ' (V → ' + _tfFmt(TF_S * vise * 1000, 3) + ' L';
+    sens = vise < tf.z[TF_N] ? 'Compression' : 'Détente';
+    consigne = 'V → ' + _tfFmt(TF_S * vise * 1000, 3) + ' L';
   } else if (cle === 'Text') {
-    txt = (vise > tf.Text ? 'Chauffage ' : 'Refroidissement ') + (tf.tenu ? 'isochore ' : 'isobare ') + adjM
-        + ' (T_source → ' + Math.round(vise) + ' K';
+    sens = vise > tf.Text ? 'Chauffage' : 'Refroidissement';
+    consigne = 'T_source → ' + Math.round(vise) + ' K';
   } else {
-    f = tf.tenu ? tfMesures().Pmoy : tfPext();
-    txt = (_tfPextVisee(cle, vise) > f ? 'Compression ' : 'Détente ') + adjF + ' ('
-        + (cle === 'masse' ? 'masse → ' : 'P_air → ') + _tfFmtValeur(cle, vise).replace(/ \(.*\)$/, '');
+    sens = _tfPextVisee(cle, vise) > (tf.tenu ? tfMesures().Pmoy : tfPext()) ? 'Compression' : 'Détente';
+    consigne = (cle === 'masse' ? 'masse → ' : 'P_air → ') + _tfFmtValeur(cle, vise).replace(/ \(.*\)$/, '');
   }
-  txt += p.duree > 0 ? ', en ' + _tfFmtDuree(p.duree) + ')' : ')';
-  return txt + _tfSuffixeFond();
+  return {
+    titre: _tfTitreEtape(cle === 'Text' ? 'source' : 'piston', sens, man !== 'brutal'),
+    detail: consigne + (p.duree > 0 ? ' · ' + _tfFmtDuree(p.duree) : '') + _tfSuffixeFond(),
+    man: man
+  };
 }
 
 // Durées écrites sur les boutons. Quand réversiblement ne fait rien de plus
@@ -697,12 +725,16 @@ function _tfFixerVitesse(v) {
 // thermique.
 function tfOnFond(f) {
   if (f === tf.fond) return;
-  var nom = f === 'isolant' ? 'Fond sur l’isolant'
-          : 'Fond sur la source ' + f + ' (' + _tfFmtValeur('Text', tfTSource(f)).replace(/ \(.*\)$/, '') + ')';
+  var nom = f === 'isolant' ? { titre: 'Fond sur l’isolant', detail: '' }
+          : { titre: _tfTitreEtape('source', tfTSource(f) > tfMesures().Tmoy ? 'Chauffage' : 'Refroidissement'),
+              detail: 'fond sur la source ' + f + ' ('
+                    + _tfFmtValeur('Text', tfTSource(f)).replace(/ \(.*\)$/, '') + ')' };
   if (_tfPret && !_tfSansEffet({ fond: f })) {
     var der = tfEtapes.liste[tfEtapes.liste.length - 1];
     if (tfEnCours()) tfGraphDegeler();
-    else if (der && der.fond && der.statut === 'en cours') { der.desc = nom; tfEtapes.version++; tfGraphDegeler(); }
+    else if (der && der.fond && der.statut === 'en cours') {
+      der.titre = nom.titre; der.detail = nom.detail; tfEtapes.version++; tfGraphDegeler();
+    }
     else { _tfOuvrirEtape(nom); tfEtapes.liste[tfEtapes.liste.length - 1].fond = true; }
   }
   tfSetFond(f);
@@ -793,7 +825,12 @@ function tfOnPiston(tenir) {
 }
 
 function tfBasculerPiston() {
-  if (!_tfSansEffet({ tenir: !tf.tenu })) _tfOuvrirEtape(tf.tenu ? 'Piston libéré' : 'Piston tenu');
+  if (!_tfSansEffet({ tenir: !tf.tenu })) {
+    var m = tfMesures();
+    _tfOuvrirEtape(tf.tenu
+      ? { titre: _tfTitreEtape('piston', m.Pmoy > m.Pext ? 'Détente' : 'Compression', false), detail: 'piston libéré' }
+      : { titre: 'Piston tenu', detail: '' });
+  }
   tfSetTenu(!tf.tenu);
   _tfDemarrerRelax();
   _tfMajBoutons();
@@ -1036,7 +1073,7 @@ function _tfPapPas(o, sens) {
     tfEtapeRouvrir();
     tfGraphDegeler();
   } else {
-    _tfOuvrirEtape('');
+    _tfOuvrirEtape({ titre: '', detail: '' });
     der = E.liste[E.liste.length - 1];
     der.pap = cle;
     der.v0 = v;
@@ -1052,7 +1089,8 @@ function _tfPapPas(o, sens) {
     _tfFixer(cle, cible, true);   // un grain : du sable, pas un bloc
     tfSetTenu(false);
   }
-  der.desc = _tfDescPap(cle, der.v0, cible);
+  var dsc = _tfDescPap(cle, der.v0, cible, der.nbHors);
+  der.titre = dsc.titre; der.detail = dsc.detail; der.man = dsc.man;
   E.version++;
   tfCarte[cle].suit = true;
   _tfDemarrerRelax();
@@ -1121,8 +1159,9 @@ function _tfMajMain() {
   _tfEl['tf-main-compte'].textContent = txt;
 }
 
-function _tfDescPap(cle, v0, v) {
-  var d;
+function _tfDescPap(cle, v0, v, nbHors) {
+  var d, sens = cle === 'Text' ? (v >= v0 ? 'Chauffage' : 'Refroidissement')
+    : (cle === 'volume' ? v < v0 : v >= v0) ? 'Compression' : 'Détente';
   if (cle === 'masse') {
     var nb = Math.round(Math.abs(v - v0) / _tfPas('masse'));
     d = 'Sable ' + (v >= v0 ? 'versé' : 'retiré') + ' grain à grain (' + nb + (nb > 1 ? ' grains' : ' grain')
@@ -1130,9 +1169,9 @@ function _tfDescPap(cle, v0, v) {
   } else {
     var nom = { volume: 'Hauteur', Pair: 'P_air', Text: 'T_source' }[cle];
     d = nom + ' pas à pas (' + (v >= v0 ? '+' : '−') + _tfFmtPas(cle, Math.abs(v - v0)) + ')';
-    if (cle === 'Text') d += tf.tenu ? ', piston tenu' : ', piston libre';
   }
-  return d + _tfSuffixeFond();
+  return { titre: _tfTitreEtape(cle === 'Text' ? 'source' : 'piston', sens, !nbHors),
+           detail: d + _tfSuffixeFond(), man: 'main' };
 }
 
 // Interrompre pendant le ralentissement qui précède une action : elle ne
@@ -1148,10 +1187,11 @@ function tfOnInterrompre() {
 function tfOnSelEtape(k) {
   tfEtapesSelectionner(k);
   _tfMajJournal();
+  _tfMajBilan();
 }
 
-function tfOnSelA() {
-  tfEtapesSelectionnerA();
+function tfOnSelEtat(i) {
+  tfEtapesSelectionnerEtat(i);
   _tfMajJournal();
 }
 
