@@ -33,7 +33,7 @@ var _TF_EL_IDS = [
   'tf-main-moins-source', 'tf-main-plus-source', 'tf-main-sl-source',
   'tf-journal', 'tf-ckg-gel',
   'tf-btn-brutal', 'tf-btn-qs', 'tf-btn-rev', 'tf-duree-brutal', 'tf-duree-qs', 'tf-duree-rev',
-  'tf-bilan', 'tf-bilan-note',
+  'tf-bilan', 'tf-bilan-note', 'tf-bilan-cycle',
   'tf-gamma', 'tf-in-P0', 'tf-in-V0', 'tf-in-T0', 'tf-moins-P0', 'tf-moins-V0', 'tf-moins-T0',
   'tf-plus-P0', 'tf-plus-V0', 'tf-plus-T0', 'tf-dep-info', 'tf-dep-attente'
 ];
@@ -249,7 +249,9 @@ function _tfMajBilan() {
     var arr = et.arrivee !== null ? E.etats[et.arrivee].lettre : et.statut === 'en cours' ? '…' : '✕';
     cols.push({ titre: 'Étape ' + dep + ' → ' + arr, b0: et.bilan0, b1: et.bilan1 || b });
   }
-  if (E.bilanA) cols.push({ titre: 'Depuis A', b0: E.bilanA, b1: b });
+  var cy = tfEtapesCycle();
+  if (cy) cols.push({ titre: 'Cycle', b0: E.liste[cy.debut].bilan0, b1: E.liste[cy.fin].bilan1 });
+  else if (E.bilanA) cols.push({ titre: 'Depuis A', b0: E.bilanA, b1: b });
   var lignes = [
     ['W reçu', function (b0, b1) { return _tfFmtJ(b1.W - b0.W); }],
     ['Q reçue', function (b0, b1) { return _tfFmtJ(b1.Q - b0.Q); }],
@@ -268,9 +270,49 @@ function _tfMajBilan() {
     _tfBilanHtml = h;
     _tfEl['tf-bilan'].innerHTML = h;
   }
+  _tfMajBilanCycle(cy);
   var enCours = et && et.statut === 'en cours';
   _tfEl['tf-bilan-note'].textContent = (enCours ? 'Étape en cours : valeurs à cet instant. ' : '')
     + 'Grandeurs reçues par le gaz. S créée = ΔS − Σ δQ / T_source : nulle pour une transformation réversible, positive sinon.';
+}
+
+// Bilan d'un cycle fermé, en phrases : moteur (W < 0) et son rendement,
+// comparé à celui de Carnot entre les températures extrêmes des sources
+// touchées ; récepteur (W > 0) et ses efficacités
+var _tfBilanCycleHtml = '';
+
+function _tfFmtRatio(x) { return _tfFmt(x, 2); }
+
+function _tfMajBilanCycle(cy) {
+  var h = '';
+  if (cy) {
+    var E = tfEtapes, b0 = E.liste[cy.debut].bilan0, b1 = E.liste[cy.fin].bilan1;
+    var W = b1.W - b0.W, Qabs = b1.Qabs - b0.Qabs, Qced = Qabs - (b1.Q - b0.Q);
+    var Tmin = Infinity, Tmax = -Infinity;
+    for (var k = cy.debut; k <= cy.fin; k++) {
+      var et = E.liste[k];
+      if (et.TsMin !== undefined) { Tmin = Math.min(Tmin, et.TsMin); Tmax = Math.max(Tmax, et.TsMax); }
+    }
+    h = '<b>Cycle ' + tfEtapesLettresCycle(cy) + '</b><br>';
+    if (Qabs < 1e-6 || Math.abs(W) < 0.01 * Qabs) {
+      h += 'Travail net presque nul (W = ' + _tfFmtJ(W) + ' pour ' + _tfFmtJ(Qabs)
+         + ' de chaleur absorbée) : ni moteur ni récepteur.';
+    } else if (W < 0) {
+      h += 'Moteur : le gaz fournit ' + _tfFmtJ(-W) + ' pour ' + _tfFmtJ(Qabs) + ' de chaleur absorbée.<br>'
+         + 'Rendement η = −W / Q<sub>abs</sub> = <b>' + _tfFmtRatio(-W / Qabs) + '</b>';
+      if (Tmax - Tmin > 0.5) h += ' ; Carnot entre ' + Math.round(Tmin) + ' et ' + Math.round(Tmax) + ' K : '
+         + _tfFmtRatio(1 - Tmin / Tmax);
+      h += '.';
+    } else {
+      h += 'Récepteur : le gaz reçoit ' + _tfFmtJ(W) + ', absorbe ' + _tfFmtJ(Qabs) + ' et cède '
+         + _tfFmtJ(Qced) + '.<br>Efficacité frigorifique Q<sub>abs</sub> / W = <b>' + _tfFmtRatio(Qabs / W)
+         + '</b> ; de pompe à chaleur Q<sub>cédée</sub> / W = <b>' + _tfFmtRatio(Qced / W) + '</b>.';
+    }
+  }
+  if (h === _tfBilanCycleHtml) return;
+  _tfBilanCycleHtml = h;
+  _tfEl['tf-bilan-cycle'].innerHTML = h;
+  _tfEl['tf-bilan-cycle'].style.display = h ? '' : 'none';
 }
 
 // ── Journal des étapes (tf-etapes.js) ──
@@ -296,12 +338,14 @@ function _tfBoutonRevenir(i) {
 // évidence et en fait le bilan.
 var TF_PUCE_MANIERE = { brutal: 'brutale', qs: 'quasi statique', rev: 'réversible', main: 'à la main' };
 
-function _tfPointFrise(i, coul) {
+function _tfPointFrise(i, coul, cycle) {
   var E = tfEtapes, L = E.etats[i];
   return '<div class="tf-f-point' + (E.selEtat === i ? ' sel' : '') + '" onclick="tfOnSelEtat(' + i + ')" '
        + 'title="Faire passer les courbes de référence par l’état ' + L.lettre + '">'
        + '<span class="tf-f-noeud" style="border-color:' + coul + '"></span>'
-       + '<b class="tf-f-lettre">' + L.lettre + '</b>' + _tfFmtEtat(L) + _tfBoutonRevenir(i) + '</div>';
+       + '<b class="tf-f-lettre">' + L.lettre + '</b>' + _tfFmtEtat(L)
+       + (cycle ? '<span class="tf-f-cycle" title="Cycle ' + tfEtapesLettresCycle(cycle) + '">⟳ cycle</span>' : '')
+       + _tfBoutonRevenir(i) + '</div>';
 }
 
 function _tfMajJournal() {
@@ -317,7 +361,7 @@ function _tfMajJournal() {
        + '<div class="tf-f-titre">' + et.titre
        + (et.man ? ' <span class="tf-f-puce tf-f-' + et.man + '">' + TF_PUCE_MANIERE[et.man] + '</span>' : '') + '</div>'
        + (detail ? '<div class="tf-f-detail">' + detail.replace(/^ · /, '') + '</div>' : '') + '</div>';
-    if (et.arrivee !== null) h += _tfPointFrise(et.arrivee, et.couleur);
+    if (et.arrivee !== null) h += _tfPointFrise(et.arrivee, et.couleur, et.cycle);
     else {
       var enCours = et.statut === 'en cours';
       h += '<div class="tf-f-point tf-f-' + (enCours ? 'encours' : 'interrompu') + '">'
@@ -914,7 +958,7 @@ function _tfMajSelEtat(cle) {
   var V = TF_VISEE[cle], h = '<option value="">État</option>';
   for (var i = 0; i < E.etats.length; i++) {
     var L = E.etats[i];
-    if (!L.snap) continue;
+    if (!L.snap || L.retour !== undefined) continue;
     h += '<option value="' + i + '">' + L.lettre + ' : '
        + _tfFmtChamp(_tfValeurEtat(cle, L) * V.f, V.dec) + ' ' + V.unite + '</option>';
   }

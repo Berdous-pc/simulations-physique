@@ -192,6 +192,7 @@ var tf = {
   dtCfl  : 1e-6,         // s, pas limite calculé au sous-pas précédent
   Qrecu  : 0,            // J reçus par le fond
   QsurT  : 0,            // J/K, entropie reçue avec cette chaleur, Σ δQ / T_ext
+  Qabs   : 0,            // J, chaleur absorbée : somme des seuls apports positifs (rendement d'un cycle)
   Wgaz   : 0,            // J, travail reçu par le gaz par la face du piston
   limite : false,        // la dernière image a atteint TF_SOUS_PAS_MAX
 
@@ -303,7 +304,7 @@ function tfEntropie() {
 // entropie du gaz. Entre deux instants : ΔU = W + Q, et l'entropie créée
 // S_c = ΔS − Σ δQ / T_ext.
 function tfBilan() {
-  return { U: _tfU(), W: tf.Wgaz, Q: tf.Qrecu, Se: tf.QsurT, S: tfEntropie() };
+  return { U: _tfU(), W: tf.Wgaz, Q: tf.Qrecu, Qabs: tf.Qabs, Se: tf.QsurT, S: tfEntropie() };
 }
 
 // Mesures : moyennes, extrêmes des tranches et critère d'équilibre (§2.4)
@@ -409,6 +410,7 @@ function tfReset() {
   tf.t      = 0;
   tf.Qrecu  = 0;
   tf.QsurT  = 0;
+  tf.Qabs   = 0;
   tf.Wgaz   = 0;
   tf.limite = false;
   tf.dtCfl  = 1e-6;
@@ -894,6 +896,7 @@ function _tfSousPasQS(dt) {
   var Vc = tf.tenu ? TF_S * (tf.verin.actif ? _tfZVerin(tf.t + dt) : z[N]) : null;
   if (!_tfQSAppliquer(Q, Vc)) return false;
   tf.Qrecu += Qfond;
+  if (Qfond > 0) tf.Qabs += Qfond;
   if (Qfond !== 0) tf.QsurT += Qfond / tf.Text;
   tf.t += dt;
   if (tf.verin.actif && tf.t >= tf.verin.t0 + tf.verin.tau - 1e-12) tf.verin.actif = false;
@@ -1106,6 +1109,7 @@ function _tfSousPas(dt) {
     var Q = tf.G * (tf.Text - T[0]) * dt;
     E[0]     += Q;
     tf.Qrecu += Q;
+    if (Q > 0) tf.Qabs += Q;
     tf.QsurT += Q / tf.Text;
   }
 

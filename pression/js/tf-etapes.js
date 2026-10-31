@@ -29,7 +29,9 @@ var tfEtapes = {
   // définie : trait pointillé dans la frise, comme sur le diagramme), bilan0
   // et bilan1 (compteurs au départ et à l'arrivée)
   liste   : [],
-  etats   : [],     // lettres : {lettre, V, P, T, S, snap}
+  // Lettres : {lettre, V, P, T, S, snap, retour} ; retour : indice de la
+  // lettre déjà vue dont l'état est retrouvé (même lettre), sinon absent
+  etats   : [],
   suivie  : null,   // lettre mise à jour tant que dure l'équilibre
   sel     : -1,     // étape mise en évidence sur le diagramme et au bilan (-1 : aucune)
   selEtat : -1,     // état par lequel passent les courbes de référence (-1 : aucun)
@@ -56,7 +58,7 @@ var _TF_SNAP_TABLEAUX = ['z', 'u', 'E', 'P', 'q'];
 // Le fond (isolant ou source, et la température des sources) fait partie
 // de l'état : revenir à un état remet le cylindre où il était
 var _TF_SNAP_SCALAIRES = ['tenu', 'masse', 'blocs', 'sable', 'Pair', 'Text', 'Wop', 'Wair',
-                          'Qrecu', 'QsurT', 'Wgaz', 'eDecal', 't', 'fond', 'T1', 'T2', 'G'];
+                          'Qrecu', 'QsurT', 'Qabs', 'Wgaz', 'eDecal', 't', 'fond', 'T1', 'T2', 'G'];
 
 function _tfInstantane(snap) {
   snap = snap || {};
@@ -117,11 +119,79 @@ function tfEtapeNouvelle(desc) {
   E.version++;
 }
 
+// Retour à un état déjà vu : à 0,5 % près sur V et P, 0,5 K près sur T
+// (assez large pour fermer un cycle à la main)
+var TF_RETOUR_VP = 0.005, TF_RETOUR_T = 0.5;
+
+// Lettre déjà vue (pas un retour) dont l'état est celui des mesures, la
+// plus proche ; -1 sinon. Le départ de l'étape est exclu : y revenir en une
+// étape, c'est n'avoir rien fait (ou si peu qu'on veut une lettre).
+function _tfEtatDejaVu(m, depart) {
+  var E = tfEtapes, exclu = depart === null ? -1 : E.etats[depart].retour !== undefined ? E.etats[depart].retour : depart;
+  var best = -1, dBest = Infinity;
+  for (var i = 0; i < E.etats.length; i++) {
+    var L = E.etats[i];
+    if (L.retour !== undefined || i === exclu) continue;
+    var dV = Math.abs(m.V - L.V) / L.V, dP = Math.abs(m.Pmoy - L.P) / L.P, dT = Math.abs(m.Tmoy - L.T);
+    if (dV > TF_RETOUR_VP || dP > TF_RETOUR_VP || dT > TF_RETOUR_T) continue;
+    var d = dV / TF_RETOUR_VP + dP / TF_RETOUR_VP + dT / TF_RETOUR_T;
+    if (d < dBest) { dBest = d; best = i; }
+  }
+  return best;
+}
+
+// Lettre d'un nouvel état : la suivante, sans compter les retours
+function _tfLettreSuivante() {
+  var n = 0;
+  tfEtapes.etats.forEach(function (L) { if (L.retour === undefined) n++; });
+  return _tfLettre(n);
+}
+
+// Étape k arrivée sur un état déjà vu : le cycle commence à la dernière
+// étape partie de cette lettre ({debut, fin} : indices d'étapes), null sinon
+function _tfCycleFerme(k) {
+  var E = tfEtapes, et = E.liste[k], L = E.etats[et.arrivee];
+  if (L.retour === undefined) return null;
+  for (var s = k; s >= 0; s--) {
+    var d = E.liste[s].depart;
+    if (d !== null && E.etats[d].lettre === L.lettre) return { debut: s, fin: k };
+  }
+  return null;
+}
+
+// Lettres d'un cycle : A → B → C → A (✕ : étape interrompue)
+function tfEtapesLettresCycle(c) {
+  var E = tfEtapes, t = [E.etats[E.liste[c.debut].depart].lettre];
+  for (var k = c.debut; k <= c.fin; k++) {
+    var a = E.liste[k].arrivee;
+    t.push(a !== null ? E.etats[a].lettre : '✕');
+  }
+  return t.join(' → ');
+}
+
+// Cycle dont fait le bilan la section Bilan : le dernier qui contient
+// l'étape sélectionnée, ou le dernier fermé ; null sinon
+function tfEtapesCycle() {
+  var E = tfEtapes, c = null;
+  for (var k = 0; k < E.liste.length; k++) {
+    var ck = E.liste[k].cycle;
+    if (!ck) continue;
+    if (E.sel < 0 || (E.sel >= ck.debut && E.sel <= ck.fin)) c = ck;
+  }
+  return c;
+}
+
 // Appelé à chaque échantillon des graphes (même chrono figé), avec les
 // mesures : arrivée de l'étape en cours, suivi de la dernière lettre
 function tfEtapesSuivre(m) {
   var E = tfEtapes, et = E.liste[E.liste.length - 1];
   if (et && et.statut === 'en cours' && !(m.Pdef && m.Tdef) && !et.nonDef) { et.nonDef = true; E.version++; }
+  // Températures des sources au contact pendant l'étape (borne de Carnot
+  // d'un cycle)
+  if (et && et.statut === 'en cours' && tf.fond !== 'isolant') {
+    et.TsMin = Math.min(et.TsMin === undefined ? Infinity : et.TsMin, tf.Text);
+    et.TsMax = Math.max(et.TsMax === undefined ? -Infinity : et.TsMax, tf.Text);
+  }
   if (!m.equilibre || !E.etats.length) return;
   if (et && et.statut === 'en cours' && !tfEnCours()) {
     var D = et.depart !== null ? E.etats[et.depart] : null;
@@ -138,11 +208,14 @@ function tfEtapesSuivre(m) {
       E.version++;
       return;
     }
-    var L = { lettre: _tfLettre(E.etats.length) };
+    var L = {}, j = _tfEtatDejaVu(m, et.depart);
+    if (j >= 0) { L.lettre = E.etats[j].lettre; L.retour = j; }
+    else L.lettre = _tfLettreSuivante();
     E.etats.push(L);
     et.arrivee = E.etats.length - 1;
     et.statut = 'arrivee';
     et.bilan1 = tfBilan();
+    et.cycle = _tfCycleFerme(E.liste.length - 1);
     E.suivie = et.arrivee;
     E.version++;
   }
@@ -199,6 +272,7 @@ function tfEtapeRouvrir() {
   if (E.selEtat >= E.etats.length) E.selEtat = -1;
   et.arrivee = null;
   et.bilan1 = null;
+  et.cycle = null;
   et.statut = 'en cours';
   E.suivie = null;
   E.version++;

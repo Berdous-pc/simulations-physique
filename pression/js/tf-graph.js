@@ -1348,6 +1348,7 @@ function _tfgLettres(c, D, xDe, yDe, fs, alpha) {
   c.textBaseline = 'middle';
   for (var i = 0; i < E.etats.length; i++) {
     var L = E.etats[i], n = arrivee[i] || 0;
+    if (L.retour !== undefined) continue;   // état retrouvé : sa lettre y est déjà
     var x = xDe(D.x(L)), y = yDe(D.yL(L));
     c.globalAlpha = alpha(n) < 1 && !(E.sel >= 0 && E.liste[E.sel].depart === i) ? 0.35 : 1;
     c.beginPath();
