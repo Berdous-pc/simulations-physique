@@ -488,6 +488,25 @@ function _tfDureePrevue(cle, vise, duree) {
   return D;
 }
 
+// Changement du fond ({fond}) ou du piston ({tenir}) qui laisse le gaz dans
+// son état d'équilibre : fond posé sur l'isolant ou sur une source à la
+// température du gaz, piston tenu au repos, ou libéré quand le gaz équilibre
+// déjà la pression extérieure (ou le pousse contre une butée). Aucune étape
+// n'est alors ouverte : le chrono reste figé, les graphes n'avancent pas.
+// Seuils de tfEtapesSuivre (étape retirée du journal si rien n'a changé).
+function _tfSansEffet(chgt) {
+  var der = tfEtapes.liste[tfEtapes.liste.length - 1];
+  if (tfEnCours() || (der && der.statut === 'en cours')) return false;
+  var m = tfMesures();
+  if (!m.equilibre) return false;
+  if ('fond' in chgt) return chgt.fond === 'isolant' || Math.abs(tfTSource(chgt.fond) - m.Tmoy) < 0.01;
+  if (chgt.tenir) return true;
+  var zN = tf.z[TF_N];
+  return Math.abs(m.Pmoy - m.Pext) < 1e-4 * m.Pext
+      || (zN >= TF_H_CYL - 1e-9 && m.Pmoy >= m.Pext)
+      || (zN <= TF_Z_BUTEE + 1e-9 && m.Pmoy <= m.Pext);
+}
+
 // Ouvre une étape avant une action : le chrono des graphes repart et l'état
 // de départ est enregistré
 function _tfOuvrirEtape(desc) {
@@ -671,8 +690,8 @@ function _tfFixerVitesse(v) {
 }
 
 // ── Fond posé sur l'isolant ou sur une source (un état, pas une action) ──
-// Le cylindre change de support : des échanges peuvent commencer (étape
-// retirée du journal si rien ne change ; changé de nouveau avant
+// Le cylindre change de support : des échanges peuvent commencer (sans
+// étape ni chrono qui repart si rien ne change, _tfSansEffet ; changé de nouveau avant
 // l'équilibre, une seule étape « Fond »). Posé sur une source qui n'est pas
 // à la température du gaz, le temps s'adapte à la mise en équilibre
 // thermique.
@@ -680,7 +699,7 @@ function tfOnFond(f) {
   if (f === tf.fond) return;
   var nom = f === 'isolant' ? 'Fond sur l’isolant'
           : 'Fond sur la source ' + f + ' (' + _tfFmtValeur('Text', tfTSource(f)).replace(/ \(.*\)$/, '') + ')';
-  if (_tfPret) {
+  if (_tfPret && !_tfSansEffet({ fond: f })) {
     var der = tfEtapes.liste[tfEtapes.liste.length - 1];
     if (tfEnCours()) tfGraphDegeler();
     else if (der && der.fond && der.statut === 'en cours') { der.desc = nom; tfEtapes.version++; tfGraphDegeler(); }
@@ -774,7 +793,7 @@ function tfOnPiston(tenir) {
 }
 
 function tfBasculerPiston() {
-  _tfOuvrirEtape(tf.tenu ? 'Piston libéré' : 'Piston tenu');
+  if (!_tfSansEffet({ tenir: !tf.tenu })) _tfOuvrirEtape(tf.tenu ? 'Piston libéré' : 'Piston tenu');
   tfSetTenu(!tf.tenu);
   _tfDemarrerRelax();
   _tfMajBoutons();
