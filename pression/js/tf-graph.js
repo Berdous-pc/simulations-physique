@@ -646,7 +646,7 @@ function _tfgDessinerTemps() {
   c.textAlign = 'left';
   c.font = _tfgPolice(fs, false);
   c.fillStyle = TF_G_MUET;
-  if (vT) c.fillText('vue figée (« Étape » pour revenir)', ML, yAxe + fs * 1.45);
+  if (vT) c.fillText('vue figée (« Auto » pour revenir)', ML, yAxe + fs * 1.45);
   else if (tfGraph.gele) c.fillText('chrono figé (équilibre)', ML, yAxe + fs * 1.45);
 
   var gl = tfGraph.glisse;
@@ -1635,7 +1635,7 @@ function tfGraphPrecedente(cible) {
   g.sale = true;
 }
 
-// Retour à l'étape en cours (bouton Étape)
+// Retour à l'étape en cours (bouton Auto des graphes temporels)
 function tfGraphSuivre() {
   tfGraph.vueT = null;
   tfGraph.pileT = [];
@@ -1755,7 +1755,7 @@ function tfOnAffGraphe(cle, coche) {
 
 // ── Souris : glisser = déplacer la vue (en mode Zoom : tracer le
 // rectangle à agrandir), molette = zoomer autour du curseur, réticule. Chaque graphe a sa vue : déplacer ou zoomer la fige
-// (↶ revient à la précédente ; Champ ou Étape, à la vue automatique).
+// (↶ revient à la précédente ; Auto, à la vue automatique).
 function _tfgPos(o, ev) {
   var r = o.c.getBoundingClientRect();
   return { x: (ev.clientX - r.left) * o.w / r.width, y: (ev.clientY - r.top) * o.h / r.height };
