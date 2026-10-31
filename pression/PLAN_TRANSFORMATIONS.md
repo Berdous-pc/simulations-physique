@@ -337,8 +337,8 @@ Chaque test charge la page en `#transformations`, pilote les fonctions `tf…` e
 4. ✅ **Graphes et nouvelle disposition** (terminé ; le chemin PV est tracé plein tant que P et T sont définies, même piston en mouvement, cf. ARCHITECTURE.md) : graphes puis tableau dans la colonne de gauche, splitters ; T, P, V(t) avec bandes min–max, diagramme PV avec chemin non défini, **nuage des tranches**, pression sur le piston, courbes théoriques, outils de zoom. *Depuis : nuage remplacé par la pression de chaque tranche au volume du gaz ; chemin plein dès que P est définie (§4.2).*
 5. ✅ **Contraintes extérieures** (terminé, résultats des tests dans `ARCHITECTURE.md`) : P_air (enceinte, manomètre) et T_ext (source four / bain), échelon et rampe pour les deux, butées signalées. Tests : échelon de T_ext, échelon et rampes de P_air, vide, bilan avec W_air.
 6. **Sable** (en grande partie fait : physique et tas en R1, versement continu en R3, un point d'équilibre par marche d'escalier sur le diagramme ; tests sable fin calorifugé faits) : reste **l'entonnoir et les grains en chute**, et le test sable lent diathermane.
-7. ✅ **γ, Bilan et diagramme TS** (terminé, résultats des tests dans `ARCHITECTURE.md`) : section **Gaz** (γ, T₀, V₀ ; tout changement réinitialise), section **Bilan** (W, Q, ΔU, W + Q, ΔS, Σ δQ/T_source, S_c ; dernière étape et depuis A), diagramme **T(S)** (§10.6) dans son propre encart ; colonne gauche réglée par quatre boutons activables, P = f(V), T = f(S), T, P, V = f(t), Tableau (de 0 à 4 encarts ; remplace les onglets P(V) / T(S) / Les deux d'un premier essai) ; courbes isochore et isobare ajoutées dans les deux diagrammes.
-8. **Intégration** : renommage visible « Gaz parfait », bandeau Informations (dont l'argument c/√(g·L)), responsivité (fenêtre étroite : scène au-dessus des graphes). Le bandeau Informations est déjà réécrit au fil de R1 à R3 ; la **responsivité est à revérifier** avec le nouveau panneau (trois boutons, journal, réglages fins).
+7. ✅ **γ, Bilan et diagramme TS** (terminé, résultats des tests dans `ARCHITECTURE.md`) : section **Gaz** (γ, T₀, V₀ ; tout changement réinitialise ; devenue **État initial** en R4c puis R4d), section **Bilan** (W, Q, ΔU, W + Q, ΔS, Σ δQ/T_source, S_c ; dernière étape et depuis A ; depuis R4e, l'étape cliquée dans la frise, et en R4f le cycle), diagramme **T(S)** (§10.6) dans son propre encart ; colonne gauche réglée par quatre boutons activables, P = f(V), T = f(S), T, P, V = f(t), Tableau (de 0 à 4 encarts ; remplace les onglets P(V) / T(S) / Les deux d'un premier essai) ; courbes isochore et isobare ajoutées dans les deux diagrammes.
+8. **Intégration** : renommage visible « Gaz parfait », bandeau Informations (dont l'argument c/√(g·L)), responsivité (fenêtre étroite : scène au-dessus des graphes). Le bandeau Informations est réécrit au fil des paliers (à relire en entier) ; la largeur étroite du **panneau** a été reprise (onglets du fond, des gaz et Viser une valeur, juste après R4c), mais la **responsivité de la page** est à revérifier (fenêtre étroite : scène au-dessus des graphes, panneau rogné).
 9. **Site** : niveau **CPGE** sur l'accueil (nouvelle case de filtre `data-value="cpge"`, badge `.level-cpge` d'une nouvelle couleur, `data-levels="cpge"`), carte « Transformations d'un gaz parfait » (thème Thermodynamique), aperçu `assets/previews/pression-transformations.jpg`, `meta description` et `<title>` de la page mis à jour, sitemap (`lastmod`), `ARCHITECTURE.md`, tableau §8 et §9 de CONTEXTE_PROJET, mention de CPGE dans la `meta description` de l'accueil.
 
 Chaque palier se termine par un commit et peut être montré en classe tel quel à partir du palier 3.
@@ -350,13 +350,13 @@ Chaque palier se termine par un commit et peut être montré en classe tel quel 
 - **Masse retirée lentement** alors qu'il ne reste que des blocs : retirée par petits pas, dessinée comme un bloc dont l'étiquette décroît (§10.3).
 - ~~**τ < 2 ms**~~ : réglé au palier 3 (signe faux dans la viscosité) ; le vérin descend à 0,5 ms, piston jusqu'à 400 m/s.
 - ~~Viscosité linéaire~~ : réglé au palier 3, TF_CL = 0,5 et TF_CQ = 2 (à 0,15, le calcul diverge pour τ = 2 ms).
-- Gamme des masses (0 à 40 kg) et section 20 cm² : à revoir avec la membrane de 1 g (le nuage des tranches n'existe plus).
+- Gamme des masses (0 à 40 kg) et section 20 cm² : à revoir avec la membrane de 1 g (le nuage des tranches n'existe plus). Depuis R4d, la masse posée au départ (P₀) entame ces 40 kg : P₀ = 296 kPa ne laisse plus rien à poser.
 - Dégradé de couleur : sur T (recommandé) ou sur la masse volumique ?
 - Titre de la carte d'accueil de l'onglet existant : garder « Pression d'un gaz » ou passer à « Modèle cinétique d'un gaz parfait » ?
 - Option future, hors de cet onglet : dynamique moléculaire réelle (disques durs) pour une thermalisation qui ne doit rien au modèle.
-- **Message sous les trois boutons** : avec G = 0,03 W/K et l'action température, il dit « fond peu conducteur » alors que les deux manières lentes sont presque identiques. Le seuil (rapport des durées réversible / quasi statique ≤ 1,5) est à affiner.
+- ~~**Message sous les trois boutons**~~ : sans objet depuis R4b (plus de phrase sous les manières ; le bouton Réversible affiche « = quasi statique » quand les durées coïncident).
 - **Bilan d'énergie au choc de la membrane** : écart de 10⁻² J (≈ 10⁻⁴ en relatif) après un échelon de P_air, contre 10⁻⁴ J avec le piston de 1 kg. À surveiller.
-- **Essai à la souris** de R3 : validé au banc headless seulement.
+- **Essai à la souris** de R3 à R4f, et du correctif de l'historique des graphes : tout est validé au banc headless seulement.
 
 ---
 
@@ -378,7 +378,7 @@ Chaque palier se termine par un commit et peut être montré en classe tel quel 
 
 ### 10.3 Carte « Transformation »
 
-> *Depuis R3, la durée, les marches et le bouton Lancer décrits ici sont dans les **Réglages fins** (repliés) ; la carte principale porte les trois boutons du §10.5.*
+> *Historique : la durée, les marches et le bouton Lancer décrits ici sont passés dans des Réglages fins en R3, supprimés après R4c (§10.9). Le panneau actuel est décrit aux §10.9 à §10.12.*
 
 ```
 Piston : 🔒 tenu / 🔓 libre
@@ -413,8 +413,9 @@ Transformation attendue : …
 - ✅ **R4e** (terminé, §10.11) : journal des Étapes en frise sur fond blanc (points = états, traits = étapes, pointillés si le gaz est passé par un état non défini) ; titre = nature, puce de la manière, S créée ; clic sur un point = courbes de référence, sur un trait = mise en évidence et Bilan de cette étape.
 - ✅ **R4f** (terminé, §10.12) : cycles — retour à un état déjà noté reconnu (même lettre, ⟳ cycle) ; colonne Cycle du Bilan et phrase moteur / récepteur (rendement, Carnot, efficacités).
 - **R4** : file d'attente (action lancée pendant une autre → « ensuite », enchaînement à l'équilibre), séquences enregistrées (localStorage, export JSON), préréglages (aller-retour, Carnot, Stirling, Lenoir).
-- **R5** (option) : viser en cliquant sur le diagramme de Clapeyron.
-- ✅ **Diagramme TS et Bilan** (§10.6, palier 7) : terminé. **Prochain palier proposé : R4**, puis R5, et les paliers 8 (intégration) et 9 (site).
+- ✅ **Diagramme TS et Bilan** (§10.6, palier 7) : terminé.
+- ~~**R5**~~ (abandonné) : viser en cliquant sur le diagramme de Clapeyron, ou y faire glisser le point A ; écarté par choix.
+- **Ensuite** : R4 (préréglages de cycles d'abord), puis la fin du palier 6 (sable), et les paliers 8 (intégration) et 9 (site). Avant : un essai à la souris de tout ce qui a été fait depuis R3 (validé au banc headless seulement).
 
 **Mode quasi statique du moteur** (ajouté après R2) : au repos mécanique, pression uniforme et conduction seule, pas ~0,7 ms au lieu de ~1 µs ; les escaliers lents tiennent enfin le cran ×20 (avant : ×0,8 avec un gaz chaud et comprimé). Résultats identiques au calcul complet (ARCHITECTURE.md).
 
@@ -596,7 +597,7 @@ Transformation  [ Viser une valeur ] [ À la main ]
 - **P₀ réglable** ; n = P₀V₀/(RT₀) s'en déduit. Air de l'enceinte : P_air = P₀ (au poids du piston près), de 20 à 500 kPa. Masses posées : à l'air libre, P₀ fixe la masse posée au départ (un bloc), de P_atm à 40 kg posés (≈ 298 kPa) ; changer de montage ramène P₀ dans ces bornes.
 - **Plus de curseurs** : champs − valeur + comme la valeur visée (pas 10 kPa, 0,05 L, 10 K, vers le multiple voisin), saisie au clavier ; γ seulement par les trois onglets, affiché à droite.
 - **Brouillon** : sans étape, un réglage s'applique aussitôt ; avec des étapes, rien n'est effacé, un encart propose « Recommencer depuis A » (= RAZ, qui applique toujours le brouillon) ou « Rétablir » ; le résumé du titre replié commence alors par ✎. Remplace la confirmation au changement de montage.
-- **Reste ouvert** : faire glisser le point A sur le diagramme de Clapeyron quand la section est ouverte.
+- ~~Faire glisser le point A sur le diagramme de Clapeyron~~ : abandonné (comme R5).
 
 ### 10.11 Palier R4e : frise des étapes (fait)
 
