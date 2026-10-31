@@ -450,11 +450,11 @@
             <div class="tf-pop-source" id="tf-pop-source" style="display:none">
               <div class="tf-pop-titre" id="tf-pop-nom">Source 1</div>
               <div class="tf-visee-ligne">
-                <button class="tf-pm" id="tf-pop-moins" onclick="tfOnTSourcePM(-1)" aria-label="Diminuer">−</button>
+                <button class="tf-pm" id="tf-pop-moins" onclick="tfOnTSourcePM(-1)" aria-label="Diminuer"><span class="tf-signe" aria-hidden="true">−</span></button>
                 <span class="tf-champ"><input id="tf-in-source" class="tf-saisie" inputmode="decimal"
                        aria-label="Température de la source" onchange="tfOnTSourceSaisie(this.value)"
                        onkeydown="if (event.key === 'Enter') this.blur(); else if (event.key === 'Escape') tfFermerSource()"><span class="tf-unite">K</span></span>
-                <button class="tf-pm" id="tf-pop-plus" onclick="tfOnTSourcePM(1)" aria-label="Augmenter">+</button>
+                <button class="tf-pm" id="tf-pop-plus" onclick="tfOnTSourcePM(1)" aria-label="Augmenter"><span class="tf-signe" aria-hidden="true">+</span></button>
                 <button class="tf-mini-btn" id="tf-pop-tgaz" onclick="tfOnSourceTgaz()"
                         title="Mettre la source à la température du gaz">= T gaz</button>
               </div>
@@ -489,12 +489,12 @@
               <label class="tf-visee-lbl" for="tf-in-vise" id="tf-lbl-vise">Hauteur visée</label>
               <div class="tf-visee-ligne">
                 <button class="tf-pm" id="tf-pm-moins" onpointerdown="tfPmDebut(-1, event)"
-                        onclick="tfPmClavier(-1, event)" aria-label="Diminuer">−</button>
+                        onclick="tfPmClavier(-1, event)" aria-label="Diminuer"><span class="tf-signe" aria-hidden="true">−</span></button>
                 <span class="tf-champ"><input id="tf-in-vise" class="tf-saisie" inputmode="decimal"
                        oninput="tfOnSaisieVise(this.value, false)" onchange="tfOnSaisieVise(this.value, true)"
                        onkeydown="if (event.key === 'Enter') this.blur()"><span class="tf-unite" id="tf-unite-vise">cm</span></span>
                 <button class="tf-pm" id="tf-pm-plus" onpointerdown="tfPmDebut(1, event)"
-                        onclick="tfPmClavier(1, event)" aria-label="Augmenter">+</button>
+                        onclick="tfPmClavier(1, event)" aria-label="Augmenter"><span class="tf-signe" aria-hidden="true">+</span></button>
                 <select class="tf-etats" id="tf-sel-etat" onchange="tfOnCopierEtat(this.value)"
                         title="Reprendre la valeur d’un état du journal"></select>
               </div>

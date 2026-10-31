@@ -1054,6 +1054,18 @@ function _tfPapPas(o, sens) {
 // rend le chemin non défini (la transformation n'est plus quasi statique).
 var TF_NOM_ORGANE = { volume: 'Vérin', masse: 'Sable', Pair: 'Air de l’enceinte' };
 
+// Libellé d'un bouton d'un pas : flèche du vérin, ou signe − (-1) ou +
+// (1) remonté par le CSS, puis le pas ; réécrit seulement s'il change
+function _tfLibPas(id, signe, lib) {
+  var b = _tfEl[id];
+  var h = (typeof signe === 'string' ? signe + ' '
+          : '<span class="tf-signe" aria-hidden="true">' + (signe > 0 ? '+' : '−') + '</span>') + lib;
+  if (b.dataset.lib === h) return;
+  b.dataset.lib = h;
+  b.innerHTML = h;
+  b.setAttribute('aria-label', (typeof signe === 'string' ? '' : signe > 0 ? '+ ' : '− ') + lib);
+}
+
 function _tfMajMain() {
   if (tfCarte.mode !== 'main') return;
   var m = tfMesures(), eq = m.equilibre;
@@ -1068,8 +1080,8 @@ function _tfMajMain() {
   _tfEl['tf-main-nature-piston'].textContent = _tfNature('piston');
   _tfEl['tf-main-val-piston'].textContent = cle === 'volume' ? _tfFmt(tf.z[TF_N] * 100, 1) + ' cm'
     : cle === 'Pair' ? _tfFmt(tf.Pair / 1000, 1) + ' kPa' : _tfFmt(tf.masse, 2) + ' kg';
-  _tfEl['tf-main-moins-piston'].textContent = (cle === 'volume' ? '▼ ' : '− ') + lib;
-  _tfEl['tf-main-plus-piston'].textContent = (cle === 'volume' ? '▲ ' : '+ ') + lib;
+  _tfLibPas('tf-main-moins-piston', cle === 'volume' ? '▼' : -1, lib);
+  _tfLibPas('tf-main-plus-piston', cle === 'volume' ? '▲' : 1, lib);
   _tfEl['tf-main-moins-piston'].title = cle === 'volume' ? 'Descendre le piston (compression)'
     : cle === 'masse' ? 'Retirer un grain de sable' : 'Diminuer la pression de l’air';
   _tfEl['tf-main-plus-piston'].title = cle === 'volume' ? 'Monter le piston (détente)'
@@ -1081,8 +1093,8 @@ function _tfMajMain() {
   _tfEl['tf-main-nom-source'].textContent = src ? 'Source ' + tf.fond : 'Source';
   _tfEl['tf-main-nature-source'].textContent = src ? _tfNature('source') : '';
   _tfEl['tf-main-val-source'].textContent = src ? _tfFmt(tf.Text, 1) + ' K' : '';
-  _tfEl['tf-main-moins-source'].textContent = '− ' + libT;
-  _tfEl['tf-main-plus-source'].textContent = '+ ' + libT;
+  _tfLibPas('tf-main-moins-source', -1, libT);
+  _tfLibPas('tf-main-plus-source', 1, libT);
   _tfEl['tf-main-moins-source'].disabled = _tfEl['tf-main-plus-source'].disabled = !src;
   _tfEl['tf-main-sl-source'].disabled = !src;
   _tfEl['tf-main-note-source'].style.display = src ? 'none' : '';

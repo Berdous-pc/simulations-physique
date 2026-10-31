@@ -674,6 +674,11 @@ main {
   cursor: pointer;
 }
 .tf-pm:hover { background: #dedad2; }
+/* Signes − et + : la police les centre sur la hauteur des minuscules, ils
+   paraissent trop bas, seuls dans un bouton comme à côté de chiffres ; on
+   les remonte un peu */
+.tf-signe { display: inline-block; transform: translateY(-0.08em); }
+.tf-pas-btn .tf-signe { margin-right: 0.3em; }
 .tf-etats {
   flex: 0 0 3.6em;
   min-width: 0;
