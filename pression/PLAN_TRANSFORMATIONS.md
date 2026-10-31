@@ -21,6 +21,9 @@
 > statique du moteur, équilibre exigeant T_gaz = T_source si le fond conduit (§2.4), chemin PV
 > tracé dès que la pression du gaz est définie (§4.2). Le §10 fait foi pour l'interface ; les
 > prochains paliers sont au §10.4.
+>
+> **Point au 31 octobre 2026** : refonte terminée (R1 à R4g) et finitions (§10.14). Restent
+> l'essai à la souris, la fin du palier 6 (sable) et les paliers 8 (intégration) et 9 (site).
 
 ---
 
@@ -356,7 +359,7 @@ Chaque palier se termine par un commit et peut être montré en classe tel quel 
 - Option future, hors de cet onglet : dynamique moléculaire réelle (disques durs) pour une thermalisation qui ne doit rien au modèle.
 - ~~**Message sous les trois boutons**~~ : sans objet depuis R4b (plus de phrase sous les manières ; le bouton Réversible affiche « = quasi statique » quand les durées coïncident).
 - **Bilan d'énergie au choc de la membrane** : écart de 10⁻² J (≈ 10⁻⁴ en relatif) après un échelon de P_air, contre 10⁻⁴ J avec le piston de 1 kg. À surveiller.
-- **Essai à la souris** de R3 à R4f, et du correctif de l'historique des graphes : tout est validé au banc headless seulement.
+- **Essai à la souris** de R3 à R4g et des finitions du §10.14 (cycles, Zoom, vitesse Auto par phases…), et du correctif de l'historique des graphes : tout est validé au banc headless seulement.
 
 ---
 
@@ -413,10 +416,11 @@ Transformation attendue : …
 - ✅ **R4e** (terminé, §10.11) : journal des Étapes en frise sur fond blanc (points = états, traits = étapes, pointillés si le gaz est passé par un état non défini) ; titre = nature, puce de la manière, S créée ; clic sur un point = courbes de référence, sur un trait = mise en évidence et Bilan de cette étape.
 - ✅ **R4f** (terminé, §10.12) : cycles — retour à un état déjà noté reconnu (même lettre, ⟳ cycle) ; colonne Cycle du Bilan et phrase moteur / récepteur (rendement, Carnot, efficacités).
 - ✅ **R4g** (terminé, §10.13) : section Cycles — aller-retour, Carnot, Stirling, Lenoir ; point A réglé, cycle idéal en gris sur les diagrammes, étapes d'un clic (une manière par étape) ou tout le cycle d'un coup.
+- ✅ **Finitions après R4g** (terminé, §10.14) : cadrage, Zoom et Auto des graphes, tableau gaz / extérieur, Bilan en onglets, Réversiblement recalibré, temps continu sur un cycle, ×10 000 tenu, vitesse Auto par phases, molécules au ralenti, fronts de pression en brutal.
 - ~~**R4** file d'attente et séquences enregistrées~~ (abandonnés) : « Tout le cycle d'un coup » couvre l'enchaînement ; l'export JSON n'apporte rien en classe.
 - ✅ **Diagramme TS et Bilan** (§10.6, palier 7) : terminé.
 - ~~**R5**~~ (abandonné) : viser en cliquant sur le diagramme de Clapeyron, ou y faire glisser le point A ; écarté par choix.
-- **Ensuite** : la fin du palier 6 (sable), et les paliers 8 (intégration) et 9 (site). Avant : un essai à la souris de tout ce qui a été fait depuis R3, cycles compris (validé au banc headless seulement).
+- **Ensuite** : la fin du palier 6 (sable), et les paliers 8 (intégration) et 9 (site). Avant : un essai à la souris de tout ce qui a été fait depuis R3, cycles et finitions du §10.14 compris (validé au banc headless seulement).
 
 **Mode quasi statique du moteur** (ajouté après R2) : au repos mécanique, pression uniforme et conduction seule, pas ~0,7 ms au lieu de ~1 µs ; les escaliers lents tiennent enfin le cran ×20 (avant : ×0,8 avec un gaz chaud et comprimé). Résultats identiques au calcul complet (ARCHITECTURE.md).
 
@@ -661,3 +665,19 @@ Tout le cycle d'un coup  ▌Brutale ▌Quasi statique ▌Réversible
   - Lenoir quasi statique (0,3 L) : C 0,375 L 365,8 K, η = 0,05 ; brutal : détente adiabatique au libérer du piston, récepteur.
   - Aller-retour brutal : la compression brutale chauffe plus que la réversible, la détente qui suit demande donc plus de place ; de 0,9 L, le piston finissait en butée haute (1,0 L, 160 kPa au lieu de 100). V max par défaut ramené à 0,6 L, et une étape s'arrête en butée (comptée faite).
 - **Annuler la dernière** et ↺ : les étapes du cycle qui menaient au-delà de l'état retrouvé ne sont plus faites (`tfCycle.etatsFaits`, rang dans la frise de l'état atteint par chaque étape).
+
+### 10.14 Après R4g : finitions (fait)
+
+Ajouts faits à la demande de l'auteur après R4g, validés au banc headless (détails dans `ARCHITECTURE.md` et les messages de commit).
+
+- **Cadrage des graphes** : échelles des diagrammes cadrées sur le contenu (cycle idéal choisi, sinon voisinage de l'état initial ; zéro de V, P et T pris s'il ne fait au plus que doubler l'étendue ; bornes arrondies au dixième de l'étendue). **Ajuster** tient compte du cycle idéal, des états notés, de l'état actuel et des arrivées prévues (cercles pointillés prévu et brutal). Bouton **Zoom** sur chaque graphe (glisser trace le rectangle de la vue ; en temps, l'intervalle seul ; moins de 6 px ou Échap : abandon) ; bouton **Auto** (ex-Champ des diagrammes, ex-Étape des graphes au cours du temps) : retour au cadrage automatique. Zoom fluide, borné à une étendue de 10⁻⁴ de la valeur ; pointillés coupés au cadre avant le canvas (122 ms par image à ×10 000 zoomé fort, 0,2 ms après) ; graduations comptées par indice.
+- **Au départ** : piston libre (bouton Libre avant Tenu), section Cycles repliée, graphes P = f(V) et T, P, V = f(t) affichés.
+- **Tableau gaz / extérieur** : P, T, V du gaz face à l'extérieur, origine de la contrainte (air ou masses + piston, piston tenu, butée, source, isolant), signe = / ≠ / ? entre les deux, voyants d'équilibre mécanique et thermique ; lignes Temps et État retirées.
+- **Bilan replié**, en onglets Étape / Depuis A / Cycle (Cycle choisi quand un cycle se ferme) ; les deux principes écrits en égalités (ΔU = W + Q, ΔS = S_e + S_c), valeurs sous chaque terme, verdict réversible / irréversible ; l'explication passe dans le bandeau.
+- **Réversiblement recalibré** : S_c visée 2,5 µJ/K par étape (≈ 1 µJ/K mesuré) au lieu de 0,2 mJ/K ; verdict « réversible » sous 5 µJ/K, l'arrondi de l'affichage. S_c ∝ 1/durée : cycles par défaut à 0,00 mJ/K en réversible (Carnot 7 h 15, Stirling 57 h, Lenoir 43 h simulées) ; le quasi statique reste irréversible.
+- **Temps d'un cycle** : graphes et chrono Δt gardent l'origine du départ du cycle (lettre A) au lieu de repartir de zéro à chaque étape ; nouveau tour, Réinitialiser ou retour avant le cycle repartent de zéro. Plus de « −0 » affiché.
+- **×10 000 tenu en quasi statique** : pas de la conduction implicite adaptatif (allongé comme √(1 K / écart), jusqu'à ×1000 et 60 s) ; budget de 8 ms de calcul par image au lieu de 12 000 sous-pas ; hors quasi statique, message de plafond (le calcul suit le son, ×3 au plus). Cycles réversibles à ×10 000 : S_c 2,1 / 4,6 / 2,3 µJ/K, W et Q inchangés.
+- **Vitesse Auto par phases** : gaz au repos, le cran change d'un coup (surligné sur le compteur), phase nommée sur le compteur (pendant l'action, ondes et piston, équilibre thermique) ; phase mécanique bornée (sans repos après 6 s d'écran, un cran plus vite jusqu'à ×1) ; le curseur bougé à la main coupe Auto ; repères de changement de vitesse (pointillé bleu et cran) sur les graphes au cours du temps. Carnot brutal : 84 s d'écran au lieu de 108.
+- **Molécules au ralenti** : leur agitation ralentit avec le curseur aux crans lents (×0,7 à ×1/10, ×0,5 à ×1/100, ×0,35 à ×1/1000, ×0,25 à ×1/5000, interpolé en log ; inchangée au-dessus de ×1), sans jamais figer le gaz.
+- **Fronts de pression en brutal** : vérin brutal à 400 m/s au lieu de 150 (course 30 → 15 cm en 0,75 ms, moins d'une traversée du son : vrai front, P_max/P_min 13, T_f 481 K au lieu de 390) ; échelon de P_air sur la membrane : action d'une traversée au lieu de dix, Auto au cran ×1/5000 (≈ 4 s d'écran par traversée).
+- **Réglages des cycles alignés** (étiquettes P min, P max, V min, V max, P_A sur 2,6 em).
