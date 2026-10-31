@@ -104,6 +104,9 @@ var tfGraph = {
   // durée L, plages des trois cases ; L et les plages ne font que
   // s'agrandir au fil de l'étape
   axeT      : { t0: 0, L: 1, y: [null, null, null] },
+  // Départ de l'étape où l'axe est reparti de zéro {t0, etape} : origine
+  // gardée par les étapes suivantes d'un cycle
+  cycleT    : null,
   vueT      : null,    // null : étape en cours ; sinon {t1, t2, o (origine), lt (lettre)}
   pileT     : [],
   // Champ fixe de chaque diagramme d'état : il ne fait que s'agrandir, par
@@ -287,12 +290,20 @@ function tfGraphDegeler() {
 // Départ d'une étape : les courbes théoriques et le cadrage des tranches
 // repartent de l'état actuel (dernier échantillon) ; l'axe des temps aussi,
 // pour une durée provisoire (précisée par tfGraphDureeAttendue au lancement
-// de l'action)
+// de l'action). Au cours d'un cycle (tf-cycles.js, tfCyEnCours), l'axe des
+// temps et le chrono gardent l'origine du départ du cycle : le temps court
+// d'une étape à l'autre, et l'axe ne fait que s'allonger.
 function tfGraphDepartEtape() {
   var g = tfGraph;
   if (g.ech.length) g.ref = g.ech[g.ech.length - 1];
   g.env = null;
-  _tfgAxeT(g.ref ? g.ref.t : 0, 1);
+  if (tfCyEnCours() && g.cycleT) {
+    if (g.axeT.t0 !== g.cycleT.t0) _tfgAxeT(g.cycleT.t0, 1, g.cycleT.etape);
+    g.axeT.garde = true;
+  } else {
+    _tfgAxeT(g.ref ? g.ref.t : 0, 1, tfEtapes.liste.length - 1);
+    g.cycleT = { t0: g.axeT.t0, etape: g.axeT.etape };
+  }
   g.vueT = null;
   g.pileT = [];
   g.sale = true;
@@ -302,15 +313,20 @@ function tfGraphDepartEtape() {
 // l'axe des temps ; il s'agrandit ensuite si le retour à l'équilibre dure
 function tfGraphDureeAttendue(D) {
   if (!isFinite(D) || D <= 0) return;
-  tfGraph.axeT.L = _tfgCran(1.2 * D, TF_G_CRANS_T);
+  var A = tfGraph.axeT;
+  // Origine gardée (cycle) : l'étape s'ajoute au temps déjà écoulé
+  A.L = A.garde ? Math.max(A.L, _tfgCran(1.2 * (tfGraphTemps() - A.t0 + D), TF_G_CRANS_T))
+                : _tfgCran(1.2 * D, TF_G_CRANS_T);
   delete tfGraph.anim.t;
   tfGraphReprogrammer();
   tfGraph.sale = true;
 }
 
-function _tfgAxeT(t0, L) {
+// etape : rang dans la frise de l'étape dont le départ marque l'origine
+// (la dernière si absent)
+function _tfgAxeT(t0, L, etape) {
   var g = tfGraph;
-  g.axeT = { t0: t0, L: L, y: [null, null, null] };
+  g.axeT = { t0: t0, L: L, y: [null, null, null], etape: etape };
   ['t', 't0', 't1', 't2'].forEach(function (k) { delete g.anim[k]; });
 }
 
@@ -336,6 +352,7 @@ function tfGraphRevenir(ts, n) {
   g.ref = e[e.length - 1];
   g.env = null;
   _tfgAxeT(g.ref.t, 1);
+  if (g.cycleT && g.cycleT.t0 > g.ref.t + 1e-12) g.cycleT = null;
   g.champ = { pv: null, ts: null };
   g.vueT = null;
   g.vue = { pv: null, ts: null };
@@ -373,6 +390,7 @@ function tfGraphEffacer() {
   g.repos = true;
   g.gele = g.coupure = false;
   _tfgAxeT(0, 1);
+  g.cycleT = null;
   g.champ = { pv: null, ts: null };
   g.vueT = null;
   g.vue = { pv: null, ts: null };
@@ -488,14 +506,14 @@ function _tfgAnimer(cle, cible) {
 function _tfgNb(v, pas) {
   if (Math.abs(v) < pas * 1e-6) v = 0;
   var d = Math.max(0, Math.ceil(-Math.log10(pas) - 1e-9));
-  return v.toFixed(Math.min(d, 6)).replace('.', ',').replace('-', '−');
+  return _tfFixe(v, Math.min(d, 6)).replace('.', ',').replace('-', '−');
 }
 
 // Valeur lue au réticule : trois chiffres significatifs au moins
 function _tfgNbLu(v) {
   var a = Math.abs(v);
   var d = a >= 100 ? 1 : a >= 10 ? 2 : 3;
-  return v.toFixed(d).replace('.', ',').replace('-', '−');
+  return _tfFixe(v, d).replace('.', ',').replace('-', '−');
 }
 
 // Graduations comprises dans [lo, hi] (comptées par indice : v += pas
@@ -727,7 +745,9 @@ function _tfgDessinerTemps() {
 
 // Lettre de l'état de départ de l'étape en cours ('' avant toute étape)
 function _tfgLettreDepart() {
-  var L = tfEtapes.liste, dep = L.length ? L[L.length - 1].depart : null;
+  var L = tfEtapes.liste, k = tfGraph.axeT.etape;
+  if (k === undefined || !L[k]) k = L.length - 1;
+  var dep = k >= 0 ? L[k].depart : null;
   return dep !== null && tfEtapes.etats[dep] ? tfEtapes.etats[dep].lettre : '';
 }
 

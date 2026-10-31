@@ -294,6 +294,13 @@ function _tfCyRepos() {
   return !tfEnCours() && !_tfEnAttente && !(der && der.statut === 'en cours') && tfMesures().equilibre;
 }
 
+// Cycle commencé : au moins sa première étape faite, le tour pas fini (les
+// graphes gardent alors l'origine des temps, tfGraphDepartEtape)
+function tfCyEnCours() {
+  var d = tfCycle.def;
+  return !!(tfCycle.cle && d && !d.erreur && tfCycle.k > 0);
+}
+
 function _tfCyConditions(s) { return tf.tenu === s.tenu && tf.fond === s.fond; }
 
 // Étape faite : conditions réunies, et température ou pression d'arrivée

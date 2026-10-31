@@ -129,7 +129,7 @@ function _tfActuelle(cle) { return cle === 'volume' ? tf.z[TF_N] : tf[cle]; }
 //  Formatage (virgule décimale)
 // ══════════════════════════════════════════════════════════════════════
 
-function _tfFmt(x, d) { return x.toFixed(d).replace('.', ','); }
+function _tfFmt(x, d) { return _tfFixe(x, d).replace('.', ','); }
 
 // Temps : en ms aux crans de ralenti extrême, où l'on suit des
 // phénomènes de l'ordre de la milliseconde ; en s sinon.
@@ -258,11 +258,10 @@ var _tfBilanHtml = '';
 // Entropie créée entre deux relevés du bilan : ΔS − Σ δQ / T_source
 function _tfScree(b0, b1) { return b1.S - b0.S - (b1.Se - b0.Se); }
 
-function _tfFmtJ(x) { return (x < 0 ? '−' : '') + _tfFmt(Math.abs(x), 2) + ' J'; }
-function _tfFmtmJK(x) {
-  if (Math.abs(x) < 0.005e-3) x = 0;
-  return (x < 0 ? '−' : '') + _tfFmt(Math.abs(x) * 1e3, 2) + ' mJ/K';
-}
+// Signe « − » seulement devant une valeur affichée non nulle (pas de « −0,00 »)
+function _tfSigne(x, s) { return (x < 0 && /[1-9]/.test(s) ? '−' : '') + s; }
+function _tfFmtJ(x) { return _tfSigne(x, _tfFmt(Math.abs(x), 2)) + ' J'; }
+function _tfFmtmJK(x) { return _tfSigne(x, _tfFmt(Math.abs(x) * 1e3, 2)) + ' mJ/K'; }
 
 // Vue du Bilan : 'etape' (l'étape cliquée dans la frise, la dernière
 // sinon, de son départ à son arrivée ou à maintenant), 'A' (depuis l'état initial) ou 'cycle' (le dernier cycle fermé,

@@ -752,7 +752,13 @@ function _tfDessinerSondes() {
   }
 }
 
-function _tfVirgule(x, d) { return x.toFixed(d).replace('.', ','); }
+// toFixed garde le signe d'un négatif arrondi à zéro (« -0.00 ») : retiré
+function _tfFixe(x, d) {
+  var s = x.toFixed(d);
+  return /^-[0.]+$/.test(s) ? s.slice(1) : s;
+}
+
+function _tfVirgule(x, d) { return _tfFixe(x, d).replace('.', ','); }
 
 // ── Profil de pression à droite du cylindre ──
 // Échelle absolue par défaut (axe de 0 à Pmax arrondi, en kPa) : les écarts
