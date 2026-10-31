@@ -90,7 +90,7 @@ var tfGraph = {
   env       : null,    // étendue des tranches depuis le départ, par diagramme (cadrage)
   // Encarts affichés dans la colonne gauche (barre de boutons activables,
   // de 0 à 4)
-  vues      : { pv: true, ts: false, temps: true, tableau: true },
+  vues      : { pv: true, ts: false, temps: true, tableau: false },
   // Chrono des graphes : temps des graphes = temps simulé − decal (s), les
   // attentes à l'équilibre étant retirées quand l'option gel est cochée
   decal     : 0,

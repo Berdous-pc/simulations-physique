@@ -143,7 +143,7 @@ var tf = {
   _T : new Float64Array(TF_N),     // températures (conduction)
 
   // Piston : tenu par la pince du vérin, ou libre (§10.2)
-  tenu   : true,
+  tenu   : false,
   // Charge posée sur le plateau : blocs (posés d'un coup) et sable (versé
   // grain à grain) ; masse = blocs + sable
   masse  : 0,            // kg
@@ -395,7 +395,7 @@ function tfReset() {
 
   tf.sable  = 0;
   tf.masse  = tf.blocs = tf.montage === 'masse' ? tfMasseDepart(P0) : 0;
-  tf.tenu   = true;
+  tf.tenu   = false;   // piston libre, en équilibre sous P0 (Pair ou masse ci-dessous)
   tf.verin.actif = false;
   tf.Wop    = 0;
   tf.Pair   = tf.montage === 'masse' ? TF_P_ATM : P0 - TF_M_PISTON * TF_G / TF_S;
