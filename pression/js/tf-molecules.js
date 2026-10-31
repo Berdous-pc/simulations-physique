@@ -37,11 +37,13 @@
 //  horizontal, et les bandes sont regroupées (8, 5, 4, 2 puis 1). Les 600
 //  molécules restent, réparties à nouveau par altitude : aucune ne saute.
 //
-//  Vitesse d'agitation : conventionnelle (lisible), la même à tous les crans
-//  du curseur Vitesse. Les vraies vitesses (~500 m/s) ne tombent à l'échelle
-//  du dessin qu'au cran ×1/5000, et dès ×1/1000 elles dépasseraient ce
-//  plafond : une exception pour un seul cran surprenait plus qu'elle
-//  n'apprenait.
+//  Vitesse d'agitation : conventionnelle (lisible). Aux crans lents, elle
+//  ralentit avec le curseur Vitesse, jusqu'à un plancher (_tfMolFacteurTemps :
+//  ×0,25 à ×1/5000) : on voit le temps ralentir dans le gaz, et la densité
+//  d'un front ressort mieux d'une agitation moins vive. C'est un repère du
+//  ralenti, pas une échelle : proportionnelle au cran, l'agitation figerait
+//  le gaz dès ×1/100 ; à l'échelle réelle, elle ne changerait qu'à ×1/5000.
+//  Au-dessus de ×1, elle ne s'accélère pas (illisible).
 //  Écarts exagérés (option) : v ∝ (T/T₀)³ au lieu de √(T/T₀), entre ×0,12
 //  et ×5 ; une compression adiabatique de 30 à 15 cm ne change la vraie
 //  vitesse que de 15 %, invisible (×1,5 avec l'exposant 1,5 ne se voyait
@@ -74,6 +76,24 @@ var TF_MOL_EXAGERE     = 3;                     // exposant de T/T₀ (écarts e
 var TF_MOL_EXAGERE_MIN = 0.12;                  // facteur de vitesse au moins (gaz froid)
 var TF_MOL_EXAGERE_MAX = 5;                     // facteur de vitesse au plus
 var TF_MOL_RAYON       = 0.0055;                // fraction de la largeur dessinée
+
+// Facteur d'agitation selon la vitesse du temps : un par cran lent, de ×1
+// à ×1/5000, interpolé en log entre les crans (passages progressifs de la
+// vitesse adaptée)
+var TF_MOL_TEMPS = [[1 / 5000, 0.25], [1 / 1000, 0.35], [1 / 100, 0.5], [0.1, 0.7], [1, 1]];
+
+function _tfMolFacteurTemps(v) {
+  var P = TF_MOL_TEMPS;
+  if (v >= 1) return 1;
+  if (v <= P[0][0]) return P[0][1];
+  for (var i = 1; i < P.length; i++) {
+    if (v <= P[i][0]) {
+      var f = Math.log(v / P[i - 1][0]) / Math.log(P[i][0] / P[i - 1][0]);
+      return P[i - 1][1] + f * (P[i][1] - P[i - 1][1]);
+    }
+  }
+  return 1;
+}
 
 // Éclats de chocs sur les parois, le fond et le piston (option) : durée de
 // vie en s d'affichage, nombre maximal à l'écran
@@ -190,7 +210,7 @@ function tfMolAvancer(dtReel, largeur, rayonFrac, echelle, chocs) {
 
   var xMin = rayonFrac, xMax = 1 - rayonFrac;
   // Distance parcourue à T : d = k·(T/T₀)^α
-  var k = TF_MOL_VITESSE * dtReel;
+  var k = TF_MOL_VITESSE * dtReel * _tfMolFacteurTemps(tf.vitesse);
   var alpha = tfMolExagere ? TF_MOL_EXAGERE : 0.5;
   var Tref = tf.T0;
 
