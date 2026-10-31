@@ -1219,6 +1219,7 @@ function _tfPapPas(o, sens) {
   } else {
     _tfFixer(cle, cible, true, false, true);   // un grain : du sable, pas un bloc
     tfSetTenu(false);
+    tfPasPiston();
   }
   var dsc = _tfDescPap(cle, der.v0, cible, der.nbHors);
   der.titre = dsc.titre; der.detail = dsc.detail; der.man = dsc.man;

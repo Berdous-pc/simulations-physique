@@ -154,6 +154,7 @@ var tf = {
   blocs  : 0,            // kg
   sable  : 0,            // kg
   sableMain : 0,         // kg, part du sable posée à la main (dessin seulement)
+  tReposMin : 0,         // s, piston pas au repos avant (tfPasPiston)
   bAmort : 0,            // kg·s⁻¹, recalculé à chaque sous-pas
 
   // Vérin (piston tenu) : mouvement de zDep à zArr, commencé à t0, de durée tau
@@ -332,7 +333,10 @@ function tfMesures() {
 
   var Pdef = (Pmax - Pmin) / Pmoy < TF_SEUIL_P;
   var Tdef = (Tmax - Tmin) < TF_SEUIL_T;
-  var repos = _tfEc() < TF_SEUIL_EC * U;
+  // Après un pas à la main sur le piston libre, l'oscillation qu'il lance
+  // peut rester sous les seuils (grain de 10 g : 0,05 %) : le piston n'est
+  // au repos qu'une fois amortie (tfPasPiston)
+  var repos = _tfEc() < TF_SEUIL_EC * U && tf.t >= tf.tReposMin;
   // Vérin arrêté ou butée : c'est lui qui assure l'équilibre mécanique du
   // piston
   var butee = tfButee(Pmoy);
@@ -418,6 +422,7 @@ function tfReset() {
   tf.Qabs   = 0;
   tf.Wgaz   = 0;
   tf.limite = false;
+  tf.tReposMin = 0;
   tf.dtCfl  = 1e-6;
   tf.tEchant = 0;
   tf.acc    = null;
@@ -456,6 +461,17 @@ function tfSetFond(f) {
   if (f !== 'isolant') tf.Text = tf['T' + f];
   tf.rampes.Text.actif = false;
   tfSetIsolation(f === 'isolant' ? 0 : TF_ISOLATIONS[TF_ISOLATIONS.length - 1]);
+}
+
+// Pas à la main sur le piston libre (grain de sable, pas de P_air) : il
+// lance une oscillation d'amplitude égale au saut de pression, qui peut
+// rester sous les seuils d'équilibre. Le piston n'est déclaré au repos
+// qu'après l'amortissement de cette oscillation au dixième, en
+// ln 10 / (TF_AMORT·ω) avec ω = 2π / période, la période valant quatre
+// fois le quart de période tfDurees().piston (~4,6 périodes).
+function tfPasPiston() {
+  var periode = 4 * tfDurees().piston;
+  tf.tReposMin = tf.t + Math.log(10) * periode / (2 * Math.PI * TF_AMORT);
 }
 
 // Température d'une source ('1' ou '2')
