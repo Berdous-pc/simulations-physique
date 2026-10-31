@@ -57,10 +57,14 @@ var TF_Z_BUTEE    = 0.02;    // m — butée basse du piston
 var TF_N   = 80;     // nombre de tranches
 var TF_CFL = 0.4;    // fraction du pas de temps limite dz/c
 
-// Plafond de sous-pas par appel de tfAvancer() (une image) : au-delà, le
-// temps simulé prend du retard sur la vitesse demandée (tf.limite) plutôt
-// que de figer la page. 80 tranches × 12 000 sous-pas ≈ 10 ms de calcul.
-var TF_SOUS_PAS_MAX = 12000;
+// Budget de calcul par appel de tfAvancer() (une image) : au-delà, le temps
+// simulé prend du retard sur la vitesse demandée (tf.limite) plutôt que de
+// figer la page. Un budget en temps, et non en nombre de sous-pas : une
+// machine lente garde ses images, une rapide va plus vite (~1 µs le
+// sous-pas ici, 8 ms ≈ 7 000 sous-pas). L'horloge est lue tous les
+// TF_BUDGET_LOT sous-pas.
+var TF_BUDGET_MS  = 8;
+var TF_BUDGET_LOT = 64;
 
 // ── Dissipation ──
 // Viscosité des tranches, q = −cl·ρ·c·Δu + cq·ρ·Δu² (le terme quadratique
@@ -194,7 +198,7 @@ var tf = {
   QsurT  : 0,            // J/K, entropie reçue avec cette chaleur, Σ δQ / T_ext
   Qabs   : 0,            // J, chaleur absorbée : somme des seuls apports positifs (rendement d'un cycle)
   Wgaz   : 0,            // J, travail reçu par le gaz par la face du piston
-  limite : false,        // la dernière image a atteint TF_SOUS_PAS_MAX
+  limite : false,        // la dernière image a épuisé TF_BUDGET_MS
 
   // Enregistrement des graphes : fonction appelée dès que tf.t atteint
   // tEchant (tf-graph.js la fournit et fixe l'échéance suivante)
@@ -675,10 +679,14 @@ function _tfMajAmortissement(U) {
 // atteint).
 function tfAvancer(dt) {
   var reste = dt, n = 0, nEssai = 0;
+  var tLimite = performance.now() + TF_BUDGET_MS;
   if (!tf.qs) _tfEssayerQS();
-  while (reste > 1e-12 && n < TF_SOUS_PAS_MAX) {
+  while (reste > 1e-12 && (n % TF_BUDGET_LOT || n === 0 || performance.now() < tLimite)) {
     _tfAvancerRampes();   // peut faire quitter le mode quasi statique
     var h = Math.min(reste, tf.qs ? _tfDtQS() : tf.dtCfl);
+    // Pas quasi statique long (gaz presque uniforme) : il s'arrête sur
+    // l'échantillon suivant des graphes, qui garderont leur finesse
+    if (tf.qs && tf.echantillon && tf.tEchant - tf.t > 1e-12 && tf.tEchant - tf.t < h) h = tf.tEchant - tf.t;
     // Vérin en marche : profil de vitesse suivi finement, et arrivée sur
     // une fin de sous-pas
     if (tf.verin.actif) {
@@ -775,7 +783,8 @@ var TF_QS_P      = 2e-5;
 var TF_QS_VERIN  = 200;
 var TF_QS_ESSAI  = 2000;
 var TF_QS_RAMPE  = 20;      // rampe continue lente : ≥ 20 temps mécaniques
-var TF_QS_DT_MAX = 0.1;     // s (implicite)
+var TF_QS_DT_BASE = 0.1;    // s (implicite, pour un écart de TF_QS_ECART_REF)
+var TF_QS_DT_MAX  = 60;     // s (implicite, gaz presque uniforme : _tfDtQS)
 var TF_QS_DT_EXPL_MAX = 0.02;  // s (explicite)
 
 function _tfVerinLent() {
@@ -845,14 +854,37 @@ var TF_QS_IMPLICITE  = true;
 var TF_QS_FRAC_INT   = 100;   // pas ≤ τ_int / 100
 var TF_QS_FRAC_PAROI = 20;    // pas ≤ (n·Cv/G) / 20
 var TF_QS_FRAC_RAMPE = 400;   // pas ≤ durée d'une rampe continue / 400
+// Pas adaptatif : les fractions ci-dessus valent pour un écart de
+// température de TF_QS_ECART_REF ; plus petit, le pas s'allonge comme
+// √(TF_QS_ECART_REF / écart), l'erreur d'un pas (∝ écart·(pas/τ)²) restant
+// celle d'un écart de 1 K. Gaz uniforme : le pas n'est plus borné que par
+// les rampes, le vérin, les échantillons des graphes et TF_QS_DT_MAX (un
+// gaz à l'équilibre ne coûte presque plus rien). Euler rétrograde suit
+// exactement le retard d'une tranche sur une source qui varie linéairement :
+// une transformation réversible n'y perd rien.
+var TF_QS_ECART_REF  = 1;     // K
+var TF_QS_ALLONGE    = 1000;  // allongement au plus
+
+function _tfAllonge(ecart) {
+  return ecart * TF_QS_ALLONGE * TF_QS_ALLONGE <= TF_QS_ECART_REF ? TF_QS_ALLONGE
+       : Math.max(1, Math.sqrt(TF_QS_ECART_REF / ecart));
+}
 
 function _tfDtQS() {
   var cTr = tf.nTr * tf.Cv, z = tf.z, dt;
   if (TF_QS_IMPLICITE) {
+    var E = tf.E, Emin = E[0], Emax = E[0];
+    for (var j = 1; j < TF_N; j++) {
+      if (E[j] < Emin) Emin = E[j];
+      else if (E[j] > Emax) Emax = E[j];
+    }
     // Conduction dans le gaz : 4L²/(π²D), D = λ·S·L/(n·Cv)
     var tInt = 4 * z[TF_N] * tf.n * tf.Cv / (Math.PI * Math.PI * TF_LAMBDA * TF_S);
-    dt = tInt / TF_QS_FRAC_INT;
-    if (tf.G > 0) dt = Math.min(dt, tf.n * tf.Cv / tf.G / TF_QS_FRAC_PAROI);
+    dt = Math.min(tInt / TF_QS_FRAC_INT, TF_QS_DT_BASE) * _tfAllonge((Emax - Emin) / cTr);
+    if (tf.G > 0) {
+      dt = Math.min(dt, tf.n * tf.Cv / tf.G / TF_QS_FRAC_PAROI
+                        * _tfAllonge(Math.abs(E[0] / cTr - tf.Text)));
+    }
     for (var cle in tf.rampes) {
       var r = tf.rampes[cle];
       if (r.actif && r.continu) dt = Math.min(dt, r.duree / TF_QS_FRAC_RAMPE);

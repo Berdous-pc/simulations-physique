@@ -234,11 +234,16 @@ function tfMajAfficheurs() {
   _tfEl['tf-voy-meca'].classList.toggle('ok', m.meca);
   _tfEl['tf-voy-th'].classList.toggle('ok', m.Tdef && (tf.fond === 'isolant' || sigT === '='));
 
-  // Vitesse réellement tenue quand le calcul plafonne (TF_SOUS_PAS_MAX)
+  // Vitesse réellement tenue quand le calcul plafonne (TF_BUDGET_MS). Hors
+  // mode quasi statique, la cause est physique : le calcul suit le son
+  // (pas de quelques µs), soit ×3 environ au plus
   var lim = _tfEl['tf-vitesse-limite'];
   lim.style.display = tf.limite ? '' : 'none';
-  if (tf.limite) lim.textContent = 'Calcul trop lourd : ×' + _tfLibelleVitesse(+_tfVitesseAtteinte.toPrecision(2))
-                                 + ' atteint au lieu de ×' + _tfLibelleVitesse(tf.vitesse);
+  if (tf.limite) {
+    var atteint = '×' + _tfLibelleVitesse(+_tfVitesseAtteinte.toPrecision(2));
+    lim.textContent = tf.qs ? 'Calcul trop lourd : ' + atteint + ' atteint au lieu de ×' + _tfLibelleVitesse(tf.vitesse)
+                            : 'Gaz en mouvement (ondes, piston) : le calcul suit le son, ' + atteint + ' au plus';
+  }
 
   _tfCyTic();
   _tfMajCarte();
