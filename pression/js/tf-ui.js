@@ -597,16 +597,20 @@ function _tfApresLancerCommun() {
   tfMajAfficheurs();
 }
 
-// Vitesse adaptée : s'il faut ralentir le temps pour voir l'action, le
-// ralentissement se fait d'abord, progressivement, et l'action part
-// ensuite (rien ne serait vu des premiers instants à l'ancienne vitesse).
-// Accélérer, en revanche, se fait pendant l'action.
+// Vitesse adaptée. Gaz au repos : rien ne serait vu d'un passage
+// progressif, le cran change d'un coup (dans les deux sens, signalé sur le
+// compteur de la scène) et l'action part aussitôt. Gaz hors d'équilibre :
+// s'il faut ralentir le temps pour voir l'action, le ralentissement se fait
+// d'abord, progressivement, et l'action part ensuite (rien ne serait vu des
+// premiers instants à l'ancienne vitesse) ; accélérer se fait pendant
+// l'action.
 function _tfLancerApresRalenti(cle, vise, duree, lancer) {
   var go = function () { lancer(); _tfApresLancerCommun(); };
   if (!tfCarte.auto || tf.paused) { go(); return; }
   var D = _tfDureePrevue(cle, vise, duree);
   if (!isFinite(D) || D <= 0) { go(); return; }
   var i = tfCranVitesse(D / TF_ECRAN_ACTION);
+  if (tfMesures().equilibre) { _tfSauterCran(i); go(); return; }
   if (TF_VITESSES[i] < tf.vitesse * (1 - 1e-9)) {
     _tfVersCran(i, go);
     _tfMajBoutons();
@@ -661,10 +665,10 @@ function _tfOuvrirEtape(desc) {
 
 // Action lancée : l'axe des temps des graphes prend sa durée attendue (quel
 // que soit le cran), le cran de vitesse s'y adapte si la case est cochée
-function _tfApresLancer(cle, duree) {
+function _tfApresLancer(cle, duree, repos) {
   var D = _tfDureeAction(cle, duree);
   tfGraphDureeAttendue(D);
-  if (tfCarte.auto) _tfVitesseAdaptee(D);
+  if (tfCarte.auto) _tfVitesseAdaptee(D, repos);
 }
 
 // Partie de la carte qui suit l'état du gaz : valeur actuelle, arrivée
@@ -810,6 +814,13 @@ function tfOnVitesse(val) {
   tfMajAfficheurs();
 }
 
+// Curseur bougé à la main : le cran choisi l'emporte, Auto se coupe (il
+// reprendrait sinon la main à la phase suivante)
+function tfOnVitesseCurseur(val) {
+  if (tfCarte.auto) tfOnVitesseAuto(false);
+  tfOnVitesse(val);
+}
+
 function tfBasculerAuto() { tfOnVitesseAuto(!tfCarte.auto); }
 
 function tfOnVitesseAuto(coche) {
@@ -853,10 +864,11 @@ function tfOnFond(f) {
     }
     else { _tfOuvrirEtape(nom); tfEtapes.liste[tfEtapes.liste.length - 1].fond = true; }
   }
+  var repos = !tfEnCours() && tfMesures().equilibre;
   tfSetFond(f);
   if (_tfPret && f !== 'isolant') {
     _tfDemarrerRelax();
-    if (Math.abs(tf.Text - tfMesures().Tmoy) > TF_SEUIL_T) _tfApresLancer('Text', 0);
+    if (Math.abs(tf.Text - tfMesures().Tmoy) > TF_SEUIL_T) _tfApresLancer('Text', 0, repos);
   }
   tfGraph.sale = true;
   _tfMajBoutons();
@@ -1337,9 +1349,21 @@ function tfOnRevenir(i) {
 // ou mise en équilibre thermique (température brutale).
 var TF_ECRAN_ACTION = 5;   // s réelles visées
 
-function _tfVitesseAdaptee(D) {
+// repos : le gaz était au repos avant l'action, le cran change d'un coup
+function _tfVitesseAdaptee(D, repos) {
   if (!isFinite(D) || D <= 0) return;
-  _tfVersCran(tfCranVitesse(D / TF_ECRAN_ACTION));
+  var i = tfCranVitesse(D / TF_ECRAN_ACTION);
+  if (repos) _tfSauterCran(i); else _tfVersCran(i);
+}
+
+// Changement de cran d'un coup (gaz au repos) : le compteur de la scène le
+// signale un instant (tfChrono.saut, date du saut)
+function _tfSauterCran(i) {
+  _tfRampeV = null;
+  tfChrono.sens = 0;
+  if (Math.abs(Math.log(TF_VITESSES[i] / tf.vitesse)) < 1e-6) return;
+  _tfFixerVitesse(TF_VITESSES[i]);
+  tfChrono.saut = performance.now();
 }
 
 // ── Passage progressif d'une vitesse à l'autre ──
@@ -1374,6 +1398,11 @@ function _tfVersCran(i, apres) {
                 duree: Math.max(p.min, Math.min(p.max, p.parDecade * r)) };
   _tfEnAttente = apres || null;
   tfChrono.sens = v1 > tf.vitesse ? 1 : -1;
+}
+
+// Cran visé : celui d'arrivée d'un passage progressif en cours
+function tfCranVise() {
+  return tfCranVitesse(_tfRampeV ? _tfRampeV.v1 : tf.vitesse);
 }
 
 // Appelée à chaque image hors pause, avec la durée réelle écoulée (s)
@@ -1438,12 +1467,27 @@ function _tfDureeAction(cle, duree) {
 // l'équilibre mécanique ; puis, une fois celui-ci atteint et vu à l'écran
 // TF_ECRAN_MECA secondes (le piston s'est arrêté), l'écart de température à
 // résorber (exponentiel, jusqu'à la moitié du seuil « T définie »).
-var TF_ECRAN_FRONT = 3;   // s réelles
-var TF_ECRAN_MECA  = 1;   // s réelles
-var _tfRelax = null;      // { ecran, tPrec, meca } jusqu'au retour à l'équilibre
+// L'amortissement des ondes ou du piston peut durer bien plus que prévu
+// (jusqu'à 18 s d'écran à ×1/100) : au-delà de TF_ECRAN_MECA_MAX secondes
+// d'écran sans repos mécanique, le temps accélère d'un cran (jusqu'à ×1).
+// Chaque phase est nommée sur le compteur de la scène (tfPhaseAuto).
+var TF_ECRAN_FRONT    = 3;   // s réelles
+var TF_ECRAN_MECA     = 1;   // s réelles
+var TF_ECRAN_MECA_MAX = 6;   // s réelles
+var _tfRelax = null;      // { ecran, tPrec, meca, attente } jusqu'au retour à l'équilibre
 
 function _tfDemarrerRelax() {
-  _tfRelax = tfCarte.auto ? { ecran: 0, tPrec: tf.t, meca: 0 } : null;
+  _tfRelax = tfCarte.auto ? { ecran: 0, tPrec: tf.t, meca: 0, attente: 0 } : null;
+}
+
+// Phase que suit la vitesse adaptée ('' : Auto coupé, ou gaz au repos)
+function tfPhaseAuto() {
+  if (!tfCarte.auto) return '';
+  if (_tfEnAttente) return 'avant l’action';
+  if (tfEnCours()) return 'pendant l’action';
+  var R = _tfRelax;
+  if (!R) return '';
+  return R.meca > 0 ? 'équilibre thermique' : tf.tenu ? 'ondes' : 'ondes et piston';
 }
 
 function _tfVitesseRelax() {
@@ -1451,7 +1495,7 @@ function _tfVitesseRelax() {
   if (!R) return;
   if (!tfCarte.auto) { _tfRelax = null; return; }
   if (_tfEnAttente) return;   // une action attend la fin d'un ralentissement
-  if (tfEnCours()) { R.ecran = 0; R.meca = 0; R.tPrec = tf.t; return; }
+  if (tfEnCours()) { R.ecran = 0; R.meca = 0; R.attente = 0; R.tPrec = tf.t; return; }
   var dEcran = (tf.t - R.tPrec) / tf.vitesse;
   R.ecran += dEcran;
   R.tPrec = tf.t;
@@ -1470,6 +1514,12 @@ function _tfVitesseRelax() {
   if (R.meca === 0) {
     // Ondes ou piston à amortir : rien de thermique encore
     if (!tf.qs) D = tf.masse > 0.5 ? 16 * d.piston : 100 * d.traversee;
+    R.attente += dEcran;
+    if (R.attente > TF_ECRAN_MECA_MAX) {
+      R.attente = 0;
+      var iv = tfCranVitesse(_tfRampeV ? _tfRampeV.v1 : tf.vitesse);
+      if (iv < TF_VITESSES.indexOf(1)) { _tfVersCran(iv + 1); return; }
+    }
   } else {
     if (R.meca < TF_ECRAN_MECA) return;
     var ecart = Math.max(m.Tmax - m.Tmin, tf.G > 0 ? Math.abs(m.Tmoy - tf.Text) : 0);

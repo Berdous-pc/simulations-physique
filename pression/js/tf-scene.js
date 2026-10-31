@@ -864,10 +864,16 @@ function _tfFmtPa(x) {
 //  écoulé depuis le départ de l'étape, celui des graphes au cours du temps
 //  (arrêté avec eux quand le chrono est figé à l'équilibre), et la vitesse
 //  (×1/100, ×500…). Pendant un passage progressif d'une vitesse à l'autre
-//  (vitesse adaptée, tf-ui.js), la vitesse défile, précédée de ▲ ou ▼.
+//  (vitesse adaptée, tf-ui.js), la vitesse défile, précédée de ▲ ou ▼ ; un
+//  changement d'un coup (gaz au repos) la surligne un instant. Avec Auto,
+//  la phase suivie (pendant l'action, ondes et piston, équilibre
+//  thermique) suit la vitesse.
 // ══════════════════════════════════════════════════════════════════════
 
-var tfChrono = { sens: 0 };   // +1 le temps accélère, −1 il ralentit (tf-ui.js)
+// sens : +1 le temps accélère, −1 il ralentit ; saut : date (ms) du dernier
+// changement d'un coup (tf-ui.js)
+var tfChrono = { sens: 0, saut: -Infinity };
+var TF_CHRONO_SAUT = 1500;   // ms : durée du surlignage
 
 // Δt avec assez de chiffres pour défiler : 1,84 ms, 712,9 ms, 12,35 s,
 // 4 min 05 s, 2 h 05 min
@@ -901,8 +907,8 @@ function _tfDessinerChrono() {
   var txtT = 'Δt = ' + _tfFmtDeltaT(Math.max(0, d.dt));
   var fleche = tfChrono.sens > 0 ? '▲ ' : tfChrono.sens < 0 ? '▼ ' : '';
   var txtV = fleche + '×' + _tfLibelleVitesse(v);
-  var mot = tfChrono.sens > 0 ? 'accélère' : tfChrono.sens < 0 ? 'ralentit'
-          : v < 0.999 ? 'ralenti' : v > 1.001 ? 'accéléré' : 'temps réel';
+  var mot = tfPhaseAuto() || (tfChrono.sens > 0 ? 'accélère' : tfChrono.sens < 0 ? 'ralentit'
+          : v < 0.999 ? 'ralenti' : v > 1.001 ? 'accéléré' : 'temps réel');
 
   // Police la plus grande (24 px au plus) qui tient dans le cadre ; largeur
   // mesurée sur un gabarit, pour ne pas varier quand les chiffres défilent
@@ -936,6 +942,15 @@ function _tfDessinerChrono() {
 
   var coul = v < 0.999 ? '#2f6fb0' : v > 1.001 ? '#c0602a' : '#2c3e50';
   var y2 = y0 + pad + f1 * 1.2 + 4, xV = xm - (wV + wMot) / 2;
+  // Changement de vitesse d'un coup : la vitesse surlignée, qui s'efface
+  var age = performance.now() - tfChrono.saut;
+  if (age < TF_CHRONO_SAUT) {
+    c.globalAlpha = 0.35 * (1 - age / TF_CHRONO_SAUT);
+    c.fillStyle = coul;
+    _tfRectArrondi(xV - 3, y2 - 2, wV + 6, f2 * 1.2 + 2, 3);
+    c.fill();
+    c.globalAlpha = 1;
+  }
   c.textAlign = 'left';
   c.font = '700 ' + f2 + 'px ' + police;
   c.fillStyle = coul;

@@ -216,7 +216,8 @@ function _tfgEchantillon(avantMarche) {
     Text: tf.Text,
     marche: avantMarche === true,
     coupure: g.coupure,
-    etape: tfEtapeCourante()
+    etape: tfEtapeCourante(),
+    cr: tfCranVise()   // cran de vitesse (repères du graphe au cours du temps)
   };
   g.coupure = false;
   g.ech.push(s);
@@ -692,6 +693,7 @@ function _tfgDessinerTemps() {
 
   // Axe des temps, sous la dernière case
   var yAxe = MT + 3 * bh + 2 * GAP;
+  _tfgDessinerCrans(c, e, i1, i2, xDe, ML, pw, MT, yAxe, fs);
   c.fillStyle = TF_G_ENCRE;
   c.font = _tfgPolice(fs, false);
   c.textAlign = 'center';
@@ -741,6 +743,40 @@ function _tfgDessinerTemps() {
     }
     _tfgBulle(c, lignes, so.x, so.y, W, H, fs);
   }
+}
+
+// Changements de vitesse : un trait pointillé sur les trois cases, et le
+// nouveau cran au bas de la dernière (un libellé trop proche du précédent
+// est omis). Dans un cycle, l'axe garde son origine : on voit où le temps
+// a été ralenti ou accéléré.
+function _tfgDessinerCrans(c, e, i1, i2, xDe, x0, w, yH, yB, fs) {
+  var xPrec = -Infinity, f = Math.max(9, Math.round(fs * 0.85));
+  c.save();
+  c.beginPath();
+  c.rect(x0, yH, w, yB - yH);
+  c.clip();
+  c.font = _tfgPolice(f, false);
+  c.textAlign = 'left';
+  c.textBaseline = 'bottom';
+  for (var k = Math.max(1, i1); k <= i2; k++) {
+    var a = e[k - 1].cr, b = e[k].cr;
+    if (a === undefined || b === undefined || a === b) continue;
+    var x = Math.round(xDe(e[k].t)) + 0.5;
+    c.strokeStyle = 'rgba(47,111,176,0.5)';
+    c.lineWidth = 1;
+    c.setLineDash([1, 3]);
+    c.beginPath();
+    c.moveTo(x, yH);
+    c.lineTo(x, yB);
+    c.stroke();
+    c.setLineDash([]);
+    if (x - xPrec > f * 4.5) {
+      c.fillStyle = '#2f6fb0';
+      c.fillText('×' + _tfLibelleVitesse(TF_VITESSES[b]), x + 3, yB - 2);
+      xPrec = x;
+    }
+  }
+  c.restore();
 }
 
 // Lettre de l'état de départ de l'étape en cours ('' avant toute étape)
