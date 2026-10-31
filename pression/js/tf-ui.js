@@ -217,9 +217,11 @@ function tfMajAfficheurs() {
   if (tf.limite) lim.textContent = 'Calcul trop lourd : ×' + _tfLibelleVitesse(+_tfVitesseAtteinte.toPrecision(2))
                                  + ' atteint au lieu de ×' + _tfLibelleVitesse(tf.vitesse);
 
+  _tfCyTic();
   _tfMajCarte();
   _tfMajJournal();
   _tfMajBilan();
+  _tfMajCycle();
 }
 
 // ── Bilan (PLAN §10.6) ──
@@ -724,6 +726,7 @@ function tfReinitialiser() {
   tfMolInit();
   tfEtapesEffacer();
   tfGraphEffacer();
+  tfCyclesRaz(0);
   _tfMajBoutons();
   _tfMajDepart(true);
   tfMajAfficheurs();
@@ -1251,6 +1254,7 @@ function tfOnRevenir(i) {
   _tfAnnulerAttente();
   tfPapFin();
   tfEtapesRevenir(i);
+  tfCyclesRaz(i);
   _tfSuivreTout();
   tfMolInit();
   _tfMajBoutons();
@@ -1598,6 +1602,7 @@ function tfInit() {
   tfMolInit();
   tfEtapesEffacer();
   tfGraphInit();
+  tfCyclesInit();
   _tfDoResize();
   _tfMajBoutons();
   tfMajAfficheurs();

@@ -412,10 +412,11 @@ Transformation attendue : …
 - ✅ **R4d** (terminé, §10.10) : section État initial en Dispositif (montage, gaz) et Point de départ A (P₀, V₀, T₀ réglables, n déduite) ; réglages en brouillon, appliqués aussitôt sans étape, sinon par « Recommencer depuis A ».
 - ✅ **R4e** (terminé, §10.11) : journal des Étapes en frise sur fond blanc (points = états, traits = étapes, pointillés si le gaz est passé par un état non défini) ; titre = nature, puce de la manière, S créée ; clic sur un point = courbes de référence, sur un trait = mise en évidence et Bilan de cette étape.
 - ✅ **R4f** (terminé, §10.12) : cycles — retour à un état déjà noté reconnu (même lettre, ⟳ cycle) ; colonne Cycle du Bilan et phrase moteur / récepteur (rendement, Carnot, efficacités).
-- **R4** : file d'attente (action lancée pendant une autre → « ensuite », enchaînement à l'équilibre), séquences enregistrées (localStorage, export JSON), préréglages (aller-retour, Carnot, Stirling, Lenoir).
+- ✅ **R4g** (terminé, §10.13) : section Cycles — aller-retour, Carnot, Stirling, Lenoir ; point A réglé, cycle idéal en gris sur les diagrammes, étapes d'un clic (une manière par étape) ou tout le cycle d'un coup.
+- ~~**R4** file d'attente et séquences enregistrées~~ (abandonnés) : « Tout le cycle d'un coup » couvre l'enchaînement ; l'export JSON n'apporte rien en classe.
 - ✅ **Diagramme TS et Bilan** (§10.6, palier 7) : terminé.
 - ~~**R5**~~ (abandonné) : viser en cliquant sur le diagramme de Clapeyron, ou y faire glisser le point A ; écarté par choix.
-- **Ensuite** : R4 (préréglages de cycles d'abord), puis la fin du palier 6 (sable), et les paliers 8 (intégration) et 9 (site). Avant : un essai à la souris de tout ce qui a été fait depuis R3 (validé au banc headless seulement).
+- **Ensuite** : la fin du palier 6 (sable), et les paliers 8 (intégration) et 9 (site). Avant : un essai à la souris de tout ce qui a été fait depuis R3, cycles compris (validé au banc headless seulement).
 
 **Mode quasi statique du moteur** (ajouté après R2) : au repos mécanique, pression uniforme et conduction seule, pas ~0,7 ms au lieu de ~1 µs ; les escaliers lents tiennent enfin le cran ×20 (avant : ×0,8 avec un gaz chaud et comprimé). Résultats identiques au calcul complet (ARCHITECTURE.md).
 
@@ -626,3 +627,34 @@ Transformation  [ Viser une valeur ] [ À la main ]
 - **Cycle fermé** (`_tfCycleFerme`) : de la dernière étape partie de cette lettre à celle qui y revient ; pastille **⟳ cycle** sur le point de la frise.
 - **Bilan** : la colonne Cycle remplace « Depuis A » (le dernier cycle fermé, ou celui qui contient l'étape cliquée) ; ΔU et ΔS du gaz y sont presque nuls. Dessous, en phrases : moteur (W < 0), rendement η = −W / Q_abs, comparé à Carnot entre les températures extrêmes des sources touchées pendant le cycle ; récepteur (W > 0), efficacités frigorifique Q_abs / W et de pompe à chaleur Q_cédée / W ; travail net sous 1 % de Q_abs : « ni moteur ni récepteur ». Q_abs : chaleur absorbée, somme des seuls apports positifs (`tf.Qabs`, dans les instantanés).
 - **Validation** (banc) : Stirling sans régénérateur entre les sources à 293 et 400 K, V 0,6 ↔ 0,3 L, n = 24,6 mmol. Isothermes quasi statiques : W = −15,22 J (théorie nR·ΔT·ln 2 = 15,2 J), Q_abs = 111,6 J (théorie 111,4 J), η = 0,14 contre 0,27 pour Carnot. Isothermes brutales : W = +0,83 J pour 103 J absorbés, ni moteur ni récepteur (S créée 97 mJ/K).
+
+### 10.13 Palier R4g : cycles tout faits (fait)
+
+**Demande de l'auteur.** Reconstruire des cycles simplement, sans perdre la main : les températures des sources, les volumes et le gaz restent réglables.
+
+```
+CYCLES   [Aller-retour] [Carnot] [Stirling] [Lenoir]      ← un clic de plus retire le cycle
+V min  [−] [ 0,2 ] L [+]     V max  [−] [ 0,9 ] L [+]
+Source chaude : 1 (400 K) · froide : 2 (293 K)
+┌──────────────────────────────────────────────┐
+│ (A) 0,200 L · 400 K · 100 kPa                │
+│ (✓) Détente isotherme   (quasi statique)     │
+│ (✓) Détente adiabatique (brutale)            │
+│ (3) Compression isotherme → 0,436 L · source 2│
+│     ▌Brutale ▌Quasi statique ▌Réversible     │
+│ (4) Compression adiabatique → 0,200 L        │  ← à venir, grisé
+└──────────────────────────────────────────────┘
+Tout le cycle d'un coup  ▌Brutale ▌Quasi statique ▌Réversible
+```
+
+- **Cycles** (moteurs, sens horaire) : aller-retour adiabatique (A = V max à T₀ du départ ; V max → V min → V max), Carnot (A = V min à T chaude ; volumes intermédiaires par V·T^(1/(γ−1)) constant ; refusé si V max < 1,05 × r × V min), Stirling (isothermes et isochores entre V min et V max), Lenoir (chauffage isochore à V min, détente adiabatique jusqu'à P₀, refroidissement isobare piston libre ; V max déduit). La source chaude est la plus chaude des deux. Le montage n'est pas changé (Lenoir marche aussi dans l'enceinte, P_air constante).
+- **Point A** : passe dans le brouillon de l'État initial (V₀, T₀ ; P₀ et γ gardés) quand le cycle, ses volumes ou les sources changent. Appliqué aussitôt sans étape, sinon encart « Recommencer depuis A » dans la section Cycles aussi. Le travail en cours n'est jamais effacé sans clic.
+- **Tracé gris** (`tfGraph.fantome`, `_tfgFantome`) : cycle idéal sur PV et TS, l'étape à faire plus foncée ; il entre dans le champ des diagrammes.
+- **Étapes** : de type « V » (piston tenu, le vérin vise un volume) ou « fond » (isochores, isobare de Lenoir : la source amène le gaz à sa température). Toutes ont les trois manières (même affichage, demande de l'auteur) : pour une étape « fond », Brutale pose le cylindre sur la source telle qu'elle est ; Quasi statique et Réversible règlent d'abord la source à la température du gaz (contact sans effet), puis la ramènent à son réglage comme Agir sur la source (`_tfCyContact`) — l'infinité de sources du cours. Les températures des sources sont figées pour le cycle pendant l'enchaînement (`tfCycle.Tnom`). Un clic prépare les conditions une à une (piston, puis fond ; chaque changement qui agit sur le gaz est une étape de la frise), attend l'équilibre, puis lance. La progression se lit sur l'état : étape faite quand ses conditions sont réunies, le volume visé atteint à 0,5 % près et le gaz au repos — faite à la main, elle compte aussi.
+- **Tout le cycle d'un coup** : même enchaînement pour toutes les étapes. S'il n'est pas revenu en A (étape brutale), le cylindre retrouve les conditions de la première étape (Carnot : chauffage isochore sur la source chaude), ce qui ferme le cycle de la frise ; sauf si la première étape est elle-même un changement de support (Lenoir) ou que rien ne change (aller-retour : le gaz ne revient pas en A, c'est la leçon).
+- **Validation** (banc, γ = 1,4, P₀ = 100 kPa, sources 400 / 293 K) :
+  - Carnot quasi statique (0,2 / 0,9 L) : A → B 0,413 L → C 0,900 L 293,0 K → D 0,436 L → A, η = 0,27 = Carnot.
+  - Carnot brutal : deux mises en contact en plus (après chaque adiabatique), récepteur (W = +0,91 J).
+  - Stirling étape par étape (0,3 / 0,6 L) : η = 0,14 que les isochores soient brutales ou quasi statiques (sans régénérateur, la chaleur de l’isochore est prise à la source chaude dans les deux cas) ; S créée sur le cycle 18,3 mJ/K contre 0,08 mJ/K.
+  - Lenoir quasi statique (0,3 L) : C 0,375 L 365,8 K, η = 0,05 ; brutal : détente adiabatique au libérer du piston, récepteur.
+  - Aller-retour brutal (0,9 / 0,3 L) : retour à 0,900 L et 295,5 K, pas en A.

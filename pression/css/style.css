@@ -817,6 +817,37 @@ main {
 }
 .tf-revenir:hover { background: #2a6aaa; border-color: #1a5a9a; color: #fff; }
 
+/* Cycles : étapes du cycle choisi, sur fond blanc comme la frise ; A, puis
+   une pastille par étape (✓ faite, bleue à faire, grise à venir) */
+.tf-cy-liste { max-height: none; padding: 4px 6px; overflow-x: hidden; }
+.tf-cy-et { display: flex; align-items: flex-start; gap: 8px; padding: 4px 3px; border-radius: 4px; }
+.tf-cy-num {
+  flex: none; display: flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border: 2px solid #b8c0c8; border-radius: 50%;
+  background: #fff; color: #8a9aaa; font-size: 0.85em; font-weight: 700;
+}
+.tf-cy-a { align-items: center; }
+.tf-cy-a .tf-cy-num { border-color: #2c3e50; color: #2c3e50; }
+.tf-cy-et.fait .tf-cy-num { border-color: #3a9a5a; background: #e6f4ea; color: #2a7a4a; }
+.tf-cy-et.courant { background: #eef3f8; }
+.tf-cy-et.courant .tf-cy-num { border-color: #2a6aaa; background: #2a6aaa; color: #fff; }
+.tf-cy-et:not(.fait):not(.courant) .tf-f-titre { color: #8a9aaa; }
+.tf-cy-txt { flex: 1; min-width: 0; }
+.tf-cy-btns { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.tf-cy-m {
+  flex: 1 1 5.5em; min-width: 0; padding: 5px 2px;
+  font: inherit; font-size: 0.92em; font-weight: 700; color: #2c3e50; background: #fff; cursor: pointer;
+  border: 1px solid #c8c0b4; border-left-width: 4px; border-radius: 0 5px 5px 0;
+  line-height: 1.15;   /* « Quasi statique » passe à la ligne plutôt que d'être coupé */
+}
+.tf-cy-m.tf-m-brutal { border-left-color: #c0503a; }
+.tf-cy-m.tf-m-qs     { border-left-color: #d09a30; }
+.tf-cy-m.tf-m-rev    { border-left-color: #3a9a5a; }
+.tf-cy-m:disabled { opacity: 0.45; cursor: not-allowed; }
+.tf-cy-fin { margin: 4px 3px 2px; color: #2a5080; font-weight: 600; }
+.tf-cy-tout-lbl { display: block; margin-bottom: 3px; font-size: clamp(11px, 1vw, 13px); color: #5a6a78; }
+.input-hint.tf-cy-erreur { color: #b04030; }
+
 /* ── Panneau droit ───────────────────────────────── */
 #panel {
   background: #e8e4de;

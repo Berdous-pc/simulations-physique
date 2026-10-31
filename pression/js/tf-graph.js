@@ -84,6 +84,9 @@ var tfGraph = {
   // Arrivées prévues de l'action préparée dans la carte Transformation
   // (tf-ui.js) : [{V, P, T, S, nom}], cercles pointillés
   prevu     : [],
+  // Cycle choisi dans la section Cycles (tf-cycles.js) : {segs : une liste
+  // de points {V, P, T, S} par étape, k : étape à faire}, ou null
+  fantome   : null,
   env       : null,    // étendue des tranches depuis le départ, par diagramme (cadrage)
   // Encarts affichés dans la colonne gauche (barre de boutons activables,
   // de 0 à 4)
@@ -1001,6 +1004,7 @@ function _tfgChamp(d, mes) {
   }
   for (k = 0; k < e.length; k++) ajoute(D.x(e[k]), D.def(e[k]) ? D.y(e[k]) : null);
   for (k = 0; k < tfEtapes.etats.length; k++) ajoute(D.x(tfEtapes.etats[k]), D.yL(tfEtapes.etats[k]));
+  if (g.fantome) g.fantome.segs.forEach(function (pts) { pts.forEach(function (p) { ajoute(D.x(p), D.yL(p)); }); });
   ajoute(D.x(mes), D.defM(mes) ? D.yM(mes) : null);
   return (g.champ[d] = ch);
 }
@@ -1119,6 +1123,7 @@ function _tfgDessinerDiag(o, cs, mes) {
     var cr = _tfgCourbesRef(d, ref);
     for (k = 0; k < cr.length; k++) etiq.push(_tfgCourbe(c, xDe, yDe, vue, cr[k]));
   }
+  _tfgFantome(c, D, xDe, yDe);
 
   // Pression exercée par le piston : l'aire sous ce tracé est le travail
   // reçu par le gaz, juste même hors équilibre
@@ -1315,6 +1320,30 @@ function _tfgPrevus(c, D, xDe, yDe, fs) {
     c.setLineDash([]);
     if (P[k].nom) _tfgEtiquette(c, P[k].nom, x + 11, y, fs - 1, TF_G_ACTUEL, 'left');
   }
+}
+
+// Cycle idéal choisi dans la section Cycles : gris pointillé, sous le
+// chemin ; l'étape à faire, plus foncée
+var TF_G_FANTOME = '#aab4be', TF_G_FANTOME_K = '#5a6a7a';
+
+function _tfgFantome(c, D, xDe, yDe) {
+  var F = tfGraph.fantome;
+  if (!F) return;
+  c.save();
+  c.setLineDash([6, 5]);
+  c.lineCap = 'round';
+  c.lineJoin = 'round';
+  F.segs.forEach(function (pts, i) {
+    c.strokeStyle = i === F.k ? TF_G_FANTOME_K : TF_G_FANTOME;
+    c.lineWidth = i === F.k ? 2.5 : 2;
+    c.beginPath();
+    pts.forEach(function (p, j) {
+      var x = xDe(D.x(p)), y = yDe(D.yL(p));
+      if (j) c.lineTo(x, y); else c.moveTo(x, y);
+    });
+    c.stroke();
+  });
+  c.restore();
 }
 
 // Squelette du chemin (indices dans e) : échantillons définis, plus le
