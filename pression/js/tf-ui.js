@@ -14,7 +14,8 @@
 
 var _tfEl = {};
 var _TF_EL_IDS = [
-  'tf-it-t', 'tf-it-P', 'tf-it-T', 'tf-it-V', 'tf-it-Pext', 'tf-it-Pext-lbl', 'tf-it-etat',
+  'tf-it-P', 'tf-it-T', 'tf-it-V', 'tf-it-Pext', 'tf-it-Text', 'tf-sig-P', 'tf-sig-T',
+  'tf-voy-meca', 'tf-voy-th',
   'tf-btn-playpause', 'tf-sl-vitesse', 'tf-lbl-vitesse', 'tf-vitesse-limite', 'tf-btn-auto',
   'tf-piston-tenu', 'tf-piston-libre',
   'tf-fond-isolant', 'tf-fond-1', 'tf-fond-2', 'tf-t-1', 'tf-t-2', 'tf-fleche-1', 'tf-fleche-2',
@@ -196,20 +197,42 @@ function tfMajAfficheurs() {
   var m = tfMesures();
   // Temps des graphes : il s'arrête avec eux quand le chrono est figé à
   // l'équilibre (attentes retirées)
-  _tfEl['tf-it-t'].textContent    = _tfFmtTemps(Math.max(0, tfGraphTemps()));
   _tfEl['tf-it-P'].innerHTML      = m.Pdef ? _tfFmtPression(m.Pmoy)
     : _tfNonDefini(_tfFmt(m.Pmin / 1000, 2) + ' à ' + _tfFmtPression(m.Pmax));
   _tfEl['tf-it-T'].innerHTML      = m.Tdef ? _tfFmt(m.Tmoy, 1) + ' K'
     : _tfNonDefini(_tfFmt(m.Tmin, 1) + ' à ' + _tfFmt(m.Tmax, 1) + ' K');
   _tfEl['tf-it-V'].textContent    = _tfFmt(m.V * 1000, 3) + ' L';
-  // Piston tenu : la pression extérieure ne fixe pas l'équilibre ; le vérin
-  // mesure la pression du gaz sur le piston
-  _tfEl['tf-it-Pext-lbl'].textContent = tf.tenu ? 'Pression sur le piston' : 'Pression extérieure';
-  _tfEl['tf-it-Pext'].textContent = _tfFmtPression(tf.tenu ? m.Pface : m.Pext);
 
-  var etat = _tfEl['tf-it-etat'];
-  etat.textContent = m.equilibre ? 'À l’équilibre' : 'Hors équilibre';
-  etat.className = 'it-val ' + (m.equilibre ? 'tf-etat-eq' : 'tf-etat-hors');
+  // Extérieur, face au gaz, et signe entre les deux : = condition
+  // d'équilibre remplie, ≠ non, ? grandeur du gaz non définie. Piston tenu
+  // (le vérin équilibre le gaz quelle que soit sa pression), en butée, ou
+  // fond sur l'isolant : rien à comparer.
+  var src = function (t) { return ' <span class="tf-ext-src">' + t + '</span>'; };
+  var sigP, sigT;
+  if (tf.tenu) {
+    _tfEl['tf-it-Pext'].innerHTML = src('piston tenu');
+    sigP = m.Pdef ? '' : '?';
+  } else {
+    _tfEl['tf-it-Pext'].innerHTML = _tfFmtPression(m.Pext)
+      + src(m.butee ? 'butée ' + m.butee : (tf.montage === 'masse' ? 'masses' : 'air') + ' + piston');
+    sigP = !m.Pdef ? '?' : m.butee ? '' : Math.abs(m.Pmoy - m.Pext) / m.Pext < TF_SEUIL_P ? '=' : '≠';
+  }
+  if (tf.fond === 'isolant') {
+    _tfEl['tf-it-Text'].innerHTML = src('isolant');
+    sigT = m.Tdef ? '' : '?';
+  } else {
+    _tfEl['tf-it-Text'].innerHTML = _tfFmt(tf.Text, 1) + ' K' + src('source ' + tf.fond);
+    sigT = !m.Tdef ? '?' : Math.abs(m.Tmoy - tf.Text) < TF_SEUIL_T ? '=' : '≠';
+  }
+  [['P', sigP], ['T', sigT]].forEach(function (q) {
+    var el = _tfEl['tf-sig-' + q[0]];
+    el.textContent = q[1];
+    el.className = 'tf-sig' + (q[1] === '=' ? ' ok' : q[1] === '≠' ? ' non' : q[1] === '?' ? ' nd' : '');
+  });
+  // Voyants : mécanique (pression uniforme, gaz et piston au repos) et
+  // thermique (température uniforme, égale à celle de la source)
+  _tfEl['tf-voy-meca'].classList.toggle('ok', m.meca);
+  _tfEl['tf-voy-th'].classList.toggle('ok', m.Tdef && (tf.fond === 'isolant' || sigT === '='));
 
   // Vitesse réellement tenue quand le calcul plafonne (TF_SOUS_PAS_MAX)
   var lim = _tfEl['tf-vitesse-limite'];

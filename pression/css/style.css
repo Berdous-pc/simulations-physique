@@ -252,8 +252,6 @@ main {
   font-weight: 500;
   font-size: 0.72em;
 }
-.it-val.tf-etat-eq   { color: #2a8a50; }
-.it-val.tf-etat-hors { color: #b04020; }
 
 /* ── Onglet Transformations : colonne des graphes ── */
 /* De gauche à droite : graphes et tableau, splitter, cylindre. Les
@@ -430,8 +428,35 @@ main {
   margin-top: 8px;
   font-size: clamp(11px, min(1.05cqw, 2.2cqh), 15px);
 }
-.tf-col-lbl { width: 21%; }
-.tf-col-val { width: 29%; }
+.tf-col-lbl { width: 9%; }
+.tf-col-gaz { width: 37%; }
+.tf-col-sig { width: 8%; }
+.tf-col-ext { width: 46%; }
+/* En-têtes Gaz et Extérieur ; signe d'égalité entre les deux colonnes
+   (vert : condition remplie, orange : non, rouge : non définie) */
+.tf-info-table .tf-face-tete > td {
+  padding-top: 0.25em; padding-bottom: 0.25em;
+  font-size: 0.82em; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+  color: #7a8a96; text-align: right;
+}
+.tf-info-table .tf-sig { text-align: center; font-weight: 700; font-size: 1.15em; color: #a8b0b8; }
+.tf-sig.ok  { color: #2a8a50; }
+.tf-sig.non { color: #c07020; }
+.tf-sig.nd  { color: #b04020; }
+.tf-info-table .tf-ext {
+  text-align: right; font-weight: 700; color: #2a5080; font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+.tf-ext-src { font-weight: 400; font-size: 0.85em; color: #7a8a96; white-space: nowrap; }
+/* Voyants d'équilibre, sous le tableau */
+.tf-voyants {
+  display: flex; flex-wrap: wrap; justify-content: space-around; gap: 2px 12px;
+  padding: 0.3em 0.55em; border-top: 1px solid #b0a898; font-size: 0.9em;
+}
+.tf-voy { display: inline-flex; align-items: center; gap: 0.4em; color: #8a6a40; white-space: nowrap; }
+.tf-voy-pt { width: 0.7em; height: 0.7em; border-radius: 50%; background: #e0a050; }
+.tf-voy.ok { color: #2a7a4a; }
+.tf-voy.ok .tf-voy-pt { background: #3a9a5a; }
 .tf-info-table .it-val {
   white-space: normal;
   line-height: 1.15;
