@@ -557,7 +557,7 @@ Transformation  [ Viser une valeur ] [ À la main ]
   Viser :       [ Agir sur le piston ] [ Agir sur la source ]   ← la source grisée sur l'isolant
                 Hauteur visée du piston  [−] [ 15 ] cm [+] [État ▾]
                 Compression adiabatique → 0,300 L · 264 kPa · 387 K
-                ▌Brutalement 0,5 ms   ▌Quasi statiquement 1 s   ▌Réversiblement   (liseré rouge, ambre, vert)
+                ▌Brutale 0,5 ms   ▌Quasi statique 1 s   ▌Réversible   (liseré rouge, ambre, vert)
                 pendant l'action : [████░░ Quasi statique · reste 0,6 s] [■]
   À la main :   ● Équilibre : pas suivant possible   (orange : attendre le vert)
                 Vérin  adiabatique          28,0 cm  [▼ 1 cm] [▲ 1 cm]  Pas ──●──

@@ -497,6 +497,11 @@ main {
 
 /* Viser une valeur / À la main */
 .mode-tabs.tf-modes .mode-tab { padding: 7px 4px; }
+/* Panneau étroit : « Viser une valeur » tient sur une ligne, en plus petit */
+.tf-transfo { container-type: inline-size; }
+@container (max-width: 300px) {
+  .mode-tabs.tf-modes .mode-tab { padding: 7px 2px; font-size: 6cqi; white-space: nowrap; }
+}
 
 /* Trois manières de transformer, de la plus brutale à la plus lente : un
    liseré de couleur à gauche (rouge, ambre, vert), la durée choisie par la
@@ -518,7 +523,9 @@ main {
 .tf-m-qs:hover:not(:disabled)     { background: #fbf1de; }
 .tf-m-rev:hover:not(:disabled)    { background: #e6f4ea; }
 .tf-maniere:disabled { opacity: 0.45; cursor: not-allowed; }
-.tf-maniere-duree { font-size: 0.82em; font-weight: 400; color: #5a6a78; white-space: nowrap; }
+.tf-maniere-nom { flex: none; }
+/* Durée à droite ; passe à la ligne plutôt que de déborder (panneau étroit) */
+.tf-maniere-duree { min-width: 0; font-size: 0.82em; font-weight: 400; color: #5a6a78; text-align: right; }
 
 /* Action en cours : barre de progression et bouton ■ */
 .tf-progres { display: flex; gap: 6px; margin-top: 6px; }

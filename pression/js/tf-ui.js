@@ -415,7 +415,7 @@ function _tfMajManieres() {
     var p = _tfParamsManiere(cle, man);
     txt[man] = p.duree > 0 ? _tfFmtDuree(p.duree) : cle === 'masse' ? 'd’un coup' : 'échelon';
   });
-  if (cle !== 'Text' && (tf.G === 0 || txt.rev === txt.qs)) txt.rev = '= quasi statiquement';
+  if (cle !== 'Text' && (tf.G === 0 || txt.rev === txt.qs)) txt.rev = '= quasi statique';
   ['brutal', 'qs', 'rev'].forEach(function (man) { _tfEl['tf-duree-' + man].textContent = txt[man]; });
 }
 

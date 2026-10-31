@@ -471,7 +471,7 @@
              pas à pas, en attendant l'équilibre entre deux pas. Ce qu'on
              règle découle des conditions : vérin si le piston est tenu, air
              ou sable s'il est libre -->
-        <div class="panel-section">
+        <div class="panel-section tf-transfo">
           <div class="section-title">Transformation</div>
           <div class="mode-tabs tf-modes">
             <button class="mode-tab active" id="tf-mode-viser" onclick="tfOnMode('viser')">Viser une valeur</button>
@@ -505,11 +505,11 @@
                  l'action, une barre de progression et ■ pour l'interrompre -->
             <div class="tf-manieres" id="tf-manieres">
               <button id="tf-btn-brutal" class="tf-maniere tf-m-brutal" onclick="tfLancerManiere('brutal')">
-                <span class="tf-maniere-nom">Brutalement</span><span class="tf-maniere-duree" id="tf-duree-brutal"></span></button>
+                <span class="tf-maniere-nom">Brutale</span><span class="tf-maniere-duree" id="tf-duree-brutal"></span></button>
               <button id="tf-btn-qs" class="tf-maniere tf-m-qs" onclick="tfLancerManiere('qs')">
-                <span class="tf-maniere-nom">Quasi statiquement</span><span class="tf-maniere-duree" id="tf-duree-qs"></span></button>
+                <span class="tf-maniere-nom">Quasi statique</span><span class="tf-maniere-duree" id="tf-duree-qs"></span></button>
               <button id="tf-btn-rev" class="tf-maniere tf-m-rev" onclick="tfLancerManiere('rev')">
-                <span class="tf-maniere-nom">Réversiblement</span><span class="tf-maniere-duree" id="tf-duree-rev"></span></button>
+                <span class="tf-maniere-nom">Réversible</span><span class="tf-maniere-duree" id="tf-duree-rev"></span></button>
             </div>
             <div class="tf-progres" id="tf-progres" style="display:none">
               <div class="tf-progres-barre">
@@ -644,7 +644,7 @@
         La section <strong>Conditions</strong> dit comment le gaz est contraint, et se change à tout moment. <strong>Piston</strong> : tenu par le vérin, ou libre. <strong>Fond</strong> : posé sur l'isolant (aucun échange de chaleur), sur la <strong>source 1</strong> ou sur la <strong>source 2</strong>. La flèche <strong>▾</strong> à droite d'une source déroule le réglage de sa température (taper la valeur, ou − et + par 10 K, de 250 à 600 K) ; <strong>= T gaz</strong> lui donne la température actuelle du gaz, pour y poser le cylindre sans saut de température (isotherme d'un cycle de Carnot, par exemple). Un clic ailleurs ou Échap referme le menu.
         La section <strong>Transformation</strong> agit sur le <strong>piston</strong> ou sur la <strong>source</strong> sous le cylindre. Ce que l'on règle découle des conditions : piston tenu, sa hauteur (par le vérin) ; piston libre, la pression de l'air ou la masse de sable ; source, sa température. Sur l'isolant, seul le piston peut agir : <strong>Agir sur la source</strong> est grisé. La nature de la transformation obtenue (adiabatique, isotherme, isochore, isobare) est rappelée à côté.
         <strong>Viser une valeur</strong> : choisir d'abord <strong>Agir sur le piston</strong> ou <strong>Agir sur la source</strong>. La valeur visée se tape dans le champ (Entrée pour valider) ou se règle avec <strong>−</strong> et <strong>+</strong> (maintenir pour répéter) ; le menu <strong>État</strong> reprend la valeur d'un état du journal (température : celle du gaz). Tant qu'on n'y touche pas, le champ montre la valeur actuelle. Dessous, la nature de la transformation et l'état d'arrivée prévu (volume, pression, température), aussi marqué d'un cercle pointillé orange sur les diagrammes ; le repère orange sur le cylindre marque la hauteur visée.
-        Puis la manière : <strong>Brutalement</strong>, <strong>Quasi statiquement</strong> ou <strong>Réversiblement</strong> (la page choisit la durée, écrite sur le bouton ; « = quasi statiquement » quand les deux manières lentes reviennent au même). Pendant l'action, une barre montre son avancement et le temps restant ; <strong>■</strong> l'interrompt.
+        Puis la manière : <strong>Brutale</strong>, <strong>Quasi statique</strong> ou <strong>Réversible</strong> (la page choisit la durée, écrite sur le bouton ; « = quasi statique » quand les deux manières lentes reviennent au même). Pendant l'action, une barre montre son avancement et le temps restant ; <strong>■</strong> l'interrompt.
         <strong>À la main</strong> : une carte par organe, avec sa valeur actuelle et deux boutons qui font chacun un pas (▼ ▲ du vérin, − + de l'air, du sable ou de la source ; maintenir répète). Le curseur <strong>Pas</strong> de chaque carte règle la taille d'un pas (de 1 mm à 5 cm, de 10 g à 500 g de sable, de 0,5 à 20 kPa, de 0,5 à 20 K). Le voyant du haut passe à l'orange après chaque pas et revient au vert quand le gaz a retrouvé l'équilibre : attendre le vert entre deux pas pour une transformation quasi statique. Les pas qui se suivent forment une seule étape du journal ; sous les cartes, leur nombre, et combien ont été faits sans attendre l'équilibre.
         <strong>↶ Annuler la dernière</strong>, en face du titre Étapes, ramène à l'état de départ de la dernière étape.
         En haut à droite de la scène, <strong>Δt</strong> donne le temps écoulé depuis le début de l'étape, le même que sur les graphes au cours du temps (il s'arrête et grise avec eux quand le chrono est figé à l'équilibre) ; dessous, la vitesse d'écoulement du temps (×1/100 : ralenti cent fois ; ×500 : accéléré cinq cents fois).
