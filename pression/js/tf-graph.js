@@ -1528,6 +1528,14 @@ function _tfgFantome(c, T, D, xDe, yDe) {
 // d'une borne à l'autre (plein), sinon ses deux bornes ; n : étape de la
 // borne d'arrivée ; provisoire : corde du passage en cours, gaz pas encore
 // revenu à l'équilibre.
+// Convention « équilibre avec l'extérieur » : un volume qui sort de
+// l'intervalle entre les deux bornes (au-delà de TF_G_DEPASSE du volume)
+// fait aussi une corde. Le piston, emporté par son inertie, a dépassé
+// l'état d'arrivée : la pression du gaz n'était pas celle qu'il exerce,
+// même si l'écart reste sous TF_SEUIL_P (grain de 10 g : 0,05 %). En
+// convention « uniforme », l'oscillation reste tracée : le gaz y est défini.
+var TF_G_DEPASSE = 1e-5;
+
 function _tfgPassages(e, D) {
   var bornes = [0], k, i, res = [];
   for (k = 1; k < e.length; k++) {
@@ -1535,9 +1543,11 @@ function _tfgPassages(e, D) {
   }
   for (i = 1; i < bornes.length; i++) {
     var a = bornes[i - 1], b = bornes[i], plein = true, pts = [];
+    var tol = tfGraphAff.ext ? TF_G_DEPASSE * e[b].V : Infinity;
+    var V1 = Math.min(e[a].V, e[b].V) - tol, V2 = Math.max(e[a].V, e[b].V) + tol;
     for (k = a; k <= b; k++) {
       pts.push(k);
-      if (!D.def(e[k])) plein = false;
+      if (!D.def(e[k]) || e[k].V < V1 || e[k].V > V2) plein = false;
     }
     res.push({
       pts: plein ? pts : [a, b], plein: plein, n: e[b].etape,
