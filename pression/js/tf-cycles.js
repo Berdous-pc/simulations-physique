@@ -8,8 +8,8 @@
 //  tf-cycles.js — Onglet Transformations : cycles tout faits (PLAN §10.13)
 //  Un cycle choisi règle le point de départ A (brouillon de l'État
 //  initial), trace en gris sur les diagrammes le cycle idéal à suivre et
-//  liste ses étapes. Chaque étape se fait d'un clic, avec la manière
-//  choisie ; « Tout le cycle » les enchaîne d'une même manière. Les
+//  liste ses étapes. Chaque étape se fait d'un clic, en le nombre de pas
+//  choisi ; « Tout le cycle » les enchaîne avec ce même nombre de pas. Les
 //  commandes habituelles restent libres : la progression se lit sur l'état
 //  du gaz (conditions de l'étape réunies, volume visé atteint, équilibre).
 //  Chargé après tf-ui.js.
@@ -47,14 +47,15 @@ var TF_CYCLES = {
   lenoir      : { nom: 'Lenoir',       champs: ['Vmin', 'PA'],   defaut: { Vmin: 0.3e-3, PA: 100e3 } }
 };
 
-// cle : cycle choisi (null : aucun) ; k : étape à faire ; faits : manière de
+// cle : cycle choisi (null : aucun) ; iN : cran du nombre de pas
+// (TF_NB_PAS) ; k : étape à faire ; faits : manière ({man, nPas}) de
 // chaque étape faite, etatsFaits : rang dans la frise de l'état qu'elle a
 // atteint (Annuler la dernière y revient) ; tour : le dernier tour est complet ; run : étapes
-// enchaînées {man, seul (une seule étape), fermer (retour aux conditions de
+// enchaînées {N (nombre de pas), seul (une seule étape), fermer (retour aux conditions de
 // A)} ; Tnom : températures des sources au lancement (une étape de contact
 // lente fait varier celle de sa source) ; v : valeurs des réglages ; def :
 // cycle calculé ; sigA : réglages qui ont fixé A
-var tfCycle = { cle: null, v: {}, k: 0, faits: [], etatsFaits: [], tour: false, run: null, Tnom: null,
+var tfCycle = { cle: null, iN: 3, v: {}, k: 0, faits: [], etatsFaits: [], tour: false, run: null, Tnom: null,
                 def: null, sigA: '', sigF: '' };
 
 var _tfCyEl = {};
@@ -235,25 +236,37 @@ function tfCyPas(i, sens) {
   _tfCyFixer(i, p * (sens > 0 ? Math.floor(v + 1e-6) + 1 : Math.ceil(v - 1e-6) - 1));
 }
 
-function _tfCyLancer(man, seul) {
+function _tfCyLancer(seul) {
   tfCycle.Tnom = { '1': tfTSource('1'), '2': tfTSource('2') };
-  tfCycle.run = { man: man, seul: seul };
+  tfCycle.run = { N: TF_NB_PAS[tfCycle.iN], seul: seul };
 }
 
-// Étape à faire, d'une manière
-function tfCyEtape(man) {
+// Étape à faire, en le nombre de pas choisi
+function tfCyEtape() {
   if (tfCycle.run || !_tfCyPret()) return;
-  _tfCyLancer(man, true);
+  _tfCyLancer(true);
   _tfCyTic();
   tfMajAfficheurs();
 }
 
-// Tout le cycle, d'une même manière, à partir de l'étape à faire
-function tfCyTout(man) {
+// Tout le cycle, avec le même nombre de pas, à partir de l'étape à faire
+function tfCyTout() {
   if (tfCycle.run || !_tfCyPret()) return;
-  _tfCyLancer(man, false);
+  _tfCyLancer(false);
   _tfCyTic();
   tfMajAfficheurs();
+}
+
+// Curseur du nombre de pas (1 : brutal ; ∞ : réversible)
+function tfCyOnNbPas(val) {
+  tfCycle.iN = parseInt(val, 10);
+  _tfMajCycle(true);
+}
+
+function _tfCyLibN(N) {
+  return N === 1 ? '1 pas : chaque étape brutale (échelon)'
+       : isFinite(N) ? N + ' pas par étape, retour à l’équilibre entre deux pas'
+       : 'pas infinitésimal : chaque étape réversible';
 }
 
 function tfCyArreter() {
@@ -329,15 +342,15 @@ function _tfCyPreparer(s) {
   else if (tf.fond !== s.fond) tfOnFond(s.fond);
 }
 
-// Étape de contact : brutalement, le cylindre est posé sur la source telle
-// qu'elle est ; lentement, la source est d'abord mise à la température du
-// gaz (y poser le cylindre ne change rien), puis sa température va jusqu'à
-// celle visée, de la manière choisie (Agir sur la source) : elle retrouve
-// ainsi son réglage
-function _tfCyContact(s, man) {
+// Étape de contact : en un pas, le cylindre est posé sur la source telle
+// qu'elle est ; en plusieurs pas, la source est d'abord mise à la
+// température du gaz (y poser le cylindre ne change rien), puis sa
+// température va jusqu'à celle visée, en N pas (Agir sur la source) : elle
+// retrouve ainsi son réglage
+function _tfCyContact(s, N) {
   if (tf.tenu !== s.tenu) { _tfCyPiston(s.tenu); return; }
   if (tf.fond !== s.fond) {
-    if (man !== 'brutal') tf['T' + s.fond] = _tfBorner(tfMesures().Tmoy, TF_T_SOURCE_MIN, TF_T_SOURCE_MAX);
+    if (N !== 1) tf['T' + s.fond] = _tfBorner(tfMesures().Tmoy, TF_T_SOURCE_MIN, TF_T_SOURCE_MAX);
     tfOnFond(s.fond);
     return;
   }
@@ -346,7 +359,7 @@ function _tfCyContact(s, man) {
   tfCarte.Text.vise = s.T;
   tfCarte.Text.suit = false;
   _tfMajBoutons();
-  tfLancerManiere(man);
+  tfLancerPas(N);
 }
 
 // Appelée à chaque mise à jour des afficheurs : note l'étape atteinte,
@@ -359,7 +372,8 @@ function _tfCyTic() {
     var der = tfEtapes.liste[tfEtapes.liste.length - 1];
     if (C.k === 0) { C.faits = []; C.etatsFaits = []; C.tour = false; }
     // Contact direct avec la source (pas de manière notée) : brutal
-    C.faits[C.k] = der && der.man ? der.man : s.type === 'fond' ? 'brutal' : 'main';
+    C.faits[C.k] = der && der.man ? { man: der.man, nPas: der.nPas }
+                 : { man: s.type === 'fond' ? 'brutal' : 'main' };
     C.etatsFaits[C.k] = tfEtapes.etats.length - 1;
     C.k++;
     if (C.k === d.etapes.length) {
@@ -385,7 +399,7 @@ function _tfCyTic() {
     else _tfCyPreparer(d.etapes[0]);
     return;
   }
-  if (s.type === 'fond') { _tfCyContact(s, C.run.man); return; }
+  if (s.type === 'fond') { _tfCyContact(s, C.run.N); return; }
   if (!_tfCyConditions(s)) { _tfCyPreparer(s); return; }
   // Pression de l'air visée : celle de l'arrivée, moins le poids du piston
   tfCarte.mode = 'viser';
@@ -393,7 +407,7 @@ function _tfCyTic() {
   tfCarte.Pair.vise = Math.max(0, s.P - (TF_M_PISTON + tf.masse) * TF_G / TF_S);
   tfCarte.Pair.suit = false;
   _tfMajBoutons();
-  tfLancerManiere(C.run.man);
+  tfLancerPas(C.run.N);
 }
 
 // ── Affichage ──
@@ -405,10 +419,7 @@ function _tfCyDetail(d, s) {
 }
 
 function _tfCyBouton() {
-  return ['brutal', 'qs', 'rev'].map(function (man) {
-    return '<button class="tf-cy-m tf-m-' + man + '" onclick="tfCyEtape(\'' + man + '\')">'
-         + TF_NOM_MANIERE[man] + '</button>';
-  }).join('');
+  return '<button class="tf-cy-m tf-appliquer" onclick="tfCyEtape()">Appliquer l’étape</button>';
 }
 
 function _tfMajCycle(force) {
@@ -447,7 +458,7 @@ function _tfMajCycle(force) {
     h += '<div class="tf-cy-et' + (courant ? ' courant' : '') + (fait ? ' fait' : '') + '">'
        + '<span class="tf-cy-num">' + (fait && !courant ? '✓' : i + 1) + '</span>'
        + '<div class="tf-cy-txt"><span class="tf-f-titre">' + s.titre + '</span> '
-       + (fait ? '<span class="tf-f-puce tf-f-' + fait + '">' + TF_PUCE_MANIERE[fait] + '</span>' : '')
+       + (fait ? '<span class="tf-f-puce tf-f-' + fait.man + '">' + _tfPuce(fait.man, fait.nPas) + '</span>' : '')
        + '<br><span class="tf-f-detail">' + _tfCyDetail(d, s) + '</span>'
        + (courant && pret && repos ? '<div class="tf-cy-btns">' + _tfCyBouton() + '</div>' : '')
        + '</div></div>';
@@ -465,7 +476,9 @@ function _tfMajCycle(force) {
   E.attente.style.display = attente ? '' : 'none';
   E.liste.innerHTML = h;
   E.tout.style.display = C.run ? 'none' : '';
-  ['brutal', 'qs', 'rev'].forEach(function (man) { E['tout-' + man].disabled = !pret || !repos; });
+  E.toutBtn.disabled = !pret || !repos;
+  E.slN.value = C.iN;
+  E.lblN.textContent = _tfCyLibN(TF_NB_PAS[C.iN]);
   _tfCyMajEnCours();
 }
 
@@ -475,7 +488,8 @@ function _tfCyMajEnCours() {
   if (!C.run) return;
   var n = C.def.etapes.length;
   E.encoursTxt.textContent = C.run.fermer ? 'Retour aux conditions de A…'
-    : (C.run.seul ? 'Étape ' : TF_NOM_MANIERE[C.run.man] + ' · étape ') + (C.k + 1) + ' / ' + n + '…';
+    : (C.run.seul ? 'Étape ' : (isFinite(C.run.N) ? C.run.N + ' pas' : 'Pas infinitésimal') + ' · étape ')
+      + (C.k + 1) + ' / ' + n + '…';
 }
 
 function tfCyclesInit() {
@@ -487,9 +501,9 @@ function tfCyclesInit() {
       _tfCyEl[q + '-' + i] = document.getElementById('tf-cy-' + q + '-' + i);
     });
   });
-  ['brutal', 'qs', 'rev'].forEach(function (man) {
-    _tfCyEl['tout-' + man] = document.getElementById('tf-cy-tout-' + man);
-  });
+  _tfCyEl.toutBtn = document.getElementById('tf-cy-tout-btn');
+  _tfCyEl.slN = document.getElementById('tf-cy-sl-nbpas');
+  _tfCyEl.lblN = document.getElementById('tf-cy-lbl-nbpas');
   _tfCyEl.corps = document.getElementById('tf-cy-corps');
   _tfCyEl.info = document.getElementById('tf-cy-info');
   _tfCyEl.attente = document.getElementById('tf-cy-attente');

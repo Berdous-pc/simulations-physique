@@ -33,7 +33,7 @@ var _TF_EL_IDS = [
   'tf-main-nom-source', 'tf-main-nature-source', 'tf-main-val-source',
   'tf-main-moins-source', 'tf-main-plus-source', 'tf-main-sl-source',
   'tf-journal', 'tf-ckg-gel',
-  'tf-btn-brutal', 'tf-btn-qs', 'tf-btn-rev', 'tf-duree-brutal', 'tf-duree-qs', 'tf-duree-rev',
+  'tf-btn-appliquer', 'tf-sl-nbpas', 'tf-lbl-nbpas', 'tf-duree-nbpas', 'tf-paroi-cond', 'tf-paroi-peu',
   'tf-bilan', 'tf-bilan-note', 'tf-bilan-cycle', 'tf-bil-etape', 'tf-bil-A', 'tf-bil-cycle',
   'tf-gamma', 'tf-in-P0', 'tf-in-V0', 'tf-in-T0', 'tf-moins-P0', 'tf-moins-V0', 'tf-moins-T0',
   'tf-plus-P0', 'tf-plus-V0', 'tf-plus-T0', 'tf-dep-info', 'tf-dep-attente'
@@ -63,7 +63,8 @@ var TF_PAS_ESC = {
 };
 
 var tfCarte = {
-  mode   : 'viser',      // 'viser' (valeur visée, trois manières) ou 'main' (pas à pas)
+  mode   : 'viser',      // 'viser' (valeur visée, en N pas) ou 'main' (pas à pas)
+  iN     : 3,            // cran du nombre de pas (TF_NB_PAS)
   organe : 'piston',     // organe visé : 'piston' ou 'source' (sur une source seulement)
   moyen  : 'Pair',       // montage : pression par 'Pair' (enceinte) ou 'masse'
   auto   : true,         // vitesse adaptée à chaque transformation
@@ -413,6 +414,7 @@ function _tfBoutonRevenir(i) {
 // courbes de référence par son état, ↺ y revient ; un trait met l'étape en
 // évidence et en fait le bilan.
 var TF_PUCE_MANIERE = { brutal: 'brutale', qs: 'quasi statique', rev: 'réversible', main: 'à la main' };
+function _tfPuce(man, nPas) { return man === 'pas' ? nPas + ' pas' : TF_PUCE_MANIERE[man]; }
 
 function _tfPointFrise(i, coul, cycle) {
   var E = tfEtapes, L = E.etats[i];
@@ -435,7 +437,7 @@ function _tfMajJournal() {
        + (E.sel === k ? ' sel' : '') + '" style="border-left-color:' + et.couleur + '" onclick="tfOnSelEtape(' + k + ')" '
        + 'title="Mettre l’étape en évidence sur le diagramme et en faire le bilan">'
        + '<div class="tf-f-titre">' + et.titre
-       + (et.man ? ' <span class="tf-f-puce tf-f-' + et.man + '">' + TF_PUCE_MANIERE[et.man] + '</span>' : '') + '</div>'
+       + (et.man ? ' <span class="tf-f-puce tf-f-' + et.man + '">' + _tfPuce(et.man, et.nPas) + '</span>' : '') + '</div>'
        + (detail ? '<div class="tf-f-detail">' + detail.replace(/^ · /, '') + '</div>' : '') + '</div>';
     if (et.arrivee !== null) h += _tfPointFrise(et.arrivee, et.couleur, et.cycle);
     else {
@@ -455,7 +457,8 @@ function _tfMajJournal() {
 
 // Fin des textes du journal : sur quoi le fond est posé
 function _tfSuffixeFond() {
-  return tf.fond === 'isolant' ? ' · isolant' : ' · source ' + tf.fond;
+  return tf.fond === 'isolant' ? ' · isolant'
+       : ' · source ' + tf.fond + (tf.paroi === 'peu' ? ' (paroi peu conductrice)' : '');
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -545,6 +548,7 @@ function _tfTitreEtape(o, sens, lent) {
 
 // Étape d'une manière : titre, et en détail la consigne, la durée, le fond
 function _tfDescManiere(cle, man, p) {
+  var pas = man === 'pas' ? ' · ' + _tfLibNbPas(cle, p.n, Math.abs(tfCarte[cle].vise - _tfActuelle(cle))) : '';
   var vise = tfCarte[cle].vise, sens, consigne;
   if (cle === 'volume') {
     sens = vise < tf.z[TF_N] ? 'Compression' : 'Détente';
@@ -558,31 +562,145 @@ function _tfDescManiere(cle, man, p) {
   }
   return {
     titre: _tfTitreEtape(cle === 'Text' ? 'source' : 'piston', sens, man !== 'brutal'),
-    detail: consigne + (p.duree > 0 ? ' · ' + _tfFmtDuree(p.duree) : '') + _tfSuffixeFond(),
-    man: man
+    detail: consigne + pas + (p.duree > 0 ? ' · ' + _tfFmtDuree(p.duree) : '') + _tfSuffixeFond(),
+    man: man, nPas: p.n || null
   };
 }
 
-// Durées écrites sur les boutons. Quand réversiblement ne fait rien de plus
-// que quasi statiquement (isolant, ou même durée), le bouton le dit d'un
-// signe « = » plutôt que par une phrase.
-function _tfMajManieres() {
-  var cle = _tfCle(), txt = {};
-  ['brutal', 'qs', 'rev'].forEach(function (man) {
-    var p = _tfParamsManiere(cle, man);
-    txt[man] = p.duree > 0 ? _tfFmtDuree(p.duree) : cle === 'masse' ? 'd’un coup' : 'échelon';
-  });
-  if (cle !== 'Text' && (tf.G === 0 || txt.rev === txt.qs)) txt.rev = '= quasi statique';
-  ['brutal', 'qs', 'rev'].forEach(function (man) { _tfEl['tf-duree-' + man].textContent = txt[man]; });
+// ══════════════════════════════════════════════════════════════════════
+//  Nombre de pas : de l'échelon (1 pas, la manière brutale) au pas
+//  infinitésimal (∞ : rampe continue réversible) ; entre les deux, la
+//  page fait les pas un à un et attend le retour à l'équilibre avant le
+//  suivant (tf.seq). Un point par équilibre intermédiaire sur les
+//  diagrammes, une seule lettre à l'arrivée.
+// ══════════════════════════════════════════════════════════════════════
+var TF_NB_PAS = [1, 2, 5, 10, 20, 50, 100, Infinity];
+var TF_ECRAN_SEQ = { min: 5, max: 20, parPas: 0.5 };   // s d'écran pour toute la suite de pas
+
+// Manière qui correspond à un nombre de pas
+function _tfManiereN(N) { return N === 1 ? 'brutal' : isFinite(N) ? 'pas' : 'rev'; }
+
+// Attente minimale après un pas, avant de juger l'équilibre (s simulées) :
+// un petit pas peut laisser des écarts sous les seuils dès son départ.
+// Piston libre : oscillation amortie au dixième (tfPasPiston) ; vérin : sa
+// course et dix traversées du son ; fond conducteur : écart de température
+// avec la source résorbé au dixième (tfPasSource)
+function _tfAttentePas(cle, tau) {
+  var d = tfDurees(), meca = 0;
+  if (cle === 'volume') meca = tau + 10 * d.traversee;
+  else if (cle !== 'Text') meca = Math.log(10) * 4 * d.piston / (2 * Math.PI * TF_AMORT);
+  return { meca: meca, th: tf.G > 0 ? tau + Math.log(10) * d.thermique : 0 };
+}
+
+// Durée d'un pas du vérin : au moins trois traversées du son (un pas plus
+// bref lance une onde qui crée quatre fois l'entropie d'un pas de pression
+// équivalent) ; un grand pas reste rapide, donc irréversible
+function _tfTauPasVerin(dz) {
+  return Math.max(5e-4, TF_PAS_VERIN_TRAV * tfDurees().traversee, 2 * Math.abs(dz) / TF_V_BRUTAL);
+}
+
+// Un pas vers cible : course du vérin, échelon de la source, ou grain de
+// sable ou de pression de l'air sur le piston libéré. main : pas à la main
+// (le sable posé à la main se dessine plus fin) ; sinon, pas automatique :
+// attente minimale avant de juger l'équilibre
+function _tfFairePas(cle, cible, main) {
+  var tau = 0;
+  if (cle === 'volume') {
+    tau = _tfTauPasVerin(cible - tf.z[TF_N]);
+    tfLancerVerin(cible, tau);
+  } else if (cle === 'Text') {
+    tfAppliquer('Text', cible, 0);
+    tfPasSource();
+  } else {
+    _tfFixer(cle, cible, true, false, main);   // un grain : du sable, pas un bloc
+    tfSetTenu(false);
+    tfPasPiston();
+  }
+  if (main) return;
+  var a = _tfAttentePas(cle, tau);
+  tf.tReposMin = Math.max(tf.tReposMin, tf.t + a.meca);
+  tf.tThMin = Math.max(tf.tThMin, tf.t + a.th);
+}
+
+// Durée prévue d'une suite de N pas (s simulées)
+function _tfDureeSeq(cle, vise, N) {
+  var tau = cle === 'volume' ? _tfTauPasVerin((vise - tf.z[TF_N]) / N) : 0;
+  var a = _tfAttentePas(cle, tau);
+  return N * Math.max(a.meca, a.th, tau);
+}
+
+// Durée d'une transformation en N pas ; null pour un échelon
+function _tfDureeN(cle, N) {
+  var man = _tfManiereN(N);
+  if (man === 'pas') return _tfDureeSeq(cle, tfCarte[cle].vise, N);
+  var p = _tfParamsManiere(cle, man);
+  return p.duree > 0 ? p.duree : null;
+}
+
+// Libellé d'un nombre de pas pour la grandeur cle, d l'écart à parcourir
+function _tfLibNbPas(cle, N, d) {
+  if (N === 1) return cle === 'masse' ? '1 pas : bloc posé d’un coup' : cle === 'volume' ? '1 pas : course brutale' : '1 pas : échelon';
+  if (!isFinite(N)) return 'pas infinitésimal : réversible';
+  return N + ' pas' + (d > 1e-9 ? ' de ' + _tfFmtPas(cle, d / N) : '');
+}
+
+// Curseur Nombre de pas : nombre, taille d'un pas, durée
+function _tfMajNbPas() {
+  var cle = _tfCle(), N = TF_NB_PAS[tfCarte.iN];
+  _tfEl['tf-lbl-nbpas'].textContent = _tfLibNbPas(cle, N, Math.abs(tfCarte[cle].vise - _tfActuelle(cle)));
+  var D = _tfDureeN(cle, N);
+  _tfEl['tf-duree-nbpas'].textContent = D === null ? '' : (isFinite(N) ? '≈ ' : '') + _tfFmtDuree(D);
+}
+
+function tfOnNbPas(val) {
+  tfCarte.iN = parseInt(val, 10);
+  _tfMajNbPas();
 }
 
 // Dernière action lancée, pour la barre de progression : manière, grandeur,
-// valeur de départ
+// valeur de départ ; suite de pas : n, et k pas faits
 var _tfLance = null;
-var TF_NOM_MANIERE = { brutal: 'Brutale', qs: 'Quasi statique', rev: 'Réversible' };
+var TF_NOM_MANIERE = { brutal: 'Brutale', qs: 'Quasi statique', rev: 'Réversible', pas: 'Pas à pas' };
 
-// Lance l'action de la carte de la manière choisie : 'brutal', 'qs' ou 'rev'
-function tfLancerManiere(man) {
+// Appliquer : la valeur visée, en N pas (TF_NB_PAS) ; N absent, celui du
+// curseur
+function tfLancerPas(N) {
+  if (N === undefined) N = TF_NB_PAS[tfCarte.iN];
+  var man = _tfManiereN(N);
+  if (man !== 'pas') { _tfLancerManiere(man); return; }
+  if (tfEnCours() || _tfEnAttente) return;
+  var cle = _tfCle(), vise = tfCarte[cle].vise, desc = _tfDescManiere(cle, 'pas', { duree: 0, n: N });
+  var D = _tfDureeSeq(cle, vise, N);
+  _tfLance = { man: 'pas', cle: cle, v0: _tfActuelle(cle), n: N, k: 0 };
+  _tfLancerApresRalenti(cle, vise, 0, function () {
+    var S = _tfLance;
+    S.v0 = _tfActuelle(cle);
+    _tfOuvrirEtape(desc);
+    tf.seq = { suivant: function () { _tfPasSuivant(S, vise); } };
+    _tfPasSuivant(S, vise);
+    tfCarte[cle].suit = true;
+    tfGraphDureeAttendue(D);
+  }, D / _tfBorner(TF_ECRAN_SEQ.parPas * N, TF_ECRAN_SEQ.min, TF_ECRAN_SEQ.max));
+}
+
+// Pas suivant d'une suite (le premier tout de suite, les autres au retour
+// à l'équilibre, tfAvancer) : un échantillon des graphes clôt d'abord le
+// palier (un point d'équilibre par pas) ; le dernier pas fait, la suite
+// s'efface (l'action finie, la lettre se pose au premier équilibre)
+function _tfPasSuivant(S, vise) {
+  if (S.k === 0) tfGraphMarche();
+  else if (tf.echantillon) tf.echantillon(true);
+  S.k++;
+  var cible = S.k >= S.n ? vise : S.v0 + (vise - S.v0) * S.k / S.n;
+  if (S.k >= S.n) tf.seq = null;
+  _tfFairePas(S.cle, cible, false);
+  _tfDemarrerRelax();
+  tfGraph.sale = true;
+}
+
+// Brutalement (échelon, ou vérin à sa vitesse de pointe) ou réversiblement
+// (rampe continue)
+function _tfLancerManiere(man) {
   if (tfEnCours() || _tfEnAttente) return;
   var cle = _tfCle(), vise = tfCarte[cle].vise, p = _tfParamsManiere(cle, man);
   var desc = _tfDescManiere(cle, man, p);
@@ -617,10 +735,12 @@ function _tfApresLancerCommun() {
 // d'abord, progressivement, et l'action part ensuite (rien ne serait vu des
 // premiers instants à l'ancienne vitesse) ; accélérer se fait pendant
 // l'action.
-function _tfLancerApresRalenti(cle, vise, duree, lancer) {
+// vitesse : cran imposé (temps simulé par seconde d'écran), sinon celui qui
+// fait durer l'action TF_ECRAN_ACTION secondes
+function _tfLancerApresRalenti(cle, vise, duree, lancer, vitesse) {
   var go = function () { lancer(); _tfApresLancerCommun(); };
   if (!tfCarte.auto || tf.paused) { go(); return; }
-  var D = _tfDureePrevue(cle, vise, duree);
+  var D = vitesse ? vitesse * TF_ECRAN_ACTION : _tfDureePrevue(cle, vise, duree);
   if (!isFinite(D) || D <= 0) { go(); return; }
   var i = tfCranVitesse(D / TF_ECRAN_ACTION);
   if (tfMesures().equilibre) { _tfSauterCran(i); go(); return; }
@@ -694,7 +814,7 @@ function _tfMajCarte() {
   _tfMajMain();
   _tfMajSelEtat(cle);
   _tfMajFond();
-  _tfMajManieres();
+  _tfMajNbPas();
   _tfMajBoutonsCarte();
 }
 
@@ -705,9 +825,7 @@ function _tfMajBoutonsCarte() {
   var cle = _tfCle(), enCours = tfEnCours() || !!_tfEnAttente;
   var rien = Math.abs(tfCarte[cle].vise - _tfActuelle(cle)) < 1e-6;
   var sansEffet = cle === 'Text' && tf.G === 0;
-  ['brutal', 'qs', 'rev'].forEach(function (man) {
-    _tfEl['tf-btn-' + man].disabled = enCours || rien || sansEffet;
-  });
+  _tfEl['tf-btn-appliquer'].disabled = enCours || rien || sansEffet;
   _tfEl['tf-btn-annuler'].disabled = tfEtapesEtatAnnuler() === null;
   _tfMajProgres(enCours);
 }
@@ -724,7 +842,9 @@ function _tfMajProgres(enCours) {
     _tfEl['tf-progres-rempli'].style.width = '0%';
     return;
   }
-  if (tf.verin.actif) {
+  if (L && L.man === 'pas') {
+    frac = (L.k - (tf.seq ? 1 : 0)) / L.n;
+  } else if (tf.verin.actif) {
     frac = (tf.t - tf.verin.t0) / tf.verin.tau;
     reste = tf.verin.t0 + tf.verin.tau - tf.t;
   } else {
@@ -743,7 +863,8 @@ function _tfMajProgres(enCours) {
   }
   frac = _tfBorner(frac, 0, 1);
   _tfEl['tf-progres-rempli'].style.width = (100 * frac).toFixed(1) + '%';
-  _tfEl['tf-progres-txt'].textContent = (L ? TF_NOM_MANIERE[L.man] : 'En cours')
+  _tfEl['tf-progres-txt'].textContent = L && L.man === 'pas' ? 'Pas ' + L.k + ' / ' + L.n
+    : (L ? TF_NOM_MANIERE[L.man] : 'En cours')
     + (reste !== null ? ' · reste ' + _tfFmtDuree(Math.max(0, reste)) : '');
 }
 
@@ -959,7 +1080,22 @@ function _tfMajFond() {
     _tfEl['tf-fleche-' + f].classList.toggle('active', tf.fond === f);
     _tfEl['tf-fleche-' + f].classList.toggle('ouvert', _tfPopSource === f);
   });
+  ['cond', 'peu'].forEach(function (p) {
+    _tfEl['tf-paroi-' + p].classList.toggle('active', tf.paroi === p);
+    _tfEl['tf-paroi-' + p].disabled = tf.fond === 'isolant';
+  });
   _tfMajPopSource();
+}
+
+// Paroi du fond, conductrice ou peu conductrice : un réglage, pas une
+// étape ; un échange en cours en change de rythme
+function tfOnParoi(p) {
+  if (p === tf.paroi) return;
+  tfSetParoi(p);
+  if (tf.fond !== 'isolant' && !tfMesures().equilibre) _tfDemarrerRelax();
+  tfGraph.sale = true;
+  _tfMajBoutons();
+  tfMajAfficheurs();
 }
 
 // Tenir ou libérer le piston, à tout moment (libérer arrête le vérin)
@@ -1225,19 +1361,7 @@ function _tfPapPas(o, sens) {
   der.nbPas++;
   if (!eq) der.nbHors++;
   tfGraphMarche();
-  if (cle === 'volume') {
-    // Au moins une traversée du gaz par le son : un pas plus bref lançait
-    // une onde qui créait quatre fois l'entropie d'un pas de pression
-    // équivalent ; un grand pas reste rapide, donc irréversible
-    tfLancerVerin(cible, Math.max(5e-4, TF_PAS_VERIN_TRAV * tfDurees().traversee, 2 * Math.abs(cible - v) / TF_V_BRUTAL));
-  } else if (cle === 'Text') {
-    tfAppliquer('Text', cible, 0);
-    tfPasSource();
-  } else {
-    _tfFixer(cle, cible, true, false, true);   // un grain : du sable, pas un bloc
-    tfSetTenu(false);
-    tfPasPiston();
-  }
+  _tfFairePas(cle, cible, true);
   var dsc = _tfDescPap(cle, der.v0, cible, der.nbHors);
   der.titre = dsc.titre; der.detail = dsc.detail; der.man = dsc.man;
   E.version++;
@@ -1514,12 +1638,19 @@ function tfPhaseAuto() {
   return R.meca > 0 ? 'équilibre thermique' : tf.tenu ? 'ondes' : 'ondes et piston';
 }
 
+// Suite de pas : entre deux pas, rien ne bouge que le retour à l'équilibre
+function _tfEntrePas() {
+  if (!tf.seq || tf.verin.actif) return false;
+  for (var c in tf.rampes) if (tf.rampes[c].actif) return false;
+  return true;
+}
+
 function _tfVitesseRelax() {
   var R = _tfRelax;
   if (!R) return;
   if (!tfCarte.auto) { _tfRelax = null; return; }
   if (_tfEnAttente) return;   // une action attend la fin d'un ralentissement
-  if (tfEnCours()) { R.ecran = 0; R.meca = 0; R.attente = 0; R.tPrec = tf.t; return; }
+  if (tfEnCours() && !_tfEntrePas()) { R.ecran = 0; R.meca = 0; R.attente = 0; R.tPrec = tf.t; return; }
   var dEcran = (tf.t - R.tPrec) / tf.vitesse;
   R.ecran += dEcran;
   R.tPrec = tf.t;

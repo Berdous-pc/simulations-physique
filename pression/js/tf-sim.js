@@ -65,6 +65,7 @@ var TF_CFL = 0.4;    // fraction du pas de temps limite dz/c
 // TF_BUDGET_LOT sous-pas.
 var TF_BUDGET_MS  = 8;
 var TF_BUDGET_LOT = 64;
+var TF_SEQ_LOT    = 16;
 
 // ── Dissipation ──
 // Viscosité des tranches, q = −cl·ρ·c·Δu + cq·ρ·Δu² (le terme quadratique
@@ -88,6 +89,13 @@ var TF_LAMBDA = 2.2;   // W·m⁻¹·K⁻¹
 // Crans du curseur Isolation : conductance du fond, en W·K⁻¹
 // (0 = calorifugé ; au dernier cran, le fond ne limite plus les échanges).
 var TF_ISOLATIONS = [0, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1];
+// Paroi du fond posé sur une source : conductrice (le gaz seul limite les
+// échanges, ~15 s) ou peu conductrice. Peu conductrice, un échelon de
+// 100 K de la source laisse moins de 0,25 K entre tranches (R_int ≈ 77 K/W
+// à 30 cm) : le gaz suit la source quasi statiquement, l'écart de
+// température se loge dans la paroi (transformation irréversible), en
+// n·Cv/G ≈ 3 h
+var TF_G_PAROI = { cond: TF_ISOLATIONS[TF_ISOLATIONS.length - 1], peu: 3e-5 };   // W·K⁻¹
 
 // ── Commandes ──
 var TF_MASSE_MAX = 40;                                      // kg, masse totale posée
@@ -161,6 +169,9 @@ var tf = {
   // Vérin (piston tenu) : mouvement de zDep à zArr, commencé à t0, de durée tau
   verin  : { actif: false, zDep: 0, zArr: 0, t0: 0, tau: 0.1 },
   hVisee : 0.15,         // m, hauteur visée (repère de la scène)
+  // Pas à pas automatique (tf-ui.js) : { suivant } ; suivant() fait le pas
+  // suivant dès que le gaz est revenu à l'équilibre (tfAvancer)
+  seq    : null,
   Wop    : 0,            // J, travail reçu par le gaz de la part du vérin
 
   // Contraintes extérieures : pression de l'air de l'enceinte au-dessus du
@@ -189,6 +200,7 @@ var tf = {
   // contact ; T1 et T2 gardent celles des deux sources (celle de
   // la source en contact suit Text quand on la quitte).
   G      : 0,            // W·K⁻¹, conductance du fond
+  paroi  : 'cond',       // paroi du fond sur une source : 'cond' ou 'peu' (TF_G_PAROI)
   Text   : TF_T0,        // K, température de la source sous le fond
   fond   : 'isolant',    // 'isolant', '1' ou '2' (source 1, source 2)
   T1     : 400,          // K
@@ -426,6 +438,7 @@ function tfReset() {
   tf.Wgaz   = 0;
   tf.limite = false;
   tf.tReposMin = tf.tThMin = 0;
+  tf.seq    = null;
   tf.dtCfl  = 1e-6;
   tf.tEchant = 0;
   tf.acc    = null;
@@ -463,7 +476,14 @@ function tfSetFond(f) {
   tf.fond = f;
   if (f !== 'isolant') tf.Text = tf['T' + f];
   tf.rampes.Text.actif = false;
-  tfSetIsolation(f === 'isolant' ? 0 : TF_ISOLATIONS[TF_ISOLATIONS.length - 1]);
+  tfSetIsolation(f === 'isolant' ? 0 : TF_G_PAROI[tf.paroi]);
+}
+
+// Paroi du fond : conductrice ('cond') ou peu conductrice ('peu') ; un
+// réglage, gardé tant que le fond n'est pas sur l'isolant
+function tfSetParoi(p) {
+  tf.paroi = p;
+  if (tf.fond !== 'isolant') tfSetIsolation(TF_G_PAROI[p]);
 }
 
 // Pas à la main sur le piston libre (grain de sable, pas de P_air) : il
@@ -620,7 +640,7 @@ function tfLancerVerin(zArr, tau) {
 
 // Une action est-elle en cours (vérin en marche, escalier inachevé) ?
 function tfEnCours() {
-  if (tf.verin.actif) return true;
+  if (tf.verin.actif || tf.seq) return true;
   for (var cle in tf.rampes) if (tf.rampes[cle].actif) return true;
   return false;
 }
@@ -629,6 +649,7 @@ function tfEnCours() {
 // vérin là où il est (le piston reste tenu)
 function tfInterrompre() {
   tf.verin.actif = false;
+  tf.seq = null;
   for (var cle in tf.rampes) tf.rampes[cle].actif = false;
   tf.needsRedraw = true;
 }
@@ -746,6 +767,10 @@ function tfAvancer(dt) {
       _tfAccumuler(h);
       if (tf.t >= tf.tEchant) tf.echantillon();
     }
+    // Pas à pas automatique : le pas suivant part au retour à l'équilibre
+    // (vérifié tous les TF_SEQ_LOT sous-pas, et à chaque sous-pas quasi
+    // statique, long)
+    if (tf.seq && !tf.verin.actif && (tf.qs || n % TF_SEQ_LOT === 0) && tfMesures().equilibre) tf.seq.suivant();
     reste -= h;
     n++;
   }

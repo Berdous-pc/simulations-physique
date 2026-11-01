@@ -58,7 +58,7 @@ var _TF_SNAP_TABLEAUX = ['z', 'u', 'E', 'P', 'q'];
 // Le fond (isolant ou source, et la température des sources) fait partie
 // de l'état : revenir à un état remet le cylindre où il était
 var _TF_SNAP_SCALAIRES = ['tenu', 'masse', 'blocs', 'sable', 'sableMain', 'Pair', 'Text', 'Wop', 'Wair',
-                          'Qrecu', 'QsurT', 'Qabs', 'Wgaz', 'eDecal', 't', 'fond', 'T1', 'T2', 'G', 'tReposMin', 'tThMin'];
+                          'Qrecu', 'QsurT', 'Qabs', 'Wgaz', 'eDecal', 't', 'fond', 'T1', 'T2', 'G', 'paroi', 'tReposMin', 'tThMin'];
 
 function _tfInstantane(snap) {
   snap = snap || {};
@@ -74,6 +74,7 @@ function _tfRestaurerInstantane(snap) {
   _TF_SNAP_TABLEAUX.forEach(function (k) { tf[k].set(snap[k]); });
   _TF_SNAP_SCALAIRES.forEach(function (k) { tf[k] = snap[k]; });
   tf.verin.actif = false;
+  tf.seq = null;
   for (var cle in tf.rampes) tf.rampes[cle].actif = false;
   tf.qs = false;     // réessayé au premier pas
   tf.dtCfl = 1e-6;
@@ -110,7 +111,7 @@ function tfEtapeNouvelle(desc) {
   var depart = E.suivie;
   if (prec && prec.statut === 'en cours') { prec.statut = 'interrompue'; depart = null; }
   E.liste.push({
-    titre: desc.titre, detail: desc.detail, man: desc.man || null, nonDef: false,
+    titre: desc.titre, detail: desc.detail, man: desc.man || null, nPas: desc.nPas || null, nonDef: false,
     couleur: TF_COUL_ETAPES[E.liste.length % TF_COUL_ETAPES.length],
     depart: depart, arrivee: null, statut: 'en cours',
     bilan0: tfBilan()     // compteurs au départ (section Bilan)
