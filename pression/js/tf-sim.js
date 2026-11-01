@@ -115,14 +115,26 @@ var TF_V_VERIN_MAX = 400;    // m/s
 var TF_H_VISEE_MIN = 0.05;   // m
 var TF_H_VISEE_MAX = 0.50;   // m
 
+// ── Résolution de l'expérience sur l'entropie (J/K) ──
+// En dessous, une irréversibilité ne se voit pas. Le cran le plus fin de
+// chaque organe, sur une transformation entière, y passe (sable 10 g,
+// 100 → 200 kPa : 0,02 mJ/K ; source 0,1 K, +100 K : 0,04 ; air 0,1 kPa,
+// 100 → 200 kPa : 0,04) ; un bloc de 20 kg posé d'un coup crée 37 mJ/K.
+// S créée est tenue pour nulle sous la moitié, ce que l'affichage arrondit
+// à 0,0 mJ/K (_tfFmtmJK) : le verdict ne dit pas « réversible » à côté
+// d'une valeur non nulle.
+var TF_RESOL_S = 1e-4;
+var TF_SC_REV = TF_RESOL_S / 2;
+
 // ── Critère « grandeurs définies » (PLAN §2.4) ──
-// Même précision relative pour P et T, 0,5 % (1,5 K à 293 K). À 0,1 % et
-// 0,5 K, la queue exponentielle de la conduction (τ ~3 s sur l'isolant,
-// ~11 s sur une source) laissait le gaz « non défini » de longues secondes
-// pour un écart illisible, et un pas de vérin de 1 mm, réversible à la
-// résolution près (0,15 % d'écart), restait en pointillés.
-var TF_SEUIL_P  = 5e-3;   // écart relatif de P entre tranches, et avec l'extérieur
-var TF_SEUIL_T  = 5e-3;   // écart relatif de T entre tranches, et avec la source
+// Fondé sur la même résolution que le Bilan : un écart (entre tranches, ou
+// avec l'extérieur) n'est lisible que si sa mise en équilibre crée au moins
+// TF_SC_REV. Ainsi une grandeur non définie annonce une entropie créée que
+// le Bilan voit. Les seuils relatifs fixes (0,5 % sur P et T) ne le
+// garantissaient pas : l'écart compte au premier ordre, l'entropie créée
+// au second (un pas de vérin de 2 mm, 0,8 % d'écart, laissait la pression
+// non définie pour S_c affichée 0,0 mJ/K).
+var TF_SEUIL_S  = TF_SC_REV;
 var TF_SEUIL_EC = 1e-4;   // énergie cinétique macroscopique / énergie interne
 
 // ══════════════════════════════════════════════════════════════════════
@@ -337,8 +349,30 @@ function tfMesures() {
   var Tmoy = U / (tf.n * tf.Cv);        // moyenne en masse
   var Pext = tfPext();
 
-  var Pdef = (Pmax - Pmin) / Pmoy < TF_SEUIL_P;
-  var Tdef = (Tmax - Tmin) / Tmoy < TF_SEUIL_T;
+  // Entropie que créerait la mise en équilibre des tranches, à volume et
+  // énergie fixés, au second ordre : part mécanique, Σ V_j·δP_j² / (2γ·P·T)
+  // (énergie des ondes sur T), et part thermique, Σ n_j·δσ_j² / (2·Cp),
+  // σ_j entropie molaire de la tranche (écarts de T à pression fixée)
+  var Cp = tf.Cv + TF_R, sP = 0, sig0 = 0, sig1 = 0, sig2 = 0;
+  for (j = 0; j < TF_N; j++) {
+    var Vj = TF_S * (tf.z[j + 1] - tf.z[j]), dP = tf.P[j] - Pmoy;
+    sP += Vj * dP * dP;
+    var sig = tf.Cv * Math.log(tf.E[j]) + TF_R * Math.log(Vj);
+    if (j === 0) sig0 = sig;
+    sig1 += sig - sig0;
+    sig2 += (sig - sig0) * (sig - sig0);
+  }
+  sP /= 2 * tf.gamma * Pmoy * Tmoy;
+  var sT = tf.nTr * Math.max(0, sig2 - sig1 * sig1 / TF_N) / (2 * Cp);
+  var Pdef = sP < TF_SEUIL_S;
+  var Tdef = sT < TF_SEUIL_S;
+  // Écarts relatifs tolérés avec l'extérieur, pour la même entropie : gaz à
+  // P face à P_ext, n·R·(δP/P)² / (2γ) ; gaz à T face à la source,
+  // n·C·(δT/T)² / 2, à volume fixé (piston tenu) ou à pression fixée
+  var tolP = Math.sqrt(2 * tf.gamma * TF_SEUIL_S / (tf.n * TF_R));
+  var tolT = Math.sqrt(2 * TF_SEUIL_S / (tf.n * (tf.tenu ? tf.Cv : Cp)));
+  var PegExt = Math.abs(Pmoy - Pext) / Pext < tolP;
+  var TegExt = Math.abs(Tmoy - tf.Text) / tf.Text < tolT;
   // Après un pas à la main sur le piston libre, l'oscillation qu'il lance
   // peut rester sous les seuils (grain de 10 g : 0,05 %) : le piston n'est
   // au repos qu'une fois amortie (tfPasPiston)
@@ -347,23 +381,27 @@ function tfMesures() {
   // piston
   var butee = tfButee(Pmoy);
   var piston = tf.tenu ? !tf.verin.actif
-             : butee !== null || Math.abs(Pmoy - Pext) / Pext < TF_SEUIL_P;
+             : butee !== null || PegExt;
   // Fond conducteur : plus d'échange avec la source. Sans cette condition,
   // un gaz uniforme qui chauffe lentement à travers un fond peu conducteur
   // passait pour « à l'équilibre » (chrono figé, lettre posée trop tôt)
   // Après un pas de la source, l'écart peut rester sous le seuil (0,1 K
-  // sous 1,5 K) : équilibre attendu jusqu'à tf.tThMin (tfPasSource)
-  var thermique = (tf.G === 0 || Math.abs(Tmoy - tf.Text) / tf.Text < TF_SEUIL_T) && tf.t >= tf.tThMin;
+  // sous ~4 K) : équilibre attendu jusqu'à tf.tThMin (tfPasSource)
+  var thermique = (tf.G === 0 || TegExt) && tf.t >= tf.tThMin;
   // Équilibre avec l'extérieur (convention de tracé des diagrammes d'état) :
   // gaz uniforme, pression égale à celle qu'exerce le piston libre (le
   // vérin, lui, exerce celle du gaz), température égale à celle de la
   // source si le fond conduit ; le piston peut bouger (quasi statique)
-  var mecaExt = tf.tenu || butee !== null || Math.abs(Pmoy - Pext) / Pext < TF_SEUIL_P;
+  var mecaExt = tf.tenu || butee !== null || PegExt;
 
   return {
     V: V, Pmoy: Pmoy, Pmin: Pmin, Pmax: Pmax,
     Tmoy: Tmoy, Tmin: Tmin, Tmax: Tmax, Pext: Pext, Pface: tfPFace(),
     Pdef: Pdef, Tdef: Tdef, butee: butee,
+    // Écarts rapportés au seuil (1 : à la limite), en amplitude : entre
+    // tranches (racine de l'entropie), et tolérances avec l'extérieur
+    rP: Math.sqrt(sP / TF_SEUIL_S), rT: Math.sqrt(sT / TF_SEUIL_S),
+    tolP: tolP, tolT: tolT, PegExt: PegExt, TegExt: TegExt,
     ext: Pdef && Tdef && mecaExt && thermique,
     // Équilibre mécanique seul : pression uniforme, gaz et piston au repos
     // (la température peut encore évoluer)
@@ -484,7 +522,7 @@ function tfPasPiston() {
 
 // Pas à la main de la source : le gaz suit la nouvelle température en
 // exponentielle de constante tfDurees().thermique ; l'écart d'un pas de
-// 0,1 K reste sous le seuil TF_SEUIL_T. Pas d'équilibre thermique avant
+// 0,1 K reste sous la tolérance tfMesures().tolT. Pas d'équilibre thermique avant
 // que l'écart soit tombé au dixième, ln 10 constantes de temps.
 function tfPasSource() {
   tf.tThMin = tf.t + Math.log(10) * tfDurees().thermique;

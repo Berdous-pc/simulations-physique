@@ -215,14 +215,14 @@ function tfMajAfficheurs() {
   } else {
     _tfEl['tf-it-Pext'].innerHTML = _tfFmtPression(m.Pext)
       + src(m.butee ? 'butée ' + m.butee : (tf.montage === 'masse' ? 'masses' : 'air') + ' + piston');
-    sigP = !m.Pdef ? '?' : m.butee ? '' : Math.abs(m.Pmoy - m.Pext) / m.Pext < TF_SEUIL_P ? '=' : '≠';
+    sigP = !m.Pdef ? '?' : m.butee ? '' : m.PegExt ? '=' : '≠';
   }
   if (tf.fond === 'isolant') {
     _tfEl['tf-it-Text'].innerHTML = src('isolant');
     sigT = m.Tdef ? '' : '?';
   } else {
     _tfEl['tf-it-Text'].innerHTML = _tfFmt(tf.Text, 1) + ' K' + src('source ' + tf.fond);
-    sigT = !m.Tdef ? '?' : Math.abs(m.Tmoy - tf.Text) / tf.Text < TF_SEUIL_T ? '=' : '≠';
+    sigT = !m.Tdef ? '?' : m.TegExt ? '=' : '≠';
   }
   [['P', sigP], ['T', sigT]].forEach(function (q) {
     var el = _tfEl['tf-sig-' + q[0]];
@@ -275,16 +275,7 @@ function _tfFmtmJK(x) { return _tfSigne(x, _tfFmt(Math.abs(x) * 1e3, 1)) + ' mJ/
 // ou celui de l'étape cliquée ; choisie d'elle-même quand un cycle se ferme)
 var tfBilanVue = 'etape';
 var _tfBilanCycleSig = '';
-// Résolution de l'expérience sur l'entropie (J/K) : en dessous, une
-// irréversibilité ne se voit pas. Le cran le plus fin de chaque organe, sur
-// une transformation entière, y passe (sable 10 g, 100 → 200 kPa :
-// 0,02 mJ/K ; source 0,1 K, +100 K : 0,04 ; air 0,1 kPa, 100 → 200 kPa :
-// 0,04) ; un bloc de 20 kg posé d'un coup crée 37 mJ/K. S créée est tenue
-// pour nulle sous la moitié, ce que l'affichage arrondit à 0,0 mJ/K
-// (_tfFmtmJK) : le verdict ne dit pas « réversible » à côté d'une valeur
-// non nulle.
-var TF_RESOL_S = 1e-4;
-var TF_SC_REV = TF_RESOL_S / 2;
+// Résolution de l'expérience sur l'entropie : TF_RESOL_S, TF_SC_REV (tf-sim.js)
 
 function tfOnBilanVue(v) {
   tfBilanVue = v;
@@ -883,7 +874,7 @@ function tfOnFond(f) {
   tfSetFond(f);
   if (_tfPret && f !== 'isolant') {
     _tfDemarrerRelax();
-    if (Math.abs(tf.Text - tfMesures().Tmoy) / tf.Text > TF_SEUIL_T) _tfApresLancer('Text', 0, repos);
+    if (!tfMesures().TegExt) _tfApresLancer('Text', 0, repos);
   }
   tfGraph.sale = true;
   _tfMajBoutons();
@@ -1468,8 +1459,11 @@ function _tfDureeAction(cle, duree) {
   if (cle === 'volume') D = tf.verin.actif ? tf.verin.tau : duree;
   else if (duree > 0) D = duree;
   // Échelon de température : retour à l'équilibre, exponentiel, jusqu'à un
-  // écart de la moitié du seuil
-  else if (cle === 'Text') D = d.thermique * Math.log(Math.max(2, Math.abs(tf.Text - tfMesures().Tmoy) / (TF_SEUIL_T * tf.Text / 2)));
+  // écart de la moitié de la tolérance
+  else if (cle === 'Text') {
+    var mT = tfMesures();
+    D = d.thermique * Math.log(Math.max(2, Math.abs(tf.Text - mT.Tmoy) / (mT.tolT * tf.Text / 2)));
+  }
   // Échelon de P_air sur la membrane nue : le front traverse le gaz en
   // ~1 ms, c'est lui qu'on veut voir. Une traversée : le cran le plus lent
   // (×1/5000) quelle que soit la hauteur, même gaz froid sous 50 cm, ~4 s
@@ -1528,9 +1522,9 @@ function _tfVitesseRelax() {
   // Temps d'écran passé à l'équilibre mécanique. Pendant la mise en
   // équilibre thermique, le piston suit lentement le gaz qui se dilate ou se
   // contracte : le critère strict clignote. Seul un écart net (deux fois les
-  // seuils, 1 % : le piston oscille encore) remet le compte à zéro.
-  var presque = (m.Pmax - m.Pmin) / m.Pmoy < 2 * TF_SEUIL_P
-             && (tf.tenu || m.butee !== null || Math.abs(m.Pmoy - m.Pext) / m.Pext < 2 * TF_SEUIL_P);
+  // seuils, en amplitude : le piston oscille encore) remet le compte à zéro.
+  var presque = m.rP < 2
+             && (tf.tenu || m.butee !== null || Math.abs(m.Pmoy - m.Pext) / m.Pext < 2 * m.tolP);
   if (m.meca) R.meca += dEcran;
   else if (!presque) R.meca = 0;
   if (R.ecran < TF_ECRAN_FRONT) return;
@@ -1546,10 +1540,11 @@ function _tfVitesseRelax() {
     }
   } else {
     if (R.meca < TF_ECRAN_MECA) return;
-    var ecart = Math.max(m.Tmax - m.Tmin, tf.G > 0 ? Math.abs(m.Tmoy - tf.Text) : 0);
-    var demiSeuil = TF_SEUIL_T * m.Tmoy / 2;
-    if (ecart > demiSeuil) {
-      D = (tf.G > 0 ? d.thermique : d.interne) * Math.log(Math.max(2, ecart / demiSeuil));
+    // Écart rapporté à la moitié du seuil, en amplitude : entre tranches,
+    // et avec la source si le fond conduit
+    var ecart = 2 * Math.max(m.rT, tf.G > 0 ? Math.abs(m.Tmoy - tf.Text) / (m.tolT * tf.Text) : 0);
+    if (ecart > 1) {
+      D = (tf.G > 0 ? d.thermique : d.interne) * Math.log(Math.max(2, ecart));
     }
     // Pas de la source sous le seuil (0,1 K) : l'attente est celle de
     // tfPasSource, sans quoi le cran restait à ×1
