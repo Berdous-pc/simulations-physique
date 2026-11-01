@@ -1322,40 +1322,36 @@ function _tfgDessinerDiag(o, cs, mes) {
     c.setLineDash([]);
   }
 
-  // Chemin : plein tant que la grandeur en ordonnée est définie ; ailleurs,
-  // corde pointillée d'un point du squelette au suivant. Le squelette est
-  // fait des échantillons définis et, à chaque changement d'étape, du
-  // dernier échantillon de l'étape finie, pris à l'état moyen du gaz s'il
-  // n'est pas défini (P = (γ − 1)·U/V, T = U/(n·Cv), toujours connus) : une
-  // corde ne traverse donc jamais une frontière d'étape. Sans ce point
-  // d'ancrage, après une étape interrompue avant l'équilibre, la corde de
-  // l'étape suivante partait du dernier état défini, bien antérieur, et la
-  // géométrie dépendait de la convention de tracé. Une couleur par étape
-  // (celle du point d'arrivée de chaque segment) ; une étape mise en
+  // Chemin, passage par passage : un passage va d'une borne à la suivante
+  // (début de l'historique, marche d'escalier ou pas à la main, reprise
+  // après le chrono figé, dernier échantillon d'une étape, état actuel).
+  // Grandeur en ordonnée définie tout du long : courbe pleine par tous ses
+  // échantillons. Sinon : une seule corde droite, fine et pointillée, d'une
+  // borne à l'autre, sans aucun échantillon intermédiaire (l'extrémité
+  // d'une oscillation du piston, qui repasse un instant sous les seuils,
+  // semait des bouts pleins et faisait zigzaguer la corde). Une borne non
+  // définie (étape interrompue) est prise à l'état moyen du gaz
+  // (P = (γ − 1)·U/V, T = U/(n·Cv), toujours connus). Tant que le passage
+  // n'est pas fini, gaz hors équilibre, sa corde est provisoire, pâle. Une
+  // couleur par étape (celle de la borne d'arrivée) ; une étape mise en
   // évidence dans le journal laisse les autres en retrait.
   var sel = tfEtapes.sel >= 0 ? tfEtapes.sel + 1 : -1;
   var alpha = function (n) { return sel < 0 || n === sel ? 1 : 0.22; };
-  var sq = _tfgSquelette(e, D), q;
+  var pas = _tfgPassages(e, D), q;
   c.lineJoin = 'round';
   c.lineCap = 'round';
-  k = 1;
-  while (k < sq.length) {
-    // Suite de segments de même style et de même étape : un seul tracé
-    // (les tirets restent continus). Plein : deux échantillons définis
-    // consécutifs.
-    var plein = sq[k] === sq[k - 1] + 1 && D.def(e[sq[k - 1]]) && D.def(e[sq[k]]);
-    var n = e[sq[k]].etape, j = k;
-    while (j + 1 < sq.length && e[sq[j + 1]].etape === n
-           && (sq[j + 1] === sq[j] + 1 && D.def(e[sq[j]]) && D.def(e[sq[j + 1]])) === plein) j++;
-    c.globalAlpha = alpha(n) * (plein ? 1 : 0.8);
-    c.strokeStyle = tfCouleurEtape(n);
-    c.lineWidth = plein ? 2.2 : 1.6;
-    c.setLineDash(plein ? [] : [3, 4]);
+  for (k = 0; k < pas.length; k++) {
+    var ps = pas[k];
+    c.globalAlpha = alpha(ps.n) * (ps.plein ? 1 : ps.provisoire ? 0.4 : 0.85);
+    c.strokeStyle = tfCouleurEtape(ps.n);
+    c.lineWidth = ps.plein ? 2.2 : 1.4;
+    c.setLineDash(ps.plein ? [] : [4, 4]);
     c.beginPath();
-    T.moveTo(px(e[sq[k - 1]]), py(e[sq[k - 1]]));
-    for (q = k; q <= j; q++) T.lineTo(px(e[sq[q]]), py(e[sq[q]]));
+    for (q = 0; q < ps.pts.length; q++) {
+      if (q === 0) T.moveTo(px(e[ps.pts[q]]), py(e[ps.pts[q]]));
+      else T.lineTo(px(e[ps.pts[q]]), py(e[ps.pts[q]]));
+    }
     c.stroke();
-    k = j + 1;
   }
   c.globalAlpha = 1;
   c.setLineDash([]);
@@ -1363,7 +1359,7 @@ function _tfgDessinerDiag(o, cs, mes) {
 
   // Sens de parcours : une flèche au milieu (en longueur) du chemin de
   // chaque étape, cordes comprises
-  _tfgFleches(c, e, sq, px, py, alpha);
+  _tfgFleches(c, e, pas, px, py, alpha);
 
   // États d'équilibre : un point par marche d'escalier ou par pas à la
   // main, et un par étape, au dernier échantillon avant ce qui dérange le
@@ -1525,28 +1521,46 @@ function _tfgFantome(c, T, D, xDe, yDe) {
   c.restore();
 }
 
-// Squelette du chemin (indices dans e) : échantillons définis, plus le
-// premier et, à chaque changement d'étape, le dernier de l'étape finie,
-// définis ou non (état moyen du gaz). L'étape en cours n'a pas d'ancrage
-// final : sa corde s'arrête au dernier état défini.
-function _tfgSquelette(e, D) {
-  var sq = [], k;
-  for (k = 0; k < e.length; k++) {
-    if (k === 0 || D.def(e[k]) || (k + 1 < e.length && e[k + 1].etape !== e[k].etape)) sq.push(k);
+// Passages du chemin (indices dans e) : bornes au premier échantillon, à
+// chaque marche (pas à la main, marche d'escalier), à chaque reprise après
+// le chrono figé, au dernier échantillon de chaque étape et au dernier de
+// l'historique. pts : tous les échantillons du passage s'il est défini
+// d'une borne à l'autre (plein), sinon ses deux bornes ; n : étape de la
+// borne d'arrivée ; provisoire : corde du passage en cours, gaz pas encore
+// revenu à l'équilibre.
+function _tfgPassages(e, D) {
+  var bornes = [0], k, i, res = [];
+  for (k = 1; k < e.length; k++) {
+    if (k === e.length - 1 || e[k].marche || e[k].coupure || e[k + 1].etape !== e[k].etape) bornes.push(k);
   }
-  return sq;
+  for (i = 1; i < bornes.length; i++) {
+    var a = bornes[i - 1], b = bornes[i], plein = true, pts = [];
+    for (k = a; k <= b; k++) {
+      pts.push(k);
+      if (!D.def(e[k])) plein = false;
+    }
+    res.push({
+      pts: plein ? pts : [a, b], plein: plein, n: e[b].etape,
+      provisoire: !plein && b === e.length - 1 && !e[b].eq
+    });
+  }
+  return res;
 }
 
 // Flèche de sens au milieu de chaque étape : le chemin d'une étape est la
-// suite de ses points du squelette, précédée du dernier point d'avant
-// (départ). Rien si l'étape est trop courte à l'écran.
-function _tfgFleches(c, e, sq, px, py, alpha) {
-  var pts = {}, dernier = null, k, n;
-  for (k = 0; k < sq.length; k++) {
-    n = e[sq[k]].etape;
-    if (!pts[n]) pts[n] = dernier ? [dernier] : [];
-    pts[n].push([px(e[sq[k]]), py(e[sq[k]])]);
-    dernier = pts[n][pts[n].length - 1];
+// suite des points tracés de ses passages, précédée du dernier point
+// d'avant (départ). Rien si l'étape est trop courte à l'écran.
+function _tfgFleches(c, e, pas, px, py, alpha) {
+  var pts = {}, dernier = null, k, j, n;
+  for (k = 0; k < pas.length; k++) {
+    n = pas[k].n;
+    for (j = 0; j < pas[k].pts.length; j++) {
+      var s = e[pas[k].pts[j]], p0 = [px(s), py(s)];
+      if (!pts[n]) pts[n] = dernier ? [dernier] : [];
+      var l = pts[n][pts[n].length - 1];
+      if (!l || l[0] !== p0[0] || l[1] !== p0[1]) pts[n].push(p0);
+      dernier = pts[n][pts[n].length - 1];
+    }
   }
   for (n in pts) {
     var p = pts[n], L = 0, i;
