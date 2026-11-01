@@ -833,6 +833,11 @@ function _tfVerinLent() {
 function _tfEssayerQS() {
   if (!TF_QS || tf.qs) return;
   if (tf.verin.actif && !_tfVerinLent()) return;
+  // Après un pas à la main sur le piston (tfPasPiston), l'oscillation d'un
+  // grain reste sous TF_QS_EC : sans cette attente, l'entrée l'arrêtait au
+  // premier essai tombé près de la position d'équilibre, tantôt dès le
+  // premier passage, tantôt après trois oscillations
+  if (tf.t < tf.tReposMin) return;
   if (!tf.tenu) {
     for (var cle in tf.rampes) {
       var r = tf.rampes[cle];
