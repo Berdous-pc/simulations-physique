@@ -222,7 +222,7 @@ function tfMajAfficheurs() {
     sigT = m.Tdef ? '' : '?';
   } else {
     _tfEl['tf-it-Text'].innerHTML = _tfFmt(tf.Text, 1) + ' K' + src('source ' + tf.fond);
-    sigT = !m.Tdef ? '?' : Math.abs(m.Tmoy - tf.Text) < TF_SEUIL_T ? '=' : '≠';
+    sigT = !m.Tdef ? '?' : Math.abs(m.Tmoy - tf.Text) / tf.Text < TF_SEUIL_T ? '=' : '≠';
   }
   [['P', sigP], ['T', sigT]].forEach(function (q) {
     var el = _tfEl['tf-sig-' + q[0]];
@@ -883,7 +883,7 @@ function tfOnFond(f) {
   tfSetFond(f);
   if (_tfPret && f !== 'isolant') {
     _tfDemarrerRelax();
-    if (Math.abs(tf.Text - tfMesures().Tmoy) > TF_SEUIL_T) _tfApresLancer('Text', 0, repos);
+    if (Math.abs(tf.Text - tfMesures().Tmoy) / tf.Text > TF_SEUIL_T) _tfApresLancer('Text', 0, repos);
   }
   tfGraph.sale = true;
   _tfMajBoutons();
@@ -1469,7 +1469,7 @@ function _tfDureeAction(cle, duree) {
   else if (duree > 0) D = duree;
   // Échelon de température : retour à l'équilibre, exponentiel, jusqu'à un
   // écart de la moitié du seuil
-  else if (cle === 'Text') D = d.thermique * Math.log(Math.max(2, Math.abs(tf.Text - tfMesures().Tmoy) / (TF_SEUIL_T / 2)));
+  else if (cle === 'Text') D = d.thermique * Math.log(Math.max(2, Math.abs(tf.Text - tfMesures().Tmoy) / (TF_SEUIL_T * tf.Text / 2)));
   // Échelon de P_air sur la membrane nue : le front traverse le gaz en
   // ~1 ms, c'est lui qu'on veut voir. Une traversée : le cran le plus lent
   // (×1/5000) quelle que soit la hauteur, même gaz froid sous 50 cm, ~4 s
@@ -1527,10 +1527,10 @@ function _tfVitesseRelax() {
   if (m.equilibre) { _tfRelax = null; return; }
   // Temps d'écran passé à l'équilibre mécanique. Pendant la mise en
   // équilibre thermique, le piston suit lentement le gaz qui se dilate ou se
-  // contracte : le critère strict clignote. Seul un écart net (cinq fois les
-  // seuils : le piston oscille encore) remet le compte à zéro.
-  var presque = (m.Pmax - m.Pmin) / m.Pmoy < 5 * TF_SEUIL_P
-             && (tf.tenu || m.butee !== null || Math.abs(m.Pmoy - m.Pext) / m.Pext < 5 * TF_SEUIL_P);
+  // contracte : le critère strict clignote. Seul un écart net (deux fois les
+  // seuils, 1 % : le piston oscille encore) remet le compte à zéro.
+  var presque = (m.Pmax - m.Pmin) / m.Pmoy < 2 * TF_SEUIL_P
+             && (tf.tenu || m.butee !== null || Math.abs(m.Pmoy - m.Pext) / m.Pext < 2 * TF_SEUIL_P);
   if (m.meca) R.meca += dEcran;
   else if (!presque) R.meca = 0;
   if (R.ecran < TF_ECRAN_FRONT) return;
@@ -1547,8 +1547,9 @@ function _tfVitesseRelax() {
   } else {
     if (R.meca < TF_ECRAN_MECA) return;
     var ecart = Math.max(m.Tmax - m.Tmin, tf.G > 0 ? Math.abs(m.Tmoy - tf.Text) : 0);
-    if (ecart > TF_SEUIL_T / 2) {
-      D = (tf.G > 0 ? d.thermique : d.interne) * Math.log(Math.max(2, ecart / (TF_SEUIL_T / 2)));
+    var demiSeuil = TF_SEUIL_T * m.Tmoy / 2;
+    if (ecart > demiSeuil) {
+      D = (tf.G > 0 ? d.thermique : d.interne) * Math.log(Math.max(2, ecart / demiSeuil));
     }
     // Pas de la source sous le seuil (0,1 K) : l'attente est celle de
     // tfPasSource, sans quoi le cran restait à ×1

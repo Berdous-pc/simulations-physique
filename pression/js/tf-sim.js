@@ -116,8 +116,13 @@ var TF_H_VISEE_MIN = 0.05;   // m
 var TF_H_VISEE_MAX = 0.50;   // m
 
 // ── Critère « grandeurs définies » (PLAN §2.4) ──
-var TF_SEUIL_P  = 1e-3;   // écart relatif de P entre tranches
-var TF_SEUIL_T  = 0.5;    // K, écart de T entre tranches
+// Même précision relative pour P et T, 0,5 % (1,5 K à 293 K). À 0,1 % et
+// 0,5 K, la queue exponentielle de la conduction (τ ~3 s sur l'isolant,
+// ~11 s sur une source) laissait le gaz « non défini » de longues secondes
+// pour un écart illisible, et un pas de vérin de 1 mm, réversible à la
+// résolution près (0,15 % d'écart), restait en pointillés.
+var TF_SEUIL_P  = 5e-3;   // écart relatif de P entre tranches, et avec l'extérieur
+var TF_SEUIL_T  = 5e-3;   // écart relatif de T entre tranches, et avec la source
 var TF_SEUIL_EC = 1e-4;   // énergie cinétique macroscopique / énergie interne
 
 // ══════════════════════════════════════════════════════════════════════
@@ -333,7 +338,7 @@ function tfMesures() {
   var Pext = tfPext();
 
   var Pdef = (Pmax - Pmin) / Pmoy < TF_SEUIL_P;
-  var Tdef = (Tmax - Tmin) < TF_SEUIL_T;
+  var Tdef = (Tmax - Tmin) / Tmoy < TF_SEUIL_T;
   // Après un pas à la main sur le piston libre, l'oscillation qu'il lance
   // peut rester sous les seuils (grain de 10 g : 0,05 %) : le piston n'est
   // au repos qu'une fois amortie (tfPasPiston)
@@ -347,8 +352,8 @@ function tfMesures() {
   // un gaz uniforme qui chauffe lentement à travers un fond peu conducteur
   // passait pour « à l'équilibre » (chrono figé, lettre posée trop tôt)
   // Après un pas de la source, l'écart peut rester sous le seuil (0,1 K
-  // sous 0,5 K) : équilibre attendu jusqu'à tf.tThMin (tfPasSource)
-  var thermique = (tf.G === 0 || Math.abs(Tmoy - tf.Text) < TF_SEUIL_T) && tf.t >= tf.tThMin;
+  // sous 1,5 K) : équilibre attendu jusqu'à tf.tThMin (tfPasSource)
+  var thermique = (tf.G === 0 || Math.abs(Tmoy - tf.Text) / tf.Text < TF_SEUIL_T) && tf.t >= tf.tThMin;
   // Équilibre avec l'extérieur (convention de tracé des diagrammes d'état) :
   // gaz uniforme, pression égale à celle qu'exerce le piston libre (le
   // vérin, lui, exerce celle du gaz), température égale à celle de la
