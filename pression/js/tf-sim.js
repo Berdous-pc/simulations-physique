@@ -116,14 +116,16 @@ var TF_H_VISEE_MIN = 0.05;   // m
 var TF_H_VISEE_MAX = 0.50;   // m
 
 // ── Résolution de l'expérience sur l'entropie (J/K) ──
-// En dessous, une irréversibilité ne se voit pas. Le cran le plus fin de
-// chaque organe, sur une transformation entière, y passe (sable 10 g,
-// 100 → 200 kPa : 0,02 mJ/K ; source 0,1 K, +100 K : 0,04 ; air 0,1 kPa,
-// 100 → 200 kPa : 0,04) ; un bloc de 20 kg posé d'un coup crée 37 mJ/K.
-// S créée est tenue pour nulle sous la moitié, ce que l'affichage arrondit
-// à 0,0 mJ/K (_tfFmtmJK) : le verdict ne dit pas « réversible » à côté
-// d'une valeur non nulle.
-var TF_RESOL_S = 1e-4;
+// En dessous, une irréversibilité ne se voit pas. 0,01 mJ/K : elle fixe
+// aussi le critère « grandeur définie » (ci-dessous), qui ne tolère
+// qu'environ 3 % de P ou 4 K de T entre tranches (à 0,1 mJ/K : 9 % et
+// 12 K). Le cran le plus fin de chaque organe, sur une transformation
+// entière, y passe (sable 1 g, source 0,01 K, air 10 Pa, vérin 0,1 mm :
+// dix fois moins qu'au cran 10 g, 0,1 K, 0,1 kPa, 1 mm) ; un bloc de 20 kg
+// posé d'un coup crée 37 mJ/K. S créée est tenue pour nulle sous la
+// moitié, ce que l'affichage arrondit à 0,00 mJ/K (_tfFmtmJK) : le verdict
+// ne dit pas « réversible » à côté d'une valeur non nulle.
+var TF_RESOL_S = 1e-5;
 var TF_SC_REV = TF_RESOL_S / 2;
 
 // ── Critère « grandeurs définies » (PLAN §2.4) ──

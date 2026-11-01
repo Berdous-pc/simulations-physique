@@ -56,10 +56,10 @@ var _tfPret = false;
 
 // Pas des boutons du mode À la main, en 1-2-5
 var TF_PAS_ESC = {
-  volume: [0.001, 0.002, 0.005, 0.01, 0.02, 0.05],   // m : course du vérin
-  masse : [0.01, 0.02, 0.05, 0.1, 0.2, 0.5],         // kg : masse d'un grain de sable
-  Pair  : [100, 200, 500, 1000, 2000, 5000, 10000, 20000],   // Pa ; 0,1 kPa : vers le réversible
-  Text  : [0.1, 0.2, 0.5, 1, 2, 5, 10, 20]           // K ; 0,1 K : vers le réversible
+  volume: [1e-4, 2e-4, 5e-4, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05],   // m : course du vérin ; 0,1 mm : vers le réversible
+  masse : [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5],      // kg : masse d'un grain de sable ; 1 g : vers le réversible
+  Pair  : [5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000], // Pa ; 5 Pa : vers le réversible
+  Text  : [0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20]       // K ; 0,005 K : vers le réversible
 };
 
 var tfCarte = {
@@ -69,10 +69,10 @@ var tfCarte = {
   auto   : true,         // vitesse adaptée à chaque transformation
   // Valeur visée (SI), suivie de la valeur actuelle tant qu'on n'y touche
   // pas, cran du pas
-  volume : { vise: 0.15,     suit: true, iPas: 3 },
-  masse  : { vise: 20,       suit: true, iPas: 2 },
-  Pair   : { vise: 2e5,      suit: true, iPas: 3 },
-  Text   : { vise: 400,      suit: true, iPas: 3 }
+  volume : { vise: 0.15,     suit: true, iPas: 6 },
+  masse  : { vise: 20,       suit: true, iPas: 5 },
+  Pair   : { vise: 2e5,      suit: true, iPas: 7 },
+  Text   : { vise: 400,      suit: true, iPas: 7 }
 };
 
 // Champ de la valeur visée, par grandeur : libellé, unité affichée et son
@@ -160,11 +160,14 @@ function _tfFmtValeur(cle, x) {
 }
 
 function _tfFmtPas(cle, x) {
-  if (cle === 'volume') return _tfFmtChamp(x * 100, 1) + ' cm';
+  if (cle === 'volume') return x < 0.001 ? _tfFmt(x * 1000, 1) + ' mm' : _tfFmtChamp(x * 100, 1) + ' cm';
   if (cle === 'masse') return Math.round(x * 1000) + ' g';
-  if (cle === 'Pair')  return _tfFmt(x / 1000, x < 1000 ? 1 : 0) + ' kPa';
-  return _tfFmt(x, x < 1 ? 1 : 0) + ' K';
+  if (cle === 'Pair')  return x < 100 ? Math.round(x) + ' Pa' : _tfFmt(x / 1000, x < 1000 ? 1 : 0) + ' kPa';
+  return _tfFmt(x, _tfDecPas(x)) + ' K';
 }
+
+// Décimales qui font lire un pas x (dans l'unité affichée), une au moins
+function _tfDecPas(x) { return Math.max(1, Math.ceil(-Math.log(x) / Math.LN10 - 1e-9)); }
 
 // Durée à deux ou trois chiffres significatifs, en ms ou en s
 function _tfFmtDuree(t) {
@@ -266,9 +269,9 @@ function _tfScree(b0, b1) { return b1.S - b0.S - (b1.Se - b0.Se); }
 // Signe « − » seulement devant une valeur affichée non nulle (pas de « −0,00 »)
 function _tfSigne(x, s) { return (x < 0 && /[1-9]/.test(s) ? '−' : '') + s; }
 function _tfFmtJ(x) { return _tfSigne(x, _tfFmt(Math.abs(x), 2)) + ' J'; }
-// Entropies à la résolution de l'expérience, TF_RESOL_S (0,1 mJ/K) ; le
+// Entropies à la résolution de l'expérience, TF_RESOL_S (0,01 mJ/K) ; le
 // calcul, lui, garde toute sa précision
-function _tfFmtmJK(x) { return _tfSigne(x, _tfFmt(Math.abs(x) * 1e3, 1)) + ' mJ/K'; }
+function _tfFmtmJK(x) { return _tfSigne(x, _tfFmt(Math.abs(x) * 1e3, 2)) + ' mJ/K'; }
 
 // Vue du Bilan : 'etape' (l'étape cliquée dans la frise, la dernière
 // sinon, de son départ à son arrivée ou à maintenant), 'A' (depuis l'état initial) ou 'cycle' (le dernier cycle fermé,
@@ -474,12 +477,14 @@ function _tfSuffixeFond() {
 //     mécanique suffit : le gaz reste uniforme, l'écart de température se
 //     loge dans la paroi.
 //   - Réversiblement : en plus, entropie créée Q²·(R_int + 1/G) / (T²·durée)
-//     sous TF_REV_SC. Mesuré, S_c décroît bien comme 1/durée, et vaut ~2,6
-//     fois moins que cette estimation : une étape crée ~6 µJ/K, un cycle de
-//     quatre étapes reste sous TF_SC_REV (affiché 0,0 mJ/K). Quasi
-//     statiquement, un Carnot crée 0,016 mJ/K, un Stirling 0,07. (Avant la
-//     résolution de 0,1 mJ/K, TF_REV_SC valait 2,5 µJ/K : cycles de 7 à 57 h
-//     simulées, six fois plus longs.)
+//     sous TF_REV_SC. Mesuré, S_c décroît bien comme 1/durée, et vaut 2 à
+//     3 fois moins que cette estimation (à 3 µJ/K : isotherme 30 → 15 cm
+//     1,6 µJ/K en 93 h simulées, isochore +100 K 1,1 µJ/K en 142 h) ; à
+//     2 µJ/K, un cycle de quatre étapes reste sous TF_SC_REV (affiché
+//     0,00 mJ/K). Quasi statiquement, un Carnot crée 0,016 mJ/K, un Stirling
+//     0,07 : à la résolution de 0,01 mJ/K, quasi statique n'est plus
+//     réversible. (À la résolution de 0,1 mJ/K, TF_REV_SC valait 15 µJ/K :
+//     Carnot 3,3 h, Stirling 11,3 h simulées, 7,5 fois plus courts.)
 // Mesures (vérin 30 → 15 cm, PLAN §10.5) : diathermane, il faut ~6000 s
 // pour que T reste définie (S_c 0,09 mJ/K) ; G = 0,001 W/K, 6000 s laissent
 // T définie mais S_c = 5 mJ/K : quasi statique mais irréversible.
@@ -487,7 +492,7 @@ var TF_V_BRUTAL = TF_V_VERIN_MAX;   // m/s
 var TF_QS_MIN = 1;            // s
 var TF_QS_ECART = 0.25;       // K
 var TF_PAS_VERIN_TRAV = 3;    // durée minimale d'un pas du vérin, en traversées du son
-var TF_REV_SC = 1.5e-5;       // J/K estimés par étape (~6 µJ/K mesuré)
+var TF_REV_SC = 2e-6;         // J/K estimés par étape (~1 µJ/K mesuré)
 var TF_R_INT = 0.72;
 
 function _tfParamsManiere(cle, man) {
@@ -1269,8 +1274,9 @@ function _tfMajMain() {
   var cle = _tfCleOrgane('piston'), pas = _tfPas(cle), lib = _tfFmtPas(cle, pas);
   _tfEl['tf-main-nom-piston'].textContent = TF_NOM_ORGANE[cle];
   _tfEl['tf-main-nature-piston'].textContent = _tfNature('piston');
-  _tfEl['tf-main-val-piston'].textContent = cle === 'volume' ? _tfFmt(tf.z[TF_N] * 100, 1) + ' cm'
-    : cle === 'Pair' ? _tfFmt(tf.Pair / 1000, 1) + ' kPa' : _tfFmt(tf.masse, 2) + ' kg';
+  // Au chiffre du pas choisi : chaque pas se lit
+  _tfEl['tf-main-val-piston'].textContent = cle === 'volume' ? _tfFmt(tf.z[TF_N] * 100, _tfDecPas(pas * 100)) + ' cm'
+    : cle === 'Pair' ? _tfFmt(tf.Pair / 1000, _tfDecPas(pas / 1000)) + ' kPa' : _tfFmt(tf.masse, _tfDecPas(pas)) + ' kg';
   _tfLibPas('tf-main-moins-piston', cle === 'volume' ? '▼' : -1, lib);
   _tfLibPas('tf-main-plus-piston', cle === 'volume' ? '▲' : 1, lib);
   _tfEl['tf-main-moins-piston'].title = cle === 'volume' ? 'Descendre le piston (compression)'
@@ -1283,7 +1289,7 @@ function _tfMajMain() {
   _tfEl['tf-carte-source'].classList.toggle('inactif', !src);
   _tfEl['tf-main-nom-source'].textContent = src ? 'Source ' + tf.fond : 'Source';
   _tfEl['tf-main-nature-source'].textContent = src ? _tfNature('source') : '';
-  _tfEl['tf-main-val-source'].textContent = src ? _tfFmt(tf.Text, 1) + ' K' : '';
+  _tfEl['tf-main-val-source'].textContent = src ? _tfFmt(tf.Text, _tfDecPas(_tfPas('Text'))) + ' K' : '';
   _tfLibPas('tf-main-moins-source', -1, libT);
   _tfLibPas('tf-main-plus-source', 1, libT);
   _tfEl['tf-main-moins-source'].disabled = _tfEl['tf-main-plus-source'].disabled = !src;
