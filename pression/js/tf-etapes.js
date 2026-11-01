@@ -26,9 +26,8 @@ var tfEtapes = {
   // Étapes : titre (nature), detail, man (manière : 'brutal', 'qs', 'rev',
   // 'main' ou null), couleur, depart et arrivee (indices de lettres ou
   // null), statut, nonDef (le gaz est passé par un état où P ou T n'est pas
-  // définie, et ce passage a créé au moins TF_SC_REV : trait pointillé dans
-  // la frise, comme la corde du diagramme), bilan0 et bilan1 (compteurs au
-  // départ et à l'arrivée)
+  // définie : trait pointillé dans la frise, comme sur le diagramme), bilan0
+  // et bilan1 (compteurs au départ et à l'arrivée)
   liste   : [],
   // Lettres : {lettre, V, P, T, S, snap, retour} ; retour : indice de la
   // lettre déjà vue dont l'état est retrouvé (même lettre), sinon absent
@@ -186,21 +185,7 @@ function tfEtapesCycle() {
 // mesures : arrivée de l'étape en cours, suivi de la dernière lettre
 function tfEtapesSuivre(m) {
   var E = tfEtapes, et = E.liste[E.liste.length - 1];
-  // Passage non défini : jugé au retour d'un état défini, sur l'entropie
-  // créée depuis le dernier état défini (comme la corde du diagramme)
-  if (et && et.statut === 'en cours') {
-    var b = tfBilan();
-    if (m.Pdef && m.Tdef) {
-      if (et.passage && !et.nonDef && (b.S - et.passage.S) - (b.Se - et.passage.Se) >= TF_SC_REV) {
-        et.nonDef = true;
-        E.version++;
-      }
-      et.passage = null;
-      et.dernierDef = { S: b.S, Se: b.Se };
-    } else if (!et.passage) {
-      et.passage = et.dernierDef || { S: et.bilan0.S, Se: et.bilan0.Se };
-    }
-  }
+  if (et && et.statut === 'en cours' && !(m.Pdef && m.Tdef) && !et.nonDef) { et.nonDef = true; E.version++; }
   // Températures des sources au contact pendant l'étape (borne de Carnot
   // d'un cycle)
   if (et && et.statut === 'en cours' && tf.fond !== 'isolant') {

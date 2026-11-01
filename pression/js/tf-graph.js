@@ -209,7 +209,6 @@ function _tfgEchantillon(avantMarche) {
     Tmin: bas('Tmin', m.Tmin), Tmax: haut('Tmax', m.Tmax),
     Ppt: moy('Pp', Pp),
     S: tfEntropie(),
-    Se: tf.QsurT,   // entropie échangée cumulée : S_c entre deux échantillons
     eq: m.equilibre,
     // Pression exercée par le piston : P_ext piston libre, celle que
     // mesure le vérin piston tenu
@@ -390,7 +389,7 @@ function _tfgSuivreGele(m) {
   s.Tm = s.Tt = s.Tlo = s.Thi = m.Tmoy;
   s.Pmin = m.Pmin; s.Pmax = m.Pmax; s.Tmin = m.Tmin; s.Tmax = m.Tmax;
   s.Pdef = m.Pdef; s.Tdef = m.Tdef; s.ext = m.ext; s.eq = m.equilibre;
-  s.S = S; s.Se = tf.QsurT; s.Pp = s.Ppt = Pp; s.Text = tf.Text;
+  s.S = S; s.Pp = s.Ppt = Pp; s.Text = tf.Text;
   _tfgEnveloppe(m, S);
   g.sale = true;
 }
@@ -1324,12 +1323,7 @@ function _tfgDessinerDiag(o, cs, mes) {
   }
 
   // Chemin : plein tant que la grandeur en ordonnée est définie ; ailleurs,
-  // corde d'un point du squelette au suivant, tracée seulement quand le gaz
-  // est de nouveau défini (jamais retouchée ensuite). Corde pleine si
-  // l'entropie créée entre ses deux extrémités, toutes deux définies, reste
-  // sous TF_SC_REV : un passage que le Bilan dirait réversible ne se montre
-  // pas en pointillés (pas de vérin de 2 mm, écart de P de 0,8 % entre
-  // tranches, ~1 µJ/K). Pointillée sinon. Le squelette est
+  // corde pointillée d'un point du squelette au suivant. Le squelette est
   // fait des échantillons définis et, à chaque changement d'étape, du
   // dernier échantillon de l'étape finie, pris à l'état moyen du gaz s'il
   // n'est pas défini (P = (γ − 1)·U/V, T = U/(n·Cv), toujours connus) : une
@@ -1342,18 +1336,17 @@ function _tfgDessinerDiag(o, cs, mes) {
   var sel = tfEtapes.sel >= 0 ? tfEtapes.sel + 1 : -1;
   var alpha = function (n) { return sel < 0 || n === sel ? 1 : 0.22; };
   var sq = _tfgSquelette(e, D), q;
-  var plein2 = function (a, b) {
-    return D.def(e[a]) && D.def(e[b]) && (b === a + 1 || _tfgScree(e[a], e[b]) < TF_SC_REV);
-  };
   c.lineJoin = 'round';
   c.lineCap = 'round';
   k = 1;
   while (k < sq.length) {
     // Suite de segments de même style et de même étape : un seul tracé
-    // (les tirets restent continus).
-    var plein = plein2(sq[k - 1], sq[k]);
+    // (les tirets restent continus). Plein : deux échantillons définis
+    // consécutifs.
+    var plein = sq[k] === sq[k - 1] + 1 && D.def(e[sq[k - 1]]) && D.def(e[sq[k]]);
     var n = e[sq[k]].etape, j = k;
-    while (j + 1 < sq.length && e[sq[j + 1]].etape === n && plein2(sq[j], sq[j + 1]) === plein) j++;
+    while (j + 1 < sq.length && e[sq[j + 1]].etape === n
+           && (sq[j + 1] === sq[j] + 1 && D.def(e[sq[j]]) && D.def(e[sq[j + 1]])) === plein) j++;
     c.globalAlpha = alpha(n) * (plein ? 1 : 0.8);
     c.strokeStyle = tfCouleurEtape(n);
     c.lineWidth = plein ? 2.2 : 1.6;
@@ -1531,10 +1524,6 @@ function _tfgFantome(c, T, D, xDe, yDe) {
   });
   c.restore();
 }
-
-// Entropie créée entre deux échantillons (J/K) ; NaN pour un échantillon
-// sans entropie échangée (corde alors pointillée)
-function _tfgScree(a, b) { return (b.S - a.S) - (b.Se - a.Se); }
 
 // Squelette du chemin (indices dans e) : échantillons définis, plus le
 // premier et, à chaque changement d'étape, le dernier de l'étape finie,
