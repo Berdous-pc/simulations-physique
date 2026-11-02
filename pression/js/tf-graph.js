@@ -174,6 +174,14 @@ function _tfgEchantillon(avantMarche) {
   tf.acc = null;
 
   var m = tfMesures(), g = tfGraph;
+  // Grandeurs définies tout au long de l'intervalle écoulé, pas seulement à
+  // l'instant de l'échantillon (_tfAccumuler) : diagrammes, graphes au
+  // cours du temps et frise en jugent ainsi. L'équilibre reste instantané.
+  if (a) {
+    if (a.ndP) m.Pdef = false;
+    if (a.ndT) m.Tdef = false;
+    if (a.ndExt) m.ext = false;
+  }
   tfEtapesSuivre(m);
   if (!m.equilibre) g.blocage = g.eqSuite = 0;
   else { g.eqSuite++; if (g.blocage > 0) g.blocage--; }
@@ -259,17 +267,34 @@ function _tfgEclaircir() {
     var n = gr[1] - gr[0], t0 = e[gr[0]].ts, duree = e[gr[1] - 1].ts - t0;
     var pas = n > quota ? 2 * n / quota : 1, prochain = gr[0];
     var pasT = n > quota ? 2 * duree / quota : 0, prochainT = t0;
+    // Extrêmes des échantillons retirés, reportés sur le suivant gardé : son
+    // intervalle les couvre désormais (un dépassement du piston reste vu,
+    // _tfgPassages ; une corde ne redevient pas pleine après coup)
+    var ext = null;
     for (var k = gr[0]; k < gr[1]; k++) {
       var s = e[k], av = e[k - 1], ap = e[k + 1];
       var garder = k === gr[0] || k === gr[1] - 1 || s.marche || s.coupure
-        || (av && (av.Pdef !== s.Pdef || av.Tdef !== s.Tdef || av.eq !== s.eq))
-        || (ap && (ap.Pdef !== s.Pdef || ap.Tdef !== s.Tdef || ap.eq !== s.eq));
+        || (av && (av.Pdef !== s.Pdef || av.Tdef !== s.Tdef || av.ext !== s.ext || av.eq !== s.eq))
+        || (ap && (ap.Pdef !== s.Pdef || ap.Tdef !== s.Tdef || ap.ext !== s.ext || ap.eq !== s.eq));
       if (k >= prochain) { garder = true; while (prochain <= k) prochain += pas; }
       if (pasT > 0 && s.ts >= prochainT) { garder = true; while (prochainT <= s.ts) prochainT += pasT; }
-      if (garder) garde.push(s);
+      if (!garder) {
+        if (!ext) ext = { Vlo: s.Vlo, Vhi: s.Vhi, Plo: s.Plo, Phi: s.Phi, Tlo: s.Tlo, Thi: s.Thi };
+        else _tfgReporterExtremes(ext, s);
+        continue;
+      }
+      if (ext) { _tfgReporterExtremes(s, ext); ext = null; }
+      garde.push(s);
     }
   });
   tfGraph.ech = garde;
+}
+
+// Étend les extrêmes de d (V, P, T) à ceux de s
+function _tfgReporterExtremes(d, s) {
+  d.Vlo = Math.min(d.Vlo, s.Vlo); d.Vhi = Math.max(d.Vhi, s.Vhi);
+  d.Plo = Math.min(d.Plo, s.Plo); d.Phi = Math.max(d.Phi, s.Phi);
+  d.Tlo = Math.min(d.Tlo, s.Tlo); d.Thi = Math.max(d.Thi, s.Thi);
 }
 
 // Avant une action (Lancer, bascule du piston, isolation) : le chrono
@@ -1547,7 +1572,10 @@ function _tfgPassages(e, D) {
     var V1 = Math.min(e[a].V, e[b].V) - tol, V2 = Math.max(e[a].V, e[b].V) + tol;
     for (k = a; k <= b; k++) {
       pts.push(k);
-      if (!D.def(e[k]) || e[k].V < V1 || e[k].V > V2) plein = false;
+      // Volumes extrêmes atteints depuis l'échantillon précédent (celui de
+      // la borne de départ appartient au passage d'avant)
+      var lo = k > a ? e[k].Vlo : e[k].V, hi = k > a ? e[k].Vhi : e[k].V;
+      if (!D.def(e[k]) || lo < V1 || hi > V2) plein = false;
     }
     res.push({
       pts: plein ? pts : [a, b], plein: plein, n: e[b].etape,

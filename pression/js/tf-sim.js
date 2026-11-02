@@ -803,7 +803,24 @@ function _tfAccumuler(h) {
   if (!a) {
     a = tf.acc = { dt: 0, P: 0, T: 0, V: 0, Pp: 0,
                    P1: Pm, P2: Pm, T1: Tm, T2: Tm, V1: V, V2: V,
-                   Pmin: Pmin, Pmax: Pmax, Tmin: Emin / cTr, Tmax: Emax / cTr };
+                   Pmin: Pmin, Pmax: Pmax, Tmin: Emin / cTr, Tmax: Emax / cTr,
+                   ndP: false, ndT: false, ndExt: false };
+  }
+  // Critères de tfMesures franchis à un sous-pas de l'intervalle : un
+  // échantillon n'est défini que s'ils ont tenu tout du long. Jugés aux
+  // seuls instants des échantillons (7 à 9 par pas d'une suite de 50), les
+  // pics de l'oscillation du piston (2,5 à 3,6 ‰ entre tranches, seuil
+  // 1 ‰) étaient tantôt vus, tantôt manqués : des pas pleins, d'autres
+  // pointillés, au gré de la période du piston
+  var ndP = (Pmax - Pmin) / Pm >= TF_SEUIL_P;
+  var ndT = (Emax - Emin) / cTr >= TF_SEUIL_T;
+  if (ndP) a.ndP = true;
+  if (ndT) a.ndT = true;
+  if (!a.ndExt) {
+    var Pext = tfPext();
+    var mecaExt = tf.tenu || tfButee(Pm) !== null || Math.abs(Pm - Pext) / Pext < TF_SEUIL_P;
+    var thermique = (tf.G === 0 || Math.abs(Tm - tf.Text) < TF_SEUIL_T) && tf.t >= tf.tThMin;
+    if (ndP || ndT || !mecaExt || !thermique) a.ndExt = true;
   }
   a.dt += h;
   a.P  += Pm * h;

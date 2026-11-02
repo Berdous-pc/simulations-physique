@@ -85,7 +85,24 @@ function _tfRestaurerInstantane(snap) {
 
 function _tfMajLettre(L, m) {
   L.V = m.V; L.P = m.Pmoy; L.T = m.Tmoy; L.S = tfEntropie();
+  L.vise = _tfEtatVise(m);
   L.snap = _tfInstantane(L.snap);
+}
+
+// État vers lequel les contraintes mènent le gaz à l'équilibre : la
+// température de la source si le fond conduit, la pression qu'exerce le
+// piston libre, le volume que tient le vérin ou la butée ; ce qu'elles ne
+// fixent pas (température sur l'isolant) est mesuré. Au premier équilibre
+// détecté, le gaz peut encore être à 0,5 K de la source : comparés sur
+// cet état, deux équilibres se reconnaissent à 10⁻⁴ près, au lieu d'une
+// tolérance large qui prenait pour A un état d'entropie bien différente
+function _tfEtatVise(m) {
+  var T = tf.G > 0 ? tf.Text : m.Tmoy, nR = tf.n * TF_R;
+  if (!tf.tenu && m.butee === null) {
+    var P = tfPext();
+    return { V: nR * T / P, P: P, T: T };
+  }
+  return { V: m.V, P: nR * T / m.V, T: T };
 }
 
 // ── Journal ──
@@ -120,20 +137,22 @@ function tfEtapeNouvelle(desc) {
   E.version++;
 }
 
-// Retour à un état déjà vu : à 0,5 % près sur V et P, 0,5 K près sur T
-// (assez large pour fermer un cycle à la main)
-var TF_RETOUR_VP = 0.005, TF_RETOUR_T = 0.5;
+// Retour à un état déjà vu, comparé sur l'état visé (_tfEtatVise) : à
+// 10⁻⁴ près sur V et P, 0,02 K près sur T. 50 pas de 100 à 140 kPa sur
+// l'isolant, puis 50 pas de retour, finissent 0,16 K plus chaud (0,27 mJ/K
+// créés) : ce n'est plus A. Fermer un cycle sur une source reste exact.
+var TF_RETOUR_VP = 1e-4, TF_RETOUR_T = 0.02;
 
 // Lettre déjà vue (pas un retour) dont l'état est celui des mesures, la
 // plus proche ; -1 sinon. Le départ de l'étape est exclu : y revenir en une
 // étape, c'est n'avoir rien fait (ou si peu qu'on veut une lettre).
 function _tfEtatDejaVu(m, depart) {
   var E = tfEtapes, exclu = depart === null ? -1 : E.etats[depart].retour !== undefined ? E.etats[depart].retour : depart;
-  var best = -1, dBest = Infinity;
+  var best = -1, dBest = Infinity, v = _tfEtatVise(m);
   for (var i = 0; i < E.etats.length; i++) {
-    var L = E.etats[i];
+    var L = E.etats[i], w = L.vise;
     if (L.retour !== undefined || i === exclu) continue;
-    var dV = Math.abs(m.V - L.V) / L.V, dP = Math.abs(m.Pmoy - L.P) / L.P, dT = Math.abs(m.Tmoy - L.T);
+    var dV = Math.abs(v.V - w.V) / w.V, dP = Math.abs(v.P - w.P) / w.P, dT = Math.abs(v.T - w.T);
     if (dV > TF_RETOUR_VP || dP > TF_RETOUR_VP || dT > TF_RETOUR_T) continue;
     var d = dV / TF_RETOUR_VP + dP / TF_RETOUR_VP + dT / TF_RETOUR_T;
     if (d < dBest) { dBest = d; best = i; }
