@@ -18,7 +18,7 @@ var _TF_EL_IDS = [
   'tf-voy-meca', 'tf-voy-th',
   'tf-btn-playpause', 'tf-sl-vitesse', 'tf-lbl-vitesse', 'tf-vitesse-limite', 'tf-btn-auto',
   'tf-piston-tenu', 'tf-piston-libre',
-  'tf-fond-isolant', 'tf-fond-1', 'tf-fond-2', 'tf-t-1', 'tf-t-2', 'tf-fleche-1', 'tf-fleche-2',
+  'tf-paroi-isolant', 'tf-fond-1', 'tf-fond-2', 'tf-t-1', 'tf-t-2', 'tf-fleche-1', 'tf-fleche-2',
   'tf-pop-source', 'tf-pop-nom', 'tf-in-source', 'tf-pop-moins', 'tf-pop-plus', 'tf-pop-tgaz', 'tf-pop-note',
   'tf-mode-viser', 'tf-mode-main', 'tf-viser', 'tf-main',
   'tf-organes', 'tf-organe-piston', 'tf-organe-source',
@@ -102,7 +102,7 @@ function _tfFmtChamp(x, dec) {
 
 // Organe visé : la source seulement si le cylindre est posé sur l'une d'elles
 function _tfOrgane() {
-  return tfCarte.organe === 'source' && tf.fond !== 'isolant' ? 'source' : 'piston';
+  return tfCarte.organe === 'source' && tf.paroi !== 'isolant' ? 'source' : 'piston';
 }
 
 // Grandeur réglée par un organe, selon l'état du piston et le montage
@@ -118,7 +118,7 @@ function _tfCle() { return _tfCleOrgane(_tfOrgane()); }
 // découle des conditions
 function _tfNature(o) {
   if (o === 'source') return tf.tenu ? 'isochore' : 'isobare';
-  return tf.fond === 'isolant' ? 'adiabatique' : 'isotherme si lente';
+  return tf.paroi === 'isolant' ? 'adiabatique' : 'isotherme si lente';
 }
 
 function _tfPas(cle) { return TF_PAS_ESC[cle][tfCarte[cle].iPas]; }
@@ -207,7 +207,7 @@ function tfMajAfficheurs() {
   // Extérieur, face au gaz, et signe entre les deux : = condition
   // d'équilibre remplie, ≠ non, ? grandeur du gaz non définie. Piston tenu
   // (le vérin équilibre le gaz quelle que soit sa pression), en butée, ou
-  // fond sur l'isolant : rien à comparer.
+  // paroi isolante : rien à comparer.
   var src = function (t) { return ' <span class="tf-ext-src">' + t + '</span>'; };
   var sigP, sigT;
   if (tf.tenu) {
@@ -218,7 +218,7 @@ function tfMajAfficheurs() {
       + src(m.butee ? 'butée ' + m.butee : (tf.montage === 'masse' ? 'masses' : 'air') + ' + piston');
     sigP = !m.Pdef ? '?' : m.butee ? '' : Math.abs(m.Pmoy - m.Pext) / m.Pext < TF_SEUIL_P ? '=' : '≠';
   }
-  if (tf.fond === 'isolant') {
+  if (tf.paroi === 'isolant') {
     _tfEl['tf-it-Text'].innerHTML = src('isolant');
     sigT = m.Tdef ? '' : '?';
   } else {
@@ -233,7 +233,7 @@ function tfMajAfficheurs() {
   // Voyants : mécanique (pression uniforme, gaz et piston au repos) et
   // thermique (température uniforme, égale à celle de la source)
   _tfEl['tf-voy-meca'].classList.toggle('ok', m.meca);
-  _tfEl['tf-voy-th'].classList.toggle('ok', m.Tdef && (tf.fond === 'isolant' || sigT === '='));
+  _tfEl['tf-voy-th'].classList.toggle('ok', m.Tdef && (tf.paroi === 'isolant' || sigT === '='));
 
   // Vitesse réellement tenue quand le calcul plafonne (TF_BUDGET_MS). Hors
   // mode quasi statique, la cause est physique : le calcul suit le son
@@ -457,7 +457,7 @@ function _tfMajJournal() {
 
 // Fin des textes du journal : sur quoi le fond est posé
 function _tfSuffixeFond() {
-  return tf.fond === 'isolant' ? ' · isolant'
+  return tf.paroi === 'isolant' ? ' · isolant'
        : ' · source ' + tf.fond + (tf.paroi === 'peu' ? ' (paroi peu conductrice)' : '');
 }
 
@@ -543,7 +543,7 @@ function _tfPextVisee(cle, vise) {
 // une isotherme que lentement (sinon : monotherme)
 function _tfTitreEtape(o, sens, lent) {
   return sens + ' ' + (o === 'source' ? (tf.tenu ? 'isochore' : 'isobare')
-    : tf.fond === 'isolant' ? 'adiabatique' : lent ? 'isotherme' : 'monotherme');
+    : tf.paroi === 'isolant' ? 'adiabatique' : lent ? 'isotherme' : 'monotherme');
 }
 
 // Étape d'une manière : titre, et en détail la consigne, la durée, le fond
@@ -768,9 +768,9 @@ function _tfDureePrevue(cle, vise, duree) {
   return D;
 }
 
-// Changement du fond ({fond}) ou du piston ({tenir}) qui laisse le gaz dans
-// son état d'équilibre : fond posé sur l'isolant ou sur une source à la
-// température du gaz, piston tenu au repos, ou libéré quand le gaz équilibre
+// Changement du contact thermique ({contact} : 'isolant', '1' ou '2') ou du piston ({tenir}) qui laisse le gaz dans
+// son état d'équilibre : paroi du fond isolante, ou contact avec une source
+// à la température du gaz, piston tenu au repos, ou libéré quand le gaz équilibre
 // déjà la pression extérieure (ou le pousse contre une butée). Aucune étape
 // n'est alors ouverte : le chrono reste figé, les graphes n'avancent pas.
 // Seuils de tfEtapesSuivre (étape retirée du journal si rien n'a changé).
@@ -779,7 +779,7 @@ function _tfSansEffet(chgt) {
   if (tfEnCours() || (der && der.statut === 'en cours')) return false;
   var m = tfMesures();
   if (!m.equilibre) return false;
-  if ('fond' in chgt) return chgt.fond === 'isolant' || Math.abs(tfTSource(chgt.fond) - m.Tmoy) < 0.01;
+  if ('contact' in chgt) return chgt.contact === 'isolant' || Math.abs(tfTSource(chgt.contact) - m.Tmoy) < 0.01;
   if (chgt.tenir) return true;
   var zN = tf.z[TF_N];
   return Math.abs(m.Pmoy - m.Pext) < 1e-4 * m.Pext
@@ -886,11 +886,11 @@ function _tfMajBoutons() {
   _tfEl['tf-viser'].style.display = viser ? '' : 'none';
   _tfEl['tf-main'].style.display = viser ? 'none' : '';
 
-  // Choix de l'organe, toujours visible ; sur l'isolant, seul le piston
+  // Choix de l'organe, toujours visible ; paroi isolante, seul le piston
   // peut agir : la source est grisée
-  var isolant = tf.fond === 'isolant', bs = _tfEl['tf-organe-source'];
+  var isolant = tf.paroi === 'isolant', bs = _tfEl['tf-organe-source'];
   bs.disabled = isolant;
-  bs.title = isolant ? 'Posez le cylindre sur une source (Conditions)' : '';
+  bs.title = isolant ? 'Paroi isolante : la source n’échange rien avec le gaz (Montage)' : '';
   _tfEl['tf-organe-piston'].classList.toggle('active', o === 'piston');
   _tfEl['tf-organe-source'].classList.toggle('active', o === 'source');
 
@@ -980,19 +980,35 @@ function _tfFixerVitesse(v) {
   tf.needsRedraw = true;   // compteur de temps de la scène
 }
 
-// ── Fond posé sur l'isolant ou sur une source (un état, pas une action) ──
-// Le cylindre change de support : des échanges peuvent commencer (sans
-// étape ni chrono qui repart si rien ne change, _tfSansEffet ; changé de nouveau avant
-// l'équilibre, une seule étape « Fond »). Posé sur une source qui n'est pas
-// à la température du gaz, le temps s'adapte à la mise en équilibre
-// thermique.
-function tfOnFond(f) {
-  if (f === tf.fond) return;
-  var nom = f === 'isolant' ? { titre: 'Fond sur l’isolant', detail: '' }
-          : { titre: _tfTitreEtape('source', tfTSource(f) > tfMesures().Tmoy ? 'Chauffage' : 'Refroidissement'),
-              detail: 'fond sur la source ' + f + ' ('
-                    + _tfFmtValeur('Text', tfTSource(f)).replace(/ \(.*\)$/, '') + ')' };
-  if (_tfPret && !_tfSansEffet({ fond: f })) {
+// ── Montage : source sous le cylindre et paroi du fond (des états, pas
+//    des actions) ──
+// Changer de source ou de paroi peut faire commencer des échanges (sans
+// étape ni chrono qui repart si rien ne change, _tfSansEffet ; changé de
+// nouveau avant l'équilibre, une seule étape). Au contact d'une source qui
+// n'est pas à la température du gaz, le temps s'adapte à la mise en
+// équilibre thermique. Entre paroi conductrice et peu conductrice, le
+// contact ne change pas : un réglage, pas une étape ; un échange en cours
+// en change de rythme.
+function tfOnFond(f) { if (f !== tf.fond) _tfPoser(f, tf.paroi); }
+
+function tfOnParoi(p) {
+  if (p === tf.paroi) return;
+  if (p !== 'isolant') _tfParoiSource = p;
+  _tfPoser(tf.fond, p);
+}
+
+// Dernière paroi non isolante choisie : celle que retrouve un cycle mis au
+// contact d'une source (tfPoserContact)
+var _tfParoiSource = 'cond';
+
+function _tfPoser(f, p) {
+  var contact = p === 'isolant' ? 'isolant' : f, etape = contact !== tfContact();
+  if (_tfPret && etape && !_tfSansEffet({ contact: contact })) {
+    var nom = contact === 'isolant' ? { titre: 'Paroi isolante', detail: '' }
+            : { titre: _tfTitreEtape('source', tfTSource(f) > tfMesures().Tmoy ? 'Chauffage' : 'Refroidissement'),
+                detail: 'fond sur la source ' + f + ' ('
+                      + _tfFmtValeur('Text', tfTSource(f)).replace(/ \(.*\)$/, '') + ')'
+                      + (p === 'peu' ? ', paroi peu conductrice' : '') };
     var der = tfEtapes.liste[tfEtapes.liste.length - 1];
     if (tfEnCours()) tfGraphDegeler();
     else if (der && der.fond && der.statut === 'en cours') {
@@ -1001,20 +1017,31 @@ function tfOnFond(f) {
     else { _tfOuvrirEtape(nom); tfEtapes.liste[tfEtapes.liste.length - 1].fond = true; }
   }
   var repos = !tfEnCours() && tfMesures().equilibre;
-  tfSetFond(f);
-  if (_tfPret && f !== 'isolant') {
+  if (f !== tf.fond) tfSetFond(f);
+  if (p !== tf.paroi) tfSetParoi(p);
+  if (_tfPret && p !== 'isolant' && (etape || !tfMesures().equilibre)) {
     _tfDemarrerRelax();
-    if (Math.abs(tf.Text - tfMesures().Tmoy) > TF_SEUIL_T) _tfApresLancer('Text', 0, repos);
+    if (etape && Math.abs(tf.Text - tfMesures().Tmoy) > TF_SEUIL_T) _tfApresLancer('Text', 0, repos);
   }
   tfGraph.sale = true;
   _tfMajBoutons();
   tfMajAfficheurs();
 }
 
+// Contact visé par un cycle ('isolant', '1' ou '2') : la paroi devient
+// isolante, ou la source passe sous le cylindre avec la dernière paroi non
+// isolante choisie
+function tfPoserContact(c) {
+  if (c === tfContact()) return;
+  if (c === 'isolant') tfOnParoi('isolant');
+  else _tfPoser(c, tf.paroi === 'isolant' ? _tfParoiSource : tf.paroi);
+}
+
 // Température d'une source : la flèche ▾ de son onglet déroule un menu
 // (− champ +, « = T gaz »), refermé par la flèche, Échap ou un clic
 // ailleurs. Chaque réglage s'applique aussitôt. La source sous le cylindre
-// ne s'y règle pas (Agir sur Température) : son champ est grisé.
+// au contact du gaz ne s'y règle pas (Agir sur la source) : son champ est
+// grisé ; derrière une paroi isolante, elle s'y règle comme l'autre.
 // « = T gaz » prend la température exacte du gaz : y poser le cylindre
 // n'amène aucun saut.
 var TF_PAS_T_SOURCE = 10;   // K, boutons − et +
@@ -1027,7 +1054,7 @@ function tfBasculerSource(f, ev) {
   _tfEl['tf-pop-source'].style.display = '';
   _tfMajPopSource(true);
   _tfMajFond();
-  if (tf.fond !== f) { _tfEl['tf-in-source'].focus(); _tfEl['tf-in-source'].select(); }
+  if (!_tfSourceAuContact(f)) { _tfEl['tf-in-source'].focus(); _tfEl['tf-in-source'].select(); }
 }
 
 function tfFermerSource() {
@@ -1037,10 +1064,14 @@ function tfFermerSource() {
   _tfMajFond();
 }
 
+// Source sous le cylindre, sans paroi isolante entre elle et le gaz
+function _tfSourceAuContact(f) { return f === tf.fond && tf.paroi !== 'isolant'; }
+
 function _tfFixerTSource(T) {
   var f = _tfPopSource;
-  if (!f || f === tf.fond || isNaN(T)) return;
-  tf['T' + f] = _tfBorner(T, TF_T_SOURCE_MIN, TF_T_SOURCE_MAX);
+  if (!f || _tfSourceAuContact(f) || isNaN(T)) return;
+  tfFixerTSource(f, _tfBorner(T, TF_T_SOURCE_MIN, TF_T_SOURCE_MAX));
+  tf.needsRedraw = true;
   _tfMajPopSource(true);
   tfMajAfficheurs();
 }
@@ -1062,40 +1093,27 @@ function tfOnSourceTgaz() { _tfFixerTSource(tfMesures().Tmoy); }
 function _tfMajPopSource(force) {
   var f = _tfPopSource;
   if (!f) return;
-  var dessous = tf.fond === f, inp = _tfEl['tf-in-source'];
+  var dessous = _tfSourceAuContact(f), inp = _tfEl['tf-in-source'];
   _tfEl['tf-pop-nom'].textContent = 'Source ' + f;
   inp.disabled = _tfEl['tf-pop-moins'].disabled = _tfEl['tf-pop-plus'].disabled
     = _tfEl['tf-pop-tgaz'].disabled = dessous;
   if (force || document.activeElement !== inp) inp.value = _tfFmtChamp(tfTSource(f), 2);
-  _tfEl['tf-pop-note'].textContent = dessous ? 'Sous le cylindre : elle se règle dans Transformation (agir sur la source).' : '';
+  _tfEl['tf-pop-note'].textContent = dessous ? 'Au contact du gaz : elle se règle dans Transformation (agir sur la source).' : '';
 }
 
-// Onglets du fond et températures des sources (celle sous le cylindre suit
-// Text, que l'action Température fait varier)
+// Onglets du montage et températures des sources (celle sous le cylindre
+// suit Text, que l'action Température fait varier)
 function _tfMajFond() {
-  ['isolant', '1', '2'].forEach(function (f) {
+  ['1', '2'].forEach(function (f) {
     _tfEl['tf-fond-' + f].classList.toggle('active', tf.fond === f);
-    if (f === 'isolant') return;
     _tfEl['tf-t-' + f].textContent = _tfFmtChamp(tfTSource(f), 2) + ' K';
     _tfEl['tf-fleche-' + f].classList.toggle('active', tf.fond === f);
     _tfEl['tf-fleche-' + f].classList.toggle('ouvert', _tfPopSource === f);
   });
-  ['cond', 'peu'].forEach(function (p) {
+  ['isolant', 'cond', 'peu'].forEach(function (p) {
     _tfEl['tf-paroi-' + p].classList.toggle('active', tf.paroi === p);
-    _tfEl['tf-paroi-' + p].disabled = tf.fond === 'isolant';
   });
   _tfMajPopSource();
-}
-
-// Paroi du fond, conductrice ou peu conductrice : un réglage, pas une
-// étape ; un échange en cours en change de rythme
-function tfOnParoi(p) {
-  if (p === tf.paroi) return;
-  tfSetParoi(p);
-  if (tf.fond !== 'isolant' && !tfMesures().equilibre) _tfDemarrerRelax();
-  tfGraph.sale = true;
-  _tfMajBoutons();
-  tfMajAfficheurs();
 }
 
 // Tenir ou libérer le piston, à tout moment (libérer arrête le vérin)
@@ -1152,7 +1170,7 @@ function _tfMajChampVise(force) {
   if (k.suit) k.vise = _tfActuelle(cle);
   if (cle === 'volume') { tf.hVisee = k.vise; tf.needsRedraw = true; }
   if (force || document.activeElement !== inp) inp.value = _tfFmtChamp(k.vise * TF_VISEE[cle].f, TF_VISEE[cle].dec);
-  inp.disabled = cle === 'Text' && tf.fond === 'isolant';
+  inp.disabled = cle === 'Text' && tf.paroi === 'isolant';
 }
 
 // Saisie : prise en compte à chaque frappe si la valeur est dans les bornes
@@ -1215,7 +1233,7 @@ function tfOnCopierEtat(i) {
 // Calculée pour le gaz parfait à partir de l'état moyen actuel :
 //   - fond sur une source : l'état final est le même quelle que soit la
 //     manière (température de la source, volume ou pression imposés) ;
-//   - fond sur l'isolant : loi de Laplace réversiblement ; brutalement,
+//   - paroi isolante : loi de Laplace réversiblement ; brutalement,
 //     premier principe sous la pression finale constante pour la pression
 //     (n·Cv·(Tf − T) = −Pf·(Vf − V)) ; pour le volume, un peu plus chaud que
 //     la loi de Laplace (entropie créée par le front), non chiffré.
@@ -1230,7 +1248,7 @@ function _tfPrevoir(cle) {
     return { T: Tf, V: Vf, P: n * R * Tf / Vf, nom: nom,
              S: S + n * Cv * Math.log(Tf / T) + n * R * Math.log(Vf / V) };
   };
-  var source = tf.fond !== 'isolant', Vf, Pf, Tf;
+  var source = tf.paroi !== 'isolant', Vf, Pf, Tf;
   if (cle === 'Text') {
     if (!source) return [];
     return [tf.tenu ? pt(vise, V, '') : pt(vise, _tfBorner(n * R * vise / m.Pext, Vmin, Vmax), '')];
@@ -1342,7 +1360,7 @@ function tfPmClavier(sens, ev) {
 // et ceux faits sans attendre l'équilibre (affichés sous les organes).
 function _tfPapPas(o, sens) {
   if (tfEnCours() || _tfEnAttente) return false;
-  if (o === 'source' && tf.fond === 'isolant') return false;
+  if (o === 'source' && tf.paroi === 'isolant') return false;
   var cle = _tfCleOrgane(o), pas = _tfPas(cle), V = TF_VISEE[cle], v = _tfActuelle(cle);
   var cible = Math.round(_tfBorner(v + sens * pas, V.min, V.max) * 1e6) / 1e6;
   if (Math.abs(cible - v) < 1e-9) return false;
@@ -1412,7 +1430,7 @@ function _tfMajMain() {
     : cle === 'masse' ? 'Verser un grain de sable' : 'Augmenter la pression de l’air';
 
   // Source : seulement si le cylindre est posé sur l'une d'elles
-  var src = tf.fond !== 'isolant', libT = _tfFmtPas('Text', _tfPas('Text'));
+  var src = tf.paroi !== 'isolant', libT = _tfFmtPas('Text', _tfPas('Text'));
   _tfEl['tf-carte-source'].classList.toggle('inactif', !src);
   _tfEl['tf-main-nom-source'].textContent = src ? 'Source ' + tf.fond : 'Source';
   _tfEl['tf-main-nature-source'].textContent = src ? _tfNature('source') : '';

@@ -71,7 +71,8 @@ function _tfCyTSource(f) { return tfCycle.run && tfCycle.Tnom ? tfCycle.Tnom[f] 
 // ── Cycle idéal : point A et étapes ──
 // Chaque étape : titre, type ('P' : piston libre, la pression de l'air de
 // l'enceinte vise celle de l'arrivée ; 'fond' : la source sous le cylindre
-// amène le gaz à sa température), conditions (piston tenu, fond),
+// amène le gaz à sa température), conditions (piston tenu, contact :
+// 'isolant' ou la source sous le fond, champ fond),
 // loi suivie (tracé gris), volume, température et pression d'arrivée.
 // Moteurs : les cycles sont parcourus dans le sens horaire du diagramme PV.
 // Le piston est mené par la pression, comme dans les énoncés (brutalement,
@@ -88,7 +89,7 @@ function _tfCyCalculer() {
     d.etapes.push({ titre: titre, type: type, tenu: tenu, fond: fond, loi: loi, V: V, T: T });
   };
   if (C.cle !== 'allerretour' && Th - Tc < 1) {
-    d.erreur = 'Il faut deux sources à des températures différentes (Conditions, flèche ▾).';
+    d.erreur = 'Il faut deux sources à des températures différentes (Montage, flèche ▾).';
     return d;
   }
   if (C.cle === 'allerretour') {
@@ -314,7 +315,7 @@ function tfCyEnCours() {
   return !!(tfCycle.cle && d && !d.erreur && tfCycle.k > 0);
 }
 
-function _tfCyConditions(s) { return tf.tenu === s.tenu && tf.fond === s.fond; }
+function _tfCyConditions(s) { return tf.tenu === s.tenu && tfContact() === s.fond; }
 
 // Étape faite : conditions réunies, et température ou pression d'arrivée
 // atteinte ; ou piston en butée (une détente brutale peut demander plus de
@@ -339,7 +340,7 @@ function _tfCyPreparer(s) {
   tfCarte.mode = 'viser';
   tfCarte.organe = 'piston';
   if (tf.tenu !== s.tenu) _tfCyPiston(s.tenu);
-  else if (tf.fond !== s.fond) tfOnFond(s.fond);
+  else if (tfContact() !== s.fond) tfPoserContact(s.fond);
 }
 
 // Étape de contact : en un pas, le cylindre est posé sur la source telle
@@ -349,9 +350,9 @@ function _tfCyPreparer(s) {
 // retrouve ainsi son réglage
 function _tfCyContact(s, N) {
   if (tf.tenu !== s.tenu) { _tfCyPiston(s.tenu); return; }
-  if (tf.fond !== s.fond) {
-    if (N !== 1) tf['T' + s.fond] = _tfBorner(tfMesures().Tmoy, TF_T_SOURCE_MIN, TF_T_SOURCE_MAX);
-    tfOnFond(s.fond);
+  if (tfContact() !== s.fond) {
+    if (N !== 1) tfFixerTSource(s.fond, _tfBorner(tfMesures().Tmoy, TF_T_SOURCE_MIN, TF_T_SOURCE_MAX));
+    tfPoserContact(s.fond);
     return;
   }
   tfCarte.mode = 'viser';
@@ -414,7 +415,7 @@ function _tfCyTic() {
 function _tfCyDetail(d, s) {
   var src = function (f) { return 'source ' + f + ' (' + Math.round(_tfCyTSource(f)) + ' K)'; };
   if (s.type === 'P') return '→ ' + _tfFmt(s.P / 1e3, 1) + ' kPa (' + _tfCyFmtV(s.V) + ') · '
-                           + (s.fond === 'isolant' ? 'isolant' : src(s.fond));
+                           + (s.fond === 'isolant' ? 'paroi isolante' : src(s.fond));
   return '→ ' + Math.round(s.T) + ' K · ' + (s.tenu ? 'piston tenu, ' : 'piston libre, ') + src(s.fond);
 }
 

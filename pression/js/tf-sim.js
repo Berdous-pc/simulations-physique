@@ -86,16 +86,13 @@ var TF_AMORT = 0.08;
 // Conductivité effective du gaz (englobe la convection, non modélisée) :
 // mise en équilibre en ~15 s au lieu d'une demi-heure par conduction pure.
 var TF_LAMBDA = 2.2;   // W·m⁻¹·K⁻¹
-// Crans du curseur Isolation : conductance du fond, en W·K⁻¹
-// (0 = calorifugé ; au dernier cran, le fond ne limite plus les échanges).
-var TF_ISOLATIONS = [0, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1];
-// Paroi du fond posé sur une source : conductrice (le gaz seul limite les
-// échanges, ~15 s) ou peu conductrice. Peu conductrice, un échelon de
+// Paroi du fond, entre le gaz et la source : isolante (aucun échange),
+// conductrice (le gaz seul limite les échanges, ~15 s) ou peu conductrice. Peu conductrice, un échelon de
 // 100 K de la source laisse moins de 0,25 K entre tranches (R_int ≈ 77 K/W
 // à 30 cm) : le gaz suit la source quasi statiquement, l'écart de
 // température se loge dans la paroi (transformation irréversible), en
 // n·Cv/G ≈ 3 h
-var TF_G_PAROI = { cond: TF_ISOLATIONS[TF_ISOLATIONS.length - 1], peu: 3e-5 };   // W·K⁻¹
+var TF_G_PAROI = { isolant: 0, peu: 3e-5, cond: 1 };   // W·K⁻¹
 
 // ── Commandes ──
 var TF_MASSE_MAX = 40;                                      // kg, masse totale posée
@@ -195,14 +192,15 @@ var tf = {
   // (tenir, libérer, poser une masse), pour que tfEnergieTotale reste continue
   eDecal : 0,            // J
 
-  // Thermique : le fond est posé sur un isolant ou sur l'une des deux
-  // sources (fond diatherme). Text est la température de la source en
-  // contact ; T1 et T2 gardent celles des deux sources (celle de
-  // la source en contact suit Text quand on la quitte).
-  G      : 0,            // W·K⁻¹, conductance du fond
-  paroi  : 'cond',       // paroi du fond sur une source : 'cond' ou 'peu' (TF_G_PAROI)
-  Text   : TF_T0,        // K, température de la source sous le fond
-  fond   : 'isolant',    // 'isolant', '1' ou '2' (source 1, source 2)
+  // Thermique : le cylindre est toujours posé sur l'une des deux sources ;
+  // la paroi du fond, isolante ou non, règle les échanges. Text est la
+  // température de la source sous le fond ; T1 et T2 gardent celles des
+  // deux sources (celle de la source sous le fond suit Text quand on la
+  // quitte).
+  G      : 0,            // W·K⁻¹, conductance du fond (TF_G_PAROI[paroi])
+  paroi  : 'isolant',    // 'isolant', 'cond' ou 'peu' (TF_G_PAROI)
+  Text   : 400,          // K, température de la source sous le fond
+  fond   : '1',          // source sous le fond : '1' ou '2'
   T1     : 400,          // K
   T2     : TF_T0,        // K
 
@@ -424,10 +422,9 @@ function tfReset() {
   tf.Wop    = 0;
   tf.Pair   = tf.montage === 'masse' ? TF_P_ATM : P0 - TF_M_PISTON * TF_G / TF_S;
   tf.Wair   = 0;
-  // L'état initial est un équilibre : posé sur une source qui n'est pas à
-  // T0, le cylindre revient sur l'isolant
-  if (tf.fond !== 'isolant' && Math.abs(tf.Text - tf.T0) > 0.01) tfSetFond('isolant');
-  tf.Text   = tf.fond === 'isolant' ? tf.T0 : tf.Text;
+  // L'état initial est un équilibre : sur une source qui n'est pas à T0,
+  // la paroi du fond redevient isolante
+  if (tf.paroi !== 'isolant' && Math.abs(tf.Text - tf.T0) > 0.01) tfSetParoi('isolant');
   for (var cle in tf.rampes) tf.rampes[cle].actif = false;
   tf.eDecal = 0;
   tf.qs     = false;
@@ -467,23 +464,29 @@ function tfSetIsolation(G) {
   tf.needsRedraw = true;
 }
 
-// Pose le fond sur l'isolant ('isolant') ou sur une source ('1', '2') :
-// fond calorifugé, ou diatherme à la température de la source.
-// La source quittée garde la température atteinte (rampe comprise) ; une
-// rampe de la source s'arrête.
+// Pose le cylindre sur une source ('1', '2'). La source quittée garde la
+// température atteinte (rampe comprise) ; une rampe de la source s'arrête.
 function tfSetFond(f) {
-  if (tf.fond !== 'isolant') tf['T' + tf.fond] = tf.Text;
+  tf['T' + tf.fond] = tf.Text;
   tf.fond = f;
-  if (f !== 'isolant') tf.Text = tf['T' + f];
+  tf.Text = tf['T' + f];
   tf.rampes.Text.actif = false;
-  tfSetIsolation(f === 'isolant' ? 0 : TF_G_PAROI[tf.paroi]);
 }
 
-// Paroi du fond : conductrice ('cond') ou peu conductrice ('peu') ; un
-// réglage, gardé tant que le fond n'est pas sur l'isolant
+// Paroi du fond : isolante ('isolant'), conductrice ('cond') ou peu
+// conductrice ('peu'). Isolante, la source n'agit plus : sa rampe s'arrête.
 function tfSetParoi(p) {
   tf.paroi = p;
-  if (tf.fond !== 'isolant') tfSetIsolation(TF_G_PAROI[p]);
+  if (p === 'isolant') tf.rampes.Text.actif = false;
+  tfSetIsolation(TF_G_PAROI[p]);
+}
+
+// Contact thermique du gaz : 'isolant', ou la source sous le fond
+function tfContact() { return tf.paroi === 'isolant' ? 'isolant' : tf.fond; }
+
+// Règle la température d'une source, celle sous le fond comprise
+function tfFixerTSource(f, T) {
+  if (f === tf.fond) tf.Text = T; else tf['T' + f] = T;
 }
 
 // Pas à la main sur le piston libre (grain de sable, pas de P_air) : il

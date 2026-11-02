@@ -153,15 +153,15 @@ function tfDessiner() {
 // Largeur intérieure dessinée, en m d'échelle verticale (pour les molécules)
 function tfLargeurDessinee() { return (_tfX2 - _tfX1) / _tfEch; }
 
-// ── Paroi du fond, posée sur l'isolant ou sur une source (tf.fond) ──
+// ── Paroi du fond (tf.paroi), posée sur la source tf.fond ──
+// Couche entre le fond et la source : isolante, ou deux fois plus mince si
+// la paroi est peu conductrice ; aucune si elle est conductrice
+var TF_EP_COUCHE = { isolant: 1, peu: 0.5, cond: 0 };   // en fraction de TF_EP_ISOLANT
+
 function _tfDessinerFond() {
   var c = tfCtx, p = _tfParoi;
   var x1 = _tfX1 - p, x2 = _tfX2 + p;
-
-  // Isolant : épaisseur décroissante avec la conductance du fond
-  var idx = TF_ISOLATIONS.indexOf(tf.G);
-  var f   = idx < 0 ? 0 : idx / (TF_ISOLATIONS.length - 1);   // 0 calorifugé → 1 diathermane
-  var ep  = TF_EP_ISOLANT * (1 - f);
+  var ep = TF_EP_ISOLANT * TF_EP_COUCHE[tf.paroi];
   var police;
   if (ep > 0.002) {
     var yH = _tfY(-TF_EP_FOND), yB = _tfY(-TF_EP_FOND - ep);
@@ -172,26 +172,23 @@ function _tfDessinerFond() {
     c.strokeStyle = '#b0a080';
     c.lineWidth = 1;
     c.strokeRect(x1 - m, yH, x2 - x1 + 2 * m, yB - yH);
-    if (tf.fond === 'isolant') {
-      police = Math.max(10, Math.min(14, Math.round((yB - yH) * 0.5)));
-      c.font = '600 ' + police + 'px "Segoe UI", Arial, sans-serif';
-      c.fillStyle = '#6a5030';
-      c.textAlign = 'center';
-      c.textBaseline = 'middle';
-      c.fillText('isolant', (x1 + x2) / 2, (yH + yB) / 2);
-    }
+    var iso = tf.paroi === 'isolant';
+    police = Math.max(9, Math.min(14, Math.round((yB - yH) * (iso ? 0.5 : 0.75))));
+    c.font = '600 ' + police + 'px "Segoe UI", Arial, sans-serif';
+    c.fillStyle = '#6a5030';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillText(iso ? 'isolant' : 'peu conductrice', (x1 + x2) / 2, (yH + yB) / 2);
   }
 
   // Paroi du fond : métal clair si conductrice, sombre sinon
   var y1 = _tfY(0), y2 = _tfY(-TF_EP_FOND);
-  c.fillStyle = f > 0 ? '#7a8a96' : '#2c3e50';
+  c.fillStyle = tf.paroi === 'cond' ? '#7a8a96' : '#2c3e50';
   c.fillRect(x1, y1, x2 - x1, y2 - y1);
 
   // Source thermique, contre le fond : rouge plus chaude que T0, bleue plus
   // froide, neutre à T0 ; son nom (source 1, source 2) et sa température
-  // sont écrits. Posé sur
-  // l'isolant, le cylindre n'a pas de source dessous.
-  if (tf.fond === 'isolant') return;
+  // sont écrits
   var zS = -TF_EP_FOND - (ep > 0.002 ? ep : 0);
   var mS = (x2 - x1) * 0.08;
   var yS1 = _tfY(zS), yS2 = _tfY(zS - TF_EP_SOURCE);

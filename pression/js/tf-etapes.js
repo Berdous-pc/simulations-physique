@@ -208,7 +208,7 @@ function tfEtapesSuivre(m) {
   if (et && et.statut === 'en cours' && !(m.Pdef && m.Tdef) && !et.nonDef) { et.nonDef = true; E.version++; }
   // Températures des sources au contact pendant l'étape (borne de Carnot
   // d'un cycle)
-  if (et && et.statut === 'en cours' && tf.fond !== 'isolant') {
+  if (et && et.statut === 'en cours' && tf.paroi !== 'isolant') {
     et.TsMin = Math.min(et.TsMin === undefined ? Infinity : et.TsMin, tf.Text);
     et.TsMax = Math.max(et.TsMax === undefined ? -Infinity : et.TsMax, tf.Text);
   }
