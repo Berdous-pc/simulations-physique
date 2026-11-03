@@ -299,6 +299,38 @@ main {
 #tf-pv-zone    { flex: var(--tf-poids-pv, 0.85) 1 0; }
 #tf-ts-zone    { flex: var(--tf-poids-ts, 0.85) 1 0; }
 #tf-temps-zone { flex: var(--tf-poids-temps, 1) 1 0; }
+#tf-bilans-zone { flex: var(--tf-poids-bilans, 1) 1 0; }
+/* Légendes des bilans au cours du temps, posées dans le coin haut gauche
+   de chaque case (comme sur la page Cinétique) ; position et taille de
+   police réglées par _tfgDessinerBilans */
+.tf-legende {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3em;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #c8ccd4;
+  border-radius: 6px;
+  padding: 0.45em 0.7em;
+  font-size: 12px;
+}
+.tf-leg-titre { font-weight: 700; color: #2c3e50; white-space: nowrap; }
+.tf-leg-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  cursor: pointer;
+  user-select: none;
+  transition: opacity 0.15s;
+}
+.tf-leg-item.unchecked { opacity: 0.4; }
+.tf-leg-item input[type="checkbox"] { accent-color: #4a7aaa; width: 1.1em; height: 1.1em; margin: 0; cursor: pointer; flex: 0 0 auto; }
+.tf-leg-swatch { flex: 0 0 auto; width: 1.3em; height: 0.35em; border-radius: 2px; }
+.tf-leg-swatch.epais { height: 0.45em; }
+.tf-leg-text { color: #2c3e50; white-space: nowrap; }
+.tf-leg-text sub { font-size: 0.75em; }
+.tf-leg-sens { color: #7a8a96; }
 
 /* Barre des encarts affichés, en tête de la colonne */
 /* Boutons accolés, comme des onglets, à leur largeur naturelle */

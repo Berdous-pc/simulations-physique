@@ -105,12 +105,13 @@
 
     <div id="tf-graph-col">
 
-      <!-- Encarts affichés : boutons activables, de 0 à 4 (tf-graph.js) -->
+      <!-- Encarts affichés : boutons activables, de 0 à 5 (tf-graph.js) -->
       <div class="tf-barre-vues">
         <div class="tf-graphe-btns tf-choix-vues" id="tf-choix-vues">
           <button id="tf-vue-pv" onclick="tfGraphBasculerVue('pv')" title="Diagramme de Clapeyron">P = f(V)</button>
           <button id="tf-vue-ts" onclick="tfGraphBasculerVue('ts')" title="Diagramme entropique">T = f(S)</button>
           <button id="tf-vue-temps" onclick="tfGraphBasculerVue('temps')" title="Température, pression et volume au cours du temps">T, P, V = f(t)</button>
+          <button id="tf-vue-bilans" onclick="tfGraphBasculerVue('bilans')" title="Bilans d'énergie et d'entropie au cours du temps">Bilans = f(t)</button>
           <button id="tf-vue-tableau" onclick="tfGraphBasculerVue('tableau')" title="Tableau des valeurs">Tableau</button>
         </div>
         <!-- Options des graphes : menu déroulant (tf-graph.js, tfGraphMenu) -->
@@ -205,6 +206,65 @@
         </div>
         <div class="tf-graphe-zone">
           <canvas id="tf-canvas-temps" aria-label="Température, pression et volume en fonction du temps"></canvas>
+        </div>
+      </div>
+
+      <div class="tf-split-h" id="tf-hsplit-temps" title="Glisser pour partager la hauteur"></div>
+
+      <!-- Bilans reçus par le gaz depuis l'origine de l'axe des temps :
+           ΔU = W + Q et ΔS = S_éch + S_c ; vue commune avec T, P, V = f(t) -->
+      <div class="tf-graphe" id="tf-bilans-zone" data-vue="bilans">
+        <div class="tf-graphe-barre">
+          <span class="tf-graphe-titre">Bilans au cours du temps</span>
+          <div class="tf-graphe-btns">
+            <button onclick="tfGraphPrecedente('b')" title="Vue précédente">↶</button>
+            <button onclick="tfGraphSuivre()" title="Revenir au cadrage automatique : l’étape en cours">Auto</button>
+            <button onclick="tfGraphToutVoir()" title="Tout l’historique, bilans depuis l’état initial">Tout voir</button>
+            <button id="tf-btn-zoom-b" onclick="tfGraphZoomZone('b')" title="Zoom : tracer sur le graphe l’intervalle de temps à agrandir">Zoom</button>
+            <button class="tf-btn-reticule" onclick="tfGraphReticule()" title="Réticule">+</button>
+          </div>
+        </div>
+        <div class="tf-graphe-zone">
+          <canvas id="tf-canvas-bilans" aria-label="Énergie et entropie reçues par le gaz en fonction du temps"></canvas>
+          <!-- Légendes posées dans le coin haut droit de chaque case (placées
+               par _tfgDessinerBilans), comme sur la page Cinétique : une
+               case par courbe (tfGraphAff.bil…) -->
+          <div class="tf-legende" id="tf-leg-0">
+            <div class="tf-leg-titre">Énergie (J)</div>
+            <label class="tf-leg-item">
+              <input type="checkbox" id="tf-ckg-bilU" checked onchange="tfOnAffGraphe('bilU', this.checked)">
+              <span class="tf-leg-swatch epais" style="background:#2c3e50"></span>
+              <span class="tf-leg-text">ΔU <span class="tf-leg-sens">(énergie interne)</span></span>
+            </label>
+            <label class="tf-leg-item">
+              <input type="checkbox" id="tf-ckg-bilW" checked onchange="tfOnAffGraphe('bilW', this.checked)">
+              <span class="tf-leg-swatch" style="background:#c08020"></span>
+              <span class="tf-leg-text">W <span class="tf-leg-sens">(travail reçu)</span></span>
+            </label>
+            <label class="tf-leg-item">
+              <input type="checkbox" id="tf-ckg-bilQ" checked onchange="tfOnAffGraphe('bilQ', this.checked)">
+              <span class="tf-leg-swatch" style="background:#c0503a"></span>
+              <span class="tf-leg-text">Q <span class="tf-leg-sens">(chaleur reçue)</span></span>
+            </label>
+          </div>
+          <div class="tf-legende" id="tf-leg-1">
+            <div class="tf-leg-titre">Entropie (mJ/K)</div>
+            <label class="tf-leg-item">
+              <input type="checkbox" id="tf-ckg-bilS" checked onchange="tfOnAffGraphe('bilS', this.checked)">
+              <span class="tf-leg-swatch epais" style="background:#2c3e50"></span>
+              <span class="tf-leg-text">ΔS <span class="tf-leg-sens">(entropie du gaz)</span></span>
+            </label>
+            <label class="tf-leg-item">
+              <input type="checkbox" id="tf-ckg-bilSe" checked onchange="tfOnAffGraphe('bilSe', this.checked)">
+              <span class="tf-leg-swatch" style="background:#c0503a"></span>
+              <span class="tf-leg-text">S<sub>éch</sub> <span class="tf-leg-sens">(échangée)</span></span>
+            </label>
+            <label class="tf-leg-item">
+              <input type="checkbox" id="tf-ckg-bilSc" checked onchange="tfOnAffGraphe('bilSc', this.checked)">
+              <span class="tf-leg-swatch" style="background:#8a3ab0"></span>
+              <span class="tf-leg-text">S<sub>c</sub> <span class="tf-leg-sens">(créée)</span></span>
+            </label>
+          </div>
         </div>
       </div>
 
@@ -752,7 +812,7 @@
         <strong>Cycles</strong> : Aller-retour, Carnot, Stirling ou Lenoir ; le cycle idéal s'affiche en gris, à suivre avec <em>Étape suivante</em> ou <em>Tout le cycle</em>.<br>
         <strong>Étapes</strong> : un point par état d'équilibre (A, B, C…), un trait par transformation. Cliquer sur un point y fait passer les courbes de référence (↺ y revient) ; cliquer sur un trait met l'étape en évidence et en donne le bilan.<br>
         <strong>Bilan</strong> : ΔU = W + Q et ΔS = S<sub>e</sub> + S<sub>c</sub> pour l'étape, depuis A ou sur le cycle, avec le verdict réversible ou irréversible.<br>
-        <strong>Graphes</strong> : les boutons P = f(V), T = f(S), T, P, V = f(t) et Tableau affichent ou masquent chaque encart ; <em>Options ▾</em> ajoute les courbes de référence. Un point n'est placé que si le gaz est uniforme : sinon, bande hachurée au cours du temps. Sur les diagrammes, chaque pas (1 ou N pas, à la main) est un segment pointillé d'un équilibre au suivant ; trait plein pour ∞ pas, ou derrière une paroi peu conductrice. Glisser déplace la vue, la molette zoome, <em>Ajuster</em>, <em>Auto</em> et <em>Tout voir</em> recadrent ; les séparations se déplacent à la souris.<br>
+        <strong>Graphes</strong> : les boutons P = f(V), T = f(S), T, P, V = f(t), Bilans = f(t) et Tableau affichent ou masquent chaque encart ; <em>Options ▾</em> ajoute les courbes de référence. <em>Bilans = f(t)</em> trace ΔU = W + Q et ΔS = S_éch + S_c reçus par le gaz depuis le départ de l'étape (depuis l'état initial avec <em>Tout voir</em>) ; les cases de la légende affichent ou masquent chaque courbe. S_c ne fait que croître, et reste plat pour une transformation réversible. Un point n'est placé que si le gaz est uniforme : sinon, bande hachurée au cours du temps. Sur les diagrammes, chaque pas (1 ou N pas, à la main) est un segment pointillé d'un équilibre au suivant ; trait plein pour ∞ pas, ou derrière une paroi peu conductrice. Glisser déplace la vue, la molette zoome, <em>Ajuster</em>, <em>Auto</em> et <em>Tout voir</em> recadrent ; les séparations se déplacent à la souris.<br>
         <strong>Tableau</strong> : le gaz face à l'extérieur, <strong>=</strong> (vert) ou <strong>≠</strong> (orange) ; <strong>?</strong> quand les tranches du gaz ne sont pas uniformes.<br>
         <strong>Vitesse</strong> : jusqu'à ×1/5000 pour suivre un front dans le gaz ; <em>Auto</em> fait durer chaque action quelques secondes à l'écran, puis le temps accélère régulièrement (une décade toutes les 2 s) jusqu'à l'équilibre ; quand le calcul ne suit pas, le compteur de la scène indique en orange la vitesse atteinte.<br>
         <strong>Options</strong> : molécules, couleur selon la température (bleu plus froid que 20 °C, rouge plus chaud), sondes, profils de pression et de température ; la case sous les profils les amplifie (écart à la moyenne).<br>

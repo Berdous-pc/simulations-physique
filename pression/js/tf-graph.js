@@ -64,7 +64,14 @@ var tfGraphAff = {
   adiabatique : false,
   isochore    : false,
   isobare     : false,
-  gel         : true     // chrono figé à l'équilibre
+  gel         : true,    // chrono figé à l'équilibre
+  // Courbes des bilans au cours du temps (légendes posées sur le graphe)
+  bilU        : true,
+  bilW        : true,
+  bilQ        : true,
+  bilS        : true,
+  bilSe       : true,
+  bilSc       : true
 };
 
 // Chrono figé : après une action, le gel attend que le gaz ait quitté
@@ -85,8 +92,8 @@ var tfGraph = {
   fantome   : null,
   env       : null,    // étendue des tranches depuis le départ, par diagramme (cadrage)
   // Encarts affichés dans la colonne gauche (barre de boutons activables,
-  // de 0 à 4)
-  vues      : { pv: true, ts: false, temps: true, tableau: false },
+  // de 0 à 5)
+  vues      : { pv: true, ts: false, temps: true, bilans: false, tableau: false },
   // Chrono des graphes : temps des graphes = temps simulé − decal (s), les
   // attentes à l'équilibre étant retirées quand l'option gel est cochée
   decal     : 0,
@@ -112,14 +119,17 @@ var tfGraph = {
   vue       : { pv: null, ts: null },   // null : champ fixe ; sinon zoom {x1, x2, y1, y2}
   pileD     : { pv: [], ts: [] },   // vues précédentes de chaque diagramme d'état
   geoT      : null,    // géométrie du dernier tracé (souris)
+  geoB      : null,    // id. des bilans au cours du temps
   geoD      : { pv: null, ts: null },
   reticule  : false,
   souris    : null,    // {cible, x, y}
   glisse    : null,    // déplacement en cours {cible, x0, y0, vue0, bouge}, ou
                        // rectangle de zoom en cours {cible, cadre, x0, y0, x, y}
-  zoomZone  : { pv: false, ts: false, t: false },   // mode Zoom (rectangle) de chaque graphe
+  // Mode Zoom (rectangle) de chaque graphe ; 't' : T, P, V = f(t), 'b' :
+  // bilans au cours du temps (les deux partagent vueT)
+  zoomZone  : { pv: false, ts: false, t: false, b: false },
   empile    : {},      // date du dernier empilement de vue, par graphe (molette)
-  cv        : null,    // {pv, t} : canvas, contexte, taille
+  cv        : null,    // {pv, ts, t, b} : canvas, contexte, taille
   sale      : true
 };
 
@@ -197,7 +207,7 @@ function _tfgEchantillon(avantMarche) {
   // l'échantillon précédent, et extrêmes atteints pendant cet intervalle
   // (l'instant de l'échantillon compris). Les diagrammes d'état gardent les
   // valeurs instantanées : un état est un point, pas une moyenne.
-  var Pp = tf.tenu ? m.Pface : m.Pext;
+  var Pp = tf.tenu ? m.Pface : m.Pext, bil = tfBilan();
   var moy = function (cle, v) { return a ? a[cle] / a.dt : v; };
   var bas = function (cle, v) { return a ? Math.min(a[cle], v) : v; };
   var haut = function (cle, v) { return a ? Math.max(a[cle], v) : v; };
@@ -211,7 +221,10 @@ function _tfgEchantillon(avantMarche) {
     Pmin: bas('Pmin', m.Pmin), Pmax: haut('Pmax', m.Pmax),
     Tmin: bas('Tmin', m.Tmin), Tmax: haut('Tmax', m.Tmax),
     Ppt: moy('Pp', Pp),
-    S: tfEntropie(),
+    S: bil.S,
+    // Bilans cumulés depuis Réinitialiser (tfBilan) : graphes des bilans
+    // au cours du temps, relus depuis l'origine de l'axe
+    U: bil.U, W: bil.W, Q: bil.Q, Se: bil.Se,
     eq: m.equilibre,
     // Pression exercée par le piston : P_ext piston libre, celle que
     // mesure le vérin piston tenu
@@ -356,7 +369,7 @@ function tfGraphDureeAttendue(D) {
 function _tfgAxeT(t0, L, etape) {
   var g = tfGraph;
   g.axeT = { t0: t0, L: L, y: [null, null, null], etape: etape };
-  ['t', 't0', 't1', 't2'].forEach(function (k) { delete g.anim[k]; });
+  ['t', 't0', 't1', 't2', 't3', 't4'].forEach(function (k) { delete g.anim[k]; });
 }
 
 // Étape retirée du journal (sans effet) : ses échantillons reviennent à la
@@ -402,13 +415,14 @@ function tfGraphRevenir(ts, n) {
 function _tfgSuivreGele(m) {
   var g = tfGraph, s = g.ech[g.ech.length - 1];
   if (!s || s.marche) return;
-  var S = tfEntropie(), Pp = tf.tenu ? m.Pface : m.Pext;
+  var bil = tfBilan(), S = bil.S, Pp = tf.tenu ? m.Pface : m.Pext;
   s.V = s.Vt = s.Vlo = s.Vhi = m.V;
   s.Pm = s.Pt = s.Plo = s.Phi = m.Pmoy;
   s.Tm = s.Tt = s.Tlo = s.Thi = m.Tmoy;
   s.Pmin = m.Pmin; s.Pmax = m.Pmax; s.Tmin = m.Tmin; s.Tmax = m.Tmax;
   s.Pdef = m.Pdef; s.Tdef = m.Tdef; s.eq = m.equilibre;
   s.S = S; s.Pp = s.Ppt = Pp; s.Text = tf.Text;
+  s.U = bil.U; s.W = bil.W; s.Q = bil.Q; s.Se = bil.Se;
   _tfgEnveloppe(m, S);
   g.sale = true;
 }
@@ -694,6 +708,74 @@ function _tfgRepere(ser) {
 //  Graphes temporels : T(t), P(t), V(t)
 // ══════════════════════════════════════════════════════════════════════
 
+// Fenêtre de temps commune aux graphes au cours du temps (T, P, V et
+// bilans), qui partagent leur vue (zoom, déplacement, ↶, Auto). Étape en
+// cours (sans zoom) : de son départ t0 à t0 + L, un peu de l'état d'avant à
+// gauche ; L passe au cran suivant quand le temps des graphes approche du
+// bord droit. Les temps se lisent depuis t0 (origine org), marquée de la
+// lettre de départ.
+function _tfgFenetreT(ML, pw, fs) {
+  var e = tfGraph.ech, F = {}, vT = tfGraph.vueT, A = tfGraph.axeT;
+  if (vT) { F.t1 = vT.t1; F.t2 = vT.t2; F.org = vT.o; F.lt = vT.lt; }
+  else {
+    var ecoule = tfGraphTemps() - A.t0;
+    if (ecoule > 0.95 * A.L) A.L = _tfgCran(ecoule / 0.95, TF_G_CRANS_T);
+    var L = _tfgAnimer('t', { L: A.L }).L;
+    F.org = A.t0; F.lt = _tfgLettreDepart();
+    F.t1 = F.org - L / 25; F.t2 = F.org + L;
+  }
+  F.i1 = Math.max(0, _tfgIndice(e, F.t1) - 1);
+  F.i2 = Math.min(e.length - 1, _tfgIndice(e, F.t2));
+  F.xDe = function (t) { return ML + (t - F.t1) / (F.t2 - F.t1) * pw; };
+  F.unite = (F.t2 - F.t1) < 1 ? 1000 : 1;
+  F.pasT = _tfgPas((F.t2 - F.t1) * F.unite, Math.max(2, Math.floor(pw / (fs * 5.5))));
+  F.gradT = _tfgGraduations((F.t1 - F.org) * F.unite, (F.t2 - F.org) * F.unite, F.pasT);
+  F.xGrad = function (gt) { return F.xDe(F.org + gt / F.unite); };
+  return F;
+}
+
+// Axe des temps sous la dernière case : changements de vitesse,
+// graduations, titre, mention de la vue figée ou du chrono figé
+function _tfgAxeTemps(c, F, ML, pw, MT, yAxe, fs) {
+  _tfgDessinerCrans(c, tfGraph.ech, F.i1, F.i2, F.xDe, ML, pw, MT, yAxe, fs);
+  c.fillStyle = TF_G_ENCRE;
+  c.font = _tfgPolice(fs, false);
+  c.textAlign = 'center';
+  c.textBaseline = 'top';
+  for (var k = 0; k < F.gradT.length; k++) {
+    c.fillText(_tfgNb(F.gradT[k], F.pasT), F.xGrad(F.gradT[k]), yAxe + 3);
+  }
+  c.textAlign = 'right';
+  c.font = _tfgPolice(fs, true);
+  c.fillText((F.unite === 1000 ? 't (ms)' : 't (s)') + (F.lt ? ' depuis ' + F.lt : ''), ML + pw, yAxe + fs * 1.45);
+  c.textAlign = 'left';
+  c.font = _tfgPolice(fs, false);
+  c.fillStyle = TF_G_MUET;
+  if (tfGraph.vueT) c.fillText('vue figée (« Auto » pour revenir)', ML, yAxe + fs * 1.45);
+  else if (tfGraph.gele) c.fillText('chrono figé (équilibre)', ML, yAxe + fs * 1.45);
+}
+
+// Réticule d'un graphe au cours du temps ('t' ou 'b') : trait vertical au
+// curseur ; renvoie l'échantillon le plus proche et la ligne du temps de la
+// bulle, ou null
+function _tfgReticuleT(c, F, cible, ML, pw, MT, yAxe) {
+  var so = tfGraph.souris, e = tfGraph.ech;
+  if (!tfGraph.reticule || !so || so.cible !== cible || so.x < ML || so.x > ML + pw || tfGraph.glisse) return null;
+  var t = F.t1 + (so.x - ML) / pw * (F.t2 - F.t1);
+  var j = Math.min(e.length - 1, Math.max(0, _tfgIndice(e, t)));
+  if (j > 0 && Math.abs(e[j - 1].t - t) < Math.abs(e[j].t - t)) j--;
+  c.strokeStyle = '#2a6aaa';
+  c.lineWidth = 1;
+  c.setLineDash([4, 3]);
+  c.beginPath();
+  c.moveTo(so.x, MT);
+  c.lineTo(so.x, yAxe);
+  c.stroke();
+  c.setLineDash([]);
+  return { s: e[j], so: so, ligne: 't = ' + _tfgNbLu((e[j].t - F.org) * F.unite) + (F.unite === 1000 ? ' ms' : ' s')
+                                   + (F.lt ? ' depuis ' + F.lt : '') };
+}
+
 function _tfgDessinerTemps() {
   var o = tfGraph.cv.t;
   _tfgTaille(o);
@@ -708,73 +790,21 @@ function _tfgDessinerTemps() {
   var pw = W - ML - MR, bh = (H - MT - MB - 2 * GAP) / 3;
   if (pw < 40 || bh < 18 || e.length === 0) { tfGraph.geoT = null; return; }
 
-  // Étape en cours (sans zoom) : de son départ t0 à t0 + L, un peu de
-  // l'état d'avant à gauche ; L passe au cran suivant quand le temps des
-  // graphes approche du bord droit. Les temps se lisent depuis t0 (origine
-  // org), marquée de la lettre de départ.
-  var t1, t2, org, lt, vT = tfGraph.vueT, A = tfGraph.axeT;
-  if (vT) { t1 = vT.t1; t2 = vT.t2; org = vT.o; lt = vT.lt; }
-  else {
-    var ecoule = tfGraphTemps() - A.t0;
-    if (ecoule > 0.95 * A.L) A.L = _tfgCran(ecoule / 0.95, TF_G_CRANS_T);
-    var L = _tfgAnimer('t', { L: A.L }).L;
-    org = A.t0; lt = _tfgLettreDepart();
-    t1 = org - L / 25; t2 = org + L;
-  }
-  var i1 = Math.max(0, _tfgIndice(e, t1) - 1);
-  var i2 = Math.min(e.length - 1, _tfgIndice(e, t2));
-  var xDe = function (t) { return ML + (t - t1) / (t2 - t1) * pw; };
-
-  var unite = (t2 - t1) < 1 ? 1000 : 1;
-  var pasT = _tfgPas((t2 - t1) * unite, Math.max(2, Math.floor(pw / (fs * 5.5))));
-  var gradT = _tfgGraduations((t1 - org) * unite, (t2 - org) * unite, pasT);
-  var xGrad = function (gt) { return xDe(org + gt / unite); };
-
-  var geo = { x0: ML, pw: pw, yH: MT, yB: MT + 3 * bh + 2 * GAP, t1: t1, t2: t2, o: org, lt: lt, boites: [] };
+  var F = _tfgFenetreT(ML, pw, fs);
+  var geo = { x0: ML, pw: pw, yH: MT, yB: MT + 3 * bh + 2 * GAP, t1: F.t1, t2: F.t2, o: F.org, lt: F.lt, boites: [] };
   for (var b = 0; b < 3; b++) {
     var y0 = MT + b * (bh + GAP);
-    geo.boites.push(_tfgBoite(o, TF_G_SERIES[b], b, ML, y0, pw, bh, i1, i2, xDe, gradT, xGrad, fs));
+    geo.boites.push(_tfgBoite(o, TF_G_SERIES[b], b, ML, y0, pw, bh, F.i1, F.i2, F.xDe, F.gradT, F.xGrad, fs));
   }
   tfGraph.geoT = geo;
 
-  // Axe des temps, sous la dernière case
   var yAxe = MT + 3 * bh + 2 * GAP;
-  _tfgDessinerCrans(c, e, i1, i2, xDe, ML, pw, MT, yAxe, fs);
-  c.fillStyle = TF_G_ENCRE;
-  c.font = _tfgPolice(fs, false);
-  c.textAlign = 'center';
-  c.textBaseline = 'top';
-  for (var k = 0; k < gradT.length; k++) {
-    c.fillText(_tfgNb(gradT[k], pasT), xGrad(gradT[k]), yAxe + 3);
-  }
-  c.textAlign = 'right';
-  c.font = _tfgPolice(fs, true);
-  c.fillText((unite === 1000 ? 't (ms)' : 't (s)') + (lt ? ' depuis ' + lt : ''), ML + pw, yAxe + fs * 1.45);
-  c.textAlign = 'left';
-  c.font = _tfgPolice(fs, false);
-  c.fillStyle = TF_G_MUET;
-  if (vT) c.fillText('vue figée (« Auto » pour revenir)', ML, yAxe + fs * 1.45);
-  else if (tfGraph.gele) c.fillText('chrono figé (équilibre)', ML, yAxe + fs * 1.45);
-
-  var gl = tfGraph.glisse;
+  _tfgAxeTemps(c, F, ML, pw, MT, yAxe, fs);
 
   // Réticule : temps et valeurs au point le plus proche
-  var so = tfGraph.souris;
-  if (tfGraph.reticule && so && so.cible === 't' && so.x >= ML && so.x <= ML + pw && !gl) {
-    var t = t1 + (so.x - ML) / pw * (t2 - t1);
-    var j = Math.min(e.length - 1, Math.max(0, _tfgIndice(e, t)));
-    if (j > 0 && Math.abs(e[j - 1].t - t) < Math.abs(e[j].t - t)) j--;
-    var s = e[j];
-    c.strokeStyle = '#2a6aaa';
-    c.lineWidth = 1;
-    c.setLineDash([4, 3]);
-    c.beginPath();
-    c.moveTo(so.x, MT);
-    c.lineTo(so.x, yAxe);
-    c.stroke();
-    c.setLineDash([]);
-    var lignes = ['t = ' + _tfgNbLu((s.t - org) * unite) + (unite === 1000 ? ' ms' : ' s')
-                  + (lt ? ' depuis ' + lt : '')];
+  var R = _tfgReticuleT(c, F, 't', ML, pw, MT, yAxe);
+  if (R) {
+    var s = R.s, lignes = [R.ligne];
     for (b = 0; b < 3; b++) {
       var ser = TF_G_SERIES[b], nom = ser.titre.split(' ')[0];
       var uni = ser.titre.replace(/^.*\((.*)\)$/, '$1');
@@ -787,7 +817,7 @@ function _tfgDessinerTemps() {
         : nom + ' non définie (' + _tfgNbLu(s[ser.min] * ser.f) + ' à '
           + _tfgNbLu(s[ser.max] * ser.f) + ' ' + uni + ')');
     }
-    _tfgBulle(c, lignes, so.x, so.y, W, H, fs);
+    _tfgBulle(c, lignes, R.so.x, R.so.y, W, H, fs);
   }
 }
 
@@ -857,38 +887,11 @@ function _tfgPlageEtape(b, lo, hi, span, n) {
   return _tfgAnimer('t' + b, r);
 }
 
-// Une case : courbe pleine quand la grandeur est définie ; hors équilibre,
-// bande hachurée entre les extrêmes des tranches (la moyenne n'est pas
-// tracée : ce serait lui prêter un sens)
-function _tfgBoite(o, ser, b, x0, y0, w, h, i1, i2, xDe, gradT, xGrad, fs) {
-  var c = o.ctx, e = tfGraph.ech;
-  var rep = _tfgRepere(ser);
-
-  var lo = Infinity, hi = -Infinity, nd = false, k, s, v;
-  for (k = i1; k <= i2; k++) {
-    s = e[k];
-    if (_tfgDef(s, ser)) {
-      if (s[ser.lo] * ser.f < lo) lo = s[ser.lo] * ser.f;
-      if (s[ser.hi] * ser.f > hi) hi = s[ser.hi] * ser.f;
-    } else {
-      nd = true;
-      if (s[ser.min] * ser.f < lo) lo = s[ser.min] * ser.f;
-      if (s[ser.max] * ser.f > hi) hi = s[ser.max] * ser.f;
-    }
-    if (rep) {
-      v = s[rep.cle] * ser.f;
-      if (v < lo) lo = v;
-      if (v > hi) hi = v;
-    }
-  }
-  // Les données laissent en haut une bande au titre de la case
-  var hD = h - fs * 1.5;
-  var nY = Math.max(2, Math.floor(hD / (fs * 1.8)));
-  var bo = tfGraph.vueT ? _tfgBornes(lo, hi, ser.span, nY) : _tfgPlageEtape(b, lo, hi, ser.span, nY);
-  var pasY = _tfgPas(bo.hi - bo.lo, nY);
-  var yDe = function (val) { return y0 + h - (val - bo.lo) / (bo.hi - bo.lo) * hD; };
-
-  // Fond, grille, graduations
+// Fond, grille et graduations d'une case au cours du temps ; laisse le
+// tracé borné à la case (c.save + clip, à refermer par c.restore), avec les
+// attentes à l'équilibre retirées (chrono figé) en trait vertical discret
+function _tfgFondCase(c, x0, y0, w, h, bo, pasY, yDe, gradT, xGrad, i1, i2, xDe, fs) {
+  var e = tfGraph.ech, k;
   c.fillStyle = TF_G_FOND;
   c.fillRect(x0, y0, w, h);
   c.strokeStyle = TF_G_GRILLE;
@@ -920,7 +923,6 @@ function _tfgBoite(o, ser, b, x0, y0, w, h, i1, i2, xDe, gradT, xGrad, fs) {
   c.rect(x0, y0, w, h);
   c.clip();
 
-  // Attentes à l'équilibre retirées (chrono figé) : trait vertical discret
   c.strokeStyle = TF_G_CADRE;
   c.lineWidth = 1;
   c.setLineDash([2, 3]);
@@ -932,6 +934,40 @@ function _tfgBoite(o, ser, b, x0, y0, w, h, i1, i2, xDe, gradT, xGrad, fs) {
   }
   c.stroke();
   c.setLineDash([]);
+}
+
+// Une case : courbe pleine quand la grandeur est définie ; hors équilibre,
+// bande hachurée entre les extrêmes des tranches (la moyenne n'est pas
+// tracée : ce serait lui prêter un sens)
+function _tfgBoite(o, ser, b, x0, y0, w, h, i1, i2, xDe, gradT, xGrad, fs) {
+  var c = o.ctx, e = tfGraph.ech;
+  var rep = _tfgRepere(ser);
+
+  var lo = Infinity, hi = -Infinity, nd = false, k, s, v;
+  for (k = i1; k <= i2; k++) {
+    s = e[k];
+    if (_tfgDef(s, ser)) {
+      if (s[ser.lo] * ser.f < lo) lo = s[ser.lo] * ser.f;
+      if (s[ser.hi] * ser.f > hi) hi = s[ser.hi] * ser.f;
+    } else {
+      nd = true;
+      if (s[ser.min] * ser.f < lo) lo = s[ser.min] * ser.f;
+      if (s[ser.max] * ser.f > hi) hi = s[ser.max] * ser.f;
+    }
+    if (rep) {
+      v = s[rep.cle] * ser.f;
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+    }
+  }
+  // Les données laissent en haut une bande au titre de la case
+  var hD = h - fs * 1.5;
+  var nY = Math.max(2, Math.floor(hD / (fs * 1.8)));
+  var bo = tfGraph.vueT ? _tfgBornes(lo, hi, ser.span, nY) : _tfgPlageEtape(b, lo, hi, ser.span, nY);
+  var pasY = _tfgPas(bo.hi - bo.lo, nY);
+  var yDe = function (val) { return y0 + h - (val - bo.lo) / (bo.hi - bo.lo) * hD; };
+
+  _tfgFondCase(c, x0, y0, w, h, bo, pasY, yDe, gradT, xGrad, i1, i2, xDe, fs);
 
   // Repère en pointillé
   if (rep) {
@@ -1084,6 +1120,143 @@ function _tfgBoite(o, ser, b, x0, y0, w, h, i1, i2, xDe, gradT, xGrad, fs) {
   }
 
   return { y0: y0, h: h };
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Bilans au cours du temps : ΔU = W + Q et ΔS = S_éch + S_c
+//  Reçus par le gaz depuis l'origine de l'axe des temps (départ de
+//  l'étape, du cycle, ou l'état initial avec « Tout voir »), comme la vue
+//  Étape du Bilan. Même fenêtre de temps que T, P, V = f(t).
+// ══════════════════════════════════════════════════════════════════════
+
+// Une case par grandeur ; légende en HTML posée dans son coin haut droit
+// (#tf-leg-0, #tf-leg-1, comme sur la page Cinétique), une case à cocher
+// par courbe (tfGraphAff.bil…). Teintes : la chaleur
+// et l'entropie qu'elle échange en rouge (comme T), le travail en ocre
+// (comme le piston), l'entropie créée en violet. f : facteur d'unité ;
+// span : étendue minimale de l'axe (au repos, le bruit numérique reste plat)
+var TF_G_BILANS = [
+  { unite: 'J', f: 1, span: 0.1, courbes: [
+    { nom: 'ΔU', coul: TF_G_ENCRE, opt: 'bilU', v: function (s, r) { return s.U - r.U; } },
+    { nom: 'W', coul: TF_G_PISTON, opt: 'bilW', v: function (s, r) { return s.W - r.W; } },
+    { nom: 'Q', coul: '#c0503a', opt: 'bilQ', v: function (s, r) { return s.Q - r.Q; } }
+  ] },
+  { unite: 'mJ/K', f: 1e3, span: 0.2, courbes: [
+    { nom: 'ΔS', coul: TF_G_ENCRE, opt: 'bilS', v: function (s, r) { return s.S - r.S; } },
+    { nom: 'S_éch', coul: '#c0503a', opt: 'bilSe', v: function (s, r) { return s.Se - r.Se; } },
+    { nom: 'S_c', coul: '#8a3ab0', opt: 'bilSc', v: function (s, r) { return s.S - r.S - (s.Se - r.Se); } }
+  ] }
+];
+
+function _tfgCourbeVue(cb) { return tfGraphAff[cb.opt]; }
+
+// Échantillon de l'origine de l'axe : les bilans repartent de zéro
+function _tfgOrigineBilan(org) {
+  var e = tfGraph.ech;
+  return e[Math.min(e.length - 1, _tfgIndice(e, org - 1e-12))];
+}
+
+function _tfgDessinerBilans() {
+  var o = tfGraph.cv.b;
+  _tfgTaille(o);
+  if (!o.w) return;
+  var c = o.ctx, W = o.w, H = o.h, e = tfGraph.ech;
+  c.fillStyle = '#fdf8f0';
+  c.fillRect(0, 0, W, H);
+
+  var fs = Math.max(10, Math.min(14, Math.round(Math.min(H * 0.063, W * 0.03))));
+  var ML = Math.round(fs * 4.4), MR = 10, MT = 4, MB = Math.round(fs * 2.9);
+  var GAP = Math.round(fs * 0.6);
+  var pw = W - ML - MR, bh = (H - MT - MB - GAP) / 2;
+  var lgs = [document.getElementById('tf-leg-0'), document.getElementById('tf-leg-1')];
+  if (pw < 40 || bh < 18 || e.length === 0) {
+    tfGraph.geoB = null;
+    lgs.forEach(function (l) { l.style.display = 'none'; });
+    return;
+  }
+
+  var F = _tfgFenetreT(ML, pw, fs), r = _tfgOrigineBilan(F.org);
+  tfGraph.geoB = { x0: ML, pw: pw, yH: MT, yB: MT + 2 * bh + GAP, t1: F.t1, t2: F.t2, o: F.org, lt: F.lt };
+  for (var b = 0; b < 2; b++) {
+    _tfgBoiteBilan(o, TF_G_BILANS[b], b, ML, MT + b * (bh + GAP), pw, bh, F, r, fs);
+  }
+  var yAxe = MT + 2 * bh + GAP;
+  _tfgAxeTemps(c, F, ML, pw, MT, yAxe, fs);
+
+  var R = _tfgReticuleT(c, F, 'b', ML, pw, MT, yAxe);
+  if (R) {
+    var lignes = [R.ligne];
+    TF_G_BILANS.forEach(function (B) {
+      B.courbes.forEach(function (cb) {
+        if (_tfgCourbeVue(cb)) lignes.push(cb.nom + ' = ' + _tfgNbLu(cb.v(R.s, r) * B.f) + ' ' + B.unite);
+      });
+    });
+    _tfgBulle(c, lignes, R.so.x, R.so.y, W, H, fs);
+  }
+}
+
+// Une case de bilan : une courbe par terme affiché, le zéro (origine du
+// bilan) toujours dans la plage, en trait plus marqué ; un trait fin à
+// chaque changement d'étape (vue « Tout voir », cycle)
+function _tfgBoiteBilan(o, B, b, x0, y0, w, h, F, r, fs) {
+  var c = o.ctx, e = tfGraph.ech, i1 = F.i1, i2 = F.i2, k, q, cb;
+  var vues = B.courbes.filter(_tfgCourbeVue);
+  var lo = 0, hi = 0;
+  for (k = i1; k <= i2; k++) {
+    for (q = 0; q < vues.length; q++) {
+      var v = vues[q].v(e[k], r) * B.f;
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+    }
+  }
+  var hD = h - fs * 0.6;   // pas de bande de titre : la légende est posée sur la case
+  var nY = Math.max(2, Math.floor(hD / (fs * 1.8)));
+  var bo = tfGraph.vueT ? _tfgBornes(lo, hi, B.span, nY) : _tfgPlageEtape(3 + b, lo, hi, B.span, nY);
+  var pasY = _tfgPas(bo.hi - bo.lo, nY);
+  var yDe = function (val) { return y0 + h - (val - bo.lo) / (bo.hi - bo.lo) * hD; };
+
+  _tfgFondCase(c, x0, y0, w, h, bo, pasY, yDe, F.gradT, F.xGrad, i1, i2, F.xDe, fs);
+
+  c.strokeStyle = TF_G_CADRE;
+  c.lineWidth = 1;
+  c.beginPath();
+  var y0z = Math.round(yDe(0)) + 0.5;
+  c.moveTo(x0, y0z); c.lineTo(x0 + w, y0z);
+  for (k = Math.max(1, i1); k <= i2; k++) {
+    if (e[k].etape === e[k - 1].etape) continue;
+    var xe = Math.round(F.xDe(e[k].t)) + 0.5;
+    c.moveTo(xe, y0); c.lineTo(xe, y0 + h);
+  }
+  c.stroke();
+
+  // Du dernier terme au premier : ΔU et ΔS, plus épais, par-dessus
+  c.lineJoin = 'round';
+  for (q = vues.length - 1; q >= 0; q--) {
+    cb = vues[q];
+    c.strokeStyle = cb.coul;
+    c.lineWidth = cb === B.courbes[0] ? 2 : 1.6;
+    c.beginPath();
+    var T = _tfgBorne(c, x0, y0, w, h);
+    for (k = i1; k <= i2; k++) {
+      var px = F.xDe(e[k].t), py = yDe(cb.v(e[k], r) * B.f);
+      if (k === i1) T.moveTo(px, py); else T.lineTo(px, py);
+    }
+    if (i2 === i1) T.lineTo(F.xDe(e[i1].t) + 1, yDe(cb.v(e[i1], r) * B.f));
+    c.stroke();
+  }
+  c.restore();
+
+  c.strokeStyle = TF_G_CADRE;
+  c.lineWidth = 1;
+  c.strokeRect(x0 + 0.5, y0 + 0.5, w - 1, h - 1);
+
+  // Légende (titre compris) posée dans le coin haut droit ; la police
+  // suit celle du graphe
+  var lg = document.getElementById('tf-leg-' + b);
+  lg.style.display = '';
+  lg.style.right = (o.w - x0 - w + 6) + 'px';
+  lg.style.top = (y0 + 6) + 'px';
+  lg.style.fontSize = (fs - 1) + 'px';
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -1773,15 +1946,25 @@ function tfGraphDessiner() {
   tfGraph.sale = false;
   _tfgDessinerDiagrammes();
   _tfgDessinerTemps();
+  _tfgDessinerBilans();
   _tfgDessinerCadre();
 }
 
+// Graphe au cours du temps ('t' ou 'b') : sa vue est vueT, commune
+function _tfgTemporel(cible) { return cible === 't' || cible === 'b'; }
+
+// Géométrie du dernier tracé d'un graphe
+function _tfgGeo(cible) {
+  var g = tfGraph;
+  return cible === 't' ? g.geoT : cible === 'b' ? g.geoB : g.geoD[cible];
+}
+
 // Rectangle de zoom en cours, par-dessus son graphe (en temps : une bande
-// sur toute la hauteur des trois cases)
+// sur toute la hauteur des cases)
 function _tfgDessinerCadre() {
   var g = tfGraph, gl = g.glisse;
   if (!gl || !gl.cadre) return;
-  var t = gl.cible === 't', geo = t ? g.geoT : g.geoD[gl.cible], o = g.cv[gl.cible];
+  var t = _tfgTemporel(gl.cible), geo = _tfgGeo(gl.cible), o = g.cv[gl.cible];
   if (!geo || !o.w) return;
   var c = o.ctx;
   var x = Math.min(gl.x0, gl.x), w = Math.abs(gl.x - gl.x0);
@@ -1802,7 +1985,7 @@ function _tfgDessinerCadre() {
 
 function tfGraphPrecedente(cible) {
   var g = tfGraph;
-  if (cible === 't') g.vueT = g.pileT.length ? g.pileT.pop() : null;
+  if (_tfgTemporel(cible)) g.vueT = g.pileT.length ? g.pileT.pop() : null;
   else if (g.pileD[cible].length) g.vue[cible] = g.pileD[cible].pop();
   g.sale = true;
 }
@@ -1844,22 +2027,31 @@ function tfGraphChamp(d) {
 }
 
 // Menu Options des graphes : s'ouvre sous son bouton, se ferme par un
-// second clic, un clic ailleurs ou Échap
+// second clic, un clic ailleurs ou Échap. Bouton près du bord droit de la
+// colonne (fenêtre étroite) : le menu est décalé vers la gauche pour ne
+// pas y être rogné
 function tfGraphMenu(ouvrir) {
   var m = document.getElementById('tf-options-menu');
   if (ouvrir === undefined) ouvrir = m.hidden;
   m.hidden = !ouvrir;
+  m.style.left = '';
+  if (ouvrir) {
+    var r = m.getBoundingClientRect(), col = document.getElementById('tf-left-col').getBoundingClientRect();
+    var dx = Math.min(r.right - (col.right - 6), r.left - (col.left + 6));
+    if (dx > 0) m.style.left = -dx + 'px';
+  }
   document.getElementById('tf-btn-options').classList.toggle('active', ouvrir);
   document.getElementById('tf-btn-options').setAttribute('aria-expanded', ouvrir ? 'true' : 'false');
 }
 
 // ── Encarts de la colonne gauche ──
-// Barre de quatre boutons activables : P = f(V), T = f(S), graphes au cours
-// du temps, tableau ; de 0 à 4 encarts. Les encarts de graphe affichés se
+// Barre de cinq boutons activables : P = f(V), T = f(S), graphes au cours
+// du temps, bilans au cours du temps, tableau ; de 0 à 5 encarts. Les encarts de graphe affichés se
 // partagent la hauteur selon leurs poids (variables CSS --tf-poids-…,
 // réglées par les splitters) ; sans aucun encart, la colonne se réduit à la
 // barre, et le cylindre prend la place.
-var TF_G_VUES = ['pv', 'ts', 'temps', 'tableau'];
+var TF_G_VUES = ['pv', 'ts', 'temps', 'bilans', 'tableau'];
+var TF_G_VUES_GRAPHE = ['pv', 'ts', 'temps', 'bilans'];
 
 function tfGraphBasculerVue(v) {
   tfGraph.vues[v] = !tfGraph.vues[v];
@@ -1873,18 +2065,21 @@ function _tfgMajVues() {
     document.getElementById(v === 'tableau' ? 'tf-info' : 'tf-' + v + '-zone').style.display = V[v] ? '' : 'none';
     if (V[v]) aucun = false;
   });
-  // Splitter entre deux encarts de graphe affichés : celui qui suit pv
-  // (vers ts ou, ts masqué, vers temps), celui qui suit ts
-  document.getElementById('tf-hsplit-pv').style.display = V.pv && (V.ts || V.temps) ? '' : 'none';
-  document.getElementById('tf-hsplit-ts').style.display = V.ts && V.temps ? '' : 'none';
+  // Splitter entre deux encarts de graphe affichés : celui qui suit un
+  // encart affiché, si un encart de graphe l'est plus bas
+  var G = TF_G_VUES_GRAPHE;
+  for (var k = 0; k < G.length - 1; k++) {
+    var suite = G.slice(k + 1).some(function (v) { return V[v]; });
+    document.getElementById('tf-hsplit-' + G[k]).style.display = V[G[k]] && suite ? '' : 'none';
+  }
   // Le tableau seul se range en haut de la colonne
-  document.getElementById('tf-graph-col').classList.toggle('tf-sans-graphe', !V.pv && !V.ts && !V.temps);
+  document.getElementById('tf-graph-col').classList.toggle('tf-sans-graphe', !G.some(function (v) { return V[v]; }));
   document.getElementById('tf-left-col').classList.toggle('tf-sans-encart', aucun);
   tfGraph.sale = true;
   if (typeof tfResize === 'function') tfResize();
 }
 
-// Mode Zoom d'un graphe ('pv', 'ts' ou 't') : glisser trace un rectangle
+// Mode Zoom d'un graphe ('pv', 'ts', 't' ou 'b') : glisser trace un rectangle
 // qui devient la vue (en temps, seul l'intervalle de temps compte) ; il
 // reste actif jusqu'au clic suivant sur le bouton
 function tfGraphZoomZone(cible) {
@@ -1897,10 +2092,10 @@ function tfGraphZoomZone(cible) {
 // tracée à la dernière image) ; un rectangle de moins de 6 px est ignoré
 function _tfgZoomCadre(gl) {
   var g = tfGraph, cible = gl.cible, v = _tfgVueAffichee(cible);
-  var geo = cible === 't' ? g.geoT : g.geoD[cible];
+  var geo = _tfgGeo(cible);
   if (!v || !geo || Math.abs(gl.x - gl.x0) < 6) return;
   var fx1 = (Math.min(gl.x0, gl.x) - geo.x0) / geo.pw, fx2 = (Math.max(gl.x0, gl.x) - geo.x0) / geo.pw;
-  if (cible === 't') {
+  if (_tfgTemporel(cible)) {
     var nt = { t1: v.t1 + fx1 * (v.t2 - v.t1), t2: v.t1 + fx2 * (v.t2 - v.t1), o: v.o, lt: v.lt };
     if (_tfgTropFin(nt.t1 - v.o, nt.t2 - v.o)) return;
     g.pileT.push(g.vueT);
@@ -1923,8 +2118,15 @@ function tfGraphReticule() {
   tfGraph.sale = true;
 }
 
+// Pastille de la légende des bilans : estompée quand sa courbe est masquée
+function _tfgMajPastille(cle) {
+  var ck = document.getElementById('tf-ckg-' + cle), it = ck && ck.closest('.tf-leg-item');
+  if (it) it.classList.toggle('unchecked', !tfGraphAff[cle]);
+}
+
 function tfOnAffGraphe(cle, coche) {
   tfGraphAff[cle] = coche;
+  _tfgMajPastille(cle);
   if (cle === 'gel' && !coche && tfGraph.gele) tfGraphDegeler();
   tfGraph.sale = true;
 }
@@ -1939,8 +2141,8 @@ function _tfgPos(o, ev) {
 
 // Vue affichée d'un graphe, telle que tracée à la dernière image
 function _tfgVueAffichee(cible) {
-  var g = tfGraph;
-  if (cible === 't') return g.geoT && { t1: g.geoT.t1, t2: g.geoT.t2, o: g.geoT.o, lt: g.geoT.lt };
+  var g = tfGraph, gt = _tfgGeo(cible);
+  if (_tfgTemporel(cible)) return gt && { t1: gt.t1, t2: gt.t2, o: gt.o, lt: gt.lt };
   var gp = g.geoD[cible];
   return gp && { x1: gp.x1, x2: gp.x2, y1: gp.y1, y2: gp.y2 };
 }
@@ -1951,7 +2153,7 @@ function _tfgEmpiler(cible) {
   var g = tfGraph, now = performance.now();
   if (g.empile[cible] && now - g.empile[cible] < 600) { g.empile[cible] = now; return; }
   g.empile[cible] = now;
-  if (cible === 't') g.pileT.push(g.vueT);
+  if (_tfgTemporel(cible)) g.pileT.push(g.vueT);
   else g.pileD[cible].push(g.vue[cible]);
 }
 
@@ -1960,10 +2162,10 @@ function _tfgSouris(o, cible) {
   o.c.style.cursor = 'grab';
   o.c.addEventListener('pointerdown', function (ev) {
     var p = _tfgPos(o, ev);
-    var geo = cible === 't' ? g.geoT : g.geoD[cible];
+    var geo = _tfgGeo(cible);
     if (!geo || p.x < geo.x0 || p.x > geo.x0 + geo.pw) return;
     if (g.zoomZone[cible]) {
-      if (cible !== 't' && (p.y < geo.y0 || p.y > geo.y0 + geo.ph)) return;
+      if (!_tfgTemporel(cible) && (p.y < geo.y0 || p.y > geo.y0 + geo.ph)) return;
       g.glisse = { cible: cible, cadre: true, x0: p.x, y0: p.y, x: p.x, y: p.y };
     } else {
       g.glisse = { cible: cible, x0: p.x, y0: p.y, vue0: _tfgVueAffichee(cible), bouge: false };
@@ -1977,18 +2179,18 @@ function _tfgSouris(o, cible) {
     g.souris = { cible: cible, x: p.x, y: p.y };
     if (gl && gl.cible === cible && gl.cadre) {
       // Rectangle borné au tracé
-      var gz = cible === 't' ? g.geoT : g.geoD[cible];
+      var gz = _tfgGeo(cible);
       if (gz) {
         gl.x = Math.max(gz.x0, Math.min(gz.x0 + gz.pw, p.x));
-        if (cible !== 't') gl.y = Math.max(gz.y0, Math.min(gz.y0 + gz.ph, p.y));
+        if (!_tfgTemporel(cible)) gl.y = Math.max(gz.y0, Math.min(gz.y0 + gz.ph, p.y));
       }
     } else if (gl && gl.cible === cible && gl.vue0) {
       var dx = p.x - gl.x0, dy = p.y - gl.y0;
       if (!gl.bouge && Math.abs(dx) + Math.abs(dy) > 3) { gl.bouge = true; _tfgEmpiler(cible); }
       if (gl.bouge) {
         var v = gl.vue0;
-        if (cible === 't') {
-          var dt = -dx / g.geoT.pw * (v.t2 - v.t1);
+        if (_tfgTemporel(cible)) {
+          var dt = -dx / _tfgGeo(cible).pw * (v.t2 - v.t1);
           g.vueT = { t1: v.t1 + dt, t2: v.t2 + dt, o: v.o, lt: v.lt };
         } else {
           var gp = g.geoD[cible];
@@ -2017,16 +2219,16 @@ function _tfgSouris(o, cible) {
   // des temps change
   o.c.addEventListener('wheel', function (ev) {
     var p = _tfgPos(o, ev), v = _tfgVueAffichee(cible);
-    var geo = cible === 't' ? g.geoT : g.geoD[cible];
+    var geo = _tfgGeo(cible);
     if (!v || p.x < geo.x0 || p.x > geo.x0 + geo.pw) return;
     ev.preventDefault();
     var dy = ev.deltaMode === 1 ? ev.deltaY * 33 : ev.deltaY;
     var f = Math.exp(Math.max(-300, Math.min(300, dy)) * 0.0015);
     _tfgEmpiler(cible);
-    if (f < 1 && (cible === 't' ? _tfgTropFin(v.t1 - v.o, v.t2 - v.o)
+    if (f < 1 && (_tfgTemporel(cible) ? _tfgTropFin(v.t1 - v.o, v.t2 - v.o)
                                 : _tfgTropFin(v.x1, v.x2) || _tfgTropFin(v.y1, v.y2))) return;
     var fx = (p.x - geo.x0) / geo.pw;
-    if (cible === 't') {
+    if (_tfgTemporel(cible)) {
       var tc = v.t1 + fx * (v.t2 - v.t1);
       g.vueT = { t1: tc + (v.t1 - tc) * f, t2: tc + (v.t2 - tc) * f, o: v.o, lt: v.lt };
     } else {
@@ -2114,15 +2316,18 @@ function tfGraphInit() {
     var c = document.getElementById(id);
     return { c: c, ctx: c.getContext('2d'), w: 0, h: 0, dpr: 0 };
   }
-  tfGraph.cv = { pv: cv('tf-canvas-pv'), ts: cv('tf-canvas-ts'), t: cv('tf-canvas-temps') };
+  tfGraph.cv = { pv: cv('tf-canvas-pv'), ts: cv('tf-canvas-ts'), t: cv('tf-canvas-temps'),
+                b: cv('tf-canvas-bilans') };
   _tfgSouris(tfGraph.cv.pv, 'pv');
   _tfgSouris(tfGraph.cv.ts, 'ts');
   _tfgSouris(tfGraph.cv.t, 't');
+  _tfgSouris(tfGraph.cv.b, 'b');
 
   var col = document.getElementById('tf-left-col');
   _tfgSplitter('tf-vsplit', col, col, '--tf-larg-graphes', 'x', 0.25, 0.7);
   _tfgSplitterH(document.getElementById('tf-hsplit-pv'));
   _tfgSplitterH(document.getElementById('tf-hsplit-ts'));
+  _tfgSplitterH(document.getElementById('tf-hsplit-temps'));
   _tfgMajVues();
 
   // Toute zone qui change de taille (fenêtre, splitters, bascule d'onglet)
@@ -2132,12 +2337,15 @@ function tfGraphInit() {
     ro.observe(tfGraph.cv.pv.c.parentElement);
     ro.observe(tfGraph.cv.ts.c.parentElement);
     ro.observe(tfGraph.cv.t.c.parentElement);
+    ro.observe(tfGraph.cv.b.c.parentElement);
     ro.observe(document.getElementById('tf-sim-area'));
   }
   window.addEventListener('resize', function () { tfGraph.sale = true; });
 
   for (var cle in tfGraphAff) {
-    document.getElementById('tf-ckg-' + cle).checked = tfGraphAff[cle];
+    var ck = document.getElementById('tf-ckg-' + cle);
+    if (ck) ck.checked = tfGraphAff[cle];
+    _tfgMajPastille(cle);
   }
   var opt = document.getElementById('tf-options');
   document.addEventListener('pointerdown', function (ev) {
