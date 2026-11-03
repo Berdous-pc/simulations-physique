@@ -144,9 +144,8 @@ function tfDessiner() {
   if (_tfCw === 0 || _tfCh === 0) return;
   var c = tfCtx;
 
-  // Fond : crème sous l'enceinte ; bleu clair d'air libre avec les masses
-  // (le montage se voit au premier coup d'œil)
-  c.fillStyle = tf.montage === 'masse' ? '#e8f0f6' : '#fdf8f0';
+  // Fond crème dans les deux montages : seul l'air de la cloche est teinté
+  c.fillStyle = '#fdf8f0';
   c.fillRect(0, 0, _tfCw, _tfCh);
 
   _tfDessinerFond();
@@ -224,9 +223,11 @@ function _tfDessinerFond() {
 // Couleurs de la source, de la même famille que celles du gaz
 var TF_COUL_SOURCE = { neutre: [196, 188, 176], chaud: [206, 64, 36], froid: [52, 112, 196] };
 
-// ── Enceinte : cloche scellée sur le haut du cylindre,
-//    reliée à un manomètre. Son air, comme celui qui surmonte le piston, est
-//    teinté d'autant plus que P_air est forte. ──
+// ── Enceinte : cloche scellée sur le haut du cylindre, dans les deux
+//    montages, reliée à un manomètre. Un robinet la met en communication
+//    avec l'air de la salle (masses : P_air = P_atm) ou, fermé sur l'air,
+//    avec une pompe (air de l'enceinte : P_air réglée). Son air, comme celui
+//    qui surmonte le piston, est teinté d'autant plus que P_air est forte. ──
 // Largeur de chaque côté du cylindre jusqu'à la cloche : paroi, marge des
 // graduations, paroi
 function _tfCote(larg) { return 0.16 * larg + 2 * _tfParoi; }
@@ -237,7 +238,6 @@ function _tfClocheX() {
 }
 
 function _tfDessinerAirEnceinte() {
-  if (tf.montage === 'masse') return;   // air libre : rien à teinter
   var c = tfCtx, p = _tfParoi, xs = _tfClocheX();
   var a = 0.02 + 0.22 * Math.min(1, tf.Pair / TF_PAIR_MAX);
   var yH = _tfY(TF_Z_HAUT), yB = _tfY(TF_Z_CLOCHE), yRebord = _tfY(TF_H_CYL) - p;
@@ -252,7 +252,6 @@ function _tfDessinerAirEnceinte() {
 function _tfDessinerEnceinte() {
   var c = tfCtx, p = _tfParoi, xs = _tfClocheX();
   var yH = _tfY(TF_Z_HAUT), yB = _tfY(TF_Z_CLOCHE);
-  if (tf.montage === 'masse') { _tfDessinerPortique(xs, yH, yB); return; }
   // Paroi de verre, puis collerette qui la scelle sur le cylindre
   c.strokeStyle = 'rgba(70,100,130,0.75)';
   c.lineWidth = 2;
@@ -260,19 +259,22 @@ function _tfDessinerEnceinte() {
   c.stroke();
   _tfCollerette(xs, yB);
 
+  var masses = tf.montage === 'masse';
   var police = Math.max(10, Math.min(14, Math.round(_tfEch * 0.02)));
-  if (tf.Pair < 500) {
+  var mention = masses ? 'ouverte sur l’air' : tf.Pair < 500 ? 'vide' : '';
+  if (mention) {
     c.font = _tfPolice('italic', police);
     c.fillStyle = '#5a6a78';
     c.textAlign = 'left';
     c.textBaseline = 'top';
-    c.fillText('vide', xs[0] + 8, yH + 6);   // le coin droit est au compteur de temps
+    c.fillText(mention, xs[0] + 8, yH + 6);   // le coin droit est au compteur de temps
   }
 
   // Manomètre, à gauche, au-dessus des graduations, relié à la cloche
   var R = Math.max(19, Math.min(28, _tfEch * 0.04));
   var yM = yH + R + 4;
   var xM = Math.max(R + 4, xs[0] - R - 18);
+  _tfRobinet(xs[0], yM + R + Math.max(36, R * 1.6), xM - R, masses, police);
   c.fillStyle = '#6a7a88';
   c.fillRect(xM + R - 1, yM - 2, xs[0] - xM - R + 1, 4);
   c.beginPath();
@@ -309,7 +311,7 @@ function _tfDessinerEnceinte() {
   c.fillText(Math.round(tf.Pair / 1000) + ' kPa', xM, yM + R * 0.55);
 }
 
-// Collerette qui scelle la cloche ou le portique sur le haut du cylindre
+// Collerette qui scelle la cloche sur le haut du cylindre
 function _tfCollerette(xs, yB) {
   var c = tfCtx, p = _tfParoi, hc = Math.max(4, p * 0.8);
   c.fillStyle = '#4a5a68';
@@ -317,23 +319,40 @@ function _tfCollerette(xs, yB) {
   c.fillRect(_tfX2 + p, yB - hc / 2, xs[1] - _tfX2 - p + 2, hc);
 }
 
-// Montage à masses : pas d'enceinte. Un portique métallique porte le vérin
-// au-dessus du cylindre, à l'air libre (1 atm)
-function _tfDessinerPortique(xs, yH, yB) {
-  var c = tfCtx, p = _tfParoi;
-  var e = Math.max(4, p * 0.9);
+// Robinet de la cloche, sur un tube qui part de sa paroi gauche (xC) vers
+// la gauche jusqu'à xG, à la hauteur y. Ouvert (masses) : poignée le long du
+// tube, bout ouvert sur l'air de la salle. Fermé (air de l'enceinte) :
+// poignée en travers, le tube va à la pompe qui règle P_air.
+function _tfRobinet(xC, y, xG, ouvert, police) {
+  var c = tfCtx;
+  xG = Math.max(4, xG);
+  var e = 4, xV = xC - Math.max(16, (xC - xG) * 0.4), r = 6;
+  c.fillStyle = '#6a7a88';
+  c.fillRect(xG, y - e / 2, xC - xG, e);
+  // Corps : deux triangles opposés par la pointe
+  c.beginPath();
+  c.moveTo(xV - r, y - r); c.lineTo(xV - r, y + r); c.lineTo(xV + r, y - r);
+  c.lineTo(xV + r, y + r); c.closePath();
+  c.fillStyle = ouvert ? '#fffdf9' : '#2c3e50';
+  c.fill();
+  c.strokeStyle = '#2c3e50';
+  c.lineWidth = 1.5;
+  c.stroke();
+  // Poignée, sur une courte tige au-dessus du corps
+  c.beginPath();
+  c.moveTo(xV, y);
+  c.lineTo(xV, y - r - 4);
+  if (ouvert) { c.moveTo(xV - r - 2, y - r - 4); c.lineTo(xV + r + 2, y - r - 4); }
+  else        { c.moveTo(xV, y - r - 4); c.lineTo(xV, y - r - 14); }
+  c.lineWidth = 2.5;
+  c.lineCap = 'round';
+  c.stroke();
+  c.lineCap = 'butt';
+  c.font = _tfPolice('italic', Math.max(9, police - 2));
   c.fillStyle = '#5a6a78';
-  c.fillRect(xs[0], yH, e, yB - yH);
-  c.fillRect(xs[1] - e, yH, e, yB - yH);
-  c.fillRect(xs[0], yH, xs[1] - xs[0], e);
-  _tfHachures(xs[0], yH, xs[1] - xs[0], e, 'rgba(44,62,80,0.45)', 6);
-  _tfCollerette(xs, yB);
-  var police = Math.max(10, Math.min(14, Math.round(_tfEch * 0.02)));
-  c.font = _tfPolice('italic', police);
-  c.fillStyle = '#4a6a88';
   c.textAlign = 'left';
   c.textBaseline = 'top';
-  c.fillText('air libre · 1 atm', xs[0] + e + 6, yH + e + 6);   // le coin droit est au compteur de temps
+  c.fillText(ouvert ? 'air' : 'pompe', xG, y + e / 2 + 3);
 }
 
 // Rectangle aux coins du haut arrondis, ouvert en bas (la cloche)
@@ -403,14 +422,21 @@ function _tfDessinerGaz() {
   c.setLineDash([]);
 }
 
-// ── Parois latérales ──
+// ── Parois latérales : toujours adiabatiques, dessinées dans la matière
+//    hachurée de l'isolant du fond (seul le fond échange de la chaleur) ──
 function _tfDessinerParois() {
   var c = tfCtx, p = _tfParoi;
   var yH = _tfY(TF_H_CYL) - p, yB = _tfY(-TF_EP_FOND);
-  c.fillStyle = '#2c3e50';
-  c.fillRect(_tfX1 - p, yH, p, yB - yH);
-  c.fillRect(_tfX2, yH, p, yB - yH);
+  [_tfX1 - p, _tfX2].forEach(function (x) {
+    c.fillStyle = '#e8dcc4';
+    c.fillRect(x, yH, p, yB - yH);
+    _tfHachures(x, yH, p, yB - yH, 'rgba(150,120,80,0.7)', Math.max(4, Math.min(7, p * 0.6)));
+    c.strokeStyle = '#2c3e50';
+    c.lineWidth = 1.5;
+    c.strokeRect(x + 0.75, yH + 0.75, p - 1.5, yB - yH - 1.5);
+  });
   // Rebords du haut : la butée haute du piston
+  c.fillStyle = '#2c3e50';
   c.fillRect(_tfX1 - p, yH, 2 * p, p);
   c.fillRect(_tfX2 - p, yH, 2 * p, p);
 }
@@ -437,7 +463,9 @@ function _tfDessinerGraduations() {
   for (var d = 0; d <= Math.round(TF_H_CYL * 10); d++) {
     c.fillText(String(d * 10), x - 13, _tfY(d / 10));
   }
-  c.textAlign = 'center';
+  // Unité au-dessus des nombres, alignée sur eux à droite : loin de la
+  // paroi de l'enceinte, qui descend juste à droite des graduations
+  c.textAlign = 'right';
   c.textBaseline = 'bottom';
   c.fillText('cm', x - 13, _tfY(TF_H_CYL) - police * 0.9);
 }
