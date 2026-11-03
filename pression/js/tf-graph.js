@@ -477,9 +477,16 @@ function _tfgPas(etendue, n) {
 }
 
 // Bornes rondes d'un axe automatique, avec une étendue minimale
+// Plage [lo, hi] élargie autour de son milieu jusqu'à l'étendue span
+function _tfgEtendre(lo, hi, span) {
+  if (hi - lo >= span) return [lo, hi];
+  var c = (lo + hi) / 2;
+  return [c - span / 2, c + span / 2];
+}
+
 function _tfgBornes(lo, hi, span, n) {
   if (!isFinite(lo) || !isFinite(hi)) { lo = 0; hi = 1; }
-  if (hi - lo < span) { var c = (lo + hi) / 2; lo = c - span / 2; hi = c + span / 2; }
+  var p = _tfgEtendre(lo, hi, span); lo = p[0]; hi = p[1];
   var marge = (hi - lo) * 0.06;
   lo -= marge; hi += marge;
   var pas = _tfgPas(hi - lo, n);
@@ -501,7 +508,7 @@ function _tfgCran(v, crans) {
 // chaleur sous T(S)), et la marge ne passe jamais sous zéro.
 function _tfgAxe(lo, hi, span, marge, zero) {
   if (!isFinite(lo) || !isFinite(hi)) { lo = 0; hi = 1; }
-  if (hi - lo < span) { var c = (lo + hi) / 2; lo = c - span / 2; hi = c + span / 2; }
+  var p = _tfgEtendre(lo, hi, span); lo = p[0]; hi = p[1];
   var m = (hi - lo) * marge;
   lo = zero && lo < hi - lo ? 0 : lo - m;
   hi += m;
@@ -768,13 +775,23 @@ function _tfgReticuleT(c, F, cible, ML, pw, MT, yAxe) {
                                    + (F.lt ? ' depuis ' + F.lt : '') };
 }
 
+// Fond des graphes (celui des cartes du panneau)
+var TF_G_FOND = '#fdf8f0';
+
+// Met un canvas de graphe à la taille de son encart et peint le fond ;
+// faux si l'encart est masqué
+function _tfgOuvrir(o) {
+  _tfgTaille(o);
+  if (!o.w) return false;
+  o.ctx.fillStyle = TF_G_FOND;
+  o.ctx.fillRect(0, 0, o.w, o.h);
+  return true;
+}
+
 function _tfgDessinerTemps() {
   var o = tfGraph.cv.t;
-  _tfgTaille(o);
-  if (!o.w) return;
+  if (!_tfgOuvrir(o)) return;
   var c = o.ctx, W = o.w, H = o.h, e = tfGraph.ech;
-  c.fillStyle = '#fdf8f0';
-  c.fillRect(0, 0, W, H);
 
   var fs = Math.max(10, Math.min(14, Math.round(Math.min(H * 0.042, W * 0.03))));
   var ML = Math.round(fs * 4.4), MR = 10, MT = 4, MB = Math.round(fs * 2.9);
@@ -872,7 +889,7 @@ function _tfgPlageEtape(b, lo, hi, span, n) {
       var e0 = (hi - lo) * 0.1;
       lo -= e0; hi += e0;
     }
-    if (hi - lo < span) { var c = (lo + hi) / 2; lo = c - span / 2; hi = c + span / 2; }
+    var p = _tfgEtendre(lo, hi, span); lo = p[0]; hi = p[1];
     var pas = _tfgPas(hi - lo, n);
     r = A.y[b] = { lo: Math.floor(lo / pas) * pas, hi: Math.ceil(hi / pas) * pas };
   }
@@ -1150,11 +1167,8 @@ function _tfgOrigineBilan(org) {
 
 function _tfgDessinerBilans() {
   var o = tfGraph.cv.b;
-  _tfgTaille(o);
-  if (!o.w) return;
+  if (!_tfgOuvrir(o)) return;
   var c = o.ctx, W = o.w, H = o.h, e = tfGraph.ech;
-  c.fillStyle = '#fdf8f0';
-  c.fillRect(0, 0, W, H);
 
   var fs = Math.max(10, Math.min(14, Math.round(Math.min(H * 0.063, W * 0.03))));
   var ML = Math.round(fs * 4.4), MR = 10, MT = 4, MB = Math.round(fs * 2.9);
@@ -1417,26 +1431,22 @@ function _tfgDessinerDiagrammes() {
   ['pv', 'ts'].forEach(function (d) {
     var o = tfGraph.cv[d];
     tfGraph.geoD[d] = null;
-    _tfgTaille(o);
-    if (!o.w) return;
-    o.ctx.fillStyle = '#fdf8f0';
-    o.ctx.fillRect(0, 0, o.w, o.h);
-    _tfgDessinerDiag(o, { d: d, x: 0, y: 0, w: o.w, h: o.h }, mes);
+    if (_tfgOuvrir(o)) _tfgDessinerDiag(o, d, mes);
   });
 }
 
-function _tfgDessinerDiag(o, cs, mes) {
-  var d = cs.d, D = TF_G_DIAGS[d];
-  var c = o.ctx, W = cs.w, H = cs.h, X = cs.x, Y = cs.y, e = tfGraph.ech, g = tfGraph;
+function _tfgDessinerDiag(o, d, mes) {
+  var D = TF_G_DIAGS[d];
+  var c = o.ctx, W = o.w, H = o.h, e = tfGraph.ech, g = tfGraph;
 
   // La légende occupe une bande au-dessus du tracé (une ou deux lignes)
   var fs = Math.max(10, Math.min(14, Math.round(Math.min(H * 0.045, W * 0.03))));
   var ML = Math.round(fs * 4.4), MR = 12, MB = Math.round(fs * 2.9);
-  var hLeg = _tfgLegende(c, d, X + ML, Y + 4, W - ML - MR, fs - 1, false);
+  var hLeg = _tfgLegende(c, d, ML, 4, W - ML - MR, fs - 1, false);
   var MT = Math.round(hLeg + 8);
   var pw = W - ML - MR, ph = H - MT - MB;
   if (pw < 60 || ph < 40 || e.length === 0) return;
-  var x0 = X + ML, y0 = Y + MT;
+  var x0 = ML, y0 = MT;
 
   var nX = Math.max(2, Math.floor(pw / (fs * 6))), nY = Math.max(2, Math.floor(ph / (fs * 2.6)));
   var vue = g.vue[d] || _tfgAnimerChamp(d, _tfgChamp(d, mes));
@@ -1469,7 +1479,7 @@ function _tfgDessinerDiag(o, cs, mes) {
   c.textBaseline = 'top';
   c.fillText(D.titreX, x0 + pw, y0 + ph + fs * 1.45);
   c.save();
-  c.translate(X + fs * 0.2, y0);
+  c.translate(fs * 0.2, y0);
   c.rotate(-Math.PI / 2);
   c.textAlign = 'right';
   c.textBaseline = 'top';
@@ -1641,7 +1651,7 @@ function _tfgDessinerDiag(o, cs, mes) {
   // transformations usuelles (basse pression à petit volume, basse
   // température), et légende fixe au-dessus du tracé
   if (!defM) _tfgEtiquette(c, D.nd, x0 + 8, y0 + ph - fs, fs, TF_G_ND, 'left');
-  _tfgLegende(c, d, x0, Y + 4, pw, fs - 1, true);
+  _tfgLegende(c, d, x0, 4, pw, fs - 1, true);
 
   var gl = g.glisse;
 
@@ -1659,7 +1669,7 @@ function _tfgDessinerDiag(o, cs, mes) {
     c.setLineDash([]);
     var xv = vue.x1 + (so.x - x0) / pw * (vue.x2 - vue.x1);
     var yv = vue.y1 + (y0 + ph - so.y) / ph * (vue.y2 - vue.y1);
-    _tfgBulle(c, D.lu(xv, yv), so.x, so.y, X + W, Y + H, fs);
+    _tfgBulle(c, D.lu(xv, yv), so.x, so.y, W, H, fs);
   }
 }
 
@@ -2241,6 +2251,23 @@ function _tfgSouris(o, cible) {
 //  encarts affichés qui l'entourent (poids --tf-poids-…, leur somme gardée).
 // ══════════════════════════════════════════════════════════════════════
 
+// Glisser commun aux splitters : capture du pointeur, bouge(ev) à chaque
+// déplacement jusqu'au relâchement
+function _tfgGlisser(sp, ev, bouge) {
+  ev.preventDefault();
+  try { sp.setPointerCapture(ev.pointerId); } catch (x) { /* pointeur déjà relâché */ }
+  sp.classList.add('dragging');
+  var fin = function () {
+    sp.classList.remove('dragging');
+    sp.removeEventListener('pointermove', bouge);
+    sp.removeEventListener('pointerup', fin);
+    sp.removeEventListener('pointercancel', fin);
+  };
+  sp.addEventListener('pointermove', bouge);
+  sp.addEventListener('pointerup', fin);
+  sp.addEventListener('pointercancel', fin);
+}
+
 function _tfgSplitterH(sp) {
   function voisin(el, sens) {
     for (el = el[sens]; el; el = el[sens]) {
@@ -2251,51 +2278,27 @@ function _tfgSplitterH(sp) {
   sp.addEventListener('pointerdown', function (ev) {
     var a = voisin(sp, 'previousElementSibling'), b = voisin(sp, 'nextElementSibling');
     if (!a || !b) return;
-    ev.preventDefault();
-    try { sp.setPointerCapture(ev.pointerId); } catch (x) { /* pointeur déjà relâché */ }
-    sp.classList.add('dragging');
     var col = sp.parentElement.style;
     var pa = parseFloat(getComputedStyle(a).flexGrow) || 1, pb = parseFloat(getComputedStyle(b).flexGrow) || 1;
-    var bouge = function (e2) {
+    _tfgGlisser(sp, ev, function (e2) {
       var ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
       var f = (e2.clientY - ra.top) / (rb.bottom - ra.top);
       f = Math.max(0.15, Math.min(0.85, f));
       col.setProperty('--tf-poids-' + a.dataset.vue, ((pa + pb) * f).toFixed(3));
       col.setProperty('--tf-poids-' + b.dataset.vue, ((pa + pb) * (1 - f)).toFixed(3));
-    };
-    var fin = function () {
-      sp.classList.remove('dragging');
-      sp.removeEventListener('pointermove', bouge);
-      sp.removeEventListener('pointerup', fin);
-      sp.removeEventListener('pointercancel', fin);
-    };
-    sp.addEventListener('pointermove', bouge);
-    sp.addEventListener('pointerup', fin);
-    sp.addEventListener('pointercancel', fin);
+    });
   });
 }
 
 function _tfgSplitter(id, conteneur, cible, variable, axe, fMin, fMax) {
   var sp = document.getElementById(id);
   sp.addEventListener('pointerdown', function (ev) {
-    ev.preventDefault();
-    try { sp.setPointerCapture(ev.pointerId); } catch (x) { /* pointeur déjà relâché */ }
-    sp.classList.add('dragging');
-    var bouge = function (e2) {
+    _tfgGlisser(sp, ev, function (e2) {
       var r = conteneur.getBoundingClientRect();
       var f = axe === 'x' ? (e2.clientX - r.left) / r.width : (e2.clientY - r.top) / r.height;
       f = Math.max(fMin, Math.min(fMax, f));
       cible.style.setProperty(variable, (f * 100).toFixed(1) + '%');
-    };
-    var fin = function () {
-      sp.classList.remove('dragging');
-      sp.removeEventListener('pointermove', bouge);
-      sp.removeEventListener('pointerup', fin);
-      sp.removeEventListener('pointercancel', fin);
-    };
-    sp.addEventListener('pointermove', bouge);
-    sp.addEventListener('pointerup', fin);
-    sp.addEventListener('pointercancel', fin);
+    });
   });
 }
 
@@ -2323,7 +2326,8 @@ function tfGraphInit() {
   _tfgMajVues();
 
   // Toute zone qui change de taille (fenêtre, splitters, bascule d'onglet)
-  // est redessinée ; la scène garde sa propre mise à l'échelle
+  // est redessinée, la scène remise à l'échelle (tfResize : #tf-sim-area
+  // n'est observée qu'ici)
   if (window.ResizeObserver) {
     var ro = new ResizeObserver(function () { tfGraph.sale = true; tfResize(); });
     ro.observe(tfGraph.cv.pv.c.parentElement);

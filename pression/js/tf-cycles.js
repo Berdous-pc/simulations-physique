@@ -202,7 +202,8 @@ function tfOnCycle(cle) {
   C.cle = C.cle === cle ? null : cle;
   C.v = {};
   if (C.cle) for (var c in TF_CYCLES[cle].defaut) C.v[c] = TF_CYCLES[cle].defaut[c];
-  C.k = 0; C.faits = []; C.etatsFaits = []; C.tour = false; C.sigA = C.sigF = '';
+  _tfCyRepartir();
+  C.sigA = C.sigF = '';
   _tfCyMettreAJour();
   _tfMajCycle(true);
   tfMajAfficheurs();
@@ -210,6 +211,12 @@ function tfOnCycle(cle) {
 
 // Réglage i du cycle (0 ou 1) porté à x (SI), dans ses bornes ; un minimum
 // reste sous le maximum
+// Cycle à refaire depuis A : aucune étape faite
+function _tfCyRepartir() {
+  var C = tfCycle;
+  C.k = 0; C.faits = []; C.etatsFaits = []; C.tour = false;
+}
+
 function _tfCyFixer(i, x) {
   var C = tfCycle, cle = TF_CYCLES[C.cle].champs[i], F = TF_CY_CHAMPS[cle], v = C.v;
   v[cle] = _tfBorner(x, F.min, F.max);
@@ -218,7 +225,7 @@ function _tfCyFixer(i, x) {
     if (cle === q + 'min') v[q + 'max'] = Math.min(F.max, v[q + 'min'] + F.pas);
     else v[q + 'min'] = Math.max(F.min, v[q + 'max'] - F.pas);
   });
-  C.k = 0; C.faits = []; C.etatsFaits = []; C.tour = false;
+  _tfCyRepartir();
   _tfCyMettreAJour();
   _tfMajCycle(true);
   tfMajAfficheurs();
@@ -236,26 +243,18 @@ function tfCyPas(i, sens) {
   _tfCyFixer(i, _tfPasVoisin(tfCycle.v[cle], TF_CY_CHAMPS[cle].pas, sens));
 }
 
+// Lance l'étape à faire (seul) ou tout le cycle à partir d'elle, en le
+// nombre de pas choisi
 function _tfCyLancer(seul) {
+  if (tfCycle.run || !_tfCyPret()) return;
   tfCycle.Tnom = { '1': tfTSource('1'), '2': tfTSource('2') };
   tfCycle.run = { N: TF_NB_PAS[tfCycle.iN], seul: seul };
-}
-
-// Étape à faire, en le nombre de pas choisi
-function tfCyEtape() {
-  if (tfCycle.run || !_tfCyPret()) return;
-  _tfCyLancer(true);
   _tfCyTic();
   tfMajAfficheurs();
 }
 
-// Tout le cycle, avec le même nombre de pas, à partir de l'étape à faire
-function tfCyTout() {
-  if (tfCycle.run || !_tfCyPret()) return;
-  _tfCyLancer(false);
-  _tfCyTic();
-  tfMajAfficheurs();
-}
+function tfCyEtape() { _tfCyLancer(true); }
+function tfCyTout()  { _tfCyLancer(false); }
 
 // Curseur du nombre de pas (1 : brutal ; ∞ : réversible)
 function tfCyOnNbPas(val) {
@@ -283,7 +282,7 @@ function tfCyArreter() {
 function tfCyclesRaz(i) {
   var C = tfCycle, m = 0;
   C.run = null;
-  if (i === 0) { C.k = 0; C.faits = []; C.etatsFaits = []; C.tour = false; }
+  if (i === 0) _tfCyRepartir();
   else {
     while (m < C.etatsFaits.length && C.etatsFaits[m] <= i) m++;
     if (m < C.etatsFaits.length) {
@@ -363,7 +362,7 @@ function _tfCyTic() {
   var s = d.etapes[C.k];
   if (_tfCyAtteinte(s)) {
     var der = tfEtapes.liste[tfEtapes.liste.length - 1];
-    if (C.k === 0) { C.faits = []; C.etatsFaits = []; C.tour = false; }
+    if (C.k === 0) _tfCyRepartir();
     // Contact direct avec la source (pas de manière notée) : brutal
     C.faits[C.k] = der && der.man ? { man: der.man, nPas: der.nPas }
                  : { man: s.type === 'fond' ? 'brutal' : 'main' };
@@ -407,7 +406,7 @@ function _tfMajCycle(force) {
   // Réglages du cycle, des sources, du gaz ou du départ changés : recalcul
   var sf = [_tfCySigA(), tfDepart.gamma, tfDepart.P0, tfDepart.T0, tf.T0, tf.V0].join('|');
   if (sf !== C.sigF) { C.sigF = sf; _tfCyMettreAJour(); force = true; }
-  ['allerretour', 'carnot', 'stirling', 'lenoir'].forEach(function (c) {
+  Object.keys(TF_CYCLES).forEach(function (c) {
     E['ong-' + c].classList.toggle('active', C.cle === c);
   });
   E.corps.style.display = C.cle ? '' : 'none';
@@ -471,7 +470,7 @@ function _tfCyMajEnCours() {
 }
 
 function tfCyclesInit() {
-  ['allerretour', 'carnot', 'stirling', 'lenoir'].forEach(function (c) {
+  Object.keys(TF_CYCLES).forEach(function (c) {
     _tfCyEl['ong-' + c] = document.getElementById('tf-cy-' + c);
   });
   [0, 1].forEach(function (i) {

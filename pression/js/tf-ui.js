@@ -121,10 +121,13 @@ function _tfCleOrgane(o) {
 function _tfCle() { return _tfCleOrgane(_tfOrgane()); }
 
 // Nature de la transformation obtenue en agissant sur un organe : elle
-// découle des conditions
-function _tfNature(o) {
+// découle des conditions ; sur une source, le piston ne donne une
+// isotherme que lentement (sinon : monotherme ; lent absent : on ne sait
+// pas encore)
+function _tfNature(o, lent) {
   if (o === 'source') return tf.tenu ? 'isochore' : 'isobare';
-  return tf.paroi === 'isolant' ? 'adiabatique' : 'isotherme si lente';
+  if (tf.paroi === 'isolant') return 'adiabatique';
+  return lent === undefined ? 'isotherme si lente' : lent ? 'isotherme' : 'monotherme';
 }
 
 function _tfPas(cle) { return TF_PAS_ESC[cle][tfCarte[cle].iPas]; }
@@ -529,12 +532,8 @@ function _tfPextVisee(cle, vise) {
 }
 
 // Titre d'une étape de la frise : le sens (Compression, Chauffage…) et la
-// nature, qui découle des conditions ; sur une source, le piston ne donne
-// une isotherme que lentement (sinon : monotherme)
-function _tfTitreEtape(o, sens, lent) {
-  return sens + ' ' + (o === 'source' ? (tf.tenu ? 'isochore' : 'isobare')
-    : tf.paroi === 'isolant' ? 'adiabatique' : lent ? 'isotherme' : 'monotherme');
-}
+// nature (_tfNature)
+function _tfTitreEtape(o, sens, lent) { return sens + ' ' + _tfNature(o, !!lent); }
 
 // Étape faite de pas (1 ou N pas, à la main ; pas sur rev) : une corde par
 // pas sur les diagrammes. Sauf sur la source derrière une paroi peu

@@ -46,7 +46,10 @@ function _tfHauteurMasse(kg) { return 0.022 + kg * 0.0008; }
 // au-dessus du cylindre (piston en butée haute + tige, puis vérin suspendu
 // au plafond de l'enceinte).
 var TF_Z_BAS  = -(TF_EP_FOND + TF_EP_ISOLANT + TF_EP_SOURCE + 0.005);
-var TF_Z_HAUT = TF_H_CYL + TF_EP_PISTON + TF_H_TIGE + TF_EP_PLATEAU + TF_H_TIGE_HAUT + 0.072;
+// Haut de la tige du piston en butée haute ; le vérin et le plafond de
+// l'enceinte se placent au-dessus
+var TF_Z_TIGE_MAX = TF_H_CYL + TF_EP_PISTON + TF_H_TIGE + TF_EP_PLATEAU + TF_H_TIGE_HAUT;
+var TF_Z_HAUT = TF_Z_TIGE_MAX + 0.072;
 
 // ── Options d'affichage (section Options du panneau) ──
 var tfAff = {
@@ -118,7 +121,7 @@ function _tfDoResize() {
   var larg = Math.min(TF_LARG_MAX * hCyl, (_tfCw - 2 * marge - 75 - profil) / 1.46);
   larg = Math.max(40, larg);
   _tfParoi = Math.max(4, Math.round(larg * 0.035));
-  var cote = 0.16 * larg + 2 * _tfParoi;           // paroi + marge
+  var cote = _tfCote(larg);
   var libre = _tfCw - 2 * marge - (larg + 2 * cote + 75 + profil);
   _tfX1 = marge + Math.max(0, libre) / 2 + 60 + cote;
   _tfX2 = _tfX1 + larg;
@@ -224,8 +227,12 @@ var TF_COUL_SOURCE = { neutre: [196, 188, 176], chaud: [206, 64, 36], froid: [52
 // ── Enceinte : cloche scellée sur le haut du cylindre,
 //    reliée à un manomètre. Son air, comme celui qui surmonte le piston, est
 //    teinté d'autant plus que P_air est forte. ──
+// Largeur de chaque côté du cylindre jusqu'à la cloche : paroi, marge des
+// graduations, paroi
+function _tfCote(larg) { return 0.16 * larg + 2 * _tfParoi; }
+
 function _tfClocheX() {
-  var cote = 0.16 * (_tfX2 - _tfX1) + 2 * _tfParoi;
+  var cote = _tfCote(_tfX2 - _tfX1);
   return [_tfX1 - cote - 3, _tfX2 + cote + 3];
 }
 
@@ -251,10 +258,7 @@ function _tfDessinerEnceinte() {
   c.lineWidth = 2;
   _tfRectArrondiOuvert(xs[0], yH, xs[1] - xs[0], yB - yH, Math.min(18, (xs[1] - xs[0]) * 0.08));
   c.stroke();
-  c.fillStyle = '#4a5a68';
-  var hc = Math.max(4, p * 0.8);
-  c.fillRect(xs[0] - 2, yB - hc / 2, _tfX1 - p - xs[0] + 2, hc);
-  c.fillRect(_tfX2 + p, yB - hc / 2, xs[1] - _tfX2 - p + 2, hc);
+  _tfCollerette(xs, yB);
 
   var police = Math.max(10, Math.min(14, Math.round(_tfEch * 0.02)));
   if (tf.Pair < 500) {
@@ -305,6 +309,14 @@ function _tfDessinerEnceinte() {
   c.fillText(Math.round(tf.Pair / 1000) + ' kPa', xM, yM + R * 0.55);
 }
 
+// Collerette qui scelle la cloche ou le portique sur le haut du cylindre
+function _tfCollerette(xs, yB) {
+  var c = tfCtx, p = _tfParoi, hc = Math.max(4, p * 0.8);
+  c.fillStyle = '#4a5a68';
+  c.fillRect(xs[0] - 2, yB - hc / 2, _tfX1 - p - xs[0] + 2, hc);
+  c.fillRect(_tfX2 + p, yB - hc / 2, xs[1] - _tfX2 - p + 2, hc);
+}
+
 // Montage à masses : pas d'enceinte. Un portique métallique porte le vérin
 // au-dessus du cylindre, à l'air libre (1 atm)
 function _tfDessinerPortique(xs, yH, yB) {
@@ -315,10 +327,7 @@ function _tfDessinerPortique(xs, yH, yB) {
   c.fillRect(xs[1] - e, yH, e, yB - yH);
   c.fillRect(xs[0], yH, xs[1] - xs[0], e);
   _tfHachures(xs[0], yH, xs[1] - xs[0], e, 'rgba(44,62,80,0.45)', 6);
-  var hc = Math.max(4, p * 0.8);
-  c.fillStyle = '#4a5a68';
-  c.fillRect(xs[0] - 2, yB - hc / 2, _tfX1 - p - xs[0] + 2, hc);
-  c.fillRect(_tfX2 + p, yB - hc / 2, xs[1] - _tfX2 - p + 2, hc);
+  _tfCollerette(xs, yB);
   var police = Math.max(10, Math.min(14, Math.round(_tfEch * 0.02)));
   c.font = _tfPolice('italic', police);
   c.fillStyle = '#4a6a88';
@@ -578,15 +587,20 @@ function _tfDessinerCorpsPiston(zP) {
 // Corps suspendu au plafond de l'enceinte. Piston tenu : sa tige descend et
 // sa pince, fermée, saisit le haut de la tige du piston ; libre : tige
 // rétractée, pince ouverte. Corps teinté pendant un mouvement.
-var TF_Z_VERIN_BAS = TF_H_CYL + TF_EP_PISTON + TF_H_TIGE + TF_EP_PLATEAU + TF_H_TIGE_HAUT + 0.022;
+var TF_Z_VERIN_BAS = TF_Z_TIGE_MAX + 0.022;
 var TF_H_PINCE     = 0.014;
+
+// Bâti du vérin sous le plafond de l'enceinte : haut et hauteur (px)
+function _tfBati() {
+  var y = _tfY(TF_Z_HAUT) + 2;
+  return { y: y, h: Math.max(5, (_tfY(TF_Z_VERIN_BAS) - y) * 0.16) };
+}
 
 function _tfDessinerVerin(zP) {
   var c = tfCtx;
   var w = _tfX2 - _tfX1, cx = (_tfX1 + _tfX2) / 2;
-  var yBati = _tfY(TF_Z_HAUT) + 2;
+  var B = _tfBati(), yBati = B.y, hBati = B.h;
   var yCorpsB = _tfY(TF_Z_VERIN_BAS);
-  var hBati = Math.max(5, (yCorpsB - yBati) * 0.16);
 
   // Tige du vérin, jusqu'à la pince
   var zPince = tf.tenu ? _tfZHautTige(zP) - TF_H_PINCE * 0.7 : TF_Z_VERIN_BAS - TF_H_PINCE - 0.004;
@@ -671,11 +685,18 @@ function _tfDessinerVisee() {
 var TF_COUL_FOND = { neutre: [236, 240, 242], chaud: [238, 128, 88], froid: [96, 150, 214] };
 var TF_COUL_MOL  = { neutre: [74, 98, 124],   chaud: [200, 52, 28],  froid: [24, 88, 196] };
 
-function _tfMelangeT(T, pal, intensite) {
-  var d = (T - TF_T0) / 150;
+// Écart à T0 ramené à [−1, 1] en racine (teinte plus vive près de T0) ;
+// ±1 au-delà de TF_ECART_COUL_T
+var TF_ECART_COUL_T = 150;   // K
+function _tfEcartCoulT(T) {
+  var d = (T - TF_T0) / TF_ECART_COUL_T;
   if (d > 1) d = 1; else if (d < -1) d = -1;
-  var f = Math.sqrt(Math.abs(d)) * intensite;
-  var n = pal.neutre, cible = d > 0 ? pal.chaud : pal.froid;
+  return (d < 0 ? -1 : 1) * Math.sqrt(Math.abs(d));
+}
+
+function _tfMelangeT(T, pal, intensite) {
+  var s = _tfEcartCoulT(T), f = Math.abs(s) * intensite;
+  var n = pal.neutre, cible = s > 0 ? pal.chaud : pal.froid;
   return 'rgb(' + Math.round(n[0] + (cible[0] - n[0]) * f) + ','
                 + Math.round(n[1] + (cible[1] - n[1]) * f) + ','
                 + Math.round(n[2] + (cible[2] - n[2]) * f) + ')';
@@ -708,11 +729,7 @@ function _tfDessinerMolecules() {
   }
   for (k = 0; k < tfMol.length; k++) {
     n = TF_MOL_NUANCES;
-    if (tfAff.couleurT) {
-      var d = (tfMolT(tfMol[k]) - TF_T0) / 150;
-      if (d > 1) d = 1; else if (d < -1) d = -1;
-      n += Math.round((d < 0 ? -1 : 1) * Math.sqrt(Math.abs(d)) * TF_MOL_NUANCES);
-    }
+    if (tfAff.couleurT) n += Math.round(_tfEcartCoulT(tfMolT(tfMol[k])) * TF_MOL_NUANCES);
     _tfMolParNuance[n].push(tfMol[k]);
   }
 
@@ -727,7 +744,7 @@ function _tfDessinerMolecules() {
     if (tfAff.couleurT) {
       // Température qui redonne exactement cette nuance
       var f = (n - TF_MOL_NUANCES) / TF_MOL_NUANCES;
-      c.fillStyle = _tfMelangeT(TF_T0 + (f < 0 ? -1 : 1) * f * f * 150, TF_COUL_MOL, 1);
+      c.fillStyle = _tfMelangeT(TF_T0 + (f < 0 ? -1 : 1) * f * f * TF_ECART_COUL_T, TF_COUL_MOL, 1);
     } else {
       c.fillStyle = '#2a6aaa';
     }
@@ -953,8 +970,8 @@ function _tfDessinerChrono() {
   // (qui le surplombe en partie)
   var g = Math.max(8, Math.round(w * 0.03));
   var x0 = Math.round(cx + 0.21 * w + g) + 0.5, x1 = Math.round(xs[1] - 1 - g) - 0.5;
-  var yBati = _tfY(TF_Z_HAUT) + 2;
-  var y0 = Math.round(yBati + Math.max(5, (_tfY(TF_Z_VERIN_BAS) - yBati) * 0.16) + g) + 0.5;
+  var B = _tfBati();
+  var y0 = Math.round(B.y + B.h + g) + 0.5;
   var pad = 6, dispo = x1 - x0 - 2 * pad;
   if (dispo < 40) return;
   var police = TF_POLICE;
@@ -1037,7 +1054,7 @@ function _tfDessinerChrono() {
 
 // Marge entre la paroi et les graduations (px), de part et d'autre du
 // cylindre, sous l'enceinte
-function _tfMargeCote() { return (_tfX2 - _tfX1) * 0.16 + _tfParoi; }
+function _tfMargeCote() { return _tfCote(_tfX2 - _tfX1) - _tfParoi; }
 
 function _tfHachures(x, y, w, h, couleur, pas) {
   var c = tfCtx;
@@ -1071,7 +1088,5 @@ function _tfRectArrondi(x, y, w, h, r) {
   c.closePath();
 }
 
+// Zone de la scène (#tf-sim-area) : observée par tfGraphInit
 window.addEventListener('resize', tfResize);
-if (typeof ResizeObserver === 'function') {
-  new ResizeObserver(tfResize).observe(tfCanvas.parentElement);
-}
