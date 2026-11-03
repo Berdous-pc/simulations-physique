@@ -8,7 +8,7 @@
 
 - **Auteur** : Professeur de physique-chimie au lycée
 - **Usage** : Projection vidéoprojecteur en classe + utilisation élèves sur PC personnel
-- **Public** : Élèves lycée (Seconde, Première, Terminale)
+- **Public** : Élèves lycée (Seconde, Première, Terminale) ; une page de niveau CPGE (onglet Transformations de `pression/`)
 - **Env. technique** : Windows 11, Chrome/Firefox, Anaconda/Spyder pour Python
 
 ---
@@ -602,7 +602,7 @@ Toute page **HTML autonome** destinée à être publiée (page d'accueil `index.
 | `reaction/` | Réactions chimiques — stœchiométrie & réactif limitant | Seconde/Première | **Arborescence** | Mode Équilibrage + Mode Réactif limitant, modèles moléculaires 2D animés, mode test avec score, découpée en `css/style.css` + `js/data.js` + `js/sim.js` + `js/ui.js` + `index.html` |
 | `cinetique/` | Cinétique chimique — modèle des chocs efficaces A + B → C + D | Terminale | **Arborescence** | Mouvement moléculaire, réaction au contact, suivi en temps réel du nombre de molécules, mode 2 simulations comparées |
 | `titrage/` | Titrage colorimétrique, pH-métrique, conductimétrique | Première/Terminale | **Arborescence** | Voir `titrage/ARCHITECTURE.md` |
-| `pression/` | Pression d'un gaz parfait — modèle cinétique | Terminale | **Arborescence** | `sim.js` + `recipient.js` + `ui.js` ; collisions élastiques 2D détectées en O(N) par **grille spatiale**, PV=nRT, chocs/s sur les 4 parois ; **piston déplaçable à la souris** (en plus des boutons), curseur de vitesse d'animation, volume affiché en litres, valeurs alignées à droite, bloc d'informations en deux tableaux, responsivité par **container queries**. Onglet **Transformations** (niveau CPGE) en construction par paliers selon `pression/PLAN_TRANSFORMATIONS.md` : gaz découpé en tranches (lagrangien 1D, célérité réelle), piston pesant, masse posée brutalement avec loquet, isolation du fond réglable, ralenti jusqu'à ×1/5000, « ? » quand P ou T ne sont pas définies, couleur selon T, sondes, profil de pression, vitesse du son réglable (réelle → 300 fois plus lente, front de compression visible), dissipation près du piston, molécules en vol libre confinées dans 10 bandes de gaz qui suivent la compression (vitesse ∝ √T) ; scripts préfixés `tf-` — voir `pression/ARCHITECTURE.md` |
+| `pression/` | Gaz parfait — modèle cinétique de la pression (onglet Pression) et transformations (onglet Transformations) | Terminale (Pression), CPGE (Transformations) | **Arborescence** | Onglet **Pression** : `sim.js` + `recipient.js` + `ui.js` ; collisions élastiques 2D détectées en O(N) par **grille spatiale**, PV=nRT, chocs/s sur les 4 parois ; **piston déplaçable à la souris** (en plus des boutons), curseur de vitesse d'animation, volume affiché en litres, bloc d'informations en deux tableaux, responsivité par **container queries**. Onglet **Transformations** (première page de niveau CPGE, terminé en novembre 2026 selon `pression/PLAN_TRANSFORMATIONS.md`) : gaz découpé en 80 tranches (lagrangien 1D, célérité réelle du son), piston tenu (vérin) ou libre, air de l'enceinte ou masses et sable, sources et paroi du fond (isolant, peu conductrice, conductrice), transformations brutales, en N pas ou réversibles, à la main ; cycles Aller-retour, Carnot, Stirling, Lenoir ; diagrammes P(V) et T(S), T, P, V(t), tableau gaz / extérieur, frise des étapes et Bilan (ΔU = W + Q, ΔS = S_e + S_c) ; ralenti jusqu'à ×1/5000, molécules pilotées par le modèle ; scripts préfixés `tf-` ; deep-linking `#pression` / `#transformations` — voir `pression/ARCHITECTURE.md` |
 | `champ_uniforme/` | Mécanique : vecteurs cinématiques — champ de pesanteur & champ électrique uniforme | Terminale | **Arborescence** | Référence d'architecture ; `sim.js` + `draw.js` + `ui.js` ; onglets Champ de pesanteur / Champ électrique, repères Orthonormé/Adapté, modes vue (Oxy, projections x/y), vecteurs vitesse/accélération, mode perpendiculaire (champ E), graphes d'énergie, deep-linking via `#champ-pesanteur` / `#champ-electrique` |
 | `cinematique/` | Mécanique : cinématique en 1 dimension — position, vitesse et accélération | Terminale | **Arborescence** | `sim.js` + `graph.js` + `piste.js` + `ui.js` ; page sans onglets. Course de 1 à 3 voitures à accélération constante (x₀, vₓ₀, aₓ réglables) sur une piste vue du dessus (longueur réglable, arrêt après la ligne) ; graphes x(t), vₓ(t), aₓ(t) cochables (un, plusieurs ou aucun) tracés dans un seul canevas découpé en cases, qui s'écrivent pendant la course ; avec x(t) seul, chaque voiture est tenue à la hauteur de son point de courbe (géométrie fixe `geoPiste`) ; tangente au point courant pendant l'animation, tangentes figées au clic, lecture des coordonnées au survol, étiquettes anti-chevauchement ; commandes Lancer/Pause, RAZ, vitesse et rembobinage maintenu comme `derivee/` — voir `cinematique/ARCHITECTURE.md` |
 | `ondes/` | Propagation d'ondes — corde, onde sonore (tube), ondes de surface | Première/Terminale | **Arborescence** | Référence d'architecture ; `sim.js` + `tube.js` + `graph.js` + `ui.js` ; onglets Corde/Son/Vagues, sélection de particules par proximité (Ctrl/Maj+clic), mode pression colorée, graphes ΔP(x)/ΔP(t) avec zoom/pan/tangente, deep-linking via `#corde` / `#son` / `#vagues` — voir `ondes/ARCHITECTURE.md` |
@@ -650,7 +650,7 @@ Structure d'une carte :
 **Attributs `data-*`** sur chaque `.card` pour le filtrage JS :
 - `data-discipline` : `"physique"` ou `"chimie"`
 - `data-theme` : `"electricite"` | `"optique"` | `"radioactivite"` | `"transformations-chimiques"` | `"dosages"` | `"solutions-aqueuses"` | `"thermodynamique"` | `"ondes"` | `"mecanique"` | `"constitution-matiere"`
-- `data-levels` : niveaux séparés par espace, ex: `"seconde premiere"`
+- `data-levels` : niveaux séparés par espace, ex: `"seconde premiere"` (valeurs : `seconde`, `premiere`, `terminale`, `cpge`)
 
 Chaque valeur `data-theme`/`data-value` est le libellé affiché mis en kebab-case (accents retirés) — pas de slug arbitraire déconnecté du texte visible.
 
@@ -659,7 +659,7 @@ Cinétique chimique et Équilibre chimique sont des **cartes** du thème `"trans
 ### Panel de filtres
 
 Trois groupes de checkboxes (toutes cochées par défaut) :
-- **Niveau** : Seconde, Première, Terminale
+- **Niveau** : Seconde, Première, Terminale, CPGE (badge `.level-cpge`, rose : fond `#f4dde8`, texte `#7a1a4a`)
 - **Discipline** : Physique, Chimie
 - **Thème** : Constitution de la matière (`data-value="constitution-matiere"`), Électricité, Optique, Radioactivité, Transformations chimiques (`data-value="transformations-chimiques"`), Dosages (`data-value="dosages"`), Solutions aqueuses (`data-value="solutions-aqueuses"`), Thermodynamique, Ondes, Mécanique
 
@@ -697,6 +697,7 @@ Stockées dans `assets/previews/` au format **`.jpg`** (converties depuis les sc
 | `titrage-principe.jpg` | Principe du titrage |
 | `titrage-titrage.jpg` | Titrage |
 | `pression.jpg` | Pression d'un gaz |
+| `pression-transformations.jpg` | Transformations d'un gaz parfait (cycle de Carnot choisi ; cadrage sur les diagrammes et la scène, sans le panneau) |
 | `mecanique_pesanteur.jpg` | Champ de pesanteur |
 | `champ_electrique.jpg` | Champ électrique |
 | `onde_corde.jpg` | Onde dans une corde |

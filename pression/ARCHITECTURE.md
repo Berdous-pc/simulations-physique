@@ -1,4 +1,6 @@
-# Architecture — Simulation Pression d'un gaz parfait
+# Architecture — Simulation Gaz parfait (onglets Pression et Transformations)
+
+Titre visible : « Simulation — Gaz parfait : pression et transformations ». Deux cartes sur l'accueil : « Pression d'un gaz » (Terminale, `pression/`) et « Transformations d'un gaz parfait » (CPGE, `pression/#transformations`, aperçu `assets/previews/pression-transformations.jpg`).
 
 ## Arborescence
 

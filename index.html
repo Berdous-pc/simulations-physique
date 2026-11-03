@@ -10,7 +10,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="author" content="Mathieu Berdous">
   <meta name="copyright" content="Mathieu Berdous — CC BY-NC 4.0">
-  <meta name="description" content="Simulations interactives de physique-chimie pour le lycée (2de, 1re, Terminale) : titrage, réactions chimiques, dissolution, mécanique, ondes, diffraction, interférences, optique, lois de Kepler.">
+  <meta name="description" content="Simulations interactives de physique-chimie pour le lycée (2de, 1re, Terminale) et la CPGE : titrage, réactions chimiques, dissolution, mécanique, ondes, diffraction, interférences, optique, lois de Kepler, thermodynamique du gaz parfait.">
   <link rel="canonical" href="https://berdouspc.com/">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>⚛️</text></svg>">
   <title>Simulations Physique-Chimie — Lycée</title>
@@ -136,6 +136,7 @@
     .filter-badge.level-terminale { background: #d8e8f8; color: #1a4a7a; }
     .filter-badge.level-premiere  { background: #d8f0e4; color: #1a5a30; }
     .filter-badge.level-seconde   { background: #eee8d8; color: #5a4a18; }
+    .filter-badge.level-cpge      { background: #f4dde8; color: #7a1a4a; }
 
     /* Bouton réinitialiser */
     #btn-reset-filters {
@@ -254,6 +255,7 @@
     .level-terminale { background: #d8e8f8; color: #1a4a7a; }
     .level-premiere  { background: #d8f0e4; color: #1a5a30; }
     .level-seconde   { background: #eee8d8; color: #5a4a18; }
+    .level-cpge      { background: #f4dde8; color: #7a1a4a; }
 
     .card-title {
       font-size: clamp(14px, 1.5vw, 18px);
@@ -455,6 +457,10 @@
         <label class="filter-label">
           <input type="checkbox" data-filter="level" data-value="terminale">
           <span class="filter-badge level-terminale">Terminale</span>
+        </label>
+        <label class="filter-label">
+          <input type="checkbox" data-filter="level" data-value="cpge">
+          <span class="filter-badge level-cpge">CPGE</span>
         </label>
       </div>
 
@@ -1095,6 +1101,23 @@
           <div class="card-preview"><img src="assets/previews/pression.jpg" alt="Aperçu simulation pression gaz parfait" width="800" height="559" loading="lazy"></div>
           <div class="card-desc">
             Modélisation d'un gaz parfait : visualisation microscopique des chocs moléculaires. Influence de T, n et V sur la pression.
+          </div>
+        </a>
+
+        <!-- Thermodynamique — Transformations d'un gaz parfait ─── -->
+        <a class="card theme-physique"
+           href="pression/#transformations"
+           data-discipline="physique"
+           data-theme="thermodynamique"
+           data-levels="cpge">
+          <div class="card-meta">
+            <span class="card-theme theme-physique">Thermodynamique</span>
+            <span class="card-level level-cpge">CPGE</span>
+          </div>
+          <div class="card-title">Transformations d'un gaz parfait</div>
+          <div class="card-preview"><img src="assets/previews/pression-transformations.jpg" alt="Aperçu transformations d'un gaz parfait : cycle de Carnot dans les diagrammes de Clapeyron et entropique" width="800" height="552" loading="lazy"></div>
+          <div class="card-desc">
+            Gaz dans un cylindre à piston : transformations brutales, en N pas ou réversibles, cycles de Carnot, Stirling et Lenoir. Diagrammes P(V) et T(S), bilans d'énergie et d'entropie créée.
           </div>
         </a>
 
