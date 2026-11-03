@@ -795,6 +795,7 @@ function _tfOuvrirEtape(desc) {
   tfEtapeNouvelle(desc);
   tfGraphDepartEtape();
   tfGraphDureeAttendue(_tfDureeAction(null, 0));
+  tfProfilsRepartir();
 }
 
 // Action lancée : l'axe des temps des graphes prend sa durée attendue (quel
@@ -936,6 +937,7 @@ function tfReinitialiser() {
   tfMolInit();
   tfEtapesEffacer();
   tfGraphEffacer();
+  tfProfilsRepartir();
   tfCyclesRaz(0);
   _tfMajBoutons();
   _tfMajDepart(true);

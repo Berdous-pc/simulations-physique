@@ -781,16 +781,25 @@ function _tfVirgule(x, d) { return _tfFixe(x, d).replace('.', ','); }
 // en K) : les écarts d'une compression rapide se lisent tels quels. Échelle
 // amplifiée en option (case sous les profils), P(z) − P̄ en Pa, T(z) − T̄
 // en K, pour voir les très petits écarts de la masse posée. Échelle ronde
-// (1, 2, 5 × 10ⁿ), agrandie aussitôt, mais resserrée seulement après ~1 s
-// de petites valeurs : pas de va-et-vient. Couleurs des graphes au cours
-// du temps (tf-graph.js).
+// (1, 2, 5 × 10ⁿ), agrandie aussitôt, resserrée seulement au départ de
+// l'étape suivante : resserrée en cours de route (ou au retour à
+// l'équilibre), elle faisait sauter la courbe et masquait l'amortissement. Couleurs des graphes au cours du temps
+// (tf-graph.js).
 var TF_PROF = {
   P: { min: 1,    coul: '#2a6aaa', titre: 'P (kPa)', titreAmp: 'P − P̄ (Pa)', unite: 1000 },
   T: { min: 0.01, coul: '#c0503a', titre: 'T (K)',   titreAmp: 'T − T̄ (K)',  unite: 1 }
 };
 // min : échelle la plus fine (en deçà, ce n'est que du bruit numérique) ;
 // unite : diviseur de l'échelle absolue pour ses graduations
-var _tfProfEtat = { P: { ech: 1, petit: 0, amp: null }, T: { ech: 1, petit: 0, amp: null } };
+// ech : échelle ; amp : amplification à l'image précédente (null :
+// échelle à réajuster)
+var _tfProfEtat = { P: { ech: 1, amp: null }, T: { ech: 1, amp: null } };
+
+// Départ d'une étape (tf-ui.js, _tfOuvrirEtape) ou réinitialisation :
+// échelles des profils réajustées à l'image suivante
+function tfProfilsRepartir() {
+  _tfProfEtat.P.amp = _tfProfEtat.T.amp = null;
+}
 
 // Case « Profils amplifiés », sous les cadres des profils, sous leurs
 // graduations
@@ -832,21 +841,15 @@ function _tfDessinerProfil(p) {
     // Valeur à loger : plus grand écart à la moyenne, ou plus grande valeur
     val = Math.max(val, amp ? Math.abs(v[j] - moy) : v[j]);
   }
-  if (etat.amp !== amp) {                 // changement d'échelle : repartir
-    etat.amp = amp;
+  // Échelle ajustée au départ d'une étape et au changement d'échelle ;
+  // pendant l'étape, elle ne fait que grandir : le retour à l'équilibre se
+  // lit comme une courbe qui s'aplatit dans un cadre fixe
+  if (etat.amp !== amp) {
     etat.ech = Math.max(def.min, _tfEchelleRonde(val));
-  }
-  if (val > etat.ech) {
+  } else if (val > etat.ech) {
     etat.ech = _tfEchelleRonde(val);
-    etat.petit = 0;
-  } else if (val < etat.ech / (amp ? 10 : 2.5) && etat.ech > def.min) {
-    if (++etat.petit > 60) {
-      etat.ech = Math.max(def.min, _tfEchelleRonde(val));
-      etat.petit = 0;
-    }
-  } else {
-    etat.petit = 0;
   }
+  etat.amp = amp;
   var ech = etat.ech;
 
   // Cadre, et axe du zéro (amplifié) ou de la moyenne (absolu)
