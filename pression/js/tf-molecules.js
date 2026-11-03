@@ -44,10 +44,7 @@
 //  ralenti, pas une échelle : proportionnelle au cran, l'agitation figerait
 //  le gaz dès ×1/100 ; à l'échelle réelle, elle ne changerait qu'à ×1/5000.
 //  Au-dessus de ×1, elle ne s'accélère pas (illisible).
-//  Écarts exagérés (option) : v ∝ (T/T₀)³ au lieu de √(T/T₀), entre ×0,12
-//  et ×5 ; une compression adiabatique de 30 à 15 cm ne change la vraie
-//  vitesse que de 15 %, invisible (×1,5 avec l'exposant 1,5 ne se voyait
-//  toujours pas), ici ×2,3.
+//  Elle suit √(T/T₀), comme la vitesse quadratique moyenne.
 //  Versions abandonnées : vols libres d'une paroi à l'autre (tout se
 //  mélangeait), libre parcours court (onde noyée dans le bruit), molécules
 //  ancrées qui frémissaient (~1 px : un gaz figé, agitation invisible),
@@ -72,9 +69,6 @@ var TF_MOL_BANDE_PX_MIN = 24;
 // Vitesse affichée à T₀ (m/s, échelle verticale du dessin) : une bande au
 // repos (~3 cm) est traversée en ~0,25 s.
 var TF_MOL_VITESSE     = 0.12;
-var TF_MOL_EXAGERE     = 3;                     // exposant de T/T₀ (écarts exagérés)
-var TF_MOL_EXAGERE_MIN = 0.12;                  // facteur de vitesse au moins (gaz froid)
-var TF_MOL_EXAGERE_MAX = 5;                     // facteur de vitesse au plus
 var TF_MOL_RAYON       = 0.0055;                // fraction de la largeur dessinée
 
 // Facteur d'agitation selon la vitesse du temps : un par cran lent, de ×1
@@ -95,18 +89,10 @@ function _tfMolFacteurTemps(v) {
   return 1;
 }
 
-// Éclats de chocs sur les parois, le fond et le piston (option) : durée de
-// vie en s d'affichage, nombre maximal à l'écran
-var TF_CHOC_VIE = 0.15;
-var TF_CHOC_MAX = 400;
-
 var tfMol = [];   // { b, zr, x, ux, uz } : bande, coordonnée de masse dans
                   // la bande (0 → 1), abscisse (fraction de la largeur),
                   // direction unitaire du vol
-var tfChocs = []; // { x, z, cote, age } : point d'impact (fraction de la
-                  // largeur, m), paroi touchée ('g', 'd', 'fond', 'piston')
 var tfMolNb = TF_BANDES;   // nombre de bandes des molécules
-var tfMolExagere = true;   // écarts d'agitation exagérés
 
 // Limites d'une bande de molécules (m)
 function _tfMolTr() { return TF_N / tfMolNb; }
@@ -153,7 +139,6 @@ function tfMolT(m) {
 // Même nombre de molécules par bande, positions et directions au hasard
 function tfMolInit() {
   tfMol = [];
-  tfChocs = [];
   var parBande = TF_MOL_TOTAL / tfMolNb;
   for (var b = 0; b < tfMolNb; b++) {
     for (var k = 0; k < parBande; k++) {
@@ -194,39 +179,29 @@ function _tfMolRegrouper(nb) {
   }
 }
 
-function _tfChoc(x, z, cote) {
-  if (tfChocs.length < TF_CHOC_MAX) tfChocs.push({ x: x, z: z, cote: cote, age: 0 });
-}
-
 // Avance les molécules. dtReel : durée réelle de l'image (s). largeur :
 // largeur intérieure dessinée, en m d'échelle verticale (le cylindre est
 // élargi sur le dessin : c'est la largeur VUE qui compte pour que
 // l'agitation paraisse isotrope). echelle : px par m, pour la hauteur des
-// bandes à l'écran. chocs : relever les impacts sur les parois.
-function tfMolAvancer(dtReel, largeur, rayonFrac, echelle, chocs) {
+// bandes à l'écran.
+function tfMolAvancer(dtReel, largeur, rayonFrac, echelle) {
   if (dtReel <= 0 || largeur <= 0) return;
   var nb = _tfMolNbVise(tf.z[TF_N] * echelle, rayonFrac * largeur * echelle);
   if (nb !== tfMolNb) _tfMolRegrouper(nb);
 
   var xMin = rayonFrac, xMax = 1 - rayonFrac;
-  // Distance parcourue à T : d = k·(T/T₀)^α
+  // Distance parcourue à T : d = k·√(T/T₀)
   var k = TF_MOL_VITESSE * dtReel * _tfMolFacteurTemps(tf.vitesse);
-  var alpha = tfMolExagere ? TF_MOL_EXAGERE : 0.5;
   var Tref = tf.T0;
 
-  for (var i = 0; i < tfChocs.length; i++) tfChocs[i].age += dtReel;
-  while (tfChocs.length && tfChocs[0].age > TF_CHOC_VIE) tfChocs.shift();
-
-  var bHaut = tfMolNb - 1;
-  for (i = 0; i < tfMol.length; i++) {
+  for (var i = 0; i < tfMol.length; i++) {
     var m = tfMol[i];
-    var f = Math.pow(Math.max(tfMolT(m), 1) / Tref, alpha);
-    var d = k * Math.min(TF_MOL_EXAGERE_MAX, Math.max(TF_MOL_EXAGERE_MIN, f));
+    var d = k * Math.sqrt(Math.max(tfMolT(m), 1) / Tref);
 
     // Horizontal : rebonds sur les parois
     m.x += m.ux * d / largeur;
-    if (m.x < xMin) { m.x = 2 * xMin - m.x; m.ux = Math.abs(m.ux);  if (chocs) _tfChoc(xMin, tfMolZ(m), 'g'); }
-    if (m.x > xMax) { m.x = 2 * xMax - m.x; m.ux = -Math.abs(m.ux); if (chocs) _tfChoc(xMax, tfMolZ(m), 'd'); }
+    if (m.x < xMin) { m.x = 2 * xMin - m.x; m.ux = Math.abs(m.ux); }
+    if (m.x > xMax) { m.x = 2 * xMax - m.x; m.ux = -Math.abs(m.ux); }
     if (m.x < xMin || m.x > xMax) m.x = 0.5;   // pas aberrant
 
     // Vertical : rebonds sur les limites de la bande (fond et piston pour
@@ -236,14 +211,8 @@ function tfMolAvancer(dtReel, largeur, rayonFrac, echelle, chocs) {
     m.zr += m.uz * d / h;
     var garde = 0;
     while ((m.zr < 0 || m.zr > 1) && garde++ < 8) {
-      if (m.zr > 1) {
-        m.zr = 2 - m.zr; m.uz = -Math.abs(m.uz);
-        if (chocs && m.b === bHaut) _tfChoc(m.x, tf.z[TF_N], 'piston');
-      }
-      if (m.zr < 0) {
-        m.zr = -m.zr; m.uz = Math.abs(m.uz);
-        if (chocs && m.b === 0) _tfChoc(m.x, 0, 'fond');
-      }
+      if (m.zr > 1) { m.zr = 2 - m.zr; m.uz = -Math.abs(m.uz); }
+      if (m.zr < 0) { m.zr = -m.zr; m.uz = Math.abs(m.uz); }
     }
     if (m.zr < 0 || m.zr > 1) m.zr = 0.5;
   }

@@ -1812,12 +1812,11 @@ function _tfMajResume() {
     + Math.round(tf.T0) + ' K';
 }
 
-// ── Section Affichage ──
+// ── Section Options ──
 function tfOnAffichage(cle, coche) {
   tfAff[cle] = coche;
-  if (cle === 'exagere') tfMolExagere = coche;
-  // Le profil de pression prend de la place à droite du cylindre
-  if (cle === 'profil') _tfDoResize();
+  // Les profils prennent de la place à droite du cylindre
+  if (cle === 'profil' || cle === 'profilT') _tfDoResize();
   tf.needsRedraw = true;
   tfGraph.sale = true;   // couleur des points des tranches (diagramme PV)
 }
@@ -1847,7 +1846,7 @@ function _tfLoop(ts) {
     // crans (tf-molecules.js)
     if (tfAff.molecules) {
       tfMolAvancer(dtReel / 1000, tfLargeurDessinee(),
-                   tfRayonMolecule() / (_tfX2 - _tfX1), _tfEch, tfAff.chocs);
+                   tfRayonMolecule() / (_tfX2 - _tfX1), _tfEch);
     }
   }
 

@@ -81,6 +81,22 @@ main {
 }
 
 #recipient-canvas,
+/* Case « Profil amplifié », posée sous les profils dessinés dans le canvas
+   (position, largeur et taille de police fixées par tf-scene.js) */
+.tf-prof-amp {
+  position: absolute;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0.35em;
+  color: #2c3e50;
+  line-height: 1.2;
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+}
+.tf-prof-amp input { margin: 0.1em 0 0; flex: none; cursor: pointer; }
+
 #tf-canvas {
   display: block;
   width: 100%;

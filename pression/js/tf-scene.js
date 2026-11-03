@@ -43,15 +43,14 @@ function _tfHauteurMasse(kg) { return 0.022 + kg * 0.0008; }
 var TF_Z_BAS  = -(TF_EP_FOND + TF_EP_ISOLANT + TF_EP_SOURCE + 0.005);
 var TF_Z_HAUT = TF_H_CYL + TF_EP_PISTON + TF_H_TIGE + TF_EP_PLATEAU + TF_H_TIGE_HAUT + 0.072;
 
-// ── Options d'affichage (section Affichage du panneau) ──
+// ── Options d'affichage (section Options du panneau) ──
 var tfAff = {
   molecules : true,    // molécules pilotées par le modèle
-  exagere   : true,    // écarts d'agitation exagérés (tfMolExagere)
-  chocs     : false,   // éclats des chocs de molécules sur les parois
   couleurT  : true,    // gaz et molécules colorés selon la température
   sondes    : false,   // trois sondes T et P sur le flanc du cylindre
   profil    : false,   // profil de pression P(z) à droite du cylindre
-  amplifie  : false    // profil en écart à la moyenne, P(z) − P̄
+  profilT   : false,   // profil de température T(z), à droite du précédent
+  amplifie  : false    // profils en écart à la moyenne (case sous les profils)
 };
 
 // Repère de la hauteur visée (tf.hVisee), affiché quand l'action choisie
@@ -70,7 +69,7 @@ var _tfEch = 1;           // px par m
 var _tfYBas = 0;          // ordonnée px de z = TF_Z_BAS
 var _tfX1 = 0, _tfX2 = 0; // bords intérieurs du cylindre
 var _tfParoi = 6;         // épaisseur des parois (px)
-var _tfProfX1 = 0, _tfProfX2 = 0;   // cadre du profil de pression (px)
+var _tfProfils = [];      // profils affichés : { g: 'P' ou 'T', x1, x2 } (px)
 
 function _tfY(z) { return _tfYBas - (z - TF_Z_BAS) * _tfEch; }
 
@@ -102,9 +101,14 @@ function _tfDoResize() {
   // Largeur : la plus grande possible, dans la limite de TF_LARG_MAX. Il faut
   // loger de part et d'autre les parois et une marge (l'enceinte l'occupe)
   // (0,16·w + 2 parois ≈ 0,23·w chacune), plus à gauche les graduations
-  // (~60 px) et à droite ~15 px, et le profil de
-  // pression s'il est affiché.
-  var profil = tfAff.profil ? Math.max(110, Math.min(190, _tfCw * 0.24)) : 0;
+  // (~60 px) et à droite ~15 px, et les profils de
+  // pression et de température s'ils sont affichés.
+  var grandeurs = [];
+  if (tfAff.profil)  grandeurs.push('P');
+  if (tfAff.profilT) grandeurs.push('T');
+  var lProf = grandeurs.length === 2 ? Math.max(100, Math.min(170, _tfCw * 0.19))
+                                     : Math.max(110, Math.min(190, _tfCw * 0.24));
+  var profil = grandeurs.length * lProf;
   var hCyl = TF_H_CYL * _tfEch;
   var larg = Math.min(TF_LARG_MAX * hCyl, (_tfCw - 2 * marge - 75 - profil) / 1.46);
   larg = Math.max(40, larg);
@@ -113,8 +117,11 @@ function _tfDoResize() {
   var libre = _tfCw - 2 * marge - (larg + 2 * cote + 75 + profil);
   _tfX1 = marge + Math.max(0, libre) / 2 + 60 + cote;
   _tfX2 = _tfX1 + larg;
-  _tfProfX1 = _tfX2 + cote + 15 + 8;
-  _tfProfX2 = _tfProfX1 + profil - 8;
+  _tfProfils = grandeurs.map(function (g, i) {
+    var x1 = _tfX2 + cote + 15 + 8 + i * lProf;
+    return { g: g, x1: x1, x2: x1 + lProf - 8 };
+  });
+  _tfPlacerCaseAmplifie();
 
   // Redimensionner le canvas l'a effacé : redessiner tout de suite plutôt
   // qu'à l'image suivante (pas de clignotement, et rien d'effacé en pause).
@@ -137,7 +144,6 @@ function tfDessiner() {
   _tfDessinerFond();
   _tfDessinerGaz();
   if (tfAff.molecules) _tfDessinerMolecules();
-  if (tfAff.molecules && tfAff.chocs) _tfDessinerChocs();
   _tfDessinerAirEnceinte();
   _tfDessinerParois();
   _tfDessinerGraduations();
@@ -146,7 +152,7 @@ function tfDessiner() {
   _tfDessinerEnceinte();
   _tfDessinerButee();
   if (tfAff.sondes) _tfDessinerSondes();
-  if (tfAff.profil) _tfDessinerProfil();
+  for (var i = 0; i < _tfProfils.length; i++) _tfDessinerProfil(_tfProfils[i]);
   _tfDessinerChrono();
 }
 
@@ -732,34 +738,6 @@ function _tfDessinerMolecules() {
   c.restore();
 }
 
-// ── Éclats des chocs sur les parois, le fond et le piston (option) ──
-// Un court trait clair contre la paroi, qui s'efface en TF_CHOC_VIE : leur
-// fréquence suit la densité et l'agitation, donc la pression.
-function _tfDessinerChocs() {
-  if (!tfChocs.length) return;
-  var c = tfCtx, w = _tfX2 - _tfX1;
-  var l = Math.max(4, tfRayonMolecule() * 2.5);
-  c.lineCap = 'round';
-  c.lineWidth = 2;
-  for (var i = 0; i < tfChocs.length; i++) {
-    var s = tfChocs[i];
-    var a = 1 - s.age / TF_CHOC_VIE;
-    if (a <= 0) continue;
-    c.strokeStyle = 'rgba(255,190,40,' + (0.9 * a).toFixed(3) + ')';
-    c.beginPath();
-    if (s.cote === 'g' || s.cote === 'd') {
-      var x = s.cote === 'g' ? _tfX1 + 1 : _tfX2 - 1, y = _tfY(s.z);
-      c.moveTo(x, y - l / 2); c.lineTo(x, y + l / 2);
-    } else {
-      var yb = s.cote === 'piston' ? _tfY(tf.z[TF_N]) + 1 : _tfY(0) - 1;
-      var xb = _tfX1 + s.x * w;
-      c.moveTo(xb - l / 2, yb); c.lineTo(xb + l / 2, yb);
-    }
-    c.stroke();
-  }
-  c.lineCap = 'butt';
-}
-
 // ── Sondes : T et P de trois tranches, lues sur le flanc droit ──
 function _tfDessinerSondes() {
   var c = tfCtx;
@@ -798,45 +776,78 @@ function _tfFixe(x, d) {
 
 function _tfVirgule(x, d) { return _tfFixe(x, d).replace('.', ','); }
 
-// ── Profil de pression à droite du cylindre ──
-// Échelle absolue par défaut (axe de 0 à Pmax arrondi, en kPa) : les écarts
-// d'une compression rapide se lisent tels quels. Échelle amplifiée en
-// option, P(z) − P̄ en Pa, pour voir les très petits écarts de la masse
-// posée. Échelle ronde (1, 2, 5 × 10ⁿ), agrandie aussitôt, mais resserrée
-// seulement après ~1 s de petites valeurs : pas de va-et-vient.
-var _tfProfEch = 1, _tfProfPetit = 0, _tfProfAmplifie = null;
-var TF_PROF_ECH_MIN = 1;   // Pa : en deçà, ce n'est que du bruit numérique
+// ── Profils de pression et de température à droite du cylindre ──
+// Échelle absolue par défaut (axe de 0 à Pmax arrondi, en kPa ; de 0 à Tmax,
+// en K) : les écarts d'une compression rapide se lisent tels quels. Échelle
+// amplifiée en option (case sous les profils), P(z) − P̄ en Pa, T(z) − T̄
+// en K, pour voir les très petits écarts de la masse posée. Échelle ronde
+// (1, 2, 5 × 10ⁿ), agrandie aussitôt, mais resserrée seulement après ~1 s
+// de petites valeurs : pas de va-et-vient. Couleurs des graphes au cours
+// du temps (tf-graph.js).
+var TF_PROF = {
+  P: { min: 1,    coul: '#2a6aaa', titre: 'P (kPa)', titreAmp: 'P − P̄ (Pa)', unite: 1000 },
+  T: { min: 0.01, coul: '#c0503a', titre: 'T (K)',   titreAmp: 'T − T̄ (K)',  unite: 1 }
+};
+// min : échelle la plus fine (en deçà, ce n'est que du bruit numérique) ;
+// unite : diviseur de l'échelle absolue pour ses graduations
+var _tfProfEtat = { P: { ech: 1, petit: 0, amp: null }, T: { ech: 1, petit: 0, amp: null } };
 
-function _tfDessinerProfil() {
-  var c = tfCtx;
-  var x1 = _tfProfX1, x2 = _tfProfX2;
+// Case « Profils amplifiés », sous les cadres des profils, sous leurs
+// graduations
+function _tfPlacerCaseAmplifie() {
+  var el = document.getElementById('tf-prof-amp');
+  if (!el) return;
+  var n = _tfProfils.length;
+  if (!n || _tfProfils[0].x2 - _tfProfils[0].x1 < 40) { el.style.display = 'none'; return; }
+  var x1 = _tfProfils[0].x1, x2 = _tfProfils[n - 1].x2;
+  var police = _tfPoliceProfil(_tfProfils[0]);
+  el.style.display = '';
+  el.style.left  = x1 + 'px';
+  el.style.width = (x2 - x1) + 'px';
+  el.style.top   = (_tfY(0) + police + 8) + 'px';
+  el.style.fontSize = police + 'px';
+  var txt = el.querySelector('span');
+  if (txt) txt.textContent = n === 2 ? 'Profils amplifiés (écart à la moyenne)'
+                                     : 'Profil amplifié (écart à la moyenne)';
+}
+
+function _tfPoliceProfil(p) {
+  return Math.max(10, Math.min(14, Math.round((p.x2 - p.x1) * 0.085)));
+}
+
+function _tfDessinerProfil(p) {
+  var c = tfCtx, g = p.g, def = TF_PROF[g], etat = _tfProfEtat[g];
+  var x1 = p.x1, x2 = p.x2;
   if (x2 - x1 < 40) return;
   var amp = tfAff.amplifie;
   var xc = (x1 + x2) / 2, demi = (x2 - x1) / 2 - 6;
   var x0 = x1 + 6, larg = x2 - x1 - 12;   // échelle absolue : axe de 0 à l'échelle
   var yH = _tfY(tf.z[TF_N]), yB = _tfY(0);
 
-  // Valeur à loger : plus grand écart à la moyenne (en volume), ou plus
-  // grande pression
-  var Pm = tfMesures().Pmoy, val = 0, j;
+  // Valeurs des tranches et moyenne (P en volume, T en masse)
+  var mes = tfMesures(), moy = g === 'P' ? mes.Pmoy : mes.Tmoy;
+  var v = [], val = 0, j;
   for (j = 0; j < TF_N; j++) {
-    val = Math.max(val, amp ? Math.abs(tf.P[j] - Pm) : tf.P[j]);
+    v[j] = g === 'P' ? tf.P[j] : tfTTranche(j);
+    // Valeur à loger : plus grand écart à la moyenne, ou plus grande valeur
+    val = Math.max(val, amp ? Math.abs(v[j] - moy) : v[j]);
   }
-  if (_tfProfAmplifie !== amp) {          // changement d'échelle : repartir
-    _tfProfAmplifie = amp;
-    _tfProfEch = Math.max(TF_PROF_ECH_MIN, _tfEchelleRonde(val));
+  if (etat.amp !== amp) {                 // changement d'échelle : repartir
+    etat.amp = amp;
+    etat.ech = Math.max(def.min, _tfEchelleRonde(val));
   }
-  if (val > _tfProfEch) {
-    _tfProfEch = _tfEchelleRonde(val);
-    _tfProfPetit = 0;
-  } else if (val < _tfProfEch / (amp ? 10 : 2.5) && _tfProfEch > TF_PROF_ECH_MIN) {
-    if (++_tfProfPetit > 60) {
-      _tfProfEch = Math.max(TF_PROF_ECH_MIN, _tfEchelleRonde(val));
-      _tfProfPetit = 0;
+  if (val > etat.ech) {
+    etat.ech = _tfEchelleRonde(val);
+    etat.petit = 0;
+  } else if (val < etat.ech / (amp ? 10 : 2.5) && etat.ech > def.min) {
+    if (++etat.petit > 60) {
+      etat.ech = Math.max(def.min, _tfEchelleRonde(val));
+      etat.petit = 0;
     }
   } else {
-    _tfProfPetit = 0;
+    etat.petit = 0;
   }
+  var ech = etat.ech;
 
   // Cadre, et axe du zéro (amplifié) ou de la moyenne (absolu)
   c.fillStyle = 'rgba(255,255,255,0.7)';
@@ -844,55 +855,57 @@ function _tfDessinerProfil() {
   c.strokeStyle = '#c8c0b4';
   c.lineWidth = 1;
   c.strokeRect(x1 + 0.5, yH + 0.5, x2 - x1 - 1, yB - yH - 1);
-  var xRef = amp ? xc : x0 + Pm / _tfProfEch * larg;
+  var xRef = amp ? xc : x0 + moy / ech * larg;
   c.strokeStyle = '#7a8a96';
   c.setLineDash([3, 3]);
   c.beginPath(); c.moveTo(xRef, yH); c.lineTo(xRef, yB); c.stroke();
   c.setLineDash([]);
 
   // Courbe, au centre de chaque tranche
-  c.strokeStyle = '#b04020';
+  c.strokeStyle = def.coul;
   c.lineWidth = 2;
   c.beginPath();
   for (j = 0; j < TF_N; j++) {
-    var x = amp ? xc + (tf.P[j] - Pm) / _tfProfEch * demi
-                : x0 + tf.P[j] / _tfProfEch * larg;
+    var x = amp ? xc + (v[j] - moy) / ech * demi
+                : x0 + v[j] / ech * larg;
     var y = _tfY((tf.z[j] + tf.z[j + 1]) / 2);
     if (j === 0) c.moveTo(x, y); else c.lineTo(x, y);
   }
   c.stroke();
 
   // Titre et graduations
-  var police = Math.max(10, Math.min(14, Math.round((x2 - x1) * 0.085)));
+  var police = _tfPoliceProfil(p);
   c.fillStyle = '#2c3e50';
   c.font = 'bold ' + police + 'px "Segoe UI", Arial, sans-serif';
   c.textAlign = 'center';
   c.textBaseline = 'bottom';
-  c.fillText(amp ? 'P − P̄ (Pa)' : 'P (kPa)', xc, yH - 4);
+  c.fillText(amp ? def.titreAmp : def.titre, xc, yH - 4);
   c.font = police + 'px "Segoe UI", Arial, sans-serif';
   c.fillStyle = '#5a6a78';
   c.textBaseline = 'top';
   if (amp) {
-    var lib = _tfFmtPa(_tfProfEch);
+    var lib = _tfFmtEchelle(ech);
     c.textAlign = 'left';   c.fillText('−' + lib, x1 + 2, yB + 3);
     c.textAlign = 'right';  c.fillText('+' + lib, x2 - 2, yB + 3);
     c.textAlign = 'center'; c.fillText('0', xc, yB + 3);
   } else {
     c.textAlign = 'left';   c.fillText('0', x0, yB + 3);
-    c.textAlign = 'right';  c.fillText(_tfFmtPa(_tfProfEch / 1000), x0 + larg, yB + 3);
+    c.textAlign = 'right';  c.fillText(_tfFmtEchelle(ech / def.unite), x0 + larg, yB + 3);
   }
 }
 
 // Plus petite valeur 1, 2 ou 5 × 10ⁿ supérieure ou égale à x
 function _tfEchelleRonde(x) {
-  if (x <= 0) return TF_PROF_ECH_MIN;
+  if (x <= 0) return 0;
   var p = Math.pow(10, Math.floor(Math.log(x) / Math.LN10));
   var f = x / p;
   return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p;
 }
 
-// Écriture d'une échelle en Pa avec espace des milliers : 5, 20, 1 000…
-function _tfFmtPa(x) {
+// Écriture d'une échelle ronde avec espace des milliers : 5, 20, 1 000… ;
+// sous 1, avec les décimales utiles : 0,5, 0,02…
+function _tfFmtEchelle(x) {
+  if (x < 1 && x > 0) return _tfVirgule(x, Math.ceil(-Math.log(x) / Math.LN10 - 1e-9));
   return String(Math.round(x)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 }
 

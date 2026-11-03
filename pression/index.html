@@ -264,6 +264,11 @@
 
     <div id="tf-sim-area">
       <canvas id="tf-canvas"></canvas>
+      <!-- Sous les profils de P et T, placée par tf-scene.js -->
+      <label class="tf-prof-amp" id="tf-prof-amp" style="display:none">
+        <input type="checkbox" id="tf-ck-amplifie" onchange="tfOnAffichage('amplifie', this.checked)">
+        <span>Profil amplifié (écart à la moyenne)</span>
+      </label>
     </div>
 
   </div>
@@ -706,20 +711,12 @@
 
         <div class="sep"></div>
 
-        <!-- ── Affichage ──────────────────────────── -->
+        <!-- ── Options ──────────────────────────── -->
         <div class="panel-section">
-          <div class="section-title" data-repliable>Affichage</div>
+          <div class="section-title" data-repliable>Options</div>
           <label class="check-row">
             <input type="checkbox" id="tf-ck-molecules" checked onchange="tfOnAffichage('molecules', this.checked)">
             Molécules
-          </label>
-          <label class="check-row">
-            <input type="checkbox" id="tf-ck-exagere" checked onchange="tfOnAffichage('exagere', this.checked)">
-            Écarts d’agitation exagérés
-          </label>
-          <label class="check-row">
-            <input type="checkbox" id="tf-ck-chocs" onchange="tfOnAffichage('chocs', this.checked)">
-            Chocs sur les parois
           </label>
           <label class="check-row">
             <input type="checkbox" id="tf-ck-couleurT" checked onchange="tfOnAffichage('couleurT', this.checked)">
@@ -734,8 +731,8 @@
             Profil de pression
           </label>
           <label class="check-row">
-            <input type="checkbox" id="tf-ck-amplifie" onchange="tfOnAffichage('amplifie', this.checked)">
-            Profil amplifié (écart à la moyenne)
+            <input type="checkbox" id="tf-ck-profilT" onchange="tfOnAffichage('profilT', this.checked)">
+            Profil de température
           </label>
         </div>
 
@@ -761,7 +758,7 @@
         <strong>Graphes</strong> : les boutons P = f(V), T = f(S), T, P, V = f(t) et Tableau affichent ou masquent chaque encart ; <em>Options ▾</em> ajoute les courbes de référence. Un point n'est placé que si le gaz est uniforme : hors équilibre, bande hachurée au cours du temps et segment pointillé sur les diagrammes. Glisser déplace la vue, la molette zoome, <em>Ajuster</em>, <em>Auto</em> et <em>Tout voir</em> recadrent ; les séparations se déplacent à la souris.<br>
         <strong>Tableau</strong> : le gaz face à l'extérieur, <strong>=</strong> (vert) ou <strong>≠</strong> (orange) ; <strong>?</strong> quand les tranches du gaz ne sont pas uniformes.<br>
         <strong>Vitesse</strong> : jusqu'à ×1/5000 pour suivre un front dans le gaz ; <em>Auto</em> fait durer chaque action quelques secondes à l'écran.<br>
-        <strong>Affichage</strong> : molécules, couleur selon la température (bleu plus froid que 20 °C, rouge plus chaud), sondes et profil de pression.<br>
+        <strong>Options</strong> : molécules, couleur selon la température (bleu plus froid que 20 °C, rouge plus chaud), sondes, profils de pression et de température ; la case sous les profils les amplifie (écart à la moyenne).<br>
         <strong>Modèle</strong> : P et T sont calculées tranche par tranche, les molécules ne font que les illustrer. Les échanges thermiques sont accélérés et le cylindre est élargi sur le dessin (section réelle : 20 cm²). Sous une masse posée, le piston bouge environ 170 fois plus lentement que le son ne traverse le gaz (rapport c/√(g·L)) : le gaz y reste uniforme.<br>
         <strong>Raccourcis</strong> : Espace = pause, R = réinitialiser.
       </div>
