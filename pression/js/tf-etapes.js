@@ -76,7 +76,7 @@ function _tfRestaurerInstantane(snap) {
   tf.verin.actif = false;
   tf.seq = null;
   for (var cle in tf.rampes) tf.rampes[cle].actif = false;
-  tf.qs = false;     // réessayé au premier pas
+  tf.qs = tf.osc = false;     // réessayé au premier pas
   tf.dtCfl = 1e-6;
   tf.limite = false;
   _tfMajAmortissement();

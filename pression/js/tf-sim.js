@@ -187,6 +187,9 @@ var tf = {
   },
   // Mode quasi statique (cf. tfAvancer) : pression uniforme, conduction seule
   qs     : false,
+  // Variante du mode quasi statique : gaz uniforme, piston libre qui oscille
+  // encore (_tfSousPasOsc)
+  osc    : false,
   _PairQS: null,         // P_air au sous-pas quasi statique précédent
   // Recalage du bilan d'énergie aux changements discontinus de commande
   // (tenir, libérer, poser une masse), pour que tfEnergieTotale reste continue
@@ -427,7 +430,7 @@ function tfReset() {
   if (tf.paroi !== 'isolant' && Math.abs(tf.Text - tf.T0) > 0.01) tfSetParoi('isolant');
   for (var cle in tf.rampes) tf.rampes[cle].actif = false;
   tf.eDecal = 0;
-  tf.qs     = false;
+  tf.qs     = tf.osc = false;
   tf.t      = 0;
   tf.Qrecu  = 0;
   tf.QsurT  = 0;
@@ -453,7 +456,7 @@ function tfSetTenu(tenir) {
   if (tenir === tf.tenu) return;
   _tfRecaler(function () {
     tf.tenu = tenir;
-    if (tenir) tf.u[TF_N] = 0;
+    if (tenir) { tf.u[TF_N] = 0; if (tf.osc) _tfQuitterQS(); }
     else { tf.verin.actif = false; _tfQuitterQS(); }
   });
   tf.needsRedraw = true;
@@ -743,7 +746,7 @@ function tfAvancer(dt) {
   if (!tf.qs) _tfEssayerQS();
   while (reste > 1e-12 && (n % TF_BUDGET_LOT || n === 0 || performance.now() < tLimite)) {
     _tfAvancerRampes();   // peut faire quitter le mode quasi statique
-    var h = Math.min(reste, tf.qs ? _tfDtQS() : tf.dtCfl);
+    var h = Math.min(reste, tf.qs ? (tf.osc ? Math.min(_tfDtQS(), _tfDtOsc()) : _tfDtQS()) : tf.dtCfl);
     // Pas quasi statique long (gaz presque uniforme) : il s'arrête sur
     // l'échantillon suivant des graphes, qui garderont leur finesse
     if (tf.qs && tf.echantillon && tf.tEchant - tf.t > 1e-12 && tf.tEchant - tf.t < h) h = tf.tEchant - tf.t;
@@ -761,7 +764,7 @@ function tfAvancer(dt) {
     if (tf.qs) {
       // Piston libre arrivé en butée : retour au calcul complet, sans
       // avancer le temps
-      if (!_tfSousPasQS(h)) { _tfQuitterQS(); continue; }
+      if (!(tf.osc ? _tfSousPasOsc(h) : _tfSousPasQS(h))) { _tfQuitterQS(); continue; }
     } else {
       _tfSousPas(h);
       if (++nEssai >= TF_QS_ESSAI) { nEssai = 0; _tfEssayerQS(); }
@@ -881,16 +884,21 @@ function _tfEssayerQS() {
   // Après un pas à la main sur le piston (tfPasPiston), l'oscillation d'un
   // grain reste sous TF_QS_EC : sans cette attente, l'entrée l'arrêtait au
   // premier essai tombé près de la position d'équilibre, tantôt dès le
-  // premier passage, tantôt après trois oscillations
-  if (tf.t < tf.tReposMin) return;
+  // premier passage, tantôt après trois oscillations. Piston libre, c'est
+  // le piston oscillant qui suit cette attente.
+  var repos = tf.t >= tf.tReposMin;
+  if (tf.tenu && !repos) return;
   if (!tf.tenu) {
     for (var cle in tf.rampes) {
       var r = tf.rampes[cle];
-      if (r.actif && cle !== 'Text' && !(r.continu && r.lente)) return;
+      if (r.actif && cle !== 'Text' && !(r.continu && r.lente)) {
+        // Escalier : entre deux marches, le piston oscille au mieux
+        if (r.continu) return;
+        repos = false;
+      }
     }
   }
   var U = _tfU();
-  if (_tfEc() > TF_QS_EC * U) return;
   var Pmin = Infinity, Pmax = -Infinity;
   for (var j = 0; j < TF_N; j++) {
     if (tf.P[j] < Pmin) Pmin = tf.P[j];
@@ -898,12 +906,14 @@ function _tfEssayerQS() {
   }
   var Pmoy = (tf.gamma - 1) * U / tfVolume();
   if ((Pmax - Pmin) / Pmoy > TF_QS_P) return;
-  if (!tf.tenu) {
-    if (tfButee(Pmoy)) return;
-    var Pext = tfPext();
-    if (Math.abs(Pmoy - Pext) / Pext > TF_QS_P) return;
+  if (tf.tenu) {
+    if (_tfEc() <= TF_QS_EC * U) _tfEntrerQS();
+    return;
   }
-  _tfEntrerQS();
+  if (tfButee(Pmoy)) return;
+  var Pext = tfPext();
+  if (repos && _tfEc() <= TF_QS_EC * U && Math.abs(Pmoy - Pext) / Pext <= TF_QS_P) _tfEntrerQS();
+  else if (TF_OSC) _tfEssayerOsc(U);
 }
 
 // Entrée : l'énergie cinétique résiduelle passe en chaleur, la pression est
@@ -926,7 +936,7 @@ function _tfEntrerQS() {
 
 function _tfQuitterQS() {
   if (!tf.qs) return;
-  tf.qs = false;
+  tf.qs = tf.osc = false;
   tf.dtCfl = 1e-7;   // recalculé au premier sous-pas complet
   _tfMajAmortissement();
 }
@@ -1027,13 +1037,13 @@ var _tfQS_Q = null;
 //                    (+ dt·G·(T_ext − T'_0) pour la tranche du fond),
 // système tridiagonal résolu par l'algorithme de Thomas. C est la capacité
 // d'une tranche à pression constante (n·Cp/N) piston libre, à volume
-// constant piston tenu ; k_j = λ·S / (distance des centres). Écrit dans Q la
+// constant piston tenu ou oscillant (volCst) ; k_j = λ·S / (distance des centres). Écrit dans Q la
 // chaleur reçue par chaque tranche (leur somme est exactement celle reçue
 // par le fond) et renvoie cette dernière. tf._T contient les températures
 // de départ.
-function _tfConductionImplicite(dt, Q) {
+function _tfConductionImplicite(dt, Q, volCst) {
   var N = TF_N, T = tf._T, z = tf.z, j;
-  var C = tf.nTr * tf.Cv * (tf.tenu ? 1 : tf.gamma);
+  var C = tf.nTr * tf.Cv * (tf.tenu || volCst ? 1 : tf.gamma);
   var cp = _tfQS_cp || (_tfQS_cp = new Float64Array(TF_N));
   var dp = _tfQS_dp || (_tfQS_dp = new Float64Array(TF_N));
   var kPrec = 0, k, a, b, c, d, m;
@@ -1123,6 +1133,193 @@ function _tfQSAppliquer(Q, Vc) {
   return true;
 }
 var _tfQS_V = null, _tfQS_E = null;
+
+// ── Piston oscillant ──
+// Après une marche sur le piston libre (grain de sable, masse posée, pas de
+// P_air), les ondes s'éteignent en quelques traversées du gaz par le son
+// (~1 ms), mais le piston pesant oscille encore longtemps sur le « ressort
+// à gaz » (~0,25 s de période, ~1 s pour s'amortir au dixième avec 7 kg
+// posés). Le calcul complet suivait cette oscillation au pas du son
+// (~2 µs) : ~500 000 sous-pas par pas d'une suite, et une vitesse tenue
+// sous ×1. Ici, le gaz reste à pression uniforme, chaque tranche comprimée
+// ou détendue de façon adiabatique avec le piston, et le piston obéit à
+//   M_eff·dv/dt = S·(P − P_air) − M·g − b·v,
+// où M_eff ajoute à la masse posée l'inertie du gaz, dont les vitesses
+// suivent le profil linéaire u = v·z/z_N (M_eff = M + m_gaz/3 environ :
+// c'est exactement l'énergie cinétique comptée par _tfEc). Le pas n'est
+// plus limité que par la période du piston (TF_OSC_FRAC pas par période) et
+// par la conduction (_tfDtQS).
+// Intégration par gradient discret (point milieu, travail du gaz calculé
+// exactement sur le pas) : l'énergie totale est conservée, et l'énergie
+// cinétique perdue est exactement b·v̄²·dt, la chaleur d'amortissement
+// rendue au gaz près du piston comme en calcul complet.
+// Entrée : piston libre hors butée, plus d'onde (pression uniforme à
+// TF_QS_P près, vitesses du gaz au profil linéaire à TF_OSC_EC près), et
+// piston lent devant le son : période ≥ TF_OSC_RAPPORT traversées (avec le
+// piston-membrane seul, 1 g, l'oscillation est elle-même acoustique).
+// Sortie : toute marche sur le piston libre (_tfFixer), piston tenu, butée ;
+// le piston au repos, le mode quasi statique ordinaire prend la suite.
+var TF_OSC         = true;
+var TF_OSC_RAPPORT = 50;     // période du piston / traversée du son, au moins
+var TF_OSC_EC      = 1e-9;   // énergie cinétique des ondes / énergie interne, au plus
+var TF_OSC_FRAC    = 200;    // pas ≤ période / TF_OSC_FRAC
+
+// Masse effective du piston oscillant (kg) : piston, masse posée, et gaz au
+// profil de vitesses linéaire (la face porte une demi-tranche, cf. _tfEcGaz)
+function _tfMasseOsc() {
+  var z = tf.z, zN = z[TF_N], s = 0;
+  for (var i = 1; i < TF_N; i++) { var r = z[i] / zN; s += r * r; }
+  return TF_M_PISTON + tf.masse + tf.mTr * (s + 0.5);
+}
+
+// Période d'oscillation du piston sur le ressort à gaz adiabatique (s)
+function _tfPeriodeOsc(U) {
+  var V = tfVolume(), P = (tf.gamma - 1) * U / V;
+  return 2 * Math.PI * Math.sqrt(_tfMasseOsc() * V / (tf.gamma * P * TF_S * TF_S));
+}
+
+function _tfDtOsc() { return _tfPeriodeOsc(_tfU()) / TF_OSC_FRAC; }
+
+// Énergie cinétique du gaz hors du profil linéaire imposé par le piston :
+// celle des ondes (J)
+function _tfEcOndes() {
+  var z = tf.z, u = tf.u, zN = z[TF_N], v = u[TF_N], s = 0;
+  for (var i = 1; i < TF_N; i++) { var d = u[i] - v * z[i] / zN; s += d * d; }
+  return 0.5 * tf.mTr * s;
+}
+
+function _tfEssayerOsc(U) {
+  var c = Math.sqrt(tf.gamma * TF_R * U / (tf.n * tf.Cv) / TF_M_AIR);
+  if (_tfPeriodeOsc(U) * c / tf.z[TF_N] < TF_OSC_RAPPORT) return;
+  if (_tfEcOndes() > TF_OSC_EC * U) return;
+  _tfEntrerOsc();
+}
+
+// Entrée : vitesses du gaz ramenées au profil linéaire, pression rendue
+// uniforme à volume inchangé, puis l'écart d'énergie de cette mise en ordre
+// rendu au gaz : le bilan reste exact
+function _tfEntrerOsc() {
+  var e0 = tfEnergieTotale();
+  tf.q.fill(0);
+  _tfOscEgaliser(null);
+  _tfOscProfil(tf.u[TF_N]);
+  var U = _tfU(), f = 1 + (e0 - tfEnergieTotale()) / U;
+  for (var j = 0; j < TF_N; j++) { tf.E[j] *= f; tf.P[j] *= f; }
+  tf.qs = tf.osc = true;
+  tf.needsRedraw = true;
+}
+
+// Vitesses des interfaces au profil linéaire, face du piston à v
+function _tfOscProfil(v) {
+  var z = tf.z, u = tf.u, zN = z[TF_N];
+  for (var i = 1; i <= TF_N; i++) u[i] = v * z[i] / zN;
+}
+
+// Ajoute à chaque tranche la chaleur Q[j] (Q null : aucune) à volume
+// constant, puis les met à une pression commune, volume total inchangé
+// (détente ou compression adiabatique de chacune). Cette mise en ordre
+// change l'énergie interne au second ordre des écarts de pression : l'écart
+// est rendu à toutes les tranches en proportion, ce qui garde la pression
+// uniforme.
+function _tfOscEgaliser(Q) {
+  var N = TF_N, E = tf.E, z = tf.z, P = tf.P, S = TF_S;
+  var g = tf.gamma, g1 = g - 1, j;
+  var V = _tfQS_V || (_tfQS_V = new Float64Array(TF_N));
+  var Ef = _tfQS_E || (_tfQS_E = new Float64Array(TF_N));
+  var somme = 0, Vt = 0, Eavant = 0, Eapres = 0;
+  for (j = 0; j < N; j++) {
+    Ef[j] = Q ? E[j] + Q[j] : E[j];
+    V[j] = S * (z[j + 1] - z[j]);
+    somme += V[j] * Math.pow(g1 * Ef[j] / V[j], 1 / g);
+    Vt += V[j];
+    Eavant += Ef[j];
+  }
+  var Pc = Math.pow(somme / Vt, g);
+  for (j = 0; j < N; j++) {
+    V[j] *= Math.pow(g1 * Ef[j] / V[j] / Pc, 1 / g);
+    Eapres += Pc * V[j] / g1;
+  }
+  Pc *= Eavant / Eapres;
+  var zc = 0;
+  for (j = 0; j < N; j++) {
+    E[j] = Pc * V[j] / g1;
+    P[j] = Pc;
+    zc += V[j] / S;
+    z[j + 1] = zc;
+  }
+}
+
+// Un sous-pas du piston oscillant. Renvoie false, sans rien changer, si le
+// piston atteindrait une butée (le calcul complet traite le choc).
+function _tfSousPasOsc(dt) {
+  var N = TF_N, S = TF_S, z = tf.z, u = tf.u, E = tf.E, j;
+  var g1 = tf.gamma - 1;
+  var U0 = _tfU(), z0 = z[N], v0 = u[N];
+  _tfMajAmortissement(U0);
+  var b = tf.bAmort, Me = _tfMasseOsc();
+  var Fc = (TF_M_PISTON + tf.masse) * TF_G + tf.Pair * S;   // poids et air, constants sur le pas
+  // Travail reçu par le gaz, adiabatique, quand la face passe de z0 à z0 + d
+  var dU = function (d) { return U0 * Math.expm1(-g1 * Math.log1p(d / z0)); };
+  // Force moyenne sur le pas, exacte : −ΔΦ/d, Φ = U(z) + Fc·z
+  var P0S = g1 * U0 / z0;   // P·S au départ
+  var force = function (d) { return Math.abs(d) > 1e-12 * z0 ? -(dU(d) / d) - Fc : P0S - Fc; };
+  var k2 = 0.5 * tf.gamma * P0S / z0;   // demi-raideur, dérivée approchée de −force
+  // Point milieu : Me·(v1 − v0) = dt·force(d) − b·d, avec d = dt·(v0 + v1)/2
+  var d = v0 * dt + 0.5 * dt * dt * (P0S - Fc - b * v0) / Me;
+  for (var it = 0; it < 30; it++) {
+    var res = Me * (2 * d / dt - 2 * v0) - dt * force(d) + b * d;
+    var dd = res / (2 * Me / dt + b + dt * k2);
+    d -= dd;
+    if (Math.abs(dd) <= 1e-14 * z0) break;
+  }
+  var z1 = z0 + d;
+  if (z1 > TF_H_CYL || z1 < TF_Z_BUTEE) return false;
+  var v1 = 2 * d / dt - v0;
+  var chaleur = b * d * d / dt;   // b·v̄²·dt, énergie cinétique perdue
+  // Gaz : toutes les tranches à la même pression suivent la face en
+  // proportion, de façon adiabatique
+  var r = z1 / z0, fE = Math.exp(-g1 * Math.log(r));
+  for (j = 1; j <= N; j++) z[j] *= r;
+  for (j = 0; j < N; j++) E[j] *= fE;
+  tf.Wgaz += U0 * (fE - 1) + chaleur;
+  tf.Wair -= tf.Pair * S * d;
+  // Chaleur : amortissement déposé près du piston (comme _tfSousPas),
+  // conduction entre tranches et échange par le fond, à volume constant,
+  // puis pression rendue commune. La masse effective change à peine (les
+  // tranches ne bougent plus tout à fait en proportion) : v la suit pour
+  // garder l'énergie cinétique.
+  var T = tf._T, cTr = tf.nTr * tf.Cv;
+  var Q = _tfQS_Q || (_tfQS_Q = new Float64Array(TF_N));
+  for (j = 0; j < N; j++) T[j] = E[j] / cTr;
+  var Qfond = _tfConductionImplicite(dt, Q, true);
+  var parPoids = chaleur * 2 / (N * (N + 1));
+  for (j = 0; j < N; j++) Q[j] += parPoids * (j + 1);
+  _tfOscEgaliser(Q);
+  v1 *= Math.sqrt(Me / _tfMasseOsc());
+  _tfOscProfil(v1);
+  tf.Qrecu += Qfond;
+  if (Qfond > 0) tf.Qabs += Qfond;
+  if (Qfond !== 0) tf.QsurT += Qfond / tf.Text;
+  tf.t += dt;
+  // Piston au repos (même critère qu'à l'entrée du mode quasi statique) :
+  // le mode quasi statique ordinaire prend la suite
+  var U = _tfU(), Pm = g1 * U / tfVolume(), Pext = tfPext();
+  if (tf.t >= tf.tReposMin && 0.5 * _tfMasseOsc() * v1 * v1 <= TF_QS_EC * U
+      && Math.abs(Pm - Pext) / Pext <= TF_QS_P && !_tfEscalierPiston()) {
+    tf.qs = tf.osc = false;
+    _tfEntrerQS();
+  }
+  return true;
+}
+
+// Escalier de pression ou de masse en cours sur le piston libre
+function _tfEscalierPiston() {
+  for (var cle in tf.rampes) {
+    var r = tf.rampes[cle];
+    if (r.actif && cle !== 'Text' && !r.continu) return true;
+  }
+  return false;
+}
 
 // ── Un sous-pas (saute-mouton : vitesses, positions, puis énergies) ──
 function _tfSousPas(dt) {

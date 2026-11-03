@@ -1687,7 +1687,7 @@ function _tfVitesseRelax() {
   var d = tfDurees(), D = 0;
   if (R.meca === 0) {
     // Ondes ou piston à amortir : rien de thermique encore
-    if (!tf.qs) D = tf.masse > 0.5 ? 16 * d.piston : 100 * d.traversee;
+    if (!tf.qs || tf.osc) D = tf.masse > 0.5 ? 16 * d.piston : 100 * d.traversee;
     R.attente += dEcran;
     if (R.attente > TF_ECRAN_MECA_MAX) {
       R.attente = 0;
