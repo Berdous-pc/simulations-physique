@@ -410,7 +410,8 @@ function _tfBoutonRevenir(i) {
 
 // Frise : des points (les états, comme les lettres du diagramme) reliés
 // par des traits (les étapes, de leur couleur sur le diagramme ; pointillés
-// si le gaz est passé par un état non défini). Un point fait passer les
+// si le gaz est passé par un état non défini, ou fait en N pas, des cordes
+// sur le diagramme). Un point fait passer les
 // courbes de référence par son état, ↺ y revient ; un trait met l'étape en
 // évidence et en fait le bilan.
 var TF_PUCE_MANIERE = { brutal: 'brutale', qs: 'quasi statique', rev: 'réversible', main: 'à la main' };
@@ -433,7 +434,7 @@ function _tfMajJournal() {
     var et = E.liste[k], detail = et.detail;
     if (et.man === 'main' && et.nbHors) detail += ' · ' + et.nbHors + ' pas hors équilibre';
     if (et.bilan1) detail += ' · S créée ' + _tfFmtmJK(_tfScree(et.bilan0, et.bilan1)).replace(' ', ' ');
-    h += '<div class="tf-f-trait' + (et.nonDef || et.statut === 'interrompue' ? ' pointille' : '')
+    h += '<div class="tf-f-trait' + (et.nonDef || et.man === 'pas' || et.statut === 'interrompue' ? ' pointille' : '')
        + (E.sel === k ? ' sel' : '') + '" style="border-left-color:' + et.couleur + '" onclick="tfOnSelEtape(' + k + ')" '
        + 'title="Mettre l’étape en évidence sur le diagramme et en faire le bilan">'
        + '<div class="tf-f-titre">' + et.titre

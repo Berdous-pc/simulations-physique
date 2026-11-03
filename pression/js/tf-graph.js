@@ -1553,6 +1553,12 @@ function _tfgFantome(c, T, D, xDe, yDe) {
 // d'une borne à l'autre (plein), sinon ses deux bornes ; n : étape de la
 // borne d'arrivée ; provisoire : corde du passage en cours, gaz pas encore
 // revenu à l'équilibre.
+// Étape faite en N pas (« Viser une valeur ») : chaque pas est une corde,
+// quel que soit le gaz entre deux équilibres. Le jugement au seuil faisait
+// alterner pleins et pointillés au sein de pas tous pareils (la couche
+// chaude laissée sous le piston, 0,3 à 0,7 K, oscille autour des 0,5 K de
+// TF_SEUIL_T) ; N points et N cordes se resserrent vers la courbe pleine
+// du pas infinitésimal.
 // Convention « équilibre avec l'extérieur » : un volume qui sort de
 // l'intervalle entre les deux bornes (au-delà de TF_G_DEPASSE du volume)
 // fait aussi une corde. Le piston, emporté par son inertie, a dépassé
@@ -1567,7 +1573,8 @@ function _tfgPassages(e, D) {
     if (k === e.length - 1 || e[k].marche || e[k].coupure || e[k + 1].etape !== e[k].etape) bornes.push(k);
   }
   for (i = 1; i < bornes.length; i++) {
-    var a = bornes[i - 1], b = bornes[i], plein = true, pts = [];
+    var a = bornes[i - 1], b = bornes[i], pts = [];
+    var et = tfEtapes.liste[e[b].etape - 1], plein = !(et && et.man === 'pas');
     var tol = tfGraphAff.ext ? TF_G_DEPASSE * e[b].V : Infinity;
     var V1 = Math.min(e[a].V, e[b].V) - tol, V2 = Math.max(e[a].V, e[b].V) + tol;
     for (k = a; k <= b; k++) {
