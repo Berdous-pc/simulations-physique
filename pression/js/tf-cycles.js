@@ -321,7 +321,7 @@ function _tfCyAtteinte(s) {
 // Tenir ou libérer le piston ; libéré, l'air de l'enceinte est d'abord mis
 // à la pression du gaz (au repos, rien ne bouge : pas d'étape)
 function _tfCyPiston(tenir) {
-  if (!tenir) tf.Pair = Math.max(0, tfMesures().Pmoy - (TF_M_PISTON + tf.masse) * TF_G / TF_S);
+  if (!tenir) tf.Pair = Math.max(0, tfMesures().Pmoy - tfPPoids());
   tfOnPiston(tenir);
 }
 
@@ -387,7 +387,7 @@ function _tfCyTic() {
   // Pression de l'air visée : celle de l'arrivée, moins le poids du piston
   tfCarte.mode = 'viser';
   tfCarte.organe = 'piston';
-  tfCarte.Pair.vise = Math.max(0, s.P - (TF_M_PISTON + tf.masse) * TF_G / TF_S);
+  tfCarte.Pair.vise = Math.max(0, s.P - tfPPoids());
   tfCarte.Pair.suit = false;
   _tfMajBoutons();
   tfLancerPas(C.run.N);

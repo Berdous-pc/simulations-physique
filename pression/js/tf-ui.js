@@ -524,7 +524,7 @@ function _tfParamsManiere(cle, man) {
 
 // Pression extérieure une fois la masse ou P_air visée appliquée
 function _tfPextVisee(cle, vise) {
-  if (cle === 'Pair') return vise + (TF_M_PISTON + tf.masse) * TF_G / TF_S;
+  if (cle === 'Pair') return vise + tfPPoids();
   return tf.Pair + (TF_M_PISTON + vise) * TF_G / TF_S;
 }
 

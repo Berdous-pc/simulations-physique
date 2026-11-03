@@ -154,6 +154,11 @@ var tf = {
   q  : new Float64Array(TF_N),
   _dz: new Float64Array(TF_N),     // épaisseurs avant déplacement (calcul de dV)
   _T : new Float64Array(TF_N),     // températures (conduction)
+  _Q : new Float64Array(TF_N),     // chaleur reçue par tranche (quasi statique, oscillant)
+  _cp: new Float64Array(TF_N),     // coefficients de l'algorithme de Thomas
+  _dp: new Float64Array(TF_N),
+  _V : new Float64Array(TF_N),     // volumes et énergies des tranches à pression commune
+  _E : new Float64Array(TF_N),
 
   // Piston : tenu par la pince du vérin, ou libre (§10.2)
   tenu   : false,
@@ -238,11 +243,18 @@ var tf = {
 //  Grandeurs dérivées
 // ══════════════════════════════════════════════════════════════════════
 
+// Masse du piston et de ce qui est posé dessus (kg)
+function _tfMPiston() { return TF_M_PISTON + tf.masse; }
+
+// Pression due à ce poids sur la section (Pa)
+function tfPPoids() { return _tfMPiston() * TF_G / TF_S; }
+
 // Pression extérieure exercée sur le gaz à l'équilibre : air de l'enceinte
 // + poids (ce qui agit sur le piston libre)
-function tfPext() {
-  return tf.Pair + (TF_M_PISTON + tf.masse) * TF_G / TF_S;
-}
+function tfPext() { return tf.Pair + tfPPoids(); }
+
+// Célérité du son dans le gaz à la température T (m/s)
+function _tfCelerite(T) { return Math.sqrt(tf.gamma * TF_R * T / TF_M_AIR); }
 
 // Pression exercée par le gaz sur la face du piston (Pa), viscosité
 // comprise : c'est celle que mesure le vérin. Elle reste définie quand celle
@@ -272,7 +284,7 @@ function _tfEcGaz() {
 // fournit son énergie.
 function _tfEc() {
   var uN = tf.u[TF_N];
-  var piston = tf.tenu ? 0 : TF_M_PISTON + tf.masse;
+  var piston = tf.tenu ? 0 : _tfMPiston();
   return _tfEcGaz() + 0.5 * piston * uN * uN;
 }
 
@@ -284,7 +296,7 @@ function _tfEc() {
 // chaque bascule.
 function tfEnergieTotale() {
   var e = _tfU() + _tfEc() - tf.Qrecu - tf.Wop - tf.Wair + tf.eDecal;
-  if (!tf.tenu) e += (TF_M_PISTON + tf.masse) * TF_G * tf.z[TF_N];
+  if (!tf.tenu) e += _tfMPiston() * TF_G * tf.z[TF_N];
   return e;
 }
 
@@ -327,6 +339,14 @@ function tfEntropie() {
 // gaz, chaleur reçue, entropie échangée avec la source (Σ δQ / T_ext),
 // entropie du gaz. Entre deux instants : ΔU = W + Q, et l'entropie créée
 // S_c = ΔS − Σ δQ / T_ext.
+// Chaleur Q reçue par le fond (J) : compteurs du bilan, chaleur absorbée,
+// entropie échangée avec la source
+function _tfRecevoirChaleur(Q) {
+  tf.Qrecu += Q;
+  if (Q > 0) tf.Qabs += Q;
+  if (Q !== 0) tf.QsurT += Q / tf.Text;
+}
+
 function tfBilan() {
   return { U: _tfU(), W: tf.Wgaz, Q: tf.Qrecu, Qabs: tf.Qabs, Se: tf.QsurT, S: tfEntropie() };
 }
@@ -337,7 +357,7 @@ function tfMesures() {
   var Pmin = Infinity, Pmax = -Infinity, Tmin = Infinity, Tmax = -Infinity;
   for (var j = 0; j < TF_N; j++) {
     var P = tf.P[j];
-    var T = tf.E[j] / (tf.nTr * tf.Cv);
+    var T = tfTTranche(j);
     if (P < Pmin) Pmin = P;
     if (P > Pmax) Pmax = P;
     if (T < Tmin) Tmin = T;
@@ -358,8 +378,8 @@ function tfMesures() {
   // Vérin arrêté ou butée : c'est lui qui assure l'équilibre mécanique du
   // piston
   var butee = tfButee(Pmoy);
-  var piston = tf.tenu ? !tf.verin.actif
-             : butee !== null || Math.abs(Pmoy - Pext) / Pext < TF_SEUIL_P;
+  var libreEq = butee !== null || Math.abs(Pmoy - Pext) / Pext < TF_SEUIL_P;
+  var piston = tf.tenu ? !tf.verin.actif : libreEq;
   // Fond conducteur : plus d'échange avec la source. Sans cette condition,
   // un gaz uniforme qui chauffe lentement à travers un fond peu conducteur
   // passait pour « à l'équilibre » (chrono figé, lettre posée trop tôt)
@@ -370,7 +390,7 @@ function tfMesures() {
   // gaz uniforme, pression égale à celle qu'exerce le piston libre (le
   // vérin, lui, exerce celle du gaz), température égale à celle de la
   // source si le fond conduit ; le piston peut bouger (quasi statique)
-  var mecaExt = tf.tenu || butee !== null || Math.abs(Pmoy - Pext) / Pext < TF_SEUIL_P;
+  var mecaExt = tf.tenu || libreEq;
 
   return {
     V: V, Pmoy: Pmoy, Pmin: Pmin, Pmax: Pmax,
@@ -680,10 +700,10 @@ function _tfZVerin(t) {
 function _tfTempsMeca(cle, cible) {
   var m = tfMesures();
   var M = TF_M_PISTON + Math.max(tf.masse, cle === 'masse' ? cible : 0) + TF_N * tf.mTr / 3;
-  var P = Math.max(m.Pext, cle === 'Pair' ? cible + (TF_M_PISTON + tf.masse) * TF_G / TF_S
+  var P = Math.max(m.Pext, cle === 'Pair' ? cible + tfPPoids()
                                           : tf.Pair + M * TF_G / TF_S);
   var k = tf.gamma * P * TF_S * TF_S / m.V;
-  var c = Math.sqrt(tf.gamma * TF_R * m.Tmoy / TF_M_AIR);
+  var c = _tfCelerite(m.Tmoy);
   return Math.max(2 * Math.PI * Math.sqrt(M / k), tf.z[TF_N] / c);
 }
 
@@ -699,20 +719,18 @@ function _tfTempsMeca(cle, cible) {
 function tfDurees() {
   var m  = tfMesures();
   var L  = tf.z[TF_N];
-  var c  = Math.sqrt(tf.gamma * TF_R * m.Tmoy / TF_M_AIR);
+  var c  = _tfCelerite(m.Tmoy);
   var D  = TF_LAMBDA * m.V / (tf.n * tf.Cv);   // diffusivité thermique, m²/s
-  var th = tf.G > 0 ? 4 * L * L / (Math.PI * Math.PI * D) + tf.n * tf.Cv / tf.G
-                    : Infinity;
   var Pe = m.Pext;
   var Ve = tf.n * TF_R * m.Tmoy / Pe;
   var k  = tf.gamma * Pe * TF_S * TF_S / Ve;
-  var M  = TF_M_PISTON + tf.masse + TF_N * tf.mTr / 3;
+  var M  = _tfMPiston() + TF_N * tf.mTr / 3;
   // Les deux étapes de la mise en équilibre thermique : conduction dans le
   // gaz (interne) et passage par le fond (paroi). L'écart de température,
   // donc l'entropie créée, se loge dans la plus lente (PLAN §10.5).
   var interne = 4 * L * L / (Math.PI * Math.PI * D);
   var paroi = tf.G > 0 ? tf.n * tf.Cv / tf.G : Infinity;
-  return { traversee: L / c, thermique: th, piston: Math.PI / 2 * Math.sqrt(M / k), c: c,
+  return { traversee: L / c, thermique: interne + paroi, piston: Math.PI / 2 * Math.sqrt(M / k), c: c,
            interne: interne, paroi: paroi };
 }
 
@@ -731,7 +749,7 @@ function _tfMajAmortissement(U) {
   if (U === undefined) U = _tfU();
   var Pmoy = (tf.gamma - 1) * U / V;
   var k = tf.gamma * Pmoy * TF_S * TF_S / V;
-  var M = TF_M_PISTON + tf.masse;
+  var M = _tfMPiston();
   tf.bAmort = 2 * TF_AMORT * Math.sqrt(k * M);
 }
 
@@ -868,7 +886,7 @@ var TF_QS_DT_EXPL_MAX = 0.02;  // s (explicite)
 function _tfVerinLent() {
   var v = tf.verin;
   var Tm = _tfU() / (tf.n * tf.Cv);
-  var c = Math.sqrt(tf.gamma * TF_R * Tm / TF_M_AIR);
+  var c = _tfCelerite(Tm);
   return v.tau / (Math.max(v.zDep, v.zArr) / c) >= TF_QS_VERIN;
 }
 
@@ -999,7 +1017,7 @@ function _tfDtQS() {
 function _tfSousPasQS(dt) {
   var N = TF_N, E = tf.E, z = tf.z, T = tf._T, j;
   var cTr = tf.nTr * tf.Cv;
-  var Q = _tfQS_Q || (_tfQS_Q = new Float64Array(TF_N));
+  var Q = tf._Q;
   var Qfond;
   for (j = 0; j < N; j++) T[j] = E[j] / cTr;
   if (TF_QS_IMPLICITE) {
@@ -1017,14 +1035,11 @@ function _tfSousPasQS(dt) {
   }
   var Vc = tf.tenu ? TF_S * (tf.verin.actif ? _tfZVerin(tf.t + dt) : z[N]) : null;
   if (!_tfQSAppliquer(Q, Vc)) return false;
-  tf.Qrecu += Qfond;
-  if (Qfond > 0) tf.Qabs += Qfond;
-  if (Qfond !== 0) tf.QsurT += Qfond / tf.Text;
+  _tfRecevoirChaleur(Qfond);
   tf.t += dt;
-  if (tf.verin.actif && tf.t >= tf.verin.t0 + tf.verin.tau - 1e-12) tf.verin.actif = false;
+  _tfFinVerin();
   return true;
 }
-var _tfQS_Q = null;
 
 // Conduction implicite sur dt : températures finales T' solutions de
 //   C·(T'_j − T_j) = dt·[k_{j−1}·(T'_{j−1} − T'_j) + k_j·(T'_{j+1} − T'_j)]
@@ -1038,8 +1053,8 @@ var _tfQS_Q = null;
 function _tfConductionImplicite(dt, Q, volCst) {
   var N = TF_N, T = tf._T, z = tf.z, j;
   var C = tf.nTr * tf.Cv * (tf.tenu || volCst ? 1 : tf.gamma);
-  var cp = _tfQS_cp || (_tfQS_cp = new Float64Array(TF_N));
-  var dp = _tfQS_dp || (_tfQS_dp = new Float64Array(TF_N));
+  var cp = tf._cp;
+  var dp = tf._dp;
   var kPrec = 0, k, a, b, c, d, m;
   for (j = 0; j < N; j++) {
     k = j < N - 1 ? dt * TF_LAMBDA * TF_S * 2 / (z[j + 2] - z[j]) : 0;
@@ -1062,7 +1077,6 @@ function _tfConductionImplicite(dt, Q, volCst) {
   }
   return tf.G > 0 ? dt * tf.G * (tf.Text - T0n) : 0;
 }
-var _tfQS_cp = null, _tfQS_dp = null;
 
 // Ajoute la chaleur Q[j] à chaque tranche et place les interfaces à
 // pression uniforme.
@@ -1080,8 +1094,8 @@ var _tfQS_cp = null, _tfQS_dp = null;
 function _tfQSAppliquer(Q, Vc) {
   var N = TF_N, E = tf.E, z = tf.z, P = tf.P, S = TF_S;
   var g = tf.gamma, g1 = g - 1, j;
-  var V = _tfQS_V || (_tfQS_V = new Float64Array(TF_N));
-  var Pc, Ef = _tfQS_E || (_tfQS_E = new Float64Array(TF_N));
+  var V = tf._V;
+  var Pc, Ef = tf._E;
   if (Vc === null) {
     Pc = tfPext();
     var fad = P[0] > 0 && P[0] !== Pc ? Math.pow(Pc / P[0], g1 / g) : 1;
@@ -1126,7 +1140,6 @@ function _tfQSAppliquer(Q, Vc) {
   }
   return true;
 }
-var _tfQS_V = null, _tfQS_E = null;
 
 // ── Piston oscillant ──
 // Après une marche sur le piston libre (grain de sable, masse posée, pas de
@@ -1163,7 +1176,7 @@ var TF_OSC_FRAC    = 200;    // pas ≤ période / TF_OSC_FRAC
 function _tfMasseOsc() {
   var z = tf.z, zN = z[TF_N], s = 0;
   for (var i = 1; i < TF_N; i++) { var r = z[i] / zN; s += r * r; }
-  return TF_M_PISTON + tf.masse + tf.mTr * (s + 0.5);
+  return _tfMPiston() + tf.mTr * (s + 0.5);
 }
 
 // Période d'oscillation du piston sur le ressort à gaz adiabatique (s)
@@ -1183,7 +1196,7 @@ function _tfEcOndes() {
 }
 
 function _tfEssayerOsc(U) {
-  var c = Math.sqrt(tf.gamma * TF_R * U / (tf.n * tf.Cv) / TF_M_AIR);
+  var c = _tfCelerite(U / (tf.n * tf.Cv));
   if (_tfPeriodeOsc(U) * c / tf.z[TF_N] < TF_OSC_RAPPORT) return;
   if (_tfEcOndes() > TF_OSC_EC * U) return;
   _tfEntrerOsc();
@@ -1218,8 +1231,8 @@ function _tfOscProfil(v) {
 function _tfOscEgaliser(Q) {
   var N = TF_N, E = tf.E, z = tf.z, P = tf.P, S = TF_S;
   var g = tf.gamma, g1 = g - 1, j;
-  var V = _tfQS_V || (_tfQS_V = new Float64Array(TF_N));
-  var Ef = _tfQS_E || (_tfQS_E = new Float64Array(TF_N));
+  var V = tf._V;
+  var Ef = tf._E;
   var somme = 0, Vt = 0, Eavant = 0, Eapres = 0;
   for (j = 0; j < N; j++) {
     Ef[j] = Q ? E[j] + Q[j] : E[j];
@@ -1251,7 +1264,7 @@ function _tfSousPasOsc(dt) {
   var U0 = _tfU(), z0 = z[N], v0 = u[N];
   _tfMajAmortissement(U0);
   var b = tf.bAmort, Me = _tfMasseOsc();
-  var Fc = (TF_M_PISTON + tf.masse) * TF_G + tf.Pair * S;   // poids et air, constants sur le pas
+  var Fc = _tfMPiston() * TF_G + tf.Pair * S;   // poids et air, constants sur le pas
   // Travail reçu par le gaz, adiabatique, quand la face passe de z0 à z0 + d
   var dU = function (d) { return U0 * Math.expm1(-g1 * Math.log1p(d / z0)); };
   // Force moyenne sur le pas, exacte : −ΔΦ/d, Φ = U(z) + Fc·z
@@ -1283,7 +1296,7 @@ function _tfSousPasOsc(dt) {
   // tranches ne bougent plus tout à fait en proportion) : v la suit pour
   // garder l'énergie cinétique.
   var T = tf._T, cTr = tf.nTr * tf.Cv;
-  var Q = _tfQS_Q || (_tfQS_Q = new Float64Array(TF_N));
+  var Q = tf._Q;
   for (j = 0; j < N; j++) T[j] = E[j] / cTr;
   var Qfond = _tfConductionImplicite(dt, Q, true);
   var parPoids = chaleur * 2 / (N * (N + 1));
@@ -1291,9 +1304,7 @@ function _tfSousPasOsc(dt) {
   _tfOscEgaliser(Q);
   v1 *= Math.sqrt(Me / _tfMasseOsc());
   _tfOscProfil(v1);
-  tf.Qrecu += Qfond;
-  if (Qfond > 0) tf.Qabs += Qfond;
-  if (Qfond !== 0) tf.QsurT += Qfond / tf.Text;
+  _tfRecevoirChaleur(Qfond);
   tf.t += dt;
   // Piston au repos (même critère qu'à l'entrée du mode quasi statique) :
   // le mode quasi statique ordinaire prend la suite
@@ -1353,7 +1364,7 @@ function _tfSousPas(dt) {
   if (tenu) {
     u[N] = tf.verin.actif ? (_tfZVerin(tf.t + dt) - z[N]) / dt : 0;
   } else {
-    var M = TF_M_PISTON + tf.masse;
+    var M = _tfMPiston();
     var F = S * (P[N - 1] + q[N - 1] - tf.Pair) - M * TF_G - tf.bAmort * u[N];
     u[N] += dt * F / (M + mTr / 2);
     chaleur += tf.bAmort * u[N] * u[N] * dt;
@@ -1368,7 +1379,7 @@ function _tfSousPas(dt) {
   // chaleur d'amortissement du sous-pas, calculée avec une vitesse que le
   // piston n'a pas eue : en butée, celle-ci chauffait le gaz sans cause.
   if (!tenu && ((z[N] > TF_H_CYL && u[N] > 0) || (z[N] < TF_Z_BUTEE && u[N] < 0))) {
-    chaleur = 0.5 * (TF_M_PISTON + tf.masse + mTr / 2) * uAvant * uAvant;
+    chaleur = 0.5 * (_tfMPiston() + mTr / 2) * uAvant * uAvant;
     u[N] = 0;
     z[N] = Math.min(TF_H_CYL, Math.max(TF_Z_BUTEE, z[N]));
   }
@@ -1417,9 +1428,7 @@ function _tfSousPas(dt) {
   if (tf.G > 0) {
     var Q = tf.G * (tf.Text - T[0]) * dt;
     E[0]     += Q;
-    tf.Qrecu += Q;
-    if (Q > 0) tf.Qabs += Q;
-    tf.QsurT += Q / tf.Text;
+    _tfRecevoirChaleur(Q);
   }
 
   // 6. Pressions, et amortissement du sous-pas suivant
@@ -1431,6 +1440,11 @@ function _tfSousPas(dt) {
   _tfMajAmortissement(U);
 
   tf.t += dt;
+  _tfFinVerin();
+}
+
+// Course du vérin achevée à la fin du sous-pas : il s'arrête
+function _tfFinVerin() {
   if (tf.verin.actif && tf.t >= tf.verin.t0 + tf.verin.tau - 1e-12) {
     tf.verin.actif = false;
     tf.needsRedraw = true;
