@@ -198,7 +198,7 @@
           <span class="tf-graphe-titre">Au cours du temps</span>
           <div class="tf-graphe-btns">
             <button onclick="tfGraphPrecedente('t')" title="Vue précédente">↶</button>
-            <button onclick="tfGraphSuivre()" title="Revenir au cadrage automatique : l’étape en cours">Auto</button>
+            <button onclick="tfGraphSuivre()" title="Revenir au cadrage automatique : tout depuis Réinitialiser">Auto</button>
             <button onclick="tfGraphToutVoir()" title="Tout l’historique">Tout voir</button>
             <button id="tf-btn-zoom-t" onclick="tfGraphZoomZone('t')" title="Zoom : tracer sur le graphe l’intervalle de temps à agrandir">Zoom</button>
             <button class="tf-btn-reticule" onclick="tfGraphReticule()" title="Réticule">+</button>
@@ -218,7 +218,7 @@
           <span class="tf-graphe-titre">Bilans au cours du temps</span>
           <div class="tf-graphe-btns">
             <button onclick="tfGraphPrecedente('b')" title="Vue précédente">↶</button>
-            <button onclick="tfGraphSuivre()" title="Revenir au cadrage automatique : l’étape en cours">Auto</button>
+            <button onclick="tfGraphSuivre()" title="Revenir au cadrage automatique : tout depuis Réinitialiser">Auto</button>
             <button onclick="tfGraphToutVoir()" title="Tout l’historique, bilans depuis l’état initial">Tout voir</button>
             <button id="tf-btn-zoom-b" onclick="tfGraphZoomZone('b')" title="Zoom : tracer sur le graphe l’intervalle de temps à agrandir">Zoom</button>
             <button class="tf-btn-reticule" onclick="tfGraphReticule()" title="Réticule">+</button>
@@ -812,7 +812,7 @@
         <strong>Cycles</strong> : Aller-retour, Carnot, Stirling ou Lenoir ; le cycle idéal s'affiche en gris, à suivre avec <em>Étape suivante</em> ou <em>Tout le cycle</em>.<br>
         <strong>Étapes</strong> : un point par état d'équilibre (A, B, C…), un trait par transformation. Cliquer sur un point y fait passer les courbes de référence (↺ y revient) ; cliquer sur un trait met l'étape en évidence et en donne le bilan.<br>
         <strong>Bilan</strong> : ΔU = W + Q et ΔS = S<sub>e</sub> + S<sub>c</sub> pour l'étape, depuis A ou sur le cycle, avec le verdict réversible ou irréversible.<br>
-        <strong>Graphes</strong> : les boutons P = f(V), T = f(S), T, P, V = f(t), Bilans = f(t) et Tableau affichent ou masquent chaque encart ; <em>Options ▾</em> ajoute les courbes de référence. <em>Bilans = f(t)</em> trace ΔU = W + Q et ΔS = S_éch + S_c reçus par le gaz depuis le départ de l'étape (depuis l'état initial avec <em>Tout voir</em>) ; les cases de la légende affichent ou masquent chaque courbe. S_c ne fait que croître, et reste plat pour une transformation réversible. Un point n'est placé que si le gaz est uniforme : sinon, bande hachurée au cours du temps. Sur les diagrammes, chaque pas (1 ou N pas, à la main) est un segment pointillé d'un équilibre au suivant ; trait plein pour ∞ pas, ou derrière une paroi peu conductrice. Glisser déplace la vue, la molette zoome, <em>Ajuster</em>, <em>Auto</em> et <em>Tout voir</em> recadrent ; les séparations se déplacent à la souris.<br>
+        <strong>Graphes</strong> : les boutons P = f(V), T = f(S), T, P, V = f(t), Bilans = f(t) et Tableau affichent ou masquent chaque encart ; <em>Options ▾</em> ajoute les courbes de référence. <em>Bilans = f(t)</em> trace ΔU = W + Q et ΔS = S_éch + S_c reçus par le gaz depuis l'état initial ; le temps et les bilans courent d'une transformation à l'autre, sans repartir de zéro (sauf RAZ ou retour à un état) ; les cases de la légende affichent ou masquent chaque courbe. S_c ne fait que croître, et reste plat pour une transformation réversible. Un point n'est placé que si le gaz est uniforme : sinon, bande hachurée au cours du temps. Sur les diagrammes, chaque pas (1 ou N pas, à la main) est un segment pointillé d'un équilibre au suivant ; trait plein pour ∞ pas, ou derrière une paroi peu conductrice. Glisser déplace la vue, la molette zoome, <em>Ajuster</em>, <em>Auto</em> et <em>Tout voir</em> recadrent ; les séparations se déplacent à la souris.<br>
         <strong>Tableau</strong> : le gaz face à l'extérieur, <strong>=</strong> (vert) ou <strong>≠</strong> (orange) ; <strong>?</strong> quand les tranches du gaz ne sont pas uniformes.<br>
         <strong>Vitesse</strong> : jusqu'à ×1/5000 pour suivre un front dans le gaz ; <em>Auto</em> fait durer chaque action quelques secondes à l'écran, puis le temps accélère régulièrement (une décade toutes les 2 s) jusqu'à l'équilibre ; quand le calcul ne suit pas, le compteur de la scène indique en orange la vitesse atteinte.<br>
         <strong>Options</strong> : molécules, couleur selon la température (bleu plus froid que 20 °C, rouge plus chaud), sondes, profils de pression et de température ; la case sous les profils les amplifie (écart à la moyenne).<br>

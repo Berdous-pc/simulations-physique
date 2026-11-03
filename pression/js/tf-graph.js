@@ -103,14 +103,11 @@ var tfGraph = {
   eqSuite   : 0,       // échantillons d'équilibre consécutifs
   repos     : true,    // aucune action depuis Réinitialiser ou un retour à un état
   coupure   : false,   // le prochain échantillon suit une attente retirée
-  // Axe des temps de l'étape en cours : départ t0 (temps des graphes),
-  // durée L, plages des trois cases ; L et les plages ne font que
-  // s'agrandir au fil de l'étape
+  // Axe des temps : origine t0 (temps des graphes) à Réinitialiser, ou à
+  // l'état où l'on est revenu ; durée L, plages des cases ; L et les plages
+  // ne font que s'agrandir d'une transformation à l'autre
   axeT      : { t0: 0, L: 1, y: [null, null, null] },
-  // Départ de l'étape où l'axe est reparti de zéro {t0, etape} : origine
-  // gardée par les étapes suivantes d'un cycle
-  cycleT    : null,
-  vueT      : null,    // null : étape en cours ; sinon {t1, t2, o (origine), lt (lettre)}
+  vueT      : null,    // null : vue automatique ; sinon {t1, t2, o (origine), lt (lettre)}
   pileT     : [],
   // Champ fixe de chaque diagramme d'état : il ne fait que s'agrandir, par
   // crans (null : à recalculer)
@@ -330,22 +327,15 @@ function tfGraphMarche() {
 }
 
 // Départ d'une étape : les courbes théoriques et le cadrage des tranches
-// repartent de l'état actuel (dernier échantillon) ; l'axe des temps aussi,
-// pour une durée provisoire (précisée par tfGraphDureeAttendue au lancement
-// de l'action). Au cours d'un cycle (tf-cycles.js, tfCyEnCours), l'axe des
-// temps et le chrono gardent l'origine du départ du cycle : le temps court
-// d'une étape à l'autre, et l'axe ne fait que s'allonger.
+// repartent de l'état actuel (dernier échantillon). L'axe des temps, lui,
+// garde son origine (Réinitialiser, ou l'état où l'on est revenu) : le temps
+// et les bilans courent d'une transformation à l'autre, les courbes se
+// prolongent au lieu de repartir de zéro, et l'axe ne fait que s'allonger.
 function tfGraphDepartEtape() {
   var g = tfGraph;
   if (g.ech.length) g.ref = g.ech[g.ech.length - 1];
   g.env = null;
-  if (tfCyEnCours() && g.cycleT) {
-    if (g.axeT.t0 !== g.cycleT.t0) _tfgAxeT(g.cycleT.t0, 1, g.cycleT.etape);
-    g.axeT.garde = true;
-  } else {
-    _tfgAxeT(g.ref ? g.ref.t : 0, 1, tfEtapes.liste.length - 1);
-    g.cycleT = { t0: g.axeT.t0, etape: g.axeT.etape };
-  }
+  if (g.axeT.etape === undefined && tfEtapes.liste.length) g.axeT.etape = tfEtapes.liste.length - 1;
   g.vueT = null;
   g.pileT = [];
   g.sale = true;
@@ -356,16 +346,15 @@ function tfGraphDepartEtape() {
 function tfGraphDureeAttendue(D) {
   if (!isFinite(D) || D <= 0) return;
   var A = tfGraph.axeT;
-  // Origine gardée (cycle) : l'étape s'ajoute au temps déjà écoulé
-  A.L = A.garde ? Math.max(A.L, _tfgCran(1.2 * (tfGraphTemps() - A.t0 + D), TF_G_CRANS_T))
-                : _tfgCran(1.2 * D, TF_G_CRANS_T);
+  // L'étape s'ajoute au temps déjà écoulé depuis l'origine
+  A.L = Math.max(A.L, _tfgCran(1.2 * (tfGraphTemps() - A.t0 + D), TF_G_CRANS_T));
   delete tfGraph.anim.t;
   tfGraphReprogrammer();
   tfGraph.sale = true;
 }
 
 // etape : rang dans la frise de l'étape dont le départ marque l'origine
-// (la dernière si absent)
+// (fixé au départ de la première étape qui suit, tfGraphDepartEtape)
 function _tfgAxeT(t0, L, etape) {
   var g = tfGraph;
   g.axeT = { t0: t0, L: L, y: [null, null, null], etape: etape };
@@ -393,8 +382,9 @@ function tfGraphRevenir(ts, n) {
   g.coupure = false;
   g.ref = e[e.length - 1];
   g.env = null;
-  _tfgAxeT(g.ref.t, 1);
-  if (g.cycleT && g.cycleT.t0 > g.ref.t + 1e-12) g.cycleT = null;
+  // L'origine reste celle de Réinitialiser (le premier échantillon) ;
+  // l'axe repart à la durée de l'historique gardé
+  _tfgAxeT(e[0].t, 1, e[e.length - 1].etape >= 0 ? 0 : undefined);
   g.champ = { pv: null, ts: null };
   g.vueT = null;
   g.vue = { pv: null, ts: null };
@@ -451,7 +441,6 @@ function tfGraphEffacer() {
   g.repos = true;
   g.gele = g.coupure = false;
   _tfgAxeT(0, 1);
-  g.cycleT = null;
   g.champ = { pv: null, ts: null };
   g.vueT = null;
   g.vue = { pv: null, ts: null };
