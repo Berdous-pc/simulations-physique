@@ -119,15 +119,6 @@
             <button id="tf-btn-options" onclick="tfGraphMenu()" title="Options des graphes" aria-haspopup="true" aria-expanded="false">Options ▾</button>
           </div>
           <div class="tf-options-menu" id="tf-options-menu" hidden>
-            <div class="tf-sous-titre">Tracer le chemin quand le gaz est…</div>
-            <label class="check-row" title="Un point dès que la pression (en P(V)) ou la température (en T(S)) est la même dans tout le gaz, même si le gaz n’est pas en équilibre avec l’extérieur">
-              <input type="radio" name="tf-convention" id="tf-ckg-gaz" checked onchange="tfOnAffGraphe('ext', false)">
-              uniforme (P ou T définie)
-            </label>
-            <label class="check-row" title="Un point seulement quand le gaz est uniforme et en équilibre avec l’extérieur : pression égale à celle qu’exerce le piston, température égale à celle de la source si le fond conduit. Seuls les chemins réversibles sont alors tracés.">
-              <input type="radio" name="tf-convention" id="tf-ckg-ext" onchange="tfOnAffGraphe('ext', true)">
-              en équilibre avec l’extérieur
-            </label>
             <div class="tf-sous-titre">Diagrammes P(V) et T(S)</div>
             <label class="check-row">
               <input type="checkbox" id="tf-ckg-tranches" checked onchange="tfOnAffGraphe('tranches', this.checked)">
@@ -390,7 +381,6 @@
             <button class="tf-mini-btn tf-auto active" id="tf-btn-auto" onclick="tfBasculerAuto()"
                     title="Vitesse adaptée à chaque transformation">Auto</button>
           </div>
-          <span class="input-hint" id="tf-vitesse-limite" style="display:none"></span>
         </div>
 
         <div class="sep"></div>
@@ -552,7 +542,8 @@
 
             <!-- Nombre de pas, de l'échelon (1) au pas infinitésimal (∞),
                  puis Appliquer ; pendant l'action, une barre de progression
-                 et ■ pour l'interrompre -->
+                 et ■ pour l'interrompre, à la place du bouton (même case :
+                 rien ne bouge en dessous) -->
             <div class="tf-manieres" id="tf-manieres">
               <div class="tf-nbpas">
                 <label for="tf-sl-nbpas">Nombre de pas</label>
@@ -560,17 +551,19 @@
                        oninput="tfOnNbPas(this.value)">
                 <div class="tf-nbpas-crans" aria-hidden="true"><span>1</span><span>2</span><span>5</span><span>10</span><span>20</span><span>50</span><span>100</span><span>∞</span></div>
               </div>
-              <button id="tf-btn-appliquer" class="tf-maniere tf-appliquer" onclick="tfLancerPas()">
-                <span class="tf-maniere-nom">Appliquer</span>
-                <span class="tf-maniere-duree"><span id="tf-lbl-nbpas"></span><br><span id="tf-duree-nbpas"></span></span></button>
-            </div>
-            <div class="tf-progres" id="tf-progres" style="display:none">
-              <div class="tf-progres-barre">
-                <div class="tf-progres-rempli" id="tf-progres-rempli"></div>
-                <span class="tf-progres-txt" id="tf-progres-txt"></span>
+              <div class="tf-lancer">
+                <button id="tf-btn-appliquer" class="tf-maniere tf-appliquer" onclick="tfLancerPas()">
+                  <span class="tf-maniere-nom">Appliquer</span>
+                  <span class="tf-maniere-duree"><span id="tf-lbl-nbpas"></span><br><span id="tf-duree-nbpas"></span></span></button>
+                <div class="tf-progres" id="tf-progres" style="display:none">
+                  <div class="tf-progres-barre">
+                    <div class="tf-progres-rempli" id="tf-progres-rempli"></div>
+                    <span class="tf-progres-txt" id="tf-progres-txt"></span>
+                  </div>
+                  <button class="tf-stop" id="tf-btn-interrompre" onclick="tfOnInterrompre()"
+                          title="Interrompre" aria-label="Interrompre">■</button>
+                </div>
               </div>
-              <button class="tf-stop" id="tf-btn-interrompre" onclick="tfOnInterrompre()"
-                      title="Interrompre" aria-label="Interrompre">■</button>
             </div>
           </div>
 
@@ -669,13 +662,18 @@
                 <div class="tf-nbpas-crans" aria-hidden="true"><span>1</span><span>2</span><span>5</span><span>10</span><span>20</span><span>50</span><span>100</span><span>∞</span></div>
                 <span class="input-hint" id="tf-cy-lbl-nbpas"></span>
               </div>
-              <div class="tf-cy-btns">
-                <button class="tf-cy-m tf-appliquer" id="tf-cy-tout-btn" onclick="tfCyTout()">Tout le cycle</button>
+              <!-- Étape suivante et Tout le cycle, grisés hors du repos ;
+                   pendant l'enchaînement, la barre prend leur place -->
+              <div class="tf-lancer">
+                <div class="tf-cy-btns">
+                  <button class="tf-cy-m tf-appliquer" id="tf-cy-etape-btn" onclick="tfCyEtape()">Étape suivante</button>
+                  <button class="tf-cy-m tf-appliquer" id="tf-cy-tout-btn" onclick="tfCyTout()">Tout le cycle</button>
+                </div>
+                <div class="tf-progres" id="tf-cy-encours" style="display:none">
+                  <div class="tf-progres-barre"><span class="tf-progres-txt" id="tf-cy-encours-txt"></span></div>
+                  <button class="tf-stop" onclick="tfCyArreter()" title="Arrêter" aria-label="Arrêter">■</button>
+                </div>
               </div>
-            </div>
-            <div class="tf-progres" id="tf-cy-encours" style="display:none">
-              <div class="tf-progres-barre"><span class="tf-progres-txt" id="tf-cy-encours-txt"></span></div>
-              <button class="tf-stop" onclick="tfCyArreter()" title="Arrêter" aria-label="Arrêter">■</button>
             </div>
           </div>
         </div>
@@ -706,7 +704,6 @@
           </div>
           <div class="tf-bilan" id="tf-bilan"></div>
           <div class="tf-bilan-cycle" id="tf-bilan-cycle" style="display:none"></div>
-          <span class="input-hint" id="tf-bilan-note"></span>
         </div>
 
         <div class="sep"></div>
@@ -752,12 +749,12 @@
         <strong>État initial</strong> (section repliée) : dispositif (air de l'enceinte ou masses posées), nature du gaz et point de départ A (P₀, V₀, T₀). <em>↺ Recommencer depuis A</em> efface les étapes.<br>
         <strong>Montage</strong> : piston tenu ou libre, source sous le cylindre (la flèche ▾ règle sa température), paroi du fond isolante, peu conductrice ou conductrice.<br>
         <strong>Transformation</strong> : avec <em>Viser une valeur</em>, choisir d'agir sur le piston ou sur la source, régler la valeur visée et le <strong>nombre de pas</strong> (1 = brutal, ∞ = réversible), puis <em>Appliquer</em> ; l'état d'arrivée prévu est marqué en orange. Avec <em>À la main</em>, chaque clic sur ▼ ▲ ou − + fait un pas : attendre le voyant vert entre deux pas pour rester quasi statique.<br>
-        <strong>Cycles</strong> : Aller-retour, Carnot, Stirling ou Lenoir ; le cycle idéal s'affiche en gris, à suivre avec <em>Appliquer l'étape</em> ou <em>Tout le cycle</em>.<br>
+        <strong>Cycles</strong> : Aller-retour, Carnot, Stirling ou Lenoir ; le cycle idéal s'affiche en gris, à suivre avec <em>Étape suivante</em> ou <em>Tout le cycle</em>.<br>
         <strong>Étapes</strong> : un point par état d'équilibre (A, B, C…), un trait par transformation. Cliquer sur un point y fait passer les courbes de référence (↺ y revient) ; cliquer sur un trait met l'étape en évidence et en donne le bilan.<br>
         <strong>Bilan</strong> : ΔU = W + Q et ΔS = S<sub>e</sub> + S<sub>c</sub> pour l'étape, depuis A ou sur le cycle, avec le verdict réversible ou irréversible.<br>
-        <strong>Graphes</strong> : les boutons P = f(V), T = f(S), T, P, V = f(t) et Tableau affichent ou masquent chaque encart ; <em>Options ▾</em> ajoute les courbes de référence. Un point n'est placé que si le gaz est uniforme : hors équilibre, bande hachurée au cours du temps et segment pointillé sur les diagrammes. Glisser déplace la vue, la molette zoome, <em>Ajuster</em>, <em>Auto</em> et <em>Tout voir</em> recadrent ; les séparations se déplacent à la souris.<br>
+        <strong>Graphes</strong> : les boutons P = f(V), T = f(S), T, P, V = f(t) et Tableau affichent ou masquent chaque encart ; <em>Options ▾</em> ajoute les courbes de référence. Un point n'est placé que si le gaz est uniforme : sinon, bande hachurée au cours du temps. Sur les diagrammes, chaque pas (1 ou N pas, à la main) est un segment pointillé d'un équilibre au suivant ; trait plein pour ∞ pas, ou derrière une paroi peu conductrice. Glisser déplace la vue, la molette zoome, <em>Ajuster</em>, <em>Auto</em> et <em>Tout voir</em> recadrent ; les séparations se déplacent à la souris.<br>
         <strong>Tableau</strong> : le gaz face à l'extérieur, <strong>=</strong> (vert) ou <strong>≠</strong> (orange) ; <strong>?</strong> quand les tranches du gaz ne sont pas uniformes.<br>
-        <strong>Vitesse</strong> : jusqu'à ×1/5000 pour suivre un front dans le gaz ; <em>Auto</em> fait durer chaque action quelques secondes à l'écran.<br>
+        <strong>Vitesse</strong> : jusqu'à ×1/5000 pour suivre un front dans le gaz ; <em>Auto</em> fait durer chaque action quelques secondes à l'écran, puis le temps accélère régulièrement (une décade toutes les 2 s) jusqu'à l'équilibre ; quand le calcul ne suit pas, le compteur de la scène indique en orange la vitesse atteinte.<br>
         <strong>Options</strong> : molécules, couleur selon la température (bleu plus froid que 20 °C, rouge plus chaud), sondes, profils de pression et de température ; la case sous les profils les amplifie (écart à la moyenne).<br>
         <strong>Modèle</strong> : P et T sont calculées tranche par tranche, les molécules ne font que les illustrer. Les échanges thermiques sont accélérés et le cylindre est élargi sur le dessin (section réelle : 20 cm²). Sous une masse posée, le piston bouge environ 170 fois plus lentement que le son ne traverse le gaz (rapport c/√(g·L)) : le gaz y reste uniforme.<br>
         <strong>Raccourcis</strong> : Espace = pause, R = réinitialiser.

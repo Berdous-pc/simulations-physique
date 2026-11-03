@@ -16,7 +16,7 @@ var _tfEl = {};
 var _TF_EL_IDS = [
   'tf-it-P', 'tf-it-T', 'tf-it-V', 'tf-it-Pext', 'tf-it-Text', 'tf-sig-P', 'tf-sig-T',
   'tf-voy-meca', 'tf-voy-th',
-  'tf-btn-playpause', 'tf-sl-vitesse', 'tf-lbl-vitesse', 'tf-vitesse-limite', 'tf-btn-auto',
+  'tf-btn-playpause', 'tf-sl-vitesse', 'tf-lbl-vitesse', 'tf-btn-auto',
   'tf-piston-tenu', 'tf-piston-libre',
   'tf-paroi-isolant', 'tf-fond-1', 'tf-fond-2', 'tf-t-1', 'tf-t-2', 'tf-fleche-1', 'tf-fleche-2',
   'tf-pop-source', 'tf-pop-nom', 'tf-in-source', 'tf-pop-moins', 'tf-pop-plus', 'tf-pop-tgaz', 'tf-pop-note',
@@ -34,7 +34,7 @@ var _TF_EL_IDS = [
   'tf-main-moins-source', 'tf-main-plus-source', 'tf-main-sl-source',
   'tf-journal', 'tf-ckg-gel',
   'tf-btn-appliquer', 'tf-sl-nbpas', 'tf-lbl-nbpas', 'tf-duree-nbpas', 'tf-paroi-cond', 'tf-paroi-peu',
-  'tf-bilan', 'tf-bilan-note', 'tf-bilan-cycle', 'tf-bil-etape', 'tf-bil-A', 'tf-bil-cycle',
+  'tf-bilan', 'tf-bilan-cycle', 'tf-bil-etape', 'tf-bil-A', 'tf-bil-cycle',
   'tf-gamma', 'tf-in-P0', 'tf-in-V0', 'tf-in-T0', 'tf-moins-P0', 'tf-moins-V0', 'tf-moins-T0',
   'tf-plus-P0', 'tf-plus-V0', 'tf-plus-T0', 'tf-dep-info', 'tf-dep-attente'
 ];
@@ -235,17 +235,6 @@ function tfMajAfficheurs() {
   _tfEl['tf-voy-meca'].classList.toggle('ok', m.meca);
   _tfEl['tf-voy-th'].classList.toggle('ok', m.Tdef && (tf.paroi === 'isolant' || sigT === '='));
 
-  // Vitesse réellement tenue quand le calcul plafonne (TF_BUDGET_MS). Hors
-  // mode quasi statique, la cause est physique : le calcul suit le son
-  // (pas de quelques µs), soit ×3 environ au plus
-  var lim = _tfEl['tf-vitesse-limite'];
-  lim.style.display = tf.limite ? '' : 'none';
-  if (tf.limite) {
-    var atteint = '×' + _tfLibelleVitesse(+_tfVitesseAtteinte.toPrecision(2));
-    lim.textContent = tf.qs ? 'Calcul trop lourd : ' + atteint + ' atteint au lieu de ×' + _tfLibelleVitesse(tf.vitesse)
-                            : 'Gaz en mouvement (ondes, piston) : le calcul suit le son, ' + atteint + ' au plus';
-  }
-
   _tfCyTic();
   _tfMajCarte();
   _tfMajJournal();
@@ -329,6 +318,9 @@ function _tfMajBilan() {
     _tfEl['tf-bil-' + v].classList.toggle('active', tfBilanVue === v);
   });
 
+  // Étape en cours : la mention prend la place du verdict (pas de ligne en
+  // plus, qui décalait la suite du panneau)
+  var enCours = tfBilanVue === 'etape' && et && et.statut === 'en cours';
   var h;
   if (!b0 || !b1) {
     h = '<div class="tf-bil-vide">Aucune étape pour l’instant.</div>';
@@ -341,16 +333,15 @@ function _tfMajBilan() {
     h = _tfBilanEgalite('1<sup>er</sup> principe', ['ΔU', 'W', 'Q'], [J(dU), J(W), J(Q)], 'en J')
       + _tfBilanEgalite('2<sup>e</sup> principe', ['ΔS', 'S<sub>e</sub>', 'S<sub>c</sub>'],
                         [mJK(dS), mJK(Se), mJK(Sc)], 'en mJ/K', 'sc')
-      + '<div class="tf-bil-verdict ' + (rev ? 'rev' : 'irr') + '">'
-      + (rev ? 'S<sub>c</sub> ≈ 0 : réversible' : 'S<sub>c</sub> &gt; 0 : irréversible') + '</div>';
+      + (enCours ? '<div class="tf-bil-verdict encours">Étape en cours : valeurs à cet instant</div>'
+         : '<div class="tf-bil-verdict ' + (rev ? 'rev' : 'irr') + '">'
+         + (rev ? 'S<sub>c</sub> ≈ 0 : réversible' : 'S<sub>c</sub> &gt; 0 : irréversible') + '</div>');
   }
   if (h !== _tfBilanHtml) {
     _tfBilanHtml = h;
     _tfEl['tf-bilan'].innerHTML = h;
   }
   _tfMajBilanCycle(tfBilanVue === 'cycle' ? cy : null);
-  var enCours = tfBilanVue === 'etape' && et && et.statut === 'en cours';
-  _tfEl['tf-bilan-note'].textContent = enCours ? 'Étape en cours : valeurs à cet instant.' : '';
 }
 
 // Bilan d'un cycle fermé, en phrases : moteur (W < 0) et son rendement,
@@ -434,7 +425,7 @@ function _tfMajJournal() {
     var et = E.liste[k], detail = et.detail;
     if (et.man === 'main' && et.nbHors) detail += ' · ' + et.nbHors + ' pas hors équilibre';
     if (et.bilan1) detail += ' · S créée ' + _tfFmtmJK(_tfScree(et.bilan0, et.bilan1)).replace(' ', ' ');
-    h += '<div class="tf-f-trait' + (et.nonDef || et.man === 'pas' || et.statut === 'interrompue' ? ' pointille' : '')
+    h += '<div class="tf-f-trait' + (et.nonDef || et.cordes || et.statut === 'interrompue' ? ' pointille' : '')
        + (E.sel === k ? ' sel' : '') + '" style="border-left-color:' + et.couleur + '" onclick="tfOnSelEtape(' + k + ')" '
        + 'title="Mettre l’étape en évidence sur le diagramme et en faire le bilan">'
        + '<div class="tf-f-titre">' + et.titre
@@ -547,6 +538,14 @@ function _tfTitreEtape(o, sens, lent) {
     : tf.paroi === 'isolant' ? 'adiabatique' : lent ? 'isotherme' : 'monotherme');
 }
 
+// Étape faite de pas (1 ou N pas, à la main ; pas sur rev) : une corde par
+// pas sur les diagrammes. Sauf sur la source derrière une paroi peu
+// conductrice : le gaz la suit lentement, en restant uniforme, quel que
+// soit le nombre de pas ; son chemin est tracé plein.
+function _tfCordes(cle, pas) {
+  return pas && !(cle === 'Text' && tf.paroi === 'peu');
+}
+
 // Étape d'une manière : titre, et en détail la consigne, la durée, le fond
 function _tfDescManiere(cle, man, p) {
   var pas = man === 'pas' ? ' · ' + _tfLibNbPas(cle, p.n, Math.abs(tfCarte[cle].vise - _tfActuelle(cle))) : '';
@@ -564,7 +563,7 @@ function _tfDescManiere(cle, man, p) {
   return {
     titre: _tfTitreEtape(cle === 'Text' ? 'source' : 'piston', sens, man !== 'brutal'),
     detail: consigne + pas + (p.duree > 0 ? ' · ' + _tfFmtDuree(p.duree) : '') + _tfSuffixeFond(),
-    man: man, nPas: p.n || null
+    man: man, nPas: p.n || null, cordes: _tfCordes(cle, man !== 'rev')
   };
 }
 
@@ -672,11 +671,12 @@ function tfLancerPas(N) {
   if (tfEnCours() || _tfEnAttente) return;
   var cle = _tfCle(), vise = tfCarte[cle].vise, desc = _tfDescManiere(cle, 'pas', { duree: 0, n: N });
   var D = _tfDureeSeq(cle, vise, N);
-  _tfLance = { man: 'pas', cle: cle, v0: _tfActuelle(cle), n: N, k: 0 };
+  _tfLance = { man: 'pas', cle: cle, v0: _tfActuelle(cle), n: N, k: 0, prevu: _tfPrevuTexte };
   _tfLancerApresRalenti(cle, vise, 0, function () {
     var S = _tfLance;
     S.v0 = _tfActuelle(cle);
     _tfOuvrirEtape(desc);
+    S.etape = tfEtapes.liste.length;
     tf.seq = { suivant: function () { _tfPasSuivant(S, vise); } };
     _tfPasSuivant(S, vise);
     tfCarte[cle].suit = true;
@@ -695,7 +695,7 @@ function _tfPasSuivant(S, vise) {
   var cible = S.k >= S.n ? vise : S.v0 + (vise - S.v0) * S.k / S.n;
   if (S.k >= S.n) tf.seq = null;
   _tfFairePas(S.cle, cible, false);
-  _tfDemarrerRelax();
+  _tfDemarrerRelax(S.k > 1);
   tfGraph.sale = true;
 }
 
@@ -705,10 +705,11 @@ function _tfLancerManiere(man) {
   if (tfEnCours() || _tfEnAttente) return;
   var cle = _tfCle(), vise = tfCarte[cle].vise, p = _tfParamsManiere(cle, man);
   var desc = _tfDescManiere(cle, man, p);
-  _tfLance = { man: man, cle: cle, v0: _tfActuelle(cle) };
+  _tfLance = { man: man, cle: cle, v0: _tfActuelle(cle), prevu: _tfPrevuTexte };
   _tfLancerApresRalenti(cle, vise, p.duree, function () {
     _tfLance.v0 = _tfActuelle(cle);
     _tfOuvrirEtape(desc);
+    _tfLance.etape = tfEtapes.liste.length;
     if (cle === 'volume') {
       tfLancerVerin(vise, p.duree);
     } else {
@@ -836,7 +837,8 @@ function _tfMajBoutonsCarte() {
 function _tfMajProgres(enCours) {
   var visible = enCours && tfCarte.mode === 'viser';
   _tfEl['tf-progres'].style.display = visible ? '' : 'none';
-  _tfEl['tf-manieres'].style.display = visible ? 'none' : '';
+  _tfEl['tf-btn-appliquer'].classList.toggle('en-cours-cache', visible);
+  _tfEl['tf-sl-nbpas'].disabled = visible;
   if (!visible) return;
   var frac = 0, reste = null, L = _tfLance;
   if (_tfEnAttente) {
@@ -1011,11 +1013,12 @@ function _tfPoser(f, p) {
             : { titre: _tfTitreEtape('source', tfTSource(f) > tfMesures().Tmoy ? 'Chauffage' : 'Refroidissement'),
                 detail: 'fond sur la source ' + f + ' ('
                       + _tfFmtValeur('Text', tfTSource(f)).replace(/ \(.*\)$/, '') + ')'
-                      + (p === 'peu' ? ', paroi peu conductrice' : '') };
+                      + (p === 'peu' ? ', paroi peu conductrice' : ''),
+                cordes: p === 'cond' };
     var der = tfEtapes.liste[tfEtapes.liste.length - 1];
     if (tfEnCours()) tfGraphDegeler();
     else if (der && der.fond && der.statut === 'en cours') {
-      der.titre = nom.titre; der.detail = nom.detail; tfEtapes.version++; tfGraphDegeler();
+      der.titre = nom.titre; der.detail = nom.detail; der.cordes = !!nom.cordes; tfEtapes.version++; tfGraphDegeler();
     }
     else { _tfOuvrirEtape(nom); tfEtapes.liste[tfEtapes.liste.length - 1].fond = true; }
   }
@@ -1128,8 +1131,8 @@ function tfBasculerPiston() {
   if (!_tfSansEffet({ tenir: !tf.tenu })) {
     var m = tfMesures();
     _tfOuvrirEtape(tf.tenu
-      ? { titre: _tfTitreEtape('piston', m.Pmoy > m.Pext ? 'Détente' : 'Compression', false), detail: 'piston libéré' }
-      : { titre: 'Piston tenu', detail: '' });
+      ? { titre: _tfTitreEtape('piston', m.Pmoy > m.Pext ? 'Détente' : 'Compression', false), detail: 'piston libéré', cordes: true }
+      : { titre: 'Piston tenu', detail: '', cordes: true });
   }
   tfSetTenu(!tf.tenu);
   _tfDemarrerRelax();
@@ -1240,8 +1243,10 @@ function tfOnCopierEtat(i) {
 //     premier principe sous la pression finale constante pour la pression
 //     (n·Cv·(Tf − T) = −Pf·(Vf − V)) ; pour le volume, un peu plus chaud que
 //     la loi de Laplace (entropie créée par le front), non chiffré.
-// Rien pendant une action, ni si l'action ne changerait rien.
-var _tfPrevuSig = '';
+// Pendant une action, la prévision de son départ reste, grisée ; si
+// l'action ne changerait rien, une mention à la place. La case garde sa
+// hauteur (trois lignes, CSS) : le bouton Appliquer ne bouge pas.
+var _tfPrevuSig = '', _tfPrevuTexte = '';
 
 function _tfPrevoir(cle) {
   var m = tfMesures(), n = tf.n, R = TF_R, g = tf.gamma, Cv = tf.Cv;
@@ -1290,8 +1295,16 @@ function _tfMajPrevu(cle) {
     var o = _tfOrgane(), m = tfMesures();
     var sens = o === 'source' ? (k.vise > tf.Text ? 'Chauffage ' : 'Refroidissement ')
              : (P[0].V < m.V ? 'Compression ' : 'Détente ');
-    h = '<span class="tf-nature">' + sens + _tfNature(o) + '</span><br>→ ' + fmt(P[0]);
-    if (P[1]) h += '<br>brutalement → ' + fmt(P[1]);
+    h = _tfPrevuTexte = '<span class="tf-nature">' + sens + _tfNature(o) + '</span><br>→ ' + fmt(P[0])
+                      + (P[1] ? '<br>brutalement → ' + fmt(P[1]) : '');
+  } else if (enCours && _tfLance && _tfLance.prevu
+             && (_tfEnAttente || _tfLance.etape === tfEtapes.liste.length)) {
+    // Action lancée par Appliquer (pas une autre ouverte depuis : contact,
+    // piston), avant son départ ou pendant son étape
+    h = '<span class="tf-prevu-encours">' + _tfLance.prevu + '</span>';
+  } else if (tfCarte.mode === 'viser') {
+    if (!enCours) _tfPrevuTexte = '';
+    h = '<span class="tf-prevu-vide">' + (rien ? 'Valeur visée atteinte : en régler une autre.' : '') + '</span>';
   }
   var sig = h;
   if (sig === _tfPrevuSig) return;
@@ -1384,7 +1397,7 @@ function _tfPapPas(o, sens) {
   tfGraphMarche();
   _tfFairePas(cle, cible, true);
   var dsc = _tfDescPap(cle, der.v0, cible, der.nbHors);
-  der.titre = dsc.titre; der.detail = dsc.detail; der.man = dsc.man;
+  der.titre = dsc.titre; der.detail = dsc.detail; der.man = dsc.man; der.cordes = dsc.cordes;
   E.version++;
   tfCarte[cle].suit = true;
   _tfDemarrerRelax();
@@ -1465,7 +1478,7 @@ function _tfDescPap(cle, v0, v, nbHors) {
     d = nom + ' pas à pas (' + (v >= v0 ? '+' : '−') + _tfFmtPas(cle, Math.abs(v - v0)) + ')';
   }
   return { titre: _tfTitreEtape(cle === 'Text' ? 'source' : 'piston', sens, !nbHors),
-           detail: d + _tfSuffixeFond(), man: 'main' };
+           detail: d + _tfSuffixeFond(), man: 'main', cordes: _tfCordes(cle, true) };
 }
 
 // Interrompre pendant le ralentissement qui précède une action : elle ne
@@ -1625,28 +1638,37 @@ function _tfDureeAction(cle, duree) {
   return D;
 }
 
-// ── Vitesse adaptée pendant le retour à l'équilibre ──
+// ── Temps logarithmique pendant le retour à l'équilibre ──
 // Le cran choisi au lancement montre le phénomène rapide (front, ondes,
-// oscillations du piston) ; il resterait sinon pour l'amortissement des
-// ondes puis la mise en équilibre thermique, qui durent des secondes à des
-// heures simulées. Une fois l'action finie et TF_ECRAN_FRONT secondes
-// d'écran passées, le cran monte (jamais ne descend) pour que le reste du
-// retour à l'équilibre dure ~TF_ECRAN_ACTION à l'écran, en deux temps :
-// d'abord les ondes ou le piston à amortir, tant que le gaz n'est pas à
-// l'équilibre mécanique ; puis, une fois celui-ci atteint et vu à l'écran
-// TF_ECRAN_MECA secondes (le piston s'est arrêté), l'écart de température à
-// résorber (exponentiel, jusqu'à la moitié du seuil « T définie »).
-// L'amortissement des ondes ou du piston peut durer bien plus que prévu
-// (jusqu'à 18 s d'écran à ×1/100) : au-delà de TF_ECRAN_MECA_MAX secondes
-// d'écran sans repos mécanique, le temps accélère d'un cran (jusqu'à ×1).
-// Chaque phase est nommée sur le compteur de la scène (tfPhaseAuto).
-var TF_ECRAN_FRONT    = 3;   // s réelles
-var TF_ECRAN_MECA     = 1;   // s réelles
-var TF_ECRAN_MECA_MAX = 6;   // s réelles
-var _tfRelax = null;      // { ecran, tPrec, meca, attente } jusqu'au retour à l'équilibre
+// oscillations du piston). Ce qui suit dure des millisecondes (ondes,
+// piston) puis des secondes à des heures (équilibre thermique) : plutôt
+// que de détecter ces phases et de changer de cran à chacune, l'action
+// finie et TF_ECRAN_FRONT secondes d'écran passées, le temps devient
+// logarithmique : chaque décade de temps simulé dure TF_ECRAN_DECADE
+// secondes à l'écran. La vitesse est alors proportionnelle au temps écoulé
+// depuis une origine virtuelle (to, choisie pour que la vitesse ne saute
+// pas) ; elle ne fait que croître, sans palier, jusqu'à l'équilibre. Les
+// relaxations étant exponentielles, chacune occupe d'elle-même quelques
+// décades, donc quelques secondes, l'une après l'autre. Dans une suite de
+// pas, de même entre deux pas (_tfVitesseRelax), sans ralentir au pas suivant.
+var TF_ECRAN_FRONT  = 3;   // s réelles à vitesse constante après l'action
+var TF_ECRAN_DECADE = 2;   // s réelles par décade de temps simulé
+var TF_ECRAN_PAS    = 1;   // s réelles d'attente après un pas d'une suite
+// { ecran, tPrec, meca, fin, log {to} } jusqu'au retour à l'équilibre
+var _tfRelax = null;
 
-function _tfDemarrerRelax() {
-  _tfRelax = tfCarte.auto ? { ecran: 0, tPrec: tf.t, meca: 0, attente: 0 } : null;
+// suite : pas suivant d'une suite, l'attente avant le temps logarithmique
+// repart, la vitesse atteinte reste
+function _tfDemarrerRelax(suite) {
+  var R = _tfRelax;
+  if (suite && R && R.fin === null) { R.ecran = 0; R.meca = 0; _tfArreterLog(R); return; }
+  _tfRelax = tfCarte.auto ? { ecran: 0, tPrec: tf.t, meca: 0, fin: null, log: null } : null;
+}
+
+function _tfArreterLog(R) {
+  if (!R.log) return;
+  R.log = null;
+  tfChrono.sens = 0;
 }
 
 // Phase que suit la vitesse adaptée ('' : Auto coupé, ou gaz au repos)
@@ -1655,8 +1677,47 @@ function tfPhaseAuto() {
   if (_tfEnAttente) return 'avant l’action';
   if (tfEnCours()) return 'pendant l’action';
   var R = _tfRelax;
-  if (!R) return '';
+  if (!R || R.fin !== null) return '';
   return R.meca > 0 ? 'équilibre thermique' : tf.tenu ? 'ondes' : 'ondes et piston';
+}
+
+// À 10 Hz : phase nommée, fin à l'équilibre, passage au temps
+// logarithmique
+function _tfVitesseRelax() {
+  var R = _tfRelax;
+  if (!R || R.fin !== null || _tfEnAttente) return;
+  var dEcran = (tf.t - R.tPrec) / tf.vitesse;
+  R.tPrec = tf.t;
+  var entrePas = _tfEntrePas();
+  if (tfEnCours() && !entrePas) { R.ecran = 0; R.meca = 0; _tfArreterLog(R); return; }
+  R.ecran += dEcran;
+  // Entre deux pas d'une suite : la vitesse prévue ne compte pas toujours
+  // le retour à l'équilibre (paroi isolante : uniformisation de la
+  // température dans le gaz, qui laissait une détente adiabatique en 10 pas
+  // plus d'une minute à ×0,1). Passé TF_ECRAN_PAS secondes d'écran, le
+  // temps devient logarithmique jusqu'au pas suivant, qui garde la vitesse
+  // atteinte : la suite accélère d'elle-même, sans jamais ralentir.
+  if (entrePas) {
+    if (tfCarte.auto && !R.log && !_tfRampeV && R.ecran >= TF_ECRAN_PAS) _tfDemarrerLog(R);
+    return;
+  }
+  var m = tfMesures();
+  if (m.equilibre) { R.fin = tf.t; _tfArreterLog(R); tf.needsRedraw = true; return; }
+  // Temps d'écran passé à l'équilibre mécanique. Pendant la mise en
+  // équilibre thermique, le piston suit lentement le gaz qui se dilate ou se
+  // contracte : le critère strict clignote. Seul un écart net (cinq fois les
+  // seuils : le piston oscille encore) remet le compte à zéro.
+  var presque = (m.Pmax - m.Pmin) / m.Pmoy < 5 * TF_SEUIL_P
+             && (tf.tenu || m.butee !== null || Math.abs(m.Pmoy - m.Pext) / m.Pext < 5 * TF_SEUIL_P);
+  if (m.meca) R.meca += dEcran;
+  else if (!presque) R.meca = 0;
+  if (tfCarte.auto && !R.log && !_tfRampeV && R.ecran >= TF_ECRAN_FRONT) _tfDemarrerLog(R);
+}
+
+// Origine virtuelle choisie pour que la vitesse ne saute pas
+function _tfDemarrerLog(R) {
+  R.log = { to: tf.t - tf.vitesse * TF_ECRAN_DECADE / Math.LN10 };
+  tfChrono.sens = 1;
 }
 
 // Suite de pas : entre deux pas, rien ne bouge que le retour à l'équilibre
@@ -1666,50 +1727,16 @@ function _tfEntrePas() {
   return true;
 }
 
-function _tfVitesseRelax() {
+// À chaque image hors pause, avant le calcul : en temps logarithmique, la
+// vitesse suit le temps écoulé depuis l'origine virtuelle (le calcul
+// plafonné la freine d'autant). Un changement de cran (curseur, ralenti
+// avant une action) ou Auto coupé y met fin.
+function _tfAvancerHorloge() {
   var R = _tfRelax;
-  if (!R) return;
-  if (!tfCarte.auto) { _tfRelax = null; return; }
-  if (_tfEnAttente) return;   // une action attend la fin d'un ralentissement
-  if (tfEnCours() && !_tfEntrePas()) { R.ecran = 0; R.meca = 0; R.attente = 0; R.tPrec = tf.t; return; }
-  var dEcran = (tf.t - R.tPrec) / tf.vitesse;
-  R.ecran += dEcran;
-  R.tPrec = tf.t;
-  var m = tfMesures();
-  if (m.equilibre) { _tfRelax = null; return; }
-  // Temps d'écran passé à l'équilibre mécanique. Pendant la mise en
-  // équilibre thermique, le piston suit lentement le gaz qui se dilate ou se
-  // contracte : le critère strict clignote. Seul un écart net (cinq fois les
-  // seuils : le piston oscille encore) remet le compte à zéro.
-  var presque = (m.Pmax - m.Pmin) / m.Pmoy < 5 * TF_SEUIL_P
-             && (tf.tenu || m.butee !== null || Math.abs(m.Pmoy - m.Pext) / m.Pext < 5 * TF_SEUIL_P);
-  if (m.meca) R.meca += dEcran;
-  else if (!presque) R.meca = 0;
-  if (R.ecran < TF_ECRAN_FRONT) return;
-  var d = tfDurees(), D = 0;
-  if (R.meca === 0) {
-    // Ondes ou piston à amortir : rien de thermique encore
-    if (!tf.qs || tf.osc) D = tf.masse > 0.5 ? 16 * d.piston : 100 * d.traversee;
-    R.attente += dEcran;
-    if (R.attente > TF_ECRAN_MECA_MAX) {
-      R.attente = 0;
-      var iv = tfCranVitesse(_tfRampeV ? _tfRampeV.v1 : tf.vitesse);
-      if (iv < TF_VITESSES.indexOf(1)) { _tfVersCran(iv + 1); return; }
-    }
-  } else {
-    if (R.meca < TF_ECRAN_MECA) return;
-    var ecart = Math.max(m.Tmax - m.Tmin, tf.G > 0 ? Math.abs(m.Tmoy - tf.Text) : 0);
-    if (ecart > TF_SEUIL_T / 2) {
-      D = (tf.G > 0 ? d.thermique : d.interne) * Math.log(Math.max(2, ecart / (TF_SEUIL_T / 2)));
-    }
-    // Pas de la source sous le seuil (0,1 K) : l'attente est celle de
-    // tfPasSource, sans quoi le cran restait à ×1
-    if (tf.t < tf.tThMin) D = Math.max(D, tf.tThMin - tf.t);
-  }
-  if (D <= 0) return;
-  // Jamais plus lent que la vitesse visée (celle d'un passage en cours)
-  var i = tfCranVitesse(D / TF_ECRAN_ACTION);
-  if (TF_VITESSES[i] > (_tfRampeV ? _tfRampeV.v1 : tf.vitesse)) _tfVersCran(i);
+  if (!R || !R.log) return;
+  if (!tfCarte.auto || R.fin !== null || _tfRampeV || _tfEnAttente) { _tfArreterLog(R); return; }
+  var v = Math.min(TF_VITESSES[TF_VITESSES.length - 1], (tf.t - R.log.to) * Math.LN10 / TF_ECRAN_DECADE);
+  if (v > tf.vitesse) _tfFixerVitesse(v);
 }
 
 // ── Section État initial : dispositif (montage : air de l'enceinte ou
@@ -1842,6 +1869,7 @@ function _tfLoop(ts) {
 
   if (!tf.paused) {
     _tfAvancerRampeV(dtReel / 1000);
+    _tfAvancerHorloge();
     var dtSim = tfAvancer(dtReel / 1000 * tf.vitesse);
     if (dtReel > 0) _tfVitesseAtteinte += (dtSim / (dtReel / 1000) - _tfVitesseAtteinte) * Math.min(1, dtReel / 1000);
     // Agitation des molécules en temps d'affichage, la même à tous les

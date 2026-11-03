@@ -963,6 +963,11 @@ function _tfDessinerChrono() {
   var txtV = fleche + '×' + _tfLibelleVitesse(v);
   var mot = tfPhaseAuto() || (tfChrono.sens > 0 ? 'accélère' : tfChrono.sens < 0 ? 'ralentit'
           : v < 0.999 ? 'ralenti' : v > 1.001 ? 'accéléré' : 'temps réel');
+  // Calcul plafonné (tf.limite) : la vitesse réellement tenue, en orange, à
+  // la place du mot (ici plutôt que dans le panneau, où la ligne qui
+  // apparaissait et disparaissait décalait tous les boutons)
+  var limite = tf.limite ? 'atteint ×' + _tfLibelleVitesse(+_tfVitesseAtteinte.toPrecision(2)) : '';
+  if (limite) mot = limite;
 
   // Police la plus grande (24 px au plus) qui tient dans le cadre ; largeur
   // mesurée sur un gabarit, pour ne pas varier quand les chiffres défilent
@@ -975,7 +980,14 @@ function _tfDessinerChrono() {
   var wV = c.measureText(txtV).width;
   c.font = f2 + 'px ' + police;
   var wMot = c.measureText(' ' + mot).width;
-  if (wV + wMot > dispo) wMot = 0;   // trop étroit : la vitesse seule
+  if (wV + wMot > dispo) {   // trop étroit : la vitesse seule, celle atteinte si le calcul plafonne
+    wMot = 0;
+    if (limite) {
+      txtV = limite.replace('atteint ', '');
+      c.font = '700 ' + f2 + 'px ' + police;
+      wV = c.measureText(txtV).width;
+    }
+  }
 
   // Cadre : fond clair (lisible sur l'air teinté de l'enceinte), bordure
   var h = Math.round(2 * pad + f1 * 1.2 + 4 + f2 * 1.2);
@@ -995,6 +1007,7 @@ function _tfDessinerChrono() {
   c.fillText(txtT, xm, y0 + pad);
 
   var coul = v < 0.999 ? '#2f6fb0' : v > 1.001 ? '#c0602a' : '#2c3e50';
+  var coulLim = '#c05a00';
   var y2 = y0 + pad + f1 * 1.2 + 4, xV = xm - (wV + wMot) / 2;
   // Changement de vitesse d'un coup : la vitesse surlignée, qui s'efface
   var age = performance.now() - tfChrono.saut;
@@ -1007,11 +1020,11 @@ function _tfDessinerChrono() {
   }
   c.textAlign = 'left';
   c.font = '700 ' + f2 + 'px ' + police;
-  c.fillStyle = coul;
+  c.fillStyle = limite && !wMot ? coulLim : coul;
   c.fillText(txtV, xV, y2);
   if (wMot) {
-    c.font = f2 + 'px ' + police;
-    c.fillStyle = tfChrono.sens ? coul : '#6a7a88';
+    c.font = (limite ? '700 ' : '') + f2 + 'px ' + police;
+    c.fillStyle = limite ? coulLim : tfChrono.sens ? coul : '#6a7a88';
     c.fillText(' ' + mot, xV + wV, y2);
   }
   c.restore();

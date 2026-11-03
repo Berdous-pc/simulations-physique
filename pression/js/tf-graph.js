@@ -64,11 +64,7 @@ var tfGraphAff = {
   adiabatique : false,
   isochore    : false,
   isobare     : false,
-  gel         : true,    // chrono figé à l'équilibre
-  // Convention de tracé des diagrammes d'état : faux, un point dès que la
-  // grandeur en ordonnée est uniforme dans le gaz ; vrai, seulement quand
-  // le gaz est en équilibre avec l'extérieur (tfMesures().ext)
-  ext         : false
+  gel         : true     // chrono figé à l'équilibre
 };
 
 // Chrono figé : après une action, le gel attend que le gaz ait quitté
@@ -180,7 +176,6 @@ function _tfgEchantillon(avantMarche) {
   if (a) {
     if (a.ndP) m.Pdef = false;
     if (a.ndT) m.Tdef = false;
-    if (a.ndExt) m.ext = false;
   }
   tfEtapesSuivre(m);
   if (!m.equilibre) g.blocage = g.eqSuite = 0;
@@ -209,7 +204,7 @@ function _tfgEchantillon(avantMarche) {
   var s = {
     t: tf.t - g.decal, ts: tf.t, V: m.V,
     Pm: m.Pmoy, Pdef: m.Pdef,
-    Tm: m.Tmoy, Tdef: m.Tdef, ext: m.ext,
+    Tm: m.Tmoy, Tdef: m.Tdef,
     Pt: moy('P', m.Pmoy), Plo: bas('P1', m.Pmoy), Phi: haut('P2', m.Pmoy),
     Tt: moy('T', m.Tmoy), Tlo: bas('T1', m.Tmoy), Thi: haut('T2', m.Tmoy),
     Vt: moy('V', m.V),    Vlo: bas('V1', m.V),    Vhi: haut('V2', m.V),
@@ -268,14 +263,13 @@ function _tfgEclaircir() {
     var pas = n > quota ? 2 * n / quota : 1, prochain = gr[0];
     var pasT = n > quota ? 2 * duree / quota : 0, prochainT = t0;
     // Extrêmes des échantillons retirés, reportés sur le suivant gardé : son
-    // intervalle les couvre désormais (un dépassement du piston reste vu,
-    // _tfgPassages ; une corde ne redevient pas pleine après coup)
+    // intervalle les couvre désormais (bandes des graphes au cours du temps)
     var ext = null;
     for (var k = gr[0]; k < gr[1]; k++) {
       var s = e[k], av = e[k - 1], ap = e[k + 1];
       var garder = k === gr[0] || k === gr[1] - 1 || s.marche || s.coupure
-        || (av && (av.Pdef !== s.Pdef || av.Tdef !== s.Tdef || av.ext !== s.ext || av.eq !== s.eq))
-        || (ap && (ap.Pdef !== s.Pdef || ap.Tdef !== s.Tdef || ap.ext !== s.ext || ap.eq !== s.eq));
+        || (av && (av.Pdef !== s.Pdef || av.Tdef !== s.Tdef || av.eq !== s.eq))
+        || (ap && (ap.Pdef !== s.Pdef || ap.Tdef !== s.Tdef || ap.eq !== s.eq));
       if (k >= prochain) { garder = true; while (prochain <= k) prochain += pas; }
       if (pasT > 0 && s.ts >= prochainT) { garder = true; while (prochainT <= s.ts) prochainT += pasT; }
       if (!garder) {
@@ -413,7 +407,7 @@ function _tfgSuivreGele(m) {
   s.Pm = s.Pt = s.Plo = s.Phi = m.Pmoy;
   s.Tm = s.Tt = s.Tlo = s.Thi = m.Tmoy;
   s.Pmin = m.Pmin; s.Pmax = m.Pmax; s.Tmin = m.Tmin; s.Tmax = m.Tmax;
-  s.Pdef = m.Pdef; s.Tdef = m.Tdef; s.ext = m.ext; s.eq = m.equilibre;
+  s.Pdef = m.Pdef; s.Tdef = m.Tdef; s.eq = m.equilibre;
   s.S = S; s.Pp = s.Ppt = Pp; s.Text = tf.Text;
   _tfgEnveloppe(m, S);
   g.sale = true;
@@ -1110,10 +1104,10 @@ var TF_G_DIAGS = {
     titreX: 'V (L)', titreY: 'P (kPa)', spanX: 0.05, spanY: 5,
     x: function (o) { return o.V * 1e3; },
     y: function (s) { return s.Pm * 1e-3; },
-    def: function (s) { return tfGraphAff.ext ? s.ext : s.Pdef; },
+    def: function (s) { return s.Pdef; },
     yL: function (L) { return L.P * 1e-3; },
     yM: function (m) { return m.Pmoy * 1e-3; },
-    defM: function (m) { return tfGraphAff.ext ? m.ext : m.Pdef; },
+    defM: function (m) { return m.Pdef; },
     yMin: function (m) { return m.Pmin * 1e-3; },
     yMax: function (m) { return m.Pmax * 1e-3; },
     tranche: function (j) { return tf.P[j] * 1e-3; },
@@ -1124,10 +1118,10 @@ var TF_G_DIAGS = {
     titreX: 'ΔS (mJ/K)', titreY: 'T (K)', spanX: 2, spanY: 5,
     x: function (o) { return o.S * 1e3; },
     y: function (s) { return s.Tm; },
-    def: function (s) { return tfGraphAff.ext ? s.ext : s.Tdef; },
+    def: function (s) { return s.Tdef; },
     yL: function (L) { return L.T; },
     yM: function (m) { return m.Tmoy; },
-    defM: function (m) { return tfGraphAff.ext ? m.ext : m.Tdef; },
+    defM: function (m) { return m.Tdef; },
     yMin: function (m) { return m.Tmin; },
     yMax: function (m) { return m.Tmax; },
     tranche: function (j) { return tfTTranche(j); },
@@ -1481,8 +1475,7 @@ function _tfgDessinerDiag(o, cs, mes) {
   // Mention « non définie » en bas à gauche, coin vide pour les
   // transformations usuelles (basse pression à petit volume, basse
   // température), et légende fixe au-dessus du tracé
-  if (!defM) _tfgEtiquette(c, tfGraphAff.ext ? 'Gaz hors d’équilibre avec l’extérieur' : D.nd,
-                           x0 + 8, y0 + ph - fs, fs, TF_G_ND, 'left');
+  if (!defM) _tfgEtiquette(c, D.nd, x0 + 8, y0 + ph - fs, fs, TF_G_ND, 'left');
   _tfgLegende(c, d, x0, Y + 4, pw, fs - 1, true);
 
   var gl = g.glisse;
@@ -1553,19 +1546,15 @@ function _tfgFantome(c, T, D, xDe, yDe) {
 // d'une borne à l'autre (plein), sinon ses deux bornes ; n : étape de la
 // borne d'arrivée ; provisoire : corde du passage en cours, gaz pas encore
 // revenu à l'équilibre.
-// Étape faite en N pas (« Viser une valeur ») : chaque pas est une corde,
+// Étape faite de pas (et.cordes : 1 ou N pas, pas à la main, piston
+// libéré, contact par une paroi conductrice) : chaque pas est une corde,
 // quel que soit le gaz entre deux équilibres. Le jugement au seuil faisait
 // alterner pleins et pointillés au sein de pas tous pareils (la couche
 // chaude laissée sous le piston, 0,3 à 0,7 K, oscille autour des 0,5 K de
-// TF_SEUIL_T) ; N points et N cordes se resserrent vers la courbe pleine
-// du pas infinitésimal.
-// Convention « équilibre avec l'extérieur » : un volume qui sort de
-// l'intervalle entre les deux bornes (au-delà de TF_G_DEPASSE du volume)
-// fait aussi une corde. Le piston, emporté par son inertie, a dépassé
-// l'état d'arrivée : la pression du gaz n'était pas celle qu'il exerce,
-// même si l'écart reste sous TF_SEUIL_P (grain de 10 g : 0,05 %). En
-// convention « uniforme », l'oscillation reste tracée : le gaz y est défini.
-var TF_G_DEPASSE = 1e-5;
+// TF_SEUIL_T), et traçait en plein l'oscillation du piston sous une masse
+// posée (gaz uniforme) ; N points et N cordes se resserrent vers la courbe
+// pleine du pas infinitésimal. Derrière une paroi peu conductrice, le gaz
+// suit la source en restant uniforme : chemin plein, quel que soit N.
 
 function _tfgPassages(e, D) {
   var bornes = [0], k, i, res = [];
@@ -1574,15 +1563,10 @@ function _tfgPassages(e, D) {
   }
   for (i = 1; i < bornes.length; i++) {
     var a = bornes[i - 1], b = bornes[i], pts = [];
-    var et = tfEtapes.liste[e[b].etape - 1], plein = !(et && et.man === 'pas');
-    var tol = tfGraphAff.ext ? TF_G_DEPASSE * e[b].V : Infinity;
-    var V1 = Math.min(e[a].V, e[b].V) - tol, V2 = Math.max(e[a].V, e[b].V) + tol;
+    var et = tfEtapes.liste[e[b].etape - 1], plein = !(et && et.cordes);
     for (k = a; k <= b; k++) {
       pts.push(k);
-      // Volumes extrêmes atteints depuis l'échantillon précédent (celui de
-      // la borne de départ appartient au passage d'avant)
-      var lo = k > a ? e[k].Vlo : e[k].V, hi = k > a ? e[k].Vhi : e[k].V;
-      if (!D.def(e[k]) || lo < V1 || hi > V2) plein = false;
+      if (!D.def(e[k])) plein = false;
     }
     res.push({
       pts: plein ? pts : [a, b], plein: plein, n: e[b].etape,
@@ -2155,7 +2139,6 @@ function tfGraphInit() {
   for (var cle in tfGraphAff) {
     document.getElementById('tf-ckg-' + cle).checked = tfGraphAff[cle];
   }
-  document.getElementById('tf-ckg-gaz').checked = !tfGraphAff.ext;
   var opt = document.getElementById('tf-options');
   document.addEventListener('pointerdown', function (ev) {
     if (!opt.contains(ev.target)) tfGraphMenu(false);

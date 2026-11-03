@@ -397,6 +397,7 @@ main {
 }
 .tf-bil-verdict.rev { color: #2a7a4a; background: #e6f4ea; }
 .tf-bil-verdict.irr { color: #b06010; background: #fbf1de; }
+.tf-bil-verdict.encours { color: #6a7a88; background: #eef1f4; font-weight: 600; }
 .tf-bil-vide { color: #8a9aaa; text-align: center; }
 /* Bilan d'un cycle fermé, en phrases sous le tableau */
 .tf-bilan-cycle {
@@ -608,7 +609,14 @@ main {
 .tf-nbpas-crans span { flex: 0 0 1.6em; text-align: center; }
 .tf-cy-tout .tf-nbpas { margin-bottom: 2px; }
 
-/* Action en cours : barre de progression et bouton ■ */
+/* Action en cours : barre de progression et bouton ■, posés dans la case
+   du bouton qu'ils remplacent (.tf-lancer : même cellule de grille, le
+   bouton masqué garde sa hauteur) */
+.tf-lancer { display: grid; }
+.tf-lancer > * { grid-area: 1 / 1; min-width: 0; }
+.tf-lancer > .en-cours-cache { visibility: hidden; }
+.tf-lancer > .tf-progres { margin-top: 0; }
+.tf-lancer .tf-progres-barre { height: auto; min-height: 0; }   /* hauteur du bouton */
 .tf-progres { display: flex; gap: 6px; margin-top: 6px; }
 .tf-progres-barre {
   position: relative; flex: 1 1 auto; min-width: 0; height: 2.4em;
@@ -662,8 +670,7 @@ main {
 .tf-organe-pas label { flex: 0 0 auto; font-size: 0.85em; color: #7a8a96; }
 .tf-organe-pas input[type="range"] { flex: 1 1 auto; min-width: 0; accent-color: #4a7aaa; cursor: pointer; }
 .tf-organe-note { display: block; margin-top: 4px; font-size: 0.85em; color: #7a8a96; }
-.input-hint.tf-main-compte { display: block; }
-.input-hint.tf-main-compte:empty { display: none; }
+.input-hint.tf-main-compte { display: block; min-height: 1.35em; }   /* ligne réservée */
 /* Vitesse : libellé, curseur, valeur, bouton Auto sur une ligne */
 .tf-vitesse-ligne { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
 .tf-vit-lbl { flex: 0 0 auto; font-size: clamp(12px, 1.15vw, 15px); color: #2c3e50; }
@@ -799,8 +806,10 @@ main {
   font-size: clamp(11px, 0.95vw, 13px);
   color: #7a3a10;
   line-height: 1.35;
+  min-height: 4.05em;   /* trois lignes réservées : Appliquer ne bouge pas */
 }
-.tf-prevu:empty { display: none; }
+.tf-prevu-encours, .tf-prevu-encours .tf-nature { color: #9aa4ae; }
+.tf-prevu-vide { color: #8a96a0; font-style: italic; }
 .tf-prevu b { font-weight: 600; }
 
 /* − et + maintenus : répétés */
@@ -809,7 +818,8 @@ main {
 /* Frise des étapes, sur fond blanc : des points (états, cercle blanc cerclé
    de la couleur de l'étape qui y arrive, comme les lettres du diagramme)
    reliés par des traits (étapes : plein si le chemin est défini, pointillé
-   sinon) ; défile au-delà d'une dizaine d'étapes */
+   sinon) ; défile au-delà d'une dizaine d'étapes. Le journal des étapes a
+   une hauteur fixe : il ne pousse pas le Bilan à chaque étape */
 .tf-journal {
   max-height: 24em;
   overflow-y: auto;
@@ -880,6 +890,7 @@ main {
 
 /* Cycles : étapes du cycle choisi, sur fond blanc comme la frise ; A, puis
    une pastille par étape (✓ faite, bleue à faire, grise à venir) */
+#tf-journal { height: 13em; }
 .tf-cy-liste { max-height: none; padding: 4px 6px; overflow-x: hidden; }
 .tf-cy-et { display: flex; align-items: flex-start; gap: 8px; padding: 4px 3px; border-radius: 4px; }
 .tf-cy-num {

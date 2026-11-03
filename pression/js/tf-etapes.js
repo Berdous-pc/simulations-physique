@@ -24,8 +24,9 @@ var TF_COUL_SANS_ETAPE = '#7a8a96';
 
 var tfEtapes = {
   // Étapes : titre (nature), detail, man (manière : 'brutal', 'qs', 'rev',
-  // 'main' ou null), couleur, depart et arrivee (indices de lettres ou
-  // null), statut, nonDef (le gaz est passé par un état où P ou T n'est pas
+  // 'main' ou null), cordes (étape faite de pas : une corde par pas sur
+  // les diagrammes, _tfgPassages ; trait pointillé dans la frise), couleur,
+  // depart et arrivee (indices de lettres ou null), statut, nonDef (le gaz est passé par un état où P ou T n'est pas
   // définie : trait pointillé dans la frise, comme sur le diagramme), bilan0
   // et bilan1 (compteurs au départ et à l'arrivée)
   liste   : [],
@@ -128,7 +129,7 @@ function tfEtapeNouvelle(desc) {
   var depart = E.suivie;
   if (prec && prec.statut === 'en cours') { prec.statut = 'interrompue'; depart = null; }
   E.liste.push({
-    titre: desc.titre, detail: desc.detail, man: desc.man || null, nPas: desc.nPas || null, nonDef: false,
+    titre: desc.titre, detail: desc.detail, man: desc.man || null, nPas: desc.nPas || null, cordes: !!desc.cordes, nonDef: false,
     couleur: TF_COUL_ETAPES[E.liste.length % TF_COUL_ETAPES.length],
     depart: depart, arrivee: null, statut: 'en cours',
     bilan0: tfBilan()     // compteurs au départ (section Bilan)

@@ -408,10 +408,6 @@ function _tfCyDetail(d, s) {
   return '→ ' + Math.round(s.T) + ' K · ' + (s.tenu ? 'piston tenu, ' : 'piston libre, ') + src(s.fond);
 }
 
-function _tfCyBouton() {
-  return '<button class="tf-cy-m tf-appliquer" onclick="tfCyEtape()">Appliquer l’étape</button>';
-}
-
 function _tfMajCycle(force) {
   var C = tfCycle, E = _tfCyEl;
   if (!E.corps) return;
@@ -450,13 +446,12 @@ function _tfMajCycle(force) {
        + '<div class="tf-cy-txt"><span class="tf-f-titre">' + s.titre + '</span> '
        + (fait ? '<span class="tf-f-puce tf-f-' + fait.man + '">' + _tfPuce(fait.man, fait.nPas) + '</span>' : '')
        + '<br><span class="tf-f-detail">' + _tfCyDetail(d, s) + '</span>'
-       + (courant && pret && repos ? '<div class="tf-cy-btns">' + _tfCyBouton() + '</div>' : '')
        + '</div></div>';
   });
-  if (C.tour) {
-    h += '<div class="tf-cy-fin">' + (tfEtapesCycle() ? '⟳ Revenu en A : bilan du cycle dans Bilan.'
-         : 'Tour fini, mais le gaz n’est pas revenu en A.') + '</div>';
-  }
+  // Ligne de fin de tour toujours présente (vide pendant le tour) : la
+  // suite du panneau ne bouge pas quand le tour finit
+  h += '<div class="tf-cy-fin">' + (!C.tour ? '&nbsp;' : tfEtapesCycle() ? '⟳ Revenu en A : bilan du cycle dans Bilan.'
+       : 'Tour fini, mais le gaz n’est pas revenu en A.') + '</div>';
 
   var sig = [h, info, attente, pret, repos, !!C.run, C.k].join('#');
   if (!force && sig === _tfCyHtml) { _tfCyMajEnCours(); return; }
@@ -465,8 +460,9 @@ function _tfMajCycle(force) {
   E.info.classList.toggle('tf-cy-erreur', !!d.erreur);
   E.attente.style.display = attente ? '' : 'none';
   E.liste.innerHTML = h;
-  E.tout.style.display = C.run ? 'none' : '';
-  E.toutBtn.disabled = !pret || !repos;
+  E.btns.classList.toggle('en-cours-cache', !!C.run);
+  E.slN.disabled = !!C.run;
+  E.toutBtn.disabled = E.etapeBtn.disabled = !pret || !repos;
   E.slN.value = C.iN;
   E.lblN.textContent = _tfCyLibN(TF_NB_PAS[C.iN]);
   _tfCyMajEnCours();
@@ -491,6 +487,8 @@ function tfCyclesInit() {
     });
   });
   _tfCyEl.toutBtn = document.getElementById('tf-cy-tout-btn');
+  _tfCyEl.etapeBtn = document.getElementById('tf-cy-etape-btn');
+  _tfCyEl.btns = _tfCyEl.toutBtn.parentNode;
   _tfCyEl.slN = document.getElementById('tf-cy-sl-nbpas');
   _tfCyEl.lblN = document.getElementById('tf-cy-lbl-nbpas');
   _tfCyEl.corps = document.getElementById('tf-cy-corps');
