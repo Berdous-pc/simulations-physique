@@ -262,7 +262,7 @@ index.html
 - **Deux colonnes gauches** dans la même cellule de grille : `#left-col` (Pression) et `#tf-left-col` (Transformations), une seule affichée. Leurs règles CSS sont communes (sélecteurs groupés).
 - **Deux boucles RAF** : chacune ne calcule et ne dessine que si son onglet est affiché (`ongletPrincipal`, défini dans `ui.js`).
 - **Démarrage différé de l'onglet Pression** : `_initPression()` a besoin de la taille de son canvas, nulle quand la page s'ouvre sur `#transformations`. `_initPressionEnAttente` reporte ce démarrage à la première bascule vers Pression (`setMainTab`).
-- **Bandeaux Informations** : un par onglet (`#panel-hint-pression`, `#panel-hint-transformations`), `toggleHint()` agit sur celui de l'onglet affiché. Raccourcis Espace / R aiguillés vers l'onglet affiché.
+- **Bandeaux Informations** : un par onglet (`#panel-hint-pression`, `#panel-hint-transformations`), `toggleHint()` agit sur celui de l'onglet affiché. Raccourcis Espace / R aiguillés vers l'onglet affiché. Celui de Transformations est un mode d'emploi court, une ligne `<strong>Section</strong> : …` par section du panneau, comme les autres pages (~3 000 caractères, palier 8 ; il en faisait 18 000). Déplié, `.panel-hint-body` est plafonné à `min(45vh, 360px)` avec défilement interne : à 200px de large (panneau en fenêtre étroite), le texte dépasse la hauteur, et l'ancien `overflow: hidden` à 250px en perdait la fin. En fenêtre étroite, `.panel-hint-title` perd son espacement des lettres pour que « Informations » tienne à côté du bouton Menu.
 
 ### `js/tf-sim.js` — Modèle physique
 
