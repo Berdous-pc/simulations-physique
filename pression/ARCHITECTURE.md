@@ -23,7 +23,7 @@ pression/
     └── sections-repliables.js   ← copie de titrage/, sections du panneau repliables
 ```
 
-La page a deux onglets principaux : **Pression** (modèle cinétique, molécules) et **Transformations** (en construction, cf. `PLAN_TRANSFORMATIONS.md`). Deep-linking `#pression` / `#transformations`. Les deux onglets n'ont aucun code commun ; seuls `ui.js` (bascule) et la feuille de style sont partagés.
+La page a deux onglets principaux : **Pression** (modèle cinétique, molécules) et **Transformations** (cf. `PLAN_TRANSFORMATIONS.md`). Deep-linking `#pression` / `#transformations`. Les deux onglets n'ont aucun code commun ; seuls `ui.js` (bascule) et la feuille de style sont partagés.
 
 ---
 

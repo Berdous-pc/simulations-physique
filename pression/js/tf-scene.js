@@ -20,6 +20,11 @@
 var tfCanvas = document.getElementById('tf-canvas');
 var tfCtx    = tfCanvas.getContext('2d');
 
+// Police des textes dessinés (scène et graphes) ; style : '', 'bold',
+// '600', 'italic'
+var TF_POLICE = '"Segoe UI", Arial, sans-serif';
+function _tfPolice(style, px) { return (style ? style + ' ' : '') + px + 'px ' + TF_POLICE; }
+
 // ── Habillage (m, repère du gaz : z = 0 au fond intérieur) ──
 var TF_EP_PISTON  = 0.010;   // épaisseur dessinée du piston-membrane (1 g)
 var TF_H_TIGE     = 0.045;   // tige entre piston et plateau
@@ -180,7 +185,7 @@ function _tfDessinerFond() {
     c.strokeRect(x1 - m, yH, x2 - x1 + 2 * m, yB - yH);
     var iso = tf.paroi === 'isolant';
     police = Math.max(9, Math.min(14, Math.round((yB - yH) * (iso ? 0.5 : 0.75))));
-    c.font = '600 ' + police + 'px "Segoe UI", Arial, sans-serif';
+    c.font = _tfPolice('600', police);
     c.fillStyle = '#6a5030';
     c.textAlign = 'center';
     c.textBaseline = 'middle';
@@ -206,7 +211,7 @@ function _tfDessinerFond() {
   c.stroke();
   var nom = 'source ' + tf.fond;
   police = Math.max(10, Math.min(14, Math.round((yS2 - yS1) * 0.62)));
-  c.font = '600 ' + police + 'px "Segoe UI", Arial, sans-serif';
+  c.font = _tfPolice('600', police);
   c.fillStyle = Math.abs(tf.Text - TF_T0) > 40 ? '#fff' : '#2c3e50';
   c.textAlign = 'center';
   c.textBaseline = 'middle';
@@ -227,7 +232,7 @@ function _tfClocheX() {
 function _tfDessinerAirEnceinte() {
   if (tf.montage === 'masse') return;   // air libre : rien à teinter
   var c = tfCtx, p = _tfParoi, xs = _tfClocheX();
-  var a = 0.02 + 0.22 * Math.min(1, tf.Pair / 5e5);
+  var a = 0.02 + 0.22 * Math.min(1, tf.Pair / TF_PAIR_MAX);
   var yH = _tfY(TF_Z_HAUT), yB = _tfY(TF_Z_CLOCHE), yRebord = _tfY(TF_H_CYL) - p;
   var yPiston = _tfY(tf.z[TF_N] + TF_EP_PISTON);
   c.fillStyle = 'rgba(90,130,175,' + a.toFixed(3) + ')';
@@ -253,7 +258,7 @@ function _tfDessinerEnceinte() {
 
   var police = Math.max(10, Math.min(14, Math.round(_tfEch * 0.02)));
   if (tf.Pair < 500) {
-    c.font = 'italic ' + police + 'px "Segoe UI", Arial, sans-serif';
+    c.font = _tfPolice('italic', police);
     c.fillStyle = '#5a6a78';
     c.textAlign = 'left';
     c.textBaseline = 'top';
@@ -283,7 +288,7 @@ function _tfDessinerEnceinte() {
     c.lineTo(xM + Math.cos(ak) * R * 0.95, yM + Math.sin(ak) * R * 0.95);
   }
   c.stroke();
-  var an = a0 + (a1 - a0) * Math.min(1, tf.Pair / 5e5);
+  var an = a0 + (a1 - a0) * Math.min(1, tf.Pair / TF_PAIR_MAX);
   c.strokeStyle = '#b04020';
   c.lineWidth = 2;
   c.beginPath();
@@ -294,7 +299,7 @@ function _tfDessinerEnceinte() {
   c.beginPath();
   c.arc(xM, yM, 2.5, 0, 2 * Math.PI);
   c.fill();
-  c.font = '600 ' + Math.max(8, Math.round(R * 0.34)) + 'px "Segoe UI", Arial, sans-serif';
+  c.font = _tfPolice('600', Math.max(8, Math.round(R * 0.34)));
   c.textAlign = 'center';
   c.textBaseline = 'middle';
   c.fillText(Math.round(tf.Pair / 1000) + ' kPa', xM, yM + R * 0.55);
@@ -315,7 +320,7 @@ function _tfDessinerPortique(xs, yH, yB) {
   c.fillRect(xs[0] - 2, yB - hc / 2, _tfX1 - p - xs[0] + 2, hc);
   c.fillRect(_tfX2 + p, yB - hc / 2, xs[1] - _tfX2 - p + 2, hc);
   var police = Math.max(10, Math.min(14, Math.round(_tfEch * 0.02)));
-  c.font = 'italic ' + police + 'px "Segoe UI", Arial, sans-serif';
+  c.font = _tfPolice('italic', police);
   c.fillStyle = '#4a6a88';
   c.textAlign = 'left';
   c.textBaseline = 'top';
@@ -342,7 +347,7 @@ function _tfDessinerButee() {
   var police = Math.max(11, Math.min(15, Math.round(_tfEch * 0.02)));
   var y = _tfY(tf.z[TF_N]) + police * 1.3;
   var txt = b === 'haute' ? 'Piston en butée haute' : 'Piston en butée basse';
-  c.font = 'bold ' + police + 'px "Segoe UI", Arial, sans-serif';
+  c.font = _tfPolice('bold', police);
   var w = c.measureText(txt).width + 12;
   var cx = (_tfX1 + _tfX2) / 2;
   c.fillStyle = 'rgba(253,232,200,0.92)';
@@ -467,7 +472,7 @@ function _tfDessinerPiston() {
     c.fillStyle = '#6a7a88';
     c.fillRect(cx - lt / 2, y - hm, lt, hm);
     c.fillStyle = '#fff';
-    c.font = 'bold ' + Math.max(10, Math.round(Math.min(hm * 0.45, lm * 0.15))) + 'px "Segoe UI", Arial, sans-serif';
+    c.font = _tfPolice('bold', Math.max(10, Math.round(Math.min(hm * 0.45, lm * 0.15))));
     c.textAlign = 'center';
     c.textBaseline = 'middle';
     c.fillText(_tfVirguleCourte(tf.blocs) + ' kg', cx + lt / 2 + (lm / 2 - lt / 2) / 2, y - hm / 2);
@@ -493,8 +498,8 @@ function _tfDessinerPiston() {
     // Masse écrite sur une étiquette claire, lisible sur les grains
     if (hs > 11) {
       var fsS = Math.max(10, Math.min(13, Math.round(hs * 0.6)));
-      var txtS = _tfVirgule(tf.sable, tf.sable < 10 ? 2 : 1) + ' kg';
-      c.font = fsS + 'px "Segoe UI", Arial, sans-serif';
+      var txtS = _tfFmt(tf.sable, tf.sable < 10 ? 2 : 1) + ' kg';
+      c.font = _tfPolice('', fsS);
       var lS = c.measureText(txtS).width + 8, xS = cx + lt / 2 + 3;
       c.fillStyle = 'rgba(255, 250, 238, 0.85)';
       _tfRectArrondi(xS, y - hs / 2 - fsS * 0.7, lS, fsS * 1.4, 3);
@@ -554,7 +559,7 @@ var _tfGrains = (function () {
 
 // Masse sans décimale inutile : 20, 12,5
 function _tfVirguleCourte(x) {
-  return Math.abs(x - Math.round(x)) < 1e-6 ? String(Math.round(x)) : _tfVirgule(x, 1);
+  return Math.abs(x - Math.round(x)) < 1e-6 ? String(Math.round(x)) : _tfFmt(x, 1);
 }
 
 // Corps du piston (hachuré, comme l'onglet Pression)
@@ -620,7 +625,7 @@ function _tfDessinerVerin(zP) {
   c.fillRect(cx - lv * 0.9, yCorpsB - 3, lv * 1.8, 4);
   var police = Math.max(9, Math.min(13, Math.round(Math.min(lc * 0.16, (yCorpsB - yCorpsH) * 0.5))));
   c.fillStyle = '#fff';
-  c.font = 'bold ' + police + 'px "Segoe UI", Arial, sans-serif';
+  c.font = _tfPolice('bold', police);
   c.textAlign = 'center';
   c.textBaseline = 'middle';
   c.fillText('vérin', cx, (yCorpsH + yCorpsB) / 2);
@@ -743,7 +748,7 @@ function _tfDessinerSondes() {
   var c = tfCtx;
   var police = Math.max(11, Math.min(15, Math.round((_tfX2 - _tfX1) * 0.05)));
   var hBoite = police + 8;
-  c.font = 'bold ' + police + 'px "Segoe UI", Arial, sans-serif';
+  c.font = _tfPolice('bold', police);
   c.textBaseline = 'middle';
   c.textAlign = 'right';
   var dernierY = -Infinity;
@@ -752,7 +757,7 @@ function _tfDessinerSondes() {
     var y = _tfY((tf.z[j] + tf.z[j + 1]) / 2);
     if (Math.abs(y - dernierY) < hBoite + 2) continue;   // gaz trop écrasé
     dernierY = y;
-    var txt = _tfVirgule(tfTTranche(j), 1) + ' K   ' + _tfVirgule(tf.P[j] / 1000, 3) + ' kPa';
+    var txt = _tfFmt(tfTTranche(j), 1) + ' K   ' + _tfFmt(tf.P[j] / 1000, 3) + ' kPa';
     var lw = c.measureText(txt).width + 12;
     var xD = _tfX2 - 6;
     c.fillStyle = 'rgba(255,255,255,0.88)';
@@ -774,7 +779,8 @@ function _tfFixe(x, d) {
   return /^-[0.]+$/.test(s) ? s.slice(1) : s;
 }
 
-function _tfVirgule(x, d) { return _tfFixe(x, d).replace('.', ','); }
+// Nombre à d décimales, virgule décimale (toutes les cartes de l'onglet)
+function _tfFmt(x, d) { return _tfFixe(x, d).replace('.', ','); }
 
 // ── Profils de pression et de température à droite du cylindre ──
 // Échelle absolue par défaut (axe de 0 à Pmax arrondi, en kPa ; de 0 à Tmax,
@@ -879,11 +885,11 @@ function _tfDessinerProfil(p) {
   // Titre et graduations
   var police = _tfPoliceProfil(p);
   c.fillStyle = '#2c3e50';
-  c.font = 'bold ' + police + 'px "Segoe UI", Arial, sans-serif';
+  c.font = _tfPolice('bold', police);
   c.textAlign = 'center';
   c.textBaseline = 'bottom';
   c.fillText(amp ? def.titreAmp : def.titre, xc, yH - 4);
-  c.font = police + 'px "Segoe UI", Arial, sans-serif';
+  c.font = _tfPolice('', police);
   c.fillStyle = '#5a6a78';
   c.textBaseline = 'top';
   if (amp) {
@@ -898,17 +904,12 @@ function _tfDessinerProfil(p) {
 }
 
 // Plus petite valeur 1, 2 ou 5 × 10ⁿ supérieure ou égale à x
-function _tfEchelleRonde(x) {
-  if (x <= 0) return 0;
-  var p = Math.pow(10, Math.floor(Math.log(x) / Math.LN10));
-  var f = x / p;
-  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p;
-}
+function _tfEchelleRonde(x) { return x > 0 ? _tfgCran(x, [1, 2, 5]) : 0; }
 
 // Écriture d'une échelle ronde avec espace des milliers : 5, 20, 1 000… ;
 // sous 1, avec les décimales utiles : 0,5, 0,02…
 function _tfFmtEchelle(x) {
-  if (x < 1 && x > 0) return _tfVirgule(x, Math.ceil(-Math.log(x) / Math.LN10 - 1e-9));
+  if (x < 1 && x > 0) return _tfFmt(x, Math.ceil(-Math.log(x) / Math.LN10 - 1e-9));
   return String(Math.round(x)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 }
 
@@ -932,9 +933,9 @@ var TF_CHRONO_SAUT = 1500;   // ms : durée du surlignage
 // Δt avec assez de chiffres pour défiler : 1,84 ms, 712,9 ms, 12,35 s,
 // 4 min 05 s, 2 h 05 min
 function _tfFmtDeltaT(t) {
-  if (t < 0.01) return _tfVirgule(t * 1000, 2) + ' ms';
-  if (t < 1)    return _tfVirgule(t * 1000, 1) + ' ms';
-  if (t < 60)   return _tfVirgule(t, 2) + ' s';
+  if (t < 0.01) return _tfFmt(t * 1000, 2) + ' ms';
+  if (t < 1)    return _tfFmt(t * 1000, 1) + ' ms';
+  if (t < 60)   return _tfFmt(t, 2) + ' s';
   var deux = function (n) { return (n < 10 ? '0' : '') + n; };
   if (t < 3600) {
     var mn = Math.floor(t / 60);
@@ -956,7 +957,7 @@ function _tfDessinerChrono() {
   var y0 = Math.round(yBati + Math.max(5, (_tfY(TF_Z_VERIN_BAS) - yBati) * 0.16) + g) + 0.5;
   var pad = 6, dispo = x1 - x0 - 2 * pad;
   if (dispo < 40) return;
-  var police = '"Segoe UI", Arial, sans-serif';
+  var police = TF_POLICE;
   var d = tfGraphChrono();
   var txtT = 'Δt = ' + _tfFmtDeltaT(Math.max(0, d.dt));
   var fleche = tfChrono.sens > 0 ? '▲ ' : tfChrono.sens < 0 ? '▼ ' : '';

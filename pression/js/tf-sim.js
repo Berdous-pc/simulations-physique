@@ -47,7 +47,6 @@ var TF_M_PISTON   = 0.001;   // kg
 var TF_T0         = 293;     // K (aussi la source 1 au départ)
 var TF_V0         = 0.6e-3;  // m³ (hauteur initiale 30 cm)
 var TF_P_LIBRE    = TF_P_ATM + TF_M_PISTON * TF_G / TF_S;   // Pa, piston seul à l'air libre
-var TF_P0         = TF_P_LIBRE;   // Pa, pression de départ par défaut (≈ 100 kPa)
 var TF_H_CYL      = 0.50;    // m — hauteur intérieure du cylindre (butée haute)
 var TF_Z_BUTEE    = 0.02;    // m — butée basse du piston
 
@@ -120,6 +119,11 @@ var TF_V_VERIN_MAX = 400;    // m/s
 var TF_H_VISEE_MIN = 0.05;   // m
 var TF_H_VISEE_MAX = 0.50;   // m
 
+// ── Plages réglables (point de départ, cycles, valeurs visées) ──
+var TF_H_DEPART_MIN = 0.10, TF_H_DEPART_MAX = 0.45;   // m, hauteur du piston au départ
+var TF_PAIR_MIN = 20e3, TF_PAIR_MAX = 5e5;            // Pa, air de l'enceinte
+var TF_T_SOURCE_MIN = 250, TF_T_SOURCE_MAX = 600;     // K, sources et gaz au départ
+
 // ── Critère « grandeurs définies » (PLAN §2.4) ──
 var TF_SEUIL_P  = 1e-3;   // écart relatif de P entre tranches
 var TF_SEUIL_T  = 0.5;    // K, écart de T entre tranches
@@ -134,7 +138,7 @@ var tf = {
   gamma : 1.4,
   T0    : TF_T0,  // K
   V0    : TF_V0,  // m³
-  P0    : TF_P0,  // Pa
+  P0    : TF_P_LIBRE,  // Pa, pression de départ par défaut (≈ 100 kPa)
   n     : 0,      // mol (calculée au reset)
   nTr   : 0,      // mol par tranche
   mTr   : 0,      // kg par tranche
@@ -388,7 +392,7 @@ function tfMesures() {
 // de 20 à 500 kPa ; avec les masses, à l'air libre, du piston seul à
 // TF_MASSE_MAX posées
 function tfBornesP0(montage) {
-  return montage === 'masse' ? [TF_P_LIBRE, TF_P_LIBRE + TF_MASSE_MAX * TF_G / TF_S] : [20e3, 5e5];
+  return montage === 'masse' ? [TF_P_LIBRE, TF_P_LIBRE + TF_MASSE_MAX * TF_G / TF_S] : [TF_PAIR_MIN, TF_PAIR_MAX];
 }
 
 // Masse posée (kg) qui équilibre P0 à l'air libre, au milligramme près
@@ -462,11 +466,6 @@ function tfSetTenu(tenir) {
   tf.needsRedraw = true;
 }
 
-function tfSetIsolation(G) {
-  tf.G = G;
-  tf.needsRedraw = true;
-}
-
 // Pose le cylindre sur une source ('1', '2'). La source quittée garde la
 // température atteinte (rampe comprise) ; une rampe de la source s'arrête.
 function tfSetFond(f) {
@@ -481,7 +480,8 @@ function tfSetFond(f) {
 function tfSetParoi(p) {
   tf.paroi = p;
   if (p === 'isolant') tf.rampes.Text.actif = false;
-  tfSetIsolation(TF_G_PAROI[p]);
+  tf.G = TF_G_PAROI[p];
+  tf.needsRedraw = true;
 }
 
 // Contact thermique du gaz : 'isolant', ou la source sous le fond
@@ -563,7 +563,7 @@ function _tfFixer(cle, valeur, lent, continu, main) {
 // Durée nulle : échelon, la grandeur prend la cible d'un coup. Sinon,
 // escalier de n marches égales, n = ⌈|Δ| / pasMax⌉ : une première marche
 // tout de suite, puis une toutes les duree / n secondes ; ou, continu
-// (boutons Quasi statiquement et Réversiblement), rampe linéaire en duree
+// (manière réversible, pas infinitésimal), rampe linéaire en duree
 // secondes (la masse est alors du sable versé en continu).
 function tfAppliquer(cle, cible, duree, pasMax, continu) {
   var r = tf.rampes[cle];
@@ -738,8 +738,8 @@ function _tfMajAmortissement(U) {
 // Avance le temps simulé de dt secondes, en sous-pas : limités par la
 // condition CFL en calcul complet, par la conduction en mode quasi statique.
 // Une marche d'escalier tombe toujours au début d'un sous-pas. Renvoie le
-// temps effectivement simulé (inférieur à dt si le plafond de sous-pas est
-// atteint).
+// temps effectivement simulé (inférieur à dt si le budget de calcul de
+// l'image, TF_BUDGET_MS, est épuisé).
 function tfAvancer(dt) {
   var reste = dt, n = 0, nEssai = 0;
   var tLimite = performance.now() + TF_BUDGET_MS;

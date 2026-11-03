@@ -19,8 +19,8 @@
 
 // Volumes possibles : ceux du point de départ (hauteur 10 à 45 cm) ;
 // pressions : celles de l'air de l'enceinte
-var TF_CY_VMIN = 0.10 * TF_S, TF_CY_VMAX = 0.45 * TF_S;   // m³
-var TF_CY_PMIN = 20e3, TF_CY_PMAX = 5e5;                  // Pa
+var TF_CY_VMIN = TF_H_DEPART_MIN * TF_S, TF_CY_VMAX = TF_H_DEPART_MAX * TF_S;   // m³
+var TF_CY_PMIN = TF_PAIR_MIN, TF_CY_PMAX = TF_PAIR_MAX;                        // Pa
 var TF_CY_ATTEINT = 0.005;                                // écart relatif sur P
 // Cycles réglés en pressions : leur plus grand volume (place laissée à une
 // détente brutale, qui finit plus chaude donc plus loin)
@@ -186,7 +186,7 @@ function _tfCyMettreAJour() {
       tfDepart.montage = 'Pair';   // les masses ne descendent pas sous P_atm
       tfDepart.P0 = A.P;
       tfDepart.V0 = A.V;
-      tfDepart.T0 = _tfBorner(A.T, 250, 600);
+      tfDepart.T0 = _tfBorner(A.T, TF_T_SOURCE_MIN, TF_T_SOURCE_MAX);
       _tfDepartChange();
       C.def = _tfCyCalculer();
     }
@@ -232,8 +232,8 @@ function tfCySaisie(i, txt) {
 
 // − et + : vers le multiple du pas voisin
 function tfCyPas(i, sens) {
-  var cle = TF_CYCLES[tfCycle.cle].champs[i], p = TF_CY_CHAMPS[cle].pas, v = tfCycle.v[cle] / p;
-  _tfCyFixer(i, p * (sens > 0 ? Math.floor(v + 1e-6) + 1 : Math.ceil(v - 1e-6) - 1));
+  var cle = TF_CYCLES[tfCycle.cle].champs[i];
+  _tfCyFixer(i, _tfPasVoisin(tfCycle.v[cle], TF_CY_CHAMPS[cle].pas, sens));
 }
 
 function _tfCyLancer(seul) {
@@ -305,12 +305,6 @@ function _tfCyPret() {
 function _tfCyRepos() {
   var der = tfEtapes.liste[tfEtapes.liste.length - 1];
   return !tfEnCours() && !_tfEnAttente && !(der && der.statut === 'en cours') && tfMesures().equilibre;
-}
-
-// Cycle commencé : au moins sa première étape faite, le tour pas fini
-function tfCyEnCours() {
-  var d = tfCycle.def;
-  return !!(tfCycle.cle && d && !d.erreur && tfCycle.k > 0);
 }
 
 function _tfCyConditions(s) { return tf.tenu === s.tenu && tfContact() === s.fond; }
@@ -494,7 +488,6 @@ function tfCyclesInit() {
   _tfCyEl.info = document.getElementById('tf-cy-info');
   _tfCyEl.attente = document.getElementById('tf-cy-attente');
   _tfCyEl.liste = document.getElementById('tf-cy-liste');
-  _tfCyEl.tout = document.getElementById('tf-cy-tout');
   _tfCyEl.encours = document.getElementById('tf-cy-encours');
   _tfCyEl.encoursTxt = document.getElementById('tf-cy-encours-txt');
   _tfMajCycle(true);

@@ -105,13 +105,16 @@ var tfGraph = {
   coupure   : false,   // le prochain échantillon suit une attente retirée
   // Axe des temps : origine t0 (temps des graphes) à Réinitialiser, ou à
   // l'état où l'on est revenu ; durée L, plages des cases ; L et les plages
-  // ne font que s'agrandir d'une transformation à l'autre
-  axeT      : { t0: 0, L: 1, y: [null, null, null] },
+  // ne font que s'agrandir d'une transformation à l'autre ; etape : rang
+  // de l'étape qui marque l'origine (undefined : fixé au départ de la
+  // prochaine, tfGraphDepartEtape)
+  axeT      : { t0: 0, L: 1, y: [null, null, null], etape: undefined },
   vueT      : null,    // null : vue automatique ; sinon {t1, t2, o (origine), lt (lettre)}
   pileT     : [],
   // Champ fixe de chaque diagramme d'état : il ne fait que s'agrandir, par
   // crans (null : à recalculer)
   champ     : { pv: null, ts: null },
+  champF    : undefined,   // cycle fantôme pour lequel le champ a été calculé
   anim      : {},      // transitions d'un champ ou d'un axe qui s'agrandit
   vue       : { pv: null, ts: null },   // null : champ fixe ; sinon zoom {x1, x2, y1, y2}
   pileD     : { pv: [], ts: [] },   // vues précédentes de chaque diagramme d'état
@@ -395,9 +398,6 @@ function tfGraphRevenir(ts, n) {
   g.sale = true;
 }
 
-// Étendue des tranches depuis le départ de l'étape, dans chaque diagramme
-// d'état : le cadrage automatique ne fait que s'élargir pendant un choc, au
-// lieu de pomper à chaque image
 // Chrono figé : le gaz, déclaré à l'équilibre, finit encore d'approcher
 // l'état final (écart sous les seuils : dixième d'un pas de la source,
 // oscillation résiduelle du piston). Le dernier échantillon suit son état,
@@ -417,6 +417,9 @@ function _tfgSuivreGele(m) {
   g.sale = true;
 }
 
+// Étendue des tranches depuis le départ de l'étape, dans chaque diagramme
+// d'état : le cadrage automatique ne fait que s'élargir pendant un choc, au
+// lieu de pomper à chaque image
 function _tfgEnveloppe(m, S) {
   var g = tfGraph;
   if (!g.env) g.env = {};
@@ -643,7 +646,7 @@ function _tfgIndice(e, t) {
 }
 
 function _tfgPolice(fs, gras) {
-  return (gras ? '600 ' : '') + fs + "px 'Segoe UI', Arial, sans-serif";
+  return _tfPolice(gras ? '600' : '', fs);
 }
 
 // Étiquette sur fond clair (lisible par-dessus les courbes)

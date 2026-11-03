@@ -6,8 +6,9 @@
 
 // ══════════════════════════════════════════════════════════════════════
 //  tf-ui.js — Onglet Transformations : commandes du panneau et boucle
-//  Chargé après tf-sim.js, tf-scene.js et tf-graph.js, avant ui.js (qui gère les
-//  onglets et appelle tfInit()).
+//  Chargé après tf-sim.js, tf-molecules.js, tf-scene.js, tf-graph.js et
+//  tf-etapes.js, avant tf-cycles.js et ui.js (qui gère les onglets et
+//  appelle tfInit()).
 // ══════════════════════════════════════════════════════════════════════
 
 'use strict';
@@ -21,18 +22,17 @@ var _TF_EL_IDS = [
   'tf-paroi-isolant', 'tf-fond-1', 'tf-fond-2', 'tf-t-1', 'tf-t-2', 'tf-fleche-1', 'tf-fleche-2',
   'tf-pop-source', 'tf-pop-nom', 'tf-in-source', 'tf-pop-moins', 'tf-pop-plus', 'tf-pop-tgaz', 'tf-pop-note',
   'tf-mode-viser', 'tf-mode-main', 'tf-viser', 'tf-main',
-  'tf-organes', 'tf-organe-piston', 'tf-organe-source',
+  'tf-organe-piston', 'tf-organe-source',
   'tf-lbl-vise', 'tf-in-vise', 'tf-unite-vise', 'tf-sel-etat', 'tf-prevu',
-  'tf-pm-moins', 'tf-pm-plus', 'tf-btn-annuler',
+  'tf-btn-annuler',
   'tf-montage-Pair', 'tf-montage-masse', 'tf-resume-init',
-  'tf-btn-interrompre',
-  'tf-manieres', 'tf-progres', 'tf-progres-rempli', 'tf-progres-txt',
+  'tf-progres', 'tf-progres-rempli', 'tf-progres-txt',
   'tf-voyant', 'tf-voyant-txt', 'tf-main-compte', 'tf-carte-source', 'tf-main-note-source',
   'tf-main-nom-piston', 'tf-main-nature-piston', 'tf-main-val-piston',
   'tf-main-moins-piston', 'tf-main-plus-piston', 'tf-main-sl-piston',
   'tf-main-nom-source', 'tf-main-nature-source', 'tf-main-val-source',
   'tf-main-moins-source', 'tf-main-plus-source', 'tf-main-sl-source',
-  'tf-journal', 'tf-ckg-gel',
+  'tf-journal',
   'tf-btn-appliquer', 'tf-sl-nbpas', 'tf-lbl-nbpas', 'tf-duree-nbpas', 'tf-paroi-cond', 'tf-paroi-peu',
   'tf-bilan', 'tf-bilan-cycle', 'tf-bil-etape', 'tf-bil-A', 'tf-bil-cycle',
   'tf-gamma', 'tf-in-P0', 'tf-in-V0', 'tf-in-T0', 'tf-moins-P0', 'tf-moins-V0', 'tf-moins-T0',
@@ -82,12 +82,18 @@ var TF_VISEE = {
   volume : { nom: 'Hauteur visée du piston', unite: 'cm', f: 100, dec: 1, pas: 0.01,
              min: TF_H_VISEE_MIN, max: TF_H_VISEE_MAX },
   masse  : { nom: 'Masse posée visée', unite: 'kg', f: 1, dec: 2, pas: 5, min: 0, max: TF_MASSE_MAX },
-  Pair   : { nom: 'Pression de l’air visée', unite: 'kPa', f: 1e-3, dec: 1, pas: 1e4, min: 0, max: 5e5 },
-  Text   : { nom: 'Température visée de la source', unite: 'K', f: 1, dec: 1, pas: 10, min: 250, max: 600 }
+  Pair   : { nom: 'Pression de l’air visée', unite: 'kPa', f: 1e-3, dec: 1, pas: 1e4, min: 0, max: TF_PAIR_MAX },
+  Text   : { nom: 'Température visée de la source', unite: 'K', f: 1, dec: 1, pas: 10, min: TF_T_SOURCE_MIN, max: TF_T_SOURCE_MAX }
 };
-var TF_T_SOURCE_MIN = 250, TF_T_SOURCE_MAX = 600;   // K
 
 function _tfBorner(x, a, b) { return Math.max(a, Math.min(b, x)); }
+
+// Boutons − et + : multiple de pas voisin de x, au-dessus (sens > 0) ou
+// au-dessous ; une valeur déjà sur un multiple passe au suivant
+function _tfPasVoisin(x, pas, sens) {
+  var v = x / pas;
+  return pas * (sens > 0 ? Math.floor(v + 1e-6) + 1 : Math.ceil(v - 1e-6) - 1);
+}
 
 // Nombre saisi au clavier, virgule ou point décimal ; NaN sinon
 function _tfLireNombre(txt) {
@@ -130,15 +136,7 @@ function _tfActuelle(cle) { return cle === 'volume' ? tf.z[TF_N] : tf[cle]; }
 //  Formatage (virgule décimale)
 // ══════════════════════════════════════════════════════════════════════
 
-function _tfFmt(x, d) { return _tfFixe(x, d).replace('.', ','); }
-
-// Temps : en ms aux crans de ralenti extrême, où l'on suit des
-// phénomènes de l'ordre de la milliseconde ; en s sinon.
-function _tfFmtTemps(t) {
-  if (tf.vitesse < 0.01) return _tfFmt(t * 1000, 3) + ' ms';
-  if (tf.vitesse < 0.1)  return _tfFmt(t * 1000, 1) + ' ms';
-  return _tfFmt(t, 2) + ' s';
-}
+// _tfFmt (virgule décimale) : tf-scene.js
 
 function _tfFmtPression(P) { return _tfFmt(P / 1000, 2) + ' kPa'; }
 
@@ -349,8 +347,6 @@ function _tfMajBilan() {
 // touchées ; récepteur (W > 0) et ses efficacités
 var _tfBilanCycleHtml = '';
 
-function _tfFmtRatio(x) { return _tfFmt(x, 2); }
-
 function _tfMajBilanCycle(cy) {
   var h = '';
   if (cy) {
@@ -367,14 +363,14 @@ function _tfMajBilanCycle(cy) {
          + ' de chaleur absorbée) : ni moteur ni récepteur.';
     } else if (W < 0) {
       h += 'Moteur : le gaz fournit ' + _tfFmtJ(-W) + ' pour ' + _tfFmtJ(Qabs) + ' de chaleur absorbée.<br>'
-         + 'Rendement η = −W / Q<sub>abs</sub> = <b>' + _tfFmtRatio(-W / Qabs) + '</b>';
+         + 'Rendement η = −W / Q<sub>abs</sub> = <b>' + _tfFmt(-W / Qabs, 2) + '</b>';
       if (Tmax - Tmin > 0.5) h += ' ; Carnot entre ' + Math.round(Tmin) + ' et ' + Math.round(Tmax) + ' K : '
-         + _tfFmtRatio(1 - Tmin / Tmax);
+         + _tfFmt(1 - Tmin / Tmax, 2);
       h += '.';
     } else {
       h += 'Récepteur : le gaz reçoit ' + _tfFmtJ(W) + ', absorbe ' + _tfFmtJ(Qabs) + ' et cède '
-         + _tfFmtJ(Qced) + '.<br>Efficacité frigorifique Q<sub>abs</sub> / W = <b>' + _tfFmtRatio(Qabs / W)
-         + '</b> ; de pompe à chaleur Q<sub>cédée</sub> / W = <b>' + _tfFmtRatio(Qced / W) + '</b>.';
+         + _tfFmtJ(Qced) + '.<br>Efficacité frigorifique Q<sub>abs</sub> / W = <b>' + _tfFmt(Qabs / W, 2)
+         + '</b> ; de pompe à chaleur Q<sub>cédée</sub> / W = <b>' + _tfFmt(Qced / W, 2) + '</b>.';
     }
   }
   if (h === _tfBilanCycleHtml) return;
@@ -405,7 +401,7 @@ function _tfBoutonRevenir(i) {
 // sur le diagramme). Un point fait passer les
 // courbes de référence par son état, ↺ y revient ; un trait met l'étape en
 // évidence et en fait le bilan.
-var TF_PUCE_MANIERE = { brutal: 'brutale', qs: 'quasi statique', rev: 'réversible', main: 'à la main' };
+var TF_PUCE_MANIERE = { brutal: 'brutale', rev: 'réversible', main: 'à la main' };
 function _tfPuce(man, nPas) { return man === 'pas' ? nPas + ' pas' : TF_PUCE_MANIERE[man]; }
 
 function _tfPointFrise(i, coul, cycle) {
@@ -454,7 +450,9 @@ function _tfSuffixeFond() {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-//  Trois manières (PLAN §10.5) : la page choisit les paramètres
+//  Manières brutale (1 pas) et réversible (pas infinitésimal) (PLAN
+//  §10.5) : la page choisit les paramètres ; entre les deux, N pas
+//  (section suivante)
 // ══════════════════════════════════════════════════════════════════════
 
 // Brutalement : vérin à la vitesse de pointe la plus haute que tient le
@@ -462,14 +460,15 @@ function _tfSuffixeFond() {
 // front de compression net part du piston (à 150 m/s, la course durait deux
 // traversées et le gaz se comprimait presque d'un bloc). Échelon sinon.
 //
-// Les deux manières lentes sont réglées sur la chaleur Q qu'échangerait la
+// La durée réversible se calcule en deux temps, d'abord la durée quasi
+// statique (plus de bouton propre, c'est un plancher), sur la chaleur Q qu'échangerait la
 // transformation réversible (isotherme pour le volume et la pression,
 // isobare ou isochore pour la température) et sur deux résistances
 // thermiques en série : le gaz, R_int = TF_R_INT·π²·τ_int / (4·n·Cv) (le
 // facteur, mesuré, donne l'écart de température entre tranches pour un flux
 // donné ; τ_int sur la plus haute des colonnes de départ et d'arrivée), et
 // la paroi du fond, 1/G.
-//   - Quasi statiquement : lent devant le son et le piston (au moins
+//   - Quasi statique : lent devant le son et le piston (au moins
 //     TF_QS_MIN, et 1,25 × TF_QS_RAMPE temps mécaniques pour une rampe de
 //     pression : le mode quasi statique la suit) ; et assez lent pour que le
 //     flux Q/durée laisse entre tranches moins de TF_QS_ECART (seuil de
@@ -477,7 +476,7 @@ function _tfSuffixeFond() {
 //     limite seule le flux à G·ΔT_adiabatique sous ce seuil, la course
 //     mécanique suffit : le gaz reste uniforme, l'écart de température se
 //     loge dans la paroi.
-//   - Réversiblement : en plus, entropie créée Q²·(R_int + 1/G) / (T²·durée)
+//   - Réversible : en plus, entropie créée Q²·(R_int + 1/G) / (T²·durée)
 //     sous TF_REV_SC. Mesuré, S_c décroît bien comme 1/durée, et vaut ~2,6
 //     fois moins que cette estimation : une étape crée ~6 µJ/K, un cycle de
 //     quatre étapes reste sous TF_SC_REV (affiché 0,0 mJ/K). Quasi
@@ -520,7 +519,6 @@ function _tfParamsManiere(cle, man) {
   }
   var Rint = TF_R_INT * Math.PI * Math.PI * d.interne * Math.max(1, Lf / L) / (4 * nCv);
   var qs = tf.G * dTad * Rint <= TF_QS_ECART ? meca : Math.max(meca, Q * Rint / TF_QS_ECART);
-  if (man === 'qs') return { duree: qs, Rint: Rint };
   return { duree: Math.max(qs, Q * Q * (Rint + 1 / tf.G) / (T * T * TF_REV_SC)), Rint: Rint };
 }
 
@@ -660,7 +658,7 @@ function tfOnNbPas(val) {
 // Dernière action lancée, pour la barre de progression : manière, grandeur,
 // valeur de départ ; suite de pas : n, et k pas faits
 var _tfLance = null;
-var TF_NOM_MANIERE = { brutal: 'Brutale', qs: 'Quasi statique', rev: 'Réversible', pas: 'Pas à pas' };
+var TF_NOM_MANIERE = { brutal: 'Brutale', rev: 'Réversible', pas: 'Pas à pas' };
 
 // Appliquer : la valeur visée, en N pas (TF_NB_PAS) ; N absent, celui du
 // curseur
@@ -822,8 +820,8 @@ function _tfMajCarte() {
 }
 
 // Lancer : une action à la fois, et seulement si elle change quelque chose.
-// Pendant une action (lancée en mode Viser), les trois manières laissent
-// place à une barre de progression et au bouton ■ qui l'interrompt.
+// Pendant une action (lancée en mode Viser), le bouton Appliquer laisse
+// place à une barre de progression.
 function _tfMajBoutonsCarte() {
   var cle = _tfCle(), enCours = tfEnCours() || !!_tfEnAttente;
   var rien = Math.abs(tfCarte[cle].vise - _tfActuelle(cle)) < 1e-6;
@@ -1090,8 +1088,7 @@ function tfOnTSourceSaisie(val) {
 // − et + : vers la dizaine de kelvins voisine
 function tfOnTSourcePM(sens) {
   if (!_tfPopSource) return;
-  var v = tfTSource(_tfPopSource) / TF_PAS_T_SOURCE;
-  _tfFixerTSource(TF_PAS_T_SOURCE * (sens > 0 ? Math.floor(v + 1e-6) + 1 : Math.ceil(v - 1e-6) - 1));
+  _tfFixerTSource(_tfPasVoisin(tfTSource(_tfPopSource), TF_PAS_T_SOURCE, sens));
 }
 
 function tfOnSourceTgaz() { _tfFixerTSource(tfMesures().Tmoy); }
@@ -1190,8 +1187,8 @@ function tfOnSaisieVise(val, fin) {
 
 // − et + : vers la graduation voisine (1 cm, 5 kg, 10 kPa, 10 K)
 function tfOnPlusMoins(sens) {
-  var cle = _tfCle(), V = TF_VISEE[cle], v = tfCarte[cle].vise / V.pas;
-  _tfViser(V.pas * (sens > 0 ? Math.floor(v + 1e-6) + 1 : Math.ceil(v - 1e-6) - 1));
+  var cle = _tfCle();
+  _tfViser(_tfPasVoisin(tfCarte[cle].vise, TF_VISEE[cle].pas, sens));
   _tfMajChampVise(true);
   tfMajAfficheurs();
   return true;
@@ -1744,7 +1741,7 @@ function _tfAvancerHorloge() {
 // réglages forment un brouillon, tfDepart, appliqué aussitôt tant que le
 // journal est vide, sinon au clic sur « Recommencer depuis A »
 // (tfReinitialiser) : rien n'est effacé avant ──
-var tfDepart = { montage: 'Pair', gamma: 1.4, P0: TF_P0, V0: TF_V0, T0: TF_T0 };
+var tfDepart = { montage: 'Pair', gamma: 1.4, P0: TF_P_LIBRE, V0: TF_V0, T0: TF_T0 };
 // Champs : facteur d'affichage, décimales, pas des boutons − et +
 var TF_DEPART = {
   P0 : { f: 1e-3, dec: 1, pas: 10e3 },      // kPa
@@ -1754,8 +1751,8 @@ var TF_DEPART = {
 
 function _tfBornesDepart(cle) {
   if (cle === 'P0') return tfBornesP0(tfDepart.montage);
-  if (cle === 'V0') return [0.10 * TF_S, 0.45 * TF_S];   // hauteur 10 à 45 cm
-  return [250, 600];
+  if (cle === 'V0') return [TF_H_DEPART_MIN * TF_S, TF_H_DEPART_MAX * TF_S];
+  return [TF_T_SOURCE_MIN, TF_T_SOURCE_MAX];
 }
 
 function _tfDepartModifie() {
@@ -1797,8 +1794,8 @@ function tfOnDepartSaisie(cle, txt) {
 
 // − et + : vers le multiple du pas voisin, dans les bornes
 function tfOnDepartPas(cle, sens) {
-  var p = TF_DEPART[cle].pas, b = _tfBornesDepart(cle), v = tfDepart[cle] / p;
-  tfDepart[cle] = _tfBorner(p * (sens > 0 ? Math.floor(v + 1e-6) + 1 : Math.ceil(v - 1e-6) - 1), b[0], b[1]);
+  var b = _tfBornesDepart(cle);
+  tfDepart[cle] = _tfBorner(_tfPasVoisin(tfDepart[cle], TF_DEPART[cle].pas, sens), b[0], b[1]);
   _tfDepartChange();
 }
 
