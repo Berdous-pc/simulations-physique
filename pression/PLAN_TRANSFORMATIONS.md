@@ -22,8 +22,14 @@
 > tracé dès que la pression du gaz est définie (§4.2). Le §10 fait foi pour l'interface ; les
 > prochains paliers sont au §10.4.
 >
-> **Point au 31 octobre 2026** : refonte terminée (R1 à R4g), finitions (§10.14) et palier 6
-> (sable) terminés. Restent l'essai à la souris et les paliers 8 (intégration) et 9 (site).
+> **Point au 3 novembre 2026** : refonte terminée (R1 à R4g), finitions (§10.14 et §10.15) et
+> palier 6 (sable) terminés ; **essai à la souris de tout ce qui a été fait depuis R3 : fait,
+> validé par l'auteur**. Restent les paliers 8 (intégration) et 9 (site).
+>
+> **Révision après les finitions du §10.15** : « Viser une valeur » se règle en nombre de pas
+> (1 = brutal, ∞ = réversible) au lieu des trois boutons du §10.5, et la section Conditions du
+> §10.9 est devenue **Montage** (lignes Source et Paroi). Le §10.15 fait foi là où il contredit
+> les §10.5 et §10.9.
 
 ---
 
@@ -359,7 +365,7 @@ Chaque palier se termine par un commit et peut être montré en classe tel quel 
 - Option future, hors de cet onglet : dynamique moléculaire réelle (disques durs) pour une thermalisation qui ne doit rien au modèle.
 - ~~**Message sous les trois boutons**~~ : sans objet depuis R4b (plus de phrase sous les manières ; le bouton Réversible affiche « = quasi statique » quand les durées coïncident).
 - **Bilan d'énergie au choc de la membrane** : écart de 10⁻² J (≈ 10⁻⁴ en relatif) après un échelon de P_air, contre 10⁻⁴ J avec le piston de 1 kg. À surveiller.
-- **Essai à la souris** de R3 à R4g et des finitions du §10.14 (cycles, Zoom, vitesse Auto par phases…), et du correctif de l'historique des graphes : tout est validé au banc headless seulement.
+- ~~**Essai à la souris** de R3 à R4g et des finitions des §10.14 et §10.15~~ : fait, validé par l'auteur (3 novembre 2026).
 
 ---
 
@@ -420,7 +426,9 @@ Transformation attendue : …
 - ~~**R4** file d'attente et séquences enregistrées~~ (abandonnés) : « Tout le cycle d'un coup » couvre l'enchaînement ; l'export JSON n'apporte rien en classe.
 - ✅ **Diagramme TS et Bilan** (§10.6, palier 7) : terminé.
 - ~~**R5**~~ (abandonné) : viser en cliquant sur le diagramme de Clapeyron, ou y faire glisser le point A ; écarté par choix.
-- **Ensuite** : les paliers 8 (intégration) et 9 (site) ; le palier 6 (sable) est terminé. Avant : un essai à la souris de tout ce qui a été fait depuis R3, cycles et finitions du §10.14 compris (validé au banc headless seulement).
+- ✅ **Finitions suivantes** (terminé, §10.15) : nombre de pas à la place des trois boutons, chemin tracé par passage entre états d'équilibre (cordes pointillées), retour à un état jugé sur l'état visé, section Montage (Source et Paroi).
+- ✅ **Essai à la souris** de tout ce qui a été fait depuis R3, cycles et finitions des §10.14 et §10.15 compris : fait, validé par l'auteur.
+- **Ensuite** : les paliers 8 (intégration) et 9 (site) ; le palier 6 (sable) est terminé.
 
 **Mode quasi statique du moteur** (ajouté après R2) : au repos mécanique, pression uniforme et conduction seule, pas ~0,7 ms au lieu de ~1 µs ; les escaliers lents tiennent enfin le cran ×20 (avant : ×0,8 avec un gaz chaud et comprimé). Résultats identiques au calcul complet (ARCHITECTURE.md).
 
@@ -682,3 +690,14 @@ Ajouts faits à la demande de l'auteur après R4g, validés au banc headless (d�
 - **Fronts de pression en brutal** : vérin brutal à 400 m/s au lieu de 150 (course 30 → 15 cm en 0,75 ms, moins d'une traversée du son : vrai front, P_max/P_min 13, T_f 481 K au lieu de 390) ; échelon de P_air sur la membrane : action d'une traversée au lieu de dix, Auto au cran ×1/5000 (≈ 4 s d'écran par traversée).
 - **Réglages des cycles alignés** (étiquettes P min, P max, V min, V max, P_A sur 2,6 em).
 - **Résolution de l'expérience** (après le palier 6, demande de l'auteur : trop de précision cachait le message) : entropies à 0,1 mJ/K près, verdict réversible en dessous ; le cran le plus fin de chaque organe y passe sur une transformation entière (sable 10 g, source 0,1 K, air 0,1 kPa ajouté, vérin 1 mm joué en au moins 3 traversées du son), les gros pas restent irréversibles ; bouton Réversiblement six fois plus court (Carnot 3,3 h simulées). Le calcul garde toute sa précision.
+
+### 10.15 Après le palier 6 : finitions suivantes (fait)
+
+Ajouts faits à la demande de l'auteur après la résolution de l'expérience, validés au banc headless puis à la souris (détails dans `ARCHITECTURE.md` et les messages de commit).
+
+- **Pas à la main mieux attendus** : après un pas de sable ou de P_air, le piston n'est au repos qu'une fois l'oscillation amortie au dixième (~4,6 périodes, `tfPasPiston`, `tf.tReposMin`) ; après un pas de source, l'équilibre thermique est attendu jusqu'à un écart du dixième du pas (`tfPasSource`, `tf.tThMin`). Pas de la source à 0,1 et 0,2 K (huit crans). Le passage en mode quasi statique attend lui aussi `tf.tReposMin` : chaque grain trace la même oscillation amortie.
+- **Essais abandonnés sur le critère « grandeur définie »** : seuils à 0,5 %, critère fondé sur l'entropie, résolution à 0,01 mJ/K, cordes jugées sur l'entropie créée ; tous annulés (retour à l'état de 988b3df).
+- **Chemin des diagrammes PV et TS par passage** entre états d'équilibre (pas à la main, marche, reprise après le chrono figé, fin d'étape, état actuel) : grandeur définie tout du long → courbe pleine par tous les échantillons ; sinon une seule **corde droite pointillée**, fine, d'une borne à l'autre, pâle tant que le gaz n'est pas revenu à l'équilibre. Flèches de sens sur les points tracés ; les deux conventions de tracé restent. En convention « équilibre avec l'extérieur », un passage où le piston dépasse l'état d'arrivée (`TF_G_DEPASSE` = 10⁻⁵) se trace en corde pointillée ; en convention « uniforme », l'oscillation reste pleine. Grandeurs « définies » suivies à chaque sous-pas (`_tfAccumuler`), dépassement jugé sur Vlo / Vhi.
+- **Nombre de pas à la place des trois boutons** (remplace le §10.5) : « Viser une valeur » se règle en nombre de pas (1, 2, 5… 100, ∞) avec un seul bouton Appliquer ; 1 pas = échelon (brutal), ∞ = rampe continue réversible ; entre les deux, pas faits un à un avec retour à l'équilibre avant le suivant (`tf.seq`), un point par équilibre intermédiaire, une seule lettre à l'arrivée. Cycles adaptés (curseur de pas, Appliquer l'étape, Tout le cycle).
+- **Retour à un état jugé sur l'état visé** (température de la source si le fond conduit, pression du piston libre, volume du vérin) à 10⁻⁴ et 0,02 K près, au lieu de 0,5 % et 0,5 K sur les mesures : 100 → 140 → 100 kPa en 50 + 50 pas sur l'isolant n'est plus pris pour un retour en A.
+- **Section Montage** (ex-Conditions, remplace cette ligne du §10.9) : ligne **Source** (Source 1, Source 2 seulement) et ligne **Paroi** (Isolant, Peu conductrice, Conductrice). Le cylindre est toujours posé sur une source ; une couche d'isolant s'intercale si la paroi est isolante, deux fois plus mince si elle est peu conductrice (3·10⁻⁵ W/K : échelon de la source quasi statique et irréversible). Une étape s'ouvre quand le contact thermique change (`tfContact`, `_tfPoser`) ; les cycles y mènent par `tfPoserContact` en reprenant la dernière paroi non isolante ; derrière l'isolant, la source sous le cylindre se règle par son menu.
