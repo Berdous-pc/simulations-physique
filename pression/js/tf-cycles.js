@@ -51,8 +51,7 @@ var TF_CYCLES = {
 // (TF_NB_PAS) ; k : étape à faire ; faits : manière ({man, nPas}) de
 // chaque étape faite, etatsFaits : rang dans la frise de l'état qu'elle a
 // atteint (Annuler la dernière y revient) ; tour : le dernier tour est complet ; run : étapes
-// enchaînées {N (nombre de pas), seul (une seule étape), fermer (retour aux conditions de
-// A)} ; Tnom : températures des sources au lancement (une étape de contact
+// enchaînées {N (nombre de pas), seul (une seule étape)} ; Tnom : températures des sources au lancement (une étape de contact
 // lente fait varier celle de sa source) ; v : valeurs des réglages ; def :
 // cycle calculé ; sigA : réglages qui ont fixé A
 var tfCycle = { cle: null, iN: 3, v: {}, k: 0, faits: [], etatsFaits: [], tour: false, run: null, Tnom: null,
@@ -377,15 +376,12 @@ function _tfCyTic() {
                  : { man: s.type === 'fond' ? 'brutal' : 'main' };
     C.etatsFaits[C.k] = tfEtapes.etats.length - 1;
     C.k++;
+    // Tour fini : l'enchaînement s'arrête là, comme étape par étape (pas
+    // revenu en A après une étape irréversible : c'est la leçon)
     if (C.k === d.etapes.length) {
       C.k = 0;
       C.tour = true;
-      // Pas revenu en A (étape brutale) : le cylindre retrouve les
-      // conditions de la première étape, si elles ne la font pas déjà
-      var m = tfMesures();
-      if (C.run && !C.run.seul && d.etapes[0].type === 'P'
-          && (Math.abs(m.V - d.A.V) > TF_CY_ATTEINT * d.A.V || Math.abs(m.Tmoy - d.A.T) > 0.5)) C.run.fermer = true;
-      else if (C.run && !C.run.seul) C.run = null;
+      C.run = null;
     }
     if (C.run && C.run.seul) C.run = null;
     if (tfGraph.fantome) tfGraph.fantome.k = C.k;
@@ -393,13 +389,6 @@ function _tfCyTic() {
     return;
   }
   if (!C.run) return;
-  // Tour fini : le cylindre retrouve les conditions de la première étape
-  // (le gaz revient en A s'il en a été écarté), puis l'enchaînement s'arrête
-  if (C.run.fermer) {
-    if (_tfCyConditions(d.etapes[0])) C.run = null;
-    else _tfCyPreparer(d.etapes[0]);
-    return;
-  }
   if (s.type === 'fond') { _tfCyContact(s, C.run.N); return; }
   if (!_tfCyConditions(s)) { _tfCyPreparer(s); return; }
   // Pression de l'air visée : celle de l'arrivée, moins le poids du piston
@@ -488,9 +477,8 @@ function _tfCyMajEnCours() {
   E.encours.style.display = C.run ? '' : 'none';
   if (!C.run) return;
   var n = C.def.etapes.length;
-  E.encoursTxt.textContent = C.run.fermer ? 'Retour aux conditions de A…'
-    : (C.run.seul ? 'Étape ' : (isFinite(C.run.N) ? C.run.N + ' pas' : 'Pas infinitésimal') + ' · étape ')
-      + (C.k + 1) + ' / ' + n + '…';
+  E.encoursTxt.textContent = (C.run.seul ? 'Étape ' : (isFinite(C.run.N) ? C.run.N + ' pas' : 'Pas infinitésimal') + ' · étape ')
+    + (C.k + 1) + ' / ' + n + '…';
 }
 
 function tfCyclesInit() {
