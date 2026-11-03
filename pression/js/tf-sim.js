@@ -44,7 +44,7 @@ var TF_S          = 20e-4;   // m² (Ø ≈ 5 cm)
 // lance un vrai front de compression (avec 1 kg, l'écart de pression dans le
 // gaz restait sous 0,1 % : PLAN §10.5). Son poids ne compte plus (5 Pa).
 var TF_M_PISTON   = 0.001;   // kg
-var TF_T0         = 293;     // K (aussi la source 2 au départ)
+var TF_T0         = 293;     // K (aussi la source 1 au départ)
 var TF_V0         = 0.6e-3;  // m³ (hauteur initiale 30 cm)
 var TF_P_LIBRE    = TF_P_ATM + TF_M_PISTON * TF_G / TF_S;   // Pa, piston seul à l'air libre
 var TF_P0         = TF_P_LIBRE;   // Pa, pression de départ par défaut (≈ 100 kPa)
@@ -202,10 +202,10 @@ var tf = {
   // quitte).
   G      : 0,            // W·K⁻¹, conductance du fond (TF_G_PAROI[paroi])
   paroi  : 'isolant',    // 'isolant', 'cond' ou 'peu' (TF_G_PAROI)
-  Text   : 400,          // K, température de la source sous le fond
+  Text   : TF_T0,        // K, température de la source sous le fond
   fond   : '1',          // source sous le fond : '1' ou '2'
-  T1     : 400,          // K
-  T2     : TF_T0,        // K
+  T1     : TF_T0,        // K
+  T2     : 400,          // K
 
   // Temps et bilans
   t      : 0,            // s simulées
