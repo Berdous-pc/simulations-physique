@@ -279,6 +279,17 @@ function _tfEcGaz() {
   return 0.5 * tf.mTr * (s + uN * uN / 2);
 }
 
+// Compteur du travail W aux changements de mode. Calcul complet, le gaz
+// porte son énergie cinétique : U + Ec_gaz − W − Q reste constant ; en mode
+// oscillant, elle est comptée avec le piston (masse effective) et en mode
+// quasi statique elle est nulle : U − W − Q reste constant. À l'entrée dans
+// l'un de ces modes (ΔU_e : variation de U pendant la mise en ordre, Ec0 :
+// énergie cinétique du gaz juste avant), W reçoit ΔU_e − Ec0 ; à la sortie
+// du mode oscillant, l'énergie cinétique du gaz. Sans quoi ΔU et W
+// différaient, piston au repos, de l'énergie cinétique du gaz au changement
+// de mode.
+function _tfWEntree(U0, Ec0) { tf.Wgaz += _tfU() - U0 - Ec0; }
+
 // Énergie cinétique macroscopique : gaz, plus le piston et sa masse quand il
 // est libre (J). Tenu, le piston n'en fait pas partie : c'est le vérin qui
 // fournit son énergie.
@@ -932,7 +943,7 @@ function _tfEssayerQS() {
 // rendue uniforme (et égale à P_ext, piston libre), puis l'écart d'énergie
 // de cette mise au repos est rendu au gaz : le bilan reste exact.
 function _tfEntrerQS() {
-  var e0 = tfEnergieTotale(), j;
+  var e0 = tfEnergieTotale(), j, U0 = _tfU(), Ec0 = _tfEcGaz(), W0 = tf.Wgaz;
   tf.u.fill(0);
   tf.q.fill(0);
   tf._PairQS = tf.Pair;
@@ -943,11 +954,14 @@ function _tfEntrerQS() {
   var d = (e0 - tfEnergieTotale()) / TF_N;
   for (j = 0; j < TF_N; j++) Q[j] = d;
   if (!_tfQSAppliquer(Q, tf.tenu ? tfVolume() : null)) tf.qs = false;
+  tf.Wgaz = W0;   // _tfQSAppliquer l'a déjà augmenté : compté une seule fois
+  _tfWEntree(U0, Ec0);
   tf.needsRedraw = true;
 }
 
 function _tfQuitterQS() {
   if (!tf.qs) return;
+  if (tf.osc) tf.Wgaz += _tfEcGaz();
   tf.qs = tf.osc = false;
   tf.dtCfl = 1e-7;   // recalculé au premier sous-pas complet
   _tfMajAmortissement();
@@ -1206,12 +1220,13 @@ function _tfEssayerOsc(U) {
 // uniforme à volume inchangé, puis l'écart d'énergie de cette mise en ordre
 // rendu au gaz : le bilan reste exact
 function _tfEntrerOsc() {
-  var e0 = tfEnergieTotale();
+  var e0 = tfEnergieTotale(), U0 = _tfU(), Ec0 = _tfEcGaz();
   tf.q.fill(0);
   _tfOscEgaliser(null);
   _tfOscProfil(tf.u[TF_N]);
   var U = _tfU(), f = 1 + (e0 - tfEnergieTotale()) / U;
   for (var j = 0; j < TF_N; j++) { tf.E[j] *= f; tf.P[j] *= f; }
+  _tfWEntree(U0, Ec0);
   tf.qs = tf.osc = true;
   tf.needsRedraw = true;
 }
@@ -1311,6 +1326,7 @@ function _tfSousPasOsc(dt) {
   var U = _tfU(), Pm = g1 * U / tfVolume(), Pext = tfPext();
   if (tf.t >= tf.tReposMin && 0.5 * _tfMasseOsc() * v1 * v1 <= TF_QS_EC * U
       && Math.abs(Pm - Pext) / Pext <= TF_QS_P && !_tfEscalierPiston()) {
+    tf.Wgaz += _tfEcGaz();   // sortie du mode oscillant (cf. _tfWEntree)
     tf.qs = tf.osc = false;
     _tfEntrerQS();
   }
@@ -1403,7 +1419,9 @@ function _tfSousPas(dt) {
   // vérin.
   var Ptop = 0.5 * P[N - 1] + q[N - 1]
            + 0.5 * g1 * E[N - 1] / (S * (z[N] - z[N - 1]));
-  var dWface = -Ptop * S * u[N] * dt + 0.25 * mTr * (u[N] * u[N] - uAvant * uAvant);
+  // Déplacement réel de la face : en butée, z[N] est ramené sur la butée et
+  // u[N] annulé, u[N]·dt ne le donne plus
+  var dWface = -Ptop * S * (z[N] - zAvant) + 0.25 * mTr * (u[N] * u[N] - uAvant * uAvant);
   tf.Wgaz += dWface + chaleur;
   if (tenu) tf.Wop += dWface;
 
