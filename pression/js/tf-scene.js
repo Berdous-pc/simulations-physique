@@ -179,16 +179,19 @@ function _tfDessinerFond() {
   if (ep > 0.002) {
     var yH = _tfY(-TF_EP_FOND), yB = _tfY(-TF_EP_FOND - ep);
     var m  = (x2 - x1) * 0.08;
-    c.fillStyle = '#e8dcc4';
+    // Isolant : matière hachurée (comme les parois latérales) ; peu
+    // conductrice : plaque pleine, sans hachures, grise entre l'isolant
+    // et le métal
+    var iso = tf.paroi === 'isolant';
+    c.fillStyle = iso ? '#e8dcc4' : '#c9d1d8';
     c.fillRect(x1 - m, yH, x2 - x1 + 2 * m, yB - yH);
-    _tfHachures(x1 - m, yH, x2 - x1 + 2 * m, yB - yH, 'rgba(150,120,80,0.45)', 7);
-    c.strokeStyle = '#b0a080';
+    if (iso) _tfHachures(x1 - m, yH, x2 - x1 + 2 * m, yB - yH, 'rgba(150,120,80,0.45)', 7);
+    c.strokeStyle = iso ? '#b0a080' : '#8e9aa5';
     c.lineWidth = 1;
     c.strokeRect(x1 - m, yH, x2 - x1 + 2 * m, yB - yH);
-    var iso = tf.paroi === 'isolant';
     police = Math.max(9, Math.min(14, Math.round((yB - yH) * (iso ? 0.5 : 0.75))));
     c.font = _tfPolice('600', police);
-    c.fillStyle = '#6a5030';
+    c.fillStyle = iso ? '#6a5030' : '#3e4c58';
     c.textAlign = 'center';
     c.textBaseline = 'middle';
     c.fillText(iso ? 'isolant' : 'peu conductrice', (x1 + x2) / 2, (yH + yB) / 2);
