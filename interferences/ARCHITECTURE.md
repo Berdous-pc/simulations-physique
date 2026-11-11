@@ -1113,6 +1113,8 @@ qui pose `simPrin.vue` et échange `#prin-scene-area` ↔ `#prin-temp-area` et
   en permanence), entre deux pointillés partant de la crête de y₁ en T/4 et de la crête
   correspondante de y₂ en T/4 + Δt. Si celle-ci sort de la fenêtre, on recule de k périodes et la
   flèche est libellée « Δt − kT » (`_tempCreteDt`).
+- **Pastilles** orange (crête de y₁ en T/4) et rose (crête correspondante de y₂) : toujours
+  visibles, option Δt active ou non — mêmes points que les pointillés de la flèche Δt.
 - **Valeurs** : Δt, T et l'encart « Comparaison à T » (Δt/T, conclusion avec la même tolérance
   `PRIN_TOL_RATIO` que « Comparaison à λ », cf. `_tempNature`).
 - Réutilise de `principe.js` les couleurs `PRIN_COL_*`, `_prinRoundRect` et `PRIN_TOL_RATIO` :

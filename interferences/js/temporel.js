@@ -253,6 +253,20 @@ function _tempDrawTitre(ctx, row, couleur) {
     ctx.restore();
 }
 
+// Pastille ronde cerclée de blanc, posée sur une courbe
+function _tempPastille(ctx, x, y, color) {
+    var r = Math.max(5, simTemp.fs * 0.42);
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2 * simTemp.lw;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+}
+
 // Pointillé vertical
 function _tempPointille(ctx, x, yA, yB, color) {
     ctx.save();
@@ -378,6 +392,13 @@ function drawTemporel() {
         _tempDrawCourbe(ctx, s.rows[c], fys[c], cols[c], (c === 2 ? 3 : 2.5) * lw, c === 2);
     }
     for (var p = 0; p < 3; p++) _tempDrawTitre(ctx, s.rows[p], cols[p]);
+
+    // Pastilles repères du décalage, TOUJOURS visibles (option Δt ou non) :
+    // la crête de y₁ en T/4 et la crête correspondante de y₂ — on suit ainsi
+    // le glissement de y₂ en jouant sur Δt, même sans la double flèche.
+    var crP = cr || _tempCreteDt();
+    _tempPastille(ctx, _tempXpx(crP.ta), s.rows[0].y0 - s.a1 * s.ampPx, PRIN_COL_S1);
+    _tempPastille(ctx, _tempXpx(crP.tb), s.rows[1].y0 - s.a2 * s.ampPx, PRIN_COL_S2);
 
     // Période : entre les deux premières crêtes de y₁, au niveau des crêtes
     if (s.showT) {
