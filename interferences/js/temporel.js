@@ -415,12 +415,25 @@ function _tempRefresh() {
     drawTemporel();
 }
 
-// Curseur Δt aimanté sur les multiples de T/2 (cas constructif / destructif)
+// Curseur Δt aimanté sur les multiples de T/2 (cas constructif / destructif).
+// L'aimant ne joue qu'à la souris / au doigt : au clavier, chaque appui sur
+// une flèche avance d'un pas (0,01 ms), plus petit que le rayon d'aimantation,
+// et le curseur retomberait sans fin sur le même cran. Le dernier mode de
+// saisie utilisé sur le curseur décide.
+var _tempDtClavier = false;
+(function () {
+    var sl = document.getElementById('sl-dt-temp');
+    if (!sl) return;
+    sl.addEventListener('keydown',     function () { _tempDtClavier = true;  });
+    sl.addEventListener('pointerdown', function () { _tempDtClavier = false; });
+})();
+
 function onSliderDtTemp(v) {
     var s = simTemp, dt = parseFloat(v);
     var demi = s.T / 2;
     var cible = Math.round(dt / demi) * demi;
-    if (Math.abs(dt - cible) < Math.min(0.1, s.T / 12) && cible <= TEMP_FENETRE_MS + 1e-9) {
+    if (!_tempDtClavier &&
+        Math.abs(dt - cible) < Math.min(0.1, s.T / 12) && cible <= TEMP_FENETRE_MS + 1e-9) {
         dt = cible;
         var sl = document.getElementById('sl-dt-temp');
         if (sl) sl.value = dt;

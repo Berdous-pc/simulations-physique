@@ -1105,7 +1105,9 @@ qui pose `simPrin.vue` et échange `#prin-scene-area` ↔ `#prin-temp-area` et
   telle qu'on l'a laissée. Pendant la représentation temporelle, `tickPrincipe()` sort sans
   avancer `simTime` (et remet `_prinLastFrameT` à null : pas de saut au retour).
 - **Réglages** : Δt de 0 à 10 ms (pas 0,01), **aimanté** sur les multiples de T/2 (rayon
-  `min(0,1 ms, T/12)`) ; T de 0,5 à 5 ms (200 Hz – 2 kHz) ; Δt est gardé en ms quand T change.
+  `min(0,1 ms, T/12)`) **à la souris / au doigt seulement** : au clavier, le pas de 0,01 ms est
+  plus petit que le rayon et l'aimant ramènerait sans fin sur le même cran (`_tempDtClavier`,
+  posé par `keydown`, levé par `pointerdown`) ; T de 0,5 à 5 ms (200 Hz – 2 kHz) ; Δt est gardé en ms quand T change.
 - **Options** : double flèche **T** entre les deux premières crêtes de y₁ (t = T/4 et T/4 + T),
   au niveau des crêtes ; double flèche **Δt** dans la gouttière y₁/y₂ (élargie à 2,6·fs, réservée
   en permanence), entre deux pointillés partant de la crête de y₁ en T/4 et de la crête
