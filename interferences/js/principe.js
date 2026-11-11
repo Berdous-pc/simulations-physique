@@ -185,6 +185,11 @@ var simPrin = {
     // ── Mode de l'onglet ────────────────────────────────────────────
     mode : '1d',            // '1d' | '2d' (2d : placeholder pour l'instant)
 
+    // ── Représentation de l'onglet 1D ───────────────────────────────
+    // 'spatiale'   : la scène y(x, t) de ce fichier
+    // 'temporelle' : trois graphes y(t) figés, cf. js/temporel.js → setPrinVue
+    vue : 'spatiale',
+
     // ── Représentation de l'onde ────────────────────────────────────
     // 'signal'     : les trois courbes de surpression (comportement d'origine)
     // 'particules' : le gaz seul, comme dans l'onglet Son de la page Ondes
@@ -547,6 +552,7 @@ function _prinLayout(ctx) {
 }
 
 function resizePrincipe() {
+    if (typeof resizeTemporel === 'function') resizeTemporel();
     var canvas = document.getElementById('principe-canvas');
     if (!canvas) return;
     var wrap = document.getElementById('prin-scene-area');
@@ -3111,6 +3117,9 @@ function tickPrincipe() {
     // En mode 2D (placeholder), rien à faire : le temps ne doit pas avancer
     // dans le dos de l'élève et le canvas 1D est masqué.
     if (simPrin.mode !== '1d') return;
+    // Représentation temporelle : scène spatiale gelée (on la retrouve à
+    // l'instant où on l'a quittée), et pas de saut de temps au retour.
+    if (simPrin.vue === 'temporelle') { _prinLastFrameT = null; return; }
 
     if (!simPrin.paused) {
         simPrin.simTime += dt * simPrin.speedFactor / PRIN_RALENTI;
@@ -3327,7 +3336,8 @@ function initPrincipeDrag() {
 // affichage de l'onglet.
 function setPrincipeMode(mode) {
     simPrin.mode = '1d';
-    document.getElementById('prin-scene-area').style.display = '';
+    document.getElementById('prin-scene-area').style.display =
+        (simPrin.vue === 'temporelle') ? 'none' : '';
     document.getElementById('prin-2d-placeholder').style.display = 'none';
     resizePrincipe();
 }

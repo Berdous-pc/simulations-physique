@@ -97,6 +97,16 @@ main {
   overflow: hidden;
   position: relative;
 }
+/* Représentation Temporelle de l'onglet 1D (cf. js/temporel.js) : même cadre
+   que la zone de tracé spatiale, qu'elle remplace. */
+#prin-temp-area {
+  flex: 1;
+  min-height: 0;
+  background: #fdf8f0;
+  border-right: 1px solid #c8c0b4;
+  overflow: hidden;
+}
+#temporel-canvas { display: block; width: 100%; height: 100%; }
 #principe-canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 /* Le canvas est focusable (tabindex) pour le pilotage clavier : on garde un
    liseré discret plutôt que le contour par défaut du navigateur, très épais. */

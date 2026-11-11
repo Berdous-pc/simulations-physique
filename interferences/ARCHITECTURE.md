@@ -14,6 +14,7 @@ interferences/
     ├── graph.js     ← graphe I(x) de l'onglet "Ondes lumineuses"
     ├── surfaces.js  ← onglet "Ondes de surface" (état, rendu et graphes propres)
     ├── principe.js  ← onglet "Interférences en 1D" (état, physique et rendu propres — mode 1D)
+    ├── temporel.js  ← onglet "Interférences en 1D", représentation Temporelle (graphes y(t) figés)
     ├── ui.js
     └── sections-repliables.js  ← copie de titrage/, sections du panneau repliables (chargé en dernier)
 ```
@@ -1087,6 +1088,34 @@ y(t) que se lit l'amplitude reçue. Section « Graphes temporels » du panneau (
   après le reset vaudrait tout le temps écoulé depuis la dernière frame.
 - **Par défaut** (section Paramètres) : remet λ, A₁, A₂ — des réglages, pas un état d'animation.
 
+#### Représentation Spatiale / Temporelle (`js/temporel.js`)
+
+Section **Représentation** tout en haut du panneau (hors de `#prin-1d-blocks`, donc toujours
+visible), sélecteur `.seg-toggle` **Spatiale / Temporelle** → `setPrinVue()` (dans `temporel.js`),
+qui pose `simPrin.vue` et échange `#prin-scene-area` ↔ `#prin-temp-area` et
+`#prin-1d-blocks` ↔ `#prin-temp-blocks`.
+
+- **Spatiale** : tout ce qui précède, inchangé.
+- **Temporelle** : un canvas `#temporel-canvas`, trois bandes figées y₁(t), y₂(t), y₁+y₂ (même
+  découpe 1/1/2 unités et même `ampPx` commun que `_prinLayout`), fenêtre **fixe** de
+  `TEMP_FENETRE_MS` = 10 ms. `y₁ = A₁·sin(2πt/T)`, `y₂ = A₂·sin(2π(t − Δt)/T)` : sinusoïde
+  infinie translatée. Aucune animation : `drawTemporel()` n'est appelé que sur un réglage ou un
+  resize (`resizePrincipe()` appelle `resizeTemporel()` en tête).
+- **État indépendant** (`simTemp` : T, Δt, A₁, A₂, options) : on retrouve chaque représentation
+  telle qu'on l'a laissée. Pendant la représentation temporelle, `tickPrincipe()` sort sans
+  avancer `simTime` (et remet `_prinLastFrameT` à null : pas de saut au retour).
+- **Réglages** : Δt de 0 à 10 ms (pas 0,01), **aimanté** sur les multiples de T/2 (rayon
+  `min(0,1 ms, T/12)`) ; T de 0,5 à 5 ms (200 Hz – 2 kHz) ; Δt est gardé en ms quand T change.
+- **Options** : double flèche **T** entre les deux premières crêtes de y₁ (t = T/4 et T/4 + T),
+  au niveau des crêtes ; double flèche **Δt** dans la gouttière y₁/y₂ (élargie à 2,6·fs, réservée
+  en permanence), entre deux pointillés partant de la crête de y₁ en T/4 et de la crête
+  correspondante de y₂ en T/4 + Δt. Si celle-ci sort de la fenêtre, on recule de k périodes et la
+  flèche est libellée « Δt − kT » (`_tempCreteDt`).
+- **Valeurs** : Δt, T et l'encart « Comparaison à T » (Δt/T, conclusion avec la même tolérance
+  `PRIN_TOL_RATIO` que « Comparaison à λ », cf. `_tempNature`).
+- Réutilise de `principe.js` les couleurs `PRIN_COL_*`, `_prinRoundRect` et `PRIN_TOL_RATIO` :
+  **chargé après lui**.
+
 #### Mode 2D
 
 Le sélecteur `.seg-toggle` du panneau expose déjà **1D / 2D** ; le mode 2D est un **placeholder**
@@ -1194,6 +1223,12 @@ index.html
   │                             togglePrinGraph, setPrinGraphOverlay,
   │                             setPrinRepresentation, togglePrinEnvOuSel,
   │                             togglePrinSelection
+  │
+  └── js/temporel.js  dépend de : formatFr (js/scene.js), PRIN_COL_*, _prinRoundRect,
+  │                   PRIN_TOL_RATIO, simPrin.vue (js/principe.js) ; état `simTemp` autonome
+  │                   expose : simTemp, setPrinVue, resizeTemporel, drawTemporel,
+  │                             onSliderDtTemp, onSliderTTemp, onSliderA1Temp, onSliderA2Temp,
+  │                             toggleTempOption
   │
   └── js/ui.js        dépend de : tous les fichiers précédents
                        expose : updateParam, updateMaskShape, appliquerBorneD, setLightSource,

@@ -72,6 +72,12 @@
           <canvas class="prin-graph-canvas"></canvas>
         </div>
       </div>
+      <!-- Représentation Temporelle : y₁(t), y₂(t), y₁+y₂ figés sur une
+           fenêtre de durée fixe (cf. js/temporel.js). -->
+      <div id="prin-temp-area" style="display:none;">
+        <canvas id="temporel-canvas"
+                aria-label="Graphes temporels de y₁, y₂ et de leur somme"></canvas>
+      </div>
       <div id="prin-2d-placeholder" class="tab-placeholder" style="display:none;">
         <span class="tab-placeholder-icon">📐</span>
         <p>Simulation à venir</p>
@@ -211,6 +217,21 @@
     <!-- ═══ Section PRINCIPE ═══ -->
     <div class="panel-main-section" id="section-principe" style="display:none;">
 
+      <!-- Représentation : Spatiale (scène y(x, t) ci-dessous) ou Temporelle
+           (trois graphes y(t) figés, cf. js/temporel.js). Seule section commune
+           aux deux : tout le reste du panneau est échangé par setPrinVue. -->
+      <div class="panel-section">
+        <div class="section-title">Représentation</div>
+        <div class="seg-toggle">
+          <button class="seg-btn active" id="btn-vue-spat-prin"
+                  onclick="setPrinVue('spatiale')">Spatiale</button>
+          <button class="seg-btn" id="btn-vue-temp-prin"
+                  onclick="setPrinVue('temporelle')">Temporelle</button>
+        </div>
+      </div>
+
+      <div class="sep"></div>
+
       <!-- Blocs propres au mode 1D (seul mode existant, cf. setPrincipeMode) -->
       <div id="prin-1d-blocks">
 
@@ -328,6 +349,71 @@
         </div>
 
       </div><!-- fin #prin-1d-blocks -->
+
+      <!-- Blocs de la représentation Temporelle (cf. js/temporel.js). Réglages
+           indépendants de ceux de la représentation Spatiale. -->
+      <div id="prin-temp-blocks" style="display:none;">
+
+        <div class="panel-section">
+          <div class="section-title">Décalage temporel</div>
+          <div class="param-row">
+            <label>Décalage Δt <span><span id="lbl-dt-temp">0,00</span> ms</span></label>
+            <input type="range" id="sl-dt-temp" min="0" max="10" step="0.01" value="0"
+                   oninput="onSliderDtTemp(this.value)">
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="panel-section">
+          <div class="section-title" data-repliable>Paramètres</div>
+          <div class="param-row">
+            <label>Période T <span><span id="lbl-T-temp">2,00</span> ms</span></label>
+            <input type="range" id="sl-T-temp" min="0.5" max="5" step="0.05" value="2"
+                   oninput="onSliderTTemp(this.value)">
+          </div>
+          <div class="param-row">
+            <label>Amplitude de y₁ <span><span id="lbl-a1-temp">0,80</span></span></label>
+            <input type="range" id="sl-a1-temp" min="0" max="1" step="0.05" value="0.80"
+                   oninput="onSliderA1Temp(this.value)">
+          </div>
+          <div class="param-row">
+            <label>Amplitude de y₂ <span><span id="lbl-a2-temp">0,80</span></span></label>
+            <input type="range" id="sl-a2-temp" min="0" max="1" step="0.05" value="0.80"
+                   oninput="onSliderA2Temp(this.value)">
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="panel-section">
+          <div class="section-title" data-repliable>Options</div>
+          <div class="btn-stack">
+            <button class="btn btn-toggle-one" id="btn-T-temp" onclick="toggleTempOption('showT', 'btn-T-temp')">Afficher la période T</button>
+            <button class="btn btn-toggle-one" id="btn-dt-temp" onclick="toggleTempOption('showDt', 'btn-dt-temp')">Afficher le décalage Δt</button>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="panel-section">
+          <div class="section-title" data-repliable>Valeurs</div>
+          <div class="readouts">
+            <div class="readout full-width">
+              <div class="ro-label">Décalage temporel Δt</div>
+              <div class="ro-value"><span id="ro-temp-dt">0,00</span> <span class="ro-unit">ms</span></div>
+              <div class="ro-label ro-label-next">Période T</div>
+              <div class="ro-value"><span id="ro-temp-T">2,00</span> <span class="ro-unit">ms</span></div>
+            </div>
+            <div class="readout full-width">
+              <div class="ro-label">Comparaison à T</div>
+              <div class="ro-value">Δt / T = <span id="ro-temp-ratio">0,00</span></div>
+              <div class="ro-conclusion" id="ro-temp-nature">Δt ≈ k·T → interférence constructive</div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- fin #prin-temp-blocks -->
 
     </div>
 
@@ -587,6 +673,7 @@
 <script src="js/graph.js"></script>
 <script src="js/surfaces.js"></script>
 <script src="js/principe.js"></script>
+<script src="js/temporel.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/sections-repliables.js"></script>
 <script data-goatcounter="https://berdous-pc.goatcounter.com/count"
