@@ -1,0 +1,593 @@
+/* ══════════════════════════════════════════════════
+   Simulation pédagogique — Physique-Chimie Lycée
+   Auteur  : Mathieu Berdous
+   Licence : CC BY-NC 4.0 — https://creativecommons.org/licenses/by-nc/4.0/
+══════════════════════════════════════════════════ */
+
+/* ── Reset & base ────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  white-space: nowrap;
+  border: 0;
+}
+
+body {
+  font-family: 'Segoe UI', Arial, sans-serif;
+  background: #e8e4de;
+  color: #2c3e50;
+  /* dvh : suit la hauteur réellement visible (barres dynamiques du navigateur) ;
+     vh reste le repli pour les navigateurs sans support dvh. */
+  height: 100vh;
+  max-height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* ── Grille principale ───────────────────────────── */
+main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr clamp(200px, 22vw, 300px);
+  min-height: 0;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+/* ── Colonne gauche : une vue par onglet ─────────── */
+#left-col {
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  padding: 10px;
+}
+
+.tab-view {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+}
+
+/* ── Zone simulation ─────────────────────────────── */
+.sim-area {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  background: #fdf8f0;
+  border: 1px solid #c8c0b4;
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+
+.sim-area canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* Le glisser sur la frise des instants ne doit pas
+     faire défiler la page sur écran tactile */
+  touch-action: none;
+}
+
+
+/* ── Panneau droit ───────────────────────────────── */
+#panel {
+  background: #e8e4de;
+  border-left: 1.5px solid #c8c0b4;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  font-size: clamp(11px, 1.1vw, 14px);
+  overflow: hidden;
+}
+
+/* ── Onglets principaux (Démonstration / Vue de dessus) ── */
+.panel-main-tabs {
+  display: flex;
+  flex-shrink: 0;
+  border-bottom: 1.5px solid #b0a898;
+}
+
+.panel-main-tab {
+  flex: 1;
+  padding: 9px 4px;
+  font-size: clamp(12px, 1.2vw, 15px);
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: #d4d0c8;
+  color: #8a9aaa;
+  border-right: 1px solid #b0a898;
+  transition: background 0.12s, color 0.12s;
+  line-height: 1.25;
+}
+.panel-main-tab:last-child { border-right: none; }
+.panel-main-tab:hover { background: #ccc8c0; color: #2c3e50; }
+.panel-main-tab.active {
+  background: #e8e4de;
+  color: #2a6aaa;
+  border-bottom: 1.5px solid #e8e4de;
+  margin-bottom: -1.5px;
+}
+
+.tab-sub {
+  display: block;
+  font-size: 0.82em;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+/* ── Corps scrollable ────────────────────────────── */
+#panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;   /* pas de barre horizontale au moindre débordement */
+  padding: clamp(8px, 1vw, 14px) clamp(8px, 1vw, 12px);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* ── Sous-onglets (Se rapproche / S'éloigne) ───── */
+.mode-tabs {
+  display: flex;
+  flex-shrink: 0;
+  gap: 0;
+  border: 1px solid #c8c0b4;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.mode-tab {
+  flex: 1;
+  padding: 8px 4px;
+  font-size: clamp(12px, 1.2vw, 15px);
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: #dedad2;
+  color: #5a6a78;
+  text-align: center;
+  transition: background 0.15s, color 0.15s;
+}
+.mode-tab:not(:last-child) { border-right: 1px solid #c8c0b4; }
+.mode-tab:hover { background: #d4d0c8; }
+.mode-tab.active { background: #2a6aaa; color: #fff; }
+
+/* ── Section ─────────────────────────────────────── */
+.panel-section { margin-bottom: 8px; }
+
+.section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #7a8a96;
+  margin-bottom: 7px;
+}
+
+/* Sections repliables du panneau : titre inchangé + petit chevron discret */
+.section-title[data-repliable] {
+  display: flex; align-items: center; justify-content: space-between;
+  cursor: pointer; user-select: none;
+}
+.section-title[data-repliable]:hover { color: #2a6aaa; }
+.section-title.section-repliee { margin-bottom: 0; }   /* pas de vide sous un titre plié */
+.section-toggle {
+  flex: none; width: 18px; height: 18px; padding: 0; cursor: pointer;
+  border: none; background: transparent; position: relative;
+}
+.section-toggle::before {            /* chevron vers le haut (déplié : un clic replie), vers le bas (replié : un clic déplie) */
+  content: ''; position: absolute; left: 50%; top: 50%;
+  width: 5px; height: 5px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+  color: #7a8a96;
+  transform: translate(-50%, -30%) rotate(-135deg); transition: transform .2s;
+}
+.section-title[data-repliable]:hover .section-toggle::before { color: #2a6aaa; }
+.section-toggle[aria-expanded="false"]::before { transform: translate(-50%, -70%) rotate(45deg); }
+.section-body.collapsed { display: none; }
+/* Avant l'exécution de sections-repliables.js (1er chargement, scripts pas encore
+   en cache) : masque déjà le contenu des sections qui seront pliées, pour qu'elles
+   n'apparaissent pas dépliées une fraction de seconde. */
+html:not(.sections-pretes) .section-title[data-repliable]:not([data-repliable="ouvert"]) ~ * { display: none; }
+
+/* ── Séparateur ──────────────────────────────────── */
+.sep {
+  border: none;
+  border-top: 1px solid #c8c0b4;
+  margin: 8px 0;
+}
+
+/* ── Boutons ─────────────────────────────────────── */
+/* Boutons empilés : l'écart est porté par le conteneur, pas par une marge
+   sur chaque bouton. */
+.btn-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Curseur placé juste sous un bouton ou des onglets (v_E sous le choix du sens) */
+.param-row-after-btn { margin-top: 8px; }
+/* Aide placée juste sous un bouton */
+.input-hint-after-btn { margin-top: 6px; }
+
+.btn {
+  width: 100%;
+  border: none;
+  border-radius: 6px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 0.1s, background 0.15s;
+}
+.btn:active { transform: scale(0.97); }
+
+.btn-raz {
+  background: #dedad2;
+  color: #5a6a78;
+  font-size: clamp(12px, 1.2vw, 15px);
+  padding: 9px 6px;
+  border: 1.5px solid #c8c0b4;
+}
+.btn-raz:hover { background: #ccc8c0; }
+
+.btn-primary {
+  background: #2a6aaa;
+  color: #fff;
+  font-size: clamp(13px, 1.3vw, 16px);
+  padding: 11px 6px;
+}
+.btn-primary:hover { background: #1a5a9a; }
+
+.btn-toggle-one {
+  background: #ece8e0;
+  color: #5a6a78;
+  border: 1px solid #c8c0b4;
+  font-size: clamp(12px, 1.2vw, 15px);
+  padding: 9px 6px;
+}
+.btn-toggle-one:hover { background: #ddd8ce; }
+
+
+/* ── Paramètres ──────────────────────────────────── */
+.param-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 10px;
+}
+
+.param-row label {
+  font-size: clamp(12px, 1.25vw, 15px);
+  color: #2c3e50;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.param-value {
+  color: #2a5080;
+  font-weight: 600;
+  white-space: nowrap;
+  font-size: clamp(12px, 1.25vw, 15px);
+  font-variant-numeric: tabular-nums;
+}
+
+.param-row input[type="range"] {
+  width: 100%;
+  accent-color: #4a7aaa;
+  cursor: pointer;
+}
+
+.input-hint {
+  font-size: clamp(10px, 0.9vw, 13px);
+  color: #7a8a96;
+  line-height: 1.4;
+  font-weight: 400;
+  margin-top: 3px;
+}
+
+/* ── Cases à cocher d'affichage ──────────────────── */
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: clamp(12px, 1.15vw, 15px);
+  color: #2c3e50;
+  cursor: pointer;
+  user-select: none;
+  margin-bottom: 7px;
+  line-height: 1.3;
+}
+
+.check-row input[type="checkbox"] {
+  accent-color: #4a7aaa;
+  cursor: pointer;
+  width: 1.1em;
+  height: 1.1em;
+  flex: 0 0 auto;
+}
+
+
+/* ── Afficheurs valeur ───────────────────────────── */
+.readout {
+  background: #fff;
+  border: 1px solid #c8c0b4;
+  border-radius: 6px;
+  padding: 7px 9px;
+  margin-bottom: 8px;
+}
+
+.ro-label {
+  font-size: clamp(11px, 1vw, 13px);
+  color: #7a8a96;
+  margin-bottom: 4px;
+}
+
+/* Une grandeur par ligne : libellé à gauche, valeur à droite. La valeur
+   passe sous le libellé plutôt que de déborder quand le panneau est étroit. */
+.ro-line {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0 8px;
+}
+.ro-line + .ro-line { margin-top: 3px; }
+
+.ro-item-label {
+  font-size: clamp(11px, 1vw, 13px);
+  color: #7a8a96;
+}
+
+.ro-item-val {
+  font-size: clamp(15px, 1.6vw, 20px);
+  font-weight: 700;
+  color: #2a5080;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  margin-left: auto;
+}
+
+/* Les règles d'affichage (display…) l'emportent sur la feuille du
+   navigateur : sans ceci, l'attribut hidden resterait sans effet. */
+[hidden] { display: none !important; }
+
+
+/* ── Bandeau Informations ────────────────────────── */
+.panel-hint {
+  flex-shrink: 0;
+  color: #5a6a78;
+  line-height: 1.5;
+  background: #fff;
+  border: 1.5px solid #b0a898;
+  /* Pas de bordure gauche propre : #panel a déjà la sienne sur ce bord
+     (cf. CONTEXTE_PROJET.md §5, évite le décalage sous-pixel entre deux
+     bordures superposées quand la largeur du panneau est en clamp()). */
+  border-left: none;
+  overflow: hidden;
+  transition: padding 0.2s;
+}
+
+.panel-hint strong { color: #2c3e50; }
+
+.panel-hint-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+}
+
+.panel-hint-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #7a8a96;
+  margin-left: auto;
+  margin-right: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panel-hint-menu-btn {
+  /* Lien déguisé en bouton : un <a> hérite de la police du body, on la
+     fixe explicitement pour un rendu identique partout. */
+  font-family: inherit;
+  text-decoration: none;
+  display: inline-block;
+  background: #f0f4f7;
+  border: 1px solid #c8d4dc;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  color: #4a5a68;
+  padding: 4px 9px;
+  line-height: 1.2;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.panel-hint-menu-btn:hover { background: #dde6ec; color: #2a6aaa; }
+
+.panel-hint-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: #7a8a96;
+  padding: 0 2px;
+  line-height: 1;
+  transition: transform 0.2s;
+}
+.panel-hint-toggle:hover { color: #2a6aaa; }
+
+.panel-hint-body {
+  font-size: clamp(12px, 1.15vw, 15px);
+  padding: 0 10px 8px;
+  overflow: hidden;
+  transition: max-height 0.25s ease, padding 0.25s ease;
+  max-height: 320px;
+}
+
+.panel-hint.collapsed .panel-hint-body {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.panel-hint:not(.collapsed) .panel-hint-toggle { transform: rotate(180deg); }
+
+
+/* ── Boutons d'animation ─────────────────────────── */
+.btn-pause {
+  background: #c08020;
+  color: #fff;
+  font-size: clamp(14px, 1.4vw, 18px);
+  padding: 10px 6px;
+}
+.btn-pause:hover { background: #a06010; }
+
+.btn-play {
+  background: #2a8a50;
+  color: #fff;
+  font-size: clamp(14px, 1.4vw, 18px);
+  padding: 10px 6px;
+}
+.btn-play:hover { background: #1a6a38; }
+
+/* Boutons côte à côte */
+.btn-row {
+  display: flex;
+  gap: 6px;
+}
+.btn-row > .btn {
+  width: auto;
+  flex: 1 1 0;
+  white-space: nowrap;
+}
+.btn-row > .btn-raz { flex: 0 0 auto; }
+/* Seconde rangée de boutons (Étape précédente / suivante) sous la première */
+.btn-row-after-btn { margin-top: 6px; }
+.btn-row-after-btn > .btn-raz { flex: 1 1 0; }
+
+/* Curseur de vitesse placé sous les commandes d'animation */
+.param-row-speed { margin-top: 8px; margin-bottom: 0; }
+
+/* ── Onglet Démonstration : scène + démonstration écrite ── */
+#view-demonstration {
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Démonstration écrite sous la scène : les lignes s'allument au fil du temps */
+#demo-bloc {
+  flex: 0 0 auto;
+  max-height: 46%;
+  overflow-y: auto;
+  background: #faf9f6;
+  border: 1px solid #c8c0b4;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  padding: clamp(6px, 0.8vw, 12px) clamp(8px, 1.1vw, 16px);
+  font-size: clamp(13px, 1.45vw, 21px);
+  line-height: 1.45;
+}
+
+.demo-intro {
+  font-size: 0.82em;
+  color: #7a8a96;
+  margin-bottom: 0.3em;
+}
+
+.demo-ligne {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  padding: 0.12em 0.5em;
+  border-left: 4px solid transparent;
+  border-radius: 4px;
+  opacity: 0.25;                 /* étape pas encore atteinte */
+  transition: opacity 0.25s, background 0.25s, border-color 0.25s;
+}
+.demo-ligne.atteinte { opacity: 1; }
+.demo-ligne.active {
+  background: #fff;
+  border-left-color: #2a6aaa;
+}
+.demo-num {
+  flex: 0 0 auto;
+  width: 1.5em; height: 1.5em;
+  border-radius: 50%;
+  background: #7a8a96;
+  color: #fff;
+  font-size: 0.72em;
+  font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+.demo-ligne.active .demo-num { background: #2a6aaa; }
+
+/* Ligne du résultat */
+.demo-resultat { font-weight: 700; }
+.demo-resultat.active { border-left-color: #2a8a50; background: #eef7f0; }
+.demo-resultat.active .demo-num { background: #2a8a50; }
+
+/* Grandeurs : italique ; λ′ dans la couleur de sa cote sur la scène */
+#demo-bloc i { font-family: Georgia, 'Times New Roman', serif; }
+.g-lp { color: #b04020; font-weight: 700; }
+.g-e  { color: #1f7a44; }
+
+/* Fraction en ligne */
+.frac {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  vertical-align: middle;
+  font-size: 0.88em;
+  line-height: 1.15;
+  margin: 0 0.15em;
+}
+.frac > .num { padding: 0 0.3em; border-bottom: 1.5px solid currentColor; }
+.frac > .den { padding: 0 0.3em; }
+
+/* ── Onglet Vue de dessus : en préparation ───────── */
+.placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4em;
+  text-align: center;
+  padding: 5%;
+  color: #7a8a96;
+  font-size: clamp(15px, 1.8vw, 24px);
+}
+.placeholder strong { color: #2c3e50; font-size: 1.25em; }
+
+.panel-note {
+  font-size: clamp(12px, 1.15vw, 15px);
+  color: #5a6a78;
+  line-height: 1.45;
+}
+
+/* Bouton d'étape sans objet (début ou fin de la démonstration) */
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }

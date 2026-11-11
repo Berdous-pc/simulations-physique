@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<!-- ════════════════════════════════════════════════════
+     Simulation pédagogique — Physique-Chimie Lycée
+     Auteur  : Mathieu Berdous
+     Licence : CC BY-NC 4.0 — https://creativecommons.org/licenses/by-nc/4.0/
+════════════════════════════════════════════════════ -->
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Simulation — Effet Doppler : démonstration de la formule</title>
+  <meta name="author" content="Mathieu Berdous">
+  <meta name="copyright" content="Mathieu Berdous — CC BY-NC 4.0">
+  <meta name="description" content="Simulation interactive (Terminale) : effet Doppler, démonstration animée de la formule du décalage en fréquence pour un émetteur qui se rapproche ou s'éloigne d'un récepteur fixe, front de l'onde suivi jusqu'au récepteur, longueur d'onde et période reçues.">
+  <link rel="canonical" href="https://berdouspc.com/doppler/">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>⚛️</text></svg>">
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<h1 class="sr-only">Simulation de l'effet Doppler — démonstration animée de la formule pour un émetteur en mouvement et un récepteur fixe (Terminale)</h1>
+
+<main>
+
+  <!-- ══════════════════════════════════════════════
+       COLONNE GAUCHE : une vue par onglet
+  ══════════════════════════════════════════════ -->
+  <div id="left-col">
+
+    <!-- ── Démonstration (vue de profil, 1D) ────── -->
+    <div class="tab-view" id="view-demonstration">
+      <div class="sim-area">
+        <canvas id="canvas-profil"></canvas>
+      </div>
+
+      <!-- Démonstration écrite : chaque ligne s'allume quand son étape est atteinte -->
+      <div id="demo-bloc">
+        <div class="demo-intro">
+          Un émetteur E <span class="dp-intro">se rapproche</span> à la vitesse <i>v</i><sub>E</sub>
+          d'un récepteur fixe R. L'onde se propage à la célérité <i>v</i>.
+        </div>
+        <div class="demo-ligne" id="demo-l1">
+          <span class="demo-num">1</span>
+          <span>À <i>t</i> = 0, E se met à osciller : le front de l'onde part. Pendant une période <i>T</i><sub>E</sub>, il parcourt
+            <i>λ</i> = <i>v</i>·<i>T</i><sub>E</sub>.</span>
+        </div>
+        <div class="demo-ligne" id="demo-l2">
+          <span class="demo-num">2</span>
+          <span>Pendant ce temps, E <span class="dp-verbe">avance</span> de
+            <span class="g-e"><i>v</i><sub>E</sub>·<i>T</i><sub>E</sub></span>, puis commence le motif 2.</span>
+        </div>
+        <div class="demo-ligne" id="demo-l3">
+          <span class="demo-num">3</span>
+          <span>Distance entre le front et le début du motif 2 :
+            <span class="g-lp"><i>λ</i>′</span> = <i>λ</i> <span class="dp-signe">−</span>
+            <i>v</i><sub>E</sub>·<i>T</i><sub>E</sub> =
+            (<i>v</i> <span class="dp-signe">−</span> <i>v</i><sub>E</sub>)·<i>T</i><sub>E</sub>.</span>
+        </div>
+        <div class="demo-ligne" id="demo-l4">
+          <span class="demo-num">4</span>
+          <span>Ces deux points avancent à la célérité <i>v</i> : R les reçoit séparés de
+            <i>T</i><sub>R</sub> =
+            <span class="frac"><span class="num"><span class="g-lp"><i>λ</i>′</span></span><span class="den"><i>v</i></span></span>
+            = <i>T</i><sub>E</sub>
+            <span class="frac"><span class="num"><i>v</i> <span class="dp-signe">−</span> <i>v</i><sub>E</sub></span><span class="den"><i>v</i></span></span>.</span>
+        </div>
+        <div class="demo-ligne demo-resultat" id="demo-l5">
+          <span class="demo-num">5</span>
+          <span>Fréquence reçue :
+            <i>f</i><sub>R</sub> = <i>f</i><sub>E</sub>
+            <span class="frac"><span class="num"><i>v</i></span><span class="den"><i>v</i> <span class="dp-signe">−</span> <i>v</i><sub>E</sub></span></span>
+            <span class="dp-comp">&gt;</span> <i>f</i><sub>E</sub></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Vue de dessus (2D) : en préparation ──── -->
+    <div class="tab-view" id="view-vue-de-dessus" style="display:none;">
+      <div class="sim-area">
+        <div class="placeholder">
+          <strong>Vue de dessus</strong>
+          Émetteur et récepteur déplaçables, crêtes circulaires : en préparation.
+        </div>
+      </div>
+    </div>
+
+  </div><!-- fin #left-col -->
+
+  <!-- ══════════════════════════════════════════════
+       PANNEAU DROIT
+  ══════════════════════════════════════════════ -->
+  <div id="panel">
+
+    <!-- ── Onglets principaux ─────────────────── -->
+    <div class="panel-main-tabs">
+      <button class="panel-main-tab active" id="tab-demonstration"
+              onclick="setMainTab('demonstration')">
+        Démonstration
+        <span class="tab-sub">Vue de profil</span>
+      </button>
+      <button class="panel-main-tab" id="tab-vue-de-dessus"
+              onclick="setMainTab('vue-de-dessus')">
+        Vue de dessus
+        <span class="tab-sub">2D</span>
+      </button>
+    </div>
+
+    <!-- ── Corps du panneau ───────────────────── -->
+    <div id="panel-body">
+
+      <!-- ═══ Section DÉMONSTRATION ═══ -->
+      <div class="panel-main-section" id="section-demonstration">
+
+        <div class="panel-section">
+          <div class="section-title">Animation</div>
+          <div class="btn-row">
+            <button class="btn btn-play" id="btn-lecture" onclick="basculerLecture()">▶ Lecture</button>
+            <button class="btn btn-raz" onclick="razDemo()">↺ RAZ</button>
+          </div>
+          <div class="btn-row btn-row-after-btn">
+            <button class="btn btn-raz" id="btn-etape-prec" onclick="etapePrecedente()"
+                    title="Revenir à l'instant clé précédent">◀ Étape</button>
+            <button class="btn btn-raz" id="btn-etape-suiv" onclick="etapeSuivante()"
+                    title="Avancer jusqu'à l'instant clé suivant">Étape ▶</button>
+          </div>
+          <div class="param-row param-row-after-btn">
+            <label>
+              Temps t
+              <span class="param-value" id="lbl-temps">0,00 s</span>
+            </label>
+            <input type="range" id="sl-temps" min="0" max="1000" step="1" value="0"
+                   oninput="onSliderTemps(this.value)">
+          </div>
+          <div class="param-row param-row-speed">
+            <label>
+              Vitesse d'animation
+              <span class="param-value" id="lbl-vitesse">×0,30</span>
+            </label>
+            <input type="range" id="sl-vitesse" min="0.05" max="1" step="0.05" value="0.3"
+                   oninput="onSliderVitesse(this.value)">
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="panel-section">
+          <div class="section-title">Émetteur</div>
+          <div class="mode-tabs">
+            <button class="mode-tab active" id="sens-rapproche" onclick="setSens(1)">Se rapproche</button>
+            <button class="mode-tab" id="sens-eloigne" onclick="setSens(-1)">S'éloigne</button>
+          </div>
+          <div class="param-row param-row-after-btn">
+            <label>
+              <span>Vitesse v<sub>E</sub></span>
+              <span class="param-value" id="lbl-ve">8 cm/s</span>
+            </label>
+            <input type="range" id="sl-ve" min="0" max="10" step="1" value="8"
+                   oninput="onSliderVE(this.value)">
+          </div>
+          <div class="param-row">
+            <label>
+              <span>Fréquence f<sub>E</sub></span>
+              <span class="param-value" id="lbl-fe">1,0 Hz</span>
+            </label>
+            <input type="range" id="sl-fe" min="1" max="2" step="0.1" value="1"
+                   oninput="onSliderFE(this.value)">
+            <div class="input-hint">Célérité de l'onde : v = 20 cm/s.</div>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="panel-section">
+          <div class="section-title" data-repliable>Affichage</div>
+          <label class="check-row">
+            <input type="checkbox" checked onchange="toggleAffichage('showCotes', this.checked)">
+            <span>Cotes (λ, λ′, v<sub>E</sub>·T<sub>E</sub>)</span>
+          </label>
+          <label class="check-row">
+            <input type="checkbox" checked onchange="toggleAffichage('showDemo', this.checked)">
+            Démonstration écrite
+          </label>
+        </div>
+
+        <div class="sep"></div>
+
+        <!-- ── Valeurs : affichées en dépliant la section ── -->
+        <div class="panel-section">
+          <div class="section-title" data-repliable>Valeurs</div>
+          <div class="readout">
+            <div class="ro-label">Émission</div>
+            <div class="ro-line">
+              <span class="ro-item-label">Période T<sub>E</sub></span>
+              <span class="ro-item-val" id="ro-te">—</span>
+            </div>
+            <div class="ro-line">
+              <span class="ro-item-label">λ = v·T<sub>E</sub></span>
+              <span class="ro-item-val" id="ro-lambda">—</span>
+            </div>
+            <div class="ro-line">
+              <span class="ro-item-label">v<sub>E</sub>·T<sub>E</sub></span>
+              <span class="ro-item-val" id="ro-vete">—</span>
+            </div>
+          </div>
+          <div class="readout">
+            <div class="ro-label">Réception</div>
+            <div class="ro-line">
+              <span class="ro-item-label">Distance λ′</span>
+              <span class="ro-item-val" id="ro-lambdap">—</span>
+            </div>
+            <div class="ro-line">
+              <span class="ro-item-label">Période T<sub>R</sub></span>
+              <span class="ro-item-val" id="ro-tr">—</span>
+            </div>
+            <div class="ro-line">
+              <span class="ro-item-label">Fréquence f<sub>R</sub></span>
+              <span class="ro-item-val" id="ro-fr">—</span>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- fin #section-demonstration -->
+
+      <!-- ═══ Section VUE DE DESSUS ═══ -->
+      <div class="panel-main-section" id="section-vue-de-dessus" style="display:none;">
+        <div class="panel-section">
+          <div class="section-title">Vue de dessus</div>
+          <div class="panel-note">Cet onglet est en préparation.</div>
+        </div>
+      </div>
+
+    </div><!-- fin #panel-body -->
+
+    <!-- ── Bandeau Informations Démonstration ──── -->
+    <div class="panel-hint collapsed" id="panel-hint-demonstration">
+      <div class="panel-hint-header">
+        <a class="panel-hint-menu-btn" href="../" title="Retour au menu principal">☰ Menu</a>
+        <span class="panel-hint-title">Informations</span>
+        <button class="panel-hint-toggle"
+                onclick="toggleHint('demonstration')"
+                title="Afficher les informations">▲</button>
+      </div>
+      <div class="panel-hint-body">
+        <strong>Lecture</strong> déroule toute l'animation ; <strong>Étape ▶</strong> s'arrête à l'instant clé suivant
+        (début du motif 2, arrivée du front au récepteur, puis arrivée du début du motif 2).<br>
+        <strong>Temps</strong> : faites glisser le curseur du panneau, ou la <strong>frise</strong> en bas de la scène,
+        pour parcourir l'animation à la main.<br>
+        <strong>Émetteur</strong> : choisissez s'il se rapproche ou s'éloigne du récepteur R, puis réglez sa vitesse
+        et sa fréquence ; la scène se met à jour sans changer d'étape.<br>
+        Les lignes de la <strong>démonstration</strong> s'allument au fil de l'animation ; elle peut être masquée
+        dans <em>Affichage</em>.
+      </div>
+    </div>
+
+    <!-- ── Bandeau Informations Vue de dessus ──── -->
+    <div class="panel-hint collapsed" id="panel-hint-vue-de-dessus" style="display:none;">
+      <div class="panel-hint-header">
+        <a class="panel-hint-menu-btn" href="../" title="Retour au menu principal">☰ Menu</a>
+        <span class="panel-hint-title">Informations</span>
+        <button class="panel-hint-toggle"
+                onclick="toggleHint('vue-de-dessus')"
+                title="Afficher les informations">▲</button>
+      </div>
+      <div class="panel-hint-body">
+        Cet onglet est en préparation.
+      </div>
+    </div>
+
+  </div><!-- fin #panel -->
+
+</main>
+
+<!-- ════════════════════════════════════════════════
+     Ordre de chargement : sim → profil → ui
+════════════════════════════════════════════════ -->
+<script src="js/sim.js"></script>
+<script src="js/profil.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/sections-repliables.js"></script>
+
+<script data-goatcounter="https://berdous-pc.goatcounter.com/count"
+        async src="https://gc.zgo.at/count.js"></script>
+</body>
+</html>
