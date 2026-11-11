@@ -27,6 +27,7 @@ var simTemp = {
     a2: TEMP_A_DEF,
     showT: false,
     showDt: false,
+    showCmp: false,              // flèche Δt découpée en périodes (case sous « Afficher Δt »)
     // Mise en page (cf. _tempLayout)
     W: 0, H: 0, fs: 12, lw: 1,
     plotX0: 0, plotW: 10, ampPx: 10, rows: [], axeLabelY: 0, gap12: 0
@@ -52,7 +53,10 @@ function _tempLayout(ctx) {
 
     var padTop = fs * 0.55;
     var basH   = fs * 2.2;                       // valeurs de l'axe des temps + marge
-    s.gap12    = Math.max(16, fs * 2.6);
+    // 4·fs : de quoi loger, en mode comparaison, le libellé « Δt = n T »
+    // AU-DESSUS de la flèche découpée et la rangée des « T » EN DESSOUS
+    // (cf. _tempDrawFlecheDecoupee).
+    s.gap12    = Math.max(24, fs * 4.0);
     var gap23  = Math.max(8, fs * 1.15);
     var utile  = Math.max(40, s.H - padTop - basH - s.gap12 - gap23);
     var unitH  = utile / 4;
@@ -280,9 +284,33 @@ function _tempPointille(ctx, x, yA, yB, color) {
     ctx.restore();
 }
 
+// Libellé en cartouche plein, centré en (cx, cy). Rabattu dans le canvas.
+// `echelle` (optionnelle, 1 par défaut) : corps relatif, pour les petits
+// libellés des morceaux de la flèche découpée.
+function _tempCartouche(ctx, txt, cx, cy, color, echelle) {
+    var s = simTemp, fs = s.fs * (echelle || 1);
+    ctx.save();
+    ctx.font = 'bold ' + (fs * 1.05) + 'px "Segoe UI", Arial, sans-serif';
+    var wTxt = ctx.measureText(txt).width;
+    var padX = fs * 0.34, hP = fs * 1.20;
+    var demi = wTxt / 2 + padX;
+    cx = Math.max(2 + demi, Math.min(s.W - 2 - demi, cx));
+    ctx.fillStyle = PRIN_COL_BG;
+    _prinRoundRect(ctx, cx - demi, cy - hP / 2, demi * 2, hP, hP * 0.28);
+    ctx.fill();
+    ctx.fillStyle = color;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(txt, cx, cy + 0.5);
+    ctx.restore();
+}
+
 // Double flèche horizontale de xa à xb, libellé en cartouche. `posLabel` :
-// 'sur' (centré sur le trait) ou 'dessous'. Trop courte pour loger ses deux
-// pointes, la flèche les retourne à l'extérieur (usage des cotes).
+// 'sur' (centré sur le trait, reporté à côté s'il n'y tient pas), 'dessous',
+// ou 'surOuDessous' (sur le trait s'il y tient, sinon dessous — segments de la
+// flèche découpée, qui n'ont pas de place sur les côtés). `label` null : pas
+// de libellé. Trop courte pour loger ses deux pointes, la flèche les retourne
+// à l'extérieur (usage des cotes).
 function _tempDoubleFleche(ctx, xa, xb, y, label, color, posLabel) {
     var s = simTemp, fs = s.fs, lw = s.lw;
     var t = Math.max(4, Math.min(7 * lw, fs * 0.45));
@@ -314,26 +342,84 @@ function _tempDoubleFleche(ctx, xa, xb, y, label, color, posLabel) {
     ctx.moveTo(xb, y - t); ctx.lineTo(xb, y + t);
     ctx.stroke();
     ctx.restore();
+    if (!label) return;
 
-    var police = 'bold ' + (fs * 1.05) + 'px "Segoe UI", Arial, sans-serif';
     ctx.save();
-    ctx.font = police;
+    ctx.font = 'bold ' + (fs * 1.05) + 'px "Segoe UI", Arial, sans-serif';
     var wTxt = ctx.measureText(label).width;
+    ctx.restore();
     var padX = fs * 0.34, hP = fs * 1.20;
-    var cx = (xa + xb) / 2, cy = (posLabel === 'dessous') ? y + t + hP * 0.6 : y;
-    // Pas la place entre les pointes : libellé reporté à droite de la flèche
-    if (posLabel !== 'dessous' && wTxt + padX * 2 > L - long * 2) {
+    var tient = wTxt + padX * 2 <= L - long * 2;
+    var cx = (xa + xb) / 2, cy = y;
+    if (posLabel === 'dessous' || (posLabel === 'surOuDessous' && !tient)) {
+        cy = y + t + hP * 0.6;
+    } else if (!tient) {
+        // Pas la place entre les pointes : libellé reporté à droite de la flèche
         cx = xb + long * 1.8 + fs * 0.3 + wTxt / 2 + padX;
         if (cx + wTxt / 2 + padX > s.W - 2) cx = xa - long * 1.8 - fs * 0.3 - wTxt / 2 - padX;
     }
-    ctx.fillStyle = PRIN_COL_BG;
-    _prinRoundRect(ctx, cx - wTxt / 2 - padX, cy - hP / 2, wTxt + padX * 2, hP, hP * 0.28);
-    ctx.fill();
-    ctx.fillStyle = color;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(label, cx, cy + 0.5);
+    _tempCartouche(ctx, label, cx, cy, color);
+}
+
+// ── Flèche Δt découpée en périodes (case « Montrer la comparaison ») ──
+// UNE seule double flèche (pointes au début et à la fin), coupée par de petits
+// traits verticaux à chaque période. Sous la flèche, une rangée de petits
+// libellés, un par morceau : « T » pour les périodes entières, « 0,30 T »
+// pour le reste — toujours au même endroit, jamais à côté ni dans la flèche.
+// Libellé global « Δt = n T » au-dessus. Quand la crête de y₂ a dû reculer de
+// k périodes (cf. _tempCreteDt), c'est la flèche raccourcie qui est découpée ;
+// le libellé global, lui, donne toujours le vrai rapport Δt / T.
+var TEMP_ECH_MORCEAU = 0.8;   // corps des libellés de morceaux (relatif à fs)
+
+function _tempDrawFlecheDecoupee(ctx, cr, yLigne, yLabel) {
+    var s = simTemp, fs = s.fs, lw = s.lw;
+    var xa = _tempXpx(cr.ta), xb = _tempXpx(cr.tb);
+    var r = (cr.tb - cr.ta) / s.T;
+    var n = Math.floor(r + 1e-6), reste = r - n;
+    if (reste < 0.005) reste = 0;
+    if (reste > 0.995) { n += 1; reste = 0; }
+
+    _tempDoubleFleche(ctx, xa, xb, yLigne, null, TEMP_COL_DT, 'sur');
+
+    // Traits de découpage, aux périodes intérieures à la flèche (les deux
+    // bouts portent déjà leurs traits d'attache)
+    var t = Math.max(4, Math.min(7 * lw, fs * 0.45));
+    var nTraits = (reste > 0) ? n : n - 1;
+    ctx.save();
+    ctx.strokeStyle = TEMP_COL_DT;
+    ctx.lineWidth = 1.4 * lw;
+    ctx.beginPath();
+    for (var i = 1; i <= nTraits; i++) {
+        var xi = _tempXpx(cr.ta + i * s.T);
+        ctx.moveTo(xi, yLigne - t * 0.8);
+        ctx.lineTo(xi, yLigne + t * 0.8);
+    }
+    ctx.stroke();
     ctx.restore();
+
+    // Libellés des morceaux, centrés sous chacun ; si deux se chevauchent
+    // (périodes courtes, reste étroit), le suivant est poussé à droite.
+    var morceaux = [];
+    for (var j = 0; j < n; j++) morceaux.push({ t0: cr.ta + j * s.T, t1: cr.ta + (j + 1) * s.T, txt: 'T' });
+    if (reste > 0) morceaux.push({ t0: cr.ta + n * s.T, t1: cr.tb, txt: formatFr(reste, 2) + ' T' });
+    var fsM = fs * TEMP_ECH_MORCEAU;
+    var yM = yLigne + t + fsM * 0.65;
+    ctx.save();
+    ctx.font = 'bold ' + (fsM * 1.05) + 'px "Segoe UI", Arial, sans-serif';
+    var droitePrec = -Infinity;
+    for (var m = 0; m < morceaux.length; m++) {
+        var demi = ctx.measureText(morceaux[m].txt).width / 2 + fsM * 0.34;
+        var cx = (_tempXpx(morceaux[m].t0) + _tempXpx(morceaux[m].t1)) / 2;
+        cx = Math.max(cx, droitePrec + demi + fsM * 0.15);
+        morceaux[m].cx = cx;
+        droitePrec = cx + demi;
+    }
+    ctx.restore();
+    for (var q = 0; q < morceaux.length; q++) {
+        _tempCartouche(ctx, morceaux[q].txt, morceaux[q].cx, yM, TEMP_COL_DT, TEMP_ECH_MORCEAU);
+    }
+
+    _tempCartouche(ctx, 'Δt = ' + formatFr(s.dt / s.T, 2) + ' T', (xa + xb) / 2, yLabel, TEMP_COL_DT);
 }
 
 // ── Grandeurs remarquables ────────────────────────────────────────────
@@ -383,7 +469,7 @@ function drawTemporel() {
     if (s.showDt) {
         cr = _tempCreteDt();
         var r1 = s.rows[0], r2 = s.rows[1];
-        var yF = r1.y0 + r1.half + s.gap12 / 2;
+        var yF = _tempYFlecheDt();
         _tempPointille(ctx, _tempXpx(cr.ta), r1.y0 - s.a1 * s.ampPx, yF, PRIN_COL_S1);
         _tempPointille(ctx, _tempXpx(cr.tb), r2.y0 - s.a2 * s.ampPx, yF, PRIN_COL_S2);
     }
@@ -408,11 +494,21 @@ function drawTemporel() {
                           'T', TEMP_COL_T, 'dessous');
     }
     // Décalage : dans la gouttière entre y₁ et y₂
-    if (cr) {
+    if (cr && s.showCmp) {
+        var gHaut = s.rows[0].y0 + s.rows[0].half;
+        _tempDrawFlecheDecoupee(ctx, cr, _tempYFlecheDt(), gHaut + s.fs * 0.9);
+    } else if (cr) {
         var lbl = (cr.k === 0) ? 'Δt' : (cr.k === 1 ? 'Δt − T' : 'Δt − ' + cr.k + 'T');
-        var yD = s.rows[0].y0 + s.rows[0].half + s.gap12 / 2;
-        _tempDoubleFleche(ctx, _tempXpx(cr.ta), _tempXpx(cr.tb), yD, lbl, TEMP_COL_DT, 'sur');
+        _tempDoubleFleche(ctx, _tempXpx(cr.ta), _tempXpx(cr.tb), _tempYFlecheDt(), lbl, TEMP_COL_DT, 'sur');
     }
+}
+
+// Ordonnée de la flèche Δt dans la gouttière y₁/y₂ : au milieu, ou en mode
+// comparaison entre le libellé global (0,9·fs sous le haut de la gouttière)
+// et la rangée des libellés de morceaux (cf. _tempDrawFlecheDecoupee).
+function _tempYFlecheDt() {
+    var s = simTemp, gHaut = s.rows[0].y0 + s.rows[0].half;
+    return s.showCmp ? gHaut + s.fs * 2.05 : gHaut + s.gap12 / 2;
 }
 
 // ── Panneau ───────────────────────────────────────────────────────────
@@ -486,7 +582,22 @@ function toggleTempOption(cle, btnId) {
     simTemp[cle] = !simTemp[cle];
     var btn = document.getElementById(btnId);
     if (btn) btn.classList.toggle('active', simTemp[cle]);
+    _tempSyncCmpUI();
     drawTemporel();
+}
+
+// Case « Montrer la comparaison entre Δt et T » : grisée tant que la flèche
+// Δt est masquée ; son état est conservé et reprend effet à l'affichage.
+function setTempComparaison(actif) {
+    simTemp.showCmp = !!actif;
+    drawTemporel();
+}
+
+function _tempSyncCmpUI() {
+    var chk = document.getElementById('chk-cmp-temp');
+    var lbl = document.getElementById('lbl-cmp-temp');
+    if (chk) { chk.disabled = !simTemp.showDt; chk.checked = simTemp.showCmp; }
+    if (lbl) lbl.classList.toggle('disabled', !simTemp.showDt);
 }
 
 // ── Bascule Spatiale / Temporelle ─────────────────────────────────────

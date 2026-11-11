@@ -773,6 +773,17 @@ input[type=range]:disabled { accent-color: #b0aca4; cursor: not-allowed; }
 /* Boutons empilés : l'écart est porté par le conteneur, pas par une marge
    sur chaque bouton. */
 .btn-stack { display: flex; flex-direction: column; gap: 6px; }
+/* Petite case à cocher rattachée au bouton qui la précède (ex. « Montrer la
+   comparaison entre Δt et T » sous « Afficher le décalage Δt », onglet 1D) */
+.sub-check {
+  display: flex; align-items: center; gap: 6px;
+  padding: 0 4px 2px 10px;
+  font-size: clamp(11px, 1.05vw, 13px); font-weight: 600; color: #5a6a78;
+  cursor: pointer;
+}
+.sub-check input[type="checkbox"] { margin: 0; cursor: pointer; flex-shrink: 0; }
+.sub-check.disabled { color: #a8a49c; cursor: default; }
+.sub-check.disabled input[type="checkbox"] { cursor: default; }
 
 .btn-row { display: flex; gap: 6px; }
 .btn-row > .btn { width: auto; flex: 1 1 0; white-space: nowrap; }

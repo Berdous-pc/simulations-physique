@@ -391,6 +391,12 @@
           <div class="btn-stack">
             <button class="btn btn-toggle-one" id="btn-T-temp" onclick="toggleTempOption('showT', 'btn-T-temp')">Afficher la période T</button>
             <button class="btn btn-toggle-one" id="btn-dt-temp" onclick="toggleTempOption('showDt', 'btn-dt-temp')">Afficher le décalage Δt</button>
+            <!-- Grisée tant que la flèche Δt est masquée (cf. _tempSyncCmpUI) -->
+            <label class="sub-check disabled" id="lbl-cmp-temp">
+              <input type="checkbox" id="chk-cmp-temp" disabled
+                     onchange="setTempComparaison(this.checked)">
+              Montrer la comparaison entre Δt et T
+            </label>
           </div>
         </div>
 

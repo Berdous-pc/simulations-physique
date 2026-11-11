@@ -1109,10 +1109,19 @@ qui pose `simPrin.vue` et échange `#prin-scene-area` ↔ `#prin-temp-area` et
   plus petit que le rayon et l'aimant ramènerait sans fin sur le même cran (`_tempDtClavier`,
   posé par `keydown`, levé par `pointerdown`) ; T de 0,5 à 5 ms (200 Hz – 2 kHz) ; Δt est gardé en ms quand T change.
 - **Options** : double flèche **T** entre les deux premières crêtes de y₁ (t = T/4 et T/4 + T),
-  au niveau des crêtes ; double flèche **Δt** dans la gouttière y₁/y₂ (élargie à 2,6·fs, réservée
+  au niveau des crêtes ; double flèche **Δt** dans la gouttière y₁/y₂ (élargie à 4·fs, réservée
   en permanence), entre deux pointillés partant de la crête de y₁ en T/4 et de la crête
   correspondante de y₂ en T/4 + Δt. Si celle-ci sort de la fenêtre, on recule de k périodes et la
   flèche est libellée « Δt − kT » (`_tempCreteDt`).
+- **Case « Montrer la comparaison entre Δt et T »** (décochée, grisée tant que la flèche Δt est
+  masquée — état conservé) : une seule double flèche Δt (pointes aux deux bouts), coupée par de
+  petits traits verticaux à chaque période ; sous elle, une rangée de petits libellés (corps
+  0,8·fs), un par morceau — « T », puis « 0,30 T » pour le reste —, toujours sous la flèche (un
+  libellé qui chevaucherait le précédent est poussé à droite) ; « Δt = 2,30 T » au-dessus. Dans la
+  gouttière (4·fs, réservée en permanence) : libellé global à 0,9·fs, flèche à 2,05·fs
+  (`_tempYFlecheDt`), rangée des morceaux dessous. Si la crête de y₂ a reculé de k périodes, c'est la
+  flèche raccourcie qui est découpée ; le libellé global garde le vrai rapport Δt / T
+  (`_tempDrawFlecheDecoupee`).
 - **Pastilles** orange (crête de y₁ en T/4) et rose (crête correspondante de y₂) : toujours
   visibles, option Δt active ou non — mêmes points que les pointillés de la flèche Δt.
 - **Valeurs** : Δt, T et l'encart « Comparaison à T » (Δt/T, conclusion avec la même tolérance
@@ -1232,7 +1241,7 @@ index.html
   │                   PRIN_TOL_RATIO, simPrin.vue (js/principe.js) ; état `simTemp` autonome
   │                   expose : simTemp, setPrinVue, resizeTemporel, drawTemporel,
   │                             onSliderDtTemp, onSliderTTemp, onSliderA1Temp, onSliderA2Temp,
-  │                             toggleTempOption
+  │                             toggleTempOption, setTempComparaison
   │
   └── js/ui.js        dépend de : tous les fichiers précédents
                        expose : updateParam, updateMaskShape, appliquerBorneD, setLightSource,
