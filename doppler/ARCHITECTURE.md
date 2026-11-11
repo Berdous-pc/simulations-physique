@@ -1,9 +1,11 @@
 # Architecture — Effet Doppler
 
 Page à **deux onglets** : *Démonstration* (vue de profil, 1D : démonstration
-animée de la formule) et *Vue de dessus* (2D : émetteur et récepteur
-déplaçables, crêtes circulaires). **Seul le premier est réalisé** ; le second
-est un emplacement vide (`.placeholder`).
+animée de la formule, onde à la surface de l'eau) et *Vue de dessus* (2D : onde
+sonore, émetteur et récepteur mobiles, crêtes circulaires, écrans
+d'oscilloscope). Les deux onglets sont **autonomes** : états distincts (`simD`,
+`simV`), unités distinctes (cm et s / m et s), ils ne partagent que des
+utilitaires.
 
 ## Arborescence
 
@@ -16,11 +18,12 @@ doppler/
 └── js/
     ├── sim.js       état simD + modèle analytique de l'onglet Démonstration
     ├── profil.js    rendu canvas de la scène, frise des instants, glisser sur la frise
+    ├── dessus.js    onglet Vue de dessus : état simV, modèle, rendu, oscilloscopes, interactions
     ├── ui.js        onglets, lecture / étapes, curseurs, démonstration écrite, resize
     └── sections-repliables.js  copie de titrage/ (chargé en dernier)
 ```
 
-Scope global, pas de modules ES. Ordre de chargement : `sim → profil → ui`.
+Scope global, pas de modules ES. Ordre de chargement : `sim → profil → dessus → ui`.
 Deep-linking : `#demonstration` / `#vue-de-dessus`.
 
 ---
@@ -127,13 +130,61 @@ instants clés.
 
 ---
 
-## Onglet Vue de dessus (à faire)
+## Onglet Vue de dessus (`dessus.js`)
 
-Prévu : vue de dessus, émetteur et récepteur déplaçables à la souris, crêtes
-circulaires émises par la source. Le modèle analytique de `sim.js` ne suffira
-pas si la trajectoire de l'émetteur est libre : prévoir un historique des
-positions d'émission (une crête = un cercle centré là où se trouvait la source
-à son émission).
+Onde **sonore** vue de dessus, fortement **ralentie** (`simV.ralenti` : ms
+simulées par seconde réelle). Unités : m, s, Hz. Scène de `VD_LARGEUR` = 12 m
+de large, hauteur déduite du canvas, y = 0 au milieu.
 
-Restent aussi à faire quand la page sera complète : carte(s) sur la page
-d'accueil avec aperçu, entrée dans `sitemap.xml`.
+### Modèle
+
+- **Objets** `simV.E` et `simV.R` : position, vitesse `v` (curseur), direction
+  `dir`, et `cible` (point visé pendant qu'on les tire à la souris).
+  `_vdDeplacer()` : mouvement rectiligne uniforme avec **rebond** sur les bords ;
+  un objet tiré à la souris pendant la lecture **rejoint le pointeur à sa
+  vitesse réglée** (0,4 c s'il est immobile) au lieu de s'y téléporter — avec le
+  ralenti, un geste de la main serait sinon largement supersonique. À l'arrêt,
+  le déplacement est direct.
+- **Historique de l'émetteur** `_vdH` (date, position, phase), un échantillon
+  par pas de calcul, élagué au-delà de la traversée de la scène (E et R y
+  restent, donc c·(t − τ) ≤ diagonale). Un déplacement à l'arrêt y pose un
+  échantillon `saut` : le segment correspondant n'est pas un trajet.
+- **Crêtes** `_vdCretes` : une par passage de la phase à π/2 + 2kπ, cercle de
+  rayon c·(t − t_k) centré là où se trouvait l'émetteur. Le rayon est recalculé
+  avec le c courant (changer c redessine tout, approximation assumée).
+- **Signal reçu** `_vdSignalRecu()` : recherche dans l'historique des dates
+  retardées τ telles que c·(t − τ) = distance au point d'émission ; somme des
+  contributions `_vdAmp(r)·sin(phase(τ))`. Une seule contribution en subsonique,
+  zéro ou plusieurs en **supersonique** (autorisé : v_E jusqu'à 600 m/s, le cône
+  de Mach se forme tout seul avec les cercles).
+- **Fréquence reçue** `simV.fR` : dérivée de la phase retardée, lissée ; `NaN`
+  (affiché « — ») tant que l'onde n'est pas arrivée ou s'il y a plusieurs
+  contributions. Aucune formule n'est appliquée : c'est une mesure, valable quels
+  que soient les mouvements de E et de R (vérifié : 701 Hz mesurés pour 500 Hz
+  émis, v_E = 100 m/s presque en face de R, conforme à la formule).
+- Pas de calcul : `VD_PAS_PAR_T` = 120 par période émise (f_R peut valoir
+  10 f_E quand la source approche c), `VD_PAS_MAX` par image.
+
+### Rendu et oscilloscopes
+
+- Scène : cercles (opacité selon l'amplitude), points d'émission des crêtes
+  (case *Affichage*), échelle 1 m, date simulée, pastilles E et R, vecteurs
+  vitesse avec **poignée ronde à la pointe** (on la tire pour orienter).
+- **Écrans d'oscilloscope** : fenêtres DOM `.scope-win` posées sur la scène,
+  déplaçables par leur barre de titre, sur le modèle de `interferences/`
+  (onglet 1D) : boîtier sombre, trace « phosphore », graduations rondes en ms.
+  Les deux écrans ont **la même base de temps** (`VD_FENETRE_T` = 5 périodes
+  d'émission, défilante) et la même échelle verticale : c'est ce qui rend
+  lisible l'écart de période. Les signaux sont enregistrés dans `_vdTrace`.
+
+### Commandes
+
+Lecture / Pause, RAZ (efface l'onde, replace E et R), ralenti, célérité c,
+fréquence f_E, vitesses v_E et v_R, boutons des deux écrans, lecture de f_E,
+f_R et de leur écart. Fonctions du panneau préfixées `vd` ; `ui.js` n'appelle
+que `initDessus()`, `resizeDessus()` et `vdArreter()` (changement d'onglet).
+
+---
+
+Restent à faire : carte(s) sur la page d'accueil avec aperçu, entrée dans
+`sitemap.xml`.

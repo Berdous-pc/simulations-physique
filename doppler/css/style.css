@@ -567,21 +567,50 @@ html:not(.sections-pretes) .section-title[data-repliable]:not([data-repliable="o
 .frac > .num { padding: 0 0.3em; border-bottom: 1.5px solid currentColor; }
 .frac > .den { padding: 0 0.3em; }
 
-/* ── Onglet Vue de dessus : en préparation ───────── */
-.placeholder {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4em;
-  text-align: center;
-  padding: 5%;
-  color: #7a8a96;
-  font-size: clamp(15px, 1.8vw, 24px);
+/* ── Onglet Vue de dessus : écrans d'oscilloscope ──
+   Fenêtres posées sur la scène, déplaçables par leur barre de titre (souris
+   comme doigt : touch-action:none). Boîtier sombre d'APPAREIL, comme dans
+   interferences/ (onglet 1D) : un écran ne se lit pas comme la scène.
+   Largeur en clamp() : lisible au vidéoprojecteur sans dévorer une petite fenêtre. */
+.scope-win {
+  position: absolute; top: 8px; z-index: 20;
+  width: clamp(190px, 30%, 480px);
+  display: flex; flex-direction: column;
+  background: #2b3138;
+  border: 2px solid #2c3e50; border-radius: 8px;
+  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
 }
-.placeholder strong { color: #2c3e50; font-size: 1.25em; }
+#vd-scope-e { left: 8px;  border-color: #2a8a50; }
+#vd-scope-r { right: 8px; border-color: #b04020; }
+.scope-head {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 4px 4px 8px;
+  color: #fff;
+  font-size: clamp(11px, 1.15vw, 16px); font-weight: 700;
+  cursor: grab; touch-action: none; user-select: none;
+}
+#vd-scope-e .scope-head { background: #2a8a50; }
+#vd-scope-r .scope-head { background: #b04020; }
+.scope-head.dragging { cursor: grabbing; }
+.scope-title { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.scope-close {
+  flex: 0 0 auto; border: none; border-radius: 4px; cursor: pointer;
+  background: rgba(255, 255, 255, 0.18); color: #fff;
+  font-family: inherit; font-size: clamp(11px, 1.1vw, 15px); line-height: 1;
+  padding: 3px 6px;
+}
+.scope-close:hover { background: rgba(255, 255, 255, 0.38); }
+/* L'écran, encastré dans le boîtier (sélecteur renforcé : .sim-area canvas
+   impose sinon 100 % × 100 %) */
+.sim-area .scope-canvas {
+  display: block;
+  width: calc(100% - 12px); height: auto; margin: 6px; aspect-ratio: 5 / 2;
+  border: 1px solid #171c22; border-radius: 3px;
+  background: #0f1720;
+}
+/* Bouton d'affichage d'un écran : enfoncé quand l'écran est ouvert */
+.btn-toggle-one.actif { background: #2a6aaa; color: #fff; border-color: #2a6aaa; }
 
 .panel-note {
   font-size: clamp(12px, 1.15vw, 15px);

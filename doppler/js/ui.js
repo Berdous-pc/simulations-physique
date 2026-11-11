@@ -7,7 +7,7 @@
 // ══════════════════════════════════════════════════════════════════════
 //  ui.js — Onglets, commandes du panneau, boucle d'animation,
 //  démonstration écrite, redimensionnement.
-//  Chargé en DERNIER. Dépend de sim.js et profil.js.
+//  Chargé en DERNIER. Dépend de sim.js, profil.js et dessus.js.
 // ══════════════════════════════════════════════════════════════════════
 
 'use strict';
@@ -38,8 +38,9 @@ function setMainTab(tab) {
     if (hint) hint.style.display = actif ? '' : 'none';
   });
 
-  // L'animation ne tourne que pour l'onglet visible
+  // Les animations ne tournent que pour l'onglet visible
   if (tab !== 'demonstration') arreterLecture();
+  if (tab !== 'vue-de-dessus') vdArreter();
 
   // Le canvas qui était en display:none avait une taille nulle :
   // le redimensionner maintenant qu'il est visible.
@@ -240,6 +241,7 @@ function _majValeurs() {
 
 function resizeAll() {
   if (sizeCanvas(cvProfil)) dessinerProfil();
+  resizeDessus();                     // dessus.js (sans effet si l'onglet est masqué)
 }
 
 var _resizePending = false;
@@ -260,6 +262,7 @@ function init() {
   cvProfil = document.getElementById('canvas-profil');
   ctxProfil = cvProfil.getContext('2d');
   initInteractionsProfil();
+  initDessus();                       // dessus.js
 
   // Les curseurs reprennent l'état (un rechargement peut restaurer d'anciennes valeurs)
   document.getElementById('sl-ve').value = simD.vE;
