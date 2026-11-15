@@ -17,7 +17,7 @@
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
-<h1 class="sr-only">Simulation de l'effet Doppler — démonstration animée de la formule, puis vue de dessus avec émetteur et récepteur mobiles (Terminale)</h1>
+<h1 class="sr-only">Simulation de l'effet Doppler — Principe : démonstration animée de la formule ; Effet Doppler : onde sonore vue de dessus avec émetteur et récepteur mobiles (Terminale)</h1>
 
 <main>
 
@@ -26,7 +26,7 @@
   ══════════════════════════════════════════════ -->
   <div id="left-col">
 
-    <!-- ── Démonstration (vue de profil, 1D) ────── -->
+    <!-- ── Onglet Principe (vue de profil, 1D) ──── -->
     <div class="tab-view" id="view-demonstration">
       <div class="sim-area">
         <canvas id="canvas-profil"></canvas>
@@ -74,7 +74,7 @@
       </div>
     </div>
 
-    <!-- ── Vue de dessus (2D) ───────────────────── -->
+    <!-- ── Onglet Effet Doppler (vue de dessus, 2D) -->
     <div class="tab-view" id="view-vue-de-dessus" style="display:none;">
       <div class="sim-area">
         <canvas id="canvas-dessus"></canvas>
@@ -108,13 +108,11 @@
     <div class="panel-main-tabs">
       <button class="panel-main-tab active" id="tab-demonstration"
               onclick="setMainTab('demonstration')">
-        Démonstration
-        <span class="tab-sub">Vue de profil</span>
+        Principe
       </button>
       <button class="panel-main-tab" id="tab-vue-de-dessus"
               onclick="setMainTab('vue-de-dessus')">
-        Vue de dessus
-        <span class="tab-sub">Onde sonore</span>
+        Effet Doppler
       </button>
     </div>
 
@@ -242,7 +240,7 @@
 
       </div><!-- fin #section-demonstration -->
 
-      <!-- ═══ Section VUE DE DESSUS ═══ -->
+      <!-- ═══ Section EFFET DOPPLER (vue de dessus) ═══ -->
       <div class="panel-main-section" id="section-vue-de-dessus" style="display:none;">
 
         <div class="panel-section">
@@ -393,7 +391,7 @@
 
     </div><!-- fin #panel-body -->
 
-    <!-- ── Bandeau Informations Démonstration ──── -->
+    <!-- ── Bandeau Informations Principe ──────── -->
     <div class="panel-hint collapsed" id="panel-hint-demonstration">
       <div class="panel-hint-header">
         <a class="panel-hint-menu-btn" href="../" title="Retour au menu principal">☰ Menu</a>
@@ -421,7 +419,7 @@
       </div>
     </div>
 
-    <!-- ── Bandeau Informations Vue de dessus ──── -->
+    <!-- ── Bandeau Informations Effet Doppler ─── -->
     <div class="panel-hint collapsed" id="panel-hint-vue-de-dessus" style="display:none;">
       <div class="panel-hint-header">
         <a class="panel-hint-menu-btn" href="../" title="Retour au menu principal">☰ Menu</a>

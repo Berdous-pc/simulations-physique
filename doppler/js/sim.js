@@ -5,7 +5,7 @@
 // ═══════════════════════════════════════════════════
 
 // ══════════════════════════════════════════════════════════════════════
-//  sim.js — État et modèle de l'onglet Démonstration (vue de profil, 1D)
+//  sim.js — État et modèle de l'onglet Principe (vue de profil, 1D)
 //  Chargé en PREMIER. Tout est analytique : la scène entière se déduit
 //  de la date t, ce qui permet de parcourir le temps dans les deux sens.
 //  L'eau est plate à t = 0 : l'émetteur se met alors à osciller, et l'on suit

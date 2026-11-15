@@ -1,7 +1,7 @@
 # Architecture — Effet Doppler
 
-Page à **deux onglets** : *Démonstration* (vue de profil, 1D : démonstration
-animée de la formule, onde à la surface de l'eau) et *Vue de dessus* (2D : onde
+Page à **deux onglets** : *Principe* (vue de profil, 1D : démonstration
+animée de la formule, onde à la surface de l'eau) et *Effet Doppler* (vue de dessus, 2D : onde
 sonore, émetteur et récepteur mobiles, crêtes circulaires, écrans
 d'oscilloscope). Les deux onglets sont **autonomes** : états distincts (`simD`,
 `simV`), unités distinctes (cm et s / m et s), ils ne partagent que des
@@ -16,19 +16,20 @@ doppler/
 ├── css/
 │   └── style.css           dérivé de refraction/ (panneau canonique)
 └── js/
-    ├── sim.js       état simD + modèle analytique de l'onglet Démonstration
+    ├── sim.js       état simD + modèle analytique de l'onglet Principe
     ├── profil.js    rendu canvas de la scène, frise des instants, glisser sur la frise
-    ├── dessus.js    onglet Vue de dessus : état simV, modèle, rendu, oscilloscopes, interactions
+    ├── dessus.js    onglet Effet Doppler : état simV, modèle, rendu, oscilloscopes, interactions
     ├── ui.js        onglets, lecture / étapes, curseurs, démonstration écrite, resize
     └── sections-repliables.js  copie de titrage/ (chargé en dernier)
 ```
 
 Scope global, pas de modules ES. Ordre de chargement : `sim → profil → dessus → ui`.
-Deep-linking : `#demonstration` / `#vue-de-dessus`.
+Deep-linking : `#demonstration` (Principe) / `#vue-de-dessus` (Effet Doppler) ;
+les identifiants internes gardent les anciens noms d'onglet.
 
 ---
 
-## Onglet Démonstration
+## Onglet Principe
 
 ### Parti pris pédagogique
 
@@ -173,7 +174,7 @@ instants clés.
 
 ---
 
-## Onglet Vue de dessus (`dessus.js`)
+## Onglet Effet Doppler (`dessus.js`, vue de dessus)
 
 Onde **sonore** vue de dessus, fortement **ralentie** (`simV.ralenti` : ms
 simulées par seconde réelle). Unités : m, s, Hz. Scène de `VD_LARGEUR` = 12 m

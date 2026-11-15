@@ -5,7 +5,7 @@
 // ═══════════════════════════════════════════════════
 
 // ══════════════════════════════════════════════════════════════════════
-//  dessus.js — Onglet Vue de dessus (2D) : état, modèle, rendu, écrans
+//  dessus.js — Onglet Effet Doppler (vue de dessus, 2D) : état, modèle, rendu, écrans
 //  d'oscilloscope et interactions. AUTONOME : il ne partage avec l'onglet
 //  Démonstration que les utilitaires (fmtFR, borner : sim.js ; sizeCanvas,
 //  texteIndices, _pastille, couleurs : profil.js).

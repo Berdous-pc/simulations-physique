@@ -5,7 +5,7 @@
 // ═══════════════════════════════════════════════════
 
 // ══════════════════════════════════════════════════════════════════════
-//  profil.js — Rendu canvas de l'onglet Démonstration (vue de profil) et
+//  profil.js — Rendu canvas de l'onglet Principe (vue de profil) et
 //  frise des instants, que l'on fait glisser pour parcourir le temps.
 //  Dépend de sim.js. Le rendu ne lit que simD : aucune mémoire d'une image
 //  à l'autre.

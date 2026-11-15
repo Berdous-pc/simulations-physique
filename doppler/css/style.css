@@ -93,7 +93,7 @@ main {
   overflow: hidden;
 }
 
-/* ── Onglets principaux (Démonstration / Vue de dessus) ── */
+/* ── Onglets principaux (Principe / Effet Doppler) ── */
 .panel-main-tabs {
   display: flex;
   flex-shrink: 0;
@@ -121,13 +121,6 @@ main {
   color: #2a6aaa;
   border-bottom: 1.5px solid #e8e4de;
   margin-bottom: -1.5px;
-}
-
-.tab-sub {
-  display: block;
-  font-size: 0.82em;
-  font-weight: 600;
-  opacity: 0.85;
 }
 
 /* ── Corps scrollable ────────────────────────────── */
@@ -448,6 +441,27 @@ html:not(.sections-pretes) .section-title[data-repliable]:not([data-repliable="o
   max-height: 320px;
 }
 
+/* Déplié : plafond relatif à la hauteur de fenêtre et défilement interne
+   (comme pression/ et cinematique/), plutôt que de couper la fin du texte :
+   overflow:hidden perdait les dernières lignes sans recours sur un panneau
+   étroit. Vaut pour le bandeau des deux onglets (même classe). */
+.panel-hint:not(.collapsed) .panel-hint-body {
+  max-height: min(45vh, 360px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+}
+
+/* Barre de défilement discrète du bandeau Informations (comme cinematique/). */
+.panel-hint-body::-webkit-scrollbar { width: 8px; }
+.panel-hint-body::-webkit-scrollbar-track { background: transparent; }
+.panel-hint-body::-webkit-scrollbar-thumb {
+  background: #c8d4dc;
+  border-radius: 4px;
+}
+.panel-hint-body::-webkit-scrollbar-thumb:hover { background: #a8b8c4; }
+.panel-hint-body { scrollbar-width: thin; scrollbar-color: #c8d4dc transparent; }
+
 .panel-hint.collapsed .panel-hint-body {
   max-height: 0;
   padding-top: 0;
@@ -491,7 +505,7 @@ html:not(.sections-pretes) .section-title[data-repliable]:not([data-repliable="o
 /* Curseur de vitesse placé sous les commandes d'animation */
 .param-row-speed { margin-top: 8px; margin-bottom: 0; }
 
-/* ── Onglet Démonstration : scène + démonstration écrite ── */
+/* ── Onglet Principe : scène + démonstration écrite ── */
 #view-demonstration {
   flex-direction: column;
   gap: 8px;
@@ -567,14 +581,14 @@ html:not(.sections-pretes) .section-title[data-repliable]:not([data-repliable="o
 .frac > .num { padding: 0 0.3em; border-bottom: 1.5px solid currentColor; }
 .frac > .den { padding: 0 0.3em; }
 
-/* ── Onglet Vue de dessus : écrans d'oscilloscope ──
+/* ── Onglet Effet Doppler : écrans d'oscilloscope ──
    Fenêtres posées sur la scène, déplaçables par leur barre de titre (souris
    comme doigt : touch-action:none). Boîtier sombre d'APPAREIL, comme dans
    interferences/ (onglet 1D) : un écran ne se lit pas comme la scène.
    Largeur en clamp() : lisible au vidéoprojecteur sans dévorer une petite fenêtre. */
 .scope-win {
   position: absolute; top: 8px; z-index: 20;
-  width: clamp(190px, 30%, 480px);
+  width: clamp(219px, 34.5%, 552px);   /* +15 % (190 px, 30 %, 480 px auparavant) */
   display: flex; flex-direction: column;
   background: #2b3138;
   border: 2px solid #2c3e50; border-radius: 8px;
