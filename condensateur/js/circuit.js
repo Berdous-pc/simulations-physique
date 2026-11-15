@@ -506,7 +506,7 @@ function drawSwitch(armLen) {
   const angle =
     sim.phase === 'charge'    ? -Math.PI / 2 :
     sim.phase === 'discharge' ? +Math.PI / 2 :
-                                -Math.PI / 3;
+                                -2 * Math.PI / 3;   // ouvert : lame vers l'extérieur (le point E est sur le bord gauche)
 
   const bx = E.x + Math.cos(angle) * armLen;
   const by = E.y + Math.sin(angle) * armLen;
@@ -668,7 +668,8 @@ function buildPathCharge(g) {
     { x: r1X  - rw/2,  y: A.y, hidden: true },
     { x: A.x,  y: A.y },
     { x: contactUp.x, y: contactUp.y },
-    { x: E.x,  y: E.y },
+    // Contact → pivot : interrupteur ouvert au repos, ce segment est de l'air.
+    { x: E.x,  y: E.y, hidden: sim.phase === 'idle' },
     { x: leftPlateX - pw, y: capY },
   ];
 }
