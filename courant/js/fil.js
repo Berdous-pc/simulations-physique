@@ -412,7 +412,7 @@ function _drawSchematic() {
   ctx.arc(cx, y1, genR, 0, 2 * Math.PI);
   ctx.fill();
   ctx.strokeStyle = C_WIRE_HL;
-  ctx.lineWidth   = Math.max(1.6, lw * 0.9);
+  ctx.lineWidth   = Math.max(1.2, lw * 0.6);
   ctx.stroke();
 
   ctx.fillStyle    = C_WIRE_HL;
@@ -422,10 +422,15 @@ function _drawSchematic() {
   // cercle, d'une quantité qui change d'une police de repli à l'autre.
   ctx.textAlign    = 'left';
   ctx.textBaseline = 'alphabetic';
+  // Correction optique : la panse ronde du G, à gauche, ne touche sa boîte
+  // qu'en un point, alors que le jambage droit la remplit ; centré
+  // géométriquement, le G paraît donc plus près du bord droit du cercle.
+  // On le décale vers la gauche d'une fraction de sa largeur.
   var gm = ctx.measureText('G');
   if (gm.actualBoundingBoxAscent !== undefined) {
+    var gw = gm.actualBoundingBoxRight + gm.actualBoundingBoxLeft;
     ctx.fillText('G',
-      cx - (gm.actualBoundingBoxRight - gm.actualBoundingBoxLeft) / 2,
+      cx - (gm.actualBoundingBoxRight - gm.actualBoundingBoxLeft) / 2 - gw * 0.06,
       y1 + (gm.actualBoundingBoxAscent - gm.actualBoundingBoxDescent) / 2);
   } else {
     ctx.textAlign    = 'center';
@@ -436,6 +441,7 @@ function _drawSchematic() {
   // Étiquettes des bornes, sous la branche haute : posées à hauteur du fil
   // elles se superposaient au trait.
   ctx.font         = '700 ' + (F * 1.7).toFixed(1) + 'px "Segoe UI", Arial, sans-serif';
+  ctx.textAlign    = 'center';   // le G ci-dessus l'a laissé à 'left'
   ctx.textBaseline = 'top';
   var lblX = genR + F * 0.9;
   var lblY = y1 + lw;
