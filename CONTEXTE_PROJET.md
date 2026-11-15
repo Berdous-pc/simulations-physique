@@ -614,7 +614,7 @@ Toute page **HTML autonome** destinée à être publiée (page d'accueil `index.
 | `refraction/` | Réfraction — lois de Snell-Descartes (réflexion, réfraction, réflexion totale) et dispersion par un prisme | Seconde | **Arborescence** | `sim.js` + `dioptre.js` + `prisme.js` + `ui.js` ; onglets Snell-Descartes / Prisme. Onglet Snell-Descartes à deux modes : **Deux milieux** (milieux au choix dans une liste avec indices, ou indice saisi librement → « Personnalisé », bouton inverser, laser orientable au curseur au dixième de degré ou à la souris) et **Demi-disque** (demi-disque de plexiglas d'indice réglable sur un rapporteur papier ; laser, disque et rapporteur tournent indépendamment à la souris, angles toujours mesurés par rapport à la vraie normale, aimantation à 5° et du rapporteur sur la normale). Luminosité des rayons réfléchi/réfracté selon les coefficients de Fresnel, arcs i / i′ / r masquables, mesures (masquées par défaut) i, i′, r et angle limite. Onglet **Prisme** en **salle noire** : lumière blanche (121 longueurs d'onde, couleurs additives, éventail coloré) ou monochromatique (λ réglable 400–700 nm), matériau au choix (indice selon la loi de Cauchy), angle au sommet, rotation et angle d'incidence réglables (le curseur i fait tourner la source autour du point d'incidence), source déplaçable et orientable à la souris, zoom molette jusqu'à ×50 (en vue zoomée, le glisser déplace la vue et la loupe est masquée), boutons spectre continu / discret (6 couleurs), réflexion totale suivie dans le prisme, écran avec **loupe ×10** sur le spectre, mesures n rouge/violet, incidence, déviations ; deep-linking via `#snell-descartes` / `#prisme` — voir `refraction/ARCHITECTURE.md` |
 | `atome/` | Structure électronique des atomes et des ions — 3 premières lignes du tableau périodique (H → Ar) | Seconde | **Arborescence** | `sim.js` (données `ELEMENTS` / `SUBSHELLS`) + `draw.js` + `ui.js` + `test.js` ; tableau périodique cliquable, noyau 3D en empilement compact **rotatif à la souris** (trackball), cercles de sous-couches à échelle commune à tous les éléments, configuration électronique colorée, option « sous-couches vides », vue **éclatée** du noyau et vue **charge** (protons/électrons) animées nucléon par nucléon, mode **Comparer** (zone de schéma coupée en deux), **mode test** (quiz) — voir `atome/ARCHITECTURE.md` |
 | `electrochimie/` | Oxydoréduction (lame métallique dans une solution d'ions métalliques), piles et électrolyse | Première (Terminale pour l'onglet Pile) | **Arborescence** | `sim.js` (table `METAUX` des couples, commune aux deux onglets) + `becher.js` + `loupe.js` + `pile.js` + `pile-loupe.js` + `ui.js` ; onglets Oxydoréduction / Pile et électrolyse (**ce dernier aux paliers 1 à 4, terminé** : piles Mⁿ⁺/M et à gaz (H⁺/H₂, O₂/H₂O sur platine) à deux béchers, préréglages Daniell… et montages libres, voltmètre / ampèremètre + résistance, lampe ou générateur réglable (bornes inversables, seuil d'électrolyse) / interrupteur, pont salin amovible, recharge d'une pile, électrolyses en cuve unique (anode soluble : affinage du cuivre, zingage ; avec l'eau : eau, chlorure de sodium, sulfate de cuivre ; cuve libre : solution et électrodes graphite, platine ou métal) par la règle « réduction / oxydation la plus facile, eau comprise » avec surtensions des gaz et exception Cl⁻, pile à combustible H₂–O₂, tension par Nernst (pH compris) en coulisse, usure jusqu'à épuisement en temps accéléré, bulles et volumes de gaz, loupes cliquables sur les électrodes (molécules d'eau, bulles), le pont salin ou la membrane et le fil ; accumulateur au plomb : décharge sur une lampe, charge par le générateur, sulfate de plomb sur les plaques, acide qui se dilue, électrolyse de l'eau en fin de charge, mailles Pb / PbO₂ / PbSO₄ dans la loupe). Onglet Oxydoréduction : 7 métaux (Mg, Al, Zn, Fe, Pb, Cu, Ag) × 7 solutions au choix, cas sans transformation inclus ; lame glissée à la souris dans le bécher (entrée par le haut seulement) ou bouton Plonger/Retirer ; couleur de la solution, usure de la lame et dépôt (taches, aiguilles pour Ag et Pb) pilotés par un avancement qui se stabilise ; **loupe** sur la surface en **cycle scénarisé** (l'ion oxydant se colle contre l'atome de la lame avec lequel il réagit, jamais sur le dépôt ; transfert des électrons dans le métal ; l'ion formé part en diagonale vers le bas, l'atome formé reste là où l'ion s'est collé ; un cycle = l'équation de la réaction sur une même zone, ex. 2 Ag⁺ de part et d'autre d'un Cu ; au plus deux cycles légèrement décalés ; pas de texte d'étape), ligne correspondante surlignée dans les équations, couche de dépôt qui se détache en plaque et tombe, ions de fond estompés ; options électrons et ions spectateurs ; bloc HTML des couples, demi-équations et équation de la réaction sous la scène ; deep-linking via `#oxydoreduction` / `#pile-electrolyse` — voir `electrochimie/ARCHITECTURE.md` |
-| `doppler/` | Effet Doppler — démonstration de la formule (vue de profil) ; onde sonore en vue de dessus | Terminale | **Arborescence** | **En cours** (pas encore de carte sur l'accueil ni d'entrée au sitemap). `sim.js` + `profil.js` + `dessus.js` + `ui.js` ; onglet **Principe** : vague vue de côté, eau plate à t = 0, émetteur E (flotteur à cheval sur la surface) qui se rapproche ou s'éloigne d'un récepteur fixe R, onde émise des deux côtés (train serré devant, étiré derrière), modèle entièrement analytique en fonction de la date (temps parcourable dans les deux sens), front de l'onde et début du motif 2 suivis, cotes λ, v_E·T_E et λ′ qui se construisent puis λ′ qui voyage avec le premier motif, frise des instants (émissions / réceptions, T_E et T_R) que l'on fait glisser, boutons Lecture et Étape, démonstration écrite en cinq lignes qui s'allument au fil de l'animation ; onglet **Effet Doppler** (`dessus.js`, autonome, vue de dessus) : onde sonore ralentie, émetteur et récepteur que l'on fait glisser ou qui se déplacent seuls (vitesse au curseur, direction en tirant la pointe du vecteur vitesse, rebond aux bords), crêtes circulaires centrées sur leur point d'émission, supersonique autorisé (cône de Mach), célérité c et fréquence f_E réglables, deux écrans d'oscilloscope déplaçables (signal émis, signal reçu, même base de temps), fréquence reçue mesurée ; deep-linking via `#demonstration` / `#vue-de-dessus` — voir `doppler/ARCHITECTURE.md` |
+| `doppler/` | Effet Doppler — démonstration de la formule (vue de profil) ; onde sonore en vue de dessus | Terminale | **Arborescence** | `sim.js` + `profil.js` + `dessus.js` + `ui.js` ; onglet **Principe** : vague vue de côté, eau plate à t = 0, émetteur E (flotteur à cheval sur la surface) qui se rapproche ou s'éloigne d'un récepteur fixe R, onde émise des deux côtés (train serré devant, étiré derrière), modèle entièrement analytique en fonction de la date (temps parcourable dans les deux sens), front de l'onde et début du motif 2 suivis, cotes λ_E, v_E·T_E et λ_R qui se construisent puis λ_R qui voyage avec le premier motif, frise des instants (émissions / réceptions, T_E et T_R) que l'on fait glisser, boutons Lecture et Étape, démonstration écrite en cinq lignes qui s'allument au fil de l'animation ; onglet **Effet Doppler** (`dessus.js`, autonome, vue de dessus) : onde sonore ralentie, émetteur et récepteur que l'on fait glisser ou qui se déplacent seuls (vitesse au curseur, direction en tirant la pointe du vecteur vitesse, rebond aux bords), crêtes circulaires centrées sur leur point d'émission, supersonique autorisé (cône de Mach), célérité c et fréquence f_E réglables, deux écrans d'oscilloscope déplaçables (signal émis, signal reçu, même base de temps), fréquence reçue mesurée ; deep-linking via `#demonstration` / `#vue-de-dessus` — voir `doppler/ARCHITECTURE.md` |
 
 ---
 
@@ -647,10 +647,11 @@ Structure d'une carte :
 **Couleurs par discipline :**
 - Physique : fond `#fdf4ee` (terracotta), `card-theme` `#b04020`
 - Chimie : fond `#f2f7fd` (bleu), `card-theme` `#2a6aaa`
+- Maths : fond `#f7f3fd` (violet pastel), `card-theme` `#7a5aa8`
 
 **Attributs `data-*`** sur chaque `.card` pour le filtrage JS :
-- `data-discipline` : `"physique"` ou `"chimie"`
-- `data-theme` : `"electricite"` | `"optique"` | `"radioactivite"` | `"transformations-chimiques"` | `"dosages"` | `"solutions-aqueuses"` | `"thermodynamique"` | `"ondes"` | `"mecanique"` | `"constitution-matiere"`
+- `data-discipline` : `"physique"`, `"chimie"` ou `"maths"`
+- `data-theme` : `"outils-mathematiques"` | `"electricite"` | `"optique"` | `"radioactivite"` | `"transformations-chimiques"` | `"dosages"` | `"solutions-aqueuses"` | `"thermodynamique"` | `"ondes"` | `"mecanique"` | `"constitution-matiere"`
 - `data-levels` : niveaux séparés par espace, ex: `"seconde premiere"` (valeurs : `seconde`, `premiere`, `terminale`, `cpge`)
 
 Chaque valeur `data-theme`/`data-value` est le libellé affiché mis en kebab-case (accents retirés) — pas de slug arbitraire déconnecté du texte visible.
@@ -659,14 +660,14 @@ Cinétique chimique et Équilibre chimique sont des **cartes** du thème `"trans
 
 ### Panel de filtres
 
-Trois groupes de checkboxes (toutes cochées par défaut) :
+Trois groupes de checkboxes (**toutes décochées par défaut**) :
 - **Niveau** : Seconde, Première, Terminale, CPGE (badge `.level-cpge`, rose : fond `#f4dde8`, texte `#7a1a4a`)
-- **Discipline** : Physique, Chimie
-- **Thème** : Constitution de la matière (`data-value="constitution-matiere"`), Électricité, Optique, Radioactivité, Transformations chimiques (`data-value="transformations-chimiques"`), Dosages (`data-value="dosages"`), Solutions aqueuses (`data-value="solutions-aqueuses"`), Thermodynamique, Ondes, Mécanique
+- **Discipline** : Physique, Chimie, Maths
+- **Thème** : Outils mathématiques (`data-value="outils-mathematiques"`, seule carte : Dérivée), Constitution de la matière (`data-value="constitution-matiere"`), Électricité, Optique, Radioactivité, Transformations chimiques (`data-value="transformations-chimiques"`), Dosages (`data-value="dosages"`), Solutions aqueuses (`data-value="solutions-aqueuses"`), Thermodynamique, Ondes, Mécanique
 
-Logique : **OU au sein d'une catégorie**, **ET entre catégories**.
+Logique : cocher une case **restreint** l'affichage. Une catégorie sans aucune case cochée n'impose aucune contrainte (rien de coché ⇒ toutes les cartes visibles) ; sinon **OU au sein d'une catégorie**, **ET entre catégories**.
 
-Bouton "Réinitialiser" remet toutes les cases à coché.
+Bouton « Tout afficher » (`#btn-reset-filters`) décoche toutes les cases.
 
 ### Tri alphabétique automatique (thème, puis titre)
 
@@ -676,7 +677,7 @@ Au chargement, un script en fin de page (voir bloc `// Page d'accueil — filtre
 
 Le tri utilise `Intl.Collator('fr', { sensitivity: 'base' })` et réordonne les éléments DOM via `appendChild` (pas de duplication, les écouteurs d'événements restent attachés). **Conséquence pratique** : l'ordre des cartes/checkboxes dans le code source `index.html` n'a plus besoin d'être alphabétique ni cohérent — une nouvelle carte ou un nouveau thème peut être ajouté n'importe où dans le HTML, l'ordre visuel se recalcule automatiquement à chaque chargement de page.
 
-Le tri étant purement alphabétique sur le texte de `.card-title`, **le titre d'une carte peut volontairement différer du libellé de l'onglet correspondant** pour obtenir la position voulue dans le groupe. Cas existant : la carte « **Interférences 1D** » (l'onglet, lui, s'intitule « Interférences **en** 1D ») — le chiffre `1` se classe avant la lettre `d`, la carte passe donc avant « Interférences d'ondes de surface » et « Interférences lumineuses », alors que « Interférences en 1D » serait arrivée en dernier.
+Le tri étant purement alphabétique sur le texte de `.card-title`, **le titre d'une carte peut volontairement différer du libellé de l'onglet correspondant** pour obtenir la position voulue dans le groupe. Cas existants : la carte « **Effet Doppler (principe)** » (onglet « Principe ») porte le nom de la notion en tête pour suivre directement la carte « **Effet Doppler** » de l'autre onglet ; la carte « **Interférences 1D** » (l'onglet, lui, s'intitule « Interférences **en** 1D ») — le chiffre `1` se classe avant la lettre `d`, la carte passe donc avant « Interférences d'ondes de surface » et « Interférences lumineuses », alors que « Interférences en 1D » serait arrivée en dernier.
 
 ### Images de prévisualisation
 
@@ -719,6 +720,9 @@ Stockées dans `assets/previews/` au format **`.jpg`** (converties depuis les sc
 | `atomes.jpg` | Structure des atomes/ions |
 | `oxydoreduction.jpg` | Oxydoréduction (cadrage sur la scène, sans le panneau) |
 | `pile-electrolyse.jpg` | Piles et électrolyses (cadrage sur la scène, sans le panneau) |
+| `derivee.jpg` | Dérivée |
+| `doppler-principe.jpg` | Effet Doppler (principe) (date t = 5,30 s, émetteur qui se rapproche ; frise des instants masquée, scène seule sans le panneau, au format 16:9 de l'aperçu pour qu'aucun recadrage ne coupe l'onde du haut) |
+| `doppler-effet.jpg` | Effet Doppler (t ≈ 29 ms, deux écrans d'oscilloscope ouverts ; scène seule sans le panneau, au format 16:9 de l'aperçu pour que les écrans du haut ne soient pas coupés) |
 
 **Optimisation poids/performance (juillet 2026)** : les screenshots d'origine (PNG plein format, jusqu'à 2273×1268 px et 300+ Ko chacun) alourdissaient inutilement le chargement de la page d'accueil et pénalisaient les Core Web Vitals (LCP, CLS), donc le référencement. Conversion en `.jpg` redimensionné (800 px de large max, qualité ~82) : dossier `assets/previews/` passé de ~1,4 Mo à ~630 Ko. Toute **nouvelle** image de preview doit suivre ce format (JPEG, 800 px de large max) plutôt que déposer un screenshot PNG brut.
 
@@ -766,8 +770,8 @@ Chaque fonction de bascule d'onglet (`setOnglet`/`setMainTab`/`setModePrincipal`
 
 | Élément | Valeur |
 |---|---|
-| OS | Windows 11 |
-| Dossier de travail | `C:\Users\mathi\Desktop\projet-site\` |
+| OS | Windows 10 |
+| Dossier de travail | `C:\Users\mathi\Desktop\site\` |
 | Python | `C:\Users\mathi\anaconda3\python.exe` |
 | IDE Python | Spyder |
 | Navigateurs | Chrome, Firefox |
