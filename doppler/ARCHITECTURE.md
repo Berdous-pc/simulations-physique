@@ -34,11 +34,32 @@ Deep-linking : `#demonstration` / `#vue-de-dessus`.
 
 La démonstration du cours tient en deux temps, que l'animation sépare :
 
-1. **de t = 0 à t = T_E** : le front de l'onde parcourt λ = v·T_E, l'émetteur
-   avance de v_E·T_E puis commence le motif 2 ; d'où λ′ = λ ∓ v_E·T_E. Le
+1. **de t = 0 à t = T_E** : le front de l'onde parcourt λ_E = c·T_E, l'émetteur
+   avance de v_E·T_E puis commence le motif 2 ; d'où λ_R = λ_E ∓ v_E·T_E. Le
    récepteur n'y joue aucun rôle ;
 2. **après T_E** : le front et le début du motif 2 avancent à la même célérité,
-   λ′ ne change plus, le récepteur les reçoit séparés de T_R = λ′/v.
+   λ_R ne change plus, le récepteur les reçoit séparés de T_R = λ_R/c.
+
+**Notations** (demandées par l'auteur) : indice E pour ce qui tient à
+l'émetteur (T_E, f_E, v_E, λ_E), indice R pour le récepteur (T_R, f_R, λ_R —
+pas de prime), **c** pour la célérité de l'onde. Dans le code, les noms
+`V_ONDE` et `dopLambdaP()` sont restés.
+
+Pour que la contraction **se voie** et ne se lise pas seulement sur une cote :
+
+- **bande témoin** : au-dessus, le même émetteur *immobile* émet en même temps.
+  Les deux fronts restent alignés (une seule barre « front » traverse les deux
+  bandes) ; seul le début du motif 2 diffère, de v_E·T_E ;
+- **barre empilée** entre les deux bandes : λ_E sur une ligne, λ_R sur l'autre,
+  le segment vert v_E·T_E complétant la plus courte (λ_R si l'émetteur se
+  rapproche, λ_E s'il s'éloigne). Elle voyage avec le premier motif ;
+- **sinus discrétisé** (case *Afficher les points*, `simD.showPoints`) :
+  l'émetteur dépose `N_POINTS` = 8 points par période, à sa hauteur du moment ;
+  chacun file ensuite à c. Écart entre deux points : (c ∓ v_E)·T_E/8. Les
+  débuts de motif sont de gros points ; des **marques au sol** vertes repèrent
+  où était l'émetteur à chaque dépôt. Le sinus reste tracé en trait fin : les
+  points sont des repères sur l'onde, pas de l'eau qui se déplace ;
+- **motifs de couleur alternée** (bleu, ocre) côté récepteur.
 
 L'onde est une **vague vue de côté**, pas un son en particules : la formule est
 la même, la lecture est immédiate. Choix arrêtés avec l'auteur :
@@ -71,6 +92,7 @@ date fixée.
 - **Eau plate à t = 0.** `dopDateEmission(x, t)` renvoie la date d'émission de
   ce qui se trouve en x (formule différente devant et derrière l'émetteur,
   continue à sa position) ; elle est négative là où l'onde n'est pas arrivée.
+  `dopDateEmissionV(x, t, vE)` fait de même pour une vitesse donnée (0 : témoin).
   L'élongation `dopElongation` vaut `sin(2π·f_E·te)` si te > 0, zéro sinon.
 - `dopXRepere(n, t)` : abscisse du point émis vers le récepteur à n·T_E (n = 0 :
   front, n = 1 : début du motif 2).
@@ -93,14 +115,15 @@ se déduit d'une **taille de police `f`** proportionnelle au canvas (bornée à
 
 | Zone | Contenu |
 |---|---|
-| cote λ (tirets) | « v·t » qui s'allonge, puis « λ = v·T_E » figée |
-| cote λ′ (rouge) | apparaît à T_E entre le début du motif 2 et le front, puis **voyage avec eux** |
-| eau | surface en trait fin ; le **premier motif émis vers le récepteur** (dates 0 à min(t, T_E)) en bleu épais ; barres « front » / « motif 2 » ; flotteurs E et R centrés sur la surface, moitié basse voilée (`_immerger`) ; vecteur v_E solidaire de E, étiquette à liseré clair |
-| cote v_E·T_E (vert) | « v_E·t » puis « v_E·T_E », positions « E à t = 0 » / « E à t = T_E » |
+| bande témoin | émetteur immobile (`dessinerBande(y0T, yFondT, 0)`), récepteur estompé |
+| barre empilée | ligne 1 : « c·t » puis « λ_E = c·T_E » ; ligne 2 : λ_R (rouge) ; segment vert v_E·T_E sur la ligne la plus courte. Libellé long s'il tient dans la barre, court sinon (`libelle`) |
+| bande mobile | `dessinerBande(y0, yFond, vEs)` : surface en trait fin, motifs colorés, points, marques au sol ; étiquette « motif 2 » ; flotteurs E et R centrés sur la surface, moitié basse voilée (`_immerger`) ; vecteur v_E solidaire de E |
+| cote v_E·T_E (vert, au sol) | « v_E·t » puis « v_E·T_E », positions « E à t = 0 » / « E à t = T_E » ; estompée après T_E |
 | règle | graduée en cm |
 | frise | axe du temps, repères d'émission (vert, au-dessus) et de réception (terracotta, au-dessous), durées T_E et T_R, curseur |
 
-Après T_E, les cotes λ et v_E·T_E restent à leur place, estompées.
+L'amplitude `A` se déduit de la hauteur restante (`(hs − 13,35 f) / 4`) ; `f`
+vaut `min(w/52, h/26)`. Points masqués, les motifs sont tracés en trait épais.
 
 `texteIndices()` écrit un texte avec indices (`v_{E}·T_{E}`) et le ramène dans
 le canvas s'il déborde. Les éclats (`_eclat`) qui signalent émissions et

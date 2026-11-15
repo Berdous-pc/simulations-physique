@@ -36,12 +36,13 @@
       <div id="demo-bloc">
         <div class="demo-intro">
           Un émetteur E <span class="dp-intro">se rapproche</span> à la vitesse <i>v</i><sub>E</sub>
-          d'un récepteur fixe R. L'onde se propage à la célérité <i>v</i>.
+          d'un récepteur fixe R. L'onde se propage à la célérité <i>c</i>.
+          En haut, le même émetteur immobile sert de témoin.
         </div>
         <div class="demo-ligne" id="demo-l1">
           <span class="demo-num">1</span>
           <span>À <i>t</i> = 0, E se met à osciller : le front de l'onde part. Pendant une période <i>T</i><sub>E</sub>, il parcourt
-            <i>λ</i> = <i>v</i>·<i>T</i><sub>E</sub>.</span>
+            <i>λ</i><sub>E</sub> = <i>c</i>·<i>T</i><sub>E</sub>, que E soit immobile ou non.</span>
         </div>
         <div class="demo-ligne" id="demo-l2">
           <span class="demo-num">2</span>
@@ -51,23 +52,23 @@
         <div class="demo-ligne" id="demo-l3">
           <span class="demo-num">3</span>
           <span>Distance entre le front et le début du motif 2 :
-            <span class="g-lp"><i>λ</i>′</span> = <i>λ</i> <span class="dp-signe">−</span>
+            <span class="g-lp"><i>λ</i><sub>R</sub></span> = <i>λ</i><sub>E</sub> <span class="dp-signe">−</span>
             <i>v</i><sub>E</sub>·<i>T</i><sub>E</sub> =
-            (<i>v</i> <span class="dp-signe">−</span> <i>v</i><sub>E</sub>)·<i>T</i><sub>E</sub>.</span>
+            (<i>c</i> <span class="dp-signe">−</span> <i>v</i><sub>E</sub>)·<i>T</i><sub>E</sub>.</span>
         </div>
         <div class="demo-ligne" id="demo-l4">
           <span class="demo-num">4</span>
-          <span>Ces deux points avancent à la célérité <i>v</i> : R les reçoit séparés de
+          <span>Ces deux points avancent à la célérité <i>c</i> : R les reçoit séparés de
             <i>T</i><sub>R</sub> =
-            <span class="frac"><span class="num"><span class="g-lp"><i>λ</i>′</span></span><span class="den"><i>v</i></span></span>
+            <span class="frac"><span class="num"><span class="g-lp"><i>λ</i><sub>R</sub></span></span><span class="den"><i>c</i></span></span>
             = <i>T</i><sub>E</sub>
-            <span class="frac"><span class="num"><i>v</i> <span class="dp-signe">−</span> <i>v</i><sub>E</sub></span><span class="den"><i>v</i></span></span>.</span>
+            <span class="frac"><span class="num"><i>c</i> <span class="dp-signe">−</span> <i>v</i><sub>E</sub></span><span class="den"><i>c</i></span></span>.</span>
         </div>
         <div class="demo-ligne demo-resultat" id="demo-l5">
           <span class="demo-num">5</span>
           <span>Fréquence reçue :
             <i>f</i><sub>R</sub> = <i>f</i><sub>E</sub>
-            <span class="frac"><span class="num"><i>v</i></span><span class="den"><i>v</i> <span class="dp-signe">−</span> <i>v</i><sub>E</sub></span></span>
+            <span class="frac"><span class="num"><i>c</i></span><span class="den"><i>c</i> <span class="dp-signe">−</span> <i>v</i><sub>E</sub></span></span>
             <span class="dp-comp">&gt;</span> <i>f</i><sub>E</sub></span>
         </div>
       </div>
@@ -176,7 +177,7 @@
             </label>
             <input type="range" id="sl-fe" min="1" max="2" step="0.1" value="1"
                    oninput="onSliderFE(this.value)">
-            <div class="input-hint">Célérité de l'onde : v = 20 cm/s.</div>
+            <div class="input-hint">Célérité de l'onde : c = 20 cm/s.</div>
           </div>
         </div>
 
@@ -186,7 +187,11 @@
           <div class="section-title" data-repliable>Affichage</div>
           <label class="check-row">
             <input type="checkbox" checked onchange="toggleAffichage('showCotes', this.checked)">
-            <span>Cotes (λ, λ′, v<sub>E</sub>·T<sub>E</sub>)</span>
+            <span>Cotes (λ<sub>E</sub>, λ<sub>R</sub>, v<sub>E</sub>·T<sub>E</sub>)</span>
+          </label>
+          <label class="check-row">
+            <input type="checkbox" checked onchange="toggleAffichage('showPoints', this.checked)">
+            Afficher les points
           </label>
           <label class="check-row">
             <input type="checkbox" checked onchange="toggleAffichage('showDemo', this.checked)">
@@ -206,7 +211,7 @@
               <span class="ro-item-val" id="ro-te">—</span>
             </div>
             <div class="ro-line">
-              <span class="ro-item-label">λ = v·T<sub>E</sub></span>
+              <span class="ro-item-label">λ<sub>E</sub> = c·T<sub>E</sub></span>
               <span class="ro-item-val" id="ro-lambda">—</span>
             </div>
             <div class="ro-line">
@@ -217,7 +222,7 @@
           <div class="readout">
             <div class="ro-label">Réception</div>
             <div class="ro-line">
-              <span class="ro-item-label">Distance λ′</span>
+              <span class="ro-item-label">Distance λ<sub>R</sub></span>
               <span class="ro-item-val" id="ro-lambdap">—</span>
             </div>
             <div class="ro-line">
@@ -358,6 +363,9 @@
         pour parcourir l'animation à la main.<br>
         <strong>Émetteur</strong> : choisissez s'il se rapproche ou s'éloigne du récepteur R, puis réglez sa vitesse
         et sa fréquence ; la scène se met à jour sans changer d'étape.<br>
+        <strong>Deux bandes</strong> : en haut l'émetteur immobile (témoin), en bas l'émetteur en mouvement ;
+        les deux émettent en même temps. <strong>Afficher les points</strong> (<em>Affichage</em>) : huit points
+        par période, déposés par l'émetteur ; les traits verts sous l'eau repèrent où il se trouvait à chaque dépôt.<br>
         Les lignes de la <strong>démonstration</strong> s'allument au fil de l'animation ; elle peut être masquée
         dans <em>Affichage</em>.
       </div>

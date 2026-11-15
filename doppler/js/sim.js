@@ -23,6 +23,7 @@ var X_E0_BASE   = 40;    // abscisse de l'émetteur à t = 0 quand il se rapproc
 var X_E0_RECUL  = 20;    // décalage maximal du départ quand il s'éloigne (à VE_MAX)
 var VE_MAX      = 10;    // vitesse maximale de l'émetteur (cm/s) — synchronisé avec index.html
 var T_FIN_MARGE = 0.3;   // l'animation se poursuit 0,3 T_E après la réception du début du motif 2
+var N_POINTS    = 8;     // points déposés par l'émetteur à chaque période (sinus discrétisé)
 
 // ── État ──────────────────────────────────────────────────────────────
 var simD = {
@@ -33,7 +34,8 @@ var simD = {
   sens: 1,           // +1 : l'émetteur se rapproche du récepteur ; -1 : il s'éloigne
   vE: 8,             // vitesse de l'émetteur (cm/s), toujours positive
   fE: 1,             // fréquence d'émission (Hz)
-  showCotes: true,   // cotes λ, λ′ et v_E·T_E sur la scène
+  showCotes: true,   // cotes λ_E, λ_R et v_E·T_E sur la scène
+  showPoints: true,  // points déposés par l'émetteur et marques au sol
   showDemo: true     // démonstration écrite sous la scène
 };
 
@@ -43,8 +45,8 @@ var simD = {
 
 function dopTE()      { return 1 / simD.fE; }                        // période d'émission
 function dopVEs()     { return simD.sens * simD.vE; }                // vitesse algébrique (+ vers R)
-function dopLambda()  { return V_ONDE * dopTE(); }                   // λ = v·T_E
-function dopLambdaP() { return (V_ONDE - dopVEs()) * dopTE(); }      // λ′ = (v ∓ v_E)·T_E
+function dopLambda()  { return V_ONDE * dopTE(); }                   // λ_E = c·T_E
+function dopLambdaP() { return (V_ONDE - dopVEs()) * dopTE(); }      // λ_R = (c ∓ v_E)·T_E
 function dopTR()      { return dopLambdaP() / V_ONDE; }              // période reçue
 function dopFR()      { return 1 / dopTR(); }                        // fréquence reçue
 
@@ -77,8 +79,12 @@ function dopIndiceCle(t) {
 // n'y est pas encore arrivée).
 // Devant l'émetteur (côté R) : x − x_E(te) = v·(t − te) ;
 // derrière : x_E(te) − x = v·(t − te).
-function dopDateEmission(x, t) {
-  var x0 = dopXE0(), vE = dopVEs();
+function dopDateEmission(x, t) { return dopDateEmissionV(x, t, dopVEs()); }
+
+// La même pour un émetteur parti de x_E0 à la vitesse algébrique vE
+// (vE = 0 : émetteur immobile de la bande témoin).
+function dopDateEmissionV(x, t, vE) {
+  var x0 = dopXE0();
   if (x >= x0 + vE * t) return (V_ONDE * t - (x - x0)) / (V_ONDE - vE);
   return (V_ONDE * t + (x - x0)) / (V_ONDE + vE);
 }
