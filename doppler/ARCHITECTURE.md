@@ -189,19 +189,21 @@ de large, hauteur déduite du canvas, y = 0 au milieu.
     avec **rebond** sur les bords. Pendant la lecture, on ne peut pas attraper
     E ou R (seulement les poignées).
   - **À la souris** : pas de curseur de vitesse ni de poignée. Pendant la
-    lecture, l'objet saisi est **piloté** : le pointeur est verrouillé et
-    masqué (Pointer Lock ; repli sur les déplacements du pointeur, masqué, au
-    toucher ou si le verrou est refusé), seuls ses déplacements comptent.
-    `_vdPreparerSouris()` : vitesse de la main u = moyenne glissante des
-    déplacements sur 80 ms réelles, vitesse de l'objet **v = c·(u / 700 px/s)²**
-    dans la direction du geste, plafonnée à 0,9 c (2 c si « Autoriser le
-    supersonique »). Le carré rend les faibles vitesses faciles à doser
-    (0,1 c ≈ 220 px/s). L'objet s'arrête net quand la main s'arrête (fenêtre
-    vide) ou qu'on lâche ; bloqué par les bords, sans rebond. Sa vitesse `vm`
-    s'affiche au-dessus de lui (le pointeur est masqué) et dans le panneau.
+    lecture, l'objet saisi **poursuit** le pointeur (resté visible) : la cible
+    `o.cible` (m) est le pointeur, décalé comme à la saisie (pas d'à-coup au
+    clic). `_vdPoursuite()`, à chaque pas de calcul : distance d à la cible,
+    **v = v_max·(d − 0,15 m)/(3 m − 0,15 m)** bornée à [0, v_max], dirigée vers
+    la cible, v_max = 0,9 c (2 c si « Autoriser le supersonique ») ; le pas ne
+    dépasse pas la cible. Main immobile : l'objet rattrape le pointeur en
+    ralentissant (approche exponentielle, quelques secondes réelles vu le
+    ralenti) et s'arrête dans la zone morte de 0,15 m. Lâcher : arrêt net.
+    Bloqué par les bords, sans rebond. Élastique pointillé objet → cible ;
+    vitesse `vm` au-dessus de l'objet et dans le panneau.
     Écartés par l'auteur : un suivi 1:1 du pointeur (avec le ralenti, c ne vaut
-    que ~120 px/s à l'écran : les faibles vitesses sont inatteignables) et un
-    suivi lissé qui continue après le lâcher.
+    que ~120 px/s à l'écran : les faibles vitesses sont inatteignables), un
+    suivi lissé qui continue après le lâcher, et un pilotage par la vitesse de
+    la main (pointeur verrouillé, v = c·(u / 700 px/s)²) : vecteur vitesse
+    instable, faibles vitesses difficiles à tenir.
   - Dans les deux modes, à l'arrêt, faire glisser un objet le replace
     directement.
 - **Historique de l'émetteur** `_vdH` (date, position, phase, **célérité c**), un échantillon

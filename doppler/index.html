@@ -271,8 +271,8 @@
           </div>
           <div id="vd-bloc-souris" style="display:none;">
             <div class="input-hint input-hint-after-btn">
-              Pendant la lecture, maintenez le clic sur E ou R et bougez la souris : plus la main va vite,
-              plus l'objet va vite. Il s'arrête dès que vous lâchez.
+              Pendant la lecture, maintenez le clic sur E ou R et éloignez la souris : l'objet la poursuit,
+              d'autant plus vite qu'elle est loin. Il s'arrête dès que vous lâchez.
             </div>
             <div class="readout">
               <div class="ro-line">
@@ -436,9 +436,10 @@
         <strong>Mouvement automatique</strong> : donnez une vitesse à E ou à R avec les curseurs, puis orientez
         le mouvement en tirant la pointe ronde de la flèche. L'objet rebondit sur les bords.<br>
         <strong>Mouvement à la souris</strong> : pendant la lecture, maintenez le clic sur E ou R et bougez la souris.
-        Le pointeur disparaît : l'objet avance dans le sens de votre geste, d'autant plus vite que la main va vite
-        (un geste lent donne une faible vitesse, affichée au-dessus de l'objet). Il s'arrête dès que la main
-        s'arrête ou que vous lâchez. Vitesse plafonnée à 0,9 c (2 c si vous autorisez le supersonique).<br>
+        Un élastique pointillé relie l'objet au pointeur : l'objet court vers le pointeur à une vitesse
+        proportionnelle à leur distance (pointeur proche : faible vitesse ; à 3 m ou plus : vitesse maximale,
+        0,9 c, ou 2 c si vous autorisez le supersonique). La vitesse s'affiche au-dessus de l'objet. Si la main
+        s'arrête, l'objet rattrape le pointeur en ralentissant ; il s'arrête net si vous lâchez.<br>
         <strong>c et f<sub>E</sub></strong> ne changent que l'onde émise ensuite : l'onde déjà partie garde les siens.<br>
         <strong>Oscilloscopes</strong> : comme en TP, le spot balaie l'écran puis repart quand le signal passe par zéro
         en montant ; un signal périodique paraît donc immobile. Les deux écrans ont la même base de temps.

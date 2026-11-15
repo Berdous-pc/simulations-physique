@@ -28,11 +28,11 @@ var VD_DIV_X        = 10;     // divisions horizontales des écrans
 var VD_DIV_Y        = 8;      // divisions verticales
 var VD_CALIBRES     = [0.2e-3, 0.5e-3, 1e-3, 2e-3];   // bases de temps (s/div)
 
-// Mode À la souris : la vitesse de l'objet dépend de la vitesse de la main,
-// v = c·(u / VD_MAIN_C)², u en px/s. Le carré rend les faibles vitesses faciles
-// à doser (0,1 c ≈ 220 px/s, 0,5 c ≈ 490 px/s, c ≈ 700 px/s).
-var VD_MAIN_C       = 700;    // vitesse de la main (px/s) qui donne c
-var VD_MAIN_FENETRE = 0.08;   // la vitesse de la main est moyennée sur 80 ms réelles
+// Mode À la souris (poursuite) : l'objet court vers le pointeur à une vitesse
+// proportionnelle à la distance d qui les sépare,
+// v = v_max·(d − VD_POURS_MORTE) / (VD_POURS_MAX − VD_POURS_MORTE), bornée à [0, v_max].
+var VD_POURS_MORTE  = 0.15;   // en deçà (m), l'objet est arrivé : il s'arrête
+var VD_POURS_MAX    = 3;      // distance (m) à partir de laquelle l'objet va à v_max
 var VD_PLAFOND      = 0.9;    // vitesse maximale d'un objet tiré : 0,9 c …
 var VD_PLAFOND_SUP  = 2;      // … ou 2 c si le supersonique est autorisé
 
@@ -54,10 +54,10 @@ var simV = {
   fE: 500,            // fréquence d'émission (Hz)
   // Objets : position (m, y = 0 au milieu de la scène) ;
   //   v, dir : vitesse et direction réglées (mode Automatique) ;
-  //   saisi : tenu à la souris ; mvts : déplacements récents de la main { t, dx, dy } (px) ;
+  //   saisi : tenu à la souris ; cible : point visé par le pointeur { x, y } (m) ;
   //   vm, dm : vitesse (m/s) et direction du mouvement à la souris
-  E: { x: 3, y: 0,   v: 100, dir: 0,       saisi: false, mvts: [], vm: 0, dm: 0 },
-  R: { x: 9, y: 1.1, v: 0,   dir: Math.PI, saisi: false, mvts: [], vm: 0, dm: 0 },
+  E: { x: 3, y: 0,   v: 100, dir: 0,       saisi: false, cible: null, vm: 0, dm: 0 },
+  R: { x: 9, y: 1.1, v: 0,   dir: Math.PI, saisi: false, cible: null, vm: 0, dm: 0 },
   supersonique: false,
   showCentres: true,  // points d'émission des crêtes visibles
   scopeE: false,      // écran d'oscilloscope de l'émetteur affiché
@@ -93,7 +93,7 @@ function _vdHauteur() { return _vdGeo ? _vdGeo.Hm : VD_LARGEUR * 0.6; }
 // Amplitude reçue à la distance r de son point d'émission (décroissance douce)
 function _vdAmp(r) { return 1 / Math.sqrt(1 + r); }
 
-function _vdLacher(o) { o.saisi = false; o.mvts = []; o.vm = 0; }
+function _vdLacher(o) { o.saisi = false; o.cible = null; o.vm = 0; }
 
 function vdRaz() {
   vdArreter();
@@ -118,35 +118,27 @@ function _vdBorner(o) {
   o.y = borner(o.y, -hy, hy);
 }
 
-// Mode À la souris, une fois par image : vitesse de la main u (px/s, moyenne
-// glissante des déplacements des 80 dernières ms), puis vitesse de l'objet
-// v = c·(u / VD_MAIN_C)², plafonnée à 0,9 c (ou 2 c), dans la direction du geste.
-// L'objet ne suit donc pas le pointeur point par point (le pointeur est masqué) :
-// il avance dans le sens de la main, d'autant plus vite qu'elle va vite, et
-// s'arrête dès qu'elle s'arrête ou qu'on lâche.
-function _vdVitesseMain(o, maintenant) {
-  var lim = maintenant - VD_MAIN_FENETRE * 1000, sx = 0, sy = 0;
-  while (o.mvts.length && o.mvts[0].t < lim) o.mvts.shift();
-  for (var i = 0; i < o.mvts.length; i++) { sx += o.mvts[i].dx; sy += o.mvts[i].dy; }
-  return { ux: sx / VD_MAIN_FENETRE, uy: sy / VD_MAIN_FENETRE };
-}
-
-function _vdPreparerSouris(maintenant) {
+// Mode À la souris : vitesse de poursuite d'un objet saisi, recalculée à chaque
+// pas de calcul à partir de la distance d (m) qui le sépare de sa cible.
+// Proche du pointeur : lent ; loin : v_max (0,9 c, ou 2 c si supersonique).
+// Main immobile : l'objet rattrape le pointeur en ralentissant et s'arrête.
+function _vdPoursuite(o) {
+  if (!o.saisi || !o.cible) { o.vm = 0; return 0; }
+  var dx = o.cible.x - o.x, dy = o.cible.y - o.y, d = Math.sqrt(dx * dx + dy * dy);
   var vMax = (simV.supersonique ? VD_PLAFOND_SUP : VD_PLAFOND) * simV.c;
-  [simV.E, simV.R].forEach(function (o) {
-    if (!o.saisi) { o.vm = 0; return; }
-    var m = _vdVitesseMain(o, maintenant), u = Math.sqrt(m.ux * m.ux + m.uy * m.uy);
-    o.vm = Math.min(vMax, simV.c * Math.pow(u / VD_MAIN_C, 2));
-    if (u > 1) o.dm = Math.atan2(m.uy, m.ux);
-  });
+  o.vm = vMax * borner((d - VD_POURS_MORTE) / (VD_POURS_MAX - VD_POURS_MORTE), 0, 1);
+  if (o.vm > 0) o.dm = Math.atan2(dy, dx);
+  return d;
 }
 
 // Déplace un objet pendant h secondes simulées
 function _vdDeplacer(o, h) {
   if (simV.mode === 'souris') {
+    var d = _vdPoursuite(o);
     if (!o.vm) return;
-    o.x += o.vm * Math.cos(o.dm) * h;
-    o.y += o.vm * Math.sin(o.dm) * h;
+    var pas = Math.min(o.vm * h, d - VD_POURS_MORTE);   // sans dépasser la cible
+    o.x += pas * Math.cos(o.dm);
+    o.y += pas * Math.sin(o.dm);
     _vdBorner(o);                       // arrêté par les bords, sans rebond
     return;
   }
@@ -252,7 +244,6 @@ function _vdElaguer() {
 
 // Une image : dtReel secondes réelles ; maintenant = date réelle (ms) de l'image
 function vdImage(dtReel, maintenant) {
-  if (simV.mode === 'souris') _vdPreparerSouris(maintenant === undefined ? performance.now() : maintenant);
   vdAvancer(dtReel * simV.ralenti * 1e-3);
   _vdMajBalayages();
 }
@@ -417,10 +408,25 @@ function dessinerDessus() {
   _pastille(ctx, X(simV.R.x), Y(simV.R.y), r, COL_RECEP, 'R', 1);
   _pastille(ctx, X(simV.E.x), Y(simV.E.y), r, COL_EMET, 'E', 1);
 
-  // Objet tenu à la souris (pointeur masqué) : sa vitesse s'affiche au-dessus de lui
+  // Objet tenu à la souris : élastique pointillé jusqu'à la cible, vitesse au-dessus
   [[simV.E, COL_EMET], [simV.R, COL_RECEP]].forEach(function (oc) {
     var o = oc[0];
     if (simV.mode !== 'souris' || !o.saisi || !simV.lecture) return;
+    if (o.cible) {
+      ctx.save();
+      ctx.strokeStyle = oc[1]; ctx.fillStyle = oc[1];
+      ctx.globalAlpha = 0.7;
+      ctx.lineWidth = Math.max(1.5, f * 0.09);
+      ctx.setLineDash([0.4 * f, 0.3 * f]);
+      ctx.beginPath();
+      ctx.moveTo(X(o.x), Y(o.y)); ctx.lineTo(X(o.cible.x), Y(o.cible.y));
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.arc(X(o.cible.x), Y(o.cible.y), Math.max(3, 0.22 * f), 0, 2 * Math.PI);
+      ctx.fill();
+      ctx.restore();
+    }
     texteIndices(ctx, fmtFR(o.vm, 0) + ' m/s', X(o.x), Y(o.y) - r - 0.8 * f, f * 0.85, oc[1], 'center', true, true);
   });
 
@@ -680,10 +686,9 @@ function _vdInitScope(qui) {
 //  Interactions sur la scène
 //   Automatique : pointe de flèche → orientation ; à l'arrêt, E ou R se
 //     replacent (pendant la lecture, ils suivent leur mouvement réglé).
-//   À la souris : pendant la lecture, l'objet saisi est PILOTÉ : le pointeur
-//     est verrouillé et masqué (Pointer Lock), seuls ses déplacements comptent
-//     (voir _vdPreparerSouris) ; il n'y a donc pas de bord d'écran qui bloque
-//     la main. À l'arrêt, l'objet se replace directement.
+//   À la souris : pendant la lecture, l'objet saisi POURSUIT le pointeur à une
+//     vitesse proportionnelle à leur distance (voir _vdPoursuite). À l'arrêt,
+//     l'objet se replace directement.
 // ══════════════════════════════════════════════════════════════════════
 
 function initDessus() {
@@ -692,7 +697,7 @@ function initDessus() {
   _vdInitScope('e');
   _vdInitScope('r');
 
-  // prise : { o, type: 'objet' | 'pointe', dx, dy, pilote, verrou, der: dernier point (px) }
+  // prise : { o, type: 'objet' | 'pointe', dx, dy (décalage de la saisie, px), pilote }
   var cv = cvDessus, prise = null;
 
   function pos(e) {
@@ -742,16 +747,10 @@ function initDessus() {
     if (!prise) return;
     if (prise.type === 'objet' && simV.lecture && simV.mode === 'souris') {
       prise.pilote = true;
-      prise.der = { x: e.clientX, y: e.clientY };
-      prise.o.saisi = true; prise.o.mvts = [];
-      if (e.pointerType === 'mouse' && cv.requestPointerLock) {
-        prise.verrou = true;
-        try {
-          var r = cv.requestPointerLock();
-          if (r && r.catch) r.catch(function () { if (prise) prise.verrou = false; });
-        } catch (err) { prise.verrou = false; }
-      }
-      if (!prise.verrou) { cv.setPointerCapture(e.pointerId); cv.style.cursor = 'none'; }
+      prise.o.saisi = true;
+      prise.o.cible = { x: prise.o.x, y: prise.o.y };   // saisi sur place : pas d'à-coup
+      cv.setPointerCapture(e.pointerId);
+      cv.style.cursor = 'grabbing';
       return;
     }
     cv.setPointerCapture(e.pointerId);
@@ -759,15 +758,13 @@ function initDessus() {
     appliquer(p);
   });
   cv.addEventListener('pointermove', function (e) {
+    var p = pos(e);
     if (prise && prise.pilote) {
-      var dx, dy;
-      if (document.pointerLockElement === cv) { dx = e.movementX; dy = e.movementY; }
-      else { dx = e.clientX - prise.der.x; dy = e.clientY - prise.der.y; }
-      prise.der = { x: e.clientX, y: e.clientY };
-      if (dx || dy) prise.o.mvts.push({ t: performance.now(), dx: dx, dy: dy });
+      // la cible garde le décalage de la saisie (cliquer à côté du centre ne fait pas bouger)
+      prise.o.cible = enMetres({ x: p.x + prise.dx, y: p.y + prise.dy });
+      if (!simV.lecture) dessinerDessus();
       return;
     }
-    var p = pos(e);
     if (prise) { appliquer(p); return; }
     cv.style.cursor = viser(p) ? 'grab' : 'default';
   });
@@ -775,7 +772,6 @@ function initDessus() {
     if (!prise) return;
     if (prise.pilote) {
       _vdLacher(prise.o);               // lâché : l'objet s'arrête net
-      if (document.pointerLockElement === cv && document.exitPointerLock) document.exitPointerLock();
       if (!simV.lecture) dessinerDessus();
     }
     prise = null;
@@ -783,14 +779,6 @@ function initDessus() {
   }
   cv.addEventListener('pointerup', fin);
   cv.addEventListener('pointercancel', fin);
-  // Verrou perdu (touche Échap, changement de fenêtre) : on lâche
-  document.addEventListener('pointerlockchange', function () {
-    if (prise && prise.verrou && document.pointerLockElement !== cv) fin();
-  });
-  // Verrou refusé : on pilote quand même avec les déplacements du pointeur (masqué)
-  document.addEventListener('pointerlockerror', function () {
-    if (prise && prise.verrou) { prise.verrou = false; cv.style.cursor = 'none'; }
-  });
 
   // Curseurs et libellés reprennent l'état
   document.getElementById('vd-sl-ralenti').value = simV.ralenti;
