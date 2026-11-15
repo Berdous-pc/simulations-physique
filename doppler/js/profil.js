@@ -594,13 +594,13 @@ function dessinerProfil() {
   if (fige) duree(0, TE, yLE, -1, COL_EMET, 'T_{E} = ' + fmtFR(TE, 2) + ' s');
   if (t >= T2 - 1e-9) duree(T1, T2, yLR, 1, COL_RECEP, 'T_{R} = ' + fmtFR(TRf, 2) + ' s');
 
-  // Événement : rond de la couleur de son motif, plein s'il est atteint, creux sinon
+  // Événement : rond de la couleur de son motif, qui n'apparaît qu'une fois
+  // atteint (pas d'empreinte des émissions et réceptions à venir)
   function evenement(tt, yy, couleur) {
-    var atteint = t >= tt - 1e-9;
+    if (t < tt - 1e-9) return;
     ctx.save();
-    ctx.globalAlpha = atteint ? 1 : 0.4;
     ctx.strokeStyle = couleur;
-    ctx.fillStyle = atteint ? couleur : '#f4efe6';
+    ctx.fillStyle = couleur;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(TX(tt), yy, 0.32 * f, 0, 2 * Math.PI);
