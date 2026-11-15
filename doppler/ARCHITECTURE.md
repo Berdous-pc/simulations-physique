@@ -205,7 +205,12 @@ de large, hauteur déduite du canvas, y = 0 au milieu.
     la main (pointeur verrouillé, v = c·(u / 700 px/s)²) : vecteur vitesse
     instable, faibles vitesses difficiles à tenir.
   - Dans les deux modes, à l'arrêt, faire glisser un objet le replace
-    directement.
+    directement. En Automatique, pendant la lecture, un objet de vitesse nulle
+    se replace de même ; tant que l'émetteur est tenu, `simV.coupe` coupe son
+    signal (pas de crête, échantillons d'historique `saut`, trace émise à 0) ;
+    l'émission reprend au lâcher.
+  - Position initiale (et RAZ) : E en (3 m, 0), R en (9 m, 0), sur la même
+    horizontale.
 - **Historique de l'émetteur** `_vdH` (date, position, phase, **célérité c**), un échantillon
   par pas de calcul, élagué au-delà de la traversée de la scène (E et R y
   restent, donc c·(t − τ) ≤ diagonale). Un déplacement à l'arrêt y pose un

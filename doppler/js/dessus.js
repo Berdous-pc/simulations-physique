@@ -57,8 +57,9 @@ var simV = {
   //   saisi : tenu à la souris ; cible : point visé par le pointeur { x, y } (m) ;
   //   vm, dm : vitesse (m/s) et direction du mouvement à la souris
   E: { x: 3, y: 0,   v: 100, dir: 0,       saisi: false, cible: null, vm: 0, dm: 0 },
-  R: { x: 9, y: 1.1, v: 0,   dir: Math.PI, saisi: false, cible: null, vm: 0, dm: 0 },
+  R: { x: 9, y: 0,   v: 0,   dir: Math.PI, saisi: false, cible: null, vm: 0, dm: 0 },
   supersonique: false,
+  coupe: false,       // émetteur tenu à la souris en mode Automatique : il n'émet plus
   showCentres: true,  // points d'émission des crêtes visibles
   scopeE: false,      // écran d'oscilloscope de l'émetteur affiché
   scopeR: false,
@@ -97,9 +98,9 @@ function _vdLacher(o) { o.saisi = false; o.cible = null; o.vm = 0; }
 
 function vdRaz() {
   vdArreter();
-  simV.t = 0; simV.phase = 0; simV.fR = NaN;
+  simV.t = 0; simV.phase = 0; simV.fR = NaN; simV.coupe = false;
   simV.E.x = 3; simV.E.y = 0;   simV.E.dir = 0;
-  simV.R.x = 9; simV.R.y = 1.1; simV.R.dir = Math.PI;
+  simV.R.x = 9; simV.R.y = 0;   simV.R.dir = Math.PI;
   _vdLacher(simV.E); _vdLacher(simV.R);
   _vdH = { t: [], x: [], y: [], p: [], c: [], saut: [] };
   _vdCretes = [];
@@ -201,13 +202,13 @@ function vdAvancer(dt) {
     var kAvant = Math.floor((simV.phase - Math.PI / 2) / deuxPi);
     simV.t += h;
     simV.phase += deuxPi * simV.fE * h;
-    if (Math.floor((simV.phase - Math.PI / 2) / deuxPi) > kAvant) {
+    if (!simV.coupe && Math.floor((simV.phase - Math.PI / 2) / deuxPi) > kAvant) {
       _vdCretes.push({ t: simV.t, x: simV.E.x, y: simV.E.y, c: simV.c });   // l'émetteur est en haut
     }
-    _vdPousserHistorique(false);
+    _vdPousserHistorique(simV.coupe);   // émetteur tenu : signal coupé, pas d'émission
 
     var res = _vdSignalRecu(simV.R.x, simV.R.y);
-    _vdTrace.t.push(simV.t); _vdTrace.e.push(Math.sin(simV.phase)); _vdTrace.r.push(res.val);
+    _vdTrace.t.push(simV.t); _vdTrace.e.push(simV.coupe ? 0 : Math.sin(simV.phase)); _vdTrace.r.push(res.val);
 
     // Fréquence reçue : vitesse de variation de la phase reçue (une seule contribution)
     if (res.n === 1) {
@@ -687,7 +688,9 @@ function _vdInitScope(qui) {
 // ══════════════════════════════════════════════════════════════════════
 //  Interactions sur la scène
 //   Automatique : pointe de flèche → orientation ; à l'arrêt, E ou R se
-//     replacent (pendant la lecture, ils suivent leur mouvement réglé).
+//     replacent ; pendant la lecture, seul un objet de vitesse nulle se
+//     replace (les autres suivent leur mouvement réglé). Tant que l'émetteur
+//     est tenu, son signal est coupé (simV.coupe).
 //   À la souris : pendant la lecture, l'objet saisi POURSUIT le pointeur à une
 //     vitesse proportionnelle à leur distance (voir _vdPoursuite). À l'arrêt,
 //     l'objet se replace directement.
@@ -721,10 +724,11 @@ function initDessus() {
         var pt = _vdPointe(objs[i]);
         if (pt && Math.abs(p.x - pt.x) < tol && Math.abs(p.y - pt.y) < tol) return { o: objs[i], type: 'pointe' };
       }
-      if (simV.lecture) return null;               // en lecture, le mouvement réglé commande
     }
     for (i = 0; i < 2; i++) {
       o = objs[i];
+      // Automatique en lecture : seul un objet immobile (v = 0) se replace
+      if (simV.mode === 'auto' && simV.lecture && o.v > 0) continue;
       d = Math.sqrt(Math.pow(p.x - o.x * g.s, 2) + Math.pow(p.y - (g.h / 2 + o.y * g.s), 2));
       if (d < g.r + 10) return { o: o, type: 'objet', dx: o.x * g.s - p.x, dy: g.h / 2 + o.y * g.s - p.y };
     }
@@ -737,8 +741,9 @@ function initDessus() {
       o.dir = Math.atan2(p.y - (g.h / 2 + o.y * g.s), p.x - o.x * g.s);
     } else {
       var m = enMetres({ x: p.x + prise.dx, y: p.y + prise.dy });
-      o.x = m.x; o.y = m.y;             // à l'arrêt : on replace l'objet
-      if (o === simV.E && _vdH.t.length) _vdPousserHistorique(true);
+      o.x = m.x; o.y = m.y;             // on replace l'objet
+      // à l'arrêt, le déplacement est un saut ; en lecture, vdAvancer s'en charge
+      if (o === simV.E && !simV.lecture && _vdH.t.length) _vdPousserHistorique(true);
     }
     dessinerDessus();
   }
@@ -755,6 +760,7 @@ function initDessus() {
       cv.style.cursor = 'grabbing';
       return;
     }
+    if (prise.type === 'objet' && prise.o === simV.E) simV.coupe = true;   // signal coupé jusqu'au lâcher
     cv.setPointerCapture(e.pointerId);
     cv.style.cursor = 'grabbing';
     appliquer(p);
@@ -776,6 +782,7 @@ function initDessus() {
       _vdLacher(prise.o);               // lâché : l'objet s'arrête net
       if (!simV.lecture) dessinerDessus();
     }
+    if (prise.type === 'objet' && prise.o === simV.E) simV.coupe = false;
     prise = null;
     cv.style.cursor = 'default';
   }
