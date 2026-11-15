@@ -416,7 +416,8 @@ function dessinerProfil() {
     // Ligne 2 : λ_R, longueur du premier motif de l'émetteur en mouvement
     barre(xb, xF, yB2, COL_LP);
     if (fige) {
-      libelle('λ_{R} = λ_{E} ' + (simD.sens > 0 ? '−' : '+') + ' v_{E}·T_{E}', 'λ_{R}',
+      // émetteur immobile (v_E = 0) : λ_R = λ_E, sans terme v_E·T_E
+      libelle('λ_{R} = λ_{E}' + (simD.vE > 0 ? (simD.sens > 0 ? ' − ' : ' + ') + 'v_{E}·T_{E}' : ''), 'λ_{R}',
               xb, xF, yB2 + 0.9 * f, COL_LP);
     }
 
