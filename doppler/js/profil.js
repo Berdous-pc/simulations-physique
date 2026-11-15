@@ -314,9 +314,17 @@ function dessinerProfil() {
   dessinerBande(y0, yFond, vEs);
 
   texteIndices(ctx, 'Émetteur immobile (témoin)', 0.6 * f, yLblT, f * 0.85, COL_GRIS, 'left', true);
-  // du côté opposé au départ de l'émetteur : la barre empilée s'y construit
-  texteIndices(ctx, 'Émetteur en mouvement', simD.sens > 0 ? w - 0.6 * f : 0.6 * f, yLblM, f * 0.85,
-               COL_GRIS, simD.sens > 0 ? 'right' : 'left', true);
+  // Toujours à gauche ; quand l'émetteur part de la gauche, la police est réduite
+  // pour que l'étiquette s'arrête avant sa position de départ (la barre empilée
+  // et sa ligne de rappel se construisent à sa droite). Elle passe à 1,9 f
+  // au-dessus des crêtes : pas de conflit vertical avec le flotteur.
+  var txtM = 'Émetteur mobile', fM = f * 0.85;
+  if (simD.sens > 0) {
+    ctx.font = 'bold ' + fM + 'px ' + POLICE;
+    var placeM = X(xE0) - 0.9 * f;
+    fM = Math.max(10, Math.min(fM, fM * placeM / ctx.measureText(txtM).width));
+  }
+  texteIndices(ctx, txtM, 0.5 * f, yLblM, fM, COL_GRIS, 'left', true, true);
 
   // ── Échelle des distances (10 cm) et chronomètre ────────────────────
     // Chronomètre : la date courante, au sol à droite de la scène (juste au-dessus de la frise)
@@ -555,12 +563,12 @@ function dessinerProfil() {
   ctx.stroke();
 
   // Peigne des débuts de motif : émis tous les T_E (ligne E), reçus tous les
-  // T_R (ligne R). Le trait qui relie l'émission n° k à sa réception avance
+  // T_R (ligne R). Option (simD.showLiens) : le trait qui relie l'émission n° k à sa réception avance
   // avec le motif : l'éventail se resserre si E se rapproche, s'ouvre s'il s'éloigne.
   var TRf = dopTR(), nRec = dopNRecep(), nEm = Math.floor(tFin / TE + 1e-9);
   var k;
   ctx.lineWidth = 1.5;
-  for (k = 0; k < nRec; k++) {
+  for (k = 0; k < (simD.showLiens ? nRec : 0); k++) {
     var te = k * TE, tr = T1 + k * TRf;
     if (t <= te) break;
     var av = Math.min(1, (t - te) / (tr - te));

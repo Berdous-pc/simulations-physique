@@ -37,7 +37,8 @@ var simD = {
   fE: 1,             // fréquence d'émission (Hz)
   showCotes: true,   // cotes λ_E, λ_R et v_E·T_E sur la scène
   showFrise: true,   // frise du temps sous la scène
-  showDemo: true    // démonstration écrite sous la scène
+  showLiens: false,  // frise : trait reliant chaque émission à sa réception
+  showDemo: false    // démonstration écrite sous la scène
 };
 
 // ══════════════════════════════════════════════════════════════════════
@@ -59,7 +60,7 @@ function dopXE0() {
 function dopXE(t) { return dopXE0() + dopVEs() * t; }
 
 // Instants clés : émission du front, émission du début du motif 2, réception du front,
-// réception du début du motif 2
+// réception du début du motif 2, fin de l'animation (dernière étape : la lecture va au bout)
 function dopT1()   { return (X_RECEPTEUR - dopXE0()) / V_ONDE; }
 function dopT2()   { return dopT1() + dopTR(); }
 // Date à laquelle l'émetteur atteint sa butée (bord gauche ou abords du récepteur)
@@ -75,7 +76,7 @@ function dopNRecep() {
   return Math.max(2, Math.min(N_RECEP, n));
 }
 function dopTFin() { return dopT1() + (dopNRecep() - 1) * dopTR() + T_FIN_MARGE * dopTE(); }
-function dopCles() { return [0, dopTE(), dopT1(), dopT2()]; }
+function dopCles() { return [0, dopTE(), dopT1(), dopT2(), dopTFin()]; }
 
 // Indice de l'instant clé égal à t (à 1e-6 près), ou -1
 function dopIndiceCle(t) {

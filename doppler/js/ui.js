@@ -150,7 +150,7 @@ function majTemps() {
   document.getElementById('sl-temps').value = Math.round(simD.t / tFin * 1000);
   _setText('lbl-temps', fmtFR(simD.t, 2) + ' s');
   document.getElementById('btn-etape-prec').disabled = simD.t <= 1e-6;
-  document.getElementById('btn-etape-suiv').disabled = simD.t >= c[3] - 1e-6;
+  document.getElementById('btn-etape-suiv').disabled = simD.t >= c[c.length - 1] - 1e-6;
   _majDemo();
   dessinerProfil();
 }
@@ -203,8 +203,12 @@ function _changerParam(appliquer) {
   majTemps();
 }
 
+// Changer de sens repart de t = 0 : la scène de départ n'est plus la même
 function setSens(sens) {
-  _changerParam(function () { simD.sens = sens; });
+  if (sens === simD.sens) return;
+  simD.sens = sens;
+  _majValeurs();
+  allerA(0);
   document.getElementById('sens-rapproche').classList.toggle('active', sens > 0);
   document.getElementById('sens-eloigne').classList.toggle('active', sens < 0);
   _majTextesSens();
@@ -222,8 +226,12 @@ function onSliderFE(v) {
 
 function toggleAffichage(cle, coche) {
   simD[cle] = coche;
-  document.getElementById('demo-bloc').style.display = simD.showDemo ? '' : 'none';
+  _majAffichageDemo();
   resizeAll();          // masquer la démonstration change la hauteur de la scène
+}
+
+function _majAffichageDemo() {
+  document.getElementById('demo-bloc').style.display = simD.showDemo ? '' : 'none';
 }
 
 function _majValeurs() {
@@ -268,6 +276,10 @@ function init() {
   document.getElementById('sl-ve').value = simD.vE;
   document.getElementById('sl-fe').value = simD.fE;
   document.getElementById('sl-vitesse').value = simD.vitesse;
+  ['showCotes', 'showFrise', 'showLiens', 'showDemo'].forEach(function (cle) {
+    document.getElementById('cb-' + cle).checked = simD[cle];
+  });
+  _majAffichageDemo();
 
   var hash = window.location.hash.replace('#', '');
   if (VALID_TABS.indexOf(hash) !== -1) activeTab = hash;

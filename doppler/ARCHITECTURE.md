@@ -97,9 +97,10 @@ date fixée.
   L'élongation `dopElongation` vaut `sin(2π·f_E·te)` si te > 0, zéro sinon.
 - `dopXRepere(n, t)` : abscisse du point émis vers le récepteur à n·T_E (n = 0 :
   front, n = 1 : début du motif 2).
-- **Instants clés** `dopCles()` : `[0, T_E, t₁, t₂]` — départ du front, début du
-  motif 2, réception du front, réception du début du motif 2. Ce sont les
-  seules étapes ; au-delà, la lecture laisse défiler le train de motifs.
+- **Instants clés** `dopCles()` : `[0, T_E, t₁, t₂, t_fin]` — départ du front,
+  début du motif 2, réception du front, réception du début du motif 2, fin de
+  l'animation. La dernière étape laisse simplement défiler le train de motifs
+  jusqu'à `dopTFin()`.
 - **Fin** `dopTFin()` : `T_FIN_MARGE`·T_E après la dernière réception. On
   reçoit `dopNRecep()` débuts de motif : `N_RECEP` = 6, moins si l'émetteur
   atteint avant sa butée `dopTLimite()` (à `MARGE_BORD` du bord gauche ou à
@@ -121,10 +122,10 @@ se déduit d'une **taille de police `f`** proportionnelle au canvas (bornée à
 |---|---|
 | bande témoin | émetteur immobile (`dessinerBande(y0T, yFondT, 0)`) ; son récepteur clignote au rythme T_E |
 | barre empilée | ligne 1 : « c·t » puis « λ_E = c·T_E » ; ligne 2 : λ_R (rouge) ; segment vert v_E·T_E sur la ligne la plus courte. Libellé long s'il tient dans la barre, court sinon (`libelle`) |
-| bande mobile | `dessinerBande(y0, yFond, vEs)` : surface en trait fin, motifs colorés en trait épais, gros points et marques au sol des débuts de motif ; étiquette « motif 2 » ; flotteurs E et R centrés sur la surface et tracés entièrement par-dessus l'eau (pas de voile sur la moitié basse : écarté par l'auteur) ; vecteur v_E solidaire de E |
+| bande mobile | `dessinerBande(y0, yFond, vEs)` : surface en trait fin, motifs colorés en trait épais, gros points et marques au sol des débuts de motif ; titre « Émetteur mobile » toujours à gauche (police réduite quand l'émetteur part de la gauche, pour tenir avant lui) ; étiquette « motif 2 » ; flotteurs E et R centrés sur la surface et tracés entièrement par-dessus l'eau (pas de voile sur la moitié basse : écarté par l'auteur) ; vecteur v_E solidaire de E |
 | cote v_E·T_E (vert, au sol) | « v_E·t » puis « v_E·T_E », positions « E à t = 0 » / « E à t = T_E » ; estompée après T_E |
 | échelle et chronomètre | sur la ligne de la cote au sol : segment « 10 cm » du côté opposé au départ de l'émetteur (il remplace l'ancienne règle graduée, supprimée pour gagner de la hauteur), chronomètre « t = 2,20 s » à droite (aiguille : un tour par T_E) |
-| frise du temps (facultative, `simD.showFrise`) | fond teinté ; deux **lignes de vie** précédées des pastilles E et R ; **axe du temps** fléché « t (s) », gradué tous les 0,1 s, chiffré tous les 0,5 s ; **peigne** des débuts de motif, ronds de la couleur du motif (bleu, ocre), pleins une fois atteints : tous les T_E sur la ligne E, tous les T_R sur la ligne R ; un trait relie l'émission n° k à sa réception et **avance avec le motif** (éventail qui se resserre ou s'ouvre) ; durées T_E (au-dessus de la ligne E) et T_R (sous la ligne R), à la même échelle ; curseur portant une **bulle de date** |
+| frise du temps (facultative, `simD.showFrise`) | fond teinté ; deux **lignes de vie** précédées des pastilles E et R ; **axe du temps** fléché « t (s) », gradué tous les 0,1 s, chiffré tous les 0,5 s ; **peigne** des débuts de motif, ronds de la couleur du motif (bleu, ocre), pleins une fois atteints : tous les T_E sur la ligne E, tous les T_R sur la ligne R ; en option (`simD.showLiens`, case décochée par défaut), un trait relie l'émission n° k à sa réception et **avance avec le motif** (éventail qui se resserre ou s'ouvre) ; durées T_E (au-dessus de la ligne E) et T_R (sous la ligne R), à la même échelle ; curseur portant une **bulle de date** |
 
 La frise doit se lire comme du temps, pas comme un second axe d'espace : d'où
 l'unité, la flèche, la bulle de date, le trait écoulé en couleur neutre (et non
@@ -157,10 +158,13 @@ instants clés.
   revient directement au précédent. `simD.cible` est un **indice** et non une
   date : les instants clés dépendent des paramètres.
 - `_changerParam()` : si la date est exactement un instant clé au moment où
-  l'on change v_E, f_E ou le sens, elle est replacée sur le même instant clé
+  l'on change v_E ou f_E, elle est replacée sur le même instant clé
   après le changement — on reste « sur la même étape » et la scène s'ajuste.
+  Changer de **sens** (`setSens`) remet en revanche l'animation à t = 0.
 - `majTemps()` met à jour curseur, boutons d'étape, démonstration et scène.
-- **Démonstration écrite** (`#demo-bloc`, HTML sous la scène) : cinq lignes,
+- **Démonstration écrite** (`#demo-bloc`, HTML sous la scène, masquée par
+  défaut : `simD.showDemo = false`, cases d'*Affichage* resynchronisées sur
+  `simD` à l'initialisation) : cinq lignes,
   classes `.atteinte` (étape passée) et `.active` (étape en cours) posées par
   `_majDemo()` ; les signes, le comparateur et les verbes qui dépendent du sens
   sont dans des `<span class="dp-…">` remplis par `_majTextesSens()`.

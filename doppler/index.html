@@ -33,7 +33,7 @@
       </div>
 
       <!-- Démonstration écrite : chaque ligne s'allume quand son étape est atteinte -->
-      <div id="demo-bloc">
+      <div id="demo-bloc" style="display:none;">
         <div class="demo-intro">
           Un émetteur E <span class="dp-intro">se rapproche</span> à la vitesse <i>v</i><sub>E</sub>
           d'un récepteur fixe R. L'onde se propage à la célérité <i>c</i>.
@@ -186,15 +186,19 @@
         <div class="panel-section">
           <div class="section-title" data-repliable>Affichage</div>
           <label class="check-row">
-            <input type="checkbox" checked onchange="toggleAffichage('showCotes', this.checked)">
+            <input type="checkbox" id="cb-showCotes" checked onchange="toggleAffichage('showCotes', this.checked)">
             <span>Cotes (λ<sub>E</sub>, λ<sub>R</sub>, v<sub>E</sub>·T<sub>E</sub>)</span>
           </label>
           <label class="check-row">
-            <input type="checkbox" checked onchange="toggleAffichage('showFrise', this.checked)">
+            <input type="checkbox" id="cb-showFrise" checked onchange="toggleAffichage('showFrise', this.checked)">
             Frise du temps
           </label>
           <label class="check-row">
-            <input type="checkbox" checked onchange="toggleAffichage('showDemo', this.checked)">
+            <input type="checkbox" id="cb-showLiens" onchange="toggleAffichage('showLiens', this.checked)">
+            Frise : relier émissions et réceptions
+          </label>
+          <label class="check-row">
+            <input type="checkbox" id="cb-showDemo" onchange="toggleAffichage('showDemo', this.checked)">
             Démonstration écrite
           </label>
         </div>
@@ -358,19 +362,20 @@
       </div>
       <div class="panel-hint-body">
         <strong>Lecture</strong> déroule toute l'animation ; <strong>Étape ▶</strong> s'arrête à l'instant clé suivant
-        (début du motif 2, arrivée du front au récepteur, puis arrivée du début du motif 2).
-        Après la dernière étape, <strong>Lecture</strong> laisse défiler les motifs : les émetteurs et les
+        (début du motif 2, arrivée du front au récepteur, arrivée du début du motif 2, puis fin de l'animation :
+        la dernière étape laisse défiler les motifs suivants). Les émetteurs et les
         récepteurs clignotent à chaque début de motif ; le récepteur du haut clignote au rythme de l'émission.<br>
         <strong>Temps</strong> : faites glisser le curseur du panneau, ou la <strong>frise du temps</strong> en bas de la scène,
         pour parcourir l'animation à la main. Sur la frise, les ronds bleus concernent le front de l'onde, les ronds
-        ocre le début du motif 2 ; elle peut être masquée dans <em>Affichage</em>.<br>
-        <strong>Émetteur</strong> : choisissez s'il se rapproche ou s'éloigne du récepteur R, puis réglez sa vitesse
-        et sa fréquence ; la scène se met à jour sans changer d'étape.<br>
-        <strong>Deux bandes</strong> : en haut l'émetteur immobile (témoin), en bas l'émetteur en mouvement ;
+        ocre le début du motif 2 ; elle peut être masquée dans <em>Affichage</em>, où l'on peut aussi
+        relier chaque émission à sa réception.<br>
+        <strong>Émetteur</strong> : choisissez s'il se rapproche ou s'éloigne du récepteur R (l'animation repart
+        alors de t = 0), puis réglez sa vitesse et sa fréquence ; la scène se met à jour sans changer d'étape.<br>
+        <strong>Deux bandes</strong> : en haut l'émetteur immobile (témoin), en bas l'émetteur mobile ;
         les deux émettent en même temps. Un gros point marque le début de chaque motif ; le trait vert sous l'eau
         repère où se trouvait l'émetteur à ce moment-là.<br>
-        Les lignes de la <strong>démonstration</strong> s'allument au fil de l'animation ; elle peut être masquée
-        dans <em>Affichage</em>.
+        La <strong>démonstration écrite</strong> s'affiche en cochant la case dans <em>Affichage</em> ;
+        ses lignes s'allument au fil de l'animation.
       </div>
     </div>
 
