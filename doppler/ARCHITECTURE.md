@@ -181,22 +181,37 @@ de large, hauteur déduite du canvas, y = 0 au milieu.
 
 ### Modèle
 
-- **Objets** `simV.E` et `simV.R` : position, vitesse `v` (curseur), direction
-  `dir`, et `cible` (point visé pendant qu'on les tire à la souris).
-  `_vdDeplacer()` : mouvement rectiligne uniforme avec **rebond** sur les bords ;
-  un objet tiré à la souris pendant la lecture **rejoint le pointeur à sa
-  vitesse réglée** (0,4 c s'il est immobile) au lieu de s'y téléporter — avec le
-  ralenti, un geste de la main serait sinon largement supersonique. À l'arrêt,
-  le déplacement est direct.
-- **Historique de l'émetteur** `_vdH` (date, position, phase), un échantillon
+- **Deux modes de mouvement** (`simV.mode`, onglets du panneau), chacun avec
+  son ralenti (`simV.ralenti.auto` = 4 ms/s, `.souris` = 15 ms/s : c ≈ 10 cm/s
+  de main à l'écran) :
+  - **Automatique** : vitesse `v` (curseur) et direction `dir` (poignée ronde
+    à la pointe de la flèche) ; `_vdDeplacer()` : mouvement rectiligne uniforme
+    avec **rebond** sur les bords. Pendant la lecture, on ne peut pas attraper
+    E ou R (seulement les poignées).
+  - **À la souris** : pas de curseur de vitesse ni de poignée. Pendant la
+    lecture, l'objet tiré **suit la main** : `ptr` (point visé) est lissé en
+    `cible` (τ = 40 ms réelles, sinon la vitesse saccade au rythme des
+    événements pointeur), puis `_vdPreparerSouris()` fixe une fois par image la
+    vitesse `pas` qui amène l'objet sur `cible` en fin d'image, **plafonnée** à
+    0,9 c (2 c si « Autoriser le supersonique »). Sous le plafond l'objet colle
+    à la main ; au-delà il prend du retard, montré par une **laisse**
+    pointillée, et rattrape la main ensuite. Lâché, il finit de rejoindre le
+    point de lâcher puis s'arrête. Vitesse **mesurée** `vm`, `dm` (flèche et
+    panneau, avec v_E / c).
+  - Dans les deux modes, à l'arrêt, faire glisser un objet le replace
+    directement.
+- **Historique de l'émetteur** `_vdH` (date, position, phase, **célérité c**), un échantillon
   par pas de calcul, élagué au-delà de la traversée de la scène (E et R y
   restent, donc c·(t − τ) ≤ diagonale). Un déplacement à l'arrêt y pose un
   échantillon `saut` : le segment correspondant n'est pas un trajet.
 - **Crêtes** `_vdCretes` : une par passage de la phase à π/2 + 2kπ, cercle de
-  rayon c·(t − t_k) centré là où se trouvait l'émetteur. Le rayon est recalculé
-  avec le c courant (changer c redessine tout, approximation assumée).
+  rayon c_k·(t − t_k) centré là où se trouvait l'émetteur, où c_k est la
+  célérité à l'émission : **changer c ou f ne modifie que l'onde émise
+  ensuite** (choix de l'auteur). Si c augmente, les nouvelles crêtes rattrapent
+  les anciennes et R reçoit un moment deux contributions (f_R « — »).
 - **Signal reçu** `_vdSignalRecu()` : recherche dans l'historique des dates
-  retardées τ telles que c·(t − τ) = distance au point d'émission ; somme des
+  retardées τ telles que c_τ·(t − τ) = distance au point d'émission (un segment
+  d'historique où c change n'est pas une émission continue : pas de racine) ; somme des
   contributions `_vdAmp(r)·sin(phase(τ))`. Une seule contribution en subsonique,
   zéro ou plusieurs en **supersonique** (autorisé : v_E jusqu'à 600 m/s, le cône
   de Mach se forme tout seul avec les cercles).
@@ -216,14 +231,22 @@ de large, hauteur déduite du canvas, y = 0 au milieu.
 - **Écrans d'oscilloscope** : fenêtres DOM `.scope-win` posées sur la scène,
   déplaçables par leur barre de titre, sur le modèle de `interferences/`
   (onglet 1D) : boîtier sombre, trace « phosphore », graduations rondes en ms.
-  Les deux écrans ont **la même base de temps** (`VD_FENETRE_T` = 5 périodes
-  d'émission, défilante) et la même échelle verticale : c'est ce qui rend
-  lisible l'écart de période. Les signaux sont enregistrés dans `_vdTrace`.
+  **Balayage déclenché** (le défilement continu a été écarté par l'auteur) :
+  `_vdMajBalayages()` fait repartir le spot, une fois l'écran parcouru, au
+  premier passage du signal par zéro en montant (sans signal pendant un
+  balayage entier, départ libre) ; un signal périodique paraît immobile. Le
+  balayage précédent reste en rémanence à droite du spot. Graticule 10 × 8
+  divisions, base de temps `simV.calibre` (0,2 / 0,5 / 1 / 2 ms/div,
+  indépendante de f_E) **commune aux deux écrans**, même échelle verticale.
+  **Figer les écrans** (`_vdFige`) copie trace et balayages ; la simulation
+  continue. Signaux enregistrés dans `_vdTrace` (70 ms).
 
 ### Commandes
 
 Lecture / Pause, RAZ (efface l'onde, replace E et R), ralenti, célérité c,
-fréquence f_E, vitesses v_E et v_R, boutons des deux écrans, lecture de f_E,
+fréquence f_E, mode de mouvement, vitesses v_E et v_R (Automatique) ou vitesses
+mesurées et case supersonique (À la souris), boutons des deux écrans, base de
+temps, Figer, lecture de f_E,
 f_R et de leur écart. Fonctions du panneau préfixées `vd` ; `ui.js` n'appelle
 que `initDessus()`, `resizeDessus()` et `vdArreter()` (changement d'onglet).
 

@@ -256,7 +256,7 @@
               Ralenti
               <span class="param-value" id="vd-lbl-ralenti">1 s ↔ 4 ms</span>
             </label>
-            <input type="range" id="vd-sl-ralenti" min="1" max="10" step="1" value="4"
+            <input type="range" id="vd-sl-ralenti" min="1" max="30" step="1" value="4"
                    oninput="vdOnRalenti(this.value)">
           </div>
         </div>
@@ -287,7 +287,35 @@
 
         <div class="panel-section">
           <div class="section-title">Mouvement</div>
-          <div class="param-row">
+          <div class="mode-tabs">
+            <button class="mode-tab active" id="vd-mode-auto" onclick="vdSetMode('auto')">Automatique</button>
+            <button class="mode-tab" id="vd-mode-souris" onclick="vdSetMode('souris')">À la souris</button>
+          </div>
+          <div id="vd-bloc-souris" style="display:none;">
+            <div class="input-hint input-hint-after-btn">
+              Pendant la lecture, faites glisser E ou R : leur vitesse est celle de votre main.
+            </div>
+            <div class="readout">
+              <div class="ro-line">
+                <span class="ro-item-label">Émetteur v<sub>E</sub></span>
+                <span class="ro-item-val" id="vd-ro-ve">—</span>
+              </div>
+              <div class="ro-line">
+                <span class="ro-item-label">v<sub>E</sub> / c</span>
+                <span class="ro-item-val" id="vd-ro-mach">—</span>
+              </div>
+              <div class="ro-line">
+                <span class="ro-item-label">Récepteur v<sub>R</sub></span>
+                <span class="ro-item-val" id="vd-ro-vr">—</span>
+              </div>
+            </div>
+            <label class="check-row">
+              <input type="checkbox" onchange="vdToggleSupersonique(this.checked)">
+              Autoriser le supersonique
+            </label>
+          </div>
+          <div id="vd-bloc-auto">
+          <div class="param-row param-row-after-btn">
             <label>
               <span>Émetteur v<sub>E</sub></span>
               <span class="param-value" id="vd-lbl-ve">100 m/s</span>
@@ -303,6 +331,7 @@
             <input type="range" id="vd-sl-vr" min="0" max="150" step="10" value="0"
                    oninput="vdOnVR(this.value)">
           </div>
+          </div>
         </div>
 
         <div class="sep"></div>
@@ -314,6 +343,18 @@
                     title="Afficher le signal émis par E">Signal émis</button>
             <button class="btn btn-toggle-one" id="vd-btn-scope-r" onclick="vdToggleScope('r')"
                     title="Afficher le signal reçu par R">Signal reçu</button>
+          </div>
+          <div class="param-row param-row-after-btn">
+            <label>
+              Base de temps
+              <span class="param-value" id="vd-lbl-calibre">1 ms/div</span>
+            </label>
+            <input type="range" id="vd-sl-calibre" min="0" max="3" step="1" value="2"
+                   oninput="vdOnCalibre(this.value)">
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-toggle-one" id="vd-btn-figer" onclick="vdBasculerFige()"
+                    title="Garder l'image des écrans pour la mesurer">Figer les écrans</button>
           </div>
         </div>
 
@@ -389,12 +430,17 @@
                 title="Afficher les informations">▲</button>
       </div>
       <div class="panel-hint-body">
-        <strong>Lecture</strong> lance l'émission ; l'animation est un fort <strong>ralenti</strong>, réglable.<br>
-        <strong>Déplacer</strong> : faites glisser l'émetteur E ou le récepteur R sur la scène. Pendant la lecture,
-        l'objet rejoint le pointeur à la vitesse réglée dans <em>Mouvement</em>.<br>
+        <strong>Lecture</strong> lance l'émission ; l'animation est un fort <strong>ralenti</strong>, réglable
+        (chaque mode garde le sien). À l'arrêt, faites glisser E ou R pour les replacer.<br>
         <strong>Mouvement automatique</strong> : donnez une vitesse à E ou à R avec les curseurs, puis orientez
         le mouvement en tirant la pointe ronde de la flèche. L'objet rebondit sur les bords.<br>
-        <strong>Oscilloscopes</strong> : les deux écrans ont la même base de temps ; déplacez-les par leur barre de titre.
+        <strong>Mouvement à la souris</strong> : pendant la lecture, faites glisser E ou R ; il va aussi vite
+        que votre main et s'arrête quand vous le lâchez. Sa vitesse est plafonnée à 0,9 c (2 c si vous autorisez
+        le supersonique) : au-delà, un pointillé le relie à la main, qu'il rattrape dès que vous ralentissez.<br>
+        <strong>c et f<sub>E</sub></strong> ne changent que l'onde émise ensuite : l'onde déjà partie garde les siens.<br>
+        <strong>Oscilloscopes</strong> : comme en TP, le spot balaie l'écran puis repart quand le signal passe par zéro
+        en montant ; un signal périodique paraît donc immobile. Les deux écrans ont la même base de temps.
+        <em>Figer les écrans</em> garde leur image pour compter les périodes ; déplacez-les par leur barre de titre.
       </div>
     </div>
 

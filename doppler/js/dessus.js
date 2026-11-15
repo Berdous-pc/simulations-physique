@@ -8,8 +8,10 @@
 //  dessus.js — Onglet Vue de dessus (2D) : état, modèle, rendu, écrans
 //  d'oscilloscope et interactions. AUTONOME : il ne partage avec l'onglet
 //  Démonstration que les utilitaires (fmtFR, borner : sim.js ; sizeCanvas,
-//  texteIndices, fleche, couleurs : profil.js).
+//  texteIndices, _pastille, couleurs : profil.js).
 //  Onde sonore vue de dessus, fortement ralentie. Unités : m, s, Hz.
+//  Deux modes de mouvement : Automatique (vitesses et directions réglées) et
+//  À la souris (E et R suivent la main, leur vitesse est mesurée).
 //  Chargé après profil.js, avant ui.js.
 // ══════════════════════════════════════════════════════════════════════
 
@@ -20,10 +22,18 @@ var VD_LARGEUR      = 12;     // largeur de la scène (m) ; la hauteur suit le c
 var VD_MARGE        = 0.35;   // E et R restent à cette distance des bords (m)
 var VD_PAS_PAR_T    = 120;    // pas de calcul par période émise (f_R peut valoir 10 f_E)
 var VD_PAS_MAX      = 80;     // pas de calcul par image, au plus
-var VD_FENETRE_T    = 5;      // les oscilloscopes montrent 5 périodes d'émission
-var VD_TRACE_DUREE  = 0.03;   // durée de signal conservée (s) : 5 périodes à 200 Hz + marge
+var VD_TRACE_DUREE  = 0.07;   // durée de signal conservée (s) : deux balayages de 20 ms + attente
 var VD_FLECHE_C     = 0.9;    // longueur (m) du vecteur vitesse d'un objet allant à c
-var VD_V_GLISSER    = 0.4;    // objet immobile tiré à la souris : il suit à 0,4 c
+var VD_DIV_X        = 10;     // divisions horizontales des écrans
+var VD_DIV_Y        = 8;      // divisions verticales
+var VD_CALIBRES     = [0.2e-3, 0.5e-3, 1e-3, 2e-3];   // bases de temps (s/div)
+
+// Mode À la souris
+var VD_PLAFOND      = 0.9;    // vitesse maximale d'un objet tiré : 0,9 c …
+var VD_PLAFOND_SUP  = 2;      // … ou 2 c si le supersonique est autorisé
+var VD_TAU_MAIN     = 0.04;   // lissage du pointeur (s réelles) : vitesse régulière
+var VD_TAU_VMES     = 0.12;   // lissage de la vitesse affichée (s réelles)
+var VD_LAISSE_MIN   = 0.12;   // retard (m) au-delà duquel on montre la laisse
 
 var VD_COL_SCOPE_BG   = '#0f1720';
 var VD_COL_SCOPE_GRID = 'rgba(160,190,220,0.16)';
@@ -37,26 +47,37 @@ var simV = {
   t: 0,               // date simulée (s)
   phase: 0,           // phase de l'émetteur (rad) ; signal émis = sin(phase)
   lecture: false,
-  ralenti: 4,         // millisecondes simulées par seconde réelle
-  c: 340,             // célérité de l'onde (m/s)
+  mode: 'auto',       // 'auto' | 'souris'
+  ralenti: { auto: 4, souris: 15 },  // ms simulées par seconde réelle, propre à chaque mode
+  c: 340,             // célérité de l'onde (m/s) pour les émissions à venir
   fE: 500,            // fréquence d'émission (Hz)
-  // Objets : position (m, y = 0 au milieu de la scène), vitesse (m/s), direction (rad),
-  // cible = point visé pendant qu'on les tire à la souris (null sinon)
-  E: { x: 3, y: 0,   v: 100, dir: 0,       cible: null },
-  R: { x: 9, y: 1.1, v: 0,   dir: Math.PI, cible: null },
+  // Objets : position (m, y = 0 au milieu de la scène) ;
+  //   v, dir : vitesse et direction réglées (mode Automatique) ;
+  //   ptr : point visé par la main (mode À la souris, null sinon), cible : ptr lissé ;
+  //   saisi : tenu par le pointeur ; vm, dm : vitesse et direction mesurées ;
+  //   pas : vitesse du déplacement en cours (m/s) ; retard : la laisse est tendue
+  E: { x: 3, y: 0,   v: 100, dir: 0,       ptr: null, cible: null, saisi: false, vm: 0, dm: 0, pas: 0, retard: false },
+  R: { x: 9, y: 1.1, v: 0,   dir: Math.PI, ptr: null, cible: null, saisi: false, vm: 0, dm: 0, pas: 0, retard: false },
+  supersonique: false,
   showCentres: true,  // points d'émission des crêtes visibles
   scopeE: false,      // écran d'oscilloscope de l'émetteur affiché
   scopeR: false,
+  calibre: 1e-3,      // base de temps commune aux deux écrans (s/div)
+  fige: false,        // écrans figés
   fR: NaN             // fréquence reçue instantanée lissée (NaN : indéfinie)
 };
 
-// Historique de l'émetteur : un échantillon par pas de calcul.
+// Historique de l'émetteur : un échantillon par pas de calcul, avec la célérité
+// de l'onde émise à cet instant (chaque émission garde la sienne).
 // saut = 1 : l'émetteur a été déplacé à l'arrêt, le segment qui y mène n'est pas un trajet.
-var _vdH = { t: [], x: [], y: [], p: [], saut: [] };
+var _vdH = { t: [], x: [], y: [], p: [], c: [], saut: [] };
 // Crêtes : cercles centrés là où se trouvait l'émetteur quand sa phase valait π/2 + 2kπ
-var _vdCretes = [];                       // { t, x, y }
+var _vdCretes = [];                       // { t, x, y, c }
 // Signaux enregistrés pour les oscilloscopes
 var _vdTrace = { t: [], e: [], r: [] };
+// Balayages : date de début du balayage en cours et du précédent (NaN : aucun)
+var _vdBal = { e: { deb: NaN, prec: NaN }, r: { deb: NaN, prec: NaN } };
+var _vdFige = null;                       // copie des écrans au moment où on les fige
 var _vdPhiRetPrec = NaN, _vdTPrec = 0;    // phase retardée au pas précédent (mesure de f_R)
 
 var cvDessus = null, ctxDessus = null;
@@ -72,16 +93,24 @@ function _vdHauteur() { return _vdGeo ? _vdGeo.Hm : VD_LARGEUR * 0.6; }
 // Amplitude reçue à la distance r de son point d'émission (décroissance douce)
 function _vdAmp(r) { return 1 / Math.sqrt(1 + r); }
 
+function _vdLacher(o) {
+  o.ptr = null; o.cible = null; o.saisi = false;
+  o.vm = 0; o.pas = 0; o.retard = false;
+}
+
 function vdRaz() {
   vdArreter();
   simV.t = 0; simV.phase = 0; simV.fR = NaN;
-  simV.E.x = 3; simV.E.y = 0;   simV.E.dir = 0;       simV.E.cible = null;
-  simV.R.x = 9; simV.R.y = 1.1; simV.R.dir = Math.PI; simV.R.cible = null;
-  _vdH = { t: [], x: [], y: [], p: [], saut: [] };
+  simV.E.x = 3; simV.E.y = 0;   simV.E.dir = 0;
+  simV.R.x = 9; simV.R.y = 1.1; simV.R.dir = Math.PI;
+  _vdLacher(simV.E); _vdLacher(simV.R);
+  _vdH = { t: [], x: [], y: [], p: [], c: [], saut: [] };
   _vdCretes = [];
   _vdTrace = { t: [], e: [], r: [] };
+  _vdBal = { e: { deb: NaN, prec: NaN }, r: { deb: NaN, prec: NaN } };
   _vdPhiRetPrec = NaN;
   _vdBorner(simV.E); _vdBorner(simV.R);
+  if (simV.fige) vdBasculerFige();
   _vdMajValeurs();
   dessinerDessus();
 }
@@ -92,18 +121,46 @@ function _vdBorner(o) {
   o.y = borner(o.y, -hy, hy);
 }
 
-// Déplace un objet pendant h secondes : vers le pointeur s'il est tiré à la
-// souris (à sa vitesse réglée, donc sans téléportation), sinon en ligne droite
-// avec rebond sur les bords de la scène.
+// Mode À la souris, une fois par image : le point visé par la main est lissé
+// (cible), puis l'objet se dirige vers lui à la vitesse qui l'y amène en fin
+// d'image, plafonnée à 0,9 c (ou 2 c). Sous le plafond, l'objet colle donc à
+// la main ; au-delà, il prend du retard (laisse tendue) et le rattrape ensuite.
+function _vdPreparerSouris(dtReel, dtSim) {
+  var aMain = 1 - Math.exp(-dtReel / VD_TAU_MAIN);
+  var aMes = 1 - Math.exp(-dtReel / VD_TAU_VMES);
+  var vMax = (simV.supersonique ? VD_PLAFOND_SUP : VD_PLAFOND) * simV.c;
+  [simV.E, simV.R].forEach(function (o) {
+    o.pas = 0; o.retard = false;
+    if (o.ptr) {
+      if (!o.cible) o.cible = { x: o.x, y: o.y };
+      o.cible.x += aMain * (o.ptr.x - o.cible.x);
+      o.cible.y += aMain * (o.ptr.y - o.cible.y);
+      var dx = o.cible.x - o.x, dy = o.cible.y - o.y, d = Math.sqrt(dx * dx + dy * dy);
+      var vVoulue = dtSim > 0 ? d / dtSim : 0;
+      o.pas = Math.min(vVoulue, vMax);
+      if (d > 1e-6) o.dm = Math.atan2(dy, dx);
+      var ex = o.ptr.x - o.x, ey = o.ptr.y - o.y;
+      o.retard = vVoulue > vMax && Math.sqrt(ex * ex + ey * ey) > VD_LAISSE_MIN;
+      // Lâché et arrivé : l'objet s'arrête
+      if (!o.saisi && Math.sqrt(ex * ex + ey * ey) < 1e-4) { o.ptr = null; o.cible = null; o.pas = 0; }
+    }
+    o.vm += aMes * (o.pas - o.vm);
+    if (o.vm < 0.5 && !o.pas) o.vm = 0;
+  });
+}
+
+// Déplace un objet pendant h secondes simulées
 function _vdDeplacer(o, h) {
-  if (o.cible) {
+  if (simV.mode === 'souris') {
+    if (!o.pas || !o.cible) return;
     var dx = o.cible.x - o.x, dy = o.cible.y - o.y, d = Math.sqrt(dx * dx + dy * dy);
-    var pas = (o.v > 0 ? o.v : VD_V_GLISSER * simV.c) * h;
-    if (d <= pas) { o.x = o.cible.x; o.y = o.cible.y; }
-    else { o.x += dx / d * pas; o.y += dy / d * pas; }
+    var l = o.pas * h;
+    if (d <= l) { o.x = o.cible.x; o.y = o.cible.y; }
+    else { o.x += dx / d * l; o.y += dy / d * l; }
     _vdBorner(o);
     return;
   }
+  // Automatique : ligne droite à vitesse constante, rebond sur les bords
   if (o.v <= 0) return;
   var hy = _vdHauteur() / 2 - VD_MARGE;
   o.x += o.v * Math.cos(o.dir) * h;
@@ -117,27 +174,29 @@ function _vdDeplacer(o, h) {
 
 function _vdPousserHistorique(saut) {
   _vdH.t.push(simV.t); _vdH.x.push(simV.E.x); _vdH.y.push(simV.E.y);
-  _vdH.p.push(simV.phase); _vdH.saut.push(saut ? 1 : 0);
+  _vdH.p.push(simV.phase); _vdH.c.push(simV.c); _vdH.saut.push(saut ? 1 : 0);
 }
 
 // Signal reçu en (px, py) à la date courante : somme des contributions émises
-// aux dates τ telles que c·(t − τ) = distance au point d'émission (une seule
-// tant que l'émetteur est subsonique, plusieurs possibles au-delà).
+// aux dates τ telles que c_τ·(t − τ) = distance au point d'émission, où c_τ est
+// la célérité de l'onde émise à τ (une seule contribution tant que l'émetteur
+// est subsonique et c constant, plusieurs possibles sinon).
 // Renvoie { val, n, phi } : valeur, nombre de contributions, phase de la plus récente.
 var _vdRes = { val: 0, n: 0, phi: 0 };
 function _vdSignalRecu(px, py) {
-  var H = _vdH, t = simV.t, c = simV.c, n = H.t.length;
+  var H = _vdH, t = simV.t, n = H.t.length;
   var val = 0, nb = 0, phi = 0;
   var dx = px - H.x[n - 1], dy = py - H.y[n - 1];
-  var gSuiv = c * (t - H.t[n - 1]) - Math.sqrt(dx * dx + dy * dy), g;
+  var gSuiv = H.c[n - 1] * (t - H.t[n - 1]) - Math.sqrt(dx * dx + dy * dy), g;
   for (var i = n - 2; i >= 0; i--) {
     dx = px - H.x[i]; dy = py - H.y[i];
-    g = c * (t - H.t[i]) - Math.sqrt(dx * dx + dy * dy);
-    if (!H.saut[i + 1] && ((g >= 0 && gSuiv < 0) || (g < 0 && gSuiv >= 0))) {
+    g = H.c[i] * (t - H.t[i]) - Math.sqrt(dx * dx + dy * dy);
+    // Un segment où c change (ou un saut) n'est pas une émission continue : pas de racine
+    if (!H.saut[i + 1] && H.c[i] === H.c[i + 1] && ((g >= 0 && gSuiv < 0) || (g < 0 && gSuiv >= 0))) {
       var u = g / (g - gSuiv);                         // racine entre i et i + 1
       var ph = H.p[i] + u * (H.p[i + 1] - H.p[i]);
       var tau = H.t[i] + u * (H.t[i + 1] - H.t[i]);
-      val += _vdAmp(c * (t - tau)) * Math.sin(ph);
+      val += _vdAmp(H.c[i] * (t - tau)) * Math.sin(ph);
       if (nb === 0) phi = ph;
       nb++;
     }
@@ -161,7 +220,7 @@ function vdAvancer(dt) {
     simV.t += h;
     simV.phase += deuxPi * simV.fE * h;
     if (Math.floor((simV.phase - Math.PI / 2) / deuxPi) > kAvant) {
-      _vdCretes.push({ t: simV.t, x: simV.E.x, y: simV.E.y });     // l'émetteur est en haut
+      _vdCretes.push({ t: simV.t, x: simV.E.x, y: simV.E.y, c: simV.c });   // l'émetteur est en haut
     }
     _vdPousserHistorique(false);
 
@@ -182,19 +241,18 @@ function vdAvancer(dt) {
   _vdElaguer();
 }
 
-// Oublie ce qui ne peut plus servir : émissions plus vieilles que la traversée
-// de la scène (E et R y restent, donc c·(t − τ) ≤ diagonale), signal sorti des écrans.
+// Oublie ce qui ne peut plus servir : émissions dont l'onde a dépassé la
+// traversée de la scène (E et R y restent), signal sorti des écrans.
 function _vdElaguer() {
   var Hm = _vdHauteur();
-  var diag = Math.sqrt(VD_LARGEUR * VD_LARGEUR + Hm * Hm);
-  var tMin = simV.t - 1.05 * diag / simV.c, i = 0;
-  while (i < _vdH.t.length - 2 && _vdH.t[i] < tMin) i++;
+  var lim = 1.05 * Math.sqrt(VD_LARGEUR * VD_LARGEUR + Hm * Hm), t = simV.t, i = 0;
+  while (i < _vdH.t.length - 2 && _vdH.c[i] * (t - _vdH.t[i]) > lim) i++;
   if (i > 400) { for (var cle in _vdH) _vdH[cle].splice(0, i); }
   i = 0;
-  while (i < _vdCretes.length && _vdCretes[i].t < tMin) i++;
+  while (i < _vdCretes.length && _vdCretes[i].c * (t - _vdCretes[i].t) > lim) i++;
   if (i) _vdCretes.splice(0, i);
   i = 0;
-  while (i < _vdTrace.t.length && _vdTrace.t[i] < simV.t - VD_TRACE_DUREE) i++;
+  while (i < _vdTrace.t.length && _vdTrace.t[i] < t - VD_TRACE_DUREE) i++;
   if (i > 400) { _vdTrace.t.splice(0, i); _vdTrace.e.splice(0, i); _vdTrace.r.splice(0, i); }
 }
 
@@ -202,12 +260,22 @@ function _vdElaguer() {
 //  Boucle d'animation
 // ══════════════════════════════════════════════════════════════════════
 
+function _vdRalenti() { return simV.ralenti[simV.mode]; }
+
+// Une image : dtReel secondes réelles
+function vdImage(dtReel) {
+  var dtSim = dtReel * _vdRalenti() * 1e-3;
+  if (simV.mode === 'souris') _vdPreparerSouris(dtReel, dtSim);
+  vdAvancer(dtSim);
+  _vdMajBalayages();
+}
+
 function _vdBoucle(ts) {
   _vdRaf = null;
   if (!simV.lecture) return;
   var dtReel = Math.min((ts - _vdDernierTs) / 1000, 0.05);
   _vdDernierTs = ts;
-  vdAvancer(dtReel * simV.ralenti * 1e-3);
+  vdImage(dtReel);
   dessinerDessus();
   if (ts - _vdDernierReadout > 150) { _vdDernierReadout = ts; _vdMajValeurs(); }
   _vdRaf = requestAnimationFrame(_vdBoucle);
@@ -224,7 +292,11 @@ function vdDemarrer() {
 
 function vdArreter() {
   simV.lecture = false;
+  // À l'arrêt, un objet tiré à la souris se pose là où il est
+  [simV.E, simV.R].forEach(function (o) { if (!o.saisi) { o.ptr = null; o.cible = null; } o.vm = 0; o.pas = 0; o.retard = false; });
   _vdMajBoutonLecture();
+  _vdMajValeurs();
+  if (cvDessus) dessinerDessus();
 }
 
 function vdBasculerLecture() { if (simV.lecture) vdArreter(); else vdDemarrer(); }
@@ -246,24 +318,30 @@ function _vdTexte(id, txt) {
   if (el) el.textContent = txt;
 }
 
-function vdOnRalenti(v) {
-  simV.ralenti = parseFloat(v);
-  _vdTexte('vd-lbl-ralenti', '1 s ↔ ' + fmtFR(simV.ralenti, 0) + ' ms');
+function _vdMajRalenti() {
+  var el = document.getElementById('vd-sl-ralenti');
+  if (el) el.value = _vdRalenti();
+  _vdTexte('vd-lbl-ralenti', '1 s ↔ ' + fmtFR(_vdRalenti(), 0) + ' ms');
 }
+function vdOnRalenti(v) {
+  simV.ralenti[simV.mode] = parseFloat(v);
+  _vdMajRalenti();
+}
+// c et f ne valent que pour les émissions à venir : l'onde déjà émise garde les siens
 function vdOnC(v) {
   simV.c = parseFloat(v);
   _vdTexte('vd-lbl-c', fmtFR(simV.c, 0) + ' m/s');
-  _vdMajValeurs(); dessinerDessus();
+  _vdMajValeurs();
 }
 function vdOnFE(v) {
   simV.fE = parseFloat(v);
   _vdTexte('vd-lbl-fe', fmtFR(simV.fE, 0) + ' Hz');
-  _vdMajValeurs(); dessinerDessus();
+  _vdMajValeurs();
 }
 function vdOnVE(v) {
   simV.E.v = parseFloat(v);
   _vdTexte('vd-lbl-ve', fmtFR(simV.E.v, 0) + ' m/s');
-  _vdMajValeurs(); dessinerDessus();
+  dessinerDessus();
 }
 function vdOnVR(v) {
   simV.R.v = parseFloat(v);
@@ -271,12 +349,30 @@ function vdOnVR(v) {
   dessinerDessus();
 }
 function vdToggleCentres(coche) { simV.showCentres = coche; dessinerDessus(); }
+function vdToggleSupersonique(coche) { simV.supersonique = coche; }
+
+// Mode de mouvement : 'auto' (curseurs et poignées) ou 'souris' (E et R suivent la main)
+function vdSetMode(m) {
+  if (m === simV.mode) return;
+  simV.mode = m;
+  _vdLacher(simV.E); _vdLacher(simV.R);
+  document.getElementById('vd-mode-auto').classList.toggle('active', m === 'auto');
+  document.getElementById('vd-mode-souris').classList.toggle('active', m === 'souris');
+  document.getElementById('vd-bloc-auto').style.display = m === 'auto' ? '' : 'none';
+  document.getElementById('vd-bloc-souris').style.display = m === 'souris' ? '' : 'none';
+  _vdMajRalenti();
+  _vdMajValeurs();
+  dessinerDessus();
+}
 
 function _vdMajValeurs() {
   var fR = simV.fR, ok = !isNaN(fR);
   _vdTexte('vd-ro-fe', fmtFR(simV.fE, 0) + ' Hz');
   _vdTexte('vd-ro-fr', ok ? fmtFR(fR, 0) + ' Hz' : '—');
   _vdTexte('vd-ro-ecart', ok ? (fR - simV.fE >= 0.5 ? '+' : '') + fmtFR(fR - simV.fE, 0) + ' Hz' : '—');
+  _vdTexte('vd-ro-ve', fmtFR(simV.E.vm, 0) + ' m/s');
+  _vdTexte('vd-ro-mach', fmtFR(simV.E.vm / simV.c, 2));
+  _vdTexte('vd-ro-vr', fmtFR(simV.R.vm, 0) + ' m/s');
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -297,12 +393,12 @@ function dessinerDessus() {
   var r = 0.72 * f;                               // rayon des pastilles
   _vdGeo = { s: s, w: w, h: h, Hm: h / s, r: r, f: f };
 
-  // ── Crêtes : cercles centrés sur leur point d'émission ──────────────
+  // ── Crêtes : cercles centrés sur leur point d'émission, chacun à sa célérité ──
   var i, c, rayon, a;
   ctx.lineWidth = Math.max(1.5, f * 0.1);
   for (i = 0; i < _vdCretes.length; i++) {
     c = _vdCretes[i];
-    rayon = simV.c * (simV.t - c.t);
+    rayon = c.c * (simV.t - c.t);
     if (rayon <= 0) continue;
     a = _vdAmp(rayon);
     ctx.strokeStyle = 'rgba(42,106,170,' + (0.12 + 0.8 * a).toFixed(3) + ')';
@@ -333,7 +429,11 @@ function dessinerDessus() {
   texteIndices(ctx, 't = ' + fmtFR(simV.t * 1000, 1) + ' ms', w - 0.9 * f, h - 1.0 * f, f * 0.85,
                COL_GRIS, 'right', false);
 
-  // ── Vecteurs vitesse (poignée ronde à la pointe : on la tire pour orienter) ──
+  // ── Laisse : l'objet tiré trop vite est en retard sur la main ───────
+  _vdLaisse(ctx, simV.E, COL_EMET, X, Y, f);
+  _vdLaisse(ctx, simV.R, COL_RECEP, X, Y, f);
+
+  // ── Vecteurs vitesse (en mode Automatique : poignée ronde pour orienter) ──
   _vdVecteur(ctx, simV.E, 'v_{E}', COL_EMET, X, Y, s, f, r);
   _vdVecteur(ctx, simV.R, 'v_{R}', COL_RECEP, X, Y, s, f, r);
 
@@ -345,18 +445,42 @@ function dessinerDessus() {
   if (simV.scopeR) _vdDessinerScope('r');
 }
 
+function _vdLaisse(ctx, o, couleur, X, Y, f) {
+  if (simV.mode !== 'souris' || !o.retard || !o.ptr) return;
+  ctx.save();
+  ctx.strokeStyle = couleur;
+  ctx.globalAlpha = 0.7;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([5, 5]);
+  ctx.beginPath();
+  ctx.moveTo(X(o.x), Y(o.y)); ctx.lineTo(X(o.ptr.x), Y(o.ptr.y));
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.arc(X(o.ptr.x), Y(o.ptr.y), 0.3 * f, 0, 2 * Math.PI);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// Vitesse et direction affichées : réglées (Automatique) ou mesurées (À la souris)
+function _vdVitesseVue(o) {
+  return simV.mode === 'souris' ? { v: o.vm, dir: o.dm } : { v: o.v, dir: o.dir };
+}
+
 // Pointe du vecteur vitesse d'un objet, en px (null si l'objet est immobile)
 function _vdPointe(o) {
-  if (o.v <= 0 || !_vdGeo) return null;
+  var vv = _vdVitesseVue(o);
+  if (vv.v <= 0.5 || !_vdGeo) return null;
   var g = _vdGeo;
-  var L = g.r + Math.max(1.6 * g.f, o.v / simV.c * VD_FLECHE_C * g.s);
-  return { x: o.x * g.s + L * Math.cos(o.dir), y: g.h / 2 + o.y * g.s + L * Math.sin(o.dir) };
+  var L = g.r + Math.max(1.6 * g.f, vv.v / simV.c * VD_FLECHE_C * g.s);
+  return { x: o.x * g.s + L * Math.cos(vv.dir), y: g.h / 2 + o.y * g.s + L * Math.sin(vv.dir) };
 }
 
 function _vdVecteur(ctx, o, nom, couleur, X, Y, s, f, r) {
   var p = _vdPointe(o);
   if (!p) return;
-  var cx = Math.cos(o.dir), sy = Math.sin(o.dir);
+  var dir = _vdVitesseVue(o).dir;
+  var cx = Math.cos(dir), sy = Math.sin(dir);
   var x0 = X(o.x) + r * cx, y0 = Y(o.y) + r * sy;
   var ang = Math.atan2(p.y - y0, p.x - x0), tete = 0.75 * f;
   ctx.save();
@@ -372,13 +496,14 @@ function _vdVecteur(ctx, o, nom, couleur, X, Y, s, f, r) {
   ctx.lineTo(p.x - tete * Math.cos(ang + 0.42), p.y - tete * Math.sin(ang + 0.42));
   ctx.closePath();
   ctx.fill();
-  // Poignée
-  ctx.fillStyle = '#fff';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(p.x, p.y, 0.28 * f, 0, 2 * Math.PI);
-  ctx.fill();
-  ctx.stroke();
+  if (simV.mode === 'auto') {                     // poignée d'orientation
+    ctx.fillStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 0.28 * f, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.stroke();
+  }
   ctx.restore();
   // Étiquette, écartée de la flèche du côté perpendiculaire
   texteIndices(ctx, nom, p.x - 1.0 * f * cx - 0.95 * f * sy, p.y - 1.0 * f * sy + 0.95 * f * cx,
@@ -387,14 +512,81 @@ function _vdVecteur(ctx, o, nom, couleur, X, Y, s, f, r) {
 
 // ══════════════════════════════════════════════════════════════════════
 //  Écrans d'oscilloscope (fenêtres DOM déplaçables par leur barre de titre)
-//  Même base de temps sur les deux écrans : c'est ce qui rend comparable la
-//  période reçue à la période émise.
+//  Balayage déclenché, comme un oscilloscope de TP : le spot parcourt l'écran
+//  de gauche à droite puis repart au passage suivant du signal par zéro en
+//  montant ; un signal périodique paraît donc immobile. Sans déclenchement
+//  pendant un balayage entier (pas encore de signal), le spot repart seul.
+//  Même base de temps (ms/div) sur les deux écrans : la période reçue se
+//  compare directement à la période émise.
 // ══════════════════════════════════════════════════════════════════════
 
-// Pas rond (1 / 2 / 5 × 10ⁿ) au moins égal à brut
-function _vdPasRond(brut) {
-  var p = Math.pow(10, Math.floor(Math.log(brut) / Math.LN10)), m = brut / p;
-  return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p;
+function _vdDuree() { return VD_DIV_X * simV.calibre; }
+
+// Premier indice de la trace dont la date est ≥ t (recherche dichotomique)
+function _vdIndice(T, t) {
+  var a = 0, b = T.t.length;
+  while (a < b) { var m = (a + b) >> 1; if (T.t[m] < t) a = m + 1; else b = m; }
+  return a;
+}
+
+// Date du premier passage par zéro en montant après tMin (NaN s'il n'y en a pas)
+function _vdDeclenchement(vals, tMin) {
+  var T = _vdTrace;
+  for (var i = Math.max(1, _vdIndice(T, tMin)); i < T.t.length; i++) {
+    if (vals[i - 1] < 0 && vals[i] >= 0) {
+      var u = -vals[i - 1] / (vals[i] - vals[i - 1]);
+      return T.t[i - 1] + u * (T.t[i] - T.t[i - 1]);
+    }
+  }
+  return NaN;
+}
+
+function _vdMajBalayages() {
+  if (simV.fige) return;
+  var D = _vdDuree(), T = _vdTrace;
+  ['e', 'r'].forEach(function (qui) {
+    var b = _vdBal[qui], vals = qui === 'e' ? T.e : T.r;
+    if (!isNaN(b.deb) && simV.t < b.deb + D) return;              // balayage en cours
+    var depuis = isNaN(b.deb) ? (T.t.length ? T.t[0] : 0) : b.deb + D;
+    var td = _vdDeclenchement(vals, depuis);
+    if (!isNaN(td)) { b.prec = b.deb; b.deb = td; }
+    else if (simV.t - depuis > D) { b.prec = b.deb; b.deb = simV.t; }   // pas de signal : départ libre
+  });
+}
+
+function vdOnCalibre(v) {
+  simV.calibre = VD_CALIBRES[parseInt(v, 10)];
+  _vdTexte('vd-lbl-calibre', fmtFR(simV.calibre * 1000, simV.calibre < 1e-3 ? 1 : 0) + ' ms/div');
+  dessinerDessus();
+}
+
+// Figer : les écrans gardent leur image, la simulation continue
+function vdBasculerFige() {
+  simV.fige = !simV.fige;
+  _vdFige = simV.fige ? {
+    t: simV.t,
+    trace: { t: _vdTrace.t.slice(), e: _vdTrace.e.slice(), r: _vdTrace.r.slice() },
+    bal: { e: { deb: _vdBal.e.deb, prec: _vdBal.e.prec }, r: { deb: _vdBal.r.deb, prec: _vdBal.r.prec } }
+  } : null;
+  var b = document.getElementById('vd-btn-figer');
+  if (b) {
+    b.classList.toggle('actif', simV.fige);
+    b.textContent = simV.fige ? 'Libérer les écrans' : 'Figer les écrans';
+  }
+  dessinerDessus();
+}
+
+// Trace d'une portion [t0, t1] de signal, abscisse comptée depuis le début tDeb du balayage
+function _vdTracer(ctx, T, vals, tDeb, t0, t1, D, w, yMil, ampPx) {
+  var debute = false, dernier = null;
+  ctx.beginPath();
+  for (var i = _vdIndice(T, t0); i < T.t.length && T.t[i] <= t1; i++) {
+    var px = (T.t[i] - tDeb) / D * w, py = yMil - ampPx * borner(vals[i], -1.3, 1.3);
+    if (debute) ctx.lineTo(px, py); else { ctx.moveTo(px, py); debute = true; }
+    dernier = { x: px, y: py };
+  }
+  ctx.stroke();
+  return dernier;
 }
 
 function _vdDessinerScope(qui) {
@@ -406,64 +598,69 @@ function _vdDessinerScope(qui) {
   var fs = borner(w / 22, 9, 17), lw = Math.max(1, fs / 11);
   var bas = 1.5 * fs;                              // bande des graduations
   var hg = h - bas, yMil = hg / 2, ampPx = hg / 2 / 1.15;
+  var D = _vdDuree(), k;
 
   ctx.fillStyle = VD_COL_SCOPE_BG;
   ctx.fillRect(0, 0, w, h);
 
-  // Fenêtre de temps : les 5 dernières périodes d'émission (l'écran défile)
-  var duree = VD_FENETRE_T / simV.fE;
-  var tFin = Math.max(simV.t, duree), tDeb = tFin - duree;
-  var TX = function (t) { return (t - tDeb) / duree * w; };
-
-  // Grille verticale sur des dates rondes, en ms
-  var pas = _vdPasRond(duree * 1000 / Math.max(2, Math.min(8, w / (4.2 * fs)))) / 1000;
-  ctx.font = fs + 'px ' + POLICE;
-  ctx.textBaseline = 'middle';
-  ctx.textAlign = 'center';
-  var dec = pas * 1000 < 1 ? 1 : 0;
-  var wUnite = ctx.measureText('t (ms)').width + 0.8 * fs;
-  for (var tg = Math.ceil(tDeb / pas) * pas; tg <= tFin + 1e-12; tg += pas) {
-    var xg = TX(tg);
-    ctx.strokeStyle = VD_COL_SCOPE_GRID;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(xg, 0); ctx.lineTo(xg, hg);
-    ctx.stroke();
-    if (xg > 1.2 * fs && xg < w - wUnite - 0.8 * fs) {
-      ctx.fillStyle = VD_COL_SCOPE_TXT;
-      ctx.fillText(fmtFR(tg * 1000, dec), xg, hg + bas / 2);
-    }
-  }
-  ctx.fillStyle = VD_COL_SCOPE_TXT;
-  ctx.textAlign = 'right';
-  ctx.fillText('t (ms)', w - 0.4 * fs, hg + bas / 2);
-
-  // Axe des temps (niveau zéro) et bord bas de l'écran
-  ctx.strokeStyle = VD_COL_SCOPE_AXE;
+  // Graticule : 10 divisions en temps, 8 en tension
+  ctx.strokeStyle = VD_COL_SCOPE_GRID;
   ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (k = 1; k < VD_DIV_X; k++) { ctx.moveTo(k * w / VD_DIV_X, 0); ctx.lineTo(k * w / VD_DIV_X, hg); }
+  for (k = 1; k < VD_DIV_Y; k++) { if (2 * k !== VD_DIV_Y) { ctx.moveTo(0, k * hg / VD_DIV_Y); ctx.lineTo(w, k * hg / VD_DIV_Y); } }
+  ctx.stroke();
+  ctx.strokeStyle = VD_COL_SCOPE_AXE;
   ctx.beginPath();
   ctx.moveTo(0, yMil); ctx.lineTo(w, yMil);
   ctx.moveTo(0, hg); ctx.lineTo(w, hg);
   ctx.stroke();
 
-  // Trace « phosphore »
-  var T = _vdTrace, vals = qui === 'e' ? T.e : T.r, n = T.t.length, debute = false;
+  // Graduations en ms depuis le déclenchement (une division sur deux si l'écran est étroit)
+  ctx.font = fs + 'px ' + POLICE;
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = VD_COL_SCOPE_TXT;
+  var wUnite = ctx.measureText('t (ms)').width + 0.8 * fs;
+  var saut = w / VD_DIV_X < 2.6 * fs ? 2 : 1, dec = simV.calibre < 1e-3 ? 1 : 0;
+  ctx.textAlign = 'center';
+  for (k = 0; k < VD_DIV_X; k += saut) {
+    var xg = k * w / VD_DIV_X;
+    if (xg < w - wUnite - 0.8 * fs) {
+      ctx.textAlign = k === 0 ? 'left' : 'center';
+      ctx.fillText(fmtFR(k * simV.calibre * 1000, dec), k === 0 ? 0.3 * fs : xg, hg + bas / 2);
+    }
+  }
+  ctx.textAlign = 'right';
+  ctx.fillText('t (ms)', w - 0.4 * fs, hg + bas / 2);
+
+  // Traces : balayage précédent (rémanence, à droite du spot) puis balayage en cours
+  var src = simV.fige ? _vdFige : { t: simV.t, trace: _vdTrace, bal: _vdBal };
+  var T = src.trace, vals = qui === 'e' ? T.e : T.r, b = src.bal[qui], tNow = src.t;
+  if (isNaN(b.deb)) return;
+  var couleur = qui === 'e' ? VD_COL_SCOPE_E : VD_COL_SCOPE_R;
+  var avance = borner((tNow - b.deb) / D, 0, 1);  // position du spot (fraction de l'écran)
   ctx.save();
   ctx.beginPath();
   ctx.rect(0, 0, w, hg);
   ctx.clip();
-  ctx.strokeStyle = qui === 'e' ? VD_COL_SCOPE_E : VD_COL_SCOPE_R;
-  ctx.lineWidth = 1.6 * lw;
+  ctx.strokeStyle = couleur;
   ctx.lineJoin = 'round';
-  ctx.shadowColor = ctx.strokeStyle;
-  ctx.shadowBlur = 4 * lw;
-  ctx.beginPath();
-  for (var i = 0; i < n; i++) {
-    if (T.t[i] < tDeb) continue;
-    var px = TX(T.t[i]), py = yMil - ampPx * borner(vals[i], -1.3, 1.3);
-    if (debute) ctx.lineTo(px, py); else { ctx.moveTo(px, py); debute = true; }
+  if (!isNaN(b.prec) && avance < 1) {
+    ctx.globalAlpha = 0.3;
+    ctx.lineWidth = 1.3 * lw;
+    _vdTracer(ctx, T, vals, b.prec, b.prec + avance * D, b.prec + D, D, w, yMil, ampPx);
+    ctx.globalAlpha = 1;
   }
-  ctx.stroke();
+  ctx.lineWidth = 1.6 * lw;
+  ctx.shadowColor = couleur;
+  ctx.shadowBlur = 4 * lw;
+  var spot = _vdTracer(ctx, T, vals, b.deb, b.deb, Math.min(tNow, b.deb + D), D, w, yMil, ampPx);
+  if (spot && avance < 1) {
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(spot.x, spot.y, 1.8 * lw, 0, 2 * Math.PI);
+    ctx.fill();
+  }
   ctx.restore();
 }
 
@@ -514,7 +711,11 @@ function _vdInitScope(qui) {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-//  Interactions sur la scène : tirer E ou R, orienter leur vecteur vitesse
+//  Interactions sur la scène
+//   Automatique : pointe de flèche → orientation ; à l'arrêt, E ou R se
+//     replacent (pendant la lecture, ils suivent leur mouvement réglé).
+//   À la souris : E ou R suivent la main pendant la lecture (vitesse plafonnée),
+//     se replacent directement à l'arrêt.
 // ══════════════════════════════════════════════════════════════════════
 
 function initDessus() {
@@ -529,15 +730,22 @@ function initDessus() {
     var b = cv.getBoundingClientRect();
     return { x: e.clientX - b.left, y: e.clientY - b.top };
   }
-  function enMetres(p) { return { x: p.x / _vdGeo.s, y: (p.y - _vdGeo.h / 2) / _vdGeo.s }; }
+  function enMetres(p) {
+    var g = _vdGeo, hy = g.Hm / 2 - VD_MARGE;
+    return { x: borner(p.x / g.s, VD_MARGE, VD_LARGEUR - VD_MARGE),
+             y: borner((p.y - g.h / 2) / g.s, -hy, hy) };
+  }
 
   // Ce qui se trouve sous le pointeur : une pointe de flèche d'abord, puis un objet
   function viser(p) {
     if (!_vdGeo) return null;
     var g = _vdGeo, tol = Math.max(14, 0.7 * g.f), objs = [simV.E, simV.R], i, o, d;
-    for (i = 0; i < 2; i++) {
-      var pt = _vdPointe(objs[i]);
-      if (pt && Math.abs(p.x - pt.x) < tol && Math.abs(p.y - pt.y) < tol) return { o: objs[i], type: 'pointe' };
+    if (simV.mode === 'auto') {
+      for (i = 0; i < 2; i++) {
+        var pt = _vdPointe(objs[i]);
+        if (pt && Math.abs(p.x - pt.x) < tol && Math.abs(p.y - pt.y) < tol) return { o: objs[i], type: 'pointe' };
+      }
+      if (simV.lecture) return null;               // en lecture, le mouvement réglé commande
     }
     for (i = 0; i < 2; i++) {
       o = objs[i];
@@ -551,19 +759,18 @@ function initDessus() {
     var o = prise.o, g = _vdGeo;
     if (prise.type === 'pointe') {
       o.dir = Math.atan2(p.y - (g.h / 2 + o.y * g.s), p.x - o.x * g.s);
-    } else {
-      var m = enMetres({ x: p.x + prise.dx, y: p.y + prise.dy });
-      var hy = g.Hm / 2 - VD_MARGE;
-      m.x = borner(m.x, VD_MARGE, VD_LARGEUR - VD_MARGE);
-      m.y = borner(m.y, -hy, hy);
-      if (simV.lecture) {
-        o.cible = m;                    // l'objet rejoint le pointeur à sa vitesse réglée
-      } else {
-        o.x = m.x; o.y = m.y;           // à l'arrêt : déplacement direct
-        if (o === simV.E && _vdH.t.length) _vdPousserHistorique(true);
-      }
+      dessinerDessus();
+      return;
     }
-    if (!simV.lecture) dessinerDessus();
+    var m = enMetres({ x: p.x + prise.dx, y: p.y + prise.dy });
+    if (simV.lecture && simV.mode === 'souris') {
+      o.ptr = m;                        // l'objet suit la main (voir _vdPreparerSouris)
+    } else {
+      o.x = m.x; o.y = m.y;             // à l'arrêt : on replace l'objet
+      o.ptr = null; o.cible = null;
+      if (o === simV.E && _vdH.t.length) _vdPousserHistorique(true);
+      dessinerDessus();
+    }
   }
 
   cv.addEventListener('pointerdown', function (e) {
@@ -572,6 +779,13 @@ function initDessus() {
     if (!prise) return;
     cv.setPointerCapture(e.pointerId);
     cv.style.cursor = 'grabbing';
+    if (prise.type === 'objet') {
+      prise.o.saisi = true;
+      if (simV.lecture && simV.mode === 'souris' && !prise.o.ptr) {
+        prise.o.ptr = { x: prise.o.x, y: prise.o.y };
+        prise.o.cible = { x: prise.o.x, y: prise.o.y };
+      }
+    }
     appliquer(p);
   });
   cv.addEventListener('pointermove', function (e) {
@@ -580,7 +794,7 @@ function initDessus() {
     cv.style.cursor = viser(p) ? 'grab' : 'default';
   });
   function fin() {
-    if (prise) prise.o.cible = null;
+    if (prise) prise.o.saisi = false;   // lâché : il finit de rejoindre la main puis s'arrête
     prise = null;
     cv.style.cursor = 'default';
   }
@@ -588,11 +802,12 @@ function initDessus() {
   cv.addEventListener('pointercancel', fin);
 
   // Curseurs et libellés reprennent l'état
-  document.getElementById('vd-sl-ralenti').value = simV.ralenti;
+  _vdMajRalenti();
   document.getElementById('vd-sl-c').value = simV.c;
   document.getElementById('vd-sl-fe').value = simV.fE;
   document.getElementById('vd-sl-ve').value = simV.E.v;
   document.getElementById('vd-sl-vr').value = simV.R.v;
+  document.getElementById('vd-sl-calibre').value = VD_CALIBRES.indexOf(simV.calibre);
   _vdMajValeurs();
 }
 
