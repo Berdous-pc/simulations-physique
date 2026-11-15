@@ -32,7 +32,9 @@ var simD = {
   sens: 1,           // +1 : l'émetteur se rapproche du récepteur ; -1 : il s'éloigne
   vE: 8,             // vitesse de l'émetteur (cm/s), toujours positive
   fE: 1,             // fréquence d'émission (Hz)
-  showCotes: true,   // cotes λ_E, λ_R et v_E·T_E sur la scène  showDemo: true     // démonstration écrite sous la scène
+  showCotes: true,   // cotes λ_E, λ_R et v_E·T_E sur la scène
+  showFrise: true,   // frise du temps sous la scène
+  showDemo: true    // démonstration écrite sous la scène
 };
 
 // ══════════════════════════════════════════════════════════════════════

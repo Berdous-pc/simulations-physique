@@ -117,10 +117,16 @@ se déduit d'une **taille de police `f`** proportionnelle au canvas (bornée à
 | barre empilée | ligne 1 : « c·t » puis « λ_E = c·T_E » ; ligne 2 : λ_R (rouge) ; segment vert v_E·T_E sur la ligne la plus courte. Libellé long s'il tient dans la barre, court sinon (`libelle`) |
 | bande mobile | `dessinerBande(y0, yFond, vEs)` : surface en trait fin, motifs colorés en trait épais, gros points et marques au sol des débuts de motif ; étiquette « motif 2 » ; flotteurs E et R centrés sur la surface et tracés entièrement par-dessus l'eau (pas de voile sur la moitié basse : écarté par l'auteur) ; vecteur v_E solidaire de E |
 | cote v_E·T_E (vert, au sol) | « v_E·t » puis « v_E·T_E », positions « E à t = 0 » / « E à t = T_E » ; estompée après T_E |
-| règle | graduée en cm |
-| frise | axe du temps, repères d'émission (vert, au-dessus) et de réception (terracotta, au-dessous), durées T_E et T_R, curseur |
+| échelle et chronomètre | sur la ligne de la cote au sol : segment « 10 cm » à gauche (il remplace l'ancienne règle graduée, supprimée pour gagner de la hauteur), chronomètre « t = 2,20 s » à droite (aiguille : un tour par T_E) |
+| frise du temps (facultative, `simD.showFrise`) | fond teinté ; deux **lignes de vie** précédées des pastilles E et R ; **axe du temps** fléché « t (s) », gradué tous les 0,1 s, chiffré tous les 0,5 s ; événements en ronds **de la couleur de la scène** (bleu : front, ocre : début du motif 2), pleins une fois atteints, reliés à l'axe par un rappel ; durées T_E et T_R l'une au-dessus de l'autre, à la même échelle ; curseur portant une **bulle de date** |
 
-L'amplitude `A` se déduit de la hauteur restante (`(hs − 13,35 f) / 4`) ; `f`
+La frise doit se lire comme du temps, pas comme un second axe d'espace : d'où
+l'unité, la flèche, la bulle de date, le trait écoulé en couleur neutre (et non
+celle de l'onde) et la suppression de la règle en cm qui la jouxtait. Frise
+masquée, `hFrise` vaut 0, `_geo` est `null` (plus de glisser) et la hauteur
+gagnée va à l'amplitude (plafonnée à 3 f) puis à la profondeur d'eau (`jeu`).
+
+L'amplitude `A` se déduit de la hauteur restante (`(hs − 10,95 f) / 4`) ; `f`
 vaut `min(w/52, h/26)`.
 
 `texteIndices()` écrit un texte avec indices (`v_{E}·T_{E}`) et le ramène dans

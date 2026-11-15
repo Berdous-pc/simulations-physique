@@ -190,6 +190,10 @@
             <span>Cotes (λ<sub>E</sub>, λ<sub>R</sub>, v<sub>E</sub>·T<sub>E</sub>)</span>
           </label>
           <label class="check-row">
+            <input type="checkbox" checked onchange="toggleAffichage('showFrise', this.checked)">
+            Frise du temps
+          </label>
+          <label class="check-row">
             <input type="checkbox" checked onchange="toggleAffichage('showDemo', this.checked)">
             Démonstration écrite
           </label>
@@ -355,8 +359,9 @@
       <div class="panel-hint-body">
         <strong>Lecture</strong> déroule toute l'animation ; <strong>Étape ▶</strong> s'arrête à l'instant clé suivant
         (début du motif 2, arrivée du front au récepteur, puis arrivée du début du motif 2).<br>
-        <strong>Temps</strong> : faites glisser le curseur du panneau, ou la <strong>frise</strong> en bas de la scène,
-        pour parcourir l'animation à la main.<br>
+        <strong>Temps</strong> : faites glisser le curseur du panneau, ou la <strong>frise du temps</strong> en bas de la scène,
+        pour parcourir l'animation à la main. Sur la frise, les ronds bleus concernent le front de l'onde, les ronds
+        ocre le début du motif 2 ; elle peut être masquée dans <em>Affichage</em>.<br>
         <strong>Émetteur</strong> : choisissez s'il se rapproche ou s'éloigne du récepteur R, puis réglez sa vitesse
         et sa fréquence ; la scène se met à jour sans changer d'étape.<br>
         <strong>Deux bandes</strong> : en haut l'émetteur immobile (témoin), en bas l'émetteur en mouvement ;
