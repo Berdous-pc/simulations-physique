@@ -298,16 +298,20 @@ html:not(.sections-pretes) .section-title[data-repliable]:not([data-repliable="o
   border-color: #d0a060;
 }
 
-/* Choix du matériau : deux boutons de bascule côte à côte */
+/* Choix du matériau : trois boutons de bascule côte à côte. Un bouton ne
+   descend jamais sous la largeur de son libellé (min-width: max-content) :
+   quand le panneau est trop étroit, le dernier passe à la ligne et occupe
+   toute la largeur, au lieu de laisser le texte déborder du bouton. */
 .mat-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   margin-bottom: 8px;
 }
 .mat-row > .btn-toggle-one {
   width: auto;
   flex: 1 1 0;
-  min-width: 0;
+  min-width: max-content;
   padding: 7px 3px;
   font-size: clamp(11px, 1vw, 13px);
   line-height: 1.15;

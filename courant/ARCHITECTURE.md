@@ -138,7 +138,7 @@ d'électrons).
 
 La mesure brute est la moyenne des vitesses selon x, ramenée à une fraction de
 la vitesse d'agitation (`vdNorm`) — donc indépendante de la taille du canvas.
-Les réglages par défaut (U = 6 V, résistance « Moyenne ») donnent en régime
+Les réglages de référence (U = 6 V, résistance « Moyenne », et non le défaut « Très faible ») donnent en régime
 établi `vdNorm ≈ 0,345` — mesuré sur 150 s et sur huit réseaux tirés
 indépendamment, dispersion ±4 % — calé sur **0,10 mm/s** et **150 mA**.
 

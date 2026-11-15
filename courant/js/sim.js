@@ -72,7 +72,7 @@ var RE_FRAC = 0.055;
 // couloirs et plus aucun électron ne passerait.
 var GENE_STEPS   = [0.105, 0.155, 0.21, 0.26, 0.30]; // rayon cation / pas
 var GENE_LABELS  = ['Très faible', 'Faible', 'Moyenne', 'Forte', 'Très forte'];
-var GENE_DEFAULT = 2;
+var GENE_DEFAULT = 0;
 
 // ── Désordre du réseau ─────────────────────────────────────────────────
 // Un réseau PARFAITEMENT régulier laisse entre ses rangées des couloirs
