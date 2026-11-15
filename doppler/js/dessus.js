@@ -340,7 +340,9 @@ function _vdMajValeurs() {
   var fR = simV.fR, ok = !isNaN(fR);
   _vdTexte('vd-ro-fe', fmtFR(simV.fE, 0) + ' Hz');
   _vdTexte('vd-ro-fr', ok ? fmtFR(fR, 0) + ' Hz' : '—');
-  _vdTexte('vd-ro-ecart', ok ? (fR - simV.fE >= 0.5 ? '+' : '') + fmtFR(fR - simV.fE, 0) + ' Hz' : '—');
+  // écart arrondi au hertz d'abord : un écart de ±0,4 Hz s'affiche « 0 », sans signe
+  var ecart = Math.round(fR - simV.fE) || 0;   // || 0 : pas de « −0 »
+  _vdTexte('vd-ro-ecart', ok ? (ecart > 0 ? '+' : '') + fmtFR(ecart, 0) + ' Hz' : '—');
   _vdTexte('vd-ro-ve', fmtFR(simV.E.vm, 0) + ' m/s');
   _vdTexte('vd-ro-mach', fmtFR(simV.E.vm / simV.c, 2));
   _vdTexte('vd-ro-vr', fmtFR(simV.R.vm, 0) + ' m/s');
