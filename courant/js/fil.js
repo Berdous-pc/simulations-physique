@@ -417,9 +417,21 @@ function _drawSchematic() {
 
   ctx.fillStyle    = C_WIRE_HL;
   ctx.font         = '700 ' + (genR * 1.15).toFixed(1) + 'px "Segoe UI", Arial, sans-serif';
-  ctx.textAlign    = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('G', cx, y1 + genR * 0.04);
+  // Centré sur la boîte réelle du glyphe (et non sur la boîte de la police,
+  // que textBaseline 'middle' centre) : sinon le G paraît décalé dans le
+  // cercle, d'une quantité qui change d'une police de repli à l'autre.
+  ctx.textAlign    = 'left';
+  ctx.textBaseline = 'alphabetic';
+  var gm = ctx.measureText('G');
+  if (gm.actualBoundingBoxAscent !== undefined) {
+    ctx.fillText('G',
+      cx - (gm.actualBoundingBoxRight - gm.actualBoundingBoxLeft) / 2,
+      y1 + (gm.actualBoundingBoxAscent - gm.actualBoundingBoxDescent) / 2);
+  } else {
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('G', cx, y1 + genR * 0.04);
+  }
 
   // Étiquettes des bornes, sous la branche haute : posées à hauteur du fil
   // elles se superposaient au trait.
