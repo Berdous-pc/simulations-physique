@@ -256,30 +256,8 @@
               Ralenti
               <span class="param-value" id="vd-lbl-ralenti">1 s ↔ 4 ms</span>
             </label>
-            <input type="range" id="vd-sl-ralenti" min="1" max="30" step="1" value="4"
+            <input type="range" id="vd-sl-ralenti" min="1" max="10" step="1" value="4"
                    oninput="vdOnRalenti(this.value)">
-          </div>
-        </div>
-
-        <div class="sep"></div>
-
-        <div class="panel-section">
-          <div class="section-title">Onde sonore</div>
-          <div class="param-row">
-            <label>
-              Célérité c
-              <span class="param-value" id="vd-lbl-c">340 m/s</span>
-            </label>
-            <input type="range" id="vd-sl-c" min="200" max="400" step="10" value="340"
-                   oninput="vdOnC(this.value)">
-          </div>
-          <div class="param-row">
-            <label>
-              <span>Fréquence f<sub>E</sub></span>
-              <span class="param-value" id="vd-lbl-fe">500 Hz</span>
-            </label>
-            <input type="range" id="vd-sl-fe" min="200" max="1000" step="50" value="500"
-                   oninput="vdOnFE(this.value)">
           </div>
         </div>
 
@@ -293,7 +271,8 @@
           </div>
           <div id="vd-bloc-souris" style="display:none;">
             <div class="input-hint input-hint-after-btn">
-              Pendant la lecture, faites glisser E ou R : leur vitesse est celle de votre main.
+              Pendant la lecture, maintenez le clic sur E ou R et bougez la souris : plus la main va vite,
+              plus l'objet va vite. Il s'arrête dès que vous lâchez.
             </div>
             <div class="readout">
               <div class="ro-line">
@@ -331,6 +310,28 @@
             <input type="range" id="vd-sl-vr" min="0" max="150" step="10" value="0"
                    oninput="vdOnVR(this.value)">
           </div>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="panel-section">
+          <div class="section-title">Onde sonore</div>
+          <div class="param-row">
+            <label>
+              Célérité c
+              <span class="param-value" id="vd-lbl-c">340 m/s</span>
+            </label>
+            <input type="range" id="vd-sl-c" min="200" max="400" step="10" value="340"
+                   oninput="vdOnC(this.value)">
+          </div>
+          <div class="param-row">
+            <label>
+              <span>Fréquence f<sub>E</sub></span>
+              <span class="param-value" id="vd-lbl-fe">500 Hz</span>
+            </label>
+            <input type="range" id="vd-sl-fe" min="200" max="1000" step="50" value="500"
+                   oninput="vdOnFE(this.value)">
           </div>
         </div>
 
@@ -430,13 +431,14 @@
                 title="Afficher les informations">▲</button>
       </div>
       <div class="panel-hint-body">
-        <strong>Lecture</strong> lance l'émission ; l'animation est un fort <strong>ralenti</strong>, réglable
-        (chaque mode garde le sien). À l'arrêt, faites glisser E ou R pour les replacer.<br>
+        <strong>Lecture</strong> lance l'émission ; l'animation est un fort <strong>ralenti</strong>, réglable.
+        À l'arrêt, faites glisser E ou R pour les replacer.<br>
         <strong>Mouvement automatique</strong> : donnez une vitesse à E ou à R avec les curseurs, puis orientez
         le mouvement en tirant la pointe ronde de la flèche. L'objet rebondit sur les bords.<br>
-        <strong>Mouvement à la souris</strong> : pendant la lecture, faites glisser E ou R ; il va aussi vite
-        que votre main et s'arrête quand vous le lâchez. Sa vitesse est plafonnée à 0,9 c (2 c si vous autorisez
-        le supersonique) : au-delà, un pointillé le relie à la main, qu'il rattrape dès que vous ralentissez.<br>
+        <strong>Mouvement à la souris</strong> : pendant la lecture, maintenez le clic sur E ou R et bougez la souris.
+        Le pointeur disparaît : l'objet avance dans le sens de votre geste, d'autant plus vite que la main va vite
+        (un geste lent donne une faible vitesse, affichée au-dessus de l'objet). Il s'arrête dès que la main
+        s'arrête ou que vous lâchez. Vitesse plafonnée à 0,9 c (2 c si vous autorisez le supersonique).<br>
         <strong>c et f<sub>E</sub></strong> ne changent que l'onde émise ensuite : l'onde déjà partie garde les siens.<br>
         <strong>Oscilloscopes</strong> : comme en TP, le spot balaie l'écran puis repart quand le signal passe par zéro
         en montant ; un signal périodique paraît donc immobile. Les deux écrans ont la même base de temps.

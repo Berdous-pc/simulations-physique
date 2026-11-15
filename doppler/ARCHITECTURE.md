@@ -181,23 +181,27 @@ de large, hauteur déduite du canvas, y = 0 au milieu.
 
 ### Modèle
 
-- **Deux modes de mouvement** (`simV.mode`, onglets du panneau), chacun avec
-  son ralenti (`simV.ralenti.auto` = 4 ms/s, `.souris` = 15 ms/s : c ≈ 10 cm/s
-  de main à l'écran) :
+- **Deux modes de mouvement** (`simV.mode`, onglets du panneau, section
+  Mouvement placée avant Onde sonore) ; même ralenti dans les deux
+  (`simV.ralenti`, 4 ms/s par défaut : l'auteur ne veut pas qu'il change) :
   - **Automatique** : vitesse `v` (curseur) et direction `dir` (poignée ronde
     à la pointe de la flèche) ; `_vdDeplacer()` : mouvement rectiligne uniforme
     avec **rebond** sur les bords. Pendant la lecture, on ne peut pas attraper
     E ou R (seulement les poignées).
   - **À la souris** : pas de curseur de vitesse ni de poignée. Pendant la
-    lecture, l'objet tiré **suit la main** : `ptr` (point visé) est lissé en
-    `cible` (τ = 40 ms réelles, sinon la vitesse saccade au rythme des
-    événements pointeur), puis `_vdPreparerSouris()` fixe une fois par image la
-    vitesse `pas` qui amène l'objet sur `cible` en fin d'image, **plafonnée** à
-    0,9 c (2 c si « Autoriser le supersonique »). Sous le plafond l'objet colle
-    à la main ; au-delà il prend du retard, montré par une **laisse**
-    pointillée, et rattrape la main ensuite. Lâché, il finit de rejoindre le
-    point de lâcher puis s'arrête. Vitesse **mesurée** `vm`, `dm` (flèche et
-    panneau, avec v_E / c).
+    lecture, l'objet saisi est **piloté** : le pointeur est verrouillé et
+    masqué (Pointer Lock ; repli sur les déplacements du pointeur, masqué, au
+    toucher ou si le verrou est refusé), seuls ses déplacements comptent.
+    `_vdPreparerSouris()` : vitesse de la main u = moyenne glissante des
+    déplacements sur 80 ms réelles, vitesse de l'objet **v = c·(u / 700 px/s)²**
+    dans la direction du geste, plafonnée à 0,9 c (2 c si « Autoriser le
+    supersonique »). Le carré rend les faibles vitesses faciles à doser
+    (0,1 c ≈ 220 px/s). L'objet s'arrête net quand la main s'arrête (fenêtre
+    vide) ou qu'on lâche ; bloqué par les bords, sans rebond. Sa vitesse `vm`
+    s'affiche au-dessus de lui (le pointeur est masqué) et dans le panneau.
+    Écartés par l'auteur : un suivi 1:1 du pointeur (avec le ralenti, c ne vaut
+    que ~120 px/s à l'écran : les faibles vitesses sont inatteignables) et un
+    suivi lissé qui continue après le lâcher.
   - Dans les deux modes, à l'arrêt, faire glisser un objet le replace
     directement.
 - **Historique de l'émetteur** `_vdH` (date, position, phase, **célérité c**), un échantillon
