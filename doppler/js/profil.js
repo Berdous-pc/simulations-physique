@@ -162,6 +162,11 @@ function _pastille(ctx, x, y, r, couleur, lettre, alpha) {
 function _eclat(ctx, x, y, r, couleur, p) {
   if (p < 0 || p >= 1) return;
   ctx.save();
+  ctx.globalAlpha = 0.35 * (1 - p);
+  ctx.fillStyle = couleur;
+  ctx.beginPath();
+  ctx.arc(x, y, r * 1.9, 0, 2 * Math.PI);
+  ctx.fill();
   ctx.globalAlpha = 1 - p;
   ctx.strokeStyle = couleur;
   ctx.lineWidth = 3;
@@ -186,7 +191,7 @@ function dessinerProfil() {
   // De haut en bas : bande témoin (émetteur immobile), barre empilée des
   // longueurs, bande de l'émetteur en mouvement, cote v_E·T_E, frise (facultative).
   var f = borner(Math.min(w / 52, h / 26), 12, 24);
-  var hFrise = simD.showFrise ? 6.6 * f : 0;   // bande de la frise, en bas (facultative)
+  var hFrise = simD.showFrise ? 7.2 * f : 0;   // bande de la frise, en bas (facultative)
   var hs = h - hFrise;                  // hauteur de la scène
   var s = w / SCENE_L;                  // px par cm
   var X = function (x) { return x * s; };
@@ -309,22 +314,12 @@ function dessinerProfil() {
   dessinerBande(y0, yFond, vEs);
 
   texteIndices(ctx, 'Émetteur immobile (témoin)', 0.6 * f, yLblT, f * 0.85, COL_GRIS, 'left', true);
-  texteIndices(ctx, 'Émetteur en mouvement', 0.6 * f, yLblM, f * 0.85, COL_GRIS, 'left', true);
+  // du côté opposé au départ de l'émetteur : la barre empilée s'y construit
+  texteIndices(ctx, 'Émetteur en mouvement', simD.sens > 0 ? w - 0.6 * f : 0.6 * f, yLblM, f * 0.85,
+               COL_GRIS, simD.sens > 0 ? 'right' : 'left', true);
 
   // ── Échelle des distances (10 cm) et chronomètre ────────────────────
-  // L'échelle remplace l'ancienne règle graduée, au sol à gauche de la scène.
-  var fEch = Math.max(11, f * 0.75);
-  var xEch1 = 0.8 * f, xEch2 = xEch1 + 10 * s;
-  ctx.strokeStyle = COL_GRIS;
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.moveTo(xEch1, yVe - 0.25 * f); ctx.lineTo(xEch1, yVe + 0.25 * f);
-  ctx.moveTo(xEch1, yVe); ctx.lineTo(xEch2, yVe);
-  ctx.moveTo(xEch2, yVe - 0.25 * f); ctx.lineTo(xEch2, yVe + 0.25 * f);
-  ctx.stroke();
-  texteIndices(ctx, '10 cm', (xEch1 + xEch2) / 2, yVe + 0.85 * f, fEch, COL_GRIS, 'center', false);
-
-  // Chronomètre : la date courante, au sol à droite de la scène (juste au-dessus de la frise)
+    // Chronomètre : la date courante, au sol à droite de la scène (juste au-dessus de la frise)
   var yChrono = yVe + 0.3 * f;
   var txtChrono = 't = ' + fmtFR(t, 2) + ' s';
   ctx.font = 'bold ' + f + 'px ' + POLICE;
@@ -343,6 +338,18 @@ function dessinerProfil() {
   ctx.moveTo(xH, yChrono); ctx.lineTo(xH + 0.72 * rH * Math.cos(aH), yChrono + 0.72 * rH * Math.sin(aH));
   ctx.stroke();
   texteIndices(ctx, txtChrono, xChrono, yChrono, f, COL_TEXTE, 'left', true);
+
+  var fEch = Math.max(11, f * 0.75);
+  // à gauche si l'émetteur part de la droite, sinon à gauche du chronomètre
+  var xEch1 = simD.sens > 0 ? xH - rH - 1.6 * f - 10 * s : 0.8 * f, xEch2 = xEch1 + 10 * s;
+  ctx.strokeStyle = COL_GRIS;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(xEch1, yVe - 0.25 * f); ctx.lineTo(xEch1, yVe + 0.25 * f);
+  ctx.moveTo(xEch1, yVe); ctx.lineTo(xEch2, yVe);
+  ctx.moveTo(xEch2, yVe - 0.25 * f); ctx.lineTo(xEch2, yVe + 0.25 * f);
+  ctx.stroke();
+  texteIndices(ctx, '10 cm', (xEch1 + xEch2) / 2, yVe + 0.85 * f, fEch, COL_GRIS, 'center', false);
 
   // ── Front de l'onde : une seule barre, commune aux deux bandes ──────
   if (t > 0 && xF <= SCENE_L + 0.01) {
@@ -438,10 +445,18 @@ function dessinerProfil() {
   if (t > 0) _pastille(ctx, X(xE0), y0, r, COL_EMET, '', 0.3);
   if (t > TE + 1e-9) _pastille(ctx, X(dopXE(TE)), y0, r, COL_EMET, '', 0.3);
 
-  _eclat(ctx, X(xE0), y0, r, COL_EMET, t / (0.35 * TE));
-  _eclat(ctx, X(dopXE(TE)), y0, r, COL_EMET, (t - TE) / (0.35 * TE));
-  _eclat(ctx, X(X_RECEPTEUR), y0, r, COL_RECEP, (t - T1) / (0.35 * TE));
-  _eclat(ctx, X(X_RECEPTEUR), y0, r, COL_RECEP, (t - T2) / (0.35 * TE));
+  // Clignotements à chaque début de motif : émis (les deux E, toutes les T_E),
+  // reçu en bas toutes les T_R, reçu par le témoin toutes les T_E. Les deux
+  // récepteurs reçoivent le front au même instant : on compare leurs rythmes.
+  var dEc = 0.35 * TE, TRs = dopTR();
+  var kE = Math.floor(t / TE + 1e-9);
+  _eclat(ctx, X(dopXE(kE * TE)), y0, r, COL_EMET, (t - kE * TE) / dEc);
+  _eclat(ctx, X(xE0), y0T, r, COL_EMET, (t - kE * TE) / dEc);
+  if (t >= T1 - 1e-9) {
+    var kR = Math.floor((t - T1) / TRs + 1e-9), kT = Math.floor((t - T1) / TE + 1e-9);
+    _eclat(ctx, X(X_RECEPTEUR), y0, r, COL_RECEP, (t - T1 - kR * TRs) / (0.35 * Math.min(TE, TRs)));
+    _eclat(ctx, X(X_RECEPTEUR), y0T, r, COL_RECEP, (t - T1 - kT * TE) / dEc);
+  }
 
   // Vecteur vitesse de l'émetteur, solidaire du flotteur ; étiquette à liseré
   // clair : la barre du front et la vague passent derrière elle au début
@@ -452,9 +467,9 @@ function dessinerProfil() {
     texteIndices(ctx, 'v_{E}', X(xE) + sg * (r + lv + 0.3 * f), yE, f * 0.85, COL_EMET,
                  sg > 0 ? 'left' : 'right', true, true);
   }
-  // Bande témoin : émetteur immobile, récepteur en retrait (il ne sert qu'à comparer)
+  // Bande témoin : émetteur immobile ; son récepteur clignote au rythme T_E
   _pastille(ctx, X(xE0), yET, r, COL_EMET, 'E', 1);
-  _pastille(ctx, X(X_RECEPTEUR), yRT, r, COL_RECEP, 'R', 0.55);
+  _pastille(ctx, X(X_RECEPTEUR), yRT, r, COL_RECEP, 'R', 1);
   // Bande mobile
   _pastille(ctx, X(xE), yE, r, COL_EMET, 'E', 1);
   _pastille(ctx, X(X_RECEPTEUR), yR, r, COL_RECEP, 'R', 1);
@@ -464,7 +479,7 @@ function dessinerProfil() {
 
   var yLE = hs + 1.9 * f;               // ligne de vie de l'émetteur
   var yLR = hs + 3.8 * f;               // ligne de vie du récepteur
-  var yAx = hs + 5.0 * f;               // axe du temps
+  var yAx = hs + 5.6 * f;               // axe du temps
   var fF = f * 0.85;
   ctx.font = 'bold ' + fF + 'px ' + POLICE;
   var xs0 = 0.8 * f + 1.5 * f + ctx.measureText('Réceptions').width + 1.2 * f;
@@ -487,18 +502,15 @@ function dessinerProfil() {
   texteIndices(ctx, 'Émissions', 0.8 * f + 1.5 * f, yLE, fF, COL_EMET, 'left', true);
   texteIndices(ctx, 'Réceptions', 0.8 * f + 1.5 * f, yLR, fF, COL_RECEP, 'left', true);
 
-  // Légende des événements, aux couleurs de la scène
+  // Légende des événements, aux couleurs des motifs de la scène
   var xLeg = xs1, yLeg = hs + 0.85 * f, fLeg = f * 0.75;
   ctx.font = fLeg + 'px ' + POLICE;
-  var lLeg2 = ctx.measureText('début du motif 2').width, lLeg1 = ctx.measureText('front').width;
-  texteIndices(ctx, 'début du motif 2', xLeg - lLeg2, yLeg, fLeg, COL_GRIS, 'left', false);
-  var xP2 = xLeg - lLeg2 - 0.6 * f;
-  texteIndices(ctx, 'front', xP2 - 1.3 * f - lLeg1, yLeg, fLeg, COL_GRIS, 'left', false);
-  var xP1 = xP2 - 1.3 * f - lLeg1 - 0.6 * f;
+  var lLeg = ctx.measureText('débuts de motif').width;
+  texteIndices(ctx, 'débuts de motif', xLeg - lLeg, yLeg, fLeg, COL_GRIS, 'left', false);
   ctx.fillStyle = COL_MOTIF2;
-  ctx.beginPath(); ctx.arc(xP2, yLeg, 0.3 * f, 0, 2 * Math.PI); ctx.fill();
+  ctx.beginPath(); ctx.arc(xLeg - lLeg - 0.6 * f, yLeg, 0.3 * f, 0, 2 * Math.PI); ctx.fill();
   ctx.fillStyle = COL_ONDE;
-  ctx.beginPath(); ctx.arc(xP1, yLeg, 0.3 * f, 0, 2 * Math.PI); ctx.fill();
+  ctx.beginPath(); ctx.arc(xLeg - lLeg - 1.4 * f, yLeg, 0.3 * f, 0, 2 * Math.PI); ctx.fill();
 
   // Lignes de vie
   ctx.strokeStyle = '#b9b2a6';
@@ -508,11 +520,16 @@ function dessinerProfil() {
   ctx.moveTo(xs0, yLR); ctx.lineTo(xs1, yLR);
   ctx.stroke();
 
-  // Axe du temps : flèche, « t (s) », graduations tous les 0,1 s, valeurs tous les 0,5 s
+  // Axe du temps : flèche, « t (s) », graduations fines si elles restent
+  // lisibles, valeurs tous les 0,5 s (ou toutes les secondes si l'animation est longue)
   var xFl = xs1 + 1.1 * f;
   fleche(ctx, xs0, xFl, yAx, { couleur: COL_GRIS, epais: 1.5, tete: 0.6 * f });
   texteIndices(ctx, 't (s)', xFl + 0.3 * f, yAx, fF, COL_TEXTE, 'left', true);
   var fGrad = Math.max(11, f * 0.75);
+  var pxParS = (xs1 - xs0) / tFin;
+  var fin = pxParS * 0.1 >= 4;                 // graduations au dixième de seconde
+  var pasG = fin ? 1 : 5;                      // en dixièmes de seconde
+  var pasN = pxParS * 0.5 >= 3.2 * fGrad ? 5 : 10;
   ctx.strokeStyle = COL_GRIS;
   ctx.fillStyle = COL_GRIS;
   ctx.lineWidth = 1;
@@ -521,12 +538,12 @@ function dessinerProfil() {
   ctx.textBaseline = 'top';
   ctx.beginPath();
   var nGrad = Math.floor(tFin / 0.1 + 1e-6);
-  for (var g = 0; g <= nGrad; g++) {
-    var hg = (g % 5 === 0) ? 0.45 * f : 0.22 * f;
+  for (var g = 0; g <= nGrad; g += pasG) {
+    var hg = (g % pasN === 0) ? 0.45 * f : ((g % 5 === 0) ? 0.32 * f : 0.2 * f);
     ctx.moveTo(TX(g * 0.1), yAx); ctx.lineTo(TX(g * 0.1), yAx + hg);
   }
   ctx.stroke();
-  for (g = 0; g <= nGrad; g += 5) {
+  for (g = 0; g <= nGrad; g += pasN) {
     ctx.fillText(fmtFR(g * 0.1, (g % 10) ? 1 : 0), TX(g * 0.1), yAx + 0.55 * f);
   }
 
@@ -537,39 +554,54 @@ function dessinerProfil() {
   ctx.moveTo(xs0, yAx); ctx.lineTo(TX(t), yAx);
   ctx.stroke();
 
-  // Durées T_E (entre les émissions) et T_R (entre les réceptions) : même échelle,
-  // l'une au-dessus de l'autre
-  function duree(ta, tb, yy, couleur, texte) {
+  // Peigne des débuts de motif : émis tous les T_E (ligne E), reçus tous les
+  // T_R (ligne R). Le trait qui relie l'émission n° k à sa réception avance
+  // avec le motif : l'éventail se resserre si E se rapproche, s'ouvre s'il s'éloigne.
+  var TRf = dopTR(), nRec = dopNRecep(), nEm = Math.floor(tFin / TE + 1e-9);
+  var k;
+  ctx.lineWidth = 1.5;
+  for (k = 0; k < nRec; k++) {
+    var te = k * TE, tr = T1 + k * TRf;
+    if (t <= te) break;
+    var av = Math.min(1, (t - te) / (tr - te));
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.strokeStyle = coulMotif(k);
+    ctx.beginPath();
+    ctx.moveTo(TX(te), yLE);
+    ctx.lineTo(TX(te + av * (tr - te)), yLE + av * (yLR - yLE));
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Durées T_E (au-dessus de la ligne E) et T_R (sous la ligne R), à la même échelle
+  function duree(ta, tb, yy, cote, couleur, texte) {
     ctx.strokeStyle = couleur;
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.moveTo(TX(ta), yy); ctx.lineTo(TX(tb), yy);
     ctx.stroke();
-    texteIndices(ctx, texte, (TX(ta) + TX(tb)) / 2, yy - 0.95 * f, fF, couleur, 'center', true);
+    texteIndices(ctx, texte, (TX(ta) + TX(tb)) / 2, yy + cote * 0.95 * f, fF, couleur, 'center', true);
   }
-  if (fige) duree(0, TE, yLE, COL_EMET, 'T_{E} = ' + fmtFR(TE, 2) + ' s');
-  if (t >= T2 - 1e-9) duree(T1, T2, yLR, COL_RECEP, 'T_{R} = ' + fmtFR(dopTR(), 2) + ' s');
+  if (fige) duree(0, TE, yLE, -1, COL_EMET, 'T_{E} = ' + fmtFR(TE, 2) + ' s');
+  if (t >= T2 - 1e-9) duree(T1, T2, yLR, 1, COL_RECEP, 'T_{R} = ' + fmtFR(TRf, 2) + ' s');
 
-  // Événement : rond de la couleur de ce qu'il concerne (front bleu, motif 2
-  // ocre), plein s'il est atteint, creux sinon ; rappel en pointillés jusqu'à l'axe
+  // Événement : rond de la couleur de son motif, plein s'il est atteint, creux sinon
   function evenement(tt, yy, couleur) {
     var atteint = t >= tt - 1e-9;
     ctx.save();
-    ctx.globalAlpha = atteint ? 1 : 0.45;
-    _rappel(ctx, TX(tt), yy, yAx, couleur);
+    ctx.globalAlpha = atteint ? 1 : 0.4;
     ctx.strokeStyle = couleur;
     ctx.fillStyle = atteint ? couleur : '#f4efe6';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(TX(tt), yy, 0.36 * f, 0, 2 * Math.PI);
+    ctx.arc(TX(tt), yy, 0.32 * f, 0, 2 * Math.PI);
     ctx.fill();
     ctx.stroke();
     ctx.restore();
   }
-  evenement(0, yLE, COL_ONDE);
-  evenement(TE, yLE, COL_MOTIF2);
-  evenement(T1, yLR, COL_ONDE);
-  evenement(T2, yLR, COL_MOTIF2);
+  for (k = 0; k <= nEm; k++) evenement(k * TE, yLE, coulMotif(k));
+  for (k = 0; k < nRec; k++) evenement(T1 + k * TRf, yLR, coulMotif(k));
 
   // Curseur du temps : trait vertical et bulle portant la date (à faire glisser)
   var xCur = TX(t), txtCur = fmtFR(t, 2) + ' s';

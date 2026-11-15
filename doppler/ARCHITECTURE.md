@@ -52,7 +52,8 @@ Pour que la contraction **se voie** et ne se lise pas seulement sur une cote :
   bandes) ; seul le début du motif 2 diffère, de v_E·T_E ;
 - **barre empilée** entre les deux bandes : λ_E sur une ligne, λ_R sur l'autre,
   le segment vert v_E·T_E complétant la plus courte (λ_R si l'émetteur se
-  rapproche, λ_E s'il s'éloigne). Elle voyage avec le premier motif ;
+  rapproche, λ_E s'il s'éloigne). Elle voyage avec le premier motif et sort
+  de la scène avec lui : son rôle s'arrête à l'étape 3 ;
 - **débuts de motif** : un gros point sur l'onde à chaque début de motif
   (émis à 0, T_E, 2T_E…), et une **marque au sol** verte là où était l'émetteur
   à cet instant. Un sinus discrétisé (8 points par période, graduations au sol
@@ -79,14 +80,16 @@ les deux sens (curseur, frise, étape précédente) et de changer un paramètre 
 date fixée.
 
 - Unités : cm, s, Hz. Célérité fixe `V_ONDE` = 20 cm/s, scène de `SCENE_L` =
-  120 cm, récepteur en `X_RECEPTEUR` = 90 cm, émetteur au départ en
-  `X_E0_BASE` = 40 cm (place laissée à l'onde émise vers l'arrière).
+  120 cm, récepteur en `X_RECEPTEUR` = 108 cm.
 - `simD.vE` est toujours positive ; `simD.sens` (+1 se rapproche, −1 s'éloigne)
   donne la vitesse algébrique `dopVEs()`. Le récepteur reste à droite dans les
   deux cas : c'est l'émetteur qui part vers la gauche quand il s'éloigne.
-- `dopXE0()` : abscisse de départ. Quand l'émetteur s'éloigne, il part d'autant
-  plus près du récepteur qu'il va vite, pour rester dans la scène jusqu'à la
-  fin (aux bornes des curseurs, il ne descend pas sous x ≈ 27 cm).
+- **Départ** `dopXE0()` : choisi pour que **plusieurs motifs soient reçus**
+  (demande de l'auteur : on doit voir le rythme des réceptions, pas seulement
+  deux événements). Il se rapproche : départ tout à gauche (`X_E0_APPROCHE` =
+  14 cm). Il s'éloigne : départ à `D_ELOIGNE` = 1,5 λ_E du récepteur — pas plus
+  près, sinon le front atteindrait R avant le début du motif 2 et les étapes de
+  la démonstration seraient dans le désordre.
 - **Eau plate à t = 0.** `dopDateEmission(x, t)` renvoie la date d'émission de
   ce qui se trouve en x (formule différente devant et derrière l'émetteur,
   continue à sa position) ; elle est négative là où l'onde n'est pas arrivée.
@@ -95,15 +98,18 @@ date fixée.
 - `dopXRepere(n, t)` : abscisse du point émis vers le récepteur à n·T_E (n = 0 :
   front, n = 1 : début du motif 2).
 - **Instants clés** `dopCles()` : `[0, T_E, t₁, t₂]` — départ du front, début du
-  motif 2, réception du front, réception du début du motif 2.
-  L'animation se termine `T_FIN_MARGE`·T_E après t₂ (`dopTFin()`).
+  motif 2, réception du front, réception du début du motif 2. Ce sont les
+  seules étapes ; au-delà, la lecture laisse défiler le train de motifs.
+- **Fin** `dopTFin()` : `T_FIN_MARGE`·T_E après la dernière réception. On
+  reçoit `dopNRecep()` débuts de motif : `N_RECEP` = 6, moins si l'émetteur
+  atteint avant sa butée `dopTLimite()` (à `MARGE_BORD` du bord gauche ou à
+  `MARGE_R` du récepteur), jamais moins de 2. Exemple : 4 réceptions seulement
+  à 1 Hz et 10 cm/s en s'éloignant.
 
-Contraintes à respecter si l'on change les bornes des curseurs
-(`VE_MAX`, plage de f_E, à tenir synchronisées avec `index.html`) :
-`T_E < t₁` (le motif 2 commence avant que le front n'atteigne R), l'émetteur
-reste dans la scène et avant le récepteur jusqu'à `dopTFin()`, et
-`X_RECEPTEUR + λ′ ≤ SCENE_L` pour que la cote λ′ reste entière quand le début
-du motif 2 arrive.
+Contraintes à respecter si l'on change ces constantes ou les bornes des
+curseurs (`VE_MAX`, plage de f_E, à tenir synchronisées avec `index.html`) :
+`T_E < t₁`, et l'émetteur reste dans la scène et avant le récepteur jusqu'à
+`dopTFin()` (c'est le rôle de `dopNRecep()`).
 
 ### Rendu (`profil.js`)
 
@@ -113,12 +119,12 @@ se déduit d'une **taille de police `f`** proportionnelle au canvas (bornée à
 
 | Zone | Contenu |
 |---|---|
-| bande témoin | émetteur immobile (`dessinerBande(y0T, yFondT, 0)`), récepteur estompé |
+| bande témoin | émetteur immobile (`dessinerBande(y0T, yFondT, 0)`) ; son récepteur clignote au rythme T_E |
 | barre empilée | ligne 1 : « c·t » puis « λ_E = c·T_E » ; ligne 2 : λ_R (rouge) ; segment vert v_E·T_E sur la ligne la plus courte. Libellé long s'il tient dans la barre, court sinon (`libelle`) |
 | bande mobile | `dessinerBande(y0, yFond, vEs)` : surface en trait fin, motifs colorés en trait épais, gros points et marques au sol des débuts de motif ; étiquette « motif 2 » ; flotteurs E et R centrés sur la surface et tracés entièrement par-dessus l'eau (pas de voile sur la moitié basse : écarté par l'auteur) ; vecteur v_E solidaire de E |
 | cote v_E·T_E (vert, au sol) | « v_E·t » puis « v_E·T_E », positions « E à t = 0 » / « E à t = T_E » ; estompée après T_E |
-| échelle et chronomètre | sur la ligne de la cote au sol : segment « 10 cm » à gauche (il remplace l'ancienne règle graduée, supprimée pour gagner de la hauteur), chronomètre « t = 2,20 s » à droite (aiguille : un tour par T_E) |
-| frise du temps (facultative, `simD.showFrise`) | fond teinté ; deux **lignes de vie** précédées des pastilles E et R ; **axe du temps** fléché « t (s) », gradué tous les 0,1 s, chiffré tous les 0,5 s ; événements en ronds **de la couleur de la scène** (bleu : front, ocre : début du motif 2), pleins une fois atteints, reliés à l'axe par un rappel ; durées T_E et T_R l'une au-dessus de l'autre, à la même échelle ; curseur portant une **bulle de date** |
+| échelle et chronomètre | sur la ligne de la cote au sol : segment « 10 cm » du côté opposé au départ de l'émetteur (il remplace l'ancienne règle graduée, supprimée pour gagner de la hauteur), chronomètre « t = 2,20 s » à droite (aiguille : un tour par T_E) |
+| frise du temps (facultative, `simD.showFrise`) | fond teinté ; deux **lignes de vie** précédées des pastilles E et R ; **axe du temps** fléché « t (s) », gradué tous les 0,1 s, chiffré tous les 0,5 s ; **peigne** des débuts de motif, ronds de la couleur du motif (bleu, ocre), pleins une fois atteints : tous les T_E sur la ligne E, tous les T_R sur la ligne R ; un trait relie l'émission n° k à sa réception et **avance avec le motif** (éventail qui se resserre ou s'ouvre) ; durées T_E (au-dessus de la ligne E) et T_R (sous la ligne R), à la même échelle ; curseur portant une **bulle de date** |
 
 La frise doit se lire comme du temps, pas comme un second axe d'espace : d'où
 l'unité, la flèche, la bulle de date, le trait écoulé en couleur neutre (et non
@@ -128,6 +134,12 @@ gagnée va à l'amplitude (plafonnée à 3 f) puis à la profondeur d'eau (`jeu`
 
 L'amplitude `A` se déduit de la hauteur restante (`(hs − 10,95 f) / 4`) ; `f`
 vaut `min(w/52, h/26)`.
+
+**Clignotements** (`_eclat`, halo plein + anneau) à chaque début de motif :
+les deux émetteurs toutes les T_E, le récepteur du bas toutes les T_R, le
+récepteur témoin toutes les T_E. Les deux récepteurs reçoivent le front au
+même instant : c'est en les comparant qu'on voit f_R ≠ f_E. Le titre de la
+bande mobile se place du côté opposé au départ de l'émetteur.
 
 `texteIndices()` écrit un texte avec indices (`v_{E}·T_{E}`) et le ramène dans
 le canvas s'il déborde. Les éclats (`_eclat`) qui signalent émissions et
