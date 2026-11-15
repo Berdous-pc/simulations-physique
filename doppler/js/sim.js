@@ -23,8 +23,6 @@ var X_E0_BASE   = 40;    // abscisse de l'émetteur à t = 0 quand il se rapproc
 var X_E0_RECUL  = 20;    // décalage maximal du départ quand il s'éloigne (à VE_MAX)
 var VE_MAX      = 10;    // vitesse maximale de l'émetteur (cm/s) — synchronisé avec index.html
 var T_FIN_MARGE = 0.3;   // l'animation se poursuit 0,3 T_E après la réception du début du motif 2
-var N_POINTS    = 8;     // points déposés par l'émetteur à chaque période (sinus discrétisé)
-
 // ── État ──────────────────────────────────────────────────────────────
 var simD = {
   t: 0,              // date courante (s)
@@ -34,9 +32,7 @@ var simD = {
   sens: 1,           // +1 : l'émetteur se rapproche du récepteur ; -1 : il s'éloigne
   vE: 8,             // vitesse de l'émetteur (cm/s), toujours positive
   fE: 1,             // fréquence d'émission (Hz)
-  showCotes: true,   // cotes λ_E, λ_R et v_E·T_E sur la scène
-  showPoints: true,  // points déposés par l'émetteur et marques au sol
-  showDemo: true     // démonstration écrite sous la scène
+  showCotes: true,   // cotes λ_E, λ_R et v_E·T_E sur la scène  showDemo: true     // démonstration écrite sous la scène
 };
 
 // ══════════════════════════════════════════════════════════════════════

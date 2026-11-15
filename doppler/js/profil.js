@@ -157,18 +157,6 @@ function _pastille(ctx, x, y, r, couleur, lettre, alpha) {
   ctx.restore();
 }
 
-// Voile d'eau sur la moitié basse d'un flotteur centré en (x, y) : il paraît
-// à moitié immergé, la ligne d'eau passant par son centre.
-function _immerger(ctx, x, y, r) {
-  ctx.save();
-  ctx.fillStyle = 'rgba(214,230,244,0.55)';
-  ctx.beginPath();
-  ctx.arc(x, y, r + 0.5, 0, Math.PI);
-  ctx.closePath();
-  ctx.fill();
-  ctx.restore();
-}
-
 // Anneau qui s'élargit en s'effaçant : signale une émission ou une réception.
 // p : avancement de 0 à 1.
 function _eclat(ctx, x, y, r, couleur, p) {
@@ -238,7 +226,7 @@ function dessinerProfil() {
 
   var coulMotif = function (m) { return (m % 2) ? COL_MOTIF2 : COL_ONDE; };
 
-  // ── Une bande d'eau : profil de l'onde, motifs colorés, points, marques ──
+  // ── Une bande d'eau : profil de l'onde, motifs colorés, débuts de motif ──
   // y0b : niveau de repos ; yFondB : fond ; vE : vitesse algébrique de l'émetteur
   function dessinerBande(y0b, yFondB, vE) {
     var xEb = xE0 + vE * t;
@@ -266,9 +254,8 @@ function dessinerProfil() {
     for (i = 0; i < n; i++) { if (i) ctx.lineTo(i * pas, ys[i]); else ctx.moveTo(0, ys[0]); }
     ctx.stroke();
 
-    // Motifs émis vers le récepteur, de couleur alternée : trait fin sous les
-    // points, trait épais quand les points sont masqués
-    ctx.lineWidth = simD.showPoints ? 2 : Math.max(3, f * 0.22);
+    // Motifs émis vers le récepteur, de couleur alternée, en trait épais
+    ctx.lineWidth = Math.max(3, f * 0.22);
     var cur = -1;
     for (i = 0; i < n; i++) {
       if (mo[i] !== cur) {
@@ -291,37 +278,29 @@ function dessinerProfil() {
     ctx.moveTo(0, yFondB); ctx.lineTo(w, yFondB);
     ctx.stroke();
 
-    if (!simD.showPoints || t <= 0) return;
+    if (t <= 0) return;
 
-    // Points déposés par l'émetteur tous les T_E / N_POINTS, à sa hauteur du
-    // moment ; chacun file ensuite à la célérité c. Début de motif : gros point.
-    var dtp = TE / N_POINTS, kmax = Math.floor(t / dtp + 1e-9);
-    var ecart = (V_ONDE - vE) * dtp * s;                       // px entre deux points
-    var rMin = Math.min(0.2 * f, Math.max(1.5, 0.4 * ecart)), rMaj = 0.34 * f;
-
-    // Marques au sol : où se trouvait l'émetteur à chaque dépôt
+    // Débuts de motif (émis à 0, T_E, 2T_E…) : un gros point sur l'onde, qui
+    // file à la célérité c, et une marque au sol là où se trouvait l'émetteur.
+    var kmax = Math.floor(t / TE + 1e-9);
     ctx.strokeStyle = COL_EMET;
+    ctx.lineWidth = 2.5;
     for (k = 0; k <= kmax; k++) {
-      var majM = (k % N_POINTS === 0), xm = X(xE0 + vE * k * dtp);
-      ctx.lineWidth = majM ? 2.5 : 1.5;
+      var xm = X(xE0 + vE * k * TE);
       ctx.beginPath();
-      ctx.moveTo(xm, yFondB); ctx.lineTo(xm, yFondB - (majM ? 0.6 : 0.32) * f);
+      ctx.moveTo(xm, yFondB); ctx.lineTo(xm, yFondB - 0.6 * f);
       ctx.stroke();
     }
-
     for (k = kmax; k >= 0; k--) {
-      var tk = k * dtp, xk = xE0 + vE * tk + V_ONDE * (t - tk);
+      var xk = xE0 + vE * k * TE + V_ONDE * (t - k * TE);
       if (xk > SCENE_L + 1) continue;
-      var maj = (k % N_POINTS === 0);
-      ctx.fillStyle = coulMotif(Math.floor(k / N_POINTS));
+      ctx.fillStyle = coulMotif(k);
       ctx.beginPath();
-      ctx.arc(X(xk), y0b - A * Math.sin(2 * Math.PI * k / N_POINTS), maj ? rMaj : rMin, 0, 2 * Math.PI);
+      ctx.arc(X(xk), y0b, 0.34 * f, 0, 2 * Math.PI);
       ctx.fill();
-      if (maj) {
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-      }
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
     }
   }
 
@@ -461,13 +440,9 @@ function dessinerProfil() {
   // Bande témoin : émetteur immobile, récepteur en retrait (il ne sert qu'à comparer)
   _pastille(ctx, X(xE0), yET, r, COL_EMET, 'E', 1);
   _pastille(ctx, X(X_RECEPTEUR), yRT, r, COL_RECEP, 'R', 0.55);
-  _immerger(ctx, X(xE0), yET, r);
-  _immerger(ctx, X(X_RECEPTEUR), yRT, r);
   // Bande mobile
   _pastille(ctx, X(xE), yE, r, COL_EMET, 'E', 1);
   _pastille(ctx, X(X_RECEPTEUR), yR, r, COL_RECEP, 'R', 1);
-  _immerger(ctx, X(xE), yE, r);
-  _immerger(ctx, X(X_RECEPTEUR), yR, r);
 
   // ── Frise des instants ──────────────────────────────────────────────
   var yAx = h - 2.9 * f;
