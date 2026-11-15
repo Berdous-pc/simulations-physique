@@ -56,7 +56,7 @@ var simV = {
   //   v, dir : vitesse et direction réglées (mode Automatique) ;
   //   saisi : tenu à la souris ; cible : point visé par le pointeur { x, y } (m) ;
   //   vm, dm : vitesse (m/s) et direction du mouvement à la souris
-  E: { x: 3, y: 0,   v: 100, dir: 0,       saisi: false, cible: null, vm: 0, dm: 0 },
+  E: { x: 3, y: 0,   v: 150, dir: 0,       saisi: false, cible: null, vm: 0, dm: 0 },
   R: { x: 9, y: 0,   v: 0,   dir: Math.PI, saisi: false, cible: null, vm: 0, dm: 0 },
   supersonique: false,
   coupe: false,       // émetteur tenu à la souris en mode Automatique : il n'émet plus
