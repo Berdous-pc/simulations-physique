@@ -332,6 +332,22 @@ input[type=range] {
   transition: transform 0.1s, background 0.15s;
 }
 .btn-toggle-one:hover { background: #dedad2; }
+
+/* Case à cocher d'option (« Masquer l'objet AB ») */
+.option-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: clamp(12px, 1.2vw, 15px);
+  color: #5a6a78;
+  cursor: pointer;
+  padding: 2px;
+}
+.option-check input[type="checkbox"] {
+  margin: 0;
+  flex-shrink: 0;
+  cursor: pointer;
+}
 .btn-toggle-one:active { transform: scale(0.97); }
 .btn-toggle-one.active {
   background: #fde8c8;

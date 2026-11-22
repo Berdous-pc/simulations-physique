@@ -78,7 +78,8 @@ const DRAG_RADIUS = 18;
 function hitTest(mx, my) {
   const { OA, OE, lensX, axisY } = sim;
 
-  if (!sim.infini) {
+  // Objet masqué : on ne saisit pas à la souris une flèche invisible.
+  if (!sim.infini && !sim.hideObject) {
     const objX = cmToX(OA);
     const yA   = sim.axisY;
     const yB   = cmToY(sim.h);
@@ -411,6 +412,11 @@ function resetAnim() {
   } else {
     draw();
   }
+}
+
+function setHideObject(hidden) {
+  sim.hideObject = hidden;
+  draw();
 }
 
 function toggleMultiPoints() {

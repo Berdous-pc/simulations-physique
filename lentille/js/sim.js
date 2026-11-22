@@ -40,6 +40,7 @@ const sim = {
   nRays: 3,
   multiPoints: false,
   conjugaison: false,
+  hideObject: false,   // « Masquer l'objet AB » : flèche et étiquettes A, B non dessinées
   hoveredGroup: -1,
 
   // ── Géométrie de la lentille ──

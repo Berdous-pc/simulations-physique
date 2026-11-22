@@ -316,7 +316,7 @@ function draw() {
 
   drawScreen();
   drawLens();
-  if (!sim.infini) drawObject();
+  if (!sim.infini && !sim.hideObject) drawObject();
 
   // En animation, l'image n'apparaît qu'une fois le front d'onde parvenu
   // jusqu'à elle : son étiquette doit suivre la même règle.
@@ -441,7 +441,7 @@ function pushAxisPointLabels(imageShown) {
     { rank: 0, cm: -fEff, text: 'F',   color: '#555' },
     { rank: 1, cm:  fEff, text: "F'",  color: '#555' },
   ];
-  if (!infini) {
+  if (!infini && !sim.hideObject) {
     pts.push({ rank: 2, cm: OA, text: 'A', color: '#c05020', up: h <= 0 });
   }
   if (imageShown && isFinite(OA2) && Math.abs(OA2) < FAR_CM) {

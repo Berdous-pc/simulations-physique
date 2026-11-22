@@ -170,6 +170,10 @@
         <div class="btn-stack">
           <button id="btn-multipoints" class="btn btn-toggle-one" onclick="toggleMultiPoints()">Points sources sur tout l'objet : NON</button>
           <button id="btn-conjugaison" class="btn btn-toggle-one" onclick="toggleConjugaison()">Relation de conjugaison : NON</button>
+          <label class="option-check">
+            <input type="checkbox" id="chk-hide-object" autocomplete="off" onchange="setHideObject(this.checked)">
+            Masquer l'objet AB
+          </label>
         </div>
       </div>
 
